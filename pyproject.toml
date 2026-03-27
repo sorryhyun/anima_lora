@@ -1,0 +1,47 @@
+[project]
+name = "anima-lora"
+version = "0.1.0"
+description = "Standalone Anima LoRA training pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    # Core ML
+    "torch>=2.6.0",
+    "torchvision",
+    "accelerate>=1.6.0",
+    "transformers>=4.54.0",
+    "diffusers>=0.32.0",
+    "einops>=0.7.0",
+
+    # Optimizers
+    "bitsandbytes",
+    "lion-pytorch>=0.2.3",
+    "schedulefree>=1.4",
+    "pytorch-optimizer>=3.9.0",
+    "prodigyopt>=1.1.2",
+
+    # Data & Config
+    "toml>=0.10.2",
+    "voluptuous>=0.15.2",
+    "safetensors>=0.4.5",
+    "imagesize>=1.4.1",
+
+    # Text processing
+    "sentencepiece>=0.2.1",
+    "huggingface-hub>=0.34.0",
+
+    # Monitoring & Utilities
+    "tensorboard",
+    "rich>=14.0.0",
+    "tqdm",
+    "numpy",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+flash-attn = [
+    "flash-attn",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"

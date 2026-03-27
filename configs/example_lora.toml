@@ -1,0 +1,14 @@
+[general]
+resolution = 1024
+enable_bucket = true
+bucket_reso_steps = 32
+min_bucket_reso = 512
+max_bucket_reso = 1536
+
+[[datasets]]
+batch_size = 2
+
+  [[datasets.subsets]]
+  image_dir = "/home/sorryhyun/comfyui/image_dataset"
+  caption_extension = ".txt"
+  num_repeats = 1
