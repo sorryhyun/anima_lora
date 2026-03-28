@@ -14,10 +14,8 @@ from accelerate import Accelerator
 from tqdm import tqdm
 from PIL import Image
 
-from library.device_utils import init_ipex, clean_memory_on_device, synchronize_device
+from library.device_utils import clean_memory_on_device, synchronize_device
 from library import anima_models, anima_utils, train_util, qwen_image_autoencoder_kl
-
-init_ipex()
 
 from .utils import setup_logging
 

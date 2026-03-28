@@ -27,11 +27,7 @@ from transformers import CLIPTokenizer
 from . import train_util
 from .train_util import (
     DreamBoothSubset,
-    FineTuningSubset,
-    ControlNetSubset,
     DreamBoothDataset,
-    FineTuningDataset,
-    ControlNetDataset,
     DatasetGroup,
 )
 from .utils import setup_logging
@@ -88,19 +84,6 @@ class DreamBoothSubsetParams(BaseSubsetParams):
 
 
 @dataclass
-class FineTuningSubsetParams(BaseSubsetParams):
-    metadata_file: Optional[str] = None
-    alpha_mask: bool = False
-
-
-@dataclass
-class ControlNetSubsetParams(BaseSubsetParams):
-    conditioning_data_dir: str = None
-    caption_extension: str = ".caption"
-    cache_info: bool = False
-
-
-@dataclass
 class BaseDatasetParams:
     resolution: Optional[Tuple[int, int]] = None
     network_multiplier: float = 1.0
@@ -120,35 +103,13 @@ class DreamBoothDatasetParams(BaseDatasetParams):
     prior_loss_weight: float = 1.0
     
 @dataclass
-class FineTuningDatasetParams(BaseDatasetParams):
-    batch_size: int = 1
-    enable_bucket: bool = False
-    min_bucket_reso: int = 256
-    max_bucket_reso: int = 1024
-    bucket_reso_steps: int = 64
-    bucket_no_upscale: bool = False
-
-
-@dataclass
-class ControlNetDatasetParams(BaseDatasetParams):
-    batch_size: int = 1
-    enable_bucket: bool = False
-    min_bucket_reso: int = 256
-    max_bucket_reso: int = 1024
-    bucket_reso_steps: int = 64
-    bucket_no_upscale: bool = False
-
-
-@dataclass
 class SubsetBlueprint:
-    params: Union[DreamBoothSubsetParams, FineTuningSubsetParams]
+    params: DreamBoothSubsetParams
 
 
 @dataclass
 class DatasetBlueprint:
-    is_dreambooth: bool
-    is_controlnet: bool
-    params: Union[DreamBoothDatasetParams, FineTuningDatasetParams]
+    params: DreamBoothDatasetParams
     subsets: Sequence[SubsetBlueprint]
 
 
@@ -216,21 +177,6 @@ class ConfigSanitizer:
         "is_reg": bool,
         "alpha_mask": bool,
     }
-    # FT means FineTuning
-    FT_SUBSET_DISTINCT_SCHEMA = {
-        Required("metadata_file"): str,
-        "image_dir": str,
-        "alpha_mask": bool,
-    }
-    CN_SUBSET_ASCENDABLE_SCHEMA = {
-        "caption_extension": str,
-        "cache_info": bool,
-    }
-    CN_SUBSET_DISTINCT_SCHEMA = {
-        Required("image_dir"): str,
-        Required("conditioning_data_dir"): str,
-    }
-
     # datasets schema
     DATASET_ASCENDABLE_SCHEMA = {
         "batch_size": int,
@@ -263,12 +209,7 @@ class ConfigSanitizer:
         "dataset_repeats": "num_repeats",
     }
 
-    def __init__(self, support_dreambooth: bool, support_finetuning: bool, support_controlnet: bool, support_dropout: bool) -> None:
-        assert support_dreambooth or support_finetuning or support_controlnet, (
-            "Neither DreamBooth mode nor fine tuning mode nor controlnet mode specified. Please specify one mode or more."
-            + " / DreamBooth モードか fine tuning モードか controlnet モードのどれも指定されていません。1つ以上指定してください。"
-        )
-
+    def __init__(self, support_dropout: bool) -> None:
         self.db_subset_schema = self.__merge_dict(
             self.SUBSET_ASCENDABLE_SCHEMA,
             self.DB_SUBSET_DISTINCT_SCHEMA,
@@ -276,20 +217,7 @@ class ConfigSanitizer:
             self.DO_SUBSET_ASCENDABLE_SCHEMA if support_dropout else {},
         )
 
-        self.ft_subset_schema = self.__merge_dict(
-            self.SUBSET_ASCENDABLE_SCHEMA,
-            self.FT_SUBSET_DISTINCT_SCHEMA,
-            self.DO_SUBSET_ASCENDABLE_SCHEMA if support_dropout else {},
-        )
-
-        self.cn_subset_schema = self.__merge_dict(
-            self.SUBSET_ASCENDABLE_SCHEMA,
-            self.CN_SUBSET_DISTINCT_SCHEMA,
-            self.CN_SUBSET_ASCENDABLE_SCHEMA,
-            self.DO_SUBSET_ASCENDABLE_SCHEMA if support_dropout else {},
-        )
-
-        self.db_dataset_schema = self.__merge_dict(
+        self.dataset_schema = self.__merge_dict(
             self.DATASET_ASCENDABLE_SCHEMA,
             self.SUBSET_ASCENDABLE_SCHEMA,
             self.DB_SUBSET_ASCENDABLE_SCHEMA,
@@ -297,57 +225,10 @@ class ConfigSanitizer:
             {"subsets": [self.db_subset_schema]},
         )
 
-        self.ft_dataset_schema = self.__merge_dict(
-            self.DATASET_ASCENDABLE_SCHEMA,
-            self.SUBSET_ASCENDABLE_SCHEMA,
-            self.DO_SUBSET_ASCENDABLE_SCHEMA if support_dropout else {},
-            {"subsets": [self.ft_subset_schema]},
-        )
-
-        self.cn_dataset_schema = self.__merge_dict(
-            self.DATASET_ASCENDABLE_SCHEMA,
-            self.SUBSET_ASCENDABLE_SCHEMA,
-            self.CN_SUBSET_ASCENDABLE_SCHEMA,
-            self.DO_SUBSET_ASCENDABLE_SCHEMA if support_dropout else {},
-            {"subsets": [self.cn_subset_schema]},
-        )
-
-        if support_dreambooth and support_finetuning:
-
-            def validate_flex_dataset(dataset_config: dict):
-                subsets_config = dataset_config.get("subsets", [])
-
-                if support_controlnet and all(["conditioning_data_dir" in subset for subset in subsets_config]):
-                    return Schema(self.cn_dataset_schema)(dataset_config)
-                # check dataset meets FT style
-                # NOTE: all FT subsets should have "metadata_file"
-                elif all(["metadata_file" in subset for subset in subsets_config]):
-                    return Schema(self.ft_dataset_schema)(dataset_config)
-                # check dataset meets DB style
-                # NOTE: all DB subsets should have no "metadata_file"
-                elif all(["metadata_file" not in subset for subset in subsets_config]):
-                    return Schema(self.db_dataset_schema)(dataset_config)
-                else:
-                    raise voluptuous.Invalid(
-                        "DreamBooth subset and fine tuning subset cannot be mixed in the same dataset. Please split them into separate datasets. / DreamBoothのサブセットとfine tuninのサブセットを同一のデータセットに混在させることはできません。別々のデータセットに分割してください。"
-                    )
-
-            self.dataset_schema = validate_flex_dataset
-        elif support_dreambooth:
-            if support_controlnet:
-                self.dataset_schema = self.cn_dataset_schema
-            else:
-                self.dataset_schema = self.db_dataset_schema
-        elif support_finetuning:
-            self.dataset_schema = self.ft_dataset_schema
-        elif support_controlnet:
-            self.dataset_schema = self.cn_dataset_schema
-
         self.general_schema = self.__merge_dict(
             self.DATASET_ASCENDABLE_SCHEMA,
             self.SUBSET_ASCENDABLE_SCHEMA,
-            self.DB_SUBSET_ASCENDABLE_SCHEMA if support_dreambooth else {},
-            self.CN_SUBSET_ASCENDABLE_SCHEMA if support_controlnet else {},
+            self.DB_SUBSET_ASCENDABLE_SCHEMA,
             self.DO_SUBSET_ASCENDABLE_SCHEMA if support_dropout else {},
         )
 
@@ -420,31 +301,19 @@ class BlueprintGenerator:
 
         dataset_blueprints = []
         for dataset_config in sanitized_user_config.get("datasets", []):
-            # NOTE: if subsets have no "metadata_file", these are DreamBooth datasets/subsets
             subsets = dataset_config.get("subsets", [])
-            is_dreambooth = all(["metadata_file" not in subset for subset in subsets])
-            is_controlnet = all(["conditioning_data_dir" in subset for subset in subsets])
-            if is_controlnet:
-                subset_params_klass = ControlNetSubsetParams
-                dataset_params_klass = ControlNetDatasetParams
-            elif is_dreambooth:
-                subset_params_klass = DreamBoothSubsetParams
-                dataset_params_klass = DreamBoothDatasetParams
-            else:
-                subset_params_klass = FineTuningSubsetParams
-                dataset_params_klass = FineTuningDatasetParams
 
             subset_blueprints = []
             for subset_config in subsets:
                 params = self.generate_params_by_fallbacks(
-                    subset_params_klass, [subset_config, dataset_config, general_config, argparse_config, runtime_params]
+                    DreamBoothSubsetParams, [subset_config, dataset_config, general_config, argparse_config, runtime_params]
                 )
                 subset_blueprints.append(SubsetBlueprint(params))
 
             params = self.generate_params_by_fallbacks(
-                dataset_params_klass, [dataset_config, general_config, argparse_config, runtime_params]
+                DreamBoothDatasetParams, [dataset_config, general_config, argparse_config, runtime_params]
             )
-            dataset_blueprints.append(DatasetBlueprint(is_dreambooth, is_controlnet, params, subset_blueprints))
+            dataset_blueprints.append(DatasetBlueprint(params, subset_blueprints))
 
         dataset_group_blueprint = DatasetGroupBlueprint(dataset_blueprints)
 
@@ -471,59 +340,29 @@ class BlueprintGenerator:
         return default_value
 
 def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlueprint) -> Tuple[DatasetGroup, Optional[DatasetGroup]]:
-    datasets: List[Union[DreamBoothDataset, FineTuningDataset, ControlNetDataset]] = []
+    datasets: List[DreamBoothDataset] = []
 
     for dataset_blueprint in dataset_group_blueprint.datasets:
-        extra_dataset_params = {}
-
-        if dataset_blueprint.is_controlnet:
-            subset_klass = ControlNetSubset
-            dataset_klass = ControlNetDataset
-        elif dataset_blueprint.is_dreambooth:
-            subset_klass = DreamBoothSubset
-            dataset_klass = DreamBoothDataset
-            # DreamBooth datasets support splitting training and validation datasets
-            extra_dataset_params = {"is_training_dataset": True}
-        else:
-            subset_klass = FineTuningSubset
-            dataset_klass = FineTuningDataset
-
-        subsets = [subset_klass(**asdict(subset_blueprint.params)) for subset_blueprint in dataset_blueprint.subsets]
-        dataset = dataset_klass(subsets=subsets, **asdict(dataset_blueprint.params), **extra_dataset_params)
+        subsets = [DreamBoothSubset(**asdict(subset_blueprint.params)) for subset_blueprint in dataset_blueprint.subsets]
+        dataset = DreamBoothDataset(subsets=subsets, **asdict(dataset_blueprint.params), is_training_dataset=True)
         datasets.append(dataset)
 
-    val_datasets: List[Union[DreamBoothDataset, FineTuningDataset, ControlNetDataset]] = []
+    val_datasets: List[DreamBoothDataset] = []
     for dataset_blueprint in dataset_group_blueprint.datasets:
         if dataset_blueprint.params.validation_split < 0.0 or dataset_blueprint.params.validation_split > 1.0:
             logging.warning(f"Dataset param `validation_split` ({dataset_blueprint.params.validation_split}) is not a valid number between 0.0 and 1.0, skipping validation split...")
             continue
 
-        # if the dataset isn't setting a validation split, there is no current validation dataset
         if dataset_blueprint.params.validation_split == 0.0:
             continue
 
-        extra_dataset_params = {}
-        if dataset_blueprint.is_controlnet:
-            subset_klass = ControlNetSubset
-            dataset_klass = ControlNetDataset
-        elif dataset_blueprint.is_dreambooth:
-            subset_klass = DreamBoothSubset
-            dataset_klass = DreamBoothDataset
-            # DreamBooth datasets support splitting training and validation datasets
-            extra_dataset_params = {"is_training_dataset": False}
-        else:
-            subset_klass = FineTuningSubset
-            dataset_klass = FineTuningDataset
-
-        subsets = [subset_klass(**asdict(subset_blueprint.params)) for subset_blueprint in dataset_blueprint.subsets]
-        dataset = dataset_klass(subsets=subsets, **asdict(dataset_blueprint.params), **extra_dataset_params)
+        subsets = [DreamBoothSubset(**asdict(subset_blueprint.params)) for subset_blueprint in dataset_blueprint.subsets]
+        dataset = DreamBoothDataset(subsets=subsets, **asdict(dataset_blueprint.params), is_training_dataset=False)
         val_datasets.append(dataset)
 
     def print_info(_datasets, dataset_type: str):
         info = ""
         for i, dataset in enumerate(_datasets):
-            is_dreambooth = isinstance(dataset, DreamBoothDataset)
-            is_controlnet = isinstance(dataset, ControlNetDataset)
             info += dedent(f"""\
                 [{dataset_type} {i}]
                   batch_size: {dataset.batch_size}
@@ -564,18 +403,10 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
                     alpha_mask: {subset.alpha_mask}
                     resize_interpolation: {subset.resize_interpolation}
                     custom_attributes: {subset.custom_attributes}
+                    is_reg: {subset.is_reg}
+                    class_tokens: {subset.class_tokens}
+                    caption_extension: {subset.caption_extension}
                 """), "  ")
-
-                if is_dreambooth:
-                    info += indent(dedent(f"""\
-                        is_reg: {subset.is_reg}
-                        class_tokens: {subset.class_tokens}
-                        caption_extension: {subset.caption_extension}
-                    \n"""), "    ")
-                elif not is_controlnet:
-                    info += indent(dedent(f"""\
-                        metadata_file: {subset.metadata_file}
-                    \n"""), "    ")
 
         logger.info(info)
 
@@ -644,34 +475,6 @@ def generate_dreambooth_subsets_config_by_subdirs(train_data_dir: Optional[str] 
     return subsets_config
 
 
-def generate_controlnet_subsets_config_by_subdirs(
-    train_data_dir: Optional[str] = None, conditioning_data_dir: Optional[str] = None, caption_extension: str = ".txt"
-):
-    def generate(base_dir: Optional[str]):
-        if base_dir is None:
-            return []
-
-        base_dir: Path = Path(base_dir)
-        if not base_dir.is_dir():
-            return []
-
-        subsets_config = []
-        subset_config = {
-            "image_dir": train_data_dir,
-            "conditioning_data_dir": conditioning_data_dir,
-            "caption_extension": caption_extension,
-            "num_repeats": 1,
-        }
-        subsets_config.append(subset_config)
-
-        return subsets_config
-
-    subsets_config = []
-    subsets_config += generate(train_data_dir)
-
-    return subsets_config
-
-
 def load_user_config(file: str) -> dict:
     file: Path = Path(file)
     if not file.is_file():
@@ -703,20 +506,15 @@ def load_user_config(file: str) -> dict:
 # for config test
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--support_dreambooth", action="store_true")
-    parser.add_argument("--support_finetuning", action="store_true")
-    parser.add_argument("--support_controlnet", action="store_true")
     parser.add_argument("--support_dropout", action="store_true")
     parser.add_argument("dataset_config")
     config_args, remain = parser.parse_known_args()
 
     parser = argparse.ArgumentParser()
-    train_util.add_dataset_arguments(
-        parser, config_args.support_dreambooth, config_args.support_finetuning, config_args.support_dropout
-    )
-    train_util.add_training_arguments(parser, config_args.support_dreambooth)
+    train_util.add_dataset_arguments(parser, True, False, config_args.support_dropout)
+    train_util.add_training_arguments(parser, True)
     argparse_namespace = parser.parse_args(remain)
-    train_util.prepare_dataset_args(argparse_namespace, config_args.support_finetuning)
+    train_util.prepare_dataset_args(argparse_namespace, False)
 
     logger.info("[argparse_namespace]")
     logger.info(f"{vars(argparse_namespace)}")
@@ -727,9 +525,7 @@ if __name__ == "__main__":
     logger.info("[user_config]")
     logger.info(f"{user_config}")
 
-    sanitizer = ConfigSanitizer(
-        config_args.support_dreambooth, config_args.support_finetuning, config_args.support_controlnet, config_args.support_dropout
-    )
+    sanitizer = ConfigSanitizer(config_args.support_dropout)
     sanitized_user_config = sanitizer.sanitize_user_config(user_config)
 
     logger.info("")

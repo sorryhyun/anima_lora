@@ -12,23 +12,13 @@ def _clean_memory_on_device(device: torch.device):
     Clean memory on the specified device, will be called from training scripts.
     """
     gc.collect()
-
-    # device may "cuda" or "cuda:0", so we need to check the type of device
     if device.type == "cuda":
         torch.cuda.empty_cache()
-    if device.type == "xpu":
-        torch.xpu.empty_cache()
-    if device.type == "mps":
-        torch.mps.empty_cache()
 
 
 def _synchronize_device(device: torch.device):
     if device.type == "cuda":
         torch.cuda.synchronize()
-    elif device.type == "xpu":
-        torch.xpu.synchronize()
-    elif device.type == "mps":
-        torch.mps.synchronize()
 
 
 def swap_weight_devices_cuda(device: torch.device, layer_to_cpu: nn.Module, layer_to_cuda: nn.Module):

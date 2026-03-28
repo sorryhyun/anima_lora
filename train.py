@@ -19,9 +19,7 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 from torch.types import Number
-from library.device_utils import init_ipex, clean_memory_on_device
-
-init_ipex()
+from library.device_utils import clean_memory_on_device
 
 from accelerate.utils import set_seed
 from accelerate import Accelerator
@@ -36,7 +34,6 @@ from library import (
     strategy_base,
     train_util,
 )
-from library.train_util import DreamBoothDataset
 import library.config_util as config_util
 from library.config_util import (
     ConfigSanitizer,
@@ -839,7 +836,7 @@ class AnimaTrainer:
 
         # Prepare dataset
         if args.dataset_class is None:
-            blueprint_generator = BlueprintGenerator(ConfigSanitizer(True, True, args.masked_loss, True))
+            blueprint_generator = BlueprintGenerator(ConfigSanitizer(support_dropout=True))
             if use_user_config:
                 logger.info(f"Loading dataset config from {args.dataset_config}")
                 user_config = config_util.load_user_config(args.dataset_config)
@@ -1350,9 +1347,8 @@ class AnimaTrainer:
             dataset_dirs_info = {}
 
             for dataset in train_dataset_group.datasets:
-                is_dreambooth_dataset = isinstance(dataset, DreamBoothDataset)
                 dataset_metadata = {
-                    "is_dreambooth": is_dreambooth_dataset,
+                    "is_dreambooth": True,
                     "batch_size_per_device": dataset.batch_size,
                     "num_train_images": dataset.num_train_images,
                     "num_reg_images": dataset.num_reg_images,
@@ -1389,15 +1385,10 @@ class AnimaTrainer:
                         subset_metadata["image_dir"] = image_dir
                         image_dir_or_metadata_file = image_dir
 
-                    if is_dreambooth_dataset:
-                        subset_metadata["class_tokens"] = subset.class_tokens
-                        subset_metadata["is_reg"] = subset.is_reg
-                        if subset.is_reg:
-                            image_dir_or_metadata_file = None
-                    else:
-                        metadata_file = os.path.basename(subset.metadata_file)
-                        subset_metadata["metadata_file"] = metadata_file
-                        image_dir_or_metadata_file = metadata_file
+                    subset_metadata["class_tokens"] = subset.class_tokens
+                    subset_metadata["is_reg"] = subset.is_reg
+                    if subset.is_reg:
+                        image_dir_or_metadata_file = None
 
                     subsets_metadata.append(subset_metadata)
 
@@ -1628,14 +1619,7 @@ class AnimaTrainer:
 
         def switch_rng_state(seed: int) -> tuple[torch.ByteTensor, Optional[torch.ByteTensor], tuple]:
             cpu_rng_state = torch.get_rng_state()
-            if accelerator.device.type == "cuda":
-                gpu_rng_state = torch.cuda.get_rng_state()
-            elif accelerator.device.type == "xpu":
-                gpu_rng_state = torch.xpu.get_rng_state()
-            elif accelerator.device.type == "mps":
-                gpu_rng_state = torch.cuda.get_rng_state()
-            else:
-                gpu_rng_state = None
+            gpu_rng_state = torch.cuda.get_rng_state()
             python_rng_state = random.getstate()
 
             torch.manual_seed(seed)
@@ -1646,13 +1630,7 @@ class AnimaTrainer:
         def restore_rng_state(rng_states: tuple[torch.ByteTensor, Optional[torch.ByteTensor], tuple]):
             cpu_rng_state, gpu_rng_state, python_rng_state = rng_states
             torch.set_rng_state(cpu_rng_state)
-            if gpu_rng_state is not None:
-                if accelerator.device.type == "cuda":
-                    torch.cuda.set_rng_state(gpu_rng_state)
-                elif accelerator.device.type == "xpu":
-                    torch.xpu.set_rng_state(gpu_rng_state)
-                elif accelerator.device.type == "mps":
-                    torch.cuda.set_rng_state(gpu_rng_state)
+            torch.cuda.set_rng_state(gpu_rng_state)
             random.setstate(python_rng_state)
 
         for epoch in range(epoch_to_start, num_train_epochs):
