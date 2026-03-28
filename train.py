@@ -387,6 +387,9 @@ class AnimaTrainer:
             t5_attn_mask = t5_attn_mask.to(accelerator.device)
         else:
             crossattn_emb = crossattn_emb.to(accelerator.device, dtype=weight_dtype)
+            # Pad to 512 tokens to match inference (trimmed during caching to save disk)
+            if crossattn_emb.shape[1] < 512:
+                crossattn_emb = torch.nn.functional.pad(crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1]))
 
         # Create padding mask
         bs = latents.shape[0]

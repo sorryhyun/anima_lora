@@ -712,6 +712,9 @@ def _sample_image_inference(
             source_attention_mask=attn_mask,
         )
         crossattn_emb[~t5_attn_mask.bool()] = 0
+        # Pad to 512 tokens (model expects fixed-length context)
+        if crossattn_emb.shape[1] < 512:
+            crossattn_emb = torch.nn.functional.pad(crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1]))
     else:
         crossattn_emb = prompt_embeds
 
@@ -740,6 +743,9 @@ def _sample_image_inference(
                     source_attention_mask=neg_am,
                 )
                 neg_crossattn_emb[~neg_t5_am.bool()] = 0
+                # Pad to 512 tokens (model expects fixed-length context)
+                if neg_crossattn_emb.shape[1] < 512:
+                    neg_crossattn_emb = torch.nn.functional.pad(neg_crossattn_emb, (0, 0, 0, 512 - neg_crossattn_emb.shape[1]))
             else:
                 neg_crossattn_emb = neg_pe
 

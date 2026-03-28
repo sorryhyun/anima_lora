@@ -1,14 +1,37 @@
-[general]
-resolution = 1024
-enable_bucket = true
-bucket_reso_steps = 32
-min_bucket_reso = 512
-max_bucket_reso = 1536
+pretrained_model_name_or_path = "../models/diffusion_models/anima-preview2.safetensors"
+qwen3 = "../models/text_encoders/qwen_3_06b_base.safetensors"
+vae = "../models/vae/qwen_image_vae.safetensors"
 
-[[datasets]]
-batch_size = 2
+dataset_config = "configs/dataset_config.toml"
+output_dir = "../output"
+output_name = "anima_lora"
+save_model_as = "safetensors"
 
-  [[datasets.subsets]]
-  image_dir = "/home/sorryhyun/comfyui/image_dataset"
-  caption_extension = ".txt"
-  num_repeats = 1
+network_module = "networks.lora_anima"
+network_dim = 16
+network_alpha = 16
+network_train_unet_only = true
+
+learning_rate = 5e-5
+optimizer_type = "AdamW8bit"
+lr_scheduler = "constant"
+
+timestep_sampling = "sigmoid"
+discrete_flow_shift = 1.0
+
+max_train_epochs = 4
+save_every_n_epochs = 4
+mixed_precision = "bf16"
+
+gradient_checkpointing = true
+cache_latents = true
+cache_latents_to_disk = true
+cache_text_encoder_outputs = true
+cache_llm_adapter_outputs = true
+lora_fp32_accumulation = true
+vae_chunk_size = 64
+vae_disable_cache = true
+attn_mode = "flash"
+blocks_to_swap = 0
+caption_shuffle_variants = 1
+

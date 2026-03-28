@@ -51,6 +51,7 @@ def add_config_arguments(parser: argparse.ArgumentParser):
 class BaseSubsetParams:
     image_dir: Optional[str] = None
     num_repeats: int = 1
+    sample_ratio: float = 1.0
     shuffle_caption: bool = False
     caption_separator: str = (",",)
     keep_tokens: int = 0
@@ -146,6 +147,7 @@ class ConfigSanitizer:
         "face_crop_aug_range": functools.partial(__validate_and_convert_twodim.__func__, float),
         "flip_aug": bool,
         "num_repeats": int,
+        "sample_ratio": Any(float, int),
         "random_crop": bool,
         "shuffle_caption": bool,
         "keep_tokens": int,
@@ -387,6 +389,7 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
                     image_dir: "{subset.image_dir}"
                     image_count: {subset.img_count}
                     num_repeats: {subset.num_repeats}
+                    sample_ratio: {subset.sample_ratio}
                     shuffle_caption: {subset.shuffle_caption}
                     keep_tokens: {subset.keep_tokens}
                     caption_dropout_rate: {subset.caption_dropout_rate}

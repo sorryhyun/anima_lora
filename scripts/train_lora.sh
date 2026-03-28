@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # === Model paths ===
-MODELS="/home/sorryhyun/comfy/ComfyUI/models"
-DIT_PATH="${MODELS}/diffusion_models/anima-preview2-fp8.safetensors"
+MODELS="/home/sorryhyun/anima/models"
+DIT_PATH="${MODELS}/diffusion_models/anima-preview2.safetensors"
 VAE_PATH="${MODELS}/vae/qwen_image_vae.safetensors"
 QWEN3_PATH="${MODELS}/text_encoders/qwen_3_06b_base.safetensors"
 
@@ -41,13 +41,12 @@ accelerate launch --mixed_precision bf16 \
   --cache_latents \
   --cache_latents_to_disk \
   --cache_text_encoder_outputs \
-  --cache_text_encoder_outputs_to_disk \
-  --caption_shuffle_variants=8 \
+  --caption_shuffle_variants=2 \
   --network_train_unet_only \
   --cache_llm_adapter_outputs \
-  --modelopt_fp8 \
   --blocks_to_swap=0 \
   --gradient_accumulation_steps=1 \
+  --gradient_checkpointing \
   --attn_mode=flash \
   --lora_fp32_accumulation \
   --validation_split=0.1 \
