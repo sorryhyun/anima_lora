@@ -51,4 +51,5 @@ accelerate launch --mixed_precision bf16 \
   --lora_fp32_accumulation \
   --validation_split=0.1 \
   --validation_seed=42 \
-  --validate_every_n_epochs=1
+  --validate_every_n_epochs=1 \
+  --masked_loss

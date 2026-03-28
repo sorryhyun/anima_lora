@@ -1,0 +1,6 @@
+prompts:
+  - speech bubble
+  - text bubble
+
+threshold: 0.5
+dilate: 5

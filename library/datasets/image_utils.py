@@ -18,6 +18,28 @@ logger = logging.getLogger(__name__)
 
 IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".PNG", ".JPG", ".JPEG", ".WEBP", ".BMP"]
 
+
+def load_mask_from_dir(mask_dir: str, image_path: str, size: Tuple[int, int]) -> Optional[torch.Tensor]:
+    """Load a mask from a separate file in mask_dir matching the image stem.
+
+    Args:
+        mask_dir: Directory containing {stem}_mask.png files.
+        image_path: Path to the source image (used for stem matching).
+        size: (width, height) to resize the mask to if needed.
+
+    Returns:
+        Float tensor [H, W] in [0, 1] range, or None if no mask file found.
+    """
+    stem = os.path.splitext(os.path.basename(image_path))[0]
+    mask_path = os.path.join(mask_dir, f"{stem}_mask.png")
+    if not os.path.exists(mask_path):
+        return None
+    mask = Image.open(mask_path).convert("L")
+    if (mask.width, mask.height) != size:
+        mask = mask.resize(size, Image.LANCZOS)
+    mask_np = np.array(mask, dtype=np.float32) / 255.0
+    return torch.FloatTensor(mask_np)
+
 try:
     import pillow_avif  # noqa: F401
 
@@ -119,7 +141,8 @@ def load_images_and_masks_for_caching(
     original_sizes: List[Tuple[int, int]] = []
     crop_ltrbs: List[Tuple[int, int, int, int]] = []
     for info in image_infos:
-        image = load_image(info.absolute_path, use_alpha_mask) if info.image is None else np.array(info.image, np.uint8)
+        has_mask_file = getattr(info, "mask_path", None) is not None
+        image = load_image(info.absolute_path, use_alpha_mask and not has_mask_file) if info.image is None else np.array(info.image, np.uint8)
         image, original_size, crop_ltrb = trim_and_resize_if_required(
             random_crop, image, info.bucket_reso, info.resized_size, resize_interpolation=info.resize_interpolation
         )
@@ -127,7 +150,13 @@ def load_images_and_masks_for_caching(
         original_sizes.append(original_size)
         crop_ltrbs.append(crop_ltrb)
 
-        if use_alpha_mask:
+        if has_mask_file:
+            alpha_mask = load_mask_from_dir(
+                os.path.dirname(info.mask_path), info.absolute_path, (image.shape[1], image.shape[0])
+            )
+            if alpha_mask is None:
+                alpha_mask = torch.ones((image.shape[0], image.shape[1]), dtype=torch.float32)
+        elif use_alpha_mask:
             if image.shape[2] == 4:
                 alpha_mask = image[:, :, 3]
                 alpha_mask = alpha_mask.astype(np.float32) / 255.0
@@ -161,7 +190,8 @@ def cache_batch_latents(
     images = []
     alpha_masks: List[np.ndarray] = []
     for info in image_infos:
-        image = load_image(info.absolute_path, use_alpha_mask) if info.image is None else np.array(info.image, np.uint8)
+        has_mask_file = getattr(info, "mask_path", None) is not None
+        image = load_image(info.absolute_path, use_alpha_mask and not has_mask_file) if info.image is None else np.array(info.image, np.uint8)
         image, original_size, crop_ltrb = trim_and_resize_if_required(
             random_crop, image, info.bucket_reso, info.resized_size, resize_interpolation=info.resize_interpolation
         )
@@ -169,7 +199,13 @@ def cache_batch_latents(
         info.latents_original_size = original_size
         info.latents_crop_ltrb = crop_ltrb
 
-        if use_alpha_mask:
+        if has_mask_file:
+            alpha_mask = load_mask_from_dir(
+                os.path.dirname(info.mask_path), info.absolute_path, (image.shape[1], image.shape[0])
+            )
+            if alpha_mask is None:
+                alpha_mask = torch.ones((image.shape[0], image.shape[1]), dtype=torch.float32)
+        elif use_alpha_mask:
             if image.shape[2] == 4:
                 alpha_mask = image[:, :, 3]
                 alpha_mask = alpha_mask.astype(np.float32) / 255.0

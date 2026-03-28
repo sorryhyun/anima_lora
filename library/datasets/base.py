@@ -970,7 +970,16 @@ class BaseDataset(torch.utils.data.Dataset):
                 if flipped:
                     img = img[:, ::-1, :].copy()
 
-                if subset.alpha_mask:
+                if image_info.mask_path is not None:
+                    from library.datasets.image_utils import load_mask_from_dir
+                    alpha_mask = load_mask_from_dir(
+                        os.path.dirname(image_info.mask_path), image_info.absolute_path, (img.shape[1], img.shape[0])
+                    )
+                    if alpha_mask is None:
+                        alpha_mask = torch.ones((img.shape[0], img.shape[1]), dtype=torch.float32)
+                    if flipped:
+                        alpha_mask = torch.flip(alpha_mask, [1])
+                elif subset.alpha_mask:
                     if img.shape[2] == 4:
                         alpha_mask = img[:, :, 3]
                         alpha_mask = alpha_mask.astype(np.float32) / 255.0
@@ -1403,6 +1412,11 @@ class DreamBoothDataset(BaseDataset):
                 info.resize_interpolation = (
                     subset.resize_interpolation if subset.resize_interpolation is not None else self.resize_interpolation
                 )
+                if getattr(subset, "mask_dir", None):
+                    stem = os.path.splitext(os.path.basename(img_path))[0]
+                    mask_path = os.path.join(subset.mask_dir, f"{stem}_mask.png")
+                    if os.path.exists(mask_path):
+                        info.mask_path = mask_path
                 if size is not None:
                     info.image_size = size
                 if subset.is_reg:

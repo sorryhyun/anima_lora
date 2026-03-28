@@ -81,6 +81,7 @@ class ImageInfo:
         self.text_encoder_pool2: Optional[torch.Tensor] = None
 
         self.alpha_mask: Optional[torch.Tensor] = None  # alpha mask can be flipped in runtime
+        self.mask_path: Optional[str] = None  # path to separate mask file (from mask_dir)
         self.resize_interpolation: Optional[str] = None
 
 
@@ -208,6 +209,7 @@ class DreamBoothSubset(BaseSubset):
         validation_seed: Optional[int] = None,
         validation_split: Optional[float] = 0.0,
         resize_interpolation: Optional[str] = None,
+        mask_dir: Optional[str] = None,
     ) -> None:
         assert image_dir is not None, "image_dir must be specified / image_dirは指定が必須です"
 
@@ -245,6 +247,9 @@ class DreamBoothSubset(BaseSubset):
         if self.caption_extension and not self.caption_extension.startswith("."):
             self.caption_extension = "." + self.caption_extension
         self.cache_info = cache_info
+        self.mask_dir = mask_dir
+        if mask_dir:
+            self.alpha_mask = True  # enable alpha mask pipeline when using separate mask files
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, DreamBoothSubset):
