@@ -18,6 +18,9 @@ STEP_STATE_NAME = "{}-step{:08d}-state"
 STEP_FILE_NAME = "{}-step{:08d}"
 STEP_DIFFUSERS_DIR_NAME = "{}-step{:08d}"
 
+CHECKPOINT_STATE_NAME = "{}-checkpoint-state"
+CHECKPOINT_FILE_NAME = "{}-checkpoint"
+
 
 def default_if_none(value, default):
     return default if value is None else value
@@ -177,6 +180,29 @@ def save_and_remove_state_stepwise(args: argparse.Namespace, accelerator, step_n
             if os.path.exists(state_dir_old):
                 logger.info(f"removing old state: {state_dir_old}")
                 shutil.rmtree(state_dir_old)
+
+
+def get_checkpoint_state_dir(args: argparse.Namespace):
+    model_name = default_if_none(args.output_name, DEFAULT_LAST_OUTPUT_NAME)
+    return os.path.join(args.output_dir, CHECKPOINT_STATE_NAME.format(model_name))
+
+
+def get_checkpoint_ckpt_name(args: argparse.Namespace, ext: str):
+    model_name = default_if_none(args.output_name, DEFAULT_LAST_OUTPUT_NAME)
+    return CHECKPOINT_FILE_NAME.format(model_name) + ext
+
+
+def save_checkpoint_state(args: argparse.Namespace, accelerator):
+    state_dir = get_checkpoint_state_dir(args)
+
+    logger.info("")
+    logger.info(f"saving checkpoint state to {state_dir} (overwriting)")
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    if os.path.exists(state_dir):
+        shutil.rmtree(state_dir)
+
+    accelerator.save_state(state_dir)
 
 
 def save_state_on_train_end(args: argparse.Namespace, accelerator):

@@ -1251,6 +1251,22 @@ class AnimaTrainer:
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
 
+        # auto-resume from checkpoint if checkpointing_epochs is set and a checkpoint exists
+        if getattr(args, "checkpointing_epochs", None) and not args.resume:
+            checkpoint_state_dir = train_util.get_checkpoint_state_dir(args)
+            if os.path.exists(checkpoint_state_dir):
+                train_state_file = os.path.join(checkpoint_state_dir, "train_state.json")
+                if os.path.exists(train_state_file):
+                    with open(train_state_file, "r", encoding="utf-8") as f:
+                        ckpt_data = json.load(f)
+                    ckpt_step = ckpt_data.get("current_step", 0)
+                    if ckpt_step < args.max_train_steps:
+                        args.resume = checkpoint_state_dir
+                        args.skip_until_initial_step = True
+                        logger.info(f"auto-resuming from checkpoint at step {ckpt_step}: {checkpoint_state_dir}")
+                    else:
+                        logger.info(f"checkpoint already reached max_train_steps ({ckpt_step} >= {args.max_train_steps}), starting fresh")
+
         # resume
         train_util.resume_from_local_or_hf_if_specified(accelerator, args)
 
@@ -1933,6 +1949,14 @@ class AnimaTrainer:
                     if args.save_state:
                         train_util.save_and_remove_state_on_epoch_end(args, accelerator, epoch + 1)
 
+            # Save resumable checkpoint at specified epoch intervals (overwrites previous)
+            if args.checkpointing_epochs is not None and args.checkpointing_epochs > 0:
+                if (epoch + 1) % args.checkpointing_epochs == 0 and (epoch + 1) < num_train_epochs:
+                    if is_main_process:
+                        ckpt_name = train_util.get_checkpoint_ckpt_name(args, "." + args.save_model_as)
+                        save_model(ckpt_name, accelerator.unwrap_model(network), global_step, epoch + 1)
+                    train_util.save_checkpoint_state(args, accelerator)
+
             self.sample_images(accelerator, args, epoch + 1, global_step, accelerator.device, vae, tokenizers, text_encoder, unet)
             progress_bar.unpause()
             optimizer_train_fn()
@@ -1950,6 +1974,21 @@ class AnimaTrainer:
 
         if is_main_process and (args.save_state or args.save_state_on_train_end):
             train_util.save_state_on_train_end(args, accelerator)
+
+        # clean up checkpoint files after successful completion
+        if is_main_process and getattr(args, "checkpointing_epochs", None):
+            checkpoint_state_dir = train_util.get_checkpoint_state_dir(args)
+            if os.path.exists(checkpoint_state_dir):
+                import shutil
+
+                logger.info(f"training complete, removing checkpoint state: {checkpoint_state_dir}")
+                shutil.rmtree(checkpoint_state_dir)
+            checkpoint_ckpt = os.path.join(
+                args.output_dir, train_util.get_checkpoint_ckpt_name(args, "." + args.save_model_as)
+            )
+            if os.path.exists(checkpoint_ckpt):
+                logger.info(f"removing checkpoint weights: {checkpoint_ckpt}")
+                os.remove(checkpoint_ckpt)
 
         if is_main_process:
             ckpt_name = train_util.get_last_ckpt_name(args, "." + args.save_model_as)

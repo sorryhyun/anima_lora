@@ -32,6 +32,9 @@ from library.training.checkpoints import (
     save_and_remove_state_stepwise,
     save_state_on_train_end,
     save_sd_model_on_train_end_common,
+    get_checkpoint_state_dir,
+    get_checkpoint_ckpt_name,
+    save_checkpoint_state,
 )
 
 __all__ = [
@@ -64,4 +67,7 @@ __all__ = [
     "save_and_remove_state_stepwise",
     "save_state_on_train_end",
     "save_sd_model_on_train_end_common",
+    "get_checkpoint_state_dir",
+    "get_checkpoint_ckpt_name",
+    "save_checkpoint_state",
 ]

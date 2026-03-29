@@ -103,6 +103,9 @@ from library.training import (  # noqa: F401, E402
     save_and_remove_state_stepwise,
     save_state_on_train_end,
     save_sd_model_on_train_end_common,
+    get_checkpoint_state_dir,
+    get_checkpoint_ckpt_name,
+    save_checkpoint_state,
     # optimizers
     get_optimizer,
     get_optimizer_train_eval_fn,
@@ -538,6 +541,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument("--save_state", action="store_true", help="save training state additionally (including optimizer states etc.) when saving model")
     parser.add_argument("--save_state_on_train_end", action="store_true", help="save training state (including optimizer states etc.) on train end")
     parser.add_argument("--resume", type=str, default=None, help="saved state to resume training / 学習再開するモデルのstate")
+    parser.add_argument("--checkpointing_epochs", type=int, default=None, help="save resumable checkpoint every N epochs (overwrites previous, auto-resumes on next run)")
 
     parser.add_argument("--train_batch_size", type=int, default=1, help="batch size for training / 学習時のバッチサイズ")
     parser.add_argument("--max_token_length", type=int, default=None, choices=[None, 150, 225], help="max token length of text encoder (default for 75, 150 or 225)")

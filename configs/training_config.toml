@@ -2,25 +2,25 @@ pretrained_model_name_or_path = "../models/diffusion_models/anima-preview2.safet
 qwen3 = "../models/text_encoders/qwen_3_06b_base.safetensors"
 vae = "../models/vae/qwen_image_vae.safetensors"
 
-dataset_config = "configs/dataset_config.toml"
+dataset_config = "configs/post_dataset_config.toml"
 output_dir = "../output"
 output_name = "anima_lora"
 save_model_as = "safetensors"
 
 network_module = "networks.lora_anima"
-network_dim = 16
-network_alpha = 16
+network_dim = 32
+network_alpha = 32
 network_train_unet_only = true
 
-learning_rate = 5e-5
+learning_rate = 2e-5
 optimizer_type = "AdamW8bit"
 lr_scheduler = "constant"
 
 timestep_sampling = "sigmoid"
 discrete_flow_shift = 1.0
 
-max_train_epochs = 8
-save_every_n_epochs = 2
+max_train_epochs = 12
+save_every_n_epochs = 3
 mixed_precision = "bf16"
 
 gradient_checkpointing = true
@@ -34,4 +34,5 @@ vae_disable_cache = true
 attn_mode = "flash"
 blocks_to_swap = 0
 caption_shuffle_variants = 4
-
+masked_loss = true
+checkpointing_epochs=12
