@@ -16,6 +16,22 @@ except ImportError:
     flash_attn_func = None
 
 try:
+    from flash_attn.cute import flash_attn_func as _flash_attn_4_func_raw
+    from flash_attn.cute import flash_attn_varlen_func as _flash_attn_4_varlen_func_raw
+
+    def flash_attn_4_func(*args, **kwargs):
+        out, _lse = _flash_attn_4_func_raw(*args, **kwargs)
+        return out
+
+    def flash_attn_4_varlen_func(*args, **kwargs):
+        out, _lse = _flash_attn_4_varlen_func_raw(*args, **kwargs)
+        return out
+
+except ImportError:
+    flash_attn_4_func = None
+    flash_attn_4_varlen_func = None
+
+try:
     from sageattention import sageattn_varlen, sageattn
 except ImportError:
     sageattn_varlen = None
@@ -42,7 +58,7 @@ class AttentionParams:
 
     @property
     def supports_fp32(self) -> bool:
-        return self.attn_mode not in ["flash"]
+        return self.attn_mode not in ["flash", "flash4"]
 
     @property
     def requires_same_dtype(self) -> bool:
@@ -347,6 +363,44 @@ def attention(
                 attn_params.max_seqlen,
                 attn_params.max_seqlen,
                 drop_rate,
+                softmax_scale=scale,
+            )
+            del q, k, v
+
+            # Reshape x with shape [(bxs), a, d] to [b, s, a, d]
+            x = x.view(batch_size, seqlen, x.shape[-2], x.shape[-1])  # B, L, H, D
+
+    elif attn_params.attn_mode == "flash4":
+        if attn_params.split_attn:
+            x = []
+            for i in range(len(q)):
+                x_i = flash_attn_4_func(
+                    q[i], k[i], v[i], softmax_scale=scale
+                )  # B, L, H, D
+                q[i] = None
+                k[i] = None
+                v[i] = None
+                x.append(pad_fn(x_i, attn_params.max_seqlen))  # B, L, H, D
+            x = torch.cat(x, dim=0)
+            del q, k, v
+        elif attn_params.cu_seqlens is None:  # all tokens are valid
+            x = flash_attn_4_func(q, k, v, softmax_scale=scale)  # B, L, H, D
+            del q, k, v
+        else:
+            # Reshape to [(bxs), a, d]
+            batch_size, seqlen = q.shape[0], q.shape[1]
+            q = q.view(q.shape[0] * q.shape[1], *q.shape[2:])  # [B*L, H, D]
+            k = k.view(k.shape[0] * k.shape[1], *k.shape[2:])  # [B*L, H, D]
+            v = v.view(v.shape[0] * v.shape[1], *v.shape[2:])  # [B*L, H, D]
+
+            x = flash_attn_4_varlen_func(
+                q,
+                k,
+                v,
+                attn_params.cu_seqlens,
+                attn_params.cu_seqlens,
+                attn_params.max_seqlen,
+                attn_params.max_seqlen,
                 softmax_scale=scale,
             )
             del q, k, v

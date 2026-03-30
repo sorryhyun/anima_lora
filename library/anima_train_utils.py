@@ -173,6 +173,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
             "torch",
             "xformers",
             "flash",
+            "flash4",
             "sageattn",
             "sdpa",
         ],  # "sdpa" is for backward compatibility

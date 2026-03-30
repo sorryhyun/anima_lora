@@ -173,6 +173,7 @@ def parse_args() -> argparse.Namespace:
         default="torch",
         choices=[
             "flash",
+            "flash4",
             "torch",
             "sageattn",
             "xformers",

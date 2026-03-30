@@ -107,7 +107,7 @@ def main() -> None:
     parser.add_argument(
         "--bucket_reso_steps",
         type=int,
-        default=64,
+        default=128,
         help="Bucket step size (default: 64)",
     )
     parser.add_argument(
