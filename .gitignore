@@ -11,3 +11,13 @@ output/
 *.pt
 .DS_Store
 *.whl
+image_dataset/
+post_image_dataset/
+masks/
+masks_mit/
+masks_sam/
+graft/train_images/
+graft/candidates/
+graft/survivors/
+models/
+test_output/

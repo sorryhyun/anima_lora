@@ -2,14 +2,14 @@
 name = "anima-lora"
 version = "0.1.0"
 description = "Standalone Anima LoRA training pipeline"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     # Core ML
-    "torch>=2.6.0",
-    "torchvision",
-    "accelerate>=1.6.0",
-    "transformers>=4.54.0",
-    "diffusers>=0.32.0",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
+    "accelerate>=1.13.0",
+    "transformers>=5.3.0",
+    "diffusers>=0.37.0",
     "einops>=0.7.0",
 
     # Optimizers
@@ -22,12 +22,12 @@ dependencies = [
     # Data & Config
     "toml>=0.10.2",
     "voluptuous>=0.15.2",
-    "safetensors>=0.4.5",
+    "safetensors>=0.7.0",
     "imagesize>=1.4.1",
 
     # Text processing
     "sentencepiece>=0.2.1",
-    "huggingface-hub>=0.34.0",
+    "huggingface-hub>=1.7.0",
 
     # Monitoring & Utilities
     "tensorboard",
@@ -35,11 +35,12 @@ dependencies = [
     "tqdm",
     "numpy",
     "Pillow",
+    "psutil",
 ]
 
 [project.optional-dependencies]
 flash-attn = [
-    "flash-attn",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl",
 ]
 mask = [
     "opencv-python>=4.8.0",
@@ -48,6 +49,14 @@ mask = [
     "packaging",
 ]
 
+[tool.uv]
+extra-index-url = ["https://download.pytorch.org/whl/cu130"]
+index-strategy = "unsafe-best-match"
+environments = ["sys_platform == 'linux'"]
+
+[tool.setuptools]
+packages = []
+
 [build-system]
 requires = ["setuptools>=68.0"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"

@@ -1,9 +1,9 @@
-pretrained_model_name_or_path = "../models/diffusion_models/anima-preview2.safetensors"
-qwen3 = "../models/text_encoders/qwen_3_06b_base.safetensors"
-vae = "../models/vae/qwen_image_vae.safetensors"
+pretrained_model_name_or_path = "models/diffusion_models/anima-preview2.safetensors"
+qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"
+vae = "models/vae/qwen_image_vae.safetensors"
 
 dataset_config = "configs/post_dataset_config.toml"
-output_dir = "../output"
+output_dir = "output"
 output_name = "anima_lora"
 save_model_as = "safetensors"
 

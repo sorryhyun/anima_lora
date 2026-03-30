@@ -2,69 +2,81 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Overview
+## Project Overview
 
-Core LoRA training and inference engine for the Anima diffusion model. Parent directory handles orchestration (Makefile, GRAFT loop); this directory contains the ML pipeline.
+Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion model (DiT-based, flow-matching). Includes a GRAFT human-in-the-loop fine-tuning system that iteratively trains LoRA, generates candidates, and retrains on user-curated survivors.
+
+## Setup
+
+```bash
+uv sync                    # Install dependencies (Python 3.11+)
+# Model weights go in models/ (not tracked):
+#   models/diffusion_models/anima-preview2.safetensors
+#   models/text_encoders/qwen_3_06b_base.safetensors
+#   models/vae/qwen_image_vae.safetensors
+# Training images go in image_dataset/ with .txt caption sidecars
+```
 
 ## Commands
 
 ```bash
-# Training (usually via parent Makefile, but can run directly)
-accelerate launch --mixed_precision bf16 train.py --config_file configs/training_config.toml
+# Training (run from anima_lora/)
+make lora                  # Standard LoRA
+make dora                  # DoRA (use_dora=true)
+make tlora                 # T-LoRA: OrthoLoRA + timestep masking
+make tdora                 # DoRA + timestep masking
 
-# Override network args on the command line
-accelerate launch --mixed_precision bf16 train.py --config_file configs/training_config.toml \
-    --network_args use_ortho=true use_timestep_mask=true min_rank=1
+# Inference (test with most recent output)
+make test
 
-# Inference
-python inference.py --dit ../models/diffusion_models/anima-preview2.safetensors \
-    --text_encoder ../models/text_encoders/qwen_3_06b_base.safetensors \
-    --vae ../models/vae/qwen_image_vae.safetensors \
-    --lora_weight ../output/anima_lora.safetensors \
-    --prompt "your prompt" --image_size 1024 1024
+# GRAFT loop (human-in-the-loop iterative training)
+make step                  # Train → generate candidates → await curation
+# Delete bad images from graft/candidates/iter_NNN/, then:
+make step                  # Ingest survivors → retrain → new candidates
 
-# LoRA format conversion
-python scripts/convert_lora_to_comfy.py <src> <dst>            # anima → ComfyUI
-python scripts/convert_lora_to_comfy.py --reverse <src> <dst>  # ComfyUI → anima
+# Deploy
+make sync                  # Copy output/*.safetensors to ComfyUI loras dir
 
 # Linting
 ruff check . --fix && ruff format .
 ```
 
+## Key entry points
+
+| File | Purpose |
+|------|---------|
+| `train.py` | `AnimaTrainer` class — main training loop via HF Accelerate |
+| `inference.py` | Standalone image generation (`--help` for all flags) |
+| `graft_step.py` | GRAFT orchestrator: holdout → train → generate → await review |
+
+## Config flow
+
+Training is config-driven. TOML configs specify model paths, hyperparams, and dataset layout:
+- `configs/training_config.toml` — default training config
+- `configs/dataset_config.toml` — dataset buckets, subsets, caption settings
+- `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
+
+All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/`).
+
 ## Architecture
 
-- **train.py** — `AnimaTrainer` class: dataset setup, training loop, validation, checkpoint saving. Uses HF Accelerate.
-- **inference.py** — Standalone generation. Supports `--from_file` for batch prompts, `--pgraft` + `--lora_cutoff_step` for P-GRAFT inference.
-- **networks/** — Pluggable LoRA implementations selected via `network_module` config key:
-  - `lora_anima.py` — Network creation, target module selection, T-LoRA timestep masking logic
-  - `lora_modules.py` — Module-level implementations: LoRA, DoRA (`use_dora`), OrthoLoRA (`use_ortho`)
-  - `postfix_anima.py` — Continuous postfix tuning network
-- **library/** — Core utilities:
-  - `train_util.py` — Re-exporting facade: arg parsing, metadata, hashing, accelerator setup, loss functions. Imports from `datasets/` and `training/` sub-packages.
-  - `datasets/` — Dataset classes extracted from train_util:
-    - `buckets.py` — `BucketManager`, `make_bucket_resolutions`, bucket resolution logic
-    - `subsets.py` — `ImageInfo`, `BaseSubset`, `DreamBoothSubset`, `AugHelper`
-    - `image_utils.py` — Image loading, caching, transforms, `glob_images`
-    - `base.py` — `BaseDataset`, `DreamBoothDataset`, `DatasetGroup`, `MinimalDataset`, `collator_class`, `LossRecorder`
-  - `training/` — Training utilities extracted from train_util:
-    - `optimizers.py` — `get_optimizer`, optimizer factory for AdamW/Lion/DAdapt/Prodigy/etc.
-    - `schedulers.py` — `get_scheduler_fix`, LR scheduler factory
-    - `checkpoints.py` — Checkpoint naming, save/remove logic for epochs and steps
-  - `anima_models.py` — Anima DiT architecture with Unsloth-style gradient checkpointing
-  - `anima_utils.py` — Model loading/saving (DiT, Qwen3 text encoder, VAE)
-  - `anima_train_utils.py` — Caption shuffle, loss weighting, validation sampling
-  - `strategy_anima.py` / `strategy_base.py` — Strategy pattern for tokenization, text encoding, latent caching
-  - `config_util.py` — TOML config parsing and validation (Voluptuous schemas)
-  - `qwen_image_autoencoder_kl.py` — QwenImageVAE (WanVAE)
-  - `inference_utils.py` — Flow-matching samplers (Euler, ER-SDE, etc.)
-  - `attention.py` — Attention implementations (flash, xformers, torch SDPA)
-- **configs/** — TOML configs and tokenizer configs (Qwen3, T5)
+- **Modular `library/`**: `train_util.py` is a re-exporting facade; actual code lives in `library/datasets/` (dataset classes, buckets, image utils) and `library/training/` (optimizer, scheduler, checkpoint logic)
+- **Strategy pattern** for model-specific tokenization/encoding (`library/strategy_anima.py`, `strategy_base.py`)
+- **Network modules** are pluggable via `network_module` config key (`networks/lora_anima.py`, `lora_modules.py`, `postfix_anima.py`)
+- LoRA variants: standard LoRA, DoRA, OrthoLoRA — all in `networks/lora_modules.py`
+- T-LoRA adds timestep-dependent masking with `use_timestep_mask=true` and `min_rank` network args
+- Memory optimization: gradient checkpointing, latent/text-encoder caching to disk, VAE chunking
+- All training uses Accelerate with bf16 mixed precision and flash attention (`attn_mode = "flash"`)
 
-## Key Conventions
+## GRAFT / P-GRAFT
 
-- Config-driven: all training params come from TOML files, with CLI overrides
-- Safetensors format for all weights
-- All paths in configs are relative to `anima_lora/` (model weights at `../models/...`)
-- Memory optimization: `cache_latents_to_disk`, `cache_text_encoder_outputs`, `gradient_checkpointing`, `vae_chunk_size`
-- `attn_mode = "flash"` for flash attention; falls back to torch SDPA
-- `caption_shuffle_variants` controls augmented caption permutations per image per epoch
+The GRAFT loop (`graft_step.py`) implements rejection-sampling-based fine-tuning:
+1. Holds out a subset of training images, trains LoRA on the rest + accumulated survivors
+2. Generates candidates using the trained LoRA (with P-GRAFT: LoRA disabled for last 25% of denoising)
+3. User curates by deleting bad candidates; survivors join the training set next iteration
+
+See `graft-guideline.md` for detailed curation guidance.
+
+## External tools
+
+ComfyUI, SAM3, and manga-image-translator live in the parent directory (`../comfy/`, `../sam3/`, etc.).
