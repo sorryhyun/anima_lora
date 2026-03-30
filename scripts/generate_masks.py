@@ -7,8 +7,13 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import cv2
 import numpy as np
+
+# Monkey-patch numpy for sam3 compatibility (upstream pins numpy<2 and uses np.bool)
+if not hasattr(np, "bool"):
+    np.bool = np.bool_
+
+import cv2
 import yaml
 from PIL import Image
 from tqdm import tqdm

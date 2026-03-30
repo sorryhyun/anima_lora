@@ -41,6 +41,12 @@ dependencies = [
 flash-attn = [
     "flash-attn",
 ]
+mask = [
+    "opencv-python>=4.8.0",
+    "pyyaml",
+    "sam3 @ git+https://github.com/facebookresearch/sam3.git",
+    "packaging",
+]
 
 [build-system]
 requires = ["setuptools>=68.0"]
