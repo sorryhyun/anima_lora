@@ -3,16 +3,17 @@
 
 import argparse
 import torch
-from typing import List, Optional, Union
 from .utils import setup_logging
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
-def add_custom_train_arguments(parser: argparse.ArgumentParser, support_weighted_captions: bool = True):
+def add_custom_train_arguments(
+    parser: argparse.ArgumentParser, support_weighted_captions: bool = True
+):
     parser.add_argument(
         "--min_snr_gamma",
         type=float,
@@ -46,14 +47,20 @@ def add_custom_train_arguments(parser: argparse.ArgumentParser, support_weighted
 
 def apply_masked_loss(loss, batch) -> torch.FloatTensor:
     if "conditioning_images" in batch:
-        mask_image = batch["conditioning_images"].to(dtype=loss.dtype)[:, 0].unsqueeze(1)  # use R channel
+        mask_image = (
+            batch["conditioning_images"].to(dtype=loss.dtype)[:, 0].unsqueeze(1)
+        )  # use R channel
         mask_image = mask_image / 2 + 0.5
     elif "alpha_masks" in batch and batch["alpha_masks"] is not None:
-        mask_image = batch["alpha_masks"].to(dtype=loss.dtype).unsqueeze(1)  # add channel dimension
+        mask_image = (
+            batch["alpha_masks"].to(dtype=loss.dtype).unsqueeze(1)
+        )  # add channel dimension
     else:
         return loss
 
     # resize to the same size as the loss
-    mask_image = torch.nn.functional.interpolate(mask_image, size=loss.shape[2:], mode="area")
+    mask_image = torch.nn.functional.interpolate(
+        mask_image, size=loss.shape[2:], mode="area"
+    )
     loss = loss * mask_image
     return loss

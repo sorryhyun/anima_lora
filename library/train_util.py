@@ -25,7 +25,11 @@ from typing import Dict, List, Optional
 import safetensors.torch
 import toml
 import torch
-from accelerate import Accelerator, InitProcessGroupKwargs, DistributedDataParallelKwargs
+from accelerate import (
+    Accelerator,
+    InitProcessGroupKwargs,
+    DistributedDataParallelKwargs,
+)
 from huggingface_hub import hf_hub_download
 from packaging.version import Version
 
@@ -216,7 +220,13 @@ def addnet_hash_safetensors(b):
 
 def get_git_revision_hash() -> str:
     try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=os.path.dirname(__file__)).decode("ascii").strip()
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=os.path.dirname(__file__)
+            )
+            .decode("ascii")
+            .strip()
+        )
     except Exception:
         return "(unknown)"
 
@@ -316,11 +326,19 @@ def get_sai_model_spec(
 
     extracted_metadata = {}
     for attr_name in dir(args):
-        if attr_name.startswith("metadata_") and not attr_name.startswith("metadata___"):
+        if attr_name.startswith("metadata_") and not attr_name.startswith(
+            "metadata___"
+        ):
             value = getattr(args, attr_name, None)
             if value is not None:
                 field_name = attr_name[9:]
-                if field_name not in ["title", "author", "description", "license", "tags"]:
+                if field_name not in [
+                    "title",
+                    "author",
+                    "description",
+                    "license",
+                    "tags",
+                ]:
                     extracted_metadata[field_name] = value
 
     all_optional_metadata = {**extracted_metadata}
@@ -414,10 +432,14 @@ def get_sai_model_spec_dataclass(
 
 def add_sd_models_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--v2", action="store_true", help="load Stable Diffusion v2.0 model / Stable Diffusion 2.0のモデルを読み込む"
+        "--v2",
+        action="store_true",
+        help="load Stable Diffusion v2.0 model / Stable Diffusion 2.0のモデルを読み込む",
     )
     parser.add_argument(
-        "--v_parameterization", action="store_true", help="enable v-parameterization training / v-parameterization学習を有効にする"
+        "--v_parameterization",
+        action="store_true",
+        help="enable v-parameterization training / v-parameterization学習を有効にする",
     )
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -439,7 +461,9 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
             try:
                 return float(value[:-1]) / 100.0
             except ValueError:
-                raise argparse.ArgumentTypeError(f"Value '{value}' is not a valid percentage")
+                raise argparse.ArgumentTypeError(
+                    f"Value '{value}' is not a valid percentage"
+                )
         try:
             float_value = float(value)
             if float_value >= 1:
@@ -469,7 +493,9 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         help="use Lion optimizer (requires lion-pytorch) / Lionオプティマイザを使う（ lion-pytorch のインストールが必要）",
     )
 
-    parser.add_argument("--learning_rate", type=float, default=2.0e-6, help="learning rate / 学習率")
+    parser.add_argument(
+        "--learning_rate", type=float, default=2.0e-6, help="learning rate / 学習率"
+    )
     parser.add_argument(
         "--max_grad_norm",
         default=1.0,
@@ -485,7 +511,12 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         help='additional arguments for optimizer (like "weight_decay=0.01 betas=0.9,0.999 ...") / オプティマイザの追加引数',
     )
 
-    parser.add_argument("--lr_scheduler_type", type=str, default="", help="custom scheduler module / 使用するスケジューラ")
+    parser.add_argument(
+        "--lr_scheduler_type",
+        type=str,
+        default="",
+        help="custom scheduler module / 使用するスケジューラ",
+    )
     parser.add_argument(
         "--lr_scheduler_args",
         type=str,
@@ -512,119 +543,582 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         default=0,
         help="Int number of steps for the decay in the lr scheduler (default is 0) or float (<1) with ratio of train steps",
     )
-    parser.add_argument("--lr_scheduler_num_cycles", type=int, default=1, help="Number of restarts for cosine scheduler with restarts")
-    parser.add_argument("--lr_scheduler_power", type=float, default=1, help="Polynomial power for polynomial scheduler")
-    parser.add_argument("--fused_backward_pass", action="store_true", help="Combines backward pass and optimizer step to reduce VRAM usage.")
-    parser.add_argument("--lr_scheduler_timescale", type=int, default=None, help="Inverse sqrt timescale for inverse sqrt scheduler,defaults to `num_warmup_steps`")
-    parser.add_argument("--lr_scheduler_min_lr_ratio", type=float, default=None, help="The minimum learning rate as a ratio of the initial learning rate for cosine with min lr scheduler and warmup decay scheduler")
+    parser.add_argument(
+        "--lr_scheduler_num_cycles",
+        type=int,
+        default=1,
+        help="Number of restarts for cosine scheduler with restarts",
+    )
+    parser.add_argument(
+        "--lr_scheduler_power",
+        type=float,
+        default=1,
+        help="Polynomial power for polynomial scheduler",
+    )
+    parser.add_argument(
+        "--fused_backward_pass",
+        action="store_true",
+        help="Combines backward pass and optimizer step to reduce VRAM usage.",
+    )
+    parser.add_argument(
+        "--lr_scheduler_timescale",
+        type=int,
+        default=None,
+        help="Inverse sqrt timescale for inverse sqrt scheduler,defaults to `num_warmup_steps`",
+    )
+    parser.add_argument(
+        "--lr_scheduler_min_lr_ratio",
+        type=float,
+        default=None,
+        help="The minimum learning rate as a ratio of the initial learning rate for cosine with min lr scheduler and warmup decay scheduler",
+    )
 
 
 def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: bool):
-    parser.add_argument("--output_dir", type=str, default=None, help="directory to output trained model / 学習後のモデル出力先ディレクトリ")
-    parser.add_argument("--output_name", type=str, default=None, help="base name of trained model file / 学習後のモデルの拡張子を除くファイル名")
-    parser.add_argument("--huggingface_repo_id", type=str, default=None, help="huggingface repo name to upload / huggingfaceにアップロードするリポジトリ名")
-    parser.add_argument("--huggingface_repo_type", type=str, default=None, help="huggingface repo type to upload / huggingfaceにアップロードするリポジトリの種類")
-    parser.add_argument("--huggingface_path_in_repo", type=str, default=None, help="huggingface model path to upload files / huggingfaceにアップロードするファイルのパス")
-    parser.add_argument("--huggingface_token", type=str, default=None, help="huggingface token / huggingfaceのトークン")
-    parser.add_argument("--huggingface_repo_visibility", type=str, default=None, help="huggingface repository visibility ('public' for public, 'private' or None for private)")
-    parser.add_argument("--save_state_to_huggingface", action="store_true", help="save state to huggingface / huggingfaceにstateを保存する")
-    parser.add_argument("--resume_from_huggingface", action="store_true", help="resume from huggingface")
-    parser.add_argument("--async_upload", action="store_true", help="upload to huggingface asynchronously / huggingfaceに非同期でアップロードする")
-    parser.add_argument("--save_precision", type=str, default=None, choices=[None, "float", "fp16", "bf16"], help="precision in saving / 保存時に精度を変更して保存する")
-    parser.add_argument("--save_every_n_epochs", type=int, default=None, help="save checkpoint every N epochs / 学習中のモデルを指定エポックごとに保存する")
-    parser.add_argument("--save_every_n_steps", type=int, default=None, help="save checkpoint every N steps / 学習中のモデルを指定ステップごとに保存する")
-    parser.add_argument("--save_n_epoch_ratio", type=int, default=None, help="save checkpoint N epoch ratio")
-    parser.add_argument("--save_last_n_epochs", type=int, default=None, help="save last N checkpoints when saving every N epochs (remove older checkpoints)")
-    parser.add_argument("--save_last_n_epochs_state", type=int, default=None, help="save last N checkpoints of state (overrides the value of --save_last_n_epochs)")
-    parser.add_argument("--save_last_n_steps", type=int, default=None, help="save checkpoints until N steps elapsed (remove older checkpoints if N steps elapsed)")
-    parser.add_argument("--save_last_n_steps_state", type=int, default=None, help="save states until N steps elapsed (remove older states if N steps elapsed, overrides --save_last_n_steps)")
-    parser.add_argument("--save_state", action="store_true", help="save training state additionally (including optimizer states etc.) when saving model")
-    parser.add_argument("--save_state_on_train_end", action="store_true", help="save training state (including optimizer states etc.) on train end")
-    parser.add_argument("--resume", type=str, default=None, help="saved state to resume training / 学習再開するモデルのstate")
-    parser.add_argument("--checkpointing_epochs", type=int, default=None, help="save resumable checkpoint every N epochs (overwrites previous, auto-resumes on next run)")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="directory to output trained model / 学習後のモデル出力先ディレクトリ",
+    )
+    parser.add_argument(
+        "--output_name",
+        type=str,
+        default=None,
+        help="base name of trained model file / 学習後のモデルの拡張子を除くファイル名",
+    )
+    parser.add_argument(
+        "--huggingface_repo_id",
+        type=str,
+        default=None,
+        help="huggingface repo name to upload / huggingfaceにアップロードするリポジトリ名",
+    )
+    parser.add_argument(
+        "--huggingface_repo_type",
+        type=str,
+        default=None,
+        help="huggingface repo type to upload / huggingfaceにアップロードするリポジトリの種類",
+    )
+    parser.add_argument(
+        "--huggingface_path_in_repo",
+        type=str,
+        default=None,
+        help="huggingface model path to upload files / huggingfaceにアップロードするファイルのパス",
+    )
+    parser.add_argument(
+        "--huggingface_token",
+        type=str,
+        default=None,
+        help="huggingface token / huggingfaceのトークン",
+    )
+    parser.add_argument(
+        "--huggingface_repo_visibility",
+        type=str,
+        default=None,
+        help="huggingface repository visibility ('public' for public, 'private' or None for private)",
+    )
+    parser.add_argument(
+        "--save_state_to_huggingface",
+        action="store_true",
+        help="save state to huggingface / huggingfaceにstateを保存する",
+    )
+    parser.add_argument(
+        "--resume_from_huggingface", action="store_true", help="resume from huggingface"
+    )
+    parser.add_argument(
+        "--async_upload",
+        action="store_true",
+        help="upload to huggingface asynchronously / huggingfaceに非同期でアップロードする",
+    )
+    parser.add_argument(
+        "--save_precision",
+        type=str,
+        default=None,
+        choices=[None, "float", "fp16", "bf16"],
+        help="precision in saving / 保存時に精度を変更して保存する",
+    )
+    parser.add_argument(
+        "--save_every_n_epochs",
+        type=int,
+        default=None,
+        help="save checkpoint every N epochs / 学習中のモデルを指定エポックごとに保存する",
+    )
+    parser.add_argument(
+        "--save_every_n_steps",
+        type=int,
+        default=None,
+        help="save checkpoint every N steps / 学習中のモデルを指定ステップごとに保存する",
+    )
+    parser.add_argument(
+        "--save_n_epoch_ratio",
+        type=int,
+        default=None,
+        help="save checkpoint N epoch ratio",
+    )
+    parser.add_argument(
+        "--save_last_n_epochs",
+        type=int,
+        default=None,
+        help="save last N checkpoints when saving every N epochs (remove older checkpoints)",
+    )
+    parser.add_argument(
+        "--save_last_n_epochs_state",
+        type=int,
+        default=None,
+        help="save last N checkpoints of state (overrides the value of --save_last_n_epochs)",
+    )
+    parser.add_argument(
+        "--save_last_n_steps",
+        type=int,
+        default=None,
+        help="save checkpoints until N steps elapsed (remove older checkpoints if N steps elapsed)",
+    )
+    parser.add_argument(
+        "--save_last_n_steps_state",
+        type=int,
+        default=None,
+        help="save states until N steps elapsed (remove older states if N steps elapsed, overrides --save_last_n_steps)",
+    )
+    parser.add_argument(
+        "--save_state",
+        action="store_true",
+        help="save training state additionally (including optimizer states etc.) when saving model",
+    )
+    parser.add_argument(
+        "--save_state_on_train_end",
+        action="store_true",
+        help="save training state (including optimizer states etc.) on train end",
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="saved state to resume training / 学習再開するモデルのstate",
+    )
+    parser.add_argument(
+        "--checkpointing_epochs",
+        type=int,
+        default=None,
+        help="save resumable checkpoint every N epochs (overwrites previous, auto-resumes on next run)",
+    )
 
-    parser.add_argument("--train_batch_size", type=int, default=1, help="batch size for training / 学習時のバッチサイズ")
-    parser.add_argument("--max_token_length", type=int, default=None, choices=[None, 150, 225], help="max token length of text encoder (default for 75, 150 or 225)")
-    parser.add_argument("--mem_eff_attn", action="store_true", help="use memory efficient attention for CrossAttention")
-    parser.add_argument("--torch_compile", action="store_true", help="use torch.compile (requires PyTorch 2.0)")
-    parser.add_argument("--dynamo_backend", type=str, default="inductor", choices=["eager", "aot_eager", "inductor", "aot_ts_nvfuser", "nvprims_nvfuser", "cudagraphs", "ofi", "fx2trt", "onnxrt", "tensort", "ipex", "tvm"], help="dynamo backend type (default is inductor)")
-    parser.add_argument("--xformers", action="store_true", help="use xformers for CrossAttention")
-    parser.add_argument("--sdpa", action="store_true", help="use sdpa for CrossAttention (requires PyTorch 2.0)")
-    parser.add_argument("--vae", type=str, default=None, help="path to checkpoint of vae to replace")
+    parser.add_argument(
+        "--train_batch_size",
+        type=int,
+        default=1,
+        help="batch size for training / 学習時のバッチサイズ",
+    )
+    parser.add_argument(
+        "--max_token_length",
+        type=int,
+        default=None,
+        choices=[None, 150, 225],
+        help="max token length of text encoder (default for 75, 150 or 225)",
+    )
+    parser.add_argument(
+        "--mem_eff_attn",
+        action="store_true",
+        help="use memory efficient attention for CrossAttention",
+    )
+    parser.add_argument(
+        "--torch_compile",
+        action="store_true",
+        help="use torch.compile (requires PyTorch 2.0)",
+    )
+    parser.add_argument(
+        "--dynamo_backend",
+        type=str,
+        default="inductor",
+        choices=[
+            "eager",
+            "aot_eager",
+            "inductor",
+            "aot_ts_nvfuser",
+            "nvprims_nvfuser",
+            "cudagraphs",
+            "ofi",
+            "fx2trt",
+            "onnxrt",
+            "tensort",
+            "ipex",
+            "tvm",
+        ],
+        help="dynamo backend type (default is inductor)",
+    )
+    parser.add_argument(
+        "--xformers", action="store_true", help="use xformers for CrossAttention"
+    )
+    parser.add_argument(
+        "--sdpa",
+        action="store_true",
+        help="use sdpa for CrossAttention (requires PyTorch 2.0)",
+    )
+    parser.add_argument(
+        "--vae", type=str, default=None, help="path to checkpoint of vae to replace"
+    )
 
-    parser.add_argument("--max_train_steps", type=int, default=1600, help="training steps / 学習ステップ数")
-    parser.add_argument("--max_train_epochs", type=int, default=None, help="training epochs (overrides max_train_steps)")
-    parser.add_argument("--max_data_loader_n_workers", type=int, default=2, help="max num workers for DataLoader")
-    parser.add_argument("--persistent_data_loader_workers", action="store_true", help="persistent DataLoader workers")
-    parser.add_argument("--dataloader_pin_memory", action="store_true", help="pin DataLoader memory")
-    parser.add_argument("--dataloader_prefetch_factor", type=int, default=2, help="prefetch_factor for DataLoader workers (only valid when num_workers>0)")
-    parser.add_argument("--seed", type=int, default=None, help="random seed for training / 学習時の乱数のseed")
-    parser.add_argument("--gradient_checkpointing", action="store_true", help="enable gradient checkpointing")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass")
-    parser.add_argument("--mixed_precision", type=str, default="no", choices=["no", "fp16", "bf16"], help="use mixed precision / 混合精度を使う場合、その精度")
-    parser.add_argument("--full_fp16", action="store_true", help="fp16 training including gradients")
-    parser.add_argument("--full_bf16", action="store_true", help="bf16 training including gradients")
-    parser.add_argument("--fp8_base", action="store_true", help="use fp8 for base model")
+    parser.add_argument(
+        "--max_train_steps",
+        type=int,
+        default=1600,
+        help="training steps / 学習ステップ数",
+    )
+    parser.add_argument(
+        "--max_train_epochs",
+        type=int,
+        default=None,
+        help="training epochs (overrides max_train_steps)",
+    )
+    parser.add_argument(
+        "--max_data_loader_n_workers",
+        type=int,
+        default=2,
+        help="max num workers for DataLoader",
+    )
+    parser.add_argument(
+        "--persistent_data_loader_workers",
+        action="store_true",
+        help="persistent DataLoader workers",
+    )
+    parser.add_argument(
+        "--dataloader_pin_memory", action="store_true", help="pin DataLoader memory"
+    )
+    parser.add_argument(
+        "--dataloader_prefetch_factor",
+        type=int,
+        default=2,
+        help="prefetch_factor for DataLoader workers (only valid when num_workers>0)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="random seed for training / 学習時の乱数のseed",
+    )
+    parser.add_argument(
+        "--gradient_checkpointing",
+        action="store_true",
+        help="enable gradient checkpointing",
+    )
+    parser.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=1,
+        help="Number of updates steps to accumulate before performing a backward/update pass",
+    )
+    parser.add_argument(
+        "--mixed_precision",
+        type=str,
+        default="no",
+        choices=["no", "fp16", "bf16"],
+        help="use mixed precision / 混合精度を使う場合、その精度",
+    )
+    parser.add_argument(
+        "--full_fp16", action="store_true", help="fp16 training including gradients"
+    )
+    parser.add_argument(
+        "--full_bf16", action="store_true", help="bf16 training including gradients"
+    )
+    parser.add_argument(
+        "--fp8_base", action="store_true", help="use fp8 for base model"
+    )
 
-    parser.add_argument("--ddp_timeout", type=int, default=None, help="DDP timeout (min, None for default of accelerate)")
-    parser.add_argument("--ddp_gradient_as_bucket_view", action="store_true", help="enable gradient_as_bucket_view for DDP")
-    parser.add_argument("--ddp_static_graph", action="store_true", help="enable static_graph for DDP")
-    parser.add_argument("--clip_skip", type=int, default=None, help="use output of nth layer from back of text encoder (n>=1)")
-    parser.add_argument("--logging_dir", type=str, default=None, help="enable logging and output TensorBoard log to this directory")
-    parser.add_argument("--log_with", type=str, default=None, choices=["tensorboard", "wandb", "all"], help="what logging tool(s) to use")
-    parser.add_argument("--log_prefix", type=str, default=None, help="add prefix for each log directory")
-    parser.add_argument("--log_tracker_name", type=str, default=None, help="name of tracker to use for logging")
-    parser.add_argument("--wandb_run_name", type=str, default=None, help="The name of the specific wandb session")
-    parser.add_argument("--log_tracker_config", type=str, default=None, help="path to tracker config file to use for logging")
-    parser.add_argument("--wandb_api_key", type=str, default=None, help="specify WandB API key to log in before starting training (optional).")
-    parser.add_argument("--log_config", action="store_true", help="log training configuration")
+    parser.add_argument(
+        "--ddp_timeout",
+        type=int,
+        default=None,
+        help="DDP timeout (min, None for default of accelerate)",
+    )
+    parser.add_argument(
+        "--ddp_gradient_as_bucket_view",
+        action="store_true",
+        help="enable gradient_as_bucket_view for DDP",
+    )
+    parser.add_argument(
+        "--ddp_static_graph", action="store_true", help="enable static_graph for DDP"
+    )
+    parser.add_argument(
+        "--clip_skip",
+        type=int,
+        default=None,
+        help="use output of nth layer from back of text encoder (n>=1)",
+    )
+    parser.add_argument(
+        "--logging_dir",
+        type=str,
+        default=None,
+        help="enable logging and output TensorBoard log to this directory",
+    )
+    parser.add_argument(
+        "--log_with",
+        type=str,
+        default=None,
+        choices=["tensorboard", "wandb", "all"],
+        help="what logging tool(s) to use",
+    )
+    parser.add_argument(
+        "--log_prefix", type=str, default=None, help="add prefix for each log directory"
+    )
+    parser.add_argument(
+        "--log_tracker_name",
+        type=str,
+        default=None,
+        help="name of tracker to use for logging",
+    )
+    parser.add_argument(
+        "--wandb_run_name",
+        type=str,
+        default=None,
+        help="The name of the specific wandb session",
+    )
+    parser.add_argument(
+        "--log_tracker_config",
+        type=str,
+        default=None,
+        help="path to tracker config file to use for logging",
+    )
+    parser.add_argument(
+        "--wandb_api_key",
+        type=str,
+        default=None,
+        help="specify WandB API key to log in before starting training (optional).",
+    )
+    parser.add_argument(
+        "--log_config", action="store_true", help="log training configuration"
+    )
 
-    parser.add_argument("--noise_offset", type=float, default=None, help="enable noise offset with this value (if enabled, around 0.1 is recommended)")
-    parser.add_argument("--noise_offset_random_strength", action="store_true", help="use random strength between 0~noise_offset for noise offset.")
-    parser.add_argument("--multires_noise_iterations", type=int, default=None, help="enable multires noise with this number of iterations (if enabled, around 6-10 is recommended)")
-    parser.add_argument("--ip_noise_gamma", type=float, default=None, help="enable input perturbation noise. recommended value: around 0.1")
-    parser.add_argument("--ip_noise_gamma_random_strength", action="store_true", help="Use random strength between 0~ip_noise_gamma for input perturbation noise.")
-    parser.add_argument("--multires_noise_discount", type=float, default=0.3, help="set discount value for multires noise")
-    parser.add_argument("--adaptive_noise_scale", type=float, default=None, help="add `latent mean absolute value * this value` to noise_offset (disabled if None, default)")
-    parser.add_argument("--zero_terminal_snr", action="store_true", help="fix noise scheduler betas to enforce zero terminal SNR")
-    parser.add_argument("--min_timestep", type=int, default=None, help="set minimum time step for U-Net training (0~999, default is 0)")
-    parser.add_argument("--max_timestep", type=int, default=None, help="set maximum time step for U-Net training (1~1000, default is 1000)")
-    parser.add_argument("--t_min", type=float, default=None, help="Restrict training sigma range: minimum sigma (0.0~1.0).")
-    parser.add_argument("--t_max", type=float, default=None, help="Restrict training sigma range: maximum sigma (0.0~1.0). Default 1.0.")
-    parser.add_argument("--loss_type", type=str, default="l2", choices=["l1", "l2", "huber", "smooth_l1"], help="The type of loss function to use (L1, L2, Huber, or smooth L1), default is L2")
-    parser.add_argument("--huber_schedule", type=str, default="snr", choices=["constant", "exponential", "snr"], help="The scheduling method for Huber loss. default is snr")
-    parser.add_argument("--huber_c", type=float, default=0.1, help="The Huber loss decay parameter. default is 0.1")
-    parser.add_argument("--huber_scale", type=float, default=1.0, help="The Huber loss scale parameter. default is 1.0")
-    parser.add_argument("--lowram", action="store_true", help="enable low RAM optimization.")
-    parser.add_argument("--highvram", action="store_true", help="disable low VRAM optimization.")
+    parser.add_argument(
+        "--noise_offset",
+        type=float,
+        default=None,
+        help="enable noise offset with this value (if enabled, around 0.1 is recommended)",
+    )
+    parser.add_argument(
+        "--noise_offset_random_strength",
+        action="store_true",
+        help="use random strength between 0~noise_offset for noise offset.",
+    )
+    parser.add_argument(
+        "--multires_noise_iterations",
+        type=int,
+        default=None,
+        help="enable multires noise with this number of iterations (if enabled, around 6-10 is recommended)",
+    )
+    parser.add_argument(
+        "--ip_noise_gamma",
+        type=float,
+        default=None,
+        help="enable input perturbation noise. recommended value: around 0.1",
+    )
+    parser.add_argument(
+        "--ip_noise_gamma_random_strength",
+        action="store_true",
+        help="Use random strength between 0~ip_noise_gamma for input perturbation noise.",
+    )
+    parser.add_argument(
+        "--multires_noise_discount",
+        type=float,
+        default=0.3,
+        help="set discount value for multires noise",
+    )
+    parser.add_argument(
+        "--adaptive_noise_scale",
+        type=float,
+        default=None,
+        help="add `latent mean absolute value * this value` to noise_offset (disabled if None, default)",
+    )
+    parser.add_argument(
+        "--zero_terminal_snr",
+        action="store_true",
+        help="fix noise scheduler betas to enforce zero terminal SNR",
+    )
+    parser.add_argument(
+        "--min_timestep",
+        type=int,
+        default=None,
+        help="set minimum time step for U-Net training (0~999, default is 0)",
+    )
+    parser.add_argument(
+        "--max_timestep",
+        type=int,
+        default=None,
+        help="set maximum time step for U-Net training (1~1000, default is 1000)",
+    )
+    parser.add_argument(
+        "--t_min",
+        type=float,
+        default=None,
+        help="Restrict training sigma range: minimum sigma (0.0~1.0).",
+    )
+    parser.add_argument(
+        "--t_max",
+        type=float,
+        default=None,
+        help="Restrict training sigma range: maximum sigma (0.0~1.0). Default 1.0.",
+    )
+    parser.add_argument(
+        "--loss_type",
+        type=str,
+        default="l2",
+        choices=["l1", "l2", "huber", "smooth_l1"],
+        help="The type of loss function to use (L1, L2, Huber, or smooth L1), default is L2",
+    )
+    parser.add_argument(
+        "--huber_schedule",
+        type=str,
+        default="snr",
+        choices=["constant", "exponential", "snr"],
+        help="The scheduling method for Huber loss. default is snr",
+    )
+    parser.add_argument(
+        "--huber_c",
+        type=float,
+        default=0.1,
+        help="The Huber loss decay parameter. default is 0.1",
+    )
+    parser.add_argument(
+        "--huber_scale",
+        type=float,
+        default=1.0,
+        help="The Huber loss scale parameter. default is 1.0",
+    )
+    parser.add_argument(
+        "--lowram", action="store_true", help="enable low RAM optimization."
+    )
+    parser.add_argument(
+        "--highvram", action="store_true", help="disable low VRAM optimization."
+    )
 
-    parser.add_argument("--sample_every_n_steps", type=int, default=None, help="generate sample images every N steps")
-    parser.add_argument("--sample_at_first", action="store_true", help="generate sample images before training")
-    parser.add_argument("--sample_every_n_epochs", type=int, default=None, help="generate sample images every N epochs (overwrites n_steps)")
-    parser.add_argument("--sample_prompts", type=str, default=None, help="file for prompts to generate sample images")
-    parser.add_argument("--sample_sampler", type=str, default="ddim", choices=["ddim", "pndm", "lms", "euler", "euler_a", "heun", "dpm_2", "dpm_2_a", "dpmsolver", "dpmsolver++", "dpmsingle", "k_lms", "k_euler", "k_euler_a", "k_dpm_2", "k_dpm_2_a"], help="sampler (scheduler) type for sample images")
+    parser.add_argument(
+        "--sample_every_n_steps",
+        type=int,
+        default=None,
+        help="generate sample images every N steps",
+    )
+    parser.add_argument(
+        "--sample_at_first",
+        action="store_true",
+        help="generate sample images before training",
+    )
+    parser.add_argument(
+        "--sample_every_n_epochs",
+        type=int,
+        default=None,
+        help="generate sample images every N epochs (overwrites n_steps)",
+    )
+    parser.add_argument(
+        "--sample_prompts",
+        type=str,
+        default=None,
+        help="file for prompts to generate sample images",
+    )
+    parser.add_argument(
+        "--sample_sampler",
+        type=str,
+        default="ddim",
+        choices=[
+            "ddim",
+            "pndm",
+            "lms",
+            "euler",
+            "euler_a",
+            "heun",
+            "dpm_2",
+            "dpm_2_a",
+            "dpmsolver",
+            "dpmsolver++",
+            "dpmsingle",
+            "k_lms",
+            "k_euler",
+            "k_euler_a",
+            "k_dpm_2",
+            "k_dpm_2_a",
+        ],
+        help="sampler (scheduler) type for sample images",
+    )
 
-    parser.add_argument("--config_file", type=str, default=None, help="using .toml instead of args to pass hyperparameter")
-    parser.add_argument("--output_config", action="store_true", help="output command line args to given .toml file")
+    parser.add_argument(
+        "--config_file",
+        type=str,
+        default=None,
+        help="using .toml instead of args to pass hyperparameter",
+    )
+    parser.add_argument(
+        "--output_config",
+        action="store_true",
+        help="output command line args to given .toml file",
+    )
     if support_dreambooth:
-        parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="loss weight for regularization images")
+        parser.add_argument(
+            "--prior_loss_weight",
+            type=float,
+            default=1.0,
+            help="loss weight for regularization images",
+        )
 
 
 def add_masked_loss_arguments(parser: argparse.ArgumentParser):
-    parser.add_argument("--conditioning_data_dir", type=str, default=None, help="conditioning data directory / 条件付けデータのディレクトリ")
-    parser.add_argument("--masked_loss", action="store_true", help="apply mask for calculating loss.")
+    parser.add_argument(
+        "--conditioning_data_dir",
+        type=str,
+        default=None,
+        help="conditioning data directory / 条件付けデータのディレクトリ",
+    )
+    parser.add_argument(
+        "--masked_loss", action="store_true", help="apply mask for calculating loss."
+    )
 
 
 def add_dit_training_arguments(parser: argparse.ArgumentParser):
-    parser.add_argument("--cache_text_encoder_outputs", action="store_true", help="cache text encoder outputs")
-    parser.add_argument("--cache_text_encoder_outputs_to_disk", action="store_true", help="cache text encoder outputs to disk")
-    parser.add_argument("--text_encoder_batch_size", type=int, default=None, help="text encoder batch size (default: None, use dataset's batch size)")
-    parser.add_argument("--disable_mmap_load_safetensors", action="store_true", help="disable mmap load for safetensors. Speed up model loading in WSL environment")
-    parser.add_argument("--weighting_scheme", type=str, default="uniform", choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none", "uniform"], help="weighting scheme for timestep distribution. Default is uniform")
-    parser.add_argument("--logit_mean", type=float, default=0.0, help="mean for logit_normal weighting scheme")
-    parser.add_argument("--logit_std", type=float, default=1.0, help="std for logit_normal weighting scheme")
-    parser.add_argument("--mode_scale", type=float, default=1.29, help="Scale of mode weighting scheme")
-    parser.add_argument("--blocks_to_swap", type=int, default=None, help="[EXPERIMENTAL] Sets the number of blocks to swap during the forward and backward passes.")
+    parser.add_argument(
+        "--cache_text_encoder_outputs",
+        action="store_true",
+        help="cache text encoder outputs",
+    )
+    parser.add_argument(
+        "--cache_text_encoder_outputs_to_disk",
+        action="store_true",
+        help="cache text encoder outputs to disk",
+    )
+    parser.add_argument(
+        "--text_encoder_batch_size",
+        type=int,
+        default=None,
+        help="text encoder batch size (default: None, use dataset's batch size)",
+    )
+    parser.add_argument(
+        "--disable_mmap_load_safetensors",
+        action="store_true",
+        help="disable mmap load for safetensors. Speed up model loading in WSL environment",
+    )
+    parser.add_argument(
+        "--weighting_scheme",
+        type=str,
+        default="uniform",
+        choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none", "uniform"],
+        help="weighting scheme for timestep distribution. Default is uniform",
+    )
+    parser.add_argument(
+        "--logit_mean",
+        type=float,
+        default=0.0,
+        help="mean for logit_normal weighting scheme",
+    )
+    parser.add_argument(
+        "--logit_std",
+        type=float,
+        default=1.0,
+        help="std for logit_normal weighting scheme",
+    )
+    parser.add_argument(
+        "--mode_scale", type=float, default=1.29, help="Scale of mode weighting scheme"
+    )
+    parser.add_argument(
+        "--blocks_to_swap",
+        type=int,
+        default=None,
+        help="[EXPERIMENTAL] Sets the number of blocks to swap during the forward and backward passes.",
+    )
 
 
 def get_sanitized_config_or_none(args: argparse.Namespace):
@@ -633,14 +1127,25 @@ def get_sanitized_config_or_none(args: argparse.Namespace):
 
     sensitive_args = ["wandb_api_key", "huggingface_token"]
     sensitive_path_args = [
-        "pretrained_model_name_or_path", "vae", "tokenizer_cache_dir",
-        "train_data_dir", "conditioning_data_dir", "reg_data_dir",
-        "output_dir", "logging_dir",
+        "pretrained_model_name_or_path",
+        "vae",
+        "tokenizer_cache_dir",
+        "train_data_dir",
+        "conditioning_data_dir",
+        "reg_data_dir",
+        "output_dir",
+        "logging_dir",
     ]
     filtered_args = {}
     for k, v in vars(args).items():
         if k not in sensitive_args + sensitive_path_args:
-            if v is None or isinstance(v, bool) or isinstance(v, str) or isinstance(v, float) or isinstance(v, int):
+            if (
+                v is None
+                or isinstance(v, bool)
+                or isinstance(v, str)
+                or isinstance(v, float)
+                or isinstance(v, int)
+            ):
                 filtered_args[k] = v
             elif isinstance(v, list):
                 filtered_args[k] = f"{v}"
@@ -657,9 +1162,14 @@ def verify_command_line_training_args(args: argparse.Namespace):
 
     sensitive_args = ["wandb_api_key", "huggingface_token"]
     sensitive_path_args = [
-        "pretrained_model_name_or_path", "vae", "tokenizer_cache_dir",
-        "train_data_dir", "conditioning_data_dir", "reg_data_dir",
-        "output_dir", "logging_dir",
+        "pretrained_model_name_or_path",
+        "vae",
+        "tokenizer_cache_dir",
+        "train_data_dir",
+        "conditioning_data_dir",
+        "reg_data_dir",
+        "output_dir",
+        "logging_dir",
     ]
 
     for arg in sensitive_args:
@@ -679,7 +1189,10 @@ def verify_command_line_training_args(args: argparse.Namespace):
             "wandb is enabled, but option `config_file` is included in the command line. Please be careful about the information included in the path."
         )
 
-    if args.huggingface_repo_id is not None and args.huggingface_repo_visibility != "public":
+    if (
+        args.huggingface_repo_id is not None
+        and args.huggingface_repo_visibility != "public"
+    ):
         logger.info(
             "wandb is enabled, but option huggingface_repo_id is included in the command line and huggingface_repo_visibility is not 'public'. It is recommended to move it to the `.toml` file."
         )
@@ -699,92 +1212,272 @@ def verify_training_args(args: argparse.Namespace):
 
     if args.cache_latents_to_disk and not args.cache_latents:
         args.cache_latents = True
-        logger.warning("cache_latents_to_disk is enabled, so cache_latents is also enabled")
+        logger.warning(
+            "cache_latents_to_disk is enabled, so cache_latents is also enabled"
+        )
 
     if args.adaptive_noise_scale is not None and args.noise_offset is None:
         raise ValueError("adaptive_noise_scale requires noise_offset")
 
     if args.scale_v_pred_loss_like_noise_pred and not args.v_parameterization:
-        raise ValueError("scale_v_pred_loss_like_noise_pred can be enabled only with v_parameterization")
+        raise ValueError(
+            "scale_v_pred_loss_like_noise_pred can be enabled only with v_parameterization"
+        )
 
     if args.v_pred_like_loss and args.v_parameterization:
         raise ValueError("v_pred_like_loss cannot be enabled with v_parameterization")
 
     if args.zero_terminal_snr and not args.v_parameterization:
-        logger.warning("zero_terminal_snr is enabled, but v_parameterization is not enabled. training will be unexpected")
+        logger.warning(
+            "zero_terminal_snr is enabled, but v_parameterization is not enabled. training will be unexpected"
+        )
 
     if args.sample_every_n_epochs is not None and args.sample_every_n_epochs <= 0:
-        logger.warning("sample_every_n_epochs is less than or equal to 0, so it will be disabled")
+        logger.warning(
+            "sample_every_n_epochs is less than or equal to 0, so it will be disabled"
+        )
         args.sample_every_n_epochs = None
 
     if args.sample_every_n_steps is not None and args.sample_every_n_steps <= 0:
-        logger.warning("sample_every_n_steps is less than or equal to 0, so it will be disabled")
+        logger.warning(
+            "sample_every_n_steps is less than or equal to 0, so it will be disabled"
+        )
         args.sample_every_n_steps = None
 
 
 def add_dataset_arguments(
-    parser: argparse.ArgumentParser, support_dreambooth: bool, support_caption: bool, support_caption_dropout: bool
+    parser: argparse.ArgumentParser,
+    support_dreambooth: bool,
+    support_caption: bool,
+    support_caption_dropout: bool,
 ):
-    parser.add_argument("--train_data_dir", type=str, default=None, help="directory for train images")
-    parser.add_argument("--cache_info", action="store_true", help="cache meta information for faster dataset loading")
-    parser.add_argument("--shuffle_caption", action="store_true", help="shuffle separated caption")
-    parser.add_argument("--caption_separator", type=str, default=",", help="separator for caption")
-    parser.add_argument("--caption_extension", type=str, default=".caption", help="extension of caption files")
-    parser.add_argument("--caption_extention", type=str, default=None, help="extension of caption files (backward compatibility)")
-    parser.add_argument("--keep_tokens", type=int, default=0, help="keep heading N tokens when shuffling caption tokens")
-    parser.add_argument("--keep_tokens_separator", type=str, default="", help="A custom separator to divide the caption into fixed and flexible parts.")
-    parser.add_argument("--secondary_separator", type=str, default=None, help="a secondary separator for caption.")
-    parser.add_argument("--enable_wildcard", action="store_true", help="enable wildcard for caption")
-    parser.add_argument("--caption_prefix", type=str, default=None, help="prefix for caption text")
-    parser.add_argument("--caption_suffix", type=str, default=None, help="suffix for caption text")
-    parser.add_argument("--color_aug", action="store_true", help="enable weak color augmentation")
-    parser.add_argument("--flip_aug", action="store_true", help="enable horizontal flip augmentation")
-    parser.add_argument("--face_crop_aug_range", type=str, default=None, help="enable face-centered crop augmentation and its range (e.g. 2.0,4.0)")
+    parser.add_argument(
+        "--train_data_dir", type=str, default=None, help="directory for train images"
+    )
+    parser.add_argument(
+        "--cache_info",
+        action="store_true",
+        help="cache meta information for faster dataset loading",
+    )
+    parser.add_argument(
+        "--shuffle_caption", action="store_true", help="shuffle separated caption"
+    )
+    parser.add_argument(
+        "--caption_separator", type=str, default=",", help="separator for caption"
+    )
+    parser.add_argument(
+        "--caption_extension",
+        type=str,
+        default=".caption",
+        help="extension of caption files",
+    )
+    parser.add_argument(
+        "--caption_extention",
+        type=str,
+        default=None,
+        help="extension of caption files (backward compatibility)",
+    )
+    parser.add_argument(
+        "--keep_tokens",
+        type=int,
+        default=0,
+        help="keep heading N tokens when shuffling caption tokens",
+    )
+    parser.add_argument(
+        "--keep_tokens_separator",
+        type=str,
+        default="",
+        help="A custom separator to divide the caption into fixed and flexible parts.",
+    )
+    parser.add_argument(
+        "--secondary_separator",
+        type=str,
+        default=None,
+        help="a secondary separator for caption.",
+    )
+    parser.add_argument(
+        "--enable_wildcard", action="store_true", help="enable wildcard for caption"
+    )
+    parser.add_argument(
+        "--caption_prefix", type=str, default=None, help="prefix for caption text"
+    )
+    parser.add_argument(
+        "--caption_suffix", type=str, default=None, help="suffix for caption text"
+    )
+    parser.add_argument(
+        "--color_aug", action="store_true", help="enable weak color augmentation"
+    )
+    parser.add_argument(
+        "--flip_aug", action="store_true", help="enable horizontal flip augmentation"
+    )
+    parser.add_argument(
+        "--face_crop_aug_range",
+        type=str,
+        default=None,
+        help="enable face-centered crop augmentation and its range (e.g. 2.0,4.0)",
+    )
     parser.add_argument("--random_crop", action="store_true", help="enable random crop")
-    parser.add_argument("--debug_dataset", action="store_true", help="show images for debugging (do not train)")
-    parser.add_argument("--resolution", type=str, default=None, help="resolution in training ('size' or 'width,height')")
-    parser.add_argument("--cache_latents", action="store_true", help="cache latents to main memory to reduce VRAM usage")
-    parser.add_argument("--vae_batch_size", type=int, default=1, help="batch size for caching latents")
-    parser.add_argument("--cache_latents_to_disk", action="store_true", help="cache latents to disk to reduce VRAM usage")
-    parser.add_argument("--skip_cache_check", action="store_true", help="skip the content validation of cache")
-    parser.add_argument("--enable_bucket", action="store_true", help="enable buckets for multi aspect ratio training")
-    parser.add_argument("--min_bucket_reso", type=int, default=256, help="minimum resolution for buckets")
-    parser.add_argument("--max_bucket_reso", type=int, default=1024, help="maximum resolution for buckets")
-    parser.add_argument("--bucket_reso_steps", type=int, default=64, help="steps of resolution for buckets")
-    parser.add_argument("--bucket_no_upscale", action="store_true", help="make bucket for each image without upscaling")
-    parser.add_argument("--resize_interpolation", type=str, default=None, choices=["lanczos", "nearest", "bilinear", "linear", "bicubic", "cubic", "area"], help="Resize interpolation")
-    parser.add_argument("--token_warmup_min", type=int, default=1, help="start learning at N tags")
-    parser.add_argument("--token_warmup_step", type=float, default=0, help="tag length reaches maximum on N steps")
-    parser.add_argument("--alpha_mask", action="store_true", help="use alpha channel as mask for training")
-    parser.add_argument("--dataset_class", type=str, default=None, help="dataset class for arbitrary dataset (package.module.Class)")
+    parser.add_argument(
+        "--debug_dataset",
+        action="store_true",
+        help="show images for debugging (do not train)",
+    )
+    parser.add_argument(
+        "--resolution",
+        type=str,
+        default=None,
+        help="resolution in training ('size' or 'width,height')",
+    )
+    parser.add_argument(
+        "--cache_latents",
+        action="store_true",
+        help="cache latents to main memory to reduce VRAM usage",
+    )
+    parser.add_argument(
+        "--vae_batch_size", type=int, default=1, help="batch size for caching latents"
+    )
+    parser.add_argument(
+        "--cache_latents_to_disk",
+        action="store_true",
+        help="cache latents to disk to reduce VRAM usage",
+    )
+    parser.add_argument(
+        "--skip_cache_check",
+        action="store_true",
+        help="skip the content validation of cache",
+    )
+    parser.add_argument(
+        "--enable_bucket",
+        action="store_true",
+        help="enable buckets for multi aspect ratio training",
+    )
+    parser.add_argument(
+        "--min_bucket_reso",
+        type=int,
+        default=256,
+        help="minimum resolution for buckets",
+    )
+    parser.add_argument(
+        "--max_bucket_reso",
+        type=int,
+        default=1024,
+        help="maximum resolution for buckets",
+    )
+    parser.add_argument(
+        "--bucket_reso_steps",
+        type=int,
+        default=64,
+        help="steps of resolution for buckets",
+    )
+    parser.add_argument(
+        "--bucket_no_upscale",
+        action="store_true",
+        help="make bucket for each image without upscaling",
+    )
+    parser.add_argument(
+        "--resize_interpolation",
+        type=str,
+        default=None,
+        choices=[
+            "lanczos",
+            "nearest",
+            "bilinear",
+            "linear",
+            "bicubic",
+            "cubic",
+            "area",
+        ],
+        help="Resize interpolation",
+    )
+    parser.add_argument(
+        "--token_warmup_min", type=int, default=1, help="start learning at N tags"
+    )
+    parser.add_argument(
+        "--token_warmup_step",
+        type=float,
+        default=0,
+        help="tag length reaches maximum on N steps",
+    )
+    parser.add_argument(
+        "--alpha_mask",
+        action="store_true",
+        help="use alpha channel as mask for training",
+    )
+    parser.add_argument(
+        "--dataset_class",
+        type=str,
+        default=None,
+        help="dataset class for arbitrary dataset (package.module.Class)",
+    )
 
     if support_caption_dropout:
-        parser.add_argument("--caption_dropout_rate", type=float, default=0.0, help="Rate out dropout caption(0.0~1.0)")
-        parser.add_argument("--caption_dropout_every_n_epochs", type=int, default=0, help="Dropout all captions every N epochs")
-        parser.add_argument("--caption_tag_dropout_rate", type=float, default=0.0, help="Rate out dropout comma separated tokens(0.0~1.0)")
+        parser.add_argument(
+            "--caption_dropout_rate",
+            type=float,
+            default=0.0,
+            help="Rate out dropout caption(0.0~1.0)",
+        )
+        parser.add_argument(
+            "--caption_dropout_every_n_epochs",
+            type=int,
+            default=0,
+            help="Dropout all captions every N epochs",
+        )
+        parser.add_argument(
+            "--caption_tag_dropout_rate",
+            type=float,
+            default=0.0,
+            help="Rate out dropout comma separated tokens(0.0~1.0)",
+        )
 
     if support_dreambooth:
-        parser.add_argument("--reg_data_dir", type=str, default=None, help="directory for regularization images")
+        parser.add_argument(
+            "--reg_data_dir",
+            type=str,
+            default=None,
+            help="directory for regularization images",
+        )
 
     if support_caption:
-        parser.add_argument("--in_json", type=str, default=None, help="json metadata for dataset")
-        parser.add_argument("--dataset_repeats", type=int, default=1, help="repeat dataset when training with captions")
+        parser.add_argument(
+            "--in_json", type=str, default=None, help="json metadata for dataset"
+        )
+        parser.add_argument(
+            "--dataset_repeats",
+            type=int,
+            default=1,
+            help="repeat dataset when training with captions",
+        )
 
 
 def add_sd_saving_arguments(parser: argparse.ArgumentParser):
-    parser.add_argument("--save_model_as", type=str, default=None, choices=[None, "ckpt", "safetensors", "diffusers", "diffusers_safetensors"], help="format to save the model (default is same to original)")
-    parser.add_argument("--use_safetensors", action="store_true", help="use safetensors format to save")
+    parser.add_argument(
+        "--save_model_as",
+        type=str,
+        default=None,
+        choices=[None, "ckpt", "safetensors", "diffusers", "diffusers_safetensors"],
+        help="format to save the model (default is same to original)",
+    )
+    parser.add_argument(
+        "--use_safetensors", action="store_true", help="use safetensors format to save"
+    )
 
 
 def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentParser):
     if not args.config_file:
         return args
 
-    config_path = args.config_file + ".toml" if not args.config_file.endswith(".toml") else args.config_file
+    config_path = (
+        args.config_file + ".toml"
+        if not args.config_file.endswith(".toml")
+        else args.config_file
+    )
 
     if args.output_config:
         if os.path.exists(config_path):
-            logger.error(f"Config file already exists. Aborting... / 出力先の設定ファイルが既に存在します: {config_path}")
+            logger.error(
+                f"Config file already exists. Aborting... / 出力先の設定ファイルが既に存在します: {config_path}"
+            )
             exit(1)
 
         args_dict = vars(args)
@@ -859,9 +1552,12 @@ def resume_from_local_or_hf_if_specified(accelerator, args):
             repo_type = "model"
         else:
             path_in_repo, revision, repo_type = divided
-    logger.info(f"Downloading state from huggingface: {repo_id}/{path_in_repo}@{revision}")
+    logger.info(
+        f"Downloading state from huggingface: {repo_id}/{path_in_repo}@{revision}"
+    )
 
     from huggingface_hub import list_repo_files
+
     list_files = list_repo_files(
         repo_id=repo_id,
         revision=revision,
@@ -883,7 +1579,9 @@ def resume_from_local_or_hf_if_specified(accelerator, args):
         return await asyncio.get_event_loop().run_in_executor(None, task)
 
     loop = asyncio.get_event_loop()
-    results = loop.run_until_complete(asyncio.gather(*[download(filename=filename) for filename in list_files]))
+    results = loop.run_until_complete(
+        asyncio.gather(*[download(filename=filename) for filename in list_files])
+    )
     if len(results) == 0:
         raise ValueError(
             "No files found in the specified repo id/path/revision / 指定されたリポジトリID/パス/リビジョンにファイルが見つかりませんでした"
@@ -901,21 +1599,28 @@ def prepare_dataset_args(args: argparse.Namespace, support_metadata: bool):
         args.resolution = tuple([int(r) for r in args.resolution.split(",")])
         if len(args.resolution) == 1:
             args.resolution = (args.resolution[0], args.resolution[0])
-        assert (
-            len(args.resolution) == 2
-        ), f"resolution must be 'size' or 'width,height' / resolution（解像度）は'サイズ'または'幅','高さ'で指定してください: {args.resolution}"
+        assert len(args.resolution) == 2, (
+            f"resolution must be 'size' or 'width,height' / resolution（解像度）は'サイズ'または'幅','高さ'で指定してください: {args.resolution}"
+        )
 
     if args.face_crop_aug_range is not None:
-        args.face_crop_aug_range = tuple([float(r) for r in args.face_crop_aug_range.split(",")])
+        args.face_crop_aug_range = tuple(
+            [float(r) for r in args.face_crop_aug_range.split(",")]
+        )
         assert (
-            len(args.face_crop_aug_range) == 2 and args.face_crop_aug_range[0] <= args.face_crop_aug_range[1]
-        ), f"face_crop_aug_range must be two floats / face_crop_aug_rangeは'下限,上限'で指定してください: {args.face_crop_aug_range}"
+            len(args.face_crop_aug_range) == 2
+            and args.face_crop_aug_range[0] <= args.face_crop_aug_range[1]
+        ), (
+            f"face_crop_aug_range must be two floats / face_crop_aug_rangeは'下限,上限'で指定してください: {args.face_crop_aug_range}"
+        )
     else:
         args.face_crop_aug_range = None
 
     if support_metadata:
         if args.in_json is not None and (args.color_aug or args.random_crop):
-            logger.warning("latents in npz is ignored when color_aug or random_crop is True")
+            logger.warning(
+                "latents in npz is ignored when color_aug or random_crop is True"
+            )
 
 
 def prepare_accelerator(args: argparse.Namespace):
@@ -923,7 +1628,12 @@ def prepare_accelerator(args: argparse.Namespace):
         logging_dir = None
     else:
         log_prefix = "" if args.log_prefix is None else args.log_prefix
-        logging_dir = args.logging_dir + "/" + log_prefix + time.strftime("%Y%m%d%H%M%S", time.localtime())
+        logging_dir = (
+            args.logging_dir
+            + "/"
+            + log_prefix
+            + time.strftime("%Y%m%d%H%M%S", time.localtime())
+        )
 
     if args.log_with is None:
         if logging_dir is not None:
@@ -953,18 +1663,26 @@ def prepare_accelerator(args: argparse.Namespace):
     kwargs_handlers = [
         (
             InitProcessGroupKwargs(
-                backend="gloo" if os.name == "nt" or not torch.cuda.is_available() else "nccl",
+                backend="gloo"
+                if os.name == "nt" or not torch.cuda.is_available()
+                else "nccl",
                 init_method=(
-                    "env://?use_libuv=False" if os.name == "nt" and Version(torch.__version__) >= Version("2.4.0") else None
+                    "env://?use_libuv=False"
+                    if os.name == "nt"
+                    and Version(torch.__version__) >= Version("2.4.0")
+                    else None
                 ),
-                timeout=datetime.timedelta(minutes=args.ddp_timeout) if args.ddp_timeout else None,
+                timeout=datetime.timedelta(minutes=args.ddp_timeout)
+                if args.ddp_timeout
+                else None,
             )
             if torch.cuda.device_count() > 1
             else None
         ),
         (
             DistributedDataParallelKwargs(
-                gradient_as_bucket_view=args.ddp_gradient_as_bucket_view, static_graph=args.ddp_static_graph
+                gradient_as_bucket_view=args.ddp_gradient_as_bucket_view,
+                static_graph=args.ddp_static_graph,
             )
             if args.ddp_gradient_as_bucket_view or args.ddp_static_graph
             else None
@@ -1016,7 +1734,9 @@ def patch_accelerator_for_fp16_training(accelerator):
     accelerator.scaler._unscale_grads_ = _unscale_grads_replacer
 
 
-def get_timesteps(min_timestep: int, max_timestep: int, b_size: int, device: torch.device) -> torch.Tensor:
+def get_timesteps(
+    min_timestep: int, max_timestep: int, b_size: int, device: torch.device
+) -> torch.Tensor:
     if min_timestep < max_timestep:
         timesteps = torch.randint(min_timestep, max_timestep, (b_size,), device="cpu")
     else:
@@ -1025,7 +1745,9 @@ def get_timesteps(min_timestep: int, max_timestep: int, b_size: int, device: tor
     return timesteps
 
 
-def get_huber_threshold_if_needed(args, timesteps: torch.Tensor, noise_scheduler) -> Optional[torch.Tensor]:
+def get_huber_threshold_if_needed(
+    args, timesteps: torch.Tensor, noise_scheduler
+) -> Optional[torch.Tensor]:
     if not (args.loss_type == "huber" or args.loss_type == "smooth_l1"):
         return None
 
@@ -1035,13 +1757,19 @@ def get_huber_threshold_if_needed(args, timesteps: torch.Tensor, noise_scheduler
         result = torch.exp(-alpha * timesteps) * args.huber_scale
     elif args.huber_schedule == "snr":
         if not hasattr(noise_scheduler, "alphas_cumprod"):
-            raise NotImplementedError("Huber schedule 'snr' is not supported with the current model.")
-        alphas_cumprod = torch.index_select(noise_scheduler.alphas_cumprod, 0, timesteps.cpu())
+            raise NotImplementedError(
+                "Huber schedule 'snr' is not supported with the current model."
+            )
+        alphas_cumprod = torch.index_select(
+            noise_scheduler.alphas_cumprod, 0, timesteps.cpu()
+        )
         sigmas = ((1.0 - alphas_cumprod) / alphas_cumprod) ** 0.5
         result = (1 - args.huber_c) / (1 + sigmas) ** 2 + args.huber_c
         result = result.to(timesteps.device)
     elif args.huber_schedule == "constant":
-        result = torch.full((b_size,), args.huber_c * args.huber_scale, device=timesteps.device)
+        result = torch.full(
+            (b_size,), args.huber_c * args.huber_scale, device=timesteps.device
+        )
     else:
         raise NotImplementedError(f"Unknown Huber loss schedule {args.huber_schedule}!")
 
@@ -1049,7 +1777,11 @@ def get_huber_threshold_if_needed(args, timesteps: torch.Tensor, noise_scheduler
 
 
 def conditional_loss(
-    model_pred: torch.Tensor, target: torch.Tensor, loss_type: str, reduction: str, huber_c: Optional[torch.Tensor] = None
+    model_pred: torch.Tensor,
+    target: torch.Tensor,
+    loss_type: str,
+    reduction: str,
+    huber_c: Optional[torch.Tensor] = None,
 ):
     if loss_type == "l2":
         loss = torch.nn.functional.mse_loss(model_pred, target, reduction=reduction)
@@ -1059,7 +1791,11 @@ def conditional_loss(
         if huber_c is None:
             raise NotImplementedError("huber_c not implemented correctly")
         huber_c = huber_c.view(-1, *([1] * (model_pred.ndim - 1)))
-        loss = 2 * huber_c * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
+        loss = (
+            2
+            * huber_c
+            * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
+        )
         if reduction == "mean":
             loss = torch.mean(loss)
         elif reduction == "sum":
@@ -1096,9 +1832,13 @@ def append_lr_to_logs_with_names(logs, lr_scheduler, optimizer_type, names):
         name = names[lr_index]
         logs["lr/" + name] = float(lrs[lr_index])
 
-        if optimizer_type.lower().startswith("DAdapt".lower()) or optimizer_type.lower() == "Prodigy".lower():
+        if (
+            optimizer_type.lower().startswith("DAdapt".lower())
+            or optimizer_type.lower() == "Prodigy".lower()
+        ):
             logs["lr/d*lr/" + name] = (
-                lr_scheduler.optimizers[-1].param_groups[lr_index]["d"] * lr_scheduler.optimizers[-1].param_groups[lr_index]["lr"]
+                lr_scheduler.optimizers[-1].param_groups[lr_index]["d"]
+                * lr_scheduler.optimizers[-1].param_groups[lr_index]["lr"]
             )
 
 
@@ -1182,11 +1922,15 @@ def load_prompts(prompt_file: str) -> List[Dict]:
     if prompt_file.endswith(".txt"):
         with open(prompt_file, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        prompts = [line.strip() for line in lines if len(line.strip()) > 0 and line[0] != "#"]
+        prompts = [
+            line.strip() for line in lines if len(line.strip()) > 0 and line[0] != "#"
+        ]
     elif prompt_file.endswith(".toml"):
         with open(prompt_file, "r", encoding="utf-8") as f:
             data = toml.load(f)
-        prompts = [dict(**data["prompt"], **subset) for subset in data["prompt"]["subset"]]
+        prompts = [
+            dict(**data["prompt"], **subset) for subset in data["prompt"]["subset"]
+        ]
     elif prompt_file.endswith(".json"):
         with open(prompt_file, "r", encoding="utf-8") as f:
             prompts = json.load(f)
@@ -1205,7 +1949,9 @@ def load_prompts(prompt_file: str) -> List[Dict]:
     return prompts
 
 
-def init_trackers(accelerator: Accelerator, args: argparse.Namespace, default_tracker_name: str):
+def init_trackers(
+    accelerator: Accelerator, args: argparse.Namespace, default_tracker_name: str
+):
     if accelerator.is_main_process:
         init_kwargs = {}
         if args.wandb_run_name:
@@ -1213,13 +1959,14 @@ def init_trackers(accelerator: Accelerator, args: argparse.Namespace, default_tr
         if args.log_tracker_config is not None:
             init_kwargs = toml.load(args.log_tracker_config)
         accelerator.init_trackers(
-            default_tracker_name if args.log_tracker_name is None else args.log_tracker_name,
+            default_tracker_name
+            if args.log_tracker_name is None
+            else args.log_tracker_name,
             config=get_sanitized_config_or_none(args),
             init_kwargs=init_kwargs,
         )
 
         if "wandb" in [tracker.name for tracker in accelerator.trackers]:
-
             wandb_tracker = accelerator.get_tracker("wandb", unwrap=True)
 
             wandb_tracker.define_metric("epoch", hidden=True)

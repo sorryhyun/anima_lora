@@ -20,7 +20,7 @@ from library import anima_models, anima_utils, train_util, qwen_image_autoencode
 from .utils import setup_logging
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,13 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     )
     parser.add_argument(
         "--attn_mode",
-        choices=["torch", "xformers", "flash", "sageattn", "sdpa"],  # "sdpa" is for backward compatibility
+        choices=[
+            "torch",
+            "xformers",
+            "flash",
+            "sageattn",
+            "sdpa",
+        ],  # "sdpa" is for backward compatibility
         default=None,
         help="Attention implementation to use. Default is None (torch). xformers requires --split_attn. sageattn does not support training (inference only). This option overrides --xformers or --sdpa."
         " / 使用するAttentionの実装。デフォルトはNone（torch）です。xformersは--split_attnの指定が必要です。sageattnはトレーニングをサポートしていません（推論のみ）。このオプションは--xformersまたは--sdpaを上書きします。",
@@ -246,7 +252,9 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
 # Loss weighting
 
 
-def compute_loss_weighting_for_anima(weighting_scheme: str, sigmas: torch.Tensor) -> torch.Tensor:
+def compute_loss_weighting_for_anima(
+    weighting_scheme: str, sigmas: torch.Tensor
+) -> torch.Tensor:
     """Compute loss weighting for Anima training.
 
     Same schemes as SD3 but can add Anima-specific ones if needed in future.
@@ -322,13 +330,15 @@ def get_anima_param_groups(
         else:
             base_params.append(p)
 
-    logger.info(f"Parameter groups:")
+    logger.info("Parameter groups:")
     logger.info(f"  base_params: {len(base_params)} (lr={base_lr})")
     logger.info(f"  self_attn_params: {len(self_attn_params)} (lr={self_attn_lr})")
     logger.info(f"  cross_attn_params: {len(cross_attn_params)} (lr={cross_attn_lr})")
     logger.info(f"  mlp_params: {len(mlp_params)} (lr={mlp_lr})")
     logger.info(f"  mod_params: {len(mod_params)} (lr={mod_lr})")
-    logger.info(f"  llm_adapter_params: {len(llm_adapter_params)} (lr={llm_adapter_lr})")
+    logger.info(
+        f"  llm_adapter_params: {len(llm_adapter_params)} (lr={llm_adapter_lr})"
+    )
 
     param_groups = []
     for lr, params, name in [
@@ -346,7 +356,9 @@ def get_anima_param_groups(
         elif len(params) > 0:
             param_groups.append({"params": params, "lr": lr})
 
-    total_trainable = sum(p.numel() for group in param_groups for p in group["params"] if p.requires_grad)
+    total_trainable = sum(
+        p.numel() for group in param_groups for p in group["params"] if p.requires_grad
+    )
     logger.info(f"Total trainable parameters: {total_trainable:,}")
 
     return param_groups
@@ -409,7 +421,13 @@ def save_anima_model_on_train_end(
 
     def sd_saver(ckpt_file, epoch_no, global_step):
         sai_metadata = train_util.get_sai_model_spec_dataclass(
-            None, args, False, False, False, is_stable_diffusion_ckpt=True, anima="preview"
+            None,
+            args,
+            False,
+            False,
+            False,
+            is_stable_diffusion_ckpt=True,
+            anima="preview",
         ).to_metadata_dict()
         dit_sd = dit.state_dict()
         # Save with 'net.' prefix for ComfyUI compatibility
@@ -417,7 +435,9 @@ def save_anima_model_on_train_end(
         if ema is not None:
             _save_ema_model(ema, dit, ckpt_file, sai_metadata, save_dtype)
 
-    train_util.save_sd_model_on_train_end_common(args, True, True, epoch, global_step, sd_saver, None)
+    train_util.save_sd_model_on_train_end_common(
+        args, True, True, epoch, global_step, sd_saver, None
+    )
 
 
 def save_anima_model_on_epoch_end_or_stepwise(
@@ -435,7 +455,13 @@ def save_anima_model_on_epoch_end_or_stepwise(
 
     def sd_saver(ckpt_file, epoch_no, global_step):
         sai_metadata = train_util.get_sai_model_spec_dataclass(
-            None, args, False, False, False, is_stable_diffusion_ckpt=True, anima="preview"
+            None,
+            args,
+            False,
+            False,
+            False,
+            is_stable_diffusion_ckpt=True,
+            anima="preview",
         ).to_metadata_dict()
         dit_sd = dit.state_dict()
         anima_utils.save_anima_model(ckpt_file, dit_sd, sai_metadata, save_dtype)
@@ -511,7 +537,13 @@ def do_sample(
         generator = torch.manual_seed(seed)
     else:
         generator = None
-    noise = torch.randn(latent.size(), dtype=torch.float32, generator=generator, device="cpu").to(dtype).to(device)
+    noise = (
+        torch.randn(
+            latent.size(), dtype=torch.float32, generator=generator, device="cpu"
+        )
+        .to(dtype)
+        .to(device)
+    )
 
     # Timestep schedule: linear from 1.0 to 0.0
     sigmas = torch.linspace(1.0, 0.0, steps + 1, device=device, dtype=dtype)
@@ -601,7 +633,9 @@ def sample_images(
     rng_state = torch.get_rng_state()
     cuda_rng_state = None
     try:
-        cuda_rng_state = torch.cuda.get_rng_state() if torch.cuda.is_available() else None
+        cuda_rng_state = (
+            torch.cuda.get_rng_state() if torch.cuda.is_available() else None
+        )
     except Exception:
         pass
 
@@ -661,7 +695,9 @@ def _sample_image_inference(
     if prompt_replacement is not None:
         prompt = prompt.replace(prompt_replacement[0], prompt_replacement[1])
         if negative_prompt:
-            negative_prompt = negative_prompt.replace(prompt_replacement[0], prompt_replacement[1])
+            negative_prompt = negative_prompt.replace(
+                prompt_replacement[0], prompt_replacement[1]
+            )
 
     if seed is not None:
         torch.manual_seed(seed)
@@ -680,7 +716,9 @@ def _sample_image_inference(
             return sample_prompts_te_outputs[prpt]
         if text_encoder is not None:
             tokens = tokenize_strategy.tokenize(prpt)
-            encoded = text_encoding_strategy.encode_tokens(tokenize_strategy, [text_encoder], tokens)
+            encoded = text_encoding_strategy.encode_tokens(
+                tokenize_strategy, [text_encoder], tokens
+            )
             return encoded
         return None
 
@@ -714,7 +752,9 @@ def _sample_image_inference(
         crossattn_emb[~t5_attn_mask.bool()] = 0
         # Pad to 512 tokens (model expects fixed-length context)
         if crossattn_emb.shape[1] < 512:
-            crossattn_emb = torch.nn.functional.pad(crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1]))
+            crossattn_emb = torch.nn.functional.pad(
+                crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1])
+            )
     else:
         crossattn_emb = prompt_embeds
 
@@ -745,14 +785,26 @@ def _sample_image_inference(
                 neg_crossattn_emb[~neg_t5_am.bool()] = 0
                 # Pad to 512 tokens (model expects fixed-length context)
                 if neg_crossattn_emb.shape[1] < 512:
-                    neg_crossattn_emb = torch.nn.functional.pad(neg_crossattn_emb, (0, 0, 0, 512 - neg_crossattn_emb.shape[1]))
+                    neg_crossattn_emb = torch.nn.functional.pad(
+                        neg_crossattn_emb, (0, 0, 0, 512 - neg_crossattn_emb.shape[1])
+                    )
             else:
                 neg_crossattn_emb = neg_pe
 
     # Generate sample
     clean_memory_on_device(accelerator.device)
     latents = do_sample(
-        height, width, seed, dit, crossattn_emb, sample_steps, dit.dtype, accelerator.device, scale, flow_shift, neg_crossattn_emb
+        height,
+        width,
+        seed,
+        dit,
+        crossattn_emb,
+        sample_steps,
+        dit.dtype,
+        accelerator.device,
+        scale,
+        flow_shift,
+        neg_crossattn_emb,
     )
 
     # Decode latents
@@ -788,4 +840,6 @@ def _sample_image_inference(
         wandb_tracker = accelerator.get_tracker("wandb")
         import wandb
 
-        wandb_tracker.log({f"sample_{i}": wandb.Image(image, caption=prompt)}, commit=False)
+        wandb_tracker.log(
+            {f"sample_{i}": wandb.Image(image, caption=prompt)}, commit=False
+        )

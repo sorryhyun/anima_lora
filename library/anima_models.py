@@ -109,13 +109,16 @@ class UnslothOffloadedGradientCheckpointer(torch.autograd.Function):
         output_tensors = []
         grad_tensors = []
         for out, grad in zip(
-            outputs if isinstance(outputs, tuple) else (outputs,), grads if isinstance(grads, tuple) else (grads,)
+            outputs if isinstance(outputs, tuple) else (outputs,),
+            grads if isinstance(grads, tuple) else (grads,),
         ):
             if isinstance(out, torch.Tensor) and out.requires_grad:
                 output_tensors.append(out)
                 grad_tensors.append(grad)
         torch.autograd.backward(output_tensors, grad_tensors)
-        return (None,) + tuple(inp.grad if isinstance(inp, torch.Tensor) else None for inp in inputs)
+        return (None,) + tuple(
+            inp.grad if isinstance(inp, torch.Tensor) else None for inp in inputs
+        )
 
 
 @torch._disable_dynamo
@@ -124,10 +127,10 @@ def unsloth_checkpoint(function, *args):
     return UnslothOffloadedGradientCheckpointer.apply(function, *args)
 
 
-from .utils import setup_logging
+from .utils import setup_logging  # noqa: E402
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -155,10 +158,16 @@ def _apply_rotary_pos_emb_base(
 
     if start_positions is not None:
         max_offset = torch.max(start_positions)
-        assert max_offset + cur_seq_len <= max_seq_len, f"Rotary Embeddings only supported up to {max_seq_len} sequence length!"
-        freqs = torch.concatenate([freqs[i : i + cur_seq_len] for i in start_positions], dim=1)
+        assert max_offset + cur_seq_len <= max_seq_len, (
+            f"Rotary Embeddings only supported up to {max_seq_len} sequence length!"
+        )
+        freqs = torch.concatenate(
+            [freqs[i : i + cur_seq_len] for i in start_positions], dim=1
+        )
 
-    assert cur_seq_len <= max_seq_len, f"Rotary Embeddings only supported up to {max_seq_len} sequence length!"
+    assert cur_seq_len <= max_seq_len, (
+        f"Rotary Embeddings only supported up to {max_seq_len} sequence length!"
+    )
     freqs = freqs[:cur_seq_len]
 
     if tensor_format == "bshd":
@@ -182,11 +191,15 @@ def apply_rotary_pos_emb(
     cu_seqlens: Union[torch.Tensor, None] = None,
     cp_size: int = 1,
 ) -> torch.Tensor:
-    assert not (cp_size > 1 and start_positions is not None), "start_positions != None with CP SIZE > 1 is not supported!"
+    assert not (cp_size > 1 and start_positions is not None), (
+        "start_positions != None with CP SIZE > 1 is not supported!"
+    )
 
-    assert tensor_format != "thd" or cu_seqlens is not None, "cu_seqlens must not be None when tensor_format is 'thd'."
+    assert tensor_format != "thd" or cu_seqlens is not None, (
+        "cu_seqlens must not be None when tensor_format is 'thd'."
+    )
 
-    assert fused == False
+    assert not fused
 
     if tensor_format == "thd":
         cu_seqlens = cu_seqlens // cp_size
@@ -196,18 +209,18 @@ def apply_rotary_pos_emb(
                 _apply_rotary_pos_emb_base(
                     x.unsqueeze(1),
                     freqs,
-                    start_positions=(start_positions[idx : idx + 1] if start_positions is not None else None),
+                    start_positions=(
+                        start_positions[idx : idx + 1]
+                        if start_positions is not None
+                        else None
+                    ),
                     interleaved=interleaved,
                 )
                 for idx, x in enumerate(torch.split(t, seqlens))
             ]
         ).squeeze(1)
 
-    if tensor_format == "sbhd":
-        seqlen = t.size(0)
-    elif tensor_format == "bshd":
-        seqlen = t.size(1)
-    else:
+    if tensor_format not in ("sbhd", "bshd"):
         raise ValueError(f"Unsupported tensor_format: {tensor_format}.")
     return _apply_rotary_pos_emb_base(
         t,
@@ -322,7 +335,9 @@ class Attention(nn.Module):
         torch.nn.init.trunc_normal_(self.v_proj.weight, std=std, a=-3 * std, b=3 * std)
 
         std = 1.0 / math.sqrt(self._inner_dim)
-        torch.nn.init.trunc_normal_(self.output_proj.weight, std=std, a=-3 * std, b=3 * std)
+        torch.nn.init.trunc_normal_(
+            self.output_proj.weight, std=std, a=-3 * std, b=3 * std
+        )
 
         for layer in self.q_norm, self.k_norm, self.v_norm:
             if hasattr(layer, "reset_parameters"):
@@ -339,7 +354,9 @@ class Attention(nn.Module):
         k = self.k_proj(context)
         v = self.v_proj(context)
         q, k, v = map(
-            lambda t: rearrange(t, "b ... (h d) -> b ... h d", h=self.n_heads, d=self.head_dim),
+            lambda t: rearrange(
+                t, "b ... (h d) -> b ... h d", h=self.n_heads, d=self.head_dim
+            ),
             (q, k, v),
         )
 
@@ -347,8 +364,12 @@ class Attention(nn.Module):
         k = self.k_norm(k)
         v = self.v_norm(v)
         if self.is_selfattn and rope_emb is not None:
-            q = apply_rotary_pos_emb(q, rope_emb, tensor_format=self.qkv_format, fused=False)
-            k = apply_rotary_pos_emb(k, rope_emb, tensor_format=self.qkv_format, fused=False)
+            q = apply_rotary_pos_emb(
+                q, rope_emb, tensor_format=self.qkv_format, fused=False
+            )
+            k = apply_rotary_pos_emb(
+                k, rope_emb, tensor_format=self.qkv_format, fused=False
+            )
 
         return q, k, v
 
@@ -361,7 +382,9 @@ class Attention(nn.Module):
     ) -> torch.Tensor:
         q, k, v = self.compute_qkv(x, context, rope_emb=rope_emb)
         if q.dtype != v.dtype:
-            if (not attn_params.supports_fp32 or attn_params.requires_same_dtype) and torch.is_autocast_enabled():
+            if (
+                not attn_params.supports_fp32 or attn_params.requires_same_dtype
+            ) and torch.is_autocast_enabled():
                 # FlashAttention requires fp16/bf16, xformers require same dtype; only cast when autocast is active.
                 target_dtype = v.dtype  # v has fp16/bf16 dtype
                 q = q.to(target_dtype)
@@ -382,12 +405,16 @@ class VideoPositionEmb(nn.Module):
     def seq_dim(self) -> int:
         return 1
 
-    def forward(self, x_B_T_H_W_C: torch.Tensor, fps: Optional[torch.Tensor]) -> torch.Tensor:
+    def forward(
+        self, x_B_T_H_W_C: torch.Tensor, fps: Optional[torch.Tensor]
+    ) -> torch.Tensor:
         B_T_H_W_C = x_B_T_H_W_C.shape
         embeddings = self.generate_embeddings(B_T_H_W_C, fps=fps)
         return embeddings
 
-    def generate_embeddings(self, B_T_H_W_C: torch.Size, fps: Optional[torch.Tensor]) -> Any:
+    def generate_embeddings(
+        self, B_T_H_W_C: torch.Size, fps: Optional[torch.Tensor]
+    ) -> Any:
         raise NotImplementedError
 
 
@@ -410,7 +437,9 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
     ):
         del kwargs
         super().__init__()
-        self.register_buffer("seq", torch.arange(max(len_h, len_w, len_t), dtype=torch.float))
+        self.register_buffer(
+            "seq", torch.arange(max(len_h, len_w, len_t), dtype=torch.float)
+        )
         self.base_fps = base_fps
         self.max_h = len_h
         self.max_w = len_w
@@ -420,7 +449,9 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         dim_h = dim // 6 * 2
         dim_w = dim_h
         dim_t = dim - 2 * dim_h
-        assert dim == dim_h + dim_w + dim_t, f"bad dim: {dim} != {dim_h} + {dim_w} + {dim_t}"
+        assert dim == dim_h + dim_w + dim_t, (
+            f"bad dim: {dim} != {dim_h} + {dim_w} + {dim_t}"
+        )
         self.register_buffer(
             "dim_spatial_range",
             torch.arange(0, dim_h, 2)[: (dim_h // 2)].float() / dim_h,
@@ -443,9 +474,23 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         dim_h = self._dim_h
         dim_t = self._dim_t
 
-        self.seq = torch.arange(max(self.max_h, self.max_w, self.max_t)).float().to(self.dim_spatial_range.device)
-        self.dim_spatial_range = torch.arange(0, dim_h, 2)[: (dim_h // 2)].float().to(self.dim_spatial_range.device) / dim_h
-        self.dim_temporal_range = torch.arange(0, dim_t, 2)[: (dim_t // 2)].float().to(self.dim_spatial_range.device) / dim_t
+        self.seq = (
+            torch.arange(max(self.max_h, self.max_w, self.max_t))
+            .float()
+            .to(self.dim_spatial_range.device)
+        )
+        self.dim_spatial_range = (
+            torch.arange(0, dim_h, 2)[: (dim_h // 2)]
+            .float()
+            .to(self.dim_spatial_range.device)
+            / dim_h
+        )
+        self.dim_temporal_range = (
+            torch.arange(0, dim_t, 2)[: (dim_t // 2)]
+            .float()
+            .to(self.dim_spatial_range.device)
+            / dim_t
+        )
 
     def generate_embeddings(
         self,
@@ -468,23 +513,25 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         temporal_freqs = 1.0 / (t_theta**self.dim_temporal_range)
 
         B, T, H, W, _ = B_T_H_W_C
-        assert (
-            H <= self.max_h and W <= self.max_w
-        ), f"Input dimensions (H={H}, W={W}) exceed the maximum dimensions (max_h={self.max_h}, max_w={self.max_w})"
+        assert H <= self.max_h and W <= self.max_w, (
+            f"Input dimensions (H={H}, W={W}) exceed the maximum dimensions (max_h={self.max_h}, max_w={self.max_w})"
+        )
         half_emb_h = torch.outer(self.seq[:H], h_spatial_freqs)
         half_emb_w = torch.outer(self.seq[:W], w_spatial_freqs)
 
         if self.enable_fps_modulation:
             uniform_fps = (fps is None) or (fps.min() == fps.max())
-            assert (
-                uniform_fps or B == 1 or T == 1
-            ), "For video batch, batch size should be 1 for non-uniform fps. For image batch, T should be 1"
+            assert uniform_fps or B == 1 or T == 1, (
+                "For video batch, batch size should be 1 for non-uniform fps. For image batch, T should be 1"
+            )
 
             if fps is None:
                 assert T == 1, "T should be 1 for image batch."
                 half_emb_t = torch.outer(self.seq[:T], temporal_freqs)
             else:
-                half_emb_t = torch.outer(self.seq[:T] / fps[:1] * self.base_fps, temporal_freqs)
+                half_emb_t = torch.outer(
+                    self.seq[:T] / fps[:1] * self.base_fps, temporal_freqs
+                )
         else:
             half_emb_t = torch.outer(self.seq[:T], temporal_freqs)
 
@@ -536,15 +583,17 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         # Temporal dimension always starts at 0
         if self.enable_fps_modulation:
             uniform_fps = (fps is None) or (fps.min() == fps.max())
-            assert (
-                uniform_fps or B == 1 or T == 1
-            ), "For video batch, batch size should be 1 for non-uniform fps. For image batch, T should be 1"
+            assert uniform_fps or B == 1 or T == 1, (
+                "For video batch, batch size should be 1 for non-uniform fps. For image batch, T should be 1"
+            )
 
             if fps is None:
                 assert T == 1, "T should be 1 for image batch."
                 half_emb_t = torch.outer(self.seq[:T], temporal_freqs)
             else:
-                half_emb_t = torch.outer(self.seq[:T] / fps[:1] * self.base_fps, temporal_freqs)
+                half_emb_t = torch.outer(
+                    self.seq[:T] / fps[:1] * self.base_fps, temporal_freqs
+                )
         else:
             half_emb_t = torch.outer(self.seq[:T], temporal_freqs)
 
@@ -581,7 +630,9 @@ class LearnablePosEmbAxis(VideoPositionEmb):
         del kwargs
         super().__init__()
         self.interpolation = interpolation
-        assert self.interpolation in ["crop"], f"Unknown interpolation method {self.interpolation}"
+        assert self.interpolation in ["crop"], (
+            f"Unknown interpolation method {self.interpolation}"
+        )
         self.model_channels = model_channels
 
         self.pos_emb_h = nn.Parameter(torch.zeros(len_h, model_channels))
@@ -596,7 +647,9 @@ class LearnablePosEmbAxis(VideoPositionEmb):
         torch.nn.init.trunc_normal_(self.pos_emb_w, std=std, a=-3 * std, b=3 * std)
         torch.nn.init.trunc_normal_(self.pos_emb_t, std=std, a=-3 * std, b=3 * std)
 
-    def generate_embeddings(self, B_T_H_W_C: torch.Size, fps: Optional[torch.Tensor]) -> torch.Tensor:
+    def generate_embeddings(
+        self, B_T_H_W_C: torch.Size, fps: Optional[torch.Tensor]
+    ) -> torch.Tensor:
         B, T, H, W, _ = B_T_H_W_C
         if self.interpolation == "crop":
             emb_h_H = self.pos_emb_h[:H]
@@ -607,7 +660,9 @@ class LearnablePosEmbAxis(VideoPositionEmb):
                 + repeat(emb_h_H, "h d-> b t h w d", b=B, t=T, w=W)
                 + repeat(emb_w_W, "w d-> b t h w d", b=B, t=T, h=H)
             )
-            assert list(emb.shape)[:4] == [B, T, H, W], f"bad shape: {list(emb.shape)[:4]} != {B, T, H, W}"
+            assert list(emb.shape)[:4] == [B, T, H, W], (
+                f"bad shape: {list(emb.shape)[:4]} != {B, T, H, W}"
+            )
         else:
             raise ValueError(f"Unknown interpolation method {self.interpolation}")
 
@@ -629,7 +684,9 @@ class Timesteps(nn.Module):
         in_dtype = timesteps_B_T.dtype
         timesteps = timesteps_B_T.flatten().float()
         half_dim = self.num_channels // 2
-        exponent = -math.log(10000) * torch.arange(half_dim, dtype=torch.float32, device=timesteps.device)
+        exponent = -math.log(10000) * torch.arange(
+            half_dim, dtype=torch.float32, device=timesteps.device
+        )
         exponent = exponent / (half_dim - 0.0)
 
         emb = torch.exp(exponent)
@@ -639,13 +696,20 @@ class Timesteps(nn.Module):
         cos_emb = torch.cos(emb)
         emb = torch.cat([cos_emb, sin_emb], dim=-1)
 
-        return rearrange(emb.to(dtype=in_dtype), "(b t) d -> b t d", b=timesteps_B_T.shape[0], t=timesteps_B_T.shape[1])
+        return rearrange(
+            emb.to(dtype=in_dtype),
+            "(b t) d -> b t d",
+            b=timesteps_B_T.shape[0],
+            t=timesteps_B_T.shape[1],
+        )
 
 
 class TimestepEmbedding(nn.Module):
     """Projects timestep features to model dimension, with optional AdaLN-LoRA."""
 
-    def __init__(self, in_features: int, out_features: int, use_adaln_lora: bool = False):
+    def __init__(
+        self, in_features: int, out_features: int, use_adaln_lora: bool = False
+    ):
         super().__init__()
         self.in_dim = in_features
         self.out_dim = out_features
@@ -661,11 +725,17 @@ class TimestepEmbedding(nn.Module):
 
     def init_weights(self) -> None:
         std = 1.0 / math.sqrt(self.in_dim)
-        torch.nn.init.trunc_normal_(self.linear_1.weight, std=std, a=-3 * std, b=3 * std)
+        torch.nn.init.trunc_normal_(
+            self.linear_1.weight, std=std, a=-3 * std, b=3 * std
+        )
         std = 1.0 / math.sqrt(self.out_dim)
-        torch.nn.init.trunc_normal_(self.linear_2.weight, std=std, a=-3 * std, b=3 * std)
+        torch.nn.init.trunc_normal_(
+            self.linear_2.weight, std=std, a=-3 * std, b=3 * std
+        )
 
-    def forward(self, sample: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def forward(
+        self, sample: torch.Tensor
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         emb = self.linear_1(sample)
         emb = self.activation(emb)
         emb = self.linear_2(emb)
@@ -728,9 +798,18 @@ class PatchEmbed(nn.Module):
                 m=spatial_patch_size,
                 n=spatial_patch_size,
             ),
-            nn.Linear(in_channels * spatial_patch_size * spatial_patch_size * temporal_patch_size, out_channels, bias=False),
+            nn.Linear(
+                in_channels
+                * spatial_patch_size
+                * spatial_patch_size
+                * temporal_patch_size,
+                out_channels,
+                bias=False,
+            ),
         )
-        self.dim = in_channels * spatial_patch_size * spatial_patch_size * temporal_patch_size
+        self.dim = (
+            in_channels * spatial_patch_size * spatial_patch_size * temporal_patch_size
+        )
 
         self.init_weights()
 
@@ -741,9 +820,9 @@ class PatchEmbed(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert x.dim() == 5
         _, _, T, H, W = x.shape
-        assert (
-            H % self.spatial_patch_size == 0 and W % self.spatial_patch_size == 0
-        ), f"H,W {(H, W)} should be divisible by spatial_patch_size {self.spatial_patch_size}"
+        assert H % self.spatial_patch_size == 0 and W % self.spatial_patch_size == 0, (
+            f"H,W {(H, W)} should be divisible by spatial_patch_size {self.spatial_patch_size}"
+        )
         assert T % self.temporal_patch_size == 0
         x = self.proj(x)
         return x
@@ -765,7 +844,12 @@ class FinalLayer(nn.Module):
         super().__init__()
         self.layer_norm = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.linear = nn.Linear(
-            hidden_size, spatial_patch_size * spatial_patch_size * temporal_patch_size * out_channels, bias=False
+            hidden_size,
+            spatial_patch_size
+            * spatial_patch_size
+            * temporal_patch_size
+            * out_channels,
+            bias=False,
         )
         self.hidden_size = hidden_size
         self.n_adaln_chunks = 2
@@ -775,10 +859,15 @@ class FinalLayer(nn.Module):
             self.adaln_modulation = nn.Sequential(
                 nn.SiLU(),
                 nn.Linear(hidden_size, adaln_lora_dim, bias=False),
-                nn.Linear(adaln_lora_dim, self.n_adaln_chunks * hidden_size, bias=False),
+                nn.Linear(
+                    adaln_lora_dim, self.n_adaln_chunks * hidden_size, bias=False
+                ),
             )
         else:
-            self.adaln_modulation = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, self.n_adaln_chunks * hidden_size, bias=False))
+            self.adaln_modulation = nn.Sequential(
+                nn.SiLU(),
+                nn.Linear(hidden_size, self.n_adaln_chunks * hidden_size, bias=False),
+            )
 
         self.init_weights()
 
@@ -786,7 +875,9 @@ class FinalLayer(nn.Module):
         std = 1.0 / math.sqrt(self.hidden_size)
         torch.nn.init.trunc_normal_(self.linear.weight, std=std, a=-3 * std, b=3 * std)
         if self.use_adaln_lora:
-            torch.nn.init.trunc_normal_(self.adaln_modulation[1].weight, std=std, a=-3 * std, b=3 * std)
+            torch.nn.init.trunc_normal_(
+                self.adaln_modulation[1].weight, std=std, a=-3 * std, b=3 * std
+            )
             torch.nn.init.zeros_(self.adaln_modulation[2].weight)
         else:
             torch.nn.init.zeros_(self.adaln_modulation[1].weight)
@@ -801,16 +892,19 @@ class FinalLayer(nn.Module):
     ):
         if self.use_adaln_lora:
             assert adaln_lora_B_T_3D is not None
-            shift_B_T_D, scale_B_T_D = (self.adaln_modulation(emb_B_T_D) + adaln_lora_B_T_3D[:, :, : 2 * self.hidden_size]).chunk(
-                2, dim=-1
-            )
+            shift_B_T_D, scale_B_T_D = (
+                self.adaln_modulation(emb_B_T_D)
+                + adaln_lora_B_T_3D[:, :, : 2 * self.hidden_size]
+            ).chunk(2, dim=-1)
         else:
             shift_B_T_D, scale_B_T_D = self.adaln_modulation(emb_B_T_D).chunk(2, dim=-1)
 
         shift_B_T_1_1_D = rearrange(shift_B_T_D, "b t d -> b t 1 1 d")
         scale_B_T_1_1_D = rearrange(scale_B_T_D, "b t d -> b t 1 1 d")
 
-        x_B_T_H_W_D = self.layer_norm(x_B_T_H_W_D) * (1 + scale_B_T_1_1_D) + shift_B_T_1_1_D
+        x_B_T_H_W_D = (
+            self.layer_norm(x_B_T_H_W_D) * (1 + scale_B_T_1_1_D) + shift_B_T_1_1_D
+        )
         x_B_T_H_W_O = self.linear(x_B_T_H_W_D)
         return x_B_T_H_W_O
 
@@ -833,7 +927,9 @@ class Block(nn.Module):
     ):
         super().__init__()
         self.x_dim = x_dim
-        self.layer_norm_self_attn = nn.LayerNorm(x_dim, elementwise_affine=False, eps=1e-6)
+        self.layer_norm_self_attn = nn.LayerNorm(
+            x_dim, elementwise_affine=False, eps=1e-6
+        )
         self.self_attn = Attention(
             x_dim,
             None,
@@ -842,7 +938,9 @@ class Block(nn.Module):
             qkv_format="bshd",
         )
 
-        self.layer_norm_cross_attn = nn.LayerNorm(x_dim, elementwise_affine=False, eps=1e-6)
+        self.layer_norm_cross_attn = nn.LayerNorm(
+            x_dim, elementwise_affine=False, eps=1e-6
+        )
         self.cross_attn = Attention(
             x_dim,
             context_dim,
@@ -872,15 +970,23 @@ class Block(nn.Module):
                 nn.Linear(adaln_lora_dim, 3 * x_dim, bias=False),
             )
         else:
-            self.adaln_modulation_self_attn = nn.Sequential(nn.SiLU(), nn.Linear(x_dim, 3 * x_dim, bias=False))
-            self.adaln_modulation_cross_attn = nn.Sequential(nn.SiLU(), nn.Linear(x_dim, 3 * x_dim, bias=False))
-            self.adaln_modulation_mlp = nn.Sequential(nn.SiLU(), nn.Linear(x_dim, 3 * x_dim, bias=False))
+            self.adaln_modulation_self_attn = nn.Sequential(
+                nn.SiLU(), nn.Linear(x_dim, 3 * x_dim, bias=False)
+            )
+            self.adaln_modulation_cross_attn = nn.Sequential(
+                nn.SiLU(), nn.Linear(x_dim, 3 * x_dim, bias=False)
+            )
+            self.adaln_modulation_mlp = nn.Sequential(
+                nn.SiLU(), nn.Linear(x_dim, 3 * x_dim, bias=False)
+            )
 
         self.gradient_checkpointing = False
         self.cpu_offload_checkpointing = False
         self.unsloth_offload_checkpointing = False
 
-    def enable_gradient_checkpointing(self, cpu_offload: bool = False, unsloth_offload: bool = False):
+    def enable_gradient_checkpointing(
+        self, cpu_offload: bool = False, unsloth_offload: bool = False
+    ):
         self.gradient_checkpointing = True
         self.cpu_offload_checkpointing = cpu_offload if not unsloth_offload else False
         self.unsloth_offload_checkpointing = unsloth_offload
@@ -897,9 +1003,21 @@ class Block(nn.Module):
 
         if self.use_adaln_lora:
             std = 1.0 / math.sqrt(self.x_dim)
-            torch.nn.init.trunc_normal_(self.adaln_modulation_self_attn[1].weight, std=std, a=-3 * std, b=3 * std)
-            torch.nn.init.trunc_normal_(self.adaln_modulation_cross_attn[1].weight, std=std, a=-3 * std, b=3 * std)
-            torch.nn.init.trunc_normal_(self.adaln_modulation_mlp[1].weight, std=std, a=-3 * std, b=3 * std)
+            torch.nn.init.trunc_normal_(
+                self.adaln_modulation_self_attn[1].weight,
+                std=std,
+                a=-3 * std,
+                b=3 * std,
+            )
+            torch.nn.init.trunc_normal_(
+                self.adaln_modulation_cross_attn[1].weight,
+                std=std,
+                a=-3 * std,
+                b=3 * std,
+            )
+            torch.nn.init.trunc_normal_(
+                self.adaln_modulation_mlp[1].weight, std=std, a=-3 * std, b=3 * std
+            )
             torch.nn.init.zeros_(self.adaln_modulation_self_attn[2].weight)
             torch.nn.init.zeros_(self.adaln_modulation_cross_attn[2].weight)
             torch.nn.init.zeros_(self.adaln_modulation_mlp[2].weight)
@@ -935,26 +1053,38 @@ class Block(nn.Module):
             shift_cross_attn_B_T_D, scale_cross_attn_B_T_D, gate_cross_attn_B_T_D = (
                 self.adaln_modulation_cross_attn(emb_B_T_D) + adaln_lora_B_T_3D
             ).chunk(3, dim=-1)
-            shift_mlp_B_T_D, scale_mlp_B_T_D, gate_mlp_B_T_D = (self.adaln_modulation_mlp(emb_B_T_D) + adaln_lora_B_T_3D).chunk(
-                3, dim=-1
-            )
-        else:
-            shift_self_attn_B_T_D, scale_self_attn_B_T_D, gate_self_attn_B_T_D = self.adaln_modulation_self_attn(emb_B_T_D).chunk(
-                3, dim=-1
-            )
-            shift_cross_attn_B_T_D, scale_cross_attn_B_T_D, gate_cross_attn_B_T_D = self.adaln_modulation_cross_attn(
-                emb_B_T_D
+            shift_mlp_B_T_D, scale_mlp_B_T_D, gate_mlp_B_T_D = (
+                self.adaln_modulation_mlp(emb_B_T_D) + adaln_lora_B_T_3D
             ).chunk(3, dim=-1)
-            shift_mlp_B_T_D, scale_mlp_B_T_D, gate_mlp_B_T_D = self.adaln_modulation_mlp(emb_B_T_D).chunk(3, dim=-1)
+        else:
+            shift_self_attn_B_T_D, scale_self_attn_B_T_D, gate_self_attn_B_T_D = (
+                self.adaln_modulation_self_attn(emb_B_T_D).chunk(3, dim=-1)
+            )
+            shift_cross_attn_B_T_D, scale_cross_attn_B_T_D, gate_cross_attn_B_T_D = (
+                self.adaln_modulation_cross_attn(emb_B_T_D).chunk(3, dim=-1)
+            )
+            shift_mlp_B_T_D, scale_mlp_B_T_D, gate_mlp_B_T_D = (
+                self.adaln_modulation_mlp(emb_B_T_D).chunk(3, dim=-1)
+            )
 
         # Reshape for broadcasting: (B, T, D) -> (B, T, 1, 1, D)
-        shift_self_attn_B_T_1_1_D = rearrange(shift_self_attn_B_T_D, "b t d -> b t 1 1 d")
-        scale_self_attn_B_T_1_1_D = rearrange(scale_self_attn_B_T_D, "b t d -> b t 1 1 d")
+        shift_self_attn_B_T_1_1_D = rearrange(
+            shift_self_attn_B_T_D, "b t d -> b t 1 1 d"
+        )
+        scale_self_attn_B_T_1_1_D = rearrange(
+            scale_self_attn_B_T_D, "b t d -> b t 1 1 d"
+        )
         gate_self_attn_B_T_1_1_D = rearrange(gate_self_attn_B_T_D, "b t d -> b t 1 1 d")
 
-        shift_cross_attn_B_T_1_1_D = rearrange(shift_cross_attn_B_T_D, "b t d -> b t 1 1 d")
-        scale_cross_attn_B_T_1_1_D = rearrange(scale_cross_attn_B_T_D, "b t d -> b t 1 1 d")
-        gate_cross_attn_B_T_1_1_D = rearrange(gate_cross_attn_B_T_D, "b t d -> b t 1 1 d")
+        shift_cross_attn_B_T_1_1_D = rearrange(
+            shift_cross_attn_B_T_D, "b t d -> b t 1 1 d"
+        )
+        scale_cross_attn_B_T_1_1_D = rearrange(
+            scale_cross_attn_B_T_D, "b t d -> b t 1 1 d"
+        )
+        gate_cross_attn_B_T_1_1_D = rearrange(
+            gate_cross_attn_B_T_D, "b t d -> b t 1 1 d"
+        )
 
         shift_mlp_B_T_1_1_D = rearrange(shift_mlp_B_T_D, "b t d -> b t 1 1 d")
         scale_mlp_B_T_1_1_D = rearrange(scale_mlp_B_T_D, "b t d -> b t 1 1 d")
@@ -966,7 +1096,12 @@ class Block(nn.Module):
             return _norm_layer(_x) * (1 + _scale) + _shift
 
         # 1. Self-attention
-        normalized_x = _adaln_fn(x_B_T_H_W_D, self.layer_norm_self_attn, scale_self_attn_B_T_1_1_D, shift_self_attn_B_T_1_1_D)
+        normalized_x = _adaln_fn(
+            x_B_T_H_W_D,
+            self.layer_norm_self_attn,
+            scale_self_attn_B_T_1_1_D,
+            shift_self_attn_B_T_1_1_D,
+        )
         result = rearrange(
             self.self_attn(
                 rearrange(normalized_x, "b t h w d -> b (t h w) d"),
@@ -982,7 +1117,12 @@ class Block(nn.Module):
         x_B_T_H_W_D = x_B_T_H_W_D + gate_self_attn_B_T_1_1_D * result
 
         # 2. Cross-attention
-        normalized_x = _adaln_fn(x_B_T_H_W_D, self.layer_norm_cross_attn, scale_cross_attn_B_T_1_1_D, shift_cross_attn_B_T_1_1_D)
+        normalized_x = _adaln_fn(
+            x_B_T_H_W_D,
+            self.layer_norm_cross_attn,
+            scale_cross_attn_B_T_1_1_D,
+            shift_cross_attn_B_T_1_1_D,
+        )
         result = rearrange(
             self.cross_attn(
                 rearrange(normalized_x, "b t h w d -> b (t h w) d"),
@@ -998,7 +1138,9 @@ class Block(nn.Module):
         x_B_T_H_W_D = result * gate_cross_attn_B_T_1_1_D + x_B_T_H_W_D
 
         # 3. MLP
-        normalized_x = _adaln_fn(x_B_T_H_W_D, self.layer_norm_mlp, scale_mlp_B_T_1_1_D, shift_mlp_B_T_1_1_D)
+        normalized_x = _adaln_fn(
+            x_B_T_H_W_D, self.layer_norm_mlp, scale_mlp_B_T_1_1_D, shift_mlp_B_T_1_1_D
+        )
         result = self.mlp(normalized_x)
         x_B_T_H_W_D = x_B_T_H_W_D + gate_mlp_B_T_1_1_D * result
 
@@ -1032,7 +1174,9 @@ class Block(nn.Module):
                 def create_custom_forward(func):
                     def custom_forward(*inputs):
                         # Determine original device from first tensor input
-                        device = next(t.device for t in inputs if isinstance(t, torch.Tensor))
+                        device = next(
+                            t.device for t in inputs if isinstance(t, torch.Tensor)
+                        )
                         device_inputs = to_device(inputs, device)
                         outputs = func(*device_inputs)
                         return to_cpu(outputs)
@@ -1160,7 +1304,9 @@ class Anima(nn.Module):
         self.adaln_lora_dim = adaln_lora_dim
         self.t_embedder = nn.Sequential(
             Timesteps(model_channels),
-            TimestepEmbedding(model_channels, model_channels, use_adaln_lora=use_adaln_lora),
+            TimestepEmbedding(
+                model_channels, model_channels, use_adaln_lora=use_adaln_lora
+            ),
         )
 
         if self.use_llm_adapter:
@@ -1209,9 +1355,13 @@ class Anima(nn.Module):
         self.final_layer.init_weights()
         self.t_embedding_norm.reset_parameters()
 
-    def enable_gradient_checkpointing(self, cpu_offload: bool = False, unsloth_offload: bool = False):
+    def enable_gradient_checkpointing(
+        self, cpu_offload: bool = False, unsloth_offload: bool = False
+    ):
         for block in self.blocks:
-            block.enable_gradient_checkpointing(cpu_offload=cpu_offload, unsloth_offload=unsloth_offload)
+            block.enable_gradient_checkpointing(
+                cpu_offload=cpu_offload, unsloth_offload=unsloth_offload
+            )
 
     def disable_gradient_checkpointing(self):
         for block in self.blocks:
@@ -1226,7 +1376,9 @@ class Anima(nn.Module):
         return next(self.parameters()).dtype
 
     def build_patch_embed(self) -> None:
-        in_channels = self.in_channels + 1 if self.concat_padding_mask else self.in_channels
+        in_channels = (
+            self.in_channels + 1 if self.concat_padding_mask else self.in_channels
+        )
         self.x_embedder = PatchEmbed(
             spatial_patch_size=self.patch_spatial,
             temporal_patch_size=self.patch_temporal,
@@ -1273,18 +1425,26 @@ class Anima(nn.Module):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
         if self.concat_padding_mask:
             if padding_mask is None:
-                raise ValueError("padding_mask must be provided when concat_padding_mask is True")
+                raise ValueError(
+                    "padding_mask must be provided when concat_padding_mask is True"
+                )
             if padding_mask.ndim != 4:
-                raise ValueError(f"padding_mask must be 4D (B, 1, H, W), got shape {tuple(padding_mask.shape)}")
+                raise ValueError(
+                    f"padding_mask must be 4D (B, 1, H, W), got shape {tuple(padding_mask.shape)}"
+                )
             if padding_mask.shape[-2:] != x_B_C_T_H_W.shape[-2:]:
                 from torchvision import transforms
 
                 padding_mask = transforms.functional.resize(
-                    padding_mask, list(x_B_C_T_H_W.shape[-2:]), interpolation=transforms.InterpolationMode.NEAREST
+                    padding_mask,
+                    list(x_B_C_T_H_W.shape[-2:]),
+                    interpolation=transforms.InterpolationMode.NEAREST,
                 )
 
             # (B, 1, H, W) -> (B, 1, T, H, W) without materializing a repeated tensor
-            padding_mask_B_1_T_H_W = padding_mask.unsqueeze(2).expand(-1, -1, x_B_C_T_H_W.shape[2], -1, -1)
+            padding_mask_B_1_T_H_W = padding_mask.unsqueeze(2).expand(
+                -1, -1, x_B_C_T_H_W.shape[2], -1, -1
+            )
             x_B_C_T_H_W = torch.cat([x_B_C_T_H_W, padding_mask_B_1_T_H_W], dim=1)
         x_B_T_H_W_D = self.x_embedder(x_B_C_T_H_W)
 
@@ -1318,12 +1478,16 @@ class Anima(nn.Module):
     def enable_block_swap(self, num_blocks: int, device: torch.device):
         self.blocks_to_swap = num_blocks
 
-        assert (
-            self.blocks_to_swap <= self.num_blocks - 2
-        ), f"Cannot swap more than {self.num_blocks - 2} blocks. Requested: {self.blocks_to_swap} blocks."
+        assert self.blocks_to_swap <= self.num_blocks - 2, (
+            f"Cannot swap more than {self.num_blocks - 2} blocks. Requested: {self.blocks_to_swap} blocks."
+        )
 
-        self.offloader = custom_offloading_utils.ModelOffloader(self.blocks, self.blocks_to_swap, device)
-        logger.info(f"Anima: Block swap enabled. Swapping {num_blocks} blocks, total blocks: {self.num_blocks}, device: {device}.")
+        self.offloader = custom_offloading_utils.ModelOffloader(
+            self.blocks, self.blocks_to_swap, device
+        )
+        logger.info(
+            f"Anima: Block swap enabled. Swapping {num_blocks} blocks, total blocks: {self.num_blocks}, device: {device}."
+        )
 
     def move_to_device_except_swap_blocks(self, device: torch.device):
         # Move all modules to device except blocks (which are managed by offloader)
@@ -1341,14 +1505,14 @@ class Anima(nn.Module):
             return
         self.offloader.set_forward_only(True)
         self.prepare_block_swap_before_forward()
-        print(f"Anima: Block swap set to forward only.")
+        print("Anima: Block swap set to forward only.")
 
     def switch_block_swap_for_training(self):
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:
             return
         self.offloader.set_forward_only(False)
         self.prepare_block_swap_before_forward()
-        print(f"Anima: Block swap set to forward and backward.")
+        print("Anima: Block swap set to forward and backward.")
 
     def prepare_block_swap_before_forward(self):
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:
@@ -1382,7 +1546,11 @@ class Anima(nn.Module):
             w_offset: Width offset in patched space for tiled diffusion RoPE
         """
         # Run LLM adapter inside forward for correct DDP gradient synchronization
-        if t5_input_ids is not None and self.use_llm_adapter and hasattr(self, "llm_adapter"):
+        if (
+            t5_input_ids is not None
+            and self.use_llm_adapter
+            and hasattr(self, "llm_adapter")
+        ):
             crossattn_emb = self.llm_adapter(
                 source_hidden_states=crossattn_emb,
                 target_input_ids=t5_input_ids,
@@ -1411,18 +1579,28 @@ class Anima(nn.Module):
             "extra_per_block_pos_emb": extra_pos_emb,
         }
 
-        attn_params = attention.AttentionParams.create_attention_params(self.attn_mode, self.split_attn, self.attn_softmax_scale)
+        attn_params = attention.AttentionParams.create_attention_params(
+            self.attn_mode, self.split_attn, self.attn_softmax_scale
+        )
 
         for block_idx, block in enumerate(self.blocks):
             if self.blocks_to_swap:
                 self.offloader.wait_for_block(block_idx)
 
-            x_B_T_H_W_D = block(x_B_T_H_W_D, t_embedding_B_T_D, crossattn_emb, attn_params, **block_kwargs)
+            x_B_T_H_W_D = block(
+                x_B_T_H_W_D,
+                t_embedding_B_T_D,
+                crossattn_emb,
+                attn_params,
+                **block_kwargs,
+            )
 
             if self.blocks_to_swap:
                 self.offloader.submit_move_blocks(self.blocks, block_idx)
 
-        x_B_T_H_W_O = self.final_layer(x_B_T_H_W_D, t_embedding_B_T_D, adaln_lora_B_T_3D=adaln_lora_B_T_3D)
+        x_B_T_H_W_O = self.final_layer(
+            x_B_T_H_W_D, t_embedding_B_T_D, adaln_lora_B_T_3D=adaln_lora_B_T_3D
+        )
         x_B_C_Tt_Hp_Wp = self.unpatchify(x_B_T_H_W_O)
         return x_B_C_Tt_Hp_Wp
 
@@ -1440,13 +1618,26 @@ class Anima(nn.Module):
         w_offset: int = 0,
         **kwargs,
     ) -> torch.Tensor:
-        context = self._preprocess_text_embeds(context, target_input_ids, target_attention_mask, source_attention_mask)
+        context = self._preprocess_text_embeds(
+            context, target_input_ids, target_attention_mask, source_attention_mask
+        )
         return self.forward_mini_train_dit(
-            x, timesteps, context, fps=fps, padding_mask=padding_mask, h_offset=h_offset, w_offset=w_offset, **kwargs
+            x,
+            timesteps,
+            context,
+            fps=fps,
+            padding_mask=padding_mask,
+            h_offset=h_offset,
+            w_offset=w_offset,
+            **kwargs,
         )
 
     def _preprocess_text_embeds(
-        self, source_hidden_states, target_input_ids, target_attention_mask=None, source_attention_mask=None
+        self,
+        source_hidden_states,
+        target_input_ids,
+        target_attention_mask=None,
+        source_attention_mask=None,
     ):
         if target_input_ids is not None and target_input_ids.shape[-1] > 0:
             context = self.llm_adapter(
@@ -1457,9 +1648,17 @@ class Anima(nn.Module):
             )
             crossattn_mask = target_attention_mask
             # Adapter may have appended T5-side postfix tokens (dual mode) — extend mask to match
-            if crossattn_mask is not None and context.shape[1] > crossattn_mask.shape[-1]:
+            if (
+                crossattn_mask is not None
+                and context.shape[1] > crossattn_mask.shape[-1]
+            ):
                 num_extra = context.shape[1] - crossattn_mask.shape[-1]
-                extra_mask = torch.ones(crossattn_mask.shape[0], num_extra, device=crossattn_mask.device, dtype=crossattn_mask.dtype)
+                extra_mask = torch.ones(
+                    crossattn_mask.shape[0],
+                    num_extra,
+                    device=crossattn_mask.device,
+                    dtype=crossattn_mask.dtype,
+                )
                 crossattn_mask = torch.cat([crossattn_mask, extra_mask], dim=-1)
             context[~crossattn_mask.bool()] = 0  # zero out padding tokens
         else:
@@ -1514,17 +1713,30 @@ class AdapterRotaryEmbedding(nn.Module):
     def __init__(self, head_dim):
         super().__init__()
         self.rope_theta = 10000
-        inv_freq = 1.0 / (self.rope_theta ** (torch.arange(0, head_dim, 2, dtype=torch.int64).to(dtype=torch.float) / head_dim))
+        inv_freq = 1.0 / (
+            self.rope_theta
+            ** (
+                torch.arange(0, head_dim, 2, dtype=torch.int64).to(dtype=torch.float)
+                / head_dim
+            )
+        )
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
     @torch.no_grad()
     def forward(self, x, position_ids):
-        inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1).to(x.device)
+        inv_freq_expanded = (
+            self.inv_freq[None, :, None]
+            .float()
+            .expand(position_ids.shape[0], -1, 1)
+            .to(x.device)
+        )
         position_ids_expanded = position_ids[:, None, :].float()
 
         device_type = x.device.type
         with torch.autocast(device_type=device_type, enabled=False):
-            freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+            freqs = (
+                inv_freq_expanded.float() @ position_ids_expanded.float()
+            ).transpose(1, 2)
             emb = torch.cat((freqs, freqs), dim=-1)
             cos = emb.cos()
             sin = emb.sin()
@@ -1554,7 +1766,15 @@ class LLMAdapterAttention(nn.Module):
 
         self.o_proj = nn.Linear(inner_dim, query_dim, bias=False)
 
-    def forward(self, x, q_mask=None, kv_mask=None, context=None, position_embeddings=None, position_embeddings_context=None):
+    def forward(
+        self,
+        x,
+        q_mask=None,
+        kv_mask=None,
+        context=None,
+        position_embeddings=None,
+        position_embeddings_context=None,
+    ):
         """
         Args:
             x: Query input [B, L_q, D].
@@ -1578,9 +1798,13 @@ class LLMAdapterAttention(nn.Module):
             assert position_embeddings_context is not None
             cos, sin = position_embeddings
             # RoPE expects [B, H, L, D] layout
-            query_states = _adapter_apply_rotary_pos_emb(query_states.transpose(1, 2), cos, sin).transpose(1, 2)
+            query_states = _adapter_apply_rotary_pos_emb(
+                query_states.transpose(1, 2), cos, sin
+            ).transpose(1, 2)
             cos, sin = position_embeddings_context
-            key_states = _adapter_apply_rotary_pos_emb(key_states.transpose(1, 2), cos, sin).transpose(1, 2)
+            key_states = _adapter_apply_rotary_pos_emb(
+                key_states.transpose(1, 2), cos, sin
+            ).transpose(1, 2)
 
         can_use_flash = (
             attention.flash_attn_varlen_func is not None
@@ -1589,14 +1813,24 @@ class LLMAdapterAttention(nn.Module):
 
         if can_use_flash and q_mask is None and kv_mask is None:
             # No masking — simple flash attention, [B, L, H, D] layout
-            attn_output = attention.flash_attn_func(query_states, key_states, value_states)
+            attn_output = attention.flash_attn_func(
+                query_states, key_states, value_states
+            )
         elif can_use_flash:
             # Varlen flash attention: pack valid tokens, attend, unpack
             B, L_q = query_states.shape[:2]
             L_kv = key_states.shape[1]
 
-            eff_q_mask = q_mask if q_mask is not None else query_states.new_ones(B, L_q, dtype=torch.bool)
-            eff_kv_mask = kv_mask if kv_mask is not None else key_states.new_ones(B, L_kv, dtype=torch.bool)
+            eff_q_mask = (
+                q_mask
+                if q_mask is not None
+                else query_states.new_ones(B, L_q, dtype=torch.bool)
+            )
+            eff_kv_mask = (
+                kv_mask
+                if kv_mask is not None
+                else key_states.new_ones(B, L_kv, dtype=torch.bool)
+            )
 
             q_seqlens = eff_q_mask.sum(dim=1, dtype=torch.int32)
             kv_seqlens = eff_kv_mask.sum(dim=1, dtype=torch.int32)
@@ -1610,9 +1844,13 @@ class LLMAdapterAttention(nn.Module):
             v_packed = value_states[eff_kv_mask]
 
             out_packed = attention.flash_attn_varlen_func(
-                q_packed, k_packed, v_packed,
-                cu_seqlens_q, cu_seqlens_kv,
-                q_seqlens.max().item(), kv_seqlens.max().item(),
+                q_packed,
+                k_packed,
+                v_packed,
+                cu_seqlens_q,
+                cu_seqlens_kv,
+                q_seqlens.max().item(),
+                kv_seqlens.max().item(),
             )
 
             # Unpack: [total_valid_q, H, D] → [B, L_q, H, D]
@@ -1625,7 +1863,9 @@ class LLMAdapterAttention(nn.Module):
             value_states = value_states.transpose(1, 2)
             # Expand kv_mask to 4D for SDPA broadcasting: [B, L] → [B, 1, 1, L]
             sdpa_mask = kv_mask[:, None, None, :] if kv_mask is not None else None
-            attn_output = F.scaled_dot_product_attention(query_states, key_states, value_states, attn_mask=sdpa_mask)
+            attn_output = F.scaled_dot_product_attention(
+                query_states, key_states, value_states, attn_mask=sdpa_mask
+            )
             attn_output = attn_output.transpose(1, 2)
 
         attn_output = attn_output.reshape(*input_shape, -1).contiguous()
@@ -1636,12 +1876,22 @@ class LLMAdapterAttention(nn.Module):
 class LLMAdapterTransformerBlock(nn.Module):
     """Transformer block for LLM Adapter: optional self-attn + cross-attn + MLP."""
 
-    def __init__(self, source_dim, model_dim, num_heads=16, mlp_ratio=4.0, self_attn=False, layer_norm=False):
+    def __init__(
+        self,
+        source_dim,
+        model_dim,
+        num_heads=16,
+        mlp_ratio=4.0,
+        self_attn=False,
+        layer_norm=False,
+    ):
         super().__init__()
         self.has_self_attn = self_attn
 
         if self.has_self_attn:
-            self.norm_self_attn = nn.LayerNorm(model_dim) if layer_norm else LLMAdapterRMSNorm(model_dim)
+            self.norm_self_attn = (
+                nn.LayerNorm(model_dim) if layer_norm else LLMAdapterRMSNorm(model_dim)
+            )
             self.self_attn = LLMAdapterAttention(
                 query_dim=model_dim,
                 context_dim=model_dim,
@@ -1649,7 +1899,9 @@ class LLMAdapterTransformerBlock(nn.Module):
                 head_dim=model_dim // num_heads,
             )
 
-        self.norm_cross_attn = nn.LayerNorm(model_dim) if layer_norm else LLMAdapterRMSNorm(model_dim)
+        self.norm_cross_attn = (
+            nn.LayerNorm(model_dim) if layer_norm else LLMAdapterRMSNorm(model_dim)
+        )
         self.cross_attn = LLMAdapterAttention(
             query_dim=model_dim,
             context_dim=source_dim,
@@ -1657,9 +1909,13 @@ class LLMAdapterTransformerBlock(nn.Module):
             head_dim=model_dim // num_heads,
         )
 
-        self.norm_mlp = nn.LayerNorm(model_dim) if layer_norm else LLMAdapterRMSNorm(model_dim)
+        self.norm_mlp = (
+            nn.LayerNorm(model_dim) if layer_norm else LLMAdapterRMSNorm(model_dim)
+        )
         self.mlp = nn.Sequential(
-            nn.Linear(model_dim, int(model_dim * mlp_ratio)), nn.GELU(), nn.Linear(int(model_dim * mlp_ratio), model_dim)
+            nn.Linear(model_dim, int(model_dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Linear(int(model_dim * mlp_ratio), model_dim),
         )
 
     def forward(
@@ -1708,7 +1964,15 @@ class LLMAdapter(nn.Module):
     """
 
     def __init__(
-        self, source_dim, target_dim, model_dim, num_layers=6, num_heads=16, embed=None, self_attn=False, layer_norm=False
+        self,
+        source_dim,
+        target_dim,
+        model_dim,
+        num_layers=6,
+        num_heads=16,
+        embed=None,
+        self_attn=False,
+        layer_norm=False,
     ):
         super().__init__()
         if embed is not None:
@@ -1722,32 +1986,62 @@ class LLMAdapter(nn.Module):
         self.rotary_emb = AdapterRotaryEmbedding(model_dim // num_heads)
         self.blocks = nn.ModuleList(
             [
-                LLMAdapterTransformerBlock(source_dim, model_dim, num_heads=num_heads, self_attn=self_attn, layer_norm=layer_norm)
+                LLMAdapterTransformerBlock(
+                    source_dim,
+                    model_dim,
+                    num_heads=num_heads,
+                    self_attn=self_attn,
+                    layer_norm=layer_norm,
+                )
                 for _ in range(num_layers)
             ]
         )
         self.out_proj = nn.Linear(model_dim, target_dim)
         self.norm = LLMAdapterRMSNorm(target_dim)
 
-    def forward(self, source_hidden_states, target_input_ids, target_attention_mask=None, source_attention_mask=None):
+    def forward(
+        self,
+        source_hidden_states,
+        target_input_ids,
+        target_attention_mask=None,
+        source_attention_mask=None,
+    ):
         # Inject learned embeddings if attached (postfix tuning).
         # Appended as postfix to preserve tag-order positional encoding (RoPE).
         if hasattr(self, "postfix_embeds") and self.postfix_embeds is not None:
             B = source_hidden_states.shape[0]
-            extra = self.postfix_embeds.unsqueeze(0).expand(B, -1, -1).to(dtype=source_hidden_states.dtype)
+            extra = (
+                self.postfix_embeds.unsqueeze(0)
+                .expand(B, -1, -1)
+                .to(dtype=source_hidden_states.dtype)
+            )
             source_hidden_states = torch.cat([source_hidden_states, extra], dim=1)
             if source_attention_mask is not None:
                 num_extra = self.postfix_embeds.shape[0]
-                extra_mask = torch.ones(B, num_extra, device=source_attention_mask.device, dtype=source_attention_mask.dtype)
-                source_attention_mask = torch.cat([source_attention_mask, extra_mask], dim=-1)
+                extra_mask = torch.ones(
+                    B,
+                    num_extra,
+                    device=source_attention_mask.device,
+                    dtype=source_attention_mask.dtype,
+                )
+                source_attention_mask = torch.cat(
+                    [source_attention_mask, extra_mask], dim=-1
+                )
 
         # Extend target_attention_mask for T5-side postfix BEFORE 4D reshape
         if hasattr(self, "postfix_t5_embeds") and self.postfix_t5_embeds is not None:
             if target_attention_mask is not None:
                 B = source_hidden_states.shape[0]
                 num_extra = self.postfix_t5_embeds.shape[0]
-                extra_mask = torch.ones(B, num_extra, device=target_attention_mask.device, dtype=target_attention_mask.dtype)
-                target_attention_mask = torch.cat([target_attention_mask, extra_mask], dim=-1)
+                extra_mask = torch.ones(
+                    B,
+                    num_extra,
+                    device=target_attention_mask.device,
+                    dtype=target_attention_mask.dtype,
+                )
+                target_attention_mask = torch.cat(
+                    [target_attention_mask, extra_mask], dim=-1
+                )
 
         # Keep masks as 2D [B, L] bool tensors — the attention layer handles
         # expansion to 4D for SDPA or packing for flash_attn_varlen_func.
@@ -1766,12 +2060,16 @@ class LLMAdapter(nn.Module):
         # Inject T5-side postfix embeddings (dual mode: adds learned query tokens)
         if hasattr(self, "postfix_t5_embeds") and self.postfix_t5_embeds is not None:
             B = x.shape[0]
-            extra_t5 = self.postfix_t5_embeds.unsqueeze(0).expand(B, -1, -1).to(dtype=x.dtype)
+            extra_t5 = (
+                self.postfix_t5_embeds.unsqueeze(0).expand(B, -1, -1).to(dtype=x.dtype)
+            )
             x = torch.cat([x, extra_t5], dim=1)
 
         context = source_hidden_states
         position_ids = torch.arange(x.shape[1], device=x.device).unsqueeze(0)
-        position_ids_context = torch.arange(context.shape[1], device=x.device).unsqueeze(0)
+        position_ids_context = torch.arange(
+            context.shape[1], device=x.device
+        ).unsqueeze(0)
         position_embeddings = self.rotary_emb(x, position_ids)
         position_embeddings_context = self.rotary_emb(x, position_ids_context)
         for block in self.blocks:

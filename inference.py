@@ -17,25 +17,36 @@ from tqdm import tqdm
 from diffusers.utils.torch_utils import randn_tensor
 from PIL import Image
 
-from library import anima_models, anima_utils, inference_utils, qwen_image_autoencoder_kl, strategy_anima, strategy_base
-from library.device_utils import clean_memory_on_device, synchronize_device
+from library import (
+    anima_models,
+    anima_utils,
+    inference_utils,
+    qwen_image_autoencoder_kl,
+    strategy_anima,
+    strategy_base,
+)
+from library.device_utils import clean_memory_on_device
 
 lycoris_available = find_spec("lycoris") is not None
 if lycoris_available:
-    from lycoris.kohya import create_network_from_weights
+    pass
 
-from library.utils import setup_logging
+from library.utils import setup_logging  # noqa: E402
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
 class GenerationSettings:
-    def __init__(self, device: torch.device, dit_weight_dtype: Optional[torch.dtype] = None):
+    def __init__(
+        self, device: torch.device, dit_weight_dtype: Optional[torch.dtype] = None
+    ):
         self.device = device
-        self.dit_weight_dtype = dit_weight_dtype  # not used currently because model may be optimized
+        self.dit_weight_dtype = (
+            dit_weight_dtype  # not used currently because model may be optimized
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,23 +68,72 @@ def parse_args() -> argparse.Namespace:
         help="Disable internal VAE caching mechanism to reduce memory usage. Encoding / decoding will also be faster, but this differs from official behavior."
         + " / VAEのメモリ使用量を減らすために内部のキャッシュ機構を無効にします。エンコード/デコードも速くなりますが、公式の動作とは異なります。",
     )
-    parser.add_argument("--text_encoder", type=str, required=True, help="Text Encoder 1 (Qwen2.5-VL) directory or path")
+    parser.add_argument(
+        "--text_encoder",
+        type=str,
+        required=True,
+        help="Text Encoder 1 (Qwen2.5-VL) directory or path",
+    )
 
     # LoRA
-    parser.add_argument("--lora_weight", type=str, nargs="*", required=False, default=None, help="LoRA weight path")
-    parser.add_argument("--lora_multiplier", type=float, nargs="*", default=1.0, help="LoRA multiplier")
-    parser.add_argument("--include_patterns", type=str, nargs="*", default=None, help="LoRA module include patterns")
-    parser.add_argument("--exclude_patterns", type=str, nargs="*", default=None, help="LoRA module exclude patterns")
+    parser.add_argument(
+        "--lora_weight",
+        type=str,
+        nargs="*",
+        required=False,
+        default=None,
+        help="LoRA weight path",
+    )
+    parser.add_argument(
+        "--lora_multiplier", type=float, nargs="*", default=1.0, help="LoRA multiplier"
+    )
+    parser.add_argument(
+        "--include_patterns",
+        type=str,
+        nargs="*",
+        default=None,
+        help="LoRA module include patterns",
+    )
+    parser.add_argument(
+        "--exclude_patterns",
+        type=str,
+        nargs="*",
+        default=None,
+        help="LoRA module exclude patterns",
+    )
 
     # inference
     parser.add_argument(
-        "--guidance_scale", type=float, default=3.5, help="Guidance scale for classifier free guidance. Default is 3.5."
+        "--guidance_scale",
+        type=float,
+        default=3.5,
+        help="Guidance scale for classifier free guidance. Default is 3.5.",
     )
-    parser.add_argument("--prompt", type=str, default=None, help="prompt for generation")
-    parser.add_argument("--negative_prompt", type=str, default="", help="negative prompt for generation, default is empty string")
-    parser.add_argument("--image_size", type=int, nargs=2, default=[1024, 1024], help="image size, height and width")
-    parser.add_argument("--infer_steps", type=int, default=50, help="number of inference steps, default is 50")
-    parser.add_argument("--save_path", type=str, required=True, help="path to save generated video")
+    parser.add_argument(
+        "--prompt", type=str, default=None, help="prompt for generation"
+    )
+    parser.add_argument(
+        "--negative_prompt",
+        type=str,
+        default="",
+        help="negative prompt for generation, default is empty string",
+    )
+    parser.add_argument(
+        "--image_size",
+        type=int,
+        nargs=2,
+        default=[1024, 1024],
+        help="image size, height and width",
+    )
+    parser.add_argument(
+        "--infer_steps",
+        type=int,
+        default=50,
+        help="number of inference steps, default is 50",
+    )
+    parser.add_argument(
+        "--save_path", type=str, required=True, help="path to save generated video"
+    )
     parser.add_argument("--seed", type=int, default=None, help="Seed for evaluation.")
 
     # Flow Matching
@@ -92,17 +152,32 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument("--fp8", action="store_true", help="use fp8 for DiT model")
-    parser.add_argument("--fp8_scaled", action="store_true", help="use scaled fp8 for DiT, only for fp8")
-
-    parser.add_argument("--text_encoder_cpu", action="store_true", help="Inference on CPU for Text Encoders")
     parser.add_argument(
-        "--device", type=str, default=None, help="device to use for inference. If None, use CUDA if available, otherwise use CPU"
+        "--fp8_scaled", action="store_true", help="use scaled fp8 for DiT, only for fp8"
+    )
+
+    parser.add_argument(
+        "--text_encoder_cpu",
+        action="store_true",
+        help="Inference on CPU for Text Encoders",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        help="device to use for inference. If None, use CUDA if available, otherwise use CPU",
     )
     parser.add_argument(
         "--attn_mode",
         type=str,
         default="torch",
-        choices=["flash", "torch", "sageattn", "xformers", "sdpa"],  #  "sdpa" for backward compatibility
+        choices=[
+            "flash",
+            "torch",
+            "sageattn",
+            "xformers",
+            "sdpa",
+        ],  #  "sdpa" for backward compatibility
         help="attention mode",
     )
     parser.add_argument(
@@ -112,43 +187,73 @@ def parse_args() -> argparse.Namespace:
         choices=["images", "latent", "latent_images"],
         help="output type",
     )
-    parser.add_argument("--no_metadata", action="store_true", help="do not save metadata")
-    parser.add_argument("--latent_path", type=str, nargs="*", default=None, help="path to latent for decode. no inference")
     parser.add_argument(
-        "--lycoris", action="store_true", help=f"use lycoris for inference{'' if lycoris_available else ' (not available)'}"
+        "--no_metadata", action="store_true", help="do not save metadata"
+    )
+    parser.add_argument(
+        "--latent_path",
+        type=str,
+        nargs="*",
+        default=None,
+        help="path to latent for decode. no inference",
+    )
+    parser.add_argument(
+        "--lycoris",
+        action="store_true",
+        help=f"use lycoris for inference{'' if lycoris_available else ' (not available)'}",
     )
 
     # P-GRAFT
-    parser.add_argument("--pgraft", action="store_true", help="Enable P-GRAFT: load LoRA as dynamic hooks instead of static merge, allowing mid-denoising cutoff")
     parser.add_argument(
-        "--lora_cutoff_step", type=int, default=None,
+        "--pgraft",
+        action="store_true",
+        help="Enable P-GRAFT: load LoRA as dynamic hooks instead of static merge, allowing mid-denoising cutoff",
+    )
+    parser.add_argument(
+        "--lora_cutoff_step",
+        type=int,
+        default=None,
         help="Step at which to disable LoRA during inference (for P-GRAFT). "
-             "LoRA is active for steps 0..cutoff_step-1, disabled for cutoff_step..end.",
+        "LoRA is active for steps 0..cutoff_step-1, disabled for cutoff_step..end.",
     )
 
     # Tiled diffusion
     parser.add_argument(
-        "--tiled_diffusion", action="store_true",
+        "--tiled_diffusion",
+        action="store_true",
         help="Enable MultiDiffusion-style tiled generation for VRAM reduction at high resolutions",
     )
     parser.add_argument(
-        "--tile_size", type=int, default=128,
+        "--tile_size",
+        type=int,
+        default=128,
         help="Tile size in latent space (default 128 = 1024px). Must be even.",
     )
     parser.add_argument(
-        "--tile_overlap", type=int, default=16,
+        "--tile_overlap",
+        type=int,
+        default=16,
         help="Overlap between tiles in latent space (default 16 = 128px). Must be even and < tile_size.",
     )
 
     # arguments for batch and interactive modes
-    parser.add_argument("--from_file", type=str, default=None, help="Read prompts from a file")
-    parser.add_argument("--interactive", action="store_true", help="Interactive mode: read prompts from console")
     parser.add_argument(
-        "--infer_batch_size", type=int, default=1,
+        "--from_file", type=str, default=None, help="Read prompts from a file"
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Interactive mode: read prompts from console",
+    )
+    parser.add_argument(
+        "--infer_batch_size",
+        type=int,
+        default=1,
         help="Batch size for denoising. Prompts sharing the same text are batched together. Higher values use more VRAM.",
     )
     parser.add_argument(
-        "--compile", action="store_true",
+        "--compile",
+        action="store_true",
         help="Compile the DiT model with torch.compile for faster inference. First run incurs compilation overhead.",
     )
 
@@ -156,11 +261,15 @@ def parse_args() -> argparse.Namespace:
 
     # Validate arguments
     if args.from_file and args.interactive:
-        raise ValueError("Cannot use both --from_file and --interactive at the same time")
+        raise ValueError(
+            "Cannot use both --from_file and --interactive at the same time"
+        )
 
     if args.latent_path is None or len(args.latent_path) == 0:
         if args.prompt is None and not args.from_file and not args.interactive:
-            raise ValueError("Either --prompt, --from_file or --interactive must be specified")
+            raise ValueError(
+                "Either --prompt, --from_file or --interactive must be specified"
+            )
 
     if args.lycoris and not lycoris_available:
         raise ValueError("install lycoris: https://github.com/KohakuBlueleaf/LyCORIS")
@@ -170,11 +279,17 @@ def parse_args() -> argparse.Namespace:
 
     if args.tiled_diffusion:
         if args.tile_size % 2 != 0:
-            raise ValueError(f"--tile_size must be even (patch_spatial=2 requires it), got {args.tile_size}")
+            raise ValueError(
+                f"--tile_size must be even (patch_spatial=2 requires it), got {args.tile_size}"
+            )
         if args.tile_overlap % 2 != 0:
-            raise ValueError(f"--tile_overlap must be even (patch_spatial=2 requires it), got {args.tile_overlap}")
+            raise ValueError(
+                f"--tile_overlap must be even (patch_spatial=2 requires it), got {args.tile_overlap}"
+            )
         if args.tile_overlap >= args.tile_size:
-            raise ValueError(f"--tile_overlap ({args.tile_overlap}) must be less than --tile_size ({args.tile_size})")
+            raise ValueError(
+                f"--tile_overlap ({args.tile_overlap}) must be less than --tile_size ({args.tile_size})"
+            )
 
     return args
 
@@ -220,7 +335,9 @@ def parse_prompt_line(line: str) -> Dict[str, Any]:
     return overrides
 
 
-def apply_overrides(args: argparse.Namespace, overrides: Dict[str, Any]) -> argparse.Namespace:
+def apply_overrides(
+    args: argparse.Namespace, overrides: Dict[str, Any]
+) -> argparse.Namespace:
     """Apply overrides to args
 
     Args:
@@ -256,7 +373,9 @@ def check_inputs(args: argparse.Namespace) -> Tuple[int, int]:
     width = args.image_size[1]
 
     if height % 32 != 0 or width % 32 != 0:
-        raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
+        raise ValueError(
+            f"`height` and `width` have to be divisible by 32 but are {height} and {width}."
+        )
 
     return height, width
 
@@ -265,7 +384,9 @@ def check_inputs(args: argparse.Namespace) -> Tuple[int, int]:
 
 
 def load_dit_model(
-    args: argparse.Namespace, device: torch.device, dit_weight_dtype: Optional[torch.dtype] = None
+    args: argparse.Namespace,
+    device: torch.device,
+    dit_weight_dtype: Optional[torch.dtype] = None,
 ) -> anima_models.Anima:
     """load DiT model
 
@@ -284,23 +405,36 @@ def load_dit_model(
         loading_device = device
 
     # P-GRAFT: load without LoRA merge, attach dynamic hooks instead
-    pgraft_mode = getattr(args, "pgraft", False) and args.lora_weight is not None and len(args.lora_weight) > 0
+    pgraft_mode = (
+        getattr(args, "pgraft", False)
+        and args.lora_weight is not None
+        and len(args.lora_weight) > 0
+    )
 
     # load LoRA weights (skip static merge for P-GRAFT)
-    if not pgraft_mode and not args.lycoris and args.lora_weight is not None and len(args.lora_weight) > 0:
+    if (
+        not pgraft_mode
+        and not args.lycoris
+        and args.lora_weight is not None
+        and len(args.lora_weight) > 0
+    ):
         lora_weights_list = []
         for lora_weight in args.lora_weight:
             logger.info(f"Loading LoRA weight from: {lora_weight}")
             lora_sd = load_file(lora_weight)  # load on CPU, dtype is as is
             # lora_sd = filter_lora_state_dict(lora_sd, args.include_patterns, args.exclude_patterns)
-            lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}  # only keep unet lora weights
+            lora_sd = {
+                k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")
+            }  # only keep unet lora weights
             lora_weights_list.append(lora_sd)
     else:
         lora_weights_list = None
 
     loading_weight_dtype = dit_weight_dtype
     if args.fp8_scaled and not args.lycoris:
-        loading_weight_dtype = None  # we will load weights as-is and then optimize to fp8
+        loading_weight_dtype = (
+            None  # we will load weights as-is and then optimize to fp8
+        )
 
     model = anima_utils.load_anima_model(
         device,
@@ -315,7 +449,9 @@ def load_dit_model(
     )
     if not args.fp8_scaled:
         # simple cast to dit_weight_dtype
-        target_dtype = None  # load as-is (dit_weight_dtype == dtype of the weights in state_dict)
+        target_dtype = (
+            None  # load as-is (dit_weight_dtype == dtype of the weights in state_dict)
+        )
         if dit_weight_dtype is not None:  # in case of args.fp8 and not args.fp8_scaled
             logger.info(f"Convert model to {dit_weight_dtype}")
             target_dtype = dit_weight_dtype
@@ -323,7 +459,9 @@ def load_dit_model(
         logger.info(f"Move model to device: {device}")
         target_device = device
 
-        model.to(target_device, target_dtype)  # move and cast  at the same time. this reduces redundant copy operations
+        model.to(
+            target_device, target_dtype
+        )  # move and cast  at the same time. this reduces redundant copy operations
 
     # model.to(device)
     model.to(device, dtype=torch.bfloat16)  # ensure model is in bfloat16 for inference
@@ -339,19 +477,32 @@ def load_dit_model(
             lora_sd = load_file(lora_weight_path)
             lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
 
-            multiplier = args.lora_multiplier if isinstance(args.lora_multiplier, (int, float)) else args.lora_multiplier[0]
+            multiplier = (
+                args.lora_multiplier
+                if isinstance(args.lora_multiplier, (int, float))
+                else args.lora_multiplier[0]
+            )
             network, weights_sd = lora_anima.create_network_from_weights(
-                multiplier=multiplier, file=None, ae=None, text_encoders=[], unet=model,
-                weights_sd=lora_sd, for_inference=True,
+                multiplier=multiplier,
+                file=None,
+                ae=None,
+                text_encoders=[],
+                unet=model,
+                weights_sd=lora_sd,
+                for_inference=True,
             )
             network.apply_to([], model, apply_text_encoder=False, apply_unet=True)
             info = network.load_state_dict(weights_sd, strict=False)
             if info.unexpected_keys:
-                logger.debug(f"P-GRAFT: unexpected keys in LoRA state dict: {info.unexpected_keys[:5]}...")
+                logger.debug(
+                    f"P-GRAFT: unexpected keys in LoRA state dict: {info.unexpected_keys[:5]}..."
+                )
             network.to(device, dtype=torch.bfloat16)
             network.eval()
             model._pgraft_network = network
-            logger.info(f"P-GRAFT: LoRA attached with cutoff_step={getattr(args, 'lora_cutoff_step', None)}")
+            logger.info(
+                f"P-GRAFT: LoRA attached with cutoff_step={getattr(args, 'lora_cutoff_step', None)}"
+            )
 
     if getattr(args, "compile", False):
         logger.info("Compiling DiT model with torch.compile...")
@@ -363,7 +514,9 @@ def load_dit_model(
 
 
 def load_text_encoder(
-    args: argparse.Namespace, dtype: torch.dtype = torch.bfloat16, device: torch.device = torch.device("cpu")
+    args: argparse.Namespace,
+    dtype: torch.dtype = torch.bfloat16,
+    device: torch.device = torch.device("cpu"),
 ) -> torch.nn.Module:
     lora_weights_list = None
     if args.lora_weight is not None and len(args.lora_weight) > 0:
@@ -373,7 +526,9 @@ def load_text_encoder(
             lora_sd = load_file(lora_weight)  # load on CPU, dtype is as is
             # lora_sd = filter_lora_state_dict(lora_sd, args.include_patterns, args.exclude_patterns)
             lora_sd = {
-                "model_" + k[len("lora_te_") :]: v for k, v in lora_sd.items() if k.startswith("lora_te_")
+                "model_" + k[len("lora_te_") :]: v
+                for k, v in lora_sd.items()
+                if k.startswith("lora_te_")
             }  # only keep Text Encoder lora weights, remove prefix "lora_te_" and add "model_" prefix
             lora_weights_list.append(lora_sd)
 
@@ -381,7 +536,11 @@ def load_text_encoder(
     if lora_multipliers is not None and not isinstance(lora_multipliers, list):
         lora_multipliers = [lora_multipliers]
     text_encoder, _ = anima_utils.load_qwen3_text_encoder(
-        args.text_encoder, dtype=dtype, device=device, lora_weights=lora_weights_list, lora_multipliers=lora_multipliers
+        args.text_encoder,
+        dtype=dtype,
+        device=device,
+        lora_weights=lora_weights_list,
+        lora_multipliers=lora_multipliers,
     )
     text_encoder.eval()
     return text_encoder
@@ -391,7 +550,9 @@ def load_text_encoder(
 
 
 def decode_latent(
-    vae: qwen_image_autoencoder_kl.AutoencoderKLQwenImage, latent: torch.Tensor, device: torch.device
+    vae: qwen_image_autoencoder_kl.AutoencoderKLQwenImage,
+    latent: torch.Tensor,
+    device: torch.device,
 ) -> torch.Tensor:
     logger.info(f"Decoding image. Latent shape {latent.shape}, device {device}")
 
@@ -399,10 +560,14 @@ def decode_latent(
     with torch.no_grad():
         pixels = vae.decode_to_pixels(latent.to(device, dtype=vae.dtype))
         # pixels = vae.decode(latent.to(device, dtype=torch.bfloat16), scale=vae_scale)
-    if pixels.ndim == 5:  # remove frame dimension if exists, [B, C, F, H, W] -> [B, C, H, W]
+    if (
+        pixels.ndim == 5
+    ):  # remove frame dimension if exists, [B, C, F, H, W] -> [B, C, H, W]
         pixels = pixels.squeeze(2)
 
-    pixels = pixels.to("cpu", dtype=torch.float32)  # move to CPU and convert to float32 (bfloat16 is not supported by numpy)
+    pixels = pixels.to(
+        "cpu", dtype=torch.float32
+    )  # move to CPU and convert to float32 (bfloat16 is not supported by numpy)
     vae.to("cpu")
 
     logger.info(f"Decoded. Pixel shape {pixels.shape}")
@@ -422,7 +587,10 @@ def process_escape(text: str) -> str:
 
 
 def prepare_text_inputs(
-    args: argparse.Namespace, device: torch.device, anima: anima_models.Anima, shared_models: Optional[Dict] = None
+    args: argparse.Namespace,
+    device: torch.device,
+    anima: anima_models.Anima,
+    shared_models: Optional[Dict] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Prepare text-related inputs for T2I: LLM encoding. Anima model is also needed for preprocessing"""
 
@@ -438,7 +606,9 @@ def prepare_text_inputs(
         # text_encoder is on device (batched inference) or CPU (interactive inference)
     else:  # Load if not in shared_models
         text_encoder_dtype = torch.bfloat16  # Default dtype for Text Encoder
-        text_encoder = load_text_encoder(args, dtype=text_encoder_dtype, device=text_encoder_device)
+        text_encoder = load_text_encoder(
+            args, dtype=text_encoder_dtype, device=text_encoder_device
+        )
         text_encoder.eval()
         tokenize_strategy = strategy_base.TokenizeStrategy.get_strategy()
         # Store references so load_target_model can reuse them
@@ -463,7 +633,9 @@ def prepare_text_inputs(
         model_is_moved = True
 
         logger.info(f"Moving Text Encoder to appropriate device: {text_encoder_device}")
-        text_encoder.to(text_encoder_device)  # If text_encoder_cpu is True, this will be CPU
+        text_encoder.to(
+            text_encoder_device
+        )  # If text_encoder_cpu is True, this will be CPU
 
     logger.info("Encoding prompt with Text Encoder")
 
@@ -480,7 +652,9 @@ def prepare_text_inputs(
         with torch.no_grad():
             # embed = anima_text_encoder.get_text_embeds(anima, tokenizer, text_encoder, t5xxl_tokenizer, prompt)
             tokens = tokenize_strategy.tokenize(prompt)
-            embed = encoding_strategy.encode_tokens(tokenize_strategy, [text_encoder], tokens)
+            embed = encoding_strategy.encode_tokens(
+                tokenize_strategy, [text_encoder], tokens
+            )
             crossattn_emb = anima._preprocess_text_embeds(
                 source_hidden_states=embed[0].to(anima.device),
                 target_input_ids=embed[2].to(anima.device),
@@ -490,7 +664,9 @@ def prepare_text_inputs(
             crossattn_emb[~embed[3].bool()] = 0
             # Pad to 512 tokens (model expects fixed-length context)
             if crossattn_emb.shape[1] < 512:
-                crossattn_emb = torch.nn.functional.pad(crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1]))
+                crossattn_emb = torch.nn.functional.pad(
+                    crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1])
+                )
             embed[0] = crossattn_emb
         embed[0] = embed[0].cpu()
 
@@ -509,7 +685,9 @@ def prepare_text_inputs(
         with torch.no_grad():
             # negative_embed = anima_text_encoder.get_text_embeds(anima, tokenizer, text_encoder, t5xxl_tokenizer, negative_prompt)
             tokens = tokenize_strategy.tokenize(negative_prompt)
-            negative_embed = encoding_strategy.encode_tokens(tokenize_strategy, [text_encoder], tokens)
+            negative_embed = encoding_strategy.encode_tokens(
+                tokenize_strategy, [text_encoder], tokens
+            )
             crossattn_emb = anima._preprocess_text_embeds(
                 source_hidden_states=negative_embed[0].to(anima.device),
                 target_input_ids=negative_embed[2].to(anima.device),
@@ -519,7 +697,9 @@ def prepare_text_inputs(
             crossattn_emb[~negative_embed[3].bool()] = 0
             # Pad to 512 tokens (model expects fixed-length context)
             if crossattn_emb.shape[1] < 512:
-                crossattn_emb = torch.nn.functional.pad(crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1]))
+                crossattn_emb = torch.nn.functional.pad(
+                    crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1])
+                )
             negative_embed[0] = crossattn_emb
         negative_embed[0] = negative_embed[0].cpu()
 
@@ -587,7 +767,9 @@ def generate(
     return generate_body(args, anima, context, context_null, device, seed)
 
 
-def compute_tile_positions(h_latent: int, w_latent: int, tile_size: int, overlap: int) -> List[Tuple[int, int]]:
+def compute_tile_positions(
+    h_latent: int, w_latent: int, tile_size: int, overlap: int
+) -> List[Tuple[int, int]]:
     """Compute (y, x) start positions for overlapping tiles covering the full latent grid."""
     stride = tile_size - overlap
     positions = []
@@ -658,7 +840,9 @@ def generate_body_tiled(
     seed_g.manual_seed(seed)
 
     height, width = check_inputs(args)
-    logger.info(f"Tiled diffusion: image size {height}x{width} (HxW), infer_steps: {args.infer_steps}")
+    logger.info(
+        f"Tiled diffusion: image size {height}x{width} (HxW), infer_steps: {args.infer_steps}"
+    )
 
     tile_size = args.tile_size
     overlap = args.tile_overlap
@@ -684,18 +868,24 @@ def generate_body_tiled(
 
     # Compute tile positions and precompute blend weights
     positions = compute_tile_positions(h_latent, w_latent, tile_size, overlap)
-    logger.info(f"Tiled diffusion: {len(positions)} tiles, tile_size={tile_size}, overlap={overlap}")
+    logger.info(
+        f"Tiled diffusion: {len(positions)} tiles, tile_size={tile_size}, overlap={overlap}"
+    )
 
     blend_weights = {}
-    for (y, x) in positions:
+    for y, x in positions:
         tile_h = min(tile_size, h_latent - y)
         tile_w = min(tile_size, w_latent - x)
-        blend_weights[(y, x)] = create_tile_blend_weight(tile_h, tile_w, overlap, y, x, h_latent, w_latent, device, torch.bfloat16)
+        blend_weights[(y, x)] = create_tile_blend_weight(
+            tile_h, tile_w, overlap, y, x, h_latent, w_latent, device, torch.bfloat16
+        )
 
     embed = embed.to(torch.bfloat16)
     negative_embed = negative_embed.to(torch.bfloat16)
 
-    timesteps, sigmas = inference_utils.get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
+    timesteps, sigmas = inference_utils.get_timesteps_sigmas(
+        args.infer_steps, args.flow_shift, device
+    )
     timesteps /= 1000
     timesteps = timesteps.to(device, dtype=torch.bfloat16)
 
@@ -708,30 +898,40 @@ def generate_body_tiled(
     autocast_enabled = args.fp8
 
     # P-GRAFT: get network reference for mid-denoising cutoff
-    pgraft_network = getattr(anima, '_pgraft_network', None)
-    lora_cutoff_step = getattr(args, 'lora_cutoff_step', None)
+    pgraft_network = getattr(anima, "_pgraft_network", None)
+    lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
 
     with tqdm(total=len(timesteps), desc="Denoising steps (tiled)") as pbar:
         for i, t in enumerate(timesteps):
             # P-GRAFT: disable LoRA at cutoff step
-            if pgraft_network is not None and lora_cutoff_step is not None and i == lora_cutoff_step:
+            if (
+                pgraft_network is not None
+                and lora_cutoff_step is not None
+                and i == lora_cutoff_step
+            ):
                 pgraft_network.set_enabled(False)
                 logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}")
 
             t_expand = t.expand(latents.shape[0])
 
             noise_acc = torch.zeros_like(latents)
-            weight_acc = torch.zeros(1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16)
+            weight_acc = torch.zeros(
+                1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16
+            )
 
             if do_cfg:
                 uncond_noise_acc = torch.zeros_like(latents)
-                uncond_weight_acc = torch.zeros(1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16)
+                uncond_weight_acc = torch.zeros(
+                    1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16
+                )
 
-            for (y, x) in positions:
+            for y, x in positions:
                 tile_h = min(tile_size, h_latent - y)
                 tile_w = min(tile_size, w_latent - x)
                 tile_latent = latents[:, :, :, y : y + tile_h, x : x + tile_w]
-                tile_padding_mask = torch.zeros(1, 1, tile_h, tile_w, dtype=torch.bfloat16, device=device)
+                tile_padding_mask = torch.zeros(
+                    1, 1, tile_h, tile_w, dtype=torch.bfloat16, device=device
+                )
 
                 h_off = y // patch_spatial
                 w_off = x // patch_spatial
@@ -741,10 +941,21 @@ def generate_body_tiled(
                 # Conditional pass
                 if anima.blocks_to_swap:
                     anima.prepare_block_swap_before_forward()
-                with torch.no_grad(), torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=autocast_enabled):
+                with (
+                    torch.no_grad(),
+                    torch.autocast(
+                        device_type=device.type,
+                        dtype=torch.bfloat16,
+                        enabled=autocast_enabled,
+                    ),
+                ):
                     tile_pred = anima(
-                        tile_latent, t_expand, embed,
-                        padding_mask=tile_padding_mask, h_offset=h_off, w_offset=w_off,
+                        tile_latent,
+                        t_expand,
+                        embed,
+                        padding_mask=tile_padding_mask,
+                        h_offset=h_off,
+                        w_offset=w_off,
                     )
                 noise_acc[:, :, :, y : y + tile_h, x : x + tile_w] += tile_pred * bw
                 weight_acc[:, :, :, y : y + tile_h, x : x + tile_w] += bw
@@ -753,24 +964,41 @@ def generate_body_tiled(
                 if do_cfg:
                     if anima.blocks_to_swap:
                         anima.prepare_block_swap_before_forward()
-                    with torch.no_grad(), torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=autocast_enabled):
+                    with (
+                        torch.no_grad(),
+                        torch.autocast(
+                            device_type=device.type,
+                            dtype=torch.bfloat16,
+                            enabled=autocast_enabled,
+                        ),
+                    ):
                         uncond_tile_pred = anima(
-                            tile_latent, t_expand, negative_embed,
-                            padding_mask=tile_padding_mask, h_offset=h_off, w_offset=w_off,
+                            tile_latent,
+                            t_expand,
+                            negative_embed,
+                            padding_mask=tile_padding_mask,
+                            h_offset=h_off,
+                            w_offset=w_off,
                         )
-                    uncond_noise_acc[:, :, :, y : y + tile_h, x : x + tile_w] += uncond_tile_pred * bw
+                    uncond_noise_acc[:, :, :, y : y + tile_h, x : x + tile_w] += (
+                        uncond_tile_pred * bw
+                    )
                     uncond_weight_acc[:, :, :, y : y + tile_h, x : x + tile_w] += bw
 
             noise_pred = noise_acc / weight_acc
             if do_cfg:
                 uncond_noise_pred = uncond_noise_acc / uncond_weight_acc
-                noise_pred = uncond_noise_pred + args.guidance_scale * (noise_pred - uncond_noise_pred)
+                noise_pred = uncond_noise_pred + args.guidance_scale * (
+                    noise_pred - uncond_noise_pred
+                )
 
             if er_sde is not None:
                 denoised = latents.float() - sigmas[i] * noise_pred.float()
                 latents = er_sde.step(latents, denoised, i).to(latents.dtype)
             else:
-                latents = inference_utils.step(latents, noise_pred, sigmas, i).to(latents.dtype)
+                latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
+                    latents.dtype
+                )
             pbar.update()
 
     # P-GRAFT: restore LoRA for next generation
@@ -798,7 +1026,9 @@ def generate_body(
     # Dispatch to tiled diffusion if enabled and latent exceeds tile size
     h_latent = height // 8
     w_latent = width // 8
-    if getattr(args, "tiled_diffusion", False) and (h_latent > args.tile_size or w_latent > args.tile_size):
+    if getattr(args, "tiled_diffusion", False) and (
+        h_latent > args.tile_size or w_latent > args.tile_size
+    ):
         return generate_body_tiled(args, anima, context, context_null, device, seed)
 
     logger.info(f"Image size: {height}x{width} (HxW), infer_steps: {args.infer_steps}")
@@ -827,14 +1057,20 @@ def generate_body(
     bs = latents.shape[0]
     h_latent = latents.shape[-2]
     w_latent = latents.shape[-1]
-    padding_mask = torch.zeros(bs, 1, h_latent, w_latent, dtype=torch.bfloat16, device=device)
+    padding_mask = torch.zeros(
+        bs, 1, h_latent, w_latent, dtype=torch.bfloat16, device=device
+    )
 
-    logger.info(f"Embed: {embed.shape}, negative_embed: {negative_embed.shape}, latents: {latents.shape}")
+    logger.info(
+        f"Embed: {embed.shape}, negative_embed: {negative_embed.shape}, latents: {latents.shape}"
+    )
     embed = embed.to(torch.bfloat16)
     negative_embed = negative_embed.to(torch.bfloat16)
 
     # Prepare timesteps
-    timesteps, sigmas = inference_utils.get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
+    timesteps, sigmas = inference_utils.get_timesteps_sigmas(
+        args.infer_steps, args.flow_shift, device
+    )
     timesteps /= 1000  # scale to [0,1] range
     timesteps = timesteps.to(device, dtype=torch.bfloat16)
 
@@ -848,32 +1084,56 @@ def generate_body(
     autocast_enabled = args.fp8
 
     # P-GRAFT: get network reference for mid-denoising cutoff
-    pgraft_network = getattr(anima, '_pgraft_network', None)
-    lora_cutoff_step = getattr(args, 'lora_cutoff_step', None)
+    pgraft_network = getattr(anima, "_pgraft_network", None)
+    lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
 
     with tqdm(total=len(timesteps), desc="Denoising steps") as pbar:
         for i, t in enumerate(timesteps):
             # P-GRAFT: disable LoRA at cutoff step (reference model takes over)
-            if pgraft_network is not None and lora_cutoff_step is not None and i == lora_cutoff_step:
+            if (
+                pgraft_network is not None
+                and lora_cutoff_step is not None
+                and i == lora_cutoff_step
+            ):
                 pgraft_network.set_enabled(False)
                 logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}")
 
             t_expand = t.expand(latents.shape[0])
 
-            with torch.no_grad(), torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=autocast_enabled):
+            with (
+                torch.no_grad(),
+                torch.autocast(
+                    device_type=device.type,
+                    dtype=torch.bfloat16,
+                    enabled=autocast_enabled,
+                ),
+            ):
                 noise_pred = anima(latents, t_expand, embed, padding_mask=padding_mask)
 
             if do_cfg:
-                with torch.no_grad(), torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=autocast_enabled):
-                    uncond_noise_pred = anima(latents, t_expand, negative_embed, padding_mask=padding_mask)
-                noise_pred = uncond_noise_pred + args.guidance_scale * (noise_pred - uncond_noise_pred)
+                with (
+                    torch.no_grad(),
+                    torch.autocast(
+                        device_type=device.type,
+                        dtype=torch.bfloat16,
+                        enabled=autocast_enabled,
+                    ),
+                ):
+                    uncond_noise_pred = anima(
+                        latents, t_expand, negative_embed, padding_mask=padding_mask
+                    )
+                noise_pred = uncond_noise_pred + args.guidance_scale * (
+                    noise_pred - uncond_noise_pred
+                )
 
             # ensure latents dtype is consistent
             if er_sde is not None:
                 denoised = latents.float() - sigmas[i] * noise_pred.float()
                 latents = er_sde.step(latents, denoised, i).to(latents.dtype)
             else:
-                latents = inference_utils.step(latents, noise_pred, sigmas, i).to(latents.dtype)
+                latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
+                    latents.dtype
+                )
 
             pbar.update()
 
@@ -885,10 +1145,14 @@ def generate_body(
 
 
 def get_time_flag():
-    return datetime.datetime.fromtimestamp(time.time()).strftime("%Y%m%d-%H%M%S-%f")[:-3]
+    return datetime.datetime.fromtimestamp(time.time()).strftime("%Y%m%d-%H%M%S-%f")[
+        :-3
+    ]
 
 
-def save_latent(latent: torch.Tensor, args: argparse.Namespace, height: int, width: int) -> str:
+def save_latent(
+    latent: torch.Tensor, args: argparse.Namespace, height: int, width: int
+) -> str:
     """Save latent to file
 
     Args:
@@ -930,7 +1194,11 @@ def save_latent(latent: torch.Tensor, args: argparse.Namespace, height: int, wid
     return latent_path
 
 
-def save_images(sample: torch.Tensor, args: argparse.Namespace, original_base_name: Optional[str] = None) -> str:
+def save_images(
+    sample: torch.Tensor,
+    args: argparse.Namespace,
+    original_base_name: Optional[str] = None,
+) -> str:
     """Save images to directory
 
     Args:
@@ -1013,7 +1281,9 @@ def save_output(
         save_images(image, args, original_name)
 
 
-def preprocess_prompts_for_batch(prompt_lines: List[str], base_args: argparse.Namespace) -> List[Dict]:
+def preprocess_prompts_for_batch(
+    prompt_lines: List[str], base_args: argparse.Namespace
+) -> List[Dict]:
     """Process multiple prompts for batch mode
 
     Args:
@@ -1052,7 +1322,9 @@ def load_shared_models(args: argparse.Namespace) -> Dict:
     shared_models = {}
     # Load text encoders to CPU
     text_encoder_dtype = torch.bfloat16  # Default dtype for Text Encoder
-    text_encoder = load_text_encoder(args, dtype=text_encoder_dtype, device=torch.device("cpu"))
+    text_encoder = load_text_encoder(
+        args, dtype=text_encoder_dtype, device=torch.device("cpu")
+    )
     shared_models["text_encoder"] = text_encoder
     return shared_models
 
@@ -1075,12 +1347,18 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
     # 1. Prepare VAE
     logger.info("Loading VAE for batch generation...")
     vae_for_batch = qwen_image_autoencoder_kl.load_vae(
-        args.vae, device="cpu", disable_mmap=True, spatial_chunk_size=args.vae_chunk_size, disable_cache=args.vae_disable_cache
+        args.vae,
+        device="cpu",
+        disable_mmap=True,
+        spatial_chunk_size=args.vae_chunk_size,
+        disable_cache=args.vae_disable_cache,
     )
     vae_for_batch.to(device, dtype=torch.bfloat16)
     vae_for_batch.eval()
 
-    all_prompt_args_list = [apply_overrides(args, pd) for pd in prompts_data]  # Create all arg instances first
+    all_prompt_args_list = [
+        apply_overrides(args, pd) for pd in prompts_data
+    ]  # Create all arg instances first
     for prompt_args in all_prompt_args_list:
         check_inputs(prompt_args)  # Validate each prompt's height/width
 
@@ -1088,7 +1366,9 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
     logger.info("Loading DiT model for batch generation...")
     # Use args from the first prompt for DiT loading (LoRA etc. should be consistent for a batch)
     first_prompt_args = all_prompt_args_list[0]
-    anima = load_dit_model(first_prompt_args, device, dit_weight_dtype)  # Load directly to target device if possible
+    anima = load_dit_model(
+        first_prompt_args, device, dit_weight_dtype
+    )  # Load directly to target device if possible
 
     shared_models_for_generate = {"model": anima}  # Pass DiT via shared_models
 
@@ -1097,7 +1377,9 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
 
     # Text Encoder loaded to CPU by load_text_encoder
     text_encoder_dtype = torch.bfloat16  # Default dtype for Text Encoder
-    text_encoder_batch = load_text_encoder(args, dtype=text_encoder_dtype, device=torch.device("cpu"))
+    text_encoder_batch = load_text_encoder(
+        args, dtype=text_encoder_dtype, device=torch.device("cpu")
+    )
 
     # Text Encoder to device for this phase
     text_encoder_device = torch.device("cpu") if args.text_encoder_cpu else device
@@ -1113,10 +1395,14 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
     }
 
     for i, prompt_args_item in enumerate(all_prompt_args_list):
-        logger.info(f"Text preprocessing for prompt {i+1}/{len(all_prompt_args_list)}: {prompt_args_item.prompt}")
+        logger.info(
+            f"Text preprocessing for prompt {i + 1}/{len(all_prompt_args_list)}: {prompt_args_item.prompt}"
+        )
 
         # prepare_text_inputs will move text_encoders to device temporarily
-        context, context_null = prepare_text_inputs(prompt_args_item, device, anima, temp_shared_models_txt)
+        context, context_null = prepare_text_inputs(
+            prompt_args_item, device, anima, temp_shared_models_txt
+        )
         text_data = {"context": context, "context_null": context_null}
         all_precomputed_text_data.append(text_data)
 
@@ -1137,7 +1423,9 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         else:
             groups.append((key, [i]))
 
-    logger.info(f"Generating latents: {len(all_prompt_args_list)} prompts in {len(groups)} group(s) (batch_size={infer_batch_size})")
+    logger.info(
+        f"Generating latents: {len(all_prompt_args_list)} prompts in {len(groups)} group(s) (batch_size={infer_batch_size})"
+    )
 
     anima: anima_models.Anima = shared_models_for_generate["model"]
 
@@ -1168,57 +1456,107 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
 
                 num_channels_latents = anima_models.Anima.LATENT_CHANNELS
                 single_shape = (1, num_channels_latents, 1, height // 8, width // 8)
-                latent_list = [randn_tensor(single_shape, generator=g, device=device, dtype=torch.bfloat16) for g in seed_generators]
+                latent_list = [
+                    randn_tensor(
+                        single_shape, generator=g, device=device, dtype=torch.bfloat16
+                    )
+                    for g in seed_generators
+                ]
                 latents = torch.cat(latent_list, dim=0)  # (B, C, T, H, W)
 
                 bs = batch_size
                 h_latent = latents.shape[-2]
                 w_latent = latents.shape[-1]
-                padding_mask = torch.zeros(bs, 1, h_latent, w_latent, dtype=torch.bfloat16, device=device)
+                padding_mask = torch.zeros(
+                    bs, 1, h_latent, w_latent, dtype=torch.bfloat16, device=device
+                )
 
                 # Expand shared text embeddings to batch
-                embed = first_text_data["context"]["embed"][0].to(device, dtype=torch.bfloat16)
-                context_null = first_text_data.get("context_null") or first_text_data["context"]
-                negative_embed = context_null["embed"][0].to(device, dtype=torch.bfloat16)
+                embed = first_text_data["context"]["embed"][0].to(
+                    device, dtype=torch.bfloat16
+                )
+                context_null = (
+                    first_text_data.get("context_null") or first_text_data["context"]
+                )
+                negative_embed = context_null["embed"][0].to(
+                    device, dtype=torch.bfloat16
+                )
                 embed = embed.expand(bs, -1, -1)
                 negative_embed = negative_embed.expand(bs, -1, -1)
 
-                timesteps, sigmas = inference_utils.get_timesteps_sigmas(first_args.infer_steps, first_args.flow_shift, device)
+                timesteps, sigmas = inference_utils.get_timesteps_sigmas(
+                    first_args.infer_steps, first_args.flow_shift, device
+                )
                 timesteps = (timesteps / 1000).to(device, dtype=torch.bfloat16)
 
                 # Create sampler
                 er_sde = None
                 if first_args.sampler == "er_sde":
-                    er_sde = inference_utils.ERSDESampler(sigmas, seed=first_args.seed, device=device)
+                    er_sde = inference_utils.ERSDESampler(
+                        sigmas, seed=first_args.seed, device=device
+                    )
 
                 do_cfg = first_args.guidance_scale != 1.0
                 autocast_enabled = first_args.fp8
 
                 # P-GRAFT: get network reference for mid-denoising cutoff
-                pgraft_network = getattr(anima, '_pgraft_network', None)
-                lora_cutoff_step = getattr(first_args, 'lora_cutoff_step', None)
+                pgraft_network = getattr(anima, "_pgraft_network", None)
+                lora_cutoff_step = getattr(first_args, "lora_cutoff_step", None)
 
-                with tqdm(total=len(timesteps), desc=f"Denoising ({bs}x batch)") as pbar:
+                with tqdm(
+                    total=len(timesteps), desc=f"Denoising ({bs}x batch)"
+                ) as pbar:
                     for step_i, t in enumerate(timesteps):
-                        if pgraft_network is not None and lora_cutoff_step is not None and step_i == lora_cutoff_step:
+                        if (
+                            pgraft_network is not None
+                            and lora_cutoff_step is not None
+                            and step_i == lora_cutoff_step
+                        ):
                             pgraft_network.set_enabled(False)
-                            logger.info(f"P-GRAFT: Disabled LoRA at step {step_i}/{len(timesteps)}")
+                            logger.info(
+                                f"P-GRAFT: Disabled LoRA at step {step_i}/{len(timesteps)}"
+                            )
 
                         t_expand = t.expand(bs)
 
-                        with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=autocast_enabled):
-                            noise_pred = anima(latents, t_expand, embed, padding_mask=padding_mask)
+                        with torch.autocast(
+                            device_type=device.type,
+                            dtype=torch.bfloat16,
+                            enabled=autocast_enabled,
+                        ):
+                            noise_pred = anima(
+                                latents, t_expand, embed, padding_mask=padding_mask
+                            )
 
                         if do_cfg:
-                            with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=autocast_enabled):
-                                uncond_noise_pred = anima(latents, t_expand, negative_embed, padding_mask=padding_mask)
-                            noise_pred = uncond_noise_pred + first_args.guidance_scale * (noise_pred - uncond_noise_pred)
+                            with torch.autocast(
+                                device_type=device.type,
+                                dtype=torch.bfloat16,
+                                enabled=autocast_enabled,
+                            ):
+                                uncond_noise_pred = anima(
+                                    latents,
+                                    t_expand,
+                                    negative_embed,
+                                    padding_mask=padding_mask,
+                                )
+                            noise_pred = (
+                                uncond_noise_pred
+                                + first_args.guidance_scale
+                                * (noise_pred - uncond_noise_pred)
+                            )
 
                         if er_sde is not None:
-                            denoised = latents.float() - sigmas[step_i] * noise_pred.float()
-                            latents = er_sde.step(latents, denoised, step_i).to(latents.dtype)
+                            denoised = (
+                                latents.float() - sigmas[step_i] * noise_pred.float()
+                            )
+                            latents = er_sde.step(latents, denoised, step_i).to(
+                                latents.dtype
+                            )
                         else:
-                            latents = inference_utils.step(latents, noise_pred, sigmas, step_i).to(latents.dtype)
+                            latents = inference_utils.step(
+                                latents, noise_pred, sigmas, step_i
+                            ).to(latents.dtype)
                         pbar.update()
 
                 # P-GRAFT: restore LoRA for next group
@@ -1229,12 +1567,20 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                 for j, idx in enumerate(indices):
                     single_latent = latents[j : j + 1]  # keep batch dim
                     all_prompt_args_list[idx].seed = seeds[j]  # store seed for saving
-                    if all_prompt_args_list[idx].output_type in ["latent", "latent_images"]:
-                        save_latent(single_latent, all_prompt_args_list[idx], height, width)
+                    if all_prompt_args_list[idx].output_type in [
+                        "latent",
+                        "latent_images",
+                    ]:
+                        save_latent(
+                            single_latent, all_prompt_args_list[idx], height, width
+                        )
                     group_latents.append((idx, single_latent))
 
             except Exception as e:
-                logger.error(f"Error generating batch for prompt: {first_args.prompt}. Error: {e}", exc_info=True)
+                logger.error(
+                    f"Error generating batch for prompt: {first_args.prompt}. Error: {e}",
+                    exc_info=True,
+                )
                 continue
 
             # Decode and save this group's latents immediately
@@ -1267,7 +1613,11 @@ def process_interactive(args: argparse.Namespace) -> None:
     shared_models["conds_cache"] = {}  # Initialize empty cache for interactive mode
 
     vae = qwen_image_autoencoder_kl.load_vae(
-        args.vae, device="cpu", disable_mmap=True, spatial_chunk_size=args.vae_chunk_size, disable_cache=args.vae_disable_cache
+        args.vae,
+        device="cpu",
+        disable_mmap=True,
+        spatial_chunk_size=args.vae_chunk_size,
+        disable_cache=args.vae_disable_cache,
     )
     vae.to(torch.bfloat16)
     vae.eval()
@@ -1297,7 +1647,10 @@ def process_interactive(args: argparse.Namespace) -> None:
                 line = input_line("> ")
                 if not line.strip():
                     continue
-                if len(line.strip()) == 1 and line.strip() in ["\x04", "\x1a"]:  # Ctrl+D or Ctrl+Z with prompt_toolkit
+                if len(line.strip()) == 1 and line.strip() in [
+                    "\x04",
+                    "\x1a",
+                ]:  # Ctrl+D or Ctrl+Z with prompt_toolkit
                     raise EOFError  # Exit on Ctrl+D or Ctrl+Z
 
                 # Parse prompt
@@ -1329,11 +1682,15 @@ def get_generation_settings(args: argparse.Namespace) -> GenerationSettings:
 
     dit_weight_dtype = torch.bfloat16  # default
     if args.fp8_scaled:
-        dit_weight_dtype = None  # various precision weights, so don't cast to specific dtype
+        dit_weight_dtype = (
+            None  # various precision weights, so don't cast to specific dtype
+        )
     elif args.fp8:
         dit_weight_dtype = torch.float8_e4m3fn
 
-    logger.info(f"Using device: {device}, DiT weight weight precision: {dit_weight_dtype}")
+    logger.info(
+        f"Using device: {device}, DiT weight weight precision: {dit_weight_dtype}"
+    )
 
     gen_settings = GenerationSettings(device=device, dit_weight_dtype=dit_weight_dtype)
     return gen_settings
@@ -1347,7 +1704,13 @@ def main():
     latents_mode = args.latent_path is not None and len(args.latent_path) > 0
 
     # Set device
-    device = args.device if args.device is not None else "cuda" if torch.cuda.is_available() else "cpu"
+    device = (
+        args.device
+        if args.device is not None
+        else "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
+    )
     device = torch.device(device)
     logger.info(f"Using device: {device}")
     args.device = device
@@ -1361,7 +1724,9 @@ def main():
         # assert len(args.latent_path) == 1, "Only one latent path is supported for now"
 
         for latent_path in args.latent_path:
-            original_base_names.append(os.path.splitext(os.path.basename(latent_path))[0])
+            original_base_names.append(
+                os.path.splitext(os.path.basename(latent_path))[0]
+            )
             seed = 0
 
             if os.path.splitext(latent_path)[1] != ".safetensors":
@@ -1405,7 +1770,10 @@ def main():
 
     else:
         tokenize_strategy = strategy_anima.AnimaTokenizeStrategy(
-            qwen3_path=args.text_encoder, t5_tokenizer_path=None, qwen3_max_length=512, t5_max_length=512
+            qwen3_path=args.text_encoder,
+            t5_tokenizer_path=None,
+            qwen3_max_length=512,
+            t5_max_length=512,
         )
         strategy_base.TokenizeStrategy.set_strategy(tokenize_strategy)
 

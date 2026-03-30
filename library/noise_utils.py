@@ -21,7 +21,9 @@ def time_shift(mu: float, sigma: float, t: torch.Tensor):
     return math.exp(mu) / (math.exp(mu) + (1 / t - 1) ** sigma)
 
 
-def get_lin_function(x1: float = 256, y1: float = 0.5, x2: float = 4096, y2: float = 1.15) -> Callable[[float], float]:
+def get_lin_function(
+    x1: float = 256, y1: float = 0.5, x2: float = 4096, y2: float = 1.15
+) -> Callable[[float], float]:
     m = (y2 - y1) / (x2 - x1)
     b = y1 - m * x1
     return lambda x: m * x + b
@@ -51,14 +53,20 @@ def get_sigmas(noise_scheduler, timesteps, device, n_dim=4, dtype=torch.float32)
 
 
 def compute_density_for_timestep_sampling(
-    weighting_scheme: str, batch_size: int, logit_mean: float = None, logit_std: float = None, mode_scale: float = None
+    weighting_scheme: str,
+    batch_size: int,
+    logit_mean: float = None,
+    logit_std: float = None,
+    mode_scale: float = None,
 ):
     """Compute the density for sampling the timesteps when doing flow-matching training.
 
     SD3 paper reference: https://arxiv.org/abs/2403.03206v1.
     """
     if weighting_scheme == "logit_normal":
-        u = torch.normal(mean=logit_mean, std=logit_std, size=(batch_size,), device="cpu")
+        u = torch.normal(
+            mean=logit_mean, std=logit_std, size=(batch_size,), device="cpu"
+        )
         u = torch.nn.functional.sigmoid(u)
     elif weighting_scheme == "mode":
         u = torch.rand(size=(batch_size,), device="cpu")
@@ -88,7 +96,9 @@ def get_noisy_model_input_and_timesteps(
     num_timesteps = noise_scheduler.config.num_train_timesteps
     if args.timestep_sampling == "uniform" or args.timestep_sampling == "sigmoid":
         if args.timestep_sampling == "sigmoid":
-            sigmas = torch.sigmoid(args.sigmoid_scale * torch.randn((bsz,), device=device))
+            sigmas = torch.sigmoid(
+                args.sigmoid_scale * torch.randn((bsz,), device=device)
+            )
         else:
             sigmas = torch.rand((bsz,), device=device)
         timesteps = sigmas * num_timesteps
@@ -116,7 +126,9 @@ def get_noisy_model_input_and_timesteps(
         )
         indices = (u * num_timesteps).long()
         timesteps = noise_scheduler.timesteps[indices].to(device=device)
-        sigmas = get_sigmas(noise_scheduler, timesteps, device, n_dim=latents.ndim, dtype=dtype)
+        sigmas = get_sigmas(
+            noise_scheduler, timesteps, device, n_dim=latents.ndim, dtype=dtype
+        )
 
     # Restrict sigma range (P-GRAFT-inspired timestep restriction)
     t_min = getattr(args, "t_min", None)
@@ -128,16 +140,22 @@ def get_noisy_model_input_and_timesteps(
         timesteps = sigmas * num_timesteps
 
     # Broadcast sigmas to latent shape
-    sigmas = sigmas.view(-1, 1, 1, 1) if latents.ndim == 4 else sigmas.view(-1, 1, 1, 1, 1)
+    sigmas = (
+        sigmas.view(-1, 1, 1, 1) if latents.ndim == 4 else sigmas.view(-1, 1, 1, 1, 1)
+    )
 
     # Add noise to the latents according to the noise magnitude at each timestep
     if args.ip_noise_gamma:
         xi = torch.randn_like(latents, device=latents.device, dtype=dtype)
         if args.ip_noise_gamma_random_strength:
-            ip_noise_gamma = torch.rand(1, device=latents.device, dtype=dtype) * args.ip_noise_gamma
+            ip_noise_gamma = (
+                torch.rand(1, device=latents.device, dtype=dtype) * args.ip_noise_gamma
+            )
         else:
             ip_noise_gamma = args.ip_noise_gamma
-        noisy_model_input = (1.0 - sigmas) * latents + sigmas * (noise + ip_noise_gamma * xi)
+        noisy_model_input = (1.0 - sigmas) * latents + sigmas * (
+            noise + ip_noise_gamma * xi
+        )
     else:
         noisy_model_input = (1.0 - sigmas) * latents + sigmas * noise
 
@@ -152,7 +170,9 @@ def apply_model_prediction_type(args, model_pred, noisy_model_input, sigmas):
         model_pred = model_pred + noisy_model_input
     elif args.model_prediction_type == "sigma_scaled":
         model_pred = model_pred * (-sigmas) + noisy_model_input
-        weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
+        weighting = compute_loss_weighting_for_sd3(
+            weighting_scheme=args.weighting_scheme, sigmas=sigmas
+        )
     return model_pred, weighting
 
 
@@ -183,7 +203,9 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         shift: float = 1.0,
     ):
-        timesteps = np.linspace(1, num_train_timesteps, num_train_timesteps, dtype=np.float32)[::-1].copy()
+        timesteps = np.linspace(
+            1, num_train_timesteps, num_train_timesteps, dtype=np.float32
+        )[::-1].copy()
         timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
 
         sigmas = timesteps / num_train_timesteps
@@ -226,10 +248,16 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def _sigma_to_t(self, sigma):
         return sigma * self.config.num_train_timesteps
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self, num_inference_steps: int, device: Union[str, torch.device] = None
+    ):
         self.num_inference_steps = num_inference_steps
 
-        timesteps = np.linspace(self._sigma_to_t(self.sigma_max), self._sigma_to_t(self.sigma_min), num_inference_steps)
+        timesteps = np.linspace(
+            self._sigma_to_t(self.sigma_max),
+            self._sigma_to_t(self.sigma_min),
+            num_inference_steps,
+        )
 
         sigmas = timesteps / self.config.num_train_timesteps
         sigmas = self.config.shift * sigmas / (1 + (self.config.shift - 1) * sigmas)
@@ -272,7 +300,11 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[FlowMatchEulerDiscreteSchedulerOutput, Tuple]:
-        if isinstance(timestep, int) or isinstance(timestep, torch.IntTensor) or isinstance(timestep, torch.LongTensor):
+        if (
+            isinstance(timestep, int)
+            or isinstance(timestep, torch.IntTensor)
+            or isinstance(timestep, torch.LongTensor)
+        ):
             raise ValueError(
                 (
                     "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
@@ -288,9 +320,18 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         sigma = self.sigmas[self.step_index]
 
-        gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
+        gamma = (
+            min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1)
+            if s_tmin <= sigma <= s_tmax
+            else 0.0
+        )
 
-        noise = randn_tensor(model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator)
+        noise = randn_tensor(
+            model_output.shape,
+            dtype=model_output.dtype,
+            device=model_output.device,
+            generator=generator,
+        )
 
         eps = noise * s_noise
         sigma_hat = sigma * (gamma + 1)

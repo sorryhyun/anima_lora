@@ -1,14 +1,16 @@
 import logging
 import sys
 import threading
-from typing import *
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from torchvision import transforms
 from diffusers import EulerAncestralDiscreteScheduler
 import diffusers.schedulers.scheduling_euler_ancestral_discrete
-from diffusers.schedulers.scheduling_euler_ancestral_discrete import EulerAncestralDiscreteSchedulerOutput
+from diffusers.schedulers.scheduling_euler_ancestral_discrete import (
+    EulerAncestralDiscreteSchedulerOutput,
+)
 import cv2
 from PIL import Image
 import numpy as np
@@ -35,7 +37,11 @@ def add_logging_arguments(parser):
         default=None,
         help="Log to a file instead of stderr / 標準エラー出力ではなくファイルにログを出力する",
     )
-    parser.add_argument("--console_log_simple", action="store_true", help="Simple log output / シンプルなログ出力")
+    parser.add_argument(
+        "--console_log_simple",
+        action="store_true",
+        help="Simple log output / シンプルなログ出力",
+    )
 
 
 def setup_logging(args=None, log_level=None, reset=False):
@@ -63,7 +69,6 @@ def setup_logging(args=None, log_level=None, reset=False):
             try:
                 from rich.logging import RichHandler
                 from rich.console import Console
-                from rich.logging import RichHandler
 
                 handler = RichHandler(console=Console(stderr=True))
             except ImportError:
@@ -99,23 +104,42 @@ def swap_weight_devices(layer_to_cpu: nn.Module, layer_to_cuda: nn.Module):
     assert layer_to_cpu.__class__ == layer_to_cuda.__class__
 
     weight_swap_jobs = []
-    for module_to_cpu, module_to_cuda in zip(layer_to_cpu.modules(), layer_to_cuda.modules()):
+    for module_to_cpu, module_to_cuda in zip(
+        layer_to_cpu.modules(), layer_to_cuda.modules()
+    ):
         if hasattr(module_to_cpu, "weight") and module_to_cpu.weight is not None:
-            weight_swap_jobs.append((module_to_cpu, module_to_cuda, module_to_cpu.weight.data, module_to_cuda.weight.data))
+            weight_swap_jobs.append(
+                (
+                    module_to_cpu,
+                    module_to_cuda,
+                    module_to_cpu.weight.data,
+                    module_to_cuda.weight.data,
+                )
+            )
 
     torch.cuda.current_stream().synchronize()  # this prevents the illegal loss value
 
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):
         # cuda to cpu
-        for module_to_cpu, module_to_cuda, cuda_data_view, cpu_data_view in weight_swap_jobs:
+        for (
+            module_to_cpu,
+            module_to_cuda,
+            cuda_data_view,
+            cpu_data_view,
+        ) in weight_swap_jobs:
             cuda_data_view.record_stream(stream)
             module_to_cpu.weight.data = cuda_data_view.data.to("cpu", non_blocking=True)
 
         stream.synchronize()
 
         # cpu to cuda
-        for module_to_cpu, module_to_cuda, cuda_data_view, cpu_data_view in weight_swap_jobs:
+        for (
+            module_to_cpu,
+            module_to_cuda,
+            cuda_data_view,
+            cpu_data_view,
+        ) in weight_swap_jobs:
             cuda_data_view.copy_(module_to_cuda.weight.data, non_blocking=True)
             module_to_cuda.weight.data = cuda_data_view
 
@@ -129,7 +153,9 @@ def weighs_to_device(layer: nn.Module, device: torch.device):
             module.weight.data = module.weight.data.to(device, non_blocking=True)
 
 
-def str_to_dtype(s: Optional[str], default_dtype: Optional[torch.dtype] = None) -> torch.dtype:
+def str_to_dtype(
+    s: Optional[str], default_dtype: Optional[torch.dtype] = None
+) -> torch.dtype:
     """
     Convert a string to a torch.dtype
 
@@ -331,7 +357,16 @@ def validate_interpolation_fn(interpolation_str: str) -> bool:
     """
     Check if a interpolation function is supported
     """
-    return interpolation_str in ["lanczos", "nearest", "bilinear", "linear", "bicubic", "cubic", "area", "box"]
+    return interpolation_str in [
+        "lanczos",
+        "nearest",
+        "bilinear",
+        "linear",
+        "bicubic",
+        "cubic",
+        "area",
+        "box",
+    ]
 
 
 # endregion
@@ -374,7 +409,9 @@ class GradualLatent:
     def apply_unshark_mask(self, x: torch.Tensor):
         if self.gaussian_blur_ksize is None:
             return x
-        blurred = transforms.functional.gaussian_blur(x, self.gaussian_blur_ksize, self.gaussian_blur_sigma)
+        blurred = transforms.functional.gaussian_blur(
+            x, self.gaussian_blur_ksize, self.gaussian_blur_sigma
+        )
         # mask = torch.sigmoid((x - blurred) * self.gaussian_blur_strength)
         mask = (x - blurred) * self.gaussian_blur_strength
         sharpened = x + mask
@@ -385,7 +422,9 @@ class GradualLatent:
         if org_dtype == torch.bfloat16:
             x = x.float()
 
-        x = torch.nn.functional.interpolate(x, size=resized_size, mode="bicubic", align_corners=False).to(dtype=org_dtype)
+        x = torch.nn.functional.interpolate(
+            x, size=resized_size, mode="bicubic", align_corners=False
+        ).to(dtype=org_dtype)
 
         # apply unsharp mask / アンシャープマスクを適用する
         if unsharp and self.gaussian_blur_ksize:
@@ -437,7 +476,11 @@ class EulerAncestralDiscreteSchedulerGL(EulerAncestralDiscreteScheduler):
 
         """
 
-        if isinstance(timestep, int) or isinstance(timestep, torch.IntTensor) or isinstance(timestep, torch.LongTensor):
+        if (
+            isinstance(timestep, int)
+            or isinstance(timestep, torch.IntTensor)
+            or isinstance(timestep, torch.LongTensor)
+        ):
             raise ValueError(
                 (
                     "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
@@ -463,7 +506,9 @@ class EulerAncestralDiscreteSchedulerGL(EulerAncestralDiscreteScheduler):
             pred_original_sample = sample - sigma * model_output
         elif self.config.prediction_type == "v_prediction":
             # * c_out + input * c_skip
-            pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
+            pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (
+                sample / (sigma**2 + 1)
+            )
         elif self.config.prediction_type == "sample":
             raise NotImplementedError("prediction_type not implemented yet: sample")
         else:
@@ -485,27 +530,50 @@ class EulerAncestralDiscreteSchedulerGL(EulerAncestralDiscreteScheduler):
         if self.resized_size is None:
             prev_sample = sample + derivative * dt
 
-            noise = diffusers.schedulers.scheduling_euler_ancestral_discrete.randn_tensor(
-                model_output.shape, dtype=model_output.dtype, device=device, generator=generator
+            noise = (
+                diffusers.schedulers.scheduling_euler_ancestral_discrete.randn_tensor(
+                    model_output.shape,
+                    dtype=model_output.dtype,
+                    device=device,
+                    generator=generator,
+                )
             )
             s_noise = 1.0
         else:
-            print("resized_size", self.resized_size, "model_output.shape", model_output.shape, "sample.shape", sample.shape)
+            print(
+                "resized_size",
+                self.resized_size,
+                "model_output.shape",
+                model_output.shape,
+                "sample.shape",
+                sample.shape,
+            )
             s_noise = self.gradual_latent.s_noise
 
             if self.gradual_latent.unsharp_target_x:
                 prev_sample = sample + derivative * dt
-                prev_sample = self.gradual_latent.interpolate(prev_sample, self.resized_size)
+                prev_sample = self.gradual_latent.interpolate(
+                    prev_sample, self.resized_size
+                )
             else:
                 sample = self.gradual_latent.interpolate(sample, self.resized_size)
-                derivative = self.gradual_latent.interpolate(derivative, self.resized_size, unsharp=False)
+                derivative = self.gradual_latent.interpolate(
+                    derivative, self.resized_size, unsharp=False
+                )
                 prev_sample = sample + derivative * dt
 
-            noise = diffusers.schedulers.scheduling_euler_ancestral_discrete.randn_tensor(
-                (model_output.shape[0], model_output.shape[1], self.resized_size[0], self.resized_size[1]),
-                dtype=model_output.dtype,
-                device=device,
-                generator=generator,
+            noise = (
+                diffusers.schedulers.scheduling_euler_ancestral_discrete.randn_tensor(
+                    (
+                        model_output.shape[0],
+                        model_output.shape[1],
+                        self.resized_size[0],
+                        self.resized_size[1],
+                    ),
+                    dtype=model_output.dtype,
+                    device=device,
+                    generator=generator,
+                )
             )
 
         prev_sample = prev_sample + noise * sigma_up * s_noise
@@ -516,7 +584,9 @@ class EulerAncestralDiscreteSchedulerGL(EulerAncestralDiscreteScheduler):
         if not return_dict:
             return (prev_sample,)
 
-        return EulerAncestralDiscreteSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        return EulerAncestralDiscreteSchedulerOutput(
+            prev_sample=prev_sample, pred_original_sample=pred_original_sample
+        )
 
 
 # endregion

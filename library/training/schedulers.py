@@ -41,10 +41,14 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
     name = args.lr_scheduler
     num_training_steps = args.max_train_steps * num_processes
     num_warmup_steps: Optional[int] = (
-        int(args.lr_warmup_steps * num_training_steps) if isinstance(args.lr_warmup_steps, float) else args.lr_warmup_steps
+        int(args.lr_warmup_steps * num_training_steps)
+        if isinstance(args.lr_warmup_steps, float)
+        else args.lr_warmup_steps
     )
     num_decay_steps: Optional[int] = (
-        int(args.lr_decay_steps * num_training_steps) if isinstance(args.lr_decay_steps, float) else args.lr_decay_steps
+        int(args.lr_decay_steps * num_training_steps)
+        if isinstance(args.lr_decay_steps, float)
+        else args.lr_decay_steps
     )
     num_stable_steps = num_training_steps - num_warmup_steps - num_decay_steps
     num_cycles = args.lr_scheduler_num_cycles
@@ -61,7 +65,9 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
 
     def wrap_check_needless_num_warmup_steps(return_vals):
         if num_warmup_steps is not None and num_warmup_steps != 0:
-            raise ValueError(f"{name} does not require `num_warmup_steps`. Set None or 0.")
+            raise ValueError(
+                f"{name} does not require `num_warmup_steps`. Set None or 0."
+            )
         return return_vals
 
     if args.lr_scheduler_type:
@@ -78,11 +84,13 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
         return wrap_check_needless_num_warmup_steps(lr_scheduler)
 
     if name.startswith("adafactor"):
-        assert (
-            type(optimizer) == transformers.optimization.Adafactor
-        ), "adafactor scheduler must be used with Adafactor optimizer"
+        assert isinstance(optimizer, transformers.optimization.Adafactor), (
+            "adafactor scheduler must be used with Adafactor optimizer"
+        )
         initial_lr = float(name.split(":")[1])
-        return wrap_check_needless_num_warmup_steps(transformers.optimization.AdafactorSchedule(optimizer, initial_lr))
+        return wrap_check_needless_num_warmup_steps(
+            transformers.optimization.AdafactorSchedule(optimizer, initial_lr)
+        )
 
     if name == DiffusersSchedulerType.PIECEWISE_CONSTANT.value:
         name = DiffusersSchedulerType(name)
@@ -93,19 +101,32 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
     schedule_func = TYPE_TO_SCHEDULER_FUNCTION[name]
 
     if name == SchedulerType.CONSTANT:
-        return wrap_check_needless_num_warmup_steps(schedule_func(optimizer, **lr_scheduler_kwargs))
+        return wrap_check_needless_num_warmup_steps(
+            schedule_func(optimizer, **lr_scheduler_kwargs)
+        )
 
     if num_warmup_steps is None:
-        raise ValueError(f"{name} requires `num_warmup_steps`, please provide that argument.")
+        raise ValueError(
+            f"{name} requires `num_warmup_steps`, please provide that argument."
+        )
 
     if name == SchedulerType.CONSTANT_WITH_WARMUP:
-        return schedule_func(optimizer, num_warmup_steps=num_warmup_steps, **lr_scheduler_kwargs)
+        return schedule_func(
+            optimizer, num_warmup_steps=num_warmup_steps, **lr_scheduler_kwargs
+        )
 
     if name == SchedulerType.INVERSE_SQRT:
-        return schedule_func(optimizer, num_warmup_steps=num_warmup_steps, timescale=timescale, **lr_scheduler_kwargs)
+        return schedule_func(
+            optimizer,
+            num_warmup_steps=num_warmup_steps,
+            timescale=timescale,
+            **lr_scheduler_kwargs,
+        )
 
     if num_training_steps is None:
-        raise ValueError(f"{name} requires `num_training_steps`, please provide that argument.")
+        raise ValueError(
+            f"{name} requires `num_training_steps`, please provide that argument."
+        )
 
     if name == SchedulerType.COSINE_WITH_RESTARTS:
         return schedule_func(
@@ -118,7 +139,11 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
 
     if name == SchedulerType.POLYNOMIAL:
         return schedule_func(
-            optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps, power=power, **lr_scheduler_kwargs
+            optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=num_training_steps,
+            power=power,
+            **lr_scheduler_kwargs,
         )
 
     if name == SchedulerType.COSINE_WITH_MIN_LR:
@@ -140,7 +165,9 @@ def get_scheduler_fix(args, optimizer: Optimizer, num_processes: int):
         )
 
     if num_decay_steps is None:
-        raise ValueError(f"{name} requires `num_decay_steps`, please provide that argument.")
+        raise ValueError(
+            f"{name} requires `num_decay_steps`, please provide that argument."
+        )
     if name == SchedulerType.WARMUP_STABLE_DECAY:
         return schedule_func(
             optimizer,

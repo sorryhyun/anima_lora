@@ -18,7 +18,9 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def get_image_files(image_dir: Path) -> list[Path]:
-    return sorted(p for p in image_dir.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS)
+    return sorted(
+        p for p in image_dir.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
+    )
 
 
 def save_mask(path: Path, alpha_mask: np.ndarray) -> None:
@@ -28,23 +30,59 @@ def save_mask(path: Path, alpha_mask: np.ndarray) -> None:
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image-dir", type=str, required=True, help="Image directory")
-    parser.add_argument("--mask-dir", type=str, required=True, help="Output mask directory")
-    parser.add_argument("--model-path", type=str, default=None, help="Path to comictextdetector.pt (auto-detected if omitted)")
-    parser.add_argument("--force", action="store_true", help="Regenerate existing masks")
-    parser.add_argument("--device", type=str, default="cuda", help="Device (default: cuda)")
-    parser.add_argument("--detect-size", type=int, default=1024, help="Detection input size (default: 1024)")
-    parser.add_argument("--text-threshold", type=float, default=0.5, help="Text segmentation threshold (default: 0.5)")
-    parser.add_argument("--box-threshold", type=float, default=0.6, help="Box detection threshold (default: 0.6)")
-    parser.add_argument("--unclip-ratio", type=float, default=1.5, help="Unclip ratio for text regions (default: 1.5)")
-    parser.add_argument("--dilate", type=int, default=5, help="Mask dilation in pixels (default: 5)")
-    parser.add_argument("--workers", type=int, default=4, help="I/O workers (default: 4)")
+    parser.add_argument(
+        "--mask-dir", type=str, required=True, help="Output mask directory"
+    )
+    parser.add_argument(
+        "--model-path",
+        type=str,
+        default=None,
+        help="Path to comictextdetector.pt (auto-detected if omitted)",
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Regenerate existing masks"
+    )
+    parser.add_argument(
+        "--device", type=str, default="cuda", help="Device (default: cuda)"
+    )
+    parser.add_argument(
+        "--detect-size",
+        type=int,
+        default=1024,
+        help="Detection input size (default: 1024)",
+    )
+    parser.add_argument(
+        "--text-threshold",
+        type=float,
+        default=0.5,
+        help="Text segmentation threshold (default: 0.5)",
+    )
+    parser.add_argument(
+        "--box-threshold",
+        type=float,
+        default=0.6,
+        help="Box detection threshold (default: 0.6)",
+    )
+    parser.add_argument(
+        "--unclip-ratio",
+        type=float,
+        default=1.5,
+        help="Unclip ratio for text regions (default: 1.5)",
+    )
+    parser.add_argument(
+        "--dilate", type=int, default=5, help="Mask dilation in pixels (default: 5)"
+    )
+    parser.add_argument(
+        "--workers", type=int, default=4, help="I/O workers (default: 4)"
+    )
     args = parser.parse_args()
 
-    dilate_kernel = np.ones((args.dilate, args.dilate), dtype=np.uint8) if args.dilate > 0 else None
+    dilate_kernel = (
+        np.ones((args.dilate, args.dilate), dtype=np.uint8) if args.dilate > 0 else None
+    )
 
     # Block the top-level manga_translator __init__ from importing the full translator
     # (which transitively requires pydensecrf). We only need the detection sub-package.
-    import importlib
     import types
 
     mit_root = Path(__file__).resolve().parents[2] / "manga-image-translator"
@@ -64,7 +102,14 @@ async def main() -> None:
     # Symlink model files if a custom path is provided
     if args.model_path:
         model_path = Path(args.model_path)
-        mit_model_dir = Path(os.path.dirname(__file__), "..", "..", "manga-image-translator", "models", "detection")
+        mit_model_dir = Path(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "manga-image-translator",
+            "models",
+            "detection",
+        )
         mit_model_dir.mkdir(parents=True, exist_ok=True)
         for name in ("comictextdetector.pt", "comictextdetector.pt.onnx"):
             src = model_path / name if model_path.is_dir() else model_path

@@ -164,7 +164,9 @@ class ModelSpecMetadata:
 
         # Extract all metadata_* attributes from args
         for attr_name in dir(args):
-            if attr_name.startswith("metadata_") and not attr_name.startswith("metadata___"):
+            if attr_name.startswith("metadata_") and not attr_name.startswith(
+                "metadata___"
+            ):
                 value = getattr(args, attr_name, None)
                 if value is not None:
                     # Remove metadata_ prefix
@@ -191,7 +193,12 @@ class ModelSpecMetadata:
 
 
 def determine_architecture(
-    v2: bool, v_parameterization: bool, sdxl: bool, lora: bool, textual_inversion: bool, model_config: dict[str, str] | None = None
+    v2: bool,
+    v_parameterization: bool,
+    sdxl: bool,
+    lora: bool,
+    textual_inversion: bool,
+    model_config: dict[str, str] | None = None,
 ) -> str:
     """Determine model architecture string from parameters."""
 
@@ -288,7 +295,11 @@ def get_implementation_version() -> str:
             logger.warning("Failed to get git commit hash, using fallback")
             return "sd-scripts/unknown"
 
-    except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError) as e:
+    except (
+        subprocess.TimeoutExpired,
+        subprocess.SubprocessError,
+        FileNotFoundError,
+    ) as e:
         logger.warning(f"Could not determine git commit: {e}")
         return "sd-scripts/unknown"
 
@@ -336,7 +347,13 @@ def determine_resolution(
             reso = (reso[0], reso[0])
     else:
         # Determine default resolution based on model type
-        if sdxl or "sd3" in model_config or "flux" in model_config or "lumina" in model_config or "anima" in model_config:
+        if (
+            sdxl
+            or "sd3" in model_config
+            or "flux" in model_config
+            or "lumina" in model_config
+            or "anima" in model_config
+        ):
             reso = (1024, 1024)
         elif v2 and v_parameterization:
             reso = (768, 768)
@@ -405,12 +422,16 @@ def build_metadata_dataclass(
     """
 
     # Use helper functions for complex logic
-    architecture = determine_architecture(v2, v_parameterization, sdxl, lora, textual_inversion, model_config)
+    architecture = determine_architecture(
+        v2, v_parameterization, sdxl, lora, textual_inversion, model_config
+    )
 
     if not lora and not textual_inversion and is_stable_diffusion_ckpt is None:
         is_stable_diffusion_ckpt = True  # default is stable diffusion ckpt if not lora and not textual_inversion
 
-    implementation = determine_implementation(lora, textual_inversion, sdxl, model_config, is_stable_diffusion_ckpt)
+    implementation = determine_implementation(
+        lora, textual_inversion, sdxl, model_config, is_stable_diffusion_ckpt
+    )
 
     if title is None:
         if lora:
@@ -464,7 +485,9 @@ def build_metadata_dataclass(
         # Check if it's already a data URL or if it's a file path
         if thumbnail_value and not thumbnail_value.startswith("data:"):
             try:
-                processed_optional_metadata["thumbnail"] = file_to_data_url(thumbnail_value)
+                processed_optional_metadata["thumbnail"] = file_to_data_url(
+                    thumbnail_value
+                )
                 logger.info(f"Converted thumbnail file {thumbnail_value} to data URL")
             except FileNotFoundError as e:
                 logger.warning(f"Thumbnail file not found, skipping: {e}")
@@ -475,7 +498,9 @@ def build_metadata_dataclass(
 
     # Automatically set implementation version if not provided
     if "implementation_version" not in processed_optional_metadata:
-        processed_optional_metadata["implementation_version"] = get_implementation_version()
+        processed_optional_metadata["implementation_version"] = (
+            get_implementation_version()
+        )
 
     # Create the dataclass
     metadata = ModelSpecMetadata(

@@ -12,7 +12,9 @@ from safetensors.torch import load_file
 from library.device_utils import synchronize_device
 
 
-def mem_eff_save_file(tensors: Dict[str, torch.Tensor], filename: str, metadata: Dict[str, Any] = None):
+def mem_eff_save_file(
+    tensors: Dict[str, torch.Tensor], filename: str, metadata: Dict[str, Any] = None
+):
     """
     memory efficient save file
     """
@@ -39,7 +41,9 @@ def mem_eff_save_file(tensors: Dict[str, torch.Tensor], filename: str, metadata:
             if not isinstance(key, str):
                 raise ValueError(f"Metadata key must be a string, got {type(key)}")
             if not isinstance(value, str):
-                print(f"Warning: Metadata value for key '{key}' is not a string. Converting to string.")
+                print(
+                    f"Warning: Metadata value for key '{key}' is not a string. Converting to string."
+                )
                 validated[key] = str(value)
             else:
                 validated[key] = value
@@ -53,10 +57,18 @@ def mem_eff_save_file(tensors: Dict[str, torch.Tensor], filename: str, metadata:
         header["__metadata__"] = validate_metadata(metadata)
     for k, v in tensors.items():
         if v.numel() == 0:  # empty tensor
-            header[k] = {"dtype": _TYPES[v.dtype], "shape": list(v.shape), "data_offsets": [offset, offset]}
+            header[k] = {
+                "dtype": _TYPES[v.dtype],
+                "shape": list(v.shape),
+                "data_offsets": [offset, offset],
+            }
         else:
             size = v.numel() * v.element_size()
-            header[k] = {"dtype": _TYPES[v.dtype], "shape": list(v.shape), "data_offsets": [offset, offset + size]}
+            header[k] = {
+                "dtype": _TYPES[v.dtype],
+                "shape": list(v.shape),
+                "data_offsets": [offset, offset + size],
+            }
             offset += size
 
     hjson = json.dumps(header).encode("utf-8")
@@ -72,7 +84,9 @@ def mem_eff_save_file(tensors: Dict[str, torch.Tensor], filename: str, metadata:
             if v.is_cuda:
                 # Direct GPU to disk save
                 with torch.cuda.device(v.device):
-                    if v.dim() == 0:  # if scalar, need to add a dimension to work with view
+                    if (
+                        v.dim() == 0
+                    ):  # if scalar, need to add a dimension to work with view
                         v = v.unsqueeze(0)
                     tensor_bytes = v.contiguous().view(torch.uint8)
                     tensor_bytes.cpu().numpy().tofile(f)
@@ -138,7 +152,12 @@ class MemoryEfficientSafeOpen:
         header_json = self.file.read(header_size).decode("utf-8")
         return json.loads(header_json), header_size
 
-    def get_tensor(self, key: str, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None):
+    def get_tensor(
+        self,
+        key: str,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ):
         """Load a tensor from the file with memory-efficient strategies.
 
         **Note:**
@@ -176,25 +195,42 @@ class MemoryEfficientSafeOpen:
         non_blocking = device is not None and device.type == "cuda"
 
         # Calculate absolute file offset
-        tensor_offset = self.header_size + 8 + offset_start  # adjust offset by header size
+        tensor_offset = (
+            self.header_size + 8 + offset_start
+        )  # adjust offset by header size
 
         # Memory mapping strategy for large tensors to GPU
         # Use memmap for large tensors to avoid intermediate copies.
         # If device is cpu, tensor is not copied to gpu, so using memmap locks the file, which is not desired.
         # So we only use memmap if device is not cpu.
         # If disable_numpy_memmap is True, skip numpy memory mapping to load with standard file read.
-        if not self.disable_numpy_memmap and num_bytes > 10 * 1024 * 1024 and device is not None and device.type != "cpu":
+        if (
+            not self.disable_numpy_memmap
+            and num_bytes > 10 * 1024 * 1024
+            and device is not None
+            and device.type != "cpu"
+        ):
             # Create memory map for zero-copy reading
-            mm = np.memmap(self.filename, mode="c", dtype=np.uint8, offset=tensor_offset, shape=(num_bytes,))
+            mm = np.memmap(
+                self.filename,
+                mode="c",
+                dtype=np.uint8,
+                offset=tensor_offset,
+                shape=(num_bytes,),
+            )
             byte_tensor = torch.from_numpy(mm)  # zero copy
             del mm
 
             # Deserialize tensor (view and reshape)
-            cpu_tensor = self._deserialize_tensor(byte_tensor, metadata)  # view and reshape
+            cpu_tensor = self._deserialize_tensor(
+                byte_tensor, metadata
+            )  # view and reshape
             del byte_tensor
 
             # Transfer to target device and dtype
-            gpu_tensor = cpu_tensor.to(device=device, dtype=target_dtype, non_blocking=non_blocking)
+            gpu_tensor = cpu_tensor.to(
+                device=device, dtype=target_dtype, non_blocking=non_blocking
+            )
             del cpu_tensor
             return gpu_tensor
 
@@ -212,7 +248,9 @@ class MemoryEfficientSafeOpen:
         del byte_tensor
 
         # cast to target dtype and move to device
-        return deserialized_tensor.to(device=device, dtype=target_dtype, non_blocking=non_blocking)
+        return deserialized_tensor.to(
+            device=device, dtype=target_dtype, non_blocking=non_blocking
+        )
 
     def _deserialize_tensor(self, byte_tensor: torch.Tensor, metadata: Dict):
         """Deserialize byte tensor to the correct shape and dtype.
@@ -286,7 +324,9 @@ class MemoryEfficientSafeOpen:
             return byte_tensor.view(torch.float8_e4m3fn).reshape(shape)
         else:
             # Float8 not supported in this PyTorch version
-            raise ValueError(f"Unsupported float8 type: {dtype_str} (upgrade PyTorch to support float8 types)")
+            raise ValueError(
+                f"Unsupported float8 type: {dtype_str} (upgrade PyTorch to support float8 types)"
+            )
 
 
 def load_safetensors(
@@ -302,7 +342,9 @@ def load_safetensors(
         # logger.info(f"Loading without mmap (experimental)")
         state_dict = {}
         device = torch.device(device) if device is not None else None
-        with MemoryEfficientSafeOpen(path, disable_numpy_memmap=disable_numpy_memmap) as f:
+        with MemoryEfficientSafeOpen(
+            path, disable_numpy_memmap=disable_numpy_memmap
+        ) as f:
             for key in f.keys():
                 state_dict[key] = f.get_tensor(key, device=device, dtype=dtype)
         synchronize_device(device)
@@ -310,7 +352,7 @@ def load_safetensors(
     else:
         try:
             state_dict = load_file(path, device=device)
-        except:
+        except Exception:
             state_dict = load_file(path)  # prevent device invalid Error
         if dtype is not None:
             for key in state_dict.keys():
@@ -342,7 +384,10 @@ def get_split_weight_filenames(file_path: str) -> Optional[list[str]]:
 
 
 def load_split_weights(
-    file_path: str, device: Union[str, torch.device] = "cpu", disable_mmap: bool = False, dtype: Optional[torch.dtype] = None
+    file_path: str,
+    device: Union[str, torch.device] = "cpu",
+    disable_mmap: bool = False,
+    dtype: Optional[torch.dtype] = None,
 ) -> Dict[str, torch.Tensor]:
     """
     Load split weights from a file. If the file name ends with 00001-of-00004 etc, it will load all files with the same prefix.
@@ -355,13 +400,23 @@ def load_split_weights(
     if split_filenames is not None:
         state_dict = {}
         for filename in split_filenames:
-            state_dict.update(load_safetensors(filename, device=device, disable_mmap=disable_mmap, dtype=dtype))
+            state_dict.update(
+                load_safetensors(
+                    filename, device=device, disable_mmap=disable_mmap, dtype=dtype
+                )
+            )
     else:
-        state_dict = load_safetensors(file_path, device=device, disable_mmap=disable_mmap, dtype=dtype)
+        state_dict = load_safetensors(
+            file_path, device=device, disable_mmap=disable_mmap, dtype=dtype
+        )
     return state_dict
 
 
-def find_key(safetensors_file: str, starts_with: Optional[str] = None, ends_with: Optional[str] = None) -> Optional[str]:
+def find_key(
+    safetensors_file: str,
+    starts_with: Optional[str] = None,
+    ends_with: Optional[str] = None,
+) -> Optional[str]:
     """
     Find a key in a safetensors file that starts with `starts_with` and ends with `ends_with`.
     If `starts_with` is None, it will match any key.
@@ -370,7 +425,9 @@ def find_key(safetensors_file: str, starts_with: Optional[str] = None, ends_with
     """
     with MemoryEfficientSafeOpen(safetensors_file) as f:
         for key in f.keys():
-            if (starts_with is None or key.startswith(starts_with)) and (ends_with is None or key.endswith(ends_with)):
+            if (starts_with is None or key.startswith(starts_with)) and (
+                ends_with is None or key.endswith(ends_with)
+            ):
                 return key
     return None
 
@@ -400,11 +457,15 @@ class TensorWeightAdapter:
     **concat_hook is not tested yet.**
     """
 
-    def __init__(self, weight_convert_hook: WeightTransformHooks, original_f: MemoryEfficientSafeOpen):
+    def __init__(
+        self,
+        weight_convert_hook: WeightTransformHooks,
+        original_f: MemoryEfficientSafeOpen,
+    ):
         self.original_f = original_f
-        self.new_key_to_original_key_map: dict[str, Union[str, list[str]]] = (
-            {}
-        )  # for split: new_key -> original_key; for concat: new_key -> list of original_keys; for direct mapping: new_key -> original_key
+        self.new_key_to_original_key_map: dict[
+            str, Union[str, list[str]]
+        ] = {}  # for split: new_key -> original_key; for concat: new_key -> list of original_keys; for direct mapping: new_key -> original_key
         self.concat_key_set = set()  # set of concatenated keys
         self.split_key_set = set()  # set of split keys
         self.new_keys = []
@@ -426,7 +487,9 @@ class TensorWeightAdapter:
             if self.concat_hook is not None:
                 converted_key, _ = self.concat_hook(key, None)  # get new key only
                 if converted_key is not None:
-                    if converted_key not in self.concat_key_set:  # first time seeing this concatenated key
+                    if (
+                        converted_key not in self.concat_key_set
+                    ):  # first time seeing this concatenated key
                         self.concat_key_set.add(converted_key)
                         self.new_key_to_original_key_map[converted_key] = []
                         self.new_keys.append(converted_key)
@@ -447,7 +510,12 @@ class TensorWeightAdapter:
     def keys(self) -> list[str]:
         return self.new_keys
 
-    def get_tensor(self, new_key: str, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+    def get_tensor(
+        self,
+        new_key: str,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> torch.Tensor:
         # load tensor by new_key, applying split or concat hooks as needed
         if new_key not in self.new_key_to_original_key_map:
             # direct mapping
@@ -457,8 +525,12 @@ class TensorWeightAdapter:
             # split hook: split key is requested multiple times, so we cache the result
             original_key = self.new_key_to_original_key_map[new_key]
             if original_key not in self.tensor_cache:  # not yet split
-                original_tensor = self.original_f.get_tensor(original_key, device=device, dtype=dtype)
-                new_keys, new_tensors = self.split_hook(original_key, original_tensor)  # apply split hook
+                original_tensor = self.original_f.get_tensor(
+                    original_key, device=device, dtype=dtype
+                )
+                new_keys, new_tensors = self.split_hook(
+                    original_key, original_tensor
+                )  # apply split hook
                 for k, t in zip(new_keys, new_tensors):
                     self.tensor_cache[k] = t
             return self.tensor_cache.pop(new_key)  # return and remove from cache
@@ -467,9 +539,13 @@ class TensorWeightAdapter:
             # concat hook: concatenated key is requested only once, so we do not cache the result
             tensors = {}
             for original_key in self.new_key_to_original_key_map[new_key]:
-                tensor = self.original_f.get_tensor(original_key, device=device, dtype=dtype)
+                tensor = self.original_f.get_tensor(
+                    original_key, device=device, dtype=dtype
+                )
                 tensors[original_key] = tensor
-            _, concatenated_tensors = self.concat_hook(self.new_key_to_original_key_map[new_key][0], tensors)  # apply concat hook
+            _, concatenated_tensors = self.concat_hook(
+                self.new_key_to_original_key_map[new_key][0], tensors
+            )  # apply concat hook
             return concatenated_tensors
 
         else:

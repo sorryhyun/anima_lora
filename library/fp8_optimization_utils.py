@@ -9,11 +9,14 @@ import logging
 from tqdm import tqdm
 
 from library.device_utils import clean_memory_on_device
-from library.safetensors_utils import MemoryEfficientSafeOpen, TensorWeightAdapter, WeightTransformHooks
+from library.safetensors_utils import (
+    MemoryEfficientSafeOpen,
+    TensorWeightAdapter,
+    WeightTransformHooks,
+)
 from library.utils import setup_logging
 
 setup_logging()
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +40,9 @@ def calculate_fp8_maxval(exp_bits=4, mantissa_bits=3, sign_bits=1):
     elif exp_bits == 5 and mantissa_bits == 2 and sign_bits == 1:
         return torch.finfo(torch.float8_e5m2).max
     else:
-        raise ValueError(f"Unsupported FP8 format: E{exp_bits}M{mantissa_bits} with sign_bits={sign_bits}")
+        raise ValueError(
+            f"Unsupported FP8 format: E{exp_bits}M{mantissa_bits} with sign_bits={sign_bits}"
+        )
 
 
 # The following is a manual calculation method (wrong implementation for E5M2), kept for reference.
@@ -74,7 +79,9 @@ def quantize_fp8(tensor, scale, fp8_dtype, max_value, min_value):
     tensor = tensor.to(torch.float32)  # ensure tensor is in float32 for division
 
     # Create scaled tensor
-    tensor = torch.div(tensor, scale).nan_to_num_(0.0)  # handle NaN values, equivalent to nonzero_mask in previous function
+    tensor = torch.div(tensor, scale).nan_to_num_(
+        0.0
+    )  # handle NaN values, equivalent to nonzero_mask in previous function
 
     # Clamp tensor to range
     tensor = tensor.clamp_(min=min_value, max=max_value)
@@ -130,8 +137,13 @@ def optimize_state_dict_with_fp8(
     target_state_dict_keys = []
     for key in state_dict.keys():
         # Check if it's a weight key and matches target patterns
-        is_target = (target_layer_keys is None or any(pattern in key for pattern in target_layer_keys)) and key.endswith(".weight")
-        is_excluded = exclude_layer_keys is not None and any(pattern in key for pattern in exclude_layer_keys)
+        is_target = (
+            target_layer_keys is None
+            or any(pattern in key for pattern in target_layer_keys)
+        ) and key.endswith(".weight")
+        is_excluded = exclude_layer_keys is not None and any(
+            pattern in key for pattern in exclude_layer_keys
+        )
         is_target = is_target and not is_excluded
 
         if is_target and isinstance(state_dict[key], torch.Tensor):
@@ -149,7 +161,9 @@ def optimize_state_dict_with_fp8(
         if calc_device is not None:
             value = value.to(calc_device)
 
-        quantized_weight, scale_tensor = quantize_weight(key, value, fp8_dtype, max_value, min_value, quantization_mode, block_size)
+        quantized_weight, scale_tensor = quantize_weight(
+            key, value, fp8_dtype, max_value, min_value, quantization_mode, block_size
+        )
 
         # Add to state dict using original key for weight and new key for scale
         fp8_key = key  # Maintain original key
@@ -159,7 +173,9 @@ def optimize_state_dict_with_fp8(
             quantized_weight = quantized_weight.to(original_device)
 
         # keep scale shape: [1] or [out,1] or [out, num_blocks, 1]. We can determine the quantization mode from the shape of scale_weight in the patched model.
-        scale_tensor = scale_tensor.to(dtype=original_dtype, device=quantized_weight.device)
+        scale_tensor = scale_tensor.to(
+            dtype=original_dtype, device=quantized_weight.device
+        )
 
         state_dict[fp8_key] = quantized_weight
         state_dict[scale_key] = scale_tensor
@@ -198,7 +214,9 @@ def quantize_weight(
                 )
             else:
                 num_blocks = in_features // block_size
-                tensor = tensor.contiguous().view(out_features, num_blocks, block_size)  # [out, num_blocks, block_size]
+                tensor = tensor.contiguous().view(
+                    out_features, num_blocks, block_size
+                )  # [out, num_blocks, block_size]
     elif quantization_mode == "channel":
         if tensor.ndim != 2:
             quantization_mode = "tensor"  # fallback to per-tensor
@@ -231,7 +249,9 @@ def quantize_weight(
 
     # If block-wise, restore original shape
     if quantization_mode == "block":
-        quantized_weight = quantized_weight.view(original_shape)  # restore to original shape [out, in]
+        quantized_weight = quantized_weight.view(
+            original_shape
+        )  # restore to original shape [out, in]
 
     return quantized_weight, scale
 
@@ -284,8 +304,13 @@ def load_safetensors_with_fp8_optimization(
     # Define function to determine if a key is a target key. target means fp8 optimization, not for weight hook.
     def is_target_key(key):
         # Check if weight key matches target patterns and does not match exclude patterns
-        is_target = (target_layer_keys is None or any(pattern in key for pattern in target_layer_keys)) and key.endswith(".weight")
-        is_excluded = exclude_layer_keys is not None and any(pattern in key for pattern in exclude_layer_keys)
+        is_target = (
+            target_layer_keys is None
+            or any(pattern in key for pattern in target_layer_keys)
+        ) and key.endswith(".weight")
+        is_excluded = exclude_layer_keys is not None and any(
+            pattern in key for pattern in exclude_layer_keys
+        )
         return is_target and not is_excluded
 
     # Create optimized state dict
@@ -294,11 +319,19 @@ def load_safetensors_with_fp8_optimization(
     # Process each file
     state_dict = {}
     for model_file in model_files:
-        with MemoryEfficientSafeOpen(model_file, disable_numpy_memmap=disable_numpy_memmap) as original_f:
-            f = TensorWeightAdapter(weight_transform_hooks, original_f) if weight_transform_hooks is not None else original_f
+        with MemoryEfficientSafeOpen(
+            model_file, disable_numpy_memmap=disable_numpy_memmap
+        ) as original_f:
+            f = (
+                TensorWeightAdapter(weight_transform_hooks, original_f)
+                if weight_transform_hooks is not None
+                else original_f
+            )
 
             keys = f.keys()
-            for key in tqdm(keys, desc=f"Loading {os.path.basename(model_file)}", unit="key"):
+            for key in tqdm(
+                keys, desc=f"Loading {os.path.basename(model_file)}", unit="key"
+            ):
                 value = f.get_tensor(key)
 
                 # Save original device
@@ -306,10 +339,16 @@ def load_safetensors_with_fp8_optimization(
 
                 if weight_hook is not None:
                     # Apply weight hook if provided
-                    value = weight_hook(key, value, keep_on_calc_device=(calc_device is not None))
+                    value = weight_hook(
+                        key, value, keep_on_calc_device=(calc_device is not None)
+                    )
 
                 if not is_target_key(key):
-                    target_device = calc_device if (calc_device is not None and move_to_device) else original_device
+                    target_device = (
+                        calc_device
+                        if (calc_device is not None and move_to_device)
+                        else original_device
+                    )
                     value = value.to(target_device)
                     state_dict[key] = value
                     continue
@@ -325,7 +364,13 @@ def load_safetensors_with_fp8_optimization(
                         + f" / レイヤー {key} は既に{original_dtype}形式です。`--fp8_scaled` 最適化は適用できません。FP16/BF16/Float32のモデル重みを使用してください。"
                     )
                 quantized_weight, scale_tensor = quantize_weight(
-                    key, value, fp8_dtype, max_value, min_value, quantization_mode, block_size
+                    key,
+                    value,
+                    fp8_dtype,
+                    max_value,
+                    min_value,
+                    quantization_mode,
+                    block_size,
                 )
 
                 # Add to state dict using original key for weight and new key for scale
@@ -337,7 +382,9 @@ def load_safetensors_with_fp8_optimization(
                     quantized_weight = quantized_weight.to(original_device)
 
                 # keep scale shape: [1] or [out,1] or [out, num_blocks, 1]. We can determine the quantization mode from the shape of scale_weight in the patched model.
-                scale_tensor = scale_tensor.to(dtype=original_dtype, device=quantized_weight.device)
+                scale_tensor = scale_tensor.to(
+                    dtype=original_dtype, device=quantized_weight.device
+                )
 
                 state_dict[fp8_key] = quantized_weight
                 state_dict[scale_key] = scale_tensor
@@ -396,11 +443,24 @@ def fp8_linear_forward_patch(self: nn.Linear, x, use_scaled_mm=False, max_value=
 
         if self.bias is not None:
             # float32 is not supported with bias in scaled_mm
-            o = torch._scaled_mm(x, weight, out_dtype=original_weight_dtype, bias=self.bias, scale_a=scale_x, scale_b=scale_weight)
+            o = torch._scaled_mm(
+                x,
+                weight,
+                out_dtype=original_weight_dtype,
+                bias=self.bias,
+                scale_a=scale_x,
+                scale_b=scale_weight,
+            )
         else:
-            o = torch._scaled_mm(x, weight, out_dtype=input_dtype, scale_a=scale_x, scale_b=scale_weight)
+            o = torch._scaled_mm(
+                x, weight, out_dtype=input_dtype, scale_a=scale_x, scale_b=scale_weight
+            )
 
-        o = o.reshape(original_shape[0], original_shape[1], -1) if len(original_shape) == 3 else o.reshape(original_shape[0], -1)
+        o = (
+            o.reshape(original_shape[0], original_shape[1], -1)
+            if len(original_shape) == 3
+            else o.reshape(original_shape[0], -1)
+        )
         return o.to(input_dtype)
 
     else:
@@ -412,7 +472,11 @@ def fp8_linear_forward_patch(self: nn.Linear, x, use_scaled_mm=False, max_value=
         else:
             # block-wise quantization, need to reshape weight to match scale shape for broadcasting
             out_features, num_blocks, _ = self.scale_weight.shape
-            dequantized_weight = self.weight.to(original_dtype).contiguous().view(out_features, num_blocks, -1)
+            dequantized_weight = (
+                self.weight.to(original_dtype)
+                .contiguous()
+                .view(out_features, num_blocks, -1)
+            )
             dequantized_weight = dequantized_weight * self.scale_weight
             dequantized_weight = dequantized_weight.view(self.weight.shape)
 
@@ -467,7 +531,9 @@ def apply_fp8_monkey_patch(model, optimized_state_dict, use_scaled_mm=False):
             # register the scale_weight as a buffer to load the state_dict
             # module.register_buffer("scale_weight", torch.tensor(1.0, dtype=module.weight.dtype))
             scale_shape = scale_shape_info[name]
-            module.register_buffer("scale_weight", torch.ones(scale_shape, dtype=module.weight.dtype))
+            module.register_buffer(
+                "scale_weight", torch.ones(scale_shape, dtype=module.weight.dtype)
+            )
 
             # Create a new forward method with the patched version.
             def new_forward(self, x):

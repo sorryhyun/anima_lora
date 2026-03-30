@@ -76,7 +76,9 @@ def save_sd_model_on_epoch_end_or_stepwise_common(
 ):
     if on_epoch_end:
         epoch_no = epoch + 1
-        saving = epoch_no % args.save_every_n_epochs == 0 and epoch_no < num_train_epochs
+        saving = (
+            epoch_no % args.save_every_n_epochs == 0 and epoch_no < num_train_epochs
+        )
         if not saving:
             return
 
@@ -115,9 +117,13 @@ def save_sd_model_on_epoch_end_or_stepwise_common(
 
     else:
         if on_epoch_end:
-            out_dir = os.path.join(args.output_dir, EPOCH_DIFFUSERS_DIR_NAME.format(model_name, epoch_no))
+            out_dir = os.path.join(
+                args.output_dir, EPOCH_DIFFUSERS_DIR_NAME.format(model_name, epoch_no)
+            )
         else:
-            out_dir = os.path.join(args.output_dir, STEP_DIFFUSERS_DIR_NAME.format(model_name, global_step))
+            out_dir = os.path.join(
+                args.output_dir, STEP_DIFFUSERS_DIR_NAME.format(model_name, global_step)
+            )
 
         logger.info("")
         logger.info(f"saving model: {out_dir}")
@@ -126,9 +132,15 @@ def save_sd_model_on_epoch_end_or_stepwise_common(
         # remove older checkpoints
         if remove_no is not None:
             if on_epoch_end:
-                remove_out_dir = os.path.join(args.output_dir, EPOCH_DIFFUSERS_DIR_NAME.format(model_name, remove_no))
+                remove_out_dir = os.path.join(
+                    args.output_dir,
+                    EPOCH_DIFFUSERS_DIR_NAME.format(model_name, remove_no),
+                )
             else:
-                remove_out_dir = os.path.join(args.output_dir, STEP_DIFFUSERS_DIR_NAME.format(model_name, remove_no))
+                remove_out_dir = os.path.join(
+                    args.output_dir,
+                    STEP_DIFFUSERS_DIR_NAME.format(model_name, remove_no),
+                )
 
             if os.path.exists(remove_out_dir):
                 logger.info(f"removing old model: {remove_out_dir}")
@@ -148,13 +160,21 @@ def save_and_remove_state_on_epoch_end(args: argparse.Namespace, accelerator, ep
     logger.info(f"saving state at epoch {epoch_no}")
     os.makedirs(args.output_dir, exist_ok=True)
 
-    state_dir = os.path.join(args.output_dir, EPOCH_STATE_NAME.format(model_name, epoch_no))
+    state_dir = os.path.join(
+        args.output_dir, EPOCH_STATE_NAME.format(model_name, epoch_no)
+    )
     accelerator.save_state(state_dir)
 
-    last_n_epochs = args.save_last_n_epochs_state if args.save_last_n_epochs_state else args.save_last_n_epochs
+    last_n_epochs = (
+        args.save_last_n_epochs_state
+        if args.save_last_n_epochs_state
+        else args.save_last_n_epochs
+    )
     if last_n_epochs is not None:
         remove_epoch_no = epoch_no - args.save_every_n_epochs * last_n_epochs
-        state_dir_old = os.path.join(args.output_dir, EPOCH_STATE_NAME.format(model_name, remove_epoch_no))
+        state_dir_old = os.path.join(
+            args.output_dir, EPOCH_STATE_NAME.format(model_name, remove_epoch_no)
+        )
         if os.path.exists(state_dir_old):
             logger.info(f"removing old state: {state_dir_old}")
             shutil.rmtree(state_dir_old)
@@ -167,16 +187,24 @@ def save_and_remove_state_stepwise(args: argparse.Namespace, accelerator, step_n
     logger.info(f"saving state at step {step_no}")
     os.makedirs(args.output_dir, exist_ok=True)
 
-    state_dir = os.path.join(args.output_dir, STEP_STATE_NAME.format(model_name, step_no))
+    state_dir = os.path.join(
+        args.output_dir, STEP_STATE_NAME.format(model_name, step_no)
+    )
     accelerator.save_state(state_dir)
 
-    last_n_steps = args.save_last_n_steps_state if args.save_last_n_steps_state else args.save_last_n_steps
+    last_n_steps = (
+        args.save_last_n_steps_state
+        if args.save_last_n_steps_state
+        else args.save_last_n_steps
+    )
     if last_n_steps is not None:
         remove_step_no = step_no - last_n_steps - 1
         remove_step_no = remove_step_no - (remove_step_no % args.save_every_n_steps)
 
         if remove_step_no > 0:
-            state_dir_old = os.path.join(args.output_dir, STEP_STATE_NAME.format(model_name, remove_step_no))
+            state_dir_old = os.path.join(
+                args.output_dir, STEP_STATE_NAME.format(model_name, remove_step_no)
+            )
             if os.path.exists(state_dir_old):
                 logger.info(f"removing old state: {state_dir_old}")
                 shutil.rmtree(state_dir_old)

@@ -5,7 +5,6 @@ from typing import Dict, List, Optional, Union
 import torch
 from safetensors.torch import load_file, save_file
 from safetensors import safe_open
-from accelerate.utils import set_module_tensor_to_device  # kept for potential future use
 from accelerate import init_empty_weights
 
 from library.fp8_optimization_utils import apply_fp8_monkey_patch
@@ -15,7 +14,7 @@ from library.safetensors_utils import WeightTransformHooks
 from .utils import setup_logging
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +59,9 @@ def load_anima_model(
     # dit_weight_dtype is None for fp8_scaled
     assert (
         not fp8_scaled and dit_weight_dtype is not None
-    ) or dit_weight_dtype is None, "dit_weight_dtype should be None when fp8_scaled is True"
+    ) or dit_weight_dtype is None, (
+        "dit_weight_dtype should be None when fp8_scaled is True"
+    )
 
     device = torch.device(device)
     loading_device = torch.device(loading_device)
@@ -106,7 +107,9 @@ def load_anima_model(
 
     # load model weights with dynamic fp8 optimization and LoRA merging if needed
     logger.info(f"Loading DiT model from {dit_path}, device={loading_device}")
-    rename_hooks = WeightTransformHooks(rename_hook=lambda k: k[len("net.") :] if k.startswith("net.") else k)
+    rename_hooks = WeightTransformHooks(
+        rename_hook=lambda k: k[len("net.") :] if k.startswith("net.") else k
+    )
     sd = load_safetensors_with_lora_and_fp8(
         model_files=dit_path,
         lora_weights_list=lora_weights_list,
@@ -135,7 +138,15 @@ def load_anima_model(
         unexpected_missing = [
             k
             for k in missing
-            if not any(buf_name in k for buf_name in ("seq", "dim_spatial_range", "dim_temporal_range", "inv_freq"))
+            if not any(
+                buf_name in k
+                for buf_name in (
+                    "seq",
+                    "dim_spatial_range",
+                    "dim_temporal_range",
+                    "inv_freq",
+                )
+            )
         ]
         if unexpected_missing:
             # Raise error to avoid silent failures
@@ -145,8 +156,12 @@ def load_anima_model(
         missing = {}  # all missing keys were expected
     if unexpected:
         # Raise error to avoid silent failures
-        raise RuntimeError(f"Unexpected keys in checkpoint: {unexpected[:5]}{'...' if len(unexpected) > 5 else ''}")
-    logger.info(f"Loaded DiT model from {dit_path}, unexpected missing keys: {len(missing)}, unexpected keys: {len(unexpected)}")
+        raise RuntimeError(
+            f"Unexpected keys in checkpoint: {unexpected[:5]}{'...' if len(unexpected) > 5 else ''}"
+        )
+    logger.info(
+        f"Loaded DiT model from {dit_path}, unexpected missing keys: {len(missing)}, unexpected keys: {len(unexpected)}"
+    )
 
     # Move non-checkpoint buffers (RoPE embeddings) to the correct device.
     # These are created on CPU during __init__ and not present in the checkpoint,
@@ -179,7 +194,9 @@ def load_llm_adapter(
     if weight_path is None:
         raise ValueError("Either dit_path or llm_adapter_path must be provided")
     if os.path.splitext(weight_path)[1].lower() != ".safetensors":
-        raise ValueError(f"LLM adapter weights must be a .safetensors file, got: {weight_path}")
+        raise ValueError(
+            f"LLM adapter weights must be a .safetensors file, got: {weight_path}"
+        )
 
     # Detect prefix style
     with safe_open(weight_path, framework="pt", device="cpu") as f:
@@ -215,9 +232,13 @@ def load_llm_adapter(
     )
     missing, unexpected = adapter.load_state_dict(state_dict, strict=False)
     if unexpected:
-        logger.warning(f"Unexpected keys in LLM adapter weights: {unexpected[:10]}{'...' if len(unexpected) > 10 else ''}")
+        logger.warning(
+            f"Unexpected keys in LLM adapter weights: {unexpected[:10]}{'...' if len(unexpected) > 10 else ''}"
+        )
     if missing:
-        logger.warning(f"Missing keys in LLM adapter weights: {missing[:10]}{'...' if len(missing) > 10 else ''}")
+        logger.warning(
+            f"Missing keys in LLM adapter weights: {missing[:10]}{'...' if len(missing) > 10 else ''}"
+        )
 
     adapter.to(device=device, dtype=dtype)
     adapter.eval()
@@ -303,7 +324,9 @@ def load_qwen3_text_encoder(
     if os.path.isdir(qwen3_path):
         # Directory with full model
         tokenizer = AutoTokenizer.from_pretrained(qwen3_path, local_files_only=True)
-        model = transformers.AutoModelForCausalLM.from_pretrained(qwen3_path, torch_dtype=dtype, local_files_only=True).model
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            qwen3_path, torch_dtype=dtype, local_files_only=True
+        ).model
     else:
         # Single safetensors file - use bundled config
         config_dir = _get_qwen_config_dir(qwen3_path)
@@ -311,10 +334,14 @@ def load_qwen3_text_encoder(
         tokenizer = AutoTokenizer.from_pretrained(config_dir, local_files_only=True)
 
         if is_qwen35:
-            qwen_config = transformers.Qwen3_5TextConfig.from_pretrained(config_dir, local_files_only=True)
+            qwen_config = transformers.Qwen3_5TextConfig.from_pretrained(
+                config_dir, local_files_only=True
+            )
             model = transformers.Qwen3_5ForCausalLM(qwen_config).model
         else:
-            qwen_config = transformers.Qwen3Config.from_pretrained(config_dir, local_files_only=True)
+            qwen_config = transformers.Qwen3Config.from_pretrained(
+                config_dir, local_files_only=True
+            )
             model = transformers.Qwen3ForCausalLM(qwen_config).model
 
         # Load weights
@@ -332,7 +359,9 @@ def load_qwen3_text_encoder(
                     dit_weight_dtype=None,
                 )
         else:
-            assert lora_weights is None, "LoRA weights merging is only supported for safetensors checkpoints"
+            assert lora_weights is None, (
+                "LoRA weights merging is only supported for safetensors checkpoints"
+            )
             state_dict = torch.load(qwen3_path, map_location="cpu", weights_only=True)
 
         # Remove 'model.' prefix if present
@@ -352,7 +381,9 @@ def load_qwen3_text_encoder(
     model.config.use_cache = False
     model = model.requires_grad_(False).to(device, dtype=dtype)
 
-    logger.info(f"Loaded Qwen3 text encoder. Parameters: {sum(p.numel() for p in model.parameters()):,}")
+    logger.info(
+        f"Loaded Qwen3 text encoder. Parameters: {sum(p.numel() for p in model.parameters()):,}"
+    )
     return model, tokenizer
 
 
@@ -368,7 +399,9 @@ def load_t5_tokenizer(t5_tokenizer_path: Optional[str] = None):
         return T5TokenizerFast.from_pretrained(t5_tokenizer_path, local_files_only=True)
 
     # Use bundled config
-    config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "configs", "t5_old")
+    config_dir = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "configs", "t5_old"
+    )
     if os.path.exists(config_dir):
         return T5TokenizerFast(
             vocab_file=os.path.join(config_dir, "spiece.model"),
@@ -383,7 +416,10 @@ def load_t5_tokenizer(t5_tokenizer_path: Optional[str] = None):
 
 
 def save_anima_model(
-    save_path: str, dit_state_dict: Dict[str, torch.Tensor], metadata: Dict[str, any], dtype: Optional[torch.dtype] = None
+    save_path: str,
+    dit_state_dict: Dict[str, torch.Tensor],
+    metadata: Dict[str, any],
+    dtype: Optional[torch.dtype] = None,
 ):
     """Save Anima DiT model with 'net.' prefix for ComfyUI compatibility.
 
@@ -397,12 +433,16 @@ def save_anima_model(
     for k, v in dit_state_dict.items():
         if dtype is not None:
             # v = v.to(dtype)
-            v = v.detach().clone().to("cpu").to(dtype)  # Reduce GPU memory usage during save
+            v = (
+                v.detach().clone().to("cpu").to(dtype)
+            )  # Reduce GPU memory usage during save
         prefixed_sd["net." + k] = v.contiguous()
 
     if metadata is None:
         metadata = {}
     metadata["format"] = "pt"  # For compatibility with the official .safetensors file
 
-    save_file(prefixed_sd, save_path, metadata=metadata)  # safetensors.save_file cosumes a lot of memory, but Anima is small enough
+    save_file(
+        prefixed_sd, save_path, metadata=metadata
+    )  # safetensors.save_file cosumes a lot of memory, but Anima is small enough
     logger.info(f"Saved Anima model to {save_path}")

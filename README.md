@@ -1,0 +1,277 @@
+# anima_lora
+
+LoRA training and inference engine for the Anima diffusion model (DiT-based, flow-matching). Supports standard LoRA, DoRA, OrthoLoRA, and T-LoRA with timestep-dependent rank masking.
+
+## Setup
+
+```bash
+# Dependencies (Python 3.11+)
+uv sync
+
+# Model weights (not tracked) — place in ../models/
+#   models/diffusion_models/anima-preview2.safetensors
+#   models/text_encoders/qwen_3_06b_base.safetensors
+#   models/vae/qwen_image_vae.safetensors
+
+# Training images go in ../image_dataset/ with .txt caption sidecars
+```
+
+Optional: install `flash-attn` for flash attention support.
+
+## Training
+
+All training is config-driven via TOML files. Run with HF Accelerate:
+
+```bash
+accelerate launch --mixed_precision bf16 train.py --config_file configs/training_config.toml
+```
+
+Override any config value from the CLI:
+
+```bash
+accelerate launch --mixed_precision bf16 train.py --config_file configs/training_config.toml \
+    --network_dim 32 --max_train_epochs 64 --learning_rate 2e-5
+```
+
+### Provided configs
+
+| Config | Description |
+|--------|-------------|
+| `configs/training_config.toml` | Standard LoRA (rank 32, 64 epochs) |
+| `configs/training_config_dora.toml` | DoRA (rank 16) |
+| `configs/training_config_doratimestep.toml` | DoRA + T-LoRA timestep masking |
+| `configs/dataset_config.toml` | Dataset layout with dynamic bucketing |
+
+### Key training parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `network_dim` | 16–32 | LoRA rank |
+| `network_alpha` | = dim | LoRA scaling alpha |
+| `learning_rate` | 2e-5 | Base learning rate |
+| `optimizer_type` | AdamW8bit | AdamW8bit, Lion, DAdapt, Prodigy |
+| `max_train_epochs` | 4–64 | Training epochs |
+| `mixed_precision` | bf16 | bf16, fp16, or no |
+| `attn_mode` | flash | flash, torch, xformers |
+| `gradient_checkpointing` | true | Memory-efficient backprop |
+| `cache_latents_to_disk` | true | Cache VAE latents to disk |
+| `cache_text_encoder_outputs` | true | Cache text encoder outputs |
+
+## LoRA Variants
+
+### DoRA (Weight-Decomposed Low-Rank Adaptation)
+
+Separates magnitude and direction in weight updates for improved learning efficiency at lower ranks. ([arXiv 2402.09353](https://arxiv.org/abs/2402.09353))
+
+```toml
+# network_args
+use_dora = true
+```
+
+During inference/merge, the magnitude vector is exported as `dora_scale` for ComfyUI compatibility.
+
+### OrthoLoRA
+
+SVD-based orthogonal weight parameterization with zero-init guarantee and orthogonality regularization.
+
+```toml
+# network_args
+use_ortho = true
+sig_type = "last"           # "principal", "last", or "middle"
+ortho_reg_weight = 0.01     # orthogonality penalty weight
+```
+
+Note: OrthoLoRA is not compatible with DoRA. Linear layers only (no Conv2d).
+
+### T-LoRA (Timestep-Dependent Rank Masking)
+
+Dynamically adjusts effective LoRA rank based on the denoising timestep. Early (high-noise) steps use full rank; later steps use reduced rank. Compatible with both LoRA and DoRA.
+
+```toml
+# network_args
+use_timestep_mask = true
+min_rank = 1                # minimum rank to preserve
+alpha_rank_scale = 1.0      # power-law schedule exponent
+```
+
+The rank schedule follows:
+
+```
+r = ((max_t - t) / max_t) ^ alpha_rank_scale * (max_rank - min_rank) + min_rank
+```
+
+## FP32 Accumulation
+
+Computes the LoRA forward pass (down → up projection) in fp32 for improved numerical precision, then casts back to bf16. Negligible overhead; recommended for training stability.
+
+```toml
+lora_fp32_accumulation = true
+```
+
+## Caption Shuffle Variants
+
+Generates multiple shuffled caption permutations per image per epoch, cached as separate text encoder outputs. Increases caption diversity without disk overhead.
+
+```toml
+caption_shuffle_variants = 8    # number of variants per image
+shuffle_caption = true
+cache_text_encoder_outputs = true
+```
+
+The smart shuffle algorithm preserves `@artist` tags and section delimiters (`On the ...`, `In the ...`) while shuffling tags within each section. During training, one variant is randomly selected per batch item.
+
+## Masked Loss (SAM / MIT)
+
+Exclude regions (e.g., text bubbles) from the training loss using spatial masks.
+
+### Generating masks
+
+**SAM3** (Segment Anything Model):
+
+```bash
+python scripts/generate_masks.py \
+    --config configs/sam_mask.yaml \
+    --image-dir ../image_dataset \
+    --mask-dir ../image_dataset/masks \
+    --device cuda
+```
+
+**MIT** (Manga-Image-Translator / ComicTextDetector):
+
+```bash
+python scripts/generate_masks_mit.py \
+    --image-dir ../image_dataset \
+    --mask-dir ../image_dataset/masks \
+    --device cuda \
+    --detect-size 1024 \
+    --text-threshold 0.5 \
+    --dilate 5
+```
+
+Both produce grayscale PNGs: 255 = train, 0 = exclude.
+
+### Using masks in training
+
+```toml
+# training config
+masked_loss = true
+
+# dataset config — point to mask directory
+[[datasets.subsets]]
+image_dir = '../image_dataset'
+mask_dir = '../image_dataset/masks'
+```
+
+Masks are interpolated to match the latent spatial dimensions and applied element-wise to the loss.
+
+## Inference
+
+```bash
+python inference.py \
+    --dit ../models/diffusion_models/anima-preview2.safetensors \
+    --text_encoder ../models/text_encoders/qwen_3_06b_base.safetensors \
+    --vae ../models/vae/qwen_image_vae.safetensors \
+    --lora_weight ../output/anima_lora.safetensors \
+    --prompt "your prompt" \
+    --image_size 1024 1024 \
+    --infer_steps 50 \
+    --guidance_scale 3.5 \
+    --save_path ../output/images
+```
+
+### Key inference flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--lora_weight` | — | LoRA weight path(s), space-separated for multiple |
+| `--lora_multiplier` | 1.0 | LoRA strength multiplier(s) |
+| `--infer_steps` | 50 | Denoising steps |
+| `--guidance_scale` | 3.5 | CFG scale |
+| `--flow_shift` | 5.0 | Flow-matching schedule shift |
+| `--sampler` | euler | euler (deterministic ODE) or er_sde (stochastic) |
+| `--from_file` | — | Batch prompts from text file |
+| `--interactive` | false | Interactive prompt mode |
+| `--fp8` | false | FP8 quantization for DiT |
+| `--compile` | false | torch.compile speedup |
+
+### P-GRAFT inference
+
+Loads LoRA as dynamic hooks instead of a static merge, allowing mid-denoising cutoff:
+
+```bash
+python inference.py ... \
+    --pgraft \
+    --lora_cutoff_step 37    # LoRA active for steps 0–36, disabled 37+
+```
+
+### Prompt file format
+
+```
+a girl standing in a field --w 1024 --h 1024 --s 50 --g 3.5
+another prompt --seed 42 --flow_shift 4.0
+```
+
+## LoRA Format Conversion
+
+Convert between anima and ComfyUI key formats:
+
+```bash
+python scripts/convert_lora_to_comfy.py input.safetensors output.safetensors          # anima → ComfyUI
+python scripts/convert_lora_to_comfy.py --reverse input.safetensors output.safetensors  # ComfyUI → anima
+```
+
+## Dataset Configuration
+
+```toml
+[general]
+shuffle_caption = false
+caption_extension = '.txt'
+keep_tokens = 3              # preserve first N tokens from shuffling
+
+[[datasets]]
+resolution = 1024
+batch_size = 4
+enable_bucket = true         # dynamic aspect-ratio bucketing
+min_bucket_reso = 512
+max_bucket_reso = 1536
+bucket_reso_steps = 64
+validation_split = 0.05
+validation_seed = 42
+
+  [[datasets.subsets]]
+  image_dir = '../image_dataset'
+  num_repeats = 1
+```
+
+Each image needs a corresponding `.txt` caption sidecar file in the same directory.
+
+## Project Structure
+
+```
+anima_lora/
+├── train.py                    # AnimaTrainer — main training loop
+├── inference.py                # Standalone image generation
+├── configs/                    # TOML training/dataset configs
+├── networks/
+│   ├── lora_anima.py           # Network creation, module targeting, T-LoRA logic
+│   ├── lora_modules.py         # LoRA, DoRA, OrthoLoRA module implementations
+│   └── postfix_anima.py        # Continuous postfix tuning for LLM adapter
+├── library/
+│   ├── anima_models.py         # Anima DiT architecture
+│   ├── anima_utils.py          # Model loading/saving
+│   ├── anima_train_utils.py    # Caption shuffle, loss weighting, EMA, validation
+│   ├── strategy_anima.py       # Tokenization/encoding strategy (Qwen3 + T5)
+│   ├── train_util.py           # Re-exporting facade for training utilities
+│   ├── custom_train_functions.py  # Masked loss application
+│   ├── inference_utils.py      # Flow-matching samplers (Euler, ER-SDE)
+│   ├── attention.py            # Attention backends (flash, xformers, torch)
+│   ├── config_util.py          # TOML parsing (Voluptuous)
+│   ├── qwen_image_autoencoder_kl.py  # QwenImageVAE (WanVAE)
+│   ├── datasets/               # Dataset classes, bucketing, image utils
+│   └── training/               # Optimizer/scheduler/checkpoint utilities
+└── scripts/
+    ├── generate_masks.py       # SAM3 text bubble masking
+    ├── generate_masks_mit.py   # MIT/ComicTextDetector masking
+    ├── merge_masks.py          # Combine multiple masks
+    └── convert_lora_to_comfy.py  # LoRA format conversion
+```

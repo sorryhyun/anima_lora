@@ -34,10 +34,16 @@ class BucketManager:
     def __init__(self, no_upscale, max_reso, min_size, max_size, reso_steps) -> None:
         if max_size is not None:
             if max_reso is not None:
-                assert max_size >= max_reso[0], "the max_size should be larger than the width of max_reso"
-                assert max_size >= max_reso[1], "the max_size should be larger than the height of max_reso"
+                assert max_size >= max_reso[0], (
+                    "the max_size should be larger than the width of max_reso"
+                )
+                assert max_size >= max_reso[1], (
+                    "the max_size should be larger than the height of max_reso"
+                )
             if min_size is not None:
-                assert max_size >= min_size, "the max_size should be larger than the min_size"
+                assert max_size >= min_size, (
+                    "the max_size should be larger than the min_size"
+                )
 
         self.no_upscale = no_upscale
         if max_reso is None:
@@ -79,7 +85,9 @@ class BucketManager:
         self.reso_to_id = sorted_reso_to_id
 
     def make_buckets(self):
-        resos = make_bucket_resolutions(self.max_reso, self.min_size, self.max_size, self.reso_steps)
+        resos = make_bucket_resolutions(
+            self.max_reso, self.min_size, self.max_size, self.reso_steps
+        )
         self.set_predefined_resos(resos)
 
     def set_predefined_resos(self, resos):
@@ -109,7 +117,9 @@ class BucketManager:
                 pass
             else:
                 ar_errors = self.predefined_aspect_ratios - aspect_ratio
-                predefined_bucket_id = np.abs(ar_errors).argmin()  # 当該解像度以外でaspect ratio errorが最も少ないもの
+                predefined_bucket_id = np.abs(
+                    ar_errors
+                ).argmin()  # 当該解像度以外でaspect ratio errorが最も少ないもの
                 reso = self.predefined_resos[predefined_bucket_id]
 
             ar_reso = reso[0] / reso[1]
@@ -118,14 +128,19 @@ class BucketManager:
             else:
                 scale = reso[0] / image_width
 
-            resized_size = (int(image_width * scale + 0.5), int(image_height * scale + 0.5))
+            resized_size = (
+                int(image_width * scale + 0.5),
+                int(image_height * scale + 0.5),
+            )
         else:
             # 縮小のみを行う
             if image_width * image_height > self.max_area:
                 # 画像が大きすぎるのでアスペクト比を保ったまま縮小することを前提にbucketを決める
                 resized_width = math.sqrt(self.max_area * aspect_ratio)
                 resized_height = self.max_area / resized_width
-                assert abs(resized_width / resized_height - aspect_ratio) < 1e-2, "aspect is illegal"
+                assert abs(resized_width / resized_height - aspect_ratio) < 1e-2, (
+                    "aspect is illegal"
+                )
 
                 # リサイズ後の短辺または長辺をreso_steps単位にする：aspect ratioの差が少ないほうを選ぶ
                 # 元のbucketingと同じロジック
@@ -137,10 +152,18 @@ class BucketManager:
                 b_width_in_hr = self.round_to_steps(b_height_rounded * aspect_ratio)
                 ar_height_rounded = b_width_in_hr / b_height_rounded
 
-                if abs(ar_width_rounded - aspect_ratio) < abs(ar_height_rounded - aspect_ratio):
-                    resized_size = (b_width_rounded, int(b_width_rounded / aspect_ratio + 0.5))
+                if abs(ar_width_rounded - aspect_ratio) < abs(
+                    ar_height_rounded - aspect_ratio
+                ):
+                    resized_size = (
+                        b_width_rounded,
+                        int(b_width_rounded / aspect_ratio + 0.5),
+                    )
                 else:
-                    resized_size = (int(b_height_rounded * aspect_ratio + 0.5), b_height_rounded)
+                    resized_size = (
+                        int(b_height_rounded * aspect_ratio + 0.5),
+                        b_height_rounded,
+                    )
             else:
                 resized_size = (image_width, image_height)  # リサイズは不要
 

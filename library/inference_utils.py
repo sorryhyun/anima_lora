@@ -5,7 +5,9 @@ from typing import Optional, Tuple
 import torch
 
 
-def get_timesteps_sigmas(sampling_steps: int, shift: float, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_timesteps_sigmas(
+    sampling_steps: int, shift: float, device: torch.device
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Generate timesteps and sigmas for diffusion sampling.
 
@@ -61,7 +63,9 @@ class ERSDESampler:
         half_log_snrs = sigmas.logit().neg()
         self.er_lambdas = half_log_snrs.neg().exp()  # σ / (1 - σ)
 
-        self.point_indices = torch.arange(0, self.num_integration_points, dtype=torch.float32, device=device)
+        self.point_indices = torch.arange(
+            0, self.num_integration_points, dtype=torch.float32, device=device
+        )
 
         # Noise generator
         self._generator = None
@@ -75,12 +79,16 @@ class ERSDESampler:
 
     @staticmethod
     def _noise_scaler(x: torch.Tensor) -> torch.Tensor:
-        return x * ((x ** 0.3).exp() + 10.0)
+        return x * ((x**0.3).exp() + 10.0)
 
     def _sample_noise(self, shape, dtype):
-        return torch.randn(shape, dtype=dtype, device=self._noise_device, generator=self._generator)
+        return torch.randn(
+            shape, dtype=dtype, device=self._noise_device, generator=self._generator
+        )
 
-    def step(self, latents: torch.Tensor, denoised: torch.Tensor, step_i: int) -> torch.Tensor:
+    def step(
+        self, latents: torch.Tensor, denoised: torch.Tensor, step_i: int
+    ) -> torch.Tensor:
         """Perform one ER-SDE step.
 
         Args:
@@ -105,7 +113,7 @@ class ERSDESampler:
 
         er_lambda_s = er_lambdas[step_i]
         er_lambda_t = er_lambdas[step_i + 1]
-        alpha_s = 1.0 - sigmas[step_i]   # alpha = 1 - sigma for flow-matching
+        alpha_s = 1.0 - sigmas[step_i]  # alpha = 1 - sigma for flow-matching
         alpha_t = 1.0 - sigmas[step_i + 1]
         r_alpha = alpha_t / alpha_s
         r = self._noise_scaler(er_lambda_t) / self._noise_scaler(er_lambda_s)
@@ -121,20 +129,40 @@ class ERSDESampler:
 
             # Stage 2
             s = torch.sum(1 / scaled_pos) * lambda_step_size
-            denoised_d = (denoised - self.old_denoised) / (er_lambda_s - er_lambdas[step_i - 1])
+            denoised_d = (denoised - self.old_denoised) / (
+                er_lambda_s - er_lambdas[step_i - 1]
+            )
             x = x + alpha_t * (dt + s * self._noise_scaler(er_lambda_t)) * denoised_d
 
             if stage_used >= 3:
                 # Stage 3
-                s_u = torch.sum((lambda_pos - er_lambda_s) / scaled_pos) * lambda_step_size
-                denoised_u = (denoised_d - self.old_denoised_d) / ((er_lambda_s - er_lambdas[step_i - 2]) / 2)
-                x = x + alpha_t * ((dt ** 2) / 2 + s_u * self._noise_scaler(er_lambda_t)) * denoised_u
+                s_u = (
+                    torch.sum((lambda_pos - er_lambda_s) / scaled_pos)
+                    * lambda_step_size
+                )
+                denoised_u = (denoised_d - self.old_denoised_d) / (
+                    (er_lambda_s - er_lambdas[step_i - 2]) / 2
+                )
+                x = (
+                    x
+                    + alpha_t
+                    * ((dt**2) / 2 + s_u * self._noise_scaler(er_lambda_t))
+                    * denoised_u
+                )
             self.old_denoised_d = denoised_d
 
         # Stochastic noise injection
         if self.s_noise > 0:
-            noise_coeff = (er_lambda_t ** 2 - er_lambda_s ** 2 * r ** 2).sqrt().nan_to_num(nan=0.0)
-            x = x + alpha_t * self._sample_noise(x.shape, x.dtype) * self.s_noise * noise_coeff
+            noise_coeff = (
+                (er_lambda_t**2 - er_lambda_s**2 * r**2).sqrt().nan_to_num(nan=0.0)
+            )
+            x = (
+                x
+                + alpha_t
+                * self._sample_noise(x.shape, x.dtype)
+                * self.s_noise
+                * noise_coeff
+            )
 
         self.old_denoised = denoised
         return x

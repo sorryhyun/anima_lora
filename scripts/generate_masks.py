@@ -35,14 +35,34 @@ def save_mask(path: Path, alpha_mask: np.ndarray) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=str, required=True, help="YAML config with prompts and params")
+    parser.add_argument(
+        "--config", type=str, required=True, help="YAML config with prompts and params"
+    )
     parser.add_argument("--image-dir", type=str, required=True, help="Image directory")
-    parser.add_argument("--mask-dir", type=str, required=True, help="Output mask directory")
-    parser.add_argument("--force", action="store_true", help="Regenerate existing masks")
-    parser.add_argument("--checkpoint", type=str, default=None, help="Local SAM3 checkpoint path")
-    parser.add_argument("--device", type=str, default="cuda", help="Device (default: cuda)")
-    parser.add_argument("--workers", type=int, default=4, help="I/O workers for loading/saving (default: 4)")
-    parser.add_argument("--batch-size", type=int, default=1, help="Images to process in parallel (default: 1)")
+    parser.add_argument(
+        "--mask-dir", type=str, required=True, help="Output mask directory"
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Regenerate existing masks"
+    )
+    parser.add_argument(
+        "--checkpoint", type=str, default=None, help="Local SAM3 checkpoint path"
+    )
+    parser.add_argument(
+        "--device", type=str, default="cuda", help="Device (default: cuda)"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="I/O workers for loading/saving (default: 4)",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=1,
+        help="Images to process in parallel (default: 1)",
+    )
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -99,14 +119,18 @@ def main() -> None:
         for i in range(batch_start, batch_end):
             image = load_futures[i].result()
             if i + prefetch < total:
-                load_futures.append(pool.submit(load_image, work_items[i + prefetch][0]))
+                load_futures.append(
+                    pool.submit(load_image, work_items[i + prefetch][0])
+                )
             batch.append((work_items[i], image))
 
         with autocast:
             # Phase 1: encode all images in the batch
             states = []
             for (image_path, mask_path), image in batch:
-                states.append((image_path, mask_path, image, processor.set_image(image)))
+                states.append(
+                    (image_path, mask_path, image, processor.set_image(image))
+                )
 
             # Phase 2: run prompts on each encoded image
             for image_path, mask_path, image, inference_state in states:
@@ -114,7 +138,9 @@ def main() -> None:
                 combined_mask = np.zeros((h, w), dtype=np.uint8)
 
                 for prompt in prompts:
-                    output = processor.set_text_prompt(state=inference_state, prompt=prompt)
+                    output = processor.set_text_prompt(
+                        state=inference_state, prompt=prompt
+                    )
                     for mask, score in zip(output["masks"], output["scores"]):
                         if score < threshold:
                             continue
@@ -136,7 +162,9 @@ def main() -> None:
                     continue
 
                 if dilate_kernel is not None:
-                    combined_mask = cv2.dilate(combined_mask, dilate_kernel, iterations=1)
+                    combined_mask = cv2.dilate(
+                        combined_mask, dilate_kernel, iterations=1
+                    )
 
                 # Invert: detected=1 → alpha=0 (ignore), no detection → alpha=255 (train)
                 alpha_mask = ((1 - combined_mask) * 255).astype(np.uint8)

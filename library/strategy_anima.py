@@ -8,13 +8,18 @@ import numpy as np
 import torch
 
 from library import anima_train_utils, anima_utils, train_util
-from library.strategy_base import LatentsCachingStrategy, TextEncodingStrategy, TokenizeStrategy, TextEncoderOutputsCachingStrategy
+from library.strategy_base import (
+    LatentsCachingStrategy,
+    TextEncodingStrategy,
+    TokenizeStrategy,
+    TextEncoderOutputsCachingStrategy,
+)
 from library import qwen_image_autoencoder_kl
 
 from library.utils import setup_logging
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +45,9 @@ class AnimaTokenizeStrategy(TokenizeStrategy):
         # Load tokenizers from paths if not provided directly
         if qwen3_tokenizer is None:
             if qwen3_path is None:
-                raise ValueError("Either qwen3_tokenizer or qwen3_path must be provided")
+                raise ValueError(
+                    "Either qwen3_tokenizer or qwen3_path must be provided"
+                )
             qwen3_tokenizer = anima_utils.load_qwen3_tokenizer(qwen3_path)
         if t5_tokenizer is None:
             t5_tokenizer = anima_utils.load_t5_tokenizer(t5_tokenizer_path)
@@ -55,14 +62,22 @@ class AnimaTokenizeStrategy(TokenizeStrategy):
 
         # Tokenize with Qwen3
         qwen3_encoding = self.qwen3_tokenizer(
-            text, return_tensors="pt", truncation=True, padding=True, max_length=self.qwen3_max_length
+            text,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=self.qwen3_max_length,
         )
         qwen3_input_ids = qwen3_encoding["input_ids"]
         qwen3_attn_mask = qwen3_encoding["attention_mask"]
 
         # Tokenize with T5 (for LLM Adapter target tokens)
         t5_encoding = self.t5_tokenizer(
-            text, return_tensors="pt", truncation=True, padding=True, max_length=self.t5_max_length
+            text,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=self.t5_max_length,
         )
         t5_input_ids = t5_encoding["input_ids"]
         t5_attn_mask = t5_encoding["attention_mask"]
@@ -80,7 +95,10 @@ class AnimaTextEncodingStrategy(TextEncodingStrategy):
         super().__init__()
 
     def encode_tokens(
-        self, tokenize_strategy: TokenizeStrategy, models: List[Any], tokens: List[torch.Tensor]
+        self,
+        tokenize_strategy: TokenizeStrategy,
+        models: List[Any],
+        tokens: List[torch.Tensor],
     ) -> List[torch.Tensor]:
         """Encode Qwen3 tokens and return embeddings + T5 token IDs.
 
@@ -100,15 +118,19 @@ class AnimaTextEncodingStrategy(TextEncodingStrategy):
 
         qwen3_input_ids = qwen3_input_ids.to(encoder_device)
         qwen3_attn_mask = qwen3_attn_mask.to(encoder_device)
-        outputs = qwen3_text_encoder(input_ids=qwen3_input_ids, attention_mask=qwen3_attn_mask)
+        outputs = qwen3_text_encoder(
+            input_ids=qwen3_input_ids, attention_mask=qwen3_attn_mask
+        )
         prompt_embeds = outputs.last_hidden_state
 
         # Handle extended sequence from postfix embedding injection (mode=embedding)
         if prompt_embeds.shape[1] > qwen3_attn_mask.shape[1]:
             extra_len = prompt_embeds.shape[1] - qwen3_attn_mask.shape[1]
             extra_mask = torch.ones(
-                qwen3_attn_mask.shape[0], extra_len,
-                device=qwen3_attn_mask.device, dtype=qwen3_attn_mask.dtype,
+                qwen3_attn_mask.shape[0],
+                extra_len,
+                device=qwen3_attn_mask.device,
+                dtype=qwen3_attn_mask.dtype,
             )
             qwen3_attn_mask = torch.cat([qwen3_attn_mask, extra_mask], dim=1)
 
@@ -131,7 +153,10 @@ class AnimaTextEncodingStrategy(TextEncodingStrategy):
         Replaces dropped items with pre-cached unconditional embeddings (from encoding "")
         to match diffusion-pipe-main behavior.
         """
-        if caption_dropout_rates is None or torch.all(caption_dropout_rates == 0.0).item():
+        if (
+            caption_dropout_rates is None
+            or torch.all(caption_dropout_rates == 0.0).item()
+        ):
             outputs = [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask]
             if crossattn_emb is not None:
                 outputs.append(crossattn_emb)
@@ -219,12 +244,17 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         cache_llm_adapter_outputs: bool = False,
         caption_shuffle_variants: int = 0,
     ) -> None:
-        super().__init__(cache_to_disk, batch_size, skip_disk_cache_validity_check, is_partial)
+        super().__init__(
+            cache_to_disk, batch_size, skip_disk_cache_validity_check, is_partial
+        )
         self.cache_llm_adapter_outputs = cache_llm_adapter_outputs
         self.caption_shuffle_variants = caption_shuffle_variants
 
     def get_outputs_npz_path(self, image_abs_path: str) -> str:
-        return os.path.splitext(image_abs_path)[0] + self.ANIMA_TEXT_ENCODER_OUTPUTS_NPZ_SUFFIX
+        return (
+            os.path.splitext(image_abs_path)[0]
+            + self.ANIMA_TEXT_ENCODER_OUTPUTS_NPZ_SUFFIX
+        )
 
     def is_disk_cached_outputs_expected(self, npz_path: str) -> bool:
         if not self.cache_to_disk:
@@ -248,7 +278,10 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                         return False
                     if f"t5_attn_mask_v{vi}" not in npz:
                         return False
-                    if self.cache_llm_adapter_outputs and f"crossattn_emb_v{vi}" not in npz:
+                    if (
+                        self.cache_llm_adapter_outputs
+                        and f"crossattn_emb_v{vi}" not in npz
+                    ):
                         return False
             else:
                 # Legacy single-variant cache
@@ -282,19 +315,40 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             t5_input_ids = data[f"t5_input_ids_v{vi}"]
             t5_attn_mask = data[f"t5_attn_mask_v{vi}"]
             crossattn_key = f"crossattn_emb_v{vi}"
-            crossattn_emb = data[crossattn_key] if self.cache_llm_adapter_outputs and crossattn_key in data else None
+            crossattn_emb = (
+                data[crossattn_key]
+                if self.cache_llm_adapter_outputs and crossattn_key in data
+                else None
+            )
         else:
             # Legacy single-variant cache
             prompt_embeds = data["prompt_embeds"]
             attn_mask = data["attn_mask"]
             t5_input_ids = data["t5_input_ids"]
             t5_attn_mask = data["t5_attn_mask"]
-            crossattn_emb = data["crossattn_emb"] if self.cache_llm_adapter_outputs and "crossattn_emb" in data else None
+            crossattn_emb = (
+                data["crossattn_emb"]
+                if self.cache_llm_adapter_outputs and "crossattn_emb" in data
+                else None
+            )
 
         caption_dropout_rate = data["caption_dropout_rate"]
         if crossattn_emb is None:
-            return [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, caption_dropout_rate]
-        return [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb, caption_dropout_rate]
+            return [
+                prompt_embeds,
+                attn_mask,
+                t5_input_ids,
+                t5_attn_mask,
+                caption_dropout_rate,
+            ]
+        return [
+            prompt_embeds,
+            attn_mask,
+            t5_input_ids,
+            t5_attn_mask,
+            crossattn_emb,
+            caption_dropout_rate,
+        ]
 
     @staticmethod
     def _generate_shuffled_captions(caption: str, num_variants: int) -> List[str]:
@@ -316,18 +370,24 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         """Tokenize, encode, and optionally run LLM adapter. Returns numpy arrays."""
         tokens_and_masks = tokenize_strategy.tokenize(captions)
         with torch.no_grad():
-            prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask = text_encoding_strategy.encode_tokens(
-                tokenize_strategy, models, tokens_and_masks
+            prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask = (
+                text_encoding_strategy.encode_tokens(
+                    tokenize_strategy, models, tokens_and_masks
+                )
             )
 
         crossattn_emb = None
         if self.cache_llm_adapter_outputs:
             if len(models) < 2 or models[1] is None:
-                raise ValueError("cache_llm_adapter_outputs requires llm_adapter model to be passed as models[1]")
+                raise ValueError(
+                    "cache_llm_adapter_outputs requires llm_adapter model to be passed as models[1]"
+                )
             llm_adapter = models[1]
             adapter_device = next(llm_adapter.parameters()).device
             prompt_embeds_for_adapter = prompt_embeds.to(adapter_device)
-            attn_mask_for_adapter = attn_mask.to(adapter_device) if attn_mask is not None else None
+            attn_mask_for_adapter = (
+                attn_mask.to(adapter_device) if attn_mask is not None else None
+            )
             t5_input_ids_for_adapter = t5_input_ids.to(adapter_device, dtype=torch.long)
             t5_attn_mask_for_adapter = t5_attn_mask.to(adapter_device)
             with torch.no_grad():
@@ -370,7 +430,13 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         t5_attn_mask_i = t5_attn_mask_i[:t5_len]
         if crossattn_emb_i is not None:
             crossattn_emb_i = crossattn_emb_i[:t5_len]
-        return prompt_embeds_i, attn_mask_i, t5_input_ids_i, t5_attn_mask_i, crossattn_emb_i
+        return (
+            prompt_embeds_i,
+            attn_mask_i,
+            t5_input_ids_i,
+            t5_attn_mask_i,
+            crossattn_emb_i,
+        )
 
     def cache_batch_outputs(
         self,
@@ -382,9 +448,13 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         anima_text_encoding_strategy: AnimaTextEncodingStrategy = text_encoding_strategy
 
         if self.caption_shuffle_variants > 0:
-            self._cache_batch_outputs_with_variants(tokenize_strategy, models, anima_text_encoding_strategy, infos)
+            self._cache_batch_outputs_with_variants(
+                tokenize_strategy, models, anima_text_encoding_strategy, infos
+            )
         else:
-            self._cache_batch_outputs_single(tokenize_strategy, models, anima_text_encoding_strategy, infos)
+            self._cache_batch_outputs_single(
+                tokenize_strategy, models, anima_text_encoding_strategy, infos
+            )
 
     def _cache_batch_outputs_single(
         self,
@@ -395,16 +465,23 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
     ):
         """Original single-variant caching path."""
         captions = [info.caption for info in infos]
-        prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = self._encode_and_to_numpy(
-            tokenize_strategy, models, text_encoding_strategy, captions
+        prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
+            self._encode_and_to_numpy(
+                tokenize_strategy, models, text_encoding_strategy, captions
+            )
         )
 
         for i, info in enumerate(infos):
             pe_i, am_i, t5_i, t5m_i, ce_i = self._trim_outputs(
-                prompt_embeds[i], attn_mask[i], t5_input_ids[i], t5_attn_mask[i],
+                prompt_embeds[i],
+                attn_mask[i],
+                t5_input_ids[i],
+                t5_attn_mask[i],
                 crossattn_emb[i] if crossattn_emb is not None else None,
             )
-            caption_dropout_rate = torch.tensor(info.caption_dropout_rate, dtype=torch.float32)
+            caption_dropout_rate = torch.tensor(
+                info.caption_dropout_rate, dtype=torch.float32
+            )
 
             if self.cache_to_disk:
                 np.savez(
@@ -418,9 +495,22 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 )
             else:
                 if ce_i is None:
-                    info.text_encoder_outputs = (pe_i, am_i, t5_i, t5m_i, caption_dropout_rate)
+                    info.text_encoder_outputs = (
+                        pe_i,
+                        am_i,
+                        t5_i,
+                        t5m_i,
+                        caption_dropout_rate,
+                    )
                 else:
-                    info.text_encoder_outputs = (pe_i, am_i, t5_i, t5m_i, ce_i, caption_dropout_rate)
+                    info.text_encoder_outputs = (
+                        pe_i,
+                        am_i,
+                        t5_i,
+                        t5m_i,
+                        ce_i,
+                        caption_dropout_rate,
+                    )
 
     def _cache_batch_outputs_with_variants(
         self,
@@ -435,7 +525,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         # For each info, generate N shuffled captions
         # We batch all variants across all infos for efficient encoding
         all_captions = []  # flat list of all variant captions
-        variant_map = []   # (info_idx, variant_idx) for each entry in all_captions
+        variant_map = []  # (info_idx, variant_idx) for each entry in all_captions
         for info_idx, info in enumerate(infos):
             variants = self._generate_shuffled_captions(info.caption, N)
             for vi, caption in enumerate(variants):
@@ -443,19 +533,29 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 variant_map.append((info_idx, vi))
 
         # Encode all variants in one batch
-        prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = self._encode_and_to_numpy(
-            tokenize_strategy, models, text_encoding_strategy, all_captions
+        prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
+            self._encode_and_to_numpy(
+                tokenize_strategy, models, text_encoding_strategy, all_captions
+            )
         )
 
         # Group results by info and save
         for i, info in enumerate(infos):
-            caption_dropout_rate = torch.tensor(info.caption_dropout_rate, dtype=torch.float32)
-            save_dict = {"num_variants": np.array(N), "caption_dropout_rate": caption_dropout_rate}
+            caption_dropout_rate = torch.tensor(
+                info.caption_dropout_rate, dtype=torch.float32
+            )
+            save_dict = {
+                "num_variants": np.array(N),
+                "caption_dropout_rate": caption_dropout_rate,
+            }
 
             for vi in range(N):
                 flat_idx = i * N + vi
                 pe_i, am_i, t5_i, t5m_i, ce_i = self._trim_outputs(
-                    prompt_embeds[flat_idx], attn_mask[flat_idx], t5_input_ids[flat_idx], t5_attn_mask[flat_idx],
+                    prompt_embeds[flat_idx],
+                    attn_mask[flat_idx],
+                    t5_input_ids[flat_idx],
+                    t5_attn_mask[flat_idx],
                     crossattn_emb[flat_idx] if crossattn_emb is not None else None,
                 )
                 save_dict[f"prompt_embeds_v{vi}"] = pe_i
@@ -471,12 +571,18 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 # Build list of variant tuples for in-memory random selection
                 variants = []
                 for vi in range(N):
-                    v = (save_dict[f"prompt_embeds_v{vi}"], save_dict[f"attn_mask_v{vi}"],
-                         save_dict[f"t5_input_ids_v{vi}"], save_dict[f"t5_attn_mask_v{vi}"])
+                    v = (
+                        save_dict[f"prompt_embeds_v{vi}"],
+                        save_dict[f"attn_mask_v{vi}"],
+                        save_dict[f"t5_input_ids_v{vi}"],
+                        save_dict[f"t5_attn_mask_v{vi}"],
+                    )
                     if f"crossattn_emb_v{vi}" in save_dict:
                         v = (*v, save_dict[f"crossattn_emb_v{vi}"])
                     variants.append(v)
-                info.text_encoder_outputs = _VariantOutputs(variants, caption_dropout_rate)
+                info.text_encoder_outputs = _VariantOutputs(
+                    variants, caption_dropout_rate
+                )
 
 
 class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
@@ -488,25 +594,54 @@ class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
 
     ANIMA_LATENTS_NPZ_SUFFIX = "_anima.npz"
 
-    def __init__(self, cache_to_disk: bool, batch_size: int, skip_disk_cache_validity_check: bool) -> None:
+    def __init__(
+        self, cache_to_disk: bool, batch_size: int, skip_disk_cache_validity_check: bool
+    ) -> None:
         super().__init__(cache_to_disk, batch_size, skip_disk_cache_validity_check)
 
     @property
     def cache_suffix(self) -> str:
         return self.ANIMA_LATENTS_NPZ_SUFFIX
 
-    def get_latents_npz_path(self, absolute_path: str, image_size: Tuple[int, int]) -> str:
-        return os.path.splitext(absolute_path)[0] + f"_{image_size[0]:04d}x{image_size[1]:04d}" + self.ANIMA_LATENTS_NPZ_SUFFIX
+    def get_latents_npz_path(
+        self, absolute_path: str, image_size: Tuple[int, int]
+    ) -> str:
+        return (
+            os.path.splitext(absolute_path)[0]
+            + f"_{image_size[0]:04d}x{image_size[1]:04d}"
+            + self.ANIMA_LATENTS_NPZ_SUFFIX
+        )
 
-    def is_disk_cached_latents_expected(self, bucket_reso: Tuple[int, int], npz_path: str, flip_aug: bool, alpha_mask: bool):
-        return self._default_is_disk_cached_latents_expected(8, bucket_reso, npz_path, flip_aug, alpha_mask, multi_resolution=True)
+    def is_disk_cached_latents_expected(
+        self,
+        bucket_reso: Tuple[int, int],
+        npz_path: str,
+        flip_aug: bool,
+        alpha_mask: bool,
+    ):
+        return self._default_is_disk_cached_latents_expected(
+            8, bucket_reso, npz_path, flip_aug, alpha_mask, multi_resolution=True
+        )
 
     def load_latents_from_disk(
         self, npz_path: str, bucket_reso: Tuple[int, int]
-    ) -> Tuple[Optional[np.ndarray], Optional[List[int]], Optional[List[int]], Optional[np.ndarray], Optional[np.ndarray]]:
+    ) -> Tuple[
+        Optional[np.ndarray],
+        Optional[List[int]],
+        Optional[List[int]],
+        Optional[np.ndarray],
+        Optional[np.ndarray],
+    ]:
         return self._default_load_latents_from_disk(8, npz_path, bucket_reso)
 
-    def cache_batch_latents(self, vae, image_infos: List, flip_aug: bool, alpha_mask: bool, random_crop: bool):
+    def cache_batch_latents(
+        self,
+        vae,
+        image_infos: List,
+        flip_aug: bool,
+        alpha_mask: bool,
+        random_crop: bool,
+    ):
         """Cache batch of latents using Qwen Image VAE.
 
         vae is expected to be the Qwen Image VAE (AutoencoderKLQwenImage).
@@ -523,11 +658,20 @@ class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
             Qwen Image VAE accepts inputs in (B, C, H, W) or (B, C, 1, H, W) shape.
             Returns latents in (B, 16, 1, H/8, W/8) shape on CPU.
             """
-            latents = vae.encode_pixels_to_latents(img_tensor)  # Keep 4D for input/output
+            latents = vae.encode_pixels_to_latents(
+                img_tensor
+            )  # Keep 4D for input/output
             return latents.to("cpu")
 
         self._default_cache_batch_latents(
-            encode_by_vae, vae_device, vae_dtype, image_infos, flip_aug, alpha_mask, random_crop, multi_resolution=True
+            encode_by_vae,
+            vae_device,
+            vae_dtype,
+            image_infos,
+            flip_aug,
+            alpha_mask,
+            random_crop,
+            multi_resolution=True,
         )
 
         if not train_util.HIGH_VRAM:

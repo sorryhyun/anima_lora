@@ -33,7 +33,7 @@ from library.safetensors_utils import load_safetensors
 from library.utils import setup_logging
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -55,17 +55,25 @@ class DiagonalGaussianDistribution(object):
         self.std = torch.exp(0.5 * self.logvar)
         self.var = torch.exp(self.logvar)
         if self.deterministic:
-            self.var = self.std = torch.zeros_like(self.mean, device=self.parameters.device, dtype=self.parameters.dtype)
+            self.var = self.std = torch.zeros_like(
+                self.mean, device=self.parameters.device, dtype=self.parameters.dtype
+            )
 
     def sample(self, generator: Optional[torch.Generator] = None) -> torch.Tensor:
         # make sure sample is on the same device as the parameters and has same dtype
-        if generator is not None and generator.device.type != self.parameters.device.type:
+        if (
+            generator is not None
+            and generator.device.type != self.parameters.device.type
+        ):
             rand_device = generator.device
         else:
             rand_device = self.parameters.device
-        sample = torch.randn(self.mean.shape, generator=generator, device=rand_device, dtype=self.parameters.dtype).to(
-            self.parameters.device
-        )
+        sample = torch.randn(
+            self.mean.shape,
+            generator=generator,
+            device=rand_device,
+            dtype=self.parameters.dtype,
+        ).to(self.parameters.device)
         x = self.mean + self.std * sample
         return x
 
@@ -80,11 +88,17 @@ class DiagonalGaussianDistribution(object):
                 )
             else:
                 return 0.5 * torch.sum(
-                    torch.pow(self.mean - other.mean, 2) / other.var + self.var / other.var - 1.0 - self.logvar + other.logvar,
+                    torch.pow(self.mean - other.mean, 2) / other.var
+                    + self.var / other.var
+                    - 1.0
+                    - self.logvar
+                    + other.logvar,
                     dim=[1, 2, 3],
                 )
 
-    def nll(self, sample: torch.Tensor, dims: Tuple[int, ...] = [1, 2, 3]) -> torch.Tensor:
+    def nll(
+        self, sample: torch.Tensor, dims: Tuple[int, ...] = [1, 2, 3]
+    ) -> torch.Tensor:
         if self.deterministic:
             return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
@@ -121,7 +135,9 @@ class ChunkedConv2d(nn.Conv2d):
         assert self.padding_mode == "zeros", "Only 'zeros' padding mode is supported."
         assert self.dilation == (1, 1), "Only dilation=1 is supported."
         assert self.groups == 1, "Only groups=1 is supported."
-        assert self.kernel_size[0] == self.kernel_size[1], "Only square kernels are supported."
+        assert self.kernel_size[0] == self.kernel_size[1], (
+            "Only square kernels are supported."
+        )
         assert self.stride[0] == self.stride[1], "Only equal strides are supported."
         self.original_padding = self.padding
         self.padding = (0, 0)  # We handle padding manually in forward
@@ -130,7 +146,10 @@ class ChunkedConv2d(nn.Conv2d):
         # If chunking is not needed, process normally. We chunk only along height dimension.
         if (
             self.spatial_chunk_size is None
-            or x.shape[2] <= self.spatial_chunk_size + self.kernel_size[0] + self.spatial_chunk_size // 4
+            or x.shape[2]
+            <= self.spatial_chunk_size
+            + self.kernel_size[0]
+            + self.spatial_chunk_size // 4
         ):
             self.padding = self.original_padding
             x = super().forward(x)
@@ -148,7 +167,11 @@ class ChunkedConv2d(nn.Conv2d):
         # If stride > 1, QwenImageVAE pads manually with zeros before convolution, so we do not need to consider it here
         y_height = org_shape[2] // self.stride[0]
         y_width = org_shape[3] // self.stride[1]
-        y = torch.zeros((org_shape[0], self.out_channels, y_height, y_width), dtype=x.dtype, device=x.device)
+        y = torch.zeros(
+            (org_shape[0], self.out_channels, y_height, y_width),
+            dtype=x.dtype,
+            device=x.device,
+        )
         yi = 0
         i = 0
         while i < org_shape[2]:
@@ -164,13 +187,19 @@ class ChunkedConv2d(nn.Conv2d):
             # Pad chunk if needed: This is as the original Conv2d with padding
             if i == 0 and overlap > 0:  # First chunk
                 # Pad except bottom
-                chunk = torch.nn.functional.pad(chunk, (overlap, overlap, overlap, 0), mode="constant", value=0)
+                chunk = torch.nn.functional.pad(
+                    chunk, (overlap, overlap, overlap, 0), mode="constant", value=0
+                )
             elif ei == org_shape[2] and overlap > 0:  # Last chunk
                 # Pad except top
-                chunk = torch.nn.functional.pad(chunk, (overlap, overlap, 0, overlap), mode="constant", value=0)
+                chunk = torch.nn.functional.pad(
+                    chunk, (overlap, overlap, 0, overlap), mode="constant", value=0
+                )
             elif overlap > 0:  # Middle chunks
                 # Pad left and right only
-                chunk = torch.nn.functional.pad(chunk, (overlap, overlap), mode="constant", value=0)
+                chunk = torch.nn.functional.pad(
+                    chunk, (overlap, overlap), mode="constant", value=0
+                )
 
             # print(f"Processing chunk: org_shape={org_shape}, si={si}, ei={ei}, chunk.shape={chunk.shape}, overlap={overlap}")
             chunk = super().forward(chunk)
@@ -221,11 +250,22 @@ class QwenImageCausalConv3d(nn.Conv3d):
         )
 
         # Set up causal padding
-        self._padding = (self.padding[2], self.padding[2], self.padding[1], self.padding[1], 2 * self.padding[0], 0)
+        self._padding = (
+            self.padding[2],
+            self.padding[2],
+            self.padding[1],
+            self.padding[1],
+            2 * self.padding[0],
+            0,
+        )
         self.padding = (0, 0, 0)
         self.spatial_chunk_size = spatial_chunk_size
         self._supports_spatial_chunking = (
-            self.groups == 1 and self.dilation[1] == 1 and self.dilation[2] == 1 and self.stride[1] == 1 and self.stride[2] == 1
+            self.groups == 1
+            and self.dilation[1] == 1
+            and self.dilation[2] == 1
+            and self.stride[1] == 1
+            and self.stride[2] == 1
         )
 
     def _forward_chunked_height(self, x: torch.Tensor) -> torch.Tensor:
@@ -282,7 +322,13 @@ class QwenImageRMS_norm(nn.Module):
         bias (bool, optional): Whether to include a learnable bias term. Default is False.
     """
 
-    def __init__(self, dim: int, channel_first: bool = True, images: bool = True, bias: bool = False) -> None:
+    def __init__(
+        self,
+        dim: int,
+        channel_first: bool = True,
+        images: bool = True,
+        bias: bool = False,
+    ) -> None:
         super().__init__()
         broadcastable_dims = (1, 1, 1) if not images else (1, 1)
         shape = (dim, *broadcastable_dims) if channel_first else (dim,)
@@ -293,7 +339,12 @@ class QwenImageRMS_norm(nn.Module):
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
     def forward(self, x):
-        return F.normalize(x, dim=(1 if self.channel_first else -1)) * self.scale * self.gamma + self.bias
+        return (
+            F.normalize(x, dim=(1 if self.channel_first else -1))
+            * self.scale
+            * self.gamma
+            + self.bias
+        )
 
 
 class QwenImageUpsample(nn.Upsample):
@@ -341,13 +392,21 @@ class QwenImageResample(nn.Module):
                 QwenImageUpsample(scale_factor=(2.0, 2.0), mode="nearest-exact"),
                 ChunkedConv2d(dim, dim // 2, 3, padding=1),
             )
-            self.time_conv = QwenImageCausalConv3d(dim, dim * 2, (3, 1, 1), padding=(1, 0, 0))
+            self.time_conv = QwenImageCausalConv3d(
+                dim, dim * 2, (3, 1, 1), padding=(1, 0, 0)
+            )
 
         elif mode == "downsample2d":
-            self.resample = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), ChunkedConv2d(dim, dim, 3, stride=(2, 2)))
+            self.resample = nn.Sequential(
+                nn.ZeroPad2d((0, 1, 0, 1)), ChunkedConv2d(dim, dim, 3, stride=(2, 2))
+            )
         elif mode == "downsample3d":
-            self.resample = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), ChunkedConv2d(dim, dim, 3, stride=(2, 2)))
-            self.time_conv = QwenImageCausalConv3d(dim, dim, (3, 1, 1), stride=(2, 1, 1), padding=(0, 0, 0))
+            self.resample = nn.Sequential(
+                nn.ZeroPad2d((0, 1, 0, 1)), ChunkedConv2d(dim, dim, 3, stride=(2, 2))
+            )
+            self.time_conv = QwenImageCausalConv3d(
+                dim, dim, (3, 1, 1), stride=(2, 1, 1), padding=(0, 0, 0)
+            )
 
         else:
             self.resample = nn.Identity()
@@ -362,11 +421,30 @@ class QwenImageResample(nn.Module):
                     feat_idx[0] += 1
                 else:
                     cache_x = x[:, :, -CACHE_T:, :, :].clone()
-                    if cache_x.shape[2] < 2 and feat_cache[idx] is not None and feat_cache[idx] != "Rep":
+                    if (
+                        cache_x.shape[2] < 2
+                        and feat_cache[idx] is not None
+                        and feat_cache[idx] != "Rep"
+                    ):
                         # cache last frame of last two chunk
-                        cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
-                    if cache_x.shape[2] < 2 and feat_cache[idx] is not None and feat_cache[idx] == "Rep":
-                        cache_x = torch.cat([torch.zeros_like(cache_x).to(cache_x.device), cache_x], dim=2)
+                        cache_x = torch.cat(
+                            [
+                                feat_cache[idx][:, :, -1, :, :]
+                                .unsqueeze(2)
+                                .to(cache_x.device),
+                                cache_x,
+                            ],
+                            dim=2,
+                        )
+                    if (
+                        cache_x.shape[2] < 2
+                        and feat_cache[idx] is not None
+                        and feat_cache[idx] == "Rep"
+                    ):
+                        cache_x = torch.cat(
+                            [torch.zeros_like(cache_x).to(cache_x.device), cache_x],
+                            dim=2,
+                        )
                     if feat_cache[idx] == "Rep":
                         x = self.time_conv(x)
                     else:
@@ -390,7 +468,9 @@ class QwenImageResample(nn.Module):
                     feat_idx[0] += 1
                 else:
                     cache_x = x[:, :, -1:, :, :].clone()
-                    x = self.time_conv(torch.cat([feat_cache[idx][:, :, -1:, :, :], x], 2))
+                    x = self.time_conv(
+                        torch.cat([feat_cache[idx][:, :, -1:, :, :], x], 2)
+                    )
                     feat_cache[idx] = cache_x
                     feat_idx[0] += 1
         return x
@@ -414,7 +494,9 @@ class QwenImageResidualBlock(nn.Module):
         dropout: float = 0.0,
         non_linearity: str = "silu",
     ) -> None:
-        assert non_linearity in ["silu"], "Only 'silu' non-linearity is supported currently."
+        assert non_linearity in ["silu"], (
+            "Only 'silu' non-linearity is supported currently."
+        )
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -426,7 +508,11 @@ class QwenImageResidualBlock(nn.Module):
         self.norm2 = QwenImageRMS_norm(out_dim, images=False)
         self.dropout = nn.Dropout(dropout)
         self.conv2 = QwenImageCausalConv3d(out_dim, out_dim, 3, padding=1)
-        self.conv_shortcut = QwenImageCausalConv3d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
+        self.conv_shortcut = (
+            QwenImageCausalConv3d(in_dim, out_dim, 1)
+            if in_dim != out_dim
+            else nn.Identity()
+        )
 
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         # Apply shortcut connection
@@ -440,7 +526,13 @@ class QwenImageResidualBlock(nn.Module):
             idx = feat_idx[0]
             cache_x = x[:, :, -CACHE_T:, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
-                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+                cache_x = torch.cat(
+                    [
+                        feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
+                        cache_x,
+                    ],
+                    dim=2,
+                )
 
             x = self.conv1(x, feat_cache[idx])
             feat_cache[idx] = cache_x
@@ -459,7 +551,13 @@ class QwenImageResidualBlock(nn.Module):
             idx = feat_idx[0]
             cache_x = x[:, :, -CACHE_T:, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
-                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+                cache_x = torch.cat(
+                    [
+                        feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
+                        cache_x,
+                    ],
+                    dim=2,
+                )
 
             x = self.conv2(x, feat_cache[idx])
             feat_cache[idx] = cache_x
@@ -504,7 +602,11 @@ class QwenImageAttentionBlock(nn.Module):
         # apply attention
         x = F.scaled_dot_product_attention(q, k, v)
 
-        x = x.squeeze(1).permute(0, 2, 1).reshape(batch_size * time, channels, height, width)
+        x = (
+            x.squeeze(1)
+            .permute(0, 2, 1)
+            .reshape(batch_size * time, channels, height, width)
+        )
 
         # output projection
         x = self.proj(x)
@@ -526,7 +628,13 @@ class QwenImageMidBlock(nn.Module):
         non_linearity (str): Type of non-linearity to use.
     """
 
-    def __init__(self, dim: int, dropout: float = 0.0, non_linearity: str = "silu", num_layers: int = 1):
+    def __init__(
+        self,
+        dim: int,
+        dropout: float = 0.0,
+        non_linearity: str = "silu",
+        num_layers: int = 1,
+    ):
         super().__init__()
         self.dim = dim
 
@@ -584,7 +692,9 @@ class QwenImageEncoder3d(nn.Module):
         non_linearity: str = "silu",
     ):
         super().__init__()
-        assert non_linearity in ["silu"], "Only 'silu' non-linearity is supported currently."
+        assert non_linearity in ["silu"], (
+            "Only 'silu' non-linearity is supported currently."
+        )
         self.dim = dim
         self.z_dim = z_dim
         self.dim_mult = dim_mult
@@ -605,7 +715,9 @@ class QwenImageEncoder3d(nn.Module):
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
             # residual (+attention) blocks
             for _ in range(num_res_blocks):
-                self.down_blocks.append(QwenImageResidualBlock(in_dim, out_dim, dropout))
+                self.down_blocks.append(
+                    QwenImageResidualBlock(in_dim, out_dim, dropout)
+                )
                 if scale in attn_scales:
                     self.down_blocks.append(QwenImageAttentionBlock(out_dim))
                 in_dim = out_dim
@@ -617,7 +729,9 @@ class QwenImageEncoder3d(nn.Module):
                 scale /= 2.0
 
         # middle blocks
-        self.mid_block = QwenImageMidBlock(out_dim, dropout, non_linearity, num_layers=1)
+        self.mid_block = QwenImageMidBlock(
+            out_dim, dropout, non_linearity, num_layers=1
+        )
 
         # output blocks
         self.norm_out = QwenImageRMS_norm(out_dim, images=False)
@@ -631,7 +745,13 @@ class QwenImageEncoder3d(nn.Module):
             cache_x = x[:, :, -CACHE_T:, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
-                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+                cache_x = torch.cat(
+                    [
+                        feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
+                        cache_x,
+                    ],
+                    dim=2,
+                )
             x = self.conv_in(x, feat_cache[idx])
             feat_cache[idx] = cache_x
             feat_idx[0] += 1
@@ -656,7 +776,13 @@ class QwenImageEncoder3d(nn.Module):
             cache_x = x[:, :, -CACHE_T:, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
-                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+                cache_x = torch.cat(
+                    [
+                        feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
+                        cache_x,
+                    ],
+                    dim=2,
+                )
             x = self.conv_out(x, feat_cache[idx])
             feat_cache[idx] = cache_x
             feat_idx[0] += 1
@@ -696,7 +822,9 @@ class QwenImageUpBlock(nn.Module):
         # Add residual blocks and attention if needed
         current_dim = in_dim
         for _ in range(num_res_blocks + 1):
-            resnets.append(QwenImageResidualBlock(current_dim, out_dim, dropout, non_linearity))
+            resnets.append(
+                QwenImageResidualBlock(current_dim, out_dim, dropout, non_linearity)
+            )
             current_dim = out_dim
 
         self.resnets = nn.ModuleList(resnets)
@@ -704,7 +832,9 @@ class QwenImageUpBlock(nn.Module):
         # Add upsampling layer if needed
         self.upsamplers = None
         if upsample_mode is not None:
-            self.upsamplers = nn.ModuleList([QwenImageResample(out_dim, mode=upsample_mode)])
+            self.upsamplers = nn.ModuleList(
+                [QwenImageResample(out_dim, mode=upsample_mode)]
+            )
 
         self.gradient_checkpointing = False
 
@@ -763,7 +893,9 @@ class QwenImageDecoder3d(nn.Module):
         non_linearity: str = "silu",
     ):
         super().__init__()
-        assert non_linearity in ["silu"], "Only 'silu' non-linearity is supported currently."
+        assert non_linearity in ["silu"], (
+            "Only 'silu' non-linearity is supported currently."
+        )
         self.dim = dim
         self.z_dim = z_dim
         self.dim_mult = dim_mult
@@ -781,7 +913,9 @@ class QwenImageDecoder3d(nn.Module):
         self.conv_in = QwenImageCausalConv3d(z_dim, dims[0], 3, padding=1)
 
         # middle blocks
-        self.mid_block = QwenImageMidBlock(dims[0], dropout, non_linearity, num_layers=1)
+        self.mid_block = QwenImageMidBlock(
+            dims[0], dropout, non_linearity, num_layers=1
+        )
 
         # upsample blocks
         self.up_blocks = nn.ModuleList([])
@@ -823,7 +957,13 @@ class QwenImageDecoder3d(nn.Module):
             cache_x = x[:, :, -CACHE_T:, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
-                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+                cache_x = torch.cat(
+                    [
+                        feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
+                        cache_x,
+                    ],
+                    dim=2,
+                )
             x = self.conv_in(x, feat_cache[idx])
             feat_cache[idx] = cache_x
             feat_idx[0] += 1
@@ -845,7 +985,13 @@ class QwenImageDecoder3d(nn.Module):
             cache_x = x[:, :, -CACHE_T:, :, :].clone()
             if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
                 # cache last frame of last two chunk
-                cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
+                cache_x = torch.cat(
+                    [
+                        feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device),
+                        cache_x,
+                    ],
+                    dim=2,
+                )
             x = self.conv_out(x, feat_cache[idx])
             feat_cache[idx] = cache_x
             feat_idx[0] += 1
@@ -854,7 +1000,9 @@ class QwenImageDecoder3d(nn.Module):
         return x
 
 
-class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOriginalModelMixin):
+class AutoencoderKLQwenImage(
+    nn.Module
+):  # ModelMixin, ConfigMixin, FromOriginalModelMixin):
     r"""
     A VAE model with KL loss for encoding videos into latents and decoding latent representations into videos.
 
@@ -923,13 +1071,27 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
         self.latents_std = latents_std
 
         self.encoder = QwenImageEncoder3d(
-            base_dim, z_dim * 2, dim_mult, num_res_blocks, attn_scales, self.temperal_downsample, dropout, input_channels
+            base_dim,
+            z_dim * 2,
+            dim_mult,
+            num_res_blocks,
+            attn_scales,
+            self.temperal_downsample,
+            dropout,
+            input_channels,
         )
         self.quant_conv = QwenImageCausalConv3d(z_dim * 2, z_dim * 2, 1)
         self.post_quant_conv = QwenImageCausalConv3d(z_dim, z_dim, 1)
 
         self.decoder = QwenImageDecoder3d(
-            base_dim, z_dim, dim_mult, num_res_blocks, attn_scales, self.temperal_upsample, dropout, input_channels
+            base_dim,
+            z_dim,
+            dim_mult,
+            num_res_blocks,
+            attn_scales,
+            self.temperal_upsample,
+            dropout,
+            input_channels,
         )
 
         self.spatial_compression_ratio = 2 ** len(self.temperal_downsample)
@@ -953,8 +1115,16 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
 
         # Precompute and cache conv counts for encoder and decoder for clear_cache speedup
         self._cached_conv_counts = {
-            "decoder": sum(isinstance(m, QwenImageCausalConv3d) for m in self.decoder.modules()) if self.decoder is not None else 0,
-            "encoder": sum(isinstance(m, QwenImageCausalConv3d) for m in self.encoder.modules()) if self.encoder is not None else 0,
+            "decoder": sum(
+                isinstance(m, QwenImageCausalConv3d) for m in self.decoder.modules()
+            )
+            if self.decoder is not None
+            else 0,
+            "encoder": sum(
+                isinstance(m, QwenImageCausalConv3d) for m in self.encoder.modules()
+            )
+            if self.encoder is not None
+            else 0,
         }
 
         self.spatial_chunk_size = None
@@ -998,10 +1168,16 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
                 artifacts produced across the width dimension.
         """
         self.use_tiling = True
-        self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
+        self.tile_sample_min_height = (
+            tile_sample_min_height or self.tile_sample_min_height
+        )
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
-        self.tile_sample_stride_height = tile_sample_stride_height or self.tile_sample_stride_height
-        self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
+        self.tile_sample_stride_height = (
+            tile_sample_stride_height or self.tile_sample_stride_height
+        )
+        self.tile_sample_stride_width = (
+            tile_sample_stride_width or self.tile_sample_stride_width
+        )
 
     def disable_tiling(self) -> None:
         r"""
@@ -1029,7 +1205,9 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
         Enable memory-efficient convolution by chunking all causal Conv3d layers only along height.
         """
         if spatial_chunk_size is None or spatial_chunk_size <= 0:
-            raise ValueError(f"`spatial_chunk_size` must be a positive integer, got {spatial_chunk_size}.")
+            raise ValueError(
+                f"`spatial_chunk_size` must be a positive integer, got {spatial_chunk_size}."
+            )
         self.spatial_chunk_size = int(spatial_chunk_size)
         for module in self.modules():
             if isinstance(module, QwenImageCausalConv3d):
@@ -1075,9 +1253,13 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
 
     def _encode(self, x: torch.Tensor):
         _, _, num_frame, height, width = x.shape
-        assert num_frame == 1 or not self.cache_disabled, "Caching must be enabled for encoding multiple frames."
+        assert num_frame == 1 or not self.cache_disabled, (
+            "Caching must be enabled for encoding multiple frames."
+        )
 
-        if self.use_tiling and (width > self.tile_sample_min_width or height > self.tile_sample_min_height):
+        if self.use_tiling and (
+            width > self.tile_sample_min_width or height > self.tile_sample_min_height
+        ):
             return self.tiled_encode(x)
 
         self.clear_cache()
@@ -1085,7 +1267,11 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
         for i in range(iter_):
             self._enc_conv_idx = [0]
             if i == 0:
-                out = self.encoder(x[:, :, :1, :, :], feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx)
+                out = self.encoder(
+                    x[:, :, :1, :, :],
+                    feat_cache=self._enc_feat_map,
+                    feat_idx=self._enc_conv_idx,
+                )
             else:
                 out_ = self.encoder(
                     x[:, :, 1 + 4 * (i - 1) : 1 + 4 * i, :, :],
@@ -1126,11 +1312,19 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
 
     def _decode(self, z: torch.Tensor, return_dict: bool = True):
         _, _, num_frame, height, width = z.shape
-        assert num_frame == 1 or not self.cache_disabled, "Caching must be enabled for encoding multiple frames."
-        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
+        assert num_frame == 1 or not self.cache_disabled, (
+            "Caching must be enabled for encoding multiple frames."
+        )
+        tile_latent_min_height = (
+            self.tile_sample_min_height // self.spatial_compression_ratio
+        )
+        tile_latent_min_width = (
+            self.tile_sample_min_width // self.spatial_compression_ratio
+        )
 
-        if self.use_tiling and (width > tile_latent_min_width or height > tile_latent_min_height):
+        if self.use_tiling and (
+            width > tile_latent_min_width or height > tile_latent_min_height
+        ):
             return self.tiled_decode(z, return_dict=return_dict)
 
         self.clear_cache()
@@ -1138,9 +1332,17 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
         for i in range(num_frame):
             self._conv_idx = [0]
             if i == 0:
-                out = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx)
+                out = self.decoder(
+                    x[:, :, i : i + 1, :, :],
+                    feat_cache=self._feat_map,
+                    feat_idx=self._conv_idx,
+                )
             else:
-                out_ = self.decoder(x[:, :, i : i + 1, :, :], feat_cache=self._feat_map, feat_idx=self._conv_idx)
+                out_ = self.decoder(
+                    x[:, :, i : i + 1, :, :],
+                    feat_cache=self._feat_map,
+                    feat_idx=self._conv_idx,
+                )
                 out = torch.cat([out, out_], 2)
 
         out = torch.clamp(out, min=-1.0, max=1.0)
@@ -1151,7 +1353,9 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
         return {"sample": out}
 
     # @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
+    def decode(
+        self, z: torch.Tensor, return_dict: bool = True
+    ) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
         r"""
         Decode a batch of images.
 
@@ -1181,8 +1385,14 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
             latents = latents.unsqueeze(2)  # [B, C, H, W] -> [B, C, 1, H, W]
 
         latents = latents.to(self.dtype)
-        latents_mean = torch.tensor(self.latents_mean).view(1, self.z_dim, 1, 1, 1).to(latents.device, latents.dtype)
-        latents_std = 1.0 / torch.tensor(self.latents_std).view(1, self.z_dim, 1, 1, 1).to(latents.device, latents.dtype)
+        latents_mean = (
+            torch.tensor(self.latents_mean)
+            .view(1, self.z_dim, 1, 1, 1)
+            .to(latents.device, latents.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(self.latents_std).view(
+            1, self.z_dim, 1, 1, 1
+        ).to(latents.device, latents.dtype)
         latents = latents / latents_std + latents_mean
 
         image = self.decode(latents, return_dict=False)[0]  # -1 to 1
@@ -1213,12 +1423,20 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
 
         # Encode to latent space
         posterior = self.encode(pixels, return_dict=False)[0]
-        latents = posterior.mode()  # Use mode instead of sampling for deterministic results
+        latents = (
+            posterior.mode()
+        )  # Use mode instead of sampling for deterministic results
         # latents = posterior.sample()
 
         # Apply normalization using mean/std
-        latents_mean = torch.tensor(self.latents_mean).view(1, self.z_dim, 1, 1, 1).to(latents.device, latents.dtype)
-        latents_std = 1.0 / torch.tensor(self.latents_std).view(1, self.z_dim, 1, 1, 1).to(latents.device, latents.dtype)
+        latents_mean = (
+            torch.tensor(self.latents_mean)
+            .view(1, self.z_dim, 1, 1, 1)
+            .to(latents.device, latents.dtype)
+        )
+        latents_std = 1.0 / torch.tensor(self.latents_std).view(
+            1, self.z_dim, 1, 1, 1
+        ).to(latents.device, latents.dtype)
         latents = (latents - latents_mean) * latents_std
 
         if is_4d:
@@ -1226,16 +1444,24 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
 
         return latents
 
-    def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+    def blend_v(
+        self, a: torch.Tensor, b: torch.Tensor, blend_extent: int
+    ) -> torch.Tensor:
         blend_extent = min(a.shape[-2], b.shape[-2], blend_extent)
         for y in range(blend_extent):
-            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, :, y, :] * (y / blend_extent)
+            b[:, :, :, y, :] = a[:, :, :, -blend_extent + y, :] * (
+                1 - y / blend_extent
+            ) + b[:, :, :, y, :] * (y / blend_extent)
         return b
 
-    def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
+    def blend_h(
+        self, a: torch.Tensor, b: torch.Tensor, blend_extent: int
+    ) -> torch.Tensor:
         blend_extent = min(a.shape[-1], b.shape[-1], blend_extent)
         for x in range(blend_extent):
-            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, :, x] * (x / blend_extent)
+            b[:, :, :, :, x] = a[:, :, :, :, -blend_extent + x] * (
+                1 - x / blend_extent
+            ) + b[:, :, :, :, x] * (x / blend_extent)
         return b
 
     def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
@@ -1252,10 +1478,18 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
         latent_height = height // self.spatial_compression_ratio
         latent_width = width // self.spatial_compression_ratio
 
-        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
-        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        tile_latent_min_height = (
+            self.tile_sample_min_height // self.spatial_compression_ratio
+        )
+        tile_latent_min_width = (
+            self.tile_sample_min_width // self.spatial_compression_ratio
+        )
+        tile_latent_stride_height = (
+            self.tile_sample_stride_height // self.spatial_compression_ratio
+        )
+        tile_latent_stride_width = (
+            self.tile_sample_stride_width // self.spatial_compression_ratio
+        )
 
         blend_height = tile_latent_min_height - tile_latent_stride_height
         blend_width = tile_latent_min_width - tile_latent_stride_width
@@ -1272,7 +1506,13 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
                 for k in range(frame_range):
                     self._enc_conv_idx = [0]
                     if k == 0:
-                        tile = x[:, :, :1, i : i + self.tile_sample_min_height, j : j + self.tile_sample_min_width]
+                        tile = x[
+                            :,
+                            :,
+                            :1,
+                            i : i + self.tile_sample_min_height,
+                            j : j + self.tile_sample_min_width,
+                        ]
                     else:
                         tile = x[
                             :,
@@ -1281,7 +1521,9 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
                             i : i + self.tile_sample_min_height,
                             j : j + self.tile_sample_min_width,
                         ]
-                    tile = self.encoder(tile, feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx)
+                    tile = self.encoder(
+                        tile, feat_cache=self._enc_feat_map, feat_idx=self._enc_conv_idx
+                    )
                     tile = self.quant_conv(tile)
                     time.append(tile)
                 row.append(torch.cat(time, dim=2))
@@ -1298,13 +1540,17 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
                     tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                 if j > 0:
                     tile = self.blend_h(row[j - 1], tile, blend_width)
-                result_row.append(tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width])
+                result_row.append(
+                    tile[:, :, :, :tile_latent_stride_height, :tile_latent_stride_width]
+                )
             result_rows.append(torch.cat(result_row, dim=-1))
 
         enc = torch.cat(result_rows, dim=3)[:, :, :, :latent_height, :latent_width]
         return enc
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
+    def tiled_decode(
+        self, z: torch.Tensor, return_dict: bool = True
+    ) -> Union[Dict[str, torch.Tensor], torch.Tensor]:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1322,10 +1568,18 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
         sample_height = height * self.spatial_compression_ratio
         sample_width = width * self.spatial_compression_ratio
 
-        tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
-        tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
-        tile_latent_stride_height = self.tile_sample_stride_height // self.spatial_compression_ratio
-        tile_latent_stride_width = self.tile_sample_stride_width // self.spatial_compression_ratio
+        tile_latent_min_height = (
+            self.tile_sample_min_height // self.spatial_compression_ratio
+        )
+        tile_latent_min_width = (
+            self.tile_sample_min_width // self.spatial_compression_ratio
+        )
+        tile_latent_stride_height = (
+            self.tile_sample_stride_height // self.spatial_compression_ratio
+        )
+        tile_latent_stride_width = (
+            self.tile_sample_stride_width // self.spatial_compression_ratio
+        )
 
         blend_height = self.tile_sample_min_height - self.tile_sample_stride_height
         blend_width = self.tile_sample_min_width - self.tile_sample_stride_width
@@ -1340,9 +1594,17 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
                 time = []
                 for k in range(num_frames):
                     self._conv_idx = [0]
-                    tile = z[:, :, k : k + 1, i : i + tile_latent_min_height, j : j + tile_latent_min_width]
+                    tile = z[
+                        :,
+                        :,
+                        k : k + 1,
+                        i : i + tile_latent_min_height,
+                        j : j + tile_latent_min_width,
+                    ]
                     tile = self.post_quant_conv(tile)
-                    decoded = self.decoder(tile, feat_cache=self._feat_map, feat_idx=self._conv_idx)
+                    decoded = self.decoder(
+                        tile, feat_cache=self._feat_map, feat_idx=self._conv_idx
+                    )
                     time.append(decoded)
                 row.append(torch.cat(time, dim=2))
             rows.append(row)
@@ -1358,7 +1620,15 @@ class AutoencoderKLQwenImage(nn.Module):  # ModelMixin, ConfigMixin, FromOrigina
                     tile = self.blend_v(rows[i - 1][j], tile, blend_height)
                 if j > 0:
                     tile = self.blend_h(row[j - 1], tile, blend_width)
-                result_row.append(tile[:, :, :, : self.tile_sample_stride_height, : self.tile_sample_stride_width])
+                result_row.append(
+                    tile[
+                        :,
+                        :,
+                        :,
+                        : self.tile_sample_stride_height,
+                        : self.tile_sample_stride_width,
+                    ]
+                )
             result_rows.append(torch.cat(result_row, dim=-1))
 
         dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
@@ -1610,7 +1880,9 @@ def load_vae(
 
     if spatial_chunk_size is not None and spatial_chunk_size % 2 != 0:
         spatial_chunk_size += 1
-        logger.warning(f"Adjusted spatial_chunk_size to the next even number: {spatial_chunk_size}")
+        logger.warning(
+            f"Adjusted spatial_chunk_size to the next even number: {spatial_chunk_size}"
+        )
 
     config = json.loads(VAE_CONFIG_JSON)
     vae = AutoencoderKLQwenImage(
@@ -1653,9 +1925,21 @@ if __name__ == "__main__":
     from library.device_utils import get_preferred_device, synchronize_device
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vae", type=str, required=True, help="Path to the VAE model file.")
-    parser.add_argument("--input_image_dir", type=str, required=True, help="Path to the input image directory.")
-    parser.add_argument("--output_image_dir", type=str, required=True, help="Path to the output image directory.")
+    parser.add_argument(
+        "--vae", type=str, required=True, help="Path to the VAE model file."
+    )
+    parser.add_argument(
+        "--input_image_dir",
+        type=str,
+        required=True,
+        help="Path to the input image directory.",
+    )
+    parser.add_argument(
+        "--output_image_dir",
+        type=str,
+        required=True,
+        help="Path to the output image directory.",
+    )
     args = parser.parse_args()
 
     # Load VAE
@@ -1672,7 +1956,12 @@ if __name__ == "__main__":
         if new_width != width or new_height != height:
             image = image.crop((0, 0, new_width, new_height))
 
-        image_tensor = torch.tensor(np.array(image)).permute(2, 0, 1).unsqueeze(0).float() / 255.0 * 2 - 1
+        image_tensor = (
+            torch.tensor(np.array(image)).permute(2, 0, 1).unsqueeze(0).float()
+            / 255.0
+            * 2
+            - 1
+        )
         image_tensor = image_tensor.to(vae.dtype).to(vae.device)
 
         with torch.no_grad():
@@ -1680,9 +1969,15 @@ if __name__ == "__main__":
             reconstructed = vae.decode_to_pixels(latents)
 
         diff = (image_tensor - reconstructed).abs().mean().item()
-        print(f"Processed {image_path} (size: {image.size}), reconstruction diff: {diff}")
+        print(
+            f"Processed {image_path} (size: {image.size}), reconstruction diff: {diff}"
+        )
 
-        reconstructed_image = ((reconstructed.squeeze(0).permute(1, 2, 0).float().cpu().numpy() + 1) / 2 * 255).astype(np.uint8)
+        reconstructed_image = (
+            (reconstructed.squeeze(0).permute(1, 2, 0).float().cpu().numpy() + 1)
+            / 2
+            * 255
+        ).astype(np.uint8)
         Image.fromarray(reconstructed_image).save(output_path)
 
     def process_directory(input_dir, output_dir):
@@ -1694,7 +1989,9 @@ if __name__ == "__main__":
         start_time = time.perf_counter()
 
         os.makedirs(output_dir, exist_ok=True)
-        image_paths = glob.glob(os.path.join(input_dir, "*.jpg")) + glob.glob(os.path.join(input_dir, "*.png"))
+        image_paths = glob.glob(os.path.join(input_dir, "*.jpg")) + glob.glob(
+            os.path.join(input_dir, "*.png")
+        )
         for image_path in image_paths:
             filename = os.path.basename(image_path)
             output_path = os.path.join(output_dir, filename)
@@ -1711,22 +2008,34 @@ if __name__ == "__main__":
     print("Starting image processing with default settings...")
     process_directory(args.input_image_dir, args.output_image_dir)
 
-    print("Starting image processing with spatial chunking enabled with chunk size 64...")
+    print(
+        "Starting image processing with spatial chunking enabled with chunk size 64..."
+    )
     vae.enable_spatial_chunking(64)
     process_directory(args.input_image_dir, args.output_image_dir + "_chunked_64")
 
-    print("Starting image processing with spatial chunking enabled with chunk size 16...")
+    print(
+        "Starting image processing with spatial chunking enabled with chunk size 16..."
+    )
     vae.enable_spatial_chunking(16)
     process_directory(args.input_image_dir, args.output_image_dir + "_chunked_16")
 
-    print("Starting image processing without caching and chunking enabled with chunk size 64...")
+    print(
+        "Starting image processing without caching and chunking enabled with chunk size 64..."
+    )
     vae.enable_spatial_chunking(64)
     vae.disable_cache()
-    process_directory(args.input_image_dir, args.output_image_dir + "_no_cache_chunked_64")
+    process_directory(
+        args.input_image_dir, args.output_image_dir + "_no_cache_chunked_64"
+    )
 
-    print("Starting image processing without caching and chunking enabled with chunk size 16...")
+    print(
+        "Starting image processing without caching and chunking enabled with chunk size 16..."
+    )
     vae.disable_cache()
-    process_directory(args.input_image_dir, args.output_image_dir + "_no_cache_chunked_16")
+    process_directory(
+        args.input_image_dir, args.output_image_dir + "_no_cache_chunked_16"
+    )
 
     print("Starting image processing without caching and chunking disabled...")
     vae.disable_spatial_chunking()

@@ -12,7 +12,7 @@ from torch import Tensor
 from library.utils import setup_logging
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +59,12 @@ class LoRAModule(torch.nn.Module):
                 kernel_size = org_module.kernel_size
                 stride = org_module.stride
                 padding = org_module.padding
-                self.lora_down = torch.nn.Conv2d(in_dim, self.lora_dim, kernel_size, stride, padding, bias=False)
-                self.lora_up = torch.nn.Conv2d(self.lora_dim, out_dim, (1, 1), (1, 1), bias=False)
+                self.lora_down = torch.nn.Conv2d(
+                    in_dim, self.lora_dim, kernel_size, stride, padding, bias=False
+                )
+                self.lora_up = torch.nn.Conv2d(
+                    self.lora_dim, out_dim, (1, 1), (1, 1), bias=False
+                )
             else:
                 self.lora_down = torch.nn.Linear(in_dim, self.lora_dim, bias=False)
                 self.lora_up = torch.nn.Linear(self.lora_dim, out_dim, bias=False)
@@ -69,18 +73,30 @@ class LoRAModule(torch.nn.Module):
             torch.nn.init.zeros_(self.lora_up.weight)
         else:
             # conv2d not supported
-            assert sum(split_dims) == out_dim, "sum of split_dims must be equal to out_dim"
-            assert org_module.__class__.__name__ == "Linear", "split_dims is only supported for Linear"
-            self.lora_down = torch.nn.ModuleList(
-                [torch.nn.Linear(in_dim, self.lora_dim, bias=False) for _ in range(len(split_dims))]
+            assert sum(split_dims) == out_dim, (
+                "sum of split_dims must be equal to out_dim"
             )
-            self.lora_up = torch.nn.ModuleList([torch.nn.Linear(self.lora_dim, split_dim, bias=False) for split_dim in split_dims])
+            assert org_module.__class__.__name__ == "Linear", (
+                "split_dims is only supported for Linear"
+            )
+            self.lora_down = torch.nn.ModuleList(
+                [
+                    torch.nn.Linear(in_dim, self.lora_dim, bias=False)
+                    for _ in range(len(split_dims))
+                ]
+            )
+            self.lora_up = torch.nn.ModuleList(
+                [
+                    torch.nn.Linear(self.lora_dim, split_dim, bias=False)
+                    for split_dim in split_dims
+                ]
+            )
             for lora_down in self.lora_down:
                 torch.nn.init.kaiming_uniform_(lora_down.weight, a=math.sqrt(5))
             for lora_up in self.lora_up:
                 torch.nn.init.zeros_(lora_up.weight)
 
-        if type(alpha) == torch.Tensor:
+        if isinstance(alpha, torch.Tensor):
             alpha = alpha.detach().float().numpy()  # without casting, bf16 causes error
         alpha = self.lora_dim if alpha is None or alpha == 0 else alpha
         self.scale = alpha / self.lora_dim
@@ -124,7 +140,9 @@ class LoRAModule(torch.nn.Module):
         if self.split_dims is None:
             # fp32 accumulation: compute LoRA delta in fp32 for better precision
             if self.fp32_accumulation:
-                lx = torch.nn.functional.linear(x.float(), self.lora_down.weight.float())
+                lx = torch.nn.functional.linear(
+                    x.float(), self.lora_down.weight.float()
+                )
             else:
                 lx = self.lora_down(x)
 
@@ -138,7 +156,10 @@ class LoRAModule(torch.nn.Module):
 
             # rank dropout
             if self.rank_dropout is not None and self.training:
-                mask = torch.rand((lx.size(0), self.lora_dim), device=lx.device) > self.rank_dropout
+                mask = (
+                    torch.rand((lx.size(0), self.lora_dim), device=lx.device)
+                    > self.rank_dropout
+                )
                 if len(lx.size()) == 3:
                     mask = mask.unsqueeze(1)  # for Text Encoder
                 elif len(lx.size()) == 4:
@@ -146,7 +167,9 @@ class LoRAModule(torch.nn.Module):
                 lx = lx * mask
 
                 # scaling for rank dropout: treat as if the rank is changed
-                scale = self.scale * (1.0 / (1.0 - self.rank_dropout))  # redundant for readability
+                scale = self.scale * (
+                    1.0 / (1.0 - self.rank_dropout)
+                )  # redundant for readability
             else:
                 scale = self.scale
 
@@ -165,16 +188,22 @@ class LoRAModule(torch.nn.Module):
                 and self.grad_norms is not None
             ):
                 with torch.no_grad():
-                    perturbation_scale = (self.ggpo_sigma * torch.sqrt(self.combined_weight_norms**2)) + (
-                        self.ggpo_beta * (self.grad_norms**2)
+                    perturbation_scale = (
+                        self.ggpo_sigma * torch.sqrt(self.combined_weight_norms**2)
+                    ) + (self.ggpo_beta * (self.grad_norms**2))
+                    perturbation_scale_factor = (
+                        perturbation_scale * self.perturbation_norm_factor
+                    ).to(self.device)
+                    perturbation = torch.randn(
+                        self.org_module_shape, dtype=self.dtype, device=self.device
                     )
-                    perturbation_scale_factor = (perturbation_scale * self.perturbation_norm_factor).to(self.device)
-                    perturbation = torch.randn(self.org_module_shape, dtype=self.dtype, device=self.device)
                     perturbation.mul_(perturbation_scale_factor)
                     perturbation_output = x @ perturbation.T  # Result: (batch × n)
                 if self.fp32_accumulation:
                     return org_forwarded + lx + perturbation_output
-                return org_forwarded + (self.multiplier * scale * lx) + perturbation_output
+                return (
+                    org_forwarded + (self.multiplier * scale * lx) + perturbation_output
+                )
             else:
                 if self.fp32_accumulation:
                     return org_forwarded + lx
@@ -192,7 +221,11 @@ class LoRAModule(torch.nn.Module):
 
             # rank dropout
             if self.rank_dropout is not None and self.training:
-                masks = [torch.rand((lx.size(0), self.lora_dim), device=lx.device) > self.rank_dropout for lx in lxs]
+                masks = [
+                    torch.rand((lx.size(0), self.lora_dim), device=lx.device)
+                    > self.rank_dropout
+                    for lx in lxs
+                ]
                 for i in range(len(lxs)):
                     if len(lx.size()) == 3:
                         masks[i] = masks[i].unsqueeze(1)
@@ -201,7 +234,9 @@ class LoRAModule(torch.nn.Module):
                     lxs[i] = lxs[i] * masks[i]
 
                 # scaling for rank dropout: treat as if the rank is changed
-                scale = self.scale * (1.0 / (1.0 - self.rank_dropout))  # redundant for readability
+                scale = self.scale * (
+                    1.0 / (1.0 - self.rank_dropout)
+                )  # redundant for readability
             else:
                 scale = self.scale
 
@@ -239,7 +274,8 @@ class LoRAModule(torch.nn.Module):
 
         self.weight_norms = torch.norm(module_weights, dim=1, keepdim=True)
         self.combined_weight_norms = torch.sqrt(
-            (self.org_weight_norm_estimate**2) + torch.sum(module_weights**2, dim=1, keepdim=True)
+            (self.org_weight_norm_estimate**2)
+            + torch.sum(module_weights**2, dim=1, keepdim=True)
         )
 
     @torch.no_grad()
@@ -258,7 +294,10 @@ class LoRAModule(torch.nn.Module):
 
         if lora_down_grad is not None and lora_up_grad is not None:
             with torch.autocast(self.device.type):
-                approx_grad = self.scale * ((self.lora_up.weight @ lora_down_grad) + (lora_up_grad @ self.lora_down.weight))
+                approx_grad = self.scale * (
+                    (self.lora_up.weight @ lora_down_grad)
+                    + (lora_up_grad @ self.lora_down.weight)
+                )
                 self.grad_norms = torch.norm(approx_grad, dim=1, keepdim=True)
 
     @property
@@ -289,7 +328,16 @@ class DoRAModule(LoRAModule):
         module_dropout=None,
     ):
         # split_dims and ggpo not supported for DoRA
-        super().__init__(lora_name, org_module, multiplier, lora_dim, alpha, dropout, rank_dropout, module_dropout)
+        super().__init__(
+            lora_name,
+            org_module,
+            multiplier,
+            lora_dim,
+            alpha,
+            dropout,
+            rank_dropout,
+            module_dropout,
+        )
 
         # Initialize magnitude to per-row L2 norms of the original weight
         weight = org_module.weight.detach().float()
@@ -300,7 +348,9 @@ class DoRAModule(LoRAModule):
         org_weight = self.org_module.weight.detach().float()
         self.register_buffer(
             "_org_weight_norm",
-            org_weight.norm(p=2, dim=1).clamp(min=torch.finfo(org_weight.dtype).eps),  # [out_features]
+            org_weight.norm(p=2, dim=1).clamp(
+                min=torch.finfo(org_weight.dtype).eps
+            ),  # [out_features]
         )
         super().apply_to()
 
@@ -328,7 +378,10 @@ class DoRAModule(LoRAModule):
 
         # rank dropout
         if self.rank_dropout is not None and self.training:
-            mask = torch.rand((lx.size(0), self.lora_dim), device=lx.device) > self.rank_dropout
+            mask = (
+                torch.rand((lx.size(0), self.lora_dim), device=lx.device)
+                > self.rank_dropout
+            )
             if len(lx.size()) == 3:
                 mask = mask.unsqueeze(1)
             lx = lx * mask
@@ -394,7 +447,9 @@ class OrthoLoRAModule(torch.nn.Module):
 
         # SVD-based orthogonal initialization
         svd_device = "cuda" if torch.cuda.is_available() else "cpu"
-        base_m = torch.normal(mean=0, std=1.0 / lora_dim, size=(in_dim, out_dim), device=svd_device)
+        base_m = torch.normal(
+            mean=0, std=1.0 / lora_dim, size=(in_dim, out_dim), device=svd_device
+        )
         u, s, v = torch.linalg.svd(base_m)
         u, s, v = u.cpu(), s.cpu(), v.cpu()
 
@@ -408,20 +463,30 @@ class OrthoLoRAModule(torch.nn.Module):
             self.lambda_layer.data = s[None, -lora_dim:].clone().contiguous()
         elif sig_type == "middle":
             start_u = math.ceil((u.shape[0] - lora_dim) / 2)
-            self.q_layer.weight.data = u[start_u : start_u + lora_dim].clone().contiguous()
+            self.q_layer.weight.data = (
+                u[start_u : start_u + lora_dim].clone().contiguous()
+            )
             start_v = math.ceil((v.shape[1] - lora_dim) / 2)
-            self.p_layer.weight.data = v[:, start_v : start_v + lora_dim].clone().contiguous()
+            self.p_layer.weight.data = (
+                v[:, start_v : start_v + lora_dim].clone().contiguous()
+            )
             start_s = math.ceil((s.shape[0] - lora_dim) / 2)
-            self.lambda_layer.data = s[None, start_s : start_s + lora_dim].clone().contiguous()
+            self.lambda_layer.data = (
+                s[None, start_s : start_s + lora_dim].clone().contiguous()
+            )
 
         del u, s, v, base_m
 
         # Frozen base copies for residual (ensures zero output at init)
-        self.register_buffer("base_q_weight", self.q_layer.weight.data.clone().contiguous())
-        self.register_buffer("base_p_weight", self.p_layer.weight.data.clone().contiguous())
+        self.register_buffer(
+            "base_q_weight", self.q_layer.weight.data.clone().contiguous()
+        )
+        self.register_buffer(
+            "base_p_weight", self.p_layer.weight.data.clone().contiguous()
+        )
         self.register_buffer("base_lambda", self.lambda_layer.data.clone().contiguous())
 
-        if type(alpha) == torch.Tensor:
+        if isinstance(alpha, torch.Tensor):
             alpha = alpha.detach().float().numpy()
         alpha = lora_dim if alpha is None or alpha == 0 else alpha
         self.scale = alpha / lora_dim
@@ -451,7 +516,9 @@ class OrthoLoRAModule(torch.nn.Module):
         dtype = self.q_layer.weight.dtype
 
         # timestep mask
-        mask = self._timestep_mask.to(x.device) if self._timestep_mask is not None else 1.0
+        mask = (
+            self._timestep_mask.to(x.device) if self._timestep_mask is not None else 1.0
+        )
 
         # trainable path
         q_out = self.q_layer(x.to(dtype)) * self.lambda_layer * mask
@@ -462,7 +529,10 @@ class OrthoLoRAModule(torch.nn.Module):
 
         # rank dropout
         if self.rank_dropout is not None and self.training:
-            rd_mask = torch.rand((q_out.size(0), self.lora_dim), device=q_out.device) > self.rank_dropout
+            rd_mask = (
+                torch.rand((q_out.size(0), self.lora_dim), device=q_out.device)
+                > self.rank_dropout
+            )
             if len(q_out.size()) == 3:
                 rd_mask = rd_mask.unsqueeze(1)
             q_out = q_out * rd_mask
@@ -474,7 +544,9 @@ class OrthoLoRAModule(torch.nn.Module):
 
         # frozen base path (residual subtraction ensures zero output at init)
         base_out = torch.nn.functional.linear(
-            torch.nn.functional.linear(x.to(dtype), self.base_q_weight) * self.base_lambda * mask,
+            torch.nn.functional.linear(x.to(dtype), self.base_q_weight)
+            * self.base_lambda
+            * mask,
             self.base_p_weight,
         )
 
@@ -484,10 +556,18 @@ class OrthoLoRAModule(torch.nn.Module):
     def regularization(self):
         """Orthogonality regularization: ||P^T P - I||^2 + ||Q Q^T - I||^2"""
         p_reg = torch.sum(
-            (self.p_layer.weight.T @ self.p_layer.weight - torch.eye(self.lora_dim, device=self.p_layer.weight.device)) ** 2
+            (
+                self.p_layer.weight.T @ self.p_layer.weight
+                - torch.eye(self.lora_dim, device=self.p_layer.weight.device)
+            )
+            ** 2
         )
         q_reg = torch.sum(
-            (self.q_layer.weight @ self.q_layer.weight.T - torch.eye(self.lora_dim, device=self.q_layer.weight.device)) ** 2
+            (
+                self.q_layer.weight @ self.q_layer.weight.T
+                - torch.eye(self.lora_dim, device=self.q_layer.weight.device)
+            )
+            ** 2
         )
         return p_reg, q_reg
 
@@ -529,16 +609,25 @@ class LoRAInfModule(LoRAModule):
             up_weight = sd["lora_up.weight"].to(torch.float).to(device)
 
             if len(weight.size()) == 2:
-                weight = weight + self.multiplier * (up_weight @ down_weight) * self.scale
+                weight = (
+                    weight + self.multiplier * (up_weight @ down_weight) * self.scale
+                )
             elif down_weight.size()[2:4] == (1, 1):
                 weight = (
                     weight
                     + self.multiplier
-                    * (up_weight.squeeze(3).squeeze(2) @ down_weight.squeeze(3).squeeze(2)).unsqueeze(2).unsqueeze(3)
+                    * (
+                        up_weight.squeeze(3).squeeze(2)
+                        @ down_weight.squeeze(3).squeeze(2)
+                    )
+                    .unsqueeze(2)
+                    .unsqueeze(3)
                     * self.scale
                 )
             else:
-                conved = torch.nn.functional.conv2d(down_weight.permute(1, 0, 2, 3), up_weight).permute(1, 0, 2, 3)
+                conved = torch.nn.functional.conv2d(
+                    down_weight.permute(1, 0, 2, 3), up_weight
+                ).permute(1, 0, 2, 3)
                 weight = weight + self.multiplier * conved * self.scale
 
             org_sd["weight"] = weight.to(dtype)
@@ -549,10 +638,16 @@ class LoRAInfModule(LoRAModule):
                 down_weight = sd[f"lora_down.{i}.weight"].to(torch.float).to(device)
                 up_weight = sd[f"lora_up.{i}.weight"].to(torch.float).to(device)
 
-                padded_up_weight = torch.zeros((total_dims, up_weight.size(0)), device=device, dtype=torch.float)
-                padded_up_weight[sum(self.split_dims[:i]) : sum(self.split_dims[: i + 1])] = up_weight
+                padded_up_weight = torch.zeros(
+                    (total_dims, up_weight.size(0)), device=device, dtype=torch.float
+                )
+                padded_up_weight[
+                    sum(self.split_dims[:i]) : sum(self.split_dims[: i + 1])
+                ] = up_weight
 
-                weight = weight + self.multiplier * (up_weight @ down_weight) * self.scale
+                weight = (
+                    weight + self.multiplier * (up_weight @ down_weight) * self.scale
+                )
 
             org_sd["weight"] = weight.to(dtype)
             self.org_module.load_state_dict(org_sd)
@@ -569,11 +664,15 @@ class LoRAInfModule(LoRAModule):
         elif down_weight.size()[2:4] == (1, 1):
             weight = (
                 self.multiplier
-                * (up_weight.squeeze(3).squeeze(2) @ down_weight.squeeze(3).squeeze(2)).unsqueeze(2).unsqueeze(3)
+                * (up_weight.squeeze(3).squeeze(2) @ down_weight.squeeze(3).squeeze(2))
+                .unsqueeze(2)
+                .unsqueeze(3)
                 * self.scale
             )
         else:
-            conved = torch.nn.functional.conv2d(down_weight.permute(1, 0, 2, 3), up_weight).permute(1, 0, 2, 3)
+            conved = torch.nn.functional.conv2d(
+                down_weight.permute(1, 0, 2, 3), up_weight
+            ).permute(1, 0, 2, 3)
             weight = self.multiplier * conved * self.scale
 
         return weight
@@ -590,7 +689,10 @@ class LoRAInfModule(LoRAModule):
         else:
             lxs = [lora_down(x) for lora_down in self.lora_down]
             lxs = [lora_up(lx) for lora_up, lx in zip(self.lora_up, lxs)]
-            return self.org_forward(x) + torch.cat(lxs, dim=-1) * self.multiplier * self.scale
+            return (
+                self.org_forward(x)
+                + torch.cat(lxs, dim=-1) * self.multiplier * self.scale
+            )
 
     def forward(self, x):
         if not self.enabled:

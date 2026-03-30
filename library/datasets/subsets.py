@@ -51,7 +51,13 @@ def split_train_val(
 
 class ImageInfo:
     def __init__(
-        self, image_key: str, num_repeats: int, caption: str, is_reg: bool, absolute_path: str, caption_dropout_rate: float = 0.0
+        self,
+        image_key: str,
+        num_repeats: int,
+        caption: str,
+        is_reg: bool,
+        absolute_path: str,
+        caption_dropout_rate: float = 0.0,
     ) -> None:
         self.image_key: str = image_key
         self.num_repeats: int = num_repeats
@@ -65,13 +71,17 @@ class ImageInfo:
         self.latents: Optional[torch.Tensor] = None
         self.latents_flipped: Optional[torch.Tensor] = None
         self.latents_npz: Optional[str] = None  # set in cache_latents
-        self.latents_original_size: Optional[Tuple[int, int]] = None  # original image size, not latents size
+        self.latents_original_size: Optional[Tuple[int, int]] = (
+            None  # original image size, not latents size
+        )
         self.latents_crop_ltrb: Optional[Tuple[int, int]] = (
             None  # crop left top right bottom in original pixel size, not latents size
         )
         self.cond_img_path: Optional[str] = None
         self.image: Optional[Any] = None  # optional, original PIL Image
-        self.text_encoder_outputs_npz: Optional[str] = None  # filename. set in cache_text_encoder_outputs
+        self.text_encoder_outputs_npz: Optional[str] = (
+            None  # filename. set in cache_text_encoder_outputs
+        )
 
         # new
         self.text_encoder_outputs: Optional[List[torch.Tensor]] = None
@@ -80,8 +90,12 @@ class ImageInfo:
         self.text_encoder_outputs2: Optional[torch.Tensor] = None
         self.text_encoder_pool2: Optional[torch.Tensor] = None
 
-        self.alpha_mask: Optional[torch.Tensor] = None  # alpha mask can be flipped in runtime
-        self.mask_path: Optional[str] = None  # path to separate mask file (from mask_dir)
+        self.alpha_mask: Optional[torch.Tensor] = (
+            None  # alpha mask can be flipped in runtime
+        )
+        self.mask_path: Optional[str] = (
+            None  # path to separate mask file (from mask_dir)
+        )
         self.resize_interpolation: Optional[str] = None
 
 
@@ -111,7 +125,9 @@ class AugHelper:
 
         return {"image": image}
 
-    def get_augmentor(self, use_color_aug: bool):  # -> Optional[Callable[[np.ndarray], Dict[str, np.ndarray]]]:
+    def get_augmentor(
+        self, use_color_aug: bool
+    ):  # -> Optional[Callable[[np.ndarray], Dict[str, np.ndarray]]]:
         return self.color_aug if use_color_aug else None
 
 
@@ -167,7 +183,9 @@ class BaseSubset:
         self.token_warmup_min = token_warmup_min  # step=0におけるタグの数
         self.token_warmup_step = token_warmup_step  # N（N<1ならN*max_train_steps）ステップ目でタグの数が最大になる
 
-        self.custom_attributes = custom_attributes if custom_attributes is not None else {}
+        self.custom_attributes = (
+            custom_attributes if custom_attributes is not None else {}
+        )
 
         self.img_count = 0
 
@@ -211,7 +229,9 @@ class DreamBoothSubset(BaseSubset):
         resize_interpolation: Optional[str] = None,
         mask_dir: Optional[str] = None,
     ) -> None:
-        assert image_dir is not None, "image_dir must be specified / image_dirは指定が必須です"
+        assert image_dir is not None, (
+            "image_dir must be specified / image_dirは指定が必須です"
+        )
 
         super().__init__(
             image_dir,
@@ -249,7 +269,9 @@ class DreamBoothSubset(BaseSubset):
         self.cache_info = cache_info
         self.mask_dir = mask_dir
         if mask_dir:
-            self.alpha_mask = True  # enable alpha mask pipeline when using separate mask files
+            self.alpha_mask = (
+                True  # enable alpha mask pipeline when using separate mask files
+            )
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, DreamBoothSubset):

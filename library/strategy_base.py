@@ -6,7 +6,7 @@ from typing import Any, List, Optional, Tuple, Union, Callable
 
 import numpy as np
 import torch
-from transformers import CLIPTokenizer, CLIPTextModel, CLIPTextModelWithProjection
+from transformers import CLIPTokenizer
 
 
 # TODO remove circular import by moving ImageInfo to a separate file
@@ -15,7 +15,7 @@ from transformers import CLIPTokenizer, CLIPTextModel, CLIPTextModelWithProjecti
 from library.utils import setup_logging
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,9 @@ class TokenizeStrategy:
     @classmethod
     def set_strategy(cls, strategy):
         if cls._strategy is not None:
-            raise RuntimeError(f"Internal error. {cls.__name__} strategy is already set")
+            raise RuntimeError(
+                f"Internal error. {cls.__name__} strategy is already set"
+            )
         cls._strategy = strategy
 
     @classmethod
@@ -52,14 +54,22 @@ class TokenizeStrategy:
         return cls._strategy
 
     def _load_tokenizer(
-        self, model_class: Any, model_id: str, subfolder: Optional[str] = None, tokenizer_cache_dir: Optional[str] = None
+        self,
+        model_class: Any,
+        model_id: str,
+        subfolder: Optional[str] = None,
+        tokenizer_cache_dir: Optional[str] = None,
     ) -> Any:
         tokenizer = None
         if tokenizer_cache_dir:
-            local_tokenizer_path = os.path.join(tokenizer_cache_dir, model_id.replace("/", "_"))
+            local_tokenizer_path = os.path.join(
+                tokenizer_cache_dir, model_id.replace("/", "_")
+            )
             if os.path.exists(local_tokenizer_path):
                 logger.info(f"load tokenizer from cache: {local_tokenizer_path}")
-                tokenizer = model_class.from_pretrained(local_tokenizer_path)  # same for v1 and v2
+                tokenizer = model_class.from_pretrained(
+                    local_tokenizer_path
+                )  # same for v1 and v2
 
         if tokenizer is None:
             tokenizer = model_class.from_pretrained(model_id, subfolder=subfolder)
@@ -73,7 +83,9 @@ class TokenizeStrategy:
     def tokenize(self, text: Union[str, List[str]]) -> List[torch.Tensor]:
         raise NotImplementedError
 
-    def tokenize_with_weights(self, text: Union[str, List[str]]) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+    def tokenize_with_weights(
+        self, text: Union[str, List[str]]
+    ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         """
         returns: [tokens1, tokens2, ...], [weights1, weights2, ...]
         """
@@ -198,7 +210,9 @@ class TokenizeStrategy:
                 tokens = tokens[:max_length]
                 weights = weights[:max_length]
             if truncated:
-                logger.warning("Prompt was truncated. Try to shorten the prompt or increase max_embeddings_multiples")
+                logger.warning(
+                    "Prompt was truncated. Try to shorten the prompt or increase max_embeddings_multiples"
+                )
             return tokens, weights
 
         def pad_tokens_and_weights(tokens, weights, max_length, bos, eos, pad):
@@ -214,12 +228,21 @@ class TokenizeStrategy:
 
         tokens, weights = get_prompts_with_weights(text, max_length - 2)
         tokens, weights = pad_tokens_and_weights(
-            tokens, weights, max_length, tokenizer.bos_token_id, tokenizer.eos_token_id, tokenizer.pad_token_id
+            tokens,
+            weights,
+            max_length,
+            tokenizer.bos_token_id,
+            tokenizer.eos_token_id,
+            tokenizer.pad_token_id,
         )
         return torch.tensor(tokens).unsqueeze(0), torch.tensor(weights).unsqueeze(0)
 
     def _get_input_ids(
-        self, tokenizer: CLIPTokenizer, text: str, max_length: Optional[int] = None, weighted: bool = False
+        self,
+        tokenizer: CLIPTokenizer,
+        text: str,
+        max_length: Optional[int] = None,
+        weighted: bool = False,
     ) -> torch.Tensor:
         """
         for SD1.5/2.0/SDXL
@@ -229,9 +252,17 @@ class TokenizeStrategy:
             max_length = tokenizer.model_max_length - 2
 
         if weighted:
-            input_ids, weights = self._get_weighted_input_ids(tokenizer, text, max_length)
+            input_ids, weights = self._get_weighted_input_ids(
+                tokenizer, text, max_length
+            )
         else:
-            input_ids = tokenizer(text, padding="max_length", truncation=True, max_length=max_length, return_tensors="pt").input_ids
+            input_ids = tokenizer(
+                text,
+                padding="max_length",
+                truncation=True,
+                max_length=max_length,
+                return_tensors="pt",
+            ).input_ids
 
         if max_length > tokenizer.model_max_length:
             input_ids = input_ids.squeeze(0)
@@ -240,7 +271,11 @@ class TokenizeStrategy:
                 # v1
                 # 77以上の時は "<BOS> .... <EOS> <EOS> <EOS>" でトータル227とかになっているので、"<BOS>...<EOS>"の三連に変換する
                 # 1111氏のやつは , で区切る、とかしているようだが　とりあえず単純に
-                for i in range(1, max_length - tokenizer.model_max_length + 2, tokenizer.model_max_length - 2):  # (1, 152, 75)
+                for i in range(
+                    1,
+                    max_length - tokenizer.model_max_length + 2,
+                    tokenizer.model_max_length - 2,
+                ):  # (1, 152, 75)
                     ids_chunk = (
                         input_ids[0].unsqueeze(0),
                         input_ids[i : i + tokenizer.model_max_length - 2],
@@ -251,7 +286,11 @@ class TokenizeStrategy:
             else:
                 # v2 or SDXL
                 # 77以上の時は "<BOS> .... <EOS> <PAD> <PAD>..." でトータル227とかになっているので、"<BOS>...<EOS> <PAD> <PAD> ..."の三連に変換する
-                for i in range(1, max_length - tokenizer.model_max_length + 2, tokenizer.model_max_length - 2):
+                for i in range(
+                    1,
+                    max_length - tokenizer.model_max_length + 2,
+                    tokenizer.model_max_length - 2,
+                ):
                     ids_chunk = (
                         input_ids[0].unsqueeze(0),  # BOS
                         input_ids[i : i + tokenizer.model_max_length - 2],
@@ -261,7 +300,10 @@ class TokenizeStrategy:
 
                     # 末尾が <EOS> <PAD> または <PAD> <PAD> の場合は、何もしなくてよい
                     # 末尾が x <PAD/EOS> の場合は末尾を <EOS> に変える（x <EOS> なら結果的に変化なし）
-                    if ids_chunk[-2] != tokenizer.eos_token_id and ids_chunk[-2] != tokenizer.pad_token_id:
+                    if (
+                        ids_chunk[-2] != tokenizer.eos_token_id
+                        and ids_chunk[-2] != tokenizer.pad_token_id
+                    ):
                         ids_chunk[-1] = tokenizer.eos_token_id
                     # 先頭が <BOS> <PAD> ... の場合は <BOS> <EOS> <PAD> ... に変える
                     if ids_chunk[1] == tokenizer.pad_token_id:
@@ -274,9 +316,15 @@ class TokenizeStrategy:
             if weighted:
                 weights = weights.squeeze(0)
                 new_weights = torch.ones(input_ids.shape)
-                for i in range(1, max_length - tokenizer.model_max_length + 2, tokenizer.model_max_length - 2):
+                for i in range(
+                    1,
+                    max_length - tokenizer.model_max_length + 2,
+                    tokenizer.model_max_length - 2,
+                ):
                     b = i // (tokenizer.model_max_length - 2)
-                    new_weights[b, 1 : 1 + tokenizer.model_max_length - 2] = weights[i : i + tokenizer.model_max_length - 2]
+                    new_weights[b, 1 : 1 + tokenizer.model_max_length - 2] = weights[
+                        i : i + tokenizer.model_max_length - 2
+                    ]
                 weights = new_weights
 
         if weighted:
@@ -290,7 +338,9 @@ class TextEncodingStrategy:
     @classmethod
     def set_strategy(cls, strategy):
         if cls._strategy is not None:
-            raise RuntimeError(f"Internal error. {cls.__name__} strategy is already set")
+            raise RuntimeError(
+                f"Internal error. {cls.__name__} strategy is already set"
+            )
         cls._strategy = strategy
 
     @classmethod
@@ -298,7 +348,10 @@ class TextEncodingStrategy:
         return cls._strategy
 
     def encode_tokens(
-        self, tokenize_strategy: TokenizeStrategy, models: List[Any], tokens: List[torch.Tensor]
+        self,
+        tokenize_strategy: TokenizeStrategy,
+        models: List[Any],
+        tokens: List[torch.Tensor],
     ) -> List[torch.Tensor]:
         """
         Encode tokens into embeddings and outputs.
@@ -308,7 +361,11 @@ class TextEncodingStrategy:
         raise NotImplementedError
 
     def encode_tokens_with_weights(
-        self, tokenize_strategy: TokenizeStrategy, models: List[Any], tokens: List[torch.Tensor], weights: List[torch.Tensor]
+        self,
+        tokenize_strategy: TokenizeStrategy,
+        models: List[Any],
+        tokens: List[torch.Tensor],
+        weights: List[torch.Tensor],
     ) -> List[torch.Tensor]:
         """
         Encode tokens into embeddings and outputs.
@@ -339,7 +396,9 @@ class TextEncoderOutputsCachingStrategy:
     @classmethod
     def set_strategy(cls, strategy):
         if cls._strategy is not None:
-            raise RuntimeError(f"Internal error. {cls.__name__} strategy is already set")
+            raise RuntimeError(
+                f"Internal error. {cls.__name__} strategy is already set"
+            )
         cls._strategy = strategy
 
     @classmethod
@@ -372,7 +431,11 @@ class TextEncoderOutputsCachingStrategy:
         raise NotImplementedError
 
     def cache_batch_outputs(
-        self, tokenize_strategy: TokenizeStrategy, models: List[Any], text_encoding_strategy: TextEncodingStrategy, batch: List
+        self,
+        tokenize_strategy: TokenizeStrategy,
+        models: List[Any],
+        text_encoding_strategy: TextEncodingStrategy,
+        batch: List,
     ):
         raise NotImplementedError
 
@@ -382,7 +445,9 @@ class LatentsCachingStrategy:
 
     _strategy = None  # strategy instance: actual strategy class
 
-    def __init__(self, cache_to_disk: bool, batch_size: int, skip_disk_cache_validity_check: bool) -> None:
+    def __init__(
+        self, cache_to_disk: bool, batch_size: int, skip_disk_cache_validity_check: bool
+    ) -> None:
         self._cache_to_disk = cache_to_disk
         self._batch_size = batch_size
         self.skip_disk_cache_validity_check = skip_disk_cache_validity_check
@@ -390,7 +455,9 @@ class LatentsCachingStrategy:
     @classmethod
     def set_strategy(cls, strategy):
         if cls._strategy is not None:
-            raise RuntimeError(f"Internal error. {cls.__name__} strategy is already set")
+            raise RuntimeError(
+                f"Internal error. {cls.__name__} strategy is already set"
+            )
         cls._strategy = strategy
 
     @classmethod
@@ -409,19 +476,34 @@ class LatentsCachingStrategy:
     def cache_suffix(self):
         raise NotImplementedError
 
-    def get_image_size_from_disk_cache_path(self, absolute_path: str, npz_path: str) -> Tuple[Optional[int], Optional[int]]:
+    def get_image_size_from_disk_cache_path(
+        self, absolute_path: str, npz_path: str
+    ) -> Tuple[Optional[int], Optional[int]]:
         w, h = os.path.splitext(npz_path)[0].split("_")[-2].split("x")
         return int(w), int(h)
 
-    def get_latents_npz_path(self, absolute_path: str, image_size: Tuple[int, int]) -> str:
+    def get_latents_npz_path(
+        self, absolute_path: str, image_size: Tuple[int, int]
+    ) -> str:
         raise NotImplementedError
 
     def is_disk_cached_latents_expected(
-        self, bucket_reso: Tuple[int, int], npz_path: str, flip_aug: bool, alpha_mask: bool
+        self,
+        bucket_reso: Tuple[int, int],
+        npz_path: str,
+        flip_aug: bool,
+        alpha_mask: bool,
     ) -> bool:
         raise NotImplementedError
 
-    def cache_batch_latents(self, model: Any, batch: List, flip_aug: bool, alpha_mask: bool, random_crop: bool):
+    def cache_batch_latents(
+        self,
+        model: Any,
+        batch: List,
+        flip_aug: bool,
+        alpha_mask: bool,
+        random_crop: bool,
+    ):
         raise NotImplementedError
 
     def _default_is_disk_cached_latents_expected(
@@ -452,10 +534,17 @@ class LatentsCachingStrategy:
         if self.skip_disk_cache_validity_check:
             return True
 
-        expected_latents_size = (bucket_reso[1] // latents_stride, bucket_reso[0] // latents_stride)  # bucket_reso is (W, H)
+        expected_latents_size = (
+            bucket_reso[1] // latents_stride,
+            bucket_reso[0] // latents_stride,
+        )  # bucket_reso is (W, H)
 
         # e.g. "_32x64", HxW
-        key_reso_suffix = f"_{expected_latents_size[0]}x{expected_latents_size[1]}" if multi_resolution else ""
+        key_reso_suffix = (
+            f"_{expected_latents_size[0]}x{expected_latents_size[1]}"
+            if multi_resolution
+            else ""
+        )
 
         try:
             npz = np.load(npz_path)
@@ -495,14 +584,16 @@ class LatentsCachingStrategy:
             apply_alpha_mask: whether to apply alpha mask
             random_crop: whether to random crop images
             multi_resolution: whether to use multi-resolution latents
-        
-        Returns: 
+
+        Returns:
             None
         """
         from library import train_util  # import here to avoid circular import
 
-        img_tensor, alpha_masks, original_sizes, crop_ltrbs = train_util.load_images_and_masks_for_caching(
-            image_infos, apply_alpha_mask, random_crop
+        img_tensor, alpha_masks, original_sizes, crop_ltrbs = (
+            train_util.load_images_and_masks_for_caching(
+                image_infos, apply_alpha_mask, random_crop
+            )
         )
         img_tensor = img_tensor.to(device=vae_device, dtype=vae_dtype)
 
@@ -525,11 +616,19 @@ class LatentsCachingStrategy:
             crop_ltrb = crop_ltrbs[i]
 
             latents_size = latents.shape[-2:]  # H, W (supports both 4D and 5D latents)
-            key_reso_suffix = f"_{latents_size[0]}x{latents_size[1]}" if multi_resolution else ""  # e.g. "_32x64", HxW
+            key_reso_suffix = (
+                f"_{latents_size[0]}x{latents_size[1]}" if multi_resolution else ""
+            )  # e.g. "_32x64", HxW
 
             if self.cache_to_disk:
                 self.save_latents_to_disk(
-                    info.latents_npz, latents, original_size, crop_ltrb, flipped_latent, alpha_mask, key_reso_suffix
+                    info.latents_npz,
+                    latents,
+                    original_size,
+                    crop_ltrb,
+                    flipped_latent,
+                    alpha_mask,
+                    key_reso_suffix,
                 )
             else:
                 info.latents_original_size = original_size
@@ -541,20 +640,26 @@ class LatentsCachingStrategy:
 
     def load_latents_from_disk(
         self, npz_path: str, bucket_reso: Tuple[int, int]
-    ) -> Tuple[Optional[np.ndarray], Optional[List[int]], Optional[List[int]], Optional[np.ndarray], Optional[np.ndarray]]:
+    ) -> Tuple[
+        Optional[np.ndarray],
+        Optional[List[int]],
+        Optional[List[int]],
+        Optional[np.ndarray],
+        Optional[np.ndarray],
+    ]:
         """
         for SD/SDXL
 
         Args:
             npz_path (str): Path to the npz file.
             bucket_reso (Tuple[int, int]): The resolution of the bucket.
-        
+
         Returns:
             Tuple[
-                Optional[np.ndarray], 
-                Optional[List[int]], 
-                Optional[List[int]], 
-                Optional[np.ndarray], 
+                Optional[np.ndarray],
+                Optional[List[int]],
+                Optional[List[int]],
+                Optional[np.ndarray],
                 Optional[np.ndarray]
             ]: Latent np tensors, original size, crop (left top, right bottom), flipped latents, alpha mask
         """
@@ -562,27 +667,38 @@ class LatentsCachingStrategy:
 
     def _default_load_latents_from_disk(
         self, latents_stride: Optional[int], npz_path: str, bucket_reso: Tuple[int, int]
-    ) -> Tuple[Optional[np.ndarray], Optional[List[int]], Optional[List[int]], Optional[np.ndarray], Optional[np.ndarray]]:
+    ) -> Tuple[
+        Optional[np.ndarray],
+        Optional[List[int]],
+        Optional[List[int]],
+        Optional[np.ndarray],
+        Optional[np.ndarray],
+    ]:
         """
         Args:
             latents_stride (Optional[int]): Stride for latents. If None, load all latents.
             npz_path (str): Path to the npz file.
             bucket_reso (Tuple[int, int]): The resolution of the bucket.
-       
+
         Returns:
             Tuple[
-                Optional[np.ndarray], 
-                Optional[List[int]], 
-                Optional[List[int]], 
-                Optional[np.ndarray], 
+                Optional[np.ndarray],
+                Optional[List[int]],
+                Optional[List[int]],
+                Optional[np.ndarray],
                 Optional[np.ndarray]
             ]: Latent np tensors, original size, crop (left top, right bottom), flipped latents, alpha mask
         """
         if latents_stride is None:
             key_reso_suffix = ""
         else:
-            latents_size = (bucket_reso[1] // latents_stride, bucket_reso[0] // latents_stride)  # bucket_reso is (W, H)
-            key_reso_suffix = f"_{latents_size[0]}x{latents_size[1]}"  # e.g. "_32x64", HxW
+            latents_size = (
+                bucket_reso[1] // latents_stride,
+                bucket_reso[0] // latents_stride,
+            )  # bucket_reso is (W, H)
+            key_reso_suffix = (
+                f"_{latents_size[0]}x{latents_size[1]}"  # e.g. "_32x64", HxW
+            )
 
         npz = np.load(npz_path)
         if "latents" + key_reso_suffix not in npz:
@@ -591,8 +707,16 @@ class LatentsCachingStrategy:
         latents = npz["latents" + key_reso_suffix]
         original_size = npz["original_size" + key_reso_suffix].tolist()
         crop_ltrb = npz["crop_ltrb" + key_reso_suffix].tolist()
-        flipped_latents = npz["latents_flipped" + key_reso_suffix] if "latents_flipped" + key_reso_suffix in npz else None
-        alpha_mask = npz["alpha_mask" + key_reso_suffix] if "alpha_mask" + key_reso_suffix in npz else None
+        flipped_latents = (
+            npz["latents_flipped" + key_reso_suffix]
+            if "latents_flipped" + key_reso_suffix in npz
+            else None
+        )
+        alpha_mask = (
+            npz["alpha_mask" + key_reso_suffix]
+            if "alpha_mask" + key_reso_suffix in npz
+            else None
+        )
         return latents, original_size, crop_ltrb, flipped_latents, alpha_mask
 
     def save_latents_to_disk(
@@ -631,7 +755,9 @@ class LatentsCachingStrategy:
         kwargs["original_size" + key_reso_suffix] = np.array(original_size)
         kwargs["crop_ltrb" + key_reso_suffix] = np.array(crop_ltrb)
         if flipped_latents_tensor is not None:
-            kwargs["latents_flipped" + key_reso_suffix] = flipped_latents_tensor.float().cpu().numpy()
+            kwargs["latents_flipped" + key_reso_suffix] = (
+                flipped_latents_tensor.float().cpu().numpy()
+            )
         if alpha_mask is not None:
             kwargs["alpha_mask" + key_reso_suffix] = alpha_mask.float().cpu().numpy()
         np.savez(npz_path, **kwargs)

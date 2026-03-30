@@ -22,7 +22,6 @@ from voluptuous import (
     Required,
     Schema,
 )
-from transformers import CLIPTokenizer
 
 from . import train_util
 from .train_util import (
@@ -33,14 +32,17 @@ from .train_util import (
 from .utils import setup_logging
 
 setup_logging()
-import logging
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
 def add_config_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--dataset_config", type=Path, default=None, help="config file for detail settings / 詳細な設定用の設定ファイル"
+        "--dataset_config",
+        type=Path,
+        default=None,
+        help="config file for detail settings / 詳細な設定用の設定ファイル",
     )
 
 
@@ -94,6 +96,7 @@ class BaseDatasetParams:
     validation_split: float = 0.0
     resize_interpolation: Optional[str] = None
 
+
 @dataclass
 class DreamBoothDatasetParams(BaseDatasetParams):
     batch_size: int = 1
@@ -103,7 +106,8 @@ class DreamBoothDatasetParams(BaseDatasetParams):
     bucket_reso_steps: int = 64
     bucket_no_upscale: bool = False
     prior_loss_weight: float = 1.0
-    
+
+
 @dataclass
 class SubsetBlueprint:
     params: DreamBoothSubsetParams
@@ -134,18 +138,22 @@ class ConfigSanitizer:
 
     # @curry
     @staticmethod
-    def __validate_and_convert_scalar_or_twodim(klass, value: Union[float, Sequence]) -> Tuple:
+    def __validate_and_convert_scalar_or_twodim(
+        klass, value: Union[float, Sequence]
+    ) -> Tuple:
         Schema(Any(klass, ExactSequence([klass, klass])))(value)
         try:
             Schema(klass)(value)
             return (value, value)
-        except:
+        except Exception:
             return ConfigSanitizer.__validate_and_convert_twodim(klass, value)
 
     # subset schema
     SUBSET_ASCENDABLE_SCHEMA = {
         "color_aug": bool,
-        "face_crop_aug_range": functools.partial(__validate_and_convert_twodim.__func__, float),
+        "face_crop_aug_range": functools.partial(
+            __validate_and_convert_twodim.__func__, float
+        ),
         "flip_aug": bool,
         "num_repeats": int,
         "sample_ratio": Any(float, int),
@@ -190,7 +198,9 @@ class ConfigSanitizer:
         "min_bucket_reso": int,
         "validation_seed": int,
         "validation_split": float,
-        "resolution": functools.partial(__validate_and_convert_scalar_or_twodim.__func__, int),
+        "resolution": functools.partial(
+            __validate_and_convert_scalar_or_twodim.__func__, int
+        ),
         "network_multiplier": float,
         "resize_interpolation": str,
     }
@@ -245,11 +255,19 @@ class ConfigSanitizer:
         self.argparse_schema = self.__merge_dict(
             self.general_schema,
             self.ARGPARSE_SPECIFIC_SCHEMA,
-            {optname: Any(None, self.general_schema[optname]) for optname in self.ARGPARSE_NULLABLE_OPTNAMES},
-            {a_name: self.general_schema[c_name] for a_name, c_name in self.ARGPARSE_OPTNAME_TO_CONFIG_OPTNAME.items()},
+            {
+                optname: Any(None, self.general_schema[optname])
+                for optname in self.ARGPARSE_NULLABLE_OPTNAMES
+            },
+            {
+                a_name: self.general_schema[c_name]
+                for a_name, c_name in self.ARGPARSE_OPTNAME_TO_CONFIG_OPTNAME.items()
+            },
         )
 
-        self.argparse_config_validator = Schema(Object(self.argparse_schema), extra=voluptuous.ALLOW_EXTRA)
+        self.argparse_config_validator = Schema(
+            Object(self.argparse_schema), extra=voluptuous.ALLOW_EXTRA
+        )
 
     def sanitize_user_config(self, user_config: dict) -> dict:
         try:
@@ -261,7 +279,9 @@ class ConfigSanitizer:
 
     # NOTE: In nature, argument parser result is not needed to be sanitize
     #   However this will help us to detect program bug
-    def sanitize_argparse_namespace(self, argparse_namespace: argparse.Namespace) -> argparse.Namespace:
+    def sanitize_argparse_namespace(
+        self, argparse_namespace: argparse.Namespace
+    ) -> argparse.Namespace:
         try:
             return self.argparse_config_validator(argparse_namespace)
         except MultipleInvalid:
@@ -289,15 +309,23 @@ class BlueprintGenerator:
         self.sanitizer = sanitizer
 
     # runtime_params is for parameters which is only configurable on runtime, such as tokenizer
-    def generate(self, user_config: dict, argparse_namespace: argparse.Namespace, **runtime_params) -> Blueprint:
+    def generate(
+        self,
+        user_config: dict,
+        argparse_namespace: argparse.Namespace,
+        **runtime_params,
+    ) -> Blueprint:
         sanitized_user_config = self.sanitizer.sanitize_user_config(user_config)
-        sanitized_argparse_namespace = self.sanitizer.sanitize_argparse_namespace(argparse_namespace)
+        sanitized_argparse_namespace = self.sanitizer.sanitize_argparse_namespace(
+            argparse_namespace
+        )
 
         # convert argparse namespace to dict like config
         # NOTE: it is ok to have extra entries in dict
         optname_map = self.sanitizer.ARGPARSE_OPTNAME_TO_CONFIG_OPTNAME
         argparse_config = {
-            optname_map.get(optname, optname): value for optname, value in vars(sanitized_argparse_namespace).items()
+            optname_map.get(optname, optname): value
+            for optname, value in vars(sanitized_argparse_namespace).items()
         }
 
         general_config = sanitized_user_config.get("general", {})
@@ -309,12 +337,20 @@ class BlueprintGenerator:
             subset_blueprints = []
             for subset_config in subsets:
                 params = self.generate_params_by_fallbacks(
-                    DreamBoothSubsetParams, [subset_config, dataset_config, general_config, argparse_config, runtime_params]
+                    DreamBoothSubsetParams,
+                    [
+                        subset_config,
+                        dataset_config,
+                        general_config,
+                        argparse_config,
+                        runtime_params,
+                    ],
                 )
                 subset_blueprints.append(SubsetBlueprint(params))
 
             params = self.generate_params_by_fallbacks(
-                DreamBoothDatasetParams, [dataset_config, general_config, argparse_config, runtime_params]
+                DreamBoothDatasetParams,
+                [dataset_config, general_config, argparse_config, runtime_params],
             )
             dataset_blueprints.append(DatasetBlueprint(params, subset_blueprints))
 
@@ -329,7 +365,12 @@ class BlueprintGenerator:
         default_params = asdict(param_klass())
         param_names = default_params.keys()
 
-        params = {name: search_value(name_map.get(name, name), fallbacks, default_params.get(name)) for name in param_names}
+        params = {
+            name: search_value(
+                name_map.get(name, name), fallbacks, default_params.get(name)
+            )
+            for name in param_names
+        }
 
         return param_klass(**params)
 
@@ -342,25 +383,47 @@ class BlueprintGenerator:
 
         return default_value
 
-def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlueprint) -> Tuple[DatasetGroup, Optional[DatasetGroup]]:
+
+def generate_dataset_group_by_blueprint(
+    dataset_group_blueprint: DatasetGroupBlueprint,
+) -> Tuple[DatasetGroup, Optional[DatasetGroup]]:
     datasets: List[DreamBoothDataset] = []
 
     for dataset_blueprint in dataset_group_blueprint.datasets:
-        subsets = [DreamBoothSubset(**asdict(subset_blueprint.params)) for subset_blueprint in dataset_blueprint.subsets]
-        dataset = DreamBoothDataset(subsets=subsets, **asdict(dataset_blueprint.params), is_training_dataset=True)
+        subsets = [
+            DreamBoothSubset(**asdict(subset_blueprint.params))
+            for subset_blueprint in dataset_blueprint.subsets
+        ]
+        dataset = DreamBoothDataset(
+            subsets=subsets,
+            **asdict(dataset_blueprint.params),
+            is_training_dataset=True,
+        )
         datasets.append(dataset)
 
     val_datasets: List[DreamBoothDataset] = []
     for dataset_blueprint in dataset_group_blueprint.datasets:
-        if dataset_blueprint.params.validation_split < 0.0 or dataset_blueprint.params.validation_split > 1.0:
-            logging.warning(f"Dataset param `validation_split` ({dataset_blueprint.params.validation_split}) is not a valid number between 0.0 and 1.0, skipping validation split...")
+        if (
+            dataset_blueprint.params.validation_split < 0.0
+            or dataset_blueprint.params.validation_split > 1.0
+        ):
+            logging.warning(
+                f"Dataset param `validation_split` ({dataset_blueprint.params.validation_split}) is not a valid number between 0.0 and 1.0, skipping validation split..."
+            )
             continue
 
         if dataset_blueprint.params.validation_split == 0.0:
             continue
 
-        subsets = [DreamBoothSubset(**asdict(subset_blueprint.params)) for subset_blueprint in dataset_blueprint.subsets]
-        dataset = DreamBoothDataset(subsets=subsets, **asdict(dataset_blueprint.params), is_training_dataset=False)
+        subsets = [
+            DreamBoothSubset(**asdict(subset_blueprint.params))
+            for subset_blueprint in dataset_blueprint.subsets
+        ]
+        dataset = DreamBoothDataset(
+            subsets=subsets,
+            **asdict(dataset_blueprint.params),
+            is_training_dataset=False,
+        )
         val_datasets.append(dataset)
 
     def print_info(_datasets, dataset_type: str):
@@ -375,17 +438,21 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
             """)
 
             if dataset.enable_bucket:
-                info += indent(dedent(f"""\
+                info += indent(
+                    dedent(f"""\
                   min_bucket_reso: {dataset.min_bucket_reso}
                   max_bucket_reso: {dataset.max_bucket_reso}
                   bucket_reso_steps: {dataset.bucket_reso_steps}
                   bucket_no_upscale: {dataset.bucket_no_upscale}
-                \n"""), "  ")
+                \n"""),
+                    "  ",
+                )
             else:
                 info += "\n"
 
             for j, subset in enumerate(dataset.subsets):
-                info += indent(dedent(f"""\
+                info += indent(
+                    dedent(f"""\
                   [Subset {j} of {dataset_type} {i}]
                     image_dir: "{subset.image_dir}"
                     image_count: {subset.img_count}
@@ -410,7 +477,9 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
                     is_reg: {subset.is_reg}
                     class_tokens: {subset.class_tokens}
                     caption_extension: {subset.caption_extension}
-                """), "  ")
+                """),
+                    "  ",
+                )
 
         logger.info(info)
 
@@ -435,17 +504,21 @@ def generate_dataset_group_by_blueprint(dataset_group_blueprint: DatasetGroupBlu
 
     return (
         DatasetGroup(datasets),
-        DatasetGroup(val_datasets) if val_datasets else None
+        DatasetGroup(val_datasets) if val_datasets else None,
     )
 
 
-def generate_dreambooth_subsets_config_by_subdirs(train_data_dir: Optional[str] = None, reg_data_dir: Optional[str] = None):
+def generate_dreambooth_subsets_config_by_subdirs(
+    train_data_dir: Optional[str] = None, reg_data_dir: Optional[str] = None
+):
     def extract_dreambooth_params(name: str) -> Tuple[int, str]:
         tokens = name.split("_")
         try:
             n_repeats = int(tokens[0])
-        except ValueError as e:
-            logger.warning(f"ignore directory without repeats / 繰り返し回数のないディレクトリを無視します: {name}")
+        except ValueError:
+            logger.warning(
+                f"ignore directory without repeats / 繰り返し回数のないディレクトリを無視します: {name}"
+            )
             return 0, ""
         caption_by_folder = "_".join(tokens[1:])
         return n_repeats, caption_by_folder
@@ -467,7 +540,12 @@ def generate_dreambooth_subsets_config_by_subdirs(train_data_dir: Optional[str] 
             if num_repeats < 1:
                 continue
 
-            subset_config = {"image_dir": str(subdir), "num_repeats": num_repeats, "is_reg": is_reg, "class_tokens": class_tokens}
+            subset_config = {
+                "image_dir": str(subdir),
+                "num_repeats": num_repeats,
+                "is_reg": is_reg,
+                "class_tokens": class_tokens,
+            }
             subsets_config.append(subset_config)
 
         return subsets_config
@@ -502,7 +580,9 @@ def load_user_config(file: str) -> dict:
             )
             raise
     else:
-        raise ValueError(f"not supported config file format / 対応していない設定ファイルの形式です: {file}")
+        raise ValueError(
+            f"not supported config file format / 対応していない設定ファイルの形式です: {file}"
+        )
 
     return config
 

@@ -160,23 +160,50 @@ def create_network(
     network._ortho_reg_weight = ortho_reg_weight if use_ortho else 0.0
 
     if use_timestep_mask:
-        logger.info(f"Timestep-dependent rank masking: min_rank={min_rank}, alpha={alpha_rank_scale}")
+        logger.info(
+            f"Timestep-dependent rank masking: min_rank={min_rank}, alpha={alpha_rank_scale}"
+        )
     if use_ortho:
-        logger.info(f"OrthoLoRA: sig_type={sig_type}, ortho_reg_weight={ortho_reg_weight}")
+        logger.info(
+            f"OrthoLoRA: sig_type={sig_type}, ortho_reg_weight={ortho_reg_weight}"
+        )
 
     loraplus_lr_ratio = kwargs.get("loraplus_lr_ratio", None)
     loraplus_unet_lr_ratio = kwargs.get("loraplus_unet_lr_ratio", None)
     loraplus_text_encoder_lr_ratio = kwargs.get("loraplus_text_encoder_lr_ratio", None)
-    loraplus_lr_ratio = float(loraplus_lr_ratio) if loraplus_lr_ratio is not None else None
-    loraplus_unet_lr_ratio = float(loraplus_unet_lr_ratio) if loraplus_unet_lr_ratio is not None else None
-    loraplus_text_encoder_lr_ratio = float(loraplus_text_encoder_lr_ratio) if loraplus_text_encoder_lr_ratio is not None else None
-    if loraplus_lr_ratio is not None or loraplus_unet_lr_ratio is not None or loraplus_text_encoder_lr_ratio is not None:
-        network.set_loraplus_lr_ratio(loraplus_lr_ratio, loraplus_unet_lr_ratio, loraplus_text_encoder_lr_ratio)
+    loraplus_lr_ratio = (
+        float(loraplus_lr_ratio) if loraplus_lr_ratio is not None else None
+    )
+    loraplus_unet_lr_ratio = (
+        float(loraplus_unet_lr_ratio) if loraplus_unet_lr_ratio is not None else None
+    )
+    loraplus_text_encoder_lr_ratio = (
+        float(loraplus_text_encoder_lr_ratio)
+        if loraplus_text_encoder_lr_ratio is not None
+        else None
+    )
+    if (
+        loraplus_lr_ratio is not None
+        or loraplus_unet_lr_ratio is not None
+        or loraplus_text_encoder_lr_ratio is not None
+    ):
+        network.set_loraplus_lr_ratio(
+            loraplus_lr_ratio, loraplus_unet_lr_ratio, loraplus_text_encoder_lr_ratio
+        )
 
     return network
 
 
-def create_network_from_weights(multiplier, file, ae, text_encoders, unet, weights_sd=None, for_inference=False, **kwargs):
+def create_network_from_weights(
+    multiplier,
+    file,
+    ae,
+    text_encoders,
+    unet,
+    weights_sd=None,
+    for_inference=False,
+    **kwargs,
+):
     if weights_sd is None:
         if os.path.splitext(file)[1] == ".safetensors":
             from safetensors.torch import load_file
@@ -233,11 +260,21 @@ def create_network_from_weights(multiplier, file, ae, text_encoders, unet, weigh
 
 class LoRANetwork(torch.nn.Module):
     # Target modules: DiT blocks, embedders, final layer. embedders and final layer are excluded by default.
-    ANIMA_TARGET_REPLACE_MODULE = ["Block", "PatchEmbed", "TimestepEmbedding", "FinalLayer"]
+    ANIMA_TARGET_REPLACE_MODULE = [
+        "Block",
+        "PatchEmbed",
+        "TimestepEmbedding",
+        "FinalLayer",
+    ]
     # Target modules: LLM Adapter blocks
     ANIMA_ADAPTER_TARGET_REPLACE_MODULE = ["LLMAdapterTransformerBlock"]
     # Target modules for text encoder (Qwen3)
-    TEXT_ENCODER_TARGET_REPLACE_MODULE = ["Qwen3Attention", "Qwen3MLP", "Qwen3SdpaAttention", "Qwen3FlashAttention2"]
+    TEXT_ENCODER_TARGET_REPLACE_MODULE = [
+        "Qwen3Attention",
+        "Qwen3MLP",
+        "Qwen3SdpaAttention",
+        "Qwen3FlashAttention2",
+    ]
 
     LORA_PREFIX_ANIMA = "lora_unet"  # ComfyUI compatible
     LORA_PREFIX_TEXT_ENCODER = "lora_te"  # Qwen3
@@ -282,7 +319,9 @@ class LoRANetwork(torch.nn.Module):
         if modules_dim is not None:
             logger.info("create LoRA network from weights")
         else:
-            logger.info(f"create LoRA network. base dim (rank): {lora_dim}, alpha: {alpha}")
+            logger.info(
+                f"create LoRA network. base dim (rank): {lora_dim}, alpha: {alpha}"
+            )
             logger.info(
                 f"neuron dropout: p={self.dropout}, rank dropout: p={self.rank_dropout}, module dropout: p={self.module_dropout}"
             )
@@ -311,12 +350,17 @@ class LoRANetwork(torch.nn.Module):
             target_replace_modules: List[str],
             default_dim: Optional[int] = None,
         ) -> Tuple[List[LoRAModule], List[str]]:
-            prefix = self.LORA_PREFIX_ANIMA if is_unet else self.LORA_PREFIX_TEXT_ENCODER
+            prefix = (
+                self.LORA_PREFIX_ANIMA if is_unet else self.LORA_PREFIX_TEXT_ENCODER
+            )
 
             # First pass: collect candidate modules
             candidates = []
             for name, module in root_module.named_modules():
-                if target_replace_modules is None or module.__class__.__name__ in target_replace_modules:
+                if (
+                    target_replace_modules is None
+                    or module.__class__.__name__ in target_replace_modules
+                ):
                     if target_replace_modules is None:
                         module = root_module
 
@@ -330,8 +374,14 @@ class LoRANetwork(torch.nn.Module):
                             lora_name = f"{prefix}.{original_name}".replace(".", "_")
 
                             # exclude/include filter
-                            excluded = any(pattern.fullmatch(original_name) for pattern in exclude_re_patterns)
-                            included = any(pattern.fullmatch(original_name) for pattern in include_re_patterns)
+                            excluded = any(
+                                pattern.fullmatch(original_name)
+                                for pattern in exclude_re_patterns
+                            )
+                            included = any(
+                                pattern.fullmatch(original_name)
+                                for pattern in include_re_patterns
+                            )
                             if excluded and not included:
                                 if verbose:
                                     logger.info(f"exclude: {original_name}")
@@ -350,19 +400,43 @@ class LoRANetwork(torch.nn.Module):
                                         if re.fullmatch(reg, original_name):
                                             dim = d
                                             alpha_val = self.alpha
-                                            logger.info(f"Module {original_name} matched with regex '{reg}' -> dim: {dim}")
+                                            logger.info(
+                                                f"Module {original_name} matched with regex '{reg}' -> dim: {dim}"
+                                            )
                                             break
                                 if dim is None:
                                     if is_linear or is_conv2d_1x1:
-                                        dim = default_dim if default_dim is not None else self.lora_dim
+                                        dim = (
+                                            default_dim
+                                            if default_dim is not None
+                                            else self.lora_dim
+                                        )
                                         alpha_val = self.alpha
 
                             if dim is None or dim == 0:
                                 if is_linear or is_conv2d_1x1:
-                                    candidates.append((lora_name, None, None, None, original_name, True))  # skipped
+                                    candidates.append(
+                                        (
+                                            lora_name,
+                                            None,
+                                            None,
+                                            None,
+                                            original_name,
+                                            True,
+                                        )
+                                    )  # skipped
                                 continue
 
-                            candidates.append((lora_name, child_module, dim, alpha_val, original_name, False))
+                            candidates.append(
+                                (
+                                    lora_name,
+                                    child_module,
+                                    dim,
+                                    alpha_val,
+                                    original_name,
+                                    False,
+                                )
+                            )
 
                     if target_replace_modules is None:
                         break
@@ -372,11 +446,21 @@ class LoRANetwork(torch.nn.Module):
 
             loras = []
             skipped = []
-            non_skipped = [(ln, cm, d, a, on) for ln, cm, d, a, on, skip in candidates if not skip]
+            non_skipped = [
+                (ln, cm, d, a, on) for ln, cm, d, a, on, skip in candidates if not skip
+            ]
             skipped = [ln for ln, cm, d, a, on, skip in candidates if skip]
 
-            label = "DiT" if is_unet else f"TE{text_encoder_idx + 1}" if text_encoder_idx is not None else "model"
-            for lora_name, child_module, dim, alpha_val, original_name in tqdm(non_skipped, desc=f"Creating {label} LoRA", leave=False):
+            label = (
+                "DiT"
+                if is_unet
+                else f"TE{text_encoder_idx + 1}"
+                if text_encoder_idx is not None
+                else "model"
+            )
+            for lora_name, child_module, dim, alpha_val, original_name in tqdm(
+                non_skipped, desc=f"Creating {label} LoRA", leave=False
+            ):
                 extra_kwargs = {}
                 if module_class == OrthoLoRAModule:
                     extra_kwargs["sig_type"] = self.sig_type
@@ -405,9 +489,16 @@ class LoRANetwork(torch.nn.Module):
             for i, text_encoder in enumerate(text_encoders):
                 if text_encoder is None:
                     continue
-                logger.info(f"create LoRA for Text Encoder {i+1}:")
-                te_loras, te_skipped = create_modules(False, i, text_encoder, LoRANetwork.TEXT_ENCODER_TARGET_REPLACE_MODULE)
-                logger.info(f"create LoRA for Text Encoder {i+1}: {len(te_loras)} modules.")
+                logger.info(f"create LoRA for Text Encoder {i + 1}:")
+                te_loras, te_skipped = create_modules(
+                    False,
+                    i,
+                    text_encoder,
+                    LoRANetwork.TEXT_ENCODER_TARGET_REPLACE_MODULE,
+                )
+                logger.info(
+                    f"create LoRA for Text Encoder {i + 1}: {len(te_loras)} modules."
+                )
                 self.text_encoder_loras.extend(te_loras)
                 skipped_te += te_skipped
 
@@ -433,7 +524,9 @@ class LoRANetwork(torch.nn.Module):
         # assertion: no duplicate names
         names = set()
         for lora in self.text_encoder_loras + self.unet_loras:
-            assert lora.lora_name not in names, f"duplicated lora name: {lora.lora_name}"
+            assert lora.lora_name not in names, (
+                f"duplicated lora name: {lora.lora_name}"
+            )
             names.add(lora.lora_name)
 
     def prepare_network(self, args):
@@ -456,7 +549,13 @@ class LoRANetwork(torch.nn.Module):
         if not getattr(self, "_use_timestep_mask", False):
             return
         t = timesteps.float().mean().item()
-        r = int(((max_timestep - t) / max_timestep) ** self._alpha_rank_scale * (self._max_rank - self._min_rank)) + self._min_rank
+        r = (
+            int(
+                ((max_timestep - t) / max_timestep) ** self._alpha_rank_scale
+                * (self._max_rank - self._min_rank)
+            )
+            + self._min_rank
+        )
         r = min(r, self._max_rank)  # clamp
         mask = torch.zeros(1, self._max_rank)
         mask[:, :r] = 1.0
@@ -498,7 +597,9 @@ class LoRANetwork(torch.nn.Module):
 
     def apply_to(self, text_encoders, unet, apply_text_encoder=True, apply_unet=True):
         if apply_text_encoder:
-            logger.info(f"enable LoRA for text encoder: {len(self.text_encoder_loras)} modules")
+            logger.info(
+                f"enable LoRA for text encoder: {len(self.text_encoder_loras)} modules"
+            )
         else:
             self.text_encoder_loras = []
 
@@ -541,16 +642,26 @@ class LoRANetwork(torch.nn.Module):
 
         logger.info("weights are merged")
 
-    def set_loraplus_lr_ratio(self, loraplus_lr_ratio, loraplus_unet_lr_ratio, loraplus_text_encoder_lr_ratio):
+    def set_loraplus_lr_ratio(
+        self, loraplus_lr_ratio, loraplus_unet_lr_ratio, loraplus_text_encoder_lr_ratio
+    ):
         self.loraplus_lr_ratio = loraplus_lr_ratio
         self.loraplus_unet_lr_ratio = loraplus_unet_lr_ratio
         self.loraplus_text_encoder_lr_ratio = loraplus_text_encoder_lr_ratio
 
-        logger.info(f"LoRA+ UNet LR Ratio: {self.loraplus_unet_lr_ratio or self.loraplus_lr_ratio}")
-        logger.info(f"LoRA+ Text Encoder LR Ratio: {self.loraplus_text_encoder_lr_ratio or self.loraplus_lr_ratio}")
+        logger.info(
+            f"LoRA+ UNet LR Ratio: {self.loraplus_unet_lr_ratio or self.loraplus_lr_ratio}"
+        )
+        logger.info(
+            f"LoRA+ Text Encoder LR Ratio: {self.loraplus_text_encoder_lr_ratio or self.loraplus_lr_ratio}"
+        )
 
-    def prepare_optimizer_params_with_multiple_te_lrs(self, text_encoder_lr, unet_lr, default_lr):
-        if text_encoder_lr is None or (isinstance(text_encoder_lr, list) and len(text_encoder_lr) == 0):
+    def prepare_optimizer_params_with_multiple_te_lrs(
+        self, text_encoder_lr, unet_lr, default_lr
+    ):
+        if text_encoder_lr is None or (
+            isinstance(text_encoder_lr, list) and len(text_encoder_lr) == 0
+        ):
             text_encoder_lr = [default_lr]
         elif isinstance(text_encoder_lr, float) or isinstance(text_encoder_lr, int):
             text_encoder_lr = [float(text_encoder_lr)]
@@ -565,14 +676,18 @@ class LoRANetwork(torch.nn.Module):
         def assemble_params(loras, lr, loraplus_ratio):
             param_groups = {"lora": {}, "plus": {}}
             reg_groups = {}
-            reg_lrs_list = list(self.reg_lrs.items()) if self.reg_lrs is not None else []
+            reg_lrs_list = (
+                list(self.reg_lrs.items()) if self.reg_lrs is not None else []
+            )
 
             for lora in loras:
                 matched_reg_lr = None
                 for i, (regex_str, reg_lr) in enumerate(reg_lrs_list):
                     if re.fullmatch(regex_str, lora.original_name):
                         matched_reg_lr = (i, reg_lr)
-                        logger.info(f"Module {lora.original_name} matched regex '{regex_str}' -> LR {reg_lr}")
+                        logger.info(
+                            f"Module {lora.original_name} matched regex '{regex_str}' -> LR {reg_lr}"
+                        )
                         break
 
                 for name, param in lora.named_parameters():
@@ -580,14 +695,26 @@ class LoRANetwork(torch.nn.Module):
                         reg_idx, reg_lr = matched_reg_lr
                         group_key = f"reg_lr_{reg_idx}"
                         if group_key not in reg_groups:
-                            reg_groups[group_key] = {"lora": {}, "plus": {}, "lr": reg_lr}
-                        if loraplus_ratio is not None and ("lora_up" in name or "p_layer" in name):
-                            reg_groups[group_key]["plus"][f"{lora.lora_name}.{name}"] = param
+                            reg_groups[group_key] = {
+                                "lora": {},
+                                "plus": {},
+                                "lr": reg_lr,
+                            }
+                        if loraplus_ratio is not None and (
+                            "lora_up" in name or "p_layer" in name
+                        ):
+                            reg_groups[group_key]["plus"][
+                                f"{lora.lora_name}.{name}"
+                            ] = param
                         else:
-                            reg_groups[group_key]["lora"][f"{lora.lora_name}.{name}"] = param
+                            reg_groups[group_key]["lora"][
+                                f"{lora.lora_name}.{name}"
+                            ] = param
                         continue
 
-                    if loraplus_ratio is not None and ("lora_up" in name or "p_layer" in name):
+                    if loraplus_ratio is not None and (
+                        "lora_up" in name or "p_layer" in name
+                    ):
                         param_groups["plus"][f"{lora.lora_name}.{name}"] = param
                     else:
                         param_groups["lora"][f"{lora.lora_name}.{name}"] = param
@@ -601,10 +728,17 @@ class LoRANetwork(torch.nn.Module):
                     if len(param_data["params"]) == 0:
                         continue
                     if key == "plus":
-                        param_data["lr"] = reg_lr * loraplus_ratio if loraplus_ratio is not None else reg_lr
+                        param_data["lr"] = (
+                            reg_lr * loraplus_ratio
+                            if loraplus_ratio is not None
+                            else reg_lr
+                        )
                     else:
                         param_data["lr"] = reg_lr
-                    if param_data.get("lr", None) == 0 or param_data.get("lr", None) is None:
+                    if (
+                        param_data.get("lr", None) == 0
+                        or param_data.get("lr", None) is None
+                    ):
                         logger.info("NO LR skipping!")
                         continue
                     params.append(param_data)
@@ -620,7 +754,10 @@ class LoRANetwork(torch.nn.Module):
                         param_data["lr"] = lr * loraplus_ratio
                     else:
                         param_data["lr"] = lr
-                if param_data.get("lr", None) == 0 or param_data.get("lr", None) is None:
+                if (
+                    param_data.get("lr", None) == 0
+                    or param_data.get("lr", None) is None
+                ):
                     logger.info("NO LR skipping!")
                     continue
                 params.append(param_data)
@@ -628,13 +765,25 @@ class LoRANetwork(torch.nn.Module):
             return params, descriptions
 
         if self.text_encoder_loras:
-            loraplus_ratio = self.loraplus_text_encoder_lr_ratio or self.loraplus_lr_ratio
-            te1_loras = [lora for lora in self.text_encoder_loras if lora.lora_name.startswith(self.LORA_PREFIX_TEXT_ENCODER)]
+            loraplus_ratio = (
+                self.loraplus_text_encoder_lr_ratio or self.loraplus_lr_ratio
+            )
+            te1_loras = [
+                lora
+                for lora in self.text_encoder_loras
+                if lora.lora_name.startswith(self.LORA_PREFIX_TEXT_ENCODER)
+            ]
             if len(te1_loras) > 0:
-                logger.info(f"Text Encoder 1 (Qwen3): {len(te1_loras)} modules, LR {text_encoder_lr[0]}")
-                params, descriptions = assemble_params(te1_loras, text_encoder_lr[0], loraplus_ratio)
+                logger.info(
+                    f"Text Encoder 1 (Qwen3): {len(te1_loras)} modules, LR {text_encoder_lr[0]}"
+                )
+                params, descriptions = assemble_params(
+                    te1_loras, text_encoder_lr[0], loraplus_ratio
+                )
                 all_params.extend(params)
-                lr_descriptions.extend(["textencoder 1" + (" " + d if d else "") for d in descriptions])
+                lr_descriptions.extend(
+                    ["textencoder 1" + (" " + d if d else "") for d in descriptions]
+                )
 
         if self.unet_loras:
             params, descriptions = assemble_params(
@@ -643,7 +792,9 @@ class LoRANetwork(torch.nn.Module):
                 self.loraplus_unet_lr_ratio or self.loraplus_lr_ratio,
             )
             all_params.extend(params)
-            lr_descriptions.extend(["unet" + (" " + d if d else "") for d in descriptions])
+            lr_descriptions.extend(
+                ["unet" + (" " + d if d else "") for d in descriptions]
+            )
 
         return all_params, lr_descriptions
 
@@ -684,17 +835,41 @@ class LoRANetwork(torch.nn.Module):
 
             # Effective delta weight (out_dim × in_dim), use GPU for SVD speed
             svd_device = "cuda" if torch.cuda.is_available() else "cpu"
-            delta_w = (P @ (lam.squeeze(0).unsqueeze(1) * Q) - P_base @ (lam_base.squeeze(0).unsqueeze(1) * Q_base)).float().to(svd_device)
+            delta_w = (
+                (
+                    P @ (lam.squeeze(0).unsqueeze(1) * Q)
+                    - P_base @ (lam_base.squeeze(0).unsqueeze(1) * Q_base)
+                )
+                .float()
+                .to(svd_device)
+            )
 
             # SVD decomposition → standard LoRA format
             U, S, Vh = torch.linalg.svd(delta_w, full_matrices=False)
             # Keep original rank (the delta is rank-2r at most, but we truncate to r for compat)
             save_dtype = dtype if dtype is not None else P.dtype
-            lora_up = (U[:, :rank] * S[:rank].sqrt().unsqueeze(0)).to(save_dtype).cpu().contiguous()
-            lora_down = (S[:rank].sqrt().unsqueeze(1) * Vh[:rank, :]).to(save_dtype).cpu().contiguous()
+            lora_up = (
+                (U[:, :rank] * S[:rank].sqrt().unsqueeze(0))
+                .to(save_dtype)
+                .cpu()
+                .contiguous()
+            )
+            lora_down = (
+                (S[:rank].sqrt().unsqueeze(1) * Vh[:rank, :])
+                .to(save_dtype)
+                .cpu()
+                .contiguous()
+            )
 
             # Remove OrthoLoRA keys
-            for suffix in ["p_layer.weight", "q_layer.weight", "lambda_layer", "base_p_weight", "base_q_weight", "base_lambda"]:
+            for suffix in [
+                "p_layer.weight",
+                "q_layer.weight",
+                "lambda_layer",
+                "base_p_weight",
+                "base_q_weight",
+                "base_lambda",
+            ]:
                 state_dict.pop(f"{prefix}.{suffix}", None)
 
             # Add standard LoRA keys
@@ -723,7 +898,9 @@ class LoRANetwork(torch.nn.Module):
 
             if metadata is None:
                 metadata = {}
-            model_hash, legacy_hash = train_util.precalculate_safetensors_hashes(state_dict, metadata)
+            model_hash, legacy_hash = train_util.precalculate_safetensors_hashes(
+                state_dict, metadata
+            )
             metadata["sshs_model_hash"] = model_hash
             metadata["sshs_legacy_hash"] = legacy_hash
 
@@ -757,7 +934,9 @@ class LoRANetwork(torch.nn.Module):
             sd = org_module.state_dict()
 
             org_weight = sd["weight"]
-            lora_weight = lora.get_weight().to(org_weight.device, dtype=org_weight.dtype)
+            lora_weight = lora.get_weight().to(
+                org_weight.device, dtype=org_weight.dtype
+            )
             sd["weight"] = org_weight + lora_weight
             assert sd["weight"].shape == org_weight.shape
             org_module.load_state_dict(sd)
@@ -787,9 +966,15 @@ class LoRANetwork(torch.nn.Module):
             scale = alpha / dim
 
             if up.shape[2:] == (1, 1) and down.shape[2:] == (1, 1):
-                updown = (up.squeeze(2).squeeze(2) @ down.squeeze(2).squeeze(2)).unsqueeze(2).unsqueeze(3)
+                updown = (
+                    (up.squeeze(2).squeeze(2) @ down.squeeze(2).squeeze(2))
+                    .unsqueeze(2)
+                    .unsqueeze(3)
+                )
             elif up.shape[2:] == (3, 3) or down.shape[2:] == (3, 3):
-                updown = torch.nn.functional.conv2d(down.permute(1, 0, 2, 3), up).permute(1, 0, 2, 3)
+                updown = torch.nn.functional.conv2d(
+                    down.permute(1, 0, 2, 3), up
+                ).permute(1, 0, 2, 3)
             else:
                 updown = up @ down
 
