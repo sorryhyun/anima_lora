@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate text/speech-bubble masks for training images using ComicTextDetector.
+"""Generate text segmentation masks for training images.
 
-Model weights: https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3
+Model: https://huggingface.co/a-b-c-x-y-z/Manga-Text-Segmentation-2025
 """
 
 import argparse
@@ -42,8 +42,8 @@ def main() -> None:
     parser.add_argument(
         "--model-path",
         type=str,
-        required=True,
-        help="Path to comictextdetector.pt",
+        default=None,
+        help="Path to model.pth (downloads from HuggingFace if not specified)",
     )
     parser.add_argument(
         "--force", action="store_true", help="Regenerate existing masks"
@@ -52,16 +52,10 @@ def main() -> None:
         "--device", type=str, default="cuda", help="Device (default: cuda)"
     )
     parser.add_argument(
-        "--detect-size",
-        type=int,
-        default=1024,
-        help="Detection input size (default: 1024)",
-    )
-    parser.add_argument(
         "--text-threshold",
         type=float,
-        default=0.5,
-        help="Text segmentation threshold (default: 0.5)",
+        default=0.8,
+        help="Text segmentation threshold (default: 0.7)",
     )
     parser.add_argument(
         "--dilate", type=int, default=5, help="Mask dilation in pixels (default: 5)"
@@ -75,13 +69,8 @@ def main() -> None:
         np.ones((args.dilate, args.dilate), dtype=np.uint8) if args.dilate > 0 else None
     )
 
-    # Resolve model path
-    model_path = Path(args.model_path)
-    if model_path.is_dir():
-        model_path = model_path / "comictextdetector.pt"
-
-    print("Loading ComicTextDetector...")
-    model = load_model(str(model_path), device=args.device)
+    print("Loading text segmentation model...")
+    model = load_model(args.model_path, device=args.device)
 
     image_dir = Path(args.image_dir)
     masks_dir = Path(args.mask_dir)
@@ -102,7 +91,7 @@ def main() -> None:
 
     pool = ThreadPoolExecutor(max_workers=args.workers)
 
-    pbar = tqdm(total=total, desc="Generating masks (MIT)")
+    pbar = tqdm(total=total, desc="Generating masks")
     for image_path, mask_path in work_items:
         # Load image as RGB numpy array
         pil_image = Image.open(image_path).convert("RGB")
@@ -112,7 +101,6 @@ def main() -> None:
         mask = detect_mask(
             model,
             img_np,
-            detect_size=args.detect_size,
             device=args.device,
             text_threshold=args.text_threshold,
         )

@@ -80,10 +80,11 @@ mask-mit:
 	python scripts/generate_masks_mit.py \
 		--image-dir post_image_dataset \
 		--mask-dir masks_mit \
-		--model-path models/mit \
-		--detect-size 1024
+		--model-path models/mit/model.pth
 
-mask: mask-sam mask-mit
+mask:
+	@if [ ! -d masks_sam ]; then $(MAKE) mask-sam; fi
+	@if [ ! -d masks_mit ]; then $(MAKE) mask-mit; fi
 	python scripts/merge_masks.py \
 		masks_sam masks_mit \
 		--output-dir masks
