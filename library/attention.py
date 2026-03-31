@@ -42,6 +42,17 @@ try:
 except ImportError:
     xops = None
 
+try:
+    from torch.nn.attention.flex_attention import (
+        flex_attention as _flex_attention,
+        create_block_mask,
+    )
+
+    compiled_flex_attention = torch.compile(_flex_attention)
+except ImportError:
+    compiled_flex_attention = None
+    create_block_mask = None
+
 
 @dataclass
 class AttentionParams:
@@ -122,7 +133,7 @@ class AttentionParams:
                 attention_mask = xops.fmha.attn_bias.BlockDiagonalMask.from_seqlens(
                     seqlens_list, seqlens_list, device=attention_mask.device
                 )
-            elif attn_mode == "torch":
+            elif attn_mode in ("torch", "flex"):
                 attention_mask = attention_mask[:, None, None, :].to(
                     torch.bool
                 )  # [B, 1, 1, img_len + L]
@@ -174,6 +185,40 @@ def attention(
         )
     if attn_params is None:
         attn_params = AttentionParams.create_attention_params("torch", False)
+
+    # Flex attention: early return using BlockMask for variable-length handling (compile-friendly)
+    if attn_params.attn_mode == "flex":
+        q = q.transpose(1, 2)  # [B, H, L, D]
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+        scale = attn_params.softmax_scale
+        B, H, Q_LEN, D = q.shape
+        KV_LEN = k.shape[2]
+
+        block_mask = None
+        if attn_params.seqlens is not None:
+            # Variable-length: mask padding positions via BlockMask
+            seqlens = attn_params.seqlens
+            def mask_mod(b, h, q_idx, kv_idx):
+                return kv_idx < seqlens[b]
+            block_mask = create_block_mask(
+                mask_mod, B, H, Q_LEN, KV_LEN, device=q.device
+            )
+        elif attn_params.attention_mask is not None and isinstance(
+            attn_params.attention_mask, torch.Tensor
+        ):
+            bool_mask = attn_params.attention_mask.squeeze(1).squeeze(1)  # [B, L]
+            def mask_mod(b, h, q_idx, kv_idx):
+                return bool_mask[b, kv_idx]
+            block_mask = create_block_mask(
+                mask_mod, B, H, Q_LEN, KV_LEN, device=q.device
+            )
+
+        x = compiled_flex_attention(q, k, v, block_mask=block_mask, scale=scale)
+        del q, k, v
+        x = x.transpose(1, 2)  # [B, L, H, D]
+        x = x.reshape(x.shape[0], x.shape[1], -1)  # [B, L, H*D]
+        return x
 
     # If split attn is False, attention mask is provided and all sequence lengths are same, we can trim the sequence
     seqlen_trimmed = False
@@ -409,7 +454,6 @@ def attention(
             x = x.view(batch_size, seqlen, x.shape[-2], x.shape[-1])  # B, L, H, D
 
     else:
-        # Currently only PyTorch SDPA and xformers are implemented
         raise ValueError(f"Unsupported attention mode: {attn_params.attn_mode}")
 
     x = transpose_fn(x)  # [B, L, H, D]

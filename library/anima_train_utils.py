@@ -175,6 +175,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
             "flash",
             "flash4",
             "sageattn",
+            "flex",
             "sdpa",
         ],  # "sdpa" is for backward compatibility
         default=None,

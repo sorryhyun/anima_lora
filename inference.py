@@ -176,6 +176,7 @@ def parse_args() -> argparse.Namespace:
             "flash4",
             "torch",
             "sageattn",
+            "flex",
             "xformers",
             "sdpa",
         ],  #  "sdpa" for backward compatibility

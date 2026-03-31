@@ -30,7 +30,7 @@ test:
 		--text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
 		--vae models/vae/qwen_image_vae.safetensors \
 		--vae_chunk_size 64 --vae_disable_cache \
-		--attn_mode flash \
+		--attn_mode flex \
 		--lora_weight $$(ls -t output/*.safetensors | head -1) \
 		--lora_multiplier 1.0 \
 		--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
@@ -41,7 +41,8 @@ test:
 		--sampler er_sde \
 		--guidance_scale 4.0 \
 		--seed 42 \
-		--save_path test_output
+		--save_path test_output \
+		--compile
 
 step:
 	python graft_step.py
