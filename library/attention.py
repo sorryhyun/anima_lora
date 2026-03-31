@@ -49,6 +49,7 @@ try:
     )
 
     compiled_flex_attention = torch.compile(_flex_attention)
+
 except ImportError:
     compiled_flex_attention = None
     create_block_mask = None
