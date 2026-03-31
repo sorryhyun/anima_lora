@@ -28,6 +28,7 @@ save_every_n_epochs = 2
 mixed_precision = "bf16"
 
 gradient_checkpointing = true
+unsloth_offload_checkpointing = true
 cache_latents = true
 cache_text_encoder_outputs = true
 cache_llm_adapter_outputs = true
