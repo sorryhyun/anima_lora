@@ -104,8 +104,13 @@ def load_safetensors_with_lora_and_fp8(
         list_of_lora_weight_keys = []
     else:
         list_of_lora_weight_keys = []
-        for lora_sd in lora_weights_list:
-            lora_weight_keys = set(lora_sd.keys())
+        for i, lora_sd in enumerate(lora_weights_list):
+            # Strip _orig_mod_ from LoRA keys (inserted by torch.compile during training)
+            normalized = {}
+            for k, v in lora_sd.items():
+                normalized[k.replace("__orig_mod_", "_")] = v
+            lora_weights_list[i] = normalized
+            lora_weight_keys = set(normalized.keys())
             list_of_lora_weight_keys.append(lora_weight_keys)
 
         if lora_multipliers is None:
@@ -176,20 +181,17 @@ def load_safetensors_with_lora_and_fp8(
                     down_weight = down_weight.to(torch.float16)
                     up_weight = up_weight.to(torch.float16)
 
-                # W <- W + U * D
+                # Compute LoRA delta
                 if len(model_weight.size()) == 2:
                     # linear
                     if len(up_weight.size()) == 4:  # use linear projection mismatch
                         up_weight = up_weight.squeeze(3).squeeze(2)
                         down_weight = down_weight.squeeze(3).squeeze(2)
-                    model_weight = (
-                        model_weight + multiplier * (up_weight @ down_weight) * scale
-                    )
+                    delta = multiplier * (up_weight @ down_weight) * scale
                 elif down_weight.size()[2:4] == (1, 1):
                     # conv2d 1x1
-                    model_weight = (
-                        model_weight
-                        + multiplier
+                    delta = (
+                        multiplier
                         * (
                             up_weight.squeeze(3).squeeze(2)
                             @ down_weight.squeeze(3).squeeze(2)
@@ -203,8 +205,24 @@ def load_safetensors_with_lora_and_fp8(
                     conved = torch.nn.functional.conv2d(
                         down_weight.permute(1, 0, 2, 3), up_weight
                     ).permute(1, 0, 2, 3)
-                    # logger.info(conved.size(), weight.size(), module.stride, module.padding)
-                    model_weight = model_weight + multiplier * conved * scale
+                    delta = multiplier * conved * scale
+
+                # Apply delta with DoRA magnitude normalization if present
+                dora_scale_key = lora_name + ".dora_scale"
+                dora_scale = lora_sd.get(dora_scale_key, None)
+                if dora_scale is not None:
+                    # DoRA: W' = (m / ||W_org||) * (W + delta)
+                    dora_scale = dora_scale.to(calc_device).float()
+                    org_norm = model_weight.float().norm(p=2, dim=1).clamp(min=1e-8)
+                    mag_scale = dora_scale / org_norm
+                    # reshape for broadcasting: [out] -> [out, 1, ...]
+                    for _ in range(model_weight.dim() - 1):
+                        mag_scale = mag_scale.unsqueeze(-1)
+                    model_weight = (
+                        mag_scale * (model_weight.float() + delta.float())
+                    ).to(model_weight.dtype)
+                else:
+                    model_weight = model_weight + delta
 
                 if original_dtype.itemsize == 1:  # fp8
                     model_weight = model_weight.to(
@@ -216,6 +234,8 @@ def load_safetensors_with_lora_and_fp8(
                 lora_weight_keys.remove(up_key)
                 if alpha_key in lora_weight_keys:
                     lora_weight_keys.remove(alpha_key)
+                if dora_scale_key in lora_weight_keys:
+                    lora_weight_keys.remove(dora_scale_key)
 
             if not keep_on_calc_device and original_device != calc_device:
                 model_weight = model_weight.to(

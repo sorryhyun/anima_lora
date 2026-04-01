@@ -2,6 +2,19 @@
 
 LoRA training and inference engine for the Anima diffusion model (DiT-based, flow-matching). Supports standard LoRA, DoRA, OrthoLoRA, and T-LoRA with timestep-dependent rank masking.
 
+## Highlights
+
+**7.3 GB peak VRAM · 5.8 s/iter when bsz=2** on a single consumer GPU — achieved by co-designing the data pipeline, attention, and compiler stack:
+
+| Optimization | What it does |
+|---|---|
+| **Constant-token bucketing** | All bucket resolutions are chosen so that `(H/16)×(W/16) ≈ 4096` patches. Every batch element is then zero-padded to exactly 4096 tokens, giving `torch.compile` a single static shape to trace — no recompilation across aspect ratios. |
+| **Max-padded text encoder** | Text encoder outputs are padded to `max_length` (512) and zero-filled. The pretrained DiT treats these zero keys as learned **attention sinks** in cross-attention softmax, so removing padding produces black images. Keeping it preserves model behavior *and* gives the compiler another fixed dimension. |
+| **Flash Attention 4** | Uses `flash_attn.cute` (Hopper-optimized FA4 kernels) for both fixed-length and variable-length attention, with automatic fallback to FA2/SDPA. |
+| **Per-block `torch.compile`** | Each DiT block is compiled independently with the Inductor backend. Combined with static token counts this eliminates Dynamo guard recompilation entirely. |
+| **Disk-cached latents & text embeddings** | VAE latents, text encoder outputs, and LLM adapter outputs are pre-computed and cached to disk — the VAE and text encoder never occupy training VRAM. |
+| **Unsloth gradient checkpointing** | Activations are offloaded to CPU with non-blocking transfers during the forward pass and streamed back for the backward pass, trading PCIe bandwidth for VRAM. |
+
 ## Setup
 
 ```bash
