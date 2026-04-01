@@ -5,18 +5,32 @@ LoRA training and inference engine for the Anima diffusion model (DiT-based, flo
 ## Setup
 
 ```bash
-# Dependencies (Python 3.11+)
+# 1. Install dependencies (Python 3.11+)
 uv sync
 
-# Model weights (not tracked) — place in ../models/
-#   models/diffusion_models/anima-preview2.safetensors
-#   models/text_encoders/qwen_3_06b_base.safetensors
-#   models/vae/qwen_image_vae.safetensors
+# 2. Authenticate with Hugging Face (needed for model downloads)
+huggingface-cli login
 
-# Training images go in ../image_dataset/ with .txt caption sidecars
+# 3. Download model weights (DiT, text encoder, VAE)
+make download-models
+
+# 4. Place training images in image_dataset/ with .txt caption sidecars
+
+# 5. Preprocess images (VAE-compatible resizing & validation)
+make preprocess
 ```
 
 Optional: install `flash-attn` for flash attention support.
+
+### Model weights
+
+Downloaded automatically by `make download-models` from [circlestone-labs/Anima](https://huggingface.co/circlestone-labs/Anima) into `models/`:
+
+| File | Path |
+|------|------|
+| Anima DiT | `models/diffusion_models/anima-preview2.safetensors` |
+| Qwen3 0.6B text encoder | `models/text_encoders/qwen_3_06b_base.safetensors` |
+| QwenImage VAE | `models/vae/qwen_image_vae.safetensors` |
 
 ## Training
 

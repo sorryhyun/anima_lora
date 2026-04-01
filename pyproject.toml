@@ -2,7 +2,7 @@
 name = "anima-lora"
 version = "0.1.0"
 description = "Standalone Anima LoRA training pipeline"
-requires-python = ">=3.13"
+requires-python = "==3.13.*"
 dependencies = [
     # Core ML
     "torch>=2.11.0",
@@ -12,6 +12,7 @@ dependencies = [
     "diffusers>=0.37.0",
     "einops>=0.7.0",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl",
+    "flash-attn-4 @ git+https://github.com/sorryhyun/flash-attention-sm120-fix.git@dz/sm120_tma_optimized#subdirectory=flash_attn/cute",
     # Optimizers
     "bitsandbytes",
     "lion-pytorch>=0.2.3",

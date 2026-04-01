@@ -1,6 +1,6 @@
 LORA_DIR := ../comfy/ComfyUI/models/loras
 
-.PHONY: lora dora tdora tlora sync step test mask mask-sam mask-mit mask-clean preprocess download-models download-sam3 download-mit
+.PHONY: lora dora tdora tlora sync step test mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit
 
 lora:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
@@ -62,12 +62,23 @@ download-sam3:
 
 download-mit:
 	@mkdir -p models/mit
-	curl -L -o models/mit/comictextdetector.pt \
-		https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt
-	curl -L -o models/mit/comictextdetector.pt.onnx \
-		https://github.com/zyddnys/manga-image-translator/releases/download/beta-0.3/comictextdetector.pt.onnx
+	huggingface-cli download a-b-c-x-y-z/Manga-Text-Segmentation-2025 \
+		model.pth --local-dir models/mit
 
-download-models: download-sam3 download-mit
+download-anima:
+	@mkdir -p models/diffusion_models models/text_encoders models/vae
+	huggingface-cli download circlestone-labs/Anima \
+		split_files/diffusion_models/anima-preview2.safetensors \
+		split_files/text_encoders/qwen_3_06b_base.safetensors \
+		split_files/vae/qwen_image_vae.safetensors \
+		--local-dir models --include "split_files/*"
+	@# Move files from split_files/ subdirs into models/
+	@mv models/split_files/diffusion_models/* models/diffusion_models/
+	@mv models/split_files/text_encoders/* models/text_encoders/
+	@mv models/split_files/vae/* models/vae/
+	@rm -rf models/split_files
+
+download-models: download-anima download-sam3 download-mit
 
 # --- Masking ---
 
