@@ -1510,14 +1510,33 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
     with open(config_path, "r", encoding="utf-8") as f:
         config_dict = toml.load(f)
 
-    ignore_nesting_dict = {}
-    for section_name, section_dict in config_dict.items():
-        if not isinstance(section_dict, dict):
-            ignore_nesting_dict[section_name] = section_dict
-            continue
+    # Support base_config inheritance: load base first, then overlay current
+    base_path = config_dict.pop("base_config", None)
+    if base_path is not None:
+        if not os.path.isabs(base_path):
+            base_path = os.path.join(os.path.dirname(config_path), base_path)
+        logger.info(f"Loading base config from {base_path}...")
+        with open(base_path, "r", encoding="utf-8") as f:
+            base_dict = toml.load(f)
+        # Base values first, then current config overrides
+        merged = {}
+        for d in (base_dict, config_dict):
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    for kk, vv in v.items():
+                        merged[kk] = vv
+                else:
+                    merged[k] = v
+        ignore_nesting_dict = merged
+    else:
+        ignore_nesting_dict = {}
+        for section_name, section_dict in config_dict.items():
+            if not isinstance(section_dict, dict):
+                ignore_nesting_dict[section_name] = section_dict
+                continue
 
-        for key, value in section_dict.items():
-            ignore_nesting_dict[key] = value
+            for key, value in section_dict.items():
+                ignore_nesting_dict[key] = value
 
     config_args = argparse.Namespace(**ignore_nesting_dict)
     args = parser.parse_args(namespace=config_args)
@@ -1657,7 +1676,9 @@ def prepare_accelerator(args: argparse.Namespace):
                 wandb.login(key=args.wandb_api_key)
 
     dynamo_backend = "NO"
-    if args.torch_compile:
+    if args.torch_compile and not getattr(args, "static_token_count", None):
+        # When static_token_count is set, we compile individual blocks instead
+        # of the full forward (which has varying input H/W per bucket).
         dynamo_backend = args.dynamo_backend
 
     kwargs_handlers = [

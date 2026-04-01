@@ -7,9 +7,6 @@ keep_tokens = 3
 resolution = 1024
 batch_size = 1
 enable_bucket = true
-min_bucket_reso = 512
-max_bucket_reso = 1536
-bucket_reso_steps = 128
 validation_split = 0.05
 validation_seed = 42
 

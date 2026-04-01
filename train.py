@@ -347,6 +347,8 @@ class AnimaTrainer:
         # Static token count (constant-shape padding for torch.compile)
         if getattr(args, "static_token_count", None) is not None:
             model.set_static_token_count(args.static_token_count)
+            if args.torch_compile:
+                model.compile_blocks(args.dynamo_backend)
             logger.info(f"static_token_count={args.static_token_count}")
 
         # Store unsloth preference so that when the base trainer calls

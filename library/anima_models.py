@@ -6,7 +6,7 @@ from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from einops import rearrange, repeat
+from einops import repeat
 from einops.layers.torch import Rearrange
 from torch import nn
 import torch.nn.functional as F
@@ -353,12 +353,9 @@ class Attention(nn.Module):
         context = x if context is None else context
         k = self.k_proj(context)
         v = self.v_proj(context)
-        q, k, v = map(
-            lambda t: rearrange(
-                t, "b ... (h d) -> b ... h d", h=self.n_heads, d=self.head_dim
-            ),
-            (q, k, v),
-        )
+        q = q.unflatten(-1, (self.n_heads, self.head_dim))
+        k = k.unflatten(-1, (self.n_heads, self.head_dim))
+        v = v.unflatten(-1, (self.n_heads, self.head_dim))
 
         q = self.q_norm(q)
         k = self.k_norm(k)
@@ -545,7 +542,7 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
             dim=-1,
         )
 
-        return rearrange(em_T_H_W_D, "t h w d -> (t h w) 1 1 d").float()
+        return em_T_H_W_D.flatten(0, 2).unsqueeze(1).unsqueeze(1).float()
 
     def generate_embeddings_with_offset(
         self,
@@ -607,7 +604,7 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
             dim=-1,
         )
 
-        return rearrange(em_T_H_W_D, "t h w d -> (t h w) 1 1 d").float()
+        return em_T_H_W_D.flatten(0, 2).unsqueeze(1).unsqueeze(1).float()
 
     @property
     def seq_dim(self) -> int:
@@ -696,11 +693,8 @@ class Timesteps(nn.Module):
         cos_emb = torch.cos(emb)
         emb = torch.cat([cos_emb, sin_emb], dim=-1)
 
-        return rearrange(
-            emb.to(dtype=in_dtype),
-            "(b t) d -> b t d",
-            b=timesteps_B_T.shape[0],
-            t=timesteps_B_T.shape[1],
+        return emb.to(dtype=in_dtype).reshape(
+            timesteps_B_T.shape[0], timesteps_B_T.shape[1], -1
         )
 
 
@@ -899,8 +893,8 @@ class FinalLayer(nn.Module):
         else:
             shift_B_T_D, scale_B_T_D = self.adaln_modulation(emb_B_T_D).chunk(2, dim=-1)
 
-        shift_B_T_1_1_D = rearrange(shift_B_T_D, "b t d -> b t 1 1 d")
-        scale_B_T_1_1_D = rearrange(scale_B_T_D, "b t d -> b t 1 1 d")
+        shift_B_T_1_1_D = shift_B_T_D[:, :, None, None, :]
+        scale_B_T_1_1_D = scale_B_T_D[:, :, None, None, :]
 
         x_B_T_H_W_D = (
             self.layer_norm(x_B_T_H_W_D) * (1 + scale_B_T_1_1_D) + shift_B_T_1_1_D
@@ -1068,27 +1062,17 @@ class Block(nn.Module):
             )
 
         # Reshape for broadcasting: (B, T, D) -> (B, T, 1, 1, D)
-        shift_self_attn_B_T_1_1_D = rearrange(
-            shift_self_attn_B_T_D, "b t d -> b t 1 1 d"
-        )
-        scale_self_attn_B_T_1_1_D = rearrange(
-            scale_self_attn_B_T_D, "b t d -> b t 1 1 d"
-        )
-        gate_self_attn_B_T_1_1_D = rearrange(gate_self_attn_B_T_D, "b t d -> b t 1 1 d")
+        shift_self_attn_B_T_1_1_D = shift_self_attn_B_T_D[:, :, None, None, :]
+        scale_self_attn_B_T_1_1_D = scale_self_attn_B_T_D[:, :, None, None, :]
+        gate_self_attn_B_T_1_1_D = gate_self_attn_B_T_D[:, :, None, None, :]
 
-        shift_cross_attn_B_T_1_1_D = rearrange(
-            shift_cross_attn_B_T_D, "b t d -> b t 1 1 d"
-        )
-        scale_cross_attn_B_T_1_1_D = rearrange(
-            scale_cross_attn_B_T_D, "b t d -> b t 1 1 d"
-        )
-        gate_cross_attn_B_T_1_1_D = rearrange(
-            gate_cross_attn_B_T_D, "b t d -> b t 1 1 d"
-        )
+        shift_cross_attn_B_T_1_1_D = shift_cross_attn_B_T_D[:, :, None, None, :]
+        scale_cross_attn_B_T_1_1_D = scale_cross_attn_B_T_D[:, :, None, None, :]
+        gate_cross_attn_B_T_1_1_D = gate_cross_attn_B_T_D[:, :, None, None, :]
 
-        shift_mlp_B_T_1_1_D = rearrange(shift_mlp_B_T_D, "b t d -> b t 1 1 d")
-        scale_mlp_B_T_1_1_D = rearrange(scale_mlp_B_T_D, "b t d -> b t 1 1 d")
-        gate_mlp_B_T_1_1_D = rearrange(gate_mlp_B_T_D, "b t d -> b t 1 1 d")
+        shift_mlp_B_T_1_1_D = shift_mlp_B_T_D[:, :, None, None, :]
+        scale_mlp_B_T_1_1_D = scale_mlp_B_T_D[:, :, None, None, :]
+        gate_mlp_B_T_1_1_D = gate_mlp_B_T_D[:, :, None, None, :]
 
         B, T, H, W, D = x_B_T_H_W_D.shape
 
@@ -1102,18 +1086,12 @@ class Block(nn.Module):
             scale_self_attn_B_T_1_1_D,
             shift_self_attn_B_T_1_1_D,
         )
-        result = rearrange(
-            self.self_attn(
-                rearrange(normalized_x, "b t h w d -> b (t h w) d"),
-                attn_params,
-                None,
-                rope_emb=rope_emb_L_1_1_D,
-            ),
-            "b (t h w) d -> b t h w d",
-            t=T,
-            h=H,
-            w=W,
-        )
+        result = self.self_attn(
+            normalized_x.flatten(1, 3),
+            attn_params,
+            None,
+            rope_emb=rope_emb_L_1_1_D,
+        ).unflatten(1, (T, H, W))
         x_B_T_H_W_D = x_B_T_H_W_D + gate_self_attn_B_T_1_1_D * result
 
         # 2. Cross-attention
@@ -1123,18 +1101,12 @@ class Block(nn.Module):
             scale_cross_attn_B_T_1_1_D,
             shift_cross_attn_B_T_1_1_D,
         )
-        result = rearrange(
-            self.cross_attn(
-                rearrange(normalized_x, "b t h w d -> b (t h w) d"),
-                attn_params,
-                crossattn_emb,
-                rope_emb=rope_emb_L_1_1_D,
-            ),
-            "b (t h w) d -> b t h w d",
-            t=T,
-            h=H,
-            w=W,
-        )
+        result = self.cross_attn(
+            normalized_x.flatten(1, 3),
+            attn_params,
+            crossattn_emb,
+            rope_emb=rope_emb_L_1_1_D,
+        ).unflatten(1, (T, H, W))
         x_B_T_H_W_D = result * gate_cross_attn_B_T_1_1_D + x_B_T_H_W_D
 
         # 3. MLP
@@ -1380,6 +1352,17 @@ class Anima(nn.Module):
         """
         self.static_token_count = count
 
+    def compile_blocks(self, backend: str = "inductor"):
+        """torch.compile each block individually.
+
+        When static_token_count is set, blocks always receive static-shaped
+        inputs (B, 1, target, 1, D).  Compiling blocks — not the full forward —
+        avoids recompilation from varying input H/W across bucket resolutions.
+        """
+        for i, block in enumerate(self.blocks):
+            self.blocks[i] = torch.compile(block, backend=backend)
+        print(f"Anima: compiled {len(self.blocks)} blocks with backend={backend}")
+
     @property
     def device(self):
         return next(self.parameters()).device
@@ -1479,12 +1462,17 @@ class Anima(nn.Module):
         return x_B_T_H_W_D, None, extra_pos_emb
 
     def unpatchify(self, x_B_T_H_W_M: torch.Tensor) -> torch.Tensor:
-        x_B_C_Tt_Hp_Wp = rearrange(
-            x_B_T_H_W_M,
-            "B T H W (p1 p2 t C) -> B C (T t) (H p1) (W p2)",
-            p1=self.patch_spatial,
-            p2=self.patch_spatial,
-            t=self.patch_temporal,
+        B, T, H, W, M = x_B_T_H_W_M.shape
+        p1 = self.patch_spatial
+        p2 = self.patch_spatial
+        pt = self.patch_temporal
+        C = M // (p1 * p2 * pt)
+        # (B,T,H,W, p1*p2*pt*C) → (B,T,H,W, p1,p2,pt,C) → (B,C, T,pt, H,p1, W,p2)
+        #                                                    → (B,C, T*pt, H*p1, W*p2)
+        x_B_C_Tt_Hp_Wp = (
+            x_B_T_H_W_M.unflatten(-1, (p1, p2, pt, C))
+            .permute(0, 7, 1, 6, 2, 4, 3, 5)
+            .reshape(B, C, T * pt, H * p1, W * p2)
         )
         return x_B_C_Tt_Hp_Wp
 
@@ -1596,7 +1584,7 @@ class Anima(nn.Module):
             _static_pad_info = (T_s, H_s, W_s, seq_len)
 
             # Flatten 5D → 2D and pad sequence to target length
-            x_B_T_H_W_D = rearrange(x_B_T_H_W_D, "b t h w d -> b (t h w) d")
+            x_B_T_H_W_D = x_B_T_H_W_D.flatten(1, 3)
             if seq_len < target:
                 x_B_T_H_W_D = torch.nn.functional.pad(
                     x_B_T_H_W_D, (0, 0, 0, target - seq_len)
@@ -1613,7 +1601,7 @@ class Anima(nn.Module):
 
             # Pad extra per-block positional embeddings: (B, T, H, W, D) → (B, 1, target, 1, D)
             if extra_pos_emb is not None:
-                extra_pos_emb = rearrange(extra_pos_emb, "b t h w d -> b (t h w) d")
+                extra_pos_emb = extra_pos_emb.flatten(1, 3)
                 if extra_pos_emb.shape[1] < target:
                     extra_pos_emb = torch.nn.functional.pad(
                         extra_pos_emb, (0, 0, 0, target - extra_pos_emb.shape[1])
@@ -1702,9 +1690,7 @@ class Anima(nn.Module):
             # (B, 1, target, 1, D) → (B, target, D) → strip → (B, T, H, W, D)
             x_B_T_H_W_D = x_B_T_H_W_D.squeeze(3).squeeze(1)
             x_B_T_H_W_D = x_B_T_H_W_D[:, :seq_len, :]
-            x_B_T_H_W_D = rearrange(
-                x_B_T_H_W_D, "b (t h w) d -> b t h w d", t=T_s, h=H_s, w=W_s
-            )
+            x_B_T_H_W_D = x_B_T_H_W_D.unflatten(1, (T_s, H_s, W_s))
 
         x_B_T_H_W_O = self.final_layer(
             x_B_T_H_W_D, t_embedding_B_T_D, adaln_lora_B_T_3D=adaln_lora_B_T_3D
