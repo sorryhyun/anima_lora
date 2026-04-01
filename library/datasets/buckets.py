@@ -110,12 +110,7 @@ class BucketManager:
 
     def make_buckets(self, constant_token_buckets: bool = False):
         if constant_token_buckets:
-            resos = [
-                r
-                for r in CONSTANT_TOKEN_BUCKETS
-                if (self.min_size is None or min(r) >= self.min_size)
-                and (self.max_size is None or max(r) <= self.max_size)
-            ]
+            resos = list(CONSTANT_TOKEN_BUCKETS)
         else:
             resos = make_bucket_resolutions(
                 self.max_reso, self.min_size, self.max_size, self.reso_steps

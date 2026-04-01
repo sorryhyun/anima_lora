@@ -48,7 +48,13 @@ try:
         create_block_mask,
     )
 
-    compiled_flex_attention = torch.compile(_flex_attention, dynamic=False)
+    # Do NOT pre-compile flex_attention here. When blocks are individually
+    # compiled (static_token_count mode) or the full model is compiled,
+    # the outer torch.compile already traces into _flex_attention and fuses it.
+    # Pre-compiling causes nested compilation which exhausts dynamo's
+    # recompile limit (grad_mode guard × mask variants) and falls back to
+    # the slow unfused path.
+    compiled_flex_attention = _flex_attention
 
 except ImportError:
     compiled_flex_attention = None
