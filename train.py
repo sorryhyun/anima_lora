@@ -344,6 +344,11 @@ class AnimaTrainer:
             attn_softmax_scale=attn_softmax_scale,
         )
 
+        # Static token count (constant-shape padding for torch.compile)
+        if getattr(args, "static_token_count", None) is not None:
+            model.set_static_token_count(args.static_token_count)
+            logger.info(f"static_token_count={args.static_token_count}")
+
         # Store unsloth preference so that when the base trainer calls
         # dit.enable_gradient_checkpointing(cpu_offload=...), we can override to use unsloth.
         self._use_unsloth_offload_checkpointing = args.unsloth_offload_checkpointing
@@ -473,11 +478,6 @@ class AnimaTrainer:
             t5_attn_mask = t5_attn_mask.to(accelerator.device)
         else:
             crossattn_emb = crossattn_emb.to(accelerator.device, dtype=weight_dtype)
-            # Pad to 512 tokens to match inference (trimmed during caching to save disk)
-            if crossattn_emb.shape[1] < 512:
-                crossattn_emb = torch.nn.functional.pad(
-                    crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1])
-                )
 
         # Create padding mask
         bs = latents.shape[0]
@@ -1102,7 +1102,10 @@ class AnimaTrainer:
 
             blueprint = blueprint_generator.generate(user_config, args)
             train_dataset_group, val_dataset_group = (
-                config_util.generate_dataset_group_by_blueprint(blueprint.dataset_group)
+                config_util.generate_dataset_group_by_blueprint(
+                    blueprint.dataset_group,
+                    constant_token_buckets=getattr(args, "static_token_count", None) is not None,
+                )
             )
         else:
             # use arbitrary dataset class
@@ -1994,12 +1997,12 @@ class AnimaTrainer:
 
         # training loop
         if initial_step > 0:  # only if skip_until_initial_step is specified
+            global_step = initial_step // args.gradient_accumulation_steps
             for skip_epoch in range(epoch_to_start):
                 logger.info(
                     f"skipping epoch {skip_epoch + 1} because initial_step (multiplied) is {initial_step}"
                 )
                 initial_step -= len(train_dataloader)
-            global_step = initial_step
 
         # log device and dtype for each model
         logger.info(f"unet dtype: {unet_weight_dtype}, device: {unet.device}")
@@ -2015,7 +2018,7 @@ class AnimaTrainer:
         clean_memory_on_device(accelerator.device)
 
         progress_bar = tqdm(
-            range(args.max_train_steps - initial_step),
+            range(args.max_train_steps - global_step),
             smoothing=0,
             disable=not accelerator.is_local_main_process,
             desc="steps",

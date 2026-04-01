@@ -120,14 +120,14 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--qwen3_max_token_length",
         type=int,
-        default=256,
-        help="Maximum token length for Qwen3 tokenizer (default: 256)",
+        default=512,
+        help="Maximum token length for Qwen3 tokenizer (default: 512)",
     )
     parser.add_argument(
         "--t5_max_token_length",
         type=int,
-        default=256,
-        help="Maximum token length for T5 tokenizer (default: 256)",
+        default=512,
+        help="Maximum token length for T5 tokenizer (default: 512)",
     )
     parser.add_argument(
         "--cache_llm_adapter_outputs",
@@ -181,6 +181,13 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         default=None,
         help="Attention implementation to use. Default is None (torch). xformers requires --split_attn. sageattn does not support training (inference only). This option overrides --xformers or --sdpa."
         " / 使用するAttentionの実装。デフォルトはNone（torch）です。xformersは--split_attnの指定が必要です。sageattnはトレーニングをサポートしていません（推論のみ）。このオプションは--xformersまたは--sdpaを上書きします。",
+    )
+    parser.add_argument(
+        "--static_token_count",
+        type=int,
+        default=None,
+        help="Pad all forward passes to this many visual tokens (e.g. 4096). "
+        "Enables constant-shape buckets and eliminates torch.compile recompilation.",
     )
     parser.add_argument(
         "--split_attn",

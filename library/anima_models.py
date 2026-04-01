@@ -1298,6 +1298,11 @@ class Anima(nn.Module):
         self.blocks_to_swap = None
         self.offloader: Optional[custom_offloading_utils.ModelOffloader] = None
 
+        # Static-shape training: pad all token sequences to this count to eliminate
+        # torch.compile recompilation across different bucket resolutions.
+        # Set via set_static_token_count(). None = disabled (original behavior).
+        self.static_token_count: Optional[int] = None
+
         self.build_patch_embed()
         self.build_pos_embed()
         self.use_adaln_lora = use_adaln_lora
@@ -1366,6 +1371,14 @@ class Anima(nn.Module):
     def disable_gradient_checkpointing(self):
         for block in self.blocks:
             block.disable_gradient_checkpointing()
+
+    def set_static_token_count(self, count: Optional[int]):
+        """Enable static-shape training by padding all token sequences to `count`.
+
+        All bucket resolutions must produce <= `count` spatial tokens after
+        patchification.  Passing None disables static-shape mode.
+        """
+        self.static_token_count = count
 
     @property
     def device(self):
@@ -1529,6 +1542,7 @@ class Anima(nn.Module):
         source_attention_mask: Optional[torch.Tensor] = None,
         t5_input_ids: Optional[torch.Tensor] = None,
         t5_attn_mask: Optional[torch.Tensor] = None,
+        crossattn_seqlens: Optional[torch.Tensor] = None,
         h_offset: int = 0,
         w_offset: int = 0,
     ) -> torch.Tensor:
@@ -1542,6 +1556,7 @@ class Anima(nn.Module):
             source_attention_mask: Optional attention mask for Qwen3 embeddings (used with LLM adapter)
             t5_input_ids: Optional T5 token IDs (triggers LLM adapter when provided)
             t5_attn_mask: Optional T5 attention mask
+            crossattn_seqlens: Optional per-sample text token counts [B] for flex cross-attention masking
             h_offset: Height offset in patched space for tiled diffusion RoPE
             w_offset: Width offset in patched space for tiled diffusion RoPE
         """
@@ -1568,6 +1583,43 @@ class Anima(nn.Module):
             w_offset=w_offset,
         )
 
+        # --- Static-shape padding: flatten, pad to fixed token count, reshape to fake-5D ---
+        # This makes ALL block inputs shape-identical across buckets, eliminating
+        # torch.compile recompilation.  The fake-5D shape (B, 1, target, 1, D) is
+        # compatible with existing Block code because rearrange("b t h w d -> b (t h w) d")
+        # with t=1, w=1 produces the same flat sequential order as the original.
+        _static_pad_info = None
+        if self.static_token_count is not None:
+            target = self.static_token_count
+            B_s, T_s, H_s, W_s, D_s = x_B_T_H_W_D.shape
+            seq_len = T_s * H_s * W_s
+            _static_pad_info = (T_s, H_s, W_s, seq_len)
+
+            # Flatten 5D → 2D and pad sequence to target length
+            x_B_T_H_W_D = rearrange(x_B_T_H_W_D, "b t h w d -> b (t h w) d")
+            if seq_len < target:
+                x_B_T_H_W_D = torch.nn.functional.pad(
+                    x_B_T_H_W_D, (0, 0, 0, target - seq_len)
+                )
+            # Reshape to fake-5D: (B, 1, target, 1, D)
+            x_B_T_H_W_D = x_B_T_H_W_D.unsqueeze(1).unsqueeze(3)
+
+            # Pad RoPE embeddings: (L, 1, 1, D_head) → (target, 1, 1, D_head)
+            if rope_emb_L_1_1_D is not None and rope_emb_L_1_1_D.shape[0] < target:
+                rope_emb_L_1_1_D = torch.nn.functional.pad(
+                    rope_emb_L_1_1_D,
+                    (0, 0, 0, 0, 0, 0, 0, target - rope_emb_L_1_1_D.shape[0]),
+                )
+
+            # Pad extra per-block positional embeddings: (B, T, H, W, D) → (B, 1, target, 1, D)
+            if extra_pos_emb is not None:
+                extra_pos_emb = rearrange(extra_pos_emb, "b t h w d -> b (t h w) d")
+                if extra_pos_emb.shape[1] < target:
+                    extra_pos_emb = torch.nn.functional.pad(
+                        extra_pos_emb, (0, 0, 0, target - extra_pos_emb.shape[1])
+                    )
+                extra_pos_emb = extra_pos_emb.unsqueeze(1).unsqueeze(3)
+
         if timesteps_B_T.ndim == 1:
             timesteps_B_T = timesteps_B_T.unsqueeze(1)
         t_embedding_B_T_D, adaln_lora_B_T_3D = self.t_embedder(timesteps_B_T)
@@ -1583,6 +1635,52 @@ class Anima(nn.Module):
             self.attn_mode, self.split_attn, self.attn_softmax_scale
         )
 
+        # Pre-compute cross-attention BlockMask once for all blocks (flex mode only)
+        if (
+            self.attn_mode == "flex"
+            and crossattn_seqlens is not None
+            and attention.create_block_mask is not None
+        ):
+            B, T, H, W, _D = x_B_T_H_W_D.shape
+            q_len = T * H * W
+            kv_len = crossattn_emb.shape[1]
+            seqlens = crossattn_seqlens
+
+            def _crossattn_mask_mod(b, h, q_idx, kv_idx):
+                return kv_idx < seqlens[b]
+
+            attn_params.crossattn_block_mask = attention.create_block_mask(
+                _crossattn_mask_mod,
+                B,
+                None,
+                q_len,
+                kv_len,
+                device=x_B_T_H_W_D.device,
+            )
+
+        # Pre-compute self-attention BlockMask for padded positions (static-shape mode)
+        if (
+            _static_pad_info is not None
+            and _static_pad_info[3] < self.static_token_count
+            and self.attn_mode == "flex"
+            and attention.create_block_mask is not None
+        ):
+            _sa_seq_len = _static_pad_info[3]
+            _sa_target = self.static_token_count
+            _sa_B = x_B_T_H_W_D.shape[0]
+
+            def _selfattn_mask_mod(b, h, q_idx, kv_idx):
+                return kv_idx < _sa_seq_len
+
+            attn_params.selfattn_block_mask = attention.create_block_mask(
+                _selfattn_mask_mod,
+                _sa_B,
+                None,
+                _sa_target,
+                _sa_target,
+                device=x_B_T_H_W_D.device,
+            )
+
         for block_idx, block in enumerate(self.blocks):
             if self.blocks_to_swap:
                 self.offloader.wait_for_block(block_idx)
@@ -1597,6 +1695,16 @@ class Anima(nn.Module):
 
             if self.blocks_to_swap:
                 self.offloader.submit_move_blocks(self.blocks, block_idx)
+
+        # --- Static-shape: strip padding and restore original 5D shape ---
+        if _static_pad_info is not None:
+            T_s, H_s, W_s, seq_len = _static_pad_info
+            # (B, 1, target, 1, D) → (B, target, D) → strip → (B, T, H, W, D)
+            x_B_T_H_W_D = x_B_T_H_W_D.squeeze(3).squeeze(1)
+            x_B_T_H_W_D = x_B_T_H_W_D[:, :seq_len, :]
+            x_B_T_H_W_D = rearrange(
+                x_B_T_H_W_D, "b (t h w) d -> b t h w d", t=T_s, h=H_s, w=W_s
+            )
 
         x_B_T_H_W_O = self.final_layer(
             x_B_T_H_W_D, t_embedding_B_T_D, adaln_lora_B_T_3D=adaln_lora_B_T_3D
@@ -1614,19 +1722,23 @@ class Anima(nn.Module):
         target_input_ids: Optional[torch.Tensor] = None,
         target_attention_mask: Optional[torch.Tensor] = None,
         source_attention_mask: Optional[torch.Tensor] = None,
+        crossattn_seqlens: Optional[torch.Tensor] = None,
         h_offset: int = 0,
         w_offset: int = 0,
         **kwargs,
     ) -> torch.Tensor:
-        context = self._preprocess_text_embeds(
-            context, target_input_ids, target_attention_mask, source_attention_mask
-        )
+        if crossattn_seqlens is None:
+            # Compute seqlens from mask inside _preprocess_text_embeds
+            context, crossattn_seqlens = self._preprocess_text_embeds(
+                context, target_input_ids, target_attention_mask, source_attention_mask
+            )
         return self.forward_mini_train_dit(
             x,
             timesteps,
             context,
             fps=fps,
             padding_mask=padding_mask,
+            crossattn_seqlens=crossattn_seqlens,
             h_offset=h_offset,
             w_offset=w_offset,
             **kwargs,
@@ -1666,13 +1778,9 @@ class Anima(nn.Module):
             context = source_hidden_states
             crossattn_mask = source_attention_mask
 
-        # Trim padded positions for efficient cross-attention across all DiT blocks
-        if crossattn_mask is not None:
-            max_actual_len = int(crossattn_mask.sum(dim=-1).max().item())
-            if 0 < max_actual_len < context.shape[1]:
-                context = context[:, :max_actual_len]
-
-        return context
+        # Keep max-padded context: pretrained model expects padding tokens
+        # in cross-attention (zero keys act as learned attention sinks in softmax)
+        return context, None
 
 
 # LLM Adapter: Bridges Qwen3 embeddings to T5-compatible space

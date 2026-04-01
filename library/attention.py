@@ -48,7 +48,7 @@ try:
         create_block_mask,
     )
 
-    compiled_flex_attention = torch.compile(_flex_attention)
+    compiled_flex_attention = torch.compile(_flex_attention, dynamic=True)
 
 except ImportError:
     compiled_flex_attention = None
@@ -66,6 +66,12 @@ class AttentionParams:
     max_seqlen: Optional[int] = None
     softmax_scale: Optional[float] = (
         None  # custom softmax scale (default: 1/sqrt(head_dim))
+    )
+    crossattn_block_mask: Optional[object] = (
+        None  # pre-computed BlockMask for cross-attention (flex mode only)
+    )
+    selfattn_block_mask: Optional[object] = (
+        None  # pre-computed BlockMask for self-attention padding (flex mode, static-shape training)
     )
 
     @property
@@ -197,11 +203,19 @@ def attention(
         KV_LEN = k.shape[2]
 
         block_mask = None
-        if attn_params.seqlens is not None:
+        if Q_LEN != KV_LEN and attn_params.crossattn_block_mask is not None:
+            # Cross-attention with pre-computed BlockMask (skips padding in text tokens)
+            block_mask = attn_params.crossattn_block_mask
+        elif Q_LEN == KV_LEN and attn_params.selfattn_block_mask is not None:
+            # Self-attention with pre-computed BlockMask (static-shape padding)
+            block_mask = attn_params.selfattn_block_mask
+        elif attn_params.seqlens is not None:
             # Variable-length: mask padding positions via BlockMask
             seqlens = attn_params.seqlens
+
             def mask_mod(b, h, q_idx, kv_idx):
                 return kv_idx < seqlens[b]
+
             block_mask = create_block_mask(
                 mask_mod, B, H, Q_LEN, KV_LEN, device=q.device
             )
@@ -209,8 +223,10 @@ def attention(
             attn_params.attention_mask, torch.Tensor
         ):
             bool_mask = attn_params.attention_mask.squeeze(1).squeeze(1)  # [B, L]
+
             def mask_mod(b, h, q_idx, kv_idx):
                 return bool_mask[b, kv_idx]
+
             block_mask = create_block_mask(
                 mask_mod, B, H, Q_LEN, KV_LEN, device=q.device
             )

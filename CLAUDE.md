@@ -77,6 +77,10 @@ The GRAFT loop (`graft_step.py`) implements rejection-sampling-based fine-tuning
 
 See `graft-guideline.md` for detailed curation guidance.
 
+## Text encoder padding
+
+The pretrained model expects max-padded text encoder outputs — zero-padded positions act as attention sinks in cross-attention softmax. Trimming to actual text length produces black images. Both training and inference must pad to `max_length` and must NOT mask out padding via `crossattn_seqlens`. Regenerate disk-cached `.npz` files after any tokenizer/padding changes.
+
 ## External tools
 
 ComfyUI, SAM3, and manga-image-translator live in the parent directory (`../comfy/`, `../sam3/`, etc.).

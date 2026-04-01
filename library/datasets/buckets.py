@@ -4,6 +4,30 @@ from typing import NamedTuple, Tuple
 
 import numpy as np
 
+# Bucket resolutions where (W/16)*(H/16) <= 4096 tokens, with minimal padding
+# to reach 4096.  Using these with static_token_count=4096 makes every forward
+# pass shape-identical, eliminating torch.compile recompilation.
+# Landscape mirrors (swap W, H) are included explicitly.
+CONSTANT_TOKEN_BUCKETS = [
+    (1024, 1024),  # 4096 tokens, 0.0% pad
+    (960, 1088),  # 4080 tokens, 0.4% pad
+    (1088, 960),
+    (896, 1152),  # 4032 tokens, 1.6% pad
+    (1152, 896),
+    (832, 1248),  # 4056 tokens, 1.0% pad
+    (1248, 832),
+    (768, 1344),  # 4032 tokens, 1.6% pad
+    (1344, 768),
+    (720, 1440),  # 4050 tokens, 1.1% pad
+    (1440, 720),
+    (640, 1632),  # 4080 tokens, 0.4% pad
+    (1632, 640),
+    (576, 1792),  # 4032 tokens, 1.6% pad
+    (1792, 576),
+    (512, 2048),  # 4096 tokens, 0.0% pad
+    (2048, 512),
+]
+
 
 def make_bucket_resolutions(max_reso, min_size=256, max_size=1024, divisible=64):
     """Generate bucket resolutions for multi-aspect-ratio training.
@@ -84,10 +108,18 @@ class BucketManager:
         self.buckets = sorted_buckets
         self.reso_to_id = sorted_reso_to_id
 
-    def make_buckets(self):
-        resos = make_bucket_resolutions(
-            self.max_reso, self.min_size, self.max_size, self.reso_steps
-        )
+    def make_buckets(self, constant_token_buckets: bool = False):
+        if constant_token_buckets:
+            resos = [
+                r
+                for r in CONSTANT_TOKEN_BUCKETS
+                if (self.min_size is None or min(r) >= self.min_size)
+                and (self.max_size is None or max(r) <= self.max_size)
+            ]
+        else:
+            resos = make_bucket_resolutions(
+                self.max_reso, self.min_size, self.max_size, self.reso_steps
+            )
         self.set_predefined_resos(resos)
 
     def set_predefined_resos(self, resos):

@@ -21,3 +21,4 @@ graft/candidates/
 graft/survivors/
 models/
 test_output/
+output_temp/

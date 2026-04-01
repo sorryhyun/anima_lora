@@ -65,7 +65,7 @@ class AnimaTokenizeStrategy(TokenizeStrategy):
             text,
             return_tensors="pt",
             truncation=True,
-            padding=True,
+            padding="max_length",
             max_length=self.qwen3_max_length,
         )
         qwen3_input_ids = qwen3_encoding["input_ids"]
@@ -76,7 +76,7 @@ class AnimaTokenizeStrategy(TokenizeStrategy):
             text,
             return_tensors="pt",
             truncation=True,
-            padding=True,
+            padding="max_length",
             max_length=self.t5_max_length,
         )
         t5_input_ids = t5_encoding["input_ids"]
@@ -421,15 +421,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         t5_attn_mask_i: np.ndarray,
         crossattn_emb_i: Optional[np.ndarray],
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
-        """Trim padding from per-sample outputs."""
-        qwen3_len = max(1, int(attn_mask_i.sum()))
-        t5_len = max(1, int(t5_attn_mask_i.sum()))
-        prompt_embeds_i = prompt_embeds_i[:qwen3_len]
-        attn_mask_i = attn_mask_i[:qwen3_len]
-        t5_input_ids_i = t5_input_ids_i[:t5_len]
-        t5_attn_mask_i = t5_attn_mask_i[:t5_len]
-        if crossattn_emb_i is not None:
-            crossattn_emb_i = crossattn_emb_i[:t5_len]
+        """Keep max-padded outputs (pretrained model expects padding tokens in cross-attention)."""
         return (
             prompt_embeds_i,
             attn_mask_i,

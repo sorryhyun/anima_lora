@@ -41,8 +41,7 @@ test:
 		--sampler er_sde \
 		--guidance_scale 4.0 \
 		--seed 42 \
-		--save_path test_output \
-		--compile
+		--save_path test_output 
 
 step:
 	python graft_step.py
@@ -50,7 +49,10 @@ step:
 preprocess:
 	python scripts/post_images.py \
 		--src image_dataset \
-		--dst post_image_dataset
+		--dst post_image_dataset \
+		--vae models/vae/qwen_image_vae.safetensors \
+		--vae_batch_size 4 \
+		--vae_chunk_size 64
 
 # --- Model downloads ---
 

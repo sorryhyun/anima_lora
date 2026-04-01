@@ -429,7 +429,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.image_data[info.image_key] = info
         self.image_to_subset[info.image_key] = subset
 
-    def make_buckets(self):
+    def make_buckets(self, constant_token_buckets: bool = False):
         """
         bucketingを行わない場合も呼び出し必須（ひとつだけbucketを作る）
         min_size and max_size are ignored when enable_bucket is False
@@ -457,7 +457,7 @@ class BaseDataset(torch.utils.data.Dataset):
                     self.bucket_reso_steps,
                 )
                 if not self.bucket_no_upscale:
-                    self.bucket_manager.make_buckets()
+                    self.bucket_manager.make_buckets(constant_token_buckets=constant_token_buckets)
                 else:
                     logger.warning(
                         "min_bucket_reso and max_bucket_reso are ignored if bucket_no_upscale is set, because bucket reso is defined by image size automatically / bucket_no_upscaleが指定された場合は、bucketの解像度は画像サイズから自動計算されるため、min_bucket_resoとmax_bucket_resoは無視されます"

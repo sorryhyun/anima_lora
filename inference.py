@@ -657,7 +657,7 @@ def prepare_text_inputs(
             embed = encoding_strategy.encode_tokens(
                 tokenize_strategy, [text_encoder], tokens
             )
-            crossattn_emb = anima._preprocess_text_embeds(
+            crossattn_emb, _ = anima._preprocess_text_embeds(
                 source_hidden_states=embed[0].to(anima.device),
                 target_input_ids=embed[2].to(anima.device),
                 target_attention_mask=embed[3].to(anima.device),
@@ -690,7 +690,7 @@ def prepare_text_inputs(
             negative_embed = encoding_strategy.encode_tokens(
                 tokenize_strategy, [text_encoder], tokens
             )
-            crossattn_emb = anima._preprocess_text_embeds(
+            crossattn_emb, _ = anima._preprocess_text_embeds(
                 source_hidden_states=negative_embed[0].to(anima.device),
                 target_input_ids=negative_embed[2].to(anima.device),
                 target_attention_mask=negative_embed[3].to(anima.device),
