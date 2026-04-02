@@ -22,3 +22,5 @@ graft/survivors/
 models/
 test_output/
 output_temp/
+workflows
+results

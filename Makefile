@@ -1,6 +1,6 @@
 LORA_DIR := ../comfy/ComfyUI/models/loras
 
-.PHONY: lora dora tdora tlora sync step test mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit
+.PHONY: lora dora tdora tlora sync step test mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit comfy-batch
 
 lora:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
@@ -42,6 +42,10 @@ test:
 		--guidance_scale 4.0 \
 		--seed 42 \
 		--save_path test_output 
+
+WORKFLOW ?= workflows/lora-batch.json
+comfy-batch:
+	python scripts/comfy_batch.py $(WORKFLOW)
 
 step:
 	python graft_step.py

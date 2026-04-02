@@ -212,6 +212,9 @@ def create_network_from_weights(
         else:
             weights_sd = torch.load(file, map_location="cpu")
 
+    # Strip torch.compile '_orig_mod_' from old checkpoint keys
+    weights_sd = LoRANetwork._strip_orig_mod_keys(weights_sd)
+
     modules_dim = {}
     modules_alpha = {}
     train_llm_adapter = False
@@ -371,6 +374,8 @@ class LoRANetwork(torch.nn.Module):
 
                         if is_linear or is_conv2d:
                             original_name = (name + "." if name else "") + child_name
+                            # Strip torch.compile wrapper from module path
+                            original_name = original_name.replace("_orig_mod.", "")
                             lora_name = f"{prefix}.{original_name}".replace(".", "_")
 
                             # exclude/include filter
@@ -577,6 +582,19 @@ class LoRANetwork(torch.nn.Module):
                 total_reg = total_reg + p_reg + q_reg
                 count += 1
         return total_reg / max(count, 1)
+
+    @staticmethod
+    def _strip_orig_mod_keys(state_dict):
+        """Strip torch.compile '_orig_mod_' from state_dict keys for compat with old checkpoints."""
+        new_sd = {}
+        for key, val in state_dict.items():
+            new_key = re.sub(r"(?<=_)_orig_mod_", "", key)
+            new_sd[new_key] = val
+        return new_sd
+
+    def load_state_dict(self, state_dict, strict=True, **kwargs):
+        state_dict = self._strip_orig_mod_keys(state_dict)
+        return super().load_state_dict(state_dict, strict=strict, **kwargs)
 
     def load_weights(self, file):
         if os.path.splitext(file)[1] == ".safetensors":
