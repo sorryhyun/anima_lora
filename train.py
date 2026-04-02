@@ -12,8 +12,6 @@ import random
 import time
 import json
 from multiprocessing import Value
-import numpy as np
-
 from tqdm import tqdm
 
 import torch
@@ -2031,19 +2029,15 @@ class AnimaTrainer:
             if args.max_validation_steps is not None
             else len(val_dataloader)
         )
-        NUM_VALIDATION_TIMESTEPS = 4  # 200, 400, 600, 800 TODO make this configurable
-        min_timestep = 0 if args.min_timestep is None else args.min_timestep
-        max_timestep = (
-            noise_scheduler.config.num_train_timesteps
-            if args.max_timestep is None
-            else args.max_timestep
+        # Validate at fixed sigma values (low-t focused for texture fidelity)
+        validation_sigmas = (
+            args.validation_sigmas
+            if args.validation_sigmas is not None
+            else [0.05, 0.10, 0.20, 0.35]
         )
-        validation_timesteps = np.linspace(
-            min_timestep, max_timestep, (NUM_VALIDATION_TIMESTEPS + 2), dtype=int
-        )[1:-1]
-        validation_total_steps = validation_steps * len(validation_timesteps)
-        original_args_min_timestep = args.min_timestep
-        original_args_max_timestep = args.max_timestep
+        validation_total_steps = validation_steps * len(validation_sigmas)
+        original_t_min = args.t_min
+        original_t_max = args.t_max
 
         def switch_rng_state(
             seed: int,
@@ -2285,11 +2279,12 @@ class AnimaTrainer:
                         desc="validation steps",
                     )
                     val_timesteps_step = 0
+                    per_sigma_losses = {s: [] for s in validation_sigmas}
                     for val_step, batch in enumerate(val_dataloader):
                         if val_step >= validation_steps:
                             break
 
-                        for timestep in validation_timesteps:
+                        for sigma in validation_sigmas:
                             self.on_step_start(
                                 args,
                                 accelerator,
@@ -2301,9 +2296,8 @@ class AnimaTrainer:
                                 is_train=False,
                             )
 
-                            args.min_timestep = args.max_timestep = (
-                                timestep  # dirty hack to change timestep
-                            )
+                            # Pin sigma via t_min/t_max (what the noise function reads)
+                            args.t_min = args.t_max = sigma
 
                             loss = self.process_batch(
                                 batch,
@@ -2327,11 +2321,12 @@ class AnimaTrainer:
                             val_step_loss_recorder.add(
                                 epoch=epoch, step=val_timesteps_step, loss=current_loss
                             )
+                            per_sigma_losses[sigma].append(current_loss)
                             val_progress_bar.update(1)
                             val_progress_bar.set_postfix(
                                 {
                                     "val_avg_loss": val_step_loss_recorder.moving_average,
-                                    "timestep": timestep,
+                                    "sigma": f"{sigma:.2f}",
                                 }
                             )
 
@@ -2355,13 +2350,16 @@ class AnimaTrainer:
                             "loss/validation/step_average": val_step_loss_recorder.moving_average,
                             "loss/validation/step_divergence": loss_validation_divergence,
                         }
+                        for s, losses in per_sigma_losses.items():
+                            if losses:
+                                logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(losses)
                         self.step_logging(
                             accelerator, logs, global_step, epoch=epoch + 1
                         )
 
                     restore_rng_state(rng_states)
-                    args.min_timestep = original_args_min_timestep
-                    args.max_timestep = original_args_max_timestep
+                    args.t_min = original_t_min
+                    args.t_max = original_t_max
                     optimizer_train_fn()
                     accelerator.unwrap_model(network).train()
                     progress_bar.unpause()
@@ -2393,14 +2391,15 @@ class AnimaTrainer:
                 )
 
                 val_timesteps_step = 0
+                per_sigma_losses = {s: [] for s in validation_sigmas}
                 for val_step, batch in enumerate(val_dataloader):
                     if val_step >= validation_steps:
                         break
 
-                    for timestep in validation_timesteps:
-                        args.min_timestep = args.max_timestep = timestep
+                    for sigma in validation_sigmas:
+                        # Pin sigma via t_min/t_max
+                        args.t_min = args.t_max = sigma
 
-                        # temporary, for batch processing
                         self.on_step_start(
                             args,
                             accelerator,
@@ -2434,11 +2433,12 @@ class AnimaTrainer:
                         val_epoch_loss_recorder.add(
                             epoch=epoch, step=val_timesteps_step, loss=current_loss
                         )
+                        per_sigma_losses[sigma].append(current_loss)
                         val_progress_bar.update(1)
                         val_progress_bar.set_postfix(
                             {
                                 "val_epoch_avg_loss": val_epoch_loss_recorder.moving_average,
-                                "timestep": timestep,
+                                "sigma": f"{sigma:.2f}",
                             }
                         )
 
@@ -2463,11 +2463,14 @@ class AnimaTrainer:
                         "loss/validation/epoch_average": avr_loss,
                         "loss/validation/epoch_divergence": loss_validation_divergence,
                     }
+                    for s, losses in per_sigma_losses.items():
+                        if losses:
+                            logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(losses)
                     self.epoch_logging(accelerator, logs, global_step, epoch + 1)
 
                 restore_rng_state(rng_states)
-                args.min_timestep = original_args_min_timestep
-                args.max_timestep = original_args_max_timestep
+                args.t_min = original_t_min
+                args.t_max = original_t_max
                 optimizer_train_fn()
                 accelerator.unwrap_model(network).train()
                 progress_bar.unpause()
@@ -2771,6 +2774,13 @@ def setup_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Max number of validation dataset items processed. By default, validation will run the entire validation dataset / 処理される検証データセット項目の最大数。デフォルトでは、検証は検証データセット全体を実行します",
+    )
+    parser.add_argument(
+        "--validation_sigmas",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Sigma values for validation loss (0.0~1.0). Low values = fine detail. Default: 0.05 0.10 0.20 0.35",
     )
     parser.add_argument(
         "--unsloth_offload_checkpointing",
