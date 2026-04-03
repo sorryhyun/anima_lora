@@ -254,32 +254,38 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--spectrum_flex_window",
         type=float,
-        default=0.75,
-        help="Spectrum flex parameter alpha — N grows by this after each forward (default 0.75)",
+        default=0.25,
+        help="Spectrum flex parameter alpha — N grows by this after each actual forward (default 0.25)",
     )
     parser.add_argument(
         "--spectrum_warmup",
         type=int,
-        default=5,
-        help="Spectrum warmup steps (always run full forward) (default 5)",
+        default=6,
+        help="Spectrum warmup steps (always run full forward) (default 6)",
     )
     parser.add_argument(
         "--spectrum_w",
         type=float,
-        default=0.5,
-        help="Spectrum Chebyshev/Taylor blend weight (1.0=pure Chebyshev, default 0.5)",
+        default=0.3,
+        help="Spectrum Chebyshev/Taylor blend weight (1.0=pure Chebyshev, default 0.3)",
     )
     parser.add_argument(
         "--spectrum_m",
         type=int,
-        default=4,
-        help="Spectrum number of Chebyshev basis functions (default 4)",
+        default=3,
+        help="Spectrum number of Chebyshev basis functions (default 3)",
     )
     parser.add_argument(
         "--spectrum_lam",
         type=float,
         default=0.1,
         help="Spectrum ridge regression regularization (default 0.1)",
+    )
+    parser.add_argument(
+        "--spectrum_stop_caching_step",
+        type=int,
+        default=-1,
+        help="Force actual forwards from this step onward (-1 = auto: total_steps - 3)",
     )
 
     # arguments for batch and interactive modes

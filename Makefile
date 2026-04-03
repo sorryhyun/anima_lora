@@ -63,11 +63,12 @@ test-spectrum:
 		--save_path test_output \
 		--spectrum \
 		--spectrum_window_size 2.0 \
-		--spectrum_flex_window 0.75 \
-		--spectrum_warmup 5 \
-		--spectrum_w 0.5 \
-		--spectrum_m 4 \
-		--spectrum_lam 0.1
+		--spectrum_flex_window 0.25 \
+		--spectrum_warmup 6 \
+		--spectrum_w 0.3 \
+		--spectrum_m 3 \
+		--spectrum_lam 0.1 \
+		--spectrum_stop_caching_step 27
 
 WORKFLOW ?= workflows/lora-batch.json
 comfy-batch:

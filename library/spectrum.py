@@ -62,12 +62,14 @@ class ChebyshevForecaster:
         K: int = 10,
         lam: float = 1e-3,
         device: Optional[torch.device] = None,
+        total_steps: int = 30,
     ):
         assert K >= M + 2, "K should exceed basis size for stability"
         self.M = M
         self.K = K
         self.lam = lam
         self.device = device
+        self.total_steps = total_steps
 
         self.t_buf = torch.empty(0)  # (<=K,)
         self._H_buf: Optional[torch.Tensor] = None  # (<=K, F)
@@ -79,12 +81,8 @@ class ChebyshevForecaster:
         return self.M + 1
 
     def _taus(self, t: torch.Tensor) -> torch.Tensor:
-        """Map scalar times to τ ∈ [-1, 1] via affine transform over [0, 50]."""
-        t_min = torch.zeros(1, device=t.device, dtype=t.dtype)
-        t_max = torch.full((1,), 50.0, device=t.device, dtype=t.dtype)
-        mid = 0.5 * (t_min + t_max)
-        rng = t_max - t_min
-        return (t - mid) * 2.0 / rng
+        """Map step index t ∈ [0, total_steps) to τ ∈ [-1, 1]."""
+        return 2.0 * (t / self.total_steps) - 1.0
 
     def _build_design(self, taus: torch.Tensor) -> torch.Tensor:
         """Build Chebyshev design matrix [T0, T1, ..., TM] via recurrence."""
@@ -168,8 +166,8 @@ class SpectrumPredictor:
     extrapolation for improved stability on the most recent observations.
     """
 
-    def __init__(self, m: int, lam: float, w: float, device: torch.device, feature_shape):
-        self.cheb = ChebyshevForecaster(M=m, K=100, lam=lam, device=device)
+    def __init__(self, m: int, lam: float, w: float, device: torch.device, feature_shape, total_steps: int = 30):
+        self.cheb = ChebyshevForecaster(M=m, K=100, lam=lam, device=device, total_steps=total_steps)
         self.w = w
 
     def update(self, t: float, h: torch.Tensor):
@@ -220,11 +218,12 @@ def spectrum_denoise(
     device: torch.device,
     *,
     window_size: float = 2.0,
-    flex_window: float = 0.75,
-    warmup_steps: int = 5,
-    w: float = 0.5,
-    m: int = 4,
+    flex_window: float = 0.25,
+    warmup_steps: int = 6,
+    w: float = 0.3,
+    m: int = 3,
     lam: float = 0.1,
+    stop_caching_step: int = -1,
     autocast_enabled: bool = False,
     pgraft_network=None,
     lora_cutoff_step: Optional[int] = None,
@@ -239,9 +238,10 @@ def spectrum_denoise(
         window_size: Initial window N — actual forward every floor(N) steps.
         flex_window: Growth rate alpha — N += alpha after each actual forward.
         warmup_steps: Number of initial steps that always run actual forwards.
-        w: Chebyshev/Taylor blend weight (1.0 = pure Chebyshev, 0.5 recommended).
+        w: Chebyshev/Taylor blend weight (1.0 = pure Chebyshev).
         m: Number of Chebyshev basis functions.
         lam: Ridge regression regularization strength.
+        stop_caching_step: Force actual forwards from this step onward (-1 = auto: total_steps - 3).
     """
     do_cfg = guidance_scale != 1.0
     num_steps = len(timesteps)
@@ -250,6 +250,7 @@ def spectrum_denoise(
     curr_ws = window_size
     consec_cached = 0
     fwd_count = 0
+    stop_at = num_steps - 3 if stop_caching_step < 0 else stop_caching_step
 
     # Forecasters (created lazily on first actual forward)
     cond_fc: Optional[SpectrumPredictor] = None
@@ -277,7 +278,7 @@ def spectrum_denoise(
                     logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{num_steps}")
 
                 # Decide: actual forward or cached prediction?
-                if i < warmup_steps:
+                if i < warmup_steps or i >= stop_at:
                     actual = True
                 else:
                     actual = (
@@ -301,7 +302,7 @@ def spectrum_denoise(
                         )
                     feat = captured["feat"]
                     if cond_fc is None:
-                        cond_fc = SpectrumPredictor(m, lam, w, device, feat.shape[1:])
+                        cond_fc = SpectrumPredictor(m, lam, w, device, feat.shape[1:], num_steps)
                     cond_fc.update(float(i), feat)
 
                     if do_cfg:
@@ -322,15 +323,16 @@ def spectrum_denoise(
                         ufeat = captured["feat"]
                         if uncond_fc is None:
                             uncond_fc = SpectrumPredictor(
-                                m, lam, w, device, ufeat.shape[1:]
+                                m, lam, w, device, ufeat.shape[1:], num_steps
                             )
                         uncond_fc.update(float(i), ufeat)
                         noise_pred = uncond_noise_pred + guidance_scale * (
                             noise_pred - uncond_noise_pred
                         )
 
-                    # Advance schedule
-                    curr_ws = round(curr_ws + flex_window, 3)
+                    # Advance schedule (only post-warmup to avoid inflating window)
+                    if i >= warmup_steps:
+                        curr_ws = round(curr_ws + flex_window, 3)
                     consec_cached = 0
                     fwd_count += 1
                     pbar.set_postfix(mode="fwd", ws=f"{curr_ws:.1f}", n=fwd_count)
