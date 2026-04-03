@@ -16,6 +16,24 @@ LoRA training and inference engine for the Anima diffusion model (DiT-based, flo
 | **Disk-cached latents & text embeddings** | VAE latents, text encoder outputs, and LLM adapter outputs are pre-computed and cached to disk — the VAE and text encoder never occupy training VRAM. |
 | **Unsloth gradient checkpointing** | Activations are offloaded to CPU with non-blocking transfers during the forward pass and streamed back for the backward pass, trading PCIe bandwidth for VRAM. |
 
+## Benchmarks
+
+Tested on RTX 5060 Ti 16GB. LoRA rank=32, lr=5e-5, batch_size=2, epochs=2 (182 steps), seed=42.
+Validation loss measured with fixed seed at timestep sigma = {0.05, 0.1, 0.2, 0.35}.
+gradient_checkpointing=true, unsloth_offload_checkpointing=true, latent and text embeddings cached to disk.
+
+| Configuration | Peak VRAM | Total Time | 2nd Epoch | Train Loss | Val Loss |
+|---|---|---|---|---|---|
+| FA2 (plain) | 7.0 GB | 14:51 | 7:26 | 0.092 | 0.212 |
+| FA2 + compile (eager fallback) | 7.7 GB | 15:10 | 7:26 | 0.089 | 0.211 |
+| FA2 + compile (static tokens) | 6.2 GB | 11:07 | 5:01 | 0.086 | 0.193 |
+| FA4 + compile (static tokens) | 6.3 GB | 11:01 | 5:17 | 0.089 | 0.204 |
+| + fp32 accumulation | 6.4 GB | 10:57 | 5:15 | 0.089 | 0.196 |
+| + DoRA + fp32 accumulation | 6.4 GB | 12:04 | 5:25 | 0.092 | 0.204 |
+| + T-LoRA + fp32 accumulation | 6.9 GB | 12:57 | 5:44 | 0.093 | 0.210 |
+
+Last 3 rows use FA4 + compile (static tokens) as baseline.
+
 ## Setup
 
 ```bash

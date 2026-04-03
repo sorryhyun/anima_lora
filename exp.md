@@ -47,17 +47,28 @@ val loss : 0.204
 
 ---
 
-*everything is fa4 compile by static token sized latent below:*
+*everything below was run under fa4 compile by static token sized latent*
 
 + lora_fp32_accumulation
 
-peak vram : 6.5 GB
-total time : 11:39
-second epoch (after compilation) : 5:20
-train loss : 0.085
-val loss : 0.203
+peak vram : 6.4 GB
+total time : 10:57
+second epoch (after compilation) : 5:15
+train loss : 0.089
+val loss : 0.196
 
-+ dora
++ dora + lora_fp32_accumulation
 
+peak vram : 6.4 GB
+total time : 12:04
+second epoch (after compilation) : 5:25
+train loss : 0.092
+val loss : 0.204
 
-+ tlora
++ tlora + lora_fp32_accumulation
+
+peak vram : 6.9 GB
+total time : 12:57
+second epoch (after compilation) : 5:44
+train loss : 0.093
+val loss : 0.21
