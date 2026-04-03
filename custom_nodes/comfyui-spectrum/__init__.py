@@ -273,7 +273,7 @@ class SpectrumKSampler:
                                           "tooltip": "Initial caching window N — actual forward every floor(N) steps."}),
                 "flex_window": ("FLOAT", {"default": 0.25, "min": 0.0, "max": 2.0, "step": 0.05,
                                           "tooltip": "Window growth rate — N increases by this after each actual forward."}),
-                "warmup_steps": ("INT", {"default": 6, "min": 0, "max": 50,
+                "warmup_steps": ("INT", {"default": 7, "min": 0, "max": 50,
                                          "tooltip": "Number of initial steps that always run actual forwards."}),
                 "blend_w": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 1.0, "step": 0.05,
                                       "tooltip": "Chebyshev/Taylor blend weight (1.0 = pure Chebyshev)."}),

@@ -57,81 +57,28 @@ repo code defaults to `w=0.5`, but the official config (`configs/algo/spectrum.y
 uses `w=1.0` (pure Chebyshev). The ComfyUI impl defaults to `w=0.6`. Worth A/B
 testing `w` in {0.3, 0.5, 0.6, 0.8, 1.0} to find the sweet spot for Anima.
 
-### Residual calibration
+### ~~Residual calibration~~ ✅ Implemented
 
-From ComfyUI-Spectrum-sdxl's calibrated node: on each actual forward, compute
-`residual = actual_output - last_prediction` and store it. On cached steps, add
-`residual * calibration_strength` to the Chebyshev+Taylor prediction. A simple
-bias correction that captures systematic prediction error.
+Implemented as `--spectrum_calibration` (default 0.0, disabled). See `spectrum.md`.
 
-Default `calibration_strength=0.5`. Could be added as `--spectrum_calibration`.
-
-### Delta prediction
+### ~~Delta prediction~~ ❌ Tested — not beneficial
 
 Predict `feat(i) - feat(i_last_actual)` instead of absolute features, then
 reconstruct: `feat_pred = feat_last_actual + delta_pred`.
 
+**Result:** Implemented and A/B tested (2026-04-03). Tried both raw deltas and
+per-step rate normalization, with Taylor blending fixed to operate in absolute
+space. In all variants, delta mode produced slightly worse quality than absolute
+mode (visible as subtle artifacts similar to reducing warmup by ~1 step), while
+absolute mode already achieved near-normal-inference quality on the test prompt.
 
-**Why this matters for Anima specifically:**
-
-Anima's 28 blocks each apply timestep-dependent **multiplicative gating**:
-```
-x = x + gate_sa * self_attn(norm(x) * (1+scale) + shift)
-x = gate_ca * cross_attn(...)  + x
-x = x + gate_mlp * mlp(norm(x) * (1+scale) + shift)
-```
-where `(shift, scale, gate)` come from `adaln_modulation(emb)`. The gate values
-change with timestep, so absolute feature magnitude varies significantly across
-the denoising trajectory — early steps (high noise, large gates) produce features
-with different scale than late steps (refinement, small gates).
-
-This timestep-correlated variance makes absolute features harder for Chebyshev
-to fit: the polynomial must simultaneously capture the smooth *signal evolution*
-and the scale *envelope*. Deltas factor out the envelope — they represent
-incremental changes between adjacent actual forwards, which should be smoother
-and have smaller dynamic range.
-
-**Implementation sketch:**
-
-```python
-class ChebyshevForecaster:
-    def __init__(self, ..., use_delta: bool = False):
-        ...
-        self.use_delta = use_delta
-        self._last_h_flat: Optional[torch.Tensor] = None  # last actual feature
-
-    def update(self, t: float, h: torch.Tensor) -> None:
-        h_flat, shape = _flatten(h)
-        if self.use_delta and self._last_h_flat is not None:
-            store = h_flat - self._last_h_flat  # delta
-        else:
-            store = h_flat
-        self._last_h_flat = h_flat.clone()
-        # ... append store to H_buf as before ...
-
-    def predict(self, t_star) -> torch.Tensor:
-        # ... Chebyshev predict as before → gives delta_pred ...
-        if self.use_delta:
-            return _unflatten(self._last_h_flat + h_flat, self._shape)
-        return _unflatten(h_flat, self._shape)
-```
-
-**Trade-offs:**
-
-| | Absolute (current) | Delta |
-|---|---|---|
-| What polynomial fits | Full feature trajectory | Incremental changes |
-| Dynamic range | Large (gate-scaled) | Smaller (differences) |
-| Error behavior | Independent per step | Compounds from last actual |
-| Memory overhead | None | +1 tensor per forecaster |
-| Failure mode | Over-smoothed features | Drift from accumulation |
-
-The compounding risk is bounded by the schedule: each actual forward resets the
-base feature, so drift only accumulates within one skip window. With the fixed
-schedule (first skip = 1 step), this is minimal.
-
-**When to try:** After validating the current fixes produce acceptable quality.
-Add as `--spectrum_delta` flag, A/B test against absolute mode.
+**Why it didn't help:** The absolute feature trajectory is already smooth enough
+for degree-3 Chebyshev to fit well. The theoretical concern about AdaLN gating
+causing scale-envelope issues didn't materialize — the polynomial handles the
+trajectory without needing delta factoring. Additional issues:
+- First observation must be skipped (no prior), losing one data point from warmup
+- Post-warmup deltas span variable step gaps, requiring rate normalization
+- Compounding reconstruction error (even if bounded per skip window)
 
 ---
 

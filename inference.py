@@ -287,6 +287,13 @@ def parse_args() -> argparse.Namespace:
         default=-1,
         help="Force actual forwards from this step onward (-1 = auto: total_steps - 3)",
     )
+    parser.add_argument(
+        "--spectrum_calibration",
+        type=float,
+        default=0.0,
+        help="Spectrum residual calibration strength (0.0=disabled, default 0.0). "
+        "Adds residual bias correction from last actual forward to cached predictions.",
+    )
 
     # arguments for batch and interactive modes
     parser.add_argument(

@@ -750,6 +750,7 @@ def generate_body(
             m=getattr(args, "spectrum_m", 3),
             lam=getattr(args, "spectrum_lam", 0.1),
             stop_caching_step=getattr(args, "spectrum_stop_caching_step", -1),
+            calibration_strength=getattr(args, "spectrum_calibration", 0.0),
             autocast_enabled=autocast_enabled,
             pgraft_network=pgraft_network,
             lora_cutoff_step=lora_cutoff_step,

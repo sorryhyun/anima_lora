@@ -224,6 +224,7 @@ def spectrum_denoise(
     m: int = 3,
     lam: float = 0.1,
     stop_caching_step: int = -1,
+    calibration_strength: float = 0.0,
     autocast_enabled: bool = False,
     pgraft_network=None,
     lora_cutoff_step: Optional[int] = None,
@@ -242,6 +243,8 @@ def spectrum_denoise(
         m: Number of Chebyshev basis functions.
         lam: Ridge regression regularization strength.
         stop_caching_step: Force actual forwards from this step onward (-1 = auto: total_steps - 3).
+        calibration_strength: Residual calibration strength (0.0 = disabled). On actual forwards,
+            computes residual = actual - predicted; on cached steps, adds residual * strength.
     """
     do_cfg = guidance_scale != 1.0
     num_steps = len(timesteps)
@@ -255,6 +258,10 @@ def spectrum_denoise(
     # Forecasters (created lazily on first actual forward)
     cond_fc: Optional[SpectrumPredictor] = None
     uncond_fc: Optional[SpectrumPredictor] = None
+
+    # Residual calibration: bias correction from last actual forward
+    cond_residual: Optional[torch.Tensor] = None
+    uncond_residual: Optional[torch.Tensor] = None
 
     # Register hook on final_layer to capture block output (its input)
     captured = {}
@@ -303,6 +310,9 @@ def spectrum_denoise(
                     feat = captured["feat"]
                     if cond_fc is None:
                         cond_fc = SpectrumPredictor(m, lam, w, device, feat.shape[1:], num_steps)
+                    # Residual calibration: measure prediction error before updating
+                    if calibration_strength > 0 and cond_fc.cheb.t_buf.numel() >= 2:
+                        cond_residual = feat - cond_fc.predict(float(i))
                     cond_fc.update(float(i), feat)
 
                     if do_cfg:
@@ -325,6 +335,8 @@ def spectrum_denoise(
                             uncond_fc = SpectrumPredictor(
                                 m, lam, w, device, ufeat.shape[1:], num_steps
                             )
+                        if calibration_strength > 0 and uncond_fc.cheb.t_buf.numel() >= 2:
+                            uncond_residual = ufeat - uncond_fc.predict(float(i))
                         uncond_fc.update(float(i), ufeat)
                         noise_pred = uncond_noise_pred + guidance_scale * (
                             noise_pred - uncond_noise_pred
@@ -341,10 +353,14 @@ def spectrum_denoise(
                     # --- Cached step: predict features, skip all blocks ---
                     with torch.no_grad():
                         pred_feat = cond_fc.predict(float(i))
+                        if cond_residual is not None:
+                            pred_feat = pred_feat + calibration_strength * cond_residual
                         noise_pred = _spectrum_fast_forward(anima, t_exp, pred_feat)
 
                         if do_cfg:
                             upred_feat = uncond_fc.predict(float(i))
+                            if uncond_residual is not None:
+                                upred_feat = upred_feat + calibration_strength * uncond_residual
                             uncond_noise_pred = _spectrum_fast_forward(
                                 anima, t_exp, upred_feat
                             )

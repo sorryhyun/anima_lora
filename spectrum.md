@@ -16,8 +16,8 @@ Or add `--spectrum` to any `inference.py` invocation:
 
 ```bash
 python inference.py --spectrum \
-    --spectrum_window_size 2.0 --spectrum_flex_window 0.75 \
-    --spectrum_w 0.5 --spectrum_m 4 --spectrum_lam 0.1 \
+    --spectrum_window_size 2.0 --spectrum_flex_window 0.25 \
+    --spectrum_w 0.3 --spectrum_m 3 --spectrum_lam 0.1 \
     ...  # other inference args
 ```
 
@@ -41,7 +41,7 @@ The window size N starts at `window_size` and grows by `flex_window` after each 
 1. **Warmup** (steps 0 .. warmup-1): always run full forward to seed the forecaster
 2. **Adaptive**: actual forward every `floor(N)` cached steps; N += α after each forward
 
-With 30 steps and defaults (N=2, α=0.75, warmup=5): **8 actual forwards → 3.75x speedup**.
+With 30 steps and defaults (N=2, α=0.25, warmup=6): more actual forwards for quality, moderate speedup.
 
 ### Chebyshev forecasting
 
@@ -68,11 +68,23 @@ All 28 transformer blocks (self-attn, cross-attn, MLP × 28) are skipped.
 |------|---------|-------------|
 | `--spectrum` | off | Enable Spectrum acceleration |
 | `--spectrum_window_size` | 2.0 | Initial window N |
-| `--spectrum_flex_window` | 0.75 | Window growth α per forward |
-| `--spectrum_warmup` | 5 | Steps that always run full forward |
-| `--spectrum_w` | 0.5 | Chebyshev/Taylor blend (1.0 = pure Chebyshev) |
-| `--spectrum_m` | 4 | Number of Chebyshev basis functions |
+| `--spectrum_flex_window` | 0.25 | Window growth α per forward |
+| `--spectrum_warmup` | 6 | Steps that always run full forward |
+| `--spectrum_w` | 0.3 | Chebyshev/Taylor blend (1.0 = pure Chebyshev) |
+| `--spectrum_m` | 3 | Number of Chebyshev basis functions |
 | `--spectrum_lam` | 0.1 | Ridge regression regularization λ |
+| `--spectrum_stop_caching_step` | -1 | Force actual forwards from this step onward (-1 = auto: total_steps - 3) |
+| `--spectrum_calibration` | 0.0 | Residual calibration strength (0.0 = disabled) |
+
+### Residual calibration
+
+On each actual forward, the forecaster's prediction error is measured:
+`residual = actual_output - predicted_output`. On subsequent cached steps, this
+residual is added back as a bias correction: `prediction + residual * calibration_strength`.
+
+This captures systematic prediction error that the polynomial fit misses. Inspired
+by ComfyUI-Spectrum-sdxl's calibrated node. Try `--spectrum_calibration 0.5` as a
+starting point.
 
 ### Tuning for more aggressive speedup
 
