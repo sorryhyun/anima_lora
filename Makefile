@@ -4,7 +4,7 @@ LORA_DIR := ../comfy/ComfyUI/models/loras
 
 lora:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/example_lora.toml
+		train.py --config_file configs/training_config_plain.toml
 
 dora:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \

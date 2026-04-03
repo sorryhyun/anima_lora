@@ -30,6 +30,6 @@ lora_fp32_accumulation = true
 vae_chunk_size = 64
 vae_disable_cache = true
 blocks_to_swap = 0
-masked_loss = true
+# masked_loss = true
 torch_compile = true
 static_token_count = 4096

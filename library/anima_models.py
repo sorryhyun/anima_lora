@@ -350,11 +350,10 @@ class Attention(nn.Module):
     def compute_qkv(
         self,
         x: torch.Tensor,
-        context: Optional[torch.Tensor] = None,
+        context: torch.Tensor,
         rope_emb: Optional[torch.Tensor] = None,
     ) -> tuple:
         q = self.q_proj(x)
-        context = x if context is None else context
         k = self.k_proj(context)
         v = self.v_proj(context)
         q = q.unflatten(-1, (self.n_heads, self.head_dim))
@@ -378,7 +377,7 @@ class Attention(nn.Module):
         self,
         x: torch.Tensor,
         attn_params: attention.AttentionParams,
-        context: Optional[torch.Tensor] = None,
+        context: torch.Tensor,
         rope_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         q, k, v = self.compute_qkv(x, context, rope_emb=rope_emb)
@@ -1090,10 +1089,11 @@ class Block(nn.Module):
             scale_self_attn_B_T_1_1_D,
             shift_self_attn_B_T_1_1_D,
         )
+        x_flat = normalized_x.flatten(1, 3)
         result = self.self_attn(
-            normalized_x.flatten(1, 3),
+            x_flat,
             attn_params,
-            None,
+            x_flat,
             rope_emb=rope_emb_L_1_1_D,
         ).unflatten(1, (T, H, W))
         x_B_T_H_W_D = x_B_T_H_W_D + gate_self_attn_B_T_1_1_D * result

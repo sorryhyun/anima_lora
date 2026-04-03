@@ -326,10 +326,32 @@ class AnimaTrainer:
         if args.attn_mode is not None:
             attn_mode = args.attn_mode
 
+        if attn_mode == "flash4":
+            from library.attention import _flash_attn_4_func_raw
+
+            if _flash_attn_4_func_raw is not None:
+                logger.info("Using Flash Attention 4 (flash_attn.cute)")
+            else:
+                raise RuntimeError(
+                    "attn_mode='flash4' requested but flash_attn.cute is not available. "
+                    "Install flash-attn >= 3.0 with FA4 support."
+                )
+        elif attn_mode == "flash":
+            from library.attention import flash_attn, flash_attn_func
+
+            if flash_attn_func is not None:
+                logger.info(f"Using Flash Attention 2 (flash_attn {flash_attn.__version__})")
+            else:
+                raise RuntimeError(
+                    "attn_mode='flash' requested but flash_attn is not available."
+                )
+        else:
+            logger.info(f"Using attention mode: {attn_mode}")
+
         # Load DiT
         attn_softmax_scale = getattr(args, "attn_softmax_scale", None)
         logger.info(
-            f"Loading Anima DiT model with attn_mode={attn_mode}, split_attn: {args.split_attn}, attn_softmax_scale: {attn_softmax_scale}..."
+            f"Loading Anima DiT model with split_attn: {args.split_attn}, attn_softmax_scale: {attn_softmax_scale}..."
         )
         model = anima_utils.load_anima_model(
             accelerator.device,

@@ -518,9 +518,15 @@ class BaseDataset(torch.utils.data.Dataset):
             logger.info(f"mean ar error (without repeats): {mean_img_ar_error}")
 
         # データ参照用indexを作る。このindexはdatasetのshuffleに用いられる
+        # Drop incomplete last batches to keep batch dim constant for torch.compile,
+        # but only when no subset uses sample_ratio (where every image matters more).
+        has_sample_ratio = any(s.sample_ratio < 1.0 for s in self.subsets)
         self.buckets_indices: List[BucketBatchIndex] = []
         for bucket_index, bucket in enumerate(self.bucket_manager.buckets):
-            batch_count = int(math.ceil(len(bucket) / self.batch_size))
+            if has_sample_ratio:
+                batch_count = int(math.ceil(len(bucket) / self.batch_size))
+            else:
+                batch_count = len(bucket) // self.batch_size
             for batch_index in range(batch_count):
                 self.buckets_indices.append(
                     BucketBatchIndex(bucket_index, self.batch_size, batch_index)
