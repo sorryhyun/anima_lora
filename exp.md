@@ -17,7 +17,7 @@ val loss : 0.212
 
 ---
 
-fa2 compile (dynamo fallback)
+fa2 compile (eager fallback)
 
 peak vram : 7.7 GB
 total time : 15:10
@@ -40,8 +40,8 @@ val loss : 0.193
 fa4 compile by static token sized latent
 
 peak vram : 6.3 GB
-total time : 11:13
-second epoch (after compilation) : 5:19
+total time : 11:01
+second epoch (after compilation) : 5:17
 train loss : 0.089
 val loss : 0.204
 
@@ -52,10 +52,10 @@ val loss : 0.204
 + lora_fp32_accumulation
 
 peak vram : 6.5 GB
-total time : 
-second epoch (after compilation) : 
-train loss : 
-val loss : 
+total time : 11:39
+second epoch (after compilation) : 5:20
+train loss : 0.085
+val loss : 0.203
 
 + dora
 

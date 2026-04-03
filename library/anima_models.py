@@ -251,9 +251,8 @@ class RMSNorm(torch.nn.Module):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        with torch.autocast(device_type=x.device.type, dtype=torch.float32):
-            output = self._norm(x.float()).type_as(x)
-            return output * self.weight
+        output = self._norm(x.float())
+        return (output * self.weight).to(x.dtype)
 
 
 class GPT2FeedForward(nn.Module):
