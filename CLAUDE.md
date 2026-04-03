@@ -26,6 +26,7 @@ make tdora                 # DoRA + timestep masking (configs/training_config_do
 
 # Inference (test with most recent output)
 make test
+make test-spectrum             # Spectrum-accelerated inference (~3.75x speedup)
 
 # GRAFT loop (human-in-the-loop iterative training)
 make step                  # Train -> generate candidates -> await curation
@@ -54,6 +55,7 @@ All training invocations use `accelerate launch --mixed_precision bf16`. Overrid
 |------|---------|
 | `train.py` | `AnimaTrainer` class — main training loop via HF Accelerate |
 | `inference.py` | Standalone image generation (`--help` for all flags) |
+| `library/spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting) |
 | `graft_step.py` | GRAFT orchestrator: holdout -> train -> generate -> await review |
 
 ## Config flow
@@ -117,6 +119,10 @@ Built-in DDP grad sync is disabled for LoRA-only training efficiency. Instead, `
 ### Lazy model loading
 
 DiT is loaded AFTER text encoder/VAE caching and unloading to avoid OOM. The sequence is: text encoder -> cache -> free -> VAE -> cache -> free -> load DiT.
+
+## Spectrum inference acceleration
+
+Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., CVPR 2026). `--spectrum` flag on `inference.py` enables it. On cached steps, all transformer blocks are skipped — only `t_embedder` + `final_layer` + `unpatchify` run. A `register_forward_pre_hook` on `final_layer` captures block outputs without monkey-patching the model. The adaptive window schedule (controlled by `--spectrum_window_size` and `--spectrum_flex_window`) concentrates actual forwards on early high-noise steps and increasingly predicts later refinement steps. See `Spectrum/` for the reference repo and `library/spectrum.py` for the Anima integration.
 
 ## GRAFT / P-GRAFT
 

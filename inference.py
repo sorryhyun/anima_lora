@@ -238,6 +238,26 @@ def parse_args() -> argparse.Namespace:
         help="Overlap between tiles in latent space (default 16 = 128px). Must be even and < tile_size.",
     )
 
+    # Spectrum acceleration
+    parser.add_argument(
+        "--spectrum",
+        action="store_true",
+        help="Enable Spectrum inference acceleration (Chebyshev polynomial feature forecasting). "
+        "Skips transformer blocks on predicted steps, running only final_layer + unpatchify.",
+    )
+    parser.add_argument("--spectrum_window_size", type=float, default=2.0,
+                        help="Spectrum initial window size N (default 2.0)")
+    parser.add_argument("--spectrum_flex_window", type=float, default=0.75,
+                        help="Spectrum flex parameter alpha — N grows by this after each forward (default 0.75)")
+    parser.add_argument("--spectrum_warmup", type=int, default=5,
+                        help="Spectrum warmup steps (always run full forward) (default 5)")
+    parser.add_argument("--spectrum_w", type=float, default=0.5,
+                        help="Spectrum Chebyshev/Taylor blend weight (1.0=pure Chebyshev, default 0.5)")
+    parser.add_argument("--spectrum_m", type=int, default=4,
+                        help="Spectrum number of Chebyshev basis functions (default 4)")
+    parser.add_argument("--spectrum_lam", type=float, default=0.1,
+                        help="Spectrum ridge regression regularization (default 0.1)")
+
     # arguments for batch and interactive modes
     parser.add_argument(
         "--from_file", type=str, default=None, help="Read prompts from a file"
@@ -1089,30 +1109,44 @@ def generate_body(
     pgraft_network = getattr(anima, "_pgraft_network", None)
     lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
 
-    with tqdm(total=len(timesteps), desc="Denoising steps") as pbar:
-        for i, t in enumerate(timesteps):
-            # P-GRAFT: disable LoRA at cutoff step (reference model takes over)
-            if (
-                pgraft_network is not None
-                and lora_cutoff_step is not None
-                and i == lora_cutoff_step
-            ):
-                pgraft_network.set_enabled(False)
-                logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}")
+    if getattr(args, "spectrum", False):
+        from library.spectrum import spectrum_denoise
 
-            t_expand = t.expand(latents.shape[0])
+        latents = spectrum_denoise(
+            anima,
+            latents,
+            timesteps,
+            sigmas,
+            embed,
+            negative_embed,
+            padding_mask,
+            args.guidance_scale,
+            er_sde,
+            device,
+            window_size=getattr(args, "spectrum_window_size", 2.0),
+            flex_window=getattr(args, "spectrum_flex_window", 0.75),
+            warmup_steps=getattr(args, "spectrum_warmup", 5),
+            w=getattr(args, "spectrum_w", 0.5),
+            m=getattr(args, "spectrum_m", 4),
+            lam=getattr(args, "spectrum_lam", 0.1),
+            autocast_enabled=autocast_enabled,
+            pgraft_network=pgraft_network,
+            lora_cutoff_step=lora_cutoff_step,
+        )
+    else:
+        with tqdm(total=len(timesteps), desc="Denoising steps") as pbar:
+            for i, t in enumerate(timesteps):
+                # P-GRAFT: disable LoRA at cutoff step (reference model takes over)
+                if (
+                    pgraft_network is not None
+                    and lora_cutoff_step is not None
+                    and i == lora_cutoff_step
+                ):
+                    pgraft_network.set_enabled(False)
+                    logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}")
 
-            with (
-                torch.no_grad(),
-                torch.autocast(
-                    device_type=device.type,
-                    dtype=torch.bfloat16,
-                    enabled=autocast_enabled,
-                ),
-            ):
-                noise_pred = anima(latents, t_expand, embed, padding_mask=padding_mask)
+                t_expand = t.expand(latents.shape[0])
 
-            if do_cfg:
                 with (
                     torch.no_grad(),
                     torch.autocast(
@@ -1121,27 +1155,38 @@ def generate_body(
                         enabled=autocast_enabled,
                     ),
                 ):
-                    uncond_noise_pred = anima(
-                        latents, t_expand, negative_embed, padding_mask=padding_mask
+                    noise_pred = anima(latents, t_expand, embed, padding_mask=padding_mask)
+
+                if do_cfg:
+                    with (
+                        torch.no_grad(),
+                        torch.autocast(
+                            device_type=device.type,
+                            dtype=torch.bfloat16,
+                            enabled=autocast_enabled,
+                        ),
+                    ):
+                        uncond_noise_pred = anima(
+                            latents, t_expand, negative_embed, padding_mask=padding_mask
+                        )
+                    noise_pred = uncond_noise_pred + args.guidance_scale * (
+                        noise_pred - uncond_noise_pred
                     )
-                noise_pred = uncond_noise_pred + args.guidance_scale * (
-                    noise_pred - uncond_noise_pred
-                )
 
-            # ensure latents dtype is consistent
-            if er_sde is not None:
-                denoised = latents.float() - sigmas[i] * noise_pred.float()
-                latents = er_sde.step(latents, denoised, i).to(latents.dtype)
-            else:
-                latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
-                    latents.dtype
-                )
+                # ensure latents dtype is consistent
+                if er_sde is not None:
+                    denoised = latents.float() - sigmas[i] * noise_pred.float()
+                    latents = er_sde.step(latents, denoised, i).to(latents.dtype)
+                else:
+                    latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
+                        latents.dtype
+                    )
 
-            pbar.update()
+                pbar.update()
 
-    # P-GRAFT: restore LoRA for next generation
-    if pgraft_network is not None and lora_cutoff_step is not None:
-        pgraft_network.set_enabled(True)
+        # P-GRAFT: restore LoRA for next generation
+        if pgraft_network is not None and lora_cutoff_step is not None:
+            pgraft_network.set_enabled(True)
 
     return latents
 
