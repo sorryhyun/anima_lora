@@ -10,7 +10,8 @@ LoRA training and inference engine for the Anima diffusion model (DiT-based, flo
 |---|---|
 | **Constant-token bucketing** | All bucket resolutions are chosen so that `(H/16)×(W/16) ≈ 4096` patches. Every batch element is then zero-padded to exactly 4096 tokens, giving `torch.compile` a single static shape to trace — no recompilation across aspect ratios. |
 | **Max-padded text encoder** | Text encoder outputs are padded to `max_length` (512) and zero-filled. The pretrained DiT treats these zero keys as learned **attention sinks** in cross-attention softmax, so removing padding produces black images. Keeping it preserves model behavior *and* gives the compiler another fixed dimension. |
-| **Flash Attention 4** | Uses `flash_attn.cute` (Hopper-optimized FA4 kernels) for both fixed-length and variable-length attention, with automatic fallback to FA2/SDPA. |
+| **Cross-attention KV trim** | Typical captions use 30–80 tokens out of 512 — ~85% is zero-padding. KV is trimmed to a bucketed length (64/128/256/512) and an LSE-based sigmoid correction restores the exact attention-sink contribution. **~4× less cross-attention compute** with no quality loss, compile-safe (only 4 possible shapes). |
+| **Flash Attention 4** | Uses `flash_attn.cute` (Hopper-optimized FA4 kernels) for both fixed-length and variable-length attention, with automatic fallback to FA2/SDPA. Official FA4 lacks consumer Blackwell (SM120) support — we use a [fork](https://github.com/sorryhyun/flash-attention-sm120-fix) of [sisgrad's SM120 branch](https://github.com/sisgrad/flash-attention/tree/dz/sm120_tma_optimized) with minor bug fixes. |
 | **Per-block `torch.compile`** | Each DiT block is compiled independently with the Inductor backend. Combined with static token counts this eliminates Dynamo guard recompilation entirely. |
 | **Disk-cached latents & text embeddings** | VAE latents, text encoder outputs, and LLM adapter outputs are pre-computed and cached to disk — the VAE and text encoder never occupy training VRAM. |
 | **Unsloth gradient checkpointing** | Activations are offloaded to CPU with non-blocking transfers during the forward pass and streamed back for the backward pass, trading PCIe bandwidth for VRAM. |
@@ -134,6 +135,20 @@ Computes the LoRA forward pass (down → up projection) in fp32 for improved num
 ```toml
 lora_fp32_accumulation = true
 ```
+
+## Cross-Attention KV Trim
+
+Eliminates wasted compute on zero-padding tokens in cross-attention. The pretrained model pads text encoder outputs to 512 tokens, but typical captions only use 30–80 — the rest are zeros that act as attention sinks (contributing `exp(0) = 1` to the softmax denominator and zero to the numerator).
+
+**How it works:** KV is trimmed to a bucketed length (`KV_BUCKETS = [64, 128, 256, 512]`) before projection, and FA4's returned LSE (log-sum-exp) is used to apply a post-hoc sigmoid correction that exactly restores the attention-sink contribution:
+
+```
+out_corrected = out_trimmed * sigmoid(lse - log(N_pad))
+```
+
+This is mathematically identical to full-padding attention — not an approximation. The bucketed trim lengths (only 4 possible shapes) keep `torch.compile` stable with no recompilation after warmup.
+
+Requires Flash Attention 4 (`attn_mode = "flash4"`). Other backends fall back to full 512-length KV automatically.
 
 ## Caption Shuffle Variants
 

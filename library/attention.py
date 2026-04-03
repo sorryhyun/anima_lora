@@ -1,6 +1,7 @@
 # Unified attention function supporting various implementations
 
 from dataclasses import dataclass
+import math
 import torch
 from typing import Optional, Union
 
@@ -19,15 +20,22 @@ try:
     from flash_attn.cute import flash_attn_func as _flash_attn_4_func_raw
     from flash_attn.cute import flash_attn_varlen_func as _flash_attn_4_varlen_func_raw
 
+    # FA4's CUTLASS/TVM kernel accesses raw data pointers (DLPack) which
+    # fails with FakeTensors during dynamo tracing. Use graph breaks instead
+    # — FA4 is already an optimized fused kernel, torch.compile can't
+    # improve it. Surrounding ops still get compiled in separate sub-graphs.
+    @torch.compiler.disable
     def flash_attn_4_func(*args, **kwargs):
         out, _lse = _flash_attn_4_func_raw(*args, **kwargs)
         return out
 
+    @torch.compiler.disable
     def flash_attn_4_varlen_func(*args, **kwargs):
         out, _lse = _flash_attn_4_varlen_func_raw(*args, **kwargs)
         return out
 
 except ImportError:
+    _flash_attn_4_func_raw = None
     flash_attn_4_func = None
     flash_attn_4_varlen_func = None
 
@@ -78,6 +86,9 @@ class AttentionParams:
     )
     selfattn_block_mask: Optional[object] = (
         None  # pre-computed BlockMask for self-attention padding (flex mode, static-shape training)
+    )
+    crossattn_full_len: Optional[int] = (
+        None  # original KV length before bucketed trimming (for LSE sink correction)
     )
 
     @property
@@ -452,8 +463,27 @@ def attention(
             x = torch.cat(x, dim=0)
             del q, k, v
         elif attn_params.cu_seqlens is None:  # all tokens are valid
-            x = flash_attn_4_func(q, k, v, softmax_scale=scale)  # B, L, H, D
-            del q, k, v
+            # LSE-corrected cross-attention: account for trimmed zero-key padding
+            n_pad = (
+                attn_params.crossattn_full_len - k.shape[1]
+                if attn_params.crossattn_full_len is not None
+                and q.shape[1] != k.shape[1]
+                else 0
+            )
+            if n_pad > 0:
+                out, lse = _flash_attn_4_func_raw(
+                    q, k, v, softmax_scale=scale, return_lse=True
+                )
+                del q, k, v
+                # Sigmoid correction exactly accounts for removed zero-key positions
+                # whose exp(q·0/√d) = exp(0) = 1 each contributed to softmax denominator.
+                # out_corrected = out_real * sigmoid(lse - log(N_pad))
+                correction = torch.sigmoid(lse - math.log(n_pad))  # [B, H, Q_LEN]
+                x = out * correction.transpose(1, 2).unsqueeze(-1)  # [B, Q_LEN, H, D]
+                del out, lse, correction
+            else:
+                x = flash_attn_4_func(q, k, v, softmax_scale=scale)  # B, L, H, D
+                del q, k, v
         else:
             # Reshape to [(bxs), a, d]
             batch_size, seqlen = q.shape[0], q.shape[1]

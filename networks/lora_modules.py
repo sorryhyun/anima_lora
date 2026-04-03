@@ -148,7 +148,7 @@ class LoRAModule(torch.nn.Module):
 
             # timestep-dependent rank masking
             if self._timestep_mask is not None and self.training:
-                lx = lx * self._timestep_mask.to(lx.device)
+                lx = lx * self._timestep_mask
 
             # normal dropout
             if self.dropout is not None and self.training:
@@ -213,7 +213,7 @@ class LoRAModule(torch.nn.Module):
 
             # timestep-dependent rank masking
             if self._timestep_mask is not None and self.training:
-                lxs = [lx * self._timestep_mask.to(lx.device) for lx in lxs]
+                lxs = [lx * self._timestep_mask for lx in lxs]
 
             # normal dropout
             if self.dropout is not None and self.training:
@@ -370,7 +370,7 @@ class DoRAModule(LoRAModule):
 
         # timestep-dependent rank masking
         if self._timestep_mask is not None and self.training:
-            lx = lx * self._timestep_mask.to(lx.device)
+            lx = lx * self._timestep_mask
 
         # normal dropout
         if self.dropout is not None and self.training:
@@ -411,7 +411,7 @@ class DoRAModule(LoRAModule):
 
 class OrthoLoRAModule(torch.nn.Module):
     """
-    Orthogonal LoRA: SVD-based weight parameterization for better initialization.
+    Orthogonal LoRA: QR-based weight parameterization for orthonormal initialization.
     Uses P @ diag(lambda) @ Q decomposition with frozen base copies to ensure zero output at init.
     Orthogonality regularization keeps P and Q close to orthonormal bases during training.
     Reference: T-LoRA (AAAI 2026)
@@ -445,37 +445,41 @@ class OrthoLoRAModule(torch.nn.Module):
         self.p_layer = torch.nn.Linear(lora_dim, out_dim, bias=False)
         self.lambda_layer = torch.nn.Parameter(torch.ones(1, lora_dim))
 
-        # SVD-based orthogonal initialization
-        svd_device = "cuda" if torch.cuda.is_available() else "cpu"
-        base_m = torch.normal(
-            mean=0, std=1.0 / lora_dim, size=(in_dim, out_dim), device=svd_device
-        )
-        u, s, v = torch.linalg.svd(base_m)
-        u, s, v = u.cpu(), s.cpu(), v.cpu()
+        # Orthogonal initialization via QR decomposition
+        # QR on (n, r) is O(n·r²) vs SVD on (n, m) which is O(n²·m) — orders of magnitude faster
+        # for typical DiT dimensions (n,m ~ 2048-8192, r ~ 4-64).
+        # QR of a random Gaussian matrix produces Haar-distributed orthonormal bases,
+        # identical in distribution to SVD left/right singular vectors of a random matrix.
+        init_device = "cuda" if torch.cuda.is_available() else "cpu"
 
+        q_rand = torch.randn(in_dim, lora_dim, device=init_device)
+        q_orth, _ = torch.linalg.qr(q_rand)  # (in_dim, lora_dim)
+        self.q_layer.weight.data = q_orth.T.cpu().clone().contiguous()
+
+        p_rand = torch.randn(out_dim, lora_dim, device=init_device)
+        p_orth, _ = torch.linalg.qr(p_rand)  # (out_dim, lora_dim)
+        self.p_layer.weight.data = p_orth.cpu().clone().contiguous()
+
+        # Lambda: scale to match expected singular values of random Gaussian(0, 1/r) matrix
+        std = 1.0 / lora_dim
+        sv_max = std * (math.sqrt(in_dim) + math.sqrt(out_dim))
+        sv_min = std * abs(math.sqrt(in_dim) - math.sqrt(out_dim))
         if sig_type == "principal":
-            self.q_layer.weight.data = u[:lora_dim].clone().contiguous()
-            self.p_layer.weight.data = v[:, :lora_dim].clone().contiguous()
-            self.lambda_layer.data = s[None, :lora_dim].clone().contiguous()
+            self.lambda_layer.data = torch.linspace(
+                sv_max, (sv_max + sv_min) / 2, lora_dim
+            ).unsqueeze(0)
         elif sig_type == "last":
-            self.q_layer.weight.data = u[-lora_dim:].clone().contiguous()
-            self.p_layer.weight.data = v[:, -lora_dim:].clone().contiguous()
-            self.lambda_layer.data = s[None, -lora_dim:].clone().contiguous()
+            self.lambda_layer.data = torch.linspace(
+                (sv_max + sv_min) / 2, sv_min + 1e-6, lora_dim
+            ).unsqueeze(0)
         elif sig_type == "middle":
-            start_u = math.ceil((u.shape[0] - lora_dim) / 2)
-            self.q_layer.weight.data = (
-                u[start_u : start_u + lora_dim].clone().contiguous()
-            )
-            start_v = math.ceil((v.shape[1] - lora_dim) / 2)
-            self.p_layer.weight.data = (
-                v[:, start_v : start_v + lora_dim].clone().contiguous()
-            )
-            start_s = math.ceil((s.shape[0] - lora_dim) / 2)
-            self.lambda_layer.data = (
-                s[None, start_s : start_s + lora_dim].clone().contiguous()
-            )
+            mid = (sv_max + sv_min) / 2
+            spread = (sv_max - sv_min) / 4
+            self.lambda_layer.data = torch.linspace(
+                mid + spread, mid - spread, lora_dim
+            ).unsqueeze(0)
 
-        del u, s, v, base_m
+        del q_rand, q_orth, p_rand, p_orth
 
         # Frozen base copies for residual (ensures zero output at init)
         self.register_buffer(
@@ -516,9 +520,7 @@ class OrthoLoRAModule(torch.nn.Module):
         dtype = self.q_layer.weight.dtype
 
         # timestep mask
-        mask = (
-            self._timestep_mask.to(x.device) if self._timestep_mask is not None else 1.0
-        )
+        mask = self._timestep_mask if self._timestep_mask is not None else 1.0
 
         # trainable path
         q_out = self.q_layer(x.to(dtype)) * self.lambda_layer * mask

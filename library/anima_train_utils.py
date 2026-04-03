@@ -183,6 +183,13 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         " / 使用するAttentionの実装。デフォルトはNone（torch）です。xformersは--split_attnの指定が必要です。sageattnはトレーニングをサポートしていません（推論のみ）。このオプションは--xformersまたは--sdpaを上書きします。",
     )
     parser.add_argument(
+        "--trim_crossattn_kv",
+        action="store_true",
+        help="Trim zero-padded KV positions in cross-attention (flash4 only). "
+        "Uses bucketed lengths + LSE sigmoid correction for exact equivalence. "
+        "Typical 4x KV reduction for short captions → ~10-15%% faster training.",
+    )
+    parser.add_argument(
         "--static_token_count",
         type=int,
         default=None,

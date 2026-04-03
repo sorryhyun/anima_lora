@@ -15,6 +15,10 @@ from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from library import custom_offloading_utils, attention
 
+# KV length buckets for cross-attention trimming. Captions trimmed to the smallest
+# bucket >= max(real_token_lengths). Keeps torch.compile shapes stable (max 4 variants).
+_KV_BUCKETS = (64, 128, 256, 512)
+
 
 def to_device(x, device):
     if isinstance(x, torch.Tensor):
@@ -1353,15 +1357,19 @@ class Anima(nn.Module):
         self.static_token_count = count
 
     def compile_blocks(self, backend: str = "inductor"):
-        """torch.compile each block individually.
+        """torch.compile each block's _forward individually.
 
-        When static_token_count is set, blocks always receive static-shaped
-        inputs (B, 1, target, 1, D).  Compiling blocks — not the full forward —
-        avoids recompilation from varying input H/W across bucket resolutions.
+        Compiles _forward (the actual attention/MLP computation) rather than
+        forward (the checkpointing wrapper).  This is critical because
+        unsloth_checkpoint has @torch._disable_dynamo, which causes an
+        immediate graph break if forward itself is compiled — dynamo compiles
+        nothing useful but still checks shape guards, causing recompile storms.
         """
         for i, block in enumerate(self.blocks):
-            self.blocks[i] = torch.compile(block, backend=backend)
-        print(f"Anima: compiled {len(self.blocks)} blocks with backend={backend}")
+            block._forward = torch.compile(
+                block._forward, backend=backend, dynamic=True
+            )
+        print(f"Anima: compiled {len(self.blocks)} block._forward with backend={backend}")
 
     @property
     def device(self):
@@ -1623,6 +1631,23 @@ class Anima(nn.Module):
             self.attn_mode, self.split_attn, self.attn_softmax_scale
         )
 
+        # Bucketed KV trimming for cross-attention (flash4 with LSE correction).
+        # Trims zero-padded positions from crossattn_emb, saving KV projection and
+        # attention compute in every block. The attention function applies an exact
+        # sigmoid correction to account for the removed padding sinks.
+        if (
+            crossattn_seqlens is not None
+            and getattr(self, "trim_crossattn_kv", False)
+            and self.attn_mode == "flash4"
+            and not self.split_attn
+        ):
+            full_len = crossattn_emb.shape[1]
+            max_real_len = int(crossattn_seqlens.max())
+            trim_len = next((b for b in _KV_BUCKETS if b >= max_real_len), full_len)
+            if trim_len < full_len:
+                crossattn_emb = crossattn_emb[:, :trim_len]
+                attn_params.crossattn_full_len = full_len
+
         # Pre-compute cross-attention BlockMask once for all blocks (flex mode only)
         if (
             self.attn_mode == "flex"
@@ -1764,9 +1789,14 @@ class Anima(nn.Module):
             context = source_hidden_states
             crossattn_mask = source_attention_mask
 
-        # Keep max-padded context: pretrained model expects padding tokens
-        # in cross-attention (zero keys act as learned attention sinks in softmax)
-        return context, None
+        # Compute seqlens from mask for bucketed KV trimming with LSE correction.
+        # Pretrained model expects padding as attention sinks (zero keys contribute
+        # exp(0)=1 to softmax denominator); the attention function accounts for
+        # removed sinks via an exact sigmoid correction on the logsumexp.
+        crossattn_seqlens = None
+        if crossattn_mask is not None:
+            crossattn_seqlens = crossattn_mask.sum(dim=-1).to(torch.int32)
+        return context, crossattn_seqlens
 
 
 # LLM Adapter: Bridges Qwen3 embeddings to T5-compatible space

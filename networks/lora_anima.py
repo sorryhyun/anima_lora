@@ -562,13 +562,20 @@ class LoRANetwork(torch.nn.Module):
             + self._min_rank
         )
         r = min(r, self._max_rank)  # clamp
-        mask = torch.zeros(1, self._max_rank)
+
+        # Reuse a single GPU-resident mask to avoid ~200 CPU→GPU transfers per step
+        mask = getattr(self, "_shared_timestep_mask", None)
+        if mask is None or mask.device != timesteps.device:
+            mask = torch.zeros(1, self._max_rank, device=timesteps.device)
+            self._shared_timestep_mask = mask
+            for lora in self.text_encoder_loras + self.unet_loras:
+                lora._timestep_mask = mask
+        mask.zero_()
         mask[:, :r] = 1.0
-        for lora in self.text_encoder_loras + self.unet_loras:
-            lora._timestep_mask = mask
 
     def clear_timestep_mask(self):
         """Remove timestep mask (use full rank)."""
+        self._shared_timestep_mask = None
         for lora in self.text_encoder_loras + self.unet_loras:
             lora._timestep_mask = None
 
@@ -851,29 +858,41 @@ class LoRANetwork(torch.nn.Module):
             alpha = state_dict.get(f"{prefix}.alpha")
             rank = Q.shape[0]
 
-            # Effective delta weight (out_dim × in_dim), use GPU for SVD speed
+            # ΔW = P·diag(λ)·Q - P_base·diag(λ_base)·Q_base is rank ≤ 2r.
+            # Instead of materializing the full (out_dim × in_dim) matrix and running SVD on it,
+            # work in the small 2r-dimensional column/row space:
+            #   ΔW = [P|P_base] @ M @ [Q; Q_base]  where M is (2r, 2r)
+            # Then SVD of M gives us the decomposition cheaply.
             svd_device = "cuda" if torch.cuda.is_available() else "cpu"
-            delta_w = (
-                (
-                    P @ (lam.squeeze(0).unsqueeze(1) * Q)
-                    - P_base @ (lam_base.squeeze(0).unsqueeze(1) * Q_base)
-                )
-                .float()
-                .to(svd_device)
-            )
-
-            # SVD decomposition → standard LoRA format
-            U, S, Vh = torch.linalg.svd(delta_w, full_matrices=False)
-            # Keep original rank (the delta is rank-2r at most, but we truncate to r for compat)
             save_dtype = dtype if dtype is not None else P.dtype
+
+            P_cat = torch.cat([P, P_base], dim=1).float().to(svd_device)       # (out, 2r)
+            Q_cat = torch.cat([Q, Q_base], dim=0).float().to(svd_device)       # (2r, in)
+            lam_diag = torch.diag(lam.squeeze(0).float().to(svd_device))       # (r, r)
+            lam_base_diag = torch.diag(lam_base.squeeze(0).float().to(svd_device))
+
+            # M = block_diag(diag(λ), -diag(λ_base))  — the middle (2r, 2r) matrix
+            M = torch.zeros(2 * rank, 2 * rank, device=svd_device)
+            M[:rank, :rank] = lam_diag
+            M[rank:, rank:] = -lam_base_diag
+
+            # QR-orthogonalize the tall/wide factors to get thin SVD via small matrix
+            Qp, Rp = torch.linalg.qr(P_cat)   # Qp: (out, 2r), Rp: (2r, 2r)
+            Qq, Rq = torch.linalg.qr(Q_cat.T)  # Qq: (in, 2r), Rq: (2r, 2r)
+
+            # Core (2r × 2r) matrix whose SVD gives us the answer
+            core = Rp @ M @ Rq.T
+            Uc, Sc, Vhc = torch.linalg.svd(core)  # all (2r, 2r)
+
+            # Map back: U_full = Qp @ Uc, Vh_full = Vhc @ Qq.T
             lora_up = (
-                (U[:, :rank] * S[:rank].sqrt().unsqueeze(0))
+                (Qp @ Uc[:, :rank] * Sc[:rank].sqrt().unsqueeze(0))
                 .to(save_dtype)
                 .cpu()
                 .contiguous()
             )
             lora_down = (
-                (S[:rank].sqrt().unsqueeze(1) * Vh[:rank, :])
+                (Sc[:rank].sqrt().unsqueeze(1) * Vhc[:rank, :] @ Qq.T)
                 .to(save_dtype)
                 .cpu()
                 .contiguous()

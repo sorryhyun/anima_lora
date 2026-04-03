@@ -342,6 +342,9 @@ class AnimaTrainer:
             attn_softmax_scale=attn_softmax_scale,
         )
 
+        # Bucketed KV trimming for cross-attention
+        model.trim_crossattn_kv = getattr(args, "trim_crossattn_kv", False)
+
         # Static token count (constant-shape padding for torch.compile)
         if getattr(args, "static_token_count", None) is not None:
             model.set_static_token_count(args.static_token_count)
@@ -478,6 +481,8 @@ class AnimaTrainer:
             t5_attn_mask = t5_attn_mask.to(accelerator.device)
         else:
             crossattn_emb = crossattn_emb.to(accelerator.device, dtype=weight_dtype)
+            if args.trim_crossattn_kv:
+                t5_attn_mask = t5_attn_mask.to(accelerator.device)
 
         # Create padding mask
         bs = latents.shape[0]
@@ -556,11 +561,15 @@ class AnimaTrainer:
                 )
             else:
                 # crossattn_emb is already in target (T5-compatible) space
+                kw = {}
+                if args.trim_crossattn_kv:
+                    kw["crossattn_seqlens"] = t5_attn_mask.sum(dim=-1).to(torch.int32)
                 model_pred = anima(
                     noisy_model_input,
                     timesteps,
                     crossattn_emb,
                     padding_mask=padding_mask,
+                    **kw,
                 )
         model_pred = model_pred.squeeze(2)  # 5D to 4D, [B, C, 1, H, W] -> [B, C, H, W]
 
@@ -1104,7 +1113,8 @@ class AnimaTrainer:
             train_dataset_group, val_dataset_group = (
                 config_util.generate_dataset_group_by_blueprint(
                     blueprint.dataset_group,
-                    constant_token_buckets=getattr(args, "static_token_count", None) is not None,
+                    constant_token_buckets=getattr(args, "static_token_count", None)
+                    is not None,
                 )
             )
         else:
@@ -2352,7 +2362,9 @@ class AnimaTrainer:
                         }
                         for s, losses in per_sigma_losses.items():
                             if losses:
-                                logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(losses)
+                                logs[f"loss/validation/sigma_{s:.2f}"] = sum(
+                                    losses
+                                ) / len(losses)
                         self.step_logging(
                             accelerator, logs, global_step, epoch=epoch + 1
                         )
@@ -2465,7 +2477,9 @@ class AnimaTrainer:
                     }
                     for s, losses in per_sigma_losses.items():
                         if losses:
-                            logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(losses)
+                            logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(
+                                losses
+                            )
                     self.epoch_logging(accelerator, logs, global_step, epoch + 1)
 
                 restore_rng_state(rng_states)

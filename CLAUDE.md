@@ -9,37 +9,44 @@ Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion mo
 ## Setup
 
 ```bash
-uv sync                    # Install dependencies (Python 3.11+)
-# Model weights go in models/ (not tracked):
-#   models/diffusion_models/anima-preview2.safetensors
-#   models/text_encoders/qwen_3_06b_base.safetensors
-#   models/vae/qwen_image_vae.safetensors
+uv sync                    # Install dependencies (Python 3.13)
+make download-models       # Download DiT, text encoder, VAE from HuggingFace
 # Training images go in image_dataset/ with .txt caption sidecars
+make preprocess            # VAE-compatible resizing & validation
 ```
 
 ## Commands
 
 ```bash
 # Training (run from anima_lora/)
-make lora                  # Standard LoRA
-make dora                  # DoRA (use_dora=true)
-make tlora                 # T-LoRA: OrthoLoRA + timestep masking
-make tdora                 # DoRA + timestep masking
+make lora                  # Standard LoRA (configs/example_lora.toml)
+make dora                  # DoRA (configs/training_config_dora.toml + use_dora=true)
+make tlora                 # T-LoRA: OrthoLoRA + timestep masking (configs/training_config.toml)
+make tdora                 # DoRA + timestep masking (configs/training_config_doratimestep.toml)
 
 # Inference (test with most recent output)
 make test
 
 # GRAFT loop (human-in-the-loop iterative training)
-make step                  # Train → generate candidates → await curation
+make step                  # Train -> generate candidates -> await curation
 # Delete bad images from graft/candidates/iter_NNN/, then:
-make step                  # Ingest survivors → retrain → new candidates
+make step                  # Ingest survivors -> retrain -> new candidates
 
-# Deploy
+# Masking (for masked loss training)
+make mask                  # Generate SAM3 + MIT masks, then merge
+make mask-sam              # SAM3 only
+make mask-mit              # MIT/ComicTextDetector only
+make mask-clean            # Remove all generated masks
+
+# Deploy & batch
 make sync                  # Copy output/*.safetensors to ComfyUI loras dir
+make comfy-batch           # Run ComfyUI batch workflow
 
 # Linting
 ruff check . --fix && ruff format .
 ```
+
+All training invocations use `accelerate launch --mixed_precision bf16`. Override any config value from CLI: `--network_dim 32 --max_train_epochs 64`.
 
 ## Key entry points
 
@@ -47,12 +54,16 @@ ruff check . --fix && ruff format .
 |------|---------|
 | `train.py` | `AnimaTrainer` class — main training loop via HF Accelerate |
 | `inference.py` | Standalone image generation (`--help` for all flags) |
-| `graft_step.py` | GRAFT orchestrator: holdout → train → generate → await review |
+| `graft_step.py` | GRAFT orchestrator: holdout -> train -> generate -> await review |
 
 ## Config flow
 
 Training is config-driven. TOML configs specify model paths, hyperparams, and dataset layout:
-- `configs/training_config.toml` — default training config
+- `configs/base.toml` — base/shared config values
+- `configs/example_lora.toml` — standard LoRA config (used by `make lora`)
+- `configs/training_config.toml` — T-LoRA config (used by `make tlora`)
+- `configs/training_config_dora.toml` — DoRA config
+- `configs/training_config_doratimestep.toml` — DoRA + timestep masking
 - `configs/dataset_config.toml` — dataset buckets, subsets, caption settings
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
@@ -62,11 +73,50 @@ All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/
 
 - **Modular `library/`**: `train_util.py` is a re-exporting facade; actual code lives in `library/datasets/` (dataset classes, buckets, image utils) and `library/training/` (optimizer, scheduler, checkpoint logic)
 - **Strategy pattern** for model-specific tokenization/encoding (`library/strategy_anima.py`, `strategy_base.py`)
-- **Network modules** are pluggable via `network_module` config key (`networks/lora_anima.py`, `lora_modules.py`, `postfix_anima.py`)
-- LoRA variants: standard LoRA, DoRA, OrthoLoRA — all in `networks/lora_modules.py`
-- T-LoRA adds timestep-dependent masking with `use_timestep_mask=true` and `min_rank` network args
-- Memory optimization: gradient checkpointing, latent/text-encoder caching to disk, VAE chunking
-- All training uses Accelerate with bf16 mixed precision and flash attention (`attn_mode = "flash"`)
+- **Network modules** are pluggable via `network_module` config key:
+  - `networks/lora_anima.py` — LoRA network creation, module targeting, timestep masking orchestration
+  - `networks/lora_modules.py` — LoRA, DoRA, OrthoLoRA module implementations
+  - `networks/postfix_anima.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual)
+- **Attention dispatch** (`library/attention.py`): Unified `attention()` routing to torch SDPA, xformers, flash-attn v2/v3, flash-attn v4, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD).
+
+### LoRA variants
+
+All in `networks/lora_modules.py`:
+- **LoRA** — Classic low-rank: `y = x + (x @ down @ up) * scale * multiplier`
+- **DoRA** — Weight-decomposed: separate magnitude (`dora_scale`) and direction learning
+- **OrthoLoRA** — SVD-based orthogonal parameterization with orthogonality regularization (linear layers only, incompatible with DoRA)
+- **T-LoRA** — Timestep-dependent rank masking: effective rank varies with denoising step via power-law schedule. Compatible with both LoRA and DoRA.
+
+### Training flow (train.py)
+
+1. Load text encoder -> cache text encoder outputs to disk -> unload text encoder
+2. Load VAE -> cache latents to disk -> unload VAE
+3. Load DiT lazily (after caching frees VRAM)
+4. Create LoRA/Postfix network, apply to target modules via monkey-patching
+5. Training loop: noise sampling -> DiT forward -> loss -> backward -> manual all_reduce -> optimizer step
+6. Optional validation: multi-timestep loss + sample generation
+
+## Critical invariants
+
+### Text encoder padding
+
+The pretrained model expects max-padded text encoder outputs — zero-padded positions act as attention sinks in cross-attention softmax. Trimming to actual text length produces black images. Both training and inference must pad to `max_length` and must NOT mask out padding via `crossattn_seqlens`. Regenerate disk-cached `.npz` files after any tokenizer/padding changes.
+
+### Constant-token bucketing
+
+All bucket resolutions ensure `(H/16)*(W/16) ~ 4096` patches. Batch elements are zero-padded to exactly 4096 tokens, giving `torch.compile` a single static shape — no recompilation across aspect ratios.
+
+### Flash4 LSE correction
+
+When cross-attention KV is trimmed (zero-padding removed for efficiency), the softmax denominator must be corrected. `library/attention.py` applies a sigmoid-based LSE correction using `crossattn_full_len` to account for removed zero-key contributions.
+
+### DDP gradient sync
+
+Built-in DDP grad sync is disabled for LoRA-only training efficiency. Instead, `all_reduce_network()` is called manually after backward to sync only LoRA gradients.
+
+### Lazy model loading
+
+DiT is loaded AFTER text encoder/VAE caching and unloading to avoid OOM. The sequence is: text encoder -> cache -> free -> VAE -> cache -> free -> load DiT.
 
 ## GRAFT / P-GRAFT
 
@@ -76,10 +126,6 @@ The GRAFT loop (`graft_step.py`) implements rejection-sampling-based fine-tuning
 3. User curates by deleting bad candidates; survivors join the training set next iteration
 
 See `graft-guideline.md` for detailed curation guidance.
-
-## Text encoder padding
-
-The pretrained model expects max-padded text encoder outputs — zero-padded positions act as attention sinks in cross-attention softmax. Trimming to actual text length produces black images. Both training and inference must pad to `max_length` and must NOT mask out padding via `crossattn_seqlens`. Regenerate disk-cached `.npz` files after any tokenizer/padding changes.
 
 ## External tools
 
