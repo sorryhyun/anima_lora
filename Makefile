@@ -68,7 +68,7 @@ test-spectrum:
 		--spectrum_w 0.3 \
 		--spectrum_m 3 \
 		--spectrum_lam 0.1 \
-		--spectrum_stop_caching_step 27
+		--spectrum_stop_caching_step 29
 
 WORKFLOW ?= workflows/lora-batch.json
 comfy-batch:

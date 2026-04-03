@@ -87,7 +87,29 @@ Higher `flex_window` → faster window growth → fewer forwards. Increase `w` t
 
 | File | Role |
 |------|------|
-| `library/spectrum.py` | Anima integration: `SpectrumPredictor`, `spectrum_denoise()`, `_spectrum_fast_forward()` |
+| `library/spectrum.py` | Standalone integration: `SpectrumPredictor`, `spectrum_denoise()`, `_spectrum_fast_forward()` |
+| `../comfy/custom_nodes/comfyui-spectrum/` | ComfyUI custom node: drop-in KSampler replacement |
 | `Spectrum/src/utils/basis_utils.py` | Core algorithm: `ChebyshevForecaster`, ridge regression, polynomial evaluation |
 
 The integration uses `register_forward_pre_hook` on `Anima.final_layer` to capture block outputs without modifying the model class. Separate forecasters are maintained for conditional and unconditional (CFG) passes.
+
+### ComfyUI custom node
+
+The `SpectrumKSampler` node (`KSampler (Spectrum)`) is a drop-in KSampler replacement. It works with any ComfyUI sampler (er_sde, euler, dpm, etc.) because the caching logic is transparent to the sampling loop.
+
+**Wiring:** The node installs a `model_function_wrapper` on a cloned model. ComfyUI's sampling pipeline calls this wrapper once per step with both cond and uncond batched together (via `calc_cond_batch`). The wrapper decides actual vs cached per step by tracking sigma changes:
+
+```
+ComfyUI sampling loop (any sampler)
+  └─ model(x, sigma)
+       └─ sampling_function()  — handles CFG
+            └─ calc_cond_batch()  — batches cond+uncond into one forward
+                 └─ model_function_wrapper(apply_model, args)  ← our hook
+                      ├─ actual step: apply_model() → hook captures features → update forecasters
+                      └─ cached step: predict features → t_embedder + final_layer + unpatchify → calculate_denoised
+```
+
+- `args["cond_or_uncond"]` tells us which batch elements are cond (0) vs uncond (1) — separate forecasters per type
+- Step transitions are detected by sigma value changes
+- `calculate_denoised(sigma, v_pred, x)` converts the fast-forward velocity output to denoised x, matching the normal model path
+- Chains with existing wrappers (FlashAttention4, TorchCompile) since those operate at different levels (`transformer_options` and `WrappersMP.APPLY_MODEL` respectively)

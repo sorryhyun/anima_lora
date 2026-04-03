@@ -71,6 +71,7 @@ Default `calibration_strength=0.5`. Could be added as `--spectrum_calibration`.
 Predict `feat(i) - feat(i_last_actual)` instead of absolute features, then
 reconstruct: `feat_pred = feat_last_actual + delta_pred`.
 
+
 **Why this matters for Anima specifically:**
 
 Anima's 28 blocks each apply timestep-dependent **multiplicative gating**:
