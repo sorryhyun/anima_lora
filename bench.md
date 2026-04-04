@@ -5,4 +5,5 @@
 | Flex + compile - grad ckpt | 15.2 GB | 8:19 | 4:09 | 0.090 | 0.201 |
 | FA2 + compile - grad ckpt | 15.2 GB | 7:07 | 3:30 | 0.088 | 0.206 |
 | FA4 + compile - grad ckpt | 15.2 GB | 7:28 | 3:44 | 0.091 | 0.199 |
-| + fp32 lora + cross trim | 15.2 GB | 7:29 | 3:39 | 0.093 | 0.203 |
+| FA4+ + compile - grad ckpt | 15.5 GB | 7:34 | 3:44 | 0.089 | 0.206 |
+| FA2 + compile - grad ckpt + cross trim | 15.2 GB | 7:16 | 3:37 | 0.089 | 0.211 |

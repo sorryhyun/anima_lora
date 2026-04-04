@@ -4,7 +4,7 @@ LoRA training and inference engine for the Anima diffusion model (DiT-based, flo
 
 ## Highlights
 
-**15.2 GB peak VRAM · 2.4 s/iter when bsz=2** on a single consumer GPU — achieved by co-designing the data pipeline, attention, and compiler stack:
+**15.2 GB peak VRAM · 2.5 s/step when bsz=2** on a single consumer GPU — achieved by co-designing the data pipeline, attention, and compiler stack:
 
 | Optimization | What it does |
 |---|---|

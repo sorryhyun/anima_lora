@@ -11,7 +11,8 @@ max_train_epochs = 32
 save_every_n_epochs = 4
 checkpointing_epochs = 8
 
-attn_mode = "flash"
+attn_mode = "flash4"
+gradient_accumulation_steps = 2
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
 min_rank = 1
