@@ -1,0 +1,13 @@
+{
+  "extraPaths": ["."],
+  "reportMissingImports": "none",
+  "reportPrivateImportUsage": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportArgumentType": "none",
+  "reportOptionalOperand": "none",
+  "reportCallIssue": "none",
+  "reportOperatorIssue": "none",
+  "reportPossiblyUnboundVariable": "none",
+  "reportGeneralTypeIssues": "none",
+  "reportIncompatibleMethodOverride": "none"
+}

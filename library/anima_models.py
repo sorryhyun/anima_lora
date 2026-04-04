@@ -13,11 +13,96 @@ import torch.nn.functional as F
 
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
-from library import custom_offloading_utils, attention
+from library import custom_offloading_utils
+from networks import attention
 
 # KV length buckets for cross-attention trimming. Captions trimmed to the smallest
 # bucket >= max(real_token_lengths). Keeps torch.compile shapes stable (max 4 variants).
 _KV_BUCKETS = (64, 128, 256, 512)
+
+
+class _FP8LinearFunc(torch.autograd.Function):
+    """Custom autograd for fp8 linear: saves compact fp8 weight instead of transient bf16 copy."""
+
+    @staticmethod
+    def forward(input: torch.Tensor, weight_fp8: torch.Tensor, bias: Optional[torch.Tensor]):
+        return F.linear(input, weight_fp8.to(input.dtype), bias)
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        _, weight_fp8, _ = inputs
+        ctx.save_for_backward(weight_fp8)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (weight_fp8,) = ctx.saved_tensors
+        grad_input = grad_output @ weight_fp8.to(grad_output.dtype)
+        return grad_input, None, None
+
+
+class FP8Linear(nn.Linear):
+    """Drop-in nn.Linear replacement that stores weights in float8_e4m3fn.
+
+    Subclasses nn.Linear so that LoRA's isinstance checks still match.
+    Uses a custom autograd function so that only the compact fp8 weight
+    (not a transient bf16 copy) is saved for backward.
+    """
+
+    def __init__(self, original: nn.Linear):
+        nn.Module.__init__(self)
+        self.in_features = original.in_features
+        self.out_features = original.out_features
+        self.weight = nn.Parameter(
+            original.weight.data.to(torch.float8_e4m3fn),
+            requires_grad=False,
+        )
+        self.bias = original.bias
+
+    def _apply(self, fn, recurse=True):
+        result = super()._apply(fn, recurse)
+        if self.weight.dtype != torch.float8_e4m3fn:
+            self.weight = nn.Parameter(
+                self.weight.data.to(torch.float8_e4m3fn),
+                requires_grad=False,
+            )
+        return result
+
+    def forward(self, input):
+        return _FP8LinearFunc.apply(input, self.weight, self.bias)
+
+
+# Class names whose children should NOT be quantized to fp8.
+_FP8_SKIP_CLASS_NAMES = {"RMSNorm", "TimestepEmbedding", "FinalLayer", "LLMAdapter"}
+
+
+def quantize_to_fp8(model: nn.Module) -> int:
+    """Replace frozen nn.Linear modules with FP8Linear, skipping sensitive layers.
+
+    Skips: RMSNorm, TimestepEmbedding, FinalLayer, LLMAdapter,
+    and any module with requires_grad=True parameters.
+
+    Returns the number of modules replaced.
+    """
+    skip_modules: set[int] = set()
+    for mod in model.modules():
+        if type(mod).__name__ in _FP8_SKIP_CLASS_NAMES:
+            skip_modules.add(id(mod))
+            for child in mod.modules():
+                skip_modules.add(id(child))
+
+    count = 0
+    for parent in model.modules():
+        if id(parent) in skip_modules:
+            continue
+        for name, child in parent.named_children():
+            if not isinstance(child, nn.Linear):
+                continue
+            if id(child) in skip_modules:
+                continue
+            setattr(parent, name, FP8Linear(child))
+            count += 1
+
+    return count
 
 
 def to_device(x, device):
@@ -1038,6 +1123,12 @@ class Block(nn.Module):
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
         extra_per_block_pos_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # Normalize requires_grad so dynamo sees one state across all blocks.
+        # Block 0 gets requires_grad=False (frozen patch_embed) while blocks 1+
+        # get True (LoRA-enhanced outputs).  All blocks share the same _forward
+        # code object → shared dynamo cache, so the mismatch causes recompilation.
+        x_B_T_H_W_D = x_B_T_H_W_D.requires_grad_()
+
         if extra_per_block_pos_emb is not None:
             x_B_T_H_W_D = x_B_T_H_W_D + extra_per_block_pos_emb
 
@@ -1366,7 +1457,7 @@ class Anima(nn.Module):
         """
         for i, block in enumerate(self.blocks):
             block._forward = torch.compile(
-                block._forward, backend=backend, dynamic=True
+                block._forward, backend=backend, dynamic=False
             )
         print(f"Anima: compiled {len(self.blocks)} block._forward with backend={backend}")
 
@@ -1670,14 +1761,24 @@ class Anima(nn.Module):
                 device=x_B_T_H_W_D.device,
             )
 
-        # Pre-compute self-attention BlockMask for padded positions (static-shape mode)
+        # Pre-compute self-attention BlockMask for static-shape mode (flex only).
+        # IMPORTANT: always create the mask (even when seq_len == target, i.e. no
+        # actual padding) so that the compiled _forward always takes the same
+        # code path.  A None-vs-BlockMask control-flow difference triggers dynamo
+        # recompilation; with 5 bucket token-counts × 2 requires_grad states the
+        # shared code cache (all blocks use the same _forward bytecode) exceeds
+        # the recompile limit and falls back to eager, losing flex_attention fusion.
         if (
             _static_pad_info is not None
-            and _static_pad_info[3] < self.static_token_count
             and self.attn_mode == "flex"
             and attention.create_block_mask is not None
         ):
-            _sa_seq_len = _static_pad_info[3]
+            # Use a tensor instead of a Python int so dynamo tracks it
+            # symbolically rather than guarding on the exact value.  A plain
+            # int in the mask_mod closure causes a recompile per bucket size.
+            _sa_seq_len = torch.tensor(
+                _static_pad_info[3], dtype=torch.int64, device=x_B_T_H_W_D.device
+            )
             _sa_target = self.static_token_count
             _sa_B = x_B_T_H_W_D.shape[0]
 

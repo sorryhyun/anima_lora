@@ -730,7 +730,7 @@ def generate_body(
     lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
 
     if getattr(args, "spectrum", False):
-        from library.spectrum import spectrum_denoise
+        from networks.spectrum import spectrum_denoise
 
         latents = spectrum_denoise(
             anima,

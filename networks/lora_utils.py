@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Union
 import torch
 from tqdm import tqdm
 from library.device_utils import synchronize_device
-from library.fp8_optimization_utils import load_safetensors_with_fp8_optimization
+from networks.fp8_optimization_utils import load_safetensors_with_fp8_optimization
 from library.safetensors_utils import (
     MemoryEfficientSafeOpen,
     TensorWeightAdapter,

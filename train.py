@@ -209,12 +209,11 @@ class AnimaTrainer:
         train_dataset_group: Union[train_util.DatasetGroup, train_util.MinimalDataset],
         val_dataset_group: Optional[train_util.DatasetGroup],
     ):
-        if args.fp8_base or args.fp8_base_unet:
+        if args.fp8_base:
             logger.warning(
-                "fp8_base and fp8_base_unet are not supported. / fp8_baseとfp8_base_unetはサポートされていません。"
+                "fp8_base (text encoder fp8) is not supported for Anima. Use fp8_base_unet for DiT-only fp8."
             )
             args.fp8_base = False
-            args.fp8_base_unet = False
         args.fp8_scaled = False  # Anima DiT does not support fp8_scaled
 
         if (
@@ -327,7 +326,7 @@ class AnimaTrainer:
             attn_mode = args.attn_mode
 
         if attn_mode == "flash4":
-            from library.attention import _flash_attn_4_func_raw
+            from networks.attention import _flash_attn_4_func_raw
 
             if _flash_attn_4_func_raw is not None:
                 logger.info("Using Flash Attention 4 (flash_attn.cute)")
@@ -337,7 +336,7 @@ class AnimaTrainer:
                     "Install flash-attn >= 3.0 with FA4 support."
                 )
         elif attn_mode == "flash":
-            from library.attention import flash_attn, flash_attn_func
+            from networks.attention import flash_attn, flash_attn_func
 
             if flash_attn_func is not None:
                 logger.info(f"Using Flash Attention 2 (flash_attn {flash_attn.__version__})")
@@ -363,6 +362,13 @@ class AnimaTrainer:
             args.fp8_scaled,
             attn_softmax_scale=attn_softmax_scale,
         )
+
+        # FP8 base weights: cast frozen nn.Linear to float8_e4m3fn before LoRA
+        if args.fp8_base_unet:
+            from library.anima_models import quantize_to_fp8
+
+            n = quantize_to_fp8(model)
+            logger.info(f"fp8_base_unet: quantized {n} linear layers to float8_e4m3fn")
 
         # Bucketed KV trimming for cross-attention
         model.trim_crossattn_kv = getattr(args, "trim_crossattn_kv", False)
@@ -957,7 +963,7 @@ class AnimaTrainer:
         return True
 
     def cast_unet(self, args):
-        return True
+        return not getattr(args, "fp8_base_unet", False)
 
     def call_unet(
         self,
@@ -1470,27 +1476,6 @@ class AnimaTrainer:
             network.to(weight_dtype)
 
         unet_weight_dtype = te_weight_dtype = weight_dtype
-        # Experimental Feature: Put base model into fp8 to save vram
-        if args.fp8_base or args.fp8_base_unet:
-            assert torch.__version__ >= "2.1.0", (
-                "fp8_base requires torch>=2.1.0 / fp8を使う場合はtorch>=2.1.0が必要です。"
-            )
-            assert args.mixed_precision != "no", (
-                "fp8_base requires mixed precision='fp16' or 'bf16' / fp8を使う場合はmixed_precision='fp16'または'bf16'が必要です。"
-            )
-            accelerator.print("enable fp8 training for U-Net.")
-            unet_weight_dtype = torch.float8_e4m3fn
-
-            if not args.fp8_base_unet:
-                accelerator.print("enable fp8 training for Text Encoder.")
-            te_weight_dtype = (
-                weight_dtype if args.fp8_base_unet else torch.float8_e4m3fn
-            )
-
-            logger.info(f"set U-Net weight dtype to {unet_weight_dtype}")
-            unet.to(
-                dtype=unet_weight_dtype
-            )  # do not move to device because unet is not prepared by accelerator
 
         unet.requires_grad_(False)
         if self.cast_unet(args):

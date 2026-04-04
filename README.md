@@ -4,7 +4,7 @@ LoRA training and inference engine for the Anima diffusion model (DiT-based, flo
 
 ## Highlights
 
-**6.3 GB peak VRAM · 3.6 s/iter when bsz=2** on a single consumer GPU — achieved by co-designing the data pipeline, attention, and compiler stack:
+**15.2 GB peak VRAM · 2.4 s/iter when bsz=2** on a single consumer GPU — achieved by co-designing the data pipeline, attention, and compiler stack:
 
 | Optimization | What it does |
 |---|---|
@@ -27,6 +27,7 @@ gradient_checkpointing=true, unsloth_offload_checkpointing=true, latent and text
 | FA2 (plain) | 7.0 GB | 14:51 | 7:26 | 0.092 | 0.212 |
 | FA2 + compile (eager fallback) | 7.7 GB | 15:10 | 7:26 | 0.089 | 0.211 |
 | FA2 + compile (static tokens) | 6.2 GB | 11:07 | 5:01 | 0.086 | 0.193 |
+| FA2 + compile - grad ckpt | 15.2 GB | 7:07 | 3:30 | 0.088 | 0.206 |
 | FA4 + compile (static tokens) | 6.3 GB | 11:05 | 5:15 | 0.092 | 0.187 |
 | + fp32 accumulation | 6.4 GB | 10:57 | 5:15 | 0.089 | 0.196 |
 | + DoRA + fp32 accumulation | 6.4 GB | 12:04 | 5:25 | 0.092 | 0.204 |

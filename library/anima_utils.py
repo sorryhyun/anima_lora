@@ -7,8 +7,8 @@ from safetensors.torch import load_file, save_file
 from safetensors import safe_open
 from accelerate import init_empty_weights
 
-from library.fp8_optimization_utils import apply_fp8_monkey_patch
-from library.lora_utils import load_safetensors_with_lora_and_fp8
+from networks.fp8_optimization_utils import apply_fp8_monkey_patch
+from networks.lora_utils import load_safetensors_with_lora_and_fp8
 from library import anima_models
 from library.safetensors_utils import WeightTransformHooks
 from .utils import setup_logging
