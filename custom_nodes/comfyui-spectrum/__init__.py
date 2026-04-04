@@ -252,7 +252,137 @@ class SpectrumState:
 # ComfyUI node
 # ---------------------------------------------------------------------------
 
+def _spectrum_sample(model, seed, steps, cfg, sampler_name, scheduler, positive,
+                     negative, latent_image, denoise, window_size, flex_window,
+                     warmup_steps, blend_w, cheby_degree, ridge_lambda):
+    """Shared Spectrum sampling logic used by both simple and advanced nodes."""
+    m = model.clone()
+
+    state = SpectrumState(
+        window_size=window_size,
+        flex_window=flex_window,
+        warmup_steps=warmup_steps,
+        w=blend_w,
+        m=cheby_degree,
+        lam=ridge_lambda,
+        num_steps=steps,
+    )
+
+    dit = m.model.diffusion_model
+    model_sampling = m.model.model_sampling
+
+    old_wrapper = m.model_options.get("model_function_wrapper")
+
+    def spectrum_wrapper(apply_model, args):
+        input_x = args["input"]
+        timestep = args["timestep"]
+        c = args["c"]
+        cond_or_uncond = args["cond_or_uncond"]
+
+        if not state._hook_installed:
+            state.install_hook(dit)
+
+        sigma_val = timestep[0].item()
+
+        if state.last_sigma is None or abs(sigma_val - state.last_sigma) > 1e-8:
+            if state.step_idx >= 0:
+                if state.mode == "actual":
+                    state.fwd_count += 1
+                    if state.step_idx >= state.warmup_steps:
+                        state.curr_ws = round(state.curr_ws + state.flex_window, 3)
+                    state.consec_cached = 0
+                else:
+                    state.consec_cached += 1
+
+            state.step_idx += 1
+            state.last_sigma = sigma_val
+            state.mode = "cached" if state.should_cache() else "actual"
+
+        if state.mode == "cached" and state.has_forecasters(cond_or_uncond):
+            predictions = []
+            for cou in cond_or_uncond:
+                pred_feat = state.forecasters[cou].predict(float(state.step_idx))
+                predictions.append(pred_feat)
+
+            batched_feat = torch.cat(predictions, dim=0)
+            t_internal = model_sampling.timestep(timestep).to(batched_feat.dtype)
+            noise_pred = _spectrum_fast_forward(dit, t_internal, batched_feat)
+            return model_sampling.calculate_denoised(
+                timestep, noise_pred.float(), input_x
+            )
+
+        state.mode = "actual"
+
+        if old_wrapper is not None:
+            result = old_wrapper(apply_model, args)
+        else:
+            result = apply_model(input_x, timestep, **c)
+
+        feat = state.captured_feat
+        if feat is not None:
+            batch_chunks = len(cond_or_uncond)
+            feat_chunks = feat.chunk(batch_chunks, dim=0)
+            for idx, cou in enumerate(cond_or_uncond):
+                if cou not in state.forecasters:
+                    state.forecasters[cou] = SpectrumPredictor(
+                        state.m_param, state.lam, state.w,
+                        feat.device, feat_chunks[idx].shape,
+                        state.num_steps,
+                    )
+                state.forecasters[cou].update(
+                    float(state.step_idx), feat_chunks[idx]
+                )
+
+        return result
+
+    m.set_model_unet_function_wrapper(spectrum_wrapper)
+
+    latent_img = latent_image["samples"].clone()
+    latent_img = comfy.sample.fix_empty_latent_channels(
+        m, latent_img, latent_image.get("downscale_ratio_spacial")
+    )
+
+    batch_inds = latent_image.get("batch_index")
+    noise = comfy.sample.prepare_noise(latent_img, seed, batch_inds)
+
+    noise_mask = latent_image.get("noise_mask")
+    callback = latent_preview.prepare_callback(m, steps)
+    disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
+
+    samples = comfy.sample.sample(
+        m, noise, steps, cfg, sampler_name, scheduler,
+        positive, negative, latent_img,
+        denoise=denoise, noise_mask=noise_mask,
+        callback=callback, disable_pbar=disable_pbar, seed=seed,
+    )
+
+    if state.step_idx >= 0:
+        if state.mode == "actual":
+            state.fwd_count += 1
+        else:
+            state.consec_cached += 1
+
+    state.remove_hook()
+
+    actual = state.fwd_count
+    total = state.step_idx + 1
+    speedup = total / max(1, actual)
+    do_cfg = not math.isclose(cfg, 1.0)
+    cfg_note = " (x2 for CFG)" if do_cfg else ""
+    logger.info(
+        f"Spectrum: {actual}/{total} actual forwards "
+        f"({speedup:.2f}x theoretical speedup{cfg_note})"
+    )
+
+    out = latent_image.copy()
+    out.pop("downscale_ratio_spacial", None)
+    out["samples"] = samples
+    return (out,)
+
+
 class SpectrumKSampler:
+    """Drop-in KSampler replacement with Spectrum acceleration using sensible defaults."""
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -268,7 +398,42 @@ class SpectrumKSampler:
                 "latent_image": ("LATENT",),
                 "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
-            "optional": {
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "sample"
+    CATEGORY = "sampling"
+    DESCRIPTION = ("Spectrum-accelerated sampler. Drop-in KSampler replacement that "
+                   "skips transformer blocks on predicted steps via Chebyshev polynomial "
+                   "feature forecasting for ~2-3x speedup. Uses sensible defaults.")
+
+    def sample(self, model, seed, steps, cfg, sampler_name, scheduler, positive,
+               negative, latent_image, denoise=1.0):
+        return _spectrum_sample(
+            model, seed, steps, cfg, sampler_name, scheduler, positive,
+            negative, latent_image, denoise,
+            window_size=2.0, flex_window=0.25, warmup_steps=7,
+            blend_w=0.3, cheby_degree=3, ridge_lambda=0.1,
+        )
+
+
+class SpectrumKSamplerAdvanced:
+    """Spectrum-accelerated sampler with adjustable forecasting parameters."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL", {"tooltip": "The model used for denoising the input latent."}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "control_after_generate": True}),
+                "steps": ("INT", {"default": 28, "min": 1, "max": 10000}),
+                "cfg": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 100.0, "step": 0.1, "round": 0.01}),
+                "sampler_name": (comfy.samplers.KSampler.SAMPLERS,),
+                "scheduler": (comfy.samplers.KSampler.SCHEDULERS,),
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "latent_image": ("LATENT",),
+                "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "window_size": ("FLOAT", {"default": 2.0, "min": 1.0, "max": 10.0, "step": 0.25,
                                           "tooltip": "Initial caching window N — actual forward every floor(N) steps."}),
                 "flex_window": ("FLOAT", {"default": 0.25, "min": 0.0, "max": 2.0, "step": 0.05,
@@ -287,155 +452,28 @@ class SpectrumKSampler:
     RETURN_TYPES = ("LATENT",)
     FUNCTION = "sample"
     CATEGORY = "sampling"
-    DESCRIPTION = ("Spectrum-accelerated sampler. Drop-in KSampler replacement that "
-                   "skips transformer blocks on predicted steps via Chebyshev polynomial "
-                   "feature forecasting for ~2-3x speedup.")
+    DESCRIPTION = ("Spectrum-accelerated sampler with full control over forecasting "
+                   "parameters. Adjust window size, warmup, blending, and ridge "
+                   "regression settings for fine-tuned speed/quality tradeoff.")
 
     def sample(self, model, seed, steps, cfg, sampler_name, scheduler, positive,
                negative, latent_image, denoise=1.0, window_size=2.0, flex_window=0.25,
-               warmup_steps=6, blend_w=0.3, cheby_degree=3, ridge_lambda=0.1):
-
-        # --- Clone model and install Spectrum ---
-        m = model.clone()
-
-        state = SpectrumState(
-            window_size=window_size,
-            flex_window=flex_window,
-            warmup_steps=warmup_steps,
-            w=blend_w,
-            m=cheby_degree,
-            lam=ridge_lambda,
-            num_steps=steps,
+               warmup_steps=7, blend_w=0.3, cheby_degree=3, ridge_lambda=0.1):
+        return _spectrum_sample(
+            model, seed, steps, cfg, sampler_name, scheduler, positive,
+            negative, latent_image, denoise,
+            window_size=window_size, flex_window=flex_window,
+            warmup_steps=warmup_steps, blend_w=blend_w,
+            cheby_degree=cheby_degree, ridge_lambda=ridge_lambda,
         )
-
-        dit = m.model.diffusion_model
-        model_sampling = m.model.model_sampling
-
-        # Chain with any existing wrapper (e.g., FlashAttention4)
-        old_wrapper = m.model_options.get("model_function_wrapper")
-
-        def spectrum_wrapper(apply_model, args):
-            input_x = args["input"]
-            timestep = args["timestep"]
-            c = args["c"]
-            cond_or_uncond = args["cond_or_uncond"]
-
-            # Install hook lazily (model is on GPU by now)
-            if not state._hook_installed:
-                state.install_hook(dit)
-
-            sigma_val = timestep[0].item()
-
-            # --- Detect new sampling step via sigma change ---
-            if state.last_sigma is None or abs(sigma_val - state.last_sigma) > 1e-8:
-                # Bookkeeping for the previous step
-                if state.step_idx >= 0:
-                    if state.mode == "actual":
-                        state.fwd_count += 1
-                        if state.step_idx >= state.warmup_steps:
-                            state.curr_ws = round(state.curr_ws + state.flex_window, 3)
-                        state.consec_cached = 0
-                    else:
-                        state.consec_cached += 1
-
-                # Advance
-                state.step_idx += 1
-                state.last_sigma = sigma_val
-                state.mode = "cached" if state.should_cache() else "actual"
-
-            # --- Cached step: predict features, skip all blocks ---
-            if state.mode == "cached" and state.has_forecasters(cond_or_uncond):
-                predictions = []
-                for cou in cond_or_uncond:
-                    pred_feat = state.forecasters[cou].predict(float(state.step_idx))
-                    predictions.append(pred_feat)
-
-                batched_feat = torch.cat(predictions, dim=0)
-                t_internal = model_sampling.timestep(timestep).to(batched_feat.dtype)
-                noise_pred = _spectrum_fast_forward(dit, t_internal, batched_feat)
-                return model_sampling.calculate_denoised(
-                    timestep, noise_pred.float(), input_x
-                )
-
-            # --- Actual step: full forward ---
-            state.mode = "actual"  # In case we fell through from cached
-
-            if old_wrapper is not None:
-                result = old_wrapper(apply_model, args)
-            else:
-                result = apply_model(input_x, timestep, **c)
-
-            # Capture features from the hook and update forecasters
-            feat = state.captured_feat
-            if feat is not None:
-                batch_chunks = len(cond_or_uncond)
-                feat_chunks = feat.chunk(batch_chunks, dim=0)
-                for idx, cou in enumerate(cond_or_uncond):
-                    if cou not in state.forecasters:
-                        state.forecasters[cou] = SpectrumPredictor(
-                            state.m_param, state.lam, state.w,
-                            feat.device, feat_chunks[idx].shape,
-                            state.num_steps,
-                        )
-                    state.forecasters[cou].update(
-                        float(state.step_idx), feat_chunks[idx]
-                    )
-
-            return result
-
-        m.set_model_unet_function_wrapper(spectrum_wrapper)
-
-        # --- Run standard ComfyUI sampling pipeline ---
-        latent_img = latent_image["samples"].clone()
-        latent_img = comfy.sample.fix_empty_latent_channels(
-            m, latent_img, latent_image.get("downscale_ratio_spacial")
-        )
-
-        batch_inds = latent_image.get("batch_index")
-        noise = comfy.sample.prepare_noise(latent_img, seed, batch_inds)
-
-        noise_mask = latent_image.get("noise_mask")
-        callback = latent_preview.prepare_callback(m, steps)
-        disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
-
-        samples = comfy.sample.sample(
-            m, noise, steps, cfg, sampler_name, scheduler,
-            positive, negative, latent_img,
-            denoise=denoise, noise_mask=noise_mask,
-            callback=callback, disable_pbar=disable_pbar, seed=seed,
-        )
-
-        # Final-step bookkeeping
-        if state.step_idx >= 0:
-            if state.mode == "actual":
-                state.fwd_count += 1
-            else:
-                state.consec_cached += 1
-
-        # Cleanup
-        state.remove_hook()
-
-        # Log
-        actual = state.fwd_count
-        total = state.step_idx + 1
-        speedup = total / max(1, actual)
-        do_cfg = not math.isclose(cfg, 1.0)
-        cfg_note = " (x2 for CFG)" if do_cfg else ""
-        logger.info(
-            f"Spectrum: {actual}/{total} actual forwards "
-            f"({speedup:.2f}x theoretical speedup{cfg_note})"
-        )
-
-        out = latent_image.copy()
-        out.pop("downscale_ratio_spacial", None)
-        out["samples"] = samples
-        return (out,)
 
 
 NODE_CLASS_MAPPINGS = {
     "SpectrumKSampler": SpectrumKSampler,
+    "SpectrumKSamplerAdvanced": SpectrumKSamplerAdvanced,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SpectrumKSampler": "KSampler (Spectrum)",
+    "SpectrumKSamplerAdvanced": "KSampler (Spectrum Advanced)",
 }
