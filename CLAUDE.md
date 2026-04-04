@@ -131,7 +131,7 @@ The GRAFT loop (`graft_step.py`) implements rejection-sampling-based fine-tuning
 2. Generates candidates using the trained LoRA (with P-GRAFT: LoRA disabled for last 25% of denoising)
 3. User curates by deleting bad candidates; survivors join the training set next iteration
 
-See `graft-guideline.md` for detailed curation guidance.
+See `docs/graft-guideline.md` for detailed curation guidance.
 
 ## External tools
 

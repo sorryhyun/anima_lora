@@ -772,7 +772,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--max_data_loader_n_workers",
         type=int,
-        default=2,
+        default=4,
         help="max num workers for DataLoader",
     )
     parser.add_argument(
