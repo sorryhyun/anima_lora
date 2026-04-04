@@ -11,12 +11,11 @@ jobs:
   publish-node:
     name: Publish Custom Node to registry
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: custom_nodes/comfyui-spectrum
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+      - name: Move node to root
+        run: cp -r custom_nodes/comfyui-spectrum/* .
       - name: Publish Custom Node
         uses: Comfy-Org/publish-node-action@main
         with:
