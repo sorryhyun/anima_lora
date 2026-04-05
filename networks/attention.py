@@ -471,6 +471,11 @@ def attention(
                 else 0
             )
             if n_pad > 0:
+                # Compute log(n_pad) as a scalar tensor BEFORE the FA4 graph break.
+                # The first sub-graph already guards on k.shape[1] (which determines
+                # n_pad), so specialization here is free.  The resume sub-graph after
+                # FA4 receives log_n_pad as a tensor and won't guard on the int value.
+                log_n_pad = torch.full((), math.log(n_pad), dtype=torch.float32, device=q.device)
                 out, lse = _flash_attn_4_func_raw(
                     q, k, v, softmax_scale=scale, return_lse=True
                 )
@@ -478,7 +483,7 @@ def attention(
                 # Sigmoid correction exactly accounts for removed zero-key positions
                 # whose exp(q·0/√d) = exp(0) = 1 each contributed to softmax denominator.
                 # out_corrected = out_real * sigmoid(lse - log(N_pad))
-                correction = torch.sigmoid(lse - math.log(n_pad))  # [B, H, Q_LEN]
+                correction = torch.sigmoid(lse - log_n_pad).to(out.dtype)  # [B, H, Q_LEN]
                 x = out * correction.transpose(1, 2).unsqueeze(-1)  # [B, Q_LEN, H, D]
                 del out, lse, correction
             else:

@@ -1735,7 +1735,7 @@ class Anima(nn.Module):
             max_real_len = int(crossattn_seqlens.max())
             trim_len = next((b for b in _KV_BUCKETS if b >= max_real_len), full_len)
             if trim_len < full_len:
-                crossattn_emb = crossattn_emb[:, :trim_len]
+                crossattn_emb = crossattn_emb[:, :trim_len].contiguous()
                 attn_params.crossattn_full_len = full_len
 
         # Pre-compute cross-attention BlockMask once for all blocks (flex mode only)

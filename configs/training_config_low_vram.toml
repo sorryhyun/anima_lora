@@ -2,8 +2,8 @@ base_config = "base.toml"
 
 dataset_config = "configs/dataset_config.toml"
 
-network_dim = 32
-network_alpha = 32
+network_dim = 16
+network_alpha = 16
 
 learning_rate = 5e-5
 
@@ -11,9 +11,10 @@ max_train_epochs = 2
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
+gradient_checkpointing = true
+unsloth_offload_checkpointing = true
+
 attn_mode = "flash"
-gradient_accumulation_steps = 2
-# caption_shuffle_variants = 8
+gradient_accumulation_steps = 1
 cache_llm_adapter_outputs = true
-# min_rank = 1
 trim_crossattn_kv = true
