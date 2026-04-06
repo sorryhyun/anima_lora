@@ -361,7 +361,7 @@ def load_safetensors_with_fp8_optimization(
                 if original_dtype.itemsize == 1:
                     raise ValueError(
                         f"Layer {key} is already in {original_dtype} format. `--fp8_scaled` optimization should not be applied. Please use fp16/bf16/float32 model weights."
-                        + f" / レイヤー {key} は既に{original_dtype}形式です。`--fp8_scaled` 最適化は適用できません。FP16/BF16/Float32のモデル重みを使用してください。"
+                        + f""
                     )
                 quantized_weight, scale_tensor = quantize_weight(
                     key,

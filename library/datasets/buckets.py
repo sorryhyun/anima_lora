@@ -82,7 +82,7 @@ class BucketManager:
 
         self.resos = []
         self.reso_to_id = {}
-        self.buckets = []  # 前処理時は (image_key, image, original size, crop left/top)、学習時は image_key
+        self.buckets = []
 
     def add_image(self, reso, image_or_info):
         bucket_id = self.reso_to_id[reso]
@@ -93,7 +93,6 @@ class BucketManager:
             random.shuffle(bucket)
 
     def sort(self):
-        # 解像度順にソートする（表示時、メタデータ格納時の見栄えをよくするためだけ）。bucketsも入れ替えてreso_to_idも振り直す
         sorted_resos = self.resos.copy()
         sorted_resos.sort()
 
@@ -118,7 +117,6 @@ class BucketManager:
         self.set_predefined_resos(resos)
 
     def set_predefined_resos(self, resos):
-        # 規定サイズから選ぶ場合の解像度、aspect ratioの情報を格納しておく
         self.predefined_resos = resos.copy()
         self.predefined_resos_set = set(resos)
         self.predefined_aspect_ratios = np.array([w / h for w, h in resos])
@@ -137,8 +135,6 @@ class BucketManager:
     def select_bucket(self, image_width, image_height):
         aspect_ratio = image_width / image_height
         if not self.no_upscale:
-            # 拡大および縮小を行う
-            # 同じaspect ratioがあるかもしれないので（fine tuningで、no_upscale=Trueで前処理した場合）、解像度が同じものを優先する
             reso = (image_width, image_height)
             if reso in self.predefined_resos_set:
                 pass
@@ -146,11 +142,11 @@ class BucketManager:
                 ar_errors = self.predefined_aspect_ratios - aspect_ratio
                 predefined_bucket_id = np.abs(
                     ar_errors
-                ).argmin()  # 当該解像度以外でaspect ratio errorが最も少ないもの
+                ).argmin()
                 reso = self.predefined_resos[predefined_bucket_id]
 
             ar_reso = reso[0] / reso[1]
-            if aspect_ratio > ar_reso:  # 横が長い→縦を合わせる
+            if aspect_ratio > ar_reso:
                 scale = reso[1] / image_height
             else:
                 scale = reso[0] / image_width
@@ -160,17 +156,13 @@ class BucketManager:
                 int(image_height * scale + 0.5),
             )
         else:
-            # 縮小のみを行う
             if image_width * image_height > self.max_area:
-                # 画像が大きすぎるのでアスペクト比を保ったまま縮小することを前提にbucketを決める
                 resized_width = math.sqrt(self.max_area * aspect_ratio)
                 resized_height = self.max_area / resized_width
                 assert abs(resized_width / resized_height - aspect_ratio) < 1e-2, (
                     "aspect is illegal"
                 )
 
-                # リサイズ後の短辺または長辺をreso_steps単位にする：aspect ratioの差が少ないほうを選ぶ
-                # 元のbucketingと同じロジック
                 b_width_rounded = self.round_to_steps(resized_width)
                 b_height_in_wr = self.round_to_steps(b_width_rounded / aspect_ratio)
                 ar_width_rounded = b_width_rounded / b_height_in_wr
@@ -192,9 +184,8 @@ class BucketManager:
                         b_height_rounded,
                     )
             else:
-                resized_size = (image_width, image_height)  # リサイズは不要
+                resized_size = (image_width, image_height)
 
-            # 画像のサイズ未満をbucketのサイズとする（paddingせずにcroppingする）
             bucket_width = resized_size[0] - resized_size[0] % self.reso_steps
             bucket_height = resized_size[1] - resized_size[1] % self.reso_steps
 
@@ -207,13 +198,11 @@ class BucketManager:
 
     @staticmethod
     def get_crop_ltrb(bucket_reso: Tuple[int, int], image_size: Tuple[int, int]):
-        # Stability AIの前処理に合わせてcrop left/topを計算する。crop rightはflipのaugmentationのために求める
         # Calculate crop left/top according to the preprocessing of Stability AI. Crop right is calculated for flip augmentation.
 
         bucket_ar = bucket_reso[0] / bucket_reso[1]
         image_ar = image_size[0] / image_size[1]
         if bucket_ar > image_ar:
-            # bucketのほうが横長→縦を合わせる
             resized_width = bucket_reso[1] * image_ar
             resized_height = bucket_reso[1]
         else:

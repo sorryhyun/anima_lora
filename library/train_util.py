@@ -434,24 +434,24 @@ def add_sd_models_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--v2",
         action="store_true",
-        help="load Stable Diffusion v2.0 model / Stable Diffusion 2.0のモデルを読み込む",
+        help="load Stable Diffusion v2.0 model",
     )
     parser.add_argument(
         "--v_parameterization",
         action="store_true",
-        help="enable v-parameterization training / v-parameterization学習を有効にする",
+        help="enable v-parameterization training",
     )
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
         default=None,
-        help="pretrained model to train, directory to Diffusers model or StableDiffusion checkpoint / 学習元モデル、Diffusers形式モデルのディレクトリまたはStableDiffusionのckptファイル",
+        help="pretrained model to train, directory to Diffusers model or StableDiffusion checkpoint",
     )
     parser.add_argument(
         "--tokenizer_cache_dir",
         type=str,
         default=None,
-        help="directory for caching Tokenizer (for offline training) / Tokenizerをキャッシュするディレクトリ（ネット接続なしでの学習のため）",
+        help="directory for caching Tokenizer (for offline training)",
     )
 
 
@@ -476,7 +476,7 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         "--optimizer_type",
         type=str,
         default="",
-        help="Optimizer to use / オプティマイザの種類: AdamW (default), AdamW8bit, PagedAdamW, PagedAdamW8bit, PagedAdamW32bit, "
+        help="Optimizer to use"
         "Lion8bit, PagedLion8bit, Lion, SGDNesterov, SGDNesterov8bit, "
         "DAdaptation(DAdaptAdamPreprint), DAdaptAdaGrad, DAdaptAdam, DAdaptAdan, DAdaptAdanIP, DAdaptLion, DAdaptSGD, "
         "AdaFactor.",
@@ -485,22 +485,22 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--use_8bit_adam",
         action="store_true",
-        help="use 8bit AdamW optimizer (requires bitsandbytes) / 8bit Adamオプティマイザを使う（bitsandbytesのインストールが必要）",
+        help="use 8bit AdamW optimizer (requires bitsandbytes)",
     )
     parser.add_argument(
         "--use_lion_optimizer",
         action="store_true",
-        help="use Lion optimizer (requires lion-pytorch) / Lionオプティマイザを使う（ lion-pytorch のインストールが必要）",
+        help="use Lion optimizer (requires lion-pytorch)",
     )
 
     parser.add_argument(
-        "--learning_rate", type=float, default=2.0e-6, help="learning rate / 学習率"
+        "--learning_rate", type=float, default=2.0e-6, help="learning rate"
     )
     parser.add_argument(
         "--max_grad_norm",
         default=1.0,
         type=float,
-        help="Max gradient norm, 0 for no clipping / 勾配正規化の最大norm、0でclippingを行わない",
+        help="Max gradient norm, 0 for no clipping",
     )
 
     parser.add_argument(
@@ -508,28 +508,28 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         type=str,
         default=None,
         nargs="*",
-        help='additional arguments for optimizer (like "weight_decay=0.01 betas=0.9,0.999 ...") / オプティマイザの追加引数',
+        help='additional arguments for optimizer (like "weight_decay=0.01 betas=0.9,0.999 ...")',
     )
 
     parser.add_argument(
         "--lr_scheduler_type",
         type=str,
         default="",
-        help="custom scheduler module / 使用するスケジューラ",
+        help="custom scheduler module",
     )
     parser.add_argument(
         "--lr_scheduler_args",
         type=str,
         default=None,
         nargs="*",
-        help='additional arguments for scheduler (like "T_max=100") / スケジューラの追加引数',
+        help='additional arguments for scheduler (like "T_max=100")',
     )
 
     parser.add_argument(
         "--lr_scheduler",
         type=str,
         default="constant",
-        help="scheduler to use for learning rate / 学習率のスケジューラ: linear, cosine, cosine_with_restarts, polynomial, constant (default), constant_with_warmup, adafactor",
+        help="scheduler to use for learning rate",
     )
     parser.add_argument(
         "--lr_warmup_steps",
@@ -579,37 +579,37 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--output_dir",
         type=str,
         default=None,
-        help="directory to output trained model / 学習後のモデル出力先ディレクトリ",
+        help="directory to output trained model",
     )
     parser.add_argument(
         "--output_name",
         type=str,
         default=None,
-        help="base name of trained model file / 学習後のモデルの拡張子を除くファイル名",
+        help="base name of trained model file",
     )
     parser.add_argument(
         "--huggingface_repo_id",
         type=str,
         default=None,
-        help="huggingface repo name to upload / huggingfaceにアップロードするリポジトリ名",
+        help="huggingface repo name to upload",
     )
     parser.add_argument(
         "--huggingface_repo_type",
         type=str,
         default=None,
-        help="huggingface repo type to upload / huggingfaceにアップロードするリポジトリの種類",
+        help="huggingface repo type to upload",
     )
     parser.add_argument(
         "--huggingface_path_in_repo",
         type=str,
         default=None,
-        help="huggingface model path to upload files / huggingfaceにアップロードするファイルのパス",
+        help="huggingface model path to upload files",
     )
     parser.add_argument(
         "--huggingface_token",
         type=str,
         default=None,
-        help="huggingface token / huggingfaceのトークン",
+        help="huggingface token",
     )
     parser.add_argument(
         "--huggingface_repo_visibility",
@@ -620,7 +620,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--save_state_to_huggingface",
         action="store_true",
-        help="save state to huggingface / huggingfaceにstateを保存する",
+        help="save state to huggingface",
     )
     parser.add_argument(
         "--resume_from_huggingface", action="store_true", help="resume from huggingface"
@@ -628,26 +628,26 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--async_upload",
         action="store_true",
-        help="upload to huggingface asynchronously / huggingfaceに非同期でアップロードする",
+        help="upload to huggingface asynchronously",
     )
     parser.add_argument(
         "--save_precision",
         type=str,
         default=None,
         choices=[None, "float", "fp16", "bf16"],
-        help="precision in saving / 保存時に精度を変更して保存する",
+        help="precision in saving",
     )
     parser.add_argument(
         "--save_every_n_epochs",
         type=int,
         default=None,
-        help="save checkpoint every N epochs / 学習中のモデルを指定エポックごとに保存する",
+        help="save checkpoint every N epochs",
     )
     parser.add_argument(
         "--save_every_n_steps",
         type=int,
         default=None,
-        help="save checkpoint every N steps / 学習中のモデルを指定ステップごとに保存する",
+        help="save checkpoint every N steps",
     )
     parser.add_argument(
         "--save_n_epoch_ratio",
@@ -693,7 +693,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--resume",
         type=str,
         default=None,
-        help="saved state to resume training / 学習再開するモデルのstate",
+        help="saved state to resume training",
     )
     parser.add_argument(
         "--checkpointing_epochs",
@@ -706,7 +706,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--train_batch_size",
         type=int,
         default=1,
-        help="batch size for training / 学習時のバッチサイズ",
+        help="batch size for training",
     )
     parser.add_argument(
         "--max_token_length",
@@ -761,7 +761,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--max_train_steps",
         type=int,
         default=1600,
-        help="training steps / 学習ステップ数",
+        help="training steps",
     )
     parser.add_argument(
         "--max_train_epochs",
@@ -793,7 +793,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--seed",
         type=int,
         default=None,
-        help="random seed for training / 学習時の乱数のseed",
+        help="random seed for training",
     )
     parser.add_argument(
         "--gradient_checkpointing",
@@ -811,7 +811,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         type=str,
         default="no",
         choices=["no", "fp16", "bf16"],
-        help="use mixed precision / 混合精度を使う場合、その精度",
+        help="use mixed precision",
     )
     parser.add_argument(
         "--full_fp16", action="store_true", help="fp16 training including gradients"
@@ -1062,7 +1062,7 @@ def add_masked_loss_arguments(parser: argparse.ArgumentParser):
         "--conditioning_data_dir",
         type=str,
         default=None,
-        help="conditioning data directory / 条件付けデータのディレクトリ",
+        help="conditioning data directory",
     )
     parser.add_argument(
         "--masked_loss", action="store_true", help="apply mask for calculating loss."
@@ -1200,7 +1200,7 @@ def verify_command_line_training_args(args: argparse.Namespace):
 
 def enable_high_vram(args: argparse.Namespace):
     if args.highvram:
-        logger.info("highvram is enabled / highvramが有効です")
+        logger.info("highvram is enabled")
         _datasets_base.enable_high_vram()
 
 
@@ -1476,7 +1476,7 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
     if args.output_config:
         if os.path.exists(config_path):
             logger.error(
-                f"Config file already exists. Aborting... / 出力先の設定ファイルが既に存在します: {config_path}"
+                f"Config file already exists. Aborting..."
             )
             exit(1)
 
@@ -1499,7 +1499,7 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
         with open(config_path, "w") as f:
             toml.dump(args_dict, f)
 
-        logger.info(f"Saved config file / 設定ファイルを保存しました: {config_path}")
+        logger.info(f"Saved config file")
         exit(0)
 
     if not os.path.exists(config_path):
@@ -1603,7 +1603,7 @@ def resume_from_local_or_hf_if_specified(accelerator, args):
     )
     if len(results) == 0:
         raise ValueError(
-            "No files found in the specified repo id/path/revision / 指定されたリポジトリID/パス/リビジョンにファイルが見つかりませんでした"
+            "No files found in the specified repo id"
         )
     dirname = os.path.dirname(results[0])
     accelerator.load_state(dirname)
@@ -1619,7 +1619,7 @@ def prepare_dataset_args(args: argparse.Namespace, support_metadata: bool):
         if len(args.resolution) == 1:
             args.resolution = (args.resolution[0], args.resolution[0])
         assert len(args.resolution) == 2, (
-            f"resolution must be 'size' or 'width,height' / resolution（解像度）は'サイズ'または'幅','高さ'で指定してください: {args.resolution}"
+            f"resolution must be 'size' or 'width,height'"
         )
 
     if args.face_crop_aug_range is not None:
@@ -1630,7 +1630,7 @@ def prepare_dataset_args(args: argparse.Namespace, support_metadata: bool):
             len(args.face_crop_aug_range) == 2
             and args.face_crop_aug_range[0] <= args.face_crop_aug_range[1]
         ), (
-            f"face_crop_aug_range must be two floats / face_crop_aug_rangeは'下限,上限'で指定してください: {args.face_crop_aug_range}"
+            f"face_crop_aug_range must be two floats"
         )
     else:
         args.face_crop_aug_range = None
@@ -1668,7 +1668,7 @@ def prepare_accelerator(args: argparse.Namespace):
             try:
                 import wandb
             except ImportError:
-                raise ImportError("No wandb / wandb がインストールされていないようです")
+                raise ImportError("No wandb")
             if logging_dir is not None:
                 os.makedirs(logging_dir, exist_ok=True)
                 os.environ["WANDB_DIR"] = logging_dir
@@ -1932,7 +1932,7 @@ def line_to_prompt_dict(line: str) -> dict:
                 continue
 
         except ValueError as ex:
-            logger.error(f"Exception in parsing / 解析エラー: {parg}")
+            logger.error(f"Exception in parsing")
             logger.error(ex)
 
     return prompt_dict

@@ -246,7 +246,7 @@ class AnimaTrainer:
             )
 
         assert args.network_train_unet_only or not args.cache_text_encoder_outputs, (
-            "network for Text Encoder cannot be trained with caching Text Encoder outputs / Text Encoderの出力をキャッシュしながらText Encoderのネットワークを学習することはできません"
+            "network for Text Encoder cannot be trained with caching Text Encoder outputs"
         )
 
         assert (
@@ -1106,7 +1106,7 @@ class AnimaTrainer:
                 ignored = ["train_data_dir", "reg_data_dir", "in_json"]
                 if any(getattr(args, attr) is not None for attr in ignored):
                     logger.warning(
-                        "ignoring the following options because config file is found: {0} / 設定ファイルが利用されるため以下のオプションは無視されます: {0}".format(
+                        "ignoring the following options because config file is found: {0}".format(
                             ", ".join(ignored)
                         )
                     )
@@ -1171,17 +1171,17 @@ class AnimaTrainer:
             return
         if len(train_dataset_group) == 0:
             logger.error(
-                "No data found. Please verify arguments (train_data_dir must be the parent of folders with images) / 画像がありません。引数指定を確認してください（train_data_dirには画像があるフォルダではなく、画像があるフォルダの親フォルダを指定する必要があります）"
+                "No data found. Please verify arguments (train_data_dir must be the parent of folders with images)"
             )
             return
 
         if cache_latents:
             assert train_dataset_group.is_latent_cacheable(), (
-                "when caching latents, either color_aug or random_crop cannot be used / latentをキャッシュするときはcolor_augとrandom_cropは使えません"
+                "when caching latents, either color_aug or random_crop cannot be used"
             )
             if val_dataset_group is not None:
                 assert val_dataset_group.is_latent_cacheable(), (
-                    "when caching latents, either color_aug or random_crop cannot be used / latentをキャッシュするときはcolor_augとrandom_cropは使えません"
+                    "when caching latents, either color_aug or random_crop cannot be used"
                 )
 
         self.assert_extra_args(
@@ -1333,7 +1333,7 @@ class AnimaTrainer:
             network, "apply_max_norm_regularization"
         ):
             logger.warning(
-                "warning: scale_weight_norms is specified but the network does not support it / scale_weight_normsが指定されていますが、ネットワークが対応していません"
+                "warning: scale_weight_norms is specified but the network does not support it"
             )
             args.scale_weight_norms = False
 
@@ -1451,7 +1451,7 @@ class AnimaTrainer:
                 / args.gradient_accumulation_steps
             )
             accelerator.print(
-                f"override steps. steps for {args.max_train_epochs} epochs is / 指定エポックまでのステップ数: {args.max_train_steps}"
+                f"override steps. steps for {args.max_train_epochs} epochs is"
             )
 
         train_dataset_group.set_max_train_steps(args.max_train_steps)
@@ -1464,13 +1464,13 @@ class AnimaTrainer:
         # full fp16/bf16 training
         if args.full_fp16:
             assert args.mixed_precision == "fp16", (
-                "full_fp16 requires mixed precision='fp16' / full_fp16を使う場合はmixed_precision='fp16'を指定してください。"
+                "full_fp16 requires mixed precision='fp16'"
             )
             accelerator.print("enable full fp16 training.")
             network.to(weight_dtype)
         elif args.full_bf16:
             assert args.mixed_precision == "bf16", (
-                "full_bf16 requires mixed precision='bf16' / full_bf16を使う場合はmixed_precision='bf16'を指定してください。"
+                "full_bf16 requires mixed precision='bf16'"
             )
             accelerator.print("enable full bf16 training.")
             network.to(weight_dtype)
@@ -1645,28 +1645,28 @@ class AnimaTrainer:
             * args.gradient_accumulation_steps
         )
 
-        accelerator.print("running training / 学習開始")
+        accelerator.print("running training")
         accelerator.print(
-            f"  num train images * repeats / 学習画像の数×繰り返し回数: {train_dataset_group.num_train_images}"
+            f"  num train images * repeats"
         )
         accelerator.print(
-            f"  num validation images * repeats / 学習画像の数×繰り返し回数: {val_dataset_group.num_train_images if val_dataset_group is not None else 0}"
+            f"  num validation images * repeats"
         )
         accelerator.print(
-            f"  num reg images / 正則化画像の数: {train_dataset_group.num_reg_images}"
+            f"  num reg images"
         )
         accelerator.print(
-            f"  num batches per epoch / 1epochのバッチ数: {len(train_dataloader)}"
+            f"  num batches per epoch"
         )
-        accelerator.print(f"  num epochs / epoch数: {num_train_epochs}")
+        accelerator.print(f"  num epochs")
         accelerator.print(
-            f"  batch size per device / バッチサイズ: {', '.join([str(d.batch_size) for d in train_dataset_group.datasets])}"
-        )
-        accelerator.print(
-            f"  gradient accumulation steps / 勾配を合計するステップ数 = {args.gradient_accumulation_steps}"
+            f"  batch size per device"
         )
         accelerator.print(
-            f"  total optimization steps / 学習ステップ数: {args.max_train_steps}"
+            f"  gradient accumulation steps"
+        )
+        accelerator.print(
+            f"  total optimization steps"
         )
 
         # TODO refactor metadata creation and move to util
@@ -1817,7 +1817,7 @@ class AnimaTrainer:
             metadata["ss_dataset_dirs"] = json.dumps(dataset_dirs_info)
         else:
             assert len(train_dataset_group.datasets) == 1, (
-                f"There should be a single dataset but {len(train_dataset_group.datasets)} found. This seems to be a bug. / データセットは1個だけ存在するはずですが、実際には{len(train_dataset_group.datasets)}個でした。プログラムのバグかもしれません。"
+                f"There should be a single dataset but {len(train_dataset_group.datasets)} found. This seems to be a bug."
             )
 
             dataset = train_dataset_group.datasets[0]
@@ -1895,7 +1895,7 @@ class AnimaTrainer:
         if args.initial_epoch is not None or args.initial_step is not None:
             if steps_from_state is not None:
                 logger.warning(
-                    "steps from the state is ignored because initial_step is specified / initial_stepが指定されているため、stateからのステップ数は無視されます"
+                    "steps from the state is ignored because initial_step is specified"
                 )
             if args.initial_step is not None:
                 initial_step = args.initial_step
@@ -1912,7 +1912,7 @@ class AnimaTrainer:
 
         if initial_step > 0:
             assert args.max_train_steps > initial_step, (
-                f"max_train_steps should be greater than initial step / max_train_stepsは初期ステップより大きい必要があります: {args.max_train_steps} vs {initial_step}"
+                f"max_train_steps should be greater than initial step"
             )
 
         epoch_to_start = 0
@@ -1920,10 +1920,10 @@ class AnimaTrainer:
             if args.skip_until_initial_step:
                 if not args.resume:
                     logger.info(
-                        "initial_step is specified but not resuming. lr scheduler will be started from the beginning / initial_stepが指定されていますがresumeしていないため、lr schedulerは最初から始まります"
+                        "initial_step is specified but not resuming. lr scheduler will be started from the beginning"
                     )
                 logger.info(
-                    f"skipping {initial_step} steps / {initial_step}ステップをスキップします"
+                    f"skipping {initial_step} steps"
                 )
                 initial_step *= args.gradient_accumulation_steps
 
@@ -2629,172 +2629,172 @@ def setup_parser() -> argparse.ArgumentParser:
         "--cpu_offload_checkpointing",
         action="store_true",
         help="[EXPERIMENTAL] enable offloading of tensors to CPU during checkpointing for U-Net or DiT, if supported"
-        " / 勾配チェックポイント時にテンソルをCPUにオフロードする（U-NetまたはDiTのみ、サポートされている場合）",
+        "",
     )
     parser.add_argument(
         "--no_metadata",
         action="store_true",
-        help="do not save metadata in output model / メタデータを出力先モデルに保存しない",
+        help="do not save metadata in output model",
     )
     parser.add_argument(
         "--save_model_as",
         type=str,
         default="safetensors",
         choices=[None, "ckpt", "pt", "safetensors"],
-        help="format to save the model (default is .safetensors) / モデル保存時の形式（デフォルトはsafetensors）",
+        help="format to save the model (default is .safetensors)",
     )
 
     parser.add_argument(
         "--unet_lr",
         type=float,
         default=None,
-        help="learning rate for U-Net / U-Netの学習率",
+        help="learning rate for U-Net",
     )
     parser.add_argument(
         "--text_encoder_lr",
         type=float,
         default=None,
         nargs="*",
-        help="learning rate for Text Encoder, can be multiple / Text Encoderの学習率、複数指定可能",
+        help="learning rate for Text Encoder, can be multiple",
     )
     parser.add_argument(
         "--fp8_base_unet",
         action="store_true",
         help="use fp8 for U-Net (or DiT), Text Encoder is fp16 or bf16"
-        " / U-Net（またはDiT）にfp8を使用する。Text Encoderはfp16またはbf16",
+        "",
     )
 
     parser.add_argument(
         "--network_weights",
         type=str,
         default=None,
-        help="pretrained weights for network / 学習するネットワークの初期重み",
+        help="pretrained weights for network",
     )
     parser.add_argument(
         "--network_module",
         type=str,
         default=None,
-        help="network module to train / 学習対象のネットワークのモジュール",
+        help="network module to train",
     )
     parser.add_argument(
         "--network_dim",
         type=int,
         default=None,
-        help="network dimensions (depends on each network) / モジュールの次元数（ネットワークにより定義は異なります）",
+        help="network dimensions (depends on each network)",
     )
     parser.add_argument(
         "--network_alpha",
         type=float,
         default=1,
-        help="alpha for LoRA weight scaling, default 1 (same as network_dim for same behavior as old version) / LoRaの重み調整のalpha値、デフォルト1（旧バージョンと同じ動作をするにはnetwork_dimと同じ値を指定）",
+        help="alpha for LoRA weight scaling, default 1 (same as network_dim for same behavior as old version)",
     )
     parser.add_argument(
         "--network_dropout",
         type=float,
         default=None,
-        help="Drops neurons out of training every step (0 or None is default behavior (no dropout), 1 would drop all neurons) / 訓練時に毎ステップでニューロンをdropする（0またはNoneはdropoutなし、1は全ニューロンをdropout）",
+        help="Drops neurons out of training every step (0 or None is default behavior (no dropout), 1 would drop all neurons)",
     )
     parser.add_argument(
         "--network_args",
         type=str,
         default=None,
         nargs="*",
-        help="additional arguments for network (key=value) / ネットワークへの追加の引数",
+        help="additional arguments for network (key=value)",
     )
     parser.add_argument(
         "--network_train_unet_only",
         action="store_true",
-        help="only training U-Net part / U-Net関連部分のみ学習する",
+        help="only training U-Net part",
     )
     parser.add_argument(
         "--network_train_text_encoder_only",
         action="store_true",
-        help="only training Text Encoder part / Text Encoder関連部分のみ学習する",
+        help="only training Text Encoder part",
     )
     parser.add_argument(
         "--training_comment",
         type=str,
         default=None,
-        help="arbitrary comment string stored in metadata / メタデータに記録する任意のコメント文字列",
+        help="arbitrary comment string stored in metadata",
     )
     parser.add_argument(
         "--dim_from_weights",
         action="store_true",
-        help="automatically determine dim (rank) from network_weights / dim (rank)をnetwork_weightsで指定した重みから自動で決定する",
+        help="automatically determine dim (rank) from network_weights",
     )
     parser.add_argument(
         "--scale_weight_norms",
         type=float,
         default=None,
-        help="Scale the weight of each key pair to help prevent overtraing via exploding gradients. (1 is a good starting point) / 重みの値をスケーリングして勾配爆発を防ぐ（1が初期値としては適当）",
+        help="Scale the weight of each key pair to help prevent overtraing via exploding gradients. (1 is a good starting point)",
     )
     parser.add_argument(
         "--base_weights",
         type=str,
         default=None,
         nargs="*",
-        help="network weights to merge into the model before training / 学習前にあらかじめモデルにマージするnetworkの重みファイル",
+        help="network weights to merge into the model before training",
     )
     parser.add_argument(
         "--base_weights_multiplier",
         type=float,
         default=None,
         nargs="*",
-        help="multiplier for network weights to merge into the model before training / 学習前にあらかじめモデルにマージするnetworkの重みの倍率",
+        help="multiplier for network weights to merge into the model before training",
     )
     parser.add_argument(
         "--no_half_vae",
         action="store_true",
-        help="do not use fp16/bf16 VAE in mixed precision (use float VAE) / mixed precisionでも fp16/bf16 VAEを使わずfloat VAEを使う",
+        help="do not use fp16",
     )
     parser.add_argument(
         "--skip_until_initial_step",
         action="store_true",
-        help="skip training until initial_step is reached / initial_stepに到達するまで学習をスキップする",
+        help="skip training until initial_step is reached",
     )
     parser.add_argument(
         "--initial_epoch",
         type=int,
         default=None,
         help="initial epoch number, 1 means first epoch (same as not specifying). NOTE: initial_epoch/step doesn't affect to lr scheduler. Which means lr scheduler will start from 0 without `--resume`."
-        + " / 初期エポック数、1で最初のエポック（未指定時と同じ）。注意：initial_epoch/stepはlr schedulerに影響しないため、`--resume`しない場合はlr schedulerは0から始まる",
+        + "",
     )
     parser.add_argument(
         "--initial_step",
         type=int,
         default=None,
         help="initial step number including all epochs, 0 means first step (same as not specifying). overwrites initial_epoch."
-        + " / 初期ステップ数、全エポックを含むステップ数、0で最初のステップ（未指定時と同じ）。initial_epochを上書きする",
+        + "",
     )
     parser.add_argument(
         "--validation_seed",
         type=int,
         default=None,
-        help="Validation seed for shuffling validation dataset, training `--seed` used otherwise / 検証データセットをシャッフルするための検証シード、それ以外の場合はトレーニング `--seed` を使用する",
+        help="Validation seed for shuffling validation dataset, training `--seed` used otherwise",
     )
     parser.add_argument(
         "--validation_split",
         type=float,
         default=0.0,
-        help="Split for validation images out of the training dataset / 学習画像から検証画像に分割する割合",
+        help="Split for validation images out of the training dataset",
     )
     parser.add_argument(
         "--validate_every_n_steps",
         type=int,
         default=None,
-        help="Run validation on validation dataset every N steps. By default, validation will only occur every epoch if a validation dataset is available / 検証データセットの検証をNステップごとに実行します。デフォルトでは、検証データセットが利用可能な場合にのみ、検証はエポックごとに実行されます",
+        help="Run validation on validation dataset every N steps. By default, validation will only occur every epoch if a validation dataset is available",
     )
     parser.add_argument(
         "--validate_every_n_epochs",
         type=int,
         default=None,
-        help="Run validation dataset every N epochs. By default, validation will run every epoch if a validation dataset is available / 検証データセットをNエポックごとに実行します。デフォルトでは、検証データセットが利用可能な場合、検証はエポックごとに実行されます",
+        help="Run validation dataset every N epochs. By default, validation will run every epoch if a validation dataset is available",
     )
     parser.add_argument(
         "--max_validation_steps",
         type=int,
         default=None,
-        help="Max number of validation dataset items processed. By default, validation will run the entire validation dataset / 処理される検証データセット項目の最大数。デフォルトでは、検証は検証データセット全体を実行します",
+        help="Max number of validation dataset items processed. By default, validation will run the entire validation dataset",
     )
     parser.add_argument(
         "--validation_sigmas",

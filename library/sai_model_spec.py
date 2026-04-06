@@ -64,7 +64,6 @@ BASE_METADATA = {
     "modelspec.vae_dtype": None,
 }
 
-# 別に使うやつだけ定義
 MODELSPEC_TITLE = "modelspec.title"
 
 ARCH_SD_V1 = "stable-diffusion-v1"
@@ -615,67 +614,67 @@ def add_model_spec_arguments(parser: argparse.ArgumentParser):
         "--metadata_title",
         type=str,
         default=None,
-        help="title for model metadata (default is output_name) / メタデータに書き込まれるモデルタイトル、省略時はoutput_name",
+        help="title for model metadata (default is output_name)",
     )
     parser.add_argument(
         "--metadata_author",
         type=str,
         default=None,
-        help="author name for model metadata / メタデータに書き込まれるモデル作者名",
+        help="author name for model metadata",
     )
     parser.add_argument(
         "--metadata_description",
         type=str,
         default=None,
-        help="description for model metadata / メタデータに書き込まれるモデル説明",
+        help="description for model metadata",
     )
     parser.add_argument(
         "--metadata_license",
         type=str,
         default=None,
-        help="license for model metadata / メタデータに書き込まれるモデルライセンス",
+        help="license for model metadata",
     )
     parser.add_argument(
         "--metadata_tags",
         type=str,
         default=None,
-        help="tags for model metadata, separated by comma / メタデータに書き込まれるモデルタグ、カンマ区切り",
+        help="tags for model metadata, separated by comma",
     )
     parser.add_argument(
         "--metadata_usage_hint",
         type=str,
         default=None,
-        help="usage hint for model metadata / メタデータに書き込まれる使用方法のヒント",
+        help="usage hint for model metadata",
     )
     parser.add_argument(
         "--metadata_thumbnail",
         type=str,
         default=None,
-        help="thumbnail image as data URL or file path (will be converted to data URL) for model metadata / メタデータに書き込まれるサムネイル画像（データURLまたはファイルパス、ファイルパスの場合はデータURLに変換されます）",
+        help="thumbnail image as data URL or file path (will be converted to data URL) for model metadata",
     )
     parser.add_argument(
         "--metadata_merged_from",
         type=str,
         default=None,
-        help="source models for merged model metadata / メタデータに書き込まれるマージ元モデル名",
+        help="source models for merged model metadata",
     )
     parser.add_argument(
         "--metadata_trigger_phrase",
         type=str,
         default=None,
-        help="trigger phrase for model metadata / メタデータに書き込まれるトリガーフレーズ",
+        help="trigger phrase for model metadata",
     )
     parser.add_argument(
         "--metadata_preprocessor",
         type=str,
         default=None,
-        help="preprocessor used for model metadata / メタデータに書き込まれる前処理手法",
+        help="preprocessor used for model metadata",
     )
     parser.add_argument(
         "--metadata_is_negative_embedding",
         type=str,
         default=None,
-        help="whether this is a negative embedding for model metadata / メタデータに書き込まれるネガティブ埋め込みかどうか",
+        help="whether this is a negative embedding for model metadata",
     )
 
 

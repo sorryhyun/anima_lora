@@ -383,7 +383,7 @@ def glob_images(directory, base="*"):
             img_paths.extend(
                 glob.glob(glob.escape(os.path.join(directory, base + ext)))
             )
-    img_paths = list(set(img_paths))  # 重複を排除
+    img_paths = list(set(img_paths))
     img_paths.sort()
     return img_paths
 
@@ -396,7 +396,7 @@ def glob_images_pathlib(dir_path, recursive):
     else:
         for ext in IMAGE_EXTENSIONS:
             image_paths += list(dir_path.glob("*" + ext))
-    image_paths = list(set(image_paths))  # 重複を排除
+    image_paths = list(set(image_paths))
     image_paths.sort()
     return image_paths
 
@@ -416,7 +416,7 @@ class ImageLoadingDataset(torch.utils.data.Dataset):
             tensor_pil = transforms.functional.pil_to_tensor(image)
         except Exception as e:
             logger.error(
-                f"Could not load image path / 画像を読み込めません: {img_path}, error: {e}"
+                f"Could not load image path"
             )
             return None
 

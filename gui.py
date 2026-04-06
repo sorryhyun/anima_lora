@@ -10,7 +10,7 @@ from typing import Any
 
 import toml
 from PySide6.QtCore import QProcess, Qt, Signal
-from PySide6.QtGui import QKeySequence, QPixmap, QPalette, QColor, QShortcut, QTextCursor
+from PySide6.QtGui import QFont, QKeySequence, QPixmap, QPalette, QColor, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -84,11 +84,11 @@ _SKIP = {"base_config", "dataset_config"}
 
 
 def _load(p: Path) -> dict:
-    return toml.loads(p.read_text()) if p.exists() else {}
+    return toml.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
 
 
 def _save(p: Path, d: dict):
-    p.write_text(toml.dumps(d))
+    p.write_text(toml.dumps(d), encoding="utf-8")
 
 
 def _merged(f: str) -> dict:
@@ -103,7 +103,19 @@ def _imgs(d: Path) -> list[Path]:
     return sorted(p for p in d.iterdir() if p.suffix.lower() in IMAGE_EXTS) if d.exists() else []
 
 
-def _widget(v: Any) -> QWidget:
+_ATTN_MODES = ["flex", "flash", "flash4"]
+if sys.platform == "win32":
+    _ATTN_MODES.append("block flash4")
+
+
+def _widget(v: Any, key: str = "") -> QWidget:
+    if key == "attn_mode":
+        w = QComboBox()
+        w.addItems(_ATTN_MODES)
+        idx = w.findText(str(v))
+        if idx >= 0:
+            w.setCurrentIndex(idx)
+        return w
     if isinstance(v, bool):
         w = QCheckBox()
         w.setChecked(v)
@@ -121,6 +133,8 @@ def _widget(v: Any) -> QWidget:
 
 
 def _read(w: QWidget, orig: Any = None) -> Any:
+    if isinstance(w, QComboBox):
+        return w.currentText()
     if isinstance(w, QCheckBox):
         return w.isChecked()
     if isinstance(w, QSpinBox):
@@ -223,9 +237,10 @@ class ConfigTab(QWidget):
         self._w: dict[str, QWidget] = {}
         self._vkeys: set[str] = set()
         self._ds_edit: QPlainTextEdit | None = None
+        self._preprocessed = (ROOT / "post_image_dataset").exists()
         lay = QVBoxLayout(self)
 
-        # Top bar: preset + save + train + stop
+        # Top bar: preset + save + preprocess + train + stop
         top = QHBoxLayout()
         top.addWidget(QLabel(t("preset")))
         self.combo = QComboBox()
@@ -237,11 +252,19 @@ class ConfigTab(QWidget):
         save_btn.clicked.connect(self._save_preset)
         top.addWidget(save_btn)
 
+        self.preprocess_btn = QPushButton(t("preprocess"))
+        self._preprocess_idle_style = "background:#2980b9;color:white;font-weight:bold;padding:4px 16px;"
+        self._preprocess_busy_style = "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        self.preprocess_btn.setStyleSheet(self._preprocess_idle_style)
+        self.preprocess_btn.clicked.connect(self._start_preprocess)
+        top.addWidget(self.preprocess_btn)
+
         self.train_btn = QPushButton(t("train"))
-        self.train_btn.setStyleSheet(
-            "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
-        )
+        self._train_idle_style = "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
+        self._train_busy_style = "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        self.train_btn.setStyleSheet(self._train_idle_style)
         self.train_btn.clicked.connect(self._start_training)
+        self.train_btn.setEnabled(self._preprocessed)
         top.addWidget(self.train_btn)
 
         self.stop_btn = QPushButton(t("stop"))
@@ -307,7 +330,7 @@ class ConfigTab(QWidget):
             box = QGroupBox(gn)
             form = QFormLayout()
             for k in sorted(flds):
-                w = _widget(flds[k])
+                w = _widget(flds[k], key=k)
                 self._w[k] = w
                 lbl = QLabel(k)
                 if k not in self._vkeys:
@@ -322,7 +345,7 @@ class ConfigTab(QWidget):
         if ds_path.exists():
             box = QGroupBox(t("dataset_config"))
             bl = QVBoxLayout()
-            ds_edit = QPlainTextEdit(ds_path.read_text())
+            ds_edit = QPlainTextEdit(ds_path.read_text(encoding="utf-8"))
             ds_edit.setStyleSheet("font-family:monospace;")
             ds_edit.setMaximumHeight(180)
             bl.addWidget(ds_edit)
@@ -373,12 +396,38 @@ class ConfigTab(QWidget):
         except toml.TomlDecodeError as e:
             QMessageBox.warning(self, t("invalid_toml"), str(e))
             return
-        p.write_text(text)
+        p.write_text(text, encoding="utf-8")
         QMessageBox.information(self, t("saved"), t("dataset_saved"))
 
     # ── Training ──
 
+    def _start_preprocess(self):
+        python = sys.executable
+        args = [
+            "scripts/post_images.py",
+            "--src", "image_dataset",
+            "--dst", "post_image_dataset",
+            "--vae", "models/vae/qwen_image_vae.safetensors",
+            "--vae_batch_size", "4",
+            "--vae_chunk_size", "64",
+        ]
+
+        self.log.clear()
+        self._log(f"> python {' '.join(args)}\n")
+        self._running_mode = "preprocess"
+        self._proc.start(python, args)
+        self.preprocess_btn.setText(t("preprocess") + " ...")
+        self.preprocess_btn.setStyleSheet(self._preprocess_busy_style)
+        self.preprocess_btn.setEnabled(False)
+        self.train_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.combo.setEnabled(False)
+
     def _start_training(self):
+        if not self._preprocessed:
+            QMessageBox.warning(self, t("error"), t("preprocess_required"))
+            return
+
         # Auto-save config before training
         p, out = self._build_save_data()
         _save(p, out)
@@ -399,8 +448,12 @@ class ConfigTab(QWidget):
 
         self.log.clear()
         self._log(f"> accelerate {' '.join(args)}\n")
+        self._running_mode = "train"
         self._proc.start(accelerate, args)
+        self.train_btn.setText(t("train") + " ...")
+        self.train_btn.setStyleSheet(self._train_busy_style)
         self.train_btn.setEnabled(False)
+        self.preprocess_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.combo.setEnabled(False)
 
@@ -418,7 +471,15 @@ class ConfigTab(QWidget):
 
     def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
         self._log(f"\n{t('finished', code=exit_code)}\n")
-        self.train_btn.setEnabled(True)
+        mode = getattr(self, "_running_mode", "train")
+        if mode == "preprocess" and exit_code == 0:
+            self._preprocessed = True
+        self.preprocess_btn.setText(t("preprocess"))
+        self.preprocess_btn.setStyleSheet(self._preprocess_idle_style)
+        self.preprocess_btn.setEnabled(True)
+        self.train_btn.setText(t("train"))
+        self.train_btn.setStyleSheet(self._train_idle_style)
+        self.train_btn.setEnabled(self._preprocessed)
         self.stop_btn.setEnabled(False)
         self.combo.setEnabled(True)
 
@@ -562,7 +623,7 @@ class GraftTab(QWidget):
         jp = thumb.path.with_suffix(".json")
         if jp.exists():
             try:
-                m = json.loads(jp.read_text())
+                m = json.loads(jp.read_text(encoding="utf-8"))
                 info += f"  |  seed: {m.get('seed', '?')}"
                 cap = m.get("caption", "")
                 if cap:
@@ -686,7 +747,7 @@ class ImageViewerTab(QWidget):
         if not pm.isNull():
             self.img.set_source(pm)
         cp = p.with_suffix(".txt")
-        self.cap.setPlainText(cp.read_text() if cp.exists() else t("no_caption"))
+        self.cap.setPlainText(cp.read_text(encoding="utf-8") if cp.exists() else t("no_caption"))
 
     def _nav(self, d: int):
         r = self.fl.currentRow() + d
@@ -698,6 +759,11 @@ class ImageViewerTab(QWidget):
 
 
 def _dark(app: QApplication):
+    # Use a font that supports Korean glyphs on Windows
+    font = QFont("Malgun Gothic", 9)
+    font.setStyleHint(QFont.SansSerif)
+    app.setFont(font)
+
     p = QPalette()
     for role, color in [
         (QPalette.Window, QColor(30, 30, 30)),
@@ -724,6 +790,20 @@ def _dark(app: QApplication):
         QPushButton:hover { background: #555; }
         QScrollArea { border: none; }
         QSplitter::handle { background: #444; }
+        QLineEdit, QSpinBox, QComboBox, QPlainTextEdit, QTextEdit, QListWidget {
+            background: #2a2a2a; color: #dcdcdc; border: 1px solid #555; border-radius: 3px;
+            padding: 2px 4px;
+        }
+        QComboBox QAbstractItemView {
+            background: #2a2a2a; color: #dcdcdc; selection-background-color: #3c78c8;
+        }
+        QTabWidget::pane { border: 1px solid #444; }
+        QTabBar::tab {
+            background: #2a2a2a; color: #dcdcdc; border: 1px solid #444;
+            padding: 4px 12px; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px;
+        }
+        QTabBar::tab:selected { background: #1e1e1e; }
+        QTabBar::tab:hover { background: #3a3a3a; }
     """)
 
 

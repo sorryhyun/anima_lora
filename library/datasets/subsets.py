@@ -100,7 +100,6 @@ class ImageInfo:
 
 
 class AugHelper:
-    # albumentationsへの依存をなくしたがとりあえず同じinterfaceを持たせる
 
     def __init__(self):
         pass
@@ -180,8 +179,8 @@ class BaseSubset:
         self.caption_prefix = caption_prefix
         self.caption_suffix = caption_suffix
 
-        self.token_warmup_min = token_warmup_min  # step=0におけるタグの数
-        self.token_warmup_step = token_warmup_step  # N（N<1ならN*max_train_steps）ステップ目でタグの数が最大になる
+        self.token_warmup_min = token_warmup_min
+        self.token_warmup_step = token_warmup_step
 
         self.custom_attributes = (
             custom_attributes if custom_attributes is not None else {}
@@ -230,7 +229,7 @@ class DreamBoothSubset(BaseSubset):
         mask_dir: Optional[str] = None,
     ) -> None:
         assert image_dir is not None, (
-            "image_dir must be specified / image_dirは指定が必須です"
+            "image_dir must be specified"
         )
 
         super().__init__(

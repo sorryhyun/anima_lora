@@ -82,7 +82,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.bucket_info = None  # for metadata
 
         self.current_epoch: int = (
-            0  # インスタンスがepochごとに新しく作られるようなので外側から渡さないとダメ
+            0
         )
 
         self.current_step: int = 0
@@ -137,7 +137,7 @@ class BaseDataset(torch.utils.data.Dataset):
             )
             logger.warning(
                 f"min_bucket_reso is adjusted to be multiple of bucket_reso_steps"
-                f" / min_bucket_resoがbucket_reso_stepsの倍数になるように調整されました: {min_bucket_reso} -> {adjusted_min_bucket_reso}"
+                f""
             )
             min_bucket_reso = adjusted_min_bucket_reso
         if max_bucket_reso % bucket_reso_steps != 0:
@@ -148,15 +148,15 @@ class BaseDataset(torch.utils.data.Dataset):
             )
             logger.warning(
                 f"max_bucket_reso is adjusted to be multiple of bucket_reso_steps"
-                f" / max_bucket_resoがbucket_reso_stepsの倍数になるように調整されました: {max_bucket_reso} -> {adjusted_max_bucket_reso}"
+                f""
             )
             max_bucket_reso = adjusted_max_bucket_reso
 
         assert min(resolution) >= min_bucket_reso, (
-            "min_bucket_reso must be equal or less than resolution / min_bucket_resoは最小解像度より大きくできません。解像度を大きくするかmin_bucket_resoを小さくしてください"
+            "min_bucket_reso must be equal or less than resolution"
         )
         assert max(resolution) <= max_bucket_reso, (
-            "max_bucket_reso must be equal or greater than resolution / max_bucket_resoは最大解像度より小さくできません。解像度を小さくするかmin_bucket_resoを大きくしてください"
+            "max_bucket_reso must be equal or greater than resolution"
         )
 
         return min_bucket_reso, max_bucket_reso
@@ -170,7 +170,7 @@ class BaseDataset(torch.utils.data.Dataset):
     def set_current_epoch(self, epoch):
         if (
             not self.current_epoch == epoch
-        ):  # epochが切り替わったらバケツをシャッフルする
+        ):
             if epoch > self.current_epoch:
                 logger.info(
                     "epoch is incremented. current_epoch: {}, epoch: {}".format(
@@ -217,13 +217,11 @@ class BaseDataset(torch.utils.data.Dataset):
         self.replacements[str_from] = str_to
 
     def process_caption(self, subset: BaseSubset, caption):
-        # caption に prefix/suffix を付ける
         if subset.caption_prefix:
             caption = subset.caption_prefix + " " + caption
         if subset.caption_suffix:
             caption = caption + " " + subset.caption_suffix
 
-        # dropoutの決定：tag dropがこのメソッド内にあるのでここで行うのが良い
         is_drop_out = (
             subset.caption_dropout_rate > 0
             and random.random() < subset.caption_dropout_rate
@@ -311,7 +309,7 @@ class BaseDataset(torch.utils.data.Dataset):
                         fixed_tokens = flex_tokens[: subset.keep_tokens]
                         flex_tokens = tokens[subset.keep_tokens :]
 
-                if subset.token_warmup_step < 1:  # 初回に上書きする
+                if subset.token_warmup_step < 1:
                     subset.token_warmup_step = math.floor(
                         subset.token_warmup_step * self.max_train_steps
                     )
@@ -356,7 +354,6 @@ class BaseDataset(torch.utils.data.Dataset):
                     subset.secondary_separator, subset.caption_separator
                 )
 
-            # textual inversion対応
             for str_from, str_to in self.replacements.items():
                 if str_from == "":
                     # replace all
@@ -431,7 +428,7 @@ class BaseDataset(torch.utils.data.Dataset):
 
     def make_buckets(self, constant_token_buckets: bool = False):
         """
-        bucketingを行わない場合も呼び出し必須（ひとつだけbucketを作る）
+        bucketingbucket
         min_size and max_size are ignored when enable_bucket is False
         """
         logger.info("loading image sizes.")
@@ -444,11 +441,10 @@ class BaseDataset(torch.utils.data.Dataset):
         else:
             logger.info("prepare dataset")
 
-        # bucketを作成し、画像をbucketに振り分ける
         if self.enable_bucket:
             if (
                 self.bucket_manager is None
-            ):  # fine tuningの場合でmetadataに定義がある場合は、すでに初期化済み
+            ):
                 self.bucket_manager = BucketManager(
                     self.bucket_no_upscale,
                     (self.width, self.height),
@@ -460,7 +456,7 @@ class BaseDataset(torch.utils.data.Dataset):
                     self.bucket_manager.make_buckets(constant_token_buckets=constant_token_buckets)
                 else:
                     logger.warning(
-                        "min_bucket_reso and max_bucket_reso are ignored if bucket_no_upscale is set, because bucket reso is defined by image size automatically / bucket_no_upscaleが指定された場合は、bucketの解像度は画像サイズから自動計算されるため、min_bucket_resoとmax_bucket_resoは無視されます"
+                        "min_bucket_reso and max_bucket_reso are ignored if bucket_no_upscale is set, because bucket reso is defined by image size automatically"
                     )
 
             img_ar_errors = []
@@ -479,7 +475,7 @@ class BaseDataset(torch.utils.data.Dataset):
             )
             self.bucket_manager.set_predefined_resos(
                 [(self.width, self.height)]
-            )  # ひとつの固定サイズbucketのみ
+            )
             for image_info in self.image_data.values():
                 image_width, image_height = image_info.image_size
                 image_info.bucket_reso, image_info.resized_size, _ = (
@@ -492,11 +488,10 @@ class BaseDataset(torch.utils.data.Dataset):
                     image_info.bucket_reso, image_info.image_key
                 )
 
-        # bucket情報を表示、格納する
         if self.enable_bucket:
             self.bucket_info = {"buckets": {}}
             logger.info(
-                "number of images (including repeats) / 各bucketの画像枚数（繰り返し回数を含む）"
+                "number of images (including repeats)"
             )
             for i, (reso, bucket) in enumerate(
                 zip(self.bucket_manager.resos, self.bucket_manager.buckets)
@@ -517,7 +512,6 @@ class BaseDataset(torch.utils.data.Dataset):
             self.bucket_info["mean_img_ar_error"] = mean_img_ar_error
             logger.info(f"mean ar error (without repeats): {mean_img_ar_error}")
 
-        # データ参照用indexを作る。このindexはdatasetのshuffleに用いられる
         # Drop incomplete last batches to keep batch dim constant for torch.compile,
         # but only when no subset uses sample_ratio (where every image matters more).
         has_sample_ratio = any(s.sample_ratio < 1.0 for s in self.subsets)
@@ -547,7 +541,7 @@ class BaseDataset(torch.utils.data.Dataset):
             self.bucket_reso_steps is None or self.bucket_reso_steps % min_steps == 0
         ), (
             f"bucket_reso_steps is {self.bucket_reso_steps}. it must be divisible by {min_steps}.\n"
-            + f"bucket_reso_stepsが{self.bucket_reso_steps}です。{min_steps}で割り切れる必要があります"
+            + f"bucket_reso_steps{self.bucket_reso_steps}{min_steps}"
         )
 
     def is_latent_cacheable(self):
@@ -695,7 +689,6 @@ class BaseDataset(torch.utils.data.Dataset):
         is_main_process=True,
         file_suffix=".npz",
     ):
-        # マルチGPUには対応していないので、そちらはtools/cache_latents.pyを使うこと
         logger.info("caching latents.")
 
         image_infos = list(self.image_data.values())
@@ -994,7 +987,6 @@ class BaseDataset(torch.utils.data.Dataset):
 
         return img, face_cx, face_cy, face_w, face_h
 
-    # いい感じに切り出す
     def crop_target(self, subset: BaseSubset, image, face_cx, face_cy, face_w, face_h):
         height, width = image.shape[0:2]
         if height == self.height and width == self.width:
@@ -1139,7 +1131,7 @@ class BaseDataset(torch.utils.data.Dataset):
                         )
                     elif im_h > self.height or im_w > self.width:
                         assert subset.random_crop, (
-                            f"image too large, but cropping and bucketing are disabled / 画像サイズが大きいのでface_crop_aug_rangeかrandom_crop、またはbucketを有効にしてください: {image_info.absolute_path}"
+                            f"image too large, but cropping and bucketing are disabled"
                         )
                         if im_h > self.height:
                             p = random.randint(0, im_h - self.height)
@@ -1150,7 +1142,7 @@ class BaseDataset(torch.utils.data.Dataset):
 
                     im_h, im_w = img.shape[0:2]
                     assert im_h == self.height and im_w == self.width, (
-                        f"image size is small / 画像サイズが小さいようです: {image_info.absolute_path}"
+                        f"image size is small"
                     )
 
                     original_size = [im_w, im_h]
@@ -1459,7 +1451,7 @@ class DreamBoothDataset(BaseDataset):
         )
 
         assert resolution is not None, (
-            "resolution is required / resolution（解像度）指定は必須です"
+            "resolution is required"
         )
 
         self.batch_size = batch_size
@@ -1504,11 +1496,11 @@ class DreamBoothDataset(BaseDataset):
                             lines = f.readlines()
                         except UnicodeDecodeError as e:
                             logger.error(
-                                f"illegal char in file (not UTF-8) / ファイルにUTF-8以外の文字があります: {cap_path}"
+                                f"illegal char in file (not UTF-8)"
                             )
                             raise e
                         assert len(lines) > 0, (
-                            f"caption file is empty / キャプションファイルが空です: {cap_path}"
+                            f"caption file is empty"
                         )
                         if enable_wildcard:
                             caption = "\n".join(
@@ -1528,12 +1520,12 @@ class DreamBoothDataset(BaseDataset):
             use_cached_info_for_subset = subset.cache_info
             if use_cached_info_for_subset:
                 logger.info(
-                    f"using cached image info for this subset / このサブセットで、キャッシュされた画像情報を使います: {info_cache_file}"
+                    f"using cached image info for this subset"
                 )
                 if not os.path.isfile(info_cache_file):
                     logger.warning(
                         "image info file not found. You can ignore this warning if this is the first time to use this subset"
-                        + " / キャッシュファイルが見つかりませんでした。初回実行時はこの警告を無視してください: {metadata_file}"
+                        + ""
                     )
                     use_cached_info_for_subset = False
 
@@ -1638,7 +1630,7 @@ class DreamBoothDataset(BaseDataset):
                     )
                     if cap_for_img is None and subset.class_tokens is None:
                         logger.warning(
-                            f"neither caption file nor class tokens are found. use empty caption for {img_path} / キャプションファイルもclass tokenも見つかりませんでした。空のキャプションを使用します: {img_path}"
+                            f"neither caption file nor class tokens are found. use empty caption for {img_path}"
                         )
                         captions.append("")
                         missing_captions.append(img_path)
@@ -1659,7 +1651,7 @@ class DreamBoothDataset(BaseDataset):
                 )
 
                 logger.warning(
-                    f"No caption file found for {number_of_missing_captions} images. Training will continue without captions for these images. If class token exists, it will be used. / {number_of_missing_captions}枚の画像にキャプションファイルが見つかりませんでした。これらの画像についてはキャプションなしで学習を続行します。class tokenが存在する場合はそれを使います。"
+                    f"No caption file found for {number_of_missing_captions} images. Training will continue without captions for these images. If class token exists, it will be used."
                 )
                 for i, missing_caption in enumerate(missing_captions):
                     if i >= number_of_missing_captions_to_show:
@@ -1672,7 +1664,7 @@ class DreamBoothDataset(BaseDataset):
 
             if not use_cached_info_for_subset and subset.cache_info:
                 logger.info(
-                    f"cache image info for / 画像情報をキャッシュします : {info_cache_file}"
+                    f"cache image info for"
                 )
                 sizes = [
                     self.get_image_size(img_path)
@@ -1684,7 +1676,7 @@ class DreamBoothDataset(BaseDataset):
                 with open(info_cache_file, "w", encoding="utf-8") as f:
                     json.dump(matas, f, ensure_ascii=False, indent=2)
                 logger.info(
-                    f"cache image info done for / 画像情報を出力しました : {info_cache_file}"
+                    f"cache image info done for"
                 )
 
             return img_paths, captions, sizes
@@ -1697,20 +1689,20 @@ class DreamBoothDataset(BaseDataset):
             num_repeats = subset.num_repeats if self.is_training_dataset else 1
             if num_repeats < 1:
                 logger.warning(
-                    f"ignore subset with image_dir='{subset.image_dir}': num_repeats is less than 1 / num_repeatsが1を下回っているためサブセットを無視します: {num_repeats}"
+                    f"ignore subset with image_dir='{subset.image_dir}': num_repeats is less than 1"
                 )
                 continue
 
             if subset in self.subsets:
                 logger.warning(
-                    f"ignore duplicated subset with image_dir='{subset.image_dir}': use the first one / 既にサブセットが登録されているため、重複した後発のサブセットを無視します"
+                    f"ignore duplicated subset with image_dir='{subset.image_dir}': use the first one"
                 )
                 continue
 
             img_paths, captions, sizes = load_dreambooth_dir(subset)
             if len(img_paths) < 1:
                 logger.warning(
-                    f"ignore subset with image_dir='{subset.image_dir}': no images found / 画像が見つからないためサブセットを無視します"
+                    f"ignore subset with image_dir='{subset.image_dir}': no images found"
                 )
                 continue
 
@@ -1756,12 +1748,12 @@ class DreamBoothDataset(BaseDataset):
         logger.info(f"{num_reg_images} reg images with repeats.")
         if num_train_images < num_reg_images:
             logger.warning(
-                "some of reg images are not used / 正則化画像の数が多いので、一部使用されない正則化画像があります"
+                "some of reg images are not used"
             )
 
         if num_reg_images == 0:
             logger.warning(
-                "no regularization images / 正則化画像が見つかりませんでした"
+                "no regularization images"
             )
         else:
             n = 0
@@ -1978,10 +1970,10 @@ def debug_dataset(train_dataset, show_input_ids=False):
     import cv2
 
     logger.info(
-        f"Total dataset length (steps) / データセットの長さ（ステップ数）: {len(train_dataset)}"
+        f"Total dataset length (steps)"
     )
     logger.info(
-        "`S` for next step, `E` for next epoch no. , Escape for exit. / Sキーで次のステップ、Eキーで次のエポック、Escキーで中断、終了します"
+        "`S` for next step, `E` for next epoch no. , Escape for exit."
     )
 
     epoch = 1
@@ -2067,7 +2059,6 @@ def debug_dataset(train_dataset, show_input_ids=False):
         epoch += 1
 
 
-# collate_fn用 epoch,stepはmultiprocessing.Value
 class collator_class:
     def __init__(self, epoch, step, dataset):
         self.current_epoch = epoch

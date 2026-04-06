@@ -56,7 +56,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
             import lion_pytorch
         except ImportError:
             raise ImportError(
-                "No lion_pytorch / lion_pytorch がインストールされていないようです"
+                "No lion_pytorch"
             )
         logger.info(f"use Lion optimizer | {optimizer_kwargs}")
         optimizer_class = lion_pytorch.Lion
@@ -67,7 +67,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
             import bitsandbytes as bnb
         except ImportError:
             raise ImportError(
-                "No bitsandbytes / bitsandbytesがインストールされていないようです"
+                "No bitsandbytes"
             )
 
         if optimizer_type == "AdamW8bit".lower():
@@ -122,7 +122,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
             import bitsandbytes as bnb
         except ImportError:
             raise ImportError(
-                "No bitsandbytes / bitsandbytesがインストールされていないようです"
+                "No bitsandbytes"
             )
         try:
             optimizer_class = bnb.optim.PagedAdamW
@@ -138,7 +138,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
             import bitsandbytes as bnb
         except ImportError:
             raise ImportError(
-                "No bitsandbytes / bitsandbytesがインストールされていないようです"
+                "No bitsandbytes"
             )
         try:
             optimizer_class = bnb.optim.PagedAdamW32bit
@@ -188,7 +188,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
                 import dadaptation.experimental as experimental
             except ImportError:
                 raise ImportError(
-                    "No dadaptation / dadaptation がインストールされていないようです"
+                    "No dadaptation"
                 )
 
             if (
@@ -226,7 +226,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
                 import prodigyopt
             except ImportError:
                 raise ImportError(
-                    "No Prodigy / Prodigy がインストールされていないようです"
+                    "No Prodigy"
                 )
 
             logger.info(f"use Prodigy optimizer | {optimizer_kwargs}")
@@ -290,7 +290,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
             import schedulefree as sf
         except ImportError:
             raise ImportError(
-                "No schedulefree / schedulefreeがインストールされていないようです"
+                "No schedulefree"
             )
 
         if optimizer_type == "RAdamScheduleFree".lower():

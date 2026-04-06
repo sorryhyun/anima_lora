@@ -29,18 +29,18 @@ def add_logging_arguments(parser):
         type=str,
         default=None,
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="Set the logging level, default is INFO / ログレベルを設定する。デフォルトはINFO",
+        help="Set the logging level, default is INFO",
     )
     parser.add_argument(
         "--console_log_file",
         type=str,
         default=None,
-        help="Log to a file instead of stderr / 標準エラー出力ではなくファイルにログを出力する",
+        help="Log to a file instead of stderr",
     )
     parser.add_argument(
         "--console_log_simple",
         action="store_true",
-        help="Simple log output / シンプルなログ出力",
+        help="Simple log output",
     )
 
 
@@ -426,7 +426,7 @@ class GradualLatent:
             x, size=resized_size, mode="bicubic", align_corners=False
         ).to(dtype=org_dtype)
 
-        # apply unsharp mask / アンシャープマスクを適用する
+        # apply unsharp mask
         if unsharp and self.gaussian_blur_ksize:
             x = self.apply_unshark_mask(x)
 

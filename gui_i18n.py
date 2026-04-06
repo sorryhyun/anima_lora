@@ -25,6 +25,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "invalid_toml": "Invalid TOML",
         "error": "Error",
         "accelerate_not_found": "accelerate not found on PATH",
+        "preprocess": "Preprocess",
+        "preprocess_required": "Please run Preprocess before training.",
         "finished": "--- Finished (exit code {code}) ---",
 
         # GraftTab
@@ -72,6 +74,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "invalid_toml": "\uc798\ubabb\ub41c TOML",
         "error": "\uc624\ub958",
         "accelerate_not_found": "PATH\uc5d0\uc11c accelerate\ub97c \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4",
+        "preprocess": "\uc804\ucc98\ub9ac",
+        "preprocess_required": "\ud559\uc2b5 \uc804\uc5d0 \uc804\ucc98\ub9ac\ub97c \uba3c\uc800 \uc2e4\ud589\ud574\uc8fc\uc138\uc694.",
         "finished": "--- \uc644\ub8cc (\uc885\ub8cc \ucf54\ub4dc {code}) ---",
 
         # GraftTab
@@ -118,7 +122,7 @@ def load_language() -> str:
     p = _settings_path()
     if p.exists():
         try:
-            _current_lang = json.loads(p.read_text()).get("language", "en")
+            _current_lang = json.loads(p.read_text(encoding="utf-8")).get("language", "en")
         except (json.JSONDecodeError, OSError):
             _current_lang = "en"
     return _current_lang
@@ -133,11 +137,11 @@ def save_language(lang: str):
     settings = {}
     if p.exists():
         try:
-            settings = json.loads(p.read_text())
+            settings = json.loads(p.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             pass
     settings["language"] = lang
-    p.write_text(json.dumps(settings))
+    p.write_text(json.dumps(settings), encoding="utf-8")
 
 
 def set_language(lang: str):

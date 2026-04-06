@@ -180,7 +180,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         ],  # "sdpa" is for backward compatibility
         default=None,
         help="Attention implementation to use. Default is None (torch). xformers requires --split_attn. sageattn does not support training (inference only). This option overrides --xformers or --sdpa."
-        " / 使用するAttentionの実装。デフォルトはNone（torch）です。xformersは--split_attnの指定が必要です。sageattnはトレーニングをサポートしていません（推論のみ）。このオプションは--xformersまたは--sdpaを上書きします。",
+        "",
     )
     parser.add_argument(
         "--trim_crossattn_kv",
@@ -199,7 +199,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--split_attn",
         action="store_true",
-        help="split attention computation to reduce memory usage / メモリ使用量を減らすためにattention時にバッチを分割する",
+        help="split attention computation to reduce memory usage",
     )
     parser.add_argument(
         "--attn_softmax_scale",
@@ -213,13 +213,13 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         type=int,
         default=None,
         help="Spatial chunk size for VAE encoding/decoding to reduce memory usage. Must be even number. If not specified, chunking is disabled (official behavior)."
-        + " / メモリ使用量を減らすためのVAEエンコード/デコードの空間チャンクサイズ。偶数である必要があります。未指定の場合、チャンク処理は無効になります（公式の動作）。",
+        + "",
     )
     parser.add_argument(
         "--vae_disable_cache",
         action="store_true",
         help="Disable internal VAE caching mechanism to reduce memory usage. Encoding / decoding will also be faster, but this differs from official behavior."
-        + " / VAEのメモリ使用量を減らすために内部のキャッシュ機構を無効にします。エンコード/デコードも速くなりますが、公式の動作とは異なります。",
+        + "",
     )
 
     # EMA arguments

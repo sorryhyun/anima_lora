@@ -60,13 +60,13 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="Spatial chunk size for VAE encoding/decoding to reduce memory usage. Must be even number. If not specified, chunking is disabled (official behavior)."
-        + " / メモリ使用量を減らすためのVAEエンコード/デコードの空間チャンクサイズ。偶数である必要があります。未指定の場合、チャンク処理は無効になります（公式の動作）。",
+        + "",
     )
     parser.add_argument(
         "--vae_disable_cache",
         action="store_true",
         help="Disable internal VAE caching mechanism to reduce memory usage. Encoding / decoding will also be faster, but this differs from official behavior."
-        + " / VAEのメモリ使用量を減らすために内部のキャッシュ機構を無効にします。エンコード/デコードも速くなりますが、公式の動作とは異なります。",
+        + "",
     )
     parser.add_argument(
         "--text_encoder",

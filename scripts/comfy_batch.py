@@ -94,7 +94,7 @@ def main():
                 if "seed" in node.get("inputs", {}):
                     node["inputs"]["seed"] = random.randint(0, 2**53)
 
-        print(f"[{i}/{len(pairs)}] {artist} × {chara} ... ", end="", flush=True)
+        print(f"[{i}/{len(pairs)}] {artist} x {chara} ... ", end="", flush=True)
         try:
             result = queue_prompt(wf, server)
             prompt_id = result["prompt_id"]
