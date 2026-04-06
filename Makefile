@@ -1,7 +1,23 @@
 LORA_DIR := ../comfy/ComfyUI/models/loras
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora postfix prefix sync step test test-prefix test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit comfy-batch gui
+.PHONY: lora lora-low-vram dora tdora tlora postfix prefix sync step test test-prefix test-postfix test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit
+
+TEST_COMMON = python inference.py \
+	--dit models/diffusion_models/anima-preview2.safetensors \
+	--text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
+	--vae models/vae/qwen_image_vae.safetensors \
+	--vae_chunk_size 64 --vae_disable_cache \
+	--attn_mode flash \
+	--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
+	--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
+	--image_size 1024 1024 \
+	--infer_steps 30 \
+	--flow_shift 1.0 \
+	--sampler er_sde \
+	--guidance_scale 4.0 \
+	--seed 42 \
+	--save_path test_output
 
 gui:
 	python gui.py
@@ -38,60 +54,22 @@ sync:
 	python -c "import shutil, glob, os; d='$(LORA_DIR)'; os.makedirs(d,exist_ok=True); [shutil.copy2(f,d) for f in glob.glob('output/*.safetensors')]"
 
 test:
-	python inference.py \
-		--dit models/diffusion_models/anima-preview2.safetensors \
-		--text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
-		--vae models/vae/qwen_image_vae.safetensors \
-		--vae_chunk_size 64 --vae_disable_cache \
-		--attn_mode flash \
+	$(TEST_COMMON) \
 		--lora_weight $(LATEST_LORA) \
-		--lora_multiplier 1.0 \
-		--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
-		--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
-		--image_size 1024 1024 \
-		--infer_steps 30 \
-		--flow_shift 1.0 \
-		--sampler er_sde \
-		--guidance_scale 4.0 \
-		--seed 42 \
-		--save_path test_output
+		--lora_multiplier 1.0
 
 test-prefix:
-	python inference.py \
-		--dit models/diffusion_models/anima-preview2.safetensors \
-		--text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
-		--vae models/vae/qwen_image_vae.safetensors \
-		--vae_chunk_size 64 --vae_disable_cache \
-		--attn_mode flash \
-		--prefix_weight $(LATEST_LORA) \
-		--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
-		--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
-		--image_size 1024 1024 \
-		--infer_steps 30 \
-		--flow_shift 1.0 \
-		--sampler er_sde \
-		--guidance_scale 4.0 \
-		--seed 42 \
-		--save_path test_output
+	$(TEST_COMMON) \
+		--prefix_weight $(LATEST_LORA)
+
+test-postfix:
+	$(TEST_COMMON) \
+		--postfix_weight $(LATEST_LORA)
 
 test-spectrum:
-	python inference.py \
-		--dit models/diffusion_models/anima-preview2.safetensors \
-		--text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
-		--vae models/vae/qwen_image_vae.safetensors \
-		--vae_chunk_size 64 --vae_disable_cache \
-		--attn_mode flash \
+	$(TEST_COMMON) \
 		--lora_weight $(LATEST_LORA) \
 		--lora_multiplier 1.0 \
-		--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
-		--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
-		--image_size 1024 1024 \
-		--infer_steps 30 \
-		--flow_shift 1.0 \
-		--sampler er_sde \
-		--guidance_scale 4.0 \
-		--seed 42 \
-		--save_path test_output \
 		--spectrum \
 		--spectrum_window_size 2.0 \
 		--spectrum_flex_window 0.25 \

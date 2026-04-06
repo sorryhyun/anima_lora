@@ -94,6 +94,12 @@ def parse_args() -> argparse.Namespace:
         help="Prefix tuning weight path (postfix_anima prefix mode .safetensors)",
     )
     parser.add_argument(
+        "--postfix_weight",
+        type=str,
+        default=None,
+        help="Postfix tuning weight path (postfix_anima postfix mode .safetensors)",
+    )
+    parser.add_argument(
         "--include_patterns",
         type=str,
         nargs="*",

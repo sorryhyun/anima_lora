@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-anima-prefix-postfix"
+description = "Anima prefix/postfix conditioning: prepend or append learned vectors to T5-compatible embeddings for improved generation quality."
+version = "1.0.0"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/sorryhyun/anima_lora/tree/main/custom_nodes/comfyui-anima-prefix-postfix"
+
+[tool.comfy]
+PublisherId = "sorryhyun"
+DisplayName = "Anima Prefix/Postfix"
+Icon = ""

@@ -509,7 +509,7 @@ class AnimaTrainer:
             t5_attn_mask = t5_attn_mask.to(accelerator.device)
         else:
             crossattn_emb = crossattn_emb.to(accelerator.device, dtype=weight_dtype)
-            if args.trim_crossattn_kv:
+            if args.trim_crossattn_kv or hasattr(network, "append_postfix"):
                 t5_attn_mask = t5_attn_mask.to(accelerator.device)
 
         # Create padding mask
@@ -589,14 +589,16 @@ class AnimaTrainer:
                 )
             else:
                 # crossattn_emb is already in target (T5-compatible) space
-                # Prefix mode: prepend learned vectors before DiT forward
+                # Prefix/postfix mode: inject learned vectors before DiT forward
                 if getattr(network, "mode", None) == "prefix":
                     crossattn_emb = network.prepend_prefix(crossattn_emb)
+                elif hasattr(network, "append_postfix"):
+                    seqlens = t5_attn_mask.sum(dim=-1).to(torch.int32)
+                    crossattn_emb = network.append_postfix(crossattn_emb, seqlens)
                 kw = {}
                 if args.trim_crossattn_kv:
                     kw["crossattn_seqlens"] = t5_attn_mask.sum(dim=-1).to(torch.int32)
-                    if getattr(network, "mode", None) == "prefix":
-                        # Shift seqlens to account for prepended prefix tokens
+                    if getattr(network, "mode", None) == "prefix" or hasattr(network, "append_postfix"):
                         kw["crossattn_seqlens"] = kw["crossattn_seqlens"] + network.num_postfix_tokens
                 model_pred = anima(
                     noisy_model_input,

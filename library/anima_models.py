@@ -18,7 +18,7 @@ from networks import attention
 
 # KV length buckets for cross-attention trimming. Captions trimmed to the smallest
 # bucket >= max(real_token_lengths). Keeps torch.compile shapes stable (max 4 variants).
-_KV_BUCKETS = (64, 128, 256, 512)
+_KV_BUCKETS = (128, 192, 256, 512)
 
 
 class _FP8LinearFunc(torch.autograd.Function):

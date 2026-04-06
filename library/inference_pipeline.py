@@ -509,6 +509,24 @@ def generate_body_tiled(
         negative_embed = prefix_net.prepend_prefix(negative_embed)
         logger.info(f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}")
 
+    # Postfix tuning: append learned vectors after real text tokens
+    postfix_weight = getattr(args, "postfix_weight", None)
+    if postfix_weight is not None:
+        from networks.postfix_anima import create_network_from_weights
+
+        postfix_net, postfix_sd = create_network_from_weights(
+            multiplier=1.0, file=postfix_weight, ae=None, text_encoders=None, unet=None
+        )
+        postfix_net.load_weights(postfix_weight)
+        postfix_net.to(device, dtype=torch.bfloat16)
+        embed_mask = context["embed"][3].to(device)
+        embed_seqlens = embed_mask.sum(dim=-1).to(torch.int32)
+        embed = postfix_net.append_postfix(embed, embed_seqlens)
+        neg_mask = context_null["embed"][3].to(device)
+        neg_seqlens = neg_mask.sum(dim=-1).to(torch.int32)
+        negative_embed = postfix_net.append_postfix(negative_embed, neg_seqlens)
+        logger.info(f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text")
+
     num_channels_latents = anima_models.Anima.LATENT_CHANNELS
     h_latent = height // 8
     w_latent = width // 8
@@ -711,6 +729,25 @@ def generate_body(
         embed = prefix_net.prepend_prefix(embed)
         negative_embed = prefix_net.prepend_prefix(negative_embed)
         logger.info(f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}")
+
+    # Postfix tuning: append learned vectors after real text tokens
+    postfix_weight = getattr(args, "postfix_weight", None)
+    if postfix_weight is not None:
+        from networks.postfix_anima import create_network_from_weights
+
+        postfix_net, postfix_sd = create_network_from_weights(
+            multiplier=1.0, file=postfix_weight, ae=None, text_encoders=None, unet=None
+        )
+        postfix_net.load_weights(postfix_weight)
+        postfix_net.to(device, dtype=torch.bfloat16)
+        # Compute seqlens from attention masks
+        embed_mask = context["embed"][3].to(device)
+        embed_seqlens = embed_mask.sum(dim=-1).to(torch.int32)
+        embed = postfix_net.append_postfix(embed, embed_seqlens)
+        neg_mask = context_null["embed"][3].to(device)
+        neg_seqlens = neg_mask.sum(dim=-1).to(torch.int32)
+        negative_embed = postfix_net.append_postfix(negative_embed, neg_seqlens)
+        logger.info(f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text")
 
     # Prepare latent variables
     num_channels_latents = anima_models.Anima.LATENT_CHANNELS
