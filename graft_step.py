@@ -11,6 +11,7 @@ Each `make step` invocation:
 
 import json
 import os
+import platform
 import random
 import shutil
 import subprocess
@@ -118,13 +119,22 @@ def build_holdout(config):
     return holdout_stems, holdout_captions
 
 
-def build_train_symlinks(holdout_stems):
-    """Recreate graft/train_images/ with symlinks to image_dataset/ minus held-out.
+def _link_or_copy(src: Path, dst: Path):
+    """Create a symlink on Unix, or copy on Windows (where symlinks need admin)."""
+    if platform.system() == "Windows":
+        shutil.copy2(src, dst)
+    else:
+        dst.symlink_to(src.resolve())
 
-    Also symlinks latent cache .npz files so training doesn't re-encode.
+
+def build_train_symlinks(holdout_stems):
+    """Recreate graft/train_images/ with links to image_dataset/ minus held-out.
+
+    Also links latent cache .npz files so training doesn't re-encode.
     Cache files are named {stem}_{HHHHxWWWW}_anima.npz.
+    Uses symlinks on Unix, copies on Windows.
     """
-    # Clean previous symlinks
+    # Clean previous links
     if TRAIN_IMAGES.exists():
         shutil.rmtree(TRAIN_IMAGES)
     TRAIN_IMAGES.mkdir(parents=True)
@@ -143,17 +153,14 @@ def build_train_symlinks(holdout_stems):
                 cache_stem = parts[0]
             if cache_stem in holdout_set:
                 continue
-            link = TRAIN_IMAGES / p.name
-            link.symlink_to(p.resolve())
+            _link_or_copy(p, TRAIN_IMAGES / p.name)
             continue
 
         stem = p.stem
         # Skip held-out images and their captions
         if stem in holdout_set:
             continue
-        # Create symlink
-        link = TRAIN_IMAGES / p.name
-        link.symlink_to(p.resolve())
+        _link_or_copy(p, TRAIN_IMAGES / p.name)
         if p.suffix.lower() in IMAGE_EXTENSIONS:
             count += 1
 

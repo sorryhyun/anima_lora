@@ -17,9 +17,12 @@ make preprocess            # VAE-compatible resizing & validation
 
 ## Commands
 
+Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The examples below show both forms.
+
 ```bash
 # Training (run from anima_lora/)
 make lora                  # Standard LoRA (configs/example_lora.toml)
+python tasks.py lora       # Same, works on Windows too
 make dora                  # DoRA (configs/training_config_dora.toml + use_dora=true)
 make tlora                 # T-LoRA: OrthoLoRA + timestep masking (configs/training_config.toml)
 make tdora                 # DoRA + timestep masking (configs/training_config_doratimestep.toml)
@@ -48,6 +51,8 @@ ruff check . --fix && ruff format .
 ```
 
 All training invocations use `accelerate launch --mixed_precision bf16`. Override any config value from CLI: `--network_dim 32 --max_train_epochs 64`.
+
+On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra args are forwarded: `python tasks.py lora --network_dim 32`.
 
 ## Key entry points
 

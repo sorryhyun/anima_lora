@@ -11,8 +11,6 @@ dependencies = [
     "transformers>=5.3.0",
     "diffusers>=0.37.0",
     "einops>=0.7.0",
-    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl",
-    "flash-attn-4 @ git+https://github.com/sorryhyun/flash-attention-sm120-fix.git@dz/sm120_tma_optimized#subdirectory=flash_attn/cute",
     # Optimizers
     "bitsandbytes",
     "lion-pytorch>=0.2.3",
@@ -42,12 +40,15 @@ dependencies = [
     "albumentations>=1.4.0",
     "packaging",
     "pycocotools>=2.0.11",
+    # Linux-only CUDA extensions
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
+    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
+    "flash-attn-4 @ git+https://github.com/sorryhyun/flash-attention-sm120-fix.git@dz/sm120_tma_optimized#subdirectory=flash_attn/cute ; sys_platform == 'linux'",
 ]
 
 [tool.uv]
 extra-index-url = ["https://download.pytorch.org/whl/cu130"]
 index-strategy = "unsafe-best-match"
-environments = ["sys_platform == 'linux'"]
 
 [tool.setuptools]
 packages = []
