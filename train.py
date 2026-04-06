@@ -890,7 +890,20 @@ class AnimaTrainer:
 
         loss = self.post_process_loss(loss, args, timesteps, noise_scheduler)
 
-        return loss.mean()
+        scalar_loss = loss.mean()
+
+        # Multiscale loss: additional MSE term at 2x-downsampled resolution
+        if getattr(args, "multiscale_loss_weight", 0):
+            ms_weight = args.multiscale_loss_weight
+            h, w = noise_pred.shape[-2:]
+            side_length = math.sqrt(h * w) * 8  # approximate pixel-space side
+            if side_length >= 1024 * 0.9 and h >= 2 and w >= 2:
+                pred_ds = torch.nn.functional.avg_pool2d(noise_pred.float(), 2)
+                target_ds = torch.nn.functional.avg_pool2d(target.float(), 2)
+                ms_loss = torch.nn.functional.mse_loss(pred_ds, target_ds)
+                scalar_loss = (scalar_loss + ms_loss * ms_weight) / (1.0 + ms_weight)
+
+        return scalar_loss
 
     # endregion
 
@@ -1727,6 +1740,8 @@ class AnimaTrainer:
             "ss_huber_schedule": args.huber_schedule,
             "ss_huber_scale": args.huber_scale,
             "ss_huber_c": args.huber_c,
+            "ss_pseudo_huber_c": args.pseudo_huber_c,
+            "ss_multiscale_loss_weight": args.multiscale_loss_weight,
             "ss_fp8_base": bool(args.fp8_base),
             "ss_fp8_base_unet": bool(args.fp8_base_unet),
             "ss_validation_seed": args.validation_seed,

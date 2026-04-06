@@ -1,0 +1,331 @@
+"""ConfigTab — training config editor with field tooltips and LoRA variant guide."""
+
+from __future__ import annotations
+
+import shutil
+import sys
+from typing import Any
+
+import toml
+from PySide6.QtCore import QProcess, Qt
+from PySide6.QtGui import QTextCursor
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
+
+from gui import (
+    CONFIGS_DIR,
+    PRESETS,
+    ROOT,
+    _GROUPS,
+    _K2G,
+    _LOCKED_PERFORMANCE,
+    _SKIP,
+    _load,
+    _merged,
+    _read,
+    _save,
+    _widget,
+)
+from gui.explanations import field_help, lora_guide
+from gui.i18n import t
+
+
+class ConfigTab(QWidget):
+    def __init__(self):
+        super().__init__()
+        self._w: dict[str, QWidget] = {}
+        self._vkeys: set[str] = set()
+        self._ds_edit: QPlainTextEdit | None = None
+        self._preprocessed = (ROOT / "post_image_dataset").exists()
+        lay = QVBoxLayout(self)
+
+        # Top bar: preset + save + preprocess + train + stop
+        top = QHBoxLayout()
+        top.addWidget(QLabel(t("preset")))
+        self.combo = QComboBox()
+        self.combo.addItems(PRESETS)
+        self.combo.currentTextChanged.connect(self._load_preset)
+        top.addWidget(self.combo, 1)
+
+        save_btn = QPushButton(t("save"))
+        save_btn.clicked.connect(self._save_preset)
+        top.addWidget(save_btn)
+
+        self.preprocess_btn = QPushButton(t("preprocess"))
+        self._preprocess_idle_style = "background:#2980b9;color:white;font-weight:bold;padding:4px 16px;"
+        self._preprocess_busy_style = "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        self.preprocess_btn.setStyleSheet(self._preprocess_idle_style)
+        self.preprocess_btn.clicked.connect(self._start_preprocess)
+        top.addWidget(self.preprocess_btn)
+
+        self.train_btn = QPushButton(t("train"))
+        self._train_idle_style = "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
+        self._train_busy_style = "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        self.train_btn.setStyleSheet(self._train_idle_style)
+        self.train_btn.clicked.connect(self._start_training)
+        self.train_btn.setEnabled(self._preprocessed)
+        top.addWidget(self.train_btn)
+
+        self.stop_btn = QPushButton(t("stop"))
+        self.stop_btn.setStyleSheet(
+            "background:#c0392b;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        self.stop_btn.clicked.connect(self._stop_training)
+        self.stop_btn.setEnabled(False)
+        top.addWidget(self.stop_btn)
+
+        lay.addLayout(top)
+
+        # Vertical splitter: config form on top, log on bottom
+        vsplit = QSplitter(Qt.Vertical)
+
+        sc = QScrollArea()
+        sc.setWidgetResizable(True)
+        self._form = QWidget()
+        self._fl = QVBoxLayout(self._form)
+        sc.setWidget(self._form)
+        vsplit.addWidget(sc)
+
+        self.log = QPlainTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setStyleSheet("font-family:monospace;font-size:11px;")
+        self.log.setPlaceholderText(t("log_placeholder"))
+        vsplit.addWidget(self.log)
+
+        vsplit.setSizes([500, 200])
+        lay.addWidget(vsplit)
+
+        # QProcess for training
+        self._proc = QProcess(self)
+        self._proc.setWorkingDirectory(str(ROOT))
+        self._proc.readyReadStandardOutput.connect(self._read_stdout)
+        self._proc.readyReadStandardError.connect(self._read_stderr)
+        self._proc.finished.connect(self._on_finished)
+
+        self._load_preset(self.combo.currentText())
+
+    def _load_preset(self, name: str):
+        f = PRESETS[name]
+        var = _load(CONFIGS_DIR / f)
+        self._vkeys = set(var) - _SKIP
+        cfg = {k: v for k, v in _merged(f).items() if k not in _SKIP}
+
+        self._w.clear()
+        self._ds_edit = None
+        while self._fl.count():
+            it = self._fl.takeAt(0)
+            if it.widget():
+                it.widget().deleteLater()
+
+        # LoRA variant guide (collapsible)
+        guide_box = QGroupBox(t("lora_variants"))
+        guide_box.setCheckable(True)
+        guide_box.setChecked(False)
+        guide_lay = QVBoxLayout()
+        guide_label = QLabel(lora_guide())
+        guide_label.setWordWrap(True)
+        guide_label.setTextFormat(Qt.RichText)
+        guide_label.setStyleSheet("font-size: 12px; padding: 4px;")
+        guide_lay.addWidget(guide_label)
+        guide_box.setLayout(guide_lay)
+        self._fl.addWidget(guide_box)
+
+        # Grouped training config fields
+        groups: dict[str, dict] = {g: {} for g in _GROUPS}
+        groups["Other"] = {}
+        for k, v in cfg.items():
+            groups.setdefault(_K2G.get(k, "Other"), {})[k] = v
+
+        lock_perf = name in _LOCKED_PERFORMANCE
+
+        for gn, flds in groups.items():
+            if not flds:
+                continue
+            locked = lock_perf and gn == "Performance"
+            box = QGroupBox(gn)
+            if locked:
+                box.setToolTip(t("locked_by_preset"))
+            form = QFormLayout()
+            for k in sorted(flds):
+                w = _widget(flds[k], key=k)
+                if locked:
+                    w.setEnabled(False)
+                self._w[k] = w
+                lbl = QLabel(k)
+
+                # Field tooltip from explanations
+                help_text = field_help(k)
+                if locked:
+                    lbl.setStyleSheet("color:#666;")
+                    if help_text:
+                        lbl.setToolTip(help_text)
+                elif k not in self._vkeys:
+                    lbl.setStyleSheet("color:#888; text-decoration: underline dotted;" if help_text else "color:#888;")
+                    lbl.setToolTip(f"{help_text}\n\n({t('from_base')})" if help_text else t("from_base"))
+                elif help_text:
+                    lbl.setStyleSheet("text-decoration: underline dotted;")
+                    lbl.setToolTip(help_text)
+
+                form.addRow(lbl, w)
+            box.setLayout(form)
+            self._fl.addWidget(box)
+
+        # Dataset config (raw TOML editor)
+        ds_path = CONFIGS_DIR / "dataset_config.toml"
+        if ds_path.exists():
+            box = QGroupBox(t("dataset_config"))
+            bl = QVBoxLayout()
+            ds_edit = QPlainTextEdit(ds_path.read_text(encoding="utf-8"))
+            ds_edit.setStyleSheet("font-family:monospace;")
+            ds_edit.setMaximumHeight(180)
+            bl.addWidget(ds_edit)
+            self._ds_edit = ds_edit
+            dsb = QPushButton(t("save_dataset_config"))
+            dsb.clicked.connect(self._save_ds)
+            bl.addWidget(dsb)
+            box.setLayout(bl)
+            self._fl.addWidget(box)
+
+        self._fl.addStretch()
+
+    # ── Save ──
+
+    def _build_save_data(self) -> tuple:
+        f = PRESETS[self.combo.currentText()]
+        p = CONFIGS_DIR / f
+        orig = _load(p)
+        bf = orig.get("base_config")
+        base = _load(CONFIGS_DIR / bf) if bf else {}
+        merged = {**base, **orig}
+
+        out: dict[str, Any] = {}
+        if bf:
+            out["base_config"] = bf
+        ds = orig.get("dataset_config")
+        if ds:
+            out["dataset_config"] = ds
+
+        for k, w in self._w.items():
+            v = _read(w, merged.get(k))
+            if k in self._vkeys or (k in base and base[k] != v):
+                out[k] = v
+        return p, out
+
+    def _save_preset(self):
+        p, out = self._build_save_data()
+        _save(p, out)
+        QMessageBox.information(self, t("saved"), t("saved_file", name=p.name))
+
+    def _save_ds(self):
+        if not self._ds_edit:
+            return
+        p = CONFIGS_DIR / "dataset_config.toml"
+        text = self._ds_edit.toPlainText()
+        try:
+            toml.loads(text)
+        except toml.TomlDecodeError as e:
+            QMessageBox.warning(self, t("invalid_toml"), str(e))
+            return
+        p.write_text(text, encoding="utf-8")
+        QMessageBox.information(self, t("saved"), t("dataset_saved"))
+
+    # ── Training ──
+
+    def _start_preprocess(self):
+        python = sys.executable
+        args = [
+            "scripts/post_images.py",
+            "--src", "image_dataset",
+            "--dst", "post_image_dataset",
+            "--vae", "models/vae/qwen_image_vae.safetensors",
+            "--vae_batch_size", "4",
+            "--vae_chunk_size", "64",
+        ]
+
+        self.log.clear()
+        self._log(f"> python {' '.join(args)}\n")
+        self._running_mode = "preprocess"
+        self._proc.start(python, args)
+        self.preprocess_btn.setText(t("preprocess") + " ...")
+        self.preprocess_btn.setStyleSheet(self._preprocess_busy_style)
+        self.preprocess_btn.setEnabled(False)
+        self.train_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.combo.setEnabled(False)
+
+    def _start_training(self):
+        if not self._preprocessed:
+            QMessageBox.warning(self, t("error"), t("preprocess_required"))
+            return
+
+        # Auto-save config before training
+        p, out = self._build_save_data()
+        _save(p, out)
+
+        accelerate = shutil.which("accelerate")
+        if not accelerate:
+            QMessageBox.warning(self, t("error"), t("accelerate_not_found"))
+            return
+
+        f = PRESETS[self.combo.currentText()]
+        args = [
+            "launch",
+            "--num_cpu_threads_per_process", "3",
+            "--mixed_precision", "bf16",
+            "train.py",
+            "--config_file", f"configs/{f}",
+        ]
+
+        self.log.clear()
+        self._log(f"> accelerate {' '.join(args)}\n")
+        self._running_mode = "train"
+        self._proc.start(accelerate, args)
+        self.train_btn.setText(t("train") + " ...")
+        self.train_btn.setStyleSheet(self._train_busy_style)
+        self.train_btn.setEnabled(False)
+        self.preprocess_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.combo.setEnabled(False)
+
+    def _stop_training(self):
+        if self._proc.state() != QProcess.NotRunning:
+            self._proc.kill()
+
+    def _read_stdout(self):
+        data = self._proc.readAllStandardOutput().data().decode(errors="replace")
+        self._log(data)
+
+    def _read_stderr(self):
+        data = self._proc.readAllStandardError().data().decode(errors="replace")
+        self._log(data)
+
+    def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
+        self._log(f"\n{t('finished', code=exit_code)}\n")
+        mode = getattr(self, "_running_mode", "train")
+        if mode == "preprocess" and exit_code == 0:
+            self._preprocessed = True
+        self.preprocess_btn.setText(t("preprocess"))
+        self.preprocess_btn.setStyleSheet(self._preprocess_idle_style)
+        self.preprocess_btn.setEnabled(True)
+        self.train_btn.setText(t("train"))
+        self.train_btn.setStyleSheet(self._train_idle_style)
+        self.train_btn.setEnabled(self._preprocessed)
+        self.stop_btn.setEnabled(False)
+        self.combo.setEnabled(True)
+
+    def _log(self, text: str):
+        self.log.moveCursor(QTextCursor.End)
+        self.log.insertPlainText(text)
+        self.log.moveCursor(QTextCursor.End)

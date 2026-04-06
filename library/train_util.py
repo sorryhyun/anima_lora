@@ -960,8 +960,8 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--loss_type",
         type=str,
         default="l2",
-        choices=["l1", "l2", "huber", "smooth_l1"],
-        help="The type of loss function to use (L1, L2, Huber, or smooth L1), default is L2",
+        choices=["l1", "l2", "huber", "smooth_l1", "pseudo_huber"],
+        help="The type of loss function to use (L1, L2, Huber, smooth L1, or pseudo-Huber), default is L2",
     )
     parser.add_argument(
         "--huber_schedule",
@@ -981,6 +981,18 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         type=float,
         default=1.0,
         help="The Huber loss scale parameter. default is 1.0",
+    )
+    parser.add_argument(
+        "--pseudo_huber_c",
+        type=float,
+        default=0.03,
+        help="Pseudo-Huber loss parameter c. Small c -> L1-like, large c -> MSE-like. default is 0.03",
+    )
+    parser.add_argument(
+        "--multiscale_loss_weight",
+        type=float,
+        default=0,
+        help="Weight for 2x-downsampled multiscale loss term. 0 = disabled. default is 0",
     )
     parser.add_argument(
         "--lowram", action="store_true", help="enable low RAM optimization."
@@ -1769,6 +1781,9 @@ def get_timesteps(
 def get_huber_threshold_if_needed(
     args, timesteps: torch.Tensor, noise_scheduler
 ) -> Optional[torch.Tensor]:
+    if args.loss_type == "pseudo_huber":
+        b_size = timesteps.shape[0]
+        return torch.full((b_size,), args.pseudo_huber_c, device=timesteps.device)
     if not (args.loss_type == "huber" or args.loss_type == "smooth_l1"):
         return None
 
@@ -1826,6 +1841,15 @@ def conditional_loss(
             raise NotImplementedError("huber_c not implemented correctly")
         huber_c = huber_c.view(-1, *([1] * (model_pred.ndim - 1)))
         loss = 2 * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
+        if reduction == "mean":
+            loss = torch.mean(loss)
+        elif reduction == "sum":
+            loss = torch.sum(loss)
+    elif loss_type == "pseudo_huber":
+        if huber_c is None:
+            raise ValueError("pseudo_huber_c is required for pseudo_huber loss")
+        huber_c = huber_c.view(-1, *([1] * (model_pred.ndim - 1)))
+        loss = torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c
         if reduction == "mean":
             loss = torch.mean(loss)
         elif reduction == "sum":
