@@ -36,6 +36,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui_i18n import t, load_language, save_language, available_languages, current_language
+
 ROOT = Path(__file__).resolve().parent
 CONFIGS_DIR = ROOT / "configs"
 GRAFT_DIR = ROOT / "graft"
@@ -225,24 +227,24 @@ class ConfigTab(QWidget):
 
         # Top bar: preset + save + train + stop
         top = QHBoxLayout()
-        top.addWidget(QLabel("Preset:"))
+        top.addWidget(QLabel(t("preset")))
         self.combo = QComboBox()
         self.combo.addItems(PRESETS)
         self.combo.currentTextChanged.connect(self._load_preset)
         top.addWidget(self.combo, 1)
 
-        save_btn = QPushButton("Save")
+        save_btn = QPushButton(t("save"))
         save_btn.clicked.connect(self._save_preset)
         top.addWidget(save_btn)
 
-        self.train_btn = QPushButton("Train")
+        self.train_btn = QPushButton(t("train"))
         self.train_btn.setStyleSheet(
             "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
         )
         self.train_btn.clicked.connect(self._start_training)
         top.addWidget(self.train_btn)
 
-        self.stop_btn = QPushButton("Stop")
+        self.stop_btn = QPushButton(t("stop"))
         self.stop_btn.setStyleSheet(
             "background:#c0392b;color:white;font-weight:bold;padding:4px 16px;"
         )
@@ -265,7 +267,7 @@ class ConfigTab(QWidget):
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setStyleSheet("font-family:monospace;font-size:11px;")
-        self.log.setPlaceholderText("Training output will appear here...")
+        self.log.setPlaceholderText(t("log_placeholder"))
         vsplit.addWidget(self.log)
 
         vsplit.setSizes([500, 200])
@@ -310,7 +312,7 @@ class ConfigTab(QWidget):
                 lbl = QLabel(k)
                 if k not in self._vkeys:
                     lbl.setStyleSheet("color:#888;")
-                    lbl.setToolTip("From base.toml")
+                    lbl.setToolTip(t("from_base"))
                 form.addRow(lbl, w)
             box.setLayout(form)
             self._fl.addWidget(box)
@@ -318,14 +320,14 @@ class ConfigTab(QWidget):
         # Dataset config (raw TOML editor)
         ds_path = CONFIGS_DIR / "dataset_config.toml"
         if ds_path.exists():
-            box = QGroupBox("Dataset Config")
+            box = QGroupBox(t("dataset_config"))
             bl = QVBoxLayout()
             ds_edit = QPlainTextEdit(ds_path.read_text())
             ds_edit.setStyleSheet("font-family:monospace;")
             ds_edit.setMaximumHeight(180)
             bl.addWidget(ds_edit)
             self._ds_edit = ds_edit
-            dsb = QPushButton("Save Dataset Config")
+            dsb = QPushButton(t("save_dataset_config"))
             dsb.clicked.connect(self._save_ds)
             bl.addWidget(dsb)
             box.setLayout(bl)
@@ -359,7 +361,7 @@ class ConfigTab(QWidget):
     def _save_preset(self):
         p, out = self._build_save_data()
         _save(p, out)
-        QMessageBox.information(self, "Saved", f"Saved {p.name}")
+        QMessageBox.information(self, t("saved"), t("saved_file", name=p.name))
 
     def _save_ds(self):
         if not self._ds_edit:
@@ -369,10 +371,10 @@ class ConfigTab(QWidget):
         try:
             toml.loads(text)
         except toml.TomlDecodeError as e:
-            QMessageBox.warning(self, "Invalid TOML", str(e))
+            QMessageBox.warning(self, t("invalid_toml"), str(e))
             return
         p.write_text(text)
-        QMessageBox.information(self, "Saved", "Dataset config saved.")
+        QMessageBox.information(self, t("saved"), t("dataset_saved"))
 
     # ── Training ──
 
@@ -383,7 +385,7 @@ class ConfigTab(QWidget):
 
         accelerate = shutil.which("accelerate")
         if not accelerate:
-            QMessageBox.warning(self, "Error", "accelerate not found on PATH")
+            QMessageBox.warning(self, t("error"), t("accelerate_not_found"))
             return
 
         f = PRESETS[self.combo.currentText()]
@@ -415,7 +417,7 @@ class ConfigTab(QWidget):
         self._log(data)
 
     def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
-        self._log(f"\n--- Finished (exit code {exit_code}) ---\n")
+        self._log(f"\n{t('finished', code=exit_code)}\n")
         self.train_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.combo.setEnabled(True)
@@ -442,10 +444,10 @@ class GraftTab(QWidget):
         ll.setContentsMargins(0, 0, 0, 0)
 
         hl = QHBoxLayout()
-        hl.addWidget(QLabel("Iterations"))
+        hl.addWidget(QLabel(t("iterations")))
         ref = QPushButton("\u21bb")
         ref.setFixedWidth(28)
-        ref.setToolTip("Refresh")
+        ref.setToolTip(t("refresh"))
         ref.clicked.connect(self._refresh)
         hl.addWidget(ref)
         ll.addLayout(hl)
@@ -457,7 +459,7 @@ class GraftTab(QWidget):
         gc = _load(GRAFT_DIR / "graft_config.toml")
         self._gcw: dict[str, QWidget] = {}
         if gc:
-            box = QGroupBox("GRAFT Config")
+            box = QGroupBox(t("graft_config"))
             form = QFormLayout()
             for k, v in gc.items():
                 w = _widget(v)
@@ -465,7 +467,7 @@ class GraftTab(QWidget):
                 form.addRow(k, w)
             box.setLayout(form)
             ll.addWidget(box)
-            sb = QPushButton("Save GRAFT Config")
+            sb = QPushButton(t("save_graft_config"))
             sb.clicked.connect(self._save_gc)
             ll.addWidget(sb)
 
@@ -478,17 +480,17 @@ class GraftTab(QWidget):
 
         bar = QHBoxLayout()
         for lbl, fn in [
-            ("Select All", self._sel_all),
-            ("Invert", self._inv),
-            ("Deselect", self._desel),
+            (t("select_all"), self._sel_all),
+            (t("invert"), self._inv),
+            (t("deselect"), self._desel),
         ]:
             b = QPushButton(lbl)
             b.clicked.connect(fn)
             bar.addWidget(b)
         bar.addStretch()
-        self.stat = QLabel("0 images")
+        self.stat = QLabel(t("n_images", n=0))
         bar.addWidget(self.stat)
-        db = QPushButton("Delete Selected")
+        db = QPushButton(t("delete_selected"))
         db.setStyleSheet("background:#c0392b;color:white;font-weight:bold;padding:4px 12px;")
         db.clicked.connect(self._delete)
         bar.addWidget(db)
@@ -572,7 +574,7 @@ class GraftTab(QWidget):
     def _upd(self):
         n = len(self.thumbs)
         s = sum(t.selected for t in self.thumbs)
-        self.stat.setText(f"{n} images, {s} selected")
+        self.stat.setText(t("n_images_selected", n=n, s=s))
 
     def _sel_all(self):
         for t in self.thumbs:
@@ -598,8 +600,8 @@ class GraftTab(QWidget):
         if (
             QMessageBox.question(
                 self,
-                "Delete",
-                f"Delete {len(sel)} image(s)?",
+                t("delete"),
+                t("delete_confirm", n=len(sel)),
                 QMessageBox.Yes | QMessageBox.No,
             )
             != QMessageBox.Yes
@@ -615,7 +617,7 @@ class GraftTab(QWidget):
     def _save_gc(self):
         gc = _load(GRAFT_DIR / "graft_config.toml")
         _save(GRAFT_DIR / "graft_config.toml", {k: _read(w, gc.get(k)) for k, w in self._gcw.items()})
-        QMessageBox.information(self, "Saved", "GRAFT config saved.")
+        QMessageBox.information(self, t("saved"), t("graft_saved"))
 
 
 # ── ImageViewerTab ─────────────────────────────────────────────
@@ -629,7 +631,7 @@ class ImageViewerTab(QWidget):
         lay = QVBoxLayout(self)
 
         top = QHBoxLayout()
-        top.addWidget(QLabel("Directory:"))
+        top.addWidget(QLabel(t("directory")))
         self.dc = QComboBox()
         self.dc.addItems(self._dirs)
         self.dc.currentTextChanged.connect(self._load_dir)
@@ -650,7 +652,7 @@ class ImageViewerTab(QWidget):
         self.img.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.img.setMinimumSize(400, 400)
         rl.addWidget(self.img, 1)
-        rl.addWidget(QLabel("Caption:"))
+        rl.addWidget(QLabel(t("caption")))
         self.cap = QTextEdit()
         self.cap.setReadOnly(True)
         self.cap.setMaximumHeight(120)
@@ -672,7 +674,7 @@ class ImageViewerTab(QWidget):
         self.fl.clear()
         for p in self._images:
             self.fl.addItem(p.stem)
-        self.cnt.setText(f"{len(self._images)} images")
+        self.cnt.setText(t("n_images", n=len(self._images)))
         if self._images:
             self.fl.setCurrentRow(0)
 
@@ -684,7 +686,7 @@ class ImageViewerTab(QWidget):
         if not pm.isNull():
             self.img.set_source(pm)
         cp = p.with_suffix(".txt")
-        self.cap.setPlainText(cp.read_text() if cp.exists() else "(no caption)")
+        self.cap.setPlainText(cp.read_text() if cp.exists() else t("no_caption"))
 
     def _nav(self, d: int):
         r = self.fl.currentRow() + d
@@ -728,19 +730,55 @@ def _dark(app: QApplication):
 # ── Main ───────────────────────────────────────────────────────
 
 
+LANG_NAMES = {"en": "English", "ko": "\ud55c\uad6d\uc5b4"}
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Anima LoRA")
+        self.setWindowTitle(t("window_title"))
         self.resize(1100, 750)
-        tabs = QTabWidget()
-        tabs.addTab(ConfigTab(), "Config")
-        tabs.addTab(GraftTab(), "GRAFT")
-        tabs.addTab(ImageViewerTab(), "Images")
-        self.setCentralWidget(tabs)
+
+        central = QWidget()
+        main_lay = QVBoxLayout(central)
+        main_lay.setContentsMargins(0, 0, 0, 0)
+
+        # Language selector bar
+        lang_bar = QHBoxLayout()
+        lang_bar.addStretch()
+        lang_bar.addWidget(QLabel(t("language")))
+        self.lang_combo = QComboBox()
+        for code in available_languages():
+            self.lang_combo.addItem(LANG_NAMES.get(code, code), code)
+        self.lang_combo.setCurrentIndex(
+            available_languages().index(current_language())
+        )
+        self.lang_combo.currentIndexChanged.connect(self._change_lang)
+        self.lang_combo.setFixedWidth(100)
+        lang_bar.addWidget(self.lang_combo)
+        main_lay.addLayout(lang_bar)
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(ConfigTab(), t("tab_config"))
+        self.tabs.addTab(GraftTab(), t("tab_graft"))
+        self.tabs.addTab(ImageViewerTab(), t("tab_images"))
+        main_lay.addWidget(self.tabs)
+        self.setCentralWidget(central)
+
+    def _change_lang(self, idx: int):
+        lang = self.lang_combo.itemData(idx)
+        save_language(lang)
+        QMessageBox.information(
+            self,
+            "Language" if lang == "en" else "\uc5b8\uc5b4",
+            "Please restart the application to apply the language change."
+            if current_language() == "en"
+            else "\uc5b8\uc5b4 \ubcc0\uacbd\uc744 \uc801\uc6a9\ud558\ub824\uba74 \uc571\uc744 \ub2e4\uc2dc \uc2dc\uc791\ud574\uc8fc\uc138\uc694.",
+        )
 
 
 def main():
+    load_language()
     app = QApplication(sys.argv)
     _dark(app)
     win = MainWindow()

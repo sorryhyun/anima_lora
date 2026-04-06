@@ -29,7 +29,7 @@ dependencies = [
     "tensorboard",
     "rich>=14.0.0",
     "tqdm",
-    "numpy",
+    "numpy>=2.0.0",
     "Pillow",
     "psutil",
     "opencv-python>=4.11.0.86",
@@ -51,8 +51,9 @@ dependencies = [
 gui = ["PySide6>=6.7"]
 
 [tool.uv]
-extra-index-url = ["https://download.pytorch.org/whl/cu130"]
 index-strategy = "unsafe-best-match"
+extra-index-url = ["https://download.pytorch.org/whl/cu130"]
+override-dependencies = ["numpy>=2.0.0"]
 
 [tool.setuptools]
 packages = []

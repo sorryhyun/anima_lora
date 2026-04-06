@@ -29,7 +29,7 @@ tlora:
 		use_timestep_mask=true min_rank=1 alpha_rank_scale=1.0
 
 sync:
-	cp output/*.safetensors $(LORA_DIR)/
+	python -c "import shutil, glob, os; d='$(LORA_DIR)'; os.makedirs(d,exist_ok=True); [shutil.copy2(f,d) for f in glob.glob('output/*.safetensors')]"
 
 test:
 	python inference.py \
@@ -38,7 +38,7 @@ test:
 		--vae models/vae/qwen_image_vae.safetensors \
 		--vae_chunk_size 64 --vae_disable_cache \
 		--attn_mode flash4 \
-		--lora_weight $$(ls -t output/*.safetensors | head -1) \
+		--lora_weight $$(python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))") \
 		--lora_multiplier 1.0 \
 		--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
 		--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
@@ -48,7 +48,7 @@ test:
 		--sampler er_sde \
 		--guidance_scale 4.0 \
 		--seed 42 \
-		--save_path test_output 
+		--save_path test_output
 
 test-spectrum:
 	python inference.py \
@@ -57,7 +57,7 @@ test-spectrum:
 		--vae models/vae/qwen_image_vae.safetensors \
 		--vae_chunk_size 64 --vae_disable_cache \
 		--attn_mode flash4 \
-		--lora_weight $$(ls -t output/*.safetensors | head -1) \
+		--lora_weight $$(python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))") \
 		--lora_multiplier 1.0 \
 		--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
 		--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
@@ -97,26 +97,22 @@ preprocess:
 # --- Model downloads ---
 
 download-sam3:
-	@mkdir -p models/sam3
+	python -c "import os; os.makedirs('models/sam3',exist_ok=True)"
 	huggingface-cli download facebook/sam3 --local-dir models/sam3
 
 download-mit:
-	@mkdir -p models/mit
+	python -c "import os; os.makedirs('models/mit',exist_ok=True)"
 	huggingface-cli download a-b-c-x-y-z/Manga-Text-Segmentation-2025 \
 		model.pth --local-dir models/mit
 
 download-anima:
-	@mkdir -p models/diffusion_models models/text_encoders models/vae
+	python -c "import os; [os.makedirs(d,exist_ok=True) for d in ['models/diffusion_models','models/text_encoders','models/vae']]"
 	huggingface-cli download circlestone-labs/Anima \
 		split_files/diffusion_models/anima-preview2.safetensors \
 		split_files/text_encoders/qwen_3_06b_base.safetensors \
 		split_files/vae/qwen_image_vae.safetensors \
 		--local-dir models --include "split_files/*"
-	@# Move files from split_files/ subdirs into models/
-	@mv models/split_files/diffusion_models/* models/diffusion_models/
-	@mv models/split_files/text_encoders/* models/text_encoders/
-	@mv models/split_files/vae/* models/vae/
-	@rm -rf models/split_files
+	python -c "import shutil,os; [shutil.move(os.path.join('models/split_files',d,f),os.path.join('models',d,f)) for d in ['diffusion_models','text_encoders','vae'] for f in os.listdir(os.path.join('models/split_files',d))]; shutil.rmtree('models/split_files')"
 
 download-models: download-anima download-sam3 download-mit
 
@@ -137,11 +133,10 @@ mask-mit:
 		--model-path models/mit/model.pth
 
 mask:
-	@if [ ! -d masks_sam ]; then $(MAKE) mask-sam; fi
-	@if [ ! -d masks_mit ]; then $(MAKE) mask-mit; fi
+	python -c "import os,subprocess; [subprocess.check_call(['$(MAKE)',t]) for t,d in [('mask-sam','masks_sam'),('mask-mit','masks_mit')] if not os.path.isdir(d)]"
 	python scripts/merge_masks.py \
 		masks_sam masks_mit \
 		--output-dir masks
 
 mask-clean:
-	rm -rf masks/ masks_sam/ masks_mit/
+	python -c "import shutil; [shutil.rmtree(d,ignore_errors=True) for d in ['masks','masks_sam','masks_mit']]"
