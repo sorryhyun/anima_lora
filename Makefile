@@ -1,6 +1,9 @@
 LORA_DIR := ../comfy/ComfyUI/models/loras
 
-.PHONY: lora lora-low-vram dora tdora tlora sync step test test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit comfy-batch
+.PHONY: lora lora-low-vram dora tdora tlora sync step test test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit comfy-batch gui
+
+gui:
+	python gui.py
 
 lora:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \

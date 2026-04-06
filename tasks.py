@@ -252,6 +252,10 @@ def cmd_mask_clean(_extra):
             print(f"  Removed {d}/")
 
 
+def cmd_gui(_extra):
+    run(["python", "gui.py"])
+
+
 # ── CLI ───────────────────────────────────────────────────────────────
 
 COMMANDS = {
@@ -274,6 +278,7 @@ COMMANDS = {
     "mask-sam":         (cmd_mask_sam,          "Generate SAM3 masks only"),
     "mask-mit":         (cmd_mask_mit,          "Generate MIT masks only"),
     "mask-clean":       (cmd_mask_clean,        "Remove all generated masks"),
+    "gui":              (cmd_gui,               "Launch PySide6 GUI"),
 }
 
 
