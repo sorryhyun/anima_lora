@@ -12,6 +12,8 @@ import logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
+_BLOCK_IDX_RE = re.compile(r"blocks\.(\d+)\.")
+
 
 def create_network(
     multiplier: float,
@@ -43,6 +45,14 @@ def create_network(
                 exclude_patterns = [exclude_patterns]
         except (ValueError, SyntaxError):
             exclude_patterns = [exclude_patterns]
+
+    # layer range filtering (e.g., layer_start=4 layer_end=28 to train only blocks 4-27)
+    layer_start = kwargs.get("layer_start", None)
+    layer_end = kwargs.get("layer_end", None)
+    if layer_start is not None:
+        layer_start = int(layer_start)
+    if layer_end is not None:
+        layer_end = int(layer_end)
 
     # add default exclude patterns
     exclude_patterns.append(r".*(_modulation|_norm|_embedder|final_layer).*")
@@ -150,6 +160,8 @@ def create_network(
         reg_lrs=reg_lrs,
         verbose=verbose,
         sig_type=sig_type,
+        layer_start=layer_start,
+        layer_end=layer_end,
     )
 
     # Set timestep mask and ortho regularization config
@@ -166,6 +178,10 @@ def create_network(
     if use_ortho:
         logger.info(
             f"OrthoLoRA: sig_type={sig_type}, ortho_reg_weight={ortho_reg_weight}"
+        )
+    if layer_start is not None or layer_end is not None:
+        logger.info(
+            f"Layer range: training blocks [{layer_start or 0}, {layer_end or '...'})"
         )
 
     loraplus_lr_ratio = kwargs.get("loraplus_lr_ratio", None)
@@ -302,6 +318,8 @@ class LoRANetwork(torch.nn.Module):
         reg_lrs: Optional[Dict[str, float]] = None,
         verbose: Optional[bool] = False,
         sig_type: str = "last",
+        layer_start: Optional[int] = None,
+        layer_end: Optional[int] = None,
     ) -> None:
         super().__init__()
         self.multiplier = multiplier
@@ -314,6 +332,8 @@ class LoRANetwork(torch.nn.Module):
         self.reg_dims = reg_dims
         self.reg_lrs = reg_lrs
         self.sig_type = sig_type
+        self.layer_start = layer_start
+        self.layer_end = layer_end
 
         self.loraplus_lr_ratio = None
         self.loraplus_unet_lr_ratio = None
@@ -391,6 +411,20 @@ class LoRANetwork(torch.nn.Module):
                                 if verbose:
                                     logger.info(f"exclude: {original_name}")
                                 continue
+
+                            # layer range filter: skip blocks outside [layer_start, layer_end)
+                            if is_unet and (self.layer_start is not None or self.layer_end is not None):
+                                block_match = _BLOCK_IDX_RE.match(original_name)
+                                if block_match:
+                                    block_idx = int(block_match.group(1))
+                                    if self.layer_start is not None and block_idx < self.layer_start:
+                                        if verbose:
+                                            logger.info(f"layer_range exclude: {original_name} (block {block_idx} < {self.layer_start})")
+                                        continue
+                                    if self.layer_end is not None and block_idx >= self.layer_end:
+                                        if verbose:
+                                            logger.info(f"layer_range exclude: {original_name} (block {block_idx} >= {self.layer_end})")
+                                        continue
 
                             dim = None
                             alpha_val = None

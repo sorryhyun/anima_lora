@@ -64,11 +64,7 @@ def cmd_lora_low_vram(extra):
 
 
 def cmd_dora(extra):
-    accelerate_launch(
-        "--config_file", "configs/training_config_dora.toml",
-        "--network_args", "use_dora=true",
-        *extra,
-    )
+    accelerate_launch("--config_file", "configs/training_config_dora.toml", *extra)
 
 
 def cmd_tdora(extra):
@@ -76,13 +72,11 @@ def cmd_tdora(extra):
 
 
 def cmd_tlora(extra):
-    accelerate_launch(
-        "--config_file", "configs/training_config.toml",
-        "--network_args",
-        "use_ortho=true", "sig_type=last", "ortho_reg_weight=0.01",
-        "use_timestep_mask=true", "min_rank=1", "alpha_rank_scale=1.0",
-        *extra,
-    )
+    accelerate_launch("--config_file", "configs/training_config_tlora.toml", *extra)
+
+
+def cmd_postfix(extra):
+    accelerate_launch("--config_file", "configs/training_config_postfix.toml", *extra)
 
 
 # ── Inference ─────────────────────────────────────────────────────────
@@ -263,6 +257,7 @@ COMMANDS = {
     "dora":             (cmd_dora,             "DoRA training"),
     "tdora":            (cmd_tdora,            "DoRA + timestep masking"),
     "tlora":            (cmd_tlora,            "T-LoRA: OrthoLoRA + timestep masking"),
+    "postfix":          (cmd_postfix,          "Postfix tuning (LLM adapter cross-attn)"),
     "test":             (cmd_test,             "Inference with latest LoRA"),
     "test-spectrum":    (cmd_test_spectrum,    "Spectrum-accelerated inference"),
     "sync":             (cmd_sync,             "Copy outputs to ComfyUI loras dir"),

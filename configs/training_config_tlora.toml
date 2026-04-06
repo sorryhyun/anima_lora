@@ -1,0 +1,23 @@
+base_config = "base.toml"
+dataset_config = "configs/dataset_config.toml"
+network_alpha = 32
+network_dim = 32
+caption_shuffle_variants = 8
+checkpointing_epochs = 8
+learning_rate = 2e-5
+max_train_epochs = 16
+save_every_n_epochs = 8
+attn_mode = "flash"
+cache_llm_adapter_outputs = true
+trim_crossattn_kv = true
+
+use_ortho=true
+sig_type="last"
+ortho_reg_weight=0.01
+use_timestep_mask=true
+min_rank=1
+alpha_rank_scale=1.0
+# loss_type = "pseudo_huber"  # smooth L1-like loss, robust to outliers
+# pseudo_huber_c = 0.03       # small c -> L1-like, large c -> MSE-like
+# multiscale_loss_weight = 0.5  # weight for 2x-downsampled loss term (0 = disabled)
+

@@ -1320,6 +1320,21 @@ class AnimaTrainer:
                 key, value = net_arg.split("=", 1)
                 net_kwargs[key] = value
 
+        # Forward known network-arg keys from top-level config (TOML) to net_kwargs.
+        # CLI --network_args take precedence over top-level config keys.
+        _NETWORK_ARG_KEYS = [
+            "train_llm_adapter", "exclude_patterns", "include_patterns",
+            "use_dora", "use_ortho", "sig_type", "ortho_reg_weight",
+            "use_timestep_mask", "min_rank", "alpha_rank_scale",
+            "rank_dropout", "module_dropout", "verbose",
+            "network_reg_lrs", "network_reg_dims",
+            "loraplus_lr_ratio", "loraplus_unet_lr_ratio", "loraplus_text_encoder_lr_ratio",
+            "layer_start", "layer_end",
+        ]
+        for key in _NETWORK_ARG_KEYS:
+            if key not in net_kwargs and hasattr(args, key) and getattr(args, key) is not None:
+                net_kwargs[key] = str(getattr(args, key))
+
         if args.dim_from_weights:
             network, _ = network_module.create_network_from_weights(
                 1, args.network_weights, vae, text_encoder, unet, **net_kwargs

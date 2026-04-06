@@ -1,7 +1,7 @@
 LORA_DIR := ../comfy/ComfyUI/models/loras
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora sync step test test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit comfy-batch gui
+.PHONY: lora lora-low-vram dora tdora tlora postfix sync step test test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit comfy-batch gui
 
 gui:
 	python gui.py
@@ -16,8 +16,7 @@ lora-low-vram:
 
 dora:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_dora.toml \
-		--network_args use_dora=true
+		train.py --config_file configs/training_config_dora.toml
 
 tdora:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
@@ -25,9 +24,11 @@ tdora:
 
 tlora:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config.toml \
-		--network_args use_ortho=true sig_type=last ortho_reg_weight=0.01 \
-		use_timestep_mask=true min_rank=1 alpha_rank_scale=1.0
+		train.py --config_file configs/training_config_tlora.toml
+
+postfix:
+	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+		train.py --config_file configs/training_config_postfix.toml
 
 sync:
 	python -c "import shutil, glob, os; d='$(LORA_DIR)'; os.makedirs(d,exist_ok=True); [shutil.copy2(f,d) for f in glob.glob('output/*.safetensors')]"
