@@ -1,4 +1,5 @@
 LORA_DIR := ../comfy/ComfyUI/models/loras
+LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 
 .PHONY: lora lora-low-vram dora tdora tlora sync step test test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit comfy-batch gui
 
@@ -37,8 +38,8 @@ test:
 		--text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
 		--vae models/vae/qwen_image_vae.safetensors \
 		--vae_chunk_size 64 --vae_disable_cache \
-		--attn_mode flash4 \
-		--lora_weight $$(python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))") \
+		--attn_mode flash \
+		--lora_weight $(LATEST_LORA) \
 		--lora_multiplier 1.0 \
 		--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
 		--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
@@ -56,8 +57,8 @@ test-spectrum:
 		--text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
 		--vae models/vae/qwen_image_vae.safetensors \
 		--vae_chunk_size 64 --vae_disable_cache \
-		--attn_mode flash4 \
-		--lora_weight $$(python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))") \
+		--attn_mode flash \
+		--lora_weight $(LATEST_LORA) \
 		--lora_multiplier 1.0 \
 		--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
 		--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
@@ -76,8 +77,7 @@ test-spectrum:
 		--spectrum_m 3 \
 		--spectrum_lam 0.1 \
 		--spectrum_stop_caching_step 29 \
-		--spectrum_calibration 0.0 \
-		--spectrum_delta
+		--spectrum_calibration 0.0
 
 WORKFLOW ?= workflows/lora-batch.json
 comfy-batch:

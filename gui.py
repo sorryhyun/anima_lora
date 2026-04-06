@@ -44,11 +44,10 @@ GRAFT_DIR = ROOT / "graft"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 PRESETS = {
-    "LoRA": "training_config.toml",
-    "LoRA (plain)": "training_config_plain.toml",
-    "LoRA (low VRAM)": "training_config_low_vram.toml",
-    "DoRA": "training_config_dora.toml",
-    "DoRA + Timestep": "training_config_doratimestep.toml",
+    "Windows 8GB VRAM": "training_config_win8gb.toml",
+    "Windows 16GB VRAM": "training_config_win16gb.toml",
+    "FA4 8GB VRAM": "training_config_fa4_8gb.toml",
+    "FA4 16GB VRAM": "training_config_fa4_16gb.toml",
 }
 
 _GROUPS = {
@@ -79,6 +78,14 @@ _GROUPS = {
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
 _SKIP = {"base_config", "dataset_config"}
 
+# Presets that lock the Performance group (users should not tweak these)
+_LOCKED_PERFORMANCE = {
+    "Windows 8GB VRAM",
+    "Windows 16GB VRAM",
+    "FA4 8GB VRAM",
+    "FA4 16GB VRAM",
+}
+
 
 # ── Helpers ────────────────────────────────────────────────────
 
@@ -103,9 +110,7 @@ def _imgs(d: Path) -> list[Path]:
     return sorted(p for p in d.iterdir() if p.suffix.lower() in IMAGE_EXTS) if d.exists() else []
 
 
-_ATTN_MODES = ["flex", "flash", "flash4"]
-if sys.platform == "win32":
-    _ATTN_MODES.append("block flash4")
+_ATTN_MODES = ["flex", "flash"] if sys.platform == "win32" else ["flex", "flash", "flash4"]
 
 
 def _widget(v: Any, key: str = "") -> QWidget:
@@ -124,6 +129,8 @@ def _widget(v: Any, key: str = "") -> QWidget:
         w = QSpinBox()
         w.setRange(0, 10000)
         w.setValue(v)
+        w.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        w.wheelEvent = lambda e: e.ignore()
         return w
     if isinstance(v, float):
         return QLineEdit(f"{v:g}")
@@ -324,16 +331,25 @@ class ConfigTab(QWidget):
         for k, v in cfg.items():
             groups.setdefault(_K2G.get(k, "Other"), {})[k] = v
 
+        lock_perf = name in _LOCKED_PERFORMANCE
+
         for gn, flds in groups.items():
             if not flds:
                 continue
+            locked = lock_perf and gn == "Performance"
             box = QGroupBox(gn)
+            if locked:
+                box.setToolTip(t("locked_by_preset"))
             form = QFormLayout()
             for k in sorted(flds):
                 w = _widget(flds[k], key=k)
+                if locked:
+                    w.setEnabled(False)
                 self._w[k] = w
                 lbl = QLabel(k)
-                if k not in self._vkeys:
+                if locked:
+                    lbl.setStyleSheet("color:#666;")
+                elif k not in self._vkeys:
                     lbl.setStyleSheet("color:#888;")
                     lbl.setToolTip(t("from_base"))
                 form.addRow(lbl, w)

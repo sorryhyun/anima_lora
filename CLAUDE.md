@@ -10,6 +10,7 @@ Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion mo
 
 ```bash
 uv sync                    # Install dependencies (Python 3.13)
+huggingface-cli login      # Authenticate for model downloads
 make download-models       # Download DiT, text encoder, VAE from HuggingFace
 # Training images go in image_dataset/ with .txt caption sidecars
 make preprocess            # VAE-compatible resizing & validation
@@ -21,15 +22,20 @@ Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The exa
 
 ```bash
 # Training (run from anima_lora/)
-make lora                  # Standard LoRA (configs/example_lora.toml)
+make lora                  # Standard LoRA (configs/training_config_plain.toml)
 python tasks.py lora       # Same, works on Windows too
+make lora-low-vram         # Low-VRAM LoRA (configs/training_config_low_vram.toml)
 make dora                  # DoRA (configs/training_config_dora.toml + use_dora=true)
 make tlora                 # T-LoRA: OrthoLoRA + timestep masking (configs/training_config.toml)
 make tdora                 # DoRA + timestep masking (configs/training_config_doratimestep.toml)
 
 # Inference (test with most recent output)
 make test
-make test-spectrum             # Spectrum-accelerated inference (~3.75x speedup)
+make test-spectrum         # Spectrum-accelerated inference (~3.75x speedup)
+
+# GUI (PySide6 — config editing, GRAFT curation, dataset browsing)
+make gui
+python tasks.py gui        # Windows
 
 # GRAFT loop (human-in-the-loop iterative training)
 make step                  # Train -> generate candidates -> await curation
@@ -62,15 +68,21 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 | `inference.py` | Standalone image generation (`--help` for all flags) |
 | `library/spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting) |
 | `graft_step.py` | GRAFT orchestrator: holdout -> train -> generate -> await review |
+| `gui.py` | PySide6 GUI: config editing with presets, GRAFT curation, dataset browser, training monitor |
+| `gui_i18n.py` | i18n layer for GUI (Korean/English) |
+| `tasks.py` | Cross-platform task runner (Windows-compatible Makefile alternative) |
 
 ## Config flow
 
 Training is config-driven. TOML configs specify model paths, hyperparams, and dataset layout:
 - `configs/base.toml` — base/shared config values
-- `configs/example_lora.toml` — standard LoRA config (used by `make lora`)
+- `configs/training_config_plain.toml` — standard LoRA config (used by `make lora`)
 - `configs/training_config.toml` — T-LoRA config (used by `make tlora`)
 - `configs/training_config_dora.toml` — DoRA config
 - `configs/training_config_doratimestep.toml` — DoRA + timestep masking
+- `configs/training_config_low_vram.toml` — low-VRAM LoRA config
+- `configs/training_config_win8gb.toml` / `win16gb.toml` — Windows VRAM presets (GUI presets)
+- `configs/training_config_fa4_8gb.toml` / `fa4_16gb.toml` — Flash Attention 4 VRAM presets (GUI presets)
 - `configs/dataset_config.toml` — dataset buckets, subsets, caption settings
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
@@ -137,6 +149,20 @@ The GRAFT loop (`graft_step.py`) implements rejection-sampling-based fine-tuning
 3. User curates by deleting bad candidates; survivors join the training set next iteration
 
 See `docs/graft-guideline.md` for detailed curation guidance.
+
+## Scripts
+
+Utility scripts in `scripts/`:
+- `post_images.py` — VAE-compatible image resizing & latent/embedding caching (used by `make preprocess`)
+- `generate_masks.py` — SAM3-based text bubble mask generation
+- `generate_masks_mit.py` — MIT/ComicTextDetector mask generation (manga-specific)
+- `merge_masks.py` — Combine SAM3 + MIT masks into final mask set
+- `convert_lora_to_comfy.py` — Convert LoRA key names between anima and ComfyUI formats
+- `comfy_batch.py` — Run ComfyUI batch workflow from `workflows/` directory
+
+## Custom nodes
+
+`custom_nodes/comfyui-spectrum/` — ComfyUI drop-in KSampler replacement for Spectrum inference acceleration. Published to ComfyUI registry via `.github/workflows/publish_action.yml`.
 
 ## External tools
 

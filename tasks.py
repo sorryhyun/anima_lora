@@ -129,7 +129,6 @@ def cmd_test_spectrum(extra):
         "--spectrum_lam", "0.1",
         "--spectrum_stop_caching_step", "29",
         "--spectrum_calibration", "0.0",
-        "--spectrum_delta",
         *extra,
     ])
 

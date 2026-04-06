@@ -28,6 +28,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "preprocess": "Preprocess",
         "preprocess_required": "Please run Preprocess before training.",
         "finished": "--- Finished (exit code {code}) ---",
+        "locked_by_preset": "Locked by preset (performance settings are fixed for this VRAM profile)",
 
         # GraftTab
         "iterations": "Iterations",
@@ -77,6 +78,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "preprocess": "\uc804\ucc98\ub9ac",
         "preprocess_required": "\ud559\uc2b5 \uc804\uc5d0 \uc804\ucc98\ub9ac\ub97c \uba3c\uc800 \uc2e4\ud589\ud574\uc8fc\uc138\uc694.",
         "finished": "--- \uc644\ub8cc (\uc885\ub8cc \ucf54\ub4dc {code}) ---",
+        "locked_by_preset": "\ud504\ub9ac\uc14b\uc5d0 \uc758\ud574 \uc7a0\uae40 (\uc774 VRAM \ud504\ub85c\ud544\uc758 \uc131\ub2a5 \uc124\uc815\uc740 \uace0\uc815\ub418\uc5b4 \uc788\uc2b5\ub2c8\ub2e4)",
 
         # GraftTab
         "iterations": "\ubc18\ubcf5",
