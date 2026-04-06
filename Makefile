@@ -1,7 +1,7 @@
 LORA_DIR := ../comfy/ComfyUI/models/loras
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora postfix prefix sync step test test-prefix test-postfix test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit
+.PHONY: lora lora-low-vram dora tdora tlora postfix prefix sync step test test-prefix test-postfix test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview2.safetensors \
@@ -80,7 +80,7 @@ test-spectrum:
 		--spectrum_stop_caching_step 29 \
 		--spectrum_calibration 0.0
 
-WORKFLOW ?= workflows/lora-batch.json
+WORKFLOW ?= workflows/postfix-batch.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 
