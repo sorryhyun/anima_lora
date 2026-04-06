@@ -88,6 +88,12 @@ def parse_args() -> argparse.Namespace:
         "--lora_multiplier", type=float, nargs="*", default=1.0, help="LoRA multiplier"
     )
     parser.add_argument(
+        "--prefix_weight",
+        type=str,
+        default=None,
+        help="Prefix tuning weight path (postfix_anima prefix mode .safetensors)",
+    )
+    parser.add_argument(
         "--include_patterns",
         type=str,
         nargs="*",

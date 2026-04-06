@@ -1,0 +1,15 @@
+base_config = "base.toml"
+dataset_config = "configs/dataset_config.toml"
+network_module = "networks.postfix_anima"
+network_dim = 16
+network_args = ["mode=prefix"]
+caption_shuffle_variants = 2
+checkpointing_epochs = 2
+learning_rate = 2e-3
+max_train_epochs = 2
+save_every_n_epochs = 2
+attn_mode = "flash"
+cache_llm_adapter_outputs = true
+trim_crossattn_kv = true
+output_name = "anima_prefix"
+blocks_to_swap = 0

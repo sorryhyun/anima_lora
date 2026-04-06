@@ -9,6 +9,8 @@
 #   "embedding" — postfix injected into Qwen3 input embeddings (goes through all layers)
 #   "cfg"       — two postfix sets (pos + neg) trained with CFG-aware loss
 #   "dual"      — postfix on BOTH Qwen3 (KV) and T5 (query) sides of adapter cross-attention
+#   "prefix"    — learned vectors prepended to cached adapter output (T5-compatible space);
+#                  compatible with cache_llm_adapter_outputs, no adapter needed at train time
 
 import os
 from typing import Optional
@@ -74,19 +76,34 @@ def create_network_from_weights(
         else:
             weights_sd = torch.load(file, map_location="cpu")
 
-    # Detect mode from keys
-    if "postfix_pos" in weights_sd:
+    # Detect mode from keys (also check safetensors metadata as fallback)
+    metadata_mode = None
+    if file is not None and os.path.splitext(file)[1] == ".safetensors":
+        from safetensors import safe_open
+
+        with safe_open(file, framework="pt") as f:
+            meta = f.metadata() or {}
+            metadata_mode = meta.get("ss_mode")
+
+    if "prefix_embeds" in weights_sd:
+        mode = "prefix"
+        postfix_weight = weights_sd["prefix_embeds"]
+    elif "postfix_pos" in weights_sd:
         mode = "cfg"
         postfix_weight = weights_sd["postfix_pos"]
     elif "postfix_t5" in weights_sd:
         mode = "dual"
         postfix_weight = weights_sd.get("postfix", weights_sd.get("prefix"))
+    elif metadata_mode == "prefix":
+        mode = "prefix"
+        postfix_weight = weights_sd.get("prefix_embeds")
     else:
-        mode = "hidden"
+        mode = metadata_mode or "hidden"
         postfix_weight = weights_sd.get("postfix", weights_sd.get("prefix"))
     if postfix_weight is None:
         raise ValueError(
-            "No 'postfix'/'postfix_pos' (or legacy 'prefix') key found in weights file"
+            f"Not a postfix/prefix weight file (keys: {list(weights_sd.keys())[:10]}). "
+            f"Expected 'prefix_embeds', 'postfix', 'postfix_pos', or 'prefix' key."
         )
 
     num_postfix_tokens, embed_dim = postfix_weight.shape
@@ -124,10 +141,19 @@ class PostfixNetwork(nn.Module):
 
         # Match init scale to the target embedding space:
         #   "embedding" mode → Qwen3 input embeddings (std ≈ 0.03)
+        #   "prefix"         → adapter output (post-RMSNorm, std ≈ 1.0)
         #   "hidden"/"cfg"   → Qwen3 output hidden states (std ≈ 3.5)
         init_std = 0.02 if mode == "embedding" else 1.0
 
-        if mode == "cfg":
+        if mode == "prefix":
+            self.prefix_embeds = nn.Parameter(
+                torch.randn(num_postfix_tokens, embed_dim) * init_std
+            )
+            logger.info(
+                f"PostfixNetwork: prefix mode — {num_postfix_tokens} tokens in T5-compatible space, "
+                f"dim {embed_dim}, init_std={init_std}, {self.prefix_embeds.numel()} params"
+            )
+        elif mode == "cfg":
             self.postfix_pos = nn.Parameter(
                 torch.randn(num_postfix_tokens, embed_dim) * init_std
             )
@@ -163,6 +189,13 @@ class PostfixNetwork(nn.Module):
             )
 
     def apply_to(self, text_encoders, unet, apply_text_encoder=True, apply_unet=True):
+        if self.mode == "prefix":
+            # No monkey-patching needed — training loop prepends prefix_embeds to crossattn_emb
+            logger.info(
+                f"Prefix mode: {self.num_postfix_tokens} learned tokens will be prepended to "
+                f"cached adapter output (T5-compatible space)"
+            )
+            return
         if self.mode == "cfg":
             if not hasattr(unet, "llm_adapter") or unet.llm_adapter is None:
                 raise ValueError(
@@ -247,6 +280,18 @@ class PostfixNetwork(nn.Module):
         text_encoder.forward = wrapped_forward
         self._original_forward = original_forward
 
+    def prepend_prefix(self, crossattn_emb: torch.Tensor) -> torch.Tensor:
+        """Prepend learned prefix vectors to crossattn_emb, trimming trailing padding to maintain seq length."""
+        K = self.num_postfix_tokens
+        B = crossattn_emb.shape[0]
+        prefix = (
+            self.prefix_embeds.unsqueeze(0)
+            .expand(B, -1, -1)
+            .to(dtype=crossattn_emb.dtype, device=crossattn_emb.device)
+        )
+        # Trim K trailing positions (zero-padding) to keep total length unchanged
+        return torch.cat([prefix, crossattn_emb[:, :crossattn_emb.shape[1] - K]], dim=1)
+
     def set_multiplier(self, multiplier):
         self.multiplier = multiplier
 
@@ -263,6 +308,8 @@ class PostfixNetwork(nn.Module):
         self.train()
 
     def get_trainable_params(self):
+        if self.mode == "prefix":
+            return [self.prefix_embeds]
         if self.mode == "cfg":
             return [self.postfix_pos, self.postfix_neg]
         elif self.mode == "dual":
@@ -273,7 +320,10 @@ class PostfixNetwork(nn.Module):
         self, text_encoder_lr, unet_lr, default_lr
     ):
         lr = unet_lr or default_lr
-        if self.mode == "cfg":
+        if self.mode == "prefix":
+            params = [{"params": [self.prefix_embeds], "lr": lr}]
+            descriptions = ["prefix_embeds"]
+        elif self.mode == "cfg":
             params = [{"params": [self.postfix_pos, self.postfix_neg], "lr": lr}]
             descriptions = ["postfix_pos+neg"]
         elif self.mode == "dual":
@@ -286,6 +336,8 @@ class PostfixNetwork(nn.Module):
 
     def prepare_optimizer_params(self, text_encoder_lr, unet_lr, default_lr=None):
         lr = unet_lr or default_lr
+        if self.mode == "prefix":
+            return [{"params": [self.prefix_embeds], "lr": lr}]
         if self.mode == "cfg":
             return [{"params": [self.postfix_pos, self.postfix_neg], "lr": lr}]
         elif self.mode == "dual":
@@ -294,7 +346,11 @@ class PostfixNetwork(nn.Module):
 
     def save_weights(self, file, dtype, metadata):
         dtype = dtype or torch.bfloat16
-        if self.mode == "cfg":
+        if self.mode == "prefix":
+            state_dict = {
+                "prefix_embeds": self.prefix_embeds.detach().clone().cpu().to(dtype),
+            }
+        elif self.mode == "cfg":
             state_dict = {
                 "postfix_pos": self.postfix_pos.detach().clone().cpu().to(dtype),
                 "postfix_neg": self.postfix_neg.detach().clone().cpu().to(dtype),
@@ -338,7 +394,15 @@ class PostfixNetwork(nn.Module):
         else:
             weights_sd = torch.load(file, map_location="cpu")
 
-        if self.mode == "cfg":
+        if self.mode == "prefix":
+            if "prefix_embeds" in weights_sd:
+                self.prefix_embeds.data.copy_(weights_sd["prefix_embeds"])
+                logger.info(f"Loaded prefix weights: {self.prefix_embeds.shape}")
+            else:
+                raise ValueError(
+                    "No 'prefix_embeds' key found in weights file for prefix mode"
+                )
+        elif self.mode == "cfg":
             if "postfix_pos" in weights_sd:
                 self.postfix_pos.data.copy_(weights_sd["postfix_pos"])
                 self.postfix_neg.data.copy_(weights_sd["postfix_neg"])

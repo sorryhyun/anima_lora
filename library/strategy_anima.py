@@ -37,8 +37,8 @@ class AnimaTokenizeStrategy(TokenizeStrategy):
         self,
         qwen3_tokenizer=None,
         t5_tokenizer=None,
-        qwen3_max_length: int = 256,
-        t5_max_length: int = 256,
+        qwen3_max_length: int = 512,
+        t5_max_length: int = 512,
         qwen3_path: Optional[str] = None,
         t5_tokenizer_path: Optional[str] = None,
     ) -> None:

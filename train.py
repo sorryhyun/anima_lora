@@ -589,9 +589,15 @@ class AnimaTrainer:
                 )
             else:
                 # crossattn_emb is already in target (T5-compatible) space
+                # Prefix mode: prepend learned vectors before DiT forward
+                if getattr(network, "mode", None) == "prefix":
+                    crossattn_emb = network.prepend_prefix(crossattn_emb)
                 kw = {}
                 if args.trim_crossattn_kv:
                     kw["crossattn_seqlens"] = t5_attn_mask.sum(dim=-1).to(torch.int32)
+                    if getattr(network, "mode", None) == "prefix":
+                        # Shift seqlens to account for prepended prefix tokens
+                        kw["crossattn_seqlens"] = kw["crossattn_seqlens"] + network.num_postfix_tokens
                 model_pred = anima(
                     noisy_model_input,
                     timesteps,

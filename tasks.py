@@ -79,6 +79,10 @@ def cmd_postfix(extra):
     accelerate_launch("--config_file", "configs/training_config_postfix.toml", *extra)
 
 
+def cmd_prefix(extra):
+    accelerate_launch("--config_file", "configs/training_config_prefix.toml", *extra)
+
+
 # ── Inference ─────────────────────────────────────────────────────────
 
 INFERENCE_BASE = [
@@ -258,6 +262,7 @@ COMMANDS = {
     "tdora":            (cmd_tdora,            "DoRA + timestep masking"),
     "tlora":            (cmd_tlora,            "T-LoRA: OrthoLoRA + timestep masking"),
     "postfix":          (cmd_postfix,          "Postfix tuning (LLM adapter cross-attn)"),
+    "prefix":           (cmd_prefix,           "Prefix tuning (T5-space, cache-compatible)"),
     "test":             (cmd_test,             "Inference with latest LoRA"),
     "test-spectrum":    (cmd_test_spectrum,    "Spectrum-accelerated inference"),
     "sync":             (cmd_sync,             "Copy outputs to ComfyUI loras dir"),

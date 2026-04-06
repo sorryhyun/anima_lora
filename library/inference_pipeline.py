@@ -495,6 +495,20 @@ def generate_body_tiled(
         context_null = context
     negative_embed = context_null["embed"][0].to(device, dtype=torch.bfloat16)
 
+    # Prefix tuning: prepend learned vectors to cached adapter output
+    prefix_weight = getattr(args, "prefix_weight", None)
+    if prefix_weight is not None:
+        from networks.postfix_anima import create_network_from_weights
+
+        prefix_net, prefix_sd = create_network_from_weights(
+            multiplier=1.0, file=prefix_weight, ae=None, text_encoders=None, unet=None
+        )
+        prefix_net.load_weights(prefix_weight)
+        prefix_net.to(device, dtype=torch.bfloat16)
+        embed = prefix_net.prepend_prefix(embed)
+        negative_embed = prefix_net.prepend_prefix(negative_embed)
+        logger.info(f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}")
+
     num_channels_latents = anima_models.Anima.LATENT_CHANNELS
     h_latent = height // 8
     w_latent = width // 8
@@ -683,6 +697,20 @@ def generate_body(
     if context_null is None:
         context_null = context  # dummy for unconditional
     negative_embed = context_null["embed"][0].to(device, dtype=torch.bfloat16)
+
+    # Prefix tuning: prepend learned vectors to cached adapter output
+    prefix_weight = getattr(args, "prefix_weight", None)
+    if prefix_weight is not None:
+        from networks.postfix_anima import create_network_from_weights
+
+        prefix_net, prefix_sd = create_network_from_weights(
+            multiplier=1.0, file=prefix_weight, ae=None, text_encoders=None, unet=None
+        )
+        prefix_net.load_weights(prefix_weight)
+        prefix_net.to(device, dtype=torch.bfloat16)
+        embed = prefix_net.prepend_prefix(embed)
+        negative_embed = prefix_net.prepend_prefix(negative_embed)
+        logger.info(f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}")
 
     # Prepare latent variables
     num_channels_latents = anima_models.Anima.LATENT_CHANNELS
