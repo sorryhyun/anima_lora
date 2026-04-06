@@ -46,6 +46,7 @@ dependencies = [
     "flash-attn-4 @ git+https://github.com/sorryhyun/flash-attention-sm120-fix.git@dz/sm120_tma_optimized#subdirectory=flash_attn/cute ; sys_platform == 'linux'",
     "triton-windows>=3.6.0 ; sys_platform == 'win32'",
     "pyside6>=6.11.0",
+    "ruff>=0.15.9",
 ]
 
 [project.optional-dependencies]

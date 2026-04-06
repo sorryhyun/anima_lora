@@ -55,9 +55,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
         try:
             import lion_pytorch
         except ImportError:
-            raise ImportError(
-                "No lion_pytorch"
-            )
+            raise ImportError("No lion_pytorch")
         logger.info(f"use Lion optimizer | {optimizer_kwargs}")
         optimizer_class = lion_pytorch.Lion
         optimizer = optimizer_class(trainable_params, lr=lr, **optimizer_kwargs)
@@ -66,9 +64,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
         try:
             import bitsandbytes as bnb
         except ImportError:
-            raise ImportError(
-                "No bitsandbytes"
-            )
+            raise ImportError("No bitsandbytes")
 
         if optimizer_type == "AdamW8bit".lower():
             logger.info(f"use 8-bit AdamW optimizer | {optimizer_kwargs}")
@@ -121,9 +117,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
         try:
             import bitsandbytes as bnb
         except ImportError:
-            raise ImportError(
-                "No bitsandbytes"
-            )
+            raise ImportError("No bitsandbytes")
         try:
             optimizer_class = bnb.optim.PagedAdamW
         except AttributeError:
@@ -137,9 +131,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
         try:
             import bitsandbytes as bnb
         except ImportError:
-            raise ImportError(
-                "No bitsandbytes"
-            )
+            raise ImportError("No bitsandbytes")
         try:
             optimizer_class = bnb.optim.PagedAdamW32bit
         except AttributeError:
@@ -187,9 +179,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
                 import dadaptation
                 import dadaptation.experimental as experimental
             except ImportError:
-                raise ImportError(
-                    "No dadaptation"
-                )
+                raise ImportError("No dadaptation")
 
             if (
                 optimizer_type == "DAdaptation".lower()
@@ -225,9 +215,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
             try:
                 import prodigyopt
             except ImportError:
-                raise ImportError(
-                    "No Prodigy"
-                )
+                raise ImportError("No Prodigy")
 
             logger.info(f"use Prodigy optimizer | {optimizer_kwargs}")
             optimizer_class = prodigyopt.Prodigy
@@ -289,9 +277,7 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
         try:
             import schedulefree as sf
         except ImportError:
-            raise ImportError(
-                "No schedulefree"
-            )
+            raise ImportError("No schedulefree")
 
         if optimizer_type == "RAdamScheduleFree".lower():
             optimizer_class = sf.RAdamScheduleFree

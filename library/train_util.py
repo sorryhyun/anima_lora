@@ -85,6 +85,19 @@ from library.datasets import (  # noqa: F401, E402
 # Re-exports from library.training
 # ---------------------------------------------------------------------------
 from library.training import (  # noqa: F401, E402
+    # metadata
+    SS_METADATA_KEY_V2,
+    SS_METADATA_KEY_BASE_MODEL_VERSION,
+    SS_METADATA_KEY_NETWORK_MODULE,
+    SS_METADATA_KEY_NETWORK_DIM,
+    SS_METADATA_KEY_NETWORK_ALPHA,
+    SS_METADATA_KEY_NETWORK_ARGS,
+    SS_METADATA_MINIMUM_KEYS,
+    build_minimum_network_metadata,
+    build_training_metadata,
+    add_dataset_metadata,
+    add_model_hash_metadata,
+    finalize_metadata,
     # checkpoints
     EPOCH_STATE_NAME,
     EPOCH_FILE_NAME,
@@ -249,44 +262,8 @@ def load_metadata_from_safetensors(safetensors_file: str) -> dict:
     return metadata
 
 
-# this metadata is referred from train_network and various scripts, so we wrote here
-SS_METADATA_KEY_V2 = "ss_v2"
-SS_METADATA_KEY_BASE_MODEL_VERSION = "ss_base_model_version"
-SS_METADATA_KEY_NETWORK_MODULE = "ss_network_module"
-SS_METADATA_KEY_NETWORK_DIM = "ss_network_dim"
-SS_METADATA_KEY_NETWORK_ALPHA = "ss_network_alpha"
-SS_METADATA_KEY_NETWORK_ARGS = "ss_network_args"
-
-SS_METADATA_MINIMUM_KEYS = [
-    SS_METADATA_KEY_V2,
-    SS_METADATA_KEY_BASE_MODEL_VERSION,
-    SS_METADATA_KEY_NETWORK_MODULE,
-    SS_METADATA_KEY_NETWORK_DIM,
-    SS_METADATA_KEY_NETWORK_ALPHA,
-    SS_METADATA_KEY_NETWORK_ARGS,
-]
-
-
-def build_minimum_network_metadata(
-    v2: Optional[str],
-    base_model: Optional[str],
-    network_module: str,
-    network_dim: str,
-    network_alpha: str,
-    network_args: Optional[dict],
-):
-    metadata = {
-        SS_METADATA_KEY_NETWORK_MODULE: network_module,
-        SS_METADATA_KEY_NETWORK_DIM: network_dim,
-        SS_METADATA_KEY_NETWORK_ALPHA: network_alpha,
-    }
-    if v2 is not None:
-        metadata[SS_METADATA_KEY_V2] = v2
-    if base_model is not None:
-        metadata[SS_METADATA_KEY_BASE_MODEL_VERSION] = base_model
-    if network_args is not None:
-        metadata[SS_METADATA_KEY_NETWORK_ARGS] = json.dumps(network_args)
-    return metadata
+# Metadata key constants, build_minimum_network_metadata, and full training
+# metadata helpers are now in library.training.metadata and re-exported above.
 
 
 def get_sai_model_spec(
@@ -492,7 +469,6 @@ def add_optimizer_arguments(parser: argparse.ArgumentParser):
         action="store_true",
         help="use Lion optimizer (requires lion-pytorch)",
     )
-
     parser.add_argument(
         "--learning_rate", type=float, default=2.0e-6, help="learning rate"
     )
@@ -1487,9 +1463,7 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
 
     if args.output_config:
         if os.path.exists(config_path):
-            logger.error(
-                f"Config file already exists. Aborting..."
-            )
+            logger.error(f"Config file already exists. Aborting...")
             exit(1)
 
         args_dict = vars(args)
@@ -1614,9 +1588,7 @@ def resume_from_local_or_hf_if_specified(accelerator, args):
         asyncio.gather(*[download(filename=filename) for filename in list_files])
     )
     if len(results) == 0:
-        raise ValueError(
-            "No files found in the specified repo id"
-        )
+        raise ValueError("No files found in the specified repo id")
     dirname = os.path.dirname(results[0])
     accelerator.load_state(dirname)
 
@@ -1630,9 +1602,7 @@ def prepare_dataset_args(args: argparse.Namespace, support_metadata: bool):
         args.resolution = tuple([int(r) for r in args.resolution.split(",")])
         if len(args.resolution) == 1:
             args.resolution = (args.resolution[0], args.resolution[0])
-        assert len(args.resolution) == 2, (
-            f"resolution must be 'size' or 'width,height'"
-        )
+        assert len(args.resolution) == 2, f"resolution must be 'size' or 'width,height'"
 
     if args.face_crop_aug_range is not None:
         args.face_crop_aug_range = tuple(
@@ -1641,9 +1611,7 @@ def prepare_dataset_args(args: argparse.Namespace, support_metadata: bool):
         assert (
             len(args.face_crop_aug_range) == 2
             and args.face_crop_aug_range[0] <= args.face_crop_aug_range[1]
-        ), (
-            f"face_crop_aug_range must be two floats"
-        )
+        ), f"face_crop_aug_range must be two floats"
     else:
         args.face_crop_aug_range = None
 

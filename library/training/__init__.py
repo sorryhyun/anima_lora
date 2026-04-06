@@ -10,6 +10,20 @@ from library.training.schedulers import (
     get_scheduler_fix,
     get_dummy_scheduler,
 )
+from library.training.metadata import (
+    SS_METADATA_KEY_V2,
+    SS_METADATA_KEY_BASE_MODEL_VERSION,
+    SS_METADATA_KEY_NETWORK_MODULE,
+    SS_METADATA_KEY_NETWORK_DIM,
+    SS_METADATA_KEY_NETWORK_ALPHA,
+    SS_METADATA_KEY_NETWORK_ARGS,
+    SS_METADATA_MINIMUM_KEYS,
+    build_minimum_network_metadata,
+    build_training_metadata,
+    add_dataset_metadata,
+    add_model_hash_metadata,
+    finalize_metadata,
+)
 from library.training.checkpoints import (
     EPOCH_STATE_NAME,
     EPOCH_FILE_NAME,
@@ -38,6 +52,19 @@ from library.training.checkpoints import (
 )
 
 __all__ = [
+    # metadata
+    "SS_METADATA_KEY_V2",
+    "SS_METADATA_KEY_BASE_MODEL_VERSION",
+    "SS_METADATA_KEY_NETWORK_MODULE",
+    "SS_METADATA_KEY_NETWORK_DIM",
+    "SS_METADATA_KEY_NETWORK_ALPHA",
+    "SS_METADATA_KEY_NETWORK_ARGS",
+    "SS_METADATA_MINIMUM_KEYS",
+    "build_minimum_network_metadata",
+    "build_training_metadata",
+    "add_dataset_metadata",
+    "add_model_hash_metadata",
+    "finalize_metadata",
     # optimizers
     "get_optimizer",
     "get_optimizer_train_eval_fn",
