@@ -124,4 +124,5 @@ python inference.py \
 | Doc | Contents |
 |-----|----------|
 | [docs/training.md](docs/training.md) | LoRA variants (DoRA, OrthoLoRA, T-LoRA), KV trim, caption shuffle, masked loss, dataset config |
+| [docs/prefix-tuning.md](docs/prefix-tuning.md) | Prefix tuning — 12 GB VRAM, ~1 step/s, how it works, config reference |
 | [docs/inference.md](docs/inference.md) | Inference flags, P-GRAFT inference, prompt file format, LoRA format conversion |
