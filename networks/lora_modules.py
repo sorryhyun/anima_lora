@@ -309,6 +309,134 @@ class LoRAModule(torch.nn.Module):
         return next(self.parameters()).dtype
 
 
+class HydraLoRAModule(torch.nn.Module):
+    """
+    HydraLoRA: MoE-style multi-head LoRA with automatic style routing.
+    Shared lora_down captures common features; per-expert lora_up_i heads specialize by style.
+    Gate weights (from an external router on crossattn_emb) select expert contributions.
+    Reference: docs/hydra-lora.md
+    """
+
+    def __init__(
+        self,
+        lora_name,
+        org_module: torch.nn.Module,
+        multiplier=1.0,
+        lora_dim=4,
+        alpha=1,
+        dropout=None,
+        rank_dropout=None,
+        module_dropout=None,
+        num_experts=12,
+    ):
+        super().__init__()
+        self.lora_name = lora_name
+
+        if org_module.__class__.__name__ == "Conv2d":
+            raise ValueError("HydraLoRAModule does not support Conv2d")
+
+        in_dim = org_module.in_features
+        out_dim = org_module.out_features
+
+        self.lora_dim = lora_dim
+        self.num_experts = num_experts
+
+        # Shared down projection
+        self.lora_down = torch.nn.Linear(in_dim, self.lora_dim, bias=False)
+        torch.nn.init.kaiming_uniform_(self.lora_down.weight, a=math.sqrt(5))
+
+        # Per-expert up projections
+        self.lora_ups = torch.nn.ModuleList(
+            [
+                torch.nn.Linear(self.lora_dim, out_dim, bias=False)
+                for _ in range(num_experts)
+            ]
+        )
+        for up in self.lora_ups:
+            torch.nn.init.zeros_(up.weight)
+
+        if isinstance(alpha, torch.Tensor):
+            alpha = alpha.detach().float().numpy()
+        alpha = self.lora_dim if alpha is None or alpha == 0 else alpha
+        self.scale = alpha / self.lora_dim
+        self.register_buffer("alpha", torch.tensor(alpha))
+
+        self.multiplier = multiplier
+        self.org_module = org_module
+        self.dropout = dropout
+        self.rank_dropout = rank_dropout
+        self.module_dropout = module_dropout
+
+        self.fp32_accumulation = False
+        self._timestep_mask = None
+        self._hydra_gate = None  # (B, num_experts), set by LoRANetwork.set_hydra_gate()
+
+    def apply_to(self):
+        self.org_forward = self.org_module.forward
+        self.org_module.forward = self.forward
+        del self.org_module
+
+    def forward(self, x):
+        org_forwarded = self.org_forward(x)
+
+        # module dropout
+        if self.module_dropout is not None and self.training:
+            if torch.rand(1) < self.module_dropout:
+                return org_forwarded
+
+        if self.fp32_accumulation:
+            lx = torch.nn.functional.linear(
+                x.float(), self.lora_down.weight.float()
+            )
+        else:
+            lx = self.lora_down(x)
+
+        # timestep-dependent rank masking (T-LoRA compatibility)
+        if self._timestep_mask is not None and self.training:
+            lx = lx * self._timestep_mask
+
+        # normal dropout
+        if self.dropout is not None and self.training:
+            lx = torch.nn.functional.dropout(lx, p=self.dropout)
+
+        # rank dropout
+        if self.rank_dropout is not None and self.training:
+            mask = (
+                torch.rand((lx.size(0), self.lora_dim), device=lx.device)
+                > self.rank_dropout
+            )
+            if len(lx.size()) == 3:
+                mask = mask.unsqueeze(1)
+            lx = lx * mask
+            scale = self.scale * (1.0 / (1.0 - self.rank_dropout))
+        else:
+            scale = self.scale
+
+        # Expert-weighted output via gate
+        if self._hydra_gate is not None:
+            gate = self._hydra_gate  # (B, num_experts)
+            # Stack expert weights: (num_experts, out_dim, lora_dim)
+            stacked = torch.stack([up.weight for up in self.lora_ups], dim=0)
+            # Gate-weighted combined weight per batch element: (B, out_dim, lora_dim)
+            combined = torch.einsum("be,eod->bod", gate, stacked)
+            # Apply: lx is (B, ..., lora_dim), combined is (B, out_dim, lora_dim)
+            if len(lx.shape) == 3:
+                # (B, seq, lora_dim) @ (B, lora_dim, out_dim) -> (B, seq, out_dim)
+                out = torch.bmm(lx, combined.transpose(1, 2))
+            else:
+                # (B, lora_dim) -> (B, 1, lora_dim) @ (B, lora_dim, out_dim) -> (B, out_dim)
+                out = torch.bmm(lx.unsqueeze(1), combined.transpose(1, 2)).squeeze(1)
+        else:
+            # Fallback: uniform average (inference without router)
+            out = sum(up(lx) for up in self.lora_ups) / self.num_experts
+
+        if self.fp32_accumulation:
+            return org_forwarded + (out * self.multiplier * scale).to(
+                org_forwarded.dtype
+            )
+        return org_forwarded + out * self.multiplier * scale
+
+
 class DoRAModule(LoRAModule):
     """
     DoRA: Weight-Decomposed Low-Rank Adaptation.
@@ -572,6 +700,109 @@ class OrthoLoRAModule(torch.nn.Module):
             ** 2
         )
         return p_reg, q_reg
+
+
+class ReFTModule(torch.nn.Module):
+    """
+    LoReFT: Low-Rank Representation Fine-Tuning.
+    Applies a learned low-rank subspace edit to the output representation:
+        h_new = h + R^T(Wh + b − Rh) * scale * multiplier
+    where R is an orthogonal rotation selecting the intervention subspace,
+    and W is a learned source projection.
+
+    Zero-init: learned_source is initialized to match rotate_layer so delta=0 at init.
+    Reference: Wu et al., "ReFT: Representation Finetuning for Language Models" (NeurIPS 2024)
+    """
+
+    def __init__(
+        self,
+        lora_name,
+        org_module: torch.nn.Module,
+        multiplier=1.0,
+        reft_dim=4,
+        alpha=1,
+        dropout=None,
+        module_dropout=None,
+    ):
+        super().__init__()
+        self.lora_name = lora_name
+
+        if org_module.__class__.__name__ == "Conv2d":
+            raise ValueError("ReFTModule does not support Conv2d")
+
+        embed_dim = org_module.out_features
+        self.reft_dim = reft_dim
+
+        # R: orthogonal rotation (projects to intervention subspace)
+        self.rotate_layer = torch.nn.Linear(embed_dim, reft_dim, bias=False)
+        init_device = "cuda" if torch.cuda.is_available() else "cpu"
+        r_rand = torch.randn(embed_dim, reft_dim, device=init_device)
+        r_orth, _ = torch.linalg.qr(r_rand)  # (embed_dim, reft_dim)
+        self.rotate_layer.weight.data = r_orth.T.cpu().clone().contiguous()
+        del r_rand, r_orth
+
+        # W: learned source projection — initialized to match R for zero output at init
+        self.learned_source = torch.nn.Linear(embed_dim, reft_dim)
+        self.learned_source.weight.data = self.rotate_layer.weight.data.clone()
+        torch.nn.init.zeros_(self.learned_source.bias)
+
+        if isinstance(alpha, torch.Tensor):
+            alpha = alpha.detach().float().numpy()
+        alpha = reft_dim if alpha is None or alpha == 0 else alpha
+        self.scale = alpha / reft_dim
+        self.register_buffer("alpha", torch.tensor(alpha))
+
+        self.multiplier = multiplier
+        self.org_module = org_module
+        self.dropout = dropout
+        self.module_dropout = module_dropout
+
+        self._timestep_mask = None
+
+    def apply_to(self):
+        self.org_forward = self.org_module.forward
+        self.org_module.forward = self.forward
+        del self.org_module
+
+    def forward(self, x):
+        h = self.org_forward(x)
+
+        # module dropout
+        if self.module_dropout is not None and self.training:
+            if torch.rand(1) < self.module_dropout:
+                return h
+
+        # Rh
+        rotated = torch.nn.functional.linear(h, self.rotate_layer.weight)
+        # Wh + b
+        source = self.learned_source(h)
+
+        # timestep-dependent masking
+        if self._timestep_mask is not None and self.training:
+            rotated = rotated * self._timestep_mask
+            source = source * self._timestep_mask
+
+        delta = source - rotated  # (Wh + b) - Rh
+
+        if self.dropout is not None and self.training:
+            delta = torch.nn.functional.dropout(delta, p=self.dropout)
+
+        # R^T @ delta — project back to full space
+        edit = torch.nn.functional.linear(delta, self.rotate_layer.weight.T)
+
+        return h + edit * self.multiplier * self.scale
+
+    def regularization(self):
+        """Orthogonality regularization: ||R R^T - I||^2"""
+        R = self.rotate_layer.weight  # (reft_dim, embed_dim)
+        reg = torch.sum(
+            (
+                R @ R.T
+                - torch.eye(self.reft_dim, device=R.device)
+            )
+            ** 2
+        )
+        return reg
 
 
 class LoRAInfModule(LoRAModule):

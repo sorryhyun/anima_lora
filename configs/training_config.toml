@@ -15,4 +15,4 @@ trim_crossattn_kv = true
 # loss_type = "pseudo_huber"  # smooth L1-like loss, robust to outliers
 # pseudo_huber_c = 0.03       # small c -> L1-like, large c -> MSE-like
 # multiscale_loss_weight = 0.5  # weight for 2x-downsampled loss term (0 = disabled)
-
+# add_reft=true

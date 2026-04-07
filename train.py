@@ -478,9 +478,11 @@ class AnimaTrainer:
         )
         timesteps = timesteps / 1000.0  # scale to [0, 1] range. timesteps is float32
 
-        # Set timestep-dependent rank mask on LoRA modules
+        # Set timestep-dependent rank mask on LoRA and ReFT modules
         if hasattr(network, "set_timestep_mask"):
             network.set_timestep_mask(timesteps, max_timestep=1.0)
+        if hasattr(network, "set_reft_timestep_mask"):
+            network.set_reft_timestep_mask(timesteps, max_timestep=1.0)
 
         # Gradient checkpointing support
         if args.gradient_checkpointing:
@@ -511,6 +513,10 @@ class AnimaTrainer:
             crossattn_emb = crossattn_emb.to(accelerator.device, dtype=weight_dtype)
             if args.trim_crossattn_kv or hasattr(network, "append_postfix"):
                 t5_attn_mask = t5_attn_mask.to(accelerator.device)
+
+        # Set HydraLoRA gate weights from crossattn_emb
+        if crossattn_emb is not None and hasattr(network, "set_hydra_gate"):
+            network.set_hydra_gate(crossattn_emb)
 
         # Create padding mask
         bs = latents.shape[0]
@@ -630,6 +636,13 @@ class AnimaTrainer:
         ):
             ortho_reg = self._network.get_ortho_regularization()
             loss = loss + self._network._ortho_reg_weight * ortho_reg
+        # HydraLoRA load-balancing loss
+        if (
+            hasattr(self, "_network")
+            and getattr(self._network, "_balance_loss_weight", 0) > 0
+        ):
+            balance_loss = self._network.get_balance_loss()
+            loss = loss + self._network._balance_loss_weight * balance_loss
         return loss
 
     def sample_images(
@@ -1334,6 +1347,7 @@ class AnimaTrainer:
             "train_llm_adapter", "exclude_patterns", "include_patterns",
             "use_dora", "use_ortho", "sig_type", "ortho_reg_weight",
             "use_timestep_mask", "min_rank", "alpha_rank_scale",
+            "use_hydra", "num_experts", "balance_loss_weight",
             "rank_dropout", "module_dropout", "verbose",
             "network_reg_lrs", "network_reg_dims",
             "loraplus_lr_ratio", "loraplus_unet_lr_ratio", "loraplus_text_encoder_lr_ratio",

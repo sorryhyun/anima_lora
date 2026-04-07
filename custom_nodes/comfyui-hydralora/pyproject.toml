@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-hydralora"
+description = "HydraLoRA: Multi-style LoRA loader with MoE routing. Load multi-head LoRA files with per-expert weight control or automatic style routing from text conditioning."
+version = "1.0.0"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/sorryhyun/anima_lora/tree/main/custom_nodes/comfyui-hydralora"
+
+[tool.comfy]
+PublisherId = "sorryhyun"
+DisplayName = "HydraLoRA"
+Icon = ""

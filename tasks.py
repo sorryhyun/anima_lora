@@ -75,6 +75,10 @@ def cmd_tlora(extra):
     accelerate_launch("--config_file", "configs/training_config_tlora.toml", *extra)
 
 
+def cmd_hydralora(extra):
+    accelerate_launch("--config_file", "configs/training_config_hydralora.toml", *extra)
+
+
 def cmd_postfix(extra):
     accelerate_launch("--config_file", "configs/training_config_postfix.toml", *extra)
 
@@ -261,6 +265,7 @@ COMMANDS = {
     "dora":             (cmd_dora,             "DoRA training"),
     "tdora":            (cmd_tdora,            "DoRA + timestep masking"),
     "tlora":            (cmd_tlora,            "T-LoRA: OrthoLoRA + timestep masking"),
+    "hydralora":        (cmd_hydralora,        "HydraLoRA: multi-style MoE routing"),
     "postfix":          (cmd_postfix,          "Postfix tuning (LLM adapter cross-attn)"),
     "prefix":           (cmd_prefix,           "Prefix tuning (T5-space, cache-compatible)"),
     "test":             (cmd_test,             "Inference with latest LoRA"),

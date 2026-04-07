@@ -28,6 +28,7 @@ make lora-low-vram         # Low-VRAM LoRA (configs/training_config_low_vram.tom
 make dora                  # DoRA (configs/training_config_dora.toml + use_dora=true)
 make tlora                 # T-LoRA: OrthoLoRA + timestep masking (configs/training_config.toml)
 make tdora                 # DoRA + timestep masking (configs/training_config_doratimestep.toml)
+make hydralora             # HydraLoRA: MoE multi-head routing (configs/training_config_hydralora.toml)
 
 # Inference (test with most recent output)
 make test
@@ -80,6 +81,7 @@ Training is config-driven. TOML configs specify model paths, hyperparams, and da
 - `configs/training_config.toml` — T-LoRA config (used by `make tlora`)
 - `configs/training_config_dora.toml` — DoRA config
 - `configs/training_config_doratimestep.toml` — DoRA + timestep masking
+- `configs/training_config_hydralora.toml` — HydraLoRA multi-head routing (used by `make hydralora`)
 - `configs/training_config_low_vram.toml` — low-VRAM LoRA config
 - `configs/training_config_win8gb.toml` / `win16gb.toml` — Windows VRAM presets (GUI presets)
 - `configs/training_config_fa4_8gb.toml` / `fa4_16gb.toml` — Flash Attention 4 VRAM presets (GUI presets)
@@ -105,6 +107,7 @@ All in `networks/lora_modules.py`:
 - **DoRA** — Weight-decomposed: separate magnitude (`dora_scale`) and direction learning
 - **OrthoLoRA** — SVD-based orthogonal parameterization with orthogonality regularization (linear layers only, incompatible with DoRA)
 - **T-LoRA** — Timestep-dependent rank masking: effective rank varies with denoising step via power-law schedule. Compatible with both LoRA and DoRA.
+- **HydraLoRA** — MoE-style multi-head routing: shared `lora_down` + per-expert `lora_up_i` heads. Router on max-pooled `crossattn_emb` selects expert contributions per sample. Requires `cache_llm_adapter_outputs=true`. Compatible with T-LoRA. See `docs/hydra-lora.md`.
 
 ### Training flow (train.py)
 
@@ -163,6 +166,8 @@ Utility scripts in `scripts/`:
 ## Custom nodes
 
 `custom_nodes/comfyui-spectrum/` — ComfyUI drop-in KSampler replacement for Spectrum inference acceleration. Published to ComfyUI registry via `.github/workflows/publish_action.yml`.
+
+`custom_nodes/comfyui-hydralora/` — HydraLoRA loader nodes for ComfyUI. Two nodes: **HydraLoRA Loader (Manual)** with per-expert weight sliders, and **HydraLoRA Loader (Auto Router)** that computes expert weights from text conditioning via the learned router. Loads `*_hydra.safetensors` files.
 
 ## External tools
 
