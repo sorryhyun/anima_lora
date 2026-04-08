@@ -49,8 +49,12 @@ make download-models
 
 # 4. 학습 이미지를 image_dataset/에 배치 (.txt 캡션 사이드카 파일 함께)
 
-# 5. 이미지 전처리 (VAE 호환 리사이즈 및 검증)
+# 5. launch gui if needed
+make gui
+
+# Or, start via cli from preprocessing images (VAE-compatible resizing & validation)
 make preprocess
+make lora
 ```
 
 선택사항: Flash Attention 지원을 위해 `flash-attn` 설치.

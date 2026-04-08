@@ -25,7 +25,9 @@ class _FP8LinearFunc(torch.autograd.Function):
     """Custom autograd for fp8 linear: saves compact fp8 weight instead of transient bf16 copy."""
 
     @staticmethod
-    def forward(input: torch.Tensor, weight_fp8: torch.Tensor, bias: Optional[torch.Tensor]):
+    def forward(
+        input: torch.Tensor, weight_fp8: torch.Tensor, bias: Optional[torch.Tensor]
+    ):
         return F.linear(input, weight_fp8.to(input.dtype), bias)
 
     @staticmethod
@@ -1123,12 +1125,6 @@ class Block(nn.Module):
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
         extra_per_block_pos_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # Normalize requires_grad so dynamo sees one state across all blocks.
-        # Block 0 gets requires_grad=False (frozen patch_embed) while blocks 1+
-        # get True (LoRA-enhanced outputs).  All blocks share the same _forward
-        # code object → shared dynamo cache, so the mismatch causes recompilation.
-        x_B_T_H_W_D = x_B_T_H_W_D.requires_grad_()
-
         if extra_per_block_pos_emb is not None:
             x_B_T_H_W_D = x_B_T_H_W_D + extra_per_block_pos_emb
 
@@ -1459,7 +1455,9 @@ class Anima(nn.Module):
             block._forward = torch.compile(
                 block._forward, backend=backend, dynamic=False
             )
-        print(f"Anima: compiled {len(self.blocks)} block._forward with backend={backend}")
+        print(
+            f"Anima: compiled {len(self.blocks)} block._forward with backend={backend}"
+        )
 
     @property
     def device(self):
@@ -1629,6 +1627,7 @@ class Anima(nn.Module):
         t5_input_ids: Optional[torch.Tensor] = None,
         t5_attn_mask: Optional[torch.Tensor] = None,
         crossattn_seqlens: Optional[torch.Tensor] = None,
+        max_crossattn_seqlen: Optional[int] = None,
         h_offset: int = 0,
         w_offset: int = 0,
     ) -> torch.Tensor:
@@ -1732,7 +1731,11 @@ class Anima(nn.Module):
             and not self.split_attn
         ):
             full_len = crossattn_emb.shape[1]
-            max_real_len = int(crossattn_seqlens.max())
+            max_real_len = (
+                max_crossattn_seqlen
+                if max_crossattn_seqlen is not None
+                else int(crossattn_seqlens.max())
+            )
             trim_len = next((b for b in _KV_BUCKETS if b >= max_real_len), full_len)
             if trim_len < full_len:
                 crossattn_emb = crossattn_emb[:, :trim_len].contiguous()
@@ -1793,6 +1796,13 @@ class Anima(nn.Module):
                 _sa_target,
                 device=x_B_T_H_W_D.device,
             )
+
+        # Normalize requires_grad once before the block stack.  Block 0
+        # receives requires_grad=False (frozen patch_embed output) while
+        # blocks 1+ receive True (LoRA-enhanced).  All blocks share the
+        # same compiled _forward, so a mismatch triggers dynamo recompilation.
+        if self.training:
+            x_B_T_H_W_D = x_B_T_H_W_D.requires_grad_()
 
         for block_idx, block in enumerate(self.blocks):
             if self.blocks_to_swap:

@@ -326,9 +326,9 @@ class AnimaTrainer:
             attn_mode = args.attn_mode
 
         if attn_mode == "flash4":
-            from networks.attention import _flash_attn_4_func_raw
+            from networks.attention import _flash_attn_4_func
 
-            if _flash_attn_4_func_raw is not None:
+            if _flash_attn_4_func is not None:
                 logger.info("Using Flash Attention 4 (flash_attn.cute)")
             else:
                 raise RuntimeError(
@@ -339,7 +339,9 @@ class AnimaTrainer:
             from networks.attention import flash_attn, flash_attn_func
 
             if flash_attn_func is not None:
-                logger.info(f"Using Flash Attention 2 (flash_attn {flash_attn.__version__})")
+                logger.info(
+                    f"Using Flash Attention 2 (flash_attn {flash_attn.__version__})"
+                )
             else:
                 raise RuntimeError(
                     "attn_mode='flash' requested but flash_attn is not available."
@@ -503,6 +505,11 @@ class AnimaTrainer:
         else:
             prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask = text_encoder_conds
 
+        # Pre-compute max sequence length on CPU to avoid GPU sync in KV trimming
+        _max_crossattn_seqlen = None
+        if args.trim_crossattn_kv and t5_attn_mask is not None:
+            _max_crossattn_seqlen = int(t5_attn_mask.sum(dim=-1).max())
+
         if crossattn_emb is None:
             # Move to device
             prompt_embeds = prompt_embeds.to(accelerator.device, dtype=weight_dtype)
@@ -604,8 +611,16 @@ class AnimaTrainer:
                 kw = {}
                 if args.trim_crossattn_kv:
                     kw["crossattn_seqlens"] = t5_attn_mask.sum(dim=-1).to(torch.int32)
-                    if getattr(network, "mode", None) == "prefix" or hasattr(network, "append_postfix"):
-                        kw["crossattn_seqlens"] = kw["crossattn_seqlens"] + network.num_postfix_tokens
+                    max_cs = _max_crossattn_seqlen
+                    if getattr(network, "mode", None) == "prefix" or hasattr(
+                        network, "append_postfix"
+                    ):
+                        kw["crossattn_seqlens"] = (
+                            kw["crossattn_seqlens"] + network.num_postfix_tokens
+                        )
+                        if max_cs is not None:
+                            max_cs += network.num_postfix_tokens
+                    kw["max_crossattn_seqlen"] = max_cs
                 model_pred = anima(
                     noisy_model_input,
                     timesteps,
@@ -1344,17 +1359,36 @@ class AnimaTrainer:
         # Forward known network-arg keys from top-level config (TOML) to net_kwargs.
         # CLI --network_args take precedence over top-level config keys.
         _NETWORK_ARG_KEYS = [
-            "train_llm_adapter", "exclude_patterns", "include_patterns",
-            "use_dora", "use_ortho", "sig_type", "ortho_reg_weight",
-            "use_timestep_mask", "min_rank", "alpha_rank_scale",
-            "use_hydra", "num_experts", "balance_loss_weight",
-            "rank_dropout", "module_dropout", "verbose",
-            "network_reg_lrs", "network_reg_dims",
-            "loraplus_lr_ratio", "loraplus_unet_lr_ratio", "loraplus_text_encoder_lr_ratio",
-            "layer_start", "layer_end",
+            "train_llm_adapter",
+            "exclude_patterns",
+            "include_patterns",
+            "use_dora",
+            "use_ortho",
+            "sig_type",
+            "ortho_reg_weight",
+            "use_timestep_mask",
+            "min_rank",
+            "alpha_rank_scale",
+            "use_hydra",
+            "num_experts",
+            "balance_loss_weight",
+            "rank_dropout",
+            "module_dropout",
+            "verbose",
+            "network_reg_lrs",
+            "network_reg_dims",
+            "loraplus_lr_ratio",
+            "loraplus_unet_lr_ratio",
+            "loraplus_text_encoder_lr_ratio",
+            "layer_start",
+            "layer_end",
         ]
         for key in _NETWORK_ARG_KEYS:
-            if key not in net_kwargs and hasattr(args, key) and getattr(args, key) is not None:
+            if (
+                key not in net_kwargs
+                and hasattr(args, key)
+                and getattr(args, key) is not None
+            ):
                 net_kwargs[key] = str(getattr(args, key))
 
         if args.dim_from_weights:
@@ -1696,28 +1730,14 @@ class AnimaTrainer:
         )
 
         accelerator.print("running training")
-        accelerator.print(
-            f"  num train images * repeats"
-        )
-        accelerator.print(
-            f"  num validation images * repeats"
-        )
-        accelerator.print(
-            f"  num reg images"
-        )
-        accelerator.print(
-            f"  num batches per epoch"
-        )
-        accelerator.print(f"  num epochs")
-        accelerator.print(
-            f"  batch size per device"
-        )
-        accelerator.print(
-            f"  gradient accumulation steps"
-        )
-        accelerator.print(
-            f"  total optimization steps"
-        )
+        accelerator.print("  num train images * repeats")
+        accelerator.print("  num validation images * repeats")
+        accelerator.print("  num reg images")
+        accelerator.print("  num batches per epoch")
+        accelerator.print("  num epochs")
+        accelerator.print("  batch size per device")
+        accelerator.print("  gradient accumulation steps")
+        accelerator.print("  total optimization steps")
 
         metadata = train_util.build_training_metadata(
             args,
@@ -1771,7 +1791,7 @@ class AnimaTrainer:
 
         if initial_step > 0:
             assert args.max_train_steps > initial_step, (
-                f"max_train_steps should be greater than initial step"
+                "max_train_steps should be greater than initial step"
             )
 
         epoch_to_start = 0
@@ -1781,9 +1801,7 @@ class AnimaTrainer:
                     logger.info(
                         "initial_step is specified but not resuming. lr scheduler will be started from the beginning"
                     )
-                logger.info(
-                    f"skipping {initial_step} steps"
-                )
+                logger.info(f"skipping {initial_step} steps")
                 initial_step *= args.gradient_accumulation_steps
 
                 epoch_to_start = initial_step // math.ceil(
@@ -2027,35 +2045,10 @@ class AnimaTrainer:
                         "Average key norm": mean_norm,
                     }
                 else:
-                    if hasattr(network, "weight_norms"):
-                        weight_norms = network.weight_norms()
-                        mean_norm = (
-                            weight_norms.mean().item()
-                            if weight_norms is not None
-                            else None
-                        )
-                        grad_norms = network.grad_norms()
-                        mean_grad_norm = (
-                            grad_norms.mean().item() if grad_norms is not None else None
-                        )
-                        combined_weight_norms = network.combined_weight_norms()
-                        mean_combined_norm = (
-                            combined_weight_norms.mean().item()
-                            if combined_weight_norms is not None
-                            else None
-                        )
-                        maximum_norm = (
-                            weight_norms.max().item()
-                            if weight_norms is not None
-                            else None
-                        )
-                        keys_scaled = None
-                        max_mean_logs = {}
-                    else:
-                        keys_scaled, mean_norm, maximum_norm = None, None, None
-                        mean_grad_norm = None
-                        mean_combined_norm = None
-                        max_mean_logs = {}
+                    keys_scaled, mean_norm, maximum_norm = None, None, None
+                    mean_grad_norm = None
+                    mean_combined_norm = None
+                    max_mean_logs = {}
 
                 # Checks if the accelerator has performed an optimization step behind the scenes
                 if accelerator.sync_gradients:
@@ -2519,8 +2512,7 @@ def setup_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fp8_base_unet",
         action="store_true",
-        help="use fp8 for U-Net (or DiT), Text Encoder is fp16 or bf16"
-        "",
+        help="use fp8 for U-Net (or DiT), Text Encoder is fp16 or bf16",
     )
 
     parser.add_argument(

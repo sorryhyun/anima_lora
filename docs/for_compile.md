@@ -8,20 +8,7 @@ This document catalogues every change made to the anima\_lora fork (relative to 
 
 ### 1.1 Flash Attention 4 graph breaks
 
-FA4's CUTLASS/TVM kernels access raw DLPack data pointers, which fail with FakeTensors during dynamo tracing. Since FA4 is already a fused kernel that torch.compile cannot improve, we wrap it with `@torch.compiler.disable` to insert clean graph breaks while letting surrounding ops compile normally.
-
-```python
-# NEW
-@torch.compiler.disable
-def flash_attn_4_func(*args, **kwargs):
-    out, _lse = _flash_attn_4_func_raw(*args, **kwargs)
-    return out
-
-@torch.compiler.disable
-def flash_attn_4_varlen_func(*args, **kwargs):
-    out, _lse = _flash_attn_4_varlen_func_raw(*args, **kwargs)
-    return out
-```
+FA4's CUTLASS DSL kernel construction is Python-level code that dynamo tries to trace. The `arith.const()` function is called with many different scalar values during kernel construction, and dynamo guards on each value — exhausting the recompile limit. `@torch.compiler.disable` is applied at the source in `flash_attn/cute/interface.py` (`flash_attn_func` and `flash_attn_varlen_func`). Thin wrappers in `attention.py` strip the `lse` return value for call sites that don't need it.
 
 **sd-scripts**: No FA4 support at all.
 
@@ -93,7 +80,7 @@ padding_mask.unsqueeze(2).expand(-1, -1, n_heads)
 
 ### 2.4 KV bucket trimming constants
 
-New `_KV_BUCKETS = (64, 128, 256, 512)` — cross-attention KV sequences are trimmed to the smallest bucket that fits, giving torch.compile at most 4 shape variants instead of one per unique caption length.
+New `_KV_BUCKETS = (128, 192, 256, 512)` — cross-attention KV sequences are trimmed to the smallest bucket that fits, giving torch.compile at most 4 shape variants instead of one per unique caption length.
 
 ### 2.5 `set_static_token_count(count)`
 

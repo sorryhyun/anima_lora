@@ -1,5 +1,7 @@
 # anima_lora
 
+[한국어](README.ko.md)
+
 LoRA training and inference engine for the Anima diffusion model (DiT-based, flow-matching). Supports standard LoRA, DoRA, OrthoLoRA, and T-LoRA with timestep-dependent rank masking.
 
 ## Highlights
@@ -49,8 +51,12 @@ make download-models
 
 # 4. Place training images in image_dataset/ with .txt caption sidecars
 
-# 5. Preprocess images (VAE-compatible resizing & validation)
+# 5. launch gui if needed
+make gui
+
+# Or, start via cli from preprocessing images (VAE-compatible resizing & validation)
 make preprocess
+make lora
 ```
 
 Optional: install `flash-attn` for flash attention support.
