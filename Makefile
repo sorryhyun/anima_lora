@@ -1,10 +1,12 @@
 LORA_DIR := ../comfy/ComfyUI/models/loras
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
 
 .PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-prefix test-postfix test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
-	--dit models/diffusion_models/anima-preview2.safetensors \
+	--dit models/diffusion_models/anima-preview3-base.safetensors \
 	--text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
 	--vae models/vae/qwen_image_vae.safetensors \
 	--vae_chunk_size 64 --vae_disable_cache \
@@ -64,11 +66,11 @@ test:
 
 test-prefix:
 	$(TEST_COMMON) \
-		--prefix_weight $(LATEST_LORA)
+		--prefix_weight $(LATEST_PREFIX)
 
 test-postfix:
 	$(TEST_COMMON) \
-		--postfix_weight $(LATEST_LORA)
+		--postfix_weight $(LATEST_POSTFIX)
 
 test-spectrum:
 	$(TEST_COMMON) \
@@ -113,7 +115,7 @@ download-mit:
 download-anima:
 	python -c "import os; [os.makedirs(d,exist_ok=True) for d in ['models/diffusion_models','models/text_encoders','models/vae']]"
 	huggingface-cli download circlestone-labs/Anima \
-		split_files/diffusion_models/anima-preview2.safetensors \
+		split_files/diffusion_models/anima-preview3-base.safetensors \
 		split_files/text_encoders/qwen_3_06b_base.safetensors \
 		split_files/vae/qwen_image_vae.safetensors \
 		--local-dir models --include "split_files/*"

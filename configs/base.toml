@@ -1,6 +1,6 @@
 # Shared infrastructure settings — rarely change between experiments.
 
-pretrained_model_name_or_path = "models/diffusion_models/anima-preview2.safetensors"
+pretrained_model_name_or_path = "models/diffusion_models/anima-preview3-base.safetensors"
 qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"
 vae = "models/vae/qwen_image_vae.safetensors"
 

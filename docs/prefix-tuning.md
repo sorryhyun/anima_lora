@@ -124,7 +124,7 @@ accelerate launch --mixed_precision bf16 train.py \
 
 ```bash
 python inference.py \
-    --dit models/diffusion_models/anima-preview2.safetensors \
+    --dit models/diffusion_models/anima-preview3-base.safetensors \
     --text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --prefix_weight output/anima_prefix.safetensors \

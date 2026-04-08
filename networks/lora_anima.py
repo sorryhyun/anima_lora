@@ -199,7 +199,7 @@ def create_network(
     network._use_hydra = use_hydra
     network._balance_loss_weight = balance_loss_weight if use_hydra else 0.0
     if use_hydra:
-        network._hydra_router = torch.nn.Linear(1024, num_experts, bias=True)
+        network._hydra_router = torch.nn.Linear(1024, num_experts, bias=True, dtype=unet.dtype)
         torch.nn.init.xavier_uniform_(network._hydra_router.weight)
         torch.nn.init.zeros_(network._hydra_router.bias)
 
@@ -302,13 +302,9 @@ def create_network_from_weights(
 
         if "alpha" in key:
             modules_alpha[lora_name] = value
-        elif "lora_ups." in key and "weight" in key:
+        elif "lora_up_weight" in key:
             has_hydra = True
-            expert_idx = int(key.split("lora_ups.")[1].split(".")[0])
-            hydra_num_experts = max(hydra_num_experts, expert_idx + 1)
-            if "lora_down" not in modules_dim.get(lora_name, ""):
-                # lora_down dim is set separately; skip ups for dim detection
-                pass
+            hydra_num_experts = max(hydra_num_experts, value.size(0))
         elif "lora_down" in key:
             dim = value.size()[0]
             modules_dim[lora_name] = dim
@@ -350,7 +346,8 @@ def create_network_from_weights(
     # Recreate router if loading HydraLoRA weights
     if has_hydra and "_hydra_router.weight" in weights_sd:
         router_dim = weights_sd["_hydra_router.weight"].shape[0]
-        network._hydra_router = torch.nn.Linear(1024, router_dim, bias=True)
+        router_dtype = weights_sd["_hydra_router.weight"].dtype
+        network._hydra_router = torch.nn.Linear(1024, router_dim, bias=True, dtype=router_dtype)
         network._use_hydra = True
     return network, weights_sd
 
@@ -867,6 +864,17 @@ class LoRANetwork(torch.nn.Module):
                 new_key = key.replace(".dora_scale", ".magnitude")
                 weights_sd[new_key] = weights_sd.pop(key)
 
+        # Migrate old lora_ups.N.weight → fused lora_up_weight
+        ups_prefixes: dict[str, dict[int, torch.Tensor]] = {}
+        for key in list(weights_sd.keys()):
+            if ".lora_ups." in key and key.endswith(".weight"):
+                prefix = key.split(".lora_ups.")[0]
+                idx = int(key.split("lora_ups.")[1].split(".")[0])
+                ups_prefixes.setdefault(prefix, {})[idx] = weights_sd.pop(key)
+        for prefix, experts in ups_prefixes.items():
+            stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
+            weights_sd[f"{prefix}.lora_up_weight"] = stacked
+
         info = self.load_state_dict(weights_sd, False)
         return info
 
@@ -1208,13 +1216,22 @@ class LoRANetwork(torch.nn.Module):
         # HydraLoRA: save full multi-head format alongside baked-down version
         hydra_prefixes = set()
         for key in list(state_dict.keys()):
-            if ".lora_ups." in key and key.endswith(".weight"):
-                hydra_prefixes.add(key.split(".lora_ups.")[0])
+            if key.endswith(".lora_up_weight"):
+                hydra_prefixes.add(key.removesuffix(".lora_up_weight"))
 
         if hydra_prefixes:
             # Save full multi-head format (experts + router) for custom node inference
+            # Expand fused lora_up_weight back to per-expert lora_ups.N.weight keys
             hydra_file = os.path.splitext(file)[0] + "_hydra.safetensors"
-            hydra_sd = {k: v.detach().clone().to("cpu") for k, v in state_dict.items()}
+            hydra_sd = {}
+            for k, v in state_dict.items():
+                v = v.detach().clone().to("cpu")
+                if k.endswith(".lora_up_weight"):
+                    prefix = k.removesuffix(".lora_up_weight")
+                    for i in range(v.size(0)):
+                        hydra_sd[f"{prefix}.lora_ups.{i}.weight"] = v[i]
+                else:
+                    hydra_sd[k] = v
             if dtype is not None:
                 hydra_sd = {k: v.to(dtype) for k, v in hydra_sd.items()}
             from safetensors.torch import save_file as sf_save
@@ -1223,16 +1240,11 @@ class LoRANetwork(torch.nn.Module):
 
         # HydraLoRA → standard LoRA: average expert up-projections for ComfyUI compatibility
         for prefix in hydra_prefixes:
-            expert_keys = sorted(
-                k for k in state_dict.keys()
-                if k.startswith(f"{prefix}.lora_ups.") and k.endswith(".weight")
-            )
-            if not expert_keys:
+            fused_key = f"{prefix}.lora_up_weight"
+            if fused_key not in state_dict:
                 continue
-            avg_up = torch.stack([state_dict[k] for k in expert_keys]).mean(dim=0)
-            for k in expert_keys:
-                del state_dict[k]
-            state_dict[f"{prefix}.lora_up.weight"] = avg_up
+            # lora_up_weight is (num_experts, out_dim, lora_dim) → average to (out_dim, lora_dim)
+            state_dict[f"{prefix}.lora_up.weight"] = state_dict.pop(fused_key).mean(dim=0)
 
         # Remove HydraLoRA router keys (not needed for baked-down inference)
         for key in list(state_dict.keys()):

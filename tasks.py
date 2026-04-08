@@ -21,17 +21,22 @@ ROOT = Path(__file__).resolve().parent
 LORA_DIR = ROOT.parent / "comfy" / "ComfyUI" / "models" / "loras"
 
 
-def latest_lora() -> Path:
-    """Return the most recently modified .safetensors file in output/."""
+def latest_output(prefix: str = "") -> Path:
+    """Return the most recently modified .safetensors file in output/ matching prefix."""
     outputs = sorted(
-        (ROOT / "output").glob("*.safetensors"),
+        (f for f in (ROOT / "output").glob("*.safetensors") if f.name.startswith(prefix)),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     if not outputs:
-        print("No .safetensors files found in output/", file=sys.stderr)
+        label = f"'{prefix}*.safetensors'" if prefix else "*.safetensors"
+        print(f"No {label} files found in output/", file=sys.stderr)
         sys.exit(1)
     return outputs[0]
+
+
+def latest_lora() -> Path:
+    return latest_output()
 
 
 def run(cmd: list[str], **kwargs):
@@ -91,7 +96,7 @@ def cmd_prefix(extra):
 
 INFERENCE_BASE = [
     "python", "inference.py",
-    "--dit", "models/diffusion_models/anima-preview2.safetensors",
+    "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
     "--text_encoder", "models/text_encoders/qwen_3_06b_base.safetensors",
     "--vae", "models/vae/qwen_image_vae.safetensors",
     "--vae_chunk_size", "64", "--vae_disable_cache",
@@ -116,6 +121,14 @@ INFERENCE_BASE = [
 
 def cmd_test(extra):
     run([*INFERENCE_BASE, "--lora_weight", str(latest_lora()), *extra])
+
+
+def cmd_test_prefix(extra):
+    run([*INFERENCE_BASE, "--prefix_weight", str(latest_output("anima_prefix")), *extra])
+
+
+def cmd_test_postfix(extra):
+    run([*INFERENCE_BASE, "--postfix_weight", str(latest_output("anima_postfix")), *extra])
 
 
 def cmd_test_spectrum(extra):
@@ -186,7 +199,7 @@ def cmd_download_anima(_extra):
         (ROOT / "models" / d).mkdir(parents=True, exist_ok=True)
     run([
         "huggingface-cli", "download", "circlestone-labs/Anima",
-        "split_files/diffusion_models/anima-preview2.safetensors",
+        "split_files/diffusion_models/anima-preview3-base.safetensors",
         "split_files/text_encoders/qwen_3_06b_base.safetensors",
         "split_files/vae/qwen_image_vae.safetensors",
         "--local-dir", "models", "--include", "split_files/*",
@@ -269,6 +282,8 @@ COMMANDS = {
     "postfix":          (cmd_postfix,          "Postfix tuning (LLM adapter cross-attn)"),
     "prefix":           (cmd_prefix,           "Prefix tuning (T5-space, cache-compatible)"),
     "test":             (cmd_test,             "Inference with latest LoRA"),
+    "test-prefix":      (cmd_test_prefix,      "Inference with latest prefix weight"),
+    "test-postfix":     (cmd_test_postfix,     "Inference with latest postfix weight"),
     "test-spectrum":    (cmd_test_spectrum,    "Spectrum-accelerated inference"),
     "sync":             (cmd_sync,             "Copy outputs to ComfyUI loras dir"),
     "step":             (cmd_step,             "Run one GRAFT iteration"),

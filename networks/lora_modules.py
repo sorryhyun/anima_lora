@@ -345,15 +345,10 @@ class HydraLoRAModule(torch.nn.Module):
         self.lora_down = torch.nn.Linear(in_dim, self.lora_dim, bias=False)
         torch.nn.init.kaiming_uniform_(self.lora_down.weight, a=math.sqrt(5))
 
-        # Per-expert up projections
-        self.lora_ups = torch.nn.ModuleList(
-            [
-                torch.nn.Linear(self.lora_dim, out_dim, bias=False)
-                for _ in range(num_experts)
-            ]
+        # Fused per-expert up projections: (num_experts, out_dim, lora_dim)
+        self.lora_up_weight = torch.nn.Parameter(
+            torch.zeros(num_experts, out_dim, self.lora_dim)
         )
-        for up in self.lora_ups:
-            torch.nn.init.zeros_(up.weight)
 
         if isinstance(alpha, torch.Tensor):
             alpha = alpha.detach().float().numpy()
@@ -415,20 +410,17 @@ class HydraLoRAModule(torch.nn.Module):
         # Expert-weighted output via gate
         if self._hydra_gate is not None:
             gate = self._hydra_gate  # (B, num_experts)
-            # Stack expert weights: (num_experts, out_dim, lora_dim)
-            stacked = torch.stack([up.weight for up in self.lora_ups], dim=0)
             # Gate-weighted combined weight per batch element: (B, out_dim, lora_dim)
-            combined = torch.einsum("be,eod->bod", gate, stacked)
+            combined = torch.einsum("be,eod->bod", gate, self.lora_up_weight)
             # Apply: lx is (B, ..., lora_dim), combined is (B, out_dim, lora_dim)
-            if len(lx.shape) == 3:
-                # (B, seq, lora_dim) @ (B, lora_dim, out_dim) -> (B, seq, out_dim)
-                out = torch.bmm(lx, combined.transpose(1, 2))
-            else:
-                # (B, lora_dim) -> (B, 1, lora_dim) @ (B, lora_dim, out_dim) -> (B, out_dim)
-                out = torch.bmm(lx.unsqueeze(1), combined.transpose(1, 2)).squeeze(1)
+            orig_shape = lx.shape
+            B = orig_shape[0]
+            lx_3d = lx.reshape(B, -1, orig_shape[-1])  # (B, *, lora_dim)
+            out = torch.bmm(lx_3d, combined.transpose(1, 2))  # (B, *, out_dim)
+            out = out.reshape(*orig_shape[:-1], -1)  # restore prefix dims
         else:
             # Fallback: uniform average (inference without router)
-            out = sum(up(lx) for up in self.lora_ups) / self.num_experts
+            out = torch.nn.functional.linear(lx, self.lora_up_weight.mean(dim=0))
 
         if self.fp32_accumulation:
             return org_forwarded + (out * self.multiplier * scale).to(

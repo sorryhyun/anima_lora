@@ -61,7 +61,7 @@ make preprocess
 
 | 파일 | 경로 |
 |------|------|
-| Anima DiT | `models/diffusion_models/anima-preview2.safetensors` |
+| Anima DiT | `models/diffusion_models/anima-preview3-base.safetensors` |
 | Qwen3 0.6B 텍스트 인코더 | `models/text_encoders/qwen_3_06b_base.safetensors` |
 | QwenImage VAE | `models/vae/qwen_image_vae.safetensors` |
 
@@ -108,7 +108,7 @@ accelerate launch --mixed_precision bf16 train.py --config_file configs/training
 
 ```bash
 python inference.py \
-    --dit ../models/diffusion_models/anima-preview2.safetensors \
+    --dit ../models/diffusion_models/anima-preview3-base.safetensors \
     --text_encoder ../models/text_encoders/qwen_3_06b_base.safetensors \
     --vae ../models/vae/qwen_image_vae.safetensors \
     --lora_weight ../output/anima_lora.safetensors \
