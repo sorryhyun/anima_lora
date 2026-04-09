@@ -919,7 +919,25 @@ class LoRAInfModule(LoRAModule):
                 + torch.cat(lxs, dim=-1) * self.multiplier * self.scale
             )
 
+    def fuse_weight(self):
+        """Merge LoRA delta into org_module weight. Forward becomes a no-op (just org_forward)."""
+        if getattr(self, "_fused", False):
+            return
+        org_module = self.org_module_ref[0]
+        delta = self.get_weight().to(org_module.weight.dtype)
+        org_module.weight.data += delta
+        self._fused = True
+
+    def unfuse_weight(self):
+        """Remove LoRA delta from org_module weight."""
+        if not getattr(self, "_fused", False):
+            return
+        org_module = self.org_module_ref[0]
+        delta = self.get_weight().to(org_module.weight.dtype)
+        org_module.weight.data -= delta
+        self._fused = False
+
     def forward(self, x):
-        if not self.enabled:
+        if not self.enabled or self._fused:
             return self.org_forward(x)
         return self.default_forward(x)

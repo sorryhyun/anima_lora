@@ -86,11 +86,11 @@ test-spectrum:
 		--spectrum_stop_caching_step 29 \
 		--spectrum_calibration 0.0
 
-WORKFLOW ?= workflows/postfix-batch.json
+WORKFLOW ?= workflows/lora-batch.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 
-step:
+graft-step:
 	python graft_step.py
 
 preprocess:

@@ -729,6 +729,16 @@ class LoRANetwork(torch.nn.Module):
         for lora in self.text_encoder_loras + self.unet_loras:
             lora.enabled = is_enabled
 
+    def fuse_weights(self):
+        """Merge all LoRA deltas into base model weights for zero-overhead inference."""
+        for lora in self.text_encoder_loras + self.unet_loras:
+            lora.fuse_weight()
+
+    def unfuse_weights(self):
+        """Remove all LoRA deltas from base model weights."""
+        for lora in self.text_encoder_loras + self.unet_loras:
+            lora.unfuse_weight()
+
     def set_timestep_mask(self, timesteps: torch.Tensor, max_timestep: float = 1.0):
         """Compute and set timestep-dependent rank mask on all modules."""
         if not getattr(self, "_use_timestep_mask", False):

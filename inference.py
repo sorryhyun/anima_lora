@@ -603,6 +603,10 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                 pgraft_network = getattr(anima, "_pgraft_network", None)
                 lora_cutoff_step = getattr(first_args, "lora_cutoff_step", None)
 
+                # Fuse LoRA weights into base model for zero-overhead inference
+                if pgraft_network is not None:
+                    pgraft_network.fuse_weights()
+
                 with tqdm(
                     total=len(timesteps), desc=f"Denoising ({bs}x batch)"
                 ) as pbar:
@@ -612,9 +616,9 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                             and lora_cutoff_step is not None
                             and step_i == lora_cutoff_step
                         ):
-                            pgraft_network.set_enabled(False)
+                            pgraft_network.unfuse_weights()
                             logger.info(
-                                f"P-GRAFT: Disabled LoRA at step {step_i}/{len(timesteps)}"
+                                f"P-GRAFT: Unfused LoRA at step {step_i}/{len(timesteps)}"
                             )
 
                         t_expand = t.expand(bs)
@@ -659,9 +663,9 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                             ).to(latents.dtype)
                         pbar.update()
 
-                # P-GRAFT: restore LoRA for next group
-                if pgraft_network is not None and lora_cutoff_step is not None:
-                    pgraft_network.set_enabled(True)
+                # P-GRAFT: restore LoRA for next prompt
+                if pgraft_network is not None:
+                    pgraft_network.unfuse_weights()
 
                 # Split batch and decode+save immediately
                 for j, idx in enumerate(indices):

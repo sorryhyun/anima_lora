@@ -1,6 +1,6 @@
 epochs_per_step = 1
 candidates_per_prompt = 4
-pgraft_sample_ratio = 0.05       # hold out n % image_dataset for generation
+pgraft_sample_ratio = 0.01       # hold out n % image_dataset for generation
 pgraft_enabled = true
 pgraft_cutoff_ratio = 0.75      # LoRA active for first 75% of denoising steps
 inference_steps = 28
