@@ -60,7 +60,7 @@ def parse_args():
     p.add_argument("--dit", type=str, required=True, help="DiT checkpoint path")
     p.add_argument("--vae", type=str, default=None, help="VAE checkpoint path (only needed for --image mode)")
     p.add_argument("--text_encoder", type=str, default=None, help="Text encoder path (for --init_prompt)")
-    p.add_argument("--attn_mode", type=str, default="torch", help="Attention backend")
+    p.add_argument("--attn_mode", type=str, default="flash", help="Attention backend")
 
     # Target — single image or directory
     target = p.add_mutually_exclusive_group(required=True)
@@ -77,10 +77,10 @@ def parse_args():
     p.add_argument("--init_zeros", action="store_true", help="Initialize from zeros instead of cached embedding")
 
     # Optimization
-    p.add_argument("--steps", type=int, default=500, help="Optimization steps per image")
+    p.add_argument("--steps", type=int, default=100, help="Optimization steps per image")
     p.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     p.add_argument("--lr_schedule", type=str, default="cosine", choices=["cosine", "constant"], help="LR schedule")
-    p.add_argument("--timesteps_per_step", type=int, default=4, help="Random timesteps sampled per optimization step (batched forward)")
+    p.add_argument("--timesteps_per_step", type=int, default=6, help="Random timesteps sampled per optimization step (batched forward)")
     p.add_argument("--grad_accum", type=int, default=1, help="Gradient accumulation steps (total timesteps per update = timesteps_per_step × grad_accum)")
     p.add_argument("--sigma_sampling", type=str, default="uniform", choices=["uniform", "sigmoid"], help="Sigma sampling strategy")
     p.add_argument("--sigmoid_scale", type=float, default=1.0, help="Scale for sigmoid sigma sampling")
@@ -601,6 +601,7 @@ def main():
     )
     anima.to(device, dtype=torch.bfloat16)
     anima.requires_grad_(False)
+    anima.split_attn = False  # all batch elements share the same image; avoids data-dependent graph breaks
 
     # Enable gradient checkpointing to save VRAM (recompute block activations during backward).
     # Blocks must be in train mode for checkpointing to activate, but the model's

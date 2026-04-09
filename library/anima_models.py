@@ -2,7 +2,7 @@
 # Original code: NVIDIA CORPORATION & AFFILIATES, licensed under Apache-2.0
 
 import math
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple
 
 import numpy as np
 import torch
@@ -237,24 +237,15 @@ def _rotate_half(x: torch.Tensor, interleaved: bool) -> torch.Tensor:
     return x_new.view(x_new.shape[0], x_new.shape[1], x_new.shape[2], -1)
 
 
-def _apply_rotary_pos_emb_base(
-    t: torch.Tensor,
+def apply_rotary_pos_emb_qk(
+    q: torch.Tensor,
+    k: torch.Tensor,
     freqs: torch.Tensor,
-    start_positions: torch.Tensor = None,
     tensor_format: str = "sbhd",
-    interleaved: bool = False,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Apply RoPE to q and k simultaneously, computing cos/sin once."""
     max_seq_len = freqs.shape[0]
-    cur_seq_len = t.shape[1] if tensor_format == "bshd" else t.shape[0]
-
-    if start_positions is not None:
-        max_offset = torch.max(start_positions)
-        assert max_offset + cur_seq_len <= max_seq_len, (
-            f"Rotary Embeddings only supported up to {max_seq_len} sequence length!"
-        )
-        freqs = torch.concatenate(
-            [freqs[i : i + cur_seq_len] for i in start_positions], dim=1
-        )
+    cur_seq_len = q.shape[1] if tensor_format == "bshd" else q.shape[0]
 
     assert cur_seq_len <= max_seq_len, (
         f"Rotary Embeddings only supported up to {max_seq_len} sequence length!"
@@ -263,63 +254,22 @@ def _apply_rotary_pos_emb_base(
 
     if tensor_format == "bshd":
         freqs = freqs.transpose(0, 1)
-    cos_ = torch.cos(freqs).to(t.dtype)
-    sin_ = torch.sin(freqs).to(t.dtype)
+    cos_ = torch.cos(freqs)
+    sin_ = torch.sin(freqs)
 
     rot_dim = freqs.shape[-1]
-    t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
-    t = (t * cos_) + (_rotate_half(t, interleaved) * sin_)
-    return torch.cat((t, t_pass), dim=-1)
 
+    cos_q = cos_.to(q.dtype)
+    sin_q = sin_.to(q.dtype)
+    q_rot, q_pass = q[..., :rot_dim], q[..., rot_dim:]
+    q = torch.cat(((q_rot * cos_q) + (_rotate_half(q_rot, False) * sin_q), q_pass), dim=-1)
 
-def apply_rotary_pos_emb(
-    t: torch.Tensor,
-    freqs: torch.Tensor,
-    tensor_format: str = "sbhd",
-    start_positions: Union[torch.Tensor, None] = None,
-    interleaved: bool = False,
-    fused: bool = False,
-    cu_seqlens: Union[torch.Tensor, None] = None,
-    cp_size: int = 1,
-) -> torch.Tensor:
-    assert not (cp_size > 1 and start_positions is not None), (
-        "start_positions != None with CP SIZE > 1 is not supported!"
-    )
+    cos_k = cos_q if k.dtype == q.dtype else cos_.to(k.dtype)
+    sin_k = sin_q if k.dtype == q.dtype else sin_.to(k.dtype)
+    k_rot, k_pass = k[..., :rot_dim], k[..., rot_dim:]
+    k = torch.cat(((k_rot * cos_k) + (_rotate_half(k_rot, False) * sin_k), k_pass), dim=-1)
 
-    assert tensor_format != "thd" or cu_seqlens is not None, (
-        "cu_seqlens must not be None when tensor_format is 'thd'."
-    )
-
-    assert not fused
-
-    if tensor_format == "thd":
-        cu_seqlens = cu_seqlens // cp_size
-        seqlens = (cu_seqlens[1:] - cu_seqlens[:-1]).tolist()
-        return torch.cat(
-            [
-                _apply_rotary_pos_emb_base(
-                    x.unsqueeze(1),
-                    freqs,
-                    start_positions=(
-                        start_positions[idx : idx + 1]
-                        if start_positions is not None
-                        else None
-                    ),
-                    interleaved=interleaved,
-                )
-                for idx, x in enumerate(torch.split(t, seqlens))
-            ]
-        ).squeeze(1)
-
-    if tensor_format not in ("sbhd", "bshd"):
-        raise ValueError(f"Unsupported tensor_format: {tensor_format}.")
-    return _apply_rotary_pos_emb_base(
-        t,
-        freqs,
-        start_positions,
-        tensor_format,
-        interleaved=interleaved,
-    )
+    return q, k
 
 
 # Basic building blocks
@@ -450,11 +400,8 @@ class Attention(nn.Module):
         k = self.k_norm(k)
         v = self.v_norm(v)
         if self.is_selfattn and rope_emb is not None:
-            q = apply_rotary_pos_emb(
-                q, rope_emb, tensor_format=self.qkv_format, fused=False
-            )
-            k = apply_rotary_pos_emb(
-                k, rope_emb, tensor_format=self.qkv_format, fused=False
+            q, k = apply_rotary_pos_emb_qk(
+                q, k, rope_emb, tensor_format=self.qkv_format
             )
 
         return q, k, v

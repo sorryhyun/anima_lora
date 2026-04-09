@@ -84,6 +84,9 @@ class AttentionParams:
     crossattn_full_len: Optional[int] = (
         None  # original KV length before bucketed trimming (for LSE sink correction)
     )
+    uniform_seqlens: bool = (
+        False  # caller guarantees all seqlens are equal (skips GPU sync check)
+    )
 
     @property
     def supports_fp32(self) -> bool:
@@ -133,13 +136,9 @@ class AttentionParams:
             cu_seqlens = torch.zeros(
                 [2 * batch_size + 1], dtype=torch.int32, device=attention_mask.device
             )
-            for i in range(batch_size):
-                cu_seqlens[2 * i + 1] = (
-                    i * max_seqlen + seqlens[i]
-                )  # end of valid tokens for query
-                cu_seqlens[2 * i + 2] = (
-                    i + 1
-                ) * max_seqlen  # end of all tokens for query
+            offsets = torch.arange(batch_size, dtype=torch.int32, device=attention_mask.device) * max_seqlen
+            cu_seqlens[1::2] = offsets + seqlens  # end of valid tokens per batch
+            cu_seqlens[2::2] = offsets + max_seqlen  # end of all tokens per batch
 
             # Expand attention mask to include image tokens
             attention_mask = torch.nn.functional.pad(
@@ -255,7 +254,7 @@ def attention(
         and attn_params.attention_mask is not None
         and attn_params.seqlens is not None
     ):
-        if torch.all(attn_params.seqlens == attn_params.seqlens[0]):
+        if attn_params.uniform_seqlens or torch.all(attn_params.seqlens == attn_params.seqlens[0]):
             seqlen = attn_params.seqlens[0].item()
             q = q[:, :seqlen]
             k = k[:, :seqlen]

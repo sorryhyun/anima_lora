@@ -93,7 +93,7 @@ invert:
 		--attn_mode flash \
 		--image_dir post_image_dataset \
 		--num_images $(INVERT_N) --shuffle \
-		--steps 500 --lr 0.01 \
+		--steps 100 --lr 0.01 \
 		--output_dir inversions \
 		--log_block_grads
 
