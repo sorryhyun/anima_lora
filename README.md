@@ -125,6 +125,17 @@ python inference.py \
     --save_path ../output/images
 ```
 
+## Embedding Inversion
+
+Optimize a text embedding to match a target image by backpropagating through the frozen DiT. Reveals how the model interprets an image in embedding space.
+
+```bash
+make invert                    # batch inversion on preprocessed dataset
+make invert INVERT_SWAP=12     # use block swap for low-VRAM GPUs
+```
+
+See [docs/invert.md](docs/invert.md) for details on initialization, VRAM modes, and block gradient analysis.
+
 ## Documentation
 
 | Doc | Contents |
@@ -132,3 +143,4 @@ python inference.py \
 | [docs/training.md](docs/training.md) | LoRA variants (DoRA, OrthoLoRA, T-LoRA), KV trim, caption shuffle, masked loss, dataset config |
 | [docs/prefix-tuning.md](docs/prefix-tuning.md) | Prefix tuning — 12 GB VRAM, ~1 step/s, how it works, config reference |
 | [docs/inference.md](docs/inference.md) | Inference flags, P-GRAFT inference, prompt file format, LoRA format conversion |
+| [docs/invert.md](docs/invert.md) | Embedding inversion — optimization flags, VRAM modes, block gradient logging |

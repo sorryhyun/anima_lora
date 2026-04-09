@@ -240,34 +240,39 @@ def _rotate_half(x: torch.Tensor, interleaved: bool) -> torch.Tensor:
 def apply_rotary_pos_emb_qk(
     q: torch.Tensor,
     k: torch.Tensor,
-    freqs: torch.Tensor,
+    rope_cos_sin: tuple[torch.Tensor, torch.Tensor],
     tensor_format: str = "sbhd",
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Apply RoPE to q and k simultaneously, computing cos/sin once."""
-    max_seq_len = freqs.shape[0]
+    """Apply RoPE to q and k using precomputed (cos, sin) tensors."""
+    cos_, sin_ = rope_cos_sin
+    max_seq_len = cos_.shape[0]
     cur_seq_len = q.shape[1] if tensor_format == "bshd" else q.shape[0]
 
     assert cur_seq_len <= max_seq_len, (
         f"Rotary Embeddings only supported up to {max_seq_len} sequence length!"
     )
-    freqs = freqs[:cur_seq_len]
+    cos_ = cos_[:cur_seq_len]
+    sin_ = sin_[:cur_seq_len]
 
     if tensor_format == "bshd":
-        freqs = freqs.transpose(0, 1)
-    cos_ = torch.cos(freqs)
-    sin_ = torch.sin(freqs)
+        cos_ = cos_.transpose(0, 1)
+        sin_ = sin_.transpose(0, 1)
 
-    rot_dim = freqs.shape[-1]
+    rot_dim = cos_.shape[-1]
 
     cos_q = cos_.to(q.dtype)
     sin_q = sin_.to(q.dtype)
     q_rot, q_pass = q[..., :rot_dim], q[..., rot_dim:]
-    q = torch.cat(((q_rot * cos_q) + (_rotate_half(q_rot, False) * sin_q), q_pass), dim=-1)
+    q = torch.cat(
+        ((q_rot * cos_q) + (_rotate_half(q_rot, False) * sin_q), q_pass), dim=-1
+    )
 
     cos_k = cos_q if k.dtype == q.dtype else cos_.to(k.dtype)
     sin_k = sin_q if k.dtype == q.dtype else sin_.to(k.dtype)
     k_rot, k_pass = k[..., :rot_dim], k[..., rot_dim:]
-    k = torch.cat(((k_rot * cos_k) + (_rotate_half(k_rot, False) * sin_k), k_pass), dim=-1)
+    k = torch.cat(
+        ((k_rot * cos_k) + (_rotate_half(k_rot, False) * sin_k), k_pass), dim=-1
+    )
 
     return q, k
 
@@ -333,8 +338,8 @@ class Attention(nn.Module):
         self,
         query_dim: int,
         context_dim: Optional[int] = None,
-        n_heads: int = 8,
-        head_dim: int = 64,
+        n_heads: int = 16,
+        head_dim: int = 128,
         dropout: float = 0.0,
         qkv_format: str = "bshd",
     ) -> None:
@@ -350,13 +355,14 @@ class Attention(nn.Module):
         self.query_dim = query_dim
         self.context_dim = context_dim
 
-        self.q_proj = nn.Linear(query_dim, inner_dim, bias=False)
+        if self.is_selfattn:
+            self.qkv_proj = nn.Linear(query_dim, 3 * inner_dim, bias=False)
+        else:
+            self.q_proj = nn.Linear(query_dim, inner_dim, bias=False)
+            self.kv_proj = nn.Linear(context_dim, 2 * inner_dim, bias=False)
+
         self.q_norm = RMSNorm(self.head_dim, eps=1e-6)
-
-        self.k_proj = nn.Linear(context_dim, inner_dim, bias=False)
         self.k_norm = RMSNorm(self.head_dim, eps=1e-6)
-
-        self.v_proj = nn.Linear(context_dim, inner_dim, bias=False)
         self.v_norm = nn.Identity()
 
         self.output_proj = nn.Linear(inner_dim, query_dim, bias=False)
@@ -368,11 +374,15 @@ class Attention(nn.Module):
         self.init_weights()
 
     def init_weights(self) -> None:
-        std = 1.0 / math.sqrt(self._query_dim)
-        torch.nn.init.trunc_normal_(self.q_proj.weight, std=std, a=-3 * std, b=3 * std)
-        std = 1.0 / math.sqrt(self._context_dim)
-        torch.nn.init.trunc_normal_(self.k_proj.weight, std=std, a=-3 * std, b=3 * std)
-        torch.nn.init.trunc_normal_(self.v_proj.weight, std=std, a=-3 * std, b=3 * std)
+        if self.is_selfattn:
+            # Self-attention: query_dim == context_dim, single std for fused QKV
+            std = 1.0 / math.sqrt(self._query_dim)
+            torch.nn.init.trunc_normal_(self.qkv_proj.weight, std=std, a=-3 * std, b=3 * std)
+        else:
+            std = 1.0 / math.sqrt(self._query_dim)
+            torch.nn.init.trunc_normal_(self.q_proj.weight, std=std, a=-3 * std, b=3 * std)
+            std = 1.0 / math.sqrt(self._context_dim)
+            torch.nn.init.trunc_normal_(self.kv_proj.weight, std=std, a=-3 * std, b=3 * std)
 
         std = 1.0 / math.sqrt(self._inner_dim)
         torch.nn.init.trunc_normal_(
@@ -387,21 +397,22 @@ class Attention(nn.Module):
         self,
         x: torch.Tensor,
         context: torch.Tensor,
-        rope_emb: Optional[torch.Tensor] = None,
+        rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> tuple:
-        q = self.q_proj(x)
-        k = self.k_proj(context)
-        v = self.v_proj(context)
-        q = q.unflatten(-1, (self.n_heads, self.head_dim))
-        k = k.unflatten(-1, (self.n_heads, self.head_dim))
-        v = v.unflatten(-1, (self.n_heads, self.head_dim))
+        if self.is_selfattn:
+            qkv = self.qkv_proj(x)
+            q, k, v = qkv.unflatten(-1, (3, self.n_heads, self.head_dim)).unbind(dim=-3)
+        else:
+            q = self.q_proj(x).unflatten(-1, (self.n_heads, self.head_dim))
+            kv = self.kv_proj(context)
+            k, v = kv.unflatten(-1, (2, self.n_heads, self.head_dim)).unbind(dim=-3)
 
         q = self.q_norm(q)
         k = self.k_norm(k)
         v = self.v_norm(v)
-        if self.is_selfattn and rope_emb is not None:
+        if self.is_selfattn and rope_cos_sin is not None:
             q, k = apply_rotary_pos_emb_qk(
-                q, k, rope_emb, tensor_format=self.qkv_format
+                q, k, rope_cos_sin, tensor_format=self.qkv_format
             )
 
         return q, k, v
@@ -411,9 +422,9 @@ class Attention(nn.Module):
         x: torch.Tensor,
         attn_params: attention.AttentionParams,
         context: torch.Tensor,
-        rope_emb: Optional[torch.Tensor] = None,
+        rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
-        q, k, v = self.compute_qkv(x, context, rope_emb=rope_emb)
+        q, k, v = self.compute_qkv(x, context, rope_cos_sin=rope_cos_sin)
         if q.dtype != v.dtype:
             if (
                 not attn_params.supports_fp32 or attn_params.requires_same_dtype
@@ -440,10 +451,9 @@ class VideoPositionEmb(nn.Module):
 
     def forward(
         self, x_B_T_H_W_C: torch.Tensor, fps: Optional[torch.Tensor]
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         B_T_H_W_C = x_B_T_H_W_C.shape
-        embeddings = self.generate_embeddings(B_T_H_W_C, fps=fps)
-        return embeddings
+        return self.generate_embeddings(B_T_H_W_C, fps=fps)
 
     def generate_embeddings(
         self, B_T_H_W_C: torch.Size, fps: Optional[torch.Tensor]
@@ -501,6 +511,7 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         self.h_ntk_factor = h_extrapolation_ratio ** (dim_h / (dim_h - 2))
         self.w_ntk_factor = w_extrapolation_ratio ** (dim_w / (dim_w - 2))
         self.t_ntk_factor = t_extrapolation_ratio ** (dim_t / (dim_t - 2))
+        self._cos_sin_cache: dict[tuple, tuple[torch.Tensor, torch.Tensor]] = {}
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -525,6 +536,18 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
             / dim_t
         )
 
+    def _cache_key(
+        self,
+        T: int,
+        H: int,
+        W: int,
+        fps: Optional[torch.Tensor],
+        h_offset: int,
+        w_offset: int,
+    ) -> tuple:
+        fps_val = None if fps is None else fps[:1].item()
+        return (T, H, W, fps_val, h_offset, w_offset)
+
     def generate_embeddings(
         self,
         B_T_H_W_C: torch.Size,
@@ -532,7 +555,15 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         h_ntk_factor: Optional[float] = None,
         w_ntk_factor: Optional[float] = None,
         t_ntk_factor: Optional[float] = None,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        B, T, H, W, _ = B_T_H_W_C
+
+        if h_ntk_factor is None and w_ntk_factor is None and t_ntk_factor is None:
+            key = self._cache_key(T, H, W, fps, 0, 0)
+            cached = self._cos_sin_cache.get(key)
+            if cached is not None:
+                return cached
+
         h_ntk_factor = h_ntk_factor if h_ntk_factor is not None else self.h_ntk_factor
         w_ntk_factor = w_ntk_factor if w_ntk_factor is not None else self.w_ntk_factor
         t_ntk_factor = t_ntk_factor if t_ntk_factor is not None else self.t_ntk_factor
@@ -545,7 +576,6 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         w_spatial_freqs = 1.0 / (w_theta**self.dim_spatial_range)
         temporal_freqs = 1.0 / (t_theta**self.dim_temporal_range)
 
-        B, T, H, W, _ = B_T_H_W_C
         assert H <= self.max_h and W <= self.max_w, (
             f"Input dimensions (H={H}, W={W}) exceed the maximum dimensions (max_h={self.max_h}, max_w={self.max_w})"
         )
@@ -578,7 +608,18 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
             dim=-1,
         )
 
-        return em_T_H_W_D.flatten(0, 2).unsqueeze(1).unsqueeze(1).float()
+        freqs = em_T_H_W_D.flatten(0, 2).unsqueeze(1).unsqueeze(1).float()
+        result = (torch.cos(freqs), torch.sin(freqs))
+
+        if (
+            h_ntk_factor == self.h_ntk_factor
+            and w_ntk_factor == self.w_ntk_factor
+            and t_ntk_factor == self.t_ntk_factor
+        ):
+            key = self._cache_key(T, H, W, fps, 0, 0)
+            self._cos_sin_cache[key] = result
+
+        return result
 
     def generate_embeddings_with_offset(
         self,
@@ -589,8 +630,16 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         h_ntk_factor: Optional[float] = None,
         w_ntk_factor: Optional[float] = None,
         t_ntk_factor: Optional[float] = None,
-    ) -> torch.Tensor:
-        """Generate RoPE embeddings with spatial offsets for tiled diffusion."""
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Generate RoPE (cos, sin) with spatial offsets for tiled diffusion."""
+        B, T, H, W, _ = B_T_H_W_C
+
+        if h_ntk_factor is None and w_ntk_factor is None and t_ntk_factor is None:
+            key = self._cache_key(T, H, W, fps, h_offset, w_offset)
+            cached = self._cos_sin_cache.get(key)
+            if cached is not None:
+                return cached
+
         h_ntk_factor = h_ntk_factor if h_ntk_factor is not None else self.h_ntk_factor
         w_ntk_factor = w_ntk_factor if w_ntk_factor is not None else self.w_ntk_factor
         t_ntk_factor = t_ntk_factor if t_ntk_factor is not None else self.t_ntk_factor
@@ -603,7 +652,6 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         w_spatial_freqs = 1.0 / (w_theta**self.dim_spatial_range)
         temporal_freqs = 1.0 / (t_theta**self.dim_temporal_range)
 
-        B, T, H, W, _ = B_T_H_W_C
         assert h_offset + H <= self.max_h, (
             f"h_offset + H ({h_offset + H}) exceeds max_h ({self.max_h})"
         )
@@ -640,68 +688,22 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
             dim=-1,
         )
 
-        return em_T_H_W_D.flatten(0, 2).unsqueeze(1).unsqueeze(1).float()
+        freqs = em_T_H_W_D.flatten(0, 2).unsqueeze(1).unsqueeze(1).float()
+        result = (torch.cos(freqs), torch.sin(freqs))
+
+        if (
+            h_ntk_factor == self.h_ntk_factor
+            and w_ntk_factor == self.w_ntk_factor
+            and t_ntk_factor == self.t_ntk_factor
+        ):
+            key = self._cache_key(T, H, W, fps, h_offset, w_offset)
+            self._cos_sin_cache[key] = result
+
+        return result
 
     @property
     def seq_dim(self) -> int:
         return 0
-
-
-class LearnablePosEmbAxis(VideoPositionEmb):
-    """Learnable axis-decomposed positional embeddings."""
-
-    def __init__(
-        self,
-        *,
-        interpolation: str,
-        model_channels: int,
-        len_h: int,
-        len_w: int,
-        len_t: int,
-        **kwargs,
-    ):
-        del kwargs
-        super().__init__()
-        self.interpolation = interpolation
-        assert self.interpolation in ["crop"], (
-            f"Unknown interpolation method {self.interpolation}"
-        )
-        self.model_channels = model_channels
-
-        self.pos_emb_h = nn.Parameter(torch.zeros(len_h, model_channels))
-        self.pos_emb_w = nn.Parameter(torch.zeros(len_w, model_channels))
-        self.pos_emb_t = nn.Parameter(torch.zeros(len_t, model_channels))
-
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        std = 1.0 / math.sqrt(self.model_channels)
-        torch.nn.init.trunc_normal_(self.pos_emb_h, std=std, a=-3 * std, b=3 * std)
-        torch.nn.init.trunc_normal_(self.pos_emb_w, std=std, a=-3 * std, b=3 * std)
-        torch.nn.init.trunc_normal_(self.pos_emb_t, std=std, a=-3 * std, b=3 * std)
-
-    def generate_embeddings(
-        self, B_T_H_W_C: torch.Size, fps: Optional[torch.Tensor]
-    ) -> torch.Tensor:
-        B, T, H, W, _ = B_T_H_W_C
-        if self.interpolation == "crop":
-            emb_h_H = self.pos_emb_h[:H]
-            emb_w_W = self.pos_emb_w[:W]
-            emb_t_T = self.pos_emb_t[:T]
-            emb = (
-                repeat(emb_t_T, "t d-> b t h w d", b=B, h=H, w=W)
-                + repeat(emb_h_H, "h d-> b t h w d", b=B, t=T, w=W)
-                + repeat(emb_w_W, "w d-> b t h w d", b=B, t=T, h=H)
-            )
-            assert list(emb.shape)[:4] == [B, T, H, W], (
-                f"bad shape: {list(emb.shape)[:4]} != {B, T, H, W}"
-            )
-        else:
-            raise ValueError(f"Unknown interpolation method {self.interpolation}")
-
-        norm = torch.linalg.vector_norm(emb, dim=-1, keepdim=True, dtype=torch.float32)
-        norm = torch.add(1e-6, norm, alpha=np.sqrt(norm.numel() / emb.numel()))
-        return emb / norm.to(emb.dtype)
 
 
 # Timestep Embedding
@@ -814,8 +816,8 @@ class PatchEmbed(nn.Module):
         self,
         spatial_patch_size: int,
         temporal_patch_size: int,
-        in_channels: int = 3,
-        out_channels: int = 768,
+        in_channels: int = 17,
+        out_channels: int = 2048,
     ):
         super().__init__()
         self.spatial_patch_size = spatial_patch_size
@@ -984,21 +986,13 @@ class Block(nn.Module):
 
         self.use_adaln_lora = use_adaln_lora
         if self.use_adaln_lora:
-            self.adaln_modulation_self_attn = nn.Sequential(
+            self.adaln_fused_down = nn.Sequential(
                 nn.SiLU(),
-                nn.Linear(x_dim, adaln_lora_dim, bias=False),
-                nn.Linear(adaln_lora_dim, 3 * x_dim, bias=False),
+                nn.Linear(x_dim, 3 * adaln_lora_dim, bias=False),
             )
-            self.adaln_modulation_cross_attn = nn.Sequential(
-                nn.SiLU(),
-                nn.Linear(x_dim, adaln_lora_dim, bias=False),
-                nn.Linear(adaln_lora_dim, 3 * x_dim, bias=False),
-            )
-            self.adaln_modulation_mlp = nn.Sequential(
-                nn.SiLU(),
-                nn.Linear(x_dim, adaln_lora_dim, bias=False),
-                nn.Linear(adaln_lora_dim, 3 * x_dim, bias=False),
-            )
+            self.adaln_up_self_attn = nn.Linear(adaln_lora_dim, 3 * x_dim, bias=False)
+            self.adaln_up_cross_attn = nn.Linear(adaln_lora_dim, 3 * x_dim, bias=False)
+            self.adaln_up_mlp = nn.Linear(adaln_lora_dim, 3 * x_dim, bias=False)
         else:
             self.adaln_modulation_self_attn = nn.Sequential(
                 nn.SiLU(), nn.Linear(x_dim, 3 * x_dim, bias=False)
@@ -1034,23 +1028,14 @@ class Block(nn.Module):
         if self.use_adaln_lora:
             std = 1.0 / math.sqrt(self.x_dim)
             torch.nn.init.trunc_normal_(
-                self.adaln_modulation_self_attn[1].weight,
+                self.adaln_fused_down[1].weight,
                 std=std,
                 a=-3 * std,
                 b=3 * std,
             )
-            torch.nn.init.trunc_normal_(
-                self.adaln_modulation_cross_attn[1].weight,
-                std=std,
-                a=-3 * std,
-                b=3 * std,
-            )
-            torch.nn.init.trunc_normal_(
-                self.adaln_modulation_mlp[1].weight, std=std, a=-3 * std, b=3 * std
-            )
-            torch.nn.init.zeros_(self.adaln_modulation_self_attn[2].weight)
-            torch.nn.init.zeros_(self.adaln_modulation_cross_attn[2].weight)
-            torch.nn.init.zeros_(self.adaln_modulation_mlp[2].weight)
+            torch.nn.init.zeros_(self.adaln_up_self_attn.weight)
+            torch.nn.init.zeros_(self.adaln_up_cross_attn.weight)
+            torch.nn.init.zeros_(self.adaln_up_mlp.weight)
         else:
             torch.nn.init.zeros_(self.adaln_modulation_self_attn[1].weight)
             torch.nn.init.zeros_(self.adaln_modulation_cross_attn[1].weight)
@@ -1068,23 +1053,21 @@ class Block(nn.Module):
         emb_B_T_D: torch.Tensor,
         crossattn_emb: torch.Tensor,
         attn_params: attention.AttentionParams,
-        rope_emb_L_1_1_D: Optional[torch.Tensor] = None,
+        rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
-        extra_per_block_pos_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if extra_per_block_pos_emb is not None:
-            x_B_T_H_W_D = x_B_T_H_W_D + extra_per_block_pos_emb
-
         # Compute AdaLN modulation parameters
         if self.use_adaln_lora:
+            fused_down = self.adaln_fused_down(emb_B_T_D)
+            down_self, down_cross, down_mlp = fused_down.chunk(3, dim=-1)
             shift_self_attn_B_T_D, scale_self_attn_B_T_D, gate_self_attn_B_T_D = (
-                self.adaln_modulation_self_attn(emb_B_T_D) + adaln_lora_B_T_3D
+                self.adaln_up_self_attn(down_self) + adaln_lora_B_T_3D
             ).chunk(3, dim=-1)
             shift_cross_attn_B_T_D, scale_cross_attn_B_T_D, gate_cross_attn_B_T_D = (
-                self.adaln_modulation_cross_attn(emb_B_T_D) + adaln_lora_B_T_3D
+                self.adaln_up_cross_attn(down_cross) + adaln_lora_B_T_3D
             ).chunk(3, dim=-1)
             shift_mlp_B_T_D, scale_mlp_B_T_D, gate_mlp_B_T_D = (
-                self.adaln_modulation_mlp(emb_B_T_D) + adaln_lora_B_T_3D
+                self.adaln_up_mlp(down_mlp) + adaln_lora_B_T_3D
             ).chunk(3, dim=-1)
         else:
             shift_self_attn_B_T_D, scale_self_attn_B_T_D, gate_self_attn_B_T_D = (
@@ -1127,7 +1110,7 @@ class Block(nn.Module):
             x_flat,
             attn_params,
             x_flat,
-            rope_emb=rope_emb_L_1_1_D,
+            rope_cos_sin=rope_cos_sin,
         ).unflatten(1, (T, H, W))
         x_B_T_H_W_D = x_B_T_H_W_D + gate_self_attn_B_T_1_1_D * result
 
@@ -1142,7 +1125,7 @@ class Block(nn.Module):
             normalized_x.flatten(1, 3),
             attn_params,
             crossattn_emb,
-            rope_emb=rope_emb_L_1_1_D,
+            rope_cos_sin=rope_cos_sin,
         ).unflatten(1, (T, H, W))
         x_B_T_H_W_D = result * gate_cross_attn_B_T_1_1_D + x_B_T_H_W_D
 
@@ -1161,9 +1144,8 @@ class Block(nn.Module):
         emb_B_T_D: torch.Tensor,
         crossattn_emb: torch.Tensor,
         attn_params: attention.AttentionParams,
-        rope_emb_L_1_1_D: Optional[torch.Tensor] = None,
+        rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
-        extra_per_block_pos_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if self.training and self.gradient_checkpointing:
             if self.unsloth_offload_checkpointing:
@@ -1174,9 +1156,8 @@ class Block(nn.Module):
                     emb_B_T_D,
                     crossattn_emb,
                     attn_params,
-                    rope_emb_L_1_1_D,
+                    rope_cos_sin,
                     adaln_lora_B_T_3D,
-                    extra_per_block_pos_emb,
                 )
             elif self.cpu_offload_checkpointing:
                 # Standard cpu offload: blocking transfers
@@ -1198,9 +1179,8 @@ class Block(nn.Module):
                     emb_B_T_D,
                     crossattn_emb,
                     attn_params,
-                    rope_emb_L_1_1_D,
+                    rope_cos_sin,
                     adaln_lora_B_T_3D,
-                    extra_per_block_pos_emb,
                     use_reentrant=False,
                 )
             else:
@@ -1211,9 +1191,8 @@ class Block(nn.Module):
                     emb_B_T_D,
                     crossattn_emb,
                     attn_params,
-                    rope_emb_L_1_1_D,
+                    rope_cos_sin,
                     adaln_lora_B_T_3D,
-                    extra_per_block_pos_emb,
                     use_reentrant=False,
                 )
         else:
@@ -1222,9 +1201,8 @@ class Block(nn.Module):
                 emb_B_T_D,
                 crossattn_emb,
                 attn_params,
-                rope_emb_L_1_1_D,
+                rope_cos_sin,
                 adaln_lora_B_T_3D,
-                extra_per_block_pos_emb,
             )
 
 
@@ -1247,27 +1225,21 @@ class Anima(nn.Module):
         patch_spatial: int,
         patch_temporal: int,
         concat_padding_mask: bool = True,
-        model_channels: int = 768,
-        num_blocks: int = 10,
+        model_channels: int = 2048,
+        num_blocks: int = 28,
         num_heads: int = 16,
         mlp_ratio: float = 4.0,
         crossattn_emb_channels: int = 1024,
-        pos_emb_cls: str = "sincos",
-        pos_emb_learnable: bool = False,
-        pos_emb_interpolation: str = "crop",
+        pos_emb_learnable: bool = True,
         min_fps: int = 1,
         max_fps: int = 30,
-        use_adaln_lora: bool = False,
+        use_adaln_lora: bool = True,
         adaln_lora_dim: int = 256,
-        rope_h_extrapolation_ratio: float = 1.0,
-        rope_w_extrapolation_ratio: float = 1.0,
+        rope_h_extrapolation_ratio: float = 4.0,
+        rope_w_extrapolation_ratio: float = 4.0,
         rope_t_extrapolation_ratio: float = 1.0,
-        extra_per_block_abs_pos_emb: bool = False,
-        extra_h_extrapolation_ratio: float = 1.0,
-        extra_w_extrapolation_ratio: float = 1.0,
-        extra_t_extrapolation_ratio: float = 1.0,
-        rope_enable_fps_modulation: bool = True,
-        use_llm_adapter: bool = False,
+        rope_enable_fps_modulation: bool = False,
+        use_llm_adapter: bool = True,
         attn_mode: str = "torch",
         split_attn: bool = False,
         attn_softmax_scale: Optional[float] = None,
@@ -1284,18 +1256,12 @@ class Anima(nn.Module):
         self.num_blocks = num_blocks
         self.model_channels = model_channels
         self.concat_padding_mask = concat_padding_mask
-        self.pos_emb_cls = pos_emb_cls
         self.pos_emb_learnable = pos_emb_learnable
-        self.pos_emb_interpolation = pos_emb_interpolation
         self.min_fps = min_fps
         self.max_fps = max_fps
         self.rope_h_extrapolation_ratio = rope_h_extrapolation_ratio
         self.rope_w_extrapolation_ratio = rope_w_extrapolation_ratio
         self.rope_t_extrapolation_ratio = rope_t_extrapolation_ratio
-        self.extra_per_block_abs_pos_emb = extra_per_block_abs_pos_emb
-        self.extra_h_extrapolation_ratio = extra_h_extrapolation_ratio
-        self.extra_w_extrapolation_ratio = extra_w_extrapolation_ratio
-        self.extra_t_extrapolation_ratio = extra_t_extrapolation_ratio
         self.rope_enable_fps_modulation = rope_enable_fps_modulation
         self.use_llm_adapter = use_llm_adapter
 
@@ -1361,8 +1327,6 @@ class Anima(nn.Module):
     def init_weights(self) -> None:
         self.x_embedder.init_weights()
         self.pos_embedder.reset_parameters()
-        if self.extra_per_block_abs_pos_emb:
-            self.extra_pos_embedder.reset_parameters()
         self.t_embedder[1].init_weights()
         for block in self.blocks:
             block.init_weights()
@@ -1426,12 +1390,7 @@ class Anima(nn.Module):
         )
 
     def build_pos_embed(self) -> None:
-        if self.pos_emb_cls == "rope3d":
-            cls_type = VideoRopePosition3DEmb
-        else:
-            raise ValueError(f"Unknown pos_emb_cls {self.pos_emb_cls}")
-
-        kwargs = dict(
+        self.pos_embedder = VideoRopePosition3DEmb(
             model_channels=self.model_channels,
             len_h=self.max_img_h // self.patch_spatial,
             len_w=self.max_img_w // self.patch_spatial,
@@ -1439,20 +1398,12 @@ class Anima(nn.Module):
             max_fps=self.max_fps,
             min_fps=self.min_fps,
             is_learnable=self.pos_emb_learnable,
-            interpolation=self.pos_emb_interpolation,
             head_dim=self.model_channels // self.num_heads,
             h_extrapolation_ratio=self.rope_h_extrapolation_ratio,
             w_extrapolation_ratio=self.rope_w_extrapolation_ratio,
             t_extrapolation_ratio=self.rope_t_extrapolation_ratio,
             enable_fps_modulation=self.rope_enable_fps_modulation,
         )
-        self.pos_embedder = cls_type(**kwargs)
-
-        if self.extra_per_block_abs_pos_emb:
-            kwargs["h_extrapolation_ratio"] = self.extra_h_extrapolation_ratio
-            kwargs["w_extrapolation_ratio"] = self.extra_w_extrapolation_ratio
-            kwargs["t_extrapolation_ratio"] = self.extra_t_extrapolation_ratio
-            self.extra_pos_embedder = LearnablePosEmbAxis(**kwargs)
 
     def prepare_embedded_sequence(
         self,
@@ -1461,7 +1412,7 @@ class Anima(nn.Module):
         padding_mask: Optional[torch.Tensor] = None,
         h_offset: int = 0,
         w_offset: int = 0,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[torch.Tensor]]:
+    ) -> Tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
         if self.concat_padding_mask:
             if padding_mask is None:
                 raise ValueError(
@@ -1487,22 +1438,13 @@ class Anima(nn.Module):
             x_B_C_T_H_W = torch.cat([x_B_C_T_H_W, padding_mask_B_1_T_H_W], dim=1)
         x_B_T_H_W_D = self.x_embedder(x_B_C_T_H_W)
 
-        if self.extra_per_block_abs_pos_emb:
-            extra_pos_emb = self.extra_pos_embedder(x_B_T_H_W_D, fps=fps)
+        if h_offset != 0 or w_offset != 0:
+            rope_cos_sin = self.pos_embedder.generate_embeddings_with_offset(
+                x_B_T_H_W_D.shape, h_offset=h_offset, w_offset=w_offset, fps=fps
+            )
         else:
-            extra_pos_emb = None
-
-        if "rope" in self.pos_emb_cls.lower():
-            if h_offset != 0 or w_offset != 0:
-                rope_emb = self.pos_embedder.generate_embeddings_with_offset(
-                    x_B_T_H_W_D.shape, h_offset=h_offset, w_offset=w_offset, fps=fps
-                )
-            else:
-                rope_emb = self.pos_embedder(x_B_T_H_W_D, fps=fps)
-            return x_B_T_H_W_D, rope_emb, extra_pos_emb
-        x_B_T_H_W_D = x_B_T_H_W_D + self.pos_embedder(x_B_T_H_W_D)
-
-        return x_B_T_H_W_D, None, extra_pos_emb
+            rope_cos_sin = self.pos_embedder(x_B_T_H_W_D, fps=fps)
+        return x_B_T_H_W_D, rope_cos_sin
 
     def unpatchify(self, x_B_T_H_W_M: torch.Tensor) -> torch.Tensor:
         B, T, H, W, M = x_B_T_H_W_M.shape
@@ -1607,7 +1549,7 @@ class Anima(nn.Module):
             if t5_attn_mask is not None:
                 crossattn_emb[~t5_attn_mask.bool()] = 0
 
-        x_B_T_H_W_D, rope_emb_L_1_1_D, extra_pos_emb = self.prepare_embedded_sequence(
+        x_B_T_H_W_D, rope_cos_sin = self.prepare_embedded_sequence(
             x_B_C_T_H_W,
             fps=fps,
             padding_mask=padding_mask,
@@ -1636,21 +1578,13 @@ class Anima(nn.Module):
             # Reshape to fake-5D: (B, 1, target, 1, D)
             x_B_T_H_W_D = x_B_T_H_W_D.unsqueeze(1).unsqueeze(3)
 
-            # Pad RoPE embeddings: (L, 1, 1, D_head) → (target, 1, 1, D_head)
-            if rope_emb_L_1_1_D is not None and rope_emb_L_1_1_D.shape[0] < target:
-                rope_emb_L_1_1_D = torch.nn.functional.pad(
-                    rope_emb_L_1_1_D,
-                    (0, 0, 0, 0, 0, 0, 0, target - rope_emb_L_1_1_D.shape[0]),
+            # Pad RoPE cos/sin: each (L, 1, 1, D_head) → (target, 1, 1, D_head)
+            if rope_cos_sin is not None and rope_cos_sin[0].shape[0] < target:
+                pad = (0, 0, 0, 0, 0, 0, 0, target - rope_cos_sin[0].shape[0])
+                rope_cos_sin = (
+                    torch.nn.functional.pad(rope_cos_sin[0], pad),
+                    torch.nn.functional.pad(rope_cos_sin[1], pad),
                 )
-
-            # Pad extra per-block positional embeddings: (B, T, H, W, D) → (B, 1, target, 1, D)
-            if extra_pos_emb is not None:
-                extra_pos_emb = extra_pos_emb.flatten(1, 3)
-                if extra_pos_emb.shape[1] < target:
-                    extra_pos_emb = torch.nn.functional.pad(
-                        extra_pos_emb, (0, 0, 0, target - extra_pos_emb.shape[1])
-                    )
-                extra_pos_emb = extra_pos_emb.unsqueeze(1).unsqueeze(3)
 
         if timesteps_B_T.ndim == 1:
             timesteps_B_T = timesteps_B_T.unsqueeze(1)
@@ -1658,9 +1592,8 @@ class Anima(nn.Module):
         t_embedding_B_T_D = self.t_embedding_norm(t_embedding_B_T_D)
 
         block_kwargs = {
-            "rope_emb_L_1_1_D": rope_emb_L_1_1_D,
+            "rope_cos_sin": rope_cos_sin,
             "adaln_lora_B_T_3D": adaln_lora_B_T_3D,
-            "extra_per_block_pos_emb": extra_pos_emb,
         }
 
         attn_params = attention.AttentionParams.create_attention_params(
@@ -2266,55 +2199,3 @@ class LLMAdapter(nn.Module):
 
 
 # Not used currently, but kept for reference
-
-# def get_dit_config(state_dict, key_prefix=""):
-#     """Derive DiT configuration from state_dict weight shapes."""
-#     dit_config = {}
-#     dit_config["max_img_h"] = 512
-#     dit_config["max_img_w"] = 512
-#     dit_config["max_frames"] = 128
-#     concat_padding_mask = True
-#     dit_config["in_channels"] = (state_dict["{}x_embedder.proj.1.weight".format(key_prefix)].shape[1] // 4) - int(
-#         concat_padding_mask
-#     )
-#     dit_config["out_channels"] = 16
-#     dit_config["patch_spatial"] = 2
-#     dit_config["patch_temporal"] = 1
-#     dit_config["model_channels"] = state_dict["{}x_embedder.proj.1.weight".format(key_prefix)].shape[0]
-#     dit_config["concat_padding_mask"] = concat_padding_mask
-#     dit_config["crossattn_emb_channels"] = 1024
-#     dit_config["pos_emb_cls"] = "rope3d"
-#     dit_config["pos_emb_learnable"] = True
-#     dit_config["pos_emb_interpolation"] = "crop"
-#     dit_config["min_fps"] = 1
-#     dit_config["max_fps"] = 30
-
-#     dit_config["use_adaln_lora"] = True
-#     dit_config["adaln_lora_dim"] = 256
-#     if dit_config["model_channels"] == 2048:
-#         dit_config["num_blocks"] = 28
-#         dit_config["num_heads"] = 16
-#     elif dit_config["model_channels"] == 5120:
-#         dit_config["num_blocks"] = 36
-#         dit_config["num_heads"] = 40
-#     elif dit_config["model_channels"] == 1280:
-#         dit_config["num_blocks"] = 20
-#         dit_config["num_heads"] = 20
-
-#     if dit_config["in_channels"] == 16:
-#         dit_config["extra_per_block_abs_pos_emb"] = False
-#         dit_config["rope_h_extrapolation_ratio"] = 4.0
-#         dit_config["rope_w_extrapolation_ratio"] = 4.0
-#         dit_config["rope_t_extrapolation_ratio"] = 1.0
-#     elif dit_config["in_channels"] == 17:
-#         dit_config["extra_per_block_abs_pos_emb"] = False
-#         dit_config["rope_h_extrapolation_ratio"] = 3.0
-#         dit_config["rope_w_extrapolation_ratio"] = 3.0
-#         dit_config["rope_t_extrapolation_ratio"] = 1.0
-
-#     dit_config["extra_h_extrapolation_ratio"] = 1.0
-#     dit_config["extra_w_extrapolation_ratio"] = 1.0
-#     dit_config["extra_t_extrapolation_ratio"] = 1.0
-#     dit_config["rope_enable_fps_modulation"] = False
-
-#     return dit_config

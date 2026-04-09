@@ -87,6 +87,7 @@ test-spectrum:
 		--spectrum_calibration 0.0
 
 INVERT_N ?= 10
+INVERT_SWAP ?= 0
 invert:
 	python invert_embedding.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -95,6 +96,7 @@ invert:
 		--num_images $(INVERT_N) --shuffle \
 		--steps 100 --lr 0.01 \
 		--output_dir inversions \
+		--blocks_to_swap $(INVERT_SWAP) \
 		--log_block_grads
 
 WORKFLOW ?= workflows/lora-batch.json

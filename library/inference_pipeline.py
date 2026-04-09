@@ -533,13 +533,6 @@ def generate_body_tiled(
     shape = (1, num_channels_latents, 1, h_latent, w_latent)
     latents = randn_tensor(shape, generator=seed_g, device=device, dtype=torch.bfloat16)
 
-    # Warn if extra_per_block_abs_pos_emb is enabled (offset support not implemented for LearnablePosEmbAxis)
-    if anima.extra_per_block_abs_pos_emb:
-        logger.warning(
-            "Tiled diffusion with extra_per_block_abs_pos_emb is not fully supported — "
-            "LearnablePosEmbAxis does not use spatial offsets. Results may have artifacts."
-        )
-
     # Compute tile positions and precompute blend weights
     positions = compute_tile_positions(h_latent, w_latent, tile_size, overlap)
     logger.info(

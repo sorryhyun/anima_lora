@@ -1119,6 +1119,18 @@ class AnimaTrainer:
 
     # region Main training loop
 
+    @staticmethod
+    def _parse_profile_steps(args) -> tuple[int, int] | None:
+        """Parse --profile_steps 'start-end' into (start, end) or None."""
+        raw = getattr(args, "profile_steps", None)
+        if not raw:
+            return None
+        if "-" in raw:
+            a, b = raw.split("-", 1)
+            return int(a), int(b)
+        n = int(raw)
+        return n, n + 2
+
     def train(self, args):
         session_id = random.randint(0, 2**32)
         training_started_at = time.time()
@@ -1953,6 +1965,10 @@ class AnimaTrainer:
             torch.cuda.set_rng_state(gpu_rng_state)
             random.setstate(python_rng_state)
 
+        # --- Profiler setup ---
+        profile_range = self._parse_profile_steps(args)
+        profiler_ctx = None
+
         for epoch in range(epoch_to_start, num_train_epochs):
             accelerator.print(f"\nepoch {epoch + 1}/{num_train_epochs}\n")
             current_epoch.value = epoch + 1
@@ -1976,6 +1992,19 @@ class AnimaTrainer:
                 if initial_step > 0:
                     initial_step -= 1
                     continue
+
+                # --- Profiler: start recording ---
+                if profile_range and global_step == profile_range[0] and profiler_ctx is None:
+                    accelerator.print(f"\n[profiler] starting at step {global_step}")
+                    profiler_ctx = torch.profiler.profile(
+                        activities=[
+                            torch.profiler.ProfilerActivity.CPU,
+                            torch.profiler.ProfilerActivity.CUDA,
+                        ],
+                        record_shapes=True,
+                        with_stack=True,
+                    )
+                    profiler_ctx.__enter__()
 
                 with accelerator.accumulate(training_model):
                     on_step_start_for_network(text_encoder, unet)
@@ -2031,6 +2060,23 @@ class AnimaTrainer:
                     optimizer.step()
                     lr_scheduler.step()
                     optimizer.zero_grad(set_to_none=True)
+
+                # --- Profiler: stop recording ---
+                if profiler_ctx is not None and global_step >= profile_range[1]:
+                    profiler_ctx.__exit__(None, None, None)
+                    trace_path = os.path.join(args.output_dir, "profile_trace.json")
+                    profiler_ctx.export_chrome_trace(trace_path)
+                    accelerator.print(f"\n[profiler] stopped at step {global_step}")
+                    accelerator.print(f"[profiler] trace saved to {trace_path}")
+                    accelerator.print(f"[profiler] open in https://ui.perfetto.dev for visual inspection\n")
+                    # group_by_stack_n=0: group by op/kernel name, not Python stack
+                    key_avg = profiler_ctx.key_averages(group_by_stack_n=0)
+                    accelerator.print(f"[profiler] top 30 CUDA kernels by total time:\n")
+                    accelerator.print(
+                        key_avg.table(sort_by="cuda_time_total", row_limit=30)
+                    )
+                    profiler_ctx = None
+                    profile_range = None  # don't re-trigger
 
                 if args.scale_weight_norms:
                     keys_scaled, mean_norm, maximum_norm = accelerator.unwrap_model(

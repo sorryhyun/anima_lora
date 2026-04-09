@@ -697,6 +697,12 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         help="use memory efficient attention for CrossAttention",
     )
     parser.add_argument(
+        "--profile_steps",
+        type=str,
+        default=None,
+        help="profile CUDA kernels for the given step range, e.g. '3-5'. Exports a Chrome trace to profile_trace.json",
+    )
+    parser.add_argument(
         "--torch_compile",
         action="store_true",
         help="use torch.compile (requires PyTorch 2.0)",

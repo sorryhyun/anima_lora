@@ -53,6 +53,80 @@ def filter_lora_state_dict(
     return weights_sd
 
 
+_FUSED_PROJ_FALLBACK = {
+    # model key fragment -> (replacement for each old component, list of old suffixes)
+    "self_attn.qkv_proj": ("self_attn.{}_proj", ("q", "k", "v")),
+    "cross_attn.kv_proj": ("cross_attn.{}_proj", ("k", "v")),
+}
+
+
+def _try_merge_unfused_lora(
+    model_key_without_weight: str,
+    lora_weight_keys: set,
+    lora_sd: dict,
+    multiplier: float,
+    calc_device: torch.device,
+    model_weight: torch.Tensor,
+) -> "torch.Tensor | None":
+    """Try to merge old unfused LoRA keys (q_proj/k_proj/v_proj) into a fused model weight.
+
+    Returns the concatenated delta tensor, or None if no old keys found.
+    """
+    for fused_fragment, (template, suffixes) in _FUSED_PROJ_FALLBACK.items():
+        if fused_fragment not in model_key_without_weight:
+            continue
+
+        deltas = []
+        all_found = True
+        keys_to_remove = []
+        for suffix in suffixes:
+            old_module = model_key_without_weight.replace(
+                fused_fragment, template.format(suffix)
+            )
+            found_prefix = None
+            for prefix in ["lora_unet_", ""]:
+                lora_name = prefix + old_module.replace(".", "_")
+                down_key = lora_name + ".lora_down.weight"
+                up_key = lora_name + ".lora_up.weight"
+                alpha_key = lora_name + ".alpha"
+                if down_key in lora_weight_keys and up_key in lora_weight_keys:
+                    found_prefix = prefix
+                    break
+            if found_prefix is None:
+                all_found = False
+                break
+
+            down = lora_sd[down_key].to(calc_device)
+            up = lora_sd[up_key].to(calc_device)
+            dim = down.size(0)
+            alpha = lora_sd.get(alpha_key, dim)
+            scale = alpha / dim
+
+            original_dtype = model_weight.dtype
+            if original_dtype.itemsize == 1:  # fp8
+                down = down.to(torch.float16)
+                up = up.to(torch.float16)
+
+            delta = multiplier * (up @ down) * scale
+            deltas.append(delta)
+            keys_to_remove.extend(
+                [k for k in (down_key, up_key, alpha_key) if k in lora_weight_keys]
+            )
+
+        if not all_found or not deltas:
+            continue
+
+        for k in keys_to_remove:
+            lora_weight_keys.discard(k)
+
+        fused_delta = torch.cat(deltas, dim=0)
+        if model_weight.dtype.itemsize == 1:  # fp8
+            fused_delta = fused_delta.to(torch.float16)
+        return fused_delta
+
+    return None
+
+
 def load_safetensors_with_lora_and_fp8(
     model_files: Union[str, List[str]],
     lora_weights_list: Optional[List[Dict[str, torch.Tensor]]],
@@ -161,7 +235,18 @@ def load_safetensors_with_lora_and_fp8(
                         found = True
                         break
                 if not found:
-                    continue  # no LoRA weights for this model weight
+                    # Fallback: check for old unfused LoRA keys on fused projections
+                    fused_delta = _try_merge_unfused_lora(
+                        lora_name_without_prefix,
+                        lora_weight_keys,
+                        lora_sd,
+                        multiplier,
+                        calc_device,
+                        model_weight,
+                    )
+                    if fused_delta is not None:
+                        model_weight = model_weight + fused_delta
+                    continue
 
                 # get LoRA weights
                 down_weight = lora_sd[down_key]

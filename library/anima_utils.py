@@ -1,6 +1,7 @@
 # Anima model loading/saving utilities
 
 import os
+import re
 from typing import Dict, List, Optional, Union
 import torch
 from safetensors.torch import load_file, save_file
@@ -27,6 +28,95 @@ logger = logging.getLogger(__name__)
 FP8_OPTIMIZATION_TARGET_KEYS = ["blocks", ""]
 # ".embed." excludes Embedding in LLMAdapter
 FP8_OPTIMIZATION_EXCLUDE_KEYS = ["_embedder", "norm", "adaln", "final_layer", ".embed."]
+
+
+def _strip_net_prefix(key: str) -> str:
+    return key[len("net.") :] if key.startswith("net.") else key
+
+
+# Regex patterns for fused projection key remapping (compiled once)
+# Only match DiT blocks (blocks.N.), not LLM adapter blocks (llm_adapter.blocks.N.)
+_SELF_ATTN_QKV_RE = re.compile(r"(blocks\.\d+\.self_attn)\.(q_proj|k_proj|v_proj)(\.weight)")
+_CROSS_ATTN_KV_RE = re.compile(r"(blocks\.\d+\.cross_attn)\.(k_proj|v_proj)(\.weight)")
+_ADALN_DOWN_RE = re.compile(
+    r"(blocks\.\d+)\.adaln_modulation_(self_attn|cross_attn|mlp)\.1(\.weight)"
+)
+_ADALN_UP_RE = re.compile(
+    r"(blocks\.\d+)\.adaln_modulation_(self_attn|cross_attn|mlp)\.2\."
+)
+
+_SELF_ATTN_QKV_ORDER = ("q_proj", "k_proj", "v_proj")
+_CROSS_ATTN_KV_ORDER = ("k_proj", "v_proj")
+_ADALN_BRANCH_ORDER = ("self_attn", "cross_attn", "mlp")
+
+
+def _dit_rename_hook(key: str) -> str:
+    """1:1 key renames: strip net. prefix and remap AdaLN up-projection keys."""
+    k = _strip_net_prefix(key)
+    # blocks.N.adaln_modulation_{branch}.2.weight -> blocks.N.adaln_up_{branch}.weight
+    k = _ADALN_UP_RE.sub(lambda m: f"{m.group(1)}.adaln_up_{m.group(2)}.", k)
+    return k
+
+
+def _dit_concat_hook(
+    key: str, tensors: "dict[str, torch.Tensor] | None"
+) -> "tuple[str | None, torch.Tensor | None]":
+    """Many-to-one key fusions for fused projections.
+
+    Phase 1 (tensors=None): return the fused target key.
+    Phase 2 (tensors=dict): concatenate tensors in correct order and return.
+    """
+    clean = _strip_net_prefix(key)
+
+    # Self-attention QKV: q_proj + k_proj + v_proj -> qkv_proj
+    m = _SELF_ATTN_QKV_RE.match(clean)
+    if m:
+        fused_key = f"{m.group(1)}.qkv_proj{m.group(3)}"
+        if tensors is None:
+            return fused_key, None
+        prefix = m.group(1)
+        ordered = []
+        for proj in _SELF_ATTN_QKV_ORDER:
+            for orig_key, t in tensors.items():
+                if _strip_net_prefix(orig_key) == f"{prefix}.{proj}{m.group(3)}":
+                    ordered.append(t)
+                    break
+        return fused_key, torch.cat(ordered, dim=0)
+
+    # Cross-attention KV: k_proj + v_proj -> kv_proj
+    m = _CROSS_ATTN_KV_RE.match(clean)
+    if m:
+        fused_key = f"{m.group(1)}.kv_proj{m.group(3)}"
+        if tensors is None:
+            return fused_key, None
+        prefix = m.group(1)
+        ordered = []
+        for proj in _CROSS_ATTN_KV_ORDER:
+            for orig_key, t in tensors.items():
+                if _strip_net_prefix(orig_key) == f"{prefix}.{proj}{m.group(3)}":
+                    ordered.append(t)
+                    break
+        return fused_key, torch.cat(ordered, dim=0)
+
+    # AdaLN fused down: 3 separate down-projections -> one fused
+    m = _ADALN_DOWN_RE.match(clean)
+    if m:
+        fused_key = f"{m.group(1)}.adaln_fused_down.1{m.group(3)}"
+        if tensors is None:
+            return fused_key, None
+        block_prefix = m.group(1)
+        ordered = []
+        for branch in _ADALN_BRANCH_ORDER:
+            for orig_key, t in tensors.items():
+                if (
+                    _strip_net_prefix(orig_key)
+                    == f"{block_prefix}.adaln_modulation_{branch}.1{m.group(3)}"
+                ):
+                    ordered.append(t)
+                    break
+        return fused_key, torch.cat(ordered, dim=0)
+
+    return None, None
 
 
 def load_anima_model(
@@ -75,27 +165,6 @@ def load_anima_model(
         "out_channels": 16,
         "patch_spatial": 2,
         "patch_temporal": 1,
-        "model_channels": 2048,
-        "concat_padding_mask": True,
-        "crossattn_emb_channels": 1024,
-        "pos_emb_cls": "rope3d",
-        "pos_emb_learnable": True,
-        "pos_emb_interpolation": "crop",
-        "min_fps": 1,
-        "max_fps": 30,
-        "use_adaln_lora": True,
-        "adaln_lora_dim": 256,
-        "num_blocks": 28,
-        "num_heads": 16,
-        "extra_per_block_abs_pos_emb": False,
-        "rope_h_extrapolation_ratio": 4.0,
-        "rope_w_extrapolation_ratio": 4.0,
-        "rope_t_extrapolation_ratio": 1.0,
-        "extra_h_extrapolation_ratio": 1.0,
-        "extra_w_extrapolation_ratio": 1.0,
-        "extra_t_extrapolation_ratio": 1.0,
-        "rope_enable_fps_modulation": False,
-        "use_llm_adapter": True,
         "attn_mode": attn_mode,
         "split_attn": split_attn,
         "attn_softmax_scale": attn_softmax_scale,
@@ -108,7 +177,8 @@ def load_anima_model(
     # load model weights with dynamic fp8 optimization and LoRA merging if needed
     logger.info(f"Loading DiT model from {dit_path}, device={loading_device}")
     rename_hooks = WeightTransformHooks(
-        rename_hook=lambda k: k[len("net.") :] if k.startswith("net.") else k
+        rename_hook=_dit_rename_hook,
+        concat_hook=_dit_concat_hook,
     )
     sd = load_safetensors_with_lora_and_fp8(
         model_files=dit_path,
@@ -168,8 +238,6 @@ def load_anima_model(
     # so load_state_dict(assign=True) doesn't move them.
     if hasattr(model, "pos_embedder"):
         model.pos_embedder.to(loading_device)
-    if hasattr(model, "extra_pos_embedder"):
-        model.extra_pos_embedder.to(loading_device)
 
     return model
 

@@ -80,8 +80,8 @@ def parse_args():
     p.add_argument("--steps", type=int, default=100, help="Optimization steps per image")
     p.add_argument("--lr", type=float, default=0.01, help="Learning rate")
     p.add_argument("--lr_schedule", type=str, default="cosine", choices=["cosine", "constant"], help="LR schedule")
-    p.add_argument("--timesteps_per_step", type=int, default=6, help="Random timesteps sampled per optimization step (batched forward)")
-    p.add_argument("--grad_accum", type=int, default=1, help="Gradient accumulation steps (total timesteps per update = timesteps_per_step × grad_accum)")
+    p.add_argument("--timesteps_per_step", type=int, default=1, help="Random timesteps sampled per optimization step (batched forward)")
+    p.add_argument("--grad_accum", type=int, default=4, help="Gradient accumulation steps (total timesteps per update = timesteps_per_step × grad_accum)")
     p.add_argument("--sigma_sampling", type=str, default="uniform", choices=["uniform", "sigmoid"], help="Sigma sampling strategy")
     p.add_argument("--sigmoid_scale", type=float, default=1.0, help="Scale for sigmoid sigma sampling")
 
@@ -96,9 +96,10 @@ def parse_args():
     p.add_argument("--verify_seed", type=int, default=42, help="Seed for verification generation")
     p.add_argument("--flow_shift", type=float, default=5.0, help="Flow shift for verification sampling")
 
-    # Device
+    # Device / VRAM
     p.add_argument("--device", type=str, default=None, help="Device (default: cuda if available)")
     p.add_argument("--vae_chunk_size", type=int, default=64, help="VAE spatial chunk size")
+    p.add_argument("--blocks_to_swap", type=int, default=0, help="Number of transformer blocks to swap to CPU (0 = use gradient checkpointing instead)")
 
     args = p.parse_args()
 
@@ -475,8 +476,13 @@ def verify_embedding(args, anima, embed, h, w, device, save_path):
     timesteps, sigmas = inference_utils.get_timesteps_sigmas(args.verify_steps, args.flow_shift, device)
     timesteps = (timesteps / 1000).to(device, dtype=torch.bfloat16)
 
+    if hasattr(anima, "switch_block_swap_for_inference"):
+        anima.switch_block_swap_for_inference()
+
     with torch.no_grad():
         for step_i, t in enumerate(tqdm(timesteps, desc="Denoising", leave=False)):
+            if hasattr(anima, "prepare_block_swap_before_forward"):
+                anima.prepare_block_swap_before_forward()
             t_expand = t.unsqueeze(0)
             noise_pred = anima(latents, t_expand, embed_bf16, padding_mask=padding_mask)
             latents = inference_utils.step(latents, noise_pred, sigmas, step_i).to(torch.bfloat16)
@@ -591,27 +597,37 @@ def main():
 
     # Load frozen DiT
     logger.info("Loading DiT model...")
+    is_swapping = args.blocks_to_swap > 0
+    grad_ckpt = args.blocks_to_swap < 0
     anima = anima_utils.load_anima_model(
-        device=device,
+        device="cpu" if is_swapping else device,
         dit_path=args.dit,
         attn_mode=args.attn_mode,
         split_attn=True,
-        loading_device=device,
+        loading_device="cpu" if is_swapping else device,
         dit_weight_dtype=torch.bfloat16,
     )
-    anima.to(device, dtype=torch.bfloat16)
+    anima.to(torch.bfloat16)
     anima.requires_grad_(False)
     anima.split_attn = False  # all batch elements share the same image; avoids data-dependent graph breaks
 
-    # Enable gradient checkpointing to save VRAM (recompute block activations during backward).
-    # Blocks must be in train mode for checkpointing to activate, but the model's
-    # parameters are frozen so no weights are updated.
-    anima.enable_gradient_checkpointing()
-    for block in anima.blocks:  # type: ignore[union-attr]
-        block.train()
+    if is_swapping:
+        logger.info(f"Enabling block swap: {args.blocks_to_swap} blocks to CPU")
+        anima.enable_block_swap(args.blocks_to_swap, device)
+        anima.move_to_device_except_swap_blocks(device)
+        anima.prepare_block_swap_before_forward()
+    else:
+        anima.to(device)
+        if grad_ckpt:
+            # Gradient checkpointing: recompute block activations during backward.
+            # Blocks must be in train mode for checkpointing to activate.
+            logger.info("Enabling gradient checkpointing")
+            anima.enable_gradient_checkpointing()
+            for block in anima.blocks:  # type: ignore[union-attr]
+                block.train()
 
-    logger.info("Compiling DiT with torch.compile...")
-    anima = torch.compile(anima)
+        logger.info("Compiling DiT with torch.compile...")
+        anima = torch.compile(anima)
 
     if args.image_dir is not None:
         process_batch(args, anima, device)
