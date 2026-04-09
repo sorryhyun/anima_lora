@@ -603,69 +603,96 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                 pgraft_network = getattr(anima, "_pgraft_network", None)
                 lora_cutoff_step = getattr(first_args, "lora_cutoff_step", None)
 
-                # Fuse LoRA weights into base model for zero-overhead inference
-                if pgraft_network is not None:
-                    pgraft_network.fuse_weights()
+                if getattr(args, "spectrum", False):
+                    from networks.spectrum import spectrum_denoise
 
-                with tqdm(
-                    total=len(timesteps), desc=f"Denoising ({bs}x batch)"
-                ) as pbar:
-                    for step_i, t in enumerate(timesteps):
-                        if (
-                            pgraft_network is not None
-                            and lora_cutoff_step is not None
-                            and step_i == lora_cutoff_step
-                        ):
-                            pgraft_network.unfuse_weights()
-                            logger.info(
-                                f"P-GRAFT: Unfused LoRA at step {step_i}/{len(timesteps)}"
-                            )
+                    latents = spectrum_denoise(
+                        anima,
+                        latents,
+                        timesteps,
+                        sigmas,
+                        embed,
+                        negative_embed,
+                        padding_mask,
+                        first_args.guidance_scale,
+                        er_sde,
+                        device,
+                        window_size=getattr(args, "spectrum_window_size", 2.0),
+                        flex_window=getattr(args, "spectrum_flex_window", 0.25),
+                        warmup_steps=getattr(args, "spectrum_warmup", 6),
+                        w=getattr(args, "spectrum_w", 0.3),
+                        m=getattr(args, "spectrum_m", 3),
+                        lam=getattr(args, "spectrum_lam", 0.1),
+                        stop_caching_step=getattr(args, "spectrum_stop_caching_step", -1),
+                        calibration_strength=getattr(args, "spectrum_calibration", 0.0),
+                        autocast_enabled=autocast_enabled,
+                        pgraft_network=pgraft_network,
+                        lora_cutoff_step=lora_cutoff_step,
+                    )
+                else:
+                    # Fuse LoRA weights into base model for zero-overhead inference
+                    if pgraft_network is not None:
+                        pgraft_network.fuse_weights()
 
-                        t_expand = t.expand(bs)
+                    with tqdm(
+                        total=len(timesteps), desc=f"Denoising ({bs}x batch)"
+                    ) as pbar:
+                        for step_i, t in enumerate(timesteps):
+                            if (
+                                pgraft_network is not None
+                                and lora_cutoff_step is not None
+                                and step_i == lora_cutoff_step
+                            ):
+                                pgraft_network.unfuse_weights()
+                                logger.info(
+                                    f"P-GRAFT: Unfused LoRA at step {step_i}/{len(timesteps)}"
+                                )
 
-                        with torch.autocast(
-                            device_type=device.type,
-                            dtype=torch.bfloat16,
-                            enabled=autocast_enabled,
-                        ):
-                            noise_pred = anima(
-                                latents, t_expand, embed, padding_mask=padding_mask
-                            )
+                            t_expand = t.expand(bs)
 
-                        if do_cfg:
                             with torch.autocast(
                                 device_type=device.type,
                                 dtype=torch.bfloat16,
                                 enabled=autocast_enabled,
                             ):
-                                uncond_noise_pred = anima(
-                                    latents,
-                                    t_expand,
-                                    negative_embed,
-                                    padding_mask=padding_mask,
+                                noise_pred = anima(
+                                    latents, t_expand, embed, padding_mask=padding_mask
                                 )
-                            noise_pred = (
-                                uncond_noise_pred
-                                + first_args.guidance_scale
-                                * (noise_pred - uncond_noise_pred)
-                            )
 
-                        if er_sde is not None:
-                            denoised = (
-                                latents.float() - sigmas[step_i] * noise_pred.float()
-                            )
-                            latents = er_sde.step(latents, denoised, step_i).to(
-                                latents.dtype
-                            )
-                        else:
-                            latents = inference_utils.step(
-                                latents, noise_pred, sigmas, step_i
-                            ).to(latents.dtype)
-                        pbar.update()
+                            if do_cfg:
+                                with torch.autocast(
+                                    device_type=device.type,
+                                    dtype=torch.bfloat16,
+                                    enabled=autocast_enabled,
+                                ):
+                                    uncond_noise_pred = anima(
+                                        latents,
+                                        t_expand,
+                                        negative_embed,
+                                        padding_mask=padding_mask,
+                                    )
+                                noise_pred = (
+                                    uncond_noise_pred
+                                    + first_args.guidance_scale
+                                    * (noise_pred - uncond_noise_pred)
+                                )
 
-                # P-GRAFT: restore LoRA for next prompt
-                if pgraft_network is not None:
-                    pgraft_network.unfuse_weights()
+                            if er_sde is not None:
+                                denoised = (
+                                    latents.float() - sigmas[step_i] * noise_pred.float()
+                                )
+                                latents = er_sde.step(latents, denoised, step_i).to(
+                                    latents.dtype
+                                )
+                            else:
+                                latents = inference_utils.step(
+                                    latents, noise_pred, sigmas, step_i
+                                ).to(latents.dtype)
+                            pbar.update()
+
+                    # P-GRAFT: restore LoRA for next prompt
+                    if pgraft_network is not None:
+                        pgraft_network.unfuse_weights()
 
                 # Split batch and decode+save immediately
                 for j, idx in enumerate(indices):

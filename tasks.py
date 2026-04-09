@@ -270,6 +270,20 @@ def cmd_gui(_extra):
     run(["python", "gui.py"])
 
 
+def cmd_invert(extra):
+    run([
+        "python", "invert_embedding.py",
+        "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
+        "--attn_mode", "flash",
+        "--image_dir", "post_image_dataset",
+        "--num_images", "10", "--shuffle",
+        "--steps", "500", "--lr", "0.01",
+        "--output_dir", "inversions",
+        "--log_block_grads",
+        *extra,
+    ])
+
+
 # ── CLI ───────────────────────────────────────────────────────────────
 
 COMMANDS = {
@@ -298,6 +312,7 @@ COMMANDS = {
     "mask-mit":         (cmd_mask_mit,          "Generate MIT masks only"),
     "mask-clean":       (cmd_mask_clean,        "Remove all generated masks"),
     "gui":              (cmd_gui,               "Launch PySide6 GUI"),
+    "invert":           (cmd_invert,            "Embedding inversion (image → text embedding)"),
 }
 
 

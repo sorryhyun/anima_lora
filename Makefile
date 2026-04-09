@@ -3,7 +3,7 @@ LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safet
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-prefix test-postfix test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-prefix test-postfix test-spectrum invert mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -85,6 +85,17 @@ test-spectrum:
 		--spectrum_lam 0.1 \
 		--spectrum_stop_caching_step 29 \
 		--spectrum_calibration 0.0
+
+INVERT_N ?= 10
+invert:
+	python invert_embedding.py \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--attn_mode flash \
+		--image_dir post_image_dataset \
+		--num_images $(INVERT_N) --shuffle \
+		--steps 500 --lr 0.01 \
+		--output_dir inversions \
+		--log_block_grads
 
 WORKFLOW ?= workflows/lora-batch.json
 comfy-batch:
