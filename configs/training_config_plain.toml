@@ -7,7 +7,7 @@ checkpointing_epochs = 2
 learning_rate = 5e-5
 max_train_epochs = 2
 save_every_n_epochs = 2
-attn_mode = "flash4"
+attn_mode = "flash"
 cache_llm_adapter_outputs = true
 trim_crossattn_kv = true
 

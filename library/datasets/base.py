@@ -1295,7 +1295,7 @@ class BaseDataset(torch.utils.data.Dataset):
         example["custom_attributes"] = custom_attributes
         example["loss_weights"] = torch.FloatTensor(loss_weights)
         example["text_encoder_outputs_list"] = none_or_stack_elements(
-            text_encoder_outputs_list, torch.FloatTensor
+            text_encoder_outputs_list, lambda x: x if isinstance(x, torch.Tensor) else torch.tensor(x, dtype=torch.float32)
         )
         example["input_ids_list"] = none_or_stack_elements(input_ids_list, lambda x: x)
 

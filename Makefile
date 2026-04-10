@@ -1,3 +1,4 @@
+ACCELERATE := python -m accelerate.commands.accelerate_cli
 LORA_DIR := ../comfy/ComfyUI/models/loras
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
@@ -25,35 +26,35 @@ gui:
 	python gui.py
 
 lora:
-	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_plain.toml
 
 lora-low-vram:
-	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_low_vram.toml
 
 dora:
-	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_dora.toml
 
 tdora:
-	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_doratimestep.toml
 
 tlora:
-	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_tlora.toml
 
 hydralora:
-	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_hydralora.toml
 
 postfix:
-	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_postfix.toml
 
 prefix:
-	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_prefix.toml
 
 sync:
