@@ -42,7 +42,7 @@ Last 3 rows use FA4 + compile (static tokens) as baseline.
 uv sync
 
 # 2. Authenticate with Hugging Face (needed for model downloads)
-huggingface-cli login
+hf auth login
 
 # 3. Download model weights (DiT, text encoder, VAE)
 make download-models
