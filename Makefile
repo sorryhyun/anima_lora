@@ -2,8 +2,9 @@ LORA_DIR := ../comfy/ComfyUI/models/loras
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-prefix test-postfix test-spectrum invert test-invert distill-mod mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-mod test-prefix test-postfix test-spectrum invert test-invert distill-mod mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -62,7 +63,7 @@ distill-mod:
 		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
 		--output_path output/pooled_text_proj.safetensors \
 		--iterations 2000 \
-		--lr 1e-4 \
+		--lr 1e-5 \
 		--blocks_to_swap 0 \
 		--attn_mode flash
 
@@ -73,6 +74,10 @@ test:
 	$(TEST_COMMON) \
 		--lora_weight $(LATEST_LORA) \
 		--lora_multiplier 1.0
+
+test-mod:
+	$(TEST_COMMON) \
+		--pooled_text_proj $(LATEST_MOD)
 
 test-prefix:
 	$(TEST_COMMON) \

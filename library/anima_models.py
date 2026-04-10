@@ -1631,6 +1631,10 @@ class Anima(nn.Module):
             if pooled_text is not None:
                 t_embedding_B_T_D = t_embedding_B_T_D + self.pooled_text_proj(pooled_text).unsqueeze(1)
 
+        # Phase 2: modulation guidance delta (precomputed, added every step)
+        if hasattr(self, "_mod_guidance_delta") and self._mod_guidance_delta is not None:
+            t_embedding_B_T_D = t_embedding_B_T_D + self._mod_guidance_delta.unsqueeze(1)
+
         block_kwargs = {
             "rope_cos_sin": rope_cos_sin,
             "adaln_lora_B_T_3D": adaln_lora_B_T_3D,

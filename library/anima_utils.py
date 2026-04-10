@@ -251,9 +251,8 @@ def load_pooled_text_proj(
     """Load trained pooled_text_proj weights into the model."""
     from safetensors.torch import load_file
 
-    state = load_file(path)
-    model.pooled_text_proj.load_state_dict(state)
-    model.pooled_text_proj.to(device)
+    state = load_file(path, device=str(device))
+    model.pooled_text_proj.load_state_dict(state, assign=True)
     logger.info(f"Loaded pooled_text_proj from {path}")
 
 

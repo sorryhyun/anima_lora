@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-anima-mod-guidance"
+description = "Anima Mod Guidance: single drop-in node for modulation guidance. Type positive/negative tags directly, auto-downloads adapter, patches model. No separate CLIP encoding needed."
+version = "1.0.0"
+license = "MIT"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/sorryhyun/anima_lora/tree/main/custom_nodes/comfyui-mod-guidance"
+
+[tool.comfy]
+PublisherId = "sorryhyun"
+DisplayName = "Anima Mod Guidance"
+Icon = ""

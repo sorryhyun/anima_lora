@@ -24,6 +24,9 @@ import logging
 import math
 import os
 import random
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
 import torch
@@ -43,26 +46,47 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # ---------------------------------------------------------------------------
 
 class CachedDataset(torch.utils.data.Dataset):
-    """Loads pre-cached latents and text encoder outputs for distillation."""
+    """Loads pre-cached latents and text encoder outputs for distillation.
 
-    def __init__(self, data_dir: str):
+    Samples are grouped by latent resolution so that each batch has uniform
+    spatial dimensions (matching the bucket-based batching used in training).
+    """
+
+    def __init__(self, data_dir: str, batch_size: int = 1):
         self.data_dir = data_dir
         # Find all text encoder cache files (one per image)
         te_files = sorted(glob.glob(os.path.join(data_dir, "*_anima_te.safetensors")))
 
-        self.samples = []
+        # Group samples by latent resolution
+        buckets: dict[str, list[tuple[str, str]]] = {}
         for te_path in te_files:
             stem = te_path.replace("_anima_te.safetensors", "")
-            # Find matching latent file (has resolution suffix)
             latent_pattern = f"{stem}_*_anima.npz"
             latent_files = glob.glob(latent_pattern)
             if not latent_files:
                 continue
-            # Pick the first resolution variant
             latent_path = latent_files[0]
-            self.samples.append((latent_path, te_path))
+            # Extract resolution from latent key (e.g. "latents_64x64")
+            npz_keys = np.load(latent_path).files
+            latent_key = [k for k in npz_keys if k.startswith("latents_")][0]
+            res = latent_key.split("_", 1)[1]  # "64x64"
+            buckets.setdefault(res, []).append((latent_path, te_path))
 
-        logger.info(f"Found {len(self.samples)} cached samples in {data_dir}")
+        # Flatten: emit full batches from each bucket, then any remainders
+        self.samples = []
+        remainders = []
+        for res, items in buckets.items():
+            random.shuffle(items)
+            full = (len(items) // batch_size) * batch_size
+            self.samples.extend(items[:full])
+            remainders.extend(items[full:])
+        # Remainders go at the end (may have mixed resolutions but only
+        # occur in partial-batch positions; DataLoader drops the last
+        # incomplete batch when drop_last=True)
+        self.samples.extend(remainders)
+
+        logger.info(f"Found {len(self.samples)} cached samples in {data_dir} "
+                     f"across {len(buckets)} resolution buckets")
 
     def __len__(self):
         return len(self.samples)
@@ -88,12 +112,6 @@ class CachedDataset(torch.utils.data.Dataset):
         return latents, crossattn_emb
 
 
-def collate_single(batch):
-    """Collate with batch_size=1 (variable spatial sizes)."""
-    latents, crossattn_emb = batch[0]
-    return latents.unsqueeze(0), crossattn_emb.unsqueeze(0)
-
-
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
@@ -108,11 +126,11 @@ def main():
                         help="Where to save the trained projection weights")
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--batch_size", type=int, default=1,
-                        help="Batch size (1 recommended due to variable latent sizes)")
+    parser.add_argument("--batch_size", type=int, default=2,
+                        help="Batch size")
     parser.add_argument("--blocks_to_swap", type=int, default=0,
                         help="Number of transformer blocks to offload to CPU")
-    parser.add_argument("--save_every", type=int, default=500,
+    parser.add_argument("--save_every", type=int, default=100,
                         help="Save checkpoint every N iterations")
     parser.add_argument("--attn_mode", type=str, default="flash",
                         help="Attention mode (torch, flash, flash4)")
@@ -121,7 +139,7 @@ def main():
                         help="Scale for sigmoid timestep sampling")
     parser.add_argument("--resume", type=str, default=None,
                         help="Resume from a saved pooled_text_proj checkpoint")
-    parser.add_argument("--grad_accum", type=int, default=4,
+    parser.add_argument("--grad_accum", type=int, default=1,
                         help="Gradient accumulation steps")
     parser.add_argument("--torch_compile", action="store_true", default=True,
                         help="Compile block._forward with torch.compile")
@@ -213,12 +231,11 @@ def main():
     )
 
     # --- Dataset ---
-    dataset = CachedDataset(args.data_dir)
+    dataset = CachedDataset(args.data_dir, batch_size=args.batch_size)
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
-        shuffle=True,
-        collate_fn=collate_single if args.batch_size == 1 else None,
+        shuffle=False,  # dataset is pre-bucketed; shuffling would mix resolutions
         num_workers=2,
         pin_memory=True,
         drop_last=True,
