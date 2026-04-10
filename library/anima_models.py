@@ -1334,6 +1334,15 @@ class Anima(nn.Module):
         )
 
         self.t_embedding_norm = RMSNorm(model_channels, eps=1e-6)
+
+        # Modulation guidance: project pooled crossattn_emb into modulation space.
+        # Zero-initialized so it's a no-op before distillation training.
+        self.pooled_text_proj = nn.Sequential(
+            nn.Linear(crossattn_emb_channels, model_channels),
+            nn.SiLU(),
+            nn.Linear(model_channels, model_channels),
+        )
+
         self.init_weights()
 
     def init_weights(self) -> None:
@@ -1344,6 +1353,9 @@ class Anima(nn.Module):
             block.init_weights()
         self.final_layer.init_weights()
         self.t_embedding_norm.reset_parameters()
+        # Zero-init pooled_text_proj output layer so it's a no-op at init
+        nn.init.zeros_(self.pooled_text_proj[-1].weight)
+        nn.init.zeros_(self.pooled_text_proj[-1].bias)
 
     def enable_gradient_checkpointing(
         self, cpu_offload: bool = False, unsloth_offload: bool = False
@@ -1531,6 +1543,8 @@ class Anima(nn.Module):
         max_crossattn_seqlen: Optional[int] = None,
         h_offset: int = 0,
         w_offset: int = 0,
+        pooled_text_override: Optional[torch.Tensor] = None,
+        skip_pooled_text_proj: bool = False,
     ) -> torch.Tensor:
         """
         Args:
@@ -1603,6 +1617,19 @@ class Anima(nn.Module):
             timesteps_B_T = timesteps_B_T.unsqueeze(1)
         t_embedding_B_T_D, adaln_lora_B_T_3D = self.t_embedder(timesteps_B_T)
         t_embedding_B_T_D = self.t_embedding_norm(t_embedding_B_T_D)
+
+        # Modulation guidance: inject pooled text embedding into modulation path.
+        # - pooled_text_override: use this tensor instead of computing from crossattn_emb
+        # - skip_pooled_text_proj: disable entirely (for distillation teacher forward)
+        if not skip_pooled_text_proj:
+            if pooled_text_override is not None:
+                pooled_text = pooled_text_override
+            elif crossattn_emb is not None:
+                pooled_text = crossattn_emb.max(dim=1).values  # (B, 1024)
+            else:
+                pooled_text = None
+            if pooled_text is not None:
+                t_embedding_B_T_D = t_embedding_B_T_D + self.pooled_text_proj(pooled_text).unsqueeze(1)
 
         block_kwargs = {
             "rope_cos_sin": rope_cos_sin,

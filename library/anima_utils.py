@@ -215,6 +215,7 @@ def load_anima_model(
                     "dim_spatial_range",
                     "dim_temporal_range",
                     "inv_freq",
+                    "pooled_text_proj",
                 )
             )
         ]
@@ -240,6 +241,20 @@ def load_anima_model(
         model.pos_embedder.to(loading_device)
 
     return model
+
+
+def load_pooled_text_proj(
+    model: anima_models.Anima,
+    path: str,
+    device: Union[str, torch.device] = "cpu",
+) -> None:
+    """Load trained pooled_text_proj weights into the model."""
+    from safetensors.torch import load_file
+
+    state = load_file(path)
+    model.pooled_text_proj.load_state_dict(state)
+    model.pooled_text_proj.to(device)
+    logger.info(f"Loaded pooled_text_proj from {path}")
 
 
 def load_llm_adapter(

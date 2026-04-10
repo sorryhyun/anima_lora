@@ -3,7 +3,7 @@ LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safet
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-prefix test-postfix test-spectrum invert mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-prefix test-postfix test-spectrum invert test-invert distill-mod mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -56,6 +56,16 @@ prefix:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_prefix.toml
 
+distill-mod:
+	python scripts/distill_modulation.py \
+		--data_dir post_image_dataset \
+		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
+		--output_path output/pooled_text_proj.safetensors \
+		--iterations 2000 \
+		--lr 1e-4 \
+		--blocks_to_swap 0 \
+		--attn_mode flash
+
 sync:
 	python -c "import shutil, glob, os; d='$(LORA_DIR)'; os.makedirs(d,exist_ok=True); [shutil.copy2(f,d) for f in glob.glob('output/*.safetensors')]"
 
@@ -86,18 +96,27 @@ test-spectrum:
 		--spectrum_stop_caching_step 29 \
 		--spectrum_calibration 0.0
 
-INVERT_N ?= 10
+INVERT_N ?= 1
 INVERT_SWAP ?= 0
 invert:
-	python invert_embedding.py \
+	python scripts/invert_embedding.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--attn_mode flash \
 		--image_dir post_image_dataset \
 		--num_images $(INVERT_N) --shuffle \
-		--steps 100 --lr 0.01 \
+		--steps 150 --lr 0.005 \
 		--output_dir inversions \
 		--blocks_to_swap $(INVERT_SWAP) \
 		--log_block_grads
+
+INVERT_NAME ?= latest
+test-invert:
+	python scripts/interpret_inversion.py \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--vae models/vae/qwen_image_vae.safetensors \
+		--attn_mode flash \
+		--name $(INVERT_NAME) \
+		--verify --verify_steps 50
 
 WORKFLOW ?= workflows/lora-batch.json
 comfy-batch:

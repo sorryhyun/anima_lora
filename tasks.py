@@ -272,7 +272,7 @@ def cmd_gui(_extra):
 
 def cmd_invert(extra):
     run([
-        "python", "invert_embedding.py",
+        "python", "scripts/invert_embedding.py",
         "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
         "--attn_mode", "flash",
         "--image_dir", "post_image_dataset",

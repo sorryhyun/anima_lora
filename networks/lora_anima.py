@@ -55,7 +55,7 @@ def create_network(
         layer_end = int(layer_end)
 
     # add default exclude patterns
-    exclude_patterns.append(r".*(_modulation|_norm|_embedder|final_layer|adaln_fused_down|adaln_up_).*")
+    exclude_patterns.append(r".*(_modulation|_norm|_embedder|final_layer|adaln_fused_down|adaln_up_|pooled_text_proj).*")
 
     # regular expression for module selection: exclude and include
     include_patterns = kwargs.get("include_patterns", None)

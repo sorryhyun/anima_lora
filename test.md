@@ -16,7 +16,6 @@ fa2 without checkpoint, without blocks to swap (skipped 4 lora layers)
 | Peak VRAM | Total Time | 2nd Epoch | sec/step | Train Loss | Val Loss |
 |---|---|---|---|---|---|---|
 | 14.1 GB | 7:48 | 3:52 | 1.05s | 0.084 | 0.241 |
-| + RoPE cache, fused qkv | 14.1 GB | 8:54 | 4:23 | 1.18s | 0.086 | 0.223 |
 
 
 fa4 without checkpoint

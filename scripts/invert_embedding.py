@@ -7,14 +7,14 @@ embedding space.
 
 Usage:
     # Single image (encodes via VAE on the fly)
-    python invert_embedding.py \
+    python scripts/invert_embedding.py \
         --image path/to/image.png \
         --dit models/diffusion_models/anima-preview3-base.safetensors \
         --vae models/vae/qwen_image_vae.safetensors \
         --save_path output/inverted.safetensors
 
     # Batch from post_image_dataset/ (uses cached latents + cached TE for init)
-    python invert_embedding.py \
+    python scripts/invert_embedding.py \
         --image_dir post_image_dataset \
         --dit models/diffusion_models/anima-preview3-base.safetensors \
         --save_path output/inversions/ \
@@ -149,7 +149,8 @@ def load_cached_latents(npz_path, device):
     size_suffix = latent_key[len("latents_"):]  # e.g. "180x90"
     size_key = f"original_size_{size_suffix}"
     if size_key in data:
-        orig_h, orig_w = int(data[size_key][0]), int(data[size_key][1])
+        # original_size is stored as [W, H] in the preprocessing pipeline
+        orig_w, orig_h = int(data[size_key][0]), int(data[size_key][1])
     else:
         # Derive from latent shape: latent is (16, H/8, W/8)
         orig_h = latents.shape[-2] * 8
