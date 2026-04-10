@@ -4,7 +4,7 @@ LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-mod test-prefix test-postfix test-spectrum invert test-invert distill-mod mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-mod test-prefix test-postfix test-spectrum invert test-invert distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -62,8 +62,9 @@ distill-mod:
 		--data_dir post_image_dataset \
 		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
 		--output_path output/pooled_text_proj.safetensors \
-		--iterations 2000 \
-		--lr 1e-5 \
+		--iterations 500 \
+		--lr 1e-4 \
+		--warmup 0.05 \
 		--blocks_to_swap 0 \
 		--attn_mode flash
 
@@ -123,20 +124,33 @@ test-invert:
 		--name $(INVERT_NAME) \
 		--verify --verify_steps 50
 
-WORKFLOW ?= workflows/lora-batch.json
+WORKFLOW ?= workflows/batch-0410.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 
 graft-step:
 	python graft_step.py
 
-preprocess:
-	python scripts/post_images.py \
+preprocess: preprocess-resize preprocess-vae preprocess-te
+
+preprocess-resize:
+	python scripts/resize_images.py \
 		--src image_dataset \
-		--dst post_image_dataset \
+		--dst post_image_dataset
+
+preprocess-vae:
+	python scripts/cache_latents.py \
+		--dir post_image_dataset \
 		--vae models/vae/qwen_image_vae.safetensors \
-		--vae_batch_size 4 \
-		--vae_chunk_size 64
+		--batch_size 4 \
+		--chunk_size 64
+
+preprocess-te:
+	python scripts/cache_text_embeddings.py \
+		--dir post_image_dataset \
+		--qwen3 models/text_encoders/qwen_3_06b_base.safetensors \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--caption_shuffle_variants 16
 
 # --- Model downloads ---
 

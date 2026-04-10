@@ -124,13 +124,13 @@ def main():
                         default="models/diffusion_models/anima-preview3-base.safetensors")
     parser.add_argument("--output_path", type=str, default="output/pooled_text_proj.safetensors",
                         help="Where to save the trained projection weights")
-    parser.add_argument("--iterations", type=int, default=100)
+    parser.add_argument("--iterations", type=int, default=500)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch_size", type=int, default=2,
                         help="Batch size")
     parser.add_argument("--blocks_to_swap", type=int, default=0,
                         help="Number of transformer blocks to offload to CPU")
-    parser.add_argument("--save_every", type=int, default=100,
+    parser.add_argument("--save_every", type=int, default=125,
                         help="Save checkpoint every N iterations")
     parser.add_argument("--attn_mode", type=str, default="flash",
                         help="Attention mode (torch, flash, flash4)")
@@ -139,12 +139,14 @@ def main():
                         help="Scale for sigmoid timestep sampling")
     parser.add_argument("--resume", type=str, default=None,
                         help="Resume from a saved pooled_text_proj checkpoint")
-    parser.add_argument("--grad_accum", type=int, default=1,
+    parser.add_argument("--grad_accum", type=int, default=4,
                         help="Gradient accumulation steps")
     parser.add_argument("--torch_compile", action="store_true", default=True,
                         help="Compile block._forward with torch.compile")
     parser.add_argument("--no_compile", dest="torch_compile", action="store_false",
                         help="Disable torch.compile")
+    parser.add_argument("--warmup", type=float, default=0,
+                        help="Warmup steps: int >= 1 for absolute steps, float < 1 for ratio of iterations")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -225,10 +227,22 @@ def main():
     # --- Optimizer ---
     optimizer = torch.optim.AdamW(model.pooled_text_proj.parameters(), lr=args.lr)
 
-    # Cosine annealing
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.iterations, eta_min=args.lr * 0.1
-    )
+    # Warmup + cosine annealing
+    warmup_steps = int(args.warmup) if args.warmup >= 1 else int(args.warmup * args.iterations)
+    if warmup_steps > 0:
+        warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1e-6 / args.lr, total_iters=warmup_steps
+        )
+        cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.iterations - warmup_steps, eta_min=args.lr * 0.1
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_steps]
+        )
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=args.iterations, eta_min=args.lr * 0.1
+        )
 
     # --- Dataset ---
     dataset = CachedDataset(args.data_dir, batch_size=args.batch_size)
