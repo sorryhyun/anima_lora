@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """GRAFT: Human-in-the-loop LoRA fine-tuning via rejection sampling.
 
-Each `make step` invocation:
+Each `make graft-step` invocation:
 1. Ingests survived candidates from the previous round
 2. Holds out a random subset of image_dataset/ (captions used for generation)
 3. Trains LoRA on remaining images + accumulated survivors
@@ -10,7 +10,6 @@ Each `make step` invocation:
 """
 
 import json
-import os
 import platform
 import random
 import shutil
@@ -27,12 +26,11 @@ ROOT = Path(__file__).resolve().parent
 GRAFT_DIR = ROOT / "graft"
 STATE_FILE = GRAFT_DIR / "state.json"
 GRAFT_CONFIG = GRAFT_DIR / "graft_config.toml"
-IMAGE_DATASET = ROOT / "image_dataset"
+IMAGE_DATASET = ROOT / "post_image_dataset"
 TRAIN_IMAGES = GRAFT_DIR / "train_images"
 SURVIVORS_DIR = GRAFT_DIR / "survivors"
 CANDIDATES_DIR = GRAFT_DIR / "candidates"
 TRAINING_CONFIG_SRC = ROOT / "configs" / "training_config.toml"
-DATASET_CONFIG_SRC = ROOT / "configs" / "dataset_config.toml"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
@@ -142,7 +140,7 @@ def build_train_symlinks(holdout_stems):
     holdout_set = set(holdout_stems)
     count = 0
     for p in IMAGE_DATASET.iterdir():
-        # For .npz cache files, extract the image stem (everything before _DDDDxDDDD_anima.npz)
+        # For .npz latent cache files, extract the image stem (everything before _DDDDxDDDD_anima.npz)
         if p.suffix == ".npz":
             # Pattern: {stem}_{W}x{H}_anima.npz
             name_no_ext = p.stem  # e.g. "asou1_2500x2226_anima"
@@ -151,6 +149,14 @@ def build_train_symlinks(holdout_stems):
                 cache_stem = "_".join(parts[:-2])
             else:
                 cache_stem = parts[0]
+            if cache_stem in holdout_set:
+                continue
+            _link_or_copy(p, TRAIN_IMAGES / p.name)
+            continue
+
+        # For .safetensors text encoder cache files: {stem}_anima_te.safetensors
+        if p.suffix == ".safetensors" and p.name.endswith("_anima_te.safetensors"):
+            cache_stem = p.name.removesuffix("_anima_te.safetensors")
             if cache_stem in holdout_set:
                 continue
             _link_or_copy(p, TRAIN_IMAGES / p.name)
@@ -167,53 +173,45 @@ def build_train_symlinks(holdout_stems):
     print(f"Training subset: {count} images (held out {len(holdout_set)})")
 
 
-def generate_dataset_config():
-    """Generate graft/dataset_config.toml for training."""
-    # Read original dataset config for base settings
-    with open(DATASET_CONFIG_SRC, "rb") as f:
-        orig = tomllib.load(f)
+GRAFT_DATASET_CONFIG = GRAFT_DIR / "dataset_config.toml"
 
-    ds = orig.get("datasets", [{}])[0]
 
-    subsets = f"""  [[datasets.subsets]]
-  image_dir = 'graft/train_images'
-  num_repeats = 1
-"""
-    # Add survivors if any exist
+def prepare_dataset_config():
+    """Prepare graft/dataset_config.toml: ensure dirs exist and append survivors subset if needed."""
+    TRAIN_IMAGES.mkdir(parents=True, exist_ok=True)
+    SURVIVORS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Read the user-maintained config
+    base = GRAFT_DATASET_CONFIG.read_text()
+
+    # Strip any previously appended survivors block (between markers)
+    marker_start = "# --- survivors-auto ---"
+    marker_end = "# --- /survivors-auto ---"
+    if marker_start in base:
+        before = base[: base.index(marker_start)]
+        after = base[base.index(marker_end) + len(marker_end) :]
+        base = before.rstrip("\n") + "\n" + after.lstrip("\n")
+
+    # Append survivors subset only if there are actual images
     survivor_images = [p for p in SURVIVORS_DIR.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS] if SURVIVORS_DIR.exists() else []
     if survivor_images:
-        subsets += f"""
+        base = base.rstrip("\n") + f"""
+
+{marker_start}
   [[datasets.subsets]]
   image_dir = 'graft/survivors'
   num_repeats = 1
+{marker_end}
 """
 
-    config = f"""[general]
-shuffle_caption = {str(orig.get('general', {}).get('shuffle_caption', False)).lower()}
-caption_extension = '{orig.get('general', {}).get('caption_extension', '.txt')}'
-keep_tokens = {orig.get('general', {}).get('keep_tokens', 3)}
-
-[[datasets]]
-resolution = {ds.get('resolution', 1024)}
-batch_size = {ds.get('batch_size', 4)}
-enable_bucket = {str(ds.get('enable_bucket', True)).lower()}
-min_bucket_reso = {ds.get('min_bucket_reso', 512)}
-max_bucket_reso = {ds.get('max_bucket_reso', 1536)}
-bucket_reso_steps = {ds.get('bucket_reso_steps', 64)}
-validation_split = {ds.get('validation_split', 0.05)}
-
-{subsets}"""
-
-    out = GRAFT_DIR / "dataset_config.toml"
-    out.write_text(config)
-    print(f"Generated {out}")
+    GRAFT_DATASET_CONFIG.write_text(base)
 
 
 def generate_training_config(config):
     """Generate graft/training_config.toml by reading the original as text and patching values."""
     lines = TRAINING_CONFIG_SRC.read_text().splitlines()
     overrides = {
-        "dataset_config": f'"graft/dataset_config.toml"',
+        "dataset_config": '"graft/dataset_config.toml"',
         "max_train_epochs": str(config["epochs_per_step"]),
         "save_every_n_epochs": str(config["epochs_per_step"]),
     }
@@ -329,7 +327,15 @@ def run_generation(config, holdout_captions, iteration):
         "--attn_mode", "flash",
         "--vae_chunk_size", "64",
         "--vae_disable_cache",
-        "--infer_batch_size", str(n_candidates),
+        "--spectrum",
+        "--spectrum_window_size", "2.0",
+        "--spectrum_flex_window", "0.25",
+        "--spectrum_warmup", "7",
+        "--spectrum_w", "0.3",
+        "--spectrum_m", "3",
+        "--spectrum_lam", "0.1",
+        "--spectrum_stop_caching_step", "29",
+        "--spectrum_calibration", "0.0",
     ]
 
     if pgraft:
@@ -362,9 +368,17 @@ def run_generation(config, holdout_captions, iteration):
 
 
 def get_training_cfg():
-    """Read training config values."""
-    with open(TRAINING_CONFIG_SRC, "rb") as f:
-        return tomllib.load(f)
+    """Read training config values, merging base_config if present."""
+    graft_training = GRAFT_DIR / "training_config.toml"
+    with open(graft_training, "rb") as f:
+        cfg = tomllib.load(f)
+    if "base_config" in cfg:
+        base_path = GRAFT_DIR / cfg["base_config"]
+        with open(base_path, "rb") as f:
+            base = tomllib.load(f)
+        base.update(cfg)
+        return base
+    return cfg
 
 
 def main():
@@ -393,8 +407,8 @@ def main():
     # 2. Build training symlinks (image_dataset minus holdout)
     build_train_symlinks(holdout_stems)
 
-    # 3. Generate dataset + training configs
-    generate_dataset_config()
+    # 3. Prepare dataset config + generate training config
+    prepare_dataset_config()
     generate_training_config(config)
 
     # 4. Train
@@ -410,7 +424,7 @@ def main():
 
     print(f"\n{'=' * 60}")
     print(f"Review candidates in {candidates_dir.relative_to(ROOT)}/")
-    print(f"Delete unwanted images, then run `make step` again.")
+    print("Delete unwanted images, then run `make graft-step` again.")
     print(f"{'=' * 60}")
 
 

@@ -1,0 +1,18 @@
+[general]
+shuffle_caption = false
+caption_extension = '.txt'
+keep_tokens = 3
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+enable_bucket = true
+min_bucket_reso = 512
+max_bucket_reso = 1536
+bucket_reso_steps = 64
+validation_split = 0.025
+
+  [[datasets.subsets]]
+  image_dir = 'graft/train_images'
+  num_repeats = 1
+  sample_ratio = 0.1

@@ -1,10 +1,9 @@
-ACCELERATE := python -m accelerate.commands.accelerate_cli
 LORA_DIR := ../comfy/ComfyUI/models/loras
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-prefix test-postfix test-spectrum mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-prefix test-postfix test-spectrum invert mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -26,35 +25,35 @@ gui:
 	python gui.py
 
 lora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_plain.toml
 
 lora-low-vram:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_low_vram.toml
 
 dora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_dora.toml
 
 tdora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_doratimestep.toml
 
 tlora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_tlora.toml
 
 hydralora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_hydralora.toml
 
 postfix:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_postfix.toml
 
 prefix:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_prefix.toml
 
 sync:
@@ -87,11 +86,24 @@ test-spectrum:
 		--spectrum_stop_caching_step 29 \
 		--spectrum_calibration 0.0
 
-WORKFLOW ?= workflows/postfix-batch.json
+INVERT_N ?= 10
+INVERT_SWAP ?= 0
+invert:
+	python invert_embedding.py \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--attn_mode flash \
+		--image_dir post_image_dataset \
+		--num_images $(INVERT_N) --shuffle \
+		--steps 100 --lr 0.01 \
+		--output_dir inversions \
+		--blocks_to_swap $(INVERT_SWAP) \
+		--log_block_grads
+
+WORKFLOW ?= workflows/lora-batch.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 
-step:
+graft-step:
 	python graft_step.py
 
 preprocess:
@@ -106,16 +118,16 @@ preprocess:
 
 download-sam3:
 	python -c "import os; os.makedirs('models/sam3',exist_ok=True)"
-	hf download facebook/sam3 --local-dir models/sam3
+	huggingface-cli download facebook/sam3 --local-dir models/sam3
 
 download-mit:
 	python -c "import os; os.makedirs('models/mit',exist_ok=True)"
-	hf download a-b-c-x-y-z/Manga-Text-Segmentation-2025 \
+	huggingface-cli download a-b-c-x-y-z/Manga-Text-Segmentation-2025 \
 		model.pth --local-dir models/mit
 
 download-anima:
 	python -c "import os; [os.makedirs(d,exist_ok=True) for d in ['models/diffusion_models','models/text_encoders','models/vae']]"
-	hf download circlestone-labs/Anima \
+	huggingface-cli download circlestone-labs/Anima \
 		split_files/diffusion_models/anima-preview3-base.safetensors \
 		split_files/text_encoders/qwen_3_06b_base.safetensors \
 		split_files/vae/qwen_image_vae.safetensors \

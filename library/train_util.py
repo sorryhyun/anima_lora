@@ -697,6 +697,12 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         help="use memory efficient attention for CrossAttention",
     )
     parser.add_argument(
+        "--profile_steps",
+        type=str,
+        default=None,
+        help="profile CUDA kernels for the given step range, e.g. '3-5'. Exports a Chrome trace to profile_trace.json",
+    )
+    parser.add_argument(
         "--torch_compile",
         action="store_true",
         help="use torch.compile (requires PyTorch 2.0)",
@@ -720,6 +726,15 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
             "tvm",
         ],
         help="dynamo backend type (default is inductor)",
+    )
+    parser.add_argument(
+        "--compile_mode",
+        type=str,
+        default="blocks",
+        choices=["blocks", "full"],
+        help="torch.compile mode: 'blocks' compiles each DiT block individually (default), "
+        "'full' compiles the entire model as one graph for cross-block memory optimization "
+        "(incompatible with gradient checkpointing and block swap)",
     )
     parser.add_argument(
         "--xformers", action="store_true", help="use xformers for CrossAttention"
@@ -762,7 +777,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--dataloader_prefetch_factor",
         type=int,
-        default=2,
+        default=4,
         help="prefetch_factor for DataLoader workers (only valid when num_workers>0)",
     )
     parser.add_argument(

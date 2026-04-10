@@ -376,7 +376,7 @@ class AnimaTrainer:
         # Static token count (constant-shape padding for torch.compile)
         if getattr(args, "static_token_count", None) is not None:
             model.set_static_token_count(args.static_token_count)
-            if args.torch_compile:
+            if args.torch_compile and getattr(args, "compile_mode", "blocks") == "blocks":
                 model.compile_blocks(args.dynamo_backend)
             logger.info(f"static_token_count={args.static_token_count}")
 
@@ -503,6 +503,11 @@ class AnimaTrainer:
         else:
             prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask = text_encoder_conds
 
+        # Pre-compute max sequence length on CPU to avoid GPU sync in KV trimming
+        _max_crossattn_seqlen = None
+        if args.trim_crossattn_kv and t5_attn_mask is not None:
+            _max_crossattn_seqlen = int(t5_attn_mask.sum(dim=-1).max())
+
         if crossattn_emb is None:
             # Move to device
             prompt_embeds = prompt_embeds.to(accelerator.device, dtype=weight_dtype)
@@ -604,8 +609,16 @@ class AnimaTrainer:
                 kw = {}
                 if args.trim_crossattn_kv:
                     kw["crossattn_seqlens"] = t5_attn_mask.sum(dim=-1).to(torch.int32)
-                    if getattr(network, "mode", None) == "prefix" or hasattr(network, "append_postfix"):
-                        kw["crossattn_seqlens"] = kw["crossattn_seqlens"] + network.num_postfix_tokens
+                    max_cs = _max_crossattn_seqlen
+                    if getattr(network, "mode", None) == "prefix" or hasattr(
+                        network, "append_postfix"
+                    ):
+                        kw["crossattn_seqlens"] = (
+                            kw["crossattn_seqlens"] + network.num_postfix_tokens
+                        )
+                        if max_cs is not None:
+                            max_cs += network.num_postfix_tokens
+                    kw["max_crossattn_seqlen"] = max_cs
                 model_pred = anima(
                     noisy_model_input,
                     timesteps,
@@ -1104,6 +1117,18 @@ class AnimaTrainer:
 
     # region Main training loop
 
+    @staticmethod
+    def _parse_profile_steps(args) -> tuple[int, int] | None:
+        """Parse --profile_steps 'start-end' into (start, end) or None."""
+        raw = getattr(args, "profile_steps", None)
+        if not raw:
+            return None
+        if "-" in raw:
+            a, b = raw.split("-", 1)
+            return int(a), int(b)
+        n = int(raw)
+        return n, n + 2
+
     def train(self, args):
         session_id = random.randint(0, 2**32)
         training_started_at = time.time()
@@ -1595,6 +1620,18 @@ class AnimaTrainer:
 
         del t_enc
 
+        # Full-model torch.compile: compile after LoRA apply + accelerator prepare
+        # so dynamo traces through LoRA-patched forwards without _orig_mod prefix issues.
+        if args.torch_compile and getattr(args, "compile_mode", "blocks") == "full":
+            assert not args.gradient_checkpointing, (
+                "compile_mode='full' is incompatible with gradient checkpointing"
+            )
+            assert not self.is_swapping_blocks, (
+                "compile_mode='full' is incompatible with block swap"
+            )
+            unet = torch.compile(unet, backend=args.dynamo_backend, dynamic=True)
+            logger.info(f"full-model torch.compile (backend={args.dynamo_backend})")
+
         accelerator.unwrap_model(network).prepare_grad_etc(text_encoder, unet)
 
         if not cache_latents:
@@ -1697,26 +1734,26 @@ class AnimaTrainer:
 
         accelerator.print("running training")
         accelerator.print(
-            f"  num train images * repeats"
+            "  num train images * repeats"
         )
         accelerator.print(
-            f"  num validation images * repeats"
+            "  num validation images * repeats"
         )
         accelerator.print(
-            f"  num reg images"
+            "  num reg images"
         )
         accelerator.print(
-            f"  num batches per epoch"
+            "  num batches per epoch"
         )
-        accelerator.print(f"  num epochs")
+        accelerator.print("  num epochs")
         accelerator.print(
-            f"  batch size per device"
-        )
-        accelerator.print(
-            f"  gradient accumulation steps"
+            "  batch size per device"
         )
         accelerator.print(
-            f"  total optimization steps"
+            "  gradient accumulation steps"
+        )
+        accelerator.print(
+            "  total optimization steps"
         )
 
         metadata = train_util.build_training_metadata(
@@ -1771,7 +1808,7 @@ class AnimaTrainer:
 
         if initial_step > 0:
             assert args.max_train_steps > initial_step, (
-                f"max_train_steps should be greater than initial step"
+                "max_train_steps should be greater than initial step"
             )
 
         epoch_to_start = 0
@@ -1935,6 +1972,10 @@ class AnimaTrainer:
             torch.cuda.set_rng_state(gpu_rng_state)
             random.setstate(python_rng_state)
 
+        # --- Profiler setup ---
+        profile_range = self._parse_profile_steps(args)
+        profiler_ctx = None
+
         for epoch in range(epoch_to_start, num_train_epochs):
             accelerator.print(f"\nepoch {epoch + 1}/{num_train_epochs}\n")
             current_epoch.value = epoch + 1
@@ -1958,6 +1999,19 @@ class AnimaTrainer:
                 if initial_step > 0:
                     initial_step -= 1
                     continue
+
+                # --- Profiler: start recording ---
+                if profile_range and global_step == profile_range[0] and profiler_ctx is None:
+                    accelerator.print(f"\n[profiler] starting at step {global_step}")
+                    profiler_ctx = torch.profiler.profile(
+                        activities=[
+                            torch.profiler.ProfilerActivity.CPU,
+                            torch.profiler.ProfilerActivity.CUDA,
+                        ],
+                        record_shapes=True,
+                        with_stack=True,
+                    )
+                    profiler_ctx.__enter__()
 
                 with accelerator.accumulate(training_model):
                     on_step_start_for_network(text_encoder, unet)
@@ -2009,6 +2063,22 @@ class AnimaTrainer:
                     lr_scheduler.step()
                     optimizer.zero_grad(set_to_none=True)
 
+                # --- Profiler: stop recording ---
+                if profiler_ctx is not None and global_step >= profile_range[1]:
+                    profiler_ctx.__exit__(None, None, None)
+                    trace_path = os.path.join(args.output_dir, "profile_trace.json")
+                    profiler_ctx.export_chrome_trace(trace_path)
+                    accelerator.print(f"\n[profiler] stopped at step {global_step}")
+                    accelerator.print(f"[profiler] trace saved to {trace_path}")
+                    accelerator.print("[profiler] open in https://ui.perfetto.dev for visual inspection\n")
+                    key_avg = profiler_ctx.key_averages(group_by_stack_n=0)
+                    accelerator.print("[profiler] top 30 CUDA kernels by total time:\n")
+                    accelerator.print(
+                        key_avg.table(sort_by="cuda_time_total", row_limit=30)
+                    )
+                    profiler_ctx = None
+                    profile_range = None  # don't re-trigger
+
                 if args.scale_weight_norms:
                     keys_scaled, mean_norm, maximum_norm = accelerator.unwrap_model(
                         network
@@ -2022,35 +2092,10 @@ class AnimaTrainer:
                         "Average key norm": mean_norm,
                     }
                 else:
-                    if hasattr(network, "weight_norms"):
-                        weight_norms = network.weight_norms()
-                        mean_norm = (
-                            weight_norms.mean().item()
-                            if weight_norms is not None
-                            else None
-                        )
-                        grad_norms = network.grad_norms()
-                        mean_grad_norm = (
-                            grad_norms.mean().item() if grad_norms is not None else None
-                        )
-                        combined_weight_norms = network.combined_weight_norms()
-                        mean_combined_norm = (
-                            combined_weight_norms.mean().item()
-                            if combined_weight_norms is not None
-                            else None
-                        )
-                        maximum_norm = (
-                            weight_norms.max().item()
-                            if weight_norms is not None
-                            else None
-                        )
-                        keys_scaled = None
-                        max_mean_logs = {}
-                    else:
-                        keys_scaled, mean_norm, maximum_norm = None, None, None
-                        mean_grad_norm = None
-                        mean_combined_norm = None
-                        max_mean_logs = {}
+                    keys_scaled, mean_norm, maximum_norm = None, None, None
+                    mean_grad_norm = None
+                    mean_combined_norm = None
+                    max_mean_logs = {}
 
                 # Checks if the accelerator has performed an optimization step behind the scenes
                 if accelerator.sync_gradients:
