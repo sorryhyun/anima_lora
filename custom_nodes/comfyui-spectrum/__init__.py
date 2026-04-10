@@ -187,6 +187,8 @@ def _spectrum_fast_forward(
     t_sinusoidal = dit.t_embedder[0](timestep)
     t_emb, adaln = dit.t_embedder[1](t_sinusoidal.to(predicted_feature.dtype))
     t_emb = dit.t_embedding_norm(t_emb)
+    if getattr(dit, "_mod_guidance_delta", None) is not None:
+        t_emb = t_emb + dit._mod_guidance_delta.unsqueeze(1)
     x = dit.final_layer(predicted_feature, t_emb, adaln_lora_B_T_3D=adaln)
     return dit.unpatchify(x)
 

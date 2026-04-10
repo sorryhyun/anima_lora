@@ -14,4 +14,4 @@ validation_seed = 42
   image_dir = 'post_image_dataset'
   num_repeats = 1
   caption_dropout_rate = 0.1
-  # sample_ratio=0.15
+  sample_ratio=0.15

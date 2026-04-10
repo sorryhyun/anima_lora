@@ -105,9 +105,9 @@ class CachedDataset(torch.utils.data.Dataset):
             keys = set(f.keys())
             if "num_variants" in keys:
                 vi = random.randint(0, int(f.get_tensor("num_variants")) - 1)
-                crossattn_emb = f.get_tensor(f"crossattn_emb_v{vi}")
+                crossattn_emb = f.get_tensor(f"crossattn_emb_v{vi}").clone()
             else:
-                crossattn_emb = f.get_tensor("crossattn_emb")
+                crossattn_emb = f.get_tensor("crossattn_emb").clone()
 
         return latents, crossattn_emb
 
@@ -124,13 +124,13 @@ def main():
                         default="models/diffusion_models/anima-preview3-base.safetensors")
     parser.add_argument("--output_path", type=str, default="output/pooled_text_proj.safetensors",
                         help="Where to save the trained projection weights")
-    parser.add_argument("--iterations", type=int, default=500)
+    parser.add_argument("--iterations", type=int, default=3000)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch_size", type=int, default=2,
                         help="Batch size")
     parser.add_argument("--blocks_to_swap", type=int, default=0,
                         help="Number of transformer blocks to offload to CPU")
-    parser.add_argument("--save_every", type=int, default=125,
+    parser.add_argument("--save_every", type=int, default=500,
                         help="Save checkpoint every N iterations")
     parser.add_argument("--attn_mode", type=str, default="flash",
                         help="Attention mode (torch, flash, flash4)")

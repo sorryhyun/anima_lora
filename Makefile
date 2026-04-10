@@ -62,11 +62,12 @@ distill-mod:
 		--data_dir post_image_dataset \
 		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
 		--output_path output/pooled_text_proj.safetensors \
-		--iterations 500 \
+		--iterations 3000 \
 		--lr 1e-4 \
 		--warmup 0.05 \
 		--blocks_to_swap 0 \
-		--attn_mode flash
+		--attn_mode flash \
+		$(ARGS)
 
 sync:
 	python -c "import shutil, glob, os; d='$(LORA_DIR)'; os.makedirs(d,exist_ok=True); [shutil.copy2(f,d) for f in glob.glob('output/*.safetensors')]"
