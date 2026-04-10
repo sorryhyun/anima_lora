@@ -728,6 +728,15 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         help="dynamo backend type (default is inductor)",
     )
     parser.add_argument(
+        "--compile_mode",
+        type=str,
+        default="blocks",
+        choices=["blocks", "full"],
+        help="torch.compile mode: 'blocks' compiles each DiT block individually (default), "
+        "'full' compiles the entire model as one graph for cross-block memory optimization "
+        "(incompatible with gradient checkpointing and block swap)",
+    )
+    parser.add_argument(
         "--xformers", action="store_true", help="use xformers for CrossAttention"
     )
     parser.add_argument(

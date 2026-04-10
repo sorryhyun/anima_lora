@@ -558,11 +558,18 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         B, T, H, W, _ = B_T_H_W_C
 
-        if h_ntk_factor is None and w_ntk_factor is None and t_ntk_factor is None:
-            key = self._cache_key(T, H, W, fps, 0, 0)
-            cached = self._cos_sin_cache.get(key)
-            if cached is not None:
-                return cached
+        # Skip Python dict cache inside compiled code — dict mutations cause dynamo
+        # guard failures and recompilation.  The RoPE computation is pure tensor math
+        # that dynamo traces cleanly; with static_token_count the shapes are constant
+        # so there is no recompilation from shape guards.
+        _compiling = torch.compiler.is_compiling()
+
+        if not _compiling:
+            if h_ntk_factor is None and w_ntk_factor is None and t_ntk_factor is None:
+                key = self._cache_key(T, H, W, fps, 0, 0)
+                cached = self._cos_sin_cache.get(key)
+                if cached is not None:
+                    return cached
 
         h_ntk_factor = h_ntk_factor if h_ntk_factor is not None else self.h_ntk_factor
         w_ntk_factor = w_ntk_factor if w_ntk_factor is not None else self.w_ntk_factor
@@ -611,13 +618,14 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         freqs = em_T_H_W_D.flatten(0, 2).unsqueeze(1).unsqueeze(1).float()
         result = (torch.cos(freqs), torch.sin(freqs))
 
-        if (
-            h_ntk_factor == self.h_ntk_factor
-            and w_ntk_factor == self.w_ntk_factor
-            and t_ntk_factor == self.t_ntk_factor
-        ):
-            key = self._cache_key(T, H, W, fps, 0, 0)
-            self._cos_sin_cache[key] = result
+        if not _compiling:
+            if (
+                h_ntk_factor == self.h_ntk_factor
+                and w_ntk_factor == self.w_ntk_factor
+                and t_ntk_factor == self.t_ntk_factor
+            ):
+                key = self._cache_key(T, H, W, fps, 0, 0)
+                self._cos_sin_cache[key] = result
 
         return result
 
@@ -634,11 +642,14 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         """Generate RoPE (cos, sin) with spatial offsets for tiled diffusion."""
         B, T, H, W, _ = B_T_H_W_C
 
-        if h_ntk_factor is None and w_ntk_factor is None and t_ntk_factor is None:
-            key = self._cache_key(T, H, W, fps, h_offset, w_offset)
-            cached = self._cos_sin_cache.get(key)
-            if cached is not None:
-                return cached
+        _compiling = torch.compiler.is_compiling()
+
+        if not _compiling:
+            if h_ntk_factor is None and w_ntk_factor is None and t_ntk_factor is None:
+                key = self._cache_key(T, H, W, fps, h_offset, w_offset)
+                cached = self._cos_sin_cache.get(key)
+                if cached is not None:
+                    return cached
 
         h_ntk_factor = h_ntk_factor if h_ntk_factor is not None else self.h_ntk_factor
         w_ntk_factor = w_ntk_factor if w_ntk_factor is not None else self.w_ntk_factor
@@ -691,13 +702,14 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         freqs = em_T_H_W_D.flatten(0, 2).unsqueeze(1).unsqueeze(1).float()
         result = (torch.cos(freqs), torch.sin(freqs))
 
-        if (
-            h_ntk_factor == self.h_ntk_factor
-            and w_ntk_factor == self.w_ntk_factor
-            and t_ntk_factor == self.t_ntk_factor
-        ):
-            key = self._cache_key(T, H, W, fps, h_offset, w_offset)
-            self._cos_sin_cache[key] = result
+        if not _compiling:
+            if (
+                h_ntk_factor == self.h_ntk_factor
+                and w_ntk_factor == self.w_ntk_factor
+                and t_ntk_factor == self.t_ntk_factor
+            ):
+                key = self._cache_key(T, H, W, fps, h_offset, w_offset)
+                self._cos_sin_cache[key] = result
 
         return result
 
@@ -1569,17 +1581,18 @@ class Anima(nn.Module):
             seq_len = T_s * H_s * W_s
             _static_pad_info = (T_s, H_s, W_s, seq_len)
 
-            # Flatten 5D → 2D and pad sequence to target length
+            # Flatten 5D → 2D and pad sequence to target length.
+            # Always pad (even when seq_len == target) to avoid a data-dependent
+            # branch that causes torch.compile recompilation across bucket shapes.
             x_B_T_H_W_D = x_B_T_H_W_D.flatten(1, 3)
-            if seq_len < target:
-                x_B_T_H_W_D = torch.nn.functional.pad(
-                    x_B_T_H_W_D, (0, 0, 0, target - seq_len)
-                )
+            x_B_T_H_W_D = torch.nn.functional.pad(
+                x_B_T_H_W_D, (0, 0, 0, target - seq_len)
+            )
             # Reshape to fake-5D: (B, 1, target, 1, D)
             x_B_T_H_W_D = x_B_T_H_W_D.unsqueeze(1).unsqueeze(3)
 
             # Pad RoPE cos/sin: each (L, 1, 1, D_head) → (target, 1, 1, D_head)
-            if rope_cos_sin is not None and rope_cos_sin[0].shape[0] < target:
+            if rope_cos_sin is not None:
                 pad = (0, 0, 0, 0, 0, 0, 0, target - rope_cos_sin[0].shape[0])
                 rope_cos_sin = (
                     torch.nn.functional.pad(rope_cos_sin[0], pad),

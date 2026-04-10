@@ -14,5 +14,5 @@ trim_crossattn_kv = true
 output_name = "anima_postfix"
 blocks_to_swap = 0
 gradient_accumulation_steps=4
-loss_type = "pseudo_huber"  # smooth L1-like loss, robust to outliers
-pseudo_huber_c = 0.3       # small c -> L1-like, large c -> MSE-like
+# loss_type = "pseudo_huber"  # smooth L1-like loss, robust to outliers
+# pseudo_huber_c = 0.3       # small c -> L1-like, large c -> MSE-like

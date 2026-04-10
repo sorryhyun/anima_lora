@@ -44,7 +44,7 @@ _GROUPS = {
     },
     "Performance": {
         "attn_mode", "gradient_checkpointing", "unsloth_offload_checkpointing",
-        "blocks_to_swap", "torch_compile", "trim_crossattn_kv",
+        "blocks_to_swap", "torch_compile", "compile_mode", "trim_crossattn_kv",
         "cache_llm_adapter_outputs", "masked_loss", "mixed_precision",
         "lora_fp32_accumulation", "static_token_count", "vae_chunk_size",
         "vae_disable_cache", "cache_latents", "cache_latents_to_disk",

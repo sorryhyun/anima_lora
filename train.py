@@ -378,7 +378,7 @@ class AnimaTrainer:
         # Static token count (constant-shape padding for torch.compile)
         if getattr(args, "static_token_count", None) is not None:
             model.set_static_token_count(args.static_token_count)
-            if args.torch_compile:
+            if args.torch_compile and getattr(args, "compile_mode", "blocks") == "blocks":
                 model.compile_blocks(args.dynamo_backend)
             logger.info(f"static_token_count={args.static_token_count}")
 
@@ -1640,6 +1640,18 @@ class AnimaTrainer:
                 t_enc.eval()
 
         del t_enc
+
+        # Full-model torch.compile: compile after LoRA apply + accelerator prepare
+        # so dynamo traces through LoRA-patched forwards without _orig_mod prefix issues.
+        if args.torch_compile and getattr(args, "compile_mode", "blocks") == "full":
+            assert not args.gradient_checkpointing, (
+                "compile_mode='full' is incompatible with gradient checkpointing"
+            )
+            assert not self.is_swapping_blocks, (
+                "compile_mode='full' is incompatible with block swap"
+            )
+            unet = torch.compile(unet, backend=args.dynamo_backend, dynamic=True)
+            logger.info(f"full-model torch.compile (backend={args.dynamo_backend})")
 
         accelerator.unwrap_model(network).prepare_grad_etc(text_encoder, unet)
 

@@ -447,8 +447,8 @@ class OrthoLoRAModule(torch.nn.Module):
         )
         self.register_buffer("base_lambda", self.lambda_layer.data.clone().contiguous())
 
-        # Cached identity for regularization
-        self.register_buffer("_eye_r", torch.eye(lora_dim))
+        # Cached identity for regularization (non-persistent: not saved to state_dict)
+        self.register_buffer("_eye_r", torch.eye(lora_dim), persistent=False)
 
         if isinstance(alpha, torch.Tensor):
             alpha = alpha.detach().float().numpy()
