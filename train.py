@@ -2005,11 +2005,6 @@ class AnimaTrainer:
                                 params_to_clip, args.max_grad_norm
                             )
 
-                        if hasattr(network, "update_grad_norms"):
-                            network.update_grad_norms()
-                        if hasattr(network, "update_norms"):
-                            network.update_norms()
-
                     optimizer.step()
                     lr_scheduler.step()
                     optimizer.zero_grad(set_to_none=True)

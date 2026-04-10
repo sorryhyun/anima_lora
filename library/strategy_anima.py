@@ -6,6 +6,8 @@ from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+from safetensors import safe_open as _safe_open
+from safetensors.torch import load_file as _load_safetensors, save_file as _save_safetensors
 
 from library import anima_train_utils, anima_utils, train_util
 from library.strategy_base import (
@@ -153,40 +155,40 @@ class AnimaTextEncodingStrategy(TextEncodingStrategy):
         Replaces dropped items with pre-cached unconditional embeddings (from encoding "")
         to match diffusion-pipe-main behavior.
         """
-        if (
-            caption_dropout_rates is None
-            or torch.all(caption_dropout_rates == 0.0).item()
-        ):
+        if caption_dropout_rates is None:
             outputs = [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask]
             if crossattn_emb is not None:
                 outputs.append(crossattn_emb)
             return outputs
 
-        # Clone to avoid in-place modification of cached tensors
+        # Vectorized dropout: single RNG call, boolean-indexed assignment
+        drop_mask = (
+            torch.rand(prompt_embeds.shape[0], device=caption_dropout_rates.device)
+            < caption_dropout_rates
+        )
+        if not drop_mask.any():
+            outputs = [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask]
+            if crossattn_emb is not None:
+                outputs.append(crossattn_emb)
+            return outputs
+
+        # Only clone tensors that will be modified
         prompt_embeds = prompt_embeds.clone()
+        prompt_embeds[drop_mask] = 0
         if attn_mask is not None:
             attn_mask = attn_mask.clone()
+            attn_mask[drop_mask] = 0
         if t5_input_ids is not None:
             t5_input_ids = t5_input_ids.clone()
+            t5_input_ids[drop_mask, 0] = 1  # Set to </s> token ID
+            t5_input_ids[drop_mask, 1:] = 0
         if t5_attn_mask is not None:
             t5_attn_mask = t5_attn_mask.clone()
+            t5_attn_mask[drop_mask, 0] = 1
+            t5_attn_mask[drop_mask, 1:] = 0
         if crossattn_emb is not None:
             crossattn_emb = crossattn_emb.clone()
-
-        for i in range(prompt_embeds.shape[0]):
-            if random.random() < caption_dropout_rates[i].item():
-                # Use pre-cached unconditional embeddings
-                prompt_embeds[i] = 0
-                if attn_mask is not None:
-                    attn_mask[i] = 0
-                if t5_input_ids is not None:
-                    t5_input_ids[i, 0] = 1  # Set to </s> token ID
-                    t5_input_ids[i, 1:] = 0
-                if t5_attn_mask is not None:
-                    t5_attn_mask[i, 0] = 1
-                    t5_attn_mask[i, 1:] = 0
-                if crossattn_emb is not None:
-                    crossattn_emb[i] = 0
+            crossattn_emb[drop_mask] = 0
 
         outputs = [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask]
         if crossattn_emb is not None:
@@ -230,10 +232,10 @@ class _VariantOutputs:
 class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
     """Caching strategy for Anima text encoder outputs.
 
-    Caches: prompt_embeds (float), attn_mask (int), t5_input_ids (int), t5_attn_mask (int)
+    Caches: prompt_embeds (bf16), attn_mask (int32), t5_input_ids (int64), t5_attn_mask (int32)
     """
 
-    ANIMA_TEXT_ENCODER_OUTPUTS_NPZ_SUFFIX = "_anima_te.npz"
+    ANIMA_TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX = "_anima_te.safetensors"
 
     def __init__(
         self,
@@ -253,61 +255,55 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
     def get_outputs_npz_path(self, image_abs_path: str) -> str:
         return (
             os.path.splitext(image_abs_path)[0]
-            + self.ANIMA_TEXT_ENCODER_OUTPUTS_NPZ_SUFFIX
+            + self.ANIMA_TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX
         )
 
-    def is_disk_cached_outputs_expected(self, npz_path: str) -> bool:
+    def is_disk_cached_outputs_expected(self, cache_path: str) -> bool:
         if not self.cache_to_disk:
             return False
-        if not os.path.exists(npz_path):
+        if not os.path.exists(cache_path):
             return False
         if self.skip_disk_cache_validity_check:
             return True
 
         try:
-            npz = np.load(npz_path)
-            if "num_variants" in npz:
-                # Variant-aware cache: validate all variant keys exist
-                num_variants = int(npz["num_variants"])
+            with _safe_open(cache_path, framework="pt") as f:
+                keys = set(f.keys())
+                if "num_variants" in keys:
+                    num_variants = int(f.get_tensor("num_variants"))
+            if "num_variants" in keys:
                 for vi in range(num_variants):
-                    if f"prompt_embeds_v{vi}" not in npz:
+                    if f"prompt_embeds_v{vi}" not in keys:
                         return False
-                    if f"attn_mask_v{vi}" not in npz:
+                    if f"attn_mask_v{vi}" not in keys:
                         return False
-                    if f"t5_input_ids_v{vi}" not in npz:
+                    if f"t5_input_ids_v{vi}" not in keys:
                         return False
-                    if f"t5_attn_mask_v{vi}" not in npz:
+                    if f"t5_attn_mask_v{vi}" not in keys:
                         return False
                     if (
                         self.cache_llm_adapter_outputs
-                        and f"crossattn_emb_v{vi}" not in npz
+                        and f"crossattn_emb_v{vi}" not in keys
                     ):
                         return False
             else:
-                # Legacy single-variant cache
-                if "prompt_embeds" not in npz:
+                for k in ("prompt_embeds", "attn_mask", "t5_input_ids", "t5_attn_mask"):
+                    if k not in keys:
+                        return False
+                if self.cache_llm_adapter_outputs and "crossattn_emb" not in keys:
                     return False
-                if "attn_mask" not in npz:
-                    return False
-                if "t5_input_ids" not in npz:
-                    return False
-                if "t5_attn_mask" not in npz:
-                    return False
-                if self.cache_llm_adapter_outputs and "crossattn_emb" not in npz:
-                    return False
-            if "caption_dropout_rate" not in npz:
+            if "caption_dropout_rate" not in keys:
                 return False
         except Exception as e:
-            logger.error(f"Error loading file: {npz_path}")
+            logger.error(f"Error loading file: {cache_path}")
             raise e
 
         return True
 
-    def load_outputs_npz(self, npz_path: str) -> List[np.ndarray]:
-        data = np.load(npz_path)
+    def load_outputs_npz(self, cache_path: str) -> list:
+        data = _load_safetensors(cache_path)
 
         if "num_variants" in data:
-            # Variant-aware cache: randomly pick one variant
             num_variants = int(data["num_variants"])
             vi = random.randint(0, num_variants - 1)
             prompt_embeds = data[f"prompt_embeds_v{vi}"]
@@ -321,7 +317,6 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 else None
             )
         else:
-            # Legacy single-variant cache
             prompt_embeds = data["prompt_embeds"]
             attn_mask = data["attn_mask"]
             t5_input_ids = data["t5_input_ids"]
@@ -360,14 +355,14 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             variants.append(", ".join(shuffled))
         return variants
 
-    def _encode_and_to_numpy(
+    def _encode_to_tensors(
         self,
         tokenize_strategy: TokenizeStrategy,
         models: List[Any],
         text_encoding_strategy: "AnimaTextEncodingStrategy",
         captions: List[str],
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
-        """Tokenize, encode, and optionally run LLM adapter. Returns numpy arrays."""
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+        """Tokenize, encode, and optionally run LLM adapter. Returns typed CPU tensors."""
         tokens_and_masks = tokenize_strategy.tokenize(captions)
         with torch.no_grad():
             prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask = (
@@ -399,28 +394,24 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 )
                 crossattn_emb[~t5_attn_mask_for_adapter.bool()] = 0
 
-        # Convert to numpy
-        if prompt_embeds.dtype == torch.bfloat16:
-            prompt_embeds = prompt_embeds.float()
-        prompt_embeds = prompt_embeds.cpu().numpy()
-        attn_mask = attn_mask.cpu().numpy()
-        t5_input_ids = t5_input_ids.cpu().numpy().astype(np.int32)
-        t5_attn_mask = t5_attn_mask.cpu().numpy().astype(np.int32)
+        # Convert to typed CPU tensors: bf16 for embeddings, int for IDs/masks
+        prompt_embeds = prompt_embeds.to(dtype=torch.bfloat16).cpu()
+        attn_mask = attn_mask.to(dtype=torch.int32).cpu()
+        t5_input_ids = t5_input_ids.to(dtype=torch.long).cpu()
+        t5_attn_mask = t5_attn_mask.to(dtype=torch.int32).cpu()
         if crossattn_emb is not None:
-            if crossattn_emb.dtype == torch.bfloat16:
-                crossattn_emb = crossattn_emb.float()
-            crossattn_emb = crossattn_emb.cpu().numpy()
+            crossattn_emb = crossattn_emb.to(dtype=torch.bfloat16).cpu()
 
         return prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb
 
     @staticmethod
     def _trim_outputs(
-        prompt_embeds_i: np.ndarray,
-        attn_mask_i: np.ndarray,
-        t5_input_ids_i: np.ndarray,
-        t5_attn_mask_i: np.ndarray,
-        crossattn_emb_i: Optional[np.ndarray],
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray]]:
+        prompt_embeds_i: torch.Tensor,
+        attn_mask_i: torch.Tensor,
+        t5_input_ids_i: torch.Tensor,
+        t5_attn_mask_i: torch.Tensor,
+        crossattn_emb_i: Optional[torch.Tensor],
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Keep max-padded outputs (pretrained model expects padding tokens in cross-attention)."""
         return (
             prompt_embeds_i,
@@ -458,7 +449,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         """Original single-variant caching path."""
         captions = [info.caption for info in infos]
         prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
-            self._encode_and_to_numpy(
+            self._encode_to_tensors(
                 tokenize_strategy, models, text_encoding_strategy, captions
             )
         )
@@ -476,15 +467,16 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             )
 
             if self.cache_to_disk:
-                np.savez(
-                    info.text_encoder_outputs_npz,
-                    prompt_embeds=pe_i,
-                    attn_mask=am_i,
-                    t5_input_ids=t5_i,
-                    t5_attn_mask=t5m_i,
-                    **({"crossattn_emb": ce_i} if ce_i is not None else {}),
-                    caption_dropout_rate=caption_dropout_rate,
-                )
+                save_dict = {
+                    "prompt_embeds": pe_i,
+                    "attn_mask": am_i,
+                    "t5_input_ids": t5_i,
+                    "t5_attn_mask": t5m_i,
+                    "caption_dropout_rate": caption_dropout_rate,
+                }
+                if ce_i is not None:
+                    save_dict["crossattn_emb"] = ce_i
+                _save_safetensors(save_dict, info.text_encoder_outputs_npz)
             else:
                 if ce_i is None:
                     info.text_encoder_outputs = (
@@ -526,7 +518,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
 
         # Encode all variants in one batch
         prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
-            self._encode_and_to_numpy(
+            self._encode_to_tensors(
                 tokenize_strategy, models, text_encoding_strategy, all_captions
             )
         )
@@ -537,7 +529,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 info.caption_dropout_rate, dtype=torch.float32
             )
             save_dict = {
-                "num_variants": np.array(N),
+                "num_variants": torch.tensor(N, dtype=torch.int64),
                 "caption_dropout_rate": caption_dropout_rate,
             }
 
@@ -558,7 +550,7 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                     save_dict[f"crossattn_emb_v{vi}"] = ce_i
 
             if self.cache_to_disk:
-                np.savez(info.text_encoder_outputs_npz, **save_dict)
+                _save_safetensors(save_dict, info.text_encoder_outputs_npz)
             else:
                 # Build list of variant tuples for in-memory random selection
                 variants = []
