@@ -31,8 +31,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import numpy as np
 import torch
 import torch.nn as nn
-from safetensors import safe_open
-from safetensors.torch import save_file
+from safetensors.torch import load_file, save_file
 from tqdm import tqdm
 
 from library import anima_utils
@@ -72,18 +71,13 @@ class CachedDataset(torch.utils.data.Dataset):
             res = latent_key.split("_", 1)[1]  # "64x64"
             buckets.setdefault(res, []).append((latent_path, te_path))
 
-        # Flatten: emit full batches from each bucket, then any remainders
+        # Flatten: emit only full batches from each bucket (drop per-bucket
+        # remainders to avoid mixed-resolution batches during collation)
         self.samples = []
-        remainders = []
         for res, items in buckets.items():
             random.shuffle(items)
             full = (len(items) // batch_size) * batch_size
             self.samples.extend(items[:full])
-            remainders.extend(items[full:])
-        # Remainders go at the end (may have mixed resolutions but only
-        # occur in partial-batch positions; DataLoader drops the last
-        # incomplete batch when drop_last=True)
-        self.samples.extend(remainders)
 
         logger.info(f"Found {len(self.samples)} cached samples in {data_dir} "
                      f"across {len(buckets)} resolution buckets")
@@ -98,16 +92,15 @@ class CachedDataset(torch.utils.data.Dataset):
         npz = np.load(latent_path)
         # Key is latents_{H}x{W}
         latent_key = [k for k in npz.keys() if k.startswith("latents_")][0]
-        latents = torch.from_numpy(npz[latent_key]).float()  # (16, H, W)
+        latents = torch.from_numpy(npz[latent_key].copy()).float()  # (16, H, W)
 
-        # Load text encoder outputs
-        with safe_open(te_path, framework="pt") as f:
-            keys = set(f.keys())
-            if "num_variants" in keys:
-                vi = random.randint(0, int(f.get_tensor("num_variants")) - 1)
-                crossattn_emb = f.get_tensor(f"crossattn_emb_v{vi}").clone()
-            else:
-                crossattn_emb = f.get_tensor("crossattn_emb").clone()
+        # Load text encoder outputs (load_file avoids mmap non-resizable storage)
+        te_data = load_file(te_path)
+        if "num_variants" in te_data:
+            vi = random.randint(0, int(te_data["num_variants"]) - 1)
+            crossattn_emb = te_data[f"crossattn_emb_v{vi}"]
+        else:
+            crossattn_emb = te_data["crossattn_emb"]
 
         return latents, crossattn_emb
 
@@ -130,7 +123,7 @@ def main():
                         help="Batch size")
     parser.add_argument("--blocks_to_swap", type=int, default=0,
                         help="Number of transformer blocks to offload to CPU")
-    parser.add_argument("--save_every", type=int, default=500,
+    parser.add_argument("--save_every", type=int, default=100,
                         help="Save checkpoint every N iterations")
     parser.add_argument("--attn_mode", type=str, default="flash",
                         help="Attention mode (torch, flash, flash4)")
@@ -147,10 +140,30 @@ def main():
                         help="Disable torch.compile")
     parser.add_argument("--warmup", type=float, default=0,
                         help="Warmup steps: int >= 1 for absolute steps, float < 1 for ratio of iterations")
+    parser.add_argument("--dry_run", action="store_true",
+                        help="Iterate entire DataLoader without training to test collation")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
+
+    # --- Dry run: test DataLoader collation without loading the model ---
+    if args.dry_run:
+        dataset = CachedDataset(args.data_dir, batch_size=args.batch_size)
+
+        def _collate_dry(batch):
+            return torch.stack([b[0] for b in batch]), torch.stack([b[1] for b in batch])
+
+        dl = torch.utils.data.DataLoader(
+            dataset, batch_size=args.batch_size, shuffle=False,
+            num_workers=2, pin_memory=True, drop_last=True, collate_fn=_collate_dry,
+        )
+        total = len(dl)
+        for i, (lat, te) in enumerate(tqdm(dl, desc="dry-run")):
+            if (i + 1) % 200 == 0:
+                logger.info(f"  batch {i+1}/{total}  latents={lat.shape}  te={te.shape}")
+        logger.info(f"Dry run OK: {total} batches, no collation errors.")
+        return
 
     device = torch.device("cuda")
     dtype = torch.bfloat16
@@ -246,6 +259,11 @@ def main():
 
     # --- Dataset ---
     dataset = CachedDataset(args.data_dir, batch_size=args.batch_size)
+    # Custom collate to bypass collate_tensor_fn's _new_shared_filename_cpu
+    # which creates non-resizable storage on some PyTorch/Python 3.13 builds.
+    def _collate(batch):
+        return torch.stack([b[0] for b in batch]), torch.stack([b[1] for b in batch])
+
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
@@ -253,6 +271,7 @@ def main():
         num_workers=2,
         pin_memory=True,
         drop_last=True,
+        collate_fn=_collate,
     )
 
     os.makedirs(os.path.dirname(args.output_path) or ".", exist_ok=True)
