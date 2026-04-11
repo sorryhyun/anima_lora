@@ -82,6 +82,9 @@ class ModGuidanceState:
         self.neg_t5_weights = neg_t5_weights
         # Computed lazily on first forward when model is on GPU
         self.guidance_delta: Optional[torch.Tensor] = None
+        # Persistent hook state: set before each forward, cleared after
+        self._current_t_emb_delta: Optional[torch.Tensor] = None
+        self._hook_handle = None
 
     def ensure_guidance_delta(self, dit, device, dtype):
         """Compute guidance delta using the LLM adapter. Runs once."""
@@ -164,15 +167,13 @@ def _mod_wrapper(executor, *args, **kwargs):
     # Cache for Spectrum fast-forward on cached steps
     dit._mod_pooled_proj = combined.detach()
 
-    # Temporary hook on t_embedding_norm to inject into t_emb
-    def _t_emb_hook(module, input, output):
-        return output + combined.unsqueeze(1).to(output.dtype)
-
-    handle = dit.t_embedding_norm.register_forward_hook(_t_emb_hook)
+    # Set delta for the persistent hook (installed once in setup_mod_guidance).
+    # Avoids per-step register/remove that causes torch.compile recompilation.
+    mod_state._current_t_emb_delta = combined.unsqueeze(1).to(dtype)
     try:
         result = executor(*args, **kwargs)
     finally:
-        handle.remove()
+        mod_state._current_t_emb_delta = None
 
     return result
 
@@ -225,6 +226,20 @@ def setup_mod_guidance(model_clone, clip, negative, adapter_name, quality_tags, 
         adapter_path=adapter_path, w=w,
         pos_raw=pos_raw, pos_t5_ids=pos_t5_ids, pos_t5_weights=pos_t5_weights,
         neg_raw=neg_raw, neg_t5_ids=neg_t5_ids, neg_t5_weights=neg_t5_weights,
+    )
+
+    # Install persistent t_emb hook once (not per-step) to avoid
+    # torch.compile recompilation from hook set changes.
+    dm = model_clone.model.diffusion_model
+
+    def _persistent_t_emb_hook(module, input, output):
+        delta = mod_state._current_t_emb_delta
+        if delta is not None:
+            return output + delta
+        return output
+
+    mod_state._hook_handle = dm.t_embedding_norm.register_forward_hook(
+        _persistent_t_emb_hook
     )
 
     # Register DIFFUSION_MODEL wrapper

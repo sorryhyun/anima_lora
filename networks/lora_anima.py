@@ -1278,6 +1278,45 @@ class LoRANetwork(torch.nn.Module):
             elif key.endswith("._org_weight_norm"):
                 del state_dict[key]
 
+        # Split fused projections (qkv_proj, kv_proj) into separate per-component
+        # weights for ComfyUI compatibility. The training model uses fused projections
+        # but ComfyUI's Anima model uses separate q_proj/k_proj/v_proj.
+        _FUSED_SPLIT = {
+            "self_attn_qkv_proj": ("self_attn_{}_proj", ("q", "k", "v")),
+            "cross_attn_kv_proj": ("cross_attn_{}_proj", ("k", "v")),
+        }
+        fused_prefixes = []
+        for key in list(state_dict.keys()):
+            if not key.endswith(".lora_down.weight"):
+                continue
+            prefix = key.removesuffix(".lora_down.weight")
+            for fused_frag in _FUSED_SPLIT:
+                if prefix.endswith(fused_frag):
+                    fused_prefixes.append((prefix, fused_frag))
+                    break
+
+        for prefix, fused_frag in fused_prefixes:
+            template, suffixes = _FUSED_SPLIT[fused_frag]
+            n = len(suffixes)
+            down = state_dict.pop(f"{prefix}.lora_down.weight")
+            up = state_dict.pop(f"{prefix}.lora_up.weight")
+            alpha = state_dict.pop(f"{prefix}.alpha", None)
+            dora_scale = state_dict.pop(f"{prefix}.dora_scale", None)
+
+            # Split lora_up along output dim; lora_down is shared (duplicated)
+            up_chunks = up.chunk(n, dim=0)
+            dora_chunks = dora_scale.chunk(n, dim=0) if dora_scale is not None else [None] * n
+
+            base_prefix = prefix.removesuffix(fused_frag)
+            for suffix, up_chunk, dora_chunk in zip(suffixes, up_chunks, dora_chunks):
+                new_prefix = base_prefix + template.format(suffix)
+                state_dict[f"{new_prefix}.lora_down.weight"] = down.clone()
+                state_dict[f"{new_prefix}.lora_up.weight"] = up_chunk
+                if alpha is not None:
+                    state_dict[f"{new_prefix}.alpha"] = alpha.clone()
+                if dora_chunk is not None:
+                    state_dict[f"{new_prefix}.dora_scale"] = dora_chunk
+
         if dtype is not None:
             for key in list(state_dict.keys()):
                 v = state_dict[key]

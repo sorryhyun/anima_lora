@@ -117,6 +117,9 @@ def spectrum_sample(model, seed, steps, cfg, sampler_name, scheduler, positive,
     dit = m.model.diffusion_model
     model_sampling = m.model.model_sampling
 
+    # Install capture hook eagerly (before first compiled forward)
+    state.install_hook(dit)
+
     old_wrapper = m.model_options.get("model_function_wrapper")
 
     def spectrum_wrapper(apply_model, args):
@@ -124,9 +127,6 @@ def spectrum_sample(model, seed, steps, cfg, sampler_name, scheduler, positive,
         timestep = args["timestep"]
         c = args["c"]
         cond_or_uncond = args["cond_or_uncond"]
-
-        if not state._hook_installed:
-            state.install_hook(dit)
 
         sigma_val = timestep[0].item()
 
