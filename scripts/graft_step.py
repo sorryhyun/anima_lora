@@ -23,7 +23,7 @@ try:
 except ImportError:
     import tomli as tomllib  # Python < 3.11
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 GRAFT_DIR = ROOT / "graft"
 STATE_FILE = GRAFT_DIR / "state.json"
 GRAFT_CONFIG = GRAFT_DIR / "graft_config.toml"

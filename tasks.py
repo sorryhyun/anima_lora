@@ -158,7 +158,7 @@ def cmd_sync(_extra):
 
 
 def cmd_step(extra):
-    run(["python", "graft_step.py", *extra])
+    run(["python", "scripts/graft_step.py", *extra])
 
 
 def cmd_preprocess_resize(extra):
@@ -292,7 +292,7 @@ def cmd_mask_clean(_extra):
 
 
 def cmd_gui(_extra):
-    run(["python", "gui.py"])
+    run(["python", "-m", "gui"])
 
 
 def cmd_invert(extra):

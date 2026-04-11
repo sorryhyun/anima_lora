@@ -81,8 +81,8 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 | `train.py` | `AnimaTrainer` class — main training loop via HF Accelerate |
 | `inference.py` | Standalone image generation (`--help` for all flags) |
 | `networks/spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting) |
-| `graft_step.py` | GRAFT orchestrator: holdout -> train -> generate -> await review |
-| `gui.py` | PySide6 GUI: config editing with presets, GRAFT curation, dataset browser, training monitor |
+| `scripts/graft_step.py` | GRAFT orchestrator: holdout -> train -> generate -> await review |
+| `gui/` | PySide6 GUI package: config editing with presets, GRAFT curation, dataset browser, training monitor |
 | `tasks.py` | Cross-platform task runner (Windows-compatible Makefile alternative) |
 
 ## Config flow
@@ -161,7 +161,7 @@ Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., 
 
 ## GRAFT / P-GRAFT
 
-The GRAFT loop (`graft_step.py`) implements rejection-sampling-based fine-tuning:
+The GRAFT loop (`scripts/graft_step.py`) implements rejection-sampling-based fine-tuning:
 1. Holds out a subset of training images, trains LoRA on the rest + accumulated survivors
 2. Generates candidates using the trained LoRA (with P-GRAFT: LoRA disabled for last 25% of denoising)
 3. User curates by deleting bad candidates; survivors join the training set next iteration

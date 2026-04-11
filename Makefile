@@ -23,7 +23,7 @@ TEST_COMMON = python inference.py \
 	--save_path test_output
 
 gui:
-	python gui.py
+	python -m gui
 
 lora:
 	accelerate launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
@@ -138,7 +138,7 @@ comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 
 graft-step:
-	python graft_step.py
+	python scripts/graft_step.py
 
 preprocess: preprocess-resize preprocess-vae preprocess-te
 

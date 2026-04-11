@@ -82,7 +82,8 @@ def run_inversion(anima, latents, init_embed, device, *,
     best_embed = None
     losses = []
 
-    for _step in range(steps):
+    pbar = tqdm(range(steps), desc=f"  seed={seed}", leave=False)
+    for _step in pbar:
         opt.zero_grad()
         accum = 0.0
         for _ in range(grad_accum):
@@ -98,6 +99,7 @@ def run_inversion(anima, latents, init_embed, device, *,
         if val < best_loss:
             best_loss = val
             best_embed = embed.detach().clone()
+        pbar.set_postfix(loss=f"{val:.5f}", best=f"{best_loss:.5f}")
 
     return best_embed, best_loss, losses
 
@@ -137,7 +139,7 @@ def generate_from_embed(anima, vae, embed, h, w, device, *, seed=42, steps=50, f
 
     with torch.no_grad():
         pixels = vae.decode_to_pixels(latents.squeeze(2))
-    return ((pixels + 1.0) / 2.0).clamp(0, 1).squeeze(0).cpu()  # (C, H, W)
+    return ((pixels + 1.0) / 2.0).clamp(0, 1).squeeze(0).float().cpu()  # (C, H, W)
 
 
 # ---------------------------------------------------------------------------
@@ -251,8 +253,10 @@ def run_e1(anima, latents, init_embed, device, args):
         for j in range(i + 1, len(embeddings)):
             per_token_sims.append(cosine_sim_per_token(embeddings[i], embeddings[j]))
 
-    # Mean embedding
-    mean_embed = torch.stack(embeddings).mean(dim=0)
+    # Aggregated embeddings
+    stacked_embeds = torch.stack(embeddings)
+    mean_embed = stacked_embeds.mean(dim=0)
+    max_embed = stacked_embeds.max(dim=0).values
 
     # Distance from each individual to mean
     dists_to_mean = [cosine_sim_flat(e, mean_embed) for e in embeddings]
@@ -279,6 +283,7 @@ def run_e1(anima, latents, init_embed, device, args):
     return {
         "embeddings": embeddings,
         "mean_embed": mean_embed,
+        "max_embed": max_embed,
         "losses": losses,
         "pairwise_cos_sim": {
             "mean": float(np.mean(upper_tri)),
@@ -305,8 +310,8 @@ def run_e2(anima, vae, e1_results, h, w, device, args):
     print("=" * 60)
 
     gen_seeds = [args.base_seed + i for i in range(args.num_gen_seeds)]
-    embeddings_to_test = list(e1_results["embeddings"]) + [e1_results["mean_embed"]]
-    labels = [f"inv_{i}" for i in range(len(e1_results["embeddings"]))] + ["mean"]
+    embeddings_to_test = list(e1_results["embeddings"]) + [e1_results["mean_embed"], e1_results["max_embed"]]
+    labels = [f"inv_{i}" for i in range(len(e1_results["embeddings"]))] + ["mean", "max"]
 
     all_images = {}  # label -> list of (C,H,W) tensors
 
@@ -371,38 +376,39 @@ def run_e2(anima, vae, e1_results, h, w, device, args):
 
 
 def run_e3(e1_results, e2_results, args):
-    """E3: Summary — is the mean embedding more robust?"""
+    """E3: Summary — are aggregated embeddings more robust?"""
     print("\n" + "=" * 60)
-    print("E3: Mean embedding robustness summary")
+    print("E3: Aggregated embedding robustness summary")
     print("=" * 60)
 
-    # Compare cross-seed consistency: mean vs individual embeddings
+    wc = e2_results["within_embed_consistency"]
+
+    # Compare cross-seed consistency: aggregations vs individual embeddings
     inv_consistencies = []
     for i in range(len(e1_results["embeddings"])):
         label = f"inv_{i}"
-        if label in e2_results["within_embed_consistency"]:
-            inv_consistencies.append(e2_results["within_embed_consistency"][label]["pixel_mse_mean"])
-    mean_consistency = e2_results["within_embed_consistency"].get("mean", {}).get("pixel_mse_mean", None)
+        if label in wc:
+            inv_consistencies.append(wc[label]["pixel_mse_mean"])
 
     avg_inv = float(np.mean(inv_consistencies)) if inv_consistencies else None
-    print(f"  Avg individual cross-seed MSE: {avg_inv:.6f}" if avg_inv else "  Avg individual: N/A")
-    print(f"  Mean embed cross-seed MSE:     {mean_consistency:.6f}" if mean_consistency else "  Mean embed: N/A")
+    mean_mse = wc.get("mean", {}).get("pixel_mse_mean", None)
+    max_mse = wc.get("max", {}).get("pixel_mse_mean", None)
 
-    if avg_inv is not None and mean_consistency is not None:
-        improvement = (avg_inv - mean_consistency) / avg_inv * 100
-        verdict = "MORE ROBUST" if mean_consistency <= avg_inv else "LESS ROBUST"
-        print(f"  Improvement: {improvement:+.1f}%")
-        print(f"  VERDICT: Mean embedding is {verdict} than individual inversions")
-    else:
-        improvement = None
-        verdict = "INCONCLUSIVE"
+    print(f"  Avg individual cross-seed MSE: {avg_inv:.6f}" if avg_inv is not None else "  Avg individual: N/A")
+    print(f"  Mean embed cross-seed MSE:     {mean_mse:.6f}" if mean_mse is not None else "  Mean embed: N/A")
+    print(f"  Max  embed cross-seed MSE:     {max_mse:.6f}" if max_mse is not None else "  Max embed: N/A")
 
-    return {
-        "avg_individual_mse": avg_inv,
-        "mean_embed_mse": mean_consistency,
-        "improvement_pct": improvement,
-        "verdict": verdict,
-    }
+    results = {"avg_individual_mse": avg_inv}
+    for name, val in [("mean", mean_mse), ("max", max_mse)]:
+        if avg_inv is not None and val is not None:
+            improvement = (avg_inv - val) / avg_inv * 100
+            verdict = "MORE ROBUST" if val <= avg_inv else "LESS ROBUST"
+            print(f"  {name:4s} improvement: {improvement:+.1f}% → {verdict}")
+            results[f"{name}_embed_mse"] = val
+            results[f"{name}_improvement_pct"] = improvement
+            results[f"{name}_verdict"] = verdict
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -421,8 +427,8 @@ def main():
     # Inversion params
     p.add_argument("--num_inversions", type=int, default=5, help="Number of independent inversions (E1)")
     p.add_argument("--steps", type=int, default=100, help="Optimization steps per inversion")
-    p.add_argument("--lr", type=float, default=0.01)
-    p.add_argument("--grad_accum", type=int, default=4)
+    p.add_argument("--lr", type=float, default=0.001)
+    p.add_argument("--grad_accum", type=int, default=1)
     p.add_argument("--timesteps_per_step", type=int, default=1)
     p.add_argument("--base_seed", type=int, default=42)
 
@@ -431,6 +437,9 @@ def main():
     p.add_argument("--num_gen_seeds", type=int, default=3, help="Seeds per embedding for generation (E2)")
     p.add_argument("--gen_steps", type=int, default=50, help="Denoising steps for generation")
     p.add_argument("--flow_shift", type=float, default=5.0)
+
+    # Resume
+    p.add_argument("--resume", action="store_true", help="Skip E1, load saved embeddings and run E2/E3 only")
 
     # VRAM
     p.add_argument("--blocks_to_swap", type=int, default=0)
@@ -473,8 +482,74 @@ def main():
     else:
         print(f"Init embedding from cached TE: {img_info['te_path']}")
 
-    # ---- Load DiT ----
-    print("\nLoading DiT...")
+    # ---- E1: Optimization stability (or resume) ----
+    embed_save_path = RESULTS_DIR / "inversion_stability_embeds.pt"
+
+    if args.resume:
+        print(f"\nResuming from {embed_save_path}")
+        saved = torch.load(embed_save_path, map_location="cpu", weights_only=True)
+        embeds = saved["embeddings"]
+        stacked = torch.stack(embeds)
+        e1 = {
+            "embeddings": embeds,
+            "mean_embed": stacked.mean(dim=0),
+            "max_embed": stacked.max(dim=0).values,
+            "losses": saved["losses"],
+        }
+        print(f"  Loaded {len(e1['embeddings'])} embeddings, losses: {e1['losses']}")
+    else:
+        # ---- Load DiT ----
+        print("\nLoading DiT...")
+        is_swapping = args.blocks_to_swap > 0
+        anima = anima_utils.load_anima_model(
+            device="cpu" if is_swapping else DEVICE,
+            dit_path=args.dit,
+            attn_mode=args.attn_mode,
+            split_attn=True,
+            loading_device="cpu" if is_swapping else DEVICE,
+            dit_weight_dtype=torch.bfloat16,
+        )
+        anima.to(torch.bfloat16)
+        anima.requires_grad_(False)
+        anima.split_attn = False
+
+        if is_swapping:
+            anima.enable_block_swap(args.blocks_to_swap, DEVICE)
+            anima.move_to_device_except_swap_blocks(DEVICE)
+            anima.prepare_block_swap_before_forward()
+        else:
+            anima.to(DEVICE)
+            # Enable gradient checkpointing for inversion (saves VRAM)
+            anima.enable_gradient_checkpointing()
+            for block in anima.blocks:
+                block.train()
+
+        e1 = run_e1(anima, latents, init_embed, DEVICE, args)
+
+        # Save E1 embeddings for later analysis
+        torch.save({
+            "embeddings": e1["embeddings"],
+            "mean_embed": e1["mean_embed"],
+            "losses": e1["losses"],
+            "stem": img_info["stem"],
+        }, embed_save_path)
+
+        if args.skip_generation:
+            print("\nSkipping E2/E3 (--skip_generation)")
+            results = {"e1": {k: v for k, v in e1.items() if k not in ("embeddings", "mean_embed")}}
+            out_path = RESULTS_DIR / "inversion_stability.json"
+            with open(out_path, "w") as f:
+                json.dump(results, f, indent=2)
+            print(f"\nResults saved → {out_path}")
+            return 0
+
+        # Switch to inference mode (undo train mode from grad checkpointing)
+        anima.eval()
+        del anima
+        clean_memory_on_device(DEVICE)
+
+    # ---- Load DiT in inference mode for E2 ----
+    print("\nLoading DiT for inference...")
     is_swapping = args.blocks_to_swap > 0
     anima = anima_utils.load_anima_model(
         device="cpu" if is_swapping else DEVICE,
@@ -486,43 +561,12 @@ def main():
     )
     anima.to(torch.bfloat16)
     anima.requires_grad_(False)
-    anima.split_attn = False
-
+    anima.eval()
     if is_swapping:
         anima.enable_block_swap(args.blocks_to_swap, DEVICE)
         anima.move_to_device_except_swap_blocks(DEVICE)
-        anima.prepare_block_swap_before_forward()
     else:
         anima.to(DEVICE)
-        # Enable gradient checkpointing for inversion (saves VRAM)
-        anima.enable_gradient_checkpointing()
-        for block in anima.blocks:
-            block.train()
-
-    # ---- E1: Optimization stability ----
-    e1 = run_e1(anima, latents, init_embed, DEVICE, args)
-
-    # Save E1 embeddings for later analysis
-    torch.save({
-        "embeddings": e1["embeddings"],
-        "mean_embed": e1["mean_embed"],
-        "losses": e1["losses"],
-        "stem": img_info["stem"],
-    }, RESULTS_DIR / "inversion_stability_embeds.pt")
-
-    if args.skip_generation:
-        print("\nSkipping E2/E3 (--skip_generation)")
-        results = {"e1": {k: v for k, v in e1.items() if k not in ("embeddings", "mean_embed")}}
-        out_path = RESULTS_DIR / "inversion_stability.json"
-        with open(out_path, "w") as f:
-            json.dump(results, f, indent=2)
-        print(f"\nResults saved → {out_path}")
-        return 0
-
-    # ---- Switch to inference mode ----
-    # Re-enable eval mode for generation (undo train mode from grad checkpointing)
-    anima.eval()
-    if not is_swapping:
         anima = torch.compile(anima)
 
     # ---- Load VAE for generation ----
@@ -548,7 +592,7 @@ def main():
             "num_gen_seeds": args.num_gen_seeds,
             "gen_steps": args.gen_steps,
         },
-        "e1": {k: v for k, v in e1.items() if k not in ("embeddings", "mean_embed")},
+        "e1": {k: v for k, v in e1.items() if k not in ("embeddings", "mean_embed", "max_embed")},
         "e2": e2,
         "e3": e3,
     }
