@@ -177,7 +177,7 @@ def _mod_wrapper(executor, *args, **kwargs):
     return result
 
 
-def setup_mod_guidance(model_clone, clip, negative, adapter_name, positive_tags, w):
+def setup_mod_guidance(model_clone, clip, negative, adapter_name, quality_tags, w):
     """Encode quality tags, extract negative conditioning, register wrapper.
 
     Called from the KSampler node's sample() before sampling starts.
@@ -200,7 +200,7 @@ def setup_mod_guidance(model_clone, clip, negative, adapter_name, positive_tags,
         )
 
     # Encode positive quality tags via CLIP
-    tokens = clip.tokenize(positive_tags)
+    tokens = clip.tokenize(quality_tags)
     output = clip.encode_from_tokens(tokens, return_pooled=True, return_dict=True)
     pos_raw = output["cond"][0].detach().cpu()  # (seq, dim) — single sample
     pos_t5_ids = output.get("t5xxl_ids")

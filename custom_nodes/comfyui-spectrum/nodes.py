@@ -28,7 +28,7 @@ _MOD_GUIDANCE_INPUTS = {
     "adapter": (folder_paths.get_filename_list("loras"), {
         "tooltip": "pooled_text_proj safetensors adapter (from distill-mod).",
     }),
-    "positive_tags": ("STRING", {
+    "quality_tags": ("STRING", {
         "default": "absurdres, highres, masterpiece, best quality, score_9, score_8, newest, year 2025, year 2024",
         "multiline": True,
         "dynamicPrompts": True,
@@ -106,10 +106,10 @@ class SpectrumKSamplerModGuidance:
     )
 
     def sample(self, model, clip, seed, steps, cfg, sampler_name, scheduler,
-               positive, negative, latent_image, adapter, positive_tags, mod_w,
+               positive, negative, latent_image, adapter, quality_tags, mod_w,
                denoise=1.0):
         m = model.clone()
-        setup_mod_guidance(m, clip, negative, adapter, positive_tags, mod_w)
+        setup_mod_guidance(m, clip, negative, adapter, quality_tags, mod_w)
         return spectrum_sample(
             m, seed, steps, cfg, sampler_name, scheduler, positive,
             negative, latent_image, denoise, **_SPECTRUM_DEFAULTS,
@@ -138,11 +138,11 @@ class SpectrumKSamplerAdvanced:
     )
 
     def sample(self, model, clip, seed, steps, cfg, sampler_name, scheduler,
-               positive, negative, latent_image, adapter, positive_tags, mod_w,
+               positive, negative, latent_image, adapter, quality_tags, mod_w,
                denoise=1.0, window_size=2.0, flex_window=0.25, warmup_steps=7,
                blend_w=0.3, cheby_degree=3, ridge_lambda=0.1):
         m = model.clone()
-        setup_mod_guidance(m, clip, negative, adapter, positive_tags, mod_w)
+        setup_mod_guidance(m, clip, negative, adapter, quality_tags, mod_w)
         return spectrum_sample(
             m, seed, steps, cfg, sampler_name, scheduler, positive,
             negative, latent_image, denoise,

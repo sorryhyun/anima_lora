@@ -39,3 +39,14 @@ Works with any ComfyUI sampler (Euler, DPM, er_sde, etc.) because caching is han
 - **More speedup**: increase `flex_window` (faster window growth = fewer forwards)
 - **Better quality**: increase `warmup_steps`, decrease `flex_window`
 - **Aggressive acceleration**: `flex_window=1.0`, `blend_w=0.7` (~3-4x speedup)
+
+## Modulation guidance
+
+The **KSampler (Spectrum + Mod Guidance)** and **Advanced** variants add text-conditioned quality steering via a learned `pooled_text_proj` MLP adapter ([Starodubcev et al., ICLR 2026](https://arxiv.org/abs/2502.15349)). The adapter projects pooled text embeddings into a guidance delta that is injected into the DiT's AdaLN timestep embedding, steering generation toward the specified quality attributes.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `clip` | — | CLIP encoder for encoding quality tags |
+| `adapter` | — | `pooled_text_proj` safetensors file (from `distill-mod`) |
+| `quality_tags` | `absurdres, highres, masterpiece, ...` | Quality/aesthetic tags to steer toward |
+| `mod_w` | 3.0 | Guidance strength (higher = stronger steering) |
