@@ -716,8 +716,17 @@ def generate_body(
         context_null = context  # dummy for unconditional
     negative_embed = context_null["embed"][0].to(device, dtype=torch.bfloat16)
 
-    # Prefix tuning: prepend learned vectors to cached adapter output
+    # Prefix/postfix tuning: inject learned vectors into cross-attention embeddings.
+    # Pool text BEFORE injection so modulation guidance sees only real text tokens.
+    _pooled_text_pos = None
+    _pooled_text_neg = None
+
     prefix_weight = getattr(args, "prefix_weight", None)
+    postfix_weight = getattr(args, "postfix_weight", None)
+    if prefix_weight is not None or postfix_weight is not None:
+        _pooled_text_pos = embed.max(dim=1).values  # (1, 1024)
+        _pooled_text_neg = negative_embed.max(dim=1).values
+
     if prefix_weight is not None:
         from networks.postfix_anima import create_network_from_weights
 
@@ -730,8 +739,6 @@ def generate_body(
         negative_embed = prefix_net.prepend_prefix(negative_embed)
         logger.info(f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}")
 
-    # Postfix tuning: append learned vectors after real text tokens
-    postfix_weight = getattr(args, "postfix_weight", None)
     if postfix_weight is not None:
         from networks.postfix_anima import create_network_from_weights
 
@@ -818,6 +825,8 @@ def generate_body(
             calibration_strength=getattr(args, "spectrum_calibration", 0.0),
             autocast_enabled=autocast_enabled,
             pgraft_network=pgraft_network,
+            pooled_text_pos=_pooled_text_pos,
+            pooled_text_neg=_pooled_text_neg,
             lora_cutoff_step=lora_cutoff_step,
         )
     else:
@@ -842,8 +851,9 @@ def generate_body(
                         enabled=autocast_enabled,
                     ),
                 ):
+                    _pos_kw = {"pooled_text_override": _pooled_text_pos} if _pooled_text_pos is not None else {}
                     noise_pred = anima(
-                        latents, t_expand, embed, padding_mask=padding_mask
+                        latents, t_expand, embed, padding_mask=padding_mask, **_pos_kw
                     )
 
                 if do_cfg:
@@ -855,8 +865,9 @@ def generate_body(
                             enabled=autocast_enabled,
                         ),
                     ):
+                        _neg_kw = {"pooled_text_override": _pooled_text_neg} if _pooled_text_neg is not None else {}
                         uncond_noise_pred = anima(
-                            latents, t_expand, negative_embed, padding_mask=padding_mask
+                            latents, t_expand, negative_embed, padding_mask=padding_mask, **_neg_kw
                         )
                     noise_pred = uncond_noise_pred + args.guidance_scale * (
                         noise_pred - uncond_noise_pred

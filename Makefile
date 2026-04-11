@@ -4,7 +4,7 @@ LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-mod test-prefix test-postfix test-spectrum invert test-invert distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-mod test-prefix test-postfix test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -63,7 +63,7 @@ distill-mod:
 		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
 		--output_path output/pooled_text_proj.safetensors \
 		--iterations 3000 \
-		--lr 1e-4 \
+		--lr 1e-5 \
 		--warmup 0.05 \
 		--blocks_to_swap 0 \
 		--attn_mode flash \
@@ -115,6 +115,14 @@ invert:
 		--output_dir inversions \
 		--blocks_to_swap $(INVERT_SWAP) \
 		--log_block_grads
+
+BENCH_INVERSIONS ?= 5
+bench-inversion:
+	python bench/inversion_stability.py \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--vae models/vae/qwen_image_vae.safetensors \
+		--num_inversions $(BENCH_INVERSIONS) \
+		--steps 100 --lr 0.01
 
 INVERT_NAME ?= latest
 test-invert:

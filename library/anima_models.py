@@ -1559,6 +1559,8 @@ class Anima(nn.Module):
             crossattn_seqlens: Optional per-sample text token counts [B] for flex cross-attention masking
             h_offset: Height offset in patched space for tiled diffusion RoPE
             w_offset: Width offset in patched space for tiled diffusion RoPE
+            pooled_text_override: Optional pre-computed pooled text (B, 1024) for modulation guidance.
+                Use to decouple modulation from prefix/postfix tokens in crossattn_emb.
         """
         # Run LLM adapter inside forward for correct DDP gradient synchronization
         if (
@@ -1620,6 +1622,7 @@ class Anima(nn.Module):
 
         # Modulation guidance: inject pooled text embedding into modulation path.
         # - pooled_text_override: use this tensor instead of computing from crossattn_emb
+        #   (used to decouple modulation from prefix/postfix tokens)
         # - skip_pooled_text_proj: disable entirely (for distillation teacher forward)
         if not skip_pooled_text_proj:
             if pooled_text_override is not None:
