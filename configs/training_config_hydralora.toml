@@ -14,3 +14,4 @@ trim_crossattn_kv = false  # no-op without flash4 (see docs/fa4.md)
 use_hydra = true
 num_experts = 12
 balance_loss_weight = 0.01
+blocks_to_swap = 20

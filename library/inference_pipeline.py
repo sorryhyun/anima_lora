@@ -49,11 +49,6 @@ def get_generation_settings(args: argparse.Namespace) -> GenerationSettings:
     device = torch.device(args.device)
 
     dit_weight_dtype = torch.bfloat16  # default
-    # FP8 inference is not supported yet — args.fp8 / args.fp8_scaled are force-disabled in inference.py.
-    # if args.fp8_scaled:
-    #     dit_weight_dtype = None  # various precision weights, so don't cast to specific dtype
-    # elif args.fp8:
-    #     dit_weight_dtype = torch.float8_e4m3fn
 
     logger.info(
         f"Using device: {device}, DiT weight weight precision: {dit_weight_dtype}"
@@ -139,20 +134,13 @@ def load_dit_model(
     else:
         lora_weights_list = None
 
-    loading_weight_dtype = dit_weight_dtype
-    if args.fp8_scaled and not args.lycoris:
-        loading_weight_dtype = (
-            None  # we will load weights as-is and then optimize to fp8
-        )
-
     model = anima_utils.load_anima_model(
         device,
         args.dit,
         args.attn_mode,
         True,  # enable split_attn to trim masked tokens
         loading_device,
-        loading_weight_dtype,
-        args.fp8_scaled and not args.lycoris,
+        dit_weight_dtype,
         lora_weights_list=lora_weights_list,
         lora_multipliers=args.lora_multiplier,
     )
@@ -163,21 +151,11 @@ def load_dit_model(
     if pooled_text_proj_path is not None:
         anima_utils.load_pooled_text_proj(model, pooled_text_proj_path, "cpu")
 
-    if not args.fp8_scaled:
-        # simple cast to dit_weight_dtype
-        target_dtype = (
-            None  # load as-is (dit_weight_dtype == dtype of the weights in state_dict)
-        )
-        if dit_weight_dtype is not None:  # in case of args.fp8 and not args.fp8_scaled
-            logger.info(f"Convert model to {dit_weight_dtype}")
-            target_dtype = dit_weight_dtype
-
-        logger.info(f"Move model to device: {device}")
-        target_device = device
-
-        model.to(
-            target_device, target_dtype
-        )  # move and cast  at the same time. this reduces redundant copy operations
+    target_dtype = dit_weight_dtype
+    if target_dtype is not None:
+        logger.info(f"Convert model to {target_dtype}")
+    logger.info(f"Move model to device: {device}")
+    model.to(device, target_dtype)
 
     # model.to(device)
     model.to(device, dtype=torch.bfloat16)  # ensure model is in bfloat16 for inference

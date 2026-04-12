@@ -8,8 +8,7 @@ from safetensors.torch import load_file, save_file
 from safetensors import safe_open
 from accelerate import init_empty_weights
 
-from networks.fp8_optimization_utils import apply_fp8_monkey_patch
-from networks.lora_utils import load_safetensors_with_lora_and_fp8
+from networks.lora_utils import load_safetensors_with_lora
 from library import anima_models
 from library.safetensors_utils import WeightTransformHooks
 from .utils import setup_logging
@@ -18,16 +17,6 @@ setup_logging()
 import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
-
-
-# Original Anima high-precision keys. Kept for reference, but not used currently.
-# # Keys that should stay in high precision (float32/bfloat16, not quantized)
-# KEEP_IN_HIGH_PRECISION = ["x_embedder", "t_embedder", "t_embedding_norm", "final_layer"]
-
-
-FP8_OPTIMIZATION_TARGET_KEYS = ["blocks", ""]
-# ".embed." excludes Embedding in LLMAdapter
-FP8_OPTIMIZATION_EXCLUDE_KEYS = ["_embedder", "norm", "adaln", "final_layer", ".embed."]
 
 
 def _strip_net_prefix(key: str) -> str:
@@ -126,7 +115,6 @@ def load_anima_model(
     split_attn: bool,
     loading_device: Union[str, torch.device],
     dit_weight_dtype: Optional[torch.dtype],
-    fp8_scaled: bool = False,
     lora_weights_list: Optional[List[Dict[str, torch.Tensor]]] = None,
     lora_multipliers: Optional[list[float]] = None,
     attn_softmax_scale: Optional[float] = None,
@@ -141,15 +129,10 @@ def load_anima_model(
         split_attn (bool): Whether to use split attention.
         loading_device (Union[str, torch.device]): Device to load the model weights on.
         dit_weight_dtype (Optional[torch.dtype]): Data type of the DiT weights.
-            If None, it will be loaded as is (same as the state_dict) or scaled for fp8. if not None, model weights will be casted to this dtype.
-        fp8_scaled (bool): Whether to use fp8 scaling for the model weights.
+            If None, weights are loaded as-is from the state_dict; otherwise they are cast to this dtype.
         lora_weights_list (Optional[List[Dict[str, torch.Tensor]]]): LoRA weights to apply, if any.
         lora_multipliers (Optional[List[float]]): LoRA multipliers for the weights, if any.
     """
-    # FP8 is not supported yet — force-disable fp8_scaled regardless of what the caller passed.
-    if fp8_scaled:
-        logger.warning("fp8_scaled is not supported yet — loading model without fp8 optimization.")
-        fp8_scaled = False
     if dit_weight_dtype is None:
         dit_weight_dtype = torch.bfloat16
 
@@ -174,33 +157,21 @@ def load_anima_model(
         if dit_weight_dtype is not None:
             model.to(dit_weight_dtype)
 
-    # load model weights with dynamic fp8 optimization and LoRA merging if needed
+    # load model weights with LoRA merging if needed
     logger.info(f"Loading DiT model from {dit_path}, device={loading_device}")
     rename_hooks = WeightTransformHooks(
         rename_hook=_dit_rename_hook,
         concat_hook=_dit_concat_hook,
     )
-    sd = load_safetensors_with_lora_and_fp8(
+    sd = load_safetensors_with_lora(
         model_files=dit_path,
         lora_weights_list=lora_weights_list,
         lora_multipliers=lora_multipliers,
-        fp8_optimization=fp8_scaled,
         calc_device=device,
         move_to_device=(loading_device == device),
         dit_weight_dtype=dit_weight_dtype,
-        target_keys=FP8_OPTIMIZATION_TARGET_KEYS,
-        exclude_keys=FP8_OPTIMIZATION_EXCLUDE_KEYS,
         weight_transform_hooks=rename_hooks,
     )
-
-    if fp8_scaled:
-        apply_fp8_monkey_patch(model, sd, use_scaled_mm=False)
-
-        if loading_device.type != "cpu":
-            # make sure all the model weights are on the loading_device
-            logger.info(f"Moving weights to {loading_device}")
-            for key in sd.keys():
-                sd[key] = sd[key].to(loading_device)
 
     missing, unexpected = model.load_state_dict(sd, strict=False, assign=True)
     if missing:
@@ -443,11 +414,10 @@ def load_qwen3_text_encoder(
             if lora_weights is None:
                 state_dict = load_file(qwen3_path, device="cpu")
             else:
-                state_dict = load_safetensors_with_lora_and_fp8(
+                state_dict = load_safetensors_with_lora(
                     model_files=qwen3_path,
                     lora_weights_list=lora_weights,
                     lora_multipliers=lora_multipliers,
-                    fp8_optimization=False,
                     calc_device=device,
                     move_to_device=True,
                     dit_weight_dtype=None,

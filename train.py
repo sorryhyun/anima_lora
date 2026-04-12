@@ -216,7 +216,6 @@ class AnimaTrainer:
         if getattr(args, "fp8_base_unet", False):
             logger.warning("fp8_base_unet is not supported yet — disabling.")
             args.fp8_base_unet = False
-        args.fp8_scaled = False  # not supported yet
 
         if (
             args.cache_text_encoder_outputs_to_disk
@@ -318,7 +317,6 @@ class AnimaTrainer:
     def load_unet_lazily(
         self, args, weight_dtype, accelerator, text_encoders
     ) -> tuple[nn.Module, list[nn.Module]]:
-        # FP8 is not supported yet — args.fp8_scaled is force-disabled in assert_extra_args.
         loading_dtype = weight_dtype
         loading_device = "cpu" if self.is_swapping_blocks else accelerator.device
 
@@ -359,7 +357,6 @@ class AnimaTrainer:
             args.split_attn,
             loading_device,
             loading_dtype,
-            False,  # fp8_scaled not supported yet
             attn_softmax_scale=attn_softmax_scale,
         )
 

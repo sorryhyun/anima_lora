@@ -64,6 +64,10 @@ def cmd_lora(extra):
     accelerate_launch("--config_file", "configs/training_config_plain.toml", *extra)
 
 
+def cmd_lora_fast(extra):
+    accelerate_launch("--config_file", "configs/training_config_fast_16gb.toml", *extra)
+
+
 def cmd_lora_low_vram(extra):
     accelerate_launch("--config_file", "configs/training_config_low_vram.toml", *extra)
 
@@ -313,6 +317,7 @@ def cmd_invert(extra):
 
 COMMANDS = {
     "lora":             (cmd_lora,             "Standard LoRA training"),
+    "lora-fast":        (cmd_lora_fast,        "Fast LoRA training (16GB, no block swap)"),
     "lora-low-vram":    (cmd_lora_low_vram,    "LoRA training (low VRAM)"),
     "dora":             (cmd_dora,             "DoRA training"),
     "tdora":            (cmd_tdora,            "DoRA + timestep masking"),

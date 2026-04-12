@@ -178,7 +178,6 @@ def main():
         split_attn=False,
         loading_device="cpu" if args.blocks_to_swap > 0 else device,
         dit_weight_dtype=dtype,
-        fp8_scaled=False,
     )
 
     # pooled_text_proj isn't in the pretrained checkpoint, so its params are

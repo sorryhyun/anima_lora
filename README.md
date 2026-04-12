@@ -29,6 +29,7 @@ gradient_checkpointing=true, unsloth_offload_checkpointing=true, latent and text
 | FA2 + compile (eager fallback) | 7.7 GB | 15:10 | 7:26 | 0.089 | 0.211 |
 | FA2 + compile (static tokens) | 6.2 GB | 11:07 | 5:01 | 0.086 | 0.193 |
 | FA2 + compile - grad ckpt | 15.2 GB | **7:07** | **3:30** | 0.088 | 0.206 |
+| FA2 + compile - grad ckpt (fast, rank 32) | 15.6 GB | 6:20 | 2:59 | 0.09 | 0.212 |
 
 ## Setup
 

@@ -18,3 +18,4 @@ attn_mode = "flash"
 gradient_accumulation_steps = 1
 cache_llm_adapter_outputs = true
 trim_crossattn_kv = false  # no-op without flash4 (see docs/fa4.md)
+blocks_to_swap = 0
