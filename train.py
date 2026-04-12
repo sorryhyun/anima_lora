@@ -600,19 +600,23 @@ class AnimaTrainer:
                 )
             else:
                 # crossattn_emb is already in target (T5-compatible) space
-                # Prefix/postfix mode: inject learned vectors before DiT forward
+                # Prefix/postfix mode: inject learned vectors before DiT forward.
+                # Pool text BEFORE injection so modulation guidance sees only real text.
+                has_prefix_postfix = getattr(network, "mode", None) == "prefix" or hasattr(
+                    network, "append_postfix"
+                )
+                kw = {}
+                if has_prefix_postfix:
+                    kw["pooled_text_override"] = crossattn_emb.max(dim=1).values
                 if getattr(network, "mode", None) == "prefix":
                     crossattn_emb = network.prepend_prefix(crossattn_emb)
                 elif hasattr(network, "append_postfix"):
                     seqlens = t5_attn_mask.sum(dim=-1).to(torch.int32)
                     crossattn_emb = network.append_postfix(crossattn_emb, seqlens)
-                kw = {}
                 if args.trim_crossattn_kv:
                     kw["crossattn_seqlens"] = t5_attn_mask.sum(dim=-1).to(torch.int32)
                     max_cs = _max_crossattn_seqlen
-                    if getattr(network, "mode", None) == "prefix" or hasattr(
-                        network, "append_postfix"
-                    ):
+                    if has_prefix_postfix:
                         kw["crossattn_seqlens"] = (
                             kw["crossattn_seqlens"] + network.num_postfix_tokens
                         )

@@ -741,6 +741,6 @@ class LoRAInfModule(LoRAModule):
         self._fused = False
 
     def forward(self, x):
-        if not self.enabled or getattr(self, "_fused", False):
+        if not self.enabled or self._fused:
             return self.org_forward(x)
         return self.default_forward(x)

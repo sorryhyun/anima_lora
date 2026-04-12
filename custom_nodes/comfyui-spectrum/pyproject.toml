@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-spectrum-ksampler"
 description = "Spectrum: training-free diffusion sampling acceleration via Chebyshev polynomial feature forecasting. Drop-in KSampler replacement that skips transformer blocks on predicted steps for ~2-3x speedup."
-version = "1.0.0"
+version = "1.2.1"
 license = { file = "LICENSE" }
 dependencies = []
 
@@ -11,5 +11,5 @@ Repository = "https://github.com/sorryhyun/anima_lora/tree/main/custom_nodes/com
 
 [tool.comfy]
 PublisherId = "sorryhyun"
-DisplayName = "Spectrum"
+DisplayName = "SpectrumKSampler"
 Icon = ""

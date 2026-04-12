@@ -158,19 +158,44 @@ def cmd_sync(_extra):
 
 
 def cmd_step(extra):
-    run(["python", "graft_step.py", *extra])
+    run(["python", "scripts/graft_step.py", *extra])
+
+
+def cmd_preprocess_resize(extra):
+    run([
+        "python", "scripts/resize_images.py",
+        "--src", "image_dataset",
+        "--dst", "post_image_dataset",
+        *extra,
+    ])
+
+
+def cmd_preprocess_vae(extra):
+    run([
+        "python", "scripts/cache_latents.py",
+        "--dir", "post_image_dataset",
+        "--vae", "models/vae/qwen_image_vae.safetensors",
+        "--batch_size", "4",
+        "--chunk_size", "64",
+        *extra,
+    ])
+
+
+def cmd_preprocess_te(extra):
+    run([
+        "python", "scripts/cache_text_embeddings.py",
+        "--dir", "post_image_dataset",
+        "--qwen3", "models/text_encoders/qwen_3_06b_base.safetensors",
+        "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
+        "--caption_shuffle_variants", "16",
+        *extra,
+    ])
 
 
 def cmd_preprocess(extra):
-    run([
-        "python", "scripts/post_images.py",
-        "--src", "image_dataset",
-        "--dst", "post_image_dataset",
-        "--vae", "models/vae/qwen_image_vae.safetensors",
-        "--vae_batch_size", "4",
-        "--vae_chunk_size", "64",
-        *extra,
-    ])
+    cmd_preprocess_resize(extra)
+    cmd_preprocess_vae(extra)
+    cmd_preprocess_te(extra)
 
 
 def cmd_comfy_batch(extra):
@@ -267,12 +292,12 @@ def cmd_mask_clean(_extra):
 
 
 def cmd_gui(_extra):
-    run(["python", "gui.py"])
+    run(["python", "-m", "gui"])
 
 
 def cmd_invert(extra):
     run([
-        "python", "invert_embedding.py",
+        "python", "scripts/invert_embedding.py",
         "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
         "--attn_mode", "flash",
         "--image_dir", "post_image_dataset",
@@ -301,7 +326,10 @@ COMMANDS = {
     "test-spectrum":    (cmd_test_spectrum,    "Spectrum-accelerated inference"),
     "sync":             (cmd_sync,             "Copy outputs to ComfyUI loras dir"),
     "step":             (cmd_step,             "Run one GRAFT iteration"),
-    "preprocess":       (cmd_preprocess,       "VAE-compatible image preprocessing"),
+    "preprocess":       (cmd_preprocess,       "Full preprocessing (resize + VAE + text embeddings)"),
+    "preprocess-resize":(cmd_preprocess_resize,"Resize images to bucket resolutions"),
+    "preprocess-vae":   (cmd_preprocess_vae,   "Cache VAE latents"),
+    "preprocess-te":    (cmd_preprocess_te,    "Cache text encoder embeddings"),
     "comfy-batch":      (cmd_comfy_batch,      "Run ComfyUI batch workflow"),
     "download-models":  (cmd_download_models,  "Download all models"),
     "download-anima":   (cmd_download_anima,   "Download Anima model"),

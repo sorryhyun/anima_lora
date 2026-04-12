@@ -3,6 +3,9 @@
 import argparse
 import glob
 import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import torch
 import torch.nn.functional as F
@@ -75,7 +78,7 @@ def generate_from_embedding(inverted_path, dit_path, vae_path, device, h=1024, w
         if metadata and "image_size" in metadata:
             h_str, w_str = metadata["image_size"].split("x")
             h, w = int(h_str), int(w_str)
-            logger.info(f"Using original image size from metadata: {h}x{w}")
+            logger.info(f"Using image size from metadata: {h}x{w}")
     except Exception:
         pass
 
@@ -153,21 +156,43 @@ def main():
     p.add_argument("--flow_shift", type=float, default=5.0)
     p.add_argument("--attn_mode", type=str, default="flash")
     p.add_argument("--blocks_to_swap", type=int, default=0)
+    p.add_argument("--name", type=str, default=None, help="Process only this stem (e.g. '10042360'). 'latest' picks the most recent file.")
     p.add_argument("--device", type=str, default=None)
     args = p.parse_args()
 
     device = torch.device(args.device if args.device else ("cuda" if torch.cuda.is_available() else "cpu"))
 
-    inv_files = sorted(glob.glob(os.path.join(args.inversions_dir, "*_inverted.safetensors")))
-    if not inv_files:
+    all_inv_files = sorted(glob.glob(os.path.join(args.inversions_dir, "*_inverted.safetensors")))
+    if not all_inv_files:
         logger.error(f"No inverted embeddings found in {args.inversions_dir}")
         return
+
+    if args.name == "latest":
+        inv_files = [max(all_inv_files, key=os.path.getmtime)]
+    elif args.name:
+        target = os.path.join(args.inversions_dir, f"{args.name}_inverted.safetensors")
+        if not os.path.exists(target):
+            logger.error(f"Not found: {target}")
+            return
+        inv_files = [target]
+    else:
+        inv_files = all_inv_files
 
     for inv_path in inv_files:
         stem = os.path.basename(inv_path).replace("_inverted.safetensors", "")
         logger.info(f"\n{'='*60}")
         logger.info(f"Interpreting: {stem}")
         logger.info(f"{'='*60}")
+
+        # Symlink source image for easy comparison
+        source_path = os.path.join(args.dataset_dir, f"{stem}.png")
+        link_path = os.path.join(args.inversions_dir, f"{stem}_source.png")
+        if os.path.exists(source_path):
+            if os.path.islink(link_path):
+                os.remove(link_path)
+            if not os.path.exists(link_path):
+                os.symlink(os.path.relpath(source_path, args.inversions_dir), link_path)
+                logger.info(f"Linked source: {link_path}")
 
         # Original caption
         caption_path = os.path.join(args.dataset_dir, f"{stem}.txt")
@@ -185,11 +210,19 @@ def main():
 
         # Generate verification image
         if args.verify:
+            # Read source image dimensions directly (metadata may have legacy WxH order)
+            kwargs = {}
+            if os.path.exists(source_path):
+                from PIL import Image
+                with Image.open(source_path) as src_img:
+                    sw, sh = src_img.size
+                kwargs = {"h": sh, "w": sw}
             img = generate_from_embedding(
                 inv_path, args.dit, args.vae, device,
                 steps=args.verify_steps, seed=args.seed,
                 flow_shift=args.flow_shift, attn_mode=args.attn_mode,
                 blocks_to_swap=args.blocks_to_swap,
+                **kwargs,
             )
             out_path = os.path.join(args.inversions_dir, f"{stem}_verify.png")
             img.save(out_path)

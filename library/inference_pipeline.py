@@ -157,6 +157,13 @@ def load_dit_model(
         lora_weights_list=lora_weights_list,
         lora_multipliers=args.lora_multiplier,
     )
+
+    # Modulation guidance: load trained pooled_text_proj weights before .to()
+    # (pooled_text_proj params are meta tensors when not in the pretrained checkpoint)
+    pooled_text_proj_path = getattr(args, "pooled_text_proj", None)
+    if pooled_text_proj_path is not None:
+        anima_utils.load_pooled_text_proj(model, pooled_text_proj_path, "cpu")
+
     if not args.fp8_scaled:
         # simple cast to dit_weight_dtype
         target_dtype = (
@@ -533,13 +540,6 @@ def generate_body_tiled(
     shape = (1, num_channels_latents, 1, h_latent, w_latent)
     latents = randn_tensor(shape, generator=seed_g, device=device, dtype=torch.bfloat16)
 
-    # Warn if extra_per_block_abs_pos_emb is enabled (offset support not implemented for LearnablePosEmbAxis)
-    if anima.extra_per_block_abs_pos_emb:
-        logger.warning(
-            "Tiled diffusion with extra_per_block_abs_pos_emb is not fully supported — "
-            "LearnablePosEmbAxis does not use spatial offsets. Results may have artifacts."
-        )
-
     # Compute tile positions and precompute blend weights
     positions = compute_tile_positions(h_latent, w_latent, tile_size, overlap)
     logger.info(
@@ -716,8 +716,17 @@ def generate_body(
         context_null = context  # dummy for unconditional
     negative_embed = context_null["embed"][0].to(device, dtype=torch.bfloat16)
 
-    # Prefix tuning: prepend learned vectors to cached adapter output
+    # Prefix/postfix tuning: inject learned vectors into cross-attention embeddings.
+    # Pool text BEFORE injection so modulation guidance sees only real text tokens.
+    _pooled_text_pos = None
+    _pooled_text_neg = None
+
     prefix_weight = getattr(args, "prefix_weight", None)
+    postfix_weight = getattr(args, "postfix_weight", None)
+    if prefix_weight is not None or postfix_weight is not None:
+        _pooled_text_pos = embed.max(dim=1).values  # (1, 1024)
+        _pooled_text_neg = negative_embed.max(dim=1).values
+
     if prefix_weight is not None:
         from networks.postfix_anima import create_network_from_weights
 
@@ -730,8 +739,6 @@ def generate_body(
         negative_embed = prefix_net.prepend_prefix(negative_embed)
         logger.info(f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}")
 
-    # Postfix tuning: append learned vectors after real text tokens
-    postfix_weight = getattr(args, "postfix_weight", None)
     if postfix_weight is not None:
         from networks.postfix_anima import create_network_from_weights
 
@@ -818,6 +825,8 @@ def generate_body(
             calibration_strength=getattr(args, "spectrum_calibration", 0.0),
             autocast_enabled=autocast_enabled,
             pgraft_network=pgraft_network,
+            pooled_text_pos=_pooled_text_pos,
+            pooled_text_neg=_pooled_text_neg,
             lora_cutoff_step=lora_cutoff_step,
         )
     else:
@@ -842,8 +851,9 @@ def generate_body(
                         enabled=autocast_enabled,
                     ),
                 ):
+                    _pos_kw = {"pooled_text_override": _pooled_text_pos} if _pooled_text_pos is not None else {}
                     noise_pred = anima(
-                        latents, t_expand, embed, padding_mask=padding_mask
+                        latents, t_expand, embed, padding_mask=padding_mask, **_pos_kw
                     )
 
                 if do_cfg:
@@ -855,8 +865,9 @@ def generate_body(
                             enabled=autocast_enabled,
                         ),
                     ):
+                        _neg_kw = {"pooled_text_override": _pooled_text_neg} if _pooled_text_neg is not None else {}
                         uncond_noise_pred = anima(
-                            latents, t_expand, negative_embed, padding_mask=padding_mask
+                            latents, t_expand, negative_embed, padding_mask=padding_mask, **_neg_kw
                         )
                     noise_pred = uncond_noise_pred + args.guidance_scale * (
                         noise_pred - uncond_noise_pred
@@ -878,6 +889,88 @@ def generate_body(
             pgraft_network.set_enabled(True)
 
     return latents
+
+
+def _encode_prompt_for_mod(
+    prompt: str,
+    anima: anima_models.Anima,
+    text_encoder,
+    device: torch.device,
+) -> torch.Tensor:
+    """Encode a prompt and return its crossattn_emb (post-LLMAdapter, padded)."""
+    prompt = process_escape(prompt)
+    tokenize_strategy = strategy_base.TokenizeStrategy.get_strategy()
+    encoding_strategy = strategy_base.TextEncodingStrategy.get_strategy()
+
+    with torch.no_grad():
+        tokens = tokenize_strategy.tokenize(prompt)
+        embed = encoding_strategy.encode_tokens(
+            tokenize_strategy, [text_encoder], tokens
+        )
+        crossattn_emb, _ = anima._preprocess_text_embeds(
+            source_hidden_states=embed[0].to(anima.device),
+            target_input_ids=embed[2].to(anima.device),
+            target_attention_mask=embed[3].to(anima.device),
+            source_attention_mask=embed[1].to(anima.device),
+        )
+        crossattn_emb[~embed[3].bool()] = 0
+        if crossattn_emb.shape[1] < 512:
+            crossattn_emb = torch.nn.functional.pad(
+                crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1])
+            )
+    return crossattn_emb
+
+
+def _setup_mod_guidance(
+    args: argparse.Namespace,
+    anima: anima_models.Anima,
+    device: torch.device,
+    shared_models: Optional[Dict] = None,
+) -> None:
+    """Compute Phase 2 modulation guidance delta and store on model.
+
+    guidance_delta = w * (proj(pool(pos_crossattn)) - proj(pool(neg_crossattn)))
+    This is added to t_embedding every forward step.
+    """
+    mod_w = args.mod_w
+    mod_pos = args.mod_pos_prompt
+    mod_neg = args.mod_neg_prompt
+
+    # Load text encoder (reuse shared if available, otherwise load temporarily)
+    if shared_models and "text_encoder" in shared_models:
+        text_encoder = shared_models["text_encoder"]
+        text_encoder.to(device)
+        loaded_locally = False
+    else:
+        text_encoder_dtype = torch.bfloat16
+        text_encoder = load_text_encoder(args, dtype=text_encoder_dtype, device=device)
+        text_encoder.eval()
+        loaded_locally = True
+
+    logger.info(f"Computing modulation guidance delta (w={mod_w})")
+    logger.info(f"  pos: {mod_pos}")
+    logger.info(f"  neg: {mod_neg}")
+
+    pos_crossattn = _encode_prompt_for_mod(mod_pos, anima, text_encoder, device)
+    neg_crossattn = _encode_prompt_for_mod(mod_neg, anima, text_encoder, device)
+
+    # Pool and project through trained pooled_text_proj
+    with torch.no_grad():
+        pos_pooled = pos_crossattn.max(dim=1).values  # (1, 1024)
+        neg_pooled = neg_crossattn.max(dim=1).values
+        proj_pos = anima.pooled_text_proj(pos_pooled.to(anima.pooled_text_proj[0].weight.dtype))
+        proj_neg = anima.pooled_text_proj(neg_pooled.to(anima.pooled_text_proj[0].weight.dtype))
+        delta = mod_w * (proj_pos - proj_neg)  # (1, model_channels)
+
+    anima._mod_guidance_delta = delta.to(device, dtype=torch.bfloat16)
+    logger.info(f"Modulation guidance delta set (norm={delta.norm().item():.4f})")
+
+    if loaded_locally:
+        del text_encoder
+        gc.collect()
+        clean_memory_on_device(device)
+    else:
+        text_encoder.to("cpu")
 
 
 def generate(
@@ -916,6 +1009,12 @@ def generate(
     else:
         logger.info("No precomputed data. Preparing image and text inputs.")
         context, context_null = prepare_text_inputs(args, device, anima, shared_models)
+
+    # Phase 2 modulation guidance: compute guidance delta once
+    if getattr(args, "pooled_text_proj", None) is not None and getattr(args, "mod_w", 0.0) != 0.0:
+        _setup_mod_guidance(args, anima, device, shared_models)
+    else:
+        anima._mod_guidance_delta = None
 
     return generate_body(args, anima, context, context_null, device, seed)
 

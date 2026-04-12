@@ -3,9 +3,9 @@
 ## Quick Start
 
 ```bash
-make step    # train + generate candidates
+make graft-step    # train + generate candidates
 # review candidates, delete bad ones
-make step    # ingest survivors, retrain, generate new candidates
+make graft-step    # ingest survivors, retrain, generate new candidates
 # repeat
 ```
 
@@ -14,7 +14,7 @@ make step    # ingest survivors, retrain, generate new candidates
 1. **Holdout**: 20% of `image_dataset/` images are randomly held out (their captions become generation prompts)
 2. **Train**: LoRA trains for 2 epochs on the remaining 80% + any previously survived candidates
 3. **Generate**: 4 candidate images per held-out caption, saved to `graft/candidates/iter_NNN/`
-4. **Review**: You delete bad candidates, then run `make step` again
+4. **Review**: You delete bad candidates, then run `make graft-step` again
 5. **Ingest**: Surviving candidates move to `graft/survivors/` and join the training set
 
 ## How Many Candidates to Keep

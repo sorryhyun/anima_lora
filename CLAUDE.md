@@ -10,7 +10,7 @@ Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion mo
 
 ```bash
 uv sync                    # Install dependencies (Python 3.13)
-hf auth login      # Authenticate for model downloads
+hf auth login              # Authenticate for model downloads
 make download-models       # Download DiT, text encoder, VAE from HuggingFace
 # Training images go in image_dataset/ with .txt caption sidecars
 make preprocess            # VAE-compatible resizing & validation
@@ -26,12 +26,24 @@ make lora                  # Standard LoRA (configs/training_config_plain.toml)
 python tasks.py lora       # Same, works on Windows too
 make lora-low-vram         # Low-VRAM LoRA (configs/training_config_low_vram.toml)
 make dora                  # DoRA (configs/training_config_dora.toml + use_dora=true)
-make tlora                 # T-LoRA: OrthoLoRA + timestep masking (configs/training_config.toml)
+make tlora                 # T-LoRA: OrthoLoRA + timestep masking (configs/training_config_tlora.toml)
 make tdora                 # DoRA + timestep masking (configs/training_config_doratimestep.toml)
 make hydralora             # HydraLoRA: MoE multi-head routing (configs/training_config_hydralora.toml)
+make postfix               # Postfix tuning (configs/training_config_postfix.toml)
+make prefix                # Prefix tuning (configs/training_config_prefix.toml)
+
+# Modulation guidance distillation
+make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulation)
+
+# Embedding inversion
+make invert                # Optimize text embedding for target images
+make test-invert           # Verify inversion quality
 
 # Inference (test with most recent output)
 make test
+make test-mod              # Test with modulation guidance (pooled_text_proj)
+make test-prefix           # Test with prefix tuning
+make test-postfix          # Test with postfix tuning
 make test-spectrum         # Spectrum-accelerated inference (~3.75x speedup)
 
 # GUI (PySide6 — config editing, GRAFT curation, dataset browsing)
@@ -39,9 +51,10 @@ make gui
 python tasks.py gui        # Windows
 
 # GRAFT loop (human-in-the-loop iterative training)
-make step                  # Train -> generate candidates -> await curation
+make graft-step            # Train -> generate candidates -> await curation
 # Delete bad images from graft/candidates/iter_NNN/, then:
-make step                  # Ingest survivors -> retrain -> new candidates
+make graft-step            # Ingest survivors -> retrain -> new candidates
+python tasks.py step       # Same, works on Windows
 
 # Masking (for masked loss training)
 make mask                  # Generate SAM3 + MIT masks, then merge
@@ -67,10 +80,9 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 |------|---------|
 | `train.py` | `AnimaTrainer` class — main training loop via HF Accelerate |
 | `inference.py` | Standalone image generation (`--help` for all flags) |
-| `library/spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting) |
-| `graft_step.py` | GRAFT orchestrator: holdout -> train -> generate -> await review |
-| `gui.py` | PySide6 GUI: config editing with presets, GRAFT curation, dataset browser, training monitor |
-| `gui_i18n.py` | i18n layer for GUI (Korean/English) |
+| `networks/spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting) |
+| `scripts/graft_step.py` | GRAFT orchestrator: holdout -> train -> generate -> await review |
+| `gui/` | PySide6 GUI package: config editing with presets, GRAFT curation, dataset browser, training monitor |
 | `tasks.py` | Cross-platform task runner (Windows-compatible Makefile alternative) |
 
 ## Config flow
@@ -78,10 +90,13 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 Training is config-driven. TOML configs specify model paths, hyperparams, and dataset layout:
 - `configs/base.toml` — base/shared config values
 - `configs/training_config_plain.toml` — standard LoRA config (used by `make lora`)
-- `configs/training_config.toml` — T-LoRA config (used by `make tlora`)
+- `configs/training_config.toml` — base T-LoRA config
+- `configs/training_config_tlora.toml` — T-LoRA with OrthoLoRA + timestep masking (used by `make tlora`)
 - `configs/training_config_dora.toml` — DoRA config
 - `configs/training_config_doratimestep.toml` — DoRA + timestep masking
 - `configs/training_config_hydralora.toml` — HydraLoRA multi-head routing (used by `make hydralora`)
+- `configs/training_config_postfix.toml` — Postfix tuning config (used by `make postfix`)
+- `configs/training_config_prefix.toml` — Prefix tuning config (used by `make prefix`)
 - `configs/training_config_low_vram.toml` — low-VRAM LoRA config
 - `configs/training_config_win8gb.toml` / `win16gb.toml` — Windows VRAM presets (GUI presets)
 - `configs/training_config_fa4_8gb.toml` / `fa4_16gb.toml` — Flash Attention 4 VRAM presets (GUI presets)
@@ -98,7 +113,7 @@ All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/
   - `networks/lora_anima.py` — LoRA network creation, module targeting, timestep masking orchestration
   - `networks/lora_modules.py` — LoRA, DoRA, OrthoLoRA module implementations
   - `networks/postfix_anima.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual)
-- **Attention dispatch** (`library/attention.py`): Unified `attention()` routing to torch SDPA, xformers, flash-attn v2/v3, flash-attn v4, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD).
+- **Attention dispatch** (`networks/attention.py`): Unified `attention()` routing to torch SDPA, xformers, flash-attn v2/v3, flash-attn v4, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD).
 
 ### LoRA variants
 
@@ -130,7 +145,7 @@ All bucket resolutions ensure `(H/16)*(W/16) ~ 4096` patches. Batch elements are
 
 ### Flash4 LSE correction
 
-When cross-attention KV is trimmed (zero-padding removed for efficiency), the softmax denominator must be corrected. `library/attention.py` applies a sigmoid-based LSE correction using `crossattn_full_len` to account for removed zero-key contributions.
+When cross-attention KV is trimmed (zero-padding removed for efficiency), the softmax denominator must be corrected. `networks/attention.py` applies a sigmoid-based LSE correction using `crossattn_full_len` to account for removed zero-key contributions.
 
 ### DDP gradient sync
 
@@ -142,21 +157,34 @@ DiT is loaded AFTER text encoder/VAE caching and unloading to avoid OOM. The seq
 
 ## Spectrum inference acceleration
 
-Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., CVPR 2026). `--spectrum` flag on `inference.py` enables it. On cached steps, all transformer blocks are skipped — only `t_embedder` + `final_layer` + `unpatchify` run. A `register_forward_pre_hook` on `final_layer` captures block outputs without monkey-patching the model. The adaptive window schedule (controlled by `--spectrum_window_size` and `--spectrum_flex_window`) concentrates actual forwards on early high-noise steps and increasingly predicts later refinement steps. See `Spectrum/` for the reference repo and `library/spectrum.py` for the Anima integration.
+Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., CVPR 2026). `--spectrum` flag on `inference.py` enables it. On cached steps, all transformer blocks are skipped — only `t_embedder` + `final_layer` + `unpatchify` run. A `register_forward_pre_hook` on `final_layer` captures block outputs without monkey-patching the model. The adaptive window schedule (controlled by `--spectrum_window_size` and `--spectrum_flex_window`) concentrates actual forwards on early high-noise steps and increasingly predicts later refinement steps. See `Spectrum/` for the reference repo and `networks/spectrum.py` for the Anima integration.
 
 ## GRAFT / P-GRAFT
 
-The GRAFT loop (`graft_step.py`) implements rejection-sampling-based fine-tuning:
+The GRAFT loop (`scripts/graft_step.py`) implements rejection-sampling-based fine-tuning:
 1. Holds out a subset of training images, trains LoRA on the rest + accumulated survivors
 2. Generates candidates using the trained LoRA (with P-GRAFT: LoRA disabled for last 25% of denoising)
 3. User curates by deleting bad candidates; survivors join the training set next iteration
 
 See `docs/graft-guideline.md` for detailed curation guidance.
 
+## Modulation guidance
+
+Text-conditioned AdaLN modulation via a learned `pooled_text_proj` MLP (Starodubcev et al., ICLR 2026). Distilled with `make distill-mod`: teacher uses real cross-attention, student uses zeroed cross-attention but receives pooled text through modulation. At inference, steers AdaLN coefficients toward quality-positive directions. See `docs/mod-guidance.md`.
+
+## Embedding inversion
+
+Optimizes text embeddings (post-T5, pre-DiT space) to minimize flow-matching loss for a target image through the frozen DiT. Reveals how the model interprets images in embedding space. `make invert` runs batch inversion from `post_image_dataset/`, `make test-invert` verifies results. See `docs/invert.md`.
+
 ## Scripts
 
 Utility scripts in `scripts/`:
-- `post_images.py` — VAE-compatible image resizing & latent/embedding caching (used by `make preprocess`)
+- `resize_images.py` — VAE-compatible image resizing (used by `make preprocess-resize`)
+- `cache_latents.py` — Cache VAE latents to disk (used by `make preprocess-vae`)
+- `cache_text_embeddings.py` — Cache text encoder outputs to disk (used by `make preprocess-te`)
+- `distill_modulation.py` — Train pooled_text_proj MLP for modulation guidance (used by `make distill-mod`)
+- `invert_embedding.py` — Optimize text embedding for target images (used by `make invert`)
+- `interpret_inversion.py` — Verify/visualize embedding inversion results (used by `make test-invert`)
 - `generate_masks.py` — SAM3-based text bubble mask generation
 - `generate_masks_mit.py` — MIT/ComicTextDetector mask generation (manga-specific)
 - `merge_masks.py` — Combine SAM3 + MIT masks into final mask set

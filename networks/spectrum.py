@@ -201,6 +201,8 @@ def _spectrum_fast_forward(
         timesteps_B_T = timesteps_B_T.unsqueeze(1)
     t_emb, adaln = model.t_embedder(timesteps_B_T)
     t_emb = model.t_embedding_norm(t_emb)
+    if getattr(model, "_mod_guidance_delta", None) is not None:
+        t_emb = t_emb + model._mod_guidance_delta.unsqueeze(1)
     x = model.final_layer(predicted_feature, t_emb, adaln_lora_B_T_3D=adaln)
     return model.unpatchify(x)
 
@@ -228,6 +230,8 @@ def spectrum_denoise(
     autocast_enabled: bool = False,
     pgraft_network=None,
     lora_cutoff_step: Optional[int] = None,
+    pooled_text_pos: Optional[torch.Tensor] = None,
+    pooled_text_neg: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Spectrum-accelerated denoising loop.
 
@@ -304,8 +308,9 @@ def spectrum_denoise(
                             enabled=autocast_enabled,
                         ),
                     ):
+                        _pos_kw = {"pooled_text_override": pooled_text_pos} if pooled_text_pos is not None else {}
                         noise_pred = anima(
-                            latents, t_exp, embed, padding_mask=padding_mask
+                            latents, t_exp, embed, padding_mask=padding_mask, **_pos_kw
                         )
                     feat = captured["feat"]
                     if cond_fc is None:
@@ -324,11 +329,13 @@ def spectrum_denoise(
                                 enabled=autocast_enabled,
                             ),
                         ):
+                            _neg_kw = {"pooled_text_override": pooled_text_neg} if pooled_text_neg is not None else {}
                             uncond_noise_pred = anima(
                                 latents,
                                 t_exp,
                                 negative_embed,
                                 padding_mask=padding_mask,
+                                **_neg_kw,
                             )
                         ufeat = captured["feat"]
                         if uncond_fc is None:

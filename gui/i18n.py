@@ -115,7 +115,7 @@ def _settings_path():
     global _SETTINGS_FILE
     if _SETTINGS_FILE is None:
         from pathlib import Path
-        _SETTINGS_FILE = Path(__file__).resolve().parent.parent / "gui_settings.json"
+        _SETTINGS_FILE = Path(__file__).resolve().parent / "gui_settings.json"
     return _SETTINGS_FILE
 
 

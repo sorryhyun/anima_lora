@@ -217,6 +217,33 @@ def parse_args() -> argparse.Namespace:
         help=f"use lycoris for inference{'' if lycoris_available else ' (not available)'}",
     )
 
+    # Modulation guidance
+    parser.add_argument(
+        "--pooled_text_proj",
+        type=str,
+        default=None,
+        help="Path to trained pooled_text_proj weights (.safetensors) for modulation guidance",
+    )
+    parser.add_argument(
+        "--mod_w",
+        type=float,
+        default=3.0,
+        help="Modulation guidance strength (default 3.0). "
+        "Controls w in: emb = t_emb + proj(main) + w * (proj(pos) - proj(neg))",
+    )
+    parser.add_argument(
+        "--mod_pos_prompt",
+        type=str,
+        default="absurdres, masterpiece, score_9",
+        help="Positive quality prompt for modulation guidance direction",
+    )
+    parser.add_argument(
+        "--mod_neg_prompt",
+        type=str,
+        default="worst quality, low quality, score_1, score_2, score_3",
+        help="Negative quality prompt for modulation guidance direction",
+    )
+
     # P-GRAFT
     parser.add_argument(
         "--pgraft",

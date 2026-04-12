@@ -3,8 +3,9 @@ LORA_DIR := ../comfy/ComfyUI/models/loras
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-prefix test-postfix test-spectrum invert mask mask-sam mask-mit mask-clean preprocess download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-mod test-prefix test-postfix test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -23,7 +24,7 @@ TEST_COMMON = python inference.py \
 	--save_path test_output
 
 gui:
-	python gui.py
+	python -m gui
 
 lora:
 	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
@@ -57,6 +58,18 @@ prefix:
 	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_prefix.toml
 
+distill-mod:
+	python scripts/distill_modulation.py \
+		--data_dir post_image_dataset \
+		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
+		--output_path output/pooled_text_proj.safetensors \
+		--iterations 500 \
+		--lr 5e-5 \
+		--warmup 0.05 \
+		--blocks_to_swap 0 \
+		--attn_mode flash \
+		$(ARGS)
+
 sync:
 	python -c "import shutil, glob, os; d='$(LORA_DIR)'; os.makedirs(d,exist_ok=True); [shutil.copy2(f,d) for f in glob.glob('output/*.safetensors')]"
 
@@ -64,6 +77,10 @@ test:
 	$(TEST_COMMON) \
 		--lora_weight $(LATEST_LORA) \
 		--lora_multiplier 1.0
+
+test-mod:
+	$(TEST_COMMON) \
+		--pooled_text_proj $(LATEST_MOD)
 
 test-prefix:
 	$(TEST_COMMON) \
@@ -87,33 +104,63 @@ test-spectrum:
 		--spectrum_stop_caching_step 29 \
 		--spectrum_calibration 0.0
 
-INVERT_N ?= 10
+INVERT_N ?= 1
 INVERT_SWAP ?= 0
 invert:
-	python invert_embedding.py \
+	python scripts/invert_embedding.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--attn_mode flash \
 		--image_dir post_image_dataset \
 		--num_images $(INVERT_N) --shuffle \
-		--steps 100 --lr 0.01 \
+		--steps 150 --lr 0.005 \
 		--output_dir inversions \
 		--blocks_to_swap $(INVERT_SWAP) \
 		--log_block_grads
+
+BENCH_INVERSIONS ?= 5
+bench-inversion:
+	python bench/inversion_stability.py \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--vae models/vae/qwen_image_vae.safetensors \
+		--num_inversions $(BENCH_INVERSIONS) \
+		--steps 100 --lr 0.01
+
+INVERT_NAME ?= latest
+test-invert:
+	python scripts/interpret_inversion.py \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--vae models/vae/qwen_image_vae.safetensors \
+		--attn_mode flash \
+		--name $(INVERT_NAME) \
+		--verify --verify_steps 50
 
 WORKFLOW ?= workflows/lora-batch.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 
 graft-step:
-	python graft_step.py
+	python scripts/graft_step.py
 
-preprocess:
-	python scripts/post_images.py \
+preprocess: preprocess-resize preprocess-vae preprocess-te
+
+preprocess-resize:
+	python scripts/resize_images.py \
 		--src image_dataset \
-		--dst post_image_dataset \
+		--dst post_image_dataset
+
+preprocess-vae:
+	python scripts/cache_latents.py \
+		--dir post_image_dataset \
 		--vae models/vae/qwen_image_vae.safetensors \
-		--vae_batch_size 4 \
-		--vae_chunk_size 64
+		--batch_size 4 \
+		--chunk_size 64
+
+preprocess-te:
+	python scripts/cache_text_embeddings.py \
+		--dir post_image_dataset \
+		--qwen3 models/text_encoders/qwen_3_06b_base.safetensors \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--caption_shuffle_variants 8
 
 # --- Model downloads ---
 
