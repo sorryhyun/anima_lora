@@ -215,6 +215,7 @@ def load_anima_model(
                     "dim_spatial_range",
                     "dim_temporal_range",
                     "inv_freq",
+                    "pooled_text_proj",
                 )
             )
         ]
@@ -233,13 +234,38 @@ def load_anima_model(
         f"Loaded DiT model from {dit_path}, unexpected missing keys: {len(missing)}, unexpected keys: {len(unexpected)}"
     )
 
-    # Move non-checkpoint buffers (RoPE embeddings) to the correct device.
+    # Move non-checkpoint modules (RoPE embeddings, pooled_text_proj) to the correct device.
     # These are created on CPU during __init__ and not present in the checkpoint,
-    # so load_state_dict(assign=True) doesn't move them.
+    # so load_state_dict(assign=True) doesn't move them — they remain as meta tensors.
+    # Use to_empty() + init to materialize meta tensors, then move to loading_device.
     if hasattr(model, "pos_embedder"):
         model.pos_embedder.to(loading_device)
+    if hasattr(model, "pooled_text_proj"):
+        model.pooled_text_proj.to_empty(device=loading_device)
+        # Re-init all layers: to_empty() leaves uninitialized memory (may contain NaN).
+        for m in model.pooled_text_proj:
+            if isinstance(m, torch.nn.Linear):
+                torch.nn.init.kaiming_uniform_(m.weight)
+                if m.bias is not None:
+                    torch.nn.init.zeros_(m.bias)
+        # Zero-init output layer so the module is a no-op at init (same as init_weights)
+        torch.nn.init.zeros_(model.pooled_text_proj[-1].weight)
+        torch.nn.init.zeros_(model.pooled_text_proj[-1].bias)
 
     return model
+
+
+def load_pooled_text_proj(
+    model: anima_models.Anima,
+    path: str,
+    device: Union[str, torch.device] = "cpu",
+) -> None:
+    """Load trained pooled_text_proj weights into the model."""
+    from safetensors.torch import load_file
+
+    state = load_file(path, device=str(device))
+    model.pooled_text_proj.load_state_dict(state, assign=True)
+    logger.info(f"Loaded pooled_text_proj from {path}")
 
 
 def load_llm_adapter(
