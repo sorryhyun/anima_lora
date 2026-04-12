@@ -7,7 +7,10 @@ from typing import Any, List, Optional, Tuple, Union
 import numpy as np
 import torch
 from safetensors import safe_open as _safe_open
-from safetensors.torch import load_file as _load_safetensors, save_file as _save_safetensors
+from safetensors.torch import (
+    load_file as _load_safetensors,
+    save_file as _save_safetensors,
+)
 
 from library import anima_train_utils, anima_utils, train_util
 from library.strategy_base import (
@@ -361,7 +364,9 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         models: List[Any],
         text_encoding_strategy: "AnimaTextEncodingStrategy",
         captions: List[str],
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]
+    ]:
         """Tokenize, encode, and optionally run LLM adapter. Returns typed CPU tensors."""
         tokens_and_masks = tokenize_strategy.tokenize(captions)
         with torch.no_grad():
@@ -411,7 +416,9 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         t5_input_ids_i: torch.Tensor,
         t5_attn_mask_i: torch.Tensor,
         crossattn_emb_i: Optional[torch.Tensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor]
+    ]:
         """Keep max-padded outputs (pretrained model expects padding tokens in cross-attention)."""
         return (
             prompt_embeds_i,

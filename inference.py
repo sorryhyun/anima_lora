@@ -649,7 +649,9 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                         w=getattr(args, "spectrum_w", 0.3),
                         m=getattr(args, "spectrum_m", 3),
                         lam=getattr(args, "spectrum_lam", 0.1),
-                        stop_caching_step=getattr(args, "spectrum_stop_caching_step", -1),
+                        stop_caching_step=getattr(
+                            args, "spectrum_stop_caching_step", -1
+                        ),
                         calibration_strength=getattr(args, "spectrum_calibration", 0.0),
                         autocast_enabled=autocast_enabled,
                         pgraft_network=pgraft_network,
@@ -705,7 +707,8 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
 
                             if er_sde is not None:
                                 denoised = (
-                                    latents.float() - sigmas[step_i] * noise_pred.float()
+                                    latents.float()
+                                    - sigmas[step_i] * noise_pred.float()
                                 )
                                 latents = er_sde.step(latents, denoised, step_i).to(
                                     latents.dtype

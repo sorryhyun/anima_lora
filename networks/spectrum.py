@@ -166,8 +166,18 @@ class SpectrumPredictor:
     extrapolation for improved stability on the most recent observations.
     """
 
-    def __init__(self, m: int, lam: float, w: float, device: torch.device, feature_shape, total_steps: int = 30):
-        self.cheb = ChebyshevForecaster(M=m, K=100, lam=lam, device=device, total_steps=total_steps)
+    def __init__(
+        self,
+        m: int,
+        lam: float,
+        w: float,
+        device: torch.device,
+        feature_shape,
+        total_steps: int = 30,
+    ):
+        self.cheb = ChebyshevForecaster(
+            M=m, K=100, lam=lam, device=device, total_steps=total_steps
+        )
         self.w = w
 
     def update(self, t: float, h: torch.Tensor):
@@ -292,9 +302,7 @@ def spectrum_denoise(
                 if i < warmup_steps or i >= stop_at:
                     actual = True
                 else:
-                    actual = (
-                        consec_cached + 1
-                    ) % max(1, math.floor(curr_ws)) == 0
+                    actual = (consec_cached + 1) % max(1, math.floor(curr_ws)) == 0
 
                 t_exp = t.expand(latents.shape[0])
 
@@ -308,13 +316,19 @@ def spectrum_denoise(
                             enabled=autocast_enabled,
                         ),
                     ):
-                        _pos_kw = {"pooled_text_override": pooled_text_pos} if pooled_text_pos is not None else {}
+                        _pos_kw = (
+                            {"pooled_text_override": pooled_text_pos}
+                            if pooled_text_pos is not None
+                            else {}
+                        )
                         noise_pred = anima(
                             latents, t_exp, embed, padding_mask=padding_mask, **_pos_kw
                         )
                     feat = captured["feat"]
                     if cond_fc is None:
-                        cond_fc = SpectrumPredictor(m, lam, w, device, feat.shape[1:], num_steps)
+                        cond_fc = SpectrumPredictor(
+                            m, lam, w, device, feat.shape[1:], num_steps
+                        )
                     # Residual calibration: measure prediction error before updating
                     if calibration_strength > 0 and cond_fc.cheb.t_buf.numel() >= 2:
                         cond_residual = feat - cond_fc.predict(float(i))
@@ -329,7 +343,11 @@ def spectrum_denoise(
                                 enabled=autocast_enabled,
                             ),
                         ):
-                            _neg_kw = {"pooled_text_override": pooled_text_neg} if pooled_text_neg is not None else {}
+                            _neg_kw = (
+                                {"pooled_text_override": pooled_text_neg}
+                                if pooled_text_neg is not None
+                                else {}
+                            )
                             uncond_noise_pred = anima(
                                 latents,
                                 t_exp,
@@ -342,7 +360,10 @@ def spectrum_denoise(
                             uncond_fc = SpectrumPredictor(
                                 m, lam, w, device, ufeat.shape[1:], num_steps
                             )
-                        if calibration_strength > 0 and uncond_fc.cheb.t_buf.numel() >= 2:
+                        if (
+                            calibration_strength > 0
+                            and uncond_fc.cheb.t_buf.numel() >= 2
+                        ):
                             uncond_residual = ufeat - uncond_fc.predict(float(i))
                         uncond_fc.update(float(i), ufeat)
                         noise_pred = uncond_noise_pred + guidance_scale * (
@@ -367,7 +388,9 @@ def spectrum_denoise(
                         if do_cfg:
                             upred_feat = uncond_fc.predict(float(i))
                             if uncond_residual is not None:
-                                upred_feat = upred_feat + calibration_strength * uncond_residual
+                                upred_feat = (
+                                    upred_feat + calibration_strength * uncond_residual
+                                )
                             uncond_noise_pred = _spectrum_fast_forward(
                                 anima, t_exp, upred_feat
                             )

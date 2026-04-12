@@ -25,6 +25,7 @@ import argparse
 import csv
 import glob
 import json
+import logging
 import os
 import random
 import sys
@@ -39,12 +40,17 @@ from safetensors.torch import load_file, save_file
 from torchvision import transforms
 from tqdm import tqdm
 
-from library import anima_models, anima_utils, qwen_image_autoencoder_kl, strategy_anima, strategy_base
+from library import (
+    anima_models,
+    anima_utils,
+    qwen_image_autoencoder_kl,
+    strategy_anima,
+    strategy_base,
+)
 from library.device_utils import clean_memory_on_device
 from library.utils import setup_logging
 
 setup_logging()
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -61,48 +67,157 @@ def parse_args():
 
     # Model paths
     p.add_argument("--dit", type=str, required=True, help="DiT checkpoint path")
-    p.add_argument("--vae", type=str, default=None, help="VAE checkpoint path (only needed for --image mode)")
-    p.add_argument("--text_encoder", type=str, default=None, help="Text encoder path (for --init_prompt)")
+    p.add_argument(
+        "--vae",
+        type=str,
+        default=None,
+        help="VAE checkpoint path (only needed for --image mode)",
+    )
+    p.add_argument(
+        "--text_encoder",
+        type=str,
+        default=None,
+        help="Text encoder path (for --init_prompt)",
+    )
     p.add_argument("--attn_mode", type=str, default="flash", help="Attention backend")
 
     # Target — single image or directory
     target = p.add_mutually_exclusive_group(required=True)
-    target.add_argument("--image", type=str, default=None, help="Single target image path")
-    target.add_argument("--image_dir", type=str, default=None, help="Directory with preprocessed images (cached latents + TE outputs)")
-    p.add_argument("--image_size", type=int, nargs=2, default=None, help="Resize to H W (--image mode only)")
-    p.add_argument("--num_images", type=int, default=None, help="Process N random images from --image_dir (default: all)")
-    p.add_argument("--shuffle", action="store_true", help="Shuffle image order in --image_dir mode")
+    target.add_argument(
+        "--image", type=str, default=None, help="Single target image path"
+    )
+    target.add_argument(
+        "--image_dir",
+        type=str,
+        default=None,
+        help="Directory with preprocessed images (cached latents + TE outputs)",
+    )
+    p.add_argument(
+        "--image_size",
+        type=int,
+        nargs=2,
+        default=None,
+        help="Resize to H W (--image mode only)",
+    )
+    p.add_argument(
+        "--num_images",
+        type=int,
+        default=None,
+        help="Process N random images from --image_dir (default: all)",
+    )
+    p.add_argument(
+        "--shuffle", action="store_true", help="Shuffle image order in --image_dir mode"
+    )
 
     # Initialization
-    p.add_argument("--init_prompt", type=str, default=None, help="Initialize embedding from this prompt (requires --text_encoder)")
-    p.add_argument("--init_embedding", type=str, default=None, help="Initialize from a saved embedding .safetensors")
-    p.add_argument("--init_from_cache", action="store_true", default=True, help="Initialize from cached crossattn_emb in _anima_te.safetensors (default: True, --image_dir mode)")
-    p.add_argument("--init_zeros", action="store_true", help="Initialize from zeros instead of cached embedding")
+    p.add_argument(
+        "--init_prompt",
+        type=str,
+        default=None,
+        help="Initialize embedding from this prompt (requires --text_encoder)",
+    )
+    p.add_argument(
+        "--init_embedding",
+        type=str,
+        default=None,
+        help="Initialize from a saved embedding .safetensors",
+    )
+    p.add_argument(
+        "--init_from_cache",
+        action="store_true",
+        default=True,
+        help="Initialize from cached crossattn_emb in _anima_te.safetensors (default: True, --image_dir mode)",
+    )
+    p.add_argument(
+        "--init_zeros",
+        action="store_true",
+        help="Initialize from zeros instead of cached embedding",
+    )
 
     # Optimization
-    p.add_argument("--steps", type=int, default=100, help="Optimization steps per image")
+    p.add_argument(
+        "--steps", type=int, default=100, help="Optimization steps per image"
+    )
     p.add_argument("--lr", type=float, default=0.01, help="Learning rate")
-    p.add_argument("--lr_schedule", type=str, default="cosine", choices=["cosine", "constant"], help="LR schedule")
-    p.add_argument("--timesteps_per_step", type=int, default=1, help="Random timesteps sampled per optimization step (batched forward)")
-    p.add_argument("--grad_accum", type=int, default=4, help="Gradient accumulation steps (total timesteps per update = timesteps_per_step × grad_accum)")
-    p.add_argument("--sigma_sampling", type=str, default="uniform", choices=["uniform", "sigmoid"], help="Sigma sampling strategy")
-    p.add_argument("--sigmoid_scale", type=float, default=1.0, help="Scale for sigmoid sigma sampling")
+    p.add_argument(
+        "--lr_schedule",
+        type=str,
+        default="cosine",
+        choices=["cosine", "constant"],
+        help="LR schedule",
+    )
+    p.add_argument(
+        "--timesteps_per_step",
+        type=int,
+        default=1,
+        help="Random timesteps sampled per optimization step (batched forward)",
+    )
+    p.add_argument(
+        "--grad_accum",
+        type=int,
+        default=4,
+        help="Gradient accumulation steps (total timesteps per update = timesteps_per_step × grad_accum)",
+    )
+    p.add_argument(
+        "--sigma_sampling",
+        type=str,
+        default="uniform",
+        choices=["uniform", "sigmoid"],
+        help="Sigma sampling strategy",
+    )
+    p.add_argument(
+        "--sigmoid_scale",
+        type=float,
+        default=1.0,
+        help="Scale for sigmoid sigma sampling",
+    )
 
     # Output
-    p.add_argument("--output_dir", type=str, default="inversions", help="Output directory (results/ and logs/ created inside)")
+    p.add_argument(
+        "--output_dir",
+        type=str,
+        default="inversions",
+        help="Output directory (results/ and logs/ created inside)",
+    )
     p.add_argument("--log_every", type=int, default=10, help="Log loss every N steps")
-    p.add_argument("--log_block_grads", action="store_true", help="Log per-block gradient norms (for analyzing block sensitivity to embedding)")
+    p.add_argument(
+        "--log_block_grads",
+        action="store_true",
+        help="Log per-block gradient norms (for analyzing block sensitivity to embedding)",
+    )
 
     # Verification
-    p.add_argument("--verify", action="store_true", help="Generate an image from the inverted embedding after optimization")
-    p.add_argument("--verify_steps", type=int, default=50, help="Inference steps for verification")
-    p.add_argument("--verify_seed", type=int, default=42, help="Seed for verification generation")
-    p.add_argument("--flow_shift", type=float, default=5.0, help="Flow shift for verification sampling")
+    p.add_argument(
+        "--verify",
+        action="store_true",
+        help="Generate an image from the inverted embedding after optimization",
+    )
+    p.add_argument(
+        "--verify_steps", type=int, default=50, help="Inference steps for verification"
+    )
+    p.add_argument(
+        "--verify_seed", type=int, default=42, help="Seed for verification generation"
+    )
+    p.add_argument(
+        "--flow_shift",
+        type=float,
+        default=5.0,
+        help="Flow shift for verification sampling",
+    )
 
     # Device / VRAM
-    p.add_argument("--device", type=str, default=None, help="Device (default: cuda if available)")
-    p.add_argument("--vae_chunk_size", type=int, default=64, help="VAE spatial chunk size")
-    p.add_argument("--blocks_to_swap", type=int, default=0, help="Number of transformer blocks to swap to CPU (0 = use gradient checkpointing instead)")
+    p.add_argument(
+        "--device", type=str, default=None, help="Device (default: cuda if available)"
+    )
+    p.add_argument(
+        "--vae_chunk_size", type=int, default=64, help="VAE spatial chunk size"
+    )
+    p.add_argument(
+        "--blocks_to_swap",
+        type=int,
+        default=0,
+        help="Number of transformer blocks to swap to CPU (0 = use gradient checkpointing instead)",
+    )
 
     args = p.parse_args()
 
@@ -131,12 +246,14 @@ def discover_images(image_dir):
         te_path = f"{stem}_anima_te.safetensors"
         if not os.path.exists(te_path):
             te_path = None
-        images.append({
-            "image_path": png_path,
-            "npz_path": npz_files[0],  # use first bucket resolution
-            "te_path": te_path,
-            "stem": os.path.basename(stem),
-        })
+        images.append(
+            {
+                "image_path": png_path,
+                "npz_path": npz_files[0],  # use first bucket resolution
+                "te_path": te_path,
+                "stem": os.path.basename(stem),
+            }
+        )
     return images
 
 
@@ -149,7 +266,7 @@ def load_cached_latents(npz_path, device):
     latents = latents.to(device, dtype=torch.bfloat16)
 
     # Extract original size from the matching key
-    size_suffix = latent_key[len("latents_"):]  # e.g. "180x90"
+    size_suffix = latent_key[len("latents_") :]  # e.g. "180x90"
     size_key = f"original_size_{size_suffix}"
     if size_key in data:
         # original_size is stored as [W, H] in the preprocessing pipeline
@@ -193,7 +310,10 @@ def load_and_encode_image(args, device):
 
     logger.info("Loading VAE...")
     vae = qwen_image_autoencoder_kl.load_vae(
-        args.vae, device="cpu", disable_mmap=True, spatial_chunk_size=args.vae_chunk_size
+        args.vae,
+        device="cpu",
+        disable_mmap=True,
+        spatial_chunk_size=args.vae_chunk_size,
     )
     vae.to(device, dtype=torch.bfloat16)
     vae.eval()
@@ -256,13 +376,17 @@ def _encode_prompt(args, device, anima):
     strategy_base.TextEncodingStrategy.set_strategy(encoding_strategy)
 
     text_encoder, _ = anima_utils.load_qwen3_text_encoder(
-        args.text_encoder, dtype=torch.bfloat16, device=device,
+        args.text_encoder,
+        dtype=torch.bfloat16,
+        device=device,
     )
     text_encoder.eval()
 
     with torch.no_grad():
         tokens = tokenize_strategy.tokenize(args.init_prompt)
-        embed = encoding_strategy.encode_tokens(tokenize_strategy, [text_encoder], tokens)
+        embed = encoding_strategy.encode_tokens(
+            tokenize_strategy, [text_encoder], tokens
+        )
         crossattn_emb, _ = anima._preprocess_text_embeds(
             source_hidden_states=embed[0].to(device),
             target_input_ids=embed[2].to(device),
@@ -271,7 +395,9 @@ def _encode_prompt(args, device, anima):
         )
         crossattn_emb[~embed[3].bool()] = 0
         if crossattn_emb.shape[1] < 512:
-            crossattn_emb = F.pad(crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1]))
+            crossattn_emb = F.pad(
+                crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1])
+            )
 
     del text_encoder
     clean_memory_on_device(device)
@@ -288,7 +414,9 @@ def _encode_prompt(args, device, anima):
 def sample_sigmas(args, batch_size, device):
     """Sample noise levels for the optimization step."""
     if args.sigma_sampling == "sigmoid":
-        sigmas = torch.sigmoid(args.sigmoid_scale * torch.randn(batch_size, device=device))
+        sigmas = torch.sigmoid(
+            args.sigmoid_scale * torch.randn(batch_size, device=device)
+        )
     else:
         sigmas = torch.rand(batch_size, device=device)
     return sigmas
@@ -340,6 +468,7 @@ def _install_block_grad_hooks(anima):
             def hook_fn(_module, _grad_input, grad_output):
                 if grad_output[0] is not None:
                     grad_norms[idx].append(grad_output[0].norm().item())
+
             return hook_fn
 
         h = target_module.register_full_backward_hook(make_hook(block_idx))
@@ -407,17 +536,21 @@ def optimize_embedding(args, anima, latents, init_embed, device, log_path=None):
 
         if step % args.log_every == 0 or step == args.steps - 1:
             lr_now = optimizer.param_groups[0]["lr"]
-            pbar.set_postfix(loss=f"{loss_val:.6f}", best=f"{best_loss:.6f}", lr=f"{lr_now:.2e}")
+            pbar.set_postfix(
+                loss=f"{loss_val:.6f}", best=f"{best_loss:.6f}", lr=f"{lr_now:.2e}"
+            )
 
         # Write every step to CSV
         if csv_writer is not None:
-            csv_writer.writerow({
-                "step": step,
-                "loss": f"{loss_val:.6f}",
-                "best_loss": f"{best_loss:.6f}",
-                "lr": f"{optimizer.param_groups[0]['lr']:.2e}",
-                "grad_norm": f"{grad_norm:.6f}",
-            })
+            csv_writer.writerow(
+                {
+                    "step": step,
+                    "loss": f"{loss_val:.6f}",
+                    "best_loss": f"{best_loss:.6f}",
+                    "lr": f"{optimizer.param_groups[0]['lr']:.2e}",
+                    "grad_norm": f"{grad_norm:.6f}",
+                }
+            )
 
     # Finalize logging
     if csv_file is not None:
@@ -459,7 +592,10 @@ def verify_embedding(args, anima, embed, h, w, device, save_path):
     logger.info("Generating verification image...")
 
     vae = qwen_image_autoencoder_kl.load_vae(
-        args.vae, device="cpu", disable_mmap=True, spatial_chunk_size=args.vae_chunk_size
+        args.vae,
+        device="cpu",
+        disable_mmap=True,
+        spatial_chunk_size=args.vae_chunk_size,
     )
     vae.to(device, dtype=torch.bfloat16)
     vae.eval()
@@ -473,11 +609,19 @@ def verify_embedding(args, anima, embed, h, w, device, save_path):
 
     gen = torch.Generator(device=device).manual_seed(args.verify_seed)
     latents = torch.randn(
-        1, anima_models.Anima.LATENT_CHANNELS, 1, h_lat, w_lat,
-        device=device, dtype=torch.bfloat16, generator=gen,
+        1,
+        anima_models.Anima.LATENT_CHANNELS,
+        1,
+        h_lat,
+        w_lat,
+        device=device,
+        dtype=torch.bfloat16,
+        generator=gen,
     )
 
-    timesteps, sigmas = inference_utils.get_timesteps_sigmas(args.verify_steps, args.flow_shift, device)
+    timesteps, sigmas = inference_utils.get_timesteps_sigmas(
+        args.verify_steps, args.flow_shift, device
+    )
     timesteps = (timesteps / 1000).to(device, dtype=torch.bfloat16)
 
     if hasattr(anima, "switch_block_swap_for_inference"):
@@ -489,11 +633,21 @@ def verify_embedding(args, anima, embed, h, w, device, save_path):
                 anima.prepare_block_swap_before_forward()
             t_expand = t.unsqueeze(0)
             noise_pred = anima(latents, t_expand, embed_bf16, padding_mask=padding_mask)
-            latents = inference_utils.step(latents, noise_pred, sigmas, step_i).to(torch.bfloat16)
+            latents = inference_utils.step(latents, noise_pred, sigmas, step_i).to(
+                torch.bfloat16
+            )
 
     with torch.no_grad():
         pixels = vae.decode_to_pixels(latents.squeeze(2))
-    pixels = ((pixels + 1.0) / 2.0).clamp(0, 1).squeeze(0).permute(1, 2, 0).cpu().float().numpy()
+    pixels = (
+        ((pixels + 1.0) / 2.0)
+        .clamp(0, 1)
+        .squeeze(0)
+        .permute(1, 2, 0)
+        .cpu()
+        .float()
+        .numpy()
+    )
     pixels = (pixels * 255).clip(0, 255).astype("uint8")
     Image.fromarray(pixels).save(save_path)
     logger.info(f"Saved verification image: {save_path}")
@@ -518,7 +672,9 @@ def process_single(args, anima, device):
     init_embed = create_initial_embedding(args, device, anima)
 
     log_path = os.path.join(args.logs_dir, f"{stem}.csv")
-    best_embed, best_loss = optimize_embedding(args, anima, latents, init_embed, device, log_path=log_path)
+    best_embed, best_loss = optimize_embedding(
+        args, anima, latents, init_embed, device, log_path=log_path
+    )
 
     out_path = os.path.join(args.results_dir, f"{stem}_inverted.safetensors")
     save_dict = {"crossattn_emb": best_embed.squeeze(0).to(torch.bfloat16)}
@@ -549,7 +705,7 @@ def process_batch(args, anima, device):
         random.shuffle(images)
 
     if args.num_images is not None:
-        images = images[:args.num_images]
+        images = images[: args.num_images]
 
     logger.info(f"Processing {len(images)} images from {args.image_dir}")
     os.makedirs(args.results_dir, exist_ok=True)
@@ -557,7 +713,7 @@ def process_batch(args, anima, device):
 
     for i, img_info in enumerate(images):
         stem = img_info["stem"]
-        logger.info(f"[{i+1}/{len(images)}] {stem}")
+        logger.info(f"[{i + 1}/{len(images)}] {stem}")
 
         out_path = os.path.join(args.results_dir, f"{stem}_inverted.safetensors")
         if os.path.exists(out_path):
@@ -568,11 +724,15 @@ def process_batch(args, anima, device):
         latents, orig_h, orig_w = load_cached_latents(img_info["npz_path"], device)
 
         # Initialize from cached TE embedding
-        init_embed = create_initial_embedding(args, device, anima, te_path=img_info["te_path"])
+        init_embed = create_initial_embedding(
+            args, device, anima, te_path=img_info["te_path"]
+        )
 
         # Optimize
         log_path = os.path.join(args.logs_dir, f"{stem}.csv")
-        best_embed, best_loss = optimize_embedding(args, anima, latents, init_embed, device, log_path=log_path)
+        best_embed, best_loss = optimize_embedding(
+            args, anima, latents, init_embed, device, log_path=log_path
+        )
 
         # Save
         save_dict = {"crossattn_emb": best_embed.squeeze(0).to(torch.bfloat16)}
@@ -588,7 +748,9 @@ def process_batch(args, anima, device):
 
         if args.verify and args.vae:
             verify_path = os.path.join(args.results_dir, f"{stem}_verify.png")
-            verify_embedding(args, anima, best_embed, orig_h, orig_w, device, verify_path)
+            verify_embedding(
+                args, anima, best_embed, orig_h, orig_w, device, verify_path
+            )
 
 
 def main():

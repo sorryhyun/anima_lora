@@ -40,7 +40,7 @@ PROBE_TIMESTEPS = [0.1, 0.3, 0.5, 0.7, 0.9]  # representative timestep values
 def build_random_projection(in_dim: int, out_dim: int, seed: int = 42) -> torch.Tensor:
     """Fixed random projection matrix (stand-in for untrained pooled_text_proj)."""
     g = torch.Generator().manual_seed(seed)
-    W = torch.randn(in_dim, out_dim, generator=g) / (in_dim ** 0.5)
+    W = torch.randn(in_dim, out_dim, generator=g) / (in_dim**0.5)
     return W
 
 
@@ -97,12 +97,14 @@ def probe_injection(
                 def hook_fn(module, input, output, _s=scaled):
                     emb, adaln_lora = output
                     return emb + _s.to(emb.dtype), adaln_lora
+
                 handle = model.t_embedder[1].register_forward_hook(hook_fn)
 
             elif injection_point == "after_norm":
                 # Hook on t_embedding_norm output: modify emb after norm
                 def hook_fn(module, input, output, _s=scaled):
                     return output + _s.to(output.dtype)
+
                 handle = model.t_embedding_norm.register_forward_hook(hook_fn)
 
             elif injection_point == "adaln_lora":
@@ -110,11 +112,14 @@ def probe_injection(
                 def hook_fn(module, input, output, _s=scaled):
                     emb, adaln_lora = output
                     return emb, adaln_lora + _s.to(adaln_lora.dtype)
+
                 handle = model.t_embedder[1].register_forward_hook(hook_fn)
 
             try:
                 with torch.no_grad():
-                    perturbed = model(latents, t_tensor, embed, padding_mask=padding_mask)
+                    perturbed = model(
+                        latents, t_tensor, embed, padding_mask=padding_mask
+                    )
                 mse = F.mse_loss(perturbed.float(), baseline.float()).item()
                 mses[alpha] = mse
             finally:
@@ -142,7 +147,9 @@ def run_full_generation(
     seed_g = torch.Generator(device="cpu").manual_seed(seed)
     shape = (1, 16, 1, height // 8, width // 8)
     latents = torch.randn(shape, generator=seed_g, dtype=torch.bfloat16).to(DEVICE)
-    padding_mask = torch.zeros(1, 1, height // 8, width // 8, device=DEVICE, dtype=torch.bfloat16)
+    padding_mask = torch.zeros(
+        1, 1, height // 8, width // 8, device=DEVICE, dtype=torch.bfloat16
+    )
 
     timesteps, sigmas = inference_utils.get_timesteps_sigmas(steps, 1.0, DEVICE)
     timesteps = (timesteps / 1000).to(DEVICE, dtype=torch.bfloat16)
@@ -152,23 +159,33 @@ def run_full_generation(
     if alpha > 0.0:
         scaled = (alpha * delta_2048).unsqueeze(0).unsqueeze(0)
         if injection_point == "after_norm":
+
             def hook_fn(module, input, output, _s=scaled):
                 return output + _s.to(output.dtype)
+
             handle = model.t_embedding_norm.register_forward_hook(hook_fn)
         elif injection_point == "before_norm":
+
             def hook_fn(module, input, output, _s=scaled):
                 emb, adaln = output
                 return emb + _s.to(emb.dtype), adaln
+
             handle = model.t_embedder[1].register_forward_hook(hook_fn)
 
     try:
         with torch.no_grad():
-            for i, t in enumerate(tqdm(timesteps, desc=f"α={alpha:.1f} ({injection_point})", leave=False)):
+            for i, t in enumerate(
+                tqdm(timesteps, desc=f"α={alpha:.1f} ({injection_point})", leave=False)
+            ):
                 t_expand = t.unsqueeze(0)
                 noise_pred = model(latents, t_expand, embed, padding_mask=padding_mask)
-                uncond_pred = model(latents, t_expand, neg_embed, padding_mask=padding_mask)
+                uncond_pred = model(
+                    latents, t_expand, neg_embed, padding_mask=padding_mask
+                )
                 noise_pred = uncond_pred + guidance_scale * (noise_pred - uncond_pred)
-                latents = inference_utils.step(latents, noise_pred, sigmas, i).to(latents.dtype)
+                latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
+                    latents.dtype
+                )
     finally:
         if handle is not None:
             handle.remove()
@@ -178,8 +195,12 @@ def run_full_generation(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--generate", action="store_true", help="Also generate full images (slow)")
-    parser.add_argument("--steps", type=int, default=20, help="Inference steps for image generation")
+    parser.add_argument(
+        "--generate", action="store_true", help="Also generate full images (slow)"
+    )
+    parser.add_argument(
+        "--steps", type=int, default=20, help="Inference steps for image generation"
+    )
     args = parser.parse_args()
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -193,8 +214,8 @@ def main():
 
     quality_dir = torch.load(qdir_path, weights_only=True)  # (1024,)
     test_data = torch.load(temb_path, weights_only=True)
-    test_embed = test_data["test_embed"]   # (1, 512, 1024)
-    neg_embed = test_data["neg_embed"]     # (1, 512, 1024)
+    test_embed = test_data["test_embed"]  # (1, 512, 1024)
+    neg_embed = test_data["neg_embed"]  # (1, 512, 1024)
 
     print("=" * 60)
     print("Modulation Guidance — Sensitivity Probe (V3/V4)")
@@ -203,8 +224,12 @@ def main():
     # Build random projections
     proj_2048 = build_random_projection(1024, 2048)
     proj_6144 = build_random_projection(1024, 6144, seed=43)
-    delta_2048 = (quality_dir.float() @ proj_2048).to(torch.bfloat16).to(DEVICE)  # (2048,)
-    delta_6144 = (quality_dir.float() @ proj_6144).to(torch.bfloat16).to(DEVICE)  # (6144,)
+    delta_2048 = (
+        (quality_dir.float() @ proj_2048).to(torch.bfloat16).to(DEVICE)
+    )  # (2048,)
+    delta_6144 = (
+        (quality_dir.float() @ proj_6144).to(torch.bfloat16).to(DEVICE)
+    )  # (6144,)
 
     # Normalize deltas so alpha is interpretable
     delta_2048 = delta_2048 / delta_2048.norm()
@@ -223,9 +248,13 @@ def main():
     model.eval().requires_grad_(False)
 
     # Prepare fixed inputs
-    latents = torch.randn(1, 16, 1, 128 // 8, 128 // 8, device=DEVICE, dtype=torch.bfloat16)
+    latents = torch.randn(
+        1, 16, 1, 128 // 8, 128 // 8, device=DEVICE, dtype=torch.bfloat16
+    )
     torch.manual_seed(42)  # for reproducibility
-    padding_mask = torch.zeros(1, 1, 128 // 8, 128 // 8, device=DEVICE, dtype=torch.bfloat16)
+    padding_mask = torch.zeros(
+        1, 1, 128 // 8, 128 // 8, device=DEVICE, dtype=torch.bfloat16
+    )
     embed = test_embed.to(DEVICE, dtype=torch.bfloat16)
 
     # ==============================================================
@@ -236,9 +265,15 @@ def main():
     print("=" * 60)
 
     v3_results = probe_injection(
-        model, latents, embed, padding_mask,
-        delta_2048, delta_6144,
-        "after_norm", ALPHAS, PROBE_TIMESTEPS,
+        model,
+        latents,
+        embed,
+        padding_mask,
+        delta_2048,
+        delta_6144,
+        "after_norm",
+        ALPHAS,
+        PROBE_TIMESTEPS,
     )
 
     # Check: does MSE increase with alpha?
@@ -254,7 +289,9 @@ def main():
     v3_pass = overall_sensitivity > 1e-8  # perturbations cause measurable change
 
     print(f"\n  Overall sensitivity (MSE @ α={ALPHAS[-1]}): {overall_sensitivity:.6e}")
-    print(f"  VERDICT: {'PASS' if v3_pass else 'FAIL'} — output {'is' if v3_pass else 'is NOT'} sensitive to emb perturbations")
+    print(
+        f"  VERDICT: {'PASS' if v3_pass else 'FAIL'} — output {'is' if v3_pass else 'is NOT'} sensitive to emb perturbations"
+    )
 
     # Check smoothness: MSE should increase monotonically with alpha
     monotonic_count = 0
@@ -280,9 +317,15 @@ def main():
     for ip in injection_points:
         print(f"\n  Probing: {ip}")
         r = probe_injection(
-            model, latents, embed, padding_mask,
-            delta_2048, delta_6144,
-            ip, ALPHAS, [0.5],  # single representative timestep
+            model,
+            latents,
+            embed,
+            padding_mask,
+            delta_2048,
+            delta_6144,
+            ip,
+            ALPHAS,
+            [0.5],  # single representative timestep
         )
         v4_results[ip] = r
 
@@ -303,7 +346,7 @@ def main():
             best_ip = ip
 
     # Check stability: does output collapse at high alpha?
-    print(f"\n  Stability check (MSE growth rate α=4→8):")
+    print("\n  Stability check (MSE growth rate α=4→8):")
     stable_ips = []
     for ip in injection_points:
         m4 = v4_results[ip][0.5][4.0]
@@ -311,7 +354,9 @@ def main():
         growth = m8 / (m4 + 1e-12)
         is_stable = growth < 10  # less than 10x growth = graceful
         stable_ips.append(is_stable)
-        print(f"    {ip:15s}: growth={growth:.2f}x {'(stable)' if is_stable else '(collapse)'}")
+        print(
+            f"    {ip:15s}: growth={growth:.2f}x {'(stable)' if is_stable else '(collapse)'}"
+        )
 
     v4_best = best_ip
     print(f"\n  Best injection point: {v4_best} (highest sensitivity)")
@@ -335,9 +380,14 @@ def main():
         all_latents = {}
         for alpha in gen_alphas:
             lat = run_full_generation(
-                model, gen_embed, neg, delta_2048,
-                alpha=alpha, injection_point="after_norm",
-                seed=42, steps=args.steps,
+                model,
+                gen_embed,
+                neg,
+                delta_2048,
+                alpha=alpha,
+                injection_point="after_norm",
+                seed=42,
+                steps=args.steps,
             )
             all_latents[alpha] = lat.cpu()
 
@@ -347,7 +397,9 @@ def main():
         clean_memory_on_device(DEVICE)
 
         print("Loading VAE...")
-        vae = qwen_image_autoencoder_kl.load_vae(VAE_PATH, spatial_chunk_size=64, disable_cache=True)
+        vae = qwen_image_autoencoder_kl.load_vae(
+            VAE_PATH, spatial_chunk_size=64, disable_cache=True
+        )
         vae.to(DEVICE, dtype=torch.bfloat16).eval()
 
         img_dir = RESULTS_DIR / "v3_images"
@@ -355,7 +407,9 @@ def main():
         for alpha, lat in all_latents.items():
             pixels = decode_latent(vae, lat, DEVICE)
             img = Image.fromarray(
-                ((pixels.permute(1, 2, 0).float().numpy() + 1) / 2 * 255).clip(0, 255).astype(np.uint8)
+                ((pixels.permute(1, 2, 0).float().numpy() + 1) / 2 * 255)
+                .clip(0, 255)
+                .astype(np.uint8)
             )
             img.save(img_dir / f"alpha_{alpha:.1f}.png")
             print(f"  Saved: {img_dir}/alpha_{alpha:.1f}.png")

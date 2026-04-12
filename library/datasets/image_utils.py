@@ -414,10 +414,8 @@ class ImageLoadingDataset(torch.utils.data.Dataset):
         try:
             image = Image.open(img_path).convert("RGB")
             tensor_pil = transforms.functional.pil_to_tensor(image)
-        except Exception as e:
-            logger.error(
-                f"Could not load image path"
-            )
+        except Exception:
+            logger.error("Could not load image path")
             return None
 
         return (tensor_pil, img_path)

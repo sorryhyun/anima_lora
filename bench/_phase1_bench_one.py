@@ -25,9 +25,15 @@ def _sync():
 
 
 def _make_qkv(q_len, kv_len):
-    q = torch.randn(BATCH, q_len, N_HEADS, HEAD_DIM, dtype=DTYPE, device="cuda", requires_grad=True)
-    k = torch.randn(BATCH, kv_len, N_HEADS, HEAD_DIM, dtype=DTYPE, device="cuda", requires_grad=True)
-    v = torch.randn(BATCH, kv_len, N_HEADS, HEAD_DIM, dtype=DTYPE, device="cuda", requires_grad=True)
+    q = torch.randn(
+        BATCH, q_len, N_HEADS, HEAD_DIM, dtype=DTYPE, device="cuda", requires_grad=True
+    )
+    k = torch.randn(
+        BATCH, kv_len, N_HEADS, HEAD_DIM, dtype=DTYPE, device="cuda", requires_grad=True
+    )
+    v = torch.randn(
+        BATCH, kv_len, N_HEADS, HEAD_DIM, dtype=DTYPE, device="cuda", requires_grad=True
+    )
     return q, k, v
 
 

@@ -81,9 +81,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.bucket_no_upscale = None
         self.bucket_info = None  # for metadata
 
-        self.current_epoch: int = (
-            0
-        )
+        self.current_epoch: int = 0
 
         self.current_step: int = 0
         self.max_train_steps: int = 0
@@ -136,8 +134,7 @@ class BaseDataset(torch.utils.data.Dataset):
                 min_bucket_reso - min_bucket_reso % bucket_reso_steps
             )
             logger.warning(
-                f"min_bucket_reso is adjusted to be multiple of bucket_reso_steps"
-                f""
+                "min_bucket_reso is adjusted to be multiple of bucket_reso_steps"
             )
             min_bucket_reso = adjusted_min_bucket_reso
         if max_bucket_reso % bucket_reso_steps != 0:
@@ -147,8 +144,7 @@ class BaseDataset(torch.utils.data.Dataset):
                 - max_bucket_reso % bucket_reso_steps
             )
             logger.warning(
-                f"max_bucket_reso is adjusted to be multiple of bucket_reso_steps"
-                f""
+                "max_bucket_reso is adjusted to be multiple of bucket_reso_steps"
             )
             max_bucket_reso = adjusted_max_bucket_reso
 
@@ -168,9 +164,7 @@ class BaseDataset(torch.utils.data.Dataset):
         self.caching_mode = mode
 
     def set_current_epoch(self, epoch):
-        if (
-            not self.current_epoch == epoch
-        ):
+        if not self.current_epoch == epoch:
             if epoch > self.current_epoch:
                 logger.info(
                     "epoch is incremented. current_epoch: {}, epoch: {}".format(
@@ -442,9 +436,7 @@ class BaseDataset(torch.utils.data.Dataset):
             logger.info("prepare dataset")
 
         if self.enable_bucket:
-            if (
-                self.bucket_manager is None
-            ):
+            if self.bucket_manager is None:
                 self.bucket_manager = BucketManager(
                     self.bucket_no_upscale,
                     (self.width, self.height),
@@ -453,7 +445,9 @@ class BaseDataset(torch.utils.data.Dataset):
                     self.bucket_reso_steps,
                 )
                 if not self.bucket_no_upscale:
-                    self.bucket_manager.make_buckets(constant_token_buckets=constant_token_buckets)
+                    self.bucket_manager.make_buckets(
+                        constant_token_buckets=constant_token_buckets
+                    )
                 else:
                     logger.warning(
                         "min_bucket_reso and max_bucket_reso are ignored if bucket_no_upscale is set, because bucket reso is defined by image size automatically"
@@ -473,9 +467,7 @@ class BaseDataset(torch.utils.data.Dataset):
             self.bucket_manager = BucketManager(
                 False, (self.width, self.height), None, None, None
             )
-            self.bucket_manager.set_predefined_resos(
-                [(self.width, self.height)]
-            )
+            self.bucket_manager.set_predefined_resos([(self.width, self.height)])
             for image_info in self.image_data.values():
                 image_width, image_height = image_info.image_size
                 image_info.bucket_reso, image_info.resized_size, _ = (
@@ -490,9 +482,7 @@ class BaseDataset(torch.utils.data.Dataset):
 
         if self.enable_bucket:
             self.bucket_info = {"buckets": {}}
-            logger.info(
-                "number of images (including repeats)"
-            )
+            logger.info("number of images (including repeats)")
             for i, (reso, bucket) in enumerate(
                 zip(self.bucket_manager.resos, self.bucket_manager.buckets)
             ):
@@ -1131,7 +1121,7 @@ class BaseDataset(torch.utils.data.Dataset):
                         )
                     elif im_h > self.height or im_w > self.width:
                         assert subset.random_crop, (
-                            f"image too large, but cropping and bucketing are disabled"
+                            "image too large, but cropping and bucketing are disabled"
                         )
                         if im_h > self.height:
                             p = random.randint(0, im_h - self.height)
@@ -1142,7 +1132,7 @@ class BaseDataset(torch.utils.data.Dataset):
 
                     im_h, im_w = img.shape[0:2]
                     assert im_h == self.height and im_w == self.width, (
-                        f"image size is small"
+                        "image size is small"
                     )
 
                     original_size = [im_w, im_h]
@@ -1295,7 +1285,12 @@ class BaseDataset(torch.utils.data.Dataset):
         example["custom_attributes"] = custom_attributes
         example["loss_weights"] = torch.FloatTensor(loss_weights)
         example["text_encoder_outputs_list"] = none_or_stack_elements(
-            text_encoder_outputs_list, lambda x: x if isinstance(x, torch.Tensor) else torch.tensor(x, dtype=torch.float32)
+            text_encoder_outputs_list,
+            lambda x: (
+                x
+                if isinstance(x, torch.Tensor)
+                else torch.tensor(x, dtype=torch.float32)
+            ),
         )
         example["input_ids_list"] = none_or_stack_elements(input_ids_list, lambda x: x)
 
@@ -1450,9 +1445,7 @@ class DreamBoothDataset(BaseDataset):
             resolution, network_multiplier, debug_dataset, resize_interpolation
         )
 
-        assert resolution is not None, (
-            "resolution is required"
-        )
+        assert resolution is not None, "resolution is required"
 
         self.batch_size = batch_size
         self.size = min(self.width, self.height)
@@ -1495,13 +1488,9 @@ class DreamBoothDataset(BaseDataset):
                         try:
                             lines = f.readlines()
                         except UnicodeDecodeError as e:
-                            logger.error(
-                                f"illegal char in file (not UTF-8)"
-                            )
+                            logger.error("illegal char in file (not UTF-8)")
                             raise e
-                        assert len(lines) > 0, (
-                            f"caption file is empty"
-                        )
+                        assert len(lines) > 0, "caption file is empty"
                         if enable_wildcard:
                             caption = "\n".join(
                                 [line.strip() for line in lines if line.strip() != ""]
@@ -1519,9 +1508,7 @@ class DreamBoothDataset(BaseDataset):
             info_cache_file = os.path.join(subset.image_dir, self.IMAGE_INFO_CACHE_FILE)
             use_cached_info_for_subset = subset.cache_info
             if use_cached_info_for_subset:
-                logger.info(
-                    f"using cached image info for this subset"
-                )
+                logger.info("using cached image info for this subset")
                 if not os.path.isfile(info_cache_file):
                     logger.warning(
                         "image info file not found. You can ignore this warning if this is the first time to use this subset"
@@ -1663,9 +1650,7 @@ class DreamBoothDataset(BaseDataset):
                     logger.warning(missing_caption)
 
             if not use_cached_info_for_subset and subset.cache_info:
-                logger.info(
-                    f"cache image info for"
-                )
+                logger.info("cache image info for")
                 sizes = [
                     self.get_image_size(img_path)
                     for img_path in tqdm(img_paths, desc="get image size")
@@ -1675,9 +1660,7 @@ class DreamBoothDataset(BaseDataset):
                     matas[img_path] = {"caption": caption, "resolution": list(size)}
                 with open(info_cache_file, "w", encoding="utf-8") as f:
                     json.dump(matas, f, ensure_ascii=False, indent=2)
-                logger.info(
-                    f"cache image info done for"
-                )
+                logger.info("cache image info done for")
 
             return img_paths, captions, sizes
 
@@ -1747,14 +1730,10 @@ class DreamBoothDataset(BaseDataset):
 
         logger.info(f"{num_reg_images} reg images with repeats.")
         if num_train_images < num_reg_images:
-            logger.warning(
-                "some of reg images are not used"
-            )
+            logger.warning("some of reg images are not used")
 
         if num_reg_images == 0:
-            logger.warning(
-                "no regularization images"
-            )
+            logger.warning("no regularization images")
         else:
             n = 0
             first_loop = True
@@ -1969,12 +1948,8 @@ def load_arbitrary_dataset(args, tokenizer=None) -> MinimalDataset:
 def debug_dataset(train_dataset, show_input_ids=False):
     import cv2
 
-    logger.info(
-        f"Total dataset length (steps)"
-    )
-    logger.info(
-        "`S` for next step, `E` for next epoch no. , Escape for exit."
-    )
+    logger.info("Total dataset length (steps)")
+    logger.info("`S` for next step, `E` for next epoch no. , Escape for exit.")
 
     epoch = 1
     while True:

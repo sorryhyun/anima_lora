@@ -77,12 +77,8 @@ def main(args):
                 "adaln.modulation.mlp", "adaln_modulation_mlp"
             )
             # Fused projection names (must come before single-component replacements)
-            original_module_name = original_module_name.replace(
-                "qkv.proj", "qkv_proj"
-            )
-            original_module_name = original_module_name.replace(
-                "kv.proj", "kv_proj"
-            )
+            original_module_name = original_module_name.replace("qkv.proj", "qkv_proj")
+            original_module_name = original_module_name.replace("kv.proj", "kv_proj")
             original_module_name = original_module_name.replace(
                 "adaln.fused.down", "adaln_fused_down"
             )

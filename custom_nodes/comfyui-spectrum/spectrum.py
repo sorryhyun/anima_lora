@@ -46,8 +46,16 @@ def _spectrum_fast_forward(
 
 
 class SpectrumState:
-    def __init__(self, window_size: float, flex_window: float, warmup_steps: int,
-                 w: float, m: int, lam: float, num_steps: int):
+    def __init__(
+        self,
+        window_size: float,
+        flex_window: float,
+        warmup_steps: int,
+        w: float,
+        m: int,
+        lam: float,
+        num_steps: int,
+    ):
         self.window_size = window_size
         self.flex_window = flex_window
         self.warmup_steps = warmup_steps
@@ -98,9 +106,24 @@ class SpectrumState:
             self._hook_installed = False
 
 
-def spectrum_sample(model, seed, steps, cfg, sampler_name, scheduler, positive,
-                    negative, latent_image, denoise, window_size, flex_window,
-                    warmup_steps, blend_w, cheby_degree, ridge_lambda):
+def spectrum_sample(
+    model,
+    seed,
+    steps,
+    cfg,
+    sampler_name,
+    scheduler,
+    positive,
+    negative,
+    latent_image,
+    denoise,
+    window_size,
+    flex_window,
+    warmup_steps,
+    blend_w,
+    cheby_degree,
+    ridge_lambda,
+):
     """Shared Spectrum sampling logic used by all node tiers."""
     m = model.clone()
 
@@ -171,13 +194,14 @@ def spectrum_sample(model, seed, steps, cfg, sampler_name, scheduler, positive,
             for idx, cou in enumerate(cond_or_uncond):
                 if cou not in state.forecasters:
                     state.forecasters[cou] = SpectrumPredictor(
-                        state.m_param, state.lam, state.w,
-                        feat.device, feat_chunks[idx].shape,
+                        state.m_param,
+                        state.lam,
+                        state.w,
+                        feat.device,
+                        feat_chunks[idx].shape,
                         state.num_steps,
                     )
-                state.forecasters[cou].update(
-                    float(state.step_idx), feat_chunks[idx]
-                )
+                state.forecasters[cou].update(float(state.step_idx), feat_chunks[idx])
 
         return result
 
@@ -196,10 +220,20 @@ def spectrum_sample(model, seed, steps, cfg, sampler_name, scheduler, positive,
     disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
     samples = comfy.sample.sample(
-        m, noise, steps, cfg, sampler_name, scheduler,
-        positive, negative, latent_img,
-        denoise=denoise, noise_mask=noise_mask,
-        callback=callback, disable_pbar=disable_pbar, seed=seed,
+        m,
+        noise,
+        steps,
+        cfg,
+        sampler_name,
+        scheduler,
+        positive,
+        negative,
+        latent_img,
+        denoise=denoise,
+        noise_mask=noise_mask,
+        callback=callback,
+        disable_pbar=disable_pbar,
+        seed=seed,
     )
 
     if state.step_idx >= 0:

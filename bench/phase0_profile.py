@@ -27,11 +27,11 @@ import torch
 BATCH = 2
 N_HEADS = 32
 HEAD_DIM = 64
-SELF_SEQLEN = 4096       # image tokens (constant-token bucketing)
-CROSS_KV_SEQLEN = 256    # text encoder output (padded to max_length)
+SELF_SEQLEN = 4096  # image tokens (constant-token bucketing)
+CROSS_KV_SEQLEN = 256  # text encoder output (padded to max_length)
 DTYPE = torch.bfloat16
 
-WARMUP = 5   # includes JIT compilation
+WARMUP = 5  # includes JIT compilation
 ITERS = 30
 
 
@@ -40,15 +40,40 @@ def _sync():
 
 
 def _make_qkv(batch, q_len, kv_len, heads, dim, dtype, requires_grad=False):
-    q = torch.randn(batch, q_len, heads, dim, dtype=dtype, device="cuda", requires_grad=requires_grad)
-    k = torch.randn(batch, kv_len, heads, dim, dtype=dtype, device="cuda", requires_grad=requires_grad)
-    v = torch.randn(batch, kv_len, heads, dim, dtype=dtype, device="cuda", requires_grad=requires_grad)
+    q = torch.randn(
+        batch,
+        q_len,
+        heads,
+        dim,
+        dtype=dtype,
+        device="cuda",
+        requires_grad=requires_grad,
+    )
+    k = torch.randn(
+        batch,
+        kv_len,
+        heads,
+        dim,
+        dtype=dtype,
+        device="cuda",
+        requires_grad=requires_grad,
+    )
+    v = torch.randn(
+        batch,
+        kv_len,
+        heads,
+        dim,
+        dtype=dtype,
+        device="cuda",
+        requires_grad=requires_grad,
+    )
     return q, k, v
 
 
 # ---------------------------------------------------------------------------
 # Timing helpers
 # ---------------------------------------------------------------------------
+
 
 def bench_forward(q, k, v, flash_attn_func, warmup=WARMUP, iters=ITERS):
     """Time forward only (no grad)."""
@@ -75,7 +100,7 @@ def bench_backward(q, k, v, flash_attn_func, warmup=WARMUP, iters=ITERS):
         grad = torch.randn_like(out)
         out.backward(grad)
     except Exception as e:
-        return None, str(e).split('\n')[0]
+        return None, str(e).split("\n")[0]
 
     for _ in range(warmup - 1):
         out, _lse = flash_attn_func(q, k, v)
@@ -110,12 +135,15 @@ def bench_backward(q, k, v, flash_attn_func, warmup=WARMUP, iters=ITERS):
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     num_stages = os.environ.get("FA4_SM120_FWD_STAGES", "1")
     print("=" * 70)
     print(f"Phase 0: SM120 FA4 profiling  (num_stages={num_stages})")
-    print(f"Shapes: B={BATCH}, H={N_HEADS}, D={HEAD_DIM}, "
-          f"self_seq={SELF_SEQLEN}, cross_kv={CROSS_KV_SEQLEN}")
+    print(
+        f"Shapes: B={BATCH}, H={N_HEADS}, D={HEAD_DIM}, "
+        f"self_seq={SELF_SEQLEN}, cross_kv={CROSS_KV_SEQLEN}"
+    )
     print("=" * 70)
 
     from flash_attn.cute import flash_attn_func as fa4_func_raw
@@ -133,7 +161,9 @@ def main():
     print(f"  Forward only:  {fwd_ms:.2f} ms")
     del q, k, v
 
-    q, k, v = _make_qkv(BATCH, SELF_SEQLEN, SELF_SEQLEN, N_HEADS, HEAD_DIM, DTYPE, requires_grad=True)
+    q, k, v = _make_qkv(
+        BATCH, SELF_SEQLEN, SELF_SEQLEN, N_HEADS, HEAD_DIM, DTYPE, requires_grad=True
+    )
     result = bench_backward(q, k, v, fa4_func_raw)
     bwd_ok = result[0] is not None
     if bwd_ok:
@@ -145,7 +175,7 @@ def main():
         print(f"  Bwd/Fwd ratio:  {bwd_ms / fwd_grad_ms:.2f}x")
     else:
         print(f"  Backward FAILED: {result[1]}")
-        print(f"  (Forward-only numbers still valid)")
+        print("  (Forward-only numbers still valid)")
     del q, k, v
 
     # --- Cross-attention ---
@@ -157,7 +187,15 @@ def main():
     del q, k, v
 
     if bwd_ok:
-        q, k, v = _make_qkv(BATCH, SELF_SEQLEN, CROSS_KV_SEQLEN, N_HEADS, HEAD_DIM, DTYPE, requires_grad=True)
+        q, k, v = _make_qkv(
+            BATCH,
+            SELF_SEQLEN,
+            CROSS_KV_SEQLEN,
+            N_HEADS,
+            HEAD_DIM,
+            DTYPE,
+            requires_grad=True,
+        )
         result_cross = bench_backward(q, k, v, fa4_func_raw)
         if result_cross[0] is not None:
             fwd_grad_ms_cross, bwd_ms_cross = result_cross
@@ -175,7 +213,7 @@ def main():
     print("Summary")
     print("=" * 70)
 
-    N_SELF = 24   # Anima DiT layers
+    N_SELF = 24  # Anima DiT layers
     N_CROSS = 24
 
     if bwd_ok:
@@ -185,7 +223,7 @@ def main():
 
         print(f"\n  Per-layer self-attn  (fwd+bwd): {total_ms:.2f} ms")
         print(f"  Per-layer cross-attn (fwd+bwd): {total_ms_cross:.2f} ms")
-        print(f"\n  Estimated attention time per training step:")
+        print("\n  Estimated attention time per training step:")
         print(f"    Self-attn  ({N_SELF} layers): {self_total:.1f} ms")
         print(f"    Cross-attn ({N_CROSS} layers): {cross_total:.1f} ms")
         print(f"    Total attention:        {attn_total:.1f} ms")
@@ -202,10 +240,10 @@ def main():
         self_fwd = fwd_ms * N_SELF
         cross_fwd = fwd_ms_cross * N_CROSS
         fwd_total = self_fwd + cross_fwd
-        print(f"\n  NOTE: Backward compilation failed — forward-only numbers below")
+        print("\n  NOTE: Backward compilation failed — forward-only numbers below")
         print(f"\n  Per-layer self-attn  (fwd): {fwd_ms:.2f} ms")
         print(f"  Per-layer cross-attn (fwd): {fwd_ms_cross:.2f} ms")
-        print(f"\n  Estimated forward attention per training step:")
+        print("\n  Estimated forward attention per training step:")
         print(f"    Self-attn  ({N_SELF} layers): {self_fwd:.1f} ms")
         print(f"    Cross-attn ({N_CROSS} layers): {cross_fwd:.1f} ms")
         print(f"    Total forward attention: {fwd_total:.1f} ms")

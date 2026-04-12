@@ -376,12 +376,18 @@ class Attention(nn.Module):
         if self.is_selfattn:
             # Self-attention: query_dim == context_dim, single std for fused QKV
             std = 1.0 / math.sqrt(self._query_dim)
-            torch.nn.init.trunc_normal_(self.qkv_proj.weight, std=std, a=-3 * std, b=3 * std)
+            torch.nn.init.trunc_normal_(
+                self.qkv_proj.weight, std=std, a=-3 * std, b=3 * std
+            )
         else:
             std = 1.0 / math.sqrt(self._query_dim)
-            torch.nn.init.trunc_normal_(self.q_proj.weight, std=std, a=-3 * std, b=3 * std)
+            torch.nn.init.trunc_normal_(
+                self.q_proj.weight, std=std, a=-3 * std, b=3 * std
+            )
             std = 1.0 / math.sqrt(self._context_dim)
-            torch.nn.init.trunc_normal_(self.kv_proj.weight, std=std, a=-3 * std, b=3 * std)
+            torch.nn.init.trunc_normal_(
+                self.kv_proj.weight, std=std, a=-3 * std, b=3 * std
+            )
 
         std = 1.0 / math.sqrt(self._inner_dim)
         torch.nn.init.trunc_normal_(
@@ -1631,11 +1637,18 @@ class Anima(nn.Module):
             else:
                 pooled_text = None
             if pooled_text is not None:
-                t_embedding_B_T_D = t_embedding_B_T_D + self.pooled_text_proj(pooled_text).unsqueeze(1)
+                t_embedding_B_T_D = t_embedding_B_T_D + self.pooled_text_proj(
+                    pooled_text
+                ).unsqueeze(1)
 
         # Phase 2: modulation guidance delta (precomputed, added every step)
-        if hasattr(self, "_mod_guidance_delta") and self._mod_guidance_delta is not None:
-            t_embedding_B_T_D = t_embedding_B_T_D + self._mod_guidance_delta.unsqueeze(1)
+        if (
+            hasattr(self, "_mod_guidance_delta")
+            and self._mod_guidance_delta is not None
+        ):
+            t_embedding_B_T_D = t_embedding_B_T_D + self._mod_guidance_delta.unsqueeze(
+                1
+            )
 
         block_kwargs = {
             "rope_cos_sin": rope_cos_sin,

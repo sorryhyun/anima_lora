@@ -116,10 +116,18 @@ class ChebyshevForecaster:
 class SpectrumPredictor:
     """Chebyshev polynomial forecaster with optional first-order Taylor blending."""
 
-    def __init__(self, m: int, lam: float, w: float, device: torch.device,
-                 feature_shape, total_steps: int = 30):
-        self.cheb = ChebyshevForecaster(M=m, K=100, lam=lam, device=device,
-                                         total_steps=total_steps)
+    def __init__(
+        self,
+        m: int,
+        lam: float,
+        w: float,
+        device: torch.device,
+        feature_shape,
+        total_steps: int = 30,
+    ):
+        self.cheb = ChebyshevForecaster(
+            M=m, K=100, lam=lam, device=device, total_steps=total_steps
+        )
         self.w = w
 
     def update(self, t: float, h: torch.Tensor):

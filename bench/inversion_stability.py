@@ -31,7 +31,12 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from library import anima_models, anima_utils, inference_utils, qwen_image_autoencoder_kl
+from library import (
+    anima_models,
+    anima_utils,
+    inference_utils,
+    qwen_image_autoencoder_kl,
+)
 from library.device_utils import clean_memory_on_device
 
 BENCH_DIR = Path(__file__).resolve().parent
@@ -58,14 +63,28 @@ def inversion_step(anima, latents, embed_bf16, sigmas, padding_mask):
     noise = torch.randn_like(lat)
     sv = sigmas.view(-1, 1, 1, 1)
     noisy = ((1.0 - sv) * lat + sv * noise).to(torch.bfloat16).unsqueeze(2)
-    pred = anima(noisy, sigmas.to(torch.bfloat16), embed_bf16.expand(n_t, -1, -1),
-                 padding_mask=padding_mask.expand(n_t, -1, -1, -1))
+    pred = anima(
+        noisy,
+        sigmas.to(torch.bfloat16),
+        embed_bf16.expand(n_t, -1, -1),
+        padding_mask=padding_mask.expand(n_t, -1, -1, -1),
+    )
     target = noise - lat
     return F.mse_loss(pred.squeeze(2).float(), target.float())
 
 
-def run_inversion(anima, latents, init_embed, device, *,
-                  steps=100, lr=0.01, grad_accum=4, timesteps_per_step=1, seed=0):
+def run_inversion(
+    anima,
+    latents,
+    init_embed,
+    device,
+    *,
+    steps=100,
+    lr=0.01,
+    grad_accum=4,
+    timesteps_per_step=1,
+    seed=0,
+):
     """Single inversion run. Returns (best_embed, best_loss, loss_curve)."""
     torch.manual_seed(seed)
     if device.type == "cuda":
@@ -73,7 +92,9 @@ def run_inversion(anima, latents, init_embed, device, *,
 
     embed = torch.nn.Parameter(init_embed.clone())
     opt = torch.optim.AdamW([embed], lr=lr, weight_decay=0.0)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=steps, eta_min=lr * 0.01)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+        opt, T_max=steps, eta_min=lr * 0.01
+    )
 
     h_lat, w_lat = latents.shape[-2], latents.shape[-1]
     pm = torch.zeros(1, 1, h_lat, w_lat, dtype=torch.bfloat16, device=device)
@@ -109,7 +130,9 @@ def run_inversion(anima, latents, init_embed, device, *,
 # ---------------------------------------------------------------------------
 
 
-def generate_from_embed(anima, vae, embed, h, w, device, *, seed=42, steps=50, flow_shift=5.0):
+def generate_from_embed(
+    anima, vae, embed, h, w, device, *, seed=42, steps=50, flow_shift=5.0
+):
     """Generate a single image. Returns pixel tensor (C, H, W) in [0,1]."""
     embed_bf16 = embed.to(device=device, dtype=torch.bfloat16)
     if embed_bf16.ndim == 2:
@@ -120,8 +143,14 @@ def generate_from_embed(anima, vae, embed, h, w, device, *, seed=42, steps=50, f
 
     gen = torch.Generator(device=device).manual_seed(seed)
     latents = torch.randn(
-        1, anima_models.Anima.LATENT_CHANNELS, 1, h_lat, w_lat,
-        device=device, dtype=torch.bfloat16, generator=gen,
+        1,
+        anima_models.Anima.LATENT_CHANNELS,
+        1,
+        h_lat,
+        w_lat,
+        device=device,
+        dtype=torch.bfloat16,
+        generator=gen,
     )
 
     timesteps, sigmas = inference_utils.get_timesteps_sigmas(steps, flow_shift, device)
@@ -135,7 +164,9 @@ def generate_from_embed(anima, vae, embed, h, w, device, *, seed=42, steps=50, f
             if hasattr(anima, "prepare_block_swap_before_forward"):
                 anima.prepare_block_swap_before_forward()
             noise_pred = anima(latents, t.unsqueeze(0), embed_bf16, padding_mask=pm)
-            latents = inference_utils.step(latents, noise_pred, sigmas, step_i).to(torch.bfloat16)
+            latents = inference_utils.step(latents, noise_pred, sigmas, step_i).to(
+                torch.bfloat16
+            )
 
     with torch.no_grad():
         pixels = vae.decode_to_pixels(latents.squeeze(2))
@@ -148,7 +179,9 @@ def generate_from_embed(anima, vae, embed, h, w, device, *, seed=42, steps=50, f
 
 
 def cosine_sim_flat(a: torch.Tensor, b: torch.Tensor) -> float:
-    return F.cosine_similarity(a.flatten().unsqueeze(0), b.flatten().unsqueeze(0)).item()
+    return F.cosine_similarity(
+        a.flatten().unsqueeze(0), b.flatten().unsqueeze(0)
+    ).item()
 
 
 def cosine_sim_per_token(a: torch.Tensor, b: torch.Tensor) -> float:
@@ -182,6 +215,7 @@ def discover_one_image(image_dir: str):
     """Find first image with cached latents in directory."""
     import glob
     import os
+
     for png_path in sorted(glob.glob(os.path.join(image_dir, "*.png"))):
         stem = os.path.splitext(png_path)[0]
         npz_files = glob.glob(f"{stem}_*_anima.npz")
@@ -200,8 +234,10 @@ def discover_one_image(image_dir: str):
 def load_cached_latents(npz_path, device):
     data = np.load(npz_path)
     latent_key = [k for k in data.keys() if k.startswith("latents_")][0]
-    latents = torch.from_numpy(data[latent_key]).unsqueeze(0).to(device, dtype=torch.bfloat16)
-    size_suffix = latent_key[len("latents_"):]
+    latents = (
+        torch.from_numpy(data[latent_key]).unsqueeze(0).to(device, dtype=torch.bfloat16)
+    )
+    size_suffix = latent_key[len("latents_") :]
     size_key = f"original_size_{size_suffix}"
     if size_key in data:
         orig_w, orig_h = int(data[size_key][0]), int(data[size_key][1])
@@ -235,11 +271,17 @@ def run_e1(anima, latents, init_embed, device, args):
     losses = []
     for i in range(args.num_inversions):
         seed = args.base_seed + i * 1000
-        print(f"  Inversion {i+1}/{args.num_inversions} (seed={seed})...")
+        print(f"  Inversion {i + 1}/{args.num_inversions} (seed={seed})...")
         best_embed, best_loss, curve = run_inversion(
-            anima, latents, init_embed, device,
-            steps=args.steps, lr=args.lr, grad_accum=args.grad_accum,
-            timesteps_per_step=args.timesteps_per_step, seed=seed,
+            anima,
+            latents,
+            init_embed,
+            device,
+            steps=args.steps,
+            lr=args.lr,
+            grad_accum=args.grad_accum,
+            timesteps_per_step=args.timesteps_per_step,
+            seed=seed,
         )
         embeddings.append(best_embed.cpu())
         losses.append(best_loss)
@@ -261,21 +303,23 @@ def run_e1(anima, latents, init_embed, device, args):
     # Distance from each individual to mean
     dists_to_mean = [cosine_sim_flat(e, mean_embed) for e in embeddings]
 
-    print(f"\n  Pairwise cosine similarity (flattened):")
-    print(f"    mean={np.mean(upper_tri):.4f}  std={np.std(upper_tri):.4f}  "
-          f"min={np.min(upper_tri):.4f}  max={np.max(upper_tri):.4f}")
-    print(f"  Per-token cosine similarity:")
+    print("\n  Pairwise cosine similarity (flattened):")
+    print(
+        f"    mean={np.mean(upper_tri):.4f}  std={np.std(upper_tri):.4f}  "
+        f"min={np.min(upper_tri):.4f}  max={np.max(upper_tri):.4f}"
+    )
+    print("  Per-token cosine similarity:")
     print(f"    mean={np.mean(per_token_sims):.4f}  std={np.std(per_token_sims):.4f}")
-    print(f"  Cosine sim to mean embedding:")
+    print("  Cosine sim to mean embedding:")
     print(f"    mean={np.mean(dists_to_mean):.4f}  std={np.std(dists_to_mean):.4f}")
-    print(f"  Loss values: {[f'{l:.6f}' for l in losses]}")
+    print(f"  Loss values: {[f'{x:.6f}' for x in losses]}")
 
     # PCA of variation
     stacked = torch.stack(embeddings).view(len(embeddings), -1).float()
     centered = stacked - stacked.mean(dim=0, keepdim=True)
     if len(embeddings) > 2:
         U, S, Vh = torch.linalg.svd(centered, full_matrices=False)
-        variance_explained = (S ** 2) / (S ** 2).sum()
+        variance_explained = (S**2) / (S**2).sum()
         print(f"  PCA variance explained (top 5): {variance_explained[:5].tolist()}")
     else:
         variance_explained = None
@@ -299,7 +343,9 @@ def run_e1(anima, latents, init_embed, device, args):
             "mean": float(np.mean(dists_to_mean)),
             "std": float(np.std(dists_to_mean)),
         },
-        "pca_variance_explained": variance_explained[:5].tolist() if variance_explained is not None else None,
+        "pca_variance_explained": variance_explained[:5].tolist()
+        if variance_explained is not None
+        else None,
     }
 
 
@@ -310,8 +356,14 @@ def run_e2(anima, vae, e1_results, h, w, device, args):
     print("=" * 60)
 
     gen_seeds = [args.base_seed + i for i in range(args.num_gen_seeds)]
-    embeddings_to_test = list(e1_results["embeddings"]) + [e1_results["mean_embed"], e1_results["max_embed"]]
-    labels = [f"inv_{i}" for i in range(len(e1_results["embeddings"]))] + ["mean", "max"]
+    embeddings_to_test = list(e1_results["embeddings"]) + [
+        e1_results["mean_embed"],
+        e1_results["max_embed"],
+    ]
+    labels = [f"inv_{i}" for i in range(len(e1_results["embeddings"]))] + [
+        "mean",
+        "max",
+    ]
 
     all_images = {}  # label -> list of (C,H,W) tensors
 
@@ -320,8 +372,15 @@ def run_e2(anima, vae, e1_results, h, w, device, args):
         images = []
         for seed in gen_seeds:
             img = generate_from_embed(
-                anima, vae, embed, h, w, device,
-                seed=seed, steps=args.gen_steps, flow_shift=args.flow_shift,
+                anima,
+                vae,
+                embed,
+                h,
+                w,
+                device,
+                seed=seed,
+                steps=args.gen_steps,
+                flow_shift=args.flow_shift,
             )
             images.append(img)
         all_images[label] = images
@@ -330,6 +389,7 @@ def run_e2(anima, vae, e1_results, h, w, device, args):
     out_dir = RESULTS_DIR / "inversion_stability"
     out_dir.mkdir(parents=True, exist_ok=True)
     from PIL import Image as PILImage
+
     for label, images in all_images.items():
         for i, img in enumerate(images):
             pixels = (img.permute(1, 2, 0).numpy() * 255).clip(0, 255).astype("uint8")
@@ -346,12 +406,16 @@ def run_e2(anima, vae, e1_results, h, w, device, args):
             "pixel_mse_mean": float(np.mean(mse_vals)),
             "pixel_mse_std": float(np.std(mse_vals)),
         }
-        print(f"  {label}: cross-seed pixel MSE = {np.mean(mse_vals):.6f} +/- {np.std(mse_vals):.6f}")
+        print(
+            f"  {label}: cross-seed pixel MSE = {np.mean(mse_vals):.6f} +/- {np.std(mse_vals):.6f}"
+        )
 
     # Measure cross-embedding similarity (different embeds, same seed)
     cross_embed = {}
     for si, seed in enumerate(gen_seeds):
-        inv_images = [all_images[f"inv_{i}"][si] for i in range(len(e1_results["embeddings"]))]
+        inv_images = [
+            all_images[f"inv_{i}"][si] for i in range(len(e1_results["embeddings"]))
+        ]
         mean_image = all_images["mean"][si]
         # inv vs inv
         inv_mses = []
@@ -365,9 +429,11 @@ def run_e2(anima, vae, e1_results, h, w, device, args):
             "inv_vs_mean_mse": float(np.mean(mean_mses)),
         }
 
-    print(f"\n  Cross-embedding (same seed):")
+    print("\n  Cross-embedding (same seed):")
     for k, v in cross_embed.items():
-        print(f"    {k}: inv↔inv MSE={v['inv_vs_inv_mse']:.6f}  inv↔mean MSE={v['inv_vs_mean_mse']:.6f}")
+        print(
+            f"    {k}: inv↔inv MSE={v['inv_vs_inv_mse']:.6f}  inv↔mean MSE={v['inv_vs_mean_mse']:.6f}"
+        )
 
     return {
         "within_embed_consistency": consistency,
@@ -394,9 +460,21 @@ def run_e3(e1_results, e2_results, args):
     mean_mse = wc.get("mean", {}).get("pixel_mse_mean", None)
     max_mse = wc.get("max", {}).get("pixel_mse_mean", None)
 
-    print(f"  Avg individual cross-seed MSE: {avg_inv:.6f}" if avg_inv is not None else "  Avg individual: N/A")
-    print(f"  Mean embed cross-seed MSE:     {mean_mse:.6f}" if mean_mse is not None else "  Mean embed: N/A")
-    print(f"  Max  embed cross-seed MSE:     {max_mse:.6f}" if max_mse is not None else "  Max embed: N/A")
+    print(
+        f"  Avg individual cross-seed MSE: {avg_inv:.6f}"
+        if avg_inv is not None
+        else "  Avg individual: N/A"
+    )
+    print(
+        f"  Mean embed cross-seed MSE:     {mean_mse:.6f}"
+        if mean_mse is not None
+        else "  Mean embed: N/A"
+    )
+    print(
+        f"  Max  embed cross-seed MSE:     {max_mse:.6f}"
+        if max_mse is not None
+        else "  Max embed: N/A"
+    )
 
     results = {"avg_individual_mse": avg_inv}
     for name, val in [("mean", mean_mse), ("max", max_mse)]:
@@ -417,29 +495,63 @@ def run_e3(e1_results, e2_results, args):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Inversion stability & multi-seed averaging benchmark")
-    p.add_argument("--image_dir", type=str, default="post_image_dataset", help="Dataset dir with cached latents/TE")
-    p.add_argument("--image_stem", type=str, default=None, help="Specific image stem (default: first found)")
+    p = argparse.ArgumentParser(
+        description="Inversion stability & multi-seed averaging benchmark"
+    )
+    p.add_argument(
+        "--image_dir",
+        type=str,
+        default="post_image_dataset",
+        help="Dataset dir with cached latents/TE",
+    )
+    p.add_argument(
+        "--image_stem",
+        type=str,
+        default=None,
+        help="Specific image stem (default: first found)",
+    )
     p.add_argument("--dit", type=str, default=DIT_PATH)
     p.add_argument("--vae", type=str, default=VAE_PATH)
     p.add_argument("--attn_mode", type=str, default="torch")
 
     # Inversion params
-    p.add_argument("--num_inversions", type=int, default=5, help="Number of independent inversions (E1)")
-    p.add_argument("--steps", type=int, default=100, help="Optimization steps per inversion")
+    p.add_argument(
+        "--num_inversions",
+        type=int,
+        default=5,
+        help="Number of independent inversions (E1)",
+    )
+    p.add_argument(
+        "--steps", type=int, default=100, help="Optimization steps per inversion"
+    )
     p.add_argument("--lr", type=float, default=0.001)
     p.add_argument("--grad_accum", type=int, default=1)
     p.add_argument("--timesteps_per_step", type=int, default=1)
     p.add_argument("--base_seed", type=int, default=42)
 
     # Generation params
-    p.add_argument("--skip_generation", action="store_true", help="Skip E2/E3 (generation experiments)")
-    p.add_argument("--num_gen_seeds", type=int, default=3, help="Seeds per embedding for generation (E2)")
-    p.add_argument("--gen_steps", type=int, default=50, help="Denoising steps for generation")
+    p.add_argument(
+        "--skip_generation",
+        action="store_true",
+        help="Skip E2/E3 (generation experiments)",
+    )
+    p.add_argument(
+        "--num_gen_seeds",
+        type=int,
+        default=3,
+        help="Seeds per embedding for generation (E2)",
+    )
+    p.add_argument(
+        "--gen_steps", type=int, default=50, help="Denoising steps for generation"
+    )
     p.add_argument("--flow_shift", type=float, default=5.0)
 
     # Resume
-    p.add_argument("--resume", action="store_true", help="Skip E1, load saved embeddings and run E2/E3 only")
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip E1, load saved embeddings and run E2/E3 only",
+    )
 
     # VRAM
     p.add_argument("--blocks_to_swap", type=int, default=0)
@@ -454,7 +566,9 @@ def main():
 
     # ---- Find target image ----
     if args.image_stem:
-        import glob, os
+        import glob
+        import os
+
         stem_base = os.path.join(args.image_dir, args.image_stem)
         npz_files = glob.glob(f"{stem_base}_*_anima.npz")
         te_path = f"{stem_base}_anima_te.safetensors"
@@ -527,16 +641,23 @@ def main():
         e1 = run_e1(anima, latents, init_embed, DEVICE, args)
 
         # Save E1 embeddings for later analysis
-        torch.save({
-            "embeddings": e1["embeddings"],
-            "mean_embed": e1["mean_embed"],
-            "losses": e1["losses"],
-            "stem": img_info["stem"],
-        }, embed_save_path)
+        torch.save(
+            {
+                "embeddings": e1["embeddings"],
+                "mean_embed": e1["mean_embed"],
+                "losses": e1["losses"],
+                "stem": img_info["stem"],
+            },
+            embed_save_path,
+        )
 
         if args.skip_generation:
             print("\nSkipping E2/E3 (--skip_generation)")
-            results = {"e1": {k: v for k, v in e1.items() if k not in ("embeddings", "mean_embed")}}
+            results = {
+                "e1": {
+                    k: v for k, v in e1.items() if k not in ("embeddings", "mean_embed")
+                }
+            }
             out_path = RESULTS_DIR / "inversion_stability.json"
             with open(out_path, "w") as f:
                 json.dump(results, f, indent=2)
@@ -571,7 +692,9 @@ def main():
 
     # ---- Load VAE for generation ----
     print("\nLoading VAE...")
-    vae = qwen_image_autoencoder_kl.load_vae(VAE_PATH, device="cpu", disable_mmap=True, spatial_chunk_size=64)
+    vae = qwen_image_autoencoder_kl.load_vae(
+        VAE_PATH, device="cpu", disable_mmap=True, spatial_chunk_size=64
+    )
     vae.to(DEVICE, dtype=torch.bfloat16)
     vae.eval()
 
@@ -592,7 +715,11 @@ def main():
             "num_gen_seeds": args.num_gen_seeds,
             "gen_steps": args.gen_steps,
         },
-        "e1": {k: v for k, v in e1.items() if k not in ("embeddings", "mean_embed", "max_embed")},
+        "e1": {
+            k: v
+            for k, v in e1.items()
+            if k not in ("embeddings", "mean_embed", "max_embed")
+        },
         "e2": e2,
         "e3": e3,
     }

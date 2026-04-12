@@ -337,7 +337,9 @@ class AnimaTrainer:
             from networks.attention import flash_attn, flash_attn_func
 
             if flash_attn_func is not None:
-                logger.info(f"Using Flash Attention 2 (flash_attn {flash_attn.__version__})")
+                logger.info(
+                    f"Using Flash Attention 2 (flash_attn {flash_attn.__version__})"
+                )
             else:
                 raise RuntimeError(
                     "attn_mode='flash' requested but flash_attn is not available."
@@ -372,7 +374,10 @@ class AnimaTrainer:
         # Static token count (constant-shape padding for torch.compile)
         if getattr(args, "static_token_count", None) is not None:
             model.set_static_token_count(args.static_token_count)
-            if args.torch_compile and getattr(args, "compile_mode", "blocks") == "blocks":
+            if (
+                args.torch_compile
+                and getattr(args, "compile_mode", "blocks") == "blocks"
+            ):
                 model.compile_blocks(args.dynamo_backend)
             logger.info(f"static_token_count={args.static_token_count}")
 
@@ -598,9 +603,9 @@ class AnimaTrainer:
                 # crossattn_emb is already in target (T5-compatible) space
                 # Prefix/postfix mode: inject learned vectors before DiT forward.
                 # Pool text BEFORE injection so modulation guidance sees only real text.
-                has_prefix_postfix = getattr(network, "mode", None) == "prefix" or hasattr(
-                    network, "append_postfix"
-                )
+                has_prefix_postfix = getattr(
+                    network, "mode", None
+                ) == "prefix" or hasattr(network, "append_postfix")
                 kw = {}
                 if has_prefix_postfix:
                     kw["pooled_text_override"] = crossattn_emb.max(dim=1).values
@@ -1369,17 +1374,36 @@ class AnimaTrainer:
         # Forward known network-arg keys from top-level config (TOML) to net_kwargs.
         # CLI --network_args take precedence over top-level config keys.
         _NETWORK_ARG_KEYS = [
-            "train_llm_adapter", "exclude_patterns", "include_patterns",
-            "use_dora", "use_ortho", "sig_type", "ortho_reg_weight",
-            "use_timestep_mask", "min_rank", "alpha_rank_scale",
-            "use_hydra", "num_experts", "balance_loss_weight",
-            "rank_dropout", "module_dropout", "verbose",
-            "network_reg_lrs", "network_reg_dims",
-            "loraplus_lr_ratio", "loraplus_unet_lr_ratio", "loraplus_text_encoder_lr_ratio",
-            "layer_start", "layer_end",
+            "train_llm_adapter",
+            "exclude_patterns",
+            "include_patterns",
+            "use_dora",
+            "use_ortho",
+            "sig_type",
+            "ortho_reg_weight",
+            "use_timestep_mask",
+            "min_rank",
+            "alpha_rank_scale",
+            "use_hydra",
+            "num_experts",
+            "balance_loss_weight",
+            "rank_dropout",
+            "module_dropout",
+            "verbose",
+            "network_reg_lrs",
+            "network_reg_dims",
+            "loraplus_lr_ratio",
+            "loraplus_unet_lr_ratio",
+            "loraplus_text_encoder_lr_ratio",
+            "layer_start",
+            "layer_end",
         ]
         for key in _NETWORK_ARG_KEYS:
-            if key not in net_kwargs and hasattr(args, key) and getattr(args, key) is not None:
+            if (
+                key not in net_kwargs
+                and hasattr(args, key)
+                and getattr(args, key) is not None
+            ):
                 net_kwargs[key] = str(getattr(args, key))
 
         if args.dim_from_weights:
@@ -1733,28 +1757,14 @@ class AnimaTrainer:
         )
 
         accelerator.print("running training")
-        accelerator.print(
-            "  num train images * repeats"
-        )
-        accelerator.print(
-            "  num validation images * repeats"
-        )
-        accelerator.print(
-            "  num reg images"
-        )
-        accelerator.print(
-            "  num batches per epoch"
-        )
+        accelerator.print("  num train images * repeats")
+        accelerator.print("  num validation images * repeats")
+        accelerator.print("  num reg images")
+        accelerator.print("  num batches per epoch")
         accelerator.print("  num epochs")
-        accelerator.print(
-            "  batch size per device"
-        )
-        accelerator.print(
-            "  gradient accumulation steps"
-        )
-        accelerator.print(
-            "  total optimization steps"
-        )
+        accelerator.print("  batch size per device")
+        accelerator.print("  gradient accumulation steps")
+        accelerator.print("  total optimization steps")
 
         metadata = train_util.build_training_metadata(
             args,
@@ -1818,9 +1828,7 @@ class AnimaTrainer:
                     logger.info(
                         "initial_step is specified but not resuming. lr scheduler will be started from the beginning"
                     )
-                logger.info(
-                    f"skipping {initial_step} steps"
-                )
+                logger.info(f"skipping {initial_step} steps")
                 initial_step *= args.gradient_accumulation_steps
 
                 epoch_to_start = initial_step // math.ceil(
@@ -2001,7 +2009,11 @@ class AnimaTrainer:
                     continue
 
                 # --- Profiler: start recording ---
-                if profile_range and global_step == profile_range[0] and profiler_ctx is None:
+                if (
+                    profile_range
+                    and global_step == profile_range[0]
+                    and profiler_ctx is None
+                ):
                     accelerator.print(f"\n[profiler] starting at step {global_step}")
                     profiler_ctx = torch.profiler.profile(
                         activities=[
@@ -2070,7 +2082,9 @@ class AnimaTrainer:
                     profiler_ctx.export_chrome_trace(trace_path)
                     accelerator.print(f"\n[profiler] stopped at step {global_step}")
                     accelerator.print(f"[profiler] trace saved to {trace_path}")
-                    accelerator.print("[profiler] open in https://ui.perfetto.dev for visual inspection\n")
+                    accelerator.print(
+                        "[profiler] open in https://ui.perfetto.dev for visual inspection\n"
+                    )
                     key_avg = profiler_ctx.key_averages(group_by_stack_n=0)
                     accelerator.print("[profiler] top 30 CUDA kernels by total time:\n")
                     accelerator.print(

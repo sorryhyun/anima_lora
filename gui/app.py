@@ -99,9 +99,7 @@ class MainWindow(QMainWindow):
         self.lang_combo = QComboBox()
         for code in available_languages():
             self.lang_combo.addItem(LANG_NAMES.get(code, code), code)
-        self.lang_combo.setCurrentIndex(
-            available_languages().index(current_language())
-        )
+        self.lang_combo.setCurrentIndex(available_languages().index(current_language()))
         self.lang_combo.currentIndexChanged.connect(self._change_lang)
         self.lang_combo.setFixedWidth(100)
         lang_bar.addWidget(self.lang_combo)

@@ -25,7 +25,9 @@ def _strip_net_prefix(key: str) -> str:
 
 # Regex patterns for fused projection key remapping (compiled once)
 # Only match DiT blocks (blocks.N.), not LLM adapter blocks (llm_adapter.blocks.N.)
-_SELF_ATTN_QKV_RE = re.compile(r"(blocks\.\d+\.self_attn)\.(q_proj|k_proj|v_proj)(\.weight)")
+_SELF_ATTN_QKV_RE = re.compile(
+    r"(blocks\.\d+\.self_attn)\.(q_proj|k_proj|v_proj)(\.weight)"
+)
 _CROSS_ATTN_KV_RE = re.compile(r"(blocks\.\d+\.cross_attn)\.(k_proj|v_proj)(\.weight)")
 _ADALN_DOWN_RE = re.compile(
     r"(blocks\.\d+)\.adaln_modulation_(self_attn|cross_attn|mlp)\.1(\.weight)"

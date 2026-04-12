@@ -82,15 +82,23 @@ class ConfigTab(QWidget):
         top.addWidget(save_btn)
 
         self.preprocess_btn = QPushButton(t("preprocess"))
-        self._preprocess_idle_style = "background:#2980b9;color:white;font-weight:bold;padding:4px 16px;"
-        self._preprocess_busy_style = "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        self._preprocess_idle_style = (
+            "background:#2980b9;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        self._preprocess_busy_style = (
+            "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        )
         self.preprocess_btn.setStyleSheet(self._preprocess_idle_style)
         self.preprocess_btn.clicked.connect(self._start_preprocess)
         top.addWidget(self.preprocess_btn)
 
         self.train_btn = QPushButton(t("train"))
-        self._train_idle_style = "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
-        self._train_busy_style = "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        self._train_idle_style = (
+            "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        self._train_busy_style = (
+            "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        )
         self.train_btn.setStyleSheet(self._train_idle_style)
         self.train_btn.clicked.connect(self._start_training)
         self.train_btn.setEnabled(self._preprocessed)
@@ -215,7 +223,9 @@ class ConfigTab(QWidget):
                     lbl.setStyleSheet("text-decoration: underline dotted;")
 
                 lbl.clicked.connect(
-                    lambda _k=k, _h=help_text, _n=tuple(notes): self._show_explain(_k, _h, _n)
+                    lambda _k=k, _h=help_text, _n=tuple(notes): self._show_explain(
+                        _k, _h, _n
+                    )
                 )
 
                 form.addRow(lbl, w)
@@ -247,7 +257,9 @@ class ConfigTab(QWidget):
             f"<p style='color:#888; font-style:italic;'>{html.escape(t('click_field_for_help'))}</p>"
         )
 
-    def _show_explain(self, field: str, help_text: str | None, notes: tuple[str, ...]) -> None:
+    def _show_explain(
+        self, field: str, help_text: str | None, notes: tuple[str, ...]
+    ) -> None:
         parts = [
             f"<h2 style='margin:0 0 10px 0; font-size:18px;'>{html.escape(field)}</h2>"
         ]
@@ -312,11 +324,16 @@ class ConfigTab(QWidget):
         python = sys.executable
         args = [
             "scripts/post_images.py",
-            "--src", "image_dataset",
-            "--dst", "post_image_dataset",
-            "--vae", "models/vae/qwen_image_vae.safetensors",
-            "--vae_batch_size", "4",
-            "--vae_chunk_size", "64",
+            "--src",
+            "image_dataset",
+            "--dst",
+            "post_image_dataset",
+            "--vae",
+            "models/vae/qwen_image_vae.safetensors",
+            "--vae_batch_size",
+            "4",
+            "--vae_chunk_size",
+            "64",
         ]
 
         self.log.clear()
@@ -347,10 +364,13 @@ class ConfigTab(QWidget):
         f = PRESETS[self.combo.currentText()]
         args = [
             "launch",
-            "--num_cpu_threads_per_process", "3",
-            "--mixed_precision", "bf16",
+            "--num_cpu_threads_per_process",
+            "3",
+            "--mixed_precision",
+            "bf16",
             "train.py",
-            "--config_file", f"configs/{f}",
+            "--config_file",
+            f"configs/{f}",
         ]
 
         self.log.clear()

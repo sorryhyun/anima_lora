@@ -38,12 +38,15 @@ from library import anima_utils
 from library.anima_models import Anima
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 # ---------------------------------------------------------------------------
 # Dataset: load cached latents + crossattn_emb from disk
 # ---------------------------------------------------------------------------
+
 
 class CachedDataset(torch.utils.data.Dataset):
     """Loads pre-cached latents and text encoder outputs for distillation.
@@ -80,8 +83,10 @@ class CachedDataset(torch.utils.data.Dataset):
             full = (len(items) // batch_size) * batch_size
             self.samples.extend(items[:full])
 
-        logger.info(f"Found {len(self.samples)} cached samples in {data_dir} "
-                     f"across {len(buckets)} resolution buckets")
+        logger.info(
+            f"Found {len(self.samples)} cached samples in {data_dir} "
+            f"across {len(buckets)} resolution buckets"
+        )
 
     def __len__(self):
         return len(self.samples)
@@ -110,39 +115,83 @@ class CachedDataset(torch.utils.data.Dataset):
 # Training
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(description="Modulation guidance distillation")
-    parser.add_argument("--data_dir", type=str, default="post_image_dataset",
-                        help="Directory with cached latents and text encoder outputs")
-    parser.add_argument("--dit_path", type=str,
-                        default="models/diffusion_models/anima-preview3-base.safetensors")
-    parser.add_argument("--output_path", type=str, default="output/pooled_text_proj.safetensors",
-                        help="Where to save the trained projection weights")
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="post_image_dataset",
+        help="Directory with cached latents and text encoder outputs",
+    )
+    parser.add_argument(
+        "--dit_path",
+        type=str,
+        default="models/diffusion_models/anima-preview3-base.safetensors",
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        default="output/pooled_text_proj.safetensors",
+        help="Where to save the trained projection weights",
+    )
     parser.add_argument("--iterations", type=int, default=3000)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--batch_size", type=int, default=2,
-                        help="Batch size")
-    parser.add_argument("--blocks_to_swap", type=int, default=0,
-                        help="Number of transformer blocks to offload to CPU")
-    parser.add_argument("--save_every", type=int, default=100,
-                        help="Save checkpoint every N iterations")
-    parser.add_argument("--attn_mode", type=str, default="flash",
-                        help="Attention mode (torch, flash). flash4 not supported yet.")
+    parser.add_argument("--batch_size", type=int, default=2, help="Batch size")
+    parser.add_argument(
+        "--blocks_to_swap",
+        type=int,
+        default=0,
+        help="Number of transformer blocks to offload to CPU",
+    )
+    parser.add_argument(
+        "--save_every", type=int, default=100, help="Save checkpoint every N iterations"
+    )
+    parser.add_argument(
+        "--attn_mode",
+        type=str,
+        default="flash",
+        help="Attention mode (torch, flash). flash4 not supported yet.",
+    )
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--sigmoid_scale", type=float, default=1.0,
-                        help="Scale for sigmoid timestep sampling")
-    parser.add_argument("--resume", type=str, default=None,
-                        help="Resume from a saved pooled_text_proj checkpoint")
-    parser.add_argument("--grad_accum", type=int, default=4,
-                        help="Gradient accumulation steps")
-    parser.add_argument("--torch_compile", action="store_true", default=True,
-                        help="Compile block._forward with torch.compile")
-    parser.add_argument("--no_compile", dest="torch_compile", action="store_false",
-                        help="Disable torch.compile")
-    parser.add_argument("--warmup", type=float, default=0,
-                        help="Warmup steps: int >= 1 for absolute steps, float < 1 for ratio of iterations")
-    parser.add_argument("--dry_run", action="store_true",
-                        help="Iterate entire DataLoader without training to test collation")
+    parser.add_argument(
+        "--sigmoid_scale",
+        type=float,
+        default=1.0,
+        help="Scale for sigmoid timestep sampling",
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Resume from a saved pooled_text_proj checkpoint",
+    )
+    parser.add_argument(
+        "--grad_accum", type=int, default=4, help="Gradient accumulation steps"
+    )
+    parser.add_argument(
+        "--torch_compile",
+        action="store_true",
+        default=True,
+        help="Compile block._forward with torch.compile",
+    )
+    parser.add_argument(
+        "--no_compile",
+        dest="torch_compile",
+        action="store_false",
+        help="Disable torch.compile",
+    )
+    parser.add_argument(
+        "--warmup",
+        type=float,
+        default=0,
+        help="Warmup steps: int >= 1 for absolute steps, float < 1 for ratio of iterations",
+    )
+    parser.add_argument(
+        "--dry_run",
+        action="store_true",
+        help="Iterate entire DataLoader without training to test collation",
+    )
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -153,16 +202,25 @@ def main():
         dataset = CachedDataset(args.data_dir, batch_size=args.batch_size)
 
         def _collate_dry(batch):
-            return torch.stack([b[0] for b in batch]), torch.stack([b[1] for b in batch])
+            return torch.stack([b[0] for b in batch]), torch.stack(
+                [b[1] for b in batch]
+            )
 
         dl = torch.utils.data.DataLoader(
-            dataset, batch_size=args.batch_size, shuffle=False,
-            num_workers=2, pin_memory=True, drop_last=True, collate_fn=_collate_dry,
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=2,
+            pin_memory=True,
+            drop_last=True,
+            collate_fn=_collate_dry,
         )
         total = len(dl)
         for i, (lat, te) in enumerate(tqdm(dl, desc="dry-run")):
             if (i + 1) % 200 == 0:
-                logger.info(f"  batch {i+1}/{total}  latents={lat.shape}  te={te.shape}")
+                logger.info(
+                    f"  batch {i + 1}/{total}  latents={lat.shape}  te={te.shape}"
+                )
         logger.info(f"Dry run OK: {total} batches, no collation errors.")
         return
 
@@ -193,6 +251,7 @@ def main():
     if args.resume:
         logger.info(f"Resuming from {args.resume}")
         from safetensors.torch import load_file
+
         state = load_file(args.resume)
         model.pooled_text_proj.load_state_dict(state)
 
@@ -234,14 +293,18 @@ def main():
 
     trainable_params = sum(p.numel() for p in model.pooled_text_proj.parameters())
     total_params = sum(p.numel() for p in model.parameters())
-    logger.info(f"Trainable: {trainable_params:,} / {total_params:,} params "
-                f"({trainable_params / total_params * 100:.4f}%)")
+    logger.info(
+        f"Trainable: {trainable_params:,} / {total_params:,} params "
+        f"({trainable_params / total_params * 100:.4f}%)"
+    )
 
     # --- Optimizer ---
     optimizer = torch.optim.AdamW(model.pooled_text_proj.parameters(), lr=args.lr)
 
     # Warmup + cosine annealing
-    warmup_steps = int(args.warmup) if args.warmup >= 1 else int(args.warmup * args.iterations)
+    warmup_steps = (
+        int(args.warmup) if args.warmup >= 1 else int(args.warmup * args.iterations)
+    )
     if warmup_steps > 0:
         warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
             optimizer, start_factor=1e-6 / args.lr, total_iters=warmup_steps
@@ -250,7 +313,9 @@ def main():
             optimizer, T_max=args.iterations - warmup_steps, eta_min=args.lr * 0.1
         )
         scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[warmup_steps]
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[warmup_steps],
         )
     else:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -259,6 +324,7 @@ def main():
 
     # --- Dataset ---
     dataset = CachedDataset(args.data_dir, batch_size=args.batch_size)
+
     # Custom collate to bypass collate_tensor_fn's _new_shared_filename_cpu
     # which creates non-resizable storage on some PyTorch/Python 3.13 builds.
     def _collate(batch):
@@ -278,8 +344,10 @@ def main():
 
     # --- Training loop ---
     grad_accum = args.grad_accum
-    logger.info(f"Starting distillation: {args.iterations} iterations, "
-                f"grad_accum={grad_accum} (effective batch={args.batch_size * grad_accum})")
+    logger.info(
+        f"Starting distillation: {args.iterations} iterations, "
+        f"grad_accum={grad_accum} (effective batch={args.batch_size * grad_accum})"
+    )
 
     data_iter = iter(dataloader)
     running_loss = 0.0
@@ -317,8 +385,7 @@ def main():
 
             # Padding mask (all zeros = no padding)
             padding_mask = torch.zeros(
-                B, 1, latents.shape[-2], latents.shape[-1],
-                dtype=dtype, device=device
+                B, 1, latents.shape[-2], latents.shape[-1], dtype=dtype, device=device
             )
 
             # Pre-compute pooled text from real crossattn_emb
@@ -329,7 +396,9 @@ def main():
                 model.prepare_block_swap_before_forward()
             with torch.no_grad(), torch.autocast("cuda", dtype=dtype):
                 teacher_pred = model.forward_mini_train_dit(
-                    noisy_input, timesteps, crossattn_emb,
+                    noisy_input,
+                    timesteps,
+                    crossattn_emb,
                     padding_mask=padding_mask,
                     skip_pooled_text_proj=True,
                 )
@@ -342,7 +411,9 @@ def main():
             uncond_crossattn = torch.zeros_like(crossattn_emb)
             with torch.autocast("cuda", dtype=dtype):
                 student_pred = model.forward_mini_train_dit(
-                    noisy_input, timesteps, uncond_crossattn,
+                    noisy_input,
+                    timesteps,
+                    uncond_crossattn,
                     padding_mask=padding_mask,
                     pooled_text_override=pooled_text,
                 )

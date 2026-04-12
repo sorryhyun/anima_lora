@@ -41,7 +41,9 @@ class Thumbnail(QLabel):
         self.setAlignment(Qt.AlignCenter)
         pm = QPixmap(str(path))
         if not pm.isNull():
-            self.setPixmap(pm.scaled(THUMB, THUMB, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.setPixmap(
+                pm.scaled(THUMB, THUMB, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
         self.setToolTip(path.name)
         self._style()
 
@@ -119,7 +121,9 @@ class GraftTab(QWidget):
         self.stat = QLabel(t("n_images", n=0))
         bar.addWidget(self.stat)
         db = QPushButton(t("delete_selected"))
-        db.setStyleSheet("background:#c0392b;color:white;font-weight:bold;padding:4px 12px;")
+        db.setStyleSheet(
+            "background:#c0392b;color:white;font-weight:bold;padding:4px 12px;"
+        )
         db.clicked.connect(self._delete)
         bar.addWidget(db)
         rl.addLayout(bar)
@@ -244,5 +248,8 @@ class GraftTab(QWidget):
 
     def _save_gc(self):
         gc = _load(GRAFT_DIR / "graft_config.toml")
-        _save(GRAFT_DIR / "graft_config.toml", {k: _read(w, gc.get(k)) for k, w in self._gcw.items()})
+        _save(
+            GRAFT_DIR / "graft_config.toml",
+            {k: _read(w, gc.get(k)) for k, w in self._gcw.items()},
+        )
         QMessageBox.information(self, t("saved"), t("graft_saved"))

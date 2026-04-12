@@ -812,7 +812,9 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     )
     # FP8 is not supported yet — flag kept for CLI compatibility but force-disabled in assert_extra_args.
     parser.add_argument(
-        "--fp8_base", action="store_true", help="(not supported yet) use fp8 for base model. This flag is force-disabled."
+        "--fp8_base",
+        action="store_true",
+        help="(not supported yet) use fp8 for base model. This flag is force-disabled.",
     )
 
     parser.add_argument(
@@ -1479,7 +1481,7 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
 
     if args.output_config:
         if os.path.exists(config_path):
-            logger.error(f"Config file already exists. Aborting...")
+            logger.error("Config file already exists. Aborting...")
             exit(1)
 
         args_dict = vars(args)
@@ -1501,7 +1503,7 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
         with open(config_path, "w") as f:
             toml.dump(args_dict, f)
 
-        logger.info(f"Saved config file")
+        logger.info("Saved config file")
         exit(0)
 
     if not os.path.exists(config_path):
@@ -1618,7 +1620,7 @@ def prepare_dataset_args(args: argparse.Namespace, support_metadata: bool):
         args.resolution = tuple([int(r) for r in args.resolution.split(",")])
         if len(args.resolution) == 1:
             args.resolution = (args.resolution[0], args.resolution[0])
-        assert len(args.resolution) == 2, f"resolution must be 'size' or 'width,height'"
+        assert len(args.resolution) == 2, "resolution must be 'size' or 'width,height'"
 
     if args.face_crop_aug_range is not None:
         args.face_crop_aug_range = tuple(
@@ -1627,7 +1629,7 @@ def prepare_dataset_args(args: argparse.Namespace, support_metadata: bool):
         assert (
             len(args.face_crop_aug_range) == 2
             and args.face_crop_aug_range[0] <= args.face_crop_aug_range[1]
-        ), f"face_crop_aug_range must be two floats"
+        ), "face_crop_aug_range must be two floats"
     else:
         args.face_crop_aug_range = None
 
@@ -1940,7 +1942,7 @@ def line_to_prompt_dict(line: str) -> dict:
                 continue
 
         except ValueError as ex:
-            logger.error(f"Exception in parsing")
+            logger.error("Exception in parsing")
             logger.error(ex)
 
     return prompt_dict

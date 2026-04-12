@@ -100,7 +100,6 @@ class ImageInfo:
 
 
 class AugHelper:
-
     def __init__(self):
         pass
 
@@ -228,9 +227,7 @@ class DreamBoothSubset(BaseSubset):
         resize_interpolation: Optional[str] = None,
         mask_dir: Optional[str] = None,
     ) -> None:
-        assert image_dir is not None, (
-            "image_dir must be specified"
-        )
+        assert image_dir is not None, "image_dir must be specified"
 
         super().__init__(
             image_dir,

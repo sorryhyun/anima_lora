@@ -61,9 +61,7 @@ def _prepend_prefix(
         .expand(B, -1, -1)
         .to(dtype=crossattn_emb.dtype, device=crossattn_emb.device)
     )
-    return torch.cat(
-        [prefix, crossattn_emb[:, : crossattn_emb.shape[1] - K]], dim=1
-    )
+    return torch.cat([prefix, crossattn_emb[:, : crossattn_emb.shape[1] - K]], dim=1)
 
 
 def _append_postfix(
@@ -103,7 +101,9 @@ class AnimaPrefixPostfix:
                 "conditioning": ("CONDITIONING",),
                 "weight_file": (
                     folder_paths.get_filename_list("loras"),
-                    {"tooltip": "Safetensors file with prefix_embeds or postfix_embeds."},
+                    {
+                        "tooltip": "Safetensors file with prefix_embeds or postfix_embeds."
+                    },
                 ),
                 "strength": (
                     "FLOAT",

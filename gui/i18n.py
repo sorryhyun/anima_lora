@@ -9,7 +9,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tab_config": "Config",
         "tab_graft": "GRAFT",
         "tab_images": "Images",
-
         # ConfigTab
         "preset": "Preset:",
         "save": "Save",
@@ -32,7 +31,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "lora_variants": "LoRA Variants",
         "click_field_for_help": "Click a field label to see its explanation here.",
         "no_help_available": "No help available for this field.",
-
         # GraftTab
         "iterations": "Iterations",
         "refresh": "Refresh",
@@ -47,12 +45,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "graft_config": "GRAFT Config",
         "save_graft_config": "Save GRAFT Config",
         "graft_saved": "GRAFT config saved.",
-
         # ImageViewerTab
         "directory": "Directory:",
         "caption": "Caption:",
         "no_caption": "(no caption)",
-
         # Language
         "language": "Language:",
     },
@@ -62,7 +58,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tab_config": "설정",
         "tab_graft": "GRAFT",
         "tab_images": "이미지",
-
         # ConfigTab
         "preset": "프리셋:",
         "save": "저장",
@@ -85,7 +80,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "lora_variants": "LoRA 변형",
         "click_field_for_help": "필드 라벨을 클릭하면 설명이 여기에 표시됩니다.",
         "no_help_available": "이 필드에 대한 설명이 없습니다.",
-
         # GraftTab
         "iterations": "반복",
         "refresh": "새로고침",
@@ -100,12 +94,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "graft_config": "GRAFT 설정",
         "save_graft_config": "GRAFT 설정 저장",
         "graft_saved": "GRAFT 설정이 저장되었습니다.",
-
         # ImageViewerTab
         "directory": "디렉토리:",
         "caption": "캡션:",
         "no_caption": "(캡션 없음)",
-
         # Language
         "language": "언어:",
     },
@@ -119,6 +111,7 @@ def _settings_path():
     global _SETTINGS_FILE
     if _SETTINGS_FILE is None:
         from pathlib import Path
+
         _SETTINGS_FILE = Path(__file__).resolve().parent / "gui_settings.json"
     return _SETTINGS_FILE
 
@@ -127,10 +120,13 @@ def load_language() -> str:
     """Load saved language preference."""
     global _current_lang
     import json
+
     p = _settings_path()
     if p.exists():
         try:
-            _current_lang = json.loads(p.read_text(encoding="utf-8")).get("language", "en")
+            _current_lang = json.loads(p.read_text(encoding="utf-8")).get(
+                "language", "en"
+            )
         except (json.JSONDecodeError, OSError):
             _current_lang = "en"
     return _current_lang
@@ -140,6 +136,7 @@ def save_language(lang: str):
     """Persist language preference."""
     global _current_lang
     import json
+
     _current_lang = lang
     p = _settings_path()
     settings = {}

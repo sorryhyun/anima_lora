@@ -5,7 +5,14 @@ import re
 from typing import Dict, List, Optional, Tuple, Type, Union
 import torch
 from library.utils import setup_logging
-from networks.lora_modules import LoRAModule, LoRAInfModule, DoRAModule, OrthoLoRAModule, ReFTModule, HydraLoRAModule
+from networks.lora_modules import (
+    LoRAModule,
+    LoRAInfModule,
+    DoRAModule,
+    OrthoLoRAModule,
+    ReFTModule,
+    HydraLoRAModule,
+)
 
 import logging
 
@@ -55,7 +62,9 @@ def create_network(
         layer_end = int(layer_end)
 
     # add default exclude patterns
-    exclude_patterns.append(r".*(_modulation|_norm|_embedder|final_layer|adaln_fused_down|adaln_up_|pooled_text_proj).*")
+    exclude_patterns.append(
+        r".*(_modulation|_norm|_embedder|final_layer|adaln_fused_down|adaln_up_|pooled_text_proj).*"
+    )
 
     # regular expression for module selection: exclude and include
     include_patterns = kwargs.get("include_patterns", None)
@@ -111,7 +120,9 @@ def create_network(
     num_experts = kwargs.get("num_experts", None)
     num_experts = int(num_experts) if num_experts is not None else 12
     balance_loss_weight = kwargs.get("balance_loss_weight", None)
-    balance_loss_weight = float(balance_loss_weight) if balance_loss_weight is not None else 0.01
+    balance_loss_weight = (
+        float(balance_loss_weight) if balance_loss_weight is not None else 0.01
+    )
 
     # verbose
     verbose = kwargs.get("verbose", "false")
@@ -199,7 +210,9 @@ def create_network(
     network._use_hydra = use_hydra
     network._balance_loss_weight = balance_loss_weight if use_hydra else 0.0
     if use_hydra:
-        network._hydra_router = torch.nn.Linear(1024, num_experts, bias=True, dtype=unet.dtype)
+        network._hydra_router = torch.nn.Linear(
+            1024, num_experts, bias=True, dtype=unet.dtype
+        )
         torch.nn.init.xavier_uniform_(network._hydra_router.weight)
         torch.nn.init.zeros_(network._hydra_router.bias)
 
@@ -347,7 +360,9 @@ def create_network_from_weights(
     if has_hydra and "_hydra_router.weight" in weights_sd:
         router_dim = weights_sd["_hydra_router.weight"].shape[0]
         router_dtype = weights_sd["_hydra_router.weight"].dtype
-        network._hydra_router = torch.nn.Linear(1024, router_dim, bias=True, dtype=router_dtype)
+        network._hydra_router = torch.nn.Linear(
+            1024, router_dim, bias=True, dtype=router_dtype
+        )
         network._use_hydra = True
     return network, weights_sd
 
@@ -496,17 +511,30 @@ class LoRANetwork(torch.nn.Module):
                                 continue
 
                             # layer range filter: skip blocks outside [layer_start, layer_end)
-                            if is_unet and (self.layer_start is not None or self.layer_end is not None):
+                            if is_unet and (
+                                self.layer_start is not None
+                                or self.layer_end is not None
+                            ):
                                 block_match = _BLOCK_IDX_RE.match(original_name)
                                 if block_match:
                                     block_idx = int(block_match.group(1))
-                                    if self.layer_start is not None and block_idx < self.layer_start:
+                                    if (
+                                        self.layer_start is not None
+                                        and block_idx < self.layer_start
+                                    ):
                                         if verbose:
-                                            logger.info(f"layer_range exclude: {original_name} (block {block_idx} < {self.layer_start})")
+                                            logger.info(
+                                                f"layer_range exclude: {original_name} (block {block_idx} < {self.layer_start})"
+                                            )
                                         continue
-                                    if self.layer_end is not None and block_idx >= self.layer_end:
+                                    if (
+                                        self.layer_end is not None
+                                        and block_idx >= self.layer_end
+                                    ):
                                         if verbose:
-                                            logger.info(f"layer_range exclude: {original_name} (block {block_idx} >= {self.layer_end})")
+                                            logger.info(
+                                                f"layer_range exclude: {original_name} (block {block_idx} >= {self.layer_end})"
+                                            )
                                         continue
 
                             dim = None
@@ -659,7 +687,9 @@ class LoRANetwork(torch.nn.Module):
                 reft_modules_alpha_: Optional[Dict[str, int]],
             ) -> List[ReFTModule]:
                 refts = []
-                for lora in tqdm(loras, desc=f"Creating ReFT ({prefix_to})", leave=False):
+                for lora in tqdm(
+                    loras, desc=f"Creating ReFT ({prefix_to})", leave=False
+                ):
                     # Skip Conv2d modules
                     if not isinstance(lora.org_module, torch.nn.Linear):
                         continue
@@ -692,7 +722,9 @@ class LoRANetwork(torch.nn.Module):
                 reft_modules_dim,
                 reft_modules_alpha,
             )
-            logger.info(f"create ReFT for Anima DiT: {len(self.unet_refts)} modules (reft_dim={reft_dim})")
+            logger.info(
+                f"create ReFT for Anima DiT: {len(self.unet_refts)} modules (reft_dim={reft_dim})"
+            )
 
             if self.text_encoder_loras:
                 self.text_encoder_refts = create_reft_for_loras(
@@ -702,11 +734,18 @@ class LoRANetwork(torch.nn.Module):
                     reft_modules_dim,
                     reft_modules_alpha,
                 )
-                logger.info(f"create ReFT for Text Encoder: {len(self.text_encoder_refts)} modules")
+                logger.info(
+                    f"create ReFT for Text Encoder: {len(self.text_encoder_refts)} modules"
+                )
 
         # assertion: no duplicate names
         names = set()
-        for lora in self.text_encoder_loras + self.unet_loras + self.text_encoder_refts + self.unet_refts:
+        for lora in (
+            self.text_encoder_loras
+            + self.unet_loras
+            + self.text_encoder_refts
+            + self.unet_refts
+        ):
             assert lora.lora_name not in names, (
                 f"duplicated lora name: {lora.lora_name}"
             )
@@ -763,7 +802,9 @@ class LoRANetwork(torch.nn.Module):
         mask.zero_()
         mask[:, :r] = 1.0
 
-    def set_reft_timestep_mask(self, timesteps: torch.Tensor, max_timestep: float = 1.0):
+    def set_reft_timestep_mask(
+        self, timesteps: torch.Tensor, max_timestep: float = 1.0
+    ):
         """Compute and set timestep-dependent mask on ReFT modules."""
         if not getattr(self, "_use_timestep_mask", False):
             return
@@ -1011,7 +1052,9 @@ class LoRANetwork(torch.nn.Module):
                                 "lr": reg_lr,
                             }
                         if loraplus_ratio is not None and (
-                            "lora_up" in name or "p_layer" in name or "learned_source" in name
+                            "lora_up" in name
+                            or "p_layer" in name
+                            or "learned_source" in name
                         ):
                             reg_groups[group_key]["plus"][
                                 f"{lora.lora_name}.{name}"
@@ -1023,7 +1066,9 @@ class LoRANetwork(torch.nn.Module):
                         continue
 
                     if loraplus_ratio is not None and (
-                        "lora_up" in name or "p_layer" in name or "learned_source" in name
+                        "lora_up" in name
+                        or "p_layer" in name
+                        or "learned_source" in name
                     ):
                         param_groups["plus"][f"{lora.lora_name}.{name}"] = param
                     else:
@@ -1183,9 +1228,9 @@ class LoRANetwork(torch.nn.Module):
             svd_device = "cuda" if torch.cuda.is_available() else "cpu"
             save_dtype = dtype if dtype is not None else P.dtype
 
-            P_cat = torch.cat([P, P_base], dim=1).float().to(svd_device)       # (out, 2r)
-            Q_cat = torch.cat([Q, Q_base], dim=0).float().to(svd_device)       # (2r, in)
-            lam_diag = torch.diag(lam.squeeze(0).float().to(svd_device))       # (r, r)
+            P_cat = torch.cat([P, P_base], dim=1).float().to(svd_device)  # (out, 2r)
+            Q_cat = torch.cat([Q, Q_base], dim=0).float().to(svd_device)  # (2r, in)
+            lam_diag = torch.diag(lam.squeeze(0).float().to(svd_device))  # (r, r)
             lam_base_diag = torch.diag(lam_base.squeeze(0).float().to(svd_device))
 
             # M = block_diag(diag(λ), -diag(λ_base))  — the middle (2r, 2r) matrix
@@ -1194,7 +1239,7 @@ class LoRANetwork(torch.nn.Module):
             M[rank:, rank:] = -lam_base_diag
 
             # QR-orthogonalize the tall/wide factors to get thin SVD via small matrix
-            Qp, Rp = torch.linalg.qr(P_cat)   # Qp: (out, 2r), Rp: (2r, 2r)
+            Qp, Rp = torch.linalg.qr(P_cat)  # Qp: (out, 2r), Rp: (2r, 2r)
             Qq, Rq = torch.linalg.qr(Q_cat.T)  # Qq: (in, 2r), Rq: (2r, 2r)
 
             # Core (2r × 2r) matrix whose SVD gives us the answer
@@ -1254,6 +1299,7 @@ class LoRANetwork(torch.nn.Module):
             if dtype is not None:
                 hydra_sd = {k: v.to(dtype) for k, v in hydra_sd.items()}
             from safetensors.torch import save_file as sf_save
+
             sf_save(hydra_sd, hydra_file, metadata or {})
             logger.info(f"HydraLoRA full format saved to {hydra_file}")
 
@@ -1263,7 +1309,9 @@ class LoRANetwork(torch.nn.Module):
             if fused_key not in state_dict:
                 continue
             # lora_up_weight is (num_experts, out_dim, lora_dim) → average to (out_dim, lora_dim)
-            state_dict[f"{prefix}.lora_up.weight"] = state_dict.pop(fused_key).mean(dim=0)
+            state_dict[f"{prefix}.lora_up.weight"] = state_dict.pop(fused_key).mean(
+                dim=0
+            )
 
         # Remove HydraLoRA router keys (not needed for baked-down inference)
         for key in list(state_dict.keys()):
@@ -1305,7 +1353,9 @@ class LoRANetwork(torch.nn.Module):
 
             # Split lora_up along output dim; lora_down is shared (duplicated)
             up_chunks = up.chunk(n, dim=0)
-            dora_chunks = dora_scale.chunk(n, dim=0) if dora_scale is not None else [None] * n
+            dora_chunks = (
+                dora_scale.chunk(n, dim=0) if dora_scale is not None else [None] * n
+            )
 
             base_prefix = prefix.removesuffix(fused_frag)
             for suffix, up_chunk, dora_chunk in zip(suffixes, up_chunks, dora_chunks):

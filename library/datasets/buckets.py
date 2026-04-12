@@ -140,9 +140,7 @@ class BucketManager:
                 pass
             else:
                 ar_errors = self.predefined_aspect_ratios - aspect_ratio
-                predefined_bucket_id = np.abs(
-                    ar_errors
-                ).argmin()
+                predefined_bucket_id = np.abs(ar_errors).argmin()
                 reso = self.predefined_resos[predefined_bucket_id]
 
             ar_reso = reso[0] / reso[1]

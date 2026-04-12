@@ -491,7 +491,9 @@ def generate_body_tiled(
         prefix_net.to(device, dtype=torch.bfloat16)
         embed = prefix_net.prepend_prefix(embed)
         negative_embed = prefix_net.prepend_prefix(negative_embed)
-        logger.info(f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}")
+        logger.info(
+            f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}"
+        )
 
     # Postfix tuning: append learned vectors after real text tokens
     postfix_weight = getattr(args, "postfix_weight", None)
@@ -509,7 +511,9 @@ def generate_body_tiled(
         neg_mask = context_null["embed"][3].to(device)
         neg_seqlens = neg_mask.sum(dim=-1).to(torch.int32)
         negative_embed = postfix_net.append_postfix(negative_embed, neg_seqlens)
-        logger.info(f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text")
+        logger.info(
+            f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text"
+        )
 
     num_channels_latents = anima_models.Anima.LATENT_CHANNELS
     h_latent = height // 8
@@ -714,7 +718,9 @@ def generate_body(
         prefix_net.to(device, dtype=torch.bfloat16)
         embed = prefix_net.prepend_prefix(embed)
         negative_embed = prefix_net.prepend_prefix(negative_embed)
-        logger.info(f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}")
+        logger.info(
+            f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}"
+        )
 
     if postfix_weight is not None:
         from networks.postfix_anima import create_network_from_weights
@@ -731,7 +737,9 @@ def generate_body(
         neg_mask = context_null["embed"][3].to(device)
         neg_seqlens = neg_mask.sum(dim=-1).to(torch.int32)
         negative_embed = postfix_net.append_postfix(negative_embed, neg_seqlens)
-        logger.info(f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text")
+        logger.info(
+            f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text"
+        )
 
     # Prepare latent variables
     num_channels_latents = anima_models.Anima.LATENT_CHANNELS
@@ -828,7 +836,11 @@ def generate_body(
                         enabled=autocast_enabled,
                     ),
                 ):
-                    _pos_kw = {"pooled_text_override": _pooled_text_pos} if _pooled_text_pos is not None else {}
+                    _pos_kw = (
+                        {"pooled_text_override": _pooled_text_pos}
+                        if _pooled_text_pos is not None
+                        else {}
+                    )
                     noise_pred = anima(
                         latents, t_expand, embed, padding_mask=padding_mask, **_pos_kw
                     )
@@ -842,9 +854,17 @@ def generate_body(
                             enabled=autocast_enabled,
                         ),
                     ):
-                        _neg_kw = {"pooled_text_override": _pooled_text_neg} if _pooled_text_neg is not None else {}
+                        _neg_kw = (
+                            {"pooled_text_override": _pooled_text_neg}
+                            if _pooled_text_neg is not None
+                            else {}
+                        )
                         uncond_noise_pred = anima(
-                            latents, t_expand, negative_embed, padding_mask=padding_mask, **_neg_kw
+                            latents,
+                            t_expand,
+                            negative_embed,
+                            padding_mask=padding_mask,
+                            **_neg_kw,
                         )
                     noise_pred = uncond_noise_pred + args.guidance_scale * (
                         noise_pred - uncond_noise_pred
@@ -935,8 +955,12 @@ def _setup_mod_guidance(
     with torch.no_grad():
         pos_pooled = pos_crossattn.max(dim=1).values  # (1, 1024)
         neg_pooled = neg_crossattn.max(dim=1).values
-        proj_pos = anima.pooled_text_proj(pos_pooled.to(anima.pooled_text_proj[0].weight.dtype))
-        proj_neg = anima.pooled_text_proj(neg_pooled.to(anima.pooled_text_proj[0].weight.dtype))
+        proj_pos = anima.pooled_text_proj(
+            pos_pooled.to(anima.pooled_text_proj[0].weight.dtype)
+        )
+        proj_neg = anima.pooled_text_proj(
+            neg_pooled.to(anima.pooled_text_proj[0].weight.dtype)
+        )
         delta = mod_w * (proj_pos - proj_neg)  # (1, model_channels)
 
     anima._mod_guidance_delta = delta.to(device, dtype=torch.bfloat16)
@@ -988,7 +1012,10 @@ def generate(
         context, context_null = prepare_text_inputs(args, device, anima, shared_models)
 
     # Phase 2 modulation guidance: compute guidance delta once
-    if getattr(args, "pooled_text_proj", None) is not None and getattr(args, "mod_w", 0.0) != 0.0:
+    if (
+        getattr(args, "pooled_text_proj", None) is not None
+        and getattr(args, "mod_w", 0.0) != 0.0
+    ):
         _setup_mod_guidance(args, anima, device, shared_models)
     else:
         anima._mod_guidance_delta = None

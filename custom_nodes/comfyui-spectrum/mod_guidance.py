@@ -67,11 +67,17 @@ def _project(pooled, adapter_state):
 class ModGuidanceState:
     """Holds raw tensors for lazy guidance delta computation on first forward."""
 
-    def __init__(self, adapter_path: str, w: float,
-                 pos_raw: torch.Tensor, pos_t5_ids: torch.Tensor,
-                 pos_t5_weights: Optional[torch.Tensor],
-                 neg_raw: torch.Tensor, neg_t5_ids: Optional[torch.Tensor],
-                 neg_t5_weights: Optional[torch.Tensor]):
+    def __init__(
+        self,
+        adapter_path: str,
+        w: float,
+        pos_raw: torch.Tensor,
+        pos_t5_ids: torch.Tensor,
+        pos_t5_weights: Optional[torch.Tensor],
+        neg_raw: torch.Tensor,
+        neg_t5_ids: Optional[torch.Tensor],
+        neg_t5_weights: Optional[torch.Tensor],
+    ):
         self.adapter_path = adapter_path
         self.w = w
         self.pos_raw = pos_raw
@@ -99,8 +105,11 @@ class ModGuidanceState:
                 self.pos_raw.unsqueeze(0).to(device=device, dtype=dtype),
                 self.pos_t5_ids.unsqueeze(0).to(device=device),
                 t5xxl_weights=(
-                    self.pos_t5_weights.unsqueeze(0).unsqueeze(-1).to(device=device, dtype=dtype)
-                    if self.pos_t5_weights is not None else None
+                    self.pos_t5_weights.unsqueeze(0)
+                    .unsqueeze(-1)
+                    .to(device=device, dtype=dtype)
+                    if self.pos_t5_weights is not None
+                    else None
                 ),
             )
             pos_pooled = pos_adapted.max(dim=1).values  # (1, pooled_dim)
@@ -108,10 +117,15 @@ class ModGuidanceState:
             # Negative: from conditioning through LLM adapter
             neg_adapted = dit.preprocess_text_embeds(
                 self.neg_raw.unsqueeze(0).to(device=device, dtype=dtype),
-                self.neg_t5_ids.unsqueeze(0).to(device=device) if self.neg_t5_ids is not None else None,
+                self.neg_t5_ids.unsqueeze(0).to(device=device)
+                if self.neg_t5_ids is not None
+                else None,
                 t5xxl_weights=(
-                    self.neg_t5_weights.unsqueeze(0).unsqueeze(-1).to(device=device, dtype=dtype)
-                    if self.neg_t5_weights is not None else None
+                    self.neg_t5_weights.unsqueeze(0)
+                    .unsqueeze(-1)
+                    .to(device=device, dtype=dtype)
+                    if self.neg_t5_weights is not None
+                    else None
                 ),
             )
             neg_pooled = neg_adapted.max(dim=1).values  # (1, pooled_dim)
@@ -214,7 +228,11 @@ def setup_mod_guidance(model_clone, clip, negative, adapter_name, quality_tags, 
     # Extract negative raw + t5 IDs from CONDITIONING
     neg_cond_tensor = negative[0][0]  # (1, seq, dim) or (seq, dim)
     neg_meta = negative[0][1]
-    neg_raw = neg_cond_tensor[0].detach().cpu() if neg_cond_tensor.ndim == 3 else neg_cond_tensor.detach().cpu()
+    neg_raw = (
+        neg_cond_tensor[0].detach().cpu()
+        if neg_cond_tensor.ndim == 3
+        else neg_cond_tensor.detach().cpu()
+    )
     neg_t5_ids = neg_meta.get("t5xxl_ids")
     if neg_t5_ids is not None:
         neg_t5_ids = neg_t5_ids.detach().cpu()
@@ -223,9 +241,14 @@ def setup_mod_guidance(model_clone, clip, negative, adapter_name, quality_tags, 
         neg_t5_weights = neg_t5_weights.detach().cpu()
 
     mod_state = ModGuidanceState(
-        adapter_path=adapter_path, w=w,
-        pos_raw=pos_raw, pos_t5_ids=pos_t5_ids, pos_t5_weights=pos_t5_weights,
-        neg_raw=neg_raw, neg_t5_ids=neg_t5_ids, neg_t5_weights=neg_t5_weights,
+        adapter_path=adapter_path,
+        w=w,
+        pos_raw=pos_raw,
+        pos_t5_ids=pos_t5_ids,
+        pos_t5_weights=pos_t5_weights,
+        neg_raw=neg_raw,
+        neg_t5_ids=neg_t5_ids,
+        neg_t5_weights=neg_t5_weights,
     )
 
     # Install persistent t_emb hook once (not per-step) to avoid
@@ -249,5 +272,7 @@ def setup_mod_guidance(model_clone, clip, negative, adapter_name, quality_tags, 
     opts = model_clone.model_options.setdefault("transformer_options", {})
     opts[MOD_STATE_KEY] = mod_state
     model_clone.add_wrapper_with_key(
-        comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL, MOD_WRAPPER_KEY, _mod_wrapper
+        comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL,
+        MOD_WRAPPER_KEY,
+        _mod_wrapper,
     )

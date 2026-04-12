@@ -97,9 +97,7 @@ class LoRAModule(torch.nn.Module):
 
         # fp32 accumulation: compute LoRA delta in fp32 for better precision
         if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(
-                x.float(), self.lora_down.weight.float()
-            )
+            lx = torch.nn.functional.linear(x.float(), self.lora_down.weight.float())
         else:
             lx = self.lora_down(x)
 
@@ -218,9 +216,7 @@ class HydraLoRAModule(torch.nn.Module):
                 return org_forwarded
 
         if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(
-                x.float(), self.lora_down.weight.float()
-            )
+            lx = torch.nn.functional.linear(x.float(), self.lora_down.weight.float())
         else:
             lx = self.lora_down(x)
 
@@ -521,12 +517,8 @@ class OrthoLoRAModule(torch.nn.Module):
     def regularization(self):
         """Orthogonality regularization: ||P^T P - I||^2 + ||Q Q^T - I||^2"""
         eye = self._eye_r
-        p_reg = torch.sum(
-            (self.p_layer.weight.T @ self.p_layer.weight - eye) ** 2
-        )
-        q_reg = torch.sum(
-            (self.q_layer.weight @ self.q_layer.weight.T - eye) ** 2
-        )
+        p_reg = torch.sum((self.p_layer.weight.T @ self.p_layer.weight - eye) ** 2)
+        q_reg = torch.sum((self.q_layer.weight @ self.q_layer.weight.T - eye) ** 2)
         return p_reg, q_reg
 
 
@@ -623,13 +615,7 @@ class ReFTModule(torch.nn.Module):
     def regularization(self):
         """Orthogonality regularization: ||R R^T - I||^2"""
         R = self.rotate_layer.weight  # (reft_dim, embed_dim)
-        reg = torch.sum(
-            (
-                R @ R.T
-                - torch.eye(self.reft_dim, device=R.device)
-            )
-            ** 2
-        )
+        reg = torch.sum((R @ R.T - torch.eye(self.reft_dim, device=R.device)) ** 2)
         return reg
 
 
