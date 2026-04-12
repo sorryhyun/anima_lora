@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+PY = sys.executable
 
 
 def latest_output(prefix: str = "") -> Path:
@@ -110,7 +111,7 @@ def cmd_prefix(extra):
 # ── Inference ─────────────────────────────────────────────────────────
 
 INFERENCE_BASE = [
-    "python",
+    PY,
     "inference.py",
     "--dit",
     "models/diffusion_models/anima-preview3-base.safetensors",
@@ -203,13 +204,13 @@ def cmd_test_spectrum(extra):
 
 
 def cmd_step(extra):
-    run(["python", "scripts/graft_step.py", *extra])
+    run([PY, "scripts/graft_step.py", *extra])
 
 
 def cmd_preprocess_resize(extra):
     run(
         [
-            "python",
+            PY,
             "scripts/resize_images.py",
             "--src",
             "image_dataset",
@@ -223,7 +224,7 @@ def cmd_preprocess_resize(extra):
 def cmd_preprocess_vae(extra):
     run(
         [
-            "python",
+            PY,
             "scripts/cache_latents.py",
             "--dir",
             "post_image_dataset",
@@ -241,7 +242,7 @@ def cmd_preprocess_vae(extra):
 def cmd_preprocess_te(extra):
     run(
         [
-            "python",
+            PY,
             "scripts/cache_text_embeddings.py",
             "--dir",
             "post_image_dataset",
@@ -250,7 +251,7 @@ def cmd_preprocess_te(extra):
             "--dit",
             "models/diffusion_models/anima-preview3-base.safetensors",
             "--caption_shuffle_variants",
-            "16",
+            "8",
             *extra,
         ]
     )
@@ -265,7 +266,7 @@ def cmd_preprocess(extra):
 def cmd_comfy_batch(extra):
     workflow = extra[0] if extra else "workflows/lora-batch.json"
     remaining = extra[1:] if extra else []
-    run(["python", "scripts/comfy_batch.py", workflow, *remaining])
+    run([PY, "scripts/comfy_batch.py", workflow, *remaining])
 
 
 # ── Downloads ─────────────────────────────────────────────────────────
@@ -330,7 +331,7 @@ def cmd_download_models(_extra):
 def cmd_mask_sam(extra):
     run(
         [
-            "python",
+            PY,
             "scripts/generate_masks.py",
             "--config",
             "configs/sam_mask.yaml",
@@ -350,7 +351,7 @@ def cmd_mask_sam(extra):
 def cmd_mask_mit(extra):
     run(
         [
-            "python",
+            PY,
             "scripts/generate_masks_mit.py",
             "--image-dir",
             "post_image_dataset",
@@ -370,7 +371,7 @@ def cmd_mask(extra):
         cmd_mask_mit([])
     run(
         [
-            "python",
+            PY,
             "scripts/merge_masks.py",
             "masks_sam",
             "masks_mit",
@@ -390,13 +391,13 @@ def cmd_mask_clean(_extra):
 
 
 def cmd_gui(_extra):
-    run(["python", "-m", "gui"])
+    run([PY, "-m", "gui"])
 
 
 def cmd_invert(extra):
     run(
         [
-            "python",
+            PY,
             "scripts/invert_embedding.py",
             "--dit",
             "models/diffusion_models/anima-preview3-base.safetensors",

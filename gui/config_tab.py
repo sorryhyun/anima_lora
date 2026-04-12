@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from typing import Any
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -27,8 +29,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+# Matches tqdm lines like: "Denoising steps:  40%|####      | 12/30 [..]"
+_TQDM_RE = re.compile(
+    r"^(?P<label>.*?):?\s*(?P<pct>\d+)%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)"
+)
+
 from gui import (
     CONFIGS_DIR,
+    IMAGE_EXTS,
     PRESETS,
     ROOT,
     _GROUPS,
@@ -104,6 +112,18 @@ class ConfigTab(QWidget):
         self.train_btn.setEnabled(self._preprocessed)
         top.addWidget(self.train_btn)
 
+        self.test_btn = QPushButton(t("test"))
+        self._test_idle_style = (
+            "background:#8e44ad;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        self._test_busy_style = (
+            "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        self.test_btn.setStyleSheet(self._test_idle_style)
+        self.test_btn.clicked.connect(self._start_test)
+        self.test_btn.setEnabled(self._has_lora_output())
+        top.addWidget(self.test_btn)
+
         self.stop_btn = QPushButton(t("stop"))
         self.stop_btn.setStyleSheet(
             "background:#c0392b;color:white;font-weight:bold;padding:4px 16px;"
@@ -113,6 +133,19 @@ class ConfigTab(QWidget):
         top.addWidget(self.stop_btn)
 
         lay.addLayout(top)
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setTextVisible(True)
+        self.progress.setFormat("")
+        self.progress.setVisible(False)
+        self.progress.setStyleSheet(
+            "QProgressBar { border: 1px solid #444; border-radius: 3px;"
+            " text-align: center; padding: 1px; font-size: 11px; }"
+            "QProgressBar::chunk { background: #27ae60; }"
+        )
+        lay.addWidget(self.progress)
 
         # Vertical splitter: config form on top, log on bottom
         vsplit = QSplitter(Qt.Vertical)
@@ -156,6 +189,8 @@ class ConfigTab(QWidget):
         self._proc.readyReadStandardOutput.connect(self._read_stdout)
         self._proc.readyReadStandardError.connect(self._read_stderr)
         self._proc.finished.connect(self._on_finished)
+        self._stdout_buf = ""
+        self._stderr_buf = ""
 
         self._load_preset(self.combo.currentText())
 
@@ -257,6 +292,33 @@ class ConfigTab(QWidget):
             f"<p style='color:#888; font-style:italic;'>{html.escape(t('click_field_for_help'))}</p>"
         )
 
+    def _show_test_output(self) -> None:
+        d = ROOT / "test_output"
+        imgs: list = []
+        if d.is_dir():
+            imgs = sorted(
+                (p for p in d.iterdir() if p.suffix.lower() in IMAGE_EXTS),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )[:4]
+        title = html.escape(t("test_output_title"))
+        if not imgs:
+            self._explain.setHtml(
+                f"<h2 style='margin:0 0 10px 0; font-size:18px;'>{title}</h2>"
+                f"<p style='color:#888; font-style:italic;'>{html.escape(t('test_output_empty'))}</p>"
+            )
+            return
+        parts = [f"<h2 style='margin:0 0 10px 0; font-size:18px;'>{title}</h2>"]
+        for p in imgs:
+            url = p.resolve().as_uri()
+            parts.append(
+                f"<p style='margin:0 0 10px 0;'>"
+                f"<img src='{url}' style='max-width:100%;'/><br/>"
+                f"<span style='color:#aaa; font-size:11px;'>{html.escape(p.name)}</span>"
+                f"</p>"
+            )
+        self._explain.setHtml("".join(parts))
+
     def _show_explain(
         self, field: str, help_text: str | None, notes: tuple[str, ...]
     ) -> None:
@@ -320,23 +382,37 @@ class ConfigTab(QWidget):
 
     # ── Training ──
 
-    def _start_preprocess(self):
+    def _has_lora_output(self) -> bool:
+        out = ROOT / "output"
+        return out.is_dir() and any(out.glob("*.safetensors"))
+
+    def _start_test(self):
+        if not self._has_lora_output():
+            QMessageBox.warning(self, t("error"), t("no_lora_for_test"))
+            return
+
         python = sys.executable
-        args = [
-            "scripts/post_images.py",
-            "--src",
-            "image_dataset",
-            "--dst",
-            "post_image_dataset",
-            "--vae",
-            "models/vae/qwen_image_vae.safetensors",
-            "--vae_batch_size",
-            "4",
-            "--vae_chunk_size",
-            "64",
-        ]
+        args = ["tasks.py", "test"]
 
         self.log.clear()
+        self._reset_progress()
+        self._log(f"> python {' '.join(args)}\n")
+        self._running_mode = "test"
+        self._proc.start(python, args)
+        self.test_btn.setText(t("test") + " ...")
+        self.test_btn.setStyleSheet(self._test_busy_style)
+        self.test_btn.setEnabled(False)
+        self.preprocess_btn.setEnabled(False)
+        self.train_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.combo.setEnabled(False)
+
+    def _start_preprocess(self):
+        python = sys.executable
+        args = ["tasks.py", "preprocess"]
+
+        self.log.clear()
+        self._reset_progress()
         self._log(f"> python {' '.join(args)}\n")
         self._running_mode = "preprocess"
         self._proc.start(python, args)
@@ -344,6 +420,7 @@ class ConfigTab(QWidget):
         self.preprocess_btn.setStyleSheet(self._preprocess_busy_style)
         self.preprocess_btn.setEnabled(False)
         self.train_btn.setEnabled(False)
+        self.test_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.combo.setEnabled(False)
 
@@ -374,6 +451,7 @@ class ConfigTab(QWidget):
         ]
 
         self.log.clear()
+        self._reset_progress()
         self._log(f"> accelerate {' '.join(args)}\n")
         self._running_mode = "train"
         self._proc.start(accelerate, args)
@@ -381,6 +459,7 @@ class ConfigTab(QWidget):
         self.train_btn.setStyleSheet(self._train_busy_style)
         self.train_btn.setEnabled(False)
         self.preprocess_btn.setEnabled(False)
+        self.test_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.combo.setEnabled(False)
 
@@ -390,23 +469,63 @@ class ConfigTab(QWidget):
 
     def _read_stdout(self):
         data = self._proc.readAllStandardOutput().data().decode(errors="replace")
-        self._log(data)
+        self._stdout_buf = self._handle_stream(self._stdout_buf + data)
 
     def _read_stderr(self):
         data = self._proc.readAllStandardError().data().decode(errors="replace")
-        self._log(data)
+        self._stderr_buf = self._handle_stream(self._stderr_buf + data)
+
+    def _handle_stream(self, buf: str) -> str:
+        # Split on \n and \r so tqdm carriage-return updates work too.
+        parts = re.split(r"[\r\n]", buf)
+        tail = parts[-1]  # incomplete trailing fragment — keep buffered
+        for line in parts[:-1]:
+            m = _TQDM_RE.search(line)
+            if m:
+                cur = int(m.group("cur"))
+                tot = int(m.group("tot"))
+                label = m.group("label").strip() or "progress"
+                if tot > 0:
+                    self.progress.setMaximum(tot)
+                    self.progress.setValue(cur)
+                    self.progress.setFormat(f"{label}: {cur}/{tot} (%p%)")
+                    if not self.progress.isVisible():
+                        self.progress.setVisible(True)
+                continue
+            if line:
+                self._log(line + "\n")
+        return tail
+
+    def _reset_progress(self):
+        self._stdout_buf = ""
+        self._stderr_buf = ""
+        self.progress.setValue(0)
+        self.progress.setFormat("")
+        self.progress.setVisible(False)
 
     def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
+        # Flush any buffered partial lines before the finish banner.
+        for buf_name in ("_stdout_buf", "_stderr_buf"):
+            leftover = getattr(self, buf_name, "")
+            if leftover and not _TQDM_RE.search(leftover):
+                self._log(leftover + "\n")
+            setattr(self, buf_name, "")
+        self.progress.setVisible(False)
         self._log(f"\n{t('finished', code=exit_code)}\n")
         mode = getattr(self, "_running_mode", "train")
         if mode == "preprocess" and exit_code == 0:
             self._preprocessed = True
+        if mode == "test" and exit_code == 0:
+            self._show_test_output()
         self.preprocess_btn.setText(t("preprocess"))
         self.preprocess_btn.setStyleSheet(self._preprocess_idle_style)
         self.preprocess_btn.setEnabled(True)
         self.train_btn.setText(t("train"))
         self.train_btn.setStyleSheet(self._train_idle_style)
         self.train_btn.setEnabled(self._preprocessed)
+        self.test_btn.setText(t("test"))
+        self.test_btn.setStyleSheet(self._test_idle_style)
+        self.test_btn.setEnabled(self._has_lora_output())
         self.stop_btn.setEnabled(False)
         self.combo.setEnabled(True)
 

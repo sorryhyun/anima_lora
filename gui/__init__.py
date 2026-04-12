@@ -130,6 +130,7 @@ def _image_dirs() -> dict[str, Path]:
     for name, path in [
         ("image_dataset", ROOT / "image_dataset"),
         ("post_image_dataset", ROOT / "post_image_dataset"),
+        ("test_output", ROOT / "test_output"),
         ("graft/survivors", GRAFT_DIR / "survivors"),
     ]:
         if path.exists():
