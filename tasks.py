@@ -18,7 +18,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-LORA_DIR = ROOT.parent / "comfy" / "ComfyUI" / "models" / "loras"
 
 
 def latest_output(prefix: str = "") -> Path:
@@ -201,13 +200,6 @@ def cmd_test_spectrum(extra):
 
 
 # ── Utilities ─────────────────────────────────────────────────────────
-
-
-def cmd_sync(_extra):
-    LORA_DIR.mkdir(parents=True, exist_ok=True)
-    for f in (ROOT / "output").glob("*.safetensors"):
-        shutil.copy2(f, LORA_DIR / f.name)
-        print(f"  Copied {f.name}")
 
 
 def cmd_step(extra):
@@ -443,7 +435,6 @@ COMMANDS = {
     "test-prefix": (cmd_test_prefix, "Inference with latest prefix weight"),
     "test-postfix": (cmd_test_postfix, "Inference with latest postfix weight"),
     "test-spectrum": (cmd_test_spectrum, "Spectrum-accelerated inference"),
-    "sync": (cmd_sync, "Copy outputs to ComfyUI loras dir"),
     "step": (cmd_step, "Run one GRAFT iteration"),
     "preprocess": (
         cmd_preprocess,

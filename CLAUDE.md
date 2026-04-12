@@ -63,8 +63,7 @@ make mask-sam              # SAM3 only
 make mask-mit              # MIT/ComicTextDetector only
 make mask-clean            # Remove all generated masks
 
-# Deploy & batch
-make sync                  # Copy output/*.safetensors to ComfyUI loras dir
+# Batch
 make comfy-batch           # Run ComfyUI batch workflow
 
 # Linting

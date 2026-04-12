@@ -1,11 +1,10 @@
 ACCELERATE := python -m accelerate.commands.accelerate_cli
-LORA_DIR := ../comfy/ComfyUI/models/loras
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-mod test-prefix test-postfix test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora postfix prefix step test test-mod test-prefix test-postfix test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -73,9 +72,6 @@ distill-mod:
 		--blocks_to_swap 0 \
 		--attn_mode flash \
 		$(ARGS)
-
-sync:
-	python -c "import shutil, glob, os; d='$(LORA_DIR)'; os.makedirs(d,exist_ok=True); [shutil.copy2(f,d) for f in glob.glob('output/*.safetensors')]"
 
 test:
 	$(TEST_COMMON) \
