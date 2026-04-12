@@ -285,9 +285,7 @@ class ConfigSanitizer:
             return self.argparse_config_validator(argparse_namespace)
         except MultipleInvalid:
             # XXX: this should be a bug
-            logger.error(
-                "Invalid cmdline parsed arguments. This should be a bug."
-            )
+            logger.error("Invalid cmdline parsed arguments. This should be a bug.")
             raise
 
     # NOTE: value would be overwritten by latter dict if there is already the same key
@@ -516,9 +514,7 @@ def generate_dreambooth_subsets_config_by_subdirs(
         try:
             n_repeats = int(tokens[0])
         except ValueError:
-            logger.warning(
-                f"ignore directory without repeats"
-            )
+            logger.warning("ignore directory without repeats")
             return 0, ""
         caption_by_folder = "_".join(tokens[1:])
         return n_repeats, caption_by_folder
@@ -560,29 +556,23 @@ def generate_dreambooth_subsets_config_by_subdirs(
 def load_user_config(file: str) -> dict:
     file: Path = Path(file)
     if not file.is_file():
-        raise ValueError(f"file not found")
+        raise ValueError("file not found")
 
     if file.name.lower().endswith(".json"):
         try:
             with open(file, "r") as f:
                 config = json.load(f)
         except Exception:
-            logger.error(
-                f"Error on parsing JSON config file. Please check the format."
-            )
+            logger.error("Error on parsing JSON config file. Please check the format.")
             raise
     elif file.name.lower().endswith(".toml"):
         try:
             config = toml.load(file)
         except Exception:
-            logger.error(
-                f"Error on parsing TOML config file. Please check the format."
-            )
+            logger.error("Error on parsing TOML config file. Please check the format.")
             raise
     else:
-        raise ValueError(
-            f"not supported config file format"
-        )
+        raise ValueError("not supported config file format")
 
     return config
 

@@ -173,7 +173,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
             "torch",
             "xformers",
             "flash",
-            "flash4",
+            # "flash4",  # not supported yet (flash-attention-sm120 disabled)
             "sageattn",
             "flex",
             "sdpa",

@@ -163,11 +163,6 @@ def parse_args() -> argparse.Namespace:
         help="Sampler to use: 'euler' (deterministic ODE) or 'er_sde' (Extended Reverse-Time SDE). Default is euler.",
     )
 
-    parser.add_argument("--fp8", action="store_true", help="use fp8 for DiT model")
-    parser.add_argument(
-        "--fp8_scaled", action="store_true", help="use scaled fp8 for DiT, only for fp8"
-    )
-
     parser.add_argument(
         "--text_encoder_cpu",
         action="store_true",
@@ -185,7 +180,7 @@ def parse_args() -> argparse.Namespace:
         default="torch",
         choices=[
             "flash",
-            "flash4",
+            # "flash4",  # not supported yet (flash-attention-sm120 disabled)
             "torch",
             "sageattn",
             "flex",
@@ -356,6 +351,10 @@ def parse_args() -> argparse.Namespace:
     )
 
     args = parser.parse_args()
+
+    # FP8 autocast is not supported yet — force-disable so downstream code paths
+    # (library/inference_pipeline.py) see a consistent False on this flag.
+    args.fp8 = False
 
     # Validate arguments
     if args.from_file and args.interactive:
@@ -650,7 +649,9 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                         w=getattr(args, "spectrum_w", 0.3),
                         m=getattr(args, "spectrum_m", 3),
                         lam=getattr(args, "spectrum_lam", 0.1),
-                        stop_caching_step=getattr(args, "spectrum_stop_caching_step", -1),
+                        stop_caching_step=getattr(
+                            args, "spectrum_stop_caching_step", -1
+                        ),
                         calibration_strength=getattr(args, "spectrum_calibration", 0.0),
                         autocast_enabled=autocast_enabled,
                         pgraft_network=pgraft_network,
@@ -706,7 +707,8 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
 
                             if er_sde is not None:
                                 denoised = (
-                                    latents.float() - sigmas[step_i] * noise_pred.float()
+                                    latents.float()
+                                    - sigmas[step_i] * noise_pred.float()
                                 )
                                 latents = er_sde.step(latents, denoised, step_i).to(
                                     latents.dtype

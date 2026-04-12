@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -27,33 +26,62 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 PRESETS = {
     "Windows 8GB VRAM": "training_config_win8gb.toml",
     "Windows 16GB VRAM": "training_config_win16gb.toml",
-    "FA4 8GB VRAM": "training_config_fa4_8gb.toml",
-    "FA4 16GB VRAM": "training_config_fa4_16gb.toml",
+    # FA4 presets are not supported yet (flash-attention-sm120 disabled)
+    # "FA4 8GB VRAM": "training_config_fa4_8gb.toml",
+    # "FA4 16GB VRAM": "training_config_fa4_16gb.toml",
 }
 
 _GROUPS = {
     "Architecture": {
-        "network_dim", "network_alpha", "network_module", "use_dora",
-        "use_timestep_mask", "min_rank", "alpha_rank_scale", "network_train_unet_only",
+        "network_dim",
+        "network_alpha",
+        "network_module",
+        "use_dora",
+        "use_timestep_mask",
+        "min_rank",
+        "alpha_rank_scale",
+        "network_train_unet_only",
     },
     "Training": {
-        "learning_rate", "max_train_epochs", "save_every_n_epochs",
-        "checkpointing_epochs", "gradient_accumulation_steps",
-        "caption_shuffle_variants", "optimizer_type", "lr_scheduler",
-        "timestep_sampling", "discrete_flow_shift",
+        "learning_rate",
+        "max_train_epochs",
+        "save_every_n_epochs",
+        "checkpointing_epochs",
+        "gradient_accumulation_steps",
+        "caption_shuffle_variants",
+        "optimizer_type",
+        "lr_scheduler",
+        "timestep_sampling",
+        "discrete_flow_shift",
     },
     "Performance": {
-        "attn_mode", "gradient_checkpointing", "unsloth_offload_checkpointing",
-        "blocks_to_swap", "torch_compile", "compile_mode", "trim_crossattn_kv",
-        "cache_llm_adapter_outputs", "masked_loss", "mixed_precision",
-        "lora_fp32_accumulation", "static_token_count", "vae_chunk_size",
-        "vae_disable_cache", "cache_latents", "cache_latents_to_disk",
-        "cache_text_encoder_outputs", "cache_text_encoder_outputs_to_disk",
+        "attn_mode",
+        "gradient_checkpointing",
+        "unsloth_offload_checkpointing",
+        "blocks_to_swap",
+        "torch_compile",
+        "compile_mode",
+        "trim_crossattn_kv",
+        "cache_llm_adapter_outputs",
+        "masked_loss",
+        "mixed_precision",
+        "lora_fp32_accumulation",
+        "static_token_count",
+        "vae_chunk_size",
+        "vae_disable_cache",
+        "cache_latents",
+        "cache_latents_to_disk",
+        "cache_text_encoder_outputs",
+        "cache_text_encoder_outputs_to_disk",
         "skip_cache_check",
     },
     "Paths": {
-        "pretrained_model_name_or_path", "qwen3", "vae",
-        "output_dir", "output_name", "save_model_as",
+        "pretrained_model_name_or_path",
+        "qwen3",
+        "vae",
+        "output_dir",
+        "output_name",
+        "save_model_as",
     },
 }
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
@@ -62,11 +90,12 @@ _SKIP = {"base_config", "dataset_config"}
 _LOCKED_PERFORMANCE = {
     "Windows 8GB VRAM",
     "Windows 16GB VRAM",
-    "FA4 8GB VRAM",
-    "FA4 16GB VRAM",
+    # "FA4 8GB VRAM",   # not supported yet
+    # "FA4 16GB VRAM",  # not supported yet
 }
 
-_ATTN_MODES = ["flex", "flash"] if sys.platform == "win32" else ["flex", "flash", "flash4"]
+# flash4 is not supported yet (flash-attention-sm120 disabled)
+_ATTN_MODES = ["flex", "flash"]
 
 
 # ── Helpers ────────────────────────────────────────────────────
@@ -89,7 +118,11 @@ def _merged(f: str) -> dict:
 
 
 def _imgs(d: Path) -> list[Path]:
-    return sorted(p for p in d.iterdir() if p.suffix.lower() in IMAGE_EXTS) if d.exists() else []
+    return (
+        sorted(p for p in d.iterdir() if p.suffix.lower() in IMAGE_EXTS)
+        if d.exists()
+        else []
+    )
 
 
 def _image_dirs() -> dict[str, Path]:
@@ -176,7 +209,9 @@ class ScaledImageLabel(QLabel):
     def _rescale(self):
         if self._src and not self._src.isNull():
             self.setPixmap(
-                self._src.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self._src.scaled(
+                    self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
             )
 
 
@@ -185,4 +220,5 @@ class ScaledImageLabel(QLabel):
 
 def main():
     from gui.app import main as _main
+
     _main()

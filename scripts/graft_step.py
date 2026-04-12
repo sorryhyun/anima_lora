@@ -193,9 +193,15 @@ def prepare_dataset_config():
         base = before.rstrip("\n") + "\n" + after.lstrip("\n")
 
     # Append survivors subset only if there are actual images
-    survivor_images = [p for p in SURVIVORS_DIR.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS] if SURVIVORS_DIR.exists() else []
+    survivor_images = (
+        [p for p in SURVIVORS_DIR.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS]
+        if SURVIVORS_DIR.exists()
+        else []
+    )
     if survivor_images:
-        base = base.rstrip("\n") + f"""
+        base = (
+            base.rstrip("\n")
+            + f"""
 
 {marker_start}
   [[datasets.subsets]]
@@ -203,6 +209,7 @@ def prepare_dataset_config():
   num_repeats = 1
 {marker_end}
 """
+        )
 
     GRAFT_DATASET_CONFIG.write_text(base)
 
@@ -242,11 +249,15 @@ def run_training(config):
     """Run LoRA training."""
     print("\n=== Training LoRA ===")
     cmd = [
-        "accelerate", "launch",
-        "--num_cpu_threads_per_process", "3",
-        "--mixed_precision", "bf16",
+        "accelerate",
+        "launch",
+        "--num_cpu_threads_per_process",
+        "3",
+        "--mixed_precision",
+        "bf16",
         "train.py",
-        "--config_file", "graft/training_config.toml",
+        "--config_file",
+        "graft/training_config.toml",
     ]
     result = subprocess.run(cmd, cwd=ROOT)
     if result.returncode != 0:
@@ -309,33 +320,58 @@ def run_generation(config, holdout_captions, iteration):
 
     prompt_file = GRAFT_DIR / "generation_prompts.txt"
     prompt_file.write_text("\n".join(prompt_lines) + "\n")
-    print(f"  {total} candidates to generate ({len(holdout_captions)} captions x {n_candidates} seeds)")
+    print(
+        f"  {total} candidates to generate ({len(holdout_captions)} captions x {n_candidates} seeds)"
+    )
 
     cmd = [
-        "python", "inference.py",
-        "--dit", str(dit_path),
-        "--vae", str(vae_path),
-        "--text_encoder", str(te_path),
-        "--lora_weight", str(lora_path),
-        "--from_file", str(prompt_file),
-        "--image_size", str(h), str(w),
-        "--infer_steps", str(steps),
-        "--guidance_scale", str(config.get("guidance_scale", 3.5)),
-        "--flow_shift", str(config.get("flow_shift", 5.0)),
-        "--save_path", str(candidates),
-        "--negative_prompt", "lowres, bad anatomy, worst quality",
-        "--attn_mode", "flash",
-        "--vae_chunk_size", "64",
+        "python",
+        "inference.py",
+        "--dit",
+        str(dit_path),
+        "--vae",
+        str(vae_path),
+        "--text_encoder",
+        str(te_path),
+        "--lora_weight",
+        str(lora_path),
+        "--from_file",
+        str(prompt_file),
+        "--image_size",
+        str(h),
+        str(w),
+        "--infer_steps",
+        str(steps),
+        "--guidance_scale",
+        str(config.get("guidance_scale", 3.5)),
+        "--flow_shift",
+        str(config.get("flow_shift", 5.0)),
+        "--save_path",
+        str(candidates),
+        "--negative_prompt",
+        "lowres, bad anatomy, worst quality",
+        "--attn_mode",
+        "flash",
+        "--vae_chunk_size",
+        "64",
         "--vae_disable_cache",
         "--spectrum",
-        "--spectrum_window_size", "2.0",
-        "--spectrum_flex_window", "0.25",
-        "--spectrum_warmup", "7",
-        "--spectrum_w", "0.3",
-        "--spectrum_m", "3",
-        "--spectrum_lam", "0.1",
-        "--spectrum_stop_caching_step", "29",
-        "--spectrum_calibration", "0.0",
+        "--spectrum_window_size",
+        "2.0",
+        "--spectrum_flex_window",
+        "0.25",
+        "--spectrum_warmup",
+        "7",
+        "--spectrum_w",
+        "0.3",
+        "--spectrum_m",
+        "3",
+        "--spectrum_lam",
+        "0.1",
+        "--spectrum_stop_caching_step",
+        "29",
+        "--spectrum_calibration",
+        "0.0",
     ]
 
     if pgraft:
@@ -343,7 +379,9 @@ def run_generation(config, holdout_captions, iteration):
 
     result = subprocess.run(cmd, cwd=ROOT)
     if result.returncode != 0:
-        print(f"Generation failed with return code {result.returncode}", file=sys.stderr)
+        print(
+            f"Generation failed with return code {result.returncode}", file=sys.stderr
+        )
         sys.exit(1)
 
     # Write sidecar JSONs for all generated images
@@ -355,12 +393,17 @@ def run_generation(config, holdout_captions, iteration):
         matching = [p for name, p in generated_pngs.items() if name == seed_str]
         if matching:
             sidecar = matching[0].with_suffix(".json")
-            sidecar.write_text(json.dumps({
-                "caption": caption,
-                "seed": seed,
-                "source_stem": stem,
-                "iteration": iteration,
-            }, indent=2))
+            sidecar.write_text(
+                json.dumps(
+                    {
+                        "caption": caption,
+                        "seed": seed,
+                        "source_stem": stem,
+                        "iteration": iteration,
+                    },
+                    indent=2,
+                )
+            )
 
     actual_count = len(list(candidates.glob("*.png")))
     print(f"Generated {actual_count} candidates in {candidates}")
@@ -390,7 +433,9 @@ def main():
         print("=== GRAFT Step: First iteration ===")
         state = {"iteration": 0, "phase": "init", "total_epochs": 0}
     else:
-        print(f"=== GRAFT Step: Iteration {state['iteration']} → {state['iteration'] + 1} ===")
+        print(
+            f"=== GRAFT Step: Iteration {state['iteration']} → {state['iteration'] + 1} ==="
+        )
 
         if state["phase"] == "await_review":
             # Ingest survivors from previous candidates

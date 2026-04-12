@@ -11,5 +11,5 @@ attn_mode = "flash"
 blocks_to_swap = 0
 cache_llm_adapter_outputs = true
 gradient_checkpointing = true
-trim_crossattn_kv = true
+trim_crossattn_kv = false  # no-op without flash4 (see docs/fa4.md)
 unsloth_offload_checkpointing = true

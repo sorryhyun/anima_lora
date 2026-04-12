@@ -41,19 +41,28 @@ def bench_mm(M, N, K, dtype, label):
 def bench_scaled_mm(M, N, K, in_dtype, label):
     A = torch.randn(M, K, dtype=torch.bfloat16, device="cuda").to(in_dtype).contiguous()
     # _scaled_mm expects B as (K, N) column-major, i.e. B.T is contiguous
-    B = torch.randn(K, N, dtype=torch.bfloat16, device="cuda").to(in_dtype).T.contiguous().T
+    B = (
+        torch.randn(K, N, dtype=torch.bfloat16, device="cuda")
+        .to(in_dtype)
+        .T.contiguous()
+        .T
+    )
 
     scale_a = torch.ones(M, 1, dtype=torch.float32, device="cuda")
     scale_b = torch.ones(1, N, dtype=torch.float32, device="cuda")
 
     try:
         for _ in range(WARMUP):
-            torch._scaled_mm(A, B, scale_a=scale_a, scale_b=scale_b, out_dtype=torch.bfloat16)
+            torch._scaled_mm(
+                A, B, scale_a=scale_a, scale_b=scale_b, out_dtype=torch.bfloat16
+            )
         torch.cuda.synchronize()
 
         start = time.perf_counter()
         for _ in range(ITERS):
-            torch._scaled_mm(A, B, scale_a=scale_a, scale_b=scale_b, out_dtype=torch.bfloat16)
+            torch._scaled_mm(
+                A, B, scale_a=scale_a, scale_b=scale_b, out_dtype=torch.bfloat16
+            )
         torch.cuda.synchronize()
         ms = (time.perf_counter() - start) / ITERS * 1000
 
@@ -107,7 +116,9 @@ if __name__ == "__main__":
 
     for label, B, M_cfg, N_cfg, K_cfg in configs:
         flops = 2 * B * M_cfg * N_cfg * K_cfg
-        print(f"\n{label}: B={B} M={M_cfg} N={N_cfg} K={K_cfg}  ({flops/1e9:.1f} GFLOP)")
+        print(
+            f"\n{label}: B={B} M={M_cfg} N={N_cfg} K={K_cfg}  ({flops / 1e9:.1f} GFLOP)"
+        )
 
         if B == 1:
             bench_mm(M_cfg, N_cfg, K_cfg, torch.bfloat16, "BF16 mm")
@@ -117,7 +128,7 @@ if __name__ == "__main__":
             bench_bmm(B, M_cfg, N_cfg, K_cfg, torch.float16, "FP16 bmm")
 
     # Scaled MM (FP8) — uses different HW path?
-    print(f"\n--- Scaled matmul (FP8) ---")
+    print("\n--- Scaled matmul (FP8) ---")
     for label, M_cfg, N_cfg, K_cfg in [
         ("4096x4096x64", 4096, 4096, 64),
         ("4096x4096x4096", 4096, 4096, 4096),

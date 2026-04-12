@@ -24,6 +24,7 @@ Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The exa
 # Training (run from anima_lora/)
 make lora                  # Standard LoRA (configs/training_config_plain.toml)
 python tasks.py lora       # Same, works on Windows too
+make lora-fast             # Fast LoRA, 16GB no-block-swap (configs/training_config_fast_16gb.toml)
 make lora-low-vram         # Low-VRAM LoRA (configs/training_config_low_vram.toml)
 make dora                  # DoRA (configs/training_config_dora.toml + use_dora=true)
 make tlora                 # T-LoRA: OrthoLoRA + timestep masking (configs/training_config_tlora.toml)
@@ -90,6 +91,7 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 Training is config-driven. TOML configs specify model paths, hyperparams, and dataset layout:
 - `configs/base.toml` — base/shared config values
 - `configs/training_config_plain.toml` — standard LoRA config (used by `make lora`)
+- `configs/training_config_fast_16gb.toml` — fast LoRA config, no block swap, ~16GB VRAM (used by `make lora-fast`)
 - `configs/training_config.toml` — base T-LoRA config
 - `configs/training_config_tlora.toml` — T-LoRA with OrthoLoRA + timestep masking (used by `make tlora`)
 - `configs/training_config_dora.toml` — DoRA config

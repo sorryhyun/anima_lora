@@ -130,6 +130,7 @@ class BwdConfig:
 # Config generators
 # ---------------------------------------------------------------------------
 
+
 def stage1_configs() -> list[BwdConfig]:
     """Block sizes × stages, atom layouts fixed at (4,4,4).
 
@@ -156,8 +157,13 @@ def stage2_configs(bm: int, bn: int, sq: int, sdo: int) -> list[BwdConfig]:
 
 
 def stage3_configs(
-    bm: int, bn: int, sq: int, sdo: int,
-    a_msdp: int, a_ndkv: int, a_mdq: int,
+    bm: int,
+    bn: int,
+    sq: int,
+    sdo: int,
+    a_msdp: int,
+    a_ndkv: int,
+    a_mdq: int,
 ) -> list[BwdConfig]:
     """V_in_regs sweep only.
 
@@ -229,7 +235,7 @@ def run_one(cfg: BwdConfig) -> BenchResult:
 
     if proc.returncode != 0:
         # Extract last meaningful line of stderr for the error message
-        err_lines = [l for l in proc.stderr.strip().split("\n") if l.strip()]
+        err_lines = [line for line in proc.stderr.strip().split("\n") if line.strip()]
         err_msg = err_lines[-1][:200] if err_lines else "unknown error"
         return BenchResult(cfg, error=err_msg, compile_s=elapsed)
 
@@ -238,7 +244,9 @@ def run_one(cfg: BwdConfig) -> BenchResult:
     if output.startswith("ERROR:"):
         # Also show last line of stderr (traceback) if available
         err_detail = output[6:]
-        stderr_lines = [l for l in proc.stderr.strip().split("\n") if l.strip()]
+        stderr_lines = [
+            line for line in proc.stderr.strip().split("\n") if line.strip()
+        ]
         if stderr_lines:
             err_detail += f" | {stderr_lines[-1][:120]}"
         return BenchResult(cfg, error=err_detail, compile_s=elapsed)
@@ -264,13 +272,16 @@ def run_one(cfg: BwdConfig) -> BenchResult:
 # Display
 # ---------------------------------------------------------------------------
 
+
 def print_results(results: list[BenchResult], stage_name: str):
     print(f"\n{'=' * 90}")
     print(f"  {stage_name} — Results")
     print(f"{'=' * 90}")
 
     # Header
-    print(f"{'Config':<42} {'SMEM':>5} {'Self bwd':>9} {'Cross bwd':>10} {'Step bwd':>9} {'Compile':>8} {'Note':>6}")
+    print(
+        f"{'Config':<42} {'SMEM':>5} {'Self bwd':>9} {'Cross bwd':>10} {'Step bwd':>9} {'Compile':>8} {'Note':>6}"
+    )
     print("-" * 90)
 
     # Sort by step backward time (failures last)
@@ -283,20 +294,26 @@ def print_results(results: list[BenchResult], stage_name: str):
         label = r.config.short_label()
         smem = r.config.smem_label()
         if r.error:
-            print(f"{label:<42} {smem:>5} {'FAIL':>9} {'':>10} {'':>9} {r.compile_s:>7.1f}s  {r.error}")
+            print(
+                f"{label:<42} {smem:>5} {'FAIL':>9} {'':>10} {'':>9} {r.compile_s:>7.1f}s  {r.error}"
+            )
         else:
             self_b = f"{r.self_bwd_ms:.2f}" if r.self_bwd_ms else "—"
             cross_b = f"{r.cross_bwd_ms:.2f}" if r.cross_bwd_ms else "—"
             step_b = f"{r.step_bwd_ms:.1f}" if r.step_bwd_ms else "—"
-            print(f"{label:<42} {smem:>5} {self_b:>8}ms {cross_b:>9}ms {step_b:>8}ms {r.compile_s:>7.1f}s")
+            print(
+                f"{label:<42} {smem:>5} {self_b:>8}ms {cross_b:>9}ms {step_b:>8}ms {r.compile_s:>7.1f}s"
+            )
 
     # Best config
     valid = [r for r in results if r.step_bwd_ms is not None]
     if valid:
         best = min(valid, key=lambda r: r.step_bwd_ms)
-        print(f"\n  Best: {best.config.short_label()} — "
-              f"self_bwd={best.self_bwd_ms:.2f}ms, cross_bwd={best.cross_bwd_ms:.2f}ms, "
-              f"step_bwd={best.step_bwd_ms:.1f}ms")
+        print(
+            f"\n  Best: {best.config.short_label()} — "
+            f"self_bwd={best.self_bwd_ms:.2f}ms, cross_bwd={best.cross_bwd_ms:.2f}ms, "
+            f"step_bwd={best.step_bwd_ms:.1f}ms"
+        )
         return best
     else:
         print("\n  No successful configs!")
@@ -306,6 +323,7 @@ def print_results(results: list[BenchResult], stage_name: str):
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main():
     parser = argparse.ArgumentParser(description="Phase 1: SM120 backward config sweep")
@@ -337,12 +355,18 @@ def main():
             print(f"\nStage 1: Block + Stages sweep ({len(configs)} configs)")
             results = []
             for i, cfg in enumerate(configs, 1):
-                print(f"  [{i}/{len(configs)}] {cfg.short_label()} ({cfg.smem_label()}) ...", end=" ", flush=True)
+                print(
+                    f"  [{i}/{len(configs)}] {cfg.short_label()} ({cfg.smem_label()}) ...",
+                    end=" ",
+                    flush=True,
+                )
                 r = run_one(cfg)
                 if r.error:
                     print(f"FAIL ({r.compile_s:.1f}s): {r.error}")
                 else:
-                    print(f"self_bwd={r.self_bwd_ms:.2f}ms cross_bwd={r.cross_bwd_ms:.2f}ms ({r.compile_s:.1f}s)")
+                    print(
+                        f"self_bwd={r.self_bwd_ms:.2f}ms cross_bwd={r.cross_bwd_ms:.2f}ms ({r.compile_s:.1f}s)"
+                    )
                 results.append(r)
             best = print_results(results, "Stage 1: Block + Stages")
             if best:
@@ -353,16 +377,24 @@ def main():
 
         elif stage == "2":
             configs = stage2_configs(best_bm, best_bn, best_sq, best_sdo)
-            print(f"\nStage 2: Atom layout sweep ({len(configs)} configs, "
-                  f"block={best_bm}x{best_bn}, stages={best_sq},{best_sdo})")
+            print(
+                f"\nStage 2: Atom layout sweep ({len(configs)} configs, "
+                f"block={best_bm}x{best_bn}, stages={best_sq},{best_sdo})"
+            )
             results = []
             for i, cfg in enumerate(configs, 1):
-                print(f"  [{i}/{len(configs)}] {cfg.short_label()} ({cfg.smem_label()}) ...", end=" ", flush=True)
+                print(
+                    f"  [{i}/{len(configs)}] {cfg.short_label()} ({cfg.smem_label()}) ...",
+                    end=" ",
+                    flush=True,
+                )
                 r = run_one(cfg)
                 if r.error:
                     print(f"FAIL ({r.compile_s:.1f}s): {r.error}")
                 else:
-                    print(f"self_bwd={r.self_bwd_ms:.2f}ms cross_bwd={r.cross_bwd_ms:.2f}ms ({r.compile_s:.1f}s)")
+                    print(
+                        f"self_bwd={r.self_bwd_ms:.2f}ms cross_bwd={r.cross_bwd_ms:.2f}ms ({r.compile_s:.1f}s)"
+                    )
                 results.append(r)
             best = print_results(results, "Stage 2: Atom Layouts")
             if best:
@@ -371,18 +403,28 @@ def main():
                 best_aq = best.config.atom_mdq
 
         elif stage == "3":
-            configs = stage3_configs(best_bm, best_bn, best_sq, best_sdo, best_am, best_an, best_aq)
-            print(f"\nStage 3: V_in_regs + swapAB ({len(configs)} configs, "
-                  f"block={best_bm}x{best_bn}, stages={best_sq},{best_sdo}, "
-                  f"atoms={best_am},{best_an},{best_aq})")
+            configs = stage3_configs(
+                best_bm, best_bn, best_sq, best_sdo, best_am, best_an, best_aq
+            )
+            print(
+                f"\nStage 3: V_in_regs + swapAB ({len(configs)} configs, "
+                f"block={best_bm}x{best_bn}, stages={best_sq},{best_sdo}, "
+                f"atoms={best_am},{best_an},{best_aq})"
+            )
             results = []
             for i, cfg in enumerate(configs, 1):
-                print(f"  [{i}/{len(configs)}] {cfg.short_label()} ({cfg.smem_label()}) ...", end=" ", flush=True)
+                print(
+                    f"  [{i}/{len(configs)}] {cfg.short_label()} ({cfg.smem_label()}) ...",
+                    end=" ",
+                    flush=True,
+                )
                 r = run_one(cfg)
                 if r.error:
                     print(f"FAIL ({r.compile_s:.1f}s): {r.error}")
                 else:
-                    print(f"self_bwd={r.self_bwd_ms:.2f}ms cross_bwd={r.cross_bwd_ms:.2f}ms ({r.compile_s:.1f}s)")
+                    print(
+                        f"self_bwd={r.self_bwd_ms:.2f}ms cross_bwd={r.cross_bwd_ms:.2f}ms ({r.compile_s:.1f}s)"
+                    )
                 results.append(r)
             print_results(results, "Stage 3: V_in_regs + swapAB")
 

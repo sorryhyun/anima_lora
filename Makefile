@@ -5,7 +5,7 @@ LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-mod test-prefix test-postfix test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora postfix prefix sync step test test-mod test-prefix test-postfix test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -29,6 +29,10 @@ gui:
 lora:
 	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_plain.toml
+
+lora-fast:
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+		train.py --config_file configs/training_config_fast_16gb.toml
 
 lora-low-vram:
 	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \

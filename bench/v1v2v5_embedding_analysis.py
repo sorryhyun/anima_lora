@@ -23,7 +23,6 @@ import torch.nn.functional as F
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from library import anima_utils, strategy_anima, strategy_base
-from library.device_utils import clean_memory_on_device
 
 # --- Config ---
 DIT_PATH = "models/diffusion_models/anima-preview3-base.safetensors"
@@ -49,7 +48,9 @@ RESOLUTION_TAGS = "absurdres, highres"
 
 
 def cosine_sim(a: torch.Tensor, b: torch.Tensor) -> float:
-    return F.cosine_similarity(a.flatten().unsqueeze(0), b.flatten().unsqueeze(0)).item()
+    return F.cosine_similarity(
+        a.flatten().unsqueeze(0), b.flatten().unsqueeze(0)
+    ).item()
 
 
 def encode_prompt(prompt, text_encoder, tok_strat, enc_strat, anima, device):
@@ -66,7 +67,9 @@ def encode_prompt(prompt, text_encoder, tok_strat, enc_strat, anima, device):
         mask = embed[3].to(device)
         crossattn_emb[~mask.bool()] = 0
         if crossattn_emb.shape[1] < 512:
-            crossattn_emb = F.pad(crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1]))
+            crossattn_emb = F.pad(
+                crossattn_emb, (0, 0, 0, 512 - crossattn_emb.shape[1])
+            )
         pooled = crossattn_emb.max(dim=1).values  # (1, 1024)
     return crossattn_emb.cpu(), pooled.cpu().squeeze(0)
 
@@ -101,8 +104,8 @@ def main():
     strategy_base.TokenizeStrategy.set_strategy(tok)
     strategy_base.TextEncodingStrategy.set_strategy(enc)
 
-    def enc_prompt(prompt):
-        return encode_prompt(prompt, text_encoder, tok, enc, anima, DEVICE)
+    def enc_prompt(prompt, _te=text_encoder, _anima=anima):
+        return encode_prompt(prompt, _te, tok, enc, _anima, DEVICE)
 
     # ---- Encode all prompts we'll need ----
     print("\nEncoding prompts...")
@@ -139,7 +142,7 @@ def main():
         {"test_embed": test_embed, "neg_embed": neg_embed, "prompt": test_prompt},
         BENCH_DIR / "test_embed.pt",
     )
-    print(f"  Saved test embeddings → bench/test_embed.pt")
+    print("  Saved test embeddings → bench/test_embed.pt")
 
     # ---- Free models ----
     del text_encoder, anima
@@ -157,7 +160,10 @@ def main():
     dist_standalone = 1.0 - cosine_sim(pool_qpos, pool_qneg)
 
     # Cosine distance: quality+ vs quality- (same content)
-    pair_dists = [1.0 - cosine_sim(pools_pos[i], pools_neg[i]) for i in range(len(CONTENT_PROMPTS))]
+    pair_dists = [
+        1.0 - cosine_sim(pools_pos[i], pools_neg[i])
+        for i in range(len(CONTENT_PROMPTS))
+    ]
 
     # Baseline: same-quality, different content
     same_q_dists = []
@@ -208,7 +214,7 @@ def main():
     # Save average quality direction for V3/V4
     avg_direction = torch.stack(directions).mean(dim=0)
     torch.save(avg_direction, BENCH_DIR / "quality_direction.pt")
-    print(f"  Saved quality direction → bench/quality_direction.pt")
+    print("  Saved quality direction → bench/quality_direction.pt")
 
     # ==============================================================
     # V5: Resolution vs quality tag orthogonality
@@ -231,8 +237,14 @@ def main():
     avg_cross = float(np.mean(cross_sims))
 
     # Within-axis consistency (should be high)
-    res_self_sims = [cosine_sim(res_dirs[i], res_dirs[j]) for i in range(4) for j in range(i + 1, 4)]
-    qual_self_sims = [cosine_sim(qual_dirs[i], qual_dirs[j]) for i in range(4) for j in range(i + 1, 4)]
+    res_self_sims = [
+        cosine_sim(res_dirs[i], res_dirs[j]) for i in range(4) for j in range(i + 1, 4)
+    ]
+    qual_self_sims = [
+        cosine_sim(qual_dirs[i], qual_dirs[j])
+        for i in range(4)
+        for j in range(i + 1, 4)
+    ]
 
     # Also check standalone quality vs resolution direction
     standalone_cross = cosine_sim(pool_qpos - pool_qneg, pool_res - pools_bare[0])
@@ -245,7 +257,9 @@ def main():
     print(f"  Standalone res↔qual cosine:    {standalone_cross:.4f}")
     print(f"  Res self-consistency:          {float(np.mean(res_self_sims)):.4f}")
     print(f"  Quality self-consistency:      {float(np.mean(qual_self_sims)):.4f}")
-    print(f"  VERDICT: {'PASS' if v5_pass else 'FAIL'} (threshold: |cross cosine| < 0.3)")
+    print(
+        f"  VERDICT: {'PASS' if v5_pass else 'FAIL'} (threshold: |cross cosine| < 0.3)"
+    )
 
     # ==============================================================
     # Save results
@@ -281,7 +295,9 @@ def main():
 
     all_pass = v1_pass and v2_pass and v5_pass
     print(f"\n{'=' * 60}")
-    print(f"SUMMARY:  V1={'PASS' if v1_pass else 'FAIL'}  V2={'PASS' if v2_pass else 'FAIL'}  V5={'PASS' if v5_pass else 'FAIL'}")
+    print(
+        f"SUMMARY:  V1={'PASS' if v1_pass else 'FAIL'}  V2={'PASS' if v2_pass else 'FAIL'}  V5={'PASS' if v5_pass else 'FAIL'}"
+    )
     print(f"{'=' * 60}")
     return 0 if all_pass else 1
 

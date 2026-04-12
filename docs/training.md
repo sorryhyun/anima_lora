@@ -53,17 +53,7 @@ lora_fp32_accumulation = true
 
 ## Cross-Attention KV Trim
 
-Eliminates wasted compute on zero-padding tokens in cross-attention. The pretrained model pads text encoder outputs to 512 tokens, but typical captions only use 30–80 — the rest are zeros that act as attention sinks (contributing `exp(0) = 1` to the softmax denominator and zero to the numerator).
-
-**How it works:** KV is trimmed to a bucketed length (`KV_BUCKETS = [64, 128, 256, 512]`) before projection, and FA4's returned LSE (log-sum-exp) is used to apply a post-hoc sigmoid correction that exactly restores the attention-sink contribution:
-
-```
-out_corrected = out_trimmed * sigmoid(lse - log(N_pad))
-```
-
-This is mathematically identical to full-padding attention — not an approximation. The bucketed trim lengths (only 4 possible shapes) keep `torch.compile` stable with no recompilation after warmup.
-
-Requires Flash Attention 4 (`attn_mode = "flash4"`). Other backends fall back to full 512-length KV automatically.
+Removed — the trim path only ran under `attn_mode = "flash4"`, which we evaluated and removed. See [fa4.md](fa4.md) for the postmortem. Training now always runs full 512-length cross-attention KV; the zero-padded positions act as attention sinks and cost negligible compute on FA2.
 
 ## Caption Shuffle Variants
 

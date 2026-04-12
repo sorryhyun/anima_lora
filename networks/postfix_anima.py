@@ -296,9 +296,13 @@ class PostfixNetwork(nn.Module):
             .to(dtype=crossattn_emb.dtype, device=crossattn_emb.device)
         )
         # Trim K trailing positions (zero-padding) to keep total length unchanged
-        return torch.cat([prefix, crossattn_emb[:, :crossattn_emb.shape[1] - K]], dim=1)
+        return torch.cat(
+            [prefix, crossattn_emb[:, : crossattn_emb.shape[1] - K]], dim=1
+        )
 
-    def append_postfix(self, crossattn_emb: torch.Tensor, crossattn_seqlens: torch.Tensor) -> torch.Tensor:
+    def append_postfix(
+        self, crossattn_emb: torch.Tensor, crossattn_seqlens: torch.Tensor
+    ) -> torch.Tensor:
         """Insert learned postfix vectors right after real text tokens (overwriting zero-padding).
 
         Args:
@@ -397,7 +401,9 @@ class PostfixNetwork(nn.Module):
         elif self.mode == "embedding":
             state_dict = {"postfix": self.postfix.detach().clone().cpu().to(dtype)}
         else:
-            state_dict = {"postfix_embeds": self.postfix_embeds.detach().clone().cpu().to(dtype)}
+            state_dict = {
+                "postfix_embeds": self.postfix_embeds.detach().clone().cpu().to(dtype)
+            }
 
         if os.path.splitext(file)[1] == ".safetensors":
             from safetensors.torch import save_file

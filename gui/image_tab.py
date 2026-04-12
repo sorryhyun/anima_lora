@@ -85,7 +85,9 @@ class ImageViewerTab(QWidget):
         if not pm.isNull():
             self.img.set_source(pm)
         cp = p.with_suffix(".txt")
-        self.cap.setPlainText(cp.read_text(encoding="utf-8") if cp.exists() else t("no_caption"))
+        self.cap.setPlainText(
+            cp.read_text(encoding="utf-8") if cp.exists() else t("no_caption")
+        )
 
     def _nav(self, d: int):
         r = self.fl.currentRow() + d

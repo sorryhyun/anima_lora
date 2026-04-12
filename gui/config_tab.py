@@ -6,8 +6,10 @@ import shutil
 import sys
 from typing import Any
 
+import html
+
 import toml
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QProcess, Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -40,6 +43,21 @@ from gui import (
 )
 from gui.explanations import field_help, lora_guide
 from gui.i18n import t
+
+
+class ClickableLabel(QLabel):
+    """QLabel that emits `clicked` on left-click."""
+
+    clicked = Signal()
+
+    def __init__(self, text: str = ""):
+        super().__init__(text)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(ev)
 
 
 class ConfigTab(QWidget):
@@ -64,15 +82,23 @@ class ConfigTab(QWidget):
         top.addWidget(save_btn)
 
         self.preprocess_btn = QPushButton(t("preprocess"))
-        self._preprocess_idle_style = "background:#2980b9;color:white;font-weight:bold;padding:4px 16px;"
-        self._preprocess_busy_style = "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        self._preprocess_idle_style = (
+            "background:#2980b9;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        self._preprocess_busy_style = (
+            "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        )
         self.preprocess_btn.setStyleSheet(self._preprocess_idle_style)
         self.preprocess_btn.clicked.connect(self._start_preprocess)
         top.addWidget(self.preprocess_btn)
 
         self.train_btn = QPushButton(t("train"))
-        self._train_idle_style = "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
-        self._train_busy_style = "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        self._train_idle_style = (
+            "background:#27ae60;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        self._train_busy_style = (
+            "background:#7f8c8d;color:white;font-weight:bold;padding:4px 16px;"
+        )
         self.train_btn.setStyleSheet(self._train_idle_style)
         self.train_btn.clicked.connect(self._start_training)
         self.train_btn.setEnabled(self._preprocessed)
@@ -91,12 +117,29 @@ class ConfigTab(QWidget):
         # Vertical splitter: config form on top, log on bottom
         vsplit = QSplitter(Qt.Vertical)
 
+        # Horizontal splitter: form on left, explanation panel on right
+        hsplit = QSplitter(Qt.Horizontal)
+
         sc = QScrollArea()
         sc.setWidgetResizable(True)
         self._form = QWidget()
         self._fl = QVBoxLayout(self._form)
         sc.setWidget(self._form)
-        vsplit.addWidget(sc)
+        hsplit.addWidget(sc)
+
+        self._explain = QTextBrowser()
+        self._explain.setOpenExternalLinks(True)
+        self._explain.setStyleSheet(
+            "QTextBrowser { font-size: 13px; padding: 12px; background: #2b2b2b; color: #e0e0e0; }"
+        )
+        self._explain.setMinimumWidth(320)
+        self._show_explain_placeholder()
+        hsplit.addWidget(self._explain)
+        hsplit.setStretchFactor(0, 3)
+        hsplit.setStretchFactor(1, 2)
+        hsplit.setSizes([720, 420])
+
+        vsplit.addWidget(hsplit)
 
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
@@ -121,6 +164,9 @@ class ConfigTab(QWidget):
         var = _load(CONFIGS_DIR / f)
         self._vkeys = set(var) - _SKIP
         cfg = {k: v for k, v in _merged(f).items() if k not in _SKIP}
+
+        if hasattr(self, "_explain"):
+            self._show_explain_placeholder()
 
         self._w.clear()
         self._ds_edit = None
@@ -163,20 +209,24 @@ class ConfigTab(QWidget):
                 if locked:
                     w.setEnabled(False)
                 self._w[k] = w
-                lbl = QLabel(k)
+                lbl = ClickableLabel(k)
 
-                # Field tooltip from explanations
                 help_text = field_help(k)
+                notes: list[str] = []
                 if locked:
-                    lbl.setStyleSheet("color:#666;")
-                    if help_text:
-                        lbl.setToolTip(help_text)
+                    lbl.setStyleSheet("color:#666; text-decoration: underline dotted;")
+                    notes.append(t("locked_by_preset"))
                 elif k not in self._vkeys:
-                    lbl.setStyleSheet("color:#888; text-decoration: underline dotted;" if help_text else "color:#888;")
-                    lbl.setToolTip(f"{help_text}\n\n({t('from_base')})" if help_text else t("from_base"))
-                elif help_text:
+                    lbl.setStyleSheet("color:#888; text-decoration: underline dotted;")
+                    notes.append(t("from_base"))
+                else:
                     lbl.setStyleSheet("text-decoration: underline dotted;")
-                    lbl.setToolTip(help_text)
+
+                lbl.clicked.connect(
+                    lambda _k=k, _h=help_text, _n=tuple(notes): self._show_explain(
+                        _k, _h, _n
+                    )
+                )
 
                 form.addRow(lbl, w)
             box.setLayout(form)
@@ -199,6 +249,33 @@ class ConfigTab(QWidget):
             self._fl.addWidget(box)
 
         self._fl.addStretch()
+
+    # ── Explanation panel ──
+
+    def _show_explain_placeholder(self) -> None:
+        self._explain.setHtml(
+            f"<p style='color:#888; font-style:italic;'>{html.escape(t('click_field_for_help'))}</p>"
+        )
+
+    def _show_explain(
+        self, field: str, help_text: str | None, notes: tuple[str, ...]
+    ) -> None:
+        parts = [
+            f"<h2 style='margin:0 0 10px 0; font-size:18px;'>{html.escape(field)}</h2>"
+        ]
+        if help_text:
+            parts.append(
+                f"<p style='font-size:14px; line-height:1.6;'>{html.escape(help_text)}</p>"
+            )
+        else:
+            parts.append(
+                f"<p style='color:#888; font-style:italic;'>{html.escape(t('no_help_available'))}</p>"
+            )
+        for note in notes:
+            parts.append(
+                f"<p style='color:#aaa; font-style:italic; margin-top:12px;'>• {html.escape(note)}</p>"
+            )
+        self._explain.setHtml("".join(parts))
 
     # ── Save ──
 
@@ -247,11 +324,16 @@ class ConfigTab(QWidget):
         python = sys.executable
         args = [
             "scripts/post_images.py",
-            "--src", "image_dataset",
-            "--dst", "post_image_dataset",
-            "--vae", "models/vae/qwen_image_vae.safetensors",
-            "--vae_batch_size", "4",
-            "--vae_chunk_size", "64",
+            "--src",
+            "image_dataset",
+            "--dst",
+            "post_image_dataset",
+            "--vae",
+            "models/vae/qwen_image_vae.safetensors",
+            "--vae_batch_size",
+            "4",
+            "--vae_chunk_size",
+            "64",
         ]
 
         self.log.clear()
@@ -282,10 +364,13 @@ class ConfigTab(QWidget):
         f = PRESETS[self.combo.currentText()]
         args = [
             "launch",
-            "--num_cpu_threads_per_process", "3",
-            "--mixed_precision", "bf16",
+            "--num_cpu_threads_per_process",
+            "3",
+            "--mixed_precision",
+            "bf16",
             "train.py",
-            "--config_file", f"configs/{f}",
+            "--config_file",
+            f"configs/{f}",
         ]
 
         self.log.clear()

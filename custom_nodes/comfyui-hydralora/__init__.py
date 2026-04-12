@@ -77,7 +77,9 @@ def _load_hydra(file_path: str) -> dict:
     return result
 
 
-def _bake_down(hydra_data: dict, expert_weights: torch.Tensor) -> Dict[str, torch.Tensor]:
+def _bake_down(
+    hydra_data: dict, expert_weights: torch.Tensor
+) -> Dict[str, torch.Tensor]:
     """Bake down multi-head LoRA to standard LoRA with given expert weights.
 
     Args:
@@ -94,8 +96,12 @@ def _bake_down(hydra_data: dict, expert_weights: torch.Tensor) -> Dict[str, torc
 
         # Weighted average of expert up-projections
         ups = mod_data["lora_ups"]
-        stacked = torch.stack([ups[i] for i in sorted(ups.keys())], dim=0)  # (E, out, rank)
-        combined_up = torch.einsum("e,eor->or", expert_weights.to(stacked.device), stacked)
+        stacked = torch.stack(
+            [ups[i] for i in sorted(ups.keys())], dim=0
+        )  # (E, out, rank)
+        combined_up = torch.einsum(
+            "e,eor->or", expert_weights.to(stacked.device), stacked
+        )
 
         result[f"{prefix}.lora_down.weight"] = mod_data["lora_down"]
         result[f"{prefix}.lora_up.weight"] = combined_up
@@ -137,8 +143,13 @@ class HydraLoRALoader:
                 **{
                     f"expert_{i}": (
                         "FLOAT",
-                        {"default": 1.0, "min": 0.0, "max": 5.0, "step": 0.05,
-                         "tooltip": f"Weight for expert {i}"},
+                        {
+                            "default": 1.0,
+                            "min": 0.0,
+                            "max": 5.0,
+                            "step": 0.05,
+                            "tooltip": f"Weight for expert {i}",
+                        },
                     )
                     for i in range(16)  # support up to 16 experts
                 },
@@ -202,7 +213,9 @@ class HydraLoRAAutoRouter:
         }
 
     RETURN_TYPES = ("MODEL",)
-    OUTPUT_TOOLTIPS = ("Model with HydraLoRA applied using auto-routed expert weights.",)
+    OUTPUT_TOOLTIPS = (
+        "Model with HydraLoRA applied using auto-routed expert weights.",
+    )
     FUNCTION = "apply"
     CATEGORY = "loaders"
     DESCRIPTION = (

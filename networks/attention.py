@@ -1,7 +1,6 @@
 # Unified attention function supporting various implementations
 
 from dataclasses import dataclass
-import math
 import torch
 from typing import Optional, Union
 
@@ -16,28 +15,26 @@ except ImportError:
     _flash_attn_forward = None
     flash_attn_func = None
 
-try:
-    from flash_attn.cute import flash_attn_func as _flash_attn_4_func_raw
-    from flash_attn.cute import flash_attn_varlen_func as _flash_attn_4_varlen_func_raw
-
-    # FA4's CUTLASS/TVM kernel accesses raw data pointers (DLPack) which
-    # fails with FakeTensors during dynamo tracing. Use graph breaks instead
-    # — FA4 is already an optimized fused kernel, torch.compile can't
-    # improve it. Surrounding ops still get compiled in separate sub-graphs.
-    @torch.compiler.disable
-    def flash_attn_4_func(*args, **kwargs):
-        out, _lse = _flash_attn_4_func_raw(*args, **kwargs)
-        return out
-
-    @torch.compiler.disable
-    def flash_attn_4_varlen_func(*args, **kwargs):
-        out, _lse = _flash_attn_4_varlen_func_raw(*args, **kwargs)
-        return out
-
-except ImportError:
-    _flash_attn_4_func_raw = None
-    flash_attn_4_func = None
-    flash_attn_4_varlen_func = None
+# Flash Attention 4 (flash-attention-sm120) is not supported yet — the
+# SM120 kernel is unstable on our targets. Import path is disabled; any
+# attn_mode="flash4" request raises below.
+# try:
+#     from flash_attn.cute import flash_attn_func as _flash_attn_4_func_raw
+#     from flash_attn.cute import flash_attn_varlen_func as _flash_attn_4_varlen_func_raw
+#
+#     @torch.compiler.disable
+#     def flash_attn_4_func(*args, **kwargs):
+#         out, _lse = _flash_attn_4_func_raw(*args, **kwargs)
+#         return out
+#
+#     @torch.compiler.disable
+#     def flash_attn_4_varlen_func(*args, **kwargs):
+#         out, _lse = _flash_attn_4_varlen_func_raw(*args, **kwargs)
+#         return out
+# except ImportError:
+_flash_attn_4_func_raw = None
+flash_attn_4_func = None
+flash_attn_4_varlen_func = None
 
 try:
     from sageattention import sageattn_varlen, sageattn
@@ -96,6 +93,7 @@ class AttentionParams:
 
     @property
     def supports_fp32(self) -> bool:
+        # flash4 is not supported yet, but keep it in the exclusion list for parity.
         return self.attn_mode not in ["flash", "flash4"]
 
     @property
@@ -142,7 +140,12 @@ class AttentionParams:
             cu_seqlens = torch.zeros(
                 [2 * batch_size + 1], dtype=torch.int32, device=attention_mask.device
             )
-            offsets = torch.arange(batch_size, dtype=torch.int32, device=attention_mask.device) * max_seqlen
+            offsets = (
+                torch.arange(
+                    batch_size, dtype=torch.int32, device=attention_mask.device
+                )
+                * max_seqlen
+            )
             cu_seqlens[1::2] = offsets + seqlens  # end of valid tokens per batch
             cu_seqlens[2::2] = offsets + max_seqlen  # end of all tokens per batch
 
@@ -260,7 +263,9 @@ def attention(
         and attn_params.attention_mask is not None
         and attn_params.seqlens is not None
     ):
-        if attn_params.uniform_seqlens or torch.all(attn_params.seqlens == attn_params.seqlens[0]):
+        if attn_params.uniform_seqlens or torch.all(
+            attn_params.seqlens == attn_params.seqlens[0]
+        ):
             seqlen = attn_params.seqlens[0].item()
             q = q[:, :seqlen]
             k = k[:, :seqlen]
@@ -449,64 +454,57 @@ def attention(
             x = x.view(batch_size, seqlen, x.shape[-2], x.shape[-1])  # B, L, H, D
 
     elif attn_params.attn_mode == "flash4":
-        if attn_params.split_attn:
-            x = []
-            for i in range(len(q)):
-                x_i = flash_attn_4_func(
-                    q[i], k[i], v[i], softmax_scale=scale
-                )  # B, L, H, D
-                q[i] = None
-                k[i] = None
-                v[i] = None
-                x.append(pad_fn(x_i, attn_params.max_seqlen))  # B, L, H, D
-            x = torch.cat(x, dim=0)
-            del q, k, v
-        elif attn_params.cu_seqlens is None:  # all tokens are valid
-            # Always take the LSE path so the compiled graph structure is
-            # identical regardless of whether KV was trimmed — eliminates a
-            # shape-dependent branch that causes excessive torch.compile
-            # recompilations with bucketed KV lengths.
-            # When n_pad=0: log_n_pad=-inf → sigmoid(lse-(-inf))=1 → no-op.
-            n_pad = (
-                attn_params.crossattn_full_len - k.shape[1]
-                if attn_params.crossattn_full_len is not None
-                and q.shape[1] != k.shape[1]
-                else 0
-            )
-            log_n_pad = torch.full(
-                (),
-                math.log(n_pad) if n_pad > 0 else float("-inf"),
-                dtype=torch.float32,
-                device=q.device,
-            )
-            out, lse = _flash_attn_4_func_raw(
-                q, k, v, softmax_scale=scale, return_lse=True
-            )
-            del q, k, v
-            correction = torch.sigmoid(lse - log_n_pad).to(out.dtype)  # [B, H, Q_LEN]
-            x = out * correction.transpose(1, 2).unsqueeze(-1)  # [B, Q_LEN, H, D]
-            del out, lse, correction
-        else:
-            # Reshape to [(bxs), a, d]
-            batch_size, seqlen = q.shape[0], q.shape[1]
-            q = q.view(q.shape[0] * q.shape[1], *q.shape[2:])  # [B*L, H, D]
-            k = k.view(k.shape[0] * k.shape[1], *k.shape[2:])  # [B*L, H, D]
-            v = v.view(v.shape[0] * v.shape[1], *v.shape[2:])  # [B*L, H, D]
-
-            x = flash_attn_4_varlen_func(
-                q,
-                k,
-                v,
-                attn_params.cu_seqlens,
-                attn_params.cu_seqlens,
-                attn_params.max_seqlen,
-                attn_params.max_seqlen,
-                softmax_scale=scale,
-            )
-            del q, k, v
-
-            # Reshape x with shape [(bxs), a, d] to [b, s, a, d]
-            x = x.view(batch_size, seqlen, x.shape[-2], x.shape[-1])  # B, L, H, D
+        # Flash Attention 4 (flash-attention-sm120) is not supported yet.
+        raise NotImplementedError(
+            "attn_mode='flash4' is not supported yet — the flash-attention-sm120 "
+            "kernel is disabled in this build. Use 'flash', 'torch', 'flex', "
+            "'sageattn', or 'xformers' instead."
+        )
+        # if attn_params.split_attn:
+        #     x = []
+        #     for i in range(len(q)):
+        #         x_i = flash_attn_4_func(
+        #             q[i], k[i], v[i], softmax_scale=scale
+        #         )  # B, L, H, D
+        #         q[i] = None
+        #         k[i] = None
+        #         v[i] = None
+        #         x.append(pad_fn(x_i, attn_params.max_seqlen))  # B, L, H, D
+        #     x = torch.cat(x, dim=0)
+        #     del q, k, v
+        # elif attn_params.cu_seqlens is None:  # all tokens are valid
+        #     n_pad = (
+        #         attn_params.crossattn_full_len - k.shape[1]
+        #         if attn_params.crossattn_full_len is not None
+        #         and q.shape[1] != k.shape[1]
+        #         else 0
+        #     )
+        #     log_n_pad = torch.full(
+        #         (),
+        #         math.log(n_pad) if n_pad > 0 else float("-inf"),
+        #         dtype=torch.float32,
+        #         device=q.device,
+        #     )
+        #     out, lse = _flash_attn_4_func_raw(
+        #         q, k, v, softmax_scale=scale, return_lse=True
+        #     )
+        #     del q, k, v
+        #     correction = torch.sigmoid(lse - log_n_pad).to(out.dtype)
+        #     x = out * correction.transpose(1, 2).unsqueeze(-1)
+        #     del out, lse, correction
+        # else:
+        #     batch_size, seqlen = q.shape[0], q.shape[1]
+        #     q = q.view(q.shape[0] * q.shape[1], *q.shape[2:])
+        #     k = k.view(k.shape[0] * k.shape[1], *k.shape[2:])
+        #     v = v.view(v.shape[0] * v.shape[1], *v.shape[2:])
+        #     x = flash_attn_4_varlen_func(
+        #         q, k, v,
+        #         attn_params.cu_seqlens, attn_params.cu_seqlens,
+        #         attn_params.max_seqlen, attn_params.max_seqlen,
+        #         softmax_scale=scale,
+        #     )
+        #     del q, k, v
+        #     x = x.view(batch_size, seqlen, x.shape[-2], x.shape[-1])
 
     else:
         raise ValueError(f"Unsupported attention mode: {attn_params.attn_mode}")

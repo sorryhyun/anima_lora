@@ -13,7 +13,6 @@ import argparse
 import json
 import itertools
 import random
-import sys
 import time
 import urllib.request
 import urllib.error
@@ -67,11 +66,21 @@ def main():
     parser.add_argument("--artist", default="workflows/artist.txt")
     parser.add_argument("--chara", default="workflows/chara.txt")
     parser.add_argument("--server", default=COMFY_URL)
-    parser.add_argument("--randomize-seed", action="store_true", default=True,
-                        help="Randomize seed per job (default: true)")
-    parser.add_argument("--no-randomize-seed", dest="randomize_seed", action="store_false")
-    parser.add_argument("--wait", action="store_true", default=True,
-                        help="Wait for each job to finish before queuing next (default: true)")
+    parser.add_argument(
+        "--randomize-seed",
+        action="store_true",
+        default=True,
+        help="Randomize seed per job (default: true)",
+    )
+    parser.add_argument(
+        "--no-randomize-seed", dest="randomize_seed", action="store_false"
+    )
+    parser.add_argument(
+        "--wait",
+        action="store_true",
+        default=True,
+        help="Wait for each job to finish before queuing next (default: true)",
+    )
     parser.add_argument("--no-wait", dest="wait", action="store_false")
     args = parser.parse_args()
 
