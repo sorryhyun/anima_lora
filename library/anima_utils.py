@@ -146,12 +146,12 @@ def load_anima_model(
         lora_weights_list (Optional[List[Dict[str, torch.Tensor]]]): LoRA weights to apply, if any.
         lora_multipliers (Optional[List[float]]): LoRA multipliers for the weights, if any.
     """
-    # dit_weight_dtype is None for fp8_scaled
-    assert (
-        not fp8_scaled and dit_weight_dtype is not None
-    ) or dit_weight_dtype is None, (
-        "dit_weight_dtype should be None when fp8_scaled is True"
-    )
+    # FP8 is not supported yet — force-disable fp8_scaled regardless of what the caller passed.
+    if fp8_scaled:
+        logger.warning("fp8_scaled is not supported yet — loading model without fp8 optimization.")
+        fp8_scaled = False
+    if dit_weight_dtype is None:
+        dit_weight_dtype = torch.bfloat16
 
     device = torch.device(device)
     loading_device = torch.device(loading_device)

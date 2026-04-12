@@ -127,7 +127,7 @@ def main():
     parser.add_argument("--save_every", type=int, default=100,
                         help="Save checkpoint every N iterations")
     parser.add_argument("--attn_mode", type=str, default="flash",
-                        help="Attention mode (torch, flash, flash4)")
+                        help="Attention mode (torch, flash). flash4 not supported yet.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--sigmoid_scale", type=float, default=1.0,
                         help="Scale for sigmoid timestep sampling")

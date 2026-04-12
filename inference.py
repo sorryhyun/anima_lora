@@ -163,10 +163,11 @@ def parse_args() -> argparse.Namespace:
         help="Sampler to use: 'euler' (deterministic ODE) or 'er_sde' (Extended Reverse-Time SDE). Default is euler.",
     )
 
-    parser.add_argument("--fp8", action="store_true", help="use fp8 for DiT model")
-    parser.add_argument(
-        "--fp8_scaled", action="store_true", help="use scaled fp8 for DiT, only for fp8"
-    )
+    # FP8 inference is not supported yet — the fp8 kernels are not working on our targets.
+    # parser.add_argument("--fp8", action="store_true", help="use fp8 for DiT model")
+    # parser.add_argument(
+    #     "--fp8_scaled", action="store_true", help="use scaled fp8 for DiT, only for fp8"
+    # )
 
     parser.add_argument(
         "--text_encoder_cpu",
@@ -185,7 +186,7 @@ def parse_args() -> argparse.Namespace:
         default="torch",
         choices=[
             "flash",
-            "flash4",
+            # "flash4",  # not supported yet (flash-attention-sm120 disabled)
             "torch",
             "sageattn",
             "flex",
@@ -356,6 +357,11 @@ def parse_args() -> argparse.Namespace:
     )
 
     args = parser.parse_args()
+
+    # FP8 inference is not supported yet — force-disable so downstream code paths
+    # (library/inference_pipeline.py) see a consistent False on these flags.
+    args.fp8 = False
+    args.fp8_scaled = False
 
     # Validate arguments
     if args.from_file and args.interactive:

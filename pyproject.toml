@@ -43,8 +43,9 @@ dependencies = [
     # Linux-only CUDA extensions
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
-    "flash-attn-4 @ git+https://github.com/sorryhyun/flash-attention-sm120-fix.git@dz/sm120_tma_optimized#subdirectory=flash_attn/cute ; sys_platform == 'linux'",
-    "nvidia-cutlass-dsl>=4.4.2 ; sys_platform == 'linux'",
+    # flash-attn-4 (flash-attention-sm120) is not supported yet — kernel is unstable on our targets.
+    # "flash-attn-4 @ git+https://github.com/sorryhyun/flash-attention-sm120-fix.git@dz/sm120_tma_optimized#subdirectory=flash_attn/cute ; sys_platform == 'linux'",
+    # "nvidia-cutlass-dsl>=4.4.2 ; sys_platform == 'linux'",
     "triton-windows>=3.6.0 ; sys_platform == 'win32'",
     "pyside6>=6.11.0",
     "ruff>=0.15.9",

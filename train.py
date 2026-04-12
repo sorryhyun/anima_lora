@@ -209,12 +209,14 @@ class AnimaTrainer:
         train_dataset_group: Union[train_util.DatasetGroup, train_util.MinimalDataset],
         val_dataset_group: Optional[train_util.DatasetGroup],
     ):
-        if args.fp8_base:
-            logger.warning(
-                "fp8_base (text encoder fp8) is not supported for Anima. Use fp8_base_unet for DiT-only fp8."
-            )
+        # FP8 is not supported yet — force-disable all fp8 flags.
+        if getattr(args, "fp8_base", False):
+            logger.warning("fp8_base is not supported yet — disabling.")
             args.fp8_base = False
-        args.fp8_scaled = False  # Anima DiT does not support fp8_scaled
+        if getattr(args, "fp8_base_unet", False):
+            logger.warning("fp8_base_unet is not supported yet — disabling.")
+            args.fp8_base_unet = False
+        args.fp8_scaled = False  # not supported yet
 
         if (
             args.cache_text_encoder_outputs_to_disk
@@ -316,7 +318,8 @@ class AnimaTrainer:
     def load_unet_lazily(
         self, args, weight_dtype, accelerator, text_encoders
     ) -> tuple[nn.Module, list[nn.Module]]:
-        loading_dtype = None if args.fp8_scaled else weight_dtype
+        # FP8 is not supported yet — args.fp8_scaled is force-disabled in assert_extra_args.
+        loading_dtype = weight_dtype
         loading_device = "cpu" if self.is_swapping_blocks else accelerator.device
 
         attn_mode = "torch"
@@ -326,15 +329,12 @@ class AnimaTrainer:
             attn_mode = args.attn_mode
 
         if attn_mode == "flash4":
-            from networks.attention import _flash_attn_4_func_raw
-
-            if _flash_attn_4_func_raw is not None:
-                logger.info("Using Flash Attention 4 (flash_attn.cute)")
-            else:
-                raise RuntimeError(
-                    "attn_mode='flash4' requested but flash_attn.cute is not available. "
-                    "Install flash-attn >= 3.0 with FA4 support."
-                )
+            # Flash Attention 4 (flash-attention-sm120) is not supported yet.
+            raise RuntimeError(
+                "attn_mode='flash4' is not supported yet — the flash-attention-sm120 "
+                "kernel is disabled in this build. Use 'flash', 'torch', 'flex', "
+                "'sageattn', or 'xformers' instead."
+            )
         elif attn_mode == "flash":
             from networks.attention import flash_attn, flash_attn_func
 
@@ -359,16 +359,15 @@ class AnimaTrainer:
             args.split_attn,
             loading_device,
             loading_dtype,
-            args.fp8_scaled,
+            False,  # fp8_scaled not supported yet
             attn_softmax_scale=attn_softmax_scale,
         )
 
-        # FP8 base weights: cast frozen nn.Linear to float8_e4m3fn before LoRA
-        if args.fp8_base_unet:
-            from library.anima_models import quantize_to_fp8
-
-            n = quantize_to_fp8(model)
-            logger.info(f"fp8_base_unet: quantized {n} linear layers to float8_e4m3fn")
+        # FP8 base weights (fp8_base_unet) are not supported yet — the fp8 path is disabled.
+        # if args.fp8_base_unet:
+        #     from library.anima_models import quantize_to_fp8
+        #     n = quantize_to_fp8(model)
+        #     logger.info(f"fp8_base_unet: quantized {n} linear layers to float8_e4m3fn")
 
         # Bucketed KV trimming for cross-attention
         model.trim_crossattn_kv = getattr(args, "trim_crossattn_kv", False)
@@ -2560,11 +2559,11 @@ def setup_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="learning rate for Text Encoder, can be multiple",
     )
+    # FP8 is not supported yet — flag is kept for CLI compatibility but force-disabled in assert_extra_args.
     parser.add_argument(
         "--fp8_base_unet",
         action="store_true",
-        help="use fp8 for U-Net (or DiT), Text Encoder is fp16 or bf16"
-        "",
+        help="(not supported yet) use fp8 for U-Net (or DiT). This flag is force-disabled.",
     )
 
     parser.add_argument(

@@ -49,12 +49,11 @@ def get_generation_settings(args: argparse.Namespace) -> GenerationSettings:
     device = torch.device(args.device)
 
     dit_weight_dtype = torch.bfloat16  # default
-    if args.fp8_scaled:
-        dit_weight_dtype = (
-            None  # various precision weights, so don't cast to specific dtype
-        )
-    elif args.fp8:
-        dit_weight_dtype = torch.float8_e4m3fn
+    # FP8 inference is not supported yet — args.fp8 / args.fp8_scaled are force-disabled in inference.py.
+    # if args.fp8_scaled:
+    #     dit_weight_dtype = None  # various precision weights, so don't cast to specific dtype
+    # elif args.fp8:
+    #     dit_weight_dtype = torch.float8_e4m3fn
 
     logger.info(
         f"Using device: {device}, DiT weight weight precision: {dit_weight_dtype}"

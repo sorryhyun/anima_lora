@@ -1646,26 +1646,24 @@ class Anima(nn.Module):
             self.attn_mode, self.split_attn, self.attn_softmax_scale
         )
 
-        # Bucketed KV trimming for cross-attention (flash4 with LSE correction).
-        # Trims zero-padded positions from crossattn_emb, saving KV projection and
-        # attention compute in every block. The attention function applies an exact
-        # sigmoid correction to account for the removed padding sinks.
-        if (
-            crossattn_seqlens is not None
-            and getattr(self, "trim_crossattn_kv", False)
-            and self.attn_mode == "flash4"
-            and not self.split_attn
-        ):
-            full_len = crossattn_emb.shape[1]
-            max_real_len = (
-                max_crossattn_seqlen
-                if max_crossattn_seqlen is not None
-                else int(crossattn_seqlens.max())
-            )
-            trim_len = next((b for b in _KV_BUCKETS if b >= max_real_len), full_len)
-            if trim_len < full_len:
-                crossattn_emb = crossattn_emb[:, :trim_len].contiguous()
-                attn_params.crossattn_full_len = full_len
+        # Bucketed KV trimming for cross-attention requires flash4 (LSE correction),
+        # which is not supported yet (flash-attention-sm120 disabled).
+        # if (
+        #     crossattn_seqlens is not None
+        #     and getattr(self, "trim_crossattn_kv", False)
+        #     and self.attn_mode == "flash4"
+        #     and not self.split_attn
+        # ):
+        #     full_len = crossattn_emb.shape[1]
+        #     max_real_len = (
+        #         max_crossattn_seqlen
+        #         if max_crossattn_seqlen is not None
+        #         else int(crossattn_seqlens.max())
+        #     )
+        #     trim_len = next((b for b in _KV_BUCKETS if b >= max_real_len), full_len)
+        #     if trim_len < full_len:
+        #         crossattn_emb = crossattn_emb[:, :trim_len].contiguous()
+        #         attn_params.crossattn_full_len = full_len
 
         # Pre-compute cross-attention BlockMask once for all blocks (flex mode only)
         if (

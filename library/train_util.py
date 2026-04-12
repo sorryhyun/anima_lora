@@ -810,8 +810,9 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--full_bf16", action="store_true", help="bf16 training including gradients"
     )
+    # FP8 is not supported yet — flag kept for CLI compatibility but force-disabled in assert_extra_args.
     parser.add_argument(
-        "--fp8_base", action="store_true", help="use fp8 for base model"
+        "--fp8_base", action="store_true", help="(not supported yet) use fp8 for base model. This flag is force-disabled."
     )
 
     parser.add_argument(

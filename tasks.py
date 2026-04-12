@@ -100,7 +100,7 @@ INFERENCE_BASE = [
     "--text_encoder", "models/text_encoders/qwen_3_06b_base.safetensors",
     "--vae", "models/vae/qwen_image_vae.safetensors",
     "--vae_chunk_size", "64", "--vae_disable_cache",
-    "--attn_mode", "flash4",
+    "--attn_mode", "flash",  # flash4 not supported yet (flash-attention-sm120 disabled)
     "--lora_multiplier", "1.0",
     "--prompt",
     'masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top'

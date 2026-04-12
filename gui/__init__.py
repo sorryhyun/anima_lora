@@ -27,8 +27,9 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 PRESETS = {
     "Windows 8GB VRAM": "training_config_win8gb.toml",
     "Windows 16GB VRAM": "training_config_win16gb.toml",
-    "FA4 8GB VRAM": "training_config_fa4_8gb.toml",
-    "FA4 16GB VRAM": "training_config_fa4_16gb.toml",
+    # FA4 presets are not supported yet (flash-attention-sm120 disabled)
+    # "FA4 8GB VRAM": "training_config_fa4_8gb.toml",
+    # "FA4 16GB VRAM": "training_config_fa4_16gb.toml",
 }
 
 _GROUPS = {
@@ -62,11 +63,12 @@ _SKIP = {"base_config", "dataset_config"}
 _LOCKED_PERFORMANCE = {
     "Windows 8GB VRAM",
     "Windows 16GB VRAM",
-    "FA4 8GB VRAM",
-    "FA4 16GB VRAM",
+    # "FA4 8GB VRAM",   # not supported yet
+    # "FA4 16GB VRAM",  # not supported yet
 }
 
-_ATTN_MODES = ["flex", "flash"] if sys.platform == "win32" else ["flex", "flash", "flash4"]
+# flash4 is not supported yet (flash-attention-sm120 disabled)
+_ATTN_MODES = ["flex", "flash"]
 
 
 # ── Helpers ────────────────────────────────────────────────────

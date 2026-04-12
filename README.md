@@ -12,8 +12,7 @@ LoRA training and inference engine for the Anima diffusion model (DiT-based, flo
 |---|---|
 | **Constant-token bucketing** | All bucket resolutions are chosen so that `(H/16)×(W/16) ≈ 4096` patches. Every batch element is then zero-padded to exactly 4096 tokens, giving `torch.compile` a single static shape to trace — no recompilation across aspect ratios. |
 | **Max-padded text encoder** | Text encoder outputs are padded to `max_length` (512) and zero-filled. The pretrained DiT treats these zero keys as learned **attention sinks** in cross-attention softmax, so removing padding produces black images. Keeping it preserves model behavior *and* gives the compiler another fixed dimension. |
-| **Cross-attention KV trim** | Typical captions use 30–80 tokens out of 512 — ~85% is zero-padding. KV is trimmed to a bucketed length (64/128/256/512) and an LSE-based sigmoid correction restores the exact attention-sink contribution. **~4× less cross-attention compute** with no quality loss, compile-safe (only 4 possible shapes). |
-| **Flash Attention 4** | Uses `flash_attn.cute` (Hopper-optimized FA4 kernels) for both fixed-length and variable-length attention, with automatic fallback to FA2/SDPA. Official FA4 lacks consumer Blackwell (SM120) support — we use a [fork](https://github.com/sorryhyun/flash-attention-sm120-fix) of [sisgrad's SM120 branch](https://github.com/sisgrad/flash-attention/tree/dz/sm120_tma_optimized) with minor bug fixes. |
+| **Flash Attention 2** | Uses `flash_attn` 2.x for fixed-length and variable-length attention, with automatic fallback to SDPA. FA4 was evaluated and removed — see [docs/fa4.md](docs/fa4.md). |
 | **Per-block `torch.compile`** | Each DiT block is compiled independently with the Inductor backend. Combined with static token counts this eliminates Dynamo guard recompilation entirely. |
 | **Disk-cached latents & text embeddings** | VAE latents, text encoder outputs, and LLM adapter outputs are pre-computed and cached to disk — the VAE and text encoder never occupy training VRAM. |
 | **Unsloth gradient checkpointing** | Activations are offloaded to CPU with non-blocking transfers during the forward pass and streamed back for the backward pass, trading PCIe bandwidth for VRAM. |
@@ -30,12 +29,6 @@ gradient_checkpointing=true, unsloth_offload_checkpointing=true, latent and text
 | FA2 + compile (eager fallback) | 7.7 GB | 15:10 | 7:26 | 0.089 | 0.211 |
 | FA2 + compile (static tokens) | 6.2 GB | 11:07 | 5:01 | 0.086 | 0.193 |
 | FA2 + compile - grad ckpt | 15.2 GB | **7:07** | **3:30** | 0.088 | 0.206 |
-| FA4 + compile (static tokens) | 6.3 GB | 11:05 | 5:15 | 0.092 | 0.187 |
-| + fp32 accumulation | 6.4 GB | 10:57 | 5:15 | 0.089 | 0.196 |
-| + DoRA + fp32 accumulation | 6.4 GB | 12:04 | 5:25 | 0.092 | 0.204 |
-| + T-LoRA + fp32 accumulation | 6.9 GB | 12:57 | 5:44 | 0.093 | 0.210 |
-
-Last 3 rows use FA4 + compile (static tokens) as baseline.
 
 ## Setup
 
@@ -105,7 +98,7 @@ accelerate launch --mixed_precision bf16 train.py --config_file configs/training
 | `optimizer_type` | AdamW8bit | AdamW8bit, Lion, DAdapt, Prodigy |
 | `max_train_epochs` | 4–64 | Training epochs |
 | `mixed_precision` | bf16 | bf16, fp16, or no |
-| `attn_mode` | flash | flash, torch, xformers |
+| `attn_mode` | flash | flash (FA2), torch, xformers, flex, sageattn |
 | `gradient_checkpointing` | true | Memory-efficient backprop |
 | `cache_latents_to_disk` | true | Cache VAE latents to disk |
 | `cache_text_encoder_outputs` | true | Cache text encoder outputs |
@@ -140,7 +133,8 @@ See [docs/invert.md](docs/invert.md) for details on initialization, VRAM modes, 
 
 | Doc | Contents |
 |-----|----------|
-| [docs/training.md](docs/training.md) | LoRA variants (DoRA, OrthoLoRA, T-LoRA), KV trim, caption shuffle, masked loss, dataset config |
+| [docs/training.md](docs/training.md) | LoRA variants (DoRA, OrthoLoRA, T-LoRA), caption shuffle, masked loss, dataset config |
+| [docs/fa4.md](docs/fa4.md) | Why FA4 / flash-attention-sm120 and cross-attention KV trim were removed |
 | [docs/prefix-tuning.md](docs/prefix-tuning.md) | Prefix tuning — 12 GB VRAM, ~1 step/s, how it works, config reference |
 | [docs/inference.md](docs/inference.md) | Inference flags, P-GRAFT inference, prompt file format, LoRA format conversion |
 | [docs/invert.md](docs/invert.md) | Embedding inversion — optimization flags, VRAM modes, block gradient logging |

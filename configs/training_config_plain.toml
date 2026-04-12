@@ -9,7 +9,7 @@ max_train_epochs = 2
 save_every_n_epochs = 2
 attn_mode = "flash"
 cache_llm_adapter_outputs = true
-trim_crossattn_kv = true
+trim_crossattn_kv = false  # no-op without flash4 (see docs/fa4.md)
 
 # layer_start=8
 # loss_type = "pseudo_huber"  # smooth L1-like loss, robust to outliers
