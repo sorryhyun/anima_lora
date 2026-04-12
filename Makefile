@@ -1,10 +1,12 @@
 ACCELERATE := python -m accelerate.commands.accelerate_cli
 LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
-LATEST_POSTFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_POSTFIX = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/anima_postfix*.safetensors') if '_exp' not in os.path.basename(f) and '_func' not in os.path.basename(f)]; print(max(files,key=os.path.getmtime))")
+LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_exp*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora postfix prefix step test test-mod test-prefix test-postfix test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora postfix postfix-exp postfix-func prefix step test test-mod test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -12,7 +14,7 @@ TEST_COMMON = python inference.py \
 	--vae models/vae/qwen_image_vae.safetensors \
 	--vae_chunk_size 64 --vae_disable_cache \
 	--attn_mode flash \
-	--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
+	--prompt "masterpiece, best quality, score_7, safe, @channel (caststation). An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
 	--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
 	--image_size 1024 1024 \
 	--infer_steps 30 \
@@ -57,6 +59,14 @@ postfix:
 	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_postfix.toml
 
+postfix-exp:
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+		train.py --config_file configs/training_config_postfix_exp.toml
+
+postfix-func:
+	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
+		train.py --config_file configs/training_config_postfix_func.toml
+
 prefix:
 	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
 		train.py --config_file configs/training_config_prefix.toml
@@ -90,6 +100,14 @@ test-postfix:
 	$(TEST_COMMON) \
 		--postfix_weight $(LATEST_POSTFIX)
 
+test-postfix-exp:
+	$(TEST_COMMON) \
+		--postfix_weight $(LATEST_POSTFIX_EXP)
+
+test-postfix-func:
+	$(TEST_COMMON) \
+		--postfix_weight $(LATEST_POSTFIX_FUNC)
+
 test-spectrum:
 	$(TEST_COMMON) \
 		--lora_weight $(LATEST_LORA) \
@@ -106,16 +124,23 @@ test-spectrum:
 
 INVERT_N ?= 1
 INVERT_SWAP ?= 0
+INVERT_STEPS ?= 150
+INVERT_LR ?= 0.005
+INVERT_AGG ?= 1
+INVERT_OUT ?= inversions
 invert:
 	python scripts/invert_embedding.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--attn_mode flash \
 		--image_dir post_image_dataset \
 		--num_images $(INVERT_N) --shuffle \
-		--steps 150 --lr 0.005 \
-		--output_dir inversions \
+		--steps $(INVERT_STEPS) --lr $(INVERT_LR) \
+		--aggregate_by $(INVERT_AGG) \
+		--save_per_run \
+		--output_dir $(INVERT_OUT) \
 		--blocks_to_swap $(INVERT_SWAP) \
-		--log_block_grads
+		--log_block_grads \
+		--init_zeros
 
 BENCH_INVERSIONS ?= 5
 bench-inversion:
@@ -132,7 +157,7 @@ test-invert:
 		--vae models/vae/qwen_image_vae.safetensors \
 		--attn_mode flash \
 		--name $(INVERT_NAME) \
-		--verify --verify_steps 50
+		--verify --verify_steps 30
 
 WORKFLOW ?= workflows/lora-batch.json
 comfy-batch:

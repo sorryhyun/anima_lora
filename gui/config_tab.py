@@ -429,10 +429,6 @@ class ConfigTab(QWidget):
             QMessageBox.warning(self, t("error"), t("preprocess_required"))
             return
 
-        # Auto-save config before training
-        p, out = self._build_save_data()
-        _save(p, out)
-
         accelerate = shutil.which("accelerate")
         if not accelerate:
             QMessageBox.warning(self, t("error"), t("accelerate_not_found"))

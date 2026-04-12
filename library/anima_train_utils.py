@@ -264,6 +264,37 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         help="Path to EMA model safetensors file to resume EMA state from a previous run",
     )
 
+    # Functional MSE loss against inversion runs (postfix-func)
+    parser.add_argument(
+        "--inversion_dir",
+        type=str,
+        default=None,
+        help="Directory containing <stem>_inverted_run{i}.safetensors files. If set, "
+        "inversions are loaded alongside each sample for functional-loss supervision.",
+    )
+    parser.add_argument(
+        "--functional_loss_weight",
+        type=float,
+        default=0.0,
+        help="Weight for functional MSE loss: MSE between cross_attn output_proj captures "
+        "from (t5+postfix) forward and (inversion) forward, summed over functional_loss_blocks. "
+        "0 disables (default).",
+    )
+    parser.add_argument(
+        "--functional_loss_blocks",
+        type=str,
+        default="8,12,16,20",
+        help="Comma-separated DiT block indices at which to capture cross_attn.output_proj "
+        "outputs for functional MSE loss.",
+    )
+    parser.add_argument(
+        "--functional_loss_num_runs",
+        type=int,
+        default=3,
+        help="Number of inversion runs expected per image (aggregate_by of make invert). "
+        "Each training step samples one run stochastically. Default: 3.",
+    )
+
 
 # Loss weighting
 

@@ -5,8 +5,12 @@
 # across all artist tags.
 #
 # Modes:
-#   (default)   — postfix appended right after real text tokens in cached adapter output;
-#                  compatible with cache_llm_adapter_outputs, no adapter needed at train time
+#   (default)   — postfix appended to cached adapter output; splice position controlled by
+#                  splice_position kwarg ("front_of_padding" legacy, "end_of_sequence" default).
+#                  Compatible with cache_llm_adapter_outputs, no adapter needed at train time
+#   "cond"      — caption-conditional postfix: mean-pool content slots -> 2-layer MLP ->
+#                  per-sample K×D postfix vectors. Strictly more expressive than "postfix".
+#                  Last layer zero-inited so training starts from baseline behavior.
 #   "prefix"    — learned vectors prepended to cached adapter output (T5-compatible space);
 #                  compatible with cache_llm_adapter_outputs, no adapter needed at train time
 #   "cfg"       — two postfix sets (pos + neg) trained with CFG-aware loss
@@ -47,6 +51,8 @@ def create_network(
     mode = kwargs.get("mode", "postfix")
     cfg_scale = float(kwargs.get("cfg_scale", 4.0))
     num_t5_postfix_tokens = int(kwargs.get("num_t5_postfix_tokens", num_postfix_tokens))
+    splice_position = kwargs.get("splice_position", "end_of_sequence")
+    cond_hidden_dim = int(kwargs.get("cond_hidden_dim", 256))
 
     network = PostfixNetwork(
         num_postfix_tokens=num_postfix_tokens,
@@ -55,6 +61,8 @@ def create_network(
         mode=mode,
         cfg_scale=cfg_scale,
         num_t5_postfix_tokens=num_t5_postfix_tokens,
+        splice_position=splice_position,
+        cond_hidden_dim=cond_hidden_dim,
     )
     return network
 
@@ -79,14 +87,22 @@ def create_network_from_weights(
 
     # Detect mode from keys (also check safetensors metadata as fallback)
     metadata_mode = None
+    metadata_splice = None
+    metadata_cond_hidden = None
     if file is not None and os.path.splitext(file)[1] == ".safetensors":
         from safetensors import safe_open
 
         with safe_open(file, framework="pt") as f:
             meta = f.metadata() or {}
             metadata_mode = meta.get("ss_mode")
+            metadata_splice = meta.get("ss_splice_position")
+            metadata_cond_hidden = meta.get("ss_cond_hidden_dim")
 
-    if "prefix_embeds" in weights_sd:
+    has_cond = any(k.startswith("cond_mlp.") for k in weights_sd.keys())
+    if has_cond or metadata_mode == "cond":
+        mode = "cond"
+        postfix_weight = None
+    elif "prefix_embeds" in weights_sd:
         mode = "prefix"
         postfix_weight = weights_sd["prefix_embeds"]
     elif "postfix_embeds" in weights_sd:
@@ -104,16 +120,36 @@ def create_network_from_weights(
     else:
         mode = metadata_mode or "postfix"
         postfix_weight = weights_sd.get("postfix", weights_sd.get("prefix"))
-    if postfix_weight is None:
-        raise ValueError(
-            f"Not a postfix/prefix weight file (keys: {list(weights_sd.keys())[:10]}). "
-            f"Expected 'prefix_embeds', 'postfix', 'postfix_pos', or 'prefix' key."
-        )
 
-    num_postfix_tokens, embed_dim = postfix_weight.shape
-    num_t5_postfix_tokens = num_postfix_tokens
-    if mode == "dual":
-        num_t5_postfix_tokens = weights_sd["postfix_t5"].shape[0]
+    if mode == "cond":
+        # Infer shapes from MLP weights
+        # cond_mlp.0.weight: [hidden, embed_dim]
+        # cond_mlp.2.weight: [K * embed_dim, hidden]
+        w0 = weights_sd.get("cond_mlp.0.weight")
+        w2 = weights_sd.get("cond_mlp.2.weight")
+        if w0 is None or w2 is None:
+            raise ValueError(
+                f"cond mode requires cond_mlp.0.weight and cond_mlp.2.weight (got keys: "
+                f"{[k for k in weights_sd.keys() if 'cond_mlp' in k]})"
+            )
+        cond_hidden_dim = w0.shape[0]
+        embed_dim = w0.shape[1]
+        num_postfix_tokens = w2.shape[0] // embed_dim
+        num_t5_postfix_tokens = num_postfix_tokens
+    else:
+        if postfix_weight is None:
+            raise ValueError(
+                f"Not a postfix/prefix weight file (keys: {list(weights_sd.keys())[:10]}). "
+                f"Expected 'prefix_embeds', 'postfix_embeds', 'postfix_pos', 'postfix_t5', "
+                f"or cond_mlp.* keys."
+            )
+        num_postfix_tokens, embed_dim = postfix_weight.shape
+        num_t5_postfix_tokens = num_postfix_tokens
+        if mode == "dual":
+            num_t5_postfix_tokens = weights_sd["postfix_t5"].shape[0]
+        cond_hidden_dim = int(metadata_cond_hidden) if metadata_cond_hidden else 256
+
+    splice_position = metadata_splice or "end_of_sequence"
 
     network = PostfixNetwork(
         num_postfix_tokens=num_postfix_tokens,
@@ -121,6 +157,8 @@ def create_network_from_weights(
         multiplier=multiplier,
         mode=mode,
         num_t5_postfix_tokens=num_t5_postfix_tokens,
+        splice_position=splice_position,
+        cond_hidden_dim=cond_hidden_dim,
     )
     return network, weights_sd
 
@@ -134,6 +172,8 @@ class PostfixNetwork(nn.Module):
         mode: str = "postfix",
         cfg_scale: float = 4.0,
         num_t5_postfix_tokens: int = None,
+        splice_position: str = "end_of_sequence",
+        cond_hidden_dim: int = 256,
     ):
         super().__init__()
         self.num_postfix_tokens = num_postfix_tokens
@@ -142,6 +182,12 @@ class PostfixNetwork(nn.Module):
         self.mode = mode
         self.cfg_scale = cfg_scale
         self.num_t5_postfix_tokens = num_t5_postfix_tokens or num_postfix_tokens
+        if splice_position not in ("front_of_padding", "end_of_sequence"):
+            raise ValueError(
+                f"splice_position must be 'front_of_padding' or 'end_of_sequence', got {splice_position!r}"
+            )
+        self.splice_position = splice_position
+        self.cond_hidden_dim = cond_hidden_dim
 
         # Match init scale to the target embedding space:
         #   "embedding" mode → Qwen3 input embeddings (std ≈ 0.03)
@@ -192,6 +238,23 @@ class PostfixNetwork(nn.Module):
                 f"PostfixNetwork: embedding mode — {num_postfix_tokens} tokens, dim {embed_dim}, "
                 f"init_std={init_std}, {self.postfix.numel()} params"
             )
+        elif mode == "cond":
+            # Caption-conditional: pool content slots -> 2-layer MLP -> K*D postfix.
+            # Zero-init the last layer so training starts from exact baseline behavior
+            # (empty postfix at end-of-sequence overwrites zero padding with zeros).
+            self.cond_mlp = nn.Sequential(
+                nn.Linear(embed_dim, cond_hidden_dim),
+                nn.GELU(),
+                nn.Linear(cond_hidden_dim, num_postfix_tokens * embed_dim),
+            )
+            nn.init.zeros_(self.cond_mlp[-1].weight)
+            nn.init.zeros_(self.cond_mlp[-1].bias)
+            total_params = sum(p.numel() for p in self.cond_mlp.parameters())
+            logger.info(
+                f"PostfixNetwork: cond mode — {num_postfix_tokens} tokens × dim {embed_dim}, "
+                f"hidden {cond_hidden_dim}, splice={self.splice_position}, "
+                f"{total_params} params (last layer zero-inited)"
+            )
         else:
             # Default: T5-compatible postfix (appended to cached adapter output)
             self.postfix_embeds = nn.Parameter(
@@ -199,11 +262,12 @@ class PostfixNetwork(nn.Module):
             )
             logger.info(
                 f"PostfixNetwork: postfix mode — {num_postfix_tokens} tokens in T5-compatible space, "
-                f"dim {embed_dim}, init_std={init_std}, {self.postfix_embeds.numel()} params"
+                f"dim {embed_dim}, init_std={init_std}, splice={self.splice_position}, "
+                f"{self.postfix_embeds.numel()} params"
             )
 
     def apply_to(self, text_encoders, unet, apply_text_encoder=True, apply_unet=True):
-        if self.mode in ("prefix", "postfix", "hidden"):
+        if self.mode in ("prefix", "postfix", "hidden", "cond"):
             # No monkey-patching needed — training loop handles prefix/postfix on cached crossattn_emb
             kind = "prepended to" if self.mode == "prefix" else "appended to"
             logger.info(
@@ -303,7 +367,17 @@ class PostfixNetwork(nn.Module):
     def append_postfix(
         self, crossattn_emb: torch.Tensor, crossattn_seqlens: torch.Tensor
     ) -> torch.Tensor:
-        """Insert learned postfix vectors right after real text tokens (overwriting zero-padding).
+        """Splice learned postfix vectors into crossattn_emb (overwrites zero-padding slots).
+
+        Splice position controlled by self.splice_position:
+          - "end_of_sequence": place at [S-K, S). Caption-position-agnostic; preserves the
+            strongest front-of-padding sinks intact.
+          - "front_of_padding": place at [seqlens[i], seqlens[i]+K). Caption-position-aware;
+            displaces the strongest sinks. Legacy behavior.
+
+        In "cond" mode the postfix vectors are computed per-sample from a mean-pool of
+        content slots through a 2-layer MLP. In default mode they come from a single
+        learned parameter tensor shared across the batch.
 
         Args:
             crossattn_emb: [B, S, D] cached adapter output (zero-padded after real tokens)
@@ -311,12 +385,29 @@ class PostfixNetwork(nn.Module):
         """
         K = self.num_postfix_tokens
         B, S, D = crossattn_emb.shape
-        postfix = (
-            self.postfix_embeds.unsqueeze(0)
-            .expand(B, -1, -1)
-            .to(dtype=crossattn_emb.dtype, device=crossattn_emb.device)
-        )
-        # For each batch element i, place K postfix tokens at positions [seqlens[i], seqlens[i]+K)
+
+        if self.mode == "cond":
+            # Mean-pool over content slots (positions < seqlen[i])
+            pos = torch.arange(S, device=crossattn_emb.device).unsqueeze(0)  # [1, S]
+            mask = (pos < crossattn_seqlens.unsqueeze(1)).to(
+                crossattn_emb.dtype
+            )  # [B, S]
+            denom = mask.sum(dim=1, keepdim=True).clamp(min=1.0)
+            pooled = (crossattn_emb * mask.unsqueeze(-1)).sum(dim=1) / denom  # [B, D]
+            postfix = self.cond_mlp(pooled).view(B, K, D).to(crossattn_emb.dtype)
+        else:
+            postfix = (
+                self.postfix_embeds.unsqueeze(0)
+                .expand(B, -1, -1)
+                .to(dtype=crossattn_emb.dtype, device=crossattn_emb.device)
+            )
+
+        if self.splice_position == "end_of_sequence":
+            # Overwrite the last K slots of the zero-padding region with the postfix.
+            # torch.cat preserves autograd on both sides.
+            return torch.cat([crossattn_emb[:, : S - K, :], postfix], dim=1)
+
+        # front_of_padding: place K postfix tokens at [seqlens[i], seqlens[i]+K) per sample
         offsets = crossattn_seqlens.long().unsqueeze(1) + torch.arange(
             K, device=crossattn_emb.device
         )  # [B, K]
@@ -347,6 +438,8 @@ class PostfixNetwork(nn.Module):
             return [self.postfix, self.postfix_t5]
         elif self.mode == "embedding":
             return [self.postfix]
+        elif self.mode == "cond":
+            return list(self.cond_mlp.parameters())
         return [self.postfix_embeds]
 
     def prepare_optimizer_params_with_multiple_te_lrs(
@@ -365,6 +458,9 @@ class PostfixNetwork(nn.Module):
         elif self.mode == "embedding":
             params = [{"params": [self.postfix], "lr": lr}]
             descriptions = ["postfix_embedding"]
+        elif self.mode == "cond":
+            params = [{"params": list(self.cond_mlp.parameters()), "lr": lr}]
+            descriptions = ["cond_mlp"]
         else:
             params = [{"params": [self.postfix_embeds], "lr": lr}]
             descriptions = ["postfix_embeds"]
@@ -380,6 +476,8 @@ class PostfixNetwork(nn.Module):
             return [{"params": [self.postfix, self.postfix_t5], "lr": lr}]
         elif self.mode == "embedding":
             return [{"params": [self.postfix], "lr": lr}]
+        elif self.mode == "cond":
+            return [{"params": list(self.cond_mlp.parameters()), "lr": lr}]
         return [{"params": [self.postfix_embeds], "lr": lr}]
 
     def save_weights(self, file, dtype, metadata):
@@ -400,6 +498,11 @@ class PostfixNetwork(nn.Module):
             }
         elif self.mode == "embedding":
             state_dict = {"postfix": self.postfix.detach().clone().cpu().to(dtype)}
+        elif self.mode == "cond":
+            state_dict = {
+                f"cond_mlp.{k}": v.detach().clone().cpu().to(dtype)
+                for k, v in self.cond_mlp.state_dict().items()
+            }
         else:
             state_dict = {
                 "postfix_embeds": self.postfix_embeds.detach().clone().cpu().to(dtype)
@@ -415,8 +518,11 @@ class PostfixNetwork(nn.Module):
             metadata["ss_num_postfix_tokens"] = str(self.num_postfix_tokens)
             metadata["ss_embed_dim"] = str(self.embed_dim)
             metadata["ss_mode"] = self.mode
+            metadata["ss_splice_position"] = self.splice_position
             if self.mode == "cfg":
                 metadata["ss_cfg_scale"] = str(self.cfg_scale)
+            if self.mode == "cond":
+                metadata["ss_cond_hidden_dim"] = str(self.cond_hidden_dim)
 
             model_hash, legacy_hash = train_util.precalculate_safetensors_hashes(
                 state_dict, metadata
@@ -477,6 +583,24 @@ class PostfixNetwork(nn.Module):
                 raise ValueError(
                     "No 'postfix' key found in weights file for embedding mode"
                 )
+        elif self.mode == "cond":
+            mlp_sd = {
+                k[len("cond_mlp.") :]: v
+                for k, v in weights_sd.items()
+                if k.startswith("cond_mlp.")
+            }
+            if not mlp_sd:
+                raise ValueError(
+                    "No 'cond_mlp.*' keys found in weights file for cond mode"
+                )
+            missing, unexpected = self.cond_mlp.load_state_dict(mlp_sd, strict=False)
+            if missing or unexpected:
+                raise ValueError(
+                    f"cond_mlp load_state_dict mismatch: missing={missing}, unexpected={unexpected}"
+                )
+            logger.info(
+                f"Loaded cond_mlp weights: {sum(p.numel() for p in self.cond_mlp.parameters())} params"
+            )
         else:
             weight = weights_sd.get("postfix_embeds", weights_sd.get("postfix"))
             if weight is not None:

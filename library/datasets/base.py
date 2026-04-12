@@ -107,6 +107,11 @@ class BaseDataset(torch.utils.data.Dataset):
 
         self.replacements = {}
 
+        # Functional-loss inversion supervision (postfix-func).
+        # Set via `dataset.inversion_dir = ...` after construction; None disables.
+        self.inversion_dir: Optional[str] = None
+        self.inversion_num_runs: int = 3
+
         # caching
         self.caching_mode = None  # None, 'latents', 'text'
 
@@ -1035,6 +1040,29 @@ class BaseDataset(torch.utils.data.Dataset):
     def __len__(self):
         return self._length
 
+    def _try_load_inversion_runs(self, image_abs_path: str) -> Optional[torch.Tensor]:
+        """Load <stem>_inverted_run{0..N-1}.safetensors from self.inversion_dir.
+
+        Returns a [N_runs, S, D] tensor, or None if any of the expected runs is missing
+        (caller masks samples without inversions out of the functional loss).
+        """
+        if not self.inversion_dir:
+            return None
+        stem = os.path.splitext(os.path.basename(image_abs_path))[0]
+        from safetensors.torch import load_file
+
+        runs = []
+        for i in range(self.inversion_num_runs):
+            p = os.path.join(self.inversion_dir, f"{stem}_inverted_run{i}.safetensors")
+            if not os.path.exists(p):
+                return None
+            sd = load_file(p)
+            t = sd.get("crossattn_emb")
+            if t is None:
+                return None
+            runs.append(t.float())
+        return torch.stack(runs, dim=0)  # [N_runs, S, D]
+
     def __getitem__(self, index):
         bucket = self.bucket_manager.buckets[self.buckets_indices[index].bucket_index]
         bucket_batch_size = self.buckets_indices[index].bucket_batch_size
@@ -1057,6 +1085,7 @@ class BaseDataset(torch.utils.data.Dataset):
         flippeds = []
         text_encoder_outputs_list = []
         custom_attributes = []
+        inversion_runs_list: List[Optional[torch.Tensor]] = []
 
         for image_key in bucket[image_index : image_index + bucket_batch_size]:
             image_info = self.image_data[image_key]
@@ -1227,6 +1256,13 @@ class BaseDataset(torch.utils.data.Dataset):
             input_ids_list.append(input_ids)
             captions.append(caption)
 
+            if self.inversion_dir:
+                inversion_runs_list.append(
+                    self._try_load_inversion_runs(image_info.absolute_path)
+                )
+            else:
+                inversion_runs_list.append(None)
+
         def none_or_stack_elements(tensors_list, converter):
             if (
                 len(tensors_list) == 0
@@ -1343,6 +1379,28 @@ class BaseDataset(torch.utils.data.Dataset):
         example["network_multipliers"] = torch.FloatTensor(
             [self.network_multiplier] * len(captions)
         )
+
+        # Inversion runs for functional-loss supervision (postfix-func).
+        # If any sample in the batch has inversions loaded, stack them; samples
+        # without matching inversions get zero-tensor placeholders and mask=False.
+        valid_inversions = [t for t in inversion_runs_list if t is not None]
+        if valid_inversions:
+            ref_shape = valid_inversions[0].shape  # [N_runs, S, D]
+            stacked = torch.stack(
+                [
+                    t if t is not None else torch.zeros(ref_shape, dtype=torch.float32)
+                    for t in inversion_runs_list
+                ],
+                dim=0,
+            )
+            mask = torch.tensor(
+                [t is not None for t in inversion_runs_list], dtype=torch.bool
+            )
+            example["inversion_runs"] = stacked  # [B, N_runs, S, D]
+            example["inversion_mask"] = mask  # [B]
+        else:
+            example["inversion_runs"] = None
+            example["inversion_mask"] = None
 
         if self.debug_dataset:
             example["image_keys"] = bucket[image_index : image_index + self.batch_size]

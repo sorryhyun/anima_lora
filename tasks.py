@@ -21,13 +21,17 @@ ROOT = Path(__file__).resolve().parent
 PY = sys.executable
 
 
-def latest_output(prefix: str = "") -> Path:
-    """Return the most recently modified .safetensors file in output/ matching prefix."""
+def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
+    """Return the most recently modified .safetensors file in output/ matching prefix.
+
+    If `exclude` is given, any filename containing that substring is skipped. Useful
+    to disambiguate overlapping prefixes (e.g. anima_postfix vs anima_postfix_exp).
+    """
     outputs = sorted(
         (
             f
             for f in (ROOT / "output").glob("*.safetensors")
-            if f.name.startswith(prefix)
+            if f.name.startswith(prefix) and (exclude is None or exclude not in f.name)
         ),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
@@ -104,6 +108,18 @@ def cmd_postfix(extra):
     accelerate_launch("--config_file", "configs/training_config_postfix.toml", *extra)
 
 
+def cmd_postfix_exp(extra):
+    accelerate_launch(
+        "--config_file", "configs/training_config_postfix_exp.toml", *extra
+    )
+
+
+def cmd_postfix_func(extra):
+    accelerate_launch(
+        "--config_file", "configs/training_config_postfix_func.toml", *extra
+    )
+
+
 def cmd_prefix(extra):
     accelerate_launch("--config_file", "configs/training_config_prefix.toml", *extra)
 
@@ -162,11 +178,46 @@ def cmd_test_prefix(extra):
 
 
 def cmd_test_postfix(extra):
+    # exclude both _exp and _func so the vanilla postfix target doesn't grab them
+    outputs = sorted(
+        (
+            f
+            for f in (ROOT / "output").glob("anima_postfix*.safetensors")
+            if "_exp" not in f.name and "_func" not in f.name
+        ),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not outputs:
+        print("No 'anima_postfix*.safetensors' files found in output/", file=sys.stderr)
+        sys.exit(1)
     run(
         [
             *INFERENCE_BASE,
             "--postfix_weight",
-            str(latest_output("anima_postfix")),
+            str(outputs[0]),
+            *extra,
+        ]
+    )
+
+
+def cmd_test_postfix_exp(extra):
+    run(
+        [
+            *INFERENCE_BASE,
+            "--postfix_weight",
+            str(latest_output("anima_postfix_exp")),
+            *extra,
+        ]
+    )
+
+
+def cmd_test_postfix_func(extra):
+    run(
+        [
+            *INFERENCE_BASE,
+            "--postfix_weight",
+            str(latest_output("anima_postfix_func")),
             *extra,
         ]
     )
@@ -431,10 +482,26 @@ COMMANDS = {
     "tlora": (cmd_tlora, "T-LoRA: OrthoLoRA + timestep masking"),
     "hydralora": (cmd_hydralora, "HydraLoRA: multi-style MoE routing"),
     "postfix": (cmd_postfix, "Postfix tuning (LLM adapter cross-attn)"),
+    "postfix-exp": (
+        cmd_postfix_exp,
+        "Postfix experiment: caption-conditional MLP, end-of-sequence splice",
+    ),
+    "postfix-func": (
+        cmd_postfix_func,
+        "Postfix-exp + functional MSE loss vs inversion runs",
+    ),
     "prefix": (cmd_prefix, "Prefix tuning (T5-space, cache-compatible)"),
     "test": (cmd_test, "Inference with latest LoRA"),
     "test-prefix": (cmd_test_prefix, "Inference with latest prefix weight"),
     "test-postfix": (cmd_test_postfix, "Inference with latest postfix weight"),
+    "test-postfix-exp": (
+        cmd_test_postfix_exp,
+        "Inference with latest postfix-exp weight",
+    ),
+    "test-postfix-func": (
+        cmd_test_postfix_func,
+        "Inference with latest postfix-func weight",
+    ),
     "test-spectrum": (cmd_test_spectrum, "Spectrum-accelerated inference"),
     "step": (cmd_step, "Run one GRAFT iteration"),
     "preprocess": (

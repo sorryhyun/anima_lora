@@ -2,8 +2,8 @@ base_config = "base.toml"
 dataset_config = "configs/dataset_config.toml"
 network_module = "networks.postfix_anima"
 network_dim = 16
-network_args = ["mode=postfix"]
-caption_shuffle_variants = 1
+network_args = ["mode=postfix", "splice_position=end_of_sequence"]
+caption_shuffle_variants = 8
 checkpointing_epochs = 1
 learning_rate = 1e-3
 max_train_epochs = 1
@@ -14,5 +14,5 @@ trim_crossattn_kv = false  # no-op without flash4 (see docs/fa4.md)
 output_name = "anima_postfix"
 blocks_to_swap = 0
 gradient_accumulation_steps=4
-loss_type = "pseudo_huber"  # smooth L1-like loss, robust to outliers
-pseudo_huber_c = 0.3       # small c -> L1-like, large c -> MSE-like
+# loss_type = "pseudo_huber"  # smooth L1-like loss, robust to outliers
+# pseudo_huber_c = 0.3       # small c -> L1-like, large c -> MSE-like

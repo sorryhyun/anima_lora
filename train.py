@@ -281,6 +281,18 @@ class AnimaTrainer:
                         anima_train_utils.anima_smart_shuffle_caption
                     )
 
+        # Propagate inversion_dir to datasets for functional-loss supervision (postfix-func).
+        inversion_dir = getattr(args, "inversion_dir", None)
+        if inversion_dir:
+            num_runs = getattr(args, "functional_loss_num_runs", 3)
+            for dataset in train_dataset_group.datasets:
+                dataset.inversion_dir = inversion_dir
+                dataset.inversion_num_runs = num_runs
+            if val_dataset_group is not None:
+                for dataset in val_dataset_group.datasets:
+                    dataset.inversion_dir = inversion_dir
+                    dataset.inversion_num_runs = num_runs
+
         train_dataset_group.verify_bucket_reso_steps(
             16
         )  # WanVAE spatial downscale = 8 and patch size = 2
@@ -631,6 +643,74 @@ class AnimaTrainer:
                     padding_mask=padding_mask,
                     **kw,
                 )
+
+                # --- Functional MSE loss against stochastic inversion run ---
+                # If functional loss is enabled and the batch has inversions loaded,
+                # run a second no-grad forward with a sampled inversion run as
+                # crossattn_emb and compute MSE between the two sets of cross_attn
+                # output_proj captures at the configured blocks.
+                self._func_loss = None
+                inv_runs = (
+                    batch.get("inversion_runs") if isinstance(batch, dict) else None
+                )
+                inv_mask = (
+                    batch.get("inversion_mask") if isinstance(batch, dict) else None
+                )
+                if (
+                    is_train
+                    and getattr(self, "_func_blocks", None)
+                    and inv_runs is not None
+                    and inv_mask is not None
+                    and bool(inv_mask.any().item())
+                ):
+                    # Snapshot main-forward captures (still attached to postfix MLP graph)
+                    cap_main = dict(self._func_captures)
+                    missing = [bi for bi in self._func_blocks if bi not in cap_main]
+                    if missing:
+                        raise RuntimeError(
+                            f"Functional loss: main forward did not populate captures for blocks {missing}"
+                        )
+
+                    # Sample one run per batch element
+                    inv_runs_dev = inv_runs.to(accelerator.device, dtype=weight_dtype)
+                    inv_mask_dev = inv_mask.to(accelerator.device)
+                    B_inv, N_runs, _, _ = inv_runs_dev.shape
+                    run_idx = torch.randint(
+                        0, N_runs, (B_inv,), device=inv_runs_dev.device
+                    )
+                    sampled_inv = inv_runs_dev[
+                        torch.arange(B_inv, device=inv_runs_dev.device), run_idx
+                    ]  # [B, S, D]
+
+                    # Same pooled_text_override so AdaLN modulation is identical;
+                    # only cross-attn K/V differs between the two forwards.
+                    inv_kw = {}
+                    if has_prefix_postfix and "pooled_text_override" in kw:
+                        inv_kw["pooled_text_override"] = kw["pooled_text_override"]
+
+                    with torch.no_grad():
+                        _ = anima(
+                            noisy_model_input,
+                            timesteps,
+                            sampled_inv,
+                            padding_mask=padding_mask,
+                            **inv_kw,
+                        )
+
+                    cap_inv = {
+                        bi: self._func_captures[bi].detach() for bi in self._func_blocks
+                    }
+
+                    mask_f = inv_mask_dev.float()
+                    denom = mask_f.sum().clamp(min=1.0)
+                    block_losses = []
+                    for bi in self._func_blocks:
+                        diff = cap_main[bi].float() - cap_inv[bi].float()
+                        per_sample = diff.pow(2).mean(
+                            dim=tuple(range(1, diff.ndim))
+                        )  # [B]
+                        block_losses.append((per_sample * mask_f).sum() / denom)
+                    self._func_loss = sum(block_losses) / len(block_losses)
         model_pred = model_pred.squeeze(2)  # 5D to 4D, [B, C, 1, H, W] -> [B, C, H, W]
 
         # Note: do NOT clear timestep mask here -- gradient checkpointing recomputes the forward
@@ -661,6 +741,11 @@ class AnimaTrainer:
         ):
             balance_loss = self._network.get_balance_loss()
             loss = loss + self._network._balance_loss_weight * balance_loss
+        # Functional MSE loss against inversion runs (postfix-func)
+        func_loss = getattr(self, "_func_loss", None)
+        func_weight = getattr(args, "functional_loss_weight", 0.0)
+        if func_loss is not None and func_weight > 0.0:
+            loss = loss + func_weight * func_loss.to(loss.dtype)
         return loss
 
     def sample_images(
@@ -952,6 +1037,46 @@ class AnimaTrainer:
         self._network = (
             network  # store reference for ortho regularization in post_process_loss
         )
+        self._func_loss = None
+        self._func_hooks = []
+        self._func_captures = {}
+        self._func_blocks = []
+        if getattr(args, "functional_loss_weight", 0.0) > 0.0 and getattr(
+            args, "inversion_dir", None
+        ):
+            blocks_str = getattr(args, "functional_loss_blocks", "8,12,16,20")
+            try:
+                self._func_blocks = sorted(
+                    int(b.strip()) for b in blocks_str.split(",") if b.strip()
+                )
+            except ValueError as e:
+                raise ValueError(
+                    f"functional_loss_blocks must be comma-separated integers, got {blocks_str!r}"
+                ) from e
+
+            def _make_hook(block_idx: int):
+                def _hook(_module, _inputs, output):
+                    # Save the cross_attn.output_proj output for this block.
+                    # Hook fires twice per step (main forward + inversion forward);
+                    # the main forward runs first, we snapshot before second forward overwrites.
+                    self._func_captures[block_idx] = output
+
+                return _hook
+
+            blocks_list = unet.blocks  # nn.ModuleList of 28 Anima DiT blocks
+            num_blocks = len(blocks_list)
+            for bi in self._func_blocks:
+                if not (0 <= bi < num_blocks):
+                    raise ValueError(
+                        f"functional_loss_blocks contains out-of-range index {bi} (model has {num_blocks} blocks)"
+                    )
+                module = blocks_list[bi].cross_attn.output_proj
+                h = module.register_forward_hook(_make_hook(bi))
+                self._func_hooks.append(h)
+            logger.info(
+                f"Functional loss enabled: hooks on cross_attn.output_proj at blocks {self._func_blocks}, "
+                f"weight={args.functional_loss_weight}, num_runs={args.functional_loss_num_runs}"
+            )
 
     def all_reduce_network(self, accelerator, network):
         for param in network.parameters():

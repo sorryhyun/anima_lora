@@ -1,0 +1,23 @@
+base_config = "base.toml"
+dataset_config = "configs/dataset_config.toml"
+network_module = "networks.postfix_anima"
+# network_dim = K (number of learned postfix tokens per sample)
+network_dim = 16
+network_args = [
+    "mode=cond",
+    "splice_position=end_of_sequence",
+    "cond_hidden_dim=256",
+]
+caption_shuffle_variants = 8
+checkpointing_epochs = 1
+learning_rate = 1e-3
+max_train_epochs = 1
+save_every_n_epochs = 1
+attn_mode = "flash"
+cache_llm_adapter_outputs = true
+trim_crossattn_kv = false  # incompatible with end_of_sequence splice
+output_name = "anima_postfix_exp"
+blocks_to_swap = 0
+gradient_accumulation_steps = 4
+# loss_type = "pseudo_huber"
+# pseudo_huber_c = 0.3
