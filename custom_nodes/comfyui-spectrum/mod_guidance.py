@@ -11,6 +11,7 @@ on the hot path. Inside compile, the forward hook does nothing more than
 import logging
 import os
 import threading
+import time
 import urllib.request
 import weakref
 from typing import List, Optional
@@ -52,21 +53,83 @@ def get_default_adapter_path() -> str:
     with _DOWNLOAD_LOCK:
         if os.path.exists(target_path) and os.path.getsize(target_path) > 0:
             return target_path
-        os.makedirs(target_dir, exist_ok=True)
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+        except OSError as e:
+            raise RuntimeError(
+                f"Mod guidance: cannot create adapter directory {target_dir} ({e}). "
+                f"If ComfyUI is installed under Program Files, move it or run as admin. "
+                f"Otherwise download manually from {DEFAULT_ADAPTER_URL} and place it at {target_path}."
+            ) from e
         tmp_path = target_path + ".download"
         logger.info(
             f"Mod guidance: downloading default adapter (~12MB) from {DEFAULT_ADAPTER_URL}"
         )
         try:
-            urllib.request.urlretrieve(DEFAULT_ADAPTER_URL, tmp_path)
-            os.replace(tmp_path, target_path)
-        except Exception:
+            req = urllib.request.Request(
+                DEFAULT_ADAPTER_URL,
+                headers={"User-Agent": "comfyui-spectrum/mod_guidance"},
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                total = int(resp.headers.get("Content-Length") or 0)
+                downloaded = 0
+                next_log = 2 * 1024 * 1024  # log every 2MB
+                with open(tmp_path, "wb") as fh:
+                    while True:
+                        chunk = resp.read(128 * 1024)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                        downloaded += len(chunk)
+                        if downloaded >= next_log:
+                            if total:
+                                logger.info(
+                                    f"Mod guidance: {downloaded // (1024 * 1024)}MB "
+                                    f"/ {total // (1024 * 1024)}MB"
+                                )
+                            else:
+                                logger.info(
+                                    f"Mod guidance: {downloaded // (1024 * 1024)}MB"
+                                )
+                            next_log += 2 * 1024 * 1024
+                if total and downloaded != total:
+                    raise RuntimeError(
+                        f"truncated download: got {downloaded} of {total} bytes"
+                    )
+        except Exception as e:
             if os.path.exists(tmp_path):
                 try:
                     os.remove(tmp_path)
                 except OSError:
                     pass
-            raise
+            raise RuntimeError(
+                f"Mod guidance: failed to download adapter from {DEFAULT_ADAPTER_URL} ({e}). "
+                f"If this is a corporate network or TLS-intercepting proxy, try `pip install -U certifi`. "
+                f"Otherwise download manually and place the file at {target_path}."
+            ) from e
+        # Windows: antivirus may briefly lock tmp_path on close, causing os.replace
+        # to raise PermissionError ([WinError 5]). Retry a few times with backoff.
+        last_err: Optional[Exception] = None
+        for attempt in range(5):
+            try:
+                os.replace(tmp_path, target_path)
+                last_err = None
+                break
+            except PermissionError as e:
+                last_err = e
+                time.sleep(0.2 * (attempt + 1))
+        if last_err is not None:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+            raise RuntimeError(
+                f"Mod guidance: downloaded adapter but could not rename into place ({last_err}). "
+                f"This is usually Windows antivirus holding the file open. "
+                f"Try adding {target_dir} to your AV exclusions, or download manually from "
+                f"{DEFAULT_ADAPTER_URL} and place it at {target_path}."
+            ) from last_err
         logger.info(f"Mod guidance: saved adapter to {target_path}")
         return target_path
 
