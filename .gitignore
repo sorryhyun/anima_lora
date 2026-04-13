@@ -27,3 +27,4 @@ results
 logs
 .claude
 graft/generation_prompts.txt
+.env

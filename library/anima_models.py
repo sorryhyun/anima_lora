@@ -1641,14 +1641,14 @@ class Anima(nn.Module):
                     pooled_text
                 ).unsqueeze(1)
 
-        # Phase 2: modulation guidance delta (precomputed, added every step)
-        if (
-            hasattr(self, "_mod_guidance_delta")
-            and self._mod_guidance_delta is not None
-        ):
-            t_embedding_B_T_D = t_embedding_B_T_D + self._mod_guidance_delta.unsqueeze(
-                1
-            )
+        # Phase 2: modulation guidance delta.
+        # The steering delta (proj_pos - proj_neg) is NOT baked into the shared
+        # t_embedding here — it is applied per-block below via _mod_guidance_schedule,
+        # so early tonal-DC blocks and the final compensation layer can be skipped.
+        # See docs/mod-guidance.md for the rationale.
+        mod_delta = getattr(self, "_mod_guidance_delta", None)
+        mod_schedule = getattr(self, "_mod_guidance_schedule", None)
+        mod_final_w = getattr(self, "_mod_guidance_final_w", 0.0)
 
         block_kwargs = {
             "rope_cos_sin": rope_cos_sin,
@@ -1745,9 +1745,18 @@ class Anima(nn.Module):
             if self.blocks_to_swap:
                 self.offloader.wait_for_block(block_idx)
 
+            if mod_delta is not None and mod_schedule is not None:
+                w_l = mod_schedule[block_idx]
+                if w_l != 0.0:
+                    t_emb_block = t_embedding_B_T_D + (w_l * mod_delta).unsqueeze(1)
+                else:
+                    t_emb_block = t_embedding_B_T_D
+            else:
+                t_emb_block = t_embedding_B_T_D
+
             x_B_T_H_W_D = block(
                 x_B_T_H_W_D,
-                t_embedding_B_T_D,
+                t_emb_block,
                 crossattn_emb,
                 attn_params,
                 **block_kwargs,
@@ -1764,8 +1773,12 @@ class Anima(nn.Module):
             x_B_T_H_W_D = x_B_T_H_W_D[:, :seq_len, :]
             x_B_T_H_W_D = x_B_T_H_W_D.unflatten(1, (T_s, H_s, W_s))
 
+        if mod_delta is not None and mod_final_w != 0.0:
+            t_emb_final = t_embedding_B_T_D + (mod_final_w * mod_delta).unsqueeze(1)
+        else:
+            t_emb_final = t_embedding_B_T_D
         x_B_T_H_W_O = self.final_layer(
-            x_B_T_H_W_D, t_embedding_B_T_D, adaln_lora_B_T_3D=adaln_lora_B_T_3D
+            x_B_T_H_W_D, t_emb_final, adaln_lora_B_T_3D=adaln_lora_B_T_3D
         )
         x_B_C_Tt_Hp_Wp = self.unpatchify(x_B_T_H_W_O)
         return x_B_C_Tt_Hp_Wp

@@ -31,6 +31,8 @@ make tlora                 # T-LoRA: OrthoLoRA + timestep masking (configs/train
 make tdora                 # DoRA + timestep masking (configs/training_config_doratimestep.toml)
 make hydralora             # HydraLoRA: MoE multi-head routing (configs/training_config_hydralora.toml)
 make postfix               # Postfix tuning (configs/training_config_postfix.toml)
+make postfix-exp           # Postfix tuning, exp variant (configs/training_config_postfix_exp.toml)
+make postfix-func          # Postfix tuning, func variant (configs/training_config_postfix_func.toml)
 make prefix                # Prefix tuning (configs/training_config_prefix.toml)
 
 # Modulation guidance distillation
@@ -45,6 +47,8 @@ make test
 make test-mod              # Test with modulation guidance (pooled_text_proj)
 make test-prefix           # Test with prefix tuning
 make test-postfix          # Test with postfix tuning
+make test-postfix-exp      # Test with postfix tuning (exp variant)
+make test-postfix-func     # Test with postfix tuning (func variant)
 make test-spectrum         # Spectrum-accelerated inference (~3.75x speedup)
 
 # GUI (PySide6 — config editing, GRAFT curation, dataset browsing)
@@ -100,7 +104,7 @@ Training is config-driven. TOML configs specify model paths, hyperparams, and da
 - `configs/training_config_prefix.toml` — Prefix tuning config (used by `make prefix`)
 - `configs/training_config_low_vram.toml` — low-VRAM LoRA config
 - `configs/training_config_win8gb.toml` / `win16gb.toml` — Windows VRAM presets (GUI presets)
-- `configs/training_config_fa4_8gb.toml` / `fa4_16gb.toml` — Flash Attention 4 VRAM presets (GUI presets)
+- `configs/training_config_postfix_exp.toml` / `postfix_func.toml` — postfix tuning variants
 - `configs/dataset_config.toml` — dataset buckets, subsets, caption settings
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
@@ -114,7 +118,7 @@ All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/
   - `networks/lora_anima.py` — LoRA network creation, module targeting, timestep masking orchestration
   - `networks/lora_modules.py` — LoRA, DoRA, OrthoLoRA module implementations
   - `networks/postfix_anima.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual)
-- **Attention dispatch** (`networks/attention.py`): Unified `attention()` routing to torch SDPA, xformers, flash-attn v2/v3, flash-attn v4, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD).
+- **Attention dispatch** (`networks/attention.py`): Unified `attention()` routing to torch SDPA, xformers, flash-attn v2/v3, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD). FA4 (flash-attention-sm120) was evaluated and is currently disabled — see `docs/fa4.md`.
 
 ### LoRA variants
 
@@ -158,7 +162,7 @@ DiT is loaded AFTER text encoder/VAE caching and unloading to avoid OOM. The seq
 
 ## Spectrum inference acceleration
 
-Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., CVPR 2026). `--spectrum` flag on `inference.py` enables it. On cached steps, all transformer blocks are skipped — only `t_embedder` + `final_layer` + `unpatchify` run. A `register_forward_pre_hook` on `final_layer` captures block outputs without monkey-patching the model. The adaptive window schedule (controlled by `--spectrum_window_size` and `--spectrum_flex_window`) concentrates actual forwards on early high-noise steps and increasingly predicts later refinement steps. See `Spectrum/` for the reference repo and `networks/spectrum.py` for the Anima integration.
+Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., CVPR 2026). `--spectrum` flag on `inference.py` enables it. On cached steps, all transformer blocks are skipped — only `t_embedder` + `final_layer` + `unpatchify` run. A `register_forward_pre_hook` on `final_layer` captures block outputs without monkey-patching the model. The adaptive window schedule (controlled by `--spectrum_window_size` and `--spectrum_flex_window`) concentrates actual forwards on early high-noise steps and increasingly predicts later refinement steps. See `networks/spectrum.py` for the Anima integration and `docs/spectrum.md` for usage notes.
 
 ## GRAFT / P-GRAFT
 

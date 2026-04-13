@@ -38,25 +38,43 @@ _KSAMPLER_INPUTS = {
     "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
 }
 
-_MOD_GUIDANCE_BASE_INPUTS = {
+_QUALITY_TAGS_INPUT = (
+    "STRING",
+    {
+        "default": "absurdres, highres, masterpiece, best quality, score_9, score_8, newest, year 2025, year 2024",
+        "multiline": True,
+        "dynamicPrompts": True,
+        "tooltip": "Quality tags to steer generation toward via modulation.",
+    },
+)
+
+# Per-block guidance profiles. Each maps to a fixed (w, start, end, taper, taper_scale, final_w)
+# tuple — see docs/mod-guidance.md for the naming + rationale.
+# end_layer = -1 means "all blocks" (resolved against num_blocks at setup time).
+MOD_W_PROFILES = {
+    "step_i8_skip27": dict(w=3.0, start_layer=8,  end_layer=27, taper=0, taper_scale=0.25, final_w=0.0),
+    "step_i14":       dict(w=3.0, start_layer=14, end_layer=-1, taper=0, taper_scale=0.25, final_w=0.0),
+    "uniform_w3":     dict(w=3.0, start_layer=0,  end_layer=-1, taper=0, taper_scale=0.25, final_w=0.0),
+}
+DEFAULT_MOD_W_PROFILE = "step_i8_skip27"
+
+
+_MOD_GUIDANCE_SIMPLE_INPUTS = {
     "clip": ("CLIP", {"tooltip": "CLIP encoder for encoding positive quality tags."}),
-    "quality_tags": (
-        "STRING",
+    "quality_tags": _QUALITY_TAGS_INPUT,
+    "mod_w_profile": (
+        list(MOD_W_PROFILES.keys()),
         {
-            "default": "absurdres, highres, masterpiece, best quality, score_9, score_8, newest, year 2025, year 2024",
-            "multiline": True,
-            "dynamicPrompts": True,
-            "tooltip": "Quality tags to steer generation toward via modulation.",
-        },
-    ),
-    "mod_w": (
-        "FLOAT",
-        {
-            "default": 3.0,
-            "min": -20.0,
-            "max": 20.0,
-            "step": 0.1,
-            "tooltip": "Modulation guidance strength. Steers t_emb toward quality tags.",
+            "default": DEFAULT_MOD_W_PROFILE,
+            "tooltip": (
+                "Per-block guidance schedule preset. "
+                "'step_i8_skip27' (default) protects early tonal-DC blocks 0–7 and the "
+                "final compensation block 27, applying w=3 to blocks 8–26 — best overall "
+                "quality but can occasionally show minor anatomy drift on drift-prone LoRAs. "
+                "'step_i14' is the SAFE option: steers only from block 14 onward, reliably "
+                "stays inside the trained manifold at the cost of a slightly less expressive result. "
+                "'uniform_w3' recovers pre-0413 behavior (not recommended — prone to pink-collapse)."
+            ),
         },
     ),
 }
@@ -64,7 +82,7 @@ _MOD_GUIDANCE_BASE_INPUTS = {
 
 def _mod_guidance_advanced_inputs():
     return {
-        "clip": _MOD_GUIDANCE_BASE_INPUTS["clip"],
+        "clip": _MOD_GUIDANCE_SIMPLE_INPUTS["clip"],
         "adapter": (
             _adapter_choices(),
             {
@@ -75,8 +93,76 @@ def _mod_guidance_advanced_inputs():
                 ),
             },
         ),
-        "quality_tags": _MOD_GUIDANCE_BASE_INPUTS["quality_tags"],
-        "mod_w": _MOD_GUIDANCE_BASE_INPUTS["mod_w"],
+        "quality_tags": _QUALITY_TAGS_INPUT,
+        "mod_w": (
+            "FLOAT",
+            {
+                "default": 3.0,
+                "min": -20.0,
+                "max": 20.0,
+                "step": 0.1,
+                "tooltip": "Peak modulation guidance strength applied per-block.",
+            },
+        ),
+        "mod_start_layer": (
+            "INT",
+            {
+                "default": 8,
+                "min": 0,
+                "max": 999,
+                "tooltip": (
+                    "Inclusive first block index that receives the steering delta. "
+                    "0 = uniform (pre-0413). 8 = protect tonal-DC blocks 0–7 (default)."
+                ),
+            },
+        ),
+        "mod_end_layer": (
+            "INT",
+            {
+                "default": -1,
+                "min": -1,
+                "max": 999,
+                "tooltip": (
+                    "Exclusive last block + 1. -1 = all remaining blocks. "
+                    "Use 27 (Anima has 28 blocks) to skip the final compensation block."
+                ),
+            },
+        ),
+        "mod_taper": (
+            "INT",
+            {
+                "default": 0,
+                "min": 0,
+                "max": 999,
+                "tooltip": (
+                    "Number of late slots inside [start, end) to scale by taper_scale. "
+                    "0 disables taper. 2 + end=27 reproduces the 'piecewise' preset."
+                ),
+            },
+        ),
+        "mod_taper_scale": (
+            "FLOAT",
+            {
+                "default": 0.25,
+                "min": 0.0,
+                "max": 1.0,
+                "step": 0.05,
+                "tooltip": "Multiplier applied to tapered slots (e.g. 0.25 -> w*0.25).",
+            },
+        ),
+        "mod_final_w": (
+            "FLOAT",
+            {
+                "default": 0.0,
+                "min": -20.0,
+                "max": 20.0,
+                "step": 0.1,
+                "tooltip": (
+                    "w applied at final_layer. 0.0 = don't disturb the output head (default). "
+                    "Set non-zero only if your LoRA needs final-layer steering."
+                ),
+            },
+        ),
     }
 
 _SPECTRUM_INPUTS = {
@@ -204,7 +290,7 @@ class SpectrumKSamplerModGuidance:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {**_KSAMPLER_INPUTS, **_MOD_GUIDANCE_BASE_INPUTS}}
+        return {"required": {**_KSAMPLER_INPUTS, **_MOD_GUIDANCE_SIMPLE_INPUTS}}
 
     RETURN_TYPES = ("LATENT",)
     FUNCTION = "sample"
@@ -215,7 +301,8 @@ class SpectrumKSamplerModGuidance:
         "projection into the AdaLN timestep embedding. The default ~12MB "
         "pooled_text_proj adapter is auto-downloaded on first use. Quality "
         "tags are encoded through the full CLIP + LLM adapter pipeline for "
-        "correct post-adapter pooling. Uses sensible Spectrum defaults."
+        "correct post-adapter pooling. Uses sensible Spectrum defaults and "
+        "the 'step_i8' per-block guidance schedule (early-DC protected)."
     )
 
     def sample(
@@ -231,11 +318,25 @@ class SpectrumKSamplerModGuidance:
         negative,
         latent_image,
         quality_tags,
-        mod_w,
+        mod_w_profile,
         denoise=1.0,
     ):
+        profile = MOD_W_PROFILES.get(mod_w_profile) or MOD_W_PROFILES[DEFAULT_MOD_W_PROFILE]
         m = model.clone()
-        setup_mod_guidance(m, clip, positive, negative, None, quality_tags, mod_w)
+        setup_mod_guidance(
+            m,
+            clip,
+            positive,
+            negative,
+            None,
+            quality_tags,
+            profile["w"],
+            start_layer=profile["start_layer"],
+            end_layer=profile["end_layer"],
+            taper=profile["taper"],
+            taper_scale=profile["taper_scale"],
+            final_w=profile["final_w"],
+        )
         return spectrum_sample(
             m,
             seed,
@@ -289,6 +390,11 @@ class SpectrumKSamplerAdvanced:
         adapter,
         quality_tags,
         mod_w,
+        mod_start_layer=8,
+        mod_end_layer=-1,
+        mod_taper=0,
+        mod_taper_scale=0.25,
+        mod_final_w=0.0,
         denoise=1.0,
         window_size=2.0,
         flex_window=0.25,
@@ -298,7 +404,20 @@ class SpectrumKSamplerAdvanced:
         ridge_lambda=0.1,
     ):
         m = model.clone()
-        setup_mod_guidance(m, clip, positive, negative, adapter, quality_tags, mod_w)
+        setup_mod_guidance(
+            m,
+            clip,
+            positive,
+            negative,
+            adapter,
+            quality_tags,
+            mod_w,
+            start_layer=mod_start_layer,
+            end_layer=mod_end_layer,
+            taper=mod_taper,
+            taper_scale=mod_taper_scale,
+            final_w=mod_final_w,
+        )
         return spectrum_sample(
             m,
             seed,

@@ -51,4 +51,12 @@ The default ~12MB `pooled_text_proj` weight is auto-downloaded on first use from
 | `clip` | — | CLIP encoder for encoding quality tags |
 | `adapter` | `(auto-download default)` | `pooled_text_proj` safetensors file (advanced node only) |
 | `quality_tags` | `absurdres, highres, masterpiece, ...` | Quality/aesthetic tags to steer toward |
-| `mod_w` | 3.0 | Guidance strength (higher = stronger steering) |
+| `mod_w_profile` (simple) | `step_i8_skip27` | Per-block guidance preset. `step_i8_skip27` (default, best quality) protects blocks 0–7 + 27 and applies `w=3` to blocks 8–26. `step_i14` is the safe option — use it when a LoRA shows anatomy drift. `uniform_w3` recovers pre-0413 legacy behavior. |
+| `mod_w` (advanced) | 3.0 | Peak guidance strength applied per-block |
+| `mod_start_layer` (advanced) | 8 | First block (inclusive) that receives the steering delta. `0` = uniform legacy behavior |
+| `mod_end_layer` (advanced) | -1 | Last block + 1 (exclusive). `-1` = all remaining blocks. Set to `27` to skip Anima's compensation block |
+| `mod_taper` (advanced) | 0 | Number of late slots to scale by `mod_taper_scale`. `0` disables taper |
+| `mod_taper_scale` (advanced) | 0.25 | Multiplier for tapered slots |
+| `mod_final_w` (advanced) | 0.0 | `w` applied at `final_layer`. `0` = don't disturb the output head |
+
+Per-block guidance schedules address quality drift on LoRAs whose distribution sits far from the positive-prompt axis (e.g. early blocks blowing out tonal DC into uniform color collapse). The default `step_i8_skip27` protects blocks 0–7 and the final compensation block 27 from the steering delta while keeping the base text projection uniform across all blocks. See `docs/mod-guidance.md` in the anima_lora repo for the underlying rationale.

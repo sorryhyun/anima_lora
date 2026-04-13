@@ -76,8 +76,8 @@ distill-mod:
 		--data_dir post_image_dataset \
 		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
 		--output_path output/pooled_text_proj.safetensors \
-		--iterations 500 \
-		--lr 5e-5 \
+		--iterations 750 \
+		--lr 3e-5 \
 		--warmup 0.05 \
 		--blocks_to_swap 0 \
 		--attn_mode flash \
@@ -159,7 +159,7 @@ test-invert:
 		--name $(INVERT_NAME) \
 		--verify --verify_steps 30
 
-WORKFLOW ?= workflows/lora-batch.json
+WORKFLOW ?= workflows/modlora.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 

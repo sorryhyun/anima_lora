@@ -64,13 +64,27 @@ The projection output is added to `t_embedding_B_T_D` **after** `t_embedding_nor
 
 ### Inference guidance
 
-At inference time, modulation guidance steers AdaLN coefficients using quality-axis prompts:
+At inference time, modulation guidance steers AdaLN coefficients using quality-axis prompts. The base projection is applied uniformly (training-consistent), but the steering delta is scheduled **per DiT block**:
 
 ```
-emb = t_embedding + proj(pool(main)) + w * (proj(pool(p₊)) − proj(pool(p₋)))
+base_emb     = t_embedding + proj(pool(main))                    # uniform, training-consistent
+delta_unit   = proj(pool(p₊)) − proj(pool(p₋))                   # unit steering direction
+emb_at_block[ℓ] = base_emb + w(ℓ) · delta_unit                   # scheduled per block
+emb_at_final    = base_emb + w_final · delta_unit                # final_layer override
 ```
 
-The guidance delta `w * (proj(pool(p₊)) − proj(pool(p₋)))` is computed once and reused across all denoising steps. It is stored on `anima._mod_guidance_delta` and added to `t_embedding_B_T_D` in every forward pass.
+`delta_unit` and `w(ℓ)` are computed once at setup and reused across all denoising steps. They live on `anima._mod_guidance_delta` (unit direction, no `w` baked in), `anima._mod_guidance_schedule` (list of `w(ℓ)` of length `num_blocks`), and `anima._mod_guidance_final_w` (scalar).
+
+**Why schedule instead of uniform?** Applying one global `w` to every block plus `final_layer` caused a drift failure mode on some LoRAs ("channel" collapsing to uniform pink at `w=3` while "sweetonedollar" stayed clean at the same `w`). Per-block functional-gap analysis on Anima's 28-block DiT showed early blocks 0–7 set coarse layout / tonal DC and are sensitive to DC blowout, while block 27 is a compensation/fix-up layer. Matches the Starodubcev et al. App. B–C analysis on FLUX (Strategy 4 — per-block `w`, not per-timestep).
+
+### Profiles
+
+Two named profiles cover the useful operating points — pick the safe one if a LoRA shows anatomy drift (missing fingers, extra digits) at the default.
+
+| Profile | `start_layer` | `end_layer` | `final_w` | Use when |
+|---|:-:|:-:|:-:|---|
+| **`step_i8_skip27`** (default) | 8 | 27 | 0.0 | Best overall quality. Protects blocks 0–7 + 27. May occasionally show minor anatomy drift on drift-prone LoRAs. |
+| **`step_i14`** (safe) | 14 | — | 0.0 | Reliably stays inside the trained manifold. Slightly less expressive — use when `step_i8_skip27` shows drift on the prompt at hand. |
 
 Default guidance prompts use booru-style quality/score tags (in-distribution for Anima's text encoder):
 
@@ -84,6 +98,8 @@ Resolution tags (`absurdres`) are included because the quality and resolution di
 
 ### Inference
 
+Default CLI invocation (reproduces the `step_i8_skip27` profile — recommended starting point):
+
 ```bash
 python inference.py \
     --pooled_text_proj path/to/pooled_text_proj.safetensors \
@@ -93,12 +109,29 @@ python inference.py \
     # ... other args
 ```
 
+To switch to the safe `step_i14` profile, add:
+
+```bash
+    --mod_start_layer 14 --mod_end_layer -1
+```
+
+To recover pre-0413 uniform behavior (not recommended — prone to pink-collapse on drift-prone LoRAs):
+
+```bash
+    --mod_start_layer 0 --mod_end_layer -1
+```
+
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--pooled_text_proj` | — | Path to trained projection weights (.safetensors) |
-| `--mod_w` | 3.0 | Guidance strength. Higher = stronger quality steering |
+| `--mod_w` | 3.0 | Peak guidance strength (`w` applied inside `[start_layer, end_layer)`) |
 | `--mod_pos_prompt` | `"absurdres, masterpiece, score_9"` | Positive quality prompt |
 | `--mod_neg_prompt` | `"worst quality, low quality, score_1"` | Negative quality prompt |
+| `--mod_start_layer` | `8` | Inclusive first block that receives the steering delta. `0` = uniform (pre-0413). `8` = protect tonal-DC blocks 0–7. `14` = safe option. |
+| `--mod_end_layer` | `27` | Exclusive last block + 1. `-1` = all remaining blocks. `27` skips Anima's final compensation block. |
+| `--mod_taper` | `0` | Number of late slots inside `[start, end)` to scale by `--mod_taper_scale`. `0` disables taper. |
+| `--mod_taper_scale` | `0.25` | Multiplier applied to tapered slots. |
+| `--mod_final_w` | `0.0` | `w` passed to `final_layer`. `0.0` = don't disturb the output head. |
 
 ### Distillation training
 
@@ -144,10 +177,14 @@ Output: `pooled_text_proj.safetensors` in the data directory.
 
 ## ComfyUI
 
-Two node implementations exist:
+Mod guidance ships inside `custom_nodes/comfyui-spectrum/` as a drop-in KSampler replacement. The adapter (`pooled_text_proj_0413.safetensors`, ~12MB) is auto-downloaded on first use from the anima_lora GitHub release page.
 
-- `custom_nodes/comfyui-mod-guidance/` — standalone node, takes pre-computed pooled embeddings
-- `Anima-Mod-Guidance-ComfyUI-Node/` — full node with adapter auto-download, per-block scaling via `start_layer`/`end_layer` controls, and CLIP pooled output integration
+| Node | Inputs | When to use |
+|---|---|---|
+| **KSampler (Spectrum + Mod Guidance)** | `quality_tags`, `mod_w_profile` dropdown | Everyday use. Pick a profile preset; no manual knobs. |
+| **KSampler (Spectrum + Mod Guidance Advanced)** | full `start_layer` / `end_layer` / `taper` / `final_w` sliders + Spectrum knobs | Workflow tuning or per-LoRA experimentation. |
+
+The `mod_w_profile` dropdown exposes the same two profiles documented above plus `uniform_w3` for reproducing pre-0413 behavior. Default is `step_i8_skip27`; switch to `step_i14` when a LoRA shows anatomy drift.
 
 ## Design rationale
 

@@ -238,6 +238,42 @@ def parse_args() -> argparse.Namespace:
         default="worst quality, low quality, score_1, score_2, score_3",
         help="Negative quality prompt for modulation guidance direction",
     )
+    parser.add_argument(
+        "--mod_start_layer",
+        type=int,
+        default=8,
+        help="First block (inclusive) that receives the steering delta. "
+        "Default 8 protects tonal-DC blocks 0–7 (matches ComfyUI 'step_i8_skip27'). "
+        "Use 14 for the safer preset that avoids drift on anatomy-heavy prompts. "
+        "Set 0 to recover pre-0413 uniform behavior.",
+    )
+    parser.add_argument(
+        "--mod_end_layer",
+        type=int,
+        default=27,
+        help="Last block + 1 (exclusive) that receives the steering delta. "
+        "Default 27 skips the final compensation block on Anima's 28-block DiT. "
+        "Use -1 to apply through the final block.",
+    )
+    parser.add_argument(
+        "--mod_taper",
+        type=int,
+        default=0,
+        help="Number of late slots inside [start, end) to scale by --mod_taper_scale. "
+        "0 disables taper (default).",
+    )
+    parser.add_argument(
+        "--mod_taper_scale",
+        type=float,
+        default=0.25,
+        help="Multiplier applied to tapered slots (default 0.25).",
+    )
+    parser.add_argument(
+        "--mod_final_w",
+        type=float,
+        default=0.0,
+        help="w applied at final_layer. 0.0 = don't disturb the output head (default).",
+    )
 
     # P-GRAFT
     parser.add_argument(

@@ -12,7 +12,8 @@ import logging
 import os
 import threading
 import urllib.request
-from typing import Optional
+import weakref
+from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
@@ -121,12 +122,28 @@ def _project(pooled, adapter_state):
     return x
 
 
+class _PerBlockState:
+    """Runtime state read by per-block / final-layer pre-hooks.
+
+    Lives on `dit._anima_mod_block_state` for the duration of a single
+    `_mod_apply_wrapper` call. Hooks check for `None` to fast-no-op.
+    """
+
+    __slots__ = ("delta_unit", "schedule", "final_w")
+
+    def __init__(self, delta_unit: torch.Tensor, schedule: List[float], final_w: float):
+        self.delta_unit = delta_unit  # (1, C) — proj_tag - proj_neg
+        self.schedule = schedule       # length num_blocks; w_l per block
+        self.final_w = final_w         # scalar w applied to final_layer
+
+
 class ModGuidanceState:
     """Per-sample state. Holds raw text tensors at construction time and caches
-    the two precomputed combined tensors (cond / uncond) after the first forward.
+    the precomputed base projections + steering delta after the first forward.
 
     All hot-path work happens in the APPLY_MODEL wrapper, outside torch.compile.
-    The compiled DiT forward only sees a single tensor read inside the t_emb hook.
+    The compiled DiT forward only sees a single tensor read inside the t_emb hook
+    (base projection) plus per-block pre-hooks that add `w(ℓ) * delta_unit`.
     """
 
     def __init__(
@@ -143,6 +160,11 @@ class ModGuidanceState:
         pos_t5_ids: Optional[torch.Tensor],
         pos_t5_weights: Optional[torch.Tensor],
         dit,
+        start_layer: int = 0,
+        end_layer: int = -1,
+        taper: int = 0,
+        taper_scale: float = 0.25,
+        final_w: float = 0.0,
     ):
         self.adapter_path = adapter_path
         self.w = w
@@ -156,9 +178,16 @@ class ModGuidanceState:
         self.pos_t5_ids = pos_t5_ids
         self.pos_t5_weights = pos_t5_weights
         self.dit = dit
+        self.start_layer = int(start_layer)
+        self.end_layer = int(end_layer)
+        self.taper = int(taper)
+        self.taper_scale = float(taper_scale)
+        self.final_w = float(final_w)
         # Computed lazily on first forward when DiT is on GPU
-        self.cond_combined: Optional[torch.Tensor] = None
-        self.uncond_combined: Optional[torch.Tensor] = None
+        self.cond_combined: Optional[torch.Tensor] = None      # (1, C) base proj_pos
+        self.uncond_combined: Optional[torch.Tensor] = None    # (1, C) base proj_neg
+        self.delta_unit: Optional[torch.Tensor] = None         # (1, C) proj_tag - proj_neg
+        self.per_block_schedule: Optional[List[float]] = None  # length num_blocks
 
     def _encode_pool(self, raw, t5_ids, t5_weights, device, dtype):
         adapted = self.dit.preprocess_text_embeds(
@@ -173,7 +202,8 @@ class ModGuidanceState:
         return adapted.max(dim=1).values  # (1, pooled_dim)
 
     def ensure_precomputed(self, device, dtype):
-        """Run LLM adapter + projection for pos / neg / tag once, cache combined."""
+        """Run LLM adapter + projection for pos / neg / tag once, cache base
+        projections and unit steering delta. Schedule built off live block count."""
         if self.cond_combined is not None:
             return
 
@@ -191,10 +221,33 @@ class ModGuidanceState:
             proj_tag = _project(tag_pooled, adapter_state)
             proj_neg = _project(neg_pooled, adapter_state)
             proj_pos = _project(pos_pooled, adapter_state)
-            delta = self.w * (proj_tag - proj_neg)
-            self.cond_combined = (proj_pos + delta).detach()      # (1, C)
-            self.uncond_combined = (proj_neg + delta).detach()    # (1, C)
-        logger.info(f"Mod guidance: combined precomputed (w={self.w})")
+            # Base projections — added uniformly via t_embedding_norm hook,
+            # matches the line-1640 training-time injection.
+            self.cond_combined = proj_pos.detach()       # (1, C)
+            self.uncond_combined = proj_neg.detach()     # (1, C)
+            # Unit steering direction — scaled per-block by `self.per_block_schedule`.
+            self.delta_unit = (proj_tag - proj_neg).detach()
+        self._build_schedule()
+        logger.info(
+            f"Mod guidance: precomputed "
+            f"(w={self.w}, start={self.start_layer}, end={self.end_layer}, "
+            f"taper={self.taper}, taper_scale={self.taper_scale}, final_w={self.final_w})"
+        )
+
+    def _build_schedule(self):
+        num_blocks = len(self.dit.blocks)
+        end = num_blocks if self.end_layer < 0 else min(self.end_layer, num_blocks)
+        start = max(0, min(self.start_layer, end))
+        sched = [0.0] * num_blocks
+        w = float(self.w)
+        for i in range(start, end):
+            sched[i] = w
+        if self.taper > 0 and end > start:
+            taper_start = max(start, end - self.taper)
+            taper_w = w * float(self.taper_scale)
+            for i in range(taper_start, end):
+                sched[i] = taper_w
+        self.per_block_schedule = sched
 
 
 def _t_emb_forward_hook(module, input, output):
@@ -221,6 +274,65 @@ def _ensure_t_emb_hook(dm) -> None:
     t_norm._anima_mod_delta = None
     t_norm.register_forward_hook(_t_emb_forward_hook)
     t_norm._anima_mod_hook_installed = True
+
+
+def _ensure_block_hooks(dm) -> None:
+    """Install pre-forward hooks on each block + final_layer that apply
+    `w(ℓ) * delta_unit` to the t_embedding argument. Hooks read state from
+    `dm._anima_mod_block_state`; when None they fast-no-op."""
+    if getattr(dm, "_anima_mod_block_hooks_installed", False):
+        return
+
+    dm_ref = weakref.ref(dm)
+
+    def _make_block_prehook(idx: int):
+        def _prehook(module, args, kwargs):
+            owner = dm_ref()
+            if owner is None:
+                return None
+            st = getattr(owner, "_anima_mod_block_state", None)
+            if st is None or st.schedule is None:
+                return None
+            if idx >= len(st.schedule):
+                return None
+            w_l = st.schedule[idx]
+            if w_l == 0.0:
+                return None
+            if len(args) < 2:
+                return None
+            t_emb = args[1]
+            delta = st.delta_unit
+            if delta.device != t_emb.device or delta.dtype != t_emb.dtype:
+                delta = delta.to(device=t_emb.device, dtype=t_emb.dtype)
+                st.delta_unit = delta
+            new_t_emb = t_emb + (w_l * delta).unsqueeze(1)
+            new_args = (args[0], new_t_emb) + tuple(args[2:])
+            return new_args, kwargs
+        return _prehook
+
+    def _final_prehook(module, args, kwargs):
+        owner = dm_ref()
+        if owner is None:
+            return None
+        st = getattr(owner, "_anima_mod_block_state", None)
+        if st is None or st.final_w == 0.0:
+            return None
+        if len(args) < 2:
+            return None
+        t_emb = args[1]
+        delta = st.delta_unit
+        if delta.device != t_emb.device or delta.dtype != t_emb.dtype:
+            delta = delta.to(device=t_emb.device, dtype=t_emb.dtype)
+            st.delta_unit = delta
+        new_t_emb = t_emb + (st.final_w * delta).unsqueeze(1)
+        new_args = (args[0], new_t_emb) + tuple(args[2:])
+        return new_args, kwargs
+
+    for idx, blk in enumerate(dm.blocks):
+        blk.register_forward_pre_hook(_make_block_prehook(idx), with_kwargs=True)
+    dm.final_layer.register_forward_pre_hook(_final_prehook, with_kwargs=True)
+    dm._anima_mod_block_state = None
+    dm._anima_mod_block_hooks_installed = True
 
 
 def _mod_apply_wrapper(executor, *args, **kwargs):
@@ -257,10 +369,20 @@ def _mod_apply_wrapper(executor, *args, **kwargs):
     dit._mod_pooled_proj = combined.detach()
     t_norm = dit.t_embedding_norm
     t_norm._anima_mod_delta = combined.unsqueeze(1)
+
+    # Per-block / final-layer hooks read this. delta_unit cast to runtime dtype
+    # once here; hooks lazy-recast if needed.
+    delta_unit_typed = mod_state.delta_unit.to(device=device, dtype=dtype)
+    dit._anima_mod_block_state = _PerBlockState(
+        delta_unit=delta_unit_typed,
+        schedule=mod_state.per_block_schedule,
+        final_w=mod_state.final_w,
+    )
     try:
         return executor(*args, **kwargs)
     finally:
         t_norm._anima_mod_delta = None
+        dit._anima_mod_block_state = None
 
 
 def _extract_raw_and_t5(conditioning):
@@ -284,15 +406,35 @@ def _extract_raw_and_t5(conditioning):
 
 
 def setup_mod_guidance(
-    model_clone, clip, positive, negative, adapter_name, quality_tags, w
+    model_clone,
+    clip,
+    positive,
+    negative,
+    adapter_name,
+    quality_tags,
+    w,
+    *,
+    start_layer: int = 0,
+    end_layer: int = -1,
+    taper: int = 0,
+    taper_scale: float = 0.25,
+    final_w: float = 0.0,
 ):
     """Capture raw tensors for quality tags / positive / negative, install the
-    t_emb hook, and register the APPLY_MODEL wrapper.
+    t_emb / per-block / final-layer hooks, and register the APPLY_MODEL wrapper.
 
     Called from the KSampler node's sample() before sampling starts. The LLM
     adapter and projection run lazily on the first compiled forward (when the
-    DiT is on GPU) and produce the two cached `cond_combined` / `uncond_combined`
-    tensors stored on `ModGuidanceState`.
+    DiT is on GPU) and produce the cached `cond_combined` / `uncond_combined`
+    base projections plus `delta_unit` steering direction stored on
+    `ModGuidanceState`.
+
+    Schedule params (per-block guidance shape):
+        start_layer:  inclusive; first block to receive `w * delta_unit`.
+        end_layer:    exclusive; last block + 1. -1 means num_blocks.
+        taper:        number of late slots inside [start, end) to scale by `taper_scale`.
+        taper_scale:  multiplier on tapered slots (default 0.25).
+        final_w:      `w` applied at `final_layer` (default 0 = don't disturb).
     """
     adapter_path = _resolve_adapter_path(adapter_name)
 
@@ -336,12 +478,19 @@ def setup_mod_guidance(
         pos_t5_ids=pos_t5_ids,
         pos_t5_weights=pos_t5_weights,
         dit=dm,
+        start_layer=start_layer,
+        end_layer=end_layer,
+        taper=taper,
+        taper_scale=taper_scale,
+        final_w=final_w,
     )
 
     # Install the t_emb forward hook exactly once per DiT instance. Module-level
     # hook reads its state from `t_embedding_norm._anima_mod_delta`, which is
     # set / cleared by `_mod_apply_wrapper` outside the compile boundary.
     _ensure_t_emb_hook(dm)
+    # Install per-block + final-layer pre-hooks for scheduled steering delta.
+    _ensure_block_hooks(dm)
 
     # Clean up any legacy DIFFUSION_MODEL wrapper from previous versions
     model_clone.remove_wrappers_with_key(

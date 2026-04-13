@@ -918,16 +918,46 @@ def _encode_prompt_for_mod(
     return crossattn_emb
 
 
+def _build_mod_schedule(args: argparse.Namespace, num_blocks: int) -> List[float]:
+    """Build a per-block w(l) list from CLI args.
+
+    Default flags reproduce the 'step_i8_skip27' ComfyUI preset — protects
+    tonal-DC blocks 0–7 and the compensation block 27, applying full w to 8–26.
+    See docs/mod-guidance.md for rationale.
+    """
+    w = float(args.mod_w)
+    start = int(getattr(args, "mod_start_layer", 8))
+    end_raw = int(getattr(args, "mod_end_layer", 27))
+    end = num_blocks if end_raw < 0 else min(end_raw, num_blocks)
+    start = max(0, min(start, end))
+    taper = int(getattr(args, "mod_taper", 0))
+    taper_scale = float(getattr(args, "mod_taper_scale", 0.25))
+
+    sched = [0.0] * num_blocks
+    for i in range(start, end):
+        sched[i] = w
+    if taper > 0 and end > start:
+        taper_start = max(start, end - taper)
+        taper_w = w * taper_scale
+        for i in range(taper_start, end):
+            sched[i] = taper_w
+    return sched
+
+
 def _setup_mod_guidance(
     args: argparse.Namespace,
     anima: anima_models.Anima,
     device: torch.device,
     shared_models: Optional[Dict] = None,
 ) -> None:
-    """Compute Phase 2 modulation guidance delta and store on model.
+    """Compute Phase 2 modulation guidance delta and per-block schedule.
 
-    guidance_delta = w * (proj(pool(pos_crossattn)) - proj(pool(neg_crossattn)))
-    This is added to t_embedding every forward step.
+    delta_unit  = proj(pool(pos_crossattn)) - proj(pool(neg_crossattn))
+    schedule[l] = w(l) from --mod_start_layer / --mod_end_layer / --mod_taper
+    final_w     = --mod_final_w (applied at the final_layer only)
+
+    At inference each block l receives `t_emb + schedule[l] * delta_unit`;
+    `final_layer` receives `t_emb + final_w * delta_unit`. See docs/mod-guidance.md.
     """
     mod_w = args.mod_w
     mod_pos = args.mod_pos_prompt
@@ -951,7 +981,8 @@ def _setup_mod_guidance(
     pos_crossattn = _encode_prompt_for_mod(mod_pos, anima, text_encoder, device)
     neg_crossattn = _encode_prompt_for_mod(mod_neg, anima, text_encoder, device)
 
-    # Pool and project through trained pooled_text_proj
+    # Pool and project through trained pooled_text_proj. Note: unit delta — the
+    # per-block weight comes from the schedule, not baked in here.
     with torch.no_grad():
         pos_pooled = pos_crossattn.max(dim=1).values  # (1, 1024)
         neg_pooled = neg_crossattn.max(dim=1).values
@@ -961,10 +992,26 @@ def _setup_mod_guidance(
         proj_neg = anima.pooled_text_proj(
             neg_pooled.to(anima.pooled_text_proj[0].weight.dtype)
         )
-        delta = mod_w * (proj_pos - proj_neg)  # (1, model_channels)
+        delta_unit = proj_pos - proj_neg  # (1, model_channels)
 
-    anima._mod_guidance_delta = delta.to(device, dtype=torch.bfloat16)
-    logger.info(f"Modulation guidance delta set (norm={delta.norm().item():.4f})")
+    anima._mod_guidance_delta = delta_unit.to(device, dtype=torch.bfloat16)
+
+    num_blocks = len(anima.blocks)
+    schedule = _build_mod_schedule(args, num_blocks)
+    anima._mod_guidance_schedule = schedule
+    anima._mod_guidance_final_w = float(getattr(args, "mod_final_w", 0.0))
+
+    active = [(i, w) for i, w in enumerate(schedule) if w != 0.0]
+    logger.info(
+        f"Modulation guidance: delta_norm={delta_unit.norm().item():.4f}, "
+        f"active blocks={len(active)}/{num_blocks}, "
+        f"final_w={anima._mod_guidance_final_w}"
+    )
+    if active:
+        logger.info(
+            f"  schedule: blocks {active[0][0]}..{active[-1][0]} @ w={active[0][1]} "
+            f"(taper={int(getattr(args, 'mod_taper', 0))})"
+        )
 
     if loaded_locally:
         del text_encoder
@@ -1019,6 +1066,8 @@ def generate(
         _setup_mod_guidance(args, anima, device, shared_models)
     else:
         anima._mod_guidance_delta = None
+        anima._mod_guidance_schedule = None
+        anima._mod_guidance_final_w = 0.0
 
     return generate_body(args, anima, context, context_null, device, seed)
 
