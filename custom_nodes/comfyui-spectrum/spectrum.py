@@ -75,8 +75,6 @@ class SpectrumState:
         # Forecasters keyed by cond_or_uncond value (0=cond, 1=uncond)
         self.forecasters: Dict[int, SpectrumPredictor] = {}
         self.captured_feat: Optional[torch.Tensor] = None
-        self._hook_handle = None
-        self._hook_installed = False
 
     def should_cache(self) -> bool:
         if self.step_idx < self.warmup_steps:
@@ -89,21 +87,22 @@ class SpectrumState:
     def has_forecasters(self, cond_or_uncond: list) -> bool:
         return all(cou in self.forecasters for cou in cond_or_uncond)
 
-    def install_hook(self, dit):
-        if self._hook_installed:
-            return
 
-        def capture_pre_hook(module, args):
-            self.captured_feat = args[0].detach().clone()
+def _capture_pre_hook(module, args):
+    """Module-singleton pre-hook on final_layer — stores the pre-final feature
+    on whichever SpectrumState is currently bound to the module.
+    """
+    state = getattr(module, "_spectrum_state", None)
+    if state is not None:
+        state.captured_feat = args[0].detach().clone()
 
-        self._hook_handle = dit.final_layer.register_forward_pre_hook(capture_pre_hook)
-        self._hook_installed = True
 
-    def remove_hook(self):
-        if self._hook_handle is not None:
-            self._hook_handle.remove()
-            self._hook_handle = None
-            self._hook_installed = False
+def _ensure_capture_hook(dit) -> None:
+    final_layer = dit.final_layer
+    if getattr(final_layer, "_spectrum_hook_installed", False):
+        return
+    final_layer.register_forward_pre_hook(_capture_pre_hook)
+    final_layer._spectrum_hook_installed = True
 
 
 def spectrum_sample(
@@ -140,8 +139,12 @@ def spectrum_sample(
     dit = m.model.diffusion_model
     model_sampling = m.model.model_sampling
 
-    # Install capture hook eagerly (before first compiled forward)
-    state.install_hook(dit)
+    # Install capture hook once per DiT instance (no-op on subsequent runs) and
+    # bind this sample's state to the module. The hook reads state from the
+    # module attribute, so its identity/closure is stable across samples —
+    # torch.compile's dynamo cache survives between runs.
+    _ensure_capture_hook(dit)
+    dit.final_layer._spectrum_state = state
 
     old_wrapper = m.model_options.get("model_function_wrapper")
 
@@ -219,34 +222,33 @@ def spectrum_sample(
     callback = latent_preview.prepare_callback(m, steps)
     disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
-    samples = comfy.sample.sample(
-        m,
-        noise,
-        steps,
-        cfg,
-        sampler_name,
-        scheduler,
-        positive,
-        negative,
-        latent_img,
-        denoise=denoise,
-        noise_mask=noise_mask,
-        callback=callback,
-        disable_pbar=disable_pbar,
-        seed=seed,
-    )
+    try:
+        samples = comfy.sample.sample(
+            m,
+            noise,
+            steps,
+            cfg,
+            sampler_name,
+            scheduler,
+            positive,
+            negative,
+            latent_img,
+            denoise=denoise,
+            noise_mask=noise_mask,
+            callback=callback,
+            disable_pbar=disable_pbar,
+            seed=seed,
+        )
+    finally:
+        dit.final_layer._spectrum_state = None
+        if hasattr(dit, "_mod_pooled_proj"):
+            del dit._mod_pooled_proj
 
     if state.step_idx >= 0:
         if state.mode == "actual":
             state.fwd_count += 1
         else:
             state.consec_cached += 1
-
-    state.remove_hook()
-
-    # Clean up cached mod guidance projection
-    if hasattr(dit, "_mod_pooled_proj"):
-        del dit._mod_pooled_proj
 
     actual = state.fwd_count
     total = state.step_idx + 1

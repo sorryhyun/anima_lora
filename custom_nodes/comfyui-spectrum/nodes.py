@@ -3,8 +3,12 @@
 import comfy.samplers
 import folder_paths
 
-from .mod_guidance import setup_mod_guidance
+from .mod_guidance import AUTO_ADAPTER_SENTINEL, setup_mod_guidance
 from .spectrum import spectrum_sample
+
+
+def _adapter_choices():
+    return [AUTO_ADAPTER_SENTINEL] + folder_paths.get_filename_list("loras")
 
 # ---------------------------------------------------------------------------
 # Common input definitions
@@ -34,14 +38,8 @@ _KSAMPLER_INPUTS = {
     "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
 }
 
-_MOD_GUIDANCE_INPUTS = {
+_MOD_GUIDANCE_BASE_INPUTS = {
     "clip": ("CLIP", {"tooltip": "CLIP encoder for encoding positive quality tags."}),
-    "adapter": (
-        folder_paths.get_filename_list("loras"),
-        {
-            "tooltip": "pooled_text_proj safetensors adapter (from distill-mod).",
-        },
-    ),
     "quality_tags": (
         "STRING",
         {
@@ -62,6 +60,24 @@ _MOD_GUIDANCE_INPUTS = {
         },
     ),
 }
+
+
+def _mod_guidance_advanced_inputs():
+    return {
+        "clip": _MOD_GUIDANCE_BASE_INPUTS["clip"],
+        "adapter": (
+            _adapter_choices(),
+            {
+                "tooltip": (
+                    "pooled_text_proj safetensors adapter. "
+                    f"'{AUTO_ADAPTER_SENTINEL}' fetches the default ~12MB weight "
+                    "from the anima_lora release page on first use."
+                ),
+            },
+        ),
+        "quality_tags": _MOD_GUIDANCE_BASE_INPUTS["quality_tags"],
+        "mod_w": _MOD_GUIDANCE_BASE_INPUTS["mod_w"],
+    }
 
 _SPECTRUM_INPUTS = {
     "window_size": (
@@ -188,7 +204,7 @@ class SpectrumKSamplerModGuidance:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {**_KSAMPLER_INPUTS, **_MOD_GUIDANCE_INPUTS}}
+        return {"required": {**_KSAMPLER_INPUTS, **_MOD_GUIDANCE_BASE_INPUTS}}
 
     RETURN_TYPES = ("LATENT",)
     FUNCTION = "sample"
@@ -196,9 +212,10 @@ class SpectrumKSamplerModGuidance:
     DESCRIPTION = (
         "Spectrum-accelerated sampler with modulation guidance. "
         "Steers generation toward quality tags via a learned pooled-text "
-        "projection into the AdaLN timestep embedding. Quality tags are "
-        "encoded through the full CLIP + LLM adapter pipeline for correct "
-        "post-adapter pooling. Uses sensible Spectrum defaults."
+        "projection into the AdaLN timestep embedding. The default ~12MB "
+        "pooled_text_proj adapter is auto-downloaded on first use. Quality "
+        "tags are encoded through the full CLIP + LLM adapter pipeline for "
+        "correct post-adapter pooling. Uses sensible Spectrum defaults."
     )
 
     def sample(
@@ -213,13 +230,12 @@ class SpectrumKSamplerModGuidance:
         positive,
         negative,
         latent_image,
-        adapter,
         quality_tags,
         mod_w,
         denoise=1.0,
     ):
         m = model.clone()
-        setup_mod_guidance(m, clip, negative, adapter, quality_tags, mod_w)
+        setup_mod_guidance(m, clip, positive, negative, None, quality_tags, mod_w)
         return spectrum_sample(
             m,
             seed,
@@ -243,7 +259,7 @@ class SpectrumKSamplerAdvanced:
         return {
             "required": {
                 **_KSAMPLER_INPUTS,
-                **_MOD_GUIDANCE_INPUTS,
+                **_mod_guidance_advanced_inputs(),
                 **_SPECTRUM_INPUTS,
             }
         }
@@ -282,7 +298,7 @@ class SpectrumKSamplerAdvanced:
         ridge_lambda=0.1,
     ):
         m = model.clone()
-        setup_mod_guidance(m, clip, negative, adapter, quality_tags, mod_w)
+        setup_mod_guidance(m, clip, positive, negative, adapter, quality_tags, mod_w)
         return spectrum_sample(
             m,
             seed,

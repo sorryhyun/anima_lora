@@ -44,9 +44,11 @@ Works with any ComfyUI sampler (Euler, DPM, er_sde, etc.) because caching is han
 
 The **KSampler (Spectrum + Mod Guidance)** and **Advanced** variants add text-conditioned quality steering via a learned `pooled_text_proj` MLP adapter ([Starodubcev et al., ICLR 2026](https://arxiv.org/abs/2502.15349)). The adapter projects pooled text embeddings into a guidance delta that is injected into the DiT's AdaLN timestep embedding, steering generation toward the specified quality attributes.
 
+The default ~12MB `pooled_text_proj` weight is auto-downloaded on first use from the [anima_lora release page](https://github.com/sorryhyun/anima_lora/releases/tag/mod_guidance) into `ComfyUI/models/anima_mod_guidance/`. The simple node always uses the default; the advanced node exposes an adapter dropdown where `(auto-download default)` triggers the same download or you can pick a custom adapter from `loras/`.
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `clip` | — | CLIP encoder for encoding quality tags |
-| `adapter` | — | `pooled_text_proj` safetensors file (from `distill-mod`) |
+| `adapter` | `(auto-download default)` | `pooled_text_proj` safetensors file (advanced node only) |
 | `quality_tags` | `absurdres, highres, masterpiece, ...` | Quality/aesthetic tags to steer toward |
 | `mod_w` | 3.0 | Guidance strength (higher = stronger steering) |
