@@ -24,11 +24,11 @@ Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The exa
 # Training (run from anima_lora/)
 # Each training invocation selects a method + hardware preset. Method settings win
 # over preset settings on overlap (e.g. postfix forces blocks_to_swap=0).
-make lora                  # Standard LoRA (methods/lora.toml + presets/default.toml)
-python tasks.py lora       # Same, works on Windows too
-make lora PRESET=win8gb    # Override preset: methods/lora.toml + presets/win8gb.toml
-make lora-fast             # Shortcut: methods/lora.toml + presets/fast_16gb.toml
-make lora-low-vram         # Shortcut: methods/lora.toml + presets/low_vram.toml
+make lora                   # Standard LoRA (methods/lora.toml + presets.toml[default])
+python tasks.py lora        # Same, works on Windows too
+make lora PRESET=low_vram   # Override preset: methods/lora.toml + presets.toml[low_vram]
+make lora-fast              # Shortcut: methods/lora.toml + presets.toml[fast_16gb]
+make lora-low-vram          # Shortcut: methods/lora.toml + presets.toml[low_vram]
 make dora                  # DoRA (methods/dora.toml)
 make tlora                 # T-LoRA: OrthoLoRA + timestep masking (methods/tlora.toml)
 make tdora                 # DoRA + timestep masking (methods/doratimestep.toml)
@@ -77,7 +77,7 @@ make comfy-batch           # Run ComfyUI batch workflow
 ruff check . --fix && ruff format .
 ```
 
-All training invocations use `accelerate launch --mixed_precision bf16` with `train.py --method <name> --preset <name>`. Override any config value from CLI: `--network_dim 32 --max_train_epochs 64`. Override preset with `PRESET=win8gb make lora` or `python tasks.py lora` plus `PRESET` env.
+All training invocations use `accelerate launch --mixed_precision bf16` with `train.py --method <name> --preset <name>`. Override any config value from CLI: `--network_dim 32 --max_train_epochs 64`. Override preset with `PRESET=low_vram make lora` or `python tasks.py lora` plus `PRESET` env.
 
 On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra args are forwarded: `python tasks.py lora --network_dim 32`.
 
@@ -94,12 +94,12 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 
 ## Config flow
 
-Training is config-driven via a three-layer chain: `base.toml → presets/<preset>.toml → methods/<method>.toml → CLI args`. Method settings win over preset settings on overlap, so a method can force its own hardware requirements (e.g. postfix forces `blocks_to_swap=0`).
+Training is config-driven via a three-layer chain: `base.toml → presets.toml[<preset>] → methods/<method>.toml → CLI args`. Method settings win over preset settings on overlap, so a method can force its own hardware requirements (e.g. postfix forces `blocks_to_swap=0`).
 
 Layout:
 - `configs/base.toml` — shared infrastructure (model paths, optimizer, compile flags, etc.)
+- `configs/presets.toml` — all hardware profiles in one file as TOML sections: `[default]` (Linux daily driver + Windows 16GB, `blocks_to_swap=8`), `[fast_16gb]`, `[low_vram]` (also serves as Windows 8GB), `[graft]`. Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc.
 - `configs/methods/` — one file per algorithm. Holds rank, method flags (`use_dora`, `use_hydra`, …), and the method's opinionated learning rate / epochs / output_name. Files: `lora`, `dora`, `tlora`, `doratimestep`, `hydralora`, `postfix`, `postfix_exp`, `postfix_func`, `prefix`, `graft`.
-- `configs/presets/` — one file per hardware profile. Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc. Files: `default` (Linux daily driver, `blocks_to_swap=8`), `fast_16gb`, `low_vram`, `win8gb`, `win16gb`, `graft`.
 - `configs/dataset_config.toml` — dataset buckets, subsets, caption settings
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 

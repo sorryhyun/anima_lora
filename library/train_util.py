@@ -1059,7 +1059,7 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--preset",
         type=str,
         default="default",
-        help="hardware preset name under configs/presets/ (e.g. 'default', 'fast_16gb', 'win8gb').",
+        help="hardware preset section name in configs/presets.toml (e.g. 'default', 'fast_16gb', 'low_vram').",
     )
     parser.add_argument(
         "--output_config",
@@ -1509,24 +1509,41 @@ def _load_toml_with_base(path: str) -> dict:
     return merged
 
 
+def load_preset_section(preset: str, configs_dir: str = "configs") -> dict:
+    """Load a named preset section from configs/presets.toml."""
+    path = os.path.join(configs_dir, "presets.toml")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Preset file not found: {path}")
+    with open(path, "r", encoding="utf-8") as f:
+        presets = toml.load(f)
+    if preset not in presets:
+        raise KeyError(
+            f"Preset '{preset}' not found in {path}. Available: {sorted(presets)}"
+        )
+    section = presets[preset]
+    if not isinstance(section, dict):
+        raise ValueError(f"Preset '{preset}' in {path} is not a table")
+    return dict(section)
+
+
 def load_method_preset(method: str, preset: str = "default", configs_dir: str = "configs") -> dict:
-    """Merge base.toml → presets/<preset>.toml → methods/<method>.toml into a flat dict.
+    """Merge base.toml → presets.toml[<preset>] → methods/<method>.toml into a flat dict.
 
     Method settings win over preset settings on overlap (e.g. postfix can force
     blocks_to_swap=0 regardless of the hardware preset).
     """
-    paths = [
-        os.path.join(configs_dir, "base.toml"),
-        os.path.join(configs_dir, "presets", f"{preset}.toml"),
-        os.path.join(configs_dir, "methods", f"{method}.toml"),
-    ]
-    for p in paths:
+    base_path = os.path.join(configs_dir, "base.toml")
+    method_path = os.path.join(configs_dir, "methods", f"{method}.toml")
+    for p in (base_path, method_path):
         if not os.path.exists(p):
             raise FileNotFoundError(f"Config file not found: {p}")
+
     merged: dict = {}
-    for p in paths:
-        with open(p, "r", encoding="utf-8") as f:
-            merged.update(_flatten_toml(toml.load(f)))
+    with open(base_path, "r", encoding="utf-8") as f:
+        merged.update(_flatten_toml(toml.load(f)))
+    merged.update(load_preset_section(preset, configs_dir))
+    with open(method_path, "r", encoding="utf-8") as f:
+        merged.update(_flatten_toml(toml.load(f)))
     return merged
 
 

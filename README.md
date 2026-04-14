@@ -67,7 +67,7 @@ Downloaded automatically by `make download-models` from [circlestone-labs/Anima]
 
 ## Training
 
-Training is config-driven via a three-layer chain: `base.toml → presets/<preset>.toml → methods/<method>.toml → CLI args`. Method settings win over preset settings on overlap. Run with HF Accelerate:
+Training is config-driven via a three-layer chain: `base.toml → presets.toml[<preset>] → methods/<method>.toml → CLI args`. Method settings win over preset settings on overlap. Run with HF Accelerate:
 
 ```bash
 accelerate launch --mixed_precision bf16 train.py --method lora --preset default
@@ -76,7 +76,7 @@ accelerate launch --mixed_precision bf16 train.py --method lora --preset default
 Override any config value from the CLI:
 
 ```bash
-accelerate launch --mixed_precision bf16 train.py --method tlora --preset win8gb \
+accelerate launch --mixed_precision bf16 train.py --method tlora --preset low_vram \
     --network_dim 32 --max_train_epochs 64 --learning_rate 2e-5
 ```
 
@@ -93,14 +93,13 @@ accelerate launch --mixed_precision bf16 train.py --method tlora --preset win8gb
 | `prefix` | Prefix tuning |
 | `graft` | Defaults used by the GRAFT rejection-sampling loop |
 
-### Presets (`configs/presets/`)
+### Presets (`configs/presets.toml`)
 
 | Preset | Description |
 |--------|-------------|
-| `default` | Linux daily driver (`blocks_to_swap=8`) |
+| `default` | Linux daily driver / Windows 16GB (`blocks_to_swap=8`) |
 | `fast_16gb` | No block swap + `layer_start=2` for ~16GB cards |
-| `low_vram` | Gradient checkpointing + unsloth offload |
-| `win8gb` / `win16gb` | Windows VRAM presets (GUI dropdown) |
+| `low_vram` | Gradient checkpointing + unsloth offload (also serves as Windows 8GB) |
 | `graft` | GRAFT-specific swap budget |
 
 ### Key training parameters

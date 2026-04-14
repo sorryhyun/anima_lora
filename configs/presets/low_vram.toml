@@ -1,6 +1,0 @@
-# Aggressive memory savings — gradient checkpointing + unsloth offload.
-
-blocks_to_swap = 0
-gradient_checkpointing = true
-unsloth_offload_checkpointing = true
-gradient_accumulation_steps = 1

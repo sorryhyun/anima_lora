@@ -24,15 +24,22 @@ GRAFT_DIR = ROOT / "graft"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 METHODS_DIR = CONFIGS_DIR / "methods"
-PRESETS_DIR = CONFIGS_DIR / "presets"
+PRESETS_FILE = CONFIGS_DIR / "presets.toml"
 
 
 def list_methods() -> list[str]:
     return sorted(p.stem for p in METHODS_DIR.glob("*.toml")) if METHODS_DIR.exists() else []
 
 
+def _load_all_presets() -> dict:
+    if not PRESETS_FILE.exists():
+        return {}
+    data = toml.loads(PRESETS_FILE.read_text(encoding="utf-8"))
+    return {k: v for k, v in data.items() if isinstance(v, dict)}
+
+
 def list_presets() -> list[str]:
-    return sorted(p.stem for p in PRESETS_DIR.glob("*.toml")) if PRESETS_DIR.exists() else []
+    return sorted(_load_all_presets())
 
 _GROUPS = {
     "Architecture": {
@@ -108,7 +115,7 @@ def _save(p: Path, d: dict):
 def merged_method_preset(method: str, preset: str) -> tuple[dict, dict[str, str]]:
     """Return (merged_dict, origin_map). origin_map[key] is 'base' | 'preset' | 'method'."""
     base = _load(CONFIGS_DIR / "base.toml")
-    pset = _load(PRESETS_DIR / f"{preset}.toml")
+    pset = _load_all_presets().get(preset, {})
     meth = _load(METHODS_DIR / f"{method}.toml")
     merged: dict = {}
     origin: dict[str, str] = {}

@@ -38,12 +38,13 @@ from gui import (
     CONFIGS_DIR,
     IMAGE_EXTS,
     METHODS_DIR,
-    PRESETS_DIR,
+    PRESETS_FILE,
     ROOT,
     _GROUPS,
     _K2G,
     _SKIP,
     _load,
+    _load_all_presets,
     _read,
     _save,
     _widget,
@@ -372,10 +373,10 @@ class ConfigTab(QWidget):
     def _save_preset(self):
         method, preset = self._current()
         method_path = METHODS_DIR / f"{method}.toml"
-        preset_path = PRESETS_DIR / f"{preset}.toml"
 
         method_orig = _load(method_path)
-        preset_orig = _load(preset_path)
+        all_presets = _load_all_presets()
+        preset_orig = dict(all_presets.get(preset, {}))
         base = _load(CONFIGS_DIR / "base.toml")
 
         method_out: dict[str, Any] = dict(method_orig)
@@ -385,11 +386,9 @@ class ConfigTab(QWidget):
             v = _read(w, (method_orig.get(k) or preset_orig.get(k) or base.get(k)))
             target = self._route_key(k)
             if target == "method":
-                # Only write if the edit actually differs from what method/base provides.
                 effective = method_orig.get(k, base.get(k))
                 if k in method_orig or effective != v:
                     method_out[k] = v
-                # Remove any stale preset copy so method wins cleanly.
                 preset_out.pop(k, None)
             else:
                 effective = preset_orig.get(k, base.get(k))
@@ -398,9 +397,10 @@ class ConfigTab(QWidget):
                 method_out.pop(k, None)
 
         _save(method_path, method_out)
-        _save(preset_path, preset_out)
+        all_presets[preset] = preset_out
+        PRESETS_FILE.write_text(toml.dumps(all_presets), encoding="utf-8")
         QMessageBox.information(
-            self, t("saved"), f"Saved {method_path.name} + {preset_path.name}"
+            self, t("saved"), f"Saved {method_path.name} + presets.toml[{preset}]"
         )
 
     def _save_ds(self):

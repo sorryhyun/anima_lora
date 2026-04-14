@@ -67,7 +67,7 @@ make lora
 
 ## 학습
 
-학습 설정은 세 단계 체인 구조: `base.toml → presets/<preset>.toml → methods/<method>.toml → CLI 인자`. 겹치는 값은 method가 우선. HF Accelerate로 실행:
+학습 설정은 세 단계 체인 구조: `base.toml → presets.toml[<preset>] → methods/<method>.toml → CLI 인자`. 겹치는 값은 method가 우선. HF Accelerate로 실행:
 
 ```bash
 accelerate launch --mixed_precision bf16 train.py --method lora --preset default
@@ -76,7 +76,7 @@ accelerate launch --mixed_precision bf16 train.py --method lora --preset default
 CLI에서 설정값 오버라이드 가능:
 
 ```bash
-accelerate launch --mixed_precision bf16 train.py --method tlora --preset win8gb \
+accelerate launch --mixed_precision bf16 train.py --method tlora --preset low_vram \
     --network_dim 32 --max_train_epochs 64 --learning_rate 2e-5
 ```
 
@@ -93,14 +93,13 @@ accelerate launch --mixed_precision bf16 train.py --method tlora --preset win8gb
 | `prefix` | Prefix tuning |
 | `graft` | GRAFT 루프 기본 설정 |
 
-### Preset 파일 (`configs/presets/`)
+### Preset 파일 (`configs/presets.toml`)
 
 | Preset | 설명 |
 |--------|-------------|
-| `default` | 리눅스 기본 (`blocks_to_swap=8`) |
+| `default` | 리눅스 기본 / Windows 16GB (`blocks_to_swap=8`) |
 | `fast_16gb` | swap 없음 + `layer_start=2` (16GB 카드용) |
-| `low_vram` | gradient checkpointing + unsloth offload |
-| `win8gb` / `win16gb` | Windows VRAM 프리셋 (GUI 드롭다운) |
+| `low_vram` | gradient checkpointing + unsloth offload (Windows 8GB 겸용) |
 | `graft` | GRAFT 전용 swap 예산 |
 
 ### 주요 학습 파라미터

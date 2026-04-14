@@ -1,4 +1,0 @@
-# GRAFT hardware preset — heavier block swap + pinned dataloader workers.
-
-blocks_to_swap = 20
-dataloader_pin_memory = true

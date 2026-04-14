@@ -1,5 +1,0 @@
-# Windows 8GB VRAM — same shape as low_vram, surfaced separately for the GUI dropdown.
-
-blocks_to_swap = 0
-gradient_checkpointing = true
-unsloth_offload_checkpointing = true

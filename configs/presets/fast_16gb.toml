@@ -1,4 +1,0 @@
-# No block swap, first two blocks frozen — fastest on ~16GB VRAM.
-
-blocks_to_swap = 0
-layer_start = 2
