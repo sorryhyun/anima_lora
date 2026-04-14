@@ -359,6 +359,22 @@ class AnimaTrainer:
         else:
             logger.info(f"Using attention mode: {attn_mode}")
 
+        # Frozen LoRA: merged into DiT weights at load time (no runtime hooks).
+        # Used by postfix/prefix runs that train on top of a fixed LoRA.
+        lora_weights_list = None
+        lora_multipliers = None
+        if getattr(args, "lora_path", None):
+            from safetensors.torch import load_file
+
+            logger.info(
+                f"merging frozen LoRA from {args.lora_path} into DiT weights "
+                f"(multiplier={args.lora_multiplier})"
+            )
+            lora_sd = load_file(args.lora_path)
+            lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
+            lora_weights_list = [lora_sd]
+            lora_multipliers = [args.lora_multiplier]
+
         # Load DiT
         attn_softmax_scale = getattr(args, "attn_softmax_scale", None)
         logger.info(
@@ -371,6 +387,8 @@ class AnimaTrainer:
             args.split_attn,
             loading_device,
             loading_dtype,
+            lora_weights_list=lora_weights_list,
+            lora_multipliers=lora_multipliers,
             attn_softmax_scale=attn_softmax_scale,
         )
 
@@ -1288,6 +1306,18 @@ class AnimaTrainer:
                     is not None,
                 )
             )
+
+            rates = [
+                subset.caption_dropout_rate
+                for ds in train_dataset_group.datasets
+                for subset in ds.subsets
+            ]
+            if rates and any(r > 0 for r in rates):
+                logger.info(
+                    f"caption dropout ENABLED — per-subset rates: {rates}"
+                )
+            else:
+                logger.info("caption dropout DISABLED (rate=0.0 on all subsets)")
         else:
             # use arbitrary dataset class
             train_dataset_group = train_util.load_arbitrary_dataset(args)
@@ -1441,34 +1471,6 @@ class AnimaTrainer:
             accelerator.print(
                 f"load network weights from {args.network_weights}: {info}"
             )
-
-        # Optional: attach a frozen pretrained LoRA on top of the trainable network.
-        # Used by postfix/prefix runs that want to learn how to cooperate with a specific LoRA.
-        self._frozen_lora = None
-        if getattr(args, "lora_path", None):
-            import networks.lora_anima as lora_anima
-
-            accelerator.print(
-                f"attaching frozen LoRA from {args.lora_path} "
-                f"(multiplier={args.lora_multiplier})"
-            )
-            frozen_lora, _ = lora_anima.create_network_from_weights(
-                args.lora_multiplier,
-                args.lora_path,
-                vae,
-                text_encoder,
-                unet,
-                for_inference=False,
-            )
-            # apply_text_encoder=False: frozen LoRA only targets the DiT (cross-attn etc).
-            # apply_to must come BEFORE load_weights — it's what registers the LoRA
-            # submodules as children of LoRANetwork so state_dict keys resolve.
-            frozen_lora.apply_to(text_encoder, unet, False, True)
-            info = frozen_lora.load_weights(args.lora_path)
-            accelerator.print(f"frozen LoRA weights loaded: {info}")
-            frozen_lora.requires_grad_(False)
-            frozen_lora.eval()
-            self._frozen_lora = frozen_lora
 
         if args.gradient_checkpointing:
             if args.cpu_offload_checkpointing:
@@ -1631,16 +1633,12 @@ class AnimaTrainer:
             )
             accelerator.print("enable full fp16 training.")
             network.to(weight_dtype)
-            if getattr(self, "_frozen_lora", None) is not None:
-                self._frozen_lora.to(weight_dtype)
         elif args.full_bf16:
             assert args.mixed_precision == "bf16", (
                 "full_bf16 requires mixed precision='bf16'"
             )
             accelerator.print("enable full bf16 training.")
             network.to(weight_dtype)
-            if getattr(self, "_frozen_lora", None) is not None:
-                self._frozen_lora.to(weight_dtype)
 
         unet_weight_dtype = te_weight_dtype = weight_dtype
 
@@ -1688,11 +1686,6 @@ class AnimaTrainer:
             )
         )
         training_model = network
-
-        # Frozen LoRA is held outside accelerator.prepare (no grads, no DDP wrap).
-        # Move it to the accelerator device manually so its forward runs alongside unet.
-        if getattr(self, "_frozen_lora", None) is not None:
-            self._frozen_lora.to(accelerator.device)
 
         if args.gradient_checkpointing:
             # according to TI example in Diffusers, train is required
@@ -2916,14 +2909,15 @@ def setup_parser() -> argparse.ArgumentParser:
         "--lora_path",
         type=str,
         default=None,
-        help="path to a pretrained LoRA checkpoint to attach (frozen) alongside the trainable network. "
-        "Intended for postfix/prefix training on top of a fixed LoRA.",
+        help="path to a pretrained LoRA checkpoint to merge into DiT weights before training. "
+        "Intended for postfix/prefix training on top of a fixed LoRA. "
+        "The LoRA is baked into the base weights at load time — no runtime hooks.",
     )
     parser.add_argument(
         "--lora_multiplier",
         type=float,
         default=1.0,
-        help="multiplier applied to the frozen LoRA attached via --lora_path",
+        help="multiplier applied to the frozen LoRA merged via --lora_path",
     )
     parser.add_argument(
         "--no_half_vae",

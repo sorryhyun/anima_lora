@@ -12,3 +12,4 @@ checkpointing_epochs = 2
 
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1

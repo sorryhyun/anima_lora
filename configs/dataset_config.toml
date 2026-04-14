@@ -13,5 +13,5 @@ validation_seed = 42
   [[datasets.subsets]]
   image_dir = 'post_image_dataset'
   num_repeats = 1
-  caption_dropout_rate = 0.1
+  # caption_dropout_rate is set per-method via args (see configs/methods/*.toml)
   # sample_ratio=0.5
