@@ -67,27 +67,41 @@ Downloaded automatically by `make download-models` from [circlestone-labs/Anima]
 
 ## Training
 
-All training is config-driven via TOML files. Run with HF Accelerate:
+Training is config-driven via a three-layer chain: `base.toml → presets/<preset>.toml → methods/<method>.toml → CLI args`. Method settings win over preset settings on overlap. Run with HF Accelerate:
 
 ```bash
-accelerate launch --mixed_precision bf16 train.py --config_file configs/training_config.toml
+accelerate launch --mixed_precision bf16 train.py --method lora --preset default
 ```
 
 Override any config value from the CLI:
 
 ```bash
-accelerate launch --mixed_precision bf16 train.py --config_file configs/training_config.toml \
+accelerate launch --mixed_precision bf16 train.py --method tlora --preset win8gb \
     --network_dim 32 --max_train_epochs 64 --learning_rate 2e-5
 ```
 
-### Provided configs
+### Methods (`configs/methods/`)
 
-| Config | Description |
+| Method | Description |
 |--------|-------------|
-| `configs/training_config.toml` | Standard LoRA (rank 32, 64 epochs) |
-| `configs/training_config_dora.toml` | DoRA (rank 16) |
-| `configs/training_config_doratimestep.toml` | DoRA + T-LoRA timestep masking |
-| `configs/dataset_config.toml` | Dataset layout with dynamic bucketing |
+| `lora` | Standard LoRA (rank 16) |
+| `dora` | DoRA (rank 32) |
+| `doratimestep` | DoRA + T-LoRA timestep masking |
+| `tlora` | T-LoRA with OrthoLoRA + timestep masking |
+| `hydralora` | HydraLoRA multi-head routing |
+| `postfix` / `postfix_exp` / `postfix_func` | Postfix tuning variants |
+| `prefix` | Prefix tuning |
+| `graft` | Defaults used by the GRAFT rejection-sampling loop |
+
+### Presets (`configs/presets/`)
+
+| Preset | Description |
+|--------|-------------|
+| `default` | Linux daily driver (`blocks_to_swap=8`) |
+| `fast_16gb` | No block swap + `layer_start=2` for ~16GB cards |
+| `low_vram` | Gradient checkpointing + unsloth offload |
+| `win8gb` / `win16gb` | Windows VRAM presets (GUI dropdown) |
+| `graft` | GRAFT-specific swap budget |
 
 ### Key training parameters
 

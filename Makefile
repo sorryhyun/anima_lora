@@ -27,49 +27,41 @@ TEST_COMMON = python inference.py \
 gui:
 	python -m gui
 
+TRAIN = $(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 train.py --method
+PRESET ?= default
+
 lora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_plain.toml
+	$(TRAIN) lora --preset $(PRESET)
 
 lora-fast:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_fast_16gb.toml
+	$(TRAIN) lora --preset fast_16gb
 
 lora-low-vram:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_low_vram.toml
+	$(TRAIN) lora --preset low_vram
 
 dora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_dora.toml
+	$(TRAIN) dora --preset $(PRESET)
 
 tdora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_doratimestep.toml
+	$(TRAIN) doratimestep --preset $(PRESET)
 
 tlora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_tlora.toml
+	$(TRAIN) tlora --preset $(PRESET)
 
 hydralora:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_hydralora.toml
+	$(TRAIN) hydralora --preset $(PRESET)
 
 postfix:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_postfix.toml
+	$(TRAIN) postfix --preset $(PRESET)
 
 postfix-exp:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_postfix_exp.toml
+	$(TRAIN) postfix_exp --preset $(PRESET)
 
 postfix-func:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_postfix_func.toml
+	$(TRAIN) postfix_func --preset $(PRESET)
 
 prefix:
-	$(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 \
-		train.py --config_file configs/training_config_prefix.toml
+	$(TRAIN) prefix --preset $(PRESET)
 
 distill-mod:
 	python scripts/distill_modulation.py \

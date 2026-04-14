@@ -12,6 +12,7 @@ Examples:
     python tasks.py download-models
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 PY = sys.executable
+
+
+def _preset(default: str = "default") -> str:
+    return os.environ.get("PRESET", default)
 
 
 def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
@@ -71,57 +76,58 @@ def accelerate_launch(*args: str):
     )
 
 
+def train(method: str, extra, preset: str | None = None):
+    """Launch training for a given method + preset (PRESET env overrides default)."""
+    accelerate_launch(
+        "--method", method, "--preset", preset or _preset(), *extra
+    )
+
+
 # ── Training ──────────────────────────────────────────────────────────
 
 
 def cmd_lora(extra):
-    accelerate_launch("--config_file", "configs/training_config_plain.toml", *extra)
+    train("lora", extra)
 
 
 def cmd_lora_fast(extra):
-    accelerate_launch("--config_file", "configs/training_config_fast_16gb.toml", *extra)
+    train("lora", extra, preset=_preset("fast_16gb"))
 
 
 def cmd_lora_low_vram(extra):
-    accelerate_launch("--config_file", "configs/training_config_low_vram.toml", *extra)
+    train("lora", extra, preset=_preset("low_vram"))
 
 
 def cmd_dora(extra):
-    accelerate_launch("--config_file", "configs/training_config_dora.toml", *extra)
+    train("dora", extra)
 
 
 def cmd_tdora(extra):
-    accelerate_launch(
-        "--config_file", "configs/training_config_doratimestep.toml", *extra
-    )
+    train("doratimestep", extra)
 
 
 def cmd_tlora(extra):
-    accelerate_launch("--config_file", "configs/training_config_tlora.toml", *extra)
+    train("tlora", extra)
 
 
 def cmd_hydralora(extra):
-    accelerate_launch("--config_file", "configs/training_config_hydralora.toml", *extra)
+    train("hydralora", extra)
 
 
 def cmd_postfix(extra):
-    accelerate_launch("--config_file", "configs/training_config_postfix.toml", *extra)
+    train("postfix", extra)
 
 
 def cmd_postfix_exp(extra):
-    accelerate_launch(
-        "--config_file", "configs/training_config_postfix_exp.toml", *extra
-    )
+    train("postfix_exp", extra)
 
 
 def cmd_postfix_func(extra):
-    accelerate_launch(
-        "--config_file", "configs/training_config_postfix_func.toml", *extra
-    )
+    train("postfix_func", extra)
 
 
 def cmd_prefix(extra):
-    accelerate_launch("--config_file", "configs/training_config_prefix.toml", *extra)
+    train("prefix", extra)
 
 
 # ── Inference ─────────────────────────────────────────────────────────

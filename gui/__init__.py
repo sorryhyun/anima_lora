@@ -23,13 +23,16 @@ CONFIGS_DIR = ROOT / "configs"
 GRAFT_DIR = ROOT / "graft"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
-PRESETS = {
-    "Windows 8GB VRAM": "training_config_win8gb.toml",
-    "Windows 16GB VRAM": "training_config_win16gb.toml",
-    # FA4 presets are not supported yet (flash-attention-sm120 disabled)
-    # "FA4 8GB VRAM": "training_config_fa4_8gb.toml",
-    # "FA4 16GB VRAM": "training_config_fa4_16gb.toml",
-}
+METHODS_DIR = CONFIGS_DIR / "methods"
+PRESETS_DIR = CONFIGS_DIR / "presets"
+
+
+def list_methods() -> list[str]:
+    return sorted(p.stem for p in METHODS_DIR.glob("*.toml")) if METHODS_DIR.exists() else []
+
+
+def list_presets() -> list[str]:
+    return sorted(p.stem for p in PRESETS_DIR.glob("*.toml")) if PRESETS_DIR.exists() else []
 
 _GROUPS = {
     "Architecture": {
@@ -87,13 +90,6 @@ _GROUPS = {
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
 _SKIP = {"base_config", "dataset_config"}
 
-_LOCKED_PERFORMANCE = {
-    "Windows 8GB VRAM",
-    "Windows 16GB VRAM",
-    # "FA4 8GB VRAM",   # not supported yet
-    # "FA4 16GB VRAM",  # not supported yet
-}
-
 # flash4 is not supported yet (flash-attention-sm120 disabled)
 _ATTN_MODES = ["flex", "flash"]
 
@@ -109,12 +105,23 @@ def _save(p: Path, d: dict):
     p.write_text(toml.dumps(d), encoding="utf-8")
 
 
-def _merged(f: str) -> dict:
-    v = _load(CONFIGS_DIR / f)
-    b = v.pop("base_config", None)
-    base = _load(CONFIGS_DIR / b) if b else {}
-    base.update(v)
-    return base
+def merged_method_preset(method: str, preset: str) -> tuple[dict, dict[str, str]]:
+    """Return (merged_dict, origin_map). origin_map[key] is 'base' | 'preset' | 'method'."""
+    base = _load(CONFIGS_DIR / "base.toml")
+    pset = _load(PRESETS_DIR / f"{preset}.toml")
+    meth = _load(METHODS_DIR / f"{method}.toml")
+    merged: dict = {}
+    origin: dict[str, str] = {}
+    for k, v in base.items():
+        merged[k] = v
+        origin[k] = "base"
+    for k, v in pset.items():
+        merged[k] = v
+        origin[k] = "preset"
+    for k, v in meth.items():
+        merged[k] = v
+        origin[k] = "method"
+    return merged, origin
 
 
 def _imgs(d: Path) -> list[Path]:

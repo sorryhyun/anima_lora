@@ -22,18 +22,21 @@ Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The exa
 
 ```bash
 # Training (run from anima_lora/)
-make lora                  # Standard LoRA (configs/training_config_plain.toml)
+# Each training invocation selects a method + hardware preset. Method settings win
+# over preset settings on overlap (e.g. postfix forces blocks_to_swap=0).
+make lora                  # Standard LoRA (methods/lora.toml + presets/default.toml)
 python tasks.py lora       # Same, works on Windows too
-make lora-fast             # Fast LoRA, 16GB no-block-swap (configs/training_config_fast_16gb.toml)
-make lora-low-vram         # Low-VRAM LoRA (configs/training_config_low_vram.toml)
-make dora                  # DoRA (configs/training_config_dora.toml + use_dora=true)
-make tlora                 # T-LoRA: OrthoLoRA + timestep masking (configs/training_config_tlora.toml)
-make tdora                 # DoRA + timestep masking (configs/training_config_doratimestep.toml)
-make hydralora             # HydraLoRA: MoE multi-head routing (configs/training_config_hydralora.toml)
-make postfix               # Postfix tuning (configs/training_config_postfix.toml)
-make postfix-exp           # Postfix tuning, exp variant (configs/training_config_postfix_exp.toml)
-make postfix-func          # Postfix tuning, func variant (configs/training_config_postfix_func.toml)
-make prefix                # Prefix tuning (configs/training_config_prefix.toml)
+make lora PRESET=win8gb    # Override preset: methods/lora.toml + presets/win8gb.toml
+make lora-fast             # Shortcut: methods/lora.toml + presets/fast_16gb.toml
+make lora-low-vram         # Shortcut: methods/lora.toml + presets/low_vram.toml
+make dora                  # DoRA (methods/dora.toml)
+make tlora                 # T-LoRA: OrthoLoRA + timestep masking (methods/tlora.toml)
+make tdora                 # DoRA + timestep masking (methods/doratimestep.toml)
+make hydralora             # HydraLoRA: MoE multi-head routing (methods/hydralora.toml)
+make postfix               # Postfix tuning (methods/postfix.toml)
+make postfix-exp           # Postfix tuning, exp variant (methods/postfix_exp.toml)
+make postfix-func          # Postfix tuning, func variant (methods/postfix_func.toml)
+make prefix                # Prefix tuning (methods/prefix.toml)
 
 # Modulation guidance distillation
 make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulation)
@@ -74,7 +77,7 @@ make comfy-batch           # Run ComfyUI batch workflow
 ruff check . --fix && ruff format .
 ```
 
-All training invocations use `accelerate launch --mixed_precision bf16`. Override any config value from CLI: `--network_dim 32 --max_train_epochs 64`.
+All training invocations use `accelerate launch --mixed_precision bf16` with `train.py --method <name> --preset <name>`. Override any config value from CLI: `--network_dim 32 --max_train_epochs 64`. Override preset with `PRESET=win8gb make lora` or `python tasks.py lora` plus `PRESET` env.
 
 On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra args are forwarded: `python tasks.py lora --network_dim 32`.
 
@@ -91,24 +94,16 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 
 ## Config flow
 
-Training is config-driven. TOML configs specify model paths, hyperparams, and dataset layout:
-- `configs/base.toml` — base/shared config values
-- `configs/training_config_plain.toml` — standard LoRA config (used by `make lora`)
-- `configs/training_config_fast_16gb.toml` — fast LoRA config, no block swap, ~16GB VRAM (used by `make lora-fast`)
-- `configs/training_config.toml` — base T-LoRA config
-- `configs/training_config_tlora.toml` — T-LoRA with OrthoLoRA + timestep masking (used by `make tlora`)
-- `configs/training_config_dora.toml` — DoRA config
-- `configs/training_config_doratimestep.toml` — DoRA + timestep masking
-- `configs/training_config_hydralora.toml` — HydraLoRA multi-head routing (used by `make hydralora`)
-- `configs/training_config_postfix.toml` — Postfix tuning config (used by `make postfix`)
-- `configs/training_config_prefix.toml` — Prefix tuning config (used by `make prefix`)
-- `configs/training_config_low_vram.toml` — low-VRAM LoRA config
-- `configs/training_config_win8gb.toml` / `win16gb.toml` — Windows VRAM presets (GUI presets)
-- `configs/training_config_postfix_exp.toml` / `postfix_func.toml` — postfix tuning variants
+Training is config-driven via a three-layer chain: `base.toml → presets/<preset>.toml → methods/<method>.toml → CLI args`. Method settings win over preset settings on overlap, so a method can force its own hardware requirements (e.g. postfix forces `blocks_to_swap=0`).
+
+Layout:
+- `configs/base.toml` — shared infrastructure (model paths, optimizer, compile flags, etc.)
+- `configs/methods/` — one file per algorithm. Holds rank, method flags (`use_dora`, `use_hydra`, …), and the method's opinionated learning rate / epochs / output_name. Files: `lora`, `dora`, `tlora`, `doratimestep`, `hydralora`, `postfix`, `postfix_exp`, `postfix_func`, `prefix`, `graft`.
+- `configs/presets/` — one file per hardware profile. Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc. Files: `default` (Linux daily driver, `blocks_to_swap=8`), `fast_16gb`, `low_vram`, `win8gb`, `win16gb`, `graft`.
 - `configs/dataset_config.toml` — dataset buckets, subsets, caption settings
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
-All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/`).
+`library.train_util.load_method_preset(method, preset)` is the reusable merge helper (used by `train.py` and `scripts/graft_step.py`). All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/`).
 
 ## Architecture
 

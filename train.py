@@ -1212,32 +1212,33 @@ class AnimaTrainer:
         n = int(raw)
         return n, n + 2
 
-    def train(self, args):
-        session_id = random.randint(0, 2**32)
-        training_started_at = time.time()
-        train_util.verify_training_args(args)
-        train_util.prepare_dataset_args(args, True)
-        setup_logging(args, reset=True)
+    @staticmethod
+    def _switch_rng_state(
+        seed: int,
+    ) -> tuple[torch.ByteTensor, Optional[torch.ByteTensor], tuple]:
+        cpu_rng_state = torch.get_rng_state()
+        gpu_rng_state = torch.cuda.get_rng_state()
+        python_rng_state = random.getstate()
 
-        cache_latents = args.cache_latents
+        torch.manual_seed(seed)
+        random.seed(seed)
+
+        return (cpu_rng_state, gpu_rng_state, python_rng_state)
+
+    @staticmethod
+    def _restore_rng_state(
+        rng_states: tuple[torch.ByteTensor, Optional[torch.ByteTensor], tuple],
+    ):
+        cpu_rng_state, gpu_rng_state, python_rng_state = rng_states
+        torch.set_rng_state(cpu_rng_state)
+        torch.cuda.set_rng_state(gpu_rng_state)
+        random.setstate(python_rng_state)
+
+    def _prepare_dataset(self, args):
+        """Build train/val dataset groups and the collator shared by both loaders."""
         use_dreambooth_method = args.in_json is None
         use_user_config = args.dataset_config is not None
 
-        if args.seed is None:
-            args.seed = random.randint(0, 2**32)
-        set_seed(args.seed)
-
-        tokenize_strategy = self.get_tokenize_strategy(args)
-        strategy_base.TokenizeStrategy.set_strategy(tokenize_strategy)
-        tokenizers = self.get_tokenizers(
-            tokenize_strategy
-        )  # will be removed after sample_image is refactored
-
-        # prepare caching strategy: this must be set before preparing dataset. because dataset may use this strategy for initialization.
-        latents_caching_strategy = self.get_latents_caching_strategy(args)
-        strategy_base.LatentsCachingStrategy.set_strategy(latents_caching_strategy)
-
-        # Prepare dataset
         if args.dataset_class is None:
             blueprint_generator = BlueprintGenerator(
                 ConfigSanitizer(support_dropout=True)
@@ -1302,6 +1303,616 @@ class AnimaTrainer:
         collator = train_util.collator_class(
             current_epoch, current_step, ds_for_collator
         )
+
+        return (
+            train_dataset_group,
+            val_dataset_group,
+            current_epoch,
+            current_step,
+            collator,
+            use_user_config,
+            use_dreambooth_method,
+        )
+
+    def _create_and_apply_network(
+        self,
+        args,
+        accelerator,
+        vae,
+        text_encoder,
+        unet,
+        text_encoders,
+        weight_dtype,
+    ):
+        """Import network module, merge base weights, build LoRA, apply to the model."""
+        sys.path.append(os.path.dirname(__file__))
+        accelerator.print("import network module:", args.network_module)
+        network_module = importlib.import_module(args.network_module)
+
+        if args.base_weights is not None:
+            for i, weight_path in enumerate(args.base_weights):
+                if (
+                    args.base_weights_multiplier is None
+                    or len(args.base_weights_multiplier) <= i
+                ):
+                    multiplier = 1.0
+                else:
+                    multiplier = args.base_weights_multiplier[i]
+
+                accelerator.print(
+                    f"merging module: {weight_path} with multiplier {multiplier}"
+                )
+
+                module, weights_sd = network_module.create_network_from_weights(
+                    multiplier, weight_path, vae, text_encoder, unet, for_inference=True
+                )
+                module.merge_to(
+                    text_encoder,
+                    unet,
+                    weights_sd,
+                    weight_dtype,
+                    accelerator.device if args.lowram else "cpu",
+                )
+
+            accelerator.print(f"all weights merged: {', '.join(args.base_weights)}")
+
+        # prepare network
+        net_kwargs = {}
+        if args.network_args is not None:
+            for net_arg in args.network_args:
+                key, value = net_arg.split("=", 1)
+                net_kwargs[key] = value
+
+        # Forward known network-arg keys from top-level config (TOML) to net_kwargs.
+        # CLI --network_args take precedence over top-level config keys.
+        _NETWORK_ARG_KEYS = [
+            "train_llm_adapter",
+            "exclude_patterns",
+            "include_patterns",
+            "use_dora",
+            "use_ortho",
+            "sig_type",
+            "ortho_reg_weight",
+            "use_timestep_mask",
+            "min_rank",
+            "alpha_rank_scale",
+            "use_hydra",
+            "num_experts",
+            "balance_loss_weight",
+            "rank_dropout",
+            "module_dropout",
+            "verbose",
+            "network_reg_lrs",
+            "network_reg_dims",
+            "loraplus_lr_ratio",
+            "loraplus_unet_lr_ratio",
+            "loraplus_text_encoder_lr_ratio",
+            "layer_start",
+            "layer_end",
+        ]
+        for key in _NETWORK_ARG_KEYS:
+            if (
+                key not in net_kwargs
+                and hasattr(args, key)
+                and getattr(args, key) is not None
+            ):
+                net_kwargs[key] = str(getattr(args, key))
+
+        if args.dim_from_weights:
+            network, _ = network_module.create_network_from_weights(
+                1, args.network_weights, vae, text_encoder, unet, **net_kwargs
+            )
+        else:
+            if "dropout" not in net_kwargs:
+                net_kwargs["dropout"] = args.network_dropout
+
+            network = network_module.create_network(
+                1.0,
+                args.network_dim,
+                args.network_alpha,
+                vae,
+                text_encoder,
+                unet,
+                neuron_dropout=args.network_dropout,
+                **net_kwargs,
+            )
+        if network is None:
+            return None
+
+        if hasattr(network, "prepare_network"):
+            network.prepare_network(args)
+        if args.scale_weight_norms and not hasattr(
+            network, "apply_max_norm_regularization"
+        ):
+            logger.warning(
+                "warning: scale_weight_norms is specified but the network does not support it"
+            )
+            args.scale_weight_norms = False
+
+        self.post_process_network(args, accelerator, network, text_encoders, unet)
+
+        # apply network to unet and text_encoder
+        train_unet = not args.network_train_text_encoder_only
+        train_text_encoder = self.is_train_text_encoder(args)
+        network.apply_to(text_encoder, unet, train_text_encoder, train_unet)
+
+        if args.network_weights is not None:
+            info = network.load_weights(args.network_weights)
+            accelerator.print(
+                f"load network weights from {args.network_weights}: {info}"
+            )
+
+        # Optional: attach a frozen pretrained LoRA on top of the trainable network.
+        # Used by postfix/prefix runs that want to learn how to cooperate with a specific LoRA.
+        self._frozen_lora = None
+        if getattr(args, "lora_path", None):
+            import networks.lora_anima as lora_anima
+
+            accelerator.print(
+                f"attaching frozen LoRA from {args.lora_path} "
+                f"(multiplier={args.lora_multiplier})"
+            )
+            frozen_lora, _ = lora_anima.create_network_from_weights(
+                args.lora_multiplier,
+                args.lora_path,
+                vae,
+                text_encoder,
+                unet,
+                for_inference=False,
+            )
+            # apply_text_encoder=False: frozen LoRA only targets the DiT (cross-attn etc).
+            # apply_to must come BEFORE load_weights — it's what registers the LoRA
+            # submodules as children of LoRANetwork so state_dict keys resolve.
+            frozen_lora.apply_to(text_encoder, unet, False, True)
+            info = frozen_lora.load_weights(args.lora_path)
+            accelerator.print(f"frozen LoRA weights loaded: {info}")
+            frozen_lora.requires_grad_(False)
+            frozen_lora.eval()
+            self._frozen_lora = frozen_lora
+
+        if args.gradient_checkpointing:
+            if args.cpu_offload_checkpointing:
+                unet.enable_gradient_checkpointing(cpu_offload=True)
+            else:
+                unet.enable_gradient_checkpointing()
+
+            for t_enc, flag in zip(
+                text_encoders, self.get_text_encoders_train_flags(args, text_encoders)
+            ):
+                if flag:
+                    if t_enc.supports_gradient_checkpointing:
+                        t_enc.gradient_checkpointing_enable()
+            network.enable_gradient_checkpointing()  # may have no effect
+
+        return network, net_kwargs, train_unet, train_text_encoder
+
+    def _setup_optimizer_and_dataloader(
+        self,
+        args,
+        accelerator,
+        network,
+        train_dataset_group,
+        val_dataset_group,
+        collator,
+    ):
+        """Build optimizer, dataloaders, and LR scheduler; finalize max_train_steps."""
+        accelerator.print("prepare optimizer, data loader etc.")
+
+        # make backward compatibility for text_encoder_lr
+        support_multiple_lrs = hasattr(
+            network, "prepare_optimizer_params_with_multiple_te_lrs"
+        )
+        if support_multiple_lrs:
+            text_encoder_lr = args.text_encoder_lr
+        else:
+            if (
+                args.text_encoder_lr is None
+                or isinstance(args.text_encoder_lr, float)
+                or isinstance(args.text_encoder_lr, int)
+            ):
+                text_encoder_lr = args.text_encoder_lr
+            else:
+                text_encoder_lr = (
+                    None if len(args.text_encoder_lr) == 0 else args.text_encoder_lr[0]
+                )
+        try:
+            if support_multiple_lrs:
+                results = network.prepare_optimizer_params_with_multiple_te_lrs(
+                    text_encoder_lr, args.unet_lr, args.learning_rate
+                )
+            else:
+                results = network.prepare_optimizer_params(
+                    text_encoder_lr, args.unet_lr, args.learning_rate
+                )
+            if type(results) is tuple:
+                trainable_params = results[0]
+                lr_descriptions = results[1]
+            else:
+                trainable_params = results
+                lr_descriptions = None
+        except TypeError:
+            trainable_params = network.prepare_optimizer_params(
+                text_encoder_lr, args.unet_lr
+            )
+            lr_descriptions = None
+
+        optimizer_name, optimizer_args, optimizer = train_util.get_optimizer(
+            args, trainable_params
+        )
+        optimizer_train_fn, optimizer_eval_fn = train_util.get_optimizer_train_eval_fn(
+            optimizer, args
+        )
+
+        # prepare dataloader
+        train_dataset_group.set_current_strategies()
+        if val_dataset_group is not None:
+            val_dataset_group.set_current_strategies()
+
+        n_workers = min(args.max_data_loader_n_workers, os.cpu_count())
+        persistent_workers = args.persistent_data_loader_workers and n_workers > 0
+
+        dataloader_kwargs = {
+            "batch_size": 1,
+            "collate_fn": collator,
+            "num_workers": n_workers,
+            "persistent_workers": persistent_workers,
+            "pin_memory": args.dataloader_pin_memory,
+        }
+        if n_workers > 0:
+            dataloader_kwargs["prefetch_factor"] = args.dataloader_prefetch_factor
+
+        train_dataloader = torch.utils.data.DataLoader(
+            train_dataset_group,
+            shuffle=True,
+            **dataloader_kwargs,
+        )
+
+        val_dataloader = torch.utils.data.DataLoader(
+            val_dataset_group if val_dataset_group is not None else [],
+            shuffle=False,
+            **dataloader_kwargs,
+        )
+
+        # Calculate training steps
+        if args.max_train_epochs is not None:
+            args.max_train_steps = args.max_train_epochs * math.ceil(
+                len(train_dataloader)
+                / accelerator.num_processes
+                / args.gradient_accumulation_steps
+            )
+            accelerator.print(
+                f"override steps. steps for {args.max_train_epochs} epochs is"
+            )
+
+        train_dataset_group.set_max_train_steps(args.max_train_steps)
+
+        # lr scheduler
+        lr_scheduler = train_util.get_scheduler_fix(
+            args, optimizer, accelerator.num_processes
+        )
+
+        return (
+            optimizer,
+            optimizer_name,
+            optimizer_args,
+            optimizer_train_fn,
+            optimizer_eval_fn,
+            text_encoder_lr,
+            lr_descriptions,
+            train_dataloader,
+            val_dataloader,
+            lr_scheduler,
+        )
+
+    def _prepare_with_accelerator(
+        self,
+        args,
+        accelerator,
+        network,
+        optimizer,
+        train_dataloader,
+        val_dataloader,
+        lr_scheduler,
+        unet,
+        text_encoders,
+        text_encoder,
+        vae,
+        vae_dtype,
+        weight_dtype,
+        train_unet,
+        train_text_encoder,
+        cache_latents,
+    ):
+        """Cast model dtypes, run accelerator.prepare, flip train/eval, optional torch.compile."""
+        # full fp16/bf16 training
+        if args.full_fp16:
+            assert args.mixed_precision == "fp16", (
+                "full_fp16 requires mixed precision='fp16'"
+            )
+            accelerator.print("enable full fp16 training.")
+            network.to(weight_dtype)
+            if getattr(self, "_frozen_lora", None) is not None:
+                self._frozen_lora.to(weight_dtype)
+        elif args.full_bf16:
+            assert args.mixed_precision == "bf16", (
+                "full_bf16 requires mixed precision='bf16'"
+            )
+            accelerator.print("enable full bf16 training.")
+            network.to(weight_dtype)
+            if getattr(self, "_frozen_lora", None) is not None:
+                self._frozen_lora.to(weight_dtype)
+
+        unet_weight_dtype = te_weight_dtype = weight_dtype
+
+        unet.requires_grad_(False)
+        if self.cast_unet(args):
+            unet.to(dtype=unet_weight_dtype)
+        for i, t_enc in enumerate(text_encoders):
+            t_enc.requires_grad_(False)
+
+            # in case of cpu, dtype is already set to fp32 because cpu does not support fp8/fp16/bf16
+            if t_enc.device.type != "cpu" and self.cast_text_encoder(args):
+                t_enc.to(dtype=te_weight_dtype)
+
+                # nn.Embedding not support FP8
+                if te_weight_dtype != weight_dtype:
+                    self.prepare_text_encoder_fp8(
+                        i, t_enc, te_weight_dtype, weight_dtype
+                    )
+
+        # accelerator preparation (no deepspeed)
+        if train_unet:
+            unet = self.prepare_unet_with_accelerator(args, accelerator, unet)
+        else:
+            unet.to(
+                accelerator.device,
+                dtype=unet_weight_dtype if self.cast_unet(args) else None,
+            )
+        if train_text_encoder:
+            text_encoders = [
+                (accelerator.prepare(t_enc) if flag else t_enc)
+                for t_enc, flag in zip(
+                    text_encoders,
+                    self.get_text_encoders_train_flags(args, text_encoders),
+                )
+            ]
+            if len(text_encoders) > 1:
+                text_encoder = text_encoders
+            else:
+                text_encoder = text_encoders[0]
+        # else: text_encoder is unchanged; device and dtype are already set above
+
+        network, optimizer, train_dataloader, val_dataloader, lr_scheduler = (
+            accelerator.prepare(
+                network, optimizer, train_dataloader, val_dataloader, lr_scheduler
+            )
+        )
+        training_model = network
+
+        # Frozen LoRA is held outside accelerator.prepare (no grads, no DDP wrap).
+        # Move it to the accelerator device manually so its forward runs alongside unet.
+        if getattr(self, "_frozen_lora", None) is not None:
+            self._frozen_lora.to(accelerator.device)
+
+        if args.gradient_checkpointing:
+            # according to TI example in Diffusers, train is required
+            unet.train()
+            for i, (t_enc, frag) in enumerate(
+                zip(
+                    text_encoders,
+                    self.get_text_encoders_train_flags(args, text_encoders),
+                )
+            ):
+                t_enc.train()
+
+                # set top parameter requires_grad = True for gradient checkpointing works
+                if frag:
+                    self.prepare_text_encoder_grad_ckpt_workaround(i, t_enc)
+
+        else:
+            unet.eval()
+            for t_enc in text_encoders:
+                t_enc.eval()
+
+        # Full-model torch.compile: compile after LoRA apply + accelerator prepare
+        # so dynamo traces through LoRA-patched forwards without _orig_mod prefix issues.
+        if args.torch_compile and getattr(args, "compile_mode", "blocks") == "full":
+            assert not args.gradient_checkpointing, (
+                "compile_mode='full' is incompatible with gradient checkpointing"
+            )
+            assert not self.is_swapping_blocks, (
+                "compile_mode='full' is incompatible with block swap"
+            )
+            unet = torch.compile(unet, backend=args.dynamo_backend, dynamic=True)
+            logger.info(f"full-model torch.compile (backend={args.dynamo_backend})")
+
+        accelerator.unwrap_model(network).prepare_grad_etc(text_encoder, unet)
+
+        if not cache_latents:
+            vae.requires_grad_(False)
+            vae.eval()
+            vae.to(accelerator.device, dtype=vae_dtype)
+
+        # patch for fp16 grad scale
+        if args.full_fp16:
+            train_util.patch_accelerator_for_fp16_training(accelerator)
+
+        return (
+            network,
+            optimizer,
+            train_dataloader,
+            val_dataloader,
+            lr_scheduler,
+            training_model,
+            unet,
+            text_encoders,
+            text_encoder,
+            unet_weight_dtype,
+        )
+
+    def _run_validation(
+        self,
+        args,
+        accelerator,
+        network,
+        text_encoders,
+        unet,
+        vae,
+        vae_dtype,
+        weight_dtype,
+        text_encoding_strategy,
+        tokenize_strategy,
+        noise_scheduler,
+        val_dataloader,
+        validation_steps,
+        validation_sigmas,
+        validation_total_steps,
+        train_text_encoder,
+        train_unet,
+        val_loss_recorder,
+        train_loss_recorder,
+        epoch,
+        original_t_min,
+        original_t_max,
+        optimizer_eval_fn,
+        optimizer_train_fn,
+        progress_bar,
+        global_step,
+        is_tracking,
+        progress_desc,
+        postfix_label,
+        log_avg_key,
+        log_div_key,
+        logging_fn,
+    ):
+        """Run a validation pass over val_dataloader x validation_sigmas."""
+        optimizer_eval_fn()
+        accelerator.unwrap_model(network).eval()
+        rng_states = self._switch_rng_state(
+            args.validation_seed if args.validation_seed is not None else args.seed
+        )
+
+        val_progress_bar = tqdm(
+            range(validation_total_steps),
+            smoothing=0,
+            disable=not accelerator.is_local_main_process,
+            desc=progress_desc,
+        )
+        val_timesteps_step = 0
+        per_sigma_losses = {s: [] for s in validation_sigmas}
+        for val_step, batch in enumerate(val_dataloader):
+            if val_step >= validation_steps:
+                break
+
+            for sigma in validation_sigmas:
+                self.on_step_start(
+                    args,
+                    accelerator,
+                    network,
+                    text_encoders,
+                    unet,
+                    batch,
+                    weight_dtype,
+                    is_train=False,
+                )
+
+                # Pin sigma via t_min/t_max (what the noise function reads)
+                args.t_min = args.t_max = sigma
+
+                loss = self.process_batch(
+                    batch,
+                    text_encoders,
+                    unet,
+                    network,
+                    vae,
+                    noise_scheduler,
+                    vae_dtype,
+                    weight_dtype,
+                    accelerator,
+                    args,
+                    text_encoding_strategy,
+                    tokenize_strategy,
+                    is_train=False,
+                    train_text_encoder=train_text_encoder,
+                    train_unet=train_unet,
+                )
+
+                current_loss = loss.detach().item()
+                val_loss_recorder.add(
+                    epoch=epoch, step=val_timesteps_step, loss=current_loss
+                )
+                per_sigma_losses[sigma].append(current_loss)
+                val_progress_bar.update(1)
+                val_progress_bar.set_postfix(
+                    {
+                        postfix_label: val_loss_recorder.moving_average,
+                        "sigma": f"{sigma:.2f}",
+                    }
+                )
+
+                self.on_validation_step_end(
+                    args,
+                    accelerator,
+                    network,
+                    text_encoders,
+                    unet,
+                    batch,
+                    weight_dtype,
+                )
+                val_timesteps_step += 1
+
+        if is_tracking:
+            loss_validation_divergence = (
+                val_loss_recorder.moving_average - train_loss_recorder.moving_average
+            )
+            logs = {
+                log_avg_key: val_loss_recorder.moving_average,
+                log_div_key: loss_validation_divergence,
+            }
+            for s, losses in per_sigma_losses.items():
+                if losses:
+                    logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(losses)
+            logging_fn(accelerator, logs, global_step, epoch + 1)
+
+        self._restore_rng_state(rng_states)
+        args.t_min = original_t_min
+        args.t_max = original_t_max
+        optimizer_train_fn()
+        accelerator.unwrap_model(network).train()
+        progress_bar.unpause()
+
+    def train(self, args):
+        session_id = random.randint(0, 2**32)
+        training_started_at = time.time()
+        train_util.verify_training_args(args)
+        train_util.prepare_dataset_args(args, True)
+        setup_logging(args, reset=True)
+
+        cache_latents = args.cache_latents
+
+        if args.seed is None:
+            args.seed = random.randint(0, 2**32)
+        set_seed(args.seed)
+
+        tokenize_strategy = self.get_tokenize_strategy(args)
+        strategy_base.TokenizeStrategy.set_strategy(tokenize_strategy)
+        tokenizers = self.get_tokenizers(
+            tokenize_strategy
+        )  # will be removed after sample_image is refactored
+
+        # prepare caching strategy: this must be set before preparing dataset. because dataset may use this strategy for initialization.
+        latents_caching_strategy = self.get_latents_caching_strategy(args)
+        strategy_base.LatentsCachingStrategy.set_strategy(latents_caching_strategy)
+
+        (
+            train_dataset_group,
+            val_dataset_group,
+            current_epoch,
+            current_step,
+            collator,
+            use_user_config,
+            use_dreambooth_method,
+        ) = self._prepare_dataset(args)
 
         if args.debug_dataset:
             train_dataset_group.set_current_strategies()  # dataset needs to know the strategies explicitly
@@ -1410,340 +2021,62 @@ class AnimaTrainer:
                 args, weight_dtype, accelerator, text_encoders
             )
 
-        # Load network module
-        sys.path.append(os.path.dirname(__file__))
-        accelerator.print("import network module:", args.network_module)
-        network_module = importlib.import_module(args.network_module)
-
-        if args.base_weights is not None:
-            for i, weight_path in enumerate(args.base_weights):
-                if (
-                    args.base_weights_multiplier is None
-                    or len(args.base_weights_multiplier) <= i
-                ):
-                    multiplier = 1.0
-                else:
-                    multiplier = args.base_weights_multiplier[i]
-
-                accelerator.print(
-                    f"merging module: {weight_path} with multiplier {multiplier}"
-                )
-
-                module, weights_sd = network_module.create_network_from_weights(
-                    multiplier, weight_path, vae, text_encoder, unet, for_inference=True
-                )
-                module.merge_to(
-                    text_encoder,
-                    unet,
-                    weights_sd,
-                    weight_dtype,
-                    accelerator.device if args.lowram else "cpu",
-                )
-
-            accelerator.print(f"all weights merged: {', '.join(args.base_weights)}")
-
-        # prepare network
-        net_kwargs = {}
-        if args.network_args is not None:
-            for net_arg in args.network_args:
-                key, value = net_arg.split("=", 1)
-                net_kwargs[key] = value
-
-        # Forward known network-arg keys from top-level config (TOML) to net_kwargs.
-        # CLI --network_args take precedence over top-level config keys.
-        _NETWORK_ARG_KEYS = [
-            "train_llm_adapter",
-            "exclude_patterns",
-            "include_patterns",
-            "use_dora",
-            "use_ortho",
-            "sig_type",
-            "ortho_reg_weight",
-            "use_timestep_mask",
-            "min_rank",
-            "alpha_rank_scale",
-            "use_hydra",
-            "num_experts",
-            "balance_loss_weight",
-            "rank_dropout",
-            "module_dropout",
-            "verbose",
-            "network_reg_lrs",
-            "network_reg_dims",
-            "loraplus_lr_ratio",
-            "loraplus_unet_lr_ratio",
-            "loraplus_text_encoder_lr_ratio",
-            "layer_start",
-            "layer_end",
-        ]
-        for key in _NETWORK_ARG_KEYS:
-            if (
-                key not in net_kwargs
-                and hasattr(args, key)
-                and getattr(args, key) is not None
-            ):
-                net_kwargs[key] = str(getattr(args, key))
-
-        if args.dim_from_weights:
-            network, _ = network_module.create_network_from_weights(
-                1, args.network_weights, vae, text_encoder, unet, **net_kwargs
-            )
-        else:
-            if "dropout" not in net_kwargs:
-                net_kwargs["dropout"] = args.network_dropout
-
-            network = network_module.create_network(
-                1.0,
-                args.network_dim,
-                args.network_alpha,
-                vae,
-                text_encoder,
-                unet,
-                neuron_dropout=args.network_dropout,
-                **net_kwargs,
-            )
-        if network is None:
+        network_result = self._create_and_apply_network(
+            args, accelerator, vae, text_encoder, unet, text_encoders, weight_dtype
+        )
+        if network_result is None:
             return
-        if hasattr(network, "prepare_network"):
-            network.prepare_network(args)
-        if args.scale_weight_norms and not hasattr(
-            network, "apply_max_norm_regularization"
-        ):
-            logger.warning(
-                "warning: scale_weight_norms is specified but the network does not support it"
-            )
-            args.scale_weight_norms = False
+        network, net_kwargs, train_unet, train_text_encoder = network_result
 
-        self.post_process_network(args, accelerator, network, text_encoders, unet)
-
-        # apply network to unet and text_encoder
-        train_unet = not args.network_train_text_encoder_only
-        train_text_encoder = self.is_train_text_encoder(args)
-        network.apply_to(text_encoder, unet, train_text_encoder, train_unet)
-
-        if args.network_weights is not None:
-            info = network.load_weights(args.network_weights)
-            accelerator.print(
-                f"load network weights from {args.network_weights}: {info}"
-            )
-
-        if args.gradient_checkpointing:
-            if args.cpu_offload_checkpointing:
-                unet.enable_gradient_checkpointing(cpu_offload=True)
-            else:
-                unet.enable_gradient_checkpointing()
-
-            for t_enc, flag in zip(
-                text_encoders, self.get_text_encoders_train_flags(args, text_encoders)
-            ):
-                if flag:
-                    if t_enc.supports_gradient_checkpointing:
-                        t_enc.gradient_checkpointing_enable()
-            del t_enc
-            network.enable_gradient_checkpointing()  # may have no effect
-
-        # Prepare optimizer, data loader etc.
-        accelerator.print("prepare optimizer, data loader etc.")
-
-        # make backward compatibility for text_encoder_lr
-        support_multiple_lrs = hasattr(
-            network, "prepare_optimizer_params_with_multiple_te_lrs"
-        )
-        if support_multiple_lrs:
-            text_encoder_lr = args.text_encoder_lr
-        else:
-            if (
-                args.text_encoder_lr is None
-                or isinstance(args.text_encoder_lr, float)
-                or isinstance(args.text_encoder_lr, int)
-            ):
-                text_encoder_lr = args.text_encoder_lr
-            else:
-                text_encoder_lr = (
-                    None if len(args.text_encoder_lr) == 0 else args.text_encoder_lr[0]
-                )
-        try:
-            if support_multiple_lrs:
-                results = network.prepare_optimizer_params_with_multiple_te_lrs(
-                    text_encoder_lr, args.unet_lr, args.learning_rate
-                )
-            else:
-                results = network.prepare_optimizer_params(
-                    text_encoder_lr, args.unet_lr, args.learning_rate
-                )
-            if type(results) is tuple:
-                trainable_params = results[0]
-                lr_descriptions = results[1]
-            else:
-                trainable_params = results
-                lr_descriptions = None
-        except TypeError:
-            trainable_params = network.prepare_optimizer_params(
-                text_encoder_lr, args.unet_lr
-            )
-            lr_descriptions = None
-
-        optimizer_name, optimizer_args, optimizer = train_util.get_optimizer(
-            args, trainable_params
-        )
-        optimizer_train_fn, optimizer_eval_fn = train_util.get_optimizer_train_eval_fn(
-            optimizer, args
-        )
-
-        # prepare dataloader
-        train_dataset_group.set_current_strategies()
-        if val_dataset_group is not None:
-            val_dataset_group.set_current_strategies()
-
-        n_workers = min(args.max_data_loader_n_workers, os.cpu_count())
-        persistent_workers = args.persistent_data_loader_workers and n_workers > 0
-
-        dataloader_kwargs = {
-            "batch_size": 1,
-            "collate_fn": collator,
-            "num_workers": n_workers,
-            "persistent_workers": persistent_workers,
-            "pin_memory": args.dataloader_pin_memory,
-        }
-        if n_workers > 0:
-            dataloader_kwargs["prefetch_factor"] = args.dataloader_prefetch_factor
-
-        train_dataloader = torch.utils.data.DataLoader(
+        (
+            optimizer,
+            optimizer_name,
+            optimizer_args,
+            optimizer_train_fn,
+            optimizer_eval_fn,
+            text_encoder_lr,
+            lr_descriptions,
+            train_dataloader,
+            val_dataloader,
+            lr_scheduler,
+        ) = self._setup_optimizer_and_dataloader(
+            args,
+            accelerator,
+            network,
             train_dataset_group,
-            shuffle=True,
-            **dataloader_kwargs,
+            val_dataset_group,
+            collator,
         )
 
-        val_dataloader = torch.utils.data.DataLoader(
-            val_dataset_group if val_dataset_group is not None else [],
-            shuffle=False,
-            **dataloader_kwargs,
+        (
+            network,
+            optimizer,
+            train_dataloader,
+            val_dataloader,
+            lr_scheduler,
+            training_model,
+            unet,
+            text_encoders,
+            text_encoder,
+            unet_weight_dtype,
+        ) = self._prepare_with_accelerator(
+            args,
+            accelerator,
+            network,
+            optimizer,
+            train_dataloader,
+            val_dataloader,
+            lr_scheduler,
+            unet,
+            text_encoders,
+            text_encoder,
+            vae,
+            vae_dtype,
+            weight_dtype,
+            train_unet,
+            train_text_encoder,
+            cache_latents,
         )
-
-        # Calculate training steps
-        if args.max_train_epochs is not None:
-            args.max_train_steps = args.max_train_epochs * math.ceil(
-                len(train_dataloader)
-                / accelerator.num_processes
-                / args.gradient_accumulation_steps
-            )
-            accelerator.print(
-                f"override steps. steps for {args.max_train_epochs} epochs is"
-            )
-
-        train_dataset_group.set_max_train_steps(args.max_train_steps)
-
-        # lr scheduler
-        lr_scheduler = train_util.get_scheduler_fix(
-            args, optimizer, accelerator.num_processes
-        )
-
-        # full fp16/bf16 training
-        if args.full_fp16:
-            assert args.mixed_precision == "fp16", (
-                "full_fp16 requires mixed precision='fp16'"
-            )
-            accelerator.print("enable full fp16 training.")
-            network.to(weight_dtype)
-        elif args.full_bf16:
-            assert args.mixed_precision == "bf16", (
-                "full_bf16 requires mixed precision='bf16'"
-            )
-            accelerator.print("enable full bf16 training.")
-            network.to(weight_dtype)
-
-        unet_weight_dtype = te_weight_dtype = weight_dtype
-
-        unet.requires_grad_(False)
-        if self.cast_unet(args):
-            unet.to(dtype=unet_weight_dtype)
-        for i, t_enc in enumerate(text_encoders):
-            t_enc.requires_grad_(False)
-
-            # in case of cpu, dtype is already set to fp32 because cpu does not support fp8/fp16/bf16
-            if t_enc.device.type != "cpu" and self.cast_text_encoder(args):
-                t_enc.to(dtype=te_weight_dtype)
-
-                # nn.Embedding not support FP8
-                if te_weight_dtype != weight_dtype:
-                    self.prepare_text_encoder_fp8(
-                        i, t_enc, te_weight_dtype, weight_dtype
-                    )
-
-        # accelerator preparation (no deepspeed)
-        if train_unet:
-            unet = self.prepare_unet_with_accelerator(args, accelerator, unet)
-        else:
-            unet.to(
-                accelerator.device,
-                dtype=unet_weight_dtype if self.cast_unet(args) else None,
-            )
-        if train_text_encoder:
-            text_encoders = [
-                (accelerator.prepare(t_enc) if flag else t_enc)
-                for t_enc, flag in zip(
-                    text_encoders,
-                    self.get_text_encoders_train_flags(args, text_encoders),
-                )
-            ]
-            if len(text_encoders) > 1:
-                text_encoder = text_encoders
-            else:
-                text_encoder = text_encoders[0]
-        else:
-            pass  # if text_encoder is not trained, no need to prepare. and device and dtype are already set
-
-        network, optimizer, train_dataloader, val_dataloader, lr_scheduler = (
-            accelerator.prepare(
-                network, optimizer, train_dataloader, val_dataloader, lr_scheduler
-            )
-        )
-        training_model = network
-
-        if args.gradient_checkpointing:
-            # according to TI example in Diffusers, train is required
-            unet.train()
-            for i, (t_enc, frag) in enumerate(
-                zip(
-                    text_encoders,
-                    self.get_text_encoders_train_flags(args, text_encoders),
-                )
-            ):
-                t_enc.train()
-
-                # set top parameter requires_grad = True for gradient checkpointing works
-                if frag:
-                    self.prepare_text_encoder_grad_ckpt_workaround(i, t_enc)
-
-        else:
-            unet.eval()
-            for t_enc in text_encoders:
-                t_enc.eval()
-
-        del t_enc
-
-        # Full-model torch.compile: compile after LoRA apply + accelerator prepare
-        # so dynamo traces through LoRA-patched forwards without _orig_mod prefix issues.
-        if args.torch_compile and getattr(args, "compile_mode", "blocks") == "full":
-            assert not args.gradient_checkpointing, (
-                "compile_mode='full' is incompatible with gradient checkpointing"
-            )
-            assert not self.is_swapping_blocks, (
-                "compile_mode='full' is incompatible with block swap"
-            )
-            unet = torch.compile(unet, backend=args.dynamo_backend, dynamic=True)
-            logger.info(f"full-model torch.compile (backend={args.dynamo_backend})")
-
-        accelerator.unwrap_model(network).prepare_grad_etc(text_encoder, unet)
-
-        if not cache_latents:
-            vae.requires_grad_(False)
-            vae.eval()
-            vae.to(accelerator.device, dtype=vae_dtype)
-
-        # patch for fp16 grad scale
-        if args.full_fp16:
-            train_util.patch_accelerator_for_fp16_training(accelerator)
 
         # before resuming make hook for saving/loading to save/load the network weights only
         def save_model_hook(models, weights, output_dir):
@@ -2038,26 +2371,6 @@ class AnimaTrainer:
         original_t_min = args.t_min
         original_t_max = args.t_max
 
-        def switch_rng_state(
-            seed: int,
-        ) -> tuple[torch.ByteTensor, Optional[torch.ByteTensor], tuple]:
-            cpu_rng_state = torch.get_rng_state()
-            gpu_rng_state = torch.cuda.get_rng_state()
-            python_rng_state = random.getstate()
-
-            torch.manual_seed(seed)
-            random.seed(seed)
-
-            return (cpu_rng_state, gpu_rng_state, python_rng_state)
-
-        def restore_rng_state(
-            rng_states: tuple[torch.ByteTensor, Optional[torch.ByteTensor], tuple],
-        ):
-            cpu_rng_state, gpu_rng_state, python_rng_state = rng_states
-            torch.set_rng_state(cpu_rng_state)
-            torch.cuda.set_rng_state(gpu_rng_state)
-            random.setstate(python_rng_state)
-
         # --- Profiler setup ---
         profile_range = self._parse_profile_steps(args)
         profiler_ctx = None
@@ -2272,107 +2585,40 @@ class AnimaTrainer:
                     and validation_steps > 0
                     and should_validate_step
                 ):
-                    optimizer_eval_fn()
-                    accelerator.unwrap_model(network).eval()
-                    rng_states = switch_rng_state(
-                        args.validation_seed
-                        if args.validation_seed is not None
-                        else args.seed
+                    self._run_validation(
+                        args,
+                        accelerator,
+                        network,
+                        text_encoders,
+                        unet,
+                        vae,
+                        vae_dtype,
+                        weight_dtype,
+                        text_encoding_strategy,
+                        tokenize_strategy,
+                        noise_scheduler,
+                        val_dataloader,
+                        validation_steps,
+                        validation_sigmas,
+                        validation_total_steps,
+                        train_text_encoder,
+                        train_unet,
+                        val_step_loss_recorder,
+                        loss_recorder,
+                        epoch,
+                        original_t_min,
+                        original_t_max,
+                        optimizer_eval_fn,
+                        optimizer_train_fn,
+                        progress_bar,
+                        global_step,
+                        is_tracking,
+                        progress_desc="validation steps",
+                        postfix_label="val_avg_loss",
+                        log_avg_key="loss/validation/step_average",
+                        log_div_key="loss/validation/step_divergence",
+                        logging_fn=self.step_logging,
                     )
-
-                    val_progress_bar = tqdm(
-                        range(validation_total_steps),
-                        smoothing=0,
-                        disable=not accelerator.is_local_main_process,
-                        desc="validation steps",
-                    )
-                    val_timesteps_step = 0
-                    per_sigma_losses = {s: [] for s in validation_sigmas}
-                    for val_step, batch in enumerate(val_dataloader):
-                        if val_step >= validation_steps:
-                            break
-
-                        for sigma in validation_sigmas:
-                            self.on_step_start(
-                                args,
-                                accelerator,
-                                network,
-                                text_encoders,
-                                unet,
-                                batch,
-                                weight_dtype,
-                                is_train=False,
-                            )
-
-                            # Pin sigma via t_min/t_max (what the noise function reads)
-                            args.t_min = args.t_max = sigma
-
-                            loss = self.process_batch(
-                                batch,
-                                text_encoders,
-                                unet,
-                                network,
-                                vae,
-                                noise_scheduler,
-                                vae_dtype,
-                                weight_dtype,
-                                accelerator,
-                                args,
-                                text_encoding_strategy,
-                                tokenize_strategy,
-                                is_train=False,
-                                train_text_encoder=train_text_encoder,
-                                train_unet=train_unet,
-                            )
-
-                            current_loss = loss.detach().item()
-                            val_step_loss_recorder.add(
-                                epoch=epoch, step=val_timesteps_step, loss=current_loss
-                            )
-                            per_sigma_losses[sigma].append(current_loss)
-                            val_progress_bar.update(1)
-                            val_progress_bar.set_postfix(
-                                {
-                                    "val_avg_loss": val_step_loss_recorder.moving_average,
-                                    "sigma": f"{sigma:.2f}",
-                                }
-                            )
-
-                            self.on_validation_step_end(
-                                args,
-                                accelerator,
-                                network,
-                                text_encoders,
-                                unet,
-                                batch,
-                                weight_dtype,
-                            )
-                            val_timesteps_step += 1
-
-                    if is_tracking:
-                        loss_validation_divergence = (
-                            val_step_loss_recorder.moving_average
-                            - loss_recorder.moving_average
-                        )
-                        logs = {
-                            "loss/validation/step_average": val_step_loss_recorder.moving_average,
-                            "loss/validation/step_divergence": loss_validation_divergence,
-                        }
-                        for s, losses in per_sigma_losses.items():
-                            if losses:
-                                logs[f"loss/validation/sigma_{s:.2f}"] = sum(
-                                    losses
-                                ) / len(losses)
-                        self.step_logging(
-                            accelerator, logs, global_step, epoch=epoch + 1
-                        )
-
-                    restore_rng_state(rng_states)
-                    args.t_min = original_t_min
-                    args.t_max = original_t_max
-                    optimizer_train_fn()
-                    accelerator.unwrap_model(network).train()
-                    progress_bar.unpause()
 
                 if global_step >= args.max_train_steps:
                     break
@@ -2385,107 +2631,40 @@ class AnimaTrainer:
             )
 
             if should_validate_epoch and len(val_dataloader) > 0:
-                optimizer_eval_fn()
-                accelerator.unwrap_model(network).eval()
-                rng_states = switch_rng_state(
-                    args.validation_seed
-                    if args.validation_seed is not None
-                    else args.seed
+                self._run_validation(
+                    args,
+                    accelerator,
+                    network,
+                    text_encoders,
+                    unet,
+                    vae,
+                    vae_dtype,
+                    weight_dtype,
+                    text_encoding_strategy,
+                    tokenize_strategy,
+                    noise_scheduler,
+                    val_dataloader,
+                    validation_steps,
+                    validation_sigmas,
+                    validation_total_steps,
+                    train_text_encoder,
+                    train_unet,
+                    val_epoch_loss_recorder,
+                    loss_recorder,
+                    epoch,
+                    original_t_min,
+                    original_t_max,
+                    optimizer_eval_fn,
+                    optimizer_train_fn,
+                    progress_bar,
+                    global_step,
+                    is_tracking,
+                    progress_desc="epoch validation steps",
+                    postfix_label="val_epoch_avg_loss",
+                    log_avg_key="loss/validation/epoch_average",
+                    log_div_key="loss/validation/epoch_divergence",
+                    logging_fn=self.epoch_logging,
                 )
-
-                val_progress_bar = tqdm(
-                    range(validation_total_steps),
-                    smoothing=0,
-                    disable=not accelerator.is_local_main_process,
-                    desc="epoch validation steps",
-                )
-
-                val_timesteps_step = 0
-                per_sigma_losses = {s: [] for s in validation_sigmas}
-                for val_step, batch in enumerate(val_dataloader):
-                    if val_step >= validation_steps:
-                        break
-
-                    for sigma in validation_sigmas:
-                        # Pin sigma via t_min/t_max
-                        args.t_min = args.t_max = sigma
-
-                        self.on_step_start(
-                            args,
-                            accelerator,
-                            network,
-                            text_encoders,
-                            unet,
-                            batch,
-                            weight_dtype,
-                            is_train=False,
-                        )
-
-                        loss = self.process_batch(
-                            batch,
-                            text_encoders,
-                            unet,
-                            network,
-                            vae,
-                            noise_scheduler,
-                            vae_dtype,
-                            weight_dtype,
-                            accelerator,
-                            args,
-                            text_encoding_strategy,
-                            tokenize_strategy,
-                            is_train=False,
-                            train_text_encoder=train_text_encoder,
-                            train_unet=train_unet,
-                        )
-
-                        current_loss = loss.detach().item()
-                        val_epoch_loss_recorder.add(
-                            epoch=epoch, step=val_timesteps_step, loss=current_loss
-                        )
-                        per_sigma_losses[sigma].append(current_loss)
-                        val_progress_bar.update(1)
-                        val_progress_bar.set_postfix(
-                            {
-                                "val_epoch_avg_loss": val_epoch_loss_recorder.moving_average,
-                                "sigma": f"{sigma:.2f}",
-                            }
-                        )
-
-                        self.on_validation_step_end(
-                            args,
-                            accelerator,
-                            network,
-                            text_encoders,
-                            unet,
-                            batch,
-                            weight_dtype,
-                        )
-                        val_timesteps_step += 1
-
-                if is_tracking:
-                    avr_loss: float = val_epoch_loss_recorder.moving_average
-                    loss_validation_divergence = (
-                        val_epoch_loss_recorder.moving_average
-                        - loss_recorder.moving_average
-                    )
-                    logs = {
-                        "loss/validation/epoch_average": avr_loss,
-                        "loss/validation/epoch_divergence": loss_validation_divergence,
-                    }
-                    for s, losses in per_sigma_losses.items():
-                        if losses:
-                            logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(
-                                losses
-                            )
-                    self.epoch_logging(accelerator, logs, global_step, epoch + 1)
-
-                restore_rng_state(rng_states)
-                args.t_min = original_t_min
-                args.t_max = original_t_max
-                optimizer_train_fn()
-                accelerator.unwrap_model(network).train()
-                progress_bar.unpause()
 
             # END OF EPOCH
             if is_tracking:
@@ -2732,6 +2911,19 @@ def setup_parser() -> argparse.ArgumentParser:
         default=None,
         nargs="*",
         help="multiplier for network weights to merge into the model before training",
+    )
+    parser.add_argument(
+        "--lora_path",
+        type=str,
+        default=None,
+        help="path to a pretrained LoRA checkpoint to attach (frozen) alongside the trainable network. "
+        "Intended for postfix/prefix training on top of a fixed LoRA.",
+    )
+    parser.add_argument(
+        "--lora_multiplier",
+        type=float,
+        default=1.0,
+        help="multiplier applied to the frozen LoRA attached via --lora_path",
     )
     parser.add_argument(
         "--no_half_vae",

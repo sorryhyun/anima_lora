@@ -67,27 +67,41 @@ make lora
 
 ## 학습
 
-모든 학습은 TOML 설정 파일 기반. HF Accelerate로 실행:
+학습 설정은 세 단계 체인 구조: `base.toml → presets/<preset>.toml → methods/<method>.toml → CLI 인자`. 겹치는 값은 method가 우선. HF Accelerate로 실행:
 
 ```bash
-accelerate launch --mixed_precision bf16 train.py --config_file configs/training_config.toml
+accelerate launch --mixed_precision bf16 train.py --method lora --preset default
 ```
 
 CLI에서 설정값 오버라이드 가능:
 
 ```bash
-accelerate launch --mixed_precision bf16 train.py --config_file configs/training_config.toml \
+accelerate launch --mixed_precision bf16 train.py --method tlora --preset win8gb \
     --network_dim 32 --max_train_epochs 64 --learning_rate 2e-5
 ```
 
-### 제공 설정 파일
+### Method 파일 (`configs/methods/`)
 
-| 설정 파일 | 설명 |
+| Method | 설명 |
 |--------|-------------|
-| `configs/training_config.toml` | Standard LoRA (rank 32, 64 epochs) |
-| `configs/training_config_dora.toml` | DoRA (rank 16) |
-| `configs/training_config_doratimestep.toml` | DoRA + T-LoRA 타임스텝 마스킹 |
-| `configs/dataset_config.toml` | 동적 버켓팅 데이터셋 레이아웃 |
+| `lora` | 표준 LoRA (rank 16) |
+| `dora` | DoRA (rank 32) |
+| `doratimestep` | DoRA + T-LoRA 타임스텝 마스킹 |
+| `tlora` | OrthoLoRA + 타임스텝 마스킹 |
+| `hydralora` | HydraLoRA 멀티헤드 라우팅 |
+| `postfix` / `postfix_exp` / `postfix_func` | Postfix tuning 변형 |
+| `prefix` | Prefix tuning |
+| `graft` | GRAFT 루프 기본 설정 |
+
+### Preset 파일 (`configs/presets/`)
+
+| Preset | 설명 |
+|--------|-------------|
+| `default` | 리눅스 기본 (`blocks_to_swap=8`) |
+| `fast_16gb` | swap 없음 + `layer_start=2` (16GB 카드용) |
+| `low_vram` | gradient checkpointing + unsloth offload |
+| `win8gb` / `win16gb` | Windows VRAM 프리셋 (GUI 드롭다운) |
+| `graft` | GRAFT 전용 swap 예산 |
 
 ### 주요 학습 파라미터
 

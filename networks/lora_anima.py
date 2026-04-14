@@ -22,6 +22,126 @@ logger = logging.getLogger(__name__)
 _BLOCK_IDX_RE = re.compile(r"blocks\.(\d+)\.")
 
 
+# Load-time inverse of the qkv/kv split performed by LoRANetwork.save_weights().
+# The training runtime uses fused self_attn.qkv_proj and cross_attn.kv_proj, but saved
+# checkpoints are defused to separate q_proj/k_proj/v_proj for ComfyUI compatibility.
+# Without this step, reloading such a checkpoint into the live LoRA module path silently
+# drops the attention LoRA keys (they don't match the fused runtime names). This helper
+# reassembles the fused LoRA matrices so load_state_dict hits every module.
+#
+# Fusion math (n components, each with rank r, out dim `out`):
+#   down_fused = cat([down_i], dim=0)                       # [n*r, in]
+#   up_fused   = block_diag([up_i * (alpha_i / r)])          # [n*out, n*r]
+#   alpha_fused = n * r                                      # -> LoRAModule scale = 1
+# The per-component alpha is folded into up_fused so the block-diagonal structure
+# reproduces each per-component delta exactly.
+_LORA_ATTN_FUSE_SPECS = (
+    ("self_attn", "qkv", ("q", "k", "v")),
+    ("cross_attn", "kv", ("k", "v")),
+)
+
+
+def _refuse_unfused_attn_lora_keys(
+    state_dict: Dict[str, torch.Tensor],
+) -> Dict[str, torch.Tensor]:
+    """Rewrite unfused q/k/v LoRA keys in-place to match the fused runtime.
+
+    Returns the same dict for chaining. Incomplete or shape-inconsistent groups
+    are left untouched (load_state_dict will report them as unexpected).
+    """
+    for attn_type, fused_letters, suffixes in _LORA_ATTN_FUSE_SPECS:
+        first_key_suffix = f"_{attn_type}_{suffixes[0]}_proj.lora_down.weight"
+
+        shared_prefixes = []
+        for key in list(state_dict.keys()):
+            if not key.endswith(first_key_suffix):
+                continue
+            # key == "{shared_prefix}{suffixes[0]}_proj.lora_down.weight"
+            # shared_prefix ends with "_{attn_type}_"
+            shared_prefix = key[: -len(f"{suffixes[0]}_proj.lora_down.weight")]
+            shared_prefixes.append(shared_prefix)
+
+        for shared_prefix in shared_prefixes:
+            downs: List[torch.Tensor] = []
+            ups: List[torch.Tensor] = []
+            alphas: List[Optional[torch.Tensor]] = []
+            mags: List[Optional[torch.Tensor]] = []
+            complete = True
+            for suf in suffixes:
+                dk = f"{shared_prefix}{suf}_proj.lora_down.weight"
+                uk = f"{shared_prefix}{suf}_proj.lora_up.weight"
+                ak = f"{shared_prefix}{suf}_proj.alpha"
+                mk = f"{shared_prefix}{suf}_proj.magnitude"
+                if dk not in state_dict or uk not in state_dict:
+                    complete = False
+                    break
+                downs.append(state_dict[dk])
+                ups.append(state_dict[uk])
+                alphas.append(state_dict.get(ak))
+                mags.append(state_dict.get(mk))
+            if not complete:
+                continue
+
+            n = len(suffixes)
+            r = downs[0].shape[0]
+            in_dim = downs[0].shape[1]
+            out = ups[0].shape[0]
+            if not all(d.shape == (r, in_dim) for d in downs):
+                logger.warning(
+                    f"attn LoRA fuse: inconsistent down shapes at {shared_prefix}*, skipping"
+                )
+                continue
+            if not all(u.shape == (out, r) for u in ups):
+                logger.warning(
+                    f"attn LoRA fuse: inconsistent up shapes at {shared_prefix}*, skipping"
+                )
+                continue
+
+            per_block_scales: List[float] = []
+            for a in alphas:
+                if a is None:
+                    # LoRAModule default: alpha = lora_dim -> scale = 1.
+                    per_block_scales.append(1.0)
+                else:
+                    av = a.item() if torch.is_tensor(a) else float(a)
+                    per_block_scales.append(av / r)
+
+            dtype = ups[0].dtype
+            device = ups[0].device
+
+            down_fused = torch.cat(downs, dim=0).contiguous()
+            up_fused = torch.zeros((n * out, n * r), dtype=dtype, device=device)
+            for i, (u, s) in enumerate(zip(ups, per_block_scales)):
+                up_fused[i * out : (i + 1) * out, i * r : (i + 1) * r] = u * s
+            # alpha_fused = n*r so LoRAModule's scale = (n*r) / (n*r) = 1
+            alpha_fused = torch.tensor(float(n * r))
+
+            fused_prefix = f"{shared_prefix}{fused_letters}_proj"
+            state_dict[f"{fused_prefix}.lora_down.weight"] = down_fused
+            state_dict[f"{fused_prefix}.lora_up.weight"] = up_fused
+            state_dict[f"{fused_prefix}.alpha"] = alpha_fused
+
+            # DoRA magnitude is per-output-row; concat matches the fused qkv/kv out dim.
+            if all(m is not None for m in mags):
+                state_dict[f"{fused_prefix}.magnitude"] = torch.cat(mags, dim=0)
+            elif any(m is not None for m in mags):
+                logger.warning(
+                    f"attn LoRA fuse: partial DoRA magnitude at {shared_prefix}*, "
+                    "dropping DoRA on fused module"
+                )
+
+            for suf in suffixes:
+                for subk in (
+                    "lora_down.weight",
+                    "lora_up.weight",
+                    "alpha",
+                    "magnitude",
+                ):
+                    state_dict.pop(f"{shared_prefix}{suf}_proj.{subk}", None)
+
+    return state_dict
+
+
 def create_network(
     multiplier: float,
     network_dim: Optional[int],
@@ -281,6 +401,9 @@ def create_network_from_weights(
 
     # Strip torch.compile '_orig_mod_' from old checkpoint keys
     weights_sd = LoRANetwork._strip_orig_mod_keys(weights_sd)
+
+    # Refuse unfused attn projections so modules_dim reflects the runtime (qkv/kv fused).
+    weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
 
     modules_dim = {}
     modules_alpha = {}
@@ -925,6 +1048,9 @@ class LoRANetwork(torch.nn.Module):
         for prefix, experts in ups_prefixes.items():
             stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
             weights_sd[f"{prefix}.lora_up_weight"] = stacked
+
+        # Refuse unfused attn projections (inverse of save_weights defusing).
+        weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
 
         info = self.load_state_dict(weights_sd, False)
         return info

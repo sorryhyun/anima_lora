@@ -1,0 +1,21 @@
+# Postfix tuning — learns N vectors appended to adapter cross-attention.
+
+dataset_config = "configs/dataset_config.toml"
+
+network_module = "networks.postfix_anima"
+network_dim = 16
+network_args = ["mode=postfix", "splice_position=end_of_sequence"]
+output_name = "anima_postfix"
+
+learning_rate = 1e-3
+max_train_epochs = 1
+save_every_n_epochs = 1
+checkpointing_epochs = 1
+
+caption_shuffle_variants = 8
+cache_llm_adapter_outputs = true
+
+# Postfix training needs a base LoRA and accumulates on cached TE — method-forced.
+blocks_to_swap = 0
+gradient_accumulation_steps = 4
+lora_path = "output/anima-tlora-0414-12.safetensors"

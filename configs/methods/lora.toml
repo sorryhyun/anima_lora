@@ -1,0 +1,14 @@
+# Standard LoRA — classic low-rank adaptation.
+
+dataset_config = "configs/dataset_config.toml"
+
+network_alpha = 16
+network_dim = 16
+
+learning_rate = 5e-5
+max_train_epochs = 2
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+
+caption_shuffle_variants = 8
+cache_llm_adapter_outputs = true

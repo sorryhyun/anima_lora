@@ -30,7 +30,8 @@ IMAGE_DATASET = ROOT / "post_image_dataset"
 TRAIN_IMAGES = GRAFT_DIR / "train_images"
 SURVIVORS_DIR = GRAFT_DIR / "survivors"
 CANDIDATES_DIR = GRAFT_DIR / "candidates"
-TRAINING_CONFIG_SRC = ROOT / "configs" / "training_config.toml"
+GRAFT_METHOD = "graft"
+GRAFT_PRESET = "graft"
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
@@ -214,40 +215,10 @@ def prepare_dataset_config():
     GRAFT_DATASET_CONFIG.write_text(base)
 
 
-def generate_training_config(config):
-    """Generate graft/training_config.toml by reading the original as text and patching values."""
-    lines = TRAINING_CONFIG_SRC.read_text().splitlines()
-    overrides = {
-        "dataset_config": '"graft/dataset_config.toml"',
-        "max_train_epochs": str(config["epochs_per_step"]),
-        "save_every_n_epochs": str(config["epochs_per_step"]),
-    }
-
-    out_lines = []
-    applied = set()
-    for line in lines:
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            key = stripped.split("=")[0].strip()
-            if key in overrides:
-                out_lines.append(f"{key} = {overrides[key]}")
-                applied.add(key)
-                continue
-        out_lines.append(line)
-
-    # Add any overrides not found in original
-    for key, val in overrides.items():
-        if key not in applied:
-            out_lines.append(f"{key} = {val}")
-
-    out = GRAFT_DIR / "training_config.toml"
-    out.write_text("\n".join(out_lines) + "\n")
-    print(f"Generated {out}")
-
-
 def run_training(config):
-    """Run LoRA training."""
+    """Run LoRA training via the method+preset chain with graft-specific CLI overrides."""
     print("\n=== Training LoRA ===")
+    epochs = str(config["epochs_per_step"])
     cmd = [
         "accelerate",
         "launch",
@@ -256,8 +227,11 @@ def run_training(config):
         "--mixed_precision",
         "bf16",
         "train.py",
-        "--config_file",
-        "graft/training_config.toml",
+        "--method", GRAFT_METHOD,
+        "--preset", GRAFT_PRESET,
+        "--dataset_config", "graft/dataset_config.toml",
+        "--max_train_epochs", epochs,
+        "--save_every_n_epochs", epochs,
     ]
     result = subprocess.run(cmd, cwd=ROOT)
     if result.returncode != 0:
@@ -411,17 +385,11 @@ def run_generation(config, holdout_captions, iteration):
 
 
 def get_training_cfg():
-    """Read training config values, merging base_config if present."""
-    graft_training = GRAFT_DIR / "training_config.toml"
-    with open(graft_training, "rb") as f:
-        cfg = tomllib.load(f)
-    if "base_config" in cfg:
-        base_path = GRAFT_DIR / cfg["base_config"]
-        with open(base_path, "rb") as f:
-            base = tomllib.load(f)
-        base.update(cfg)
-        return base
-    return cfg
+    """Return the merged base → graft preset → graft method config as a dict."""
+    sys.path.insert(0, str(ROOT))
+    from library.train_util import load_method_preset
+
+    return load_method_preset(GRAFT_METHOD, GRAFT_PRESET, configs_dir=str(ROOT / "configs"))
 
 
 def main():
@@ -452,9 +420,8 @@ def main():
     # 2. Build training symlinks (image_dataset minus holdout)
     build_train_symlinks(holdout_stems)
 
-    # 3. Prepare dataset config + generate training config
+    # 3. Prepare dataset config
     prepare_dataset_config()
-    generate_training_config(config)
 
     # 4. Train
     run_training(config)

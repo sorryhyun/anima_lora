@@ -37,17 +37,19 @@ _TQDM_RE = re.compile(
 from gui import (
     CONFIGS_DIR,
     IMAGE_EXTS,
-    PRESETS,
+    METHODS_DIR,
+    PRESETS_DIR,
     ROOT,
     _GROUPS,
     _K2G,
-    _LOCKED_PERFORMANCE,
     _SKIP,
     _load,
-    _merged,
     _read,
     _save,
     _widget,
+    list_methods,
+    list_presets,
+    merged_method_preset,
 )
 from gui.explanations import field_help, lora_guide
 from gui.i18n import t
@@ -72,18 +74,26 @@ class ConfigTab(QWidget):
     def __init__(self):
         super().__init__()
         self._w: dict[str, QWidget] = {}
-        self._vkeys: set[str] = set()
         self._ds_edit: QPlainTextEdit | None = None
         self._preprocessed = (ROOT / "post_image_dataset").exists()
         lay = QVBoxLayout(self)
 
-        # Top bar: preset + save + preprocess + train + stop
+        # Top bar: method + preset + save + preprocess + train + stop
         top = QHBoxLayout()
+        top.addWidget(QLabel("Method"))
+        self.method_combo = QComboBox()
+        self.method_combo.addItems(list_methods())
+        self.method_combo.currentTextChanged.connect(lambda _: self._reload())
+        top.addWidget(self.method_combo, 1)
+
         top.addWidget(QLabel(t("preset")))
-        self.combo = QComboBox()
-        self.combo.addItems(PRESETS)
-        self.combo.currentTextChanged.connect(self._load_preset)
-        top.addWidget(self.combo, 1)
+        self.preset_combo = QComboBox()
+        self.preset_combo.addItems(list_presets())
+        default_idx = self.preset_combo.findText("default")
+        if default_idx >= 0:
+            self.preset_combo.setCurrentIndex(default_idx)
+        self.preset_combo.currentTextChanged.connect(lambda _: self._reload())
+        top.addWidget(self.preset_combo, 1)
 
         save_btn = QPushButton(t("save"))
         save_btn.clicked.connect(self._save_preset)
@@ -192,13 +202,19 @@ class ConfigTab(QWidget):
         self._stdout_buf = ""
         self._stderr_buf = ""
 
-        self._load_preset(self.combo.currentText())
+        self._origin: dict[str, str] = {}
+        self._reload()
 
-    def _load_preset(self, name: str):
-        f = PRESETS[name]
-        var = _load(CONFIGS_DIR / f)
-        self._vkeys = set(var) - _SKIP
-        cfg = {k: v for k, v in _merged(f).items() if k not in _SKIP}
+    def _current(self) -> tuple[str, str]:
+        return self.method_combo.currentText(), self.preset_combo.currentText()
+
+    def _reload(self):
+        method, preset = self._current()
+        if not method or not preset:
+            return
+        merged, origin = merged_method_preset(method, preset)
+        self._origin = origin
+        cfg = {k: v for k, v in merged.items() if k not in _SKIP}
 
         if hasattr(self, "_explain"):
             self._show_explain_placeholder()
@@ -229,33 +245,35 @@ class ConfigTab(QWidget):
         for k, v in cfg.items():
             groups.setdefault(_K2G.get(k, "Other"), {})[k] = v
 
-        lock_perf = name in _LOCKED_PERFORMANCE
+        origin_style = {
+            "base": ("color:#888; text-decoration: underline dotted;", "from base.toml"),
+            "preset": (
+                "color:#6aa4d8; text-decoration: underline dotted;",
+                f"from presets/{preset}.toml",
+            ),
+            "method": (
+                "color:#f0f0f0; text-decoration: underline dotted;",
+                f"from methods/{method}.toml",
+            ),
+        }
 
         for gn, flds in groups.items():
             if not flds:
                 continue
-            locked = lock_perf and gn == "Performance"
             box = QGroupBox(gn)
-            if locked:
-                box.setToolTip(t("locked_by_preset"))
             form = QFormLayout()
             for k in sorted(flds):
                 w = _widget(flds[k], key=k)
-                if locked:
-                    w.setEnabled(False)
                 self._w[k] = w
                 lbl = ClickableLabel(k)
 
                 help_text = field_help(k)
                 notes: list[str] = []
-                if locked:
-                    lbl.setStyleSheet("color:#666; text-decoration: underline dotted;")
-                    notes.append(t("locked_by_preset"))
-                elif k not in self._vkeys:
-                    lbl.setStyleSheet("color:#888; text-decoration: underline dotted;")
-                    notes.append(t("from_base"))
-                else:
-                    lbl.setStyleSheet("text-decoration: underline dotted;")
+                style, note = origin_style.get(
+                    self._origin.get(k, "base"), origin_style["base"]
+                )
+                lbl.setStyleSheet(style)
+                notes.append(note)
 
                 lbl.clicked.connect(
                     lambda _k=k, _h=help_text, _n=tuple(notes): self._show_explain(
@@ -341,31 +359,49 @@ class ConfigTab(QWidget):
 
     # ── Save ──
 
-    def _build_save_data(self) -> tuple:
-        f = PRESETS[self.combo.currentText()]
-        p = CONFIGS_DIR / f
-        orig = _load(p)
-        bf = orig.get("base_config")
-        base = _load(CONFIGS_DIR / bf) if bf else {}
-        merged = {**base, **orig}
-
-        out: dict[str, Any] = {}
-        if bf:
-            out["base_config"] = bf
-        ds = orig.get("dataset_config")
-        if ds:
-            out["dataset_config"] = ds
-
-        for k, w in self._w.items():
-            v = _read(w, merged.get(k))
-            if k in self._vkeys or (k in base and base[k] != v):
-                out[k] = v
-        return p, out
+    def _route_key(self, key: str) -> str:
+        """Decide which file (method|preset) a key's edit should be written to."""
+        origin = self._origin.get(key)
+        if origin in ("method", "preset"):
+            return origin
+        # New key (from base or default widgets): route by group.
+        if _K2G.get(key) == "Performance":
+            return "preset"
+        return "method"
 
     def _save_preset(self):
-        p, out = self._build_save_data()
-        _save(p, out)
-        QMessageBox.information(self, t("saved"), t("saved_file", name=p.name))
+        method, preset = self._current()
+        method_path = METHODS_DIR / f"{method}.toml"
+        preset_path = PRESETS_DIR / f"{preset}.toml"
+
+        method_orig = _load(method_path)
+        preset_orig = _load(preset_path)
+        base = _load(CONFIGS_DIR / "base.toml")
+
+        method_out: dict[str, Any] = dict(method_orig)
+        preset_out: dict[str, Any] = dict(preset_orig)
+
+        for k, w in self._w.items():
+            v = _read(w, (method_orig.get(k) or preset_orig.get(k) or base.get(k)))
+            target = self._route_key(k)
+            if target == "method":
+                # Only write if the edit actually differs from what method/base provides.
+                effective = method_orig.get(k, base.get(k))
+                if k in method_orig or effective != v:
+                    method_out[k] = v
+                # Remove any stale preset copy so method wins cleanly.
+                preset_out.pop(k, None)
+            else:
+                effective = preset_orig.get(k, base.get(k))
+                if k in preset_orig or effective != v:
+                    preset_out[k] = v
+                method_out.pop(k, None)
+
+        _save(method_path, method_out)
+        _save(preset_path, preset_out)
+        QMessageBox.information(
+            self, t("saved"), f"Saved {method_path.name} + {preset_path.name}"
+        )
 
     def _save_ds(self):
         if not self._ds_edit:
@@ -405,7 +441,8 @@ class ConfigTab(QWidget):
         self.preprocess_btn.setEnabled(False)
         self.train_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
-        self.combo.setEnabled(False)
+        self.method_combo.setEnabled(False)
+        self.preset_combo.setEnabled(False)
 
     def _start_preprocess(self):
         python = sys.executable
@@ -422,7 +459,8 @@ class ConfigTab(QWidget):
         self.train_btn.setEnabled(False)
         self.test_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
-        self.combo.setEnabled(False)
+        self.method_combo.setEnabled(False)
+        self.preset_combo.setEnabled(False)
 
     def _start_training(self):
         if not self._preprocessed:
@@ -434,7 +472,7 @@ class ConfigTab(QWidget):
             QMessageBox.warning(self, t("error"), t("accelerate_not_found"))
             return
 
-        f = PRESETS[self.combo.currentText()]
+        method, preset = self._current()
         args = [
             "launch",
             "--num_cpu_threads_per_process",
@@ -442,8 +480,10 @@ class ConfigTab(QWidget):
             "--mixed_precision",
             "bf16",
             "train.py",
-            "--config_file",
-            f"configs/{f}",
+            "--method",
+            method,
+            "--preset",
+            preset,
         ]
 
         self.log.clear()
@@ -457,7 +497,8 @@ class ConfigTab(QWidget):
         self.preprocess_btn.setEnabled(False)
         self.test_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
-        self.combo.setEnabled(False)
+        self.method_combo.setEnabled(False)
+        self.preset_combo.setEnabled(False)
 
     def _stop_training(self):
         if self._proc.state() != QProcess.NotRunning:
@@ -523,7 +564,8 @@ class ConfigTab(QWidget):
         self.test_btn.setStyleSheet(self._test_idle_style)
         self.test_btn.setEnabled(self._has_lora_output())
         self.stop_btn.setEnabled(False)
-        self.combo.setEnabled(True)
+        self.method_combo.setEnabled(True)
+        self.preset_combo.setEnabled(True)
 
     def _log(self, text: str):
         self.log.moveCursor(QTextCursor.End)

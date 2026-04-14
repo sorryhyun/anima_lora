@@ -115,7 +115,7 @@ Or with custom settings:
 
 ```bash
 accelerate launch --mixed_precision bf16 train.py \
-    --config_file configs/training_config_prefix.toml \
+    --method prefix --preset default \
     --network_dim 32 \
     --learning_rate 5e-4
 ```
@@ -134,7 +134,7 @@ python inference.py \
 
 ## Config reference
 
-`configs/training_config_prefix.toml`:
+`configs/methods/prefix.toml`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|

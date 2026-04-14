@@ -1,0 +1,21 @@
+# HydraLoRA — MoE-style multi-head routing with shared down-projection.
+
+dataset_config = "configs/dataset_config.toml"
+
+network_alpha = 8
+network_dim = 8
+
+use_hydra = true
+num_experts = 12
+balance_loss_weight = 0.01
+
+learning_rate = 5e-4
+max_train_epochs = 2
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+
+caption_shuffle_variants = 8
+cache_llm_adapter_outputs = true
+
+# Multi-expert up-projections are VRAM-heavy — method-forced swap.
+blocks_to_swap = 20

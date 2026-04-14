@@ -1050,6 +1050,18 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         help="using .toml instead of args to pass hyperparameter",
     )
     parser.add_argument(
+        "--method",
+        type=str,
+        default=None,
+        help="method name under configs/methods/ (e.g. 'tlora', 'hydralora', 'postfix'). Merged after preset so method settings win on overlap.",
+    )
+    parser.add_argument(
+        "--preset",
+        type=str,
+        default="default",
+        help="hardware preset name under configs/presets/ (e.g. 'default', 'fast_16gb', 'win8gb').",
+    )
+    parser.add_argument(
         "--output_config",
         action="store_true",
         help="output command line args to given .toml file",
@@ -1469,7 +1481,72 @@ def add_sd_saving_arguments(parser: argparse.ArgumentParser):
     )
 
 
+def _flatten_toml(d: dict) -> dict:
+    """Flatten top-level sections into a single namespace (ignores nesting)."""
+    out = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            for kk, vv in v.items():
+                out[kk] = vv
+        else:
+            out[k] = v
+    return out
+
+
+def _load_toml_with_base(path: str) -> dict:
+    """Load a TOML file and recursively resolve its 'base_config' reference."""
+    with open(path, "r", encoding="utf-8") as f:
+        config_dict = toml.load(f)
+    base_ref = config_dict.pop("base_config", None)
+    if base_ref is None:
+        return _flatten_toml(config_dict)
+    if not os.path.isabs(base_ref):
+        base_ref = os.path.join(os.path.dirname(path), base_ref)
+    logger.info(f"Loading base config from {base_ref}...")
+    base_dict = _load_toml_with_base(base_ref)
+    merged = dict(base_dict)
+    merged.update(_flatten_toml(config_dict))
+    return merged
+
+
+def load_method_preset(method: str, preset: str = "default", configs_dir: str = "configs") -> dict:
+    """Merge base.toml → presets/<preset>.toml → methods/<method>.toml into a flat dict.
+
+    Method settings win over preset settings on overlap (e.g. postfix can force
+    blocks_to_swap=0 regardless of the hardware preset).
+    """
+    paths = [
+        os.path.join(configs_dir, "base.toml"),
+        os.path.join(configs_dir, "presets", f"{preset}.toml"),
+        os.path.join(configs_dir, "methods", f"{method}.toml"),
+    ]
+    for p in paths:
+        if not os.path.exists(p):
+            raise FileNotFoundError(f"Config file not found: {p}")
+    merged: dict = {}
+    for p in paths:
+        with open(p, "r", encoding="utf-8") as f:
+            merged.update(_flatten_toml(toml.load(f)))
+    return merged
+
+
 def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentParser):
+    # New-style chain: --method / --preset
+    method = getattr(args, "method", None)
+    preset = getattr(args, "preset", None) or "default"
+    if method is not None and not args.config_file:
+        logger.info(f"Loading chain: base → presets/{preset} → methods/{method}")
+        try:
+            merged = load_method_preset(method, preset)
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            exit(1)
+
+        config_args = argparse.Namespace(**merged)
+        args = parser.parse_args(namespace=config_args)
+        args.config_file = os.path.join("configs", "methods", f"{method}.toml")
+        return args
+
     if not args.config_file:
         return args
 
@@ -1511,38 +1588,9 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
         exit(1)
 
     logger.info(f"Loading settings from {config_path}...")
-    with open(config_path, "r", encoding="utf-8") as f:
-        config_dict = toml.load(f)
+    merged = _load_toml_with_base(config_path)
 
-    # Support base_config inheritance: load base first, then overlay current
-    base_path = config_dict.pop("base_config", None)
-    if base_path is not None:
-        if not os.path.isabs(base_path):
-            base_path = os.path.join(os.path.dirname(config_path), base_path)
-        logger.info(f"Loading base config from {base_path}...")
-        with open(base_path, "r", encoding="utf-8") as f:
-            base_dict = toml.load(f)
-        # Base values first, then current config overrides
-        merged = {}
-        for d in (base_dict, config_dict):
-            for k, v in d.items():
-                if isinstance(v, dict):
-                    for kk, vv in v.items():
-                        merged[kk] = vv
-                else:
-                    merged[k] = v
-        ignore_nesting_dict = merged
-    else:
-        ignore_nesting_dict = {}
-        for section_name, section_dict in config_dict.items():
-            if not isinstance(section_dict, dict):
-                ignore_nesting_dict[section_name] = section_dict
-                continue
-
-            for key, value in section_dict.items():
-                ignore_nesting_dict[key] = value
-
-    config_args = argparse.Namespace(**ignore_nesting_dict)
+    config_args = argparse.Namespace(**merged)
     args = parser.parse_args(namespace=config_args)
     args.config_file = os.path.splitext(args.config_file)[0]
 
