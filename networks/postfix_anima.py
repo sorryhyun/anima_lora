@@ -5,17 +5,17 @@
 # across all artist tags.
 #
 # Modes:
-#   (default)   — postfix appended to cached adapter output; splice position controlled by
-#                  splice_position kwarg ("front_of_padding" legacy, "end_of_sequence" default).
-#                  Compatible with cache_llm_adapter_outputs, no adapter needed at train time
-#   "cond"      — caption-conditional postfix: mean-pool content slots -> 2-layer MLP ->
-#                  per-sample K×D postfix vectors. Strictly more expressive than "postfix".
-#                  Last layer zero-inited so training starts from baseline behavior.
-#   "prefix"    — learned vectors prepended to cached adapter output (T5-compatible space);
-#                  compatible with cache_llm_adapter_outputs, no adapter needed at train time
-#   "cfg"       — two postfix sets (pos + neg) trained with CFG-aware loss
-#   "dual"      — postfix on BOTH Qwen3 (KV) and T5 (query) sides of adapter cross-attention
-#   "embedding" — postfix injected into Qwen3 input embeddings (goes through all layers)
+#   "postfix" (default) — postfix appended to cached adapter output; splice position
+#                          controlled by splice_position kwarg ("front_of_padding"
+#                          legacy, "end_of_sequence" default). Compatible with
+#                          cache_llm_adapter_outputs, no adapter needed at train time.
+#   "prefix"            — learned vectors prepended to cached adapter output
+#                          (T5-compatible space); compatible with
+#                          cache_llm_adapter_outputs, no adapter needed at train time.
+#   "cond"              — caption-conditional postfix: mean-pool content slots ->
+#                          2-layer MLP -> per-sample K×D postfix vectors. Strictly
+#                          more expressive than "postfix". Last layer zero-inited so
+#                          training starts from baseline behavior.
 
 import os
 from typing import Optional
@@ -49,8 +49,6 @@ def create_network(
     # Allow override via network_kwargs
     embed_dim = int(kwargs.get("embed_dim", DEFAULT_EMBED_DIM))
     mode = kwargs.get("mode", "postfix")
-    cfg_scale = float(kwargs.get("cfg_scale", 4.0))
-    num_t5_postfix_tokens = int(kwargs.get("num_t5_postfix_tokens", num_postfix_tokens))
     splice_position = kwargs.get("splice_position", "end_of_sequence")
     cond_hidden_dim = int(kwargs.get("cond_hidden_dim", 256))
 
@@ -59,8 +57,6 @@ def create_network(
         embed_dim=embed_dim,
         multiplier=multiplier,
         mode=mode,
-        cfg_scale=cfg_scale,
-        num_t5_postfix_tokens=num_t5_postfix_tokens,
         splice_position=splice_position,
         cond_hidden_dim=cond_hidden_dim,
     )
@@ -108,18 +104,12 @@ def create_network_from_weights(
     elif "postfix_embeds" in weights_sd:
         mode = "postfix"
         postfix_weight = weights_sd["postfix_embeds"]
-    elif "postfix_pos" in weights_sd:
-        mode = "cfg"
-        postfix_weight = weights_sd["postfix_pos"]
-    elif "postfix_t5" in weights_sd:
-        mode = "dual"
-        postfix_weight = weights_sd.get("postfix", weights_sd.get("prefix"))
     elif metadata_mode == "prefix":
         mode = "prefix"
         postfix_weight = weights_sd.get("prefix_embeds")
     else:
         mode = metadata_mode or "postfix"
-        postfix_weight = weights_sd.get("postfix", weights_sd.get("prefix"))
+        postfix_weight = weights_sd.get("postfix_embeds")
 
     if mode == "cond":
         # Infer shapes from MLP weights
@@ -135,18 +125,13 @@ def create_network_from_weights(
         cond_hidden_dim = w0.shape[0]
         embed_dim = w0.shape[1]
         num_postfix_tokens = w2.shape[0] // embed_dim
-        num_t5_postfix_tokens = num_postfix_tokens
     else:
         if postfix_weight is None:
             raise ValueError(
                 f"Not a postfix/prefix weight file (keys: {list(weights_sd.keys())[:10]}). "
-                f"Expected 'prefix_embeds', 'postfix_embeds', 'postfix_pos', 'postfix_t5', "
-                f"or cond_mlp.* keys."
+                f"Expected 'prefix_embeds', 'postfix_embeds', or cond_mlp.* keys."
             )
         num_postfix_tokens, embed_dim = postfix_weight.shape
-        num_t5_postfix_tokens = num_postfix_tokens
-        if mode == "dual":
-            num_t5_postfix_tokens = weights_sd["postfix_t5"].shape[0]
         cond_hidden_dim = int(metadata_cond_hidden) if metadata_cond_hidden else 256
 
     splice_position = metadata_splice or "end_of_sequence"
@@ -156,7 +141,6 @@ def create_network_from_weights(
         embed_dim=embed_dim,
         multiplier=multiplier,
         mode=mode,
-        num_t5_postfix_tokens=num_t5_postfix_tokens,
         splice_position=splice_position,
         cond_hidden_dim=cond_hidden_dim,
     )
@@ -170,18 +154,18 @@ class PostfixNetwork(nn.Module):
         embed_dim: int,
         multiplier: float = 1.0,
         mode: str = "postfix",
-        cfg_scale: float = 4.0,
-        num_t5_postfix_tokens: int = None,
         splice_position: str = "end_of_sequence",
         cond_hidden_dim: int = 256,
     ):
         super().__init__()
+        if mode not in ("postfix", "prefix", "cond"):
+            raise ValueError(
+                f"mode must be 'postfix', 'prefix', or 'cond', got {mode!r}"
+            )
         self.num_postfix_tokens = num_postfix_tokens
         self.embed_dim = embed_dim
         self.multiplier = multiplier
         self.mode = mode
-        self.cfg_scale = cfg_scale
-        self.num_t5_postfix_tokens = num_t5_postfix_tokens or num_postfix_tokens
         if splice_position not in ("front_of_padding", "end_of_sequence"):
             raise ValueError(
                 f"splice_position must be 'front_of_padding' or 'end_of_sequence', got {splice_position!r}"
@@ -189,11 +173,8 @@ class PostfixNetwork(nn.Module):
         self.splice_position = splice_position
         self.cond_hidden_dim = cond_hidden_dim
 
-        # Match init scale to the target embedding space:
-        #   "embedding" mode → Qwen3 input embeddings (std ≈ 0.03)
-        #   "prefix"/(default) → adapter output (post-RMSNorm, std ≈ 1.0)
-        #   "cfg"            → Qwen3 output hidden states (std ≈ 3.5)
-        init_std = 0.02 if mode == "embedding" else 1.0
+        # Init scale matches the T5-compatible adapter output space (post-RMSNorm, std ≈ 1.0).
+        init_std = 1.0
 
         if mode == "prefix":
             self.prefix_embeds = nn.Parameter(
@@ -202,41 +183,6 @@ class PostfixNetwork(nn.Module):
             logger.info(
                 f"PostfixNetwork: prefix mode — {num_postfix_tokens} tokens in T5-compatible space, "
                 f"dim {embed_dim}, init_std={init_std}, {self.prefix_embeds.numel()} params"
-            )
-        elif mode == "cfg":
-            self.postfix_pos = nn.Parameter(
-                torch.randn(num_postfix_tokens, embed_dim) * init_std
-            )
-            self.postfix_neg = nn.Parameter(
-                torch.randn(num_postfix_tokens, embed_dim) * init_std
-            )
-            total_params = self.postfix_pos.numel() + self.postfix_neg.numel()
-            logger.info(
-                f"PostfixNetwork: {num_postfix_tokens} tokens × 2 (pos+neg), dim {embed_dim}, "
-                f"cfg_scale={cfg_scale}, init_std={init_std}, {total_params} params"
-            )
-        elif mode == "dual":
-            # Qwen3 side (KV): hidden-state space
-            self.postfix = nn.Parameter(
-                torch.randn(num_postfix_tokens, embed_dim) * init_std
-            )
-            # T5 side (query): same embedding space (adapter's in_proj is Identity for 1024→1024)
-            self.postfix_t5 = nn.Parameter(
-                torch.randn(self.num_t5_postfix_tokens, embed_dim) * init_std
-            )
-            total_params = self.postfix.numel() + self.postfix_t5.numel()
-            logger.info(
-                f"PostfixNetwork: dual mode — {num_postfix_tokens} Qwen3 tokens + "
-                f"{self.num_t5_postfix_tokens} T5 tokens, dim {embed_dim}, "
-                f"init_std={init_std}, {total_params} params"
-            )
-        elif mode == "embedding":
-            self.postfix = nn.Parameter(
-                torch.randn(num_postfix_tokens, embed_dim) * init_std
-            )
-            logger.info(
-                f"PostfixNetwork: embedding mode — {num_postfix_tokens} tokens, dim {embed_dim}, "
-                f"init_std={init_std}, {self.postfix.numel()} params"
             )
         elif mode == "cond":
             # Caption-conditional: pool content slots -> 2-layer MLP -> K*D postfix.
@@ -267,88 +213,12 @@ class PostfixNetwork(nn.Module):
             )
 
     def apply_to(self, text_encoders, unet, apply_text_encoder=True, apply_unet=True):
-        if self.mode in ("prefix", "postfix", "hidden", "cond"):
-            # No monkey-patching needed — training loop handles prefix/postfix on cached crossattn_emb
-            kind = "prepended to" if self.mode == "prefix" else "appended to"
-            logger.info(
-                f"{self.mode} mode: {self.num_postfix_tokens} learned tokens will be {kind} "
-                f"cached adapter output (T5-compatible space)"
-            )
-            return
-        if self.mode == "cfg":
-            if not hasattr(unet, "llm_adapter") or unet.llm_adapter is None:
-                raise ValueError(
-                    "unet does not have an llm_adapter — cfg postfix requires the LLM adapter"
-                )
-            # Set positive postfix as default (training loop swaps for neg pass)
-            unet.llm_adapter.postfix_embeds = self.postfix_pos
-            logger.info(
-                f"Attached {self.num_postfix_tokens} postfix embeddings (pos+neg) to LLM adapter "
-                f"(cfg mode, scale={self.cfg_scale})"
-            )
-        elif self.mode == "dual":
-            if not hasattr(unet, "llm_adapter") or unet.llm_adapter is None:
-                raise ValueError(
-                    "unet does not have an llm_adapter — dual postfix requires the LLM adapter"
-                )
-            unet.llm_adapter.postfix_embeds = self.postfix
-            unet.llm_adapter.postfix_t5_embeds = self.postfix_t5
-            logger.info(
-                f"Attached dual postfix: {self.num_postfix_tokens} Qwen3 + "
-                f"{self.num_t5_postfix_tokens} T5 tokens to LLM adapter"
-            )
-        elif self.mode == "embedding":
-            if text_encoders is None:
-                raise ValueError(
-                    "embedding mode requires live text encoder (cannot use --cache_text_encoder_outputs)"
-                )
-            te = (
-                text_encoders[0]
-                if isinstance(text_encoders, (list, tuple))
-                else text_encoders
-            )
-            self._wrap_text_encoder(te)
-            logger.info(
-                f"Attached {self.num_postfix_tokens} postfix embeddings to text encoder (embedding mode)"
-            )
-
-    def _wrap_text_encoder(self, text_encoder):
-        original_forward = text_encoder.forward
-        postfix = self.postfix
-
-        def wrapped_forward(*args, **kwargs):
-            input_ids = kwargs.pop("input_ids", None)
-            if input_ids is None and args:
-                input_ids = args[0]
-                args = args[1:]
-
-            if input_ids is not None:
-                inputs_embeds = text_encoder.embed_tokens(input_ids)
-                B = inputs_embeds.shape[0]
-                extra = (
-                    postfix.unsqueeze(0)
-                    .expand(B, -1, -1)
-                    .to(dtype=inputs_embeds.dtype, device=inputs_embeds.device)
-                )
-                inputs_embeds = torch.cat([inputs_embeds, extra], dim=1)
-                kwargs["inputs_embeds"] = inputs_embeds
-
-                attention_mask = kwargs.get("attention_mask")
-                if attention_mask is not None:
-                    extra_mask = torch.ones(
-                        B,
-                        postfix.shape[0],
-                        device=attention_mask.device,
-                        dtype=attention_mask.dtype,
-                    )
-                    kwargs["attention_mask"] = torch.cat(
-                        [attention_mask, extra_mask], dim=1
-                    )
-
-            return original_forward(*args, **kwargs)
-
-        text_encoder.forward = wrapped_forward
-        self._original_forward = original_forward
+        # No monkey-patching needed — training loop handles prefix/postfix on cached crossattn_emb
+        kind = "prepended to" if self.mode == "prefix" else "appended to"
+        logger.info(
+            f"{self.mode} mode: {self.num_postfix_tokens} learned tokens will be {kind} "
+            f"cached adapter output (T5-compatible space)"
+        )
 
     def prepend_prefix(self, crossattn_emb: torch.Tensor) -> torch.Tensor:
         """Prepend learned prefix vectors to crossattn_emb, trimming trailing padding to maintain seq length."""
@@ -432,13 +302,7 @@ class PostfixNetwork(nn.Module):
     def get_trainable_params(self):
         if self.mode == "prefix":
             return [self.prefix_embeds]
-        if self.mode == "cfg":
-            return [self.postfix_pos, self.postfix_neg]
-        elif self.mode == "dual":
-            return [self.postfix, self.postfix_t5]
-        elif self.mode == "embedding":
-            return [self.postfix]
-        elif self.mode == "cond":
+        if self.mode == "cond":
             return list(self.cond_mlp.parameters())
         return [self.postfix_embeds]
 
@@ -449,15 +313,6 @@ class PostfixNetwork(nn.Module):
         if self.mode == "prefix":
             params = [{"params": [self.prefix_embeds], "lr": lr}]
             descriptions = ["prefix_embeds"]
-        elif self.mode == "cfg":
-            params = [{"params": [self.postfix_pos, self.postfix_neg], "lr": lr}]
-            descriptions = ["postfix_pos+neg"]
-        elif self.mode == "dual":
-            params = [{"params": [self.postfix, self.postfix_t5], "lr": lr}]
-            descriptions = ["postfix_qwen3+t5"]
-        elif self.mode == "embedding":
-            params = [{"params": [self.postfix], "lr": lr}]
-            descriptions = ["postfix_embedding"]
         elif self.mode == "cond":
             params = [{"params": list(self.cond_mlp.parameters()), "lr": lr}]
             descriptions = ["cond_mlp"]
@@ -470,13 +325,7 @@ class PostfixNetwork(nn.Module):
         lr = unet_lr or default_lr
         if self.mode == "prefix":
             return [{"params": [self.prefix_embeds], "lr": lr}]
-        if self.mode == "cfg":
-            return [{"params": [self.postfix_pos, self.postfix_neg], "lr": lr}]
-        elif self.mode == "dual":
-            return [{"params": [self.postfix, self.postfix_t5], "lr": lr}]
-        elif self.mode == "embedding":
-            return [{"params": [self.postfix], "lr": lr}]
-        elif self.mode == "cond":
+        if self.mode == "cond":
             return [{"params": list(self.cond_mlp.parameters()), "lr": lr}]
         return [{"params": [self.postfix_embeds], "lr": lr}]
 
@@ -486,18 +335,6 @@ class PostfixNetwork(nn.Module):
             state_dict = {
                 "prefix_embeds": self.prefix_embeds.detach().clone().cpu().to(dtype),
             }
-        elif self.mode == "cfg":
-            state_dict = {
-                "postfix_pos": self.postfix_pos.detach().clone().cpu().to(dtype),
-                "postfix_neg": self.postfix_neg.detach().clone().cpu().to(dtype),
-            }
-        elif self.mode == "dual":
-            state_dict = {
-                "postfix": self.postfix.detach().clone().cpu().to(dtype),
-                "postfix_t5": self.postfix_t5.detach().clone().cpu().to(dtype),
-            }
-        elif self.mode == "embedding":
-            state_dict = {"postfix": self.postfix.detach().clone().cpu().to(dtype)}
         elif self.mode == "cond":
             state_dict = {
                 f"cond_mlp.{k}": v.detach().clone().cpu().to(dtype)
@@ -519,8 +356,6 @@ class PostfixNetwork(nn.Module):
             metadata["ss_embed_dim"] = str(self.embed_dim)
             metadata["ss_mode"] = self.mode
             metadata["ss_splice_position"] = self.splice_position
-            if self.mode == "cfg":
-                metadata["ss_cfg_scale"] = str(self.cfg_scale)
             if self.mode == "cond":
                 metadata["ss_cond_hidden_dim"] = str(self.cond_hidden_dim)
 
@@ -550,39 +385,6 @@ class PostfixNetwork(nn.Module):
                 raise ValueError(
                     "No 'prefix_embeds' key found in weights file for prefix mode"
                 )
-        elif self.mode == "cfg":
-            if "postfix_pos" in weights_sd:
-                self.postfix_pos.data.copy_(weights_sd["postfix_pos"])
-                self.postfix_neg.data.copy_(weights_sd["postfix_neg"])
-                logger.info(
-                    f"Loaded cfg postfix weights: pos={self.postfix_pos.shape}, neg={self.postfix_neg.shape}"
-                )
-            else:
-                raise ValueError(
-                    "No 'postfix_pos' key found in weights file for cfg mode"
-                )
-        elif self.mode == "dual":
-            weight = weights_sd.get("postfix", weights_sd.get("prefix"))
-            if weight is None:
-                raise ValueError("No 'postfix' key found in weights file for dual mode")
-            self.postfix.data.copy_(weight)
-            if "postfix_t5" not in weights_sd:
-                raise ValueError(
-                    "No 'postfix_t5' key found in weights file for dual mode"
-                )
-            self.postfix_t5.data.copy_(weights_sd["postfix_t5"])
-            logger.info(
-                f"Loaded dual postfix weights: qwen3={self.postfix.shape}, t5={self.postfix_t5.shape}"
-            )
-        elif self.mode == "embedding":
-            weight = weights_sd.get("postfix", weights_sd.get("prefix"))
-            if weight is not None:
-                self.postfix.data.copy_(weight)
-                logger.info(f"Loaded embedding postfix weights: {self.postfix.shape}")
-            else:
-                raise ValueError(
-                    "No 'postfix' key found in weights file for embedding mode"
-                )
         elif self.mode == "cond":
             mlp_sd = {
                 k[len("cond_mlp.") :]: v
@@ -602,7 +404,7 @@ class PostfixNetwork(nn.Module):
                 f"Loaded cond_mlp weights: {sum(p.numel() for p in self.cond_mlp.parameters())} params"
             )
         else:
-            weight = weights_sd.get("postfix_embeds", weights_sd.get("postfix"))
+            weight = weights_sd.get("postfix_embeds")
             if weight is not None:
                 self.postfix_embeds.data.copy_(weight)
                 logger.info(f"Loaded postfix weights: {self.postfix_embeds.shape}")

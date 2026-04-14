@@ -100,7 +100,7 @@ Higher `flex_window` → faster window growth → fewer forwards. Increase `w` t
 | File | Role |
 |------|------|
 | `library/spectrum.py` | Standalone integration: `SpectrumPredictor`, `spectrum_denoise()`, `_spectrum_fast_forward()` |
-| `../comfy/custom_nodes/comfyui-spectrum/` | ComfyUI custom node: drop-in KSampler replacement |
+| [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) | ComfyUI custom node: drop-in KSampler replacement |
 | `Spectrum/src/utils/basis_utils.py` | Core algorithm: `ChebyshevForecaster`, ridge regression, polynomial evaluation |
 
 The integration uses `register_forward_pre_hook` on `Anima.final_layer` to capture block outputs without modifying the model class. Separate forecasters are maintained for conditional and unconditional (CFG) passes.

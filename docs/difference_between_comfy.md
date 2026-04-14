@@ -9,7 +9,7 @@ Two independent Anima DiT implementations live side-by-side in this workspace:
 
 They share the same model family lineage (`MiniTrainDIT`) and load the same base checkpoints for the transformer blocks, but the two forward paths have diverged in several behaviorally-visible ways. This doc catalogs those differences so you don't waste debugging cycles chasing phantom bugs when a workflow behaves differently between `inference.py` and ComfyUI.
 
-This matters in particular for anything that hooks the forward path — notably [`custom_nodes/comfyui-spectrum/mod_guidance.py`](../custom_nodes/comfyui-spectrum/mod_guidance.py) and the per-block mod-guidance scheduling documented in [`docs/mod-guidance.md`](mod-guidance.md).
+This matters in particular for anything that hooks the forward path — notably `mod_guidance.py` in [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) and the per-block mod-guidance scheduling documented in [`docs/mod-guidance.md`](mod-guidance.md).
 
 ## TL;DR
 
@@ -78,7 +78,7 @@ t_embedding_B_T_D = self.t_embedding_norm(t_embedding_B_T_D)
 
 ### Why this matters — mod-guidance port semantics
 
-The ComfyUI port of mod guidance ([`custom_nodes/comfyui-spectrum/mod_guidance.py`](../custom_nodes/comfyui-spectrum/mod_guidance.py)) installs a `forward_hook` on `t_embedding_norm` that writes a precomputed combined tensor into the normalized embedding:
+The ComfyUI port of mod guidance (`mod_guidance.py` in [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler)) installs a `forward_hook` on `t_embedding_norm` that writes a precomputed combined tensor into the normalized embedding:
 
 ```python
 self.cond_combined  = (proj_pos + delta).detach()
@@ -192,7 +192,7 @@ ComfyUI explicitly casts `x` to `crossattn_emb.dtype` before the final layer; an
 
 anima_lora's entire performance stack is structured around "16GB VRAM must work for training and inference, and compile once across all bucket shapes." ComfyUI's stack is structured around "the runtime already handles VRAM via model_management, just make forward correct." Neither is wrong; they're solving different problems.
 
-**Practical consequence for Spectrum** (`custom_nodes/comfyui-spectrum/`): the Spectrum KSampler has to live with ComfyUI's eager forward — there's no compile boundary to respect, which makes the forward hook on `final_layer` trivially safe (the point of lifting it out of compile in `networks/spectrum.py` only applies on the anima_lora side).
+**Practical consequence for Spectrum** ([ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler)): the Spectrum KSampler has to live with ComfyUI's eager forward — there's no compile boundary to respect, which makes the forward hook on `final_layer` trivially safe (the point of lifting it out of compile in `networks/spectrum.py` only applies on the anima_lora side).
 
 ## 4. LoRA loading
 
@@ -233,8 +233,8 @@ Already covered in §3 as part of the performance table. Two concrete things wor
 
 - ✅ LoRA weights load fine (after `scripts/convert_lora_to_comfy.py`).
 - ✅ Base image quality matches (same underlying transformer blocks).
-- ❌ Mod guidance via `pooled_text_proj_0413.safetensors` **does not load into ComfyUI's model** — it lives outside the base state dict. You must use the custom node (`custom_nodes/comfyui-spectrum/mod_guidance.py`) to activate it, which installs the `t_embedding_norm` hook out-of-band.
-- ❌ Spectrum acceleration is not available unless you run the `comfyui-spectrum` custom node.
+- ❌ Mod guidance via `pooled_text_proj_0413.safetensors` **does not load into ComfyUI's model** — it lives outside the base state dict. You must use the custom node from [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) to activate it, which installs the `t_embedding_norm` hook out-of-band.
+- ❌ Spectrum acceleration is not available unless you run the [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) custom node.
 
 ### Running a ComfyUI-loaded model through `inference.py`
 
@@ -262,7 +262,7 @@ There is no reason to merge the two; they solve different problems. The point of
 ## References
 
 - `docs/mod-guidance.md` — modulation-guidance mechanism, per-block schedule rationale, and distillation flow
-- `custom_nodes/comfyui-spectrum/mod_guidance.py` — ComfyUI port of mod guidance with the per-block hook mechanism
+- [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) `mod_guidance.py` — ComfyUI port of mod guidance with the per-block hook mechanism
 - `library/anima_models.py` — anima_lora's `Anima` class, forward path at `forward_mini_train_dit`
 - `comfy/comfy/ldm/cosmos/predict2.py::MiniTrainDIT` — ComfyUI's vanilla forward
 - `comfy/comfy/ldm/anima/model.py` — ComfyUI's Anima wrapper (`preprocess_text_embeds`)

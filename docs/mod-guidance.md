@@ -177,7 +177,7 @@ Output: `pooled_text_proj.safetensors` in the data directory.
 
 ## ComfyUI
 
-Mod guidance ships inside `custom_nodes/comfyui-spectrum/` as a drop-in KSampler replacement. The adapter (`pooled_text_proj_0413.safetensors`, ~12MB) is auto-downloaded on first use from the anima_lora GitHub release page.
+Mod guidance ships inside the [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) repo as a drop-in KSampler replacement. The adapter (`pooled_text_proj_0413.safetensors`, ~12MB) is auto-downloaded on first use from the anima_lora GitHub release page.
 
 | Node | Inputs | When to use |
 |---|---|---|

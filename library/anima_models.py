@@ -2190,43 +2190,6 @@ class LLMAdapter(nn.Module):
         target_attention_mask=None,
         source_attention_mask=None,
     ):
-        # Inject learned embeddings if attached (postfix tuning).
-        # Appended as postfix to preserve tag-order positional encoding (RoPE).
-        if hasattr(self, "postfix_embeds") and self.postfix_embeds is not None:
-            B = source_hidden_states.shape[0]
-            extra = (
-                self.postfix_embeds.unsqueeze(0)
-                .expand(B, -1, -1)
-                .to(dtype=source_hidden_states.dtype)
-            )
-            source_hidden_states = torch.cat([source_hidden_states, extra], dim=1)
-            if source_attention_mask is not None:
-                num_extra = self.postfix_embeds.shape[0]
-                extra_mask = torch.ones(
-                    B,
-                    num_extra,
-                    device=source_attention_mask.device,
-                    dtype=source_attention_mask.dtype,
-                )
-                source_attention_mask = torch.cat(
-                    [source_attention_mask, extra_mask], dim=-1
-                )
-
-        # Extend target_attention_mask for T5-side postfix BEFORE 4D reshape
-        if hasattr(self, "postfix_t5_embeds") and self.postfix_t5_embeds is not None:
-            if target_attention_mask is not None:
-                B = source_hidden_states.shape[0]
-                num_extra = self.postfix_t5_embeds.shape[0]
-                extra_mask = torch.ones(
-                    B,
-                    num_extra,
-                    device=target_attention_mask.device,
-                    dtype=target_attention_mask.dtype,
-                )
-                target_attention_mask = torch.cat(
-                    [target_attention_mask, extra_mask], dim=-1
-                )
-
         # Keep masks as 2D [B, L] bool tensors — the attention layer handles
         # expansion to 4D for SDPA or packing for flash_attn_varlen_func.
         if target_attention_mask is not None:
@@ -2240,14 +2203,6 @@ class LLMAdapter(nn.Module):
                 source_attention_mask = source_attention_mask.squeeze(1).squeeze(1)
 
         x = self.in_proj(self.embed(target_input_ids))
-
-        # Inject T5-side postfix embeddings (dual mode: adds learned query tokens)
-        if hasattr(self, "postfix_t5_embeds") and self.postfix_t5_embeds is not None:
-            B = x.shape[0]
-            extra_t5 = (
-                self.postfix_t5_embeds.unsqueeze(0).expand(B, -1, -1).to(dtype=x.dtype)
-            )
-            x = torch.cat([x, extra_t5], dim=1)
 
         context = source_hidden_states
         position_ids = torch.arange(x.shape[1], device=x.device).unsqueeze(0)

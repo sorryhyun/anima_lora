@@ -198,7 +198,7 @@ Utility scripts in `scripts/`:
 
 ## Custom nodes
 
-`custom_nodes/comfyui-spectrum/` — ComfyUI drop-in KSampler replacement for Spectrum inference acceleration. Published to ComfyUI registry via `.github/workflows/publish_action.yml`.
+Spectrum KSampler and mod guidance ComfyUI nodes live in a separate repo: https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler
 
 `custom_nodes/comfyui-hydralora/` — HydraLoRA loader nodes for ComfyUI. Two nodes: **HydraLoRA Loader (Manual)** with per-expert weight sliders, and **HydraLoRA Loader (Auto Router)** that computes expert weights from text conditioning via the learned router. Loads `*_hydra.safetensors` files.
 

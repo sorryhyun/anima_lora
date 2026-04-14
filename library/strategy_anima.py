@@ -128,17 +128,6 @@ class AnimaTextEncodingStrategy(TextEncodingStrategy):
         )
         prompt_embeds = outputs.last_hidden_state
 
-        # Handle extended sequence from postfix embedding injection (mode=embedding)
-        if prompt_embeds.shape[1] > qwen3_attn_mask.shape[1]:
-            extra_len = prompt_embeds.shape[1] - qwen3_attn_mask.shape[1]
-            extra_mask = torch.ones(
-                qwen3_attn_mask.shape[0],
-                extra_len,
-                device=qwen3_attn_mask.device,
-                dtype=qwen3_attn_mask.dtype,
-            )
-            qwen3_attn_mask = torch.cat([qwen3_attn_mask, extra_mask], dim=1)
-
         prompt_embeds[~qwen3_attn_mask.bool()] = 0
 
         return [prompt_embeds, qwen3_attn_mask, t5_input_ids, t5_attn_mask]
