@@ -11,7 +11,7 @@ output/
 *.pt
 .DS_Store
 *.whl
-image_dataset/
+image_dataset
 post_image_dataset/
 masks/
 masks_mit/
