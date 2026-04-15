@@ -167,7 +167,7 @@ def main():
         help="Resume from a saved pooled_text_proj checkpoint",
     )
     parser.add_argument(
-        "--grad_accum", type=int, default=4, help="Gradient accumulation steps"
+        "--grad_accum", type=int, default=2, help="Gradient accumulation steps"
     )
     parser.add_argument(
         "--torch_compile",

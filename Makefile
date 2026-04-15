@@ -1,12 +1,14 @@
 ACCELERATE := python -m accelerate.commands.accelerate_cli
-LATEST_LORA = $(shell python -c "import glob,os; files=glob.glob('output/*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_LORA = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/*.safetensors') if not f.endswith('_moe.safetensors')]; print(max(files,key=os.path.getmtime))")
+LATEST_HYDRA = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/anima_hydra*_moe.safetensors') if '.bak.' not in f]; print(max(files,key=os.path.getmtime))")
+LATEST_APEX = $(shell python -c "import glob,os; files=glob.glob('output/anima_apex*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/anima_postfix*.safetensors') if '_exp' not in os.path.basename(f) and '_func' not in os.path.basename(f)]; print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_exp*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora apex postfix postfix-exp postfix-func prefix step test test-mod test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora apex postfix postfix-exp postfix-func prefix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -71,8 +73,8 @@ distill-mod:
 		--data_dir post_image_dataset \
 		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
 		--output_path output/pooled_text_proj.safetensors \
-		--iterations 750 \
-		--lr 3e-5 \
+		--iterations 1500 \
+		--lr 1e-4 \
 		--warmup 0.05 \
 		--blocks_to_swap 0 \
 		--attn_mode flash \
@@ -86,6 +88,19 @@ test:
 test-mod:
 	$(TEST_COMMON) \
 		--pooled_text_proj $(LATEST_MOD)
+
+test-apex:
+	$(TEST_COMMON) \
+		--lora_weight $(LATEST_APEX) \
+		--lora_multiplier 1.0 \
+		--infer_steps 4 \
+		--guidance_scale 1.0 \
+		--sampler euler
+
+test-hydra:
+	$(TEST_COMMON) \
+		--lora_weight $(LATEST_HYDRA) \
+		--lora_multiplier 1.0
 
 test-prefix:
 	$(TEST_COMMON) \

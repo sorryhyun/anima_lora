@@ -42,6 +42,113 @@ _LORA_ATTN_FUSE_SPECS = (
 )
 
 
+def _stack_lora_ups(state_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    """Stack per-expert `.lora_ups.N.weight` keys into fused `.lora_up_weight`
+    parameters (training-runtime HydraLoRA form). In-place; returns the same dict.
+    """
+    ups_prefixes: Dict[str, Dict[int, torch.Tensor]] = {}
+    for key in list(state_dict.keys()):
+        if ".lora_ups." in key and key.endswith(".weight"):
+            prefix = key.split(".lora_ups.")[0]
+            idx = int(key.split("lora_ups.")[1].split(".")[0])
+            ups_prefixes.setdefault(prefix, {})[idx] = state_dict.pop(key)
+    for prefix, experts in ups_prefixes.items():
+        stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
+        state_dict[f"{prefix}.lora_up_weight"] = stacked
+    return state_dict
+
+
+def _refuse_split_hydra_keys(
+    state_dict: Dict[str, torch.Tensor],
+) -> Dict[str, torch.Tensor]:
+    """Inverse of the hydra q/k/v split performed in save_weights.
+
+    Mirrors `_refuse_unfused_attn_lora_keys` but for the HydraLoRA key shape:
+    stacked `lora_up_weight` of shape (num_experts, out_dim, rank), shared
+    `lora_down.weight` / `alpha` / `router.weight` / `router.bias` /
+    optional `inv_scale`. Must run AFTER `_stack_lora_ups` so per-expert ups
+    have already been folded into `lora_up_weight`.
+
+    At save time, shared tensors (down/alpha/router.*/inv_scale) are cloned
+    across q/k/v because routing is driven by the same layer input. Here we
+    pick the first component (all three are identical) and concat per-expert
+    `lora_up_weight` along the out_dim axis in q,k,v order.
+    """
+    for attn_type, fused_letters, suffixes in _LORA_ATTN_FUSE_SPECS:
+        first_key_suffix = f"_{attn_type}_{suffixes[0]}_proj.lora_up_weight"
+        shared_prefixes: List[str] = []
+        for key in list(state_dict.keys()):
+            if not key.endswith(first_key_suffix):
+                continue
+            # key == "{shared_prefix}{suffixes[0]}_proj.lora_up_weight"
+            shared_prefix = key[: -len(f"{suffixes[0]}_proj.lora_up_weight")]
+            shared_prefixes.append(shared_prefix)
+
+        for shared_prefix in shared_prefixes:
+            ups: List[torch.Tensor] = []
+            downs: List[torch.Tensor] = []
+            alphas: List[Optional[torch.Tensor]] = []
+            routers_w: List[Optional[torch.Tensor]] = []
+            routers_b: List[Optional[torch.Tensor]] = []
+            inv_scales: List[Optional[torch.Tensor]] = []
+            complete = True
+            for suf in suffixes:
+                cp = f"{shared_prefix}{suf}_proj"
+                uk = f"{cp}.lora_up_weight"
+                dk = f"{cp}.lora_down.weight"
+                if uk not in state_dict or dk not in state_dict:
+                    complete = False
+                    break
+                ups.append(state_dict[uk])
+                downs.append(state_dict[dk])
+                alphas.append(state_dict.get(f"{cp}.alpha"))
+                routers_w.append(state_dict.get(f"{cp}.router.weight"))
+                routers_b.append(state_dict.get(f"{cp}.router.bias"))
+                inv_scales.append(state_dict.get(f"{cp}.inv_scale"))
+            if not complete:
+                continue
+
+            e0, _, r0 = ups[0].shape
+            if not all(u.ndim == 3 and u.shape[0] == e0 and u.shape[2] == r0 for u in ups):
+                logger.warning(
+                    f"hydra attn fuse: inconsistent up shapes at {shared_prefix}*, skipping"
+                )
+                continue
+
+            # Per-expert concat along out_dim axis: (E, sum_out, rank).
+            up_fused = torch.cat(ups, dim=1).contiguous()
+            down = downs[0]
+            alpha = alphas[0]
+            router_w = routers_w[0]
+            router_b = routers_b[0]
+            inv_scale = inv_scales[0]
+
+            fused_prefix = f"{shared_prefix}{fused_letters}_proj"
+            state_dict[f"{fused_prefix}.lora_up_weight"] = up_fused
+            state_dict[f"{fused_prefix}.lora_down.weight"] = down
+            if alpha is not None:
+                state_dict[f"{fused_prefix}.alpha"] = alpha
+            if router_w is not None:
+                state_dict[f"{fused_prefix}.router.weight"] = router_w
+            if router_b is not None:
+                state_dict[f"{fused_prefix}.router.bias"] = router_b
+            if inv_scale is not None:
+                state_dict[f"{fused_prefix}.inv_scale"] = inv_scale
+
+            for suf in suffixes:
+                cp = f"{shared_prefix}{suf}_proj"
+                for subk in (
+                    "lora_up_weight",
+                    "lora_down.weight",
+                    "alpha",
+                    "router.weight",
+                    "router.bias",
+                    "inv_scale",
+                ):
+                    state_dict.pop(f"{cp}.{subk}", None)
+    return state_dict
+
+
 def _refuse_unfused_attn_lora_keys(
     state_dict: Dict[str, torch.Tensor],
 ) -> Dict[str, torch.Tensor]:
@@ -98,24 +205,51 @@ def _refuse_unfused_attn_lora_keys(
                 )
                 continue
 
-            per_block_scales: List[float] = []
-            for a in alphas:
-                if a is None:
-                    # LoRAModule default: alpha = lora_dim -> scale = 1.
-                    per_block_scales.append(1.0)
-                else:
-                    av = a.item() if torch.is_tensor(a) else float(a)
-                    per_block_scales.append(av / r)
-
             dtype = ups[0].dtype
             device = ups[0].device
 
-            down_fused = torch.cat(downs, dim=0).contiguous()
-            up_fused = torch.zeros((n * out, n * r), dtype=dtype, device=device)
-            for i, (u, s) in enumerate(zip(ups, per_block_scales)):
-                up_fused[i * out : (i + 1) * out, i * r : (i + 1) * r] = u * s
-            # alpha_fused = n*r so LoRAModule's scale = (n*r) / (n*r) = 1
-            alpha_fused = torch.tensor(float(n * r))
+            # Pre-fused detection. When save_weights splits a previously-fused
+            # module it clones the *full* fused down into every per-component
+            # key (see "Split fused projections" in save_weights). If we ran
+            # the block-diagonal path on that, rank would inflate r -> n*r per
+            # round trip (and n^k*r after k cycles). Identical downs + equal
+            # alphas across components is the reliable signature of that case;
+            # independently-trained per-component LoRAs (e.g. tlora warm-start)
+            # never produce bit-identical down tensors.
+            def _a(a):
+                return a.item() if torch.is_tensor(a) else float(a)
+
+            pre_fused = (
+                n >= 2
+                and all(torch.equal(downs[0], d) for d in downs[1:])
+                and all(a is not None for a in alphas)
+                and all(_a(a) == _a(alphas[0]) for a in alphas[1:])
+            )
+
+            if pre_fused:
+                # Saved alpha is the fused-module alpha, so pass ups through
+                # unscaled and keep the runtime scale = alpha/rank intact.
+                alpha_value = _a(alphas[0])
+                down_fused = downs[0].contiguous()
+                up_fused = torch.cat(ups, dim=0).contiguous()
+                alpha_fused = torch.tensor(float(alpha_value))
+            else:
+                per_block_scales: List[float] = []
+                for a in alphas:
+                    if a is None:
+                        # LoRAModule default: alpha = lora_dim -> scale = 1.
+                        per_block_scales.append(1.0)
+                    else:
+                        per_block_scales.append(_a(a) / r)
+
+                down_fused = torch.cat(downs, dim=0).contiguous()
+                up_fused = torch.zeros(
+                    (n * out, n * r), dtype=dtype, device=device
+                )
+                for i, (u, s) in enumerate(zip(ups, per_block_scales)):
+                    up_fused[i * out : (i + 1) * out, i * r : (i + 1) * r] = u * s
+                # alpha_fused = n*r so LoRAModule's scale = (n*r) / (n*r) = 1
+                alpha_fused = torch.tensor(float(n * r))
 
             fused_prefix = f"{shared_prefix}{fused_letters}_proj"
             state_dict[f"{fused_prefix}.lora_down.weight"] = down_fused
@@ -464,6 +598,11 @@ def create_network_from_weights(
     # Strip torch.compile '_orig_mod_' from old checkpoint keys
     weights_sd = LoRANetwork._strip_orig_mod_keys(weights_sd)
 
+    # HydraLoRA moe files: stack per-expert ups and fuse split q/k/v first so
+    # the fused training-runtime keys are what the regular attention refuser
+    # and the downstream detection loop see.
+    weights_sd = _stack_lora_ups(weights_sd)
+    weights_sd = _refuse_split_hydra_keys(weights_sd)
     # Refuse unfused attn projections so modules_dim reflects the runtime (qkv/kv fused).
     weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
 
@@ -521,10 +660,13 @@ def create_network_from_weights(
         if "llm_adapter" in lora_name:
             train_llm_adapter = True
 
-    if for_inference:
-        module_class = LoRAInfModule
-    elif has_hydra:
+    # has_hydra wins over for_inference: the router is sample-dependent and
+    # can't be folded into a LoRAInfModule static-merge path. The dynamic
+    # forward-hook path (HydraLoRAModule.apply_to) works in eval mode too.
+    if has_hydra:
         module_class = HydraLoRAModule
+    elif for_inference:
+        module_class = LoRAInfModule
     elif has_dora:
         module_class = DoRAModule
     elif has_ortho:
@@ -1141,17 +1283,13 @@ class LoRANetwork(torch.nn.Module):
                 new_key = key.replace(".dora_scale", ".magnitude")
                 weights_sd[new_key] = weights_sd.pop(key)
 
-        # Migrate old lora_ups.N.weight → fused lora_up_weight
-        ups_prefixes: dict[str, dict[int, torch.Tensor]] = {}
-        for key in list(weights_sd.keys()):
-            if ".lora_ups." in key and key.endswith(".weight"):
-                prefix = key.split(".lora_ups.")[0]
-                idx = int(key.split("lora_ups.")[1].split(".")[0])
-                ups_prefixes.setdefault(prefix, {})[idx] = weights_sd.pop(key)
-        for prefix, experts in ups_prefixes.items():
-            stacked = torch.stack([experts[i] for i in sorted(experts.keys())])
-            weights_sd[f"{prefix}.lora_up_weight"] = stacked
-
+        # Stack per-expert hydra ups into fused lora_up_weight (training form).
+        weights_sd = _stack_lora_ups(weights_sd)
+        # Refuse split hydra attn keys BEFORE the regular refuser: hydra splits
+        # carry no lora_up.weight, so the regular path would skip them anyway,
+        # but running hydra first means any non-hydra attention still goes
+        # through the normal code path cleanly.
+        weights_sd = _refuse_split_hydra_keys(weights_sd)
         # Refuse unfused attn projections (inverse of save_weights defusing).
         weights_sd = _refuse_unfused_attn_lora_keys(weights_sd)
 
@@ -1443,6 +1581,15 @@ class LoRANetwork(torch.nn.Module):
 
         state_dict = self.state_dict()
 
+        # Fused→split mapping: the training runtime uses fused self_attn.qkv_proj
+        # and cross_attn.kv_proj, but ComfyUI's Anima model has separate
+        # q_proj/k_proj/v_proj. Used for both the baked-down save and the
+        # HydraLoRA multi-head save below.
+        _FUSED_SPLIT = {
+            "self_attn_qkv_proj": ("self_attn_{}_proj", ("q", "k", "v")),
+            "cross_attn_kv_proj": ("cross_attn_{}_proj", ("k", "v")),
+        }
+
         # OrthoLoRA → standard LoRA conversion for ComfyUI compatibility
         # Compute ΔW = P·diag(λ)·Q - P_base·diag(λ_base)·Q_base, then SVD → lora_up/lora_down
         ortho_prefixes = set()
@@ -1524,9 +1671,11 @@ class LoRANetwork(torch.nn.Module):
                 hydra_prefixes.add(key.removesuffix(".lora_up_weight"))
 
         if hydra_prefixes:
-            # Save full multi-head format (experts + router) for custom node inference
-            # Expand fused lora_up_weight back to per-expert lora_ups.N.weight keys
-            hydra_file = os.path.splitext(file)[0] + "_hydra.safetensors"
+            # Save full multi-head format (experts + router) for custom node inference.
+            # Expand fused lora_up_weight back to per-expert lora_ups.N.weight keys,
+            # then apply the same qkv/kv split used by the baked-down file so the
+            # ComfyUI HydraLoRA custom node sees q_proj/k_proj/v_proj names it can map.
+            hydra_file = os.path.splitext(file)[0] + "_moe.safetensors"
             hydra_sd = {}
             for k, v in state_dict.items():
                 v = v.detach().clone().to("cpu")
@@ -1536,6 +1685,62 @@ class LoRANetwork(torch.nn.Module):
                         hydra_sd[f"{prefix}.lora_ups.{i}.weight"] = v[i]
                 else:
                     hydra_sd[k] = v
+
+            # Split fused attention prefixes per-expert. lora_down / alpha /
+            # router are shared across q/k/v (same layer input, same routing
+            # decision), so we clone them into each split component.
+            hydra_fused_prefixes = []
+            for key in list(hydra_sd.keys()):
+                if not key.endswith(".lora_down.weight"):
+                    continue
+                prefix = key.removesuffix(".lora_down.weight")
+                for fused_frag in _FUSED_SPLIT:
+                    if prefix.endswith(fused_frag):
+                        hydra_fused_prefixes.append((prefix, fused_frag))
+                        break
+
+            for prefix, fused_frag in hydra_fused_prefixes:
+                template, suffixes = _FUSED_SPLIT[fused_frag]
+                n = len(suffixes)
+                down = hydra_sd.pop(f"{prefix}.lora_down.weight")
+                alpha = hydra_sd.pop(f"{prefix}.alpha", None)
+                router_w = hydra_sd.pop(f"{prefix}.router.weight", None)
+                router_b = hydra_sd.pop(f"{prefix}.router.bias", None)
+                inv_scale = hydra_sd.pop(f"{prefix}.inv_scale", None)
+
+                ups_keys = sorted(
+                    (
+                        k
+                        for k in list(hydra_sd.keys())
+                        if k.startswith(f"{prefix}.lora_ups.")
+                        and k.endswith(".weight")
+                    ),
+                    key=lambda k: int(
+                        k.removeprefix(f"{prefix}.lora_ups.").removesuffix(
+                            ".weight"
+                        )
+                    ),
+                )
+                ups = [hydra_sd.pop(k) for k in ups_keys]
+                ups_chunked = [u.chunk(n, dim=0) for u in ups]
+
+                base_prefix = prefix.removesuffix(fused_frag)
+                for ci, suffix in enumerate(suffixes):
+                    new_prefix = base_prefix + template.format(suffix)
+                    hydra_sd[f"{new_prefix}.lora_down.weight"] = down.clone()
+                    for ei, u_chunks in enumerate(ups_chunked):
+                        hydra_sd[f"{new_prefix}.lora_ups.{ei}.weight"] = (
+                            u_chunks[ci].contiguous().clone()
+                        )
+                    if alpha is not None:
+                        hydra_sd[f"{new_prefix}.alpha"] = alpha.clone()
+                    if router_w is not None:
+                        hydra_sd[f"{new_prefix}.router.weight"] = router_w.clone()
+                    if router_b is not None:
+                        hydra_sd[f"{new_prefix}.router.bias"] = router_b.clone()
+                    if inv_scale is not None:
+                        hydra_sd[f"{new_prefix}.inv_scale"] = inv_scale.clone()
+
             if dtype is not None:
                 hydra_sd = {k: v.to(dtype) for k, v in hydra_sd.items()}
             from safetensors.torch import save_file as sf_save
@@ -1555,7 +1760,7 @@ class LoRANetwork(torch.nn.Module):
 
         # Per-module routers are useless for baked-down (weight-add) inference —
         # strip them from the main ComfyUI file. They are preserved in the
-        # sibling *_hydra.safetensors above.
+        # sibling *_moe.safetensors above.
         for key in list(state_dict.keys()):
             if key.endswith(".router.weight") or key.endswith(".router.bias"):
                 del state_dict[key]
@@ -1569,12 +1774,7 @@ class LoRANetwork(torch.nn.Module):
                 del state_dict[key]
 
         # Split fused projections (qkv_proj, kv_proj) into separate per-component
-        # weights for ComfyUI compatibility. The training model uses fused projections
-        # but ComfyUI's Anima model uses separate q_proj/k_proj/v_proj.
-        _FUSED_SPLIT = {
-            "self_attn_qkv_proj": ("self_attn_{}_proj", ("q", "k", "v")),
-            "cross_attn_kv_proj": ("cross_attn_{}_proj", ("k", "v")),
-        }
+        # weights for ComfyUI compatibility — uses _FUSED_SPLIT defined above.
         fused_prefixes = []
         for key in list(state_dict.keys()):
             if not key.endswith(".lora_down.weight"):

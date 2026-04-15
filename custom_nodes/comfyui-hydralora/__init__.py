@@ -1,13 +1,16 @@
 """HydraLoRA: Multi-style LoRA loader for ComfyUI (manual expert blending).
 
-Loads a HydraLoRA multi-head safetensors file (*_hydra.safetensors) and applies
+Loads a HydraLoRA multi-head safetensors file (*_moe.safetensors) and applies
 it to the model with user-controlled per-expert weights (sliders).
 
-Note: HydraLoRA now uses *layer-local* routing — each adapted Linear has its own
-router that reads its actual layer input at training time. That means automatic
-routing cannot be done via weight-add patching; it would require live forward
-hooks. The auto-router node has been removed. Use manual sliders (this file) or
-retrain with uniform routing if you need a plain LoRA.
+Note: HydraLoRA uses *layer-local* routing — each adapted Linear has its own
+router that reads its actual layer input at training time. Slider-driven
+bake-down is a manual override: it pins the gate at a user-chosen uniform
+distribution across all layers and samples, which cannot reproduce the
+trained router's per-sample per-layer decisions. For true router-live
+inference use the CLI (`python inference.py --lora_weight *_moe.safetensors`,
+auto-detected via `library/inference_pipeline.py:_is_hydra_moe`) — it attaches
+the network as dynamic forward hooks that run the real router on every step.
 """
 
 import logging
@@ -32,6 +35,8 @@ def _load_hydra(file_path: str) -> dict:
       <prefix>.alpha                  (optional)
       <prefix>.router.weight          (optional — ignored by manual loader)
       <prefix>.router.bias            (optional — ignored by manual loader)
+      <prefix>.inv_scale              (optional — per-channel input absorption;
+                                       folded into lora_down at bake time)
     """
     if file_path in _hydra_cache:
         return _hydra_cache[file_path]
@@ -66,6 +71,8 @@ def _load_hydra(file_path: str) -> dict:
             modules[prefix]["lora_ups"][idx] = value
         elif rest == "alpha":
             modules[prefix]["alpha"] = value
+        elif rest == "inv_scale":
+            modules[prefix]["inv_scale"] = value
         # .router.weight / .router.bias are ignored here (manual blending only).
 
     # Infer num_experts from any module that has lora_ups.
@@ -96,7 +103,9 @@ def _bake_down(
 
     Args:
         hydra_data: parsed HydraLoRA data from _load_hydra
-        expert_weights: (num_experts,) normalized weights for each expert
+        expert_weights: (num_experts,) weights for each expert. Typically
+            normalized to sum to 1 so the blended magnitude matches the
+            training-time softmax gate.
 
     Returns:
         Standard LoRA state_dict with lora_down.weight, lora_up.weight, alpha per module
@@ -106,7 +115,7 @@ def _bake_down(
         if "lora_down" not in mod_data or "lora_ups" not in mod_data:
             continue
 
-        # Weighted average of expert up-projections
+        # Weighted combination of expert up-projections.
         ups = mod_data["lora_ups"]
         stacked = torch.stack(
             [ups[i] for i in sorted(ups.keys())], dim=0
@@ -115,7 +124,18 @@ def _bake_down(
             "e,eor->or", expert_weights.to(stacked.device), stacked
         )
 
-        result[f"{prefix}.lora_down.weight"] = mod_data["lora_down"]
+        # Undo the per-channel input absorption that HydraLoRAModule applies
+        # at forward time (`x_lora = x * inv_scale`). The ComfyUI patcher
+        # merges LoRA as a raw weight delta, so we have to fold inv_scale
+        # into lora_down here — mirrors LoRAInfModule.merge_to.
+        down_weight = mod_data["lora_down"]
+        if "inv_scale" in mod_data and down_weight.dim() == 2:
+            inv_scale = mod_data["inv_scale"].to(
+                dtype=down_weight.dtype, device=down_weight.device
+            )
+            down_weight = down_weight * inv_scale.unsqueeze(0)
+
+        result[f"{prefix}.lora_down.weight"] = down_weight
         result[f"{prefix}.lora_up.weight"] = combined_up
         if "alpha" in mod_data:
             result[f"{prefix}.alpha"] = mod_data["alpha"]
@@ -144,7 +164,7 @@ class HydraLoRALoader:
                 "model": ("MODEL",),
                 "hydra_lora": (
                     folder_paths.get_filename_list("loras"),
-                    {"tooltip": "HydraLoRA multi-head file (*_hydra.safetensors)"},
+                    {"tooltip": "HydraLoRA multi-head file (*_moe.safetensors)"},
                 ),
                 "strength": (
                     "FLOAT",

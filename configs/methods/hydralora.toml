@@ -2,6 +2,10 @@
 
 dataset_config = "configs/dataset_config.toml"
 
+# Distinct from the default "anima_lora" so the baked-down file doesn't
+# collide with regular LoRA runs and `make test-hydra` can key off it.
+output_name = "anima_hydra"
+
 network_alpha = 8
 network_dim = 8
 

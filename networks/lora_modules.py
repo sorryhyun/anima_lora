@@ -273,6 +273,7 @@ class HydraLoRAModule(torch.nn.Module):
         self.fp32_accumulation = False
         self._timestep_mask = None
         self._last_gate = None  # (B, num_experts), cached each forward for balance loss
+        self.enabled = True  # parity with LoRAInfModule for P-GRAFT cutoff toggling
 
     def apply_to(self):
         self.org_forward = self.org_module.forward
@@ -297,6 +298,9 @@ class HydraLoRAModule(torch.nn.Module):
 
     def forward(self, x):
         org_forwarded = self.org_forward(x)
+
+        if not self.enabled:
+            return org_forwarded
 
         # module dropout
         if self.module_dropout is not None and self.training:

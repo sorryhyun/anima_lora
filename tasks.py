@@ -31,12 +31,17 @@ def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
 
     If `exclude` is given, any filename containing that substring is skipped. Useful
     to disambiguate overlapping prefixes (e.g. anima_postfix vs anima_postfix_exp).
+    HydraLoRA multi-head sibling files (`*_moe.safetensors`) and backup files
+    (containing `.bak.`) are always excluded.
     """
     outputs = sorted(
         (
             f
             for f in (ROOT / "output").glob("*.safetensors")
-            if f.name.startswith(prefix) and (exclude is None or exclude not in f.name)
+            if f.name.startswith(prefix)
+            and not f.name.endswith("_moe.safetensors")
+            and ".bak." not in f.name
+            and (exclude is None or exclude not in f.name)
         ),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
@@ -50,6 +55,33 @@ def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
 
 def latest_lora() -> Path:
     return latest_output()
+
+
+def latest_hydra() -> Path:
+    """Latest HydraLoRA multi-head file (`anima_hydra*_moe.safetensors`).
+
+    Router-live inference needs the moe sibling, not the baked-down file.
+    The baked-down `anima_hydra*.safetensors` collapses experts to a uniform
+    average, which defeats the layer-local routing objective — use it only
+    as a ComfyUI-compat fallback.
+    """
+    outputs = sorted(
+        (
+            f
+            for f in (ROOT / "output").glob("anima_hydra*_moe.safetensors")
+            if ".bak." not in f.name
+        ),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not outputs:
+        print(
+            "No 'anima_hydra*_moe.safetensors' files found in output/ "
+            "(train with `make hydralora` to produce one)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return outputs[0]
 
 
 def run(cmd: list[str], **kwargs):
@@ -179,6 +211,29 @@ INFERENCE_BASE = [
 
 def cmd_test(extra):
     run([*INFERENCE_BASE, "--lora_weight", str(latest_lora()), *extra])
+
+
+def cmd_test_apex(extra):
+    run(
+        [
+            *INFERENCE_BASE,
+            "--lora_weight",
+            str(latest_output("anima_apex")),
+            "--infer_steps",
+            "4",
+            "--guidance_scale",
+            "1.0",
+            "--sampler",
+            "euler",
+            *extra,
+        ]
+    )
+
+
+def cmd_test_hydra(extra):
+    # Uses the moe sibling (router-live); static-merge is auto-skipped in
+    # library/inference_pipeline.py:_is_hydra_moe detection.
+    run([*INFERENCE_BASE, "--lora_weight", str(latest_hydra()), *extra])
 
 
 def cmd_test_prefix(extra):
@@ -503,6 +558,8 @@ COMMANDS = {
     ),
     "prefix": (cmd_prefix, "Prefix tuning (T5-space, cache-compatible)"),
     "test": (cmd_test, "Inference with latest LoRA"),
+    "test-apex": (cmd_test_apex, "Inference with latest APEX LoRA"),
+    "test-hydra": (cmd_test_hydra, "Inference with latest HydraLoRA moe (router-live)"),
     "test-prefix": (cmd_test_prefix, "Inference with latest prefix weight"),
     "test-postfix": (cmd_test_postfix, "Inference with latest postfix weight"),
     "test-postfix-exp": (
