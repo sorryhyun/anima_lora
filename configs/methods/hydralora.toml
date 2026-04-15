@@ -6,7 +6,10 @@ network_alpha = 8
 network_dim = 8
 
 use_hydra = true
-num_experts = 12
+# Per-module layer-local routing lets each Linear specialize independently,
+# so the coarse k=12 artist-clustering heuristic no longer applies. k=4 is
+# the new default; raise if per-module utilization logs show collapse.
+num_experts = 4
 balance_loss_weight = 0.01
 
 learning_rate = 5e-4

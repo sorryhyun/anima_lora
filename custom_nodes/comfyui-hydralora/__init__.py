@@ -1,19 +1,19 @@
-"""HydraLoRA: Multi-style LoRA loader with MoE routing for ComfyUI.
+"""HydraLoRA: Multi-style LoRA loader for ComfyUI (manual expert blending).
 
 Loads a HydraLoRA multi-head safetensors file (*_hydra.safetensors) and applies
-it to the model with either:
-  - Manual expert weights (sliders per expert)
-  - Automatic routing from text conditioning (via the learned router)
+it to the model with user-controlled per-expert weights (sliders).
 
-The node produces a MODEL output with the HydraLoRA applied as a model patch,
-compatible with any ComfyUI sampler.
+Note: HydraLoRA now uses *layer-local* routing — each adapted Linear has its own
+router that reads its actual layer input at training time. That means automatic
+routing cannot be done via weight-add patching; it would require live forward
+hooks. The auto-router node has been removed. Use manual sliders (this file) or
+retrain with uniform routing if you need a plain LoRA.
 """
 
 import logging
 from typing import Dict
 
 import torch
-import torch.nn.functional as F
 
 import folder_paths
 
@@ -24,7 +24,15 @@ _hydra_cache: Dict[str, dict] = {}
 
 
 def _load_hydra(file_path: str) -> dict:
-    """Load and parse a HydraLoRA multi-head safetensors file."""
+    """Load and parse a HydraLoRA multi-head safetensors file.
+
+    Expected keys per module:
+      <prefix>.lora_down.weight
+      <prefix>.lora_ups.<i>.weight   for i in [0, num_experts)
+      <prefix>.alpha                  (optional)
+      <prefix>.router.weight          (optional — ignored by manual loader)
+      <prefix>.router.bias            (optional — ignored by manual loader)
+    """
     if file_path in _hydra_cache:
         return _hydra_cache[file_path]
 
@@ -32,21 +40,16 @@ def _load_hydra(file_path: str) -> dict:
 
     weights_sd = load_file(file_path)
 
-    # Parse structure
-    router_weight = weights_sd.get("_hydra_router.weight")
-    router_bias = weights_sd.get("_hydra_router.bias")
-    if router_weight is None:
+    # Reject old global-router format with a clear message.
+    if any(k.startswith("_hydra_router") for k in weights_sd.keys()):
         raise ValueError(
-            f"Not a HydraLoRA file (missing _hydra_router.weight): {file_path}"
+            f"{file_path} uses the old global HydraLoRA router format. "
+            "Retrain with the current codebase to get the per-module format."
         )
 
-    num_experts = router_weight.shape[0]
-
-    # Group by module prefix
-    modules = {}  # prefix -> {lora_down, lora_ups: [up0, up1, ...], alpha}
+    # Group by module prefix.
+    modules: Dict[str, dict] = {}
     for key, value in weights_sd.items():
-        if key.startswith("_hydra_router"):
-            continue
         parts = key.split(".")
         prefix = parts[0]
         rest = ".".join(parts[1:])
@@ -63,10 +66,19 @@ def _load_hydra(file_path: str) -> dict:
             modules[prefix]["lora_ups"][idx] = value
         elif rest == "alpha":
             modules[prefix]["alpha"] = value
+        # .router.weight / .router.bias are ignored here (manual blending only).
+
+    # Infer num_experts from any module that has lora_ups.
+    num_experts = 0
+    for mod in modules.values():
+        if "lora_ups" in mod:
+            num_experts = max(num_experts, max(mod["lora_ups"].keys()) + 1)
+    if num_experts == 0:
+        raise ValueError(
+            f"No HydraLoRA expert up-projections found in {file_path}"
+        )
 
     result = {
-        "router_weight": router_weight,
-        "router_bias": router_bias,
         "num_experts": num_experts,
         "modules": modules,
     }
@@ -188,80 +200,10 @@ class HydraLoRALoader:
         return (_apply_lora_to_model(model, lora_sd, strength),)
 
 
-class HydraLoRAAutoRouter:
-    """Load a HydraLoRA file with automatic style routing from text conditioning.
-
-    The learned router computes expert weights from the conditioning embeddings,
-    selecting the appropriate style blend automatically based on the prompt.
-    """
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "model": ("MODEL",),
-                "conditioning": ("CONDITIONING",),
-                "hydra_lora": (
-                    folder_paths.get_filename_list("loras"),
-                    {"tooltip": "HydraLoRA multi-head file (*_hydra.safetensors)"},
-                ),
-                "strength": (
-                    "FLOAT",
-                    {"default": 1.0, "min": -2.0, "max": 2.0, "step": 0.05},
-                ),
-            },
-        }
-
-    RETURN_TYPES = ("MODEL",)
-    OUTPUT_TOOLTIPS = (
-        "Model with HydraLoRA applied using auto-routed expert weights.",
-    )
-    FUNCTION = "apply"
-    CATEGORY = "loaders"
-    DESCRIPTION = (
-        "Load a HydraLoRA and automatically route to style experts based on the "
-        "text conditioning. The learned router max-pools the conditioning embeddings "
-        "and computes a softmax gate over experts."
-    )
-
-    def apply(self, model, conditioning, hydra_lora, strength=1.0):
-        file_path = folder_paths.get_full_path("loras", hydra_lora)
-        hydra_data = _load_hydra(file_path)
-
-        # Extract crossattn_emb from conditioning
-        # ComfyUI conditioning format: list of (tensor, dict) tuples
-        # The tensor is the crossattn embedding (B, seq, dim)
-        cond_tensor = conditioning[0][0]  # first conditioning entry, tensor part
-
-        # Run router: max_pool -> linear -> softmax
-        device = cond_tensor.device
-        router_w = hydra_data["router_weight"].to(device=device, dtype=torch.float32)
-        router_b = hydra_data["router_bias"]
-        if router_b is not None:
-            router_b = router_b.to(device=device, dtype=torch.float32)
-
-        # Max pool over sequence dimension
-        pooled = cond_tensor.float().max(dim=1).values  # (B, 1024)
-        # Average over batch for a single gate
-        pooled = pooled.mean(dim=0, keepdim=True)  # (1, 1024)
-
-        gate_logits = F.linear(pooled, router_w, router_b)  # (1, num_experts)
-        gate = F.softmax(gate_logits, dim=-1).squeeze(0)  # (num_experts,)
-
-        logger.info(
-            f"HydraLoRA auto-route: {', '.join(f'E{i}={g:.3f}' for i, g in enumerate(gate))}"
-        )
-
-        lora_sd = _bake_down(hydra_data, gate)
-        return (_apply_lora_to_model(model, lora_sd, strength),)
-
-
 NODE_CLASS_MAPPINGS = {
     "HydraLoRALoader": HydraLoRALoader,
-    "HydraLoRAAutoRouter": HydraLoRAAutoRouter,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "HydraLoRALoader": "HydraLoRA Loader (Manual)",
-    "HydraLoRAAutoRouter": "HydraLoRA Loader (Auto Router)",
 }

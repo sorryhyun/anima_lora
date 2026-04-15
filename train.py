@@ -550,10 +550,6 @@ class AnimaTrainer:
             if args.trim_crossattn_kv or hasattr(network, "append_postfix"):
                 t5_attn_mask = t5_attn_mask.to(accelerator.device)
 
-        # Set HydraLoRA gate weights from crossattn_emb
-        if crossattn_emb is not None and hasattr(network, "set_hydra_gate"):
-            network.set_hydra_gate(crossattn_emb)
-
         # Create padding mask
         bs = latents.shape[0]
         h_latent = latents.shape[-2]
@@ -1409,6 +1405,9 @@ class AnimaTrainer:
             "use_hydra",
             "num_experts",
             "balance_loss_weight",
+            "per_channel_scaling",
+            "channel_stats_path",
+            "channel_scaling_alpha",
             "rank_dropout",
             "module_dropout",
             "verbose",

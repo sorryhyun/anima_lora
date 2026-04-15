@@ -16,6 +16,37 @@ import logging  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
+def _absorb_channel_scale(
+    weight: torch.Tensor, channel_scale: torch.Tensor, eps: float = 1e-12
+) -> torch.Tensor:
+    """Absorb per-channel input scale into a Linear weight's input columns.
+
+    Given `weight` of shape ``[out, in]`` and `channel_scale` of shape ``[in]``
+    (already post-alpha — the caller is responsible for the ``.pow(alpha)``),
+    mutate `weight` so ``W[:, c] *= s_norm[c]`` where ``s_norm = s / s.mean()``,
+    and return ``inv_scale = 1 / s_norm``. At forward time callers must apply
+    ``x * inv_scale`` before multiplying by the absorbed weight, which preserves
+    the original output exactly but rebalances the per-column gradient magnitudes.
+
+    Rationale: with SmoothQuant-style absorption, the gradient of the down
+    projection's column ``c`` goes from being proportional to ``|x[c]|^2`` to
+    proportional to ``|x[c] / s[c]|^2`` — uniform across channels when
+    ``s[c] ~ (mean|x[c]|)^alpha``. See ``bench/channel_dominance_analysis.md``.
+    """
+    assert channel_scale.ndim == 1, (
+        f"channel_scale must be 1D, got shape {tuple(channel_scale.shape)}"
+    )
+    assert channel_scale.shape[0] == weight.shape[1], (
+        f"channel_scale length {channel_scale.shape[0]} does not match "
+        f"weight in_features {weight.shape[1]}"
+    )
+    s = channel_scale.detach().to(dtype=torch.float32).clamp_min(eps)
+    s = s / s.mean().clamp_min(eps)
+    with torch.no_grad():
+        weight.mul_(s.to(weight).unsqueeze(0))
+    return (1.0 / s).contiguous()
+
+
 class LoRAModule(torch.nn.Module):
     """
     replaces forward method of the original Linear, instead of replacing the original Linear module.
@@ -31,6 +62,7 @@ class LoRAModule(torch.nn.Module):
         dropout=None,
         rank_dropout=None,
         module_dropout=None,
+        channel_scale=None,
     ):
         """
         if alpha == 0 or None, alpha is rank (no scaling).
@@ -64,6 +96,21 @@ class LoRAModule(torch.nn.Module):
         torch.nn.init.kaiming_uniform_(self.lora_down.weight, a=math.sqrt(5))
         torch.nn.init.zeros_(self.lora_up.weight)
 
+        # Per-channel input pre-scaling: absorb s into lora_down columns and
+        # register inv_scale so forward applies x * inv_scale.
+        self._has_channel_scale = False
+        if channel_scale is not None:
+            if not isinstance(self.lora_down, torch.nn.Linear):
+                raise ValueError(
+                    "channel_scale is only supported for Linear LoRA modules, "
+                    f"got {type(self.lora_down).__name__}"
+                )
+            inv_scale = _absorb_channel_scale(
+                self.lora_down.weight.data, channel_scale
+            )
+            self.register_buffer("inv_scale", inv_scale, persistent=True)
+            self._has_channel_scale = True
+
         if isinstance(alpha, torch.Tensor):
             alpha = alpha.detach().float().numpy()  # without casting, bf16 causes error
         alpha = self.lora_dim if alpha is None or alpha == 0 else alpha
@@ -95,11 +142,16 @@ class LoRAModule(torch.nn.Module):
             if random.random() < self.module_dropout:
                 return org_forwarded
 
+        # per-channel input rebalancing (SmoothQuant-style). Absorbed scale is
+        # baked into lora_down at init; we divide x here so the net forward is
+        # unchanged but per-column gradients are balanced.
+        x_lora = x * self.inv_scale if self._has_channel_scale else x
+
         # fp32 accumulation: compute LoRA delta in fp32 for better precision
         if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(x.float(), self.lora_down.weight.float())
+            lx = torch.nn.functional.linear(x_lora.float(), self.lora_down.weight.float())
         else:
-            lx = self.lora_down(x)
+            lx = self.lora_down(x_lora)
 
         # timestep-dependent rank masking
         if self._timestep_mask is not None and self.training:
@@ -147,9 +199,10 @@ class LoRAModule(torch.nn.Module):
 
 class HydraLoRAModule(torch.nn.Module):
     """
-    HydraLoRA: MoE-style multi-head LoRA with automatic style routing.
-    Shared lora_down captures common features; per-expert lora_up_i heads specialize by style.
-    Gate weights (from an external router on crossattn_emb) select expert contributions.
+    HydraLoRA: MoE-style multi-head LoRA with layer-local routing.
+    Shared lora_down captures common features; per-expert lora_up heads specialize.
+    Each module owns its own router that reads the layer input and emits per-sample gates,
+    so specialization is learned per-layer rather than globally.
     Reference: docs/hydra-lora.md
     """
 
@@ -163,7 +216,8 @@ class HydraLoRAModule(torch.nn.Module):
         dropout=None,
         rank_dropout=None,
         module_dropout=None,
-        num_experts=12,
+        num_experts=4,
+        channel_scale=None,
     ):
         super().__init__()
         self.lora_name = lora_name
@@ -176,6 +230,7 @@ class HydraLoRAModule(torch.nn.Module):
 
         self.lora_dim = lora_dim
         self.num_experts = num_experts
+        self.in_dim = in_dim
 
         # Shared down projection
         self.lora_down = torch.nn.Linear(in_dim, self.lora_dim, bias=False)
@@ -185,6 +240,20 @@ class HydraLoRAModule(torch.nn.Module):
         self.lora_up_weight = torch.nn.Parameter(
             torch.zeros(num_experts, out_dim, self.lora_dim)
         )
+
+        # Local router: reads pooled layer input → per-sample expert gates.
+        self.router = torch.nn.Linear(in_dim, num_experts, bias=True)
+        torch.nn.init.xavier_uniform_(self.router.weight)
+        torch.nn.init.zeros_(self.router.bias)
+
+        # Per-channel input pre-scaling: absorb s into the shared lora_down.
+        self._has_channel_scale = False
+        if channel_scale is not None:
+            inv_scale = _absorb_channel_scale(
+                self.lora_down.weight.data, channel_scale
+            )
+            self.register_buffer("inv_scale", inv_scale, persistent=True)
+            self._has_channel_scale = True
 
         if isinstance(alpha, torch.Tensor):
             alpha = alpha.detach().float().numpy()
@@ -200,12 +269,23 @@ class HydraLoRAModule(torch.nn.Module):
 
         self.fp32_accumulation = False
         self._timestep_mask = None
-        self._hydra_gate = None  # (B, num_experts), set by LoRANetwork.set_hydra_gate()
+        self._last_gate = None  # (B, num_experts), cached each forward for balance loss
 
     def apply_to(self):
         self.org_forward = self.org_module.forward
         self.org_module.forward = self.forward
         del self.org_module
+
+    def _compute_gate(self, x_lora: torch.Tensor) -> torch.Tensor:
+        """Pool layer input over sequence dim (if any), run router, softmax."""
+        if x_lora.dim() >= 3:
+            # (B, ..., in_dim) → flatten prefix dims, max-pool, → (B, in_dim)
+            B = x_lora.shape[0]
+            pooled = x_lora.reshape(B, -1, x_lora.shape[-1]).amax(dim=1)
+        else:
+            pooled = x_lora
+        logits = self.router(pooled)  # (B, num_experts)
+        return torch.softmax(logits, dim=-1)
 
     def forward(self, x):
         org_forwarded = self.org_forward(x)
@@ -215,10 +295,13 @@ class HydraLoRAModule(torch.nn.Module):
             if random.random() < self.module_dropout:
                 return org_forwarded
 
+        # per-channel input rebalancing (SmoothQuant-style, see LoRAModule.forward)
+        x_lora = x * self.inv_scale if self._has_channel_scale else x
+
         if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(x.float(), self.lora_down.weight.float())
+            lx = torch.nn.functional.linear(x_lora.float(), self.lora_down.weight.float())
         else:
-            lx = self.lora_down(x)
+            lx = self.lora_down(x_lora)
 
         # timestep-dependent rank masking (T-LoRA compatibility)
         if self._timestep_mask is not None and self.training:
@@ -241,20 +324,19 @@ class HydraLoRAModule(torch.nn.Module):
         else:
             scale = self.scale
 
-        # Expert-weighted output via gate
-        if self._hydra_gate is not None:
-            gate = self._hydra_gate  # (B, num_experts)
-            # Gate-weighted combined weight per batch element: (B, out_dim, lora_dim)
-            combined = torch.einsum("be,eod->bod", gate, self.lora_up_weight)
-            # Apply: lx is (B, ..., lora_dim), combined is (B, out_dim, lora_dim)
-            orig_shape = lx.shape
-            B = orig_shape[0]
-            lx_3d = lx.reshape(B, -1, orig_shape[-1])  # (B, *, lora_dim)
-            out = torch.bmm(lx_3d, combined.transpose(1, 2))  # (B, *, out_dim)
-            out = out.reshape(*orig_shape[:-1], -1)  # restore prefix dims
-        else:
-            # Fallback: uniform average (inference without router)
-            out = torch.nn.functional.linear(lx, self.lora_up_weight.mean(dim=0))
+        # Layer-local routing: gate is computed from this module's own input.
+        gate = self._compute_gate(x_lora)  # (B, num_experts)
+        if self.training:
+            self._last_gate = gate  # cache for network-level balance loss
+
+        # Gate-weighted combined weight per batch element: (B, out_dim, lora_dim)
+        combined = torch.einsum("be,eod->bod", gate, self.lora_up_weight)
+        # Apply: lx is (B, ..., lora_dim), combined is (B, out_dim, lora_dim)
+        orig_shape = lx.shape
+        B = orig_shape[0]
+        lx_3d = lx.reshape(B, -1, orig_shape[-1])  # (B, *, lora_dim)
+        out = torch.bmm(lx_3d, combined.transpose(1, 2))  # (B, *, out_dim)
+        out = out.reshape(*orig_shape[:-1], -1)  # restore prefix dims
 
         if self.fp32_accumulation:
             return org_forwarded + (out * self.multiplier * scale).to(
@@ -280,6 +362,7 @@ class DoRAModule(LoRAModule):
         dropout=None,
         rank_dropout=None,
         module_dropout=None,
+        channel_scale=None,
     ):
         super().__init__(
             lora_name,
@@ -290,6 +373,7 @@ class DoRAModule(LoRAModule):
             dropout,
             rank_dropout,
             module_dropout,
+            channel_scale=channel_scale,
         )
 
         # Initialize magnitude to per-row L2 norms of the original weight
@@ -315,11 +399,14 @@ class DoRAModule(LoRAModule):
             if random.random() < self.module_dropout:
                 return org_out
 
+        # per-channel input rebalancing (SmoothQuant-style, see LoRAModule.forward)
+        x_lora = x * self.inv_scale if self._has_channel_scale else x
+
         # fp32 accumulation: compute LoRA delta in fp32 for better precision
         if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(x.float(), self.lora_down.weight.float())
+            lx = torch.nn.functional.linear(x_lora.float(), self.lora_down.weight.float())
         else:
-            lx = self.lora_down(x)
+            lx = self.lora_down(x_lora)
 
         # timestep-dependent rank masking
         if self._timestep_mask is not None and self.training:
@@ -381,6 +468,7 @@ class OrthoLoRAModule(torch.nn.Module):
         rank_dropout=None,
         module_dropout=None,
         sig_type="last",
+        channel_scale=None,
     ):
         super().__init__()
         self.lora_name = lora_name
@@ -434,6 +522,18 @@ class OrthoLoRAModule(torch.nn.Module):
 
         del q_rand, q_orth, p_rand, p_orth
 
+        # Per-channel input pre-scaling: absorb s into q_layer columns BEFORE
+        # cloning base_q_weight, so both trainable and frozen paths see the same
+        # rebalanced input. The residual invariant (p_out - base_out == 0 at init)
+        # is preserved because q_layer.weight and base_q_weight remain identical.
+        self._has_channel_scale = False
+        if channel_scale is not None:
+            inv_scale = _absorb_channel_scale(
+                self.q_layer.weight.data, channel_scale
+            )
+            self.register_buffer("inv_scale", inv_scale, persistent=True)
+            self._has_channel_scale = True
+
         # Frozen base copies for residual (ensures zero output at init)
         self.register_buffer(
             "base_q_weight", self.q_layer.weight.data.clone().contiguous()
@@ -475,14 +575,21 @@ class OrthoLoRAModule(torch.nn.Module):
 
         dtype = self.q_layer.weight.dtype
 
+        # per-channel input rebalancing (SmoothQuant-style). Applied to both the
+        # trainable path and the frozen base path so the init residual cancellation
+        # still holds exactly.
+        x_lora = x.to(dtype)
+        if self._has_channel_scale:
+            x_lora = x_lora * self.inv_scale
+
         # timestep mask
         mask = self._timestep_mask  # None when not using timestep masking
 
         # trainable path
         if mask is not None:
-            q_out = self.q_layer(x.to(dtype)) * self.lambda_layer * mask
+            q_out = self.q_layer(x_lora) * self.lambda_layer * mask
         else:
-            q_out = self.q_layer(x.to(dtype)) * self.lambda_layer
+            q_out = self.q_layer(x_lora) * self.lambda_layer
 
         # normal dropout
         if self.dropout is not None and self.training:
@@ -505,7 +612,7 @@ class OrthoLoRAModule(torch.nn.Module):
 
         # frozen base path (residual subtraction ensures zero output at init)
         base_out = torch.nn.functional.linear(
-            torch.nn.functional.linear(x.to(dtype), self.base_q_weight)
+            torch.nn.functional.linear(x_lora, self.base_q_weight)
             * self.base_lambda
             * (mask if mask is not None else 1.0),
             self.base_p_weight,
@@ -627,10 +734,18 @@ class LoRAInfModule(LoRAModule):
         multiplier=1.0,
         lora_dim=4,
         alpha=1,
+        channel_scale=None,
         **kwargs,
     ):
         # no dropout for inference
-        super().__init__(lora_name, org_module, multiplier, lora_dim, alpha)
+        super().__init__(
+            lora_name,
+            org_module,
+            multiplier,
+            lora_dim,
+            alpha,
+            channel_scale=channel_scale,
+        )
 
         self.org_module_ref = [org_module]
         self.enabled = True
@@ -652,6 +767,13 @@ class LoRAInfModule(LoRAModule):
 
             down_weight = sd["lora_down.weight"].to(torch.float).to(device)
             up_weight = sd["lora_up.weight"].to(torch.float).to(device)
+
+            # Undo per-channel absorption before merging into the base weight so
+            # that the merged forward (no x rebalancing) produces the same output.
+            if "inv_scale" in sd:
+                inv_scale = sd["inv_scale"].to(torch.float).to(device)
+                if down_weight.dim() == 2:
+                    down_weight = down_weight * inv_scale.unsqueeze(0)
 
             if len(w.size()) == 2:
                 w += self.multiplier * (up_weight @ down_weight) * self.scale
@@ -681,6 +803,11 @@ class LoRAInfModule(LoRAModule):
         up_weight = self.lora_up.weight.to(torch.float)
         down_weight = self.lora_down.weight.to(torch.float)
 
+        # Undo per-channel absorption so the merged weight is equivalent to the
+        # LoRA delta applied to raw (unscaled) inputs.
+        if self._has_channel_scale and down_weight.dim() == 2:
+            down_weight = down_weight * self.inv_scale.to(down_weight).unsqueeze(0)
+
         if len(down_weight.size()) == 2:
             weight = self.multiplier * (up_weight @ down_weight) * self.scale
         elif down_weight.size()[2:4] == (1, 1):
@@ -704,7 +831,8 @@ class LoRAInfModule(LoRAModule):
         self.region_mask = None
 
     def default_forward(self, x):
-        lx = self.lora_down(x)
+        x_lora = x * self.inv_scale if self._has_channel_scale else x
+        lx = self.lora_down(x_lora)
         lx = self.lora_up(lx)
         return self.org_forward(x) + lx * self.multiplier * self.scale
 

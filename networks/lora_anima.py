@@ -238,11 +238,45 @@ def create_network(
     if use_hydra is not None:
         use_hydra = True if use_hydra.lower() == "true" else False
     num_experts = kwargs.get("num_experts", None)
-    num_experts = int(num_experts) if num_experts is not None else 12
+    num_experts = int(num_experts) if num_experts is not None else 4
     balance_loss_weight = kwargs.get("balance_loss_weight", None)
     balance_loss_weight = (
         float(balance_loss_weight) if balance_loss_weight is not None else 0.01
     )
+
+    # Per-channel input pre-scaling (SmoothQuant-style). Requires a calibration file
+    # produced by `bench/analyze_lora_input_channels.py --dump_channel_stats <path>`.
+    # See `bench/channel_dominance_analysis.md` for motivation.
+    per_channel_scaling = kwargs.get("per_channel_scaling", "false")
+    if per_channel_scaling is not None:
+        per_channel_scaling = per_channel_scaling.lower() == "true"
+    channel_stats_path = kwargs.get("channel_stats_path", None)
+    channel_scaling_alpha = kwargs.get("channel_scaling_alpha", None)
+    channel_scaling_alpha = (
+        float(channel_scaling_alpha) if channel_scaling_alpha is not None else 0.5
+    )
+
+    channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
+    if per_channel_scaling:
+        if not channel_stats_path:
+            raise ValueError(
+                "per_channel_scaling=true requires channel_stats_path. Generate one with:\n"
+                "  python bench/analyze_lora_input_channels.py --dump_channel_stats <path.safetensors>"
+            )
+        if not os.path.isfile(channel_stats_path):
+            raise FileNotFoundError(f"channel_stats_path does not exist: {channel_stats_path}")
+        from safetensors.torch import load_file as _load_channel_stats_file
+
+        raw_stats = _load_channel_stats_file(channel_stats_path)
+        channel_scales_dict = {}
+        for _lora_name, _mean_abs in raw_stats.items():
+            _s = _mean_abs.float().clamp_min(1e-6).pow(channel_scaling_alpha)
+            _s = _s / _s.mean().clamp_min(1e-12)
+            channel_scales_dict[_lora_name] = _s
+        logger.info(
+            f"Per-channel input pre-scaling: alpha={channel_scaling_alpha}, "
+            f"stats={channel_stats_path} ({len(channel_scales_dict)} calibrated modules)"
+        )
 
     # verbose
     verbose = kwargs.get("verbose", "false")
@@ -314,6 +348,7 @@ def create_network(
         add_reft=add_reft,
         reft_dim=reft_dim,
         num_experts=num_experts,
+        channel_scales_dict=channel_scales_dict,
     )
 
     # Set timestep mask and ortho regularization config
@@ -326,15 +361,9 @@ def create_network(
     network._add_reft = add_reft
     network._reft_dim = reft_dim
 
-    # HydraLoRA router and config
+    # HydraLoRA config — routers live inside each HydraLoRAModule (layer-local).
     network._use_hydra = use_hydra
     network._balance_loss_weight = balance_loss_weight if use_hydra else 0.0
-    if use_hydra:
-        network._hydra_router = torch.nn.Linear(
-            1024, num_experts, bias=True, dtype=unet.dtype
-        )
-        torch.nn.init.xavier_uniform_(network._hydra_router.weight)
-        torch.nn.init.zeros_(network._hydra_router.bias)
 
     if use_timestep_mask:
         logger.info(
@@ -422,9 +451,14 @@ def create_network_from_weights(
 
         lora_name = key.split(".")[0]
 
-        # Skip router keys
-        if "_hydra_router" in key:
-            continue
+        # Old-format global HydraLoRA router — incompatible with per-module routing.
+        if key.startswith("_hydra_router"):
+            raise RuntimeError(
+                "This checkpoint uses the old global HydraLoRA router "
+                "(_hydra_router.*). The router is now per-module and layer-local; "
+                "the old format cannot be loaded. Retrain the LoRA to get the new "
+                "per-module router weights."
+            )
 
         # ReFT keys use "reft_" prefix
         if lora_name.startswith("reft_"):
@@ -465,6 +499,23 @@ def create_network_from_weights(
     else:
         module_class = LoRAModule
 
+    # Detect baked-in per-channel input scaling. We pass a placeholder ones
+    # tensor so each affected module registers the `inv_scale` buffer at init;
+    # load_state_dict then overwrites it with the trained values. The absorption
+    # step in _absorb_channel_scale is a no-op with s=ones, and the subsequent
+    # weight load fully replaces the init values anyway.
+    channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
+    _scale_keys = [k for k in weights_sd.keys() if k.endswith(".inv_scale")]
+    if _scale_keys:
+        channel_scales_dict = {}
+        for _k in _scale_keys:
+            _lora_name = _k.rsplit(".inv_scale", 1)[0]
+            channel_scales_dict[_lora_name] = torch.ones_like(weights_sd[_k])
+        logger.info(
+            f"Detected per-channel input scaling in checkpoint: "
+            f"{len(channel_scales_dict)} modules with baked-in inv_scale"
+        )
+
     network = LoRANetwork(
         text_encoders,
         unet,
@@ -477,15 +528,10 @@ def create_network_from_weights(
         reft_dim=reft_dim if reft_dim is not None else 4,
         reft_modules_dim=reft_modules_dim if has_reft else None,
         reft_modules_alpha=reft_modules_alpha if has_reft else None,
-        num_experts=hydra_num_experts if has_hydra else 12,
+        num_experts=hydra_num_experts if has_hydra else 4,
+        channel_scales_dict=channel_scales_dict,
     )
-    # Recreate router if loading HydraLoRA weights
-    if has_hydra and "_hydra_router.weight" in weights_sd:
-        router_dim = weights_sd["_hydra_router.weight"].shape[0]
-        router_dtype = weights_sd["_hydra_router.weight"].dtype
-        network._hydra_router = torch.nn.Linear(
-            1024, router_dim, bias=True, dtype=router_dtype
-        )
+    if has_hydra:
         network._use_hydra = True
     return network, weights_sd
 
@@ -537,7 +583,8 @@ class LoRANetwork(torch.nn.Module):
         reft_dim: int = 4,
         reft_modules_dim: Optional[Dict[str, int]] = None,
         reft_modules_alpha: Optional[Dict[str, int]] = None,
-        num_experts: int = 12,
+        num_experts: int = 4,
+        channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None,
     ) -> None:
         super().__init__()
         self.multiplier = multiplier
@@ -553,8 +600,9 @@ class LoRANetwork(torch.nn.Module):
         self.layer_start = layer_start
         self.layer_end = layer_end
         self.num_experts = num_experts
-
-        self._hydra_router = None  # set by create_network() if use_hydra=True
+        self.channel_scales_dict = channel_scales_dict
+        self._channel_scale_misses: List[str] = []
+        self._channel_scale_hits: int = 0
 
         self.loraplus_lr_ratio = None
         self.loraplus_unet_lr_ratio = None
@@ -740,6 +788,16 @@ class LoRANetwork(torch.nn.Module):
                 elif module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = self.num_experts
 
+                # Per-channel scaling is DiT-only: the bench script hooks DiT
+                # linears, text encoder activations are never calibrated.
+                if self.channel_scales_dict is not None and is_unet:
+                    _cs = self.channel_scales_dict.get(lora_name)
+                    if _cs is not None:
+                        extra_kwargs["channel_scale"] = _cs
+                        self._channel_scale_hits += 1
+                    else:
+                        self._channel_scale_misses.append(lora_name)
+
                 lora = module_class(
                     lora_name,
                     child_module,
@@ -795,6 +853,20 @@ class LoRANetwork(torch.nn.Module):
             logger.warning(f"dim (rank) is 0, {len(skipped)} LoRA modules are skipped:")
             for name in skipped:
                 logger.info(f"\t{name}")
+
+        if self.channel_scales_dict is not None:
+            logger.info(
+                f"per_channel_scaling: {self._channel_scale_hits} DiT modules "
+                f"received calibration-based input scaling"
+            )
+            if self._channel_scale_misses:
+                logger.warning(
+                    f"per_channel_scaling: {len(self._channel_scale_misses)} DiT modules "
+                    f"have no calibration stats (first: {self._channel_scale_misses[:3]}). "
+                    f"These will train without input rebalancing — regenerate the stats "
+                    f"file with `python bench/analyze_lora_input_channels.py "
+                    f"--dump_channel_stats <path>` if this is unexpected."
+                )
 
         # Create ReFT modules (additive representation intervention, orthogonal to LoRA)
         self.unet_refts: List[ReFTModule] = []
@@ -963,39 +1035,34 @@ class LoRANetwork(torch.nn.Module):
         for reft in self.text_encoder_refts + self.unet_refts:
             reft._timestep_mask = None
 
-    def set_hydra_gate(self, crossattn_emb: torch.Tensor):
-        """Compute gate weights from crossattn_emb and propagate to all HydraLoRA modules.
-
-        Args:
-            crossattn_emb: (B, seq_len, 1024) cross-attention embeddings
-        """
-        if self._hydra_router is None:
-            return
-        # Max pool over sequence dimension: (B, 1024)
-        pooled = crossattn_emb.max(dim=1).values
-        # Router: (B, num_experts)
-        gate = torch.softmax(self._hydra_router(pooled), dim=-1)
-        # Store for balance loss
-        self._last_hydra_gate = gate
-        # Propagate to all HydraLoRA modules
-        for lora in self.unet_loras:
-            if hasattr(lora, "_hydra_gate"):
-                lora._hydra_gate = gate
-
     def get_balance_loss(self) -> torch.Tensor:
-        """Switch Transformer-style load-balancing loss for HydraLoRA routing."""
-        gate = getattr(self, "_last_hydra_gate", None)
-        if gate is None:
+        """Switch-Transformer load-balancing loss averaged over HydraLoRA modules.
+
+        Each HydraLoRAModule caches its own gate in ._last_gate during forward.
+        We aggregate per-module balance losses and return the mean so the scale
+        is independent of how many Linear layers were adapted.
+        """
+        total = None
+        count = 0
+        for lora in self.unet_loras + self.text_encoder_loras:
+            gate = getattr(lora, "_last_gate", None)
+            if gate is None:
+                continue
+            num_experts = gate.shape[-1]
+            # frac_i: fraction of samples where expert i has highest gate
+            expert_idx = gate.argmax(dim=-1)  # (B,)
+            frac = torch.zeros(num_experts, device=gate.device, dtype=gate.dtype)
+            frac.scatter_add_(
+                0, expert_idx, torch.ones_like(expert_idx, dtype=gate.dtype)
+            )
+            frac = frac / gate.shape[0]
+            gate_mean = gate.mean(dim=0)  # (num_experts,)
+            term = num_experts * (frac * gate_mean).sum()
+            total = term if total is None else total + term
+            count += 1
+        if total is None:
             return torch.tensor(0.0)
-        num_experts = gate.shape[-1]
-        # frac_i: fraction of samples where expert i has highest gate
-        expert_idx = gate.argmax(dim=-1)  # (B,)
-        frac = torch.zeros(num_experts, device=gate.device)
-        frac.scatter_add_(0, expert_idx, torch.ones_like(expert_idx, dtype=frac.dtype))
-        frac = frac / gate.shape[0]
-        # gate_mean_i: mean gate value for expert i across batch
-        gate_mean = gate.mean(dim=0)  # (num_experts,)
-        return num_experts * (frac * gate_mean).sum()
+        return total / count
 
     def get_ortho_regularization(self) -> torch.Tensor:
         """Sum orthogonality regularization from all OrthoLoRA and ReFT modules."""
@@ -1300,14 +1367,8 @@ class LoRANetwork(torch.nn.Module):
                 ["reft unet" + (" " + d if d else "") for d in descriptions]
             )
 
-        # HydraLoRA router parameters
-        if self._hydra_router is not None:
-            router_lr = unet_lr if unet_lr is not None else default_lr
-            router_params = {"params": list(self._hydra_router.parameters())}
-            if router_lr is not None:
-                router_params["lr"] = router_lr
-            all_params.append(router_params)
-            lr_descriptions.append("hydra_router")
+        # HydraLoRA per-module routers are submodules of HydraLoRAModule instances,
+        # so they are already captured by the unet_loras param group above.
 
         return all_params, lr_descriptions
 
@@ -1439,9 +1500,11 @@ class LoRANetwork(torch.nn.Module):
                 dim=0
             )
 
-        # Remove HydraLoRA router keys (not needed for baked-down inference)
+        # Per-module routers are useless for baked-down (weight-add) inference —
+        # strip them from the main ComfyUI file. They are preserved in the
+        # sibling *_hydra.safetensors above.
         for key in list(state_dict.keys()):
-            if "_hydra_router" in key:
+            if key.endswith(".router.weight") or key.endswith(".router.bias"):
                 del state_dict[key]
 
         # DoRA: rename magnitude → dora_scale for ComfyUI, remove internal buffers
