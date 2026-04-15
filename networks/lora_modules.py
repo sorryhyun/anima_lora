@@ -242,8 +242,11 @@ class HydraLoRAModule(torch.nn.Module):
         )
 
         # Local router: reads pooled layer input → per-sample expert gates.
+        # Init is deliberately small (std=0.01) so initial gates are near-uniform.
+        # Relying on xavier init here produces saturated softmax in bf16 when the
+        # pooled input has DC-bias outlier channels (see bench/channel_dominance_analysis.md).
         self.router = torch.nn.Linear(in_dim, num_experts, bias=True)
-        torch.nn.init.xavier_uniform_(self.router.weight)
+        torch.nn.init.normal_(self.router.weight, std=0.01)
         torch.nn.init.zeros_(self.router.bias)
 
         # Per-channel input pre-scaling: absorb s into the shared lora_down.
@@ -277,11 +280,16 @@ class HydraLoRAModule(torch.nn.Module):
         del self.org_module
 
     def _compute_gate(self, x_lora: torch.Tensor) -> torch.Tensor:
-        """Pool layer input over sequence dim (if any), run router, softmax."""
+        """Pool layer input over sequence dim (if any), run router, softmax.
+
+        Uses mean pool, not max pool: DiT layer inputs have DC-bias outlier
+        channels with peak/mean ratios of 80–96× (see channel_dominance_analysis.md).
+        Max pool would surface those outliers straight into the router and blow
+        up softmax in bf16. Mean pool averages them out.
+        """
         if x_lora.dim() >= 3:
-            # (B, ..., in_dim) → flatten prefix dims, max-pool, → (B, in_dim)
             B = x_lora.shape[0]
-            pooled = x_lora.reshape(B, -1, x_lora.shape[-1]).amax(dim=1)
+            pooled = x_lora.reshape(B, -1, x_lora.shape[-1]).mean(dim=1)
         else:
             pooled = x_lora
         logits = self.router(pooled)  # (B, num_experts)

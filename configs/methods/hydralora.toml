@@ -22,4 +22,4 @@ cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
 # Multi-expert up-projections are VRAM-heavy — method-forced swap.
-blocks_to_swap = 20
+blocks_to_swap = 16

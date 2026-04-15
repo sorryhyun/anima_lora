@@ -12,6 +12,18 @@ use_timestep_mask = true
 min_rank = 1
 alpha_rank_scale = 1.0
 
+# Per-channel input pre-scaling (SmoothQuant-style). Balances ∂L/∂lora_down
+# column gradients when activations have DC-bias outlier channels (see
+# bench/channel_dominance_analysis.md). Calibration-only — no runtime overhead.
+# Generate the stats file once from the base DiT:
+#   python bench/analyze_lora_input_channels.py \
+#       --dump_channel_stats bench/results/channel_stats.safetensors
+# Then flip `per_channel_scaling` on. α=0.5 is the SmoothQuant default (sqrt
+# balance); α=1.0 fully flattens the per-channel scale; α=0 disables the effect.
+# per_channel_scaling = true
+# channel_stats_path = "bench/results/channel_stats.safetensors"
+# channel_scaling_alpha = 0.5
+
 learning_rate = 1e-5
 max_train_epochs = 12
 save_every_n_epochs = 4

@@ -13,6 +13,7 @@ from networks.lora_modules import (
     ReFTModule,
     HydraLoRAModule,
 )
+from networks.condition_shift import ConditionShift
 
 import logging
 
@@ -142,6 +143,34 @@ def _refuse_unfused_attn_lora_keys(
     return state_dict
 
 
+def _maybe_attach_apex_shift(network: "LoRANetwork", kwargs: Dict[str, object]) -> None:
+    """Attach ConditionShift (APEX, arXiv:2604.12322) if enabled via kwargs.
+
+    Called from both create_network (fresh) and create_network_from_weights
+    (warm start / dim_from_weights). Kwargs come from train.py's net_kwargs
+    which stringifies everything, so values are parsed defensively.
+    """
+    mode = kwargs.get("apex_condition_shift_mode", None)
+    if mode is None or str(mode).lower() in ("", "none"):
+        return
+    init_a = float(kwargs.get("apex_condition_shift_init_a", -1.0))
+    init_b = float(kwargs.get("apex_condition_shift_init_b", 0.5))
+    shift_lr_scale = float(kwargs.get("apex_shift_lr_scale", 0.1))
+    shift_dim = int(kwargs.get("apex_condition_shift_dim", 1024))
+    cs = ConditionShift(
+        dim=shift_dim,
+        mode=str(mode),
+        init_a=init_a,
+        init_b=init_b,
+    )
+    network.apex_condition_shift = cs
+    network._apex_shift_lr_scale = shift_lr_scale
+    logger.info(
+        f"APEX ConditionShift attached: mode={mode} "
+        f"(a={init_a}, b={init_b}), lr_scale={shift_lr_scale}"
+    )
+
+
 def create_network(
     multiplier: float,
     network_dim: Optional[int],
@@ -264,7 +293,9 @@ def create_network(
                 "  python bench/analyze_lora_input_channels.py --dump_channel_stats <path.safetensors>"
             )
         if not os.path.isfile(channel_stats_path):
-            raise FileNotFoundError(f"channel_stats_path does not exist: {channel_stats_path}")
+            raise FileNotFoundError(
+                f"channel_stats_path does not exist: {channel_stats_path}"
+            )
         from safetensors.torch import load_file as _load_channel_stats_file
 
         raw_stats = _load_channel_stats_file(channel_stats_path)
@@ -364,6 +395,8 @@ def create_network(
     # HydraLoRA config — routers live inside each HydraLoRAModule (layer-local).
     network._use_hydra = use_hydra
     network._balance_loss_weight = balance_loss_weight if use_hydra else 0.0
+
+    _maybe_attach_apex_shift(network, kwargs)
 
     if use_timestep_mask:
         logger.info(
@@ -533,6 +566,9 @@ def create_network_from_weights(
     )
     if has_hydra:
         network._use_hydra = True
+
+    _maybe_attach_apex_shift(network, kwargs)
+
     return network, weights_sd
 
 
@@ -1369,6 +1405,23 @@ class LoRANetwork(torch.nn.Module):
 
         # HydraLoRA per-module routers are submodules of HydraLoRAModule instances,
         # so they are already captured by the unet_loras param group above.
+
+        # APEX ConditionShift: separate param group with 0.1x LR (Phase 0 §7.5).
+        if getattr(self, "apex_condition_shift", None) is not None:
+            shift_params = list(self.apex_condition_shift.parameters())
+            if len(shift_params) > 0:
+                shift_lr_scale = float(getattr(self, "_apex_shift_lr_scale", 0.1))
+                base_lr = unet_lr if unet_lr is not None else default_lr
+                if base_lr is None or base_lr == 0:
+                    logger.info("APEX ConditionShift: no base LR, skipping param group")
+                else:
+                    shift_lr = float(base_lr) * shift_lr_scale
+                    all_params.append({"params": shift_params, "lr": shift_lr})
+                    lr_descriptions.append("apex condition_shift")
+                    logger.info(
+                        f"APEX ConditionShift param group: lr={shift_lr:.2e} "
+                        f"({shift_lr_scale}x of unet_lr={base_lr})"
+                    )
 
         return all_params, lr_descriptions
 

@@ -295,6 +295,97 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "Each training step samples one run stochastically. Default: 3.",
     )
 
+    # APEX distillation (arXiv:2604.12322) — condition-shift self-adversarial
+    # one-step generator training. See proposal.md §5 and networks/condition_shift.py.
+    parser.add_argument(
+        "--apex_lambda",
+        type=float,
+        default=1.0,
+        help="APEX: mixing coefficient in T_mix = (1-lam)*v_data + lam*v_fake_sg (Eq. 23). Default 1.0.",
+    )
+    parser.add_argument(
+        "--apex_lambda_p",
+        type=float,
+        default=1.0,
+        help="APEX: weight on L_sup (supervised FM real branch), Eq. 25. Default 1.0.",
+    )
+    parser.add_argument(
+        "--apex_lambda_c",
+        type=float,
+        default=1.0,
+        help="APEX: weight on L_mix / L_cons (consistency real branch), Eq. 25. Default 1.0.",
+    )
+    parser.add_argument(
+        "--apex_lambda_f",
+        type=float,
+        default=1.0,
+        help="APEX: weight on L_fake (fake branch fitting its own trajectory), Eq. 12. Default 1.0.",
+    )
+    parser.add_argument(
+        "--apex_loss_form",
+        type=str,
+        default="mix",
+        choices=["mix", "gapex"],
+        help="APEX consistency term formulation. 'mix' = L_mix (Eq. 24, primary); "
+        "'gapex' = (1-lam)*L_sup + lam*L_cons split (Eq. 22, debug). "
+        "Gradient-equivalent per Theorem 1 — 'mix' is one forward cheaper.",
+    )
+    parser.add_argument(
+        "--apex_warmup_ratio",
+        type=float,
+        default=0.2,
+        help="APEX: pure-L_sup warmup as a fraction of max_train_steps. "
+        "Phase 0 Finding B: cold start catastrophically regresses (-48%% NFE=1 W1) "
+        "because L_fake trains the fake branch against random trajectories. "
+        "Required unless --network_weights is set. Default 0.2 (~20%% of total steps).",
+    )
+    parser.add_argument(
+        "--apex_rampup_ratio",
+        type=float,
+        default=0.1,
+        help="APEX: linear rampup of lam_c and lam_f as a fraction of max_train_steps, "
+        "applied after warmup. Removes the sharp transition into full APEX. Default 0.1.",
+    )
+    parser.add_argument(
+        "--apex_warmup_steps",
+        type=int,
+        default=0,
+        help="APEX: absolute warmup-step override. 0 = derive from --apex_warmup_ratio. "
+        "Set >0 only if you need to override the ratio-based schedule.",
+    )
+    parser.add_argument(
+        "--apex_rampup_steps",
+        type=int,
+        default=0,
+        help="APEX: absolute rampup-step override. 0 = derive from --apex_rampup_ratio.",
+    )
+    parser.add_argument(
+        "--apex_condition_shift_mode",
+        type=str,
+        default="scalar",
+        choices=["scalar", "diag", "full"],
+        help="APEX ConditionShift parameterization. 'scalar' = 2 params (a, b), paper optimum per Table 7.",
+    )
+    parser.add_argument(
+        "--apex_condition_shift_init_a",
+        type=float,
+        default=-1.0,
+        help="APEX ConditionShift initial 'a' (negative scaling). Table 7 optimum ~ -1.0.",
+    )
+    parser.add_argument(
+        "--apex_condition_shift_init_b",
+        type=float,
+        default=0.5,
+        help="APEX ConditionShift initial 'b' (bias). Table 7 stable range [0.1, 1.0].",
+    )
+    parser.add_argument(
+        "--apex_shift_lr_scale",
+        type=float,
+        default=0.1,
+        help="APEX: LR multiplier for ConditionShift params vs. LoRA params. "
+        "0.1x is conservative — keeps (a, b) from drifting into the unstable Table 7 corner.",
+    )
+
 
 # Loss weighting
 
@@ -311,6 +402,12 @@ def compute_loss_weighting_for_anima(
     elif weighting_scheme == "cosmap":
         bot = 1 - 2 * sigmas + 2 * sigmas**2
         weighting = 2 / (math.pi * bot)
+    elif weighting_scheme == "apex_omega":
+        # APEX 1/omega(t) = (1-t)/t in endpoint form, but Prop. 3 converts to
+        # velocity form by multiplying by t^2, giving effective weight t*(1-t).
+        # This is the Anima velocity-space equivalent of Eq. 24's 1/omega(t).
+        t = sigmas.float()
+        weighting = (t * (1.0 - t)).clamp(min=1e-6)
     elif weighting_scheme == "none" or weighting_scheme is None:
         weighting = torch.ones_like(sigmas)
     else:

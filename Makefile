@@ -6,7 +6,7 @@ LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/
 LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora postfix postfix-exp postfix-func prefix step test test-mod test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora apex postfix postfix-exp postfix-func prefix step test test-mod test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -50,6 +50,9 @@ tlora:
 
 hydralora:
 	$(TRAIN) hydralora --preset $(PRESET)
+
+apex:
+	$(TRAIN) apex --preset $(PRESET)
 
 postfix:
 	$(TRAIN) postfix --preset $(PRESET)

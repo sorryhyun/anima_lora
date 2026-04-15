@@ -611,6 +611,81 @@ class AnimaTrainer:
                     **kw,
                 )
 
+                # --- APEX: real + fake branch forwards (arXiv:2604.12322 §3) ---
+                # Reset per-step so stale aux from a prior step can't leak.
+                self._apex_aux = None
+                apex_active = (
+                    is_train
+                    and getattr(args, "method", None) == "apex"
+                    and getattr(network, "apex_condition_shift", None) is not None
+                )
+                if apex_active:
+                    # noisy_model_input is 5D [B,C,1,H,W]; model_pred is 5D too
+                    # here (squeeze happens after this block). Work in 5D for
+                    # consistency with the anima() call signature.
+                    t_bcast = timesteps.view(-1, 1, 1, 1, 1).to(model_pred.dtype)
+                    # Endpoint predictor (Eq. 11): x_fake = x_t - t * F_real, sg.
+                    with torch.no_grad():
+                        x_fake = noisy_model_input - t_bcast * model_pred.detach()
+                    # Fresh noise + fresh t for the fake OT trajectory.
+                    z_fake = torch.randn_like(x_fake)
+                    # Draw t_fake on device to match existing timesteps tensor.
+                    t_fake = torch.rand(
+                        noisy_model_input.shape[0],
+                        device=noisy_model_input.device,
+                        dtype=timesteps.dtype,
+                    )
+                    t_fake_bcast = t_fake.view(-1, 1, 1, 1, 1).to(model_pred.dtype)
+                    x_fake_t = t_fake_bcast * z_fake + (1.0 - t_fake_bcast) * x_fake
+                    # target_fake = z_fake - x_fake (OT velocity on the fake traj)
+                    target_fake = z_fake - x_fake
+
+                    # Shifted condition (grad flows into ConditionShift via L_fake).
+                    c_fake = network.apex_condition_shift(crossattn_emb)
+
+                    # (1) Fake branch at real (x_t, t, c_fake) — stop-gradient target
+                    #     for L_mix. Paper §3.2: "v_fake := sg(F_theta(x_t, t, c_fake))".
+                    #     Under no_grad so the fake call doesn't contribute to
+                    #     the real-branch gradient path.
+                    with torch.no_grad():
+                        v_fake_sg = anima(
+                            noisy_model_input,
+                            timesteps,
+                            c_fake.detach(),
+                            padding_mask=padding_mask,
+                            **kw,
+                        )
+
+                    # T_mix_v in velocity space (Eq. 23 after Prop. 3 conversion):
+                    #   T_mix_v = (1-lam)*v_data + lam*v_fake_sg
+                    lam = float(getattr(args, "apex_lambda", 1.0))
+                    v_data_5d = (noise - latents).unsqueeze(2)  # [B,C,1,H,W]
+                    T_mix_v = ((1.0 - lam) * v_data_5d + lam * v_fake_sg).detach()
+
+                    # (2) Fake branch at (x_fake_t, t_fake, c_fake) — L_fake target.
+                    #     Grad flows back through both LoRA and ConditionShift.
+                    F_fake_on_fake_xt = anima(
+                        x_fake_t,
+                        t_fake,
+                        c_fake,
+                        padding_mask=padding_mask,
+                        **kw,
+                    )
+
+                    # Weighting for the L_fake term at its own timestep.
+                    weighting_fake = anima_train_utils.compute_loss_weighting_for_anima(
+                        weighting_scheme=args.weighting_scheme, sigmas=t_fake
+                    )
+
+                    # Stash 4D tensors for _process_batch_inner to consume.
+                    self._apex_aux = {
+                        "T_mix_v": T_mix_v.squeeze(2),
+                        "F_fake_on_fake_xt": F_fake_on_fake_xt.squeeze(2),
+                        "target_fake": target_fake.squeeze(2),
+                        "weighting_fake": weighting_fake,
+                        "t_fake": t_fake,
+                    }
+
                 # --- Functional MSE loss against stochastic inversion run ---
                 # If functional loss is enabled and the batch has inversions loaded,
                 # run a second no-grad forward with a sampled inversion run as
@@ -979,6 +1054,85 @@ class AnimaTrainer:
         loss_weights = batch["loss_weights"]  # per-sample weight
         loss = loss * loss_weights
 
+        # --- APEX: add L_mix (consistency) and L_fake (fake-flow fitting) ---
+        # The existing L_sup path above already matches paper Eq. 20 (real-branch
+        # supervised FM). Here we add the two APEX terms using the aux tensors
+        # stashed in get_noise_pred_and_target. See library/training/apex_loss.py
+        # for the warmup/rampup schedule rationale (Phase 0 Finding B).
+        apex_aux = getattr(self, "_apex_aux", None)
+        if (
+            is_train
+            and getattr(args, "method", None) == "apex"
+            and apex_aux is not None
+        ):
+            from library.training.apex_loss import apex_schedule_weights
+
+            # APEX gates L_sup too via lambda_p; apply that scalar now.
+            loss = loss * float(getattr(args, "apex_lambda_p", 1.0))
+
+            # Effective schedule for L_mix / L_fake at the current step.
+            # Resolve ratio-based warmup/rampup against max_train_steps; explicit
+            # step counts (>0) override the ratio.
+            apex_step = int(getattr(self, "_apex_step", 0))
+            total_steps = int(getattr(args, "max_train_steps", 0) or 0)
+            warmup_abs = int(getattr(args, "apex_warmup_steps", 0) or 0)
+            rampup_abs = int(getattr(args, "apex_rampup_steps", 0) or 0)
+            if warmup_abs <= 0:
+                warmup_abs = int(
+                    float(getattr(args, "apex_warmup_ratio", 0.0) or 0.0)
+                    * total_steps
+                )
+            if rampup_abs <= 0:
+                rampup_abs = int(
+                    float(getattr(args, "apex_rampup_ratio", 0.0) or 0.0)
+                    * total_steps
+                )
+            lam_c_eff, lam_f_eff = apex_schedule_weights(
+                step=apex_step,
+                warmup_steps=warmup_abs,
+                rampup_steps=rampup_abs,
+                lam_c_target=float(getattr(args, "apex_lambda_c", 1.0)),
+                lam_f_target=float(getattr(args, "apex_lambda_f", 1.0)),
+            )
+
+            # L_mix: MSE(F_real, T_mix_v). F_real is already `noise_pred`.
+            if lam_c_eff > 0.0:
+                l_mix = train_util.conditional_loss(
+                    noise_pred.float(),
+                    apex_aux["T_mix_v"].float(),
+                    args.loss_type,
+                    "none",
+                    huber_c,
+                )
+                if weighting is not None:
+                    l_mix = l_mix * weighting
+                if args.masked_loss or (
+                    "alpha_masks" in batch and batch["alpha_masks"] is not None
+                ):
+                    l_mix = apply_masked_loss(l_mix, batch)
+                l_mix = l_mix.mean(dim=list(range(1, l_mix.ndim)))
+                l_mix = l_mix * loss_weights
+                loss = loss + lam_c_eff * l_mix
+
+            # L_fake: MSE(F_fake_on_fake_xt, target_fake). Trains the fake branch
+            # (and ConditionShift) to fit the OT trajectory drawn from x_fake.
+            # No masked-loss here — x_fake is synthetic, not tied to the input
+            # image mask — use per-sample batch loss_weights only.
+            if lam_f_eff > 0.0:
+                l_fake = train_util.conditional_loss(
+                    apex_aux["F_fake_on_fake_xt"].float(),
+                    apex_aux["target_fake"].float(),
+                    args.loss_type,
+                    "none",
+                    huber_c,
+                )
+                w_fake = apex_aux.get("weighting_fake")
+                if w_fake is not None:
+                    l_fake = l_fake * w_fake
+                l_fake = l_fake.mean(dim=list(range(1, l_fake.ndim)))
+                l_fake = l_fake * loss_weights
+                loss = loss + lam_f_eff * l_fake
+
         loss = self.post_process_loss(loss, args, timesteps, noise_scheduler)
 
         scalar_loss = loss.mean()
@@ -1095,7 +1249,12 @@ class AnimaTrainer:
         weight_dtype,
         is_train: bool = True,
     ):
-        pass
+        # APEX: count training steps for the warmup/rampup schedule used by
+        # _process_batch_inner. Counts at the process_batch granularity; this
+        # aligns with global_step under gradient_accumulation_steps=1 and is
+        # close enough under larger accumulation.
+        if is_train and getattr(args, "method", None) == "apex":
+            self._apex_step = int(getattr(self, "_apex_step", 0)) + 1
 
     def is_train_text_encoder(self, args):
         return not args.network_train_unet_only
@@ -1309,9 +1468,7 @@ class AnimaTrainer:
                 for subset in ds.subsets
             ]
             if rates and any(r > 0 for r in rates):
-                logger.info(
-                    f"caption dropout ENABLED — per-subset rates: {rates}"
-                )
+                logger.info(f"caption dropout ENABLED — per-subset rates: {rates}")
             else:
                 logger.info("caption dropout DISABLED (rate=0.0 on all subsets)")
         else:
@@ -1418,6 +1575,11 @@ class AnimaTrainer:
             "loraplus_text_encoder_lr_ratio",
             "layer_start",
             "layer_end",
+            # APEX (condition-space shifting)
+            "apex_condition_shift_mode",
+            "apex_condition_shift_init_a",
+            "apex_condition_shift_init_b",
+            "apex_shift_lr_scale",
         ]
         for key in _NETWORK_ARG_KEYS:
             if (
@@ -1470,6 +1632,24 @@ class AnimaTrainer:
             accelerator.print(
                 f"load network weights from {args.network_weights}: {info}"
             )
+
+        # APEX Phase 0 Finding B safety rail (proposal §7.3): refuse to launch
+        # without either a warmup schedule or a loaded LoRA checkpoint, since
+        # cold-start catastrophically regresses (~48%% NFE=1 W1) as L_fake
+        # trains the fake branch against random trajectories from a random F.
+        if getattr(args, "method", None) == "apex":
+            has_warmup = (
+                int(getattr(args, "apex_warmup_steps", 0) or 0) > 0
+                or float(getattr(args, "apex_warmup_ratio", 0.0) or 0.0) > 0.0
+            )
+            has_weights = args.network_weights is not None
+            if not (has_warmup or has_weights):
+                raise ValueError(
+                    "APEX training requires either --apex_warmup_ratio > 0 "
+                    "(or --apex_warmup_steps > 0) or --network_weights <path> "
+                    "(warm-start). Cold-start training is known to regress vs. "
+                    "plain FM on the one-step objective; see proposal.md §7.3."
+                )
 
         if args.gradient_checkpointing:
             if args.cpu_offload_checkpointing:

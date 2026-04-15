@@ -114,6 +114,10 @@ def cmd_hydralora(extra):
     train("hydralora", extra)
 
 
+def cmd_apex(extra):
+    train("apex", extra)
+
+
 def cmd_postfix(extra):
     train("postfix", extra)
 
@@ -487,6 +491,7 @@ COMMANDS = {
     "tdora": (cmd_tdora, "DoRA + timestep masking"),
     "tlora": (cmd_tlora, "T-LoRA: OrthoLoRA + timestep masking"),
     "hydralora": (cmd_hydralora, "HydraLoRA: multi-style MoE routing"),
+    "apex": (cmd_apex, "APEX distillation (condition-shift self-adversarial)"),
     "postfix": (cmd_postfix, "Postfix tuning (LLM adapter cross-attn)"),
     "postfix-exp": (
         cmd_postfix_exp,

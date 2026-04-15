@@ -1113,7 +1113,7 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         "--weighting_scheme",
         type=str,
         default="uniform",
-        choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "none", "uniform"],
+        choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "apex_omega", "none", "uniform"],
         help="weighting scheme for timestep distribution. Default is uniform",
     )
     parser.add_argument(
