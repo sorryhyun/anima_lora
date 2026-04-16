@@ -27,20 +27,16 @@ from pathlib import Path
 import torch
 from PIL import Image
 from safetensors.torch import load_file
-from torchvision import transforms
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from library import anima_utils, qwen_image_autoencoder_kl
+from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.utils import setup_logging
 from scripts.invert_embedding import probe_functional_space
 
 setup_logging()
 logger = logging.getLogger(__name__)
-
-IMAGE_TRANSFORMS = transforms.Compose(
-    [transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
-)
 
 
 def parse_args():

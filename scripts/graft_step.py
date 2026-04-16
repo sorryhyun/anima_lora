@@ -10,6 +10,7 @@ Each `make graft-step` invocation:
 """
 
 import json
+import os
 import platform
 import random
 import shutil
@@ -22,6 +23,11 @@ try:
 except ImportError:
     import tomli as tomllib  # Python < 3.11
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from library.cache_utils import stem_from_cache_path
+from library.datasets.image_utils import IMAGE_EXTENSIONS
+
 ROOT = Path(__file__).resolve().parent.parent
 GRAFT_DIR = ROOT / "graft"
 STATE_FILE = GRAFT_DIR / "state.json"
@@ -32,8 +38,6 @@ SURVIVORS_DIR = GRAFT_DIR / "survivors"
 CANDIDATES_DIR = GRAFT_DIR / "candidates"
 GRAFT_METHOD = "graft"
 GRAFT_PRESET = "graft"
-
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 
 def load_config():
@@ -141,23 +145,9 @@ def build_train_symlinks(holdout_stems):
     holdout_set = set(holdout_stems)
     count = 0
     for p in IMAGE_DATASET.iterdir():
-        # For .npz latent cache files, extract the image stem (everything before _DDDDxDDDD_anima.npz)
-        if p.suffix == ".npz":
-            # Pattern: {stem}_{W}x{H}_anima.npz
-            name_no_ext = p.stem  # e.g. "asou1_2500x2226_anima"
-            parts = name_no_ext.rsplit("_", 2)  # ["asou1", "2500x2226", "anima"]
-            if len(parts) >= 3:
-                cache_stem = "_".join(parts[:-2])
-            else:
-                cache_stem = parts[0]
-            if cache_stem in holdout_set:
-                continue
-            _link_or_copy(p, TRAIN_IMAGES / p.name)
-            continue
-
-        # For .safetensors text encoder cache files: {stem}_anima_te.safetensors
-        if p.suffix == ".safetensors" and p.name.endswith("_anima_te.safetensors"):
-            cache_stem = p.name.removesuffix("_anima_te.safetensors")
+        # For cache files (.npz latents, .safetensors TE), extract image stem
+        cache_stem = stem_from_cache_path(p)
+        if cache_stem is not None:
             if cache_stem in holdout_set:
                 continue
             _link_or_copy(p, TRAIN_IMAGES / p.name)

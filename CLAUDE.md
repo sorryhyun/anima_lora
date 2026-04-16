@@ -173,18 +173,22 @@ Text-conditioned AdaLN modulation via a learned `pooled_text_proj` MLP (Starodub
 
 Optimizes text embeddings (post-T5, pre-DiT space) to minimize flow-matching loss for a target image through the frozen DiT. Reveals how the model interprets images in embedding space. `make invert` runs batch inversion from `post_image_dataset/`, `make test-invert` verifies results. See `docs/methods/invert.md`.
 
-## Scripts
+## Preprocessing
 
-Utility scripts in `scripts/`:
+Data preparation scripts in `preprocess/`:
 - `resize_images.py` — VAE-compatible image resizing (used by `make preprocess-resize`)
 - `cache_latents.py` — Cache VAE latents to disk (used by `make preprocess-vae`)
 - `cache_text_embeddings.py` — Cache text encoder outputs to disk (used by `make preprocess-te`)
-- `distill_modulation.py` — Train pooled_text_proj MLP for modulation guidance (used by `make distill-mod`)
-- `invert_embedding.py` — Optimize text embedding for target images (used by `make invert`)
-- `interpret_inversion.py` — Verify/visualize embedding inversion results (used by `make test-invert`)
 - `generate_masks.py` — SAM3-based text bubble mask generation
 - `generate_masks_mit.py` — MIT/ComicTextDetector mask generation (manga-specific)
 - `merge_masks.py` — Combine SAM3 + MIT masks into final mask set
+
+## Scripts
+
+Utility scripts in `scripts/`:
+- `distill_modulation.py` — Train pooled_text_proj MLP for modulation guidance (used by `make distill-mod`)
+- `invert_embedding.py` — Optimize text embedding for target images (used by `make invert`)
+- `interpret_inversion.py` — Verify/visualize embedding inversion results (used by `make test-invert`)
 - `convert_lora_to_comfy.py` — Convert LoRA key names between anima and ComfyUI formats
 - `comfy_batch.py` — Run ComfyUI batch workflow from `workflows/` directory
 

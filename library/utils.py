@@ -83,8 +83,3 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 # endregion
-
-# Backward-compat re-exports — canonical locations are library.datasets.image_utils and library.device_utils
-from library.datasets.image_utils import resize_image, validate_interpolation_fn  # noqa: F401, E402
-from library.device_utils import str_to_dtype  # noqa: F401, E402
-from library.inference.sampling import GradualLatent, EulerAncestralDiscreteSchedulerGL  # noqa: F401, E402

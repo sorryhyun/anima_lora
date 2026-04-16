@@ -10,18 +10,17 @@ N shuffled permutations of each caption and caches all variants in one file.
 """
 
 import argparse
+import os
+import sys
 from pathlib import Path
 
 import torch
 from tqdm import tqdm
 
-import sys
-import os
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-ANIMA_TEXT_ENCODER_CACHE_SUFFIX = "_anima_te.safetensors"
+from library.cache_utils import TE_CACHE_SUFFIX
+from library.datasets.image_utils import IMAGE_EXTENSIONS
 
 
 def _generate_shuffled_captions(caption: str, num_variants: int) -> list[str]:
@@ -161,7 +160,7 @@ def main() -> None:
         to_encode: list[tuple[Path, str, Path]] = []
         for img_path, caption in batch:
             cache_path = img_path.with_name(
-                img_path.stem + ANIMA_TEXT_ENCODER_CACHE_SUFFIX
+                img_path.stem + TE_CACHE_SUFFIX
             )
             if cache_path.exists():
                 skipped += 1

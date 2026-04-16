@@ -76,7 +76,7 @@ Exclude regions (e.g., text bubbles) from the training loss using spatial masks.
 **SAM3** (Segment Anything Model):
 
 ```bash
-python scripts/generate_masks.py \
+python preprocess/generate_masks.py \
     --config configs/sam_mask.yaml \
     --image-dir ../image_dataset \
     --mask-dir ../image_dataset/masks \
@@ -86,7 +86,7 @@ python scripts/generate_masks.py \
 **MIT** (Manga-Image-Translator / ComicTextDetector):
 
 ```bash
-python scripts/generate_masks_mit.py \
+python preprocess/generate_masks_mit.py \
     --image-dir ../image_dataset \
     --mask-dir ../image_dataset/masks \
     --device cuda \

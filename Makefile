@@ -129,9 +129,9 @@ test-spectrum:
 
 INVERT_N ?= 1
 INVERT_SWAP ?= 0
-INVERT_STEPS ?= 150
+INVERT_STEPS ?= 50
 INVERT_LR ?= 0.005
-INVERT_AGG ?= 3
+INVERT_AGG ?= 2
 INVERT_OUT ?= inversions
 INVERT_PROBE_BLOCKS ?= 8,12,16,20
 invert:
@@ -176,19 +176,19 @@ graft-step:
 preprocess: preprocess-resize preprocess-vae preprocess-te
 
 preprocess-resize:
-	python scripts/resize_images.py \
+	python preprocess/resize_images.py \
 		--src image_dataset \
 		--dst post_image_dataset
 
 preprocess-vae:
-	python scripts/cache_latents.py \
+	python preprocess/cache_latents.py \
 		--dir post_image_dataset \
 		--vae models/vae/qwen_image_vae.safetensors \
 		--batch_size 4 \
 		--chunk_size 64
 
 preprocess-te:
-	python scripts/cache_text_embeddings.py \
+	python preprocess/cache_text_embeddings.py \
 		--dir post_image_dataset \
 		--qwen3 models/text_encoders/qwen_3_06b_base.safetensors \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -219,7 +219,7 @@ download-models: download-anima download-sam3 download-mit
 # --- Masking ---
 
 mask-sam:
-	python scripts/generate_masks.py \
+	python preprocess/generate_masks.py \
 		--config configs/sam_mask.yaml \
 		--image-dir post_image_dataset \
 		--mask-dir masks_sam \
@@ -227,14 +227,14 @@ mask-sam:
 		--batch-size 2
 
 mask-mit:
-	python scripts/generate_masks_mit.py \
+	python preprocess/generate_masks_mit.py \
 		--image-dir post_image_dataset \
 		--mask-dir masks_mit \
 		--model-path models/mit/model.pth
 
 mask:
 	python -c "import os,subprocess; [subprocess.check_call(['$(MAKE)',t]) for t,d in [('mask-sam','masks_sam'),('mask-mit','masks_mit')] if not os.path.isdir(d)]"
-	python scripts/merge_masks.py \
+	python preprocess/merge_masks.py \
 		masks_sam masks_mit \
 		--output-dir masks
 

@@ -18,10 +18,10 @@ import yaml
 from PIL import Image
 from tqdm import tqdm
 
-# Allow running from scripts/ subdirectory
+# Allow running from preprocess/ subdirectory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+from library.datasets.image_utils import IMAGE_EXTENSIONS
 
 
 def get_image_files(image_dir: Path) -> list[Path]:

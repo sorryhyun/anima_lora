@@ -20,8 +20,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from library.datasets.buckets import BucketManager
-
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+from library.datasets.image_utils import IMAGE_EXTENSIONS
 CAPTION_EXTENSIONS = {".txt", ".caption"}
 
 

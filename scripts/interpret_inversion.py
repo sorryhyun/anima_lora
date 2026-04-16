@@ -17,9 +17,10 @@ from library import (
     anima_models,
     anima_utils,
     qwen_image_autoencoder_kl,
-    inference_utils,
 )
+from library.cache_utils import TE_CACHE_SUFFIX, load_cached_crossattn_emb
 from library.device_utils import clean_memory_on_device
+from library.inference import sampling as inference_utils
 from library.utils import setup_logging
 
 setup_logging()
@@ -33,19 +34,17 @@ def find_nearest_captions(inverted_path, dataset_dir, top_k=10):
     inv_emb = inv_sd["crossattn_emb"].float()  # (512, 1024)
 
     results = []
-    te_files = sorted(glob.glob(os.path.join(dataset_dir, "*_anima_te.safetensors")))
+    te_files = sorted(glob.glob(os.path.join(dataset_dir, f"*{TE_CACHE_SUFFIX}")))
 
     for te_path in tqdm(te_files, desc="Comparing embeddings"):
-        stem = os.path.basename(te_path).replace("_anima_te.safetensors", "")
+        stem = os.path.basename(te_path).removesuffix(TE_CACHE_SUFFIX)
         caption_path = os.path.join(dataset_dir, f"{stem}.txt")
         if not os.path.exists(caption_path):
             continue
 
-        sd = load_file(te_path)
-        key = "crossattn_emb_v0" if "crossattn_emb_v0" in sd else "crossattn_emb"
-        if key not in sd:
+        ref_emb = load_cached_crossattn_emb(te_path)
+        if ref_emb is None:
             continue
-        ref_emb = sd[key].float()  # (512, 1024)
 
         # Cosine similarity on flattened embeddings
         cos_sim = F.cosine_similarity(

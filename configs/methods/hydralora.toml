@@ -6,8 +6,8 @@ dataset_config = "configs/dataset_config.toml"
 # collide with regular LoRA runs and `make test-hydra` can key off it.
 output_name = "anima_hydra"
 
-network_alpha = 16
-network_dim = 16
+network_alpha = 8
+network_dim = 8
 
 use_hydra = true
 # Per-module layer-local routing lets each Linear specialize independently,
@@ -24,6 +24,12 @@ checkpointing_epochs = 2
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
+
+use_ortho_exp = true
+
+use_timestep_mask = true
+min_rank = 1
+alpha_rank_scale = 1.0
 
 # Multi-expert up-projections are VRAM-heavy — method-forced swap.
 blocks_to_swap = 20

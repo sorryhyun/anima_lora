@@ -6,34 +6,25 @@ alongside the images.  Skips already-cached entries (idempotent).
 """
 
 import argparse
+import os
+import sys
 from pathlib import Path
 
 import numpy as np
 import torch
 from PIL import Image
-from torchvision import transforms
 from tqdm import tqdm
-
-import sys
-import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-ANIMA_LATENTS_NPZ_SUFFIX = "_anima.npz"
-
-IMAGE_TRANSFORMS = transforms.Compose(
-    [
-        transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5]),
-    ]
-)
+from library.cache_utils import LATENT_CACHE_SUFFIX
+from library.datasets.image_utils import IMAGE_EXTENSIONS, IMAGE_TRANSFORMS
 
 
 def get_latents_npz_path(image_path: Path, image_size: tuple[int, int]) -> Path:
     """Match the naming convention used by AnimaLatentsCachingStrategy."""
     return image_path.with_name(
-        f"{image_path.stem}_{image_size[0]:04d}x{image_size[1]:04d}{ANIMA_LATENTS_NPZ_SUFFIX}"
+        f"{image_path.stem}_{image_size[0]:04d}x{image_size[1]:04d}{LATENT_CACHE_SUFFIX}"
     )
 
 

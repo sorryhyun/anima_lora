@@ -23,7 +23,6 @@ Usage:
 
 import argparse
 import csv
-import glob
 import json
 import logging
 import os
@@ -38,7 +37,6 @@ import torch.nn.functional as F
 from PIL import Image
 from safetensors.torch import load_file, save_file
 from scipy.optimize import linear_sum_assignment
-from torchvision import transforms
 from tqdm import tqdm
 
 from library import (
@@ -48,19 +46,18 @@ from library import (
     strategy_anima,
     strategy_base,
 )
+from library.cache_utils import (
+    discover_cached_images,
+    load_cached_crossattn_emb,
+    load_cached_latents,
+)
+from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.device_utils import clean_memory_on_device
 from library.utils import setup_logging
 
 setup_logging()
 
 logger = logging.getLogger(__name__)
-
-IMAGE_TRANSFORMS = transforms.Compose(
-    [
-        transforms.ToTensor(),
-        transforms.Normalize([0.5], [0.5]),
-    ]
-)
 
 
 def parse_args():
@@ -271,64 +268,6 @@ def parse_args():
 # region Data loading
 
 
-def discover_images(image_dir):
-    """Find all images in a preprocessed dataset directory that have cached latents."""
-    images = []
-    for png_path in sorted(glob.glob(os.path.join(image_dir, "*.png"))):
-        stem = os.path.splitext(png_path)[0]
-        # Find the corresponding cached latent NPZ
-        npz_files = glob.glob(f"{stem}_*_anima.npz")
-        if not npz_files:
-            continue
-        te_path = f"{stem}_anima_te.safetensors"
-        if not os.path.exists(te_path):
-            te_path = None
-        images.append(
-            {
-                "image_path": png_path,
-                "npz_path": npz_files[0],  # use first bucket resolution
-                "te_path": te_path,
-                "stem": os.path.basename(stem),
-            }
-        )
-    return images
-
-
-def load_cached_latents(npz_path, device):
-    """Load cached latents from a preprocessed NPZ file."""
-    data = np.load(npz_path)
-    # Keys are like 'latents_180x90', find the latents key
-    latent_key = [k for k in data.keys() if k.startswith("latents_")][0]
-    latents = torch.from_numpy(data[latent_key]).unsqueeze(0)  # (1, 16, H/8, W/8)
-    latents = latents.to(device, dtype=torch.bfloat16)
-
-    # Extract original size from the matching key
-    size_suffix = latent_key[len("latents_") :]  # e.g. "180x90"
-    size_key = f"original_size_{size_suffix}"
-    if size_key in data:
-        # original_size is stored as [W, H] in the preprocessing pipeline
-        orig_w, orig_h = int(data[size_key][0]), int(data[size_key][1])
-    else:
-        # Derive from latent shape: latent is (16, H/8, W/8)
-        orig_h = latents.shape[-2] * 8
-        orig_w = latents.shape[-1] * 8
-
-    return latents, orig_h, orig_w
-
-
-def load_cached_embedding(te_path, device):
-    """Load cached crossattn_emb from a preprocessed TE safetensors file."""
-    sd = load_file(te_path)
-    # Use variant 0 (original caption, no shuffle)
-    if "crossattn_emb_v0" in sd:
-        emb = sd["crossattn_emb_v0"]
-    elif "crossattn_emb" in sd:
-        emb = sd["crossattn_emb"]
-    else:
-        return None
-    return emb.unsqueeze(0).to(device, dtype=torch.float32)  # (1, 512, 1024)
-
-
 def load_and_encode_image(args, device):
     """Load a single target image, encode to latents via VAE, then free VAE."""
     logger.info(f"Loading target image: {args.image}")
@@ -391,10 +330,10 @@ def create_initial_embedding(args, device, anima, te_path=None):
         return _encode_prompt(args, device, anima)
 
     if not args.init_zeros and te_path is not None:
-        emb = load_cached_embedding(te_path, device)
+        emb = load_cached_crossattn_emb(te_path)
         if emb is not None:
             logger.info(f"Init from cached TE: {te_path}")
-            return emb
+            return emb.unsqueeze(0).to(device, dtype=torch.float32)
 
     logger.info("Init from zeros")
     return torch.zeros(1, 512, 1024, dtype=torch.float32, device=device)
@@ -1105,7 +1044,7 @@ def process_single(args, anima, device):
 
 def process_batch(args, anima, device):
     """Process a directory of preprocessed images (--image_dir mode)."""
-    images = discover_images(args.image_dir)
+    images = discover_cached_images(args.image_dir)
     if not images:
         logger.error(f"No images with cached latents found in {args.image_dir}")
         return
@@ -1121,7 +1060,7 @@ def process_batch(args, anima, device):
     os.makedirs(args.logs_dir, exist_ok=True)
 
     for i, img_info in enumerate(images):
-        stem = img_info["stem"]
+        stem = img_info.stem
         logger.info(f"[{i + 1}/{len(images)}] {stem}")
 
         out_path = os.path.join(args.results_dir, f"{stem}_inverted.safetensors")
@@ -1130,11 +1069,12 @@ def process_batch(args, anima, device):
             continue
 
         # Load cached latents
-        latents, orig_h, orig_w = load_cached_latents(img_info["npz_path"], device)
+        lat, _res, orig_h, orig_w = load_cached_latents(img_info.npz_path)
+        latents = lat.unsqueeze(0).to(device, dtype=torch.bfloat16)
 
         # Initialize from cached TE embedding
         init_embed = create_initial_embedding(
-            args, device, anima, te_path=img_info["te_path"]
+            args, device, anima, te_path=img_info.te_path
         )
 
         # Optimize (N runs + alignment if --aggregate_by > 1)

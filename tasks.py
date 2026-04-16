@@ -317,7 +317,7 @@ def cmd_preprocess_resize(extra):
     run(
         [
             PY,
-            "scripts/resize_images.py",
+            "preprocess/resize_images.py",
             "--src",
             "image_dataset",
             "--dst",
@@ -331,7 +331,7 @@ def cmd_preprocess_vae(extra):
     run(
         [
             PY,
-            "scripts/cache_latents.py",
+            "preprocess/cache_latents.py",
             "--dir",
             "post_image_dataset",
             "--vae",
@@ -349,7 +349,7 @@ def cmd_preprocess_te(extra):
     run(
         [
             PY,
-            "scripts/cache_text_embeddings.py",
+            "preprocess/cache_text_embeddings.py",
             "--dir",
             "post_image_dataset",
             "--qwen3",
@@ -438,7 +438,7 @@ def cmd_mask_sam(extra):
     run(
         [
             PY,
-            "scripts/generate_masks.py",
+            "preprocess/generate_masks.py",
             "--config",
             "configs/sam_mask.yaml",
             "--image-dir",
@@ -458,7 +458,7 @@ def cmd_mask_mit(extra):
     run(
         [
             PY,
-            "scripts/generate_masks_mit.py",
+            "preprocess/generate_masks_mit.py",
             "--image-dir",
             "post_image_dataset",
             "--mask-dir",
@@ -478,7 +478,7 @@ def cmd_mask(extra):
     run(
         [
             PY,
-            "scripts/merge_masks.py",
+            "preprocess/merge_masks.py",
             "masks_sam",
             "masks_mit",
             "--output-dir",

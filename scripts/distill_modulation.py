@@ -19,7 +19,6 @@ Usage:
 """
 
 import argparse
-import glob
 import logging
 import math
 import os
@@ -28,14 +27,19 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import numpy as np
 import torch
 import torch.nn as nn
-from safetensors.torch import load_file, save_file
+from safetensors.torch import save_file
 from tqdm import tqdm
 
 from library import anima_utils
 from library.anima_models import Anima
+from library.cache_utils import (
+    discover_cached_images,
+    get_latent_resolution,
+    load_cached_crossattn_emb,
+    load_cached_latents,
+)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -57,23 +61,15 @@ class CachedDataset(torch.utils.data.Dataset):
 
     def __init__(self, data_dir: str, batch_size: int = 1):
         self.data_dir = data_dir
-        # Find all text encoder cache files (one per image)
-        te_files = sorted(glob.glob(os.path.join(data_dir, "*_anima_te.safetensors")))
+        cached = discover_cached_images(data_dir)
 
         # Group samples by latent resolution
         buckets: dict[str, list[tuple[str, str]]] = {}
-        for te_path in te_files:
-            stem = te_path.replace("_anima_te.safetensors", "")
-            latent_pattern = f"{stem}_*_anima.npz"
-            latent_files = glob.glob(latent_pattern)
-            if not latent_files:
+        for img in cached:
+            if img.te_path is None:
                 continue
-            latent_path = latent_files[0]
-            # Extract resolution from latent key (e.g. "latents_64x64")
-            npz_keys = np.load(latent_path).files
-            latent_key = [k for k in npz_keys if k.startswith("latents_")][0]
-            res = latent_key.split("_", 1)[1]  # "64x64"
-            buckets.setdefault(res, []).append((latent_path, te_path))
+            res = get_latent_resolution(img.npz_path)
+            buckets.setdefault(res, []).append((img.npz_path, img.te_path))
 
         # Flatten: emit only full batches from each bucket (drop per-bucket
         # remainders to avoid mixed-resolution batches during collation)
@@ -93,21 +89,8 @@ class CachedDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         latent_path, te_path = self.samples[idx]
-
-        # Load latent
-        npz = np.load(latent_path)
-        # Key is latents_{H}x{W}
-        latent_key = [k for k in npz.keys() if k.startswith("latents_")][0]
-        latents = torch.from_numpy(npz[latent_key].copy()).float()  # (16, H, W)
-
-        # Load text encoder outputs (load_file avoids mmap non-resizable storage)
-        te_data = load_file(te_path)
-        if "num_variants" in te_data:
-            vi = random.randint(0, int(te_data["num_variants"]) - 1)
-            crossattn_emb = te_data[f"crossattn_emb_v{vi}"]
-        else:
-            crossattn_emb = te_data["crossattn_emb"]
-
+        latents, _res, _h, _w = load_cached_latents(latent_path)  # (16, H, W)
+        crossattn_emb = load_cached_crossattn_emb(te_path, variant="random")
         return latents, crossattn_emb
 
 
