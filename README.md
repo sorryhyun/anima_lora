@@ -12,7 +12,7 @@ LoRA training and inference engine for the Anima diffusion model (DiT-based, flo
 |---|---|
 | **Constant-token bucketing** | All bucket resolutions are chosen so that `(H/16)×(W/16) ≈ 4096` patches. Every batch element is then zero-padded to exactly 4096 tokens, giving `torch.compile` a single static shape to trace — no recompilation across aspect ratios. |
 | **Max-padded text encoder** | Text encoder outputs are padded to `max_length` (512) and zero-filled. The pretrained DiT treats these zero keys as learned **attention sinks** in cross-attention softmax, so removing padding produces black images. Keeping it preserves model behavior *and* gives the compiler another fixed dimension. |
-| **Flash Attention 2** | Uses `flash_attn` 2.x for fixed-length and variable-length attention, with automatic fallback to SDPA. FA4 was evaluated and removed — see [docs/fa4.md](docs/fa4.md). |
+| **Flash Attention 2** | Uses `flash_attn` 2.x for fixed-length and variable-length attention, with automatic fallback to SDPA. FA4 was evaluated and removed — see [docs/optimizations/fa4.md](docs/optimizations/fa4.md). |
 | **Per-block `torch.compile`** | Each DiT block is compiled independently with the Inductor backend. Combined with static token counts this eliminates Dynamo guard recompilation entirely. |
 | **Disk-cached latents & text embeddings** | VAE latents, text encoder outputs, and LLM adapter outputs are pre-computed and cached to disk — the VAE and text encoder never occupy training VRAM. |
 | **Unsloth gradient checkpointing** | Activations are offloaded to CPU with non-blocking transfers during the forward pass and streamed back for the backward pass, trading PCIe bandwidth for VRAM. |
@@ -141,14 +141,14 @@ make invert                    # batch inversion on preprocessed dataset
 make invert INVERT_SWAP=12     # use block swap for low-VRAM GPUs
 ```
 
-See [docs/invert.md](docs/invert.md) for details on initialization, VRAM modes, and block gradient analysis.
+See [docs/methods/invert.md](docs/methods/invert.md) for details on initialization, VRAM modes, and block gradient analysis.
 
 ## Documentation
 
 | Doc | Contents |
 |-----|----------|
-| [docs/training.md](docs/training.md) | LoRA variants (DoRA, OrthoLoRA, T-LoRA), caption shuffle, masked loss, dataset config |
-| [docs/fa4.md](docs/fa4.md) | Why FA4 / flash-attention-sm120 and cross-attention KV trim were removed |
-| [docs/prefix-tuning.md](docs/prefix-tuning.md) | Prefix tuning — 12 GB VRAM, ~1 step/s, how it works, config reference |
-| [docs/inference.md](docs/inference.md) | Inference flags, P-GRAFT inference, prompt file format, LoRA format conversion |
-| [docs/invert.md](docs/invert.md) | Embedding inversion — optimization flags, VRAM modes, block gradient logging |
+| [docs/guidelines/training.md](docs/guidelines/training.md) | LoRA variants (DoRA, OrthoLoRA, T-LoRA), caption shuffle, masked loss, dataset config |
+| [docs/optimizations/fa4.md](docs/optimizations/fa4.md) | Why FA4 / flash-attention-sm120 and cross-attention KV trim were removed |
+| [docs/methods/prefix-tuning.md](docs/methods/prefix-tuning.md) | Prefix tuning — 12 GB VRAM, ~1 step/s, how it works, config reference |
+| [docs/guidelines/inference.md](docs/guidelines/inference.md) | Inference flags, P-GRAFT inference, prompt file format, LoRA format conversion |
+| [docs/methods/invert.md](docs/methods/invert.md) | Embedding inversion — optimization flags, VRAM modes, block gradient logging |

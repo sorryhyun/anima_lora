@@ -9,7 +9,7 @@ Two independent Anima DiT implementations live side-by-side in this workspace:
 
 They share the same model family lineage (`MiniTrainDIT`) and load the same base checkpoints for the transformer blocks, but the two forward paths have diverged in several behaviorally-visible ways. This doc catalogs those differences so you don't waste debugging cycles chasing phantom bugs when a workflow behaves differently between `inference.py` and ComfyUI.
 
-This matters in particular for anything that hooks the forward path — notably `mod_guidance.py` in [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) and the per-block mod-guidance scheduling documented in [`docs/mod-guidance.md`](mod-guidance.md).
+This matters in particular for anything that hooks the forward path — notably `mod_guidance.py` in [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) and the per-block mod-guidance scheduling documented in [`docs/methods/mod-guidance.md`](../methods/mod-guidance.md).
 
 ## TL;DR
 
@@ -110,7 +110,7 @@ attn_params.crossattn_block_mask = attention.create_block_mask(
 )
 ```
 
-It also supports bucketed KV trimming + sigmoid-based LSE correction for flash4 (`anima_models.py:1662-1679`, currently commented out but the correction is documented in `docs/mod-guidance.md` and `docs/fa4.md`).
+It also supports bucketed KV trimming + sigmoid-based LSE correction for flash4 (`anima_models.py:1662-1679`, currently commented out but the correction is documented in `docs/methods/mod-guidance.md` and `docs/optimizations/fa4.md`).
 
 **comfy** — `comfy/comfy/ldm/anima/model.py:193-214` pads the llm_adapter output to a fixed 512 tokens:
 
@@ -154,7 +154,7 @@ Two concrete divergences:
 1. **anima_lora's `AttentionParams`** is a dataclass that encapsulates `attn_mode`, `split_attn`, `softmax_scale`, `crossattn_block_mask`, and `crossattn_full_len` in one object passed positionally. ComfyUI passes `transformer_options: dict` that ComfyUI's attention dispatch reads ad-hoc.
 2. **RoPE shape.** anima_lora passes a `(cos, sin)` tuple computed per-forward. ComfyUI passes a single `rope_emb_L_1_1_D` already pre-unsqueezed. Semantically equivalent but not drop-in interchangeable.
 
-**Practical consequence for the per-block mod-guidance hooks** (now shipped on both sides — see `docs/mod-guidance.md`): in both codebases the `t_emb` argument is at **positional index 1**, so block-level pre-forward hooks can rewrite `args[1]` identically in both implementations. The two signatures diverge on args 3+, but the per-block scheduler only cares about index 1, so the hook factory is portable.
+**Practical consequence for the per-block mod-guidance hooks** (now shipped on both sides — see `docs/methods/mod-guidance.md`): in both codebases the `t_emb` argument is at **positional index 1**, so block-level pre-forward hooks can rewrite `args[1]` identically in both implementations. The two signatures diverge on args 3+, but the per-block scheduler only cares about index 1, so the hook factory is portable.
 
 ### 2.4 Final layer
 
@@ -245,7 +245,7 @@ Already covered in §3 as part of the performance table. Two concrete things wor
 
 - anima_lora: the delta is applied inside the block loop in `forward_mini_train_dit` via `_mod_guidance_schedule` (per-block `w(l)`), with `final_layer` scheduled separately via `_mod_guidance_final_w`.
 - comfy: the delta is applied via `register_forward_hook` on `t_embedding_norm` (for the base projection) plus `register_forward_pre_hook` on each block (for the scheduled steering delta). The hook has to supply **both** the base projection and the delta — anima_lora's line-1640 auto-addition doesn't exist here.
-- **Do not copy** the ComfyUI hook's `(proj_pos + delta)` combined tensor back into anima_lora — it would double-add the base projection. See `docs/mod-guidance.md` for the separation of `_mod_guidance_delta` (unit direction) from `_mod_guidance_schedule` (per-block `w`).
+- **Do not copy** the ComfyUI hook's `(proj_pos + delta)` combined tensor back into anima_lora — it would double-add the base projection. See `docs/methods/mod-guidance.md` for the separation of `_mod_guidance_delta` (unit direction) from `_mod_guidance_schedule` (per-block `w`).
 
 ## Where the two diverge, and where they'll stay diverged
 
@@ -261,7 +261,7 @@ There is no reason to merge the two; they solve different problems. The point of
 
 ## References
 
-- `docs/mod-guidance.md` — modulation-guidance mechanism, per-block schedule rationale, and distillation flow
+- `docs/methods/mod-guidance.md` — modulation-guidance mechanism, per-block schedule rationale, and distillation flow
 - [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) `mod_guidance.py` — ComfyUI port of mod guidance with the per-block hook mechanism
 - `library/anima_models.py` — anima_lora's `Anima` class, forward path at `forward_mini_train_dit`
 - `comfy/comfy/ldm/cosmos/predict2.py::MiniTrainDIT` — ComfyUI's vanilla forward

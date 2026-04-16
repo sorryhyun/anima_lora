@@ -1,6 +1,6 @@
 # Anima — Future Plan
 
-Living roadmap for work after APEX Phase 1 lands. See `docs/apex.md` for the
+Living roadmap for work after APEX Phase 1 lands. See `docs/methods/apex.md` for the
 shipped APEX implementation and `proposal.md`-era history is now folded into
 that doc. This file tracks what comes next, ordered by payoff × readiness.
 
@@ -192,7 +192,7 @@ in `_process_batch_inner`.
 
 ### Docs
 
-- `docs/training.md` references the historical method list. Add APEX.
+- `docs/guidelines/training.md` references the historical method list. Add APEX.
 - `CLAUDE.md` mentions all LoRA variants in the "Key entry points" table.
   Add a row for APEX / `ConditionShift`.
 

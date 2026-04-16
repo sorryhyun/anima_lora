@@ -113,7 +113,7 @@ Layout:
   - `networks/lora_anima.py` — LoRA network creation, module targeting, timestep masking orchestration
   - `networks/lora_modules.py` — LoRA, DoRA, OrthoLoRA module implementations
   - `networks/postfix_anima.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual)
-- **Attention dispatch** (`networks/attention.py`): Unified `attention()` routing to torch SDPA, xformers, flash-attn v2/v3, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD). FA4 (flash-attention-sm120) was evaluated and is currently disabled — see `docs/fa4.md`.
+- **Attention dispatch** (`networks/attention.py`): Unified `attention()` routing to torch SDPA, xformers, flash-attn v2/v3, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD). FA4 (flash-attention-sm120) was evaluated and is currently disabled — see `docs/optimizations/fa4.md`.
 
 ### LoRA variants
 
@@ -122,7 +122,7 @@ All in `networks/lora_modules.py`:
 - **DoRA** — Weight-decomposed: separate magnitude (`dora_scale`) and direction learning
 - **OrthoLoRA** — SVD-based orthogonal parameterization with orthogonality regularization (linear layers only, incompatible with DoRA)
 - **T-LoRA** — Timestep-dependent rank masking: effective rank varies with denoising step via power-law schedule. Compatible with both LoRA and DoRA.
-- **HydraLoRA** — MoE-style multi-head routing: shared `lora_down` + per-expert `lora_up_i` heads. Router on max-pooled `crossattn_emb` selects expert contributions per sample. Requires `cache_llm_adapter_outputs=true`. Compatible with T-LoRA. See `docs/hydra-lora.md`.
+- **HydraLoRA** — MoE-style multi-head routing: shared `lora_down` + per-expert `lora_up_i` heads. Router on max-pooled `crossattn_emb` selects expert contributions per sample. Requires `cache_llm_adapter_outputs=true`. Compatible with T-LoRA. See `docs/methods/hydra-lora.md`.
 
 ### Training flow (train.py)
 
@@ -157,7 +157,7 @@ DiT is loaded AFTER text encoder/VAE caching and unloading to avoid OOM. The seq
 
 ## Spectrum inference acceleration
 
-Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., CVPR 2026). `--spectrum` flag on `inference.py` enables it. On cached steps, all transformer blocks are skipped — only `t_embedder` + `final_layer` + `unpatchify` run. A `register_forward_pre_hook` on `final_layer` captures block outputs without monkey-patching the model. The adaptive window schedule (controlled by `--spectrum_window_size` and `--spectrum_flex_window`) concentrates actual forwards on early high-noise steps and increasingly predicts later refinement steps. See `networks/spectrum.py` for the Anima integration and `docs/spectrum.md` for usage notes.
+Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., CVPR 2026). `--spectrum` flag on `inference.py` enables it. On cached steps, all transformer blocks are skipped — only `t_embedder` + `final_layer` + `unpatchify` run. A `register_forward_pre_hook` on `final_layer` captures block outputs without monkey-patching the model. The adaptive window schedule (controlled by `--spectrum_window_size` and `--spectrum_flex_window`) concentrates actual forwards on early high-noise steps and increasingly predicts later refinement steps. See `networks/spectrum.py` for the Anima integration and `docs/methods/spectrum.md` for usage notes.
 
 ## GRAFT / P-GRAFT
 
@@ -166,15 +166,15 @@ The GRAFT loop (`scripts/graft_step.py`) implements rejection-sampling-based fin
 2. Generates candidates using the trained LoRA (with P-GRAFT: LoRA disabled for last 25% of denoising)
 3. User curates by deleting bad candidates; survivors join the training set next iteration
 
-See `docs/graft-guideline.md` for detailed curation guidance.
+See `docs/guidelines/graft-guideline.md` for detailed curation guidance.
 
 ## Modulation guidance
 
-Text-conditioned AdaLN modulation via a learned `pooled_text_proj` MLP (Starodubcev et al., ICLR 2026). Distilled with `make distill-mod`: teacher uses real cross-attention, student uses zeroed cross-attention but receives pooled text through modulation. At inference, steers AdaLN coefficients toward quality-positive directions. See `docs/mod-guidance.md`.
+Text-conditioned AdaLN modulation via a learned `pooled_text_proj` MLP (Starodubcev et al., ICLR 2026). Distilled with `make distill-mod`: teacher uses real cross-attention, student uses zeroed cross-attention but receives pooled text through modulation. At inference, steers AdaLN coefficients toward quality-positive directions. See `docs/methods/mod-guidance.md`.
 
 ## Embedding inversion
 
-Optimizes text embeddings (post-T5, pre-DiT space) to minimize flow-matching loss for a target image through the frozen DiT. Reveals how the model interprets images in embedding space. `make invert` runs batch inversion from `post_image_dataset/`, `make test-invert` verifies results. See `docs/invert.md`.
+Optimizes text embeddings (post-T5, pre-DiT space) to minimize flow-matching loss for a target image through the frozen DiT. Reveals how the model interprets images in embedding space. `make invert` runs batch inversion from `post_image_dataset/`, `make test-invert` verifies results. See `docs/methods/invert.md`.
 
 ## Scripts
 

@@ -148,8 +148,7 @@ python scripts/distill_modulation.py \
     --dit_path models/anima_v2-F16.safetensors \
     --iterations 4000 \
     --lr 1e-4 \
-    --batch_size 2 \
-    --blocks_to_swap 8
+    --batch_size 2
 ```
 
 | Flag | Default | Description |
@@ -159,8 +158,11 @@ python scripts/distill_modulation.py \
 | `--iterations` | 100 | Training iterations |
 | `--lr` | 1e-4 | Learning rate |
 | `--batch_size` | 2 | Batch size |
-| `--blocks_to_swap` | 0 | CPU-offload N blocks for VRAM savings |
+| `--grad_ckpt` / `--no_grad_ckpt` | on | Gradient checkpointing w/ CPU offload. Disable if you have VRAM headroom — faster iteration. |
+| `--blocks_to_swap` | 0 | CPU-offload N blocks. Only needed on very tight VRAM. |
 | `--torch_compile` | false | Enable torch.compile on block forwards |
+
+**VRAM notes.** The teacher forward runs under `torch.no_grad()` so it holds almost nothing; the student forward is what dominates peak VRAM (~12 GB on the default config). With `--no_grad_ckpt` you'll see VRAM swing between the weights-only baseline and that student peak — this is normal. Leave `--grad_ckpt` on (the default) only if the peak doesn't fit; if it does, `--no_grad_ckpt --blocks_to_swap 0` is faster.
 
 Output: `pooled_text_proj.safetensors` in the data directory.
 

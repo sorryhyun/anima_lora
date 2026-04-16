@@ -208,7 +208,7 @@ present.
 - `bench/apex_phase0.py` — standalone 2D toy that validates Theorem 1
   (gradient equivalence, max rel err 1.7e-7) and the cold-start failure mode.
   Run time ~45s on CPU.
-- `docs/graft-guideline.md` — the target consumer for 1-NFE LoRAs.
-- `docs/invert.md` — the target consumer for fast inversion.
+- `docs/guidelines/graft-guideline.md` — the target consumer for 1-NFE LoRAs.
+- `docs/methods/invert.md` — the target consumer for fast inversion.
 - `future_plan.md` (repo root) — phase plan for GRAFT integration, fast
   inversion, T-LoRA/OrthoLoRA-compatible APEX, and ComfyUI loader.
