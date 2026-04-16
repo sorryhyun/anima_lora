@@ -362,7 +362,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--apex_condition_shift_mode",
         type=str,
-        default="scalar",
+        default=None,
         choices=["scalar", "diag", "full"],
         help="APEX ConditionShift parameterization. 'scalar' = 2 params (a, b), paper optimum per Table 7.",
     )

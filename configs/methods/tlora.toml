@@ -5,9 +5,8 @@ dataset_config = "configs/dataset_config.toml"
 network_alpha = 64
 network_dim = 64
 
-use_ortho = true
-sig_type = "last"
-ortho_reg_weight = 0.01
+use_ortho_exp = true
+
 use_timestep_mask = true
 min_rank = 1
 alpha_rank_scale = 1.0
@@ -33,5 +32,4 @@ caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
-# T-LoRA needs aggressive block swapping at rank 48 — method-forced.
-blocks_to_swap = 19
+blocks_to_swap = 12

@@ -74,10 +74,11 @@ distill-mod:
 		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
 		--output_path output/pooled_text_proj.safetensors \
 		--iterations 1500 \
-		--lr 1e-4 \
+		--lr 1e-5 \
 		--warmup 0.05 \
 		--blocks_to_swap 0 \
 		--attn_mode flash \
+		--no_grad_ckpt \
 		$(ARGS)
 
 test:

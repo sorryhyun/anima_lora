@@ -5,11 +5,13 @@
 [default]
 # Linux daily driver — moderate block swap.
 blocks_to_swap = 8
+dataloader_pin_memory = true
 
 [fast_16gb]
 # No block swap + first two blocks frozen — fastest on ~16GB VRAM.
 blocks_to_swap = 0
 layer_start = 2
+dataloader_pin_memory = true
 
 [low_vram]
 # Aggressive memory savings — gradient checkpointing + unsloth offload.
@@ -17,9 +19,11 @@ layer_start = 2
 blocks_to_swap = 0
 gradient_checkpointing = true
 unsloth_offload_checkpointing = true
+dataloader_pin_memory = true
 
 [32gb]
 blocks_to_swap = 0
+dataloader_pin_memory = true
 
 [graft]
 # GRAFT loop — heavier block swap + pinned dataloader workers.

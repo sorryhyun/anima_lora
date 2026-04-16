@@ -10,6 +10,7 @@ from networks.lora_modules import (
     LoRAInfModule,
     DoRAModule,
     OrthoLoRAModule,
+    OrthoLoRAExpModule,
     ReFTModule,
     HydraLoRAModule,
 )
@@ -380,6 +381,11 @@ def create_network(
     ortho_reg_weight = kwargs.get("ortho_reg_weight", None)
     ortho_reg_weight = float(ortho_reg_weight) if ortho_reg_weight is not None else 0.01
 
+    # OrthoLoRA experimental: Cayley parameterization + SVD-informed init
+    use_ortho_exp = kwargs.get("use_ortho_exp", "false")
+    if use_ortho_exp is not None:
+        use_ortho_exp = True if use_ortho_exp.lower() == "true" else False
+
     # Timestep-dependent rank masking
     use_timestep_mask = kwargs.get("use_timestep_mask", "false")
     if use_timestep_mask is not None:
@@ -486,6 +492,8 @@ def create_network(
         module_class = HydraLoRAModule
     elif use_dora:
         module_class = DoRAModule
+    elif use_ortho_exp:
+        module_class = OrthoLoRAExpModule
     elif use_ortho:
         module_class = OrthoLoRAModule
     else:
@@ -536,7 +544,9 @@ def create_network(
         logger.info(
             f"Timestep-dependent rank masking: min_rank={min_rank}, alpha={alpha_rank_scale}"
         )
-    if use_ortho:
+    if use_ortho_exp:
+        logger.info("OrthoLoRA (exp): Cayley parameterization + SVD-informed init")
+    elif use_ortho:
         logger.info(
             f"OrthoLoRA: sig_type={sig_type}, ortho_reg_weight={ortho_reg_weight}"
         )
@@ -613,6 +623,7 @@ def create_network_from_weights(
     train_llm_adapter = False
     has_dora = False
     has_ortho = False
+    has_ortho_exp = False
     has_hydra = False
     hydra_num_experts = 0
     has_reft = False
@@ -650,6 +661,10 @@ def create_network_from_weights(
         elif "lora_down" in key:
             dim = value.size()[0]
             modules_dim[lora_name] = dim
+        elif key.endswith(".S_p"):
+            dim = value.size()[0]
+            modules_dim[lora_name] = dim
+            has_ortho_exp = True
         elif "q_layer" in key and "weight" in key and "base_" not in key:
             dim = value.size()[0]
             modules_dim[lora_name] = dim
@@ -669,6 +684,8 @@ def create_network_from_weights(
         module_class = LoRAInfModule
     elif has_dora:
         module_class = DoRAModule
+    elif has_ortho_exp:
+        module_class = OrthoLoRAExpModule
     elif has_ortho:
         module_class = OrthoLoRAModule
     else:
@@ -963,6 +980,8 @@ class LoRANetwork(torch.nn.Module):
                 extra_kwargs = {}
                 if module_class == OrthoLoRAModule:
                     extra_kwargs["sig_type"] = self.sig_type
+                elif module_class == OrthoLoRAExpModule:
+                    pass  # no extra kwargs — SVD init reads from org_module directly
                 elif module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = self.num_experts
 
@@ -996,7 +1015,7 @@ class LoRANetwork(torch.nn.Module):
         # Skip for OrthoLoRA since SVD init is expensive and TE modules are discarded in apply_to anyway
         self.text_encoder_loras: List[Union[LoRAModule, LoRAInfModule]] = []
         skipped_te = []
-        if text_encoders is not None and module_class != OrthoLoRAModule:
+        if text_encoders is not None and module_class not in (OrthoLoRAModule, OrthoLoRAExpModule):
             for i, text_encoder in enumerate(text_encoders):
                 if text_encoder is None:
                     continue
@@ -1589,6 +1608,47 @@ class LoRANetwork(torch.nn.Module):
             "self_attn_qkv_proj": ("self_attn_{}_proj", ("q", "k", "v")),
             "cross_attn_kv_proj": ("cross_attn_{}_proj", ("k", "v")),
         }
+
+        # OrthoLoRAExp (Cayley) → standard LoRA conversion for ComfyUI compatibility
+        # ΔW = P_eff @ diag(λ) @ Q_eff is exactly rank r (no residual subtraction)
+        ortho_exp_prefixes = set()
+        for key in state_dict.keys():
+            if key.endswith(".S_p"):
+                ortho_exp_prefixes.add(key[: -len(".S_p")])
+
+        for prefix in ortho_exp_prefixes:
+            S_p = state_dict[f"{prefix}.S_p"]
+            S_q = state_dict[f"{prefix}.S_q"]
+            P_basis = state_dict[f"{prefix}.P_basis"]
+            Q_basis = state_dict[f"{prefix}.Q_basis"]
+            lam = state_dict[f"{prefix}.lambda_layer"]  # (1, r)
+            alpha = state_dict.get(f"{prefix}.alpha")
+            rank = S_p.shape[0]
+            save_dtype = dtype if dtype is not None else P_basis.dtype
+
+            # Reconstruct effective bases via Cayley transform
+            R_p = OrthoLoRAExpModule._cayley(S_p.float())
+            R_q = OrthoLoRAExpModule._cayley(S_q.float())
+            P_eff = P_basis.float() @ R_p  # (out, r)
+            Q_eff = R_q @ Q_basis.float()  # (r, in)
+
+            # ΔW = P_eff @ diag(λ) @ Q_eff — already rank r, factor directly
+            lam_abs = lam.squeeze(0).float().abs()
+            lam_sign = lam.squeeze(0).float().sign()
+            lam_sqrt = lam_abs.sqrt()
+            lora_up = (P_eff * (lam_sqrt * lam_sign).unsqueeze(0)).to(save_dtype).cpu().contiguous()
+            lora_down = (Q_eff * lam_sqrt.unsqueeze(1)).to(save_dtype).cpu().contiguous()
+
+            # Remove OrthoLoRAExp keys
+            for suffix in ["S_p", "S_q", "lambda_layer", "P_basis", "Q_basis"]:
+                state_dict.pop(f"{prefix}.{suffix}", None)
+            # inv_scale is kept — it's a standard buffer shared with other module types
+
+            # Add standard LoRA keys
+            state_dict[f"{prefix}.lora_up.weight"] = lora_up
+            state_dict[f"{prefix}.lora_down.weight"] = lora_down
+            if alpha is not None:
+                state_dict[f"{prefix}.alpha"] = alpha
 
         # OrthoLoRA → standard LoRA conversion for ComfyUI compatibility
         # Compute ΔW = P·diag(λ)·Q - P_base·diag(λ_base)·Q_base, then SVD → lora_up/lora_down

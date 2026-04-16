@@ -2,8 +2,8 @@
 
 dataset_config = "configs/dataset_config.toml"
 
-network_alpha = 32
-network_dim = 32
+network_alpha = 64
+network_dim = 64
 
 learning_rate = 5e-5
 max_train_epochs = 2
@@ -13,6 +13,13 @@ checkpointing_epochs = 2
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
+
+# blocks_to_swap = 20
+
+# use_ortho_exp = true, # allows blocks_to_swap=14 when r=64
+# use_ortho = true
+# sig_type = "last"
+# ortho_reg_weight = 0.01
 
 # per_channel_scaling = true
 # channel_stats_path = "bench/results/channel_stats.safetensors"

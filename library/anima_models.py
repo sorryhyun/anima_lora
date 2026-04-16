@@ -1645,7 +1645,7 @@ class Anima(nn.Module):
         # The steering delta (proj_pos - proj_neg) is NOT baked into the shared
         # t_embedding here — it is applied per-block below via _mod_guidance_schedule,
         # so early tonal-DC blocks and the final compensation layer can be skipped.
-        # See docs/mod-guidance.md for the rationale.
+        # See docs/methods/mod-guidance.md for the rationale.
         mod_delta = getattr(self, "_mod_guidance_delta", None)
         mod_schedule = getattr(self, "_mod_guidance_schedule", None)
         mod_final_w = getattr(self, "_mod_guidance_final_w", 0.0)

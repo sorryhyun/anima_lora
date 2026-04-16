@@ -203,7 +203,7 @@ class HydraLoRAModule(torch.nn.Module):
     Shared lora_down captures common features; per-expert lora_up heads specialize.
     Each module owns its own router that reads the layer input and emits per-sample gates,
     so specialization is learned per-layer rather than globally.
-    Reference: docs/hydra-lora.md
+    Reference: docs/methods/hydra-lora.md
     """
 
     def __init__(
@@ -639,6 +639,167 @@ class OrthoLoRAModule(torch.nn.Module):
         p_reg = torch.sum((self.p_layer.weight.T @ self.p_layer.weight - eye) ** 2)
         q_reg = torch.sum((self.q_layer.weight @ self.q_layer.weight.T - eye) ** 2)
         return p_reg, q_reg
+
+
+class OrthoLoRAExpModule(torch.nn.Module):
+    """
+    Experimental OrthoLoRA with Cayley parameterization + SVD-informed init.
+
+    Instead of trainable (d, r) / (r, d) basis matrices with soft orthogonality
+    regularization, uses frozen SVD-derived bases rotated by Cayley-parameterized
+    (r, r) orthogonal matrices.  Trainable parameters are two skew-symmetric
+    matrices S_p, S_q (r×r) and a diagonal scale vector lambda (1×r).
+
+    Cayley transform: R = (I - A)(I + A)^{-1}, A = S - S^T (skew-symmetric).
+    Guarantees R^T R = I at every gradient step — no reg hyperparameter.
+
+    Forward:
+        P_eff = P_basis @ cayley(S_p)        # (out, r) — columns stay orthonormal
+        Q_eff = cayley(S_q) @ Q_basis        # (r, in) — rows stay orthonormal
+        out   = x @ Q_eff^T @ diag(λ) @ P_eff^T
+
+    Init: S_p = S_q = 0 → R = I, λ = 0 → ΔW = 0 (zero output at init).
+
+    Reference: PSOFT (Wu et al., ICLR 2026) for Cayley + SVD-init idea.
+    We keep frozen full-dim bases (not PSOFT's frozen principal-subspace restriction)
+    so expressiveness is limited to rotations within the initial basis span —
+    this is the tradeoff being benchmarked via use_ortho_exp.
+    """
+
+    def __init__(
+        self,
+        lora_name,
+        org_module: torch.nn.Module,
+        multiplier=1.0,
+        lora_dim=4,
+        alpha=1,
+        dropout=None,
+        rank_dropout=None,
+        module_dropout=None,
+        channel_scale=None,
+    ):
+        super().__init__()
+        self.lora_name = lora_name
+
+        if org_module.__class__.__name__ == "Conv2d":
+            raise ValueError("OrthoLoRAExpModule does not support Conv2d")
+
+        self.lora_dim = lora_dim
+
+        # --- SVD-informed initialization ---
+        # Extract top-r singular vectors from the pretrained weight.
+        # SVD on (out_dim, in_dim) is O(out*in*min(out,in)) — one-time cost at init.
+        init_device = "cuda" if torch.cuda.is_available() else "cpu"
+        W = org_module.weight.data.float().to(init_device)
+        U, S_vals, Vh = torch.linalg.svd(W, full_matrices=False)
+        # U: (out, min(out,in)), Vh: (min(out,in), in)
+        P_init = U[:, :lora_dim].clone().contiguous()     # (out, r)
+        Q_init = Vh[:lora_dim, :].clone().contiguous()     # (r, in)
+        del U, S_vals, Vh, W
+
+        # Frozen bases — define the subspace; Cayley rotates within it
+        self.register_buffer("P_basis", P_init.cpu())      # (out_dim, r)
+        self.register_buffer("Q_basis", Q_init.cpu())      # (r, in_dim)
+
+        # Trainable skew-symmetric seeds (r × r).  Cayley(0) = I, so at init
+        # P_eff = P_basis, Q_eff = Q_basis.
+        self.S_p = torch.nn.Parameter(torch.zeros(lora_dim, lora_dim))
+        self.S_q = torch.nn.Parameter(torch.zeros(lora_dim, lora_dim))
+
+        # Diagonal scale — zero-init gives ΔW = 0 at init (standard LoRA convention)
+        self.lambda_layer = torch.nn.Parameter(torch.zeros(1, lora_dim))
+
+        # Per-channel input pre-scaling (SmoothQuant-style)
+        self._has_channel_scale = False
+        if channel_scale is not None:
+            # Absorb into Q_basis so the frozen path is rebalanced.
+            # _absorb_channel_scale mutates in-place and returns inv_scale.
+            inv_scale = _absorb_channel_scale(self.Q_basis, channel_scale)
+            self.register_buffer("inv_scale", inv_scale, persistent=True)
+            self._has_channel_scale = True
+
+        if isinstance(alpha, torch.Tensor):
+            alpha = alpha.detach().float().numpy()
+        alpha = lora_dim if alpha is None or alpha == 0 else alpha
+        self.scale = alpha / lora_dim
+        self.register_buffer("alpha", torch.tensor(alpha))
+
+        self.multiplier = multiplier
+        self.org_module = org_module
+        self.dropout = dropout
+        self.rank_dropout = rank_dropout
+        self.module_dropout = module_dropout
+
+        self._timestep_mask = None
+
+    # --- Cayley transform (exact inverse, r×r is tiny) ---
+    @staticmethod
+    def _cayley(S: torch.Tensor) -> torch.Tensor:
+        """Cayley transform: R = (I - A)(I + A)^{-1}, A = S - S^T."""
+        A = S - S.T  # guaranteed skew-symmetric
+        eye = torch.eye(A.shape[0], device=A.device, dtype=A.dtype)
+        return torch.linalg.solve(eye + A, eye - A)
+
+    def apply_to(self):
+        self.org_forward = self.org_module.forward
+        self.org_module.forward = self.forward
+        del self.org_module
+
+    def forward(self, x):
+        org_forwarded = self.org_forward(x)
+
+        # module dropout
+        if self.module_dropout is not None and self.training:
+            if random.random() < self.module_dropout:
+                return org_forwarded
+
+        dtype = self.P_basis.dtype
+        x_lora = x.to(dtype)
+        if self._has_channel_scale:
+            x_lora = x_lora * self.inv_scale
+
+        # Cayley-parameterized orthogonal rotations (r × r)
+        R_q = self._cayley(self.S_q)  # (r, r)
+        Q_eff = R_q @ self.Q_basis    # (r, in_dim)
+
+        # timestep mask
+        mask = self._timestep_mask
+
+        # x @ Q_eff^T → (*, r), then scale by lambda
+        lx = torch.nn.functional.linear(x_lora, Q_eff)  # (*, r)
+        if mask is not None:
+            lx = lx * self.lambda_layer * mask
+        else:
+            lx = lx * self.lambda_layer
+
+        # normal dropout
+        if self.dropout is not None and self.training:
+            lx = torch.nn.functional.dropout(lx, p=self.dropout)
+
+        # rank dropout
+        if self.rank_dropout is not None and self.training:
+            rd_mask = (
+                torch.rand((lx.size(0), self.lora_dim), device=lx.device)
+                > self.rank_dropout
+            )
+            if len(lx.size()) == 3:
+                rd_mask = rd_mask.unsqueeze(1)
+            lx = lx * rd_mask
+            scale = self.scale * (1.0 / (1.0 - self.rank_dropout))
+        else:
+            scale = self.scale
+
+        R_p = self._cayley(self.S_p)       # (r, r)
+        P_eff = self.P_basis @ R_p          # (out_dim, r)
+        out = torch.nn.functional.linear(lx, P_eff)  # (*, out_dim)
+
+        lora_out = out * self.multiplier * scale
+        return org_forwarded + lora_out.to(org_forwarded.dtype)
+
+    def regularization(self):
+        """No-op: Cayley guarantees orthogonality structurally."""
+        zero = torch.tensor(0.0, device=self.S_p.device)
+        return zero, zero
 
 
 class ReFTModule(torch.nn.Module):

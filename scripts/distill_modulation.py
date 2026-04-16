@@ -137,7 +137,7 @@ def main():
     )
     parser.add_argument("--iterations", type=int, default=3000)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size")
+    parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument(
         "--blocks_to_swap",
         type=int,
@@ -180,6 +180,18 @@ def main():
         dest="torch_compile",
         action="store_false",
         help="Disable torch.compile",
+    )
+    parser.add_argument(
+        "--grad_ckpt",
+        action="store_true",
+        default=True,
+        help="Enable gradient checkpointing with CPU offload (default on)",
+    )
+    parser.add_argument(
+        "--no_grad_ckpt",
+        dest="grad_ckpt",
+        action="store_false",
+        help="Disable gradient checkpointing (faster, more VRAM)",
     )
     parser.add_argument(
         "--warmup",
@@ -276,10 +288,16 @@ def main():
 
     # Gradient checkpointing with CPU offload: recompute block activations
     # during backward, offloading saved tensors to CPU between forward/backward.
-    # Essential for VRAM with two forwards per step on 16GB GPUs.
+    # Teacher runs under no_grad so only the student pass holds activations;
+    # peak is ~12 GB without checkpointing, flat otherwise. Disable with
+    # --no_grad_ckpt for speed when you have the VRAM headroom.
     # Note: must keep model in train() mode because Block.forward gates
     # checkpointing behind self.training.
-    model.enable_gradient_checkpointing(unsloth_offload=True)
+    if args.grad_ckpt:
+        model.enable_gradient_checkpointing(unsloth_offload=True)
+        logger.info("Gradient checkpointing: enabled (unsloth CPU offload)")
+    else:
+        logger.info("Gradient checkpointing: disabled")
     model.train()
 
     # Freeze everything, then unfreeze pooled_text_proj
