@@ -46,9 +46,6 @@ def add_config_arguments(parser: argparse.ArgumentParser):
     )
 
 
-# TODO: inherit Params class in Subset, Dataset
-
-
 @dataclass
 class BaseSubsetParams:
     image_dir: Optional[str] = None
@@ -284,8 +281,7 @@ class ConfigSanitizer:
         try:
             return self.argparse_config_validator(argparse_namespace)
         except MultipleInvalid:
-            # XXX: this should be a bug
-            logger.error("Invalid cmdline parsed arguments. This should be a bug.")
+            logger.error("Invalid cmdline parsed arguments.")
             raise
 
     # NOTE: value would be overwritten by latter dict if there is already the same key

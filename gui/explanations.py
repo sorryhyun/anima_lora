@@ -21,10 +21,6 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Python module path for the LoRA network implementation.",
         "ko": "LoRA 네트워크 구현의 Python 모듈 경로.",
     },
-    "use_dora": {
-        "en": "Enable DoRA (Weight-Decomposed LoRA). Learns separate magnitude and direction components. Often more stable at higher ranks.",
-        "ko": "DoRA (가중치 분해 LoRA) 활성화. 크기와 방향을 분리하여 학습. 높은 랭크에서 더 안정적.",
-    },
     "use_timestep_mask": {
         "en": "Enable T-LoRA: effective rank varies with denoising timestep via power-law schedule. Full rank at high noise, reduced at low noise.",
         "ko": "T-LoRA 활성화: 디노이징 타임스텝에 따라 유효 랭크 변동. 높은 노이즈에서 전체 랭크, 낮은 노이즈에서 축소.",
@@ -43,8 +39,8 @@ FIELD_HELP: dict[str, dict[str, str]] = {
     },
     # Training
     "learning_rate": {
-        "en": "Base learning rate for the optimizer. Typical: 1e-5 to 1e-4. DoRA often benefits from slightly higher LR than standard LoRA.",
-        "ko": "옵티마이저 기본 학습률. 일반적: 1e-5 ~ 1e-4. DoRA는 표준 LoRA보다 약간 높은 LR이 효과적.",
+        "en": "Base learning rate for the optimizer. Typical: 1e-5 to 1e-4.",
+        "ko": "옵티마이저 기본 학습률. 일반적: 1e-5 ~ 1e-4.",
     },
     "max_train_epochs": {
         "en": "Total training epochs. One epoch = one full pass through the dataset.",
@@ -204,38 +200,30 @@ LORA_GUIDE: dict[str, str] = {
         "(down &times; up) to existing weight layers.<br>"
         "<code>y = x + (x @ down @ up) &times; scale &times; multiplier</code><br>"
         "Simple, effective, and the default choice for most fine-tuning tasks.</p>"
-        "<p><b>DoRA</b> &mdash; Weight-Decomposed LoRA. Separates each weight matrix into "
-        "<i>magnitude</i> (per-output-channel scalar) and <i>direction</i> (unit-norm matrix). "
-        "LoRA adapts direction while a learned <code>dora_scale</code> adjusts magnitude.<br>"
-        "Often more stable than standard LoRA at higher ranks. Enable with <code>use_dora = true</code>.</p>"
         "<p><b>OrthoLoRA</b> &mdash; Orthogonal LoRA. Uses QR-decomposed orthonormal bases "
         "with learned singular values: <code>P @ diag(&lambda;) @ Q</code>. "
         "Includes orthogonality regularization to keep updates structured.<br>"
-        "Linear layers only; incompatible with DoRA.</p>"
+        "Linear layers only.</p>"
         "<p><b>T-LoRA</b> &mdash; Timestep-dependent rank masking. The effective LoRA rank changes "
         "with the denoising timestep via a power-law schedule:<br>"
         "&bull; High noise (early steps) &rarr; full rank (maximum expressiveness)<br>"
         "&bull; Low noise (late steps) &rarr; reduced rank (down to <code>min_rank</code>)<br>"
-        "Compatible with both LoRA and DoRA. Enable with <code>use_timestep_mask = true</code>.</p>"
+        "Enable with <code>use_timestep_mask = true</code>.</p>"
     ),
     "ko": (
         "<p><b>LoRA</b> &mdash; 클래식 저랭크 적응. 기존 가중치 레이어에 작은 학습 가능한 "
         "행렬(down &times; up)을 추가.<br>"
         "<code>y = x + (x @ down @ up) &times; scale &times; multiplier</code><br>"
         "간단하고 효과적이며, 대부분의 파인튜닝에 기본 선택.</p>"
-        "<p><b>DoRA</b> &mdash; 가중치 분해 LoRA. 각 가중치 행렬을 "
-        "<i>크기</i>(출력 채널별 스칼라)와 <i>방향</i>(단위 노름 행렬)으로 분리. "
-        "LoRA가 방향을 적응하고, 학습된 <code>dora_scale</code>이 크기를 조정.<br>"
-        "높은 랭크에서 표준 LoRA보다 안정적. <code>use_dora = true</code>로 활성화.</p>"
         "<p><b>OrthoLoRA</b> &mdash; 직교 LoRA. QR 분해된 정규 직교 기저와 "
         "학습된 특이값 사용: <code>P @ diag(&lambda;) @ Q</code>. "
         "업데이트 구조 유지를 위한 직교성 정규화 포함.<br>"
-        "선형 레이어만 지원; DoRA와 비호환.</p>"
+        "선형 레이어만 지원.</p>"
         "<p><b>T-LoRA</b> &mdash; 타임스텝 의존 랭크 마스킹. 디노이징 타임스텝에 따라 "
         "유효 LoRA 랭크가 거듭제곱 스케줄로 변동:<br>"
         "&bull; 높은 노이즈 (초기 스텝) &rarr; 전체 랭크 (최대 표현력)<br>"
         "&bull; 낮은 노이즈 (후기 스텝) &rarr; 축소된 랭크 (<code>min_rank</code>까지)<br>"
-        "LoRA와 DoRA 모두와 호환. <code>use_timestep_mask = true</code>로 활성화.</p>"
+        "<code>use_timestep_mask = true</code>로 활성화.</p>"
     ),
 }
 

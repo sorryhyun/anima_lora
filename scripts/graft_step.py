@@ -227,11 +227,16 @@ def run_training(config):
         "--mixed_precision",
         "bf16",
         "train.py",
-        "--method", GRAFT_METHOD,
-        "--preset", GRAFT_PRESET,
-        "--dataset_config", "graft/dataset_config.toml",
-        "--max_train_epochs", epochs,
-        "--save_every_n_epochs", epochs,
+        "--method",
+        GRAFT_METHOD,
+        "--preset",
+        GRAFT_PRESET,
+        "--dataset_config",
+        "graft/dataset_config.toml",
+        "--max_train_epochs",
+        epochs,
+        "--save_every_n_epochs",
+        epochs,
     ]
     result = subprocess.run(cmd, cwd=ROOT)
     if result.returncode != 0:
@@ -389,7 +394,9 @@ def get_training_cfg():
     sys.path.insert(0, str(ROOT))
     from library.train_util import load_method_preset
 
-    return load_method_preset(GRAFT_METHOD, GRAFT_PRESET, configs_dir=str(ROOT / "configs"))
+    return load_method_preset(
+        GRAFT_METHOD, GRAFT_PRESET, configs_dir=str(ROOT / "configs")
+    )
 
 
 def main():

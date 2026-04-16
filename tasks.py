@@ -110,9 +110,7 @@ def accelerate_launch(*args: str):
 
 def train(method: str, extra, preset: str | None = None):
     """Launch training for a given method + preset (PRESET env overrides default)."""
-    accelerate_launch(
-        "--method", method, "--preset", preset or _preset(), *extra
-    )
+    accelerate_launch("--method", method, "--preset", preset or _preset(), *extra)
 
 
 # ── Training ──────────────────────────────────────────────────────────
@@ -128,14 +126,6 @@ def cmd_lora_fast(extra):
 
 def cmd_lora_low_vram(extra):
     train("lora", extra, preset=_preset("low_vram"))
-
-
-def cmd_dora(extra):
-    train("dora", extra)
-
-
-def cmd_tdora(extra):
-    train("doratimestep", extra)
 
 
 def cmd_tlora(extra):
@@ -528,6 +518,12 @@ def cmd_invert(extra):
             "500",
             "--lr",
             "0.01",
+            "--aggregate_by",
+            "3",
+            "--save_per_run",
+            "--probe_functional",
+            "--probe_blocks",
+            "8,12,16,20",
             "--output_dir",
             "inversions",
             "--log_block_grads",
@@ -542,8 +538,6 @@ COMMANDS = {
     "lora": (cmd_lora, "Standard LoRA training"),
     "lora-fast": (cmd_lora_fast, "Fast LoRA training (16GB, no block swap)"),
     "lora-low-vram": (cmd_lora_low_vram, "LoRA training (low VRAM)"),
-    "dora": (cmd_dora, "DoRA training"),
-    "tdora": (cmd_tdora, "DoRA + timestep masking"),
     "tlora": (cmd_tlora, "T-LoRA: OrthoLoRA + timestep masking"),
     "hydralora": (cmd_hydralora, "HydraLoRA: multi-style MoE routing"),
     "apex": (cmd_apex, "APEX distillation (condition-shift self-adversarial)"),

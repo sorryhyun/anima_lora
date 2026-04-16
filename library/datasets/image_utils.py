@@ -8,12 +8,123 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
+import cv2
+
 from library.datasets.buckets import BucketManager
 from library.datasets.subsets import ImageInfo
 from library.device_utils import clean_memory_on_device
-from library.utils import resize_image
 
 logger = logging.getLogger(__name__)
+
+
+# region Image resize utilities
+
+
+def pil_resize(image, size, interpolation):
+    has_alpha = image.shape[2] == 4 if len(image.shape) == 3 else False
+
+    if has_alpha:
+        pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA))
+    else:
+        pil_image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+
+    resized_pil = pil_image.resize(size, resample=interpolation)
+
+    if has_alpha:
+        resized_cv2 = cv2.cvtColor(np.array(resized_pil), cv2.COLOR_RGBA2BGRA)
+    else:
+        resized_cv2 = cv2.cvtColor(np.array(resized_pil), cv2.COLOR_RGB2BGR)
+
+    return resized_cv2
+
+
+def get_cv2_interpolation(interpolation: Optional[str]) -> Optional[int]:
+    if interpolation is None:
+        return None
+    if interpolation == "lanczos" or interpolation == "lanczos4":
+        return cv2.INTER_LANCZOS4
+    elif interpolation == "nearest":
+        return cv2.INTER_NEAREST_EXACT
+    elif interpolation == "bilinear" or interpolation == "linear":
+        return cv2.INTER_LINEAR
+    elif interpolation == "bicubic" or interpolation == "cubic":
+        return cv2.INTER_CUBIC
+    elif interpolation == "area":
+        return cv2.INTER_AREA
+    elif interpolation == "box":
+        return cv2.INTER_AREA
+    else:
+        return None
+
+
+def get_pil_interpolation(interpolation: Optional[str]) -> Optional[Image.Resampling]:
+    if interpolation is None:
+        return None
+    if interpolation == "lanczos":
+        return Image.Resampling.LANCZOS
+    elif interpolation == "nearest":
+        return Image.Resampling.NEAREST
+    elif interpolation == "bilinear" or interpolation == "linear":
+        return Image.Resampling.BILINEAR
+    elif interpolation == "bicubic" or interpolation == "cubic":
+        return Image.Resampling.BICUBIC
+    elif interpolation == "area":
+        return Image.Resampling.HAMMING
+    elif interpolation == "box":
+        return Image.Resampling.BOX
+    else:
+        return None
+
+
+def resize_image(
+    image: np.ndarray,
+    width: int,
+    height: int,
+    resized_width: int,
+    resized_height: int,
+    resize_interpolation: Optional[str] = None,
+):
+    """Resize image with chosen interpolation. Defaults to AREA for downscale, LANCZOS for upscale."""
+    width = int(width)
+    height = int(height)
+    resized_width = int(resized_width)
+    resized_height = int(resized_height)
+
+    if resize_interpolation is None:
+        if width >= resized_width and height >= resized_height:
+            resize_interpolation = "area"
+        else:
+            resize_interpolation = "lanczos"
+
+    use_pil = resize_interpolation in ["lanczos", "lanczos4", "box"]
+
+    resized_size = (resized_width, resized_height)
+    if use_pil:
+        interpolation = get_pil_interpolation(resize_interpolation)
+        image = pil_resize(image, resized_size, interpolation=interpolation)
+        logger.debug(f"resize image using {resize_interpolation} (PIL)")
+    else:
+        interpolation = get_cv2_interpolation(resize_interpolation)
+        image = cv2.resize(image, resized_size, interpolation=interpolation)
+        logger.debug(f"resize image using {resize_interpolation} (cv2)")
+
+    return image
+
+
+def validate_interpolation_fn(interpolation_str: str) -> bool:
+    return interpolation_str in [
+        "lanczos",
+        "nearest",
+        "bilinear",
+        "linear",
+        "bicubic",
+        "cubic",
+        "area",
+        "box",
+    ]
+
+
+# endregion
 
 
 IMAGE_EXTENSIONS = [

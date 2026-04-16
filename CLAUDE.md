@@ -29,9 +29,7 @@ python tasks.py lora        # Same, works on Windows too
 make lora PRESET=low_vram   # Override preset: methods/lora.toml + presets.toml[low_vram]
 make lora-fast              # Shortcut: methods/lora.toml + presets.toml[fast_16gb]
 make lora-low-vram          # Shortcut: methods/lora.toml + presets.toml[low_vram]
-make dora                  # DoRA (methods/dora.toml)
 make tlora                 # T-LoRA: OrthoLoRA + timestep masking (methods/tlora.toml)
-make tdora                 # DoRA + timestep masking (methods/doratimestep.toml)
 make hydralora             # HydraLoRA: MoE multi-head routing (methods/hydralora.toml)
 make postfix               # Postfix tuning (methods/postfix.toml)
 make postfix-exp           # Postfix tuning, exp variant (methods/postfix_exp.toml)
@@ -99,7 +97,7 @@ Training is config-driven via a three-layer chain: `base.toml → presets.toml[<
 Layout:
 - `configs/base.toml` — shared infrastructure (model paths, optimizer, compile flags, etc.)
 - `configs/presets.toml` — all hardware profiles in one file as TOML sections: `[default]` (Linux daily driver + Windows 16GB, `blocks_to_swap=8`), `[fast_16gb]`, `[low_vram]` (also serves as Windows 8GB), `[graft]`. Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc.
-- `configs/methods/` — one file per algorithm. Holds rank, method flags (`use_dora`, `use_hydra`, …), and the method's opinionated learning rate / epochs / output_name. Files: `lora`, `dora`, `tlora`, `doratimestep`, `hydralora`, `postfix`, `postfix_exp`, `postfix_func`, `prefix`, `graft`.
+- `configs/methods/` — one file per algorithm. Holds rank, method flags (`use_hydra`, …), and the method's opinionated learning rate / epochs / output_name. Files: `lora`, `tlora`, `hydralora`, `postfix`, `postfix_exp`, `postfix_func`, `prefix`, `graft`.
 - `configs/dataset_config.toml` — dataset buckets, subsets, caption settings
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
@@ -111,7 +109,7 @@ Layout:
 - **Strategy pattern** for model-specific tokenization/encoding (`library/strategy_anima.py`, `strategy_base.py`)
 - **Network modules** are pluggable via `network_module` config key:
   - `networks/lora_anima.py` — LoRA network creation, module targeting, timestep masking orchestration
-  - `networks/lora_modules.py` — LoRA, DoRA, OrthoLoRA module implementations
+  - `networks/lora_modules.py` — LoRA, OrthoLoRA module implementations
   - `networks/postfix_anima.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual)
 - **Attention dispatch** (`networks/attention.py`): Unified `attention()` routing to torch SDPA, xformers, flash-attn v2/v3, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD). FA4 (flash-attention-sm120) was evaluated and is currently disabled — see `docs/optimizations/fa4.md`.
 
@@ -119,9 +117,8 @@ Layout:
 
 All in `networks/lora_modules.py`:
 - **LoRA** — Classic low-rank: `y = x + (x @ down @ up) * scale * multiplier`
-- **DoRA** — Weight-decomposed: separate magnitude (`dora_scale`) and direction learning
-- **OrthoLoRA** — SVD-based orthogonal parameterization with orthogonality regularization (linear layers only, incompatible with DoRA)
-- **T-LoRA** — Timestep-dependent rank masking: effective rank varies with denoising step via power-law schedule. Compatible with both LoRA and DoRA.
+- **OrthoLoRA** — SVD-based orthogonal parameterization with orthogonality regularization (linear layers only)
+- **T-LoRA** — Timestep-dependent rank masking: effective rank varies with denoising step via power-law schedule.
 - **HydraLoRA** — MoE-style multi-head routing: shared `lora_down` + per-expert `lora_up_i` heads. Router on max-pooled `crossattn_emb` selects expert contributions per sample. Requires `cache_llm_adapter_outputs=true`. Compatible with T-LoRA. See `docs/methods/hydra-lora.md`.
 
 ### Training flow (train.py)

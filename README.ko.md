@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-Anima 디퓨전 모델(DiT 기반, flow-matching)을 위한 LoRA 학습 및 추론 엔진. Standard LoRA, DoRA, OrthoLoRA, T-LoRA(타임스텝 의존 랭크 마스킹)를 지원합니다.
+Anima 디퓨전 모델(DiT 기반, flow-matching)을 위한 LoRA 학습 및 추론 엔진. Standard LoRA, OrthoLoRA, T-LoRA(타임스텝 의존 랭크 마스킹)를 지원합니다.
 
 ## 하이라이트
 
@@ -85,8 +85,6 @@ accelerate launch --mixed_precision bf16 train.py --method tlora --preset low_vr
 | Method | 설명 |
 |--------|-------------|
 | `lora` | 표준 LoRA (rank 16) |
-| `dora` | DoRA (rank 32) |
-| `doratimestep` | DoRA + T-LoRA 타임스텝 마스킹 |
 | `tlora` | OrthoLoRA + 타임스텝 마스킹 |
 | `hydralora` | HydraLoRA 멀티헤드 라우팅 |
 | `postfix` / `postfix_exp` / `postfix_func` | Postfix tuning 변형 |
@@ -147,7 +145,7 @@ make invert INVERT_SWAP=12     # 저-VRAM GPU용 블록 스왑 사용
 
 | 문서 | 내용 |
 |------|------|
-| [docs/guidelines/training.md](docs/guidelines/training.md) | LoRA 변형 (DoRA, OrthoLoRA, T-LoRA), 캡션 셔플, 마스크 로스, 데이터셋 설정 |
+| [docs/guidelines/training.md](docs/guidelines/training.md) | LoRA 변형 (OrthoLoRA, T-LoRA), 캡션 셔플, 마스크 로스, 데이터셋 설정 |
 | [docs/optimizations/fa4.md](docs/optimizations/fa4.md) | FA4 / flash-attention-sm120과 cross-attention KV 트림이 제거된 이유 |
 | [docs/methods/prefix-tuning.md](docs/methods/prefix-tuning.md) | Prefix 튜닝 — 12 GB VRAM, ~1 step/s, 작동 원리, 설정 레퍼런스 |
 | [docs/guidelines/inference.md](docs/guidelines/inference.md) | 추론 플래그, P-GRAFT 추론, 프롬프트 파일 형식, LoRA 포맷 변환 |

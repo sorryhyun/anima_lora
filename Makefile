@@ -8,7 +8,7 @@ LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/
 LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-fast lora-low-vram dora tdora tlora hydralora apex postfix postfix-exp postfix-func prefix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
+.PHONY: lora lora-fast lora-low-vram tlora hydralora apex postfix postfix-exp postfix-func prefix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -40,12 +40,6 @@ lora-fast:
 
 lora-low-vram:
 	$(TRAIN) lora --preset low_vram
-
-dora:
-	$(TRAIN) dora --preset $(PRESET)
-
-tdora:
-	$(TRAIN) doratimestep --preset $(PRESET)
 
 tlora:
 	$(TRAIN) tlora --preset $(PRESET)
@@ -137,8 +131,9 @@ INVERT_N ?= 1
 INVERT_SWAP ?= 0
 INVERT_STEPS ?= 150
 INVERT_LR ?= 0.005
-INVERT_AGG ?= 1
+INVERT_AGG ?= 3
 INVERT_OUT ?= inversions
+INVERT_PROBE_BLOCKS ?= 8,12,16,20
 invert:
 	python scripts/invert_embedding.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -148,6 +143,7 @@ invert:
 		--steps $(INVERT_STEPS) --lr $(INVERT_LR) \
 		--aggregate_by $(INVERT_AGG) \
 		--save_per_run \
+		--probe_functional --probe_blocks $(INVERT_PROBE_BLOCKS) \
 		--output_dir $(INVERT_OUT) \
 		--blocks_to_swap $(INVERT_SWAP) \
 		--log_block_grads \

@@ -1079,13 +1079,11 @@ class AnimaTrainer:
             rampup_abs = int(getattr(args, "apex_rampup_steps", 0) or 0)
             if warmup_abs <= 0:
                 warmup_abs = int(
-                    float(getattr(args, "apex_warmup_ratio", 0.0) or 0.0)
-                    * total_steps
+                    float(getattr(args, "apex_warmup_ratio", 0.0) or 0.0) * total_steps
                 )
             if rampup_abs <= 0:
                 rampup_abs = int(
-                    float(getattr(args, "apex_rampup_ratio", 0.0) or 0.0)
-                    * total_steps
+                    float(getattr(args, "apex_rampup_ratio", 0.0) or 0.0) * total_steps
                 )
             lam_c_eff, lam_f_eff = apex_schedule_weights(
                 step=apex_step,

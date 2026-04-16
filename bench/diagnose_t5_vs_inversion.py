@@ -265,8 +265,7 @@ def main():
     inv_mean_emb = next((e for lbl, e in inv_labeled if lbl == "inv_mean"), None)
     if inv_mean_emb is not None and inv_mean_emb.shape != t5_emb.shape:
         logger.warning(
-            f"shape mismatch: t5={tuple(t5_emb.shape)} "
-            f"inv={tuple(inv_mean_emb.shape)}"
+            f"shape mismatch: t5={tuple(t5_emb.shape)} inv={tuple(inv_mean_emb.shape)}"
         )
 
     latents = encode_image(args.image, args.vae, device, chunk_size=args.vae_chunk_size)
@@ -370,12 +369,10 @@ def main():
         print(f"  ||delta||_2 median:       {delta_stats['delta_norm_median']:.4f}")
         print(f"  ||delta||_2 max:          {delta_stats['delta_norm_max']:.4f}")
         print(
-            f"  ||delta||/||t5|| mean:    "
-            f"{delta_stats['delta_to_t5_ratio_mean']:.4f}"
+            f"  ||delta||/||t5|| mean:    {delta_stats['delta_to_t5_ratio_mean']:.4f}"
         )
         print(
-            f"  ||delta||/||t5|| median:  "
-            f"{delta_stats['delta_to_t5_ratio_median']:.4f}"
+            f"  ||delta||/||t5|| median:  {delta_stats['delta_to_t5_ratio_median']:.4f}"
         )
         print(f"  ||t5||_2 mean per slot:   {delta_stats['t5_norm_mean']:.4f}")
         print(f"  ||inv||_2 mean per slot:  {delta_stats['inv_norm_mean']:.4f}")
@@ -412,12 +409,8 @@ def main():
             ds = f"{d:+.4f}" if d is not None else "  n/a "
             print(f"   {bi:3d}  |    {t5s}     |      {ivs}       |    {ds}")
         print()
-        print(
-            "Interpretation: more negative gap → T5 is FURTHER from inversions"
-        )
-        print(
-            "than inversions are from each other → bigger 'enhancement headroom'"
-        )
+        print("Interpretation: more negative gap → T5 is FURTHER from inversions")
+        print("than inversions are from each other → bigger 'enhancement headroom'")
         print("at that depth.")
     return 0
 

@@ -28,7 +28,11 @@ PRESETS_FILE = CONFIGS_DIR / "presets.toml"
 
 
 def list_methods() -> list[str]:
-    return sorted(p.stem for p in METHODS_DIR.glob("*.toml")) if METHODS_DIR.exists() else []
+    return (
+        sorted(p.stem for p in METHODS_DIR.glob("*.toml"))
+        if METHODS_DIR.exists()
+        else []
+    )
 
 
 def _load_all_presets() -> dict:
@@ -41,12 +45,12 @@ def _load_all_presets() -> dict:
 def list_presets() -> list[str]:
     return sorted(_load_all_presets())
 
+
 _GROUPS = {
     "Architecture": {
         "network_dim",
         "network_alpha",
         "network_module",
-        "use_dora",
         "use_timestep_mask",
         "min_rank",
         "alpha_rank_scale",

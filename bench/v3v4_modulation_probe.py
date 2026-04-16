@@ -24,7 +24,8 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from library import anima_models, anima_utils, inference_utils
+from library import anima_models, anima_utils
+from library.inference import sampling as inference_utils
 from library.device_utils import clean_memory_on_device
 
 DIT_PATH = "models/diffusion_models/anima-preview3-base.safetensors"
@@ -374,7 +375,7 @@ def main():
         gen_alphas = [0.0, 1.0, 4.0]
 
         from library import qwen_image_autoencoder_kl
-        from library.inference_pipeline import decode_latent
+        from library.inference.output import decode_latent
         from PIL import Image
 
         all_latents = {}

@@ -110,7 +110,9 @@ def _load_weights(file_path: str) -> Tuple[str, object, int, str]:
 def _prepend_prefix(ctx: torch.Tensor, prefix: torch.Tensor) -> torch.Tensor:
     K = prefix.shape[0]
     B, S, _ = ctx.shape
-    prefix = prefix.unsqueeze(0).expand(B, -1, -1).to(dtype=ctx.dtype, device=ctx.device)
+    prefix = (
+        prefix.unsqueeze(0).expand(B, -1, -1).to(dtype=ctx.dtype, device=ctx.device)
+    )
     return torch.cat([prefix, ctx[:, : S - K, :]], dim=1)
 
 

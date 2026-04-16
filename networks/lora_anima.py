@@ -8,12 +8,12 @@ from library.utils import setup_logging
 from networks.lora_modules import (
     LoRAModule,
     LoRAInfModule,
-    DoRAModule,
     OrthoLoRAModule,
     OrthoLoRAExpModule,
     ReFTModule,
     HydraLoRAModule,
 )
+from networks.lora_deprecated import DoRAModule
 from networks.condition_shift import ConditionShift
 
 import logging
@@ -110,7 +110,9 @@ def _refuse_split_hydra_keys(
                 continue
 
             e0, _, r0 = ups[0].shape
-            if not all(u.ndim == 3 and u.shape[0] == e0 and u.shape[2] == r0 for u in ups):
+            if not all(
+                u.ndim == 3 and u.shape[0] == e0 and u.shape[2] == r0 for u in ups
+            ):
                 logger.warning(
                     f"hydra attn fuse: inconsistent up shapes at {shared_prefix}*, skipping"
                 )
@@ -244,9 +246,7 @@ def _refuse_unfused_attn_lora_keys(
                         per_block_scales.append(_a(a) / r)
 
                 down_fused = torch.cat(downs, dim=0).contiguous()
-                up_fused = torch.zeros(
-                    (n * out, n * r), dtype=dtype, device=device
-                )
+                up_fused = torch.zeros((n * out, n * r), dtype=dtype, device=device)
                 for i, (u, s) in enumerate(zip(ups, per_block_scales)):
                     up_fused[i * out : (i + 1) * out, i * r : (i + 1) * r] = u * s
                 # alpha_fused = n*r so LoRAModule's scale = (n*r) / (n*r) = 1
@@ -1015,7 +1015,10 @@ class LoRANetwork(torch.nn.Module):
         # Skip for OrthoLoRA since SVD init is expensive and TE modules are discarded in apply_to anyway
         self.text_encoder_loras: List[Union[LoRAModule, LoRAInfModule]] = []
         skipped_te = []
-        if text_encoders is not None and module_class not in (OrthoLoRAModule, OrthoLoRAExpModule):
+        if text_encoders is not None and module_class not in (
+            OrthoLoRAModule,
+            OrthoLoRAExpModule,
+        ):
             for i, text_encoder in enumerate(text_encoders):
                 if text_encoder is None:
                     continue
@@ -1636,8 +1639,15 @@ class LoRANetwork(torch.nn.Module):
             lam_abs = lam.squeeze(0).float().abs()
             lam_sign = lam.squeeze(0).float().sign()
             lam_sqrt = lam_abs.sqrt()
-            lora_up = (P_eff * (lam_sqrt * lam_sign).unsqueeze(0)).to(save_dtype).cpu().contiguous()
-            lora_down = (Q_eff * lam_sqrt.unsqueeze(1)).to(save_dtype).cpu().contiguous()
+            lora_up = (
+                (P_eff * (lam_sqrt * lam_sign).unsqueeze(0))
+                .to(save_dtype)
+                .cpu()
+                .contiguous()
+            )
+            lora_down = (
+                (Q_eff * lam_sqrt.unsqueeze(1)).to(save_dtype).cpu().contiguous()
+            )
 
             # Remove OrthoLoRAExp keys
             for suffix in ["S_p", "S_q", "lambda_layer", "P_basis", "Q_basis"]:
@@ -1772,13 +1782,10 @@ class LoRANetwork(torch.nn.Module):
                     (
                         k
                         for k in list(hydra_sd.keys())
-                        if k.startswith(f"{prefix}.lora_ups.")
-                        and k.endswith(".weight")
+                        if k.startswith(f"{prefix}.lora_ups.") and k.endswith(".weight")
                     ),
                     key=lambda k: int(
-                        k.removeprefix(f"{prefix}.lora_ups.").removesuffix(
-                            ".weight"
-                        )
+                        k.removeprefix(f"{prefix}.lora_ups.").removesuffix(".weight")
                     ),
                 )
                 ups = [hydra_sd.pop(k) for k in ups_keys]

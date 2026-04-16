@@ -1,5 +1,5 @@
 # LoRA module building blocks
-# Extracted from lora_flux.py — generic LoRA, DoRA, OrthoLoRA, and inference modules
+# Extracted from lora_flux.py — generic LoRA, OrthoLoRA, and inference modules
 #
 # Reference:
 # https://github.com/microsoft/LoRA/blob/main/loralib/layers.py
@@ -105,9 +105,7 @@ class LoRAModule(torch.nn.Module):
                     "channel_scale is only supported for Linear LoRA modules, "
                     f"got {type(self.lora_down).__name__}"
                 )
-            inv_scale = _absorb_channel_scale(
-                self.lora_down.weight.data, channel_scale
-            )
+            inv_scale = _absorb_channel_scale(self.lora_down.weight.data, channel_scale)
             self.register_buffer("inv_scale", inv_scale, persistent=True)
             self._has_channel_scale = True
 
@@ -149,7 +147,9 @@ class LoRAModule(torch.nn.Module):
 
         # fp32 accumulation: compute LoRA delta in fp32 for better precision
         if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(x_lora.float(), self.lora_down.weight.float())
+            lx = torch.nn.functional.linear(
+                x_lora.float(), self.lora_down.weight.float()
+            )
         else:
             lx = self.lora_down(x_lora)
 
@@ -252,9 +252,7 @@ class HydraLoRAModule(torch.nn.Module):
         # Per-channel input pre-scaling: absorb s into the shared lora_down.
         self._has_channel_scale = False
         if channel_scale is not None:
-            inv_scale = _absorb_channel_scale(
-                self.lora_down.weight.data, channel_scale
-            )
+            inv_scale = _absorb_channel_scale(self.lora_down.weight.data, channel_scale)
             self.register_buffer("inv_scale", inv_scale, persistent=True)
             self._has_channel_scale = True
 
@@ -311,7 +309,9 @@ class HydraLoRAModule(torch.nn.Module):
         x_lora = x * self.inv_scale if self._has_channel_scale else x
 
         if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(x_lora.float(), self.lora_down.weight.float())
+            lx = torch.nn.functional.linear(
+                x_lora.float(), self.lora_down.weight.float()
+            )
         else:
             lx = self.lora_down(x_lora)
 
@@ -355,110 +355,6 @@ class HydraLoRAModule(torch.nn.Module):
                 org_forwarded.dtype
             )
         return org_forwarded + out * self.multiplier * scale
-
-
-class DoRAModule(LoRAModule):
-    """
-    DoRA: Weight-Decomposed Low-Rank Adaptation.
-    Decomposes pretrained weight into magnitude and direction, applies LoRA to the direction only.
-    Reference: https://arxiv.org/abs/2402.09353
-    """
-
-    def __init__(
-        self,
-        lora_name,
-        org_module: torch.nn.Module,
-        multiplier=1.0,
-        lora_dim=4,
-        alpha=1,
-        dropout=None,
-        rank_dropout=None,
-        module_dropout=None,
-        channel_scale=None,
-    ):
-        super().__init__(
-            lora_name,
-            org_module,
-            multiplier,
-            lora_dim,
-            alpha,
-            dropout,
-            rank_dropout,
-            module_dropout,
-            channel_scale=channel_scale,
-        )
-
-        # Initialize magnitude to per-row L2 norms of the original weight
-        weight = org_module.weight.detach().float()
-        self.magnitude = torch.nn.Parameter(weight.norm(p=2, dim=1))  # [out_features]
-
-    def apply_to(self):
-        # Compute and cache the frozen original weight row-norms before parent deletes org_module
-        org_weight = self.org_module.weight.detach().float()
-        self.register_buffer(
-            "_org_weight_norm",
-            org_weight.norm(p=2, dim=1).clamp(
-                min=torch.finfo(org_weight.dtype).eps
-            ),  # [out_features]
-        )
-        super().apply_to()
-
-    def forward(self, x):
-        org_out = self.org_forward(x)
-
-        # module dropout
-        if self.module_dropout is not None and self.training:
-            if random.random() < self.module_dropout:
-                return org_out
-
-        # per-channel input rebalancing (SmoothQuant-style, see LoRAModule.forward)
-        x_lora = x * self.inv_scale if self._has_channel_scale else x
-
-        # fp32 accumulation: compute LoRA delta in fp32 for better precision
-        if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(x_lora.float(), self.lora_down.weight.float())
-        else:
-            lx = self.lora_down(x_lora)
-
-        # timestep-dependent rank masking
-        if self._timestep_mask is not None and self.training:
-            lx = lx * self._timestep_mask
-
-        # normal dropout
-        if self.dropout is not None and self.training:
-            lx = torch.nn.functional.dropout(lx, p=self.dropout)
-
-        # rank dropout
-        if self.rank_dropout is not None and self.training:
-            mask = (
-                torch.rand((lx.size(0), self.lora_dim), device=lx.device)
-                > self.rank_dropout
-            )
-            if len(lx.size()) == 3:
-                mask = mask.unsqueeze(1)
-            lx = lx * mask
-            scale = self.scale * (1.0 / (1.0 - self.rank_dropout))
-        else:
-            scale = self.scale
-
-        if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(lx, self.lora_up.weight.float())
-            # Cast LoRA delta back to native dtype early
-            lora_out = (lx * self.multiplier * scale).to(org_out.dtype)
-        else:
-            lx = self.lora_up(lx)
-            lora_out = lx * self.multiplier * scale
-
-        # DoRA: scale by (magnitude / ||W_original||)
-        mag_scale = (self.magnitude / self._org_weight_norm).to(org_out.dtype)
-
-        # Broadcast mag_scale to match output shape
-        if len(org_out.shape) == 3:
-            mag_scale = mag_scale.unsqueeze(0).unsqueeze(0)  # [1, 1, out_dim]
-        elif len(org_out.shape) == 2:
-            mag_scale = mag_scale.unsqueeze(0)  # [1, out_dim]
-
-        return mag_scale * (org_out + lora_out)
 
 
 class OrthoLoRAModule(torch.nn.Module):
@@ -540,9 +436,7 @@ class OrthoLoRAModule(torch.nn.Module):
         # is preserved because q_layer.weight and base_q_weight remain identical.
         self._has_channel_scale = False
         if channel_scale is not None:
-            inv_scale = _absorb_channel_scale(
-                self.q_layer.weight.data, channel_scale
-            )
+            inv_scale = _absorb_channel_scale(self.q_layer.weight.data, channel_scale)
             self.register_buffer("inv_scale", inv_scale, persistent=True)
             self._has_channel_scale = True
 
@@ -693,13 +587,13 @@ class OrthoLoRAExpModule(torch.nn.Module):
         W = org_module.weight.data.float().to(init_device)
         U, S_vals, Vh = torch.linalg.svd(W, full_matrices=False)
         # U: (out, min(out,in)), Vh: (min(out,in), in)
-        P_init = U[:, :lora_dim].clone().contiguous()     # (out, r)
-        Q_init = Vh[:lora_dim, :].clone().contiguous()     # (r, in)
+        P_init = U[:, :lora_dim].clone().contiguous()  # (out, r)
+        Q_init = Vh[:lora_dim, :].clone().contiguous()  # (r, in)
         del U, S_vals, Vh, W
 
         # Frozen bases — define the subspace; Cayley rotates within it
-        self.register_buffer("P_basis", P_init.cpu())      # (out_dim, r)
-        self.register_buffer("Q_basis", Q_init.cpu())      # (r, in_dim)
+        self.register_buffer("P_basis", P_init.cpu())  # (out_dim, r)
+        self.register_buffer("Q_basis", Q_init.cpu())  # (r, in_dim)
 
         # Trainable skew-symmetric seeds (r × r).  Cayley(0) = I, so at init
         # P_eff = P_basis, Q_eff = Q_basis.
@@ -760,7 +654,7 @@ class OrthoLoRAExpModule(torch.nn.Module):
 
         # Cayley-parameterized orthogonal rotations (r × r)
         R_q = self._cayley(self.S_q)  # (r, r)
-        Q_eff = R_q @ self.Q_basis    # (r, in_dim)
+        Q_eff = R_q @ self.Q_basis  # (r, in_dim)
 
         # timestep mask
         mask = self._timestep_mask
@@ -789,8 +683,8 @@ class OrthoLoRAExpModule(torch.nn.Module):
         else:
             scale = self.scale
 
-        R_p = self._cayley(self.S_p)       # (r, r)
-        P_eff = self.P_basis @ R_p          # (out_dim, r)
+        R_p = self._cayley(self.S_p)  # (r, r)
+        P_eff = self.P_basis @ R_p  # (out_dim, r)
         out = torch.nn.functional.linear(lx, P_eff)  # (*, out_dim)
 
         lora_out = out * self.multiplier * scale

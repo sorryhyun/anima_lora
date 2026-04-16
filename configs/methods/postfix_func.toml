@@ -25,7 +25,7 @@ attn_mode = "flash"
 # trim_crossattn_kv is incompatible with end_of_sequence splice — method-forced.
 trim_crossattn_kv = false
 
-inversion_dir = "inversions_50x3/results"
+inversion_dir = "inversions/results"
 functional_loss_weight = 1.0
 functional_loss_blocks = "8,12,16,20"
 functional_loss_num_runs = 3

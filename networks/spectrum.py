@@ -21,7 +21,7 @@ from typing import Optional, Tuple
 import torch
 from tqdm import tqdm
 
-from library import inference_utils
+from library.inference import sampling as inference_utils
 
 logger = logging.getLogger(__name__)
 

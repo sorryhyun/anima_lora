@@ -163,7 +163,9 @@ def find_sample_stems(dataset_dir, n, seed):
 
 def load_latent_npz(npz_path):
     z = np.load(npz_path)
-    lat_key = next((k for k in z.files if k.startswith("latents_") and "flip" not in k), None)
+    lat_key = next(
+        (k for k in z.files if k.startswith("latents_") and "flip" not in k), None
+    )
     if lat_key is None:
         raise KeyError(f"no latents_* key in {npz_path}")
     lat = torch.from_numpy(z[lat_key]).float()  # [C, H, W]
@@ -248,7 +250,12 @@ def classify_module(module_path: str) -> str:
         return "cross_attn.kv_in"
     if "cross.attn.output.proj" in p or "cross.attn.out.proj" in p:
         return "cross_attn.out_in"
-    if "mlp.layer1" in p or "mlp.fc1" in p or "mlp.gate.proj" in p or "mlp.up.proj" in p:
+    if (
+        "mlp.layer1" in p
+        or "mlp.fc1" in p
+        or "mlp.gate.proj" in p
+        or "mlp.up.proj" in p
+    ):
         return "mlp.layer1_in"
     if "mlp.layer2" in p or "mlp.fc2" in p or "mlp.down.proj" in p:
         return "mlp.layer2_in"
@@ -410,7 +417,11 @@ def main():
 
     all_dominances = np.array([m["dominance_ratio"] for m in per_module.values()])
 
-    tag = os.path.basename(args.lora_weight) if args.lora_weight else "<base DiT, no LoRA>"
+    tag = (
+        os.path.basename(args.lora_weight)
+        if args.lora_weight
+        else "<base DiT, no LoRA>"
+    )
     print("\n" + "=" * 78)
     print(f"Channel-dominance analysis for {tag}")
     print(
@@ -448,7 +459,9 @@ def main():
             "groups": {
                 g: {
                     "n": len(ms),
-                    "mean_dominance": float(np.mean([m["dominance_ratio"] for m in ms])),
+                    "mean_dominance": float(
+                        np.mean([m["dominance_ratio"] for m in ms])
+                    ),
                     "median_dominance": float(
                         np.median([m["dominance_ratio"] for m in ms])
                     ),

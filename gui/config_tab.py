@@ -29,11 +29,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-# Matches tqdm lines like: "Denoising steps:  40%|####      | 12/30 [..]"
-_TQDM_RE = re.compile(
-    r"^(?P<label>.*?):?\s*(?P<pct>\d+)%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)"
-)
-
 from gui import (
     CONFIGS_DIR,
     IMAGE_EXTS,
@@ -54,6 +49,11 @@ from gui import (
 )
 from gui.explanations import field_help, lora_guide
 from gui.i18n import t
+
+# Matches tqdm lines like: "Denoising steps:  40%|####      | 12/30 [..]"
+_TQDM_RE = re.compile(
+    r"^(?P<label>.*?):?\s*(?P<pct>\d+)%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)"
+)
 
 
 class ClickableLabel(QLabel):
@@ -247,7 +247,10 @@ class ConfigTab(QWidget):
             groups.setdefault(_K2G.get(k, "Other"), {})[k] = v
 
         origin_style = {
-            "base": ("color:#888; text-decoration: underline dotted;", "from base.toml"),
+            "base": (
+                "color:#888; text-decoration: underline dotted;",
+                "from base.toml",
+            ),
             "preset": (
                 "color:#6aa4d8; text-decoration: underline dotted;",
                 f"from presets/{preset}.toml",

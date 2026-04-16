@@ -1113,7 +1113,15 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         "--weighting_scheme",
         type=str,
         default="uniform",
-        choices=["sigma_sqrt", "logit_normal", "mode", "cosmap", "apex_omega", "none", "uniform"],
+        choices=[
+            "sigma_sqrt",
+            "logit_normal",
+            "mode",
+            "cosmap",
+            "apex_omega",
+            "none",
+            "uniform",
+        ],
         help="weighting scheme for timestep distribution. Default is uniform",
     )
     parser.add_argument(
@@ -1526,7 +1534,9 @@ def load_preset_section(preset: str, configs_dir: str = "configs") -> dict:
     return dict(section)
 
 
-def load_method_preset(method: str, preset: str = "default", configs_dir: str = "configs") -> dict:
+def load_method_preset(
+    method: str, preset: str = "default", configs_dir: str = "configs"
+) -> dict:
     """Merge base.toml → presets.toml[<preset>] → methods/<method>.toml into a flat dict.
 
     Method settings win over preset settings on overlap (e.g. postfix can force

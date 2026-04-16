@@ -2,7 +2,7 @@
 
 [한국어](README.ko.md)
 
-LoRA training and inference engine for the Anima diffusion model (DiT-based, flow-matching). Supports standard LoRA, DoRA, OrthoLoRA, and T-LoRA with timestep-dependent rank masking.
+LoRA training and inference engine for the Anima diffusion model (DiT-based, flow-matching). Supports standard LoRA, OrthoLoRA, and T-LoRA with timestep-dependent rank masking.
 
 ## Highlights
 
@@ -85,8 +85,6 @@ accelerate launch --mixed_precision bf16 train.py --method tlora --preset low_vr
 | Method | Description |
 |--------|-------------|
 | `lora` | Standard LoRA (rank 16) |
-| `dora` | DoRA (rank 32) |
-| `doratimestep` | DoRA + T-LoRA timestep masking |
 | `tlora` | T-LoRA with OrthoLoRA + timestep masking |
 | `hydralora` | HydraLoRA multi-head routing |
 | `postfix` / `postfix_exp` / `postfix_func` | Postfix tuning variants |
@@ -147,7 +145,7 @@ See [docs/methods/invert.md](docs/methods/invert.md) for details on initializati
 
 | Doc | Contents |
 |-----|----------|
-| [docs/guidelines/training.md](docs/guidelines/training.md) | LoRA variants (DoRA, OrthoLoRA, T-LoRA), caption shuffle, masked loss, dataset config |
+| [docs/guidelines/training.md](docs/guidelines/training.md) | LoRA variants (OrthoLoRA, T-LoRA), caption shuffle, masked loss, dataset config |
 | [docs/optimizations/fa4.md](docs/optimizations/fa4.md) | Why FA4 / flash-attention-sm120 and cross-attention KV trim were removed |
 | [docs/methods/prefix-tuning.md](docs/methods/prefix-tuning.md) | Prefix tuning — 12 GB VRAM, ~1 step/s, how it works, config reference |
 | [docs/guidelines/inference.md](docs/guidelines/inference.md) | Inference flags, P-GRAFT inference, prompt file format, LoRA format conversion |

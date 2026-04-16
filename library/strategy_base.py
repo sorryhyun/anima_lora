@@ -8,10 +8,6 @@ import numpy as np
 import torch
 from transformers import CLIPTokenizer
 
-
-# TODO remove circular import by moving ImageInfo to a separate file
-# from library.train_util import ImageInfo
-
 from library.utils import setup_logging
 
 setup_logging()
@@ -246,7 +242,6 @@ class TokenizeStrategy:
     ) -> torch.Tensor:
         """
         for SD1.5/2.0/SDXL
-        TODO support batch input
         """
         if max_length is None:
             max_length = tokenizer.model_max_length - 2
@@ -435,8 +430,6 @@ class TextEncoderOutputsCachingStrategy:
 
 
 class LatentsCachingStrategy:
-    # TODO commonize utillity functions to this class, such as npz handling etc.
-
     _strategy = None  # strategy instance: actual strategy class
 
     def __init__(
@@ -554,7 +547,6 @@ class LatentsCachingStrategy:
 
         return True
 
-    # TODO remove circular dependency for ImageInfo
     def _default_cache_batch_latents(
         self,
         encode_by_vae: Callable,
@@ -744,7 +736,6 @@ class LatentsCachingStrategy:
             for key in npz.files:
                 kwargs[key] = npz[key]
 
-        # TODO float() is needed if vae is in bfloat16. Remove it if vae is float16.
         kwargs["latents" + key_reso_suffix] = latents_tensor.float().cpu().numpy()
         kwargs["original_size" + key_reso_suffix] = np.array(original_size)
         kwargs["crop_ltrb" + key_reso_suffix] = np.array(crop_ltrb)

@@ -123,7 +123,6 @@ class ChunkedConv2d(nn.Conv2d):
     spatial_chunk_size : int, optional
         Size of chunks to process at a time. Default is None, which means no chunking.
 
-    TODO: Commonize with similar implementation in hunyuan_image_vae.py
     """
 
     def __init__(self, *args, **kwargs):

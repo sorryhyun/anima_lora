@@ -32,7 +32,9 @@ import torch.nn as nn
 
 def build_gmm(n_modes: int, radius: float, std: float, device: str):
     angles = torch.linspace(0, 2 * math.pi, n_modes + 1, device=device)[:-1]
-    centers = torch.stack([radius * torch.cos(angles), radius * torch.sin(angles)], dim=1)
+    centers = torch.stack(
+        [radius * torch.cos(angles), radius * torch.sin(angles)], dim=1
+    )
     return centers, std
 
 
@@ -56,7 +58,9 @@ class TinyDiT(nn.Module):
         self.cond_dim = cond_dim
         self.cond_embed = nn.Embedding(n_classes, cond_dim)
         self.x_proj = nn.Linear(2, hidden)
-        self.t_proj = nn.Sequential(nn.Linear(1, hidden), nn.SiLU(), nn.Linear(hidden, hidden))
+        self.t_proj = nn.Sequential(
+            nn.Linear(1, hidden), nn.SiLU(), nn.Linear(hidden, hidden)
+        )
         self.c_proj = nn.Linear(cond_dim, hidden)
         self.trunk = nn.Sequential(
             nn.SiLU(),
@@ -70,7 +74,9 @@ class TinyDiT(nn.Module):
     def encode(self, classes: torch.Tensor) -> torch.Tensor:
         return self.cond_embed(classes)
 
-    def forward(self, x_t: torch.Tensor, t: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x_t: torch.Tensor, t: torch.Tensor, c: torch.Tensor
+    ) -> torch.Tensor:
         h = self.x_proj(x_t) + self.t_proj(t.view(-1, 1)) + self.c_proj(c)
         return self.trunk(h)
 
@@ -241,7 +247,9 @@ def train_warm_fm(centers, std, warm_steps, bsz, lr, seed, device):
 
 
 def clone_model(src: TinyDiT) -> TinyDiT:
-    dst = TinyDiT(n_classes=src.n_classes, cond_dim=src.cond_dim).to(next(src.parameters()).device)
+    dst = TinyDiT(n_classes=src.n_classes, cond_dim=src.cond_dim).to(
+        next(src.parameters()).device
+    )
     dst.load_state_dict(src.state_dict())
     return dst
 
@@ -252,17 +260,28 @@ def refine_fm(model, centers, std, refine_steps, bsz, lr):
     return TrainResult(model=model, final_loss=last)
 
 
-def refine_apex(model, centers, std, refine_steps, bsz, lr, lam, lam_p, lam_c, lam_f, init_a, init_b):
-    shift = ConditionShift(init_a=init_a, init_b=init_b).to(next(model.parameters()).device)
+def refine_apex(
+    model, centers, std, refine_steps, bsz, lr, lam, lam_p, lam_c, lam_f, init_a, init_b
+):
+    shift = ConditionShift(init_a=init_a, init_b=init_b).to(
+        next(model.parameters()).device
+    )
     opt = torch.optim.Adam(list(model.parameters()) + list(shift.parameters()), lr=lr)
-    last = _apex_loop(model, shift, opt, centers, std, refine_steps, bsz, lam, lam_p, lam_c, lam_f)
+    last = _apex_loop(
+        model, shift, opt, centers, std, refine_steps, bsz, lam, lam_p, lam_c, lam_f
+    )
     return TrainResult(model=model, final_loss=last), shift
 
 
 # -------------------- tests --------------------
 
+
 def test_condition_shift_differentiates(
-    model: TinyDiT, shift: ConditionShift, centers: torch.Tensor, std: float, bsz: int = 1024
+    model: TinyDiT,
+    shift: ConditionShift,
+    centers: torch.Tensor,
+    std: float,
+    bsz: int = 1024,
 ) -> dict:
     """T1: after training, F(c) and F(c_fake) should differ meaningfully.
 
@@ -366,7 +385,7 @@ def test_gradient_equivalence(seed: int = 0, bsz: int = 64, lam: float = 0.5) ->
         total_cos += cos.item()
         n_params += 1
 
-    loss_value_diff = (L_mix.item() - G_APEX.item())
+    loss_value_diff = L_mix.item() - G_APEX.item()
     return {
         "L_mix": L_mix.item(),
         "G_APEX": G_APEX.item(),
@@ -403,15 +422,26 @@ def test_training_improves_nfe1(
       4. Continue the other with APEX for `refine_steps` (distillation phase).
       5. Compare NFE=1 sliced-Wasserstein.
     """
-    base, warm_loss = train_warm_fm(centers, std, warm_steps, bsz, lr, seed=1234, device=device)
+    base, warm_loss = train_warm_fm(
+        centers, std, warm_steps, bsz, lr, seed=1234, device=device
+    )
     fm_cont = clone_model(base)
     apex_init = clone_model(base)
 
     fm_res = refine_fm(fm_cont, centers, std, refine_steps, bsz, lr)
     apex_res, shift = refine_apex(
-        apex_init, centers, std, refine_steps, bsz, lr,
-        lam=lam, lam_p=lam_p, lam_c=lam_c, lam_f=lam_f,
-        init_a=init_a, init_b=init_b,
+        apex_init,
+        centers,
+        std,
+        refine_steps,
+        bsz,
+        lr,
+        lam=lam,
+        lam_p=lam_p,
+        lam_c=lam_c,
+        lam_f=lam_f,
+        init_a=init_a,
+        init_b=init_b,
     )
 
     # Evaluation batch (matched classes across both models)
@@ -450,7 +480,7 @@ def maybe_plot(centers, std, fm_model, apex_model, device, out_path):
     try:
         import matplotlib.pyplot as plt  # type: ignore
     except ImportError:
-        print(f"  [plot skipped — matplotlib not installed]")
+        print("  [plot skipped — matplotlib not installed]")
         return
     n = 2048
     torch.manual_seed(77)
@@ -486,17 +516,39 @@ def maybe_plot(centers, std, fm_model, apex_model, device, out_path):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--warm_steps", type=int, default=2000, help="pure-FM warm-start before branching")
-    p.add_argument("--refine_steps", type=int, default=2000, help="APEX vs FM refine phase (equal budget)")
+    p.add_argument(
+        "--warm_steps",
+        type=int,
+        default=2000,
+        help="pure-FM warm-start before branching",
+    )
+    p.add_argument(
+        "--refine_steps",
+        type=int,
+        default=2000,
+        help="APEX vs FM refine phase (equal budget)",
+    )
     p.add_argument("--bsz", type=int, default=256)
     p.add_argument("--lr", type=float, default=3e-3)
     p.add_argument("--device", type=str, default="cpu")
-    p.add_argument("--lam", type=float, default=1.0, help="mixing coefficient in T_mix (Eq. 23)")
+    p.add_argument(
+        "--lam", type=float, default=1.0, help="mixing coefficient in T_mix (Eq. 23)"
+    )
     p.add_argument("--lam_p", type=float, default=1.0, help="weight on L_sup (Eq. 25)")
     p.add_argument("--lam_c", type=float, default=1.0, help="weight on L_mix (Eq. 25)")
     p.add_argument("--lam_f", type=float, default=1.0, help="weight on L_fake (Eq. 12)")
-    p.add_argument("--a", type=float, default=-1.0, help="ConditionShift init_a (Table 7 optimum ~ -1)")
-    p.add_argument("--b", type=float, default=0.5, help="ConditionShift init_b (Table 7 range [0.1, 1.0])")
+    p.add_argument(
+        "--a",
+        type=float,
+        default=-1.0,
+        help="ConditionShift init_a (Table 7 optimum ~ -1)",
+    )
+    p.add_argument(
+        "--b",
+        type=float,
+        default=0.5,
+        help="ConditionShift init_b (Table 7 range [0.1, 1.0])",
+    )
     p.add_argument("--plot", action="store_true", help="save sample scatter plot")
     p.add_argument("--plot_path", type=str, default="bench/results/apex_phase0.png")
     args = p.parse_args()
@@ -524,8 +576,19 @@ def main():
 
     print("\n[T3] Warm-start + equal-refine: FM vs APEX, measured at NFE=1 / 4 / 20")
     t3, (fm_model, apex_model, shift) = test_training_improves_nfe1(
-        centers, std, args.warm_steps, args.refine_steps, args.bsz, args.lr, device,
-        args.lam, args.lam_p, args.lam_c, args.lam_f, args.a, args.b,
+        centers,
+        std,
+        args.warm_steps,
+        args.refine_steps,
+        args.bsz,
+        args.lr,
+        device,
+        args.lam,
+        args.lam_p,
+        args.lam_c,
+        args.lam_f,
+        args.a,
+        args.b,
     )
     for k, v in t3.items():
         if k == "pass":
@@ -543,11 +606,14 @@ def main():
 
     hrule()
     all_pass = t1["pass"] and t2["pass"] and t3["pass"]
-    print(f"\nPhase 0 overall: {'PASS — green-light Phase 1' if all_pass else 'FAIL — debug before proceeding'}")
+    print(
+        f"\nPhase 0 overall: {'PASS — green-light Phase 1' if all_pass else 'FAIL — debug before proceeding'}"
+    )
     hrule()
 
     if args.plot:
         from pathlib import Path
+
         Path(args.plot_path).parent.mkdir(parents=True, exist_ok=True)
         maybe_plot(centers, std, fm_model, apex_model, device, args.plot_path)
 

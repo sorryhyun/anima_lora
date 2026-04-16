@@ -81,9 +81,7 @@ def _load_hydra(file_path: str) -> dict:
         if "lora_ups" in mod:
             num_experts = max(num_experts, max(mod["lora_ups"].keys()) + 1)
     if num_experts == 0:
-        raise ValueError(
-            f"No HydraLoRA expert up-projections found in {file_path}"
-        )
+        raise ValueError(f"No HydraLoRA expert up-projections found in {file_path}")
 
     result = {
         "num_experts": num_experts,

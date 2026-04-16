@@ -23,10 +23,10 @@ from library.strategy_base import (
     TextEncodingStrategy,
     TokenizeStrategy,
 )
-from library.utils import resize_image, validate_interpolation_fn
-
 from library.datasets.buckets import BucketBatchIndex, BucketManager
 from library.datasets.image_utils import (
+    resize_image,
+    validate_interpolation_fn,
     IMAGE_TRANSFORMS,
     glob_images,
     is_disk_cached_latents_is_expected,

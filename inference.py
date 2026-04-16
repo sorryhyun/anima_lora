@@ -11,18 +11,16 @@ from typing import List, Dict, Any
 import torch
 from safetensors.torch import load_file
 from safetensors import safe_open
-from tqdm import tqdm
 from diffusers.utils.torch_utils import randn_tensor
 
 from library import (
     anima_models,
-    inference_utils,
     qwen_image_autoencoder_kl,
     strategy_anima,
     strategy_base,
 )
 from library.device_utils import clean_memory_on_device
-from library.inference_pipeline import (
+from library.inference import (
     get_generation_settings,
     check_inputs,
     load_dit_model,
@@ -30,6 +28,7 @@ from library.inference_pipeline import (
     load_shared_models,
     prepare_text_inputs,
     generate,
+    generate_body,
     save_latent,
     save_output,
 )
@@ -389,7 +388,7 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     # FP8 autocast is not supported yet — force-disable so downstream code paths
-    # (library/inference_pipeline.py) see a consistent False on this flag.
+    # see a consistent False on this flag.
     args.fp8 = False
 
     # Validate arguments
@@ -537,8 +536,6 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
     first_prompt_args = all_prompt_args_list[0]
     anima = load_dit_model(first_prompt_args, device, dit_weight_dtype)
 
-    shared_models_for_generate = {"model": anima}
-
     # 3. Precompute Text Data (Text Encoder)
     logger.info("Loading Text Encoder for batch text preprocessing...")
 
@@ -574,7 +571,20 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
     gc.collect()
     clean_memory_on_device(device)
 
-    # Group prompts by text content for batched denoising
+    # 4. Setup modulation guidance once (shared across all prompts)
+    if (
+        getattr(args, "pooled_text_proj", None) is not None
+        and getattr(args, "mod_w", 0.0) != 0.0
+    ):
+        from library.inference.mod_guidance import setup_mod_guidance
+
+        setup_mod_guidance(args, anima, device)
+    else:
+        anima._mod_guidance_delta = None
+        anima._mod_guidance_schedule = None
+        anima._mod_guidance_final_w = 0.0
+
+    # 5. Group prompts by text content for batched denoising
     infer_batch_size = getattr(args, "infer_batch_size", 1)
 
     groups = []
@@ -589,8 +599,6 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
         f"Generating latents: {len(all_prompt_args_list)} prompts in {len(groups)} group(s) (batch_size={infer_batch_size})"
     )
 
-    anima: anima_models.Anima = shared_models_for_generate["model"]
-
     with torch.no_grad():
         for (_prompt_text, _img_size), indices in groups:
             batch_size = len(indices)
@@ -603,165 +611,47 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                 f"size={height}x{width}, steps={first_args.infer_steps}"
             )
 
-            group_latents = []
             try:
                 # Collect seeds and create batched latent noise
                 seeds = []
-                seed_generators = []
+                num_channels_latents = anima_models.Anima.LATENT_CHANNELS
+                single_shape = (1, num_channels_latents, 1, height // 8, width // 8)
+                latent_list = []
+
                 for idx in indices:
                     pa = all_prompt_args_list[idx]
                     s = pa.seed if pa.seed is not None else random.randint(0, 2**32 - 1)
                     seeds.append(s)
                     g = torch.Generator(device=device)
                     g.manual_seed(s)
-                    seed_generators.append(g)
-
-                num_channels_latents = anima_models.Anima.LATENT_CHANNELS
-                single_shape = (1, num_channels_latents, 1, height // 8, width // 8)
-                latent_list = [
-                    randn_tensor(
-                        single_shape, generator=g, device=device, dtype=torch.bfloat16
-                    )
-                    for g in seed_generators
-                ]
-                latents = torch.cat(latent_list, dim=0)  # (B, C, T, H, W)
-
-                bs = batch_size
-                h_latent = latents.shape[-2]
-                w_latent = latents.shape[-1]
-                padding_mask = torch.zeros(
-                    bs, 1, h_latent, w_latent, dtype=torch.bfloat16, device=device
-                )
-
-                # Expand shared text embeddings to batch
-                embed = first_text_data["context"]["embed"][0].to(
-                    device, dtype=torch.bfloat16
-                )
-                context_null = (
-                    first_text_data.get("context_null") or first_text_data["context"]
-                )
-                negative_embed = context_null["embed"][0].to(
-                    device, dtype=torch.bfloat16
-                )
-                embed = embed.expand(bs, -1, -1)
-                negative_embed = negative_embed.expand(bs, -1, -1)
-
-                timesteps, sigmas = inference_utils.get_timesteps_sigmas(
-                    first_args.infer_steps, first_args.flow_shift, device
-                )
-                timesteps = (timesteps / 1000).to(device, dtype=torch.bfloat16)
-
-                # Create sampler
-                er_sde = None
-                if first_args.sampler == "er_sde":
-                    er_sde = inference_utils.ERSDESampler(
-                        sigmas, seed=first_args.seed, device=device
+                    latent_list.append(
+                        randn_tensor(
+                            single_shape,
+                            generator=g,
+                            device=device,
+                            dtype=torch.bfloat16,
+                        )
                     )
 
-                do_cfg = first_args.guidance_scale != 1.0
-                autocast_enabled = first_args.fp8
+                batched_latents = torch.cat(latent_list, dim=0)  # (B, C, T, H, W)
 
-                # P-GRAFT: get network reference for mid-denoising cutoff
-                pgraft_network = getattr(anima, "_pgraft_network", None)
-                lora_cutoff_step = getattr(first_args, "lora_cutoff_step", None)
+                # Store first seed on args for ER-SDE sampler
+                first_args.seed = seeds[0]
 
-                if getattr(args, "spectrum", False):
-                    from networks.spectrum import spectrum_denoise
+                # Run unified denoising loop
+                latents = generate_body(
+                    first_args,
+                    anima,
+                    first_text_data["context"],
+                    first_text_data["context_null"],
+                    device,
+                    seeds,
+                    latents=batched_latents,
+                )
 
-                    latents = spectrum_denoise(
-                        anima,
-                        latents,
-                        timesteps,
-                        sigmas,
-                        embed,
-                        negative_embed,
-                        padding_mask,
-                        first_args.guidance_scale,
-                        er_sde,
-                        device,
-                        window_size=getattr(args, "spectrum_window_size", 2.0),
-                        flex_window=getattr(args, "spectrum_flex_window", 0.25),
-                        warmup_steps=getattr(args, "spectrum_warmup", 6),
-                        w=getattr(args, "spectrum_w", 0.3),
-                        m=getattr(args, "spectrum_m", 3),
-                        lam=getattr(args, "spectrum_lam", 0.1),
-                        stop_caching_step=getattr(
-                            args, "spectrum_stop_caching_step", -1
-                        ),
-                        calibration_strength=getattr(args, "spectrum_calibration", 0.0),
-                        autocast_enabled=autocast_enabled,
-                        pgraft_network=pgraft_network,
-                        lora_cutoff_step=lora_cutoff_step,
-                    )
-                else:
-                    # Fuse LoRA weights into base model for zero-overhead inference
-                    if pgraft_network is not None:
-                        pgraft_network.fuse_weights()
-
-                    with tqdm(
-                        total=len(timesteps), desc=f"Denoising ({bs}x batch)"
-                    ) as pbar:
-                        for step_i, t in enumerate(timesteps):
-                            if (
-                                pgraft_network is not None
-                                and lora_cutoff_step is not None
-                                and step_i == lora_cutoff_step
-                            ):
-                                pgraft_network.unfuse_weights()
-                                logger.info(
-                                    f"P-GRAFT: Unfused LoRA at step {step_i}/{len(timesteps)}"
-                                )
-
-                            t_expand = t.expand(bs)
-
-                            with torch.autocast(
-                                device_type=device.type,
-                                dtype=torch.bfloat16,
-                                enabled=autocast_enabled,
-                            ):
-                                noise_pred = anima(
-                                    latents, t_expand, embed, padding_mask=padding_mask
-                                )
-
-                            if do_cfg:
-                                with torch.autocast(
-                                    device_type=device.type,
-                                    dtype=torch.bfloat16,
-                                    enabled=autocast_enabled,
-                                ):
-                                    uncond_noise_pred = anima(
-                                        latents,
-                                        t_expand,
-                                        negative_embed,
-                                        padding_mask=padding_mask,
-                                    )
-                                noise_pred = (
-                                    uncond_noise_pred
-                                    + first_args.guidance_scale
-                                    * (noise_pred - uncond_noise_pred)
-                                )
-
-                            if er_sde is not None:
-                                denoised = (
-                                    latents.float()
-                                    - sigmas[step_i] * noise_pred.float()
-                                )
-                                latents = er_sde.step(latents, denoised, step_i).to(
-                                    latents.dtype
-                                )
-                            else:
-                                latents = inference_utils.step(
-                                    latents, noise_pred, sigmas, step_i
-                                ).to(latents.dtype)
-                            pbar.update()
-
-                    # P-GRAFT: restore LoRA for next prompt
-                    if pgraft_network is not None:
-                        pgraft_network.unfuse_weights()
-
-                # Split batch and decode+save immediately
+                # Split batch and save
                 for j, idx in enumerate(indices):
-                    single_latent = latents[j : j + 1]  # keep batch dim
+                    single_latent = latents[j : j + 1]
                     all_prompt_args_list[idx].seed = seeds[j]
                     if all_prompt_args_list[idx].output_type in [
                         "latent",
@@ -770,7 +660,14 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                         save_latent(
                             single_latent, all_prompt_args_list[idx], height, width
                         )
-                    group_latents.append((idx, single_latent))
+
+                    if args.output_type != "latent":
+                        current_args = all_prompt_args_list[idx]
+                        if current_args.output_type == "latent_images":
+                            current_args.output_type = "images"
+                        save_output(current_args, vae_for_batch, single_latent, device)
+
+                logger.info(f"Saved {batch_size} image(s) to disk")
 
             except Exception as e:
                 logger.error(
@@ -779,21 +676,9 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
                 )
                 continue
 
-            # Decode and save this group's latents immediately
-            if args.output_type != "latent" and group_latents:
-                for idx, latent in group_latents:
-                    current_args = all_prompt_args_list[idx]
-                    if current_args.output_type == "latent_images":
-                        current_args.output_type = "images"
-                    save_output(current_args, vae_for_batch, latent, device)
-                logger.info(f"Saved {len(group_latents)} image(s) to disk")
-
-    # Free DiT model
-    logger.info("Releasing DiT model from memory...")
-
-    del shared_models_for_generate["model"]
-    del anima
-    del vae_for_batch
+    # Free models
+    logger.info("Releasing models from memory...")
+    del anima, vae_for_batch
     clean_memory_on_device(device)
 
 

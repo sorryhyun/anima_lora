@@ -1,24 +1,14 @@
 from concurrent.futures import ThreadPoolExecutor
-import gc
 import time
 from typing import Any, Optional, Union, Callable, Tuple
 import torch
 import torch.nn as nn
 
-
-# Keep these functions here for portability, and private to avoid confusion with the ones in device_utils.py
-def _clean_memory_on_device(device: torch.device):
-    r"""
-    Clean memory on the specified device, will be called from training scripts.
-    """
-    gc.collect()
-    if device.type == "cuda":
-        torch.cuda.empty_cache()
-
-
-def _synchronize_device(device: torch.device):
-    if device.type == "cuda":
-        torch.cuda.synchronize()
+from library.device_utils import (
+    clean_memory_on_device,
+    synchronize_device,
+    weighs_to_device,
+)
 
 
 def swap_weight_devices_cuda(
@@ -118,7 +108,7 @@ def swap_weight_devices_no_cuda(
     ) in weight_swap_jobs:
         module_to_cpu.weight.data = cuda_data_view.data.to("cpu", non_blocking=True)
 
-    _synchronize_device(device)
+    synchronize_device(device)
 
     # cpu to device
     for (
@@ -130,13 +120,7 @@ def swap_weight_devices_no_cuda(
         cuda_data_view.copy_(module_to_cuda.weight.data, non_blocking=True)
         module_to_cuda.weight.data = cuda_data_view
 
-    _synchronize_device(device)
-
-
-def weighs_to_device(layer: nn.Module, device: torch.device):
-    for module in layer.modules():
-        if hasattr(module, "weight") and module.weight is not None:
-            module.weight.data = module.weight.data.to(device, non_blocking=True)
+    synchronize_device(device)
 
 
 class Offloader:
@@ -311,8 +295,8 @@ class ModelOffloader(Offloader):
             )  # move block to device first. this makes sure that buffers (non weights) are on the device
             weighs_to_device(b, torch.device("cpu"))  # make sure weights are on cpu
 
-        _synchronize_device(self.device)
-        _clean_memory_on_device(self.device)
+        synchronize_device(self.device)
+        clean_memory_on_device(self.device)
 
     def wait_for_block(self, block_idx: int):
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:

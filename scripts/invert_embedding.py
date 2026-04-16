@@ -952,7 +952,7 @@ def run_aggregated_inversion(args, anima, latents, init_embed, device, log_path=
 
 def verify_embedding(args, anima, embed, h, w, device, save_path):
     """Generate an image from the inverted embedding to verify quality."""
-    from library import inference_utils
+    from library.inference import sampling as inference_utils
 
     logger.info("Generating verification image...")
 
