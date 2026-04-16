@@ -196,7 +196,7 @@ Utility scripts in `scripts/`:
 
 Spectrum KSampler and mod guidance ComfyUI nodes live in a separate repo: https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler
 
-`custom_nodes/comfyui-hydralora/` — HydraLoRA loader node for ComfyUI: **HydraLoRA Loader (Manual)** with per-expert weight sliders. Loads `*_moe.safetensors` multi-head files (sibling of the baked-down `anima_hydra.safetensors`). The previous Auto Router node was removed when HydraLoRA moved to per-module layer-local routing — routing now reads live layer input, which can't be replicated by weight-add patching.
+`custom_nodes/comfyui-hydralora/` — HydraLoRA loader node for ComfyUI. Loads `*_moe.safetensors` multi-head files and bakes down experts with uniform weighting, since ComfyUI's weight-add patching can't replicate the trained layer-local routing.
 
 ## External tools
 

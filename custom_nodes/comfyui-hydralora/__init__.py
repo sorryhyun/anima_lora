@@ -1,16 +1,11 @@
-"""HydraLoRA: Multi-style LoRA loader for ComfyUI (manual expert blending).
+"""HydraLoRA loader for ComfyUI.
 
 Loads a HydraLoRA multi-head safetensors file (*_moe.safetensors) and applies
-it to the model with user-controlled per-expert weights (sliders).
-
-Note: HydraLoRA uses *layer-local* routing — each adapted Linear has its own
-router that reads its actual layer input at training time. Slider-driven
-bake-down is a manual override: it pins the gate at a user-chosen uniform
-distribution across all layers and samples, which cannot reproduce the
-trained router's per-sample per-layer decisions. For true router-live
-inference use the CLI (`python inference.py --lora_weight *_moe.safetensors`,
-auto-detected via `library/inference_pipeline.py:_is_hydra_moe`) — it attaches
-the network as dynamic forward hooks that run the real router on every step.
+it to the model with uniform expert weighting. HydraLoRA uses layer-local
+routing at training time (each adapted Linear has its own router that reads
+live layer input), but ComfyUI's weight-patching model cannot replicate
+per-sample per-layer routing decisions — so experts are baked down with
+equal weights.
 """
 
 import logging
@@ -144,16 +139,18 @@ def _bake_down(
 def _apply_lora_to_model(model, lora_sd: Dict[str, torch.Tensor], strength: float):
     """Apply a standard LoRA state_dict to a ComfyUI model using patching."""
     import comfy.lora
+    import comfy.lora_convert
 
     key_map = comfy.lora.model_lora_keys_unet(model.model, {})
+    lora_sd = comfy.lora_convert.convert_lora(lora_sd)
     loaded = comfy.lora.load_lora(lora_sd, key_map)
     new_model = model.clone()
-    comfy.lora.apply_lora(new_model, loaded, strength)
+    new_model.add_patches(loaded, strength)
     return new_model
 
 
 class HydraLoRALoader:
-    """Load a HydraLoRA file with per-expert weight sliders for manual style blending."""
+    """Load a HydraLoRA file and apply with uniform expert weighting."""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -169,51 +166,23 @@ class HydraLoRALoader:
                     {"default": 1.0, "min": -2.0, "max": 2.0, "step": 0.05},
                 ),
             },
-            "optional": {
-                **{
-                    f"expert_{i}": (
-                        "FLOAT",
-                        {
-                            "default": 1.0,
-                            "min": 0.0,
-                            "max": 5.0,
-                            "step": 0.05,
-                            "tooltip": f"Weight for expert {i}",
-                        },
-                    )
-                    for i in range(16)  # support up to 16 experts
-                },
-            },
         }
 
     RETURN_TYPES = ("MODEL",)
     FUNCTION = "apply"
     CATEGORY = "loaders"
     DESCRIPTION = (
-        "Load a HydraLoRA multi-head LoRA and apply with per-expert weight control. "
-        "Adjust expert_N sliders to blend different style heads. "
-        "Only the first num_experts sliders are used; extras are ignored."
+        "Load a HydraLoRA multi-head LoRA and apply with uniform expert weighting. "
+        "Experts are baked down with equal weights since ComfyUI's weight-patching "
+        "cannot replicate the trained layer-local routing."
     )
 
-    def apply(self, model, hydra_lora, strength=1.0, **kwargs):
+    def apply(self, model, hydra_lora, strength=1.0):
         file_path = folder_paths.get_full_path("loras", hydra_lora)
         hydra_data = _load_hydra(file_path)
         num_experts = hydra_data["num_experts"]
 
-        # Collect expert weights from kwargs
-        raw_weights = []
-        for i in range(num_experts):
-            w = kwargs.get(f"expert_{i}", 1.0)
-            raw_weights.append(w)
-        raw_weights = torch.tensor(raw_weights, dtype=torch.float32)
-
-        # Normalize to sum to 1
-        total = raw_weights.sum()
-        if total > 0:
-            expert_weights = raw_weights / total
-        else:
-            expert_weights = torch.ones(num_experts) / num_experts
-
+        expert_weights = torch.ones(num_experts, dtype=torch.float32) / num_experts
         lora_sd = _bake_down(hydra_data, expert_weights)
         return (_apply_lora_to_model(model, lora_sd, strength),)
 
@@ -223,5 +192,5 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "HydraLoRALoader": "HydraLoRA Loader (Manual)",
+    "HydraLoRALoader": "HydraLoRA Loader",
 }
