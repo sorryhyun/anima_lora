@@ -2466,6 +2466,11 @@ class AnimaTrainer:
             if os.path.exists(old_ckpt_file):
                 accelerator.print(f"removing old checkpoint: {old_ckpt_file}")
                 os.remove(old_ckpt_file)
+            # Also remove HydraLoRA _moe sibling if present
+            moe_file = os.path.splitext(old_ckpt_file)[0] + "_moe.safetensors"
+            if os.path.exists(moe_file):
+                accelerator.print(f"removing old checkpoint: {moe_file}")
+                os.remove(moe_file)
 
         # if text_encoder is not needed for training, delete it to save memory.
         if self.is_text_encoder_not_needed_for_training(args):

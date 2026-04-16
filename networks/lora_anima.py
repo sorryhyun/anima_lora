@@ -10,6 +10,7 @@ from networks.lora_modules import (
     LoRAInfModule,
     OrthoLoRAModule,
     OrthoLoRAExpModule,
+    OrthoHydraLoRAExpModule,
     ReFTModule,
     HydraLoRAModule,
 )
@@ -488,7 +489,9 @@ def create_network(
     else:
         reg_dims = None
 
-    if use_hydra:
+    if use_hydra and use_ortho_exp:
+        module_class = OrthoHydraLoRAExpModule
+    elif use_hydra:
         module_class = HydraLoRAModule
     elif use_dora:
         module_class = DoRAModule
@@ -544,13 +547,18 @@ def create_network(
         logger.info(
             f"Timestep-dependent rank masking: min_rank={min_rank}, alpha={alpha_rank_scale}"
         )
-    if use_ortho_exp:
+    if use_ortho_exp and use_hydra:
+        logger.info(
+            f"OrthoHydraLoRA (exp): Cayley + MoE, num_experts={num_experts}, "
+            f"balance_loss_weight={balance_loss_weight}"
+        )
+    elif use_ortho_exp:
         logger.info("OrthoLoRA (exp): Cayley parameterization + SVD-informed init")
     elif use_ortho:
         logger.info(
             f"OrthoLoRA: sig_type={sig_type}, ortho_reg_weight={ortho_reg_weight}"
         )
-    if use_hydra:
+    if use_hydra and not use_ortho_exp:
         logger.info(
             f"HydraLoRA: num_experts={num_experts}, balance_loss_weight={balance_loss_weight}"
         )
@@ -624,6 +632,7 @@ def create_network_from_weights(
     has_dora = False
     has_ortho = False
     has_ortho_exp = False
+    has_ortho_hydra_exp = False
     has_hydra = False
     hydra_num_experts = 0
     has_reft = False
@@ -662,9 +671,15 @@ def create_network_from_weights(
             dim = value.size()[0]
             modules_dim[lora_name] = dim
         elif key.endswith(".S_p"):
-            dim = value.size()[0]
-            modules_dim[lora_name] = dim
-            has_ortho_exp = True
+            if value.dim() == 3:
+                # OrthoHydraLoRAExp: S_p is (num_experts, r, r)
+                has_ortho_hydra_exp = True
+                hydra_num_experts = max(hydra_num_experts, value.size(0))
+                modules_dim[lora_name] = value.size(1)
+            else:
+                # OrthoLoRAExp: S_p is (r, r)
+                has_ortho_exp = True
+                modules_dim[lora_name] = value.size(0)
         elif "q_layer" in key and "weight" in key and "base_" not in key:
             dim = value.size()[0]
             modules_dim[lora_name] = dim
@@ -675,10 +690,12 @@ def create_network_from_weights(
         if "llm_adapter" in lora_name:
             train_llm_adapter = True
 
-    # has_hydra wins over for_inference: the router is sample-dependent and
-    # can't be folded into a LoRAInfModule static-merge path. The dynamic
-    # forward-hook path (HydraLoRAModule.apply_to) works in eval mode too.
-    if has_hydra:
+    # has_hydra / has_ortho_hydra_exp win over for_inference: the router is
+    # sample-dependent and can't be folded into a LoRAInfModule static-merge path.
+    # The dynamic forward-hook path works in eval mode too.
+    if has_ortho_hydra_exp:
+        module_class = OrthoHydraLoRAExpModule
+    elif has_hydra:
         module_class = HydraLoRAModule
     elif for_inference:
         module_class = LoRAInfModule
@@ -720,10 +737,10 @@ def create_network_from_weights(
         reft_dim=reft_dim if reft_dim is not None else 4,
         reft_modules_dim=reft_modules_dim if has_reft else None,
         reft_modules_alpha=reft_modules_alpha if has_reft else None,
-        num_experts=hydra_num_experts if has_hydra else 4,
+        num_experts=hydra_num_experts if (has_hydra or has_ortho_hydra_exp) else 4,
         channel_scales_dict=channel_scales_dict,
     )
-    if has_hydra:
+    if has_hydra or has_ortho_hydra_exp:
         network._use_hydra = True
 
     _maybe_attach_apex_shift(network, kwargs)
@@ -982,6 +999,8 @@ class LoRANetwork(torch.nn.Module):
                     extra_kwargs["sig_type"] = self.sig_type
                 elif module_class == OrthoLoRAExpModule:
                     pass  # no extra kwargs — SVD init reads from org_module directly
+                elif module_class == OrthoHydraLoRAExpModule:
+                    extra_kwargs["num_experts"] = self.num_experts
                 elif module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = self.num_experts
 
@@ -1018,6 +1037,7 @@ class LoRANetwork(torch.nn.Module):
         if text_encoders is not None and module_class not in (
             OrthoLoRAModule,
             OrthoLoRAExpModule,
+            OrthoHydraLoRAExpModule,
         ):
             for i, text_encoder in enumerate(text_encoders):
                 if text_encoder is None:
@@ -1605,12 +1625,65 @@ class LoRANetwork(torch.nn.Module):
 
         # Fused→split mapping: the training runtime uses fused self_attn.qkv_proj
         # and cross_attn.kv_proj, but ComfyUI's Anima model has separate
-        # q_proj/k_proj/v_proj. Used for both the baked-down save and the
+        # q_proj/k_proj/v_proj. Used for both the standard LoRA save and the
         # HydraLoRA multi-head save below.
         _FUSED_SPLIT = {
             "self_attn_qkv_proj": ("self_attn_{}_proj", ("q", "k", "v")),
             "cross_attn_kv_proj": ("cross_attn_{}_proj", ("k", "v")),
         }
+
+        # OrthoHydraLoRAExp → HydraLoRA conversion.
+        # Converts Cayley params to standard lora_down + lora_up_weight so the
+        # HydraLoRA MOE save logic below handles the rest.
+        # Must run BEFORE OrthoLoRAExp conversion (which also keys on .S_p).
+        ortho_hydra_prefixes = set()
+        for key in list(state_dict.keys()):
+            if key.endswith(".S_p") and state_dict[key].dim() == 3:
+                ortho_hydra_prefixes.add(key[: -len(".S_p")])
+
+        for prefix in ortho_hydra_prefixes:
+            S_p = state_dict[f"{prefix}.S_p"]  # (E, r, r)
+            S_q = state_dict[f"{prefix}.S_q"]  # (r, r)
+            P_basis = state_dict[f"{prefix}.P_basis"]  # (out, r)
+            Q_basis = state_dict[f"{prefix}.Q_basis"]  # (r, in)
+            lam = state_dict[f"{prefix}.lambda_layer"]  # (1, r)
+            alpha = state_dict.get(f"{prefix}.alpha")
+            save_dtype = dtype if dtype is not None else P_basis.dtype
+
+            # Compute effective bases via Cayley
+            R_q = OrthoHydraLoRAExpModule._cayley(S_q.float())  # (r, r)
+            Q_eff = R_q @ Q_basis.float()  # (r, in)
+
+            R_p = OrthoHydraLoRAExpModule._cayley(S_p.float())  # (E, r, r)
+            P_eff = P_basis.float().unsqueeze(0) @ R_p  # (E, out, r)
+
+            # Factor lambda into up/down (sqrt split preserves ΔW = P @ diag(λ) @ Q)
+            lam_1d = lam.squeeze(0).float()
+            lam_abs = lam_1d.abs()
+            lam_sign = lam_1d.sign()
+            lam_sqrt = lam_abs.sqrt()
+
+            # Shared down: (r, in)
+            lora_down = (
+                (Q_eff * lam_sqrt.unsqueeze(1)).to(save_dtype).cpu().contiguous()
+            )
+            # Per-expert up: (E, out, r)
+            lora_up_weight = (
+                (P_eff * (lam_sqrt * lam_sign).unsqueeze(0).unsqueeze(0))
+                .to(save_dtype)
+                .cpu()
+                .contiguous()
+            )
+
+            # Remove OrthoHydra keys
+            for suffix in ["S_p", "S_q", "lambda_layer", "P_basis", "Q_basis"]:
+                state_dict.pop(f"{prefix}.{suffix}", None)
+
+            # Add standard HydraLoRA keys (router.weight/bias already in state_dict)
+            state_dict[f"{prefix}.lora_down.weight"] = lora_down
+            state_dict[f"{prefix}.lora_up_weight"] = lora_up_weight
+            if alpha is not None:
+                state_dict[f"{prefix}.alpha"] = alpha
 
         # OrthoLoRAExp (Cayley) → standard LoRA conversion for ComfyUI compatibility
         # ΔW = P_eff @ diag(λ) @ Q_eff is exactly rank r (no residual subtraction)
@@ -1814,23 +1887,9 @@ class LoRANetwork(torch.nn.Module):
 
             sf_save(hydra_sd, hydra_file, metadata or {})
             logger.info(f"HydraLoRA full format saved to {hydra_file}")
-
-        # HydraLoRA → standard LoRA: average expert up-projections for ComfyUI compatibility
-        for prefix in hydra_prefixes:
-            fused_key = f"{prefix}.lora_up_weight"
-            if fused_key not in state_dict:
-                continue
-            # lora_up_weight is (num_experts, out_dim, lora_dim) → average to (out_dim, lora_dim)
-            state_dict[f"{prefix}.lora_up.weight"] = state_dict.pop(fused_key).mean(
-                dim=0
-            )
-
-        # Per-module routers are useless for baked-down (weight-add) inference —
-        # strip them from the main ComfyUI file. They are preserved in the
-        # sibling *_moe.safetensors above.
-        for key in list(state_dict.keys()):
-            if key.endswith(".router.weight") or key.endswith(".router.bias"):
-                del state_dict[key]
+            # The _moe file is the only useful artifact for HydraLoRA —
+            # a uniform expert average defeats layer-local routing.
+            return
 
         # DoRA: rename magnitude → dora_scale for ComfyUI, remove internal buffers
         for key in list(state_dict.keys()):

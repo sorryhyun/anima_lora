@@ -58,13 +58,7 @@ def latest_lora() -> Path:
 
 
 def latest_hydra() -> Path:
-    """Latest HydraLoRA multi-head file (`anima_hydra*_moe.safetensors`).
-
-    Router-live inference needs the moe sibling, not the baked-down file.
-    The baked-down `anima_hydra*.safetensors` collapses experts to a uniform
-    average, which defeats the layer-local routing objective — use it only
-    as a ComfyUI-compat fallback.
-    """
+    """Latest HydraLoRA multi-head file (`anima_hydra*_moe.safetensors`)."""
     outputs = sorted(
         (
             f
