@@ -8,17 +8,17 @@ dataset_config = "configs/dataset_config.toml"
 # collide with regular LoRA runs and `make test-hydra` can key off it.
 output_name = "anima_hydra"
 
-network_alpha = 8
-network_dim = 8
+network_alpha = 32
+network_dim = 32
 
 use_hydra = true
 # Per-module layer-local routing lets each Linear specialize independently,
 # so the coarse k=12 artist-clustering heuristic no longer applies. k=4 is
 # the new default; raise if per-module utilization logs show collapse.
-num_experts = 6
+num_experts = 4
 balance_loss_weight = 0.01
 
-learning_rate = 5e-5
+learning_rate = 2e-5
 max_train_epochs = 2
 save_every_n_epochs = 2
 checkpointing_epochs = 2
@@ -34,4 +34,4 @@ min_rank = 1
 alpha_rank_scale = 1.0
 
 # Multi-expert up-projections are VRAM-heavy — method-forced swap.
-blocks_to_swap = 12
+blocks_to_swap = 18
