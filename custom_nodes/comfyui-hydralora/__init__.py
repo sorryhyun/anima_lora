@@ -114,7 +114,9 @@ def _bake_down(
             [ups[i] for i in sorted(ups.keys())], dim=0
         )  # (E, out, rank)
         combined_up = torch.einsum(
-            "e,eor->or", expert_weights.to(stacked.device), stacked
+            "e,eor->or",
+            expert_weights.to(device=stacked.device, dtype=stacked.dtype),
+            stacked,
         )
 
         # Undo the per-channel input absorption that HydraLoRAModule applies

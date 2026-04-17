@@ -16,10 +16,10 @@ from tqdm import tqdm
 from library import (
     anima_models,
     anima_utils,
-    qwen_image_autoencoder_kl,
 )
-from library.cache_utils import TE_CACHE_SUFFIX, load_cached_crossattn_emb
-from library.device_utils import clean_memory_on_device
+from library.models import qwen_vae as qwen_image_autoencoder_kl
+from library.io.cache import TE_CACHE_SUFFIX, load_cached_crossattn_emb
+from library.runtime.device import clean_memory_on_device
 from library.inference import sampling as inference_utils
 from library.utils import setup_logging
 

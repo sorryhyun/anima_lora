@@ -34,7 +34,7 @@ from tqdm import tqdm
 
 from library import anima_utils
 from library.anima_models import Anima
-from library.cache_utils import (
+from library.io.cache import (
     discover_cached_images,
     get_latent_resolution,
     load_cached_crossattn_emb,

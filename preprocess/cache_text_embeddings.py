@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from library.cache_utils import TE_CACHE_SUFFIX
+from library.io.cache import TE_CACHE_SUFFIX
 from library.datasets.image_utils import IMAGE_EXTENSIONS
 
 

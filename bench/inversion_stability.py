@@ -35,9 +35,9 @@ from library import (
     anima_models,
     anima_utils,
     inference_utils,
-    qwen_image_autoencoder_kl,
 )
-from library.device_utils import clean_memory_on_device
+from library.models import qwen_vae as qwen_image_autoencoder_kl
+from library.runtime.device import clean_memory_on_device
 
 BENCH_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = BENCH_DIR / "results"

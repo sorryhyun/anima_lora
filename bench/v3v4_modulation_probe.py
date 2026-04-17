@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from library import anima_models, anima_utils
 from library.inference import sampling as inference_utils
-from library.device_utils import clean_memory_on_device
+from library.runtime.device import clean_memory_on_device
 
 DIT_PATH = "models/diffusion_models/anima-preview3-base.safetensors"
 VAE_PATH = "models/vae/qwen_image_vae.safetensors"
@@ -374,7 +374,7 @@ def main():
         gen_embed = test_embed.to(DEVICE, dtype=torch.bfloat16)
         gen_alphas = [0.0, 1.0, 4.0]
 
-        from library import qwen_image_autoencoder_kl
+        from library.models import qwen_vae as qwen_image_autoencoder_kl
         from library.inference.output import decode_latent
         from PIL import Image
 

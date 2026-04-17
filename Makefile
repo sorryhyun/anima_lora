@@ -198,16 +198,16 @@ preprocess-te:
 
 download-sam3:
 	python -c "import os; os.makedirs('models/sam3',exist_ok=True)"
-	huggingface-cli download facebook/sam3 --local-dir models/sam3
+	hf download facebook/sam3 --local-dir models/sam3
 
 download-mit:
 	python -c "import os; os.makedirs('models/mit',exist_ok=True)"
-	huggingface-cli download a-b-c-x-y-z/Manga-Text-Segmentation-2025 \
+	hf download a-b-c-x-y-z/Manga-Text-Segmentation-2025 \
 		model.pth --local-dir models/mit
 
 download-anima:
 	python -c "import os; [os.makedirs(d,exist_ok=True) for d in ['models/diffusion_models','models/text_encoders','models/vae']]"
-	huggingface-cli download circlestone-labs/Anima \
+	hf download circlestone-labs/Anima \
 		split_files/diffusion_models/anima-preview3-base.safetensors \
 		split_files/text_encoders/qwen_3_06b_base.safetensors \
 		split_files/vae/qwen_image_vae.safetensors \

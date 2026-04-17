@@ -374,14 +374,14 @@ def cmd_comfy_batch(extra):
 
 def cmd_download_sam3(_extra):
     (ROOT / "models" / "sam3").mkdir(parents=True, exist_ok=True)
-    run(["huggingface-cli", "download", "facebook/sam3", "--local-dir", "models/sam3"])
+    run(["hf", "download", "facebook/sam3", "--local-dir", "models/sam3"])
 
 
 def cmd_download_mit(_extra):
     (ROOT / "models" / "mit").mkdir(parents=True, exist_ok=True)
     run(
         [
-            "huggingface-cli",
+            "hf",
             "download",
             "a-b-c-x-y-z/Manga-Text-Segmentation-2025",
             "model.pth",
@@ -396,7 +396,7 @@ def cmd_download_anima(_extra):
         (ROOT / "models" / d).mkdir(parents=True, exist_ok=True)
     run(
         [
-            "huggingface-cli",
+            "hf",
             "download",
             "circlestone-labs/Anima",
             "split_files/diffusion_models/anima-preview3-base.safetensors",

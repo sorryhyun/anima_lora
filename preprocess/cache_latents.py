@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from library.cache_utils import LATENT_CACHE_SUFFIX
+from library.io.cache import LATENT_CACHE_SUFFIX
 from library.datasets.image_utils import IMAGE_EXTENSIONS, IMAGE_TRANSFORMS
 
 
@@ -49,7 +49,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    from library import qwen_image_autoencoder_kl
+    from library.models import qwen_vae as qwen_image_autoencoder_kl
 
     data_dir = Path(args.dir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

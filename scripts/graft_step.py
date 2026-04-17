@@ -25,7 +25,7 @@ except ImportError:
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from library.cache_utils import stem_from_cache_path
+from library.io.cache import stem_from_cache_path
 from library.datasets.image_utils import IMAGE_EXTENSIONS
 
 ROOT = Path(__file__).resolve().parent.parent

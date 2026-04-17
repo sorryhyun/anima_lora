@@ -24,13 +24,13 @@ from library import (
     anima_models,
     anima_train_utils,
     anima_utils,
-    noise_utils,
-    qwen_image_autoencoder_kl,
-    sai_model_spec,
     strategy_anima,
     strategy_base,
     train_util,
 )
+from library.models import qwen_vae as qwen_image_autoencoder_kl
+from library.models import sai_spec as sai_model_spec
+from library.runtime import noise as noise_utils
 from library.config import loader as config_util
 from library.config.loader import (
     ConfigSanitizer,

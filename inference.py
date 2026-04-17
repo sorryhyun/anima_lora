@@ -15,10 +15,10 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from library import (
     anima_models,
-    qwen_image_autoencoder_kl,
     strategy_anima,
     strategy_base,
 )
+from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.runtime.device import clean_memory_on_device
 from library.inference import (
     get_generation_settings,
