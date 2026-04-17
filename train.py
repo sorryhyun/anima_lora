@@ -37,8 +37,11 @@ from library.config_util import (
     BlueprintGenerator,
 )
 import library.custom_train_functions as custom_train_functions
-from library.custom_train_functions import (
-    apply_masked_loss,
+from library.training import (
+    SAMPLER_REGISTRY,
+    SamplerContext,
+    LossContext,
+    build_loss_composer,
 )
 from library.utils import setup_logging, add_logging_arguments
 
@@ -501,13 +504,21 @@ class AnimaTrainer:
             latents = latents.squeeze(2)  # [B, C, 1, H, W] -> [B, C, H, W]
         noise = torch.randn_like(latents)
 
-        # Get noisy model input and timesteps
-        noisy_model_input, timesteps, sigmas = (
-            noise_utils.get_noisy_model_input_and_timesteps(
-                args, noise_scheduler, latents, noise, accelerator.device, weight_dtype
+        # Draw noisy input + timesteps via the sampler registry (M1).
+        sampler_fn = SAMPLER_REGISTRY[getattr(args, "sampler", "default") or "default"]
+        sampler_out = sampler_fn(
+            SamplerContext(
+                args=args,
+                noise_scheduler=noise_scheduler,
+                latents=latents,
+                noise=noise,
+                device=accelerator.device,
+                weight_dtype=weight_dtype,
             )
         )
-        timesteps = timesteps / 1000.0  # scale to [0, 1] range. timesteps is float32
+        noisy_model_input = sampler_out.noisy_input
+        timesteps = sampler_out.timesteps  # [0,1]-scaled, float32
+        sigmas = sampler_out.sigmas
 
         # Set timestep-dependent rank mask on LoRA and ReFT modules
         if hasattr(network, "set_timestep_mask"):
@@ -768,28 +779,6 @@ class AnimaTrainer:
 
         return model_pred, target, timesteps, weighting
 
-    def post_process_loss(self, loss, args, timesteps, noise_scheduler):
-        # Orthogonality regularization for OrthoLoRA
-        if (
-            hasattr(self, "_network")
-            and getattr(self._network, "_ortho_reg_weight", 0) > 0
-        ):
-            ortho_reg = self._network.get_ortho_regularization()
-            loss = loss + self._network._ortho_reg_weight * ortho_reg
-        # HydraLoRA load-balancing loss
-        if (
-            hasattr(self, "_network")
-            and getattr(self._network, "_balance_loss_weight", 0) > 0
-        ):
-            balance_loss = self._network.get_balance_loss()
-            loss = loss + self._network._balance_loss_weight * balance_loss
-        # Functional MSE loss against inversion runs (postfix-func)
-        func_loss = getattr(self, "_func_loss", None)
-        func_weight = getattr(args, "functional_loss_weight", 0.0)
-        if func_loss is not None and func_weight > 0.0:
-            loss = loss + func_weight * func_loss.to(loss.dtype)
-        return loss
-
     def sample_images(
         self,
         accelerator,
@@ -1038,27 +1027,12 @@ class AnimaTrainer:
         huber_c = train_util.get_huber_threshold_if_needed(
             args, timesteps, noise_scheduler
         )
-        loss = train_util.conditional_loss(
-            noise_pred.float(), target.float(), args.loss_type, "none", huber_c
-        )
-        if weighting is not None:
-            loss = loss * weighting
-        if args.masked_loss or (
-            "alpha_masks" in batch and batch["alpha_masks"] is not None
-        ):
-            loss = apply_masked_loss(loss, batch)
-        loss = loss.mean(
-            dim=list(range(1, loss.ndim))
-        )  # mean over all dims except batch
 
-        loss_weights = batch["loss_weights"]  # per-sample weight
-        loss = loss * loss_weights
-
-        # --- APEX: add L_mix (consistency) and L_fake (fake-flow fitting) ---
-        # The existing L_sup path above already matches paper Eq. 20 (real-branch
-        # supervised FM). Here we add the two APEX terms using the aux tensors
-        # stashed in get_noise_pred_and_target. See library/training/apex_loss.py
-        # for the warmup/rampup schedule rationale (Phase 0 Finding B).
+        # Assemble aux dict for the composer: APEX tensors + schedule + functional
+        # loss. The trainer owns the forward passes that produce these
+        # (see get_noise_pred_and_target + post_process_network); the composer
+        # just consumes them.
+        loss_aux: dict = {}
         apex_aux = getattr(self, "_apex_aux", None)
         if (
             is_train
@@ -1067,12 +1041,6 @@ class AnimaTrainer:
         ):
             from library.training.apex_loss import apex_schedule_weights
 
-            # APEX gates L_sup too via lambda_p; apply that scalar now.
-            loss = loss * float(getattr(args, "apex_lambda_p", 1.0))
-
-            # Effective schedule for L_mix / L_fake at the current step.
-            # Resolve ratio-based warmup/rampup against max_train_steps; explicit
-            # step counts (>0) override the ratio.
             apex_step = int(getattr(self, "_apex_step", 0))
             total_steps = int(getattr(args, "max_train_steps", 0) or 0)
             warmup_abs = int(getattr(args, "apex_warmup_steps", 0) or 0)
@@ -1092,60 +1060,31 @@ class AnimaTrainer:
                 lam_c_target=float(getattr(args, "apex_lambda_c", 1.0)),
                 lam_f_target=float(getattr(args, "apex_lambda_f", 1.0)),
             )
+            loss_aux["apex"] = {
+                **apex_aux,
+                "lam_c_eff": lam_c_eff,
+                "lam_f_eff": lam_f_eff,
+            }
 
-            # L_mix: MSE(F_real, T_mix_v). F_real is already `noise_pred`.
-            if lam_c_eff > 0.0:
-                l_mix = train_util.conditional_loss(
-                    noise_pred.float(),
-                    apex_aux["T_mix_v"].float(),
-                    args.loss_type,
-                    "none",
-                    huber_c,
-                )
-                if weighting is not None:
-                    l_mix = l_mix * weighting
-                if args.masked_loss or (
-                    "alpha_masks" in batch and batch["alpha_masks"] is not None
-                ):
-                    l_mix = apply_masked_loss(l_mix, batch)
-                l_mix = l_mix.mean(dim=list(range(1, l_mix.ndim)))
-                l_mix = l_mix * loss_weights
-                loss = loss + lam_c_eff * l_mix
+        func_loss = getattr(self, "_func_loss", None)
+        if func_loss is not None:
+            loss_aux["func_loss"] = func_loss
 
-            # L_fake: MSE(F_fake_on_fake_xt, target_fake). Trains the fake branch
-            # (and ConditionShift) to fit the OT trajectory drawn from x_fake.
-            # No masked-loss here — x_fake is synthetic, not tied to the input
-            # image mask — use per-sample batch loss_weights only.
-            if lam_f_eff > 0.0:
-                l_fake = train_util.conditional_loss(
-                    apex_aux["F_fake_on_fake_xt"].float(),
-                    apex_aux["target_fake"].float(),
-                    args.loss_type,
-                    "none",
-                    huber_c,
-                )
-                w_fake = apex_aux.get("weighting_fake")
-                if w_fake is not None:
-                    l_fake = l_fake * w_fake
-                l_fake = l_fake.mean(dim=list(range(1, l_fake.ndim)))
-                l_fake = l_fake * loss_weights
-                loss = loss + lam_f_eff * l_fake
-
-        loss = self.post_process_loss(loss, args, timesteps, noise_scheduler)
-
-        scalar_loss = loss.mean()
-
-        # Multiscale loss: additional MSE term at 2x-downsampled resolution
-        if getattr(args, "multiscale_loss_weight", 0):
-            ms_weight = args.multiscale_loss_weight
-            h, w = noise_pred.shape[-2:]
-            side_length = math.sqrt(h * w) * 8  # approximate pixel-space side
-            if side_length >= 1024 * 0.9 and h >= 2 and w >= 2:
-                pred_ds = torch.nn.functional.avg_pool2d(noise_pred.float(), 2)
-                target_ds = torch.nn.functional.avg_pool2d(target.float(), 2)
-                ms_loss = torch.nn.functional.mse_loss(pred_ds, target_ds)
-                scalar_loss = (scalar_loss + ms_loss * ms_weight) / (1.0 + ms_weight)
-
+        composer = build_loss_composer(args, getattr(self, "_network", network))
+        scalar_loss = composer.compose(
+            LossContext(
+                args=args,
+                batch=batch,
+                model_pred=noise_pred,
+                target=target,
+                timesteps=timesteps,
+                weighting=weighting,
+                huber_c=huber_c,
+                loss_weights=batch["loss_weights"],
+                network=getattr(self, "_network", network),
+                aux=loss_aux,
+            )
+        )
         return scalar_loss
 
     # endregion
@@ -1154,7 +1093,7 @@ class AnimaTrainer:
 
     def post_process_network(self, args, accelerator, network, text_encoders, unet):
         self._network = (
-            network  # store reference for ortho regularization in post_process_loss
+            network  # composer reads _network for ortho / balance regularizers
         )
         self._func_loss = None
         self._func_hooks = []

@@ -24,6 +24,22 @@ from library.training.metadata import (
     add_model_hash_metadata,
     finalize_metadata,
 )
+from library.training.samplers import (
+    SamplerContext,
+    SamplerOut,
+    SAMPLER_REGISTRY,
+)
+from library.training.losses import (
+    LossContext,
+    LossComposer,
+    LOSS_REGISTRY,
+    build_loss_composer,
+)
+from library.training.metrics import (
+    MetricContext,
+    METRIC_REGISTRY,
+    collect_metrics,
+)
 from library.training.checkpoints import (
     EPOCH_STATE_NAME,
     EPOCH_FILE_NAME,
@@ -52,6 +68,19 @@ from library.training.checkpoints import (
 )
 
 __all__ = [
+    # samplers
+    "SamplerContext",
+    "SamplerOut",
+    "SAMPLER_REGISTRY",
+    # losses
+    "LossContext",
+    "LossComposer",
+    "LOSS_REGISTRY",
+    "build_loss_composer",
+    # metrics
+    "MetricContext",
+    "METRIC_REGISTRY",
+    "collect_metrics",
     # metadata
     "SS_METADATA_KEY_V2",
     "SS_METADATA_KEY_BASE_MODEL_VERSION",
