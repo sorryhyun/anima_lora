@@ -20,7 +20,8 @@ from pathlib import Path
 import pytest
 import toml
 
-from library import config_schema, train_util
+from library import train_util
+from library.config import schema as config_schema
 from tests.conftest import iter_method_names
 
 

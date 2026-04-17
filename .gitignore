@@ -19,7 +19,8 @@ masks_sam/
 graft/train_images/
 graft/candidates/
 graft/survivors/
-models/
+/models/
+!library/models/
 test_output/
 output_temp/
 /workflows

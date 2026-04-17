@@ -16,7 +16,7 @@ from accelerate import Accelerator
 from PIL import Image
 from tqdm import tqdm
 
-from library.device_utils import clean_memory_on_device
+from library.runtime.device import clean_memory_on_device
 from library.strategy_base import (
     LatentsCachingStrategy,
     TextEncoderOutputsCachingStrategy,

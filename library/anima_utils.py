@@ -10,7 +10,7 @@ from accelerate import init_empty_weights
 
 from networks.lora_utils import load_safetensors_with_lora
 from library import anima_models
-from library.safetensors_utils import WeightTransformHooks
+from library.io.safetensors import WeightTransformHooks
 from .utils import setup_logging
 
 setup_logging()

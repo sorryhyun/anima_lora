@@ -11,7 +11,7 @@ import torch
 from safetensors.torch import save_file
 from PIL import Image
 
-from library import qwen_image_autoencoder_kl
+from library.models import qwen_vae as qwen_image_autoencoder_kl
 
 logger = logging.getLogger(__name__)
 

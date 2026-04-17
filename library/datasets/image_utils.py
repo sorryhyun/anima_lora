@@ -12,7 +12,7 @@ import cv2
 
 from library.datasets.buckets import BucketManager
 from library.datasets.subsets import ImageInfo
-from library.device_utils import clean_memory_on_device
+from library.runtime.device import clean_memory_on_device
 
 logger = logging.getLogger(__name__)
 

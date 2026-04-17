@@ -19,7 +19,7 @@ from library.strategy_base import (
     TokenizeStrategy,
     TextEncoderOutputsCachingStrategy,
 )
-from library import qwen_image_autoencoder_kl
+from library.models import qwen_vae as qwen_image_autoencoder_kl
 
 from library.utils import setup_logging
 

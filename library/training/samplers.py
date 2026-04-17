@@ -16,7 +16,7 @@ from typing import Callable
 
 import torch
 
-from library import noise_utils
+from library.runtime import noise as noise_utils
 
 
 @dataclass

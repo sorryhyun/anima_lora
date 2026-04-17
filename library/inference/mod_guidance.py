@@ -8,7 +8,7 @@ from typing import Optional, Dict, List
 import torch
 
 from library import anima_models, strategy_base
-from library.device_utils import clean_memory_on_device
+from library.runtime.device import clean_memory_on_device
 from library.inference.models import load_text_encoder
 from library.inference.text import process_escape
 

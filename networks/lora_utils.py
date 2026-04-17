@@ -3,8 +3,8 @@ import re
 from typing import Dict, List, Optional, Union
 import torch
 from tqdm import tqdm
-from library.device_utils import synchronize_device
-from library.safetensors_utils import (
+from library.runtime.device import synchronize_device
+from library.io.safetensors import (
     MemoryEfficientSafeOpen,
     TensorWeightAdapter,
     WeightTransformHooks,

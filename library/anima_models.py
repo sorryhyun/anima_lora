@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
-from library import custom_offloading_utils
+from library.runtime import offloading as custom_offloading_utils
 from networks import attention
 
 # KV length buckets for cross-attention trimming. Captions trimmed to the smallest

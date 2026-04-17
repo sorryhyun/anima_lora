@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 import torch
 import torch.nn as nn
-from library.device_utils import clean_memory_on_device
+from library.runtime.device import clean_memory_on_device
 
 from accelerate.utils import set_seed
 from accelerate import Accelerator
@@ -31,8 +31,8 @@ from library import (
     strategy_base,
     train_util,
 )
-import library.config_util as config_util
-from library.config_util import (
+from library.config import loader as config_util
+from library.config.loader import (
     ConfigSanitizer,
     BlueprintGenerator,
 )
@@ -1142,9 +1142,7 @@ class AnimaTrainer:
                 param.grad = accelerator.reduce(param.grad, reduction="mean")
 
     def get_sai_model_spec(self, args):
-        return train_util.get_sai_model_spec_dataclass(
-            None, args, False, True, False, anima="preview"
-        ).to_metadata_dict()
+        return train_util.get_sai_model_spec_dataclass(args, lora=True).to_metadata_dict()
 
     def update_metadata(self, metadata, args):
         metadata["ss_weighting_scheme"] = args.weighting_scheme
@@ -3131,7 +3129,7 @@ def setup_parser() -> argparse.ArgumentParser:
     return parser
 
 
-from library import config_schema as _config_schema  # noqa: E402
+from library.config import schema as _config_schema  # noqa: E402
 
 
 # Network-module-consumed flags (networks.lora_anima / networks.postfix_anima).

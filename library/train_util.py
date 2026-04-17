@@ -33,8 +33,8 @@ from accelerate import (
 from huggingface_hub import hf_hub_download
 from packaging.version import Version
 
-import library.sai_model_spec as sai_model_spec
-from library.device_utils import clean_memory_on_device  # noqa: F401 — used by strategy_anima via train_util
+from library.models import sai_spec as sai_model_spec
+from library.runtime.device import clean_memory_on_device  # noqa: F401 — used by strategy_anima via train_util
 from library.utils import setup_logging
 
 setup_logging()
@@ -266,40 +266,22 @@ def load_metadata_from_safetensors(safetensors_file: str) -> dict:
 # metadata helpers are now in library.training.metadata and re-exported above.
 
 
-def get_sai_model_spec(
-    state_dict: dict,
+def get_sai_model_spec_dataclass(
     args: argparse.Namespace,
-    sdxl: bool,
     lora: bool,
-    textual_inversion: bool,
-    is_stable_diffusion_ckpt: Optional[bool] = None,
-    sd3: str = None,
-    flux: str = None,
-    lumina: str = None,
     optional_metadata: dict[str, str] | None = None,
-):
+) -> sai_model_spec.ModelSpecMetadata:
     timestamp = time.time()
-
-    v2 = args.v2
-    v_parameterization = args.v_parameterization
-    reso = args.resolution
 
     title = args.metadata_title if args.metadata_title is not None else args.output_name
 
     if args.min_timestep is not None or args.max_timestep is not None:
-        min_time_step = args.min_timestep if args.min_timestep is not None else 0
-        max_time_step = args.max_timestep if args.max_timestep is not None else 1000
-        timesteps = (min_time_step, max_time_step)
+        timesteps = (
+            args.min_timestep if args.min_timestep is not None else 0,
+            args.max_timestep if args.max_timestep is not None else 1000,
+        )
     else:
         timesteps = None
-
-    model_config = {}
-    if sd3 is not None:
-        model_config["sd3"] = sd3
-    if flux is not None:
-        model_config["flux"] = flux
-    if lumina is not None:
-        model_config["lumina"] = lumina
 
     extracted_metadata = {}
     for attr_name in dir(args):
@@ -309,101 +291,22 @@ def get_sai_model_spec(
             value = getattr(args, attr_name, None)
             if value is not None:
                 field_name = attr_name[9:]
-                if field_name not in [
-                    "title",
-                    "author",
-                    "description",
-                    "license",
-                    "tags",
-                ]:
+                if field_name not in {"title", "author", "description", "license", "tags"}:
                     extracted_metadata[field_name] = value
-
-    all_optional_metadata = {**extracted_metadata}
     if optional_metadata:
-        all_optional_metadata.update(optional_metadata)
+        extracted_metadata.update(optional_metadata)
 
-    metadata = sai_model_spec.build_metadata(
-        state_dict,
-        v2,
-        v_parameterization,
-        sdxl,
-        lora,
-        textual_inversion,
-        timestamp,
-        title=title,
-        reso=reso,
-        is_stable_diffusion_ckpt=is_stable_diffusion_ckpt,
-        author=args.metadata_author,
-        description=args.metadata_description,
-        license=args.metadata_license,
-        tags=args.metadata_tags,
-        timesteps=timesteps,
-        clip_skip=args.clip_skip,
-        model_config=model_config,
-        optional_metadata=all_optional_metadata if all_optional_metadata else None,
-    )
-    return metadata
-
-
-def get_sai_model_spec_dataclass(
-    state_dict: dict,
-    args: argparse.Namespace,
-    sdxl: bool,
-    lora: bool,
-    textual_inversion: bool,
-    is_stable_diffusion_ckpt: Optional[bool] = None,
-    sd3: str = None,
-    flux: str = None,
-    lumina: str = None,
-    hunyuan_image: str = None,
-    anima: str = None,
-    optional_metadata: dict[str, str] | None = None,
-) -> sai_model_spec.ModelSpecMetadata:
-    timestamp = time.time()
-
-    v2 = args.v2
-    v_parameterization = args.v_parameterization
-    reso = args.resolution
-
-    title = args.metadata_title if args.metadata_title is not None else args.output_name
-
-    if args.min_timestep is not None or args.max_timestep is not None:
-        min_time_step = args.min_timestep if args.min_timestep is not None else 0
-        max_time_step = args.max_timestep if args.max_timestep is not None else 1000
-        timesteps = (min_time_step, max_time_step)
-    else:
-        timesteps = None
-
-    model_config = {}
-    if sd3 is not None:
-        model_config["sd3"] = sd3
-    if flux is not None:
-        model_config["flux"] = flux
-    if lumina is not None:
-        model_config["lumina"] = lumina
-    if hunyuan_image is not None:
-        model_config["hunyuan_image"] = hunyuan_image
-    if anima is not None:
-        model_config["anima"] = anima
     return sai_model_spec.build_metadata_dataclass(
-        state_dict,
-        v2,
-        v_parameterization,
-        sdxl,
         lora,
-        textual_inversion,
         timestamp,
         title=title,
-        reso=reso,
-        is_stable_diffusion_ckpt=is_stable_diffusion_ckpt,
+        reso=args.resolution,
         author=args.metadata_author,
         description=args.metadata_description,
         license=args.metadata_license,
         tags=args.metadata_tags,
         timesteps=timesteps,
-        clip_skip=args.clip_skip,
-        model_config=model_config,
-        optional_metadata=optional_metadata,
+        optional_metadata=extracted_metadata or None,
     )
 
 
@@ -1489,7 +1392,7 @@ def add_sd_saving_arguments(parser: argparse.ArgumentParser):
     )
 
 
-from library import config_schema as _config_schema  # noqa: E402
+from library.config import schema as _config_schema  # noqa: E402
 
 
 def _read_text_silent(path: Optional[str]) -> Optional[str]:

@@ -19,7 +19,7 @@ from library import (
     strategy_anima,
     strategy_base,
 )
-from library.device_utils import clean_memory_on_device
+from library.runtime.device import clean_memory_on_device
 from library.inference import (
     get_generation_settings,
     check_inputs,
