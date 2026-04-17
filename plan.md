@@ -2,67 +2,7 @@
 
 Staged milestones aimed at making new experiments and new adapter methods cheap to add. Each milestone is independently landable; existing commands (`make lora`, `make tlora`, `make hydralora`, `make postfix`, `make test`) keep passing after every stage. Numerical behavior and checkpoint compatibility are preserved throughout.
 
-> **Status:** M0 (test harness + importability), M1 (loss / sampler / metric registries), and M3 (`--print-config`, snapshot, schema validation) landed. `make test-unit` runs 38 tests green. Remaining: M2, M4–M7.
-
----
-
-## M2 — `NETWORK_REGISTRY` for adapter-method dispatch (priority 2)
-
-**Goal.** Replace flag-dispatch soup at `networks/lora_anima.py:492-500` and mode-by-filename inference at `networks/postfix_anima.py:84-112` with a registry.
-
-**Target shape.**
-
-```
-networks/__init__.py
-  @dataclass NetworkSpec:
-      name: str
-      module_class: type              # LoRAModule / OrthoLoRAModule / HydraLoRAModule / ...
-      kwarg_flags: tuple[str, ...]    # flags this entry consumes
-      post_init: Callable[[LoRANetwork, dict], None] | None = None
-      save_variant: str = "standard"  # keys into SAVE_HANDLERS
-      serialization_meta: dict = ...  # goes into safetensors metadata header
-
-  NETWORK_REGISTRY: dict[str, NetworkSpec] = {
-      "lora":            NetworkSpec("lora",            LoRAModule,                (),                                      None,          "standard"),
-      "ortho":           NetworkSpec("ortho",           OrthoLoRAModule,           ("sig_type","ortho_reg_weight"),         _attach_ortho, "ortho_to_lora"),
-      "ortho_exp":       NetworkSpec("ortho_exp",       OrthoLoRAExpModule,        (),                                      None,          "ortho_exp_to_lora"),
-      "hydra":           NetworkSpec("hydra",           HydraLoRAModule,           ("num_experts","balance_loss_weight"),   _attach_hydra, "hydra_moe"),
-      "ortho_hydra_exp": NetworkSpec("ortho_hydra_exp", OrthoHydraLoRAExpModule,   ("num_experts","balance_loss_weight"),   _attach_hydra, "ortho_hydra_to_hydra"),
-      "dora":            NetworkSpec("dora",            DoRAModule,                (),                                      None,          "standard"),
-  }
-
-  resolve_network_spec(kwargs) -> NetworkSpec
-      # fixed precedence order (documented in module docstring);
-      # raises on ambiguous combos (e.g. use_ortho + use_ortho_exp).
-
-networks/lora_save.py  (extracted from ~400-line save_weights @ lora_anima.py:1620+)
-  SaveHandler = Callable[[dict[str, Tensor], dict], dict[str, Tensor]]
-  SAVE_HANDLERS: dict[str, SaveHandler] = {
-      "standard":             _save_standard,
-      "ortho_to_lora":        _save_ortho_via_svd,
-      "ortho_exp_to_lora":    _save_ortho_exp_cayley,
-      "hydra_moe":            _save_hydra_moe,
-      "ortho_hydra_to_hydra": _save_ortho_hydra,
-  }
-```
-
-`create_network` (`lora_anima.py:505`) reduces to: resolve spec → build `LoRANetwork(module_class=spec.module_class)` → `spec.post_init(network, kwargs)` → stamp `network._network_type = spec.name`.
-
-`save_weights` becomes: `SAVE_HANDLERS[self._network_spec.save_variant](state_dict, ctx)` then the shared qkv/kv defuse.
-
-`postfix_anima.py`: stamp `ss_network_spec = "postfix"` (plus `ss_mode`, `ss_splice_position`, `ss_cond_hidden_dim`) into metadata on save. Keep the key-sniffing block as legacy-checkpoint fallback.
-
-**Checkpoint compatibility.** On-disk format unchanged — all registered `save_variant` handlers produce the same keys/shapes as today. Existing `models/` checkpoints continue to load because `create_network_from_weights` already reconstructs from key shapes; we just route it through the registry.
-
-**Verify.**
-- `tests/test_network_registry.py`: every key in `configs/methods/*.toml` resolves to a `NetworkSpec` without warnings; ambiguous combos raise.
-- Round-trip: build each adapter type, `save_weights` to tmp, `create_network_from_weights`, assert bit-identical state_dict keys and shapes.
-- Load two known-good checkpoints from `models/`: one standard LoRA, one hydra `_moe.safetensors`. Compare loaded-weights hash to pre-refactor.
-- `make hydralora && make test-hydra`, `make postfix && make test-postfix`.
-
-**Risks.**
-- `save_weights` has subtle ordering: OrthoHydra must run before OrthoExp (`lora_anima.py:1638`). Preserve as a fixed pipeline — `[ortho_hydra_to_hydra, ortho_exp_to_lora, ortho_to_lora]` chain, then variant-agnostic qkv defuse. Document in `lora_save.py` header.
-- `OrthoLoRAExpModule._cayley` and `OrthoHydraLoRAExpModule._cayley` are referenced from inside save code — keep imports; don't pure-functionalize Cayley here.
+> **Status:** M0 (test harness + importability), M1 (loss / sampler / metric registries), M2 (NETWORK_REGISTRY + `lora_save.py`), and M3 (`--print-config`, snapshot, schema validation) landed. `make test-unit` runs 69 tests green. Remaining: M4–M7.
 
 ---
 
@@ -88,12 +28,12 @@ Lift `inference.py` body into `library/inference/engine.py::InferenceEngine` wit
 
 ## Sequencing
 
-**Recommended order.** M2 → M6 → M5 → M4 → M7.
+**Recommended order.** M6 → M5 → M4 → M7.
 
 - **M5 before M4** — sweep's per-run validation wants a cheap `InferenceEngine`.
 - **M6, M7 parallelizable** any time.
 
-**Hard deps.** None. M5 prefers M2's registry but can short-term keep filename sniffing.
+**Hard deps.** None.
 
 ---
 

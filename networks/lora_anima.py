@@ -14,8 +14,9 @@ from networks.lora_modules import (
     ReFTModule,
     HydraLoRAModule,
 )
-from networks.lora_deprecated import DoRAModule
 from networks.condition_shift import ConditionShift
+from networks import NETWORK_REGISTRY, NetworkSpec, resolve_network_spec
+from networks import lora_save
 
 import logging
 
@@ -489,18 +490,8 @@ def create_network(
     else:
         reg_dims = None
 
-    if use_hydra and use_ortho_exp:
-        module_class = OrthoHydraLoRAExpModule
-    elif use_hydra:
-        module_class = HydraLoRAModule
-    elif use_dora:
-        module_class = DoRAModule
-    elif use_ortho_exp:
-        module_class = OrthoLoRAExpModule
-    elif use_ortho:
-        module_class = OrthoLoRAModule
-    else:
-        module_class = LoRAModule
+    spec = resolve_network_spec(kwargs)
+    module_class = spec.module_class
 
     network = LoRANetwork(
         text_encoders,
@@ -527,19 +518,23 @@ def create_network(
         channel_scales_dict=channel_scales_dict,
     )
 
-    # Set timestep mask and ortho regularization config
+    # Set timestep mask config (variant-agnostic)
     network._use_timestep_mask = use_timestep_mask
     network._min_rank = min_rank
     network._max_rank = network_dim
     network._alpha_rank_scale = alpha_rank_scale
-    network._ortho_reg_weight = ortho_reg_weight if use_ortho else 0.0
-
     network._add_reft = add_reft
     network._reft_dim = reft_dim
 
-    # HydraLoRA config — routers live inside each HydraLoRAModule (layer-local).
-    network._use_hydra = use_hydra
-    network._balance_loss_weight = balance_loss_weight if use_hydra else 0.0
+    # Variant-specific defaults — overridden by spec.post_init for the matching variant.
+    network._ortho_reg_weight = 0.0
+    network._use_hydra = False
+    network._balance_loss_weight = 0.0
+
+    # Stamp the resolved spec; save_weights keys off this to pick the save pipeline.
+    network._network_spec = spec
+    if spec.post_init is not None:
+        spec.post_init(network, kwargs)
 
     _maybe_attach_apex_shift(network, kwargs)
 
@@ -547,20 +542,20 @@ def create_network(
         logger.info(
             f"Timestep-dependent rank masking: min_rank={min_rank}, alpha={alpha_rank_scale}"
         )
-    if use_ortho_exp and use_hydra:
+    if spec.name == "ortho_hydra_exp":
         logger.info(
             f"OrthoHydraLoRA (exp): Cayley + MoE, num_experts={num_experts}, "
-            f"balance_loss_weight={balance_loss_weight}"
+            f"balance_loss_weight={network._balance_loss_weight}"
         )
-    elif use_ortho_exp:
+    elif spec.name == "ortho_exp":
         logger.info("OrthoLoRA (exp): Cayley parameterization + SVD-informed init")
-    elif use_ortho:
+    elif spec.name == "ortho":
         logger.info(
-            f"OrthoLoRA: sig_type={sig_type}, ortho_reg_weight={ortho_reg_weight}"
+            f"OrthoLoRA: sig_type={sig_type}, ortho_reg_weight={network._ortho_reg_weight}"
         )
-    if use_hydra and not use_ortho_exp:
+    elif spec.name == "hydra":
         logger.info(
-            f"HydraLoRA: num_experts={num_experts}, balance_loss_weight={balance_loss_weight}"
+            f"HydraLoRA: num_experts={num_experts}, balance_loss_weight={network._balance_loss_weight}"
         )
     if add_reft:
         logger.info(f"ReFT: reft_dim={reft_dim}")
@@ -694,19 +689,26 @@ def create_network_from_weights(
     # sample-dependent and can't be folded into a LoRAInfModule static-merge path.
     # The dynamic forward-hook path works in eval mode too.
     if has_ortho_hydra_exp:
-        module_class = OrthoHydraLoRAExpModule
+        spec = NETWORK_REGISTRY["ortho_hydra_exp"]
+        module_class = spec.module_class
     elif has_hydra:
-        module_class = HydraLoRAModule
+        spec = NETWORK_REGISTRY["hydra"]
+        module_class = spec.module_class
     elif for_inference:
+        spec = NETWORK_REGISTRY["lora"]  # inference uses the merge-capable LoRAInfModule
         module_class = LoRAInfModule
     elif has_dora:
-        module_class = DoRAModule
+        spec = NETWORK_REGISTRY["dora"]
+        module_class = spec.module_class
     elif has_ortho_exp:
-        module_class = OrthoLoRAExpModule
+        spec = NETWORK_REGISTRY["ortho_exp"]
+        module_class = spec.module_class
     elif has_ortho:
-        module_class = OrthoLoRAModule
+        spec = NETWORK_REGISTRY["ortho"]
+        module_class = spec.module_class
     else:
-        module_class = LoRAModule
+        spec = NETWORK_REGISTRY["lora"]
+        module_class = spec.module_class
 
     # Detect baked-in per-channel input scaling. We pass a placeholder ones
     # tensor so each affected module registers the `inv_scale` buffer at init;
@@ -740,8 +742,14 @@ def create_network_from_weights(
         num_experts=hydra_num_experts if (has_hydra or has_ortho_hydra_exp) else 4,
         channel_scales_dict=channel_scales_dict,
     )
-    if has_hydra or has_ortho_hydra_exp:
-        network._use_hydra = True
+    # Mirror create_network's variant-specific post-build attribute attachment.
+    # Defaults first, then spec.post_init overrides for the matching variant.
+    network._ortho_reg_weight = 0.0
+    network._use_hydra = False
+    network._balance_loss_weight = 0.0
+    network._network_spec = spec
+    if spec.post_init is not None:
+        spec.post_init(network, kwargs)
 
     _maybe_attach_apex_shift(network, kwargs)
 
@@ -1618,344 +1626,20 @@ class LoRANetwork(torch.nn.Module):
         return self.parameters()
 
     def save_weights(self, file, dtype, metadata):
-        if metadata is not None and len(metadata) == 0:
-            metadata = None
+        spec: NetworkSpec = getattr(self, "_network_spec", NETWORK_REGISTRY["lora"])
+        if metadata is None:
+            metadata = {}
+        if metadata:
+            metadata["ss_network_spec"] = spec.name
 
         state_dict = self.state_dict()
-
-        # Fused→split mapping: the training runtime uses fused self_attn.qkv_proj
-        # and cross_attn.kv_proj, but ComfyUI's Anima model has separate
-        # q_proj/k_proj/v_proj. Used for both the standard LoRA save and the
-        # HydraLoRA multi-head save below.
-        _FUSED_SPLIT = {
-            "self_attn_qkv_proj": ("self_attn_{}_proj", ("q", "k", "v")),
-            "cross_attn_kv_proj": ("cross_attn_{}_proj", ("k", "v")),
-        }
-
-        # OrthoHydraLoRAExp → HydraLoRA conversion.
-        # Converts Cayley params to standard lora_down + lora_up_weight so the
-        # HydraLoRA MOE save logic below handles the rest.
-        # Must run BEFORE OrthoLoRAExp conversion (which also keys on .S_p).
-        ortho_hydra_prefixes = set()
-        for key in list(state_dict.keys()):
-            if key.endswith(".S_p") and state_dict[key].dim() == 3:
-                ortho_hydra_prefixes.add(key[: -len(".S_p")])
-
-        for prefix in ortho_hydra_prefixes:
-            S_p = state_dict[f"{prefix}.S_p"]  # (E, r, r)
-            S_q = state_dict[f"{prefix}.S_q"]  # (r, r)
-            P_basis = state_dict[f"{prefix}.P_basis"]  # (out, r)
-            Q_basis = state_dict[f"{prefix}.Q_basis"]  # (r, in)
-            lam = state_dict[f"{prefix}.lambda_layer"]  # (1, r)
-            alpha = state_dict.get(f"{prefix}.alpha")
-            save_dtype = dtype if dtype is not None else P_basis.dtype
-
-            # Compute effective bases via Cayley
-            R_q = OrthoHydraLoRAExpModule._cayley(S_q.float())  # (r, r)
-            Q_eff = R_q @ Q_basis.float()  # (r, in)
-
-            R_p = OrthoHydraLoRAExpModule._cayley(S_p.float())  # (E, r, r)
-            P_eff = P_basis.float().unsqueeze(0) @ R_p  # (E, out, r)
-
-            # Factor lambda into up/down (sqrt split preserves ΔW = P @ diag(λ) @ Q)
-            lam_1d = lam.squeeze(0).float()
-            lam_abs = lam_1d.abs()
-            lam_sign = lam_1d.sign()
-            lam_sqrt = lam_abs.sqrt()
-
-            # Shared down: (r, in)
-            lora_down = (
-                (Q_eff * lam_sqrt.unsqueeze(1)).to(save_dtype).cpu().contiguous()
-            )
-            # Per-expert up: (E, out, r)
-            lora_up_weight = (
-                (P_eff * (lam_sqrt * lam_sign).unsqueeze(0).unsqueeze(0))
-                .to(save_dtype)
-                .cpu()
-                .contiguous()
-            )
-
-            # Remove OrthoHydra keys
-            for suffix in ["S_p", "S_q", "lambda_layer", "P_basis", "Q_basis"]:
-                state_dict.pop(f"{prefix}.{suffix}", None)
-
-            # Add standard HydraLoRA keys (router.weight/bias already in state_dict)
-            state_dict[f"{prefix}.lora_down.weight"] = lora_down
-            state_dict[f"{prefix}.lora_up_weight"] = lora_up_weight
-            if alpha is not None:
-                state_dict[f"{prefix}.alpha"] = alpha
-
-        # OrthoLoRAExp (Cayley) → standard LoRA conversion for ComfyUI compatibility
-        # ΔW = P_eff @ diag(λ) @ Q_eff is exactly rank r (no residual subtraction)
-        ortho_exp_prefixes = set()
-        for key in state_dict.keys():
-            if key.endswith(".S_p"):
-                ortho_exp_prefixes.add(key[: -len(".S_p")])
-
-        for prefix in ortho_exp_prefixes:
-            S_p = state_dict[f"{prefix}.S_p"]
-            S_q = state_dict[f"{prefix}.S_q"]
-            P_basis = state_dict[f"{prefix}.P_basis"]
-            Q_basis = state_dict[f"{prefix}.Q_basis"]
-            lam = state_dict[f"{prefix}.lambda_layer"]  # (1, r)
-            alpha = state_dict.get(f"{prefix}.alpha")
-            rank = S_p.shape[0]
-            save_dtype = dtype if dtype is not None else P_basis.dtype
-
-            # Reconstruct effective bases via Cayley transform
-            R_p = OrthoLoRAExpModule._cayley(S_p.float())
-            R_q = OrthoLoRAExpModule._cayley(S_q.float())
-            P_eff = P_basis.float() @ R_p  # (out, r)
-            Q_eff = R_q @ Q_basis.float()  # (r, in)
-
-            # ΔW = P_eff @ diag(λ) @ Q_eff — already rank r, factor directly
-            lam_abs = lam.squeeze(0).float().abs()
-            lam_sign = lam.squeeze(0).float().sign()
-            lam_sqrt = lam_abs.sqrt()
-            lora_up = (
-                (P_eff * (lam_sqrt * lam_sign).unsqueeze(0))
-                .to(save_dtype)
-                .cpu()
-                .contiguous()
-            )
-            lora_down = (
-                (Q_eff * lam_sqrt.unsqueeze(1)).to(save_dtype).cpu().contiguous()
-            )
-
-            # Remove OrthoLoRAExp keys
-            for suffix in ["S_p", "S_q", "lambda_layer", "P_basis", "Q_basis"]:
-                state_dict.pop(f"{prefix}.{suffix}", None)
-            # inv_scale is kept — it's a standard buffer shared with other module types
-
-            # Add standard LoRA keys
-            state_dict[f"{prefix}.lora_up.weight"] = lora_up
-            state_dict[f"{prefix}.lora_down.weight"] = lora_down
-            if alpha is not None:
-                state_dict[f"{prefix}.alpha"] = alpha
-
-        # OrthoLoRA → standard LoRA conversion for ComfyUI compatibility
-        # Compute ΔW = P·diag(λ)·Q - P_base·diag(λ_base)·Q_base, then SVD → lora_up/lora_down
-        ortho_prefixes = set()
-        for key in state_dict.keys():
-            if key.endswith(".base_lambda"):
-                ortho_prefixes.add(key[: -len(".base_lambda")])
-
-        for prefix in ortho_prefixes:
-            P = state_dict[f"{prefix}.p_layer.weight"]  # (out_dim, rank)
-            Q = state_dict[f"{prefix}.q_layer.weight"]  # (rank, in_dim)
-            lam = state_dict[f"{prefix}.lambda_layer"]  # (1, rank)
-            P_base = state_dict[f"{prefix}.base_p_weight"]  # (out_dim, rank)
-            Q_base = state_dict[f"{prefix}.base_q_weight"]  # (rank, in_dim)
-            lam_base = state_dict[f"{prefix}.base_lambda"]  # (1, rank)
-            alpha = state_dict.get(f"{prefix}.alpha")
-            rank = Q.shape[0]
-
-            # ΔW = P·diag(λ)·Q - P_base·diag(λ_base)·Q_base is rank ≤ 2r.
-            # Instead of materializing the full (out_dim × in_dim) matrix and running SVD on it,
-            # work in the small 2r-dimensional column/row space:
-            #   ΔW = [P|P_base] @ M @ [Q; Q_base]  where M is (2r, 2r)
-            # Then SVD of M gives us the decomposition cheaply.
-            svd_device = "cuda" if torch.cuda.is_available() else "cpu"
-            save_dtype = dtype if dtype is not None else P.dtype
-
-            P_cat = torch.cat([P, P_base], dim=1).float().to(svd_device)  # (out, 2r)
-            Q_cat = torch.cat([Q, Q_base], dim=0).float().to(svd_device)  # (2r, in)
-            lam_diag = torch.diag(lam.squeeze(0).float().to(svd_device))  # (r, r)
-            lam_base_diag = torch.diag(lam_base.squeeze(0).float().to(svd_device))
-
-            # M = block_diag(diag(λ), -diag(λ_base))  — the middle (2r, 2r) matrix
-            M = torch.zeros(2 * rank, 2 * rank, device=svd_device)
-            M[:rank, :rank] = lam_diag
-            M[rank:, rank:] = -lam_base_diag
-
-            # QR-orthogonalize the tall/wide factors to get thin SVD via small matrix
-            Qp, Rp = torch.linalg.qr(P_cat)  # Qp: (out, 2r), Rp: (2r, 2r)
-            Qq, Rq = torch.linalg.qr(Q_cat.T)  # Qq: (in, 2r), Rq: (2r, 2r)
-
-            # Core (2r × 2r) matrix whose SVD gives us the answer
-            core = Rp @ M @ Rq.T
-            Uc, Sc, Vhc = torch.linalg.svd(core)  # all (2r, 2r)
-
-            # Map back: U_full = Qp @ Uc, Vh_full = Vhc @ Qq.T
-            lora_up = (
-                (Qp @ Uc[:, :rank] * Sc[:rank].sqrt().unsqueeze(0))
-                .to(save_dtype)
-                .cpu()
-                .contiguous()
-            )
-            lora_down = (
-                (Sc[:rank].sqrt().unsqueeze(1) * Vhc[:rank, :] @ Qq.T)
-                .to(save_dtype)
-                .cpu()
-                .contiguous()
-            )
-
-            # Remove OrthoLoRA keys
-            for suffix in [
-                "p_layer.weight",
-                "q_layer.weight",
-                "lambda_layer",
-                "base_p_weight",
-                "base_q_weight",
-                "base_lambda",
-            ]:
-                state_dict.pop(f"{prefix}.{suffix}", None)
-
-            # Add standard LoRA keys
-            state_dict[f"{prefix}.lora_up.weight"] = lora_up
-            state_dict[f"{prefix}.lora_down.weight"] = lora_down
-            if alpha is not None:
-                state_dict[f"{prefix}.alpha"] = alpha
-
-        # HydraLoRA: save full multi-head format alongside baked-down version
-        hydra_prefixes = set()
-        for key in list(state_dict.keys()):
-            if key.endswith(".lora_up_weight"):
-                hydra_prefixes.add(key.removesuffix(".lora_up_weight"))
-
-        if hydra_prefixes:
-            # Save full multi-head format (experts + router) for custom node inference.
-            # Expand fused lora_up_weight back to per-expert lora_ups.N.weight keys,
-            # then apply the same qkv/kv split used by the baked-down file so the
-            # ComfyUI HydraLoRA custom node sees q_proj/k_proj/v_proj names it can map.
-            hydra_file = os.path.splitext(file)[0] + "_moe.safetensors"
-            hydra_sd = {}
-            for k, v in state_dict.items():
-                v = v.detach().clone().to("cpu")
-                if k.endswith(".lora_up_weight"):
-                    prefix = k.removesuffix(".lora_up_weight")
-                    for i in range(v.size(0)):
-                        hydra_sd[f"{prefix}.lora_ups.{i}.weight"] = v[i]
-                else:
-                    hydra_sd[k] = v
-
-            # Split fused attention prefixes per-expert. lora_down / alpha /
-            # router are shared across q/k/v (same layer input, same routing
-            # decision), so we clone them into each split component.
-            hydra_fused_prefixes = []
-            for key in list(hydra_sd.keys()):
-                if not key.endswith(".lora_down.weight"):
-                    continue
-                prefix = key.removesuffix(".lora_down.weight")
-                for fused_frag in _FUSED_SPLIT:
-                    if prefix.endswith(fused_frag):
-                        hydra_fused_prefixes.append((prefix, fused_frag))
-                        break
-
-            for prefix, fused_frag in hydra_fused_prefixes:
-                template, suffixes = _FUSED_SPLIT[fused_frag]
-                n = len(suffixes)
-                down = hydra_sd.pop(f"{prefix}.lora_down.weight")
-                alpha = hydra_sd.pop(f"{prefix}.alpha", None)
-                router_w = hydra_sd.pop(f"{prefix}.router.weight", None)
-                router_b = hydra_sd.pop(f"{prefix}.router.bias", None)
-                inv_scale = hydra_sd.pop(f"{prefix}.inv_scale", None)
-
-                ups_keys = sorted(
-                    (
-                        k
-                        for k in list(hydra_sd.keys())
-                        if k.startswith(f"{prefix}.lora_ups.") and k.endswith(".weight")
-                    ),
-                    key=lambda k: int(
-                        k.removeprefix(f"{prefix}.lora_ups.").removesuffix(".weight")
-                    ),
-                )
-                ups = [hydra_sd.pop(k) for k in ups_keys]
-                ups_chunked = [u.chunk(n, dim=0) for u in ups]
-
-                base_prefix = prefix.removesuffix(fused_frag)
-                for ci, suffix in enumerate(suffixes):
-                    new_prefix = base_prefix + template.format(suffix)
-                    hydra_sd[f"{new_prefix}.lora_down.weight"] = down.clone()
-                    for ei, u_chunks in enumerate(ups_chunked):
-                        hydra_sd[f"{new_prefix}.lora_ups.{ei}.weight"] = (
-                            u_chunks[ci].contiguous().clone()
-                        )
-                    if alpha is not None:
-                        hydra_sd[f"{new_prefix}.alpha"] = alpha.clone()
-                    if router_w is not None:
-                        hydra_sd[f"{new_prefix}.router.weight"] = router_w.clone()
-                    if router_b is not None:
-                        hydra_sd[f"{new_prefix}.router.bias"] = router_b.clone()
-                    if inv_scale is not None:
-                        hydra_sd[f"{new_prefix}.inv_scale"] = inv_scale.clone()
-
-            if dtype is not None:
-                hydra_sd = {k: v.to(dtype) for k, v in hydra_sd.items()}
-            from safetensors.torch import save_file as sf_save
-
-            sf_save(hydra_sd, hydra_file, metadata or {})
-            logger.info(f"HydraLoRA full format saved to {hydra_file}")
-            # The _moe file is the only useful artifact for HydraLoRA —
-            # a uniform expert average defeats layer-local routing.
-            return
-
-        # DoRA: rename magnitude → dora_scale for ComfyUI, remove internal buffers
-        for key in list(state_dict.keys()):
-            if key.endswith(".magnitude"):
-                new_key = key.replace(".magnitude", ".dora_scale")
-                state_dict[new_key] = state_dict.pop(key)
-            elif key.endswith("._org_weight_norm"):
-                del state_dict[key]
-
-        # Split fused projections (qkv_proj, kv_proj) into separate per-component
-        # weights for ComfyUI compatibility — uses _FUSED_SPLIT defined above.
-        fused_prefixes = []
-        for key in list(state_dict.keys()):
-            if not key.endswith(".lora_down.weight"):
-                continue
-            prefix = key.removesuffix(".lora_down.weight")
-            for fused_frag in _FUSED_SPLIT:
-                if prefix.endswith(fused_frag):
-                    fused_prefixes.append((prefix, fused_frag))
-                    break
-
-        for prefix, fused_frag in fused_prefixes:
-            template, suffixes = _FUSED_SPLIT[fused_frag]
-            n = len(suffixes)
-            down = state_dict.pop(f"{prefix}.lora_down.weight")
-            up = state_dict.pop(f"{prefix}.lora_up.weight")
-            alpha = state_dict.pop(f"{prefix}.alpha", None)
-            dora_scale = state_dict.pop(f"{prefix}.dora_scale", None)
-
-            # Split lora_up along output dim; lora_down is shared (duplicated)
-            up_chunks = up.chunk(n, dim=0)
-            dora_chunks = (
-                dora_scale.chunk(n, dim=0) if dora_scale is not None else [None] * n
-            )
-
-            base_prefix = prefix.removesuffix(fused_frag)
-            for suffix, up_chunk, dora_chunk in zip(suffixes, up_chunks, dora_chunks):
-                new_prefix = base_prefix + template.format(suffix)
-                state_dict[f"{new_prefix}.lora_down.weight"] = down.clone()
-                state_dict[f"{new_prefix}.lora_up.weight"] = up_chunk
-                if alpha is not None:
-                    state_dict[f"{new_prefix}.alpha"] = alpha.clone()
-                if dora_chunk is not None:
-                    state_dict[f"{new_prefix}.dora_scale"] = dora_chunk
-
-        if dtype is not None:
-            for key in list(state_dict.keys()):
-                v = state_dict[key]
-                v = v.detach().clone().to("cpu").to(dtype)
-                state_dict[key] = v
-
-        if os.path.splitext(file)[1] == ".safetensors":
-            from safetensors.torch import save_file
-            from library import train_util
-
-            if metadata is None:
-                metadata = {}
-            model_hash, legacy_hash = train_util.precalculate_safetensors_hashes(
-                state_dict, metadata
-            )
-            metadata["sshs_model_hash"] = model_hash
-            metadata["sshs_legacy_hash"] = legacy_hash
-
-            save_file(state_dict, file, metadata)
-        else:
-            torch.save(state_dict, file)
+        lora_save.save_network_weights(
+            state_dict,
+            file=file,
+            dtype=dtype,
+            metadata=metadata,
+            save_variant=spec.save_variant,
+        )
 
     def backup_weights(self):
         loras: List[LoRAInfModule] = self.text_encoder_loras + self.unet_loras
