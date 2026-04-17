@@ -494,6 +494,28 @@ def cmd_gui(_extra):
     run([PY, "-m", "gui"])
 
 
+def cmd_test_unit(extra):
+    run([PY, "-m", "pytest", "-q", "tests/", *extra])
+
+
+def cmd_print_config(extra):
+    method = os.environ.get("METHOD", "lora")
+    preset = _preset()
+    run(
+        [
+            PY,
+            "train.py",
+            "--method",
+            method,
+            "--preset",
+            preset,
+            "--print-config",
+            "--no-config-snapshot",
+            *extra,
+        ]
+    )
+
+
 def cmd_invert(extra):
     run(
         [
@@ -578,6 +600,11 @@ COMMANDS = {
     "mask-clean": (cmd_mask_clean, "Remove all generated masks"),
     "gui": (cmd_gui, "Launch PySide6 GUI"),
     "invert": (cmd_invert, "Embedding inversion (image → text embedding)"),
+    "test-unit": (cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
+    "print-config": (
+        cmd_print_config,
+        "Dump merged config (METHOD=<name> PRESET=<name>) with provenance",
+    ),
 }
 
 

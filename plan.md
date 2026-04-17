@@ -2,7 +2,7 @@
 
 Staged milestones aimed at making new experiments and new adapter methods cheap to add. Each milestone is independently landable; existing commands (`make lora`, `make tlora`, `make hydralora`, `make postfix`, `make test`) keep passing after every stage. Numerical behavior and checkpoint compatibility are preserved throughout.
 
-> **Status:** M0 (test harness + importability) and M1 (loss / sampler / metric registries) landed. `make test-unit` runs 20 smoke tests green. Remaining: M2–M7.
+> **Status:** M0 (test harness + importability), M1 (loss / sampler / metric registries), and M3 (`--print-config`, snapshot, schema validation) landed. `make test-unit` runs 38 tests green. Remaining: M2, M4–M7.
 
 ---
 
@@ -66,36 +66,6 @@ networks/lora_save.py  (extracted from ~400-line save_weights @ lora_anima.py:16
 
 ---
 
-## M3 — `--print-config`, auto-snapshot, schema validation (priority 3)
-
-**Goal.** Kill silent typos in `configs/methods/*.toml`; let the user preview merged config before a 2-hour run.
-
-**Target shape.**
-
-- `library/config_schema.py` (new). Module-level `CONFIG_SCHEMA: dict[str, ConfigKey]` where `ConfigKey` is `@dataclass(frozen=True)` with `type, default, choices, doc, since_version, aliases`. Seeded by walking `setup_parser()._actions` at import — a one-shot build step. Known extras not in argparse (`network_args` list shape, `base_config` sentinel) registered manually.
-- `library/train_util.py:1492 (_flatten_toml)` → `_flatten_toml(d, path="", schema=CONFIG_SCHEMA) -> dict` that:
-  - warns with `file:line` when a key isn't in schema or aliases,
-  - warns when a choice-valued key gets an off-list value,
-  - coerces types (TOML allows `1` where `float` is wanted).
-  - `strict` flag (default warn; `--config-strict` turns warnings into errors).
-- New CLI flags handled in `setup_parser`:
-  - `--print-config` — dumps fully merged namespace as TOML to stdout and `sys.exit(0)`. Includes provenance comments (`# from base.toml / from presets.toml[default] / from methods/lora.toml`).
-  - `--config-snapshot` (default `true`). On every real run, writes `output/<output_name>/config.snapshot.toml` with provenance + `ss_git_sha` header. Disable via `--no-config-snapshot`.
-- `make print-config METHOD=lora PRESET=default`.
-
-**Files touched.** New `library/config_schema.py`, modifications to `library/train_util.py` (`_flatten_toml`, `_load_toml_with_base`, `load_method_preset`, `read_config_from_file`), `train.py` `setup_parser`, `Makefile`.
-
-**Verify.**
-- `tests/test_config.py`: typo detection (`network_ditm = 64` warns), alias mapping, `--print-config` output re-parses as valid TOML whose keys are a subset of schema.
-- `make print-config METHOD=postfix_func PRESET=default` dumps a clean merged config — manual eyeball check.
-- All 9 method configs × 5 presets round-trip without warnings (baseline — if a real typo surfaces, fix the config, don't widen the schema).
-
-**Risks.**
-- kohya inheritance: `train_util.py` has a lot of legacy keys. Seed schema from `setup_parser()._actions` to stay in sync automatically.
-- `network_args` is a list of `key=value` strings whose valid keys depend on `network_module`. Validate in a second pass by looking up the resolved `NetworkSpec.kwarg_flags` from M2. Soft dep: M3 is nicer with M2 done, but can land standalone with a pending-keys allowlist.
-
----
-
 ## M4 — Sweep runner & unique output naming (~1 day)
 
 `scripts/sweep.py` reads `configs/sweeps/<name>.toml` (parameter grids: `network_dim = [8, 16, 32]`), generates merged configs through the M3 machinery, derives deterministic `output_name` via a short hash of the diff against base (`anima_lora__dim16__alpha8__a3f21c.safetensors`), writes snapshots alongside checkpoints, exposes `make sweep NAME=rank_study`. Output-collision guard in `read_config_from_file` refuses to overwrite an existing `output/<name>.safetensors` unless `--overwrite`. No DB, just a `sweeps/<name>/runs.jsonl` ledger.
@@ -118,13 +88,12 @@ Lift `inference.py` body into `library/inference/engine.py::InferenceEngine` wit
 
 ## Sequencing
 
-**Recommended order.** M3 → M2 → M6 → M5 → M4 → M7.
+**Recommended order.** M2 → M6 → M5 → M4 → M7.
 
-- **M3 before M2** — schema validation catches typos that M2's resolver would silently absorb as "unknown flag → use LoRA".
 - **M5 before M4** — sweep's per-run validation wants a cheap `InferenceEngine`.
 - **M6, M7 parallelizable** any time.
 
-**Hard deps.** None. M4 prefers M3 for schema validation but can run without it. M5 prefers M2's registry but can short-term keep filename sniffing.
+**Hard deps.** None. M5 prefers M2's registry but can short-term keep filename sniffing.
 
 ---
 

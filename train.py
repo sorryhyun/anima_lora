@@ -3107,11 +3107,81 @@ def setup_parser() -> argparse.ArgumentParser:
         help="offload activations to CPU RAM using async non-blocking transfers (faster than --cpu_offload_checkpointing). "
         "Cannot be used with --cpu_offload_checkpointing or --blocks_to_swap.",
     )
+    parser.add_argument(
+        "--print-config",
+        dest="print_config",
+        action="store_true",
+        help="Dump the fully merged config (base → preset → method → CLI) as TOML "
+        "with provenance comments, then exit 0. Does not start training.",
+    )
+    parser.add_argument(
+        "--config-snapshot",
+        dest="config_snapshot",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Write output/<output_name>.snapshot.toml next to the checkpoint on every real "
+        "run (provenance + git SHA). Pass --no-config-snapshot to disable.",
+    )
+    parser.add_argument(
+        "--config-strict",
+        dest="config_strict",
+        action="store_true",
+        help="Treat config-schema warnings (unknown keys, off-list choices) as errors.",
+    )
     return parser
+
+
+from library import config_schema as _config_schema  # noqa: E402
+
+
+# Network-module-consumed flags (networks.lora_anima / networks.postfix_anima).
+# These don't flow through argparse because `create_network` reads them from
+# ``kwargs``. Registered as a pending allowlist; M2 (NETWORK_REGISTRY) will move
+# these under per-method ``NetworkSpec.kwarg_flags``.
+NETWORK_KWARG_ALLOWLIST: tuple[str, ...] = (
+    "add_reft",
+    "alpha_rank_scale",
+    "apex_condition_shift_dim",
+    "balance_loss_weight",
+    "channel_scaling_alpha",
+    "channel_stats_path",
+    "exclude_patterns",
+    "include_patterns",
+    "layer_start",
+    "layer_end",
+    "loraplus_lr_ratio",
+    "loraplus_text_encoder_lr_ratio",
+    "loraplus_unet_lr_ratio",
+    "min_rank",
+    "module_dropout",
+    "network_reg_dims",
+    "network_reg_lrs",
+    "num_experts",
+    "ortho_reg_weight",
+    "per_channel_scaling",
+    "rank_dropout",
+    "reft_dim",
+    "sig_type",
+    "train_llm_adapter",
+    "use_dora",
+    "use_hydra",
+    "use_ortho",
+    "use_ortho_exp",
+    "use_timestep_mask",
+    "verbose",
+)
+
+
+def build_network_extras() -> dict[str, _config_schema.ConfigKey]:
+    return {
+        k: _config_schema.ConfigKey(name=k, type="str", source="network_module")
+        for k in NETWORK_KWARG_ALLOWLIST
+    }
 
 
 if __name__ == "__main__":
     parser = setup_parser()
+    _config_schema.populate_schema(parser, extras=build_network_extras())
 
     args = parser.parse_args()
     train_util.verify_command_line_training_args(args)
