@@ -8,7 +8,7 @@
 import math
 import random
 import torch
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 import logging  # noqa: E402

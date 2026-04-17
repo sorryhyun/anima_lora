@@ -28,7 +28,7 @@ from typing import Dict, List, Optional
 
 import torch
 
-from library.utils import setup_logging
+from library.log import setup_logging
 from networks.lora_modules import OrthoHydraLoRAExpModule, OrthoLoRAExpModule
 
 setup_logging()

@@ -34,6 +34,8 @@ from library.training.losses import (
     LossComposer,
     LOSS_REGISTRY,
     build_loss_composer,
+    add_custom_train_arguments,
+    apply_masked_loss,
 )
 from library.training.metrics import (
     MetricContext,
@@ -77,6 +79,8 @@ __all__ = [
     "LossComposer",
     "LOSS_REGISTRY",
     "build_loss_composer",
+    "add_custom_train_arguments",
+    "apply_masked_loss",
     # metrics
     "MetricContext",
     "METRIC_REGISTRY",

@@ -65,8 +65,8 @@ from safetensors.torch import load_file, save_file
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from library import anima_utils
-from library.utils import setup_logging
+from library.anima import weights as anima_utils
+from library.log import setup_logging
 from networks import lora_anima
 
 setup_logging()

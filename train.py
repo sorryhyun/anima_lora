@@ -21,12 +21,14 @@ from library.runtime.device import clean_memory_on_device
 from accelerate.utils import set_seed
 from accelerate import Accelerator
 from library import (
-    anima_models,
-    anima_train_utils,
-    anima_utils,
-    strategy_anima,
     strategy_base,
     train_util,
+)
+from library.anima import (
+    models as anima_models,
+    training as anima_train_utils,
+    weights as anima_utils,
+    strategy as strategy_anima,
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.models import sai_spec as sai_model_spec
@@ -36,14 +38,14 @@ from library.config.loader import (
     ConfigSanitizer,
     BlueprintGenerator,
 )
-import library.custom_train_functions as custom_train_functions
 from library.training import (
     SAMPLER_REGISTRY,
     SamplerContext,
     LossContext,
+    add_custom_train_arguments,
     build_loss_composer,
 )
-from library.utils import setup_logging, add_logging_arguments
+from library.log import setup_logging, add_logging_arguments
 
 setup_logging()
 import logging  # noqa: E402
@@ -397,7 +399,7 @@ class AnimaTrainer:
 
         # FP8 base weights (fp8_base_unet) are not supported yet — the fp8 path is disabled.
         # if args.fp8_base_unet:
-        #     from library.anima_models import quantize_to_fp8
+        #     from library.anima.models import quantize_to_fp8
         #     n = quantize_to_fp8(model)
         #     logger.info(f"fp8_base_unet: quantized {n} linear layers to float8_e4m3fn")
 
@@ -2903,7 +2905,7 @@ def setup_parser() -> argparse.ArgumentParser:
     train_util.add_masked_loss_arguments(parser)
     train_util.add_optimizer_arguments(parser)
     config_util.add_config_arguments(parser)
-    custom_train_functions.add_custom_train_arguments(parser)
+    add_custom_train_arguments(parser)
     train_util.add_dit_training_arguments(parser)
     anima_train_utils.add_anima_training_arguments(parser)
 

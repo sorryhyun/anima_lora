@@ -4,7 +4,7 @@ import os
 import re
 from typing import Dict, List, Optional, Tuple, Type, Union
 import torch
-from library.utils import setup_logging
+from library.log import setup_logging
 from networks.lora_modules import (
     LoRAModule,
     LoRAInfModule,

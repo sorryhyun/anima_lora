@@ -13,10 +13,10 @@ from safetensors.torch import load_file
 from safetensors import safe_open
 from diffusers.utils.torch_utils import randn_tensor
 
-from library import (
-    anima_models,
-    strategy_anima,
-    strategy_base,
+from library import strategy_base
+from library.anima import (
+    models as anima_models,
+    strategy as strategy_anima,
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.runtime.device import clean_memory_on_device
@@ -37,7 +37,7 @@ lycoris_available = find_spec("lycoris") is not None
 if lycoris_available:
     pass
 
-from library.utils import setup_logging  # noqa: E402
+from library.log import setup_logging  # noqa: E402
 
 setup_logging()
 import logging  # noqa: E402

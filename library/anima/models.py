@@ -217,7 +217,7 @@ def unsloth_checkpoint(function, *args):
     return UnslothOffloadedGradientCheckpointer.apply(function, *args)
 
 
-from .utils import setup_logging  # noqa: E402
+from library.log import setup_logging  # noqa: E402
 
 setup_logging()
 import logging  # noqa: E402

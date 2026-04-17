@@ -30,7 +30,7 @@ import numpy as np
 
 from library.io.safetensors import load_safetensors
 
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 import logging  # noqa: E402

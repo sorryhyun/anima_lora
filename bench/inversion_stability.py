@@ -31,10 +31,10 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from library import (
-    anima_models,
-    anima_utils,
-    inference_utils,
+from library import inference_utils
+from library.anima import (
+    models as anima_models,
+    weights as anima_utils,
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.runtime.device import clean_memory_on_device

@@ -29,7 +29,7 @@ from library.train_util import (
     DreamBoothDataset,
     DatasetGroup,
 )
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 import logging  # noqa: E402

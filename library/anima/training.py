@@ -15,10 +15,11 @@ from tqdm import tqdm
 from PIL import Image
 
 from library.runtime.device import clean_memory_on_device, synchronize_device
-from library import anima_models, anima_utils, train_util
+from library import train_util
+from library.anima import models as anima_models, weights as anima_utils
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 
-from .utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 import logging  # noqa: E402
@@ -116,7 +117,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "--t5_tokenizer_path",
         type=str,
         default=None,
-        help="Path to T5 tokenizer directory. If None, uses default configs/t5_old/",
+        help="Path to T5 tokenizer directory. If None, uses bundled library/anima/configs/t5_old/",
     )
     parser.add_argument(
         "--qwen3_max_token_length",

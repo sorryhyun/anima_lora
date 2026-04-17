@@ -12,7 +12,8 @@ from safetensors.torch import (
     save_file as _save_safetensors,
 )
 
-from library import anima_train_utils, anima_utils, train_util
+from library import train_util
+from library.anima import training as anima_train_utils, weights as anima_utils
 from library.strategy_base import (
     LatentsCachingStrategy,
     TextEncodingStrategy,
@@ -21,7 +22,7 @@ from library.strategy_base import (
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 import logging  # noqa: E402

@@ -11,7 +11,7 @@ import torch
 from tqdm import tqdm
 from diffusers.utils.torch_utils import randn_tensor
 
-from library import anima_models
+from library.anima import models as anima_models
 from library.inference import sampling as inference_utils
 from library.inference.output import check_inputs
 from library.inference.text import prepare_text_inputs

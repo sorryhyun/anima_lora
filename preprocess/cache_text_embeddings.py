@@ -25,7 +25,7 @@ from library.datasets.image_utils import IMAGE_EXTENSIONS
 
 def _generate_shuffled_captions(caption: str, num_variants: int) -> list[str]:
     """Generate N shuffled caption variants using smart shuffle logic."""
-    from library import anima_train_utils
+    from library.anima import training as anima_train_utils
 
     tags = [t.strip() for t in caption.split(",")]
     return [
@@ -87,7 +87,7 @@ def main() -> None:
         "--t5_tokenizer_path",
         type=str,
         default=None,
-        help="Path to T5 tokenizer (default: configs/t5_old/)",
+        help="Path to T5 tokenizer (default: library/anima/configs/t5_old/)",
     )
     parser.add_argument(
         "--batch_size",
@@ -105,8 +105,8 @@ def main() -> None:
 
     from safetensors.torch import save_file as _save_safetensors
 
-    from library import anima_utils
-    from library.strategy_anima import AnimaTextEncodingStrategy, AnimaTokenizeStrategy
+    from library.anima import weights as anima_utils
+    from library.anima.strategy import AnimaTextEncodingStrategy, AnimaTokenizeStrategy
 
     data_dir = Path(args.dir)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

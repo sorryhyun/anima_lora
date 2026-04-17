@@ -1,7 +1,7 @@
 """Anima inference package — model loading, generation, and output.
 
 Uses PEP 562 lazy imports to avoid circular dependency chains
-(library.utils → inference.sampling triggers __init__ → inference.models → anima_models → utils).
+(library.log → inference.sampling triggers __init__ → inference.models → anima.models → log).
 """
 
 import importlib as _importlib

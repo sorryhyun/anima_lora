@@ -34,8 +34,8 @@ from huggingface_hub import hf_hub_download
 from packaging.version import Version
 
 from library.models import sai_spec as sai_model_spec
-from library.runtime.device import clean_memory_on_device  # noqa: F401 — used by strategy_anima via train_util
-from library.utils import setup_logging
+from library.runtime.device import clean_memory_on_device  # noqa: F401 — used by library.anima.strategy via train_util
+from library.log import setup_logging
 
 setup_logging()
 

@@ -34,7 +34,59 @@ from typing import Callable, Optional
 
 import torch
 
-from library.custom_train_functions import apply_masked_loss
+
+def add_custom_train_arguments(
+    parser: argparse.ArgumentParser, support_weighted_captions: bool = True
+):
+    parser.add_argument(
+        "--min_snr_gamma",
+        type=float,
+        default=None,
+        help="gamma for reducing the weight of high loss timesteps. Lower numbers have stronger effect. 5 is recommended by paper.",
+    )
+    parser.add_argument(
+        "--scale_v_pred_loss_like_noise_pred",
+        action="store_true",
+        help="scale v-prediction loss like noise prediction loss",
+    )
+    parser.add_argument(
+        "--v_pred_like_loss",
+        type=float,
+        default=None,
+        help="add v-prediction like loss multiplied by this value",
+    )
+    parser.add_argument(
+        "--debiased_estimation_loss",
+        action="store_true",
+        help="debiased estimation loss",
+    )
+    if support_weighted_captions:
+        parser.add_argument(
+            "--weighted_captions",
+            action="store_true",
+            default=False,
+            help="Enable weighted captions in the standard style (token:1.3).",
+        )
+
+
+def apply_masked_loss(loss, batch) -> torch.FloatTensor:
+    if "conditioning_images" in batch:
+        mask_image = (
+            batch["conditioning_images"].to(dtype=loss.dtype)[:, 0].unsqueeze(1)
+        )  # use R channel
+        mask_image = mask_image / 2 + 0.5
+    elif "alpha_masks" in batch and batch["alpha_masks"] is not None:
+        mask_image = (
+            batch["alpha_masks"].to(dtype=loss.dtype).unsqueeze(1)
+        )  # add channel dimension
+    else:
+        return loss
+
+    mask_image = torch.nn.functional.interpolate(
+        mask_image, size=loss.shape[2:], mode="area"
+    )
+    loss = loss * mask_image
+    return loss
 
 
 def _conditional_loss(*args, **kwargs):

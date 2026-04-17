@@ -9,7 +9,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Union
 
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 

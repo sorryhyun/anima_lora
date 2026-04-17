@@ -105,8 +105,17 @@ Layout:
 
 ## Architecture
 
-- **Modular `library/`**: `train_util.py` is a re-exporting facade; actual code lives in `library/datasets/` (dataset classes, buckets, image utils) and `library/training/` (optimizer, scheduler, checkpoint logic)
-- **Strategy pattern** for model-specific tokenization/encoding (`library/strategy_anima.py`, `strategy_base.py`)
+- **Modular `library/`**: `train_util.py` is a re-exporting facade; actual code lives in domain subpackages:
+  - `library/anima/` — anima-specific code: `models.py` (DiT class), `training.py` (training helpers, CLI args), `weights.py` (model/tokenizer loading + save), `strategy.py` (tokenization/encoding strategies), `configs/` (bundled Qwen3/T5 tokenizer configs).
+  - `library/datasets/` — dataset classes, buckets, image utils.
+  - `library/training/` — optimizer, scheduler, checkpoint, loss/sampler/metric registries (absorbs former `custom_train_functions`).
+  - `library/inference/` — generation, sampling, output.
+  - `library/models/` — ancillary model defs: `qwen_vae.py` (VAE), `sai_spec.py` (metadata spec).
+  - `library/config/` — `schema.py` (validation), `loader.py` (TOML merge chain).
+  - `library/io/` — `cache.py` (disk cache helpers), `safetensors.py`.
+  - `library/runtime/` — `device.py`, `offloading.py`, `noise.py` (flow-matching sampling).
+  - `library/log.py` — logging setup + `fire_in_thread`.
+- **Strategy pattern** for model-specific tokenization/encoding (`library/anima/strategy.py`, `library/strategy_base.py`)
 - **Network modules** are pluggable via `network_module` config key:
   - `networks/lora_anima.py` — LoRA network creation, module targeting, timestep masking orchestration
   - `networks/lora_modules.py` — LoRA, OrthoLoRA module implementations

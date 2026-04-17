@@ -12,7 +12,7 @@ from safetensors.torch import save_file
 from safetensors import safe_open
 
 from library import train_util
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 import logging  # noqa: E402

@@ -13,15 +13,15 @@ import torch.nn.functional as F
 from safetensors.torch import load_file
 from tqdm import tqdm
 
-from library import (
-    anima_models,
-    anima_utils,
+from library.anima import (
+    models as anima_models,
+    weights as anima_utils,
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.io.cache import TE_CACHE_SUFFIX, load_cached_crossattn_emb
 from library.runtime.device import clean_memory_on_device
 from library.inference import sampling as inference_utils
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 

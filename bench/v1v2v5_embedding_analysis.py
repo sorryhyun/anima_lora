@@ -22,7 +22,8 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from library import anima_utils, strategy_anima, strategy_base
+from library import strategy_base
+from library.anima import weights as anima_utils, strategy as strategy_anima
 
 # --- Config ---
 DIT_PATH = "models/diffusion_models/anima-preview3-base.safetensors"

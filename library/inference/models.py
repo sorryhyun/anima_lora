@@ -7,7 +7,7 @@ from typing import Optional, Dict
 import torch
 from safetensors.torch import load_file
 
-from library import anima_models, anima_utils
+from library.anima import models as anima_models, weights as anima_utils
 from library.runtime.device import clean_memory_on_device
 
 logger = logging.getLogger(__name__)

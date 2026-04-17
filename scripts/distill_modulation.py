@@ -32,8 +32,8 @@ import torch.nn as nn
 from safetensors.torch import save_file
 from tqdm import tqdm
 
-from library import anima_utils
-from library.anima_models import Anima
+from library.anima import weights as anima_utils
+from library.anima.models import Anima
 from library.io.cache import (
     discover_cached_images,
     get_latent_resolution,

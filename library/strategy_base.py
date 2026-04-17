@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from transformers import CLIPTokenizer
 
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 import logging  # noqa: E402

@@ -23,7 +23,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from library.utils import setup_logging
+from library.log import setup_logging
 
 import logging
 

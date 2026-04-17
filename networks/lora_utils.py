@@ -10,7 +10,7 @@ from library.io.safetensors import (
     WeightTransformHooks,
     get_split_weight_filenames,
 )
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 import logging  # noqa: E402

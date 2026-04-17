@@ -39,9 +39,9 @@ from torchvision import transforms
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from library import anima_utils
+from library.anima import weights as anima_utils
 from library.models import qwen_vae as qwen_image_autoencoder_kl
-from library.utils import setup_logging
+from library.log import setup_logging
 from scripts.invert_embedding import probe_functional_space
 
 setup_logging()

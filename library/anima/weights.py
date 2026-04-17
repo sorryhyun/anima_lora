@@ -9,9 +9,9 @@ from safetensors import safe_open
 from accelerate import init_empty_weights
 
 from networks.lora_utils import load_safetensors_with_lora
-from library import anima_models
+from library.anima import models as anima_models
 from library.io.safetensors import WeightTransformHooks
-from .utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 import logging  # noqa: E402
@@ -320,7 +320,7 @@ def _is_qwen3_5(path: str) -> bool:
 
 def _get_qwen_config_dir(qwen3_path: str) -> str:
     """Return the appropriate bundled config directory for the given model path."""
-    configs_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "configs")
+    configs_root = os.path.join(os.path.dirname(__file__), "configs")
     if _is_qwen3_5(qwen3_path):
         config_dir = os.path.join(configs_root, "qwen3_5_08b")
         model_name = "Qwen3.5-0.8B"
@@ -465,9 +465,7 @@ def load_t5_tokenizer(t5_tokenizer_path: Optional[str] = None):
         return T5TokenizerFast.from_pretrained(t5_tokenizer_path, local_files_only=True)
 
     # Use bundled config
-    config_dir = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "configs", "t5_old"
-    )
+    config_dir = os.path.join(os.path.dirname(__file__), "configs", "t5_old")
     if os.path.exists(config_dir):
         return T5TokenizerFast(
             vocab_file=os.path.join(config_dir, "spiece.model"),
@@ -476,7 +474,7 @@ def load_t5_tokenizer(t5_tokenizer_path: Optional[str] = None):
 
     raise FileNotFoundError(
         f"T5 tokenizer config directory not found at {config_dir}. "
-        "Expected configs/t5_old/ with spiece.model and tokenizer.json. "
+        "Expected library/anima/configs/t5_old/ with spiece.model and tokenizer.json. "
         "You can download these from the google/t5-v1_1-xxl HuggingFace repository."
     )
 

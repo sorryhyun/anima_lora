@@ -39,11 +39,11 @@ from safetensors.torch import load_file, save_file
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
 
-from library import (
-    anima_models,
-    anima_utils,
-    strategy_anima,
-    strategy_base,
+from library import strategy_base
+from library.anima import (
+    models as anima_models,
+    weights as anima_utils,
+    strategy as strategy_anima,
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.io.cache import (
@@ -53,7 +53,7 @@ from library.io.cache import (
 )
 from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.runtime.device import clean_memory_on_device
-from library.utils import setup_logging
+from library.log import setup_logging
 
 setup_logging()
 
