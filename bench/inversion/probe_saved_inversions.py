@@ -8,7 +8,7 @@ probe bank. Writes the probe block into an existing `<stem>_alignment.json`
 (or prints to stdout if that file doesn't exist).
 
 Usage:
-    python bench/probe_saved_inversions.py \\
+    python bench/inversion/probe_saved_inversions.py \\
         --results_dir inversions_probe_test/results \\
         --logs_dir inversions_probe_test/logs \\
         --image post_image_dataset/10811132.png \\

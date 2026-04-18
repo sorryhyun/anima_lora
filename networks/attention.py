@@ -253,7 +253,7 @@ def attention(
         x = compiled_flex_attention(q, k, v, block_mask=block_mask, scale=scale)
         del q, k, v
         x = x.transpose(1, 2)  # [B, L, H, D]
-        x = x.reshape(x.shape[0], x.shape[1], -1)  # [B, L, H*D]
+        x = x.flatten(2)  # [B, L, H*D]
         return x
 
     # If split attn is False, attention mask is provided and all sequence lengths are same, we can trim the sequence
@@ -510,7 +510,7 @@ def attention(
         raise ValueError(f"Unsupported attention mode: {attn_params.attn_mode}")
 
     x = transpose_fn(x)  # [B, L, H, D]
-    x = x.reshape(x.shape[0], x.shape[1], -1)  # [B, L, H*D]
+    x = x.flatten(2)  # [B, L, H*D]
 
     if seqlen_trimmed:
         x = torch.nn.functional.pad(

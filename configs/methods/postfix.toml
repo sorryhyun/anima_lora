@@ -1,8 +1,21 @@
-# Postfix tuning — learns N vectors appended to adapter cross-attention.
+# Postfix / Prefix tuning — adapter cross-attention token learning.
+#
+# Default (uncommented) = postfix (appends N vectors at end of sequence).
+# To switch modes:
+#   - postfix_exp  = caption-conditional MLP ("cond" mode)
+#   - postfix_func = postfix_exp + functional MSE loss vs inversion runs
+#   - prefix       = prepends vectors at start of sequence
+# Uncomment the target block and comment out the postfix values it overrides.
+# Each variant sets its own `output_name` so `make test-postfix[-exp|-func]`
+# and `make test-prefix` each pick up the right artifact.
+#
+# Per-variant dim/args/epochs are experiment drift, not calibrated defaults.
 
 dataset_config = "configs/dataset_config.toml"
-
 network_module = "networks.postfix_anima"
+
+# ── Postfix ─────────────────────────────────────────────────────────────
+# enum network_dim: postfix=16 | postfix_exp=64 | postfix_func=64 | prefix=16
 network_dim = 16
 network_args = ["mode=postfix", "splice_position=end_of_sequence"]
 output_name = "anima_postfix"
@@ -19,3 +32,46 @@ cache_llm_adapter_outputs = true
 blocks_to_swap = 0
 gradient_accumulation_steps = 4
 lora_path = "output/anima-tlora-0414-12.safetensors"
+
+# ── Postfix (exp — cond mode) ───────────────────────────────────────────
+# Caption-conditional MLP injection. Override the postfix values above.
+#
+# network_dim = 64
+# network_args = [
+#     "mode=cond",
+#     "splice_position=end_of_sequence",
+#     "cond_hidden_dim=256",
+# ]
+# output_name = "anima_postfix_exp"
+# max_train_epochs = 2
+# checkpointing_epochs = 2
+
+# ── Postfix (func — cond mode + functional MSE vs inversions) ───────────
+# Same as postfix_exp plus functional loss against saved inversion runs.
+# trim_crossattn_kv is incompatible with end_of_sequence splice.
+#
+# network_dim = 64
+# network_args = [
+#     "mode=cond",
+#     "splice_position=end_of_sequence",
+#     "cond_hidden_dim=256",
+# ]
+# output_name = "anima_postfix_func"
+# max_train_epochs = 4
+# caption_shuffle_variants = 1
+# attn_mode = "flash"
+# trim_crossattn_kv = false
+# inversion_dir = "inversions/results"
+# functional_loss_weight = 1.0
+# functional_loss_blocks = "8,12,16,20"
+# functional_loss_num_runs = 3
+
+# ── Prefix ──────────────────────────────────────────────────────────────
+# Prepends N vectors to cross-attention. No base LoRA — comment out
+# `lora_path` above. No end_of_sequence splice.
+#
+# network_dim = 16
+# network_args = ["mode=prefix"]
+# output_name = "anima_prefix"
+# caption_shuffle_variants = 2
+# multiscale_loss_weight = 0.5

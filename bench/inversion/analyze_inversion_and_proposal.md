@@ -1,6 +1,6 @@
 # Embedding Inversion — Analysis & Enhancement Proposal
 
-Consolidated write-up of (1) the multi-seed embedding-inversion investigation and (2) the enhancement-module proposal that builds on it. Part I is the experimental log; Part II is the concrete plan it motivates. Companion to `bench/inversion_bench.md` (preliminary bench) and the diagnostic in `bench/diagnose_t5_vs_inversion.py`.
+Consolidated write-up of (1) the multi-seed embedding-inversion investigation and (2) the enhancement-module proposal that builds on it. Part I is the experimental log; Part II is the concrete plan it motivates. Companion to `bench/inversion/inversion_bench.md` (preliminary bench) and the diagnostic in `bench/inversion/diagnose_t5_vs_inversion.py`.
 
 ---
 
@@ -56,7 +56,7 @@ The question driving this whole thread:
 
 **Thought.** If there's a continuous degeneracy in raw embedding space but it points in a direction that DiT's frozen cross-attention `K_proj` projects to zero, runs that disagree in embedding space would still be *functionally* identical — same attended values on the image side. In that case naive mean is already near-optimal and path 1 just needs to match in functional space.
 
-**Test.** Added `--probe_functional` to `scripts/invert_embedding.py` and a standalone `bench/probe_saved_inversions.py` that reuses saved per-run embeddings so we don't re-pay the 12 minutes of inversion. The probe forwards each embedding through a fixed (noise, sigma) bank and captures `block[0].cross_attn.output_proj`'s output (the attended value projected back to the image side), then computes pairwise cosines at the functional level.
+**Test.** Added `--probe_functional` to `scripts/invert_embedding.py` and a standalone `bench/inversion/probe_saved_inversions.py` that reuses saved per-run embeddings so we don't re-pay the 12 minutes of inversion. The probe forwards each embedding through a fixed (noise, sigma) bank and captures `block[0].cross_attn.output_proj`'s output (the attended value projected back to the image side), then computes pairwise cosines at the functional level.
 
 **Result.** At **block 0**:
 
@@ -138,7 +138,7 @@ If we want to push further, in roughly decreasing ROI:
 
 Code:
 - `scripts/invert_embedding.py` — adds `--aggregate_by`, `--save_per_run`, `--probe_functional`, `--probe_blocks`, `--init_zeros`
-- `bench/probe_saved_inversions.py` — probe-only runner that reuses saved per-run embeddings
+- `bench/inversion/probe_saved_inversions.py` — probe-only runner that reuses saved per-run embeddings
 
 Data (both in `inversions_probe_test/`):
 - `results/10811132_inverted_run{0,1,2}.safetensors` — per-run inversions
@@ -160,7 +160,7 @@ python scripts/invert_embedding.py \
     --blocks_to_swap 0 --init_zeros
 
 # Depth sweep (reuses saved embeddings, ~30s)
-python bench/probe_saved_inversions.py \
+python bench/inversion/probe_saved_inversions.py \
     --results_dir inversions_probe_test/results \
     --logs_dir inversions_probe_test/logs \
     --image post_image_dataset/10811132.png \
@@ -174,7 +174,7 @@ python bench/probe_saved_inversions.py \
 
 # Part II — Embedding Enhancement / Cross-Attn Training Proposal
 
-Builds on Part I (multi-seed inversion findings) and the `bench/diagnose_t5_vs_inversion.py` diagnostic. Goal: turn the inversion findings into a concrete plan to combat T2I monotony / under-specification by training either a text-embedding enhancement module or cross-attention itself.
+Builds on Part I (multi-seed inversion findings) and the `bench/inversion/diagnose_t5_vs_inversion.py` diagnostic. Goal: turn the inversion findings into a concrete plan to combat T2I monotony / under-specification by training either a text-embedding enhancement module or cross-attention itself.
 
 ## Executive summary
 
@@ -189,7 +189,7 @@ This points to a direct, low-risk first move: **a caption-conditioned postfix mo
 
 ## What the diagnostic measures
 
-`bench/diagnose_t5_vs_inversion.py` takes one image that already has both:
+`bench/inversion/diagnose_t5_vs_inversion.py` takes one image that already has both:
 
 - `<stem>_anima_te.safetensors` — cached T5 caption embedding (`crossattn_emb_v0`)
 - `<stem>_inverted*.safetensors` — multi-seed inversion artifacts
@@ -282,7 +282,7 @@ The biggest risk in this proposal is that all of Phase 1+ rests on a single imag
 
 - Pick 5–10 images that span the diversity you actually care about (different subjects, styles, caption lengths). Avoid all-NSFW or all-SFW; mix.
 - Run `make invert` (or `scripts/invert_embedding.py` directly) with `--aggregate_by 3 --save_per_run --init_zeros` for each. ~12 min × N.
-- Run `bench/diagnose_t5_vs_inversion.py` on each.
+- Run `bench/inversion/diagnose_t5_vs_inversion.py` on each.
 - Aggregate the per-block T5 gaps across images. Build a small summary table.
 
 **Status:** an `inversions_50x3/` batch is already in flight (one image visible — `11829950` — with another running and a third queued). Once N≥3 inversions are ready, run the diagnostic on all of them and read off the cross-image stats: does the gap pattern (large in middle blocks, partial collapse at b27) repeat? Is the padding-sink fill rate consistent? Are the top-delta slot indices similar across images, or all over the map? The first few results should already shift the confidence interval on the Phase 1 plan substantially.
@@ -446,7 +446,7 @@ Worth knowing before Phase 2 but not Phase 1:
 
 ## Artifacts
 
-- `bench/diagnose_t5_vs_inversion.py` — the diagnostic script
+- `bench/inversion/diagnose_t5_vs_inversion.py` — the diagnostic script
 - `inversions_probe_test/logs/10811132_t5_vs_inv.json` — full result on the one image we have
 - Part I above — multi-seed inversion findings the diagnostic builds on
 - `networks/postfix_anima.py` — existing infra Phase 1 will reuse
@@ -454,7 +454,7 @@ Worth knowing before Phase 2 but not Phase 1:
 ## Run command used for the diagnostic
 
 ```bash
-python bench/diagnose_t5_vs_inversion.py \
+python bench/inversion/diagnose_t5_vs_inversion.py \
     --image post_image_dataset/10811132.png \
     --results_dir inversions_probe_test/results \
     --te_dir post_image_dataset \

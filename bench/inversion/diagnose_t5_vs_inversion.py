@@ -14,7 +14,7 @@ For one image:
   6. Save JSON + print human-readable summary
 
 Usage:
-    python bench/diagnose_t5_vs_inversion.py \\
+    python bench/inversion/diagnose_t5_vs_inversion.py \\
         --image post_image_dataset/10811132.png \\
         --results_dir inversions_probe_test/results \\
         --te_dir post_image_dataset \\

@@ -1139,9 +1139,18 @@ class AnimaTrainer:
             )
 
     def all_reduce_network(self, accelerator, network):
-        for param in network.parameters():
-            if param.grad is not None:
-                param.grad = accelerator.reduce(param.grad, reduction="mean")
+        if accelerator.num_processes <= 1:
+            return
+        grads = [p.grad for p in network.parameters() if p.grad is not None]
+        if not grads:
+            return
+        # Fuse per-parameter reductions into a single all_reduce on a coalesced buffer.
+        # Avoids N serialized collectives (one per LoRA param) and keeps grad tensors
+        # in-place so optimizer state continues pointing at the same storage.
+        flat = torch._utils._flatten_dense_tensors(grads)
+        flat = accelerator.reduce(flat, reduction="mean")
+        for g, u in zip(grads, torch._utils._unflatten_dense_tensors(flat, grads)):
+            g.copy_(u)
 
     def get_sai_model_spec(self, args):
         return train_util.get_sai_model_spec_dataclass(args, lora=True).to_metadata_dict()
@@ -1517,6 +1526,10 @@ class AnimaTrainer:
             "apex_condition_shift_init_a",
             "apex_condition_shift_init_b",
             "apex_shift_lr_scale",
+            # ReFT (LoReFT: additive representation fine-tuning)
+            "add_reft",
+            "reft_dim",
+            "reft_alpha",
         ]
         for key in _NETWORK_ARG_KEYS:
             if (
@@ -3160,6 +3173,7 @@ NETWORK_KWARG_ALLOWLIST: tuple[str, ...] = (
     "ortho_reg_weight",
     "per_channel_scaling",
     "rank_dropout",
+    "reft_alpha",
     "reft_dim",
     "sig_type",
     "train_llm_adapter",

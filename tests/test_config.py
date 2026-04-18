@@ -181,17 +181,17 @@ def test_render_header_includes_method_and_preset(populated_parser):
     config_schema.populate_schema(parser, extras=train.build_network_extras())
 
     merged, provenance = train_util.load_method_preset(
-        "hydralora", "low_vram", return_provenance=True
+        "lora", "low_vram", return_provenance=True
     )
     ns = argparse.Namespace(**merged)
     args = parser.parse_args(
-        ["--method", "hydralora", "--preset", "low_vram"], namespace=ns
+        ["--method", "lora", "--preset", "low_vram"], namespace=ns
     )
     rendered = train_util._render_merged_toml(args, parser, provenance)
-    assert "Method: hydralora" in rendered
+    assert "Method: lora" in rendered
     assert "Preset: low_vram" in rendered
     # section ordering: base → preset → method
     base_idx = rendered.index("configs/base.toml")
     preset_idx = rendered.index("configs/presets.toml[low_vram]")
-    method_idx = rendered.index("configs/methods/hydralora.toml")
+    method_idx = rendered.index("configs/methods/lora.toml")
     assert base_idx < preset_idx < method_idx

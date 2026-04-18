@@ -1,7 +1,21 @@
-# Standard LoRA — classic low-rank adaptation.
+# LoRA family — method selection via toggle blocks.
+#
+# Default (uncommented) = classic LoRA.
+# To switch methods:
+#   - T-LoRA: uncomment the T-LoRA block, comment out any classic-LoRA values
+#             it overrides (`network_alpha`, `network_dim`, lr, epochs, …).
+#   - T-LoRA + ReFT: same idea, uncomment the T-LoRA + ReFT block.
+#   - HydraLoRA: uncomment the HydraLoRA block.
+# Each variant sets its own `output_name` so `make test`, `make test-hydra`
+# key off the right artifact.
+#
+# Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
+# defaults — tune freely.
 
 dataset_config = "configs/dataset_config.toml"
 
+# ── Classic LoRA ────────────────────────────────────────────────────────
+# enum network_alpha/_dim: lora=64 | tlora=32 | tlora_rf=8 | hydra=32
 network_alpha = 64
 network_dim = 64
 
@@ -14,13 +28,77 @@ caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
+lora_fp32_accumulation = true
+
 # blocks_to_swap = 20
 
-# use_ortho_exp = true, # allows blocks_to_swap=14 when r=64
-# use_ortho = true
-# sig_type = "last"
-# ortho_reg_weight = 0.01
+# ── T-LoRA (OrthoLoRAExp + timestep rank masking) ───────────────────────
+# Uncomment to enable; override the classic-LoRA values above.
+#
+# network_alpha = 32
+# network_dim = 32
+# use_ortho_exp = true
+# use_timestep_mask = true
+# min_rank = 1
+# alpha_rank_scale = 1.0
+# learning_rate = 1e-5
+# max_train_epochs = 12
+# save_every_n_epochs = 4
+# checkpointing_epochs = 4
+# blocks_to_swap = 12
 
+# ── T-LoRA + ReFT ───────────────────────────────────────────────────────
+# OrthoLoRAExp + timestep masking composed with LoReFT additive output-space
+# edit. ReFT effective scale = network_alpha / reft_dim; keeping them equal
+# pins scale=1.0 (LoReFT paper default). Timestep masking is shared:
+# set_reft_timestep_mask schedules ReFT rank on the same power-law as LoRA.
+#
+# output_name = "anima_tlora_reft"
+# network_alpha = 8
+# network_dim = 8
+# use_ortho_exp = true
+# use_timestep_mask = true
+# min_rank = 1
+# alpha_rank_scale = 1.0
+# add_reft = true
+# reft_dim = 8
+# reft_alpha = 8
+# learning_rate = 2e-5
+# max_train_epochs = 3
+# save_every_n_epochs = 3
+# checkpointing_epochs = 3
+# blocks_to_swap = 26
+
+# ── HydraLoRA (OrthoHydraLoRA) ──────────────────────────────────────────
+# MoE multi-head routing: shared lora_down + per-expert lora_up_i, with
+# per-module layer-local routing. Composed with OrthoLoRAExp + timestep
+# masking. Produces a *_moe.safetensors sibling file consumed by
+# `make test-hydra`. Multi-expert ups are VRAM-heavy — method-forced swap.
+#
+# output_name = "anima_hydra"
+# network_alpha = 32
+# network_dim = 32
+# use_hydra = true
+# num_experts = 4
+# balance_loss_weight = 0.01
+# use_ortho_exp = true
+# use_timestep_mask = true
+# min_rank = 1
+# alpha_rank_scale = 1.0
+# learning_rate = 2e-5
+# max_train_epochs = 2
+# save_every_n_epochs = 2
+# checkpointing_epochs = 2
+# blocks_to_swap = 18
+
+# ── Per-channel input pre-scaling (SmoothQuant-style, optional) ─────────
+# Balances ∂L/∂lora_down column gradients when activations have DC-bias
+# outlier channels (see bench/channel_dominance_analysis.md). Calibration-
+# only — no runtime overhead. Generate the stats file once:
+#   python bench/analyze_lora_input_channels.py \
+#       --dump_channel_stats bench/results/channel_stats.safetensors
+# Then flip `per_channel_scaling` on. α=0.5 = SmoothQuant default (sqrt
+# balance); α=1.0 fully flattens per-channel scale; α=0 disables.
 # per_channel_scaling = true
 # channel_stats_path = "bench/results/channel_stats.safetensors"
 # channel_scaling_alpha = 0.5

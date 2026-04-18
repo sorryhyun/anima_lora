@@ -23,13 +23,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type
 
-from networks.lora_deprecated import DoRAModule
+from networks.lora_deprecated import DoRAModule, OrthoLoRAModule
 from networks.lora_modules import (
     HydraLoRAModule,
     LoRAModule,
     OrthoHydraLoRAExpModule,
     OrthoLoRAExpModule,
-    OrthoLoRAModule,
 )
 
 

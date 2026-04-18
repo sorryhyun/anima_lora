@@ -8,12 +8,12 @@ from library.log import setup_logging
 from networks.lora_modules import (
     LoRAModule,
     LoRAInfModule,
-    OrthoLoRAModule,
     OrthoLoRAExpModule,
     OrthoHydraLoRAExpModule,
     ReFTModule,
     HydraLoRAModule,
 )
+from networks.lora_deprecated import OrthoLoRAModule
 from networks.condition_shift import ConditionShift
 from networks import NETWORK_REGISTRY, NetworkSpec, resolve_network_spec
 from networks import lora_save
@@ -403,6 +403,8 @@ def create_network(
         add_reft = True if add_reft.lower() == "true" else False
     reft_dim = kwargs.get("reft_dim", None)
     reft_dim = int(reft_dim) if reft_dim is not None else network_dim
+    reft_alpha = kwargs.get("reft_alpha", None)
+    reft_alpha = float(reft_alpha) if reft_alpha is not None else None
 
     # HydraLoRA (MoE-style multi-head routing)
     use_hydra = kwargs.get("use_hydra", "false")
@@ -514,6 +516,7 @@ def create_network(
         layer_end=layer_end,
         add_reft=add_reft,
         reft_dim=reft_dim,
+        reft_alpha=reft_alpha,
         num_experts=num_experts,
         channel_scales_dict=channel_scales_dict,
     )
@@ -525,6 +528,7 @@ def create_network(
     network._alpha_rank_scale = alpha_rank_scale
     network._add_reft = add_reft
     network._reft_dim = reft_dim
+    network._reft_alpha = reft_alpha
 
     # Variant-specific defaults — overridden by spec.post_init for the matching variant.
     network._ortho_reg_weight = 0.0
@@ -558,7 +562,10 @@ def create_network(
             f"HydraLoRA: num_experts={num_experts}, balance_loss_weight={network._balance_loss_weight}"
         )
     if add_reft:
-        logger.info(f"ReFT: reft_dim={reft_dim}")
+        _reft_alpha_str = (
+            f"{reft_alpha}" if reft_alpha is not None else f"{network_alpha} (from network_alpha)"
+        )
+        logger.info(f"ReFT: reft_dim={reft_dim}, reft_alpha={_reft_alpha_str}")
     if layer_start is not None or layer_end is not None:
         logger.info(
             f"Layer range: training blocks [{layer_start or 0}, {layer_end or '...'})"
@@ -801,6 +808,7 @@ class LoRANetwork(torch.nn.Module):
         layer_end: Optional[int] = None,
         add_reft: bool = False,
         reft_dim: int = 4,
+        reft_alpha: Optional[float] = None,
         reft_modules_dim: Optional[Dict[str, int]] = None,
         reft_modules_alpha: Optional[Dict[str, int]] = None,
         num_experts: int = 4,
@@ -1124,7 +1132,7 @@ class LoRANetwork(torch.nn.Module):
                         a = reft_modules_alpha_.get(reft_name, dim)
                     else:
                         dim = reft_dim
-                        a = alpha
+                        a = reft_alpha if reft_alpha is not None else alpha
                     reft = ReFTModule(
                         reft_name,
                         lora.org_module,
@@ -1205,25 +1213,27 @@ class LoRANetwork(torch.nn.Module):
         """Compute and set timestep-dependent rank mask on all modules."""
         if not getattr(self, "_use_timestep_mask", False):
             return
-        t = timesteps.float().mean().item()
-        r = (
-            int(
-                ((max_timestep - t) / max_timestep) ** self._alpha_rank_scale
-                * (self._max_rank - self._min_rank)
-            )
-            + self._min_rank
-        )
-        r = min(r, self._max_rank)  # clamp
 
         # Reuse a single GPU-resident mask to avoid ~200 CPU→GPU transfers per step
         mask = getattr(self, "_shared_timestep_mask", None)
         if mask is None or mask.device != timesteps.device:
             mask = torch.zeros(1, self._max_rank, device=timesteps.device)
             self._shared_timestep_mask = mask
+            self._timestep_mask_arange = torch.arange(
+                self._max_rank, device=timesteps.device
+            )
             for lora in self.text_encoder_loras + self.unet_loras:
                 lora._timestep_mask = mask
-        mask.zero_()
-        mask[:, :r] = 1.0
+
+        # Compute threshold r entirely on device — avoids GPU→CPU .item() sync and
+        # keeps the effective rank as a tensor so the mask build stays static-shape.
+        t = timesteps.float().mean()
+        frac = ((max_timestep - t) / max_timestep).clamp(min=0.0, max=1.0)
+        r = frac.pow(self._alpha_rank_scale) * (self._max_rank - self._min_rank) + self._min_rank
+        r = r.clamp(max=float(self._max_rank))
+        mask.copy_(
+            (self._timestep_mask_arange < r).to(mask.dtype).unsqueeze(0)
+        )
 
     def set_reft_timestep_mask(
         self, timesteps: torch.Tensor, max_timestep: float = 1.0
@@ -1235,24 +1245,20 @@ class LoRANetwork(torch.nn.Module):
         if not refts:
             return
         reft_dim = getattr(self, "_reft_dim", 4)
-        t = timesteps.float().mean().item()
-        r = (
-            int(
-                ((max_timestep - t) / max_timestep) ** self._alpha_rank_scale
-                * (reft_dim - 1)
-            )
-            + 1
-        )
-        r = min(r, reft_dim)
 
         mask = getattr(self, "_shared_reft_mask", None)
         if mask is None or mask.device != timesteps.device:
             mask = torch.zeros(1, reft_dim, device=timesteps.device)
             self._shared_reft_mask = mask
+            self._reft_mask_arange = torch.arange(reft_dim, device=timesteps.device)
             for reft in refts:
                 reft._timestep_mask = mask
-        mask.zero_()
-        mask[:, :r] = 1.0
+
+        t = timesteps.float().mean()
+        frac = ((max_timestep - t) / max_timestep).clamp(min=0.0, max=1.0)
+        r = frac.pow(self._alpha_rank_scale) * (reft_dim - 1) + 1
+        r = r.clamp(max=float(reft_dim))
+        mask.copy_((self._reft_mask_arange < r).to(mask.dtype).unsqueeze(0))
 
     def clear_timestep_mask(self):
         """Remove timestep mask (use full rank)."""

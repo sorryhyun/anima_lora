@@ -8,7 +8,7 @@ LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/
 LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-fast lora-low-vram tlora hydralora apex postfix postfix-exp postfix-func prefix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config
+.PHONY: lora lora-fast lora-low-vram apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -41,26 +41,11 @@ lora-fast:
 lora-low-vram:
 	$(TRAIN) lora --preset low_vram
 
-tlora:
-	$(TRAIN) tlora --preset $(PRESET)
-
-hydralora:
-	$(TRAIN) hydralora --preset $(PRESET)
-
 apex:
 	$(TRAIN) apex --preset $(PRESET)
 
 postfix:
 	$(TRAIN) postfix --preset $(PRESET)
-
-postfix-exp:
-	$(TRAIN) postfix_exp --preset $(PRESET)
-
-postfix-func:
-	$(TRAIN) postfix_func --preset $(PRESET)
-
-prefix:
-	$(TRAIN) prefix --preset $(PRESET)
 
 distill-mod:
 	python scripts/distill_modulation.py \
@@ -127,7 +112,7 @@ test-spectrum:
 		--spectrum_stop_caching_step 29 \
 		--spectrum_calibration 0.0
 
-INVERT_N ?= 1
+INVERT_N ?= 100
 INVERT_SWAP ?= 0
 INVERT_STEPS ?= 50
 INVERT_LR ?= 0.005
@@ -151,7 +136,7 @@ invert:
 
 BENCH_INVERSIONS ?= 5
 bench-inversion:
-	python bench/inversion_stability.py \
+	python bench/inversion/inversion_stability.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--vae models/vae/qwen_image_vae.safetensors \
 		--num_inversions $(BENCH_INVERSIONS) \

@@ -71,7 +71,7 @@ def latest_hydra() -> Path:
     if not outputs:
         print(
             "No 'anima_hydra*_moe.safetensors' files found in output/ "
-            "(train with `make hydralora` to produce one)",
+            "(enable the HydraLoRA block in configs/methods/lora.toml and run `make lora`)",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -122,32 +122,12 @@ def cmd_lora_low_vram(extra):
     train("lora", extra, preset=_preset("low_vram"))
 
 
-def cmd_tlora(extra):
-    train("tlora", extra)
-
-
-def cmd_hydralora(extra):
-    train("hydralora", extra)
-
-
 def cmd_apex(extra):
     train("apex", extra)
 
 
 def cmd_postfix(extra):
     train("postfix", extra)
-
-
-def cmd_postfix_exp(extra):
-    train("postfix_exp", extra)
-
-
-def cmd_postfix_func(extra):
-    train("postfix_func", extra)
-
-
-def cmd_prefix(extra):
-    train("prefix", extra)
 
 
 # ── Inference ─────────────────────────────────────────────────────────
@@ -551,22 +531,11 @@ def cmd_invert(extra):
 # ── CLI ───────────────────────────────────────────────────────────────
 
 COMMANDS = {
-    "lora": (cmd_lora, "Standard LoRA training"),
+    "lora": (cmd_lora, "LoRA family (lora|tlora|tlora_rf|hydralora via configs/methods/lora.toml)"),
     "lora-fast": (cmd_lora_fast, "Fast LoRA training (16GB, no block swap)"),
     "lora-low-vram": (cmd_lora_low_vram, "LoRA training (low VRAM)"),
-    "tlora": (cmd_tlora, "T-LoRA: OrthoLoRA + timestep masking"),
-    "hydralora": (cmd_hydralora, "HydraLoRA: multi-style MoE routing"),
     "apex": (cmd_apex, "APEX distillation (condition-shift self-adversarial)"),
-    "postfix": (cmd_postfix, "Postfix tuning (LLM adapter cross-attn)"),
-    "postfix-exp": (
-        cmd_postfix_exp,
-        "Postfix experiment: caption-conditional MLP, end-of-sequence splice",
-    ),
-    "postfix-func": (
-        cmd_postfix_func,
-        "Postfix-exp + functional MSE loss vs inversion runs",
-    ),
-    "prefix": (cmd_prefix, "Prefix tuning (T5-space, cache-compatible)"),
+    "postfix": (cmd_postfix, "Postfix/prefix tuning (mode selected in configs/methods/postfix.toml)"),
     "test": (cmd_test, "Inference with latest LoRA"),
     "test-apex": (cmd_test_apex, "Inference with latest APEX LoRA"),
     "test-hydra": (cmd_test_hydra, "Inference with latest HydraLoRA moe (router-live)"),

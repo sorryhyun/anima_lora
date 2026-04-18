@@ -24,17 +24,15 @@ Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The exa
 # Training (run from anima_lora/)
 # Each training invocation selects a method + hardware preset. Method settings win
 # over preset settings on overlap (e.g. postfix forces blocks_to_swap=0).
-make lora                   # Standard LoRA (methods/lora.toml + presets.toml[default])
+# LoRA variants (lora/tlora/tlora_rf/hydralora) live in one methods/lora.toml
+# with toggle blocks; postfix variants (postfix/postfix_exp/postfix_func/prefix)
+# live in one methods/postfix.toml. Uncomment the target block to switch.
+make lora                   # LoRA family (methods/lora.toml + presets.toml[default])
 python tasks.py lora        # Same, works on Windows too
 make lora PRESET=low_vram   # Override preset: methods/lora.toml + presets.toml[low_vram]
 make lora-fast              # Shortcut: methods/lora.toml + presets.toml[fast_16gb]
 make lora-low-vram          # Shortcut: methods/lora.toml + presets.toml[low_vram]
-make tlora                 # T-LoRA: OrthoLoRA + timestep masking (methods/tlora.toml)
-make hydralora             # HydraLoRA: MoE multi-head routing (methods/hydralora.toml)
-make postfix               # Postfix tuning (methods/postfix.toml)
-make postfix-exp           # Postfix tuning, exp variant (methods/postfix_exp.toml)
-make postfix-func          # Postfix tuning, func variant (methods/postfix_func.toml)
-make prefix                # Prefix tuning (methods/prefix.toml)
+make postfix                # Postfix/prefix family (methods/postfix.toml)
 
 # Modulation guidance distillation
 make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulation)

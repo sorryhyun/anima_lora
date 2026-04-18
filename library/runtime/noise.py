@@ -47,7 +47,11 @@ def get_sigmas(noise_scheduler, timesteps, device, n_dim=4, dtype=torch.float32)
     sigmas = noise_scheduler.sigmas.to(device=device, dtype=dtype)
     schedule_timesteps = noise_scheduler.timesteps.to(device)
     timesteps = timesteps.to(device)
-    step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+    # Vectorized: timesteps are exact entries of schedule_timesteps (callers sample via
+    # noise_scheduler.timesteps[indices]), so a single broadcast-equality + argmax finds
+    # the right index per batch element without per-element .item() host syncs.
+    eq = schedule_timesteps.unsqueeze(0) == timesteps.unsqueeze(1)  # [B, N]
+    step_indices = eq.to(torch.int8).argmax(dim=-1)  # [B]
     sigma = sigmas[step_indices].flatten()
     return sigma
 

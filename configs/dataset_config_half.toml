@@ -14,4 +14,3 @@ validation_seed = 42
   image_dir = 'post_image_dataset'
   num_repeats = 1
   sample_ratio = 0.5
-  # caption_dropout_rate is set per-method via args (see configs/methods/*.toml)

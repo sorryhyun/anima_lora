@@ -769,13 +769,15 @@ def probe_functional_space(
         denom = a.norm(dim=-1).clamp_min(eps) * b.norm(dim=-1).clamp_min(eps)
         return (num / denom).mean().item()
 
-    # Raw-embedding cosines (block-independent) — computed once
+    # Raw-embedding cosines (block-independent) — computed once.
+    # Callers may pass embeddings from mixed devices (e.g. CPU init_embed + CUDA
+    # optimized best_embed), so pin both sides to CPU before the cosine.
     raw_pairwise_flat = {}
     for i in range(n):
         for j in range(i + 1, n):
             key = f"{labels[i]}__{labels[j]}"
-            a = labeled_embeddings[i][1].float().flatten().unsqueeze(0)
-            b = labeled_embeddings[j][1].float().flatten().unsqueeze(0)
+            a = labeled_embeddings[i][1].detach().float().cpu().flatten().unsqueeze(0)
+            b = labeled_embeddings[j][1].detach().float().cpu().flatten().unsqueeze(0)
             raw_pairwise_flat[key] = F.cosine_similarity(a, b).item()
 
     per_block = {}

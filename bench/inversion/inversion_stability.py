@@ -14,8 +14,8 @@ Three experiments:
       individual embeddings using cross-seed consistency as a proxy for robustness.
 
 Run from anima_lora/:
-    python bench/inversion_stability.py --image_dir post_image_dataset --num_inversions 5
-    python bench/inversion_stability.py --image_dir post_image_dataset --num_inversions 5 --skip_generation
+    python bench/inversion/inversion_stability.py --image_dir post_image_dataset --num_inversions 5
+    python bench/inversion/inversion_stability.py --image_dir post_image_dataset --num_inversions 5 --skip_generation
 """
 
 import argparse

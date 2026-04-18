@@ -34,4 +34,10 @@ def test_load_method_preset_resolves(method: str):
 
 
 def test_method_config_coverage():
-    assert len(METHOD_NAMES) >= 9, f"expected ≥9 method configs, got {METHOD_NAMES}"
+    # lora/tlora/tlora_rf/hydralora collapsed into lora.toml; postfix/postfix_exp/
+    # postfix_func/prefix collapsed into postfix.toml. Expected survivors: apex,
+    # graft, lora, postfix.
+    expected = {"apex", "graft", "lora", "postfix"}
+    assert expected.issubset(set(METHOD_NAMES)), (
+        f"expected {expected} in method configs, got {METHOD_NAMES}"
+    )
