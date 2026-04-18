@@ -166,8 +166,9 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--lora_fp32_accumulation",
         action="store_true",
-        help="Compute LoRA delta (down→up matmuls) in fp32 before adding to bf16 base output. "
-        "Improves precision of small LoRA contributions with negligible VRAM/speed overhead.",
+        help="[DEPRECATED, no-op] fp32 accumulation is now unconditional in "
+        "LoRA/Hydra/ReFT bottleneck matmuls. Flag accepted for one release "
+        "cycle; will be removed.",
     )
     parser.add_argument(
         "--attn_mode",

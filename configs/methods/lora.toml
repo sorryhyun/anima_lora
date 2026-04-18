@@ -14,8 +14,8 @@
 
 # ── Classic LoRA ────────────────────────────────────────────────────────
 # enum network_alpha/_dim: lora=64 | tlora=32 | tlora_rf=8 | hydra=32
-network_alpha = 64
-network_dim = 64
+network_alpha = 32
+network_dim = 32
 
 learning_rate = 5e-5
 max_train_epochs = 2
@@ -26,24 +26,19 @@ caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
-lora_fp32_accumulation = true
+# Ortho-lora
 
-# blocks_to_swap = 20
+use_ortho = true
 
-# ── T-LoRA (OrthoLoRAExp + timestep rank masking) ───────────────────────
-# Uncomment to enable; override the classic-LoRA values above.
-#
-# network_alpha = 32
-# network_dim = 32
-# use_ortho_exp = true
+
+# Timestep mask
+
 # use_timestep_mask = true
 # min_rank = 1
 # alpha_rank_scale = 1.0
-# learning_rate = 1e-5
-# max_train_epochs = 12
-# save_every_n_epochs = 4
-# checkpointing_epochs = 4
-# blocks_to_swap = 12
+
+blocks_to_swap = 12
+
 
 # ── T-LoRA + ReFT ───────────────────────────────────────────────────────
 # OrthoLoRAExp + timestep masking composed with LoReFT additive output-space
@@ -54,7 +49,7 @@ lora_fp32_accumulation = true
 # output_name = "anima_tlora_reft"
 # network_alpha = 8
 # network_dim = 8
-# use_ortho_exp = true
+# use_ortho = true
 # use_timestep_mask = true
 # min_rank = 1
 # alpha_rank_scale = 1.0
@@ -79,7 +74,7 @@ lora_fp32_accumulation = true
 # use_hydra = true
 # num_experts = 4
 # balance_loss_weight = 0.01
-# use_ortho_exp = true
+# use_ortho = true
 # use_timestep_mask = true
 # min_rank = 1
 # alpha_rank_scale = 1.0

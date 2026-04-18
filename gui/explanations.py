@@ -119,10 +119,6 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Mixed precision mode. bf16: recommended for modern GPUs. fp16: for older GPUs without bf16 support.",
         "ko": "혼합 정밀도 모드. bf16: 최신 GPU 권장. fp16: bf16 미지원 구형 GPU용.",
     },
-    "lora_fp32_accumulation": {
-        "en": "Compute LoRA forward in fp32 then cast back. Improves training precision at minimal speed cost.",
-        "ko": "LoRA 순전파를 fp32로 계산 후 변환. 속도 손실 최소화하며 학습 정밀도 향상.",
-    },
     "static_token_count": {
         "en": "Fixed 4096 token count for all batches. Gives torch.compile a single static shape \u2014 no recompilation across aspect ratios.",
         "ko": "모든 배치에 4096 토큰 고정. torch.compile에 단일 정적 셰이프 제공 \u2014 화면비별 재컴파일 없음.",

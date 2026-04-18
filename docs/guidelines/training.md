@@ -13,15 +13,14 @@ use_dora = true
 
 During inference/merge, the magnitude vector is exported as `dora_scale` for ComfyUI compatibility.
 
-### OrthoLoRA
+### OrthoLoRA (PSOFT)
 
-SVD-based orthogonal weight parameterization with zero-init guarantee and orthogonality regularization.
+Cayley-parameterized orthogonal rotation of frozen SVD bases with zero-init
+guarantee. Orthogonality is structural — no reg hyperparameter.
 
 ```toml
 # network_args
 use_ortho = true
-sig_type = "last"           # "principal", "last", or "middle"
-ortho_reg_weight = 0.01     # orthogonality penalty weight
 ```
 
 Note: OrthoLoRA is not compatible with DoRA. Linear layers only (no Conv2d).
@@ -45,11 +44,7 @@ r = ((max_t - t) / max_t) ^ alpha_rank_scale * (max_rank - min_rank) + min_rank
 
 ## FP32 Accumulation
 
-Computes the LoRA forward pass (down → up projection) in fp32 for improved numerical precision, then casts back to bf16. Negligible overhead; recommended for training stability.
-
-```toml
-lora_fp32_accumulation = true
-```
+Unconditional. LoRA/Hydra/ReFT bottleneck matmuls run in fp32 regardless of autocast; stored parameters stay bf16. The previous `lora_fp32_accumulation` flag is deprecated and ignored.
 
 ## Cross-Attention KV Trim
 

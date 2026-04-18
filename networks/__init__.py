@@ -7,15 +7,13 @@ class it instantiates and a ``save_variant`` label consumed by
 
 Flag precedence (evaluated top to bottom, first match wins):
 
-    use_hydra + use_ortho_exp → ortho_hydra_exp
-    use_hydra                 → hydra
-    use_dora                  → dora
-    use_ortho_exp             → ortho_exp
-    use_ortho                 → ortho
-    (none)                    → lora
+    use_hydra + use_ortho → ortho_hydra
+    use_hydra             → hydra
+    use_dora              → dora
+    use_ortho             → ortho
+    (none)                → lora
 
-Ambiguous combinations (``use_ortho`` + ``use_ortho_exp``, ``use_dora`` +
-``use_ortho``, …) raise.
+Ambiguous combinations (``use_dora`` + ``use_ortho``, …) raise.
 """
 
 from __future__ import annotations
@@ -23,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Type
 
-from networks.lora_deprecated import DoRAModule, OrthoLoRAModule
+from networks.lora_deprecated import DoRAModule
 from networks.lora_modules import (
     HydraLoRAModule,
     LoRAModule,
@@ -65,11 +63,6 @@ def _post_init_hydra(network: Any, kwargs: Mapping[str, Any]) -> None:
     network._use_hydra = True
 
 
-def _post_init_ortho(network: Any, kwargs: Mapping[str, Any]) -> None:
-    orw = kwargs.get("ortho_reg_weight")
-    network._ortho_reg_weight = float(orw) if orw is not None else 0.01
-
-
 NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
     "lora": NetworkSpec(
         name="lora",
@@ -78,15 +71,8 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
     ),
     "ortho": NetworkSpec(
         name="ortho",
-        module_class=OrthoLoRAModule,
-        save_variant="ortho_to_lora",
-        kwarg_flags=("sig_type", "ortho_reg_weight"),
-        post_init=_post_init_ortho,
-    ),
-    "ortho_exp": NetworkSpec(
-        name="ortho_exp",
         module_class=OrthoLoRAExpModule,
-        save_variant="ortho_exp_to_lora",
+        save_variant="ortho_to_lora",
     ),
     "hydra": NetworkSpec(
         name="hydra",
@@ -95,8 +81,8 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
         kwarg_flags=("num_experts", "balance_loss_weight"),
         post_init=_post_init_hydra,
     ),
-    "ortho_hydra_exp": NetworkSpec(
-        name="ortho_hydra_exp",
+    "ortho_hydra": NetworkSpec(
+        name="ortho_hydra",
         module_class=OrthoHydraLoRAExpModule,
         save_variant="ortho_hydra_to_hydra",
         kwarg_flags=("num_experts", "balance_loss_weight"),
@@ -128,30 +114,20 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
     use_hydra = _parse_bool_flag(kwargs, "use_hydra")
     use_dora = _parse_bool_flag(kwargs, "use_dora")
     use_ortho = _parse_bool_flag(kwargs, "use_ortho")
-    use_ortho_exp = _parse_bool_flag(kwargs, "use_ortho_exp")
 
     # Reject ambiguous combinations early so the user gets a clear message
     # instead of silently-picked winner.
-    if use_dora and (use_hydra or use_ortho or use_ortho_exp):
+    if use_dora and (use_hydra or use_ortho):
         raise ValueError(
-            "use_dora is mutually exclusive with use_hydra / use_ortho / use_ortho_exp"
-        )
-    if use_ortho and use_ortho_exp:
-        raise ValueError("use_ortho and use_ortho_exp are mutually exclusive")
-    if use_ortho and use_hydra:
-        raise ValueError(
-            "use_ortho + use_hydra is not supported — use use_ortho_exp + use_hydra "
-            "(ortho_hydra_exp) instead"
+            "use_dora is mutually exclusive with use_hydra / use_ortho"
         )
 
-    if use_hydra and use_ortho_exp:
-        return NETWORK_REGISTRY["ortho_hydra_exp"]
+    if use_hydra and use_ortho:
+        return NETWORK_REGISTRY["ortho_hydra"]
     if use_hydra:
         return NETWORK_REGISTRY["hydra"]
     if use_dora:
         return NETWORK_REGISTRY["dora"]
-    if use_ortho_exp:
-        return NETWORK_REGISTRY["ortho_exp"]
     if use_ortho:
         return NETWORK_REGISTRY["ortho"]
     return NETWORK_REGISTRY["lora"]

@@ -79,7 +79,6 @@ _GROUPS = {
         "cache_llm_adapter_outputs",
         "masked_loss",
         "mixed_precision",
-        "lora_fp32_accumulation",
         "static_token_count",
         "vae_chunk_size",
         "vae_disable_cache",

@@ -77,13 +77,10 @@ class DoRAModule(LoRAModule):
         # per-channel input rebalancing (SmoothQuant-style, see LoRAModule.forward)
         x_lora = x * self.inv_scale if self._has_channel_scale else x
 
-        # fp32 accumulation: compute LoRA delta in fp32 for better precision
-        if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(
-                x_lora.float(), self.lora_down.weight.float()
-            )
-        else:
-            lx = self.lora_down(x_lora)
+        # Bottleneck matmuls run in fp32 (see LoRAModule.forward).
+        lx = torch.nn.functional.linear(
+            x_lora.float(), self.lora_down.weight.float()
+        )
 
         # timestep-dependent rank masking
         if self._timestep_mask is not None and self.training:
@@ -106,13 +103,8 @@ class DoRAModule(LoRAModule):
         else:
             scale = self.scale
 
-        if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(lx, self.lora_up.weight.float())
-            # Cast LoRA delta back to native dtype early
-            lora_out = (lx * self.multiplier * scale).to(org_out.dtype)
-        else:
-            lx = self.lora_up(lx)
-            lora_out = lx * self.multiplier * scale
+        lx = torch.nn.functional.linear(lx, self.lora_up.weight.float())
+        lora_out = (lx * self.multiplier * scale).to(org_out.dtype)
 
         # DoRA: scale by (magnitude / ||W_original||)
         mag_scale = (self.magnitude / self._org_weight_norm).to(org_out.dtype)

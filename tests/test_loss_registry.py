@@ -61,16 +61,8 @@ def test_lora_composer_is_flow_match_only():
     assert composer.l_sup_scalar == 1.0
 
 
-def test_tlora_composer_is_flow_match_only():
-    # tlora shares loss composition with lora; timestep masking lives in
-    # get_noise_pred_and_target, not in the loss composer.
-    args = _make_args(method="tlora")
-    composer = build_loss_composer(args, _net())
-    assert composer.active_losses == ["flow_match"]
-
-
-def test_hydralora_adds_balance_when_network_requests_it():
-    args = _make_args(method="hydralora")
+def test_hydra_balance_activates_when_network_requests_it():
+    args = _make_args(method="lora")
     composer = build_loss_composer(args, _net(_balance_loss_weight=0.01))
     assert "hydra_balance" in composer.active_losses
     assert "flow_match" in composer.active_losses
@@ -94,9 +86,3 @@ def test_prefix_activates_multiscale_when_weight_set():
     args = _make_args(method="prefix", multiscale_loss_weight=0.5)
     composer = build_loss_composer(args, _net())
     assert "multiscale" in composer.active_losses
-
-
-def test_ortho_reg_activates_when_network_has_weight():
-    args = _make_args(method="lora")
-    composer = build_loss_composer(args, _net(_ortho_reg_weight=0.01))
-    assert "ortho_reg" in composer.active_losses

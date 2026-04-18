@@ -141,8 +141,6 @@ def test_provenance_returned():
     )
     # base key
     assert provenance["network_module"] == "configs/base.toml"
-    # preset key
-    assert provenance["blocks_to_swap"] == "configs/presets.toml[default]"
     # method key
     assert provenance["network_dim"] == "configs/methods/lora.toml"
     assert set(provenance) == set(merged)

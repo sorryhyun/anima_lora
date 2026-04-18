@@ -13,7 +13,6 @@ from networks.lora_modules import (
     ReFTModule,
     HydraLoRAModule,
 )
-from networks.lora_deprecated import OrthoLoRAModule
 from networks.condition_shift import ConditionShift
 from networks import NETWORK_REGISTRY, NetworkSpec, resolve_network_spec
 from networks import lora_save
@@ -373,13 +372,6 @@ def create_network(
     use_ortho = kwargs.get("use_ortho", "false")
     if use_ortho is not None:
         use_ortho = True if use_ortho.lower() == "true" else False
-    sig_type = kwargs.get("sig_type", "last")
-    ortho_reg_weight = kwargs.get("ortho_reg_weight", None)
-    ortho_reg_weight = float(ortho_reg_weight) if ortho_reg_weight is not None else 0.01
-
-    use_ortho_exp = kwargs.get("use_ortho_exp", "false")
-    if use_ortho_exp is not None:
-        use_ortho_exp = True if use_ortho_exp.lower() == "true" else False
 
     use_timestep_mask = kwargs.get("use_timestep_mask", "false")
     if use_timestep_mask is not None:
@@ -499,7 +491,6 @@ def create_network(
         reg_dims=reg_dims,
         reg_lrs=reg_lrs,
         verbose=verbose,
-        sig_type=sig_type,
         layer_start=layer_start,
         layer_end=layer_end,
         add_reft=add_reft,
@@ -519,7 +510,6 @@ def create_network(
     network._reft_alpha = reft_alpha
 
     # Variant-specific defaults — overridden by spec.post_init for the matching variant.
-    network._ortho_reg_weight = 0.0
     network._use_hydra = False
     network._balance_loss_weight = 0.0
 
@@ -534,17 +524,13 @@ def create_network(
         logger.info(
             f"Timestep-dependent rank masking: min_rank={min_rank}, alpha={alpha_rank_scale}"
         )
-    if spec.name == "ortho_hydra_exp":
+    if spec.name == "ortho_hydra":
         logger.info(
-            f"OrthoHydraLoRA (exp): Cayley + MoE, num_experts={num_experts}, "
+            f"OrthoHydraLoRA: Cayley + MoE, num_experts={num_experts}, "
             f"balance_loss_weight={network._balance_loss_weight}"
         )
-    elif spec.name == "ortho_exp":
-        logger.info("OrthoLoRA (exp): Cayley parameterization + SVD-informed init")
     elif spec.name == "ortho":
-        logger.info(
-            f"OrthoLoRA: sig_type={sig_type}, ortho_reg_weight={network._ortho_reg_weight}"
-        )
+        logger.info("OrthoLoRA: Cayley parameterization + SVD-informed init")
     elif spec.name == "hydra":
         logger.info(
             f"HydraLoRA: num_experts={num_experts}, balance_loss_weight={network._balance_loss_weight}"
@@ -621,8 +607,7 @@ def create_network_from_weights(
     train_llm_adapter = False
     has_dora = False
     has_ortho = False
-    has_ortho_exp = False
-    has_ortho_hydra_exp = False
+    has_ortho_hydra = False
     has_hydra = False
     hydra_num_experts = 0
     has_reft = False
@@ -662,29 +647,25 @@ def create_network_from_weights(
             modules_dim[lora_name] = dim
         elif key.endswith(".S_p"):
             if value.dim() == 3:
-                # OrthoHydraLoRAExp: S_p is (num_experts, r, r)
-                has_ortho_hydra_exp = True
+                # OrthoHydraLoRA: S_p is (num_experts, r, r)
+                has_ortho_hydra = True
                 hydra_num_experts = max(hydra_num_experts, value.size(0))
                 modules_dim[lora_name] = value.size(1)
             else:
-                # OrthoLoRAExp: S_p is (r, r)
-                has_ortho_exp = True
+                # OrthoLoRA: S_p is (r, r)
+                has_ortho = True
                 modules_dim[lora_name] = value.size(0)
-        elif "q_layer" in key and "weight" in key and "base_" not in key:
-            dim = value.size()[0]
-            modules_dim[lora_name] = dim
-            has_ortho = True
         elif "dora_scale" in key:
             has_dora = True
 
         if "llm_adapter" in lora_name:
             train_llm_adapter = True
 
-    # has_hydra / has_ortho_hydra_exp win over for_inference: the router is
+    # has_hydra / has_ortho_hydra win over for_inference: the router is
     # sample-dependent and can't be folded into a LoRAInfModule static-merge path.
     # The dynamic forward-hook path works in eval mode too.
-    if has_ortho_hydra_exp:
-        spec = NETWORK_REGISTRY["ortho_hydra_exp"]
+    if has_ortho_hydra:
+        spec = NETWORK_REGISTRY["ortho_hydra"]
         module_class = spec.module_class
     elif has_hydra:
         spec = NETWORK_REGISTRY["hydra"]
@@ -694,9 +675,6 @@ def create_network_from_weights(
         module_class = LoRAInfModule
     elif has_dora:
         spec = NETWORK_REGISTRY["dora"]
-        module_class = spec.module_class
-    elif has_ortho_exp:
-        spec = NETWORK_REGISTRY["ortho_exp"]
         module_class = spec.module_class
     elif has_ortho:
         spec = NETWORK_REGISTRY["ortho"]
@@ -734,12 +712,11 @@ def create_network_from_weights(
         reft_dim=reft_dim if reft_dim is not None else 4,
         reft_modules_dim=reft_modules_dim if has_reft else None,
         reft_modules_alpha=reft_modules_alpha if has_reft else None,
-        num_experts=hydra_num_experts if (has_hydra or has_ortho_hydra_exp) else 4,
+        num_experts=hydra_num_experts if (has_hydra or has_ortho_hydra) else 4,
         channel_scales_dict=channel_scales_dict,
     )
     # Mirror create_network's variant-specific post-build attribute attachment.
     # Defaults first, then spec.post_init overrides for the matching variant.
-    network._ortho_reg_weight = 0.0
     network._use_hydra = False
     network._balance_loss_weight = 0.0
     network._network_spec = spec
@@ -791,7 +768,6 @@ class LoRANetwork(torch.nn.Module):
         reg_dims: Optional[Dict[str, int]] = None,
         reg_lrs: Optional[Dict[str, float]] = None,
         verbose: Optional[bool] = False,
-        sig_type: str = "last",
         layer_start: Optional[int] = None,
         layer_end: Optional[int] = None,
         add_reft: bool = False,
@@ -812,7 +788,6 @@ class LoRANetwork(torch.nn.Module):
         self.train_llm_adapter = train_llm_adapter
         self.reg_dims = reg_dims
         self.reg_lrs = reg_lrs
-        self.sig_type = sig_type
         self.layer_start = layer_start
         self.layer_end = layer_end
         self.num_experts = num_experts
@@ -999,9 +974,7 @@ class LoRANetwork(torch.nn.Module):
                 non_skipped, desc=f"Creating {label} LoRA", leave=False
             ):
                 extra_kwargs = {}
-                if module_class == OrthoLoRAModule:
-                    extra_kwargs["sig_type"] = self.sig_type
-                elif module_class == OrthoLoRAExpModule:
+                if module_class == OrthoLoRAExpModule:
                     pass  # no extra kwargs — SVD init reads from org_module directly
                 elif module_class == OrthoHydraLoRAExpModule:
                     extra_kwargs["num_experts"] = self.num_experts
@@ -1039,7 +1012,6 @@ class LoRANetwork(torch.nn.Module):
         self.text_encoder_loras: List[Union[LoRAModule, LoRAInfModule]] = []
         skipped_te = []
         if text_encoders is not None and module_class not in (
-            OrthoLoRAModule,
             OrthoLoRAExpModule,
             OrthoHydraLoRAExpModule,
         ):
@@ -1172,9 +1144,11 @@ class LoRANetwork(torch.nn.Module):
 
     def prepare_network(self, args):
         if getattr(args, "lora_fp32_accumulation", False):
-            logger.info("enabling fp32 accumulation for LoRA modules")
-            for lora in self.text_encoder_loras + self.unet_loras:
-                lora.fp32_accumulation = True
+            logger.warning(
+                "--lora_fp32_accumulation is deprecated and has no effect; "
+                "fp32 accumulation is now unconditional in LoRA/Hydra/ReFT "
+                "bottleneck matmuls. Remove the flag from your config."
+            )
 
     def set_multiplier(self, multiplier):
         self.multiplier = multiplier

@@ -92,7 +92,6 @@ class BaseLoRAModule(torch.nn.Module):
         self._has_channel_scale = False
         self._timestep_mask = None
         self.enabled = True
-        self.fp32_accumulation = False
 
     def _register_channel_scale(
         self,
@@ -211,6 +210,10 @@ class LoRAModule(BaseLoRAModule):
         self._register_channel_scale(self.lora_down.weight.data, channel_scale)
 
     def forward(self, x):
+        # Policy: bf16 storage, fp32 for the bottleneck matmuls. The down-proj
+        # accumulates over embed_dim (large) and the up-proj output is added
+        # back to the bf16 base; running both matmuls in fp32 recovers mantissa
+        # precision that bf16 would shed. Activation copies are transient.
         org_forwarded = self.org_forward(x)
 
         if self._skip_module():
@@ -221,13 +224,9 @@ class LoRAModule(BaseLoRAModule):
         # unchanged but per-column gradients are balanced.
         x_lora = self._rebalance(x)
 
-        # fp32 accumulation: compute LoRA delta in fp32 for better precision
-        if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(
-                x_lora.float(), self.lora_down.weight.float()
-            )
-        else:
-            lx = self.lora_down(x_lora)
+        lx = torch.nn.functional.linear(
+            x_lora.float(), self.lora_down.weight.float()
+        )
 
         # timestep-dependent rank masking
         if self._timestep_mask is not None and self.training:
@@ -239,13 +238,10 @@ class LoRAModule(BaseLoRAModule):
 
         lx, scale = self._apply_rank_dropout(lx)
 
-        if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(lx, self.lora_up.weight.float())
-            lx = (lx * self.multiplier * scale).to(org_forwarded.dtype)
-            return org_forwarded + lx
-        else:
-            lx = self.lora_up(lx)
-            return org_forwarded + lx * self.multiplier * scale
+        lx = torch.nn.functional.linear(lx, self.lora_up.weight.float())
+        return org_forwarded + (lx * self.multiplier * scale).to(
+            org_forwarded.dtype
+        )
 
 
 class HydraLoRAModule(BaseLoRAModule):
@@ -325,6 +321,10 @@ class HydraLoRAModule(BaseLoRAModule):
         return torch.softmax(logits, dim=-1)
 
     def forward(self, x):
+        # Policy: bf16 storage, fp32 for the bottleneck matmuls. See
+        # LoRAModule.forward for rationale. Gate/router stays in autocast
+        # dtype — softmax over num_experts is fine in bf16 with the
+        # small-std router init.
         org_forwarded = self.org_forward(x)
 
         if not self.enabled:
@@ -336,12 +336,9 @@ class HydraLoRAModule(BaseLoRAModule):
         # per-channel input rebalancing (SmoothQuant-style, see LoRAModule.forward)
         x_lora = self._rebalance(x)
 
-        if self.fp32_accumulation:
-            lx = torch.nn.functional.linear(
-                x_lora.float(), self.lora_down.weight.float()
-            )
-        else:
-            lx = self.lora_down(x_lora)
+        lx = torch.nn.functional.linear(
+            x_lora.float(), self.lora_down.weight.float()
+        )
 
         # timestep-dependent rank masking (T-LoRA compatibility)
         if self._timestep_mask is not None and self.training:
@@ -359,7 +356,9 @@ class HydraLoRAModule(BaseLoRAModule):
             self._last_gate = gate  # cache for network-level balance loss
 
         # Gate-weighted combined weight per batch element: (B, out_dim, lora_dim)
-        combined = torch.einsum("be,eod->bod", gate, self.lora_up_weight)
+        combined = torch.einsum(
+            "be,eod->bod", gate.float(), self.lora_up_weight.float()
+        )
         # Apply: lx is (B, ..., lora_dim), combined is (B, out_dim, lora_dim)
         orig_shape = lx.shape
         B = orig_shape[0]
@@ -367,11 +366,9 @@ class HydraLoRAModule(BaseLoRAModule):
         out = torch.bmm(lx_3d, combined.transpose(1, 2))  # (B, *, out_dim)
         out = out.reshape(*orig_shape[:-1], -1)  # restore prefix dims
 
-        if self.fp32_accumulation:
-            return org_forwarded + (out * self.multiplier * scale).to(
-                org_forwarded.dtype
-            )
-        return org_forwarded + out * self.multiplier * scale
+        return org_forwarded + (out * self.multiplier * scale).to(
+            org_forwarded.dtype
+        )
 
 
 class OrthoLoRAExpModule(BaseLoRAModule):
@@ -396,7 +393,7 @@ class OrthoLoRAExpModule(BaseLoRAModule):
     Reference: PSOFT (Wu et al., ICLR 2026) for Cayley + SVD-init idea.
     We keep frozen full-dim bases (not PSOFT's frozen principal-subspace restriction)
     so expressiveness is limited to rotations within the initial basis span —
-    this is the tradeoff being benchmarked via use_ortho_exp.
+    this is the tradeoff being benchmarked via use_ortho.
     """
 
     def __init__(
@@ -723,10 +720,21 @@ class ReFTModule(torch.nn.Module):
             if torch.rand(1) < self.module_dropout:
                 return h
 
-        # Rh
-        rotated = torch.nn.functional.linear(h, self.rotate_layer.weight)
-        # Wh + b
-        source = self.learned_source(h)
+        # Policy: rotation/subtraction/back-projection run in fp32. At init
+        # learned_source.weight == rotate_layer.weight and bias == 0, so
+        # delta = source - rotated is exactly zero by construction and stays
+        # tiny early in training — catastrophic-cancellation territory. bf16
+        # would collapse the learning signal before it can bootstrap. The
+        # fp32 copy of h is transient (freed after the back-projection).
+        W = self.rotate_layer.weight.float()
+        h_f = h.float()
+
+        rotated = torch.nn.functional.linear(h_f, W)
+        source = torch.nn.functional.linear(
+            h_f,
+            self.learned_source.weight.float(),
+            self.learned_source.bias.float(),
+        )
 
         # timestep-dependent masking
         if self._timestep_mask is not None and self.training:
@@ -739,9 +747,9 @@ class ReFTModule(torch.nn.Module):
             delta = torch.nn.functional.dropout(delta, p=self.dropout)
 
         # R^T @ delta — project back to full space
-        edit = torch.nn.functional.linear(delta, self.rotate_layer.weight.T)
+        edit = torch.nn.functional.linear(delta, W.T)
 
-        return h + edit * self.multiplier * self.scale
+        return h + (edit * self.multiplier * self.scale).to(h.dtype)
 
     def regularization(self):
         """Orthogonality regularization: ||R R^T - I||^2"""

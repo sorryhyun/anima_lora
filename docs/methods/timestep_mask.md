@@ -96,9 +96,9 @@ r_reft(t) = floor((1 - t)^alpha * (reft_dim - 1)) + 1
 
 ## Configs
 
-`configs/methods/tlora.toml` — OrthoLoRA (Cayley) + timestep masking, rank 64:
+`configs/methods/lora.toml` (T-LoRA toggle block) — OrthoLoRA (Cayley) + timestep masking, rank 64:
 ```toml
-use_ortho_exp = true
+use_ortho = true
 use_timestep_mask = true
 min_rank = 1
 alpha_rank_scale = 1.0

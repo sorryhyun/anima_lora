@@ -32,9 +32,8 @@ from tests.conftest import iter_method_names
 EXPECTED_VARIANTS = {
     "lora",
     "ortho",
-    "ortho_exp",
     "hydra",
-    "ortho_hydra_exp",
+    "ortho_hydra",
     "dora",
 }
 
@@ -56,9 +55,8 @@ def test_registry_has_expected_variants():
     [
         ({}, "lora"),
         ({"use_ortho": "true"}, "ortho"),
-        ({"use_ortho_exp": "true"}, "ortho_exp"),
         ({"use_hydra": "true"}, "hydra"),
-        ({"use_hydra": "true", "use_ortho_exp": "true"}, "ortho_hydra_exp"),
+        ({"use_hydra": "true", "use_ortho": "true"}, "ortho_hydra"),
         ({"use_dora": "true"}, "dora"),
         # bool values should resolve identically to the string form
         ({"use_hydra": True}, "hydra"),
@@ -77,9 +75,6 @@ def test_resolve_precedence(kwargs, expected):
     [
         {"use_dora": "true", "use_hydra": "true"},
         {"use_dora": "true", "use_ortho": "true"},
-        {"use_dora": "true", "use_ortho_exp": "true"},
-        {"use_ortho": "true", "use_ortho_exp": "true"},
-        {"use_ortho": "true", "use_hydra": "true"},
     ],
 )
 def test_resolve_ambiguous_raises(kwargs):
@@ -95,7 +90,7 @@ def test_resolve_ambiguous_raises(kwargs):
 def _extract_network_kwargs(merged: dict) -> dict:
     """Pull the keys relevant for resolve_network_spec from a merged config."""
     kwargs: dict = {}
-    for k in ("use_hydra", "use_dora", "use_ortho", "use_ortho_exp"):
+    for k in ("use_hydra", "use_dora", "use_ortho"):
         if k in merged:
             kwargs[k] = merged[k]
     # network_args in TOML comes through as a list like ["mode=postfix", ...]
@@ -110,11 +105,9 @@ METHOD_NAMES = list(iter_method_names())
 
 
 EXPECTED_SPEC_BY_METHOD = {
-    "lora": "lora",
-    "tlora": "ortho_exp",          # use_ortho_exp = true
-    "hydralora": "ortho_hydra_exp",  # use_hydra + use_ortho_exp
+    "lora": "ortho",                # use_ortho = true
     "graft": "lora",                # no ortho/hydra flags
-    "apex": "lora",                 # no ortho/hydra flags (warm-start from ortho_exp checkpoint)
+    "apex": "lora",                 # no ortho/hydra flags (warm-start from ortho checkpoint)
 }
 
 NON_LORA_METHODS = {"postfix", "postfix_exp", "postfix_func", "prefix"}
@@ -205,34 +198,7 @@ def test_save_standard_lora_roundtrip(tmp_path: Path):
 def test_save_ortho_roundtrip(tmp_path: Path):
     r, in_dim, out_dim = 4, 8, 12
     prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
-    # OrthoLoRA runtime keys
-    sd = {
-        f"{prefix}.p_layer.weight": torch.randn(3 * out_dim, r),
-        f"{prefix}.q_layer.weight": torch.randn(r, in_dim),
-        f"{prefix}.lambda_layer": torch.randn(1, r),
-        f"{prefix}.base_p_weight": torch.randn(3 * out_dim, r),
-        f"{prefix}.base_q_weight": torch.randn(r, in_dim),
-        f"{prefix}.base_lambda": torch.randn(1, r),
-        f"{prefix}.alpha": _alpha(r),
-    }
-
-    loaded = _save_and_reload(sd, tmp_path, save_variant="ortho_to_lora")
-
-    base = "lora_unet_blocks_0_self_attn"
-    for suffix in ("q_proj", "k_proj", "v_proj"):
-        assert loaded[f"{base}_{suffix}.lora_down.weight"].shape == (r, in_dim)
-        assert loaded[f"{base}_{suffix}.lora_up.weight"].shape == (out_dim, r)
-    # ortho-specific keys must be gone
-    for k in loaded:
-        assert ".p_layer" not in k and ".q_layer" not in k
-        assert ".lambda_layer" not in k
-        assert ".base_p_weight" not in k and ".base_q_weight" not in k
-        assert ".base_lambda" not in k
-
-
-def test_save_ortho_exp_roundtrip(tmp_path: Path):
-    r, in_dim, out_dim = 4, 8, 12
-    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    # OrthoLoRA (PSOFT) runtime keys: Cayley params + frozen SVD bases
     sd = {
         f"{prefix}.S_p": torch.randn(r, r),
         f"{prefix}.S_q": torch.randn(r, r),
@@ -242,7 +208,7 @@ def test_save_ortho_exp_roundtrip(tmp_path: Path):
         f"{prefix}.alpha": _alpha(r),
     }
 
-    loaded = _save_and_reload(sd, tmp_path, save_variant="ortho_exp_to_lora")
+    loaded = _save_and_reload(sd, tmp_path, save_variant="ortho_to_lora")
 
     base = "lora_unet_blocks_0_self_attn"
     for suffix in ("q_proj", "k_proj", "v_proj"):
@@ -279,7 +245,7 @@ def test_save_hydra_moe_roundtrip(tmp_path: Path):
         assert not k.endswith(".lora_up_weight")
 
 
-def test_save_ortho_hydra_exp_roundtrip(tmp_path: Path):
+def test_save_ortho_hydra_roundtrip(tmp_path: Path):
     E, r, in_dim, out_dim = 4, 4, 8, 12
     prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
     # OrthoHydraLoRAExp runtime keys: S_p is 3-D (E, r, r)

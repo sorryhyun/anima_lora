@@ -2,7 +2,7 @@
 
 Experimental variant of OrthoLoRA that replaces soft orthogonality
 regularization with a hard Cayley constraint and initializes bases from
-the pretrained weight's SVD. Gated behind `use_ortho_exp = true`.
+the pretrained weight's SVD. Gated behind `use_ortho = true`.
 
 Inspired by PSOFT (Wu et al., "Efficient Orthogonal Fine-Tuning with
 Principal Subspace Adaptation", ICLR 2026).
@@ -105,27 +105,25 @@ params). Net effect is modest.
 In any method config (e.g. `configs/methods/lora.toml`):
 
 ```toml
-use_ortho_exp = true
+use_ortho = true
 network_alpha = 64
 network_dim = 64
 ```
 
-`use_ortho_exp` takes priority over `use_ortho`. The `sig_type` and
-`ortho_reg_weight` settings are ignored when `use_ortho_exp` is active.
 Keep `alpha = dim` for neutral scaling.
 
-For T-LoRA (with timestep masking), in `configs/methods/tlora.toml`:
+For timestep-masked OrthoLoRA, uncomment the T-LoRA block in
+`configs/methods/lora.toml`:
 
 ```toml
-use_ortho_exp = true
-use_ortho = true          # ignored when use_ortho_exp is active
+use_ortho = true
 use_timestep_mask = true
 ```
 
 Then train as usual:
 
 ```bash
-make lora          # or make tlora for the timestep-masked variant
+make lora
 ```
 
 ## Save format
@@ -161,4 +159,4 @@ When benchmarking against standard OrthoLoRA:
 |------|-------------|
 | `networks/lora_modules.py` | `OrthoLoRAExpModule` class |
 | `networks/lora_anima.py` | Config parsing, module selection, save conversion |
-| `configs/methods/tlora.toml` | `use_ortho_exp` toggle |
+| `configs/methods/lora.toml` | `use_ortho` toggle |

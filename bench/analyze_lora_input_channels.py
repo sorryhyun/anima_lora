@@ -379,7 +379,7 @@ def main():
             text_encoders=[],
             unet=anima,
             weights_sd=lora_sd,
-            for_inference=False,  # keep OrthoLoRAModule for T-LoRA
+            for_inference=False,  # keep OrthoLoRAExpModule for T-LoRA
         )
         network.apply_to([], anima, apply_text_encoder=False, apply_unet=True)
         info = network.load_state_dict(weights_sd, strict=False)

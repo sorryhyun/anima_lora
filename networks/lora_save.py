@@ -7,8 +7,8 @@ variant-agnostic ``q/k/v`` defuse, capped by a variant-specific write.
 Ordering is fixed and must not change:
 
     1. ortho_hydra_to_hydra   (keys ending ``.S_p`` with dim 3)
-    2. ortho_exp_to_lora      (keys ending ``.S_p`` with dim 2)
-    3. ortho_to_lora          (keys ending ``.base_lambda``)
+    2. ortho_to_lora          (keys ending ``.S_p`` with dim 2)
+    3. legacy_ortho_to_lora   (keys ending ``.base_lambda``)
     4. variant dispatch:
          - save_variant == "hydra_moe" or "ortho_hydra_to_hydra":
                expand per-expert ups, hydra q/k/v split, write ``*_moe.safetensors``
@@ -16,8 +16,10 @@ Ordering is fixed and must not change:
                rename DoRA magnitude, standard q/k/v defuse, write ``*.safetensors``
 
 Step 1 must run before step 2 because both key off ``.S_p`` — the 3-D
-case (OrthoHydraLoRAExp) would otherwise be mis-reduced by the 2-D
-handler.
+case (OrthoHydraLoRA) would otherwise be mis-reduced by the 2-D handler.
+Step 3 handles legacy checkpoints from the deprecated sig-type OrthoLoRA
+(see ``lora_deprecated.OrthoLoRAModule``); current training never emits
+those keys.
 """
 
 from __future__ import annotations
@@ -104,11 +106,11 @@ def _convert_ortho_hydra_to_hydra(
 
 
 # ---------------------------------------------------------------------------
-# Step 2: OrthoLoRAExp → standard LoRA (Cayley params → lora_down/up)
+# Step 2: OrthoLoRA → standard LoRA (Cayley params → lora_down/up)
 # ---------------------------------------------------------------------------
 
 
-def _convert_ortho_exp_to_lora(
+def _convert_ortho_to_lora(
     state_dict: Dict[str, torch.Tensor], dtype: Optional[torch.dtype]
 ) -> None:
     prefixes = set()
@@ -155,11 +157,11 @@ def _convert_ortho_exp_to_lora(
 
 
 # ---------------------------------------------------------------------------
-# Step 3: OrthoLoRA → standard LoRA (SVD of ΔW in 2r-dim subspace)
+# Step 3: Legacy OrthoLoRA (sig-type) → standard LoRA (SVD of ΔW in 2r-dim subspace)
 # ---------------------------------------------------------------------------
 
 
-def _convert_ortho_to_lora(
+def _convert_legacy_ortho_to_lora(
     state_dict: Dict[str, torch.Tensor], dtype: Optional[torch.dtype]
 ) -> None:
     prefixes = set()
@@ -383,11 +385,11 @@ def save_network_weights(
         metadata = None
 
     # Steps 1–3: key-triggered conversions. Ordering is load-bearing —
-    # ortho_hydra_to_hydra must run before ortho_exp_to_lora because both
-    # key off ``.S_p``.
+    # ortho_hydra_to_hydra must run before ortho_to_lora because both key
+    # off ``.S_p``.
     _convert_ortho_hydra_to_hydra(state_dict, dtype)
-    _convert_ortho_exp_to_lora(state_dict, dtype)
     _convert_ortho_to_lora(state_dict, dtype)
+    _convert_legacy_ortho_to_lora(state_dict, dtype)
 
     is_hydra_variant = save_variant in ("hydra_moe", "ortho_hydra_to_hydra") or any(
         k.endswith(".lora_up_weight") for k in state_dict.keys()
@@ -404,7 +406,7 @@ def save_network_weights(
         # a uniform expert average defeats layer-local routing.
         return
 
-    # Standard (lora / ortho / ortho_exp / dora) path.
+    # Standard (lora / ortho / dora) path.
     _rename_dora_and_defuse_standard(state_dict)
 
     if dtype is not None:
