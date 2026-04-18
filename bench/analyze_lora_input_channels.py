@@ -89,7 +89,7 @@ def parse_args():
         default="post_image_dataset",
         help="Dir with cached <stem>_*_anima.npz latents and <stem>_anima_te.safetensors",
     )
-    p.add_argument("--num_samples", type=int, default=8)
+    p.add_argument("--num_samples", type=int, default=32)
     p.add_argument(
         "--sigmas",
         default="0.1,0.3,0.5,0.7,0.9",
@@ -115,12 +115,29 @@ def parse_args():
     return p.parse_args()
 
 
+# Mirror of `_FUSED_SPLIT` in `networks/lora_save.py`: the runtime fuses qkv/kv
+# into one Linear, but saved checkpoints (and any consumer that uses the
+# split-naming convention) expect separate q/k/v keys. The hooked input is
+# identical for every component (same x feeds q, k, v of a fused projection),
+# so we emit the same per-channel vector under each split key as well.
+_FUSED_TO_SPLIT_SUFFIXES = (
+    ("self_attn_qkv_proj", ("self_attn_q_proj", "self_attn_k_proj", "self_attn_v_proj")),
+    ("cross_attn_kv_proj", ("cross_attn_k_proj", "cross_attn_v_proj")),
+)
+
+
 def dump_channel_stats_safetensors(stats, out_path, prefix="lora_unet_"):
     """Save full per-input-channel mean_abs vectors keyed by LoRA module name.
 
     Each entry in `stats` is keyed by a dot-separated module path (e.g.
     `blocks.0.self_attn.qkv_proj`); we prepend `prefix` and replace dots with
     underscores to match the `lora_name` format used by `networks/lora_anima.py`.
+
+    For fused attention projections (`self_attn.qkv_proj`, `cross_attn.kv_proj`)
+    we additionally emit per-component (`q_proj`/`k_proj`/`v_proj`) entries that
+    share the fused vector — Q, K, V see the same input, so the channel stats
+    are identical, and this lets the file work with both fused-runtime LoRAs and
+    consumers that key off the split saved-checkpoint names.
     """
     tensors = {}
     for module_path, stat in stats.items():
@@ -129,12 +146,19 @@ def dump_channel_stats_safetensors(stats, out_path, prefix="lora_unet_"):
         mean_abs = (stat["sum_abs"] / stat["count"]).float().contiguous()
         lora_name = prefix + module_path.replace(".", "_")
         tensors[lora_name] = mean_abs
+        for fused_suffix, split_suffixes in _FUSED_TO_SPLIT_SUFFIXES:
+            if lora_name.endswith(fused_suffix):
+                base = lora_name[: -len(fused_suffix)]
+                for split_suffix in split_suffixes:
+                    tensors[base + split_suffix] = mean_abs.clone()
+                break
     out_dir = os.path.dirname(out_path)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
     save_file(tensors, out_path)
     logger.info(
-        f"wrote per-channel mean|x| stats for {len(tensors)} modules to {out_path}"
+        f"wrote per-channel mean|x| stats for {len(tensors)} keys to {out_path} "
+        f"(fused qkv/kv mirrored to per-component q/k/v)"
     )
 
 
@@ -407,13 +431,26 @@ def main():
 
     per_module = {}
     groups = defaultdict(list)
+    skipped_inactive = []
     for key, stat in stats.items():
+        if stat.get("count", 0) == 0:
+            # Hooked Linear that was never invoked during the forward pass
+            # (e.g. llm_adapter modules — only run when t5_input_ids is passed).
+            # Including them produces inf/nan dominance and pollutes overall stats.
+            skipped_inactive.append(key)
+            continue
         summary = summarize_module(stat, args.top_k_channels)
         summary["name"] = key
         summary["module_path"] = stat["module_path"]
         summary["group"] = classify_module(stat["module_path"])
         per_module[key] = summary
         groups[summary["group"]].append(summary)
+
+    if skipped_inactive:
+        logger.info(
+            f"skipped {len(skipped_inactive)} inactive Linear modules "
+            f"(never invoked during forward, e.g. {skipped_inactive[0]})"
+        )
 
     all_dominances = np.array([m["dominance_ratio"] for m in per_module.values()])
 
