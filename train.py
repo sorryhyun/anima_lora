@@ -1541,6 +1541,7 @@ class AnimaTrainer:
             "add_reft",
             "reft_dim",
             "reft_alpha",
+            "reft_layers",
         ]
         for key in _NETWORK_ARG_KEYS:
             if (
@@ -3185,6 +3186,7 @@ NETWORK_KWARG_ALLOWLIST: tuple[str, ...] = (
     "rank_dropout",
     "reft_alpha",
     "reft_dim",
+    "reft_layers",
     "train_llm_adapter",
     "use_dora",
     "use_hydra",

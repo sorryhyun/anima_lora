@@ -7,6 +7,8 @@
 
 import math
 import random
+from typing import Optional
+
 import torch
 from library.log import setup_logging
 
@@ -420,15 +422,17 @@ class OrthoLoRAExpModule(BaseLoRAModule):
         )
 
         # --- SVD-informed initialization ---
-        # Extract top-r singular vectors from the pretrained weight.
-        # SVD on (out_dim, in_dim) is O(out*in*min(out,in)) — one-time cost at init.
+        # Extract top-r singular vectors from the pretrained weight. Randomized
+        # SVD (torch.svd_lowrank) is ~10-100x faster than full SVD for r ≪ min(m,n)
+        # and gives near-machine-precision on the top-r factors we keep.
         init_device = "cuda" if torch.cuda.is_available() else "cpu"
         W = org_module.weight.data.float().to(init_device)
-        U, S_vals, Vh = torch.linalg.svd(W, full_matrices=False)
-        # U: (out, min(out,in)), Vh: (min(out,in), in)
+        q = min(lora_dim + 6, min(W.shape))
+        U, _S_vals, V = torch.svd_lowrank(W, q=q, niter=2)
+        # U: (out, q), V: (in, q) — V is returned directly (not Vh).
         P_init = U[:, :lora_dim].clone().contiguous()  # (out, r)
-        Q_init = Vh[:lora_dim, :].clone().contiguous()  # (r, in)
-        del U, S_vals, Vh, W
+        Q_init = V[:, :lora_dim].T.clone().contiguous()  # (r, in)
+        del U, _S_vals, V, W
 
         # Frozen bases — define the subspace; Cayley rotates within it
         self.register_buffer("P_basis", P_init.cpu())  # (out_dim, r)
@@ -541,10 +545,11 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # --- SVD-informed init (same as OrthoLoRAExp) ---
         init_device = "cuda" if torch.cuda.is_available() else "cpu"
         W = org_module.weight.data.float().to(init_device)
-        U, S_vals, Vh = torch.linalg.svd(W, full_matrices=False)
+        q = min(lora_dim + 6, min(W.shape))
+        U, _S_vals, V = torch.svd_lowrank(W, q=q, niter=2)
         P_init = U[:, :lora_dim].clone().contiguous()  # (out, r)
-        Q_init = Vh[:lora_dim, :].clone().contiguous()  # (r, in)
-        del U, S_vals, Vh, W
+        Q_init = V[:, :lora_dim].T.clone().contiguous()  # (r, in)
+        del U, _S_vals, V, W
 
         # Frozen bases — shared across experts
         self.register_buffer("P_basis", P_init.cpu())  # (out_dim, r)
@@ -654,11 +659,21 @@ class ReFTModule(torch.nn.Module):
     """
     LoReFT: Low-Rank Representation Fine-Tuning.
     Applies a learned low-rank subspace edit to the output representation:
-        h_new = h + R^T(Wh + b − Rh) * scale * multiplier
-    where R is an orthogonal rotation selecting the intervention subspace,
-    and W is a learned source projection.
+        h_new = h + R^T(ΔW·h + b) * scale * multiplier
+    where R is an orthogonal rotation selecting the intervention subspace and
+    ΔW (``learned_source``) is the learned delta within that subspace. The
+    paper's form ``(Wh + b) − Rh`` is algebraically identical under
+    ``ΔW = W − R``; parameterizing ΔW directly avoids the activation-level
+    cancellation, so the module runs in the ambient dtype (bf16 under mixed
+    precision) without fp32 upcasts.
 
-    Zero-init: learned_source is initialized to match rotate_layer so delta=0 at init.
+    Intervention target: the paper defines ReFT on the residual stream at
+    specific layers (Wu et al., 2024 §3.3). ``org_module`` here is usually a
+    DiT Block whose output is the block-level residual-stream hidden state;
+    wrapping Blocks (not each internal Linear) keeps the parameter and
+    activation budget aligned with the paper.
+
+    Zero-init: learned_source is zero-initialized so delta=0 at init.
     Reference: Wu et al., "ReFT: Representation Finetuning for Language Models" (NeurIPS 2024)
     """
 
@@ -666,6 +681,7 @@ class ReFTModule(torch.nn.Module):
         self,
         lora_name,
         org_module: torch.nn.Module,
+        embed_dim: Optional[int] = None,
         multiplier=1.0,
         reft_dim=4,
         alpha=1,
@@ -675,10 +691,14 @@ class ReFTModule(torch.nn.Module):
         super().__init__()
         self.lora_name = lora_name
 
-        if org_module.__class__.__name__ == "Conv2d":
-            raise ValueError("ReFTModule does not support Conv2d")
-
-        embed_dim = org_module.out_features
+        if embed_dim is None:
+            if hasattr(org_module, "out_features"):
+                embed_dim = org_module.out_features
+            else:
+                raise ValueError(
+                    "embed_dim must be provided when wrapping a non-Linear module "
+                    f"(got {type(org_module).__name__})"
+                )
         self.reft_dim = reft_dim
 
         # R: orthogonal rotation (projects to intervention subspace)
@@ -689,9 +709,9 @@ class ReFTModule(torch.nn.Module):
         self.rotate_layer.weight.data = r_orth.T.cpu().clone().contiguous()
         del r_rand, r_orth
 
-        # W: learned source projection — initialized to match R for zero output at init
+        # ΔW: learned delta in R's subspace — zero-init gives delta=0 at step 0.
         self.learned_source = torch.nn.Linear(embed_dim, reft_dim)
-        self.learned_source.weight.data = self.rotate_layer.weight.data.clone()
+        torch.nn.init.zeros_(self.learned_source.weight)
         torch.nn.init.zeros_(self.learned_source.bias)
 
         if isinstance(alpha, torch.Tensor):
@@ -712,44 +732,30 @@ class ReFTModule(torch.nn.Module):
         self.org_module.forward = self.forward
         del self.org_module
 
-    def forward(self, x):
-        h = self.org_forward(x)
+    def forward(self, *args, **kwargs):
+        # Works for wrapped Linear (forward(x)) and wrapped DiT Block
+        # (forward(x_B_T_H_W_D, emb, crossattn, attn_params, rope, adaln_lora_3D)).
+        h = self.org_forward(*args, **kwargs)
 
         # module dropout
         if self.module_dropout is not None and self.training:
             if torch.rand(1) < self.module_dropout:
                 return h
 
-        # Policy: rotation/subtraction/back-projection run in fp32. At init
-        # learned_source.weight == rotate_layer.weight and bias == 0, so
-        # delta = source - rotated is exactly zero by construction and stays
-        # tiny early in training — catastrophic-cancellation territory. bf16
-        # would collapse the learning signal before it can bootstrap. The
-        # fp32 copy of h is transient (freed after the back-projection).
-        W = self.rotate_layer.weight.float()
-        h_f = h.float()
-
-        rotated = torch.nn.functional.linear(h_f, W)
-        source = torch.nn.functional.linear(
-            h_f,
-            self.learned_source.weight.float(),
-            self.learned_source.bias.float(),
+        # ΔW·h + b in ambient dtype — no cancellation, no fp32 copy of h.
+        # Last-dim linear broadcasts over any leading shape (B,L,D) or (B,T,H,W,D).
+        delta = torch.nn.functional.linear(
+            h, self.learned_source.weight, self.learned_source.bias
         )
 
-        # timestep-dependent masking
         if self._timestep_mask is not None and self.training:
-            rotated = rotated * self._timestep_mask
-            source = source * self._timestep_mask
-
-        delta = source - rotated  # (Wh + b) - Rh
+            delta = delta * self._timestep_mask
 
         if self.dropout is not None and self.training:
             delta = torch.nn.functional.dropout(delta, p=self.dropout)
 
-        # R^T @ delta — project back to full space
-        edit = torch.nn.functional.linear(delta, W.T)
-
-        return h + (edit * self.multiplier * self.scale).to(h.dtype)
+        edit = torch.nn.functional.linear(delta, self.rotate_layer.weight.T)
+        return h + edit * (self.multiplier * self.scale)
 
     def regularization(self):
         """Orthogonality regularization: ||R R^T - I||^2"""

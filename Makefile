@@ -36,7 +36,7 @@ lora:
 	$(TRAIN) lora --preset $(PRESET)
 
 lora-half:
-	$(TRAIN) lora --preset $(PRESET)
+	$(TRAIN) lora --preset half
 
 lora-fast:
 	$(TRAIN) lora --preset fast_16gb
@@ -154,7 +154,7 @@ test-invert:
 		--name $(INVERT_NAME) \
 		--verify --verify_steps 30
 
-WORKFLOW ?= workflows/modlora.json
+WORKFLOW ?= workflows/modhydra.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 

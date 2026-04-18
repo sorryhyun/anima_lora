@@ -17,10 +17,10 @@
 network_alpha = 32
 network_dim = 32
 
-learning_rate = 5e-5
-max_train_epochs = 2
-save_every_n_epochs = 2
-checkpointing_epochs = 2
+learning_rate = 2e-5
+max_train_epochs = 3
+save_every_n_epochs = 3
+checkpointing_epochs = 3
 
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
@@ -33,11 +33,25 @@ use_ortho = true
 
 # Timestep mask
 
-# use_timestep_mask = true
-# min_rank = 1
-# alpha_rank_scale = 1.0
+use_timestep_mask = true
+min_rank = 1
+alpha_rank_scale = 1.0
 
-blocks_to_swap = 12
+
+# reft — residual-stream intervention on DiT block outputs (Wu et al. 2024).
+# One ReFTModule per selected block (NOT per internal Linear), matching the
+# paper's parameter budget.
+#   reft_layers = "all"       -> every block
+#               = "last_8"    -> last 8 blocks (task-signal heavy)
+#               = "first_4"   -> first 4 blocks
+#               = "stride_2"  -> every 2nd block
+#               = "3,7,11,15" -> explicit indices
+add_reft = true
+reft_dim = 32
+reft_alpha = 32
+reft_layers = "last_8"
+
+blocks_to_swap = 16
 
 
 # ── T-LoRA + ReFT ───────────────────────────────────────────────────────
@@ -56,6 +70,7 @@ blocks_to_swap = 12
 # add_reft = true
 # reft_dim = 8
 # reft_alpha = 8
+# reft_layers = "last_8"
 # learning_rate = 2e-5
 # max_train_epochs = 3
 # save_every_n_epochs = 3

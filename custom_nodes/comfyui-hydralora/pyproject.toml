@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-hydralora"
-description = "HydraLoRA: Multi-style LoRA loader with MoE routing. Load multi-head LoRA files with per-expert weight control or automatic style routing from text conditioning."
-version = "1.0.0"
+description = "Anima adapter loader for ComfyUI: auto-detects LoRA, HydraLoRA multi-head (experts baked down with uniform weighting), and LoReFT residual-stream edits from a single safetensors file, with separate strength controls for weight-patch and residual-intervention components."
+version = "1.1.0"
 license = { file = "LICENSE" }
 dependencies = []
 
@@ -10,5 +10,5 @@ Repository = "https://github.com/sorryhyun/anima_lora/tree/main/custom_nodes/com
 
 [tool.comfy]
 PublisherId = "sorryhyun"
-DisplayName = "HydraLoRA"
+DisplayName = "Anima Adapter Loader"
 Icon = ""

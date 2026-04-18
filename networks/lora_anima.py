@@ -25,6 +25,45 @@ logger = logging.getLogger(__name__)
 _BLOCK_IDX_RE = re.compile(r"blocks\.(\d+)\.")
 
 
+def _parse_reft_layers(spec, num_blocks: int) -> List[int]:
+    """Resolve a ``reft_layers`` spec to a sorted list of block indices.
+
+    Accepted forms:
+      - None / "all" / ""  -> every block
+      - "last_N"           -> last N blocks
+      - "first_N"          -> first N blocks
+      - "stride_K"         -> every K-th block starting at 0
+      - "3,7,11" or [3,7]  -> explicit indices (string or list[int])
+    """
+    if spec is None or spec == "all" or spec == "":
+        return list(range(num_blocks))
+    if isinstance(spec, (list, tuple)):
+        indices = [int(i) for i in spec]
+    elif isinstance(spec, str):
+        s = spec.strip()
+        if s.startswith("last_"):
+            n = int(s.split("_", 1)[1])
+            return list(range(max(0, num_blocks - n), num_blocks))
+        if s.startswith("first_"):
+            n = int(s.split("_", 1)[1])
+            return list(range(min(n, num_blocks)))
+        if s.startswith("stride_"):
+            k = int(s.split("_", 1)[1])
+            if k <= 0:
+                raise ValueError(f"reft_layers stride must be positive: {spec!r}")
+            return list(range(0, num_blocks, k))
+        indices = [int(x) for x in s.split(",") if x.strip()]
+    else:
+        raise ValueError(f"unrecognized reft_layers spec: {spec!r}")
+
+    bad = [i for i in indices if i < 0 or i >= num_blocks]
+    if bad:
+        raise ValueError(
+            f"reft_layers out of range [0,{num_blocks}): {bad}"
+        )
+    return sorted(set(indices))
+
+
 # Load-time inverse of the qkv/kv split performed by LoRANetwork.save_weights().
 # The training runtime uses fused self_attn.qkv_proj and cross_attn.kv_proj, but saved
 # checkpoints are defused to separate q_proj/k_proj/v_proj for ComfyUI compatibility.
@@ -388,6 +427,8 @@ def create_network(
     reft_dim = int(reft_dim) if reft_dim is not None else network_dim
     reft_alpha = kwargs.get("reft_alpha", None)
     reft_alpha = float(reft_alpha) if reft_alpha is not None else None
+    # reft_layers: which DiT blocks get a ReFT intervention. See _parse_reft_layers.
+    reft_layers = kwargs.get("reft_layers", "all")
 
     use_hydra = kwargs.get("use_hydra", "false")
     if use_hydra is not None:
@@ -496,6 +537,7 @@ def create_network(
         add_reft=add_reft,
         reft_dim=reft_dim,
         reft_alpha=reft_alpha,
+        reft_layers=reft_layers,
         num_experts=num_experts,
         channel_scales_dict=channel_scales_dict,
     )
@@ -508,6 +550,7 @@ def create_network(
     network._add_reft = add_reft
     network._reft_dim = reft_dim
     network._reft_alpha = reft_alpha
+    network._reft_layers = reft_layers
 
     # Variant-specific defaults — overridden by spec.post_init for the matching variant.
     network._use_hydra = False
@@ -539,7 +582,10 @@ def create_network(
         _reft_alpha_str = (
             f"{reft_alpha}" if reft_alpha is not None else f"{network_alpha} (from network_alpha)"
         )
-        logger.info(f"ReFT: reft_dim={reft_dim}, reft_alpha={_reft_alpha_str}")
+        logger.info(
+            f"ReFT: reft_dim={reft_dim}, reft_alpha={_reft_alpha_str}, "
+            f"layers={reft_layers!r}"
+        )
     if layer_start is not None or layer_end is not None:
         logger.info(
             f"Layer range: training blocks [{layer_start or 0}, {layer_end or '...'})"
@@ -602,8 +648,6 @@ def create_network_from_weights(
 
     modules_dim = {}
     modules_alpha = {}
-    reft_modules_dim = {}
-    reft_modules_alpha = {}
     train_llm_adapter = False
     has_dora = False
     has_ortho = False
@@ -612,6 +656,9 @@ def create_network_from_weights(
     hydra_num_experts = 0
     has_reft = False
     reft_dim = None
+    reft_block_indices: set[int] = set()
+    # Block-level ReFT key pattern: reft_unet_blocks_<idx>.<...>
+    _reft_block_re = re.compile(r"^reft_unet_blocks_(\d+)$")
     for key, value in weights_sd.items():
         if "." not in key:
             continue
@@ -627,14 +674,20 @@ def create_network_from_weights(
                 "per-module router weights."
             )
 
-        # ReFT keys use "reft_" prefix
+        # ReFT keys use "reft_" prefix (block-level: reft_unet_blocks_<idx>.*)
         if lora_name.startswith("reft_"):
             has_reft = True
-            if "alpha" in key:
-                reft_modules_alpha[lora_name] = value
-            elif "rotate_layer" in key and "weight" in key:
+            m = _reft_block_re.match(lora_name)
+            if m is None:
+                raise RuntimeError(
+                    f"ReFT key {key!r} does not match the block-level scheme "
+                    "'reft_unet_blocks_<idx>.*'. This checkpoint was likely trained "
+                    "with the old per-Linear ReFT wiring and cannot be loaded by the "
+                    "current block-level implementation."
+                )
+            reft_block_indices.add(int(m.group(1)))
+            if "rotate_layer" in key and "weight" in key:
                 reft_dim = value.size()[0]
-                reft_modules_dim[lora_name] = reft_dim
             continue
 
         if "alpha" in key:
@@ -710,8 +763,7 @@ def create_network_from_weights(
         train_llm_adapter=train_llm_adapter,
         add_reft=has_reft,
         reft_dim=reft_dim if reft_dim is not None else 4,
-        reft_modules_dim=reft_modules_dim if has_reft else None,
-        reft_modules_alpha=reft_modules_alpha if has_reft else None,
+        reft_layers=sorted(reft_block_indices) if has_reft else "all",
         num_experts=hydra_num_experts if (has_hydra or has_ortho_hydra) else 4,
         channel_scales_dict=channel_scales_dict,
     )
@@ -773,8 +825,7 @@ class LoRANetwork(torch.nn.Module):
         add_reft: bool = False,
         reft_dim: int = 4,
         reft_alpha: Optional[float] = None,
-        reft_modules_dim: Optional[Dict[str, int]] = None,
-        reft_modules_alpha: Optional[Dict[str, int]] = None,
+        reft_layers: object = "all",
         num_experts: int = 4,
         channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None,
     ) -> None:
@@ -1064,70 +1115,47 @@ class LoRANetwork(torch.nn.Module):
                     f"--dump_channel_stats <path>` if this is unexpected."
                 )
 
-        # Create ReFT modules (additive representation intervention, orthogonal to LoRA)
+        # Create ReFT modules on the DiT residual stream (block outputs), following
+        # Wu et al. (2024) §3.3 — one intervention per selected block, not per
+        # internal Linear. Selection is controlled by ``reft_layers``.
         self.unet_refts: List[ReFTModule] = []
         self.text_encoder_refts: List[ReFTModule] = []
         if add_reft:
-            from tqdm import tqdm
+            dit_blocks = getattr(unet, "blocks", None)
+            if dit_blocks is None or len(dit_blocks) == 0:
+                raise ValueError(
+                    "add_reft=True but DiT has no .blocks attribute to wrap. "
+                    "Block-level ReFT requires a transformer with a `blocks` ModuleList."
+                )
+            num_blocks = len(dit_blocks)
+            selected_indices = _parse_reft_layers(reft_layers, num_blocks)
 
-            def create_reft_for_loras(
-                loras: list,
-                prefix_from: str,
-                prefix_to: str,
-                reft_modules_dim_: Optional[Dict[str, int]],
-                reft_modules_alpha_: Optional[Dict[str, int]],
-            ) -> List[ReFTModule]:
-                refts = []
-                for lora in tqdm(
-                    loras, desc=f"Creating ReFT ({prefix_to})", leave=False
-                ):
-                    # Skip Conv2d modules
-                    if not isinstance(lora.org_module, torch.nn.Linear):
-                        continue
-                    reft_name = lora.lora_name.replace(prefix_from, prefix_to, 1)
-                    if reft_modules_dim_ is not None:
-                        if reft_name not in reft_modules_dim_:
-                            continue
-                        dim = reft_modules_dim_[reft_name]
-                        a = reft_modules_alpha_.get(reft_name, dim)
-                    else:
-                        dim = reft_dim
-                        a = reft_alpha if reft_alpha is not None else alpha
-                    reft = ReFTModule(
-                        reft_name,
-                        lora.org_module,
-                        multiplier=multiplier,
-                        reft_dim=dim,
-                        alpha=a,
-                        dropout=dropout,
-                        module_dropout=module_dropout,
+            reft_alpha_value = reft_alpha if reft_alpha is not None else alpha
+            for idx in selected_indices:
+                block = dit_blocks[idx]
+                block_embed_dim = getattr(block, "x_dim", None)
+                if block_embed_dim is None:
+                    raise ValueError(
+                        f"Block {idx} ({type(block).__name__}) has no `x_dim`; "
+                        "cannot infer embed_dim for ReFT."
                     )
-                    reft.original_name = lora.original_name
-                    refts.append(reft)
-                return refts
-
-            self.unet_refts = create_reft_for_loras(
-                self.unet_loras,
-                self.LORA_PREFIX_ANIMA,
-                "reft_unet",
-                reft_modules_dim,
-                reft_modules_alpha,
-            )
+                reft_name = f"reft_unet_blocks_{idx}"
+                reft = ReFTModule(
+                    reft_name,
+                    block,
+                    embed_dim=block_embed_dim,
+                    multiplier=multiplier,
+                    reft_dim=reft_dim,
+                    alpha=reft_alpha_value,
+                    dropout=dropout,
+                    module_dropout=module_dropout,
+                )
+                reft.original_name = f"blocks.{idx}"
+                self.unet_refts.append(reft)
             logger.info(
-                f"create ReFT for Anima DiT: {len(self.unet_refts)} modules (reft_dim={reft_dim})"
+                f"create ReFT for Anima DiT: {len(self.unet_refts)}/{num_blocks} "
+                f"blocks (reft_dim={reft_dim}, layers={reft_layers!r})"
             )
-
-            if self.text_encoder_loras:
-                self.text_encoder_refts = create_reft_for_loras(
-                    self.text_encoder_loras,
-                    self.LORA_PREFIX_TEXT_ENCODER,
-                    "reft_te",
-                    reft_modules_dim,
-                    reft_modules_alpha,
-                )
-                logger.info(
-                    f"create ReFT for Text Encoder: {len(self.text_encoder_refts)} modules"
-                )
 
         # assertion: no duplicate names
         names = set()
@@ -1332,7 +1360,9 @@ class LoRANetwork(torch.nn.Module):
             lora.apply_to()
             self.add_module(lora.lora_name, lora)
 
-        # ReFT wraps LoRA's forward, so the chain is: ReFT -> LoRA -> original
+        # ReFT wraps each selected DiT Block's forward, so the chain is:
+        #   Block.__call__ -> ReFT.forward -> original Block.forward
+        #   (inside which LoRA-wrapped Linears still fire normally).
         for reft in self.text_encoder_refts + self.unet_refts:
             reft.apply_to()
             self.add_module(reft.lora_name, reft)
