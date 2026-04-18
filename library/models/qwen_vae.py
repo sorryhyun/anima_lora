@@ -43,9 +43,6 @@ CACHE_T = 2
 SCALE_FACTOR = 8  # VAE downsampling factor
 
 
-# region diffusers-vae
-
-
 class DiagonalGaussianDistribution(object):
     def __init__(self, parameters: torch.Tensor, deterministic: bool = False):
         self.parameters = parameters
@@ -109,9 +106,6 @@ class DiagonalGaussianDistribution(object):
 
     def mode(self) -> torch.Tensor:
         return self.mean
-
-
-# endregion diffusers-vae
 
 
 class ChunkedConv2d(nn.Conv2d):
@@ -1659,9 +1653,7 @@ class AutoencoderKLQwenImage(
         return dec
 
 
-# region utils
-
-# This region is not included in the original implementation. Added for musubi-tuner/sd-scripts.
+# This section is not included in the original implementation. Added for musubi-tuner/sd-scripts.
 
 
 # Convert ComfyUI keys to standard keys if necessary

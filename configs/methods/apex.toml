@@ -18,8 +18,6 @@
 # start catastrophically regresses (−48% NFE=1 W1 in Phase 0). Either load
 # --network_weights <path> or keep the apex_warmup_ratio guard below >0.
 
-dataset_config = "configs/dataset_config.toml"
-
 output_name = "anima_apex"
 
 # Warm-start from the best tlora checkpoint. `save_weights` already converts

@@ -9,7 +9,6 @@ from textwrap import dedent, indent
 import json
 from pathlib import Path
 
-# from toolz import curry
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import toml

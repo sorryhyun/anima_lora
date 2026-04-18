@@ -174,9 +174,6 @@ class ERSDESampler:
         return x
 
 
-# region Gradual Latent hires fix
-
-
 class GradualLatent:
     def __init__(
         self,
@@ -357,6 +354,3 @@ class EulerAncestralDiscreteSchedulerGL(EulerAncestralDiscreteScheduler):
         return EulerAncestralDiscreteSchedulerOutput(
             prev_sample=prev_sample, pred_original_sample=pred_original_sample
         )
-
-
-# endregion

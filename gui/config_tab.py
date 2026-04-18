@@ -75,7 +75,6 @@ class ConfigTab(QWidget):
     def __init__(self):
         super().__init__()
         self._w: dict[str, QWidget] = {}
-        self._ds_edit: QPlainTextEdit | None = None
         self._preprocessed = (ROOT / "post_image_dataset").exists()
         lay = QVBoxLayout(self)
 
@@ -221,7 +220,6 @@ class ConfigTab(QWidget):
             self._show_explain_placeholder()
 
         self._w.clear()
-        self._ds_edit = None
         while self._fl.count():
             it = self._fl.takeAt(0)
             if it.widget():
@@ -287,22 +285,6 @@ class ConfigTab(QWidget):
 
                 form.addRow(lbl, w)
             box.setLayout(form)
-            self._fl.addWidget(box)
-
-        # Dataset config (raw TOML editor)
-        ds_path = CONFIGS_DIR / "dataset_config.toml"
-        if ds_path.exists():
-            box = QGroupBox(t("dataset_config"))
-            bl = QVBoxLayout()
-            ds_edit = QPlainTextEdit(ds_path.read_text(encoding="utf-8"))
-            ds_edit.setStyleSheet("font-family:monospace;")
-            ds_edit.setMaximumHeight(180)
-            bl.addWidget(ds_edit)
-            self._ds_edit = ds_edit
-            dsb = QPushButton(t("save_dataset_config"))
-            dsb.clicked.connect(self._save_ds)
-            bl.addWidget(dsb)
-            box.setLayout(bl)
             self._fl.addWidget(box)
 
         self._fl.addStretch()
@@ -405,19 +387,6 @@ class ConfigTab(QWidget):
         QMessageBox.information(
             self, t("saved"), f"Saved {method_path.name} + presets.toml[{preset}]"
         )
-
-    def _save_ds(self):
-        if not self._ds_edit:
-            return
-        p = CONFIGS_DIR / "dataset_config.toml"
-        text = self._ds_edit.toPlainText()
-        try:
-            toml.loads(text)
-        except toml.TomlDecodeError as e:
-            QMessageBox.warning(self, t("invalid_toml"), str(e))
-            return
-        p.write_text(text, encoding="utf-8")
-        QMessageBox.information(self, t("saved"), t("dataset_saved"))
 
     # ── Training ──
 

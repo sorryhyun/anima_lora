@@ -83,9 +83,7 @@ class ImageInfo:
             None  # filename. set in cache_text_encoder_outputs
         )
 
-        # new
         self.text_encoder_outputs: Optional[List[torch.Tensor]] = None
-        # old
         self.text_encoder_outputs1: Optional[torch.Tensor] = None
         self.text_encoder_outputs2: Optional[torch.Tensor] = None
         self.text_encoder_pool2: Optional[torch.Tensor] = None

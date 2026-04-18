@@ -1,7 +1,5 @@
 # GRAFT method — T-LoRA-ish defaults used by the human-in-the-loop rejection sampling loop.
 
-dataset_config = "configs/dataset_config.toml"
-
 network_alpha = 32
 network_dim = 32
 min_rank = 1

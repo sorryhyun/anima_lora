@@ -18,12 +18,6 @@ def swap_weight_devices_cuda(
 
     weight_swap_jobs: list[Tuple[nn.Module, nn.Module, torch.Tensor, torch.Tensor]] = []
 
-    # This is not working for all cases (e.g. SD3), so we need to find the corresponding modules
-    # for module_to_cpu, module_to_cuda in zip(layer_to_cpu.modules(), layer_to_cuda.modules()):
-    #     print(module_to_cpu.__class__, module_to_cuda.__class__)
-    #     if hasattr(module_to_cpu, "weight") and module_to_cpu.weight is not None:
-    #         weight_swap_jobs.append((module_to_cpu, module_to_cuda, module_to_cpu.weight.data, module_to_cuda.weight.data))
-
     modules_to_cpu = {k: v for k, v in layer_to_cpu.named_modules()}
     for module_to_cuda_name, module_to_cuda in layer_to_cuda.named_modules():
         if hasattr(module_to_cuda, "weight") and module_to_cuda.weight is not None:
@@ -42,9 +36,6 @@ def swap_weight_devices_cuda(
                 )
             else:
                 if module_to_cuda.weight.data.device.type != device.type:
-                    # print(
-                    #     f"Module {module_to_cuda_name} not found in CPU model or shape mismatch, so not swapping and moving to device"
-                    # )
                     module_to_cuda.weight.data = module_to_cuda.weight.data.to(device)
 
     torch.cuda.current_stream().synchronize()  # this prevents the illegal loss value
@@ -321,11 +312,6 @@ class ModelOffloader(Offloader):
         self._submit_move_blocks(blocks, block_idx_to_cpu, block_idx_to_cuda)
 
 
-# endregion
-
-# region cpu offload utils
-
-
 def to_device(x: Any, device: torch.device) -> Any:
     if isinstance(x, torch.Tensor):
         return x.to(device)
@@ -385,6 +371,3 @@ def create_cpu_offloading_wrapper(func: Callable, device: torch.device) -> Calla
         return custom_forward
 
     return wrapper(func)
-
-
-# endregion

@@ -99,7 +99,7 @@ _GROUPS = {
     },
 }
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
-_SKIP = {"base_config", "dataset_config"}
+_SKIP = {"base_config", "dataset_config", "general", "datasets"}
 
 # flash4 is not supported yet (flash-attention-sm120 disabled)
 _ATTN_MODES = ["flex", "flash"]

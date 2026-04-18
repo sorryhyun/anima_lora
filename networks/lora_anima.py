@@ -323,7 +323,6 @@ def create_network(
     if network_alpha is None:
         network_alpha = 1.0
 
-    # train LLM adapter
     train_llm_adapter = kwargs.get("train_llm_adapter", "false")
     if train_llm_adapter is not None:
         train_llm_adapter = True if train_llm_adapter.lower() == "true" else False
@@ -347,12 +346,10 @@ def create_network(
     if layer_end is not None:
         layer_end = int(layer_end)
 
-    # add default exclude patterns
     exclude_patterns.append(
         r".*(_modulation|_norm|_embedder|final_layer|adaln_fused_down|adaln_up_|pooled_text_proj).*"
     )
 
-    # regular expression for module selection: exclude and include
     include_patterns = kwargs.get("include_patterns", None)
     if include_patterns is not None:
         try:
@@ -362,7 +359,6 @@ def create_network(
         except (ValueError, SyntaxError):
             include_patterns = [include_patterns]
 
-    # rank/module dropout
     rank_dropout = kwargs.get("rank_dropout", None)
     if rank_dropout is not None:
         rank_dropout = float(rank_dropout)
@@ -370,12 +366,10 @@ def create_network(
     if module_dropout is not None:
         module_dropout = float(module_dropout)
 
-    # DoRA mode
     use_dora = kwargs.get("use_dora", "false")
     if use_dora is not None:
         use_dora = True if use_dora.lower() == "true" else False
 
-    # OrthoLoRA mode
     use_ortho = kwargs.get("use_ortho", "false")
     if use_ortho is not None:
         use_ortho = True if use_ortho.lower() == "true" else False
@@ -383,12 +377,10 @@ def create_network(
     ortho_reg_weight = kwargs.get("ortho_reg_weight", None)
     ortho_reg_weight = float(ortho_reg_weight) if ortho_reg_weight is not None else 0.01
 
-    # OrthoLoRA experimental: Cayley parameterization + SVD-informed init
     use_ortho_exp = kwargs.get("use_ortho_exp", "false")
     if use_ortho_exp is not None:
         use_ortho_exp = True if use_ortho_exp.lower() == "true" else False
 
-    # Timestep-dependent rank masking
     use_timestep_mask = kwargs.get("use_timestep_mask", "false")
     if use_timestep_mask is not None:
         use_timestep_mask = True if use_timestep_mask.lower() == "true" else False
@@ -397,7 +389,6 @@ def create_network(
     alpha_rank_scale = kwargs.get("alpha_rank_scale", None)
     alpha_rank_scale = float(alpha_rank_scale) if alpha_rank_scale is not None else 1.0
 
-    # ReFT (additive representation fine-tuning)
     add_reft = kwargs.get("add_reft", "false")
     if add_reft is not None:
         add_reft = True if add_reft.lower() == "true" else False
@@ -406,7 +397,6 @@ def create_network(
     reft_alpha = kwargs.get("reft_alpha", None)
     reft_alpha = float(reft_alpha) if reft_alpha is not None else None
 
-    # HydraLoRA (MoE-style multi-head routing)
     use_hydra = kwargs.get("use_hydra", "false")
     if use_hydra is not None:
         use_hydra = True if use_hydra.lower() == "true" else False
@@ -453,12 +443,10 @@ def create_network(
             f"stats={channel_stats_path} ({len(channel_scales_dict)} calibrated modules)"
         )
 
-    # verbose
     verbose = kwargs.get("verbose", "false")
     if verbose is not None:
         verbose = True if verbose.lower() == "true" else False
 
-    # regex-specific learning rates / dimensions
     def parse_kv_pairs(kv_pair_str: str, is_int: bool) -> Dict[str, float]:
         """
         Parse a string of key-value pairs separated by commas.
@@ -1333,7 +1321,6 @@ class LoRANetwork(torch.nn.Module):
         else:
             weights_sd = torch.load(file, map_location="cpu")
 
-        # Rename dora_scale → magnitude for DoRA modules
         for key in list(weights_sd.keys()):
             if key.endswith(".dora_scale"):
                 new_key = key.replace(".dora_scale", ".magnitude")
@@ -1367,12 +1354,11 @@ class LoRANetwork(torch.nn.Module):
             self.unet_loras = []
             self.unet_refts = []
 
-        # Apply LoRA first
         for lora in self.text_encoder_loras + self.unet_loras:
             lora.apply_to()
             self.add_module(lora.lora_name, lora)
 
-        # Apply ReFT after LoRA (wraps LoRA's forward, so chain is: ReFT -> LoRA -> original)
+        # ReFT wraps LoRA's forward, so the chain is: ReFT -> LoRA -> original
         for reft in self.text_encoder_refts + self.unet_refts:
             reft.apply_to()
             self.add_module(reft.lora_name, reft)
@@ -1574,7 +1560,6 @@ class LoRANetwork(torch.nn.Module):
                 ["unet" + (" " + d if d else "") for d in descriptions]
             )
 
-        # ReFT modules (grouped alongside their LoRA counterparts)
         if self.text_encoder_refts:
             params, descriptions = assemble_params(
                 self.text_encoder_refts,
@@ -1600,7 +1585,6 @@ class LoRANetwork(torch.nn.Module):
         # HydraLoRA per-module routers are submodules of HydraLoRAModule instances,
         # so they are already captured by the unet_loras param group above.
 
-        # APEX ConditionShift: separate param group with 0.1x LR (Phase 0 §7.5).
         if getattr(self, "apex_condition_shift", None) is not None:
             shift_params = list(self.apex_condition_shift.parameters())
             if len(shift_params) > 0:

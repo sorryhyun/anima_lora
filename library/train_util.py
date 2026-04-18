@@ -1338,6 +1338,16 @@ def add_dataset_arguments(
         default=None,
         help="dataset class for arbitrary dataset (package.module.Class)",
     )
+    parser.add_argument(
+        "--sample_ratio",
+        type=float,
+        default=None,
+        help=(
+            "Global override applied to every subset's sample_ratio (0<r≤1). "
+            "Unset = use each subset's own value. Exposed here so presets like "
+            "`[half]` can propagate a single value across the dataset blueprint."
+        ),
+    )
 
     if support_caption_dropout:
         parser.add_argument(
@@ -1405,6 +1415,12 @@ def _read_text_silent(path: Optional[str]) -> Optional[str]:
         return None
 
 
+# Top-level TOML keys that belong to the dataset blueprint (see
+# ``load_dataset_config_from_base``) — they must be skipped by the flat
+# method+preset merge chain so they don't collide with the argparse namespace.
+_DATASET_CONFIG_SECTIONS = {"general", "datasets"}
+
+
 def _flatten_toml(
     d: dict,
     *,
@@ -1417,6 +1433,9 @@ def _flatten_toml(
     ``config_schema.populate_schema``, each leaf is validated: unknown keys
     warn (or raise in strict mode), off-choice values warn, and soft type
     mismatches (TOML ``1`` where a ``float`` is wanted) are coerced.
+
+    ``[general]`` and ``[[datasets]]`` sections are skipped — they're consumed
+    by the dataset blueprint generator, not the argparse namespace.
     """
     out: dict = {}
     src_text = _read_text_silent(source)
@@ -1434,12 +1453,32 @@ def _flatten_toml(
         out[resolved] = coerced
 
     for k, v in d.items():
+        if k in _DATASET_CONFIG_SECTIONS:
+            continue
         if isinstance(v, dict):
             for kk, vv in v.items():
                 _visit(kk, vv)
         else:
             _visit(k, v)
     return out
+
+
+def load_dataset_config_from_base(
+    configs_dir: str = "configs",
+) -> Optional[dict]:
+    """Extract the dataset blueprint (``[general]`` + ``[[datasets]]``) from
+    ``configs/base.toml``. Returns ``None`` if no dataset sections are present,
+    so callers can fall back to the DreamBooth/in_json code paths.
+    """
+    base_path = os.path.join(configs_dir, "base.toml")
+    if not os.path.exists(base_path):
+        return None
+    with open(base_path, "r", encoding="utf-8") as f:
+        raw = toml.load(f)
+    sections = {k: v for k, v in raw.items() if k in _DATASET_CONFIG_SECTIONS}
+    if not sections.get("datasets"):
+        return None
+    return sections
 
 
 def _load_toml_with_base(path: str, *, strict: bool = False) -> dict:

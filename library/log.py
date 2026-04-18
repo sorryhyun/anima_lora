@@ -7,9 +7,6 @@ def fire_in_thread(f, *args, **kwargs):
     threading.Thread(target=f, args=args, kwargs=kwargs).start()
 
 
-# region Logging
-
-
 def add_logging_arguments(parser):
     parser.add_argument(
         "--console_log_level",
@@ -34,7 +31,6 @@ def add_logging_arguments(parser):
 def setup_logging(args=None, log_level=None, reset=False):
     if logging.root.handlers:
         if reset:
-            # remove all handlers
             for handler in logging.root.handlers[:]:
                 logging.root.removeHandler(handler)
         else:
@@ -59,11 +55,10 @@ def setup_logging(args=None, log_level=None, reset=False):
 
                 handler = RichHandler(console=Console(stderr=True))
             except ImportError:
-                # print("rich is not installed, using basic logging")
                 msg_init = "rich is not installed, using basic logging"
 
         if handler is None:
-            handler = logging.StreamHandler(sys.stdout)  # same as print
+            handler = logging.StreamHandler(sys.stdout)
             handler.propagate = False
 
     formatter = logging.Formatter(
@@ -81,5 +76,3 @@ def setup_logging(args=None, log_level=None, reset=False):
 
 setup_logging()
 logger = logging.getLogger(__name__)
-
-# endregion

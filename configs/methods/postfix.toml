@@ -11,7 +11,6 @@
 #
 # Per-variant dim/args/epochs are experiment drift, not calibrated defaults.
 
-dataset_config = "configs/dataset_config.toml"
 network_module = "networks.postfix_anima"
 
 # ── Postfix ─────────────────────────────────────────────────────────────

@@ -159,10 +159,6 @@ class BaseLoRAModule(torch.nn.Module):
 
 
 class LoRAModule(BaseLoRAModule):
-    """
-    replaces forward method of the original Linear, instead of replacing the original Linear module.
-    """
-
     supports_conv2d = True
 
     def __init__(

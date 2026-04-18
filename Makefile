@@ -35,6 +35,9 @@ PRESET ?= default
 lora:
 	$(TRAIN) lora --preset $(PRESET)
 
+lora-half:
+	$(TRAIN) lora --preset $(PRESET)
+
 lora-fast:
 	$(TRAIN) lora --preset fast_16gb
 

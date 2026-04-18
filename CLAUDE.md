@@ -93,10 +93,9 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 Training is config-driven via a three-layer chain: `base.toml → presets.toml[<preset>] → methods/<method>.toml → CLI args`. Method settings win over preset settings on overlap, so a method can force its own hardware requirements (e.g. postfix forces `blocks_to_swap=0`).
 
 Layout:
-- `configs/base.toml` — shared infrastructure (model paths, optimizer, compile flags, etc.)
-- `configs/presets.toml` — all hardware profiles in one file as TOML sections: `[default]` (Linux daily driver + Windows 16GB, `blocks_to_swap=8`), `[fast_16gb]`, `[low_vram]` (also serves as Windows 8GB), `[graft]`. Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc.
+- `configs/base.toml` — shared infrastructure (model paths, optimizer, compile flags, etc.) AND the default dataset blueprint (`[general]` + `[[datasets]]` + `[[datasets.subsets]]`). The dataset sections are consumed by `BlueprintGenerator` and skipped by the flat method+preset merge chain (see `_DATASET_CONFIG_SECTIONS` in `library/train_util.py`). Override with `--dataset_config <path>` when you need a different blueprint (e.g. GRAFT uses `graft/dataset_config.toml`).
+- `configs/presets.toml` — all hardware profiles in one file as TOML sections: `[default]`, `[fast_16gb]`, `[low_vram]` (also serves as Windows 8GB), `[graft]`, `[half]` (experiment preset — sets `sample_ratio=0.5` for every subset via the global `--sample_ratio` override). Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc.
 - `configs/methods/` — one file per algorithm. Holds rank, method flags (`use_hydra`, …), and the method's opinionated learning rate / epochs / output_name. Files: `lora`, `tlora`, `hydralora`, `postfix`, `postfix_exp`, `postfix_func`, `prefix`, `graft`.
-- `configs/dataset_config.toml` — dataset buckets, subsets, caption settings
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
 `library.train_util.load_method_preset(method, preset)` is the reusable merge helper (used by `train.py` and `scripts/graft_step.py`). All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/`).

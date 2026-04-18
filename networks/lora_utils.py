@@ -23,7 +23,6 @@ def filter_lora_state_dict(
     include_pattern: Optional[str] = None,
     exclude_pattern: Optional[str] = None,
 ) -> Dict[str, torch.Tensor]:
-    # apply include/exclude patterns
     original_key_count = len(weights_sd.keys())
     if include_pattern is not None:
         regex_include = re.compile(include_pattern)
@@ -156,7 +155,6 @@ def load_safetensors_with_lora(
     model_files = extended_model_files
     logger.info(f"Loading model files: {model_files}")
 
-    # load LoRA weights
     weight_hook = None
     if lora_weights_list is None or len(lora_weights_list) == 0:
         lora_weights_list = []
@@ -180,12 +178,10 @@ def load_safetensors_with_lora(
         if len(lora_multipliers) > len(lora_weights_list):
             lora_multipliers = lora_multipliers[: len(lora_weights_list)]
 
-        # Merge LoRA weights into the state dict
         logger.info(
             f"Merging LoRA weights into state dict. multipliers: {lora_multipliers}"
         )
 
-        # make hook for LoRA merging
         def weight_hook_func(
             model_weight_key, model_weight: torch.Tensor, keep_on_calc_device=False
         ):
@@ -207,7 +203,6 @@ def load_safetensors_with_lora(
             for lora_weight_keys, lora_sd, multiplier in zip(
                 list_of_lora_weight_keys, lora_weights_list, lora_multipliers
             ):
-                # check if this weight has LoRA weights
                 lora_name_without_prefix = model_weight_key.rsplit(".", 1)[
                     0
                 ]  # remove trailing ".weight"
@@ -234,7 +229,6 @@ def load_safetensors_with_lora(
                         model_weight = model_weight + fused_delta
                     continue
 
-                # get LoRA weights
                 down_weight = lora_sd[down_key]
                 up_weight = lora_sd[up_key]
 
@@ -245,7 +239,6 @@ def load_safetensors_with_lora(
                 down_weight = down_weight.to(calc_device)
                 up_weight = up_weight.to(calc_device)
 
-                # Compute LoRA delta
                 if len(model_weight.size()) == 2:
                     # linear
                     if len(up_weight.size()) == 4:  # use linear projection mismatch
@@ -271,7 +264,6 @@ def load_safetensors_with_lora(
                     ).permute(1, 0, 2, 3)
                     delta = multiplier * conved * scale
 
-                # Apply delta with DoRA magnitude normalization if present
                 dora_scale_key = lora_name + ".dora_scale"
                 dora_scale = lora_sd.get(dora_scale_key, None)
                 if dora_scale is not None:
@@ -288,7 +280,6 @@ def load_safetensors_with_lora(
                 else:
                     model_weight = model_weight + delta
 
-                # remove LoRA keys from set
                 lora_weight_keys.remove(down_key)
                 lora_weight_keys.remove(up_key)
                 if alpha_key in lora_weight_keys:
@@ -315,7 +306,6 @@ def load_safetensors_with_lora(
     )
 
     for lora_weight_keys in list_of_lora_weight_keys:
-        # check if all LoRA keys are used
         if len(lora_weight_keys) > 0:
             # if there are still LoRA keys left, it means they are not used in the model
             # this is a warning, not an error

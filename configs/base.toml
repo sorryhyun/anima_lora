@@ -34,3 +34,28 @@ static_token_count = 4096
 trim_crossattn_kv = false
 attn_mode = "flash"
 save_precision= "bf16"
+
+# ── Dataset config ───────────────────────────────────────────────────────
+# Formerly configs/dataset_config.toml. Consumed directly by the dataset
+# blueprint generator when no --dataset_config override is passed. The
+# `general`/`datasets` top-level sections are skipped by the flat method+preset
+# merge chain (see library.train_util._flatten_toml) so they don't pollute the
+# argparse namespace.
+
+[general]
+shuffle_caption = false
+caption_extension = '.txt'
+keep_tokens = 3
+
+[[datasets]]
+resolution = 1024
+batch_size = 1
+enable_bucket = true
+validation_split = 0.025
+validation_seed = 42
+
+  [[datasets.subsets]]
+  image_dir = 'post_image_dataset'
+  num_repeats = 1
+  # sample_ratio defaults to 1.0; use `--preset half` for 0.5.
+  # caption_dropout_rate is set per-method via args (see configs/methods/*.toml)

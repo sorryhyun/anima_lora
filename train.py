@@ -1373,7 +1373,12 @@ class AnimaTrainer:
                         )
                     )
             else:
-                if use_dreambooth_method:
+                base_ds = train_util.load_dataset_config_from_base()
+                if base_ds is not None:
+                    logger.info("Loading dataset config from configs/base.toml")
+                    user_config = base_ds
+                    use_user_config = True
+                elif use_dreambooth_method:
                     logger.info("Using DreamBooth method.")
                     user_config = {
                         "datasets": [
@@ -1398,6 +1403,14 @@ class AnimaTrainer:
                             }
                         ]
                     }
+
+            # Global --sample_ratio override (used by the `[half]` preset).
+            sample_ratio = getattr(args, "sample_ratio", None)
+            if sample_ratio is not None:
+                for ds in user_config.get("datasets", []):
+                    for sub in ds.get("subsets", []):
+                        sub["sample_ratio"] = sample_ratio
+                logger.info(f"Applied --sample_ratio={sample_ratio} to all subsets")
 
             blueprint = blueprint_generator.generate(user_config, args)
             train_dataset_group, val_dataset_group = (

@@ -12,8 +12,6 @@
 # Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
 # defaults — tune freely.
 
-dataset_config = "configs/dataset_config.toml"
-
 # ── Classic LoRA ────────────────────────────────────────────────────────
 # enum network_alpha/_dim: lora=64 | tlora=32 | tlora_rf=8 | hydra=32
 network_alpha = 64
