@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-hydralora"
-description = "Anima adapter loader for ComfyUI: auto-detects LoRA, HydraLoRA multi-head (experts baked down with uniform weighting), and LoReFT residual-stream edits from a single safetensors file, with separate strength controls for weight-patch and residual-intervention components."
-version = "1.1.0"
+description = "Anima adapter loader for ComfyUI: auto-detects LoRA, HydraLoRA multi-head (experts baked down with uniform weighting), LoReFT residual-stream edits, and prefix/postfix/cond context splicing. One node, two independently-toggled sections, separate strength controls."
+version = "2.0.0"
 license = { file = "LICENSE" }
 dependencies = []
 

@@ -12,15 +12,14 @@
 # Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
 # defaults — tune freely.
 
-# ── Classic LoRA ────────────────────────────────────────────────────────
-# enum network_alpha/_dim: lora=64 | tlora=32 | tlora_rf=8 | hydra=32
-network_alpha = 32
-network_dim = 32
 
-learning_rate = 2e-5
-max_train_epochs = 3
-save_every_n_epochs = 3
-checkpointing_epochs = 3
+network_alpha = 64
+network_dim = 64
+
+learning_rate = 3e-5
+max_train_epochs = 12
+save_every_n_epochs = 6
+checkpointing_epochs = 6
 
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
@@ -47,35 +46,13 @@ alpha_rank_scale = 1.0
 #               = "stride_2"  -> every 2nd block
 #               = "3,7,11,15" -> explicit indices
 add_reft = true
-reft_dim = 32
-reft_alpha = 32
+reft_dim = 64
+reft_alpha = 64
 reft_layers = "last_8"
 
-blocks_to_swap = 16
+blocks_to_swap = 20
 
 
-# ── T-LoRA + ReFT ───────────────────────────────────────────────────────
-# OrthoLoRAExp + timestep masking composed with LoReFT additive output-space
-# edit. ReFT effective scale = network_alpha / reft_dim; keeping them equal
-# pins scale=1.0 (LoReFT paper default). Timestep masking is shared:
-# set_reft_timestep_mask schedules ReFT rank on the same power-law as LoRA.
-#
-# output_name = "anima_tlora_reft"
-# network_alpha = 8
-# network_dim = 8
-# use_ortho = true
-# use_timestep_mask = true
-# min_rank = 1
-# alpha_rank_scale = 1.0
-# add_reft = true
-# reft_dim = 8
-# reft_alpha = 8
-# reft_layers = "last_8"
-# learning_rate = 2e-5
-# max_train_epochs = 3
-# save_every_n_epochs = 3
-# checkpointing_epochs = 3
-# blocks_to_swap = 26
 
 # ── HydraLoRA (OrthoHydraLoRA) ──────────────────────────────────────────
 # MoE multi-head routing: shared lora_down + per-expert lora_up_i, with

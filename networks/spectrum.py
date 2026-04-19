@@ -242,6 +242,11 @@ def spectrum_denoise(
     lora_cutoff_step: Optional[int] = None,
     pooled_text_pos: Optional[torch.Tensor] = None,
     pooled_text_neg: Optional[torch.Tensor] = None,
+    postfix_net=None,
+    postfix_base_embed: Optional[torch.Tensor] = None,
+    postfix_base_neg: Optional[torch.Tensor] = None,
+    postfix_embed_seqlens: Optional[torch.Tensor] = None,
+    postfix_neg_seqlens: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Spectrum-accelerated denoising loop.
 
@@ -306,6 +311,20 @@ def spectrum_denoise(
 
                 t_exp = t.expand(latents.shape[0])
 
+                # σ-conditional postfix: recompute per step on actual forwards.
+                # Cached steps skip all blocks so cross-attn (and thus postfix) is
+                # never consumed there — nothing to plumb on that branch.
+                if postfix_net is not None:
+                    step_embed = postfix_net.append_postfix(
+                        postfix_base_embed, postfix_embed_seqlens, timesteps=t_exp
+                    )
+                    step_negative = postfix_net.append_postfix(
+                        postfix_base_neg, postfix_neg_seqlens, timesteps=t_exp
+                    )
+                else:
+                    step_embed = embed
+                    step_negative = negative_embed
+
                 if actual:
                     # --- Full forward pass ---
                     with (
@@ -322,7 +341,7 @@ def spectrum_denoise(
                             else {}
                         )
                         noise_pred = anima(
-                            latents, t_exp, embed, padding_mask=padding_mask, **_pos_kw
+                            latents, t_exp, step_embed, padding_mask=padding_mask, **_pos_kw
                         )
                     feat = captured["feat"]
                     if cond_fc is None:
@@ -351,7 +370,7 @@ def spectrum_denoise(
                             uncond_noise_pred = anima(
                                 latents,
                                 t_exp,
-                                negative_embed,
+                                step_negative,
                                 padding_mask=padding_mask,
                                 **_neg_kw,
                             )

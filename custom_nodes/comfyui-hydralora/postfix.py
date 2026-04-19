@@ -1,16 +1,15 @@
-"""Anima Prefix/Postfix model-patch node for ComfyUI.
+"""Anima prefix / postfix / cond context-splicing for ComfyUI.
 
-Patches the Anima diffusion model's `forward` so learned prefix/postfix/cond
-vectors are spliced into the T5-compatible crossattn embedding **after** the
-LLM adapter runs and after its pad-to-512 step — i.e. the same space as
-anima_lora's training and reference inference. Positive-only routing is done
-by reading `cond_or_uncond` from transformer_options, so CFG is preserved.
+Wraps the DiT's ``forward`` so learned vectors are spliced into the
+T5-compatible crossattn embedding **after** the LLM adapter runs and after
+its pad-to-512 step — i.e. the same space as anima_lora's training and
+reference inference. Positive-only routing via ``cond_or_uncond`` from
+``transformer_options`` preserves CFG.
 
-Supported modes (auto-detected from safetensors keys/metadata):
-  - prefix  : learned vectors prepended; last K padding slots trimmed
-  - postfix : static learned vectors spliced after real text tokens
-  - cond    : prompt-adaptive postfix computed per-sample by an MLP
-              over mean-pooled content tokens
+Modes auto-detected from safetensors keys/metadata:
+  - prefix : learned vectors prepended; last K padding slots trimmed
+  - postfix: static learned vectors spliced after real text tokens
+  - cond   : prompt-adaptive postfix from an MLP over mean-pooled content
 """
 
 import logging
@@ -18,8 +17,6 @@ from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
-
-import folder_paths
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +34,8 @@ def _build_cond_mlp(embed_dim: int, hidden_dim: int, num_tokens: int) -> nn.Sequ
 _weight_cache: Dict[str, Tuple[str, object, int, str]] = {}
 
 
-def _load_weights(file_path: str) -> Tuple[str, object, int, str]:
+def load_postfix(file_path: str) -> Tuple[str, object, int, str]:
+    """Parse a prefix/postfix/cond safetensors file once, cache by path."""
     if file_path in _weight_cache:
         return _weight_cache[file_path]
 
@@ -95,7 +93,7 @@ def _load_weights(file_path: str) -> Tuple[str, object, int, str]:
         result = ("postfix", embeds, embeds.shape[0], splice_position)
     else:
         raise ValueError(
-            f"Unsupported weight file (keys: {list(weights_sd.keys())[:10]}). "
+            f"Unsupported postfix file (keys: {list(weights_sd.keys())[:10]}). "
             f"Expected 'prefix_embeds', 'postfix_embeds', or 'cond_mlp.*'."
         )
 
@@ -156,12 +154,13 @@ def _apply_cfg(
 
 
 def _make_forward_wrapper(dit, prev_forward, mode, payload, splice_position, strength):
-    """Build a replacement for Anima.forward that splices post-adapter.
+    """Build a replacement for ``Anima.forward`` that splices post-adapter.
 
-    If `prev_forward` is the unmodified bound method, the outermost wrapper runs
-    `preprocess_text_embeds` itself (which executes the LLM adapter + pad-to-512)
-    and then pops `t5xxl_ids`/`t5xxl_weights` before delegating downstream — so
-    inner wrappers and the eventual real `Anima.forward` skip the adapter pass.
+    If ``prev_forward`` is the unmodified bound method, the outermost wrapper
+    runs ``preprocess_text_embeds`` itself (which executes the LLM adapter +
+    pad-to-512) and then pops ``t5xxl_ids`` / ``t5xxl_weights`` before
+    delegating downstream — so inner wrappers and the eventual real
+    ``Anima.forward`` skip the adapter pass.
     """
 
     def new_forward(x, timesteps, context, **kwargs):
@@ -198,72 +197,22 @@ def _make_forward_wrapper(dit, prev_forward, mode, payload, splice_position, str
     return new_forward
 
 
-class AnimaPrefixPostfix:
-    """Patch the Anima DiT to splice learned prefix/postfix/cond vectors.
-
-    Mode and splice position are auto-detected from the safetensors file.
-    Only positive-batch rows are affected (read from transformer_options),
-    so CFG is preserved. Stack multiple instances to combine modes.
+def apply_postfix(model, file_path: str, strength: float) -> bool:
+    """Wrap ``diffusion_model.forward`` on ``model`` to splice postfix
+    vectors. ``model`` must already be a clone. Returns True if applied.
     """
+    if strength == 0:
+        return False
 
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "model": ("MODEL",),
-                "weight_file": (
-                    folder_paths.get_filename_list("loras"),
-                    {
-                        "tooltip": "Safetensors file with prefix_embeds, postfix_embeds, or cond_mlp.* keys."
-                    },
-                ),
-                "strength": (
-                    "FLOAT",
-                    {
-                        "default": 1.0,
-                        "min": 0.0,
-                        "max": 2.0,
-                        "step": 0.05,
-                        "tooltip": "Strength multiplier for the learned vectors.",
-                    },
-                ),
-            },
-        }
+    mode, payload, _, splice_position = load_postfix(file_path)
+    dit = model.model.diffusion_model
 
-    RETURN_TYPES = ("MODEL",)
-    FUNCTION = "apply"
-    CATEGORY = "model_patches"
-    DESCRIPTION = (
-        "Patch the Anima DiT to splice learned prefix/postfix/cond vectors "
-        "after the LLM adapter. Auto-detects mode and splice position from "
-        "the safetensors file. Applies to positive-batch rows only (CFG-safe)."
+    prev = model.object_patches.get("diffusion_model.forward")
+    if prev is None:
+        prev = dit.forward  # bound method — preserves self
+
+    new_fn = _make_forward_wrapper(
+        dit, prev, mode, payload, splice_position, strength
     )
-
-    def apply(self, model, weight_file, strength=1.0):
-        if strength == 0:
-            return (model,)
-
-        file_path = folder_paths.get_full_path("loras", weight_file)
-        mode, payload, _, splice_position = _load_weights(file_path)
-
-        m = model.clone()
-        dit = m.model.diffusion_model
-
-        prev = m.object_patches.get("diffusion_model.forward")
-        if prev is None:
-            prev = dit.forward  # bound method — preserves self
-
-        new_fn = _make_forward_wrapper(
-            dit, prev, mode, payload, splice_position, strength
-        )
-        m.add_object_patch("diffusion_model.forward", new_fn)
-        return (m,)
-
-
-NODE_CLASS_MAPPINGS = {
-    "AnimaPrefixPostfix": AnimaPrefixPostfix,
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "AnimaPrefixPostfix": "Anima Prefix/Postfix",
-}
+    model.add_object_patch("diffusion_model.forward", new_fn)
+    return True

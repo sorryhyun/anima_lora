@@ -4,6 +4,7 @@
 # To switch modes:
 #   - postfix_exp  = caption-conditional MLP ("cond" mode)
 #   - postfix_func = postfix_exp + functional MSE loss vs inversion runs
+#   - postfix_sigma = postfix_exp + σ-conditional residual ("cond-timestep" mode)
 #   - prefix       = prepends vectors at start of sequence
 # Uncomment the target block and comment out the postfix values it overrides.
 # Each variant sets its own `output_name` so `make test-postfix[-exp|-func]`
@@ -15,8 +16,15 @@ network_module = "networks.postfix_anima"
 
 # ── Postfix ─────────────────────────────────────────────────────────────
 # enum network_dim: postfix=16 | postfix_exp=64 | postfix_func=64 | prefix=16
-network_dim = 16
-network_args = ["mode=postfix", "splice_position=end_of_sequence"]
+network_dim = 32
+# network_args = ["mode=postfix", "splice_position=end_of_sequence"]
+network_args = [
+    "mode=cond-timestep",
+    "splice_position=end_of_sequence", # front_of_padding | end_of_sequence
+    "cond_hidden_dim=256",
+    "sigma_feature_dim=128",
+    "sigma_hidden_dim=256",
+]
 output_name = "anima_postfix"
 
 learning_rate = 1e-3
@@ -30,7 +38,7 @@ cache_llm_adapter_outputs = true
 # Postfix training needs a base LoRA and accumulates on cached TE — method-forced.
 blocks_to_swap = 0
 gradient_accumulation_steps = 4
-lora_path = "output/anima-tlora-0414-12.safetensors"
+# lora_path = "output/anima-tlora-0414-12.safetensors"
 
 # ── Postfix (exp — cond mode) ───────────────────────────────────────────
 # Caption-conditional MLP injection. Override the postfix values above.
@@ -64,6 +72,24 @@ lora_path = "output/anima-tlora-0414-12.safetensors"
 # functional_loss_weight = 1.0
 # functional_loss_blocks = "8,12,16,20"
 # functional_loss_num_runs = 3
+
+# ── Postfix (sigma — cond-timestep mode) ────────────────────────────────
+# Caption-conditional base + σ-conditional residual (zero-init). Training
+# starts identical to postfix_exp; σ-dependence only emerges if gradients push
+# it. |sigma_residual| at convergence is the "did σ-conditioning help" knob.
+# Not compatible with --spectrum or --tiled_diffusion at inference.
+#
+# network_dim = 64
+# network_args = [
+#     "mode=cond-timestep",
+#     "splice_position=end_of_sequence",
+#     "cond_hidden_dim=256",
+#     "sigma_feature_dim=128",
+#     "sigma_hidden_dim=256",
+# ]
+# output_name = "anima_postfix_sigma"
+# max_train_epochs = 2
+# checkpointing_epochs = 2
 
 # ── Prefix ──────────────────────────────────────────────────────────────
 # Prepends N vectors to cross-attention. No base LoRA — comment out

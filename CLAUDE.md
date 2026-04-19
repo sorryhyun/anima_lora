@@ -24,15 +24,19 @@ Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The exa
 # Training (run from anima_lora/)
 # Each training invocation selects a method + hardware preset. Method settings win
 # over preset settings on overlap (e.g. postfix forces blocks_to_swap=0).
-# LoRA variants (lora/tlora/tlora_rf/hydralora) live in one methods/lora.toml
-# with toggle blocks; postfix variants (postfix/postfix_exp/postfix_func/prefix)
-# live in one methods/postfix.toml. Uncomment the target block to switch.
+# Only four method files exist: lora.toml, postfix.toml, apex.toml, graft.toml.
+# Variants are toggle blocks inside them — uncomment the target block to switch:
+#   lora.toml    — classic LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT (default
+#                  stacks LoRA + OrthoLoRA + T-LoRA + ReFT together)
+#   postfix.toml — postfix / postfix_exp / postfix_func / postfix_sigma / prefix
 make lora                   # LoRA family (methods/lora.toml + presets.toml[default])
 python tasks.py lora        # Same, works on Windows too
 make lora PRESET=low_vram   # Override preset: methods/lora.toml + presets.toml[low_vram]
 make lora-fast              # Shortcut: methods/lora.toml + presets.toml[fast_16gb]
 make lora-low-vram          # Shortcut: methods/lora.toml + presets.toml[low_vram]
+make lora-half              # Shortcut: methods/lora.toml + presets.toml[half] (sample_ratio=0.5)
 make postfix                # Postfix/prefix family (methods/postfix.toml)
+make apex                   # APEX self-adversarial 1-NFE distillation (methods/apex.toml)
 
 # Modulation guidance distillation
 make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulation)
@@ -44,6 +48,8 @@ make test-invert           # Verify inversion quality
 # Inference (test with most recent output)
 make test
 make test-mod              # Test with modulation guidance (pooled_text_proj)
+make test-apex             # APEX 4-NFE euler inference
+make test-hydra            # HydraLoRA router-live (anima_hydra*_moe.safetensors)
 make test-prefix           # Test with prefix tuning
 make test-postfix          # Test with postfix tuning
 make test-postfix-exp      # Test with postfix tuning (exp variant)
@@ -69,6 +75,10 @@ make mask-clean            # Remove all generated masks
 # Batch
 make comfy-batch           # Run ComfyUI batch workflow
 
+# Debugging + tests
+make print-config METHOD=lora PRESET=default   # Dump merged config chain (base→preset→method→CLI)
+make test-unit                                  # pytest on tests/ (smoke, config, loss/network registries)
+
 # Linting
 ruff check . --fix && ruff format .
 ```
@@ -88,6 +98,8 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 | `gui/` | PySide6 GUI package: config editing with presets, GRAFT curation, dataset browser, training monitor |
 | `tasks.py` | Cross-platform task runner (Windows-compatible Makefile alternative) |
 
+Deep-dives in `docs/methods/`: `apex.md`, `hydra-lora.md`, `invert.md`, `mod-guidance.md`, `postfix-sigma.md`, `prefix-tuning.md`, `psoft-integrated-ortholora.md`, `reft.md`, `spectrum.md`, `timestep_mask.md`.
+
 ## Config flow
 
 Training is config-driven via a three-layer chain: `base.toml → presets.toml[<preset>] → methods/<method>.toml → CLI args`. Method settings win over preset settings on overlap, so a method can force its own hardware requirements (e.g. postfix forces `blocks_to_swap=0`).
@@ -95,7 +107,11 @@ Training is config-driven via a three-layer chain: `base.toml → presets.toml[<
 Layout:
 - `configs/base.toml` — shared infrastructure (model paths, optimizer, compile flags, etc.) AND the default dataset blueprint (`[general]` + `[[datasets]]` + `[[datasets.subsets]]`). The dataset sections are consumed by `BlueprintGenerator` and skipped by the flat method+preset merge chain (see `_DATASET_CONFIG_SECTIONS` in `library/train_util.py`). Override with `--dataset_config <path>` when you need a different blueprint (e.g. GRAFT uses `graft/dataset_config.toml`).
 - `configs/presets.toml` — all hardware profiles in one file as TOML sections: `[default]`, `[fast_16gb]`, `[low_vram]` (also serves as Windows 8GB), `[graft]`, `[half]` (experiment preset — sets `sample_ratio=0.5` for every subset via the global `--sample_ratio` override). Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc.
-- `configs/methods/` — one file per algorithm. Holds rank, method flags (`use_hydra`, …), and the method's opinionated learning rate / epochs / output_name. Files: `lora`, `tlora`, `hydralora`, `postfix`, `postfix_exp`, `postfix_func`, `prefix`, `graft`.
+- `configs/methods/` — one file per algorithm family. Holds rank, method flags (`use_hydra`, `add_reft`, …), and the method's opinionated learning rate / epochs / output_name. Four files only:
+  - `lora.toml` — LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT. Variants are toggle blocks; default stacks classic LoRA + OrthoLoRA + T-LoRA + ReFT.
+  - `postfix.toml` — postfix / postfix_exp / postfix_func / postfix_sigma / prefix. Toggle blocks.
+  - `apex.toml` — APEX self-adversarial distillation (arXiv:2604.12322). Warm-starts from a prior LoRA via `network_weights` + `dim_from_weights`.
+  - `graft.toml` — GRAFT training runs invoked by `scripts/graft_step.py`.
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
 `library.train_util.load_method_preset(method, preset)` is the reusable merge helper (used by `train.py` and `scripts/graft_step.py`). All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/`).
@@ -121,11 +137,12 @@ Layout:
 
 ### LoRA variants
 
-All in `networks/lora_modules.py`:
+All in `networks/lora_modules.py`. Stack freely via toggle flags in `configs/methods/lora.toml` — the default is LoRA + OrthoLoRA + T-LoRA + ReFT together.
 - **LoRA** — Classic low-rank: `y = x + (x @ down @ up) * scale * multiplier`
-- **OrthoLoRA** — SVD-based orthogonal parameterization with orthogonality regularization (linear layers only)
-- **T-LoRA** — Timestep-dependent rank masking: effective rank varies with denoising step via power-law schedule.
-- **HydraLoRA** — MoE-style multi-head routing: shared `lora_down` + per-expert `lora_up_i` heads. Router on max-pooled `crossattn_emb` selects expert contributions per sample. Requires `cache_llm_adapter_outputs=true`. Compatible with T-LoRA. See `docs/methods/hydra-lora.md`.
+- **OrthoLoRA** — SVD-based orthogonal parameterization with orthogonality regularization (linear layers only). Saved as plain LoRA via thin SVD on ΔW at save time. See `docs/methods/psoft-integrated-ortholora.md`.
+- **T-LoRA** — Timestep-dependent rank masking: effective rank varies with denoising step via power-law schedule. See `docs/methods/timestep_mask.md`.
+- **HydraLoRA** — MoE-style multi-head routing: shared `lora_down` + per-expert `lora_up_i` heads, layer-local router on the adapted Linear's input. Requires `cache_llm_adapter_outputs=true`. Produces a `*_moe.safetensors` sibling for router-live inference. See `docs/methods/hydra-lora.md`.
+- **ReFT** — Block-level residual-stream intervention (LoReFT, Wu et al. NeurIPS 2024). One `ReFTModule` per selected DiT block wraps the block's `forward` and adds `R^T·(ΔW·h + b)·scale` to the output; orthogonality regularized on `R`. Additive side-channel, composes with any LoRA variant, lives in the same `.safetensors`. Vanilla ComfyUI can't load ReFT (weight-patcher silently drops `reft_*` keys) — use the `AnimaAdapterLoader` custom node. See `docs/methods/reft.md`.
 
 ### Training flow (train.py)
 
@@ -171,6 +188,10 @@ The GRAFT loop (`scripts/graft_step.py`) implements rejection-sampling-based fin
 
 See `docs/guidelines/graft-guideline.md` for detailed curation guidance.
 
+## APEX (1-NFE distillation)
+
+Self-adversarial condition-shift distillation — turns the pretrained velocity-field DiT into a 1–4 NFE generator without a discriminator or external teacher (`configs/methods/apex.toml`, `docs/methods/apex.md`). The "adversarial" signal comes from querying the same network under a learned shifted text condition (`ConditionShift`, `c_fake = A·c + b`). Training does **3 DiT forwards per step** (real + fake@real_xt stop-grad + fake@fake_xt), so `blocks_to_swap = 0` is method-forced — block swapping would crash on the second forward with a `FakeTensor` device mismatch. Warm-start from a prior LoRA checkpoint is effectively mandatory (`network_weights` + `dim_from_weights=true`); cold-start catastrophically regressed in Phase 0 testing. Inference is `make test-apex` (4 euler steps, `guidance_scale=1.0`).
+
 ## Modulation guidance
 
 Text-conditioned AdaLN modulation via a learned `pooled_text_proj` MLP (Starodubcev et al., ICLR 2026). Distilled with `make distill-mod`: teacher uses real cross-attention, student uses zeroed cross-attention but receives pooled text through modulation. At inference, steers AdaLN coefficients toward quality-positive directions. See `docs/methods/mod-guidance.md`.
@@ -202,7 +223,10 @@ Utility scripts in `scripts/`:
 
 Spectrum KSampler and mod guidance ComfyUI nodes live in a separate repo: https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler
 
-`custom_nodes/comfyui-hydralora/` — HydraLoRA loader node for ComfyUI. Loads `*_moe.safetensors` multi-head files and bakes down experts with uniform weighting, since ComfyUI's weight-add patching can't replicate the trained layer-local routing.
+`custom_nodes/comfyui-hydralora/` — **Anima Adapter Loader** node for ComfyUI (unified LoRA / Hydra / ReFT + prefix/postfix). One node with two independently-toggled sections; auto-detects by key sniff and applies each component with its own strength. Code is split across `adapter.py` (LoRA/Hydra/ReFT), `postfix.py` (prefix/postfix/cond), and `nodes.py` (the loader); `__init__.py` only re-exports the node mappings.
+- Plain LoRA / HydraLoRA → `ModelPatcher.add_patches` (Hydra experts baked down with uniform weighting since the trained layer-local router can't run under weight-patching).
+- ReFT → per-block `forward_hook` installed via `ModelPatcher.add_object_patch` on `diffusion_model.blocks.<idx>._forward_hooks`, replaying `h + R^T·(ΔW·h + b)·scale·strength`. Hooking (not `forward` override) is load-bearing — overriding `forward` strands block weights on CPU under ComfyUI's cast-weights path.
+- Prefix / postfix / cond → `ModelPatcher.add_object_patch` on `diffusion_model.forward`, splicing learned vectors into the T5-compatible crossattn embedding *after* the LLM adapter + pad-to-512 step. Positive-batch rows only via `cond_or_uncond` from `transformer_options` (CFG-safe).
 
 ## External tools
 

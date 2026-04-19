@@ -163,6 +163,11 @@ def generate_body_tiled(
         postfix_net, postfix_sd = create_network_from_weights(
             multiplier=1.0, file=postfix_weight, ae=None, text_encoders=None, unet=None
         )
+        if postfix_net.mode == "cond-timestep":
+            raise NotImplementedError(
+                "cond-timestep postfix + tiled diffusion is not yet supported. "
+                "Disable --tiled_diffusion or use a cond/postfix checkpoint."
+            )
         postfix_net.load_weights(postfix_weight)
         postfix_net.to(device, dtype=torch.bfloat16)
         embed_mask = context["embed"][3].to(device)
@@ -425,6 +430,11 @@ def generate_body(
             f"Prefix: prepended {prefix_net.num_postfix_tokens} tokens, embed shape now {embed.shape}"
         )
 
+    postfix_net = None
+    embed_seqlens = None
+    neg_seqlens = None
+    postfix_base_embed = None
+    postfix_base_neg = None
     if postfix_weight is not None:
         from networks.postfix_anima import create_network_from_weights
 
@@ -436,13 +446,23 @@ def generate_body(
         # Compute seqlens from attention masks
         embed_mask = context["embed"][3].to(device)
         embed_seqlens = embed_mask.sum(dim=-1).to(torch.int32)
-        embed = postfix_net.append_postfix(embed, embed_seqlens)
         neg_mask = context_null["embed"][3].to(device)
         neg_seqlens = neg_mask.sum(dim=-1).to(torch.int32)
-        negative_embed = postfix_net.append_postfix(negative_embed, neg_seqlens)
-        logger.info(
-            f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text"
-        )
+        if postfix_net.mode == "cond-timestep":
+            # σ-conditional: defer postfix application to inside the denoising loop
+            # so it's recomputed per timestep. Stash the un-postfixed base embeds.
+            postfix_base_embed = embed
+            postfix_base_neg = negative_embed
+            logger.info(
+                f"Postfix (cond-timestep): deferring per-step injection of "
+                f"{postfix_net.num_postfix_tokens} tokens"
+            )
+        else:
+            embed = postfix_net.append_postfix(embed, embed_seqlens)
+            negative_embed = postfix_net.append_postfix(negative_embed, neg_seqlens)
+            logger.info(
+                f"Postfix: appended {postfix_net.num_postfix_tokens} tokens after text"
+            )
 
     # Create padding mask
     padding_mask = torch.zeros(
@@ -461,6 +481,14 @@ def generate_body(
 
     embed = embed.to(torch.bfloat16)
     negative_embed = negative_embed.to(torch.bfloat16)
+
+    # Keep the σ-conditional postfix base in sync with shaping/cast above.
+    if postfix_base_embed is not None:
+        postfix_base_embed = embed
+        postfix_base_neg = negative_embed
+        if embed_seqlens.shape[0] < bs:
+            embed_seqlens = embed_seqlens.expand(bs)
+            neg_seqlens = neg_seqlens.expand(bs)
 
     # Prepare timesteps
     timesteps, sigmas = inference_utils.get_timesteps_sigmas(
@@ -509,6 +537,11 @@ def generate_body(
             pooled_text_pos=_pooled_text_pos,
             pooled_text_neg=_pooled_text_neg,
             lora_cutoff_step=lora_cutoff_step,
+            postfix_net=postfix_net if postfix_base_embed is not None else None,
+            postfix_base_embed=postfix_base_embed,
+            postfix_base_neg=postfix_base_neg,
+            postfix_embed_seqlens=embed_seqlens,
+            postfix_neg_seqlens=neg_seqlens,
         )
     else:
         with tqdm(total=len(timesteps), desc=f"Denoising steps ({bs}x)") as pbar:
@@ -524,6 +557,18 @@ def generate_body(
 
                 t_expand = t.expand(latents.shape[0])
 
+                # σ-conditional postfix: recompute per step against base embeds.
+                if postfix_base_embed is not None:
+                    step_embed = postfix_net.append_postfix(
+                        postfix_base_embed, embed_seqlens, timesteps=t_expand
+                    )
+                    step_negative = postfix_net.append_postfix(
+                        postfix_base_neg, neg_seqlens, timesteps=t_expand
+                    )
+                else:
+                    step_embed = embed
+                    step_negative = negative_embed
+
                 with (
                     torch.no_grad(),
                     torch.autocast(
@@ -538,7 +583,7 @@ def generate_body(
                         else {}
                     )
                     noise_pred = anima(
-                        latents, t_expand, embed, padding_mask=padding_mask, **_pos_kw
+                        latents, t_expand, step_embed, padding_mask=padding_mask, **_pos_kw
                     )
 
                 if do_cfg:
@@ -558,7 +603,7 @@ def generate_body(
                         uncond_noise_pred = anima(
                             latents,
                             t_expand,
-                            negative_embed,
+                            step_negative,
                             padding_mask=padding_mask,
                             **_neg_kw,
                         )

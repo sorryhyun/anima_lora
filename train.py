@@ -605,7 +605,9 @@ class AnimaTrainer:
                     crossattn_emb = network.prepend_prefix(crossattn_emb)
                 elif hasattr(network, "append_postfix"):
                     seqlens = t5_attn_mask.sum(dim=-1).to(torch.int32)
-                    crossattn_emb = network.append_postfix(crossattn_emb, seqlens)
+                    crossattn_emb = network.append_postfix(
+                        crossattn_emb, seqlens, timesteps=timesteps
+                    )
                 if args.trim_crossattn_kv:
                     kw["crossattn_seqlens"] = t5_attn_mask.sum(dim=-1).to(torch.int32)
                     max_cs = _max_crossattn_seqlen
@@ -1922,6 +1924,9 @@ class AnimaTrainer:
         """Run a validation pass over val_dataloader x validation_sigmas."""
         optimizer_eval_fn()
         accelerator.unwrap_model(network).eval()
+        unwrapped_unet = accelerator.unwrap_model(unet)
+        if hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
+            unwrapped_unet.switch_block_swap_for_inference()
         rng_states = self._switch_rng_state(
             args.validation_seed if args.validation_seed is not None else args.seed
         )
@@ -2013,6 +2018,9 @@ class AnimaTrainer:
         args.t_max = original_t_max
         optimizer_train_fn()
         accelerator.unwrap_model(network).train()
+        if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
+            unwrapped_unet.switch_block_swap_for_training()
+        clean_memory_on_device(accelerator.device)
         progress_bar.unpause()
 
     def train(self, args):
