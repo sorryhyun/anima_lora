@@ -246,6 +246,27 @@ class LoRAModule(BaseLoRAModule):
         )
 
 
+def _sigma_sinusoidal_features(
+    sigma: torch.Tensor, sigma_feature_dim: int
+) -> torch.Tensor:
+    """Sinusoidal σ features matching the DiT t_embedder functional form.
+
+    Shared helper (also used by postfix-sigma, inlined there for historical
+    self-containedness). Kept here so HydraLoRAModule / OrthoHydraLoRAExpModule
+    can reuse the identical spectrum without cross-module coupling.
+    """
+    t = sigma.flatten().float()
+    half_dim = sigma_feature_dim // 2
+    exponent = (
+        -math.log(10000)
+        * torch.arange(half_dim, dtype=torch.float32, device=t.device)
+        / max(half_dim, 1)
+    )
+    freqs = torch.exp(exponent)
+    angles = t[:, None] * freqs[None, :]  # [B, half_dim]
+    return torch.cat([torch.cos(angles), torch.sin(angles)], dim=-1)
+
+
 class HydraLoRAModule(BaseLoRAModule):
     """
     HydraLoRA: MoE-style multi-head LoRA with layer-local routing.
@@ -253,6 +274,13 @@ class HydraLoRAModule(BaseLoRAModule):
     Each module owns its own router that reads the layer input and emits per-sample gates,
     so specialization is learned per-layer rather than globally.
     Reference: docs/methods/hydra-lora.md
+
+    Optional σ-conditional routing (Track B, timestep-hydra.md): when
+    ``sigma_feature_dim > 0``, a small 2-layer MLP maps sinusoidal(σ) to an
+    additive bias on the gate logits. Zero-init on the final layer means
+    training starts identical to base HydraLoRA; σ-dependence only emerges if
+    gradients push it. ``|sigma_mlp[-1].weight|`` at convergence is a direct
+    diagnostic of how much σ-conditioning was actually used.
     """
 
     def __init__(
@@ -267,6 +295,8 @@ class HydraLoRAModule(BaseLoRAModule):
         module_dropout=None,
         num_experts=4,
         channel_scale=None,
+        sigma_feature_dim: int = 0,
+        sigma_hidden_dim: int = 128,
     ):
         super().__init__(
             lora_name,
@@ -304,7 +334,22 @@ class HydraLoRAModule(BaseLoRAModule):
 
         self._register_channel_scale(self.lora_down.weight.data, channel_scale)
 
+        self.sigma_feature_dim = int(sigma_feature_dim)
+        self.sigma_hidden_dim = int(sigma_hidden_dim)
+        if self.sigma_feature_dim > 0:
+            # σ-conditional router bias: sinusoidal(σ) -> 2-layer MLP -> E logits.
+            # Zero-init the final layer so step 0 logits == base router output.
+            self.sigma_mlp = torch.nn.Sequential(
+                torch.nn.Linear(self.sigma_feature_dim, self.sigma_hidden_dim),
+                torch.nn.SiLU(),
+                torch.nn.Linear(self.sigma_hidden_dim, num_experts, bias=False),
+            )
+            torch.nn.init.zeros_(self.sigma_mlp[-1].weight)
+        else:
+            self.sigma_mlp = None
+
         self._last_gate = None  # (B, num_experts), cached each forward for balance loss
+        self._sigma = None  # (B,) σ tensor; set externally by LoRANetwork.set_sigma
 
     def _compute_gate(self, x_lora: torch.Tensor) -> torch.Tensor:
         """Pool layer input over sequence dim (if any), run router, softmax.
@@ -313,6 +358,9 @@ class HydraLoRAModule(BaseLoRAModule):
         channels with peak/mean ratios of 80–96× (see channel_dominance_analysis.md).
         Max pool would surface those outliers straight into the router and blow
         up softmax in bf16. Mean pool averages them out.
+
+        When ``sigma_mlp`` is present and ``_sigma`` is set, adds a σ-conditional
+        bias to the logits before softmax (zero at init → identity to base).
         """
         if x_lora.dim() >= 3:
             B = x_lora.shape[0]
@@ -320,6 +368,11 @@ class HydraLoRAModule(BaseLoRAModule):
         else:
             pooled = x_lora
         logits = self.router(pooled)  # (B, num_experts)
+        if self.sigma_mlp is not None and self._sigma is not None:
+            sigma_feat = _sigma_sinusoidal_features(
+                self._sigma, self.sigma_feature_dim
+            ).to(logits.dtype)
+            logits = logits + self.sigma_mlp(sigma_feat)
         return torch.softmax(logits, dim=-1)
 
     def forward(self, x):
@@ -526,6 +579,8 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         module_dropout=None,
         num_experts=4,
         channel_scale=None,
+        sigma_feature_dim: int = 0,
+        sigma_hidden_dim: int = 128,
     ):
         super().__init__(
             lora_name,
@@ -572,7 +627,20 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # Per-channel input pre-scaling (SmoothQuant-style)
         self._register_channel_scale(self.Q_basis, channel_scale)
 
+        self.sigma_feature_dim = int(sigma_feature_dim)
+        self.sigma_hidden_dim = int(sigma_hidden_dim)
+        if self.sigma_feature_dim > 0:
+            self.sigma_mlp = torch.nn.Sequential(
+                torch.nn.Linear(self.sigma_feature_dim, self.sigma_hidden_dim),
+                torch.nn.SiLU(),
+                torch.nn.Linear(self.sigma_hidden_dim, num_experts, bias=False),
+            )
+            torch.nn.init.zeros_(self.sigma_mlp[-1].weight)
+        else:
+            self.sigma_mlp = None
+
         self._last_gate = None  # cached each forward for balance loss
+        self._sigma = None  # (B,) σ; set by LoRANetwork.set_sigma
 
     @staticmethod
     def _cayley(S: torch.Tensor) -> torch.Tensor:
@@ -586,13 +654,22 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         return torch.linalg.solve(eye + A, eye - A)
 
     def _compute_gate(self, x_lora: torch.Tensor) -> torch.Tensor:
-        """Pool layer input over sequence dim (if any), run router, softmax."""
+        """Pool layer input over sequence dim (if any), run router, softmax.
+
+        σ-conditional bias added when ``sigma_mlp`` is present and ``_sigma``
+        is set. See ``HydraLoRAModule._compute_gate`` for rationale.
+        """
         if x_lora.dim() >= 3:
             B = x_lora.shape[0]
             pooled = x_lora.reshape(B, -1, x_lora.shape[-1]).mean(dim=1)
         else:
             pooled = x_lora
         logits = self.router(pooled)  # (B, num_experts)
+        if self.sigma_mlp is not None and self._sigma is not None:
+            sigma_feat = _sigma_sinusoidal_features(
+                self._sigma, self.sigma_feature_dim
+            ).to(logits.dtype)
+            logits = logits + self.sigma_mlp(sigma_feat)
         return torch.softmax(logits, dim=-1)
 
     def forward(self, x):

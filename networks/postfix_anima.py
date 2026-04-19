@@ -60,6 +60,10 @@ def create_network(
     cond_hidden_dim = int(kwargs.get("cond_hidden_dim", 256))
     sigma_feature_dim = int(kwargs.get("sigma_feature_dim", 128))
     sigma_hidden_dim = int(kwargs.get("sigma_hidden_dim", 256))
+    slot_embed_init_std = float(kwargs.get("slot_embed_init_std", 0.02))
+    contrastive_weight = float(kwargs.get("contrastive_weight", 0.0))
+    gradient_accumulation_steps = int(kwargs.get("gradient_accumulation_steps", 1))
+    sigma_budget_weight = float(kwargs.get("sigma_budget_weight", 0.0))
 
     network = PostfixNetwork(
         num_postfix_tokens=num_postfix_tokens,
@@ -70,6 +74,10 @@ def create_network(
         cond_hidden_dim=cond_hidden_dim,
         sigma_feature_dim=sigma_feature_dim,
         sigma_hidden_dim=sigma_hidden_dim,
+        slot_embed_init_std=slot_embed_init_std,
+        contrastive_weight=contrastive_weight,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        sigma_budget_weight=sigma_budget_weight,
     )
     return network
 
@@ -163,6 +171,15 @@ def create_network_from_weights(
 
     splice_position = metadata_splice or "end_of_sequence"
 
+    # slot_embed / contrastive params can be overridden via kwargs at load time
+    # (e.g. enabling contrastive for a post-hoc analysis run). Default std=0.0
+    # because a checkpoint that lacks slot_embed was trained without it — we'll
+    # respect what's in the file.
+    slot_embed_init_std = float(kwargs.get("slot_embed_init_std", 0.0))
+    contrastive_weight = float(kwargs.get("contrastive_weight", 0.0))
+    gradient_accumulation_steps = int(kwargs.get("gradient_accumulation_steps", 1))
+    sigma_budget_weight = float(kwargs.get("sigma_budget_weight", 0.0))
+
     network = PostfixNetwork(
         num_postfix_tokens=num_postfix_tokens,
         embed_dim=embed_dim,
@@ -172,6 +189,10 @@ def create_network_from_weights(
         cond_hidden_dim=cond_hidden_dim,
         sigma_feature_dim=sigma_feature_dim,
         sigma_hidden_dim=sigma_hidden_dim,
+        slot_embed_init_std=slot_embed_init_std,
+        contrastive_weight=contrastive_weight,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        sigma_budget_weight=sigma_budget_weight,
     )
     return network, weights_sd
 
@@ -187,6 +208,10 @@ class PostfixNetwork(nn.Module):
         cond_hidden_dim: int = 256,
         sigma_feature_dim: int = 128,
         sigma_hidden_dim: int = 256,
+        slot_embed_init_std: float = 0.0,
+        contrastive_weight: float = 0.0,
+        gradient_accumulation_steps: int = 1,
+        sigma_budget_weight: float = 0.0,
     ):
         super().__init__()
         if mode not in ("postfix", "prefix", "cond", "cond-timestep"):
@@ -228,6 +253,15 @@ class PostfixNetwork(nn.Module):
             )
             nn.init.zeros_(self.cond_mlp[-1].weight)
             nn.init.zeros_(self.cond_mlp[-1].bias)
+            # Per-slot identity embedding: breaks the K-slot permutation symmetry
+            # that would otherwise keep K_effective=1 forever (see
+            # `bench/postfix/analysis.md`). When init_std=0 the module is inert
+            # (back-compat with checkpoints trained without it); when >0 each slot
+            # gets a distinct bias so gradients differ across K from step 1.
+            self.slot_embed = nn.Parameter(
+                torch.randn(num_postfix_tokens, embed_dim) * slot_embed_init_std
+            )
+            self.slot_embed_init_std = slot_embed_init_std
             if mode == "cond-timestep":
                 # σ-conditional residual: sinusoidal(σ) -> 2-layer MLP -> K*D residual.
                 # Zero-init final layer so training starts identical to "cond" — σ-dependence
@@ -241,6 +275,7 @@ class PostfixNetwork(nn.Module):
                 nn.init.zeros_(self.sigma_mlp[-1].weight)
                 nn.init.zeros_(self.sigma_mlp[-1].bias)
             total_params = sum(p.numel() for p in self.cond_mlp.parameters())
+            total_params += self.slot_embed.numel()
             if mode == "cond-timestep":
                 total_params += sum(p.numel() for p in self.sigma_mlp.parameters())
             suffix = (
@@ -248,9 +283,14 @@ class PostfixNetwork(nn.Module):
                 if mode == "cond-timestep"
                 else ""
             )
+            slot_note = (
+                f", slot_embed_std={slot_embed_init_std}"
+                if slot_embed_init_std > 0
+                else ", slot_embed=0 (inert)"
+            )
             logger.info(
                 f"PostfixNetwork: {mode} mode — {num_postfix_tokens} tokens × dim {embed_dim}, "
-                f"hidden {cond_hidden_dim}{suffix}, splice={self.splice_position}, "
+                f"hidden {cond_hidden_dim}{suffix}{slot_note}, splice={self.splice_position}, "
                 f"{total_params} params (last layers zero-inited)"
             )
         else:
@@ -263,6 +303,39 @@ class PostfixNetwork(nn.Module):
                 f"dim {embed_dim}, init_std={init_std}, splice={self.splice_position}, "
                 f"{self.postfix_embeds.numel()} params"
             )
+
+        # Contrastive-loss state. Only wired into the loss composer when
+        # contrastive_weight > 0 AND mode in cond/cond-timestep (get_contrastive_loss
+        # short-circuits otherwise).
+        #
+        # Scoped to cond_mlp (not the full postfix) so the σ-residual can't swallow
+        # the gradient — v1 of this loss used the full postfix and σ_mlp absorbed
+        # the decorrelation pressure, leaving cond_mlp still caption-collapsed.
+        #
+        # The reference set is a per-optimizer-step accumulator (NOT a persistent
+        # rolling buffer) of DETACHED cond_mlp outputs from prior microbatches
+        # within the same gradient-accumulation window. Resets whenever the
+        # accumulator reaches `gradient_accumulation_steps` entries — so the next forward
+        # starts with an empty reference set, reflecting the new optimizer step.
+        #
+        # Why intra-accum over a global buffer (v2): buffer entries were produced
+        # by OLDER weights, so the "decorrelation target" was stale. At weight=0.1
+        # this created a feedback loop (weights shift → buffer becomes irrelevant
+        # noise → decorrelation pressure pushes against a ghost). Intra-accum
+        # entries are all same-weight, giving a clean contrastive signal.
+        # Trade-off: with gradient_accumulation_steps=1 there's no signal; needs ≥2.
+        # Detach (not live) is forced by accelerate's per-microbatch backward —
+        # the prior microbatch's compute graph is gone by the time we look.
+        self.contrastive_weight = contrastive_weight
+        self.gradient_accumulation_steps = max(int(gradient_accumulation_steps), 1)
+        self._contrastive_accum: list[torch.Tensor] = []
+        self._last_postfix: Optional[torch.Tensor] = None
+        self._last_cond_out: Optional[torch.Tensor] = None
+        self._last_sigma_residual: Optional[torch.Tensor] = None
+        # σ-budget (B): soft L2 on ‖sigma_residual‖² so the σ-branch can't eat
+        # capacity that belongs to cond_mlp. Empirical: residual/base = 2.5 at
+        # convergence of v1 ⇒ σ-branch dominated; this term penalizes that.
+        self.sigma_budget_weight = sigma_budget_weight
 
     def apply_to(self, text_encoders, unet, apply_text_encoder=True, apply_unet=True):
         # No monkey-patching needed — training loop handles prefix/postfix on cached crossattn_emb
@@ -296,12 +369,16 @@ class PostfixNetwork(nn.Module):
         """
         t = timesteps.flatten().float()
         half_dim = self.sigma_feature_dim // 2
-        exponent = -math.log(10000) * torch.arange(
-            half_dim, dtype=torch.float32, device=t.device
-        ) / max(half_dim, 1)
+        exponent = (
+            -math.log(10000)
+            * torch.arange(half_dim, dtype=torch.float32, device=t.device)
+            / max(half_dim, 1)
+        )
         freqs = torch.exp(exponent)
         angles = t[:, None] * freqs[None, :]  # [B, half_dim]
-        return torch.cat([torch.cos(angles), torch.sin(angles)], dim=-1)  # [B, 2*half_dim]
+        return torch.cat(
+            [torch.cos(angles), torch.sin(angles)], dim=-1
+        )  # [B, 2*half_dim]
 
     def append_postfix(
         self,
@@ -339,7 +416,16 @@ class PostfixNetwork(nn.Module):
             )  # [B, S]
             denom = mask.sum(dim=1, keepdim=True).clamp(min=1.0)
             pooled = (crossattn_emb * mask.unsqueeze(-1)).sum(dim=1) / denom  # [B, D]
-            postfix = self.cond_mlp(pooled).view(B, K, D).to(crossattn_emb.dtype)
+            # cond_mlp output isolated so the contrastive loss can target only
+            # the caption-reading branch (not slot_embed / sigma_residual which
+            # are caption-independent and would swallow the gradient otherwise).
+            cond_out = self.cond_mlp(pooled).view(B, K, D).to(crossattn_emb.dtype)
+            self._last_cond_out = cond_out
+            # Per-slot identity: add slot_embed so slots stop being permutation-
+            # symmetric. Inert when init_std=0 (legacy checkpoints).
+            postfix = cond_out + self.slot_embed.to(
+                dtype=crossattn_emb.dtype, device=crossattn_emb.device
+            ).unsqueeze(0)
             if self.mode == "cond-timestep":
                 if timesteps is None:
                     raise ValueError(
@@ -352,6 +438,12 @@ class PostfixNetwork(nn.Module):
                     self.sigma_mlp(sigma_feat).view(B, K, D).to(crossattn_emb.dtype)
                 )
                 postfix = postfix + sigma_residual
+                # Cache for the σ-budget penalty (B).
+                self._last_sigma_residual = sigma_residual
+            else:
+                self._last_sigma_residual = None
+            # Kept for diagnostics / backward compat; not the contrastive source.
+            self._last_postfix = postfix
         else:
             postfix = (
                 self.postfix_embeds.unsqueeze(0)
@@ -388,9 +480,82 @@ class PostfixNetwork(nn.Module):
 
     def _cond_param_list(self):
         params = list(self.cond_mlp.parameters())
+        params.append(self.slot_embed)
         if self.mode == "cond-timestep":
             params = params + list(self.sigma_mlp.parameters())
         return params
+
+    def get_contrastive_loss(self) -> torch.Tensor:
+        """Mean off-diagonal cosine between the current cond_mlp output and
+        DETACHED cond_mlp outputs from prior microbatches of the same optimizer
+        step (intra-grad-accumulation). Pressures cond_mlp to produce
+        caption-varying outputs.
+
+        Returns zero when inactive (wrong mode, weight=0, or no prior microbatch
+        yet — first forward of a new optimizer step). With gradient_accumulation_steps=1
+        this is always zero; needs ≥2 forwards per step to have any signal.
+        """
+        if self.mode not in ("cond", "cond-timestep"):
+            return torch.zeros((), dtype=torch.float32)
+        source = self._last_cond_out
+        if source is None or self.contrastive_weight <= 0.0:
+            ref = source if source is not None else next(self.cond_mlp.parameters())
+            return ref.new_zeros(())
+
+        current = source.reshape(source.shape[0], -1)  # [B, K*D]
+        current_n = torch.nn.functional.normalize(current, dim=-1)
+        B_local = current.shape[0]
+        terms: list[torch.Tensor] = []
+
+        # Against prior microbatches' detached cond_mlp outputs — same weights,
+        # so the decorrelation target is coherent (unlike the old rolling buffer).
+        if len(self._contrastive_accum) > 0:
+            accum = torch.stack(
+                [
+                    a.to(device=current.device, dtype=current.dtype)
+                    for a in self._contrastive_accum
+                ],
+                dim=0,
+            )  # [N_prior, K*D]
+            accum_n = torch.nn.functional.normalize(accum, dim=-1)
+            terms.append((current_n @ accum_n.T).mean())
+
+        # Within-batch (matters only if dataloader gets B>1, but cheap to include).
+        if B_local > 1:
+            intra = current_n @ current_n.T
+            mask = ~torch.eye(B_local, dtype=torch.bool, device=intra.device)
+            terms.append(intra[mask].mean())
+
+        loss = torch.stack(terms).mean() if terms else current.new_zeros(())
+        self._last_contrastive_value = float(loss.detach().item())
+
+        # Append current to accumulator, then reset if we've completed a
+        # gradient-accumulation window. Reset HAPPENS here (after append) so
+        # the next microbatch's get_contrastive_loss sees an empty accumulator.
+        with torch.no_grad():
+            for b in range(B_local):
+                self._contrastive_accum.append(current[b].detach().clone())
+            if len(self._contrastive_accum) >= self.gradient_accumulation_steps:
+                self._contrastive_accum.clear()
+
+        return loss
+
+    def get_sigma_budget_loss(self) -> torch.Tensor:
+        """Mean ‖sigma_residual‖² (per-sample, mean over K·D) — penalizes the
+        σ-branch for eating magnitude that should belong to cond_mlp. Empirical:
+        without this, residual/base ratio converges to ~2.5, σ-branch dominates,
+        and cond_mlp stays caption-collapsed even with a contrastive term on
+        cond_out. Returns zero when inactive (wrong mode, weight=0, or no
+        sigma_residual cached)."""
+        if self.mode != "cond-timestep":
+            return torch.zeros((), dtype=torch.float32)
+        sr = self._last_sigma_residual
+        if sr is None or self.sigma_budget_weight <= 0.0:
+            ref = sr if sr is not None else next(self.sigma_mlp.parameters())
+            return ref.new_zeros(())
+        loss = sr.float().pow(2).mean()
+        self._last_sigma_budget_value = float(loss.detach().item())
+        return loss
 
     def get_trainable_params(self):
         if self.mode == "prefix":
@@ -433,6 +598,7 @@ class PostfixNetwork(nn.Module):
                 f"cond_mlp.{k}": v.detach().clone().cpu().to(dtype)
                 for k, v in self.cond_mlp.state_dict().items()
             }
+            state_dict["slot_embed"] = self.slot_embed.detach().clone().cpu().to(dtype)
             if self.mode == "cond-timestep":
                 for k, v in self.sigma_mlp.state_dict().items():
                     state_dict[f"sigma_mlp.{k}"] = v.detach().clone().cpu().to(dtype)
@@ -500,9 +666,22 @@ class PostfixNetwork(nn.Module):
                 raise ValueError(
                     f"cond_mlp load_state_dict mismatch: missing={missing}, unexpected={unexpected}"
                 )
-            msg = (
-                f"Loaded cond_mlp weights: {sum(p.numel() for p in self.cond_mlp.parameters())} params"
-            )
+            # slot_embed is a newer tensor; legacy checkpoints don't have it.
+            # Respect whatever was in the file; leave the __init__ value (which
+            # is zero-std by default at load time, matching "no slot_embed"
+            # behavior) when absent.
+            if "slot_embed" in weights_sd:
+                self.slot_embed.data.copy_(weights_sd["slot_embed"])
+                logger.info(
+                    f"Loaded slot_embed: shape={tuple(self.slot_embed.shape)}, "
+                    f"norm={self.slot_embed.norm().item():.4f}"
+                )
+            else:
+                logger.info(
+                    "Checkpoint has no 'slot_embed' (legacy) — slot_embed remains "
+                    f"at init value (norm={self.slot_embed.norm().item():.4f})"
+                )
+            msg = f"Loaded cond_mlp weights: {sum(p.numel() for p in self.cond_mlp.parameters())} params"
             if self.mode == "cond-timestep":
                 sigma_sd = {
                     k[len("sigma_mlp.") :]: v
@@ -520,9 +699,7 @@ class PostfixNetwork(nn.Module):
                     raise ValueError(
                         f"sigma_mlp load_state_dict mismatch: missing={missing}, unexpected={unexpected}"
                     )
-                msg += (
-                    f"; sigma_mlp weights: {sum(p.numel() for p in self.sigma_mlp.parameters())} params"
-                )
+                msg += f"; sigma_mlp weights: {sum(p.numel() for p in self.sigma_mlp.parameters())} params"
             logger.info(msg)
         else:
             weight = weights_sd.get("postfix_embeds")

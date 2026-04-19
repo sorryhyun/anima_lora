@@ -328,6 +328,15 @@ def _build_hydra_moe_state_dict(
         router_w = hydra_sd.pop(f"{prefix}.router.weight", None)
         router_b = hydra_sd.pop(f"{prefix}.router.bias", None)
         inv_scale = hydra_sd.pop(f"{prefix}.inv_scale", None)
+        # σ-conditional router MLP (optional). Shared across q/k/v for the
+        # same reason as router.weight/bias — routing is driven by the same
+        # pooled layer input.
+        sigma_mlp_keys = [
+            k
+            for k in list(hydra_sd.keys())
+            if k.startswith(f"{prefix}.sigma_mlp.")
+        ]
+        sigma_mlp_state = {k: hydra_sd.pop(k) for k in sigma_mlp_keys}
 
         ups_keys = sorted(
             (
@@ -358,6 +367,9 @@ def _build_hydra_moe_state_dict(
                 hydra_sd[f"{new_prefix}.router.bias"] = router_b.clone()
             if inv_scale is not None:
                 hydra_sd[f"{new_prefix}.inv_scale"] = inv_scale.clone()
+            for k, v in sigma_mlp_state.items():
+                subkey = k.removeprefix(f"{prefix}.")
+                hydra_sd[f"{new_prefix}.{subkey}"] = v.clone()
 
     if dtype is not None:
         hydra_sd = {k: v.to(dtype) for k, v in hydra_sd.items()}

@@ -217,6 +217,29 @@ def _hydra_balance_loss(ctx: LossContext) -> torch.Tensor:
     return weight * ctx.network.get_balance_loss()
 
 
+def _postfix_contrastive_loss(ctx: LossContext) -> torch.Tensor:
+    """Inter-caption contrastive on PostfixNetwork cond_mlp outputs. Pushes
+    cond_mlp toward caption-varying outputs against a MoCo-style memory queue
+    — addresses the empirical collapse to a single caption-agnostic direction
+    (see `bench/postfix/initial_postfix_problems.md`)."""
+    weight = float(getattr(ctx.network, "contrastive_weight", 0.0) or 0.0)
+    if weight <= 0.0 or not hasattr(ctx.network, "get_contrastive_loss"):
+        return ctx.model_pred.new_zeros(())
+    loss = ctx.network.get_contrastive_loss()
+    return weight * loss.to(ctx.model_pred.dtype)
+
+
+def _postfix_sigma_budget_loss(ctx: LossContext) -> torch.Tensor:
+    """Soft L2 budget on ‖sigma_residual‖² so the σ-branch doesn't dominate
+    cond_mlp. Without this, empirical residual/base ≈ 2.5 and σ swallows the
+    contrastive signal."""
+    weight = float(getattr(ctx.network, "sigma_budget_weight", 0.0) or 0.0)
+    if weight <= 0.0 or not hasattr(ctx.network, "get_sigma_budget_loss"):
+        return ctx.model_pred.new_zeros(())
+    loss = ctx.network.get_sigma_budget_loss()
+    return weight * loss.to(ctx.model_pred.dtype)
+
+
 def _functional_loss(ctx: LossContext) -> torch.Tensor:
     weight = float(getattr(ctx.args, "functional_loss_weight", 0.0) or 0.0)
     func_loss = ctx.aux.get("func_loss")
@@ -271,6 +294,8 @@ LOSS_REGISTRY: dict[str, LossFn] = {
     "functional": _functional_loss,
     "condition_shift": _condition_shift_loss,
     "multiscale": _multiscale_loss,
+    "postfix_contrastive": _postfix_contrastive_loss,
+    "postfix_sigma_budget": _postfix_sigma_budget_loss,
 }
 
 
@@ -281,6 +306,8 @@ _STAGE_SCALAR_BROADCAST = (
     "hydra_balance",
     "functional",
     "condition_shift",
+    "postfix_contrastive",
+    "postfix_sigma_budget",
 )
 _STAGE_SCALAR_POST = ("multiscale",)
 # _STAGE_SCALAR_POST is consulted by LossComposer.compose via the hard-coded
@@ -400,5 +427,9 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
         active.append("functional")
     if float(getattr(args, "multiscale_loss_weight", 0.0) or 0.0) > 0.0:
         active.append("multiscale")
+    if float(getattr(network, "contrastive_weight", 0.0) or 0.0) > 0.0:
+        active.append("postfix_contrastive")
+    if float(getattr(network, "sigma_budget_weight", 0.0) or 0.0) > 0.0:
+        active.append("postfix_sigma_budget")
 
     return LossComposer(active_losses=active, l_sup_scalar=l_sup_scalar)

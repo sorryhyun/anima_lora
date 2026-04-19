@@ -56,10 +56,38 @@ def _balance_loss_metric(ctx: MetricContext) -> dict[str, float]:
     return {"reg/balance": float(val), "reg/balance_weighted": float(w * val)}
 
 
+def _postfix_contrastive_metric(ctx: MetricContext) -> dict[str, float]:
+    w = float(getattr(ctx.network, "contrastive_weight", 0.0) or 0.0)
+    if w <= 0.0:
+        return {}
+    val = getattr(ctx.network, "_last_contrastive_value", None)
+    if val is None:
+        return {}
+    return {
+        "reg/postfix_contrastive": float(val),
+        "reg/postfix_contrastive_weighted": float(w * val),
+    }
+
+
+def _postfix_sigma_budget_metric(ctx: MetricContext) -> dict[str, float]:
+    w = float(getattr(ctx.network, "sigma_budget_weight", 0.0) or 0.0)
+    if w <= 0.0:
+        return {}
+    val = getattr(ctx.network, "_last_sigma_budget_value", None)
+    if val is None:
+        return {}
+    return {
+        "reg/postfix_sigma_budget": float(val),
+        "reg/postfix_sigma_budget_weighted": float(w * val),
+    }
+
+
 METRIC_REGISTRY: dict[str, MetricFn] = {
     "apex_step": _apex_step_metric,
     "ortho_reg": _ortho_reg_magnitude,
     "hydra_balance": _balance_loss_metric,
+    "postfix_contrastive": _postfix_contrastive_metric,
+    "postfix_sigma_budget": _postfix_sigma_budget_metric,
 }
 
 

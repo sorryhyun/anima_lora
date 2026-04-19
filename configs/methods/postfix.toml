@@ -18,16 +18,32 @@ network_module = "networks.postfix_anima"
 # enum network_dim: postfix=16 | postfix_exp=64 | postfix_func=64 | prefix=16
 network_dim = 32
 # network_args = ["mode=postfix", "splice_position=end_of_sequence"]
+#
+# slot_embed_init_std   — breaks the K-slot permutation symmetry that otherwise
+#                         keeps effective K=1 forever (§A). 0 = off.
+# contrastive_weight    — off-diagonal cosine penalty on cond_mlp outputs
+#                         (NOT the full postfix — σ-residual would swallow the
+#                         gradient). Fights caption-agnostic collapse (§C).
+#                         Accumulator uses top-level `gradient_accumulation_steps`
+#                         (auto-forwarded), resets on optimizer-step boundary, so
+#                         contrastive references are always same-weight. Needs
+#                         gradient_accumulation_steps ≥ 2 for any signal.
+# sigma_budget_weight   — soft L2 on ‖sigma_residual‖² (§B). Without this, the
+#                         σ-branch grows to 2.5× the base and eats capacity that
+#                         should belong to cond_mlp. cond-timestep only.
 network_args = [
     "mode=cond-timestep",
-    "splice_position=end_of_sequence", # front_of_padding | end_of_sequence
+    "splice_position=front_of_padding", # front_of_padding | end_of_sequence
     "cond_hidden_dim=256",
     "sigma_feature_dim=128",
     "sigma_hidden_dim=256",
+    "slot_embed_init_std=0.02",
+    "contrastive_weight=0.1",
+    "sigma_budget_weight=1e-3",
 ]
 output_name = "anima_postfix"
 
-learning_rate = 1e-3
+learning_rate = 1e-4
 max_train_epochs = 1
 save_every_n_epochs = 1
 checkpointing_epochs = 1
@@ -38,7 +54,7 @@ cache_llm_adapter_outputs = true
 # Postfix training needs a base LoRA and accumulates on cached TE — method-forced.
 blocks_to_swap = 0
 gradient_accumulation_steps = 4
-# lora_path = "output/anima-tlora-0414-12.safetensors"
+# lora_path = "output/anima-tlora-0415-12.safetensors"
 
 # ── Postfix (exp — cond mode) ───────────────────────────────────────────
 # Caption-conditional MLP injection. Override the postfix values above.

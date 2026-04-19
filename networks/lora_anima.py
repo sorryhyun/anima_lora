@@ -132,6 +132,9 @@ def _refuse_split_hydra_keys(
             routers_w: List[Optional[torch.Tensor]] = []
             routers_b: List[Optional[torch.Tensor]] = []
             inv_scales: List[Optional[torch.Tensor]] = []
+            # Collect any sigma_mlp.* keys per component — they were cloned
+            # across q/k/v at save, so picking the first component is correct.
+            sigma_mlp_groups: List[Dict[str, torch.Tensor]] = []
             complete = True
             for suf in suffixes:
                 cp = f"{shared_prefix}{suf}_proj"
@@ -146,6 +149,13 @@ def _refuse_split_hydra_keys(
                 routers_w.append(state_dict.get(f"{cp}.router.weight"))
                 routers_b.append(state_dict.get(f"{cp}.router.bias"))
                 inv_scales.append(state_dict.get(f"{cp}.inv_scale"))
+                sigma_mlp_groups.append(
+                    {
+                        k: state_dict[k]
+                        for k in list(state_dict.keys())
+                        if k.startswith(f"{cp}.sigma_mlp.")
+                    }
+                )
             if not complete:
                 continue
 
@@ -177,6 +187,11 @@ def _refuse_split_hydra_keys(
                 state_dict[f"{fused_prefix}.router.bias"] = router_b
             if inv_scale is not None:
                 state_dict[f"{fused_prefix}.inv_scale"] = inv_scale
+            # sigma_mlp.* cloned across q/k/v at save time — take the first
+            # component's copy and rehome under the fused prefix.
+            for orig_key, v in sigma_mlp_groups[0].items():
+                first_cp = f"{shared_prefix}{suffixes[0]}_proj."
+                state_dict[f"{fused_prefix}.{orig_key[len(first_cp):]}"] = v
 
             for suf in suffixes:
                 cp = f"{shared_prefix}{suf}_proj"
@@ -189,6 +204,9 @@ def _refuse_split_hydra_keys(
                     "inv_scale",
                 ):
                     state_dict.pop(f"{cp}.{subk}", None)
+                for sk in list(state_dict.keys()):
+                    if sk.startswith(f"{cp}.sigma_mlp."):
+                        state_dict.pop(sk, None)
     return state_dict
 
 
@@ -440,6 +458,29 @@ def create_network(
         float(balance_loss_weight) if balance_loss_weight is not None else 0.01
     )
 
+    # σ-conditional HydraLoRA router (Track B, docs: timestep-hydra.md).
+    # When on, each matching HydraLoRAModule gets a tiny sinusoidal(σ)→E MLP
+    # that adds to the gate logits. Identity to base router at init (zero-init
+    # on final layer); σ-dependence only emerges if gradients push it.
+    use_sigma_router = kwargs.get("use_sigma_router", "false")
+    if use_sigma_router is not None:
+        use_sigma_router = str(use_sigma_router).lower() == "true"
+    sigma_feature_dim = int(kwargs.get("sigma_feature_dim", 128))
+    sigma_hidden_dim = int(kwargs.get("sigma_hidden_dim", 128))
+    # Regex applied to each candidate module's `original_name`. Default picks
+    # the layer types the B0 pre-analysis showed carry σ-correlation signal
+    # (cross_attn.q, self_attn.qkv); MLPs are skipped since their σ-JS is flat.
+    sigma_router_layers = kwargs.get(
+        "sigma_router_layers", r".*(cross_attn\.q_proj|self_attn\.qkv_proj)$"
+    )
+    per_bucket_balance_weight = kwargs.get("per_bucket_balance_weight", None)
+    per_bucket_balance_weight = (
+        float(per_bucket_balance_weight)
+        if per_bucket_balance_weight is not None
+        else 0.3
+    )
+    num_sigma_buckets = int(kwargs.get("num_sigma_buckets", 3))
+
     # Per-channel input pre-scaling (SmoothQuant-style). Requires a calibration file
     # produced by `bench/analyze_lora_input_channels.py --dump_channel_stats <path>`.
     # See `bench/channel_dominance_analysis.md` for motivation.
@@ -540,6 +581,10 @@ def create_network(
         reft_layers=reft_layers,
         num_experts=num_experts,
         channel_scales_dict=channel_scales_dict,
+        use_sigma_router=use_sigma_router,
+        sigma_feature_dim=sigma_feature_dim,
+        sigma_hidden_dim=sigma_hidden_dim,
+        sigma_router_layers=sigma_router_layers,
     )
 
     # Set timestep mask config (variant-agnostic)
@@ -555,6 +600,8 @@ def create_network(
     # Variant-specific defaults — overridden by spec.post_init for the matching variant.
     network._use_hydra = False
     network._balance_loss_weight = 0.0
+    network._per_bucket_balance_weight = per_bucket_balance_weight
+    network._num_sigma_buckets = num_sigma_buckets
 
     # Stamp the resolved spec; save_weights keys off this to pick the save pipeline.
     network._network_spec = spec
@@ -566,6 +613,17 @@ def create_network(
     if use_timestep_mask:
         logger.info(
             f"Timestep-dependent rank masking: min_rank={min_rank}, alpha={alpha_rank_scale}"
+        )
+    if use_sigma_router and network._sigma_router_hits > 0:
+        logger.info(
+            f"σ-conditional HydraLoRA router: {network._sigma_router_hits} modules "
+            f"with sigma_mlp (feat={sigma_feature_dim}, hidden={sigma_hidden_dim}), "
+            f"per-bucket balance w={per_bucket_balance_weight}, buckets={num_sigma_buckets}"
+        )
+    elif use_sigma_router:
+        logger.warning(
+            "use_sigma_router=true but no modules matched sigma_router_layers "
+            f"regex {sigma_router_layers!r} — σ-routing is inactive"
         )
     if spec.name == "ortho_hydra":
         logger.info(
@@ -753,6 +811,23 @@ def create_network_from_weights(
             f"{len(channel_scales_dict)} modules with baked-in inv_scale"
         )
 
+    # Detect σ-conditional router from checkpoint: any .sigma_mlp.* key means
+    # that module was trained with σ-routing. Extract per-module names and the
+    # feature dim from the first such key's shape.
+    sigma_router_names: List[str] = []
+    sigma_feature_dim_detected: Optional[int] = None
+    sigma_hidden_dim_detected: Optional[int] = None
+    for k, v in weights_sd.items():
+        if ".sigma_mlp." not in k:
+            continue
+        lora_name = k.split(".sigma_mlp.", 1)[0]
+        if lora_name not in sigma_router_names:
+            sigma_router_names.append(lora_name)
+        # sigma_mlp.0 is the first Linear: weight shape (hidden, feat)
+        if k.endswith(".sigma_mlp.0.weight"):
+            sigma_hidden_dim_detected = v.shape[0]
+            sigma_feature_dim_detected = v.shape[1]
+
     network = LoRANetwork(
         text_encoders,
         unet,
@@ -766,6 +841,10 @@ def create_network_from_weights(
         reft_layers=sorted(reft_block_indices) if has_reft else "all",
         num_experts=hydra_num_experts if (has_hydra or has_ortho_hydra) else 4,
         channel_scales_dict=channel_scales_dict,
+        use_sigma_router=bool(sigma_router_names),
+        sigma_feature_dim=sigma_feature_dim_detected or 128,
+        sigma_hidden_dim=sigma_hidden_dim_detected or 128,
+        sigma_router_names=sigma_router_names or None,
     )
     # Mirror create_network's variant-specific post-build attribute attachment.
     # Defaults first, then spec.post_init overrides for the matching variant.
@@ -828,6 +907,11 @@ class LoRANetwork(torch.nn.Module):
         reft_layers: object = "all",
         num_experts: int = 4,
         channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None,
+        use_sigma_router: bool = False,
+        sigma_feature_dim: int = 128,
+        sigma_hidden_dim: int = 128,
+        sigma_router_layers: Optional[str] = None,
+        sigma_router_names: Optional[List[str]] = None,
     ) -> None:
         super().__init__()
         self.multiplier = multiplier
@@ -845,6 +929,25 @@ class LoRANetwork(torch.nn.Module):
         self.channel_scales_dict = channel_scales_dict
         self._channel_scale_misses: List[str] = []
         self._channel_scale_hits: int = 0
+        self.use_sigma_router = bool(use_sigma_router)
+        self.sigma_feature_dim = int(sigma_feature_dim)
+        self.sigma_hidden_dim = int(sigma_hidden_dim)
+        # Either regex (fresh-from-kwargs path) or explicit name set
+        # (from-weights path, detected from checkpoint keys). Explicit set wins.
+        self._sigma_router_names = (
+            set(sigma_router_names) if sigma_router_names else None
+        )
+        self._sigma_router_re = (
+            re.compile(sigma_router_layers)
+            if (
+                self.use_sigma_router
+                and sigma_router_layers
+                and self._sigma_router_names is None
+            )
+            else None
+        )
+        self._sigma_router_hits: int = 0
+        self._last_sigma: Optional[torch.Tensor] = None
 
         self.loraplus_lr_ratio = None
         self.loraplus_unet_lr_ratio = None
@@ -1031,6 +1134,26 @@ class LoRANetwork(torch.nn.Module):
                     extra_kwargs["num_experts"] = self.num_experts
                 elif module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = self.num_experts
+
+                # σ-conditional router: only build sigma_mlp on modules whose
+                # name matches the layer filter (cross_attn.q / self_attn.qkv
+                # by default — see B0 pre-analysis in timestep-hydra.md).
+                # From-weights path uses an explicit name set; fresh-from-kwargs
+                # path uses a regex over original_name.
+                if self.use_sigma_router and module_class in (
+                    HydraLoRAModule,
+                    OrthoHydraLoRAExpModule,
+                ) and is_unet:
+                    if self._sigma_router_names is not None:
+                        enable = lora_name in self._sigma_router_names
+                    elif self._sigma_router_re is not None:
+                        enable = bool(self._sigma_router_re.search(original_name))
+                    else:
+                        enable = True
+                    if enable:
+                        extra_kwargs["sigma_feature_dim"] = self.sigma_feature_dim
+                        extra_kwargs["sigma_hidden_dim"] = self.sigma_hidden_dim
+                        self._sigma_router_hits += 1
 
                 # Per-channel scaling is DiT-only: the bench script hooks DiT
                 # linears, text encoder activations are never calibrated.
@@ -1259,34 +1382,112 @@ class LoRANetwork(torch.nn.Module):
         for reft in self.text_encoder_refts + self.unet_refts:
             reft._timestep_mask = None
 
+    def set_sigma(self, sigmas: torch.Tensor) -> None:
+        """Stash per-sample σ on every HydraLoRA module that has a ``sigma_mlp``.
+
+        Mirrors ``set_timestep_mask`` — one call per training step, propagates
+        σ to every module that opts in. Modules without a ``sigma_mlp`` just
+        ignore it. The network also caches σ on itself so the per-σ-bucket
+        balance loss can bucket the cached gates at loss-compute time.
+        """
+        if not self.use_sigma_router:
+            return
+        self._last_sigma = sigmas.detach()
+        for lora in self.unet_loras + self.text_encoder_loras:
+            if getattr(lora, "sigma_mlp", None) is not None:
+                lora._sigma = sigmas
+
+    def clear_sigma(self) -> None:
+        """Drop cached σ from every HydraLoRA module. Used in eval / validation."""
+        self._last_sigma = None
+        for lora in self.unet_loras + self.text_encoder_loras:
+            if hasattr(lora, "_sigma"):
+                lora._sigma = None
+
+    @staticmethod
+    def _switch_balance(gate: torch.Tensor) -> torch.Tensor:
+        """Switch-Transformer balance: E · Σ_i frac_i · mean_gate_i. Scalar."""
+        num_experts = gate.shape[-1]
+        expert_idx = gate.argmax(dim=-1)  # (B,)
+        frac = torch.zeros(num_experts, device=gate.device, dtype=gate.dtype)
+        frac.scatter_add_(
+            0, expert_idx, torch.ones_like(expert_idx, dtype=gate.dtype)
+        )
+        frac = frac / gate.shape[0]
+        gate_mean = gate.mean(dim=0)  # (num_experts,)
+        return num_experts * (frac * gate_mean).sum()
+
     def get_balance_loss(self) -> torch.Tensor:
         """Switch-Transformer load-balancing loss averaged over HydraLoRA modules.
 
-        Each HydraLoRAModule caches its own gate in ._last_gate during forward.
-        We aggregate per-module balance losses and return the mean so the scale
-        is independent of how many Linear layers were adapted.
+        Global term aggregates gates over the full batch. When σ-conditional
+        routing is on, also adds a per-σ-bucket term so global balance can't
+        mask per-bucket collapse (expert i only at high σ, expert j only at
+        low σ: globally balanced but per-bucket one-hot). Buckets are fixed
+        thresholds on σ∈[0,1]; for N=3 that's [1/3, 2/3]. Under logit-normal
+        σ sampling this is ~30/40/30 — close enough to equal-frequency for v1.
         """
         total = None
+        per_bucket_total = None
         count = 0
+        per_bucket_count = 0
+
+        sigma = self._last_sigma  # (B,) or None
+        num_buckets = int(getattr(self, "_num_sigma_buckets", 3))
+        bucket_w = float(getattr(self, "_per_bucket_balance_weight", 0.0) or 0.0)
+        want_per_bucket = (
+            self.use_sigma_router
+            and sigma is not None
+            and num_buckets > 1
+            and bucket_w > 0.0
+        )
+        if want_per_bucket:
+            thresholds = torch.linspace(
+                0.0, 1.0, num_buckets + 1, device=sigma.device
+            )[1:-1]
+            bucket_ids = torch.bucketize(sigma.float(), thresholds)  # (B,) in [0, N)
+
         for lora in self.unet_loras + self.text_encoder_loras:
             gate = getattr(lora, "_last_gate", None)
             if gate is None:
                 continue
-            num_experts = gate.shape[-1]
-            # frac_i: fraction of samples where expert i has highest gate
-            expert_idx = gate.argmax(dim=-1)  # (B,)
-            frac = torch.zeros(num_experts, device=gate.device, dtype=gate.dtype)
-            frac.scatter_add_(
-                0, expert_idx, torch.ones_like(expert_idx, dtype=gate.dtype)
-            )
-            frac = frac / gate.shape[0]
-            gate_mean = gate.mean(dim=0)  # (num_experts,)
-            term = num_experts * (frac * gate_mean).sum()
+            term = self._switch_balance(gate)
             total = term if total is None else total + term
             count += 1
+
+            if want_per_bucket and getattr(lora, "sigma_mlp", None) is not None:
+                # Only penalize per-bucket collapse on modules that actually
+                # have σ-conditional routing capacity to collapse.
+                module_bucket_sum = None
+                module_bucket_count = 0
+                for b in range(num_buckets):
+                    mask = bucket_ids == b
+                    if int(mask.sum()) < 2:
+                        # Not enough samples to meaningfully measure balance
+                        # in this bucket on this step; skip.
+                        continue
+                    bterm = self._switch_balance(gate[mask])
+                    module_bucket_sum = (
+                        bterm
+                        if module_bucket_sum is None
+                        else module_bucket_sum + bterm
+                    )
+                    module_bucket_count += 1
+                if module_bucket_sum is not None:
+                    per_bucket_total = (
+                        module_bucket_sum / module_bucket_count
+                        if per_bucket_total is None
+                        else per_bucket_total
+                        + module_bucket_sum / module_bucket_count
+                    )
+                    per_bucket_count += 1
+
         if total is None:
             return torch.tensor(0.0)
-        return total / count
+        out = total / count
+        if per_bucket_total is not None and per_bucket_count > 0:
+            out = out + bucket_w * (per_bucket_total / per_bucket_count)
+        return out
 
     def get_ortho_regularization(self) -> torch.Tensor:
         """Sum orthogonality regularization from all OrthoLoRA and ReFT modules."""

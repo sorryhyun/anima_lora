@@ -527,6 +527,10 @@ class AnimaTrainer:
             network.set_timestep_mask(timesteps, max_timestep=1.0)
         if hasattr(network, "set_reft_timestep_mask"):
             network.set_reft_timestep_mask(timesteps, max_timestep=1.0)
+        # σ-conditional HydraLoRA router (Track B, timestep-hydra.md). No-op
+        # unless use_sigma_router is on and the variant is hydra/ortho_hydra.
+        if hasattr(network, "set_sigma"):
+            network.set_sigma(timesteps)
 
         # Gradient checkpointing support
         if args.gradient_checkpointing:
@@ -1155,7 +1159,9 @@ class AnimaTrainer:
             g.copy_(u)
 
     def get_sai_model_spec(self, args):
-        return train_util.get_sai_model_spec_dataclass(args, lora=True).to_metadata_dict()
+        return train_util.get_sai_model_spec_dataclass(
+            args, lora=True
+        ).to_metadata_dict()
 
     def update_metadata(self, metadata, args):
         metadata["ss_weighting_scheme"] = args.weighting_scheme
@@ -1544,6 +1550,9 @@ class AnimaTrainer:
             "reft_dim",
             "reft_alpha",
             "reft_layers",
+            # Postfix contrastive needs to know the accumulation window so
+            # the intra-step reference set resets on step boundary.
+            "gradient_accumulation_steps",
         ]
         for key in _NETWORK_ARG_KEYS:
             if (
@@ -3190,15 +3199,21 @@ NETWORK_KWARG_ALLOWLIST: tuple[str, ...] = (
     "network_reg_dims",
     "network_reg_lrs",
     "num_experts",
+    "num_sigma_buckets",
+    "per_bucket_balance_weight",
     "per_channel_scaling",
     "rank_dropout",
     "reft_alpha",
     "reft_dim",
     "reft_layers",
+    "sigma_feature_dim",
+    "sigma_hidden_dim",
+    "sigma_router_layers",
     "train_llm_adapter",
     "use_dora",
     "use_hydra",
     "use_ortho",
+    "use_sigma_router",
     "use_timestep_mask",
     "verbose",
 )
