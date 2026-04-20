@@ -79,6 +79,14 @@ make mask-sam              # SAM3 only
 make mask-mit              # MIT/ComicTextDetector only
 make mask-clean            # Remove all generated masks
 
+# Merge LoRA into DiT (standalone ComfyUI-compatible checkpoint)
+make merge ADAPTER_DIR=output                    # bake latest bakeable LoRA in dir
+make merge ADAPTER_DIR=output MULTIPLIER=0.8     # scale strength
+python scripts/merge_to_dit.py --adapter path/to/lora.safetensors --allow-partial
+# Supports: LoRA / OrthoLoRA / DoRA / T-LoRA. Refuses ReFT / Hydra moe / postfix
+# / prefix by default (they can't be folded into Linear weights); --allow-partial
+# drops them and bakes only the LoRA portion.
+
 # Batch
 make comfy-batch           # Run ComfyUI batch workflow
 

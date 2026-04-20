@@ -288,6 +288,38 @@ def cmd_test_postfix_func(extra):
     )
 
 
+def cmd_test_merge(extra):
+    """Inference with a baked (merged) DiT from MODEL_DIR (default 'output_temp').
+
+    MODEL_DIR accepts either a directory (picks the latest
+    ``*_merged.safetensors`` inside) or a direct ``.safetensors`` path. The
+    merged file is a standalone DiT (LoRA folded in), so no ``--lora_weight``
+    is passed. The trailing ``--dit`` overrides the base one in
+    ``INFERENCE_BASE`` (argparse keeps the last value).
+    """
+    target = Path(os.environ.get("MODEL_DIR", "output_temp"))
+    if not target.is_absolute():
+        target = ROOT / target
+    if target.is_file():
+        chosen = target
+    elif target.is_dir():
+        candidates = sorted(
+            target.glob("*_merged.safetensors"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not candidates:
+            print(
+                f"No '*_merged.safetensors' files found in {target}", file=sys.stderr
+            )
+            sys.exit(1)
+        chosen = candidates[0]
+    else:
+        print(f"MODEL_DIR path not found: {target}", file=sys.stderr)
+        sys.exit(1)
+    run([*INFERENCE_BASE, "--dit", str(chosen), *extra])
+
+
 def cmd_test_spectrum(extra):
     run(
         [
@@ -321,6 +353,23 @@ def cmd_test_spectrum(extra):
 
 def cmd_step(extra):
     run([PY, "scripts/graft_step.py", *extra])
+
+
+def cmd_merge(extra):
+    """Bake latest LoRA in ADAPTER_DIR (env, default 'output') into the base DiT."""
+    adapter_dir = os.environ.get("ADAPTER_DIR", "output")
+    multiplier = os.environ.get("MULTIPLIER", "1.0")
+    run(
+        [
+            PY,
+            "scripts/merge_to_dit.py",
+            "--adapter_dir",
+            adapter_dir,
+            "--multiplier",
+            multiplier,
+            *extra,
+        ]
+    )
 
 
 def cmd_preprocess_resize(extra):
@@ -590,8 +639,16 @@ COMMANDS = {
         cmd_test_postfix_func,
         "Inference with latest postfix-func weight",
     ),
+    "test-merge": (
+        cmd_test_merge,
+        "Inference with latest *_merged.safetensors (MODEL_DIR=..., default 'output_temp')",
+    ),
     "test-spectrum": (cmd_test_spectrum, "Spectrum-accelerated inference"),
     "step": (cmd_step, "Run one GRAFT iteration"),
+    "merge": (
+        cmd_merge,
+        "Bake latest LoRA (ADAPTER_DIR=..., default 'output') into base DiT",
+    ),
     "preprocess": (
         cmd_preprocess,
         "Full preprocessing (resize + VAE + text embeddings)",

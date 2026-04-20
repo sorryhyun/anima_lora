@@ -223,6 +223,58 @@ def _imgs(d: Path) -> list[Path]:
     )
 
 
+def _safetensors_in(d: Path) -> list[Path]:
+    """Return .safetensors files in a directory, newest first."""
+    if not d.exists():
+        return []
+    return sorted(
+        (p for p in d.iterdir() if p.is_file() and p.suffix == ".safetensors"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+
+def _adapter_dirs() -> dict[str, Path]:
+    """Directories likely to contain LoRA adapter checkpoints.
+
+    Mirrors ``_image_dirs``: returns only paths that exist and actually have
+    .safetensors files, keyed by a short display name.
+    """
+    dirs: dict[str, Path] = {}
+    for name, path in [
+        ("output", ROOT / "output"),
+        ("output_temp", ROOT / "output_temp"),
+        ("models/diffusion_models", ROOT / "models" / "diffusion_models"),
+    ]:
+        if path.exists() and any(path.glob("*.safetensors")):
+            dirs[name] = path
+    # Any subdirectory of output/ or output_temp/ with .safetensors (e.g.
+    # iteration snapshots). Skip *-checkpoint-state dirs — those are
+    # optimizer/state shards, not adapters.
+    for parent in (ROOT / "output", ROOT / "output_temp"):
+        if not parent.exists():
+            continue
+        for p in sorted(parent.iterdir()):
+            if (
+                p.is_dir()
+                and not p.name.endswith("-checkpoint-state")
+                and any(p.glob("*.safetensors"))
+            ):
+                dirs[f"{parent.name}/{p.name}"] = p
+    # GRAFT survivors / candidate iterations sometimes hold adapter artifacts.
+    graft_dir = GRAFT_DIR
+    for candidate in ("survivors",):
+        p = graft_dir / candidate
+        if p.exists() and any(p.glob("*.safetensors")):
+            dirs[f"graft/{candidate}"] = p
+    cd = graft_dir / "candidates"
+    if cd.exists():
+        for p in sorted(cd.iterdir()):
+            if p.is_dir() and any(p.glob("*.safetensors")):
+                dirs[f"graft/candidates/{p.name}"] = p
+    return dirs
+
+
 def _image_dirs() -> dict[str, Path]:
     dirs: dict[str, Path] = {}
     for name, path in [

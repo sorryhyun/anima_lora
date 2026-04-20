@@ -132,6 +132,26 @@ python inference.py \
     --save_path ../output/images
 ```
 
+## Merging LoRA into the DiT
+
+Bake a trained LoRA into the base DiT to produce a standalone, ComfyUI-compatible checkpoint (`*_merged.safetensors`) that no longer needs the adapter at load time.
+
+```bash
+make merge                                  # bake latest adapter in output/ at multiplier 1.0
+make merge ADAPTER_DIR=output MULTIPLIER=0.8
+python scripts/merge_to_dit.py --adapter path/to/lora.safetensors --allow-partial
+```
+
+Supported: LoRA / OrthoLoRA / DoRA / T-LoRA (T-LoRA's timestep mask is training-only, so baking is bit-equivalent to adapter inference). Refuses ReFT, HydraLoRA `_moe`, postfix and prefix by default — those aren't Linear weight deltas. Pass `--allow-partial` to drop them and bake only the LoRA portion.
+
+Test a merged checkpoint without the adapter:
+
+```bash
+make test-merge                                              # latest *_merged.safetensors in output_temp/
+make test-merge MODEL_DIR=output                             # pick latest from a different dir
+make test-merge MODEL_DIR=output_temp/my-model_merged.safetensors   # or point at a specific file
+```
+
 ## Embedding Inversion
 
 Optimize a text embedding to match a target image by backpropagating through the frozen DiT. Reveals how the model interprets an image in embedding space.

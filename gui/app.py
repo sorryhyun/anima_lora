@@ -32,6 +32,7 @@ from gui.i18n import (
     t,
 )
 from gui.image_tab import ImageViewerTab
+from gui.merge_tab import MergeTab
 
 GUIDEBOOK_PATH = Path(__file__).resolve().parent.parent / "docs" / "guidelines" / "가이드북.md"
 
@@ -174,6 +175,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(ConfigTab(), t("tab_config"))
         self.tabs.addTab(GraftTab(), t("tab_graft"))
         self.tabs.addTab(ImageViewerTab(), t("tab_images"))
+        self.tabs.addTab(MergeTab(), t("tab_merge"))
         main_lay.addWidget(self.tabs)
         self.setCentralWidget(central)
 

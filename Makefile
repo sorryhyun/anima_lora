@@ -7,8 +7,10 @@ LATEST_POSTFIX = $(shell python -c "import glob,os; files=[f for f in glob.glob(
 LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_exp*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
+MODEL_DIR ?= output_temp
+LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -109,6 +111,16 @@ test-postfix-exp:
 test-postfix-func:
 	$(TEST_COMMON) \
 		--postfix_weight $(LATEST_POSTFIX_FUNC)
+
+# Inference with a baked (merged) DiT. MODEL_DIR accepts either a directory
+# (picks the latest *_merged.safetensors inside) or a direct .safetensors path.
+# No --lora_weight — the LoRA is already folded into the weights. The trailing
+# --dit overrides the base one in TEST_COMMON.
+# Example: make test-merge MODEL_DIR=output_temp
+#          make test-merge MODEL_DIR=output_temp/my-model_merged.safetensors
+test-merge:
+	$(TEST_COMMON) \
+		--dit $(LATEST_MERGED)
 
 test-spectrum:
 	$(TEST_COMMON) \
@@ -244,3 +256,14 @@ test-unit:
 METHOD ?= lora
 print-config:
 	python train.py --method $(METHOD) --preset $(PRESET) --print-config --no-config-snapshot
+
+# Bake a LoRA adapter into the base DiT (standalone merged checkpoint).
+# Picks the latest bakeable .safetensors in ADAPTER_DIR (skips _moe/postfix/prefix/.bak).
+# Example: make merge ADAPTER_DIR=output MULTIPLIER=1.0
+ADAPTER_DIR ?= output
+MULTIPLIER ?= 1.0
+merge:
+	python scripts/merge_to_dit.py \
+		--adapter_dir $(ADAPTER_DIR) \
+		--multiplier $(MULTIPLIER) \
+		$(ARGS)
