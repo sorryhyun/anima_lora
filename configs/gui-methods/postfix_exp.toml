@@ -1,0 +1,25 @@
+# gui-methods/postfix_exp.toml — Caption-conditional postfix (cond mode).
+#
+# A small MLP turns the pooled caption embedding into the postfix vectors, so
+# the appended tokens vary with the text. More expressive than plain postfix
+# but still fast to train.
+
+network_module = "networks.postfix_anima"
+network_dim = 64
+network_args = [
+    "mode=cond",
+    "splice_position=end_of_sequence",
+    "cond_hidden_dim=256",
+]
+output_name = "anima_postfix_exp"
+
+learning_rate = 1e-4
+max_train_epochs = 2
+save_every_n_epochs = 1
+checkpointing_epochs = 2
+
+caption_shuffle_variants = 8
+cache_llm_adapter_outputs = true
+
+blocks_to_swap = 0
+gradient_accumulation_steps = 4

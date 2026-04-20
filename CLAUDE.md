@@ -38,6 +38,13 @@ make lora-half              # Shortcut: methods/lora.toml + presets.toml[half] (
 make postfix                # Postfix/prefix family (methods/postfix.toml)
 make apex                   # APEX self-adversarial 1-NFE distillation (methods/apex.toml)
 
+# GUI-friendly per-variant path (configs/gui-methods/<variant>.toml — clean,
+# self-contained, no toggle blocks). Intended for basic users who don't want
+# to hand-edit methods/lora.toml's comment-toggle system.
+make lora-gui GUI_PRESETS=tlora                     # gui-methods/tlora.toml + preset default
+make lora-gui GUI_PRESETS=hydralora PRESET=low_vram # override preset as usual
+python tasks.py lora-gui hydralora_sigma            # Windows; variant can also be 1st positional arg
+
 # Modulation guidance distillation
 make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulation)
 
@@ -112,9 +119,10 @@ Layout:
   - `postfix.toml` — postfix / postfix_exp / postfix_func / postfix_sigma / prefix. Toggle blocks.
   - `apex.toml` — APEX self-adversarial distillation (arXiv:2604.12322). Warm-starts from a prior LoRA via `network_weights` + `dim_from_weights`.
   - `graft.toml` — GRAFT training runs invoked by `scripts/graft_step.py`.
+- `configs/gui-methods/` — GUI-friendly parallel tree. One self-contained TOML per **variant** instead of per family (`lora`, `ortholora`, `tlora`, `reft`, `tlora_ortho_reft`, `hydralora`, `hydralora_sigma`, `postfix`, `postfix_exp`, `postfix_func`, `postfix_sigma`, `prefix`, plus copies of `apex` and `graft`). No toggle blocks — what you see is what runs. Selected via `train.py --methods_subdir gui-methods` (wrapped by `make lora-gui GUI_PRESETS=<variant>` / `python tasks.py lora-gui <variant>`). Intended for basic users and as the eventual source of truth for the GUI's variant picker.
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
-`library.train_util.load_method_preset(method, preset)` is the reusable merge helper (used by `train.py` and `scripts/graft_step.py`). All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/`).
+`library.train_util.load_method_preset(method, preset, methods_subdir="methods")` is the reusable merge helper (used by `train.py` and `scripts/graft_step.py`). Pass `methods_subdir="gui-methods"` to resolve against the clean per-variant tree instead of the toggle-block method files. All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/`).
 
 ## Architecture
 

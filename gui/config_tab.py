@@ -47,8 +47,9 @@ from gui import (
     list_presets,
     merged_method_preset,
 )
-from gui.explanations import field_help, lora_guide
+from gui.explanations import field_help, method_guide
 from gui.i18n import t
+from gui.variants import default_toggle_fields, owned_keys, variants_for
 
 # Matches tqdm lines like: "Denoising steps:  40%|####      | 12/30 [..]"
 _TQDM_RE = re.compile(
@@ -75,6 +76,7 @@ class ConfigTab(QWidget):
     def __init__(self):
         super().__init__()
         self._w: dict[str, QWidget] = {}
+        self._variant_overlay: dict | None = None
         self._preprocessed = (ROOT / "post_image_dataset").exists()
         lay = QVBoxLayout(self)
 
@@ -83,7 +85,7 @@ class ConfigTab(QWidget):
         top.addWidget(QLabel("Method"))
         self.method_combo = QComboBox()
         self.method_combo.addItems(list_methods())
-        self.method_combo.currentTextChanged.connect(lambda _: self._reload())
+        self.method_combo.currentTextChanged.connect(lambda _: self._on_method_changed())
         top.addWidget(self.method_combo, 1)
 
         top.addWidget(QLabel(t("preset")))
@@ -143,6 +145,28 @@ class ConfigTab(QWidget):
         top.addWidget(self.stop_btn)
 
         lay.addLayout(top)
+
+        # Variant picker — visible only for methods that ship variant presets
+        # (lora, postfix). Applies a known {field: value} overlay on top of
+        # the method config so users don't have to hand-edit toggle blocks.
+        self.variant_row = QWidget()
+        vrow = QHBoxLayout(self.variant_row)
+        vrow.setContentsMargins(0, 0, 0, 0)
+        vrow.addWidget(QLabel(t("variant")))
+        self.variant_combo = QComboBox()
+        vrow.addWidget(self.variant_combo, 1)
+        self.apply_variant_btn = QPushButton(t("apply_variant"))
+        self.apply_variant_btn.setStyleSheet(
+            "background:#e67e22;color:white;font-weight:bold;padding:4px 12px;"
+        )
+        self.apply_variant_btn.setToolTip(t("apply_variant_tooltip"))
+        self.apply_variant_btn.clicked.connect(self._on_apply_variant)
+        vrow.addWidget(self.apply_variant_btn)
+        self.show_guide_btn = QPushButton(t("show_guide"))
+        self.show_guide_btn.setToolTip(t("show_guide_tooltip"))
+        self.show_guide_btn.clicked.connect(self._show_explain_placeholder)
+        vrow.addWidget(self.show_guide_btn)
+        lay.addWidget(self.variant_row)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
@@ -208,13 +232,60 @@ class ConfigTab(QWidget):
     def _current(self) -> tuple[str, str]:
         return self.method_combo.currentText(), self.preset_combo.currentText()
 
+    def _on_method_changed(self):
+        # Switching methods invalidates any staged variant overlay — each
+        # method family has its own variants, and a stale overlay from the
+        # previous method would pollute the new one.
+        self._variant_overlay = None
+        self._reload()
+
+    def _on_apply_variant(self):
+        method, _ = self._current()
+        variants = variants_for(method)
+        name = self.variant_combo.currentText()
+        if name in variants:
+            self._variant_overlay = dict(variants[name])
+            self._reload()
+
+    def _refresh_variant_row(self, method: str) -> None:
+        variants = variants_for(method)
+        self.variant_combo.blockSignals(True)
+        self.variant_combo.clear()
+        if variants:
+            self.variant_combo.addItems(list(variants.keys()))
+        self.variant_combo.blockSignals(False)
+        self.variant_row.setVisible(bool(variants))
+
     def _reload(self):
         method, preset = self._current()
         if not method or not preset:
             return
+        self._refresh_variant_row(method)
         merged, origin = merged_method_preset(method, preset)
-        self._origin = origin
         cfg = {k: v for k, v in merged.items() if k not in _SKIP}
+
+        # Always expose toggle checkboxes for the selected method family
+        # (e.g. `use_ortho`, `use_hydra`) so users can flip variants without
+        # hand-editing TOML, even when the field isn't present in any layer.
+        for k, v in default_toggle_fields(method).items():
+            if k not in cfg:
+                cfg[k] = v
+                origin.setdefault(k, "method")
+
+        # Overlay the staged variant on top of the method config. Stripping
+        # owned keys first ensures a previous variant's fields don't survive
+        # the switch (e.g. `num_experts` when moving hydralora → plain lora).
+        if self._variant_overlay is not None:
+            owned = owned_keys(method)
+            for k in list(cfg.keys()):
+                if k in owned and k not in self._variant_overlay:
+                    cfg.pop(k)
+                    origin.pop(k, None)
+            for k, v in self._variant_overlay.items():
+                cfg[k] = v
+                origin[k] = "method"
+
+        self._origin = origin
 
         if hasattr(self, "_explain"):
             self._show_explain_placeholder()
@@ -224,19 +295,6 @@ class ConfigTab(QWidget):
             it = self._fl.takeAt(0)
             if it.widget():
                 it.widget().deleteLater()
-
-        # LoRA variant guide (collapsible)
-        guide_box = QGroupBox(t("lora_variants"))
-        guide_box.setCheckable(True)
-        guide_box.setChecked(False)
-        guide_lay = QVBoxLayout()
-        guide_label = QLabel(lora_guide())
-        guide_label.setWordWrap(True)
-        guide_label.setTextFormat(Qt.RichText)
-        guide_label.setStyleSheet("font-size: 12px; padding: 4px;")
-        guide_lay.addWidget(guide_label)
-        guide_box.setLayout(guide_lay)
-        self._fl.addWidget(guide_box)
 
         # Grouped training config fields
         groups: dict[str, dict] = {g: {} for g in _GROUPS}
@@ -292,6 +350,14 @@ class ConfigTab(QWidget):
     # ── Explanation panel ──
 
     def _show_explain_placeholder(self) -> None:
+        # When the current method ships variant presets, the right-panel
+        # default is the variant guide + Apply-semantics callout (replacing
+        # the old collapsible box on the left-side form).
+        method = self.method_combo.currentText() if hasattr(self, "method_combo") else ""
+        guide = method_guide(method)
+        if guide:
+            self._explain.setHtml(guide)
+            return
         self._explain.setHtml(
             f"<p style='color:#888; font-style:italic;'>{html.escape(t('click_field_for_help'))}</p>"
         )
@@ -381,9 +447,18 @@ class ConfigTab(QWidget):
                     preset_out[k] = v
                 method_out.pop(k, None)
 
+        # Clear stale variant-owned fields from the method file. Without this,
+        # switching from e.g. hydralora → plain lora would leave `num_experts`
+        # lingering in methods/lora.toml because the plain-lora variant
+        # doesn't mention it (and the widget was removed from the form).
+        for k in owned_keys(method) - set(self._w.keys()):
+            method_out.pop(k, None)
+
         _save(method_path, method_out)
         all_presets[preset] = preset_out
         PRESETS_FILE.write_text(toml.dumps(all_presets), encoding="utf-8")
+        # Persist succeeded — overlay is now materialized on disk.
+        self._variant_overlay = None
         QMessageBox.information(
             self, t("saved"), f"Saved {method_path.name} + presets.toml[{preset}]"
         )

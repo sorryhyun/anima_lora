@@ -30,6 +30,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "finished": "--- Finished (exit code {code}) ---",
         "locked_by_preset": "Locked by preset (performance settings are fixed for this VRAM profile)",
         "lora_variants": "LoRA Variants",
+        "variant": "Variant:",
+        "apply_variant": "Apply",
+        "apply_variant_tooltip": "Fill the form below with this variant's preset values. Nothing is saved until you click Save.",
+        "show_guide": "Guide",
+        "show_guide_tooltip": "Show the variant guide and Apply-semantics note in the right panel.",
         "click_field_for_help": "Click a field label to see its explanation here.",
         "no_help_available": "No help available for this field.",
         # GraftTab
@@ -52,6 +57,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "no_caption": "(no caption)",
         # Language
         "language": "Language:",
+        # Guidebook
+        "guidebook": "📖 Guide",
+        "guidebook_tooltip": "Open the Korean end-to-end guide (docs/guidelines/가이드북.md)",
+        "guidebook_missing": "Guide not found at {path}",
     },
     "ko": {
         # Window / tabs
@@ -80,6 +89,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "finished": "--- 완료 (종료 코드 {code}) ---",
         "locked_by_preset": "프리셋에 의해 잠김 (이 VRAM 프로필의 성능 설정은 고정되어 있습니다)",
         "lora_variants": "LoRA 변형",
+        "variant": "변형:",
+        "apply_variant": "적용",
+        "apply_variant_tooltip": "아래 폼을 이 variant의 프리셋 값으로 채웁니다. Save를 누르기 전까지는 디스크에 저장되지 않습니다.",
+        "show_guide": "가이드",
+        "show_guide_tooltip": "오른쪽 패널에 variant 가이드와 Apply 동작 설명을 표시합니다.",
         "click_field_for_help": "필드 라벨을 클릭하면 설명이 여기에 표시됩니다.",
         "no_help_available": "이 필드에 대한 설명이 없습니다.",
         # GraftTab
@@ -102,6 +116,10 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "no_caption": "(캡션 없음)",
         # Language
         "language": "언어:",
+        # Guidebook
+        "guidebook": "📖 가이드북",
+        "guidebook_tooltip": "한국어 종합 가이드 열기 (docs/guidelines/가이드북.md)",
+        "guidebook_missing": "가이드를 찾을 수 없습니다: {path}",
     },
 }
 

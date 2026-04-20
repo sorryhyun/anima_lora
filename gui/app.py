@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
-from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -12,6 +14,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -27,6 +30,8 @@ from gui.i18n import (
     t,
 )
 from gui.image_tab import ImageViewerTab
+
+GUIDEBOOK_PATH = Path(__file__).resolve().parent.parent / "docs" / "guidelines" / "가이드북.md"
 
 
 LANG_NAMES = {"en": "English", "ko": "한국어"}
@@ -94,6 +99,13 @@ class MainWindow(QMainWindow):
 
         # Language selector bar
         lang_bar = QHBoxLayout()
+        self.guide_btn = QPushButton(t("guidebook"))
+        self.guide_btn.setToolTip(t("guidebook_tooltip"))
+        self.guide_btn.setStyleSheet(
+            "background:#16a085;color:white;font-weight:bold;padding:4px 12px;"
+        )
+        self.guide_btn.clicked.connect(self._open_guidebook)
+        lang_bar.addWidget(self.guide_btn)
         lang_bar.addStretch()
         lang_bar.addWidget(QLabel(t("language")))
         self.lang_combo = QComboBox()
@@ -111,6 +123,14 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(ImageViewerTab(), t("tab_images"))
         main_lay.addWidget(self.tabs)
         self.setCentralWidget(central)
+
+    def _open_guidebook(self):
+        if not GUIDEBOOK_PATH.exists():
+            QMessageBox.warning(
+                self, t("guidebook"), t("guidebook_missing", path=str(GUIDEBOOK_PATH))
+            )
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(GUIDEBOOK_PATH)))
 
     def _change_lang(self, idx: int):
         lang = self.lang_combo.itemData(idx)

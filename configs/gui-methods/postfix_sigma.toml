@@ -1,0 +1,31 @@
+# gui-methods/postfix_sigma.toml — Postfix with σ-conditional residual.
+#
+# Caption-conditional base + zero-init σ-conditional residual (cond-timestep
+# mode). Training starts identical to postfix_exp; σ-dependence only emerges
+# if gradients push it. Not compatible with `--spectrum` or tiled inference.
+# `|sigma_residual|` at convergence is the "did σ-conditioning help" knob.
+
+network_module = "networks.postfix_anima"
+network_dim = 64
+network_args = [
+    "mode=cond-timestep",
+    "splice_position=front_of_padding",
+    "cond_hidden_dim=256",
+    "sigma_feature_dim=128",
+    "sigma_hidden_dim=256",
+    "slot_embed_init_std=0.02",
+    "contrastive_weight=0.1",
+    "sigma_budget_weight=1e-3",
+]
+output_name = "anima_postfix_sigma"
+
+learning_rate = 1e-4
+max_train_epochs = 2
+save_every_n_epochs = 1
+checkpointing_epochs = 2
+
+caption_shuffle_variants = 8
+cache_llm_adapter_outputs = true
+
+blocks_to_swap = 0
+gradient_accumulation_steps = 4

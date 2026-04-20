@@ -965,6 +965,12 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         help="hardware preset section name in configs/presets.toml (e.g. 'default', 'fast_16gb', 'low_vram').",
     )
     parser.add_argument(
+        "--methods_subdir",
+        type=str,
+        default="methods",
+        help="subfolder under configs/ that holds the method file (default 'methods'). Use 'gui-methods' for the GUI-friendly per-variant configs (lora, ortholora, tlora, reft, hydralora, …).",
+    )
+    parser.add_argument(
         "--output_config",
         action="store_true",
         help="output command line args to given .toml file",
@@ -1518,14 +1524,20 @@ def load_method_preset(
     method: str,
     preset: str = "default",
     configs_dir: str = "configs",
+    methods_subdir: str = "methods",
     *,
     strict: bool = False,
     return_provenance: bool = False,
 ):
-    """Merge base.toml → presets.toml[<preset>] → methods/<method>.toml into a flat dict.
+    """Merge base.toml → presets.toml[<preset>] → <methods_subdir>/<method>.toml into a flat dict.
 
     Method settings win over preset settings on overlap (e.g. postfix can force
     blocks_to_swap=0 regardless of the hardware preset).
+
+    `methods_subdir` selects which folder under `configs_dir` holds the method
+    files. Defaults to ``"methods"``; pass ``"gui-methods"`` to pick up the
+    clean, self-contained per-variant files used by the GUI / `make lora-gui`
+    path instead of the toggle-block method files.
 
     When ``return_provenance=True`` returns ``(merged, provenance)`` where
     ``provenance[key]`` is a short human-readable source tag (e.g.
@@ -1533,7 +1545,7 @@ def load_method_preset(
     """
     base_path = os.path.join(configs_dir, "base.toml")
     preset_path = os.path.join(configs_dir, "presets.toml")
-    method_path = os.path.join(configs_dir, "methods", f"{method}.toml")
+    method_path = os.path.join(configs_dir, methods_subdir, f"{method}.toml")
     for p in (base_path, method_path):
         if not os.path.exists(p):
             raise FileNotFoundError(f"Config file not found: {p}")
@@ -1659,7 +1671,9 @@ def _render_merged_toml(
             return 0
         if src.startswith("configs/presets.toml"):
             return 1
-        if src.startswith("configs/methods/"):
+        # Method file — lives under configs/methods/ by default, or under
+        # configs/gui-methods/ when --methods_subdir=gui-methods is used.
+        if src.startswith("configs/methods/") or src.startswith("configs/gui-methods/"):
             return 2
         if src == "CLI":
             return 4
@@ -1710,11 +1724,18 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
     # New-style chain: --method / --preset
     method = getattr(args, "method", None)
     preset = getattr(args, "preset", None) or "default"
+    methods_subdir = getattr(args, "methods_subdir", None) or "methods"
     if method is not None and not args.config_file:
-        logger.info(f"Loading chain: base → presets/{preset} → methods/{method}")
+        logger.info(
+            f"Loading chain: base → presets/{preset} → {methods_subdir}/{method}"
+        )
         try:
             merged, provenance = load_method_preset(
-                method, preset, strict=strict, return_provenance=True
+                method,
+                preset,
+                methods_subdir=methods_subdir,
+                strict=strict,
+                return_provenance=True,
             )
         except FileNotFoundError as e:
             logger.error(str(e))
@@ -1722,7 +1743,7 @@ def read_config_from_file(args: argparse.Namespace, parser: argparse.ArgumentPar
 
         config_args = argparse.Namespace(**merged)
         args = parser.parse_args(namespace=config_args)
-        args.config_file = os.path.join("configs", "methods", f"{method}.toml")
+        args.config_file = os.path.join("configs", methods_subdir, f"{method}.toml")
 
         if print_config:
             import sys as _sys

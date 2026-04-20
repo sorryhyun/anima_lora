@@ -27,12 +27,22 @@ METHODS_DIR = CONFIGS_DIR / "methods"
 PRESETS_FILE = CONFIGS_DIR / "presets.toml"
 
 
+_METHOD_ORDER = ("lora", "postfix", "apex", "graft")
+
+
 def list_methods() -> list[str]:
-    return (
-        sorted(p.stem for p in METHODS_DIR.glob("*.toml"))
-        if METHODS_DIR.exists()
-        else []
-    )
+    """Method files in configs/methods/, sorted so common choices come first.
+
+    Alphabetical ordering puts `apex` before `lora`, which confuses first-time
+    users (LoRA is by far the most common starting point). Pin the known
+    families to a curated head-of-list, then append any extras alphabetically.
+    """
+    if not METHODS_DIR.exists():
+        return []
+    found = {p.stem for p in METHODS_DIR.glob("*.toml")}
+    ordered = [m for m in _METHOD_ORDER if m in found]
+    ordered.extend(sorted(found - set(_METHOD_ORDER)))
+    return ordered
 
 
 def _load_all_presets() -> dict:
@@ -51,9 +61,24 @@ _GROUPS = {
         "network_dim",
         "network_alpha",
         "network_module",
+        "network_args",
+        "use_ortho",
         "use_timestep_mask",
+        "use_hydra",
+        "add_reft",
+        "use_sigma_router",
         "min_rank",
         "alpha_rank_scale",
+        "num_experts",
+        "balance_loss_weight",
+        "reft_dim",
+        "reft_alpha",
+        "reft_layers",
+        "sigma_feature_dim",
+        "sigma_hidden_dim",
+        "sigma_router_layers",
+        "per_bucket_balance_weight",
+        "num_sigma_buckets",
         "network_train_unet_only",
     },
     "Training": {

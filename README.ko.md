@@ -1,12 +1,14 @@
 # anima_lora
 
-[English](README.md)
+[English](README.md) · 📖 [**가이드북 (Windows 초보자용 한국어 종합 가이드)**](docs/guidelines/가이드북.md)
 
 Anima 디퓨전 모델(DiT 기반, flow-matching)을 위한 LoRA 학습 및 추론 엔진. Standard LoRA, OrthoLoRA, T-LoRA(타임스텝 의존 랭크 마스킹)를 지원합니다.
 
+> 처음 사용하시나요? [**가이드북**](docs/guidelines/가이드북.md)이 CUDA 설치 → 데이터셋 준비 → 학습 → ComfyUI 배포까지 전 과정을 Windows 초보자 관점에서 안내합니다.
+
 ## 하이라이트
 
-**15.2 GB 피크 VRAM · 1.3 s/iter** — 단일 소비자용 GPU에서 달성. 데이터 파이프라인, 어텐션, 컴파일러 스택을 함께 설계하여 최적화:
+**15.5 GB 피크 VRAM · 1.2 s/iter** — 단일 소비자용 GPU에서 달성. 데이터 파이프라인, 어텐션, 컴파일러 스택을 함께 설계하여 최적화:
 
 | 최적화 | 설명 |
 |---|---|

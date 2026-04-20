@@ -25,6 +25,66 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Enable T-LoRA: effective rank varies with denoising timestep via power-law schedule. Full rank at high noise, reduced at low noise.",
         "ko": "T-LoRA 활성화: 디노이징 타임스텝에 따라 유효 랭크 변동. 높은 노이즈에서 전체 랭크, 낮은 노이즈에서 축소.",
     },
+    "use_ortho": {
+        "en": "Enable OrthoLoRA: SVD-based orthogonal parameterization of the update matrix (linear layers only). Regularizes toward structured updates; saved as plain LoRA via thin SVD at checkpoint time.",
+        "ko": "OrthoLoRA 활성화: 업데이트 행렬의 SVD 기반 직교 파라미터화 (선형 레이어 전용). 구조화된 업데이트로 정규화되며, 저장 시 thin SVD로 일반 LoRA로 변환.",
+    },
+    "use_hydra": {
+        "en": "Enable HydraLoRA: MoE-style multi-head routing with shared lora_down and per-expert lora_up heads. Produces a *_moe.safetensors sibling for router-live inference. Requires cache_llm_adapter_outputs=true.",
+        "ko": "HydraLoRA 활성화: 공유 lora_down + 전문가별 lora_up 헤드를 가진 MoE 스타일 멀티헤드 라우팅. 라우터-라이브 추론용 *_moe.safetensors 동반 파일 생성. cache_llm_adapter_outputs=true 필요.",
+    },
+    "num_experts": {
+        "en": "HydraLoRA expert count. More experts = more capacity but more VRAM and slower training. Typical: 2–8.",
+        "ko": "HydraLoRA 전문가 수. 많을수록 표현력 증가하지만 VRAM 사용량 증가 및 학습 속도 감소. 일반적: 2–8.",
+    },
+    "balance_loss_weight": {
+        "en": "HydraLoRA load-balancing loss weight. Discourages router collapse onto a single expert. Typical: 0.01.",
+        "ko": "HydraLoRA 부하 균형 손실 가중치. 라우터가 단일 전문가로 붕괴되는 것을 방지. 일반적: 0.01.",
+    },
+    "add_reft": {
+        "en": "Enable ReFT: block-level residual-stream intervention (Wu et al. 2024). Adds R^T·(ΔW·h + b)·scale to each selected DiT block's output. Composes with any LoRA variant.",
+        "ko": "ReFT 활성화: 블록 수준 잔차 스트림 개입 (Wu et al. 2024). 선택된 DiT 블록 출력에 R^T·(ΔW·h + b)·scale 추가. 모든 LoRA 변형과 함께 사용 가능.",
+    },
+    "reft_dim": {
+        "en": "ReFT intervention rank — dimension of R and ΔW in each ReFTModule. Typical: 32–64.",
+        "ko": "ReFT 개입 랭크 — 각 ReFTModule의 R 및 ΔW 차원. 일반적: 32–64.",
+    },
+    "reft_alpha": {
+        "en": "ReFT scaling factor (effective scale = alpha / dim). Typical: same as reft_dim.",
+        "ko": "ReFT 스케일링 계수 (실효 스케일 = alpha / dim). 일반적: reft_dim과 동일.",
+    },
+    "reft_layers": {
+        "en": "Which DiT blocks receive ReFT modules. 'all', 'last_8', 'first_4', 'stride_2', or comma-separated indices like '3,7,11,15'.",
+        "ko": "ReFT 모듈이 적용될 DiT 블록. 'all', 'last_8', 'first_4', 'stride_2', 또는 '3,7,11,15'와 같은 쉼표 구분 인덱스.",
+    },
+    "use_sigma_router": {
+        "en": "Add a tiny sinusoidal(σ)→E bias MLP to each HydraLoRA router, letting expert routing vary with denoising timestep. Zero-init at final layer → step-0 identical to base HydraLoRA.",
+        "ko": "각 HydraLoRA 라우터에 sinusoidal(σ)→E 바이어스 MLP 추가하여 타임스텝에 따라 전문가 라우팅 변동. 최종 레이어 zero-init → 초기에는 기본 HydraLoRA와 동일.",
+    },
+    "sigma_feature_dim": {
+        "en": "Sinusoidal σ feature dimension fed into the σ-router bias MLP. Typical: 128.",
+        "ko": "σ 라우터 바이어스 MLP에 입력되는 sinusoidal σ 특징 차원. 일반적: 128.",
+    },
+    "sigma_hidden_dim": {
+        "en": "σ-router bias MLP hidden dimension. Typical: 128.",
+        "ko": "σ 라우터 바이어스 MLP 히든 차원. 일반적: 128.",
+    },
+    "sigma_router_layers": {
+        "en": "Regex over layer names — only matching layers get a σ-conditional router branch. Typical: limit to cross_attn.q_proj and self_attn.qkv_proj where σ-signal lives.",
+        "ko": "레이어 이름에 대한 정규식 — 일치하는 레이어만 σ-조건부 라우터 분기 추가. 일반적: σ 신호가 있는 cross_attn.q_proj 및 self_attn.qkv_proj로 제한.",
+    },
+    "per_bucket_balance_weight": {
+        "en": "Extra per-σ-bucket load-balance penalty, scaled by balance_loss_weight. Encourages routing diversity within each timestep bucket. Typical: 0.3.",
+        "ko": "σ 버킷별 추가 부하 균형 페널티, balance_loss_weight로 스케일. 각 타임스텝 버킷 내 라우팅 다양성 유도. 일반적: 0.3.",
+    },
+    "num_sigma_buckets": {
+        "en": "Number of timestep buckets used for per-bucket balance accounting. Typical: 3 (low / mid / high noise).",
+        "ko": "버킷별 균형 계산에 사용되는 타임스텝 버킷 수. 일반적: 3 (저/중/고 노이즈).",
+    },
+    "network_args": {
+        "en": "Extra kwargs passed to the network module. For postfix: list of 'key=value' strings (e.g., 'mode=cond-timestep', 'splice_position=end_of_sequence', 'cond_hidden_dim=256'). Pick a Variant to auto-fill.",
+        "ko": "네트워크 모듈에 전달되는 추가 kwargs. postfix의 경우 'key=value' 문자열 리스트 (예: 'mode=cond-timestep', 'splice_position=end_of_sequence', 'cond_hidden_dim=256'). Variant 선택으로 자동 채우기 가능.",
+    },
     "min_rank": {
         "en": "Minimum active rank when T-LoRA timestep masking is enabled. At the lowest-noise timesteps, rank drops to this value.",
         "ko": "T-LoRA 타임스텝 마스킹 사용 시 최소 활성 랭크. 가장 낮은 노이즈에서 이 값까지 감소.",
@@ -190,8 +250,41 @@ def field_help(key: str) -> str | None:
 
 # ── LoRA variant guide (rich HTML) ────────────────────────────
 
+APPLY_NOTE_HTML: dict[str, str] = {
+    "en": (
+        "<div style='background:#1e2a33; padding:10px 14px; border-left:3px solid #6aa4d8; "
+        "margin-bottom:14px; border-radius:3px;'>"
+        "<p style='margin:0 0 6px 0;'><b>What does <span style='color:#e67e22;'>Apply</span> do?</b></p>"
+        "<p style='margin:0 0 6px 0;'>It fills the form below with a known-good set of values "
+        "for the picked variant — the right toggles (<code>use_ortho</code>, <code>use_hydra</code>, "
+        "<code>add_reft</code>, …), rank defaults, <code>output_name</code>, σ-router knobs, etc. "
+        "It also strips fields the previous variant owned but this one doesn't "
+        "(e.g. <code>num_experts</code> disappears when you switch hydralora → plain lora).</p>"
+        "<p style='margin:0; color:#f0c14b;'><b>Nothing is saved until you click "
+        "<span style='color:#fff;'>Save</span>.</b> Review the filled-in values first, tweak "
+        "whatever you want, then save to overwrite <code>configs/methods/&lt;method&gt;.toml</code>.</p>"
+        "</div>"
+    ),
+    "ko": (
+        "<div style='background:#1e2a33; padding:10px 14px; border-left:3px solid #6aa4d8; "
+        "margin-bottom:14px; border-radius:3px;'>"
+        "<p style='margin:0 0 6px 0;'><b><span style='color:#e67e22;'>Apply</span>는 정확히 무엇을 하나요?</b></p>"
+        "<p style='margin:0 0 6px 0;'>선택한 variant의 검증된 값 세트로 아래 폼을 채웁니다 — "
+        "토글(<code>use_ortho</code>, <code>use_hydra</code>, <code>add_reft</code> 등), "
+        "랭크 기본값, <code>output_name</code>, σ-router 파라미터 등. "
+        "이전 variant가 소유했지만 현재 variant에는 없는 필드는 자동으로 제거됩니다 "
+        "(예: hydralora → plain lora로 바꾸면 <code>num_experts</code>가 사라짐).</p>"
+        "<p style='margin:0; color:#f0c14b;'><b><span style='color:#fff;'>Save</span>를 "
+        "누르기 전까지는 디스크에 저장되지 않습니다.</b> 채워진 값을 먼저 확인하고 필요하면 "
+        "수정한 뒤 Save를 눌러 <code>configs/methods/&lt;method&gt;.toml</code>에 기록하세요.</p>"
+        "</div>"
+    ),
+}
+
+
 LORA_GUIDE: dict[str, str] = {
     "en": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>LoRA Variants</h2>"
         "<p><b>LoRA</b> &mdash; Classic low-rank adaptation. Adds small trainable matrices "
         "(down &times; up) to existing weight layers.<br>"
         "<code>y = x + (x @ down @ up) &times; scale &times; multiplier</code><br>"
@@ -199,14 +292,30 @@ LORA_GUIDE: dict[str, str] = {
         "<p><b>OrthoLoRA</b> &mdash; Orthogonal LoRA. Uses QR-decomposed orthonormal bases "
         "with learned singular values: <code>P @ diag(&lambda;) @ Q</code>. "
         "Includes orthogonality regularization to keep updates structured.<br>"
-        "Linear layers only.</p>"
+        "Linear layers only. Enable with <code>use_ortho = true</code>.</p>"
         "<p><b>T-LoRA</b> &mdash; Timestep-dependent rank masking. The effective LoRA rank changes "
         "with the denoising timestep via a power-law schedule:<br>"
         "&bull; High noise (early steps) &rarr; full rank (maximum expressiveness)<br>"
         "&bull; Low noise (late steps) &rarr; reduced rank (down to <code>min_rank</code>)<br>"
         "Enable with <code>use_timestep_mask = true</code>.</p>"
+        "<p><b>HydraLoRA</b> &mdash; MoE-style routing: shared <code>lora_down</code> plus "
+        "<code>num_experts</code> per-expert <code>lora_up</code> heads, routed layer-locally "
+        "from the adapted Linear's input. Produces a <code>*_moe.safetensors</code> sibling "
+        "used by <code>make test-hydra</code>.<br>"
+        "Enable with <code>use_hydra = true</code>. Requires <code>cache_llm_adapter_outputs = true</code>.</p>"
+        "<p><b>σ-router</b> &mdash; Add-on to HydraLoRA: a tiny sinusoidal(σ)&rarr;E bias MLP "
+        "in each router so expert choice can vary with denoising timestep. Zero-init at the "
+        "final layer &rarr; step-0 identical to base HydraLoRA.<br>"
+        "Enable with <code>use_sigma_router = true</code>.</p>"
+        "<p><b>ReFT</b> &mdash; Block-level residual-stream intervention (Wu et al., NeurIPS 2024). "
+        "One module per selected DiT block adds <code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code> "
+        "to the block's output &mdash; an additive side-channel that composes with any LoRA variant and "
+        "lives in the same <code>.safetensors</code>.<br>"
+        "Enable with <code>add_reft = true</code>; pick blocks via <code>reft_layers</code> "
+        "(e.g. <code>last_8</code>).</p>"
     ),
     "ko": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>LoRA 변형</h2>"
         "<p><b>LoRA</b> &mdash; 클래식 저랭크 적응. 기존 가중치 레이어에 작은 학습 가능한 "
         "행렬(down &times; up)을 추가.<br>"
         "<code>y = x + (x @ down @ up) &times; scale &times; multiplier</code><br>"
@@ -214,12 +323,27 @@ LORA_GUIDE: dict[str, str] = {
         "<p><b>OrthoLoRA</b> &mdash; 직교 LoRA. QR 분해된 정규 직교 기저와 "
         "학습된 특이값 사용: <code>P @ diag(&lambda;) @ Q</code>. "
         "업데이트 구조 유지를 위한 직교성 정규화 포함.<br>"
-        "선형 레이어만 지원.</p>"
+        "선형 레이어만 지원. <code>use_ortho = true</code>로 활성화.</p>"
         "<p><b>T-LoRA</b> &mdash; 타임스텝 의존 랭크 마스킹. 디노이징 타임스텝에 따라 "
         "유효 LoRA 랭크가 거듭제곱 스케줄로 변동:<br>"
         "&bull; 높은 노이즈 (초기 스텝) &rarr; 전체 랭크 (최대 표현력)<br>"
         "&bull; 낮은 노이즈 (후기 스텝) &rarr; 축소된 랭크 (<code>min_rank</code>까지)<br>"
         "<code>use_timestep_mask = true</code>로 활성화.</p>"
+        "<p><b>HydraLoRA</b> &mdash; MoE 스타일 라우팅: 공유 <code>lora_down</code> + "
+        "<code>num_experts</code>개의 전문가별 <code>lora_up</code> 헤드를 적응된 Linear의 "
+        "입력으로부터 레이어 로컬하게 라우팅. <code>make test-hydra</code>에 사용되는 "
+        "<code>*_moe.safetensors</code> 동반 파일 생성.<br>"
+        "<code>use_hydra = true</code>로 활성화. <code>cache_llm_adapter_outputs = true</code> 필요.</p>"
+        "<p><b>σ-router</b> &mdash; HydraLoRA 확장: 각 라우터에 sinusoidal(σ)&rarr;E 바이어스 MLP를 "
+        "추가하여 전문가 선택이 디노이징 타임스텝에 따라 변동. 최종 레이어 zero-init &rarr; "
+        "초기에는 기본 HydraLoRA와 동일.<br>"
+        "<code>use_sigma_router = true</code>로 활성화.</p>"
+        "<p><b>ReFT</b> &mdash; 블록 수준 잔차 스트림 개입 (Wu et al., NeurIPS 2024). "
+        "선택된 각 DiT 블록에 하나의 모듈이 <code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code>을 "
+        "블록 출력에 추가 &mdash; 모든 LoRA 변형과 함께 사용 가능한 추가 사이드 채널이며, "
+        "동일한 <code>.safetensors</code>에 저장됨.<br>"
+        "<code>add_reft = true</code>로 활성화; <code>reft_layers</code>로 블록 선택 "
+        "(예: <code>last_8</code>).</p>"
     ),
 }
 
@@ -228,3 +352,65 @@ def lora_guide() -> str:
     """Return the LoRA variant guide HTML for the current language."""
     lang = current_language()
     return LORA_GUIDE.get(lang) or LORA_GUIDE["en"]
+
+
+POSTFIX_GUIDE: dict[str, str] = {
+    "en": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>Postfix / Prefix Variants</h2>"
+        "<p><b>postfix</b> &mdash; Appends N learned vectors at the end of the "
+        "adapter cross-attention sequence (<code>mode=postfix</code>). Simple "
+        "continuous-token tuning — the vectors are pure learned parameters, independent "
+        "of the caption.</p>"
+        "<p><b>postfix_exp (cond)</b> &mdash; Caption-conditional MLP injection "
+        "(<code>mode=cond</code>). A small MLP turns the pooled caption embedding into "
+        "the postfix vectors, so the appended tokens vary with the text.</p>"
+        "<p><b>postfix_func</b> &mdash; Same as <i>postfix_exp</i> plus a functional MSE "
+        "loss against saved inversion runs. Needs <code>inversion_dir</code> populated "
+        "and forces <code>attn_mode=flash</code> / <code>trim_crossattn_kv=false</code>.</p>"
+        "<p><b>postfix_sigma (cond-timestep)</b> &mdash; Caption-conditional base plus "
+        "a zero-init σ-conditional residual (<code>mode=cond-timestep</code>). Training "
+        "starts identical to <i>postfix_exp</i>; σ-dependence only emerges if gradients "
+        "push it. Not compatible with <code>--spectrum</code> or tiled inference.</p>"
+        "<p><b>prefix</b> &mdash; Prepends N vectors to the cross-attention sequence "
+        "(<code>mode=prefix</code>). No base LoRA required.</p>"
+    ),
+    "ko": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>Postfix / Prefix 변형</h2>"
+        "<p><b>postfix</b> &mdash; 어댑터 크로스 어텐션 시퀀스 끝에 N개의 학습된 벡터를 "
+        "추가 (<code>mode=postfix</code>). 간단한 연속 토큰 튜닝 — 벡터는 캡션과 무관한 "
+        "순수 학습 파라미터.</p>"
+        "<p><b>postfix_exp (cond)</b> &mdash; 캡션 조건부 MLP 주입 "
+        "(<code>mode=cond</code>). 작은 MLP가 풀링된 캡션 임베딩을 postfix 벡터로 변환하여, "
+        "추가되는 토큰이 텍스트에 따라 달라짐.</p>"
+        "<p><b>postfix_func</b> &mdash; <i>postfix_exp</i> + 저장된 inversion 결과에 대한 "
+        "functional MSE 손실. <code>inversion_dir</code> 필요, "
+        "<code>attn_mode=flash</code> / <code>trim_crossattn_kv=false</code> 강제.</p>"
+        "<p><b>postfix_sigma (cond-timestep)</b> &mdash; 캡션 조건부 베이스 + "
+        "zero-init σ-조건부 잔차 (<code>mode=cond-timestep</code>). 학습 시작 시 "
+        "<i>postfix_exp</i>와 동일; σ-의존성은 그래디언트가 발생시킬 때만 발현. "
+        "<code>--spectrum</code> 및 타일 추론과 비호환.</p>"
+        "<p><b>prefix</b> &mdash; 크로스 어텐션 시퀀스 앞쪽에 N개의 벡터 추가 "
+        "(<code>mode=prefix</code>). 베이스 LoRA 불필요.</p>"
+    ),
+}
+
+
+def postfix_guide() -> str:
+    """Return the postfix/prefix variant guide HTML for the current language."""
+    lang = current_language()
+    return POSTFIX_GUIDE.get(lang) or POSTFIX_GUIDE["en"]
+
+
+def apply_note() -> str:
+    """HTML block explaining Apply semantics — shown above variant guides."""
+    lang = current_language()
+    return APPLY_NOTE_HTML.get(lang) or APPLY_NOTE_HTML["en"]
+
+
+def method_guide(method: str) -> str | None:
+    """Right-panel default HTML for *method*, or None if no guide is registered."""
+    if method == "lora":
+        return apply_note() + lora_guide()
+    if method == "postfix":
+        return apply_note() + postfix_guide()
+    return None

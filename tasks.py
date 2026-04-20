@@ -102,9 +102,17 @@ def accelerate_launch(*args: str):
     )
 
 
-def train(method: str, extra, preset: str | None = None):
-    """Launch training for a given method + preset (PRESET env overrides default)."""
-    accelerate_launch("--method", method, "--preset", preset or _preset(), *extra)
+def train(method: str, extra, preset: str | None = None, methods_subdir: str | None = None):
+    """Launch training for a given method + preset (PRESET env overrides default).
+
+    `methods_subdir` selects the folder under `configs/` that holds the method
+    file (default ``"methods"``; pass ``"gui-methods"`` for the clean per-variant
+    files used by the `lora-gui` path).
+    """
+    args = ["--method", method, "--preset", preset or _preset()]
+    if methods_subdir:
+        args += ["--methods_subdir", methods_subdir]
+    accelerate_launch(*args, *extra)
 
 
 # ── Training ──────────────────────────────────────────────────────────
@@ -120,6 +128,34 @@ def cmd_lora_fast(extra):
 
 def cmd_lora_low_vram(extra):
     train("lora", extra, preset=_preset("low_vram"))
+
+
+def cmd_lora_gui(extra):
+    """Train from configs/gui-methods/<variant>.toml.
+
+    Variant is taken from GUI_PRESETS env var, falling back to the first
+    positional extra arg (``python tasks.py lora-gui tlora ...``), then to
+    ``lora`` (plain). Extra args after the variant are forwarded as usual.
+    """
+    variant = os.environ.get("GUI_PRESETS")
+    if not variant and extra and not extra[0].startswith("-"):
+        variant = extra[0]
+        extra = extra[1:]
+    variant = variant or "lora"
+
+    expected = ROOT / "configs" / "gui-methods" / f"{variant}.toml"
+    if not expected.exists():
+        available = sorted(
+            p.stem for p in (ROOT / "configs" / "gui-methods").glob("*.toml")
+        )
+        print(
+            f"Unknown gui-methods variant: {variant!r}\n"
+            f"Available: {', '.join(available)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    train(variant, extra, methods_subdir="gui-methods")
 
 
 def cmd_apex(extra):
@@ -534,6 +570,11 @@ COMMANDS = {
     "lora": (cmd_lora, "LoRA family (lora|tlora|tlora_rf|hydralora via configs/methods/lora.toml)"),
     "lora-fast": (cmd_lora_fast, "Fast LoRA training (16GB, no block swap)"),
     "lora-low-vram": (cmd_lora_low_vram, "LoRA training (low VRAM)"),
+    "lora-gui": (
+        cmd_lora_gui,
+        "Train from a self-contained configs/gui-methods/<variant>.toml "
+        "(variant from GUI_PRESETS env or 1st positional; e.g. tlora, hydralora, reft, postfix_exp).",
+    ),
     "apex": (cmd_apex, "APEX distillation (condition-shift self-adversarial)"),
     "postfix": (cmd_postfix, "Postfix/prefix tuning (mode selected in configs/methods/postfix.toml)"),
     "test": (cmd_test, "Inference with latest LoRA"),

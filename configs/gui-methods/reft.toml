@@ -1,0 +1,27 @@
+# gui-methods/reft.toml — ReFT-only (block-level residual-stream intervention).
+#
+# One ReFTModule per selected DiT block adds R^T · (ΔW·h + b) · scale to the
+# block's output. Composes with any LoRA variant; this file keeps ReFT on and
+# LoRA at rank 16 so the file produces a standard `.safetensors` with both
+# LoRA and ReFT tensors. See docs/methods/reft.md.
+
+network_dim = 16
+network_alpha = 16
+
+learning_rate = 1e-4
+max_train_epochs = 2
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+
+caption_shuffle_variants = 8
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+add_reft = true
+reft_dim = 64
+reft_alpha = 64
+reft_layers = "last_8"
+
+output_name = "anima_reft"
+
+blocks_to_swap = 16

@@ -8,7 +8,7 @@ LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/
 LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 
-.PHONY: lora lora-fast lora-low-vram apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -43,6 +43,15 @@ lora-fast:
 
 lora-low-vram:
 	$(TRAIN) lora --preset low_vram
+
+# Clean per-variant path for basic users: picks the chosen variant directly
+# out of configs/gui-methods/<variant>.toml (no toggle-block hand-editing).
+# Example: `make lora-gui GUI_PRESETS=tlora` — see configs/gui-methods/ for
+# the full list (lora, ortholora, tlora, reft, tlora_ortho_reft, hydralora,
+# hydralora_sigma, postfix, postfix_exp, postfix_func, postfix_sigma, prefix).
+GUI_PRESETS ?= lora
+lora-gui:
+	$(TRAIN) $(GUI_PRESETS) --methods_subdir gui-methods --preset $(PRESET)
 
 apex:
 	$(TRAIN) apex --preset $(PRESET)

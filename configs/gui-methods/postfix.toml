@@ -1,0 +1,24 @@
+# gui-methods/postfix.toml — Postfix tuning (append N vectors to cross-attn).
+#
+# Simple continuous-token tuning: the appended vectors are pure learned
+# parameters, independent of the caption. `blocks_to_swap=0` is method-forced
+# because postfix training accumulates on the cached TE side.
+
+network_module = "networks.postfix_anima"
+network_dim = 32
+network_args = [
+    "mode=postfix",
+    "splice_position=end_of_sequence",
+]
+output_name = "anima_postfix"
+
+learning_rate = 1e-4
+max_train_epochs = 1
+save_every_n_epochs = 1
+checkpointing_epochs = 1
+
+caption_shuffle_variants = 8
+cache_llm_adapter_outputs = true
+
+blocks_to_swap = 0
+gradient_accumulation_steps = 4

@@ -1,0 +1,14 @@
+# GRAFT method — T-LoRA-ish defaults used by the human-in-the-loop rejection sampling loop.
+
+network_alpha = 32
+network_dim = 32
+min_rank = 1
+
+learning_rate = 2e-5
+max_train_epochs = 16
+save_every_n_epochs = 8
+checkpointing_epochs = 8
+
+caption_shuffle_variants = 8
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1

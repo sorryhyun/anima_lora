@@ -1,0 +1,33 @@
+# gui-methods/postfix_func.toml — Cond postfix + functional MSE loss.
+#
+# Same as postfix_exp plus a functional MSE loss against saved inversion runs.
+# Needs `inversion_dir` populated (run `make invert` first). `trim_crossattn_kv`
+# is incompatible with end_of_sequence splicing, so it's forced off.
+
+network_module = "networks.postfix_anima"
+network_dim = 64
+network_args = [
+    "mode=cond",
+    "splice_position=end_of_sequence",
+    "cond_hidden_dim=256",
+]
+output_name = "anima_postfix_func"
+
+learning_rate = 1e-4
+max_train_epochs = 4
+save_every_n_epochs = 1
+checkpointing_epochs = 1
+
+caption_shuffle_variants = 1
+cache_llm_adapter_outputs = true
+
+attn_mode = "flash"
+trim_crossattn_kv = false
+
+inversion_dir = "inversions/results"
+functional_loss_weight = 1.0
+functional_loss_blocks = "8,12,16,20"
+functional_loss_num_runs = 3
+
+blocks_to_swap = 0
+gradient_accumulation_steps = 4

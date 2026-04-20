@@ -1,8 +1,10 @@
 # anima_lora
 
-[한국어](README.ko.md)
+[한국어](README.ko.md) · 📖 [가이드북 (Windows 초보자용 한국어 종합 가이드)](docs/guidelines/가이드북.md)
 
 LoRA training and inference engine for the Anima diffusion model (DiT-based, flow-matching). Supports standard LoRA, OrthoLoRA, and T-LoRA with timestep-dependent rank masking.
+
+> New to the project? The [가이드북](docs/guidelines/가이드북.md) walks through CUDA install → dataset prep → training → ComfyUI deploy in Korean, for first-time Windows users.
 
 ## Highlights
 
