@@ -351,6 +351,20 @@ def _build_hydra_moe_state_dict(
         ups = [hydra_sd.pop(k) for k in ups_keys]
         ups_chunked = [u.chunk(n, dim=0) for u in ups]
 
+        # Plain-LoRA leg (present when hydra_router_layers excluded this
+        # module — the fused qkv then carries the standard ``.lora_up.weight``
+        # and optional DoRA ``.dora_scale`` instead of the hydra stack).
+        # Split these per-component so q/k/v keys are consistent with the
+        # already-split ``.lora_down.weight`` above.
+        plain_up = hydra_sd.pop(f"{prefix}.lora_up.weight", None)
+        plain_up_chunks = (
+            plain_up.chunk(n, dim=0) if plain_up is not None else None
+        )
+        dora_scale = hydra_sd.pop(f"{prefix}.dora_scale", None)
+        dora_chunks = (
+            dora_scale.chunk(n, dim=0) if dora_scale is not None else None
+        )
+
         base_prefix = prefix.removesuffix(fused_frag)
         for ci, suffix in enumerate(suffixes):
             new_prefix = base_prefix + template.format(suffix)
@@ -359,6 +373,12 @@ def _build_hydra_moe_state_dict(
                 hydra_sd[f"{new_prefix}.lora_ups.{ei}.weight"] = (
                     u_chunks[ci].contiguous().clone()
                 )
+            if plain_up_chunks is not None:
+                hydra_sd[f"{new_prefix}.lora_up.weight"] = (
+                    plain_up_chunks[ci].contiguous().clone()
+                )
+            if dora_chunks is not None:
+                hydra_sd[f"{new_prefix}.dora_scale"] = dora_chunks[ci].clone()
             if alpha is not None:
                 hydra_sd[f"{new_prefix}.alpha"] = alpha.clone()
             if router_w is not None:

@@ -531,6 +531,16 @@ class AnimaTrainer:
         # unless use_sigma_router is on and the variant is hydra/ortho_hydra.
         if hasattr(network, "set_sigma"):
             network.set_sigma(timesteps)
+        # HydraLoRA expert-warmup: during the first ``expert_warmup_ratio`` of
+        # training, only one randomly-chosen expert per module receives
+        # gradient (forward still uses all experts via the learned gate).
+        # No-op unless expert_warmup_ratio > 0.
+        if is_train and hasattr(network, "step_expert_warmup"):
+            network.step_expert_warmup(
+                int(getattr(self, "_hydra_warmup_step", 0)),
+                int(getattr(args, "max_train_steps", 0) or 0),
+            )
+            self._hydra_warmup_step = int(getattr(self, "_hydra_warmup_step", 0)) + 1
 
         # Gradient checkpointing support
         if args.gradient_checkpointing:
@@ -1515,46 +1525,11 @@ class AnimaTrainer:
 
         # Forward known network-arg keys from top-level config (TOML) to net_kwargs.
         # CLI --network_args take precedence over top-level config keys.
-        _NETWORK_ARG_KEYS = [
-            "train_llm_adapter",
-            "exclude_patterns",
-            "include_patterns",
-            "use_dora",
-            "use_ortho",
-            "use_timestep_mask",
-            "min_rank",
-            "alpha_rank_scale",
-            "use_hydra",
-            "num_experts",
-            "balance_loss_weight",
-            "per_channel_scaling",
-            "channel_stats_path",
-            "channel_scaling_alpha",
-            "rank_dropout",
-            "module_dropout",
-            "verbose",
-            "network_reg_lrs",
-            "network_reg_dims",
-            "loraplus_lr_ratio",
-            "loraplus_unet_lr_ratio",
-            "loraplus_text_encoder_lr_ratio",
-            "layer_start",
-            "layer_end",
-            # APEX (condition-space shifting)
-            "apex_condition_shift_mode",
-            "apex_condition_shift_init_a",
-            "apex_condition_shift_init_b",
-            "apex_shift_lr_scale",
-            # ReFT (LoReFT: additive representation fine-tuning)
-            "add_reft",
-            "reft_dim",
-            "reft_alpha",
-            "reft_layers",
-            # Postfix contrastive needs to know the accumulation window so
-            # the intra-step reference set resets on step boundary.
-            "gradient_accumulation_steps",
-        ]
-        for key in _NETWORK_ARG_KEYS:
+        # Source of truth: `networks.all_network_kwargs()` (union of
+        # `SHARED_KWARG_FLAGS` and each `NetworkSpec.kwarg_flags`), plus a
+        # small tail of top-level training args the network modules still
+        # want to read (e.g. postfix contrastive's step-boundary window).
+        for key in NETWORK_KWARG_ALLOWLIST + _EXTRA_FORWARDED_TOP_LEVEL_ARGS:
             if (
                 key not in net_kwargs
                 and hasattr(args, key)
@@ -3174,48 +3149,25 @@ def setup_parser() -> argparse.ArgumentParser:
 
 
 from library.config import schema as _config_schema  # noqa: E402
+from networks import all_network_kwargs as _all_network_kwargs  # noqa: E402
 
 
 # Network-module-consumed flags (networks.lora_anima / networks.postfix_anima).
-# These don't flow through argparse because `create_network` reads them from
-# ``kwargs``. Registered as a pending allowlist; M2 (NETWORK_REGISTRY) will move
-# these under per-method ``NetworkSpec.kwarg_flags``.
-NETWORK_KWARG_ALLOWLIST: tuple[str, ...] = (
-    "add_reft",
-    "alpha_rank_scale",
-    "apex_condition_shift_dim",
-    "balance_loss_weight",
-    "channel_scaling_alpha",
-    "channel_stats_path",
-    "exclude_patterns",
-    "include_patterns",
-    "layer_start",
-    "layer_end",
-    "loraplus_lr_ratio",
-    "loraplus_text_encoder_lr_ratio",
-    "loraplus_unet_lr_ratio",
-    "min_rank",
-    "module_dropout",
-    "network_reg_dims",
-    "network_reg_lrs",
-    "num_experts",
-    "num_sigma_buckets",
-    "per_bucket_balance_weight",
-    "per_channel_scaling",
-    "rank_dropout",
-    "reft_alpha",
-    "reft_dim",
-    "reft_layers",
-    "sigma_feature_dim",
-    "sigma_hidden_dim",
-    "sigma_router_layers",
-    "train_llm_adapter",
-    "use_dora",
-    "use_hydra",
-    "use_ortho",
-    "use_sigma_router",
-    "use_timestep_mask",
-    "verbose",
+# These don't flow through argparse directly because `create_network` reads
+# them from ``kwargs``. Derived from the registry in ``networks/__init__.py``
+# (``SHARED_KWARG_FLAGS`` ∪ per-``NetworkSpec.kwarg_flags``) so adding a new
+# kwarg to a variant spec automatically registers it here.
+NETWORK_KWARG_ALLOWLIST: tuple[str, ...] = _all_network_kwargs()
+
+# Top-level training args that aren't network kwargs but still flow through
+# ``net_kwargs`` because a network module reads them. Kept explicit — any
+# growth here should be reviewed, since the right answer is usually to
+# expose the value as a proper argparse flag the network module reads
+# directly rather than tunneling it through kwargs.
+_EXTRA_FORWARDED_TOP_LEVEL_ARGS: tuple[str, ...] = (
+    # Postfix contrastive resets its intra-step reference set on step
+    # boundary, so it needs the grad-accum window.
+    "gradient_accumulation_steps",
 )
 
 

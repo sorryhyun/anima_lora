@@ -42,9 +42,11 @@ class NetworkSpec:
             instantiate per target module.
         save_variant: Label keyed into ``networks.lora_save.SAVE_HANDLERS``
             — selects the serialization pipeline for this variant.
-        kwarg_flags: Tuple of kwargs this variant consumes beyond the
-            shared set. Documentation only — enforcement lives in
-            ``train.NETWORK_KWARG_ALLOWLIST``.
+        kwarg_flags: Tuple of kwargs this variant consumes beyond
+            ``SHARED_KWARG_FLAGS``. Combined with the shared set by
+            ``all_network_kwargs()`` to populate argparse schema and
+            forward TOML-level args into ``create_network``. Single
+            source of truth for what keys train.py recognizes.
         post_init: Optional hook run after the network is built; receives
             ``(network, kwargs)``. Used for variant-specific attribute
             attachment (e.g. hydra balance loss weight).
@@ -57,10 +59,76 @@ class NetworkSpec:
     post_init: Optional[Callable[[Any, Mapping[str, Any]], None]] = None
 
 
+# Kwargs every LoRA-family variant consumes in ``create_network``: core
+# targeting knobs + cross-cutting add-ons (ReFT, APEX, channel scaling,
+# LoRA+, T-LoRA). Cross-cutting because these compose on top of any
+# variant rather than belonging to a single one.
+SHARED_KWARG_FLAGS: Tuple[str, ...] = (
+    # Core network targeting / knobs
+    "train_llm_adapter",
+    "exclude_patterns",
+    "include_patterns",
+    "layer_start",
+    "layer_end",
+    "rank_dropout",
+    "module_dropout",
+    "verbose",
+    # Regex-driven per-module rank / lr overrides
+    "network_reg_dims",
+    "network_reg_lrs",
+    # HydraLoRA router (+ σ-router MLP) LR multiplier on top of unet_lr / reg_lr
+    "network_router_lr_scale",
+    # LoRA+
+    "loraplus_lr_ratio",
+    "loraplus_unet_lr_ratio",
+    "loraplus_text_encoder_lr_ratio",
+    # T-LoRA (timestep-dependent rank masking)
+    "use_timestep_mask",
+    "min_rank",
+    "alpha_rank_scale",
+    # Per-channel input pre-scaling (SmoothQuant-style)
+    "per_channel_scaling",
+    "channel_stats_path",
+    "channel_scaling_alpha",
+    # Variant selectors (read by resolve_network_spec)
+    "use_dora",
+    "use_hydra",
+    "use_ortho",
+    # ReFT add-on (composes with any variant)
+    "add_reft",
+    "reft_dim",
+    "reft_alpha",
+    "reft_layers",
+    # APEX self-adversarial condition-space shifting (composes with any variant)
+    "apex_condition_shift_mode",
+    "apex_condition_shift_init_a",
+    "apex_condition_shift_init_b",
+    "apex_shift_lr_scale",
+    "apex_condition_shift_dim",
+)
+
+
 def _post_init_hydra(network: Any, kwargs: Mapping[str, Any]) -> None:
     blw = kwargs.get("balance_loss_weight")
     network._balance_loss_weight = float(blw) if blw is not None else 0.01
     network._use_hydra = True
+
+
+_HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
+    "num_experts",
+    "balance_loss_weight",
+    "expert_init_std",
+    "expert_warmup_ratio",
+    # Layer filter — concentrates MoE routers on cross-attn + MLP
+    "hydra_router_layers",
+    # σ-conditional router add-on (hydra-only)
+    "use_sigma_router",
+    "sigma_router_layers",
+    "sigma_feature_dim",
+    "sigma_hidden_dim",
+    "per_bucket_balance_weight",
+    "num_sigma_buckets",
+)
 
 
 NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
@@ -78,14 +146,14 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
         name="hydra",
         module_class=HydraLoRAModule,
         save_variant="hydra_moe",
-        kwarg_flags=("num_experts", "balance_loss_weight"),
+        kwarg_flags=_HYDRA_KWARG_FLAGS,
         post_init=_post_init_hydra,
     ),
     "ortho_hydra": NetworkSpec(
         name="ortho_hydra",
         module_class=OrthoHydraLoRAExpModule,
         save_variant="ortho_hydra_to_hydra",
-        kwarg_flags=("num_experts", "balance_loss_weight"),
+        kwarg_flags=_HYDRA_KWARG_FLAGS,
         post_init=_post_init_hydra,
     ),
     "dora": NetworkSpec(
@@ -94,6 +162,20 @@ NETWORK_REGISTRY: Dict[str, NetworkSpec] = {
         save_variant="standard",
     ),
 }
+
+
+def all_network_kwargs() -> Tuple[str, ...]:
+    """Return the union of shared + per-variant kwargs, sorted.
+
+    Single source of truth for train.py — populates the argparse schema
+    and the TOML → ``net_kwargs`` forwarding list, so adding a new kwarg
+    to a ``NetworkSpec`` (or to ``SHARED_KWARG_FLAGS``) automatically
+    makes it visible to training without touching train.py.
+    """
+    merged: set[str] = set(SHARED_KWARG_FLAGS)
+    for spec in NETWORK_REGISTRY.values():
+        merged.update(spec.kwarg_flags)
+    return tuple(sorted(merged))
 
 
 def _parse_bool_flag(kwargs: Mapping[str, Any], key: str) -> bool:
@@ -136,5 +218,7 @@ def resolve_network_spec(kwargs: Mapping[str, Any]) -> NetworkSpec:
 __all__ = [
     "NetworkSpec",
     "NETWORK_REGISTRY",
+    "SHARED_KWARG_FLAGS",
+    "all_network_kwargs",
     "resolve_network_spec",
 ]

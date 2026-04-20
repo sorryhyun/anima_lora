@@ -240,7 +240,8 @@ Utility scripts in `scripts/`:
 Spectrum KSampler and mod guidance ComfyUI nodes live in a separate repo: https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler
 
 `custom_nodes/comfyui-hydralora/` — **Anima Adapter Loader** node for ComfyUI (unified LoRA / Hydra / ReFT + prefix/postfix). One node with two independently-toggled sections; auto-detects by key sniff and applies each component with its own strength. Code is split across `adapter.py` (LoRA/Hydra/ReFT), `postfix.py` (prefix/postfix/cond), and `nodes.py` (the loader); `__init__.py` only re-exports the node mappings.
-- Plain LoRA / HydraLoRA → `ModelPatcher.add_patches` (Hydra experts baked down with uniform weighting since the trained layer-local router can't run under weight-patching).
+- Plain LoRA → `ModelPatcher.add_patches`.
+- HydraLoRA → per-Linear `forward_hook` installed via `ModelPatcher.add_object_patch` on each adapted Linear's `_forward_hooks`, replaying `HydraLoRAModule.forward` (rank-R down → RMS-pooled router → softmax gate → gate-weighted expert sum). Live routing, not uniform bake — the trained layer-local router actually fires at inference.
 - ReFT → per-block `forward_hook` installed via `ModelPatcher.add_object_patch` on `diffusion_model.blocks.<idx>._forward_hooks`, replaying `h + R^T·(ΔW·h + b)·scale·strength`. Hooking (not `forward` override) is load-bearing — overriding `forward` strands block weights on CPU under ComfyUI's cast-weights path.
 - Prefix / postfix / cond → `ModelPatcher.add_object_patch` on `diffusion_model.forward`, splicing learned vectors into the T5-compatible crossattn embedding *after* the LLM adapter + pad-to-512 step. Positive-batch rows only via `cond_or_uncond` from `transformer_options` (CFG-safe).
 

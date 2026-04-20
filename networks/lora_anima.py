@@ -457,6 +457,20 @@ def create_network(
     balance_loss_weight = (
         float(balance_loss_weight) if balance_loss_weight is not None else 0.01
     )
+    # Break per-expert symmetry at init — without this, zero-init ups (or S_p)
+    # give every expert identical outputs and identical gradients under a
+    # near-uniform router, so neither experts nor router ever diverge (MoE
+    # cold-start deadlock). 1e-4 keeps ΔW ~ std·‖down‖·‖x‖ negligible at init
+    # while giving the router a distinct direction per expert to latch onto.
+    # Set to 0.0 to restore legacy zero-init.
+    expert_init_std = float(kwargs.get("expert_init_std", 1e-4))
+    # Fraction of training steps during which only one randomly-chosen expert
+    # per module receives gradient (forward still uses all experts via the
+    # learned gate, so each expert learns in the full MoE context). 0.0 =
+    # off; 0.1 = warmup for the first 10% of steps. Complements
+    # expert_init_std: the init perturb gives the router distinct directions
+    # to latch onto, warmup then forces experts to actually specialize.
+    expert_warmup_ratio = float(kwargs.get("expert_warmup_ratio", 0.0))
 
     # σ-conditional HydraLoRA router (Track B, docs: timestep-hydra.md).
     # When on, each matching HydraLoRAModule gets a tiny sinusoidal(σ)→E MLP
@@ -473,6 +487,13 @@ def create_network(
     sigma_router_layers = kwargs.get(
         "sigma_router_layers", r".*(cross_attn\.q_proj|self_attn\.qkv_proj)$"
     )
+    # Regex applied to each candidate module's `original_name` to decide which
+    # target Linears actually get the HydraLoRA MoE wrapper. Non-matching
+    # modules fall back to plain LoRA (or OrthoLoRAExp, if use_ortho=true).
+    # None = apply MoE to every target (backward-compat, wasteful). A narrow
+    # regex concentrates the ~256 default routers onto the layers where
+    # semantic specialization is actually learnable (cross-attn, MLP).
+    hydra_router_layers = kwargs.get("hydra_router_layers", None)
     per_bucket_balance_weight = kwargs.get("per_bucket_balance_weight", None)
     per_bucket_balance_weight = (
         float(per_bucket_balance_weight)
@@ -548,6 +569,13 @@ def create_network(
     else:
         reg_lrs = None
 
+    router_lr_scale = kwargs.get("network_router_lr_scale", None)
+    router_lr_scale = float(router_lr_scale) if router_lr_scale is not None else 1.0
+    if router_lr_scale != 1.0:
+        logger.info(
+            f"HydraLoRA router LR scale: {router_lr_scale}x unet_lr (applies to .router. + .sigma_mlp. params)"
+        )
+
     network_reg_dims = kwargs.get("network_reg_dims", None)
     if network_reg_dims is not None:
         reg_dims = parse_kv_pairs(network_reg_dims, is_int=True)
@@ -585,6 +613,10 @@ def create_network(
         sigma_feature_dim=sigma_feature_dim,
         sigma_hidden_dim=sigma_hidden_dim,
         sigma_router_layers=sigma_router_layers,
+        hydra_router_layers=hydra_router_layers,
+        expert_init_std=expert_init_std,
+        expert_warmup_ratio=expert_warmup_ratio,
+        router_lr_scale=router_lr_scale,
     )
 
     # Set timestep mask config (variant-agnostic)
@@ -636,6 +668,22 @@ def create_network(
         logger.info(
             f"HydraLoRA: num_experts={num_experts}, balance_loss_weight={network._balance_loss_weight}"
         )
+    if spec.name in ("hydra", "ortho_hydra") and (
+        network._hydra_router_re is not None or network._hydra_router_names is not None
+    ):
+        fallback_name = (
+            "OrthoLoRAExp" if spec.name == "ortho_hydra" else "LoRA"
+        )
+        logger.info(
+            f"HydraLoRA layer filter: {network._hydra_router_hits} MoE modules, "
+            f"{network._hydra_router_misses} fell back to plain {fallback_name} "
+            f"(regex={hydra_router_layers!r})"
+        )
+        if network._hydra_router_hits == 0:
+            logger.warning(
+                "hydra_router_layers regex matched zero modules — no MoE routing "
+                "is active, every target became plain LoRA."
+            )
     if add_reft:
         _reft_alpha_str = (
             f"{reft_alpha}" if reft_alpha is not None else f"{network_alpha} (from network_alpha)"
@@ -715,6 +763,12 @@ def create_network_from_weights(
     has_reft = False
     reft_dim = None
     reft_block_indices: set[int] = set()
+    # Per-module hydra flag: which lora_names were trained as MoE (Hydra) vs
+    # plain LoRA / OrthoLoRAExp. Populated below by key sniff, then passed
+    # through as `hydra_router_names` so create_modules can pick the right
+    # class per module in mixed checkpoints (result of hydra_router_layers).
+    hydra_module_names: set[str] = set()
+    plain_module_names: set[str] = set()
     # Block-level ReFT key pattern: reft_unet_blocks_<idx>.<...>
     _reft_block_re = re.compile(r"^reft_unet_blocks_(\d+)$")
     for key, value in weights_sd.items():
@@ -753,6 +807,11 @@ def create_network_from_weights(
         elif "lora_up_weight" in key:
             has_hydra = True
             hydra_num_experts = max(hydra_num_experts, value.size(0))
+            hydra_module_names.add(lora_name)
+        elif key.endswith(".lora_up.weight"):
+            # Plain (non-stacked) LoRA up — either vanilla LoRA or the
+            # plain-fallback leg of a mixed hydra_router_layers checkpoint.
+            plain_module_names.add(lora_name)
         elif "lora_down" in key:
             dim = value.size()[0]
             modules_dim[lora_name] = dim
@@ -762,10 +821,13 @@ def create_network_from_weights(
                 has_ortho_hydra = True
                 hydra_num_experts = max(hydra_num_experts, value.size(0))
                 modules_dim[lora_name] = value.size(1)
+                hydra_module_names.add(lora_name)
             else:
-                # OrthoLoRA: S_p is (r, r)
+                # OrthoLoRA: S_p is (r, r) — either pure ortho or the
+                # plain-fallback leg of a mixed ortho_hydra checkpoint.
                 has_ortho = True
                 modules_dim[lora_name] = value.size(0)
+                plain_module_names.add(lora_name)
         elif "dora_scale" in key:
             has_dora = True
 
@@ -869,6 +931,25 @@ def create_network_from_weights(
         sigma_feature_dim=sigma_feature_dim_detected or 128,
         sigma_hidden_dim=sigma_hidden_dim_detected or 128,
         sigma_router_names=sigma_router_names or None,
+        # Per-module Hydra selection from the checkpoint: if the file contains
+        # *both* hydra-style and plain-LoRA-style leaves, we're reloading a
+        # mixed hydra_router_layers result and need to build each leaf with its
+        # original class. If every module is hydra, leave as None (= apply the
+        # nominal hydra class everywhere, legacy behaviour).
+        hydra_router_names=(
+            sorted(hydra_module_names)
+            if (
+                (has_hydra or has_ortho_hydra)
+                and plain_module_names
+                and hydra_module_names
+            )
+            else None
+        ),
+        # load_state_dict overwrites the random init, so skip the perturb to
+        # avoid transient CPU noise on (E, out, r) experts during build.
+        expert_init_std=0.0,
+        # from-weights path is inference/eval; warmup is a train-time schedule.
+        expert_warmup_ratio=0.0,
     )
     # Mirror create_network's variant-specific post-build attribute attachment.
     # Defaults first, then spec.post_init overrides for the matching variant.
@@ -936,6 +1017,11 @@ class LoRANetwork(torch.nn.Module):
         sigma_hidden_dim: int = 128,
         sigma_router_layers: Optional[str] = None,
         sigma_router_names: Optional[List[str]] = None,
+        hydra_router_layers: Optional[str] = None,
+        hydra_router_names: Optional[List[str]] = None,
+        expert_init_std: float = 1e-4,
+        expert_warmup_ratio: float = 0.0,
+        router_lr_scale: float = 1.0,
     ) -> None:
         super().__init__()
         self.multiplier = multiplier
@@ -947,9 +1033,12 @@ class LoRANetwork(torch.nn.Module):
         self.train_llm_adapter = train_llm_adapter
         self.reg_dims = reg_dims
         self.reg_lrs = reg_lrs
+        self.router_lr_scale = float(router_lr_scale)
         self.layer_start = layer_start
         self.layer_end = layer_end
         self.num_experts = num_experts
+        self.expert_init_std = float(expert_init_std)
+        self.expert_warmup_ratio = float(expert_warmup_ratio)
         self.channel_scales_dict = channel_scales_dict
         self._channel_scale_misses: List[str] = []
         self._channel_scale_hits: int = 0
@@ -972,6 +1061,23 @@ class LoRANetwork(torch.nn.Module):
         )
         self._sigma_router_hits: int = 0
         self._last_sigma: Optional[torch.Tensor] = None
+
+        # Per-module HydraLoRA gating. Matching modules get the Hydra class;
+        # non-matching modules fall back to plain LoRA / OrthoLoRAExp so MoE
+        # capacity is concentrated where specialization is actually learnable.
+        # Fresh path: regex over `original_name`. From-weights path: explicit
+        # name set detected from checkpoint keys (mirrors sigma_router_names).
+        # Explicit set wins. None on both = apply MoE everywhere (legacy).
+        self._hydra_router_names = (
+            set(hydra_router_names) if hydra_router_names else None
+        )
+        self._hydra_router_re = (
+            re.compile(hydra_router_layers)
+            if hydra_router_layers and self._hydra_router_names is None
+            else None
+        )
+        self._hydra_router_hits: int = 0
+        self._hydra_router_misses: int = 0
 
         self.loraplus_lr_ratio = None
         self.loraplus_unet_lr_ratio = None
@@ -1151,20 +1257,46 @@ class LoRANetwork(torch.nn.Module):
             for lora_name, child_module, dim, alpha_val, original_name in tqdm(
                 non_skipped, desc=f"Creating {label} LoRA", leave=False
             ):
+                # Per-module class resolution: when the network's nominal class
+                # is Hydra (MoE), narrow it to only the layers in the hydra
+                # filter. Non-matching layers fall back to plain LoRA /
+                # OrthoLoRAExp so router overhead + balance-loss pressure are
+                # concentrated on sites where specialization is learnable.
+                effective_module_class = module_class
+                if module_class in (HydraLoRAModule, OrthoHydraLoRAExpModule) and is_unet:
+                    if self._hydra_router_names is not None:
+                        hydra_on = lora_name in self._hydra_router_names
+                    elif self._hydra_router_re is not None:
+                        hydra_on = bool(self._hydra_router_re.search(original_name))
+                    else:
+                        hydra_on = True
+                    if hydra_on:
+                        self._hydra_router_hits += 1
+                    else:
+                        self._hydra_router_misses += 1
+                        effective_module_class = (
+                            OrthoLoRAExpModule
+                            if module_class is OrthoHydraLoRAExpModule
+                            else LoRAModule
+                        )
+
                 extra_kwargs = {}
-                if module_class == OrthoLoRAExpModule:
+                if effective_module_class == OrthoLoRAExpModule:
                     pass  # no extra kwargs — SVD init reads from org_module directly
-                elif module_class == OrthoHydraLoRAExpModule:
+                elif effective_module_class == OrthoHydraLoRAExpModule:
                     extra_kwargs["num_experts"] = self.num_experts
-                elif module_class == HydraLoRAModule:
+                    extra_kwargs["expert_init_std"] = self.expert_init_std
+                elif effective_module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = self.num_experts
+                    extra_kwargs["expert_init_std"] = self.expert_init_std
 
                 # σ-conditional router: only build sigma_mlp on modules whose
                 # name matches the layer filter (cross_attn.q / self_attn.qkv
                 # by default — see B0 pre-analysis in timestep-hydra.md).
                 # From-weights path uses an explicit name set; fresh-from-kwargs
-                # path uses a regex over original_name.
-                if self.use_sigma_router and module_class in (
+                # path uses a regex over original_name. Gated on the effective
+                # class so a hydra-excluded module can't pick up σ either.
+                if self.use_sigma_router and effective_module_class in (
                     HydraLoRAModule,
                     OrthoHydraLoRAExpModule,
                 ) and is_unet:
@@ -1189,7 +1321,7 @@ class LoRANetwork(torch.nn.Module):
                     else:
                         self._channel_scale_misses.append(lora_name)
 
-                lora = module_class(
+                lora = effective_module_class(
                     lora_name,
                     child_module,
                     self.multiplier,
@@ -1428,6 +1560,41 @@ class LoRANetwork(torch.nn.Module):
             if hasattr(lora, "_sigma"):
                 lora._sigma = None
 
+    def step_expert_warmup(self, global_step: int, max_train_steps: int) -> None:
+        """Per-step random expert-gradient masking during the warmup window.
+
+        Forward stays full MoE (every expert contributes via the learned gate),
+        but only one randomly-sampled expert per module receives gradient this
+        step. Breaks the zero-init expert symmetry without ever training an
+        expert in isolation — each expert always sees the other experts'
+        contribution when it updates. See ``docs/methods/hydra-lora.md``
+        §Expert-warmup for motivation.
+
+        Expert index is sampled independently per module so that different
+        modules can route the same sample to different experts. After the
+        warmup window, ``_warmup_active`` is False everywhere and the gradient
+        mask branch compiles out — every expert receives gradient normally.
+
+        The per-module state is split into a python bool (``_warmup_active``,
+        toggled at most twice per run) and a buffer (``_expert_grad_mask``,
+        re-written each step). Keeping the rotating index out of a plain int
+        attribute is load-bearing: torch.compile treats int module attributes
+        as static and blows its recompile limit as experts rotate 0→1→2→3.
+        """
+        if self.expert_warmup_ratio <= 0.0 or max_train_steps <= 0:
+            return
+        warmup_steps = int(max_train_steps * self.expert_warmup_ratio)
+        in_warmup = global_step < warmup_steps
+        for lora in self.unet_loras + self.text_encoder_loras:
+            if not hasattr(lora, "_expert_grad_mask"):
+                continue
+            lora._warmup_active = in_warmup
+            if in_warmup:
+                idx = int(torch.randint(0, lora.num_experts, (1,)).item())
+                mask = lora._expert_grad_mask
+                mask.zero_()
+                mask[idx] = 1.0
+
     @staticmethod
     def _switch_balance(gate: torch.Tensor) -> torch.Tensor:
         """Switch-Transformer balance: E · Σ_i frac_i · mean_gate_i. Scalar."""
@@ -1663,11 +1830,15 @@ class LoRANetwork(torch.nn.Module):
         lr_descriptions = []
 
         def assemble_params(loras, lr, loraplus_ratio):
-            param_groups = {"lora": {}, "plus": {}}
+            param_groups = {"lora": {}, "plus": {}, "router": {}}
             reg_groups = {}
             reg_lrs_list = (
                 list(self.reg_lrs.items()) if self.reg_lrs is not None else []
             )
+            router_scale = float(getattr(self, "router_lr_scale", 1.0))
+
+            def _is_router_param(pname: str) -> bool:
+                return ".router." in pname or ".sigma_mlp." in pname
 
             for lora in loras:
                 matched_reg_lr = None
@@ -1680,6 +1851,7 @@ class LoRANetwork(torch.nn.Module):
                         break
 
                 for name, param in lora.named_parameters():
+                    is_router = _is_router_param(name)
                     if matched_reg_lr is not None:
                         reg_idx, reg_lr = matched_reg_lr
                         group_key = f"reg_lr_{reg_idx}"
@@ -1687,9 +1859,14 @@ class LoRANetwork(torch.nn.Module):
                             reg_groups[group_key] = {
                                 "lora": {},
                                 "plus": {},
+                                "router": {},
                                 "lr": reg_lr,
                             }
-                        if loraplus_ratio is not None and (
+                        if is_router:
+                            reg_groups[group_key]["router"][
+                                f"{lora.lora_name}.{name}"
+                            ] = param
+                        elif loraplus_ratio is not None and (
                             "lora_up" in name
                             or "p_layer" in name
                             or "learned_source" in name
@@ -1703,7 +1880,9 @@ class LoRANetwork(torch.nn.Module):
                             ] = param
                         continue
 
-                    if loraplus_ratio is not None and (
+                    if is_router:
+                        param_groups["router"][f"{lora.lora_name}.{name}"] = param
+                    elif loraplus_ratio is not None and (
                         "lora_up" in name
                         or "p_layer" in name
                         or "learned_source" in name
@@ -1716,7 +1895,7 @@ class LoRANetwork(torch.nn.Module):
             descriptions = []
             for group_key, group in reg_groups.items():
                 reg_lr = group["lr"]
-                for key in ("lora", "plus"):
+                for key in ("lora", "plus", "router"):
                     param_data = {"params": group[key].values()}
                     if len(param_data["params"]) == 0:
                         continue
@@ -1726,6 +1905,8 @@ class LoRANetwork(torch.nn.Module):
                             if loraplus_ratio is not None
                             else reg_lr
                         )
+                    elif key == "router":
+                        param_data["lr"] = reg_lr * router_scale
                     else:
                         param_data["lr"] = reg_lr
                     if (
@@ -1736,7 +1917,10 @@ class LoRANetwork(torch.nn.Module):
                         continue
                     params.append(param_data)
                     desc = f"reg_lr_{group_key.split('_')[-1]}"
-                    descriptions.append(desc + (" plus" if key == "plus" else ""))
+                    descriptions.append(
+                        desc
+                        + (" plus" if key == "plus" else (" router" if key == "router" else ""))
+                    )
 
             for key in param_groups.keys():
                 param_data = {"params": param_groups[key].values()}
@@ -1745,6 +1929,8 @@ class LoRANetwork(torch.nn.Module):
                 if lr is not None:
                     if key == "plus":
                         param_data["lr"] = lr * loraplus_ratio
+                    elif key == "router":
+                        param_data["lr"] = lr * router_scale
                     else:
                         param_data["lr"] = lr
                 if (
@@ -1754,7 +1940,9 @@ class LoRANetwork(torch.nn.Module):
                     logger.info("NO LR skipping!")
                     continue
                 params.append(param_data)
-                descriptions.append("plus" if key == "plus" else "")
+                descriptions.append(
+                    "plus" if key == "plus" else ("router" if key == "router" else "")
+                )
             return params, descriptions
 
         if self.text_encoder_loras:

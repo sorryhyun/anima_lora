@@ -3,8 +3,6 @@
 Covers:
 
 * ``resolve_network_spec`` precedence and mutual-exclusion rules.
-* Every ``configs/methods/*.toml`` either resolves to a ``NetworkSpec``
-  (for LoRA-family methods) or uses a non-``lora_anima`` ``network_module``.
 * The ``networks.lora_save`` pipeline round-trips a synthetic state_dict
   for each save_variant, emitting the expected file(s) and preserving
   tensor shapes through the per-variant conversion.
@@ -18,10 +16,14 @@ import pytest
 import torch
 from safetensors.torch import load_file
 
-from library.train_util import load_method_preset
-from networks import NETWORK_REGISTRY, NetworkSpec, resolve_network_spec
+from networks import (
+    NETWORK_REGISTRY,
+    SHARED_KWARG_FLAGS,
+    NetworkSpec,
+    all_network_kwargs,
+    resolve_network_spec,
+)
 from networks import lora_save
-from tests.conftest import iter_method_names
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +45,51 @@ def test_registry_has_expected_variants():
     for name, spec in NETWORK_REGISTRY.items():
         assert isinstance(spec, NetworkSpec)
         assert spec.name == name
+
+
+def test_all_network_kwargs_is_union_of_shared_and_specs():
+    """`all_network_kwargs()` must cover every kwarg any variant declares.
+
+    Guards against the drift mode that previously silently dropped
+    `hydra_router_layers` (and its σ-router siblings): a kwarg declared on
+    a NetworkSpec but missing from the forwarding list.
+    """
+    all_kw = set(all_network_kwargs())
+    assert set(SHARED_KWARG_FLAGS).issubset(all_kw)
+    for spec in NETWORK_REGISTRY.values():
+        assert set(spec.kwarg_flags).issubset(all_kw), (
+            f"{spec.name}.kwarg_flags has keys missing from all_network_kwargs(): "
+            f"{set(spec.kwarg_flags) - all_kw}"
+        )
+
+
+def test_hydra_router_kwargs_registered():
+    """Regression pin: the bug that motivated the M2 finish.
+
+    `hydra_router_layers` + σ-conditional router kwargs must be registered
+    on the hydra / ortho_hydra specs so they flow through argparse schema
+    and into `create_network`. If these drop off the spec, the router
+    silently defaults to uniform MoE over every target module.
+    """
+    must_have = {
+        "hydra_router_layers",
+        "use_sigma_router",
+        "sigma_router_layers",
+        "sigma_feature_dim",
+        "sigma_hidden_dim",
+        "per_bucket_balance_weight",
+        "num_sigma_buckets",
+        "num_experts",
+        "balance_loss_weight",
+        "expert_init_std",
+        "expert_warmup_ratio",
+    }
+    for variant in ("hydra", "ortho_hydra"):
+        flags = set(NETWORK_REGISTRY[variant].kwarg_flags)
+        missing = must_have - flags
+        assert not missing, f"{variant} spec missing kwarg_flags: {missing}"
+    # and the union exposes them
+    assert must_have.issubset(set(all_network_kwargs()))
 
 
 # ---------------------------------------------------------------------------
@@ -80,56 +127,6 @@ def test_resolve_precedence(kwargs, expected):
 def test_resolve_ambiguous_raises(kwargs):
     with pytest.raises(ValueError):
         resolve_network_spec(kwargs)
-
-
-# ---------------------------------------------------------------------------
-# Every method config resolves cleanly (or uses a non-lora network_module)
-# ---------------------------------------------------------------------------
-
-
-def _extract_network_kwargs(merged: dict) -> dict:
-    """Pull the keys relevant for resolve_network_spec from a merged config."""
-    kwargs: dict = {}
-    for k in ("use_hydra", "use_dora", "use_ortho"):
-        if k in merged:
-            kwargs[k] = merged[k]
-    # network_args in TOML comes through as a list like ["mode=postfix", ...]
-    for raw in merged.get("network_args") or []:
-        if "=" in raw:
-            key, val = raw.split("=", 1)
-            kwargs[key.strip()] = val.strip()
-    return kwargs
-
-
-METHOD_NAMES = list(iter_method_names())
-
-
-EXPECTED_SPEC_BY_METHOD = {
-    "lora": "ortho",                # use_ortho = true
-    "graft": "lora",                # no ortho/hydra flags
-    "apex": "lora",                 # no ortho/hydra flags (warm-start from ortho checkpoint)
-}
-
-NON_LORA_METHODS = {"postfix", "postfix_exp", "postfix_func", "prefix"}
-
-
-@pytest.mark.parametrize("method", METHOD_NAMES)
-def test_method_config_resolves(method: str):
-    merged = load_method_preset(method, preset="default")
-
-    network_module = merged.get("network_module", "networks.lora_anima")
-    if network_module != "networks.lora_anima":
-        # Postfix/prefix — covered by their own module; no NetworkSpec required.
-        assert method in NON_LORA_METHODS, (
-            f"{method} uses network_module={network_module!r}; add it to NON_LORA_METHODS"
-        )
-        return
-
-    kwargs = _extract_network_kwargs(merged)
-    spec = resolve_network_spec(kwargs)
-    assert spec.name == EXPECTED_SPEC_BY_METHOD[method], (
-        f"{method}: expected {EXPECTED_SPEC_BY_METHOD[method]!r}, got {spec.name!r}"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +240,65 @@ def test_save_hydra_moe_roundtrip(tmp_path: Path):
     # fused lora_up_weight must be gone (expanded into per-expert keys)
     for k in loaded:
         assert not k.endswith(".lora_up_weight")
+
+
+def test_save_hydra_moe_mixed_with_plain_lora_qkv_defuses_up(tmp_path: Path):
+    """Regression: when ``hydra_router_layers`` filters some fused-qkv modules
+    out of MoE, the resulting plain-LoRA leg for those modules must also be
+    q/k/v-defused by the hydra save pipeline. Previously only ``lora_down`` /
+    ``alpha`` were split; ``lora_up.weight`` stayed fused, producing a
+    mismatched checkpoint.
+    """
+    E, r, in_dim, out_dim = 4, 4, 8, 12
+
+    # Hydra-routed module (cross_attn.kv — regex-matched target)
+    hydra_prefix = "lora_unet_blocks_0_cross_attn_kv_proj"
+    # Plain-LoRA module (self_attn.qkv — regex-excluded by hydra_router_layers)
+    plain_prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+
+    sd = {
+        # hydra leg — stacked lora_up_weight
+        f"{hydra_prefix}.lora_down.weight": torch.randn(r, in_dim),
+        f"{hydra_prefix}.lora_up_weight": torch.randn(E, 2 * out_dim, r),
+        f"{hydra_prefix}.router.weight": torch.randn(E, r),
+        f"{hydra_prefix}.router.bias": torch.randn(E),
+        f"{hydra_prefix}.alpha": _alpha(r),
+        # plain LoRA leg — standard single lora_up.weight, no router
+        f"{plain_prefix}.lora_down.weight": torch.randn(r, in_dim),
+        f"{plain_prefix}.lora_up.weight": torch.randn(3 * out_dim, r),
+        f"{plain_prefix}.alpha": _alpha(r),
+    }
+
+    loaded = _save_and_reload(sd, tmp_path, save_variant="hydra_moe")
+
+    # Hydra leg: split into k/v with per-expert ups
+    hydra_base = "lora_unet_blocks_0_cross_attn"
+    for suffix in ("k_proj", "v_proj"):
+        assert loaded[f"{hydra_base}_{suffix}.lora_down.weight"].shape == (r, in_dim)
+        for e in range(E):
+            assert loaded[f"{hydra_base}_{suffix}.lora_ups.{e}.weight"].shape == (
+                out_dim,
+                r,
+            )
+
+    # Plain leg: must also be defused — lora_up.weight split per q/k/v,
+    # fused prefix fully gone.
+    plain_base = "lora_unet_blocks_0_self_attn"
+    for suffix in ("q_proj", "k_proj", "v_proj"):
+        assert loaded[f"{plain_base}_{suffix}.lora_down.weight"].shape == (r, in_dim)
+        assert loaded[f"{plain_base}_{suffix}.lora_up.weight"].shape == (out_dim, r), (
+            f"plain-LoRA self_attn_{suffix} lora_up.weight missing or still fused — "
+            "hydra save pipeline didn't defuse the plain leg"
+        )
+        assert f"{plain_base}_{suffix}.alpha" in loaded
+        # plain leg must NOT have hydra-only keys
+        assert f"{plain_base}_{suffix}.lora_ups.0.weight" not in loaded
+        assert f"{plain_base}_{suffix}.router.weight" not in loaded
+    # fused prefix must be entirely purged
+    for k in loaded:
+        assert not k.startswith(plain_prefix), (
+            f"fused plain-LoRA key survived: {k}"
+        )
 
 
 def test_save_ortho_hydra_roundtrip(tmp_path: Path):

@@ -297,6 +297,7 @@ class HydraLoRAModule(BaseLoRAModule):
         channel_scale=None,
         sigma_feature_dim: int = 0,
         sigma_hidden_dim: int = 128,
+        expert_init_std: float = 1e-4,
     ):
         super().__init__(
             lora_name,
@@ -319,10 +320,18 @@ class HydraLoRAModule(BaseLoRAModule):
         self.lora_down = torch.nn.Linear(in_dim, self.lora_dim, bias=False)
         torch.nn.init.kaiming_uniform_(self.lora_down.weight, a=math.sqrt(5))
 
-        # Fused per-expert up projections: (num_experts, out_dim, lora_dim)
+        # Fused per-expert up projections: (num_experts, out_dim, lora_dim).
+        # Zero-init makes ΔW = 0 at step 0 (classic LoRA-safe), but also makes
+        # every expert identical — with a near-uniform router, all experts get
+        # the same gradient and evolve permutation-symmetrically, and the
+        # router in turn has no signal to differentiate them (MoE cold-start
+        # deadlock). A tiny normal perturbation breaks the symmetry while
+        # keeping ΔW ~ std·‖lora_down‖·‖x‖ negligibly small at init.
         self.lora_up_weight = torch.nn.Parameter(
             torch.zeros(num_experts, out_dim, self.lora_dim)
         )
+        if expert_init_std > 0.0:
+            torch.nn.init.normal_(self.lora_up_weight, mean=0.0, std=expert_init_std)
 
         # Local router: reads pooled rank-R signal (post-`lora_down`) → per-sample
         # expert gates. Operating in rank-R space (not raw in_dim) is load-bearing:
@@ -353,6 +362,23 @@ class HydraLoRAModule(BaseLoRAModule):
 
         self._last_gate = None  # (B, num_experts), cached each forward for balance loss
         self._sigma = None  # (B,) σ tensor; set externally by LoRANetwork.set_sigma
+        # Expert-warmup gradient masking. Split into a Python bool gate and a
+        # buffer holding the one-hot mask so torch.compile doesn't blow its
+        # recompile limit every time the sampled expert rotates:
+        #   * ``_warmup_active`` toggles only twice per run (entering and
+        #     leaving the warmup window) — dynamo recompiles on transitions,
+        #     not per step.
+        #   * ``_expert_grad_mask`` is a buffer; value mutations are treated as
+        #     dynamic by dynamo, so per-step re-sampling of the active expert
+        #     does not recompile.
+        # Set externally by LoRANetwork.step_expert_warmup. Default (all-ones
+        # mask, gate off) is a no-op — every expert trains normally.
+        self._warmup_active: bool = False
+        self.register_buffer(
+            "_expert_grad_mask",
+            torch.ones(num_experts, dtype=torch.float32),
+            persistent=False,
+        )
 
     def _compute_gate(self, lx: torch.Tensor) -> torch.Tensor:
         """Pool the rank-R `lora_down` output over the sequence dim, run router, softmax.
@@ -373,6 +399,9 @@ class HydraLoRAModule(BaseLoRAModule):
             pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
         else:
             pooled = lx
+        # lx is fp32 (bottleneck policy) but router weights follow the adapter's
+        # storage dtype (bf16 at inference) — align before matmul.
+        pooled = pooled.to(self.router.weight.dtype)
         logits = self.router(pooled)  # (B, num_experts)
         if self.sigma_mlp is not None and self._sigma is not None:
             sigma_feat = _sigma_sinusoidal_features(
@@ -418,9 +447,24 @@ class HydraLoRAModule(BaseLoRAModule):
 
         lx, scale = self._apply_rank_dropout(lx)
 
+        # Expert-warmup masking: keep full MoE inference (all experts contribute
+        # via the learned gate) but let gradient flow only into the randomly-
+        # chosen expert's up-weight slice. Breaks the cold-start deadlock where
+        # zero-init experts receive identical gradients under a near-uniform
+        # router. ``_warmup_active`` is a python bool that toggles twice per
+        # run (enter/leave warmup); the per-step sampled expert is carried in
+        # the ``_expert_grad_mask`` buffer, whose value changes don't trigger
+        # dynamo recompiles.
+        up_weight = self.lora_up_weight
+        if self.training and self._warmup_active:
+            expert_mask = self._expert_grad_mask.to(up_weight.dtype).view(-1, 1, 1)
+            up_weight = (
+                up_weight * expert_mask + up_weight.detach() * (1.0 - expert_mask)
+            )
+
         # Gate-weighted combined weight per batch element: (B, out_dim, lora_dim)
         combined = torch.einsum(
-            "be,eod->bod", gate.float(), self.lora_up_weight.float()
+            "be,eod->bod", gate.float(), up_weight.float()
         )
         # Apply: lx is (B, ..., lora_dim), combined is (B, out_dim, lora_dim)
         orig_shape = lx.shape
@@ -589,6 +633,7 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         channel_scale=None,
         sigma_feature_dim: int = 0,
         sigma_hidden_dim: int = 128,
+        expert_init_std: float = 1e-4,
     ):
         super().__init__(
             lora_name,
@@ -621,8 +666,14 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # Shared Q rotation: Cayley(0) = I → Q_eff = Q_basis at init
         self.S_q = torch.nn.Parameter(torch.zeros(lora_dim, lora_dim))
 
-        # Per-expert P rotations: each expert rotates shared output basis differently
+        # Per-expert P rotations: each expert rotates shared output basis differently.
+        # Zero-init leaves every expert with R_p = I → identical P_eff across experts,
+        # and with λ=0 the router has no signal to differentiate them (MoE cold-start
+        # deadlock; see HydraLoRAModule.__init__). Tiny random init makes Cayley(S_p)
+        # differ per expert while ΔW stays exactly 0 at init (λ_layer = 0).
         self.S_p = torch.nn.Parameter(torch.zeros(num_experts, lora_dim, lora_dim))
+        if expert_init_std > 0.0:
+            torch.nn.init.normal_(self.S_p, mean=0.0, std=expert_init_std)
 
         # Shared diagonal scale — zero-init → ΔW = 0 at init
         self.lambda_layer = torch.nn.Parameter(torch.zeros(1, lora_dim))
@@ -651,6 +702,17 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
 
         self._last_gate = None  # cached each forward for balance loss
         self._sigma = None  # (B,) σ; set by LoRANetwork.set_sigma
+        # Expert-warmup gradient masking. See HydraLoRAModule for full
+        # rationale — for OrthoHydra the mask gates gradient into S_p (which
+        # parameterises per-expert P rotations). Split into a Python bool +
+        # buffer so torch.compile does not recompile per step as the sampled
+        # expert rotates.
+        self._warmup_active: bool = False
+        self.register_buffer(
+            "_expert_grad_mask",
+            torch.ones(num_experts, dtype=torch.float32),
+            persistent=False,
+        )
 
     @staticmethod
     def _cayley(S: torch.Tensor) -> torch.Tensor:
@@ -724,8 +786,18 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
 
         lx, scale = self._apply_rank_dropout(lx)
 
+        # Expert-warmup masking — see HydraLoRAModule.forward for rationale.
+        # Gradient flows only into the selected expert's S_p slice; other
+        # experts still contribute to the forward at their current values.
+        S_p_eff = self.S_p
+        if self.training and self._warmup_active:
+            expert_mask = self._expert_grad_mask.to(S_p_eff.dtype).view(-1, 1, 1)
+            S_p_eff = (
+                S_p_eff * expert_mask + S_p_eff.detach() * (1.0 - expert_mask)
+            )
+
         # Per-expert up: batched Cayley on P rotations
-        R_p = self._cayley(self.S_p)  # (E, r, r)
+        R_p = self._cayley(S_p_eff)  # (E, r, r)
         # P_basis: (out, r) → (1, out, r); R_p: (E, r, r) → P_eff: (E, out, r)
         P_eff = self.P_basis.unsqueeze(0) @ R_p
 

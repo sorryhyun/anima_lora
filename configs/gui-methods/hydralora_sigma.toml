@@ -26,6 +26,12 @@ alpha_rank_scale = 1.0
 use_hydra = true
 num_experts = 4
 balance_loss_weight = 0.001
+expert_init_std = 1.0e-4
+expert_warmup_ratio = 0.1
+# Narrow MoE to cross-attn q/kv + MLP (DiT). Self-attn, output_proj, and the
+# LLM-adapter blocks fall back to plain OrthoLoRAExp (use_ortho=true). See
+# configs/methods/lora.toml for the reasoning.
+hydra_router_layers = ".*(cross_attn\\.(q_proj|kv_proj)|mlp\\.layer[12])$"
 
 use_sigma_router = true
 sigma_feature_dim = 128

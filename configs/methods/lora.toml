@@ -17,9 +17,9 @@ network_alpha = 16
 network_dim = 16
 
 learning_rate = 1e-4
-max_train_epochs = 2
-save_every_n_epochs = 2
-checkpointing_epochs = 2
+max_train_epochs = 1
+save_every_n_epochs = 1
+checkpointing_epochs = 1
 
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
@@ -42,15 +42,32 @@ alpha_rank_scale = 1.0
 output_name = "anima_hydra"
 use_hydra = true
 num_experts = 4
-balance_loss_weight = 0.001
+balance_loss_weight = 1e-5
+expert_init_std = 1e-1
+# Router LR multiplier on top of unet_lr. Covers .router.* and .sigma_mlp.*.
+# Router init is small (std=0.01) and lives in a softmax-uniform fixed point;
+# 5–10× accelerates breaking symmetry. 1.0 = no override (legacy).
+network_router_lr_scale = 50.0
+# Fraction of training steps with one-expert-per-step gradient masking.
+# Forward stays full MoE; only the randomly-chosen expert's up-weight slice
+# gets gradient. Forces specialization without ever isolating an expert.
+expert_warmup_ratio = 0.1
+# Which target Linears actually get the MoE wrapper. Non-matching layers fall
+# back to plain LoRA (or OrthoLoRAExp when use_ortho=true). Default narrows
+# ~256 routers down to ~112 by keeping MoE on the two sites where semantic
+# specialization is learnable — DiT cross-attn q/kv and MLP — and dropping
+# self-attn, output_proj, and the LLM-adapter blocks to plain LoRA. Leave
+# unset (or set to empty) to restore legacy "MoE on every target" behavior.
 
+# hydra_router_layers = ".*(cross_attn\\.(q_proj|kv_proj)|mlp\\.layer[12])$"
+hydra_router_layers = ".*(cross_attn\\.kv_proj)$"
 
 # timestep conditional hydralora
 
 use_sigma_router = true
 sigma_feature_dim = 128
 sigma_hidden_dim = 128
-sigma_router_layers = ".*(cross_attn\\.q_proj|self_attn\\.qkv_proj)$"
+sigma_router_layers = ".*(cross_attn\\.kv_proj)$"
 per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
 num_sigma_buckets = 3
 
@@ -67,7 +84,7 @@ num_sigma_buckets = 3
 # reft_alpha = 64
 # reft_layers = "last_8"
 
-blocks_to_swap = 16
+blocks_to_swap = 14
 
 
 
@@ -80,6 +97,8 @@ blocks_to_swap = 16
 # use_hydra = true
 # num_experts = 4
 # balance_loss_weight = 0.001
+# expert_init_std = 1.0e-4    # tiny perturb breaks expert-permutation symmetry; 0.0 restores legacy zero-init
+# expert_warmup_ratio = 0.1    # fraction of steps with k=1 random expert-gradient masking; 0 disables
 
 
 
