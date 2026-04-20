@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import shutil
 import sys
+import time
 from typing import Any
 
 import html
@@ -31,8 +32,8 @@ from PySide6.QtWidgets import (
 
 from gui import (
     CONFIGS_DIR,
+    GUI_METHODS_DIR,
     IMAGE_EXTS,
-    METHODS_DIR,
     PRESETS_FILE,
     ROOT,
     _GROUPS,
@@ -43,17 +44,21 @@ from gui import (
     _read,
     _save,
     _widget,
+    list_gui_variants,
     list_methods,
     list_presets,
-    merged_method_preset,
+    merged_gui_variant_preset,
 )
 from gui.explanations import field_help, method_guide
 from gui.i18n import t
-from gui.variants import default_toggle_fields, owned_keys, variants_for
 
-# Matches tqdm lines like: "Denoising steps:  40%|####      | 12/30 [..]"
+# Matches tqdm lines like:
+#   "Denoising steps:  40%|####      | 12/30 [00:12<00:34,  2.50it/s]"
+# The trailing "[...]" block carries the rate as either "X.XXit/s" or
+# "X.XXs/it"; both are captured optionally so non-timed bars still parse.
 _TQDM_RE = re.compile(
     r"^(?P<label>.*?):?\s*(?P<pct>\d+)%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)"
+    r"(?:[^\[]*\[[^\]]*?(?P<rate>[\d.]+)(?P<unit>it/s|s/it)[^\]]*\])?"
 )
 
 
@@ -76,8 +81,11 @@ class ConfigTab(QWidget):
     def __init__(self):
         super().__init__()
         self._w: dict[str, QWidget] = {}
-        self._variant_overlay: dict | None = None
         self._preprocessed = (ROOT / "post_image_dataset").exists()
+        # (monotonic_anchor_time, anchor_step, label, total) — we measure
+        # s/step from the first step *completion*, not process launch, so
+        # warmup (model load, compilation) doesn't inflate the reported rate.
+        self._rate_anchor: tuple[float, int, str, int] | None = None
         lay = QVBoxLayout(self)
 
         # Top bar: method + preset + save + preprocess + train + stop
@@ -146,22 +154,17 @@ class ConfigTab(QWidget):
 
         lay.addLayout(top)
 
-        # Variant picker — visible only for methods that ship variant presets
-        # (lora, postfix). Applies a known {field: value} overlay on top of
-        # the method config so users don't have to hand-edit toggle blocks.
+        # Variant picker — each entry is a self-contained file under
+        # configs/gui-methods/. Selecting a variant immediately reloads the
+        # form from that file; saves and training invocations target the same
+        # file. No toggle-block overlays — what you see is what runs.
         self.variant_row = QWidget()
         vrow = QHBoxLayout(self.variant_row)
         vrow.setContentsMargins(0, 0, 0, 0)
         vrow.addWidget(QLabel(t("variant")))
         self.variant_combo = QComboBox()
+        self.variant_combo.currentTextChanged.connect(lambda _: self._reload())
         vrow.addWidget(self.variant_combo, 1)
-        self.apply_variant_btn = QPushButton(t("apply_variant"))
-        self.apply_variant_btn.setStyleSheet(
-            "background:#e67e22;color:white;font-weight:bold;padding:4px 12px;"
-        )
-        self.apply_variant_btn.setToolTip(t("apply_variant_tooltip"))
-        self.apply_variant_btn.clicked.connect(self._on_apply_variant)
-        vrow.addWidget(self.apply_variant_btn)
         self.show_guide_btn = QPushButton(t("show_guide"))
         self.show_guide_btn.setToolTip(t("show_guide_tooltip"))
         self.show_guide_btn.clicked.connect(self._show_explain_placeholder)
@@ -232,58 +235,38 @@ class ConfigTab(QWidget):
     def _current(self) -> tuple[str, str]:
         return self.method_combo.currentText(), self.preset_combo.currentText()
 
+    def _current_variant(self) -> str:
+        """gui-methods variant for the selected method. Falls back to the
+        method name itself when no variants are registered (apex, graft)."""
+        v = self.variant_combo.currentText()
+        return v or self.method_combo.currentText()
+
     def _on_method_changed(self):
-        # Switching methods invalidates any staged variant overlay — each
-        # method family has its own variants, and a stale overlay from the
-        # previous method would pollute the new one.
-        self._variant_overlay = None
         self._reload()
 
-    def _on_apply_variant(self):
-        method, _ = self._current()
-        variants = variants_for(method)
-        name = self.variant_combo.currentText()
-        if name in variants:
-            self._variant_overlay = dict(variants[name])
-            self._reload()
-
     def _refresh_variant_row(self, method: str) -> None:
-        variants = variants_for(method)
-        self.variant_combo.blockSignals(True)
-        self.variant_combo.clear()
-        if variants:
-            self.variant_combo.addItems(list(variants.keys()))
-        self.variant_combo.blockSignals(False)
-        self.variant_row.setVisible(bool(variants))
+        variants = list_gui_variants(method)
+        current = [self.variant_combo.itemText(i) for i in range(self.variant_combo.count())]
+        # Rebuilding the combo resets currentText to the first item, which
+        # would clobber the user's selection on every _reload. Only rebuild
+        # when the variant list actually changed (i.e. method family switched).
+        if current != variants:
+            self.variant_combo.blockSignals(True)
+            self.variant_combo.clear()
+            if variants:
+                self.variant_combo.addItems(variants)
+            self.variant_combo.blockSignals(False)
+        # Single-variant families (apex, graft) don't need a picker.
+        self.variant_row.setVisible(len(variants) > 1)
 
     def _reload(self):
         method, preset = self._current()
         if not method or not preset:
             return
         self._refresh_variant_row(method)
-        merged, origin = merged_method_preset(method, preset)
+        variant = self._current_variant()
+        merged, origin = merged_gui_variant_preset(variant, preset)
         cfg = {k: v for k, v in merged.items() if k not in _SKIP}
-
-        # Always expose toggle checkboxes for the selected method family
-        # (e.g. `use_ortho`, `use_hydra`) so users can flip variants without
-        # hand-editing TOML, even when the field isn't present in any layer.
-        for k, v in default_toggle_fields(method).items():
-            if k not in cfg:
-                cfg[k] = v
-                origin.setdefault(k, "method")
-
-        # Overlay the staged variant on top of the method config. Stripping
-        # owned keys first ensures a previous variant's fields don't survive
-        # the switch (e.g. `num_experts` when moving hydralora → plain lora).
-        if self._variant_overlay is not None:
-            owned = owned_keys(method)
-            for k in list(cfg.keys()):
-                if k in owned and k not in self._variant_overlay:
-                    cfg.pop(k)
-                    origin.pop(k, None)
-            for k, v in self._variant_overlay.items():
-                cfg[k] = v
-                origin[k] = "method"
 
         self._origin = origin
 
@@ -313,7 +296,7 @@ class ConfigTab(QWidget):
             ),
             "method": (
                 "color:#f0f0f0; text-decoration: underline dotted;",
-                f"from methods/{method}.toml",
+                f"from gui-methods/{variant}.toml",
             ),
         }
 
@@ -421,9 +404,10 @@ class ConfigTab(QWidget):
             return "preset"
         return "method"
 
-    def _save_preset(self):
-        method, preset = self._current()
-        method_path = METHODS_DIR / f"{method}.toml"
+    def _save_preset(self, *, silent: bool = False):
+        _, preset = self._current()
+        variant = self._current_variant()
+        method_path = GUI_METHODS_DIR / f"{variant}.toml"
 
         method_orig = _load(method_path)
         all_presets = _load_all_presets()
@@ -447,21 +431,15 @@ class ConfigTab(QWidget):
                     preset_out[k] = v
                 method_out.pop(k, None)
 
-        # Clear stale variant-owned fields from the method file. Without this,
-        # switching from e.g. hydralora → plain lora would leave `num_experts`
-        # lingering in methods/lora.toml because the plain-lora variant
-        # doesn't mention it (and the widget was removed from the form).
-        for k in owned_keys(method) - set(self._w.keys()):
-            method_out.pop(k, None)
-
         _save(method_path, method_out)
         all_presets[preset] = preset_out
         PRESETS_FILE.write_text(toml.dumps(all_presets), encoding="utf-8")
-        # Persist succeeded — overlay is now materialized on disk.
-        self._variant_overlay = None
-        QMessageBox.information(
-            self, t("saved"), f"Saved {method_path.name} + presets.toml[{preset}]"
-        )
+        if not silent:
+            QMessageBox.information(
+                self,
+                t("saved"),
+                f"Saved gui-methods/{method_path.name} + presets.toml[{preset}]",
+            )
 
     # ── Training ──
 
@@ -519,7 +497,8 @@ class ConfigTab(QWidget):
             QMessageBox.warning(self, t("error"), t("accelerate_not_found"))
             return
 
-        method, preset = self._current()
+        _, preset = self._current()
+        variant = self._current_variant()
         args = [
             "launch",
             "--num_cpu_threads_per_process",
@@ -528,7 +507,9 @@ class ConfigTab(QWidget):
             "bf16",
             "train.py",
             "--method",
-            method,
+            variant,
+            "--methods_subdir",
+            "gui-methods",
             "--preset",
             preset,
         ]
@@ -569,10 +550,11 @@ class ConfigTab(QWidget):
                 cur = int(m.group("cur"))
                 tot = int(m.group("tot"))
                 label = m.group("label").strip() or "progress"
+                rate_str = self._update_rate(label, cur, tot)
                 if tot > 0:
                     self.progress.setMaximum(tot)
                     self.progress.setValue(cur)
-                    self.progress.setFormat(f"{label}: {cur}/{tot} (%p%)")
+                    self.progress.setFormat(f"{label}: {cur}/{tot} (%p%){rate_str}")
                     if not self.progress.isVisible():
                         self.progress.setVisible(True)
                 continue
@@ -580,12 +562,33 @@ class ConfigTab(QWidget):
                 self._log(line + "\n")
         return tail
 
+    def _update_rate(self, label: str, cur: int, tot: int) -> str:
+        """Return a ' — X.XXs/step' suffix measured from the first completed
+        step of this bar. The first-step timing is excluded so model-load and
+        compile overhead don't skew the rate."""
+        now = time.monotonic()
+        anchor = self._rate_anchor
+        # New bar (label/total changed, or progress rewound) → drop anchor.
+        if anchor is None or anchor[2] != label or anchor[3] != tot or cur < anchor[1]:
+            if cur >= 1:
+                self._rate_anchor = (now, cur, label, tot)
+            else:
+                self._rate_anchor = None
+            return ""
+        anchor_time, anchor_step, _, _ = anchor
+        steps = cur - anchor_step
+        if steps <= 0:
+            return ""
+        spi = (now - anchor_time) / steps
+        return f" — {spi:.2f}s/step"
+
     def _reset_progress(self):
         self._stdout_buf = ""
         self._stderr_buf = ""
         self.progress.setValue(0)
         self.progress.setFormat("")
         self.progress.setVisible(False)
+        self._rate_anchor = None
 
     def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus):
         # Flush any buffered partial lines before the finish banner.

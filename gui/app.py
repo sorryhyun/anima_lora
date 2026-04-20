@@ -10,12 +10,14 @@ from PySide6.QtGui import QColor, QDesktopServices, QFont, QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
     QTabWidget,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -56,6 +58,9 @@ def _dark(app: QApplication):
         (QPalette.ButtonText, QColor(220, 220, 220)),
         (QPalette.Highlight, QColor(60, 120, 200)),
         (QPalette.HighlightedText, QColor(255, 255, 255)),
+        # Default Qt link blue (#0000ff-ish) is unreadable on dark bg.
+        (QPalette.Link, QColor(0xFF, 0xB8, 0x6B)),
+        (QPalette.LinkVisited, QColor(0xE6, 0x94, 0x4E)),
     ]:
         p.setColor(role, color)
     app.setPalette(p)
@@ -85,6 +90,54 @@ def _dark(app: QApplication):
         QTabBar::tab:hover { background: #3a3a3a; }
         QToolTip { max-width: 400px; }
     """)
+
+
+class GuidebookDialog(QDialog):
+    """In-app markdown viewer for the guidebook."""
+
+    def __init__(self, md_path: Path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(t("guidebook"))
+        self.resize(900, 720)
+        self._md_path = md_path
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(8, 8, 8, 8)
+
+        self.browser = QTextBrowser()
+        self.browser.setOpenExternalLinks(True)
+        # Resolve relative links/images against the markdown file's directory.
+        self.browser.setSearchPaths([str(md_path.parent)])
+        self.browser.document().setBaseUrl(QUrl.fromLocalFile(str(md_path.parent) + "/"))
+        # Default anchor color is pure blue — illegible on the dark bg.
+        self.browser.document().setDefaultStyleSheet(
+            "a { color: #ffb86b; text-decoration: underline; }"
+            "a:visited { color: #e6944e; }"
+            "code { background:#2a2a2a; padding:1px 4px; border-radius:3px; }"
+            "pre { background:#2a2a2a; padding:8px; border-radius:4px; }"
+        )
+        self.browser.setStyleSheet(
+            "QTextBrowser { background:#1e1e1e; color:#dcdcdc; "
+            "border:1px solid #444; padding:12px; }"
+        )
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except OSError as e:
+            text = f"# Error\n\nCould not read `{md_path}`:\n\n`{e}`"
+        self.browser.setMarkdown(text)
+        lay.addWidget(self.browser)
+
+        btn_bar = QHBoxLayout()
+        btn_bar.addStretch()
+        open_ext = QPushButton(t("guidebook_open_external"))
+        open_ext.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._md_path)))
+        )
+        close = QPushButton(t("guidebook_close"))
+        close.clicked.connect(self.close)
+        btn_bar.addWidget(open_ext)
+        btn_bar.addWidget(close)
+        lay.addLayout(btn_bar)
 
 
 class MainWindow(QMainWindow):
@@ -130,7 +183,8 @@ class MainWindow(QMainWindow):
                 self, t("guidebook"), t("guidebook_missing", path=str(GUIDEBOOK_PATH))
             )
             return
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(GUIDEBOOK_PATH)))
+        dlg = GuidebookDialog(GUIDEBOOK_PATH, self)
+        dlg.show()
 
     def _change_lang(self, idx: int):
         lang = self.lang_combo.itemData(idx)

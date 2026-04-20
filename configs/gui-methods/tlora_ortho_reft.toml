@@ -4,11 +4,11 @@
 # what the old toggle-block `configs/methods/lora.toml` shipped as its default.
 # Good general-purpose choice when in doubt.
 
-network_dim = 16
-network_alpha = 16
+network_dim = 32
+network_alpha = 32
 
-learning_rate = 1e-4
-max_train_epochs = 2
+learning_rate = 2e-5
+max_train_epochs = 4
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
@@ -23,10 +23,10 @@ min_rank = 1
 alpha_rank_scale = 1.0
 
 add_reft = true
-reft_dim = 64
-reft_alpha = 64
+reft_dim = 32
+reft_alpha = 32
 reft_layers = "last_8"
 
 output_name = "anima_tlora"
 
-blocks_to_swap = 16
+blocks_to_swap = 14

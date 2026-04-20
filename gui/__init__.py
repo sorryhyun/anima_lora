@@ -24,24 +24,54 @@ GRAFT_DIR = ROOT / "graft"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 METHODS_DIR = CONFIGS_DIR / "methods"
+GUI_METHODS_DIR = CONFIGS_DIR / "gui-methods"
 PRESETS_FILE = CONFIGS_DIR / "presets.toml"
 
 
 _METHOD_ORDER = ("lora", "postfix", "apex", "graft")
 
+# GUI variant picker maps method families → self-contained gui-methods files.
+# Order is display order in the variant combo. Any gui-methods/*.toml not
+# listed here is attached to its best-guess family by prefix.
+_FAMILY_VARIANTS: dict[str, list[str]] = {
+    "lora": [
+        "lora",
+        "ortholora",
+        "tlora",
+        "reft",
+        "tlora_ortho_reft",
+        "hydralora",
+        "hydralora_sigma",
+    ],
+    "postfix": [
+        "postfix",
+        "postfix_exp",
+        "postfix_func",
+        "postfix_sigma",
+        "prefix",
+    ],
+    "apex": ["apex"],
+    "graft": ["graft"],
+}
+
 
 def list_methods() -> list[str]:
-    """Method files in configs/methods/, sorted so common choices come first.
+    """Method families, in a user-friendly order (lora first)."""
+    return list(_METHOD_ORDER)
 
-    Alphabetical ordering puts `apex` before `lora`, which confuses first-time
-    users (LoRA is by far the most common starting point). Pin the known
-    families to a curated head-of-list, then append any extras alphabetically.
+
+def list_gui_variants(method: str) -> list[str]:
+    """gui-methods/*.toml files that belong to the given method family.
+
+    The GUI training path uses gui-methods as the source of truth (each variant
+    is a self-contained TOML — no toggle blocks), so the variant combo lists
+    actual files, not overlay presets.
     """
-    if not METHODS_DIR.exists():
+    if not GUI_METHODS_DIR.exists():
         return []
-    found = {p.stem for p in METHODS_DIR.glob("*.toml")}
-    ordered = [m for m in _METHOD_ORDER if m in found]
-    ordered.extend(sorted(found - set(_METHOD_ORDER)))
+    have = {p.stem for p in GUI_METHODS_DIR.glob("*.toml")}
+    want = _FAMILY_VARIANTS.get(method, [])
+    ordered = [v for v in want if v in have]
     return ordered
 
 
@@ -145,6 +175,29 @@ def merged_method_preset(method: str, preset: str) -> tuple[dict, dict[str, str]
     base = _load(CONFIGS_DIR / "base.toml")
     pset = _load_all_presets().get(preset, {})
     meth = _load(METHODS_DIR / f"{method}.toml")
+    merged: dict = {}
+    origin: dict[str, str] = {}
+    for k, v in base.items():
+        merged[k] = v
+        origin[k] = "base"
+    for k, v in pset.items():
+        merged[k] = v
+        origin[k] = "preset"
+    for k, v in meth.items():
+        merged[k] = v
+        origin[k] = "method"
+    return merged, origin
+
+
+def merged_gui_variant_preset(
+    variant: str, preset: str
+) -> tuple[dict, dict[str, str]]:
+    """Merge base + preset + gui-methods/<variant>.toml. The GUI uses this
+    instead of `merged_method_preset` so edits/training target the clean
+    per-variant file, not the toggle-block methods/ tree."""
+    base = _load(CONFIGS_DIR / "base.toml")
+    pset = _load_all_presets().get(preset, {})
+    meth = _load(GUI_METHODS_DIR / f"{variant}.toml")
     merged: dict = {}
     origin: dict[str, str] = {}
     for k, v in base.items():

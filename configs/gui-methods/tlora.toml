@@ -4,11 +4,11 @@
 # full rank at high noise, reduced to `min_rank` at low noise. See
 # docs/methods/timestep_mask.md.
 
-network_dim = 16
-network_alpha = 16
+network_dim = 32
+network_alpha = 32
 
-learning_rate = 1e-4
-max_train_epochs = 2
+learning_rate = 2e-5
+max_train_epochs = 4
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
@@ -16,10 +16,12 @@ caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
+use_ortho = true
+
 use_timestep_mask = true
 min_rank = 1
 alpha_rank_scale = 1.0
 
 output_name = "anima_tlora"
 
-blocks_to_swap = 16
+blocks_to_swap = 14

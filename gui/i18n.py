@@ -61,6 +61,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "guidebook": "📖 Guide",
         "guidebook_tooltip": "Open the Korean end-to-end guide (docs/guidelines/가이드북.md)",
         "guidebook_missing": "Guide not found at {path}",
+        "guidebook_open_external": "Open in system viewer",
+        "guidebook_close": "Close",
     },
     "ko": {
         # Window / tabs
@@ -120,6 +122,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "guidebook": "📖 가이드북",
         "guidebook_tooltip": "한국어 종합 가이드 열기 (docs/guidelines/가이드북.md)",
         "guidebook_missing": "가이드를 찾을 수 없습니다: {path}",
+        "guidebook_open_external": "시스템 뷰어로 열기",
+        "guidebook_close": "닫기",
     },
 }
 

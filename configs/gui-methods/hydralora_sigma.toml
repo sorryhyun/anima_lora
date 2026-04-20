@@ -5,11 +5,11 @@
 # Zero-init at the final layer → step-0 identical to base HydraLoRA, σ-
 # dependence only emerges if gradients push it. See docs/methods/hydra-lora.md.
 
-network_dim = 16
-network_alpha = 16
+network_dim = 32
+network_alpha = 32
 
-learning_rate = 1e-4
-max_train_epochs = 2
+learning_rate = 2e-5
+max_train_epochs = 4
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
@@ -36,4 +36,4 @@ num_sigma_buckets = 3
 
 output_name = "anima_hydra_sigma"
 
-blocks_to_swap = 16
+blocks_to_swap = 14
