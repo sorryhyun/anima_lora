@@ -42,7 +42,7 @@ alpha_rank_scale = 1.0
 output_name = "anima_hydra"
 use_hydra = true
 num_experts = 4
-balance_loss_weight = 0.01
+balance_loss_weight = 0.001
 
 
 # timestep conditional hydralora
@@ -79,7 +79,7 @@ blocks_to_swap = 16
 #
 # use_hydra = true
 # num_experts = 4
-# balance_loss_weight = 0.01
+# balance_loss_weight = 0.001
 
 
 

@@ -49,6 +49,7 @@ dependencies = [
     "triton-windows>=3.6.0 ; sys_platform == 'win32'",
     "pyside6>=6.11.0",
     "ruff>=0.15.9",
+    "matplotlib",
 ]
 
 [project.optional-dependencies]

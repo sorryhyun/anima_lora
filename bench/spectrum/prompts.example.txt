@@ -1,0 +1,12 @@
+# One prompt per line. Optional negative after '|||'.
+# Blank lines and lines starting with '#' are ignored.
+# Prompts chosen to stress different failure modes:
+#   1. flat-color character — exposes color collapse / posterization
+#   2. detail-dense scene — exposes fine-detail loss
+#   3. multi-subject — exposes compositional drift
+#   4. text/geometry — exposes boundary artifacts
+
+1girl, solo, bunny ears, bunny suit, pink hair, standing, simple background, full body, looking at viewer
+a detailed mountain landscape at sunset, pine forest, volumetric fog, intricate rock texture, high detail, masterpiece
+two women chatting at a cafe table, 2girls, indoor, cups of coffee, soft lighting, casual clothing, medium shot
+a wooden street sign reading "SPECTRUM", ornate lettering, carved wood grain, sharp focus, close up

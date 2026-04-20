@@ -95,11 +95,13 @@ class AnimaAdapterLoader:
     CATEGORY = "loaders"
     DESCRIPTION = (
         "Anima adapter loader. Toggle adapter (LoRA / Hydra / ReFT) and "
-        "postfix sections independently. HydraLoRA experts are baked down "
-        "with uniform weighting (per-layer routing cannot be replayed under "
-        "weight-patching). ReFT installs per-block forward hooks. Postfix "
-        "wraps diffusion_model.forward to splice learned vectors after the "
-        "LLM adapter; positive-batch rows only (CFG-safe)."
+        "postfix sections independently. HydraLoRA installs per-Linear "
+        "forward hooks that compute the trained per-sample router gate from "
+        "each Linear's input and blend per-expert lora_up heads — full live "
+        "routing including σ-conditional bias. ReFT installs per-block "
+        "forward hooks. Postfix wraps diffusion_model.forward to splice "
+        "learned vectors after the LLM adapter; positive-batch rows only "
+        "(CFG-safe)."
     )
 
     def apply(

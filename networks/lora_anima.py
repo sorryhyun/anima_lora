@@ -781,6 +781,30 @@ def create_network_from_weights(
     elif has_hydra:
         spec = NETWORK_REGISTRY["hydra"]
         module_class = spec.module_class
+
+    # Old-format per-module router — was Linear(in_dim, E). Current router is
+    # Linear(lora_dim, E); the old shape carries a router that never trained
+    # (see docs/methods/hydra-lora.md §Fixes) and cannot be reshaped into the
+    # new module, so refuse at load with an explicit retrain message.
+    if has_hydra or has_ortho_hydra:
+        for k, v in weights_sd.items():
+            if not k.endswith(".router.weight"):
+                continue
+            lora_name = k[: -len(".router.weight")]
+            expected_rank = modules_dim.get(lora_name)
+            if expected_rank is None:
+                continue
+            if v.ndim != 2 or v.size(1) != expected_rank:
+                raise RuntimeError(
+                    f"This checkpoint has an old-shape HydraLoRA router at "
+                    f"{k!r} (shape {tuple(v.shape)}); the current router is "
+                    f"Linear(lora_dim={expected_rank}, num_experts). Old routers "
+                    "never received meaningful gradient under the previous "
+                    "mean-pool-over-raw-input path (see "
+                    "docs/methods/hydra-lora.md §Fixes); there is no salvage "
+                    "path — retrain the LoRA to produce a router in the new "
+                    "rank-R input space."
+                )
     elif for_inference:
         spec = NETWORK_REGISTRY["lora"]  # inference uses the merge-capable LoRAInfModule
         module_class = LoRAInfModule

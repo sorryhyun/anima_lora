@@ -1,13 +1,18 @@
 """LoRA / HydraLoRA / ReFT loading and application for the Anima adapter node.
 
 A single safetensors file may contain any combination of the three; each is
-auto-detected from key patterns. Plain LoRA / Hydra are applied through
-ComfyUI's weight-patch path; ReFT is applied as per-block ``forward_hook``s
-swapped in via ``ModelPatcher.add_object_patch`` (overriding ``forward``
-strands block weights on CPU under ComfyUI's cast-weights path).
+auto-detected from key patterns. Plain LoRA goes through ComfyUI's
+weight-patch path. HydraLoRA and ReFT are applied as per-Linear / per-block
+``forward_hook``s swapped in via ``ModelPatcher.add_object_patch``
+(overriding ``forward`` strands block weights on CPU under ComfyUI's
+cast-weights path). Hydra hooks reproduce the trained
+``HydraLoRAModule.forward`` exactly — per-sample router gate, per-expert
+``lora_up`` blend — so style separation actually fires at inference time
+instead of being averaged out by a uniform bake.
 """
 
 import logging
+import math
 import re
 from collections import OrderedDict
 from typing import Dict, Optional
@@ -60,7 +65,13 @@ def _parse_reft(weights_sd: Dict[str, torch.Tensor]) -> Optional[Dict[int, dict]
 
 
 def _parse_hydra(weights_sd: Dict[str, torch.Tensor]) -> Optional[dict]:
-    """Group Hydra multi-head keys. Returns None if no per-expert ups found."""
+    """Group Hydra multi-head keys. Returns None if no per-expert ups found.
+
+    Captures router (``router.weight`` / ``router.bias``) and σ-conditional
+    MLP (``sigma_mlp.0.weight`` / ``sigma_mlp.0.bias`` / ``sigma_mlp.2.weight``)
+    when present. ``sigma_mlp.1`` is SiLU (no params) and ``sigma_mlp.2`` is
+    bias-free per the training-time module definition.
+    """
     modules: Dict[str, dict] = {}
     for key, value in weights_sd.items():
         if key.startswith("reft_"):
@@ -78,6 +89,16 @@ def _parse_hydra(weights_sd: Dict[str, torch.Tensor]) -> Optional[dict]:
             mod["alpha"] = value
         elif rest == "inv_scale":
             mod["inv_scale"] = value
+        elif rest == "router.weight":
+            mod["router_w"] = value
+        elif rest == "router.bias":
+            mod["router_b"] = value
+        elif rest == "sigma_mlp.0.weight":
+            mod["sigma_mlp_0_w"] = value
+        elif rest == "sigma_mlp.0.bias":
+            mod["sigma_mlp_0_b"] = value
+        elif rest == "sigma_mlp.2.weight":
+            mod["sigma_mlp_2_w"] = value
 
     num_experts = 0
     for mod in modules.values():
@@ -150,34 +171,278 @@ def load_adapter(file_path: str) -> dict:
     return bundle
 
 
-def _bake_hydra_to_lora(
-    hydra_data: dict, expert_weights: torch.Tensor
-) -> Dict[str, torch.Tensor]:
-    """Uniform-weight expert bake-down (per-layer router can't run under
-    ComfyUI's weight-patch model).
+def _sigma_sinusoidal_features(
+    sigma: torch.Tensor, sigma_feature_dim: int
+) -> torch.Tensor:
+    """Sinusoidal σ features matching ``networks/lora_modules.py`` verbatim.
+
+    Trained σ-conditional bias is sensitive to this functional form, so any
+    drift between training and inference shows up directly as wrong gates.
     """
-    result: Dict[str, torch.Tensor] = {}
+    t = sigma.flatten().float()
+    half_dim = sigma_feature_dim // 2
+    exponent = (
+        -math.log(10000)
+        * torch.arange(half_dim, dtype=torch.float32, device=t.device)
+        / max(half_dim, 1)
+    )
+    freqs = torch.exp(exponent)
+    angles = t[:, None] * freqs[None, :]
+    return torch.cat([torch.cos(angles), torch.sin(angles)], dim=-1)
+
+
+def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
+    """Forward hook reproducing ``HydraLoRAModule.forward`` per Linear.
+
+    Lazy-moves loaded tensors to the input's device on first call (saved
+    dtype is preserved; bottleneck matmuls upcast to fp32 to match the CLI
+    precision policy — see ``LoRAModule.forward`` rationale). ``sigma_state``
+    is shared across all hydra hooks for this checkpoint; the
+    diffusion-forward wrapper writes ``sigma_state["sigma"]`` once per
+    denoising step, and each hook reads it to add the σ-conditional bias
+    when ``sigma_mlp_2_w`` is present.
+    """
+    state = {
+        "lora_down": params["lora_down"],
+        "lora_ups": params["lora_ups"],          # (E, out, rank)
+        "router_w": params["router_w"],          # (E, rank)
+        "router_b": params["router_b"],          # (E,)
+        "inv_scale": params.get("inv_scale"),    # (in_dim,) or None
+        "scale": params["scale"],
+        "sigma_mlp_0_w": params.get("sigma_mlp_0_w"),
+        "sigma_mlp_0_b": params.get("sigma_mlp_0_b"),
+        "sigma_mlp_2_w": params.get("sigma_mlp_2_w"),
+        "sigma_feature_dim": params.get("sigma_feature_dim"),
+        "device": None,
+    }
+
+    def _ensure_on_device(x: torch.Tensor) -> None:
+        if state["device"] == x.device:
+            return
+        for k in (
+            "lora_down",
+            "lora_ups",
+            "router_w",
+            "router_b",
+            "inv_scale",
+            "sigma_mlp_0_w",
+            "sigma_mlp_0_b",
+            "sigma_mlp_2_w",
+        ):
+            if state[k] is not None:
+                state[k] = state[k].to(device=x.device)
+        state["device"] = x.device
+
+    def hydra_hook(module, inputs, output):
+        x = inputs[0]
+        _ensure_on_device(x)
+
+        x_lora = x.float()
+        if state["inv_scale"] is not None:
+            x_lora = x_lora * state["inv_scale"].float()
+
+        # down projection (B, *, rank), fp32 — feeds both the router and the
+        # gate-weighted bmm downstream.
+        lx = torch.nn.functional.linear(x_lora, state["lora_down"].float())
+
+        # router gate — RMS pool the rank-R signal over the sequence dim, then
+        # logits. Mirrors HydraLoRAModule._compute_gate after the rank-R router
+        # rewiring (see docs/methods/hydra-lora.md §Fixes): mean-pool over raw
+        # x collapsed sample signal by √L, so router weights never trained.
+        B = lx.shape[0]
+        if lx.dim() >= 3:
+            pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
+        else:
+            pooled = lx
+        logits = torch.nn.functional.linear(
+            pooled, state["router_w"].float(), state["router_b"].float()
+        )
+
+        # σ-conditional bias (zero-init at training start, so absent ↔ identity)
+        if state["sigma_mlp_2_w"] is not None and sigma_state.get("sigma") is not None:
+            sigma_feat = _sigma_sinusoidal_features(
+                sigma_state["sigma"], state["sigma_feature_dim"]
+            ).to(device=logits.device)
+            h = torch.nn.functional.linear(
+                sigma_feat,
+                state["sigma_mlp_0_w"].float(),
+                state["sigma_mlp_0_b"].float(),
+            )
+            h = torch.nn.functional.silu(h)
+            sigma_bias = torch.nn.functional.linear(
+                h, state["sigma_mlp_2_w"].float()
+            )
+            # Broadcast σ-bias across batch when shapes differ (e.g. σ shape (1,)
+            # vs CFG-doubled batch). Matching shapes add directly.
+            if (
+                sigma_bias.shape[0] == logits.shape[0]
+                or sigma_bias.shape[0] == 1
+            ):
+                logits = logits + sigma_bias
+
+        gate = torch.softmax(logits, dim=-1)
+
+        # gate-weighted combined ups (B, out, rank)
+        combined = torch.einsum("be,eor->bor", gate, state["lora_ups"].float())
+
+        # apply via batched matmul
+        orig_shape = lx.shape
+        lx_3d = lx.reshape(B, -1, orig_shape[-1])
+        delta = torch.bmm(lx_3d, combined.transpose(1, 2)).reshape(
+            *orig_shape[:-1], -1
+        )
+        return output + (delta * (state["scale"] * strength)).to(output.dtype)
+
+    return hydra_hook
+
+
+def _make_sigma_capture_wrapper(prev_forward, sigma_state: dict):
+    """Record ``timesteps`` into shared state, then delegate to inner forward.
+
+    Each hydra hook reads ``sigma_state["sigma"]`` to compute the
+    σ-conditional router bias. Chains over any existing ``diffusion_model.forward``
+    object_patch (postfix wraps on top, hydra wraps innermost — postfix
+    receives ``timesteps`` unchanged and forwards it down).
+
+    ``@torch._dynamo.disable`` is load-bearing: under torch.compile the
+    fake-tensor trace propagates through ``prev_forward`` and hits ComfyUI's
+    ``comfy_cast_weights`` path (e.g. cosmos ``x_embedder.proj``), where
+    dynamo can't symbolically execute the conditional CPU→GPU weight cast
+    and aborts with "Unhandled FakeTensor Device Propagation". The wrapper
+    itself is pure bookkeeping (one dict store), so there's nothing to gain
+    from compiling it — eager fallback through here is free.
+    """
+
+    @torch._dynamo.disable
+    def new_forward(x, timesteps, context, **kwargs):
+        sigma_state["sigma"] = timesteps
+        return prev_forward(x, timesteps, context, **kwargs)
+
+    return new_forward
+
+
+def _resolve_module(model, dotted_path: str):
+    """Walk attribute / index path under ``model.model``."""
+    obj = model.model
+    for part in dotted_path.split("."):
+        if part.isdigit():
+            obj = obj[int(part)]
+        else:
+            obj = getattr(obj, part)
+    return obj
+
+
+def _apply_hydra_live_to_model(
+    model, hydra_data: dict, strength: float
+) -> int:
+    """Install live-routing forward hooks on each Hydra-adapted Linear.
+
+    Replaces the previous uniform-bake fallback. Per-Linear hooks reproduce
+    the trained ``HydraLoRAModule.forward`` (per-sample router from layer
+    input, per-expert ``lora_up`` blend) so the multi-head specialization
+    fires at inference. σ-conditional router bias is captured via a thin
+    wrapper around ``diffusion_model.forward`` that records ``timesteps``
+    into shared state read by each hook.
+
+    Returns number of hooks installed.
+    """
+    import comfy.lora
+
+    if strength == 0:
+        return 0
+
+    key_map = comfy.lora.model_lora_keys_unet(model.model, {})
+
+    sigma_state: dict = {}
+
+    # Wrap diffusion_model.forward to record σ. Chain over any prior patch.
+    prev = model.object_patches.get("diffusion_model.forward")
+    if prev is None:
+        prev = model.model.diffusion_model.forward
+    model.add_object_patch(
+        "diffusion_model.forward",
+        _make_sigma_capture_wrapper(prev, sigma_state),
+    )
+
+    patched = 0
+    skipped: list[str] = []
     for prefix, mod in hydra_data["modules"].items():
         if "lora_down" not in mod or "lora_ups" not in mod:
+            skipped.append(f"{prefix}: missing lora_down/lora_ups")
             continue
-        ups = mod["lora_ups"]
-        stacked = torch.stack([ups[i] for i in sorted(ups.keys())], dim=0)
-        combined_up = torch.einsum(
-            "e,eor->or",
-            expert_weights.to(device=stacked.device, dtype=stacked.dtype),
-            stacked,
+        if "router_w" not in mod or "router_b" not in mod:
+            skipped.append(f"{prefix}: missing router")
+            continue
+
+        comfy_sd_key = key_map.get(prefix)
+        if comfy_sd_key is None:
+            skipped.append(f"{prefix}: not in ComfyUI key_map")
+            continue
+        module_path = (
+            comfy_sd_key[: -len(".weight")]
+            if comfy_sd_key.endswith(".weight")
+            else comfy_sd_key
         )
-        down_weight = mod["lora_down"]
-        if "inv_scale" in mod and down_weight.dim() == 2:
-            inv_scale = mod["inv_scale"].to(
-                dtype=down_weight.dtype, device=down_weight.device
+
+        try:
+            linear = _resolve_module(model, module_path)
+        except (AttributeError, IndexError, ValueError) as e:
+            skipped.append(f"{prefix}: resolve {module_path} failed ({e})")
+            continue
+
+        ups_dict = mod["lora_ups"]
+        ups_stacked = torch.stack(
+            [ups_dict[i] for i in sorted(ups_dict.keys())], dim=0
+        )
+        rank = mod["lora_down"].shape[0]
+
+        router_in = mod["router_w"].shape[1]
+        if router_in != rank:
+            skipped.append(
+                f"{prefix}: old-shape router ({tuple(mod['router_w'].shape)}, "
+                f"expected (E, rank={rank})) — retrain required, see "
+                "docs/methods/hydra-lora.md §Fixes"
             )
-            down_weight = down_weight * inv_scale.unsqueeze(0)
-        result[f"{prefix}.lora_down.weight"] = down_weight
-        result[f"{prefix}.lora_up.weight"] = combined_up
-        if "alpha" in mod:
-            result[f"{prefix}.alpha"] = mod["alpha"]
-    return result
+            continue
+        alpha_t = mod.get("alpha")
+        alpha = (
+            float(alpha_t.item() if hasattr(alpha_t, "item") else alpha_t)
+            if alpha_t is not None
+            else float(rank)
+        )
+
+        params = {
+            "lora_down": mod["lora_down"],
+            "lora_ups": ups_stacked,
+            "router_w": mod["router_w"],
+            "router_b": mod["router_b"],
+            "inv_scale": mod.get("inv_scale"),
+            "scale": alpha / rank,
+        }
+        if "sigma_mlp_2_w" in mod:
+            params["sigma_mlp_0_w"] = mod["sigma_mlp_0_w"]
+            params["sigma_mlp_0_b"] = mod["sigma_mlp_0_b"]
+            params["sigma_mlp_2_w"] = mod["sigma_mlp_2_w"]
+            # in_features of sigma_mlp.0 is the sinusoidal feature dim
+            params["sigma_feature_dim"] = mod["sigma_mlp_0_w"].shape[1]
+
+        hook = _make_hydra_hook(params, strength, sigma_state)
+        new_hooks = OrderedDict(linear._forward_hooks)
+        new_hooks[id(hook)] = hook
+        model.add_object_patch(f"{module_path}._forward_hooks", new_hooks)
+        patched += 1
+
+    if skipped:
+        logger.warning(
+            f"Hydra live-routing skipped {len(skipped)} prefix(es); "
+            f"first few: {skipped[:5]}"
+        )
+    has_sigma = any("sigma_mlp_2_w" in m for m in hydra_data["modules"].values())
+    logger.info(
+        f"Hydra live-routing installed {patched} hooks "
+        f"(strength={strength}, σ-conditional={'yes' if has_sigma else 'no'})"
+    )
+    return patched
 
 
 def _apply_lora_sd_to_model(model, lora_sd: Dict[str, torch.Tensor], strength: float):
@@ -275,11 +540,8 @@ def apply_adapter(
     applied_any = False
 
     if bundle["hydra"] is not None:
-        num_experts = bundle["hydra"]["num_experts"]
-        uniform = torch.ones(num_experts, dtype=torch.float32) / num_experts
-        lora_sd = _bake_hydra_to_lora(bundle["hydra"], uniform)
-        if lora_sd:
-            _apply_lora_sd_to_model(model, lora_sd, strength_lora)
+        n = _apply_hydra_live_to_model(model, bundle["hydra"], strength_lora)
+        if n > 0:
             applied_any = True
     elif bundle["lora"] is not None:
         # Plain LoRA — apply directly. Hydra + plain-lora in the same file is

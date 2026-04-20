@@ -324,11 +324,14 @@ class HydraLoRAModule(BaseLoRAModule):
             torch.zeros(num_experts, out_dim, self.lora_dim)
         )
 
-        # Local router: reads pooled layer input → per-sample expert gates.
-        # Init is deliberately small (std=0.01) so initial gates are near-uniform.
-        # Relying on xavier init here produces saturated softmax in bf16 when the
-        # pooled input has DC-bias outlier channels (see bench/channel_dominance_analysis.md).
-        self.router = torch.nn.Linear(in_dim, num_experts, bias=True)
+        # Local router: reads pooled rank-R signal (post-`lora_down`) → per-sample
+        # expert gates. Operating in rank-R space (not raw in_dim) is load-bearing:
+        # raw DiT inputs have 80–96× DC-bias outlier channels and ~4096 tokens, so
+        # mean-pooling raw inputs collapsed the signal to near-constant DC noise and
+        # left the router with no trainable gradient (see docs/methods/hydra-lora.md
+        # §Fixes). `lora_down` is trained jointly, so signal-carrying directions
+        # accumulate here and there are no large outliers to saturate softmax in bf16.
+        self.router = torch.nn.Linear(self.lora_dim, num_experts, bias=True)
         torch.nn.init.normal_(self.router.weight, std=0.01)
         torch.nn.init.zeros_(self.router.bias)
 
@@ -351,22 +354,25 @@ class HydraLoRAModule(BaseLoRAModule):
         self._last_gate = None  # (B, num_experts), cached each forward for balance loss
         self._sigma = None  # (B,) σ tensor; set externally by LoRANetwork.set_sigma
 
-    def _compute_gate(self, x_lora: torch.Tensor) -> torch.Tensor:
-        """Pool layer input over sequence dim (if any), run router, softmax.
+    def _compute_gate(self, lx: torch.Tensor) -> torch.Tensor:
+        """Pool the rank-R `lora_down` output over the sequence dim, run router, softmax.
 
-        Uses mean pool, not max pool: DiT layer inputs have DC-bias outlier
-        channels with peak/mean ratios of 80–96× (see channel_dominance_analysis.md).
-        Max pool would surface those outliers straight into the router and blow
-        up softmax in bf16. Mean pool averages them out.
+        RMS (L2-norm) pool per channel: ``sqrt(mean(lx**2))``. Unlike mean pool,
+        RMS does not cancel zero-mean activations by √N, so the pooled vector
+        retains sample-level content over long sequences (L≈4096). Raw DiT inputs
+        have DC-bias outliers that would break this aggregator in bf16, but
+        rank-R space (post `lora_down`) is bounded by ``‖lora_down‖·‖x‖`` and
+        has no such outliers, so RMS is safe here (see
+        ``docs/methods/hydra-lora.md`` §Fixes).
 
         When ``sigma_mlp`` is present and ``_sigma`` is set, adds a σ-conditional
         bias to the logits before softmax (zero at init → identity to base).
         """
-        if x_lora.dim() >= 3:
-            B = x_lora.shape[0]
-            pooled = x_lora.reshape(B, -1, x_lora.shape[-1]).mean(dim=1)
+        if lx.dim() >= 3:
+            B = lx.shape[0]
+            pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
         else:
-            pooled = x_lora
+            pooled = lx
         logits = self.router(pooled)  # (B, num_experts)
         if self.sigma_mlp is not None and self._sigma is not None:
             sigma_feat = _sigma_sinusoidal_features(
@@ -395,6 +401,13 @@ class HydraLoRAModule(BaseLoRAModule):
             x_lora.float(), self.lora_down.weight.float()
         )
 
+        # Layer-local routing: gate is computed from the rank-R signal *before*
+        # timestep masking / dropout — those are training-time perturbations and
+        # the gate should behave identically at train and inference.
+        gate = self._compute_gate(lx)  # (B, num_experts)
+        if self.training:
+            self._last_gate = gate  # cache for network-level balance loss
+
         # timestep-dependent rank masking (T-LoRA compatibility)
         if self._timestep_mask is not None and self.training:
             lx = lx * self._timestep_mask
@@ -404,11 +417,6 @@ class HydraLoRAModule(BaseLoRAModule):
             lx = torch.nn.functional.dropout(lx, p=self.dropout)
 
         lx, scale = self._apply_rank_dropout(lx)
-
-        # Layer-local routing: gate is computed from this module's own input.
-        gate = self._compute_gate(x_lora)  # (B, num_experts)
-        if self.training:
-            self._last_gate = gate  # cache for network-level balance loss
 
         # Gate-weighted combined weight per batch element: (B, out_dim, lora_dim)
         combined = torch.einsum(
@@ -619,8 +627,10 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # Shared diagonal scale — zero-init → ΔW = 0 at init
         self.lambda_layer = torch.nn.Parameter(torch.zeros(1, lora_dim))
 
-        # Layer-local router (same as HydraLoRAModule)
-        self.router = torch.nn.Linear(in_dim, num_experts, bias=True)
+        # Layer-local router (same as HydraLoRAModule): reads the pooled rank-R
+        # signal (post Q_eff projection, pre-λ) so sample content survives
+        # aggregation. See HydraLoRAModule.__init__ for the full rationale.
+        self.router = torch.nn.Linear(lora_dim, num_experts, bias=True)
         torch.nn.init.normal_(self.router.weight, std=0.01)
         torch.nn.init.zeros_(self.router.bias)
 
@@ -653,17 +663,20 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
             eye = eye.unsqueeze(0).expand_as(A)
         return torch.linalg.solve(eye + A, eye - A)
 
-    def _compute_gate(self, x_lora: torch.Tensor) -> torch.Tensor:
-        """Pool layer input over sequence dim (if any), run router, softmax.
+    def _compute_gate(self, lx: torch.Tensor) -> torch.Tensor:
+        """Pool rank-R signal over sequence dim, run router, softmax.
 
-        σ-conditional bias added when ``sigma_mlp`` is present and ``_sigma``
-        is set. See ``HydraLoRAModule._compute_gate`` for rationale.
+        RMS pool over the post-``Q_eff`` activations (pre-λ, pre-mask). λ is
+        zero-init, so pooling the post-λ signal would zero the router input at
+        step 0 and freeze gradient. σ-conditional bias added when ``sigma_mlp``
+        is present and ``_sigma`` is set. See ``HydraLoRAModule._compute_gate``
+        for the full rationale.
         """
-        if x_lora.dim() >= 3:
-            B = x_lora.shape[0]
-            pooled = x_lora.reshape(B, -1, x_lora.shape[-1]).mean(dim=1)
+        if lx.dim() >= 3:
+            B = lx.shape[0]
+            pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
         else:
-            pooled = x_lora
+            pooled = lx
         logits = self.router(pooled)  # (B, num_experts)
         if self.sigma_mlp is not None and self._sigma is not None:
             sigma_feat = _sigma_sinusoidal_features(
@@ -690,6 +703,14 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
 
         lx = torch.nn.functional.linear(x_lora, Q_eff)  # (*, r)
 
+        # Layer-local routing from raw rank-R signal, before λ scaling /
+        # timestep masking / dropout. λ is zero-init so post-λ lx carries no
+        # signal to the router at step 0; pooling pre-λ keeps the gradient
+        # flowing into the router from the start.
+        gate = self._compute_gate(lx)  # (B, E)
+        if self.training:
+            self._last_gate = gate
+
         # Scale by lambda + timestep mask
         mask = self._timestep_mask
         if mask is not None:
@@ -707,11 +728,6 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         R_p = self._cayley(self.S_p)  # (E, r, r)
         # P_basis: (out, r) → (1, out, r); R_p: (E, r, r) → P_eff: (E, out, r)
         P_eff = self.P_basis.unsqueeze(0) @ R_p
-
-        # Layer-local routing
-        gate = self._compute_gate(x_lora)  # (B, E)
-        if self.training:
-            self._last_gate = gate
 
         # Gate-weighted combined P: (B, out, r)
         P_combined = torch.einsum("be,eor->bor", gate, P_eff)

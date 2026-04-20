@@ -25,7 +25,7 @@ alpha_rank_scale = 1.0
 
 use_hydra = true
 num_experts = 4
-balance_loss_weight = 0.01
+balance_loss_weight = 0.001
 
 use_sigma_router = true
 sigma_feature_dim = 128
