@@ -24,4 +24,4 @@ alpha_rank_scale = 1.0
 
 output_name = "anima_tlora"
 
-blocks_to_swap = 14
+blocks_to_swap = 10

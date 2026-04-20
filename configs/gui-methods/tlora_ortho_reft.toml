@@ -29,4 +29,4 @@ reft_layers = "last_8"
 
 output_name = "anima_tlora"
 
-blocks_to_swap = 14
+blocks_to_swap = 12

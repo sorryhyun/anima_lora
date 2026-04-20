@@ -36,6 +36,8 @@ _METHOD_ORDER = ("lora", "postfix", "apex", "graft")
 _FAMILY_VARIANTS: dict[str, list[str]] = {
     "lora": [
         "lora",
+        "lora-fast",
+        "lora-8gb",
         "ortholora",
         "tlora",
         "reft",
@@ -142,6 +144,7 @@ _GROUPS = {
         "cache_text_encoder_outputs",
         "cache_text_encoder_outputs_to_disk",
         "skip_cache_check",
+        "layer_start"
     },
     "Paths": {
         "pretrained_model_name_or_path",

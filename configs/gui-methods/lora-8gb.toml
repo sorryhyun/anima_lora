@@ -1,0 +1,24 @@
+# gui-methods/lora.toml — Plain classic LoRA.
+#
+# Self-contained variant config for the GUI / `make lora-gui GUI_PRESETS=lora`
+# path. No toggle blocks, no conditional comments — what you see is what runs.
+# For stacked variants (OrthoLoRA + T-LoRA + ReFT, HydraLoRA, …) pick the
+# matching file in this directory instead.
+
+network_dim = 32
+network_alpha = 32
+
+learning_rate = 2e-5
+max_train_epochs = 4
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+
+caption_shuffle_variants = 8
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+output_name = "anima"
+
+blocks_to_swap = 0
+gradient_checkpointing = true
+unsloth_offload_checkpointing = true
