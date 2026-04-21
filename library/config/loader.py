@@ -23,10 +23,14 @@ from voluptuous import (
 )
 
 from library import train_util
-from library.train_util import (
+from library.datasets import (
     DreamBoothSubset,
     DreamBoothDataset,
     DatasetGroup,
+)
+from library.training import (
+    add_dataset_arguments,
+    add_training_arguments,
 )
 from library.log import setup_logging
 
@@ -580,8 +584,8 @@ if __name__ == "__main__":
     config_args, remain = parser.parse_known_args()
 
     parser = argparse.ArgumentParser()
-    train_util.add_dataset_arguments(parser, True, False, config_args.support_dropout)
-    train_util.add_training_arguments(parser, True)
+    add_dataset_arguments(parser, True, False, config_args.support_dropout)
+    add_training_arguments(parser, True)
     argparse_namespace = parser.parse_args(remain)
     train_util.prepare_dataset_args(argparse_namespace, False)
 

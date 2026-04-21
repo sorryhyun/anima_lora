@@ -1,19 +1,15 @@
-# common functions for training (stripped for Anima LoRA standalone).
-#
-# Most code lives in domain subpackages (library.datasets, library.training,
-# library.runtime, library.config). This module keeps its own helpers
-# (argparse/metadata/prompt utilities) and re-exports the subset of names
-# still accessed via `train_util.X` from train.py, library.anima.training,
-# library.config.loader, and the test suite.
+# Local helpers that don't have a better home yet: SAI-spec metadata builder,
+# argparse-namespace dataset arg normalization, prompt-file parsing, and
+# accelerate tracker init. Everything else lives in library.datasets,
+# library.training, library.runtime, or library.config — import from there.
 
 import argparse
 import json
 import logging
-import math
 import os
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 import safetensors
 import toml
@@ -21,73 +17,12 @@ import torch
 from accelerate import Accelerator
 
 from library.models import sai_spec as sai_model_spec
-from library.runtime.accelerator import (  # noqa: F401
-    prepare_accelerator,
-    prepare_dtype,
-    patch_accelerator_for_fp16_training,
-    resume_from_local_or_hf_if_specified,
-)
+from library.training import get_sanitized_config_or_none
 from library.log import setup_logging
 
 setup_logging()
 
 logger = logging.getLogger(__name__)
-
-# Re-exports still accessed as `train_util.X` by train.py, library.anima.training,
-# library.config.loader, or tests. Everything else should import directly from
-# its home module.
-from library.datasets import (  # noqa: F401, E402
-    DreamBoothSubset,
-    DreamBoothDataset,
-    DatasetGroup,
-    MinimalDataset,
-    load_arbitrary_dataset,
-    debug_dataset,
-    collator_class,
-    LossRecorder,
-)
-
-from library.training import (  # noqa: F401, E402
-    # losses
-    get_huber_threshold_if_needed,
-    # cli args
-    add_sd_models_arguments,
-    add_optimizer_arguments,
-    add_training_arguments,
-    add_masked_loss_arguments,
-    add_dit_training_arguments,
-    add_dataset_arguments,
-    verify_command_line_training_args,
-    verify_training_args,
-    get_sanitized_config_or_none,
-    # metadata
-    build_training_metadata,
-    add_dataset_metadata,
-    add_model_hash_metadata,
-    finalize_metadata,
-    # checkpoints
-    get_epoch_ckpt_name,
-    get_step_ckpt_name,
-    get_last_ckpt_name,
-    get_remove_epoch_no,
-    get_remove_step_no,
-    save_and_remove_state_on_epoch_end,
-    save_and_remove_state_stepwise,
-    save_state_on_train_end,
-    get_checkpoint_state_dir,
-    get_checkpoint_ckpt_name,
-    save_checkpoint_state,
-    # optimizers
-    get_optimizer,
-    get_optimizer_train_eval_fn,
-    # schedulers
-    get_scheduler_fix,
-)
-
-# ---------------------------------------------------------------------------
-# Remaining code that stays in train_util
-# (metadata, hashing, arg-parsing, accelerator setup, loss functions, etc.)
-# ---------------------------------------------------------------------------
 
 EPSILON = 1e-6
 
@@ -98,9 +33,6 @@ def exists(val):
 
 def default(val, d):
     return val if exists(val) else d
-
-
-# region arguments
 
 
 def load_metadata_from_safetensors(safetensors_file: str) -> dict:
@@ -116,10 +48,6 @@ def load_metadata_from_safetensors(safetensors_file: str) -> dict:
     if metadata is None:
         metadata = {}
     return metadata
-
-
-# Metadata key constants, build_minimum_network_metadata, and full training
-# metadata helpers are now in library.training.metadata and re-exported above.
 
 
 def get_sai_model_spec_dataclass(
@@ -166,22 +94,6 @@ def get_sai_model_spec_dataclass(
     )
 
 
-
-
-# Config loader helpers live in library.config.io; only the public entry points
-# used via `train_util.X` are re-exported here. Private helpers (`_flatten_toml`,
-# `_render_merged_toml`, etc.) should be imported directly from library.config.io.
-from library.config.io import (  # noqa: F401, E402
-    load_dataset_config_from_base,
-    load_method_preset,
-    read_config_from_file,
-)
-
-
-
-# endregion
-
-# region utils
 
 
 def prepare_dataset_args(args: argparse.Namespace, support_metadata: bool):

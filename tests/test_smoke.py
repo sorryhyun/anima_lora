@@ -26,7 +26,7 @@ def test_parser_builds():
 
 @pytest.mark.parametrize("method", METHOD_NAMES)
 def test_load_method_preset_resolves(method: str):
-    from library.train_util import load_method_preset
+    from library.config.io import load_method_preset
 
     merged = load_method_preset(method, preset="default")
     assert isinstance(merged, dict)

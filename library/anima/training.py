@@ -17,6 +17,10 @@ from PIL import Image
 from library.runtime.device import clean_memory_on_device, synchronize_device
 from library import train_util
 from library.training.checkpoints import (
+    get_epoch_ckpt_name,
+    get_remove_epoch_no,
+    get_remove_step_no,
+    get_step_ckpt_name,
     save_sd_model_on_epoch_end_or_stepwise_common,
     save_sd_model_on_train_end_common,
 )
@@ -611,14 +615,14 @@ def save_anima_model_on_epoch_end_or_stepwise(
             # Clean up old EMA files (train_util only cleans normal model files)
             ext = ".safetensors"
             if on_epoch_end:
-                remove_no = train_util.get_remove_epoch_no(args, epoch_no)
+                remove_no = get_remove_epoch_no(args, epoch_no)
                 if remove_no is not None:
-                    old_ckpt_name = train_util.get_epoch_ckpt_name(args, ext, remove_no)
+                    old_ckpt_name = get_epoch_ckpt_name(args, ext, remove_no)
                     _remove_old_ema_file(os.path.join(args.output_dir, old_ckpt_name))
             else:
-                remove_no = train_util.get_remove_step_no(args, global_step)
+                remove_no = get_remove_step_no(args, global_step)
                 if remove_no is not None:
-                    old_ckpt_name = train_util.get_step_ckpt_name(args, ext, remove_no)
+                    old_ckpt_name = get_step_ckpt_name(args, ext, remove_no)
                     _remove_old_ema_file(os.path.join(args.output_dir, old_ckpt_name))
 
     save_sd_model_on_epoch_end_or_stepwise_common(

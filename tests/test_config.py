@@ -20,9 +20,8 @@ from pathlib import Path
 import pytest
 import toml
 
-from library import train_util
 from library.config import schema as config_schema
-from library.config.io import _flatten_toml, _render_merged_toml
+from library.config.io import _flatten_toml, _render_merged_toml, load_method_preset
 from tests.conftest import iter_method_names
 
 
@@ -122,7 +121,7 @@ def test_method_configs_clean(populated_parser, method: str, caplog):
     for preset in presets:
         caplog.clear()
         with caplog.at_level(logging.WARNING):
-            train_util.load_method_preset(method, preset)
+            load_method_preset(method, preset)
         offenders = [
             rec.getMessage()
             for rec in caplog.records
@@ -137,7 +136,7 @@ def test_method_configs_clean(populated_parser, method: str, caplog):
 
 
 def test_provenance_returned():
-    merged, provenance = train_util.load_method_preset(
+    merged, provenance = load_method_preset(
         "lora", "default", return_provenance=True
     )
     # base key
@@ -159,7 +158,7 @@ def test_render_roundtrips_to_valid_toml(populated_parser):
     parser = train.setup_parser()
     config_schema.populate_schema(parser, extras=train.build_network_extras())
 
-    merged, provenance = train_util.load_method_preset(
+    merged, provenance = load_method_preset(
         "lora", "default", return_provenance=True
     )
     ns = argparse.Namespace(**merged)
@@ -179,7 +178,7 @@ def test_render_header_includes_method_and_preset(populated_parser):
     parser = train.setup_parser()
     config_schema.populate_schema(parser, extras=train.build_network_extras())
 
-    merged, provenance = train_util.load_method_preset(
+    merged, provenance = load_method_preset(
         "lora", "low_vram", return_provenance=True
     )
     ns = argparse.Namespace(**merged)

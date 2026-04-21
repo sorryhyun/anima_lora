@@ -38,12 +38,57 @@ from library.config.loader import (
     ConfigSanitizer,
     BlueprintGenerator,
 )
+from library.config.io import (
+    load_dataset_config_from_base,
+    read_config_from_file,
+)
+from library.datasets import (
+    DatasetGroup,
+    LossRecorder,
+    MinimalDataset,
+    collator_class,
+    debug_dataset,
+    load_arbitrary_dataset,
+)
+from library.runtime.accelerator import (
+    patch_accelerator_for_fp16_training,
+    prepare_accelerator,
+    prepare_dtype,
+    resume_from_local_or_hf_if_specified,
+)
 from library.training import (
+    LossContext,
     SAMPLER_REGISTRY,
     SamplerContext,
-    LossContext,
     add_custom_train_arguments,
+    add_dataset_arguments,
+    add_dataset_metadata,
+    add_dit_training_arguments,
+    add_masked_loss_arguments,
+    add_model_hash_metadata,
+    add_optimizer_arguments,
+    add_sd_models_arguments,
+    add_training_arguments,
     build_loss_composer,
+    build_training_metadata,
+    finalize_metadata,
+    get_checkpoint_ckpt_name,
+    get_checkpoint_state_dir,
+    get_epoch_ckpt_name,
+    get_huber_threshold_if_needed,
+    get_last_ckpt_name,
+    get_optimizer,
+    get_optimizer_train_eval_fn,
+    get_remove_epoch_no,
+    get_remove_step_no,
+    get_scheduler_fix,
+    get_step_ckpt_name,
+    save_and_remove_state_on_epoch_end,
+    save_and_remove_state_stepwise,
+    save_checkpoint_state,
+    save_state_on_train_end,
+    verify_command_line_training_args,
+    verify_training_args,
 )
 from library.log import setup_logging, add_logging_arguments
 
@@ -211,8 +256,8 @@ class AnimaTrainer:
     def assert_extra_args(
         self,
         args,
-        train_dataset_group: Union[train_util.DatasetGroup, train_util.MinimalDataset],
-        val_dataset_group: Optional[train_util.DatasetGroup],
+        train_dataset_group: Union[DatasetGroup, MinimalDataset],
+        val_dataset_group: Optional[DatasetGroup],
     ):
         # FP8 is not supported yet — force-disable all fp8 flags.
         if getattr(args, "fp8_base", False):
@@ -1047,7 +1092,7 @@ class AnimaTrainer:
             is_train=is_train,
         )
 
-        huber_c = train_util.get_huber_threshold_if_needed(
+        huber_c = get_huber_threshold_if_needed(
             args, timesteps, noise_scheduler
         )
 
@@ -1259,7 +1304,7 @@ class AnimaTrainer:
         unet,
         vae,
         text_encoders,
-        dataset: train_util.DatasetGroup,
+        dataset: DatasetGroup,
         weight_dtype,
     ):
         if args.cache_text_encoder_outputs:
@@ -1396,7 +1441,7 @@ class AnimaTrainer:
                         )
                     )
             else:
-                base_ds = train_util.load_dataset_config_from_base()
+                base_ds = load_dataset_config_from_base()
                 if base_ds is not None:
                     logger.info("Loading dataset config from configs/base.toml")
                     user_config = base_ds
@@ -1455,7 +1500,7 @@ class AnimaTrainer:
                 logger.info("caption dropout DISABLED (rate=0.0 on all subsets)")
         else:
             # use arbitrary dataset class
-            train_dataset_group = train_util.load_arbitrary_dataset(args)
+            train_dataset_group = load_arbitrary_dataset(args)
             val_dataset_group = (
                 None  # placeholder until validation dataset supported for arbitrary
             )
@@ -1465,7 +1510,7 @@ class AnimaTrainer:
         ds_for_collator = (
             train_dataset_group if args.max_data_loader_n_workers == 0 else None
         )
-        collator = train_util.collator_class(
+        collator = collator_class(
             current_epoch, current_step, ds_for_collator
         )
 
@@ -1670,10 +1715,10 @@ class AnimaTrainer:
             )
             lr_descriptions = None
 
-        optimizer_name, optimizer_args, optimizer = train_util.get_optimizer(
+        optimizer_name, optimizer_args, optimizer = get_optimizer(
             args, trainable_params
         )
-        optimizer_train_fn, optimizer_eval_fn = train_util.get_optimizer_train_eval_fn(
+        optimizer_train_fn, optimizer_eval_fn = get_optimizer_train_eval_fn(
             optimizer, args
         )
 
@@ -1721,7 +1766,7 @@ class AnimaTrainer:
         train_dataset_group.set_max_train_steps(args.max_train_steps)
 
         # lr scheduler
-        lr_scheduler = train_util.get_scheduler_fix(
+        lr_scheduler = get_scheduler_fix(
             args, optimizer, accelerator.num_processes
         )
 
@@ -1860,7 +1905,7 @@ class AnimaTrainer:
 
         # patch for fp16 grad scale
         if args.full_fp16:
-            train_util.patch_accelerator_for_fp16_training(accelerator)
+            patch_accelerator_for_fp16_training(accelerator)
 
         return (
             network,
@@ -2015,7 +2060,7 @@ class AnimaTrainer:
     def train(self, args):
         session_id = random.randint(0, 2**32)
         training_started_at = time.time()
-        train_util.verify_training_args(args)
+        verify_training_args(args)
         train_util.prepare_dataset_args(args, True)
         setup_logging(args, reset=True)
 
@@ -2047,11 +2092,11 @@ class AnimaTrainer:
 
         if args.debug_dataset:
             train_dataset_group.set_current_strategies()  # dataset needs to know the strategies explicitly
-            train_util.debug_dataset(train_dataset_group)
+            debug_dataset(train_dataset_group)
 
             if val_dataset_group is not None:
                 val_dataset_group.set_current_strategies()  # dataset needs to know the strategies explicitly
-                train_util.debug_dataset(val_dataset_group)
+                debug_dataset(val_dataset_group)
             return
         if len(train_dataset_group) == 0:
             logger.error(
@@ -2074,11 +2119,11 @@ class AnimaTrainer:
 
         # Prepare accelerator
         logger.info("preparing accelerator")
-        accelerator = train_util.prepare_accelerator(args)
+        accelerator = prepare_accelerator(args)
         is_main_process = accelerator.is_main_process
 
         # mixed precision dtype
-        weight_dtype, save_dtype = train_util.prepare_dtype(args)
+        weight_dtype, save_dtype = prepare_dtype(args)
         vae_dtype = (
             (torch.float32 if args.no_half_vae else weight_dtype)
             if self.cast_vae(args)
@@ -2259,7 +2304,7 @@ class AnimaTrainer:
 
         # auto-resume from checkpoint if checkpointing_epochs is set and a checkpoint exists
         if getattr(args, "checkpointing_epochs", None) and not args.resume:
-            checkpoint_state_dir = train_util.get_checkpoint_state_dir(args)
+            checkpoint_state_dir = get_checkpoint_state_dir(args)
             if os.path.exists(checkpoint_state_dir):
                 train_state_file = os.path.join(
                     checkpoint_state_dir, "train_state.json"
@@ -2280,7 +2325,7 @@ class AnimaTrainer:
                         )
 
         # resume
-        train_util.resume_from_local_or_hf_if_specified(accelerator, args)
+        resume_from_local_or_hf_if_specified(accelerator, args)
 
         # calculate epochs
         num_update_steps_per_epoch = math.ceil(
@@ -2308,7 +2353,7 @@ class AnimaTrainer:
         accelerator.print("  gradient accumulation steps")
         accelerator.print("  total optimization steps")
 
-        metadata = train_util.build_training_metadata(
+        metadata = build_training_metadata(
             args,
             session_id=session_id,
             training_started_at=training_started_at,
@@ -2325,7 +2370,7 @@ class AnimaTrainer:
             num_train_epochs=num_train_epochs,
         )
         self.update_metadata(metadata, args)  # architecture specific metadata
-        train_util.add_dataset_metadata(
+        add_dataset_metadata(
             metadata,
             train_dataset_group,
             args,
@@ -2333,8 +2378,8 @@ class AnimaTrainer:
             use_dreambooth_method=use_dreambooth_method,
             total_batch_size=total_batch_size,
         )
-        train_util.add_model_hash_metadata(metadata, args)
-        metadata, minimum_metadata = train_util.finalize_metadata(
+        add_model_hash_metadata(metadata, args)
+        metadata, minimum_metadata = finalize_metadata(
             metadata, net_kwargs=net_kwargs if args.network_args else None
         )
 
@@ -2388,9 +2433,9 @@ class AnimaTrainer:
 
         train_util.init_trackers(accelerator, args, "network_train")
 
-        loss_recorder = train_util.LossRecorder()
-        val_step_loss_recorder = train_util.LossRecorder()
-        val_epoch_loss_recorder = train_util.LossRecorder()
+        loss_recorder = LossRecorder()
+        val_step_loss_recorder = LossRecorder()
+        val_epoch_loss_recorder = LossRecorder()
 
         del train_dataset_group
         if val_dataset_group is not None:
@@ -2664,7 +2709,7 @@ class AnimaTrainer:
                     ):
                         accelerator.wait_for_everyone()
                         if accelerator.is_main_process:
-                            ckpt_name = train_util.get_step_ckpt_name(
+                            ckpt_name = get_step_ckpt_name(
                                 args, "." + args.save_model_as, global_step
                             )
                             save_model(
@@ -2675,15 +2720,15 @@ class AnimaTrainer:
                             )
 
                             if args.save_state:
-                                train_util.save_and_remove_state_stepwise(
+                                save_and_remove_state_stepwise(
                                     args, accelerator, global_step
                                 )
 
-                            remove_step_no = train_util.get_remove_step_no(
+                            remove_step_no = get_remove_step_no(
                                 args, global_step
                             )
                             if remove_step_no is not None:
-                                remove_ckpt_name = train_util.get_step_ckpt_name(
+                                remove_ckpt_name = get_step_ckpt_name(
                                     args, "." + args.save_model_as, remove_step_no
                                 )
                                 remove_model(remove_ckpt_name)
@@ -2821,7 +2866,7 @@ class AnimaTrainer:
                     epoch + 1
                 ) < num_train_epochs
                 if is_main_process and saving:
-                    ckpt_name = train_util.get_epoch_ckpt_name(
+                    ckpt_name = get_epoch_ckpt_name(
                         args, "." + args.save_model_as, epoch + 1
                     )
                     save_model(
@@ -2831,15 +2876,15 @@ class AnimaTrainer:
                         epoch + 1,
                     )
 
-                    remove_epoch_no = train_util.get_remove_epoch_no(args, epoch + 1)
+                    remove_epoch_no = get_remove_epoch_no(args, epoch + 1)
                     if remove_epoch_no is not None:
-                        remove_ckpt_name = train_util.get_epoch_ckpt_name(
+                        remove_ckpt_name = get_epoch_ckpt_name(
                             args, "." + args.save_model_as, remove_epoch_no
                         )
                         remove_model(remove_ckpt_name)
 
                     if args.save_state:
-                        train_util.save_and_remove_state_on_epoch_end(
+                        save_and_remove_state_on_epoch_end(
                             args, accelerator, epoch + 1
                         )
 
@@ -2849,7 +2894,7 @@ class AnimaTrainer:
                     epoch + 1
                 ) < num_train_epochs:
                     if is_main_process:
-                        ckpt_name = train_util.get_checkpoint_ckpt_name(
+                        ckpt_name = get_checkpoint_ckpt_name(
                             args, "." + args.save_model_as
                         )
                         save_model(
@@ -2858,7 +2903,7 @@ class AnimaTrainer:
                             global_step,
                             epoch + 1,
                         )
-                    train_util.save_checkpoint_state(args, accelerator)
+                    save_checkpoint_state(args, accelerator)
 
             self.sample_images(
                 accelerator,
@@ -2886,11 +2931,11 @@ class AnimaTrainer:
         optimizer_eval_fn()
 
         if is_main_process and (args.save_state or args.save_state_on_train_end):
-            train_util.save_state_on_train_end(args, accelerator)
+            save_state_on_train_end(args, accelerator)
 
         # clean up checkpoint files after successful completion
         if is_main_process and getattr(args, "checkpointing_epochs", None):
-            checkpoint_state_dir = train_util.get_checkpoint_state_dir(args)
+            checkpoint_state_dir = get_checkpoint_state_dir(args)
             if os.path.exists(checkpoint_state_dir):
                 import shutil
 
@@ -2900,14 +2945,14 @@ class AnimaTrainer:
                 shutil.rmtree(checkpoint_state_dir)
             checkpoint_ckpt = os.path.join(
                 args.output_dir,
-                train_util.get_checkpoint_ckpt_name(args, "." + args.save_model_as),
+                get_checkpoint_ckpt_name(args, "." + args.save_model_as),
             )
             if os.path.exists(checkpoint_ckpt):
                 logger.info(f"removing checkpoint weights: {checkpoint_ckpt}")
                 os.remove(checkpoint_ckpt)
 
         if is_main_process:
-            ckpt_name = train_util.get_last_ckpt_name(args, "." + args.save_model_as)
+            ckpt_name = get_last_ckpt_name(args, "." + args.save_model_as)
             save_model(
                 ckpt_name,
                 network,
@@ -2925,15 +2970,15 @@ def setup_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
     add_logging_arguments(parser)
-    train_util.add_sd_models_arguments(parser)
+    add_sd_models_arguments(parser)
     sai_model_spec.add_model_spec_arguments(parser)
-    train_util.add_dataset_arguments(parser, True, True, True)
-    train_util.add_training_arguments(parser, True)
-    train_util.add_masked_loss_arguments(parser)
-    train_util.add_optimizer_arguments(parser)
+    add_dataset_arguments(parser, True, True, True)
+    add_training_arguments(parser, True)
+    add_masked_loss_arguments(parser)
+    add_optimizer_arguments(parser)
     config_util.add_config_arguments(parser)
     add_custom_train_arguments(parser)
-    train_util.add_dit_training_arguments(parser)
+    add_dit_training_arguments(parser)
     anima_train_utils.add_anima_training_arguments(parser)
 
     parser.add_argument(
@@ -3193,8 +3238,8 @@ if __name__ == "__main__":
     _config_schema.populate_schema(parser, extras=build_network_extras())
 
     args = parser.parse_args()
-    train_util.verify_command_line_training_args(args)
-    args = train_util.read_config_from_file(args, parser)
+    verify_command_line_training_args(args)
+    args = read_config_from_file(args, parser)
 
     if args.attn_mode == "sdpa":
         args.attn_mode = "torch"  # backward compatibility
