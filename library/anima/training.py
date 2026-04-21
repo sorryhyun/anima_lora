@@ -16,6 +16,10 @@ from PIL import Image
 
 from library.runtime.device import clean_memory_on_device, synchronize_device
 from library import train_util
+from library.training.checkpoints import (
+    save_sd_model_on_epoch_end_or_stepwise_common,
+    save_sd_model_on_train_end_common,
+)
 from library.anima import models as anima_models, weights as anima_utils
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 
@@ -576,7 +580,7 @@ def save_anima_model_on_train_end(
         if ema is not None:
             _save_ema_model(ema, dit, ckpt_file, sai_metadata, save_dtype)
 
-    train_util.save_sd_model_on_train_end_common(
+    save_sd_model_on_train_end_common(
         args, True, True, epoch, global_step, sd_saver, None
     )
 
@@ -617,7 +621,7 @@ def save_anima_model_on_epoch_end_or_stepwise(
                     old_ckpt_name = train_util.get_step_ckpt_name(args, ext, remove_no)
                     _remove_old_ema_file(os.path.join(args.output_dir, old_ckpt_name))
 
-    train_util.save_sd_model_on_epoch_end_or_stepwise_common(
+    save_sd_model_on_epoch_end_or_stepwise_common(
         args,
         on_epoch_end,
         accelerator,

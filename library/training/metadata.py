@@ -72,7 +72,7 @@ def build_training_metadata(
     num_train_epochs: int,
 ) -> dict[str, Any]:
     """Build the base training-session metadata dict from args and locals."""
-    from library.train_util import get_git_revision_hash
+    from library.training.hashing import get_git_revision_hash
 
     return {
         "ss_session_id": session_id,
@@ -298,7 +298,7 @@ def add_dataset_metadata(
 
 def add_model_hash_metadata(metadata: dict[str, Any], args) -> None:
     """Add model name/hash and VAE name/hash entries to *metadata* in place."""
-    from library.train_util import model_hash, calculate_sha256
+    from library.training.hashing import model_hash, calculate_sha256
 
     if args.pretrained_model_name_or_path is not None:
         sd_model_name = args.pretrained_model_name_or_path

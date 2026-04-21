@@ -540,6 +540,11 @@ class AnimaTrainer:
                 int(getattr(self, "_hydra_warmup_step", 0)),
                 int(getattr(args, "max_train_steps", 0) or 0),
             )
+            if hasattr(network, "step_balance_loss_warmup"):
+                network.step_balance_loss_warmup(
+                    int(getattr(self, "_hydra_warmup_step", 0)),
+                    int(getattr(args, "max_train_steps", 0) or 0),
+                )
             self._hydra_warmup_step = int(getattr(self, "_hydra_warmup_step", 0)) + 1
 
         # Gradient checkpointing support

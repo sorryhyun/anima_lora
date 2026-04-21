@@ -12,9 +12,10 @@ from safetensors.torch import (
     save_file as _save_safetensors,
 )
 
-from library import train_util
 from library.anima import training as anima_train_utils, weights as anima_utils
-from library.strategy_base import (
+from library.datasets import base as _datasets_base
+from library.runtime.device import clean_memory_on_device
+from library.anima.text_strategies import (
     LatentsCachingStrategy,
     TextEncodingStrategy,
     TokenizeStrategy,
@@ -655,5 +656,5 @@ class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
             multi_resolution=True,
         )
 
-        if not train_util.HIGH_VRAM:
-            train_util.clean_memory_on_device(vae_device)
+        if not _datasets_base.HIGH_VRAM:
+            clean_memory_on_device(vae_device)

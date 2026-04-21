@@ -81,6 +81,7 @@ def test_hydra_router_kwargs_registered():
         "num_sigma_buckets",
         "num_experts",
         "balance_loss_weight",
+        "balance_loss_warmup_ratio",
         "expert_init_std",
         "expert_warmup_ratio",
     }

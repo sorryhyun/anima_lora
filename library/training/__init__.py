@@ -10,6 +10,27 @@ from library.training.schedulers import (
     get_scheduler_fix,
     get_dummy_scheduler,
 )
+from library.training.cli_args import (
+    add_sd_models_arguments,
+    add_optimizer_arguments,
+    add_training_arguments,
+    add_masked_loss_arguments,
+    add_dit_training_arguments,
+    add_dataset_arguments,
+    add_sd_saving_arguments,
+    verify_command_line_training_args,
+    verify_training_args,
+    enable_high_vram,
+    get_sanitized_config_or_none,
+)
+from library.training.hashing import (
+    model_hash,
+    calculate_sha256,
+    addnet_hash_legacy,
+    addnet_hash_safetensors,
+    precalculate_safetensors_hashes,
+    get_git_revision_hash,
+)
 from library.training.metadata import (
     SS_METADATA_KEY_V2,
     SS_METADATA_KEY_BASE_MODEL_VERSION,
@@ -36,6 +57,8 @@ from library.training.losses import (
     build_loss_composer,
     add_custom_train_arguments,
     apply_masked_loss,
+    conditional_loss,
+    get_huber_threshold_if_needed,
 )
 from library.training.metrics import (
     MetricContext,
@@ -81,6 +104,8 @@ __all__ = [
     "build_loss_composer",
     "add_custom_train_arguments",
     "apply_masked_loss",
+    "conditional_loss",
+    "get_huber_threshold_if_needed",
     # metrics
     "MetricContext",
     "METRIC_REGISTRY",
@@ -98,6 +123,25 @@ __all__ = [
     "add_dataset_metadata",
     "add_model_hash_metadata",
     "finalize_metadata",
+    # cli args
+    "add_sd_models_arguments",
+    "add_optimizer_arguments",
+    "add_training_arguments",
+    "add_masked_loss_arguments",
+    "add_dit_training_arguments",
+    "add_dataset_arguments",
+    "add_sd_saving_arguments",
+    "verify_command_line_training_args",
+    "verify_training_args",
+    "enable_high_vram",
+    "get_sanitized_config_or_none",
+    # hashing
+    "model_hash",
+    "calculate_sha256",
+    "addnet_hash_legacy",
+    "addnet_hash_safetensors",
+    "precalculate_safetensors_hashes",
+    "get_git_revision_hash",
     # optimizers
     "get_optimizer",
     "get_optimizer_train_eval_fn",

@@ -103,6 +103,7 @@ _GROUPS = {
         "alpha_rank_scale",
         "num_experts",
         "balance_loss_weight",
+        "balance_loss_warmup_ratio",
         "reft_dim",
         "reft_alpha",
         "reft_layers",

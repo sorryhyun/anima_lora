@@ -17,7 +17,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from library.runtime.device import clean_memory_on_device
-from library.strategy_base import (
+from library.anima.text_strategies import (
     LatentsCachingStrategy,
     TextEncoderOutputsCachingStrategy,
     TextEncodingStrategy,

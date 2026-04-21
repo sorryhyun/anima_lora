@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from safetensors.torch import save_file
 from safetensors import safe_open
 
-from library import train_util
+from library.training.hashing import precalculate_safetensors_hashes
 from library.log import setup_logging
 
 setup_logging()
@@ -191,7 +191,7 @@ def main(args):
     # Calculate hash
     if metadata is not None:
         logger.info("Calculating hashes and creating metadata...")
-        model_hash, legacy_hash = train_util.precalculate_safetensors_hashes(
+        model_hash, legacy_hash = precalculate_safetensors_hashes(
             state_dict, metadata
         )
         metadata["sshs_model_hash"] = model_hash

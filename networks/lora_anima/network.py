@@ -631,6 +631,26 @@ class LoRANetwork(torch.nn.Module):
             if hasattr(lora, "_sigma"):
                 lora._sigma = None
 
+    def step_balance_loss_warmup(
+        self, global_step: int, max_train_steps: int
+    ) -> None:
+        """Activate the MoE load-balance penalty once training crosses the
+        warmup window. Step function: ``_balance_loss_weight`` holds at 0
+        during the first ``_balance_loss_warmup_ratio`` of steps, then flips
+        to ``_balance_loss_target_weight``. No-op unless both attributes are
+        attached (hydra post_init) and the ratio is > 0.
+
+        Letting the router specialize before the penalty kicks in avoids
+        pinning it to uniform at init; flipping the penalty on after warmup
+        keeps a diverged router from collapsing to a single expert.
+        """
+        target = float(getattr(self, "_balance_loss_target_weight", 0.0) or 0.0)
+        ratio = float(getattr(self, "_balance_loss_warmup_ratio", 0.0) or 0.0)
+        if ratio <= 0.0 or max_train_steps <= 0 or target <= 0.0:
+            return
+        warmup_steps = int(max_train_steps * ratio)
+        self._balance_loss_weight = 0.0 if global_step < warmup_steps else target
+
     def step_expert_warmup(self, global_step: int, max_train_steps: int) -> None:
         """Per-step random expert-gradient masking during the warmup window.
 

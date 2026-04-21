@@ -110,13 +110,22 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
 
 def _post_init_hydra(network: Any, kwargs: Mapping[str, Any]) -> None:
     blw = kwargs.get("balance_loss_weight")
-    network._balance_loss_weight = float(blw) if blw is not None else 0.01
+    target = float(blw) if blw is not None else 0.01
+    warmup = kwargs.get("balance_loss_warmup_ratio")
+    warmup_ratio = float(warmup) if warmup is not None else 0.0
+    network._balance_loss_target_weight = target
+    network._balance_loss_warmup_ratio = warmup_ratio
+    # Hold the balance penalty at 0 during the warmup window so the router can
+    # specialize before load-balancing kicks in; flipped to `target` by
+    # LoRANetwork.step_balance_loss_warmup once global_step crosses the ratio.
+    network._balance_loss_weight = 0.0 if warmup_ratio > 0.0 else target
     network._use_hydra = True
 
 
 _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "num_experts",
     "balance_loss_weight",
+    "balance_loss_warmup_ratio",
     "expert_init_std",
     "expert_warmup_ratio",
     # Layer filter — concentrates MoE routers on cross-attn + MLP

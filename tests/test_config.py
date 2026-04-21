@@ -22,6 +22,7 @@ import toml
 
 from library import train_util
 from library.config import schema as config_schema
+from library.config.io import _flatten_toml, _render_merged_toml
 from tests.conftest import iter_method_names
 
 
@@ -71,7 +72,7 @@ def test_unknown_key_warns(populated_parser, tmp_path: Path, caplog):
     bogus = tmp_path / "bogus.toml"
     bogus.write_text("network_ditm = 16\n")
     with caplog.at_level(logging.WARNING):
-        out = train_util._flatten_toml({"a": {"network_ditm": 16}}, source=str(bogus))
+        out = _flatten_toml({"a": {"network_ditm": 16}}, source=str(bogus))
     assert out == {"network_ditm": 16}
     assert any("unknown key 'network_ditm'" in rec.getMessage() for rec in caplog.records)
     # line locator should include the line number
@@ -82,14 +83,14 @@ def test_unknown_key_strict_raises(populated_parser, tmp_path: Path):
     bogus = tmp_path / "bogus.toml"
     bogus.write_text("network_ditm = 16\n")
     with pytest.raises(config_schema.ConfigSchemaError):
-        train_util._flatten_toml(
+        _flatten_toml(
             {"a": {"network_ditm": 16}}, source=str(bogus), strict=True
         )
 
 
 def test_off_list_choice_warns(populated_parser, caplog):
     with caplog.at_level(logging.WARNING):
-        train_util._flatten_toml({"a": {"mixed_precision": "fp4"}}, source="x.toml")
+        _flatten_toml({"a": {"mixed_precision": "fp4"}}, source="x.toml")
     assert any(
         "mixed_precision" in rec.getMessage() and "not in choices" in rec.getMessage()
         for rec in caplog.records
@@ -98,7 +99,7 @@ def test_off_list_choice_warns(populated_parser, caplog):
 
 def test_int_to_float_coerced(populated_parser):
     # schema says network_alpha is float; TOML ``1`` comes in as int.
-    out = train_util._flatten_toml({"a": {"network_alpha": 64}}, source="x.toml")
+    out = _flatten_toml({"a": {"network_alpha": 64}}, source="x.toml")
     assert isinstance(out["network_alpha"], float)
     assert out["network_alpha"] == 64.0
 
@@ -164,7 +165,7 @@ def test_render_roundtrips_to_valid_toml(populated_parser):
     ns = argparse.Namespace(**merged)
     args = parser.parse_args(["--method", "lora", "--preset", "default"], namespace=ns)
 
-    rendered = train_util._render_merged_toml(args, parser, provenance)
+    rendered = _render_merged_toml(args, parser, provenance)
     parsed = _reparse_without_comments(rendered)
 
     schema = config_schema.get_schema()
@@ -185,7 +186,7 @@ def test_render_header_includes_method_and_preset(populated_parser):
     args = parser.parse_args(
         ["--method", "lora", "--preset", "low_vram"], namespace=ns
     )
-    rendered = train_util._render_merged_toml(args, parser, provenance)
+    rendered = _render_merged_toml(args, parser, provenance)
     assert "Method: lora" in rendered
     assert "Preset: low_vram" in rendered
     # section ordering: base → preset → method

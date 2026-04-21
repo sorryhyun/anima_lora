@@ -457,11 +457,11 @@ def save_network_weights(
 
     if os.path.splitext(file)[1] == ".safetensors":
         from safetensors.torch import save_file
-        from library import train_util
+        from library.training.hashing import precalculate_safetensors_hashes
 
         if metadata is None:
             metadata = {}
-        model_hash, legacy_hash = train_util.precalculate_safetensors_hashes(
+        model_hash, legacy_hash = precalculate_safetensors_hashes(
             state_dict, metadata
         )
         metadata["sshs_model_hash"] = model_hash

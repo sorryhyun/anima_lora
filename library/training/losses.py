@@ -89,12 +89,89 @@ def apply_masked_loss(loss, batch) -> torch.FloatTensor:
     return loss
 
 
-def _conditional_loss(*args, **kwargs):
-    # Lazy: library.train_util imports library.training, so a top-level import
-    # here would close the cycle. Cached on first call by Python's import system.
-    from library import train_util
+def get_huber_threshold_if_needed(
+    args, timesteps: torch.Tensor, noise_scheduler
+) -> Optional[torch.Tensor]:
+    if args.loss_type == "pseudo_huber":
+        b_size = timesteps.shape[0]
+        return torch.full((b_size,), args.pseudo_huber_c, device=timesteps.device)
+    if not (args.loss_type == "huber" or args.loss_type == "smooth_l1"):
+        return None
 
-    return train_util.conditional_loss(*args, **kwargs)
+    b_size = timesteps.shape[0]
+    if args.huber_schedule == "exponential":
+        alpha = -math.log(args.huber_c) / noise_scheduler.config.num_train_timesteps
+        result = torch.exp(-alpha * timesteps) * args.huber_scale
+    elif args.huber_schedule == "snr":
+        if not hasattr(noise_scheduler, "alphas_cumprod"):
+            raise NotImplementedError(
+                "Huber schedule 'snr' is not supported with the current model."
+            )
+        alphas_cumprod = torch.index_select(
+            noise_scheduler.alphas_cumprod, 0, timesteps.cpu()
+        )
+        sigmas = ((1.0 - alphas_cumprod) / alphas_cumprod) ** 0.5
+        result = (1 - args.huber_c) / (1 + sigmas) ** 2 + args.huber_c
+        result = result.to(timesteps.device)
+    elif args.huber_schedule == "constant":
+        result = torch.full(
+            (b_size,), args.huber_c * args.huber_scale, device=timesteps.device
+        )
+    else:
+        raise NotImplementedError(f"Unknown Huber loss schedule {args.huber_schedule}!")
+
+    return result
+
+
+def conditional_loss(
+    model_pred: torch.Tensor,
+    target: torch.Tensor,
+    loss_type: str,
+    reduction: str,
+    huber_c: Optional[torch.Tensor] = None,
+):
+    if loss_type == "l2":
+        loss = torch.nn.functional.mse_loss(model_pred, target, reduction=reduction)
+    elif loss_type == "l1":
+        loss = torch.nn.functional.l1_loss(model_pred, target, reduction=reduction)
+    elif loss_type == "huber":
+        if huber_c is None:
+            raise NotImplementedError("huber_c not implemented correctly")
+        huber_c = huber_c.view(-1, *([1] * (model_pred.ndim - 1)))
+        loss = (
+            2
+            * huber_c
+            * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
+        )
+        if reduction == "mean":
+            loss = torch.mean(loss)
+        elif reduction == "sum":
+            loss = torch.sum(loss)
+    elif loss_type == "smooth_l1":
+        if huber_c is None:
+            raise NotImplementedError("huber_c not implemented correctly")
+        huber_c = huber_c.view(-1, *([1] * (model_pred.ndim - 1)))
+        loss = 2 * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
+        if reduction == "mean":
+            loss = torch.mean(loss)
+        elif reduction == "sum":
+            loss = torch.sum(loss)
+    elif loss_type == "pseudo_huber":
+        if huber_c is None:
+            raise ValueError("pseudo_huber_c is required for pseudo_huber loss")
+        huber_c = huber_c.view(-1, *([1] * (model_pred.ndim - 1)))
+        loss = torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c
+        if reduction == "mean":
+            loss = torch.mean(loss)
+        elif reduction == "sum":
+            loss = torch.sum(loss)
+    else:
+        raise NotImplementedError(f"Unsupported Loss Type: {loss_type}")
+    return loss
+
+
+# Internal alias — still referenced below by the composer stages.
+_conditional_loss = conditional_loss
 
 
 # ---------------------------------------------------------------------------

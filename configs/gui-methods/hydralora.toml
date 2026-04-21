@@ -28,6 +28,10 @@ alpha_rank_scale = 1.0
 use_hydra = true
 num_experts = 4
 balance_loss_weight = 0.001
+# Hold the load-balance penalty at 0 during the first 40% of training so the
+# router can specialize, then flip it on to stop the diverged router from
+# collapsing further. 0.0 disables the warmup (legacy behavior).
+balance_loss_warmup_ratio = 0.4
 expert_init_std = 1.0e-4
 expert_warmup_ratio = 0.1
 # Narrow MoE to cross-attn q/kv + MLP (DiT). Self-attn, output_proj, and the

@@ -609,7 +609,7 @@ class PostfixNetwork(nn.Module):
 
         if os.path.splitext(file)[1] == ".safetensors":
             from safetensors.torch import save_file
-            from library import train_util
+            from library.training.hashing import precalculate_safetensors_hashes
 
             if metadata is None:
                 metadata = {}
@@ -625,7 +625,7 @@ class PostfixNetwork(nn.Module):
                 metadata["ss_sigma_feature_dim"] = str(self.sigma_feature_dim)
                 metadata["ss_sigma_hidden_dim"] = str(self.sigma_hidden_dim)
 
-            model_hash, legacy_hash = train_util.precalculate_safetensors_hashes(
+            model_hash, legacy_hash = precalculate_safetensors_hashes(
                 state_dict, metadata
             )
             metadata["sshs_model_hash"] = model_hash
