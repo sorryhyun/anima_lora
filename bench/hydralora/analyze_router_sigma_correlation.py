@@ -391,11 +391,20 @@ def main():
                 t = torch.tensor([sigma], device=device, dtype=torch.bfloat16)
 
                 shared["sigma"] = sigma
+                # Propagate σ to every HydraLoRA module with σ-routing enabled.
+                # Without this the router would receive zero-padding for the
+                # σ-feature slice and JS would be trivially 0 regardless of
+                # how well-trained the σ weights are. batch dim=1 here.
+                sigma_tensor = torch.tensor([sigma], device=device, dtype=torch.float32)
+                if hasattr(network, "set_sigma"):
+                    network.set_sigma(sigma_tensor)
                 with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
                     _ = anima(noisy_5d, t, emb, padding_mask=padding_mask)
                 n_forward += 1
             logger.info(f"  done {stem}  ({len(sigma_list)} sigmas)")
     shared["sigma"] = None
+    if hasattr(network, "clear_sigma"):
+        network.clear_sigma()
     restore()
 
     logger.info(f"captured gates from {n_forward} forward passes")

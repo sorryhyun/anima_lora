@@ -172,3 +172,9 @@ See [docs/methods/invert.md](docs/methods/invert.md) for details on initializati
 | [docs/methods/prefix-tuning.md](docs/methods/prefix-tuning.md) | Prefix tuning — 12 GB VRAM, ~1 step/s, how it works, config reference |
 | [docs/guidelines/inference.md](docs/guidelines/inference.md) | Inference flags, P-GRAFT inference, prompt file format, LoRA format conversion |
 | [docs/methods/invert.md](docs/methods/invert.md) | Embedding inversion — optimization flags, VRAM modes, block gradient logging |
+
+## License
+
+The toolkit code in this repository is licensed under the [MIT License](LICENSE).
+
+The Anima / CircleStone **base model weights** are distributed by CircleStone Labs LLC under the **CircleStone Labs Non-Commercial License v1.0** and are NOT relicensed by this repo. Any LoRA adapter, fine-tune, or merged checkpoint you train from those weights with this toolkit is a Derivative under that license and inherits its non-commercial terms. See [NOTICE](NOTICE) for the full breakdown.

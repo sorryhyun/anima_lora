@@ -17,9 +17,9 @@ network_alpha = 16
 network_dim = 16
 
 learning_rate = 1e-4
-max_train_epochs = 1
-save_every_n_epochs = 1
-checkpointing_epochs = 1
+max_train_epochs = 2
+save_every_n_epochs = 2
+checkpointing_epochs = 2
 
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
@@ -42,8 +42,8 @@ alpha_rank_scale = 1.0
 output_name = "anima_hydra"
 use_hydra = true
 num_experts = 4
-balance_loss_weight = 0
-expert_init_std = 0
+balance_loss_weight = 1e-7
+expert_init_std = 1e-5
 
 # Router LR multiplier on top of unet_lr. Covers .router.* and .sigma_mlp.*.
 # Router init is small (std=0.01) and lives in a softmax-uniform fixed point;
@@ -53,23 +53,23 @@ network_router_lr_scale = 20
 # Fraction of training steps with one-expert-per-step gradient masking.
 # Forward stays full MoE; only the randomly-chosen expert's up-weight slice
 # gets gradient. Forces specialization without ever isolating an expert.
-# expert_warmup_ratio = 0.1
+expert_warmup_ratio = 0.1
 
-# Which target Linears actually get the MoE wrapper. Non-matching layers fall
-# back to plain LoRA (or OrthoLoRAExp when use_ortho=true). Default narrows
-# ~256 routers down to ~112 by keeping MoE on the two sites where semantic
-# specialization is learnable — DiT cross-attn q/kv and MLP — and dropping
-# self-attn, output_proj, and the LLM-adapter blocks to plain LoRA. Leave
-# unset (or set to empty) to restore legacy "MoE on every target" behavior.
-
-hydra_router_layers = ".*(cross_attn\\.(kv_proj)|mlp\\.layer[12])$"
+hydra_router_layers = ".*(mlp\\.layer[12])$"
 # hydra_router_layers = ".*(cross_attn\\.kv_proj)$"
 
 # timestep conditional hydralora
+#
+# σ is sinusoidal-encoded and **concatenated** to the router input, widening
+# it from Linear(r, E) to Linear(r + sigma_feature_dim, E). sigma_feature_dim
+# controls both the sinusoidal basis size and the router width; for scalar σ
+# on [0, 1], 16–32 is plenty (half-dim frequency pairs span ~4 orders of
+# magnitude). Must be even. sigma_hidden_dim is unused (the old sigma_mlp
+# hidden layer is gone) and kept only for API back-compat.
 
 use_sigma_router = true
-sigma_feature_dim = 128
-sigma_hidden_dim = 128
+sigma_feature_dim = 16
+sigma_hidden_dim = 16   # unused; retained for API compat
 sigma_router_layers = ".*(mlp\\.layer[12])$"
 per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
 num_sigma_buckets = 3
@@ -106,15 +106,16 @@ blocks_to_swap = 18
 
 
 # ── σ-conditional HydraLoRA router (Track B) ───────────────────────────
-# Adds a tiny sinusoidal(σ)→E bias MLP to each selected HydraLoRAModule's
-# router. Zero-init at final layer → step-0 identical to base HydraLoRA.
-# sigma_router_layers restricts the σ branch to the layer types the B0
-# pre-analysis showed actually carry σ-correlation signal (cross_attn.q +
-# self_attn.qkv); MLPs are skipped. Full doc: `timestep-hydra.md`.
+# Concatenates sinusoidal(σ) to each selected HydraLoRAModule's router input
+# (widens the router from Linear(r, E) to Linear(r + sigma_feature_dim, E)).
+# σ-feature columns are zero-init → step-0 identical to base HydraLoRA;
+# σ-dependence only emerges once those columns accumulate gradient.
+# sigma_router_layers restricts σ to the layer types the B0 pre-analysis
+# showed carry σ-correlation signal. Full doc: `timestep-hydra.md`.
 #
 # use_sigma_router = true
-# sigma_feature_dim = 128
-# sigma_hidden_dim = 128
+# sigma_feature_dim = 16   # even; 16 = 8 cos/sin pairs, over-resolves σ∈[0,1]
+# sigma_hidden_dim = 16    # unused; retained for API compat
 # sigma_router_layers = ".*(cross_attn\\.q_proj|self_attn\\.qkv_proj)$"
 # per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
 # num_sigma_buckets = 3
