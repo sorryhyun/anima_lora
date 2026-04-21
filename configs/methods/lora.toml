@@ -17,9 +17,9 @@ network_alpha = 32
 network_dim = 32
 
 learning_rate = 2e-5
-max_train_epochs = 4
-save_every_n_epochs = 2
-checkpointing_epochs = 2
+max_train_epochs = 12
+save_every_n_epochs = 4
+checkpointing_epochs = 4
 
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
@@ -42,14 +42,14 @@ alpha_rank_scale = 1.0
 output_name = "anima_hydra"
 use_hydra = true
 num_experts = 4
-balance_loss_weight = 0.001
+balance_loss_weight = 1e-4
 # Hold the load-balance penalty at 0 during the first
 # `balance_loss_warmup_ratio` of training so the router can specialize first,
 # then flip to `balance_loss_weight` to stop a skewed router from collapsing
 # further (empirically: entropy falls from 1.0 → 0.17 by 5k steps without this).
 # 0.0 = no warmup (legacy behavior).
-balance_loss_warmup_ratio = 0.4
-expert_init_std = 1e-4 # can become 0
+balance_loss_warmup_ratio = 0.3
+expert_init_std = 0
 
 # Router LR multiplier on top of unet_lr. Covers .router.* and .sigma_mlp.*.
 # Router init is small (std=0.01) and lives in a softmax-uniform fixed point;
@@ -93,7 +93,7 @@ num_sigma_buckets = 3
 # reft_alpha = 64
 # reft_layers = "last_8"
 
-blocks_to_swap = 16
+blocks_to_swap = 14
 
 
 

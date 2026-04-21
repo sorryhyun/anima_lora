@@ -96,24 +96,9 @@ No special flag. `reft_*` keys are detected in the adapter file and the matching
 
 ### ComfyUI — requires the custom node
 
-**Vanilla ComfyUI cannot load ReFT.** The built-in LoRA patcher works by rewriting `Linear.weight` in place, which is fundamentally the wrong operation here — ReFT is an *activation-space* intervention, not a weight patch. Dropping the `.safetensors` into ComfyUI's standard LoRA loader silently ignores the `reft_*` keys.
+**Vanilla ComfyUI cannot load ReFT.** The built-in LoRA patcher rewrites `Linear.weight` in place, which is fundamentally the wrong operation here — ReFT is an *activation-space* intervention, not a weight patch. The standard loader silently ignores `reft_*` keys.
 
-Use `custom_nodes/comfyui-hydralora` (display name: **Anima Adapter Loader**) instead. It:
-
-1. Sniffs the safetensors header and splits the file into LoRA / Hydra / ReFT components.
-2. Applies LoRA/Hydra via the usual `ModelPatcher.add_patches`.
-3. For each ReFT block, builds a `forward_hook` that replays the `h + R^T·(ΔW·h + b) · scale · strength` edit, and installs it onto `diffusion_model.blocks.<idx>._forward_hooks` via `ModelPatcher.add_object_patch`.
-
-The hook approach is deliberate — overriding `block.forward` directly confused ComfyUI's weight-loading path (blocks ended up with `comfy_cast_weights=False` and weights stranded on CPU). A forward hook leaves `block.forward` alone, traces cleanly through `torch.compile`, and is properly reverted on `unpatch_model`.
-
-Two separate strength inputs expose the branches independently:
-
-- `strength_lora` — LoRA / Hydra weight-patch scale. Set to 0 to disable LoRA entirely while keeping ReFT.
-- `strength_reft` — ReFT residual-edit scale. Set to 0 to disable ReFT entirely while keeping LoRA.
-
-Useful for ablation ("is it the LoRA or the ReFT doing the anatomy fix?") and for dialing back either branch if one overshoots.
-
-The same node also offers a separately-toggled postfix section (prefix / postfix / cond context splicing) — see `custom_nodes/comfyui-hydralora/postfix.py`.
+Use the **Anima Adapter Loader** node (`custom_nodes/comfyui-hydralora/`), which installs per-block forward hooks for ReFT alongside LoRA / HydraLoRA / postfix. Separate `strength_lora` and `strength_reft` sliders allow independent ablation. See `custom_nodes/comfyui-hydralora/README.md` for the node's installation paths and changelog.
 
 ## Configuration
 

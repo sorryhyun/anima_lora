@@ -67,10 +67,18 @@ def _parse_reft(weights_sd: Dict[str, torch.Tensor]) -> Optional[Dict[int, dict]
 def _parse_hydra(weights_sd: Dict[str, torch.Tensor]) -> Optional[dict]:
     """Group Hydra multi-head keys. Returns None if no per-expert ups found.
 
-    Captures router (``router.weight`` / ``router.bias``) and σ-conditional
-    MLP (``sigma_mlp.0.weight`` / ``sigma_mlp.0.bias`` / ``sigma_mlp.2.weight``)
-    when present. ``sigma_mlp.1`` is SiLU (no params) and ``sigma_mlp.2`` is
-    bias-free per the training-time module definition.
+    Captures router (``router.weight`` / ``router.bias``). σ-conditional
+    routing is driven by the router input directly — sinusoidal(σ) is
+    concatenated onto the pooled rank-R vector, so the router weight is
+    ``Linear(rank + sigma_feature_dim, E)``; σ dim is recovered downstream
+    from ``router_w.shape[1] - lora_down.shape[0]``. The legacy additive
+    ``sigma_mlp.*`` bias path was removed on the training side (see
+    ``docs/methods/hydra-lora.md`` §Fixes); no current checkpoint writes
+    those keys, so we ignore them.
+
+    Only prefixes with per-expert ``lora_ups`` are returned; prefixes that
+    are plain LoRA (``lora_up.weight`` singular) are left to the
+    ``_extract_lora_sd`` path.
     """
     modules: Dict[str, dict] = {}
     for key, value in weights_sd.items():
@@ -93,20 +101,18 @@ def _parse_hydra(weights_sd: Dict[str, torch.Tensor]) -> Optional[dict]:
             mod["router_w"] = value
         elif rest == "router.bias":
             mod["router_b"] = value
-        elif rest == "sigma_mlp.0.weight":
-            mod["sigma_mlp_0_w"] = value
-        elif rest == "sigma_mlp.0.bias":
-            mod["sigma_mlp_0_b"] = value
-        elif rest == "sigma_mlp.2.weight":
-            mod["sigma_mlp_2_w"] = value
 
-    num_experts = 0
-    for mod in modules.values():
-        if "lora_ups" in mod:
-            num_experts = max(num_experts, max(mod["lora_ups"].keys()) + 1)
-    if num_experts == 0:
+    # Keep only real hydra modules (have per-expert ups). Prefixes that only
+    # carry plain LoRA keys (lora_up.weight, singular) flow through the
+    # standard LoRA path; including them here would just produce noisy
+    # "missing lora_ups" skip warnings.
+    hydra_only: Dict[str, dict] = {
+        prefix: mod for prefix, mod in modules.items() if "lora_ups" in mod
+    }
+    if not hydra_only:
         return None
-    return {"num_experts": num_experts, "modules": modules}
+    num_experts = max(max(m["lora_ups"].keys()) + 1 for m in hydra_only.values())
+    return {"num_experts": num_experts, "modules": hydra_only}
 
 
 def _extract_lora_sd(
@@ -114,16 +120,29 @@ def _extract_lora_sd(
 ) -> Optional[Dict[str, torch.Tensor]]:
     """Pull standard LoRA keys (lora_down/lora_up/alpha/dora_scale).
     Returns None if no lora_up.weight keys are present.
+
+    Hydra-prefix keys are excluded *entirely* — not just the per-expert
+    ``.lora_ups.*`` ones. A hydra module's ``lora_down.weight`` / ``router.*``
+    / ``alpha`` are orphans from ComfyUI's ``load_lora`` perspective and
+    would surface as "lora key not loaded" warnings if passed through; they
+    belong to the hydra path.
     """
+    hydra_prefixes = {
+        key.rsplit(".lora_ups.", 1)[0]
+        for key in weights_sd
+        if ".lora_ups." in key
+    }
+
     out: Dict[str, torch.Tensor] = {}
     has_up = False
     for key, value in weights_sd.items():
         if key.startswith("reft_"):
             continue
         if key.endswith(".lora_up_weight"):
-            continue  # Hydra stacked ups — handled via _parse_hydra
-        if ".lora_ups." in key:
-            continue  # Per-expert Hydra ups — handled via _parse_hydra
+            continue  # Hydra stacked-ups runtime form (shouldn't appear post-save)
+        prefix = key.split(".", 1)[0]
+        if prefix in hydra_prefixes:
+            continue  # Hydra module — handled via _parse_hydra
         out[key] = value
         if key.endswith(".lora_up.weight"):
             has_up = True
@@ -199,36 +218,25 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
     precision policy — see ``LoRAModule.forward`` rationale). ``sigma_state``
     is shared across all hydra hooks for this checkpoint; the
     diffusion-forward wrapper writes ``sigma_state["sigma"]`` once per
-    denoising step, and each hook reads it to add the σ-conditional bias
-    when ``sigma_mlp_2_w`` is present.
+    denoising step, and each hook reads it to build sinusoidal(σ) features
+    that are concatenated onto the pooled rank-R router input when
+    ``sigma_feature_dim > 0``.
     """
     state = {
         "lora_down": params["lora_down"],
         "lora_ups": params["lora_ups"],          # (E, out, rank)
-        "router_w": params["router_w"],          # (E, rank)
+        "router_w": params["router_w"],          # (E, rank + sigma_feature_dim)
         "router_b": params["router_b"],          # (E,)
         "inv_scale": params.get("inv_scale"),    # (in_dim,) or None
         "scale": params["scale"],
-        "sigma_mlp_0_w": params.get("sigma_mlp_0_w"),
-        "sigma_mlp_0_b": params.get("sigma_mlp_0_b"),
-        "sigma_mlp_2_w": params.get("sigma_mlp_2_w"),
-        "sigma_feature_dim": params.get("sigma_feature_dim"),
+        "sigma_feature_dim": int(params.get("sigma_feature_dim", 0)),
         "device": None,
     }
 
     def _ensure_on_device(x: torch.Tensor) -> None:
         if state["device"] == x.device:
             return
-        for k in (
-            "lora_down",
-            "lora_ups",
-            "router_w",
-            "router_b",
-            "inv_scale",
-            "sigma_mlp_0_w",
-            "sigma_mlp_0_b",
-            "sigma_mlp_2_w",
-        ):
+        for k in ("lora_down", "lora_ups", "router_w", "router_b", "inv_scale"):
             if state[k] is not None:
                 state[k] = state[k].to(device=x.device)
         state["device"] = x.device
@@ -246,40 +254,35 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
         lx = torch.nn.functional.linear(x_lora, state["lora_down"].float())
 
         # router gate — RMS pool the rank-R signal over the sequence dim, then
-        # logits. Mirrors HydraLoRAModule._compute_gate after the rank-R router
-        # rewiring (see docs/methods/hydra-lora.md §Fixes): mean-pool over raw
-        # x collapsed sample signal by √L, so router weights never trained.
+        # optionally concat sinusoidal(σ) before the router linear. Mirrors
+        # HydraLoRAModule._compute_gate after the σ-input rewiring (see
+        # docs/methods/hydra-lora.md §Fixes): previously σ entered as an
+        # additive sigma_mlp bias on the logits; the router now reads it as
+        # input, so the σ-feature columns of router.weight train on the same
+        # chain rule as the content columns.
         B = lx.shape[0]
         if lx.dim() >= 3:
             pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
         else:
             pooled = lx
+        if state["sigma_feature_dim"] > 0 and sigma_state.get("sigma") is not None:
+            sigma_feat = _sigma_sinusoidal_features(
+                sigma_state["sigma"], state["sigma_feature_dim"]
+            ).to(device=pooled.device, dtype=pooled.dtype)
+            # Broadcast σ features across the batch when σ is shape (1,) but
+            # pooled is CFG-doubled.
+            if sigma_feat.shape[0] == 1 and pooled.shape[0] != 1:
+                sigma_feat = sigma_feat.expand(pooled.shape[0], -1)
+            pooled = torch.cat([pooled, sigma_feat], dim=-1)
+        elif state["sigma_feature_dim"] > 0:
+            # σ-conditional router but no σ captured yet (shouldn't happen
+            # under the wrapper, but stay safe): zero-pad to keep shape.
+            pooled = torch.nn.functional.pad(
+                pooled, (0, state["sigma_feature_dim"])
+            )
         logits = torch.nn.functional.linear(
             pooled, state["router_w"].float(), state["router_b"].float()
         )
-
-        # σ-conditional bias (zero-init at training start, so absent ↔ identity)
-        if state["sigma_mlp_2_w"] is not None and sigma_state.get("sigma") is not None:
-            sigma_feat = _sigma_sinusoidal_features(
-                sigma_state["sigma"], state["sigma_feature_dim"]
-            ).to(device=logits.device)
-            h = torch.nn.functional.linear(
-                sigma_feat,
-                state["sigma_mlp_0_w"].float(),
-                state["sigma_mlp_0_b"].float(),
-            )
-            h = torch.nn.functional.silu(h)
-            sigma_bias = torch.nn.functional.linear(
-                h, state["sigma_mlp_2_w"].float()
-            )
-            # Broadcast σ-bias across batch when shapes differ (e.g. σ shape (1,)
-            # vs CFG-doubled batch). Matching shapes add directly.
-            if (
-                sigma_bias.shape[0] == logits.shape[0]
-                or sigma_bias.shape[0] == 1
-            ):
-                logits = logits + sigma_bias
-
         gate = torch.softmax(logits, dim=-1)
 
         # gate-weighted combined ups (B, out, rank)
@@ -396,12 +399,15 @@ def _apply_hydra_live_to_model(
         )
         rank = mod["lora_down"].shape[0]
 
+        # Router input is either rank (σ off) or rank + sigma_feature_dim
+        # (σ concatenated onto the pooled rank-R vector — see
+        # HydraLoRAModule._compute_gate).
         router_in = mod["router_w"].shape[1]
-        if router_in != rank:
+        sigma_feature_dim = router_in - rank
+        if sigma_feature_dim < 0:
             skipped.append(
-                f"{prefix}: old-shape router ({tuple(mod['router_w'].shape)}, "
-                f"expected (E, rank={rank})) — retrain required, see "
-                "docs/methods/hydra-lora.md §Fixes"
+                f"{prefix}: router input {router_in} < rank {rank} "
+                f"(shape {tuple(mod['router_w'].shape)}) — checkpoint malformed"
             )
             continue
         alpha_t = mod.get("alpha")
@@ -418,13 +424,8 @@ def _apply_hydra_live_to_model(
             "router_b": mod["router_b"],
             "inv_scale": mod.get("inv_scale"),
             "scale": alpha / rank,
+            "sigma_feature_dim": sigma_feature_dim,
         }
-        if "sigma_mlp_2_w" in mod:
-            params["sigma_mlp_0_w"] = mod["sigma_mlp_0_w"]
-            params["sigma_mlp_0_b"] = mod["sigma_mlp_0_b"]
-            params["sigma_mlp_2_w"] = mod["sigma_mlp_2_w"]
-            # in_features of sigma_mlp.0 is the sinusoidal feature dim
-            params["sigma_feature_dim"] = mod["sigma_mlp_0_w"].shape[1]
 
         hook = _make_hydra_hook(params, strength, sigma_state)
         new_hooks = OrderedDict(linear._forward_hooks)
@@ -437,7 +438,12 @@ def _apply_hydra_live_to_model(
             f"Hydra live-routing skipped {len(skipped)} prefix(es); "
             f"first few: {skipped[:5]}"
         )
-    has_sigma = any("sigma_mlp_2_w" in m for m in hydra_data["modules"].values())
+    has_sigma = any(
+        "router_w" in m
+        and "lora_down" in m
+        and m["router_w"].shape[1] > m["lora_down"].shape[0]
+        for m in hydra_data["modules"].values()
+    )
     logger.info(
         f"Hydra live-routing installed {patched} hooks "
         f"(strength={strength}, σ-conditional={'yes' if has_sigma else 'no'})"
@@ -543,9 +549,13 @@ def apply_adapter(
         n = _apply_hydra_live_to_model(model, bundle["hydra"], strength_lora)
         if n > 0:
             applied_any = True
-    elif bundle["lora"] is not None:
-        # Plain LoRA — apply directly. Hydra + plain-lora in the same file is
-        # not produced by the save pipeline, so ``elif`` is sufficient.
+    if bundle["lora"] is not None:
+        # Plain LoRA — apply directly. Hydra + plain-LoRA coexist in the same
+        # file when ``hydra_router_layers`` is a subset regex (e.g. mlp only):
+        # hydra handles mlp prefixes, plain LoRA handles cross_attn / self_attn.
+        # ``_parse_hydra`` filters itself to hydra-only prefixes and
+        # ``_extract_lora_sd`` skips ``.lora_ups.*`` keys, so the two paths
+        # target disjoint modules — no double-patching.
         _apply_lora_sd_to_model(model, bundle["lora"], strength_lora)
         applied_any = True
 

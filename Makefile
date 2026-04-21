@@ -235,6 +235,31 @@ WORKFLOW ?= workflows/modhydra.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 
+# img2emb phase 2a — 2k-step flow-matching warm-start ablation from phase 1.5.
+# Gate for the full phase 2 run; see bench/img2emb/phase2_proposal.md.
+PHASE2_WARM ?= bench/img2emb/results/phase1_5/siglip2_resampler_4layer_anchored.safetensors
+PHASE2_STEPS ?= 2000
+PHASE2_BS ?= 1
+# -1 = gradient checkpointing (required on 16 GB; no-swap backward OOMs, block-swap
+# forward-only doesn't help backward activations). Override with PHASE2_SWAP=N for
+# >16 GB cards.
+PHASE2_SWAP ?= -1
+phase2-ablation:
+	python bench/img2emb/phase2_flow.py \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--warm_start $(PHASE2_WARM) \
+		--steps $(PHASE2_STEPS) \
+		--batch_size $(PHASE2_BS) \
+		--blocks_to_swap $(PHASE2_SWAP)
+
+phase2-calibrate:
+	python bench/img2emb/phase2_flow.py \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--warm_start $(PHASE2_WARM) \
+		--calibrate_only \
+		--batch_size $(PHASE2_BS) \
+		--blocks_to_swap $(PHASE2_SWAP)
+
 graft-step:
 	python scripts/graft_step.py
 
