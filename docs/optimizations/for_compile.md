@@ -1,14 +1,14 @@
 # Changes from sd-scripts for torch.compile / dynamo
 
-This document catalogues every change made to the anima\_lora fork (relative to the original `sd-scripts` repo) that enables or supports `torch.compile` and PyTorch dynamo. Changes are grouped by file and subsystem.
+This document catalogues every change made to the `anima_lora` fork (relative to the original `sd-scripts` repo) that enables or supports `torch.compile` and PyTorch dynamo. Changes are grouped by file and subsystem.
 
 ---
 
-## 1. Attention dispatch (`library/attention.py`)
+## 1. Attention dispatch (`networks/attention.py`)
 
 ### 1.1 Flash Attention 4 graph breaks
 
-FA4's CUTLASS/TVM kernels access raw DLPack data pointers, which fail with FakeTensors during dynamo tracing. Since FA4 is already a fused kernel that torch.compile cannot improve, we wrap it with `@torch.compiler.disable` to insert clean graph breaks while letting surrounding ops compile normally.
+FA4's CUTLASS/TVM kernels access raw DLPack data pointers, which fail with FakeTensors during dynamo tracing. Since FA4 is already a fused kernel that `torch.compile` cannot improve, we wrap it with `@torch.compiler.disable` to insert clean graph breaks while letting surrounding ops compile normally.
 
 ```python
 # NEW
@@ -24,6 +24,8 @@ def flash_attn_4_varlen_func(*args, **kwargs):
 ```
 
 **sd-scripts**: No FA4 support at all.
+
+> Note: FA4 is currently not the default attention backend — see [`fa4.md`](fa4.md) for why. The code paths remain in place for re-enabling.
 
 ### 1.2 Flex attention: NOT pre-compiled
 
@@ -60,7 +62,7 @@ x = out * correction.transpose(1, 2).unsqueeze(-1)
 
 ---
 
-## 2. Model architecture (`library/anima_models.py`)
+## 2. Model architecture (`library/anima/models.py`)
 
 ### 2.1 Removed `einops.rearrange`
 
@@ -77,10 +79,10 @@ x = out * correction.transpose(1, 2).unsqueeze(-1)
 
 Context managers introduce overhead and are difficult for dynamo to trace through. Removed from:
 
-- **RMSNorm.forward**: replaced `with torch.autocast(...)` with direct `.float()` / `.to(x.dtype)` casts
-- **FinalLayer.forward**: removed `use_fp32` parameter and autocast wrapping entirely
+- **RMSNorm.forward**: replaced `with torch.autocast(...)` with direct `.float()` / `.to(x.dtype)` casts.
+- **FinalLayer.forward**: removed `use_fp32` parameter and autocast wrapping entirely.
 
-### 2.3 `.repeat()` -> `.expand()`
+### 2.3 `.repeat()` → `.expand()`
 
 `expand()` creates a view without allocating memory, while `repeat()` copies data. In `VideoRopePosition3DEmb.prepare_embedded_sequence`:
 
@@ -93,7 +95,7 @@ padding_mask.unsqueeze(2).expand(-1, -1, n_heads)
 
 ### 2.4 KV bucket trimming constants
 
-New `_KV_BUCKETS = (64, 128, 256, 512)` — cross-attention KV sequences are trimmed to the smallest bucket that fits, giving torch.compile at most 4 shape variants instead of one per unique caption length.
+New `_KV_BUCKETS = (64, 128, 256, 512)` — cross-attention KV sequences are trimmed to the smallest bucket that fits, giving `torch.compile` at most 4 shape variants instead of one per unique caption length.
 
 ### 2.5 `set_static_token_count(count)`
 
@@ -108,24 +110,24 @@ for block in self.blocks:
     block._forward = torch.compile(block._forward, backend=backend, dynamic=True)
 ```
 
-**Critical**: compiles `_forward` (the actual attention/MLP), NOT `forward` (the checkpointing wrapper). The gradient checkpointing decorator (`unsloth_checkpoint`) uses `@torch._disable_dynamo`, which would cause an immediate graph break if `forward` itself were compiled — dynamo compiles nothing useful but still checks shape guards, causing recompile storms.
+**Critical:** compiles `_forward` (the actual attention/MLP), NOT `forward` (the checkpointing wrapper). The gradient checkpointing decorator (`unsloth_checkpoint`) uses `@torch._disable_dynamo`, which would cause an immediate graph break if `forward` itself were compiled — dynamo compiles nothing useful but still checks shape guards, causing recompile storms.
 
 ### 2.7 Static-shape padding in `forward_mini_train_dit`
 
 When `static_token_count` is set:
 
-1. Flatten 5D input `(B, T, H, W, D)` to `(B, seq_len, D)`
-2. Pad sequence dim to target length with zeros
-3. Reshape to fake-5D `(B, 1, target, 1, D)` — compatible with existing block code
-4. Pad RoPE embeddings and extra positional embeddings to match
-5. After all blocks: squeeze fake dims and strip padding to restore `(B, T, H, W, D)`
+1. Flatten 5D input `(B, T, H, W, D)` to `(B, seq_len, D)`.
+2. Pad sequence dim to target length with zeros.
+3. Reshape to fake-5D `(B, 1, target, 1, D)` — compatible with existing block code.
+4. Pad RoPE embeddings and extra positional embeddings to match.
+5. After all blocks: squeeze fake dims and strip padding to restore `(B, T, H, W, D)`.
 
 ### 2.8 Pre-computed BlockMask for flex attention
 
 In static-shape mode, two BlockMasks are created before the block loop:
 
-- **Cross-attention mask**: masks out zero-padded KV positions from bucketed trimming
-- **Self-attention mask**: masks out padding tokens introduced by `static_token_count`
+- **Cross-attention mask**: masks out zero-padded KV positions from bucketed trimming.
+- **Self-attention mask**: masks out padding tokens introduced by `static_token_count`.
 
 These are passed via `AttentionParams` so flex attention never needs to create masks inside the compiled region (which would cause data-dependent graph breaks).
 
@@ -135,7 +137,7 @@ These are passed via `AttentionParams` so flex attention never needs to create m
 
 ### 3.1 Constant-token buckets (`buckets.py`)
 
-New `CONSTANT_TOKEN_BUCKETS` — 17 predefined (W, H) resolutions where `(W/16)*(H/16) ~ 4096` tokens with minimal padding (0.0%–1.6%). Used with `--static_token_count=4096` to make every forward pass shape-identical.
+New `CONSTANT_TOKEN_BUCKETS` — 17 predefined `(W, H)` resolutions where `(W/16)·(H/16) ~ 4096` tokens with minimal padding (0.0%–1.6%). Used with `--static_token_count=4096` to make every forward pass shape-identical.
 
 ```python
 CONSTANT_TOKEN_BUCKETS = [
@@ -151,7 +153,7 @@ CONSTANT_TOKEN_BUCKETS = [
 
 ### 3.2 Incomplete batch dropping (`base.py`)
 
-Incomplete last batches are dropped (integer division instead of ceiling) to keep the batch dimension constant across epochs. This prevents torch.compile recompilation from a trailing partial batch.
+Incomplete last batches are dropped (integer division instead of ceiling) to keep the batch dimension constant across epochs. This prevents `torch.compile` recompilation from a trailing partial batch.
 
 ```python
 # When no sample_ratio: drop incomplete last batch
@@ -175,7 +177,7 @@ if getattr(args, "static_token_count", None) is not None:
 
 When `--static_token_count` is set, block-level compilation is used instead of full-graph compilation via Accelerator.
 
-### 4.2 Dynamo backend routing (`train_util.py`)
+### 4.2 Dynamo backend routing (`library/train_util.py`)
 
 ```python
 # Only enable Accelerator-level dynamo when static_token_count is NOT used
@@ -202,19 +204,19 @@ padding_mask = self._padding_mask_cache.get(padding_mask_key)
 constant_token_buckets=getattr(args, "static_token_count", None) is not None,
 ```
 
-Passed through `config_util.py` to `BucketManager.make_buckets()`.
+Passed through `library/config/` to `BucketManager.make_buckets()`.
 
 ---
 
-## 5. LoRA networks (`networks/lora_anima.py`)
+## 5. LoRA networks (`networks/lora_anima/`)
 
 ### 5.1 `_orig_mod_` key stripping
 
-`torch.compile` wraps modules in `_orig_mod` containers, inserting `_orig_mod.` or `_orig_mod_` into state\_dict keys. Three locations handle this:
+`torch.compile` wraps modules in `_orig_mod` containers, inserting `_orig_mod.` or `_orig_mod_` into state-dict keys. Three locations handle this:
 
-1. **`create_network_from_weights()`** — strips keys when loading external checkpoints
-2. **Module discovery loop** — strips `_orig_mod.` from module paths during LoRA target matching
-3. **`_strip_orig_mod_keys()` static method + `load_state_dict()` override** — ensures any state\_dict loaded into the network is normalized
+1. **`create_network_from_weights()`** — strips keys when loading external checkpoints.
+2. **Module discovery loop** — strips `_orig_mod.` from module paths during LoRA target matching.
+3. **`_strip_orig_mod_keys()` static method + `load_state_dict()` override** — ensures any state-dict loaded into the network is normalized.
 
 ```python
 @staticmethod
@@ -234,7 +236,7 @@ def load_state_dict(self, state_dict, strict=True, **kwargs):
 
 ---
 
-## 6. LoRA utils (`library/lora_utils.py`)
+## 6. LoRA utils (`networks/lora_utils.py`)
 
 Same `_orig_mod_` normalization applied during LoRA weight merging:
 
@@ -246,24 +248,24 @@ for k, v in lora_sd.items():
 
 ---
 
-## 7. Config (`library/config_util.py`)
+## 7. Config (`library/train_util.py` dataset blueprint path)
 
-`generate_dataset_group_by_blueprint()` accepts new `constant_token_buckets: bool` parameter, forwarded to `dataset.make_buckets()`.
+`generate_dataset_group_by_blueprint()` accepts a new `constant_token_buckets: bool` parameter, forwarded to `dataset.make_buckets()`.
 
 ---
 
 ## 8. CLI arguments
 
-### New in anima\_lora
+### New in anima_lora
 
 | Argument | File | Purpose |
 |----------|------|---------|
-| `--static_token_count N` | `anima_train_utils.py` | Pad to N visual tokens; enables constant-shape buckets |
-| `--trim_crossattn_kv` | `anima_train_utils.py` | Enable bucketed KV trimming for cross-attention |
+| `--static_token_count N` | `library/anima/training.py` | Pad to N visual tokens; enables constant-shape buckets |
+| `--trim_crossattn_kv` | `library/anima/training.py` | Enable bucketed KV trimming for cross-attention (no-op since FA4 removal) |
 
 ### Changed behavior
 
-| Argument | sd-scripts | anima\_lora |
+| Argument | sd-scripts | anima_lora |
 |----------|-----------|------------|
 | `--torch_compile` | Full-graph via Accelerator | Block-level if `static_token_count` set; Accelerator-level otherwise |
 | `--dynamo_backend` | Always forwarded to Accelerator | Conditional: only forwarded when `static_token_count` is NOT used |
@@ -272,18 +274,18 @@ for k, v in lora_sd.items():
 
 ## Summary: the compilation strategy
 
-The key insight is that a DiT training loop has three sources of shape dynamism that trigger torch.compile recompilation:
+The key insight is that a DiT training loop has three sources of shape dynamism that trigger `torch.compile` recompilation:
 
-1. **Spatial resolution** — different bucket sizes produce different `(T, H, W)` token counts
-2. **Caption length** — variable text encoder output lengths for cross-attention KV
-3. **Batch size** — trailing incomplete batches at epoch boundaries
+1. **Spatial resolution** — different bucket sizes produce different `(T, H, W)` token counts.
+2. **Caption length** — variable text encoder output lengths for cross-attention KV.
+3. **Batch size** — trailing incomplete batches at epoch boundaries.
 
 The fork eliminates all three:
 
 | Source | Solution | Files |
 |--------|----------|-------|
-| Spatial resolution | `CONSTANT_TOKEN_BUCKETS` + `static_token_count` padding | `buckets.py`, `anima_models.py` |
-| Caption length | `_KV_BUCKETS` bucketed trimming (max 4 variants) | `anima_models.py`, `attention.py` |
-| Batch size | Drop incomplete last batches | `datasets/base.py` |
+| Spatial resolution | `CONSTANT_TOKEN_BUCKETS` + `static_token_count` padding | `buckets.py`, `library/anima/models.py` |
+| Caption length | `_KV_BUCKETS` bucketed trimming (max 4 variants) | `library/anima/models.py`, `networks/attention.py` |
+| Batch size | Drop incomplete last batches | `library/datasets/base.py` |
 
 With shapes stabilized, `compile_blocks()` compiles each block's `_forward` with `dynamic=True` — the inductor backend generates optimized kernels once and reuses them for every step.

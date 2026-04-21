@@ -153,7 +153,7 @@ def create_network(
     # cold-start deadlock). 1e-4 keeps ΔW ~ std·‖down‖·‖x‖ negligible at init
     # while giving the router a distinct direction per expert to latch onto.
     # Set to 0.0 to restore legacy zero-init.
-    expert_init_std = float(kwargs.get("expert_init_std", 1e-4))
+    expert_init_std = float(kwargs.get("expert_init_std", 0))
     # Fraction of training steps during which only one randomly-chosen expert
     # per module receives gradient (forward still uses all experts via the
     # learned gate, so each expert learns in the full MoE context). 0.0 =
@@ -169,7 +169,8 @@ def create_network(
     use_sigma_router = kwargs.get("use_sigma_router", "false")
     if use_sigma_router is not None:
         use_sigma_router = str(use_sigma_router).lower() == "true"
-    sigma_feature_dim = int(kwargs.get("sigma_feature_dim", 128))
+    # 16 = 8 cos/sin freq pairs — over-resolves σ on [0,1]. Must be even.
+    sigma_feature_dim = int(kwargs.get("sigma_feature_dim", 16))
     sigma_hidden_dim = int(kwargs.get("sigma_hidden_dim", 128))
     # Regex applied to each candidate module's `original_name`. Default picks
     # the layer types the B0 pre-analysis showed carry σ-correlation signal
@@ -263,7 +264,7 @@ def create_network(
     router_lr_scale = float(router_lr_scale) if router_lr_scale is not None else 1.0
     if router_lr_scale != 1.0:
         logger.info(
-            f"HydraLoRA router LR scale: {router_lr_scale}x unet_lr (applies to .router. + .sigma_mlp. params)"
+            f"HydraLoRA router LR scale: {router_lr_scale}x unet_lr (applies to .router.* params — σ features live in router.weight columns)"
         )
 
     network_reg_dims = kwargs.get("network_reg_dims", None)
@@ -339,7 +340,7 @@ def create_network(
     if use_sigma_router and network._sigma_router_hits > 0:
         logger.info(
             f"σ-conditional HydraLoRA router: {network._sigma_router_hits} modules "
-            f"with sigma_mlp (feat={sigma_feature_dim}, hidden={sigma_hidden_dim}), "
+            f"with sinusoidal(σ) concatenated to router input (feat={sigma_feature_dim}), "
             f"per-bucket balance w={per_bucket_balance_weight}, buckets={num_sigma_buckets}"
         )
     elif use_sigma_router:
@@ -534,28 +535,59 @@ def create_network_from_weights(
         spec = NETWORK_REGISTRY["hydra"]
         module_class = spec.module_class
 
+    # Legacy σ-router refusal: the additive-bias sigma_mlp design is gone;
+    # σ is now a direct input to a wider router (router.weight columns
+    # [lora_dim:] take sinusoidal(σ) features). Old checkpoints carrying
+    # .sigma_mlp.* can't be reshaped into the new form.
+    _legacy_sigma_keys = [k for k in weights_sd if ".sigma_mlp." in k]
+    if _legacy_sigma_keys:
+        raise RuntimeError(
+            f"Checkpoint contains {len(_legacy_sigma_keys)} legacy σ-router "
+            f"keys (sigma_mlp.*). The σ-conditional router is now a direct "
+            f"concat of sinusoidal(σ) into the router input; the old "
+            f"additive-bias MLP path is unsupported. Retrain the LoRA to "
+            f"produce the new router shape. First legacy key: "
+            f"{_legacy_sigma_keys[0]!r}."
+        )
+
     # Old-format per-module router — was Linear(in_dim, E). Current router is
-    # Linear(lora_dim, E); the old shape carries a router that never trained
-    # (see docs/methods/hydra-lora.md §Fixes) and cannot be reshaped into the
-    # new module, so refuse at load with an explicit retrain message.
+    # Linear(lora_dim + sigma_feature_dim, E); width >= lora_dim, with any
+    # excess = σ feature dim. The old broken shape (width ≈ in_dim, often
+    # thousands) is caught by a sanity cap on excess width.
+    sigma_feature_dim_detected: Optional[int] = None
     if has_hydra or has_ortho_hydra:
+        _SIGMA_FEATURE_CAP = 1024
         for k, v in weights_sd.items():
             if not k.endswith(".router.weight"):
                 continue
             lora_name = k[: -len(".router.weight")]
             expected_rank = modules_dim.get(lora_name)
-            if expected_rank is None:
+            if expected_rank is None or v.ndim != 2:
                 continue
-            if v.ndim != 2 or v.size(1) != expected_rank:
+            width = v.size(1)
+            if width < expected_rank:
                 raise RuntimeError(
-                    f"This checkpoint has an old-shape HydraLoRA router at "
-                    f"{k!r} (shape {tuple(v.shape)}); the current router is "
-                    f"Linear(lora_dim={expected_rank}, num_experts). Old routers "
-                    "never received meaningful gradient under the previous "
-                    "mean-pool-over-raw-input path (see "
-                    "docs/methods/hydra-lora.md §Fixes); there is no salvage "
-                    "path — retrain the LoRA to produce a router in the new "
-                    "rank-R input space."
+                    f"router.weight at {k!r} has width {width} < expected "
+                    f"rank {expected_rank}; checkpoint is malformed."
+                )
+            extra = width - expected_rank
+            if extra == 0:
+                continue
+            if extra > _SIGMA_FEATURE_CAP:
+                raise RuntimeError(
+                    f"router.weight at {k!r} has shape {tuple(v.shape)}; "
+                    f"expected rank {expected_rank} with optional σ features "
+                    f"appended (≤ {_SIGMA_FEATURE_CAP}). The excess width "
+                    f"{extra} is most likely an old-format router trained "
+                    "on raw layer input (see docs/methods/hydra-lora.md "
+                    "§Fixes). There is no salvage path — retrain the LoRA."
+                )
+            if sigma_feature_dim_detected is None:
+                sigma_feature_dim_detected = extra
+            elif sigma_feature_dim_detected != extra:
+                raise RuntimeError(
+                    f"Inconsistent σ-feature dims across modules: expected "
+                    f"{sigma_feature_dim_detected}, found {extra} at {k!r}."
                 )
     elif for_inference:
         spec = NETWORK_REGISTRY["lora"]  # inference uses the merge-capable LoRAInfModule
@@ -587,22 +619,21 @@ def create_network_from_weights(
             f"{len(channel_scales_dict)} modules with baked-in inv_scale"
         )
 
-    # Detect σ-conditional router from checkpoint: any .sigma_mlp.* key means
-    # that module was trained with σ-routing. Extract per-module names and the
-    # feature dim from the first such key's shape.
+    # σ-conditional router names: derived from router.weight widths above.
+    # A module has σ routing iff its router.weight width > expected rank —
+    # the excess columns are the sinusoidal(σ) feature slice. List is empty
+    # when sigma_feature_dim_detected is None (no σ routing in this ckpt).
     sigma_router_names: List[str] = []
-    sigma_feature_dim_detected: Optional[int] = None
-    sigma_hidden_dim_detected: Optional[int] = None
-    for k, v in weights_sd.items():
-        if ".sigma_mlp." not in k:
-            continue
-        lora_name = k.split(".sigma_mlp.", 1)[0]
-        if lora_name not in sigma_router_names:
-            sigma_router_names.append(lora_name)
-        # sigma_mlp.0 is the first Linear: weight shape (hidden, feat)
-        if k.endswith(".sigma_mlp.0.weight"):
-            sigma_hidden_dim_detected = v.shape[0]
-            sigma_feature_dim_detected = v.shape[1]
+    if (has_hydra or has_ortho_hydra) and sigma_feature_dim_detected is not None:
+        for k, v in weights_sd.items():
+            if not k.endswith(".router.weight") or v.ndim != 2:
+                continue
+            lora_name = k[: -len(".router.weight")]
+            expected_rank = modules_dim.get(lora_name)
+            if expected_rank is None:
+                continue
+            if v.size(1) - expected_rank == sigma_feature_dim_detected:
+                sigma_router_names.append(lora_name)
 
     network = LoRANetwork(
         text_encoders,
@@ -619,7 +650,7 @@ def create_network_from_weights(
         channel_scales_dict=channel_scales_dict,
         use_sigma_router=bool(sigma_router_names),
         sigma_feature_dim=sigma_feature_dim_detected or 128,
-        sigma_hidden_dim=sigma_hidden_dim_detected or 128,
+        sigma_hidden_dim=128,  # unused — kept for API compat with LoRANetwork
         sigma_router_names=sigma_router_names or None,
         # Per-module Hydra selection from the checkpoint: if the file contains
         # *both* hydra-style and plain-LoRA-style leaves, we're reloading a

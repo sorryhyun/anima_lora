@@ -1,6 +1,6 @@
 # Embedding Inversion
 
-Finds the optimal text embedding (crossattn_emb) for a target image by optimizing in the post-T5, pre-DiT embedding space. The frozen DiT acts as a fixed decoder — only the embedding is updated via gradient descent on the flow-matching loss.
+Finds the optimal text embedding (`crossattn_emb`) for a target image by optimizing in the post-T5, pre-DiT embedding space. The frozen DiT acts as a fixed decoder — only the embedding is updated via gradient descent on the flow-matching loss.
 
 This reveals "how the DiT interprets the image" in embedding space, producing a `.safetensors` file that can be used as a conditioning input for inference or as an analysis tool for understanding model behavior.
 
@@ -10,7 +10,7 @@ This reveals "how the DiT interprets the image" in embedding space, producing a 
 # Preprocess images first (caches latents + text encoder outputs)
 make preprocess
 
-# Run inversion on 10 random images
+# Run inversion on 1 random image (INVERT_N=10 for 10)
 make invert
 ```
 
@@ -26,10 +26,10 @@ python scripts/invert_embedding.py \
 
 ## How it works
 
-1. **Load target** — either encode a raw image via VAE, or load cached latents from `post_image_dataset/`
-2. **Initialize embedding** — from cached text encoder output, a text prompt, a saved embedding, or zeros
-3. **Optimize** — for each step, sample random noise levels (sigmas), run the frozen DiT forward, compute MSE between predicted and target noise, and backpropagate through the DiT to update only the embedding
-4. **Save** — the best embedding (lowest loss) is saved as a `.safetensors` file with metadata
+1. **Load target** — either encode a raw image via VAE, or load cached latents from `post_image_dataset/`.
+2. **Initialize embedding** — from cached text encoder output, a text prompt, a saved embedding, or zeros.
+3. **Optimize** — for each step, sample random noise levels (sigmas), run the frozen DiT forward, compute MSE between predicted and target noise, and backpropagate through the DiT to update only the embedding.
+4. **Save** — the best embedding (lowest loss) is saved as a `.safetensors` file with metadata.
 
 ### Optimization details
 
@@ -253,6 +253,6 @@ This makes the file interchangeable with any prefix-mode checkpoint: the existin
 
 ## Caveats and future work
 
-- **Prefix applied to positive AND negative conditioning.** `library/inference/generation.py:152–153` calls `prepend_prefix` on both `embed` and `negative_embed`. For pure prefix tuning (quality prior) that's fine; for a *reference* you may want the subject only on the positive path. Splitting the two is a small inference-side patch, not done yet.
+- **Prefix applied to positive AND negative conditioning.** `library/inference/generation.py` calls `prepend_prefix` on both `embed` and `negative_embed`. For pure prefix tuning (quality prior) that's fine; for a *reference* you may want the subject only on the positive path. Splitting the two is a small inference-side patch, not done yet.
 - **Placement mode is metadata-only.** A `<REF>` marker in `--template` today just gets stripped — the K slots always front-prepend. The character offset is recorded so a future loader can splice the K vectors into the middle of a user's prompt where they write `<REF>`, instead of at position 0.
 - **Text-space ceiling.** Like all textual inversion, this can't encode detail that T5 space wasn't trained to represent (exact pose, micro-geometry, pixel-precise composition). For stronger fidelity, a KV-cache reference-attention approach (concat ref K/V into self-attn) is the next rung up — trades extra compute per step for direct access to the DiT's visual representation space.

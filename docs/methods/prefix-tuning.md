@@ -84,14 +84,14 @@ The pretrained DiT treats zero-padded positions as attention sinks (they contrib
 
 ### Training loop
 
-1. Cache text encoder outputs and latents to disk (as usual)
-2. Load DiT — all weights frozen, no LoRA attached
+1. Cache text encoder outputs and latents to disk (as usual).
+2. Load DiT — all weights frozen, no LoRA attached.
 3. Each step:
-   - Load cached embeddings and latents from disk
-   - Prepend prefix vectors to `crossattn_emb`
-   - Forward through frozen DiT → compute diffusion loss
-   - Backward → gradients flow through cross-attention back to prefix vectors only
-   - Update 16,384 parameters with AdamW8bit
+   - Load cached embeddings and latents from disk.
+   - Prepend prefix vectors to `crossattn_emb`.
+   - Forward through frozen DiT → compute diffusion loss.
+   - Backward → gradients flow through cross-attention back to prefix vectors only.
+   - Update 16,384 parameters with AdamW8bit.
 
 ### What it learns
 
@@ -99,25 +99,23 @@ The prefix vectors occupy positions that every DiT block's cross-attention atten
 
 Unlike LoRA which modifies internal model representations, prefix tuning works entirely in the input embedding space. This makes it:
 
-- **Composable** — stack multiple prefix weights at inference by concatenating their vectors
-- **Interpretable** — the learned vectors live in the same space as text embeddings
-- **Non-destructive** — the base model is completely untouched
+- **Composable** — stack multiple prefix weights at inference by concatenating their vectors.
+- **Interpretable** — the learned vectors live in the same space as text embeddings.
+- **Non-destructive** — the base model is completely untouched.
 
 ## Quick start
 
 ### Training
 
-```bash
-make prefix
-```
-
-Or with custom settings:
+Prefix is a variant of the postfix family. Two ways to run it:
 
 ```bash
-accelerate launch --mixed_precision bf16 train.py \
-    --method prefix --preset default \
-    --network_dim 32 \
-    --learning_rate 5e-4
+# Clean per-variant path (recommended for most users):
+make lora-gui GUI_PRESETS=prefix
+
+# Toggle-block path: edit configs/methods/postfix.toml to activate the prefix
+# block, then run:
+make postfix
 ```
 
 ### Inference
@@ -132,9 +130,11 @@ python inference.py \
     --image_size 1024 1024
 ```
 
+Or `make test-prefix` to run against the most recent `output/anima_prefix*.safetensors`.
+
 ## Config reference
 
-`configs/methods/prefix.toml`:
+`configs/gui-methods/prefix.toml` (and the prefix toggle block in `configs/methods/postfix.toml`):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -146,7 +146,7 @@ python inference.py \
 | `caption_shuffle_variants` | 2 | Caption diversity per image |
 | `blocks_to_swap` | 0 | No CPU offloading needed |
 | `cache_llm_adapter_outputs` | true | Required — prefix operates on cached adapter outputs |
-| `trim_crossattn_kv` | true | Cross-attention KV trim for efficiency |
+| `trim_crossattn_kv` | false | Deprecated; the trim path was FA4-only and FA4 has been removed. See `docs/optimizations/fa4.md`. |
 
 ## Prefix vs postfix vs LoRA
 
@@ -174,8 +174,8 @@ In practice, prefix tends to converge slightly faster for style transfer tasks.
 
 Prefix tuning and LoRA are complementary. A common workflow:
 
-1. Train prefix for global style/quality (1 epoch, ~2 minutes)
-2. Train LoRA for subject fidelity (64 epochs)
+1. Train prefix for global style/quality (1 epoch, ~2 minutes).
+2. Train LoRA for subject fidelity (64 epochs).
 3. Use both at inference:
 
 ```bash

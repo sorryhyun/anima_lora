@@ -4,7 +4,7 @@ Two independent Anima DiT implementations live side-by-side in this workspace:
 
 | label | path | role |
 |---|---|---|
-| **anima_lora** | `anima_lora/library/anima_models.py` (class `Anima`) | training + inference stack for LoRA / distillation / GRAFT / Spectrum |
+| **anima_lora** | `anima_lora/library/anima/models.py` (class `Anima`) | training + inference stack for LoRA / distillation / GRAFT / Spectrum |
 | **comfy** | `comfy/comfy/ldm/cosmos/predict2.py` (class `MiniTrainDIT`) + `comfy/comfy/ldm/anima/model.py` (wrapper) | ComfyUI's vanilla Anima runtime |
 
 They share the same model family lineage (`MiniTrainDIT`) and load the same base checkpoints for the transformer blocks, but the two forward paths have diverged in several behaviorally-visible ways. This doc catalogs those differences so you don't waste debugging cycles chasing phantom bugs when a workflow behaves differently between `inference.py` and ComfyUI.
@@ -32,7 +32,7 @@ This matters in particular for anything that hooks the forward path — notably 
 
 The distilled modulation-guidance head is baked into anima_lora's `Anima.__init__` and invoked unconditionally during `forward_mini_train_dit`. ComfyUI's `MiniTrainDIT` and the Anima wrapper do not declare, reference, or load this module at all.
 
-**anima_lora** — `library/anima_models.py:1345-1349`:
+**anima_lora** — `library/anima/models.py:1345-1349`:
 
 ```python
 self.pooled_text_proj = nn.Sequential(
@@ -42,9 +42,9 @@ self.pooled_text_proj = nn.Sequential(
 )
 ```
 
-Zero-initialized output layer (`anima_models.py:1361-1363`) so it's a no-op at init, trained via `scripts/distill_modulation.py`.
+Zero-initialized output layer (`library/anima/models.py:1361-1363`) so it's a no-op at init, trained via `scripts/distill_modulation.py`.
 
-Used in `forward_mini_train_dit` at `anima_models.py:1628-1642`:
+Used in `forward_mini_train_dit` at `library/anima/models.py:1628-1642`:
 
 ```python
 if not skip_pooled_text_proj:
@@ -58,7 +58,7 @@ if not skip_pooled_text_proj:
         t_embedding_B_T_D = t_embedding_B_T_D + self.pooled_text_proj(pooled_text).unsqueeze(1)
 ```
 
-Explicitly excluded from LoRA targeting in `networks/lora_anima.py:66`:
+Explicitly excluded from LoRA targeting in `networks/lora_anima/factory.py`:
 
 ```python
 exclude_patterns.append(
@@ -91,7 +91,7 @@ self.uncond_combined = (proj_neg + delta).detach()
 
 ### Checkpoint compatibility
 
-A `pooled_text_proj.safetensors` trained in anima_lora is not a state-dict subset of ComfyUI's `MiniTrainDIT`. It's shipped as a standalone weight file (`models/anima_mod_guidance/pooled_text_proj_0413.safetensors`) and loaded by the custom node's adapter-loader (`mod_guidance.py:82-113`), not by ComfyUI's model loader. LoRA checkpoints trained in anima_lora are safe in ComfyUI — they already exclude `pooled_text_proj` keys by construction (`lora_anima.py:66`).
+A `pooled_text_proj.safetensors` trained in anima_lora is not a state-dict subset of ComfyUI's `MiniTrainDIT`. It's shipped as a standalone weight file (`models/anima_mod_guidance/pooled_text_proj_0413.safetensors`) and loaded by the custom node's adapter-loader (`mod_guidance.py`), not by ComfyUI's model loader. LoRA checkpoints trained in anima_lora are safe in ComfyUI — they already exclude `pooled_text_proj` keys by construction (`networks/lora_anima/factory.py`).
 
 ## 2. Forward-path differences
 
@@ -99,7 +99,7 @@ A `pooled_text_proj.safetensors` trained in anima_lora is not a state-dict subse
 
 Both codebases run a Qwen3 → `llm_adapter` → 1024-dim cross-attention path, but they differ in how the post-adapter sequence is shaped and masked.
 
-**anima_lora** — `library/anima_models.py:1805+` (`_preprocess_text_embeds`) computes `crossattn_seqlens` from the target attention mask, returns `(context, seqlens)`. The seqlens tensor is threaded all the way into the flex-attention block mask at `forward_mini_train_dit:1682-1702`:
+**anima_lora** — `library/anima/models.py:1805+` (`_preprocess_text_embeds`) computes `crossattn_seqlens` from the target attention mask, returns `(context, seqlens)`. The seqlens tensor is threaded all the way into the flex-attention block mask at `forward_mini_train_dit:1682-1702`:
 
 ```python
 def _crossattn_mask_mod(b, h, q_idx, kv_idx):
@@ -110,7 +110,7 @@ attn_params.crossattn_block_mask = attention.create_block_mask(
 )
 ```
 
-It also supports bucketed KV trimming + sigmoid-based LSE correction for flash4 (`anima_models.py:1662-1679`, currently commented out but the correction is documented in `docs/methods/mod-guidance.md` and `docs/optimizations/fa4.md`).
+It also supports bucketed KV trimming + sigmoid-based LSE correction for flash4 (`library/anima/models.py:1662-1679`, currently commented out but the correction is documented in `docs/methods/mod-guidance.md` and `docs/optimizations/fa4.md`).
 
 **comfy** — `comfy/comfy/ldm/anima/model.py:193-214` pads the llm_adapter output to a fixed 512 tokens:
 
@@ -125,7 +125,7 @@ It does not compute per-sample seqlens, does not set up flex block masks, and do
 
 ### 2.2 Static-shape token bucketing
 
-**anima_lora** — `set_static_token_count(4096)` enables a transform (`anima_models.py:1593-1622`) that flattens `(B, T, H, W, D)` into a fake 5D shape of `(B, 1, target, 1, D)` and zero-pads to 4096 tokens. Together with bucket resolutions that satisfy `(H/16)·(W/16) ≈ 4096`, this gives `torch.compile` a single static shape across all aspect ratios — no recompilation across buckets.
+**anima_lora** — `set_static_token_count(4096)` enables a transform (`library/anima/models.py:1593-1622`) that flattens `(B, T, H, W, D)` into a fake 5D shape of `(B, 1, target, 1, D)` and zero-pads to 4096 tokens. Together with bucket resolutions that satisfy `(H/16)·(W/16) ≈ 4096`, this gives `torch.compile` a single static shape across all aspect ratios — no recompilation across buckets.
 
 **comfy** — no static-shape mode. Processes variable `(B, T, H, W, D)` directly. Only padding is to patch boundaries via `comfy.ldm.common_dit.pad_to_patch_size()`.
 
@@ -133,7 +133,7 @@ It does not compute per-sample seqlens, does not set up flex block masks, and do
 
 ### 2.3 Block forward signature
 
-**anima_lora** (`anima_models.py:1158+`):
+**anima_lora** (`library/anima/models.py:1158+`):
 
 ```python
 def forward(self, x_B_T_H_W_D, emb_B_T_D, crossattn_emb,
@@ -158,7 +158,7 @@ Two concrete divergences:
 
 ### 2.4 Final layer
 
-**anima_lora** (`anima_models.py:1767`):
+**anima_lora** (`library/anima/models.py:1767`):
 
 ```python
 x_B_T_H_W_O = self.final_layer(
@@ -181,13 +181,13 @@ ComfyUI explicitly casts `x` to `crossattn_emb.dtype` before the final layer; an
 
 | capability | anima_lora | comfy |
 |---|---|---|
-| `torch.compile(block._forward)` | `compile_blocks()` at `anima_models.py:1385` | none |
-| `@torch._disable_dynamo` on unsloth checkpoint wrapper | yes, `anima_models.py:214` | N/A |
+| `torch.compile(block._forward)` | `compile_blocks()` at `library/anima/models.py:1385` | none |
+| `@torch._disable_dynamo` on unsloth checkpoint wrapper | yes, `library/anima/models.py:214` | N/A |
 | Gradient checkpointing — standard | yes | yes |
 | Gradient checkpointing — CPU offload | yes (`enable_gradient_checkpointing(cpu_offload=True)`) | no |
 | Gradient checkpointing — unsloth offload | yes (`enable_gradient_checkpointing(unsloth_offload=True)`) | no |
 | Static-shape to stabilize compile cache | `set_static_token_count(4096)` | no |
-| Block swap / CPU offload inference | `enable_block_swap`, `ModelOffloader` at `anima_models.py:1493-1535` | relies on `comfy/model_management.py` LoRAM reservation |
+| Block swap / CPU offload inference | `enable_block_swap`, `ModelOffloader` at `library/anima/models.py:1493-1535` | relies on `comfy/model_management.py` LoRAM reservation |
 | Switch offload mode between training/inference | `switch_block_swap_for_inference()` / `switch_block_swap_for_training()` | N/A |
 
 anima_lora's entire performance stack is structured around "16GB VRAM must work for training and inference, and compile once across all bucket shapes." ComfyUI's stack is structured around "the runtime already handles VRAM via model_management, just make forward correct." Neither is wrong; they're solving different problems.
@@ -196,7 +196,7 @@ anima_lora's entire performance stack is structured around "16GB VRAM must work 
 
 ## 4. LoRA loading
 
-**anima_lora** uses `networks/lora_anima.py` to build a LoRA network via monkey-patching target modules. Target selection uses the exclude pattern at line 66 (quoted above) and `network_module` dispatch in configs. LoRA application is by runtime patching, not by weight merging.
+**anima_lora** uses the `networks/lora_anima/` package to build a LoRA network via monkey-patching target modules. Target selection uses the exclude pattern quoted above (in `factory.py`) and `network_module` dispatch in configs. LoRA application is by runtime patching, not by weight merging.
 
 **comfy** applies LoRAs via `comfy/lora.py` + `comfy/model_patcher.py`. Weight merging is the default; patch-based is also supported. ComfyUI's LoRA key-mapping has to convert between anima_lora's key naming (e.g. `lora_unet_blocks_0_cross_attn_q_proj.lora_down.weight`) and ComfyUI's expected format — `scripts/convert_lora_to_comfy.py` handles this for you when exporting LoRAs for ComfyUI use.
 
@@ -206,7 +206,7 @@ anima_lora's entire performance stack is structured around "16GB VRAM must work 
 
 Both paths ultimately expect the same thing: a `(B, 512, 1024)` post-llm-adapter cross-attention input. The differences are in **how you get there**.
 
-**anima_lora** — `library/anima_utils.py` loads a Qwen3 tokenizer + encoder, runs the llm_adapter outside the DiT (cached to disk via `preprocess/cache_text_embeddings.py`), and passes the resulting `crossattn_emb` directly into `forward_mini_train_dit` as `context`. `crossattn_seqlens` is either derived from the attention mask or passed explicitly.
+**anima_lora** — `library/anima/weights.py` loads a Qwen3 tokenizer + encoder, runs the llm_adapter outside the DiT (cached to disk via `preprocess/cache_text_embeddings.py`), and passes the resulting `crossattn_emb` directly into `forward_mini_train_dit` as `context`. `crossattn_seqlens` is either derived from the attention mask or passed explicitly.
 
 **comfy** — ComfyUI's CLIP/text encoder framework wraps the Qwen3 + llm_adapter path in a CONDITIONING object that bypasses disk caching. The llm_adapter call is inside the Anima wrapper's `preprocess_text_embeds` (`comfy/comfy/ldm/anima/model.py:193+`), which is called during the ComfyUI sample loop rather than ahead-of-time.
 
@@ -222,7 +222,7 @@ This doesn't affect per-step forward behavior — both implementations accept `t
 
 Already covered in §3 as part of the performance table. Two concrete things worth calling out:
 
-- **anima_lora's `ModelOffloader`** (`anima_models.py:1493+`) is a custom async-aware offloader with `wait_for_block` / `submit_move_blocks` hooks in the block loop at `anima_models.py:1744-1757`. It runs inside the forward, not at the runtime layer.
+- **anima_lora's `ModelOffloader`** (`library/anima/models.py:1493+`) is a custom async-aware offloader with `wait_for_block` / `submit_move_blocks` hooks in the block loop at `library/anima/models.py:1744-1757`. It runs inside the forward, not at the runtime layer.
 - **ComfyUI's model management** is external: `comfy/model_management.py` decides what to keep in VRAM and swaps whole models when memory pressure exceeds thresholds. It does not do per-block swap inside a forward.
 
 **Practical consequence.** If you train with `--blocks_to_swap 16` in anima_lora, the 16GB VRAM path works. If you run the same base model in ComfyUI with less than the required VRAM, ComfyUI will either OOM or swap the entire model between samples — there's no per-block offload equivalent.
@@ -238,7 +238,7 @@ Already covered in §3 as part of the performance table. Two concrete things wor
 
 ### Running a ComfyUI-loaded model through `inference.py`
 
-- You can't, directly. `inference.py` loads base weights from a `.safetensors` via `anima_utils.load_anima_model`, not from a ComfyUI model object. If you have a ComfyUI-compatible checkpoint on disk it will load fine into anima_lora's `Anima` class — the base weights match.
+- You can't, directly. `inference.py` loads base weights from a `.safetensors` via `library.anima.weights.load_anima_model`, not from a ComfyUI model object. If you have a ComfyUI-compatible checkpoint on disk it will load fine into anima_lora's `Anima` class — the base weights match.
 - `pooled_text_proj` will be zero-initialized (no-op) unless you also pass `--pooled_text_proj path/to/pooled_text_proj_0413.safetensors`.
 
 ### Hooking forward semantics (the mod-guidance case)
@@ -263,8 +263,8 @@ There is no reason to merge the two; they solve different problems. The point of
 
 - `docs/methods/mod-guidance.md` — modulation-guidance mechanism, per-block schedule rationale, and distillation flow
 - [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) `mod_guidance.py` — ComfyUI port of mod guidance with the per-block hook mechanism
-- `library/anima_models.py` — anima_lora's `Anima` class, forward path at `forward_mini_train_dit`
+- `library/anima/models.py` — anima_lora's `Anima` class, forward path at `forward_mini_train_dit`
 - `comfy/comfy/ldm/cosmos/predict2.py::MiniTrainDIT` — ComfyUI's vanilla forward
 - `comfy/comfy/ldm/anima/model.py` — ComfyUI's Anima wrapper (`preprocess_text_embeds`)
-- `networks/lora_anima.py` — anima_lora LoRA targeting (`pooled_text_proj` exclusion at line 66)
+- `networks/lora_anima/factory.py` — anima_lora LoRA targeting (`pooled_text_proj` exclusion)
 - `scripts/convert_lora_to_comfy.py` — key-name translator for moving LoRAs between the two stacks

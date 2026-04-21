@@ -164,7 +164,7 @@ invert:
 		--probe_functional --probe_blocks $(INVERT_PROBE_BLOCKS) \
 		--output_dir $(INVERT_OUT) \
 		--blocks_to_swap $(INVERT_SWAP) \
-		--log_block_grads 
+		--log_block_grads \
 		--init_zeros
 
 # Reference inversion: learn K prefix-slot vectors that encode a single

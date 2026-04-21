@@ -359,12 +359,13 @@ class LoRANetwork(torch.nn.Module):
                     extra_kwargs["num_experts"] = self.num_experts
                     extra_kwargs["expert_init_std"] = self.expert_init_std
 
-                # σ-conditional router: only build sigma_mlp on modules whose
-                # name matches the layer filter (cross_attn.q / self_attn.qkv
-                # by default — see B0 pre-analysis in timestep-hydra.md).
-                # From-weights path uses an explicit name set; fresh-from-kwargs
-                # path uses a regex over original_name. Gated on the effective
-                # class so a hydra-excluded module can't pick up σ either.
+                # σ-conditional router: only widen the router input with
+                # sinusoidal(σ) features on modules whose name matches the
+                # layer filter (cross_attn.q / self_attn.qkv by default — see
+                # B0 pre-analysis in timestep-hydra.md). From-weights path uses
+                # an explicit name set; fresh-from-kwargs path uses a regex
+                # over original_name. Gated on the effective class so a
+                # hydra-excluded module can't pick up σ either.
                 if self.use_sigma_router and effective_module_class in (
                     HydraLoRAModule,
                     OrthoHydraLoRAExpModule,
@@ -608,18 +609,19 @@ class LoRANetwork(torch.nn.Module):
             reft._timestep_mask = None
 
     def set_sigma(self, sigmas: torch.Tensor) -> None:
-        """Stash per-sample σ on every HydraLoRA module that has a ``sigma_mlp``.
+        """Stash per-sample σ on every HydraLoRA module whose router accepts σ.
 
         Mirrors ``set_timestep_mask`` — one call per training step, propagates
-        σ to every module that opts in. Modules without a ``sigma_mlp`` just
-        ignore it. The network also caches σ on itself so the per-σ-bucket
-        balance loss can bucket the cached gates at loss-compute time.
+        σ to every module that opts in (``sigma_feature_dim > 0``). Other
+        modules ignore it. The network also caches σ on itself so the per-
+        σ-bucket balance loss can bucket the cached gates at loss-compute
+        time.
         """
         if not self.use_sigma_router:
             return
         self._last_sigma = sigmas.detach()
         for lora in self.unet_loras + self.text_encoder_loras:
-            if getattr(lora, "sigma_mlp", None) is not None:
+            if getattr(lora, "sigma_feature_dim", 0) > 0:
                 lora._sigma = sigmas
 
     def clear_sigma(self) -> None:
@@ -715,7 +717,7 @@ class LoRANetwork(torch.nn.Module):
             total = term if total is None else total + term
             count += 1
 
-            if want_per_bucket and getattr(lora, "sigma_mlp", None) is not None:
+            if want_per_bucket and getattr(lora, "sigma_feature_dim", 0) > 0:
                 # Only penalize per-bucket collapse on modules that actually
                 # have σ-conditional routing capacity to collapse.
                 module_bucket_sum = None
@@ -934,8 +936,9 @@ class LoRANetwork(torch.nn.Module):
 
             def _is_router_param(pname: str) -> bool:
                 # named_parameters() yields top-level names like "router.weight"
-                # / "sigma_mlp.0.weight" — no leading dot.
-                return pname.startswith("router.") or pname.startswith("sigma_mlp.")
+                # — no leading dot. σ features live inside router.weight now
+                # (columns [lora_dim:] of the weight), so there's a single path.
+                return pname.startswith("router.")
 
             for lora in loras:
                 matched_reg_lr = None

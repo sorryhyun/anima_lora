@@ -37,11 +37,19 @@ class HydraLoRAModule(BaseLoRAModule):
     Reference: docs/methods/hydra-lora.md
 
     Optional σ-conditional routing (Track B, timestep-hydra.md): when
-    ``sigma_feature_dim > 0``, a small 2-layer MLP maps sinusoidal(σ) to an
-    additive bias on the gate logits. Zero-init on the final layer means
-    training starts identical to base HydraLoRA; σ-dependence only emerges if
-    gradients push it. ``|sigma_mlp[-1].weight|`` at convergence is a direct
-    diagnostic of how much σ-conditioning was actually used.
+    ``sigma_feature_dim > 0``, ``sinusoidal(σ)`` is **concatenated** to the
+    pooled rank-R router input, making ``self.router`` a
+    ``Linear(r + sigma_feat, E)``. The σ-feature columns of the router
+    weight are zero-init, so step-0 behavior is identical to the no-σ router
+    and σ-dependence only emerges as those columns accumulate gradient.
+
+    Why direct-input rather than the previous additive-bias ``sigma_mlp``: a
+    bias-only σ path's gradient is ``dL/d logits · d_sigma_feat``, which
+    vanishes whenever experts are undifferentiated (all ``score_e`` near
+    equal → ``dL/d logit_e ≈ 0``). Feeding σ into the router's input avoids
+    this chicken-and-egg problem — the σ columns train alongside the
+    content columns on the same chain rule, so σ routing emerges as soon as
+    the router learns anything at all.
     """
 
     def __init__(
@@ -58,7 +66,7 @@ class HydraLoRAModule(BaseLoRAModule):
         channel_scale=None,
         sigma_feature_dim: int = 0,
         sigma_hidden_dim: int = 128,
-        expert_init_std: float = 1e-4,
+        expert_init_std: float = 0,
     ):
         super().__init__(
             lora_name,
@@ -94,32 +102,30 @@ class HydraLoRAModule(BaseLoRAModule):
         if expert_init_std > 0.0:
             torch.nn.init.normal_(self.lora_up_weight, mean=0.0, std=expert_init_std)
 
-        # Local router: reads pooled rank-R signal (post-`lora_down`) → per-sample
+        # Local router: reads [pooled rank-R signal | sinusoidal(σ)] → per-sample
         # expert gates. Operating in rank-R space (not raw in_dim) is load-bearing:
         # raw DiT inputs have 80–96× DC-bias outlier channels and ~4096 tokens, so
         # mean-pooling raw inputs collapsed the signal to near-constant DC noise and
         # left the router with no trainable gradient (see docs/methods/hydra-lora.md
         # §Fixes). `lora_down` is trained jointly, so signal-carrying directions
         # accumulate here and there are no large outliers to saturate softmax in bf16.
-        self.router = torch.nn.Linear(self.lora_dim, num_experts, bias=True)
-        torch.nn.init.normal_(self.router.weight, std=0.01)
-        torch.nn.init.zeros_(self.router.bias)
+        self.sigma_feature_dim = int(sigma_feature_dim)
+        # sigma_hidden_dim retained as an attribute for API compatibility but
+        # is no longer used — the sigma_mlp hidden layer is gone.
+        self.sigma_hidden_dim = int(sigma_hidden_dim)
+        router_in_dim = self.lora_dim + self.sigma_feature_dim
+        self.router = torch.nn.Linear(router_in_dim, num_experts, bias=True)
+        # Split init: small-std on the pooled rank-R columns, zeros on the
+        # σ-feature columns. Step 0 gate is then identical to the σ=off
+        # router, and σ influence emerges only as those columns train.
+        with torch.no_grad():
+            self.router.weight.zero_()
+            torch.nn.init.normal_(
+                self.router.weight[:, : self.lora_dim], std=0.01
+            )
+            self.router.bias.zero_()
 
         self._register_channel_scale(self.lora_down.weight.data, channel_scale)
-
-        self.sigma_feature_dim = int(sigma_feature_dim)
-        self.sigma_hidden_dim = int(sigma_hidden_dim)
-        if self.sigma_feature_dim > 0:
-            # σ-conditional router bias: sinusoidal(σ) -> 2-layer MLP -> E logits.
-            # Zero-init the final layer so step 0 logits == base router output.
-            self.sigma_mlp = torch.nn.Sequential(
-                torch.nn.Linear(self.sigma_feature_dim, self.sigma_hidden_dim),
-                torch.nn.SiLU(),
-                torch.nn.Linear(self.sigma_hidden_dim, num_experts, bias=False),
-            )
-            torch.nn.init.zeros_(self.sigma_mlp[-1].weight)
-        else:
-            self.sigma_mlp = None
 
         self._last_gate = None  # (B, num_experts), cached each forward for balance loss
         self._sigma = None  # (B,) σ tensor; set externally by LoRANetwork.set_sigma
@@ -142,7 +148,8 @@ class HydraLoRAModule(BaseLoRAModule):
         )
 
     def _compute_gate(self, lx: torch.Tensor) -> torch.Tensor:
-        """Pool the rank-R `lora_down` output over the sequence dim, run router, softmax.
+        """Pool the rank-R `lora_down` output over the sequence dim, optionally
+        concatenate sinusoidal(σ), run router, softmax.
 
         RMS (L2-norm) pool per channel: ``sqrt(mean(lx**2))``. Unlike mean pool,
         RMS does not cancel zero-mean activations by √N, so the pooled vector
@@ -152,23 +159,36 @@ class HydraLoRAModule(BaseLoRAModule):
         has no such outliers, so RMS is safe here (see
         ``docs/methods/hydra-lora.md`` §Fixes).
 
-        When ``sigma_mlp`` is present and ``_sigma`` is set, adds a σ-conditional
-        bias to the logits before softmax (zero at init → identity to base).
+        When ``sigma_feature_dim > 0``, ``sinusoidal(σ)`` is concatenated to
+        the pooled vector. If ``_sigma`` is None (eval without set_sigma,
+        pretraining warmup), zero-pad the σ slice so the router-input shape
+        stays constant.
         """
         if lx.dim() >= 3:
             B = lx.shape[0]
             pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
         else:
             pooled = lx
+        B = pooled.shape[0]
         # lx is fp32 (bottleneck policy) but router weights follow the adapter's
         # storage dtype (bf16 at inference) — align before matmul.
         pooled = pooled.to(self.router.weight.dtype)
-        logits = self.router(pooled)  # (B, num_experts)
-        if self.sigma_mlp is not None and self._sigma is not None:
-            sigma_feat = _sigma_sinusoidal_features(
-                self._sigma, self.sigma_feature_dim
-            ).to(logits.dtype)
-            logits = logits + self.sigma_mlp(sigma_feat)
+        if self.sigma_feature_dim > 0:
+            if self._sigma is not None:
+                sigma_feat = _sigma_sinusoidal_features(
+                    self._sigma, self.sigma_feature_dim
+                ).to(pooled.dtype)
+            else:
+                sigma_feat = torch.zeros(
+                    B,
+                    self.sigma_feature_dim,
+                    dtype=pooled.dtype,
+                    device=pooled.device,
+                )
+            router_in = torch.cat([pooled, sigma_feat], dim=-1)
+        else:
+            router_in = pooled
+        logits = self.router(router_in)  # (B, num_experts)
         return torch.softmax(logits, dim=-1)
 
     def forward(self, x):

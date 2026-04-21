@@ -19,7 +19,7 @@ Two bundled features that shared a single dependency on FA4's `return_lse=True` 
 
 ### FA4 was slower than FA2 in practice
 
-On a single RTX 5060 Ti 16GB with LoRA rank 32, batch 2, 182 steps, FA4 was effectively a wash with FA2 — and often a regression once compile/static-token effects were accounted for. Representative numbers from the old benchmark table (before removal):
+On a single RTX 5060 Ti 16 GB with LoRA rank 32, batch 2, 182 steps, FA4 was effectively a wash with FA2 — and often a regression once compile/static-token effects were accounted for. Representative numbers from the old benchmark table (before removal):
 
 | Configuration | 2nd Epoch |
 |---|---|
@@ -48,7 +48,7 @@ Keeping it as a flag that everyone sets to `true` in configs, with an opaque cod
 
 - **Default attention is FA2** (`attn_mode = "flash"`), via the upstream `flash-attn` 2.x wheel. This is what every provided config now uses.
 - **Other backends still work:** `torch` (SDPA), `flex` (PyTorch flex attention), `sageattn`, `xformers`. None of them use trimming; all run the full 512-length cross-attention KV with attention-sink padding intact.
-- **`trim_crossattn_kv` is a no-op.** The config flag still parses (and all stock configs set it to `false`), but the trim code in `library/anima_models.py` is commented out. If the flag is `true`, `train.py` will still compute `crossattn_seqlens` and pass it into the model, but the model will ignore it unless you're on `attn_mode="flex"` — in which case it builds a BlockMask that *masks out* the padding instead of treating it as a sink, which regresses quality. Leave it at `false`.
+- **`trim_crossattn_kv` is a no-op.** The config flag still parses (and all stock configs set it to `false`), but the trim code in `library/anima/models.py` is commented out. If the flag is `true`, `train.py` will still compute `crossattn_seqlens` and pass it into the model, but the model will ignore it unless you're on `attn_mode="flex"` — in which case it builds a BlockMask that *masks out* the padding instead of treating it as a sink, which regresses quality. Leave it at `false`.
 
 ## If you want to bring FA4 back
 
@@ -57,7 +57,7 @@ Everything is commented rather than deleted, so re-enabling is mechanical:
 1. **Dependency.** Uncomment the `flash-attn-4` line in `pyproject.toml`. On consumer Blackwell you still need the SM120 fork — the local `flash-attention-sm120/` source tree is kept for reference.
 2. **Attention dispatch.** Uncomment the FA4 import block and the `flash4` branch in `networks/attention.py`. Both are bracketed with `# Flash Attention 4 ... is not supported yet` comments.
 3. **Train path.** In `train.py`, `load_unet_lazily` currently raises on `attn_mode == "flash4"`; replace that with the original check against `_flash_attn_4_func_raw is not None`. Also restore the `args.fp8_base_unet` call (if you want fp8 too).
-4. **KV trim.** Uncomment the `trim_crossattn_kv` branch in `library/anima_models.py` (the `if ... attn_mode == "flash4"` block). Flip `trim_crossattn_kv = true` in whichever configs you want the trim in, and switch those configs to `attn_mode = "flash4"`.
-5. **GUI / configs.** Add `"flash4"` back to `_ATTN_MODES` in `gui/__init__.py` and the `--attn_mode` choices in `inference.py` and `library/anima_train_utils.py`. The FA4 VRAM presets (`FA4 8GB VRAM` / `FA4 16GB VRAM`) are also commented out in `gui/__init__.py`.
+4. **KV trim.** Uncomment the `trim_crossattn_kv` branch in `library/anima/models.py` (the `if ... attn_mode == "flash4"` block). Flip `trim_crossattn_kv = true` in whichever configs you want the trim in, and switch those configs to `attn_mode = "flash4"`.
+5. **GUI / configs.** Add `"flash4"` back to `_ATTN_MODES` in `gui/__init__.py` and the `--attn_mode` choices in `inference.py` and `library/anima/training.py`. The FA4 VRAM presets (`FA4 8GB VRAM` / `FA4 16GB VRAM`) are also commented out in `gui/__init__.py`.
 
 Before doing any of that, benchmark FA4 on your own hardware. If the kernel has matured upstream — or if SM120 TMA has landed in stock `flash-attn` — it may be worth reviving. On our targets in 2026-04 it wasn't.

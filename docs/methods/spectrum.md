@@ -38,24 +38,26 @@ step i
 
 The window size N starts at `window_size` and grows by `flex_window` after each actual forward:
 
-1. **Warmup** (steps 0 .. warmup-1): always run full forward to seed the forecaster
-2. **Adaptive**: actual forward every `floor(N)` cached steps; N += α after each forward
+1. **Warmup** (steps `0 .. warmup-1`): always run full forward to seed the forecaster.
+2. **Adaptive**: actual forward every `floor(N)` cached steps; N += α after each forward.
 
 With 30 steps and defaults (N=2, α=0.25, warmup=6): more actual forwards for quality, moderate speedup.
 
 ### Chebyshev forecasting
 
 For each cached step, features are predicted by:
-1. Mapping step indices to τ ∈ [-1, 1]
-2. Building Chebyshev basis [T₀(τ), T₁(τ), ..., Tₘ(τ)] via recurrence
-3. Ridge regression: (XᵀX + λI)C = XᵀH (solved via Cholesky)
-4. Prediction: h* = [T₀(τ*), ..., Tₘ(τ*)] · C
+
+1. Mapping step indices to τ ∈ [-1, 1].
+2. Building Chebyshev basis [T₀(τ), T₁(τ), ..., Tₘ(τ)] via recurrence.
+3. Ridge regression: (XᵀX + λI)C = XᵀH (solved via Cholesky).
+4. Prediction: h* = [T₀(τ*), ..., Tₘ(τ*)] · C.
 
 Optionally blended with first-order Taylor (Newton forward difference) via weight `w`.
 
 ### Cached step fast path
 
 On a cached step, only these layers run:
+
 - `t_embedder` — timestep MLP (tiny)
 - `final_layer` — LayerNorm + AdaLN + linear projection
 - `unpatchify` — reshape to pixel space
@@ -78,13 +80,9 @@ All 28 transformer blocks (self-attn, cross-attn, MLP × 28) are skipped.
 
 ### Residual calibration
 
-On each actual forward, the forecaster's prediction error is measured:
-`residual = actual_output - predicted_output`. On subsequent cached steps, this
-residual is added back as a bias correction: `prediction + residual * calibration_strength`.
+On each actual forward, the forecaster's prediction error is measured: `residual = actual_output - predicted_output`. On subsequent cached steps, this residual is added back as a bias correction: `prediction + residual * calibration_strength`.
 
-This captures systematic prediction error that the polynomial fit misses. Inspired
-by ComfyUI-Spectrum-sdxl's calibrated node. Try `--spectrum_calibration 0.5` as a
-starting point.
+This captures systematic prediction error that the polynomial fit misses. Inspired by ComfyUI-Spectrum-sdxl's calibrated node. Try `--spectrum_calibration 0.5` as a starting point.
 
 ### Tuning for more aggressive speedup
 
@@ -99,7 +97,7 @@ Higher `flex_window` → faster window growth → fewer forwards. Increase `w` t
 
 | File | Role |
 |------|------|
-| `library/spectrum.py` | Standalone integration: `SpectrumPredictor`, `spectrum_denoise()`, `_spectrum_fast_forward()` |
+| `networks/spectrum.py` | Anima integration: `SpectrumPredictor`, `spectrum_denoise()`, `_spectrum_fast_forward()` |
 | [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler) | ComfyUI custom node: drop-in KSampler replacement |
 | `Spectrum/src/utils/basis_utils.py` | Core algorithm: `ChebyshevForecaster`, ridge regression, polynomial evaluation |
 
@@ -121,7 +119,7 @@ ComfyUI sampling loop (any sampler)
                       └─ cached step: predict features → t_embedder + final_layer + unpatchify → calculate_denoised
 ```
 
-- `args["cond_or_uncond"]` tells us which batch elements are cond (0) vs uncond (1) — separate forecasters per type
-- Step transitions are detected by sigma value changes
-- `calculate_denoised(sigma, v_pred, x)` converts the fast-forward velocity output to denoised x, matching the normal model path
-- Chains with existing wrappers (FlashAttention4, TorchCompile) since those operate at different levels (`transformer_options` and `WrappersMP.APPLY_MODEL` respectively)
+- `args["cond_or_uncond"]` tells us which batch elements are cond (0) vs uncond (1) — separate forecasters per type.
+- Step transitions are detected by sigma value changes.
+- `calculate_denoised(sigma, v_pred, x)` converts the fast-forward velocity output to denoised x, matching the normal model path.
+- Chains with existing wrappers (FlashAttention4, TorchCompile) since those operate at different levels (`transformer_options` and `WrappersMP.APPLY_MODEL` respectively).

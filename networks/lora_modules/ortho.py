@@ -257,26 +257,20 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         self.lambda_layer = torch.nn.Parameter(torch.zeros(1, lora_dim))
 
         # Layer-local router (same as HydraLoRAModule): reads the pooled rank-R
-        # signal (post Q_eff projection, pre-λ) so sample content survives
-        # aggregation. See HydraLoRAModule.__init__ for the full rationale.
-        self.router = torch.nn.Linear(lora_dim, num_experts, bias=True)
-        torch.nn.init.normal_(self.router.weight, std=0.01)
-        torch.nn.init.zeros_(self.router.bias)
+        # signal (post Q_eff projection, pre-λ) concatenated with sinusoidal(σ)
+        # when σ routing is enabled. See HydraLoRAModule.__init__ for the full
+        # rationale on direct-input σ vs additive-bias sigma_mlp.
+        self.sigma_feature_dim = int(sigma_feature_dim)
+        self.sigma_hidden_dim = int(sigma_hidden_dim)  # unused; kept for API compat
+        router_in_dim = lora_dim + self.sigma_feature_dim
+        self.router = torch.nn.Linear(router_in_dim, num_experts, bias=True)
+        with torch.no_grad():
+            self.router.weight.zero_()
+            torch.nn.init.normal_(self.router.weight[:, :lora_dim], std=0.01)
+            self.router.bias.zero_()
 
         # Per-channel input pre-scaling (SmoothQuant-style)
         self._register_channel_scale(self.Q_basis, channel_scale)
-
-        self.sigma_feature_dim = int(sigma_feature_dim)
-        self.sigma_hidden_dim = int(sigma_hidden_dim)
-        if self.sigma_feature_dim > 0:
-            self.sigma_mlp = torch.nn.Sequential(
-                torch.nn.Linear(self.sigma_feature_dim, self.sigma_hidden_dim),
-                torch.nn.SiLU(),
-                torch.nn.Linear(self.sigma_hidden_dim, num_experts, bias=False),
-            )
-            torch.nn.init.zeros_(self.sigma_mlp[-1].weight)
-        else:
-            self.sigma_mlp = None
 
         self._last_gate = None  # cached each forward for balance loss
         self._sigma = None  # (B,) σ; set by LoRANetwork.set_sigma
@@ -304,25 +298,37 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         return torch.linalg.solve(eye + A, eye - A)
 
     def _compute_gate(self, lx: torch.Tensor) -> torch.Tensor:
-        """Pool rank-R signal over sequence dim, run router, softmax.
+        """Pool rank-R signal over sequence dim, optionally concat sinusoidal(σ),
+        run router, softmax.
 
         RMS pool over the post-``Q_eff`` activations (pre-λ, pre-mask). λ is
         zero-init, so pooling the post-λ signal would zero the router input at
-        step 0 and freeze gradient. σ-conditional bias added when ``sigma_mlp``
-        is present and ``_sigma`` is set. See ``HydraLoRAModule._compute_gate``
-        for the full rationale.
+        step 0 and freeze gradient. See ``HydraLoRAModule._compute_gate`` for
+        the rationale on direct-input σ routing.
         """
         if lx.dim() >= 3:
             B = lx.shape[0]
             pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
         else:
             pooled = lx
-        logits = self.router(pooled)  # (B, num_experts)
-        if self.sigma_mlp is not None and self._sigma is not None:
-            sigma_feat = _sigma_sinusoidal_features(
-                self._sigma, self.sigma_feature_dim
-            ).to(logits.dtype)
-            logits = logits + self.sigma_mlp(sigma_feat)
+        B = pooled.shape[0]
+        pooled = pooled.to(self.router.weight.dtype)
+        if self.sigma_feature_dim > 0:
+            if self._sigma is not None:
+                sigma_feat = _sigma_sinusoidal_features(
+                    self._sigma, self.sigma_feature_dim
+                ).to(pooled.dtype)
+            else:
+                sigma_feat = torch.zeros(
+                    B,
+                    self.sigma_feature_dim,
+                    dtype=pooled.dtype,
+                    device=pooled.device,
+                )
+            router_in = torch.cat([pooled, sigma_feat], dim=-1)
+        else:
+            router_in = pooled
+        logits = self.router(router_in)  # (B, num_experts)
         return torch.softmax(logits, dim=-1)
 
     def forward(self, x):

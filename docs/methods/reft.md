@@ -51,7 +51,7 @@ ReFT is an additive side-channel — it does not touch the weights LoRA patches 
 - Timestep rank masking (`use_timestep_mask`) — applied to both the LoRA bottleneck and, independently, to the ReFT bottleneck (see below)
 - ReFT block-level edits (`add_reft`)
 
-All of these coexist in the same `.safetensors` file. `configs/methods/lora.toml` turns LoRA + OrthoLoRA + timestep masking + ReFT all on; flip the individual toggles to test any subset.
+All of these coexist in the same `.safetensors` file. `configs/methods/lora.toml` turns LoRA + OrthoLoRA + timestep masking + ReFT all on; flip the individual toggles to test any subset. The GUI counterpart is `configs/gui-methods/tlora_ortho_reft.toml`.
 
 ### Timestep masking on ReFT
 
@@ -61,7 +61,7 @@ When `use_timestep_mask = true`, ReFT modules receive their **own** mask, separa
 r_reft(t) = floor((1 − t)ᵅ · (reft_dim − 1)) + 1
 ```
 
-The mask zeroes high-index columns of `delta` before projection back through `rotate_layer.T`, so higher-noise steps see a narrower intervention subspace and lower-noise steps see the full one. Same rationale as T-LoRA on the LoRA branch — fine-detail refinement wants full capacity, coarse high-noise steps don't. `library/anima/training.py:set_reft_timestep_mask` writes the mask each step; `lora_modules.py:ReFTModule.forward` applies it only when `self.training`.
+The mask zeroes high-index columns of `delta` before projection back through `rotate_layer.T`, so higher-noise steps see a narrower intervention subspace and lower-noise steps see the full one. Same rationale as T-LoRA on the LoRA branch — fine-detail refinement wants full capacity, coarse high-noise steps don't. `networks/lora_anima/network.py:set_reft_timestep_mask` writes the mask each step; `networks/lora_modules/reft.py:ReFTModule.forward` applies it only when `self.training`.
 
 ## Regularization
 
@@ -71,7 +71,7 @@ Because we want `rotate_layer` to stay close to an orthogonal projection (so the
 L_ortho = || R · Rᵀ − I_{reft_dim} ||²_F
 ```
 
-where `R = rotate_layer.weight`. The network-level `regularization()` averages this over all ReFT modules (and over LoRA regularizers if present). Plumbed into the training loss through the same path as OrthoLoRA's orthogonality term — see `networks/lora_anima.py` for the aggregation and `train.py` for where it's added.
+where `R = rotate_layer.weight`. The network-level `regularization()` averages this over all ReFT modules (and over LoRA regularizers if present). Plumbed into the training loss through the same path as OrthoLoRA's orthogonality term — see `networks/lora_anima/network.py` for the aggregation and `train.py` for where it's added.
 
 ## File format
 
@@ -84,7 +84,7 @@ reft_unet_blocks_<idx>.learned_source.bias      # (reft_dim,)
 reft_unet_blocks_<idx>.alpha                    # scalar
 ```
 
-Loader behavior on these keys is strict: any `reft_*` key must match `reft_unet_blocks_<idx>.*`. Older per-Linear ReFT wiring is refused at load time with an explicit error pointing at retraining (`networks/lora_anima.py:create_network_from_weights_anima`).
+Loader behavior on these keys is strict: any `reft_*` key must match `reft_unet_blocks_<idx>.*`. Older per-Linear ReFT wiring is refused at load time with an explicit error pointing at retraining (`networks/lora_anima/`).
 
 Dim inference on load: `reft_dim` is read from `rotate_layer.weight.shape[0]`, block indices from the key prefix, and `reft_layers` is rebuilt from the set of present indices. Nothing else is needed from the original training config.
 
@@ -98,7 +98,7 @@ No special flag. `reft_*` keys are detected in the adapter file and the matching
 
 **Vanilla ComfyUI cannot load ReFT.** The built-in LoRA patcher works by rewriting `Linear.weight` in place, which is fundamentally the wrong operation here — ReFT is an *activation-space* intervention, not a weight patch. Dropping the `.safetensors` into ComfyUI's standard LoRA loader silently ignores the `reft_*` keys.
 
-Use `custom_nodes/comfyui-hydralora` (display name: **Anima Adapter Loader (LoRA / Hydra / ReFT)**) instead. It:
+Use `custom_nodes/comfyui-hydralora` (display name: **Anima Adapter Loader**) instead. It:
 
 1. Sniffs the safetensors header and splits the file into LoRA / Hydra / ReFT components.
 2. Applies LoRA/Hydra via the usual `ModelPatcher.add_patches`.
@@ -136,12 +136,12 @@ Notes:
 
 | File | Role |
 |------|------|
-| `networks/lora_modules.py` | `ReFTModule` — intervention forward, orthogonality reg |
-| `networks/lora_anima.py` | Block selection (`_parse_reft_layers`), wrapping, loader |
-| `networks/lora_anima.py` | `set_reft_timestep_mask()` — timestep masking on ReFT bottleneck |
+| `networks/lora_modules/reft.py` | `ReFTModule` — intervention forward, orthogonality reg |
+| `networks/lora_anima/` | Block selection (`_parse_reft_layers`), wrapping, loader |
+| `networks/lora_anima/network.py` | `set_reft_timestep_mask()` — timestep masking on ReFT bottleneck |
 | `library/anima/training.py` | CLI arg plumbing (`add_reft`, `reft_dim`, `reft_alpha`, `reft_layers`) |
 | `train.py` | Calls `set_reft_timestep_mask()` each step after noise sampling |
-| `custom_nodes/comfyui-hydralora/__init__.py` | ComfyUI loader node with per-block forward-hook install |
+| `custom_nodes/comfyui-hydralora/adapter.py` | ComfyUI loader with per-block forward-hook install |
 
 ## Reference
 

@@ -26,7 +26,7 @@ The GRAFT paper uses rejection sampling -- the selectivity of your filtering IS 
   - Too strict (keeping <10%): too few survivors to influence training
   - Sweet spot: keep the ones that look genuinely good, delete the rest
 - **Quality over quantity**: 3 great images beat 10 mediocre ones
-- **It's OK to keep 0**: if an iteration produces nothing good, just delete everything and `make step` -- the model retrains on original data and tries again with new seeds
+- **It's OK to keep 0**: if an iteration produces nothing good, just delete everything and `make graft-step` — the model retrains on original data and tries again with new seeds
 
 ## What to Look For When Curating
 
@@ -63,4 +63,4 @@ When `pgraft_enabled = true`, candidate generation uses LoRA for the first 75% o
 
 ## Resetting
 
-To start fresh, delete `graft/state.json` and `graft/survivors/`. The next `make step` starts from iteration 0.
+To start fresh, delete `graft/state.json` and `graft/survivors/`. The next `make graft-step` starts from iteration 0.

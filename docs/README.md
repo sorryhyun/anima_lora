@@ -7,12 +7,15 @@ Training and inference algorithms.
 | Doc | Description |
 |-----|-------------|
 | [methods/hydra-lora.md](methods/hydra-lora.md) | HydraLoRA — MoE multi-head routing with per-layer experts |
-| [methods/mod-guidance.md](methods/mod-guidance.md) | Modulation guidance — text-conditioned AdaLN steering via distilled MLP |
+| [methods/psoft-integrated-ortholora.md](methods/psoft-integrated-ortholora.md) | OrthoLoRA (Cayley) — SVD-informed init, structural orthogonality |
+| [methods/timestep_mask.md](methods/timestep_mask.md) | T-LoRA — timestep-dependent rank masking |
+| [methods/reft.md](methods/reft.md) | ReFT — block-level residual-stream intervention |
 | [methods/prefix-tuning.md](methods/prefix-tuning.md) | Prefix tuning — 12 GB VRAM, ~1 step/s, continuous prefix vectors |
-| [methods/spectrum.md](methods/spectrum.md) | Spectrum — training-free inference acceleration via Chebyshev forecasting |
-| [methods/invert.md](methods/invert.md) | Embedding inversion — optimize text embeddings through the frozen DiT |
+| [methods/postfix-sigma.md](methods/postfix-sigma.md) | σ-conditional postfix — caption-conditional postfix + zero-init σ residual |
+| [methods/mod-guidance.md](methods/mod-guidance.md) | Modulation guidance — text-conditioned AdaLN steering via distilled MLP |
+| [methods/invert.md](methods/invert.md) | Embedding inversion — optimize text embeddings (full and K-slot reference) |
 | [methods/apex.md](methods/apex.md) | APEX — self-adversarial one-step distillation |
-| [methods/psoft-integrated-ortholora.md](methods/psoft-integrated-ortholora.md) | OrthoLoRA (exp) — Cayley parameterization + SVD-informed init |
+| [methods/spectrum.md](methods/spectrum.md) | Spectrum — training-free inference acceleration via Chebyshev forecasting |
 
 ## Optimizations
 

@@ -131,6 +131,19 @@ def parse_args():
         action="store_true",
         help="Initialize from zeros instead of cached embedding",
     )
+    p.add_argument(
+        "--init_jitter_std",
+        type=float,
+        default=0.15,
+        help="Gaussian jitter std added to the init embedding. Required when "
+        "--active_length<512: without jitter, zero-valued rows in the first "
+        "active_length slots stay bit-identical during optimization (cross-attn "
+        "has no positional asymmetry on the text side), collapsing the solution "
+        "to a single broadcast vector. Default 0.15 matches the measured "
+        "per-element std of active (non-padded) rows in cached crossattn_emb "
+        "(mean≈0, std=0.149 over 31k rows from 200 random samples). Set to 0 "
+        "to disable.",
+    )
 
     # Optimization
     p.add_argument(
@@ -324,28 +337,39 @@ def load_and_encode_image(args, device):
 def create_initial_embedding(args, device, anima, te_path=None):
     """Create the initial embedding tensor to optimize.
 
-    Priority: --init_embedding > --init_prompt > cached TE > zeros
+    Priority: --init_embedding > --init_prompt > cached TE > zeros. A Gaussian
+    jitter (--init_jitter_std) is added last to break the row-identical symmetry
+    that would otherwise collapse --active_length<S runs to a rank-1 broadcast
+    (cross-attention has no positional asymmetry on the text side, so identical
+    rows receive identical gradients and stay tied forever).
     """
+    embed = None
+
     if args.init_embedding is not None:
         logger.info(f"Init from saved embedding: {args.init_embedding}")
         sd = load_file(args.init_embedding)
         embed = sd["crossattn_emb"].to(device, dtype=torch.float32)
         if embed.ndim == 2:
             embed = embed.unsqueeze(0)
-        return embed
-
-    if args.init_prompt is not None and args.text_encoder is not None:
+    elif args.init_prompt is not None and args.text_encoder is not None:
         logger.info(f"Init from prompt: {args.init_prompt}")
-        return _encode_prompt(args, device, anima)
-
-    if not args.init_zeros and te_path is not None:
-        emb = load_cached_crossattn_emb(te_path)
-        if emb is not None:
+        embed = _encode_prompt(args, device, anima)
+    elif not args.init_zeros and te_path is not None:
+        cached = load_cached_crossattn_emb(te_path)
+        if cached is not None:
             logger.info(f"Init from cached TE: {te_path}")
-            return emb.unsqueeze(0).to(device, dtype=torch.float32)
+            embed = cached.unsqueeze(0).to(device, dtype=torch.float32)
 
-    logger.info("Init from zeros")
-    return torch.zeros(1, 512, 1024, dtype=torch.float32, device=device)
+    if embed is None:
+        logger.info("Init from zeros")
+        embed = torch.zeros(1, 512, 1024, dtype=torch.float32, device=device)
+
+    if args.init_jitter_std > 0:
+        noise = torch.randn_like(embed) * args.init_jitter_std
+        embed = embed + noise
+        logger.info(f"Added jitter: std={args.init_jitter_std}")
+
+    return embed
 
 
 def _encode_prompt(args, device, anima):

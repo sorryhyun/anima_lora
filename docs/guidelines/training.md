@@ -4,30 +4,29 @@
 
 ### DoRA (Weight-Decomposed Low-Rank Adaptation)
 
-Separates magnitude and direction in weight updates for improved learning efficiency at lower ranks. ([arXiv 2402.09353](https://arxiv.org/abs/2402.09353))
+Separates magnitude and direction in weight updates for improved learning efficiency at lower ranks ([arXiv:2402.09353](https://arxiv.org/abs/2402.09353)).
 
 ```toml
 # network_args
 use_dora = true
 ```
 
-During inference/merge, the magnitude vector is exported as `dora_scale` for ComfyUI compatibility.
+During inference/merge, the magnitude vector is exported as `dora_scale` for ComfyUI compatibility. Not compatible with `use_ortho` or `use_hydra`.
 
-### OrthoLoRA (PSOFT)
+### OrthoLoRA (Cayley + PSOFT-inspired)
 
-Cayley-parameterized orthogonal rotation of frozen SVD bases with zero-init
-guarantee. Orthogonality is structural — no reg hyperparameter.
+Cayley-parameterized orthogonal rotation of frozen SVD bases with a zero-init guarantee. Orthogonality is structural — no regularization hyperparameter.
 
 ```toml
 # network_args
 use_ortho = true
 ```
 
-Note: OrthoLoRA is not compatible with DoRA. Linear layers only (no Conv2d).
+Linear layers only (no Conv2d). See [`../methods/psoft-integrated-ortholora.md`](../methods/psoft-integrated-ortholora.md) for the full design.
 
 ### T-LoRA (Timestep-Dependent Rank Masking)
 
-Dynamically adjusts effective LoRA rank based on the denoising timestep. Early (high-noise) steps use full rank; later steps use reduced rank. Compatible with both LoRA and DoRA.
+Dynamically adjusts effective LoRA rank based on the denoising timestep. Early (high-noise) steps use full rank; later steps use reduced rank. Composes with LoRA, DoRA, OrthoLoRA, HydraLoRA, and ReFT. See [`../methods/timestep_mask.md`](../methods/timestep_mask.md).
 
 ```toml
 # network_args
@@ -39,8 +38,12 @@ alpha_rank_scale = 1.0      # power-law schedule exponent
 The rank schedule follows:
 
 ```
-r = ((max_t - t) / max_t) ^ alpha_rank_scale * (max_rank - min_rank) + min_rank
+r(t) = floor((1 - t)^alpha_rank_scale * (network_dim - min_rank)) + min_rank
 ```
+
+### HydraLoRA and ReFT
+
+See the dedicated docs for multi-head expert routing ([`../methods/hydra-lora.md`](../methods/hydra-lora.md)) and block-level residual-stream intervention ([`../methods/reft.md`](../methods/reft.md)). The default `configs/methods/lora.toml` stacks LoRA + OrthoLoRA + T-LoRA + ReFT; flip the individual toggles to test subsets.
 
 ## FP32 Accumulation
 
@@ -48,7 +51,7 @@ Unconditional. LoRA/Hydra/ReFT bottleneck matmuls run in fp32 regardless of auto
 
 ## Cross-Attention KV Trim
 
-Removed — the trim path only ran under `attn_mode = "flash4"`, which we evaluated and removed. See [fa4.md](fa4.md) for the postmortem. Training now always runs full 512-length cross-attention KV; the zero-padded positions act as attention sinks and cost negligible compute on FA2.
+Removed — the trim path only ran under `attn_mode = "flash4"`, which we evaluated and removed. See [`../optimizations/fa4.md`](../optimizations/fa4.md) for the postmortem. Training now always runs full 512-length cross-attention KV; the zero-padded positions act as attention sinks and cost negligible compute on FA2.
 
 ## Caption Shuffle Variants
 
@@ -64,33 +67,20 @@ The smart shuffle algorithm preserves `@artist` tags and section delimiters (`On
 
 ## Masked Loss (SAM / MIT)
 
-Exclude regions (e.g., text bubbles) from the training loss using spatial masks.
+Exclude regions (e.g. text bubbles) from the training loss using spatial masks.
 
 ### Generating masks
 
-**SAM3** (Segment Anything Model):
+Easiest path — one make target:
 
 ```bash
-python preprocess/generate_masks.py \
-    --config configs/sam_mask.yaml \
-    --image-dir ../image_dataset \
-    --mask-dir ../image_dataset/masks \
-    --device cuda
+make mask             # SAM3 + MIT; calls both then merges into masks/
+make mask-sam         # SAM3 only
+make mask-mit         # MIT / ComicTextDetector only
+make mask-clean       # remove all generated masks
 ```
 
-**MIT** (Manga-Image-Translator / ComicTextDetector):
-
-```bash
-python preprocess/generate_masks_mit.py \
-    --image-dir ../image_dataset \
-    --mask-dir ../image_dataset/masks \
-    --device cuda \
-    --detect-size 1024 \
-    --text-threshold 0.5 \
-    --dilate 5
-```
-
-Both produce grayscale PNGs: 255 = train, 0 = exclude.
+These operate on `post_image_dataset/` (the resized output of `make preprocess-resize`).
 
 ### Using masks in training
 
@@ -98,10 +88,10 @@ Both produce grayscale PNGs: 255 = train, 0 = exclude.
 # training config
 masked_loss = true
 
-# dataset config — point to mask directory
+# dataset config — point to the merged mask directory
 [[datasets.subsets]]
-image_dir = '../image_dataset'
-mask_dir = '../image_dataset/masks'
+image_dir = 'post_image_dataset'
+mask_dir = 'masks'
 ```
 
 Masks are interpolated to match the latent spatial dimensions and applied element-wise to the loss.
@@ -125,7 +115,7 @@ validation_split = 0.05
 validation_seed = 42
 
   [[datasets.subsets]]
-  image_dir = '../image_dataset'
+  image_dir = 'post_image_dataset'
   num_repeats = 1
 ```
 

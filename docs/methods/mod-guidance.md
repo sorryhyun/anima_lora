@@ -1,6 +1,6 @@
 # Modulation Guidance
 
-Training-free quality steering via text-conditioned AdaLN modulation, based on [Starodubcev et al., "Rethinking Global Text Conditioning in Diffusion Transformers" (ICLR 2026)](https://arxiv.org/abs/2602.09268).
+Quality steering via text-conditioned AdaLN modulation, based on [Starodubcev et al., "Rethinking Global Text Conditioning in Diffusion Transformers" (ICLR 2026)](https://arxiv.org/abs/2602.09268). Requires a short distillation step to train the `pooled_text_proj` MLP; thereafter inference-time steering is training-free.
 
 ## How it works
 
@@ -143,12 +143,22 @@ The projection MLP must be trained via distillation before modulation guidance c
 3. Loss: MSE between student and teacher noise predictions
 
 ```bash
+make distill-mod
+```
+
+Or invoke directly:
+
+```bash
 python scripts/distill_modulation.py \
-    --data_dir image_dataset \
-    --dit_path models/anima_v2-F16.safetensors \
-    --iterations 4000 \
-    --lr 1e-4 \
-    --batch_size 2
+    --data_dir post_image_dataset \
+    --dit_path models/diffusion_models/anima-preview3-base.safetensors \
+    --output_path output/pooled_text_proj.safetensors \
+    --iterations 1500 \
+    --lr 1e-5 \
+    --warmup 0.05 \
+    --blocks_to_swap 0 \
+    --attn_mode flash \
+    --no_grad_ckpt
 ```
 
 | Flag | Default | Description |
@@ -164,7 +174,7 @@ python scripts/distill_modulation.py \
 
 **VRAM notes.** The teacher forward runs under `torch.no_grad()` so it holds almost nothing; the student forward is what dominates peak VRAM (~12 GB on the default config). With `--no_grad_ckpt` you'll see VRAM swing between the weights-only baseline and that student peak — this is normal. Leave `--grad_ckpt` on (the default) only if the peak doesn't fit; if it does, `--no_grad_ckpt --blocks_to_swap 0` is faster.
 
-Output: `pooled_text_proj.safetensors` in the data directory.
+Output: `output/pooled_text_proj.safetensors`. Use it at inference via `--pooled_text_proj <path>`.
 
 ## Compatibility
 
@@ -174,8 +184,8 @@ Output: `pooled_text_proj.safetensors` in the data directory.
 | **CFG** | Complementary — CFG in noise space, modulation guidance in AdaLN space. They stack. |
 | **P-GRAFT** | Compatible — modulation guidance runs independently of LoRA presence. |
 | **Spectrum** | Compatible — Spectrum skips blocks but still runs `t_embedder` + `final_layer`. Guidance delta applies to `emb_B_T_D` before blocks, carried through on cached steps. |
-| **HydraLoRA** | Shared pooling — both consume `crossattn_emb.max(dim=1).values`. Same pooled vector, orthogonal purposes. |
-| **LoRA training** | No conflict — LoRA explicitly excludes `pooled_text_proj` via pattern matching in `lora_anima.py`. |
+| **HydraLoRA** | Both have consumed pooled crossattn in the past, but HydraLoRA's current router reads the post-`lora_down` rank-R signal — so no shared pool any more. Orthogonal paths. |
+| **LoRA training** | No conflict — LoRA explicitly excludes `pooled_text_proj` via the exclude pattern in `networks/lora_anima/factory.py`. |
 
 ## ComfyUI
 
