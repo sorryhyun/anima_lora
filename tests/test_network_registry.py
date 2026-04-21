@@ -304,11 +304,11 @@ def test_save_hydra_moe_mixed_with_plain_lora_qkv_defuses_up(tmp_path: Path):
 def test_save_ortho_hydra_roundtrip(tmp_path: Path):
     E, r, in_dim, out_dim = 4, 4, 8, 12
     prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
-    # OrthoHydraLoRAExp runtime keys: S_p is 3-D (E, r, r)
+    # OrthoHydraLoRAExp runtime keys: S_p is 3-D (E, r, r); P_bases is (E, out, r)
     sd = {
         f"{prefix}.S_p": torch.randn(E, r, r),
         f"{prefix}.S_q": torch.randn(r, r),
-        f"{prefix}.P_basis": torch.randn(3 * out_dim, r),
+        f"{prefix}.P_bases": torch.randn(E, 3 * out_dim, r),
         f"{prefix}.Q_basis": torch.randn(r, in_dim),
         f"{prefix}.lambda_layer": torch.randn(1, r),
         f"{prefix}.alpha": _alpha(r),
@@ -325,6 +325,31 @@ def test_save_ortho_hydra_roundtrip(tmp_path: Path):
             assert loaded[f"{base}_{suffix}.lora_ups.{e}.weight"].shape == (out_dim, r)
     for k in loaded:
         assert not k.endswith(".S_p") and not k.endswith(".S_q")
+        assert not k.endswith(".P_bases") and not k.endswith(".P_basis")
+
+
+def test_save_ortho_hydra_legacy_P_basis_still_bakes(tmp_path: Path):
+    """Legacy OrthoHydra checkpoints (pre-disjoint-bases) used a single
+    (out, r) ``P_basis`` shared across experts. The save pipeline must still
+    bake these into hydra moe form so old artifacts remain convertible.
+    """
+    E, r, in_dim, out_dim = 4, 4, 8, 12
+    prefix = "lora_unet_blocks_0_self_attn_qkv_proj"
+    sd = {
+        f"{prefix}.S_p": torch.randn(E, r, r),
+        f"{prefix}.S_q": torch.randn(r, r),
+        f"{prefix}.P_basis": torch.randn(3 * out_dim, r),  # legacy 2-D
+        f"{prefix}.Q_basis": torch.randn(r, in_dim),
+        f"{prefix}.lambda_layer": torch.randn(1, r),
+        f"{prefix}.alpha": _alpha(r),
+        f"{prefix}.router.weight": torch.randn(E, in_dim),
+        f"{prefix}.router.bias": torch.randn(E),
+    }
+    loaded = _save_and_reload(sd, tmp_path, save_variant="ortho_hydra_to_hydra")
+    base = "lora_unet_blocks_0_self_attn"
+    for suffix in ("q_proj", "k_proj", "v_proj"):
+        for e in range(E):
+            assert loaded[f"{base}_{suffix}.lora_ups.{e}.weight"].shape == (out_dim, r)
 
 
 def test_save_dora_roundtrip(tmp_path: Path):

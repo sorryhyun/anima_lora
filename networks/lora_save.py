@@ -56,9 +56,10 @@ def _convert_ortho_hydra_to_hydra(
 ) -> None:
     """Mutates state_dict in place.
 
-    Converts ``.S_p`` / ``.S_q`` / ``.P_basis`` / ``.Q_basis`` / ``.lambda_layer``
-    keys (OrthoHydraLoRAExp) to shared ``.lora_down.weight`` + per-expert
-    stacked ``.lora_up_weight`` (HydraLoRA runtime form).
+    Converts ``.S_p`` / ``.S_q`` / ``.P_bases`` (or legacy 2-D ``.P_basis``) /
+    ``.Q_basis`` / ``.lambda_layer`` keys (OrthoHydraLoRAExp) to shared
+    ``.lora_down.weight`` + per-expert stacked ``.lora_up_weight`` (HydraLoRA
+    runtime form).
     """
     prefixes = set()
     for key in list(state_dict.keys()):
@@ -68,17 +69,25 @@ def _convert_ortho_hydra_to_hydra(
     for prefix in prefixes:
         S_p = state_dict[f"{prefix}.S_p"]  # (E, r, r)
         S_q = state_dict[f"{prefix}.S_q"]  # (r, r)
-        P_basis = state_dict[f"{prefix}.P_basis"]  # (out, r)
+        # Per-expert disjoint bases (new) or legacy shared basis (old ckpts).
+        P_bases = state_dict.get(f"{prefix}.P_bases")
+        if P_bases is None:
+            P_bases = state_dict[f"{prefix}.P_basis"]  # (out, r) legacy
         Q_basis = state_dict[f"{prefix}.Q_basis"]  # (r, in)
         lam = state_dict[f"{prefix}.lambda_layer"]  # (1, r)
         alpha = state_dict.get(f"{prefix}.alpha")
-        save_dtype = dtype if dtype is not None else P_basis.dtype
+        save_dtype = dtype if dtype is not None else P_bases.dtype
 
         R_q = OrthoHydraLoRAExpModule._cayley(S_q.float())  # (r, r)
         Q_eff = R_q @ Q_basis.float()  # (r, in)
 
         R_p = OrthoHydraLoRAExpModule._cayley(S_p.float())  # (E, r, r)
-        P_eff = P_basis.float().unsqueeze(0) @ R_p  # (E, out, r)
+        if P_bases.dim() == 3:
+            # (E, out, r) @ (E, r, r) = (E, out, r)
+            P_eff = P_bases.float() @ R_p
+        else:
+            # legacy shared (out, r): broadcast over experts
+            P_eff = P_bases.float().unsqueeze(0) @ R_p  # (E, out, r)
 
         # sqrt-split lambda so ΔW = P @ diag(λ) @ Q is preserved bit-exactly
         lam_1d = lam.squeeze(0).float()
@@ -96,7 +105,7 @@ def _convert_ortho_hydra_to_hydra(
             .contiguous()
         )
 
-        for suffix in ("S_p", "S_q", "lambda_layer", "P_basis", "Q_basis"):
+        for suffix in ("S_p", "S_q", "lambda_layer", "P_basis", "P_bases", "Q_basis"):
             state_dict.pop(f"{prefix}.{suffix}", None)
 
         state_dict[f"{prefix}.lora_down.weight"] = lora_down

@@ -169,6 +169,15 @@ def parse_args():
         default=1.0,
         help="Scale for sigmoid sigma sampling",
     )
+    p.add_argument(
+        "--active_length",
+        type=int,
+        default=128,
+        help="Number of leading token positions that are trainable; the rest of "
+        "the 512-length sequence is hard-zero every step. Matches the on-manifold "
+        "layout the DiT was trained on (kv_proj has bias=False, so pad→K=V=0). "
+        "Set to 512 to disable (old unconstrained behavior).",
+    )
 
     # Multi-run token-aligned aggregation
     p.add_argument(
@@ -461,8 +470,20 @@ def optimize_embedding(
         if device.type == "cuda":
             torch.cuda.manual_seed(seed)
 
-    embed = torch.nn.Parameter(init_embed.clone())
-    optimizer = torch.optim.AdamW([embed], lr=args.lr, weight_decay=0.0)
+    S = init_embed.shape[1]
+    L = args.active_length
+    if L <= 0 or L > S:
+        raise ValueError(f"--active_length must be in [1, {S}], got {L}")
+
+    active = torch.nn.Parameter(init_embed[:, :L, :].clone())
+    if L < S:
+        pad_tail = torch.zeros(
+            1, S - L, init_embed.shape[-1], dtype=torch.float32, device=device
+        )
+    else:
+        pad_tail = None
+
+    optimizer = torch.optim.AdamW([active], lr=args.lr, weight_decay=0.0)
 
     if args.lr_schedule == "cosine":
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -500,13 +521,17 @@ def optimize_embedding(
         accum_loss = 0.0
         for _ in range(grad_accum):
             sigmas = sample_sigmas(args, args.timesteps_per_step, device)
-            embed_bf16 = embed.to(torch.bfloat16)
+            if pad_tail is not None:
+                embed_full = torch.cat([active, pad_tail], dim=1)
+            else:
+                embed_full = active
+            embed_bf16 = embed_full.to(torch.bfloat16)
 
             loss = inversion_step(anima, latents, embed_bf16, sigmas, padding_mask)
             (loss / grad_accum).backward()
             accum_loss += loss.item()
 
-        grad_norm = torch.nn.utils.clip_grad_norm_([embed], max_norm=1.0).item()
+        grad_norm = torch.nn.utils.clip_grad_norm_([active], max_norm=1.0).item()
         optimizer.step()
         if scheduler is not None:
             scheduler.step()
@@ -514,7 +539,11 @@ def optimize_embedding(
         loss_val = accum_loss / grad_accum
         if loss_val < best_loss:
             best_loss = loss_val
-            best_embed = embed.detach().clone()
+            with torch.no_grad():
+                if pad_tail is not None:
+                    best_embed = torch.cat([active.detach(), pad_tail], dim=1).clone()
+                else:
+                    best_embed = active.detach().clone()
 
         if step % args.log_every == 0 or step == args.steps - 1:
             lr_now = optimizer.param_groups[0]["lr"]
@@ -1030,6 +1059,7 @@ def process_single(args, anima, device):
         "best_loss": f"{best_loss:.6f}",
         "init_prompt": args.init_prompt or "",
         "aggregate_by": str(args.aggregate_by),
+        "active_length": str(args.active_length),
     }
     if diagnostics is not None:
         metadata["per_token_cos_before"] = f"{diagnostics['per_token_cos_before']:.6f}"
@@ -1094,6 +1124,7 @@ def process_batch(args, anima, device):
             "lr": str(args.lr),
             "best_loss": f"{best_loss:.6f}",
             "aggregate_by": str(args.aggregate_by),
+            "active_length": str(args.active_length),
         }
         if diagnostics is not None:
             metadata["per_token_cos_before"] = (

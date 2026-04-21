@@ -242,6 +242,15 @@ def cmd_test_prefix(extra):
     )
 
 
+def cmd_test_ref(extra):
+    # Reference-inversion prefixes ride the same loader as prefix-mode tuning;
+    # the prefix loader at inference hard-prepends the K slots to crossattn_emb
+    # (matches exactly how invert_reference.py assembled them at training time).
+    run(
+        [*INFERENCE_BASE, "--prefix_weight", str(latest_output("anima_ref")), *extra]
+    )
+
+
 def cmd_test_postfix(extra):
     # exclude both _exp and _func so the vanilla postfix target doesn't grab them
     outputs = sorted(
@@ -581,6 +590,81 @@ def cmd_print_config(extra):
     )
 
 
+def cmd_invert_ref(extra):
+    """Reference-image inversion (scripts/invert_reference.py).
+
+    Image source:
+        - If REF_IMAGE is set, use that file.
+        - Otherwise pick a random file from REF_IMAGE_DIR (default post_image_dataset).
+          Re-running picks a new random image each time.
+    Optional env: REF_TEMPLATE (default "a photo"), REF_K (default 8),
+                  REF_STEPS (default 100), REF_LR (default 0.01),
+                  REF_NAME (default "latest" -> output/anima_ref_latest.safetensors),
+                  REF_SAVE_PATH (overrides REF_NAME),
+                  REF_SWAP (blocks_to_swap, default 0).
+    """
+    import glob
+    import random
+
+    ref_image = os.environ.get("REF_IMAGE", "").strip()
+    if not ref_image:
+        ref_dir = os.environ.get("REF_IMAGE_DIR", "post_image_dataset")
+        candidates = []
+        for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+            candidates.extend(
+                glob.glob(os.path.join(ref_dir, "**", ext), recursive=True)
+            )
+        if not candidates:
+            print(
+                f"Error: no images found in REF_IMAGE_DIR={ref_dir}/ and REF_IMAGE not set.\n"
+                "       Either set REF_IMAGE=path/to/ref.png or point REF_IMAGE_DIR at a "
+                "directory with .png/.jpg/.webp files.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        ref_image = random.choice(candidates)
+        print(f"  > random pick from {ref_dir}/: {ref_image}")
+    ref_template = os.environ.get("REF_TEMPLATE", "a photo")
+    ref_k = os.environ.get("REF_K", "8")
+    ref_steps = os.environ.get("REF_STEPS", "100")
+    ref_lr = os.environ.get("REF_LR", "0.01")
+    ref_name = os.environ.get("REF_NAME", "latest")
+    ref_save_path = os.environ.get(
+        "REF_SAVE_PATH", f"output/anima_ref_{ref_name}.safetensors"
+    )
+    ref_swap = os.environ.get("REF_SWAP", "0")
+    run(
+        [
+            PY,
+            "scripts/invert_reference.py",
+            "--image",
+            ref_image,
+            "--dit",
+            "models/diffusion_models/anima-preview3-base.safetensors",
+            "--vae",
+            "models/vae/qwen_image_vae.safetensors",
+            "--text_encoder",
+            "models/text_encoders/qwen_3_06b_base.safetensors",
+            "--attn_mode",
+            "flash",
+            "--template",
+            ref_template,
+            "--num_tokens",
+            ref_k,
+            "--steps",
+            ref_steps,
+            "--lr",
+            ref_lr,
+            "--save_path",
+            ref_save_path,
+            "--blocks_to_swap",
+            ref_swap,
+            "--verify",
+            *extra,
+        ]
+    )
+
+
 def cmd_invert(extra):
     run(
         [
@@ -630,6 +714,10 @@ COMMANDS = {
     "test-apex": (cmd_test_apex, "Inference with latest APEX LoRA"),
     "test-hydra": (cmd_test_hydra, "Inference with latest HydraLoRA moe (router-live)"),
     "test-prefix": (cmd_test_prefix, "Inference with latest prefix weight"),
+    "test-ref": (
+        cmd_test_ref,
+        "Inference with latest reference-inversion prefix (output/anima_ref*.safetensors)",
+    ),
     "test-postfix": (cmd_test_postfix, "Inference with latest postfix weight"),
     "test-postfix-exp": (
         cmd_test_postfix_exp,
@@ -667,6 +755,10 @@ COMMANDS = {
     "mask-clean": (cmd_mask_clean, "Remove all generated masks"),
     "gui": (cmd_gui, "Launch PySide6 GUI"),
     "invert": (cmd_invert, "Embedding inversion (image → text embedding)"),
+    "invert-ref": (
+        cmd_invert_ref,
+        "Reference inversion (REF_IMAGE=path/to/ref.png; see tasks.py::cmd_invert_ref for env vars)",
+    ),
     "test-unit": (cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
     "print-config": (
         cmd_print_config,

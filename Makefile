@@ -3,6 +3,7 @@ LATEST_LORA = $(shell python -c "import glob,os; files=[f for f in glob.glob('ou
 LATEST_HYDRA = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/anima_hydra*_moe.safetensors') if '.bak.' not in f]; print(max(files,key=os.path.getmtime))")
 LATEST_APEX = $(shell python -c "import glob,os; files=glob.glob('output/anima_apex*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_REF = $(shell python -c "import glob,os; files=glob.glob('output/anima_ref*.safetensors'); print(max(files,key=os.path.getmtime) if files else '')")
 LATEST_POSTFIX = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/anima_postfix*.safetensors') if '_exp' not in os.path.basename(f) and '_func' not in os.path.basename(f)]; print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_exp*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
@@ -10,7 +11,7 @@ LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_t
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge invert test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -112,6 +113,14 @@ test-postfix-func:
 	$(TEST_COMMON) \
 		--postfix_weight $(LATEST_POSTFIX_FUNC)
 
+# Inference with latest reference-inversion prefix (anima_ref_*.safetensors,
+# produced by `make invert-ref`). Uses the existing prefix loader today, which
+# prepends the K slot vectors at position 0 of crossattn_emb — matching exactly
+# how the slots were assembled during inversion.
+test-ref:
+	$(TEST_COMMON) \
+		--prefix_weight $(LATEST_REF)
+
 # Inference with a baked (merged) DiT. MODEL_DIR accepts either a directory
 # (picks the latest *_merged.safetensors inside) or a direct .safetensors path.
 # No --lora_weight — the LoRA is already folded into the weights. The trailing
@@ -136,11 +145,11 @@ test-spectrum:
 		--spectrum_stop_caching_step 29 \
 		--spectrum_calibration 0.0
 
-INVERT_N ?= 100
+INVERT_N ?= 1
 INVERT_SWAP ?= 0
 INVERT_STEPS ?= 50
-INVERT_LR ?= 0.005
-INVERT_AGG ?= 2
+INVERT_LR ?= 1e-3
+INVERT_AGG ?= 1
 INVERT_OUT ?= inversions
 INVERT_PROBE_BLOCKS ?= 8,12,16,20
 invert:
@@ -155,8 +164,55 @@ invert:
 		--probe_functional --probe_blocks $(INVERT_PROBE_BLOCKS) \
 		--output_dir $(INVERT_OUT) \
 		--blocks_to_swap $(INVERT_SWAP) \
-		--log_block_grads \
+		--log_block_grads 
 		--init_zeros
+
+# Reference inversion: learn K prefix-slot vectors that encode a single
+# reference image's subject/style. Output plugs into `make test-ref` via the
+# existing --prefix_weight loader.
+#
+# Image source:
+#   - If REF_IMAGE is set, use that file.
+#   - Otherwise pick a random file from REF_IMAGE_DIR (default post_image_dataset).
+#     Re-running `make invert-ref` picks a new random image each time.
+#
+# Optional:  REF_TEMPLATE="a photo" REF_K=8 REF_STEPS=100 REF_LR=0.01
+#            REF_NAME=latest  (output saved as output/anima_ref_$(REF_NAME).safetensors)
+#            REF_SWAP=0       (blocks_to_swap; >0 for low VRAM, <0 for grad checkpointing)
+REF_IMAGE_DIR ?= post_image_dataset
+# `?=` with `$(shell ...)` is RECURSIVE — every use of $(REF_IMAGE) re-runs the
+# picker and would pick a different random file each expansion. Guard with
+# ifndef + immediate `:=` so one random pick is frozen for the whole target.
+ifndef REF_IMAGE
+REF_IMAGE := $(shell python -c "import glob,os,random; d='$(REF_IMAGE_DIR)'; files=sum((glob.glob(os.path.join(d,'**',e),recursive=True) for e in ('*.png','*.jpg','*.jpeg','*.webp')),[]); print(random.choice(files) if files else '')")
+endif
+REF_TEMPLATE ?= a photo
+REF_K ?= 8
+REF_STEPS ?= 100
+REF_LR ?= 0.01
+REF_NAME ?= latest
+REF_SAVE_PATH ?= output/anima_ref_$(REF_NAME).safetensors
+REF_SWAP ?= 0
+invert-ref:
+	@if [ -z "$(REF_IMAGE)" ]; then \
+		echo "Error: no images found in REF_IMAGE_DIR=$(REF_IMAGE_DIR)/ and REF_IMAGE not set."; \
+		echo "       Either pass REF_IMAGE=path/to/ref.png or point REF_IMAGE_DIR at a directory with .png/.jpg/.webp files."; \
+		exit 1; \
+	fi
+	@echo "  > using reference image: $(REF_IMAGE)"
+	python scripts/invert_reference.py \
+		--image "$(REF_IMAGE)" \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--vae models/vae/qwen_image_vae.safetensors \
+		--text_encoder models/text_encoders/qwen_3_06b_base.safetensors \
+		--attn_mode flash \
+		--template "$(REF_TEMPLATE)" \
+		--num_tokens $(REF_K) \
+		--steps $(REF_STEPS) \
+		--lr $(REF_LR) \
+		--save_path $(REF_SAVE_PATH) \
+		--blocks_to_swap $(REF_SWAP) \
+		--verify
 
 BENCH_INVERSIONS ?= 5
 bench-inversion:

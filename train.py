@@ -2688,6 +2688,11 @@ class AnimaTrainer:
                 loss_recorder.add(epoch=epoch, step=step, loss=current_loss)
                 avr_loss: float = loss_recorder.moving_average
                 logs = {"avr_loss": avr_loss}
+                _unwrapped_net = accelerator.unwrap_model(network)
+                if getattr(_unwrapped_net, "_use_hydra", False):
+                    _router_H = _unwrapped_net.get_router_entropy()
+                    if _router_H is not None:
+                        logs["router_H"] = f"{_router_H:.3f}"
                 progress_bar.set_postfix(**{**max_mean_logs, **logs})
 
                 if is_tracking:
