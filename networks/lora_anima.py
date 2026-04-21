@@ -1838,7 +1838,9 @@ class LoRANetwork(torch.nn.Module):
             router_scale = float(getattr(self, "router_lr_scale", 1.0))
 
             def _is_router_param(pname: str) -> bool:
-                return ".router." in pname or ".sigma_mlp." in pname
+                # named_parameters() yields top-level names like "router.weight"
+                # / "sigma_mlp.0.weight" — no leading dot.
+                return pname.startswith("router.") or pname.startswith("sigma_mlp.")
 
             for lora in loras:
                 matched_reg_lr = None

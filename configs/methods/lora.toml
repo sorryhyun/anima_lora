@@ -13,13 +13,13 @@
 # defaults — tune freely.
 
 
-network_alpha = 16
-network_dim = 16
+network_alpha = 32
+network_dim = 32
 
-learning_rate = 1e-4
-max_train_epochs = 1
-save_every_n_epochs = 1
-checkpointing_epochs = 1
+learning_rate = 2e-5
+max_train_epochs = 8
+save_every_n_epochs = 4
+checkpointing_epochs = 4
 
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
@@ -42,12 +42,12 @@ alpha_rank_scale = 1.0
 output_name = "anima_hydra"
 use_hydra = true
 num_experts = 4
-balance_loss_weight = 1e-5
-expert_init_std = 1e-1
+balance_loss_weight = 0
+expert_init_std = 5e-2
 # Router LR multiplier on top of unet_lr. Covers .router.* and .sigma_mlp.*.
 # Router init is small (std=0.01) and lives in a softmax-uniform fixed point;
 # 5–10× accelerates breaking symmetry. 1.0 = no override (legacy).
-network_router_lr_scale = 50.0
+network_router_lr_scale = 20
 # Fraction of training steps with one-expert-per-step gradient masking.
 # Forward stays full MoE; only the randomly-chosen expert's up-weight slice
 # gets gradient. Forces specialization without ever isolating an expert.
@@ -84,7 +84,7 @@ num_sigma_buckets = 3
 # reft_alpha = 64
 # reft_layers = "last_8"
 
-blocks_to_swap = 14
+blocks_to_swap = 20
 
 
 
