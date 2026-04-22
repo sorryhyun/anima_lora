@@ -6,6 +6,8 @@ Reference: Han et al., *Adaptive Spectral Feature Forecasting for Diffusion Samp
 
 This sits one layer above the LoRA family (`lora.md`, `ortholora.md`, `hydralora.md`, `reft.md`, `timestep-mask.md`). Those all modify *what* the DiT computes at each step; Spectrum modifies *whether* the DiT runs at this step at all.
 
+![Spectrum Chebyshev feature forecasting](../structure_images/spectrum.png)
+
 ---
 
 ## 1. The observation
