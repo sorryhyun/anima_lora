@@ -358,16 +358,12 @@ def main():
     eval_idx = cache["split"]["eval_idx"]
     tokens_all = cache["tokens"]
     V = int(cache["num_variants"])
-    S = int(cache["targets_mean"].shape[1])
-    D_y = int(cache["targets_mean"].shape[2])
+    S, D_y = cache["target_shape"]
     d_enc = int(tokens_all.shape[-1])
     logger.info(
         f"N_train={len(train_idx)}  N_eval={len(eval_idx)}  V={V}  "
         f"S={S}  D_y={D_y}  d_enc={d_enc}"
     )
-    # Targets_mean is only needed for baselines / the phase-0 probe — we evaluate
-    # per-variant here, so drop the 2 GB tensor to free RAM before training.
-    del cache["targets_mean"]
 
     model = PerceiverResampler(
         d_enc=d_enc,

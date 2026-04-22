@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from PIL import Image
 from safetensors.torch import load_file
 
@@ -36,6 +37,7 @@ from scripts.img2emb.anchors import (  # noqa: E402
 )
 from scripts.img2emb.extract_features import ENCODERS, load_encoder  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
+from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS  # noqa: E402
 from library.inference.output import save_images  # noqa: E402
 from library.inference.sampling import get_timesteps_sigmas, step as euler_step  # noqa: E402
 from library.log import setup_logging  # noqa: E402
@@ -47,8 +49,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_ANCHORS_YAML = Path(__file__).parent / "anchors.yaml"
 
-# Matches the phase 1.5 save naming.
-DEFAULT_RESAMPLER_CKPT = REPO_ROOT / "bench" / "img2emb" / "results" / "phase2a" / "siglip2_phase2a_warm.safetensors"
+# Matches train_img2emb.py's finetune stage save path.
+DEFAULT_RESAMPLER_CKPT = REPO_ROOT / "output" / "img2embs" / "finetune" / "siglip2_phase2a_warm.safetensors"
 
 
 def parse_args():
@@ -62,7 +64,7 @@ def parse_args():
     )
     p.add_argument(
         "--tag_slot_dir",
-        default=str(REPO_ROOT / "bench" / "inversionv2" / "results" / "tag_slot"),
+        default=str(REPO_ROOT / "output" / "img2embs" / "anchors"),
         help="Directory with class prototype tables (needed to rebuild AnchoredResampler).",
     )
     p.add_argument(
@@ -74,7 +76,19 @@ def parse_args():
     p.add_argument("--d_model", type=int, default=1024)
     p.add_argument("--n_heads", type=int, default=8)
     p.add_argument("--n_layers", type=int, default=4)
-    p.add_argument("--n_slots", type=int, default=512)
+    p.add_argument(
+        "--n_slots",
+        type=int,
+        default=256,
+        help="Resampler query count K (default 256 per K-cap, proposal.md part 1). "
+             "Output is zero-padded to 512 before feeding to DiT cross-attn.",
+    )
+    p.add_argument(
+        "--dit_slot_count",
+        type=int,
+        default=512,
+        help="DiT cross-attn slot count (matches cached crossattn_emb shape).",
+    )
 
     p.add_argument(
         "--slot_override",
@@ -87,6 +101,19 @@ def parse_args():
         action="store_true",
         help="Skip anchor injection (debug: use raw resampler output).",
     )
+    p.add_argument(
+        "--use_cached_te",
+        action="store_true",
+        help="Diagnostic: bypass siglip2 + resampler entirely and feed the cached "
+             "T5 crossattn_emb_v0 (from <ref_dir>/<stem>_anima_te.safetensors) as ctx. "
+             "Verifies the DiT+VAE+pad pipeline independently of the resampler.",
+    )
+    p.add_argument(
+        "--te_variant",
+        type=int,
+        default=0,
+        help="With --use_cached_te, which variant (0..V-1) to load as ctx.",
+    )
 
     # DiT / VAE
     p.add_argument("--dit", default="models/diffusion_models/anima-preview3-base.safetensors")
@@ -94,8 +121,9 @@ def parse_args():
     p.add_argument("--attn_mode", default="flash")
     p.add_argument("--blocks_to_swap", type=int, default=0)
 
-    # sampling
-    p.add_argument("--image_size", type=int, nargs=2, default=[1024, 1024], metavar=("H", "W"))
+    # sampling — default (None) picks the constant-token bucket closest to the
+    # ref image's aspect ratio; pass `--image_size H W` to force a size.
+    p.add_argument("--image_size", type=int, nargs=2, default=None, metavar=("H", "W"))
     p.add_argument("--infer_steps", type=int, default=30)
     p.add_argument("--flow_shift", type=float, default=1.0)
     p.add_argument("--seed", type=int, default=42)
@@ -108,6 +136,17 @@ def parse_args():
     p.add_argument("--output_type", default="images", choices=["images", "latent", "latent_images"])
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     return p.parse_args()
+
+
+def _bucket_for_ref(ref_path: str) -> tuple[int, int]:
+    """Pick the CONSTANT_TOKEN_BUCKETS entry whose aspect ratio is closest to
+    the ref image. Returns (H, W) to match --image_size convention."""
+    with Image.open(ref_path) as img:
+        w, h = img.size
+    target = w / h
+    # CONSTANT_TOKEN_BUCKETS entries are (W, H).
+    best = min(CONSTANT_TOKEN_BUCKETS, key=lambda wh: abs((wh[0] / wh[1]) - target))
+    return (best[1], best[0])
 
 
 def _parse_slot_override(raw: str) -> dict[str, int]:
@@ -186,7 +225,7 @@ def _build_ctx(
             logger.info(f"  [{g.name}] positives={pos}")
 
     if args.skip_anchors:
-        return pred.to(torch.bfloat16)
+        return _pad_to_dit(pred, args.dit_slot_count).to(torch.bfloat16)
 
     B = pred.shape[0]
     for g in spec.groups:
@@ -207,7 +246,15 @@ def _build_ctx(
             mask = (torch.sigmoid(logits) > 0.5)
             inject_anchors(pred, anchor_emb, slots, mutex=False, mode="replace", mask=mask)
 
-    return pred.to(torch.bfloat16)
+    return _pad_to_dit(pred, args.dit_slot_count).to(torch.bfloat16)
+
+
+def _pad_to_dit(pred: torch.Tensor, pad_to: int) -> torch.Tensor:
+    """Zero-pad (B, K, D) → (B, pad_to, D) to match DiT cross-attn slot count."""
+    K = pred.shape[1]
+    if K >= pad_to:
+        return pred
+    return F.pad(pred, (0, 0, 0, pad_to - K))
 
 
 @torch.no_grad()
@@ -254,22 +301,41 @@ def main():
     device = torch.device(args.device)
     os.makedirs(args.save_path, exist_ok=True)
 
+    if args.image_size is None:
+        args.image_size = list(_bucket_for_ref(args.ref_image))
+        logger.info(f"image_size auto-picked from ref aspect: {tuple(args.image_size)} (HxW)")
+
     # 0) Anchor spec.
     spec = load_anchor_spec(Path(args.anchors_yaml), Path(args.tag_slot_dir))
 
-    # 1) ref image → siglip2 features (loaded → used → freed).
-    logger.info(f"encoding ref image: {args.ref_image}")
-    tokens, pooled = _encode_ref_image(args.ref_image, args.encoder, device)
-    logger.info(f"siglip2 tokens={tuple(tokens.shape)}  pooled={tuple(pooled.shape)}")
+    if args.use_cached_te:
+        # Diagnostic path — bypass resampler, use cached T5 embedding as ctx.
+        ref_path = Path(args.ref_image)
+        te_path = ref_path.with_name(f"{ref_path.stem}_anima_te.safetensors")
+        if not te_path.exists():
+            raise SystemExit(f"--use_cached_te: no TE cache found at {te_path}")
+        sd = load_file(str(te_path))
+        v = args.te_variant
+        key = f"crossattn_emb_v{v}" if f"crossattn_emb_v{v}" in sd else "crossattn_emb"
+        ctx = sd[key].to(device=device, dtype=torch.bfloat16).unsqueeze(0)  # (1, 512, 1024)
+        logger.info(
+            f"using cached T5 {te_path.name}[{key}] as ctx; "
+            f"shape={tuple(ctx.shape)}  norm={ctx.float().norm():.2f}"
+        )
+    else:
+        # 1) ref image → siglip2 features (loaded → used → freed).
+        logger.info(f"encoding ref image: {args.ref_image}")
+        tokens, pooled = _encode_ref_image(args.ref_image, args.encoder, device)
+        logger.info(f"siglip2 tokens={tuple(tokens.shape)}  pooled={tuple(pooled.shape)}")
 
-    # 2) Resampler → ctx.
-    logger.info(f"loading resampler ckpt: {args.resampler_ckpt}")
-    resampler = _load_resampler(args, spec, device)
-    ctx = _build_ctx(resampler, spec, tokens, pooled, args, device)
-    logger.info(f"ctx shape: {tuple(ctx.shape)}")
-    del resampler
-    if device.type == "cuda":
-        torch.cuda.empty_cache()
+        # 2) Resampler → ctx.
+        logger.info(f"loading resampler ckpt: {args.resampler_ckpt}")
+        resampler = _load_resampler(args, spec, device)
+        ctx = _build_ctx(resampler, spec, tokens, pooled, args, device)
+        logger.info(f"ctx shape: {tuple(ctx.shape)}")
+        del resampler
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
 
     # 3) DiT.
     logger.info(f"loading DiT: {args.dit}")

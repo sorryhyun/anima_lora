@@ -3,8 +3,18 @@
 Maps a siglip2-encoded reference image to a DiT-compatible cross-attention
 context, replacing the text-encoder path entirely. A Perceiver resampler with
 per-group classifier heads predicts class prototypes for a handful of
-"anchor" slots (rating, girl/boy count, …) and fills the remaining content
+"anchor" slots (rating, people_count, …) and fills the remaining content
 slots from vision features.
+
+Anchor injection runs at two places in the resampler:
+- **Pre-injection**: the predicted (or teacher-forced) anchor prototype is
+  projected into the query space and written into the initial latent queries
+  at each anchor's slot position *before* the backbone runs. This conditions
+  the non-anchor slots on the classifier's decision. The input projection is
+  identity-initialized when `d_out == d_model`.
+- **Post-injection**: the exact prototype mix is spliced into the resampler
+  output at the same slots (replace / residual modes), via
+  `inject_spec_anchors`.
 
 ## Pipeline
 
@@ -21,28 +31,35 @@ each stage script with shared paths. Inference uses `test_img2emb.py`.
 
 ### Running it
 
+Preprocessing (features + anchor artifacts) is split from training so the
+heavy one-time steps don't rerun every time you tune hyperparams.
+
 ```bash
-# End-to-end (features → pretrain → finetune, with production defaults)
-python scripts/img2emb/train_img2emb.py all
+# One-time preprocessing: siglip2/dinov3 features + anchor prototypes.
+# Requires `make download-siglip2` once (vision tower lives at models/siglip2).
+make preprocess-img2emb
+python tasks.py preprocess-img2emb
+
+# Training (pretrain → finetune).
+make img2emb
+python tasks.py img2emb
 
 # One stage at a time; trailing args forward to the underlying script
 python scripts/img2emb/train_img2emb.py pretrain
 python scripts/img2emb/train_img2emb.py finetune --steps 20000
-
-# Makefile shortcuts (see Makefile for exact flags)
-make img2emb                # alias for train_img2emb.py all
 make img2emb-pretrain
 make img2emb-finetune
 make phase2-calibrate       # step-0 loss magnitudes, no backward
 
-# Inference from a reference image
+# Inference from a reference image. Without --image_size, the closest
+# CONSTANT_TOKEN_BUCKETS aspect ratio to the ref is auto-picked.
 make test-img2emb REF_IMAGE=post_image_dataset/foo.png
 python scripts/img2emb/test_img2emb.py --ref_image ref.png
 ```
 
-Outputs land under `output/img2embs/{features,pretrain,finetune}/`. Phase
-2a's ablation writes to `bench/img2emb/results/phase2a/` (legacy path, kept
-so the bench comparisons still line up).
+Outputs land under `output/img2embs/{features,anchors,pretrain,finetune}/`.
+`test_img2emb.py` loads the finetune ckpt from `output/img2embs/finetune/`
+and anchor prototypes from `output/img2embs/anchors/` by default.
 
 ## Anchor spec (`anchors.yaml`)
 
@@ -55,17 +72,15 @@ rating:
   mutex: true
   proto_key_prefix: "rating="
   default_slot: 0
-  classes: [explicit, sensitive, general, absurdres]
+  classes: [explicit, sensitive, general]
 
-girl_count:
+people_count:
   mutex: true
+  proto_key_prefix: "people="
   default_slot: 2
-  classes: [1girl, 2girls, 3girls]
-
-boy_count:
-  mutex: true
-  default_slot: 5
-  classes: [1boy, 2boys]
+  # Composite, exhaustive, disjoint buckets. Prototypes are re-derived from
+  # real slot-level T5 embeddings (not averages of per-tag prototypes).
+  classes: ["1girl", "1girl, 1boy", "2girls", "2girls, 1boy", "1boy", "multi", "no_people"]
 ```
 
 ### Fields
@@ -84,23 +99,21 @@ implicit `<unknown>` zero row at `index == n_classes`.
 
 ### Mutex vs multi-label
 
-Groups that are internally exclusive (1girl vs 2girls vs 3girls) stay
-`mutex: true` — the head is softmax over `n_classes + 1` rows (last row
-absorbs probability mass when nothing matches). Training picks the
-earliest-slot class when a caption has multiple active classes in the group
-(canonical booru ordering).
+Groups that are internally exclusive (`people_count`'s exhaustive buckets,
+`rating`'s explicit/sensitive/general) stay `mutex: true` — the head is
+softmax over `n_classes + 1` rows (last row absorbs probability mass when
+nothing matches). Training picks the earliest-slot class when a caption has
+multiple active classes in the group (canonical booru ordering).
 
 If you add a group whose classes can co-occur on the same image, flip
 `mutex: false`. Each class then gets its own slot and is injected
-independently based on the sigmoid decision (> 0.5). This keeps 1girl and
-1boy co-existence correct — put them in separate groups (as above) **or**
-in one non-mutex group.
+independently based on the sigmoid decision (> 0.5).
 
 Inference slot overrides (`test_img2emb.py`):
 
 ```bash
 python scripts/img2emb/test_img2emb.py --ref_image ref.png \
-    --slot_override rating=0,girl_count=2,boy_count=10
+    --slot_override rating=0,people_count=2
 ```
 
 ## Files
@@ -130,5 +143,28 @@ test_img2emb.py       # Reference-image → generated image inference.
 - Phase 1.5 saves a JSON sidecar alongside each `.safetensors` containing
   `anchor_spec` (the resolved group/class metadata). This is the canonical
   record of what the model was trained against.
+- The resampler's `forward` accepts `teacher_labels` + `tf_ratio` for
+  per-sample teacher forcing during pretrain (anneal 1→0 so the model
+  eventually trusts its own classifier). Without `teacher_labels`, every
+  sample pre-fills with the predicted soft mix at each group's default slot.
+- Training loads the cache without materializing the variant-mean targets
+  (used to cost ~2 GB RAM). The mean is a poor training target anyway — it
+  shrinks norms and sits off the T5 manifold — so phase 1 / 1.5 / 2 sample
+  one variant per step via `_ResamplerTrainDataset`. Phase-0 diagnostics
+  that still need the mean call `data.load_targets_mean` directly.
 - See `bench/img2emb/proposal.md` and `bench/img2emb/phase2_proposal.md` for
-  the design history and ablation notes.
+  the design history and ablation notes, and `proposal.md` in this directory
+  for the two-part K-slot cap (K=256) + InfoNCE-over-shuffled-variants
+  proposal.
+- **K-slot cap** (proposal.md part 1, shipped): phase 1.5 / phase 2 /
+  `test_img2emb` default `--n_slots 256`. The resampler predicts K=256 slots;
+  output is zero-padded to 512 at every boundary that talks to the DiT
+  (cached T5 shape). `--zero_pad_weight` (phase 1.5) and `--w_pad` (phase 2)
+  are removed — the pad tail is zero by construction.
+- **InfoNCE over shuffled variants** (proposal.md part 2, shipped): phase 1.5
+  and phase 2 both accept `--w_infonce` (default 0.1) and `--infonce_tau`
+  (default 0.07). The loss pools the resampler output over active slots and
+  contrasts it against per-variant pooled T5 targets cached at
+  `features/target_pooled.safetensors` (produced by `extract_features.py`;
+  ~65 MB for N=1987, V=8, D=1024). If the file is missing, InfoNCE is
+  skipped with a warning.

@@ -100,19 +100,44 @@ def process_variant(
     if not ids:
         return None
 
-    decoded = tokenizer.decode(ids, skip_special_tokens=True)
+    # Cached ids may contain <unk> for characters SentencePiece can't encode
+    # (e.g. '~', '^'). Dropping <unk> then re-tokenizing is lossy because
+    # SentencePiece normalizes consecutive ▁ tokens, so strict round-trip can
+    # drift around <unk> positions. Since anchor tags (rating, people_count)
+    # always live near the start of the caption — always before the first
+    # <unk> — we only need a clean round-trip on the pre-<unk> prefix.
+    unk_id = tokenizer.unk_token_id
+    eos_id = tokenizer.eos_token_id
+    cutoff = len(ids)
+    for i, t in enumerate(ids):
+        if t == unk_id or t == eos_id:
+            cutoff = i
+            break
+    prefix_ids = ids[:cutoff]
+    # Trailing whitespace-only tokens (e.g. the SentencePiece '▁' that was
+    # glued to the now-excluded <unk>/EOS) get dropped by the tokenizer's
+    # whitespace normalization on re-encode. Trim them so the round-trip
+    # matches.
+    while prefix_ids and tokenizer.decode(
+        [prefix_ids[-1]], skip_special_tokens=True
+    ).strip() == "":
+        prefix_ids = prefix_ids[:-1]
+    if not prefix_ids:
+        return {"_skip": True, "has_unk": unk_id in ids}
+
+    decoded = tokenizer.decode(prefix_ids, skip_special_tokens=True)
     enc = tokenizer(
         decoded,
         return_offsets_mapping=True,
         truncation=True,
-        max_length=len(ids) + 8,
-        add_special_tokens=True,
+        max_length=cutoff + 8,
+        add_special_tokens=False,
     )
-    if enc["input_ids"] != ids:
-        # Cached ids contain <unk> (id 2) for chars SentencePiece can't encode
-        # (e.g. Japanese subtitles). skip_special_tokens drops <unk>, so
-        # round-trip shortens — data property, not tokenizer drift.
-        return {"_skip": True, "has_unk": 2 in ids}
+    re_ids = enc["input_ids"]
+    if re_ids != prefix_ids:
+        # Prefix has no <unk> yet still drifts — real tokenizer normalization
+        # difference. Give up; these are rare.
+        return {"_skip": True, "has_unk": unk_id in ids}
 
     emb = sd[emb_key].to(torch.float32)
     nonzero = emb.abs().amax(dim=-1) > zero_eps
@@ -125,6 +150,8 @@ def process_variant(
         slots = tokens_in_range(enc["offset_mapping"], cs, ce)
         if not slots:
             continue
+        # Slots index into prefix_ids, which is ids[:cutoff] — so they already
+        # map directly into the cached ids/emb. No remap needed.
         tags_with_slots.append((tag, slots[0], slots[-1], len(slots)))
 
     return {

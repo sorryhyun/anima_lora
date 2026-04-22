@@ -11,7 +11,7 @@ LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/poo
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-features img2emb-anchors img2emb-pretrain img2emb-finetune test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-features img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-siglip2 gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -91,7 +91,9 @@ img2emb-pretrain:
 img2emb-finetune:
 	python scripts/img2emb/train_img2emb.py finetune $(ARGS)
 
-img2emb: img2emb-features img2emb-anchors img2emb-pretrain img2emb-finetune
+preprocess-img2emb: img2emb-features img2emb-anchors
+
+img2emb: img2emb-pretrain img2emb-finetune
 
 # Generate a single image conditioned on REF_IMAGE via the phase-2a resampler.
 # Example: make test-img2emb REF_IMAGE=post_image_dataset/foo.png
@@ -320,7 +322,17 @@ download-anima:
 		--local-dir models --include "split_files/*"
 	python -c "import shutil,os; [shutil.move(os.path.join('models/split_files',d,f),os.path.join('models',d,f)) for d in ['diffusion_models','text_encoders','vae'] for f in os.listdir(os.path.join('models/split_files',d))]; shutil.rmtree('models/split_files')"
 
-download-models: download-anima download-sam3 download-mit
+# SigLIP2 vision encoder for img2emb (see scripts/img2emb/extract_features.py).
+# Only the vision tower is used at runtime; tokenizer files are skipped.
+download-siglip2:
+	python -c "import os; os.makedirs('models/siglip2',exist_ok=True)"
+	hf download google/siglip2-large-patch16-384 \
+		config.json \
+		model.safetensors \
+		preprocessor_config.json \
+		--local-dir models/siglip2
+
+download-models: download-anima download-sam3 download-mit download-siglip2
 
 # --- Masking ---
 

@@ -71,11 +71,24 @@ class PerceiverResampler(nn.Module):
         self.out_norm = nn.LayerNorm(d_model)
         self.out = nn.Linear(d_model, d_out)
 
-    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+    def init_queries(self, B: int) -> torch.Tensor:
+        """Materialize a writable (B, n_slots, d_model) copy of the learned
+        queries — for callers that want to pre-fill specific slots before the
+        backbone runs (e.g. anchor injection)."""
+        # clone() not contiguous(): when B==1, expand(1,-1,-1) is a contiguous
+        # view of the leaf Parameter, so .contiguous() is a no-op and in-place
+        # writes by the caller would hit "view of a leaf Variable" errors.
+        return self.queries.expand(B, -1, -1).clone()
+
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        queries: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         B = tokens.shape[0]
         tokens = tokens.to(dtype=self.kv_proj.weight.dtype)
         kv = self.kv_proj(tokens)
-        q = self.queries.expand(B, -1, -1)
+        q = queries if queries is not None else self.queries.expand(B, -1, -1)
         for block in self.blocks:
             q = block(q, kv)
         return self.out(self.out_norm(q))

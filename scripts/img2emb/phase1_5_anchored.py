@@ -51,6 +51,8 @@ from scripts.img2emb.anchors import (  # noqa: E402
     load_anchor_spec,
 )
 from scripts.img2emb.data import (  # noqa: E402
+    _infonce_loss,
+    _pool,
     _resampler_loss,
     active_slice,
     load_cache,
@@ -87,19 +89,39 @@ def parse_args():
     p.add_argument("--d_model", type=int, default=1024)
     p.add_argument("--n_heads", type=int, default=8)
     p.add_argument("--n_layers", type=int, default=4)
+    p.add_argument(
+        "--n_slots",
+        type=int,
+        default=256,
+        help="Resampler query count K. Default 256 (hard K-cap per proposal.md part 1). "
+             "Target is sliced to [:K] and only slot < min(L, K) is supervised; "
+             "predictions are zero-padded back to 512 at eval/inference boundary.",
+    )
     p.add_argument("--steps", type=int, default=1000)
-    p.add_argument("--batch_size", type=int, default=16)
+    p.add_argument("--batch_size", type=int, default=48)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--weight_decay", type=float, default=0.01)
     p.add_argument("--warmup_frac", type=float, default=0.03)
-    p.add_argument("--eval_every", type=int, default=500)
+    p.add_argument("--eval_every", type=int, default=250)
     p.add_argument("--cos_loss_weight", type=float, default=1.0)
-    p.add_argument("--zero_pad_weight", type=float, default=0.01)
     p.add_argument(
         "--cls_loss_weight",
         type=float,
         default=0.1,
         help="Weight on auxiliary classifier loss (CE for mutex, BCE for multi-label).",
+    )
+    p.add_argument(
+        "--w_infonce",
+        type=float,
+        default=0.1,
+        help="Weight on multi-positive InfoNCE over pooled per-variant targets "
+             "(see proposal.md part 2). Set 0 to disable.",
+    )
+    p.add_argument(
+        "--infonce_tau",
+        type=float,
+        default=0.07,
+        help="InfoNCE temperature (CLIP default).",
     )
     p.add_argument(
         "--anchor_mode",
@@ -109,7 +131,7 @@ def parse_args():
              "residual = add to resampler output at anchor slot.",
     )
     p.add_argument("--seed", type=int, default=20260421)
-    p.add_argument("--log_every", type=int, default=50)
+    p.add_argument("--log_every", type=int, default=25)
     p.add_argument("--save_predictions", action="store_true")
     return p.parse_args()
 
@@ -242,7 +264,11 @@ def _run_pred(
     device: torch.device,
     anchor_mode: str,
     batch: int = 8,
+    pad_to: int = 512,
 ) -> tuple[torch.Tensor, dict]:
+    """Run resampler + anchor injection over eval_idx; zero-pad the (B, K, D)
+    output to (B, pad_to, D) so downstream eval can keep its 512-shaped contract.
+    """
     out_pred = []
     cls_hits: dict[str, list[int]] = {g.name: [0, 0] for g in spec.groups}
     for i in range(0, len(eval_idx), batch):
@@ -259,6 +285,9 @@ def _run_pred(
         detached_anchor = {k: v.detach().float() for k, v in fwd["anchor_emb"].items()}
         inject_spec_anchors(pred, spec, detached_anchor, dev_labels, mode=anchor_mode)
 
+        K_pred = pred.shape[1]
+        if K_pred < pad_to:
+            pred = F.pad(pred, (0, 0, 0, pad_to - K_pred))
         out_pred.append(pred.cpu())
 
         for g in spec.groups:
@@ -301,8 +330,6 @@ def _eval_per_variant(
     cos_vs_mean = torch.zeros(N, S)
     cos_best = torch.zeros(N, S)
     cos_mean_v = torch.zeros(N, S)
-    pad_abs_total = 0.0
-    pad_count = 0
 
     for n, full_idx in enumerate(tqdm(eval_idx, desc="eval")):
         sd = load_file(te_paths[full_idx])
@@ -325,12 +352,6 @@ def _eval_per_variant(
         cos_best[n] = cos_all.max(dim=0).values
         cos_mean_v[n] = cos_all.mean(dim=0)
 
-        if L < S:
-            pad_abs_total += float(pred_eval[n, L:, :].abs().mean().item()) * (S - L)
-            pad_count += S - L
-
-    pad_abs_mean = pad_abs_total / max(1, pad_count)
-
     vs_mean_ps = _slot_agg_cos(cos_vs_mean, mask)
     best_ps = _slot_agg_cos(cos_best, mask)
     mean_v_ps = _slot_agg_cos(cos_mean_v, mask)
@@ -338,7 +359,6 @@ def _eval_per_variant(
         "vs_mean": {"per_slot": vs_mean_ps, "stratified": _strata(vs_mean_ps)},
         "best_over_v": {"per_slot": best_ps, "stratified": _strata(best_ps)},
         "mean_over_v": {"per_slot": mean_v_ps, "stratified": _strata(mean_v_ps)},
-        "pad_residual_mean_abs": pad_abs_mean,
     }
 
 
@@ -353,10 +373,6 @@ def _log_eval(result: dict, cls_acc: dict, tag: str):
         logger.info(f"  [{tag}/{metric}] " + "  ".join(parts))
     acc_parts = [f"{name}={v:.3f}" for name, v in cls_acc.items()]
     logger.info(f"  [{tag}/cls_acc] " + "  ".join(acc_parts))
-    logger.info(
-        f"  [{tag}/pad] mean |pred| in inactive = "
-        f"{result['pad_residual_mean_abs']:.2e}"
-    )
 
 
 # --------------------------------------------------------------------------- main
@@ -391,15 +407,26 @@ def main():
     tokens_all = cache["tokens"]
     pooled_all = cache["pooled"]
     V = int(cache["num_variants"])
-    S = int(cache["targets_mean"].shape[1])
-    D_y = int(cache["targets_mean"].shape[2])
+    S, D_y = cache["target_shape"]
     d_enc = int(tokens_all.shape[-1])
     d_pool = int(pooled_all.shape[-1])
+    K = int(args.n_slots)
+    if K > S:
+        raise ValueError(f"--n_slots={K} exceeds cached target S={S}")
     logger.info(
         f"N_train={len(train_idx)}  N_eval={len(eval_idx)}  V={V}  "
-        f"S={S}  D_y={D_y}  d_enc={d_enc}  d_pool={d_pool}"
+        f"S={S}  K={K}  D_y={D_y}  d_enc={d_enc}  d_pool={d_pool}"
     )
-    del cache["targets_mean"]
+
+    # InfoNCE target (optional). Loaded by data.load_cache if the artifact exists.
+    tgt_pooled_all = cache.get("target_pooled")
+    use_infonce = bool(args.w_infonce > 0.0 and tgt_pooled_all is not None)
+    if args.w_infonce > 0.0 and tgt_pooled_all is None:
+        logger.warning(
+            "w_infonce > 0 but features/target_pooled.safetensors is missing — "
+            "re-run extract_features.py or preprocess-img2emb to regenerate. "
+            "InfoNCE disabled for this run."
+        )
 
     # Anchor spec + labels
     spec = load_anchor_spec(Path(args.anchors_yaml), tag_slot_dir)
@@ -414,7 +441,7 @@ def main():
         d_pool=d_pool,
         d_model=args.d_model,
         n_heads=args.n_heads,
-        n_slots=S,
+        n_slots=K,
         n_layers=args.n_layers,
         d_out=D_y,
     ).to(device)
@@ -464,21 +491,32 @@ def main():
 
             tok_b = tokens_all[full_idx].to(device=device, dtype=torch.bfloat16)
             pool_b = pooled_all[full_idx].to(device=device, dtype=torch.float32)
-            tgt_b = tgt_b.to(device=device, dtype=torch.float32)
-            mask_b = (torch.arange(S).unsqueeze(0) < L_b.unsqueeze(1)).to(device)
+            tgt_b = tgt_b.to(device=device, dtype=torch.float32)[:, :K]
+            L_clip = L_b.clamp_max(K).to(device)
+            mask_b = torch.arange(K, device=device).unsqueeze(0) < L_clip.unsqueeze(1)
 
+            dev_labels = {k: v.to(device) for k, v in anchors_b.items()}
             fwd = model(tok_b, pool_b)
             pred = fwd["pred"]
 
-            dev_labels = {k: v.to(device) for k, v in anchors_b.items()}
             inject_spec_anchors(pred, spec, fwd["anchor_emb"], dev_labels, mode=args.anchor_mode)
 
             loss_reg, comps = _resampler_loss(
                 pred, tgt_b, mask_b,
-                cos_w=args.cos_loss_weight, zero_w=args.zero_pad_weight,
+                cos_w=args.cos_loss_weight, zero_w=0.0,
             )
             cls_loss, accs = aux_cls_loss(spec, fwd["logits"], anchors_b)
             loss = loss_reg + args.cls_loss_weight * cls_loss
+
+            # InfoNCE auxiliary (optional) — pooled over anchored pred & per-variant targets.
+            infonce_metrics: dict[str, float] = {}
+            if use_infonce:
+                pred_pool = _pool(pred, mask_b)                                # (B, D)
+                tgt_pool_b = tgt_pooled_all[full_idx].to(device)               # (B, V, D)
+                infonce, infonce_metrics = _infonce_loss(
+                    pred_pool, tgt_pool_b, args.infonce_tau,
+                )
+                loss = loss + args.w_infonce * infonce
 
             opt.zero_grad(set_to_none=True)
             loss.backward()
@@ -486,28 +524,33 @@ def main():
             opt.step()
 
             if step % args.log_every == 0 or step == args.steps - 1:
-                train_log.append(
-                    {
-                        "step": step,
-                        "loss": float(loss.detach().item()),
-                        "mse": comps["mse_active"],
-                        "cos": comps["cos_loss"],
-                        "pad": comps["pad_loss"],
-                        "cls": float(cls_loss.detach().item()),
-                        "accs": accs,
-                        "lr": float(opt.param_groups[0]["lr"]),
-                    }
-                )
+                row = {
+                    "step": step,
+                    "loss": float(loss.detach().item()),
+                    "mse": comps["mse_active"],
+                    "cos": comps["cos_loss"],
+                    "cls": float(cls_loss.detach().item()),
+                    "accs": accs,
+                    "lr": float(opt.param_groups[0]["lr"]),
+                }
+                if infonce_metrics:
+                    row["infonce"] = infonce_metrics["infonce_loss"]
+                    row["infonce_acc"] = infonce_metrics["infonce_acc"]
+                train_log.append(row)
                 acc_str = " ".join(
                     f"{name[:1]}={v:.2f}" for name, v in accs.items()
                 ) or "-"
-                pbar.set_postfix(
-                    loss=f"{float(loss.detach().item()):.3f}",
-                    cos=f"{comps['cos_loss']:.3f}",
-                    cls=f"{float(cls_loss.detach().item()):.3f}",
-                    acc=acc_str,
-                    lr=f"{opt.param_groups[0]['lr']:.1e}",
-                )
+                postfix = {
+                    "loss": f"{float(loss.detach().item()):.3f}",
+                    "cos": f"{comps['cos_loss']:.3f}",
+                    "cls": f"{float(cls_loss.detach().item()):.3f}",
+                    "acc": acc_str,
+                    "lr": f"{opt.param_groups[0]['lr']:.1e}",
+                }
+                if infonce_metrics:
+                    postfix["nce"] = f"{infonce_metrics['infonce_loss']:.3f}"
+                    postfix["r@1"] = f"{infonce_metrics['infonce_acc']:.2f}"
+                pbar.set_postfix(**postfix)
 
             if (
                 args.eval_every > 0
@@ -529,7 +572,6 @@ def main():
                         "stratified_vs_mean": result["vs_mean"]["stratified"],
                         "stratified_best_over_v": result["best_over_v"]["stratified"],
                         "stratified_mean_over_v": result["mean_over_v"]["stratified"],
-                        "pad_residual_mean_abs": result["pad_residual_mean_abs"],
                         "cls_acc": cls_acc,
                     }
                 )
@@ -563,7 +605,8 @@ def main():
         "d_model": args.d_model,
         "n_heads": args.n_heads,
         "n_layers": args.n_layers,
-        "n_slots": S,
+        "n_slots": K,
+        "cache_slot_count": S,
         "n_steps": args.steps,
         "lr": args.lr,
         "warmup_frac": args.warmup_frac,
@@ -571,8 +614,9 @@ def main():
         "num_variants": V,
         "variant_sampling": "per_sample_uniform",
         "cos_loss_weight": args.cos_loss_weight,
-        "zero_pad_weight": args.zero_pad_weight,
         "cls_loss_weight": args.cls_loss_weight,
+        "w_infonce": args.w_infonce if use_infonce else 0.0,
+        "infonce_tau": args.infonce_tau,
         "train_time_sec": train_time,
         "n_train": len(train_idx),
         "n_eval": len(eval_idx),
@@ -583,7 +627,6 @@ def main():
             "stratified_vs_mean": result["vs_mean"]["stratified"],
             "stratified_best_over_v": result["best_over_v"]["stratified"],
             "stratified_mean_over_v": result["mean_over_v"]["stratified"],
-            "pad_residual_mean_abs": result["pad_residual_mean_abs"],
             "per_slot_vs_mean": result["vs_mean"]["per_slot"],
             "cls_acc": cls_acc,
         },

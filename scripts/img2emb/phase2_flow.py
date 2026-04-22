@@ -49,7 +49,7 @@ from scripts.img2emb.anchors import (  # noqa: E402
     labels_to_flat_tensors,
     load_anchor_spec,
 )
-from scripts.img2emb.data import load_cache  # noqa: E402
+from scripts.img2emb.data import _infonce_loss, _pool, load_cache  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
 from library.io.cache import get_latent_resolution  # noqa: E402
 from library.log import setup_logging  # noqa: E402
@@ -91,10 +91,17 @@ def parse_args():
     p.add_argument("--d_model", type=int, default=1024)
     p.add_argument("--n_heads", type=int, default=8)
     p.add_argument("--n_layers", type=int, default=4)
+    p.add_argument(
+        "--n_slots",
+        type=int,
+        default=256,
+        help="Resampler query count K (default 256 per K-cap, proposal.md part 1). "
+             "Output is zero-padded to 512 before feeding to DiT cross-attn.",
+    )
     p.add_argument("--attn_mode", default="flash")
 
     # DiT runtime
-    p.add_argument("--blocks_to_swap", type=int, default=6,
+    p.add_argument("--blocks_to_swap", type=int, default=26,
                    help=">0 enables block-swap; <0 enables gradient checkpointing; 0 = neither.")
     p.add_argument("--compile", action="store_true",
                    help="torch.compile each DiT block's _forward (dynamic=False). "
@@ -119,12 +126,14 @@ def parse_args():
                         "through DiT can spike early.")
 
     # loss weights (calibrated at step 0; see --calibrate_only)
-    p.add_argument("--w_pad", type=float, default=0.001,
-                   help="Zero-pad regularizer on pred[L:]. Lower than phase 1.5's 0.01 "
-                        "because FM-loss-scale differs; monitor mean(|pred[L:]|).")
     p.add_argument("--w_cls", type=float, default=0.1)
     p.add_argument("--w_retention", type=float, default=0.0,
                    help="Optional MSE(pred, variant_mean_crossattn_emb) safety term.")
+    p.add_argument("--w_infonce", type=float, default=0,
+                   help="Multi-positive InfoNCE over pooled per-variant targets "
+                        "(see proposal.md part 2). Set 0 to disable.")
+    p.add_argument("--infonce_tau", type=float, default=0.07,
+                   help="InfoNCE temperature (CLIP default).")
     p.add_argument("--weighting_scheme", default="none",
                    choices=["none", "sigma_sqrt", "cosmap"])
 
@@ -368,31 +377,26 @@ def build_ctx(
     anchors: dict[str, torch.Tensor],
     device: torch.device,
     anchor_mode: str = "replace",
-) -> tuple[torch.Tensor, dict[str, torch.Tensor], dict[str, torch.Tensor]]:
-    """Run resampler + classifier heads + anchor injection.
+    pad_to: int = 512,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor], dict[str, torch.Tensor], torch.Tensor]:
+    """Run resampler + classifier heads + anchor injection, zero-pad to ``pad_to``.
 
-    Returns ``(ctx_bf16, logits, batch_labels_on_device)``.
+    Returns ``(ctx_bf16, logits, batch_labels_on_device, pred_kcap)`` where
+    ``pred_kcap`` is the (B, K, D) float tensor before the zero-pad (used by
+    InfoNCE to pool over only the active K slots).
     """
     fwd = model(tokens, pooled)
-    pred = fwd["pred"]
+    pred = fwd["pred"]    # (B, K, D)
 
     dev_labels = {k: v.to(device) for k, v in anchors.items()}
     inject_spec_anchors(pred, spec, fwd["anchor_emb"], dev_labels, mode=anchor_mode)
 
-    return pred.to(torch.bfloat16), fwd["logits"], dev_labels
-
-
-def pad_tail_loss(pred: torch.Tensor, L: torch.Tensor) -> tuple[torch.Tensor, float]:
-    """MSE(pred[b, L[b]:], 0). Also returns mean(|pred[L:]|) as a diagnostic."""
-    B, S, D = pred.shape
-    arange = torch.arange(S, device=pred.device).unsqueeze(0)       # (1, S)
-    tail_mask = (arange >= L.to(pred.device).unsqueeze(1)).unsqueeze(-1)  # (B, S, 1)
-    masked = pred * tail_mask
-    denom = tail_mask.sum().clamp(min=1).float() * D
-    mse = (masked.float() ** 2).sum() / denom
-    with torch.no_grad():
-        mean_abs = (masked.float().abs().sum() / denom).item()
-    return mse, mean_abs
+    K_pred = pred.shape[1]
+    if K_pred < pad_to:
+        ctx = F.pad(pred, (0, 0, 0, pad_to - K_pred))
+    else:
+        ctx = pred
+    return ctx.to(torch.bfloat16), fwd["logits"], dev_labels, pred
 
 
 def _warmup_cosine(step: int, total: int, warmup: int, eta_min_frac: float = 0.05):
@@ -445,8 +449,8 @@ def eval_fm(
         pool_b = args.pooled_all[batch["full_idx"]].to(device, dtype=torch.float32)
 
         # phase 2 context
-        ctx2, logits, dev_labels = build_ctx(model, spec, tok_b, pool_b, anchors, device)
-        pooled_for_dit = ctx2.float().amax(dim=1).to(torch.bfloat16)
+        ctx2, logits, dev_labels, _ = build_ctx(model, spec, tok_b, pool_b, anchors, device)
+        pooled_for_dit = ctx2.amax(dim=1)
 
         loss2, _ = dit_fm_loss(
             anima, latent, ctx2, pooled_for_dit,
@@ -476,7 +480,7 @@ def eval_fm(
         # t5_real baseline -- pass cached crossattn straight through; pooled
         # uses the same amax(dim=1) rule as the resampler path so the two
         # losses differ only in crossattn source.
-        pooled_t5 = t5_crossattn.float().amax(dim=1).to(torch.bfloat16)
+        pooled_t5 = t5_crossattn.amax(dim=1)
         loss_t5, _ = dit_fm_loss(
             anima, latent, t5_crossattn, pooled_t5,
             args.sigma_sampling, args.sigmoid_scale, args.weighting_scheme,
@@ -486,8 +490,8 @@ def eval_fm(
 
         # phase 1.5 baseline (optional)
         if phase15_model is not None:
-            ctx15, _, _ = build_ctx(phase15_model, spec, tok_b, pool_b, anchors, device)
-            pooled_p15 = ctx15.float().amax(dim=1).to(torch.bfloat16)
+            ctx15, _, _, _ = build_ctx(phase15_model, spec, tok_b, pool_b, anchors, device)
+            pooled_p15 = ctx15.amax(dim=1)
             loss15, _ = dit_fm_loss(
                 anima, latent, ctx15, pooled_p15,
                 args.sigma_sampling, args.sigmoid_scale, args.weighting_scheme,
@@ -533,7 +537,6 @@ def main():
 
     logger.info(f"cache={cache_dir}  image_dir={image_dir_path}  out={out_dir}")
     cache = load_cache(cache_dir, str(image_dir_path), args.encoder, num_workers=4)
-    del cache["targets_mean"]  # not needed; we use per-image safetensors on the fly
 
     tokens_all = cache["tokens"]       # (N, T_enc, D_enc) bf16 on cpu
     pooled_all = cache["pooled"]       # (N, D_pool) f32 on cpu
@@ -545,6 +548,15 @@ def main():
     d_enc = int(tokens_all.shape[-1])
     d_pool = int(pooled_all.shape[-1])
     logger.info(f"N_train={len(split['train_idx'])}  N_eval={len(split['eval_idx'])}  V={V}")
+
+    # InfoNCE target (see proposal.md part 2). Optional: skipped if missing.
+    tgt_pooled_all = cache.get("target_pooled")
+    use_infonce = bool(args.w_infonce > 0.0 and tgt_pooled_all is not None)
+    if args.w_infonce > 0.0 and tgt_pooled_all is None:
+        logger.warning(
+            "w_infonce > 0 but features/target_pooled.safetensors is missing — "
+            "re-run extract_features.py. InfoNCE disabled for this run."
+        )
 
     # Stash for closures inside eval_fm (keeps signature tidy).
     args.tokens_all = tokens_all
@@ -560,10 +572,15 @@ def main():
     flat_labels = labels_to_flat_tensors(spec, anchor_labels)
 
     # -----------------------------------------------------------------  model (trainable resampler)
-    S = 512  # slot count (matches cached crossattn_emb shape)
+    S = 512  # DiT cross-attn slot count (matches cached crossattn_emb shape).
+    K = int(args.n_slots)  # resampler query count (K-cap, default 256).
+    if K > S:
+        raise ValueError(f"--n_slots={K} exceeds DiT slot count {S}")
+    args.S = S
+    args.K = K
     model = AnchoredResampler(
         spec=spec, d_enc=d_enc, d_pool=d_pool,
-        d_model=args.d_model, n_heads=args.n_heads, n_slots=S, n_layers=args.n_layers,
+        d_model=args.d_model, n_heads=args.n_heads, n_slots=K, n_layers=args.n_layers,
     ).to(device)
 
     if args.warm_start:
@@ -578,7 +595,7 @@ def main():
     if p15_path:
         phase15_model = AnchoredResampler(
             spec=spec, d_enc=d_enc, d_pool=d_pool,
-            d_model=args.d_model, n_heads=args.n_heads, n_slots=S, n_layers=args.n_layers,
+            d_model=args.d_model, n_heads=args.n_heads, n_slots=K, n_layers=args.n_layers,
         ).to(device)
         load_warm_start(phase15_model, Path(p15_path))
         phase15_model.requires_grad_(False)
@@ -670,30 +687,52 @@ def main():
         tok_b = tokens_all[batch["full_idx"]].to(device, dtype=torch.bfloat16)
         pool_b = pooled_all[batch["full_idx"]].to(device, dtype=torch.float32)
 
-        # Resampler + anchor injection -> ctx
-        ctx, logits, dev_labels = build_ctx(model, spec, tok_b, pool_b, anchors, device)
-        pooled_for_dit = ctx.float().amax(dim=1).to(torch.bfloat16)
+        # Resampler + anchor injection -> ctx (B, S=512, D); ``pred_k`` is the
+        # pre-pad (B, K, D) float handle used for pooled auxiliaries.
+        ctx, logits, dev_labels, pred_k = build_ctx(
+            model, spec, tok_b, pool_b, anchors, device, pad_to=args.S,
+        )
+        # amax in bf16 directly — .float() here would materialize a full
+        # (B, 512, 1024) fp32 tensor in the DiT-backward graph just to reduce
+        # along dim 1, costing peak VRAM we can't spare on 16 GiB cards.
+        pooled_for_dit = ctx.amax(dim=1)
 
         fm_loss, fm_diag = dit_fm_loss(
             anima, latent, ctx, pooled_for_dit,
             args.sigma_sampling, args.sigmoid_scale, args.weighting_scheme,
         )
         ce_loss, accs = aux_cls_loss(spec, logits, dev_labels)
-        pad_loss, pad_mean_abs = pad_tail_loss(ctx, L_b)
 
-        loss = fm_loss + args.w_cls * ce_loss + args.w_pad * pad_loss
+        loss = fm_loss + args.w_cls * ce_loss
         if args.w_retention > 0.0:
             # Variant-mean of cached crossattn_emb — can re-use t5_crossattn for v0 or compute mean.
             # Keep this optional; costs another per-step tensor if enabled.
             retention = F.mse_loss(ctx.float(), t5_crossattn.float())
             loss = loss + args.w_retention * retention
 
+        # InfoNCE auxiliary: pooled pred vs per-variant pooled T5 targets.
+        infonce_metrics: dict[str, float] = {}
+        if use_infonce:
+            K_cur = pred_k.shape[1]
+            L_clip = L_b.clamp_max(K_cur).to(device)
+            mask_k = torch.arange(K_cur, device=device).unsqueeze(0) < L_clip.unsqueeze(1)
+            pred_pool = _pool(pred_k, mask_k)                              # (B, D)
+            tgt_pool_b = tgt_pooled_all[batch["full_idx"]].to(device)     # (B, V, D)
+            infonce, infonce_metrics = _infonce_loss(
+                pred_pool, tgt_pool_b, args.infonce_tau,
+            )
+            loss = loss + args.w_infonce * infonce
+
         # step-0 calibration: print magnitudes before the first backward.
         if step == 0:
+            nce_s = (
+                f"  nce={infonce_metrics['infonce_loss']:.4f} "
+                f"(r@1={infonce_metrics['infonce_acc']:.2f})"
+                if infonce_metrics else ""
+            )
             logger.info(
                 f"[calibration] fm={fm_loss.item():.4f}  "
-                f"ce={ce_loss.item():.4f}  "
-                f"pad={pad_loss.item():.6f} (mean|tail|={pad_mean_abs:.2e})  "
+                f"ce={ce_loss.item():.4f}{nce_s}  "
                 f"total={loss.item():.4f}"
             )
             if args.calibrate_only:
@@ -715,17 +754,21 @@ def main():
                 "fm": float(fm_loss.item()),
                 "fm_unweighted": float(fm_diag["fm_mse_unweighted"]),
                 "ce": float(ce_loss.item()),
-                "pad": float(pad_loss.item()),
-                "pad_mean_abs": float(pad_mean_abs),
                 "sigma_mean": float(fm_diag["sigma_mean"]),
                 "lr_scale": float(lr_scale),
                 "accs": accs,
             }
+            if infonce_metrics:
+                row["infonce"] = infonce_metrics["infonce_loss"]
+                row["infonce_acc"] = infonce_metrics["infonce_acc"]
             log_rows.append(row)
+            nce_s = (
+                f"  nce={row['infonce']:.4f} r@1={row['infonce_acc']:.2f}"
+                if infonce_metrics else ""
+            )
             logger.info(
                 f"step {step:>5}  loss={row['loss']:.4f}  fm={row['fm']:.4f}  "
-                f"ce={row['ce']:.4f}  pad={row['pad']:.5f}  "
-                f"|tail|={row['pad_mean_abs']:.2e}  "
+                f"ce={row['ce']:.4f}{nce_s}  "
                 f"σ̄={row['sigma_mean']:.3f}  "
                 f"accs={accs}"
             )

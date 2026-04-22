@@ -342,6 +342,15 @@ class AnchoredResampler(nn.Module):
     Forward returns ``{"pred": (B, S, D_out), "logits": {name: (B, n_rows)},
     "anchor_emb": {name: ...}}``. For mutex groups, ``anchor_emb[name]`` is
     ``(B, D_out)``. For multi-label groups it's ``(B, n_classes, D_out)``.
+
+    Pre-injection: before the backbone runs, the predicted anchor embedding
+    (or a teacher-forced GT prototype, see ``forward`` kwargs) is projected
+    d_out → d_model via ``anchor_in_proj`` and written into the latent
+    queries at the corresponding slot positions. This conditions the
+    non-anchor slots on the classifier's decision so the backbone doesn't
+    have to predict the anchor positions itself. Post-injection (replacing
+    the output at anchor slots with the exact prototype mix) still happens
+    at the call site via :func:`inject_spec_anchors`.
     """
 
     def __init__(
@@ -369,13 +378,24 @@ class AnchoredResampler(nn.Module):
         self.heads = nn.ModuleDict(
             {g.name: nn.Linear(d_model, g.n_rows) for g in spec.groups}
         )
+        # Identity-init when d_out == d_model so prototypes land at the same
+        # scale as the existing N(0, 0.15) latent queries from step 0.
+        self.anchor_in_proj = nn.Linear(d_out, d_model)
+        with torch.no_grad():
+            if d_out == d_model:
+                self.anchor_in_proj.weight.copy_(torch.eye(d_model))
+            else:
+                nn.init.normal_(self.anchor_in_proj.weight, std=0.02)
+            self.anchor_in_proj.bias.zero_()
         for g in spec.groups:
             self.register_buffer(f"{g.name}_protos", g.prototypes.float())
 
     @property
     def cls_param_prefixes(self) -> tuple[str, ...]:
         """Name prefixes for the 'classifier' param group (for split LRs)."""
-        return ("pool_proj",) + tuple(f"heads.{g.name}" for g in self.spec.groups)
+        return ("pool_proj", "anchor_in_proj") + tuple(
+            f"heads.{g.name}" for g in self.spec.groups
+        )
 
     def _get_protos(self, name: str) -> torch.Tensor:
         return getattr(self, f"{name}_protos")
@@ -384,9 +404,33 @@ class AnchoredResampler(nn.Module):
         p = self.pool_proj(pooled.float())
         return {g.name: self.heads[g.name](p) for g in self.spec.groups}
 
-    def forward(self, tokens: torch.Tensor, pooled: torch.Tensor) -> dict[str, Any]:
-        pred = self.backbone(tokens)
-        logits = self.classify(pooled)
+    def build_teacher_emb(
+        self, batch_labels: dict[str, torch.Tensor]
+    ) -> dict[str, torch.Tensor]:
+        """Hard prototype lookup from GT labels — the teacher signal.
+
+        Mutex      : (B, D_out). Missing class (label -1) → <unknown> zero row.
+        Multi-label: (B, C, D_out). Inactive classes → zero (matches the
+                     sigmoid * proto formula at sigma=0).
+        """
+        out: dict[str, torch.Tensor] = {}
+        for g in self.spec.groups:
+            protos = self._get_protos(g.name)
+            if g.mutex:
+                cls = batch_labels[f"{g.name}_class"].to(protos.device)
+                idx = torch.where(
+                    cls >= 0, cls, torch.full_like(cls, g.unknown_idx)
+                )
+                out[g.name] = protos[idx]                       # (B, D_out)
+            else:
+                lbl = batch_labels[f"{g.name}_labels"].to(protos.device)
+                # (B, C, D_out): proto row per class, gated by binary label
+                out[g.name] = lbl.unsqueeze(-1) * protos[: g.n_classes].unsqueeze(0)
+        return out
+
+    def _anchor_emb_from_logits(
+        self, logits: dict[str, torch.Tensor]
+    ) -> dict[str, torch.Tensor]:
         anchor_emb: dict[str, torch.Tensor] = {}
         for g in self.spec.groups:
             protos = self._get_protos(g.name)
@@ -394,10 +438,146 @@ class AnchoredResampler(nn.Module):
             if g.mutex:
                 anchor_emb[g.name] = torch.softmax(lg, dim=-1) @ protos
             else:
-                # Drop the <unknown> row; it never fires in multi-label.
                 sigma = torch.sigmoid(lg[..., : g.n_classes]).unsqueeze(-1)
                 anchor_emb[g.name] = sigma * protos[: g.n_classes].unsqueeze(0)
-        return {"pred": pred, "logits": logits, "anchor_emb": anchor_emb}
+        return anchor_emb
+
+    def _prefill_queries(
+        self,
+        B: int,
+        device: torch.device,
+        anchor_emb: dict[str, torch.Tensor],
+        slots: dict[str, torch.Tensor],
+        masks: dict[str, torch.Tensor | None],
+    ) -> torch.Tensor:
+        """Write projected anchor embeddings into the initial query buffer at
+        the requested slot positions. Mutex groups always write (one slot per
+        sample). Multi-label groups write only where ``masks[g.name]`` is True
+        (and the per-class slot is valid)."""
+        q = self.backbone.init_queries(B)
+        for g in self.spec.groups:
+            emb = anchor_emb[g.name]
+            slot = slots[g.name].to(device)
+            if g.mutex:
+                # emb (B, D_out) → (B, d_model); slot (B,)
+                proj = self.anchor_in_proj(emb)
+                valid = slot >= 0
+                if not valid.any():
+                    continue
+                b_idx = torch.arange(B, device=device)[valid]
+                s_idx = slot[valid]
+                q[b_idx, s_idx] = proj[valid].to(q.dtype)
+            else:
+                mask = masks.get(g.name)
+                valid = slot >= 0
+                if mask is not None:
+                    valid = valid & mask.to(device)
+                if not valid.any():
+                    continue
+                b_rows, c_cols = torch.nonzero(valid, as_tuple=True)
+                # emb (B, C, D_out) → only the chosen entries get projected
+                values = self.anchor_in_proj(emb[b_rows, c_cols])
+                q[b_rows, slot[b_rows, c_cols]] = values.to(q.dtype)
+        return q
+
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        pooled: torch.Tensor,
+        *,
+        teacher_labels: dict[str, torch.Tensor] | None = None,
+        tf_ratio: float | torch.Tensor = 0.0,
+    ) -> dict[str, Any]:
+        """Run classifier, build pre-fill (predicted or teacher-forced mix),
+        write it into the latent queries, then run the backbone.
+
+        Teacher forcing (only active when ``teacher_labels`` is given and
+        ``tf_ratio > 0``): each sample independently uses the GT prototype
+        with probability ``tf_ratio`` (per-sample Bernoulli) and the
+        classifier's predicted soft mix otherwise. ``tf_ratio`` may be a
+        scalar or a per-sample (B,) tensor. Anneal from 1.0 → 0.0 across
+        training so the model learns to trust its own classifier by the end.
+
+        ``teacher_labels`` is the flat label dict from ``collate_anchor_batch``;
+        it carries both the GT class indices (for prototype lookup) and the
+        GT slot positions. Without it, every sample uses the predicted soft
+        mix at the per-group ``default_slot`` / ``default_slots``.
+        """
+        B = tokens.shape[0]
+        device = tokens.device
+
+        logits = self.classify(pooled)
+        anchor_emb_pred = self._anchor_emb_from_logits(logits)
+
+        # --- decide per-sample teacher mask
+        if teacher_labels is not None:
+            if isinstance(tf_ratio, (int, float)):
+                tf_ratio_t = torch.full((B,), float(tf_ratio), device=device)
+            else:
+                tf_ratio_t = tf_ratio.to(device)
+                if tf_ratio_t.ndim == 0:
+                    tf_ratio_t = tf_ratio_t.expand(B)
+            use_teacher = torch.rand(B, device=device) < tf_ratio_t   # (B,) bool
+            teacher_emb = self.build_teacher_emb(teacher_labels)
+        else:
+            use_teacher = torch.zeros(B, dtype=torch.bool, device=device)
+            teacher_emb = None
+
+        # --- build per-group prefill emb / slots / masks
+        prefill_emb: dict[str, torch.Tensor] = {}
+        prefill_slots: dict[str, torch.Tensor] = {}
+        prefill_masks: dict[str, torch.Tensor | None] = {}
+        any_teacher = bool(use_teacher.any().item()) if teacher_labels is not None else False
+
+        for g in self.spec.groups:
+            pred_emb = anchor_emb_pred[g.name]
+            if g.mutex:
+                # default slot for predicted path
+                default_slots = torch.full(
+                    (B,), int(g.default_slot), dtype=torch.long, device=device
+                )
+                if any_teacher:
+                    t_slot = teacher_labels[f"{g.name}_slot"].to(device)
+                    # teacher slot may be -1 (label missing) — fall back to default
+                    t_slot = torch.where(t_slot >= 0, t_slot, default_slots)
+                    prefill_slots[g.name] = torch.where(
+                        use_teacher, t_slot, default_slots
+                    )
+                    t_emb = teacher_emb[g.name]
+                    prefill_emb[g.name] = torch.where(
+                        use_teacher.unsqueeze(-1), t_emb, pred_emb
+                    )
+                else:
+                    prefill_slots[g.name] = default_slots
+                    prefill_emb[g.name] = pred_emb
+                prefill_masks[g.name] = None
+            else:
+                # multi-label
+                C = g.n_classes
+                default_slots_row = torch.tensor(
+                    g.default_slots, dtype=torch.long, device=device
+                ).unsqueeze(0).expand(B, -1).contiguous()        # (B, C)
+                # predicted active set: sigmoid > 0.5
+                pred_mask = torch.sigmoid(logits[g.name][..., :C]) > 0.5  # (B, C)
+                if any_teacher:
+                    t_slots = teacher_labels[f"{g.name}_slots"].to(device)   # (B, C)
+                    t_slots_eff = torch.where(t_slots >= 0, t_slots, default_slots_row)
+                    t_mask = teacher_labels[f"{g.name}_labels"].to(device) > 0.5  # (B, C)
+                    use_t = use_teacher.unsqueeze(-1)        # (B, 1)
+                    prefill_slots[g.name] = torch.where(use_t, t_slots_eff, default_slots_row)
+                    prefill_masks[g.name] = torch.where(use_t, t_mask, pred_mask)
+                    t_emb = teacher_emb[g.name]
+                    prefill_emb[g.name] = torch.where(
+                        use_t.unsqueeze(-1), t_emb, pred_emb
+                    )
+                else:
+                    prefill_slots[g.name] = default_slots_row
+                    prefill_masks[g.name] = pred_mask
+                    prefill_emb[g.name] = pred_emb
+
+        q = self._prefill_queries(B, device, prefill_emb, prefill_slots, prefill_masks)
+        pred = self.backbone(tokens, queries=q)
+        return {"pred": pred, "logits": logits, "anchor_emb": anchor_emb_pred}
 
 
 # --------------------------------------------------------------------------- injection

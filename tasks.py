@@ -170,17 +170,19 @@ def cmd_postfix(extra):
 
 
 def cmd_img2emb(extra):
-    """Usage: python tasks.py img2emb <features|anchors|pretrain|finetune|all> [extra...]"""
-    stage = extra[0] if extra else "all"
+    """Usage: python tasks.py img2emb [features|anchors|pretrain|finetune] [extra...]
+
+    Bare `img2emb` runs pretrain + finetune (features + anchors are a separate
+    preprocessing step — `make preprocess-img2emb` / `python tasks.py preprocess-img2emb`).
+    """
+    stage = extra[0] if extra else None
     rest = extra[1:] if extra else []
-    if stage == "anchors":
-        run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py", *rest])
-        return
-    if stage == "all":
-        run([PY, "scripts/img2emb/train_img2emb.py", "features", *rest])
-        run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py"])
+    if stage is None:
         run([PY, "scripts/img2emb/train_img2emb.py", "pretrain"])
         run([PY, "scripts/img2emb/train_img2emb.py", "finetune"])
+        return
+    if stage == "anchors":
+        run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py", *rest])
         return
     run([PY, "scripts/img2emb/train_img2emb.py", stage, *rest])
 
@@ -199,6 +201,11 @@ def cmd_img2emb_pretrain(extra):
 
 def cmd_img2emb_finetune(extra):
     run([PY, "scripts/img2emb/train_img2emb.py", "finetune", *extra])
+
+
+def cmd_preprocess_img2emb(extra):
+    run([PY, "scripts/img2emb/train_img2emb.py", "features", *extra])
+    run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py"])
 
 
 def cmd_test_img2emb(extra):
@@ -789,12 +796,16 @@ COMMANDS = {
     "preprocess-te": (cmd_preprocess_te, "Cache text encoder embeddings"),
     "img2emb": (
         cmd_img2emb,
-        "Train img2emb resampler (siglip2 → DiT crossattn). Stage arg: features|anchors|pretrain|finetune|all",
+        "Train img2emb resampler (pretrain + finetune). Optional stage arg: features|anchors|pretrain|finetune",
     ),
     "img2emb-features": (cmd_img2emb_features, "img2emb: extract encoder features (stage 1)"),
     "img2emb-anchors": (cmd_img2emb_anchors, "img2emb: refresh people=* prototypes + phase1_positions (stage 1.5)"),
     "img2emb-pretrain": (cmd_img2emb_pretrain, "img2emb: resampler pretrain on cached targets (stage 2)"),
     "img2emb-finetune": (cmd_img2emb_finetune, "img2emb: flow-matching finetune through frozen DiT (stage 3)"),
+    "preprocess-img2emb": (
+        cmd_preprocess_img2emb,
+        "img2emb preprocessing: extract features + rebuild anchor artifacts",
+    ),
     "test-img2emb": (
         cmd_test_img2emb,
         "Generate an image from a ref image via the phase-2a resampler. Usage: test-img2emb <ref_image>",

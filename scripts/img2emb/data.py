@@ -25,10 +25,9 @@ sys.path.insert(0, str(REPO_ROOT))
 from library.io.cache import discover_cached_images  # noqa: E402
 
 
-def active_slice(active_lengths: list[int]) -> torch.Tensor:
+def active_slice(active_lengths: list[int], S: int = 512) -> torch.Tensor:
     """(N, S) boolean mask — True where slot < that row's active length."""
     N = len(active_lengths)
-    S = 512
     L = torch.tensor(active_lengths, dtype=torch.long)
     arange = torch.arange(S).unsqueeze(0).expand(N, -1)
     return arange < L.unsqueeze(1)  # (N, S)
@@ -36,7 +35,13 @@ def active_slice(active_lengths: list[int]) -> torch.Tensor:
 
 class _VariantMeanDataset(Dataset):
     """Load one TE file, zero-clamp the padded tail across every variant,
-    return the variant-mean ``(S, D)`` slice. Parallelizable via DataLoader."""
+    return the variant-mean ``(S, D)`` slice. Parallelizable via DataLoader.
+
+    Only used by the phase-0 diagnostic probes (``bench/img2emb/phase0_probes``)
+    where the analytic OLS solution requires the per-image mean. All production
+    training stages (phase 1 / 1.5 / 2) sample one variant per step via
+    ``_ResamplerTrainDataset`` and never touch this class.
+    """
 
     def __init__(self, te_paths: list[str], active_lengths: list[int]):
         self.te_paths = te_paths
@@ -78,15 +83,21 @@ def _resolve_te_paths(image_dir: str, stems: list[str]) -> list[str]:
     return [te_by_stem[s] for s in stems]
 
 
-def _load_targets_mean(
+def load_targets_mean(
     te_paths: list[str],
     active_lengths: list[int],
     num_workers: int,
-) -> tuple[torch.Tensor, int]:
+) -> torch.Tensor:
     """Materialize the variant-mean targets ``(N, S, D)`` fp32 in RAM.
 
+    Opt-in: only phase-0 diagnostic probes call this. The mean is a valid
+    *diagnostic* target (order-invariant summary of the caption distribution)
+    but a poor *training* target — it shrinks the norm under triangle
+    inequality and sits off the T5 manifold. Production training stages use
+    ``_ResamplerTrainDataset`` for per-step per-variant sampling instead.
+
     Pre-allocated + filled by index via DataLoader workers — peak RAM is the
-    final 2 GB tensor, not the old 8 GB per-variant stack.
+    final ~2 GB tensor, not the old per-variant stack.
     """
     ds = _VariantMeanDataset(te_paths, active_lengths)
     loader = DataLoader(
@@ -110,26 +121,50 @@ def _load_targets_mean(
                 f"Variant count differs across images: {V_seen} vs {batch_V}"
             )
         out[idx] = mean_var.float()
-    assert out is not None and V_seen is not None
-    return out, V_seen
+    assert out is not None
+    return out
 
 
-def load_cache(cache_dir: Path, image_dir: str, encoder: str, num_workers: int):
-    """Return dict with pooled / tokens / targets_mean / active_lengths / split /
+def _peek_target_shape(te_paths: list[str]) -> tuple[int, int]:
+    """Return ``(S, D)`` of the cross-attn target by reading one TE file.
+
+    Cheap stand-in for ``cache["targets_mean"].shape[1:]`` now that we don't
+    materialize the mean up-front.
+    """
+    sd = load_file(te_paths[0])
+    variant_keys = sorted(k for k in sd.keys() if k.startswith("crossattn_emb_v"))
+    key = variant_keys[0] if variant_keys else "crossattn_emb"
+    if key not in sd:
+        raise RuntimeError(
+            f"No crossattn_emb / crossattn_emb_v* key in {te_paths[0]}"
+        )
+    t = sd[key]
+    return int(t.shape[0]), int(t.shape[1])
+
+
+def load_cache(cache_dir: Path, image_dir: str, encoder: str, num_workers: int = 0):
+    """Return dict with pooled / tokens / target_shape / active_lengths / split /
     te_paths.
 
-    Targets are no longer cached in one big safetensors; variant-mean is
-    materialized on demand from the per-image ``*_anima_te.safetensors`` in
-    ``image_dir``, and ``te_paths`` is passed through for the resampler to
-    stream per-sample variants during training.
+    The mean target is no longer materialized eagerly — it's useless for
+    training (see ``load_targets_mean`` docstring) and was a ~2 GB RAM tax.
+    Phase-0 diagnostics that still want it call ``load_targets_mean`` directly.
+    ``num_workers`` is kept in the signature for call-site compatibility but
+    is unused here; pass it to ``load_targets_mean`` instead.
     """
+    _ = num_workers
     stems = json.loads((cache_dir / "stems.json").read_text())
     split = json.loads((cache_dir / "split.json").read_text())
     act = json.loads((cache_dir / "active_lengths.json").read_text())
 
     te_paths = _resolve_te_paths(image_dir, stems)
-    targets_mean, V = _load_targets_mean(te_paths, act["active_lengths"], num_workers)
-    V = int(act.get("num_variants", V))
+    if "num_variants" not in act:
+        raise RuntimeError(
+            f"active_lengths.json at {cache_dir} missing 'num_variants'; "
+            "re-run extract_features.py to regenerate."
+        )
+    V = int(act["num_variants"])
+    S, D_y = _peek_target_shape(te_paths)
 
     pooled = load_file(str(cache_dir / "features" / f"{encoder}_pooled.safetensors"))[
         "pooled"
@@ -137,15 +172,24 @@ def load_cache(cache_dir: Path, image_dir: str, encoder: str, num_workers: int):
     tokens = load_file(str(cache_dir / "features" / f"{encoder}_tokens.safetensors"))[
         "tokens"
     ]
+
+    # Optional per-variant pooled T5 targets for InfoNCE (see
+    # ``compute_target_pooled`` in extract_features.py). Shape: (N, V, D).
+    target_pooled: torch.Tensor | None = None
+    tgt_pooled_path = cache_dir / "features" / "target_pooled.safetensors"
+    if tgt_pooled_path.exists():
+        target_pooled = load_file(str(tgt_pooled_path))["pooled"]
+
     return {
         "stems": stems,
         "split": split,
         "active_lengths": act["active_lengths"],
         "num_variants": V,
         "te_paths": te_paths,           # list[str] aligned to stems order
-        "targets_mean": targets_mean,   # (N, S, D) fp32
+        "target_shape": (S, D_y),       # (S, D_y) int tuple
         "pooled": pooled,               # (N, D_enc) fp32
         "tokens": tokens,               # (N, T, D_enc) bf16
+        "target_pooled": target_pooled, # (N, V, D_y) fp32 or None
     }
 
 
@@ -189,6 +233,56 @@ def _resampler_loss(
         "mse_active": float(mse_active.detach().item()),
         "cos_loss": float(cos_loss.detach().item()),
         "pad_loss": float(pad_loss.detach().item()),
+    }
+
+
+def _pool(x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """Mean-pool ``x`` (B, S, D) over active slots (``mask`` True).
+
+    Zero-length rows (mask all False) return zero to avoid NaN; L2-normalize
+    at the call site if needed. Denominator is the true active count, so
+    length-normalized across variable-L samples.
+    """
+    m = mask.unsqueeze(-1).float()
+    return (x.float() * m).sum(dim=1) / m.sum(dim=1).clamp_min(1.0)
+
+
+def _infonce_loss(
+    pred_pool: torch.Tensor,      # (B, D)  resampler pooled output
+    tgt_pooled: torch.Tensor,     # (B, V, D) per-variant pooled targets
+    tau: float,
+) -> tuple[torch.Tensor, dict[str, float]]:
+    """SupCon-style multi-positive InfoNCE across in-batch variants.
+
+    Every one of the B×V other-image variants is a negative; the V variants
+    belonging to each anchor are positives (summed-then-averaged inside the
+    log). Returns scalar loss + {"infonce_loss", "infonce_acc"} where
+    ``infonce_acc`` is recall@1 on the anchor's correct image.
+    """
+    B, V, D = tgt_pooled.shape
+    device = pred_pool.device
+    pred_n = F.normalize(pred_pool.float(), dim=-1, eps=1e-8)          # (B, D)
+    tgt_n = F.normalize(tgt_pooled.float(), dim=-1, eps=1e-8)          # (B, V, D)
+    tgt_flat = tgt_n.reshape(B * V, D)                                  # (B*V, D)
+
+    sim = (pred_n @ tgt_flat.T) / max(tau, 1e-4)                        # (B, B*V)
+    # Build positive mask: row b has 1 at columns [b*V:(b+1)*V].
+    pos_mask = (
+        torch.eye(B, device=device).repeat_interleave(V, dim=1).bool()  # (B, B*V)
+    )
+
+    log_prob = sim - sim.logsumexp(dim=1, keepdim=True)
+    per_anchor = -(log_prob * pos_mask.float()).sum(dim=1) / float(V)
+    loss = per_anchor.mean()
+
+    with torch.no_grad():
+        # recall@1: top-1 column belongs to the correct image?
+        top1 = sim.argmax(dim=1)
+        correct = (top1 // V) == torch.arange(B, device=device)
+        acc = correct.float().mean().item()
+    return loss, {
+        "infonce_loss": float(loss.detach().item()),
+        "infonce_acc": float(acc),
     }
 
 

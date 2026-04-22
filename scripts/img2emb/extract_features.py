@@ -10,6 +10,8 @@ Outputs (under ``--output_dir``, default ``bench/img2emb/results/phase0/``):
 
 - ``features/{encoder}_tokens.safetensors``   (N, T, D_enc) bf16 — last_hidden_state
 - ``features/{encoder}_pooled.safetensors``   (N, D_enc) fp32 — pooler_output / CLS / mean
+- ``features/target_pooled.safetensors``      (N, V, D_y) fp32 — per-variant mean over
+                                               ``crossattn_emb_v*[:L]`` (InfoNCE target)
 - ``stems.json``                              ordered image stems for every tensor above
 - ``active_lengths.json``                     per-image non-zero-prefix length
                                                (max over variants) + num_variants + image_dir
@@ -55,9 +57,10 @@ ENCODERS = {
         # DINOv3: CLS + 4 register + 196 patches at 224×224, D=1280
     },
     "siglip2": {
-        "model_id": "google/siglip2-large-patch16-384",
+        "model_id": str(REPO_ROOT / "models" / "siglip2"),
         "image_size": 384,
-        # SigLIP2 large: 576 patches at 384×384, D=1024
+        # SigLIP2 large: 576 patches at 384×384, D=1024. Downloaded via
+        # `make download-siglip2` (google/siglip2-large-patch16-384).
     },
 }
 
@@ -123,9 +126,15 @@ class _ImageDataset(Dataset):
 
 
 class _ActiveLenDataset(Dataset):
-    """Yields ``(idx, max_L, n_variants)`` — a lightweight scan that keeps the
-    (V, 512, 1024) tensor in worker RAM just long enough to compute active
-    length, then discards it. Nothing big crosses the worker/main boundary.
+    """Yields ``(idx, max_L, n_variants, pooled)`` — a lightweight scan that
+    keeps the (V, 512, 1024) tensor in worker RAM just long enough to compute
+    active length and per-variant pooled targets, then discards it.
+
+    ``pooled`` is ``(V, D)`` fp32 — each row is the mean over the
+    non-zero-prefix of one variant (``emb[:L].mean(dim=0)``). It is the InfoNCE
+    target (see ``scripts/img2emb/proposal.md`` part 2). Pool uses per-variant
+    L (not the max), independent of the K-cap — the target is what the
+    resampler's pooled output should converge toward.
     """
 
     def __init__(self, te_paths: list[str], te_zero_eps: float = 1e-6):
@@ -145,12 +154,17 @@ class _ActiveLenDataset(Dataset):
         else:
             raise RuntimeError(f"No crossattn_emb in {self.te_paths[idx]}")
 
+        D = int(variants[0].shape[-1])
         max_L = 0
-        for v in variants:
-            nz = v.abs().amax(dim=-1) > self.te_zero_eps
+        pooled = torch.zeros((len(variants), D), dtype=torch.float32)
+        for vi, v in enumerate(variants):
+            vf = v.float()
+            nz = vf.abs().amax(dim=-1) > self.te_zero_eps
             L = int(nz.nonzero(as_tuple=False)[-1].item()) + 1 if nz.any() else 0
             max_L = max(max_L, L)
-        return idx, max_L, len(variants)
+            if L > 0:
+                pooled[vi] = vf[:L].mean(dim=0)
+        return idx, max_L, len(variants), pooled
 
 
 # --------------------------------------------------------------------------- encoders
@@ -254,15 +268,18 @@ def scan_active_lengths(
     num_workers: int = 4,
     batch_size: int = 16,
 ):
-    """Scan every TE file for non-zero-prefix length + verify V is consistent.
+    """Scan every TE file for non-zero-prefix length + per-variant pooled
+    targets + verify V is consistent.
 
-    No tensor stacking — targets stay on disk in per-image files and are loaded
-    lazily by downstream probes. Fails loud if variant count differs across
-    images (cache must be regenerated with a consistent shuffle count).
+    No full-tensor stacking — targets stay on disk in per-image files and are
+    loaded lazily by downstream probes. Fails loud if variant count differs
+    across images (cache must be regenerated with a consistent shuffle count).
 
     Returns:
         active_lengths: ``list[int]`` — max L across variants per image.
         num_variants: ``int`` — V (usually 8).
+        target_pooled: ``(N, V, D)`` fp32 — per-variant mean over ``emb[:L]``
+            (InfoNCE target; see ``scripts/img2emb/proposal.md`` part 2).
     """
     te_paths = [img.te_path for img in images]
     dataset = _ActiveLenDataset(te_paths, te_zero_eps=te_zero_eps)
@@ -277,9 +294,10 @@ def scan_active_lengths(
     N = len(dataset)
     L_list = [0] * N
     V_seen: int | None = None
+    pooled_tensor: torch.Tensor | None = None
 
-    for idx, max_Ls, n_vs in tqdm(loader, desc="scan-targets"):
-        # idx: (B,), max_Ls: (B,), n_vs: (B,)
+    for idx, max_Ls, n_vs, pooled_b in tqdm(loader, desc="scan-targets"):
+        # idx: (B,), max_Ls: (B,), n_vs: (B,), pooled_b: (B, V, D)
         n_vs_unique = set(n_vs.tolist())
         if len(n_vs_unique) != 1:
             raise RuntimeError(
@@ -289,6 +307,8 @@ def scan_active_lengths(
         batch_V = next(iter(n_vs_unique))
         if V_seen is None:
             V_seen = batch_V
+            D = int(pooled_b.shape[-1])
+            pooled_tensor = torch.empty((N, V_seen, D), dtype=torch.float32)
         elif batch_V != V_seen:
             raise RuntimeError(
                 f"Variant count differs across images: saw {V_seen} earlier, "
@@ -298,9 +318,11 @@ def scan_active_lengths(
 
         for i, L in zip(idx.tolist(), max_Ls.tolist()):
             L_list[i] = int(L)
+        assert pooled_tensor is not None
+        pooled_tensor[idx] = pooled_b.float()
 
-    assert V_seen is not None
-    return L_list, V_seen
+    assert V_seen is not None and pooled_tensor is not None
+    return L_list, V_seen, pooled_tensor
 
 
 # --------------------------------------------------------------------------- main
@@ -332,13 +354,18 @@ def main():
     with open(out_dir / "stems.json", "w") as f:
         json.dump(stems, f, indent=2)
 
-    # --- active-length scan (no target stacking — probes load per-image TEs directly)
+    # --- active-length scan + per-variant pooled targets (no full-tensor
+    # stacking — targets stay on disk in per-image files, probes load them
+    # lazily; only the per-variant pooled summary is cached in RAM).
     act_path = out_dir / "active_lengths.json"
-    if args.skip_existing and act_path.exists():
-        logger.info(f"active_lengths.json already present, skipping ({act_path})")
+    tgt_pool_path = feat_dir / "target_pooled.safetensors"
+    if args.skip_existing and act_path.exists() and tgt_pool_path.exists():
+        logger.info(
+            f"active_lengths.json + target_pooled.safetensors already present, skipping"
+        )
     else:
-        logger.info("Scanning per-image TE files for active lengths...")
-        L_list, num_variants = scan_active_lengths(
+        logger.info("Scanning per-image TE files for active lengths + pooled targets...")
+        L_list, num_variants, target_pooled = scan_active_lengths(
             images,
             num_workers=args.num_workers,
             batch_size=args.batch_size,
@@ -358,6 +385,11 @@ def main():
             f"  → {act_path} (V={num_variants}, "
             f"L p50={sorted(L_list)[len(L_list) // 2]} "
             f"max={max(L_list)})"
+        )
+        save_file({"pooled": target_pooled.contiguous()}, str(tgt_pool_path))
+        logger.info(
+            f"  → {tgt_pool_path} "
+            f"(shape={tuple(target_pooled.shape)}, ≈{target_pooled.element_size() * target_pooled.numel() / 1e6:.1f} MB)"
         )
 
     # --- encoders

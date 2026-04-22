@@ -52,6 +52,7 @@ from scripts.img2emb.data import (  # noqa: E402
     _resampler_loss,
     active_slice,
     load_cache,
+    load_targets_mean,
 )
 from library.log import setup_logging  # noqa: E402
 
@@ -649,6 +650,13 @@ def main():
             logger.warning(f"  missing cache for {enc}, skipping: {e}")
             continue
 
+        # Phase-0 probes are the only consumer of variant-mean targets; the
+        # production training phases dropped that eager ~2 GB allocation, so
+        # we materialize it here explicitly.
+        cache["targets_mean"] = load_targets_mean(
+            cache["te_paths"], cache["active_lengths"], args.num_workers
+        )
+
         if "pool" not in skip:
             out = cache_dir / f"{enc}_pool_probe.json"
             res = run_pool_probe(cache, args.pool_ridge, out, enc)
@@ -670,6 +678,9 @@ def main():
         if any_enc is not None:
             try:
                 cache = load_cache(cache_dir, image_dir, any_enc, args.num_workers)
+                cache["targets_mean"] = load_targets_mean(
+                    cache["te_paths"], cache["active_lengths"], args.num_workers
+                )
                 m_mean, m_self = run_baselines(cache, cache_dir)
                 results["baseline_mean"] = {
                     "encoder": "-",
