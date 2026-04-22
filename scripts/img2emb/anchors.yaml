@@ -1,0 +1,48 @@
+# Anchor-group spec for the img2emb AnchoredResampler.
+#
+# Each top-level key defines one anchor group. Each group owns a classifier
+# head over the pooled encoder feature, a frozen prototype table (rows =
+# classes, last row = <unknown> zero), and consumes anchor slot(s) in the
+# resampler output at injection time.
+#
+# Fields:
+#   mutex:            true (default) — softmax+CE head. One anchor slot per
+#                     image holding softmax-weighted prototype mix. Training
+#                     picks the earliest-slot class when multiple are present
+#                     (canonical booru ordering).
+#                     false — sigmoid+BCE head (Option A: multi-label). One
+#                     anchor slot PER CLASS; a slot is populated only when
+#                     that class is positive for the image.
+#   classes:          list of class names, looked up in proto_file with
+#                     proto_key_prefix prepended. Or `auto` to load every key
+#                     from proto_file.
+#   proto_file:       default "phase2_class_prototypes.safetensors".
+#   proto_key_prefix: prepended to class names during lookup. Default "".
+#   default_slot:     fallback anchor slot for inference (test_img2emb.py)
+#                     when ground-truth tag positions aren't available.
+#                     Training uses the per-image slot from phase1_positions.json.
+#                     Multi-label groups may instead provide default_slots:
+#                     a list aligned with classes.
+
+rating:
+  mutex: true
+  proto_key_prefix: "rating="
+  default_slot: 0
+  classes: [explicit, sensitive, general, absurdres]
+
+people_count:
+  mutex: true
+  proto_key_prefix: "people="
+  default_slot: 2
+  # Composite girl/boy count buckets. Classes are exhaustive and disjoint —
+  # each image maps to exactly one (see scripts/img2emb/rebuild_people_prototypes.py).
+  # Prototypes are re-derived from real slot-level T5 embeddings at the
+  # constituent count tags (not averages of old per-tag prototypes).
+  classes:
+    - "1girl"           # 1girl, no boy tag
+    - "1girl, 1boy"
+    - "2girls"          # 2girls, no boy tag
+    - "2girls, 1boy"
+    - "1boy"            # 1boy, no girl tag (solo male)
+    - "multi"           # 3+girls / 2+boys-with-any-girls / bare multiple_*
+    - "no_people"       # no count tag at all (zero prototype)

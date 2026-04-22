@@ -3,7 +3,7 @@
 
 Pipeline:
   ref image → siglip2 vision tower → AnchoredResampler (phase-2a ckpt) →
-  anchor injection at default (rating, count, artist) slots → DiT cross-attention →
+  per-group anchor injection at default slots → DiT cross-attention →
   flow-matching euler denoise → VAE decode → png.
 
 Replaces the text-encoder path entirely — no prompt, no negative prompt.
@@ -11,6 +11,7 @@ Replaces the text-encoder path entirely — no prompt, no negative prompt.
 Usage:
   python scripts/img2emb/test_img2emb.py --ref_image path/to/ref.png
   python scripts/img2emb/test_img2emb.py --ref_image ref.png --resampler_ckpt other.safetensors
+  python scripts/img2emb/test_img2emb.py --ref_image ref.png --slot_override rating=0,girl_count=2
 """
 
 import argparse
@@ -21,7 +22,6 @@ import sys
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 from PIL import Image
 from safetensors.torch import load_file, save_file
 from tqdm import tqdm
@@ -29,15 +29,13 @@ from tqdm import tqdm
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.img2emb.extract_features import ENCODERS, load_encoder  # noqa: E402
-from scripts.img2emb.phase1_5_anchored import (  # noqa: E402
-    COUNT_CLASSES,
-    RATING_CLASSES,
+from scripts.img2emb.anchors import (  # noqa: E402
+    AnchorSpec,
     AnchoredResampler,
-    _load_artist_prototypes,
-    _load_prototypes,
     inject_anchors,
+    load_anchor_spec,
 )
+from scripts.img2emb.extract_features import ENCODERS, load_encoder  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
 from library.inference.output import save_images  # noqa: E402
 from library.inference.sampling import get_timesteps_sigmas, step as euler_step  # noqa: E402
@@ -48,10 +46,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-# Training-data modes from bench/inversionv2/results/tag_slot/phase1_positions.json:
-# rating tags sit at slot 0 (always), 1girl/count at slot 2 (dominant), artist at slot 10.
-# See phase2_proposal.md for the shuffle-prefix policy that makes these stable.
-DEFAULT_SLOTS = {"rating": 0, "count": 2, "artist": 10}
+DEFAULT_ANCHORS_YAML = Path(__file__).parent / "anchors.yaml"
 
 # Matches the phase 1.5 save naming.
 DEFAULT_RESAMPLER_CKPT = REPO_ROOT / "bench" / "img2emb" / "results" / "phase2a" / "siglip2_phase2a_warm.safetensors"
@@ -71,15 +66,23 @@ def parse_args():
         default=str(REPO_ROOT / "bench" / "inversionv2" / "results" / "tag_slot"),
         help="Directory with class prototype tables (needed to rebuild AnchoredResampler).",
     )
+    p.add_argument(
+        "--anchors_yaml",
+        default=str(DEFAULT_ANCHORS_YAML),
+        help="YAML spec listing anchor groups + classes.",
+    )
     p.add_argument("--encoder", default="siglip2", choices=list(ENCODERS.keys()))
     p.add_argument("--d_model", type=int, default=1024)
     p.add_argument("--n_heads", type=int, default=8)
     p.add_argument("--n_layers", type=int, default=4)
     p.add_argument("--n_slots", type=int, default=512)
 
-    p.add_argument("--rating_slot", type=int, default=DEFAULT_SLOTS["rating"])
-    p.add_argument("--count_slot",  type=int, default=DEFAULT_SLOTS["count"])
-    p.add_argument("--artist_slot", type=int, default=DEFAULT_SLOTS["artist"])
+    p.add_argument(
+        "--slot_override",
+        default="",
+        help="Per-group slot override, e.g. 'rating=0,girl_count=2'. "
+             "Unspecified groups use default_slot from anchors.yaml.",
+    )
     p.add_argument(
         "--skip_anchors",
         action="store_true",
@@ -121,6 +124,19 @@ def parse_args():
     return p.parse_args()
 
 
+def _parse_slot_override(raw: str) -> dict[str, int]:
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    out: dict[str, int] = {}
+    for chunk in raw.split(","):
+        if not chunk.strip():
+            continue
+        k, v = chunk.split("=", 1)
+        out[k.strip()] = int(v.strip())
+    return out
+
+
 def _encode_ref_image(
     path: str, encoder_name: str, device: torch.device
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -140,20 +156,10 @@ def _encode_ref_image(
     return tokens, pooled
 
 
-def _load_resampler(args, device: torch.device) -> AnchoredResampler:
-    tag_slot_dir = Path(args.tag_slot_dir)
-    rating_protos, _ = _load_prototypes(
-        tag_slot_dir, RATING_CLASSES, "phase2_class_prototypes.safetensors", key_prefix="rating=",
-    )
-    count_protos, _ = _load_prototypes(
-        tag_slot_dir, COUNT_CLASSES, "phase2_class_prototypes.safetensors",
-    )
-    artist_protos, _ = _load_artist_prototypes(tag_slot_dir)
-
+def _load_resampler(args, spec: AnchorSpec, device: torch.device) -> AnchoredResampler:
     # siglip2 large: D_enc = 1024, pooled same. (See ENCODERS in extract_features.py.)
     model = AnchoredResampler(
-        d_enc=1024, d_pool=1024,
-        rating_protos=rating_protos, count_protos=count_protos, artist_protos=artist_protos,
+        spec=spec, d_enc=1024, d_pool=1024,
         d_model=args.d_model, n_heads=args.n_heads, n_slots=args.n_slots, n_layers=args.n_layers,
     ).to(device)
 
@@ -169,37 +175,51 @@ def _load_resampler(args, device: torch.device) -> AnchoredResampler:
 
 def _build_ctx(
     model: AnchoredResampler,
+    spec: AnchorSpec,
     tokens: torch.Tensor,
     pooled: torch.Tensor,
     args,
     device: torch.device,
 ) -> torch.Tensor:
-    """Resampler + anchor injection at default slots. Returns ctx[1, S, 1024] bf16."""
+    """Resampler + per-group anchor injection at default slots. Returns ctx[1, S, 1024] bf16."""
     with torch.no_grad():
         fwd = model(tokens, pooled)
     pred = fwd["pred"]
-    r_logits, c_logits, a_logits = fwd["logits"]
-    r_emb, c_emb, a_emb = fwd["anchor_emb"]
+    slot_overrides = _parse_slot_override(args.slot_override)
 
-    def _pred_name(logits, names):
-        idx = int(logits.argmax(dim=-1).item())
-        name = names[idx] if idx < len(names) else f"<idx={idx}>"
-        return idx, name
+    # Log top-1 class per group.
+    for g in spec.groups:
+        lg = fwd["logits"][g.name][0]
+        if g.mutex:
+            idx = int(lg.argmax(dim=-1).item())
+            name = g.classes[idx] if idx < g.n_classes else "<unknown>"
+            logger.info(f"  [{g.name}] top1={name} (idx={idx})")
+        else:
+            probs = torch.sigmoid(lg[: g.n_classes])
+            pos = [(g.classes[i], float(probs[i].item())) for i in range(g.n_classes) if probs[i].item() > 0.5]
+            logger.info(f"  [{g.name}] positives={pos}")
 
-    r_idx, r_name = _pred_name(r_logits[0], RATING_CLASSES)
-    c_idx, c_name = _pred_name(c_logits[0], COUNT_CLASSES)
-    logger.info(
-        f"classifier predictions: rating={r_name} ({r_idx})  count={c_name} ({c_idx})  "
-        f"artist_idx={int(a_logits.argmax(dim=-1).item())}"
-    )
+    if args.skip_anchors:
+        return pred.to(torch.bfloat16)
 
-    if not args.skip_anchors:
-        r_slot = torch.tensor([args.rating_slot], device=device, dtype=torch.long)
-        c_slot = torch.tensor([args.count_slot],  device=device, dtype=torch.long)
-        a_slot = torch.tensor([args.artist_slot], device=device, dtype=torch.long)
-        inject_anchors(pred, r_emb, r_slot, mode="replace")
-        inject_anchors(pred, c_emb, c_slot, mode="replace")
-        inject_anchors(pred, a_emb, a_slot, mode="replace")
+    B = pred.shape[0]
+    for g in spec.groups:
+        anchor_emb = fwd["anchor_emb"][g.name]
+        if g.mutex:
+            slot = slot_overrides.get(g.name, g.default_slot)
+            slots = torch.full((B,), int(slot), dtype=torch.long, device=device)
+            inject_anchors(pred, anchor_emb, slots, mutex=True, mode="replace")
+        else:
+            # Multi-label: use per-class default_slots; mask by sigmoid > 0.5.
+            base_slot = slot_overrides.get(g.name)
+            if base_slot is None:
+                per_class = torch.tensor(g.default_slots, dtype=torch.long, device=device)
+            else:
+                per_class = torch.full((g.n_classes,), int(base_slot), dtype=torch.long, device=device)
+            slots = per_class.unsqueeze(0).expand(B, -1).contiguous()
+            logits = fwd["logits"][g.name][..., : g.n_classes]
+            mask = (torch.sigmoid(logits) > 0.5)
+            inject_anchors(pred, anchor_emb, slots, mutex=False, mode="replace", mask=mask)
 
     return pred.to(torch.bfloat16)
 
@@ -308,6 +328,9 @@ def main():
     device = torch.device(args.device)
     os.makedirs(args.save_path, exist_ok=True)
 
+    # 0) Anchor spec.
+    spec = load_anchor_spec(Path(args.anchors_yaml), Path(args.tag_slot_dir))
+
     # 1) ref image → siglip2 features (loaded → used → freed).
     logger.info(f"encoding ref image: {args.ref_image}")
     tokens, pooled = _encode_ref_image(args.ref_image, args.encoder, device)
@@ -315,8 +338,8 @@ def main():
 
     # 2) Resampler → ctx.
     logger.info(f"loading resampler ckpt: {args.resampler_ckpt}")
-    resampler = _load_resampler(args, device)
-    ctx = _build_ctx(resampler, tokens, pooled, args, device)
+    resampler = _load_resampler(args, spec, device)
+    ctx = _build_ctx(resampler, spec, tokens, pooled, args, device)
     logger.info(f"ctx shape: {tuple(ctx.shape)}")
     del resampler
     if device.type == "cuda":

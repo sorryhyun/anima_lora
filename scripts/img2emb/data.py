@@ -1,9 +1,10 @@
 """Shared data-loading + loss utilities for the img2emb resampler pipeline.
 
-Nothing here is phase-0-probe-specific — every function/class is consumed by
-phase1_resampler, phase1_5_anchored, and/or phase2_flow. The phase 0 analysis
-that used to share this file now lives at ``bench/img2emb/phase0_probes.py``
-and imports from here.
+Every function/class here is consumed by production training stages
+(``phase1_5_anchored`` for pretrain, ``phase2_flow`` for finetune) and/or the
+phase-0/phase-1 bench trainers under ``bench/img2emb/``. The analysis that used
+to share the same file lives back at ``bench/img2emb/phase0_probes.py`` and
+imports from here.
 """
 
 from __future__ import annotations

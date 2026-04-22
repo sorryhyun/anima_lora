@@ -1,22 +1,22 @@
 #!/usr/bin/env python
 """Phase 1.5 — Tag-anchored Perceiver Resampler.
 
-Uses inversionv2's phase2 class prototypes + phase3 artist prototypes to
-hard-anchor the three "prototype-addressable" slots (rating / count-meta /
-artist) from a classifier over the pooled encoder feature. The resampler then
-only has to fit the content-heavy mid/tail slots.
+Uses inversionv2's class prototypes to hard-anchor the "prototype-addressable"
+slots (one per group in ``anchors.yaml``) from a classifier over the pooled
+encoder feature. The resampler then only has to fit the content-heavy
+mid/tail slots.
 
 Why: phase-1 4-layer resampler at step 2500 matched the phase-0 1-layer probe
 on mid/tail (cos 0.501 / 0.630 vs 0.501 / 0.631) — depth didn't help. inversionv2
 showed rating / 1girl / solo / @artist sit in k@95 ≤ 5 per slot with within-class
 cos > 0.9, so classifier + frozen-prototype lookup is the right shape for those
-slots. Auxiliary CE on the classifier heads doubles as a diagnostic: if tag
-accuracy from SigLIP2 pooled is high the encoder is fine; if it collapses,
-we need a tag-aware encoder (WD-Tagger / EVA-anime) instead.
+slots. Auxiliary CE (mutex) / BCE (multi-label) on the classifier heads
+doubles as a diagnostic for encoder quality.
 
 Usage:
     python scripts/img2emb/phase1_5_anchored.py
     python scripts/img2emb/phase1_5_anchored.py --steps 5000 --eval_every 1000
+    python scripts/img2emb/phase1_5_anchored.py --anchors_yaml my_anchors.yaml
 """
 
 import argparse
@@ -29,8 +29,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from safetensors.torch import load_file, save_file
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -40,24 +38,31 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 BENCH_DIR = REPO_ROOT / "bench" / "img2emb"
 sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.img2emb.anchors import (  # noqa: E402
+    AnchorSpec,
+    AnchoredResampler,
+    aux_cls_loss,
+    build_anchor_labels,
+    collate_anchor_batch,
+    gather_sample_labels,
+    index_flat_labels,
+    inject_spec_anchors,
+    labels_to_flat_tensors,
+    load_anchor_spec,
+)
 from scripts.img2emb.data import (  # noqa: E402
     _resampler_loss,
     active_slice,
     load_cache,
 )
-from scripts.img2emb.phase1_resampler import PerceiverResampler  # noqa: E402
 from library.log import setup_logging  # noqa: E402
+import torch.nn.functional as F  # noqa: E402
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
-# --------------------------------------------------------------------------- class lists
-# Mirror inversionv2/tag_slot_analysis.py so prototype keys line up.
-RATING_CLASSES = ["explicit", "sensitive", "general", "absurdres"]
-COUNT_CLASSES = [
-    "1girl", "1boy", "2girls", "2boys", "3girls", "1other",
-    "solo", "multiple_girls", "multiple_boys",
-]
+
+DEFAULT_ANCHORS_YAML = Path(__file__).parent / "anchors.yaml"
 
 
 def parse_args():
@@ -68,6 +73,11 @@ def parse_args():
         "--tag_slot_dir",
         default=str(REPO_ROOT / "bench" / "inversionv2" / "results" / "tag_slot"),
         help="inversionv2 output with phase1_positions.json + phase2/3 prototypes.",
+    )
+    p.add_argument(
+        "--anchors_yaml",
+        default=str(DEFAULT_ANCHORS_YAML),
+        help="YAML spec listing anchor groups + classes.",
     )
     p.add_argument("--image_dir", default=None)
     p.add_argument("--encoder", default="siglip2")
@@ -88,7 +98,7 @@ def parse_args():
         "--cls_loss_weight",
         type=float,
         default=0.1,
-        help="Weight on auxiliary CE over rating/count/artist classifier heads.",
+        help="Weight on auxiliary classifier loss (CE for mutex, BCE for multi-label).",
     )
     p.add_argument(
         "--anchor_mode",
@@ -103,245 +113,26 @@ def parse_args():
     return p.parse_args()
 
 
-# --------------------------------------------------------------------------- anchor labels
-
-
-def _load_prototypes(
-    tag_slot_dir: Path,
-    class_names: list[str],
-    file_name: str,
-    key_prefix: str = "",
-) -> tuple[torch.Tensor, list[str]]:
-    """Stack class prototypes in class_names order; append a zero row for 'unknown'.
-
-    Returns (``proto_table: (len+1, D)``, ``names_with_unknown``).
-    Missing classes fill with zeros too (warns).
-    """
-    sd = load_file(str(tag_slot_dir / file_name))
-    D = next(iter(sd.values())).shape[0]
-    rows = []
-    for name in class_names:
-        key = f"{key_prefix}{name}"
-        if key in sd:
-            rows.append(sd[key].float())
-        else:
-            logger.warning(f"  missing prototype '{key}' in {file_name}; using zero vec")
-            rows.append(torch.zeros(D))
-    rows.append(torch.zeros(D))                                         # unknown
-    return torch.stack(rows, dim=0), class_names + ["<unknown>"]
-
-
-def _load_artist_prototypes(tag_slot_dir: Path) -> tuple[torch.Tensor, list[str]]:
-    """All 55 artist prototypes in sorted order; append 'unknown' zero row."""
-    sd = load_file(str(tag_slot_dir / "phase3_artist_prototypes.safetensors"))
-    names = sorted(sd.keys())
-    D = next(iter(sd.values())).shape[0]
-    rows = [sd[n].float() for n in names]
-    rows.append(torch.zeros(D))
-    return torch.stack(rows, dim=0), names + ["<unknown>"]
-
-
-def build_anchor_labels(
-    positions_path: Path,
-    stems: list[str],
-    artist_names: list[str],
-) -> dict[str, dict]:
-    """Per-stem (rating/count/artist) class index + slot position.
-
-    Uses v0 only — prefix slots are shuffle-fixed across v0..v7 (phase4
-    confirmed cos > 0.99 for rating/count/@artist). Sentinel -1 for missing.
-    When a caption has multiple count-meta tags (e.g. 1girl + solo), picks the
-    one with the smallest slot index (canonical booru ordering).
-    """
-    positions = json.loads(Path(positions_path).read_text())
-    occ = positions["per_class_occurrences"]
-
-    artist_to_idx = {n: i for i, n in enumerate(artist_names[:-1])}  # minus <unknown>
-    unknown_artist_idx = len(artist_names) - 1
-
-    labels = {
-        s: {
-            "rating_class": -1, "rating_slot": -1,
-            "count_class": -1, "count_slot": -1,
-            "artist_class": -1, "artist_slot": -1,
-        }
-        for s in stems
-    }
-
-    # Rating — class name -> class idx. "rating=<name>" keys in phase1.
-    for cls_idx, name in enumerate(RATING_CLASSES):
-        key = f"rating={name}"
-        for entry in occ.get(key, []):
-            stem, vi, first, *_ = entry
-            if vi != 0 or stem not in labels:
-                continue
-            labels[stem]["rating_class"] = cls_idx
-            labels[stem]["rating_slot"] = int(first)
-
-    # Count-meta — pick the earliest-slot class per image.
-    for cls_idx, name in enumerate(COUNT_CLASSES):
-        for entry in occ.get(name, []):
-            stem, vi, first, *_ = entry
-            if vi != 0 or stem not in labels:
-                continue
-            first = int(first)
-            cur_slot = labels[stem]["count_slot"]
-            if cur_slot == -1 or first < cur_slot:
-                labels[stem]["count_class"] = cls_idx
-                labels[stem]["count_slot"] = first
-
-    # Artist — phase1 stores artist name as the 6th field of each entry.
-    for entry in occ.get("@artist", []):
-        if len(entry) < 6:
-            continue
-        stem, vi, first, _last, _n, artist = entry
-        if vi != 0 or stem not in labels:
-            continue
-        labels[stem]["artist_class"] = int(artist_to_idx.get(artist, unknown_artist_idx))
-        labels[stem]["artist_slot"] = int(first)
-
-    # Coverage stats for the log
-    n = len(stems)
-    n_r = sum(1 for s in stems if labels[s]["rating_class"] >= 0)
-    n_c = sum(1 for s in stems if labels[s]["count_class"] >= 0)
-    n_a = sum(1 for s in stems if labels[s]["artist_class"] >= 0)
-    n_a_known = sum(
-        1
-        for s in stems
-        if 0 <= labels[s]["artist_class"] < unknown_artist_idx
-    )
-    logger.info(
-        f"anchor coverage: rating {n_r}/{n}  count {n_c}/{n}  "
-        f"artist {n_a}/{n} (known {n_a_known}, unknown {n_a - n_a_known})"
-    )
-    return labels
-
-
-def labels_to_tensors(labels: dict[str, dict], stems: list[str]) -> dict[str, torch.Tensor]:
-    """Pack the per-stem dict into aligned int tensors for fast batch gather."""
-    def col(key: str) -> torch.Tensor:
-        return torch.tensor([labels[s][key] for s in stems], dtype=torch.long)
-    return {
-        "rating_class": col("rating_class"),
-        "rating_slot": col("rating_slot"),
-        "count_class": col("count_class"),
-        "count_slot": col("count_slot"),
-        "artist_class": col("artist_class"),
-        "artist_slot": col("artist_slot"),
-    }
-
-
-# --------------------------------------------------------------------------- model
-
-
-class AnchoredResampler(nn.Module):
-    """Resampler + 3 classifier heads + frozen prototype tables.
-
-    Anchor slots (per-image) get their prediction replaced / augmented by a
-    softmax-weighted mixture of the corresponding prototype table.
-    """
-
-    def __init__(
-        self,
-        d_enc: int,
-        d_pool: int,
-        rating_protos: torch.Tensor,
-        count_protos: torch.Tensor,
-        artist_protos: torch.Tensor,
-        d_model: int = 1024,
-        n_heads: int = 8,
-        n_slots: int = 512,
-        n_layers: int = 4,
-        d_out: int = 1024,
-    ):
-        super().__init__()
-        self.backbone = PerceiverResampler(
-            d_enc=d_enc,
-            d_model=d_model,
-            n_heads=n_heads,
-            n_slots=n_slots,
-            n_layers=n_layers,
-            d_out=d_out,
-        )
-        # Pooled feature → classifier stem.
-        self.pool_proj = nn.Sequential(
-            nn.LayerNorm(d_pool),
-            nn.Linear(d_pool, d_model),
-            nn.GELU(),
-        )
-        self.rating_head = nn.Linear(d_model, rating_protos.shape[0])
-        self.count_head = nn.Linear(d_model, count_protos.shape[0])
-        self.artist_head = nn.Linear(d_model, artist_protos.shape[0])
-
-        # Frozen prototype tables. Register as buffers so they move with .to()
-        # but never receive gradients.
-        self.register_buffer("rating_protos", rating_protos.float())
-        self.register_buffer("count_protos", count_protos.float())
-        self.register_buffer("artist_protos", artist_protos.float())
-
-    def classify(self, pooled: torch.Tensor):
-        p = self.pool_proj(pooled.float())
-        return (
-            self.rating_head(p),
-            self.count_head(p),
-            self.artist_head(p),
-        )
-
-    def prototype_mix(self, logits: torch.Tensor, table: torch.Tensor) -> torch.Tensor:
-        """Softmax(logits) @ table — differentiable prototype lookup. Returns (B, D_out)."""
-        return torch.softmax(logits, dim=-1) @ table
-
-    def forward(self, tokens: torch.Tensor, pooled: torch.Tensor):
-        out = self.backbone(tokens)                                     # (B, S, D_out)
-        r_logits, c_logits, a_logits = self.classify(pooled)
-        r_emb = self.prototype_mix(r_logits, self.rating_protos)        # (B, D_out)
-        c_emb = self.prototype_mix(c_logits, self.count_protos)
-        a_emb = self.prototype_mix(a_logits, self.artist_protos)
-        return {
-            "pred": out,
-            "logits": (r_logits, c_logits, a_logits),
-            "anchor_emb": (r_emb, c_emb, a_emb),
-        }
-
-
-def inject_anchors(
-    pred: torch.Tensor,            # (B, S, D) — mutated in-place
-    anchor_emb: torch.Tensor,      # (B, D)
-    slots: torch.Tensor,           # (B,) long; -1 for missing
-    mode: str = "replace",
-) -> None:
-    """Write/add anchor_emb[b] into pred[b, slots[b], :] for valid b."""
-    valid = slots >= 0
-    if not valid.any():
-        return
-    b_idx = torch.arange(pred.shape[0], device=pred.device)[valid]
-    s_idx = slots[valid].to(device=pred.device)
-    if mode == "replace":
-        pred[b_idx, s_idx] = anchor_emb[valid]
-    elif mode == "residual":
-        pred[b_idx, s_idx] = pred[b_idx, s_idx] + anchor_emb[valid]
-    else:
-        raise ValueError(f"unknown anchor_mode '{mode}'")
-
-
 # --------------------------------------------------------------------------- dataset
 
 
 class AnchoredTrainDataset(Dataset):
-    """Same as phase1's dataset but yields the per-stem anchor labels too."""
+    """Same as phase1's dataset but yields per-stem anchor labels too."""
 
     def __init__(
         self,
+        spec: AnchorSpec,
         train_indices: list[int],
         te_paths: list[str],
         active_lengths: list[int],
-        anchor_labels: dict[str, torch.Tensor],
+        flat_labels: dict[str, torch.Tensor],
         num_variants: int,
     ):
+        self.spec = spec
         self.train_indices = train_indices
         self.te_paths = te_paths
         self.active_lengths = active_lengths
-        self.labels = anchor_labels
+        self.flat_labels = flat_labels
         self.V = num_variants
 
     def __len__(self) -> int:
@@ -359,8 +150,18 @@ class AnchoredTrainDataset(Dataset):
         if L < target.shape[0]:
             target = target.clone()
             target[L:] = 0
-        anchors = {k: int(v[full_idx].item()) for k, v in self.labels.items()}
+        anchors = gather_sample_labels(self.spec, self.flat_labels, full_idx)
         return full_idx, target.to(torch.bfloat16), L, anchors
+
+
+def _collate(spec: AnchorSpec):
+    def _fn(batch):
+        full_idx = torch.tensor([b[0] for b in batch], dtype=torch.long)
+        target = torch.stack([b[1] for b in batch], dim=0)
+        L = torch.tensor([b[2] for b in batch], dtype=torch.long)
+        anchors = collate_anchor_batch(spec, [b[3] for b in batch])
+        return full_idx, target, L, anchors
+    return _fn
 
 
 # --------------------------------------------------------------------------- schedule
@@ -371,26 +172,6 @@ def _warmup_cosine(step: int, total: int, warmup: int, eta_min_frac: float = 0.0
         return (step + 1) / max(1, warmup)
     progress = (step - warmup) / max(1, total - warmup)
     return eta_min_frac + (1 - eta_min_frac) * 0.5 * (1 + math.cos(math.pi * progress))
-
-
-# --------------------------------------------------------------------------- loss
-
-
-def aux_cls_loss(
-    logits: torch.Tensor,          # (B, N_classes)
-    targets: torch.Tensor,          # (B,) long; -1 = ignore
-) -> tuple[torch.Tensor, float]:
-    """Cross-entropy ignoring -1 targets. Returns (loss, accuracy) over non-ignored rows."""
-    mask = targets >= 0
-    if not mask.any():
-        zero = logits.sum() * 0.0
-        return zero, float("nan")
-    lg = logits[mask]
-    tg = targets[mask].to(device=logits.device)
-    loss = F.cross_entropy(lg, tg)
-    with torch.no_grad():
-        acc = (lg.argmax(dim=-1) == tg).float().mean().item()
-    return loss, float(acc)
 
 
 # --------------------------------------------------------------------------- eval
@@ -452,17 +233,17 @@ def _strata(per_slot: list) -> dict:
 @torch.no_grad()
 def _run_pred(
     model: AnchoredResampler,
+    spec: AnchorSpec,
     tokens_all: torch.Tensor,
     pooled_all: torch.Tensor,
-    anchor_labels: dict[str, torch.Tensor],
+    flat_labels: dict[str, torch.Tensor],
     eval_idx: list[int],
     device: torch.device,
     anchor_mode: str,
     batch: int = 8,
 ) -> tuple[torch.Tensor, dict]:
     out_pred = []
-    r_correct = c_correct = a_correct = 0
-    r_total = c_total = a_total = 0
+    cls_hits: dict[str, list[int]] = {g.name: [0, 0] for g in spec.groups}
     for i in range(0, len(eval_idx), batch):
         ids = eval_idx[i : i + batch]
         ids_t = torch.tensor(ids, dtype=torch.long)
@@ -470,43 +251,37 @@ def _run_pred(
         pool_b = pooled_all[ids_t].to(device=device, dtype=torch.float32)
         fwd = model(tok_b, pool_b)
         pred = fwd["pred"].detach().float()
-        r_emb, c_emb, a_emb = (e.detach().float() for e in fwd["anchor_emb"])
 
-        r_slot = anchor_labels["rating_slot"][ids_t].to(device)
-        c_slot = anchor_labels["count_slot"][ids_t].to(device)
-        a_slot = anchor_labels["artist_slot"][ids_t].to(device)
-        inject_anchors(pred, r_emb, r_slot, mode=anchor_mode)
-        inject_anchors(pred, c_emb, c_slot, mode=anchor_mode)
-        inject_anchors(pred, a_emb, a_slot, mode=anchor_mode)
+        batch_labels = index_flat_labels(spec, flat_labels, ids_t)
+        # Move slot-related labels to device for injection.
+        dev_labels = {k: v.to(device) for k, v in batch_labels.items()}
+        detached_anchor = {k: v.detach().float() for k, v in fwd["anchor_emb"].items()}
+        inject_spec_anchors(pred, spec, detached_anchor, dev_labels, mode=anchor_mode)
 
         out_pred.append(pred.cpu())
 
-        # Classifier accuracy
-        r_logits, c_logits, a_logits = fwd["logits"]
-        for logits, key in (
-            (r_logits, "rating_class"),
-            (c_logits, "count_class"),
-            (a_logits, "artist_class"),
-        ):
-            tg = anchor_labels[key][ids_t]
-            m = tg >= 0
-            if not m.any():
-                continue
-            pred_cls = logits.argmax(dim=-1).cpu()
-            n_c = int((pred_cls[m] == tg[m]).sum().item())
-            n_t = int(m.sum().item())
-            if key == "rating_class":
-                r_correct += n_c; r_total += n_t
-            elif key == "count_class":
-                c_correct += n_c; c_total += n_t
+        for g in spec.groups:
+            lg = fwd["logits"][g.name]
+            if g.mutex:
+                tg = batch_labels[f"{g.name}_class"]
+                m = tg >= 0
+                if not m.any():
+                    continue
+                pred_cls = lg.argmax(dim=-1).cpu()
+                n_c = int((pred_cls[m] == tg[m]).sum().item())
+                cls_hits[g.name][0] += n_c
+                cls_hits[g.name][1] += int(m.sum().item())
             else:
-                a_correct += n_c; a_total += n_t
+                tg = batch_labels[f"{g.name}_labels"]
+                lg_c = lg[..., : g.n_classes].cpu()
+                pred_pos = (torch.sigmoid(lg_c) > 0.5).float()
+                cls_hits[g.name][0] += int((pred_pos == tg).sum().item())
+                cls_hits[g.name][1] += int(tg.numel())
 
     pred_eval = torch.cat(out_pred, dim=0)
     cls_acc = {
-        "rating": (r_correct / r_total) if r_total else float("nan"),
-        "count": (c_correct / c_total) if c_total else float("nan"),
-        "artist": (a_correct / a_total) if a_total else float("nan"),
+        name: (hit / tot) if tot else float("nan")
+        for name, (hit, tot) in cls_hits.items()
     }
     return pred_eval, cls_acc
 
@@ -575,10 +350,8 @@ def _log_eval(result: dict, cls_acc: dict, tag: str):
             v = g["mean"] if g else float("nan")
             parts.append(f"{band}={v:.3f}")
         logger.info(f"  [{tag}/{metric}] " + "  ".join(parts))
-    logger.info(
-        f"  [{tag}/cls_acc] rating={cls_acc['rating']:.3f}  "
-        f"count={cls_acc['count']:.3f}  artist={cls_acc['artist']:.3f}"
-    )
+    acc_parts = [f"{name}={v:.3f}" for name, v in cls_acc.items()]
+    logger.info(f"  [{tag}/cls_acc] " + "  ".join(acc_parts))
     logger.info(
         f"  [{tag}/pad] mean |pred| in inactive = "
         f"{result['pad_residual_mean_abs']:.2e}"
@@ -607,7 +380,8 @@ def main():
 
     logger.info(
         f"encoder={args.encoder}  cache={cache_dir}  image_dir={image_dir}  "
-        f"out={out_dir}  tag_slot={tag_slot_dir}  anchor_mode={args.anchor_mode}"
+        f"out={out_dir}  tag_slot={tag_slot_dir}  anchors={args.anchors_yaml}  "
+        f"anchor_mode={args.anchor_mode}"
     )
     cache = load_cache(cache_dir, image_dir, args.encoder, args.num_workers)
 
@@ -626,34 +400,17 @@ def main():
     )
     del cache["targets_mean"]
 
-    # Prototype tables
-    rating_protos, rating_names = _load_prototypes(
-        tag_slot_dir, RATING_CLASSES, "phase2_class_prototypes.safetensors",
-        key_prefix="rating=",
-    )
-    count_protos, count_names = _load_prototypes(
-        tag_slot_dir, COUNT_CLASSES, "phase2_class_prototypes.safetensors",
-    )
-    artist_protos, artist_names = _load_artist_prototypes(tag_slot_dir)
-    logger.info(
-        f"prototypes: rating={rating_protos.shape}  count={count_protos.shape}  "
-        f"artist={artist_protos.shape}  (last row = <unknown>)"
-    )
-
-    # Anchor labels per stem (aligned to cache stems order)
+    # Anchor spec + labels
+    spec = load_anchor_spec(Path(args.anchors_yaml), tag_slot_dir)
     anchor_labels = build_anchor_labels(
-        tag_slot_dir / "phase1_positions.json",
-        cache["stems"],
-        artist_names,
+        spec, tag_slot_dir / "phase1_positions.json", cache["stems"]
     )
-    label_tensors = labels_to_tensors(anchor_labels, cache["stems"])
+    flat_labels = labels_to_flat_tensors(spec, anchor_labels)
 
     model = AnchoredResampler(
+        spec=spec,
         d_enc=d_enc,
         d_pool=d_pool,
-        rating_protos=rating_protos,
-        count_protos=count_protos,
-        artist_protos=artist_protos,
         d_model=args.d_model,
         n_heads=args.n_heads,
         n_slots=S,
@@ -672,10 +429,11 @@ def main():
     warmup = max(1, int(args.warmup_frac * args.steps))
 
     train_ds = AnchoredTrainDataset(
+        spec=spec,
         train_indices=train_idx,
         te_paths=cache["te_paths"],
         active_lengths=cache["active_lengths"],
-        anchor_labels=label_tensors,
+        flat_labels=flat_labels,
         num_variants=V,
     )
     loader = DataLoader(
@@ -685,6 +443,7 @@ def main():
         num_workers=args.num_workers,
         persistent_workers=args.num_workers > 0,
         drop_last=True,
+        collate_fn=_collate(spec),
     )
 
     train_log = []
@@ -709,25 +468,15 @@ def main():
 
             fwd = model(tok_b, pool_b)
             pred = fwd["pred"]
-            r_emb, c_emb, a_emb = fwd["anchor_emb"]
 
-            r_slot = anchors_b["rating_slot"].to(device)
-            c_slot = anchors_b["count_slot"].to(device)
-            a_slot = anchors_b["artist_slot"].to(device)
-            inject_anchors(pred, r_emb, r_slot, mode=args.anchor_mode)
-            inject_anchors(pred, c_emb, c_slot, mode=args.anchor_mode)
-            inject_anchors(pred, a_emb, a_slot, mode=args.anchor_mode)
+            dev_labels = {k: v.to(device) for k, v in anchors_b.items()}
+            inject_spec_anchors(pred, spec, fwd["anchor_emb"], dev_labels, mode=args.anchor_mode)
 
             loss_reg, comps = _resampler_loss(
                 pred, tgt_b, mask_b,
                 cos_w=args.cos_loss_weight, zero_w=args.zero_pad_weight,
             )
-            r_logits, c_logits, a_logits = fwd["logits"]
-            r_loss, r_acc = aux_cls_loss(r_logits, anchors_b["rating_class"])
-            c_loss, c_acc = aux_cls_loss(c_logits, anchors_b["count_class"])
-            a_loss, a_acc = aux_cls_loss(a_logits, anchors_b["artist_class"])
-            cls_loss = (r_loss + c_loss + a_loss) / 3.0
-
+            cls_loss, accs = aux_cls_loss(spec, fwd["logits"], anchors_b)
             loss = loss_reg + args.cls_loss_weight * cls_loss
 
             opt.zero_grad(set_to_none=True)
@@ -744,16 +493,18 @@ def main():
                         "cos": comps["cos_loss"],
                         "pad": comps["pad_loss"],
                         "cls": float(cls_loss.detach().item()),
-                        "acc_r": r_acc, "acc_c": c_acc, "acc_a": a_acc,
+                        "accs": accs,
                         "lr": float(opt.param_groups[0]["lr"]),
                     }
                 )
+                acc_str = " ".join(
+                    f"{name[:1]}={v:.2f}" for name, v in accs.items()
+                ) or "-"
                 pbar.set_postfix(
                     loss=f"{float(loss.detach().item()):.3f}",
                     cos=f"{comps['cos_loss']:.3f}",
                     cls=f"{float(cls_loss.detach().item()):.3f}",
-                    r=f"{r_acc:.2f}" if not math.isnan(r_acc) else "-",
-                    a=f"{a_acc:.2f}" if not math.isnan(a_acc) else "-",
+                    acc=acc_str,
                     lr=f"{opt.param_groups[0]['lr']:.1e}",
                 )
 
@@ -765,7 +516,7 @@ def main():
             ):
                 model.eval()
                 pred_eval, cls_acc = _run_pred(
-                    model, tokens_all, pooled_all, label_tensors,
+                    model, spec, tokens_all, pooled_all, flat_labels,
                     eval_idx, device, args.anchor_mode,
                 )
                 result = _eval_per_variant(
@@ -793,7 +544,7 @@ def main():
     # Final eval
     model.eval()
     pred_eval, cls_acc = _run_pred(
-        model, tokens_all, pooled_all, label_tensors,
+        model, spec, tokens_all, pooled_all, flat_labels,
         eval_idx, device, args.anchor_mode,
     )
     result = _eval_per_variant(
@@ -805,6 +556,7 @@ def main():
         "encoder": args.encoder,
         "probe": f"cross_attn_resampler_{args.n_layers}layer_anchored",
         "anchor_mode": args.anchor_mode,
+        "anchor_spec": spec.to_metadata(),
         "d_enc": d_enc,
         "d_pool": d_pool,
         "d_model": args.d_model,
@@ -820,9 +572,6 @@ def main():
         "cos_loss_weight": args.cos_loss_weight,
         "zero_pad_weight": args.zero_pad_weight,
         "cls_loss_weight": args.cls_loss_weight,
-        "rating_classes": rating_names,
-        "count_classes": count_names,
-        "n_artist_classes": len(artist_names),
         "train_time_sec": train_time,
         "n_train": len(train_idx),
         "n_eval": len(eval_idx),

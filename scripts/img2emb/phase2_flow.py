@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Phase 2a — flow-matching supervision through the frozen DiT.
 
-Keeps the phase 1.5 architecture (AnchoredResampler + inject_anchors at
+Keeps the phase 1.5 architecture (AnchoredResampler + inject_spec_anchors at
 variant-specific slot positions) and swaps the loss. Resampler output feeds
 the DiT's cross-attention KV; AdaLN's pooled-text path stays on the T5 manifold
 via ``pooled_text_override``. See ``phase2_proposal.md``.
@@ -27,10 +27,9 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from safetensors.torch import load_file, save_file
-from torch.utils.data import BatchSampler, DataLoader, Dataset, Sampler
+from torch.utils.data import BatchSampler, DataLoader, Dataset
 from tqdm import tqdm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -38,23 +37,27 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 BENCH_DIR = REPO_ROOT / "bench" / "img2emb"
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.img2emb.data import load_cache  # noqa: E402
-from scripts.img2emb.phase1_5_anchored import (  # noqa: E402
-    COUNT_CLASSES,
-    RATING_CLASSES,
+from scripts.img2emb.anchors import (  # noqa: E402
+    AnchorSpec,
     AnchoredResampler,
-    _load_artist_prototypes,
-    _load_prototypes,
+    aux_cls_loss,
     build_anchor_labels,
-    inject_anchors,
-    labels_to_tensors,
+    collate_anchor_batch,
+    gather_sample_labels,
+    inject_spec_anchors,
+    labels_to_flat_tensors,
+    load_anchor_spec,
 )
+from scripts.img2emb.data import load_cache  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
 from library.io.cache import get_latent_resolution  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_ANCHORS_YAML = Path(__file__).parent / "anchors.yaml"
 
 
 # --------------------------------------------------------------------------- args
@@ -70,6 +73,11 @@ def parse_args():
     p.add_argument(
         "--tag_slot_dir",
         default=str(REPO_ROOT / "bench" / "inversionv2" / "results" / "tag_slot"),
+    )
+    p.add_argument(
+        "--anchors_yaml",
+        default=str(DEFAULT_ANCHORS_YAML),
+        help="YAML spec listing anchor groups + classes.",
     )
     p.add_argument("--image_dir", default=None, help="Overrides active_lengths.json[image_dir].")
     p.add_argument("--warm_start", default=None, help="Phase 1.5 checkpoint (safetensors).")
@@ -163,20 +171,22 @@ class Phase2Dataset(Dataset):
 
     def __init__(
         self,
+        spec: AnchorSpec,
         stems: list[str],
         indices: list[int],
         te_paths: list[str],
         npz_paths: list[Path],
         active_lengths: list[int],
-        anchor_labels: dict[str, torch.Tensor],
+        flat_labels: dict[str, torch.Tensor],
         num_variants: int,
     ):
+        self.spec = spec
         self.stems = stems
         self.indices = indices
         self.te_paths = te_paths
         self.npz_paths = npz_paths
         self.active_lengths = active_lengths
-        self.labels = anchor_labels
+        self.flat_labels = flat_labels
         self.V = num_variants
 
     def __len__(self) -> int:
@@ -202,7 +212,7 @@ class Phase2Dataset(Dataset):
         t5_pooled = pooled_stack.mean(dim=0)  # (1024,)
 
         L = int(self.active_lengths[full_idx])
-        anchors = {k: int(lbl[full_idx].item()) for k, lbl in self.labels.items()}
+        anchors = gather_sample_labels(self.spec, self.flat_labels, full_idx)
 
         return {
             "full_idx": full_idx,
@@ -272,21 +282,19 @@ def make_bucket_map(
     return buckets
 
 
-def collate(batch: list[dict]) -> dict:
-    """Stack batch items (all share latent shape by the BucketBatchSampler contract)."""
-    out = {
-        "full_idx": torch.tensor([b["full_idx"] for b in batch], dtype=torch.long),
-        "latent": torch.stack([b["latent"] for b in batch], dim=0),
-        "t5_crossattn": torch.stack([b["t5_crossattn"] for b in batch], dim=0),
-        "t5_pooled": torch.stack([b["t5_pooled"] for b in batch], dim=0),
-        "L": torch.tensor([b["L"] for b in batch], dtype=torch.long),
-        "variant": torch.tensor([b["variant"] for b in batch], dtype=torch.long),
-    }
-    keys = list(batch[0]["anchors"].keys())
-    out["anchors"] = {
-        k: torch.tensor([b["anchors"][k] for b in batch], dtype=torch.long) for k in keys
-    }
-    return out
+def _make_collate(spec: AnchorSpec):
+    def collate(batch: list[dict]) -> dict:
+        out = {
+            "full_idx": torch.tensor([b["full_idx"] for b in batch], dtype=torch.long),
+            "latent": torch.stack([b["latent"] for b in batch], dim=0),
+            "t5_crossattn": torch.stack([b["t5_crossattn"] for b in batch], dim=0),
+            "t5_pooled": torch.stack([b["t5_pooled"] for b in batch], dim=0),
+            "L": torch.tensor([b["L"] for b in batch], dtype=torch.long),
+            "variant": torch.tensor([b["variant"] for b in batch], dtype=torch.long),
+            "anchors": collate_anchor_batch(spec, [b["anchors"] for b in batch]),
+        }
+        return out
+    return collate
 
 
 # --------------------------------------------------------------------------- flow-matching
@@ -358,7 +366,6 @@ def dit_fm_loss(
 
 def load_warm_start(model: AnchoredResampler, ckpt_path: Path) -> None:
     sd = load_file(str(ckpt_path))
-    # Strip any prefix mismatches; expect direct AnchoredResampler keys.
     missing, unexpected = model.load_state_dict(sd, strict=False)
     # ``*_protos`` buffers may be overwritten by the checkpoint's values
     # (should match exactly, but we prefer the on-disk prototype tables).
@@ -373,47 +380,24 @@ def load_warm_start(model: AnchoredResampler, ckpt_path: Path) -> None:
 
 def build_ctx(
     model: AnchoredResampler,
+    spec: AnchorSpec,
     tokens: torch.Tensor,      # (B, T, D_enc) bf16
     pooled: torch.Tensor,      # (B, D_enc) f32
     anchors: dict[str, torch.Tensor],
     device: torch.device,
     anchor_mode: str = "replace",
-) -> tuple[torch.Tensor, tuple, tuple]:
-    """Run resampler + classifier heads + anchor injection. Returns (ctx_bf16, logits, classes)."""
+) -> tuple[torch.Tensor, dict[str, torch.Tensor], dict[str, torch.Tensor]]:
+    """Run resampler + classifier heads + anchor injection.
+
+    Returns ``(ctx_bf16, logits, batch_labels_on_device)``.
+    """
     fwd = model(tokens, pooled)
-    pred = fwd["pred"]                                              # (B, 512, 1024) f32/bf16
-    r_logits, c_logits, a_logits = fwd["logits"]
-    r_emb, c_emb, a_emb = fwd["anchor_emb"]
+    pred = fwd["pred"]
 
-    r_slot = anchors["rating_slot"].to(device)
-    c_slot = anchors["count_slot"].to(device)
-    a_slot = anchors["artist_slot"].to(device)
-    inject_anchors(pred, r_emb, r_slot, mode=anchor_mode)
-    inject_anchors(pred, c_emb, c_slot, mode=anchor_mode)
-    inject_anchors(pred, a_emb, a_slot, mode=anchor_mode)
+    dev_labels = {k: v.to(device) for k, v in anchors.items()}
+    inject_spec_anchors(pred, spec, fwd["anchor_emb"], dev_labels, mode=anchor_mode)
 
-    return (
-        pred.to(torch.bfloat16),
-        (r_logits, c_logits, a_logits),
-        (anchors["rating_class"], anchors["count_class"], anchors["artist_class"]),
-    )
-
-
-def aux_cls_loss(logits_trio, class_trio) -> tuple[torch.Tensor, dict]:
-    total = 0.0
-    accs = {}
-    for name, lg, tg in zip(("rating", "count", "artist"), logits_trio, class_trio):
-        m = tg >= 0
-        if not m.any():
-            continue
-        tg_d = tg[m].to(lg.device)
-        lg_d = lg[m]
-        total = total + F.cross_entropy(lg_d, tg_d)
-        with torch.no_grad():
-            accs[name] = (lg_d.argmax(dim=-1) == tg_d).float().mean().item()
-    if isinstance(total, float):
-        return torch.tensor(0.0, device=logits_trio[0].device), accs
-    return total, accs
+    return pred.to(torch.bfloat16), fwd["logits"], dev_labels
 
 
 def pad_tail_loss(pred: torch.Tensor, L: torch.Tensor) -> tuple[torch.Tensor, float]:
@@ -444,6 +428,7 @@ def eval_fm(
     anima,
     model: AnchoredResampler,
     phase15_model: AnchoredResampler | None,
+    spec: AnchorSpec,
     loader: DataLoader,
     args,
     device: torch.device,
@@ -457,14 +442,14 @@ def eval_fm(
     """
     tots = {"phase2": 0.0, "t5_real": 0.0, "phase15": 0.0}
     counts = {k: 0 for k in tots}
-    cls_totals = {"rating": [0, 0], "count": [0, 0], "artist": [0, 0]}
+    cls_totals: dict[str, list[int]] = {g.name: [0, 0] for g in spec.groups}
 
     model.eval()
     if phase15_model is not None:
         phase15_model.eval()
 
     it = iter(loader)
-    for bi in range(n_batches):
+    for _ in range(n_batches):
         try:
             batch = next(it)
         except StopIteration:
@@ -472,14 +457,14 @@ def eval_fm(
         latent = batch["latent"].to(device, dtype=torch.float32)
         t5_pooled = batch["t5_pooled"].to(device, dtype=torch.bfloat16)
         t5_crossattn = batch["t5_crossattn"].to(device, dtype=torch.bfloat16)
-        anchors = {k: v.to(device) for k, v in batch["anchors"].items()}
+        anchors = batch["anchors"]
 
         # Siglip2 features for the batch -- pre-loaded on args.tokens_all / pooled_all (closures).
         tok_b = args.tokens_all[batch["full_idx"]].to(device, dtype=torch.bfloat16)
         pool_b = args.pooled_all[batch["full_idx"]].to(device, dtype=torch.float32)
 
         # phase 2 context
-        ctx2, logits_trio, class_trio = build_ctx(model, tok_b, pool_b, anchors, device)
+        ctx2, logits, dev_labels = build_ctx(model, spec, tok_b, pool_b, anchors, device)
 
         skip_pooled = args.pooled_text == "skip"
         pooled_for_dit = None
@@ -495,15 +480,23 @@ def eval_fm(
         tots["phase2"] += loss2.item()
         counts["phase2"] += 1
 
-        # classifier accuracy
-        for name, lg, tg in zip(("rating", "count", "artist"), logits_trio, class_trio):
-            m = tg >= 0
-            if not m.any():
-                continue
-            tg_d = tg[m].to(lg.device)
-            n_correct = (lg[m].argmax(dim=-1) == tg_d).sum().item()
-            cls_totals[name][0] += int(n_correct)
-            cls_totals[name][1] += int(m.sum().item())
+        # classifier accuracy across groups
+        for g in spec.groups:
+            lg = logits[g.name]
+            if g.mutex:
+                tg = dev_labels[f"{g.name}_class"]
+                m = tg >= 0
+                if not m.any():
+                    continue
+                n_c = (lg[m].argmax(dim=-1) == tg[m]).sum().item()
+                cls_totals[g.name][0] += int(n_c)
+                cls_totals[g.name][1] += int(m.sum().item())
+            else:
+                tg = dev_labels[f"{g.name}_labels"]
+                lg_c = lg[..., : g.n_classes]
+                pred_pos = (torch.sigmoid(lg_c) > 0.5).float()
+                cls_totals[g.name][0] += int((pred_pos == tg).sum().item())
+                cls_totals[g.name][1] += int(tg.numel())
 
         # t5_real baseline -- pass cached crossattn straight through.
         pooled_t5 = t5_pooled if args.pooled_text != "skip" else None
@@ -516,7 +509,7 @@ def eval_fm(
 
         # phase 1.5 baseline (optional)
         if phase15_model is not None:
-            ctx15, _, _ = build_ctx(phase15_model, tok_b, pool_b, anchors, device)
+            ctx15, _, _ = build_ctx(phase15_model, spec, tok_b, pool_b, anchors, device)
             pooled_p15 = None
             if args.pooled_text == "t5":
                 pooled_p15 = t5_pooled
@@ -587,24 +580,16 @@ def main():
     # VAE NPZ paths — one per stem.
     npz_paths = [_locate_npz(image_dir_path, s) for s in stems]
 
-    # -----------------------------------------------------------------  prototypes / labels
+    # -----------------------------------------------------------------  anchor spec + labels
     tag_slot_dir = Path(args.tag_slot_dir)
-    rating_protos, _ = _load_prototypes(
-        tag_slot_dir, RATING_CLASSES, "phase2_class_prototypes.safetensors",
-        key_prefix="rating=",
-    )
-    count_protos, _ = _load_prototypes(
-        tag_slot_dir, COUNT_CLASSES, "phase2_class_prototypes.safetensors",
-    )
-    artist_protos, artist_names = _load_artist_prototypes(tag_slot_dir)
-    anchor_labels = build_anchor_labels(tag_slot_dir / "phase1_positions.json", stems, artist_names)
-    label_tensors = labels_to_tensors(anchor_labels, stems)
+    spec = load_anchor_spec(Path(args.anchors_yaml), tag_slot_dir)
+    anchor_labels = build_anchor_labels(spec, tag_slot_dir / "phase1_positions.json", stems)
+    flat_labels = labels_to_flat_tensors(spec, anchor_labels)
 
     # -----------------------------------------------------------------  model (trainable resampler)
     S = 512  # slot count (matches cached crossattn_emb shape)
     model = AnchoredResampler(
-        d_enc=d_enc, d_pool=d_pool,
-        rating_protos=rating_protos, count_protos=count_protos, artist_protos=artist_protos,
+        spec=spec, d_enc=d_enc, d_pool=d_pool,
         d_model=args.d_model, n_heads=args.n_heads, n_slots=S, n_layers=args.n_layers,
     ).to(device)
 
@@ -619,8 +604,7 @@ def main():
     p15_path = args.phase1_5_ckpt or args.warm_start
     if p15_path:
         phase15_model = AnchoredResampler(
-            d_enc=d_enc, d_pool=d_pool,
-            rating_protos=rating_protos, count_protos=count_protos, artist_protos=artist_protos,
+            spec=spec, d_enc=d_enc, d_pool=d_pool,
             d_model=args.d_model, n_heads=args.n_heads, n_slots=S, n_layers=args.n_layers,
         ).to(device)
         load_warm_start(phase15_model, Path(p15_path))
@@ -663,11 +647,12 @@ def main():
     # -----------------------------------------------------------------  dataloaders
     train_idx = split["train_idx"]
     eval_idx = split["eval_idx"][: args.eval_max_samples]
+    collate = _make_collate(spec)
 
     def build_loader(idx_list, batch_size, num_batches, seed):
         dset = Phase2Dataset(
-            stems, idx_list, te_paths, npz_paths, active_lengths,
-            label_tensors, V,
+            spec, stems, idx_list, te_paths, npz_paths, active_lengths,
+            flat_labels, V,
         )
         bucket_map = make_bucket_map(idx_list, npz_paths)
         sampler = BucketBatchSampler(bucket_map, batch_size, num_batches, seed)
@@ -680,11 +665,12 @@ def main():
     eval_loader = build_loader(eval_idx, args.eval_batch_size, eval_n_batches, args.seed + 1)
 
     # -----------------------------------------------------------------  optimizer
+    cls_prefixes = model.cls_param_prefixes
     cls_params, other_params = [], []
     for n, p in model.named_parameters():
         if not p.requires_grad:
             continue
-        if n.startswith(("rating_head", "count_head", "artist_head", "pool_proj")):
+        if any(n.startswith(pref) for pref in cls_prefixes):
             cls_params.append(p)
         else:
             other_params.append(p)
@@ -708,12 +694,12 @@ def main():
         t5_pooled = batch["t5_pooled"].to(device, dtype=torch.bfloat16)
         t5_crossattn = batch["t5_crossattn"].to(device, dtype=torch.bfloat16)  # noqa: F841
         L_b = batch["L"]
-        anchors = {k: v.to(device) for k, v in batch["anchors"].items()}
+        anchors = batch["anchors"]
         tok_b = tokens_all[batch["full_idx"]].to(device, dtype=torch.bfloat16)
         pool_b = pooled_all[batch["full_idx"]].to(device, dtype=torch.float32)
 
         # Resampler + anchor injection -> ctx
-        ctx, logits_trio, class_trio = build_ctx(model, tok_b, pool_b, anchors, device)
+        ctx, logits, dev_labels = build_ctx(model, spec, tok_b, pool_b, anchors, device)
 
         # Pooled-text policy
         skip_pooled = args.pooled_text == "skip"
@@ -728,7 +714,7 @@ def main():
             anima, latent, ctx, pooled_for_dit, skip_pooled,
             args.sigma_sampling, args.sigmoid_scale, args.weighting_scheme,
         )
-        ce_loss, accs = aux_cls_loss(logits_trio, class_trio)
+        ce_loss, accs = aux_cls_loss(spec, logits, dev_labels)
         pad_loss, pad_mean_abs = pad_tail_loss(ctx, L_b)
 
         loss = fm_loss + args.w_cls * ce_loss + args.w_pad * pad_loss
@@ -787,7 +773,7 @@ def main():
             if hasattr(anima, "switch_block_swap_for_inference"):
                 anima.switch_block_swap_for_inference()
             try:
-                ev = eval_fm(anima, model, phase15_model, eval_loader, args, device,
+                ev = eval_fm(anima, model, phase15_model, spec, eval_loader, args, device,
                              n_batches=eval_n_batches)
             finally:
                 if hasattr(anima, "switch_block_swap_for_training"):
@@ -813,6 +799,7 @@ def main():
         {
             "args": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()
                      if k not in ("tokens_all", "pooled_all")},
+            "anchor_spec": spec.to_metadata(),
             "n_params_M": n_params_M,
             "train_time_sec": elapsed,
             "log": log_rows,
