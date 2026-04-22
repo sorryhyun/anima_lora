@@ -7,6 +7,8 @@ A tour of the non-obvious decisions the codebase makes to run fast on consumer G
 3. **Constant-token padding to `~4096`** — one static shape so `torch.compile` stops recompiling.
 4. **Compile-friendly code polish** — the dozen little rules that keep dynamo's guard cache from evicting.
 
+![Anima performance & compile optimizations](../structure_images/optimization.png)
+
 ---
 
 ## 1. QKV fusion

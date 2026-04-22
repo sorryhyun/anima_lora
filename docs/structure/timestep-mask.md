@@ -4,6 +4,8 @@ A one-line change to the LoRA forward that turns the adapter's effective rank in
 
 For the scaffolding this builds on, see `lora.md`: every target `Linear` is wrapped by a `LoRAModule` whose forward is `org_forward(x) + m·s·BAx`, with `A ∈ ℝ^{r×d_\text{in}}` (down) and `B ∈ ℝ^{d_\text{out}×r}` (up). T-LoRA multiplies a binary mask into the `r`-dim bottleneck between `A` and `B`.
 
+![Timestep rank masking](../structure_images/timestep.png)
+
 ---
 
 ## 1. The rank schedule

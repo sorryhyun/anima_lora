@@ -2,6 +2,8 @@
 
 A walkthrough of how the Anima diffusion model is put together — the text-conditioning pipeline, the VAE, the DiT block stack, and how a training step flows through all of it.
 
+![Anima architecture](../structure_images/anima.png)
+
 ---
 
 ## 1. The model at a glance

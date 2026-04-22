@@ -4,6 +4,8 @@ How the caption conditions Anima's AdaLN stack. In parallel with cross-attention
 
 Recap from `anima.md`: `crossattn_emb ∈ ℝ^{B×512×1024}` is what every DiT block's cross-attention sees (produced by the LLMAdapter, §2.3). Each block also has three AdaLN-Zero sub-layers, each gated by a `(shift, scale, gate)` triple computed from `SiLU(t_emb)` (§4). Pooled-text modulation is how the caption influences that `t_emb` — in parallel with cross-attention, not replacing it.
 
+![Pooled-text modulation](../structure_images/modulation.png)
+
 ---
 
 ## 1. The path

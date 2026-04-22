@@ -2,6 +2,8 @@
 
 How a vanilla low-rank adapter plugs into the Anima DiT. Plain LoRA means *just* the low-rank adapter. All of those stack on top of the scaffolding described here.
 
+![Plain LoRA](../structure_images/lora.png)
+
 ---
 
 ## 1. Where LoRA attaches

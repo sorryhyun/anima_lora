@@ -4,6 +4,8 @@ A re-parameterization of the LoRA delta that keeps the basis matrices **exactly 
 
 Recap from `lora.md`: plain LoRA replaces a frozen `Linear` $W_0$ with a residual $y = W_0 x + m\,s\,B A x$, $A \in \mathbb{R}^{r \times d_\text{in}}$ down, $B \in \mathbb{R}^{d_\text{out} \times r}$ up, both trainable. OrthoLoRA keeps the same insertion point — every adapted Linear still sees `org_forward(x) + delta` — but re-shapes what $A$ and $B$ actually are so that the delta stays inside an orthonormal subspace of the pretrained weight.
 
+![PSOFT-integrated OrthoLoRA](../structure_images/ortholora.png)
+
 ---
 
 ## 1. Why rewrite the bases

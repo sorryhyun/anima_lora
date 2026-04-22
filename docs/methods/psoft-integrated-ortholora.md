@@ -4,69 +4,7 @@ Experimental variant of OrthoLoRA that replaces soft orthogonality regularizatio
 
 Inspired by PSOFT (Wu et al., "Efficient Orthogonal Fine-Tuning with Principal Subspace Adaptation", ICLR 2026).
 
-## Motivation
-
-Standard OrthoLoRA uses fully trainable `P` (d × r) and `Q` (r × d) matrices with soft regularization (`||P^T P - I||^2 + ||Q Q^T - I||^2`) to encourage orthonormality. Two weaknesses:
-
-1. **Hyperparameter sensitivity** — `ortho_reg_weight` controls the trade-off between orthogonality and task loss. Too low: bases drift from orthonormality. Too high: constrains learning.
-2. **Random initialization** — bases are initialized via QR of random Gaussian matrices, unrelated to the pretrained weight structure.
-
-## Design
-
-### Cayley parameterization
-
-Instead of trainable (d × r) basis matrices, the module stores:
-
-- **Frozen bases** `P_basis` (d × r) and `Q_basis` (r × d) — from SVD of the pretrained weight.
-- **Trainable skew-symmetric seeds** `S_p` and `S_q` (r × r) — fed through the Cayley transform to produce orthogonal rotation matrices.
-
-The Cayley transform maps a skew-symmetric matrix to an orthogonal matrix:
-
-```
-A = S - S^T               (enforce skew-symmetry)
-R = (I - A)(I + A)^{-1}   (guaranteed R^T R = I)
-```
-
-Effective bases are computed each forward pass:
-
-```
-P_eff = P_basis @ cayley(S_p)    # (d, r) — columns stay orthonormal
-Q_eff = cayley(S_q) @ Q_basis    # (r, d) — rows stay orthonormal
-```
-
-At init `S_p = S_q = 0`, so `R = I` and `P_eff = P_basis`, `Q_eff = Q_basis`. Combined with zero-init lambda, the LoRA output is exactly zero at init.
-
-We use **exact inverse** via `torch.linalg.solve` instead of the Neumann series approximation from the PSOFT paper. For r × r matrices (r = 4–64), the exact solve is negligible cost and always correct — the Neumann series only converges when `||S|| < 1` and silently diverges otherwise.
-
-### SVD-informed initialization
-
-`P_basis` and `Q_basis` are the top-r left and right singular vectors of the pretrained weight. This aligns the initial basis with the weight's principal subspace, so the Cayley rotation starts from a structurally meaningful point.
-
-### Trainable parameter count
-
-Per module at rank r, dim d:
-
-| Component | Standard OrthoLoRA | OrthoLoRA Exp |
-|-----------|-------------------|---------------|
-| Trainable | r(d_in + d_out) + r | 2r² + r |
-| Frozen buffers | r(d_in + d_out) + r | r(d_in + d_out) |
-| Optimizer states | ~ trainable | ~ trainable |
-
-At r=64, d=3072: trainable params drop from ~394K to ~8.3K per module. Frozen buffer size is similar. Optimizer memory is significantly reduced.
-
-## Expressiveness trade-off
-
-**This is the key thing being benchmarked.**
-
-The Cayley rotation can only rotate `P_basis`'s columns within their initial r-dimensional span — it cannot reach orthonormal bases outside that subspace. This is effectively a principal-subspace restriction (similar to PSOFT's design), despite the full-dim frozen bases.
-
-For tasks that preserve pretrained representations (NLP fine-tuning), this is well-motivated. For learning genuinely new visual concepts (characters, styles) that may need components outside the top-r singular vectors, it may be too restrictive.
-
-Standard OrthoLoRA can learn **any** orthonormal basis via gradient descent on the full (d × r) matrices (soft-regularized). OrthoLoRA Exp trades that expressiveness for guaranteed orthogonality and fewer trainable parameters.
-
-## VRAM overhead
-
-Compared to standard LoRA at the same rank, OrthoLoRA Exp uses slightly more activation memory (~150–200 MB at r=64 across 196 DiT modules) because `P_eff` and `Q_eff` are computed tensors saved in the autograd graph, not leaf parameters. Optimizer memory is lower (fewer trainable params). Net effect is modest.
+> **For the structural walkthrough** (frozen SVD bases, Cayley transform derivation, forward pass, why exact inverse beats Neumann, expressiveness trade-off), see **`docs/structure/ortholora.md`**. This doc is the usage / ops / benchmarking reference.
 
 ## Usage
 
@@ -85,6 +23,22 @@ For timestep-masked OrthoLoRA, uncomment the T-LoRA block in `configs/methods/lo
 ```bash
 make lora-gui GUI_PRESETS=tlora
 ```
+
+## Trainable parameter count
+
+Per module at rank r, dim d:
+
+| Component | Standard OrthoLoRA | OrthoLoRA Exp |
+|-----------|-------------------|---------------|
+| Trainable | r(d_in + d_out) + r | 2r² + r |
+| Frozen buffers | r(d_in + d_out) + r | r(d_in + d_out) |
+| Optimizer states | ~ trainable | ~ trainable |
+
+At r=64, d=3072: trainable params drop from ~394K to ~8.3K per module. Frozen buffer size is similar. Optimizer memory is significantly reduced.
+
+## VRAM overhead
+
+Compared to standard LoRA at the same rank, OrthoLoRA Exp uses slightly more activation memory (~150–200 MB at r=64 across 196 DiT modules) because `P_eff` and `Q_eff` are computed tensors saved in the autograd graph, not leaf parameters. Optimizer memory is lower (fewer trainable params). Net effect is modest.
 
 ## Save format
 

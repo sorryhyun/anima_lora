@@ -6,6 +6,8 @@ Reference: Wu et al., *ReFT: Representation Finetuning for Language Models*, Neu
 
 Recap from `lora.md`: LoRA attaches to every `Linear` in a DiT `Block` — `self_attn.{qkv,o}_proj`, `cross_attn.{q,kv,o}_proj`, `mlp.{layer1,layer2}`, plus the AdaLN heads. ~10 Linears × 28 blocks ≈ 280 LoRA modules. ReFT's attachment count is different: one module per *block*, not per Linear, and it does not modify any weight inside that block. From the DiT's perspective, the block's internal computation is unchanged — ReFT only rewrites what the block hands to the residual stream on its way out.
 
+![ReFT residual-stream intervention](../structure_images/reft.png)
+
 ---
 
 ## 1. Why an activation-space adapter

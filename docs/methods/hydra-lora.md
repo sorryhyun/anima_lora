@@ -1,56 +1,8 @@
 # HydraLoRA: Multi-Style Routing via Layer-Local Experts
 
-MoE-style multi-head LoRA with per-module routing. Targets multi-artist training in a single LoRA without style bleed.
+MoE-style multi-head LoRA with per-module routing. Targets multi-artist training in a single LoRA without style bleed — a standard LoRA trained on multiple artists blends all styles into one shared low-rank subspace, so distinct fingerprints are lost. HydraLoRA attaches several `lora_up` heads per adapted `Linear` and lets a learned router pick a per-sample mixture.
 
-## Motivation
-
-A standard LoRA trained on multiple artists blends all styles into one shared low-rank subspace, causing distinct artists to lose their visual identity. HydraLoRA attaches several `lora_up` heads per adapted `Linear` and lets a learned router pick a per-sample mixture of those heads, so distinct clusters of samples can push different heads in different directions without interfering with each other.
-
-## Architecture
-
-Each adapted `Linear` owns a `HydraLoRAModule` containing:
-
-- **Shared `lora_down`** — a single `(rank, in_dim)` matrix, shared across experts. Captures common low-rank features.
-- **Fused `lora_up_weight`** — a stacked parameter of shape `(num_experts, out_dim, rank)`. Each slice `[i]` is one expert head.
-- **Layer-local `router`** — a `Linear(lora_dim, num_experts)` that reads the post-`lora_down` rank-R activations (not raw input, not the text embedding) and emits softmax gates over the experts for this specific layer and sample.
-
-Forward (simplified, see `networks/lora_modules/hydra.py:HydraLoRAModule.forward`):
-
-```python
-lx       = self.lora_down(x)                           # (B, L, rank)
-
-# RMS pool the rank-R signal over the sequence dim — see "Why RMS over
-# rank-R" below. Computed before T-LoRA masking / dropout so the gate is
-# identical at train and inference time.
-pooled   = lx.reshape(B, -1, rank).pow(2).mean(dim=1).sqrt()  # (B, rank)
-gate     = softmax(self.router(pooled), dim=-1)        # (B, num_experts)
-
-combined = einsum("be,eod->bod", gate, lora_up_weight) # (B, out, rank) per-sample
-out      = bmm(lx, combined.transpose(1, 2))           # (B, L, out)
-delta    = out * multiplier * scale
-```
-
-Key properties:
-
-- **Layer-local.** Each adapted module has its own router with its own weights. The same sample gets different gate distributions at different layers, so specialization is learned per-layer rather than as one global "style pick" applied uniformly everywhere.
-- **Sample-dependent.** The effective `lora_up` varies per sample (via the batch-dim on `gate`). There is no single static `lora_up` that reproduces the trained behavior — averaging experts collapses the router to a uniform prior, which is not what was trained.
-- **Small router overhead.** Per-module router params are `lora_dim * num_experts` plus bias. For `lora_dim=32, num_experts=4`, that's 132 params per module — ~64× smaller than the previous `in_dim`-wide router and negligible against the LoRA parameters themselves.
-
-## Why RMS over rank-R (not mean pool over raw input)
-
-Earlier revisions mean-pooled the raw layer input (`in_dim`-wide) before the router. That choice was motivated by DC-bias outlier channels in DiT layer inputs (peak/mean ratio 80–96×, documented in `bench/channel_dominance_analysis.md`) — max pool would saturate softmax in bf16, so mean pool was picked to average them out. But mean pool over a ~4096-token sequence cancels zero-mean activations by √N, collapsing per-channel std to ~σ_x/√L ≈ 0.008; the only channels that survived were the DC-bias outliers, which are layer-constant (not sample-dependent). The router input was therefore near-identical across every sample, its gradient was tiny, and the balance loss quietly pinned gates to uniform. End-to-end measurement on live checkpoints (`anima-hydra-0420-644` and earlier): median normalized entropy 1.0000 across 196 modules × 4 experts, 0/784 dead experts, dominant-top1 fraction ≈ 2e-4, and `‖router.weight‖` pinned to its Kaiming-init value at every step — confirming the router received no effective gradient.
-
-The current design pools the *post-`lora_down`* rank-R signal with RMS (`sqrt(mean(x**2))`). RMS does not cancel under random signs, so sample-level content survives aggregation over long sequences. Rank-R space is bounded by `‖lora_down‖·‖x‖` and has no large DC-bias outliers, so softmax stability in bf16 is not a concern. The router weight is still initialized at `std=0.01` so starting gates are near-uniform and every expert receives gradient at step 0.
-
-## Load-balancing
-
-Without a penalty, training collapses into using one or two experts — the rest receive no gradient. HydraLoRA uses the Switch Transformer load-balancing loss, averaged over all hydra modules:
-
-```
-L_balance = α · num_experts · Σᵢ (frac_i · gate_mean_i)
-```
-
-where `frac_i` is the fraction of samples (across the batch, at this layer) whose dominant expert is `i`, and `gate_mean_i` is the mean gate value for expert `i`. The network-level code sums this over every `HydraLoRAModule._last_gate` cached during the forward pass, so the penalty integrates routing pressure from every layer at once. Default `α = 0.001` in the HydraLoRA configs (`configs/methods/lora.toml` HydraLoRA toggle block, `configs/gui-methods/hydralora.toml`, `configs/gui-methods/hydralora_sigma.toml`).
+> **For the structural walkthrough** (architecture, forward pass, why RMS-over-rank-R, load-balancing formula, orthogonalized experts and the cold-start deadlock, composition matrix), see **`docs/structure/hydralora.md`**. This doc is the usage / ops / decision-log reference.
 
 ## File format
 
@@ -84,23 +36,11 @@ Use `make test-hydra` (or `python tasks.py test-hydra`) to run inference against
 
 Use the **Anima Adapter Loader** node (`custom_nodes/comfyui-hydralora/`), which installs per-Linear forward hooks that reproduce `HydraLoRAModule.forward` exactly — including σ-conditional routing when the checkpoint's router input is wider than `rank`. See `custom_nodes/comfyui-hydralora/README.md` for installation, hook mechanics, and changelog.
 
-## Orthogonalized experts (`OrthoHydraLoRAExpModule`)
+## Orthogonalized experts — fallback behavior
 
-Structural fix for the MoE cold-start deadlock observed on plain HydraLoRA (`balance_loss_weight=0`, `expert_init_std=0`: router specializes, but 42% of experts go dead within one epoch — the ones the router happens to ignore first never receive gradient and stay near zero).
+The `OrthoHydraLoRAExpModule` default (both `use_ortho = true` and `use_hydra = true`) is the structural deadlock fix described in `docs/structure/hydralora.md` §5. One operational detail worth knowing:
 
-Each expert is given its **own orthonormal output basis** instead of sharing one:
-
-- Take the top-`E·r` left-singular vectors of the pretrained weight and partition them into `E` disjoint slices of `r` columns — `P_bases[e]: (out, r)`, with `P_bases[i]^T P_bases[j] = 0` for `i ≠ j`.
-- Each expert rotates inside its own slice with a Cayley-parameterized `R_p[e]: (r, r)` (SO(r) per slice, so cross-expert orthogonality is preserved through training).
-- `lora_down` is shared and Cayley-rotated (`S_q`, row-orthonormal), same as `OrthoLoRAExpModule`.
-
-Why this matters for routing: with a **shared** basis, every `P_eff[e]` lives in the same rank-`r` column span, so `P_eff[i]^T P_eff[j]` is an orthogonal matrix — it cannot be zero. Router scores are near-identical across experts at init and the gradient signal for differentiation vanishes (the MoE cold-start deadlock). **Disjoint slices** make the router's per-expert score genuinely different at step 0 because each expert writes into a distinct output subspace, so the router has signal to latch onto before any expert has been trained.
-
-`expert_init_std` is retained for API back-compat but is **redundant** here — disjoint bases already differentiate experts at init. A positive value only adds a within-slice rotation on `S_p`, which does not break orthogonality across slices.
-
-**Fallback.** If `min(out_dim, in_dim) < num_experts · lora_dim` the partition can't fit, and `P_bases` degenerates to the legacy shared `P_basis` replicated `E` times (with a warning). In that case `expert_init_std > 0` is the only symmetry-breaker and must not be zero.
-
-Activated by setting both `use_ortho = true` and `use_hydra = true`. This is the configured default in the HydraLoRA toggle block of `configs/methods/lora.toml` and in `configs/gui-methods/hydralora.toml`. Implementation: `networks/lora_modules/ortho.py:OrthoHydraLoRAExpModule`.
+**Fallback.** If `min(out_dim, in_dim) < num_experts · lora_dim` the disjoint SVD-slice partition can't fit, so `P_bases` degenerates to the legacy shared `P_basis` replicated `E` times (with a warning in the log). In that case `expert_init_std > 0` is the only symmetry-breaker and must not be zero. Implementation: `networks/lora_modules/ortho.py:OrthoHydraLoRAExpModule`.
 
 ## Composition with other variants
 
