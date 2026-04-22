@@ -33,7 +33,6 @@ python scripts/img2emb/train_img2emb.py finetune --steps 20000
 make img2emb                # alias for train_img2emb.py all
 make img2emb-pretrain
 make img2emb-finetune
-make phase2-ablation        # 2k-step phase-2a warm-start ablation
 make phase2-calibrate       # step-0 loss magnitudes, no backward
 
 # Inference from a reference image
@@ -121,9 +120,10 @@ test_img2emb.py       # Reference-image → generated image inference.
 
 ## Conventions + notes
 
-- All `--tag_slot_dir` defaults point at `bench/inversionv2/results/tag_slot/`
-  (phase1 positions + phase2/3 prototypes). If you rebuild prototypes there,
-  just re-run pretrain — no code changes needed.
+- All `--tag_slot_dir` defaults point at `output/img2embs/anchors/` (phase1
+  positions + class prototypes). Regenerate with
+  `python scripts/img2emb/rebuild_anchor_artifacts.py` (also wired in as
+  `make img2emb-anchors`), then re-run pretrain — no code changes needed.
 - Checkpoint state_dict keys use `heads.<group>.{weight,bias}` and
   `<group>_protos` buffers. Renaming a group in `anchors.yaml` breaks ckpt
   load; add a new group instead and retrain.

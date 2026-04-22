@@ -170,14 +170,27 @@ def cmd_postfix(extra):
 
 
 def cmd_img2emb(extra):
-    """Usage: python tasks.py img2emb <features|pretrain|finetune|all> [extra...]"""
+    """Usage: python tasks.py img2emb <features|anchors|pretrain|finetune|all> [extra...]"""
     stage = extra[0] if extra else "all"
     rest = extra[1:] if extra else []
+    if stage == "anchors":
+        run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py", *rest])
+        return
+    if stage == "all":
+        run([PY, "scripts/img2emb/train_img2emb.py", "features", *rest])
+        run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py"])
+        run([PY, "scripts/img2emb/train_img2emb.py", "pretrain"])
+        run([PY, "scripts/img2emb/train_img2emb.py", "finetune"])
+        return
     run([PY, "scripts/img2emb/train_img2emb.py", stage, *rest])
 
 
 def cmd_img2emb_features(extra):
     run([PY, "scripts/img2emb/train_img2emb.py", "features", *extra])
+
+
+def cmd_img2emb_anchors(extra):
+    run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py", *extra])
 
 
 def cmd_img2emb_pretrain(extra):
@@ -776,9 +789,10 @@ COMMANDS = {
     "preprocess-te": (cmd_preprocess_te, "Cache text encoder embeddings"),
     "img2emb": (
         cmd_img2emb,
-        "Train img2emb resampler (siglip2 → DiT crossattn). Stage arg: features|pretrain|finetune|all",
+        "Train img2emb resampler (siglip2 → DiT crossattn). Stage arg: features|anchors|pretrain|finetune|all",
     ),
     "img2emb-features": (cmd_img2emb_features, "img2emb: extract encoder features (stage 1)"),
+    "img2emb-anchors": (cmd_img2emb_anchors, "img2emb: refresh people=* prototypes + phase1_positions (stage 1.5)"),
     "img2emb-pretrain": (cmd_img2emb_pretrain, "img2emb: resampler pretrain on cached targets (stage 2)"),
     "img2emb-finetune": (cmd_img2emb_finetune, "img2emb: flow-matching finetune through frozen DiT (stage 3)"),
     "test-img2emb": (

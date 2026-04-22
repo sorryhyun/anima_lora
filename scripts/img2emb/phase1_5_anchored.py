@@ -71,8 +71,9 @@ def parse_args():
     p.add_argument("--out_dir", default=str(BENCH_DIR / "results" / "phase1_5"))
     p.add_argument(
         "--tag_slot_dir",
-        default=str(REPO_ROOT / "bench" / "inversionv2" / "results" / "tag_slot"),
-        help="inversionv2 output with phase1_positions.json + phase2/3 prototypes.",
+        default=str(REPO_ROOT / "output" / "img2embs" / "anchors"),
+        help="Directory with phase1_positions.json + phase2_class_prototypes.safetensors "
+        "(produced by scripts/img2emb/rebuild_anchor_artifacts.py).",
     )
     p.add_argument(
         "--anchors_yaml",
@@ -86,12 +87,12 @@ def parse_args():
     p.add_argument("--d_model", type=int, default=1024)
     p.add_argument("--n_heads", type=int, default=8)
     p.add_argument("--n_layers", type=int, default=4)
-    p.add_argument("--steps", type=int, default=10000)
+    p.add_argument("--steps", type=int, default=1000)
     p.add_argument("--batch_size", type=int, default=16)
-    p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--weight_decay", type=float, default=0.01)
     p.add_argument("--warmup_frac", type=float, default=0.03)
-    p.add_argument("--eval_every", type=int, default=2500)
+    p.add_argument("--eval_every", type=int, default=500)
     p.add_argument("--cos_loss_weight", type=float, default=1.0)
     p.add_argument("--zero_pad_weight", type=float, default=0.01)
     p.add_argument(

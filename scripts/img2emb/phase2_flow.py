@@ -3,8 +3,9 @@
 
 Keeps the phase 1.5 architecture (AnchoredResampler + inject_spec_anchors at
 variant-specific slot positions) and swaps the loss. Resampler output feeds
-the DiT's cross-attention KV; AdaLN's pooled-text path stays on the T5 manifold
-via ``pooled_text_override``. See ``phase2_proposal.md``.
+both the DiT's cross-attention KV and AdaLN's pooled-text path: pooled is
+``ctx.amax(dim=1)`` from the resampler output, never from T5. See
+``phase2_proposal.md``.
 
 Phase 2a = 2k-step warm-start ablation from the phase 1.5 checkpoint. The full
 20k run is a flag flip (``--steps 20000``) after the ablation passes.
@@ -72,7 +73,7 @@ def parse_args():
     p.add_argument("--out_dir", default=str(BENCH_DIR / "results" / "phase2a"))
     p.add_argument(
         "--tag_slot_dir",
-        default=str(REPO_ROOT / "bench" / "inversionv2" / "results" / "tag_slot"),
+        default=str(REPO_ROOT / "output" / "img2embs" / "anchors"),
     )
     p.add_argument(
         "--anchors_yaml",
@@ -130,12 +131,6 @@ def parse_args():
     # sigma sampling
     p.add_argument("--sigma_sampling", default="sigmoid", choices=["sigmoid", "uniform"])
     p.add_argument("--sigmoid_scale", type=float, default=1.0)
-
-    # pooled-text policy
-    p.add_argument("--pooled_text", default="t5",
-                   choices=["t5", "resampler", "skip"],
-                   help="t5 = override with cached T5 variant-mean pooled (default); "
-                        "resampler = use resampler ctx.max(dim=1); skip = no pooled text.")
 
     # logging / eval
     p.add_argument("--eval_every", type=int, default=500)
@@ -200,16 +195,10 @@ class Phase2Dataset(Dataset):
             latent_key = next(k for k in data.keys() if k.startswith("latents_"))
             latent = torch.from_numpy(data[latent_key].copy())  # (C=16, H, W) float32
 
-        # Cached T5 crossattn + T5 pooled.
+        # Cached T5 crossattn (used only by the t5_real eval baseline).
         sd = load_file(self.te_paths[full_idx])
         variant = int(torch.randint(0, self.V, (1,)).item()) if self.V > 1 else 0
         t5_crossattn = sd[f"crossattn_emb_v{variant}"].float()  # (512, 1024)
-
-        # Variant-mean T5 pooled (more stable than v-specific; matches DiT's
-        # `crossattn_emb.max(dim=1).values` feed into pooled_text_proj).
-        variant_keys = sorted(k for k in sd if k.startswith("crossattn_emb_v"))
-        pooled_stack = torch.stack([sd[k].float().amax(dim=0) for k in variant_keys], dim=0)
-        t5_pooled = pooled_stack.mean(dim=0)  # (1024,)
 
         L = int(self.active_lengths[full_idx])
         anchors = gather_sample_labels(self.spec, self.flat_labels, full_idx)
@@ -218,7 +207,6 @@ class Phase2Dataset(Dataset):
             "full_idx": full_idx,
             "latent": latent,  # (16, H, W) f32 — normalized
             "t5_crossattn": t5_crossattn,  # (512, 1024) f32
-            "t5_pooled": t5_pooled,  # (1024,) f32
             "L": L,
             "anchors": anchors,
             "variant": variant,
@@ -288,7 +276,6 @@ def _make_collate(spec: AnchorSpec):
             "full_idx": torch.tensor([b["full_idx"] for b in batch], dtype=torch.long),
             "latent": torch.stack([b["latent"] for b in batch], dim=0),
             "t5_crossattn": torch.stack([b["t5_crossattn"] for b in batch], dim=0),
-            "t5_pooled": torch.stack([b["t5_pooled"] for b in batch], dim=0),
             "L": torch.tensor([b["L"] for b in batch], dtype=torch.long),
             "variant": torch.tensor([b["variant"] for b in batch], dtype=torch.long),
             "anchors": collate_anchor_batch(spec, [b["anchors"] for b in batch]),
@@ -319,8 +306,7 @@ def dit_fm_loss(
     anima,
     latent: torch.Tensor,             # (B, C, H, W) f32 — normalized
     ctx: torch.Tensor,                # (B, 512, 1024) bf16
-    pooled_text: torch.Tensor | None, # (B, 1024) bf16 or None
-    skip_pooled_text: bool,
+    pooled_text: torch.Tensor,        # (B, 1024) bf16 — resampler ctx.amax(dim=1)
     sigma_scheme: str,
     sigma_scale: float,
     weighting_scheme: str,
@@ -339,11 +325,7 @@ def dit_fm_loss(
     padding_mask = torch.zeros(B, 1, h_lat, w_lat, dtype=torch.bfloat16, device=device)
     timesteps = sigmas.to(torch.bfloat16)
 
-    kwargs = {"padding_mask": padding_mask}
-    if skip_pooled_text:
-        kwargs["skip_pooled_text_proj"] = True
-    elif pooled_text is not None:
-        kwargs["pooled_text_override"] = pooled_text
+    kwargs = {"padding_mask": padding_mask, "pooled_text_override": pooled_text}
 
     v_pred = anima(x_sigma_5d, timesteps, ctx, **kwargs).squeeze(2)  # (B, C, H, W) bf16
     v_target = (noise - latent).float()
@@ -449,13 +431,12 @@ def eval_fm(
         phase15_model.eval()
 
     it = iter(loader)
-    for _ in range(n_batches):
+    for _ in tqdm(range(n_batches), desc="eval", dynamic_ncols=True, leave=False):
         try:
             batch = next(it)
         except StopIteration:
             break
         latent = batch["latent"].to(device, dtype=torch.float32)
-        t5_pooled = batch["t5_pooled"].to(device, dtype=torch.bfloat16)
         t5_crossattn = batch["t5_crossattn"].to(device, dtype=torch.bfloat16)
         anchors = batch["anchors"]
 
@@ -465,16 +446,10 @@ def eval_fm(
 
         # phase 2 context
         ctx2, logits, dev_labels = build_ctx(model, spec, tok_b, pool_b, anchors, device)
-
-        skip_pooled = args.pooled_text == "skip"
-        pooled_for_dit = None
-        if args.pooled_text == "t5":
-            pooled_for_dit = t5_pooled
-        elif args.pooled_text == "resampler":
-            pooled_for_dit = ctx2.float().amax(dim=1).to(torch.bfloat16)
+        pooled_for_dit = ctx2.float().amax(dim=1).to(torch.bfloat16)
 
         loss2, _ = dit_fm_loss(
-            anima, latent, ctx2, pooled_for_dit, skip_pooled,
+            anima, latent, ctx2, pooled_for_dit,
             args.sigma_sampling, args.sigmoid_scale, args.weighting_scheme,
         )
         tots["phase2"] += loss2.item()
@@ -498,10 +473,12 @@ def eval_fm(
                 cls_totals[g.name][0] += int((pred_pos == tg).sum().item())
                 cls_totals[g.name][1] += int(tg.numel())
 
-        # t5_real baseline -- pass cached crossattn straight through.
-        pooled_t5 = t5_pooled if args.pooled_text != "skip" else None
+        # t5_real baseline -- pass cached crossattn straight through; pooled
+        # uses the same amax(dim=1) rule as the resampler path so the two
+        # losses differ only in crossattn source.
+        pooled_t5 = t5_crossattn.float().amax(dim=1).to(torch.bfloat16)
         loss_t5, _ = dit_fm_loss(
-            anima, latent, t5_crossattn, pooled_t5, skip_pooled,
+            anima, latent, t5_crossattn, pooled_t5,
             args.sigma_sampling, args.sigmoid_scale, args.weighting_scheme,
         )
         tots["t5_real"] += loss_t5.item()
@@ -510,13 +487,9 @@ def eval_fm(
         # phase 1.5 baseline (optional)
         if phase15_model is not None:
             ctx15, _, _ = build_ctx(phase15_model, spec, tok_b, pool_b, anchors, device)
-            pooled_p15 = None
-            if args.pooled_text == "t5":
-                pooled_p15 = t5_pooled
-            elif args.pooled_text == "resampler":
-                pooled_p15 = ctx15.float().amax(dim=1).to(torch.bfloat16)
+            pooled_p15 = ctx15.float().amax(dim=1).to(torch.bfloat16)
             loss15, _ = dit_fm_loss(
-                anima, latent, ctx15, pooled_p15, skip_pooled,
+                anima, latent, ctx15, pooled_p15,
                 args.sigma_sampling, args.sigmoid_scale, args.weighting_scheme,
             )
             tots["phase15"] += loss15.item()
@@ -558,7 +531,7 @@ def main():
     if not image_dir_path.is_absolute():
         image_dir_path = REPO_ROOT / image_dir_path
 
-    logger.info(f"cache={cache_dir}  image_dir={image_dir_path}  out={out_dir}  pooled_text={args.pooled_text}")
+    logger.info(f"cache={cache_dir}  image_dir={image_dir_path}  out={out_dir}")
     cache = load_cache(cache_dir, str(image_dir_path), args.encoder, num_workers=4)
     del cache["targets_mean"]  # not needed; we use per-image safetensors on the fly
 
@@ -691,8 +664,7 @@ def main():
     for step in tqdm(range(args.steps), desc="train", dynamic_ncols=True):
         batch = next(step_iter)
         latent = batch["latent"].to(device, dtype=torch.float32)
-        t5_pooled = batch["t5_pooled"].to(device, dtype=torch.bfloat16)
-        t5_crossattn = batch["t5_crossattn"].to(device, dtype=torch.bfloat16)  # noqa: F841
+        t5_crossattn = batch["t5_crossattn"].to(device, dtype=torch.bfloat16)
         L_b = batch["L"]
         anchors = batch["anchors"]
         tok_b = tokens_all[batch["full_idx"]].to(device, dtype=torch.bfloat16)
@@ -700,18 +672,10 @@ def main():
 
         # Resampler + anchor injection -> ctx
         ctx, logits, dev_labels = build_ctx(model, spec, tok_b, pool_b, anchors, device)
-
-        # Pooled-text policy
-        skip_pooled = args.pooled_text == "skip"
-        if args.pooled_text == "t5":
-            pooled_for_dit = t5_pooled
-        elif args.pooled_text == "resampler":
-            pooled_for_dit = ctx.float().amax(dim=1).to(torch.bfloat16)
-        else:  # "skip"
-            pooled_for_dit = None
+        pooled_for_dit = ctx.float().amax(dim=1).to(torch.bfloat16)
 
         fm_loss, fm_diag = dit_fm_loss(
-            anima, latent, ctx, pooled_for_dit, skip_pooled,
+            anima, latent, ctx, pooled_for_dit,
             args.sigma_sampling, args.sigmoid_scale, args.weighting_scheme,
         )
         ce_loss, accs = aux_cls_loss(spec, logits, dev_labels)

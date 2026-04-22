@@ -28,14 +28,14 @@ rating:
   mutex: true
   proto_key_prefix: "rating="
   default_slot: 0
-  classes: [explicit, sensitive, general, absurdres]
+  classes: [explicit, sensitive, general]
 
 people_count:
   mutex: true
   proto_key_prefix: "people="
-  default_slot: 2
+  default_slot: 1
   # Composite girl/boy count buckets. Classes are exhaustive and disjoint —
-  # each image maps to exactly one (see scripts/img2emb/rebuild_people_prototypes.py).
+  # each image maps to exactly one (see scripts/img2emb/rebuild_anchor_artifacts.py).
   # Prototypes are re-derived from real slot-level T5 embeddings at the
   # constituent count tags (not averages of old per-tag prototypes).
   classes:

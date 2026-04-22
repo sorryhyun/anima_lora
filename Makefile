@@ -11,7 +11,7 @@ LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/poo
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-features img2emb-pretrain img2emb-finetune test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-features img2emb-anchors img2emb-pretrain img2emb-finetune test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -77,8 +77,13 @@ distill-mod:
 
 # img2emb — image→embedding resampler training (siglip2 by default).
 # Three stages: features → pretrain → finetune. See scripts/img2emb/train_img2emb.py.
+# img2emb-anchors refreshes phase1_positions.json + phase2_class_prototypes.safetensors
+# (people=* prototypes) from live captions + TE cache; required before pretrain.
 img2emb-features:
 	python scripts/img2emb/train_img2emb.py features $(ARGS)
+
+img2emb-anchors:
+	python scripts/img2emb/rebuild_anchor_artifacts.py $(ARGS)
 
 img2emb-pretrain:
 	python scripts/img2emb/train_img2emb.py pretrain $(ARGS)
@@ -86,7 +91,7 @@ img2emb-pretrain:
 img2emb-finetune:
 	python scripts/img2emb/train_img2emb.py finetune $(ARGS)
 
-img2emb: img2emb-features img2emb-pretrain img2emb-finetune
+img2emb: img2emb-features img2emb-anchors img2emb-pretrain img2emb-finetune
 
 # Generate a single image conditioned on REF_IMAGE via the phase-2a resampler.
 # Example: make test-img2emb REF_IMAGE=post_image_dataset/foo.png
@@ -255,23 +260,14 @@ WORKFLOW ?= workflows/modhydra.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 
-# img2emb phase 2a — 2k-step flow-matching warm-start ablation from phase 1.5.
-# Gate for the full phase 2 run; see bench/img2emb/phase2_proposal.md.
+# img2emb phase-2 step-0 loss-weight calibration — no backward, just reports
+# raw loss magnitudes so the loss.* weights in phase2_flow.py can be tuned.
 PHASE2_WARM ?= bench/img2emb/results/phase1_5/siglip2_resampler_4layer_anchored.safetensors
-PHASE2_STEPS ?= 2000
 PHASE2_BS ?= 1
 # -1 = gradient checkpointing (required on 16 GB; no-swap backward OOMs, block-swap
 # forward-only doesn't help backward activations). Override with PHASE2_SWAP=N for
 # >16 GB cards.
 PHASE2_SWAP ?= -1
-phase2-ablation:
-	python scripts/img2emb/phase2_flow.py \
-		--dit models/diffusion_models/anima-preview3-base.safetensors \
-		--warm_start $(PHASE2_WARM) \
-		--steps $(PHASE2_STEPS) \
-		--batch_size $(PHASE2_BS) \
-		--blocks_to_swap $(PHASE2_SWAP)
-
 phase2-calibrate:
 	python scripts/img2emb/phase2_flow.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \

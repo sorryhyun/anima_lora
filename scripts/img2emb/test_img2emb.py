@@ -23,8 +23,7 @@ from pathlib import Path
 
 import torch
 from PIL import Image
-from safetensors.torch import load_file, save_file
-from tqdm import tqdm
+from safetensors.torch import load_file
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -102,19 +101,6 @@ def parse_args():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--guidance_scale", type=float, default=4.0,
                    help="CFG scale; 1.0 disables CFG. Unconditional uses zero-ctx.")
-    p.add_argument(
-        "--pooled_text_source",
-        default="dataset_mean",
-        choices=["dataset_mean", "resampler", "skip"],
-        help=("dataset_mean = variant-mean pooled averaged over the training cache "
-              "(closest to training distribution, default); resampler = ctx.max(dim=1); "
-              "skip = bypass pooled_text_proj."),
-    )
-    p.add_argument("--image_dir", default="post_image_dataset",
-                   help="Training image_dir (for dataset_mean pooled scan). Cached to mean_pooled.safetensors.")
-    p.add_argument("--pooled_cache",
-                   default=str(REPO_ROOT / "output" / "img2embs" / "mean_pooled.safetensors"),
-                   help="Path to the cached dataset-mean pooled vector; computed on first use.")
 
     # output
     p.add_argument("--save_path", default="output/tests")
@@ -224,67 +210,13 @@ def _build_ctx(
     return pred.to(torch.bfloat16)
 
 
-def _compute_or_load_mean_pooled(image_dir: Path, cache_path: Path) -> torch.Tensor:
-    """Variant-mean-then-dataset-mean pooled over cached *_anima_te.safetensors.
-
-    Matches phase2_flow.py's `t5_pooled` computation: per-image = mean over variants
-    of crossattn_emb[v].amax(dim=0); then average across images. Result is (1024,) f32.
-    """
-    if cache_path.exists():
-        sd = load_file(str(cache_path))
-        if "mean_pooled" in sd:
-            logger.info(f"dataset_mean pooled: cached at {cache_path}")
-            return sd["mean_pooled"].float()
-
-    te_paths = sorted(image_dir.glob("*_anima_te.safetensors"))
-    if not te_paths:
-        raise FileNotFoundError(
-            f"No *_anima_te.safetensors under {image_dir}. "
-            f"Run preprocessing first, or pass --pooled_text_source resampler."
-        )
-    logger.info(f"computing dataset_mean pooled over {len(te_paths)} TE caches")
-
-    running = None
-    n = 0
-    for p in tqdm(te_paths, desc="scan TE"):
-        sd = load_file(str(p))
-        vkeys = sorted(k for k in sd if k.startswith("crossattn_emb_v"))
-        if not vkeys and "crossattn_emb" in sd:
-            vkeys = ["crossattn_emb"]
-        if not vkeys:
-            continue
-        stack = torch.stack([sd[k].float().amax(dim=0) for k in vkeys], dim=0)
-        per_image = stack.mean(dim=0)  # (1024,)
-        running = per_image if running is None else running + per_image
-        n += 1
-    mean_pooled = (running / n).contiguous()
-
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    save_file({"mean_pooled": mean_pooled}, str(cache_path))
-    logger.info(f"saved dataset_mean pooled → {cache_path}  (n={n}, ||={mean_pooled.norm():.3f})")
-    return mean_pooled
-
-
-def _build_pooled_text(
-    ctx: torch.Tensor, args, device: torch.device
-) -> torch.Tensor | None:
-    """Return the positive-side pooled_text_override (or None for skip)."""
-    if args.pooled_text_source == "skip":
-        return None
-    if args.pooled_text_source == "resampler":
-        return ctx.float().amax(dim=1).to(torch.bfloat16)
-    # dataset_mean
-    mean = _compute_or_load_mean_pooled(Path(args.image_dir), Path(args.pooled_cache))
-    return mean.unsqueeze(0).to(device=device, dtype=torch.bfloat16)
-
-
 @torch.no_grad()
 def _denoise(
-    anima, ctx: torch.Tensor, pooled_text: torch.Tensor | None, args, device: torch.device
+    anima, ctx: torch.Tensor, pooled_text: torch.Tensor, args, device: torch.device
 ) -> torch.Tensor:
     """Flow-matching euler denoise with optional CFG. Returns (1, C, 1, H_lat, W_lat) bf16.
 
-    CFG unconditional: zero-ctx, same pooled_text policy. Matches the cache-time
+    CFG unconditional: zero-ctx, same pooled_text. Matches the cache-time
     zero-pad convention (crossattn_emb_v0 padding is zeros).
     """
     H, W = args.image_size
@@ -298,20 +230,14 @@ def _denoise(
     timesteps = (timesteps / 1000).to(dtype=torch.bfloat16)
 
     padding_mask = torch.zeros(1, 1, h_lat, w_lat, dtype=torch.bfloat16, device=device)
-
-    skip = args.pooled_text_source == "skip"
-    kwargs = {"padding_mask": padding_mask}
-    if skip:
-        kwargs["skip_pooled_text_proj"] = True
-    elif pooled_text is not None:
-        kwargs["pooled_text_override"] = pooled_text
+    kwargs = {"padding_mask": padding_mask, "pooled_text_override": pooled_text}
 
     do_cfg = args.guidance_scale != 1.0
     uncond_ctx = torch.zeros_like(ctx) if do_cfg else None
 
     logger.info(
         f"denoising: {args.infer_steps} steps, {H}x{W}, flow_shift={args.flow_shift}, "
-        f"cfg={args.guidance_scale}, pooled={args.pooled_text_source}"
+        f"cfg={args.guidance_scale}"
     )
     for i, t in enumerate(timesteps):
         t_expand = t.expand(1)
@@ -367,8 +293,8 @@ def main():
     else:
         anima.to(device)
 
-    # 4) Pooled text + denoise.
-    pooled_text = _build_pooled_text(ctx, args, device)
+    # 4) Pooled text + denoise. Pooled = resampler ctx.amax(dim=1) — matches training.
+    pooled_text = ctx.float().amax(dim=1).to(torch.bfloat16)
     latents = _denoise(anima, ctx, pooled_text, args, device)
     del anima
     if device.type == "cuda":
