@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import random
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -8,6 +9,18 @@ import numpy as np
 import torch
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_default_mask_dir() -> Optional[str]:
+    """Prefer masks/merged/ when it exists; fall back to masks/sam/ or masks/mit/.
+
+    Returned path is relative, matching how other paths are resolved from the
+    training CWD (anima_lora/).
+    """
+    for candidate in ("masks/merged", "masks/sam", "masks/mit"):
+        if os.path.isdir(candidate):
+            return candidate
+    return None
 
 
 def split_train_val(
@@ -261,6 +274,10 @@ class DreamBoothSubset(BaseSubset):
         if self.caption_extension and not self.caption_extension.startswith("."):
             self.caption_extension = "." + self.caption_extension
         self.cache_info = cache_info
+        if mask_dir is None:
+            mask_dir = _resolve_default_mask_dir()
+            if mask_dir:
+                logger.info(f"Auto-resolved mask_dir: {mask_dir}")
         self.mask_dir = mask_dir
         if mask_dir:
             self.alpha_mask = (

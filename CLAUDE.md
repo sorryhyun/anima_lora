@@ -74,14 +74,16 @@ make graft-step            # Ingest survivors -> retrain -> new candidates
 python tasks.py step       # Same, works on Windows
 
 # Masking (for masked loss training)
-make mask                  # Generate SAM3 + MIT masks, then merge
-make mask-sam              # SAM3 only
-make mask-mit              # MIT/ComicTextDetector only
-make mask-clean            # Remove all generated masks
+# Outputs under masks/{sam,mit,merged}/. Subsets auto-pick masks/merged/ when
+# it exists, falling back to masks/sam/ then masks/mit/.
+make mask                  # Generate SAM3 + MIT masks under masks/{sam,mit}/, then merge → masks/merged/
+make mask-sam              # SAM3 only → masks/sam/
+make mask-mit              # MIT/ComicTextDetector only → masks/mit/
+make mask-clean            # Remove masks/
 
 # Merge LoRA into DiT (standalone ComfyUI-compatible checkpoint)
-make merge ADAPTER_DIR=output                    # bake latest bakeable LoRA in dir
-make merge ADAPTER_DIR=output MULTIPLIER=0.8     # scale strength
+make merge ADAPTER_DIR=output/ckpt                    # bake latest bakeable LoRA in dir
+make merge ADAPTER_DIR=output/ckpt MULTIPLIER=0.8     # scale strength
 python scripts/merge_to_dit.py --adapter path/to/lora.safetensors --allow-partial
 # Supports: LoRA / OrthoLoRA / DoRA / T-LoRA. Refuses ReFT / Hydra moe / postfix
 # / prefix by default (they can't be folded into Linear weights); --allow-partial
@@ -130,7 +132,7 @@ Layout:
 - `configs/gui-methods/` — GUI-friendly parallel tree. One self-contained TOML per **variant** instead of per family (`lora`, `ortholora`, `tlora`, `reft`, `tlora_ortho_reft`, `hydralora`, `hydralora_sigma`, `postfix`, `postfix_exp`, `postfix_func`, `postfix_sigma`, `prefix`, plus copies of `apex` and `graft`). No toggle blocks — what you see is what runs. Selected via `train.py --methods_subdir gui-methods` (wrapped by `make lora-gui GUI_PRESETS=<variant>` / `python tasks.py lora-gui <variant>`). Intended for basic users and as the eventual source of truth for the GUI's variant picker.
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
-`library.train_util.load_method_preset(method, preset, methods_subdir="methods")` is the reusable merge helper (used by `train.py` and `scripts/graft_step.py`). Pass `methods_subdir="gui-methods"` to resolve against the clean per-variant tree instead of the toggle-block method files. All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/`).
+`library.train_util.load_method_preset(method, preset, methods_subdir="methods")` is the reusable merge helper (used by `train.py` and `scripts/graft_step.py`). Pass `methods_subdir="gui-methods"` to resolve against the clean per-variant tree instead of the toggle-block method files. All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/ckpt/`). Runtime outputs are split by kind: trained checkpoints (+ `.snapshot.toml` + `_moe` siblings) in `output/ckpt/`, inference images in `output/tests/`, embedding-inversion results in `output/inversions/`, img2emb artifacts in `output/img2embs/`.
 
 ## Architecture
 
@@ -230,8 +232,11 @@ Data preparation scripts in `preprocess/`:
 
 Utility scripts in `scripts/`:
 - `distill_modulation.py` — Train pooled_text_proj MLP for modulation guidance (used by `make distill-mod`)
-- `invert_embedding.py` — Optimize text embedding for target images (used by `make invert`)
-- `interpret_inversion.py` — Verify/visualize embedding inversion results (used by `make test-invert`)
+- `inversion/invert_embedding.py` — Optimize text embedding for target images (used by `make invert`)
+- `inversion/invert_reference.py` — Learn K prefix-slot vectors for a reference image (used by `make invert-ref`)
+- `inversion/interpret_inversion.py` — Verify/visualize embedding inversion results (used by `make test-invert`)
+- `img2emb/train_img2emb.py` — Three-stage img2emb resampler training (used by `make img2emb-*`)
+- `img2emb/test_img2emb.py` — Generate an image from a reference via the img2emb resampler (used by `make test-img2emb`)
 - `convert_lora_to_comfy.py` — Convert LoRA key names between anima and ComfyUI formats
 - `comfy_batch.py` — Run ComfyUI batch workflow from `workflows/` directory
 

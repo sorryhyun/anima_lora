@@ -54,7 +54,7 @@ cache_llm_adapter_outputs = true
 # Postfix training needs a base LoRA and accumulates on cached TE — method-forced.
 blocks_to_swap = 0
 gradient_accumulation_steps = 4
-# lora_path = "output/anima-tlora-0415-12.safetensors"
+# lora_path = "output/ckpt/anima-tlora-0415-12.safetensors"
 
 # ── Postfix (exp — cond mode) ───────────────────────────────────────────
 # Caption-conditional MLP injection. Override the postfix values above.

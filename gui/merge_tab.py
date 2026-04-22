@@ -425,7 +425,7 @@ class MergeTab(QWidget):
             self.dit_edit.setText(f)
 
     def _browse_out(self):
-        start = str(ROOT / "output")
+        start = str(ROOT / "output" / "ckpt")
         f, _ = QFileDialog.getSaveFileName(
             self, t("merge_pick_out"), start, "Safetensors (*.safetensors)"
         )

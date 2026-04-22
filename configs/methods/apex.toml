@@ -25,7 +25,7 @@ output_name = "anima_apex"
 # valid plain-LoRA warm-start — no converter needed. `dim_from_weights=true`
 # makes `create_network_from_weights` infer rank/alpha per-module from the
 # checkpoint, which is why network_dim / network_alpha are NOT set here.
-network_weights = "output/anima-tlora-0415-12.safetensors"
+network_weights = "output/ckpt/anima-tlora-0415-12.safetensors"
 dim_from_weights = true
 
 # Longer than plain LoRA because APEX refine needs budget for the adversarial

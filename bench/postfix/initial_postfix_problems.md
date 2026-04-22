@@ -55,7 +55,7 @@ These are signal-only losses; they don't care whether the postfix is textual or 
 
 ### D. Distill from embedding inversion — the "super-textual target" objective ⭐
 
-Cleanest fit for "helpful AFTER reading the prompt, not textually expressible". The plumbing already exists in this repo (`scripts/invert_embedding.py`, the `postfix_func` variant in `configs/methods/postfix.toml`).
+Cleanest fit for "helpful AFTER reading the prompt, not textually expressible". The plumbing already exists in this repo (`scripts/inversion/invert_embedding.py`, the `postfix_func` variant in `configs/methods/postfix.toml`).
 
 Embedding inversion produces `e*` — a post-adapter embedding that the frozen DiT uses to reconstruct a specific image with lower flow-matching loss than any text prompt achieves. By construction, `e* - t5_adapter(caption)` is a vector that *cannot* be obtained by rewriting the caption. That delta is exactly what you want the postfix to learn.
 

@@ -27,7 +27,7 @@ def _preset(default: str = "default") -> str:
 
 
 def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
-    """Return the most recently modified .safetensors file in output/ matching prefix.
+    """Return the most recently modified .safetensors file in output/ckpt/ matching prefix.
 
     If `exclude` is given, any filename containing that substring is skipped. Useful
     to disambiguate overlapping prefixes (e.g. anima_postfix vs anima_postfix_exp).
@@ -37,7 +37,7 @@ def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
     outputs = sorted(
         (
             f
-            for f in (ROOT / "output").glob("*.safetensors")
+            for f in (ROOT / "output" / "ckpt").glob("*.safetensors")
             if f.name.startswith(prefix)
             and not f.name.endswith("_moe.safetensors")
             and ".bak." not in f.name
@@ -48,7 +48,7 @@ def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
     )
     if not outputs:
         label = f"'{prefix}*.safetensors'" if prefix else "*.safetensors"
-        print(f"No {label} files found in output/", file=sys.stderr)
+        print(f"No {label} files found in output/ckpt/", file=sys.stderr)
         sys.exit(1)
     return outputs[0]
 
@@ -62,7 +62,7 @@ def latest_hydra() -> Path:
     outputs = sorted(
         (
             f
-            for f in (ROOT / "output").glob("anima_hydra*_moe.safetensors")
+            for f in (ROOT / "output" / "ckpt").glob("anima_hydra*_moe.safetensors")
             if ".bak." not in f.name
         ),
         key=lambda p: p.stat().st_mtime,
@@ -70,7 +70,7 @@ def latest_hydra() -> Path:
     )
     if not outputs:
         print(
-            "No 'anima_hydra*_moe.safetensors' files found in output/ "
+            "No 'anima_hydra*_moe.safetensors' files found in output/ckpt/ "
             "(enable the HydraLoRA block in configs/methods/lora.toml and run `make lora`)",
             file=sys.stderr,
         )
@@ -166,6 +166,37 @@ def cmd_postfix(extra):
     train("postfix", extra)
 
 
+# ── img2emb ───────────────────────────────────────────────────────────
+
+
+def cmd_img2emb(extra):
+    """Usage: python tasks.py img2emb <features|pretrain|finetune|all> [extra...]"""
+    stage = extra[0] if extra else "all"
+    rest = extra[1:] if extra else []
+    run([PY, "scripts/img2emb/train_img2emb.py", stage, *rest])
+
+
+def cmd_img2emb_features(extra):
+    run([PY, "scripts/img2emb/train_img2emb.py", "features", *extra])
+
+
+def cmd_img2emb_pretrain(extra):
+    run([PY, "scripts/img2emb/train_img2emb.py", "pretrain", *extra])
+
+
+def cmd_img2emb_finetune(extra):
+    run([PY, "scripts/img2emb/train_img2emb.py", "finetune", *extra])
+
+
+def cmd_test_img2emb(extra):
+    """Usage: python tasks.py test-img2emb <ref_image> [extra...]"""
+    if not extra:
+        print("Usage: python tasks.py test-img2emb <ref_image> [extra...]", file=sys.stderr)
+        sys.exit(1)
+    ref, *rest = extra
+    run([PY, "scripts/img2emb/test_img2emb.py", "--ref_image", ref, *rest])
+
+
 # ── Inference ─────────────────────────────────────────────────────────
 
 INFERENCE_BASE = [
@@ -205,7 +236,7 @@ INFERENCE_BASE = [
     "--seed",
     "42",
     "--save_path",
-    "test_output",
+    "output/tests",
 ]
 
 
@@ -256,14 +287,14 @@ def cmd_test_postfix(extra):
     outputs = sorted(
         (
             f
-            for f in (ROOT / "output").glob("anima_postfix*.safetensors")
+            for f in (ROOT / "output" / "ckpt").glob("anima_postfix*.safetensors")
             if "_exp" not in f.name and "_func" not in f.name
         ),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
     if not outputs:
-        print("No 'anima_postfix*.safetensors' files found in output/", file=sys.stderr)
+        print("No 'anima_postfix*.safetensors' files found in output/ckpt/", file=sys.stderr)
         sys.exit(1)
     run(
         [
@@ -365,8 +396,8 @@ def cmd_step(extra):
 
 
 def cmd_merge(extra):
-    """Bake latest LoRA in ADAPTER_DIR (env, default 'output') into the base DiT."""
-    adapter_dir = os.environ.get("ADAPTER_DIR", "output")
+    """Bake latest LoRA in ADAPTER_DIR (env, default 'output/ckpt') into the base DiT."""
+    adapter_dir = os.environ.get("ADAPTER_DIR", "output/ckpt")
     multiplier = os.environ.get("MULTIPLIER", "1.0")
     run(
         [
@@ -512,7 +543,7 @@ def cmd_mask_sam(extra):
             "--image-dir",
             "post_image_dataset",
             "--mask-dir",
-            "masks_sam",
+            "masks/sam",
             "--checkpoint",
             "models/sam3/sam3.pt",
             "--batch-size",
@@ -530,7 +561,7 @@ def cmd_mask_mit(extra):
             "--image-dir",
             "post_image_dataset",
             "--mask-dir",
-            "masks_mit",
+            "masks/mit",
             "--model-path",
             "models/mit/model.pth",
             *extra,
@@ -539,29 +570,28 @@ def cmd_mask_mit(extra):
 
 
 def cmd_mask(extra):
-    if not (ROOT / "masks_sam").is_dir():
+    if not (ROOT / "masks" / "sam").is_dir():
         cmd_mask_sam([])
-    if not (ROOT / "masks_mit").is_dir():
+    if not (ROOT / "masks" / "mit").is_dir():
         cmd_mask_mit([])
     run(
         [
             PY,
             "preprocess/merge_masks.py",
-            "masks_sam",
-            "masks_mit",
+            "masks/sam",
+            "masks/mit",
             "--output-dir",
-            "masks",
+            "masks/merged",
             *extra,
         ]
     )
 
 
 def cmd_mask_clean(_extra):
-    for d in ["masks", "masks_sam", "masks_mit"]:
-        p = ROOT / d
-        if p.exists():
-            shutil.rmtree(p)
-            print(f"  Removed {d}/")
+    p = ROOT / "masks"
+    if p.exists():
+        shutil.rmtree(p)
+        print("  Removed masks/")
 
 
 def cmd_gui(_extra):
@@ -591,7 +621,7 @@ def cmd_print_config(extra):
 
 
 def cmd_invert_ref(extra):
-    """Reference-image inversion (scripts/invert_reference.py).
+    """Reference-image inversion (scripts/inversion/invert_reference.py).
 
     Image source:
         - If REF_IMAGE is set, use that file.
@@ -599,7 +629,7 @@ def cmd_invert_ref(extra):
           Re-running picks a new random image each time.
     Optional env: REF_TEMPLATE (default "a photo"), REF_K (default 8),
                   REF_STEPS (default 100), REF_LR (default 0.01),
-                  REF_NAME (default "latest" -> output/anima_ref_latest.safetensors),
+                  REF_NAME (default "latest" -> output/ckpt/anima_ref_latest.safetensors),
                   REF_SAVE_PATH (overrides REF_NAME),
                   REF_SWAP (blocks_to_swap, default 0).
     """
@@ -630,13 +660,13 @@ def cmd_invert_ref(extra):
     ref_lr = os.environ.get("REF_LR", "0.01")
     ref_name = os.environ.get("REF_NAME", "latest")
     ref_save_path = os.environ.get(
-        "REF_SAVE_PATH", f"output/anima_ref_{ref_name}.safetensors"
+        "REF_SAVE_PATH", f"output/ckpt/anima_ref_{ref_name}.safetensors"
     )
     ref_swap = os.environ.get("REF_SWAP", "0")
     run(
         [
             PY,
-            "scripts/invert_reference.py",
+            "scripts/inversion/invert_reference.py",
             "--image",
             ref_image,
             "--dit",
@@ -669,7 +699,7 @@ def cmd_invert(extra):
     run(
         [
             PY,
-            "scripts/invert_embedding.py",
+            "scripts/inversion/invert_embedding.py",
             "--dit",
             "models/diffusion_models/anima-preview3-base.safetensors",
             "--attn_mode",
@@ -690,7 +720,7 @@ def cmd_invert(extra):
             "--probe_blocks",
             "8,12,16,20",
             "--output_dir",
-            "inversions",
+            "output/inversions",
             "--log_block_grads",
             *extra,
         ]
@@ -716,7 +746,7 @@ COMMANDS = {
     "test-prefix": (cmd_test_prefix, "Inference with latest prefix weight"),
     "test-ref": (
         cmd_test_ref,
-        "Inference with latest reference-inversion prefix (output/anima_ref*.safetensors)",
+        "Inference with latest reference-inversion prefix (output/ckpt/anima_ref*.safetensors)",
     ),
     "test-postfix": (cmd_test_postfix, "Inference with latest postfix weight"),
     "test-postfix-exp": (
@@ -735,7 +765,7 @@ COMMANDS = {
     "step": (cmd_step, "Run one GRAFT iteration"),
     "merge": (
         cmd_merge,
-        "Bake latest LoRA (ADAPTER_DIR=..., default 'output') into base DiT",
+        "Bake latest LoRA (ADAPTER_DIR=..., default 'output/ckpt') into base DiT",
     ),
     "preprocess": (
         cmd_preprocess,
@@ -744,6 +774,17 @@ COMMANDS = {
     "preprocess-resize": (cmd_preprocess_resize, "Resize images to bucket resolutions"),
     "preprocess-vae": (cmd_preprocess_vae, "Cache VAE latents"),
     "preprocess-te": (cmd_preprocess_te, "Cache text encoder embeddings"),
+    "img2emb": (
+        cmd_img2emb,
+        "Train img2emb resampler (siglip2 → DiT crossattn). Stage arg: features|pretrain|finetune|all",
+    ),
+    "img2emb-features": (cmd_img2emb_features, "img2emb: extract encoder features (stage 1)"),
+    "img2emb-pretrain": (cmd_img2emb_pretrain, "img2emb: resampler pretrain on cached targets (stage 2)"),
+    "img2emb-finetune": (cmd_img2emb_finetune, "img2emb: flow-matching finetune through frozen DiT (stage 3)"),
+    "test-img2emb": (
+        cmd_test_img2emb,
+        "Generate an image from a ref image via the phase-2a resampler. Usage: test-img2emb <ref_image>",
+    ),
     "comfy-batch": (cmd_comfy_batch, "Run ComfyUI batch workflow"),
     "download-models": (cmd_download_models, "Download all models"),
     "download-anima": (cmd_download_anima, "Download Anima model"),

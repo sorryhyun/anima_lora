@@ -19,8 +19,8 @@ Outputs (under ``--output_dir``, default ``bench/img2emb/results/phase0/``):
 Run once, then iterate probes against the cache.
 
 Usage:
-    python bench/img2emb/extract_features.py
-    python bench/img2emb/extract_features.py --max_images 100 --encoders dinov3
+    python scripts/img2emb/extract_features.py
+    python scripts/img2emb/extract_features.py --max_images 100 --encoders dinov3
 """
 
 import argparse
@@ -36,8 +36,9 @@ from safetensors.torch import load_file, save_file
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-BENCH_DIR = Path(__file__).resolve().parent
-REPO_ROOT = BENCH_DIR.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# results/ still lives under bench/img2emb/ from before the move; keep writing there.
+BENCH_DIR = REPO_ROOT / "bench" / "img2emb"
 sys.path.insert(0, str(REPO_ROOT))
 
 from library.io.cache import discover_cached_images  # noqa: E402

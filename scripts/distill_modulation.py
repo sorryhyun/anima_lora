@@ -115,7 +115,7 @@ def main():
     parser.add_argument(
         "--output_path",
         type=str,
-        default="output/pooled_text_proj.safetensors",
+        default="output/ckpt/pooled_text_proj.safetensors",
         help="Where to save the trained projection weights",
     )
     parser.add_argument("--iterations", type=int, default=3000)

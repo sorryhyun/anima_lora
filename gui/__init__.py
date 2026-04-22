@@ -243,16 +243,19 @@ def _adapter_dirs() -> dict[str, Path]:
     """
     dirs: dict[str, Path] = {}
     for name, path in [
-        ("output", ROOT / "output"),
+        ("output/ckpt", ROOT / "output" / "ckpt"),
         ("output_temp", ROOT / "output_temp"),
         ("models/diffusion_models", ROOT / "models" / "diffusion_models"),
     ]:
         if path.exists() and any(path.glob("*.safetensors")):
             dirs[name] = path
-    # Any subdirectory of output/ or output_temp/ with .safetensors (e.g.
+    # Any subdirectory of output/ckpt/ or output_temp/ with .safetensors (e.g.
     # iteration snapshots). Skip *-checkpoint-state dirs — those are
     # optimizer/state shards, not adapters.
-    for parent in (ROOT / "output", ROOT / "output_temp"):
+    for parent, label in (
+        (ROOT / "output" / "ckpt", "output/ckpt"),
+        (ROOT / "output_temp", "output_temp"),
+    ):
         if not parent.exists():
             continue
         for p in sorted(parent.iterdir()):
@@ -261,7 +264,7 @@ def _adapter_dirs() -> dict[str, Path]:
                 and not p.name.endswith("-checkpoint-state")
                 and any(p.glob("*.safetensors"))
             ):
-                dirs[f"{parent.name}/{p.name}"] = p
+                dirs[f"{label}/{p.name}"] = p
     # GRAFT survivors / candidate iterations sometimes hold adapter artifacts.
     graft_dir = GRAFT_DIR
     for candidate in ("survivors",):
@@ -281,7 +284,7 @@ def _image_dirs() -> dict[str, Path]:
     for name, path in [
         ("image_dataset", ROOT / "image_dataset"),
         ("post_image_dataset", ROOT / "post_image_dataset"),
-        ("test_output", ROOT / "test_output"),
+        ("output/tests", ROOT / "output" / "tests"),
         ("graft/survivors", GRAFT_DIR / "survivors"),
     ]:
         if path.exists():

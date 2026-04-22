@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument(
-        "--postfix_weight", default="output/anima_postfix.safetensors",
+        "--postfix_weight", default="output/ckpt/anima_postfix.safetensors",
         help="cond-timestep postfix safetensors checkpoint",
     )
     p.add_argument(

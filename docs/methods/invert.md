@@ -17,7 +17,7 @@ make invert
 Or with a single image:
 
 ```bash
-python scripts/invert_embedding.py \
+python scripts/inversion/invert_embedding.py \
     --image path/to/image.png \
     --dit models/diffusion_models/anima-preview3-base.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
@@ -42,7 +42,7 @@ Each step samples `timesteps_per_step × grad_accum` random timesteps. The embed
 Encodes the image via VAE on the fly. Requires `--vae`. The VAE is loaded, used, and freed before the DiT loads.
 
 ```bash
-python scripts/invert_embedding.py --image photo.png \
+python scripts/inversion/invert_embedding.py --image photo.png \
     --dit models/diffusion_models/anima-preview3-base.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --init_prompt "a photo of a cat" --text_encoder models/text_encoders/qwen_3_06b_base.safetensors
@@ -53,7 +53,7 @@ python scripts/invert_embedding.py --image photo.png \
 Uses cached latents (`.npz`) and optionally cached text encoder outputs (`_anima_te.safetensors`) from `make preprocess`. No VAE needed at runtime. Skips images that already have an output file.
 
 ```bash
-python scripts/invert_embedding.py --image_dir post_image_dataset \
+python scripts/inversion/invert_embedding.py --image_dir post_image_dataset \
     --dit models/diffusion_models/anima-preview3-base.safetensors \
     --num_images 10 --shuffle
 ```
@@ -86,7 +86,7 @@ Priority order (first match wins):
 Add `--verify` to generate an image from the inverted embedding after optimization (requires `--vae`):
 
 ```bash
-python scripts/invert_embedding.py --image photo.png \
+python scripts/inversion/invert_embedding.py --image photo.png \
     --dit models/diffusion_models/anima-preview3-base.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --verify --verify_steps 50 --verify_seed 42
@@ -209,7 +209,7 @@ python inference.py --prefix_weight output/anima_ref_cat.safetensors \
 ## Direct script usage
 
 ```bash
-python scripts/invert_reference.py \
+python scripts/inversion/invert_reference.py \
     --image path/to/ref.png \
     --dit models/diffusion_models/anima-preview3-base.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \

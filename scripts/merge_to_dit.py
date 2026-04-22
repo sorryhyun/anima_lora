@@ -99,7 +99,7 @@ def main() -> int:
     parser.add_argument(
         "--adapter_dir",
         type=Path,
-        default=Path("output"),
+        default=Path("output/ckpt"),
         help="Directory to pick the latest adapter from (ignored if --adapter is set).",
     )
     parser.add_argument(

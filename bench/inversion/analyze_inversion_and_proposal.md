@@ -26,7 +26,7 @@ The question driving this whole thread:
 
 **Thought.** Flat cosine ~0.996, per-token cosine ~0.526 looked like each run writing the same semantics into different sequence positions. If you permute token slots before averaging, per-token cosine should jump and the mean should become much sharper.
 
-**Test.** Implemented `--aggregate_by N` in `scripts/invert_embedding.py` and an `align_and_aggregate()` helper that does Hungarian 1:1 assignment between each run and a reference run using row-wise cosine as similarity. Wired a toy test: 8-token embedding with slots 2↔5 swapped recovered the exact permutation (0.752 → 1.0 per-token cos). ✅ mechanism works.
+**Test.** Implemented `--aggregate_by N` in `scripts/inversion/invert_embedding.py` and an `align_and_aggregate()` helper that does Hungarian 1:1 assignment between each run and a reference run using row-wise cosine as similarity. Wired a toy test: 8-token embedding with slots 2↔5 swapped recovered the exact permutation (0.752 → 1.0 per-token cos). ✅ mechanism works.
 
 **Result.** On real 50×3 inversions of `10811132.png`, Hungarian returned **identity on every run**: all 512 slots best-matched themselves. Per-token cosine: 0.333 before, 0.333 after. Zero movement.
 
@@ -56,7 +56,7 @@ The question driving this whole thread:
 
 **Thought.** If there's a continuous degeneracy in raw embedding space but it points in a direction that DiT's frozen cross-attention `K_proj` projects to zero, runs that disagree in embedding space would still be *functionally* identical — same attended values on the image side. In that case naive mean is already near-optimal and path 1 just needs to match in functional space.
 
-**Test.** Added `--probe_functional` to `scripts/invert_embedding.py` and a standalone `bench/inversion/probe_saved_inversions.py` that reuses saved per-run embeddings so we don't re-pay the 12 minutes of inversion. The probe forwards each embedding through a fixed (noise, sigma) bank and captures `block[0].cross_attn.output_proj`'s output (the attended value projected back to the image side), then computes pairwise cosines at the functional level.
+**Test.** Added `--probe_functional` to `scripts/inversion/invert_embedding.py` and a standalone `bench/inversion/probe_saved_inversions.py` that reuses saved per-run embeddings so we don't re-pay the 12 minutes of inversion. The probe forwards each embedding through a fixed (noise, sigma) bank and captures `block[0].cross_attn.output_proj`'s output (the attended value projected back to the image side), then computes pairwise cosines at the functional level.
 
 **Result.** At **block 0**:
 
@@ -137,7 +137,7 @@ If we want to push further, in roughly decreasing ROI:
 ## Artifacts
 
 Code:
-- `scripts/invert_embedding.py` — adds `--aggregate_by`, `--save_per_run`, `--probe_functional`, `--probe_blocks`, `--init_zeros`
+- `scripts/inversion/invert_embedding.py` — adds `--aggregate_by`, `--save_per_run`, `--probe_functional`, `--probe_blocks`, `--init_zeros`
 - `bench/inversion/probe_saved_inversions.py` — probe-only runner that reuses saved per-run embeddings
 
 Data (both in `inversions_probe_test/`):
@@ -148,7 +148,7 @@ Data (both in `inversions_probe_test/`):
 Run commands used:
 ```bash
 # Three zero-init 50-step inversions, save each, probe block 0
-python scripts/invert_embedding.py \
+python scripts/inversion/invert_embedding.py \
     --dit models/diffusion_models/anima-preview3-base.safetensors \
     --vae models/vae/qwen_image_vae.safetensors \
     --attn_mode flash \
@@ -200,7 +200,7 @@ This points to a direct, low-risk first move: **a caption-conditioned postfix mo
 - Per-slot ‖inv_mean − t5‖₂ + top-K offending slots
 - **The "T5 gap" at each block**: mean cos(T5, inv_run\*) minus mean cos(inv_run\*, inv_run\*). More negative = T5 sits further from the inversion cluster than the cluster sits from itself = bigger functional headroom for an enhancement module at that depth.
 
-Reuses `probe_functional_space()` from `scripts/invert_embedding.py` so the methodology is identical to Part I's H4 sweep.
+Reuses `probe_functional_space()` from `scripts/inversion/invert_embedding.py` so the methodology is identical to Part I's H4 sweep.
 
 ## Findings on `10811132`
 
@@ -281,7 +281,7 @@ In order of ROI / risk tradeoff. Start at Phase 0 — none of the rest matters i
 The biggest risk in this proposal is that all of Phase 1+ rests on a single image. Before building anything:
 
 - Pick 5–10 images that span the diversity you actually care about (different subjects, styles, caption lengths). Avoid all-NSFW or all-SFW; mix.
-- Run `make invert` (or `scripts/invert_embedding.py` directly) with `--aggregate_by 3 --save_per_run --init_zeros` for each. ~12 min × N.
+- Run `make invert` (or `scripts/inversion/invert_embedding.py` directly) with `--aggregate_by 3 --save_per_run --init_zeros` for each. ~12 min × N.
 - Run `bench/inversion/diagnose_t5_vs_inversion.py` on each.
 - Aggregate the per-block T5 gaps across images. Build a small summary table.
 

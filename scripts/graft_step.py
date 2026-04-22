@@ -248,13 +248,13 @@ def run_generation(config, holdout_captions, iteration):
     tcfg = get_training_cfg()
     output_name = tcfg.get("output_name", "anima_lora")
 
-    lora_path = ROOT / "output" / f"{output_name}.safetensors"
+    lora_path = ROOT / "output" / "ckpt" / f"{output_name}.safetensors"
     if not lora_path.exists():
-        matches = sorted((ROOT / "output").glob("*.safetensors"))
+        matches = sorted((ROOT / "output" / "ckpt").glob("*.safetensors"))
         if matches:
             lora_path = matches[-1]
         else:
-            print("No LoRA weights found in output/", file=sys.stderr)
+            print("No LoRA weights found in output/ckpt/", file=sys.stderr)
             sys.exit(1)
 
     dit_path = (ROOT / tcfg["pretrained_model_name_or_path"]).resolve()

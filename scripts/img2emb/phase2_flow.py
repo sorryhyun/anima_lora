@@ -10,7 +10,7 @@ Phase 2a = 2k-step warm-start ablation from the phase 1.5 checkpoint. The full
 20k run is a flag flip (``--steps 20000``) after the ablation passes.
 
 Usage:
-    python bench/img2emb/phase2_flow.py \\
+    python scripts/img2emb/phase2_flow.py \\
         --dit models/diffusion_models/anima-preview3-base.safetensors \\
         --warm_start bench/img2emb/results/phase1_5/siglip2_resampler_4layer_anchored.safetensors \\
         --steps 2000
@@ -33,12 +33,13 @@ from safetensors.torch import load_file, save_file
 from torch.utils.data import BatchSampler, DataLoader, Dataset, Sampler
 from tqdm import tqdm
 
-BENCH_DIR = Path(__file__).resolve().parent
-REPO_ROOT = BENCH_DIR.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# results/ still lives under bench/img2emb/ from before the move; keep writing there.
+BENCH_DIR = REPO_ROOT / "bench" / "img2emb"
 sys.path.insert(0, str(REPO_ROOT))
 
-from bench.img2emb.phase0_probes import load_cache  # noqa: E402
-from bench.img2emb.phase1_5_anchored import (  # noqa: E402
+from scripts.img2emb.data import load_cache  # noqa: E402
+from scripts.img2emb.phase1_5_anchored import (  # noqa: E402
     COUNT_CLASSES,
     RATING_CLASSES,
     AnchoredResampler,
@@ -84,13 +85,17 @@ def parse_args():
     p.add_argument("--attn_mode", default="flash")
 
     # DiT runtime
-    p.add_argument("--blocks_to_swap", type=int, default=8,
-                   help=">0 enables block-swap; <0 enables gradient checkpointing.")
+    p.add_argument("--blocks_to_swap", type=int, default=6,
+                   help=">0 enables block-swap; <0 enables gradient checkpointing; 0 = neither.")
+    p.add_argument("--compile", action="store_true",
+                   help="torch.compile each DiT block's _forward (dynamic=False). "
+                        "Bucket shapes vary, so expect one recompile per unique (H, W) bucket.")
+    p.add_argument("--dynamo_backend", default="inductor")
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
 
     # optim
-    p.add_argument("--steps", type=int, default=2000)
-    p.add_argument("--batch_size", type=int, default=2)
+    p.add_argument("--steps", type=int, default=240)
+    p.add_argument("--batch_size", type=int, default=1)
     # LRs tuned for warm-start from phase 1.5: an order of magnitude lower
     # than phase 1.5's own training LR because the supervision signal
     # (FM-through-DiT) is fundamentally different and warm weights start
@@ -651,6 +656,10 @@ def main():
             for block in anima.blocks:  # type: ignore[union-attr]
                 block.train()
 
+    if args.compile:
+        logger.info(f"compiling DiT blocks (backend={args.dynamo_backend})")
+        anima.compile_blocks(args.dynamo_backend)
+
     # -----------------------------------------------------------------  dataloaders
     train_idx = split["train_idx"]
     eval_idx = split["eval_idx"][: args.eval_max_samples]
@@ -773,8 +782,16 @@ def main():
 
         if (step + 1) % args.eval_every == 0 or step == args.steps - 1:
             logger.info(f"--- eval @ step {step} ---")
-            ev = eval_fm(anima, model, phase15_model, eval_loader, args, device,
-                         n_batches=eval_n_batches)
+            # Block-swap offloader relies on backward hooks to reset block
+            # placement; eval has none, so toggle to forward-only (and back).
+            if hasattr(anima, "switch_block_swap_for_inference"):
+                anima.switch_block_swap_for_inference()
+            try:
+                ev = eval_fm(anima, model, phase15_model, eval_loader, args, device,
+                             n_batches=eval_n_batches)
+            finally:
+                if hasattr(anima, "switch_block_swap_for_training"):
+                    anima.switch_block_swap_for_training()
             logger.info(
                 f"[eval] fm_phase2={ev['phase2']:.4f}  "
                 f"fm_t5_real={ev['t5_real']:.4f}  "

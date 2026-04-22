@@ -1,17 +1,17 @@
 ACCELERATE := python -m accelerate.commands.accelerate_cli
-LATEST_LORA = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/*.safetensors') if not f.endswith('_moe.safetensors')]; print(max(files,key=os.path.getmtime))")
-LATEST_HYDRA = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/anima_hydra*_moe.safetensors') if '.bak.' not in f]; print(max(files,key=os.path.getmtime))")
-LATEST_APEX = $(shell python -c "import glob,os; files=glob.glob('output/anima_apex*.safetensors'); print(max(files,key=os.path.getmtime))")
-LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
-LATEST_REF = $(shell python -c "import glob,os; files=glob.glob('output/anima_ref*.safetensors'); print(max(files,key=os.path.getmtime) if files else '')")
-LATEST_POSTFIX = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/anima_postfix*.safetensors') if '_exp' not in os.path.basename(f) and '_func' not in os.path.basename(f)]; print(max(files,key=os.path.getmtime))")
-LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_exp*.safetensors'); print(max(files,key=os.path.getmtime))")
-LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
-LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_LORA = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/ckpt/*.safetensors') if not f.endswith('_moe.safetensors')]; print(max(files,key=os.path.getmtime))")
+LATEST_HYDRA = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/ckpt/anima_hydra*_moe.safetensors') if '.bak.' not in f]; print(max(files,key=os.path.getmtime))")
+LATEST_APEX = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_apex*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_PREFIX = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_prefix*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_REF = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_ref*.safetensors'); print(max(files,key=os.path.getmtime) if files else '')")
+LATEST_POSTFIX = $(shell python -c "import glob,os; files=[f for f in glob.glob('output/ckpt/anima_postfix*.safetensors') if '_exp' not in os.path.basename(f) and '_func' not in os.path.basename(f)]; print(max(files,key=os.path.getmtime))")
+LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_postfix_exp*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-features img2emb-pretrain img2emb-finetune test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -27,7 +27,7 @@ TEST_COMMON = python inference.py \
 	--sampler er_sde \
 	--guidance_scale 4.0 \
 	--seed 42 \
-	--save_path test_output
+	--save_path output/tests
 
 gui:
 	python -m gui
@@ -66,7 +66,7 @@ distill-mod:
 	python scripts/distill_modulation.py \
 		--data_dir post_image_dataset \
 		--dit_path models/diffusion_models/anima-preview3-base.safetensors \
-		--output_path output/pooled_text_proj.safetensors \
+		--output_path output/ckpt/pooled_text_proj.safetensors \
 		--iterations 1500 \
 		--lr 1e-5 \
 		--warmup 0.05 \
@@ -74,6 +74,26 @@ distill-mod:
 		--attn_mode flash \
 		--no_grad_ckpt \
 		$(ARGS)
+
+# img2emb — image→embedding resampler training (siglip2 by default).
+# Three stages: features → pretrain → finetune. See scripts/img2emb/train_img2emb.py.
+img2emb-features:
+	python scripts/img2emb/train_img2emb.py features $(ARGS)
+
+img2emb-pretrain:
+	python scripts/img2emb/train_img2emb.py pretrain $(ARGS)
+
+img2emb-finetune:
+	python scripts/img2emb/train_img2emb.py finetune $(ARGS)
+
+img2emb: img2emb-features img2emb-pretrain img2emb-finetune
+
+# Generate a single image conditioned on REF_IMAGE via the phase-2a resampler.
+# Example: make test-img2emb REF_IMAGE=post_image_dataset/foo.png
+REF_IMAGE ?=
+test-img2emb:
+	@if [ -z "$(REF_IMAGE)" ]; then echo "Set REF_IMAGE=path/to/ref.png"; exit 1; fi
+	python scripts/img2emb/test_img2emb.py --ref_image $(REF_IMAGE) $(ARGS)
 
 test:
 	$(TEST_COMMON) \
@@ -150,10 +170,10 @@ INVERT_SWAP ?= 0
 INVERT_STEPS ?= 50
 INVERT_LR ?= 1e-3
 INVERT_AGG ?= 1
-INVERT_OUT ?= inversions
+INVERT_OUT ?= output/inversions
 INVERT_PROBE_BLOCKS ?= 8,12,16,20
 invert:
-	python scripts/invert_embedding.py \
+	python scripts/inversion/invert_embedding.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--attn_mode flash \
 		--image_dir post_image_dataset \
@@ -177,7 +197,7 @@ invert:
 #     Re-running `make invert-ref` picks a new random image each time.
 #
 # Optional:  REF_TEMPLATE="a photo" REF_K=8 REF_STEPS=100 REF_LR=0.01
-#            REF_NAME=latest  (output saved as output/anima_ref_$(REF_NAME).safetensors)
+#            REF_NAME=latest  (output saved as output/ckpt/anima_ref_$(REF_NAME).safetensors)
 #            REF_SWAP=0       (blocks_to_swap; >0 for low VRAM, <0 for grad checkpointing)
 REF_IMAGE_DIR ?= post_image_dataset
 # `?=` with `$(shell ...)` is RECURSIVE — every use of $(REF_IMAGE) re-runs the
@@ -191,7 +211,7 @@ REF_K ?= 8
 REF_STEPS ?= 100
 REF_LR ?= 0.01
 REF_NAME ?= latest
-REF_SAVE_PATH ?= output/anima_ref_$(REF_NAME).safetensors
+REF_SAVE_PATH ?= output/ckpt/anima_ref_$(REF_NAME).safetensors
 REF_SWAP ?= 0
 invert-ref:
 	@if [ -z "$(REF_IMAGE)" ]; then \
@@ -200,7 +220,7 @@ invert-ref:
 		exit 1; \
 	fi
 	@echo "  > using reference image: $(REF_IMAGE)"
-	python scripts/invert_reference.py \
+	python scripts/inversion/invert_reference.py \
 		--image "$(REF_IMAGE)" \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--vae models/vae/qwen_image_vae.safetensors \
@@ -224,7 +244,7 @@ bench-inversion:
 
 INVERT_NAME ?= latest
 test-invert:
-	python scripts/interpret_inversion.py \
+	python scripts/inversion/interpret_inversion.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--vae models/vae/qwen_image_vae.safetensors \
 		--attn_mode flash \
@@ -245,7 +265,7 @@ PHASE2_BS ?= 1
 # >16 GB cards.
 PHASE2_SWAP ?= -1
 phase2-ablation:
-	python bench/img2emb/phase2_flow.py \
+	python scripts/img2emb/phase2_flow.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--warm_start $(PHASE2_WARM) \
 		--steps $(PHASE2_STEPS) \
@@ -253,7 +273,7 @@ phase2-ablation:
 		--blocks_to_swap $(PHASE2_SWAP)
 
 phase2-calibrate:
-	python bench/img2emb/phase2_flow.py \
+	python scripts/img2emb/phase2_flow.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--warm_start $(PHASE2_WARM) \
 		--calibrate_only \
@@ -312,24 +332,24 @@ mask-sam:
 	python preprocess/generate_masks.py \
 		--config configs/sam_mask.yaml \
 		--image-dir post_image_dataset \
-		--mask-dir masks_sam \
+		--mask-dir masks/sam \
 		--checkpoint models/sam3/sam3.pt \
 		--batch-size 2
 
 mask-mit:
 	python preprocess/generate_masks_mit.py \
 		--image-dir post_image_dataset \
-		--mask-dir masks_mit \
+		--mask-dir masks/mit \
 		--model-path models/mit/model.pth
 
 mask:
-	python -c "import os,subprocess; [subprocess.check_call(['$(MAKE)',t]) for t,d in [('mask-sam','masks_sam'),('mask-mit','masks_mit')] if not os.path.isdir(d)]"
+	python -c "import os,subprocess; [subprocess.check_call(['$(MAKE)',t]) for t,d in [('mask-sam','masks/sam'),('mask-mit','masks/mit')] if not os.path.isdir(d)]"
 	python preprocess/merge_masks.py \
-		masks_sam masks_mit \
-		--output-dir masks
+		masks/sam masks/mit \
+		--output-dir masks/merged
 
 mask-clean:
-	python -c "import shutil; [shutil.rmtree(d,ignore_errors=True) for d in ['masks','masks_sam','masks_mit']]"
+	python -c "import shutil; shutil.rmtree('masks',ignore_errors=True)"
 
 test-unit:
 	pytest -q tests/ $(ARGS)
@@ -340,8 +360,8 @@ print-config:
 
 # Bake a LoRA adapter into the base DiT (standalone merged checkpoint).
 # Picks the latest bakeable .safetensors in ADAPTER_DIR (skips _moe/postfix/prefix/.bak).
-# Example: make merge ADAPTER_DIR=output MULTIPLIER=1.0
-ADAPTER_DIR ?= output
+# Example: make merge ADAPTER_DIR=output/ckpt MULTIPLIER=1.0
+ADAPTER_DIR ?= output/ckpt
 MULTIPLIER ?= 1.0
 merge:
 	python scripts/merge_to_dit.py \

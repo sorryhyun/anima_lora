@@ -15,8 +15,8 @@ accuracy from SigLIP2 pooled is high the encoder is fine; if it collapses,
 we need a tag-aware encoder (WD-Tagger / EVA-anime) instead.
 
 Usage:
-    python bench/img2emb/phase1_5_anchored.py
-    python bench/img2emb/phase1_5_anchored.py --steps 5000 --eval_every 1000
+    python scripts/img2emb/phase1_5_anchored.py
+    python scripts/img2emb/phase1_5_anchored.py --steps 5000 --eval_every 1000
 """
 
 import argparse
@@ -35,16 +35,17 @@ from safetensors.torch import load_file, save_file
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-BENCH_DIR = Path(__file__).resolve().parent
-REPO_ROOT = BENCH_DIR.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# results/ still lives under bench/img2emb/ from before the move; keep writing there.
+BENCH_DIR = REPO_ROOT / "bench" / "img2emb"
 sys.path.insert(0, str(REPO_ROOT))
 
-from bench.img2emb.phase0_probes import (  # noqa: E402
+from scripts.img2emb.data import (  # noqa: E402
     _resampler_loss,
     active_slice,
     load_cache,
 )
-from bench.img2emb.phase1_resampler import PerceiverResampler  # noqa: E402
+from scripts.img2emb.phase1_resampler import PerceiverResampler  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 
 setup_logging()

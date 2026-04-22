@@ -12,9 +12,9 @@ zero-pad loss). Adds:
 - Saves final weights + optional held-out predictions for downstream DiT tests.
 
 Usage:
-    python bench/img2emb/phase1_resampler.py
-    python bench/img2emb/phase1_resampler.py --encoder siglip2 --steps 10000
-    python bench/img2emb/phase1_resampler.py --steps 200 --eval_every 0  # smoke
+    python scripts/img2emb/phase1_resampler.py
+    python scripts/img2emb/phase1_resampler.py --encoder siglip2 --steps 10000
+    python scripts/img2emb/phase1_resampler.py --steps 200 --eval_every 0  # smoke
 """
 
 import argparse
@@ -33,11 +33,12 @@ from safetensors.torch import load_file, save_file
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-BENCH_DIR = Path(__file__).resolve().parent
-REPO_ROOT = BENCH_DIR.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# results/ still lives under bench/img2emb/ from before the move; keep writing there.
+BENCH_DIR = REPO_ROOT / "bench" / "img2emb"
 sys.path.insert(0, str(REPO_ROOT))
 
-from bench.img2emb.phase0_probes import (  # noqa: E402
+from scripts.img2emb.data import (  # noqa: E402
     _ResamplerTrainDataset,
     _resampler_loss,
     active_slice,

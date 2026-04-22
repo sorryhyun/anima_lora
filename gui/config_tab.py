@@ -346,7 +346,7 @@ class ConfigTab(QWidget):
         )
 
     def _show_test_output(self) -> None:
-        d = ROOT / "test_output"
+        d = ROOT / "output" / "tests"
         imgs: list = []
         if d.is_dir():
             imgs = sorted(
@@ -444,7 +444,7 @@ class ConfigTab(QWidget):
     # ── Training ──
 
     def _has_lora_output(self) -> bool:
-        out = ROOT / "output"
+        out = ROOT / "output" / "ckpt"
         return out.is_dir() and any(out.glob("*.safetensors"))
 
     def _start_test(self):

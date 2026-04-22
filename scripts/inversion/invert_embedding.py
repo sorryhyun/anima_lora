@@ -7,14 +7,14 @@ embedding space.
 
 Usage:
     # Single image (encodes via VAE on the fly)
-    python scripts/invert_embedding.py \
+    python scripts/inversion/invert_embedding.py \
         --image path/to/image.png \
         --dit models/diffusion_models/anima-preview3-base.safetensors \
         --vae models/vae/qwen_image_vae.safetensors \
         --save_path output/inverted.safetensors
 
     # Batch from post_image_dataset/ (uses cached latents + cached TE for init)
-    python scripts/invert_embedding.py \
+    python scripts/inversion/invert_embedding.py \
         --image_dir post_image_dataset \
         --dit models/diffusion_models/anima-preview3-base.safetensors \
         --save_path output/inversions/ \
@@ -29,7 +29,7 @@ import os
 import random
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import numpy as np
 import torch
@@ -232,7 +232,7 @@ def parse_args():
     p.add_argument(
         "--output_dir",
         type=str,
-        default="inversions",
+        default="output/inversions",
         help="Output directory (results/ and logs/ created inside)",
     )
     p.add_argument("--log_every", type=int, default=10, help="Log loss every N steps")

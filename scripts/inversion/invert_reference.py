@@ -19,7 +19,7 @@ user's prompt (where they wrote `<REF>`) instead of hard-prepending.
 
 Usage:
     # Basic: K=8 slots, defaults (template "a photo")
-    python scripts/invert_reference.py \
+    python scripts/inversion/invert_reference.py \
         --image path/to/ref.png \
         --dit models/diffusion_models/anima-preview3-base.safetensors \
         --vae models/vae/qwen_image_vae.safetensors \
@@ -27,7 +27,7 @@ Usage:
         --save_path output/ref_cat.safetensors
 
     # Placement marker (metadata-only for now; runtime will front-prepend)
-    python scripts/invert_reference.py \
+    python scripts/inversion/invert_reference.py \
         ... \
         --template "a photo of <REF> in a scene" \
         --num_tokens 8
@@ -44,7 +44,7 @@ import logging
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import torch
 import torch.nn.functional as F

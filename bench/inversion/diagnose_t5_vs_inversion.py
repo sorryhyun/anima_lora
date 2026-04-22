@@ -42,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from library.anima import weights as anima_utils
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.log import setup_logging
-from scripts.invert_embedding import probe_functional_space
+from scripts.inversion.invert_embedding import probe_functional_space
 
 setup_logging()
 logger = logging.getLogger(__name__)

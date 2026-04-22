@@ -3,7 +3,7 @@
 
 Loads the per-run inversions produced by `--save_per_run` plus the aligned mean,
 encodes a target image with the VAE, then calls
-`scripts.invert_embedding.probe_functional_space` with a fixed (noise, sigma)
+`scripts.inversion.invert_embedding.probe_functional_space` with a fixed (noise, sigma)
 probe bank. Writes the probe block into an existing `<stem>_alignment.json`
 (or prints to stdout if that file doesn't exist).
 
@@ -34,7 +34,7 @@ from library.anima import weights as anima_utils
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.datasets.image_utils import IMAGE_TRANSFORMS
 from library.log import setup_logging
-from scripts.invert_embedding import probe_functional_space
+from scripts.inversion.invert_embedding import probe_functional_space
 
 setup_logging()
 logger = logging.getLogger(__name__)

@@ -88,7 +88,7 @@ this to 3–10% of its current cost, making interactive curation viable.
 
 ## Phase 3 — Fast inversion (1 day)
 
-`scripts/invert_embedding.py` today does multi-timestep averaging per step:
+`scripts/inversion/invert_embedding.py` today does multi-timestep averaging per step:
 for each optimization step, it runs the DiT at several `t` values and
 averages the loss. With an APEX LoRA the network is consistency-trained,
 so a single endpoint-prediction query at large `t` (effectively NFE=1)
@@ -101,7 +101,7 @@ should suffice.
   0.95]` (sampled per step for stochasticity).
 - Benchmark per-image inversion wall-clock on `post_image_dataset/` corpus
   against the current path. Target: ≥5× faster.
-- Quality check via `scripts/interpret_inversion.py`. Accept degradation
+- Quality check via `scripts/inversion/interpret_inversion.py`. Accept degradation
   on OOD targets — document which prompts break, don't block on them.
 
 ### Risks
