@@ -255,10 +255,7 @@ def _build_ctx(
     """Resampler + per-group anchor injection at default slots.
 
     Returns ``(ctx[1, S, 1024] bf16, pooled_text[1, 1024] bf16)``. ``pooled_text``
-    is ``amax`` over the resampler's K content slots **excluding** positions that
-    were overwritten by frozen anchor prototypes — those slots are ~constant per
-    classifier decision and otherwise dominate the argmax, locking AdaLN onto
-    the anchor category instead of varying with the reference.
+    is ``amax`` over every K content slot (matches the finetune-time pooling).
     """
     with torch.no_grad():
         fwd = model(tokens, pooled)
@@ -277,41 +274,25 @@ def _build_ctx(
             pos = [(g.classes[i], float(probs[i].item())) for i in range(g.n_classes) if probs[i].item() > 0.5]
             logger.info(f"  [{g.name}] positives={pos}")
 
-    if args.skip_anchors:
-        pooled_text = pred.float().amax(dim=1).to(torch.bfloat16)
-        return _pad_to_dit(pred, args.dit_slot_count).to(torch.bfloat16), pooled_text
-
-    keep = torch.ones(B, K, dtype=torch.bool, device=device)
-
-    for g in spec.groups:
-        anchor_emb = fwd["anchor_emb"][g.name]
-        if g.mutex:
-            slot = slot_overrides.get(g.name, g.default_slot)
-            slots = torch.full((B,), int(slot), dtype=torch.long, device=device)
-            inject_anchors(pred, anchor_emb, slots, mutex=True, mode="replace")
-            valid = (slots >= 0) & (slots < K)
-            if valid.any():
-                b = torch.arange(B, device=device)[valid]
-                keep[b, slots[valid]] = False
-        else:
-            base_slot = slot_overrides.get(g.name)
-            if base_slot is None:
-                per_class = torch.tensor(g.default_slots, dtype=torch.long, device=device)
+    if not args.skip_anchors:
+        for g in spec.groups:
+            anchor_emb = fwd["anchor_emb"][g.name]
+            if g.mutex:
+                slot = slot_overrides.get(g.name, g.default_slot)
+                slots = torch.full((B,), int(slot), dtype=torch.long, device=device)
+                inject_anchors(pred, anchor_emb, slots, mutex=True, mode="replace")
             else:
-                per_class = torch.full((g.n_classes,), int(base_slot), dtype=torch.long, device=device)
-            slots = per_class.unsqueeze(0).expand(B, -1).contiguous()
-            logits = fwd["logits"][g.name][..., : g.n_classes]
-            mask = (torch.sigmoid(logits) > 0.5)
-            inject_anchors(pred, anchor_emb, slots, mutex=False, mode="replace", mask=mask)
-            valid = (slots >= 0) & (slots < K) & mask
-            if valid.any():
-                b_rows, c_cols = torch.nonzero(valid, as_tuple=True)
-                keep[b_rows, slots[b_rows, c_cols]] = False
+                base_slot = slot_overrides.get(g.name)
+                if base_slot is None:
+                    per_class = torch.tensor(g.default_slots, dtype=torch.long, device=device)
+                else:
+                    per_class = torch.full((g.n_classes,), int(base_slot), dtype=torch.long, device=device)
+                slots = per_class.unsqueeze(0).expand(B, -1).contiguous()
+                logits = fwd["logits"][g.name][..., : g.n_classes]
+                mask = (torch.sigmoid(logits) > 0.5)
+                inject_anchors(pred, anchor_emb, slots, mutex=False, mode="replace", mask=mask)
 
-    neg = torch.finfo(pred.dtype).min
-    pooled_text = (
-        pred.float().masked_fill(~keep.unsqueeze(-1), neg).amax(dim=1).to(torch.bfloat16)
-    )
+    pooled_text = pred.float().amax(dim=1).to(torch.bfloat16)
     return _pad_to_dit(pred, args.dit_slot_count).to(torch.bfloat16), pooled_text
 
 

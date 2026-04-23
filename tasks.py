@@ -167,62 +167,41 @@ def cmd_postfix(extra):
 
 
 # ── img2emb ───────────────────────────────────────────────────────────
-
-
-def _encoder(default: str = "siglip2") -> str:
-    """Encoder select for img2emb commands (env ENCODER, default siglip2).
-
-    Current options: ``siglip2`` (default, 384² / 576 tokens / D=1024) and
-    ``tipsv2`` (TIPSv2-L/14 at 448² / 1025 tokens / D=1024, needs
-    ``make download-tipsv2`` + ``trust_remote_code``). Both are fixed-res
-    unless ``BUCKETS=1`` is set — see ``_buckets_flag``.
-    See scripts/img2emb/extract_features.py.
-    """
-    return os.environ.get("ENCODER", default)
-
-
-def _buckets_flag() -> list[str]:
-    """Return ``['--buckets']`` if bucketing should be active.
-
-    TIPSv2 only: aspect-preserving bucketed preprocessing (see
-    ``scripts/img2emb/buckets.py``). Must be set consistently for both
-    ``preprocess-img2emb`` and ``test-img2emb`` — the resampler sees a
-    different KV length distribution with vs without it.
-
-    Default: auto-enabled when ``ENCODER=tipsv2``. Override with ``BUCKETS=0``
-    (or ``false`` / ``no``) to force-disable; ``BUCKETS=1`` force-enables
-    (no-op on non-tipsv2 encoders — the training script ignores the flag).
-    """
-    val = os.environ.get("BUCKETS", "").strip().lower()
-    if val in {"0", "false", "no"}:
-        return []
-    if val:
-        return ["--buckets"]
-    return ["--buckets"] if _encoder() == "tipsv2" else []
+#
+# TIPSv2-L/14 vision encoder only. Aspect-preserving bucketed preprocessing
+# is always on — images are resized to the closest patch-14 bucket
+# (~1024 tokens, aspects 1:2..2:1); tokens zero-padded to a single T_MAX so
+# the cache stays a flat (N, T_MAX, D) tensor. See
+# ``scripts/img2emb/{preprocess,pretrain,finetune,infer}.py``.
 
 
 def cmd_img2emb(extra):
-    """Usage: python tasks.py img2emb [features|anchors|pretrain|finetune] [extra...]
+    """Usage: python tasks.py img2emb [preprocess|anchors|pretrain|finetune] [extra...]
 
-    Bare `img2emb` runs pretrain + finetune (features + anchors are a separate
+    Bare `img2emb` runs pretrain + finetune (preprocess + anchors are a separate
     preprocessing step — `make preprocess-img2emb` / `python tasks.py preprocess-img2emb`).
-    Select encoder via ENCODER=<name> env (default siglip2).
     """
     stage = extra[0] if extra else None
     rest = extra[1:] if extra else []
-    enc = _encoder()
     if stage is None:
-        run([PY, "scripts/img2emb/train_img2emb.py", "pretrain", "--encoder", enc])
-        run([PY, "scripts/img2emb/train_img2emb.py", "finetune", "--encoder", enc])
+        run([PY, "scripts/img2emb/pretrain.py"])
+        run([PY, "scripts/img2emb/finetune.py"])
         return
     if stage == "anchors":
         run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py", *rest])
         return
-    run([PY, "scripts/img2emb/train_img2emb.py", stage, "--encoder", enc, *rest])
+    if stage not in ("preprocess", "pretrain", "finetune"):
+        print(
+            f"Unknown img2emb stage '{stage}' "
+            f"(use: preprocess | anchors | pretrain | finetune)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    run([PY, f"scripts/img2emb/{stage}.py", *rest])
 
 
-def cmd_img2emb_features(extra):
-    run([PY, "scripts/img2emb/train_img2emb.py", "features", "--encoder", _encoder(), *_buckets_flag(), *extra])
+def cmd_img2emb_preprocess(extra):
+    run([PY, "scripts/img2emb/preprocess.py", *extra])
 
 
 def cmd_img2emb_anchors(extra):
@@ -230,15 +209,15 @@ def cmd_img2emb_anchors(extra):
 
 
 def cmd_img2emb_pretrain(extra):
-    run([PY, "scripts/img2emb/train_img2emb.py", "pretrain", "--encoder", _encoder(), *extra])
+    run([PY, "scripts/img2emb/pretrain.py", *extra])
 
 
 def cmd_img2emb_finetune(extra):
-    run([PY, "scripts/img2emb/train_img2emb.py", "finetune", "--encoder", _encoder(), *extra])
+    run([PY, "scripts/img2emb/finetune.py", *extra])
 
 
 def cmd_preprocess_img2emb(extra):
-    run([PY, "scripts/img2emb/train_img2emb.py", "features", "--encoder", _encoder(), *_buckets_flag(), *extra])
+    run([PY, "scripts/img2emb/preprocess.py", *extra])
     run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py"])
 
 
@@ -248,7 +227,7 @@ def cmd_test_img2emb(extra):
         print("Usage: python tasks.py test-img2emb <ref_image> [extra...]", file=sys.stderr)
         sys.exit(1)
     ref, *rest = extra
-    run([PY, "scripts/img2emb/test_img2emb.py", "--ref_image", ref, "--encoder", _encoder(), *_buckets_flag(), *rest])
+    run([PY, "scripts/img2emb/infer.py", "--ref_image", ref, *rest])
 
 
 # ── Inference ─────────────────────────────────────────────────────────
@@ -538,7 +517,7 @@ def cmd_download_sam3(_extra):
 
 def cmd_download_tipsv2(_extra):
     # TIPSv2 ships custom code consumed via trust_remote_code; grab the whole
-    # repo so local-dir load works offline. See scripts/img2emb/extract_features.py.
+    # repo so local-dir load works offline. See scripts/img2emb/preprocess.py.
     (ROOT / "models" / "tipsv2").mkdir(parents=True, exist_ok=True)
     run(["hf", "download", "google/tipsv2-l14", "--local-dir", "models/tipsv2"])
 
@@ -589,6 +568,7 @@ def cmd_download_models(_extra):
     cmd_download_anima(_extra)
     cmd_download_sam3(_extra)
     cmd_download_mit(_extra)
+    cmd_download_tipsv2(_extra)
 
 
 # ── Masking ───────────────────────────────────────────────────────────
@@ -837,9 +817,9 @@ COMMANDS = {
     "preprocess-te": (cmd_preprocess_te, "Cache text encoder embeddings"),
     "img2emb": (
         cmd_img2emb,
-        "Train img2emb resampler (pretrain + finetune). Optional stage arg: features|anchors|pretrain|finetune",
+        "Train img2emb resampler (pretrain + finetune). Optional stage arg: preprocess|anchors|pretrain|finetune",
     ),
-    "img2emb-features": (cmd_img2emb_features, "img2emb: extract encoder features (stage 1)"),
+    "img2emb-preprocess": (cmd_img2emb_preprocess, "img2emb: extract encoder features (stage 1)"),
     "img2emb-anchors": (cmd_img2emb_anchors, "img2emb: refresh people=* prototypes + phase1_positions (stage 1.5)"),
     "img2emb-pretrain": (cmd_img2emb_pretrain, "img2emb: resampler pretrain on cached targets (stage 2)"),
     "img2emb-finetune": (cmd_img2emb_finetune, "img2emb: flow-matching finetune through frozen DiT (stage 3)"),
@@ -849,14 +829,14 @@ COMMANDS = {
     ),
     "test-img2emb": (
         cmd_test_img2emb,
-        "Generate an image from a ref image via the phase-2a resampler. Usage: test-img2emb <ref_image>",
+        "Generate an image from a ref image via the finetuned resampler. Usage: test-img2emb <ref_image>",
     ),
     "comfy-batch": (cmd_comfy_batch, "Run ComfyUI batch workflow"),
     "download-models": (cmd_download_models, "Download all models"),
     "download-anima": (cmd_download_anima, "Download Anima model"),
     "download-sam3": (cmd_download_sam3, "Download SAM3 model"),
     "download-mit": (cmd_download_mit, "Download MIT model"),
-    "download-tipsv2": (cmd_download_tipsv2, "Download TIPSv2-L/14 (img2emb alt encoder)"),
+    "download-tipsv2": (cmd_download_tipsv2, "Download TIPSv2-L/14 (img2emb encoder)"),
     "mask": (cmd_mask, "Generate SAM3 + MIT masks, then merge"),
     "mask-sam": (cmd_mask_sam, "Generate SAM3 masks only"),
     "mask-mit": (cmd_mask_mit, "Generate MIT masks only"),

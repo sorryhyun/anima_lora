@@ -11,7 +11,7 @@ LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/poo
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-features img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-siglip2 download-tipsv2 gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -75,47 +75,37 @@ distill-mod:
 		--no_grad_ckpt \
 		$(ARGS)
 
-# img2emb — image→embedding resampler training (siglip2 by default).
-# Three stages: features → pretrain → finetune. See scripts/img2emb/train_img2emb.py.
-# img2emb-anchors refreshes phase1_positions.json + phase2_class_prototypes.safetensors
-# (people=* prototypes) from live captions + TE cache; required before pretrain.
-# Switch encoder with ENCODER=tipsv2: tipsv2 is TIPSv2-L/14 at 448² (patch 14,
-# 1025 tokens, D=1024). Requires `make download-tipsv2` and `trust_remote_code`.
-# Fixed-res like siglip2 — no variable aspect handling.
-#
-# BUCKETS (TIPSv2 only): aspect-preserving bucketed preprocessing. Each
-# image is resized to the closest patch-14 bucket (~1024 tokens, aspects
+# img2emb — image→embedding resampler training (TIPSv2-L/14 encoder).
+# Three stages: preprocess → pretrain → finetune. See scripts/img2emb/train.py.
+# Images are assigned to the closest patch-14 bucket (~1024 tokens, aspects
 # 1:2..2:1); tokens are zero-padded to a single T_MAX so the cache stays a
-# flat (N, T_MAX, D) tensor. Must be set consistently for preprocess +
-# test-img2emb — the resampler sees a different KV length distribution
-# with/without it. Auto-enabled when ENCODER=tipsv2; override with
-# BUCKETS= (empty) to disable, or BUCKETS=1 with a different encoder (no-op).
-ENCODER ?= tipsv2
-BUCKETS ?= $(if $(filter tipsv2,$(ENCODER)),1,)
-BUCKETS_FLAG = $(if $(BUCKETS),--buckets,)
+# flat (N, T_MAX, D) tensor. img2emb-anchors refreshes phase1_positions.json
+# + phase2_class_prototypes.safetensors (people=* prototypes) from live
+# captions + TE cache; required before pretrain. Requires
+# `make download-tipsv2` and `trust_remote_code`.
 
-img2emb-features:
-	python scripts/img2emb/train_img2emb.py features --encoder $(ENCODER) $(BUCKETS_FLAG) $(ARGS)
+img2emb-preprocess:
+	python scripts/img2emb/preprocess.py $(ARGS)
 
 img2emb-anchors:
 	python scripts/img2emb/rebuild_anchor_artifacts.py $(ARGS)
 
 img2emb-pretrain:
-	python scripts/img2emb/train_img2emb.py pretrain --encoder $(ENCODER) $(ARGS)
+	python scripts/img2emb/pretrain.py $(ARGS)
 
 img2emb-finetune:
-	python scripts/img2emb/train_img2emb.py finetune --encoder $(ENCODER) $(ARGS)
+	python scripts/img2emb/finetune.py $(ARGS)
 
-preprocess-img2emb: img2emb-features img2emb-anchors
+preprocess-img2emb: img2emb-preprocess img2emb-anchors
 
 img2emb: img2emb-pretrain img2emb-finetune
 
-# Generate a single image conditioned on REF_IMAGE via the phase-2a resampler.
+# Generate a single image conditioned on REF_IMAGE via the finetuned resampler.
 # Example: make test-img2emb REF_IMAGE=post_image_dataset/foo.png
 REF_IMAGE ?=
 test-img2emb:
 	@if [ -z "$(REF_IMAGE)" ]; then echo "Set REF_IMAGE=path/to/ref.png"; exit 1; fi
-	python scripts/img2emb/test_img2emb.py --ref_image $(REF_IMAGE) --encoder $(ENCODER) $(BUCKETS_FLAG) $(ARGS)
+	python scripts/img2emb/infer.py --ref_image $(REF_IMAGE) $(ARGS)
 
 test:
 	$(TEST_COMMON) \
@@ -277,21 +267,21 @@ WORKFLOW ?= workflows/modhydra.json
 comfy-batch:
 	python scripts/comfy_batch.py $(WORKFLOW)
 
-# img2emb phase-2 step-0 loss-weight calibration — no backward, just reports
-# raw loss magnitudes so the loss.* weights in phase2_flow.py can be tuned.
-PHASE2_WARM ?= bench/img2emb/results/phase1_5/siglip2_resampler_4layer_anchored.safetensors
-PHASE2_BS ?= 1
+# img2emb finetune step-0 loss-weight calibration — no backward, just reports
+# raw loss magnitudes so the loss.* weights in finetune.py can be tuned.
+FINETUNE_WARM ?= output/img2embs/pretrain/tipsv2_resampler_4layer_anchored.safetensors
+FINETUNE_BS ?= 1
 # -1 = gradient checkpointing (required on 16 GB; no-swap backward OOMs, block-swap
-# forward-only doesn't help backward activations). Override with PHASE2_SWAP=N for
+# forward-only doesn't help backward activations). Override with FINETUNE_SWAP=N for
 # >16 GB cards.
-PHASE2_SWAP ?= -1
-phase2-calibrate:
-	python scripts/img2emb/phase2_flow.py \
+FINETUNE_SWAP ?= -1
+img2emb-calibrate:
+	python scripts/img2emb/finetune.py \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
-		--warm_start $(PHASE2_WARM) \
+		--warm_start $(FINETUNE_WARM) \
 		--calibrate_only \
-		--batch_size $(PHASE2_BS) \
-		--blocks_to_swap $(PHASE2_SWAP)
+		--batch_size $(FINETUNE_BS) \
+		--blocks_to_swap $(FINETUNE_SWAP)
 
 graft-step:
 	python scripts/graft_step.py
@@ -337,17 +327,7 @@ download-anima:
 		--local-dir models --include "split_files/*"
 	python -c "import shutil,os; [shutil.move(os.path.join('models/split_files',d,f),os.path.join('models',d,f)) for d in ['diffusion_models','text_encoders','vae'] for f in os.listdir(os.path.join('models/split_files',d))]; shutil.rmtree('models/split_files')"
 
-# SigLIP2 vision encoder for img2emb (see scripts/img2emb/extract_features.py).
-# Only the vision tower is used at runtime; tokenizer files are skipped.
-download-siglip2:
-	python -c "import os; os.makedirs('models/siglip2',exist_ok=True)"
-	hf download google/siglip2-large-patch16-384 \
-		config.json \
-		model.safetensors \
-		preprocessor_config.json \
-		--local-dir models/siglip2
-
-# TIPSv2-L/14 vision encoder — optional alternative to SigLIP2 for img2emb.
+# TIPSv2-L/14 vision encoder for img2emb (see scripts/img2emb/preprocess.py).
 # Ships custom code (trust_remote_code); the whole repo must be present locally
 # so `from_pretrained("models/tipsv2", trust_remote_code=True)` can resolve the
 # python modules without network.
@@ -355,7 +335,7 @@ download-tipsv2:
 	python -c "import os; os.makedirs('models/tipsv2',exist_ok=True)"
 	hf download google/tipsv2-l14 --local-dir models/tipsv2
 
-download-models: download-anima download-sam3 download-mit download-siglip2
+download-models: download-anima download-sam3 download-mit download-tipsv2
 
 # --- Masking ---
 

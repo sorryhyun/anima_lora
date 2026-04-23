@@ -1,6 +1,6 @@
 # img2emb — image → embedding resampler
 
-Maps a siglip2-encoded reference image to a DiT-compatible cross-attention
+Maps a TIPSv2-encoded reference image to a DiT-compatible cross-attention
 context, replacing the text-encoder path entirely. A Perceiver resampler with
 per-group classifier heads predicts class prototypes for a handful of
 "anchor" slots (rating, people_count, …) and fills the remaining content
@@ -22,12 +22,22 @@ Three stages, run top-to-bottom. Each reads the previous stage's outputs.
 
 | Stage | Script | Role |
 |---|---|---|
-| 1. features | `extract_features.py` | Cache siglip2 patch tokens + pooled features; build train/eval split; scan T5 active lengths. |
-| 2. pretrain | `phase1_5_anchored.py` | Train `AnchoredResampler` on cached T5 `crossattn_emb` targets with CE/BCE classifier heads + prototype-anchor injection. |
-| 3. finetune | `phase2_flow.py` | Warm-start from the phase-1.5 ckpt; supervise via flow-matching MSE through the frozen DiT. |
+| 1. preprocess | `preprocess.py` | Cache TIPSv2 patch tokens + pooled features; build train/eval split; scan T5 active lengths. |
+| 2. pretrain | `pretrain.py` | Train `AnchoredResampler` on cached T5 `crossattn_emb` targets with CE/BCE classifier heads + prototype-anchor injection. |
+| 3. finetune | `finetune.py` | Warm-start from the pretrain ckpt; supervise via flow-matching MSE through the frozen DiT. |
 
-`train_img2emb.py` is the top-level dispatcher — it just `subprocess`'s
-each stage script with shared paths. Inference uses `test_img2emb.py`.
+`train.py` is the top-level dispatcher — it imports each stage's `*(args)`
+entrypoint and runs them in-process (no subprocesses). Inference uses
+`infer.py`.
+
+### Encoder
+
+TIPSv2-L/14 (`models/tipsv2/`, downloaded via `make download-tipsv2`).
+Aspect-preserving bucketed preprocessing is always on — each image is
+resized to the closest patch-14 bucket (~1024 tokens, aspects 1:2..2:1) and
+tokens are zero-padded to a single `T_MAX_TOKENS` so the cache stays a flat
+`(N, T_MAX, D)` tensor. See `buckets.py` for the spec. Requires
+`trust_remote_code=True` (TIPSv2 ships custom modeling code).
 
 ### Running it
 
@@ -35,52 +45,37 @@ Preprocessing (features + anchor artifacts) is split from training so the
 heavy one-time steps don't rerun every time you tune hyperparams.
 
 ```bash
-# One-time preprocessing: siglip2/dinov3 features + anchor prototypes.
-# Requires `make download-siglip2` once (vision tower lives at models/siglip2).
+# One-time preprocessing: TIPSv2 features + anchor prototypes.
+# Requires `make download-tipsv2` once (encoder lives at models/tipsv2).
 make preprocess-img2emb
 python tasks.py preprocess-img2emb
-
-# Alternative encoder: TIPSv2-L/14 at 448² (patch 14, 1025 tokens, D=1024).
-# Fixed-res like siglip2 — no variable aspect. Needs `make download-tipsv2`
-# once, then pass ENCODER=tipsv2 to both preprocessing and training:
-ENCODER=tipsv2 make preprocess-img2emb
-ENCODER=tipsv2 make img2emb
-# And at inference time:
-ENCODER=tipsv2 make test-img2emb REF_IMAGE=post_image_dataset/foo.png
-
-# Aspect-preserving bucketing (TIPSv2 only). Each image is resized to the
-# closest patch-14 bucket (~1024 tokens, aspects 1:2..2:1) instead of
-# square-cropping to 448². Tokens are zero-padded to a single T_MAX so the
-# cache stays (N, T_MAX, D) — no resampler/sampler changes needed. See
-# scripts/img2emb/buckets.py for the spec. **Auto-enabled with ENCODER=tipsv2**;
-# must be set consistently across preprocess AND test-img2emb (the resampler
-# sees a different KV length with vs without).
-ENCODER=tipsv2 make preprocess-img2emb                # buckets ON by default
-ENCODER=tipsv2 make img2emb
-ENCODER=tipsv2 make test-img2emb REF_IMAGE=post_image_dataset/foo.png
-# Force-disable to match an older fixed-448² cache:
-ENCODER=tipsv2 BUCKETS= make preprocess-img2emb
 
 # Training (pretrain → finetune).
 make img2emb
 python tasks.py img2emb
 
-# One stage at a time; trailing args forward to the underlying script
-python scripts/img2emb/train_img2emb.py pretrain
-python scripts/img2emb/train_img2emb.py finetune --steps 20000
+# One stage at a time; trailing args forward to the underlying script.
+python scripts/img2emb/train.py preprocess
+python scripts/img2emb/train.py pretrain
+python scripts/img2emb/train.py finetune --steps 20000
 make img2emb-pretrain
 make img2emb-finetune
-make phase2-calibrate       # step-0 loss magnitudes, no backward
+make img2emb-calibrate       # step-0 loss magnitudes, no backward
+
+# Or invoke a stage directly.
+python scripts/img2emb/preprocess.py
+python scripts/img2emb/pretrain.py --steps 5000
+python scripts/img2emb/finetune.py --steps 20000
 
 # Inference from a reference image. Without --image_size, the closest
 # CONSTANT_TOKEN_BUCKETS aspect ratio to the ref is auto-picked.
 make test-img2emb REF_IMAGE=post_image_dataset/foo.png
-python scripts/img2emb/test_img2emb.py --ref_image ref.png
+python scripts/img2emb/infer.py --ref_image ref.png
 ```
 
 Outputs land under `output/img2embs/{features,anchors,pretrain,finetune}/`.
-`test_img2emb.py` loads the finetune ckpt from `output/img2embs/finetune/`
-and anchor prototypes from `output/img2embs/anchors/` by default.
+`infer.py` loads the finetune ckpt from `output/img2embs/finetune/` and
+anchor prototypes from `output/img2embs/anchors/` by default.
 
 ## Anchor spec (`anchors.yaml`)
 
@@ -130,10 +125,10 @@ If you add a group whose classes can co-occur on the same image, flip
 `mutex: false`. Each class then gets its own slot and is injected
 independently based on the sigmoid decision (> 0.5).
 
-Inference slot overrides (`test_img2emb.py`):
+Inference slot overrides (`infer.py`):
 
 ```bash
-python scripts/img2emb/test_img2emb.py --ref_image ref.png \
+python scripts/img2emb/infer.py --ref_image ref.png \
     --slot_override rating=0,people_count=2
 ```
 
@@ -144,12 +139,14 @@ anchors.yaml          # Anchor-group spec (user-editable).
 anchors.py            # AnchorSpec/AnchorGroup, AnchoredResampler, label building,
                       # inject_anchors, aux_cls_loss. Shared by all stages.
 resampler.py          # PerceiverResampler backbone (no anchor / classifier code).
+buckets.py            # TIPSv2 patch-14 bucket spec + aspect-pick helpers.
 data.py               # Shared dataset helpers, cache loader, resampler regression loss.
-extract_features.py   # Stage 1: siglip2/dinov3 feature extraction + split generation.
-phase1_5_anchored.py  # Stage 2: pretrain against cached T5 crossattn targets.
-phase2_flow.py        # Stage 3: flow-matching finetune through frozen DiT.
-train_img2emb.py      # Top-level 3-stage dispatcher.
-test_img2emb.py       # Reference-image → generated image inference.
+preprocess.py         # Stage 1: TIPSv2 feature extraction + split + active-length scan.
+pretrain.py           # Stage 2: pretrain against cached T5 crossattn targets.
+finetune.py           # Stage 3: flow-matching finetune through frozen DiT.
+train.py              # Top-level in-process 3-stage dispatcher.
+infer.py              # Reference-image → generated image inference.
+rebuild_anchor_artifacts.py  # Refresh phase1_positions.json + class prototypes.
 ```
 
 ## Conventions + notes
@@ -161,7 +158,7 @@ test_img2emb.py       # Reference-image → generated image inference.
 - Checkpoint state_dict keys use `heads.<group>.{weight,bias}` and
   `<group>_protos` buffers. Renaming a group in `anchors.yaml` breaks ckpt
   load; add a new group instead and retrain.
-- Phase 1.5 saves a JSON sidecar alongside each `.safetensors` containing
+- Pretrain saves a JSON sidecar alongside each `.safetensors` containing
   `anchor_spec` (the resolved group/class metadata). This is the canonical
   record of what the model was trained against.
 - The resampler's `forward` accepts `teacher_labels` + `tf_ratio` for
@@ -170,22 +167,23 @@ test_img2emb.py       # Reference-image → generated image inference.
   sample pre-fills with the predicted soft mix at each group's default slot.
 - Training loads the cache without materializing the variant-mean targets
   (used to cost ~2 GB RAM). The mean is a poor training target anyway — it
-  shrinks norms and sits off the T5 manifold — so phase 1 / 1.5 / 2 sample
-  one variant per step via `_ResamplerTrainDataset`. Phase-0 diagnostics
-  that still need the mean call `data.load_targets_mean` directly.
+  shrinks norms and sits off the T5 manifold — so pretrain / finetune sample
+  one variant per step via `_ResamplerTrainDataset`. Diagnostics that still
+  need the mean call `data.load_targets_mean` directly.
 - See `bench/img2emb/proposal.md` and `bench/img2emb/phase2_proposal.md` for
   design history and ablation notes.
-- **K-slot cap.** Phase 1.5 / phase 2 / `test_img2emb` default `--n_slots 256`.
+- **K-slot cap.** Pretrain / finetune / `infer` default `--n_slots 256`.
   The resampler predicts K=256 content slots — covers ~95% of active T5
   lengths L — and the output is zero-padded to 512 at every boundary that
   talks to the DiT (matching the cached `crossattn_emb` shape). The pad tail
   is exactly zero by construction, so no `--zero_pad_weight` / `--w_pad` is
   needed.
-- **Multi-positive InfoNCE over shuffled caption variants.** Phase 1.5 and
-  phase 2 both accept `--w_infonce` (default 0.1) and `--infonce_tau`
-  (default 0.07). The loss pools the resampler output over active slots
-  (SupCon-style) and contrasts it against per-variant pooled T5 targets
-  cached at `features/target_pooled.safetensors` (produced by
-  `extract_features.py`; ~65 MB for N=1987, V=8, D=1024 fp32). Positives =
-  all V variants of the same image; negatives = variants of other images in
-  the batch. If the file is missing, InfoNCE is skipped with a warning.
+- **Multi-positive InfoNCE over shuffled caption variants.** Pretrain and
+  finetune both accept `--w_infonce` (default 0.1 for pretrain, 0 for
+  finetune) and `--infonce_tau` (default 0.07). The loss pools the
+  resampler output over active slots (SupCon-style) and contrasts it
+  against per-variant pooled T5 targets cached at
+  `features/target_pooled.safetensors` (produced by `preprocess.py`;
+  ~65 MB for N=1987, V=8, D=1024 fp32). Positives = all V variants of the
+  same image; negatives = variants of other images in the batch. If the
+  file is missing, InfoNCE is skipped with a warning.

@@ -400,44 +400,6 @@ def build_ctx(
     return ctx.to(torch.bfloat16), fwd["logits"], dev_labels, pred
 
 
-def anchor_keep_mask(
-    spec: AnchorSpec,
-    labels: dict[str, torch.Tensor],
-    B: int,
-    K: int,
-    device: torch.device,
-) -> torch.Tensor:
-    """(B, K) bool, True where the slot was NOT overwritten by an anchor prototype.
-
-    Used to exclude frozen anchor slots from ``pooled_for_dit``. Without this,
-    the injected class prototypes (highest-magnitude, ~constant per classifier
-    decision) dominate ``amax`` and AdaLN locks onto the anchor category
-    regardless of the reference.
-    """
-    keep = torch.ones(B, K, dtype=torch.bool, device=device)
-    for g in spec.groups:
-        if g.mutex:
-            slot = labels[f"{g.name}_slot"].to(device)
-            valid = (slot >= 0) & (slot < K)
-            if valid.any():
-                b = torch.arange(B, device=device)[valid]
-                keep[b, slot[valid]] = False
-        else:
-            slots = labels[f"{g.name}_slots"].to(device)
-            lbls = labels[f"{g.name}_labels"].to(device) > 0.5
-            valid = (slots >= 0) & (slots < K) & lbls
-            if valid.any():
-                b_rows, c_cols = torch.nonzero(valid, as_tuple=True)
-                keep[b_rows, slots[b_rows, c_cols]] = False
-    return keep
-
-
-def masked_amax(x: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
-    """amax over ``x`` (B, K, D) along K, restricted to ``keep`` (B, K) bool."""
-    neg = torch.finfo(x.dtype).min
-    return x.masked_fill(~keep.unsqueeze(-1), neg).amax(dim=1)
-
-
 def _warmup_cosine(step: int, total: int, warmup: int, eta_min_frac: float = 0.05):
     if step < warmup:
         return (step + 1) / max(1, warmup)
@@ -487,9 +449,7 @@ def eval_fm(
         pool_b = args.pooled_all[batch["full_idx"]].to(device, dtype=torch.float32)
 
         ctx2, logits, dev_labels, pred_k2 = build_ctx(model, spec, tok_b, pool_b, anchors, device)
-        B_cur, K_cur = pred_k2.shape[:2]
-        pool_keep2 = anchor_keep_mask(spec, dev_labels, B_cur, K_cur, device)
-        pooled_for_dit = masked_amax(pred_k2, pool_keep2).to(torch.bfloat16)
+        pooled_for_dit = pred_k2.float().amax(dim=1).to(torch.bfloat16)
 
         loss2, _ = dit_fm_loss(
             anima, latent, ctx2, pooled_for_dit,
@@ -527,9 +487,7 @@ def eval_fm(
             ctx_pre, _, dev_labels_pre, pred_k_pre = build_ctx(
                 pretrain_model, spec, tok_b, pool_b, anchors, device,
             )
-            B_pre, K_pre = pred_k_pre.shape[:2]
-            pool_keep_pre = anchor_keep_mask(spec, dev_labels_pre, B_pre, K_pre, device)
-            pooled_pre = masked_amax(pred_k_pre, pool_keep_pre).to(torch.bfloat16)
+            pooled_pre = pred_k_pre.float().amax(dim=1).to(torch.bfloat16)
             loss_pre, _ = dit_fm_loss(
                 anima, latent, ctx_pre, pooled_pre,
                 args.sigma_sampling, args.sigmoid_scale, args.weighting_scheme,
@@ -716,9 +674,7 @@ def finetune(args: argparse.Namespace) -> None:
         ctx, logits, dev_labels, pred_k = build_ctx(
             model, spec, tok_b, pool_b, anchors, device, pad_to=args.S,
         )
-        B_cur, K_cur = pred_k.shape[:2]
-        pool_keep = anchor_keep_mask(spec, dev_labels, B_cur, K_cur, device)
-        pooled_for_dit = masked_amax(pred_k, pool_keep).to(torch.bfloat16)
+        pooled_for_dit = pred_k.float().amax(dim=1).to(torch.bfloat16)
 
         fm_loss, fm_diag = dit_fm_loss(
             anima, latent, ctx, pooled_for_dit,
