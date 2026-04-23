@@ -54,20 +54,20 @@ The default training config stacks **LoRA + OrthoLoRA + T-LoRA** together. All t
 
 **Side-by-side** — same prompt, `er_sde` 30 steps, `cfg=4.0`, 1024². Each LoRA trained at rank 16 for 2 epochs on a 20% subset with training seed 42; inference seeds `{41, 42, 43}`. Reproduce with `python scripts/bench_methods.py`.
 
-|  | **plain (base)** | **OrthoLoRA + T-LoRA** |
+|  | **LoRA** | **OrthoLoRA + T-LoRA** |
 |:---:|:---:|:---:|
-| seed 41 | <img src="bench/side_by_side/plain/20260423-160513-382_41_.png" width="320"> | <img src="bench/side_by_side/ortho_tlora/20260423-155545-258_41_.png" width="320"> |
-| seed 42 | <img src="bench/side_by_side/plain/20260423-160556-697_42_.png" width="320"> | <img src="bench/side_by_side/ortho_tlora/20260423-155631-762_42_.png" width="320"> |
-| seed 43 | <img src="bench/side_by_side/plain/20260423-160640-759_43_.png" width="320"> | <img src="bench/side_by_side/ortho_tlora/20260423-155718-280_43_.png" width="320"> |
+| seed 41 | <img src="bench/side_by_side/lora/20260423-154854-014_41_.png" width="320"> | <img src="bench/side_by_side/ortho_tlora/20260423-155545-258_41_.png" width="320"> |
+| seed 42 | <img src="bench/side_by_side/lora/20260423-154938-584_42_.png" width="320"> | <img src="bench/side_by_side/ortho_tlora/20260423-155631-762_42_.png" width="320"> |
+| seed 43 | <img src="bench/side_by_side/lora/20260423-155024-080_43_.png" width="320"> | <img src="bench/side_by_side/ortho_tlora/20260423-155718-280_43_.png" width="320"> |
 
 <details>
-<summary>Individual variants (LoRA, OrthoLoRA, T-LoRA)</summary>
+<summary>Base model and individual variants (plain, OrthoLoRA, T-LoRA)</summary>
 
-|  | **LoRA** | **OrthoLoRA** | **T-LoRA** |
+|  | **plain (base)** | **OrthoLoRA** | **T-LoRA** |
 |:---:|:---:|:---:|:---:|
-| seed 41 | <img src="bench/side_by_side/lora/20260423-154854-014_41_.png" width="240"> | <img src="bench/side_by_side/ortholora/20260423-155109-338_41_.png" width="240"> | <img src="bench/side_by_side/tlora/20260423-155327-834_41_.png" width="240"> |
-| seed 42 | <img src="bench/side_by_side/lora/20260423-154938-584_42_.png" width="240"> | <img src="bench/side_by_side/ortholora/20260423-155155-526_42_.png" width="240"> | <img src="bench/side_by_side/tlora/20260423-155413-304_42_.png" width="240"> |
-| seed 43 | <img src="bench/side_by_side/lora/20260423-155024-080_43_.png" width="240"> | <img src="bench/side_by_side/ortholora/20260423-155241-905_43_.png" width="240"> | <img src="bench/side_by_side/tlora/20260423-155458-996_43_.png" width="240"> |
+| seed 41 | <img src="bench/side_by_side/plain/20260423-160513-382_41_.png" width="240"> | <img src="bench/side_by_side/ortholora/20260423-155109-338_41_.png" width="240"> | <img src="bench/side_by_side/tlora/20260423-155327-834_41_.png" width="240"> |
+| seed 42 | <img src="bench/side_by_side/plain/20260423-160556-697_42_.png" width="240"> | <img src="bench/side_by_side/ortholora/20260423-155155-526_42_.png" width="240"> | <img src="bench/side_by_side/tlora/20260423-155413-304_42_.png" width="240"> |
+| seed 43 | <img src="bench/side_by_side/plain/20260423-160640-759_43_.png" width="240"> | <img src="bench/side_by_side/ortholora/20260423-155241-905_43_.png" width="240"> | <img src="bench/side_by_side/tlora/20260423-155458-996_43_.png" width="240"> |
 
 </details>
 
