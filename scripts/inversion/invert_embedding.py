@@ -183,9 +183,18 @@ def parse_args():
         help="Scale for sigmoid sigma sampling",
     )
     p.add_argument(
+        "--sigma_min",
+        type=float,
+        default=0.0,
+        help="Lower bound for sampled sigmas (P-GRAFT analog: skip the low-sigma "
+        "detail regime where the embedding's influence is drowned out by the "
+        "already-formed latent and gradients become noise). Sampled range is "
+        "rescaled to [sigma_min, 1.0]. Set to 0.0 to disable.",
+    )
+    p.add_argument(
         "--active_length",
         type=int,
-        default=128,
+        default=256,
         help="Number of leading token positions that are trainable; the rest of "
         "the 512-length sequence is hard-zero every step. Matches the on-manifold "
         "layout the DiT was trained on (kv_proj has bias=False, so pad→K=V=0). "
@@ -428,6 +437,9 @@ def sample_sigmas(args, batch_size, device):
         )
     else:
         sigmas = torch.rand(batch_size, device=device)
+    lo = max(0.0, min(1.0, args.sigma_min))
+    if lo > 0.0:
+        sigmas = lo + (1.0 - lo) * sigmas
     return sigmas
 
 
@@ -1084,6 +1096,7 @@ def process_single(args, anima, device):
         "init_prompt": args.init_prompt or "",
         "aggregate_by": str(args.aggregate_by),
         "active_length": str(args.active_length),
+        "sigma_min": str(args.sigma_min),
     }
     if diagnostics is not None:
         metadata["per_token_cos_before"] = f"{diagnostics['per_token_cos_before']:.6f}"
@@ -1149,6 +1162,7 @@ def process_batch(args, anima, device):
             "best_loss": f"{best_loss:.6f}",
             "aggregate_by": str(args.aggregate_by),
             "active_length": str(args.active_length),
+            "sigma_min": str(args.sigma_min),
         }
         if diagnostics is not None:
             metadata["per_token_cos_before"] = (

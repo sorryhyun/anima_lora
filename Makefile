@@ -11,7 +11,7 @@ LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/poo
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-features img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-siglip2 gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-features img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-siglip2 download-tipsv2 gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -79,17 +79,32 @@ distill-mod:
 # Three stages: features → pretrain → finetune. See scripts/img2emb/train_img2emb.py.
 # img2emb-anchors refreshes phase1_positions.json + phase2_class_prototypes.safetensors
 # (people=* prototypes) from live captions + TE cache; required before pretrain.
+# Switch encoder with ENCODER=tipsv2: tipsv2 is TIPSv2-L/14 at 448² (patch 14,
+# 1025 tokens, D=1024). Requires `make download-tipsv2` and `trust_remote_code`.
+# Fixed-res like siglip2 — no variable aspect handling.
+#
+# BUCKETS (TIPSv2 only): aspect-preserving bucketed preprocessing. Each
+# image is resized to the closest patch-14 bucket (~1024 tokens, aspects
+# 1:2..2:1); tokens are zero-padded to a single T_MAX so the cache stays a
+# flat (N, T_MAX, D) tensor. Must be set consistently for preprocess +
+# test-img2emb — the resampler sees a different KV length distribution
+# with/without it. Auto-enabled when ENCODER=tipsv2; override with
+# BUCKETS= (empty) to disable, or BUCKETS=1 with a different encoder (no-op).
+ENCODER ?= tipsv2
+BUCKETS ?= $(if $(filter tipsv2,$(ENCODER)),1,)
+BUCKETS_FLAG = $(if $(BUCKETS),--buckets,)
+
 img2emb-features:
-	python scripts/img2emb/train_img2emb.py features $(ARGS)
+	python scripts/img2emb/train_img2emb.py features --encoder $(ENCODER) $(BUCKETS_FLAG) $(ARGS)
 
 img2emb-anchors:
 	python scripts/img2emb/rebuild_anchor_artifacts.py $(ARGS)
 
 img2emb-pretrain:
-	python scripts/img2emb/train_img2emb.py pretrain $(ARGS)
+	python scripts/img2emb/train_img2emb.py pretrain --encoder $(ENCODER) $(ARGS)
 
 img2emb-finetune:
-	python scripts/img2emb/train_img2emb.py finetune $(ARGS)
+	python scripts/img2emb/train_img2emb.py finetune --encoder $(ENCODER) $(ARGS)
 
 preprocess-img2emb: img2emb-features img2emb-anchors
 
@@ -100,7 +115,7 @@ img2emb: img2emb-pretrain img2emb-finetune
 REF_IMAGE ?=
 test-img2emb:
 	@if [ -z "$(REF_IMAGE)" ]; then echo "Set REF_IMAGE=path/to/ref.png"; exit 1; fi
-	python scripts/img2emb/test_img2emb.py --ref_image $(REF_IMAGE) $(ARGS)
+	python scripts/img2emb/test_img2emb.py --ref_image $(REF_IMAGE) --encoder $(ENCODER) $(BUCKETS_FLAG) $(ARGS)
 
 test:
 	$(TEST_COMMON) \
@@ -331,6 +346,14 @@ download-siglip2:
 		model.safetensors \
 		preprocessor_config.json \
 		--local-dir models/siglip2
+
+# TIPSv2-L/14 vision encoder — optional alternative to SigLIP2 for img2emb.
+# Ships custom code (trust_remote_code); the whole repo must be present locally
+# so `from_pretrained("models/tipsv2", trust_remote_code=True)` can resolve the
+# python modules without network.
+download-tipsv2:
+	python -c "import os; os.makedirs('models/tipsv2',exist_ok=True)"
+	hf download google/tipsv2-l14 --local-dir models/tipsv2
 
 download-models: download-anima download-sam3 download-mit download-siglip2
 

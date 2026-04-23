@@ -40,6 +40,27 @@ heavy one-time steps don't rerun every time you tune hyperparams.
 make preprocess-img2emb
 python tasks.py preprocess-img2emb
 
+# Alternative encoder: TIPSv2-L/14 at 448² (patch 14, 1025 tokens, D=1024).
+# Fixed-res like siglip2 — no variable aspect. Needs `make download-tipsv2`
+# once, then pass ENCODER=tipsv2 to both preprocessing and training:
+ENCODER=tipsv2 make preprocess-img2emb
+ENCODER=tipsv2 make img2emb
+# And at inference time:
+ENCODER=tipsv2 make test-img2emb REF_IMAGE=post_image_dataset/foo.png
+
+# Aspect-preserving bucketing (TIPSv2 only). Each image is resized to the
+# closest patch-14 bucket (~1024 tokens, aspects 1:2..2:1) instead of
+# square-cropping to 448². Tokens are zero-padded to a single T_MAX so the
+# cache stays (N, T_MAX, D) — no resampler/sampler changes needed. See
+# scripts/img2emb/buckets.py for the spec. **Auto-enabled with ENCODER=tipsv2**;
+# must be set consistently across preprocess AND test-img2emb (the resampler
+# sees a different KV length with vs without).
+ENCODER=tipsv2 make preprocess-img2emb                # buckets ON by default
+ENCODER=tipsv2 make img2emb
+ENCODER=tipsv2 make test-img2emb REF_IMAGE=post_image_dataset/foo.png
+# Force-disable to match an older fixed-448² cache:
+ENCODER=tipsv2 BUCKETS= make preprocess-img2emb
+
 # Training (pretrain → finetune).
 make img2emb
 python tasks.py img2emb
@@ -153,18 +174,18 @@ test_img2emb.py       # Reference-image → generated image inference.
   one variant per step via `_ResamplerTrainDataset`. Phase-0 diagnostics
   that still need the mean call `data.load_targets_mean` directly.
 - See `bench/img2emb/proposal.md` and `bench/img2emb/phase2_proposal.md` for
-  the design history and ablation notes, and `proposal.md` in this directory
-  for the two-part K-slot cap (K=256) + InfoNCE-over-shuffled-variants
-  proposal.
-- **K-slot cap** (proposal.md part 1, shipped): phase 1.5 / phase 2 /
-  `test_img2emb` default `--n_slots 256`. The resampler predicts K=256 slots;
-  output is zero-padded to 512 at every boundary that talks to the DiT
-  (cached T5 shape). `--zero_pad_weight` (phase 1.5) and `--w_pad` (phase 2)
-  are removed — the pad tail is zero by construction.
-- **InfoNCE over shuffled variants** (proposal.md part 2, shipped): phase 1.5
-  and phase 2 both accept `--w_infonce` (default 0.1) and `--infonce_tau`
-  (default 0.07). The loss pools the resampler output over active slots and
-  contrasts it against per-variant pooled T5 targets cached at
-  `features/target_pooled.safetensors` (produced by `extract_features.py`;
-  ~65 MB for N=1987, V=8, D=1024). If the file is missing, InfoNCE is
-  skipped with a warning.
+  design history and ablation notes.
+- **K-slot cap.** Phase 1.5 / phase 2 / `test_img2emb` default `--n_slots 256`.
+  The resampler predicts K=256 content slots — covers ~95% of active T5
+  lengths L — and the output is zero-padded to 512 at every boundary that
+  talks to the DiT (matching the cached `crossattn_emb` shape). The pad tail
+  is exactly zero by construction, so no `--zero_pad_weight` / `--w_pad` is
+  needed.
+- **Multi-positive InfoNCE over shuffled caption variants.** Phase 1.5 and
+  phase 2 both accept `--w_infonce` (default 0.1) and `--infonce_tau`
+  (default 0.07). The loss pools the resampler output over active slots
+  (SupCon-style) and contrasts it against per-variant pooled T5 targets
+  cached at `features/target_pooled.safetensors` (produced by
+  `extract_features.py`; ~65 MB for N=1987, V=8, D=1024 fp32). Positives =
+  all V variants of the same image; negatives = variants of other images in
+  the batch. If the file is missing, InfoNCE is skipped with a warning.

@@ -1,22 +1,22 @@
 #!/usr/bin/env python
-"""Phase 1.5 — Tag-anchored Perceiver Resampler.
+"""Pretrain — Tag-anchored Perceiver Resampler.
 
 Uses inversionv2's class prototypes to hard-anchor the "prototype-addressable"
 slots (one per group in ``anchors.yaml``) from a classifier over the pooled
 encoder feature. The resampler then only has to fit the content-heavy
 mid/tail slots.
 
-Why: phase-1 4-layer resampler at step 2500 matched the phase-0 1-layer probe
-on mid/tail (cos 0.501 / 0.630 vs 0.501 / 0.631) — depth didn't help. inversionv2
-showed rating / 1girl / solo / @artist sit in k@95 ≤ 5 per slot with within-class
-cos > 0.9, so classifier + frozen-prototype lookup is the right shape for those
+Why: the 4-layer resampler at step 2500 matched the 1-layer probe on mid/tail
+(cos 0.501 / 0.630 vs 0.501 / 0.631) — depth didn't help. inversionv2 showed
+rating / 1girl / solo / @artist sit in k@95 ≤ 5 per slot with within-class cos
+> 0.9, so classifier + frozen-prototype lookup is the right shape for those
 slots. Auxiliary CE (mutex) / BCE (multi-label) on the classifier heads
 doubles as a diagnostic for encoder quality.
 
 Usage:
-    python scripts/img2emb/phase1_5_anchored.py
-    python scripts/img2emb/phase1_5_anchored.py --steps 5000 --eval_every 1000
-    python scripts/img2emb/phase1_5_anchored.py --anchors_yaml my_anchors.yaml
+    python scripts/img2emb/pretrain.py
+    python scripts/img2emb/pretrain.py --steps 5000 --eval_every 1000
+    python scripts/img2emb/pretrain.py --anchors_yaml my_anchors.yaml
 """
 
 import argparse
@@ -29,13 +29,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from safetensors.torch import load_file, save_file
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-# results/ still lives under bench/img2emb/ from before the move; keep writing there.
-BENCH_DIR = REPO_ROOT / "bench" / "img2emb"
 sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.img2emb.anchors import (  # noqa: E402
@@ -57,23 +56,26 @@ from scripts.img2emb.data import (  # noqa: E402
     active_slice,
     load_cache,
 )
+from scripts.img2emb.preprocess import ENCODER_NAME  # noqa: E402
 from library.log import setup_logging  # noqa: E402
-import torch.nn.functional as F  # noqa: E402
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
 
 DEFAULT_ANCHORS_YAML = Path(__file__).parent / "anchors.yaml"
+DEFAULT_CACHE_DIR = REPO_ROOT / "output" / "img2embs" / "features"
+DEFAULT_OUT_DIR = REPO_ROOT / "output" / "img2embs" / "pretrain"
+DEFAULT_TAG_SLOT_DIR = REPO_ROOT / "output" / "img2embs" / "anchors"
 
 
-def parse_args():
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--cache_dir", default=str(BENCH_DIR / "results" / "phase0"))
-    p.add_argument("--out_dir", default=str(BENCH_DIR / "results" / "phase1_5"))
+    p.add_argument("--cache_dir", default=str(DEFAULT_CACHE_DIR))
+    p.add_argument("--out_dir", default=str(DEFAULT_OUT_DIR))
     p.add_argument(
         "--tag_slot_dir",
-        default=str(REPO_ROOT / "output" / "img2embs" / "anchors"),
+        default=str(DEFAULT_TAG_SLOT_DIR),
         help="Directory with phase1_positions.json + phase2_class_prototypes.safetensors "
         "(produced by scripts/img2emb/rebuild_anchor_artifacts.py).",
     )
@@ -83,7 +85,6 @@ def parse_args():
         help="YAML spec listing anchor groups + classes.",
     )
     p.add_argument("--image_dir", default=None)
-    p.add_argument("--encoder", default="tipsv2") # siglip2
     p.add_argument("--num_workers", type=int, default=4)
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--d_model", type=int, default=1024)
@@ -144,14 +145,14 @@ def parse_args():
     p.add_argument("--seed", type=int, default=20260421)
     p.add_argument("--log_every", type=int, default=25)
     p.add_argument("--save_predictions", action="store_true")
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
 # --------------------------------------------------------------------------- dataset
 
 
 class AnchoredTrainDataset(Dataset):
-    """Same as phase1's dataset but yields per-stem anchor labels too."""
+    """Same as the base pretrain dataset but yields per-stem anchor labels too."""
 
     def __init__(
         self,
@@ -291,7 +292,6 @@ def _run_pred(
         pred = fwd["pred"].detach().float()
 
         batch_labels = index_flat_labels(spec, flat_labels, ids_t)
-        # Move slot-related labels to device for injection.
         dev_labels = {k: v.to(device) for k, v in batch_labels.items()}
         detached_anchor = {k: v.detach().float() for k, v in fwd["anchor_emb"].items()}
         inject_spec_anchors(pred, spec, detached_anchor, dev_labels, mode=anchor_mode)
@@ -373,10 +373,10 @@ def _eval_per_variant(
     }
 
 
-def _save_ckpt(model, out_dir: Path, encoder: str, n_layers: int, step: int | None = None) -> Path:
+def _save_ckpt(model, out_dir: Path, n_layers: int, step: int | None = None) -> Path:
     """Save resampler weights. `step=None` writes the stable final filename;
     otherwise appends `_stepNNNNNN` so intermediates don't overwrite each other."""
-    stem = f"{encoder}_resampler_{n_layers}layer_anchored"
+    stem = f"{ENCODER_NAME}_resampler_{n_layers}layer_anchored"
     if step is not None:
         stem = f"{stem}_step{step:06d}"
     path = out_dir / f"{stem}.safetensors"
@@ -385,6 +385,11 @@ def _save_ckpt(model, out_dir: Path, encoder: str, n_layers: int, step: int | No
         str(path),
     )
     return path
+
+
+def pretrain_ckpt_path(out_dir: Path | str, n_layers: int = 4) -> Path:
+    """Canonical final-ckpt path. Used by the finetune stage to warm-start."""
+    return Path(out_dir) / f"{ENCODER_NAME}_resampler_{n_layers}layer_anchored.safetensors"
 
 
 def _log_eval(result: dict, cls_acc: dict, tag: str):
@@ -400,11 +405,11 @@ def _log_eval(result: dict, cls_acc: dict, tag: str):
     logger.info(f"  [{tag}/cls_acc] " + "  ".join(acc_parts))
 
 
-# --------------------------------------------------------------------------- main
+# --------------------------------------------------------------------------- stage entrypoint
 
 
-def main():
-    args = parse_args()
+def pretrain(args: argparse.Namespace) -> None:
+    """Run the pretrain stage using ``args``. Importable from ``train.py``."""
     cache_dir = Path(args.cache_dir)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -421,11 +426,11 @@ def main():
         image_dir = act.get("image_dir", "post_image_dataset")
 
     logger.info(
-        f"encoder={args.encoder}  cache={cache_dir}  image_dir={image_dir}  "
+        f"encoder={ENCODER_NAME}  cache={cache_dir}  image_dir={image_dir}  "
         f"out={out_dir}  tag_slot={tag_slot_dir}  anchors={args.anchors_yaml}  "
         f"anchor_mode={args.anchor_mode}"
     )
-    cache = load_cache(cache_dir, image_dir, args.encoder, args.num_workers)
+    cache = load_cache(cache_dir, image_dir, ENCODER_NAME, args.num_workers)
 
     train_idx = cache["split"]["train_idx"]
     eval_idx = cache["split"]["eval_idx"]
@@ -443,17 +448,15 @@ def main():
         f"S={S}  K={K}  D_y={D_y}  d_enc={d_enc}  d_pool={d_pool}"
     )
 
-    # InfoNCE target (optional). Loaded by data.load_cache if the artifact exists.
     tgt_pooled_all = cache.get("target_pooled")
     use_infonce = bool(args.w_infonce > 0.0 and tgt_pooled_all is not None)
     if args.w_infonce > 0.0 and tgt_pooled_all is None:
         logger.warning(
             "w_infonce > 0 but features/target_pooled.safetensors is missing — "
-            "re-run extract_features.py or preprocess-img2emb to regenerate. "
+            "re-run preprocess.py / preprocess-img2emb to regenerate. "
             "InfoNCE disabled for this run."
         )
 
-    # Anchor spec + labels
     spec = load_anchor_spec(Path(args.anchors_yaml), tag_slot_dir)
     anchor_labels = build_anchor_labels(
         spec, tag_slot_dir / "phase1_positions.json", cache["stems"]
@@ -502,7 +505,7 @@ def main():
     train_log = []
     intermediate = []
     t0 = time.time()
-    pbar = tqdm(total=args.steps, desc=f"train/{args.encoder}", leave=True)
+    pbar = tqdm(total=args.steps, desc=f"train/{ENCODER_NAME}", leave=True)
     step = 0
     done = False
     while not done:
@@ -533,7 +536,6 @@ def main():
             cls_loss, accs = aux_cls_loss(spec, fwd["logits"], anchors_b)
             loss = loss_reg + args.cls_loss_weight * cls_loss
 
-            # InfoNCE auxiliary (optional) — pooled over anchored pred & per-variant targets.
             infonce_metrics: dict[str, float] = {}
             if use_infonce:
                 pred_pool = _pool(pred, mask_b)                                # (B, D)
@@ -609,7 +611,7 @@ def main():
                 and step % args.save_every == 0
                 and step < args.steps
             ):
-                ckpt_path = _save_ckpt(model, out_dir, args.encoder, args.n_layers, step=step)
+                ckpt_path = _save_ckpt(model, out_dir, args.n_layers, step=step)
                 logger.info(f"  → {ckpt_path}")
 
             step += 1
@@ -630,7 +632,7 @@ def main():
     _log_eval(result, cls_acc, "final")
 
     payload = {
-        "encoder": args.encoder,
+        "encoder": ENCODER_NAME,
         "probe": f"cross_attn_resampler_{args.n_layers}layer_anchored",
         "anchor_mode": args.anchor_mode,
         "anchor_spec": spec.to_metadata(),
@@ -665,15 +667,15 @@ def main():
             "cls_acc": cls_acc,
         },
     }
-    json_path = out_dir / f"{args.encoder}_resampler_{args.n_layers}layer_anchored.json"
+    json_path = out_dir / f"{ENCODER_NAME}_resampler_{args.n_layers}layer_anchored.json"
     json_path.write_text(json.dumps(payload, indent=2))
     logger.info(f"  → {json_path}")
 
-    ckpt_path = _save_ckpt(model, out_dir, args.encoder, args.n_layers)
+    ckpt_path = _save_ckpt(model, out_dir, args.n_layers)
     logger.info(f"  → {ckpt_path}")
 
     if args.save_predictions:
-        pred_path = out_dir / f"{args.encoder}_eval_predictions.safetensors"
+        pred_path = out_dir / f"{ENCODER_NAME}_eval_predictions.safetensors"
         save_file(
             {
                 "pred": pred_eval.to(torch.bfloat16).contiguous(),
@@ -684,6 +686,10 @@ def main():
         logger.info(f"  → {pred_path}")
 
     logger.info("Done.")
+
+
+def main() -> None:
+    pretrain(parse_args())
 
 
 if __name__ == "__main__":

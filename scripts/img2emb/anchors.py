@@ -455,13 +455,14 @@ class AnchoredResampler(nn.Module):
         sample). Multi-label groups write only where ``masks[g.name]`` is True
         (and the per-class slot is valid)."""
         q = self.backbone.init_queries(B)
+        K = q.shape[1]
         for g in self.spec.groups:
             emb = anchor_emb[g.name]
             slot = slots[g.name].to(device)
             if g.mutex:
                 # emb (B, D_out) → (B, d_model); slot (B,)
                 proj = self.anchor_in_proj(emb)
-                valid = slot >= 0
+                valid = (slot >= 0) & (slot < K)
                 if not valid.any():
                     continue
                 b_idx = torch.arange(B, device=device)[valid]
@@ -469,7 +470,7 @@ class AnchoredResampler(nn.Module):
                 q[b_idx, s_idx] = proj[valid].to(q.dtype)
             else:
                 mask = masks.get(g.name)
-                valid = slot >= 0
+                valid = (slot >= 0) & (slot < K)
                 if mask is not None:
                     valid = valid & mask.to(device)
                 if not valid.any():
@@ -594,20 +595,25 @@ def inject_anchors(
 ) -> None:
     """Write/add anchor embeddings into the matching slot(s) of ``pred`` in-place.
 
-    mutex=True : ``anchor_emb`` (B, D), ``slots`` (B,). Rows with slot >= 0 write.
+    mutex=True : ``anchor_emb`` (B, D), ``slots`` (B,). Rows with slot in
+                 ``[0, pred.shape[1])`` write; slots outside the resampler's
+                 K-cap are silently dropped (matches the cos-loss mask which
+                 only supervises ``slot < K``).
     mutex=False: ``anchor_emb`` (B, C, D), ``slots`` (B, C), optional ``mask``
-                 (B, C). Entries write when slot >= 0 and (mask is True or mask None).
+                 (B, C). Entries write when slot in ``[0, pred.shape[1])`` and
+                 (mask is True or mask None).
     """
     device = pred.device
+    K = pred.shape[1]
     if mutex:
-        valid = slots >= 0
+        valid = (slots >= 0) & (slots < K)
         if not valid.any():
             return
         b_idx = torch.arange(pred.shape[0], device=device)[valid]
         s_idx = slots[valid].to(device=device)
         values = anchor_emb[valid]
     else:
-        valid = slots >= 0
+        valid = (slots >= 0) & (slots < K)
         if mask is not None:
             valid = valid & mask.to(device=slots.device)
         if not valid.any():

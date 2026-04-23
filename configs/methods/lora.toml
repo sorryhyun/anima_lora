@@ -13,13 +13,13 @@
 # defaults — tune freely.
 
 
-network_alpha = 128
-network_dim = 128
+network_alpha = 48
+network_dim = 48
 
 learning_rate = 2e-5
-max_train_epochs = 2
-save_every_n_epochs = 2
-checkpointing_epochs = 2
+max_train_epochs = 4
+save_every_n_epochs = 4
+checkpointing_epochs = 4
 
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
@@ -39,46 +39,47 @@ alpha_rank_scale = 1.0
 
 # hydralora
 
-# output_name = "anima_hydra"
-# use_hydra = true
-# num_experts = 4
-# balance_loss_weight = 1e-4
-# # Hold the load-balance penalty at 0 during the first
-# # `balance_loss_warmup_ratio` of training so the router can specialize first,
-# # then flip to `balance_loss_weight` to stop a skewed router from collapsing
-# # further (empirically: entropy falls from 1.0 → 0.17 by 5k steps without this).
-# # 0.0 = no warmup (legacy behavior).
-# balance_loss_warmup_ratio = 0.3
-# expert_init_std = 0
+output_name = "anima_hydra"
+use_hydra = true
+num_experts = 4
+balance_loss_weight = 1e-6 # 1e-4 is tooo strong
 
-# # Router LR multiplier on top of unet_lr. Covers .router.* and .sigma_mlp.*.
-# # Router init is small (std=0.01) and lives in a softmax-uniform fixed point;
-# # 5–10× accelerates breaking symmetry. 1.0 = no override (legacy).
-# network_router_lr_scale = 20
+# Hold the load-balance penalty at 0 during the first
+# `balance_loss_warmup_ratio` of training so the router can specialize first,
+# then flip to `balance_loss_weight` to stop a skewed router from collapsing
+# further (empirically: entropy falls from 1.0 → 0.17 by 5k steps without this).
+# 0.0 = no warmup (legacy behavior).
+balance_loss_warmup_ratio = 0.3
+expert_init_std = 0
 
-# # Fraction of training steps with one-expert-per-step gradient masking.
-# # Forward stays full MoE; only the randomly-chosen expert's up-weight slice
-# # gets gradient. Forces specialization without ever isolating an expert.
-# expert_warmup_ratio = 0.1
+# Router LR multiplier on top of unet_lr. Covers .router.* and .sigma_mlp.*.
+# Router init is small (std=0.01) and lives in a softmax-uniform fixed point;
+# 5–10× accelerates breaking symmetry. 1.0 = no override (legacy).
+network_router_lr_scale = 20
 
-# hydra_router_layers = ".*(mlp\\.layer[12])$"
-# # hydra_router_layers = ".*(cross_attn\\.kv_proj)$"
+# Fraction of training steps with one-expert-per-step gradient masking.
+# Forward stays full MoE; only the randomly-chosen expert's up-weight slice
+# gets gradient. Forces specialization without ever isolating an expert.
+expert_warmup_ratio = 0.1
 
-# # timestep conditional hydralora
-# #
-# # σ is sinusoidal-encoded and **concatenated** to the router input, widening
-# # it from Linear(r, E) to Linear(r + sigma_feature_dim, E). sigma_feature_dim
-# # controls both the sinusoidal basis size and the router width; for scalar σ
-# # on [0, 1], 16–32 is plenty (half-dim frequency pairs span ~4 orders of
-# # magnitude). Must be even. sigma_hidden_dim is unused (the old sigma_mlp
-# # hidden layer is gone) and kept only for API back-compat.
+hydra_router_layers = ".*(mlp\\.layer[12])$"
+# hydra_router_layers = ".*(cross_attn\\.kv_proj)$"
 
-# use_sigma_router = true
-# sigma_feature_dim = 16
-# sigma_hidden_dim = 16   # unused; retained for API compat
-# sigma_router_layers = ".*(mlp\\.layer[12])$"
-# per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
-# num_sigma_buckets = 3
+# timestep conditional hydralora
+#
+# σ is sinusoidal-encoded and **concatenated** to the router input, widening
+# it from Linear(r, E) to Linear(r + sigma_feature_dim, E). sigma_feature_dim
+# controls both the sinusoidal basis size and the router width; for scalar σ
+# on [0, 1], 16–32 is plenty (half-dim frequency pairs span ~4 orders of
+# magnitude). Must be even. sigma_hidden_dim is unused (the old sigma_mlp
+# hidden layer is gone) and kept only for API back-compat.
+
+use_sigma_router = true
+sigma_feature_dim = 16
+sigma_hidden_dim = 16   # unused; retained for API compat
+sigma_router_layers = ".*(mlp\\.layer[12])$"
+per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
+num_sigma_buckets = 3
 
 # reft — residual-stream intervention on DiT block outputs (Wu et al. 2024).
 # One ReFTModule per selected block (NOT per internal Linear), matching the
@@ -89,11 +90,11 @@ alpha_rank_scale = 1.0
 #               = "stride_2"  -> every 2nd block
 #               = "3,7,11,15" -> explicit indices
 # add_reft = true
-# reft_dim = 64
-# reft_alpha = 64
+# reft_dim = 48
+# reft_alpha = 48
 # reft_layers = "last_8"
 
-blocks_to_swap = 20
+blocks_to_swap = 18
 
 
 

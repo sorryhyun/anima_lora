@@ -52,7 +52,7 @@ def parse_args():
         default="output/img2embs",
         help="Root output directory; creates features/, pretrain/, finetune/ under it.",
     )
-    p.add_argument("--encoder", default="siglip2", help="Encoder name (siglip2 | dinov3).")
+    p.add_argument("--encoder", default="tipsv2", help="Encoder name (siglip2 | dinov3).")
     p.add_argument("--image_dir", default="post_image_dataset",
                    help="Training image directory (must have cached VAE latents + T5 embeddings).")
     p.add_argument(

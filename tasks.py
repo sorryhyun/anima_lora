@@ -169,26 +169,60 @@ def cmd_postfix(extra):
 # ── img2emb ───────────────────────────────────────────────────────────
 
 
+def _encoder(default: str = "siglip2") -> str:
+    """Encoder select for img2emb commands (env ENCODER, default siglip2).
+
+    Current options: ``siglip2`` (default, 384² / 576 tokens / D=1024) and
+    ``tipsv2`` (TIPSv2-L/14 at 448² / 1025 tokens / D=1024, needs
+    ``make download-tipsv2`` + ``trust_remote_code``). Both are fixed-res
+    unless ``BUCKETS=1`` is set — see ``_buckets_flag``.
+    See scripts/img2emb/extract_features.py.
+    """
+    return os.environ.get("ENCODER", default)
+
+
+def _buckets_flag() -> list[str]:
+    """Return ``['--buckets']`` if bucketing should be active.
+
+    TIPSv2 only: aspect-preserving bucketed preprocessing (see
+    ``scripts/img2emb/buckets.py``). Must be set consistently for both
+    ``preprocess-img2emb`` and ``test-img2emb`` — the resampler sees a
+    different KV length distribution with vs without it.
+
+    Default: auto-enabled when ``ENCODER=tipsv2``. Override with ``BUCKETS=0``
+    (or ``false`` / ``no``) to force-disable; ``BUCKETS=1`` force-enables
+    (no-op on non-tipsv2 encoders — the training script ignores the flag).
+    """
+    val = os.environ.get("BUCKETS", "").strip().lower()
+    if val in {"0", "false", "no"}:
+        return []
+    if val:
+        return ["--buckets"]
+    return ["--buckets"] if _encoder() == "tipsv2" else []
+
+
 def cmd_img2emb(extra):
     """Usage: python tasks.py img2emb [features|anchors|pretrain|finetune] [extra...]
 
     Bare `img2emb` runs pretrain + finetune (features + anchors are a separate
     preprocessing step — `make preprocess-img2emb` / `python tasks.py preprocess-img2emb`).
+    Select encoder via ENCODER=<name> env (default siglip2).
     """
     stage = extra[0] if extra else None
     rest = extra[1:] if extra else []
+    enc = _encoder()
     if stage is None:
-        run([PY, "scripts/img2emb/train_img2emb.py", "pretrain"])
-        run([PY, "scripts/img2emb/train_img2emb.py", "finetune"])
+        run([PY, "scripts/img2emb/train_img2emb.py", "pretrain", "--encoder", enc])
+        run([PY, "scripts/img2emb/train_img2emb.py", "finetune", "--encoder", enc])
         return
     if stage == "anchors":
         run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py", *rest])
         return
-    run([PY, "scripts/img2emb/train_img2emb.py", stage, *rest])
+    run([PY, "scripts/img2emb/train_img2emb.py", stage, "--encoder", enc, *rest])
 
 
 def cmd_img2emb_features(extra):
-    run([PY, "scripts/img2emb/train_img2emb.py", "features", *extra])
+    run([PY, "scripts/img2emb/train_img2emb.py", "features", "--encoder", _encoder(), *_buckets_flag(), *extra])
 
 
 def cmd_img2emb_anchors(extra):
@@ -196,15 +230,15 @@ def cmd_img2emb_anchors(extra):
 
 
 def cmd_img2emb_pretrain(extra):
-    run([PY, "scripts/img2emb/train_img2emb.py", "pretrain", *extra])
+    run([PY, "scripts/img2emb/train_img2emb.py", "pretrain", "--encoder", _encoder(), *extra])
 
 
 def cmd_img2emb_finetune(extra):
-    run([PY, "scripts/img2emb/train_img2emb.py", "finetune", *extra])
+    run([PY, "scripts/img2emb/train_img2emb.py", "finetune", "--encoder", _encoder(), *extra])
 
 
 def cmd_preprocess_img2emb(extra):
-    run([PY, "scripts/img2emb/train_img2emb.py", "features", *extra])
+    run([PY, "scripts/img2emb/train_img2emb.py", "features", "--encoder", _encoder(), *_buckets_flag(), *extra])
     run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py"])
 
 
@@ -214,7 +248,7 @@ def cmd_test_img2emb(extra):
         print("Usage: python tasks.py test-img2emb <ref_image> [extra...]", file=sys.stderr)
         sys.exit(1)
     ref, *rest = extra
-    run([PY, "scripts/img2emb/test_img2emb.py", "--ref_image", ref, *rest])
+    run([PY, "scripts/img2emb/test_img2emb.py", "--ref_image", ref, "--encoder", _encoder(), *_buckets_flag(), *rest])
 
 
 # ── Inference ─────────────────────────────────────────────────────────
@@ -500,6 +534,13 @@ def cmd_comfy_batch(extra):
 def cmd_download_sam3(_extra):
     (ROOT / "models" / "sam3").mkdir(parents=True, exist_ok=True)
     run(["hf", "download", "facebook/sam3", "--local-dir", "models/sam3"])
+
+
+def cmd_download_tipsv2(_extra):
+    # TIPSv2 ships custom code consumed via trust_remote_code; grab the whole
+    # repo so local-dir load works offline. See scripts/img2emb/extract_features.py.
+    (ROOT / "models" / "tipsv2").mkdir(parents=True, exist_ok=True)
+    run(["hf", "download", "google/tipsv2-l14", "--local-dir", "models/tipsv2"])
 
 
 def cmd_download_mit(_extra):
@@ -815,6 +856,7 @@ COMMANDS = {
     "download-anima": (cmd_download_anima, "Download Anima model"),
     "download-sam3": (cmd_download_sam3, "Download SAM3 model"),
     "download-mit": (cmd_download_mit, "Download MIT model"),
+    "download-tipsv2": (cmd_download_tipsv2, "Download TIPSv2-L/14 (img2emb alt encoder)"),
     "mask": (cmd_mask, "Generate SAM3 + MIT masks, then merge"),
     "mask-sam": (cmd_mask_sam, "Generate SAM3 masks only"),
     "mask-mit": (cmd_mask_mit, "Generate MIT masks only"),

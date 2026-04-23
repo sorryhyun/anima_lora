@@ -1,35 +1,41 @@
 #!/usr/bin/env python
-"""Extract and cache image encoder features for the phase-0 bench.
+"""Preprocess reference images for img2emb training.
 
-crossattn_emb targets are NOT re-materialized here — they already exist
-per-image in ``post_image_dataset/*_anima_te.safetensors``. Probes load them
-on demand (see ``phase0_probes.py``). This script only emits the encoder
-features, the split, and a lightweight scan of active-token lengths.
+Caches TIPSv2 patch tokens + pooled features, builds the train/eval split,
+and scans cached T5 active-token lengths + per-variant pooled targets.
 
-Outputs (under ``--output_dir``, default ``bench/img2emb/results/phase0/``):
+Outputs (under ``--output_dir``, default ``output/img2embs/features/``):
 
-- ``features/{encoder}_tokens.safetensors``   (N, T, D_enc) bf16 — last_hidden_state
-- ``features/{encoder}_pooled.safetensors``   (N, D_enc) fp32 — pooler_output / CLS / mean
-- ``features/target_pooled.safetensors``      (N, V, D_y) fp32 — per-variant mean over
-                                               ``crossattn_emb_v*[:L]`` (InfoNCE target)
-- ``stems.json``                              ordered image stems for every tensor above
-- ``active_lengths.json``                     per-image non-zero-prefix length
-                                               (max over variants) + num_variants + image_dir
-- ``split.json``                              80/20 train/eval stems + indices
-- ``encoder_meta.json``                       resolved encoder config (model_id, image_size)
+- ``features/tipsv2_tokens.safetensors``     (N, T_MAX_TOKENS, D) bf16 —
+                                              zero-padded bucketed tokens
+- ``features/tipsv2_pooled.safetensors``     (N, D) fp32 — CLS pooled
+- ``features/tipsv2_buckets.json``           per-image bucket assignment
+- ``features/target_pooled.safetensors``     (N, V, D) fp32 — per-variant
+                                              mean over ``crossattn_emb_v*[:L]``
+                                              (InfoNCE target)
+- ``stems.json``                             ordered image stems
+- ``active_lengths.json``                    per-image non-zero-prefix length
+                                              (max over variants) + num_variants
+                                              + image_dir
+- ``split.json``                             80/20 train/eval stems + indices
+- ``encoder_meta.json``                      resolved encoder config
 
-Run once, then iterate probes against the cache.
+Images are assigned to the patch-14 bucket whose aspect ratio matches theirs,
+then all tokens zero-padded to ``T_MAX_TOKENS`` so the cache stays a single
+``(N, T_MAX_TOKENS, D)`` tensor. See ``scripts/img2emb/buckets.py``.
 
 Usage:
-    python scripts/img2emb/extract_features.py
-    python scripts/img2emb/extract_features.py --max_images 100 --encoders dinov3
+    python scripts/img2emb/preprocess.py
+    python scripts/img2emb/preprocess.py --max_images 100
 """
 
 import argparse
 import json
 import logging
 import random
+import shutil
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 import torch
@@ -39,8 +45,6 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-# results/ still lives under bench/img2emb/ from before the move; keep writing there.
-BENCH_DIR = REPO_ROOT / "bench" / "img2emb"
 sys.path.insert(0, str(REPO_ROOT))
 
 from library.io.cache import discover_cached_images  # noqa: E402
@@ -50,31 +54,15 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-ENCODERS = {
-    "dinov3": {
-        "model_id": str(REPO_ROOT / "models" / "dino"),
-        "image_size": 224,
-        # DINOv3: CLS + 4 register + 196 patches at 224×224, D=1280
-    },
-    "siglip2": {
-        "model_id": str(REPO_ROOT / "models" / "siglip2"),
-        "image_size": 384,
-        # SigLIP2 large: 576 patches at 384×384, D=1024. Downloaded via
-        # `make download-siglip2` (google/siglip2-large-patch16-384).
-    },
-    "tipsv2": {
-        "model_id": str(REPO_ROOT / "models" / "tipsv2"),
-        "image_size": 448,
-        # TIPSv2-L/14: 1 CLS + 1024 patch tokens (32×32 grid) at 448×448,
-        # patch=14, D=1024. Downloaded via `make download-tipsv2`
-        # (google/tipsv2-l14). Requires trust_remote_code=True. No HF image
-        # processor — plain torchvision Resize + ToTensor in [0,1] (no
-        # ImageNet normalization).
-    },
-}
+# TIPSv2-L/14: 1 CLS + patch tokens (grid = bucket[0] × bucket[1]) at 14 px/patch,
+# D=1024. Downloaded via `make download-tipsv2` (google/tipsv2-l14). Requires
+# trust_remote_code=True. No HF image processor — reference preprocessing is
+# plain torchvision Resize + ToTensor in [0, 1] (no ImageNet normalization).
+ENCODER_NAME = "tipsv2"
+ENCODER_MODEL_ID = str(REPO_ROOT / "models" / "tipsv2")
 
 
-def parse_args():
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--image_dir", default="post_image_dataset")
     p.add_argument(
@@ -85,11 +73,6 @@ def parse_args():
     )
     p.add_argument("--seed", type=int, default=42, help="Subsample + split seed")
     p.add_argument("--eval_frac", type=float, default=0.2)
-    p.add_argument(
-        "--encoders",
-        default="dinov3,siglip2,tipsv2",
-        help="Comma-separated encoder names from ENCODERS dict",
-    )
     p.add_argument("--batch_size", type=int, default=16)
     p.add_argument(
         "--num_workers",
@@ -104,24 +87,126 @@ def parse_args():
     )
     p.add_argument(
         "--output_dir",
-        default=str(BENCH_DIR / "results" / "phase0"),
+        default=str(REPO_ROOT / "output" / "img2embs" / "features"),
     )
     p.add_argument(
         "--skip_existing",
         action="store_true",
         help="Skip artifacts that already exist (resume / incremental).",
     )
-    p.add_argument(
-        "--buckets",
-        action="store_true",
-        help="TIPSv2 only: aspect-preserving bucketed preprocessing. Each "
-             "image is resized to the closest patch-14 bucket (~1024 tokens, "
-             "aspects 1:2..2:1); encoded outputs are zero-padded to a single "
-             "T_MAX so the cache stays a flat (N, T_MAX, D) tensor. Train and "
-             "test must use this flag together — the resampler sees a different "
-             "KV length distribution with/without it.",
+    return p.parse_args(argv)
+
+
+# --------------------------------------------------------------------------- TIPSv2 wrapper
+
+
+class TIPSv2Processor:
+    """HF-AutoImageProcessor-shaped wrapper for TIPSv2.
+
+    TIPSv2's reference preprocessing is plain Resize + ToTensor in ``[0, 1]`` —
+    no ImageNet mean/std. Accepts ``image_size`` as int (square) or
+    ``(H, W)`` tuple; bucket sizes are (H_pixels, W_pixels).
+    """
+
+    def __init__(self, image_size: int | tuple[int, int]):
+        from torchvision import transforms
+
+        if isinstance(image_size, int):
+            size_hw = (image_size, image_size)
+        else:
+            size_hw = (int(image_size[0]), int(image_size[1]))
+        self.image_size = size_hw
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize(size_hw),
+                transforms.ToTensor(),
+            ]
+        )
+
+    def __call__(self, images, return_tensors: str = "pt"):
+        assert return_tensors == "pt", "TIPSv2 processor only supports return_tensors='pt'"
+        if not isinstance(images, (list, tuple)):
+            images = [images]
+        pixel_values = torch.stack([self.transform(img) for img in images], dim=0)
+        return {"pixel_values": pixel_values}
+
+
+class _TIPSv2Output:
+    """Minimal HF ``BaseModelOutput``-shaped container."""
+
+    __slots__ = ("last_hidden_state", "pooler_output")
+
+    def __init__(self, last_hidden_state: torch.Tensor, pooler_output: torch.Tensor):
+        self.last_hidden_state = last_hidden_state
+        self.pooler_output = pooler_output
+
+
+class TIPSv2Encoder:
+    """Adapt TIPSv2's ``encode_image`` API to HF's ``last_hidden_state`` /
+    ``pooler_output`` convention.
+
+    ``last_hidden_state`` = CLS prepended to patch tokens → ``(B, 1+N, D)``;
+    ``pooler_output`` = the CLS token → ``(B, D)``.
+    """
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def __call__(self, pixel_values: torch.Tensor) -> _TIPSv2Output:
+        out = self.inner.encode_image(pixel_values)
+        if isinstance(out, (tuple, list)):
+            cls, patches = out[0], out[1]
+        elif isinstance(out, dict):
+            cls = out.get("cls_token", out.get("cls"))
+            patches = out.get("patch_tokens", out.get("patches"))
+        else:
+            cls = getattr(out, "cls_token", None)
+            patches = getattr(out, "patch_tokens", None)
+        if cls is None or patches is None:
+            raise RuntimeError(
+                f"TIPSv2 encode_image returned unexpected structure: type={type(out)}. "
+                "Expected (cls, patches) tuple, dict with 'cls_token'/'patch_tokens', "
+                "or object with .cls_token/.patch_tokens."
+            )
+        if cls.dim() == 2:
+            cls = cls.unsqueeze(1)  # (B, D) → (B, 1, D)
+        last_hidden = torch.cat([cls, patches], dim=1)  # (B, 1+N, D)
+        pooled = cls.squeeze(1)  # (B, D)
+        return _TIPSv2Output(last_hidden_state=last_hidden, pooler_output=pooled)
+
+
+def _ensure_tipsv2_siblings_cached(model_path: str) -> None:
+    """TIPSv2's modeling_tips.py imports image_encoder.py / text_encoder.py as
+    siblings at __init__ time. trust_remote_code only copies files referenced
+    in auto_map into the transformers_modules cache, so these siblings go
+    missing; the fallback then calls hf_hub_download(repo_id, ...) with the
+    local path as repo_id and raises HFValidationError. Pre-copy them here."""
+    src_dir = Path(model_path)
+    if not src_dir.is_dir():
+        return
+    cache_dir = (
+        Path.home()
+        / ".cache/huggingface/modules/transformers_modules"
+        / src_dir.name
     )
-    return p.parse_args()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    for sibling in ("image_encoder.py", "text_encoder.py"):
+        src = src_dir / sibling
+        if src.exists():
+            shutil.copy2(src, cache_dir / sibling)
+
+
+def load_encoder(device: torch.device) -> TIPSv2Encoder:
+    """Return a TIPSv2 encoder wrapped in the HF-style output shim, in eval bf16."""
+    from transformers import AutoModel
+
+    logger.info(f"Loading tipsv2: {ENCODER_MODEL_ID}")
+    _ensure_tipsv2_siblings_cached(ENCODER_MODEL_ID)
+    inner = AutoModel.from_pretrained(
+        ENCODER_MODEL_ID, torch_dtype=torch.bfloat16, trust_remote_code=True
+    )
+    inner.eval().to(device).requires_grad_(False)
+    return TIPSv2Encoder(inner)
 
 
 # --------------------------------------------------------------------------- datasets
@@ -131,7 +216,7 @@ class _ImageDataset(Dataset):
     """Yields ``(idx, pixel_values[C,H,W])``. Pickled into DataLoader workers,
     so PIL decode + processor preprocessing overlap the GPU encoder forward."""
 
-    def __init__(self, image_paths: list[str], processor):
+    def __init__(self, image_paths: list[str], processor: TIPSv2Processor):
         self.image_paths = image_paths
         self.processor = processor
 
@@ -186,222 +271,18 @@ class _ActiveLenDataset(Dataset):
         return idx, max_L, len(variants), pooled
 
 
-# --------------------------------------------------------------------------- encoders
-
-
-class _TIPSv2Processor:
-    """HF-AutoImageProcessor-shaped wrapper for TIPSv2.
-
-    TIPSv2's reference preprocessing is plain Resize + ToTensor in ``[0, 1]`` —
-    no ImageNet mean/std. We expose the ``processor(images=..., return_tensors="pt")``
-    signature so ``_ImageDataset`` and ``test_img2emb._encode_ref_image`` stay
-    encoder-agnostic.
-
-    ``image_size`` accepts either an ``int`` (square) or a ``(H, W)`` tuple. The
-    bucketed preprocessing path (``--buckets`` in ``extract_features.py``)
-    rebuilds one processor per bucket with its own ``(H, W)``.
-    """
-
-    def __init__(self, image_size: int | tuple[int, int]):
-        from torchvision import transforms
-
-        if isinstance(image_size, int):
-            size_hw = (image_size, image_size)
-        else:
-            size_hw = (int(image_size[0]), int(image_size[1]))
-        self.image_size = size_hw
-        self.transform = transforms.Compose(
-            [
-                transforms.Resize(size_hw),
-                transforms.ToTensor(),
-            ]
-        )
-
-    def __call__(self, images, return_tensors: str = "pt"):
-        assert return_tensors == "pt", "TIPSv2 processor only supports return_tensors='pt'"
-        if not isinstance(images, (list, tuple)):
-            images = [images]
-        pixel_values = torch.stack([self.transform(img) for img in images], dim=0)
-        return {"pixel_values": pixel_values}
-
-
-class _TIPSv2Output:
-    """Minimal HF ``BaseModelOutput``-shaped container."""
-
-    __slots__ = ("last_hidden_state", "pooler_output")
-
-    def __init__(self, last_hidden_state: torch.Tensor, pooler_output: torch.Tensor):
-        self.last_hidden_state = last_hidden_state
-        self.pooler_output = pooler_output
-
-
-class _TIPSv2Wrapper:
-    """Adapt TIPSv2's ``encode_image`` API to HF's ``last_hidden_state`` /
-    ``pooler_output`` convention so ``extract_features`` + ``test_img2emb`` don't
-    need an encoder-specific branch.
-
-    ``last_hidden_state`` = CLS prepended to patch tokens → ``(B, 1+N, D)``;
-    ``pooler_output`` = the CLS token → ``(B, D)``.
-    """
-
-    def __init__(self, inner):
-        self.inner = inner
-
-    def __call__(self, pixel_values: torch.Tensor) -> _TIPSv2Output:
-        out = self.inner.encode_image(pixel_values)
-        if isinstance(out, (tuple, list)):
-            cls, patches = out[0], out[1]
-        elif isinstance(out, dict):
-            cls = out.get("cls_token", out.get("cls"))
-            patches = out.get("patch_tokens", out.get("patches"))
-        else:
-            cls = getattr(out, "cls_token", None)
-            patches = getattr(out, "patch_tokens", None)
-        if cls is None or patches is None:
-            raise RuntimeError(
-                f"TIPSv2 encode_image returned unexpected structure: type={type(out)}. "
-                "Expected (cls, patches) tuple, dict with 'cls_token'/'patch_tokens', "
-                "or object with .cls_token/.patch_tokens."
-            )
-        if cls.dim() == 2:
-            cls = cls.unsqueeze(1)  # (B, D) → (B, 1, D)
-        last_hidden = torch.cat([cls, patches], dim=1)  # (B, 1+N, D)
-        pooled = cls.squeeze(1)  # (B, D)
-        return _TIPSv2Output(last_hidden_state=last_hidden, pooler_output=pooled)
-
-
-def _ensure_tipsv2_siblings_cached(model_path: str) -> None:
-    """TIPSv2's modeling_tips.py imports image_encoder.py / text_encoder.py as
-    siblings at __init__ time. trust_remote_code only copies files referenced
-    in auto_map into the transformers_modules cache, so these siblings go
-    missing; the fallback then calls hf_hub_download(repo_id, ...) with the
-    local path as repo_id and raises HFValidationError. Pre-copy them here."""
-    import shutil
-
-    src_dir = Path(model_path)
-    if not src_dir.is_dir():
-        return
-    cache_dir = (
-        Path.home()
-        / ".cache/huggingface/modules/transformers_modules"
-        / src_dir.name
-    )
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    for sibling in ("image_encoder.py", "text_encoder.py"):
-        src = src_dir / sibling
-        if src.exists():
-            shutil.copy2(src, cache_dir / sibling)
-
-
-def load_encoder(name: str, device: torch.device):
-    """Return ``(model, processor)`` for a named encoder; model in eval bf16."""
-    from transformers import AutoImageProcessor, AutoModel
-
-    cfg = ENCODERS[name]
-    mid = cfg["model_id"]
-    logger.info(f"Loading {name}: {mid}")
-
-    if name == "tipsv2":
-        # Custom code ships with the TIPSv2 repo; AutoImageProcessor doesn't
-        # apply — the reference preprocessing is plain torchvision.
-        _ensure_tipsv2_siblings_cached(mid)
-        inner = AutoModel.from_pretrained(
-            mid, torch_dtype=torch.bfloat16, trust_remote_code=True
-        )
-        inner.eval().to(device).requires_grad_(False)
-        return _TIPSv2Wrapper(inner), _TIPSv2Processor(image_size=cfg["image_size"])
-
-    processor = AutoImageProcessor.from_pretrained(mid, use_fast=True)
-
-    if name == "siglip2":
-        # We only need the vision tower; Siglip2Model also loads the text tower
-        # which wastes ~500MB. Load the whole thing and keep only .vision_model.
-        full = AutoModel.from_pretrained(mid, torch_dtype=torch.bfloat16)
-        model = full.vision_model
-        del full
-    else:
-        model = AutoModel.from_pretrained(mid, torch_dtype=torch.bfloat16)
-
-    model.eval()
-    model.to(device)
-    model.requires_grad_(False)
-    return model, processor
+# --------------------------------------------------------------------------- encode
 
 
 @torch.no_grad()
-def extract_features(
-    model,
-    processor,
-    name: str,
+def encode_images(
+    model: TIPSv2Encoder,
     image_paths: list[str],
     batch_size: int,
     num_workers: int,
     device: torch.device,
-):
-    """Run encoder over every image, return ``(pooled, tokens)``.
-
-    ``pooled`` is ``(N, D_enc)`` fp32, using ``out.pooler_output`` if the model
-    provides one and a mean-over-tokens fallback otherwise.
-    ``tokens`` is ``(N, T, D_enc)`` bf16, the full ``last_hidden_state`` (all
-    CLS / register / patch tokens — the resampler doesn't care about the split).
-
-    Outputs are pre-allocated and filled by index, so peak RAM is the final
-    tensor size (no chunk-list doubling during ``torch.cat``).
-    """
-    dataset = _ImageDataset(image_paths, processor)
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        pin_memory=(device.type == "cuda"),
-        shuffle=False,
-        persistent_workers=num_workers > 0,
-    )
-
-    N = len(dataset)
-    pooled_tensor: torch.Tensor | None = None
-    tokens_tensor: torch.Tensor | None = None
-
-    for idx, pixel_values in tqdm(loader, desc=f"encode/{name}"):
-        pixel_values = pixel_values.to(
-            device=device, dtype=torch.bfloat16, non_blocking=True
-        )
-        out = model(pixel_values=pixel_values)
-        last_hidden = out.last_hidden_state  # (B, T, D)
-
-        pooled = getattr(out, "pooler_output", None)
-        if pooled is None:
-            # Fallback: mean over all tokens. DINOv3 doesn't always expose
-            # pooler_output; the CLS token is position 0 but mean-pool is a
-            # safer apples-to-apples default across encoders.
-            pooled = last_hidden.mean(dim=1)
-
-        if tokens_tensor is None:
-            T, D = last_hidden.shape[1], last_hidden.shape[2]
-            D_pool = pooled.shape[-1]
-            tokens_tensor = torch.empty((N, T, D), dtype=torch.bfloat16)
-            pooled_tensor = torch.empty((N, D_pool), dtype=torch.float32)
-
-        tokens_tensor[idx] = last_hidden.detach().to(torch.bfloat16).cpu()
-        pooled_tensor[idx] = pooled.detach().float().cpu()
-
-    assert pooled_tensor is not None and tokens_tensor is not None
-    logger.info(
-        f"  {name}: pooled={tuple(pooled_tensor.shape)}  tokens={tuple(tokens_tensor.shape)}"
-    )
-    return pooled_tensor, tokens_tensor
-
-
-@torch.no_grad()
-def extract_features_bucketed(
-    model,
-    name: str,
-    image_paths: list[str],
-    batch_size: int,
-    num_workers: int,
-    device: torch.device,
-):
-    """Aspect-preserving variant of ``extract_features`` for TIPSv2.
+) -> tuple[torch.Tensor, torch.Tensor, list[list[int]]]:
+    """Aspect-preserving bucketed encode over every image.
 
     Each image is assigned to the closest patch-14 bucket (see
     ``scripts/img2emb/buckets.py``), then bucket-groups are encoded one at a
@@ -413,8 +294,6 @@ def extract_features_bucketed(
     ``bucket_assignments[i]`` is the ``[h_patches, w_patches]`` chosen for
     image ``i`` (diagnostic only; not read by training).
     """
-    from collections import defaultdict
-
     from scripts.img2emb.buckets import (
         PATCH,
         T_MAX_TOKENS,
@@ -434,7 +313,7 @@ def extract_features_bucketed(
 
     # Report the bucket distribution so preprocessing surprises are visible.
     dist = sorted(groups.items(), key=lambda kv: (-kv[0][0] / kv[0][1], kv[0]))
-    logger.info(f"  {name} bucket distribution (N={N}, T_MAX={T_MAX_TOKENS}):")
+    logger.info(f"  tipsv2 bucket distribution (N={N}, T_MAX={T_MAX_TOKENS}):")
     for (h, w), idxs in dist:
         Hp, Wp = bucket_pixel_size((h, w))
         logger.info(
@@ -447,7 +326,7 @@ def extract_features_bucketed(
     for bucket, indices in groups.items():
         Hp, Wp = bucket_pixel_size(bucket)
         T_bucket = bucket[0] * bucket[1] + 1  # +1 CLS
-        processor = _TIPSv2Processor(image_size=(Hp, Wp))
+        processor = TIPSv2Processor(image_size=(Hp, Wp))
         subset_paths = [image_paths[i] for i in indices]
         ds = _ImageDataset(subset_paths, processor)
         loader = DataLoader(
@@ -459,7 +338,7 @@ def extract_features_bucketed(
             persistent_workers=num_workers > 0,
         )
         for local_idx, pixel_values in tqdm(
-            loader, desc=f"encode/{name}/{bucket[0]}x{bucket[1]}", leave=False
+            loader, desc=f"encode/tipsv2/{bucket[0]}x{bucket[1]}", leave=False
         ):
             pixel_values = pixel_values.to(
                 device=device, dtype=torch.bfloat16, non_blocking=True
@@ -492,7 +371,7 @@ def extract_features_bucketed(
     assert tokens_tensor is not None and pooled_tensor is not None
     assignments = [list(b) for b in bucket_by_idx]
     logger.info(
-        f"  {name} (bucketed): pooled={tuple(pooled_tensor.shape)}  "
+        f"  tipsv2: pooled={tuple(pooled_tensor.shape)}  "
         f"tokens={tuple(tokens_tensor.shape)}  patch={PATCH}"
     )
     return pooled_tensor, tokens_tensor, assignments
@@ -536,7 +415,6 @@ def scan_active_lengths(
     pooled_tensor: torch.Tensor | None = None
 
     for idx, max_Ls, n_vs, pooled_b in tqdm(loader, desc="scan-targets"):
-        # idx: (B,), max_Ls: (B,), n_vs: (B,), pooled_b: (B, V, D)
         n_vs_unique = set(n_vs.tolist())
         if len(n_vs_unique) != 1:
             raise RuntimeError(
@@ -564,11 +442,17 @@ def scan_active_lengths(
     return L_list, V_seen, pooled_tensor
 
 
-# --------------------------------------------------------------------------- main
+# --------------------------------------------------------------------------- stage entrypoint
 
 
-def main():
-    args = parse_args()
+def preprocess(args: argparse.Namespace) -> None:
+    """Run the preprocess stage end-to-end using ``args``.
+
+    Importable from ``train.py`` so the pipeline can run in-process instead of
+    via ``subprocess``.
+    """
+    from scripts.img2emb.buckets import T_MAX_TOKENS
+
     out_dir = Path(args.output_dir)
     feat_dir = out_dir / "features"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -600,7 +484,7 @@ def main():
     tgt_pool_path = feat_dir / "target_pooled.safetensors"
     if args.skip_existing and act_path.exists() and tgt_pool_path.exists():
         logger.info(
-            f"active_lengths.json + target_pooled.safetensors already present, skipping"
+            "active_lengths.json + target_pooled.safetensors already present, skipping"
         )
     else:
         logger.info("Scanning per-image TE files for active lengths + pooled targets...")
@@ -628,63 +512,38 @@ def main():
         save_file({"pooled": target_pooled.contiguous()}, str(tgt_pool_path))
         logger.info(
             f"  → {tgt_pool_path} "
-            f"(shape={tuple(target_pooled.shape)}, ≈{target_pooled.element_size() * target_pooled.numel() / 1e6:.1f} MB)"
+            f"(shape={tuple(target_pooled.shape)}, "
+            f"≈{target_pooled.element_size() * target_pooled.numel() / 1e6:.1f} MB)"
         )
 
-    # --- encoders
+    # --- encoder features
     device = torch.device(args.device)
-    encoders = [e.strip() for e in args.encoders.split(",") if e.strip()]
-    if args.buckets and any(e != "tipsv2" for e in encoders):
-        logger.warning(
-            "--buckets is only implemented for tipsv2; other encoders run "
-            "fixed-resolution as usual."
+    p_pool = feat_dir / f"{ENCODER_NAME}_pooled.safetensors"
+    p_tok = feat_dir / f"{ENCODER_NAME}_tokens.safetensors"
+    p_buckets = feat_dir / f"{ENCODER_NAME}_buckets.json"
+    existing = p_pool.exists() and p_tok.exists() and p_buckets.exists()
+    if args.skip_existing and existing:
+        logger.info(f"{ENCODER_NAME} features already cached, skipping")
+    else:
+        model = load_encoder(device)
+        pooled, tokens, assignments = encode_images(
+            model,
+            image_paths,
+            args.batch_size,
+            args.num_workers,
+            device,
         )
-    for name in encoders:
-        if name not in ENCODERS:
-            logger.warning(f"Unknown encoder '{name}', skipping")
-            continue
-        p_pool = feat_dir / f"{name}_pooled.safetensors"
-        p_tok = feat_dir / f"{name}_tokens.safetensors"
-        p_buckets = feat_dir / f"{name}_buckets.json"
-        bucketed = args.buckets and name == "tipsv2"
-        existing = p_pool.exists() and p_tok.exists()
-        if bucketed:
-            existing = existing and p_buckets.exists()
-        if args.skip_existing and existing:
-            logger.info(f"{name} features already cached, skipping")
-            continue
-        model, processor = load_encoder(name, device)
-        if bucketed:
-            pooled, tokens, assignments = extract_features_bucketed(
-                model,
-                name,
-                image_paths,
-                args.batch_size,
-                args.num_workers,
-                device,
-            )
-        else:
-            pooled, tokens = extract_features(
-                model,
-                processor,
-                name,
-                image_paths,
-                args.batch_size,
-                args.num_workers,
-                device,
-            )
         save_file({"pooled": pooled}, str(p_pool))
         save_file({"tokens": tokens}, str(p_tok))
+        with open(p_buckets, "w") as f:
+            json.dump(
+                {"stems": stems, "buckets": assignments, "t_max": int(tokens.shape[1])},
+                f,
+            )
         logger.info(f"  → {p_pool}")
         logger.info(f"  → {p_tok}")
-        if bucketed:
-            with open(p_buckets, "w") as f:
-                json.dump(
-                    {"stems": stems, "buckets": assignments, "t_max": int(tokens.shape[1])},
-                    f,
-                )
-            logger.info(f"  → {p_buckets}")
-        del model, processor
+        logger.info(f"  → {p_buckets}")
+        del model
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
@@ -716,15 +575,25 @@ def main():
             f"  → {split_path} (train={len(train_idx)} eval={len(eval_idx)})"
         )
 
-    # --- encoder meta (for probes)
+    # --- encoder meta (for probes / provenance)
     with open(out_dir / "encoder_meta.json", "w") as f:
         json.dump(
-            {name: ENCODERS[name] for name in encoders if name in ENCODERS},
+            {
+                ENCODER_NAME: {
+                    "model_id": ENCODER_MODEL_ID,
+                    "t_max_tokens": T_MAX_TOKENS,
+                    "bucketed": True,
+                }
+            },
             f,
             indent=2,
         )
 
     logger.info("Done.")
+
+
+def main() -> None:
+    preprocess(parse_args())
 
 
 if __name__ == "__main__":
