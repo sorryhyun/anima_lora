@@ -19,7 +19,7 @@ TEST_COMMON = python inference.py \
 	--vae models/vae/qwen_image_vae.safetensors \
 	--vae_chunk_size 64 --vae_disable_cache \
 	--attn_mode flash \
-	--prompt "masterpiece, best quality, score_7, safe, @channel (caststation). An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
+	--prompt "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top and denim shorts is standing outdoors. She's holding a rectangular sign out in front of her that reads \"ANIMA\". She's looking at the viewer with a smile. The background features some trees and blue sky with clouds." \
 	--negative_prompt "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia" \
 	--image_size 1024 1024 \
 	--infer_steps 30 \
