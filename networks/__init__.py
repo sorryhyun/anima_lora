@@ -126,7 +126,6 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "num_experts",
     "balance_loss_weight",
     "balance_loss_warmup_ratio",
-    "expert_init_std",
     "expert_warmup_ratio",
     # Layer filter — concentrates MoE routers on cross-attn + MLP
     "hydra_router_layers",

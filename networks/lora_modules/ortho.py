@@ -158,17 +158,12 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
     ``score_e`` genuinely different because each expert writes into a
     distinct output subspace, which is what breaks the deadlock.
 
-    Expert-init note: ``expert_init_std`` is retained for API compatibility
-    but is redundant here — disjoint bases already differentiate experts at
-    init. Setting it to a positive value adds a within-slice rotation to
-    ``S_p``, which does not break orthogonality across slices (Cayley keeps
-    each ``R_p[e]`` in SO(r) of its own slice).
-
     Fallback: if ``min(out_dim, in_dim) < num_experts * lora_dim`` we cannot
     partition disjointly, so ``P_bases`` degenerates to the legacy shared
-    ``P_basis`` replicated ``E`` times. A warning is logged; in that case the
-    ``expert_init_std`` perturbation is the only symmetry-breaker and should
-    be kept non-zero.
+    ``P_basis`` replicated ``E`` times (warning logged). In that case all
+    experts start identical (shared basis + zero ``S_p`` + zero
+    ``lambda_layer``); ``expert_warmup_ratio`` is the only symmetry-breaker —
+    do not run narrow-layer Hydra with ``expert_warmup_ratio=0``.
     """
 
     def __init__(
@@ -185,7 +180,6 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         channel_scale=None,
         sigma_feature_dim: int = 0,
         sigma_hidden_dim: int = 128,
-        expert_init_std: float = 1e-4,
     ):
         super().__init__(
             lora_name,
@@ -221,13 +215,13 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
             P_bases_init = P_stack.permute(1, 0, 2).clone().contiguous()
         else:
             # Fallback: not enough singular directions to disjoint-partition.
-            # Replicate the top-r slice across experts (legacy behavior) and
-            # rely on expert_init_std to break symmetry.
+            # Replicate the top-r slice across experts (legacy behavior).
+            # Symmetry-breaking falls to expert_warmup_ratio.
             import logging as _logging
             _logging.getLogger(__name__).warning(
                 f"{lora_name}: min(out={out_dim}, in={in_dim})={max_cols} < "
                 f"num_experts*lora_dim={target_cols}; falling back to shared "
-                "P_basis (experts rely on expert_init_std for differentiation)."
+                "P_basis (experts rely on expert_warmup_ratio for differentiation)."
             )
             P_shared = U[:, :lora_dim].clone().contiguous()  # (out, r)
             P_bases_init = P_shared.unsqueeze(0).expand(
@@ -246,12 +240,8 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # Per-expert P rotations: each expert rotates its own output basis.
         # With disjoint P_bases, zero-init S_p still yields E distinct P_eff
         # slices (one per basis partition) — no manual symmetry-breaking needed.
-        # expert_init_std is kept for fallback (shared basis) and for
-        # additional within-slice randomization; it does not alter the
-        # cross-expert orthogonality guarantee.
+        # In the narrow-layer fallback, expert_warmup_ratio carries that role.
         self.S_p = torch.nn.Parameter(torch.zeros(num_experts, lora_dim, lora_dim))
-        if expert_init_std > 0.0 and not self._disjoint_basis:
-            torch.nn.init.normal_(self.S_p, mean=0.0, std=expert_init_std)
 
         # Shared diagonal scale — zero-init → ΔW = 0 at init
         self.lambda_layer = torch.nn.Parameter(torch.zeros(1, lora_dim))

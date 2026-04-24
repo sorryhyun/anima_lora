@@ -147,19 +147,15 @@ def create_network(
     balance_loss_weight = (
         float(balance_loss_weight) if balance_loss_weight is not None else 0.01
     )
-    # Break per-expert symmetry at init — without this, zero-init ups (or S_p)
-    # give every expert identical outputs and identical gradients under a
-    # near-uniform router, so neither experts nor router ever diverge (MoE
-    # cold-start deadlock). 1e-4 keeps ΔW ~ std·‖down‖·‖x‖ negligible at init
-    # while giving the router a distinct direction per expert to latch onto.
-    # Set to 0.0 to restore legacy zero-init.
-    expert_init_std = float(kwargs.get("expert_init_std", 0))
     # Fraction of training steps during which only one randomly-chosen expert
     # per module receives gradient (forward still uses all experts via the
     # learned gate, so each expert learns in the full MoE context). 0.0 =
-    # off; 0.1 = warmup for the first 10% of steps. Complements
-    # expert_init_std: the init perturb gives the router distinct directions
-    # to latch onto, warmup then forces experts to actually specialize.
+    # off; 0.1 = warmup for the first 10% of steps. This is the per-expert
+    # symmetry-breaker: zero-init experts (plain Hydra `lora_up_weight`,
+    # OrthoHydra-narrow `S_p`) start identical, and warmup forces each to
+    # accumulate distinct gradients before the router can collapse onto a
+    # subset. Disjoint OrthoHydra bases break symmetry structurally and need
+    # no warmup, but warmup still helps the router avoid early starvation.
     expert_warmup_ratio = float(kwargs.get("expert_warmup_ratio", 0.0))
 
     # σ-conditional HydraLoRA router (Track B, docs: timestep-hydra.md).
@@ -305,7 +301,6 @@ def create_network(
         sigma_hidden_dim=sigma_hidden_dim,
         sigma_router_layers=sigma_router_layers,
         hydra_router_layers=hydra_router_layers,
-        expert_init_std=expert_init_std,
         expert_warmup_ratio=expert_warmup_ratio,
         router_lr_scale=router_lr_scale,
     )
@@ -666,9 +661,6 @@ def create_network_from_weights(
             )
             else None
         ),
-        # load_state_dict overwrites the random init, so skip the perturb to
-        # avoid transient CPU noise on (E, out, r) experts during build.
-        expert_init_std=0.0,
         # from-weights path is inference/eval; warmup is a train-time schedule.
         expert_warmup_ratio=0.0,
     )

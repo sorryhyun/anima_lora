@@ -103,7 +103,7 @@ There's a load-bearing symmetry problem HydraLoRA has to solve **before** the ba
 
 Zero-init `lora_up_weight` has every expert identical. Under a near-uniform router, all experts receive *identical gradient*, so they evolve permutation-symmetrically — they stay identical forever, and the router in turn has no signal to differentiate them. End state: the network trains as a single LoRA averaged over 4 heads, paying 4× the parameter cost for no specialization.
 
-Plain HydraLoRA's mitigation is a small Gaussian perturbation (`expert_init_std`) on `lora_up_weight` to break the symmetry at step 0. That works sometimes, but still allows experts to go dead: on a `balance_loss_weight = 0` run, the router specialized on a subset of experts in the first epoch, and the ones it happened to ignore never received gradient and stayed near zero — 42% of experts dead after one epoch.
+Plain HydraLoRA's mitigation is `expert_warmup_ratio` (`networks/lora_anima/network.py:step_expert_warmup`): for the first `r·max_train_steps` steps, only one randomly-chosen expert per module receives gradient at each step (forward still uses all experts via the learned gate, so each expert learns in the full MoE context). Each expert is guaranteed to accumulate a distinct gradient direction during the warmup window, breaking the cold-start deadlock. An earlier mitigation, a small Gaussian perturbation (`expert_init_std`) on `lora_up_weight`, was removed on 2026-04-24 — bench `0424-484` confirmed the failure mode is router-side collapse (router-ignored experts), not expert symmetry, so the init perturb didn't help and was misleading.
 
 ### 5.2 Orthogonalized experts
 
@@ -120,7 +120,7 @@ Each expert then rotates **inside its own slice** via its own Cayley $R_p[e] \in
 
 Why this is a *structural* deadlock breaker: with a shared basis, every $P_\text{eff}[e]$ lives in the same rank-$r$ column span, so $P_\text{eff}[i]^\top\,P_\text{eff}[j]$ is an orthogonal matrix — it *cannot* be zero. The router's per-expert score is near-identical at init and there is no gradient to differentiate experts. **Disjoint slices** make the router's score genuinely different at step 0 because each expert writes into a distinct output subspace, so the router has signal to latch onto before any expert has been trained.
 
-`expert_init_std` is retained for API back-compat but is **redundant** with disjoint bases — a within-slice rotation on $S_p$ doesn't break cross-slice orthogonality, it just adds small random rotation. If $\min(d_\text{in}, d_\text{out}) < E \cdot r$ the partition cannot fit and `P_bases` falls back to the legacy shared `P_basis` replicated $E$ times (with a warning); in that fallback, `expert_init_std > 0` is the only symmetry-breaker.
+If $\min(d_\text{in}, d_\text{out}) < E \cdot r$ the partition cannot fit and `P_bases` falls back to the legacy shared `P_basis` replicated $E$ times (with a warning). In that fallback, every expert starts identical (shared basis + zero $S_p$ + zero $\lambda$); `expert_warmup_ratio` is the only symmetry-breaker, so it must not be zero for narrow-layer Hydra.
 
 Activated by setting both `use_ortho = true` and `use_hydra = true`, which is the configured default in the HydraLoRA block of `configs/methods/lora.toml`.
 
@@ -194,6 +194,6 @@ Requires `cache_llm_adapter_outputs = true` (same as standard LoRA in this repo 
 
 1. Shared `lora_down`, stacked per-expert `lora_up`, layer-local router.
 2. Router reads **RMS-pooled rank-$r$** activation, softmax over $E$. Per-sample, per-layer gate.
-3. Symmetry break at init comes from either (a) `expert_init_std` Gaussian perturbation on `lora_up` (plain HydraLoRA) or (b) disjoint SVD-slice output subspaces for each expert (OrthoHydra — the configured default). (b) is structural, (a) is stochastic.
+3. Symmetry break comes from either (a) `expert_warmup_ratio` (per-step random expert-gradient masking — plain HydraLoRA and OrthoHydra-narrow fallback) or (b) disjoint SVD-slice output subspaces for each expert (OrthoHydra-disjoint — the configured default). (b) is structural at init; (a) is a training-time schedule.
 4. Switch Transformer balance loss at $\alpha_\text{bal} = 0.001$ averaged across all hydra modules keeps experts alive.
 5. Ships as two files: a merged-down plain LoRA (lossy, ComfyUI native) and a full moe file (lossless, requires the custom node).

@@ -66,7 +66,6 @@ class HydraLoRAModule(BaseLoRAModule):
         channel_scale=None,
         sigma_feature_dim: int = 0,
         sigma_hidden_dim: int = 128,
-        expert_init_std: float = 0,
     ):
         super().__init__(
             lora_name,
@@ -90,17 +89,12 @@ class HydraLoRAModule(BaseLoRAModule):
         torch.nn.init.kaiming_uniform_(self.lora_down.weight, a=math.sqrt(5))
 
         # Fused per-expert up projections: (num_experts, out_dim, lora_dim).
-        # Zero-init makes ΔW = 0 at step 0 (classic LoRA-safe), but also makes
-        # every expert identical — with a near-uniform router, all experts get
-        # the same gradient and evolve permutation-symmetrically, and the
-        # router in turn has no signal to differentiate them (MoE cold-start
-        # deadlock). A tiny normal perturbation breaks the symmetry while
-        # keeping ΔW ~ std·‖lora_down‖·‖x‖ negligibly small at init.
+        # Zero-init keeps ΔW = 0 at step 0 (LoRA-safe). Per-expert symmetry is
+        # broken by `expert_warmup_ratio` (random per-step expert-gradient
+        # masking — see LoRANetwork.step_expert_warmup), not by an init perturb.
         self.lora_up_weight = torch.nn.Parameter(
             torch.zeros(num_experts, out_dim, self.lora_dim)
         )
-        if expert_init_std > 0.0:
-            torch.nn.init.normal_(self.lora_up_weight, mean=0.0, std=expert_init_std)
 
         # Local router: reads [pooled rank-R signal | sinusoidal(σ)] → per-sample
         # expert gates. Operating in rank-R space (not raw in_dim) is load-bearing:

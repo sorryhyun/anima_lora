@@ -88,7 +88,6 @@ class LoRANetwork(torch.nn.Module):
         sigma_router_names: Optional[List[str]] = None,
         hydra_router_layers: Optional[str] = None,
         hydra_router_names: Optional[List[str]] = None,
-        expert_init_std: float = 1e-4,
         expert_warmup_ratio: float = 0.0,
         router_lr_scale: float = 1.0,
     ) -> None:
@@ -106,7 +105,6 @@ class LoRANetwork(torch.nn.Module):
         self.layer_start = layer_start
         self.layer_end = layer_end
         self.num_experts = num_experts
-        self.expert_init_std = float(expert_init_std)
         self.expert_warmup_ratio = float(expert_warmup_ratio)
         self.channel_scales_dict = channel_scales_dict
         self._channel_scale_misses: List[str] = []
@@ -354,10 +352,8 @@ class LoRANetwork(torch.nn.Module):
                     pass  # no extra kwargs — SVD init reads from org_module directly
                 elif effective_module_class == OrthoHydraLoRAExpModule:
                     extra_kwargs["num_experts"] = self.num_experts
-                    extra_kwargs["expert_init_std"] = self.expert_init_std
                 elif effective_module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = self.num_experts
-                    extra_kwargs["expert_init_std"] = self.expert_init_std
 
                 # σ-conditional router: only widen the router input with
                 # sinusoidal(σ) features on modules whose name matches the
