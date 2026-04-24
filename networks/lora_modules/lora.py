@@ -5,6 +5,7 @@ import math
 import torch
 
 from networks.lora_modules.base import BaseLoRAModule
+from networks.lora_modules.custom_autograd import lora_down_project
 
 
 class LoRAModule(BaseLoRAModule):
@@ -59,6 +60,11 @@ class LoRAModule(BaseLoRAModule):
 
         self._register_channel_scale(self.lora_down.weight.data, channel_scale)
 
+        # Opt-in: save bf16 x instead of retaining fp32 x_lora for backward.
+        # Linear-only (Conv2d takes the legacy path). Set externally by the
+        # network factory when use_custom_down_autograd is enabled.
+        self.use_custom_down_autograd = False
+
     def forward(self, x):
         # Policy: bf16 storage, fp32 for the bottleneck matmuls. The down-proj
         # accumulates over embed_dim (large) and the up-proj output is added
@@ -72,11 +78,18 @@ class LoRAModule(BaseLoRAModule):
         # per-channel input rebalancing (SmoothQuant-style). Absorbed scale is
         # baked into lora_down at init; we divide x here so the net forward is
         # unchanged but per-column gradients are balanced.
-        x_lora = self._rebalance(x)
-
-        lx = torch.nn.functional.linear(
-            x_lora.float(), self.lora_down.weight.float()
-        )
+        if (
+            self.use_custom_down_autograd
+            and self.training
+            and isinstance(self.lora_down, torch.nn.Linear)
+        ):
+            inv_scale = self.inv_scale if self._has_channel_scale else None
+            lx = lora_down_project(x, self.lora_down.weight, inv_scale)
+        else:
+            x_lora = self._rebalance(x)
+            lx = torch.nn.functional.linear(
+                x_lora.float(), self.lora_down.weight.float()
+            )
 
         # timestep-dependent rank masking
         if self._timestep_mask is not None and self.training:

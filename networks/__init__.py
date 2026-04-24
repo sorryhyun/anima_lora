@@ -90,6 +90,8 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     "per_channel_scaling",
     "channel_stats_path",
     "channel_scaling_alpha",
+    # Memory-saving down-projection autograd (classic LoRA only; bitwise-equal grads)
+    "use_custom_down_autograd",
     # Variant selectors (read by resolve_network_spec)
     "use_dora",
     "use_hydra",

@@ -16,7 +16,7 @@ Three things this repo aims to do well:
 
 ## 1. Fast training
 
-**15.2 GB peak VRAM · 1.3 s/step** on a single RTX 5060 Ti — achieved by co-designing the data pipeline, attention, and compiler stack so Dynamo sees one static shape for the whole run.
+**12.8 GB peak VRAM · 1.3 s/step** on a single RTX 5060 Ti — achieved by co-designing the data pipeline, attention, and compiler stack so Dynamo sees one static shape for the whole run.
 
 | Lever | Summary |
 |---|---|
@@ -33,10 +33,10 @@ Three things this repo aims to do well:
 | FA2 (plain) | 7.0 GB | 14:51 | 7:26 | 0.092 | 0.212 |
 | FA2 + compile (eager fallback) | 7.7 GB | 15:10 | 7:26 | 0.089 | 0.211 |
 | FA2 + compile (static tokens) | 6.2 GB | 11:07 | 5:01 | 0.086 | 0.193 |
-| FA2 + compile − grad ckpt | 15.2 GB | **7:07** | **3:30** | 0.088 | 0.206 |
-| same, rank 32 fast preset | 15.6 GB | 6:20 | 2:59 | 0.090 | 0.212 |
+| FA2 + compile − grad ckpt | 15.2 GB | 7:07 | 3:30 | 0.088 | 0.206 |
+| **same, custom autograd** | **12.8 GB** | **6:40** | **3:15** | 0.090 | 0.212 |
 
-> CUDA 13.2 hits **1.15 s/step** at 15.5 GB — landing once PyTorch 2.12 ships. See [cuda132.md](docs/optimizations/cuda132.md).
+> CUDA 13.2 hits **1.2 s/step** at 13.0 GB — landing once PyTorch 2.12 ships. See [cuda132.md](docs/optimizations/cuda132.md).
 
 Compile pipeline details in [docs/optimizations/for_compile.md](docs/optimizations/for_compile.md).
 

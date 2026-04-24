@@ -18,7 +18,7 @@
 
 ## 1. 빠른 학습
 
-**15.2 GB 피크 VRAM · 1.3 s/iter** — 단일 RTX 5060 Ti 기준. 데이터 파이프라인 · 어텐션 · 컴파일러 스택을 함께 설계하여 Dynamo가 학습 전체에서 단일 정적 shape만 보게 만든 결과:
+**12.8 GB 피크 VRAM · 1.3 s/iter** — 단일 RTX 5060 Ti 기준. 데이터 파이프라인 · 어텐션 · 컴파일러 스택을 함께 설계하여 Dynamo가 학습 전체에서 단일 정적 shape만 보게 만든 결과:
 
 | 레버 | 요약 |
 |---|---|
@@ -36,9 +36,9 @@
 | FA2 + compile (eager fallback) | 7.7 GB | 15:10 | 7:26 | 0.089 | 0.211 |
 | FA2 + compile (고정 토큰) | 6.2 GB | 11:07 | 5:01 | 0.086 | 0.193 |
 | FA2 + compile − grad ckpt | 15.2 GB | **7:07** | **3:30** | 0.088 | 0.206 |
-| 같은 설정, rank 32 fast preset | 15.6 GB | 6:20 | 2:59 | 0.090 | 0.212 |
+| **same, custom autograd** | **12.8 GB** | **6:40** | **3:15** | 0.090 | 0.212 |
 
-> CUDA 13.2에서는 **1.15 s/iter**, 15.5 GB 피크. PyTorch 2.12 릴리스 시 지원 예정. 자세한 내용은 [cuda132.md](docs/optimizations/cuda132.md).
+> CUDA 13.2에서는 **1.2 s/iter**, 15.5 GB 피크. PyTorch 2.12 릴리스 시 지원 예정. 자세한 내용은 [cuda132.md](docs/optimizations/cuda132.md).
 
 컴파일 파이프라인 상세는 [docs/optimizations/for_compile.md](docs/optimizations/for_compile.md).
 

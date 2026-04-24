@@ -1382,7 +1382,7 @@ class Anima(nn.Module):
         """
         self.static_token_count = count
 
-    def compile_blocks(self, backend: str = "inductor"):
+    def compile_blocks(self, backend: str = "inductor", mode: Optional[str] = None):
         """torch.compile each block's _forward individually.
 
         Compiles _forward (the actual attention/MLP computation) rather than
@@ -1390,13 +1390,18 @@ class Anima(nn.Module):
         unsloth_checkpoint has @torch._disable_dynamo, which causes an
         immediate graph break if forward itself is compiled — dynamo compiles
         nothing useful but still checks shape guards, causing recompile storms.
+
+        ``mode`` maps to torch.compile's inductor preset (e.g. ``reduce-overhead``
+        to enable per-block CUDAGraphs). ``None`` leaves it unset (inductor default).
         """
+        compile_kwargs = {"backend": backend, "dynamic": False}
+        if mode is not None:
+            compile_kwargs["mode"] = mode
         for i, block in enumerate(self.blocks):
-            block._forward = torch.compile(
-                block._forward, backend=backend, dynamic=False
-            )
+            block._forward = torch.compile(block._forward, **compile_kwargs)
         print(
-            f"Anima: compiled {len(self.blocks)} block._forward with backend={backend}"
+            f"Anima: compiled {len(self.blocks)} block._forward with "
+            f"backend={backend}, mode={mode}"
         )
 
     @property
@@ -1738,8 +1743,11 @@ class Anima(nn.Module):
         # receives requires_grad=False (frozen patch_embed output) while
         # blocks 1+ receive True (LoRA-enhanced).  All blocks share the
         # same compiled _forward, so a mismatch triggers dynamo recompilation.
-        if self.training:
-            x_B_T_H_W_D = x_B_T_H_W_D.requires_grad_()
+        # Unconditional: self.training is False during training when
+        # gradient_checkpointing is off (train.py sets unet.eval() and never
+        # flips back). requires_grad_(True) is a no-op under torch.no_grad().
+        # if self.training:
+        x_B_T_H_W_D = x_B_T_H_W_D.requires_grad_()
 
         for block_idx, block in enumerate(self.blocks):
             if self.blocks_to_swap:

@@ -5,6 +5,7 @@ import math
 import torch
 
 from networks.lora_modules.base import BaseLoRAModule
+from networks.lora_modules.custom_autograd import lora_down_project
 
 
 def _sigma_sinusoidal_features(
@@ -121,20 +122,21 @@ class HydraLoRAModule(BaseLoRAModule):
 
         self._register_channel_scale(self.lora_down.weight.data, channel_scale)
 
+        # Opt-in: save bf16 x instead of retaining fp32 x_lora for backward.
+        # Set externally by the network factory when use_custom_down_autograd
+        # is enabled. Applies to the shared down projection; router + gate-
+        # weighted up projection take the legacy path.
+        self.use_custom_down_autograd = False
+
         self._last_gate = None  # (B, num_experts), cached each forward for balance loss
         self._sigma = None  # (B,) σ tensor; set externally by LoRANetwork.set_sigma
-        # Expert-warmup gradient masking. Split into a Python bool gate and a
-        # buffer holding the one-hot mask so torch.compile doesn't blow its
-        # recompile limit every time the sampled expert rotates:
-        #   * ``_warmup_active`` toggles only twice per run (entering and
-        #     leaving the warmup window) — dynamo recompiles on transitions,
-        #     not per step.
-        #   * ``_expert_grad_mask`` is a buffer; value mutations are treated as
-        #     dynamic by dynamo, so per-step re-sampling of the active expert
-        #     does not recompile.
-        # Set externally by LoRANetwork.step_expert_warmup. Default (all-ones
-        # mask, gate off) is a no-op — every expert trains normally.
-        self._warmup_active: bool = False
+        # Expert-warmup gradient masking. Single buffer holding the per-expert
+        # grad-scale (1.0 = full gradient, 0.0 = stop-grad). Default all-ones
+        # makes the forward branch a no-op (``up*1 + up.detach()*0 == up``),
+        # so the branch is applied unconditionally — no Python-bool guard for
+        # dynamo to recompile on. LoRANetwork.step_expert_warmup flips values
+        # in-place; buffer mutations are tracked as dynamic by dynamo, no
+        # recompile per step.
         self.register_buffer(
             "_expert_grad_mask",
             torch.ones(num_experts, dtype=torch.float32),
@@ -199,11 +201,14 @@ class HydraLoRAModule(BaseLoRAModule):
             return org_forwarded
 
         # per-channel input rebalancing (SmoothQuant-style, see LoRAModule.forward)
-        x_lora = self._rebalance(x)
-
-        lx = torch.nn.functional.linear(
-            x_lora.float(), self.lora_down.weight.float()
-        )
+        if self.use_custom_down_autograd and self.training:
+            inv_scale = self.inv_scale if self._has_channel_scale else None
+            lx = lora_down_project(x, self.lora_down.weight, inv_scale)
+        else:
+            x_lora = self._rebalance(x)
+            lx = torch.nn.functional.linear(
+                x_lora.float(), self.lora_down.weight.float()
+            )
 
         # Layer-local routing: gate is computed from the rank-R signal *before*
         # timestep masking / dropout — those are training-time perturbations and
@@ -224,18 +229,17 @@ class HydraLoRAModule(BaseLoRAModule):
 
         # Expert-warmup masking: keep full MoE inference (all experts contribute
         # via the learned gate) but let gradient flow only into the randomly-
-        # chosen expert's up-weight slice. Breaks the cold-start deadlock where
-        # zero-init experts receive identical gradients under a near-uniform
-        # router. ``_warmup_active`` is a python bool that toggles twice per
-        # run (enter/leave warmup); the per-step sampled expert is carried in
-        # the ``_expert_grad_mask`` buffer, whose value changes don't trigger
-        # dynamo recompiles.
+        # chosen expert's up-weight slice during warmup. Breaks the cold-start
+        # deadlock where zero-init experts receive identical gradients under a
+        # near-uniform router. Applied unconditionally — outside warmup the
+        # mask is all-ones, so ``up*1 + up.detach()*0`` collapses to ``up``
+        # (autograd-equivalent). No Python-bool guard means no dynamo recompile
+        # at the warmup→post-warmup transition.
         up_weight = self.lora_up_weight
-        if self.training and self._warmup_active:
-            expert_mask = self._expert_grad_mask.to(up_weight.dtype).view(-1, 1, 1)
-            up_weight = (
-                up_weight * expert_mask + up_weight.detach() * (1.0 - expert_mask)
-            )
+        expert_mask = self._expert_grad_mask.to(up_weight.dtype).view(-1, 1, 1)
+        up_weight = (
+            up_weight * expert_mask + up_weight.detach() * (1.0 - expert_mask)
+        )
 
         # Gate-weighted combined weight per batch element: (B, out_dim, lora_dim)
         combined = torch.einsum(

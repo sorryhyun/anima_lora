@@ -343,6 +343,16 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "(incompatible with gradient checkpointing and block swap)",
     )
     parser.add_argument(
+        "--compile_inductor_mode",
+        type=str,
+        default=None,
+        choices=[None, "default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"],
+        help="Inductor preset forwarded as torch.compile(..., mode=...). "
+        "'reduce-overhead' enables CUDAGraphs — requires stable tensor addresses "
+        "across steps and is incompatible with block swap. Works with both "
+        "--compile_mode=blocks and --compile_mode=full (per-block graph vs one graph).",
+    )
+    parser.add_argument(
         "--xformers", action="store_true", help="use xformers for CrossAttention"
     )
     parser.add_argument(

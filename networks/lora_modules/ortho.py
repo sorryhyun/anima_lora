@@ -4,6 +4,7 @@
 import torch
 
 from networks.lora_modules.base import BaseLoRAModule
+from networks.lora_modules.custom_autograd import lora_down_project
 from networks.lora_modules.hydra import _sigma_sinusoidal_features
 
 
@@ -84,6 +85,11 @@ class OrthoLoRAExpModule(BaseLoRAModule):
         # Absorb into Q_basis so the frozen path is rebalanced.
         self._register_channel_scale(self.Q_basis, channel_scale)
 
+        # Opt-in: save bf16 x instead of retaining the fp32 upcast for backward.
+        # Applies to the Q_eff projection only; the P_eff multiply stays on the
+        # legacy path (its input ``lx`` is already rank-sized and cheap).
+        self.use_custom_down_autograd = False
+
     # --- Cayley transform (exact inverse, r×r is tiny) ---
     @staticmethod
     def _cayley(S: torch.Tensor) -> torch.Tensor:
@@ -98,9 +104,6 @@ class OrthoLoRAExpModule(BaseLoRAModule):
         if self._skip_module():
             return org_forwarded
 
-        dtype = self.P_basis.dtype
-        x_lora = self._rebalance(x.to(dtype))
-
         # Cayley-parameterized orthogonal rotations (r × r)
         R_q = self._cayley(self.S_q)  # (r, r)
         Q_eff = R_q @ self.Q_basis  # (r, in_dim)
@@ -109,7 +112,13 @@ class OrthoLoRAExpModule(BaseLoRAModule):
         mask = self._timestep_mask
 
         # x @ Q_eff^T → (*, r), then scale by lambda
-        lx = torch.nn.functional.linear(x_lora, Q_eff)  # (*, r)
+        if self.use_custom_down_autograd and self.training:
+            inv_scale = self.inv_scale if self._has_channel_scale else None
+            lx = lora_down_project(x, Q_eff, inv_scale)  # (*, r)
+        else:
+            dtype = self.P_basis.dtype
+            x_lora = self._rebalance(x.to(dtype))
+            lx = torch.nn.functional.linear(x_lora, Q_eff)  # (*, r)
         if mask is not None:
             lx = lx * self.lambda_layer * mask
         else:
@@ -262,14 +271,18 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # Per-channel input pre-scaling (SmoothQuant-style)
         self._register_channel_scale(self.Q_basis, channel_scale)
 
+        # Opt-in: save bf16 x instead of retaining the fp32 upcast for backward.
+        # Applies to the shared Q_eff projection; router + P_eff paths are
+        # rank/expert-sized and stay on the legacy path.
+        self.use_custom_down_autograd = False
+
         self._last_gate = None  # cached each forward for balance loss
         self._sigma = None  # (B,) σ; set by LoRANetwork.set_sigma
         # Expert-warmup gradient masking. See HydraLoRAModule for full
         # rationale — for OrthoHydra the mask gates gradient into S_p (which
-        # parameterises per-expert P rotations). Split into a Python bool +
-        # buffer so torch.compile does not recompile per step as the sampled
-        # expert rotates.
-        self._warmup_active: bool = False
+        # parameterises per-expert P rotations). Default all-ones → applied
+        # unconditionally, collapses to identity outside warmup. No Python-
+        # bool guard means no dynamo recompile at the warmup transition.
         self.register_buffer(
             "_expert_grad_mask",
             torch.ones(num_experts, dtype=torch.float32),
@@ -330,14 +343,17 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         if self._skip_module():
             return org_forwarded
 
-        dtype = self.P_bases.dtype
-        x_lora = self._rebalance(x.to(dtype))
-
         # Shared down: Cayley-parameterized Q
         R_q = self._cayley(self.S_q)  # (r, r)
         Q_eff = R_q @ self.Q_basis  # (r, in)
 
-        lx = torch.nn.functional.linear(x_lora, Q_eff)  # (*, r)
+        if self.use_custom_down_autograd and self.training:
+            inv_scale = self.inv_scale if self._has_channel_scale else None
+            lx = lora_down_project(x, Q_eff, inv_scale)  # (*, r)
+        else:
+            dtype = self.P_bases.dtype
+            x_lora = self._rebalance(x.to(dtype))
+            lx = torch.nn.functional.linear(x_lora, Q_eff)  # (*, r)
 
         # Layer-local routing from raw rank-R signal, before λ scaling /
         # timestep masking / dropout. λ is zero-init so post-λ lx carries no
@@ -361,14 +377,11 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         lx, scale = self._apply_rank_dropout(lx)
 
         # Expert-warmup masking — see HydraLoRAModule.forward for rationale.
-        # Gradient flows only into the selected expert's S_p slice; other
-        # experts still contribute to the forward at their current values.
-        S_p_eff = self.S_p
-        if self.training and self._warmup_active:
-            expert_mask = self._expert_grad_mask.to(S_p_eff.dtype).view(-1, 1, 1)
-            S_p_eff = (
-                S_p_eff * expert_mask + S_p_eff.detach() * (1.0 - expert_mask)
-            )
+        # Applied unconditionally: outside warmup the mask is all-ones and
+        # ``S_p*1 + S_p.detach()*0`` collapses to ``S_p`` (autograd-equivalent),
+        # so no Python-bool guard is needed.
+        expert_mask = self._expert_grad_mask.to(self.S_p.dtype).view(-1, 1, 1)
+        S_p_eff = self.S_p * expert_mask + self.S_p.detach() * (1.0 - expert_mask)
 
         # Per-expert up: batched Cayley on P rotations
         R_p = self._cayley(S_p_eff)  # (E, r, r)

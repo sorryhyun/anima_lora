@@ -627,6 +627,28 @@ class LoRANetwork(torch.nn.Module):
             if hasattr(lora, "_sigma"):
                 lora._sigma = None
 
+    def clear_step_caches(self) -> None:
+        """Drop per-step tensor references (``_last_gate``, ``_last_sigma``)
+        between training steps.
+
+        These attributes cache tensors produced inside the compiled forward —
+        under ``torch.compile(mode='reduce-overhead')`` those tensors live in
+        the inductor cudagraph memory pool. Holding a Python reference across
+        the step boundary prevents ``cudagraph_trees`` from reclaiming pool
+        memory and silently demotes the run to the eager fallback path. Call
+        this right before ``torch.compiler.cudagraph_mark_step_begin()`` so
+        the pool is free to reuse memory on the next iteration.
+
+        Safe to call unconditionally — consumers (balance loss, router stats)
+        read these attributes only within the step that wrote them.
+        """
+        self._last_sigma = None
+        for lora in self.unet_loras + self.text_encoder_loras:
+            if hasattr(lora, "_last_gate"):
+                lora._last_gate = None
+            if hasattr(lora, "_sigma"):
+                lora._sigma = None
+
     def step_balance_loss_warmup(
         self, global_step: int, max_train_steps: int
     ) -> None:
@@ -659,14 +681,13 @@ class LoRANetwork(torch.nn.Module):
 
         Expert index is sampled independently per module so that different
         modules can route the same sample to different experts. After the
-        warmup window, ``_warmup_active`` is False everywhere and the gradient
-        mask branch compiles out — every expert receives gradient normally.
+        warmup window the mask is filled with ones, so the unconditional
+        ``up*m + up.detach()*(1-m)`` term in the adapter forward collapses to
+        identity — every expert receives gradient normally.
 
-        The per-module state is split into a python bool (``_warmup_active``,
-        toggled at most twice per run) and a buffer (``_expert_grad_mask``,
-        re-written each step). Keeping the rotating index out of a plain int
-        attribute is load-bearing: torch.compile treats int module attributes
-        as static and blows its recompile limit as experts rotate 0→1→2→3.
+        State lives entirely in the ``_expert_grad_mask`` buffer; dynamo
+        treats buffer mutations as dynamic (no recompile per step and no
+        recompile at the warmup→post-warmup transition).
         """
         if self.expert_warmup_ratio <= 0.0 or max_train_steps <= 0:
             return
@@ -675,12 +696,13 @@ class LoRANetwork(torch.nn.Module):
         for lora in self.unet_loras + self.text_encoder_loras:
             if not hasattr(lora, "_expert_grad_mask"):
                 continue
-            lora._warmup_active = in_warmup
+            mask = lora._expert_grad_mask
             if in_warmup:
                 idx = int(torch.randint(0, lora.num_experts, (1,)).item())
-                mask = lora._expert_grad_mask
                 mask.zero_()
                 mask[idx] = 1.0
+            else:
+                mask.fill_(1.0)
 
     @staticmethod
     def _switch_balance(gate: torch.Tensor) -> torch.Tensor:

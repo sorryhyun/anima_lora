@@ -195,6 +195,15 @@ def create_network(
     per_channel_scaling = kwargs.get("per_channel_scaling", "false")
     if per_channel_scaling is not None:
         per_channel_scaling = per_channel_scaling.lower() == "true"
+
+    # Memory-saving down-projection autograd (classic LoRA only). Saves the
+    # low-precision x instead of the fp32-cast input; fp32 bottleneck matmul
+    # and gradients are preserved bitwise. See `networks/lora_modules/custom_autograd.py`.
+    use_custom_down_autograd = kwargs.get("use_custom_down_autograd", "false")
+    if isinstance(use_custom_down_autograd, str):
+        use_custom_down_autograd = use_custom_down_autograd.lower() == "true"
+    else:
+        use_custom_down_autograd = bool(use_custom_down_autograd)
     channel_stats_path = kwargs.get("channel_stats_path", None)
     channel_scaling_alpha = kwargs.get("channel_scaling_alpha", None)
     channel_scaling_alpha = (
@@ -327,6 +336,21 @@ def create_network(
         spec.post_init(network, kwargs)
 
     _maybe_attach_apex_shift(network, kwargs)
+
+    if use_custom_down_autograd:
+        _hits = 0
+        _skipped = 0
+        for mod in network.text_encoder_loras + network.unet_loras:
+            if hasattr(mod, "use_custom_down_autograd"):
+                mod.use_custom_down_autograd = True
+                _hits += 1
+            else:
+                _skipped += 1
+        logger.info(
+            f"use_custom_down_autograd: enabled on {_hits} LoRA-family modules"
+            + (f" ({_skipped} unsupported skipped)" if _skipped else "")
+            + " (saves ~32-128 MiB/Linear of fp32 activation per step)"
+        )
 
     if use_timestep_mask:
         logger.info(

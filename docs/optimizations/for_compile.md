@@ -234,6 +234,52 @@ def load_state_dict(self, state_dict, strict=True, **kwargs):
 
 **sd-scripts**: Zero `_orig_mod_` awareness — loading a checkpoint trained with `torch.compile` would fail.
 
+### 5.2 Memory-saving down-projection autograd (`networks/lora_modules/custom_autograd.py`)
+
+The LoRA down projection runs its matmul in fp32 for accumulation precision:
+
+```python
+lx = F.linear(x_lora.float(), self.lora_down.weight.float())
+```
+
+`F.linear`'s backward saves the exact forward input, so the `.float()` upcast of `x` is retained across the fwd→bwd window as an fp32 tensor (4 B / elem). At `static_token_count=4096` this is 32 MiB per 2048-wide Linear and 128 MiB for the 8192-wide MLP `layer2` input; accumulated across 28 DiT blocks × ~5–6 adapted Linears per block this was the largest single source of LoRA-side activation VRAM.
+
+The fix is a targeted activation-recompute trick: a custom `torch.autograd.Function` that saves the low-precision `x` (bf16, 2 B / elem) and recomputes `x.float()` (or `(x * inv_scale).float()`) in backward. The fp32 bottleneck matmul is preserved in both directions, so gradients are bitwise-identical to the legacy path for deterministic kernels.
+
+**Relevant to compile:** the feature uses **two separate `autograd.Function` subclasses** (scaled and unscaled), not one with an optional tensor. This keeps the graph shape fixed — no shape-dependent Python branches, no optional-tensor sentinels that could cause guard churn:
+
+```python
+class LoRADownProjectFn(torch.autograd.Function):       # no channel-scale
+    @staticmethod
+    def forward(ctx, x, weight):
+        out = F.linear(x.float(), weight.float())
+        ctx.save_for_backward(x, weight)                # bf16 x saved, not x.float()
+        return out
+
+class ScaledLoRADownProjectFn(torch.autograd.Function): # with channel-scale
+    @staticmethod
+    def forward(ctx, x, weight, inv_scale):
+        x_work = x * inv_scale
+        out = F.linear(x_work.float(), weight.float())
+        ctx.save_for_backward(x, weight, inv_scale)
+        return out
+
+def lora_down_project(x, weight, inv_scale):            # dispatch at module init
+    if inv_scale is None:
+        return LoRADownProjectFn.apply(x, weight)
+    return ScaledLoRADownProjectFn.apply(x, weight, inv_scale)
+```
+
+Each adapted LoRA module carries a boolean attribute `use_custom_down_autograd` set once by the network factory — Dynamo sees a static Python branch inside `forward`, not a runtime dispatch.
+
+Wired through `LoRAModule`, `HydraLoRAModule`, `OrthoLoRAExpModule`, and `OrthoHydraLoRAExpModule`. The Ortho variants pass `Q_eff = R_q @ Q_basis` as the "weight" argument — autograd returns `grad_Q_eff`, which the existing graph propagates into `S_q` unchanged. ReFT (block-level intervention) and Conv2d LoRA are intentionally out of scope and take the legacy path.
+
+**Measured (60-step A/B under `torch.compile`, default stack):** loss/average matched within 0.7 % (run-to-run noise), per-step loss statistically indistinguishable at z = +1.84, wall/step matched within 0.4 %, peak VRAM dropped ~4 GiB. The wall-clock parity is the compile-relevant signal: if Dynamo had broken the graph at each LoRA-patched Linear (once per `autograd.Function.apply`), kernel-launch overhead across 28 × ~5–6 sites would have erased the memory win. It didn't.
+
+**sd-scripts**: No equivalent — plain `F.linear(x.float(), ...)` retains the fp32 cast unconditionally.
+
+**Opt-in flag:** `use_custom_down_autograd = true` in `configs/methods/lora.toml` (or `--network_args use_custom_down_autograd=true`). Default off for now; ready to flip to default-on once a wider set of runs confirms the compile-graph behavior.
+
 ---
 
 ## 6. LoRA utils (`networks/lora_utils.py`)
