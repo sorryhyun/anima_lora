@@ -1,21 +1,11 @@
-# Hardware presets — selected by `--preset <name>`.
-# Each section is a flat set of keys that get merged AFTER base.toml and BEFORE
-# the chosen method file. Method settings win on overlap.
-
 [default]
-# Linux daily driver — moderate block swap.
-blocks_to_swap = 8
 dataloader_pin_memory = true
 
 [fast_16gb]
-# No block swap + first two blocks frozen — fastest on ~16GB VRAM.
-blocks_to_swap = 0
 layer_start = 2
 dataloader_pin_memory = true
 
 [low_vram]
-# Aggressive memory savings — gradient checkpointing + unsloth offload.
-# Also used as the Windows 8GB VRAM preset.
 blocks_to_swap = 0
 gradient_checkpointing = true
 unsloth_offload_checkpointing = true
@@ -26,14 +16,15 @@ blocks_to_swap = 0
 dataloader_pin_memory = true
 
 [graft]
-# GRAFT loop — heavier block swap + pinned dataloader workers.
 blocks_to_swap = 20
 dataloader_pin_memory = true
 
 [half]
-# Experiment preset — sample 50% of every subset each epoch. Standalone
-# (overrides `blocks_to_swap`/etc. with the moderate defaults used for day-to-day
-# training); combine with CLI flags if you need different hardware behavior.
 blocks_to_swap = 8
 dataloader_pin_memory = true
 sample_ratio = 0.5
+
+[quarter]
+blocks_to_swap = 8
+dataloader_pin_memory = true
+sample_ratio = 0.25

@@ -26,6 +26,11 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 METHODS_DIR = CONFIGS_DIR / "methods"
 GUI_METHODS_DIR = CONFIGS_DIR / "gui-methods"
 PRESETS_FILE = CONFIGS_DIR / "presets.toml"
+CUSTOM_DIR = CONFIGS_DIR / "custom"
+# User-created variants live alongside the curated gui-methods files but in
+# their own subdirectory so they're easy to find and don't pollute the
+# built-in family list.
+CUSTOM_VARIANTS_DIR = GUI_METHODS_DIR / "custom"
 
 
 _METHOD_ORDER = ("lora", "postfix", "apex", "graft")
@@ -63,29 +68,68 @@ def list_methods() -> list[str]:
 
 
 def list_gui_variants(method: str) -> list[str]:
-    """gui-methods/*.toml files that belong to the given method family.
+    """gui-methods/*.toml files for the method family + all user customs.
 
     The GUI training path uses gui-methods as the source of truth (each variant
     is a self-contained TOML — no toggle blocks), so the variant combo lists
     actual files, not overlay presets.
+
+    Custom variants in ``configs/gui-methods/custom/*.toml`` are surfaced for
+    every method family — users name them freely and we don't try to bind a
+    file to a specific family.
     """
     if not GUI_METHODS_DIR.exists():
         return []
     have = {p.stem for p in GUI_METHODS_DIR.glob("*.toml")}
     want = _FAMILY_VARIANTS.get(method, [])
     ordered = [v for v in want if v in have]
+    if CUSTOM_VARIANTS_DIR.exists():
+        for p in sorted(CUSTOM_VARIANTS_DIR.glob("*.toml")):
+            ordered.append(f"custom/{p.stem}")
     return ordered
 
 
+def is_custom_variant(name: str) -> bool:
+    return name.startswith("custom/")
+
+
+def custom_variant_path(name: str) -> Path:
+    """Resolve 'custom/<name>' (or bare '<name>') to the on-disk file path."""
+    stem = name[len("custom/"):] if name.startswith("custom/") else name
+    return CUSTOM_VARIANTS_DIR / f"{stem}.toml"
+
+
+def variant_path(variant: str) -> Path:
+    """Resolve a variant identifier (built-in or 'custom/<name>') to its file."""
+    return GUI_METHODS_DIR / f"{variant}.toml"
+
+
 def _load_all_presets() -> dict:
-    if not PRESETS_FILE.exists():
-        return {}
-    data = toml.loads(PRESETS_FILE.read_text(encoding="utf-8"))
-    return {k: v for k, v in data.items() if isinstance(v, dict)}
+    """Built-in sections in ``configs/presets.toml`` plus user-created flat
+    files under ``configs/custom/<name>.toml`` (one preset per file)."""
+    presets: dict = {}
+    if PRESETS_FILE.exists():
+        data = toml.loads(PRESETS_FILE.read_text(encoding="utf-8"))
+        presets.update({k: v for k, v in data.items() if isinstance(v, dict)})
+    if CUSTOM_DIR.exists():
+        for p in sorted(CUSTOM_DIR.glob("*.toml")):
+            try:
+                presets[p.stem] = toml.loads(p.read_text(encoding="utf-8"))
+            except (toml.TomlDecodeError, OSError):
+                continue
+    return presets
 
 
 def list_presets() -> list[str]:
     return sorted(_load_all_presets())
+
+
+def is_custom_preset(name: str) -> bool:
+    return (CUSTOM_DIR / f"{name}.toml").exists()
+
+
+def custom_preset_path(name: str) -> Path:
+    return CUSTOM_DIR / f"{name}.toml"
 
 
 _GROUPS = {

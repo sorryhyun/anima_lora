@@ -123,21 +123,52 @@ def _load_toml_with_base(path: str, *, strict: bool = False) -> dict:
     return merged
 
 
-def load_preset_section(preset: str, configs_dir: str = "configs") -> dict:
-    """Load a named preset section from configs/presets.toml."""
-    path = os.path.join(configs_dir, "presets.toml")
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Preset file not found: {path}")
-    with open(path, "r", encoding="utf-8") as f:
-        presets = toml.load(f)
-    if preset not in presets:
-        raise KeyError(
-            f"Preset '{preset}' not found in {path}. Available: {sorted(presets)}"
+def _resolve_preset(
+    preset: str, configs_dir: str = "configs"
+) -> tuple[dict, str, str]:
+    """Resolve a preset name to ``(section, source_path, source_tag)``.
+
+    Looks in ``configs/presets.toml`` first (built-in sections); falls back to
+    ``configs/custom/<preset>.toml`` (one file per user-created preset, flat
+    key=value with no section header — the filename is the preset name).
+    """
+    presets_path = os.path.join(configs_dir, "presets.toml")
+    if os.path.exists(presets_path):
+        with open(presets_path, "r", encoding="utf-8") as f:
+            presets = toml.load(f)
+        if preset in presets:
+            section = presets[preset]
+            if not isinstance(section, dict):
+                raise ValueError(
+                    f"Preset '{preset}' in {presets_path} is not a table"
+                )
+            return dict(section), presets_path, f"{presets_path}[{preset}]"
+    custom_path = os.path.join(configs_dir, "custom", f"{preset}.toml")
+    if os.path.exists(custom_path):
+        with open(custom_path, "r", encoding="utf-8") as f:
+            data = toml.load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"Custom preset {custom_path} is not a TOML table")
+        return data, custom_path, custom_path
+    available: list[str] = []
+    if os.path.exists(presets_path):
+        with open(presets_path, "r", encoding="utf-8") as f:
+            available.extend(sorted(toml.load(f)))
+    custom_dir = os.path.join(configs_dir, "custom")
+    if os.path.isdir(custom_dir):
+        available.extend(
+            sorted(n[:-5] for n in os.listdir(custom_dir) if n.endswith(".toml"))
         )
-    section = presets[preset]
-    if not isinstance(section, dict):
-        raise ValueError(f"Preset '{preset}' in {path} is not a table")
-    return dict(section)
+    raise KeyError(
+        f"Preset '{preset}' not found in {presets_path} or {custom_path}. "
+        f"Available: {sorted(set(available))}"
+    )
+
+
+def load_preset_section(preset: str, configs_dir: str = "configs") -> dict:
+    """Load a named preset section from configs/presets.toml or configs/custom/."""
+    section, _path, _tag = _resolve_preset(preset, configs_dir)
+    return section
 
 
 def load_method_preset(
@@ -164,7 +195,6 @@ def load_method_preset(
     ``"configs/presets.toml[default]"``).
     """
     base_path = os.path.join(configs_dir, "base.toml")
-    preset_path = os.path.join(configs_dir, "presets.toml")
     method_path = os.path.join(configs_dir, methods_subdir, f"{method}.toml")
     for p in (base_path, method_path):
         if not os.path.exists(p):
@@ -180,11 +210,10 @@ def load_method_preset(
         merged[k] = v
         provenance[k] = base_path
 
-    preset_section = load_preset_section(preset, configs_dir)
+    preset_section, preset_path, preset_tag = _resolve_preset(preset, configs_dir)
     preset_flat = _flatten_toml(
         {preset: preset_section}, source=preset_path, strict=strict
     )
-    preset_tag = f"{preset_path}[{preset}]"
     for k, v in preset_flat.items():
         merged[k] = v
         provenance[k] = preset_tag
@@ -276,7 +305,9 @@ def _render_merged_toml(
     def _rank(src: str) -> int:
         if src == "configs/base.toml":
             return 0
-        if src.startswith("configs/presets.toml"):
+        if src.startswith("configs/presets.toml") or src.startswith(
+            "configs/custom/"
+        ):
             return 1
         # Method file — lives under configs/methods/ by default, or under
         # configs/gui-methods/ when --methods_subdir=gui-methods is used.

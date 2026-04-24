@@ -273,6 +273,27 @@ def get_optimizer(args, trainable_params) -> tuple[str, str, object]:
         optimizer_class = torch.optim.AdamW
         optimizer = optimizer_class(trainable_params, lr=lr, **optimizer_kwargs)
 
+    # elif optimizer_type == "Rose".lower():
+    #     # Rose (MatthewK78/Rose) — Range-Of-Slice Equilibration, stateless.
+    #     # Disabled: kept as reference. Clone https://github.com/MatthewK78/Rose
+    #     # into anima_lora/Rose/ to re-enable.
+    #     import sys
+    #     from pathlib import Path
+    #
+    #     rose_dir = Path(__file__).resolve().parents[2] / "Rose"
+    #     if not (rose_dir / "rose.py").exists():
+    #         raise ImportError(
+    #             f"Rose optimizer: expected {rose_dir}/rose.py. "
+    #             "Clone https://github.com/MatthewK78/Rose into anima_lora/Rose."
+    #         )
+    #     if str(rose_dir) not in sys.path:
+    #         sys.path.insert(0, str(rose_dir))
+    #     from rose import Rose
+    #
+    #     logger.info(f"use Rose optimizer | {optimizer_kwargs}")
+    #     optimizer_class = Rose
+    #     optimizer = optimizer_class(trainable_params, lr=lr, **optimizer_kwargs)
+
     elif optimizer_type.endswith("schedulefree".lower()):
         try:
             import schedulefree as sf

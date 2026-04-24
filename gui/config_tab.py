@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QPlainTextEdit,
@@ -32,22 +33,19 @@ from PySide6.QtWidgets import (
 
 from gui import (
     CONFIGS_DIR,
-    GUI_METHODS_DIR,
     IMAGE_EXTS,
-    PRESETS_FILE,
     ROOT,
     _GROUPS,
     _K2G,
     _SKIP,
     _load,
-    _load_all_presets,
     _read,
     _save,
     _widget,
     list_gui_variants,
     list_methods,
-    list_presets,
     merged_gui_variant_preset,
+    variant_path,
 )
 from gui.explanations import field_help, method_guide
 from gui.i18n import t
@@ -88,22 +86,17 @@ class ConfigTab(QWidget):
         self._rate_anchor: tuple[float, int, str, int] | None = None
         lay = QVBoxLayout(self)
 
-        # Top bar: method + preset + save + preprocess + train + stop
+        # Top bar: method + save + preprocess + train + stop
+        # The preset combo is intentionally absent — gui-methods variants
+        # (lora-fast, lora-8gb, etc.) already encode the hardware/perf knobs
+        # users used to pick via presets, and all saves now write directly to
+        # the current variant file (no preset/variant routing distinction).
         top = QHBoxLayout()
         top.addWidget(QLabel("Method"))
         self.method_combo = QComboBox()
         self.method_combo.addItems(list_methods())
         self.method_combo.currentTextChanged.connect(lambda _: self._on_method_changed())
         top.addWidget(self.method_combo, 1)
-
-        top.addWidget(QLabel(t("preset")))
-        self.preset_combo = QComboBox()
-        self.preset_combo.addItems(list_presets())
-        default_idx = self.preset_combo.findText("default")
-        if default_idx >= 0:
-            self.preset_combo.setCurrentIndex(default_idx)
-        self.preset_combo.currentTextChanged.connect(lambda _: self._reload())
-        top.addWidget(self.preset_combo, 1)
 
         save_btn = QPushButton(t("save"))
         save_btn.clicked.connect(self._save_preset)
@@ -158,6 +151,8 @@ class ConfigTab(QWidget):
         # configs/gui-methods/. Selecting a variant immediately reloads the
         # form from that file; saves and training invocations target the same
         # file. No toggle-block overlays — what you see is what runs.
+        # User-created variants live under gui-methods/custom/ and appear as
+        # "custom/<name>" entries in this combo.
         self.variant_row = QWidget()
         vrow = QHBoxLayout(self.variant_row)
         vrow.setContentsMargins(0, 0, 0, 0)
@@ -165,6 +160,10 @@ class ConfigTab(QWidget):
         self.variant_combo = QComboBox()
         self.variant_combo.currentTextChanged.connect(lambda _: self._reload())
         vrow.addWidget(self.variant_combo, 1)
+        self.new_variant_btn = QPushButton(t("new_variant"))
+        self.new_variant_btn.setToolTip(t("new_variant_tooltip"))
+        self.new_variant_btn.clicked.connect(self._create_variant)
+        vrow.addWidget(self.new_variant_btn)
         self.show_guide_btn = QPushButton(t("show_guide"))
         self.show_guide_btn.setToolTip(t("show_guide_tooltip"))
         self.show_guide_btn.clicked.connect(self._show_explain_placeholder)
@@ -193,7 +192,31 @@ class ConfigTab(QWidget):
         sc = QScrollArea()
         sc.setWidgetResizable(True)
         self._form = QWidget()
-        self._fl = QVBoxLayout(self._form)
+        outer = QVBoxLayout(self._form)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # Inner container holds the dynamically-rebuilt grouped form fields
+        # (cleared on every _reload). The extra-args button and textarea sit
+        # below it inside the same scroll area, but outside the cleared layout
+        # so they persist across reloads.
+        self._form_inner = QWidget()
+        self._fl = QVBoxLayout(self._form_inner)
+        self._fl.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self._form_inner)
+
+        self.extra_args_btn = QPushButton(t("extra_args_toggle"))
+        self.extra_args_btn.setCheckable(True)
+        self.extra_args_btn.setToolTip(t("extra_args_tooltip"))
+        self.extra_args_btn.clicked.connect(self._toggle_extra_args)
+        outer.addWidget(self.extra_args_btn)
+        self.extra_args_edit = QPlainTextEdit()
+        self.extra_args_edit.setPlaceholderText(t("extra_args_placeholder"))
+        self.extra_args_edit.setToolTip(t("extra_args_tooltip"))
+        self.extra_args_edit.setMaximumHeight(120)
+        self.extra_args_edit.setVisible(False)
+        outer.addWidget(self.extra_args_edit)
+        outer.addStretch()
+
         sc.setWidget(self._form)
         hsplit.addWidget(sc)
 
@@ -232,8 +255,11 @@ class ConfigTab(QWidget):
         self._origin: dict[str, str] = {}
         self._reload()
 
-    def _current(self) -> tuple[str, str]:
-        return self.method_combo.currentText(), self.preset_combo.currentText()
+    # Preset selection is no longer surfaced in the GUI — variants encode the
+    # hardware/perf knobs that used to live in presets. The merge still uses
+    # 'default' under the hood so the form shows reasonable effective values
+    # when a variant file is sparse. All saves write to the variant file.
+    _IMPLICIT_PRESET = "default"
 
     def _current_variant(self) -> str:
         """gui-methods variant for the selected method. Falls back to the
@@ -256,16 +282,16 @@ class ConfigTab(QWidget):
             if variants:
                 self.variant_combo.addItems(variants)
             self.variant_combo.blockSignals(False)
-        # Single-variant families (apex, graft) don't need a picker.
-        self.variant_row.setVisible(len(variants) > 1)
+        # Always visible — the row hosts the variant combo, "+ New", and Guide.
+        self.variant_row.setVisible(True)
 
     def _reload(self):
-        method, preset = self._current()
-        if not method or not preset:
+        method = self.method_combo.currentText()
+        if not method:
             return
         self._refresh_variant_row(method)
         variant = self._current_variant()
-        merged, origin = merged_gui_variant_preset(variant, preset)
+        merged, origin = merged_gui_variant_preset(variant, self._IMPLICIT_PRESET)
         cfg = {k: v for k, v in merged.items() if k not in _SKIP}
 
         self._origin = origin
@@ -285,6 +311,9 @@ class ConfigTab(QWidget):
         for k, v in cfg.items():
             groups.setdefault(_K2G.get(k, "Other"), {})[k] = v
 
+        # "preset" origin shows where the value comes from today, but on Save
+        # everything routes to the variant file — no preset/variant split.
+        variant_label = f"gui-methods/{variant}.toml"
         origin_style = {
             "base": (
                 "color:#888; text-decoration: underline dotted;",
@@ -292,11 +321,11 @@ class ConfigTab(QWidget):
             ),
             "preset": (
                 "color:#6aa4d8; text-decoration: underline dotted;",
-                f"from presets/{preset}.toml",
+                f"from presets.toml[{self._IMPLICIT_PRESET}] (saves to {variant_label})",
             ),
             "method": (
                 "color:#f0f0f0; text-decoration: underline dotted;",
-                f"from gui-methods/{variant}.toml",
+                f"from {variant_label}",
             ),
         }
 
@@ -394,52 +423,92 @@ class ConfigTab(QWidget):
 
     # ── Save ──
 
-    def _route_key(self, key: str) -> str:
-        """Decide which file (method|preset) a key's edit should be written to."""
-        origin = self._origin.get(key)
-        if origin in ("method", "preset"):
-            return origin
-        # New key (from base or default widgets): route by group.
-        if _K2G.get(key) == "Performance":
-            return "preset"
-        return "method"
-
     def _save_preset(self, *, silent: bool = False):
-        _, preset = self._current()
+        """Write the form (and any extra-args TOML) into the current variant
+        file. No preset/variant routing — the variant file is the single
+        source of truth for the GUI."""
         variant = self._current_variant()
-        method_path = GUI_METHODS_DIR / f"{variant}.toml"
+        path = variant_path(variant)
 
-        method_orig = _load(method_path)
-        all_presets = _load_all_presets()
-        preset_orig = dict(all_presets.get(preset, {}))
+        method_orig = _load(path)
         base = _load(CONFIGS_DIR / "base.toml")
+        # Default-preset overlay is the implicit baseline used by _reload, so
+        # we treat it as part of the "effective baseline" when deciding which
+        # form values are worth writing to disk (skips redundant entries).
+        from gui import _load_all_presets  # local import: only needed for save
+        implicit_pset = _load_all_presets().get(self._IMPLICIT_PRESET, {})
 
-        method_out: dict[str, Any] = dict(method_orig)
-        preset_out: dict[str, Any] = dict(preset_orig)
+        out: dict[str, Any] = dict(method_orig)
 
         for k, w in self._w.items():
-            v = _read(w, (method_orig.get(k) or preset_orig.get(k) or base.get(k)))
-            target = self._route_key(k)
-            if target == "method":
-                effective = method_orig.get(k, base.get(k))
-                if k in method_orig or effective != v:
-                    method_out[k] = v
-                preset_out.pop(k, None)
-            else:
-                effective = preset_orig.get(k, base.get(k))
-                if k in preset_orig or effective != v:
-                    preset_out[k] = v
-                method_out.pop(k, None)
-
-        _save(method_path, method_out)
-        all_presets[preset] = preset_out
-        PRESETS_FILE.write_text(toml.dumps(all_presets), encoding="utf-8")
-        if not silent:
-            QMessageBox.information(
-                self,
-                t("saved"),
-                f"Saved gui-methods/{method_path.name} + presets.toml[{preset}]",
+            baseline = method_orig.get(
+                k, implicit_pset.get(k, base.get(k))
             )
+            v = _read(w, baseline)
+            if k in method_orig or v != baseline:
+                out[k] = v
+
+        # Extra-args textarea: parse as TOML and merge in. Textarea overrides
+        # the form for any duplicate key (it's the more explicit signal).
+        extra_text = self.extra_args_edit.toPlainText().strip()
+        extras: dict[str, Any] = {}
+        if extra_text:
+            try:
+                parsed = toml.loads(extra_text)
+            except toml.TomlDecodeError as e:
+                QMessageBox.warning(self, t("invalid_toml"), str(e))
+                return
+            extras = {k: v for k, v in parsed.items() if not isinstance(v, dict)}
+            out.update(extras)
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _save(path, out)
+
+        if extras:
+            self.extra_args_edit.clear()
+            self._reload()
+        if not silent:
+            try:
+                rel = path.relative_to(CONFIGS_DIR.parent)
+            except ValueError:
+                rel = path
+            QMessageBox.information(self, t("saved"), f"Saved {rel}")
+
+    def _create_variant(self):
+        name, ok = QInputDialog.getText(
+            self, t("new_variant"), t("new_variant_prompt")
+        )
+        if not ok:
+            return
+        name = (name or "").strip()
+        if not name or not re.match(r"^[A-Za-z0-9_\-]+$", name):
+            QMessageBox.warning(self, t("error"), t("new_variant_invalid"))
+            return
+        full = f"custom/{name}"
+        new_path = variant_path(full)
+        if new_path.exists():
+            QMessageBox.warning(
+                self, t("error"), t("new_variant_exists", name=name)
+            )
+            return
+        new_path.parent.mkdir(parents=True, exist_ok=True)
+        new_path.write_text("", encoding="utf-8")
+        # Rebuild combo and select the new entry. _reload fires via the
+        # currentTextChanged signal once we set the index.
+        method = self.method_combo.currentText()
+        variants = list_gui_variants(method)
+        self.variant_combo.blockSignals(True)
+        self.variant_combo.clear()
+        self.variant_combo.addItems(variants)
+        self.variant_combo.blockSignals(False)
+        idx = self.variant_combo.findText(full)
+        if idx >= 0:
+            self.variant_combo.setCurrentIndex(idx)
+        else:
+            self._reload()
+
+    def _toggle_extra_args(self):
+        self.extra_args_edit.setVisible(self.extra_args_btn.isChecked())
 
     # ── Training ──
 
@@ -467,7 +536,8 @@ class ConfigTab(QWidget):
         self.train_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.method_combo.setEnabled(False)
-        self.preset_combo.setEnabled(False)
+        self.variant_combo.setEnabled(False)
+        self.new_variant_btn.setEnabled(False)
 
     def _start_preprocess(self):
         python = sys.executable
@@ -485,7 +555,8 @@ class ConfigTab(QWidget):
         self.test_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.method_combo.setEnabled(False)
-        self.preset_combo.setEnabled(False)
+        self.variant_combo.setEnabled(False)
+        self.new_variant_btn.setEnabled(False)
 
     def _start_training(self):
         if not self._preprocessed:
@@ -497,8 +568,9 @@ class ConfigTab(QWidget):
             QMessageBox.warning(self, t("error"), t("accelerate_not_found"))
             return
 
-        _, preset = self._current()
         variant = self._current_variant()
+        # --preset default is passed unconditionally; the variant file is the
+        # GUI's source of truth and overrides any preset values it cares about.
         args = [
             "launch",
             "--num_cpu_threads_per_process",
@@ -511,7 +583,7 @@ class ConfigTab(QWidget):
             "--methods_subdir",
             "gui-methods",
             "--preset",
-            preset,
+            self._IMPLICIT_PRESET,
         ]
 
         self.log.clear()
@@ -526,7 +598,8 @@ class ConfigTab(QWidget):
         self.test_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.method_combo.setEnabled(False)
-        self.preset_combo.setEnabled(False)
+        self.variant_combo.setEnabled(False)
+        self.new_variant_btn.setEnabled(False)
 
     def _stop_training(self):
         if self._proc.state() != QProcess.NotRunning:
@@ -615,7 +688,8 @@ class ConfigTab(QWidget):
         self.test_btn.setEnabled(self._has_lora_output())
         self.stop_btn.setEnabled(False)
         self.method_combo.setEnabled(True)
-        self.preset_combo.setEnabled(True)
+        self.variant_combo.setEnabled(True)
+        self.new_variant_btn.setEnabled(True)
 
     def _log(self, text: str):
         self.log.moveCursor(QTextCursor.End)

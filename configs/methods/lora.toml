@@ -17,7 +17,7 @@ network_alpha = 48
 network_dim = 48
 
 learning_rate = 2e-5
-max_train_epochs = 4
+max_train_epochs = 12
 save_every_n_epochs = 4
 checkpointing_epochs = 4
 
@@ -42,7 +42,7 @@ alpha_rank_scale = 1.0
 output_name = "anima_hydra"
 use_hydra = true
 num_experts = 4
-balance_loss_weight = 1e-6 # 1e-4 is tooo strong
+balance_loss_weight = 2e-6 # 1e-4 is tooo strong
 
 # Hold the load-balance penalty at 0 during the first
 # `balance_loss_warmup_ratio` of training so the router can specialize first,
@@ -94,7 +94,7 @@ num_sigma_buckets = 3
 # reft_alpha = 48
 # reft_layers = "last_8"
 
-blocks_to_swap = 18
+blocks_to_swap = 16
 
 
 
