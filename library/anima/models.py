@@ -217,6 +217,26 @@ def unsloth_checkpoint(function, *args):
     return UnslothOffloadedGradientCheckpointer.apply(function, *args)
 
 
+@torch.compiler.disable(recursive=True)
+def _unpad_static_shape(x, pad_info):
+    """Strip the static-shape padding back to (B, T, H, W, D).
+
+    Disabled from dynamo tracing on purpose: pad_info is a 4-tuple of Python
+    ints (T_s, H_s, W_s, seq_len) computed from the input's pre-pad shape, so
+    if this ran inside the compiled frame each bucket would specialize
+    ``pad_info[1] == H_s`` (per-value guard) and narrow the symbolic range
+    on ``pad_info[3]`` (per-bucket seq_len guard). Running it eagerly keeps
+    the returned tensor's shape as the only signal crossing back into the
+    compile zone — downstream ops (final_layer, unpatchify) then pick up
+    symbolic T/H/W from the tensor itself, not from Python ints.
+    """
+    T_s, H_s, W_s, seq_len = pad_info
+    x = x.squeeze(3).squeeze(1)
+    x = x[:, :seq_len, :]
+    x = x.unflatten(1, (T_s, H_s, W_s))
+    return x
+
+
 from library.log import setup_logging  # noqa: E402
 
 setup_logging()
@@ -1348,7 +1368,34 @@ class Anima(nn.Module):
             nn.Linear(model_channels, model_channels),
         )
 
+        # Modulation guidance runtime state as non-persistent buffers (zeros = off).
+        # Registered unconditionally so the forward can do unconditional arithmetic
+        # (``t_emb + schedule[l] * delta``) without a Python-level None/zero branch —
+        # branches here guard-fire under torch.compile per bucket/block combination.
+        # Setters live on library/inference/mod_guidance.py; reset via reset_mod_guidance().
+        self.register_buffer(
+            "_mod_guidance_delta",
+            torch.zeros(1, model_channels),
+            persistent=False,
+        )
+        self.register_buffer(
+            "_mod_guidance_schedule",
+            torch.zeros(num_blocks),
+            persistent=False,
+        )
+        self.register_buffer(
+            "_mod_guidance_final_w",
+            torch.zeros(()),
+            persistent=False,
+        )
+
         self.init_weights()
+
+    def reset_mod_guidance(self) -> None:
+        """Disable modulation guidance by zeroing the runtime buffers."""
+        self._mod_guidance_delta.zero_()
+        self._mod_guidance_schedule.zero_()
+        self._mod_guidance_final_w.zero_()
 
     def init_weights(self) -> None:
         self.x_embedder.init_weights()
@@ -1403,6 +1450,29 @@ class Anima(nn.Module):
             f"Anima: compiled {len(self.blocks)} block._forward with "
             f"backend={backend}, mode={mode}"
         )
+
+    def compile_core(self, backend: str = "inductor", mode: Optional[str] = None):
+        """torch.compile the constant-shape block stack (``_run_blocks``).
+
+        Works with ``set_static_token_count``: the pre-blocks eager region
+        (patch/embed/static-pad/RoPE-pad/t_embedder/BlockMask construction)
+        hands off a shape-invariant bundle, so ``_run_blocks`` traces once
+        and a single CUDAGraph serves every bucket in CONSTANT_TOKEN_BUCKETS.
+        Post-blocks (unpad/final_layer/unpatchify) stay eager.
+
+        Requires ``static_token_count`` to be set, ``gradient_checkpointing``
+        off, and ``blocks_to_swap`` unset — the caller asserts these.
+        ``dynamic=False`` is safe because every input to ``_run_blocks`` is
+        shape-pinned by the pre-blocks eager region.
+        """
+        assert self.static_token_count is not None, (
+            "compile_core requires set_static_token_count() to be called first"
+        )
+        compile_kwargs = {"backend": backend, "dynamic": False}
+        if mode is not None:
+            compile_kwargs["mode"] = mode
+        self._run_blocks = torch.compile(self._run_blocks, **compile_kwargs)
+        print(f"Anima: compiled _run_blocks with backend={backend}, mode={mode}")
 
     @property
     def device(self):
@@ -1539,6 +1609,56 @@ class Anima(nn.Module):
             return
         self.offloader.prepare_block_devices_before_forward(self.blocks)
 
+    def _run_blocks(
+        self,
+        x_padded: torch.Tensor,
+        t_embedding_B_T_D: torch.Tensor,
+        crossattn_emb: torch.Tensor,
+        attn_params,
+        **block_kwargs,
+    ) -> torch.Tensor:
+        """Constant-shape block stack — the compile target for compile_core.
+
+        Every input is shape-pinned by the eager pre-blocks region:
+        - ``x_padded``: ``(B, 1, static_token_count, 1, D)`` via flatten+pad
+        - ``t_embedding_B_T_D``: ``(B, 1, D)``
+        - ``crossattn_emb``: ``(B, max_text_len, D)`` (padded to max_length)
+        - ``attn_params``: BlockMasks built with tensor-valued seq lens so
+          no per-bucket guards fire on the mask_mod closure
+        - ``block_kwargs["rope_cos_sin"]``: each ``(static_token_count, 1, 1, D_head)``
+        - ``block_kwargs["adaln_lora_B_T_3D"]``: ``(B, 1, 3, D)``
+
+        Mod-guidance is applied via buffers on ``self`` (zero = off) so the
+        per-block ``t_emb`` arithmetic is unconditional. No Python branches.
+        """
+        # Normalize requires_grad once at the stack entry. Block 0 receives
+        # requires_grad=False (frozen patch_embed output) while blocks 1+
+        # receive True (LoRA-enhanced); a mismatch would fragment guards if
+        # the loop were ever traced per-block. requires_grad_(True) is a no-op
+        # under torch.no_grad().
+        x = x_padded.requires_grad_()
+        for block_idx, block in enumerate(self.blocks):
+            if self.blocks_to_swap:
+                self.offloader.wait_for_block(block_idx)
+
+            # Unconditional: zero buffers collapse to identity when guidance
+            # is off; avoids a data-dependent branch inside the compiled frame.
+            t_emb_block = t_embedding_B_T_D + (
+                self._mod_guidance_schedule[block_idx] * self._mod_guidance_delta
+            ).unsqueeze(1)
+
+            x = block(
+                x,
+                t_emb_block,
+                crossattn_emb,
+                attn_params,
+                **block_kwargs,
+            )
+
+            if self.blocks_to_swap:
+                self.offloader.submit_move_blocks(self.blocks, block_idx)
+        return x
+
     def forward_mini_train_dit(
         self,
         x_B_C_T_H_W: torch.Tensor,
@@ -1650,10 +1770,9 @@ class Anima(nn.Module):
         # The steering delta (proj_pos - proj_neg) is NOT baked into the shared
         # t_embedding here — it is applied per-block below via _mod_guidance_schedule,
         # so early tonal-DC blocks and the final compensation layer can be skipped.
+        # Buffers are zeros when guidance is off (see __init__), so the arithmetic
+        # below is an unconditional identity in that case — no Python branch.
         # See docs/methods/mod-guidance.md for the rationale.
-        mod_delta = getattr(self, "_mod_guidance_delta", None)
-        mod_schedule = getattr(self, "_mod_guidance_schedule", None)
-        mod_final_w = getattr(self, "_mod_guidance_final_w", 0.0)
 
         block_kwargs = {
             "rope_cos_sin": rope_cos_sin,
@@ -1739,52 +1858,27 @@ class Anima(nn.Module):
                 device=x_B_T_H_W_D.device,
             )
 
-        # Normalize requires_grad once before the block stack.  Block 0
-        # receives requires_grad=False (frozen patch_embed output) while
-        # blocks 1+ receive True (LoRA-enhanced).  All blocks share the
-        # same compiled _forward, so a mismatch triggers dynamo recompilation.
-        # Unconditional: self.training is False during training when
-        # gradient_checkpointing is off (train.py sets unet.eval() and never
-        # flips back). requires_grad_(True) is a no-op under torch.no_grad().
-        # if self.training:
-        x_B_T_H_W_D = x_B_T_H_W_D.requires_grad_()
-
-        for block_idx, block in enumerate(self.blocks):
-            if self.blocks_to_swap:
-                self.offloader.wait_for_block(block_idx)
-
-            if mod_delta is not None and mod_schedule is not None:
-                w_l = mod_schedule[block_idx]
-                if w_l != 0.0:
-                    t_emb_block = t_embedding_B_T_D + (w_l * mod_delta).unsqueeze(1)
-                else:
-                    t_emb_block = t_embedding_B_T_D
-            else:
-                t_emb_block = t_embedding_B_T_D
-
-            x_B_T_H_W_D = block(
-                x_B_T_H_W_D,
-                t_emb_block,
-                crossattn_emb,
-                attn_params,
-                **block_kwargs,
-            )
-
-            if self.blocks_to_swap:
-                self.offloader.submit_move_blocks(self.blocks, block_idx)
+        # Block stack runs in _run_blocks — a split point so `compile_core`
+        # can wrap just the shape-invariant region while pre/post stay eager.
+        x_B_T_H_W_D = self._run_blocks(
+            x_B_T_H_W_D,
+            t_embedding_B_T_D,
+            crossattn_emb,
+            attn_params,
+            **block_kwargs,
+        )
 
         # --- Static-shape: strip padding and restore original 5D shape ---
+        # Delegated to a @torch.compiler.disable'd helper so the bucket-
+        # dependent tuple (T_s, H_s, W_s, seq_len) never enters the compile
+        # zone. See _unpad_static_shape for rationale.
         if _static_pad_info is not None:
-            T_s, H_s, W_s, seq_len = _static_pad_info
-            # (B, 1, target, 1, D) → (B, target, D) → strip → (B, T, H, W, D)
-            x_B_T_H_W_D = x_B_T_H_W_D.squeeze(3).squeeze(1)
-            x_B_T_H_W_D = x_B_T_H_W_D[:, :seq_len, :]
-            x_B_T_H_W_D = x_B_T_H_W_D.unflatten(1, (T_s, H_s, W_s))
+            x_B_T_H_W_D = _unpad_static_shape(x_B_T_H_W_D, _static_pad_info)
 
-        if mod_delta is not None and mod_final_w != 0.0:
-            t_emb_final = t_embedding_B_T_D + (mod_final_w * mod_delta).unsqueeze(1)
-        else:
-            t_emb_final = t_embedding_B_T_D
+        # Unconditional: zero buffers collapse to identity when guidance is off.
+        t_emb_final = t_embedding_B_T_D + (
+            self._mod_guidance_final_w * self._mod_guidance_delta
+        ).unsqueeze(1)
         x_B_T_H_W_O = self.final_layer(
             x_B_T_H_W_D, t_emb_final, adaln_lora_B_T_3D=adaln_lora_B_T_3D
         )

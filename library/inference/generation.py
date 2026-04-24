@@ -688,9 +688,7 @@ def generate(
     ):
         setup_mod_guidance(args, anima, device, shared_models)
     else:
-        anima._mod_guidance_delta = None
-        anima._mod_guidance_schedule = None
-        anima._mod_guidance_final_w = 0.0
+        anima.reset_mod_guidance()
 
     return generate_body(args, anima, context, context_null, device, seed)
 

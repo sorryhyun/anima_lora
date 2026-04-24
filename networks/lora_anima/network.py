@@ -596,13 +596,23 @@ class LoRANetwork(torch.nn.Module):
         mask.copy_((self._reft_mask_arange < r).to(mask.dtype).unsqueeze(0))
 
     def clear_timestep_mask(self):
-        """Remove timestep mask (use full rank)."""
-        self._shared_timestep_mask = None
-        for lora in self.text_encoder_loras + self.unet_loras:
-            lora._timestep_mask = None
-        self._shared_reft_mask = None
-        for reft in self.text_encoder_refts + self.unet_refts:
-            reft._timestep_mask = None
+        """Restore full-rank masks on every LoRA / ReFT module.
+
+        Each module's ``_timestep_mask`` is a Tensor by construction (default
+        all-ones buffer at init, rebound to the shared live-updated mask when
+        ``set_timestep_mask`` runs). Clearing fills the shared masks with ones
+        in place — modules that were rebound immediately see the neutral mask
+        via the shared reference; modules with local defaults are already
+        neutral. Never set to None: the always-a-Tensor invariant is what
+        keeps the adapter forward free of a None-vs-Tensor guard under
+        ``compile_mode=full``.
+        """
+        shared = getattr(self, "_shared_timestep_mask", None)
+        if shared is not None:
+            shared.fill_(1.0)
+        shared_reft = getattr(self, "_shared_reft_mask", None)
+        if shared_reft is not None:
+            shared_reft.fill_(1.0)
 
     def set_sigma(self, sigmas: torch.Tensor) -> None:
         """Stash per-sample σ on every HydraLoRA module whose router accepts σ.
@@ -615,39 +625,52 @@ class LoRANetwork(torch.nn.Module):
         """
         if not self.use_sigma_router:
             return
-        self._last_sigma = sigmas.detach()
+        sigmas = sigmas.detach()
+        self._last_sigma = sigmas
         for lora in self.unet_loras + self.text_encoder_loras:
             if getattr(lora, "sigma_feature_dim", 0) > 0:
                 lora._sigma = sigmas
 
     def clear_sigma(self) -> None:
-        """Drop cached σ from every HydraLoRA module. Used in eval / validation."""
+        """Reset cached σ on every HydraLoRA module to zeros.
+
+        Never set to None: ``_sigma`` stays a Tensor so the unconditional
+        sinusoidal path in ``_compute_gate`` has no None-vs-Tensor guard to
+        recompile on under ``compile_mode=full``. Used in eval / validation
+        and by inference teardown (``clear_hydra_sigma``).
+        """
         self._last_sigma = None
         for lora in self.unet_loras + self.text_encoder_loras:
-            if hasattr(lora, "_sigma"):
-                lora._sigma = None
+            sigma = getattr(lora, "_sigma", None)
+            if sigma is not None:
+                lora._sigma = torch.zeros_like(sigma)
 
     def clear_step_caches(self) -> None:
-        """Drop per-step tensor references (``_last_gate``, ``_last_sigma``)
-        between training steps.
+        """Drop per-step tensor references (``_last_gate``) between training
+        steps.
 
-        These attributes cache tensors produced inside the compiled forward —
-        under ``torch.compile(mode='reduce-overhead')`` those tensors live in
+        ``_last_gate`` caches a tensor produced inside the compiled forward —
+        under ``torch.compile(mode='reduce-overhead')`` that tensor lives in
         the inductor cudagraph memory pool. Holding a Python reference across
         the step boundary prevents ``cudagraph_trees`` from reclaiming pool
         memory and silently demotes the run to the eager fallback path. Call
         this right before ``torch.compiler.cudagraph_mark_step_begin()`` so
         the pool is free to reuse memory on the next iteration.
 
+        ``_sigma`` is intentionally *not* cleared: it's rebound by
+        ``set_sigma`` before every forward, the caller passes a tensor from
+        outside the compiled region (the flow-matching sampler's ``timesteps``,
+        not a pool-allocated intermediate), and keeping it a Tensor at all
+        times is what lets the adapter ``_compute_gate`` drop the None-vs-
+        Tensor guard under ``compile_mode=full``.
+
         Safe to call unconditionally — consumers (balance loss, router stats)
-        read these attributes only within the step that wrote them.
+        read ``_last_gate`` only within the step that wrote it.
         """
         self._last_sigma = None
         for lora in self.unet_loras + self.text_encoder_loras:
             if hasattr(lora, "_last_gate"):
                 lora._last_gate = None
-            if hasattr(lora, "_sigma"):
-                lora._sigma = None
 
     def step_balance_loss_warmup(
         self, global_step: int, max_train_steps: int

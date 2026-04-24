@@ -76,7 +76,17 @@ class ReFTModule(torch.nn.Module):
         self.dropout = dropout
         self.module_dropout = module_dropout
 
-        self._timestep_mask = None
+        # Default timestep-rank mask: a shape-(1, reft_dim) all-ones buffer.
+        # Same rationale as ``BaseLoRAModule._timestep_mask`` — unconditional
+        # multiply is a no-op under the neutral default, so no None-vs-Tensor
+        # guard fires under ``compile_mode=full``. ``set_reft_timestep_mask``
+        # rebinds to a shared live-updated mask; ``clear_timestep_mask`` fills
+        # the shared mask with ones.
+        self.register_buffer(
+            "_timestep_mask",
+            torch.ones(1, reft_dim, dtype=torch.float32),
+            persistent=False,
+        )
 
     def apply_to(self):
         self.org_forward = self.org_module.forward
@@ -99,7 +109,9 @@ class ReFTModule(torch.nn.Module):
             h, self.learned_source.weight, self.learned_source.bias
         )
 
-        if self._timestep_mask is not None and self.training:
+        # Mask is always a Tensor (default all-ones → identity); no None
+        # branch to recompile on under compile_mode=full.
+        if self.training:
             delta = delta * self._timestep_mask
 
         if self.dropout is not None and self.training:

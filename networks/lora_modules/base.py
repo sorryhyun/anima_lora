@@ -89,7 +89,18 @@ class BaseLoRAModule(torch.nn.Module):
         self.register_buffer("alpha", torch.tensor(alpha))
 
         self._has_channel_scale = False
-        self._timestep_mask = None
+        # Default timestep-rank mask: a shape-(1, lora_dim) all-ones buffer.
+        # Multiplying by ones is a no-op, so every LoRA-family forward can
+        # apply ``lx * self._timestep_mask`` unconditionally — no None-vs-
+        # Tensor guard fires under ``compile_mode=full``. When T-LoRA is
+        # active, ``LoRANetwork.set_timestep_mask`` reassigns this buffer to
+        # a shared live-updated mask (see network.py); ``clear_timestep_mask``
+        # fills the shared mask with ones to restore the neutral state.
+        self.register_buffer(
+            "_timestep_mask",
+            torch.ones(1, lora_dim, dtype=torch.float32),
+            persistent=False,
+        )
         self.enabled = True
 
     def _register_channel_scale(

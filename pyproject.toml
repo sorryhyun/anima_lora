@@ -70,3 +70,8 @@ packages = []
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "markdownify",
+]

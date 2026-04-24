@@ -17,7 +17,7 @@ max_train_epochs = 1
 save_every_n_epochs = 1
 checkpointing_epochs = 1
 
-caption_shuffle_variants = 8
+caption_shuffle_variants = 4
 cache_llm_adapter_outputs = true
 
 blocks_to_swap = 0

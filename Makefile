@@ -305,7 +305,7 @@ preprocess-te:
 		--dir post_image_dataset \
 		--qwen3 models/text_encoders/qwen_3_06b_base.safetensors \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
-		--caption_shuffle_variants 8
+		--caption_shuffle_variants 4
 
 # --- Model downloads ---
 

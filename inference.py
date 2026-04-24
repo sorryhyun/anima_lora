@@ -580,9 +580,7 @@ def process_batch_prompts(prompts_data: List[Dict], args: argparse.Namespace) ->
 
         setup_mod_guidance(args, anima, device)
     else:
-        anima._mod_guidance_delta = None
-        anima._mod_guidance_schedule = None
-        anima._mod_guidance_final_w = 0.0
+        anima.reset_mod_guidance()
 
     # 5. Group prompts by text content for batched denoising
     infer_batch_size = getattr(args, "infer_batch_size", 1)

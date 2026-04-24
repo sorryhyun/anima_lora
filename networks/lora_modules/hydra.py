@@ -129,7 +129,17 @@ class HydraLoRAModule(BaseLoRAModule):
         self.use_custom_down_autograd = False
 
         self._last_gate = None  # (B, num_experts), cached each forward for balance loss
-        self._sigma = None  # (B,) σ tensor; set externally by LoRANetwork.set_sigma
+        # σ tensor; always a Tensor (never None) so the sinusoidal branch in
+        # _compute_gate can run unconditionally without a None-vs-Tensor guard.
+        # Registered as a non-persistent buffer so ``.to(device)`` moves the
+        # placeholder along with the module — otherwise a pre-``set_sigma``
+        # forward would fail with a CPU/GPU device mismatch in ``torch.cat``.
+        # ``LoRANetwork.set_sigma`` rebinds it to the step's (B,) timesteps
+        # before every forward, so the placeholder is only used if set_sigma
+        # is somehow skipped.
+        self.register_buffer(
+            "_sigma", torch.zeros(1, dtype=torch.float32), persistent=False
+        )
         # Expert-warmup gradient masking. Single buffer holding the per-expert
         # grad-scale (1.0 = full gradient, 0.0 = stop-grad). Default all-ones
         # makes the forward branch a no-op (``up*1 + up.detach()*0 == up``),
@@ -156,31 +166,27 @@ class HydraLoRAModule(BaseLoRAModule):
         ``docs/methods/hydra-lora.md`` §Fixes).
 
         When ``sigma_feature_dim > 0``, ``sinusoidal(σ)`` is concatenated to
-        the pooled vector. If ``_sigma`` is None (eval without set_sigma,
-        pretraining warmup), zero-pad the σ slice so the router-input shape
-        stays constant.
+        the pooled vector. ``self._sigma`` always holds a tensor (zero
+        placeholder at init, step σ after ``set_sigma``), so the branch on
+        "σ set vs not" is gone — the router-input shape stays constant and
+        there is no None-vs-Tensor guard to recompile on.
         """
         if lx.dim() >= 3:
             B = lx.shape[0]
             pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
         else:
             pooled = lx
-        B = pooled.shape[0]
         # lx is fp32 (bottleneck policy) but router weights follow the adapter's
         # storage dtype (bf16 at inference) — align before matmul.
         pooled = pooled.to(self.router.weight.dtype)
         if self.sigma_feature_dim > 0:
-            if self._sigma is not None:
-                sigma_feat = _sigma_sinusoidal_features(
-                    self._sigma, self.sigma_feature_dim
-                ).to(pooled.dtype)
-            else:
-                sigma_feat = torch.zeros(
-                    B,
-                    self.sigma_feature_dim,
-                    dtype=pooled.dtype,
-                    device=pooled.device,
-                )
+            sigma_feat = _sigma_sinusoidal_features(
+                self._sigma, self.sigma_feature_dim
+            ).to(pooled.dtype)
+            # Broadcast placeholder (shape (1, D) before first set_sigma) to
+            # batch size. Once set_sigma has run, _sigma matches pooled.shape[0]
+            # and the expand is a no-op.
+            sigma_feat = sigma_feat.expand(pooled.shape[0], -1)
             router_in = torch.cat([pooled, sigma_feat], dim=-1)
         else:
             router_in = pooled
@@ -215,10 +221,22 @@ class HydraLoRAModule(BaseLoRAModule):
         # the gate should behave identically at train and inference.
         gate = self._compute_gate(lx)  # (B, num_experts)
         if self.training:
-            self._last_gate = gate  # cache for network-level balance loss
+            # Cache for network-level balance loss. Plain STORE_ATTR inline
+            # (not a @torch.compiler.disable helper): under compile_mode=full
+            # a disabled helper forces a graph break at every LoRA module's
+            # forward, which splits the AOT-autograd compiled region into
+            # many small segments and explodes saved-for-backward activation
+            # memory (observed OOM at 56 MoE + 140 OrthoLoRAExp modules,
+            # T4-class budget). The None↔Tensor guard on _last_gate is
+            # prophylactic only — Phase A1 cleared the real recompile sources
+            # and trial.log shows no _last_gate guard firing in practice.
+            self._last_gate = gate
 
-        # timestep-dependent rank masking (T-LoRA compatibility)
-        if self._timestep_mask is not None and self.training:
+        # timestep-dependent rank masking (T-LoRA compatibility). Mask is a
+        # per-module all-ones buffer by default (neutral); set_timestep_mask
+        # reassigns each module to a shared live-updated mask when T-LoRA is
+        # active. Always applied — no None-vs-Tensor guard to recompile on.
+        if self.training:
             lx = lx * self._timestep_mask
 
         # normal dropout

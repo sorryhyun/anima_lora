@@ -108,9 +108,6 @@ class OrthoLoRAExpModule(BaseLoRAModule):
         R_q = self._cayley(self.S_q)  # (r, r)
         Q_eff = R_q @ self.Q_basis  # (r, in_dim)
 
-        # timestep mask
-        mask = self._timestep_mask
-
         # x @ Q_eff^T → (*, r), then scale by lambda
         if self.use_custom_down_autograd and self.training:
             inv_scale = self.inv_scale if self._has_channel_scale else None
@@ -119,10 +116,9 @@ class OrthoLoRAExpModule(BaseLoRAModule):
             dtype = self.P_basis.dtype
             x_lora = self._rebalance(x.to(dtype))
             lx = torch.nn.functional.linear(x_lora, Q_eff)  # (*, r)
-        if mask is not None:
-            lx = lx * self.lambda_layer * mask
-        else:
-            lx = lx * self.lambda_layer
+        # timestep mask: always a Tensor (default all-ones → identity), so no
+        # None-vs-Tensor guard fires under compile.
+        lx = lx * self.lambda_layer * self._timestep_mask
 
         # normal dropout
         if self.dropout is not None and self.training:
@@ -277,7 +273,13 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         self.use_custom_down_autograd = False
 
         self._last_gate = None  # cached each forward for balance loss
-        self._sigma = None  # (B,) σ; set by LoRANetwork.set_sigma
+        # σ tensor; always a Tensor (never None) so the sinusoidal branch in
+        # _compute_gate can run unconditionally. Registered as a non-persistent
+        # buffer so .to(device) moves the placeholder with the module.
+        # See ``HydraLoRAModule`` for the None-vs-Tensor guard rationale.
+        self.register_buffer(
+            "_sigma", torch.zeros(1, dtype=torch.float32), persistent=False
+        )
         # Expert-warmup gradient masking. See HydraLoRAModule for full
         # rationale — for OrthoHydra the mask gates gradient into S_p (which
         # parameterises per-expert P rotations). Default all-ones → applied
@@ -307,27 +309,20 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         RMS pool over the post-``Q_eff`` activations (pre-λ, pre-mask). λ is
         zero-init, so pooling the post-λ signal would zero the router input at
         step 0 and freeze gradient. See ``HydraLoRAModule._compute_gate`` for
-        the rationale on direct-input σ routing.
+        the rationale on direct-input σ routing and the always-a-Tensor
+        ``_sigma`` pattern.
         """
         if lx.dim() >= 3:
             B = lx.shape[0]
             pooled = lx.reshape(B, -1, lx.shape[-1]).pow(2).mean(dim=1).sqrt()
         else:
             pooled = lx
-        B = pooled.shape[0]
         pooled = pooled.to(self.router.weight.dtype)
         if self.sigma_feature_dim > 0:
-            if self._sigma is not None:
-                sigma_feat = _sigma_sinusoidal_features(
-                    self._sigma, self.sigma_feature_dim
-                ).to(pooled.dtype)
-            else:
-                sigma_feat = torch.zeros(
-                    B,
-                    self.sigma_feature_dim,
-                    dtype=pooled.dtype,
-                    device=pooled.device,
-                )
+            sigma_feat = _sigma_sinusoidal_features(
+                self._sigma, self.sigma_feature_dim
+            ).to(pooled.dtype)
+            sigma_feat = sigma_feat.expand(pooled.shape[0], -1)
             router_in = torch.cat([pooled, sigma_feat], dim=-1)
         else:
             router_in = pooled
@@ -361,14 +356,15 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # flowing into the router from the start.
         gate = self._compute_gate(lx)  # (B, E)
         if self.training:
+            # Plain STORE_ATTR inline (not a @compiler.disable helper) —
+            # see ``HydraLoRAModule.forward`` for the AOT-autograd memory
+            # rationale (disabled helper ≡ graph break per module ≡ OOM
+            # under compile_mode=full).
             self._last_gate = gate
 
-        # Scale by lambda + timestep mask
-        mask = self._timestep_mask
-        if mask is not None:
-            lx = lx * self.lambda_layer * mask
-        else:
-            lx = lx * self.lambda_layer
+        # Scale by lambda + timestep mask. Mask is always a Tensor (default
+        # all-ones buffer → identity), so no None-vs-Tensor guard fires.
+        lx = lx * self.lambda_layer * self._timestep_mask
 
         # normal dropout
         if self.dropout is not None and self.training:

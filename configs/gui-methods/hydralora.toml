@@ -15,7 +15,7 @@ max_train_epochs = 4
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
-caption_shuffle_variants = 8
+caption_shuffle_variants = 4
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
@@ -31,13 +31,13 @@ balance_loss_weight = 0.001
 # Hold the load-balance penalty at 0 during the first 40% of training so the
 # router can specialize, then flip it on to stop the diverged router from
 # collapsing further. 0.0 disables the warmup (legacy behavior).
-balance_loss_warmup_ratio = 0.4
+balance_loss_warmup_ratio = 0.1
 expert_warmup_ratio = 0.1
 # Narrow MoE to cross-attn q/kv + MLP (DiT). Self-attn, output_proj, and the
 # LLM-adapter blocks fall back to plain OrthoLoRAExp (use_ortho=true). See
 # configs/methods/lora.toml for the reasoning.
-hydra_router_layers = ".*(cross_attn\\.(q_proj|kv_proj)|mlp\\.layer[12])$"
+hydra_router_layers = ".*(mlp\\.layer[12])$"
 
 output_name = "anima_hydra"
 
-blocks_to_swap = 8
+blocks_to_swap = 0

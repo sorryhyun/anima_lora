@@ -122,18 +122,26 @@ def setup_mod_guidance(
         )
         delta_unit = proj_pos - proj_neg  # (1, model_channels)
 
-    anima._mod_guidance_delta = delta_unit.to(device, dtype=torch.bfloat16)
+    # Copy into the preregistered non-persistent buffers so the forward can
+    # always index them without a None/getattr fallback. Dtype/device follow
+    # the buffer (which moves with the model's .to(...)).
+    delta_buf = anima._mod_guidance_delta
+    delta_buf.copy_(delta_unit.to(delta_buf.device, dtype=delta_buf.dtype))
 
     num_blocks = len(anima.blocks)
     schedule = build_mod_schedule(args, num_blocks)
-    anima._mod_guidance_schedule = schedule
-    anima._mod_guidance_final_w = float(getattr(args, "mod_final_w", 0.0))
+    schedule_buf = anima._mod_guidance_schedule
+    schedule_buf.copy_(
+        torch.tensor(schedule, device=schedule_buf.device, dtype=schedule_buf.dtype)
+    )
+    final_w = float(getattr(args, "mod_final_w", 0.0))
+    anima._mod_guidance_final_w.fill_(final_w)
 
     active = [(i, w) for i, w in enumerate(schedule) if w != 0.0]
     logger.info(
         f"Modulation guidance: delta_norm={delta_unit.norm().item():.4f}, "
         f"active blocks={len(active)}/{num_blocks}, "
-        f"final_w={anima._mod_guidance_final_w}"
+        f"final_w={final_w}"
     )
     if active:
         logger.info(

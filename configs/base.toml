@@ -34,7 +34,7 @@ static_token_count = 4096
 trim_crossattn_kv = false
 attn_mode = "flash"
 save_precision= "bf16"
-
+use_custom_down_autograd = true
 log_every_n_steps=2
 
 # ── Dataset config ───────────────────────────────────────────────────────

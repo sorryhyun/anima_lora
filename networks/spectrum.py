@@ -212,8 +212,9 @@ def _spectrum_fast_forward(
         timesteps_B_T = timesteps_B_T.unsqueeze(1)
     t_emb, adaln = model.t_embedder(timesteps_B_T)
     t_emb = model.t_embedding_norm(t_emb)
-    if getattr(model, "_mod_guidance_delta", None) is not None:
-        t_emb = t_emb + model._mod_guidance_delta.unsqueeze(1)
+    # Unconditional: buffer is zeros when mod guidance is disabled (see
+    # Anima.__init__), so this collapses to identity.
+    t_emb = t_emb + model._mod_guidance_delta.unsqueeze(1)
     x = model.final_layer(predicted_feature, t_emb, adaln_lora_B_T_3D=adaln)
     return model.unpatchify(x)
 

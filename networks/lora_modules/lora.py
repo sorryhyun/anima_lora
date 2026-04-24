@@ -91,8 +91,11 @@ class LoRAModule(BaseLoRAModule):
                 x_lora.float(), self.lora_down.weight.float()
             )
 
-        # timestep-dependent rank masking
-        if self._timestep_mask is not None and self.training:
+        # timestep-dependent rank masking. Mask is always a Tensor (default
+        # all-ones buffer → identity); LoRANetwork.set_timestep_mask rebinds
+        # it to a shared live-updated mask when T-LoRA is active. No None-vs-
+        # Tensor guard to recompile on under compile_mode=full.
+        if self.training:
             lx = lx * self._timestep_mask
 
         # normal dropout

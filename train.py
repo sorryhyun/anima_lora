@@ -502,7 +502,10 @@ class AnimaTrainer:
                 args.torch_compile
                 and getattr(args, "compile_mode", "blocks") == "blocks"
             ):
-                model.compile_blocks(args.dynamo_backend)
+                model.compile_blocks(
+                    args.dynamo_backend,
+                    mode=getattr(args, "compile_inductor_mode", None),
+                )
             logger.info(f"static_token_count={args.static_token_count}")
 
         # Store unsloth preference so that when the base trainer calls
@@ -1884,8 +1887,12 @@ class AnimaTrainer:
             for t_enc in text_encoders:
                 t_enc.eval()
 
-        # Full-model torch.compile: compile after LoRA apply + accelerator prepare
-        # so dynamo traces through LoRA-patched forwards without _orig_mod prefix issues.
+        # compile_mode='full': narrow torch.compile to _run_blocks (the constant-
+        # shape block stack). Pre-blocks (patch/embed/static-pad/RoPE-pad/t_embedder/
+        # BlockMask) and post-blocks (unpad/final_layer/unpatchify) stay eager —
+        # their shapes vary per CONSTANT_TOKEN_BUCKETS entry, so wrapping them
+        # would force one CUDAGraph per bucket. Pinning the compile boundary to
+        # the shape-invariant region yields a single CUDAGraph across all buckets.
         if args.torch_compile and getattr(args, "compile_mode", "blocks") == "full":
             assert not args.gradient_checkpointing, (
                 "compile_mode='full' is incompatible with gradient checkpointing"
@@ -1893,8 +1900,17 @@ class AnimaTrainer:
             assert not self.is_swapping_blocks, (
                 "compile_mode='full' is incompatible with block swap"
             )
-            unet = torch.compile(unet, backend=args.dynamo_backend, dynamic=True)
-            logger.info(f"full-model torch.compile (backend={args.dynamo_backend})")
+            inductor_mode = getattr(args, "compile_inductor_mode", None)
+            # Compile on the unwrapped DiT so the instance-bound method sticks
+            # regardless of accelerator wrapping (DDP/etc resolve self._run_blocks
+            # against the underlying module's __dict__).
+            accelerator.unwrap_model(unet).compile_core(
+                backend=args.dynamo_backend, mode=inductor_mode
+            )
+            logger.info(
+                f"compile_core: _run_blocks compiled "
+                f"(backend={args.dynamo_backend}, mode={inductor_mode})"
+            )
 
         accelerator.unwrap_model(network).prepare_grad_etc(text_encoder, unet)
 
@@ -2019,6 +2035,15 @@ class AnimaTrainer:
         if args.seed is None:
             args.seed = random.randint(0, 2**32)
         set_seed(args.seed)
+
+        # Whether inductor will have CUDAGraphs active — governs whether the
+        # training loop needs to call torch.compiler.cudagraph_mark_step_begin()
+        # each step (see the call site inside the accumulate block).
+        self._cudagraph_mark_step = bool(
+            getattr(args, "torch_compile", False)
+            and getattr(args, "compile_inductor_mode", None)
+            in ("reduce-overhead", "max-autotune")
+        )
 
         tokenize_strategy = self.get_tokenize_strategy(args)
         strategy_base.TokenizeStrategy.set_strategy(tokenize_strategy)
@@ -2511,11 +2536,13 @@ class AnimaTrainer:
             if args.max_validation_steps is not None
             else len(val_dataloader)
         )
-        # Validate at fixed sigma values (low-t focused for texture fidelity)
+        # Validate at fixed sigma values across the schedule:
+        # 0.1 = near-clean / fine detail, 0.4 = mid / bulk structure,
+        # 0.7 = high noise / coarse denoising (early inference steps).
         validation_sigmas = (
             args.validation_sigmas
             if args.validation_sigmas is not None
-            else [0.05, 0.10, 0.20, 0.35]
+            else [0.1, 0.4, 0.7]
         )
         validation_total_steps = validation_steps * len(validation_sigmas)
         original_t_min = args.t_min
@@ -2581,6 +2608,24 @@ class AnimaTrainer:
 
                     # preprocess batch for each model
                     self.on_step_start(ctx, batch, is_train=True)
+
+                    # CUDAGraphs (reduce-overhead / max-autotune) need an explicit
+                    # iteration boundary for inductor's cudagraph_trees. Without
+                    # this call, the "pending, uninvoked backwards" fast-path
+                    # check fails every step and cudagraphs silently fall back to
+                    # the eager path — you pay compile latency and keep launch
+                    # overhead. Must be called before the forward on every step.
+                    #
+                    # Also clear Python references to last-step gate/σ tensors
+                    # *before* marking — those tensors live in the cudagraph
+                    # memory pool, and a lingering self._last_gate/self._sigma
+                    # reference keeps the pool pinned regardless of the mark
+                    # call, which defeats the whole point.
+                    if self._cudagraph_mark_step:
+                        net_unwrapped = accelerator.unwrap_model(network)
+                        if hasattr(net_unwrapped, "clear_step_caches"):
+                            net_unwrapped.clear_step_caches()
+                        torch.compiler.cudagraph_mark_step_begin()
 
                     loss = self.process_batch(ctx, batch, is_train=True)
 
@@ -3007,7 +3052,7 @@ def setup_parser() -> argparse.ArgumentParser:
         type=float,
         nargs="+",
         default=None,
-        help="Sigma values for validation loss (0.0~1.0). Low values = fine detail. Default: 0.05 0.10 0.20 0.35",
+        help="Sigma values for validation loss (0.0~1.0). Low values = fine detail. Default: 0.1 0.4 0.7",
     )
     parser.add_argument(
         "--unsloth_offload_checkpointing",

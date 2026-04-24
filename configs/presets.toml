@@ -1,8 +1,5 @@
 [default]
-dataloader_pin_memory = true
-
-[fast_16gb]
-layer_start = 2
+blocks_to_swap = 0
 dataloader_pin_memory = true
 
 [low_vram]
@@ -20,11 +17,11 @@ blocks_to_swap = 20
 dataloader_pin_memory = true
 
 [half]
-blocks_to_swap = 8
+blocks_to_swap = 0
 dataloader_pin_memory = true
 sample_ratio = 0.5
 
 [quarter]
-blocks_to_swap = 8
+blocks_to_swap = 0
 dataloader_pin_memory = true
 sample_ratio = 0.25
