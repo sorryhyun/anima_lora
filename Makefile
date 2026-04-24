@@ -369,6 +369,14 @@ METHOD ?= lora
 print-config:
 	python train.py --method $(METHOD) --preset $(PRESET) --print-config --no-config-snapshot
 
+# Dump TensorBoard scalar logs to JSON (one file per run dir).
+# Example: make export-logs RUN=output/logs/20260424161100
+#          make export-logs RUN=output/logs ALL=1
+#          make export-logs RUN=output/logs/20260424161100 JSONL=1
+RUN ?= output/logs
+export-logs:
+	python scripts/export_logs_json.py $(RUN) $(if $(ALL),--all) $(if $(JSONL),--jsonl) $(ARGS)
+
 # Bake a LoRA adapter into the base DiT (standalone merged checkpoint).
 # Picks the latest bakeable .safetensors in ADAPTER_DIR (skips _moe/postfix/prefix/.bak).
 # Example: make merge ADAPTER_DIR=output/ckpt MULTIPLIER=1.0

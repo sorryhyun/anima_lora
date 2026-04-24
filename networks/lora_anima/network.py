@@ -770,15 +770,34 @@ class LoRANetwork(torch.nn.Module):
     def get_router_entropy(self) -> Optional[float]:
         """Mean per-sample normalized entropy of hydra router gates, averaged
         across modules. Returns None when no hydra module has cached a gate
-        this step (e.g. non-hydra training, or post-backward after the cache
-        was cleared). Cheap: one reduction per module on (B, E) gates.
-
-        Interpretation: 1.0 = uniform routing (no specialization); 0.0 = one-hot
-        (fully collapsed). Mid-range values mean the router is actually using
-        multiple experts differentially — that's what you want to see trend
-        downward from ~1.0 as training progresses.
+        this step. Thin wrapper over :meth:`get_router_stats` kept for the
+        progress-bar postfix path; prefer ``get_router_stats`` for logging.
         """
-        per_module = []
+        stats = self.get_router_stats()
+        return stats.get("entropy_mean") if stats else None
+
+    def get_router_stats(self) -> Dict[str, Union[float, List[float]]]:
+        """Per-step router diagnostics aggregated across hydra modules.
+
+        Returns a dict with:
+          - entropy_mean / entropy_p05 / entropy_p50 / entropy_p95: normalized
+            per-module entropy (0 = one-hot collapse, 1 = uniform), pooled
+            across modules.
+          - margin_mean: mean top1-top2 softmax gap, averaged over batch then
+            modules. High margin = confident routing; near-zero = effectively
+            random.
+          - expert_usage: length-E vector of argmax frequency averaged across
+            modules. Sums to ~1.0. Flat distribution = balanced; a column
+            near 0 means that expert is never picked (collapse).
+
+        Empty dict when no hydra module cached a gate this step. One reduction
+        per module on (B, E) gates — cheap.
+        """
+        per_H: list[float] = []
+        per_margin: list[float] = []
+        per_usage: list[torch.Tensor] = []
+        E_ref: Optional[int] = None
+
         for lora in self.unet_loras + self.text_encoder_loras:
             gate = getattr(lora, "_last_gate", None)
             if gate is None:
@@ -786,12 +805,41 @@ class LoRANetwork(torch.nn.Module):
             E = gate.shape[-1]
             if E <= 1:
                 continue
+            if E_ref is None:
+                E_ref = E
+            elif E != E_ref:
+                # Skip modules with mismatched expert count — aggregating
+                # usage vectors of different length isn't meaningful.
+                continue
+
             p = gate.float().clamp_min(1e-12)
             H = -(p * p.log()).sum(dim=-1)  # (B,)
-            per_module.append((H.mean() / math.log(E)).detach().item())
-        if not per_module:
-            return None
-        return sum(per_module) / len(per_module)
+            per_H.append((H.mean() / math.log(E)).detach().item())
+
+            top2 = p.topk(2, dim=-1).values  # (B, 2)
+            per_margin.append((top2[:, 0] - top2[:, 1]).mean().detach().item())
+
+            expert_idx = gate.argmax(dim=-1)  # (B,)
+            usage = torch.zeros(E, device=gate.device, dtype=gate.dtype)
+            usage.scatter_add_(
+                0, expert_idx, torch.ones_like(expert_idx, dtype=gate.dtype)
+            )
+            per_usage.append((usage / gate.shape[0]).detach())
+
+        if not per_H:
+            return {}
+
+        H_t = torch.tensor(per_H)
+        q = torch.quantile(H_t, torch.tensor([0.05, 0.5, 0.95]))
+        usage_mean = torch.stack(per_usage).mean(dim=0).cpu().tolist()
+        return {
+            "entropy_mean": float(H_t.mean().item()),
+            "entropy_p05": float(q[0].item()),
+            "entropy_p50": float(q[1].item()),
+            "entropy_p95": float(q[2].item()),
+            "margin_mean": float(sum(per_margin) / len(per_margin)),
+            "expert_usage": usage_mean,
+        }
 
     def get_ortho_regularization(self) -> torch.Tensor:
         """Sum orthogonality regularization from all OrthoLoRA and ReFT modules."""

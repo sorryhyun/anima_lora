@@ -12,6 +12,7 @@ from tqdm import tqdm
 from diffusers.utils.torch_utils import randn_tensor
 
 from library.anima import models as anima_models
+from library.inference.adapters import clear_hydra_sigma, set_hydra_sigma
 from library.inference import sampling as inference_utils
 from library.inference.output import check_inputs
 from library.inference.text import prepare_text_inputs
@@ -221,67 +222,46 @@ def generate_body_tiled(
     pgraft_network = getattr(anima, "_pgraft_network", None)
     lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
 
-    with tqdm(total=len(timesteps), desc="Denoising steps (tiled)") as pbar:
-        for i, t in enumerate(timesteps):
-            # P-GRAFT: disable LoRA at cutoff step
-            if (
-                pgraft_network is not None
-                and lora_cutoff_step is not None
-                and i == lora_cutoff_step
-            ):
-                pgraft_network.set_enabled(False)
-                logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}")
+    try:
+        with tqdm(total=len(timesteps), desc="Denoising steps (tiled)") as pbar:
+            for i, t in enumerate(timesteps):
+                # P-GRAFT: disable LoRA at cutoff step
+                if (
+                    pgraft_network is not None
+                    and lora_cutoff_step is not None
+                    and i == lora_cutoff_step
+                ):
+                    pgraft_network.set_enabled(False)
+                    logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}")
 
-            t_expand = t.expand(latents.shape[0])
+                t_expand = t.expand(latents.shape[0])
+                set_hydra_sigma(anima, t_expand)
 
-            noise_acc = torch.zeros_like(latents)
-            weight_acc = torch.zeros(
-                1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16
-            )
-
-            if do_cfg:
-                uncond_noise_acc = torch.zeros_like(latents)
-                uncond_weight_acc = torch.zeros(
+                noise_acc = torch.zeros_like(latents)
+                weight_acc = torch.zeros(
                     1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16
                 )
 
-            for y, x in positions:
-                tile_h = min(tile_size, h_latent - y)
-                tile_w = min(tile_size, w_latent - x)
-                tile_latent = latents[:, :, :, y : y + tile_h, x : x + tile_w]
-                tile_padding_mask = torch.zeros(
-                    1, 1, tile_h, tile_w, dtype=torch.bfloat16, device=device
-                )
-
-                h_off = y // patch_spatial
-                w_off = x // patch_spatial
-
-                bw = blend_weights[(y, x)]
-
-                # Conditional pass
-                if anima.blocks_to_swap:
-                    anima.prepare_block_swap_before_forward()
-                with (
-                    torch.no_grad(),
-                    torch.autocast(
-                        device_type=device.type,
-                        dtype=torch.bfloat16,
-                        enabled=autocast_enabled,
-                    ),
-                ):
-                    tile_pred = anima(
-                        tile_latent,
-                        t_expand,
-                        embed,
-                        padding_mask=tile_padding_mask,
-                        h_offset=h_off,
-                        w_offset=w_off,
-                    )
-                noise_acc[:, :, :, y : y + tile_h, x : x + tile_w] += tile_pred * bw
-                weight_acc[:, :, :, y : y + tile_h, x : x + tile_w] += bw
-
-                # Unconditional pass
                 if do_cfg:
+                    uncond_noise_acc = torch.zeros_like(latents)
+                    uncond_weight_acc = torch.zeros(
+                        1, 1, 1, h_latent, w_latent, device=device, dtype=torch.bfloat16
+                    )
+
+                for y, x in positions:
+                    tile_h = min(tile_size, h_latent - y)
+                    tile_w = min(tile_size, w_latent - x)
+                    tile_latent = latents[:, :, :, y : y + tile_h, x : x + tile_w]
+                    tile_padding_mask = torch.zeros(
+                        1, 1, tile_h, tile_w, dtype=torch.bfloat16, device=device
+                    )
+
+                    h_off = y // patch_spatial
+                    w_off = x // patch_spatial
+
+                    bw = blend_weights[(y, x)]
+
+                    # Conditional pass
                     if anima.blocks_to_swap:
                         anima.prepare_block_swap_before_forward()
                     with (
@@ -292,38 +272,64 @@ def generate_body_tiled(
                             enabled=autocast_enabled,
                         ),
                     ):
-                        uncond_tile_pred = anima(
+                        tile_pred = anima(
                             tile_latent,
                             t_expand,
-                            negative_embed,
+                            embed,
                             padding_mask=tile_padding_mask,
                             h_offset=h_off,
                             w_offset=w_off,
                         )
-                    uncond_noise_acc[:, :, :, y : y + tile_h, x : x + tile_w] += (
-                        uncond_tile_pred * bw
+                    noise_acc[:, :, :, y : y + tile_h, x : x + tile_w] += (
+                        tile_pred * bw
                     )
-                    uncond_weight_acc[:, :, :, y : y + tile_h, x : x + tile_w] += bw
+                    weight_acc[:, :, :, y : y + tile_h, x : x + tile_w] += bw
 
-            noise_pred = noise_acc / weight_acc
-            if do_cfg:
-                uncond_noise_pred = uncond_noise_acc / uncond_weight_acc
-                noise_pred = uncond_noise_pred + args.guidance_scale * (
-                    noise_pred - uncond_noise_pred
-                )
+                    # Unconditional pass
+                    if do_cfg:
+                        if anima.blocks_to_swap:
+                            anima.prepare_block_swap_before_forward()
+                        with (
+                            torch.no_grad(),
+                            torch.autocast(
+                                device_type=device.type,
+                                dtype=torch.bfloat16,
+                                enabled=autocast_enabled,
+                            ),
+                        ):
+                            uncond_tile_pred = anima(
+                                tile_latent,
+                                t_expand,
+                                negative_embed,
+                                padding_mask=tile_padding_mask,
+                                h_offset=h_off,
+                                w_offset=w_off,
+                            )
+                        uncond_noise_acc[:, :, :, y : y + tile_h, x : x + tile_w] += (
+                            uncond_tile_pred * bw
+                        )
+                        uncond_weight_acc[:, :, :, y : y + tile_h, x : x + tile_w] += bw
 
-            if er_sde is not None:
-                denoised = latents.float() - sigmas[i] * noise_pred.float()
-                latents = er_sde.step(latents, denoised, i).to(latents.dtype)
-            else:
-                latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
-                    latents.dtype
-                )
-            pbar.update()
+                noise_pred = noise_acc / weight_acc
+                if do_cfg:
+                    uncond_noise_pred = uncond_noise_acc / uncond_weight_acc
+                    noise_pred = uncond_noise_pred + args.guidance_scale * (
+                        noise_pred - uncond_noise_pred
+                    )
 
-    # P-GRAFT: restore LoRA for next generation
-    if pgraft_network is not None and lora_cutoff_step is not None:
-        pgraft_network.set_enabled(True)
+                if er_sde is not None:
+                    denoised = latents.float() - sigmas[i] * noise_pred.float()
+                    latents = er_sde.step(latents, denoised, i).to(latents.dtype)
+                else:
+                    latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
+                        latents.dtype
+                    )
+                pbar.update()
+    finally:
+        clear_hydra_sigma(anima)
+        # P-GRAFT: restore LoRA for next generation
+        if pgraft_network is not None and lora_cutoff_step is not None:
+            pgraft_network.set_enabled(True)
 
     return latents
 
@@ -544,49 +550,35 @@ def generate_body(
             postfix_neg_seqlens=neg_seqlens,
         )
     else:
-        with tqdm(total=len(timesteps), desc=f"Denoising steps ({bs}x)") as pbar:
-            for i, t in enumerate(timesteps):
-                # P-GRAFT: disable LoRA at cutoff step (reference model takes over)
-                if (
-                    pgraft_network is not None
-                    and lora_cutoff_step is not None
-                    and i == lora_cutoff_step
-                ):
-                    pgraft_network.set_enabled(False)
-                    logger.info(f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}")
+        try:
+            with tqdm(total=len(timesteps), desc=f"Denoising steps ({bs}x)") as pbar:
+                for i, t in enumerate(timesteps):
+                    # P-GRAFT: disable LoRA at cutoff step (reference model takes over)
+                    if (
+                        pgraft_network is not None
+                        and lora_cutoff_step is not None
+                        and i == lora_cutoff_step
+                    ):
+                        pgraft_network.set_enabled(False)
+                        logger.info(
+                            f"P-GRAFT: Disabled LoRA at step {i}/{len(timesteps)}"
+                        )
 
-                t_expand = t.expand(latents.shape[0])
+                    t_expand = t.expand(latents.shape[0])
+                    set_hydra_sigma(anima, t_expand)
 
-                # σ-conditional postfix: recompute per step against base embeds.
-                if postfix_base_embed is not None:
-                    step_embed = postfix_net.append_postfix(
-                        postfix_base_embed, embed_seqlens, timesteps=t_expand
-                    )
-                    step_negative = postfix_net.append_postfix(
-                        postfix_base_neg, neg_seqlens, timesteps=t_expand
-                    )
-                else:
-                    step_embed = embed
-                    step_negative = negative_embed
+                    # σ-conditional postfix: recompute per step against base embeds.
+                    if postfix_base_embed is not None:
+                        step_embed = postfix_net.append_postfix(
+                            postfix_base_embed, embed_seqlens, timesteps=t_expand
+                        )
+                        step_negative = postfix_net.append_postfix(
+                            postfix_base_neg, neg_seqlens, timesteps=t_expand
+                        )
+                    else:
+                        step_embed = embed
+                        step_negative = negative_embed
 
-                with (
-                    torch.no_grad(),
-                    torch.autocast(
-                        device_type=device.type,
-                        dtype=torch.bfloat16,
-                        enabled=autocast_enabled,
-                    ),
-                ):
-                    _pos_kw = (
-                        {"pooled_text_override": _pooled_text_pos}
-                        if _pooled_text_pos is not None
-                        else {}
-                    )
-                    noise_pred = anima(
-                        latents, t_expand, step_embed, padding_mask=padding_mask, **_pos_kw
-                    )
-
-                if do_cfg:
                     with (
                         torch.no_grad(),
                         torch.autocast(
@@ -595,36 +587,59 @@ def generate_body(
                             enabled=autocast_enabled,
                         ),
                     ):
-                        _neg_kw = (
-                            {"pooled_text_override": _pooled_text_neg}
-                            if _pooled_text_neg is not None
+                        _pos_kw = (
+                            {"pooled_text_override": _pooled_text_pos}
+                            if _pooled_text_pos is not None
                             else {}
                         )
-                        uncond_noise_pred = anima(
+                        noise_pred = anima(
                             latents,
                             t_expand,
-                            step_negative,
+                            step_embed,
                             padding_mask=padding_mask,
-                            **_neg_kw,
+                            **_pos_kw,
                         )
-                    noise_pred = uncond_noise_pred + args.guidance_scale * (
-                        noise_pred - uncond_noise_pred
-                    )
 
-                # ensure latents dtype is consistent
-                if er_sde is not None:
-                    denoised = latents.float() - sigmas[i] * noise_pred.float()
-                    latents = er_sde.step(latents, denoised, i).to(latents.dtype)
-                else:
-                    latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
-                        latents.dtype
-                    )
+                    if do_cfg:
+                        with (
+                            torch.no_grad(),
+                            torch.autocast(
+                                device_type=device.type,
+                                dtype=torch.bfloat16,
+                                enabled=autocast_enabled,
+                            ),
+                        ):
+                            _neg_kw = (
+                                {"pooled_text_override": _pooled_text_neg}
+                                if _pooled_text_neg is not None
+                                else {}
+                            )
+                            uncond_noise_pred = anima(
+                                latents,
+                                t_expand,
+                                step_negative,
+                                padding_mask=padding_mask,
+                                **_neg_kw,
+                            )
+                        noise_pred = uncond_noise_pred + args.guidance_scale * (
+                            noise_pred - uncond_noise_pred
+                        )
 
-                pbar.update()
+                    # ensure latents dtype is consistent
+                    if er_sde is not None:
+                        denoised = latents.float() - sigmas[i] * noise_pred.float()
+                        latents = er_sde.step(latents, denoised, i).to(latents.dtype)
+                    else:
+                        latents = inference_utils.step(
+                            latents, noise_pred, sigmas, i
+                        ).to(latents.dtype)
 
-        # P-GRAFT: restore LoRA for next generation
-        if pgraft_network is not None and lora_cutoff_step is not None:
-            pgraft_network.set_enabled(True)
+                    pbar.update()
+        finally:
+            clear_hydra_sigma(anima)
+            # P-GRAFT: restore LoRA for next generation
+            if pgraft_network is not None and lora_cutoff_step is not None:
+                pgraft_network.set_enabled(True)
 
     return latents
 

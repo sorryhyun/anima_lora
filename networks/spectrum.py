@@ -21,6 +21,7 @@ from typing import Optional, Tuple
 import torch
 from tqdm import tqdm
 
+from library.inference.adapters import clear_hydra_sigma, set_hydra_sigma
 from library.inference import sampling as inference_utils
 
 logger = logging.getLogger(__name__)
@@ -310,6 +311,7 @@ def spectrum_denoise(
                     actual = (consec_cached + 1) % max(1, math.floor(curr_ws)) == 0
 
                 t_exp = t.expand(latents.shape[0])
+                set_hydra_sigma(anima, t_exp)
 
                 # σ-conditional postfix: recompute per step on actual forwards.
                 # Cached steps skip all blocks so cross-attn (and thus postfix) is
@@ -431,10 +433,6 @@ def spectrum_denoise(
 
                 pbar.update()
 
-        # P-GRAFT restore
-        if pgraft_network is not None and lora_cutoff_step is not None:
-            pgraft_network.set_enabled(True)
-
         speedup = num_steps / max(1, fwd_count)
         cfg_label = " (x2 for CFG)" if do_cfg else ""
         logger.info(
@@ -443,6 +441,10 @@ def spectrum_denoise(
         )
 
     finally:
+        clear_hydra_sigma(anima)
+        # P-GRAFT restore
+        if pgraft_network is not None and lora_cutoff_step is not None:
+            pgraft_network.set_enabled(True)
         hook.remove()
 
     return latents

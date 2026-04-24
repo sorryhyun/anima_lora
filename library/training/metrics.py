@@ -56,6 +56,40 @@ def _balance_loss_metric(ctx: MetricContext) -> dict[str, float]:
     return {"reg/balance": float(val), "reg/balance_weighted": float(w * val)}
 
 
+def _router_entropy_metric(ctx: MetricContext) -> dict[str, float]:
+    """Hydra router diagnostics.
+
+    Emits the single mean entropy plus quantiles (p05/p50/p95 across modules —
+    dead-routing hotspots show up in p05), the mean top1-top2 margin (low =
+    near-random gating), and per-expert usage rates (sum to ~1.0; a near-0
+    entry means that expert is never picked).
+    """
+    if not getattr(ctx.network, "_use_hydra", False):
+        return {}
+    getter = getattr(ctx.network, "get_router_stats", None)
+    if getter is not None:
+        stats = getter()
+        if not stats:
+            return {}
+        out: dict[str, float] = {
+            "hydra/router_entropy": float(stats["entropy_mean"]),
+            "hydra/router_entropy_p05": float(stats["entropy_p05"]),
+            "hydra/router_entropy_p50": float(stats["entropy_p50"]),
+            "hydra/router_entropy_p95": float(stats["entropy_p95"]),
+            "hydra/router_margin": float(stats["margin_mean"]),
+        }
+        for i, v in enumerate(stats.get("expert_usage", [])):
+            out[f"hydra/expert_usage/{i}"] = float(v)
+        return out
+
+    # Backward compat: old networks only exposed the mean scalar.
+    legacy = getattr(ctx.network, "get_router_entropy", None)
+    if legacy is None:
+        return {}
+    H = legacy()
+    return {"hydra/router_entropy": float(H)} if H is not None else {}
+
+
 def _postfix_contrastive_metric(ctx: MetricContext) -> dict[str, float]:
     w = float(getattr(ctx.network, "contrastive_weight", 0.0) or 0.0)
     if w <= 0.0:
@@ -86,6 +120,7 @@ METRIC_REGISTRY: dict[str, MetricFn] = {
     "apex_step": _apex_step_metric,
     "ortho_reg": _ortho_reg_magnitude,
     "hydra_balance": _balance_loss_metric,
+    "hydra_router_entropy": _router_entropy_metric,
     "postfix_contrastive": _postfix_contrastive_metric,
     "postfix_sigma_budget": _postfix_sigma_budget_metric,
 }

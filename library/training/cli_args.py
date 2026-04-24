@@ -486,6 +486,13 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--log_config", action="store_true", help="log training configuration"
     )
+    parser.add_argument(
+        "--log_every_n_steps",
+        type=int,
+        default=1,
+        help="only emit step-level metrics every N global steps (default 1 = every step). "
+        "Validation and epoch logs are unaffected. Useful for long W&B runs.",
+    )
 
     parser.add_argument(
         "--noise_offset",
@@ -756,6 +763,101 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
         type=int,
         default=None,
         help="[EXPERIMENTAL] Sets the number of blocks to swap during the forward and backward passes.",
+    )
+
+
+def add_network_arguments(parser: argparse.ArgumentParser):
+    parser.add_argument(
+        "--network_weights",
+        type=str,
+        default=None,
+        help="pretrained weights for network",
+    )
+    parser.add_argument(
+        "--network_module",
+        type=str,
+        default=None,
+        help="network module to train",
+    )
+    parser.add_argument(
+        "--network_dim",
+        type=int,
+        default=None,
+        help="network dimensions (depends on each network)",
+    )
+    parser.add_argument(
+        "--network_alpha",
+        type=float,
+        default=1,
+        help="alpha for LoRA weight scaling, default 1 (same as network_dim for same behavior as old version)",
+    )
+    parser.add_argument(
+        "--network_dropout",
+        type=float,
+        default=None,
+        help="Drops neurons out of training every step (0 or None is default behavior (no dropout), 1 would drop all neurons)",
+    )
+    parser.add_argument(
+        "--network_args",
+        type=str,
+        default=None,
+        nargs="*",
+        help="additional arguments for network (key=value)",
+    )
+    parser.add_argument(
+        "--network_train_unet_only",
+        action="store_true",
+        help="only training U-Net part",
+    )
+    parser.add_argument(
+        "--network_train_text_encoder_only",
+        action="store_true",
+        help="only training Text Encoder part",
+    )
+    parser.add_argument(
+        "--training_comment",
+        type=str,
+        default=None,
+        help="arbitrary comment string stored in metadata",
+    )
+    parser.add_argument(
+        "--dim_from_weights",
+        action="store_true",
+        help="automatically determine dim (rank) from network_weights",
+    )
+    parser.add_argument(
+        "--scale_weight_norms",
+        type=float,
+        default=None,
+        help="Scale the weight of each key pair to help prevent overtraing via exploding gradients. (1 is a good starting point)",
+    )
+    parser.add_argument(
+        "--base_weights",
+        type=str,
+        default=None,
+        nargs="*",
+        help="network weights to merge into the model before training",
+    )
+    parser.add_argument(
+        "--base_weights_multiplier",
+        type=float,
+        default=None,
+        nargs="*",
+        help="multiplier for network weights to merge into the model before training",
+    )
+    parser.add_argument(
+        "--lora_path",
+        type=str,
+        default=None,
+        help="path to a pretrained LoRA checkpoint to merge into DiT weights before training. "
+        "Intended for postfix/prefix training on top of a fixed LoRA. "
+        "The LoRA is baked into the base weights at load time — no runtime hooks.",
+    )
+    parser.add_argument(
+        "--lora_multiplier",
+        type=float,
+        default=1.0,
+        help="multiplier applied to the frozen LoRA merged via --lora_path",
     )
 
 

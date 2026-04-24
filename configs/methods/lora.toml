@@ -13,17 +13,26 @@
 # defaults — tune freely.
 
 
-network_alpha = 48
-network_dim = 48
+network_alpha = 16
+network_dim = 16
 
-learning_rate = 2e-5
-max_train_epochs = 12
+learning_rate = 1e-4
+max_train_epochs = 4
 save_every_n_epochs = 4
 checkpointing_epochs = 4
 
 caption_shuffle_variants = 8
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
+
+# Logging (TensorBoard). Writes event files to output/logs/<run>/.
+# View with: `tensorboard --logdir output/logs`. Scalars logged:
+#   - loss/current, loss/average, lr/*, norm/*
+#   - reg/balance, reg/balance_weighted   (Hydra load-balance)
+#   - reg/ortho, reg/ortho_weighted       (OrthoLoRA / ReFT regularizer)
+#   - hydra/router_entropy                (Hydra gate entropy; 1=uniform, 0=one-hot)
+logging_dir = "output/logs"
+log_with = "tensorboard"
 
 # Ortho-lora
 
@@ -49,7 +58,8 @@ balance_loss_weight = 2e-6 # 1e-4 is tooo strong
 # then flip to `balance_loss_weight` to stop a skewed router from collapsing
 # further (empirically: entropy falls from 1.0 → 0.17 by 5k steps without this).
 # 0.0 = no warmup (legacy behavior).
-balance_loss_warmup_ratio = 0.3
+balance_loss_warmup_ratio = 0.1
+expert_warmup_ratio = 0.1
 
 # Router LR multiplier on top of unet_lr. Covers .router.* and .sigma_mlp.*.
 # Router init is small (std=0.01) and lives in a softmax-uniform fixed point;
@@ -89,7 +99,7 @@ num_sigma_buckets = 3
 # reft_alpha = 48
 # reft_layers = "last_8"
 
-blocks_to_swap = 16
+blocks_to_swap = 10
 
 
 

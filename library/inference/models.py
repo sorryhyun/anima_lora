@@ -183,6 +183,9 @@ def load_dit_model(
                 )
             network.to(device, dtype=torch.bfloat16)
             network.eval().requires_grad_(False)
+            hydra_networks = list(getattr(model, "_hydra_networks", []))
+            hydra_networks.append(network)
+            model._hydra_networks = hydra_networks
             model._hydra_network = network
             # Reuse the P-GRAFT cutoff slot so existing toggle sites
             # (inference_pipeline loops + spectrum_denoise) honor

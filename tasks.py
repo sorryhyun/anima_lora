@@ -643,6 +643,17 @@ def cmd_test_unit(extra):
     run([PY, "-m", "pytest", "-q", "tests/", *extra])
 
 
+def cmd_export_logs(extra):
+    """Dump TB scalar logs to JSON. RUN=<dir> (default output/logs), ALL=1, JSONL=1."""
+    run_path = os.environ.get("RUN", "output/logs")
+    cmd = [PY, "scripts/export_logs_json.py", run_path]
+    if os.environ.get("ALL"):
+        cmd.append("--all")
+    if os.environ.get("JSONL"):
+        cmd.append("--jsonl")
+    run([*cmd, *extra])
+
+
 def cmd_print_config(extra):
     method = os.environ.get("METHOD", "lora")
     preset = _preset()
@@ -848,6 +859,10 @@ COMMANDS = {
         "Reference inversion (REF_IMAGE=path/to/ref.png; see tasks.py::cmd_invert_ref for env vars)",
     ),
     "test-unit": (cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
+    "export-logs": (
+        cmd_export_logs,
+        "Dump TB scalar logs to JSON (RUN=<dir>, ALL=1 for every subrun, JSONL=1 for line-delimited)",
+    ),
     "print-config": (
         cmd_print_config,
         "Dump merged config (METHOD=<name> PRESET=<name>) with provenance",

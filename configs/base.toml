@@ -35,6 +35,8 @@ trim_crossattn_kv = false
 attn_mode = "flash"
 save_precision= "bf16"
 
+log_every_n_steps=2
+
 # ── Dataset config ───────────────────────────────────────────────────────
 # Formerly configs/dataset_config.toml. Consumed directly by the dataset
 # blueprint generator when no --dataset_config override is passed. The

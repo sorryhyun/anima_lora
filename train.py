@@ -6,7 +6,8 @@ import argparse
 import math
 import os
 import typing
-from typing import Any, Union, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Union, Optional
 import sys
 import random
 import time
@@ -58,14 +59,17 @@ from library.runtime.accelerator import (
 )
 from library.training import (
     LossContext,
+    MetricContext,
     SAMPLER_REGISTRY,
     SamplerContext,
+    collect_metrics,
     add_custom_train_arguments,
     add_dataset_arguments,
     add_dataset_metadata,
     add_dit_training_arguments,
     add_masked_loss_arguments,
     add_model_hash_metadata,
+    add_network_arguments,
     add_optimizer_arguments,
     add_sd_models_arguments,
     add_training_arguments,
@@ -96,6 +100,46 @@ setup_logging()
 import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TrainCtx:
+    """Training-wide state built once near the top of train() and passed to
+    per-step / per-batch methods instead of 15-arg parameter lists. Fields here
+    are fixed for the whole training run — per-call values (epoch, global_step,
+    progress_bar, logging keys, …) stay explicit at call sites."""
+
+    args: Any
+    accelerator: Accelerator
+    network: Any
+    unet: Any
+    vae: Any
+    text_encoders: list
+    noise_scheduler: Any
+    text_encoding_strategy: Any
+    tokenize_strategy: Any
+    vae_dtype: torch.dtype
+    weight_dtype: torch.dtype
+    train_text_encoder: bool
+    train_unet: bool
+    optimizer_eval_fn: Callable
+    optimizer_train_fn: Callable
+    is_tracking: bool
+
+
+@dataclass(frozen=True)
+class ValCtx:
+    """Validation-wide state fixed for the entire training run. The per-call
+    val_loss_recorder (step vs epoch) stays explicit since it differs per call
+    site; everything else here is shared."""
+
+    dataloader: Any
+    sigmas: list
+    steps: int
+    total_steps: int
+    train_loss_recorder: Any
+    original_t_min: float
+    original_t_max: float
 
 
 class AnimaTrainer:
@@ -532,18 +576,19 @@ class AnimaTrainer:
 
     def get_noise_pred_and_target(
         self,
-        args,
-        accelerator,
-        noise_scheduler,
+        ctx: "TrainCtx",
         latents,
         batch,
         text_encoder_conds,
-        unet,
-        network,
-        weight_dtype,
-        train_unet,
+        *,
         is_train=True,
     ):
+        args = ctx.args
+        accelerator = ctx.accelerator
+        noise_scheduler = ctx.noise_scheduler
+        unet = ctx.unet
+        network = ctx.network
+        weight_dtype = ctx.weight_dtype
         anima: anima_models.Anima = unet
 
         # Sample noise
@@ -901,37 +946,24 @@ class AnimaTrainer:
 
         return model
 
-    def on_validation_step_end(
-        self, args, accelerator, network, text_encoders, unet, batch, weight_dtype
-    ):
+    def on_validation_step_end(self, ctx: "TrainCtx", batch):
         if self.is_swapping_blocks:
             # prepare for next forward: because backward pass is not called, we need to prepare it here
-            accelerator.unwrap_model(unet).prepare_block_swap_before_forward()
+            ctx.accelerator.unwrap_model(ctx.unet).prepare_block_swap_before_forward()
 
     def process_batch(
         self,
+        ctx: "TrainCtx",
         batch,
-        text_encoders,
-        unet,
-        network,
-        vae,
-        noise_scheduler,
-        vae_dtype,
-        weight_dtype,
-        accelerator,
-        args,
-        text_encoding_strategy: strategy_base.TextEncodingStrategy,
-        tokenize_strategy: strategy_base.TokenizeStrategy,
+        *,
         is_train=True,
-        train_text_encoder=True,
-        train_unet=True,
     ) -> torch.Tensor:
         """Override base process_batch for caption dropout with cached text encoder outputs."""
 
         # Text encoder conditions
         text_encoder_outputs_list = batch.get("text_encoder_outputs_list", None)
         anima_text_encoding_strategy: strategy_anima.AnimaTextEncodingStrategy = (
-            text_encoding_strategy
+            ctx.text_encoding_strategy
         )
         if text_encoder_outputs_list is not None:
             caption_dropout_rates = text_encoder_outputs_list[-1]
@@ -948,45 +980,29 @@ class AnimaTrainer:
             # multi-timestep loop which reuses the same batch.
             batch = {**batch, "text_encoder_outputs_list": encoder_outputs}
 
-        return self._process_batch_inner(
-            batch,
-            text_encoders,
-            unet,
-            network,
-            vae,
-            noise_scheduler,
-            vae_dtype,
-            weight_dtype,
-            accelerator,
-            args,
-            text_encoding_strategy,
-            tokenize_strategy,
-            is_train,
-            train_text_encoder,
-            train_unet,
-        )
+        return self._process_batch_inner(ctx, batch, is_train=is_train)
 
     def _process_batch_inner(
         self,
+        ctx: "TrainCtx",
         batch,
-        text_encoders,
-        unet,
-        network,
-        vae,
-        noise_scheduler,
-        vae_dtype,
-        weight_dtype,
-        accelerator,
-        args,
-        text_encoding_strategy: strategy_base.TextEncodingStrategy,
-        tokenize_strategy: strategy_base.TokenizeStrategy,
+        *,
         is_train=True,
-        train_text_encoder=True,
-        train_unet=True,
     ) -> torch.Tensor:
         """
         Process a batch for the network (original NetworkTrainer.process_batch logic)
         """
+        args = ctx.args
+        accelerator = ctx.accelerator
+        network = ctx.network
+        vae = ctx.vae
+        text_encoders = ctx.text_encoders
+        text_encoding_strategy = ctx.text_encoding_strategy
+        tokenize_strategy = ctx.tokenize_strategy
+        noise_scheduler = ctx.noise_scheduler
+        vae_dtype = ctx.vae_dtype
+        weight_dtype = ctx.weight_dtype
+        train_text_encoder = ctx.train_text_encoder
         with torch.no_grad():
             if "latents" in batch and batch["latents"] is not None:
                 latents = typing.cast(
@@ -1079,16 +1095,10 @@ class AnimaTrainer:
 
         # sample noise, call unet, get target
         noise_pred, target, timesteps, weighting = self.get_noise_pred_and_target(
-            args,
-            accelerator,
-            noise_scheduler,
+            ctx,
             latents,
             batch,
             text_encoder_conds,
-            unet,
-            network,
-            weight_dtype,
-            train_unet,
             is_train=is_train,
         )
 
@@ -1252,22 +1262,12 @@ class AnimaTrainer:
             else [False] * len(text_encoders)
         )
 
-    def on_step_start(
-        self,
-        args,
-        accelerator,
-        network,
-        text_encoders,
-        unet,
-        batch,
-        weight_dtype,
-        is_train: bool = True,
-    ):
+    def on_step_start(self, ctx: "TrainCtx", batch, *, is_train: bool = True):
         # APEX: count training steps for the warmup/rampup schedule used by
         # _process_batch_inner. Counts at the process_batch granularity; this
         # aligns with global_step under gradient_accumulation_steps=1 and is
         # close enough under larger accumulation.
-        if is_train and getattr(args, "method", None) == "apex":
+        if is_train and getattr(ctx.args, "method", None) == "apex":
             self._apex_step = int(getattr(self, "_apex_step", 0)) + 1
 
     def is_train_text_encoder(self, args):
@@ -1922,43 +1922,25 @@ class AnimaTrainer:
 
     def _run_validation(
         self,
-        args,
-        accelerator,
-        network,
-        text_encoders,
-        unet,
-        vae,
-        vae_dtype,
-        weight_dtype,
-        text_encoding_strategy,
-        tokenize_strategy,
-        noise_scheduler,
-        val_dataloader,
-        validation_steps,
-        validation_sigmas,
-        validation_total_steps,
-        train_text_encoder,
-        train_unet,
+        ctx: "TrainCtx",
+        val: "ValCtx",
+        *,
         val_loss_recorder,
-        train_loss_recorder,
         epoch,
-        original_t_min,
-        original_t_max,
-        optimizer_eval_fn,
-        optimizer_train_fn,
-        progress_bar,
         global_step,
-        is_tracking,
+        progress_bar,
         progress_desc,
         postfix_label,
         log_avg_key,
         log_div_key,
         logging_fn,
     ):
-        """Run a validation pass over val_dataloader x validation_sigmas."""
-        optimizer_eval_fn()
-        accelerator.unwrap_model(network).eval()
-        unwrapped_unet = accelerator.unwrap_model(unet)
+        """Run a validation pass over val.dataloader x val.sigmas."""
+        args = ctx.args
+        accelerator = ctx.accelerator
+        ctx.optimizer_eval_fn()
+        accelerator.unwrap_model(ctx.network).eval()
+        unwrapped_unet = accelerator.unwrap_model(ctx.unet)
         if hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
             unwrapped_unet.switch_block_swap_for_inference()
         rng_states = self._switch_rng_state(
@@ -1966,49 +1948,24 @@ class AnimaTrainer:
         )
 
         val_progress_bar = tqdm(
-            range(validation_total_steps),
+            range(val.total_steps),
             smoothing=0,
             disable=not accelerator.is_local_main_process,
             desc=progress_desc,
         )
         val_timesteps_step = 0
-        per_sigma_losses = {s: [] for s in validation_sigmas}
-        for val_step, batch in enumerate(val_dataloader):
-            if val_step >= validation_steps:
+        per_sigma_losses = {s: [] for s in val.sigmas}
+        for val_step, batch in enumerate(val.dataloader):
+            if val_step >= val.steps:
                 break
 
-            for sigma in validation_sigmas:
-                self.on_step_start(
-                    args,
-                    accelerator,
-                    network,
-                    text_encoders,
-                    unet,
-                    batch,
-                    weight_dtype,
-                    is_train=False,
-                )
+            for sigma in val.sigmas:
+                self.on_step_start(ctx, batch, is_train=False)
 
                 # Pin sigma via t_min/t_max (what the noise function reads)
                 args.t_min = args.t_max = sigma
 
-                loss = self.process_batch(
-                    batch,
-                    text_encoders,
-                    unet,
-                    network,
-                    vae,
-                    noise_scheduler,
-                    vae_dtype,
-                    weight_dtype,
-                    accelerator,
-                    args,
-                    text_encoding_strategy,
-                    tokenize_strategy,
-                    is_train=False,
-                    train_text_encoder=train_text_encoder,
-                    train_unet=train_unet,
-                )
+                loss = self.process_batch(ctx, batch, is_train=False)
 
                 current_loss = loss.detach().item()
                 val_loss_recorder.add(
@@ -2023,20 +1980,13 @@ class AnimaTrainer:
                     }
                 )
 
-                self.on_validation_step_end(
-                    args,
-                    accelerator,
-                    network,
-                    text_encoders,
-                    unet,
-                    batch,
-                    weight_dtype,
-                )
+                self.on_validation_step_end(ctx, batch)
                 val_timesteps_step += 1
 
-        if is_tracking:
+        if ctx.is_tracking:
             loss_validation_divergence = (
-                val_loss_recorder.moving_average - train_loss_recorder.moving_average
+                val_loss_recorder.moving_average
+                - val.train_loss_recorder.moving_average
             )
             logs = {
                 log_avg_key: val_loss_recorder.moving_average,
@@ -2048,10 +1998,10 @@ class AnimaTrainer:
             logging_fn(accelerator, logs, global_step, epoch + 1)
 
         self._restore_rng_state(rng_states)
-        args.t_min = original_t_min
-        args.t_max = original_t_max
-        optimizer_train_fn()
-        accelerator.unwrap_model(network).train()
+        args.t_min = val.original_t_min
+        args.t_max = val.original_t_max
+        ctx.optimizer_train_fn()
+        accelerator.unwrap_model(ctx.network).train()
         if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
             unwrapped_unet.switch_block_swap_for_training()
         clean_memory_on_device(accelerator.device)
@@ -2508,6 +2458,25 @@ class AnimaTrainer:
         if is_tracking:
             accelerator.log({}, step=0)
 
+        ctx = TrainCtx(
+            args=args,
+            accelerator=accelerator,
+            network=network,
+            unet=unet,
+            vae=vae,
+            text_encoders=text_encoders,
+            noise_scheduler=noise_scheduler,
+            text_encoding_strategy=text_encoding_strategy,
+            tokenize_strategy=tokenize_strategy,
+            vae_dtype=vae_dtype,
+            weight_dtype=weight_dtype,
+            train_text_encoder=train_text_encoder,
+            train_unet=train_unet,
+            optimizer_eval_fn=optimizer_eval_fn,
+            optimizer_train_fn=optimizer_train_fn,
+            is_tracking=is_tracking,
+        )
+
         # training loop
         if initial_step > 0:  # only if skip_until_initial_step is specified
             global_step = initial_step // args.gradient_accumulation_steps
@@ -2551,6 +2520,16 @@ class AnimaTrainer:
         validation_total_steps = validation_steps * len(validation_sigmas)
         original_t_min = args.t_min
         original_t_max = args.t_max
+
+        val = ValCtx(
+            dataloader=val_dataloader,
+            sigmas=validation_sigmas,
+            steps=validation_steps,
+            total_steps=validation_total_steps,
+            train_loss_recorder=loss_recorder,
+            original_t_min=original_t_min,
+            original_t_max=original_t_max,
+        )
 
         # --- Profiler setup ---
         profile_range = self._parse_profile_steps(args)
@@ -2601,34 +2580,9 @@ class AnimaTrainer:
                     on_step_start_for_network(text_encoder, unet)
 
                     # preprocess batch for each model
-                    self.on_step_start(
-                        args,
-                        accelerator,
-                        network,
-                        text_encoders,
-                        unet,
-                        batch,
-                        weight_dtype,
-                        is_train=True,
-                    )
+                    self.on_step_start(ctx, batch, is_train=True)
 
-                    loss = self.process_batch(
-                        batch,
-                        text_encoders,
-                        unet,
-                        network,
-                        vae,
-                        noise_scheduler,
-                        vae_dtype,
-                        weight_dtype,
-                        accelerator,
-                        args,
-                        text_encoding_strategy,
-                        tokenize_strategy,
-                        is_train=True,
-                        train_text_encoder=train_text_encoder,
-                        train_unet=train_unet,
-                    )
+                    loss = self.process_batch(ctx, batch, is_train=True)
 
                     accelerator.backward(loss)
                     if accelerator.sync_gradients:
@@ -2745,7 +2699,11 @@ class AnimaTrainer:
                         logs["router_H"] = f"{_router_H:.3f}"
                 progress_bar.set_postfix(**{**max_mean_logs, **logs})
 
-                if is_tracking:
+                log_every = max(1, int(getattr(args, "log_every_n_steps", 1) or 1))
+                should_log_step = (global_step % log_every == 0) or (
+                    global_step >= args.max_train_steps
+                )
+                if is_tracking and should_log_step:
                     logs = self.generate_step_logs(
                         args,
                         current_loss,
@@ -2758,6 +2716,17 @@ class AnimaTrainer:
                         maximum_norm,
                         mean_grad_norm,
                         mean_combined_norm,
+                    )
+                    logs.update(
+                        collect_metrics(
+                            MetricContext(
+                                args=args,
+                                network=_unwrapped_net,
+                                trainer_state={
+                                    "apex_step": getattr(self, "_apex_step", 0),
+                                },
+                            )
+                        )
                     )
                     self.step_logging(accelerator, logs, global_step, epoch + 1)
 
@@ -2772,33 +2741,12 @@ class AnimaTrainer:
                     and should_validate_step
                 ):
                     self._run_validation(
-                        args,
-                        accelerator,
-                        network,
-                        text_encoders,
-                        unet,
-                        vae,
-                        vae_dtype,
-                        weight_dtype,
-                        text_encoding_strategy,
-                        tokenize_strategy,
-                        noise_scheduler,
-                        val_dataloader,
-                        validation_steps,
-                        validation_sigmas,
-                        validation_total_steps,
-                        train_text_encoder,
-                        train_unet,
-                        val_step_loss_recorder,
-                        loss_recorder,
-                        epoch,
-                        original_t_min,
-                        original_t_max,
-                        optimizer_eval_fn,
-                        optimizer_train_fn,
-                        progress_bar,
-                        global_step,
-                        is_tracking,
+                        ctx,
+                        val,
+                        val_loss_recorder=val_step_loss_recorder,
+                        epoch=epoch,
+                        global_step=global_step,
+                        progress_bar=progress_bar,
                         progress_desc="validation steps",
                         postfix_label="val_avg_loss",
                         log_avg_key="loss/validation/step_average",
@@ -2818,33 +2766,12 @@ class AnimaTrainer:
 
             if should_validate_epoch and len(val_dataloader) > 0:
                 self._run_validation(
-                    args,
-                    accelerator,
-                    network,
-                    text_encoders,
-                    unet,
-                    vae,
-                    vae_dtype,
-                    weight_dtype,
-                    text_encoding_strategy,
-                    tokenize_strategy,
-                    noise_scheduler,
-                    val_dataloader,
-                    validation_steps,
-                    validation_sigmas,
-                    validation_total_steps,
-                    train_text_encoder,
-                    train_unet,
-                    val_epoch_loss_recorder,
-                    loss_recorder,
-                    epoch,
-                    original_t_min,
-                    original_t_max,
-                    optimizer_eval_fn,
-                    optimizer_train_fn,
-                    progress_bar,
-                    global_step,
-                    is_tracking,
+                    ctx,
+                    val,
+                    val_loss_recorder=val_epoch_loss_recorder,
+                    epoch=epoch,
+                    global_step=global_step,
+                    progress_bar=progress_bar,
                     progress_desc="epoch validation steps",
                     postfix_label="val_epoch_avg_loss",
                     log_avg_key="loss/validation/epoch_average",
@@ -3020,98 +2947,7 @@ def setup_parser() -> argparse.ArgumentParser:
         help="(not supported yet) use fp8 for U-Net (or DiT). This flag is force-disabled.",
     )
 
-    parser.add_argument(
-        "--network_weights",
-        type=str,
-        default=None,
-        help="pretrained weights for network",
-    )
-    parser.add_argument(
-        "--network_module",
-        type=str,
-        default=None,
-        help="network module to train",
-    )
-    parser.add_argument(
-        "--network_dim",
-        type=int,
-        default=None,
-        help="network dimensions (depends on each network)",
-    )
-    parser.add_argument(
-        "--network_alpha",
-        type=float,
-        default=1,
-        help="alpha for LoRA weight scaling, default 1 (same as network_dim for same behavior as old version)",
-    )
-    parser.add_argument(
-        "--network_dropout",
-        type=float,
-        default=None,
-        help="Drops neurons out of training every step (0 or None is default behavior (no dropout), 1 would drop all neurons)",
-    )
-    parser.add_argument(
-        "--network_args",
-        type=str,
-        default=None,
-        nargs="*",
-        help="additional arguments for network (key=value)",
-    )
-    parser.add_argument(
-        "--network_train_unet_only",
-        action="store_true",
-        help="only training U-Net part",
-    )
-    parser.add_argument(
-        "--network_train_text_encoder_only",
-        action="store_true",
-        help="only training Text Encoder part",
-    )
-    parser.add_argument(
-        "--training_comment",
-        type=str,
-        default=None,
-        help="arbitrary comment string stored in metadata",
-    )
-    parser.add_argument(
-        "--dim_from_weights",
-        action="store_true",
-        help="automatically determine dim (rank) from network_weights",
-    )
-    parser.add_argument(
-        "--scale_weight_norms",
-        type=float,
-        default=None,
-        help="Scale the weight of each key pair to help prevent overtraing via exploding gradients. (1 is a good starting point)",
-    )
-    parser.add_argument(
-        "--base_weights",
-        type=str,
-        default=None,
-        nargs="*",
-        help="network weights to merge into the model before training",
-    )
-    parser.add_argument(
-        "--base_weights_multiplier",
-        type=float,
-        default=None,
-        nargs="*",
-        help="multiplier for network weights to merge into the model before training",
-    )
-    parser.add_argument(
-        "--lora_path",
-        type=str,
-        default=None,
-        help="path to a pretrained LoRA checkpoint to merge into DiT weights before training. "
-        "Intended for postfix/prefix training on top of a fixed LoRA. "
-        "The LoRA is baked into the base weights at load time — no runtime hooks.",
-    )
-    parser.add_argument(
-        "--lora_multiplier",
-        type=float,
-        default=1.0,
-        help="multiplier applied to the frozen LoRA merged via --lora_path",
-    )
+    add_network_arguments(parser)
     parser.add_argument(
         "--no_half_vae",
         action="store_true",
