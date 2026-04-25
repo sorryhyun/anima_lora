@@ -11,7 +11,7 @@ LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/poo
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 download-pe gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -75,37 +75,49 @@ distill-mod:
 		--no_grad_ckpt \
 		$(ARGS)
 
-# img2emb — image→embedding resampler training (TIPSv2-L/14 encoder).
+# img2emb — image→embedding resampler training.
 # Three stages: preprocess → pretrain → finetune. See scripts/img2emb/train.py.
-# Images are assigned to the closest patch-14 bucket (~1024 tokens, aspects
-# 1:2..2:1); tokens are zero-padded to a single T_MAX so the cache stays a
-# flat (N, T_MAX, D) tensor. img2emb-anchors refreshes phase1_positions.json
-# + phase2_class_prototypes.safetensors (people=* prototypes) from live
-# captions + TE cache; required before pretrain. Requires
-# `make download-tipsv2` and `trust_remote_code`.
+# Two encoders are wired in (`make img2emb-... ENCODER=tipsv2|pe`):
+#   tipsv2 (default) — TIPSv2-L/14, 32x32=1024 patch tokens at 448 px.
+#                      Requires `make download-tipsv2` + `trust_remote_code`.
+#   pe               — Meta PE-Core-L14-336, 24x24=576 patch tokens at 336 px.
+#                      Requires `make download-pe`; vision tower vendored at
+#                      library/models/pe.py (no perception_models clone).
+# Images are assigned to the closest patch-14 bucket; tokens are zero-padded
+# to a single T_MAX so the cache stays a flat (N, T_MAX, D) tensor.
+# img2emb-anchors refreshes phase1_positions.json + phase2_class_prototypes
+# (encoder-agnostic — only depends on cached T5 embeddings).
+
+# Encoder selector — flows into every stage as --encoder, so the cache,
+# pretrain ckpt, and finetune ckpt filenames stay coherent. Stage scripts
+# accept --encoder explicitly, so command-line wins over ENCODER if both
+# are set; this is by design (re-running just one stage with a different
+# encoder is a footgun, but sometimes intentional).
+ENCODER ?=
+ENCODER_FLAG := $(if $(ENCODER),--encoder $(ENCODER),)
 
 img2emb-preprocess:
-	python scripts/img2emb/preprocess.py $(ARGS)
+	python scripts/img2emb/preprocess.py $(ENCODER_FLAG) $(ARGS)
 
 img2emb-anchors:
 	python scripts/img2emb/rebuild_anchor_artifacts.py $(ARGS)
 
 img2emb-pretrain:
-	python scripts/img2emb/pretrain.py $(ARGS)
+	python scripts/img2emb/pretrain.py $(ENCODER_FLAG) $(ARGS)
 
 img2emb-finetune:
-	python scripts/img2emb/finetune.py $(ARGS)
+	python scripts/img2emb/finetune.py $(ENCODER_FLAG) $(ARGS)
 
 preprocess-img2emb: img2emb-preprocess img2emb-anchors
 
 img2emb: img2emb-pretrain img2emb-finetune
 
 # Generate a single image conditioned on REF_IMAGE via the finetuned resampler.
-# Example: make test-img2emb REF_IMAGE=post_image_dataset/foo.png
+# Example: make test-img2emb REF_IMAGE=post_image_dataset/foo.png ENCODER=pe
 REF_IMAGE ?=
 test-img2emb:
 	@if [ -z "$(REF_IMAGE)" ]; then echo "Set REF_IMAGE=path/to/ref.png"; exit 1; fi
-	python scripts/img2emb/infer.py --ref_image $(REF_IMAGE) $(ARGS)
+	python scripts/img2emb/infer.py --ref_image $(REF_IMAGE) $(ENCODER_FLAG) $(ARGS)
 
 test:
 	$(TEST_COMMON) \
@@ -269,7 +281,10 @@ comfy-batch:
 
 # img2emb finetune step-0 loss-weight calibration — no backward, just reports
 # raw loss magnitudes so the loss.* weights in finetune.py can be tuned.
-FINETUNE_WARM ?= output/img2embs/pretrain/tipsv2_resampler_4layer_anchored.safetensors
+# Warm path defaults to the pretrain output for the selected ENCODER (tipsv2
+# unless overridden); set FINETUNE_WARM=... to point elsewhere.
+FINETUNE_ENCODER := $(if $(ENCODER),$(ENCODER),tipsv2)
+FINETUNE_WARM ?= output/img2embs/pretrain/$(FINETUNE_ENCODER)_resampler_4layer_anchored.safetensors
 FINETUNE_BS ?= 1
 # -1 = gradient checkpointing (required on 16 GB; no-swap backward OOMs, block-swap
 # forward-only doesn't help backward activations). Override with FINETUNE_SWAP=N for
@@ -281,7 +296,8 @@ img2emb-calibrate:
 		--warm_start $(FINETUNE_WARM) \
 		--calibrate_only \
 		--batch_size $(FINETUNE_BS) \
-		--blocks_to_swap $(FINETUNE_SWAP)
+		--blocks_to_swap $(FINETUNE_SWAP) \
+		$(ENCODER_FLAG)
 
 graft-step:
 	python scripts/graft_step.py
@@ -334,6 +350,12 @@ download-anima:
 download-tipsv2:
 	python -c "import os; os.makedirs('models/tipsv2',exist_ok=True)"
 	hf download google/tipsv2-l14 --local-dir models/tipsv2
+
+# Perception Encoder PE-Core-L14-336 vision tower for img2emb. Vision tower is
+# vendored at library/models/pe.py — only the .pt checkpoint is needed.
+download-pe:
+	python -c "import os; os.makedirs('models/pe',exist_ok=True)"
+	hf download facebook/PE-Core-L14-336 PE-Core-L14-336.pt --local-dir models/pe
 
 download-models: download-anima download-sam3 download-mit download-tipsv2
 

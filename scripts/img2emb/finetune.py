@@ -46,7 +46,8 @@ from scripts.img2emb.anchors import (  # noqa: E402
     load_anchor_spec,
 )
 from scripts.img2emb.data import _infonce_loss, _pool, load_cache  # noqa: E402
-from scripts.img2emb.preprocess import ENCODER_NAME  # noqa: E402
+from scripts.img2emb.encoders import available_encoders  # noqa: E402
+from scripts.img2emb.preprocess import DEFAULT_ENCODER  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
 from library.io.cache import get_latent_resolution  # noqa: E402
 from library.log import setup_logging  # noqa: E402
@@ -66,6 +67,15 @@ DEFAULT_TAG_SLOT_DIR = REPO_ROOT / "output" / "img2embs" / "anchors"
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
+
+    # encoder selection — must match the encoder used at preprocess time
+    p.add_argument(
+        "--encoder",
+        default=DEFAULT_ENCODER,
+        choices=available_encoders(),
+        help="Vision encoder name. Selects which {encoder}_tokens cache + "
+             "{encoder}_finetune output filename get used.",
+    )
 
     # paths
     p.add_argument("--dit", default="models/diffusion_models/anima-preview3-base.safetensors")
@@ -152,6 +162,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--eval_batch_size", type=int, default=1)
     p.add_argument("--eval_max_samples", type=int, default=128,
                    help="Cap on held-out samples for FM eval (full split is 397).")
+    p.add_argument("--eval_disable_block_swap", action=argparse.BooleanOptionalAction,
+                   default=True,
+                   help="Pull all swap-resident DiT blocks back to GPU for the "
+                        "eval pass and skip block-swap entirely. Eval runs under "
+                        "no_grad so the activation/grad budget is gone; if the "
+                        "bare DiT params fit, this avoids per-batch CPU↔GPU "
+                        "streaming. Pass --no-eval_disable_block_swap if eval "
+                        "OOMs on a constrained GPU.")
 
     p.add_argument("--seed", type=int, default=20260421)
     p.add_argument("--save_predictions", action="store_true")
@@ -531,7 +549,8 @@ def finetune(args: argparse.Namespace) -> None:
         image_dir_path = REPO_ROOT / image_dir_path
 
     logger.info(f"cache={cache_dir}  image_dir={image_dir_path}  out={out_dir}")
-    cache = load_cache(cache_dir, str(image_dir_path), ENCODER_NAME, num_workers=4)
+    encoder = args.encoder
+    cache = load_cache(cache_dir, str(image_dir_path), encoder, num_workers=4)
 
     tokens_all = cache["tokens"]
     pooled_all = cache["pooled"]
@@ -749,13 +768,18 @@ def finetune(args: argparse.Namespace) -> None:
 
         if (step + 1) % args.eval_every == 0 or step == args.steps - 1:
             logger.info(f"--- eval @ step {step} ---")
-            if hasattr(anima, "switch_block_swap_for_inference"):
+            paused = False
+            if args.eval_disable_block_swap and hasattr(anima, "pause_block_swap"):
+                paused = anima.pause_block_swap()
+            if not paused and hasattr(anima, "switch_block_swap_for_inference"):
                 anima.switch_block_swap_for_inference()
             try:
                 ev = eval_fm(anima, model, pretrain_model, spec, eval_loader, args, device,
                              n_batches=eval_n_batches)
             finally:
-                if hasattr(anima, "switch_block_swap_for_training"):
+                if paused:
+                    anima.resume_block_swap()
+                elif hasattr(anima, "switch_block_swap_for_training"):
                     anima.switch_block_swap_for_training()
             logger.info(
                 f"[eval] fm_finetune={ev['finetune']:.4f}  "
@@ -768,7 +792,7 @@ def finetune(args: argparse.Namespace) -> None:
     elapsed = time.time() - t0
     logger.info(f"done in {elapsed:.1f}s")
 
-    out_tag = f"{ENCODER_NAME}_finetune"
+    out_tag = f"{encoder}_finetune"
     save_file(
         {k: v.detach().cpu().contiguous() for k, v in model.state_dict().items()},
         str(out_dir / f"{out_tag}.safetensors"),
@@ -787,9 +811,9 @@ def finetune(args: argparse.Namespace) -> None:
     logger.info(f"saved -> {out_dir / out_tag}.(safetensors|json)")
 
 
-def finetune_ckpt_path(out_dir: Path | str) -> Path:
+def finetune_ckpt_path(out_dir: Path | str, encoder: str = DEFAULT_ENCODER) -> Path:
     """Canonical final-ckpt path. Used by infer.py to load the trained resampler."""
-    return Path(out_dir) / f"{ENCODER_NAME}_finetune.safetensors"
+    return Path(out_dir) / f"{encoder}_finetune.safetensors"
 
 
 def main() -> None:

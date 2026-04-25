@@ -522,6 +522,17 @@ def cmd_download_tipsv2(_extra):
     run(["hf", "download", "google/tipsv2-l14", "--local-dir", "models/tipsv2"])
 
 
+def cmd_download_pe(_extra):
+    # PE-Core-L14-336 — only the .pt checkpoint is needed; vision tower is
+    # vendored at library/models/pe.py (no perception_models clone required).
+    (ROOT / "models" / "pe").mkdir(parents=True, exist_ok=True)
+    run([
+        "hf", "download",
+        "facebook/PE-Core-L14-336", "PE-Core-L14-336.pt",
+        "--local-dir", "models/pe",
+    ])
+
+
 def cmd_download_mit(_extra):
     (ROOT / "models" / "mit").mkdir(parents=True, exist_ok=True)
     run(
@@ -848,6 +859,7 @@ COMMANDS = {
     "download-sam3": (cmd_download_sam3, "Download SAM3 model"),
     "download-mit": (cmd_download_mit, "Download MIT model"),
     "download-tipsv2": (cmd_download_tipsv2, "Download TIPSv2-L/14 (img2emb encoder)"),
+    "download-pe": (cmd_download_pe, "Download PE-Core-L14-336 (img2emb encoder)"),
     "mask": (cmd_mask, "Generate SAM3 + MIT masks, then merge"),
     "mask-sam": (cmd_mask_sam, "Generate SAM3 masks only"),
     "mask-mit": (cmd_mask_mit, "Generate MIT masks only"),

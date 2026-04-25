@@ -1,10 +1,10 @@
 # img2emb — image → embedding resampler
 
-Maps a TIPSv2-encoded reference image to a DiT-compatible cross-attention
-context, replacing the text-encoder path entirely. A Perceiver resampler with
-per-group classifier heads predicts class prototypes for a handful of
-"anchor" slots (rating, people_count, …) and fills the remaining content
-slots from vision features.
+Maps a vision-encoder-encoded reference image to a DiT-compatible
+cross-attention context, replacing the text-encoder path entirely. A
+Perceiver resampler with per-group classifier heads predicts class
+prototypes for a handful of "anchor" slots (rating, people_count, …) and
+fills the remaining content slots from vision features.
 
 Anchor injection runs at two places in the resampler:
 - **Pre-injection**: the predicted (or teacher-forced) anchor prototype is
@@ -30,14 +30,26 @@ Three stages, run top-to-bottom. Each reads the previous stage's outputs.
 entrypoint and runs them in-process (no subprocesses). Inference uses
 `infer.py`.
 
-### Encoder
+### Encoders
 
-TIPSv2-L/14 (`models/tipsv2/`, downloaded via `make download-tipsv2`).
+Two vision towers are wired in. Pick one with `--encoder`; **train and infer
+must use the same encoder** because the cache filenames + `T_MAX_TOKENS`
+both vary per encoder.
+
+| `--encoder` | Model | Native res | Patch | Buckets ~tokens | D | Setup |
+|---|---|---|---|---|---|---|
+| `tipsv2` (default) | TIPSv2-L/14 | 448² | 14 | ~1024 | 1024 | `make download-tipsv2`, `trust_remote_code` |
+| `pe` | PE-Core-L14-336 (Meta) | 336² | 14 | ~576 | 1024 | `make download-pe` (vision tower vendored at `library/models/pe.py`) |
+
 Aspect-preserving bucketed preprocessing is always on — each image is
-resized to the closest patch-14 bucket (~1024 tokens, aspects 1:2..2:1) and
-tokens are zero-padded to a single `T_MAX_TOKENS` so the cache stays a flat
-`(N, T_MAX, D)` tensor. See `buckets.py` for the spec. Requires
-`trust_remote_code=True` (TIPSv2 ships custom modeling code).
+resized to the closest patch-grid bucket for its encoder (`scripts/img2emb/buckets.py`)
+and tokens are zero-padded to that encoder's `T_MAX_TOKENS` so the cache
+stays a flat `(N, T_MAX, D)` tensor.
+
+PE is run via a vendored vision-only port of Meta's `perception_models` —
+no clone, no `xformers`, no `core.*` package on `sys.path`. The vendored
+module needs only `torch`, `einops`, and `timm.layers.DropPath` (already
+in this project's deps).
 
 ### Running it
 
@@ -45,14 +57,22 @@ Preprocessing (features + anchor artifacts) is split from training so the
 heavy one-time steps don't rerun every time you tune hyperparams.
 
 ```bash
-# One-time preprocessing: TIPSv2 features + anchor prototypes.
-# Requires `make download-tipsv2` once (encoder lives at models/tipsv2).
+# One-time preprocessing: vision-encoder features + anchor prototypes.
+# Requires `make download-tipsv2` (default) or `make download-pe`.
 make preprocess-img2emb
 python tasks.py preprocess-img2emb
 
 # Training (pretrain → finetune).
 make img2emb
 python tasks.py img2emb
+
+# Run with PE-Core-L14-336 instead of TIPSv2 — the flag must match across
+# every stage of one run, and is part of every cached/output filename.
+python scripts/img2emb/train.py all --encoder pe
+python scripts/img2emb/preprocess.py --encoder pe
+python scripts/img2emb/pretrain.py   --encoder pe
+python scripts/img2emb/finetune.py   --encoder pe
+python scripts/img2emb/infer.py      --encoder pe --ref_image ref.png
 
 # One stage at a time; trailing args forward to the underlying script.
 python scripts/img2emb/train.py preprocess
@@ -139,9 +159,11 @@ anchors.yaml          # Anchor-group spec (user-editable).
 anchors.py            # AnchorSpec/AnchorGroup, AnchoredResampler, label building,
                       # inject_anchors, aux_cls_loss. Shared by all stages.
 resampler.py          # PerceiverResampler backbone (no anchor / classifier code).
-buckets.py            # TIPSv2 patch-14 bucket spec + aspect-pick helpers.
+buckets.py            # Per-encoder patch-grid bucket specs + aspect-pick helpers.
+encoders.py           # Vision-encoder registry (TIPSv2 + PE) — loaders, processors,
+                      # model-id defaults, pooled/token dims.
 data.py               # Shared dataset helpers, cache loader, resampler regression loss.
-preprocess.py         # Stage 1: TIPSv2 feature extraction + split + active-length scan.
+preprocess.py         # Stage 1: vision-encoder feature extraction + split + active-length scan.
 pretrain.py           # Stage 2: pretrain against cached T5 crossattn targets.
 finetune.py           # Stage 3: flow-matching finetune through frozen DiT.
 train.py              # Top-level in-process 3-stage dispatcher.

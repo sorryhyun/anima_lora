@@ -56,7 +56,8 @@ from scripts.img2emb.data import (  # noqa: E402
     active_slice,
     load_cache,
 )
-from scripts.img2emb.preprocess import ENCODER_NAME  # noqa: E402
+from scripts.img2emb.encoders import available_encoders  # noqa: E402
+from scripts.img2emb.preprocess import DEFAULT_ENCODER  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 
 setup_logging()
@@ -71,6 +72,13 @@ DEFAULT_TAG_SLOT_DIR = REPO_ROOT / "output" / "img2embs" / "anchors"
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--encoder",
+        default=DEFAULT_ENCODER,
+        choices=available_encoders(),
+        help="Vision encoder name. Must match the encoder used at preprocess time "
+             "(determines which {encoder}_tokens.safetensors gets loaded).",
+    )
     p.add_argument("--cache_dir", default=str(DEFAULT_CACHE_DIR))
     p.add_argument("--out_dir", default=str(DEFAULT_OUT_DIR))
     p.add_argument(
@@ -373,10 +381,12 @@ def _eval_per_variant(
     }
 
 
-def _save_ckpt(model, out_dir: Path, n_layers: int, step: int | None = None) -> Path:
+def _save_ckpt(
+    model, out_dir: Path, encoder: str, n_layers: int, step: int | None = None,
+) -> Path:
     """Save resampler weights. `step=None` writes the stable final filename;
     otherwise appends `_stepNNNNNN` so intermediates don't overwrite each other."""
-    stem = f"{ENCODER_NAME}_resampler_{n_layers}layer_anchored"
+    stem = f"{encoder}_resampler_{n_layers}layer_anchored"
     if step is not None:
         stem = f"{stem}_step{step:06d}"
     path = out_dir / f"{stem}.safetensors"
@@ -387,9 +397,11 @@ def _save_ckpt(model, out_dir: Path, n_layers: int, step: int | None = None) -> 
     return path
 
 
-def pretrain_ckpt_path(out_dir: Path | str, n_layers: int = 4) -> Path:
+def pretrain_ckpt_path(
+    out_dir: Path | str, encoder: str = DEFAULT_ENCODER, n_layers: int = 4,
+) -> Path:
     """Canonical final-ckpt path. Used by the finetune stage to warm-start."""
-    return Path(out_dir) / f"{ENCODER_NAME}_resampler_{n_layers}layer_anchored.safetensors"
+    return Path(out_dir) / f"{encoder}_resampler_{n_layers}layer_anchored.safetensors"
 
 
 def _log_eval(result: dict, cls_acc: dict, tag: str):
@@ -425,12 +437,13 @@ def pretrain(args: argparse.Namespace) -> None:
         act = json.loads((cache_dir / "active_lengths.json").read_text())
         image_dir = act.get("image_dir", "post_image_dataset")
 
+    encoder = args.encoder
     logger.info(
-        f"encoder={ENCODER_NAME}  cache={cache_dir}  image_dir={image_dir}  "
+        f"encoder={encoder}  cache={cache_dir}  image_dir={image_dir}  "
         f"out={out_dir}  tag_slot={tag_slot_dir}  anchors={args.anchors_yaml}  "
         f"anchor_mode={args.anchor_mode}"
     )
-    cache = load_cache(cache_dir, image_dir, ENCODER_NAME, args.num_workers)
+    cache = load_cache(cache_dir, image_dir, encoder, args.num_workers)
 
     train_idx = cache["split"]["train_idx"]
     eval_idx = cache["split"]["eval_idx"]
@@ -505,7 +518,7 @@ def pretrain(args: argparse.Namespace) -> None:
     train_log = []
     intermediate = []
     t0 = time.time()
-    pbar = tqdm(total=args.steps, desc=f"train/{ENCODER_NAME}", leave=True)
+    pbar = tqdm(total=args.steps, desc=f"train/{encoder}", leave=True)
     step = 0
     done = False
     while not done:
@@ -611,7 +624,7 @@ def pretrain(args: argparse.Namespace) -> None:
                 and step % args.save_every == 0
                 and step < args.steps
             ):
-                ckpt_path = _save_ckpt(model, out_dir, args.n_layers, step=step)
+                ckpt_path = _save_ckpt(model, out_dir, encoder, args.n_layers, step=step)
                 logger.info(f"  → {ckpt_path}")
 
             step += 1
@@ -632,7 +645,7 @@ def pretrain(args: argparse.Namespace) -> None:
     _log_eval(result, cls_acc, "final")
 
     payload = {
-        "encoder": ENCODER_NAME,
+        "encoder": encoder,
         "probe": f"cross_attn_resampler_{args.n_layers}layer_anchored",
         "anchor_mode": args.anchor_mode,
         "anchor_spec": spec.to_metadata(),
@@ -667,15 +680,15 @@ def pretrain(args: argparse.Namespace) -> None:
             "cls_acc": cls_acc,
         },
     }
-    json_path = out_dir / f"{ENCODER_NAME}_resampler_{args.n_layers}layer_anchored.json"
+    json_path = out_dir / f"{encoder}_resampler_{args.n_layers}layer_anchored.json"
     json_path.write_text(json.dumps(payload, indent=2))
     logger.info(f"  → {json_path}")
 
-    ckpt_path = _save_ckpt(model, out_dir, args.n_layers)
+    ckpt_path = _save_ckpt(model, out_dir, encoder, args.n_layers)
     logger.info(f"  → {ckpt_path}")
 
     if args.save_predictions:
-        pred_path = out_dir / f"{ENCODER_NAME}_eval_predictions.safetensors"
+        pred_path = out_dir / f"{encoder}_eval_predictions.safetensors"
         save_file(
             {
                 "pred": pred_eval.to(torch.bfloat16).contiguous(),

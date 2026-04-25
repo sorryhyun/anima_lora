@@ -2,14 +2,18 @@
 """Generate an image conditioned on a reference image via the img2emb resampler.
 
 Pipeline:
-  ref image → TIPSv2 vision tower (bucketed) → AnchoredResampler (finetune ckpt)
+  ref image → vision tower (bucketed) → AnchoredResampler (finetune ckpt)
   → per-group anchor injection at default slots → DiT cross-attention →
   flow-matching euler denoise → VAE decode → png.
+
+Vision tower is selected via ``--encoder`` (``tipsv2`` or ``pe``), and must
+match the encoder used at preprocess + finetune time.
 
 Replaces the text-encoder path entirely — no prompt, no negative prompt.
 
 Usage:
   python scripts/img2emb/infer.py --ref_image path/to/ref.png
+  python scripts/img2emb/infer.py --ref_image ref.png --encoder pe
   python scripts/img2emb/infer.py --ref_image ref.png --resampler_ckpt other.safetensors
   python scripts/img2emb/infer.py --ref_image ref.png --slot_override rating=0,people_count=2
 """
@@ -35,14 +39,14 @@ from scripts.img2emb.anchors import (  # noqa: E402
     inject_anchors,
     load_anchor_spec,
 )
-from scripts.img2emb.buckets import T_MAX_TOKENS, bucket_pixel_size, pick_bucket  # noqa: E402
-from scripts.img2emb.finetune import finetune_ckpt_path  # noqa: E402
-from scripts.img2emb.preprocess import (  # noqa: E402
-    ENCODER_MODEL_ID,
-    TIPSv2Encoder,
-    TIPSv2Processor,
-    _ensure_tipsv2_siblings_cached,
+from scripts.img2emb.buckets import bucket_pixel_size, pick_bucket  # noqa: E402
+from scripts.img2emb.encoders import (  # noqa: E402
+    EncoderInfo,
+    available_encoders,
+    get_encoder_info,
 )
+from scripts.img2emb.finetune import finetune_ckpt_path  # noqa: E402
+from scripts.img2emb.preprocess import DEFAULT_ENCODER  # noqa: E402
 from library.anima import weights as anima_utils  # noqa: E402
 from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS  # noqa: E402
 from library.inference.output import save_images  # noqa: E402
@@ -55,7 +59,7 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_ANCHORS_YAML = Path(__file__).parent / "anchors.yaml"
-DEFAULT_RESAMPLER_CKPT = finetune_ckpt_path(REPO_ROOT / "output" / "img2embs" / "finetune")
+DEFAULT_FINETUNE_DIR = REPO_ROOT / "output" / "img2embs" / "finetune"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -63,9 +67,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     p.add_argument("--ref_image", required=True, help="Path to the reference PNG/JPG.")
     p.add_argument(
+        "--encoder",
+        default=DEFAULT_ENCODER,
+        choices=available_encoders(),
+        help="Vision encoder. Must match the encoder used at preprocess + finetune time.",
+    )
+    p.add_argument(
+        "--encoder_model_id",
+        default=None,
+        help="Override the encoder weights path (defaults to the registered local path).",
+    )
+    p.add_argument(
         "--resampler_ckpt",
-        default=str(DEFAULT_RESAMPLER_CKPT),
-        help="Path to the img2emb resampler ckpt (finetune output).",
+        default=None,
+        help="Path to the img2emb resampler ckpt (finetune output). Defaults to "
+             "output/img2embs/finetune/{encoder}_finetune.safetensors.",
     )
     p.add_argument(
         "--tag_slot_dir",
@@ -109,7 +125,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--use_cached_te",
         action="store_true",
-        help="Diagnostic: bypass tipsv2 + resampler entirely and feed the cached "
+        help="Diagnostic: bypass vision encoder + resampler entirely and feed the cached "
              "T5 crossattn_emb_v0 (from <ref_dir>/<stem>_anima_te.safetensors) as ctx. "
              "Verifies the DiT+VAE+pad pipeline independently of the resampler.",
     )
@@ -167,34 +183,33 @@ def _parse_slot_override(raw: str) -> dict[str, int]:
 
 
 def _encode_ref_image(
-    path: str, device: torch.device,
+    path: str,
+    info: EncoderInfo,
+    model_id: str,
+    device: torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return (tokens[1, T_MAX_TOKENS, D] bf16, pooled[1, D] f32).
+    """Return ``(tokens[1, T_MAX_TOKENS, D] bf16, pooled[1, D] f32)``.
 
-    Picks the patch-14 bucket closest to the ref's aspect ratio and encodes at
-    that pixel size. Tokens are zero-padded to ``T_MAX_TOKENS`` so the
-    resampler sees the same KV length distribution it saw during training.
+    Picks the bucket closest to the ref's aspect ratio for the given encoder
+    and encodes at that pixel size. Tokens are zero-padded to the encoder's
+    ``t_max_tokens`` so the resampler sees the same KV length distribution it
+    saw during training.
     """
-    from transformers import AutoModel
+    bucket_spec = info.bucket_spec
+    T_MAX = bucket_spec.t_max_tokens
 
     img = Image.open(path).convert("RGB")
-    bucket = pick_bucket(img.height, img.width)
-    Hp, Wp = bucket_pixel_size(bucket)
+    bucket = pick_bucket(img.height, img.width, bucket_spec)
+    Hp, Wp = bucket_pixel_size(bucket, bucket_spec)
+    cls_extra = 1 if bucket_spec.use_cls else 0
     logger.info(
-        f"bucket pick: aspect h/w={img.height / img.width:.3f} → "
+        f"[{info.name}] bucket pick: aspect h/w={img.height / img.width:.3f} → "
         f"({bucket[0]}x{bucket[1]}) = {Hp}x{Wp}px, "
-        f"tokens={bucket[0] * bucket[1] + 1} (padded to {T_MAX_TOKENS})"
+        f"tokens={bucket[0] * bucket[1] + cls_extra} (padded to {T_MAX})"
     )
 
-    _ensure_tipsv2_siblings_cached(ENCODER_MODEL_ID)
-    inner = AutoModel.from_pretrained(
-        ENCODER_MODEL_ID,
-        torch_dtype=torch.bfloat16,
-        trust_remote_code=True,
-    )
-    inner.eval().to(device).requires_grad_(False)
-    model = TIPSv2Encoder(inner)
-    processor = TIPSv2Processor(image_size=(Hp, Wp))
+    model = info.loader(device, model_id)
+    processor = info.processor_factory(image_size=(Hp, Wp))
 
     pixel_values = processor(images=img, return_tensors="pt")["pixel_values"].to(
         device, dtype=torch.bfloat16
@@ -208,29 +223,30 @@ def _encode_ref_image(
         pooled = out.last_hidden_state.float().mean(dim=1)
 
     T_cur = tokens.shape[1]
-    if T_cur < T_MAX_TOKENS:
+    if T_cur < T_MAX:
         pad = torch.zeros(
-            (tokens.shape[0], T_MAX_TOKENS - T_cur, tokens.shape[2]),
+            (tokens.shape[0], T_MAX - T_cur, tokens.shape[2]),
             dtype=tokens.dtype,
             device=tokens.device,
         )
         tokens = torch.cat([tokens, pad], dim=1)
-    elif T_cur > T_MAX_TOKENS:
+    elif T_cur > T_MAX:
         raise RuntimeError(
-            f"Encoded tokens T={T_cur} exceed T_MAX_TOKENS={T_MAX_TOKENS}; "
+            f"Encoded tokens T={T_cur} exceed T_MAX_TOKENS={T_MAX}; "
             "bucket spec and preprocessing cache are out of sync."
         )
 
-    del model, inner
+    del model
     if device.type == "cuda":
         torch.cuda.empty_cache()
     return tokens, pooled
 
 
-def _load_resampler(args, spec: AnchorSpec, device: torch.device) -> AnchoredResampler:
-    # TIPSv2-L/14: D_enc = 1024, pooled same.
+def _load_resampler(
+    args, spec: AnchorSpec, info: EncoderInfo, device: torch.device,
+) -> AnchoredResampler:
     model = AnchoredResampler(
-        spec=spec, d_enc=1024, d_pool=1024,
+        spec=spec, d_enc=info.d_enc, d_pool=info.d_pool,
         d_model=args.d_model, n_heads=args.n_heads, n_slots=args.n_slots, n_layers=args.n_layers,
     ).to(device)
 
@@ -348,6 +364,11 @@ def infer(args: argparse.Namespace) -> None:
     device = torch.device(args.device)
     os.makedirs(args.save_path, exist_ok=True)
 
+    info = get_encoder_info(args.encoder)
+    if args.resampler_ckpt is None:
+        args.resampler_ckpt = str(finetune_ckpt_path(DEFAULT_FINETUNE_DIR, encoder=args.encoder))
+    encoder_model_id = args.encoder_model_id or info.default_model_id()
+
     if args.image_size is None:
         args.image_size = list(_bucket_for_ref(args.ref_image))
         logger.info(f"image_size auto-picked from ref aspect: {tuple(args.image_size)} (HxW)")
@@ -369,12 +390,12 @@ def infer(args: argparse.Namespace) -> None:
             f"shape={tuple(ctx.shape)}  norm={ctx.float().norm():.2f}"
         )
     else:
-        logger.info(f"encoding ref image: {args.ref_image}")
-        tokens, pooled = _encode_ref_image(args.ref_image, device)
-        logger.info(f"tipsv2 tokens={tuple(tokens.shape)}  pooled={tuple(pooled.shape)}")
+        logger.info(f"encoding ref image: {args.ref_image} (encoder={info.name})")
+        tokens, pooled = _encode_ref_image(args.ref_image, info, encoder_model_id, device)
+        logger.info(f"{info.name} tokens={tuple(tokens.shape)}  pooled={tuple(pooled.shape)}")
 
         logger.info(f"loading resampler ckpt: {args.resampler_ckpt}")
-        resampler = _load_resampler(args, spec, device)
+        resampler = _load_resampler(args, spec, info, device)
         ctx, pooled_text = _build_ctx(resampler, spec, tokens, pooled, args, device)
         logger.info(f"pooled_text norm={pooled_text.float().norm():.2f}")
         logger.info(f"ctx shape: {tuple(ctx.shape)}")

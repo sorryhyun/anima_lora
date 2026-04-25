@@ -32,11 +32,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from scripts.img2emb.encoders import available_encoders  # noqa: E402
 from scripts.img2emb.finetune import (  # noqa: E402
     finetune as run_finetune,
     parse_args as parse_finetune_args,
 )
 from scripts.img2emb.preprocess import (  # noqa: E402
+    DEFAULT_ENCODER,
     preprocess as run_preprocess,
     parse_args as parse_preprocess_args,
 )
@@ -78,6 +80,13 @@ def parse_args() -> argparse.Namespace:
         help="Frozen DiT used for flow-matching supervision in the finetune stage.",
     )
     p.add_argument(
+        "--encoder",
+        default=DEFAULT_ENCODER,
+        choices=available_encoders(),
+        help="Vision encoder name. Forwarded to every stage so cache filenames "
+             "and resampler ckpt names line up.",
+    )
+    p.add_argument(
         "extra",
         nargs=argparse.REMAINDER,
         help="Trailing args forwarded verbatim to the underlying stage parser.",
@@ -93,9 +102,12 @@ def _extra_argv(extra: list[str] | None) -> list[str]:
     return extra
 
 
-def run_stage_preprocess(out_root: Path, image_dir: str, extra: list[str]) -> None:
+def run_stage_preprocess(
+    out_root: Path, image_dir: str, encoder: str, extra: list[str]
+) -> None:
     features_dir = out_root / "features"
     argv = [
+        "--encoder", encoder,
         "--image_dir", image_dir,
         "--output_dir", str(features_dir),
         *extra,
@@ -103,8 +115,11 @@ def run_stage_preprocess(out_root: Path, image_dir: str, extra: list[str]) -> No
     run_preprocess(parse_preprocess_args(argv))
 
 
-def run_stage_pretrain(out_root: Path, image_dir: str, extra: list[str]) -> None:
+def run_stage_pretrain(
+    out_root: Path, image_dir: str, encoder: str, extra: list[str]
+) -> None:
     argv = [
+        "--encoder", encoder,
         "--cache_dir", str(out_root / "features"),
         "--out_dir", str(out_root / "pretrain"),
         "--image_dir", image_dir,
@@ -114,19 +129,20 @@ def run_stage_pretrain(out_root: Path, image_dir: str, extra: list[str]) -> None
 
 
 def run_stage_finetune(
-    out_root: Path, image_dir: str, dit: str, extra: list[str]
+    out_root: Path, image_dir: str, dit: str, encoder: str, extra: list[str]
 ) -> None:
-    warm = pretrain_ckpt_path(out_root / "pretrain")
+    warm = pretrain_ckpt_path(out_root / "pretrain", encoder=encoder)
     has_warm = any(a == "--warm_start" or a.startswith("--warm_start=") for a in extra)
     if not has_warm and not warm.exists():
         raise SystemExit(
             f"[train] pretrain ckpt not found: {warm}\n"
-            f"Run 'python scripts/img2emb/train.py pretrain' first, or pass "
-            f"--warm_start <path> as a trailing arg to override."
+            f"Run 'python scripts/img2emb/train.py pretrain --encoder {encoder}' "
+            f"first, or pass --warm_start <path> as a trailing arg to override."
         )
     warm_args = [] if has_warm else ["--warm_start", str(warm)]
 
     argv = [
+        "--encoder", encoder,
         "--dit", dit,
         "--cache_dir", str(out_root / "features"),
         "--out_dir", str(out_root / "finetune"),
@@ -151,17 +167,20 @@ def main() -> None:
 
     if args.stage in ("preprocess", "all"):
         run_stage_preprocess(
-            out_root, args.image_dir, extra if args.stage == "preprocess" else []
+            out_root, args.image_dir, args.encoder,
+            extra if args.stage == "preprocess" else [],
         )
     if args.stage in ("pretrain", "all", "train"):
         run_stage_pretrain(
-            out_root, args.image_dir, extra if args.stage == "pretrain" else []
+            out_root, args.image_dir, args.encoder,
+            extra if args.stage == "pretrain" else [],
         )
     if args.stage in ("finetune", "all", "train"):
         run_stage_finetune(
             out_root,
             args.image_dir,
             args.dit,
+            args.encoder,
             extra if args.stage == "finetune" else [],
         )
 
