@@ -345,6 +345,9 @@ def main():
         dit_weight_dtype=torch.bfloat16,
     )
     anima.eval().requires_grad_(False)
+    # registered buffers (e.g. _mod_guidance_*) stay on CPU after load_anima_model;
+    # explicitly move so the t_emb addition in _run_blocks doesn't device-mismatch.
+    anima.to(device)
 
     logger.info(f"loading HydraLoRA adapter from {args.lora_weight}")
     lora_sd = load_file(args.lora_weight)

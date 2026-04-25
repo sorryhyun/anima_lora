@@ -90,6 +90,27 @@ def _router_entropy_metric(ctx: MetricContext) -> dict[str, float]:
     return {"hydra/router_entropy": float(H)} if H is not None else {}
 
 
+def _expert_warmup_pick_metric(ctx: MetricContext) -> dict[str, float]:
+    """Per-expert pick fraction during HydraLoRA expert-warmup.
+
+    For random ``expert_warmup_ratio`` the value is the fraction of modules
+    that picked expert ``i`` this step (≈ k/E under uniform random sampling).
+    For greedy ``expert_best_warmup_ratio`` it shows the actual gradient-
+    aligned distribution — flat ≈ healthy diversification, peaky = one expert
+    is winning every module's top-k. Drops out of the dashboard once the
+    warmup window ends (network returns None).
+    """
+    if not getattr(ctx.network, "_use_hydra", False):
+        return {}
+    getter = getattr(ctx.network, "get_expert_warmup_pick_stats", None)
+    if getter is None:
+        return {}
+    picks = getter()
+    if picks is None:
+        return {}
+    return {f"hydra/expert_warmup_pick/{i}": float(v) for i, v in enumerate(picks)}
+
+
 def _postfix_contrastive_metric(ctx: MetricContext) -> dict[str, float]:
     w = float(getattr(ctx.network, "contrastive_weight", 0.0) or 0.0)
     if w <= 0.0:
@@ -121,6 +142,7 @@ METRIC_REGISTRY: dict[str, MetricFn] = {
     "ortho_reg": _ortho_reg_magnitude,
     "hydra_balance": _balance_loss_metric,
     "hydra_router_entropy": _router_entropy_metric,
+    "hydra_expert_warmup_pick": _expert_warmup_pick_metric,
     "postfix_contrastive": _postfix_contrastive_metric,
     "postfix_sigma_budget": _postfix_sigma_budget_metric,
 }

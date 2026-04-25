@@ -83,6 +83,8 @@ def test_hydra_router_kwargs_registered():
         "balance_loss_weight",
         "balance_loss_warmup_ratio",
         "expert_warmup_ratio",
+        "expert_warmup_k",
+        "expert_best_warmup_ratio",
     }
     for variant in ("hydra", "ortho_hydra"):
         flags = set(NETWORK_REGISTRY[variant].kwarg_flags)

@@ -3,7 +3,6 @@
 # all the kwarg parsing and checkpoint key-sniffing that used to live in
 # lora_anima.py alongside LoRANetwork itself.
 
-import ast
 import logging
 import os
 import re
@@ -14,6 +13,7 @@ import torch
 from library.log import setup_logging
 from networks import NETWORK_REGISTRY, resolve_network_spec
 from networks.condition_shift import ConditionShift
+from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
     _refuse_split_hydra_keys,
     _refuse_unfused_attn_lora_keys,
@@ -54,6 +54,51 @@ def _maybe_attach_apex_shift(network: "LoRANetwork", kwargs: Dict[str, object]) 
     )
 
 
+def _load_channel_scales(
+    kwargs: Dict[str, object],
+) -> Optional[Dict[str, torch.Tensor]]:
+    """Load per-channel input pre-scaling stats from disk, if requested.
+
+    SmoothQuant-style. Requires a calibration file produced by
+    ``bench/analyze_lora_input_channels.py --dump_channel_stats <path>``.
+    See ``bench/channel_dominance_analysis.md`` for motivation.
+    """
+    per_channel_scaling = kwargs.get("per_channel_scaling", "false")
+    if per_channel_scaling is not None:
+        per_channel_scaling = str(per_channel_scaling).lower() == "true"
+    if not per_channel_scaling:
+        return None
+
+    channel_stats_path = kwargs.get("channel_stats_path", None)
+    channel_scaling_alpha = kwargs.get("channel_scaling_alpha", None)
+    channel_scaling_alpha = (
+        float(channel_scaling_alpha) if channel_scaling_alpha is not None else 0.5
+    )
+
+    if not channel_stats_path:
+        raise ValueError(
+            "per_channel_scaling=true requires channel_stats_path. Generate one with:\n"
+            "  python bench/analyze_lora_input_channels.py --dump_channel_stats <path.safetensors>"
+        )
+    if not os.path.isfile(channel_stats_path):
+        raise FileNotFoundError(
+            f"channel_stats_path does not exist: {channel_stats_path}"
+        )
+    from safetensors.torch import load_file as _load_channel_stats_file
+
+    raw_stats = _load_channel_stats_file(channel_stats_path)
+    out: Dict[str, torch.Tensor] = {}
+    for _lora_name, _mean_abs in raw_stats.items():
+        _s = _mean_abs.float().clamp_min(1e-6).pow(channel_scaling_alpha)
+        _s = _s / _s.mean().clamp_min(1e-12)
+        out[_lora_name] = _s
+    logger.info(
+        f"Per-channel input pre-scaling: alpha={channel_scaling_alpha}, "
+        f"stats={channel_stats_path} ({len(out)} calibrated modules)"
+    )
+    return out
+
+
 def create_network(
     multiplier: float,
     network_dim: Optional[int],
@@ -64,137 +109,7 @@ def create_network(
     neuron_dropout: Optional[float] = None,
     **kwargs,
 ):
-    if network_dim is None:
-        network_dim = 4
-    if network_alpha is None:
-        network_alpha = 1.0
-
-    train_llm_adapter = kwargs.get("train_llm_adapter", "false")
-    if train_llm_adapter is not None:
-        train_llm_adapter = True if train_llm_adapter.lower() == "true" else False
-
-    exclude_patterns = kwargs.get("exclude_patterns", None)
-    if exclude_patterns is None:
-        exclude_patterns = []
-    else:
-        try:
-            exclude_patterns = ast.literal_eval(exclude_patterns)
-            if not isinstance(exclude_patterns, list):
-                exclude_patterns = [exclude_patterns]
-        except (ValueError, SyntaxError):
-            exclude_patterns = [exclude_patterns]
-
-    # layer range filtering (e.g., layer_start=4 layer_end=28 to train only blocks 4-27)
-    layer_start = kwargs.get("layer_start", None)
-    layer_end = kwargs.get("layer_end", None)
-    if layer_start is not None:
-        layer_start = int(layer_start)
-    if layer_end is not None:
-        layer_end = int(layer_end)
-
-    exclude_patterns.append(
-        r".*(_modulation|_norm|_embedder|final_layer|adaln_fused_down|adaln_up_|pooled_text_proj).*"
-    )
-
-    include_patterns = kwargs.get("include_patterns", None)
-    if include_patterns is not None:
-        try:
-            include_patterns = ast.literal_eval(include_patterns)
-            if not isinstance(include_patterns, list):
-                include_patterns = [include_patterns]
-        except (ValueError, SyntaxError):
-            include_patterns = [include_patterns]
-
-    rank_dropout = kwargs.get("rank_dropout", None)
-    if rank_dropout is not None:
-        rank_dropout = float(rank_dropout)
-    module_dropout = kwargs.get("module_dropout", None)
-    if module_dropout is not None:
-        module_dropout = float(module_dropout)
-
-    use_dora = kwargs.get("use_dora", "false")
-    if use_dora is not None:
-        use_dora = True if use_dora.lower() == "true" else False
-
-    use_ortho = kwargs.get("use_ortho", "false")
-    if use_ortho is not None:
-        use_ortho = True if use_ortho.lower() == "true" else False
-
-    use_timestep_mask = kwargs.get("use_timestep_mask", "false")
-    if use_timestep_mask is not None:
-        use_timestep_mask = True if use_timestep_mask.lower() == "true" else False
-    min_rank = kwargs.get("min_rank", None)
-    min_rank = int(min_rank) if min_rank is not None else 1
-    alpha_rank_scale = kwargs.get("alpha_rank_scale", None)
-    alpha_rank_scale = float(alpha_rank_scale) if alpha_rank_scale is not None else 1.0
-
-    add_reft = kwargs.get("add_reft", "false")
-    if add_reft is not None:
-        add_reft = True if add_reft.lower() == "true" else False
-    reft_dim = kwargs.get("reft_dim", None)
-    reft_dim = int(reft_dim) if reft_dim is not None else network_dim
-    reft_alpha = kwargs.get("reft_alpha", None)
-    reft_alpha = float(reft_alpha) if reft_alpha is not None else None
-    # reft_layers: which DiT blocks get a ReFT intervention. See _parse_reft_layers.
-    reft_layers = kwargs.get("reft_layers", "all")
-
-    use_hydra = kwargs.get("use_hydra", "false")
-    if use_hydra is not None:
-        use_hydra = True if use_hydra.lower() == "true" else False
-    num_experts = kwargs.get("num_experts", None)
-    num_experts = int(num_experts) if num_experts is not None else 4
-    balance_loss_weight = kwargs.get("balance_loss_weight", None)
-    balance_loss_weight = (
-        float(balance_loss_weight) if balance_loss_weight is not None else 0.01
-    )
-    # Fraction of training steps during which only one randomly-chosen expert
-    # per module receives gradient (forward still uses all experts via the
-    # learned gate, so each expert learns in the full MoE context). 0.0 =
-    # off; 0.1 = warmup for the first 10% of steps. This is the per-expert
-    # symmetry-breaker: zero-init experts (plain Hydra `lora_up_weight`,
-    # OrthoHydra-narrow `S_p`) start identical, and warmup forces each to
-    # accumulate distinct gradients before the router can collapse onto a
-    # subset. Disjoint OrthoHydra bases break symmetry structurally and need
-    # no warmup, but warmup still helps the router avoid early starvation.
-    expert_warmup_ratio = float(kwargs.get("expert_warmup_ratio", 0.0))
-
-    # σ-conditional HydraLoRA router (Track B, docs: timestep-hydra.md).
-    # When on, each matching HydraLoRAModule gets a tiny sinusoidal(σ)→E MLP
-    # that adds to the gate logits. Identity to base router at init (zero-init
-    # on final layer); σ-dependence only emerges if gradients push it.
-    use_sigma_router = kwargs.get("use_sigma_router", "false")
-    if use_sigma_router is not None:
-        use_sigma_router = str(use_sigma_router).lower() == "true"
-    # 16 = 8 cos/sin freq pairs — over-resolves σ on [0,1]. Must be even.
-    sigma_feature_dim = int(kwargs.get("sigma_feature_dim", 16))
-    sigma_hidden_dim = int(kwargs.get("sigma_hidden_dim", 128))
-    # Regex applied to each candidate module's `original_name`. Default picks
-    # the layer types the B0 pre-analysis showed carry σ-correlation signal
-    # (cross_attn.q, self_attn.qkv); MLPs are skipped since their σ-JS is flat.
-    sigma_router_layers = kwargs.get(
-        "sigma_router_layers", r".*(cross_attn\.q_proj|self_attn\.qkv_proj)$"
-    )
-    # Regex applied to each candidate module's `original_name` to decide which
-    # target Linears actually get the HydraLoRA MoE wrapper. Non-matching
-    # modules fall back to plain LoRA (or OrthoLoRAExp, if use_ortho=true).
-    # None = apply MoE to every target (backward-compat, wasteful). A narrow
-    # regex concentrates the ~256 default routers onto the layers where
-    # semantic specialization is actually learnable (cross-attn, MLP).
-    hydra_router_layers = kwargs.get("hydra_router_layers", None)
-    per_bucket_balance_weight = kwargs.get("per_bucket_balance_weight", None)
-    per_bucket_balance_weight = (
-        float(per_bucket_balance_weight)
-        if per_bucket_balance_weight is not None
-        else 0.3
-    )
-    num_sigma_buckets = int(kwargs.get("num_sigma_buckets", 3))
-
-    # Per-channel input pre-scaling (SmoothQuant-style). Requires a calibration file
-    # produced by `bench/analyze_lora_input_channels.py --dump_channel_stats <path>`.
-    # See `bench/channel_dominance_analysis.md` for motivation.
-    per_channel_scaling = kwargs.get("per_channel_scaling", "false")
-    if per_channel_scaling is not None:
-        per_channel_scaling = per_channel_scaling.lower() == "true"
+    spec = resolve_network_spec(kwargs)
 
     # Memory-saving down-projection autograd (classic LoRA only). Saves the
     # low-precision x instead of the fp32-cast input; fp32 bottleneck matmul
@@ -204,131 +119,28 @@ def create_network(
         use_custom_down_autograd = use_custom_down_autograd.lower() == "true"
     else:
         use_custom_down_autograd = bool(use_custom_down_autograd)
-    channel_stats_path = kwargs.get("channel_stats_path", None)
-    channel_scaling_alpha = kwargs.get("channel_scaling_alpha", None)
-    channel_scaling_alpha = (
-        float(channel_scaling_alpha) if channel_scaling_alpha is not None else 0.5
-    )
 
-    channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None
-    if per_channel_scaling:
-        if not channel_stats_path:
-            raise ValueError(
-                "per_channel_scaling=true requires channel_stats_path. Generate one with:\n"
-                "  python bench/analyze_lora_input_channels.py --dump_channel_stats <path.safetensors>"
-            )
-        if not os.path.isfile(channel_stats_path):
-            raise FileNotFoundError(
-                f"channel_stats_path does not exist: {channel_stats_path}"
-            )
-        from safetensors.torch import load_file as _load_channel_stats_file
+    channel_scales_dict = _load_channel_scales(kwargs)
 
-        raw_stats = _load_channel_stats_file(channel_stats_path)
-        channel_scales_dict = {}
-        for _lora_name, _mean_abs in raw_stats.items():
-            _s = _mean_abs.float().clamp_min(1e-6).pow(channel_scaling_alpha)
-            _s = _s / _s.mean().clamp_min(1e-12)
-            channel_scales_dict[_lora_name] = _s
-        logger.info(
-            f"Per-channel input pre-scaling: alpha={channel_scaling_alpha}, "
-            f"stats={channel_stats_path} ({len(channel_scales_dict)} calibrated modules)"
-        )
-
-    verbose = kwargs.get("verbose", "false")
-    if verbose is not None:
-        verbose = True if verbose.lower() == "true" else False
-
-    def parse_kv_pairs(kv_pair_str: str, is_int: bool) -> Dict[str, float]:
-        """
-        Parse a string of key-value pairs separated by commas.
-        """
-        pairs = {}
-        for pair in kv_pair_str.split(","):
-            pair = pair.strip()
-            if not pair:
-                continue
-            if "=" not in pair:
-                logger.warning(f"Invalid format: {pair}, expected 'key=value'")
-                continue
-            key, value = pair.split("=", 1)
-            key = key.strip()
-            value = value.strip()
-            try:
-                pairs[key] = int(value) if is_int else float(value)
-            except ValueError:
-                logger.warning(f"Invalid value for {key}: {value}")
-        return pairs
-
-    network_reg_lrs = kwargs.get("network_reg_lrs", None)
-    if network_reg_lrs is not None:
-        reg_lrs = parse_kv_pairs(network_reg_lrs, is_int=False)
-    else:
-        reg_lrs = None
-
-    router_lr_scale = kwargs.get("network_router_lr_scale", None)
-    router_lr_scale = float(router_lr_scale) if router_lr_scale is not None else 1.0
-    if router_lr_scale != 1.0:
-        logger.info(
-            f"HydraLoRA router LR scale: {router_lr_scale}x unet_lr (applies to .router.* params — σ features live in router.weight columns)"
-        )
-
-    network_reg_dims = kwargs.get("network_reg_dims", None)
-    if network_reg_dims is not None:
-        reg_dims = parse_kv_pairs(network_reg_dims, is_int=True)
-    else:
-        reg_dims = None
-
-    spec = resolve_network_spec(kwargs)
-    module_class = spec.module_class
-
-    network = LoRANetwork(
-        text_encoders,
-        unet,
-        multiplier=multiplier,
-        lora_dim=network_dim,
-        alpha=network_alpha,
-        dropout=neuron_dropout,
-        rank_dropout=rank_dropout,
-        module_dropout=module_dropout,
-        module_class=module_class,
-        train_llm_adapter=train_llm_adapter,
-        exclude_patterns=exclude_patterns,
-        include_patterns=include_patterns,
-        reg_dims=reg_dims,
-        reg_lrs=reg_lrs,
-        verbose=verbose,
-        layer_start=layer_start,
-        layer_end=layer_end,
-        add_reft=add_reft,
-        reft_dim=reft_dim,
-        reft_alpha=reft_alpha,
-        reft_layers=reft_layers,
-        num_experts=num_experts,
+    cfg = LoRANetworkCfg.from_kwargs(
+        kwargs,
+        network_dim=network_dim,
+        network_alpha=network_alpha,
+        neuron_dropout=neuron_dropout,
+        module_class=spec.module_class,
         channel_scales_dict=channel_scales_dict,
-        use_sigma_router=use_sigma_router,
-        sigma_feature_dim=sigma_feature_dim,
-        sigma_hidden_dim=sigma_hidden_dim,
-        sigma_router_layers=sigma_router_layers,
-        hydra_router_layers=hydra_router_layers,
-        expert_warmup_ratio=expert_warmup_ratio,
-        router_lr_scale=router_lr_scale,
     )
 
-    # Set timestep mask config (variant-agnostic)
-    network._use_timestep_mask = use_timestep_mask
-    network._min_rank = min_rank
-    network._max_rank = network_dim
-    network._alpha_rank_scale = alpha_rank_scale
-    network._add_reft = add_reft
-    network._reft_dim = reft_dim
-    network._reft_alpha = reft_alpha
-    network._reft_layers = reft_layers
+    if cfg.router_lr_scale != 1.0:
+        logger.info(
+            f"HydraLoRA router LR scale: {cfg.router_lr_scale}x unet_lr (applies to .router.* params — σ features live in router.weight columns)"
+        )
+
+    network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)
 
     # Variant-specific defaults — overridden by spec.post_init for the matching variant.
     network._use_hydra = False
     network._balance_loss_weight = 0.0
-    network._per_bucket_balance_weight = per_bucket_balance_weight
-    network._num_sigma_buckets = num_sigma_buckets
 
     # Stamp the resolved spec; save_weights keys off this to pick the save pipeline.
     network._network_spec = spec
@@ -352,59 +164,59 @@ def create_network(
             + " (saves ~32-128 MiB/Linear of fp32 activation per step)"
         )
 
-    if use_timestep_mask:
+    if cfg.use_timestep_mask:
         logger.info(
-            f"Timestep-dependent rank masking: min_rank={min_rank}, alpha={alpha_rank_scale}"
+            f"Timestep-dependent rank masking: min_rank={cfg.min_rank}, alpha={cfg.alpha_rank_scale}"
         )
-    if use_sigma_router and network._sigma_router_hits > 0:
+    if cfg.use_sigma_router and network._sigma_router_hits > 0:
         logger.info(
             f"σ-conditional HydraLoRA router: {network._sigma_router_hits} modules "
-            f"with sinusoidal(σ) concatenated to router input (feat={sigma_feature_dim}), "
-            f"per-bucket balance w={per_bucket_balance_weight}, buckets={num_sigma_buckets}"
+            f"with sinusoidal(σ) concatenated to router input (feat={cfg.sigma_feature_dim}), "
+            f"per-bucket balance w={cfg.per_bucket_balance_weight}, buckets={cfg.num_sigma_buckets}"
         )
-    elif use_sigma_router:
+    elif cfg.use_sigma_router:
         logger.warning(
             "use_sigma_router=true but no modules matched sigma_router_layers "
-            f"regex {sigma_router_layers!r} — σ-routing is inactive"
+            f"regex {cfg.sigma_router_layers!r} — σ-routing is inactive"
         )
     if spec.name == "ortho_hydra":
         logger.info(
-            f"OrthoHydraLoRA: Cayley + MoE, num_experts={num_experts}, "
+            f"OrthoHydraLoRA: Cayley + MoE, num_experts={cfg.num_experts}, "
             f"balance_loss_weight={network._balance_loss_weight}"
         )
     elif spec.name == "ortho":
         logger.info("OrthoLoRA: Cayley parameterization + SVD-informed init")
     elif spec.name == "hydra":
         logger.info(
-            f"HydraLoRA: num_experts={num_experts}, balance_loss_weight={network._balance_loss_weight}"
+            f"HydraLoRA: num_experts={cfg.num_experts}, balance_loss_weight={network._balance_loss_weight}"
         )
     if spec.name in ("hydra", "ortho_hydra") and (
         network._hydra_router_re is not None or network._hydra_router_names is not None
     ):
-        fallback_name = (
-            "OrthoLoRAExp" if spec.name == "ortho_hydra" else "LoRA"
-        )
+        fallback_name = "OrthoLoRAExp" if spec.name == "ortho_hydra" else "LoRA"
         logger.info(
             f"HydraLoRA layer filter: {network._hydra_router_hits} MoE modules, "
             f"{network._hydra_router_misses} fell back to plain {fallback_name} "
-            f"(regex={hydra_router_layers!r})"
+            f"(regex={cfg.hydra_router_layers!r})"
         )
         if network._hydra_router_hits == 0:
             logger.warning(
                 "hydra_router_layers regex matched zero modules — no MoE routing "
                 "is active, every target became plain LoRA."
             )
-    if add_reft:
+    if cfg.add_reft:
         _reft_alpha_str = (
-            f"{reft_alpha}" if reft_alpha is not None else f"{network_alpha} (from network_alpha)"
+            f"{cfg.reft_alpha}"
+            if cfg.reft_alpha is not None
+            else f"{cfg.alpha} (from network_alpha)"
         )
         logger.info(
-            f"ReFT: reft_dim={reft_dim}, reft_alpha={_reft_alpha_str}, "
-            f"layers={reft_layers!r}"
+            f"ReFT: reft_dim={cfg.reft_dim}, reft_alpha={_reft_alpha_str}, "
+            f"layers={cfg.reft_layers!r}"
         )
-    if layer_start is not None or layer_end is not None:
+    if cfg.layer_start is not None or cfg.layer_end is not None:
         logger.info(
-            f"Layer range: training blocks [{layer_start or 0}, {layer_end or '...'})"
+            f"Layer range: training blocks [{cfg.layer_start or 0}, {cfg.layer_end or '...'})"
         )
 
     loraplus_lr_ratio = kwargs.get("loraplus_lr_ratio", None)
@@ -609,7 +421,9 @@ def create_network_from_weights(
                     f"{sigma_feature_dim_detected}, found {extra} at {k!r}."
                 )
     elif for_inference:
-        spec = NETWORK_REGISTRY["lora"]  # inference uses the merge-capable LoRAInfModule
+        spec = NETWORK_REGISTRY[
+            "lora"
+        ]  # inference uses the merge-capable LoRAInfModule
         module_class = LoRAInfModule
     elif has_dora:
         spec = NETWORK_REGISTRY["dora"]
@@ -654,40 +468,36 @@ def create_network_from_weights(
             if v.size(1) - expected_rank == sigma_feature_dim_detected:
                 sigma_router_names.append(lora_name)
 
-    network = LoRANetwork(
-        text_encoders,
-        unet,
-        multiplier=multiplier,
+    # Per-module Hydra selection from the checkpoint: if the file contains
+    # *both* hydra-style and plain-LoRA-style leaves, we're reloading a mixed
+    # hydra_router_layers result and need to build each leaf with its original
+    # class. If every module is hydra, leave as None (= apply the nominal
+    # hydra class everywhere, legacy behaviour).
+    hydra_router_names = (
+        sorted(hydra_module_names)
+        if (
+            (has_hydra or has_ortho_hydra) and plain_module_names and hydra_module_names
+        )
+        else None
+    )
+
+    cfg = LoRANetworkCfg.from_weights(
         modules_dim=modules_dim,
         modules_alpha=modules_alpha,
         module_class=module_class,
         train_llm_adapter=train_llm_adapter,
-        add_reft=has_reft,
-        reft_dim=reft_dim if reft_dim is not None else 4,
-        reft_layers=sorted(reft_block_indices) if has_reft else "all",
-        num_experts=hydra_num_experts if (has_hydra or has_ortho_hydra) else 4,
-        channel_scales_dict=channel_scales_dict,
-        use_sigma_router=bool(sigma_router_names),
-        sigma_feature_dim=sigma_feature_dim_detected or 128,
-        sigma_hidden_dim=128,  # unused — kept for API compat with LoRANetwork
+        has_reft=has_reft,
+        reft_dim=reft_dim,
+        reft_block_indices=reft_block_indices,
+        is_hydra_or_ortho_hydra=has_hydra or has_ortho_hydra,
+        hydra_num_experts=hydra_num_experts,
+        sigma_feature_dim_detected=sigma_feature_dim_detected,
         sigma_router_names=sigma_router_names or None,
-        # Per-module Hydra selection from the checkpoint: if the file contains
-        # *both* hydra-style and plain-LoRA-style leaves, we're reloading a
-        # mixed hydra_router_layers result and need to build each leaf with its
-        # original class. If every module is hydra, leave as None (= apply the
-        # nominal hydra class everywhere, legacy behaviour).
-        hydra_router_names=(
-            sorted(hydra_module_names)
-            if (
-                (has_hydra or has_ortho_hydra)
-                and plain_module_names
-                and hydra_module_names
-            )
-            else None
-        ),
-        # from-weights path is inference/eval; warmup is a train-time schedule.
-        expert_warmup_ratio=0.0,
+        hydra_router_names=hydra_router_names,
+        channel_scales_dict=channel_scales_dict,
     )
+
+    network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)
     # Mirror create_network's variant-specific post-build attribute attachment.
     # Defaults first, then spec.post_init overrides for the matching variant.
     network._use_hydra = False

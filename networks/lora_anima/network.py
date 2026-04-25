@@ -6,12 +6,13 @@ import logging
 import math
 import os
 import re
-from typing import Dict, List, Optional, Tuple, Type, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 
 from library.log import setup_logging
 from networks import NETWORK_REGISTRY, NetworkSpec, lora_save
+from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
     _parse_reft_layers,
     _refuse_split_hydra_keys,
@@ -58,76 +59,62 @@ class LoRANetwork(torch.nn.Module):
         self,
         text_encoders: list,
         unet,
+        cfg: LoRANetworkCfg,
+        *,
         multiplier: float = 1.0,
-        lora_dim: int = 4,
-        alpha: float = 1,
-        dropout: Optional[float] = None,
-        rank_dropout: Optional[float] = None,
-        module_dropout: Optional[float] = None,
-        module_class: Type[object] = LoRAModule,
-        modules_dim: Optional[Dict[str, int]] = None,
-        modules_alpha: Optional[Dict[str, int]] = None,
-        train_llm_adapter: bool = False,
-        exclude_patterns: Optional[List[str]] = None,
-        include_patterns: Optional[List[str]] = None,
-        reg_dims: Optional[Dict[str, int]] = None,
-        reg_lrs: Optional[Dict[str, float]] = None,
-        verbose: Optional[bool] = False,
-        layer_start: Optional[int] = None,
-        layer_end: Optional[int] = None,
-        add_reft: bool = False,
-        reft_dim: int = 4,
-        reft_alpha: Optional[float] = None,
-        reft_layers: object = "all",
-        num_experts: int = 4,
-        channel_scales_dict: Optional[Dict[str, torch.Tensor]] = None,
-        use_sigma_router: bool = False,
-        sigma_feature_dim: int = 128,
-        sigma_hidden_dim: int = 128,
-        sigma_router_layers: Optional[str] = None,
-        sigma_router_names: Optional[List[str]] = None,
-        hydra_router_layers: Optional[str] = None,
-        hydra_router_names: Optional[List[str]] = None,
-        expert_warmup_ratio: float = 0.0,
-        router_lr_scale: float = 1.0,
     ) -> None:
         super().__init__()
+        self.cfg = cfg
+
+        # Mutable runtime state — explicitly NOT in cfg. ``set_multiplier`` and
+        # ``set_loraplus_lr_ratio`` write these post-construction; per-step
+        # diagnostics (hit counters, σ caches) accumulate during training.
         self.multiplier = multiplier
-        self.lora_dim = lora_dim
-        self.alpha = alpha
-        self.dropout = dropout
-        self.rank_dropout = rank_dropout
-        self.module_dropout = module_dropout
-        self.train_llm_adapter = train_llm_adapter
-        self.reg_dims = reg_dims
-        self.reg_lrs = reg_lrs
-        self.router_lr_scale = float(router_lr_scale)
-        self.layer_start = layer_start
-        self.layer_end = layer_end
-        self.num_experts = num_experts
-        self.expert_warmup_ratio = float(expert_warmup_ratio)
-        self.channel_scales_dict = channel_scales_dict
+        self.loraplus_lr_ratio = None
+        self.loraplus_unet_lr_ratio = None
+        self.loraplus_text_encoder_lr_ratio = None
         self._channel_scale_misses: List[str] = []
         self._channel_scale_hits: int = 0
-        self.use_sigma_router = bool(use_sigma_router)
-        self.sigma_feature_dim = int(sigma_feature_dim)
-        self.sigma_hidden_dim = int(sigma_hidden_dim)
+        self._sigma_router_hits: int = 0
+        self._hydra_router_hits: int = 0
+        self._hydra_router_misses: int = 0
+        self._last_sigma: Optional[torch.Tensor] = None
+        # Per-expert pick fraction across hydra modules on the most recent
+        # warmup step (random or best-by-grad path). None outside the warmup
+        # window — the metric in metrics.py drops out of the dashboard then.
+        self._last_expert_warmup_picks: Optional[torch.Tensor] = None
+
+        # Local aliases for the closure body and the post-closure ReFT block.
+        # Reading via `cfg.foo` works too; aliases just keep the diff small.
+        module_class = cfg.module_class
+        modules_dim = cfg.modules_dim
+        modules_alpha = cfg.modules_alpha
+        dropout = cfg.dropout
+        rank_dropout = cfg.rank_dropout
+        module_dropout = cfg.module_dropout
+        verbose = cfg.verbose
+        alpha = cfg.alpha
+        lora_dim = cfg.lora_dim
+        train_llm_adapter = cfg.train_llm_adapter
+        add_reft = cfg.add_reft
+        reft_dim = cfg.reft_dim
+        reft_alpha = cfg.reft_alpha
+        reft_layers = cfg.reft_layers
+
         # Either regex (fresh-from-kwargs path) or explicit name set
         # (from-weights path, detected from checkpoint keys). Explicit set wins.
         self._sigma_router_names = (
-            set(sigma_router_names) if sigma_router_names else None
+            set(cfg.sigma_router_names) if cfg.sigma_router_names else None
         )
         self._sigma_router_re = (
-            re.compile(sigma_router_layers)
+            re.compile(cfg.sigma_router_layers)
             if (
-                self.use_sigma_router
-                and sigma_router_layers
+                cfg.use_sigma_router
+                and cfg.sigma_router_layers
                 and self._sigma_router_names is None
             )
             else None
         )
-        self._sigma_router_hits: int = 0
-        self._last_sigma: Optional[torch.Tensor] = None
 
         # Per-module HydraLoRA gating. Matching modules get the Hydra class;
         # non-matching modules fall back to plain LoRA / OrthoLoRAExp so MoE
@@ -136,19 +123,13 @@ class LoRANetwork(torch.nn.Module):
         # name set detected from checkpoint keys (mirrors sigma_router_names).
         # Explicit set wins. None on both = apply MoE everywhere (legacy).
         self._hydra_router_names = (
-            set(hydra_router_names) if hydra_router_names else None
+            set(cfg.hydra_router_names) if cfg.hydra_router_names else None
         )
         self._hydra_router_re = (
-            re.compile(hydra_router_layers)
-            if hydra_router_layers and self._hydra_router_names is None
+            re.compile(cfg.hydra_router_layers)
+            if cfg.hydra_router_layers and self._hydra_router_names is None
             else None
         )
-        self._hydra_router_hits: int = 0
-        self._hydra_router_misses: int = 0
-
-        self.loraplus_lr_ratio = None
-        self.loraplus_unet_lr_ratio = None
-        self.loraplus_text_encoder_lr_ratio = None
 
         if modules_dim is not None:
             logger.info("create LoRA network from weights")
@@ -157,7 +138,7 @@ class LoRANetwork(torch.nn.Module):
                 f"create LoRA network. base dim (rank): {lora_dim}, alpha: {alpha}"
             )
             logger.info(
-                f"neuron dropout: p={self.dropout}, rank dropout: p={self.rank_dropout}, module dropout: p={self.module_dropout}"
+                f"neuron dropout: p={dropout}, rank dropout: p={rank_dropout}, module dropout: p={module_dropout}"
             )
 
         # compile regular expression if specified
@@ -173,8 +154,8 @@ class LoRANetwork(torch.nn.Module):
                     re_patterns.append(re_pattern)
             return re_patterns
 
-        exclude_re_patterns = str_to_re_patterns(exclude_patterns)
-        include_re_patterns = str_to_re_patterns(include_patterns)
+        exclude_re_patterns = str_to_re_patterns(cfg.exclude_patterns)
+        include_re_patterns = str_to_re_patterns(cfg.include_patterns)
 
         # create module instances
         def create_modules(
@@ -225,28 +206,27 @@ class LoRANetwork(torch.nn.Module):
 
                             # layer range filter: skip blocks outside [layer_start, layer_end)
                             if is_unet and (
-                                self.layer_start is not None
-                                or self.layer_end is not None
+                                cfg.layer_start is not None or cfg.layer_end is not None
                             ):
                                 block_match = _BLOCK_IDX_RE.match(original_name)
                                 if block_match:
                                     block_idx = int(block_match.group(1))
                                     if (
-                                        self.layer_start is not None
-                                        and block_idx < self.layer_start
+                                        cfg.layer_start is not None
+                                        and block_idx < cfg.layer_start
                                     ):
                                         if verbose:
                                             logger.info(
-                                                f"layer_range exclude: {original_name} (block {block_idx} < {self.layer_start})"
+                                                f"layer_range exclude: {original_name} (block {block_idx} < {cfg.layer_start})"
                                             )
                                         continue
                                     if (
-                                        self.layer_end is not None
-                                        and block_idx >= self.layer_end
+                                        cfg.layer_end is not None
+                                        and block_idx >= cfg.layer_end
                                     ):
                                         if verbose:
                                             logger.info(
-                                                f"layer_range exclude: {original_name} (block {block_idx} >= {self.layer_end})"
+                                                f"layer_range exclude: {original_name} (block {block_idx} >= {cfg.layer_end})"
                                             )
                                         continue
 
@@ -258,11 +238,11 @@ class LoRANetwork(torch.nn.Module):
                                     dim = modules_dim[lora_name]
                                     alpha_val = modules_alpha[lora_name]
                             else:
-                                if self.reg_dims is not None:
-                                    for reg, d in self.reg_dims.items():
+                                if cfg.reg_dims is not None:
+                                    for reg, d in cfg.reg_dims.items():
                                         if re.fullmatch(reg, original_name):
                                             dim = d
-                                            alpha_val = self.alpha
+                                            alpha_val = alpha
                                             logger.info(
                                                 f"Module {original_name} matched with regex '{reg}' -> dim: {dim}"
                                             )
@@ -272,9 +252,9 @@ class LoRANetwork(torch.nn.Module):
                                         dim = (
                                             default_dim
                                             if default_dim is not None
-                                            else self.lora_dim
+                                            else lora_dim
                                         )
-                                        alpha_val = self.alpha
+                                        alpha_val = alpha
 
                             if dim is None or dim == 0:
                                 if is_linear or is_conv2d_1x1:
@@ -330,7 +310,10 @@ class LoRANetwork(torch.nn.Module):
                 # OrthoLoRAExp so router overhead + balance-loss pressure are
                 # concentrated on sites where specialization is learnable.
                 effective_module_class = module_class
-                if module_class in (HydraLoRAModule, OrthoHydraLoRAExpModule) and is_unet:
+                if (
+                    module_class in (HydraLoRAModule, OrthoHydraLoRAExpModule)
+                    and is_unet
+                ):
                     if self._hydra_router_names is not None:
                         hydra_on = lora_name in self._hydra_router_names
                     elif self._hydra_router_re is not None:
@@ -351,9 +334,9 @@ class LoRANetwork(torch.nn.Module):
                 if effective_module_class == OrthoLoRAExpModule:
                     pass  # no extra kwargs — SVD init reads from org_module directly
                 elif effective_module_class == OrthoHydraLoRAExpModule:
-                    extra_kwargs["num_experts"] = self.num_experts
+                    extra_kwargs["num_experts"] = cfg.num_experts
                 elif effective_module_class == HydraLoRAModule:
-                    extra_kwargs["num_experts"] = self.num_experts
+                    extra_kwargs["num_experts"] = cfg.num_experts
 
                 # σ-conditional router: only widen the router input with
                 # sinusoidal(σ) features on modules whose name matches the
@@ -362,10 +345,15 @@ class LoRANetwork(torch.nn.Module):
                 # an explicit name set; fresh-from-kwargs path uses a regex
                 # over original_name. Gated on the effective class so a
                 # hydra-excluded module can't pick up σ either.
-                if self.use_sigma_router and effective_module_class in (
-                    HydraLoRAModule,
-                    OrthoHydraLoRAExpModule,
-                ) and is_unet:
+                if (
+                    cfg.use_sigma_router
+                    and effective_module_class
+                    in (
+                        HydraLoRAModule,
+                        OrthoHydraLoRAExpModule,
+                    )
+                    and is_unet
+                ):
                     if self._sigma_router_names is not None:
                         enable = lora_name in self._sigma_router_names
                     elif self._sigma_router_re is not None:
@@ -373,14 +361,14 @@ class LoRANetwork(torch.nn.Module):
                     else:
                         enable = True
                     if enable:
-                        extra_kwargs["sigma_feature_dim"] = self.sigma_feature_dim
-                        extra_kwargs["sigma_hidden_dim"] = self.sigma_hidden_dim
+                        extra_kwargs["sigma_feature_dim"] = cfg.sigma_feature_dim
+                        extra_kwargs["sigma_hidden_dim"] = cfg.sigma_hidden_dim
                         self._sigma_router_hits += 1
 
                 # Per-channel scaling is DiT-only: the bench script hooks DiT
                 # linears, text encoder activations are never calibrated.
-                if self.channel_scales_dict is not None and is_unet:
-                    _cs = self.channel_scales_dict.get(lora_name)
+                if cfg.channel_scales_dict is not None and is_unet:
+                    _cs = cfg.channel_scales_dict.get(lora_name)
                     if _cs is not None:
                         extra_kwargs["channel_scale"] = _cs
                         self._channel_scale_hits += 1
@@ -446,7 +434,7 @@ class LoRANetwork(torch.nn.Module):
             for name in skipped:
                 logger.info(f"\t{name}")
 
-        if self.channel_scales_dict is not None:
+        if cfg.channel_scales_dict is not None:
             logger.info(
                 f"per_channel_scaling: {self._channel_scale_hits} DiT modules "
                 f"received calibration-based input scaling"
@@ -546,17 +534,16 @@ class LoRANetwork(torch.nn.Module):
 
     def set_timestep_mask(self, timesteps: torch.Tensor, max_timestep: float = 1.0):
         """Compute and set timestep-dependent rank mask on all modules."""
-        if not getattr(self, "_use_timestep_mask", False):
+        if not self.cfg.use_timestep_mask:
             return
 
+        max_rank = self.cfg.lora_dim
         # Reuse a single GPU-resident mask to avoid ~200 CPU→GPU transfers per step
         mask = getattr(self, "_shared_timestep_mask", None)
         if mask is None or mask.device != timesteps.device:
-            mask = torch.zeros(1, self._max_rank, device=timesteps.device)
+            mask = torch.zeros(1, max_rank, device=timesteps.device)
             self._shared_timestep_mask = mask
-            self._timestep_mask_arange = torch.arange(
-                self._max_rank, device=timesteps.device
-            )
+            self._timestep_mask_arange = torch.arange(max_rank, device=timesteps.device)
             for lora in self.text_encoder_loras + self.unet_loras:
                 lora._timestep_mask = mask
 
@@ -564,22 +551,23 @@ class LoRANetwork(torch.nn.Module):
         # keeps the effective rank as a tensor so the mask build stays static-shape.
         t = timesteps.float().mean()
         frac = ((max_timestep - t) / max_timestep).clamp(min=0.0, max=1.0)
-        r = frac.pow(self._alpha_rank_scale) * (self._max_rank - self._min_rank) + self._min_rank
-        r = r.clamp(max=float(self._max_rank))
-        mask.copy_(
-            (self._timestep_mask_arange < r).to(mask.dtype).unsqueeze(0)
+        r = (
+            frac.pow(self.cfg.alpha_rank_scale) * (max_rank - self.cfg.min_rank)
+            + self.cfg.min_rank
         )
+        r = r.clamp(max=float(max_rank))
+        mask.copy_((self._timestep_mask_arange < r).to(mask.dtype).unsqueeze(0))
 
     def set_reft_timestep_mask(
         self, timesteps: torch.Tensor, max_timestep: float = 1.0
     ):
         """Compute and set timestep-dependent mask on ReFT modules."""
-        if not getattr(self, "_use_timestep_mask", False):
+        if not self.cfg.use_timestep_mask:
             return
         refts = self.text_encoder_refts + self.unet_refts
         if not refts:
             return
-        reft_dim = getattr(self, "_reft_dim", 4)
+        reft_dim = self.cfg.reft_dim
 
         mask = getattr(self, "_shared_reft_mask", None)
         if mask is None or mask.device != timesteps.device:
@@ -591,7 +579,7 @@ class LoRANetwork(torch.nn.Module):
 
         t = timesteps.float().mean()
         frac = ((max_timestep - t) / max_timestep).clamp(min=0.0, max=1.0)
-        r = frac.pow(self._alpha_rank_scale) * (reft_dim - 1) + 1
+        r = frac.pow(self.cfg.alpha_rank_scale) * (reft_dim - 1) + 1
         r = r.clamp(max=float(reft_dim))
         mask.copy_((self._reft_mask_arange < r).to(mask.dtype).unsqueeze(0))
 
@@ -623,7 +611,7 @@ class LoRANetwork(torch.nn.Module):
         σ-bucket balance loss can bucket the cached gates at loss-compute
         time.
         """
-        if not self.use_sigma_router:
+        if not self.cfg.use_sigma_router:
             return
         sigmas = sigmas.detach()
         self._last_sigma = sigmas
@@ -672,9 +660,7 @@ class LoRANetwork(torch.nn.Module):
             if hasattr(lora, "_last_gate"):
                 lora._last_gate = None
 
-    def step_balance_loss_warmup(
-        self, global_step: int, max_train_steps: int
-    ) -> None:
+    def step_balance_loss_warmup(self, global_step: int, max_train_steps: int) -> None:
         """Activate the MoE load-balance penalty once training crosses the
         warmup window. Step function: ``_balance_loss_weight`` holds at 0
         during the first ``_balance_loss_warmup_ratio`` of steps, then flips
@@ -712,20 +698,109 @@ class LoRANetwork(torch.nn.Module):
         treats buffer mutations as dynamic (no recompile per step and no
         recompile at the warmup→post-warmup transition).
         """
-        if self.expert_warmup_ratio <= 0.0 or max_train_steps <= 0:
+        if self.cfg.expert_warmup_ratio <= 0.0 or max_train_steps <= 0:
             return
-        warmup_steps = int(max_train_steps * self.expert_warmup_ratio)
+        warmup_steps = int(max_train_steps * self.cfg.expert_warmup_ratio)
         in_warmup = global_step < warmup_steps
+        k = self.cfg.expert_warmup_k
+        pick_counts: Optional[torch.Tensor] = None
+        n_modules = 0
         for lora in self.unet_loras + self.text_encoder_loras:
             if not hasattr(lora, "_expert_grad_mask"):
                 continue
             mask = lora._expert_grad_mask
             if in_warmup:
-                idx = int(torch.randint(0, lora.num_experts, (1,)).item())
-                mask.zero_()
-                mask[idx] = 1.0
+                k_eff = max(1, min(k, lora.num_experts))
+                if k_eff >= lora.num_experts:
+                    mask.fill_(1.0)
+                else:
+                    idx = torch.randperm(lora.num_experts, device=mask.device)[:k_eff]
+                    mask.zero_()
+                    mask[idx] = 1.0
+                if pick_counts is None or pick_counts.numel() < lora.num_experts:
+                    new = torch.zeros(lora.num_experts, device=mask.device)
+                    if pick_counts is not None:
+                        new[: pick_counts.numel()] = pick_counts
+                    pick_counts = new
+                pick_counts[: lora.num_experts] += mask[: lora.num_experts].detach()
+                n_modules += 1
             else:
                 mask.fill_(1.0)
+        if in_warmup and pick_counts is not None and n_modules > 0:
+            self._last_expert_warmup_picks = pick_counts / n_modules
+        else:
+            self._last_expert_warmup_picks = None
+
+    def step_expert_best_warmup_post_backward(
+        self, global_step: int, max_train_steps: int
+    ) -> None:
+        """Greedy counterpart to ``step_expert_warmup``: during the warmup
+        window, keep gradient only on the top-k experts ranked by per-expert
+        grad-norm; zero the rest. Forward stays full MoE (mask all-ones), so
+        every expert produces a proper gradient — we then drop the experts
+        whose update would do least to lower loss this step. Score is
+        ``‖∂L/∂P_e‖_F`` where ``P_e`` is the per-expert parameter
+        (``lora_up_weight[e]`` for plain Hydra, ``S_p[e]`` for OrthoHydra);
+        grad-norm is a first-order proxy for the loss decrease an SGD step on
+        that expert would buy.
+
+        Must be called AFTER backward (so .grad is populated) and AFTER DDP
+        all-reduce (so norms reflect the global gradient direction), but
+        BEFORE optimizer.step. Outside the warmup window this is a no-op.
+
+        Mutually exclusive with ``expert_warmup_ratio``: that path zeros the
+        forward mask so non-selected experts have zero grad anyway, which
+        would make this top-k selection redundant. ``factory.py`` warns if
+        both are set; behaviorally the random path's pre-forward masking
+        wins because it produces zero grads that this method then sees.
+        """
+        ratio = self.cfg.expert_best_warmup_ratio
+        if ratio <= 0.0 or max_train_steps <= 0:
+            return
+        warmup_steps = int(max_train_steps * ratio)
+        if global_step >= warmup_steps:
+            self._last_expert_warmup_picks = None
+            return
+        k = self.cfg.expert_warmup_k
+        pick_counts: Optional[torch.Tensor] = None
+        n_modules = 0
+        for lora in self.unet_loras + self.text_encoder_loras:
+            param = None
+            if hasattr(lora, "lora_up_weight") and lora.lora_up_weight.dim() == 3:
+                param = lora.lora_up_weight
+            elif hasattr(lora, "S_p") and lora.S_p.dim() == 3:
+                param = lora.S_p
+            if param is None or param.grad is None:
+                continue
+            E = param.shape[0]
+            k_eff = max(1, min(k, E))
+            if k_eff >= E:
+                continue
+            norms = param.grad.detach().reshape(E, -1).norm(dim=-1)
+            topk = torch.topk(norms, k_eff).indices
+            keep = torch.zeros(E, dtype=param.grad.dtype, device=param.grad.device)
+            keep[topk] = 1.0
+            param.grad.mul_(keep.view(E, *([1] * (param.dim() - 1))))
+            if pick_counts is None or pick_counts.numel() < E:
+                new = torch.zeros(E, device=keep.device)
+                if pick_counts is not None:
+                    new[: pick_counts.numel()] = pick_counts
+                pick_counts = new
+            pick_counts[:E] += keep.float()
+            n_modules += 1
+        if pick_counts is not None and n_modules > 0:
+            self._last_expert_warmup_picks = pick_counts / n_modules
+        else:
+            self._last_expert_warmup_picks = None
+
+    def get_expert_warmup_pick_stats(self) -> Optional[List[float]]:
+        """Per-expert pick fraction (0.0–1.0) across hydra modules on the most
+        recent warmup step. None when not in warmup. ``metrics.py`` consumes
+        this and emits ``hydra/expert_warmup_pick/{i}`` scalars."""
+        picks = self._last_expert_warmup_picks
+        if picks is None:
+            return None
+        return picks.detach().cpu().tolist()
 
     @staticmethod
     def _switch_balance(gate: torch.Tensor) -> torch.Tensor:
@@ -733,9 +808,7 @@ class LoRANetwork(torch.nn.Module):
         num_experts = gate.shape[-1]
         expert_idx = gate.argmax(dim=-1)  # (B,)
         frac = torch.zeros(num_experts, device=gate.device, dtype=gate.dtype)
-        frac.scatter_add_(
-            0, expert_idx, torch.ones_like(expert_idx, dtype=gate.dtype)
-        )
+        frac.scatter_add_(0, expert_idx, torch.ones_like(expert_idx, dtype=gate.dtype))
         frac = frac / gate.shape[0]
         gate_mean = gate.mean(dim=0)  # (num_experts,)
         return num_experts * (frac * gate_mean).sum()
@@ -756,18 +829,18 @@ class LoRANetwork(torch.nn.Module):
         per_bucket_count = 0
 
         sigma = self._last_sigma  # (B,) or None
-        num_buckets = int(getattr(self, "_num_sigma_buckets", 3))
-        bucket_w = float(getattr(self, "_per_bucket_balance_weight", 0.0) or 0.0)
+        num_buckets = self.cfg.num_sigma_buckets
+        bucket_w = float(self.cfg.per_bucket_balance_weight or 0.0)
         want_per_bucket = (
-            self.use_sigma_router
+            self.cfg.use_sigma_router
             and sigma is not None
             and num_buckets > 1
             and bucket_w > 0.0
         )
         if want_per_bucket:
-            thresholds = torch.linspace(
-                0.0, 1.0, num_buckets + 1, device=sigma.device
-            )[1:-1]
+            thresholds = torch.linspace(0.0, 1.0, num_buckets + 1, device=sigma.device)[
+                1:-1
+            ]
             bucket_ids = torch.bucketize(sigma.float(), thresholds)  # (B,) in [0, N)
 
         for lora in self.unet_loras + self.text_encoder_loras:
@@ -800,8 +873,7 @@ class LoRANetwork(torch.nn.Module):
                     per_bucket_total = (
                         module_bucket_sum / module_bucket_count
                         if per_bucket_total is None
-                        else per_bucket_total
-                        + module_bucket_sum / module_bucket_count
+                        else per_bucket_total + module_bucket_sum / module_bucket_count
                     )
                     per_bucket_count += 1
 
@@ -1039,9 +1111,9 @@ class LoRANetwork(torch.nn.Module):
             param_groups = {"lora": {}, "plus": {}, "router": {}}
             reg_groups = {}
             reg_lrs_list = (
-                list(self.reg_lrs.items()) if self.reg_lrs is not None else []
+                list(self.cfg.reg_lrs.items()) if self.cfg.reg_lrs is not None else []
             )
-            router_scale = float(getattr(self, "router_lr_scale", 1.0))
+            router_scale = float(self.cfg.router_lr_scale)
 
             def _is_router_param(pname: str) -> bool:
                 # named_parameters() yields top-level names like "router.weight"
@@ -1128,7 +1200,11 @@ class LoRANetwork(torch.nn.Module):
                     desc = f"reg_lr_{group_key.split('_')[-1]}"
                     descriptions.append(
                         desc
-                        + (" plus" if key == "plus" else (" router" if key == "router" else ""))
+                        + (
+                            " plus"
+                            if key == "plus"
+                            else (" router" if key == "router" else "")
+                        )
                     )
 
             for key in param_groups.keys():

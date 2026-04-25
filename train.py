@@ -2634,6 +2634,19 @@ class AnimaTrainer:
                         self.all_reduce_network(
                             accelerator, network
                         )  # sync DDP grad manually
+                        # HydraLoRA "best-expert" warmup: keep grads only on
+                        # top-k experts by per-expert grad-norm during warmup.
+                        # No-op unless expert_best_warmup_ratio > 0. Runs after
+                        # all-reduce so norms reflect the global gradient, and
+                        # before clip_grad_norm so clipping sees the masked grads.
+                        net_unwrapped = accelerator.unwrap_model(network)
+                        if hasattr(
+                            net_unwrapped, "step_expert_best_warmup_post_backward"
+                        ):
+                            net_unwrapped.step_expert_best_warmup_post_backward(
+                                int(getattr(self, "_hydra_warmup_step", 0)),
+                                int(getattr(args, "max_train_steps", 0) or 0),
+                            )
                         if args.max_grad_norm != 0.0:
                             params_to_clip = accelerator.unwrap_model(
                                 network

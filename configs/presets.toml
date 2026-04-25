@@ -1,27 +1,18 @@
 [default]
 blocks_to_swap = 0
-dataloader_pin_memory = true
 
 [low_vram]
-blocks_to_swap = 0
 gradient_checkpointing = true
 unsloth_offload_checkpointing = true
-dataloader_pin_memory = true
-
-[32gb]
-blocks_to_swap = 0
-dataloader_pin_memory = true
 
 [graft]
 blocks_to_swap = 20
-dataloader_pin_memory = true
 
 [half]
-blocks_to_swap = 0
-dataloader_pin_memory = true
 sample_ratio = 0.5
 
 [quarter]
-blocks_to_swap = 0
-dataloader_pin_memory = true
 sample_ratio = 0.25
+
+[tenth]
+sample_ratio = 0.1

@@ -36,6 +36,7 @@ attn_mode = "flash"
 save_precision= "bf16"
 use_custom_down_autograd = true
 log_every_n_steps=2
+dataloader_pin_memory = true
 
 # ── Dataset config ───────────────────────────────────────────────────────
 # Formerly configs/dataset_config.toml. Consumed directly by the dataset
