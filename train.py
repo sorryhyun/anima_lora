@@ -22,7 +22,6 @@ from library.runtime.device import clean_memory_on_device
 from accelerate.utils import set_seed
 from accelerate import Accelerator
 from library import (
-    strategy_base,
     train_util,
 )
 from library.anima import (
@@ -30,6 +29,7 @@ from library.anima import (
     training as anima_train_utils,
     weights as anima_utils,
     strategy as strategy_anima,
+    text_strategies,
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.models import sai_spec as sai_model_spec
@@ -913,8 +913,8 @@ class AnimaTrainer:
         te = self.get_models_for_text_encoding(args, accelerator, text_encoders)
         qwen3_te = te[0] if te is not None else None
 
-        text_encoding_strategy = strategy_base.TextEncodingStrategy.get_strategy()
-        tokenize_strategy = strategy_base.TokenizeStrategy.get_strategy()
+        text_encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
+        tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
         anima_train_utils.sample_images(
             accelerator,
             args,
@@ -1342,9 +1342,9 @@ class AnimaTrainer:
                     f"cache Text Encoder outputs for sample prompts: {args.sample_prompts}"
                 )
 
-                tokenize_strategy = strategy_base.TokenizeStrategy.get_strategy()
+                tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
                 text_encoding_strategy = (
-                    strategy_base.TextEncodingStrategy.get_strategy()
+                    text_strategies.TextEncodingStrategy.get_strategy()
                 )
 
                 prompts = train_util.load_prompts(args.sample_prompts)
@@ -2046,14 +2046,14 @@ class AnimaTrainer:
         )
 
         tokenize_strategy = self.get_tokenize_strategy(args)
-        strategy_base.TokenizeStrategy.set_strategy(tokenize_strategy)
+        text_strategies.TokenizeStrategy.set_strategy(tokenize_strategy)
         tokenizers = self.get_tokenizers(
             tokenize_strategy
         )  # will be removed after sample_image is refactored
 
         # prepare caching strategy: this must be set before preparing dataset. because dataset may use this strategy for initialization.
         latents_caching_strategy = self.get_latents_caching_strategy(args)
-        strategy_base.LatentsCachingStrategy.set_strategy(latents_caching_strategy)
+        text_strategies.LatentsCachingStrategy.set_strategy(latents_caching_strategy)
 
         (
             train_dataset_group,
@@ -2137,13 +2137,13 @@ class AnimaTrainer:
 
         # cache text encoder outputs if needed: Text Encoder is moved to cpu or gpu
         text_encoding_strategy = self.get_text_encoding_strategy(args)
-        strategy_base.TextEncodingStrategy.set_strategy(text_encoding_strategy)
+        text_strategies.TextEncodingStrategy.set_strategy(text_encoding_strategy)
 
         text_encoder_outputs_caching_strategy = (
             self.get_text_encoder_outputs_caching_strategy(args)
         )
         if text_encoder_outputs_caching_strategy is not None:
-            strategy_base.TextEncoderOutputsCachingStrategy.set_strategy(
+            text_strategies.TextEncoderOutputsCachingStrategy.set_strategy(
                 text_encoder_outputs_caching_strategy
             )
         self.cache_text_encoder_outputs_if_needed(

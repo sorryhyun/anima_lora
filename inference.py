@@ -13,10 +13,10 @@ from safetensors.torch import load_file
 from safetensors import safe_open
 from diffusers.utils.torch_utils import randn_tensor
 
-from library import strategy_base
 from library.anima import (
     models as anima_models,
     strategy as strategy_anima,
+    text_strategies,
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.runtime.device import clean_memory_on_device
@@ -825,10 +825,10 @@ def main():
             qwen3_max_length=512,
             t5_max_length=512,
         )
-        strategy_base.TokenizeStrategy.set_strategy(tokenize_strategy)
+        text_strategies.TokenizeStrategy.set_strategy(tokenize_strategy)
 
         encoding_strategy = strategy_anima.AnimaTextEncodingStrategy()
-        strategy_base.TextEncodingStrategy.set_strategy(encoding_strategy)
+        text_strategies.TextEncodingStrategy.set_strategy(encoding_strategy)
 
         if args.from_file:
             # Batch mode from file

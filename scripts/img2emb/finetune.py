@@ -113,7 +113,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
 
     # optim
-    p.add_argument("--steps", type=int, default=240)
+    p.add_argument("--steps", type=int, default=720)
     p.add_argument("--batch_size", type=int, default=1)
     # LRs tuned for warm-start from pretrain: an order of magnitude lower
     # than pretrain's own training LR because the supervision signal

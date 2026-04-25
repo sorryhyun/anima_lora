@@ -7,8 +7,7 @@ from typing import Optional, Dict, List
 
 import torch
 
-from library import strategy_base
-from library.anima import models as anima_models
+from library.anima import models as anima_models, text_strategies
 from library.runtime.device import clean_memory_on_device
 from library.inference.models import load_text_encoder
 from library.inference.text import process_escape
@@ -24,8 +23,8 @@ def _encode_prompt_for_mod(
 ) -> torch.Tensor:
     """Encode a prompt and return its crossattn_emb (post-LLMAdapter, padded)."""
     prompt = process_escape(prompt)
-    tokenize_strategy = strategy_base.TokenizeStrategy.get_strategy()
-    encoding_strategy = strategy_base.TextEncodingStrategy.get_strategy()
+    tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
+    encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
 
     with torch.no_grad():
         tokens = tokenize_strategy.tokenize(prompt)

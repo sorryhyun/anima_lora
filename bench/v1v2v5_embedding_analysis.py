@@ -22,8 +22,7 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from library import strategy_base
-from library.anima import weights as anima_utils, strategy as strategy_anima
+from library.anima import weights as anima_utils, strategy as strategy_anima, text_strategies
 
 # --- Config ---
 DIT_PATH = "models/diffusion_models/anima-preview3-base.safetensors"
@@ -102,8 +101,8 @@ def main():
 
     tok = strategy_anima.AnimaTokenizeStrategy(qwen3_path=TEXT_ENCODER_PATH)
     enc = strategy_anima.AnimaTextEncodingStrategy()
-    strategy_base.TokenizeStrategy.set_strategy(tok)
-    strategy_base.TextEncodingStrategy.set_strategy(enc)
+    text_strategies.TokenizeStrategy.set_strategy(tok)
+    text_strategies.TextEncodingStrategy.set_strategy(enc)
 
     def enc_prompt(prompt, _te=text_encoder, _anima=anima):
         return encode_prompt(prompt, _te, tok, enc, _anima, DEVICE)

@@ -6,8 +6,7 @@ from typing import Optional, Tuple, Any, Dict
 
 import torch
 
-from library import strategy_base
-from library.anima import models as anima_models
+from library.anima import models as anima_models, text_strategies
 from library.runtime.device import clean_memory_on_device
 from library.inference.models import load_text_encoder
 
@@ -72,8 +71,8 @@ def prepare_text_inputs(
     else:
         move_models_to_device_if_needed()
 
-        tokenize_strategy = strategy_base.TokenizeStrategy.get_strategy()
-        encoding_strategy = strategy_base.TextEncodingStrategy.get_strategy()
+        tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
+        encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
 
         with torch.no_grad():
             tokens = tokenize_strategy.tokenize(prompt)
@@ -104,8 +103,8 @@ def prepare_text_inputs(
     else:
         move_models_to_device_if_needed()
 
-        tokenize_strategy = strategy_base.TokenizeStrategy.get_strategy()
-        encoding_strategy = strategy_base.TextEncodingStrategy.get_strategy()
+        tokenize_strategy = text_strategies.TokenizeStrategy.get_strategy()
+        encoding_strategy = text_strategies.TextEncodingStrategy.get_strategy()
 
         with torch.no_grad():
             tokens = tokenize_strategy.tokenize(negative_prompt)

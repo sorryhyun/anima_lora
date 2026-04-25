@@ -609,12 +609,14 @@ class LoRANetwork(torch.nn.Module):
         σ to every module that opts in (``sigma_feature_dim > 0``). Other
         modules ignore it. The network also caches σ on itself so the per-
         σ-bucket balance loss can bucket the cached gates at loss-compute
-        time.
+        time, and so router stats can report per-σ-bucket expert usage even
+        when ``use_sigma_router=False`` (sigma-independent gating can still
+        develop sigma-correlated usage from data drift).
         """
-        if not self.cfg.use_sigma_router:
-            return
         sigmas = sigmas.detach()
         self._last_sigma = sigmas
+        if not self.cfg.use_sigma_router:
+            return
         for lora in self.unet_loras + self.text_encoder_loras:
             if getattr(lora, "sigma_feature_dim", 0) > 0:
                 lora._sigma = sigmas
@@ -893,7 +895,7 @@ class LoRANetwork(torch.nn.Module):
         stats = self.get_router_stats()
         return stats.get("entropy_mean") if stats else None
 
-    def get_router_stats(self) -> Dict[str, Union[float, List[float]]]:
+    def get_router_stats(self) -> Dict[str, Union[float, List[float], List[List[float]], List[int]]]:
         """Per-step router diagnostics aggregated across hydra modules.
 
         Returns a dict with:
@@ -906,6 +908,15 @@ class LoRANetwork(torch.nn.Module):
           - expert_usage: length-E vector of argmax frequency averaged across
             modules. Sums to ~1.0. Flat distribution = balanced; a column
             near 0 means that expert is never picked (collapse).
+          - expert_usage_per_bucket: (num_buckets, E) list of argmax frequency
+            per σ-bucket (low→high σ), averaged across modules. Empty buckets
+            (no batch samples in that σ range this step) report zeros.
+          - bucket_counts: per-bucket sample count (length num_buckets). Useful
+            sanity for the per-bucket usage row — a bucket with 0 samples this
+            step has a meaningless usage row.
+
+          Per-bucket entries omitted when σ wasn't set this step or
+          ``num_sigma_buckets <= 1``.
 
         Empty dict when no hydra module cached a gate this step. One reduction
         per module on (B, E) gates — cheap.
@@ -913,7 +924,25 @@ class LoRANetwork(torch.nn.Module):
         per_H: list[float] = []
         per_margin: list[float] = []
         per_usage: list[torch.Tensor] = []
+        per_bucket_usage: list[torch.Tensor] = []  # each (num_buckets, E)
         E_ref: Optional[int] = None
+
+        sigma = self._last_sigma  # (B,) or None
+        num_buckets = int(self.cfg.num_sigma_buckets)
+        want_per_bucket = sigma is not None and num_buckets > 1
+        bucket_ids: Optional[torch.Tensor] = None
+        bucket_counts_t: Optional[torch.Tensor] = None
+        if want_per_bucket:
+            thresholds = torch.linspace(
+                0.0, 1.0, num_buckets + 1, device=sigma.device
+            )[1:-1]
+            bucket_ids = torch.bucketize(sigma.float(), thresholds)  # (B,) in [0, N)
+            bucket_counts_t = torch.zeros(
+                num_buckets, device=sigma.device, dtype=torch.long
+            )
+            bucket_counts_t.scatter_add_(
+                0, bucket_ids, torch.ones_like(bucket_ids, dtype=torch.long)
+            )
 
         for lora in self.unet_loras + self.text_encoder_loras:
             gate = getattr(lora, "_last_gate", None)
@@ -943,13 +972,27 @@ class LoRANetwork(torch.nn.Module):
             )
             per_usage.append((usage / gate.shape[0]).detach())
 
+            if want_per_bucket and bucket_ids is not None:
+                # Per-bucket argmax frequency, normalized within each bucket
+                # so each row sums to ~1 (or 0 for empty buckets).
+                bu = torch.zeros(
+                    num_buckets, E, device=gate.device, dtype=gate.dtype
+                )
+                # Combined index = bucket * E + expert -> flat scatter_add
+                flat_idx = bucket_ids.to(expert_idx.device) * E + expert_idx
+                bu.view(-1).scatter_add_(
+                    0, flat_idx, torch.ones_like(flat_idx, dtype=gate.dtype)
+                )
+                bc = bucket_counts_t.to(gate.dtype).clamp_min(1).unsqueeze(-1)
+                per_bucket_usage.append((bu / bc).detach())
+
         if not per_H:
             return {}
 
         H_t = torch.tensor(per_H)
         q = torch.quantile(H_t, torch.tensor([0.05, 0.5, 0.95]))
         usage_mean = torch.stack(per_usage).mean(dim=0).cpu().tolist()
-        return {
+        out: Dict[str, Union[float, List[float], List[List[float]], List[int]]] = {
             "entropy_mean": float(H_t.mean().item()),
             "entropy_p05": float(q[0].item()),
             "entropy_p50": float(q[1].item()),
@@ -957,6 +1000,13 @@ class LoRANetwork(torch.nn.Module):
             "margin_mean": float(sum(per_margin) / len(per_margin)),
             "expert_usage": usage_mean,
         }
+        if per_bucket_usage and bucket_counts_t is not None:
+            bucket_usage_mean = (
+                torch.stack(per_bucket_usage).mean(dim=0).cpu().tolist()
+            )
+            out["expert_usage_per_bucket"] = bucket_usage_mean
+            out["bucket_counts"] = bucket_counts_t.cpu().tolist()
+        return out
 
     def get_ortho_regularization(self) -> torch.Tensor:
         """Sum orthogonality regularization from all OrthoLoRA and ReFT modules."""

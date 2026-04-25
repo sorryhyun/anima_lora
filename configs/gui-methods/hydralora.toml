@@ -33,6 +33,10 @@ balance_loss_weight = 0.001
 # collapsing further. 0.0 disables the warmup (legacy behavior).
 balance_loss_warmup_ratio = 0.1
 expert_warmup_ratio = 0.1
+expert_warmup_k = 1
+# Experimental: greedy top-k expert selection by per-expert grad norm
+# (post-backward). Mutually exclusive with expert_warmup_ratio above.
+expert_best_warmup_ratio = 0
 # Narrow MoE to cross-attn q/kv + MLP (DiT). Self-attn, output_proj, and the
 # LLM-adapter blocks fall back to plain OrthoLoRAExp (use_ortho=true). See
 # configs/methods/lora.toml for the reasoning.

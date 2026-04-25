@@ -52,11 +52,11 @@ from PIL import Image
 from safetensors.torch import save_file
 from tqdm import tqdm
 
-from library import strategy_base
 from library.anima import (
     models as anima_models,
     weights as anima_utils,
     strategy as strategy_anima,
+    text_strategies,
 )
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.datasets.image_utils import IMAGE_TRANSFORMS
@@ -276,9 +276,9 @@ def encode_template(args, device, anima) -> torch.Tensor:
         qwen3_max_length=MAX_SEQ_LEN,
         t5_max_length=MAX_SEQ_LEN,
     )
-    strategy_base.TokenizeStrategy.set_strategy(tokenize_strategy)
+    text_strategies.TokenizeStrategy.set_strategy(tokenize_strategy)
     encoding_strategy = strategy_anima.AnimaTextEncodingStrategy()
-    strategy_base.TextEncodingStrategy.set_strategy(encoding_strategy)
+    text_strategies.TextEncodingStrategy.set_strategy(encoding_strategy)
 
     text_encoder, _ = anima_utils.load_qwen3_text_encoder(
         args.text_encoder,
@@ -524,9 +524,9 @@ def verify(args, anima, slots: torch.Tensor, device):
         qwen3_max_length=MAX_SEQ_LEN,
         t5_max_length=MAX_SEQ_LEN,
     )
-    strategy_base.TokenizeStrategy.set_strategy(tokenize_strategy)
+    text_strategies.TokenizeStrategy.set_strategy(tokenize_strategy)
     encoding_strategy = strategy_anima.AnimaTextEncodingStrategy()
-    strategy_base.TextEncodingStrategy.set_strategy(encoding_strategy)
+    text_strategies.TextEncodingStrategy.set_strategy(encoding_strategy)
 
     text_encoder, _ = anima_utils.load_qwen3_text_encoder(
         args.text_encoder, dtype=torch.bfloat16, device=device

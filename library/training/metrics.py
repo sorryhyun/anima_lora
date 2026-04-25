@@ -61,8 +61,11 @@ def _router_entropy_metric(ctx: MetricContext) -> dict[str, float]:
 
     Emits the single mean entropy plus quantiles (p05/p50/p95 across modules —
     dead-routing hotspots show up in p05), the mean top1-top2 margin (low =
-    near-random gating), and per-expert usage rates (sum to ~1.0; a near-0
-    entry means that expert is never picked).
+    near-random gating), per-expert usage rates (sum to ~1.0; a near-0 entry
+    means that expert is never picked), and per-σ-bucket usage rates broken
+    out as ``hydra/expert_usage_b{bucket}/{expert}`` (bucket 0 = lowest σ).
+    Per-bucket sample counts are emitted as ``hydra/bucket_count/{bucket}``
+    so empty-bucket rows can be filtered downstream.
     """
     if not getattr(ctx.network, "_use_hydra", False):
         return {}
@@ -80,6 +83,11 @@ def _router_entropy_metric(ctx: MetricContext) -> dict[str, float]:
         }
         for i, v in enumerate(stats.get("expert_usage", [])):
             out[f"hydra/expert_usage/{i}"] = float(v)
+        for b, row in enumerate(stats.get("expert_usage_per_bucket", [])):
+            for i, v in enumerate(row):
+                out[f"hydra/expert_usage_b{b}/{i}"] = float(v)
+        for b, c in enumerate(stats.get("bucket_counts", [])):
+            out[f"hydra/bucket_count/{b}"] = float(c)
         return out
 
     # Backward compat: old networks only exposed the mean scalar.
