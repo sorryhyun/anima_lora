@@ -73,10 +73,29 @@ PE_CORE_L14_336_SPEC = BucketSpec(
     ),
 )
 
+# PE-Core-G14-448 — 448px native, 32x32=1024 patch tokens, no CLS token
+# (use_cls_token=False). Same patch=14 as TIPSv2 and target token count, so we
+# reuse the TIPSv2 bucket aspects but mark use_cls=False.
+PE_CORE_G14_448_SPEC = BucketSpec(
+    encoder="pe-g",
+    patch=14,
+    use_cls=False,
+    buckets=(
+        (46, 23),  # 2:1 portrait,  1058 tokens, 644x322 px
+        (39, 26),  # 3:2 portrait,  1014 tokens, 546x364 px
+        (37, 28),  # ~4:3 portrait, 1036 tokens, 518x392 px
+        (32, 32),  # 1:1,           1024 tokens, 448x448 px (native)
+        (28, 37),  # ~3:4 landscape,1036 tokens, 392x518 px
+        (26, 39),  # 2:3 landscape, 1014 tokens, 364x546 px
+        (23, 46),  # 1:2 landscape, 1058 tokens, 322x644 px
+    ),
+)
+
 
 _SPECS: dict[str, BucketSpec] = {
     "tipsv2": TIPSV2_SPEC,
     "pe": PE_CORE_L14_336_SPEC,
+    "pe-g": PE_CORE_G14_448_SPEC,
 }
 
 

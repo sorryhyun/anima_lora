@@ -32,14 +32,15 @@ entrypoint and runs them in-process (no subprocesses). Inference uses
 
 ### Encoders
 
-Two vision towers are wired in. Pick one with `--encoder`; **train and infer
-must use the same encoder** because the cache filenames + `T_MAX_TOKENS`
+Three vision towers are wired in. Pick one with `--encoder`; **train and
+infer must use the same encoder** because the cache filenames + `T_MAX_TOKENS`
 both vary per encoder.
 
-| `--encoder` | Model | Native res | Patch | Buckets ~tokens | D | Setup |
+| `--encoder` | Model | Native res | Patch | Buckets ~tokens | D_enc / D_pool | Setup |
 |---|---|---|---|---|---|---|
-| `tipsv2` (default) | TIPSv2-L/14 | 448² | 14 | ~1024 | 1024 | `make download-tipsv2`, `trust_remote_code` |
-| `pe` | PE-Core-L14-336 (Meta) | 336² | 14 | ~576 | 1024 | `make download-pe` (vision tower vendored at `library/models/pe.py`) |
+| `tipsv2` (default) | TIPSv2-L/14 | 448² | 14 | ~1024 (+CLS) | 1024 / 1024 | `make download-tipsv2`, `trust_remote_code` |
+| `pe` | PE-Core-L14-336 (Meta) | 336² | 14 | ~576 (+CLS) | 1024 / 1024 | `make download-pe` (vision tower vendored at `library/models/pe.py`) |
+| `pe-g` | PE-Core-G14-448 (Meta) | 448² | 14 | ~1024 (no CLS) | 1536 / 1280 | `make download-pe-g` (same vendored tower; bigger backbone — 50 layers, width 1536) |
 
 Aspect-preserving bucketed preprocessing is always on — each image is
 resized to the closest patch-grid bucket for its encoder (`scripts/img2emb/buckets.py`)

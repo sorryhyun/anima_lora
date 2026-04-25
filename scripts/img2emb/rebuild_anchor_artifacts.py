@@ -93,7 +93,7 @@ def process_variant(
     ids_key = f"t5_input_ids_v{vi}"
     emb_key = f"crossattn_emb_v{vi}"
     if ids_key not in sd or emb_key not in sd:
-        return None
+        return {"_missing": True}
     ids = sd[ids_key].tolist()
     while ids and ids[-1] == 0:
         ids.pop()
@@ -236,12 +236,40 @@ def people_constituents(klass: str) -> set[str]:
     raise ValueError(klass)
 
 
+# --- views ---
+#
+# Single-class multi-label. Image is "in" the views group iff the caption
+# contains either of multiple_views / character_sheet (with or without
+# underscore). Negative images return None and are skipped entirely — no
+# placeholder slot, no zero prototype. Position in the caption isn't fixed
+# (these are mid-caption descriptors, not front anchors), so training relies
+# on the per-image slot recorded here while inference falls back to the yaml
+# default_slot.
+VIEWS_MULTI_TAGS = {
+    "multiple views", "multiple_views",
+    "character sheet", "character_sheet",
+}
+
+
+def classify_views(tags: set[str]) -> str | None:
+    if tags & VIEWS_MULTI_TAGS:
+        return "multiple_views"
+    return None
+
+
+def views_constituents(klass: str) -> set[str]:
+    if klass == "multiple_views":
+        return set(VIEWS_MULTI_TAGS)
+    raise ValueError(klass)
+
+
 CLASSIFIERS: dict[
     str,
     tuple[Callable[[set[str]], str | None], Callable[[str], set[str]]],
 ] = {
     "rating": (classify_rating, rating_constituents),
     "people_count": (classify_people, people_constituents),
+    "views": (classify_views, views_constituents),
 }
 
 
@@ -294,8 +322,14 @@ def read_caption_tags(txt_path: Path) -> set[str]:
     return {t.strip() for t in txt_path.read_text().split(",")}
 
 
-def iter_variants(spec: str) -> list[int]:
+def iter_variants(spec: str, sample_sd: dict[str, torch.Tensor] | None = None) -> list[int]:
     if spec == "all":
+        if sample_sd is not None:
+            if "num_variants" in sample_sd:
+                return list(range(int(sample_sd["num_variants"].item())))
+            n = sum(1 for k in sample_sd if k.startswith("crossattn_emb_v"))
+            if n:
+                return list(range(n))
         return list(range(8))
     return [int(spec)]
 
@@ -371,10 +405,8 @@ def main():
     declared = {s.name: set(s.classes) for s in specs}
 
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
-    variants = iter_variants(args.variants)
     logger.info(f"anchors_yaml={args.anchors_yaml}")
     logger.info(f"groups={[s.name for s in specs]}")
-    logger.info(f"tokenizer={args.tokenizer}  variants={variants}")
     logger.info(f"image_dir={image_dir}")
     logger.info(f"output_dir={out_dir}")
 
@@ -382,6 +414,17 @@ def main():
     if args.max_images:
         images = images[: args.max_images]
     logger.info(f"found {len(images)} cached images in {image_dir}")
+
+    sample_sd = None
+    for img in images:
+        if img.te_path is not None:
+            try:
+                sample_sd = load_file(img.te_path)
+            except Exception:
+                continue
+            break
+    variants = iter_variants(args.variants, sample_sd)
+    logger.info(f"tokenizer={args.tokenizer}  variants={variants}")
 
     # --- classify every image per group (captions are shuffle-order-invariant)
     image_class: dict[str, dict[str, str | None]] = {s.name: {} for s in specs}
@@ -421,6 +464,7 @@ def main():
         s.name: defaultdict(list) for s in specs
     }
     rt_fail = 0
+    missing_variant = 0
     ok = 0
     missing_te = 0
 
@@ -436,7 +480,10 @@ def main():
 
         for vi in variants:
             result = process_variant(img.stem, vi, sd, tokenizer)
-            if result is None or result.get("_skip"):
+            if result is None or result.get("_missing"):
+                missing_variant += 1
+                continue
+            if result.get("_skip"):
                 rt_fail += 1
                 continue
             ok += 1
@@ -469,10 +516,14 @@ def main():
 
         if (idx + 1) % 200 == 0:
             logger.info(
-                f"  processed {idx + 1}/{len(images)}  ok={ok}  rt_fail={rt_fail}"
+                f"  processed {idx + 1}/{len(images)}  ok={ok}  "
+                f"rt_fail={rt_fail}  missing_variant={missing_variant}"
             )
 
-    logger.info(f"extraction: ok={ok}  rt_fail={rt_fail}  missing_te={missing_te}")
+    logger.info(
+        f"extraction: ok={ok}  rt_fail={rt_fail}  "
+        f"missing_variant={missing_variant}  missing_te={missing_te}"
+    )
 
     # --- mean per class -> prototypes; assemble positions
     prototypes: dict[str, torch.Tensor] = {}

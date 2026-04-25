@@ -498,6 +498,12 @@ PE_CONFIGS: dict[str, PEConfig] = {
         image_size=336, patch_size=14, width=1024, layers=24, heads=16,
         mlp_ratio=4.0, output_dim=1024, use_cls_token=True, pool_type="attn",
     ),
+    # Larger sibling — width 1536, layers 50, no CLS token, projected output 1280.
+    # mlp_ratio matches Meta's released config (8960/1536 ≈ 5.833).
+    "PE-Core-G14-448": PEConfig(
+        image_size=448, patch_size=14, width=1536, layers=50, heads=16,
+        mlp_ratio=8960 / 1536, output_dim=1280, use_cls_token=False, pool_type="attn",
+    ),
 }
 
 

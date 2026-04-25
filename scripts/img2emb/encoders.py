@@ -1,14 +1,14 @@
 """Vision-encoder registry for img2emb.
 
-Two encoders are wired in: TIPSv2-L/14 (Google, ``trust_remote_code``-loaded
-HF custom model) and PE-Core-L14-336 (Meta Perception Encoder, vendored at
-``library/models/pe.py`` so we don't have to clone perception_models or
-install xformers).
+Three encoders are wired in: TIPSv2-L/14 (Google, ``trust_remote_code``-loaded
+HF custom model), PE-Core-L14-336, and PE-Core-G14-448 (both Meta Perception
+Encoder, vendored at ``library/models/pe.py`` so we don't have to clone
+perception_models or install xformers).
 
-Both expose the same shape for downstream code: ``encode(pixel_values)``
-returns ``(last_hidden_state[B, T, D], pooled[B, D_pool])`` where ``T``
-includes a CLS token at position 0 (matching the cached layout the resampler
-trains on).
+All expose the same shape for downstream code: ``encode(pixel_values)``
+returns ``(last_hidden_state[B, T, D], pooled[B, D_pool])``. ``T`` includes
+a CLS token at position 0 only when the encoder's ``BucketSpec.use_cls`` is
+true (TIPSv2 and PE-Core-L14-336 do; PE-Core-G14-448 does not).
 """
 
 from __future__ import annotations
@@ -134,11 +134,15 @@ def _load_tipsv2_encoder(device: torch.device, model_id: str) -> _TIPSv2Encoder:
     return _TIPSv2Encoder(inner)
 
 
-# --------------------------------------------------------------------------- PE-Core-L14-336
+# --------------------------------------------------------------------------- PE-Core (L14-336 / G14-448)
 
 
 def _default_pe_model_id() -> str:
     return str(REPO_ROOT / "models" / "pe" / "PE-Core-L14-336.pt")
+
+
+def _default_pe_g_model_id() -> str:
+    return str(REPO_ROOT / "models" / "pe" / "PE-Core-G14-448.pt")
 
 
 class _PEProcessor:
@@ -184,27 +188,38 @@ class _PEEncoder:
         return _EncoderOutput(last_hidden_state=feats, pooler_output=pooled)
 
 
-def _load_pe_encoder(device: torch.device, model_id: str) -> _PEEncoder:
-    """Build the vendored PE-Core-L14-336 vision tower and load Meta's
-    official ``.pt`` checkpoint (CLIP-format) into it.
+def _make_pe_loader(
+    config_name: str, download_target: str
+) -> Callable[[torch.device, str], "_PEEncoder"]:
+    """Return a loader closure that builds the vendored PE vision tower
+    against the named config and loads Meta's official ``.pt`` checkpoint
+    (CLIP-format) into it.
 
-    ``model_id`` here is a *local file path* to ``PE-Core-L14-336.pt``,
-    fetched via ``make download-pe`` (or ``hf download`` directly).
+    ``model_id`` passed to the closure is a *local file path* to the
+    ``.pt``, fetched via ``make download-pe`` / ``make download-pe-g``.
     """
-    from library.models.pe import build_pe_vision
 
-    ckpt_path = Path(model_id)
-    if not ckpt_path.is_file():
-        raise FileNotFoundError(
-            f"PE checkpoint not found at {ckpt_path}. "
-            "Run `make download-pe` to fetch facebook/PE-Core-L14-336."
-        )
-    logger.info(f"Loading PE-Core-L14-336 from {ckpt_path}")
-    model = build_pe_vision("PE-Core-L14-336")
-    model.load_pe_checkpoint(str(ckpt_path), verbose=True)
-    model = model.to(dtype=torch.bfloat16, device=device).eval()
-    model.requires_grad_(False)
-    return _PEEncoder(model)
+    def _loader(device: torch.device, model_id: str) -> _PEEncoder:
+        from library.models.pe import build_pe_vision
+
+        ckpt_path = Path(model_id)
+        if not ckpt_path.is_file():
+            raise FileNotFoundError(
+                f"PE checkpoint not found at {ckpt_path}. "
+                f"Run `make {download_target}` to fetch facebook/{config_name}."
+            )
+        logger.info(f"Loading {config_name} from {ckpt_path}")
+        model = build_pe_vision(config_name)
+        model.load_pe_checkpoint(str(ckpt_path), verbose=True)
+        model = model.to(dtype=torch.bfloat16, device=device).eval()
+        model.requires_grad_(False)
+        return _PEEncoder(model)
+
+    return _loader
+
+
+_load_pe_encoder = _make_pe_loader("PE-Core-L14-336", "download-pe")
+_load_pe_g_encoder = _make_pe_loader("PE-Core-G14-448", "download-pe-g")
 
 
 # --------------------------------------------------------------------------- registry
@@ -242,6 +257,17 @@ _REGISTRY: dict[str, EncoderInfo] = {
         default_model_id=_default_pe_model_id,
         processor_factory=_PEProcessor,
         loader=_load_pe_encoder,
+    ),
+    # PE-Core-G14-448: width=1536 (un-projected feats), output_dim=1280
+    # (projected pooled output). use_cls_token=False, so feats has no CLS row.
+    "pe-g": EncoderInfo(
+        name="pe-g",
+        bucket_spec=get_bucket_spec("pe-g"),
+        d_enc=1536,
+        d_pool=1280,
+        default_model_id=_default_pe_g_model_id,
+        processor_factory=_PEProcessor,
+        loader=_load_pe_g_encoder,
     ),
 }
 

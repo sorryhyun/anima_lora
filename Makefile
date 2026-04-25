@@ -11,7 +11,7 @@ LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/poo
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 download-pe gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 download-pe download-pe-g gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -77,12 +77,15 @@ distill-mod:
 
 # img2emb — image→embedding resampler training.
 # Three stages: preprocess → pretrain → finetune. See scripts/img2emb/train.py.
-# Two encoders are wired in (`make img2emb-... ENCODER=tipsv2|pe`):
+# Three encoders are wired in (`make img2emb-... ENCODER=tipsv2|pe|pe-g`):
 #   tipsv2 (default) — TIPSv2-L/14, 32x32=1024 patch tokens at 448 px.
 #                      Requires `make download-tipsv2` + `trust_remote_code`.
 #   pe               — Meta PE-Core-L14-336, 24x24=576 patch tokens at 336 px.
 #                      Requires `make download-pe`; vision tower vendored at
 #                      library/models/pe.py (no perception_models clone).
+#   pe-g             — Meta PE-Core-G14-448, 32x32=1024 patch tokens at 448 px,
+#                      no CLS token, larger backbone (50 layers, width=1536).
+#                      Requires `make download-pe-g`; same vendored tower.
 # Images are assigned to the closest patch-14 bucket; tokens are zero-padded
 # to a single T_MAX so the cache stays a flat (N, T_MAX, D) tensor.
 # img2emb-anchors refreshes phase1_positions.json + phase2_class_prototypes
@@ -356,6 +359,12 @@ download-tipsv2:
 download-pe:
 	python -c "import os; os.makedirs('models/pe',exist_ok=True)"
 	hf download facebook/PE-Core-L14-336 PE-Core-L14-336.pt --local-dir models/pe
+
+# Larger PE sibling — 448px native, 1024 patch tokens, no CLS, 50-layer 1536-wide
+# backbone. Same vendored vision tower in library/models/pe.py.
+download-pe-g:
+	python -c "import os; os.makedirs('models/pe',exist_ok=True)"
+	hf download facebook/PE-Core-G14-448 PE-Core-G14-448.pt --local-dir models/pe
 
 download-models: download-anima download-sam3 download-mit download-tipsv2
 

@@ -46,3 +46,20 @@ people_count:
     - "1boy"            # 1boy, no girl tag (solo male)
     - "multi"           # 3+girls / 2+boys-with-any-girls / bare multiple_*
     - "no_people"       # no count tag at all (zero prototype)
+
+views:
+  mutex: false
+  proto_key_prefix: "view="
+  default_slot: 3
+  # Single-class multi-label anchor (sigmoid + BCE). "multiple_views" fires
+  # when the caption contains either constituent tag (multiple_views or
+  # character_sheet). For negative images the slot is left untouched — no
+  # destructive zero-injection at slot 3 like a 2-class mutex with a "single"
+  # placeholder would cause. Unlike rating/people_count these tags aren't
+  # fixed-front in canonical booru ordering, so training reads the per-image
+  # slot from phase1_positions.json; default_slot is only the inference
+  # fallback. Refine from
+  # `summary["per_class"]["view=multiple_views"].slot_p50` after running
+  # rebuild_anchor_artifacts.py.
+  classes:
+    - "multiple_views"

@@ -13,13 +13,13 @@
 # defaults — tune freely.
 
 
-network_alpha = 64
-network_dim = 64
+network_alpha = 16
+network_dim = 16
 
-learning_rate = 2e-5
+learning_rate = 1e-4
 max_train_epochs = 12
-save_every_n_epochs = 12
-checkpointing_epochs = 12
+save_every_n_epochs = 6
+checkpointing_epochs = 6
 
 caption_shuffle_variants = 4
 cache_llm_adapter_outputs = true
@@ -50,7 +50,7 @@ alpha_rank_scale = 1.0
 
 output_name = "anima_hydra"
 use_hydra = true
-num_experts = 4
+num_experts = 12
 balance_loss_weight = 1e-6 # seems lr * 1/10 is proper
 
 # Hold the load-balance penalty at 0 during the first
@@ -59,12 +59,12 @@ balance_loss_weight = 1e-6 # seems lr * 1/10 is proper
 # further (empirically: entropy falls from 1.0 → 0.17 by 5k steps without this).
 # 0.0 = no warmup (legacy behavior).
 
-balance_loss_warmup_ratio = 0.6
-expert_warmup_ratio = 0.2
+balance_loss_warmup_ratio = 0.4
+expert_warmup_ratio = 0.1
 # Number of experts kept "live" each warmup step. k=1 (default) is the sharp
 # symmetry-break — only one randomly-chosen expert receives gradient per step.
 # k>1 trades some symmetry-breaking strength for faster gradient throughput.
-expert_warmup_k = 2
+expert_warmup_k = 4
 # Experimental greedy variant: during the first `expert_best_warmup_ratio` of
 # training, leave the forward mask all-ones (full MoE) and instead zero
 # per-expert grads for the bottom (E - expert_warmup_k) experts ranked by

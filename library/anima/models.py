@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from library.runtime import offloading as custom_offloading_utils
+from library.runtime.device import weighs_to_device
 from networks import attention
 
 # KV length buckets for cross-attention trimming. Captions trimmed to the smallest
@@ -1309,6 +1310,8 @@ class Anima(nn.Module):
         # Block swap support
         self.blocks_to_swap = None
         self.offloader: Optional[custom_offloading_utils.ModelOffloader] = None
+        # Stashed blocks_to_swap while paused (e.g. during eval). None = not paused.
+        self._paused_blocks_to_swap: Optional[int] = None
 
         # Static-shape training: pad all token sequences to this count to eliminate
         # torch.compile recompilation across different bucket resolutions.
@@ -1603,6 +1606,36 @@ class Anima(nn.Module):
         self.offloader.set_forward_only(False)
         self.prepare_block_swap_before_forward()
         print("Anima: Block swap set to forward and backward.")
+
+    def pause_block_swap(self) -> bool:
+        # Drains the offloader, pulls every parked block's weights back onto the
+        # forward device, and zeroes blocks_to_swap so the per-block swap path
+        # in _run_blocks short-circuits. Intended for no_grad eval where the
+        # full DiT fits on the GPU and CPU↔GPU streaming is pure overhead.
+        # Returns True if pause actually took effect.
+        if self.blocks_to_swap is None or self.blocks_to_swap == 0:
+            return False
+        if self._paused_blocks_to_swap is not None:
+            return False  # already paused
+        for block_idx in list(self.offloader.futures.keys()):
+            self.offloader._wait_blocks_move(block_idx)
+        for b in self.blocks:
+            weighs_to_device(b, self.offloader.device)
+        if self.offloader.cuda_available:
+            torch.cuda.synchronize()
+        self._paused_blocks_to_swap = self.blocks_to_swap
+        self.blocks_to_swap = 0
+        return True
+
+    def resume_block_swap(self) -> bool:
+        # Inverse of pause_block_swap: restores blocks_to_swap and re-parks the
+        # tail blocks' weights on CPU via prepare_block_devices_before_forward.
+        if self._paused_blocks_to_swap is None:
+            return False
+        self.blocks_to_swap = self._paused_blocks_to_swap
+        self._paused_blocks_to_swap = None
+        self.prepare_block_swap_before_forward()
+        return True
 
     def prepare_block_swap_before_forward(self):
         if self.blocks_to_swap is None or self.blocks_to_swap == 0:
