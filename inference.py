@@ -125,6 +125,33 @@ def parse_args() -> argparse.Namespace:
         "reference image's aspect ratio (overrides --image_size). Only effective with --ip_image.",
     )
     parser.add_argument(
+        "--easycontrol_weight",
+        type=str,
+        default=None,
+        help="EasyControl weight path (networks.easycontrol_anima .safetensors). "
+        "Requires --easycontrol_image. Extends DiT self-attention with VAE-encoded reference "
+        "K/V plus a per-block additive logit bias.",
+    )
+    parser.add_argument(
+        "--easycontrol_image",
+        type=str,
+        default=None,
+        help="Reference image path for EasyControl conditioning. Encoded by the Anima VAE "
+        "and patch-embedded into condition tokens.",
+    )
+    parser.add_argument(
+        "--easycontrol_scale",
+        type=float,
+        default=None,
+        help="Override EasyControl scale (default: ss_cond_scale from the checkpoint, typically 1.0).",
+    )
+    parser.add_argument(
+        "--easycontrol_image_match_size",
+        action="store_true",
+        help="Auto-pick --image_size from the closest CONSTANT_TOKEN_BUCKETS entry to the "
+        "reference image's aspect ratio (overrides --image_size). Only effective with --easycontrol_image.",
+    )
+    parser.add_argument(
         "--include_patterns",
         type=str,
         nargs="*",

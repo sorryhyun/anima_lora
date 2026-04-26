@@ -1,0 +1,59 @@
+# EasyControl — extended self-attention image conditioning (Phase 1).
+#
+# Adapter-only: DiT is frozen, training updates only per-block cond LoRA on
+# self-attn (q/k/v/o) + FFN (layer1/layer2) + a per-block scalar logit bias
+# `b_cond` (init -10) that gates cond-position softmax mass.
+#
+# Reference image and VAE target come from the SAME image (post_image_dataset),
+# matching IP-Adapter v1's setup. The cond pre-pass is run every step (no KV
+# cache yet — that's Phase 2). CFG dropout zeros image conditioning with
+# probability `easycontrol_drop_p` so inference can do image-CFG independently
+# of text-CFG.
+#
+# Feature source: cached VAE latents on disk. EasyControl's cond input is the
+# clean VAE latent of the reference, which is identical to the existing
+# {stem}_anima_latent.safetensors when ref==target. No new sidecar needed for
+# Phase 1; reuses cache_latents output directly.
+
+network_module = "networks.easycontrol_anima"
+
+# r = condition LoRA rank (per-projection rank). 16 is a reasonable default.
+network_dim = 16
+network_alpha = 16
+
+network_args = [
+    "b_cond_init=-10.0",     # logit bias init: exp(-10) ≈ 4.5e-5 → α ≈ 1 → step 0 = baseline DiT
+    "cond_scale=1.0",
+    "apply_ffn_lora=1",      # set to 0 to skip FFN LoRA (~halves trainable params)
+]
+
+output_name = "anima_easycontrol"
+
+logging_dir = "output/logs"
+log_with = "tensorboard"
+
+learning_rate = 1e-4
+max_train_epochs = 12
+save_every_n_epochs = 12
+checkpointing_epochs = 12
+
+# Cached-feature path: VAE latents and text encoder outputs live on disk as
+# sibling sidecars. EasyControl reuses the existing cache_latents output as
+# the cond source — no separate sidecar.
+# (cache_latents{_to_disk} and cache_text_encoder_outputs{_to_disk} default to
+# true in configs/base.toml.)
+
+# CFG dropout for image conditioning (independent of text dropout).
+# Read by train.py when use_easycontrol is on.
+use_easycontrol = true
+easycontrol_drop_p = 0.1
+caption_dropout_rate = 0.2
+
+# DiT is frozen; no need for block swapping. Cond LoRA + per-block b_cond fit
+# alongside the frozen DiT in bf16. Phase 1 pins blocks_to_swap=0; the cond
+# pre-pass interleave with block-swap is flagged as integration risk.
+blocks_to_swap = 0
+gradient_checkpointing = true
+unsloth_offload_checkpointing = true
+
+# compile_mode = "full"

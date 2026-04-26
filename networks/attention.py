@@ -9,11 +9,15 @@ try:
     from flash_attn.flash_attn_interface import _flash_attn_forward
     from flash_attn.flash_attn_interface import flash_attn_varlen_func
     from flash_attn.flash_attn_interface import flash_attn_func
+    from flash_attn.flash_attn_interface import _wrapped_flash_attn_forward
+    from flash_attn.flash_attn_interface import _wrapped_flash_attn_backward
 except ImportError:
     flash_attn = None
     flash_attn_varlen_func = None
     _flash_attn_forward = None
     flash_attn_func = None
+    _wrapped_flash_attn_forward = None
+    _wrapped_flash_attn_backward = None
 
 # Flash Attention 4 (flash-attention-sm120) is disabled; see docs/optimizations/fa4.md.
 _flash_attn_4_func_raw = None
@@ -456,3 +460,50 @@ def attention(
         )  # pad back to max_seqlen
 
     return x
+
+
+def attention_with_lse(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    *,
+    attn_mode: str,
+    softmax_scale: Optional[float] = None,
+    drop_rate: float = 0.0,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """SDPA that returns ``(out, softmax_lse)``.
+
+    Used by EasyControl's LSE-decomposed extended self-attention to combine
+    target+cond attention legs without materializing the
+    ``[B, H, S_q, S_t+S_c]`` attention matrix that the masked-SDPA path falls
+    into when a per-key bias forces dispatch to the math kernel.
+
+    Args:
+        q, k, v: BLHD tensors. K_q and K_kv may differ.
+        attn_mode: only ``"flash"`` (FA2) is supported. Other backends raise
+            ``NotImplementedError``; callers should fall back to the masked
+            path.
+        softmax_scale: 1/sqrt(d) by default.
+        drop_rate: attention dropout (typically 0).
+
+    Returns:
+        out: ``[B, S_q, H, D]``, same dtype as ``q``.
+        lse: ``[B, H, S_q]`` log-sum-exp of scaled QK^T over keys, fp32.
+
+    Caveat: FA2's standard ``FlashAttnFunc.backward`` does NOT propagate
+    gradient through the returned ``lse`` (the upstream gradient on ``lse``
+    is silently dropped — see flash_attn 2.x source). Callers that need
+    correct gradients through ``lse`` must use a custom
+    ``torch.autograd.Function`` that calls FA's lower-level ops directly —
+    see ``networks/easycontrol_anima.py:_ExtendedSelfAttnLSEFunc``.
+    """
+    if attn_mode != "flash" or flash_attn_func is None:
+        raise NotImplementedError(
+            f"attention_with_lse currently requires attn_mode='flash' with "
+            f"flash-attn installed (got attn_mode={attn_mode!r}, "
+            f"flash_attn={'installed' if flash_attn is not None else 'missing'})."
+        )
+    out, lse, _ = flash_attn_func(
+        q, k, v, drop_rate, softmax_scale=softmax_scale, return_attn_probs=True
+    )
+    return out, lse

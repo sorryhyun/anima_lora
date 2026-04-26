@@ -177,6 +177,22 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "Default 'pe' = PE-Core-L14-336 (dynamic resolution).",
     )
     parser.add_argument(
+        "--use_easycontrol",
+        action="store_true",
+        help="Enable EasyControl image conditioning (extended self-attn KV with "
+        "VAE-encoded reference). Requires the network module to expose set_cond_tokens "
+        "(e.g. networks.easycontrol_anima). The cond input is the clean VAE latent of "
+        "the reference image; for ref==target training (Phase 1) this reuses the "
+        "existing cache_latents output — no new sidecar required.",
+    )
+    parser.add_argument(
+        "--easycontrol_drop_p",
+        type=float,
+        default=0.1,
+        help="EasyControl image-conditioning dropout probability per batch (CFG dropout "
+        "for image branch). Independent of text-side caption_dropout_rate; default 0.1.",
+    )
+    parser.add_argument(
         "--caption_shuffle_variants",
         type=int,
         default=0,

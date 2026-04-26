@@ -655,6 +655,38 @@ class AnimaTrainer:
         ip_tokens = network.encode_ip_tokens(ip_features)
         network.set_ip_tokens(ip_tokens)
 
+    def _maybe_set_easycontrol_tokens(
+        self,
+        args,
+        accelerator,
+        network,
+        latents,
+        weight_dtype,
+        is_train: bool,
+    ) -> None:
+        """Run the EasyControl cond pre-pass on the clean VAE latent.
+
+        Phase 1: ref==target, so we feed the same clean latent already cached
+        for the target. The cond pre-pass primes per-block (K_c, V_c) on each
+        block's self_attn; the patched self_attn forward then extends target
+        keys with these during the DiT forward.
+
+        Whole-batch CFG dropout zeros the conditioning with probability
+        ``args.easycontrol_drop_p``. No-op when EasyControl is off.
+        """
+        if not getattr(args, "use_easycontrol", False):
+            return
+        if not hasattr(network, "set_cond_tokens"):
+            return
+
+        drop_p = float(getattr(args, "easycontrol_drop_p", 0.1) or 0.0)
+        if is_train and drop_p > 0.0 and random.random() < drop_p:
+            network.set_cond_tokens(None)
+            return
+
+        cond_latent = latents.to(accelerator.device, dtype=weight_dtype)
+        network.set_cond_tokens(cond_latent)
+
     def get_noise_pred_and_target(
         self,
         ctx: "TrainCtx",
@@ -682,6 +714,15 @@ class AnimaTrainer:
         # Sample noise
         if latents.ndim == 5:  # Fallback for 5D latents (old cache)
             latents = latents.squeeze(2)  # [B, C, 1, H, W] -> [B, C, H, W]
+
+        # EasyControl: run the cond pre-pass on the clean VAE latent and prime
+        # per-block (K_c, V_c) on each block's self_attn. Done AFTER the 5D->4D
+        # squeeze so cond and target share the same [B, C, H, W] layout. The
+        # patched self_attn forward extends target keys with the cached cond
+        # K/V (with a per-block additive logit bias) during the DiT forward.
+        self._maybe_set_easycontrol_tokens(
+            args, accelerator, network, latents, weight_dtype, is_train
+        )
         noise = torch.randn_like(latents)
 
         # Draw noisy input + timesteps via the sampler registry (M1).
@@ -1764,6 +1805,23 @@ class AnimaTrainer:
                 # reference point.
                 if accelerator.is_main_process:
                     network.diagnostic_summary(reset=True, log=True)
+
+        # EasyControl: validate the network module exposes the cond runtime
+        # contract. No live encoder to load — Phase 1 runs the cond pre-pass
+        # on the clean VAE latent already cached by cache_latents.
+        if getattr(args, "use_easycontrol", False):
+            if not (
+                hasattr(network, "set_cond_tokens")
+                and hasattr(network, "encode_cond_latent")
+            ):
+                raise ValueError(
+                    "--use_easycontrol requires a network module with set_cond_tokens / "
+                    "encode_cond_latent (e.g. networks.easycontrol_anima)."
+                )
+            accelerator.print(
+                f"EasyControl: cond pre-pass enabled "
+                f"(drop_p={getattr(args, 'easycontrol_drop_p', 0.1)})"
+            )
 
         # APEX Phase 0 Finding B safety rail (proposal §7.3): refuse to launch
         # without either a warmup schedule or a loaded LoRA checkpoint, since

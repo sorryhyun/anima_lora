@@ -226,6 +226,39 @@ def cmd_test_ip(extra):
     )
 
 
+def cmd_easycontrol(extra):
+    train("easycontrol", extra)
+
+
+def cmd_test_easycontrol(extra):
+    """Inference with latest EasyControl weight. First positional arg is the
+    reference image path; everything else is forwarded to inference.py.
+
+    Examples:
+      python tasks.py test-easycontrol ref.png --prompt "a girl in a coffee shop"
+      python tasks.py test-easycontrol ref.png --easycontrol_scale 0.8
+    """
+    if not extra:
+        print(
+            "Usage: python tasks.py test-easycontrol <ref_image> [extra inference args...]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    ref_image = extra[0]
+    rest = list(extra[1:])
+    run(
+        [
+            *INFERENCE_BASE,
+            "--easycontrol_weight",
+            str(latest_output("anima_easycontrol")),
+            "--easycontrol_image",
+            ref_image,
+            "--easycontrol_image_match_size",
+            *rest,
+        ]
+    )
+
+
 # ── img2emb ───────────────────────────────────────────────────────────
 #
 # TIPSv2-L/14 vision encoder only. Aspect-preserving bucketed preprocessing
@@ -870,6 +903,8 @@ COMMANDS = {
         "post_image_dataset/{stem}_anima_pe.safetensors). IP_ENCODER=pe|pe-g.",
     ),
     "test-ip": (cmd_test_ip, "Inference with latest IP-Adapter weight. Usage: test-ip <ref_image> [--prompt ... --ip_scale ...]"),
+    "easycontrol": (cmd_easycontrol, "EasyControl training (extended self-attn KV with VAE-encoded reference)"),
+    "test-easycontrol": (cmd_test_easycontrol, "Inference with latest EasyControl weight. Usage: test-easycontrol <ref_image> [--prompt ... --easycontrol_scale ...]"),
     "test": (cmd_test, "Inference with latest LoRA"),
     "test-apex": (cmd_test_apex, "Inference with latest APEX LoRA"),
     "test-hydra": (cmd_test_hydra, "Inference with latest HydraLoRA moe (router-live)"),

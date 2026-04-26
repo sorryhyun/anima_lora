@@ -696,6 +696,11 @@ def generate(
     # CFG steering knob).
     _setup_ip_adapter(args, anima, device)
 
+    # EasyControl: load + apply network, VAE-encode reference image, run cond
+    # pre-pass to prime per-block (K_c, V_c). Phase 1 — recomputed every step
+    # at training; at inference we run it once here (no KV cache yet).
+    _setup_easycontrol(args, anima, device, shared_models)
+
     return generate_body(args, anima, context, context_null, device, seed)
 
 
@@ -770,6 +775,99 @@ def _setup_ip_adapter(args, anima, device):
     # Stash on anima so the caller can keep the network alive for the duration
     # of generation (Python won't GC it while it's reachable from the model).
     anima._ip_adapter_network = network
+    return network
+
+
+def _setup_easycontrol(args, anima, device, shared_models):
+    """Load EasyControl weights, VAE-encode the reference image, prime cond K/V.
+
+    Phase 1 — no KV cache yet at inference; the cond pre-pass is run here once
+    and the cached (K_c, V_c) are used by every denoising step's target forward.
+    Identical to a single training step's cond pre-pass.
+    """
+    ec_weight = getattr(args, "easycontrol_weight", None)
+    ec_image = getattr(args, "easycontrol_image", None)
+    if ec_weight is None and ec_image is None:
+        return None
+    if ec_weight is None or ec_image is None:
+        raise ValueError(
+            "--easycontrol_weight and --easycontrol_image must be passed together "
+            f"(got easycontrol_weight={ec_weight!r}, easycontrol_image={ec_image!r})"
+        )
+
+    from PIL import Image
+    from torchvision import transforms
+
+    from networks.easycontrol_anima import create_network_from_weights
+    from library.models import qwen_vae as qwen_image_autoencoder_kl
+
+    if getattr(args, "easycontrol_image_match_size", False):
+        from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS
+
+        with Image.open(ec_image) as _ref_for_size:
+            _rw, _rh = _ref_for_size.size
+        _target = _rw / _rh
+        _best_wh = min(
+            CONSTANT_TOKEN_BUCKETS, key=lambda wh: abs((wh[0] / wh[1]) - _target)
+        )
+        args.image_size = [_best_wh[1], _best_wh[0]]
+        logger.info(
+            f"EasyControl: image_size auto-picked from ref (aspect w/h={_target:.3f}) "
+            f"-> {tuple(args.image_size)} (HxW)"
+        )
+
+    create_kwargs = {}
+    if getattr(args, "easycontrol_scale", None) is not None:
+        create_kwargs["cond_scale"] = float(args.easycontrol_scale)
+
+    network, _sd = create_network_from_weights(
+        multiplier=1.0,
+        file=ec_weight,
+        ae=None,
+        text_encoders=None,
+        unet=anima,
+        **create_kwargs,
+    )
+    network.load_weights(ec_weight)
+    network.to(device, dtype=torch.bfloat16)
+    network.apply_to(text_encoders=None, unet=anima)
+
+    # VAE-encode the reference image -> 4D latent.
+    # Resize to args.image_size first so the cond bucket matches the target.
+    h_pix, w_pix = args.image_size
+    img = Image.open(ec_image).convert("RGB").resize((w_pix, h_pix), Image.LANCZOS)
+    tfm = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
+    img_t = tfm(img).unsqueeze(0).to(device, dtype=torch.bfloat16)  # [1,3,H,W] in [-1,1]
+
+    vae = (shared_models or {}).get("vae")
+    vae_was_shared = vae is not None
+    if vae is None:
+        vae = qwen_image_autoencoder_kl.load_vae(
+            args.vae,
+            device="cpu",
+            disable_mmap=True,
+            spatial_chunk_size=getattr(args, "vae_chunk_size", None),
+            disable_cache=getattr(args, "vae_disable_cache", False),
+        )
+        vae.to(torch.bfloat16)
+        vae.eval()
+        vae.to(device)
+
+    with torch.no_grad():
+        cond_latent_5d = vae.encode_pixels_to_latents(img_t)  # [1, C, 1, H', W']
+        cond_latent = cond_latent_5d.squeeze(2)  # [1, C, H', W']
+
+    if not vae_was_shared:
+        vae.to("cpu")
+        del vae
+        torch.cuda.empty_cache()
+
+    network.set_cond_tokens(cond_latent.to(device, dtype=torch.bfloat16))
+    logger.info(
+        f"EasyControl: loaded {ec_weight} "
+        f"(r={network.cond_lora_dim}, scale={network.get_effective_scale():.3f})"
+    )
+    anima._easycontrol_network = network
     return network
 
 

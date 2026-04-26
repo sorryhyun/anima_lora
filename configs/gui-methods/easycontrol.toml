@@ -1,0 +1,37 @@
+# EasyControl — extended self-attention image conditioning (Phase 1).
+# GUI-friendly self-contained variant — no toggle blocks.
+#
+# Adapter-only: DiT is frozen, training updates only per-block cond LoRA on
+# self-attn (q/k/v/o) + FFN (layer1/layer2) + per-block scalar logit bias
+# `b_cond` (init -10) that gates cond-position softmax mass at step 0.
+#
+# Reference image and VAE target come from the SAME image (post_image_dataset).
+# The cond pre-pass is run every step — Phase 1 has no KV cache yet.
+
+network_module = "networks.easycontrol_anima"
+
+network_dim = 16
+network_alpha = 16
+
+network_args = [
+    "b_cond_init=-10.0",
+    "cond_scale=1.0",
+    "apply_ffn_lora=1",
+]
+
+output_name = "anima_easycontrol"
+
+logging_dir = "output/logs"
+log_with = "tensorboard"
+
+learning_rate = 1e-4
+max_train_epochs = 12
+save_every_n_epochs = 12
+checkpointing_epochs = 12
+
+use_easycontrol = true
+easycontrol_drop_p = 0.1
+caption_dropout_rate = 0.2
+
+blocks_to_swap = 0
+compile_mode = "full"

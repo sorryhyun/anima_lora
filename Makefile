@@ -9,10 +9,11 @@ LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/
 LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_IP = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_ip_adapter*.safetensors'); print(max(files,key=os.path.getmtime) if files else '')")
+LATEST_EC = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_easycontrol*.safetensors'); print(max(files,key=os.path.getmtime) if files else '')")
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix ip-adapter ip-adapter-cache step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-ip test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-align img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 download-pe download-pe-g gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix ip-adapter ip-adapter-cache easycontrol test-easycontrol step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-ip test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-align img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 download-pe download-pe-g gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -84,6 +85,12 @@ ip-adapter-cache:
 	python preprocess/cache_pe_encoder.py \
 		--dir post_image_dataset \
 		--encoder $(IP_ENCODER)
+
+# EasyControl — extended self-attention image conditioning. Adapter-only (DiT
+# frozen). Reference and target both come from post_image_dataset/. Reuses the
+# existing cache_latents output as the cond input — no separate cache step.
+easycontrol:
+	$(TRAIN) easycontrol --preset $(PRESET)
 
 distill-mod:
 	python scripts/distill_modulation.py \
@@ -200,7 +207,7 @@ IP_SCALE ?=
 IP_SCALE_ARG := $(if $(IP_SCALE),--ip_scale $(IP_SCALE),)
 # Short default — IP-Adapter is meant to carry style/identity from REF_IMAGE,
 # so the prompt is intentionally minimal. Override with PROMPT="..." for content.
-PROMPT ?= double peace, v v,
+PROMPT ?= masterpiece, double peace, v v,
 PROMPT_ARG := --prompt "$(PROMPT)"
 NEG ?=
 NEG_ARG := $(if $(NEG),--negative_prompt "$(NEG)",)
@@ -216,6 +223,24 @@ test-ip:
 		$(PROMPT_ARG) \
 		$(NEG_ARG)
 	@gen=$$(ls -1t output/tests/ip/*.png 2>/dev/null | grep -v '_ref\.png$$' | head -1); \
+	 if [ -n "$$gen" ]; then ref_dst="$${gen%.png}_ref.png"; cp "$(REF_IMAGE)" "$$ref_dst"; echo "Ref pasted: $$ref_dst"; fi
+
+# EasyControl inference. REF_IMAGE is the reference image (style/identity).
+# EC_SCALE overrides the saved adapter strength (default: ss_cond_scale).
+EC_SCALE ?=
+EC_SCALE_ARG := $(if $(EC_SCALE),--easycontrol_scale $(EC_SCALE),)
+test-easycontrol:
+	@if [ -z "$(REF_IMAGE)" ]; then echo "Set REF_IMAGE=path/to/ref.png"; exit 1; fi
+	@mkdir -p output/tests/easycontrol
+	$(TEST_COMMON) \
+		--save_path output/tests/easycontrol \
+		--easycontrol_weight $(LATEST_EC) \
+		--easycontrol_image $(REF_IMAGE) \
+		--easycontrol_image_match_size \
+		$(EC_SCALE_ARG) \
+		$(PROMPT_ARG) \
+		$(NEG_ARG)
+	@gen=$$(ls -1t output/tests/easycontrol/*.png 2>/dev/null | grep -v '_ref\.png$$' | head -1); \
 	 if [ -n "$$gen" ]; then ref_dst="$${gen%.png}_ref.png"; cp "$(REF_IMAGE)" "$$ref_dst"; echo "Ref pasted: $$ref_dst"; fi
 
 # Inference with latest reference-inversion prefix (anima_ref_*.safetensors,
