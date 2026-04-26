@@ -649,7 +649,9 @@ class AnimaTrainer:
                     images.to(accelerator.device),
                     same_bucket=True,  # dataloader bucketing guarantees per-batch shape
                 )
-                ip_features = torch.stack(feats_list, dim=0).to(weight_dtype)  # [B, T_pe, d_enc]
+                ip_features = torch.stack(feats_list, dim=0).to(
+                    weight_dtype
+                )  # [B, T_pe, d_enc]
         # Resampler runs in network-param dtype (bf16 typically); gradient
         # flows from here.
         ip_tokens = network.encode_ip_tokens(ip_features)
@@ -664,28 +666,29 @@ class AnimaTrainer:
         weight_dtype,
         is_train: bool,
     ) -> None:
-        """Run the EasyControl cond pre-pass on the clean VAE latent.
+        """Prime the EasyControl cond state on the network for this step.
 
-        Phase 1: ref==target, so we feed the same clean latent already cached
-        for the target. The cond pre-pass primes per-block (K_c, V_c) on each
-        block's self_attn; the patched self_attn forward then extends target
-        keys with these during the DiT forward.
+        Ref==target for now, so we feed the same clean latent already cached
+        for the target. The two-stream Block.forward patch then runs the cond
+        stream alongside the target inside each block; nothing is cached
+        across blocks, no post-backward call is needed (autograd flows through
+        the per-block checkpoint outputs).
 
         Whole-batch CFG dropout zeros the conditioning with probability
         ``args.easycontrol_drop_p``. No-op when EasyControl is off.
         """
         if not getattr(args, "use_easycontrol", False):
             return
-        if not hasattr(network, "set_cond_tokens"):
+        if not hasattr(network, "set_cond"):
             return
 
         drop_p = float(getattr(args, "easycontrol_drop_p", 0.1) or 0.0)
         if is_train and drop_p > 0.0 and random.random() < drop_p:
-            network.set_cond_tokens(None)
+            network.set_cond(None)
             return
 
         cond_latent = latents.to(accelerator.device, dtype=weight_dtype)
-        network.set_cond_tokens(cond_latent)
+        network.set_cond(cond_latent)
 
     def get_noise_pred_and_target(
         self,
@@ -1231,9 +1234,7 @@ class AnimaTrainer:
             is_train=is_train,
         )
 
-        huber_c = get_huber_threshold_if_needed(
-            args, timesteps, noise_scheduler
-        )
+        huber_c = get_huber_threshold_if_needed(args, timesteps, noise_scheduler)
 
         # Assemble aux dict for the composer: APEX tensors + schedule + functional
         # loss. The trainer owns the forward passes that produce these
@@ -1639,9 +1640,7 @@ class AnimaTrainer:
         ds_for_collator = (
             train_dataset_group if args.max_data_loader_n_workers == 0 else None
         )
-        collator = collator_class(
-            current_epoch, current_step, ds_for_collator
-        )
+        collator = collator_class(current_epoch, current_step, ds_for_collator)
 
         return (
             train_dataset_group,
@@ -1766,7 +1765,10 @@ class AnimaTrainer:
         # apply_to so we fail fast if the network module doesn't expose the IP
         # runtime contract (set_ip_tokens / clear_ip_tokens).
         if getattr(args, "use_ip_adapter", False):
-            if not (hasattr(network, "set_ip_tokens") and hasattr(network, "encode_ip_tokens")):
+            if not (
+                hasattr(network, "set_ip_tokens")
+                and hasattr(network, "encode_ip_tokens")
+            ):
                 raise ValueError(
                     "--use_ip_adapter requires a network module with set_ip_tokens / "
                     "encode_ip_tokens (e.g. networks.ip_adapter_anima)."
@@ -1807,19 +1809,18 @@ class AnimaTrainer:
                     network.diagnostic_summary(reset=True, log=True)
 
         # EasyControl: validate the network module exposes the cond runtime
-        # contract. No live encoder to load — Phase 1 runs the cond pre-pass
-        # on the clean VAE latent already cached by cache_latents.
+        # contract. No live encoder to load — runs on the clean VAE latent
+        # already cached by cache_latents.
         if getattr(args, "use_easycontrol", False):
             if not (
-                hasattr(network, "set_cond_tokens")
-                and hasattr(network, "encode_cond_latent")
+                hasattr(network, "set_cond") and hasattr(network, "encode_cond_latent")
             ):
                 raise ValueError(
-                    "--use_easycontrol requires a network module with set_cond_tokens / "
+                    "--use_easycontrol requires a network module with set_cond / "
                     "encode_cond_latent (e.g. networks.easycontrol_anima)."
                 )
             accelerator.print(
-                f"EasyControl: cond pre-pass enabled "
+                f"EasyControl: two-stream cond enabled "
                 f"(drop_p={getattr(args, 'easycontrol_drop_p', 0.1)})"
             )
 
@@ -1958,9 +1959,7 @@ class AnimaTrainer:
         train_dataset_group.set_max_train_steps(args.max_train_steps)
 
         # lr scheduler
-        lr_scheduler = get_scheduler_fix(
-            args, optimizer, accelerator.num_processes
-        )
+        lr_scheduler = get_scheduler_fix(args, optimizer, accelerator.num_processes)
 
         return (
             optimizer,
@@ -2925,9 +2924,7 @@ class AnimaTrainer:
                                     args, accelerator, global_step
                                 )
 
-                            remove_step_no = get_remove_step_no(
-                                args, global_step
-                            )
+                            remove_step_no = get_remove_step_no(args, global_step)
                             if remove_step_no is not None:
                                 remove_ckpt_name = get_step_ckpt_name(
                                     args, "." + args.save_model_as, remove_step_no
@@ -3038,7 +3035,9 @@ class AnimaTrainer:
                 and is_main_process
                 and hasattr(accelerator.unwrap_model(network), "diagnostic_summary")
             ):
-                accelerator.unwrap_model(network).diagnostic_summary(reset=True, log=True)
+                accelerator.unwrap_model(network).diagnostic_summary(
+                    reset=True, log=True
+                )
 
             accelerator.wait_for_everyone()
 
@@ -3067,9 +3066,7 @@ class AnimaTrainer:
                         remove_model(remove_ckpt_name)
 
                     if args.save_state:
-                        save_and_remove_state_on_epoch_end(
-                            args, accelerator, epoch + 1
-                        )
+                        save_and_remove_state_on_epoch_end(args, accelerator, epoch + 1)
 
             # Save resumable checkpoint at specified epoch intervals (overwrites previous)
             if args.checkpointing_epochs is not None and args.checkpointing_epochs > 0:

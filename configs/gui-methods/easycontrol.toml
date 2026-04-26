@@ -17,6 +17,7 @@ network_args = [
     "b_cond_init=-10.0",
     "cond_scale=1.0",
     "apply_ffn_lora=1",
+    "cond_token_count=4096",
 ]
 
 output_name = "anima_easycontrol"

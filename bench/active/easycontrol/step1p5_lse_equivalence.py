@@ -84,7 +84,7 @@ def masked_extended_sdpa(q, k_t, v_t, k_c, v_c, b_cond, softmax_scale):
     S_c = k_c.shape[1]
     k_ext = torch.cat([k_t, k_c], dim=1)
     v_ext = torch.cat([v_t, v_c], dim=1)
-    q_s = q.transpose(1, 2)        # [B, H, S_t, D]
+    q_s = q.transpose(1, 2)  # [B, H, S_t, D]
     k_s = k_ext.transpose(1, 2)
     v_s = v_ext.transpose(1, 2)
     b = b_cond.to(q_s.dtype)
@@ -108,10 +108,18 @@ def naive_lse_combine(q, k_t, v_t, k_c, v_c, b_cond, softmax_scale):
     past ~-10.
     """
     out_t, lse_t = anima_attention.attention_with_lse(
-        q, k_t, v_t, attn_mode="flash", softmax_scale=softmax_scale,
+        q,
+        k_t,
+        v_t,
+        attn_mode="flash",
+        softmax_scale=softmax_scale,
     )
     out_c, lse_c = anima_attention.attention_with_lse(
-        q, k_c, v_c, attn_mode="flash", softmax_scale=softmax_scale,
+        q,
+        k_c,
+        v_c,
+        attn_mode="flash",
+        softmax_scale=softmax_scale,
     )
     lse_c_adj = lse_c + b_cond.to(lse_c.dtype)
     joint_lse = torch.logaddexp(lse_t, lse_c_adj)
@@ -125,7 +133,13 @@ def naive_lse_combine(q, k_t, v_t, k_c, v_c, b_cond, softmax_scale):
 def custom_lse_func(q, k_t, v_t, k_c, v_c, b_cond, softmax_scale):
     """Phase 1.5 path — custom autograd Function with correct backward."""
     return _ExtendedSelfAttnLSEFunc.apply(
-        q, k_t, v_t, k_c, v_c, b_cond, softmax_scale,
+        q,
+        k_t,
+        v_t,
+        k_c,
+        v_c,
+        b_cond,
+        softmax_scale,
     )
 
 
@@ -141,9 +155,15 @@ def make_inputs(B, H, S_t, S_c, D, dtype, device, gen, requires_grad=True):
 
     q = randn_norm((B, S_t, H, D))
     k_t = randn_norm((B, S_t, H, D))
-    v_t = (torch.randn(B, S_t, H, D, generator=gen, device=device, dtype=torch.float32) * 0.5).to(dtype)
+    v_t = (
+        torch.randn(B, S_t, H, D, generator=gen, device=device, dtype=torch.float32)
+        * 0.5
+    ).to(dtype)
     k_c = randn_norm((B, S_c, H, D))
-    v_c = (torch.randn(B, S_c, H, D, generator=gen, device=device, dtype=torch.float32) * 0.5).to(dtype)
+    v_c = (
+        torch.randn(B, S_c, H, D, generator=gen, device=device, dtype=torch.float32)
+        * 0.5
+    ).to(dtype)
     if requires_grad:
         for t in (q, k_t, v_t, k_c, v_c):
             t.requires_grad_(True)
@@ -177,43 +197,67 @@ def compare_one(name, ref_out, ref_grads, test_out, test_grads):
 
 
 def run_one(B, H, S_t, S_c, D, dtype, device, gen, b_cond_value, seed):
-    softmax_scale = D ** -0.5
+    softmax_scale = D**-0.5
 
     # Reference: masked SDPA.
     q, k_t, v_t, k_c, v_c = make_inputs(B, H, S_t, S_c, D, dtype, device, gen)
-    b_cond = torch.tensor(b_cond_value, device=device, dtype=torch.float32, requires_grad=True)
+    b_cond = torch.tensor(
+        b_cond_value, device=device, dtype=torch.float32, requires_grad=True
+    )
     ref_out = masked_extended_sdpa(q, k_t, v_t, k_c, v_c, b_cond, softmax_scale)
     # Use a deterministic upstream gradient so all paths see the same dout.
     g_gen = torch.Generator(device=device).manual_seed(seed + 9999)
-    dout = torch.randn(*ref_out.shape, generator=g_gen, device=device, dtype=ref_out.dtype) * 0.1
+    dout = (
+        torch.randn(*ref_out.shape, generator=g_gen, device=device, dtype=ref_out.dtype)
+        * 0.1
+    )
     ref_out.backward(dout)
-    ref_grads = (q.grad.detach().clone(), k_t.grad.detach().clone(),
-                 v_t.grad.detach().clone(), k_c.grad.detach().clone(),
-                 v_c.grad.detach().clone(), b_cond.grad.detach().clone())
+    ref_grads = (
+        q.grad.detach().clone(),
+        k_t.grad.detach().clone(),
+        v_t.grad.detach().clone(),
+        k_c.grad.detach().clone(),
+        v_c.grad.detach().clone(),
+        b_cond.grad.detach().clone(),
+    )
 
     # Custom LSE Function (the Phase 1.5 path).
     gen_c = torch.Generator(device=device).manual_seed(seed)
     qc, k_tc, v_tc, k_cc, v_cc = make_inputs(B, H, S_t, S_c, D, dtype, device, gen_c)
-    b_cond_c = torch.tensor(b_cond_value, device=device, dtype=torch.float32, requires_grad=True)
+    b_cond_c = torch.tensor(
+        b_cond_value, device=device, dtype=torch.float32, requires_grad=True
+    )
     custom_out = custom_lse_func(qc, k_tc, v_tc, k_cc, v_cc, b_cond_c, softmax_scale)
     custom_out.backward(dout)
-    custom_grads = (qc.grad.detach().clone(), k_tc.grad.detach().clone(),
-                    v_tc.grad.detach().clone(), k_cc.grad.detach().clone(),
-                    v_cc.grad.detach().clone(), b_cond_c.grad.detach().clone())
+    custom_grads = (
+        qc.grad.detach().clone(),
+        k_tc.grad.detach().clone(),
+        v_tc.grad.detach().clone(),
+        k_cc.grad.detach().clone(),
+        v_cc.grad.detach().clone(),
+        b_cond_c.grad.detach().clone(),
+    )
 
     # Naive LSE combine (forward only — backward will be wrong by design).
     gen_n = torch.Generator(device=device).manual_seed(seed)
     qn, k_tn, v_tn, k_cn, v_cn = make_inputs(B, H, S_t, S_c, D, dtype, device, gen_n)
-    b_cond_n = torch.tensor(b_cond_value, device=device, dtype=torch.float32, requires_grad=True)
+    b_cond_n = torch.tensor(
+        b_cond_value, device=device, dtype=torch.float32, requires_grad=True
+    )
     naive_out = naive_lse_combine(qn, k_tn, v_tn, k_cn, v_cn, b_cond_n, softmax_scale)
     naive_out.backward(dout)
-    naive_grads = (qn.grad.detach().clone(), k_tn.grad.detach().clone(),
-                   v_tn.grad.detach().clone(), k_cn.grad.detach().clone(),
-                   v_cn.grad.detach().clone(), b_cond_n.grad.detach().clone())
+    naive_grads = (
+        qn.grad.detach().clone(),
+        k_tn.grad.detach().clone(),
+        v_tn.grad.detach().clone(),
+        k_cn.grad.detach().clone(),
+        v_cn.grad.detach().clone(),
+        b_cond_n.grad.detach().clone(),
+    )
 
     rows = []
     rows.extend(compare_one("custom_lse", ref_out, ref_grads, custom_out, custom_grads))
-    rows.extend(compare_one("naive_lse",  ref_out, ref_grads, naive_out,  naive_grads))
+    rows.extend(compare_one("naive_lse", ref_out, ref_grads, naive_out, naive_grads))
     return rows
 
 
@@ -235,20 +279,29 @@ def main():
     p.add_argument("--batch", type=int, default=1)
     p.add_argument("--n_trials", type=int, default=3)
     p.add_argument(
-        "--b_cond", type=float, default=None,
-        help="b_cond value to test. Defaults to a sweep over [-10.0, -3.0, 0.0, 2.0]."
+        "--b_cond",
+        type=float,
+        default=None,
+        help="b_cond value to test. Defaults to a sweep over [-10.0, -3.0, 0.0, 2.0].",
     )
     p.add_argument(
-        "--dtype", choices=["fp32", "bf16", "fp16"], default="bf16",
-        help="bf16 by default to match training-time precision."
+        "--dtype",
+        choices=["fp32", "bf16", "fp16"],
+        default="bf16",
+        help="bf16 by default to match training-time precision.",
     )
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
-        "--strict_threshold", type=float, default=5e-3,
-        help="rel_l2 above which the path is considered to disagree with reference."
+        "--strict_threshold",
+        type=float,
+        default=5e-3,
+        help="rel_l2 above which the path is considered to disagree with reference.",
     )
-    p.add_argument("--out_json", default="bench/active/easycontrol/results/step1p5_lse_equivalence.json")
+    p.add_argument(
+        "--out_json",
+        default="bench/active/easycontrol/results/step1p5_lse_equivalence.json",
+    )
     args = p.parse_args()
 
     if args.device.startswith("cuda") and not torch.cuda.is_available():
@@ -258,7 +311,9 @@ def main():
         logger.error("flash-attn not installed — Phase 1.5 path requires FA2")
         sys.exit(1)
 
-    dtype = {"fp32": torch.float32, "bf16": torch.bfloat16, "fp16": torch.float16}[args.dtype]
+    dtype = {"fp32": torch.float32, "bf16": torch.bfloat16, "fp16": torch.float16}[
+        args.dtype
+    ]
     device = torch.device(args.device)
 
     if args.b_cond is None:
@@ -278,8 +333,16 @@ def main():
         for trial in range(args.n_trials):
             gen = torch.Generator(device=device).manual_seed(args.seed + trial)
             rows = run_one(
-                args.batch, args.n_heads, args.s_t, args.s_c, args.head_dim,
-                dtype, device, gen, b_cond_value, args.seed + trial,
+                args.batch,
+                args.n_heads,
+                args.s_t,
+                args.s_c,
+                args.head_dim,
+                dtype,
+                device,
+                gen,
+                b_cond_value,
+                args.seed + trial,
             )
             all_rows.append(rows)
         # Aggregate: max over trials per comparison name.
@@ -298,12 +361,16 @@ def main():
         verdict = []
         for name, rel, amax in ordered:
             tier = "PASS" if rel < args.strict_threshold else "FAIL"
-            verdict.append({"name": name, "rel_l2_max": rel, "abs_max": amax, "tier": tier})
+            verdict.append(
+                {"name": name, "rel_l2_max": rel, "abs_max": amax, "tier": tier}
+            )
         summary["results"].append({"b_cond": b_cond_value, "rows": verdict})
         print()
         print("Verdict:")
         for v in verdict:
-            print(f"  {v['name']:30s}  rel_l2_max = {v['rel_l2_max']:.3e}  →  {v['tier']}")
+            print(
+                f"  {v['name']:30s}  rel_l2_max = {v['rel_l2_max']:.3e}  →  {v['tier']}"
+            )
 
     out_path = Path(args.out_json)
     out_path.parent.mkdir(parents=True, exist_ok=True)

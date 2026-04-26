@@ -1,42 +1,77 @@
-"""EasyControl network module for Anima — Phase 1.
+"""EasyControl network module for Anima — two-stream rewrite.
 
 Architecture (adapter-only — DiT frozen):
-  reference image (clean VAE latent, 4D [B, C, H, W])
-      -> DiT.x_embedder (frozen, reused)                 [B, T, H', W', D]
-      -> flatten to S_c = H'*W' tokens                   [B, S_c, D]
-      -> for each Block:
-           cond_x -> layer_norm_self_attn(cond_x)
-           cond_x -> self_attn projections + cond_lora_qkv  (cache K_c, V_c on the block)
-           cond_x = cond_x + output_proj(SDPA(Q_c, K_c, V_c)) + cond_lora_o(SDPA_out)
-           # skip cross_attn entirely
-           cond_x -> layer_norm_mlp -> mlp + cond_lora_ffn (residual)
-      -> target's self_attn.forward (patched) reads cached (K_c, V_c) and runs
-         SDPA over EXTENDED keys [K_t; K_c]/[V_t; V_c] with a learnable additive
-         per-block scalar logit bias `b_cond` on the cond positions (init -10).
 
-Step-0 baseline equivalence:
-  `b_cond[i]` initialized to -10. exp(-10) ≈ 4.5e-5, so cond positions hold
-  negligible softmax mass at init — α ≈ 1.0000, output ≈ baseline DiT.
-  Verified by bench/active/easycontrol/step0_equivalence.py.
+  reference image (clean VAE latent, 4D [B, C, H, W])
+      -> DiT.x_embedder (frozen, reused)             [B, T_c, H_c, W_c, D]
+      -> flatten -> static-pad to cond_token_count    [B, S_c, D]
+      -> cond_rope = DiT.pos_embedder at cond shape, padded to S_c
+      -> cond_temb = DiT.t_embedder(zeros) (cond is "clean", t=0)
+
+  Per Anima Block (patched ``Block.forward``):
+
+    target stream (frozen DiT)            cond stream (frozen DiT + cond LoRA)
+    ───────────────────────────           ────────────────────────────────────
+    AdaLN_self(t_emb)                     AdaLN_self(cond_temb)
+    self_attn.compute_qkv(                self_attn.qkv_proj(cond_normed)
+        target_normed, rope=target_rope)    + cond_lora_qkv(cond_normed)·scale
+                                          q,k,v unbind → q_norm,k_norm,v_norm
+                                          apply_rotary_pos_emb_qk(cond_rope)
+              │                                     │
+              ▼  ◄── target attends to ──┐          ▼
+    target_out = LSE-extended attn       │   cond_out = SDPA(cond_q,
+       (target_q vs [target_k ; cond_k], │                 cond_k, cond_v)
+        with b_cond bias on cond rows)   │   (own self-attn, S_c × S_c)
+              │                          │          │
+              ▼                          │          ▼
+    output_proj(target_out)              │   output_proj(cond_out)
+                                         │   + cond_lora_o(cond_out)·scale
+    + gate · residual                    │   + cond_gate · residual
+              │                          │          │
+              ▼                          │   (cross_attn skipped on cond — official
+    AdaLN_cross(t_emb) + cross_attn(text)│    drops it for the simple two-stream variant)
+    + gate · residual                    │          │
+              │                          │          ▼
+              ▼                          │   AdaLN_mlp(cond_temb)
+    AdaLN_mlp(t_emb) + mlp               │   + mlp + cond_lora_ffn{1,2}·scale
+    + gate · residual                    │   + cond_gate · residual
+              │                          │          │
+              └─►  next block            └─►  next block (cond_x flows
+                                              block-by-block via per-block
+                                              side channel; autograd is
+                                              preserved through the patched
+                                              forward's explicit arg/return)
+
+Key properties (vs. the Phase 1.5 cond pre-pass):
+
+  - No cross-block ``K_c/V_c`` cache. Each block produces its own cond_k/cond_v
+    fresh in the same scope where the LSE-extended target attention consumes
+    them; nothing pinned across blocks.
+  - No deferred-backward dance. cond_x flows as an explicit checkpoint
+    input/output of each patched ``Block.forward``, so unsloth / cpu_offload
+    per-block backward sees a normal sequential graph and recomputes the cond
+    stream alongside target on backward. ``backward_cond_path()`` is gone.
+  - Cond gets its OWN RoPE at its own native (smaller) shape — same code path
+    target uses (``Attention.compute_qkv`` consumes ``rope_cos_sin``). Matches
+    the official EasyControl reference's intent. (Positional alignment with
+    target — the official's ``resize_position_encoding`` for spatial control —
+    is a separate follow-up; this revision uses cond's native positions, which
+    matches the official's "subject" mode.)
+
+Step-0 baseline equivalence (still ``b_cond=-10``):
+
+  exp(-10) ≈ 4.5e-5, so cond softmax mass on target rows is negligible at
+  init → α ≈ 1 → target_out ≈ baseline DiT regardless of cond evolution.
+  Verified by ``bench/active/easycontrol/step0_equivalence.py`` Section B
+  under the new layout (separate cond Q/K/V, cond RoPE, smaller S_c).
 
 Train-time contract:
-  Caller invokes network.set_cond_tokens(clean_vae_latent) ONCE per batch before
-  the DiT forward. set_cond_tokens runs the full cond path and primes per-block
-  (K_c, V_c) on each block.self_attn. Pass ``None`` (or call clear_cond_tokens)
-  for unconditional / CFG-dropout passes.
 
-Phase 1 limitations:
-  - No KV cache at inference: cond path is recomputed every step. Phase 2 lifts.
-  - Cond pass uses plain LayerNorm (no AdaLN modulation). The full DiT-with-AdaLN
-    cond pass is deferred — adds complexity for marginal Phase 1 benefit since
-    `b_cond=-10` zeroes the cond's contribution at init regardless.
-  - No RoPE on cond Q/K — different positions from target. Step 0 is unaffected
-    by this choice (gated to ~0 by b_cond); learning may want to revisit later.
-  - blocks_to_swap=0 expected. Block-swap interleave with the cond pre-pass is
-    a known integration risk: the cond pre-pass walks every block in sequence
-    before the DiT main forward, so blocks parked on CPU by the offloader are
-    not on-device when the cond pre-pass tries to use them. Use
-    --gradient_checkpointing instead — see enable_gradient_checkpointing.
+  Caller invokes ``network.set_cond(clean_vae_latent)`` ONCE per batch before
+  the DiT forward. Pass ``None`` (or call ``clear_cond``) for unconditional /
+  CFG-dropout passes — patched ``Block.forward`` then falls through to the
+  baseline. After ``accelerator.backward(loss)``, **no extra call is needed**
+  — autograd handles the cond chain via the per-block checkpoint outputs.
 """
 
 from __future__ import annotations
@@ -66,14 +101,22 @@ DEFAULT_MLP_RATIO = 4.0
 DEFAULT_LORA_DIM = 16
 DEFAULT_LORA_ALPHA = 16
 DEFAULT_B_COND_INIT = -10.0
+# Cond is static-padded to this token count. Default 4096 matches Anima's
+# constant-token bucketing (target is also static-padded to 4096), so for the
+# common ref==target setup the cond latent's native tokens (≤ 4096 by bucket
+# design) just pad to 4096 with no downsample required. Lower it (e.g. 1024)
+# to match the official EasyControl's 32×32 reference image if memory is
+# tight; ``encode_cond_latent`` will then refuse cond latents that would
+# exceed the budget — the caller must downsample explicitly.
+DEFAULT_COND_TOKEN_COUNT = 4096
 
 
 class _LoRAProj(nn.Module):
     """Plain LoRA-style D->r->out_dim projection with up zero-init.
 
     Standalone (not a wrapper around an org_module) — used by EasyControl to
-    add a delta to a frozen DiT projection only on the cond pass. Output added
-    by the caller; this module just produces the delta.
+    add a delta to a frozen DiT projection only on the cond stream. Output
+    added by the caller; this module just produces the delta.
     """
 
     def __init__(self, in_dim: int, out_dim: int, r: int, alpha: float):
@@ -116,6 +159,7 @@ def create_network(
     b_cond_init = float(kwargs.get("b_cond_init", DEFAULT_B_COND_INIT))
     cond_scale = float(kwargs.get("cond_scale", 1.0))
     apply_ffn_lora = bool(int(kwargs.get("apply_ffn_lora", 1)))
+    cond_token_count = int(kwargs.get("cond_token_count", DEFAULT_COND_TOKEN_COUNT))
 
     num_blocks = (
         getattr(unet, "num_blocks", DEFAULT_NUM_BLOCKS)
@@ -144,6 +188,7 @@ def create_network(
         b_cond_init=b_cond_init,
         cond_scale=cond_scale,
         apply_ffn_lora=apply_ffn_lora,
+        cond_token_count=cond_token_count,
         multiplier=multiplier,
     )
 
@@ -183,6 +228,9 @@ def create_network_from_weights(
     b_cond_init = float(metadata.get("ss_b_cond_init", DEFAULT_B_COND_INIT))
     cond_scale = float(kwargs.get("cond_scale") or metadata.get("ss_cond_scale", 1.0))
     apply_ffn_lora = bool(int(metadata.get("ss_apply_ffn_lora", 1)))
+    cond_token_count = int(
+        metadata.get("ss_cond_token_count", DEFAULT_COND_TOKEN_COUNT)
+    )
 
     network = EasyControlNetwork(
         num_blocks=num_blocks,
@@ -194,6 +242,7 @@ def create_network_from_weights(
         b_cond_init=b_cond_init,
         cond_scale=cond_scale,
         apply_ffn_lora=apply_ffn_lora,
+        cond_token_count=cond_token_count,
         multiplier=multiplier,
     )
     return network, weights_sd
@@ -212,6 +261,7 @@ class EasyControlNetwork(nn.Module):
         b_cond_init: float,
         cond_scale: float,
         apply_ffn_lora: bool,
+        cond_token_count: int,
         multiplier: float = 1.0,
     ):
         super().__init__()
@@ -230,6 +280,7 @@ class EasyControlNetwork(nn.Module):
         self.b_cond_init = b_cond_init
         self.cond_scale = cond_scale
         self.apply_ffn_lora = apply_ffn_lora
+        self.cond_token_count = cond_token_count
         self.multiplier = multiplier
 
         D = hidden_size
@@ -259,16 +310,13 @@ class EasyControlNetwork(nn.Module):
             self.cond_lora_ffn2 = None
 
         # Per-block scalar additive logit bias on cond keys. Init -10 → cond
-        # softmax mass ≈ 4.5e-5 at step 0 → α ≈ 1 → out ≈ baseline DiT.
-        # Verified by bench/active/easycontrol/step0_equivalence.py.
-        #
+        # softmax mass ≈ 4.5e-5 at step 0 → α ≈ 1 → target_out ≈ baseline DiT.
         # Stored as a ParameterList of 0-d Parameters (not a single
-        # [num_blocks] Parameter) so each block's patched self-attn closure
-        # can capture its bias as a *Parameter object*, not a Python int
-        # index. dynamo specializes on int closure cells (it treats them like
-        # integer attributes of an nn.Module), so capturing block_idx blew
-        # past recompile_limit at block 8/28. Capturing a Parameter is fine
-        # — dynamo lifts it as a graph input.
+        # [num_blocks] Parameter) so each block's patched forward closure can
+        # capture its bias as a *Parameter object*, not a Python int index —
+        # dynamo specializes on int closure cells (treating them as static
+        # nn.Module attributes), which used to cause one recompile per block.
+        # Capturing a Parameter is fine: dynamo lifts it as a graph input.
         self.b_cond = nn.ParameterList(
             [
                 nn.Parameter(torch.tensor(b_cond_init, dtype=torch.float32))
@@ -276,25 +324,32 @@ class EasyControlNetwork(nn.Module):
             ]
         )
 
-        # Populated by apply_to() — references to the DiT.blocks. Plain lists
-        # (NOT nn.ModuleList) so PyTorch doesn't re-parent the DiT into this
-        # network's parameter tree.
+        # Populated by apply_to() — references to the DiT and its blocks. Plain
+        # lists (NOT nn.ModuleList) so PyTorch doesn't re-parent the DiT into
+        # this network's parameter tree.
         self._dit: Optional[nn.Module] = None
         self._block_modules: list[nn.Module] = []
-        self._self_attn_modules: list[nn.Module] = []
-        self._original_self_attn_forwards: list = []
+        self._original_block_forwards: list = []
         self._patched: bool = False
 
-        # Toggled by enable_gradient_checkpointing(); applied per-block in the
-        # cond pre-pass so activations for all 28 blocks aren't held at once.
-        self._gradient_checkpointing: bool = False
+        # Per-step cond state. None = no cond / CFG-dropped → patched block
+        # forward falls through to the baseline DiT path.
+        # When set, contains:
+        #   "cond_emb"         : (B, 1, D) RMSNormed t_embedder(zeros)
+        #   "cond_adaln_lora"  : (B, 1, 3*D_adaln) or None (matches DiT's
+        #                        use_adaln_lora flag)
+        #   "cond_rope"        : (cos, sin) RoPE tables for cond at S_c
+        #                        (matches the shape DiT.pos_embedder produces,
+        #                        padded to cond_token_count)
+        # cond_x_init for block 0 lives on block_modules[0]._easycontrol_cond_x_in.
+        self._cond_state: Optional[dict] = None
 
         total = sum(p.numel() for p in self.parameters())
         logger.info(
             f"EasyControlNetwork: blocks={num_blocks}, hidden={hidden_size}/{num_heads}h, "
             f"r={cond_lora_dim} alpha={cond_lora_alpha}, ffn_lora={apply_ffn_lora}, "
             f"b_cond_init={b_cond_init}, cond_scale={cond_scale}, "
-            f"params={total / 1e6:.1f}M"
+            f"cond_token_count={cond_token_count}, params={total / 1e6:.1f}M"
         )
 
     # ------------------------------------------------------------ apply / hook
@@ -314,9 +369,10 @@ class EasyControlNetwork(nn.Module):
                 "Re-create the network with matching num_blocks."
             )
 
-        from networks import attention as anima_attention  # local: avoid import cycle
-
-        self._dit = unet
+        # Bypass nn.Module.__setattr__'s auto-registration — otherwise
+        # ``self._dit = unet`` would silently register the DiT as a submodule
+        # and inflate ``self.parameters()`` with the entire frozen DiT.
+        object.__setattr__(self, "_dit", unet)
         for idx, block in enumerate(unet.blocks):
             attn = block.self_attn
             if not attn.is_selfattn:
@@ -329,30 +385,23 @@ class EasyControlNetwork(nn.Module):
                     f"({attn.n_heads}, {attn.head_dim}) vs ({self.num_heads}, {self.head_dim})"
                 )
             self._block_modules.append(block)
-            self._self_attn_modules.append(attn)
-            self._original_self_attn_forwards.append(attn.forward)
-            attn._cond_k_cached = None
-            attn._cond_v_cached = None
-            attn.forward = _make_patched_self_attn_forward(
-                attn, self.b_cond[idx], anima_attention
-            )
+            self._original_block_forwards.append(block.forward)
+            block._easycontrol_cond_x_in = None
+            block.forward = _make_patched_block_forward(block, idx, self)
 
         self._patched = True
         logger.info(
-            f"EasyControl: patched self-attn forward on {len(self._self_attn_modules)} blocks"
+            f"EasyControl: patched Block.forward on {len(self._block_modules)} blocks"
         )
 
     def remove_from(self):
-        for attn, orig in zip(
-            self._self_attn_modules, self._original_self_attn_forwards
-        ):
-            attn.forward = orig
-            attn._cond_k_cached = None
-            attn._cond_v_cached = None
+        for block, orig in zip(self._block_modules, self._original_block_forwards):
+            block.forward = orig
+            if hasattr(block, "_easycontrol_cond_x_in"):
+                del block._easycontrol_cond_x_in
         self._block_modules.clear()
-        self._self_attn_modules.clear()
-        self._original_self_attn_forwards.clear()
-        self._dit = None
+        self._original_block_forwards.clear()
+        object.__setattr__(self, "_dit", None)
         self._patched = False
 
     # ------------------------------------------------------------ runtime API
@@ -361,20 +410,22 @@ class EasyControlNetwork(nn.Module):
         self,
         cond_latent: torch.Tensor,
         padding_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """Patch-embed the clean VAE latent into [B, S_c, D] cond tokens.
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        """Patch-embed the clean VAE latent into ``[B, S_c, D]`` cond tokens
+        plus the matching RoPE table at cond's native (smaller) shape.
 
-        Reuses the DiT's (frozen) ``x_embedder`` so we don't introduce a new
-        learnable embedder. The padding-mask channel is concatenated when the
-        DiT was built with ``concat_padding_mask=True`` (Anima default).
+        Reuses the DiT's (frozen) ``x_embedder`` and ``pos_embedder``. Both
+        outputs are static-padded to ``cond_token_count`` so block compute
+        sees a single S_c across all batches / buckets.
 
         Args:
-            cond_latent: [B, C, H, W] (image) or [B, C, T, H, W] (video). For
-                Phase 1 we expect images; T is unsqueezed to 1 if missing.
-            padding_mask: optional [B, 1, H, W] mask. If None and the DiT
-                requires it, we synthesize a default all-ones mask.
+            cond_latent: ``[B, C, H, W]`` (image) or ``[B, C, T, H, W]`` (video).
+            padding_mask: optional ``[B, 1, H, W]``. If None and the DiT
+                requires it, a default all-ones mask is synthesized.
         Returns:
-            [B, S_c, D] cond tokens.
+            ``(cond_x, cond_rope)``:
+              - ``cond_x``:    ``[B, S_c, D]``,    S_c = cond_token_count
+              - ``cond_rope``: ``(cos, sin)`` each ``[S_c, 1, 1, D_head]``
         """
         if self._dit is None:
             raise RuntimeError("encode_cond_latent called before apply_to")
@@ -392,153 +443,90 @@ class EasyControlNetwork(nn.Module):
                 B, 1, H, W, device=cond_latent.device, dtype=cond_latent.dtype
             )
 
-        # prepare_embedded_sequence handles padding-mask concat + patch embed.
-        # It also returns rope_cos_sin, which we discard (cond uses no RoPE).
-        cond_x_5d, _ = self._dit.prepare_embedded_sequence(
+        # prepare_embedded_sequence handles padding-mask concat + patch embed,
+        # AND returns the RoPE (cos, sin) for cond at its native (T_c, H_c, W_c)
+        # shape. We keep the RoPE this time (Phase 1.5 discarded it).
+        cond_x_5d, cond_rope = self._dit.prepare_embedded_sequence(
             cond_latent,
             fps=None,
             padding_mask=padding_mask,
         )
-        # Flatten to [B, S_c, D]
+        # Flatten cond_x to [B, S_c_native, D].
         cond_x = cond_x_5d.flatten(1, 3)
+        S_c_native = cond_x.shape[1]
+        S_c_static = self.cond_token_count
 
-        # Static-shape padding: target tokens are padded to static_token_count
-        # for torch.compile stability (see Anima.forward_mini_train_dit). Pad
-        # cond the same way so the extended K length is fixed at 2*static and
-        # compile holds across buckets.
-        target_static = getattr(self._dit, "static_token_count", None)
-        if target_static is not None and cond_x.shape[1] < target_static:
-            cond_x = F.pad(cond_x, (0, 0, 0, target_static - cond_x.shape[1]))
+        if S_c_native > S_c_static:
+            raise ValueError(
+                f"cond latent produces {S_c_native} tokens > cond_token_count={S_c_static}. "
+                f"Either lower the reference resolution or raise cond_token_count."
+            )
+        if S_c_native < S_c_static:
+            cond_x = F.pad(cond_x, (0, 0, 0, S_c_static - S_c_native))
 
-        return cond_x
+        # Pad RoPE (cos, sin) to S_c_static. Each is [S_c_native, 1, 1, D_head].
+        if cond_rope is not None:
+            cos, sin = cond_rope
+            if cos.shape[0] < S_c_static:
+                pad = (0, 0, 0, 0, 0, 0, 0, S_c_static - cos.shape[0])
+                cos = F.pad(cos, pad)
+                sin = F.pad(sin, pad)
+            cond_rope = (cos, sin)
 
-    def set_cond_tokens(
+        return cond_x, cond_rope
+
+    def set_cond(
         self,
         cond_latent: Optional[torch.Tensor],
         padding_mask: Optional[torch.Tensor] = None,
     ) -> None:
-        """Run the cond pre-pass and prime per-block (K_c, V_c) on each block.
+        """Prime per-step cond state on the network and on block 0's slot.
 
-        Pass ``None`` (or call ``clear_cond_tokens``) for unconditional /
-        CFG-dropout passes.
+        Pass ``None`` (or call ``clear_cond``) for unconditional / CFG-dropout
+        passes — patched ``Block.forward`` will fall through to the baseline
+        DiT path.
         """
         if not self._patched:
-            raise RuntimeError("set_cond_tokens called before apply_to")
+            raise RuntimeError("set_cond called before apply_to")
         if cond_latent is None:
-            self.clear_cond_tokens()
+            self.clear_cond()
             return
 
-        cond_x = self.encode_cond_latent(cond_latent, padding_mask=padding_mask)
-        self._run_cond_path(cond_x)
+        cond_x, cond_rope = self.encode_cond_latent(
+            cond_latent, padding_mask=padding_mask
+        )
 
-    def clear_cond_tokens(self) -> None:
-        for attn in self._self_attn_modules:
-            attn._cond_k_cached = None
-            attn._cond_v_cached = None
+        # Build cond_temb at t=0 through the same t_embedder as target. The
+        # AdaLN-LoRA branch is mirrored: t_embedder returns
+        # (emb_B_T_D, adaln_lora_B_T_3D) when use_adaln_lora=True. We follow
+        # forward_mini_train_dit and apply t_embedding_norm on emb_B_T_D.
+        # Pooled-text projection is intentionally NOT applied: cond is the
+        # reference image at t=0, with no text channel.
+        B = cond_latent.shape[0]
+        device = cond_x.device
+        # Match the dtype t_embedder expects — its Timesteps layer handles
+        # float32 internally and casts back to input dtype. Use the cond_x
+        # dtype to avoid a needless promotion on the AdaLN inputs downstream.
+        zeros = torch.zeros(B, 1, device=device, dtype=cond_x.dtype)
+        cond_emb_B_T_D, cond_adaln_lora_B_T_3D = self._dit.t_embedder(zeros)
+        cond_emb_B_T_D = self._dit.t_embedding_norm(cond_emb_B_T_D)
+
+        self._cond_state = {
+            "cond_emb": cond_emb_B_T_D,
+            "cond_adaln_lora": cond_adaln_lora_B_T_3D,
+            "cond_rope": cond_rope,
+        }
+        # Block 0's input. Subsequent blocks' slots are written by the
+        # previous block's patched forward.
+        self._block_modules[0]._easycontrol_cond_x_in = cond_x
+
+    def clear_cond(self) -> None:
+        self._cond_state = None
+        for block in self._block_modules:
+            block._easycontrol_cond_x_in = None
 
     def get_effective_scale(self) -> float:
         return self.cond_scale * self.multiplier
-
-    # ------------------------------------------------------------ cond pre-pass
-
-    def _run_cond_path(self, cond_x: torch.Tensor) -> None:
-        """Run cond tokens through every block, caching (K_c, V_c) per block.
-
-        Phase 1 simplifications:
-          - Plain LayerNorm (no AdaLN scale/shift/gate). The cond stream has
-            no per-token timestep embedding to drive AdaLN; using plain norm
-            is the simplest well-defined alternative. Step-0 baseline
-            equivalence is preserved by ``b_cond=-10`` regardless.
-          - No RoPE on cond Q/K (different positions from target).
-          - Plain torch SDPA for the cond's own self-attention (no anima
-            attention dispatch).
-
-        When gradient checkpointing is on (and we're in training mode), each
-        per-block cond forward is wrapped in ``torch.utils.checkpoint``. K_c
-        and V_c are returned from the checkpointed function (so the target's
-        loss can backprop through them into the cond LoRAs); everything else
-        is recomputed on backward.
-        """
-        if self._dit is None:
-            raise RuntimeError("_run_cond_path called before apply_to")
-        scale = self.get_effective_scale()
-
-        use_ckpt = self._gradient_checkpointing and self.training
-
-        for idx, attn in enumerate(self._self_attn_modules):
-            if use_ckpt:
-                # Bind idx and scale via default args so the saved closure
-                # doesn't see the latest loop value during recompute.
-                def _fn(cx, _i=idx, _s=scale):
-                    return self._cond_block_forward(cx, _i, _s)
-
-                cond_x, k, v = torch_checkpoint(_fn, cond_x, use_reentrant=False)
-            else:
-                cond_x, k, v = self._cond_block_forward(cond_x, idx, scale)
-
-            # Cache K, V for the target's extended self-attn. Assigned outside
-            # the checkpoint so they remain reachable as autograd-graph tensors
-            # — target's backward flows from these into the cond LoRA params.
-            attn._cond_k_cached = k
-            attn._cond_v_cached = v
-
-    def _cond_block_forward(
-        self, cond_x: torch.Tensor, idx: int, scale: float
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """One block's cond forward. Returns ``(cond_x_out, k, v)``.
-
-        Pulled out of ``_run_cond_path`` so it can be wrapped per-block in
-        ``torch.utils.checkpoint``. K and V are *returned* (not assigned via
-        side effect) so they sit in the autograd graph as checkpoint outputs;
-        the caller is responsible for stashing them on ``attn._cond_*_cached``.
-        """
-        block = self._block_modules[idx]
-        attn = self._self_attn_modules[idx]
-
-        # 1. Self-attention block (cond LoRA on qkv + o)
-        normed = block.layer_norm_self_attn(cond_x)
-
-        # qkv = frozen qkv_proj + cond LoRA delta (zero at init)
-        qkv_base = attn.qkv_proj(normed)  # [B, S_c, 3D]
-        qkv_delta = self.cond_lora_qkv[idx](normed)
-        qkv = qkv_base + scale * qkv_delta
-        q, k, v = qkv.unflatten(-1, (3, self.num_heads, self.head_dim)).unbind(
-            dim=-3
-        )
-        # Apply DiT's q/k/v RMSNorms (shared, frozen — same as target).
-        q = attn.q_norm(q)
-        k = attn.k_norm(k)
-        v = attn.v_norm(v)
-
-        # Cond's own self-attention evolution (no RoPE, no mask).
-        # q,k,v: [B, S_c, n_h, d_h] -> SDPA wants [B, n_h, S_c, d_h]
-        q_s = q.transpose(1, 2).contiguous()
-        k_s = k.transpose(1, 2).contiguous()
-        v_s = v.transpose(1, 2).contiguous()
-        attn_out = F.scaled_dot_product_attention(q_s, k_s, v_s)
-        attn_out = attn_out.transpose(1, 2).reshape(
-            cond_x.shape[0], cond_x.shape[1], self.num_heads * self.head_dim
-        )
-
-        # output_proj + cond_lora_o (residual back to cond_x)
-        o_base = attn.output_proj(attn_out)
-        o_delta = self.cond_lora_o[idx](attn_out)
-        cond_x = cond_x + (o_base + scale * o_delta)
-
-        # 2. Cross-attn skipped entirely.
-
-        # 3. MLP (with optional cond LoRA on layer1 and layer2)
-        normed = block.layer_norm_mlp(cond_x)
-        h = block.mlp.layer1(normed)
-        if self.apply_ffn_lora and self.cond_lora_ffn1 is not None:
-            h = h + scale * self.cond_lora_ffn1[idx](normed)
-        h = block.mlp.activation(h)
-        o = block.mlp.layer2(h)
-        if self.apply_ffn_lora and self.cond_lora_ffn2 is not None:
-            o = o + scale * self.cond_lora_ffn2[idx](h)
-        cond_x = cond_x + o
-
-        return cond_x, k, v
 
     # ------------------------------------------------------------ trainer hooks
 
@@ -549,11 +537,12 @@ class EasyControlNetwork(nn.Module):
         return False
 
     def enable_gradient_checkpointing(self):
-        # Per-block checkpoint of the cond pre-pass (see _run_cond_path). K_c
-        # and V_c are returned from each checkpointed block so target-loss
-        # backward can flow through them into the cond LoRAs; everything else
-        # (norm, qkv, attn_out, FFN intermediates) is recomputed on backward.
-        self._gradient_checkpointing = True
+        # The two-stream design relies on the existing per-Block checkpoint
+        # wrappers (configured by ``Block.enable_gradient_checkpointing``).
+        # The patched ``Block.forward`` re-implements the same dispatch with
+        # the two-stream inner function as its target. No EasyControl-side
+        # state is needed here — kept as a no-op for trainer-side parity.
+        pass
 
     def prepare_grad_etc(self, text_encoder, unet):
         self.requires_grad_(True)
@@ -604,6 +593,7 @@ class EasyControlNetwork(nn.Module):
             metadata["ss_b_cond_init"] = str(self.b_cond_init)
             metadata["ss_cond_scale"] = str(self.cond_scale)
             metadata["ss_apply_ffn_lora"] = str(int(self.apply_ffn_lora))
+            metadata["ss_cond_token_count"] = str(self.cond_token_count)
 
             model_hash, legacy_hash = precalculate_safetensors_hashes(sd, metadata)
             metadata["sshs_model_hash"] = model_hash
@@ -628,7 +618,7 @@ class EasyControlNetwork(nn.Module):
             logger.info(f"Loaded EasyControl weights from {file} ({len(sd)} tensors)")
 
 
-# ----------------------------------------------------------------- patched forward
+# ----------------------------------------------------------------- LSE-extended attention
 
 
 class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
@@ -678,14 +668,30 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
 
         # Two FA forwards (no dropout, no causal, no window).
         out_t, lse_t, _, rng_state_t = fa_fwd(
-            q, k_t, v_t, 0.0, softmax_scale,
-            causal=False, window_size_left=-1, window_size_right=-1,
-            softcap=0.0, alibi_slopes=None, return_softmax=False,
+            q,
+            k_t,
+            v_t,
+            0.0,
+            softmax_scale,
+            causal=False,
+            window_size_left=-1,
+            window_size_right=-1,
+            softcap=0.0,
+            alibi_slopes=None,
+            return_softmax=False,
         )
         out_c, lse_c, _, rng_state_c = fa_fwd(
-            q, k_c, v_c, 0.0, softmax_scale,
-            causal=False, window_size_left=-1, window_size_right=-1,
-            softcap=0.0, alibi_slopes=None, return_softmax=False,
+            q,
+            k_c,
+            v_c,
+            0.0,
+            softmax_scale,
+            causal=False,
+            window_size_left=-1,
+            window_size_right=-1,
+            softcap=0.0,
+            alibi_slopes=None,
+            return_softmax=False,
         )
 
         # LSE arithmetic combine. (FA returns lse in fp32 regardless of
@@ -693,8 +699,8 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
         b_fp32 = b_cond.to(lse_c.dtype)
         lse_c_adj = lse_c + b_fp32
         joint_lse = torch.logaddexp(lse_t, lse_c_adj)
-        alpha = (lse_t - joint_lse).exp()        # [B, H, S_q] fp32
-        beta = (lse_c_adj - joint_lse).exp()     # [B, H, S_q] fp32
+        alpha = (lse_t - joint_lse).exp()  # [B, H, S_q] fp32
+        beta = (lse_c_adj - joint_lse).exp()  # [B, H, S_q] fp32
 
         # out_t, out_c are [B, S_q, H, D] (BLHD). Broadcast α/β over D.
         alpha_bd = alpha.transpose(1, 2).unsqueeze(-1).to(out_t.dtype)
@@ -702,9 +708,20 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
         joint_out = alpha_bd * out_t + beta_bd * out_c
 
         ctx.save_for_backward(
-            q, k_t, v_t, k_c, v_c,
-            joint_out, joint_lse, alpha, beta, out_t, out_c,
-            b_fp32, rng_state_t, rng_state_c,
+            q,
+            k_t,
+            v_t,
+            k_c,
+            v_c,
+            joint_out,
+            joint_lse,
+            alpha,
+            beta,
+            out_t,
+            out_c,
+            b_fp32,
+            rng_state_t,
+            rng_state_c,
         )
         ctx.softmax_scale = softmax_scale
         ctx.b_cond_orig_dtype = b_cond.dtype
@@ -715,9 +732,22 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
         from networks import attention as anima_attention
 
         fa_bwd = anima_attention._wrapped_flash_attn_backward
-        (q, k_t, v_t, k_c, v_c,
-         joint_out, joint_lse, alpha, beta, out_t, out_c,
-         b_fp32, rng_state_t, rng_state_c) = ctx.saved_tensors
+        (
+            q,
+            k_t,
+            v_t,
+            k_c,
+            v_c,
+            joint_out,
+            joint_lse,
+            alpha,
+            beta,
+            out_t,
+            out_c,
+            b_fp32,
+            rng_state_t,
+            rng_state_c,
+        ) = ctx.saved_tensors
         softmax_scale = ctx.softmax_scale
 
         dout = dout.contiguous()
@@ -731,9 +761,23 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
         dk_t = torch.empty_like(k_t)
         dv_t = torch.empty_like(v_t)
         fa_bwd(
-            dout, q, k_t, v_t, joint_out, joint_lse,
-            dq_t, dk_t, dv_t,
-            0.0, softmax_scale, False, -1, -1, 0.0, None, False,
+            dout,
+            q,
+            k_t,
+            v_t,
+            joint_out,
+            joint_lse,
+            dq_t,
+            dk_t,
+            dv_t,
+            0.0,
+            softmax_scale,
+            False,
+            -1,
+            -1,
+            0.0,
+            None,
+            False,
             rng_state=rng_state_t,
         )
 
@@ -745,9 +789,23 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
         dk_c = torch.empty_like(k_c)
         dv_c = torch.empty_like(v_c)
         fa_bwd(
-            dout, q, k_c, v_c, joint_out, effective_lse_c,
-            dq_c, dk_c, dv_c,
-            0.0, softmax_scale, False, -1, -1, 0.0, None, False,
+            dout,
+            q,
+            k_c,
+            v_c,
+            joint_out,
+            effective_lse_c,
+            dq_c,
+            dk_c,
+            dv_c,
+            0.0,
+            softmax_scale,
+            False,
+            -1,
+            -1,
+            0.0,
+            None,
+            False,
             rng_state=rng_state_c,
         )
 
@@ -758,8 +816,10 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
         #   ∂L/∂b         = sum (α · β · ⟨out_c − out_t, dout⟩_D)
         # Reduction in fp32 for stability (α, β are fp32; bf16 inner can lose
         # ulps on long S_q reductions).
-        inner_bsh = ((out_c.float() - out_t.float()) * dout.float()).sum(dim=-1)  # [B, S_q, H]
-        inner_bhq = inner_bsh.transpose(1, 2)                                     # [B, H, S_q]
+        inner_bsh = ((out_c.float() - out_t.float()) * dout.float()).sum(
+            dim=-1
+        )  # [B, S_q, H]
+        inner_bhq = inner_bsh.transpose(1, 2)  # [B, H, S_q]
         db_scalar = (alpha * beta * inner_bhq).sum()
         db_cond = db_scalar.to(ctx.b_cond_orig_dtype)
         # Match b_cond's original 0-d shape.
@@ -787,113 +847,418 @@ def _warn_lse_fallback_once(reason: str) -> None:
     )
 
 
-def _make_patched_self_attn_forward(orig_attn, b_param: nn.Parameter, anima_attention):
-    """Build a closure that replaces ``Attention.forward`` for one block's self-attn.
+def _extended_target_attention(
+    target_q,
+    target_k,
+    target_v,
+    cond_k,
+    cond_v,
+    *,
+    b_param,
+    scale,
+    attn_params,
+):
+    """Run target's extended self-attention over [target_k; cond_k].
 
-    Mirrors the original ``Attention.forward`` (library/anima/models.py:446) but
-    extends self-attn keys/values with cached cond K/V when present, with an
-    additive per-block scalar logit bias on the cond positions. When no cond
-    is set, falls back to the original anima attention dispatch.
-
-    The extended self-attn uses the LSE-decomposition path
-    (``_ExtendedSelfAttnLSEFunc``) when flash-attn is available and
-    ``attn_params.attn_mode == 'flash'`` — two memory-efficient FA forwards
-    plus a Python LSE-arithmetic combine. Otherwise it falls back to the
-    masked-SDPA path (math kernel; OOM risk on real hardware) with a one-shot
-    warning.
-
-    ``b_param`` is the 0-d ``nn.Parameter`` from this block's slot in
-    ``ec_net.b_cond`` (a ``ParameterList``). Captured as a tensor object — NOT
-    via ``ec_net.b_cond[block_idx]`` — because dynamo specializes per-call on
-    int closure cells (treating them as static nn.Module attributes), which
-    used to cause one recompile per block until recompile_limit blew up.
+    Inputs are BSHD: target_q/k/v ``[B, S_t, H, D]``, cond_k/v ``[B, S_c, H, D]``.
+    Returns ``[B, S_t, H*D]`` ready for output_proj. Uses
+    ``_ExtendedSelfAttnLSEFunc`` (memory-efficient) when flash-attn + flash
+    mode is available; falls back to masked-SDPA (math kernel; OOM risk) with
+    a one-shot warning otherwise.
     """
+    from networks import attention as anima_attention
 
-    def patched_forward(x, attn_params, context, rope_cos_sin=None):
-        q, k, v = orig_attn.compute_qkv(x, context, rope_cos_sin)
+    # dtype matching mirrors the original Attention.forward casting policy.
+    if target_q.dtype != target_v.dtype:
+        if (
+            not attn_params.supports_fp32 or attn_params.requires_same_dtype
+        ) and torch.is_autocast_enabled():
+            target_q = target_q.to(target_v.dtype)
+            target_k = target_k.to(target_v.dtype)
+    cond_k = cond_k.to(target_k.dtype)
+    cond_v = cond_v.to(target_v.dtype)
 
-        cond_k = getattr(orig_attn, "_cond_k_cached", None)
-        cond_v = getattr(orig_attn, "_cond_v_cached", None)
+    if scale is None:
+        scale = target_q.shape[-1] ** -0.5
 
-        if cond_k is None or cond_v is None:
-            # No cond — exact baseline DiT behavior (anima dispatch).
-            if q.dtype != v.dtype:
-                if (
-                    not attn_params.supports_fp32 or attn_params.requires_same_dtype
-                ) and torch.is_autocast_enabled():
-                    target_dtype = v.dtype
-                    q = q.to(target_dtype)
-                    k = k.to(target_dtype)
-            qkv = [q, k, v]
-            result = anima_attention.attention(qkv, attn_params=attn_params)
-            return orig_attn.output_dropout(orig_attn.output_proj(result))
-
-        # Extended self-attn path.
-        B = q.shape[0]
-        if cond_k.shape[0] == 1 and B > 1:
-            cond_k = cond_k.expand(B, *cond_k.shape[1:]).contiguous()
-            cond_v = cond_v.expand(B, *cond_v.shape[1:]).contiguous()
-        elif cond_k.shape[0] != B:
-            raise RuntimeError(
-                f"EasyControl cond K/V batch {cond_k.shape[0]} does not match q batch {B}"
-            )
-
-        # Match dtypes.
-        if q.dtype != v.dtype:
-            if (
-                not attn_params.supports_fp32 or attn_params.requires_same_dtype
-            ) and torch.is_autocast_enabled():
-                target_dtype = v.dtype
-                q = q.to(target_dtype)
-                k = k.to(target_dtype)
-        cond_k = cond_k.to(k.dtype)
-        cond_v = cond_v.to(v.dtype)
-
-        scale = attn_params.softmax_scale  # may be None → default 1/sqrt(d)
-        if scale is None:
-            scale = q.shape[-1] ** -0.5
-
-        # Pick implementation: LSE-decomposed (memory-efficient) when FA is
-        # available, masked SDPA (math kernel; OOM risk) otherwise.
-        use_lse = (
-            anima_attention._wrapped_flash_attn_forward is not None
-            and attn_params.attn_mode == "flash"
+    use_lse = (
+        anima_attention._wrapped_flash_attn_forward is not None
+        and attn_params.attn_mode == "flash"
+    )
+    if use_lse:
+        out = _ExtendedSelfAttnLSEFunc.apply(
+            target_q.contiguous(),
+            target_k.contiguous(),
+            target_v.contiguous(),
+            cond_k.contiguous(),
+            cond_v.contiguous(),
+            b_param,
+            scale,
         )
-        if use_lse:
-            S_t = q.shape[1]
-            # Inputs are BLHD; FA wants BLHD; pass through directly.
-            out = _ExtendedSelfAttnLSEFunc.apply(
-                q.contiguous(), k.contiguous(), v.contiguous(),
-                cond_k, cond_v,
-                b_param, scale,
-            )
-            out = out.reshape(B, S_t, -1)
-            return orig_attn.output_dropout(orig_attn.output_proj(out))
+        # out: [B, S_t, H, D] → [B, S_t, H*D]
+        B, S_t = out.shape[0], out.shape[1]
+        return out.reshape(B, S_t, -1)
 
-        # Fallback: masked extended SDPA. Materializes the full attention
-        # matrix in the math kernel — this is the OOM cliff that Phase 1.5
-        # was meant to fix. Use only when FA is unavailable.
-        if attn_params.attn_mode == "flash":
-            _warn_lse_fallback_once("flash-attn import failed at module load")
+    # Fallback: masked extended SDPA. Materializes the full attention matrix
+    # in the math kernel — only used when FA is unavailable.
+    if attn_params.attn_mode == "flash":
+        _warn_lse_fallback_once("flash-attn import failed at module load")
+    else:
+        _warn_lse_fallback_once(
+            f"attn_mode={attn_params.attn_mode!r} unsupported by LSE path"
+        )
+
+    B, S_t = target_q.shape[0], target_q.shape[1]
+    S_c = cond_k.shape[1]
+    k_ext = torch.cat([target_k, cond_k], dim=1)
+    v_ext = torch.cat([target_v, cond_v], dim=1)
+    q_s = target_q.transpose(1, 2)
+    k_s = k_ext.transpose(1, 2)
+    v_s = v_ext.transpose(1, 2)
+    b = b_param.to(q_s.dtype)
+    target_zeros = torch.zeros(S_t, device=target_q.device, dtype=q_s.dtype)
+    cond_b = b.expand(S_c)
+    attn_bias = torch.cat([target_zeros, cond_b], dim=0).view(1, 1, 1, S_t + S_c)
+    out = F.scaled_dot_product_attention(
+        q_s, k_s, v_s, attn_mask=attn_bias, scale=scale
+    )
+    return out.transpose(1, 2).reshape(B, S_t, -1)
+
+
+# ----------------------------------------------------------------- patched Block.forward
+
+
+def _make_patched_block_forward(
+    block: nn.Module, block_idx: int, ec_net: EasyControlNetwork
+):
+    """Build a closure that replaces ``Block.forward`` for one DiT block.
+
+    The closure mirrors Anima's ``Block.forward`` checkpoint dispatch — three
+    paths (unsloth / cpu_offload / plain torch_checkpoint / no-ckpt) — but
+    routes to the two-stream inner instead of the original ``_forward`` when
+    cond is active. When no cond is set on the network, falls through to the
+    original baseline forward unchanged.
+
+    cond_x flows block-by-block via per-block side channels:
+      - ``block._easycontrol_cond_x_in`` is set by the previous block's
+        patched forward (or by ``set_cond`` for block 0).
+      - The two-stream inner takes ``cond_x_in`` as an explicit arg and
+        returns ``cond_x_out`` as an explicit return value, so the per-block
+        checkpoint preserves the autograd connection across blocks.
+    """
+    # Capture once.
+    original_forward = block.forward
+    b_param = ec_net.b_cond[block_idx]
+    cond_lora_qkv = ec_net.cond_lora_qkv[block_idx]
+    cond_lora_o = ec_net.cond_lora_o[block_idx]
+    cond_lora_ffn1 = ec_net.cond_lora_ffn1[block_idx] if ec_net.apply_ffn_lora else None
+    cond_lora_ffn2 = ec_net.cond_lora_ffn2[block_idx] if ec_net.apply_ffn_lora else None
+
+    # Lazy import to avoid a circular at module load.
+    from library.anima.models import apply_rotary_pos_emb_qk
+
+    def _two_stream_inner(
+        x_B_T_H_W_D,
+        emb_B_T_D,
+        crossattn_emb,
+        attn_params,
+        rope_cos_sin,
+        adaln_lora_B_T_3D,
+        cond_x_B_S_D,
+        cond_emb_B_T_D,
+        cond_adaln_lora_B_T_3D,
+        cond_rope_cos_sin,
+    ):
+        """Two-stream block: (target, cond) → (target_out, cond_out)."""
+        attn = block.self_attn
+        T_dim, H_dim, W_dim = x_B_T_H_W_D.shape[1:4]
+        scale_attn = attn_params.softmax_scale
+
+        # ---- AdaLN modulation params for both streams ----
+        if block.use_adaln_lora:
+            fused_down = block.adaln_fused_down(emb_B_T_D)
+            down_self, down_cross, down_mlp = fused_down.chunk(3, dim=-1)
+            shift_self_attn, scale_self_attn, gate_self_attn = (
+                block.adaln_up_self_attn(down_self) + adaln_lora_B_T_3D
+            ).chunk(3, dim=-1)
+            shift_cross_attn, scale_cross_attn, gate_cross_attn = (
+                block.adaln_up_cross_attn(down_cross) + adaln_lora_B_T_3D
+            ).chunk(3, dim=-1)
+            shift_mlp, scale_mlp, gate_mlp = (
+                block.adaln_up_mlp(down_mlp) + adaln_lora_B_T_3D
+            ).chunk(3, dim=-1)
+
+            cond_fused_down = block.adaln_fused_down(cond_emb_B_T_D)
+            cond_down_self, _cond_down_cross, cond_down_mlp = cond_fused_down.chunk(
+                3, dim=-1
+            )
+            cond_shift_self_attn, cond_scale_self_attn, cond_gate_self_attn = (
+                block.adaln_up_self_attn(cond_down_self) + cond_adaln_lora_B_T_3D
+            ).chunk(3, dim=-1)
+            cond_shift_mlp, cond_scale_mlp, cond_gate_mlp = (
+                block.adaln_up_mlp(cond_down_mlp) + cond_adaln_lora_B_T_3D
+            ).chunk(3, dim=-1)
         else:
-            _warn_lse_fallback_once(f"attn_mode={attn_params.attn_mode!r} unsupported by LSE path")
+            shift_self_attn, scale_self_attn, gate_self_attn = (
+                block.adaln_modulation_self_attn(emb_B_T_D).chunk(3, dim=-1)
+            )
+            shift_cross_attn, scale_cross_attn, gate_cross_attn = (
+                block.adaln_modulation_cross_attn(emb_B_T_D).chunk(3, dim=-1)
+            )
+            shift_mlp, scale_mlp, gate_mlp = block.adaln_modulation_mlp(
+                emb_B_T_D
+            ).chunk(3, dim=-1)
 
-        S_t = k.shape[1]
-        S_c = cond_k.shape[1]
-        k_ext = torch.cat([k, cond_k], dim=1)
-        v_ext = torch.cat([v, cond_v], dim=1)
-        q_s = q.transpose(1, 2)
-        k_s = k_ext.transpose(1, 2)
-        v_s = v_ext.transpose(1, 2)
-        b = b_param.to(q_s.dtype)
-        target_zeros = torch.zeros(S_t, device=q.device, dtype=q_s.dtype)
-        cond_b = b.expand(S_c)
-        attn_bias = torch.cat([target_zeros, cond_b], dim=0)
-        attn_mask = attn_bias.view(1, 1, 1, S_t + S_c)
-        out = F.scaled_dot_product_attention(
-            q_s, k_s, v_s, attn_mask=attn_mask, scale=scale
+            cond_shift_self_attn, cond_scale_self_attn, cond_gate_self_attn = (
+                block.adaln_modulation_self_attn(cond_emb_B_T_D).chunk(3, dim=-1)
+            )
+            cond_shift_mlp, cond_scale_mlp, cond_gate_mlp = block.adaln_modulation_mlp(
+                cond_emb_B_T_D
+            ).chunk(3, dim=-1)
+
+        # Reshape target shifts/scales/gates for 5D broadcasting.
+        # Cond shifts/scales/gates are (B, 1, D); broadcast over (B, S_c, D)
+        # naturally — no reshape needed.
+        sh_self_5 = shift_self_attn[:, :, None, None, :]
+        sc_self_5 = scale_self_attn[:, :, None, None, :]
+        ga_self_5 = gate_self_attn[:, :, None, None, :]
+        sh_cross_5 = shift_cross_attn[:, :, None, None, :]
+        sc_cross_5 = scale_cross_attn[:, :, None, None, :]
+        ga_cross_5 = gate_cross_attn[:, :, None, None, :]
+        sh_mlp_5 = shift_mlp[:, :, None, None, :]
+        sc_mlp_5 = scale_mlp[:, :, None, None, :]
+        ga_mlp_5 = gate_mlp[:, :, None, None, :]
+
+        # ============ 1. SELF-ATTENTION (extended target + cond's own) ============
+        # Target normalized → flat sequence
+        target_normed = (
+            block.layer_norm_self_attn(x_B_T_H_W_D) * (1 + sc_self_5) + sh_self_5
         )
-        out = out.transpose(1, 2).reshape(B, S_t, -1)
-        return orig_attn.output_dropout(orig_attn.output_proj(out))
+        target_flat = target_normed.flatten(1, 3)
+
+        # Target Q/K/V with target RoPE — reuse Attention.compute_qkv (it
+        # handles q_norm, k_norm, v_norm + apply_rotary_pos_emb_qk for us).
+        target_q, target_k, target_v = attn.compute_qkv(
+            target_flat, target_flat, rope_cos_sin=rope_cos_sin
+        )
+
+        # Cond normalized
+        cond_normed = (
+            block.layer_norm_self_attn(cond_x_B_S_D) * (1 + cond_scale_self_attn)
+            + cond_shift_self_attn
+        )
+
+        # Cond Q/K/V — base + LoRA delta inserted between qkv_proj and the
+        # q/k/v norms. We re-implement compute_qkv inline so the LoRA delta
+        # lands at the same point in the projection chain that Phase 1.5 used.
+        eff_scale = ec_net.cond_scale * ec_net.multiplier
+        cond_qkv_base = attn.qkv_proj(cond_normed)
+        cond_qkv_delta = cond_lora_qkv(cond_normed)
+        cond_qkv = cond_qkv_base + eff_scale * cond_qkv_delta
+        cond_q, cond_k, cond_v = cond_qkv.unflatten(
+            -1, (3, attn.n_heads, attn.head_dim)
+        ).unbind(dim=-3)
+        cond_q = attn.q_norm(cond_q)
+        cond_k = attn.k_norm(cond_k)
+        cond_v = attn.v_norm(cond_v)
+        if cond_rope_cos_sin is not None:
+            cond_q, cond_k = apply_rotary_pos_emb_qk(
+                cond_q, cond_k, cond_rope_cos_sin, tensor_format=attn.qkv_format
+            )
+
+        # Target extended attention over [target_k; cond_k].
+        target_attn_out = _extended_target_attention(
+            target_q,
+            target_k,
+            target_v,
+            cond_k,
+            cond_v,
+            b_param=b_param,
+            scale=scale_attn,
+            attn_params=attn_params,
+        )
+
+        # Cond's own self-attention — small (S_c × S_c), plain torch SDPA.
+        # cond_q/k/v are BSHD: (B, S_c, n_h, d_h). SDPA expects (B, n_h, S, d_h).
+        cq = cond_q.transpose(1, 2)
+        ck = cond_k.transpose(1, 2)
+        cv = cond_v.transpose(1, 2)
+        cond_attn_out = F.scaled_dot_product_attention(cq, ck, cv)
+        # Back to (B, S_c, n_h*d_h) for output_proj.
+        B_c = cond_x_B_S_D.shape[0]
+        S_c = cond_x_B_S_D.shape[1]
+        cond_attn_out = cond_attn_out.transpose(1, 2).reshape(B_c, S_c, -1)
+
+        # Output projections + LoRA on cond + gated residuals.
+        target_attn_proj = attn.output_proj(target_attn_out)
+        cond_attn_proj = attn.output_proj(cond_attn_out) + eff_scale * cond_lora_o(
+            cond_attn_out
+        )
+        # Output dropout (Anima has nn.Identity by default; harmless when on).
+        target_attn_proj = attn.output_dropout(target_attn_proj)
+        cond_attn_proj = attn.output_dropout(cond_attn_proj)
+
+        target_attn_5d = target_attn_proj.unflatten(1, (T_dim, H_dim, W_dim))
+        x_B_T_H_W_D = x_B_T_H_W_D + ga_self_5 * target_attn_5d
+        cond_x_B_S_D = cond_x_B_S_D + cond_gate_self_attn * cond_attn_proj
+
+        # ============ 2. CROSS-ATTENTION (target only) ============
+        target_cross_normed = (
+            block.layer_norm_cross_attn(x_B_T_H_W_D) * (1 + sc_cross_5) + sh_cross_5
+        )
+        target_cross_out = block.cross_attn(
+            target_cross_normed.flatten(1, 3),
+            attn_params,
+            crossattn_emb,
+            rope_cos_sin=rope_cos_sin,
+        ).unflatten(1, (T_dim, H_dim, W_dim))
+        x_B_T_H_W_D = x_B_T_H_W_D + ga_cross_5 * target_cross_out
+
+        # ============ 3. MLP ============
+        # Target MLP (existing path).
+        target_mlp_normed = (
+            block.layer_norm_mlp(x_B_T_H_W_D) * (1 + sc_mlp_5) + sh_mlp_5
+        )
+        target_mlp_out = block.mlp(target_mlp_normed)
+        x_B_T_H_W_D = x_B_T_H_W_D + ga_mlp_5 * target_mlp_out
+
+        # Cond MLP — re-implement layer1/act/layer2 inline so we can splice
+        # FFN LoRA at layer1 and layer2 outputs (matches Phase 1.5).
+        cond_mlp_normed = (
+            block.layer_norm_mlp(cond_x_B_S_D) * (1 + cond_scale_mlp) + cond_shift_mlp
+        )
+        cond_mlp_h = block.mlp.layer1(cond_mlp_normed)
+        if cond_lora_ffn1 is not None:
+            cond_mlp_h = cond_mlp_h + eff_scale * cond_lora_ffn1(cond_mlp_normed)
+        cond_mlp_h = block.mlp.activation(cond_mlp_h)
+        cond_mlp_out = block.mlp.layer2(cond_mlp_h)
+        if cond_lora_ffn2 is not None:
+            cond_mlp_out = cond_mlp_out + eff_scale * cond_lora_ffn2(cond_mlp_h)
+        cond_x_B_S_D = cond_x_B_S_D + cond_gate_mlp * cond_mlp_out
+
+        return x_B_T_H_W_D, cond_x_B_S_D
+
+    def patched_forward(
+        x_B_T_H_W_D,
+        emb_B_T_D,
+        crossattn_emb,
+        attn_params,
+        rope_cos_sin=None,
+        adaln_lora_B_T_3D=None,
+    ):
+        cond_state = ec_net._cond_state
+        if cond_state is None:
+            # No cond — exact baseline DiT behavior.
+            return original_forward(
+                x_B_T_H_W_D,
+                emb_B_T_D,
+                crossattn_emb,
+                attn_params,
+                rope_cos_sin=rope_cos_sin,
+                adaln_lora_B_T_3D=adaln_lora_B_T_3D,
+            )
+
+        cond_x_in = block._easycontrol_cond_x_in
+        if cond_x_in is None:
+            raise RuntimeError(
+                f"EasyControl: block[{block_idx}] has cond_state set but no "
+                f"_easycontrol_cond_x_in. Did set_cond run before the DiT forward? "
+                f"Did the previous block fail to write its cond_x_out?"
+            )
+
+        cond_emb = cond_state["cond_emb"]
+        cond_adaln_lora = cond_state["cond_adaln_lora"]
+        cond_rope = cond_state["cond_rope"]
+
+        # Match cond's dtype to the target stream — under autocast the AdaLN
+        # outputs are bf16 while cond_emb / cond_adaln_lora landed in cond_x's
+        # dtype upstream. We let the multiplications cast naturally by relying
+        # on PyTorch's type promotion rules; nothing to do here.
+
+        # Dispatch the two-stream inner through the SAME checkpoint path that
+        # Block.forward uses, with the extra cond args appended to the arg
+        # tuple so the checkpoint preserves them as inputs.
+        if block.training and block.gradient_checkpointing:
+            if block.unsloth_offload_checkpointing:
+                from library.anima.models import unsloth_checkpoint
+
+                target_x_out, cond_x_out = unsloth_checkpoint(
+                    _two_stream_inner,
+                    x_B_T_H_W_D,
+                    emb_B_T_D,
+                    crossattn_emb,
+                    attn_params,
+                    rope_cos_sin,
+                    adaln_lora_B_T_3D,
+                    cond_x_in,
+                    cond_emb,
+                    cond_adaln_lora,
+                    cond_rope,
+                )
+            elif block.cpu_offload_checkpointing:
+                # cpu_offload variant moves activations to CPU on save and
+                # back on recompute. Mirrors Block.forward.
+                from library.anima.models import to_device, to_cpu
+
+                def _custom_forward(*inputs):
+                    device = next(
+                        t.device for t in inputs if isinstance(t, torch.Tensor)
+                    )
+                    device_inputs = to_device(inputs, device)
+                    outputs = _two_stream_inner(*device_inputs)
+                    return to_cpu(outputs)
+
+                target_x_out, cond_x_out = torch_checkpoint(
+                    _custom_forward,
+                    x_B_T_H_W_D,
+                    emb_B_T_D,
+                    crossattn_emb,
+                    attn_params,
+                    rope_cos_sin,
+                    adaln_lora_B_T_3D,
+                    cond_x_in,
+                    cond_emb,
+                    cond_adaln_lora,
+                    cond_rope,
+                    use_reentrant=False,
+                )
+            else:
+                target_x_out, cond_x_out = torch_checkpoint(
+                    _two_stream_inner,
+                    x_B_T_H_W_D,
+                    emb_B_T_D,
+                    crossattn_emb,
+                    attn_params,
+                    rope_cos_sin,
+                    adaln_lora_B_T_3D,
+                    cond_x_in,
+                    cond_emb,
+                    cond_adaln_lora,
+                    cond_rope,
+                    use_reentrant=False,
+                )
+        else:
+            target_x_out, cond_x_out = _two_stream_inner(
+                x_B_T_H_W_D,
+                emb_B_T_D,
+                crossattn_emb,
+                attn_params,
+                rope_cos_sin,
+                adaln_lora_B_T_3D,
+                cond_x_in,
+                cond_emb,
+                cond_adaln_lora,
+                cond_rope,
+            )
+
+        # Pass cond_x_out to the next block via its side channel. The tensor
+        # carries its autograd connection to *this* block's checkpoint output,
+        # so backward through the next block flows back here correctly.
+        next_idx = block_idx + 1
+        if next_idx < ec_net.num_blocks:
+            ec_net._block_modules[next_idx]._easycontrol_cond_x_in = cond_x_out
+        # else: last block's cond_x_out is unused (cond evolution stops).
+
+        return target_x_out
 
     return patched_forward
