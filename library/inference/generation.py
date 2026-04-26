@@ -779,11 +779,13 @@ def _setup_ip_adapter(args, anima, device):
 
 
 def _setup_easycontrol(args, anima, device, shared_models):
-    """Load EasyControl weights, VAE-encode the reference image, prime cond K/V.
+    """Load EasyControl weights, VAE-encode the reference image, prime cond KV cache.
 
-    Phase 1 — no KV cache yet at inference; the cond pre-pass is run here once
-    and the cached (K_c, V_c) are used by every denoising step's target forward.
-    Identical to a single training step's cond pre-pass.
+    The cond stream is deterministic across denoising steps (cond_temb at t=0,
+    no dependence on noisy target, frozen DiT + frozen LoRA), so we run it
+    once via ``network.precompute_cond_kv()`` and reuse the per-block
+    (K_c, V_c) tensors for every step and every CFG branch — the patched
+    Block.forward then bypasses the cond stream entirely.
     """
     ec_weight = getattr(args, "easycontrol_weight", None)
     ec_image = getattr(args, "easycontrol_image", None)
@@ -862,10 +864,14 @@ def _setup_easycontrol(args, anima, device, shared_models):
         del vae
         torch.cuda.empty_cache()
 
-    network.set_cond_tokens(cond_latent.to(device, dtype=torch.bfloat16))
+    network.set_cond(cond_latent.to(device, dtype=torch.bfloat16))
+    # KV cache: walk the cond stream once and pin per-block (K_c, V_c). Every
+    # subsequent denoising step (and CFG branch) feeds these into target's
+    # extended self-attention without re-running the cond stream.
+    network.precompute_cond_kv()
     logger.info(
         f"EasyControl: loaded {ec_weight} "
-        f"(r={network.cond_lora_dim}, scale={network.get_effective_scale():.3f})"
+        f"(r={network.cond_lora_dim}, scale={network.get_effective_scale():.3f}, kv-cached)"
     )
     anima._easycontrol_network = network
     return network

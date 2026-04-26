@@ -207,7 +207,7 @@ IP_SCALE ?=
 IP_SCALE_ARG := $(if $(IP_SCALE),--ip_scale $(IP_SCALE),)
 # Short default — IP-Adapter is meant to carry style/identity from REF_IMAGE,
 # so the prompt is intentionally minimal. Override with PROMPT="..." for content.
-PROMPT ?= masterpiece, double peace, v v,
+PROMPT ?= double peace, v v,
 PROMPT_ARG := --prompt "$(PROMPT)"
 NEG ?=
 NEG_ARG := $(if $(NEG),--negative_prompt "$(NEG)",)

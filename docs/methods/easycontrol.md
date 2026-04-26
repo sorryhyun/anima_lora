@@ -11,10 +11,18 @@ can claim.
 
 ## Architecture
 
-A **two-stream block forward** runs target and cond inside each `Block.forward`
-in one pass. There is no separate cond pre-pass and no cross-block `K_c/V_c`
-cache — every block produces its own cond_k/cond_v in the same scope where the
-target's extended self-attention consumes them.
+**Training** runs a **two-stream block forward** — target and cond inside each
+`Block.forward` in one pass. There is no separate cond pre-pass and no
+cross-block `K_c/V_c` cache during training; every block produces its own
+cond_k/cond_v in the same scope where the target's extended self-attention
+consumes them. This keeps the cond LoRA's gradient connected step-by-step
+without a deferred-backward dance.
+
+**Inference** prefills a per-block `(K_c, V_c)` cache once at setup and reuses
+it across every denoising step and every CFG branch — the cond stream is
+deterministic across timesteps (`cond_temb = t_embedder(0)`, no dependence on
+the noisy target, frozen DiT + frozen LoRA), so re-running it is wasted
+compute. See [Inference KV cache](#inference-kv-cache) below.
 
 ```
 target stream (frozen DiT)              cond stream (frozen DiT + cond LoRA, t=0)
@@ -190,28 +198,104 @@ A real training step on 16 GiB GPUs (live observed) lands around **7.8 GiB**
 at `cond_token_count=4096`. The Phase 1.5 design pinned ~1.4 GiB more on
 top of this and did not fit on 16 GiB at constant-bucket S_c.
 
+## Inference KV cache
+
+The cond stream is deterministic across denoising steps:
+
+- `cond_temb = t_embedder(zeros)` is the same on every step.
+- `cond_x` evolves block-by-block but never reads the noisy target.
+- DiT weights, cond LoRA weights, `b_cond`, RoPE table, and `cond_scale ·
+  multiplier` are all fixed at inference.
+
+So the per-block post-RoPE post-norm `(K_c, V_c)` tensors that
+`_extended_target_attention` consumes from the cond stream depend only on the
+reference latent. Computing them once and pinning them is bit-equivalent to
+recomputing every step.
+
+**Lifecycle.** `_setup_easycontrol` in `library/inference/generation.py`
+calls:
+
+```python
+network.set_cond(cond_latent)        # encode reference, stage cond_x_in for block 0
+network.precompute_cond_kv()         # walk cond stream once, fill _cond_kv_cache
+```
+
+After this, `EasyControlNetwork._cond_kv_cache` holds a
+`list[(K_c_i, V_c_i)]` of length `num_blocks`. Each entry is a BSHD pair
+`[B, S_c, n_heads, head_dim]` — the same layout `_extended_target_attention`
+expects, post-`q_norm/k_norm/v_norm`, post-`apply_rotary_pos_emb_qk`.
+
+**Patched Block.forward dispatch.** Three paths in priority order:
+
+```
+_cond_kv_cache is not None          → _target_only_with_cached_cond_kv
+                                       (skip cond AdaLN/qkv/SDPA/MLP entirely;
+                                        feed cached K_c/V_c into target's
+                                        extended self-attn)
+_cond_state    is not None          → _two_stream_inner (training path)
+both None                           → original_forward (baseline DiT)
+```
+
+Cache batch broadcasting: the cache is primed at `B=1` (single reference);
+when CFG runs the DiT at `B>1` (cond/uncond batched), `K_c/V_c` are expanded
+on the batch dim automatically. CFG-via-two-separate-forwards (the current
+default at `B=1` per branch) just reuses the cache directly.
+
+**Memory.** At default `S_c = 4096`, `n_heads = 16`, `head_dim = 128`,
+`num_blocks = 28`, bf16, batch 1:
+
+```
+2 (K + V) × 28 blocks × 4096 × 16 × 128 × 2 bytes ≈ 896 MiB
+```
+
+Lower `cond_token_count` scales the cache linearly (e.g. ~448 MiB at
+`cond_token_count = 2048`). The startup log reports the actual size:
+
+```
+EasyControl: precomputed cond KV cache (28 blocks × 2 tensors, ~939 MB)
+```
+
+**Speedup envelope.** Per denoising step the cache eliminates, per block:
+cond AdaLN, cond LayerNorm + `qkv_proj` + cond LoRA (qkv), the cond stream's
+own `S_c × S_c` SDPA, cond `output_proj` + cond LoRA (o), cond MLP +
+cond LoRA (ffn1/ffn2), and the cond residual writes. Target-side cost
+collapses to `_extended_target_attention` (LSE-decomposed flash) + baseline
+cross-attn + baseline MLP. Practical end-to-end speedup vs the no-cache path
+scales with `S_c / S_t` and the FFN LoRA ratio; expect a meaningful drop in
+per-step wall time at `cond_token_count = 4096`.
+
+**Correctness.** The cache stores the exact tensors the two-stream path
+would have produced (same modules, same scale, same RoPE). Setting
+`network.clear_cond_kv_cache()` and re-running falls back to the two-stream
+path bit-exactly.
+
+**Cache invalidation.** `set_cond(new_latent)` clears the cache (stale until
+`precompute_cond_kv` runs again). `set_cond(None)` / `clear_cond` /
+`remove_from` also clear it. If you mutate `multiplier` or `cond_scale`
+manually after caching, call `clear_cond_kv_cache()` and re-prime — the
+cached K/V bake the effective scale at prime time.
+
+**Custom node use.** ComfyUI's custom node should call the same two-line
+sequence (`set_cond` then `precompute_cond_kv`) once per `(reference,
+cond_scale)` change; subsequent KSampler steps use the cache automatically.
+
 ## Limitations
 
-1. **No inference-time KV cache.** The cond stream runs every denoising step
-   at inference, even though cond is constant across timesteps. Future work:
-   precompute and cache per-block `(K_c, V_c)` once at step 0 and reuse them
-   across all steps — clean to add on top of the two-stream training
-   architecture; lives entirely in `networks/easycontrol_anima.py`.
-2. **`cond_token_count` is a manual budget.** If you pass a cond latent that
+1. **`cond_token_count` is a manual budget.** If you pass a cond latent that
    would produce more tokens than `cond_token_count`, `encode_cond_latent`
    raises; the caller must downsample upstream. Automatic latent-space
    downsample (preserving aspect ratio) is a candidate follow-up.
-3. **No spatial-control positional alignment.** Cond uses its own native
+2. **No spatial-control positional alignment.** Cond uses its own native
    RoPE positions (matches the official's "subject" mode). The official's
    `resize_position_encoding` interpolates cond positions into target's
    coordinate system for spatial control (depth maps, edges); reproducing
    that needs fractional positions, which Anima's `pos_embedder.seq[:H]`
    integer indexing doesn't support out of the box.
-4. **`blocks_to_swap = 0` recommended.** The patched `Block.forward` does
+3. **`blocks_to_swap = 0` recommended.** The patched `Block.forward` does
    the cond compute inside the block's forward window, so block swap is
    structurally fine — but untested with EasyControl. Pinning to 0 for now;
    bf16 frozen DiT + cond LoRA fits without swapping anyway.
-5. **Custom autograd Function inside `_ExtendedSelfAttnLSEFunc`.** The
+4. **Custom autograd Function inside `_ExtendedSelfAttnLSEFunc`.** The
    joint-softmax backward is implemented manually because FA2's stock
    backward drops the upstream gradient on `softmax_lse`. Verified against
    masked-SDPA reference within fp32 ulp on forward and all gradients

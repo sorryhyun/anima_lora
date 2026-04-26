@@ -344,6 +344,14 @@ class EasyControlNetwork(nn.Module):
         # cond_x_init for block 0 lives on block_modules[0]._easycontrol_cond_x_in.
         self._cond_state: Optional[dict] = None
 
+        # Inference KV cache: per-block (cond_k, cond_v) post-RoPE-and-norm,
+        # i.e. the exact tensors `_extended_target_attention` consumes from the
+        # cond stream. Populated by `precompute_cond_kv()`. When non-None, the
+        # patched Block.forward bypasses the cond stream entirely and feeds
+        # these tensors into target's extended self-attention. Training keeps
+        # this None — every step needs the cond LoRA's gradient.
+        self._cond_kv_cache: Optional[list[tuple[torch.Tensor, torch.Tensor]]] = None
+
         total = sum(p.numel() for p in self.parameters())
         logger.info(
             f"EasyControlNetwork: blocks={num_blocks}, hidden={hidden_size}/{num_heads}h, "
@@ -403,6 +411,7 @@ class EasyControlNetwork(nn.Module):
         self._original_block_forwards.clear()
         object.__setattr__(self, "_dit", None)
         self._patched = False
+        self._cond_kv_cache = None
 
     # ------------------------------------------------------------ runtime API
 
@@ -492,6 +501,10 @@ class EasyControlNetwork(nn.Module):
             self.clear_cond()
             return
 
+        # New reference: any prior cache is stale until precompute_cond_kv runs
+        # again. The two-stream path is the safe default in the meantime.
+        self._cond_kv_cache = None
+
         cond_x, cond_rope = self.encode_cond_latent(
             cond_latent, padding_mask=padding_mask
         )
@@ -524,6 +537,145 @@ class EasyControlNetwork(nn.Module):
         self._cond_state = None
         for block in self._block_modules:
             block._easycontrol_cond_x_in = None
+        # Stale cache after clear: a different reference would need a re-prime.
+        self._cond_kv_cache = None
+
+    def clear_cond_kv_cache(self) -> None:
+        """Drop the per-block KV cache. Cond stream will be recomputed on the
+        next forward (or until ``precompute_cond_kv`` is called again).
+        """
+        self._cond_kv_cache = None
+
+    @torch.no_grad()
+    def precompute_cond_kv(self) -> None:
+        """Walk the cond stream once and cache (cond_k, cond_v) per block.
+
+        Inference-only optimization. The cond stream is deterministic across
+        denoising steps (cond_temb = t_embedder(zeros), no dependence on the
+        noisy target, frozen DiT + frozen LoRA), so the per-block post-RoPE
+        post-norm K/V tensors that target's extended self-attention consumes
+        can be computed once and reused across every step and every CFG branch.
+
+        After this call, the patched ``Block.forward`` skips all cond work
+        (AdaLN, qkv_proj+LoRA, cond's own SDPA, MLP, residuals) and feeds the
+        cached (cond_k, cond_v) directly into ``_extended_target_attention``.
+
+        Caller contract: ``set_cond(reference_latent)`` must have run first.
+        Changing ``multiplier``/``cond_scale`` after caching makes the cache
+        stale — call ``clear_cond_kv_cache`` and re-prime if you change them.
+        """
+        if not self._patched:
+            raise RuntimeError("precompute_cond_kv called before apply_to")
+        if self._cond_state is None:
+            raise RuntimeError(
+                "precompute_cond_kv called before set_cond — set_cond must "
+                "run first to populate cond_emb / cond_rope / block 0 cond_x"
+            )
+
+        from library.anima.models import apply_rotary_pos_emb_qk
+
+        cond_x = self._block_modules[0]._easycontrol_cond_x_in
+        if cond_x is None:
+            raise RuntimeError(
+                "block 0 has no _easycontrol_cond_x_in — set_cond did not run "
+                "or was followed by clear_cond"
+            )
+
+        cond_emb = self._cond_state["cond_emb"]
+        cond_adaln_lora = self._cond_state["cond_adaln_lora"]
+        cond_rope = self._cond_state["cond_rope"]
+        eff_scale = self.cond_scale * self.multiplier
+
+        cache: list[tuple[torch.Tensor, torch.Tensor]] = []
+        for idx, block in enumerate(self._block_modules):
+            attn = block.self_attn
+            cond_lora_qkv = self.cond_lora_qkv[idx]
+            cond_lora_o = self.cond_lora_o[idx]
+            cond_lora_ffn1 = (
+                self.cond_lora_ffn1[idx] if self.apply_ffn_lora else None
+            )
+            cond_lora_ffn2 = (
+                self.cond_lora_ffn2[idx] if self.apply_ffn_lora else None
+            )
+
+            # ---- AdaLN modulation (cond stream only) ----
+            if block.use_adaln_lora:
+                cond_fused_down = block.adaln_fused_down(cond_emb)
+                cond_down_self, _cd_cross, cond_down_mlp = cond_fused_down.chunk(
+                    3, dim=-1
+                )
+                cond_shift_self, cond_scale_self, cond_gate_self = (
+                    block.adaln_up_self_attn(cond_down_self) + cond_adaln_lora
+                ).chunk(3, dim=-1)
+                cond_shift_mlp, cond_scale_mlp, cond_gate_mlp = (
+                    block.adaln_up_mlp(cond_down_mlp) + cond_adaln_lora
+                ).chunk(3, dim=-1)
+            else:
+                cond_shift_self, cond_scale_self, cond_gate_self = (
+                    block.adaln_modulation_self_attn(cond_emb).chunk(3, dim=-1)
+                )
+                cond_shift_mlp, cond_scale_mlp, cond_gate_mlp = (
+                    block.adaln_modulation_mlp(cond_emb).chunk(3, dim=-1)
+                )
+
+            # ---- cond Q/K/V with LoRA + RoPE — this is what we cache ----
+            cond_normed = (
+                block.layer_norm_self_attn(cond_x) * (1 + cond_scale_self)
+                + cond_shift_self
+            )
+            cond_qkv = attn.qkv_proj(cond_normed) + eff_scale * cond_lora_qkv(
+                cond_normed
+            )
+            cond_q, cond_k, cond_v = cond_qkv.unflatten(
+                -1, (3, attn.n_heads, attn.head_dim)
+            ).unbind(dim=-3)
+            cond_q = attn.q_norm(cond_q)
+            cond_k = attn.k_norm(cond_k)
+            cond_v = attn.v_norm(cond_v)
+            if cond_rope is not None:
+                cond_q, cond_k = apply_rotary_pos_emb_qk(
+                    cond_q, cond_k, cond_rope, tensor_format=attn.qkv_format
+                )
+            cache.append((cond_k.detach(), cond_v.detach()))
+
+            # ---- evolve cond_x to feed the next block ----
+            B_c = cond_x.shape[0]
+            S_c = cond_x.shape[1]
+            cq = cond_q.transpose(1, 2)
+            ck = cond_k.transpose(1, 2)
+            cv = cond_v.transpose(1, 2)
+            cond_attn_out = F.scaled_dot_product_attention(cq, ck, cv)
+            cond_attn_out = cond_attn_out.transpose(1, 2).reshape(B_c, S_c, -1)
+            cond_attn_proj = attn.output_proj(
+                cond_attn_out
+            ) + eff_scale * cond_lora_o(cond_attn_out)
+            cond_attn_proj = attn.output_dropout(cond_attn_proj)
+            cond_x = cond_x + cond_gate_self * cond_attn_proj
+
+            cond_mlp_normed = (
+                block.layer_norm_mlp(cond_x) * (1 + cond_scale_mlp)
+                + cond_shift_mlp
+            )
+            cond_mlp_h = block.mlp.layer1(cond_mlp_normed)
+            if cond_lora_ffn1 is not None:
+                cond_mlp_h = cond_mlp_h + eff_scale * cond_lora_ffn1(cond_mlp_normed)
+            cond_mlp_h = block.mlp.activation(cond_mlp_h)
+            cond_mlp_out = block.mlp.layer2(cond_mlp_h)
+            if cond_lora_ffn2 is not None:
+                cond_mlp_out = cond_mlp_out + eff_scale * cond_lora_ffn2(cond_mlp_h)
+            cond_x = cond_x + cond_gate_mlp * cond_mlp_out
+
+        self._cond_kv_cache = cache
+        # Cache replaces the side-channel — drop slots so a stale write can't
+        # confuse the patched forward if the user toggles cache off later.
+        for block in self._block_modules:
+            block._easycontrol_cond_x_in = None
+
+        kv_bytes = sum(k.numel() + v.numel() for k, v in cache) * cache[0][0].element_size()
+        logger.info(
+            f"EasyControl: precomputed cond KV cache "
+            f"({len(cache)} blocks × 2 tensors, {kv_bytes / 1e6:.0f} MB)"
+        )
 
     def get_effective_scale(self) -> float:
         return self.cond_scale * self.multiplier
@@ -925,6 +1077,123 @@ def _extended_target_attention(
     return out.transpose(1, 2).reshape(B, S_t, -1)
 
 
+# ----------------------------------------------------------------- target-only path (cached cond KV)
+
+
+def _target_only_with_cached_cond_kv(
+    block: nn.Module,
+    x_B_T_H_W_D: torch.Tensor,
+    emb_B_T_D: torch.Tensor,
+    crossattn_emb: torch.Tensor,
+    attn_params,
+    rope_cos_sin,
+    adaln_lora_B_T_3D,
+    cond_k_cached: torch.Tensor,
+    cond_v_cached: torch.Tensor,
+    b_param: torch.Tensor,
+) -> torch.Tensor:
+    """Block.forward equivalent for inference when cond KV is cached.
+
+    Identical to baseline ``Block._forward`` except self-attention uses
+    ``_extended_target_attention`` over ``[K_t; cond_k_cached]`` /
+    ``[V_t; cond_v_cached]`` with the per-block ``b_cond`` logit bias. Cross-attn
+    and MLP run baseline. No cond stream — the cache is the cond stream's
+    cumulative effect on KV.
+    """
+    attn = block.self_attn
+    T_dim, H_dim, W_dim = x_B_T_H_W_D.shape[1:4]
+    scale_attn = attn_params.softmax_scale
+
+    if block.use_adaln_lora:
+        fused_down = block.adaln_fused_down(emb_B_T_D)
+        down_self, down_cross, down_mlp = fused_down.chunk(3, dim=-1)
+        shift_self_attn, scale_self_attn, gate_self_attn = (
+            block.adaln_up_self_attn(down_self) + adaln_lora_B_T_3D
+        ).chunk(3, dim=-1)
+        shift_cross_attn, scale_cross_attn, gate_cross_attn = (
+            block.adaln_up_cross_attn(down_cross) + adaln_lora_B_T_3D
+        ).chunk(3, dim=-1)
+        shift_mlp, scale_mlp, gate_mlp = (
+            block.adaln_up_mlp(down_mlp) + adaln_lora_B_T_3D
+        ).chunk(3, dim=-1)
+    else:
+        shift_self_attn, scale_self_attn, gate_self_attn = (
+            block.adaln_modulation_self_attn(emb_B_T_D).chunk(3, dim=-1)
+        )
+        shift_cross_attn, scale_cross_attn, gate_cross_attn = (
+            block.adaln_modulation_cross_attn(emb_B_T_D).chunk(3, dim=-1)
+        )
+        shift_mlp, scale_mlp, gate_mlp = block.adaln_modulation_mlp(
+            emb_B_T_D
+        ).chunk(3, dim=-1)
+
+    sh_self_5 = shift_self_attn[:, :, None, None, :]
+    sc_self_5 = scale_self_attn[:, :, None, None, :]
+    ga_self_5 = gate_self_attn[:, :, None, None, :]
+    sh_cross_5 = shift_cross_attn[:, :, None, None, :]
+    sc_cross_5 = scale_cross_attn[:, :, None, None, :]
+    ga_cross_5 = gate_cross_attn[:, :, None, None, :]
+    sh_mlp_5 = shift_mlp[:, :, None, None, :]
+    sc_mlp_5 = scale_mlp[:, :, None, None, :]
+    ga_mlp_5 = gate_mlp[:, :, None, None, :]
+
+    # ---- Self-attention (extended over [target; cached cond]) ----
+    target_normed = (
+        block.layer_norm_self_attn(x_B_T_H_W_D) * (1 + sc_self_5) + sh_self_5
+    )
+    target_flat = target_normed.flatten(1, 3)
+    target_q, target_k, target_v = attn.compute_qkv(
+        target_flat, target_flat, rope_cos_sin=rope_cos_sin
+    )
+    # If the cache was primed at B=1 and we're running at a larger batch
+    # (e.g. CFG-batched), broadcast K_c/V_c on the batch dim.
+    B_t = target_q.shape[0]
+    if cond_k_cached.shape[0] != B_t:
+        if cond_k_cached.shape[0] == 1:
+            cond_k_cached = cond_k_cached.expand(B_t, -1, -1, -1)
+            cond_v_cached = cond_v_cached.expand(B_t, -1, -1, -1)
+        else:
+            raise RuntimeError(
+                f"cond KV cache batch ({cond_k_cached.shape[0]}) "
+                f"does not match target batch ({B_t}) and is not 1 to broadcast"
+            )
+    target_attn_out = _extended_target_attention(
+        target_q,
+        target_k,
+        target_v,
+        cond_k_cached,
+        cond_v_cached,
+        b_param=b_param,
+        scale=scale_attn,
+        attn_params=attn_params,
+    )
+    target_attn_proj = attn.output_proj(target_attn_out)
+    target_attn_proj = attn.output_dropout(target_attn_proj)
+    target_attn_5d = target_attn_proj.unflatten(1, (T_dim, H_dim, W_dim))
+    x_B_T_H_W_D = x_B_T_H_W_D + ga_self_5 * target_attn_5d
+
+    # ---- Cross-attention (baseline) ----
+    target_cross_normed = (
+        block.layer_norm_cross_attn(x_B_T_H_W_D) * (1 + sc_cross_5) + sh_cross_5
+    )
+    target_cross_out = block.cross_attn(
+        target_cross_normed.flatten(1, 3),
+        attn_params,
+        crossattn_emb,
+        rope_cos_sin=rope_cos_sin,
+    ).unflatten(1, (T_dim, H_dim, W_dim))
+    x_B_T_H_W_D = x_B_T_H_W_D + ga_cross_5 * target_cross_out
+
+    # ---- MLP (baseline) ----
+    target_mlp_normed = (
+        block.layer_norm_mlp(x_B_T_H_W_D) * (1 + sc_mlp_5) + sh_mlp_5
+    )
+    target_mlp_out = block.mlp(target_mlp_normed)
+    x_B_T_H_W_D = x_B_T_H_W_D + ga_mlp_5 * target_mlp_out
+
+    return x_B_T_H_W_D
+
+
 # ----------------------------------------------------------------- patched Block.forward
 
 
@@ -1146,6 +1415,23 @@ def _make_patched_block_forward(
         rope_cos_sin=None,
         adaln_lora_B_T_3D=None,
     ):
+        # Inference fast path: cond KV cached → skip the cond stream entirely.
+        kv_cache = ec_net._cond_kv_cache
+        if kv_cache is not None:
+            cond_k_cached, cond_v_cached = kv_cache[block_idx]
+            return _target_only_with_cached_cond_kv(
+                block,
+                x_B_T_H_W_D,
+                emb_B_T_D,
+                crossattn_emb,
+                attn_params,
+                rope_cos_sin,
+                adaln_lora_B_T_3D,
+                cond_k_cached,
+                cond_v_cached,
+                b_param,
+            )
+
         cond_state = ec_net._cond_state
         if cond_state is None:
             # No cond — exact baseline DiT behavior.
