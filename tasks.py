@@ -108,10 +108,17 @@ def train(method: str, extra, preset: str | None = None, methods_subdir: str | N
     `methods_subdir` selects the folder under `configs/` that holds the method
     file (default ``"methods"``; pass ``"gui-methods"`` for the clean per-variant
     files used by the `lora-gui` path).
+
+    ARTIST env var trains an artist-only LoRA — equivalent to passing
+    `--artist_filter <name>` (filters dataset to `@<name>`-tagged captions and
+    redirects output to `output/ckpt-artist/`).
     """
     args = ["--method", method, "--preset", preset or _preset()]
     if methods_subdir:
         args += ["--methods_subdir", methods_subdir]
+    artist = os.environ.get("ARTIST")
+    if artist and not any(a == "--artist_filter" for a in extra):
+        args += ["--artist_filter", artist]
     accelerate_launch(*args, *extra)
 
 
@@ -164,6 +171,59 @@ def cmd_apex(extra):
 
 def cmd_postfix(extra):
     train("postfix", extra)
+
+
+def cmd_ip_adapter(extra):
+    train("ip_adapter", extra)
+
+
+def cmd_ip_adapter_cache(extra):
+    """Pre-cache PE-Core patch features for IP-Adapter training.
+
+    Writes ``{stem}_anima_pe.safetensors`` sidecars into ``post_image_dataset/``.
+    IP_ENCODER env var overrides the registry name (default ``pe``).
+    """
+    encoder = os.environ.get("IP_ENCODER", "pe")
+    run(
+        [
+            PY,
+            "preprocess/cache_pe_encoder.py",
+            "--dir",
+            "post_image_dataset",
+            "--encoder",
+            encoder,
+            *extra,
+        ]
+    )
+
+
+def cmd_test_ip(extra):
+    """Inference with latest IP-Adapter weight. First positional arg is the
+    reference image path; everything else is forwarded to inference.py and
+    overrides the defaults in INFERENCE_BASE (argparse takes the last value).
+
+    Examples:
+      python tasks.py test-ip ref.png --prompt "a girl in a coffee shop"
+      python tasks.py test-ip ref.png --prompt "..." --ip_scale 0.8 --seed 7
+    """
+    if not extra:
+        print(
+            "Usage: python tasks.py test-ip <ref_image> [extra inference args...]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    ref_image = extra[0]
+    rest = list(extra[1:])
+    run(
+        [
+            *INFERENCE_BASE,
+            "--ip_adapter_weight",
+            str(latest_output("anima_ip_adapter")),
+            "--ip_image",
+            ref_image,
+            *rest,
+        ]
+    )
 
 
 # ── img2emb ───────────────────────────────────────────────────────────
@@ -803,6 +863,13 @@ COMMANDS = {
     ),
     "apex": (cmd_apex, "APEX distillation (condition-shift self-adversarial)"),
     "postfix": (cmd_postfix, "Postfix/prefix tuning (mode selected in configs/methods/postfix.toml)"),
+    "ip-adapter": (cmd_ip_adapter, "IP-Adapter training (decoupled image cross-attention)"),
+    "ip-adapter-cache": (
+        cmd_ip_adapter_cache,
+        "Pre-cache PE-Core patch features for IP-Adapter (writes "
+        "post_image_dataset/{stem}_anima_pe.safetensors). IP_ENCODER=pe|pe-g.",
+    ),
+    "test-ip": (cmd_test_ip, "Inference with latest IP-Adapter weight. Usage: test-ip <ref_image> [--prompt ... --ip_scale ...]"),
     "test": (cmd_test, "Inference with latest LoRA"),
     "test-apex": (cmd_test_apex, "Inference with latest APEX LoRA"),
     "test-hydra": (cmd_test_hydra, "Inference with latest HydraLoRA moe (router-live)"),

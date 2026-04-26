@@ -34,6 +34,11 @@ from library.anima import (
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.models import sai_spec as sai_model_spec
 from library.runtime import noise as noise_utils
+from library.vision import (
+    VisionEncoderBundle,
+    encode_pe_from_imageminus1to1,
+    load_pe_encoder,
+)
 from library.config import loader as config_util
 from library.config.loader import (
     ConfigSanitizer,
@@ -51,6 +56,7 @@ from library.datasets import (
     debug_dataset,
     load_arbitrary_dataset,
 )
+from library.datasets import base as _datasets_base
 from library.runtime.accelerator import (
     patch_accelerator_for_fp16_training,
     prepare_accelerator,
@@ -146,6 +152,8 @@ class AnimaTrainer:
     def __init__(self):
         self.sample_prompts_te_outputs = None
         self._padding_mask_cache = {}
+        # IP-Adapter — set by _maybe_load_vision_encoder when use_ip_adapter is on.
+        self._vision_bundle: Optional[VisionEncoderBundle] = None
 
     # region logging helpers
 
@@ -387,6 +395,18 @@ class AnimaTrainer:
                     dataset.inversion_dir = inversion_dir
                     dataset.inversion_num_runs = num_runs
 
+        # Propagate IP-Adapter feature-cache flag so datasets load
+        # {stem}_anima_{encoder}.safetensors sidecars into batch["ip_features"].
+        if getattr(args, "ip_features_cache_to_disk", False):
+            ip_encoder = getattr(args, "ip_encoder", "pe")
+            for dataset in train_dataset_group.datasets:
+                dataset.ip_features_cache_to_disk = True
+                dataset.ip_features_encoder = ip_encoder
+            if val_dataset_group is not None:
+                for dataset in val_dataset_group.datasets:
+                    dataset.ip_features_cache_to_disk = True
+                    dataset.ip_features_encoder = ip_encoder
+
         train_dataset_group.verify_bucket_reso_steps(
             16
         )  # WanVAE spatial downscale = 8 and patch size = 2
@@ -577,6 +597,64 @@ class AnimaTrainer:
         # Latents already normalized by vae.encode with scale
         return latents
 
+    def _maybe_set_ip_tokens(
+        self,
+        args,
+        accelerator,
+        network,
+        batch,
+        weight_dtype,
+        is_train: bool,
+    ) -> None:
+        """Push per-block IP K/V onto the network for the upcoming DiT forward.
+
+        Two feature sources, in priority order:
+          1. ``batch["ip_features"]`` (pre-cached by ``preprocess/cache_pe_encoder.py``,
+             selected via ``--ip_features_cache_to_disk``). No live encoder needed.
+          2. Live PE encoding of ``batch["images"]`` via ``self._vision_bundle``.
+
+        Whole-batch CFG dropout zeros the conditioning with probability
+        ``args.ip_image_drop_p``. No-op when IP-Adapter is off.
+        """
+        if not getattr(args, "use_ip_adapter", False):
+            return
+        if not hasattr(network, "set_ip_tokens"):
+            return
+
+        # Whole-batch dropout for CFG. Independent of feature source.
+        drop_p = float(getattr(args, "ip_image_drop_p", 0.1) or 0.0)
+        if is_train and drop_p > 0.0 and random.random() < drop_p:
+            network.set_ip_tokens(None)
+            return
+
+        cached = batch.get("ip_features") if isinstance(batch, dict) else None
+        if cached is not None:
+            ip_features = cached.to(accelerator.device, dtype=weight_dtype)
+        else:
+            if self._vision_bundle is None:
+                raise RuntimeError(
+                    "IP-Adapter has no feature source: --ip_features_cache_to_disk "
+                    "is off and the live vision encoder isn't loaded."
+                )
+            images = batch.get("images") if isinstance(batch, dict) else None
+            if images is None:
+                raise RuntimeError(
+                    "IP-Adapter expected batch['images'] but got None — re-check "
+                    "cache_latents=false in the IP-Adapter config, or set "
+                    "ip_features_cache_to_disk=true with `make ip-adapter-cache`."
+                )
+            with torch.no_grad():
+                feats_list = encode_pe_from_imageminus1to1(
+                    self._vision_bundle,
+                    images.to(accelerator.device),
+                    same_bucket=True,  # dataloader bucketing guarantees per-batch shape
+                )
+                ip_features = torch.stack(feats_list, dim=0).to(weight_dtype)  # [B, T_pe, d_enc]
+        # Resampler runs in network-param dtype (bf16 typically); gradient
+        # flows from here.
+        ip_tokens = network.encode_ip_tokens(ip_features)
+        network.set_ip_tokens(ip_tokens)
+
     def get_noise_pred_and_target(
         self,
         ctx: "TrainCtx",
@@ -593,6 +671,13 @@ class AnimaTrainer:
         network = ctx.network
         weight_dtype = ctx.weight_dtype
         anima: anima_models.Anima = unet
+
+        # IP-Adapter: encode reference image and prime per-block K/V on the
+        # network BEFORE the DiT forward. The patched cross-attn closures
+        # consume the cached tensors during attention.
+        self._maybe_set_ip_tokens(
+            args, accelerator, network, batch, weight_dtype, is_train
+        )
 
         # Sample noise
         if latents.ndim == 5:  # Fallback for 5D latents (old cache)
@@ -1633,6 +1718,52 @@ class AnimaTrainer:
             accelerator.print(
                 f"load network weights from {args.network_weights}: {info}"
             )
+
+        # IP-Adapter: feature source is either (a) sibling .safetensors caches
+        # produced by `make ip-adapter-cache` (--ip_features_cache_to_disk), or
+        # (b) live vision encoder running on batch["images"]. Done after
+        # apply_to so we fail fast if the network module doesn't expose the IP
+        # runtime contract (set_ip_tokens / clear_ip_tokens).
+        if getattr(args, "use_ip_adapter", False):
+            if not (hasattr(network, "set_ip_tokens") and hasattr(network, "encode_ip_tokens")):
+                raise ValueError(
+                    "--use_ip_adapter requires a network module with set_ip_tokens / "
+                    "encode_ip_tokens (e.g. networks.ip_adapter_anima)."
+                )
+            cache_features = getattr(args, "ip_features_cache_to_disk", False)
+            if not cache_features and getattr(args, "cache_latents", False):
+                raise ValueError(
+                    "--use_ip_adapter without --ip_features_cache_to_disk requires "
+                    "--cache_latents=false so batch['images'] carries the raw reference "
+                    "image for live PE encoding. Either set ip_features_cache_to_disk=true "
+                    "(after `make ip-adapter-cache`) or cache_latents=false."
+                )
+            if cache_features:
+                accelerator.print(
+                    f"IP-Adapter: reading cached vision features "
+                    f"(encoder={getattr(args, 'ip_encoder', 'pe')}, "
+                    f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)}) — "
+                    "vision encoder NOT loaded."
+                )
+            else:
+                self._vision_bundle = load_pe_encoder(
+                    accelerator.device,
+                    name=getattr(args, "ip_encoder", "pe"),
+                    dtype=torch.bfloat16,
+                )
+                accelerator.print(
+                    f"IP-Adapter: loaded vision encoder {self._vision_bundle.name} "
+                    f"(d_enc={self._vision_bundle.d_enc}, "
+                    f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)})"
+                )
+            # Enable runtime diagnostics so we can read out
+            # ‖to_k_ip‖, ‖to_v_ip‖, and ‖scale·ip_out‖/‖text_result‖ per epoch.
+            if hasattr(network, "set_diagnostics_enabled"):
+                network.set_diagnostics_enabled(True, device=accelerator.device)
+                # Print init-time norms so the first epoch readout has a
+                # reference point.
+                if accelerator.is_main_process:
+                    network.diagnostic_summary(reset=True, log=True)
 
         # APEX Phase 0 Finding B safety rail (proposal §7.3): refuse to launch
         # without either a warmup schedule or a loaded LoRA checkpoint, since
@@ -2842,6 +2973,15 @@ class AnimaTrainer:
                 logs = {"loss/epoch_average": loss_recorder.moving_average}
                 self.epoch_logging(accelerator, logs, global_step, epoch + 1)
 
+            # IP-Adapter: dump per-block param norms + ‖ip_out‖/‖text_result‖
+            # ratio averaged over the just-finished epoch, then reset.
+            if (
+                getattr(args, "use_ip_adapter", False)
+                and is_main_process
+                and hasattr(accelerator.unwrap_model(network), "diagnostic_summary")
+            ):
+                accelerator.unwrap_model(network).diagnostic_summary(reset=True, log=True)
+
             accelerator.wait_for_everyone()
 
             # Save model at specified epochs
@@ -3137,6 +3277,17 @@ if __name__ == "__main__":
 
     if args.attn_mode == "sdpa":
         args.attn_mode = "torch"  # backward compatibility
+
+    artist = getattr(args, "artist_filter", None)
+    if artist:
+        _datasets_base.set_artist_filter(artist)
+        slug = artist.lstrip("@")
+        args.output_dir = "output/ckpt-artist"
+        args.output_name = f"{args.output_name}_{slug}"
+        logger.info(
+            f"artist_filter active: '{artist}' → output_dir={args.output_dir}, "
+            f"output_name={args.output_name}"
+        )
 
     trainer = AnimaTrainer()
     trainer.train(args)

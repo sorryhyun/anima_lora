@@ -30,7 +30,7 @@ def _absorb_channel_scale(
     Rationale: with SmoothQuant-style absorption, the gradient of the down
     projection's column ``c`` goes from being proportional to ``|x[c]|^2`` to
     proportional to ``|x[c] / s[c]|^2`` — uniform across channels when
-    ``s[c] ~ (mean|x[c]|)^alpha``. See ``bench/channel_dominance_analysis.md``.
+    ``s[c] ~ (mean|x[c]|)^alpha``. See ``bench/archive/channel_dominance_analysis.md``.
     """
     assert channel_scale.ndim == 1, (
         f"channel_scale must be 1D, got shape {tuple(channel_scale.shape)}"

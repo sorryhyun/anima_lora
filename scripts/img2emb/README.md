@@ -22,7 +22,7 @@ Three stages, run top-to-bottom. Each reads the previous stage's outputs.
 
 | Stage | Script | Role |
 |---|---|---|
-| 1. preprocess | `preprocess.py` | Cache TIPSv2 patch tokens + pooled features; build train/eval split; scan T5 active lengths. |
+| 1. preprocess | `preprocess.py` | Cache TIPSv2 patch tokens + pooled features; build train/eval split; scan T5 active lengths. (Also runs `align_variants.py` defensively as a no-op for caches written by the current TE encoder, which already aligns by construction — see "T5 variant alignment" below.) |
 | 2. pretrain | `pretrain.py` | Train `AnchoredResampler` on cached T5 `crossattn_emb` targets with CE/BCE classifier heads + prototype-anchor injection. |
 | 3. finetune | `finetune.py` | Warm-start from the pretrain ckpt; supervise via flow-matching MSE through the frozen DiT. |
 
@@ -164,13 +164,65 @@ buckets.py            # Per-encoder patch-grid bucket specs + aspect-pick helper
 encoders.py           # Vision-encoder registry (TIPSv2 + PE) — loaders, processors,
                       # model-id defaults, pooled/token dims.
 data.py               # Shared dataset helpers, cache loader, resampler regression loss.
-preprocess.py         # Stage 1: vision-encoder feature extraction + split + active-length scan.
+align_variants.py     # Hungarian-align T5 caption-shuffle variants in cached _anima_te.safetensors.
+                      #   Runs implicitly as the first step of preprocess.py; idempotent (marker key).
+preprocess.py         # Stage 1: variant alignment + vision-encoder feature extraction + split + active-length scan.
 pretrain.py           # Stage 2: pretrain against cached T5 crossattn targets.
 finetune.py           # Stage 3: flow-matching finetune through frozen DiT.
 train.py              # Top-level in-process 3-stage dispatcher.
 infer.py              # Reference-image → generated image inference.
 rebuild_anchor_artifacts.py  # Refresh phase1_positions.json + class prototypes.
 ```
+
+## T5 variant alignment
+
+The text-encoding pipeline produces V=4 caption *shuffles* per image (booru
+tag reordering) and caches each variant's T5 outputs under keys
+`crossattn_emb_v{0..3}` in `{stem}_anima_te.safetensors`. T5 is positional,
+so shuffling tags produces wildly different per-token outputs even though
+the underlying content (set of tokens) is identical:
+
+| Within-image inter-variant per-token cosine | |
+|---|---|
+| Raw, no alignment | ~0.33 |
+| Hungarian-aligned to v0 (max-pool also ~1.0 confirms same content) | ~0.97 |
+
+Without alignment, position-wise MSE / cosine against the variant_mean
+target is pathological — the variant_mean averages over RNG-randomized
+positions, smearing the positional structure to a noise centroid that no
+resampler can fit. Pretrain plateaus at moderate cos (~0.5/0.63 mid/tail)
+not because of architecture or encoder limits, but because it's chasing
+malformed targets.
+
+**Where alignment happens.** As of the current TE encoder
+(`library/anima/strategy.py::AnimaTextEncoderOutputsCachingStrategy._align_crossattn_to_v0`),
+alignment is folded into the cache writer itself: every newly produced
+`{stem}_anima_te.safetensors` is written with v1..v{N-1}'s
+`crossattn_emb_v*` already Hungarian-aligned to v0, and an
+`aligned_to_v0` marker tensor set. The standalone `align_variants.py`
+script (and `make img2emb-align`) exists to upgrade *legacy* caches
+written before this change — idempotent via the same marker. After a
+fresh re-encode, both are no-ops.
+
+**What gets permuted.** *Only* `crossattn_emb_v*`. The cache also holds
+`prompt_embeds_v*` (pre-adapter Qwen3 hidden states), `t5_input_ids_v*`,
+and per-variant attention masks. These feed the LLM adapter at training
+time when `cache_llm_adapter_outputs=false`, and the adapter's internal
+cross-attn DOES apply K-side RoPE, so permuting them would change adapter
+outputs and silently corrupt LoRA training in that path. We deliberately
+leave them in their original (per-shuffle) order; the cache is internally
+inconsistent (`prompt_embeds_v1` no longer round-trips through the adapter
+to `crossattn_emb_v1`), but no code path reads both at once.
+
+**Why it's a no-op for LoRA training.** DiT cross-attention has no K-side
+RoPE (see `library/anima/models.py::compute_qkv` — RoPE is gated on
+`is_selfattn`). The cross-attn output `Σⱼ softmax(QK)ⱼ Vⱼ` is invariant to
+permutation of `(K, V)` rows. So row-permuting `crossattn_emb_v*` doesn't
+change what the LoRA sees — only the supervision target seen by img2emb
+pretrain (which uses positional MSE) actually benefits.
+
+**Standalone re-run.** `make img2emb-align` re-aligns all TE files
+(no-op for already-aligned ones).
 
 ## Conventions + notes
 
@@ -193,7 +245,7 @@ rebuild_anchor_artifacts.py  # Refresh phase1_positions.json + class prototypes.
   shrinks norms and sits off the T5 manifold — so pretrain / finetune sample
   one variant per step via `_ResamplerTrainDataset`. Diagnostics that still
   need the mean call `data.load_targets_mean` directly.
-- See `bench/img2emb/proposal.md` and `bench/img2emb/phase2_proposal.md` for
+- See `bench/active/img2emb/proposal.md` and `bench/active/img2emb/phase2_proposal.md` for
   design history and ablation notes.
 - **K-slot cap.** Pretrain / finetune / `infer` default `--n_slots 256`.
   The resampler predicts K=256 content slots — covers ~95% of active T5

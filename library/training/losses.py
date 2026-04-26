@@ -298,7 +298,7 @@ def _postfix_contrastive_loss(ctx: LossContext) -> torch.Tensor:
     """Inter-caption contrastive on PostfixNetwork cond_mlp outputs. Pushes
     cond_mlp toward caption-varying outputs against a MoCo-style memory queue
     — addresses the empirical collapse to a single caption-agnostic direction
-    (see `bench/postfix/initial_postfix_problems.md`)."""
+    (see `bench/archive/postfix/initial_postfix_problems.md`)."""
     weight = float(getattr(ctx.network, "contrastive_weight", 0.0) or 0.0)
     if weight <= 0.0 or not hasattr(ctx.network, "get_contrastive_loss"):
         return ctx.model_pred.new_zeros(())

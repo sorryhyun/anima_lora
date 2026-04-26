@@ -6,6 +6,7 @@ from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from safetensors import safe_open as _safe_open
 from safetensors.torch import (
     load_file as _load_safetensors,
@@ -349,6 +350,66 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             variants.append(", ".join(shuffled))
         return variants
 
+    @staticmethod
+    def _align_crossattn_to_v0(
+        save_dict: dict, num_variants: int
+    ) -> None:
+        """In-place: Hungarian-align ``crossattn_emb_v1..v{N-1}`` to v0 by
+        per-token cosine, so all V variants share v0's positional convention.
+
+        Caption-shuffle variants share content (same tag set) but T5's
+        positional encoding scrambles per-token outputs across shuffles.
+        Without this step, downstream consumers that use positional MSE /
+        cosine against ``variant_mean`` (img2emb pretrain) train against a
+        permutation-randomized noise centroid — pathological. After
+        alignment, ``variant_mean`` is meaningful and positional losses
+        become well-formed objectives.
+
+        DiT cross-attention has no K-side RoPE (see ``models.py::compute_qkv``,
+        gated on ``is_selfattn``), so row-permuting ``crossattn_emb`` is a
+        mathematical no-op for any LoRA / inference path that consumes it
+        directly. We deliberately do *not* permute ``prompt_embeds_v*`` /
+        ``t5_input_ids_v*`` / ``*_attn_mask_v*``: those feed the LLM
+        adapter at training time when ``cache_llm_adapter_outputs=False``,
+        and the adapter's internal cross-attn DOES apply K-side RoPE —
+        permuting them would silently corrupt that path.
+
+        Marker tensor ``aligned_to_v0`` is set unconditionally so legacy
+        readers can detect alignment.
+        """
+        if "crossattn_emb_v0" not in save_dict:
+            # Path-B-only cache (no adapter outputs). Nothing to align;
+            # marker omitted so a future re-run with adapter caching enabled
+            # can apply alignment without skipping.
+            return
+        from scipy.optimize import linear_sum_assignment  # local import: scipy
+        # is heavy and only needed here.
+
+        mask_v0 = save_dict.get("attn_mask_v0")
+        if mask_v0 is None:
+            L = save_dict["crossattn_emb_v0"].shape[0]
+        else:
+            L = int(mask_v0.sum().item())
+        save_dict["aligned_to_v0"] = torch.tensor([1], dtype=torch.uint8)
+        if L == 0:
+            return
+
+        ref = save_dict["crossattn_emb_v0"].float()[:L]
+        ref_n = F.normalize(ref, dim=-1, eps=1e-8)
+
+        for v in range(1, num_variants):
+            key = f"crossattn_emb_v{v}"
+            if key not in save_dict:
+                continue
+            e = save_dict[key].float()[:L]
+            e_n = F.normalize(e, dim=-1, eps=1e-8)
+            sim = (ref_n @ e_n.T).cpu().numpy()
+            _, col = linear_sum_assignment(-sim)
+            col_t = torch.as_tensor(col, dtype=torch.long)
+            permuted = save_dict[key].clone()
+            permuted[:L] = save_dict[key][:L][col_t]
+            save_dict[key] = permuted
+
     def _encode_to_tensors(
         self,
         tokenize_strategy: TokenizeStrategy,
@@ -546,6 +607,10 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                 save_dict[f"t5_attn_mask_v{vi}"] = t5m_i
                 if ce_i is not None:
                     save_dict[f"crossattn_emb_v{vi}"] = ce_i
+
+            # Align variants v1..v{N-1}'s crossattn_emb to v0's positional
+            # convention before save. No-op when adapter outputs aren't cached.
+            self._align_crossattn_to_v0(save_dict, N)
 
             if self.cache_to_disk:
                 _save_safetensors(save_dict, info.text_encoder_outputs_npz)

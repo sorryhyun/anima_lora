@@ -8,10 +8,11 @@ LATEST_POSTFIX = $(shell python -c "import glob,os; files=[f for f in glob.glob(
 LATEST_POSTFIX_EXP = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_postfix_exp*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_POSTFIX_FUNC = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_postfix_func*.safetensors'); print(max(files,key=os.path.getmtime))")
 LATEST_MOD = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/pooled_text_proj*.safetensors'); print(max(files,key=os.path.getmtime))")
+LATEST_IP = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anima_ip_adapter*.safetensors'); print(max(files,key=os.path.getmtime) if files else '')")
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 download-pe download-pe-g gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix ip-adapter ip-adapter-cache step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-ip test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-align img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 download-pe download-pe-g gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -35,17 +36,23 @@ gui:
 TRAIN = $(ACCELERATE) launch --num_cpu_threads_per_process 3 --mixed_precision bf16 train.py --method
 PRESET ?= default
 
+# ARTIST=<name> trains an artist-only LoRA: filters the dataset to images whose
+# caption contains the `@<name>` tag and saves to output/ckpt-artist/<output_name>_<name>.safetensors.
+# Pass with or without leading `@`. Example: `make lora ARTIST=sincos`.
+ARTIST ?=
+ARTIST_ARG := $(if $(ARTIST),--artist_filter $(ARTIST),)
+
 lora:
-	$(TRAIN) lora --preset $(PRESET)
+	$(TRAIN) lora --preset $(PRESET) $(ARTIST_ARG)
 
 lora-half:
-	$(TRAIN) lora --preset half
+	$(TRAIN) lora --preset half $(ARTIST_ARG)
 
 lora-fast:
-	$(TRAIN) lora --preset fast_16gb
+	$(TRAIN) lora --preset fast_16gb $(ARTIST_ARG)
 
 lora-low-vram:
-	$(TRAIN) lora --preset low_vram
+	$(TRAIN) lora --preset low_vram $(ARTIST_ARG)
 
 # Clean per-variant path for basic users: picks the chosen variant directly
 # out of configs/gui-methods/<variant>.toml (no toggle-block hand-editing).
@@ -61,6 +68,22 @@ apex:
 
 postfix:
 	$(TRAIN) postfix --preset $(PRESET)
+
+# IP-Adapter — decoupled image cross-attention. Adapter-only (DiT frozen).
+# Reference image and target both come from post_image_dataset/. PE-Core is
+# loaded live during training (cache_latents method-forced false).
+ip-adapter:
+	$(TRAIN) ip_adapter --preset $(PRESET)
+
+# Pre-cache PE-Core patch features for every image in post_image_dataset/.
+# Writes {stem}_anima_pe.safetensors sidecars (bf16, [T_pe, d_enc]). Idempotent.
+# IP_ENCODER overrides the registry name (default: pe). Useful when iterating
+# IP-Adapter training: avoids re-running the vision encoder every step.
+IP_ENCODER ?= pe
+ip-adapter-cache:
+	python preprocess/cache_pe_encoder.py \
+		--dir post_image_dataset \
+		--encoder $(IP_ENCODER)
 
 distill-mod:
 	python scripts/distill_modulation.py \
@@ -104,6 +127,12 @@ img2emb-preprocess:
 
 img2emb-anchors:
 	python scripts/img2emb/rebuild_anchor_artifacts.py $(ARGS)
+
+# One-shot Hungarian alignment of T5 variants v1..vN to v0 in
+# post_image_dataset/*_anima_te.safetensors. Runs implicitly inside
+# img2emb-preprocess; this target is for re-running standalone (idempotent).
+img2emb-align:
+	python scripts/img2emb/align_variants.py $(ARGS)
 
 img2emb-pretrain:
 	python scripts/img2emb/pretrain.py $(ENCODER_FLAG) $(ARGS)
@@ -159,6 +188,35 @@ test-postfix-exp:
 test-postfix-func:
 	$(TEST_COMMON) \
 		--postfix_weight $(LATEST_POSTFIX_FUNC)
+
+# IP-Adapter inference. REF_IMAGE is the reference image (style/identity);
+# PROMPT describes the scene to render with that style. IP_SCALE overrides the
+# saved adapter strength (default: use ss_ip_scale from the checkpoint).
+# Examples:
+#   make test-ip REF_IMAGE=post_image_dataset/foo.png \
+#                PROMPT="a girl drinking coffee at a cafe"
+#   make test-ip REF_IMAGE=foo.png PROMPT="..." NEG="bad anatomy" IP_SCALE=0.8
+IP_SCALE ?=
+IP_SCALE_ARG := $(if $(IP_SCALE),--ip_scale $(IP_SCALE),)
+# Short default — IP-Adapter is meant to carry style/identity from REF_IMAGE,
+# so the prompt is intentionally minimal. Override with PROMPT="..." for content.
+PROMPT ?= double peace, v v,
+PROMPT_ARG := --prompt "$(PROMPT)"
+NEG ?=
+NEG_ARG := $(if $(NEG),--negative_prompt "$(NEG)",)
+test-ip:
+	@if [ -z "$(REF_IMAGE)" ]; then echo "Set REF_IMAGE=path/to/ref.png"; exit 1; fi
+	@mkdir -p output/tests/ip
+	$(TEST_COMMON) \
+		--save_path output/tests/ip \
+		--ip_adapter_weight $(LATEST_IP) \
+		--ip_image $(REF_IMAGE) \
+		--ip_image_match_size \
+		$(IP_SCALE_ARG) \
+		$(PROMPT_ARG) \
+		$(NEG_ARG)
+	@gen=$$(ls -1t output/tests/ip/*.png 2>/dev/null | grep -v '_ref\.png$$' | head -1); \
+	 if [ -n "$$gen" ]; then ref_dst="$${gen%.png}_ref.png"; cp "$(REF_IMAGE)" "$$ref_dst"; echo "Ref pasted: $$ref_dst"; fi
 
 # Inference with latest reference-inversion prefix (anima_ref_*.safetensors,
 # produced by `make invert-ref`). Uses the existing prefix loader today, which

@@ -121,6 +121,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Skip artifacts that already exist (resume / incremental).",
     )
+    p.add_argument(
+        "--no_align_variants",
+        action="store_true",
+        help="Skip the per-image T5 variant alignment pass. Default is to "
+             "Hungarian-align variants 1..V-1 to v0 in each cached "
+             "_anima_te.safetensors so positional MSE / cosine against "
+             "variant_mean is well-formed (the variants are caption shuffles, "
+             "so without alignment the per-token target is averaging RNG-"
+             "permuted positions — pathological). Idempotent via marker, so "
+             "the cost is paid once.",
+    )
     return p.parse_args(argv)
 
 
@@ -394,6 +405,46 @@ def preprocess(args: argparse.Namespace) -> None:
 
     with open(out_dir / "stems.json", "w") as f:
         json.dump(stems, f, indent=2)
+
+    # --- T5 variant alignment (encoder-agnostic; one-time, idempotent).
+    # Runs before scan_active_lengths so target_pooled and active_lengths are
+    # computed on aligned variants. Pooled values themselves are
+    # permutation-invariant (max-pool), but downstream code stays cleaner
+    # when the cache is internally consistent.
+    if not args.no_align_variants:
+        from scripts.img2emb.align_variants import align_te_dir
+        image_dir_path = Path(args.image_dir)
+        if not image_dir_path.is_absolute():
+            image_dir_path = REPO_ROOT / image_dir_path
+        # V is derived from the cache itself; if any TE file has fewer
+        # variants the per-file logic handles it gracefully. Default to 4
+        # which matches the current shuffler.
+        V_for_align = 4
+        # Header-peek scan first; only legacy caches missing the
+        # `aligned_to_v0` marker incur real alignment work. TE caches
+        # written by the current encoder are aligned-on-write.
+        logger.info("Scanning TE caches for alignment marker...")
+        summary = align_te_dir(
+            image_dir_path,
+            stems,
+            num_variants=V_for_align,
+            num_workers=max(1, args.num_workers),
+        )
+        if summary["n_modified"] > 0:
+            logger.info(
+                f"  aligned {summary['n_modified']} legacy file(s); "
+                f"{summary['n_already_aligned']} already aligned, "
+                f"{summary['n_missing']} missing"
+            )
+            logger.info(
+                f"  per-token cos before={summary['cos_before_mean']:.4f} "
+                f"after={summary['cos_after_mean']:.4f}"
+            )
+        else:
+            logger.info(
+                f"  all {summary['n_already_aligned']} caches already aligned "
+                f"on write ({summary['n_missing']} missing)"
+            )
 
     # --- active-length scan + per-variant pooled targets (encoder-agnostic;
     # depends only on the cached T5 files, not on the chosen vision encoder).

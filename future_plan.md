@@ -152,7 +152,7 @@ be re-derived for the 3-forward case.
   the fake branch is a target, not the "main" model — but this needs a
   paragraph of thought and a short toy experiment.
 - Phase 0-style 2D bench for both variants before touching the Anima
-  training loop. `bench/apex_phase0.py` is the template.
+  training loop. `bench/archive/apex_phase0.py` is the template.
 
 ## Phase 5 — ComfyUI loader (2 days)
 

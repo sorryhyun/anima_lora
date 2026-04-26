@@ -444,7 +444,7 @@ class LoRANetwork(torch.nn.Module):
                     f"per_channel_scaling: {len(self._channel_scale_misses)} DiT modules "
                     f"have no calibration stats (first: {self._channel_scale_misses[:3]}). "
                     f"These will train without input rebalancing — regenerate the stats "
-                    f"file with `python bench/analyze_lora_input_channels.py "
+                    f"file with `python bench/archive/analyze_lora_input_channels.py "
                     f"--dump_channel_stats <path>` if this is unexpected."
                 )
 

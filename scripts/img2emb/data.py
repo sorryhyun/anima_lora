@@ -2,9 +2,9 @@
 
 Every function/class here is consumed by production training stages
 (``phase1_5_anchored`` for pretrain, ``phase2_flow`` for finetune) and/or the
-phase-0/phase-1 bench trainers under ``bench/img2emb/``. The analysis that used
-to share the same file lives back at ``bench/img2emb/phase0_probes.py`` and
-imports from here.
+phase-0/phase-1 bench trainers under ``bench/active/img2emb/``. The analysis
+that used to share the same file lives back at
+``bench/active/img2emb/phase0_probes.py`` and imports from here.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ class _VariantMeanDataset(Dataset):
     """Load one TE file, zero-clamp the padded tail across every variant,
     return the variant-mean ``(S, D)`` slice. Parallelizable via DataLoader.
 
-    Only used by the phase-0 diagnostic probes (``bench/img2emb/phase0_probes``)
+    Only used by the phase-0 diagnostic probes (``bench/active/img2emb/phase0_probes``)
     where the analytic OLS solution requires the per-image mean. All production
     training stages (phase 1 / 1.5 / 2) sample one variant per step via
     ``_ResamplerTrainDataset`` and never touch this class.
@@ -190,6 +190,51 @@ def load_cache(cache_dir: Path, image_dir: str, encoder: str, num_workers: int =
         "pooled": pooled,               # (N, D_enc) fp32
         "tokens": tokens,               # (N, T, D_enc) bf16
         "target_pooled": target_pooled, # (N, V, D_y) fp32 or None
+    }
+
+
+@torch.no_grad()
+def match_target_to_pred(
+    pred: torch.Tensor,         # (B, K, D)
+    target: torch.Tensor,       # (B, K, D)
+    mask_active: torch.Tensor,  # (B, K) bool
+    anchor_mask: torch.Tensor,  # (B, K) bool
+) -> tuple[torch.Tensor, dict[str, float]]:
+    """Hungarian-permute the *content* rows of ``target`` (active & non-anchor)
+    to minimize cosine distance against ``pred``; leave anchor + inactive rows
+    in place. Returns ``(tgt_perm, diag)``.
+
+    Why: DiT cross-attention has no K-side RoPE, so Σⱼ softmax(QK)ⱼ Vⱼ is
+    permutation-invariant over K. The pretrain MSE/cos is the only stage that
+    couples to slot order. Permuting the target to the prediction's order
+    before MSE removes a supervision artifact without changing what the
+    downstream consumer sees. Anchor slots stay positional because their
+    identity is sample-specific and used by post-injection.
+    """
+    from scipy.optimize import linear_sum_assignment
+
+    B, K, _ = pred.shape
+    pred_n = F.normalize(pred.detach().float(), dim=-1, eps=1e-8)
+    tgt_n = F.normalize(target.float(), dim=-1, eps=1e-8)
+    tgt_perm = target.clone()
+    rows_total = 0
+    rows_moved = 0
+    for b in range(B):
+        content = mask_active[b] & ~anchor_mask[b]
+        idx = content.nonzero(as_tuple=True)[0]
+        M = int(idx.numel())
+        if M < 2:
+            continue
+        cost = (1.0 - pred_n[b, idx] @ tgt_n[b, idx].T).cpu().numpy()
+        row, col = linear_sum_assignment(cost)
+        col_t = torch.as_tensor(col, device=target.device, dtype=torch.long)
+        tgt_perm[b, idx] = target[b, idx[col_t]]
+        rows_total += M
+        rows_moved += int((col != row).sum())
+    return tgt_perm, {
+        "match_rows_total": float(rows_total),
+        "match_rows_moved": float(rows_moved),
+        "match_move_frac": float(rows_moved) / max(1.0, float(rows_total)),
     }
 
 

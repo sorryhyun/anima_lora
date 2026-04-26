@@ -13,11 +13,11 @@
 # defaults — tune freely.
 
 
-network_alpha = 16
-network_dim = 16
+network_alpha = 32
+network_dim = 32
 
-learning_rate = 1e-4
-max_train_epochs = 12
+learning_rate = 5e-5
+max_train_epochs = 6
 save_every_n_epochs = 6
 checkpointing_epochs = 6
 
@@ -31,8 +31,8 @@ caption_dropout_rate = 0.1
 #   - reg/balance, reg/balance_weighted   (Hydra load-balance)
 #   - reg/ortho, reg/ortho_weighted       (OrthoLoRA / ReFT regularizer)
 #   - hydra/router_entropy                (Hydra gate entropy; 1=uniform, 0=one-hot)
-logging_dir = "output/logs"
-log_with = "tensorboard"
+# logging_dir = "output/logs"
+# log_with = "tensorboard"
 
 # Ortho-lora
 
@@ -48,10 +48,10 @@ alpha_rank_scale = 1.0
 
 # hydralora
 
-output_name = "anima_hydra"
-use_hydra = true
-num_experts = 12
-balance_loss_weight = 1e-6 # seems lr * 1/10 is proper
+# output_name = "anima_hydra"
+# use_hydra = true
+# num_experts = 12
+# balance_loss_weight = 1e-6 # seems lr * 1/10 is proper
 
 # Hold the load-balance penalty at 0 during the first
 # `balance_loss_warmup_ratio` of training so the router can specialize first,
@@ -60,98 +60,35 @@ balance_loss_weight = 1e-6 # seems lr * 1/10 is proper
 # 0.0 = no warmup (legacy behavior).
 
 balance_loss_warmup_ratio = 0.4
-expert_warmup_ratio = 0.1
-# Number of experts kept "live" each warmup step. k=1 (default) is the sharp
-# symmetry-break — only one randomly-chosen expert receives gradient per step.
-# k>1 trades some symmetry-breaking strength for faster gradient throughput.
-expert_warmup_k = 4
-# Experimental greedy variant: during the first `expert_best_warmup_ratio` of
-# training, leave the forward mask all-ones (full MoE) and instead zero
-# per-expert grads for the bottom (E - expert_warmup_k) experts ranked by
-# `‖∂L/∂P_e‖_F` post-backward. Mutually exclusive with expert_warmup_ratio.
-# 0.0 disables.
-# expert_best_warmup_ratio = 0.1
-
-# Router LR multiplier on top of unet_lr. Covers .router.* and .sigma_mlp.*.
-# Router init is small (std=0.01) and lives in a softmax-uniform fixed point;
-# 5–10× accelerates breaking symmetry. 1.0 = no override (legacy).
-
+# expert_warmup_ratio = 0.1
+# expert_warmup_k = 4
 network_router_lr_scale = 10
 hydra_router_layers = ".*(mlp\\.layer[12])$" # ".*(cross_attn\\.kv_proj)$"
 
+# use_sigma_router = true
+# sigma_feature_dim = 16
+# sigma_hidden_dim = 16   # unused; retained for API compat
+# sigma_router_layers = ".*(mlp\\.layer[12])$"
+# per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
+# num_sigma_buckets = 4
 
-# timestep conditional hydralora
-#
-# σ is sinusoidal-encoded and **concatenated** to the router input, widening
-# it from Linear(r, E) to Linear(r + sigma_feature_dim, E). sigma_feature_dim
-# controls both the sinusoidal basis size and the router width; for scalar σ
-# on [0, 1], 16–32 is plenty (half-dim frequency pairs span ~4 orders of
-# magnitude). Must be even. sigma_hidden_dim is unused (the old sigma_mlp
-# hidden layer is gone) and kept only for API back-compat.
-
-use_sigma_router = true
-sigma_feature_dim = 16
-sigma_hidden_dim = 16   # unused; retained for API compat
-sigma_router_layers = ".*(mlp\\.layer[12])$"
-per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
-num_sigma_buckets = 4
-
-# reft — residual-stream intervention on DiT block outputs (Wu et al. 2024).
-# One ReFTModule per selected block (NOT per internal Linear), matching the
-# paper's parameter budget.
-#   reft_layers = "all"       -> every block
-#               = "last_8"    -> last 8 blocks (task-signal heavy)
-#               = "first_4"   -> first 4 blocks
-#               = "stride_2"  -> every 2nd block
-#               = "3,7,11,15" -> explicit indices
-
-# add_reft = true
-# reft_dim = 48
-# reft_alpha = 48
-# reft_layers = "last_8"
+add_reft = true
+reft_dim = 48
+reft_alpha = 48
+reft_layers = "last_8"
 
 compile_mode = "full"
 # compile_inductor_mode = "reduce-overhead"
 
-# ── HydraLoRA (OrthoHydraLoRA) ──────────────────────────────────────────
-# MoE multi-head routing: shared lora_down + per-expert lora_up_i, with
-# per-module layer-local routing. Composed with OrthoLoRAExp + timestep
-# masking. Produces a *_moe.safetensors sibling file consumed by
-# `make test-hydra`. Multi-expert ups are VRAM-heavy — method-forced swap.
-#
-# use_hydra = true
-# num_experts = 4
-# balance_loss_weight = 0.001
-# balance_loss_warmup_ratio = 0.4   # hold penalty at 0 for the first 40% of steps so the router can specialize before load-balancing activates
-# expert_warmup_ratio = 0.1    # fraction of steps with random expert-gradient masking; 0 disables
-# expert_warmup_k = 1          # how many experts get gradient each warmup step (random pick)
-# expert_best_warmup_ratio = 0 # alt: greedy top-k by per-expert grad norm (post-backward); mutually exclusive with the random ratio
-
-
-
-# ── σ-conditional HydraLoRA router (Track B) ───────────────────────────
-# Concatenates sinusoidal(σ) to each selected HydraLoRAModule's router input
-# (widens the router from Linear(r, E) to Linear(r + sigma_feature_dim, E)).
-# σ-feature columns are zero-init → step-0 identical to base HydraLoRA;
-# σ-dependence only emerges once those columns accumulate gradient.
-# sigma_router_layers restricts σ to the layer types the B0 pre-analysis
-# showed carry σ-correlation signal. Full doc: `timestep-hydra.md`.
-#
-# use_sigma_router = true
-# sigma_feature_dim = 16   # even; 16 = 8 cos/sin pairs, over-resolves σ∈[0,1]
-# sigma_hidden_dim = 16    # unused; retained for API compat
-# sigma_router_layers = ".*(cross_attn\\.q_proj|self_attn\\.qkv_proj)$"
-# per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
-# num_sigma_buckets = 3
 
 # ── Per-channel input pre-scaling (SmoothQuant-style, optional) ─────────
 # Balances ∂L/∂lora_down column gradients when activations have DC-bias
-# outlier channels (see bench/channel_dominance_analysis.md). Calibration-
+# outlier channels (see bench/archive/channel_dominance_analysis.md). Calibration-
 # only — no runtime overhead. Generate the stats file once:
-#   python bench/analyze_lora_input_channels.py \
-#       --dump_channel_stats bench/results/channel_stats.safetensors
+#   python bench/archive/analyze_lora_input_channels.py \
+#       --dump_channel_stats bench/archive/results/channel_stats.safetensors
 # Then flip `per_channel_scaling` on. α=0.5 = SmoothQuant default (sqrt
 # balance); α=1.0 fully flattens per-channel scale; α=0 disables.
 # per_channel_scaling = true
-# channel_stats_path = "bench/results/channel_stats.safetensors"
+# channel_stats_path = "bench/archive/results/channel_stats.safetensors"
 # channel_scaling_alpha = 0.5

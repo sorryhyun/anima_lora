@@ -45,6 +45,28 @@ logger = logging.getLogger(__name__)
 
 HIGH_VRAM = False
 
+# Module-level artist filter — set from train.py (`--artist_filter`). When non-empty,
+# `load_dreambooth_dir` keeps only images whose caption contains the `@<artist>` tag.
+_ARTIST_FILTER: Optional[str] = None
+
+
+def set_artist_filter(artist: Optional[str]) -> None:
+    global _ARTIST_FILTER
+    if artist is None or artist == "":
+        _ARTIST_FILTER = None
+        return
+    _ARTIST_FILTER = artist if artist.startswith("@") else f"@{artist}"
+
+
+def _caption_has_artist(caption: Optional[str], needle: str) -> bool:
+    if not caption:
+        return False
+    needle_lc = needle.lower()
+    for tag in caption.split(","):
+        if tag.strip().lower() == needle_lc:
+            return True
+    return False
+
 
 def enable_high_vram():
     global HIGH_VRAM
@@ -111,6 +133,15 @@ class BaseDataset(torch.utils.data.Dataset):
         # Set via `dataset.inversion_dir = ...` after construction; None disables.
         self.inversion_dir: Optional[str] = None
         self.inversion_num_runs: int = 3
+
+        # IP-Adapter cached PE/vision features (sibling sidecars). Set via
+        # `dataset.ip_features_cache_to_disk = True; dataset.ip_features_encoder = "pe"`
+        # after construction. When enabled, __getitem__ loads
+        # ``{stem}_anima_{encoder}.safetensors`` for every image and exposes
+        # the stacked features as ``example["ip_features"]`` so train.py can
+        # skip live PE encoding (and the dataset can keep cache_latents=true).
+        self.ip_features_cache_to_disk: bool = False
+        self.ip_features_encoder: str = "pe"
 
         # caching
         self.caching_mode = None  # None, 'latents', 'text'
@@ -1040,6 +1071,39 @@ class BaseDataset(torch.utils.data.Dataset):
     def __len__(self):
         return self._length
 
+    def _try_load_ip_features(self, image_abs_path: str) -> Optional[torch.Tensor]:
+        """Load ``{stem}_anima_{encoder}.safetensors`` sidecar produced by
+        ``preprocess/cache_pe_encoder.py``.
+
+        Returns a ``[T_pe, d_enc]`` float tensor, or ``None`` if disabled. When
+        the flag is on but the file is missing, raises so the user gets a clear
+        pointer to re-run ``make ip-adapter-cache`` instead of silently training
+        with a partially-cached dataset.
+        """
+        if not self.ip_features_cache_to_disk:
+            return None
+        from safetensors.torch import load_file
+
+        stem = os.path.splitext(os.path.basename(image_abs_path))[0]
+        cache_path = os.path.join(
+            os.path.dirname(image_abs_path),
+            f"{stem}_anima_{self.ip_features_encoder}.safetensors",
+        )
+        if not os.path.exists(cache_path):
+            raise FileNotFoundError(
+                f"IP-Adapter feature cache missing: {cache_path}. "
+                f"Run `make ip-adapter-cache` (or set ip_features_cache_to_disk=false "
+                f"to fall back to live PE encoding)."
+            )
+        sd = load_file(cache_path)
+        feats = sd.get("image_features")
+        if feats is None:
+            raise KeyError(
+                f"Cache {cache_path} has no 'image_features' key; "
+                f"keys={list(sd.keys())}. Re-run `make ip-adapter-cache`."
+            )
+        return feats.float()
+
     def _try_load_inversion_runs(self, image_abs_path: str) -> Optional[torch.Tensor]:
         """Load <stem>_inverted_run{0..N-1}.safetensors from self.inversion_dir.
 
@@ -1086,6 +1150,7 @@ class BaseDataset(torch.utils.data.Dataset):
         text_encoder_outputs_list = []
         custom_attributes = []
         inversion_runs_list: List[Optional[torch.Tensor]] = []
+        ip_features_list: List[Optional[torch.Tensor]] = []
 
         for image_key in bucket[image_index : image_index + bucket_batch_size]:
             image_info = self.image_data[image_key]
@@ -1263,6 +1328,10 @@ class BaseDataset(torch.utils.data.Dataset):
             else:
                 inversion_runs_list.append(None)
 
+            ip_features_list.append(
+                self._try_load_ip_features(image_info.absolute_path)
+            )
+
         def none_or_stack_elements(tensors_list, converter):
             if (
                 len(tensors_list) == 0
@@ -1401,6 +1470,14 @@ class BaseDataset(torch.utils.data.Dataset):
         else:
             example["inversion_runs"] = None
             example["inversion_mask"] = None
+
+        # IP-Adapter cached PE features. All samples in a bucket share the
+        # training resolution and therefore the same PE bucket -> same T_pe,
+        # so a plain stack works.
+        if ip_features_list and ip_features_list[0] is not None:
+            example["ip_features"] = torch.stack(ip_features_list, dim=0)
+        else:
+            example["ip_features"] = None
 
         if self.debug_dataset:
             example["image_keys"] = bucket[image_index : image_index + self.batch_size]
@@ -1719,6 +1796,22 @@ class DreamBoothDataset(BaseDataset):
                 with open(info_cache_file, "w", encoding="utf-8") as f:
                     json.dump(matas, f, ensure_ascii=False, indent=2)
                 logger.info("cache image info done for")
+
+            if _ARTIST_FILTER is not None:
+                pre = len(img_paths)
+                kept = [
+                    (p, c, s)
+                    for p, c, s in zip(img_paths, captions, sizes)
+                    if _caption_has_artist(c, _ARTIST_FILTER)
+                ]
+                if kept:
+                    img_paths, captions, sizes = (list(t) for t in zip(*kept))
+                else:
+                    img_paths, captions, sizes = [], [], []
+                logger.info(
+                    f"artist_filter='{_ARTIST_FILTER}' → kept {len(img_paths)}/{pre} "
+                    f"images from {subset.image_dir}"
+                )
 
             return img_paths, captions, sizes
 

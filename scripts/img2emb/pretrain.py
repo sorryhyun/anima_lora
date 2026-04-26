@@ -40,6 +40,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from scripts.img2emb.anchors import (  # noqa: E402
     AnchorSpec,
     AnchoredResampler,
+    anchor_slot_mask,
     aux_cls_loss,
     build_anchor_labels,
     collate_anchor_batch,
@@ -55,6 +56,7 @@ from scripts.img2emb.data import (  # noqa: E402
     _resampler_loss,
     active_slice,
     load_cache,
+    match_target_to_pred,
 )
 from scripts.img2emb.encoders import available_encoders  # noqa: E402
 from scripts.img2emb.preprocess import DEFAULT_ENCODER  # noqa: E402
@@ -149,6 +151,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="replace",
         help="replace = hard-write prototype mix into anchor slot; "
              "residual = add to resampler output at anchor slot.",
+    )
+    p.add_argument(
+        "--set_match",
+        choices=["off", "content"],
+        default="content",
+        help="Permutation-invariant supervision on content slots. "
+             "off = current positional MSE/cos against the v0-aligned target. "
+             "content = Hungarian-permute the active non-anchor target rows "
+             "to the prediction's order before MSE/cos (anchor + inactive "
+             "rows untouched). Matches the DiT cross-attn's native "
+             "permutation invariance over K; removes a supervision artifact "
+             "that doesn't reflect the downstream consumer.",
     )
     p.add_argument("--seed", type=int, default=20260421)
     p.add_argument("--log_every", type=int, default=25)
@@ -285,11 +299,16 @@ def _run_pred(
     anchor_mode: str,
     batch: int = 8,
     pad_to: int = 512,
-) -> tuple[torch.Tensor, dict]:
+) -> tuple[torch.Tensor, dict, torch.Tensor]:
     """Run resampler + anchor injection over eval_idx; zero-pad the (B, K, D)
     output to (B, pad_to, D) so downstream eval can keep its 512-shaped contract.
+
+    Also returns the per-image anchor-slot mask padded to ``pad_to``. Eval uses
+    it to keep anchor positions positional and Hungarian-match content slots
+    (when ``--set_match content``).
     """
     out_pred = []
+    out_anchor_mask = []
     cls_hits: dict[str, list[int]] = {g.name: [0, 0] for g in spec.groups}
     for i in range(0, len(eval_idx), batch):
         ids = eval_idx[i : i + batch]
@@ -305,9 +324,12 @@ def _run_pred(
         inject_spec_anchors(pred, spec, detached_anchor, dev_labels, mode=anchor_mode)
 
         K_pred = pred.shape[1]
+        anc_b = anchor_slot_mask(spec, dev_labels, pred.shape[0], K_pred, device)
         if K_pred < pad_to:
             pred = F.pad(pred, (0, 0, 0, pad_to - K_pred))
+            anc_b = F.pad(anc_b, (0, pad_to - K_pred), value=False)
         out_pred.append(pred.cpu())
+        out_anchor_mask.append(anc_b.cpu())
 
         for g in spec.groups:
             lg = fwd["logits"][g.name]
@@ -328,11 +350,12 @@ def _run_pred(
                 cls_hits[g.name][1] += int(tg.numel())
 
     pred_eval = torch.cat(out_pred, dim=0)
+    anchor_mask_eval = torch.cat(out_anchor_mask, dim=0)
     cls_acc = {
         name: (hit / tot) if tot else float("nan")
         for name, (hit, tot) in cls_hits.items()
     }
-    return pred_eval, cls_acc
+    return pred_eval, cls_acc, anchor_mask_eval
 
 
 @torch.no_grad()
@@ -341,10 +364,24 @@ def _eval_per_variant(
     te_paths: list[str],
     eval_idx: list[int],
     active_lengths: list[int],
+    *,
+    anchor_mask_eval: torch.Tensor | None = None,
+    set_match: str = "off",
 ) -> dict:
+    """Per-slot cosine evaluation against cached T5 variants.
+
+    When ``set_match="content"`` (and ``anchor_mask_eval`` provided), each
+    variant is Hungarian-permuted on its content slots to align with the
+    prediction *before* per-slot cosine. Anchor slots stay positional. Per-slot
+    bands then measure matched quality, not positional commitment — the
+    prefix/mid/tail labels lose their caption-position meaning for content
+    slots, only ``content_all`` and the anchor-bearing prefix bucket retain a
+    clean interpretation.
+    """
     N, S, D = pred_eval.shape
     mask = active_slice([active_lengths[i] for i in eval_idx])
     pred_n = F.normalize(pred_eval.float(), dim=-1, eps=1e-8)
+    do_match = set_match == "content" and anchor_mask_eval is not None
 
     cos_vs_mean = torch.zeros(N, S)
     cos_best = torch.zeros(N, S)
@@ -360,6 +397,14 @@ def _eval_per_variant(
         L = int(active_lengths[full_idx])
         if L < variants.shape[1]:
             variants[:, L:] = 0
+
+        if do_match:
+            Veff = variants.shape[0]
+            mask_active = torch.zeros(Veff, S, dtype=torch.bool)
+            mask_active[:, : min(L, S)] = True
+            anc_b = anchor_mask_eval[n].unsqueeze(0).expand(Veff, S)
+            pred_b = pred_eval[n].unsqueeze(0).expand(Veff, S, D).contiguous()
+            variants, _ = match_target_to_pred(pred_b, variants, mask_active, anc_b)
 
         t_mean = variants.mean(dim=0)
         tm_n = F.normalize(t_mean, dim=-1, eps=1e-8)
@@ -542,8 +587,17 @@ def pretrain(args: argparse.Namespace) -> None:
 
             inject_spec_anchors(pred, spec, fwd["anchor_emb"], dev_labels, mode=args.anchor_mode)
 
+            match_metrics: dict[str, float] = {}
+            if args.set_match == "content":
+                anchor_mask = anchor_slot_mask(spec, dev_labels, pred.shape[0], pred.shape[1], device)
+                tgt_for_loss, match_metrics = match_target_to_pred(
+                    pred, tgt_b, mask_b, anchor_mask,
+                )
+            else:
+                tgt_for_loss = tgt_b
+
             loss_reg, comps = _resampler_loss(
-                pred, tgt_b, mask_b,
+                pred, tgt_for_loss, mask_b,
                 cos_w=args.cos_loss_weight, zero_w=0.0,
             )
             cls_loss, accs = aux_cls_loss(spec, fwd["logits"], anchors_b)
@@ -576,6 +630,8 @@ def pretrain(args: argparse.Namespace) -> None:
                 if infonce_metrics:
                     row["infonce"] = infonce_metrics["infonce_loss"]
                     row["infonce_acc"] = infonce_metrics["infonce_acc"]
+                if match_metrics:
+                    row["match_move_frac"] = match_metrics["match_move_frac"]
                 train_log.append(row)
                 acc_str = " ".join(
                     f"{name[:1]}={v:.2f}" for name, v in accs.items()
@@ -590,6 +646,8 @@ def pretrain(args: argparse.Namespace) -> None:
                 if infonce_metrics:
                     postfix["nce"] = f"{infonce_metrics['infonce_loss']:.3f}"
                     postfix["r@1"] = f"{infonce_metrics['infonce_acc']:.2f}"
+                if match_metrics:
+                    postfix["mv"] = f"{match_metrics['match_move_frac']:.2f}"
                 pbar.set_postfix(**postfix)
 
             if (
@@ -599,12 +657,13 @@ def pretrain(args: argparse.Namespace) -> None:
                 and step < args.steps
             ):
                 model.eval()
-                pred_eval, cls_acc = _run_pred(
+                pred_eval, cls_acc, anchor_mask_eval = _run_pred(
                     model, spec, tokens_all, pooled_all, flat_labels,
                     eval_idx, device, args.anchor_mode,
                 )
                 result = _eval_per_variant(
-                    pred_eval, cache["te_paths"], eval_idx, cache["active_lengths"]
+                    pred_eval, cache["te_paths"], eval_idx, cache["active_lengths"],
+                    anchor_mask_eval=anchor_mask_eval, set_match=args.set_match,
                 )
                 intermediate.append(
                     {
@@ -635,12 +694,13 @@ def pretrain(args: argparse.Namespace) -> None:
 
     # Final eval
     model.eval()
-    pred_eval, cls_acc = _run_pred(
+    pred_eval, cls_acc, anchor_mask_eval = _run_pred(
         model, spec, tokens_all, pooled_all, flat_labels,
         eval_idx, device, args.anchor_mode,
     )
     result = _eval_per_variant(
-        pred_eval, cache["te_paths"], eval_idx, cache["active_lengths"]
+        pred_eval, cache["te_paths"], eval_idx, cache["active_lengths"],
+        anchor_mask_eval=anchor_mask_eval, set_match=args.set_match,
     )
     _log_eval(result, cls_acc, "final")
 
@@ -666,6 +726,7 @@ def pretrain(args: argparse.Namespace) -> None:
         "cls_loss_weight": args.cls_loss_weight,
         "w_infonce": args.w_infonce if use_infonce else 0.0,
         "infonce_tau": args.infonce_tau,
+        "set_match": args.set_match,
         "train_time_sec": train_time,
         "n_train": len(train_idx),
         "n_eval": len(eval_idx),

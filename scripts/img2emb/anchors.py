@@ -656,6 +656,38 @@ def inject_spec_anchors(
             )
 
 
+def anchor_slot_mask(
+    spec: AnchorSpec,
+    batch_labels: dict[str, torch.Tensor],
+    B: int,
+    K: int,
+    device: torch.device,
+) -> torch.Tensor:
+    """(B, K) bool — True at every slot occupied by an anchor for that sample.
+
+    Mirrors the validity rules of :func:`inject_anchors`: only marks slots
+    in ``[0, K)``, and for multi-label groups only marks classes whose label
+    is positive. Used by set-matched losses to keep anchor positions
+    positionally pinned while permuting content slots.
+    """
+    mask = torch.zeros(B, K, dtype=torch.bool, device=device)
+    for g in spec.groups:
+        if g.mutex:
+            slots = batch_labels[f"{g.name}_slot"].to(device)
+            valid = (slots >= 0) & (slots < K)
+            if valid.any():
+                rows = torch.arange(B, device=device)[valid]
+                mask[rows, slots[valid]] = True
+        else:
+            slots = batch_labels[f"{g.name}_slots"].to(device)
+            labels = batch_labels[f"{g.name}_labels"].to(device) > 0.5
+            valid = (slots >= 0) & (slots < K) & labels
+            if valid.any():
+                bb, cc = valid.nonzero(as_tuple=True)
+                mask[bb, slots[bb, cc]] = True
+    return mask
+
+
 # --------------------------------------------------------------------------- loss
 
 

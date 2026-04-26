@@ -690,7 +690,87 @@ def generate(
     else:
         anima.reset_mod_guidance()
 
+    # IP-Adapter: load + apply network, encode reference image, prime per-block
+    # K/V on the network. The patched cross-attn closures pull from the cache
+    # for both cond and uncond passes (image stays on through CFG; text is the
+    # CFG steering knob).
+    _setup_ip_adapter(args, anima, device)
+
     return generate_body(args, anima, context, context_null, device, seed)
+
+
+def _setup_ip_adapter(args, anima, device):
+    ip_weight = getattr(args, "ip_adapter_weight", None)
+    ip_image = getattr(args, "ip_image", None)
+    if ip_weight is None and ip_image is None:
+        return None
+    if ip_weight is None or ip_image is None:
+        raise ValueError(
+            "--ip_adapter_weight and --ip_image must be passed together "
+            f"(got ip_adapter_weight={ip_weight!r}, ip_image={ip_image!r})"
+        )
+
+    from PIL import Image
+    from torchvision import transforms
+
+    from networks.ip_adapter_anima import create_network_from_weights
+    from library.vision import encode_pe_from_imageminus1to1, load_pe_encoder
+
+    # Aspect-match: snap --image_size to the CONSTANT_TOKEN_BUCKETS entry whose
+    # aspect is closest to the reference. Done BEFORE encoding so the same
+    # aspect drives both the generated latent and the PE-side bucket pick.
+    if getattr(args, "ip_image_match_size", False):
+        from library.datasets.buckets import CONSTANT_TOKEN_BUCKETS
+
+        with Image.open(ip_image) as _ref_for_size:
+            _rw, _rh = _ref_for_size.size
+        _target = _rw / _rh
+        _best_wh = min(
+            CONSTANT_TOKEN_BUCKETS, key=lambda wh: abs((wh[0] / wh[1]) - _target)
+        )
+        # check_inputs reads args.image_size as [H, W].
+        args.image_size = [_best_wh[1], _best_wh[0]]
+        logger.info(
+            f"IP-Adapter: image_size auto-picked from ref (aspect w/h={_target:.3f}) "
+            f"-> {tuple(args.image_size)} (HxW)"
+        )
+
+    create_kwargs = {}
+    if getattr(args, "ip_scale", None) is not None:
+        create_kwargs["ip_scale"] = float(args.ip_scale)
+
+    network, _sd = create_network_from_weights(
+        multiplier=1.0,
+        file=ip_weight,
+        ae=None,
+        text_encoders=None,
+        unet=anima,
+        **create_kwargs,
+    )
+    network.load_weights(ip_weight)
+    network.to(device, dtype=torch.bfloat16)
+    network.apply_to(text_encoders=None, unet=anima)
+
+    bundle = load_pe_encoder(device, name=network.encoder_name, dtype=torch.bfloat16)
+
+    img = Image.open(ip_image).convert("RGB")
+    tfm = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
+    img_t = tfm(img).unsqueeze(0).to(device, dtype=torch.bfloat16)  # [1, 3, H, W] in [-1, 1]
+
+    with torch.no_grad():
+        feats_list = encode_pe_from_imageminus1to1(bundle, img_t, same_bucket=True)
+        ip_features = torch.stack(feats_list, dim=0)  # [1, T_pe, d_enc]
+        ip_tokens = network.encode_ip_tokens(ip_features.to(torch.bfloat16))
+
+    network.set_ip_tokens(ip_tokens)
+    logger.info(
+        f"IP-Adapter: loaded {ip_weight} (encoder={network.encoder_name}, "
+        f"K={network.num_ip_tokens}, scale={network.get_effective_scale():.3f})"
+    )
+    # Stash on anima so the caller can keep the network alive for the duration
+    # of generation (Python won't GC it while it's reachable from the model).
+    anima._ip_adapter_network = network
+    return network
 
 
 # endregion

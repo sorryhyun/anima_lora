@@ -137,6 +137,6 @@ Currently the custom ComfyUI loader does **not** apply ConditionShift — that's
 ## References
 
 - Liu et al., *Self-Adversarial One Step Generation via Condition Shifting*, arXiv:2604.12322v1, 2026.
-- `bench/apex_phase0.py` — standalone 2D toy that validates Theorem 1 (gradient equivalence, max rel err 1.7e-7) and the cold-start failure mode. Run time ~45s on CPU.
+- `bench/archive/apex_phase0.py` — standalone 2D toy that validates Theorem 1 (gradient equivalence, max rel err 1.7e-7) and the cold-start failure mode. Run time ~45s on CPU.
 - `docs/guidelines/graft-guideline.md` — the target consumer for 1-NFE LoRAs.
 - `docs/methods/invert.md` — the target consumer for fast inversion.

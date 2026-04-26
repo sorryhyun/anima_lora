@@ -255,7 +255,7 @@ class PostfixNetwork(nn.Module):
             nn.init.zeros_(self.cond_mlp[-1].bias)
             # Per-slot identity embedding: breaks the K-slot permutation symmetry
             # that would otherwise keep K_effective=1 forever (see
-            # `bench/postfix/analysis.md`). When init_std=0 the module is inert
+            # `bench/archive/postfix/initial_postfix_problems.md`). When init_std=0 the module is inert
             # (back-compat with checkpoints trained without it); when >0 each slot
             # gets a distinct bias so gradients differ across K from step 1.
             self.slot_embed = nn.Parameter(

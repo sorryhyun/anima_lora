@@ -146,11 +146,50 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "Requires --cache_text_encoder_outputs. Incompatible with LoRA training for the LLM adapter.",
     )
     parser.add_argument(
+        "--use_ip_adapter",
+        action="store_true",
+        help="Enable IP-Adapter image conditioning (decoupled cross-attention). "
+        "Requires the network module to expose set_ip_tokens (e.g. networks.ip_adapter_anima). "
+        "Live mode needs --cache_latents=false so batch['images'] carries the raw "
+        "reference; pre-cache mode (--ip_features_cache_to_disk) reads PE features "
+        "from sibling .safetensors and is compatible with --cache_latents=true.",
+    )
+    parser.add_argument(
+        "--ip_features_cache_to_disk",
+        action="store_true",
+        help="Read IP-Adapter image features from sibling sidecars "
+        "({stem}_anima_{ip_encoder}.safetensors, produced by `make ip-adapter-cache`) "
+        "instead of running the vision encoder live. Compatible with --cache_latents=true. "
+        "Missing cache files raise FileNotFoundError.",
+    )
+    parser.add_argument(
+        "--ip_image_drop_p",
+        type=float,
+        default=0.1,
+        help="IP-Adapter image-conditioning dropout probability per batch (CFG dropout for image branch). "
+        "Independent of text-side caption_dropout_rate; default 0.1 matches the original IP-Adapter recipe.",
+    )
+    parser.add_argument(
+        "--ip_encoder",
+        type=str,
+        default="pe",
+        help="IP-Adapter vision encoder name (registered in scripts/img2emb/encoders.py). "
+        "Default 'pe' = PE-Core-L14-336 (dynamic resolution).",
+    )
+    parser.add_argument(
         "--caption_shuffle_variants",
         type=int,
         default=0,
         help="Number of shuffled caption variants to cache. Tags after @artist are shuffled. "
         "0=disabled (default). Requires --cache_text_encoder_outputs.",
+    )
+    parser.add_argument(
+        "--artist_filter",
+        type=str,
+        default=None,
+        help="If set, only train on images whose caption contains the `@<artist>` tag. "
+        "Pass with or without the leading `@` (e.g. `--artist_filter sincos`). "
+        "Output is redirected to output/ckpt-artist/<output_name>_<artist>.safetensors.",
     )
     parser.add_argument(
         "--discrete_flow_shift",
