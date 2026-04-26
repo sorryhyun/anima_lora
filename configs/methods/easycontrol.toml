@@ -50,9 +50,6 @@ use_easycontrol = true
 easycontrol_drop_p = 0.1
 caption_dropout_rate = 0.2
 
-# DiT is frozen; no need for block swapping. Cond LoRA + per-block b_cond fit
-# alongside the frozen DiT in bf16. Phase 1 pins blocks_to_swap=0; the cond
-# pre-pass interleave with block-swap is flagged as integration risk.
 blocks_to_swap = 0
 gradient_checkpointing = true
 unsloth_offload_checkpointing = true
