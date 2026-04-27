@@ -4,16 +4,22 @@
 # self-attn (q/k/v/o) + FFN (layer1/layer2) + a per-block scalar logit bias
 # `b_cond` (init -10) that gates cond-position softmax mass.
 #
-# Reference image and VAE target come from the SAME image (post_image_dataset),
-# matching IP-Adapter v1's setup. The cond pre-pass is run every step (no KV
-# cache yet — that's Phase 2). CFG dropout zeros image conditioning with
-# probability `easycontrol_drop_p` so inference can do image-CFG independently
-# of text-CFG.
+# Source data: easycontrol-dataset/  (user puts {stem}.png/.jpg/.webp + {stem}.txt here)
+# Caches:      post_image_dataset/easycontrol/  ({stem}_anima_te.safetensors,
+#              {stem}_{WxH}_anima.npz)
+# The cache_dir redirect comes from configs/datasets/easycontrol.toml referenced below.
+#
+# Reference image and VAE target come from the SAME image, matching IP-Adapter
+# v1's setup. The cond pre-pass is run every step (no KV cache yet — that's
+# Phase 2). CFG dropout zeros image conditioning with probability
+# `easycontrol_drop_p` so inference can do image-CFG independently of text-CFG.
 #
 # Feature source: cached VAE latents on disk. EasyControl's cond input is the
 # clean VAE latent of the reference, which is identical to the existing
 # {stem}_anima_latent.safetensors when ref==target. No new sidecar needed for
 # Phase 1; reuses cache_latents output directly.
+
+dataset_config = "configs/datasets/easycontrol.toml"
 
 network_module = "networks.easycontrol_anima"
 

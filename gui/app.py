@@ -22,8 +22,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.adapter_tab import EasyControlTab, IPAdapterTab
 from gui.config_tab import ConfigTab
-from gui.graft_tab import GraftTab
 from gui.i18n import (
     available_languages,
     current_language,
@@ -173,7 +173,8 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.tabs.addTab(ConfigTab(), t("tab_config"))
-        self.tabs.addTab(GraftTab(), t("tab_graft"))
+        self.tabs.addTab(IPAdapterTab(), t("tab_ip_adapter"))
+        self.tabs.addTab(EasyControlTab(), t("tab_easycontrol"))
         self.tabs.addTab(ImageViewerTab(), t("tab_images"))
         self.tabs.addTab(MergeTab(), t("tab_merge"))
         main_lay.addWidget(self.tabs)

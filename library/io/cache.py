@@ -21,6 +21,29 @@ LATENT_CACHE_SUFFIX = "_anima.npz"
 TE_CACHE_SUFFIX = "_anima_te.safetensors"
 
 
+def resolve_cache_path(
+    image_abs_path: str | os.PathLike,
+    suffix: str,
+    cache_dir: str | os.PathLike | None = None,
+) -> str:
+    """Build a cache file path from a source image path + suffix.
+
+    Sidecar default (``cache_dir=None``) preserves the legacy behavior of
+    writing the cache next to the image. With ``cache_dir`` set, the cache
+    is redirected into that directory using a stem-mirrored filename — the
+    pattern IP-Adapter / EasyControl use to keep ``ip-adapter-dataset/`` and
+    ``easycontrol-dataset/`` purely user-facing source dirs while caches
+    live under ``post_image_dataset/``.
+    """
+    src = str(image_abs_path)
+    stem = os.path.splitext(os.path.basename(src))[0]
+    if cache_dir is None:
+        return os.path.splitext(src)[0] + suffix
+    cache_dir_str = str(cache_dir)
+    os.makedirs(cache_dir_str, exist_ok=True)
+    return os.path.join(cache_dir_str, stem + suffix)
+
+
 class CachedImage(NamedTuple):
     """A preprocessed image with its cached latent and optional text encoder output."""
 

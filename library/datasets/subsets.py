@@ -237,6 +237,7 @@ class DreamBoothSubset(BaseSubset):
         validation_split: Optional[float] = 0.0,
         resize_interpolation: Optional[str] = None,
         mask_dir: Optional[str] = None,
+        cache_dir: Optional[str] = None,
     ) -> None:
         assert image_dir is not None, "image_dir must be specified"
 
@@ -283,6 +284,12 @@ class DreamBoothSubset(BaseSubset):
             self.alpha_mask = (
                 True  # enable alpha mask pipeline when using separate mask files
             )
+        # Optional redirect for VAE / text-encoder / PE caches. When set, all
+        # caches for this subset live under cache_dir/ with stem-mirrored
+        # filenames; when None (default) they sit alongside the source image.
+        self.cache_dir = cache_dir
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, DreamBoothSubset):

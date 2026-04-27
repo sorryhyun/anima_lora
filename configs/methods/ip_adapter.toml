@@ -2,16 +2,22 @@
 #
 # Adapter-only: DiT is frozen, training updates only the resampler and the
 # per-block to_k_ip / to_v_ip projections (~few hundred MB of params total).
-# Reference image and VAE target come from the SAME image (post_image_dataset).
-# CFG dropout zeros image conditioning with probability `image_drop_p` so
-# inference can do image-CFG independently of text-CFG.
+# Reference image and VAE target come from the SAME image (the dataset is
+# self-paired). CFG dropout zeros image conditioning with probability
+# `image_drop_p` so inference can do image-CFG independently of text-CFG.
+#
+# Source data: ip-adapter-dataset/  (user puts {stem}.png/.jpg/.webp + {stem}.txt here)
+# Caches:      post_image_dataset/ip-adapter/  ({stem}_anima_te.safetensors,
+#              {stem}_{WxH}_anima.npz, {stem}_anima_pe.safetensors)
+# The cache_dir redirect comes from configs/datasets/ip_adapter.toml referenced below.
 #
 # Feature source: defaults to PRE-CACHED PE features
-# ({stem}_anima_pe.safetensors sibling sidecars produced by
-# `make ip-adapter-cache`). This lets cache_latents / cache_text_encoder_outputs
-# all stay true and skips loading the vision encoder during training. Set
-# `ip_features_cache_to_disk = false` and `cache_latents = false` to fall back
-# to the original live-encoding path.
+# ({stem}_anima_pe.safetensors produced by `make ip-adapter-cache`). This lets
+# cache_latents / cache_text_encoder_outputs all stay true and skips loading
+# the vision encoder during training. Set `ip_features_cache_to_disk = false`
+# and `cache_latents = false` to fall back to the original live-encoding path.
+
+dataset_config = "configs/datasets/ip_adapter.toml"
 
 network_module = "networks.ip_adapter_anima"
 

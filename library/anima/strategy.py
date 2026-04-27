@@ -15,6 +15,7 @@ from safetensors.torch import (
 
 from library.anima import training as anima_train_utils, weights as anima_utils
 from library.datasets import base as _datasets_base
+from library.io.cache import resolve_cache_path
 from library.runtime.device import clean_memory_on_device
 from library.anima.text_strategies import (
     LatentsCachingStrategy,
@@ -247,10 +248,13 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         self.cache_llm_adapter_outputs = cache_llm_adapter_outputs
         self.caption_shuffle_variants = caption_shuffle_variants
 
-    def get_outputs_npz_path(self, image_abs_path: str) -> str:
-        return (
-            os.path.splitext(image_abs_path)[0]
-            + self.ANIMA_TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX
+    def get_outputs_npz_path(
+        self, image_abs_path: str, cache_dir: Optional[str] = None
+    ) -> str:
+        return resolve_cache_path(
+            image_abs_path,
+            self.ANIMA_TEXT_ENCODER_OUTPUTS_CACHE_SUFFIX,
+            cache_dir=cache_dir,
         )
 
     def is_disk_cached_outputs_expected(self, cache_path: str) -> bool:
@@ -651,13 +655,16 @@ class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
         return self.ANIMA_LATENTS_NPZ_SUFFIX
 
     def get_latents_npz_path(
-        self, absolute_path: str, image_size: Tuple[int, int]
+        self,
+        absolute_path: str,
+        image_size: Tuple[int, int],
+        cache_dir: Optional[str] = None,
     ) -> str:
-        return (
-            os.path.splitext(absolute_path)[0]
-            + f"_{image_size[0]:04d}x{image_size[1]:04d}"
+        suffix = (
+            f"_{image_size[0]:04d}x{image_size[1]:04d}"
             + self.ANIMA_LATENTS_NPZ_SUFFIX
         )
+        return resolve_cache_path(absolute_path, suffix, cache_dir=cache_dir)
 
     def is_disk_cached_latents_expected(
         self,

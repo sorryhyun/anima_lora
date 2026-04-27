@@ -658,7 +658,9 @@ class BaseDataset(torch.utils.data.Dataset):
                 # check disk cache exists and size of latents
                 if caching_strategy.cache_to_disk:
                     info.latents_npz = caching_strategy.get_latents_npz_path(
-                        info.absolute_path, info.image_size
+                        info.absolute_path,
+                        info.image_size,
+                        cache_dir=getattr(subset, "cache_dir", None),
                     )
 
                     # if the modulo of num_processes is not equal to process_index, skip caching
@@ -828,9 +830,13 @@ class BaseDataset(torch.utils.data.Dataset):
 
         logger.info("checking cache validity...")
         for i, info in enumerate(tqdm(image_infos)):
+            subset = self.image_to_subset.get(info.image_key)
             # check disk cache exists and size of text encoder outputs
             if caching_strategy.cache_to_disk:
-                te_out_npz = caching_strategy.get_outputs_npz_path(info.absolute_path)
+                te_out_npz = caching_strategy.get_outputs_npz_path(
+                    info.absolute_path,
+                    cache_dir=getattr(subset, "cache_dir", None),
+                )
                 info.text_encoder_outputs_npz = te_out_npz
 
                 if i % num_processes != process_index:
@@ -1072,8 +1078,12 @@ class BaseDataset(torch.utils.data.Dataset):
         return self._length
 
     def _try_load_ip_features(self, image_abs_path: str) -> Optional[torch.Tensor]:
-        """Load ``{stem}_anima_{encoder}.safetensors`` sidecar produced by
+        """Load ``{stem}_anima_{encoder}.safetensors`` produced by
         ``preprocess/cache_pe_encoder.py``.
+
+        Looks first in the subset's ``cache_dir`` (when set) and falls back to
+        the legacy sidecar location next to the source image, so existing
+        datasets keep working unchanged.
 
         Returns a ``[T_pe, d_enc]`` float tensor, or ``None`` if disabled. When
         the flag is on but the file is missing, raises so the user gets a clear
@@ -1085,15 +1095,22 @@ class BaseDataset(torch.utils.data.Dataset):
         from safetensors.torch import load_file
 
         stem = os.path.splitext(os.path.basename(image_abs_path))[0]
-        cache_path = os.path.join(
-            os.path.dirname(image_abs_path),
-            f"{stem}_anima_{self.ip_features_encoder}.safetensors",
+        suffix = f"_anima_{self.ip_features_encoder}.safetensors"
+        subset = self.image_to_subset.get(image_abs_path)
+        cache_dir = getattr(subset, "cache_dir", None) if subset is not None else None
+        candidates: list[str] = []
+        if cache_dir:
+            candidates.append(os.path.join(str(cache_dir), stem + suffix))
+        candidates.append(
+            os.path.join(os.path.dirname(image_abs_path), stem + suffix)
         )
-        if not os.path.exists(cache_path):
+        cache_path = next((c for c in candidates if os.path.exists(c)), None)
+        if cache_path is None:
             raise FileNotFoundError(
-                f"IP-Adapter feature cache missing: {cache_path}. "
-                f"Run `make ip-adapter-cache` (or set ip_features_cache_to_disk=false "
-                f"to fall back to live PE encoding)."
+                f"IP-Adapter feature cache missing for {image_abs_path}. "
+                f"Looked in: {candidates}. Run `make ip-adapter-cache` "
+                f"(or set ip_features_cache_to_disk=false to fall back to "
+                f"live PE encoding)."
             )
         sd = load_file(cache_path)
         feats = sd.get("image_features")
@@ -1744,22 +1761,42 @@ class DreamBoothDataset(BaseDataset):
                     if caption is None or caption == ""
                 ]
             else:
+                # Subset may redirect TE caches to a separate `cache_dir` (e.g.
+                # captions live in image_dataset/ but resized images live in
+                # post_image_dataset/resized/ with caches in
+                # post_image_dataset/lora/). When a TE cache exists for a
+                # given stem, missing .txt sidecars are expected, not an error
+                # — training reads the cached prompt embeddings.
+                cache_dir = getattr(subset, "cache_dir", None)
+                te_suffix = "_anima_te.safetensors"
+                te_cached_stems: set[str] = set()
+                if cache_dir and os.path.isdir(cache_dir):
+                    for name in os.listdir(cache_dir):
+                        if name.endswith(te_suffix):
+                            te_cached_stems.add(name.removesuffix(te_suffix))
+
                 captions = []
                 missing_captions = []
                 for img_path in tqdm(img_paths, desc="read caption"):
                     cap_for_img = read_caption(
                         img_path, subset.caption_extension, subset.enable_wildcard
                     )
+                    has_te_cache = (
+                        os.path.splitext(os.path.basename(img_path))[0]
+                        in te_cached_stems
+                    )
                     if cap_for_img is None and subset.class_tokens is None:
-                        logger.warning(
-                            f"neither caption file nor class tokens are found. use empty caption for {img_path}"
-                        )
+                        if not has_te_cache:
+                            logger.warning(
+                                f"neither caption file nor class tokens are found. use empty caption for {img_path}"
+                            )
+                            missing_captions.append(img_path)
                         captions.append("")
-                        missing_captions.append(img_path)
                     else:
                         if cap_for_img is None:
                             captions.append(subset.class_tokens)
-                            missing_captions.append(img_path)
+                            if not has_te_cache:
+                                missing_captions.append(img_path)
                         else:
                             captions.append(cap_for_img)
 

@@ -180,8 +180,9 @@ def cmd_ip_adapter(extra):
 def cmd_ip_adapter_cache(extra):
     """Pre-cache PE-Core patch features for IP-Adapter training.
 
-    Writes ``{stem}_anima_pe.safetensors`` sidecars into ``post_image_dataset/``.
-    IP_ENCODER env var overrides the registry name (default ``pe``).
+    Writes ``{stem}_anima_pe.safetensors`` files into
+    ``post_image_dataset/ip-adapter/``. IP_ENCODER env var overrides the
+    registry name (default ``pe``).
     """
     encoder = os.environ.get("IP_ENCODER", "pe")
     run(
@@ -189,10 +190,84 @@ def cmd_ip_adapter_cache(extra):
             PY,
             "preprocess/cache_pe_encoder.py",
             "--dir",
-            "post_image_dataset",
+            "ip-adapter-dataset",
+            "--cache_dir",
+            "post_image_dataset/ip-adapter",
             "--encoder",
             encoder,
             *extra,
+        ]
+    )
+
+
+def cmd_ip_adapter_preprocess(extra):
+    """Full IP-Adapter preprocess: VAE latents + text-encoder outputs + PE features.
+
+    Source: ``ip-adapter-dataset/``  Caches: ``post_image_dataset/ip-adapter/``.
+    """
+    encoder = os.environ.get("IP_ENCODER", "pe")
+    src = "ip-adapter-dataset"
+    dst = "post_image_dataset/ip-adapter"
+    run(
+        [
+            PY,
+            "preprocess/cache_latents.py",
+            "--dir", src,
+            "--cache_dir", dst,
+            "--vae", "models/vae/qwen_image_vae.safetensors",
+            "--batch_size", "4",
+            "--chunk_size", "64",
+        ]
+    )
+    run(
+        [
+            PY,
+            "preprocess/cache_text_embeddings.py",
+            "--dir", src,
+            "--cache_dir", dst,
+            "--qwen3", "models/text_encoders/qwen_3_06b_base.safetensors",
+            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
+            "--caption_shuffle_variants", "4",
+        ]
+    )
+    run(
+        [
+            PY,
+            "preprocess/cache_pe_encoder.py",
+            "--dir", src,
+            "--cache_dir", dst,
+            "--encoder", encoder,
+        ]
+    )
+
+
+def cmd_easycontrol_preprocess(extra):
+    """Full EasyControl preprocess: VAE latents + text-encoder outputs.
+
+    Source: ``easycontrol-dataset/``  Caches: ``post_image_dataset/easycontrol/``.
+    """
+    src = "easycontrol-dataset"
+    dst = "post_image_dataset/easycontrol"
+    run(
+        [
+            PY,
+            "preprocess/cache_latents.py",
+            "--dir", src,
+            "--cache_dir", dst,
+            "--vae", "models/vae/qwen_image_vae.safetensors",
+            "--batch_size", "4",
+            "--chunk_size", "64",
+        ]
+    )
+    run(
+        [
+            PY,
+            "preprocess/cache_text_embeddings.py",
+            "--dir", src,
+            "--cache_dir", dst,
+            "--qwen3", "models/text_encoders/qwen_3_06b_base.safetensors",
+            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
+            "--caption_shuffle_variants", "4",
         ]
     )
 
@@ -517,10 +592,6 @@ def cmd_test_spectrum(extra):
 # ── Utilities ─────────────────────────────────────────────────────────
 
 
-def cmd_step(extra):
-    run([PY, "scripts/graft_step.py", *extra])
-
-
 def cmd_merge(extra):
     """Bake latest LoRA in ADAPTER_DIR (env, default 'output/ckpt') into the base DiT."""
     adapter_dir = os.environ.get("ADAPTER_DIR", "output/ckpt")
@@ -546,7 +617,8 @@ def cmd_preprocess_resize(extra):
             "--src",
             "image_dataset",
             "--dst",
-            "post_image_dataset",
+            "post_image_dataset/resized",
+            "--no_copy_captions",
             *extra,
         ]
     )
@@ -558,7 +630,9 @@ def cmd_preprocess_vae(extra):
             PY,
             "preprocess/cache_latents.py",
             "--dir",
-            "post_image_dataset",
+            "post_image_dataset/resized",
+            "--cache_dir",
+            "post_image_dataset/lora",
             "--vae",
             "models/vae/qwen_image_vae.safetensors",
             "--batch_size",
@@ -576,7 +650,9 @@ def cmd_preprocess_te(extra):
             PY,
             "preprocess/cache_text_embeddings.py",
             "--dir",
-            "post_image_dataset",
+            "image_dataset",
+            "--cache_dir",
+            "post_image_dataset/lora",
             "--qwen3",
             "models/text_encoders/qwen_3_06b_base.safetensors",
             "--dit",
@@ -899,11 +975,21 @@ COMMANDS = {
     "ip-adapter": (cmd_ip_adapter, "IP-Adapter training (decoupled image cross-attention)"),
     "ip-adapter-cache": (
         cmd_ip_adapter_cache,
-        "Pre-cache PE-Core patch features for IP-Adapter (writes "
-        "post_image_dataset/{stem}_anima_pe.safetensors). IP_ENCODER=pe|pe-g.",
+        "Pre-cache PE-Core patch features for IP-Adapter (writes into "
+        "post_image_dataset/ip-adapter/). IP_ENCODER=pe|pe-g.",
+    ),
+    "ip-adapter-preprocess": (
+        cmd_ip_adapter_preprocess,
+        "Full IP-Adapter preprocess: latents + text emb + PE features. "
+        "Source: ip-adapter-dataset/  Cache: post_image_dataset/ip-adapter/.",
     ),
     "test-ip": (cmd_test_ip, "Inference with latest IP-Adapter weight. Usage: test-ip <ref_image> [--prompt ... --ip_scale ...]"),
     "easycontrol": (cmd_easycontrol, "EasyControl training (extended self-attn KV with VAE-encoded reference)"),
+    "easycontrol-preprocess": (
+        cmd_easycontrol_preprocess,
+        "Full EasyControl preprocess: latents + text emb. "
+        "Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/.",
+    ),
     "test-easycontrol": (cmd_test_easycontrol, "Inference with latest EasyControl weight. Usage: test-easycontrol <ref_image> [--prompt ... --easycontrol_scale ...]"),
     "test": (cmd_test, "Inference with latest LoRA"),
     "test-apex": (cmd_test_apex, "Inference with latest APEX LoRA"),
@@ -927,7 +1013,6 @@ COMMANDS = {
         "Inference with latest *_merged.safetensors (MODEL_DIR=..., default 'output_temp')",
     ),
     "test-spectrum": (cmd_test_spectrum, "Spectrum-accelerated inference"),
-    "step": (cmd_step, "Run one GRAFT iteration"),
     "merge": (
         cmd_merge,
         "Bake latest LoRA (ADAPTER_DIR=..., default 'output/ckpt') into base DiT",

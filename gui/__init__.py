@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIGS_DIR = ROOT / "configs"
-GRAFT_DIR = ROOT / "graft"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 METHODS_DIR = CONFIGS_DIR / "methods"
@@ -33,7 +32,7 @@ CUSTOM_DIR = CONFIGS_DIR / "custom"
 CUSTOM_VARIANTS_DIR = GUI_METHODS_DIR / "custom"
 
 
-_METHOD_ORDER = ("lora", "postfix", "apex", "graft")
+_METHOD_ORDER = ("lora", "postfix", "apex", "ip_adapter", "easycontrol")
 
 # GUI variant picker maps method families → self-contained gui-methods files.
 # Order is display order in the variant combo. Any gui-methods/*.toml not
@@ -58,7 +57,8 @@ _FAMILY_VARIANTS: dict[str, list[str]] = {
         "prefix",
     ],
     "apex": ["apex"],
-    "graft": ["graft"],
+    "ip_adapter": ["ip_adapter"],
+    "easycontrol": ["easycontrol"],
 }
 
 
@@ -309,17 +309,6 @@ def _adapter_dirs() -> dict[str, Path]:
                 and any(p.glob("*.safetensors"))
             ):
                 dirs[f"{label}/{p.name}"] = p
-    # GRAFT survivors / candidate iterations sometimes hold adapter artifacts.
-    graft_dir = GRAFT_DIR
-    for candidate in ("survivors",):
-        p = graft_dir / candidate
-        if p.exists() and any(p.glob("*.safetensors")):
-            dirs[f"graft/{candidate}"] = p
-    cd = graft_dir / "candidates"
-    if cd.exists():
-        for p in sorted(cd.iterdir()):
-            if p.is_dir() and any(p.glob("*.safetensors")):
-                dirs[f"graft/candidates/{p.name}"] = p
     return dirs
 
 
@@ -327,17 +316,13 @@ def _image_dirs() -> dict[str, Path]:
     dirs: dict[str, Path] = {}
     for name, path in [
         ("image_dataset", ROOT / "image_dataset"),
-        ("post_image_dataset", ROOT / "post_image_dataset"),
+        ("post_image_dataset/resized", ROOT / "post_image_dataset" / "resized"),
+        ("ip-adapter-dataset", ROOT / "ip-adapter-dataset"),
+        ("easycontrol-dataset", ROOT / "easycontrol-dataset"),
         ("output/tests", ROOT / "output" / "tests"),
-        ("graft/survivors", GRAFT_DIR / "survivors"),
     ]:
         if path.exists():
             dirs[name] = path
-    cd = GRAFT_DIR / "candidates"
-    if cd.exists():
-        for p in sorted(cd.iterdir()):
-            if p.is_dir():
-                dirs[f"graft/candidates/{p.name}"] = p
     return dirs
 
 

@@ -29,13 +29,28 @@ from library.datasets.image_utils import IMAGE_EXTENSIONS, IMAGE_TRANSFORMS
 from library.vision.encoder import encode_pe_from_imageminus1to1, load_pe_encoder
 
 
-def cache_path_for(image_path: Path, encoder: str) -> Path:
-    return image_path.with_name(f"{image_path.stem}_anima_{encoder}.safetensors")
+def cache_path_for(
+    image_path: Path, encoder: str, cache_dir: Path | None = None
+) -> Path:
+    name = f"{image_path.stem}_anima_{encoder}.safetensors"
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / name
+    return image_path.with_name(name)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dir", type=str, required=True, help="Dataset directory")
+    parser.add_argument(
+        "--cache_dir",
+        type=str,
+        default=None,
+        help=(
+            "Optional directory to write PE caches into (created if needed). "
+            "Defaults to writing alongside each source image."
+        ),
+    )
     parser.add_argument(
         "--encoder",
         type=str,
@@ -69,6 +84,7 @@ def main() -> None:
     if not data_dir.is_dir():
         print(f"--dir not found: {data_dir}", file=sys.stderr)
         sys.exit(1)
+    cache_dir = Path(args.cache_dir) if args.cache_dir else None
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     save_dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}[args.dtype]
@@ -112,7 +128,7 @@ def main() -> None:
 
             to_encode: list[tuple[Path, torch.Tensor, Path]] = []
             for p in batch_paths:
-                out_path = cache_path_for(p, bundle.name)
+                out_path = cache_path_for(p, bundle.name, cache_dir=cache_dir)
                 if out_path.exists():
                     skipped += 1
                     pbar.update(1)

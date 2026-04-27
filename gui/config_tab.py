@@ -263,7 +263,8 @@ class ConfigTab(QWidget):
 
     def _current_variant(self) -> str:
         """gui-methods variant for the selected method. Falls back to the
-        method name itself when no variants are registered (apex, graft)."""
+        method name itself when no variants are registered (apex, ip_adapter,
+        easycontrol)."""
         v = self.variant_combo.currentText()
         return v or self.method_combo.currentText()
 

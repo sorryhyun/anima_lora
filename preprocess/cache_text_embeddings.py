@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import torch
+from PIL import Image
 from tqdm import tqdm
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -75,6 +76,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dir", type=str, required=True, help="Dataset directory")
     parser.add_argument(
+        "--cache_dir",
+        type=str,
+        default=None,
+        help=(
+            "Optional directory to write text-encoder caches into (created if "
+            "needed). Defaults to writing alongside each source image."
+        ),
+    )
+    parser.add_argument(
         "--qwen3", type=str, required=True, help="Path to Qwen3 text encoder"
     )
     parser.add_argument(
@@ -101,6 +111,17 @@ def main() -> None:
         default=0,
         help="Number of shuffled caption variants per image (0 = single caption)",
     )
+    parser.add_argument(
+        "--min_pixels",
+        type=int,
+        default=500_000,
+        help=(
+            "Skip images with fewer than this many pixels (default: 500_000 "
+            "= 0.5MP). Mirrors the same filter in preprocess/resize_images.py "
+            "so TE caches don't accumulate for images that get dropped at "
+            "resize time. Set to 0 to disable."
+        ),
+    )
     args = parser.parse_args()
 
     from safetensors.torch import save_file as _save_safetensors
@@ -109,6 +130,9 @@ def main() -> None:
     from library.anima.strategy import AnimaTextEncodingStrategy, AnimaTokenizeStrategy
 
     data_dir = Path(args.dir)
+    cache_dir = Path(args.cache_dir) if args.cache_dir else None
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     N = args.caption_shuffle_variants
 
@@ -132,17 +156,35 @@ def main() -> None:
     )
     encoding_strategy = AnimaTextEncodingStrategy()
 
-    # Collect images that have caption sidecars
+    # Collect images that have caption sidecars. Mirror the resize filter so
+    # we don't cache TE for images that would be dropped at resize time.
     entries: list[tuple[Path, str]] = []
+    skipped_small = 0
     for p in sorted(data_dir.iterdir()):
         if p.suffix.lower() not in IMAGE_EXTENSIONS:
             continue
         caption_path = p.with_suffix(".txt")
         if not caption_path.exists():
             continue
+        if args.min_pixels > 0:
+            try:
+                with Image.open(p) as im:
+                    w, h = im.size
+            except Exception as e:
+                print(f"  warn: could not read {p.name}: {e}")
+                continue
+            if w * h < args.min_pixels:
+                skipped_small += 1
+                continue
         caption = caption_path.read_text(encoding="utf-8").strip().split("\n")[0]
         if caption:
             entries.append((p, caption))
+
+    if skipped_small:
+        print(
+            f"Skipping {skipped_small} images below {args.min_pixels:,} pixels "
+            f"({args.min_pixels / 1e6:.2f}MP) — same filter as resize_images.py."
+        )
 
     total = len(entries)
     cached = 0
@@ -159,8 +201,11 @@ def main() -> None:
         # Skip already-cached entries
         to_encode: list[tuple[Path, str, Path]] = []
         for img_path, caption in batch:
-            cache_path = img_path.with_name(
-                img_path.stem + TE_CACHE_SUFFIX
+            cache_name = img_path.stem + TE_CACHE_SUFFIX
+            cache_path = (
+                cache_dir / cache_name
+                if cache_dir is not None
+                else img_path.with_name(cache_name)
             )
             if cache_path.exists():
                 skipped += 1

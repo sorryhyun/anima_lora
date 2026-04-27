@@ -28,6 +28,7 @@ def process_image(
     image_path: Path,
     out_dir: Path,
     bucket_args: tuple,
+    copy_captions: bool = True,
 ) -> tuple[str, tuple[int, int]]:
     """Worker function — receives bucket params instead of BucketManager to be picklable."""
     max_reso, min_size, max_size, reso_steps, use_constant = bucket_args
@@ -66,11 +67,11 @@ def process_image(
     out_path = out_dir / f"{image_path.stem}.png"
     img.save(out_path, format="PNG")
 
-    # Copy caption sidecars
-    for ext in CAPTION_EXTENSIONS:
-        cap = image_path.with_suffix(ext)
-        if cap.exists():
-            shutil.copy2(cap, out_dir / f"{image_path.stem}{ext}")
+    if copy_captions:
+        for ext in CAPTION_EXTENSIONS:
+            cap = image_path.with_suffix(ext)
+            if cap.exists():
+                shutil.copy2(cap, out_dir / f"{image_path.stem}{ext}")
 
     return image_path.name, bucket_reso
 
@@ -120,6 +121,15 @@ def main() -> None:
         default=500_000,
         help="Skip images with fewer than this many pixels (default: 500_000 = 0.5MP). "
         "Set to 0 to disable.",
+    )
+    parser.add_argument(
+        "--no_copy_captions",
+        action="store_true",
+        help=(
+            "Skip copying .txt / .caption sidecars to the output directory. "
+            "Use when captions live elsewhere (e.g. text-encoder caching reads "
+            "them from the original raw dataset directly)."
+        ),
     )
     args = parser.parse_args()
 
@@ -171,9 +181,12 @@ def main() -> None:
         f"{'constant-token' if use_constant else 'standard'} buckets"
     )
     bucket_counts: dict[tuple[int, int], int] = {}
+    copy_captions = not args.no_copy_captions
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         futures = {
-            pool.submit(process_image, img_path, dst, bucket_args): img_path
+            pool.submit(
+                process_image, img_path, dst, bucket_args, copy_captions
+            ): img_path
             for img_path in image_files
         }
         pbar = tqdm(as_completed(futures), total=len(futures), desc="Resizing")

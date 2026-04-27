@@ -48,10 +48,10 @@ alpha_rank_scale = 1.0
 
 # hydralora
 
-# output_name = "anima_hydra"
-# use_hydra = true
-# num_experts = 12
-# balance_loss_weight = 1e-6 # seems lr * 1/10 is proper
+output_name = "anima_hydra"
+use_hydra = true
+num_experts = 12
+balance_loss_weight = 1e-6 # seems lr * 1/10 is proper
 
 # Hold the load-balance penalty at 0 during the first
 # `balance_loss_warmup_ratio` of training so the router can specialize first,
@@ -65,19 +65,19 @@ balance_loss_warmup_ratio = 0.4
 network_router_lr_scale = 10
 hydra_router_layers = ".*(mlp\\.layer[12])$" # ".*(cross_attn\\.kv_proj)$"
 
-# use_sigma_router = true
-# sigma_feature_dim = 16
-# sigma_hidden_dim = 16   # unused; retained for API compat
-# sigma_router_layers = ".*(mlp\\.layer[12])$"
-# per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
-# num_sigma_buckets = 4
+use_sigma_router = true
+sigma_feature_dim = 16
+sigma_hidden_dim = 16   # unused; retained for API compat
+sigma_router_layers = ".*(mlp\\.layer[12])$"
+per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
+num_sigma_buckets = 4
 
 add_reft = true
 reft_dim = 48
 reft_alpha = 48
 reft_layers = "last_8"
 
-compile_mode = "full"
+# compile_mode = "full"
 # compile_inductor_mode = "reduce-overhead"
 
 

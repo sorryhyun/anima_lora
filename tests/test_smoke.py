@@ -35,9 +35,8 @@ def test_load_method_preset_resolves(method: str):
 
 def test_method_config_coverage():
     # lora/tlora/tlora_rf/hydralora collapsed into lora.toml; postfix/postfix_exp/
-    # postfix_func/prefix collapsed into postfix.toml. Expected survivors: apex,
-    # graft, lora, postfix.
-    expected = {"apex", "graft", "lora", "postfix"}
+    # postfix_func/prefix collapsed into postfix.toml.
+    expected = {"apex", "lora", "postfix", "ip_adapter", "easycontrol"}
     assert expected.issubset(set(METHOD_NAMES)), (
         f"expected {expected} in method configs, got {METHOD_NAMES}"
     )

@@ -85,6 +85,7 @@ class DreamBoothSubsetParams(BaseSubsetParams):
     cache_info: bool = False
     alpha_mask: bool = False
     mask_dir: Optional[str] = None
+    cache_dir: Optional[str] = None
 
 
 @dataclass
@@ -187,6 +188,8 @@ class ConfigSanitizer:
         Required("image_dir"): str,
         "is_reg": bool,
         "alpha_mask": bool,
+        "cache_dir": str,
+        "mask_dir": str,
     }
     # datasets schema
     DATASET_ASCENDABLE_SCHEMA = {

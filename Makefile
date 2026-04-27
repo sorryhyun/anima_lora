@@ -13,7 +13,7 @@ LATEST_EC = $(shell python -c "import glob,os; files=glob.glob('output/ckpt/anim
 MODEL_DIR ?= output_temp
 LATEST_MERGED = $(shell python -c "import glob,os; p='$(MODEL_DIR)'; files=[p] if os.path.isfile(p) else sorted(glob.glob(os.path.join(p,'*_merged.safetensors')),key=os.path.getmtime); print(files[-1] if files else '')")
 
-.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix ip-adapter ip-adapter-cache easycontrol test-easycontrol step test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-ip test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-align img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 download-pe download-pe-g gui comfy-batch test-unit print-config merge
+.PHONY: lora lora-fast lora-low-vram lora-gui apex postfix ip-adapter ip-adapter-cache ip-adapter-preprocess easycontrol easycontrol-preprocess test-easycontrol test test-mod test-apex test-hydra test-prefix test-postfix test-postfix-exp test-postfix-func test-ip test-spectrum test-merge test-ref invert invert-ref test-invert bench-inversion distill-mod img2emb img2emb-preprocess img2emb-anchors img2emb-align img2emb-pretrain img2emb-finetune preprocess-img2emb test-img2emb mask mask-sam mask-mit mask-clean preprocess preprocess-resize preprocess-vae preprocess-te download-models download-anima download-sam3 download-mit download-tipsv2 download-pe download-pe-g gui comfy-batch test-unit print-config merge
 
 TEST_COMMON = python inference.py \
 	--dit models/diffusion_models/anima-preview3-base.safetensors \
@@ -76,21 +76,58 @@ postfix:
 ip-adapter:
 	$(TRAIN) ip_adapter --preset $(PRESET)
 
-# Pre-cache PE-Core patch features for every image in post_image_dataset/.
-# Writes {stem}_anima_pe.safetensors sidecars (bf16, [T_pe, d_enc]). Idempotent.
-# IP_ENCODER overrides the registry name (default: pe). Useful when iterating
-# IP-Adapter training: avoids re-running the vision encoder every step.
+# Pre-cache PE-Core patch features for every image in ip-adapter-dataset/.
+# Writes {stem}_anima_pe.safetensors files into post_image_dataset/ip-adapter/
+# (bf16, [T_pe, d_enc]). Idempotent. IP_ENCODER overrides the registry name
+# (default: pe). Useful when iterating IP-Adapter training: avoids re-running
+# the vision encoder every step.
 IP_ENCODER ?= pe
 ip-adapter-cache:
 	python preprocess/cache_pe_encoder.py \
-		--dir post_image_dataset \
+		--dir ip-adapter-dataset \
+		--cache_dir post_image_dataset/ip-adapter \
+		--encoder $(IP_ENCODER)
+
+# Full IP-Adapter preprocess: VAE latents + text-encoder outputs + PE features.
+# Source: ip-adapter-dataset/   Caches: post_image_dataset/ip-adapter/
+ip-adapter-preprocess:
+	python preprocess/cache_latents.py \
+		--dir ip-adapter-dataset \
+		--cache_dir post_image_dataset/ip-adapter \
+		--vae models/vae/qwen_image_vae.safetensors \
+		--batch_size 4 \
+		--chunk_size 64
+	python preprocess/cache_text_embeddings.py \
+		--dir ip-adapter-dataset \
+		--cache_dir post_image_dataset/ip-adapter \
+		--qwen3 models/text_encoders/qwen_3_06b_base.safetensors \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--caption_shuffle_variants 4
+	python preprocess/cache_pe_encoder.py \
+		--dir ip-adapter-dataset \
+		--cache_dir post_image_dataset/ip-adapter \
 		--encoder $(IP_ENCODER)
 
 # EasyControl — extended self-attention image conditioning. Adapter-only (DiT
-# frozen). Reference and target both come from post_image_dataset/. Reuses the
-# existing cache_latents output as the cond input — no separate cache step.
+# frozen). Source: easycontrol-dataset/  Caches: post_image_dataset/easycontrol/
+# Reuses the cache_latents output as the cond input — no separate cache step.
 easycontrol:
 	$(TRAIN) easycontrol --preset $(PRESET)
+
+# Full EasyControl preprocess: VAE latents + text-encoder outputs.
+easycontrol-preprocess:
+	python preprocess/cache_latents.py \
+		--dir easycontrol-dataset \
+		--cache_dir post_image_dataset/easycontrol \
+		--vae models/vae/qwen_image_vae.safetensors \
+		--batch_size 4 \
+		--chunk_size 64
+	python preprocess/cache_text_embeddings.py \
+		--dir easycontrol-dataset \
+		--cache_dir post_image_dataset/easycontrol \
+		--qwen3 models/text_encoders/qwen_3_06b_base.safetensors \
+		--dit models/diffusion_models/anima-preview3-base.safetensors \
+		--caption_shuffle_variants 4
 
 distill-mod:
 	python scripts/distill_modulation.py \
@@ -385,26 +422,32 @@ img2emb-calibrate:
 		--blocks_to_swap $(FINETUNE_SWAP) \
 		$(ENCODER_FLAG)
 
-graft-step:
-	python scripts/graft_step.py
-
 preprocess: preprocess-resize preprocess-vae preprocess-te
 
+# Source images + .txt captions live in image_dataset/. resize copies
+# resized images to post_image_dataset/resized/ (no .txt copy — captions
+# stay in image_dataset/, used at TE caching time only).
 preprocess-resize:
 	python preprocess/resize_images.py \
 		--src image_dataset \
-		--dst post_image_dataset
+		--dst post_image_dataset/resized \
+		--no_copy_captions
 
 preprocess-vae:
 	python preprocess/cache_latents.py \
-		--dir post_image_dataset \
+		--dir post_image_dataset/resized \
+		--cache_dir post_image_dataset/lora \
 		--vae models/vae/qwen_image_vae.safetensors \
 		--batch_size 4 \
 		--chunk_size 64
 
+# Captions live in image_dataset/ alongside the raw images, so we point
+# the TE cache pass at that dir. Caches are keyed by stem and land in
+# post_image_dataset/lora/, matching the resized images by stem.
 preprocess-te:
 	python preprocess/cache_text_embeddings.py \
-		--dir post_image_dataset \
+		--dir image_dataset \
+		--cache_dir post_image_dataset/lora \
 		--qwen3 models/text_encoders/qwen_3_06b_base.safetensors \
 		--dit models/diffusion_models/anima-preview3-base.safetensors \
 		--caption_shuffle_variants 4

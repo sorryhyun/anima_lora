@@ -5,8 +5,11 @@
 # self-attn (q/k/v/o) + FFN (layer1/layer2) + per-block scalar logit bias
 # `b_cond` (init -10) that gates cond-position softmax mass at step 0.
 #
-# Reference image and VAE target come from the SAME image (post_image_dataset).
+# Source data: easycontrol-dataset/  (user puts images + .txt captions here)
+# Caches:      post_image_dataset/easycontrol/  (latents + text-encoder outputs)
 # The cond pre-pass is run every step — Phase 1 has no KV cache yet.
+
+dataset_config = "configs/datasets/easycontrol.toml"
 
 network_module = "networks.easycontrol_anima"
 

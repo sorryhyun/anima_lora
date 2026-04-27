@@ -21,16 +21,38 @@ from library.io.cache import LATENT_CACHE_SUFFIX
 from library.datasets.image_utils import IMAGE_EXTENSIONS, IMAGE_TRANSFORMS
 
 
-def get_latents_npz_path(image_path: Path, image_size: tuple[int, int]) -> Path:
-    """Match the naming convention used by AnimaLatentsCachingStrategy."""
-    return image_path.with_name(
-        f"{image_path.stem}_{image_size[0]:04d}x{image_size[1]:04d}{LATENT_CACHE_SUFFIX}"
+def get_latents_npz_path(
+    image_path: Path,
+    image_size: tuple[int, int],
+    cache_dir: Path | None = None,
+) -> Path:
+    """Match the naming convention used by AnimaLatentsCachingStrategy.
+
+    When ``cache_dir`` is provided, the cache lives under that directory with
+    a stem-mirrored filename instead of as a sidecar.
+    """
+    name = (
+        f"{image_path.stem}_{image_size[0]:04d}x{image_size[1]:04d}"
+        f"{LATENT_CACHE_SUFFIX}"
     )
+    if cache_dir is not None:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        return cache_dir / name
+    return image_path.with_name(name)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dir", type=str, required=True, help="Dataset directory")
+    parser.add_argument(
+        "--cache_dir",
+        type=str,
+        default=None,
+        help=(
+            "Optional directory to write latent caches into (created if needed). "
+            "Defaults to writing alongside each source image."
+        ),
+    )
     parser.add_argument("--vae", type=str, required=True, help="Path to VAE weights")
     parser.add_argument(
         "--batch_size", type=int, default=4, help="VAE encoding batch size (default: 4)"
@@ -52,6 +74,7 @@ def main() -> None:
     from library.models import qwen_vae as qwen_image_autoencoder_kl
 
     data_dir = Path(args.dir)
+    cache_dir = Path(args.cache_dir) if args.cache_dir else None
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.bfloat16
 
@@ -90,7 +113,7 @@ def main() -> None:
             tensors = []
 
             for p in batch_paths:
-                npz_path = get_latents_npz_path(p, (w, h))
+                npz_path = get_latents_npz_path(p, (w, h), cache_dir=cache_dir)
                 if npz_path.exists():
                     latents_size = (h // 8, w // 8)
                     key = f"latents_{latents_size[0]}x{latents_size[1]}"
@@ -123,7 +146,7 @@ def main() -> None:
                 latents_size = lat.shape[-2:]  # H/8, W/8
                 key_reso_suffix = f"_{latents_size[0]}x{latents_size[1]}"
 
-                npz_path = get_latents_npz_path(p, size)
+                npz_path = get_latents_npz_path(p, size, cache_dir=cache_dir)
                 kwargs = {}
                 if npz_path.exists():
                     npz = np.load(npz_path)
