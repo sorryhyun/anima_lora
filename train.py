@@ -34,15 +34,17 @@ from library.anima import (
 from library.models import qwen_vae as qwen_image_autoencoder_kl
 from library.models import sai_spec as sai_model_spec
 from library.runtime import noise as noise_utils
-from library.vision import (
-    VisionEncoderBundle,
-    encode_pe_from_imageminus1to1,
-    load_pe_encoder,
-)
 from library.config import loader as config_util
 from library.config.loader import (
     ConfigSanitizer,
     BlueprintGenerator,
+)
+from library.training.method_adapter import (
+    ForwardArtifacts,
+    MethodAdapter,
+    SetupCtx,
+    StepCtx,
+    resolve_adapters,
 )
 from library.config.io import (
     load_dataset_config_from_base,
@@ -152,8 +154,13 @@ class AnimaTrainer:
     def __init__(self):
         self.sample_prompts_te_outputs = None
         self._padding_mask_cache = {}
-        # IP-Adapter — set by _maybe_load_vision_encoder when use_ip_adapter is on.
-        self._vision_bundle: Optional[VisionEncoderBundle] = None
+        # Per-method extensions (EasyControl, IP-Adapter, APEX, …). Resolved
+        # from args+network in train() right after _create_and_apply_network.
+        self._adapters: list[MethodAdapter] = []
+        # Per-step aux dict — adapters' ``extra_forwards`` returns are merged
+        # here in ``get_noise_pred_and_target`` and consumed by the loss
+        # composer in ``_process_batch_inner``.
+        self._extras_for_step: dict = {}
 
     # region logging helpers
 
@@ -597,115 +604,6 @@ class AnimaTrainer:
         # Latents already normalized by vae.encode with scale
         return latents
 
-    def _maybe_set_ip_tokens(
-        self,
-        args,
-        accelerator,
-        network,
-        batch,
-        weight_dtype,
-        is_train: bool,
-    ) -> None:
-        """Push per-block IP K/V onto the network for the upcoming DiT forward.
-
-        Two feature sources, in priority order:
-          1. ``batch["ip_features"]`` (pre-cached by ``preprocess/cache_pe_encoder.py``,
-             selected via ``--ip_features_cache_to_disk``). No live encoder needed.
-          2. Live PE encoding of ``batch["images"]`` via ``self._vision_bundle``.
-
-        Whole-batch CFG dropout zeros the conditioning with probability
-        ``args.ip_image_drop_p``. No-op when IP-Adapter is off.
-        """
-        if not getattr(args, "use_ip_adapter", False):
-            return
-        if not hasattr(network, "set_ip_tokens"):
-            return
-
-        # Whole-batch dropout for CFG. Independent of feature source.
-        drop_p = float(getattr(args, "ip_image_drop_p", 0.1) or 0.0)
-        if is_train and drop_p > 0.0 and random.random() < drop_p:
-            network.set_ip_tokens(None)
-            return
-
-        cached = batch.get("ip_features") if isinstance(batch, dict) else None
-        if cached is not None:
-            ip_features = cached.to(accelerator.device, dtype=weight_dtype)
-        else:
-            if self._vision_bundle is None:
-                raise RuntimeError(
-                    "IP-Adapter has no feature source: --ip_features_cache_to_disk "
-                    "is off and the live vision encoder isn't loaded."
-                )
-            images = batch.get("images") if isinstance(batch, dict) else None
-            if images is None:
-                raise RuntimeError(
-                    "IP-Adapter expected batch['images'] but got None — re-check "
-                    "cache_latents=false in the IP-Adapter config, or set "
-                    "ip_features_cache_to_disk=true with `make ip-adapter-cache`."
-                )
-            with torch.no_grad():
-                feats_list = encode_pe_from_imageminus1to1(
-                    self._vision_bundle,
-                    images.to(accelerator.device),
-                    same_bucket=True,  # dataloader bucketing guarantees per-batch shape
-                )
-                ip_features = torch.stack(feats_list, dim=0).to(
-                    weight_dtype
-                )  # [B, T_pe, d_enc]
-        # Resampler runs in network-param dtype (bf16 typically); gradient
-        # flows from here.
-        ip_tokens = network.encode_ip_tokens(ip_features)
-        network.set_ip_tokens(ip_tokens)
-
-    def _maybe_set_easycontrol_tokens(
-        self,
-        args,
-        accelerator,
-        network,
-        latents,
-        weight_dtype,
-        is_train: bool,
-    ) -> None:
-        """Prime the EasyControl cond state on the network for this step.
-
-        Ref==target for now, so we feed the same clean latent already cached
-        for the target. The two-stream Block.forward patch then runs the cond
-        stream alongside the target inside each block; nothing is cached
-        across blocks, no post-backward call is needed (autograd flows through
-        the per-block checkpoint outputs).
-
-        Whole-batch CFG dropout zeros the conditioning with probability
-        ``args.easycontrol_drop_p``. No-op when EasyControl is off.
-        """
-        if not getattr(args, "use_easycontrol", False):
-            return
-        if not hasattr(network, "set_cond"):
-            return
-
-        drop_p = float(getattr(args, "easycontrol_drop_p", 0.1) or 0.0)
-        if is_train and drop_p > 0.0 and random.random() < drop_p:
-            network.set_cond(None)
-            return
-
-        cond_latent = latents.to(accelerator.device, dtype=weight_dtype)
-
-        # Optional: add per-sample Gaussian noise to the cond latent during
-        # training. Weakens the ref==target "perfect blueprint" by removing
-        # high-frequency detail from cond, forcing text to carry the residual.
-        # sigma=0 stays in the training distribution, so clean-cond inference
-        # remains valid. Disabled at validation/sampling.
-        sigma_max = float(getattr(args, "easycontrol_cond_noise_max", 0.0) or 0.0)
-        if is_train and sigma_max > 0.0:
-            sigma = torch.rand(
-                cond_latent.shape[0],
-                *([1] * (cond_latent.ndim - 1)),
-                device=cond_latent.device,
-                dtype=cond_latent.dtype,
-            ) * sigma_max
-            cond_latent = cond_latent + sigma * torch.randn_like(cond_latent)
-
-        network.set_cond(cond_latent)
-
     def get_noise_pred_and_target(
         self,
         ctx: "TrainCtx",
@@ -723,25 +621,28 @@ class AnimaTrainer:
         weight_dtype = ctx.weight_dtype
         anima: anima_models.Anima = unet
 
-        # IP-Adapter: encode reference image and prime per-block K/V on the
-        # network BEFORE the DiT forward. The patched cross-attn closures
-        # consume the cached tensors during attention.
-        self._maybe_set_ip_tokens(
-            args, accelerator, network, batch, weight_dtype, is_train
-        )
+        # Reset per-step adapter aux so stale tensors from a prior step can't
+        # leak into the loss composer.
+        self._extras_for_step = {}
 
         # Sample noise
         if latents.ndim == 5:  # Fallback for 5D latents (old cache)
             latents = latents.squeeze(2)  # [B, C, 1, H, W] -> [B, C, H, W]
 
-        # EasyControl: run the cond pre-pass on the clean VAE latent and prime
-        # per-block (K_c, V_c) on each block's self_attn. Done AFTER the 5D->4D
-        # squeeze so cond and target share the same [B, C, H, W] layout. The
-        # patched self_attn forward extends target keys with the cached cond
-        # K/V (with a per-block additive logit bias) during the DiT forward.
-        self._maybe_set_easycontrol_tokens(
-            args, accelerator, network, latents, weight_dtype, is_train
-        )
+        # Method-adapter pre-forward priming. IP-Adapter encodes the reference
+        # image and primes per-block K/V; EasyControl runs the cond pre-pass
+        # and primes per-block (K_c, V_c). Both run on the 4D latent layout
+        # the patched DiT forward expects. The patched cross-attn / self-attn
+        # closures consume the primed tensors during attention.
+        if self._adapters:
+            step_ctx = StepCtx(
+                args=args,
+                accelerator=accelerator,
+                network=network,
+                weight_dtype=weight_dtype,
+            )
+            for adapter in self._adapters:
+                adapter.prime_for_forward(step_ctx, batch, latents, is_train=is_train)
         noise = torch.randn_like(latents)
 
         # Draw noisy input + timesteps via the sampler registry (M1).
@@ -883,80 +784,34 @@ class AnimaTrainer:
                     **kw,
                 )
 
-                # --- APEX: real + fake branch forwards (arXiv:2604.12322 §3) ---
-                # Reset per-step so stale aux from a prior step can't leak.
-                self._apex_aux = None
-                apex_active = (
-                    is_train
-                    and getattr(args, "method", None) == "apex"
-                    and getattr(network, "apex_condition_shift", None) is not None
-                )
-                if apex_active:
-                    # noisy_model_input is 5D [B,C,1,H,W]; model_pred is 5D too
-                    # here (squeeze happens after this block). Work in 5D for
-                    # consistency with the anima() call signature.
-                    t_bcast = timesteps.view(-1, 1, 1, 1, 1).to(model_pred.dtype)
-                    # Endpoint predictor (Eq. 11): x_fake = x_t - t * F_real, sg.
-                    with torch.no_grad():
-                        x_fake = noisy_model_input - t_bcast * model_pred.detach()
-                    # Fresh noise + fresh t for the fake OT trajectory.
-                    z_fake = torch.randn_like(x_fake)
-                    # Draw t_fake on device to match existing timesteps tensor.
-                    t_fake = torch.rand(
-                        noisy_model_input.shape[0],
-                        device=noisy_model_input.device,
-                        dtype=timesteps.dtype,
-                    )
-                    t_fake_bcast = t_fake.view(-1, 1, 1, 1, 1).to(model_pred.dtype)
-                    x_fake_t = t_fake_bcast * z_fake + (1.0 - t_fake_bcast) * x_fake
-                    # target_fake = z_fake - x_fake (OT velocity on the fake traj)
-                    target_fake = z_fake - x_fake
-
-                    # Shifted condition (grad flows into ConditionShift via L_fake).
-                    c_fake = network.apex_condition_shift(crossattn_emb)
-
-                    # (1) Fake branch at real (x_t, t, c_fake) — stop-gradient target
-                    #     for L_mix. Paper §3.2: "v_fake := sg(F_theta(x_t, t, c_fake))".
-                    #     Under no_grad so the fake call doesn't contribute to
-                    #     the real-branch gradient path.
-                    with torch.no_grad():
-                        v_fake_sg = anima(
-                            noisy_model_input,
-                            timesteps,
-                            c_fake.detach(),
-                            padding_mask=padding_mask,
-                            **kw,
-                        )
-
-                    # T_mix_v in velocity space (Eq. 23 after Prop. 3 conversion):
-                    #   T_mix_v = (1-lam)*v_data + lam*v_fake_sg
-                    lam = float(getattr(args, "apex_lambda", 1.0))
-                    v_data_5d = (noise - latents).unsqueeze(2)  # [B,C,1,H,W]
-                    T_mix_v = ((1.0 - lam) * v_data_5d + lam * v_fake_sg).detach()
-
-                    # (2) Fake branch at (x_fake_t, t_fake, c_fake) — L_fake target.
-                    #     Grad flows back through both LoRA and ConditionShift.
-                    F_fake_on_fake_xt = anima(
-                        x_fake_t,
-                        t_fake,
-                        c_fake,
+                # Method-adapter extra forwards (APEX fake/mix branches, …).
+                # Each adapter sees the primary forward's inputs + 5D output
+                # and may run additional anima(...) calls inside this same
+                # autocast / grad scope, returning aux loss tensors keyed for
+                # the LossComposer.
+                if self._adapters:
+                    primary = ForwardArtifacts(
+                        anima_call=anima,
+                        noisy_model_input=noisy_model_input,
+                        timesteps=timesteps,
+                        crossattn_emb=crossattn_emb,
                         padding_mask=padding_mask,
-                        **kw,
+                        forward_kwargs=kw,
+                        model_pred=model_pred,
+                        noise=noise,
+                        latents=latents,
+                        is_train=is_train,
                     )
-
-                    # Weighting for the L_fake term at its own timestep.
-                    weighting_fake = anima_train_utils.compute_loss_weighting_for_anima(
-                        weighting_scheme=args.weighting_scheme, sigmas=t_fake
+                    step_ctx = StepCtx(
+                        args=args,
+                        accelerator=accelerator,
+                        network=network,
+                        weight_dtype=weight_dtype,
                     )
-
-                    # Stash 4D tensors for _process_batch_inner to consume.
-                    self._apex_aux = {
-                        "T_mix_v": T_mix_v.squeeze(2),
-                        "F_fake_on_fake_xt": F_fake_on_fake_xt.squeeze(2),
-                        "target_fake": target_fake.squeeze(2),
-                        "weighting_fake": weighting_fake,
-                        "t_fake": t_fake,
-                    }
+                    for adapter in self._adapters:
+                        out = adapter.extra_forwards(step_ctx, primary)
+                        if out:
+                            self._extras_for_step.update(out)
 
                 # --- Functional MSE loss against stochastic inversion run ---
                 # If functional loss is enabled and the batch has inversions loaded,
@@ -1252,43 +1107,10 @@ class AnimaTrainer:
 
         huber_c = get_huber_threshold_if_needed(args, timesteps, noise_scheduler)
 
-        # Assemble aux dict for the composer: APEX tensors + schedule + functional
-        # loss. The trainer owns the forward passes that produce these
-        # (see get_noise_pred_and_target + post_process_network); the composer
-        # just consumes them.
-        loss_aux: dict = {}
-        apex_aux = getattr(self, "_apex_aux", None)
-        if (
-            is_train
-            and getattr(args, "method", None) == "apex"
-            and apex_aux is not None
-        ):
-            from library.training.apex_loss import apex_schedule_weights
-
-            apex_step = int(getattr(self, "_apex_step", 0))
-            total_steps = int(getattr(args, "max_train_steps", 0) or 0)
-            warmup_abs = int(getattr(args, "apex_warmup_steps", 0) or 0)
-            rampup_abs = int(getattr(args, "apex_rampup_steps", 0) or 0)
-            if warmup_abs <= 0:
-                warmup_abs = int(
-                    float(getattr(args, "apex_warmup_ratio", 0.0) or 0.0) * total_steps
-                )
-            if rampup_abs <= 0:
-                rampup_abs = int(
-                    float(getattr(args, "apex_rampup_ratio", 0.0) or 0.0) * total_steps
-                )
-            lam_c_eff, lam_f_eff = apex_schedule_weights(
-                step=apex_step,
-                warmup_steps=warmup_abs,
-                rampup_steps=rampup_abs,
-                lam_c_target=float(getattr(args, "apex_lambda_c", 1.0)),
-                lam_f_target=float(getattr(args, "apex_lambda_f", 1.0)),
-            )
-            loss_aux["apex"] = {
-                **apex_aux,
-                "lam_c_eff": lam_c_eff,
-                "lam_f_eff": lam_f_eff,
-            }
+        # Assemble aux dict for the composer: extra_forwards returns from each
+        # method adapter (APEX tensors + schedule already mixed in, etc.) plus
+        # the trainer-owned functional-loss capture (next adapter target).
+        loss_aux: dict = dict(self._extras_for_step)
 
         func_loss = getattr(self, "_func_loss", None)
         if func_loss is not None:
@@ -1409,12 +1231,16 @@ class AnimaTrainer:
         )
 
     def on_step_start(self, ctx: "TrainCtx", batch, *, is_train: bool = True):
-        # APEX: count training steps for the warmup/rampup schedule used by
-        # _process_batch_inner. Counts at the process_batch granularity; this
-        # aligns with global_step under gradient_accumulation_steps=1 and is
-        # close enough under larger accumulation.
-        if is_train and getattr(ctx.args, "method", None) == "apex":
-            self._apex_step = int(getattr(self, "_apex_step", 0)) + 1
+        if not self._adapters:
+            return
+        step_ctx = StepCtx(
+            args=ctx.args,
+            accelerator=ctx.accelerator,
+            network=ctx.network,
+            weight_dtype=ctx.weight_dtype,
+        )
+        for adapter in self._adapters:
+            adapter.on_step_start(step_ctx, batch, is_train=is_train)
 
     def is_train_text_encoder(self, args):
         return not args.network_train_unet_only
@@ -1774,90 +1600,6 @@ class AnimaTrainer:
             accelerator.print(
                 f"load network weights from {args.network_weights}: {info}"
             )
-
-        # IP-Adapter: feature source is either (a) sibling .safetensors caches
-        # produced by `make ip-adapter-cache` (--ip_features_cache_to_disk), or
-        # (b) live vision encoder running on batch["images"]. Done after
-        # apply_to so we fail fast if the network module doesn't expose the IP
-        # runtime contract (set_ip_tokens / clear_ip_tokens).
-        if getattr(args, "use_ip_adapter", False):
-            if not (
-                hasattr(network, "set_ip_tokens")
-                and hasattr(network, "encode_ip_tokens")
-            ):
-                raise ValueError(
-                    "--use_ip_adapter requires a network module with set_ip_tokens / "
-                    "encode_ip_tokens (e.g. networks.ip_adapter_anima)."
-                )
-            cache_features = getattr(args, "ip_features_cache_to_disk", False)
-            if not cache_features and getattr(args, "cache_latents", False):
-                raise ValueError(
-                    "--use_ip_adapter without --ip_features_cache_to_disk requires "
-                    "--cache_latents=false so batch['images'] carries the raw reference "
-                    "image for live PE encoding. Either set ip_features_cache_to_disk=true "
-                    "(after `make ip-adapter-cache`) or cache_latents=false."
-                )
-            if cache_features:
-                accelerator.print(
-                    f"IP-Adapter: reading cached vision features "
-                    f"(encoder={getattr(args, 'ip_encoder', 'pe')}, "
-                    f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)}) — "
-                    "vision encoder NOT loaded."
-                )
-            else:
-                self._vision_bundle = load_pe_encoder(
-                    accelerator.device,
-                    name=getattr(args, "ip_encoder", "pe"),
-                    dtype=torch.bfloat16,
-                )
-                accelerator.print(
-                    f"IP-Adapter: loaded vision encoder {self._vision_bundle.name} "
-                    f"(d_enc={self._vision_bundle.d_enc}, "
-                    f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)})"
-                )
-            # Enable runtime diagnostics so we can read out
-            # ‖to_k_ip‖, ‖to_v_ip‖, and ‖scale·ip_out‖/‖text_result‖ per epoch.
-            if hasattr(network, "set_diagnostics_enabled"):
-                network.set_diagnostics_enabled(True, device=accelerator.device)
-                # Print init-time norms so the first epoch readout has a
-                # reference point.
-                if accelerator.is_main_process:
-                    network.diagnostic_summary(reset=True, log=True)
-
-        # EasyControl: validate the network module exposes the cond runtime
-        # contract. No live encoder to load — runs on the clean VAE latent
-        # already cached by cache_latents.
-        if getattr(args, "use_easycontrol", False):
-            if not (
-                hasattr(network, "set_cond") and hasattr(network, "encode_cond_latent")
-            ):
-                raise ValueError(
-                    "--use_easycontrol requires a network module with set_cond / "
-                    "encode_cond_latent (e.g. networks.easycontrol_anima)."
-                )
-            accelerator.print(
-                f"EasyControl: two-stream cond enabled "
-                f"(drop_p={getattr(args, 'easycontrol_drop_p', 0.1)}, "
-                f"cond_noise_max={getattr(args, 'easycontrol_cond_noise_max', 0.0)})"
-            )
-
-        # APEX Phase 0 Finding B safety rail (proposal §7.3): refuse to launch
-        # without either a warmup schedule or a loaded LoRA checkpoint, since
-        # cold-start catastrophically regresses (~48%% NFE=1 W1) as L_fake
-        # trains the fake branch against random trajectories from a random F.
-        if getattr(args, "method", None) == "apex":
-            has_warmup = (
-                int(getattr(args, "apex_warmup_steps", 0) or 0) > 0
-                or float(getattr(args, "apex_warmup_ratio", 0.0) or 0.0) > 0.0
-            )
-            has_weights = args.network_weights is not None
-            if not (has_warmup or has_weights):
-                raise ValueError(
-                    "APEX training requires either --apex_warmup_ratio > 0 "
-                    "(or --apex_warmup_steps > 0) or --network_weights <path> "
-                    "(warm-start). Cold-start training is known to regress vs. "
-                    "plain FM on the one-step objective; see proposal.md §7.3."
-                )
 
         if args.gradient_checkpointing:
             if args.cpu_offload_checkpointing:
@@ -2383,6 +2125,22 @@ class AnimaTrainer:
         if network_result is None:
             return
         network, net_kwargs, train_unet, train_text_encoder = network_result
+
+        # Resolve and run on_network_built for each method adapter (EasyControl,
+        # IP-Adapter, APEX, …). Each adapter validates its runtime contract and
+        # logs/sets up auxiliary state before optimizer / accelerator wiring.
+        self._adapters = resolve_adapters(args, network)
+        if self._adapters:
+            setup_ctx = SetupCtx(
+                args=args,
+                accelerator=accelerator,
+                network=network,
+                unet=unet,
+                text_encoders=text_encoders,
+                weight_dtype=weight_dtype,
+            )
+            for adapter in self._adapters:
+                adapter.on_network_built(setup_ctx)
 
         (
             optimizer,
@@ -2978,14 +2736,15 @@ class AnimaTrainer:
                         mean_grad_norm,
                         mean_combined_norm,
                     )
+                    trainer_state: dict = {}
+                    for adapter in self._adapters:
+                        trainer_state.update(adapter.state_for_metrics())
                     logs.update(
                         collect_metrics(
                             MetricContext(
                                 args=args,
                                 network=_unwrapped_net,
-                                trainer_state={
-                                    "apex_step": getattr(self, "_apex_step", 0),
-                                },
+                                trainer_state=trainer_state,
                             )
                         )
                     )
@@ -3045,16 +2804,18 @@ class AnimaTrainer:
                 logs = {"loss/epoch_average": loss_recorder.moving_average}
                 self.epoch_logging(accelerator, logs, global_step, epoch + 1)
 
-            # IP-Adapter: dump per-block param norms + ‖ip_out‖/‖text_result‖
-            # ratio averaged over the just-finished epoch, then reset.
-            if (
-                getattr(args, "use_ip_adapter", False)
-                and is_main_process
-                and hasattr(accelerator.unwrap_model(network), "diagnostic_summary")
-            ):
-                accelerator.unwrap_model(network).diagnostic_summary(
-                    reset=True, log=True
+            # Per-method end-of-epoch hooks (IP-Adapter diagnostic dump, …).
+            # Main process only — adapters that need cross-rank reduction
+            # should do that internally.
+            if self._adapters and is_main_process:
+                epoch_end_ctx = StepCtx(
+                    args=args,
+                    accelerator=accelerator,
+                    network=network,
+                    weight_dtype=weight_dtype,
                 )
+                for adapter in self._adapters:
+                    adapter.on_epoch_end(epoch_end_ctx)
 
             accelerator.wait_for_everyone()
 

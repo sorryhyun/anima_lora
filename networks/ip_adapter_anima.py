@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 from typing import Optional
 
 import torch
@@ -40,6 +41,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from library.log import setup_logging
+from library.training.method_adapter import MethodAdapter, SetupCtx, StepCtx
+from library.vision import (
+    VisionEncoderBundle,
+    encode_pe_from_imageminus1to1,
+    load_pe_encoder,
+)
 from library.vision.resampler import PerceiverResampler
 
 setup_logging()
@@ -585,3 +592,117 @@ def _make_patched_forward(orig_attn, ip_net: "IPAdapterNetwork", block_idx: int,
         return orig_attn.output_dropout(orig_attn.output_proj(text_result))
 
     return patched_forward
+
+
+# ----------------------------------------------------------------- trainer integration
+
+
+class IPAdapterMethodAdapter(MethodAdapter):
+    """Bridges IP-Adapter into AnimaTrainer's adapter dispatch.
+
+    Owns the live PE-Core vision encoder (when not running off pre-cached
+    features) so the trainer no longer needs an ``_vision_bundle`` field.
+
+    Setup: validate the network exposes set_ip_tokens / encode_ip_tokens,
+    enforce the cache_latents/ip_features_cache_to_disk constraint, load the
+    live PE encoder when needed, enable runtime diagnostics.
+    Step: encode the reference image (cached features or live PE) and prime
+    per-block ``ip_k`` / ``ip_v`` on the network with whole-batch CFG dropout.
+    Epoch end: dump ‖to_k_ip‖ / ‖to_v_ip‖ / ‖ip_out‖ / ‖text_result‖ ratios."""
+
+    name = "ip_adapter"
+
+    def __init__(self) -> None:
+        self._vision_bundle: Optional[VisionEncoderBundle] = None
+
+    def on_network_built(self, ctx: SetupCtx) -> None:
+        args = ctx.args
+        accelerator = ctx.accelerator
+        net = ctx.network
+        if not (hasattr(net, "set_ip_tokens") and hasattr(net, "encode_ip_tokens")):
+            raise ValueError(
+                "--use_ip_adapter requires a network module with set_ip_tokens / "
+                "encode_ip_tokens (e.g. networks.ip_adapter_anima)."
+            )
+        cache_features = getattr(args, "ip_features_cache_to_disk", False)
+        if not cache_features and getattr(args, "cache_latents", False):
+            raise ValueError(
+                "--use_ip_adapter without --ip_features_cache_to_disk requires "
+                "--cache_latents=false so batch['images'] carries the raw reference "
+                "image for live PE encoding. Either set ip_features_cache_to_disk=true "
+                "(after `make ip-adapter-cache`) or cache_latents=false."
+            )
+        if cache_features:
+            accelerator.print(
+                f"IP-Adapter: reading cached vision features "
+                f"(encoder={getattr(args, 'ip_encoder', 'pe')}, "
+                f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)}) — "
+                "vision encoder NOT loaded."
+            )
+        else:
+            self._vision_bundle = load_pe_encoder(
+                accelerator.device,
+                name=getattr(args, "ip_encoder", "pe"),
+                dtype=torch.bfloat16,
+            )
+            accelerator.print(
+                f"IP-Adapter: loaded vision encoder {self._vision_bundle.name} "
+                f"(d_enc={self._vision_bundle.d_enc}, "
+                f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)})"
+            )
+        if hasattr(net, "set_diagnostics_enabled"):
+            net.set_diagnostics_enabled(True, device=accelerator.device)
+            if accelerator.is_main_process:
+                net.diagnostic_summary(reset=True, log=True)
+
+    def prime_for_forward(
+        self, ctx: StepCtx, batch, latents: torch.Tensor, *, is_train: bool
+    ) -> None:
+        args = ctx.args
+        accelerator = ctx.accelerator
+        network = ctx.network
+        if not hasattr(network, "set_ip_tokens"):
+            return
+
+        drop_p = float(getattr(args, "ip_image_drop_p", 0.1) or 0.0)
+        if is_train and drop_p > 0.0 and random.random() < drop_p:
+            network.set_ip_tokens(None)
+            return
+
+        cached = batch.get("ip_features") if isinstance(batch, dict) else None
+        if cached is not None:
+            ip_features = cached.to(accelerator.device, dtype=ctx.weight_dtype)
+        else:
+            if self._vision_bundle is None:
+                raise RuntimeError(
+                    "IP-Adapter has no feature source: --ip_features_cache_to_disk "
+                    "is off and the live vision encoder isn't loaded."
+                )
+            images = batch.get("images") if isinstance(batch, dict) else None
+            if images is None:
+                raise RuntimeError(
+                    "IP-Adapter expected batch['images'] but got None — re-check "
+                    "cache_latents=false in the IP-Adapter config, or set "
+                    "ip_features_cache_to_disk=true with `make ip-adapter-cache`."
+                )
+            with torch.no_grad():
+                feats_list = encode_pe_from_imageminus1to1(
+                    self._vision_bundle,
+                    images.to(accelerator.device),
+                    same_bucket=True,  # dataloader bucketing guarantees per-batch shape
+                )
+                ip_features = torch.stack(feats_list, dim=0).to(
+                    ctx.weight_dtype
+                )  # [B, T_pe, d_enc]
+        # Resampler runs in network-param dtype (bf16 typically); gradient
+        # flows from here.
+        ip_tokens = network.encode_ip_tokens(ip_features)
+        network.set_ip_tokens(ip_tokens)
+
+    def on_epoch_end(self, ctx: StepCtx) -> None:
+        # Dump per-block param norms + ‖ip_out‖/‖text_result‖ ratio averaged
+        # over the just-finished epoch, then reset. Main process only — the
+        # caller already gates on is_main_process.
+        net = ctx.accelerator.unwrap_model(ctx.network)
+        if hasattr(net, "diagnostic_summary"):
+            net.diagnostic_summary(reset=True, log=True)

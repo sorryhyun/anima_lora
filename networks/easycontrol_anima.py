@@ -79,6 +79,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import random
 from typing import Optional
 
 import torch
@@ -87,6 +88,7 @@ import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from library.log import setup_logging
+from library.training.method_adapter import MethodAdapter, SetupCtx, StepCtx
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -1548,3 +1550,60 @@ def _make_patched_block_forward(
         return target_x_out
 
     return patched_forward
+
+
+# ----------------------------------------------------------------- trainer integration
+
+
+class EasyControlMethodAdapter(MethodAdapter):
+    """Bridges EasyControl into AnimaTrainer's adapter dispatch.
+
+    Setup: validate the network module exposes set_cond / encode_cond_latent.
+    Step: encode the per-step cond latent and prime it on the network before
+    the DiT forward, with whole-batch CFG dropout and optional Gaussian
+    perturbation in train mode (sigma=0 keeps clean-cond inference valid)."""
+
+    name = "easycontrol"
+
+    def on_network_built(self, ctx: SetupCtx) -> None:
+        net = ctx.network
+        if not (hasattr(net, "set_cond") and hasattr(net, "encode_cond_latent")):
+            raise ValueError(
+                "--use_easycontrol requires a network module with set_cond / "
+                "encode_cond_latent (e.g. networks.easycontrol_anima)."
+            )
+        ctx.accelerator.print(
+            f"EasyControl: two-stream cond enabled "
+            f"(drop_p={getattr(ctx.args, 'easycontrol_drop_p', 0.1)}, "
+            f"cond_noise_max={getattr(ctx.args, 'easycontrol_cond_noise_max', 0.0)})"
+        )
+
+    def prime_for_forward(
+        self, ctx: StepCtx, batch, latents: torch.Tensor, *, is_train: bool
+    ) -> None:
+        args = ctx.args
+        network = ctx.network
+        if not hasattr(network, "set_cond"):
+            return
+
+        drop_p = float(getattr(args, "easycontrol_drop_p", 0.1) or 0.0)
+        if is_train and drop_p > 0.0 and random.random() < drop_p:
+            network.set_cond(None)
+            return
+
+        cond_latent = latents.to(ctx.accelerator.device, dtype=ctx.weight_dtype)
+
+        sigma_max = float(getattr(args, "easycontrol_cond_noise_max", 0.0) or 0.0)
+        if is_train and sigma_max > 0.0:
+            sigma = (
+                torch.rand(
+                    cond_latent.shape[0],
+                    *([1] * (cond_latent.ndim - 1)),
+                    device=cond_latent.device,
+                    dtype=cond_latent.dtype,
+                )
+                * sigma_max
+            )
+            cond_latent = cond_latent + sigma * torch.randn_like(cond_latent)
+
+        network.set_cond(cond_latent)
