@@ -5,7 +5,11 @@ import torch
 
 from networks.lora_modules.base import BaseLoRAModule
 from networks.lora_modules.custom_autograd import lora_down_project
-from networks.lora_modules.hydra import _sigma_sinusoidal_features
+from networks.lora_modules.hydra import (
+    _clear_sigma_feature_cache,
+    _register_sigma_feature_cache,
+    _set_sigma_feature_cache,
+)
 
 
 class OrthoLoRAExpModule(BaseLoRAModule):
@@ -277,9 +281,7 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # _compute_gate can run unconditionally. Registered as a non-persistent
         # buffer so .to(device) moves the placeholder with the module.
         # See ``HydraLoRAModule`` for the None-vs-Tensor guard rationale.
-        self.register_buffer(
-            "_sigma", torch.zeros(1, dtype=torch.float32), persistent=False
-        )
+        _register_sigma_feature_cache(self, self.sigma_feature_dim)
         # Expert-warmup gradient masking. See HydraLoRAModule for full
         # rationale — for OrthoHydra the mask gates gradient into S_p (which
         # parameterises per-expert P rotations). Default all-ones → applied
@@ -319,15 +321,21 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
             pooled = lx
         pooled = pooled.to(self.router.weight.dtype)
         if self.sigma_feature_dim > 0:
-            sigma_feat = _sigma_sinusoidal_features(
-                self._sigma, self.sigma_feature_dim
-            ).to(pooled.dtype)
+            sigma_feat = self._sigma_features.to(pooled.dtype)
             sigma_feat = sigma_feat.expand(pooled.shape[0], -1)
             router_in = torch.cat([pooled, sigma_feat], dim=-1)
         else:
             router_in = pooled
         logits = self.router(router_in)  # (B, num_experts)
         return torch.softmax(logits, dim=-1)
+
+    def set_sigma(
+        self, sigmas: torch.Tensor, sigma_features: torch.Tensor | None = None
+    ) -> None:
+        _set_sigma_feature_cache(self, sigmas, sigma_features)
+
+    def clear_sigma(self) -> None:
+        _clear_sigma_feature_cache(self)
 
     def forward(self, x):
         org_forwarded = self.org_forward(x)

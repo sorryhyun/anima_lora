@@ -29,6 +29,49 @@ def _sigma_sinusoidal_features(
     return torch.cat([torch.cos(angles), torch.sin(angles)], dim=-1)
 
 
+def _register_sigma_feature_cache(
+    module: torch.nn.Module, sigma_feature_dim: int
+) -> None:
+    """Register pointer-stable sigma buffers for router conditioning."""
+    module.register_buffer(
+        "_sigma", torch.zeros(1, dtype=torch.float32), persistent=False
+    )
+    if sigma_feature_dim <= 0:
+        return
+    zero_feat = _sigma_sinusoidal_features(module._sigma, sigma_feature_dim)
+    module.register_buffer("_sigma_features", zero_feat, persistent=False)
+
+
+def _copy_or_rebind_buffer(module: torch.nn.Module, name: str, value: torch.Tensor) -> None:
+    buf = getattr(module, name)
+    if buf.shape == value.shape and buf.device == value.device:
+        buf.copy_(value.to(buf.dtype))
+    else:
+        setattr(module, name, value.to(buf.dtype).clone())
+
+
+def _set_sigma_feature_cache(
+    module: torch.nn.Module,
+    sigmas: torch.Tensor,
+    sigma_features: torch.Tensor | None = None,
+) -> None:
+    """Update per-module sigma state without changing buffer pointers per step."""
+    sigmas = sigmas.detach()
+    _copy_or_rebind_buffer(module, "_sigma", sigmas)
+    if getattr(module, "sigma_feature_dim", 0) <= 0:
+        return
+    if sigma_features is None:
+        sigma_features = _sigma_sinusoidal_features(sigmas, module.sigma_feature_dim)
+    _copy_or_rebind_buffer(module, "_sigma_features", sigma_features.detach())
+
+
+def _clear_sigma_feature_cache(module: torch.nn.Module) -> None:
+    module._sigma.zero_()
+    if getattr(module, "sigma_feature_dim", 0) > 0:
+        zero_feat = _sigma_sinusoidal_features(module._sigma, module.sigma_feature_dim)
+        _copy_or_rebind_buffer(module, "_sigma_features", zero_feat)
+
+
 class HydraLoRAModule(BaseLoRAModule):
     """
     HydraLoRA: MoE-style multi-head LoRA with layer-local routing.
@@ -137,9 +180,7 @@ class HydraLoRAModule(BaseLoRAModule):
         # ``LoRANetwork.set_sigma`` rebinds it to the step's (B,) timesteps
         # before every forward, so the placeholder is only used if set_sigma
         # is somehow skipped.
-        self.register_buffer(
-            "_sigma", torch.zeros(1, dtype=torch.float32), persistent=False
-        )
+        _register_sigma_feature_cache(self, self.sigma_feature_dim)
         # Expert-warmup gradient masking. Single buffer holding the per-expert
         # grad-scale (1.0 = full gradient, 0.0 = stop-grad). Default all-ones
         # makes the forward branch a no-op (``up*1 + up.detach()*0 == up``),
@@ -180,9 +221,7 @@ class HydraLoRAModule(BaseLoRAModule):
         # storage dtype (bf16 at inference) — align before matmul.
         pooled = pooled.to(self.router.weight.dtype)
         if self.sigma_feature_dim > 0:
-            sigma_feat = _sigma_sinusoidal_features(
-                self._sigma, self.sigma_feature_dim
-            ).to(pooled.dtype)
+            sigma_feat = self._sigma_features.to(pooled.dtype)
             # Broadcast placeholder (shape (1, D) before first set_sigma) to
             # batch size. Once set_sigma has run, _sigma matches pooled.shape[0]
             # and the expand is a no-op.
@@ -192,6 +231,14 @@ class HydraLoRAModule(BaseLoRAModule):
             router_in = pooled
         logits = self.router(router_in)  # (B, num_experts)
         return torch.softmax(logits, dim=-1)
+
+    def set_sigma(
+        self, sigmas: torch.Tensor, sigma_features: torch.Tensor | None = None
+    ) -> None:
+        _set_sigma_feature_cache(self, sigmas, sigma_features)
+
+    def clear_sigma(self) -> None:
+        _clear_sigma_feature_cache(self)
 
     def forward(self, x):
         # Policy: bf16 storage, fp32 for the bottleneck matmuls. See

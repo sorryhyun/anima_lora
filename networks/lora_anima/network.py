@@ -25,6 +25,7 @@ from networks.lora_modules import (
     OrthoHydraLoRAExpModule,
     OrthoLoRAExpModule,
     ReFTModule,
+    _sigma_sinusoidal_features,
 )
 
 setup_logging()
@@ -624,19 +625,15 @@ class LoRANetwork(torch.nn.Module):
         self._last_sigma = sigmas
         if not self.cfg.use_sigma_router:
             return
+        sigma_feature_cache: dict[int, torch.Tensor] = {}
         for lora in self.unet_loras + self.text_encoder_loras:
             if getattr(lora, "sigma_feature_dim", 0) > 0:
-                buf = lora._sigma
-                if (
-                    buf.shape == sigmas.shape
-                    and buf.device == sigmas.device
-                ):
-                    # Pointer-stable update — preserves the cudagraph.
-                    buf.copy_(sigmas)
-                else:
-                    # First call after init's (1,) placeholder, or batch-size
-                    # change. Pay one re-record; subsequent steps stay stable.
-                    lora._sigma = sigmas.to(buf.dtype).clone()
+                dim = int(lora.sigma_feature_dim)
+                sigma_features = sigma_feature_cache.get(dim)
+                if sigma_features is None:
+                    sigma_features = _sigma_sinusoidal_features(sigmas, dim)
+                    sigma_feature_cache[dim] = sigma_features
+                lora.set_sigma(sigmas, sigma_features)
 
     def clear_sigma(self) -> None:
         """Reset cached σ on every HydraLoRA module to zeros.
@@ -649,9 +646,9 @@ class LoRANetwork(torch.nn.Module):
         """
         self._last_sigma = None
         for lora in self.unet_loras + self.text_encoder_loras:
-            sigma = getattr(lora, "_sigma", None)
-            if sigma is not None:
-                sigma.zero_()
+            clear_sigma = getattr(lora, "clear_sigma", None)
+            if callable(clear_sigma):
+                clear_sigma()
 
     def clear_step_caches(self) -> None:
         """Drop per-step tensor references (``_last_gate``) between training
@@ -938,9 +935,16 @@ class LoRANetwork(torch.nn.Module):
 
         Empty dict when no hydra module cached a gate this step. One reduction
         per module on (B, E) gates — cheap.
+
+        All per-module reductions stay on-device as 0-d / small tensors; we
+        sync once at the end (stacked summary, mean usage vector, optional
+        per-bucket usage, bucket counts). Pulling each per-module mean as a
+        Python float inside the loop forces ~2 ``cudaStreamSynchronize`` per
+        Hydra module — at 56 modules per step that produces a periodic
+        kernel-launch dip in nvidia-smi.
         """
-        per_H: list[float] = []
-        per_margin: list[float] = []
+        per_H_t: list[torch.Tensor] = []         # 0-d, on-device
+        per_margin_t: list[torch.Tensor] = []    # 0-d, on-device
         per_usage: list[torch.Tensor] = []
         per_bucket_usage: list[torch.Tensor] = []  # each (num_buckets, E)
         E_ref: Optional[int] = None
@@ -978,10 +982,10 @@ class LoRANetwork(torch.nn.Module):
 
             p = gate.float().clamp_min(1e-12)
             H = -(p * p.log()).sum(dim=-1)  # (B,)
-            per_H.append((H.mean() / math.log(E)).detach().item())
+            per_H_t.append((H.mean() / math.log(E)).detach())
 
             top2 = p.topk(2, dim=-1).values  # (B, 2)
-            per_margin.append((top2[:, 0] - top2[:, 1]).mean().detach().item())
+            per_margin_t.append((top2[:, 0] - top2[:, 1]).mean().detach())
 
             expert_idx = gate.argmax(dim=-1)  # (B,)
             usage = torch.zeros(E, device=gate.device, dtype=gate.dtype)
@@ -1004,18 +1008,22 @@ class LoRANetwork(torch.nn.Module):
                 bc = bucket_counts_t.to(gate.dtype).clamp_min(1).unsqueeze(-1)
                 per_bucket_usage.append((bu / bc).detach())
 
-        if not per_H:
+        if not per_H_t:
             return {}
 
-        H_t = torch.tensor(per_H)
-        q = torch.quantile(H_t, torch.tensor([0.05, 0.5, 0.95]))
+        H_stack = torch.stack(per_H_t)  # (M,)
+        margin_stack = torch.stack(per_margin_t)  # (M,)
+        q_probs = torch.tensor([0.05, 0.5, 0.95], device=H_stack.device, dtype=H_stack.dtype)
+        q = torch.quantile(H_stack, q_probs)  # (3,)
+        # Single packed summary: [mean_H, p05, p50, p95, margin_mean]. One DtoH.
+        summary = torch.stack([H_stack.mean(), q[0], q[1], q[2], margin_stack.mean()]).cpu()
         usage_mean = torch.stack(per_usage).mean(dim=0).cpu().tolist()
         out: Dict[str, Union[float, List[float], List[List[float]], List[int]]] = {
-            "entropy_mean": float(H_t.mean().item()),
-            "entropy_p05": float(q[0].item()),
-            "entropy_p50": float(q[1].item()),
-            "entropy_p95": float(q[2].item()),
-            "margin_mean": float(sum(per_margin) / len(per_margin)),
+            "entropy_mean": float(summary[0]),
+            "entropy_p05": float(summary[1]),
+            "entropy_p50": float(summary[2]),
+            "entropy_p95": float(summary[3]),
+            "margin_mean": float(summary[4]),
             "expert_usage": usage_mean,
         }
         if per_bucket_usage and bucket_counts_t is not None:

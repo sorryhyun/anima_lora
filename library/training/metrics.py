@@ -166,10 +166,11 @@ def collect_metrics(
         if names is None
         else ((n, METRIC_REGISTRY[n]) for n in names if n in METRIC_REGISTRY)
     )
-    for _, fn in entries:
-        try:
-            out.update(fn(ctx))
-        except Exception:
-            # Metric producers must never kill a training step.
-            continue
+    with torch.no_grad():
+        for _, fn in entries:
+            try:
+                out.update(fn(ctx))
+            except Exception:
+                # Metric producers must never kill a training step.
+                continue
     return out

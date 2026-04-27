@@ -227,6 +227,35 @@ def test_hydra_flag_on_matches_legacy_gradients():
     assert torch.equal(gx_legacy, gx_custom), "Hydra grad_x differs"
 
 
+def test_hydra_sigma_feature_cache_updates_and_clears():
+    """Sigma-router features are precomputed once per step and cached on modules."""
+    from networks.lora_modules.hydra import (
+        HydraLoRAModule,
+        _sigma_sinusoidal_features,
+    )
+
+    torch.manual_seed(0)
+    base = torch.nn.Linear(32, 24, bias=False)
+    module = HydraLoRAModule(
+        "h", base, multiplier=1.0, lora_dim=4, alpha=4,
+        num_experts=3, sigma_feature_dim=8,
+    )
+
+    sigmas = torch.tensor([0.25, 0.5], dtype=torch.float32)
+    expected = _sigma_sinusoidal_features(sigmas, 8)
+    module.set_sigma(sigmas, expected)
+
+    assert torch.equal(module._sigma, sigmas)
+    assert torch.equal(module._sigma_features, expected)
+
+    module.clear_sigma()
+    assert torch.equal(module._sigma, torch.zeros_like(sigmas))
+    assert torch.equal(
+        module._sigma_features,
+        _sigma_sinusoidal_features(torch.zeros_like(sigmas), 8),
+    )
+
+
 def test_ortho_flag_on_matches_legacy_gradients():
     """OrthoLoRAExpModule: custom fn treats Q_eff as the 'weight' input.
     grad_Q_eff must propagate through R_q @ Q_basis into S_q, and through

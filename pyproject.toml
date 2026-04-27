@@ -70,6 +70,7 @@ dependencies = [
     "kornia>=0.8.2",
     "comfy-kitchen>=0.2.8",
     "simpleeval>=1.0.7",
+    "pytest>=9.0.3",
 ]
 
 [project.optional-dependencies]
