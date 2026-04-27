@@ -6,7 +6,7 @@ LoRA / T-LoRA training and inference engine for the [Anima](https://huggingface.
 
 Three things this repo aims to do well:
 
-1. **Fast LoRA training** on consumer GPUs — compile-friendly data pipeline tuned end to end.
+1. **Fast LoRA training** on consumer GPUs — full-model `torch.compile` with CUDAGraph capture, end to end.
 2. **Verified merge-compatible variants** — LoRA, OrthoLoRA, and T-LoRA stack together and bake into a standalone DiT checkpoint.
 3. **A broad experimental surface** — HydraLoRA, ReFT, APEX distillation, postfix/prefix tuning, embedding inversion, img2emb, Spectrum inference, mod guidance.
 
@@ -16,29 +16,18 @@ Three things this repo aims to do well:
 
 ## 1. Fast training
 
-**12.8 GB peak VRAM · 1.3 s/step** on a single RTX 5060 Ti — achieved by co-designing the data pipeline, attention, and compiler stack so Dynamo sees one static shape for the whole run.
+**13.4 GB peak VRAM · 1.1 s/step** on a single RTX 5060 Ti while **rank=32 1MP resolution lora training** — achieved by co-designing the data pipeline, attention, and compiler stack so Dynamo sees one static shape for the whole run.
 
 | Lever | Summary |
 |---|---|
 | Constant-token bucketing | All buckets target `(H/16)×(W/16) ≈ 4096` patches; batches zero-pad to exactly 4096. One static shape, no compile recompilation. |
 | Max-padded text encoder | Text outputs padded to 512 and zero-filled — the pretrained DiT uses zero keys as cross-attn sinks, so trimming breaks it. Also gives the compiler another fixed dim. |
-| Per-block `torch.compile` | Each DiT block compiled independently with Inductor. Combined with static tokens this eliminates guard recompilation. |
+| Per-block `torch.compile` (default) | Each DiT block compiled independently with Inductor. Combined with static tokens this eliminates guard recompilation. |
+| Full-model compile + CUDAGraph (opt-in) | Set `compile_mode = "full"` + `compile_inductor_mode = "reduce-overhead"` and Inductor sees the whole 28-block stack while `cudagraph_trees` captures one graph that replays every step — no per-block kernel boundary, no per-step launch overhead. Forces the static-shape contract end to end; incompatible with `gradient_checkpointing` and `blocks_to_swap`. See [full_model_cudagraph.md](docs/optimizations/full_model_cudagraph.md). |
 | Compile-friendly hot path | Audited every forward for patterns dynamo can't trace cleanly — `einops.rearrange` replaced with explicit `.unflatten()/.permute()` chains, `torch.autocast` context managers replaced with direct `.to(dtype)` casts, dict `.items()` loops hoisted out of compiled regions, FA4 wrapped in `@torch.compiler.disable` for clean graph breaks. |
 | Flash Attention 2 | `flash_attn` 2.x with SDPA fallback. FA4 evaluated and removed — see [fa4.md](docs/optimizations/fa4.md). |
 
-**Benchmarks** — RTX 5060 Ti 16 GB, LoRA rank 32, bs 2, 182 steps, seed 42. Val loss measured at σ ∈ {0.05, 0.1, 0.2, 0.35}.
-
-| Configuration | Peak VRAM | Total | 2nd epoch | Train | Val |
-|---|---|---|---|---|---|
-| FA2 (plain) | 7.0 GB | 14:51 | 7:26 | 0.092 | 0.212 |
-| FA2 + compile (eager fallback) | 7.7 GB | 15:10 | 7:26 | 0.089 | 0.211 |
-| FA2 + compile (static tokens) | 6.2 GB | 11:07 | 5:01 | 0.086 | 0.193 |
-| FA2 + compile − grad ckpt | 15.2 GB | 7:07 | 3:30 | 0.088 | 0.206 |
-| **same, custom autograd** | **12.8 GB** | **6:40** | **3:15** | 0.090 | 0.212 |
-
-> CUDA 13.2 hits **1.2 s/step** at 13.0 GB — landing once PyTorch 2.12 ships. See [cuda132.md](docs/optimizations/cuda132.md).
-
-Compile pipeline details in [docs/optimizations/for_compile.md](docs/optimizations/for_compile.md).
+Compile pipeline details in [docs/optimizations/for_compile.md](docs/optimizations/for_compile.md); full-model + CUDAGraph design in [docs/optimizations/full_model_cudagraph.md](docs/optimizations/full_model_cudagraph.md).
 
 ---
 

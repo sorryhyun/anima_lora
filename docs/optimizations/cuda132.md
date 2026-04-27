@@ -4,7 +4,6 @@
 
 1. Install CUDA 13.2 (Linux only, `nvidia-driver-595` **open** variant needed).
 2. Install FA2 and build. Python 3.13 requires a custom wheel; [prebuilt here](https://github.com/sorryhyun/flash-attention-sm120-fix/releases/download/fa2cuda132/flash_attn-2.8.3-cp313-cp313-linux_x86_64.whl).
-3. Install bitsandbytes from source with CMake.
 
 ## How much faster?
 

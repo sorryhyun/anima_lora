@@ -10,3 +10,4 @@ caption_dropout_rate = 0.1
 output_name = "anima"
 blocks_to_swap = 0
 compile_mode = "full"
+compile_inductor_mode = "reduce-overhead"

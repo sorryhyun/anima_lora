@@ -2958,7 +2958,7 @@ class AnimaTrainer:
                     _router_H = _unwrapped_net.get_router_entropy()
                     if _router_H is not None:
                         logs["router_H"] = f"{_router_H:.3f}"
-                progress_bar.set_postfix(**{**max_mean_logs, **logs})
+                progress_bar.set_postfix(refresh=False, **{**max_mean_logs, **logs})
 
                 log_every = max(1, int(getattr(args, "log_every_n_steps", 1) or 1))
                 should_log_step = (global_step % log_every == 0) or (

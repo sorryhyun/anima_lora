@@ -137,6 +137,10 @@ def cmd_lora_low_vram(extra):
     train("lora", extra, preset=_preset("low_vram"))
 
 
+def cmd_lora_half(extra):
+    train("lora", extra, preset=_preset("half"))
+
+
 def cmd_lora_gui(extra):
     """Train from configs/gui-methods/<variant>.toml.
 
@@ -273,32 +277,56 @@ def cmd_easycontrol_preprocess(extra):
 
 
 def cmd_test_ip(extra):
-    """Inference with latest IP-Adapter weight. First positional arg is the
-    reference image path; everything else is forwarded to inference.py and
-    overrides the defaults in INFERENCE_BASE (argparse takes the last value).
+    """Inference with latest IP-Adapter weight.
+
+    Reference image is taken from REF_IMAGE env or the first positional arg.
+    PROMPT, NEG, IP_SCALE env vars override defaults. Saves to output/tests/ip/
+    and copies the ref image alongside the generated output as ``<name>_ref.png``.
 
     Examples:
       python tasks.py test-ip ref.png --prompt "a girl in a coffee shop"
-      python tasks.py test-ip ref.png --prompt "..." --ip_scale 0.8 --seed 7
+      REF_IMAGE=ref.png IP_SCALE=0.8 python tasks.py test-ip
     """
-    if not extra:
+    ref_image = os.environ.get("REF_IMAGE", "").strip()
+    if not ref_image and extra and not extra[0].startswith("-"):
+        ref_image = extra[0]
+        extra = extra[1:]
+    if not ref_image:
         print(
-            "Usage: python tasks.py test-ip <ref_image> [extra inference args...]",
+            "Usage: python tasks.py test-ip <ref_image> [extra...]\n"
+            "   or: REF_IMAGE=path/to/ref.png python tasks.py test-ip [extra...]",
             file=sys.stderr,
         )
         sys.exit(1)
-    ref_image = extra[0]
-    rest = list(extra[1:])
-    run(
-        [
-            *INFERENCE_BASE,
-            "--ip_adapter_weight",
-            str(latest_output("anima_ip_adapter")),
-            "--ip_image",
-            ref_image,
-            *rest,
-        ]
+
+    save_dir = ROOT / "output" / "tests" / "ip"
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    args = [
+        *INFERENCE_BASE,
+        "--save_path", str(save_dir),
+        "--ip_adapter_weight", str(latest_output("anima_ip_adapter")),
+        "--ip_image", ref_image,
+        "--ip_image_match_size",
+    ]
+    if scale := os.environ.get("IP_SCALE"):
+        args += ["--ip_scale", scale]
+    if prompt := os.environ.get("PROMPT"):
+        args += ["--prompt", prompt]
+    if neg := os.environ.get("NEG"):
+        args += ["--negative_prompt", neg]
+    args += list(extra)
+    run(args)
+
+    pngs = sorted(
+        (p for p in save_dir.glob("*.png") if not p.name.endswith("_ref.png")),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
     )
+    if pngs:
+        ref_dst = pngs[0].with_name(pngs[0].stem + "_ref.png")
+        shutil.copy(ref_image, ref_dst)
+        print(f"  > Ref pasted: {ref_dst}")
 
 
 def cmd_easycontrol(extra):
@@ -306,30 +334,82 @@ def cmd_easycontrol(extra):
 
 
 def cmd_test_easycontrol(extra):
-    """Inference with latest EasyControl weight. First positional arg is the
-    reference image path; everything else is forwarded to inference.py.
+    """Inference with latest EasyControl weight.
+
+    Reference image is taken from REF_IMAGE env or the first positional arg.
+    PROMPT, NEG, EC_SCALE env vars override defaults. Saves to
+    output/tests/easycontrol/ and copies the ref image alongside the generated
+    output as ``<name>_ref.png``.
 
     Examples:
       python tasks.py test-easycontrol ref.png --prompt "a girl in a coffee shop"
-      python tasks.py test-easycontrol ref.png --easycontrol_scale 0.8
+      REF_IMAGE=ref.png EC_SCALE=0.8 python tasks.py test-easycontrol
     """
-    if not extra:
+    ref_image = os.environ.get("REF_IMAGE", "").strip()
+    if not ref_image and extra and not extra[0].startswith("-"):
+        ref_image = extra[0]
+        extra = extra[1:]
+    if not ref_image:
         print(
-            "Usage: python tasks.py test-easycontrol <ref_image> [extra inference args...]",
+            "Usage: python tasks.py test-easycontrol <ref_image> [extra...]\n"
+            "   or: REF_IMAGE=path/to/ref.png python tasks.py test-easycontrol [extra...]",
             file=sys.stderr,
         )
         sys.exit(1)
-    ref_image = extra[0]
-    rest = list(extra[1:])
+
+    save_dir = ROOT / "output" / "tests" / "easycontrol"
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    args = [
+        *INFERENCE_BASE,
+        "--save_path", str(save_dir),
+        "--easycontrol_weight", str(latest_output("anima_easycontrol")),
+        "--easycontrol_image", ref_image,
+        "--easycontrol_image_match_size",
+    ]
+    if scale := os.environ.get("EC_SCALE"):
+        args += ["--easycontrol_scale", scale]
+    if prompt := os.environ.get("PROMPT"):
+        args += ["--prompt", prompt]
+    if neg := os.environ.get("NEG"):
+        args += ["--negative_prompt", neg]
+    args += list(extra)
+    run(args)
+
+    pngs = sorted(
+        (p for p in save_dir.glob("*.png") if not p.name.endswith("_ref.png")),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if pngs:
+        ref_dst = pngs[0].with_name(pngs[0].stem + "_ref.png")
+        shutil.copy(ref_image, ref_dst)
+        print(f"  > Ref pasted: {ref_dst}")
+
+
+# ── Distillation ──────────────────────────────────────────────────────
+
+
+def cmd_distill_mod(extra):
+    """Distill the pooled_text_proj MLP for modulation guidance.
+
+    Saves to ``output/ckpt/pooled_text_proj.safetensors`` so ``test-mod`` picks it
+    up automatically.
+    """
     run(
         [
-            *INFERENCE_BASE,
-            "--easycontrol_weight",
-            str(latest_output("anima_easycontrol")),
-            "--easycontrol_image",
-            ref_image,
-            "--easycontrol_image_match_size",
-            *rest,
+            PY,
+            "scripts/distill_modulation.py",
+            "--data_dir", "post_image_dataset",
+            "--dit_path", "models/diffusion_models/anima-preview3-base.safetensors",
+            "--output_path", "output/ckpt/pooled_text_proj.safetensors",
+            "--iterations", "1500",
+            "--lr", "1e-5",
+            "--warmup", "0.05",
+            "--blocks_to_swap", "0",
+            "--attn_mode", "flash",
+            "--no_grad_ckpt",
+            *extra,
         ]
     )
 
@@ -368,34 +448,96 @@ def cmd_img2emb(extra):
     run([PY, f"scripts/img2emb/{stage}.py", *rest])
 
 
+def _encoder_args() -> list[str]:
+    """Return ``['--encoder', $ENCODER]`` if ENCODER env is set, else ``[]``.
+
+    Forwarded to img2emb stage scripts so the cache, pretrain ckpt and finetune
+    ckpt filenames stay coherent across stages.
+    """
+    enc = os.environ.get("ENCODER")
+    return ["--encoder", enc] if enc else []
+
+
 def cmd_img2emb_preprocess(extra):
-    run([PY, "scripts/img2emb/preprocess.py", *extra])
+    run([PY, "scripts/img2emb/preprocess.py", *_encoder_args(), *extra])
 
 
 def cmd_img2emb_anchors(extra):
     run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py", *extra])
 
 
+def cmd_img2emb_align(extra):
+    """One-shot Hungarian alignment of T5 variants v1..vN to v0.
+
+    Runs implicitly inside ``img2emb-preprocess``; this entry point is for
+    re-running standalone (idempotent).
+    """
+    run([PY, "scripts/img2emb/align_variants.py", *extra])
+
+
 def cmd_img2emb_pretrain(extra):
-    run([PY, "scripts/img2emb/pretrain.py", *extra])
+    run([PY, "scripts/img2emb/pretrain.py", *_encoder_args(), *extra])
 
 
 def cmd_img2emb_finetune(extra):
-    run([PY, "scripts/img2emb/finetune.py", *extra])
+    run([PY, "scripts/img2emb/finetune.py", *_encoder_args(), *extra])
+
+
+def cmd_img2emb_calibrate(extra):
+    """Step-0 loss-weight calibration for img2emb finetune (no backward).
+
+    Reports raw loss magnitudes so the ``loss.*`` weights in finetune.py can be
+    tuned. Warm path defaults to the pretrain output for the selected ENCODER
+    (``tipsv2`` unless overridden); set FINETUNE_WARM=... to point elsewhere.
+    FINETUNE_BS, FINETUNE_SWAP env vars are forwarded as --batch_size /
+    --blocks_to_swap (default ``1`` and ``-1`` — gradient checkpointing — for
+    16 GB cards).
+    """
+    encoder = os.environ.get("ENCODER", "tipsv2")
+    warm = os.environ.get(
+        "FINETUNE_WARM",
+        f"output/img2embs/pretrain/{encoder}_resampler_4layer_anchored.safetensors",
+    )
+    bs = os.environ.get("FINETUNE_BS", "1")
+    swap = os.environ.get("FINETUNE_SWAP", "-1")
+    run(
+        [
+            PY,
+            "scripts/img2emb/finetune.py",
+            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
+            "--warm_start", warm,
+            "--calibrate_only",
+            "--batch_size", bs,
+            "--blocks_to_swap", swap,
+            *_encoder_args(),
+            *extra,
+        ]
+    )
 
 
 def cmd_preprocess_img2emb(extra):
-    run([PY, "scripts/img2emb/preprocess.py", *extra])
+    run([PY, "scripts/img2emb/preprocess.py", *_encoder_args(), *extra])
     run([PY, "scripts/img2emb/rebuild_anchor_artifacts.py"])
 
 
 def cmd_test_img2emb(extra):
-    """Usage: python tasks.py test-img2emb <ref_image> [extra...]"""
-    if not extra:
-        print("Usage: python tasks.py test-img2emb <ref_image> [extra...]", file=sys.stderr)
+    """Generate from a ref image via the finetuned resampler.
+
+    Reference image from REF_IMAGE env or first positional arg. ENCODER env is
+    forwarded as ``--encoder``.
+    """
+    ref = os.environ.get("REF_IMAGE", "").strip()
+    if not ref and extra and not extra[0].startswith("-"):
+        ref = extra[0]
+        extra = extra[1:]
+    if not ref:
+        print(
+            "Usage: python tasks.py test-img2emb <ref_image> [extra...]\n"
+            "   or: REF_IMAGE=path/to/ref.png python tasks.py test-img2emb [extra...]",
+            file=sys.stderr,
+        )
         sys.exit(1)
-    ref, *rest = extra
-    run([PY, "scripts/img2emb/infer.py", "--ref_image", ref, *rest])
+    run([PY, "scripts/img2emb/infer.py", "--ref_image", ref, *_encoder_args(), *extra])
 
 
 # ── Inference ─────────────────────────────────────────────────────────
@@ -443,6 +585,18 @@ INFERENCE_BASE = [
 
 def cmd_test(extra):
     run([*INFERENCE_BASE, "--lora_weight", str(latest_lora()), *extra])
+
+
+def cmd_test_mod(extra):
+    """Inference with the latest distilled pooled_text_proj MLP for modulation guidance."""
+    run(
+        [
+            *INFERENCE_BASE,
+            "--pooled_text_proj",
+            str(latest_output("pooled_text_proj")),
+            *extra,
+        ]
+    )
 
 
 def cmd_test_apex(extra):
@@ -658,7 +812,7 @@ def cmd_preprocess_te(extra):
             "--dit",
             "models/diffusion_models/anima-preview3-base.safetensors",
             "--caption_shuffle_variants",
-            "8",
+            "4",
             *extra,
         ]
     )
@@ -698,6 +852,17 @@ def cmd_download_pe(_extra):
     run([
         "hf", "download",
         "facebook/PE-Core-L14-336", "PE-Core-L14-336.pt",
+        "--local-dir", "models/pe",
+    ])
+
+
+def cmd_download_pe_g(_extra):
+    # PE-Core-G14-448 — larger PE sibling (50-layer 1536-wide, 1024 patch tokens
+    # at 448 px, no CLS). Same vendored vision tower in library/models/pe.py.
+    (ROOT / "models" / "pe").mkdir(parents=True, exist_ok=True)
+    run([
+        "hf", "download",
+        "facebook/PE-Core-G14-448", "PE-Core-G14-448.pt",
         "--local-dir", "models/pe",
     ])
 
@@ -762,7 +927,7 @@ def cmd_mask_sam(extra):
             "--config",
             "configs/sam_mask.yaml",
             "--image-dir",
-            "post_image_dataset",
+            "post_image_dataset/resized",
             "--mask-dir",
             "masks/sam",
             "--checkpoint",
@@ -780,7 +945,7 @@ def cmd_mask_mit(extra):
             PY,
             "preprocess/generate_masks_mit.py",
             "--image-dir",
-            "post_image_dataset",
+            "post_image_dataset/resized",
             "--mask-dir",
             "masks/mit",
             "--model-path",
@@ -927,6 +1092,44 @@ def cmd_invert_ref(extra):
     )
 
 
+def cmd_test_invert(extra):
+    """Verify a saved embedding inversion via the interpret pass.
+
+    INVERT_NAME env (default ``latest``) selects the inversion bundle name.
+    """
+    name = os.environ.get("INVERT_NAME", "latest")
+    run(
+        [
+            PY,
+            "scripts/inversion/interpret_inversion.py",
+            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
+            "--vae", "models/vae/qwen_image_vae.safetensors",
+            "--attn_mode", "flash",
+            "--name", name,
+            "--verify",
+            "--verify_steps", "30",
+            *extra,
+        ]
+    )
+
+
+def cmd_bench_inversion(extra):
+    """Run the inversion-stability benchmark. BENCH_INVERSIONS env (default 5)."""
+    num = os.environ.get("BENCH_INVERSIONS", "5")
+    run(
+        [
+            PY,
+            "bench/inversion/inversion_stability.py",
+            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
+            "--vae", "models/vae/qwen_image_vae.safetensors",
+            "--num_inversions", num,
+            "--steps", "100",
+            "--lr", "0.01",
+            *extra,
+        ]
+    )
+
+
 def cmd_invert(extra):
     run(
         [
@@ -965,6 +1168,7 @@ COMMANDS = {
     "lora": (cmd_lora, "LoRA family (lora|tlora|tlora_rf|hydralora via configs/methods/lora.toml)"),
     "lora-fast": (cmd_lora_fast, "Fast LoRA training (16GB, no block swap)"),
     "lora-low-vram": (cmd_lora_low_vram, "LoRA training (low VRAM)"),
+    "lora-half": (cmd_lora_half, "LoRA training with sample_ratio=0.5 (half preset)"),
     "lora-gui": (
         cmd_lora_gui,
         "Train from a self-contained configs/gui-methods/<variant>.toml "
@@ -992,6 +1196,7 @@ COMMANDS = {
     ),
     "test-easycontrol": (cmd_test_easycontrol, "Inference with latest EasyControl weight. Usage: test-easycontrol <ref_image> [--prompt ... --easycontrol_scale ...]"),
     "test": (cmd_test, "Inference with latest LoRA"),
+    "test-mod": (cmd_test_mod, "Inference with latest pooled_text_proj (modulation guidance)"),
     "test-apex": (cmd_test_apex, "Inference with latest APEX LoRA"),
     "test-hydra": (cmd_test_hydra, "Inference with latest HydraLoRA moe (router-live)"),
     "test-prefix": (cmd_test_prefix, "Inference with latest prefix weight"),
@@ -1030,8 +1235,10 @@ COMMANDS = {
     ),
     "img2emb-preprocess": (cmd_img2emb_preprocess, "img2emb: extract encoder features (stage 1)"),
     "img2emb-anchors": (cmd_img2emb_anchors, "img2emb: refresh people=* prototypes + phase1_positions (stage 1.5)"),
+    "img2emb-align": (cmd_img2emb_align, "img2emb: re-run Hungarian alignment of T5 variants v1..vN to v0"),
     "img2emb-pretrain": (cmd_img2emb_pretrain, "img2emb: resampler pretrain on cached targets (stage 2)"),
     "img2emb-finetune": (cmd_img2emb_finetune, "img2emb: flow-matching finetune through frozen DiT (stage 3)"),
+    "img2emb-calibrate": (cmd_img2emb_calibrate, "img2emb: step-0 loss-weight calibration (no backward); FINETUNE_WARM/BS/SWAP env"),
     "preprocess-img2emb": (
         cmd_preprocess_img2emb,
         "img2emb preprocessing: extract features + rebuild anchor artifacts",
@@ -1047,6 +1254,7 @@ COMMANDS = {
     "download-mit": (cmd_download_mit, "Download MIT model"),
     "download-tipsv2": (cmd_download_tipsv2, "Download TIPSv2-L/14 (img2emb encoder)"),
     "download-pe": (cmd_download_pe, "Download PE-Core-L14-336 (img2emb encoder)"),
+    "download-pe-g": (cmd_download_pe_g, "Download PE-Core-G14-448 (larger img2emb encoder)"),
     "mask": (cmd_mask, "Generate SAM3 + MIT masks, then merge"),
     "mask-sam": (cmd_mask_sam, "Generate SAM3 masks only"),
     "mask-mit": (cmd_mask_mit, "Generate MIT masks only"),
@@ -1057,6 +1265,9 @@ COMMANDS = {
         cmd_invert_ref,
         "Reference inversion (REF_IMAGE=path/to/ref.png; see tasks.py::cmd_invert_ref for env vars)",
     ),
+    "test-invert": (cmd_test_invert, "Verify a saved inversion (INVERT_NAME env, default 'latest')"),
+    "bench-inversion": (cmd_bench_inversion, "Run the inversion-stability benchmark (BENCH_INVERSIONS env)"),
+    "distill-mod": (cmd_distill_mod, "Distill pooled_text_proj MLP for modulation guidance"),
     "test-unit": (cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
     "export-logs": (
         cmd_export_logs,

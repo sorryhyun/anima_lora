@@ -8,7 +8,7 @@
 
 이 저장소가 지향하는 세 가지:
 
-1. **빠른 LoRA 학습** — 컴파일러 친화적인 데이터 파이프라인을 엔드-투-엔드로 튜닝하여 소비자용 GPU에서 동작.
+1. **빠른 LoRA 학습** — 풀 모델 `torch.compile` + CUDAGraph 캡처를 엔드-투-엔드로 적용하여 소비자용 GPU에서 동작.
 2. **검증된 머지 호환 변형** — LoRA, OrthoLoRA, T-LoRA가 한 세트로 스택되고, 독립형 DiT 체크포인트로 그대로 구워넣을 수 있음.
 3. **넓은 실험적 기능 표면** — HydraLoRA, ReFT, APEX distillation, postfix/prefix tuning, 임베딩 인버전, img2emb, Spectrum 추론, modulation guidance.
 
@@ -18,29 +18,19 @@
 
 ## 1. 빠른 학습
 
-**12.8 GB 피크 VRAM · 1.3 s/iter** — 단일 RTX 5060 Ti 기준. 데이터 파이프라인 · 어텐션 · 컴파일러 스택을 함께 설계하여 Dynamo가 학습 전체에서 단일 정적 shape만 보게 만든 결과:
+**13.4 GB 피크 VRAM · 1.1 s/iter while rank=32 1MP resolution lora training** — 단일 RTX 5060 Ti 기준. 데이터 파이프라인 · 어텐션 · 컴파일러 스택을 함께 설계하여 Dynamo가 학습 전체에서 단일 정적 shape만 보게 만든 결과:
 
 | 레버 | 요약 |
 |---|---|
 | 고정 토큰 버켓팅 | 모든 버킷을 `(H/16)×(W/16) ≈ 4096` 패치로 맞추고, 배치를 정확히 4096 토큰으로 제로 패딩. 단일 정적 shape → 재컴파일 없음. |
 | Max-padded 텍스트 인코더 | 텍스트 출력을 512로 패딩 후 제로 필링. 사전학습된 DiT는 이 제로 키를 cross-attn sink로 사용하므로 패딩을 제거하면 동작이 깨짐. 컴파일러에 또 다른 고정 차원도 제공. |
-| 블록별 `torch.compile` | 각 DiT 블록을 Inductor로 독립 컴파일. 고정 토큰 수와 결합하여 guard 재컴파일을 제거. |
+| 블록별 `torch.compile` (기본) | 각 DiT 블록을 Inductor로 독립 컴파일. 고정 토큰 수와 결합하여 guard 재컴파일을 제거. |
+| 풀 모델 컴파일 + CUDAGraph (옵션) | `compile_mode = "full"` + `compile_inductor_mode = "reduce-overhead"`로 켜면 Inductor가 28블록 전체 스택을 한 번에 보고, `cudagraph_trees`가 매 스텝마다 재생되는 단일 그래프를 캡처 — 블록 단위 커널 경계도, 스텝마다의 launch 오버헤드도 사라짐. 정적 shape 계약을 엔드-투-엔드로 강제하므로 `gradient_checkpointing`, `blocks_to_swap`과는 호환되지 않음. [full_model_cudagraph.md](docs/optimizations/full_model_cudagraph.md) 참고. |
 | 컴파일 친화적 핫패스 | 모든 forward 경로에서 dynamo가 깔끔하게 추적하기 어려운 패턴을 제거 — `einops.rearrange`는 명시적 `.unflatten()/.permute()` 체인으로, `torch.autocast` 컨텍스트 매니저는 직접 `.to(dtype)` 캐스팅으로, dict `.items()` 루프는 컴파일 영역 밖으로 호이스트, FA4는 `@torch.compiler.disable`로 래핑하여 clean graph break 유도. |
 | Flash Attention 2 | `flash_attn` 2.x, SDPA 자동 폴백. FA4는 평가 후 제거 — [fa4.md](docs/optimizations/fa4.md). |
 
-**벤치마크** — RTX 5060 Ti 16GB, LoRA rank 32, bs 2, 182 steps, seed 42. Val loss는 σ ∈ {0.05, 0.1, 0.2, 0.35}에서 측정.
 
-| 구성 | 피크 VRAM | 총 시간 | 2번째 에포크 | Train | Val |
-|---|---|---|---|---|---|
-| FA2 (plain) | 7.0 GB | 14:51 | 7:26 | 0.092 | 0.212 |
-| FA2 + compile (eager fallback) | 7.7 GB | 15:10 | 7:26 | 0.089 | 0.211 |
-| FA2 + compile (고정 토큰) | 6.2 GB | 11:07 | 5:01 | 0.086 | 0.193 |
-| FA2 + compile − grad ckpt | 15.2 GB | **7:07** | **3:30** | 0.088 | 0.206 |
-| **same, custom autograd** | **12.8 GB** | **6:40** | **3:15** | 0.090 | 0.212 |
-
-> CUDA 13.2에서는 **1.2 s/iter**, 15.5 GB 피크. PyTorch 2.12 릴리스 시 지원 예정. 자세한 내용은 [cuda132.md](docs/optimizations/cuda132.md).
-
-컴파일 파이프라인 상세는 [docs/optimizations/for_compile.md](docs/optimizations/for_compile.md).
+컴파일 파이프라인 상세는 [docs/optimizations/for_compile.md](docs/optimizations/for_compile.md), 풀 모델 + CUDAGraph 설계는 [docs/optimizations/full_model_cudagraph.md](docs/optimizations/full_model_cudagraph.md).
 
 ---
 

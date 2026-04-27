@@ -612,6 +612,14 @@ class LoRANetwork(torch.nn.Module):
         time, and so router stats can report per-σ-bucket expert usage even
         when ``use_sigma_router=False`` (sigma-independent gating can still
         develop sigma-correlated usage from data drift).
+
+        IMPORTANT: write into the existing ``_sigma`` buffer in place rather
+        than rebinding it. Inductor captures ``_sigma`` as a static cudagraph
+        input (it's a registered buffer) and re-records the whole graph if
+        the data pointer changes — rebinding to a fresh ``sigmas`` tensor
+        every step caused per-step re-record under
+        ``compile_inductor_mode=reduce-overhead`` (cudagraph_trees log:
+        "static input data pointer changed").
         """
         sigmas = sigmas.detach()
         self._last_sigma = sigmas
@@ -619,7 +627,17 @@ class LoRANetwork(torch.nn.Module):
             return
         for lora in self.unet_loras + self.text_encoder_loras:
             if getattr(lora, "sigma_feature_dim", 0) > 0:
-                lora._sigma = sigmas
+                buf = lora._sigma
+                if (
+                    buf.shape == sigmas.shape
+                    and buf.device == sigmas.device
+                ):
+                    # Pointer-stable update — preserves the cudagraph.
+                    buf.copy_(sigmas)
+                else:
+                    # First call after init's (1,) placeholder, or batch-size
+                    # change. Pay one re-record; subsequent steps stay stable.
+                    lora._sigma = sigmas.to(buf.dtype).clone()
 
     def clear_sigma(self) -> None:
         """Reset cached σ on every HydraLoRA module to zeros.
@@ -627,13 +645,14 @@ class LoRANetwork(torch.nn.Module):
         Never set to None: ``_sigma`` stays a Tensor so the unconditional
         sinusoidal path in ``_compute_gate`` has no None-vs-Tensor guard to
         recompile on under ``compile_mode=full``. Used in eval / validation
-        and by inference teardown (``clear_hydra_sigma``).
+        and by inference teardown (``clear_hydra_sigma``). Zero in place to
+        keep the cudagraph data pointer stable (see ``set_sigma`` note).
         """
         self._last_sigma = None
         for lora in self.unet_loras + self.text_encoder_loras:
             sigma = getattr(lora, "_sigma", None)
             if sigma is not None:
-                lora._sigma = torch.zeros_like(sigma)
+                sigma.zero_()
 
     def clear_step_caches(self) -> None:
         """Drop per-step tensor references (``_last_gate``) between training

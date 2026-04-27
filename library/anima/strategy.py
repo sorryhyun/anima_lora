@@ -9,7 +9,6 @@ import torch
 import torch.nn.functional as F
 from safetensors import safe_open as _safe_open
 from safetensors.torch import (
-    load_file as _load_safetensors,
     save_file as _save_safetensors,
 )
 
@@ -300,33 +299,38 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         return True
 
     def load_outputs_npz(self, cache_path: str) -> list:
-        data = _load_safetensors(cache_path)
+        # Lazy per-tensor read via safe_open: with caption_shuffle_variants=N
+        # and cache_llm_adapter_outputs, the file holds 5×N tensors but only
+        # one variant is consumed per step. load_file() materializes everything
+        # and starves the dataloader workers; safe_open + get_tensor pulls just
+        # the chosen variant's bytes from the mmap.
+        with _safe_open(cache_path, framework="pt") as f:
+            keys = set(f.keys())
+            if "num_variants" in keys:
+                num_variants = int(f.get_tensor("num_variants"))
+                vi = random.randint(0, num_variants - 1)
+                prompt_embeds = f.get_tensor(f"prompt_embeds_v{vi}")
+                attn_mask = f.get_tensor(f"attn_mask_v{vi}")
+                t5_input_ids = f.get_tensor(f"t5_input_ids_v{vi}")
+                t5_attn_mask = f.get_tensor(f"t5_attn_mask_v{vi}")
+                crossattn_key = f"crossattn_emb_v{vi}"
+                crossattn_emb = (
+                    f.get_tensor(crossattn_key)
+                    if self.cache_llm_adapter_outputs and crossattn_key in keys
+                    else None
+                )
+            else:
+                prompt_embeds = f.get_tensor("prompt_embeds")
+                attn_mask = f.get_tensor("attn_mask")
+                t5_input_ids = f.get_tensor("t5_input_ids")
+                t5_attn_mask = f.get_tensor("t5_attn_mask")
+                crossattn_emb = (
+                    f.get_tensor("crossattn_emb")
+                    if self.cache_llm_adapter_outputs and "crossattn_emb" in keys
+                    else None
+                )
 
-        if "num_variants" in data:
-            num_variants = int(data["num_variants"])
-            vi = random.randint(0, num_variants - 1)
-            prompt_embeds = data[f"prompt_embeds_v{vi}"]
-            attn_mask = data[f"attn_mask_v{vi}"]
-            t5_input_ids = data[f"t5_input_ids_v{vi}"]
-            t5_attn_mask = data[f"t5_attn_mask_v{vi}"]
-            crossattn_key = f"crossattn_emb_v{vi}"
-            crossattn_emb = (
-                data[crossattn_key]
-                if self.cache_llm_adapter_outputs and crossattn_key in data
-                else None
-            )
-        else:
-            prompt_embeds = data["prompt_embeds"]
-            attn_mask = data["attn_mask"]
-            t5_input_ids = data["t5_input_ids"]
-            t5_attn_mask = data["t5_attn_mask"]
-            crossattn_emb = (
-                data["crossattn_emb"]
-                if self.cache_llm_adapter_outputs and "crossattn_emb" in data
-                else None
-            )
-
-        caption_dropout_rate = data["caption_dropout_rate"]
+            caption_dropout_rate = f.get_tensor("caption_dropout_rate")
         if crossattn_emb is None:
             return [
                 prompt_embeds,

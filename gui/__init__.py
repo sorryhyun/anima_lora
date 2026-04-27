@@ -41,6 +41,7 @@ _FAMILY_VARIANTS: dict[str, list[str]] = {
     "lora": [
         "lora",
         "lora-fast",
+        "lora_longer",
         "lora-8gb",
         "ortholora",
         "tlora",

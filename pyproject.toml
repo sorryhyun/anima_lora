@@ -5,14 +5,19 @@ description = "Standalone Anima LoRA training pipeline"
 requires-python = "==3.13.*"
 dependencies = [
     # Core ML
-    "torch>=2.11.0",
-    "torchvision>=0.26.0",
+    # Linux: torch nightly + CUDA 13.2 (see docs/optimizations/cuda132.md).
+    # Windows: torch 2.11 stable + CUDA 13.0 (CUDA 13.2 is Linux-only).
+    # FA2 wheel (fa2cuda132) was built against the 2.12 nightly line; 2.13 broke its
+    # ABI (rejects all dtypes from C++). Cap until we rebuild the wheel.
+    "torch>=2.12.0.dev0,<2.13 ; sys_platform == 'linux'",
+    "torchvision>=0.27.0.dev0,<0.28 ; sys_platform == 'linux'",
+    "torch>=2.11.0 ; sys_platform == 'win32'",
+    "torchvision>=0.26.0 ; sys_platform == 'win32'",
     "accelerate>=1.13.0",
     "transformers>=5.3.0",
     "diffusers>=0.37.0",
     "einops>=0.7.0",
     # Optimizers
-    "bitsandbytes",
     "lion-pytorch>=0.2.3",
     "schedulefree>=1.4",
     "pytorch-optimizer>=3.9.0",
@@ -24,7 +29,7 @@ dependencies = [
     "imagesize>=1.4.1",
     # Text processing
     "sentencepiece>=0.2.1",
-    "huggingface-hub[cli]>=1.7.0",
+    "huggingface-hub>=1.9.0",
     # Monitoring & Utilities
     "tensorboard",
     "rich>=14.0.0",
@@ -41,7 +46,8 @@ dependencies = [
     "packaging",
     "pycocotools>=2.0.11",
     # Linux-only CUDA extensions
-    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
+    # Linux: FA2 built against CUDA 13.2 + torch nightly (see docs/optimizations/cuda132.md).
+    "flash-attn @ https://github.com/sorryhyun/flash-attention-sm120-fix/releases/download/fa2cuda132/flash_attn-2.8.3-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
     # flash-attn-4 (flash-attention-sm120) is not supported yet — kernel is unstable on our targets.
     # "flash-attn-4 @ git+https://github.com/sorryhyun/flash-attention-sm120-fix.git@dz/sm120_tma_optimized#subdirectory=flash_attn/cute ; sys_platform == 'linux'",
@@ -50,6 +56,20 @@ dependencies = [
     "pyside6>=6.11.0",
     "ruff>=0.15.9",
     "matplotlib",
+    "torchsde>=0.2.6",
+    "uv>=0.11.7",
+    "yarl>=1.23.0",
+    "spandrel>=0.4.2",
+    "sqlalchemy>=2.1.0b2",
+    "aiohttp>=3.13.5",
+    "comfy-cli>=1.7.3",
+    "comfy-aimdo>=0.2.14",
+    "av>=17.0.1",
+    "alembic>=1.18.4",
+    "pydantic-settings>=2.14.0",
+    "kornia>=0.8.2",
+    "comfy-kitchen>=0.2.8",
+    "simpleeval>=1.0.7",
 ]
 
 [project.optional-dependencies]
@@ -61,7 +81,12 @@ dev = [
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
-extra-index-url = ["https://download.pytorch.org/whl/cu130"]
+# Linux pulls torch nightly + cu132; Windows resolves against cu130 stable.
+extra-index-url = [
+    "https://download.pytorch.org/whl/nightly/cu132",
+    "https://download.pytorch.org/whl/cu130",
+]
+prerelease = "allow"
 override-dependencies = ["numpy>=2.0.0"]
 
 [tool.setuptools]

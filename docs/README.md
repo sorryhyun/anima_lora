@@ -25,7 +25,8 @@ Compiler, kernel, and hardware setup.
 |-----|-------------|
 | [optimizations/for_compile.md](optimizations/for_compile.md) | Changes from sd-scripts for torch.compile / dynamo |
 | [optimizations/fa4.md](optimizations/fa4.md) | Flash Attention 4 — why it was evaluated and removed |
-| [optimizations/cuda132.md](optimizations/cuda132.md) | CUDA 13.2 installation (driver, FA2, bitsandbytes) |
+| [optimizations/adamw_fused.md](optimizations/adamw_fused.md) | AdamW8bit → fused AdamW — why bitsandbytes was dropped |
+| [optimizations/cuda132.md](optimizations/cuda132.md) | CUDA 13.2 installation (driver, FA2) |
 
 ## Guidelines
 

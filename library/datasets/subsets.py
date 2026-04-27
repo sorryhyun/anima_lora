@@ -107,6 +107,9 @@ class ImageInfo:
         self.mask_path: Optional[str] = (
             None  # path to separate mask file (from mask_dir)
         )
+        # Preloaded uint8 [H, W] mask at bucket_reso, populated once at dataset
+        # init by BaseDataset._preload_alpha_masks(). Avoids per-fetch PNG decode.
+        self.preloaded_alpha_mask: Optional[torch.Tensor] = None
         self.resize_interpolation: Optional[str] = None
 
 

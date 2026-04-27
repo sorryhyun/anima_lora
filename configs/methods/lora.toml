@@ -12,7 +12,6 @@
 # Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
 # defaults — tune freely.
 
-
 network_alpha = 32
 network_dim = 32
 
@@ -34,18 +33,20 @@ caption_dropout_rate = 0.1
 # logging_dir = "output/logs"
 # log_with = "tensorboard"
 
+# -------------
 # Ortho-lora
 
 use_ortho = true
 
-
-# Timestep mask
+# -------------
+# # Timestep mask
 
 use_timestep_mask = true
 min_rank = 1
 alpha_rank_scale = 1.0
 
 
+# -------------
 # hydralora
 
 output_name = "anima_hydra"
@@ -53,15 +54,10 @@ use_hydra = true
 num_experts = 12
 balance_loss_weight = 1e-6 # seems lr * 1/10 is proper
 
-# Hold the load-balance penalty at 0 during the first
-# `balance_loss_warmup_ratio` of training so the router can specialize first,
-# then flip to `balance_loss_weight` to stop a skewed router from collapsing
-# further (empirically: entropy falls from 1.0 → 0.17 by 5k steps without this).
-# 0.0 = no warmup (legacy behavior).
+# # expert_warmup_ratio = 0.1
+# # expert_warmup_k = 4
 
 balance_loss_warmup_ratio = 0.4
-# expert_warmup_ratio = 0.1
-# expert_warmup_k = 4
 network_router_lr_scale = 10
 hydra_router_layers = ".*(mlp\\.layer[12])$" # ".*(cross_attn\\.kv_proj)$"
 
@@ -72,13 +68,16 @@ sigma_router_layers = ".*(mlp\\.layer[12])$"
 per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
 num_sigma_buckets = 4
 
+# -------------
+# reft
+
 add_reft = true
 reft_dim = 48
 reft_alpha = 48
 reft_layers = "last_8"
 
-# compile_mode = "full"
-# compile_inductor_mode = "reduce-overhead"
+compile_mode = "full"
+compile_inductor_mode = "reduce-overhead"
 
 
 # ── Per-channel input pre-scaling (SmoothQuant-style, optional) ─────────
