@@ -180,6 +180,16 @@ class MainWindow(QMainWindow):
         main_lay.addWidget(self.tabs)
         self.setCentralWidget(central)
 
+    def closeEvent(self, event):
+        # Without this, closing the window leaves training subprocesses
+        # (accelerate → train.py) orphaned and still holding VRAM.
+        for i in range(self.tabs.count()):
+            tab = self.tabs.widget(i)
+            cleanup = getattr(tab, "cleanup_subprocess", None)
+            if callable(cleanup):
+                cleanup()
+        super().closeEvent(event)
+
     def _open_guidebook(self):
         if not GUIDEBOOK_PATH.exists():
             QMessageBox.warning(

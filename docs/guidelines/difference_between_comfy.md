@@ -19,7 +19,7 @@ This matters in particular for anything that hooks the forward path — notably 
 | `torch.compile` on block forwards | `compile_blocks()` compiles each `block._forward` | not used |
 | Static-shape bucketing (pad to 4096 tokens) | `set_static_token_count()` | not supported |
 | `crossattn_seqlens` / variable text length | computed from mask, used for flex block mask + KV trim | not computed; always pad to 512 |
-| Attention dispatch | unified `attention.AttentionParams` (sdpa / flash / flash4 / sageattn / flex) | `transformer_options` dict + ComfyUI's own attention |
+| Attention dispatch | unified `attention_dispatch.AttentionParams` (sdpa / flash / flash4 / sageattn / flex) | `transformer_options` dict + ComfyUI's own attention |
 | Flash4 LSE correction (trimmed KV softmax fix) | present | absent |
 | Custom block-swap / CPU offload | `enable_block_swap`, `ModelOffloader` | relies on ComfyUI's `model_management.py` |
 | Gradient checkpointing variants | standard / CPU-offload / unsloth | standard only |
@@ -105,7 +105,7 @@ Both codebases run a Qwen3 → `llm_adapter` → 1024-dim cross-attention path, 
 def _crossattn_mask_mod(b, h, q_idx, kv_idx):
     return kv_idx < seqlens[b]
 
-attn_params.crossattn_block_mask = attention.create_block_mask(
+attn_params.crossattn_block_mask = attention_dispatch.create_block_mask(
     _crossattn_mask_mod, B, None, q_len, kv_len, device=x_B_T_H_W_D.device,
 )
 ```
@@ -137,7 +137,7 @@ It does not compute per-sample seqlens, does not set up flex block masks, and do
 
 ```python
 def forward(self, x_B_T_H_W_D, emb_B_T_D, crossattn_emb,
-            attn_params: attention.AttentionParams,
+            attn_params: attention_dispatch.AttentionParams,
             rope_cos_sin=None, adaln_lora_B_T_3D=None):
 ```
 

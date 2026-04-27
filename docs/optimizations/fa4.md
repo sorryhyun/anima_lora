@@ -55,7 +55,7 @@ Keeping it as a flag that everyone sets to `true` in configs, with an opaque cod
 Everything is commented rather than deleted, so re-enabling is mechanical:
 
 1. **Dependency.** Uncomment the `flash-attn-4` line in `pyproject.toml`. On consumer Blackwell you still need the SM120 fork — the local `flash-attention-sm120/` source tree is kept for reference.
-2. **Attention dispatch.** Uncomment the FA4 import block and the `flash4` branch in `networks/attention.py`. Both are bracketed with `# Flash Attention 4 ... is not supported yet` comments.
+2. **Attention dispatch.** Uncomment the FA4 import block and the `flash4` branch in `networks/attention_dispatch.py`. Both are bracketed with `# Flash Attention 4 ... is not supported yet` comments.
 3. **Train path.** In `train.py`, `load_unet_lazily` currently raises on `attn_mode == "flash4"`; replace that with the original check against `_flash_attn_4_func_raw is not None`. Also restore the `args.fp8_base_unet` call (if you want fp8 too).
 4. **KV trim.** Uncomment the `trim_crossattn_kv` branch in `library/anima/models.py` (the `if ... attn_mode == "flash4"` block). Flip `trim_crossattn_kv = true` in whichever configs you want the trim in, and switch those configs to `attn_mode = "flash4"`.
 5. **GUI / configs.** Add `"flash4"` back to `_ATTN_MODES` in `gui/__init__.py` and the `--attn_mode` choices in `inference.py` and `library/anima/training.py`. The FA4 VRAM presets (`FA4 8GB VRAM` / `FA4 16GB VRAM`) are also commented out in `gui/__init__.py`.

@@ -4,7 +4,7 @@ This document catalogues every change made to the `anima_lora` fork (relative to
 
 ---
 
-## 1. Attention dispatch (`networks/attention.py`)
+## 1. Attention dispatch (`networks/attention_dispatch.py`)
 
 ### 1.1 Flash Attention 4 graph breaks
 
@@ -331,7 +331,7 @@ The fork eliminates all three:
 | Source | Solution | Files |
 |--------|----------|-------|
 | Spatial resolution | `CONSTANT_TOKEN_BUCKETS` + `static_token_count` padding | `buckets.py`, `library/anima/models.py` |
-| Caption length | `_KV_BUCKETS` bucketed trimming (max 4 variants) | `library/anima/models.py`, `networks/attention.py` |
+| Caption length | `_KV_BUCKETS` bucketed trimming (max 4 variants) | `library/anima/models.py`, `networks/attention_dispatch.py` |
 | Batch size | Drop incomplete last batches | `library/datasets/base.py` |
 
 With shapes stabilized, `compile_blocks()` compiles each block's `_forward` with `dynamic=True` — the inductor backend generates optimized kernels once and reuses them for every step.

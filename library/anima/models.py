@@ -14,7 +14,7 @@ from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 from library.runtime import offloading as custom_offloading_utils
 from library.runtime.device import weighs_to_device
-from networks import attention
+from networks import attention_dispatch
 
 # KV length buckets for cross-attention trimming. Captions trimmed to the smallest
 # bucket >= max(real_token_lengths). Keeps torch.compile shapes stable (max 4 variants).
@@ -446,7 +446,7 @@ class Attention(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        attn_params: attention.AttentionParams,
+        attn_params: attention_dispatch.AttentionParams,
         context: torch.Tensor,
         rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
     ) -> torch.Tensor:
@@ -462,7 +462,7 @@ class Attention(nn.Module):
         # return self.compute_attention(q, k, v)
         qkv = [q, k, v]
         del q, k, v
-        result = attention.attention(qkv, attn_params=attn_params)
+        result = attention_dispatch.dispatch_attention(qkv, attn_params=attn_params)
         return self.output_dropout(self.output_proj(result))
 
 
@@ -1090,7 +1090,7 @@ class Block(nn.Module):
         x_B_T_H_W_D: torch.Tensor,
         emb_B_T_D: torch.Tensor,
         crossattn_emb: torch.Tensor,
-        attn_params: attention.AttentionParams,
+        attn_params: attention_dispatch.AttentionParams,
         rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
@@ -1181,7 +1181,7 @@ class Block(nn.Module):
         x_B_T_H_W_D: torch.Tensor,
         emb_B_T_D: torch.Tensor,
         crossattn_emb: torch.Tensor,
-        attn_params: attention.AttentionParams,
+        attn_params: attention_dispatch.AttentionParams,
         rope_cos_sin: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
         adaln_lora_B_T_3D: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
@@ -1812,7 +1812,7 @@ class Anima(nn.Module):
             "adaln_lora_B_T_3D": adaln_lora_B_T_3D,
         }
 
-        attn_params = attention.AttentionParams.create_attention_params(
+        attn_params = attention_dispatch.AttentionParams.create_attention_params(
             self.attn_mode, self.split_attn, self.attn_softmax_scale
         )
 
@@ -1839,7 +1839,7 @@ class Anima(nn.Module):
         if (
             self.attn_mode == "flex"
             and crossattn_seqlens is not None
-            and attention.create_block_mask is not None
+            and attention_dispatch.create_block_mask is not None
         ):
             B, T, H, W, _D = x_B_T_H_W_D.shape
             q_len = T * H * W
@@ -1849,7 +1849,7 @@ class Anima(nn.Module):
             def _crossattn_mask_mod(b, h, q_idx, kv_idx):
                 return kv_idx < seqlens[b]
 
-            attn_params.crossattn_block_mask = attention.create_block_mask(
+            attn_params.crossattn_block_mask = attention_dispatch.create_block_mask(
                 _crossattn_mask_mod,
                 B,
                 None,
@@ -1868,7 +1868,7 @@ class Anima(nn.Module):
         if (
             _static_pad_info is not None
             and self.attn_mode == "flex"
-            and attention.create_block_mask is not None
+            and attention_dispatch.create_block_mask is not None
         ):
             # Use a tensor instead of a Python int so dynamo tracks it
             # symbolically rather than guarding on the exact value.  A plain
@@ -1882,7 +1882,7 @@ class Anima(nn.Module):
             def _selfattn_mask_mod(b, h, q_idx, kv_idx):
                 return kv_idx < _sa_seq_len
 
-            attn_params.selfattn_block_mask = attention.create_block_mask(
+            attn_params.selfattn_block_mask = attention_dispatch.create_block_mask(
                 _selfattn_mask_mod,
                 _sa_B,
                 None,
@@ -2126,13 +2126,13 @@ class LLMAdapterAttention(nn.Module):
             ).transpose(1, 2)
 
         can_use_flash = (
-            attention.flash_attn_varlen_func is not None
+            attention_dispatch.flash_attn_varlen_func is not None
             and query_states.dtype in (torch.float16, torch.bfloat16)
         )
 
         if can_use_flash and q_mask is None and kv_mask is None:
             # No masking — simple flash attention, [B, L, H, D] layout
-            attn_output = attention.flash_attn_func(
+            attn_output = attention_dispatch.flash_attn_func(
                 query_states, key_states, value_states
             )
         elif can_use_flash:
@@ -2162,7 +2162,7 @@ class LLMAdapterAttention(nn.Module):
             k_packed = key_states[eff_kv_mask]
             v_packed = value_states[eff_kv_mask]
 
-            out_packed = attention.flash_attn_varlen_func(
+            out_packed = attention_dispatch.flash_attn_varlen_func(
                 q_packed,
                 k_packed,
                 v_packed,

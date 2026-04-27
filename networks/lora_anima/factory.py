@@ -20,7 +20,6 @@ from networks.lora_anima.loading import (
     _stack_lora_ups,
 )
 from networks.lora_anima.network import LoRANetwork
-from networks.lora_modules import LoRAInfModule
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -357,7 +356,7 @@ def create_network_from_weights(
             train_llm_adapter = True
 
     # has_hydra / has_ortho_hydra win over for_inference: the router is
-    # sample-dependent and can't be folded into a LoRAInfModule static-merge path.
+    # sample-dependent and can't be folded into a static-merge path.
     # The dynamic forward-hook path works in eval mode too.
     if has_ortho_hydra:
         spec = NETWORK_REGISTRY["ortho_hydra"]
@@ -421,10 +420,11 @@ def create_network_from_weights(
                     f"{sigma_feature_dim_detected}, found {extra} at {k!r}."
                 )
     elif for_inference:
-        spec = NETWORK_REGISTRY[
-            "lora"
-        ]  # inference uses the merge-capable LoRAInfModule
-        module_class = LoRAInfModule
+        # Force the plain LoRA spec even for dora/ortho checkpoints — the
+        # merge_to / fuse_weight path expects flat down/up weights, and dora /
+        # ortho checkpoints are distilled to LoRA shape at save time.
+        spec = NETWORK_REGISTRY["lora"]
+        module_class = spec.module_class
     elif has_dora:
         spec = NETWORK_REGISTRY["dora"]
         module_class = spec.module_class

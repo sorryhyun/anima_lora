@@ -57,7 +57,7 @@ PE-Core-L14-336 supports **dynamic resolution** out of the box — each ref imag
 1. `apply_to(unet=anima)` monkey-patches each `Block.cross_attn.forward` with a closure that captures `(orig_attn, ip_net, anima_attention)`. Lives on the instance, so the patch survives gradient-checkpointing reroll.
 2. Per training batch, `train.py:_maybe_set_ip_tokens` resolves PE features (cached `batch["ip_features"]` by default, live PE on `batch["images"]` as fallback), feeds them through the resampler, and calls `network.set_ip_tokens(ip_tokens)`.
 3. With probability `ip_image_drop_p` (default 0.1) the whole-batch image conditioning is **dropped** (`set_ip_tokens(None)`) — CFG dropout for the image branch, independent of caption dropout.
-4. The DiT forward runs as normal. Inside each cross-attn, the patched forward computes the text path via the existing `attention.attention(...)` call, then adds `scale * SDPA(q, ip_k, ip_v)` before `output_proj`.
+4. The DiT forward runs as normal. Inside each cross-attn, the patched forward computes the text path via the existing `attention_dispatch.dispatch_attention(...)` call, then adds `scale * SDPA(q, ip_k, ip_v)` before `output_proj`.
 5. Backward flows through the IP path back through the resampler and per-block KV projections. DiT params have `requires_grad=False`.
 
 Reference image and target image are the **same image** (sampled from `post_image_dataset/`). The model learns: "given image X as reference + caption Y, generate X." With image dropout it also learns "given caption Y alone, generate something that looks like Y" — preserving the base behavior.

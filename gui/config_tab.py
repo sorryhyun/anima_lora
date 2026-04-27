@@ -49,6 +49,7 @@ from gui import (
 )
 from gui.explanations import field_help, method_guide
 from gui.i18n import t
+from gui.process import kill_process_tree, setup_kill_safe
 
 # Matches tqdm lines like:
 #   "Denoising steps:  40%|####      | 12/30 [00:12<00:34,  2.50it/s]"
@@ -243,9 +244,13 @@ class ConfigTab(QWidget):
         vsplit.setSizes([500, 200])
         lay.addWidget(vsplit)
 
-        # QProcess for training
+        # QProcess for training. The launchers we spawn (``accelerate launch``,
+        # ``python tasks.py …``) fork the real training process, which is what
+        # holds VRAM. Run the child in its own session so kill_process_tree
+        # can take down the whole subtree on Stop / window close.
         self._proc = QProcess(self)
         self._proc.setWorkingDirectory(str(ROOT))
+        setup_kill_safe(self._proc)
         self._proc.readyReadStandardOutput.connect(self._read_stdout)
         self._proc.readyReadStandardError.connect(self._read_stderr)
         self._proc.finished.connect(self._on_finished)
@@ -603,8 +608,11 @@ class ConfigTab(QWidget):
         self.new_variant_btn.setEnabled(False)
 
     def _stop_training(self):
-        if self._proc.state() != QProcess.NotRunning:
-            self._proc.kill()
+        kill_process_tree(self._proc)
+
+    def cleanup_subprocess(self):
+        """Hook for app shutdown — kill any running launcher + descendants."""
+        kill_process_tree(self._proc)
 
     def _read_stdout(self):
         data = self._proc.readAllStandardOutput().data().decode(errors="replace")

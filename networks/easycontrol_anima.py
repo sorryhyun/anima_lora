@@ -810,7 +810,7 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, q, k_t, v_t, k_c, v_c, b_cond, softmax_scale):
-        from networks import attention as anima_attention
+        from networks import attention_dispatch as anima_attention
 
         if anima_attention._wrapped_flash_attn_forward is None:
             raise RuntimeError(
@@ -881,7 +881,7 @@ class _ExtendedSelfAttnLSEFunc(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dout):
-        from networks import attention as anima_attention
+        from networks import attention_dispatch as anima_attention
 
         fa_bwd = anima_attention._wrapped_flash_attn_backward
         (
@@ -1018,7 +1018,7 @@ def _extended_target_attention(
     mode is available; falls back to masked-SDPA (math kernel; OOM risk) with
     a one-shot warning otherwise.
     """
-    from networks import attention as anima_attention
+    from networks import attention_dispatch as anima_attention
 
     # dtype matching mirrors the original Attention.forward casting policy.
     if target_q.dtype != target_v.dtype:

@@ -21,7 +21,6 @@ from networks.lora_anima.loading import (
 )
 from networks.lora_modules import (
     HydraLoRAModule,
-    LoRAInfModule,
     LoRAModule,
     OrthoHydraLoRAExpModule,
     OrthoLoRAExpModule,
@@ -393,7 +392,7 @@ class LoRANetwork(torch.nn.Module):
 
         # Create LoRA for text encoders (Qwen3 - typically not trained for Anima)
         # Skip for OrthoLoRA since SVD init is expensive and TE modules are discarded in apply_to anyway
-        self.text_encoder_loras: List[Union[LoRAModule, LoRAInfModule]] = []
+        self.text_encoder_loras: List[LoRAModule] = []
         skipped_te = []
         if text_encoders is not None and module_class not in (
             OrthoLoRAExpModule,
@@ -420,7 +419,7 @@ class LoRANetwork(torch.nn.Module):
         if train_llm_adapter:
             target_modules.extend(LoRANetwork.ANIMA_ADAPTER_TARGET_REPLACE_MODULE)
 
-        self.unet_loras: List[Union[LoRAModule, LoRAInfModule]]
+        self.unet_loras: List[LoRAModule]
         self.unet_loras, skipped_un = create_modules(True, None, unet, target_modules)
 
         logger.info(f"create LoRA for Anima DiT: {len(self.unet_loras)} modules.")
@@ -1403,7 +1402,7 @@ class LoRANetwork(torch.nn.Module):
         )
 
     def backup_weights(self):
-        loras: List[LoRAInfModule] = self.text_encoder_loras + self.unet_loras
+        loras: List[LoRAModule] = self.text_encoder_loras + self.unet_loras
         for lora in loras:
             org_module = lora.org_module_ref[0]
             if not hasattr(org_module, "_lora_org_weight"):
@@ -1411,7 +1410,7 @@ class LoRANetwork(torch.nn.Module):
                 org_module._lora_restored = True
 
     def restore_weights(self):
-        loras: List[LoRAInfModule] = self.text_encoder_loras + self.unet_loras
+        loras: List[LoRAModule] = self.text_encoder_loras + self.unet_loras
         with torch.no_grad():
             for lora in loras:
                 org_module = lora.org_module_ref[0]
@@ -1420,7 +1419,7 @@ class LoRANetwork(torch.nn.Module):
                     org_module._lora_restored = True
 
     def pre_calculation(self):
-        loras: List[LoRAInfModule] = self.text_encoder_loras + self.unet_loras
+        loras: List[LoRAModule] = self.text_encoder_loras + self.unet_loras
         with torch.no_grad():
             for lora in loras:
                 org_module = lora.org_module_ref[0]

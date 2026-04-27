@@ -17,7 +17,7 @@ Init:
 Hooking:
   apply_to() monkey-patches each Block.cross_attn.forward. The patched closure
   captures (orig_attn, block_idx, network), runs the existing text cross-attn
-  via attention.attention(), then computes a decoupled SDPA over IP K/V and
+  via attention_dispatch.dispatch_attention(), then computes a decoupled SDPA over IP K/V and
   adds scale * ip_out before the output projection. Lives on the instance, so
   gradient-checkpointing rerolls inside Block._forward see the same patch.
 
@@ -256,7 +256,7 @@ class IPAdapterNetwork(nn.Module):
                 "Re-create the network with matching num_blocks."
             )
 
-        from networks import attention as anima_attention  # local: avoid import cycle at file load
+        from networks import attention_dispatch as anima_attention  # local: avoid import cycle at file load
 
         for idx, block in enumerate(unet.blocks):
             cross_attn = block.cross_attn
@@ -545,7 +545,7 @@ def _make_patched_forward(orig_attn, ip_net: "IPAdapterNetwork", block_idx: int,
                 q = q.to(target_dtype)
                 k = k.to(target_dtype)
         text_qkv = [q, k, v]
-        text_result = anima_attention.attention(text_qkv, attn_params=attn_params)
+        text_result = anima_attention.dispatch_attention(text_qkv, attn_params=attn_params)
 
         ip_k = getattr(orig_attn, "_ip_k_cached", None)
         ip_v = getattr(orig_attn, "_ip_v_cached", None)

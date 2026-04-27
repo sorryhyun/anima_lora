@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from gui import ROOT, _adapter_dirs, _safetensors_in
 from gui.i18n import t
+from gui.process import kill_process_tree, setup_kill_safe
 
 _DEFAULT_DIT = "models/diffusion_models/anima-preview3-base.safetensors"
 
@@ -308,9 +309,12 @@ class MergeTab(QWidget):
         sp.setSizes([260, 760])
         lay.addWidget(sp, 1)
 
-        # QProcess
+        # QProcess. merge_to_dit.py is a single Python process so the tree
+        # is shallow, but reuse the same kill-safe setup as training so Stop
+        # always kills the whole subtree (and frees the loaded DiT weights).
         self._proc = QProcess(self)
         self._proc.setWorkingDirectory(str(ROOT))
+        setup_kill_safe(self._proc)
         self._proc.readyReadStandardOutput.connect(self._read_stdout)
         self._proc.readyReadStandardError.connect(self._read_stderr)
         self._proc.finished.connect(self._on_finished)
@@ -474,8 +478,11 @@ class MergeTab(QWidget):
         self._proc.start(_sys.executable, args)
 
     def _stop_merge(self):
-        if self._proc.state() != QProcess.NotRunning:
-            self._proc.kill()
+        kill_process_tree(self._proc)
+
+    def cleanup_subprocess(self):
+        """Hook for app shutdown — kill any running launcher + descendants."""
+        kill_process_tree(self._proc)
 
     def _read_stdout(self):
         data = self._proc.readAllStandardOutput().data().decode(errors="replace")

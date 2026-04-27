@@ -163,7 +163,7 @@ class AttentionParams:
             )
 
 
-def attention(
+def dispatch_attention(
     qkv_or_q: Union[torch.Tensor, list],
     k: Optional[torch.Tensor] = None,
     v: Optional[torch.Tensor] = None,

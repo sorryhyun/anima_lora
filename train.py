@@ -460,7 +460,7 @@ class AnimaTrainer:
                 "'sageattn', or 'xformers' instead."
             )
         elif attn_mode == "flash":
-            from networks.attention import flash_attn, flash_attn_func
+            from networks.attention_dispatch import flash_attn, flash_attn_func
 
             if flash_attn_func is not None:
                 logger.info(

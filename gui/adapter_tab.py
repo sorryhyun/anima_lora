@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from gui import ROOT, ScaledImageLabel, _imgs
 from gui.i18n import t
+from gui.process import kill_process_tree, setup_kill_safe
 
 LATENT_SUFFIX = "_anima.npz"
 TE_SUFFIX = "_anima_te.safetensors"
@@ -180,9 +181,13 @@ class _AdapterTab(QWidget):
         lay.addWidget(vsplit, 1)
 
         # ── Subprocess wiring ─────────────────────────────────────
+        # ``tasks.py`` forks ``accelerate launch`` which forks the trainer;
+        # run the child in its own session so kill_process_tree can take
+        # down the whole subtree on Stop / window close.
         self._proc = QProcess(self)
         self._proc.setWorkingDirectory(str(ROOT))
         self._proc.setProcessChannelMode(QProcess.MergedChannels)
+        setup_kill_safe(self._proc)
         self._proc.readyReadStandardOutput.connect(self._read_stdout)
         self._proc.finished.connect(self._on_finished)
         self._buf = ""
@@ -261,8 +266,11 @@ class _AdapterTab(QWidget):
         self.stop_btn.setEnabled(True)
 
     def _stop(self):
-        if self._proc.state() != QProcess.NotRunning:
-            self._proc.kill()
+        kill_process_tree(self._proc)
+
+    def cleanup_subprocess(self):
+        """Hook for app shutdown — kill any running launcher + descendants."""
+        kill_process_tree(self._proc)
 
     def _read_stdout(self):
         data = bytes(self._proc.readAllStandardOutput()).decode(

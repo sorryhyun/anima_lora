@@ -174,7 +174,7 @@ Cross-attention KV length (the text sequence) is similarly bucketed — to one o
 _KV_BUCKETS = (128, 192, 256, 512)  # Keeps torch.compile shapes stable.
 ```
 
-Because padding tokens were trimmed from the KV side (padding is kept in training, but the *bucketed* K/V drops positions beyond the smallest covering bucket), the softmax denominator loses some zero-key sinks. An **LSE correction** in `networks/attention.py` adds back a sigmoid-based term using `crossattn_full_len` so the softmax normalization is consistent with the unbucketed case.
+Because padding tokens were trimmed from the KV side (padding is kept in training, but the *bucketed* K/V drops positions beyond the smallest covering bucket), the softmax denominator loses some zero-key sinks. An **LSE correction** in `networks/attention_dispatch.py` adds back a sigmoid-based term using `crossattn_full_len` so the softmax normalization is consistent with the unbucketed case.
 
 ---
 
@@ -198,7 +198,7 @@ Five more rules the code follows:
 
 ### 4.1 Don't pre-compile flex_attention
 
-`networks/attention.py:40–46`:
+`networks/attention_dispatch.py:40–46`:
 
 ```python
 # Do NOT pre-compile flex_attention here. When blocks are individually
