@@ -47,9 +47,9 @@ forward matches but its dq/dk gradients drift by α·β·‖out_t − out_c‖.
 
 Usage
 -----
-    uv run python bench/active/easycontrol/step1p5_lse_equivalence.py
-    uv run python bench/active/easycontrol/step1p5_lse_equivalence.py --b_cond 0.0
-    uv run python bench/active/easycontrol/step1p5_lse_equivalence.py --dtype bf16
+    uv run python bench/easycontrol/step1p5_lse_equivalence.py
+    uv run python bench/easycontrol/step1p5_lse_equivalence.py --b_cond 0.0
+    uv run python bench/easycontrol/step1p5_lse_equivalence.py --dtype bf16
 """
 
 from __future__ import annotations
@@ -300,7 +300,7 @@ def main():
     )
     p.add_argument(
         "--out_json",
-        default="bench/active/easycontrol/results/step1p5_lse_equivalence.json",
+        default="bench/easycontrol/results/step1p5_lse_equivalence.json",
     )
     args = p.parse_args()
 

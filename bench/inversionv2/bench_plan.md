@@ -160,7 +160,7 @@ bench/inversion/results/tag_slot/
 
 The two `.safetensors` files are the load-bearing artifacts — everything else is analysis. They're directly consumable as inversion anchors in Phase 5 below.
 
-## Phase 5 (follow-up, not part of this bench) — wire into `scripts/inversion/invert_embedding.py`
+## Phase 5 (follow-up, not part of this bench) — wire into `archive/inversion/invert_embedding.py`
 
 Only start this after Phase 3 shows within/between cosine ratio strongly favors per-artist clusters. Add:
 

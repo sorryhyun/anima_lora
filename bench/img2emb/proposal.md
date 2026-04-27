@@ -11,7 +11,7 @@ Location for future artifacts: `bench/img2emb/`.
 
 ### What's wrong with per-image inversion
 
-- **Cost.** 100–500 DiT forwards per image (`scripts/inversion/invert_embedding.py`
+- **Cost.** 100–500 DiT forwards per image (`archive/inversion/invert_embedding.py`
   defaults to 100 steps × 4 grad_accum = 400 forwards). Unusable as a
   conditioning path at serving time.
 - **Jitter / drift.** The optimizer roams in directions T5+LLM-adapter never
@@ -297,7 +297,7 @@ deltas and a checkpoint of the classifier.
   emb visually coherent on ≥ 15/20 held-out images.
 - End-state: a script `scripts/encode_image_to_emb.py` that takes an image,
   returns a `crossattn_emb.safetensors` in the same format as
-  `scripts/inversion/invert_embedding.py` does today, in < 1 s on a 4090 per image.
+  `archive/inversion/invert_embedding.py` does today, in < 1 s on a 4090 per image.
 
 ## Non-goals
 

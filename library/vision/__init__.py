@@ -1,7 +1,6 @@
 """Vision-encoder helpers for live use during training/inference (IP-Adapter, etc).
 
-Re-exports a thin wrapper over scripts/img2emb/encoders.py so the IP-Adapter
-network module doesn't have to depend on the img2emb training code path.
+Re-exports a thin wrapper over library/vision/encoders.py.
 """
 
 from library.vision.encoder import (

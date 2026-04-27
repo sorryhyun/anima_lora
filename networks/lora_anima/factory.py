@@ -60,8 +60,8 @@ def _load_channel_scales(
     """Load per-channel input pre-scaling stats from disk, if requested.
 
     SmoothQuant-style. Requires a calibration file produced by
-    ``bench/archive/analyze_lora_input_channels.py --dump_channel_stats <path>``.
-    See ``bench/archive/channel_dominance_analysis.md`` for motivation.
+    ``archive/bench/analyze_lora_input_channels.py --dump_channel_stats <path>``.
+    See ``archive/bench/channel_dominance_analysis.md`` for motivation.
     """
     per_channel_scaling = kwargs.get("per_channel_scaling", "false")
     if per_channel_scaling is not None:
@@ -78,7 +78,7 @@ def _load_channel_scales(
     if not channel_stats_path:
         raise ValueError(
             "per_channel_scaling=true requires channel_stats_path. Generate one with:\n"
-            "  python bench/archive/analyze_lora_input_channels.py --dump_channel_stats <path.safetensors>"
+            "  python archive/bench/analyze_lora_input_channels.py --dump_channel_stats <path.safetensors>"
         )
     if not os.path.isfile(channel_stats_path):
         raise FileNotFoundError(

@@ -62,7 +62,7 @@ Step-0 baseline equivalence (still ``b_cond=-10``):
 
   exp(-10) ≈ 4.5e-5, so cond softmax mass on target rows is negligible at
   init → α ≈ 1 → target_out ≈ baseline DiT regardless of cond evolution.
-  Verified by ``bench/active/easycontrol/step0_equivalence.py`` Section B
+  Verified by ``bench/easycontrol/step0_equivalence.py`` Section B
   under the new layout (separate cond Q/K/V, cond RoPE, smaller S_c).
 
 Train-time contract:

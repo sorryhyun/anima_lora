@@ -88,7 +88,7 @@ Concrete details:
 
 ## Step-0 baseline equivalence
 
-The bench at `bench/active/easycontrol/step0_equivalence.py` settles which
+The bench at `bench/easycontrol/step0_equivalence.py` settles which
 init makes the extended self-attention match the no-cond baseline at step 0:
 
 | Strategy                             | rel_l2 max | mean α  | Verdict     |
@@ -185,7 +185,7 @@ Optional `EC_SCALE=0.8` to override the saved scale at test time.
 
 ## Memory envelope
 
-Measured peak GPU memory in the smoke bench (`bench/active/easycontrol/two_stream_smoke.py`,
+Measured peak GPU memory in the smoke bench (`bench/easycontrol/two_stream_smoke.py`,
 gradient checkpointing on, target latent 64×64, batch 1, bf16):
 
 | Configuration                            | Peak GPU memory |
@@ -299,7 +299,7 @@ cond_scale)` change; subsequent KSampler steps use the cache automatically.
    joint-softmax backward is implemented manually because FA2's stock
    backward drops the upstream gradient on `softmax_lse`. Verified against
    masked-SDPA reference within fp32 ulp on forward and all gradients
-   (`bench/active/easycontrol/step1p5_lse_equivalence.py`). Falls back to
+   (`bench/easycontrol/step1p5_lse_equivalence.py`). Falls back to
    masked-SDPA when flash-attn is unavailable.
 
 ## History
@@ -326,6 +326,6 @@ training (vs Phase 1.5's >16 GiB OOM at the same bucket).
 | `networks/easycontrol_anima.py`                 | `EasyControlNetwork` + patched `Block.forward` closure |
 | `configs/methods/easycontrol.toml`              | Method config                                          |
 | `configs/gui-methods/easycontrol.toml`          | GUI-friendly self-contained variant                    |
-| `bench/active/easycontrol/step0_equivalence.py` | `b_cond=-10` init recipe + two-stream verification     |
-| `bench/active/easycontrol/step1p5_lse_equivalence.py` | LSE-decomposed Function vs masked-SDPA reference |
-| `bench/active/easycontrol/two_stream_smoke.py`  | End-to-end forward+backward smoke + peak memory        |
+| `bench/easycontrol/step0_equivalence.py` | `b_cond=-10` init recipe + two-stream verification     |
+| `bench/easycontrol/step1p5_lse_equivalence.py` | LSE-decomposed Function vs masked-SDPA reference |
+| `bench/easycontrol/two_stream_smoke.py`  | End-to-end forward+backward smoke + peak memory        |

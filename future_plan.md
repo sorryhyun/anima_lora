@@ -88,7 +88,7 @@ this to 3–10% of its current cost, making interactive curation viable.
 
 ## Phase 3 — Fast inversion (1 day)
 
-`scripts/inversion/invert_embedding.py` today does multi-timestep averaging per step:
+`archive/inversion/invert_embedding.py` today does multi-timestep averaging per step:
 for each optimization step, it runs the DiT at several `t` values and
 averages the loss. With an APEX LoRA the network is consistency-trained,
 so a single endpoint-prediction query at large `t` (effectively NFE=1)
@@ -101,7 +101,7 @@ should suffice.
   0.95]` (sampled per step for stochasticity).
 - Benchmark per-image inversion wall-clock on `post_image_dataset/` corpus
   against the current path. Target: ≥5× faster.
-- Quality check via `scripts/inversion/interpret_inversion.py`. Accept degradation
+- Quality check via `archive/inversion/interpret_inversion.py`. Accept degradation
   on OOD targets — document which prompts break, don't block on them.
 
 ### Risks
@@ -152,7 +152,7 @@ be re-derived for the 3-forward case.
   the fake branch is a target, not the "main" model — but this needs a
   paragraph of thought and a short toy experiment.
 - Phase 0-style 2D bench for both variants before touching the Anima
-  training loop. `bench/archive/apex_phase0.py` is the template.
+  training loop. `archive/bench/apex_phase0.py` is the template.
 
 ## Phase 5 — ComfyUI loader (2 days)
 

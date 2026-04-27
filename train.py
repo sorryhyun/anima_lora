@@ -688,6 +688,22 @@ class AnimaTrainer:
             return
 
         cond_latent = latents.to(accelerator.device, dtype=weight_dtype)
+
+        # Optional: add per-sample Gaussian noise to the cond latent during
+        # training. Weakens the ref==target "perfect blueprint" by removing
+        # high-frequency detail from cond, forcing text to carry the residual.
+        # sigma=0 stays in the training distribution, so clean-cond inference
+        # remains valid. Disabled at validation/sampling.
+        sigma_max = float(getattr(args, "easycontrol_cond_noise_max", 0.0) or 0.0)
+        if is_train and sigma_max > 0.0:
+            sigma = torch.rand(
+                cond_latent.shape[0],
+                *([1] * (cond_latent.ndim - 1)),
+                device=cond_latent.device,
+                dtype=cond_latent.dtype,
+            ) * sigma_max
+            cond_latent = cond_latent + sigma * torch.randn_like(cond_latent)
+
         network.set_cond(cond_latent)
 
     def get_noise_pred_and_target(
@@ -1821,7 +1837,8 @@ class AnimaTrainer:
                 )
             accelerator.print(
                 f"EasyControl: two-stream cond enabled "
-                f"(drop_p={getattr(args, 'easycontrol_drop_p', 0.1)})"
+                f"(drop_p={getattr(args, 'easycontrol_drop_p', 0.1)}, "
+                f"cond_noise_max={getattr(args, 'easycontrol_cond_noise_max', 0.0)})"
             )
 
         # APEX Phase 0 Finding B safety rail (proposal §7.3): refuse to launch

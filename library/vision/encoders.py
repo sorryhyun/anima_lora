@@ -1,4 +1,4 @@
-"""Vision-encoder registry for img2emb.
+"""Vision-encoder registry (originally for img2emb; reused live by IP-Adapter).
 
 Three encoders are wired in: TIPSv2-L/14 (Google, ``trust_remote_code``-loaded
 HF custom model), PE-Core-L14-336, and PE-Core-G14-448 (both Meta Perception
@@ -15,18 +15,13 @@ from __future__ import annotations
 
 import logging
 import shutil
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 import torch
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from scripts.img2emb.buckets import BucketSpec, get_bucket_spec  # noqa: E402
+from library.vision.buckets import BucketSpec, get_bucket_spec
 
 logger = logging.getLogger(__name__)
 

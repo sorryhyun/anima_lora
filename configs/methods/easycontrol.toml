@@ -18,8 +18,8 @@
 network_module = "networks.easycontrol_anima"
 
 # r = condition LoRA rank (per-projection rank). 16 is a reasonable default.
-network_dim = 16
-network_alpha = 16
+network_dim = 32
+network_alpha = 32
 
 network_args = [
     "b_cond_init=-10.0",     # logit bias init: exp(-10) ≈ 4.5e-5 → α ≈ 1 → step 0 = baseline DiT
@@ -33,10 +33,10 @@ output_name = "anima_easycontrol"
 logging_dir = "output/logs"
 log_with = "tensorboard"
 
-learning_rate = 1e-4
-max_train_epochs = 1
-save_every_n_epochs = 1
-checkpointing_epochs = 1
+learning_rate = 5e-5
+max_train_epochs = 6
+save_every_n_epochs = 3
+checkpointing_epochs = 3
 
 # Cached-feature path: VAE latents and text encoder outputs live on disk as
 # sibling sidecars. EasyControl reuses the existing cache_latents output as
@@ -48,7 +48,15 @@ checkpointing_epochs = 1
 # Read by train.py when use_easycontrol is on.
 use_easycontrol = true
 easycontrol_drop_p = 0.1
-caption_dropout_rate = 0.2
+caption_dropout_rate = 0.1
+
+# Per-step training-only Gaussian noise on cond latent before set_cond.
+# Sampled per-sample as sigma ~ U(0, easycontrol_cond_noise_max) and applied as
+# cond + sigma * eps. 0.0 = ref==target identity (current behavior). A positive
+# value (e.g. 0.5) degrades cond from "perfect blueprint" to "lossy hint",
+# forcing text to carry the residual high-frequency detail. sigma=0 stays in
+# the training distribution, so clean-cond inference still works unchanged.
+easycontrol_cond_noise_max = 0.3
 
 blocks_to_swap = 0
 gradient_checkpointing = true

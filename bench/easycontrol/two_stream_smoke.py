@@ -10,9 +10,9 @@ within the expected envelope.
 
 Usage::
 
-    uv run python bench/active/easycontrol/two_stream_smoke.py
-    uv run python bench/active/easycontrol/two_stream_smoke.py --gradient_checkpointing
-    uv run python bench/active/easycontrol/two_stream_smoke.py --no_cond  # baseline
+    uv run python bench/easycontrol/two_stream_smoke.py
+    uv run python bench/easycontrol/two_stream_smoke.py --gradient_checkpointing
+    uv run python bench/easycontrol/two_stream_smoke.py --no_cond  # baseline
 """
 
 from __future__ import annotations

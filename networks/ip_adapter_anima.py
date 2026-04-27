@@ -40,7 +40,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from library.log import setup_logging
-from scripts.img2emb.resampler import PerceiverResampler
+from library.vision.resampler import PerceiverResampler
 
 setup_logging()
 logger = logging.getLogger(__name__)

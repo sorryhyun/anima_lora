@@ -1,6 +1,6 @@
 """Live vision-encoder wrapper for IP-Adapter / similar consumers.
 
-Wraps PE-Core (or any encoder registered in scripts/img2emb/encoders.py) for
+Wraps PE-Core (or any encoder registered in library/vision/encoders.py) for
 in-loop use during training and inference. Differs from img2emb's preprocess
 path in that we accept a tensor batch already produced by the training
 dataset (in [-1, 1]) and re-bucket / resize it on-the-fly to the encoder's
@@ -20,8 +20,8 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
-from scripts.img2emb.buckets import BucketSpec, pick_bucket
-from scripts.img2emb.encoders import EncoderInfo, get_encoder_info
+from library.vision.buckets import BucketSpec, pick_bucket
+from library.vision.encoders import EncoderInfo, get_encoder_info
 
 logger = logging.getLogger(__name__)
 

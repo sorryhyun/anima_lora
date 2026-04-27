@@ -48,7 +48,7 @@ Perceiver resampler ──► IP tokens     [B, K=16, 1024]   (trainable)
 
 ### Why PE-Core
 
-PE-Core-L14-336 supports **dynamic resolution** out of the box — each ref image is resized to its closest patch-14 bucket (`scripts/img2emb/buckets.py:PE_CORE_L14_336_SPEC`, ~576 patch tokens, aspects 1:2 to 2:1). TIPSv2 also works (set `network_args = ["encoder=tipsv2"]`) but its bucket count is larger (~1024 tokens) and you need `make download-tipsv2` plus `trust_remote_code=True`.
+PE-Core-L14-336 supports **dynamic resolution** out of the box — each ref image is resized to its closest patch-14 bucket (`library/vision/buckets.py:PE_CORE_L14_336_SPEC`, ~576 patch tokens, aspects 1:2 to 2:1). TIPSv2 also works (set `network_args = ["encoder=tipsv2"]`) but its bucket count is larger (~1024 tokens) and you need `make download-tipsv2` plus `trust_remote_code=True`.
 
 ---
 
@@ -238,8 +238,8 @@ python inference.py \
 - `library/vision/encoder.py` — PE-Core wrapper (`load_pe_encoder`, `encode_pe_from_imageminus1to1`). Used by both the cache script and the live-encoding fallback.
 - `preprocess/cache_pe_encoder.py` — `make ip-adapter-cache` entry point. Writes `{stem}_anima_{encoder}.safetensors` sidecars next to each image.
 - `library/datasets/base.py` — `_try_load_ip_features` reads sidecars in `__getitem__`; stacks into `batch["ip_features"]` per training bucket.
-- `scripts/img2emb/resampler.py` — `PerceiverResampler` (reused).
-- `scripts/img2emb/buckets.py` — per-encoder PE bucket spec for dynamic-resolution resize.
+- `library/vision/resampler.py` — `PerceiverResampler` (extracted from the archived img2emb pipeline).
+- `library/vision/buckets.py` — per-encoder PE bucket spec for dynamic-resolution resize.
 - `train.py` — `_maybe_set_ip_tokens` hook in `get_noise_pred_and_target`; calls `set_diagnostics_enabled` after the network is built; per-epoch `diagnostic_summary` log.
 - `library/inference/generation.py` — `_setup_ip_adapter` in `generate()`; `--ip_image_match_size` aspect snap.
 - `library/anima/training.py` — `--use_ip_adapter`, `--ip_image_drop_p`, `--ip_encoder`, `--ip_features_cache_to_disk` argparse.

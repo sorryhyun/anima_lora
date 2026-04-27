@@ -1,16 +1,13 @@
 """Shared data-loading + loss utilities for the img2emb resampler pipeline.
 
-Every function/class here is consumed by production training stages
-(``phase1_5_anchored`` for pretrain, ``phase2_flow`` for finetune) and/or the
-phase-0/phase-1 bench trainers under ``bench/active/img2emb/``. The analysis
-that used to share the same file lives back at
-``bench/active/img2emb/phase0_probes.py`` and imports from here.
+Consumed by the phase-0/phase-1 bench trainers under ``bench/img2emb/`` and by
+the archived img2emb training stages under ``archive/img2emb/``. Extracted
+here so live consumers don't have to depend on the archived training code.
 """
 
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import torch
@@ -19,10 +16,7 @@ from safetensors.torch import load_file
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(REPO_ROOT))
-
-from library.io.cache import discover_cached_images  # noqa: E402
+from library.io.cache import discover_cached_images
 
 
 def active_slice(active_lengths: list[int], S: int = 512) -> torch.Tensor:
@@ -37,7 +31,7 @@ class _VariantMeanDataset(Dataset):
     """Load one TE file, zero-clamp the padded tail across every variant,
     return the variant-mean ``(S, D)`` slice. Parallelizable via DataLoader.
 
-    Only used by the phase-0 diagnostic probes (``bench/active/img2emb/phase0_probes``)
+    Only used by the phase-0 diagnostic probes (``bench/img2emb/phase0_probes``)
     where the analytic OLS solution requires the per-image mean. All production
     training stages (phase 1 / 1.5 / 2) sample one variant per step via
     ``_ResamplerTrainDataset`` and never touch this class.

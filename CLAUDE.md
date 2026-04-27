@@ -24,11 +24,14 @@ Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The exa
 # Training (run from anima_lora/)
 # Each training invocation selects a method + hardware preset. Method settings win
 # over preset settings on overlap (e.g. postfix forces blocks_to_swap=0).
-# Only four method files exist: lora.toml, postfix.toml, apex.toml, graft.toml.
-# Variants are toggle blocks inside them — uncomment the target block to switch:
-#   lora.toml    — classic LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT (default
-#                  stacks LoRA + OrthoLoRA + T-LoRA + ReFT together)
-#   postfix.toml — postfix / postfix_exp / postfix_func / postfix_sigma / prefix
+# Method files in configs/methods/: lora.toml, postfix.toml, apex.toml,
+# ip_adapter.toml, easycontrol.toml, graft.toml. Variants are toggle blocks
+# inside them — uncomment the target block to switch:
+#   lora.toml         — classic LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT
+#                       (default stacks LoRA + OrthoLoRA + T-LoRA + ReFT)
+#   postfix.toml      — postfix / postfix_exp / postfix_func / postfix_sigma / prefix
+#   ip_adapter.toml   — decoupled image cross-attention (PE-Core resampler)
+#   easycontrol.toml  — extended self-attn image conditioning (per-block cond LoRA)
 make lora                   # LoRA family (methods/lora.toml + presets.toml[default])
 python tasks.py lora        # Same, works on Windows too
 make lora PRESET=low_vram   # Override preset: methods/lora.toml + presets.toml[low_vram]
@@ -37,6 +40,9 @@ make lora-low-vram          # Shortcut: methods/lora.toml + presets.toml[low_vra
 make lora-half              # Shortcut: methods/lora.toml + presets.toml[half] (sample_ratio=0.5)
 make postfix                # Postfix/prefix family (methods/postfix.toml)
 make apex                   # APEX self-adversarial 1-NFE distillation (methods/apex.toml)
+make ip-adapter             # IP-Adapter image cross-attention (methods/ip_adapter.toml)
+make ip-adapter-cache       # Pre-cache PE-Core features → {stem}_anima_pe.safetensors
+make easycontrol            # EasyControl image conditioning (methods/easycontrol.toml)
 
 # GUI-friendly per-variant path (configs/gui-methods/<variant>.toml — clean,
 # self-contained, no toggle blocks). Intended for basic users who don't want
@@ -50,7 +56,9 @@ make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulati
 
 # Embedding inversion
 make invert                # Optimize text embedding for target images
+make invert-ref            # Learn K prefix-slot vectors for a reference image
 make test-invert           # Verify inversion quality
+make bench-inversion       # Benchmark inversion stability (bench/inversion/)
 
 # Inference (test with most recent output)
 make test
@@ -61,6 +69,10 @@ make test-prefix           # Test with prefix tuning
 make test-postfix          # Test with postfix tuning
 make test-postfix-exp      # Test with postfix tuning (exp variant)
 make test-postfix-func     # Test with postfix tuning (func variant)
+make test-ip REF_IMAGE=... # IP-Adapter inference (image-conditioned)
+make test-easycontrol REF_IMAGE=...  # EasyControl inference (image-conditioned)
+make test-ref              # Inference with a learned prefix-slot weight (--prefix_weight)
+make test-merge            # Inference with a merged/baked DiT (no adapter loaded)
 make test-spectrum         # Spectrum-accelerated inference (~3.75x speedup)
 
 # GUI (PySide6 — config editing, GRAFT curation, dataset browsing)
@@ -95,6 +107,7 @@ make comfy-batch           # Run ComfyUI batch workflow
 # Debugging + tests
 make print-config METHOD=lora PRESET=default   # Dump merged config chain (base→preset→method→CLI)
 make test-unit                                  # pytest on tests/ (smoke, config, loss/network registries)
+make export-logs RUN=...                        # Export TensorBoard run to JSON (scripts/export_logs_json.py)
 
 # Linting
 ruff check . --fix && ruff format .
@@ -115,7 +128,7 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 | `gui/` | PySide6 GUI package: config editing with presets, GRAFT curation, dataset browser, training monitor |
 | `tasks.py` | Cross-platform task runner (Windows-compatible Makefile alternative) |
 
-Deep-dives in `docs/methods/`: `apex.md`, `hydra-lora.md`, `invert.md`, `mod-guidance.md`, `postfix-sigma.md`, `prefix-tuning.md`, `psoft-integrated-ortholora.md`, `reft.md`, `spectrum.md`, `timestep_mask.md`.
+Deep-dives in `docs/methods/`: `apex.md`, `easycontrol.md`, `hydra-lora.md`, `invert.md`, `ip-adapter.md`, `mod-guidance.md`, `postfix-sigma.md`, `prefix-tuning.md`, `psoft-integrated-ortholora.md`, `reft.md`, `spectrum.md`, `timestep_mask.md`.
 
 ## Config flow
 
@@ -124,12 +137,14 @@ Training is config-driven via a three-layer chain: `base.toml → presets.toml[<
 Layout:
 - `configs/base.toml` — shared infrastructure (model paths, optimizer, compile flags, etc.) AND the default dataset blueprint (`[general]` + `[[datasets]]` + `[[datasets.subsets]]`). The dataset sections are consumed by `BlueprintGenerator` and skipped by the flat method+preset merge chain (see `_DATASET_CONFIG_SECTIONS` in `library/train_util.py`). Override with `--dataset_config <path>` when you need a different blueprint (e.g. GRAFT uses `graft/dataset_config.toml`).
 - `configs/presets.toml` — all hardware profiles in one file as TOML sections: `[default]`, `[fast_16gb]`, `[low_vram]` (also serves as Windows 8GB), `[graft]`, `[half]` (experiment preset — sets `sample_ratio=0.5` for every subset via the global `--sample_ratio` override). Holds `blocks_to_swap`, `gradient_checkpointing`, `unsloth_offload_checkpointing`, etc.
-- `configs/methods/` — one file per algorithm family. Holds rank, method flags (`use_hydra`, `add_reft`, …), and the method's opinionated learning rate / epochs / output_name. Four files only:
+- `configs/methods/` — one file per algorithm family. Holds rank, method flags (`use_hydra`, `add_reft`, …), and the method's opinionated learning rate / epochs / output_name. Six files:
   - `lora.toml` — LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT. Variants are toggle blocks; default stacks classic LoRA + OrthoLoRA + T-LoRA + ReFT.
   - `postfix.toml` — postfix / postfix_exp / postfix_func / postfix_sigma / prefix. Toggle blocks.
   - `apex.toml` — APEX self-adversarial distillation (arXiv:2604.12322). Warm-starts from a prior LoRA via `network_weights` + `dim_from_weights`.
+  - `ip_adapter.toml` — IP-Adapter image cross-attention (DiT frozen; trains resampler + per-block `to_k_ip`/`to_v_ip`). Defaults to PRE-CACHED PE features (`make ip-adapter-cache`).
+  - `easycontrol.toml` — EasyControl image conditioning (DiT frozen; trains per-block cond LoRA on self-attn + FFN + scalar `b_cond` gate). Reuses cached VAE latents — no new sidecar.
   - `graft.toml` — GRAFT training runs invoked by `scripts/graft_step.py`.
-- `configs/gui-methods/` — GUI-friendly parallel tree. One self-contained TOML per **variant** instead of per family (`lora`, `ortholora`, `tlora`, `reft`, `tlora_ortho_reft`, `hydralora`, `hydralora_sigma`, `postfix`, `postfix_exp`, `postfix_func`, `postfix_sigma`, `prefix`, plus copies of `apex` and `graft`). No toggle blocks — what you see is what runs. Selected via `train.py --methods_subdir gui-methods` (wrapped by `make lora-gui GUI_PRESETS=<variant>` / `python tasks.py lora-gui <variant>`). Intended for basic users and as the eventual source of truth for the GUI's variant picker.
+- `configs/gui-methods/` — GUI-friendly parallel tree. One self-contained TOML per **variant** instead of per family (`lora`, `lora-8gb`, `lora_longer`, `ortholora`, `tlora`, `reft`, `tlora_ortho_reft`, `hydralora`, `hydralora_sigma`, `postfix`, `postfix_exp`, `postfix_func`, `postfix_sigma`, `prefix`, `easycontrol`, plus copies of `apex` and `graft`). No toggle blocks — what you see is what runs. Selected via `train.py --methods_subdir gui-methods` (wrapped by `make lora-gui GUI_PRESETS=<variant>` / `python tasks.py lora-gui <variant>`). Intended for basic users and as the eventual source of truth for the GUI's variant picker.
 - `graft/graft_config.toml` — GRAFT-specific params (epochs_per_step, candidates_per_prompt, pgraft settings)
 
 `library.train_util.load_method_preset(method, preset, methods_subdir="methods")` is the reusable merge helper (used by `train.py` and `scripts/graft_step.py`). Pass `methods_subdir="gui-methods"` to resolve against the clean per-variant tree instead of the toggle-block method files. All paths in configs are relative to `anima_lora/` (e.g., `models/...`, `output/ckpt/`). Runtime outputs are split by kind: trained checkpoints (+ `.snapshot.toml` + `_moe` siblings) in `output/ckpt/`, inference images in `output/tests/`, embedding-inversion results in `output/inversions/`, img2emb artifacts in `output/img2embs/`.
@@ -148,9 +163,13 @@ Layout:
   - `library/log.py` — logging setup + `fire_in_thread`.
 - **Strategy pattern** for model-specific tokenization/encoding (`library/anima/strategy.py`, `library/strategy_base.py`)
 - **Network modules** are pluggable via `network_module` config key:
-  - `networks/lora_anima.py` — LoRA network creation, module targeting, timestep masking orchestration
-  - `networks/lora_modules.py` — LoRA, OrthoLoRA module implementations
-  - `networks/postfix_anima.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual)
+  - `networks/lora_anima/` — LoRA network creation, module targeting, timestep masking orchestration (split into `network.py`, `factory.py`, `loading.py`, `config.py`).
+  - `networks/lora_modules/` — Per-variant module implementations: `lora.py`, `ortho.py`, `hydra.py`, `reft.py`, plus `base.py` and `custom_autograd.py`.
+  - `networks/lora_save.py` / `lora_utils.py` — Save-time SVD distillation (OrthoLoRA → plain LoRA) and shared helpers.
+  - `networks/postfix_anima.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual).
+  - `networks/ip_adapter_anima.py` — IP-Adapter: PE-Core-L14-336 vision encoder + Perceiver resampler + per-block `to_k_ip`/`to_v_ip`.
+  - `networks/easycontrol_anima.py` — EasyControl: per-block cond LoRA on self-attn (q/k/v/o) + FFN + scalar `b_cond` logit-bias gate; two-stream block forward at training, KV-cache prefill at inference.
+  - `networks/condition_shift.py` — APEX `ConditionShift` module (`c_fake = A·c + b`).
 - **Attention dispatch** (`networks/attention.py`): Unified `attention()` routing to torch SDPA, xformers, flash-attn v2/v3, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD). FA4 (flash-attention-sm120) was evaluated and is currently disabled — see `docs/optimizations/fa4.md`.
 
 ### LoRA variants
@@ -214,6 +233,14 @@ Self-adversarial condition-shift distillation — turns the pretrained velocity-
 
 Text-conditioned AdaLN modulation via a learned `pooled_text_proj` MLP (Starodubcev et al., ICLR 2026). Distilled with `make distill-mod`: teacher uses real cross-attention, student uses zeroed cross-attention but receives pooled text through modulation. At inference, steers AdaLN coefficients toward quality-positive directions. See `docs/methods/mod-guidance.md`.
 
+## IP-Adapter
+
+Decoupled image cross-attention (Ye et al. 2023). DiT is frozen; trains only the Perceiver resampler and per-block parallel `to_k_ip`/`to_v_ip` projections (~150M params at default `K=16`, 28 blocks). Reference image → frozen vision tower (PE-Core-L14-336 by default) → resampler → K compact IP tokens → per-block KV → patched cross-attention adds `scale * SDPA(text_q, ip_k, ip_v)` to the existing text cross-attention. Reference and target both come from `post_image_dataset/`. Defaults to PRE-CACHED PE features (`{stem}_anima_pe.safetensors` sidecars from `make ip-adapter-cache`) so training never loads the vision encoder. CFG dropout (`image_drop_p`) zeros image conditioning so inference can do image-CFG independently of text-CFG. See `docs/methods/ip-adapter.md`.
+
+## EasyControl
+
+Extended self-attention image conditioning. DiT is frozen; trains per-block cond LoRA on self-attn (q/k/v/o) + FFN (layer1/layer2) plus a per-block scalar logit-bias `b_cond` (init `-10`) that gates cond-position softmax mass. Reference is VAE-encoded and patch-embedded by the DiT's frozen `x_embedder` into condition tokens that flow through every block alongside the target stream; target self-attention attends to a key set extended with the cond stream's keys/values. Training uses a **two-stream block forward** (target + cond in one scope, no deferred-backward dance); inference prefills a per-block `(K_c, V_c)` cache once at setup and reuses it across every denoising step and every CFG branch (cond is deterministic — `cond_temb = t_embedder(0)`). Reference and target both come from `post_image_dataset/`. Reuses cached VAE latents — no new sidecar. See `docs/methods/easycontrol.md`.
+
 ## Embedding inversion
 
 Optimizes text embeddings (post-T5, pre-DiT space) to minimize flow-matching loss for a target image through the frozen DiT. Reveals how the model interprets images in embedding space. `make invert` runs batch inversion from `post_image_dataset/`, `make test-invert` verifies results. See `docs/methods/invert.md`.
@@ -224,6 +251,7 @@ Data preparation scripts in `preprocess/`:
 - `resize_images.py` — VAE-compatible image resizing (used by `make preprocess-resize`)
 - `cache_latents.py` — Cache VAE latents to disk (used by `make preprocess-vae`)
 - `cache_text_embeddings.py` — Cache text encoder outputs to disk (used by `make preprocess-te`)
+- `cache_pe_encoder.py` — Cache PE-Core vision encoder features (`{stem}_anima_pe.safetensors`); used by `make ip-adapter-cache` for IP-Adapter training
 - `generate_masks.py` — SAM3-based text bubble mask generation
 - `generate_masks_mit.py` — MIT/ComicTextDetector mask generation (manga-specific)
 - `merge_masks.py` — Combine SAM3 + MIT masks into final mask set
@@ -232,13 +260,13 @@ Data preparation scripts in `preprocess/`:
 
 Utility scripts in `scripts/`:
 - `distill_modulation.py` — Train pooled_text_proj MLP for modulation guidance (used by `make distill-mod`)
-- `inversion/invert_embedding.py` — Optimize text embedding for target images (used by `make invert`)
-- `inversion/invert_reference.py` — Learn K prefix-slot vectors for a reference image (used by `make invert-ref`)
-- `inversion/interpret_inversion.py` — Verify/visualize embedding inversion results (used by `make test-invert`)
-- `img2emb/train.py` — Img2emb resampler training dispatcher (imports each stage's entrypoint and runs them in-process; no subprocesses). Preprocessing (`make preprocess-img2emb` = features + anchor artifacts) is split from training (`make img2emb` = pretrain + finetune) so tuning hyperparams doesn't rerun the heavy one-time steps. Two vision encoders are wired in via `--encoder`: `tipsv2` (default) — TIPSv2-L/14, fetched via `make download-tipsv2` → `models/tipsv2/`, requires `trust_remote_code=True`; and `pe` — Meta's Perception Encoder PE-Core-L14-336, fetched via `make download-pe` → `models/pe/PE-Core-L14-336.pt`, vision tower vendored at `library/models/pe.py` (no perception_models clone, no xformers). Aspect-preserving bucketed preprocessing is always on, with per-encoder bucket tables in `scripts/img2emb/buckets.py` (TIPSv2 → ~1024 patch tokens, PE → ~576). See `scripts/img2emb/README.md` for the anchor spec (pre-injection at query-time + post-injection at output-time, optional teacher forcing via `tf_ratio`). Stage scripts: `preprocess.py`, `pretrain.py`, `finetune.py`.
-- `img2emb/infer.py` — Generate an image from a reference via the img2emb resampler (used by `make test-img2emb`). Without `--image_size`, auto-picks the `CONSTANT_TOKEN_BUCKETS` entry closest to the ref aspect ratio.
 - `convert_lora_to_comfy.py` — Convert LoRA key names between anima and ComfyUI formats
 - `comfy_batch.py` — Run ComfyUI batch workflow from `workflows/` directory
+- `merge_to_dit.py` — Bake a LoRA adapter into the base DiT (used by `make merge`)
+- `bench_methods.py` — Benchmark inference across method configurations (writes to `bench/`)
+- `export_logs_json.py` — Export TensorBoard run scalars to JSON/JSONL (used by `make export-logs`)
+
+Archived utilities (legacy, no longer wired up): `archive/img2emb/` (resampler training + inference) and `archive/inversion/` (embedding/reference inversion). The shared resampler/encoder/bucket modules they used have been extracted into `library/vision/` for live IP-Adapter use.
 
 ## Custom nodes
 

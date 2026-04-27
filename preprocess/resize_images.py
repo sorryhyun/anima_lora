@@ -114,6 +114,13 @@ def main() -> None:
     parser.add_argument(
         "--workers", type=int, default=4, help="Number of parallel workers (default: 4)"
     )
+    parser.add_argument(
+        "--min_pixels",
+        type=int,
+        default=500_000,
+        help="Skip images with fewer than this many pixels (default: 500_000 = 0.5MP). "
+        "Set to 0 to disable.",
+    )
     args = parser.parse_args()
 
     if args.no_constant_token_buckets:
@@ -135,6 +142,29 @@ def main() -> None:
     image_files = sorted(
         p for p in src.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
     )
+
+    if args.min_pixels > 0:
+        kept: list[Path] = []
+        skipped: list[tuple[Path, int, int]] = []
+        for p in image_files:
+            try:
+                with Image.open(p) as im:
+                    w, h = im.size
+            except Exception as e:
+                print(f"  warn: could not read {p.name}: {e}")
+                continue
+            if w * h < args.min_pixels:
+                skipped.append((p, w, h))
+            else:
+                kept.append(p)
+        if skipped:
+            print(
+                f"Skipping {len(skipped)} images below {args.min_pixels:,} pixels "
+                f"({args.min_pixels / 1e6:.2f}MP):"
+            )
+            for p, w, h in skipped:
+                print(f"  {p.name}  {w}x{h}  ({w * h / 1e6:.3f}MP)")
+        image_files = kept
 
     print(
         f"Resizing {len(image_files)} images to "

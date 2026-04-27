@@ -83,12 +83,12 @@ compile_mode = "full"
 
 # ── Per-channel input pre-scaling (SmoothQuant-style, optional) ─────────
 # Balances ∂L/∂lora_down column gradients when activations have DC-bias
-# outlier channels (see bench/archive/channel_dominance_analysis.md). Calibration-
+# outlier channels (see archive/bench/channel_dominance_analysis.md). Calibration-
 # only — no runtime overhead. Generate the stats file once:
-#   python bench/archive/analyze_lora_input_channels.py \
-#       --dump_channel_stats bench/archive/results/channel_stats.safetensors
+#   python archive/bench/analyze_lora_input_channels.py \
+#       --dump_channel_stats archive/bench/results/channel_stats.safetensors
 # Then flip `per_channel_scaling` on. α=0.5 = SmoothQuant default (sqrt
 # balance); α=1.0 fully flattens per-channel scale; α=0 disables.
 # per_channel_scaling = true
-# channel_stats_path = "bench/archive/results/channel_stats.safetensors"
+# channel_stats_path = "archive/bench/results/channel_stats.safetensors"
 # channel_scaling_alpha = 0.5

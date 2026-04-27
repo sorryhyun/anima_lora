@@ -64,9 +64,9 @@ across many random trials, plus the distribution of ``α`` per query position.
 
 Usage
 -----
-    uv run python bench/active/easycontrol/step0_equivalence.py
-    uv run python bench/active/easycontrol/step0_equivalence.py --s_t 4096 --s_c 4096
-    uv run python bench/active/easycontrol/step0_equivalence.py --dtype bf16
+    uv run python bench/easycontrol/step0_equivalence.py
+    uv run python bench/easycontrol/step0_equivalence.py --s_t 4096 --s_c 4096
+    uv run python bench/easycontrol/step0_equivalence.py --dtype bf16
 """
 
 from __future__ import annotations
@@ -551,7 +551,7 @@ def main():
         "useful when you only want the Section B verification)",
     )
     p.add_argument(
-        "--out_json", default="bench/active/easycontrol/results/step0_equivalence.json"
+        "--out_json", default="bench/easycontrol/results/step0_equivalence.json"
     )
     args = p.parse_args()
 

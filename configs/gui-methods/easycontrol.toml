@@ -33,6 +33,7 @@ checkpointing_epochs = 12
 use_easycontrol = true
 easycontrol_drop_p = 0.1
 caption_dropout_rate = 0.2
+easycontrol_cond_noise_max = 0.0  # >0 (e.g. 0.5) degrades cond to a lossy hint
 
 blocks_to_swap = 0
 compile_mode = "full"

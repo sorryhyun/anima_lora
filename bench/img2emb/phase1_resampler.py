@@ -14,7 +14,7 @@ zero-pad loss). Adds:
 This is an exploratory trainer superseded by ``phase1_5_anchored`` on the
 production pipeline (``train_img2emb pretrain``). Kept under ``bench/`` for
 reproducing the pre-anchoring numbers; the resampler architecture itself lives
-at ``scripts.img2emb.resampler``.
+at ``library.vision.resampler``.
 
 Usage:
     python bench/img2emb/phase1_resampler.py
@@ -41,13 +41,13 @@ BENCH_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BENCH_DIR.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.img2emb.data import (  # noqa: E402
+from library.vision.data import (  # noqa: E402
     _ResamplerTrainDataset,
     _resampler_loss,
     active_slice,
     load_cache,
 )
-from scripts.img2emb.resampler import PerceiverResampler  # noqa: E402
+from library.vision.resampler import PerceiverResampler  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 
 setup_logging()

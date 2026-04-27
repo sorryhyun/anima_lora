@@ -19,7 +19,7 @@ Stratifies all metrics by slot position: prefix (0..7), mid (8..63),
 tail (64..active_end). Writes per-probe JSONs and a consolidated
 ``summary.md`` that applies the decision rule from ``proposal.md``.
 
-Shared data-loading/loss utilities live at ``scripts.img2emb.data``; this
+Shared data-loading/loss utilities live at ``library.vision.data``; this
 file is the pure analysis layer and stays under ``bench/``.
 
 Usage:
@@ -47,7 +47,7 @@ BENCH_DIR = Path(__file__).resolve().parent
 REPO_ROOT = BENCH_DIR.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.img2emb.data import (  # noqa: E402
+from library.vision.data import (  # noqa: E402
     _ResamplerTrainDataset,
     _resampler_loss,
     active_slice,

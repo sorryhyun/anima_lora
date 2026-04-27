@@ -58,18 +58,18 @@
 
 |  | **LoRA** | **OrthoLoRA + T-LoRA** |
 |:---:|:---:|:---:|
-| seed 41 | <img src="bench/archive/side_by_side/lora/20260423-154854-014_41_.png" width="320"> | <img src="bench/archive/side_by_side/ortho_tlora/20260423-155545-258_41_.png" width="320"> |
-| seed 42 | <img src="bench/archive/side_by_side/lora/20260423-154938-584_42_.png" width="320"> | <img src="bench/archive/side_by_side/ortho_tlora/20260423-155631-762_42_.png" width="320"> |
-| seed 43 | <img src="bench/archive/side_by_side/lora/20260423-155024-080_43_.png" width="320"> | <img src="bench/archive/side_by_side/ortho_tlora/20260423-155718-280_43_.png" width="320"> |
+| seed 41 | <img src="docs/side_by_side/lora/20260423-154854-014_41_.png" width="320"> | <img src="docs/side_by_side/ortho_tlora/20260423-155545-258_41_.png" width="320"> |
+| seed 42 | <img src="docs/side_by_side/lora/20260423-154938-584_42_.png" width="320"> | <img src="docs/side_by_side/ortho_tlora/20260423-155631-762_42_.png" width="320"> |
+| seed 43 | <img src="docs/side_by_side/lora/20260423-155024-080_43_.png" width="320"> | <img src="docs/side_by_side/ortho_tlora/20260423-155718-280_43_.png" width="320"> |
 
 <details>
 <summary>베이스 모델 및 개별 변형 (plain, OrthoLoRA, T-LoRA)</summary>
 
 |  | **plain (베이스)** | **OrthoLoRA** | **T-LoRA** |
 |:---:|:---:|:---:|:---:|
-| seed 41 | <img src="bench/archive/side_by_side/plain/20260423-160513-382_41_.png" width="240"> | <img src="bench/archive/side_by_side/ortholora/20260423-155109-338_41_.png" width="240"> | <img src="bench/archive/side_by_side/tlora/20260423-155327-834_41_.png" width="240"> |
-| seed 42 | <img src="bench/archive/side_by_side/plain/20260423-160556-697_42_.png" width="240"> | <img src="bench/archive/side_by_side/ortholora/20260423-155155-526_42_.png" width="240"> | <img src="bench/archive/side_by_side/tlora/20260423-155413-304_42_.png" width="240"> |
-| seed 43 | <img src="bench/archive/side_by_side/plain/20260423-160640-759_43_.png" width="240"> | <img src="bench/archive/side_by_side/ortholora/20260423-155241-905_43_.png" width="240"> | <img src="bench/archive/side_by_side/tlora/20260423-155458-996_43_.png" width="240"> |
+| seed 41 | <img src="docs/side_by_side/plain/20260423-160513-382_41_.png" width="240"> | <img src="docs/side_by_side/ortholora/20260423-155109-338_41_.png" width="240"> | <img src="docs/side_by_side/tlora/20260423-155327-834_41_.png" width="240"> |
+| seed 42 | <img src="docs/side_by_side/plain/20260423-160556-697_42_.png" width="240"> | <img src="docs/side_by_side/ortholora/20260423-155155-526_42_.png" width="240"> | <img src="docs/side_by_side/tlora/20260423-155413-304_42_.png" width="240"> |
+| seed 43 | <img src="docs/side_by_side/plain/20260423-160640-759_43_.png" width="240"> | <img src="docs/side_by_side/ortholora/20260423-155241-905_43_.png" width="240"> | <img src="docs/side_by_side/tlora/20260423-155458-996_43_.png" width="240"> |
 
 </details>
 
@@ -95,7 +95,7 @@ Linear 가중치 델타가 아닌 변형(ReFT / HydraLoRA `_moe` / postfix / pre
 | **APEX** | 학습된 condition shift를 활용한 self-adversarial 1–4 NFE distillation. 판별자 · 외부 teacher 불필요. | [apex.md](docs/methods/apex.md) |
 | **Postfix / prefix tuning** | 어댑터 cross-attention에 연속 벡터를 뒤에(postfix) 또는 앞에(prefix) 붙임. postfix 변형 5종. | [postfix-sigma.md](docs/methods/postfix-sigma.md), [prefix-tuning.md](docs/methods/prefix-tuning.md) |
 | **임베딩 인버전** | frozen DiT를 통과시켜 타깃 이미지에 맞도록 텍스트 임베딩을 최적화. | [invert.md](docs/methods/invert.md) |
-| **img2emb 리샘플러** | TIPSv2-L/14 features + anchor injection을 이용한 참조 이미지 → 임베딩 매핑 학습. | [scripts/img2emb/README.md](scripts/img2emb/README.md) |
+| **img2emb 리샘플러** | TIPSv2-L/14 features + anchor injection을 이용한 참조 이미지 → 임베딩 매핑 학습. | [archive/img2emb/README.md](archive/img2emb/README.md) |
 | **Spectrum 추론** | Chebyshev 특성 예측으로 학습 없이 약 3.75× 가속 (Han et al., CVPR 2026). 별도 안정판 ComfyUI 노드: [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler). | [spectrum.md](docs/methods/spectrum.md) |
 | **Modulation guidance** | AdaLN 계수를 조향하는 `pooled_text_proj` MLP distillation (Starodubcev et al., ICLR 2026). | [mod-guidance.md](docs/methods/mod-guidance.md) |
 | **GRAFT** | 리젝션 샘플링 파인튜닝 — 학습 → 생성 → survivor 큐레이션 → 재학습 루프. | [graft-guideline.md](docs/guidelines/graft-guideline.md) |

@@ -173,7 +173,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "--ip_encoder",
         type=str,
         default="pe",
-        help="IP-Adapter vision encoder name (registered in scripts/img2emb/encoders.py). "
+        help="IP-Adapter vision encoder name (registered in library/vision/encoders.py). "
         "Default 'pe' = PE-Core-L14-336 (dynamic resolution).",
     )
     parser.add_argument(
@@ -191,6 +191,17 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         default=0.1,
         help="EasyControl image-conditioning dropout probability per batch (CFG dropout "
         "for image branch). Independent of text-side caption_dropout_rate; default 0.1.",
+    )
+    parser.add_argument(
+        "--easycontrol_cond_noise_max",
+        type=float,
+        default=0.0,
+        help="Per-step training-only additive Gaussian noise on the cond latent before "
+        "set_cond. Sampled per-sample as sigma ~ U(0, this) and applied as "
+        "cond + sigma * eps. 0.0 disables (default = current ref==target behavior). "
+        "Use a small positive value (e.g. 0.3-0.7) to weaken cond's blueprint "
+        "dominance and force text to carry the high-frequency residual; sigma=0 "
+        "stays in the training distribution so clean-cond inference still works.",
     )
     parser.add_argument(
         "--caption_shuffle_variants",

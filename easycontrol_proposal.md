@@ -177,7 +177,7 @@ Total at r=16: ~120–200M trainable, comparable to the current IP-Adapter (~150
 
 ### Init for step-0 baseline equivalence
 
-**The intuitive answer is wrong; the bench (`bench/active/easycontrol/step0_equivalence.py`) settles it.**
+**The intuitive answer is wrong; the bench (`bench/easycontrol/step0_equivalence.py`) settles it.**
 
 Naive intuition: "zero-init V_c, then the cond contribution is zero, so output ≈ baseline." This is **incorrect**. The decomposition is:
 
@@ -254,7 +254,7 @@ These are the project invariants from `CLAUDE.md` and where EasyControl lands on
 ## Phased implementation
 
 ### Phase 0 — design lock (this doc)
-Pinned: extend `self_attn` (not `cross_attn`); `S_c = 4096` (same bucketing as target); condition path runs FFN. Step-0 baseline equivalence via per-block learnable logit bias `b_cond`, init = −10 (verified by `bench/active/easycontrol/step0_equivalence.py`).
+Pinned: extend `self_attn` (not `cross_attn`); `S_c = 4096` (same bucketing as target); condition path runs FFN. Step-0 baseline equivalence via per-block learnable logit bias `b_cond`, init = −10 (verified by `bench/easycontrol/step0_equivalence.py`).
 
 ### Phase 1 — minimal training path
 - `networks/easycontrol_anima.py` with self-attn LoRA + FFN LoRA + per-block `b_cond` logit bias.
@@ -311,7 +311,7 @@ Recovers ~1–2 GB peak per block, restores compatibility with the project's `at
 **Plumbing.**
 - `networks/attention.py` — extend the dispatch to surface `lse` from the flash backend (FA2 already returns LSE alongside out via `flash_attn_func(..., return_attn_probs=True)` or the underlying CUDA call). Either add a new entry-point `attention_with_lse(qkv, attn_params)` or have `attention()` return `(out, lse)` when an `lse=True` flag is passed. Keep the existing single-tensor return as the default.
 - `networks/easycontrol_anima.py:_make_patched_self_attn_forward` — replace the "force torch SDPA + attn_mask" branch with the two-call + LSE-combine recipe above. Drop the math-kernel path entirely; if `lse` is unavailable (e.g. xformers backend), fall back to the current torch-SDPA-with-mask path with a one-line warning.
-- `bench/active/easycontrol/step1p5_lse_equivalence.py` — bench that the new path matches the math-kernel path bit-for-bit (modulo flash-attn's expected fp32-accumulation ulp differences). Run on the same shapes as `step0_equivalence.py`.
+- `bench/easycontrol/step1p5_lse_equivalence.py` — bench that the new path matches the math-kernel path bit-for-bit (modulo flash-attn's expected fp32-accumulation ulp differences). Run on the same shapes as `step0_equivalence.py`.
 
 **Success criterion.** Same loss curve as Phase 1's math-kernel path within fp32 ulp tolerance, peak VRAM during the extended self-attn drops to within ~10% of plain-LoRA's self-attn peak, and `make easycontrol` runs end-to-end on the standard hardware preset without OOM.
 
@@ -337,7 +337,7 @@ Recovers ~1–2 GB peak per block, restores compatibility with the project's `at
 
 ## Risks and open questions
 
-1. **Step-0 baseline equivalence with extended self-attention keys.** ✅ **Resolved by `bench/active/easycontrol/step0_equivalence.py`.** Initial intuition ("zero-init V_c is enough") was wrong — the bench shows ~50% rel_l2 deviation because softmax mass leaks to cond positions and rescales the target output by the leaked-mass factor α. **Fix: a learnable additive logit bias on cond keys, initialized to −10**, which gives rel_l2 ≈ 6.4e-5 (visually identical to baseline) while remaining freely trainable. See the bench script and the "Init for step-0 baseline equivalence" section above for the full decomposition and table.
+1. **Step-0 baseline equivalence with extended self-attention keys.** ✅ **Resolved by `bench/easycontrol/step0_equivalence.py`.** Initial intuition ("zero-init V_c is enough") was wrong — the bench shows ~50% rel_l2 deviation because softmax mass leaks to cond positions and rescales the target output by the leaked-mass factor α. **Fix: a learnable additive logit bias on cond keys, initialized to −10**, which gives rel_l2 ≈ 6.4e-5 (visually identical to baseline) while remaining freely trainable. See the bench script and the "Init for step-0 baseline equivalence" section above for the full decomposition and table.
 2. **Block swapping interleave.** Ordering `swap → forward target → swap → forward cond → swap` is awkward. v1 sets `blocks_to_swap=0` (same as current IP-Adapter and APEX). Worth investigating later but not for the first release.
 3. **Cache invalidation when ref==target during training.** If we cache `easycontrol_features` per image and ref==target, this is just the VAE latent already cached for the target. We should reuse the existing VAE cache directly (a thin "give me the bucketed latent for image X at the condition's bucket" lookup) rather than write a duplicate sidecar. Saves disk space and avoids two-source-of-truth. *Open: do we need a separate sidecar at all in the ref==target setup?*
 4. **Caption dropout pitfall (carried over from IP-Adapter).** The IP-Adapter doc specifically warns that high `caption_dropout_rate` on `post_image_dataset` causes mode collapse. Same warning applies here, possibly worse because the model now has higher-bandwidth access to the reference (full VAE tokens vs. 16 resampled tokens). Default `caption_dropout_rate=0.1`–`0.2`.

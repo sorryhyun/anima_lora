@@ -40,7 +40,7 @@ def main() -> None:
         "--encoder",
         type=str,
         default="pe",
-        help="Vision encoder registry name (default: pe). See scripts/img2emb/encoders.py.",
+        help="Vision encoder registry name (default: pe). See library/vision/encoders.py.",
     )
     parser.add_argument(
         "--model_id",
