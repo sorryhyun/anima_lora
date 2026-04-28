@@ -126,6 +126,10 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Consume preprocessed caption-shuffle variants from the text-encoder cache. When the cache holds multiple variants, a random one is drawn per sample. Falls back silently to single-variant if no variants were preprocessed.",
         "ko": "전처리된 캡션 셔플 변형을 텍스트 인코더 캐시에서 사용. 캐시에 여러 변형이 있으면 샘플당 무작위 선택. 변형이 전처리되지 않았다면 단일 캡션으로 자동 대체.",
     },
+    "caption_dropout_rate": {
+        "en": "Probability per sample of dropping the caption (replaced with empty text embedding). Pushes the LoRA toward an unconditional bias — useful for style training where you want the look to apply regardless of prompt. Typical: 0.0–0.05 for character/concept LoRAs, 0.1–0.25 for style LoRAs (그림체 학습). Too high can blur prompt-driven diversity (pose/composition).",
+        "ko": "샘플별로 캡션을 비울(빈 텍스트 임베딩으로 대체) 확률. LoRA를 무조건부(unconditional) 방향으로 학습시켜, 프롬프트와 무관하게 항상 적용되는 \"스타일\"을 학습할 때 유리. 일반적: 캐릭터/컨셉 LoRA는 0.0–0.05, 그림체 학습은 0.1–0.25. 너무 높이면 캡션이 담당하던 다양성(포즈/구도)까지 함께 약해짐.",
+    },
     "optimizer_type": {
         "en": "Optimizer algorithm. AdamW8bit: memory-efficient 8-bit Adam. Others: AdamW, Lion, Prodigy, etc.",
         "ko": "옵티마이저 알고리즘. AdamW8bit: 메모리 효율적 8비트 Adam. 기타: AdamW, Lion, Prodigy 등.",

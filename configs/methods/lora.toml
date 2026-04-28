@@ -52,7 +52,7 @@ alpha_rank_scale = 1.0
 output_name = "anima_hydra"
 use_hydra = true
 num_experts = 12
-balance_loss_weight = 1e-6 # seems lr * 1/10 is proper
+balance_loss_weight = 5e-7 # seems lr * 1/10 is proper
 
 # # expert_warmup_ratio = 0.1
 # # expert_warmup_k = 4
