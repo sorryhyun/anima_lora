@@ -116,10 +116,15 @@ def _walk_tree(root: Path) -> Iterable[Path]:
             yield p
 
 
-def _resolve_release(version: str | None) -> tuple[str, str]:
-    """Return (label, tarball_url). version=None → latest tag, "main" → main branch."""
+def _resolve_release(version: str | None) -> tuple[str, str, str]:
+    """Return (label, tarball_url, body).
+
+    version=None → latest tag, "main" → main branch tarball (no release body
+    available, returns ""). For tagged releases the GitHub API also returns
+    the release notes body, which we print before the confirmation prompt.
+    """
     if version == "main":
-        return ("main", f"https://github.com/{REPO}/archive/refs/heads/main.tar.gz")
+        return ("main", f"https://github.com/{REPO}/archive/refs/heads/main.tar.gz", "")
     if version is None:
         api = f"https://api.github.com/repos/{REPO}/releases/latest"
     else:
@@ -133,7 +138,44 @@ def _resolve_release(version: str | None) -> tuple[str, str]:
     except urllib.error.URLError as e:
         sys.exit(f"Could not reach GitHub: {e.reason}")
     tag = data["tag_name"]
-    return tag, f"https://github.com/{REPO}/archive/refs/tags/{tag}.tar.gz"
+    body = (data.get("body") or "").strip()
+    return tag, f"https://github.com/{REPO}/archive/refs/tags/{tag}.tar.gz", body
+
+
+def _print_release_notes(tag: str, body: str) -> None:
+    rule = "─" * 64
+    print()
+    print(rule)
+    print(f"  Release notes — {tag}")
+    print(rule)
+    if body:
+        for line in body.splitlines():
+            print(f"  {line}" if line else "")
+    else:
+        print("  (release has no description)")
+    print(rule)
+
+
+def _confirm_update(from_tag: str | None, to_tag: str) -> bool:
+    """Prompt the user before applying an update.
+
+    Returns True if we should proceed, False to abort. When stdin isn't a
+    TTY (e.g. invoked from the GUI's QProcess) we auto-proceed silently —
+    the caller is expected to have shown the changelog already.
+    """
+    if not sys.stdin.isatty():
+        print("  (stdin not a TTY — proceeding without prompt)")
+        return True
+    from_label = from_tag if from_tag else "(no baseline)"
+    try:
+        ans = input(f"\nProceed with update {from_label} → {to_tag}? [Y/n]: ")
+    except EOFError:
+        return True
+    ans = ans.strip().lower()
+    if ans in ("", "y", "yes"):
+        return True
+    print("aborted.")
+    return False
 
 
 def _download(url: str, dest: Path) -> None:
@@ -222,11 +264,12 @@ def update(
     yes_overwrite: bool,
     keep_conflicts: bool,
     no_sync: bool,
+    assume_yes: bool,
 ) -> int:
     if yes_overwrite and keep_conflicts:
         sys.exit("--yes-overwrite and --keep-conflicts are mutually exclusive")
     print(f"anima_lora update — repo {REPO}")
-    tag, tarball_url = _resolve_release(version)
+    tag, tarball_url, body = _resolve_release(version)
     print(f"  target: {tag}")
 
     baseline_version, baseline_hashes = _load_baseline()
@@ -237,6 +280,15 @@ def update(
 
     if version is None and baseline_version == tag:
         print(f"already on {tag}; nothing to do")
+        return 0
+
+    # Show the release notes so the user knows what they're pulling. Skip
+    # for branch tarballs (no body) and for the GUI path (--yes), which has
+    # already shown the notes in the update dialog.
+    if version != "main" and not assume_yes:
+        _print_release_notes(tag, body)
+
+    if not dry_run and not assume_yes and not _confirm_update(baseline_version, tag):
         return 0
 
     with tempfile.TemporaryDirectory(prefix="anima-update-") as td:
@@ -410,6 +462,10 @@ def main() -> int:
         "--no-sync", action="store_true",
         help="Skip the trailing `uv sync`",
     )
+    ap.add_argument(
+        "-y", "--yes", action="store_true",
+        help="Skip the changelog confirmation prompt (e.g. when invoked from a GUI)",
+    )
     args = ap.parse_args()
     return update(
         version=args.version,
@@ -417,6 +473,7 @@ def main() -> int:
         yes_overwrite=args.yes_overwrite,
         keep_conflicts=args.keep_conflicts,
         no_sync=args.no_sync,
+        assume_yes=args.yes,
     )
 
 

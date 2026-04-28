@@ -7,10 +7,13 @@ runs at a time per dialog — buttons disable while busy and re-enable on finish
 
 from __future__ import annotations
 
+import json
 import sys
+import urllib.error
+import urllib.request
 
-from PySide6.QtCore import QProcess
-from PySide6.QtGui import QTextCursor
+from PySide6.QtCore import QProcess, QThread, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -19,6 +22,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -226,18 +230,128 @@ class ModelsDialog(_StreamingDialog):
             btn.setText(t("models_redownload") if installed else t("models_download"))
 
 
+GITHUB_REPO = "sorryhyun/anima_lora"
+GITHUB_REPO_URL = f"https://github.com/{GITHUB_REPO}"
+GITHUB_ISSUES_URL = f"{GITHUB_REPO_URL}/issues"
+RELEASE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+MANIFEST_FILE = ROOT / ".anima_release.json"
+
+
+def _load_local_version() -> str | None:
+    """Read the baseline tag from .anima_release.json, or None if absent."""
+    if not MANIFEST_FILE.exists():
+        return None
+    try:
+        data = json.loads(MANIFEST_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return data.get("version")
+
+
+class _UpdateCheckThread(QThread):
+    """Fetch the latest release tag + body from GitHub on a worker thread.
+
+    Emits ``finished_check`` with a dict: keys ``ok`` (bool), ``tag``,
+    ``body``, ``html_url``, ``error`` (str, populated only on failure).
+    The HTTP call is plain urllib so we don't pull in a new dependency.
+    """
+
+    finished_check = Signal(dict)
+
+    def run(self) -> None:  # noqa: D401 — Qt override
+        result: dict = {"ok": False, "tag": "", "body": "", "html_url": "", "error": ""}
+        req = urllib.request.Request(
+            RELEASE_API_URL,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "anima-update-gui",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            result["ok"] = True
+            result["tag"] = data.get("tag_name", "") or ""
+            result["body"] = data.get("body", "") or ""
+            result["html_url"] = data.get("html_url", "") or ""
+        except urllib.error.HTTPError as e:
+            result["error"] = f"HTTP {e.code} {e.reason}"
+        except urllib.error.URLError as e:
+            result["error"] = str(e.reason)
+        except Exception as e:  # JSON / unexpected
+            result["error"] = str(e)
+        self.finished_check.emit(result)
+
+
 class UpdateDialog(_StreamingDialog):
     """Run ``python tasks.py update`` with a confirmation + dry-run option.
 
     The update script in ``scripts/update.py`` preserves dataset/output/models
     and prompts on config conflicts, but it still rewrites the working tree —
     we surface that warning before kicking off.
+
+    On open, fires a background GitHub API call to compare the locally
+    pinned tag (from ``.anima_release.json``) against the latest release
+    and renders the release body as markdown so users can see what's new
+    before pulling.
     """
 
     def __init__(self, parent=None):
+        self._check_thread: _UpdateCheckThread | None = None
+        self._latest_url: str = ""
         super().__init__(t("update_title"), parent)
+        self._kick_check()
 
     def _build_actions(self, layout: QVBoxLayout) -> None:
+        # ── Version + status row ──
+        version_row = QHBoxLayout()
+        version_row.setSpacing(12)
+
+        local = _load_local_version()
+        local_str = local if local else t("update_no_baseline")
+        self.current_lbl = QLabel(t("update_current_version", v=local_str))
+        version_row.addWidget(self.current_lbl)
+
+        self.latest_lbl = QLabel(t("update_latest_version", v="…"))
+        version_row.addWidget(self.latest_lbl)
+
+        self.status_lbl = QLabel(t("update_status_checking"))
+        self.status_lbl.setStyleSheet("color:#9ca3af;font-weight:bold;")
+        version_row.addWidget(self.status_lbl)
+
+        version_row.addStretch()
+
+        self.view_release_btn = QPushButton(t("update_view_release"))
+        self.view_release_btn.setEnabled(False)
+        self.view_release_btn.clicked.connect(self._open_release_page)
+        version_row.addWidget(self.view_release_btn)
+
+        self.check_btn = QPushButton(t("update_check_now"))
+        self.check_btn.clicked.connect(self._kick_check)
+        version_row.addWidget(self.check_btn)
+        layout.addLayout(version_row)
+
+        # ── Release notes panel ──
+        notes_label = QLabel(t("update_release_notes"))
+        notes_label.setStyleSheet("color:#aaa;margin-top:4px;")
+        layout.addWidget(notes_label)
+
+        self.notes_view = QTextBrowser()
+        self.notes_view.setOpenExternalLinks(True)
+        self.notes_view.setMaximumHeight(180)
+        self.notes_view.document().setDefaultStyleSheet(
+            "a { color: #ffb86b; text-decoration: underline; }"
+            "code { background:#2a2a2a; padding:1px 4px; border-radius:3px; }"
+            "pre { background:#2a2a2a; padding:6px; border-radius:4px; }"
+        )
+        self.notes_view.setStyleSheet(
+            "QTextBrowser { background:#1e1e1e; color:#dcdcdc; "
+            "border:1px solid #444; padding:8px; }"
+        )
+        self.notes_view.setPlaceholderText(t("update_status_checking"))
+        layout.addWidget(self.notes_view)
+
+        # ── Warning + run buttons (existing controls) ──
         warn = QLabel(t("update_warning"))
         warn.setWordWrap(True)
         warn.setStyleSheet(
@@ -276,6 +390,59 @@ class UpdateDialog(_StreamingDialog):
         row.addStretch()
         layout.addLayout(row)
 
+    def _kick_check(self) -> None:
+        if self._check_thread is not None and self._check_thread.isRunning():
+            return
+        self.check_btn.setEnabled(False)
+        self.view_release_btn.setEnabled(False)
+        self.latest_lbl.setText(t("update_latest_version", v="…"))
+        self.status_lbl.setText(t("update_status_checking"))
+        self.status_lbl.setStyleSheet("color:#9ca3af;font-weight:bold;")
+        self.notes_view.setMarkdown("")
+        self.notes_view.setPlaceholderText(t("update_status_checking"))
+
+        self._check_thread = _UpdateCheckThread(self)
+        self._check_thread.finished_check.connect(self._on_check_result)
+        self._check_thread.start()
+
+    def _on_check_result(self, result: dict) -> None:
+        self.check_btn.setEnabled(True)
+        if not result.get("ok"):
+            self.latest_lbl.setText(t("update_latest_version", v="?"))
+            self.status_lbl.setText(t("update_status_failed"))
+            self.status_lbl.setStyleSheet("color:#f87171;font-weight:bold;")
+            self.notes_view.setPlainText(
+                t("update_check_error", err=result.get("error", "")),
+            )
+            return
+
+        latest = result.get("tag", "")
+        self._latest_url = result.get("html_url", "")
+        self.view_release_btn.setEnabled(bool(self._latest_url))
+        self.latest_lbl.setText(t("update_latest_version", v=latest or "?"))
+
+        local = _load_local_version()
+        if local and latest and local == latest:
+            self.status_lbl.setText(t("update_status_uptodate"))
+            self.status_lbl.setStyleSheet("color:#4ade80;font-weight:bold;")
+        elif local is None:
+            # No manifest — can't tell if user is on this release or older.
+            self.status_lbl.setText(t("update_status_unknown"))
+            self.status_lbl.setStyleSheet("color:#fbbf24;font-weight:bold;")
+        else:
+            self.status_lbl.setText(t("update_status_available"))
+            self.status_lbl.setStyleSheet("color:#fbbf24;font-weight:bold;")
+
+        body = result.get("body", "").strip()
+        if body:
+            self.notes_view.setMarkdown(body)
+        else:
+            self.notes_view.setPlainText(t("update_no_release_notes"))
+
+    def _open_release_page(self) -> None:
+        if self._latest_url:
+            QDesktopServices.openUrl(QUrl(self._latest_url))
+
     def _confirm_and_run(self, conflict_flag: str):
         ok = QMessageBox.question(
             self,
@@ -292,12 +459,16 @@ class UpdateDialog(_StreamingDialog):
         self.dry_btn.setEnabled(not busy)
         self.run_keep_btn.setEnabled(not busy)
         self.run_overwrite_btn.setEnabled(not busy)
+        self.check_btn.setEnabled(not busy)
+
+    def closeEvent(self, ev):
+        # Without wait(), Qt warns about destroying a running QThread.
+        if self._check_thread is not None and self._check_thread.isRunning():
+            self._check_thread.wait(2000)
+        super().closeEvent(ev)
 
 
 # Public helpers for app.py.
-
-GITHUB_REPO_URL = "https://github.com/sorryhyun/anima_lora"
-GITHUB_ISSUES_URL = f"{GITHUB_REPO_URL}/issues"
 
 
 def open_models_dialog(parent=None):
