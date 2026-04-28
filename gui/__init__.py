@@ -165,7 +165,7 @@ _GROUPS = {
         "save_every_n_epochs",
         "checkpointing_epochs",
         "gradient_accumulation_steps",
-        "caption_shuffle_variants",
+        "use_shuffled_caption_variants",
         "optimizer_type",
         "lr_scheduler",
         "timestep_sampling",

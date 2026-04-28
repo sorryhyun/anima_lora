@@ -122,9 +122,9 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Accumulate gradients over N steps before updating. Effective batch size = batch_size \u00d7 accumulation_steps.",
         "ko": "N 스텝 동안 그레이디언트 누적 후 업데이트. 실효 배치 크기 = batch_size \u00d7 accumulation_steps.",
     },
-    "caption_shuffle_variants": {
-        "en": "Number of random caption tag-order variants per image. Higher = better caption robustness, slower caching.",
-        "ko": "이미지당 캡션 태그 순서 무작위 변형 수. 높을수록 캡션 견고성 향상, 캐싱 속도 감소.",
+    "use_shuffled_caption_variants": {
+        "en": "Consume preprocessed caption-shuffle variants from the text-encoder cache. When the cache holds multiple variants, a random one is drawn per sample. Falls back silently to single-variant if no variants were preprocessed.",
+        "ko": "전처리된 캡션 셔플 변형을 텍스트 인코더 캐시에서 사용. 캐시에 여러 변형이 있으면 샘플당 무작위 선택. 변형이 전처리되지 않았다면 단일 캡션으로 자동 대체.",
     },
     "optimizer_type": {
         "en": "Optimizer algorithm. AdamW8bit: memory-efficient 8-bit Adam. Others: AdamW, Lion, Prodigy, etc.",

@@ -204,11 +204,14 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "stays in the training distribution so clean-cond inference still works.",
     )
     parser.add_argument(
-        "--caption_shuffle_variants",
-        type=int,
-        default=0,
-        help="Number of shuffled caption variants to cache. Tags after @artist are shuffled. "
-        "0=disabled (default). Requires --cache_text_encoder_outputs.",
+        "--use_shuffled_caption_variants",
+        action="store_true",
+        help="Consume preprocessed caption-shuffle variants from the text-encoder cache "
+        "(written by `cache_text_embeddings.py --caption_shuffle_variants N`). When the "
+        "cache file has a `num_variants` tensor, a random variant is drawn per sample. "
+        "Falls back to single-variant silently if the cache has no variants. Inline "
+        "multi-variant generation at training time is no longer supported — preprocess "
+        "the variants first.",
     )
     parser.add_argument(
         "--artist_filter",

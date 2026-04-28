@@ -6,13 +6,12 @@ from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from safetensors import safe_open as _safe_open
 from safetensors.torch import (
     save_file as _save_safetensors,
 )
 
-from library.anima import training as anima_train_utils, weights as anima_utils
+from library.anima import weights as anima_utils
 from library.datasets import base as _datasets_base
 from library.io.cache import resolve_cache_path
 from library.runtime.device import clean_memory_on_device
@@ -191,39 +190,6 @@ class AnimaTextEncodingStrategy(TextEncodingStrategy):
         return outputs
 
 
-class _VariantOutputs:
-    """Wrapper that randomly selects a cached variant each time it's accessed as a sequence.
-
-    Used for in-memory caption shuffle variants so that train_util.__getitem__() gets a
-    different shuffled variant per epoch without modifying shared code.
-
-    Picks a new random variant on __getitem__(0) (start of collation loop) and reuses
-    the same variant for subsequent indices within the same collation round.
-    """
-
-    def __init__(self, variants: list, caption_dropout_rate):
-        self._variants = variants  # list of tuples, each is (pe, am, t5, t5m) or (pe, am, t5, t5m, ce)
-        self._caption_dropout_rate = caption_dropout_rate
-        self._resolved = None
-
-    def _resolve(self):
-        v = self._variants[random.randint(0, len(self._variants) - 1)]
-        self._resolved = (*v, self._caption_dropout_rate)
-        return self._resolved
-
-    def __len__(self):
-        # Collation calls len() on the first element — resolve a new variant
-        return len(self._resolve())
-
-    def __getitem__(self, idx):
-        if idx == 0 or self._resolved is None:
-            self._resolve()
-        return self._resolved[idx]
-
-    def __iter__(self):
-        return iter(self._resolve())
-
-
 class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
     """Caching strategy for Anima text encoder outputs.
 
@@ -239,13 +205,13 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         skip_disk_cache_validity_check: bool,
         is_partial: bool = False,
         cache_llm_adapter_outputs: bool = False,
-        caption_shuffle_variants: int = 0,
+        use_shuffled_caption_variants: bool = False,
     ) -> None:
         super().__init__(
             cache_to_disk, batch_size, skip_disk_cache_validity_check, is_partial
         )
         self.cache_llm_adapter_outputs = cache_llm_adapter_outputs
-        self.caption_shuffle_variants = caption_shuffle_variants
+        self.use_shuffled_caption_variants = use_shuffled_caption_variants
 
     def get_outputs_npz_path(
         self, image_abs_path: str, cache_dir: Optional[str] = None
@@ -299,14 +265,15 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         return True
 
     def load_outputs_npz(self, cache_path: str) -> list:
-        # Lazy per-tensor read via safe_open: with caption_shuffle_variants=N
-        # and cache_llm_adapter_outputs, the file holds 5×N tensors but only
+        # Lazy per-tensor read via safe_open: when the cache holds N preprocessed
+        # variants × cache_llm_adapter_outputs, the file has 5×N tensors but only
         # one variant is consumed per step. load_file() materializes everything
         # and starves the dataloader workers; safe_open + get_tensor pulls just
         # the chosen variant's bytes from the mmap.
         with _safe_open(cache_path, framework="pt") as f:
             keys = set(f.keys())
-            if "num_variants" in keys:
+            has_variants = "num_variants" in keys
+            if has_variants and self.use_shuffled_caption_variants:
                 num_variants = int(f.get_tensor("num_variants"))
                 vi = random.randint(0, num_variants - 1)
                 prompt_embeds = f.get_tensor(f"prompt_embeds_v{vi}")
@@ -319,7 +286,21 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                     if self.cache_llm_adapter_outputs and crossattn_key in keys
                     else None
                 )
+            elif has_variants:
+                # Variants on disk but the user opted out — pin to v0 deterministically.
+                prompt_embeds = f.get_tensor("prompt_embeds_v0")
+                attn_mask = f.get_tensor("attn_mask_v0")
+                t5_input_ids = f.get_tensor("t5_input_ids_v0")
+                t5_attn_mask = f.get_tensor("t5_attn_mask_v0")
+                crossattn_emb = (
+                    f.get_tensor("crossattn_emb_v0")
+                    if self.cache_llm_adapter_outputs and "crossattn_emb_v0" in keys
+                    else None
+                )
             else:
+                # Single-variant cache. Loaded as-is whether or not the user
+                # asked for shuffles — silent fallback so a bool flip doesn't
+                # require re-preprocessing.
                 prompt_embeds = f.get_tensor("prompt_embeds")
                 attn_mask = f.get_tensor("attn_mask")
                 t5_input_ids = f.get_tensor("t5_input_ids")
@@ -347,76 +328,6 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
             crossattn_emb,
             caption_dropout_rate,
         ]
-
-    @staticmethod
-    def _generate_shuffled_captions(caption: str, num_variants: int) -> List[str]:
-        """Generate N shuffled caption variants using the shared smart shuffle logic."""
-        tags = [t.strip() for t in caption.split(",")]
-        variants = []
-        for _ in range(num_variants):
-            shuffled = anima_train_utils.anima_smart_shuffle_caption(tags.copy())
-            variants.append(", ".join(shuffled))
-        return variants
-
-    @staticmethod
-    def _align_crossattn_to_v0(
-        save_dict: dict, num_variants: int
-    ) -> None:
-        """In-place: Hungarian-align ``crossattn_emb_v1..v{N-1}`` to v0 by
-        per-token cosine, so all V variants share v0's positional convention.
-
-        Caption-shuffle variants share content (same tag set) but T5's
-        positional encoding scrambles per-token outputs across shuffles.
-        Without this step, downstream consumers that use positional MSE /
-        cosine against ``variant_mean`` (img2emb pretrain) train against a
-        permutation-randomized noise centroid — pathological. After
-        alignment, ``variant_mean`` is meaningful and positional losses
-        become well-formed objectives.
-
-        DiT cross-attention has no K-side RoPE (see ``models.py::compute_qkv``,
-        gated on ``is_selfattn``), so row-permuting ``crossattn_emb`` is a
-        mathematical no-op for any LoRA / inference path that consumes it
-        directly. We deliberately do *not* permute ``prompt_embeds_v*`` /
-        ``t5_input_ids_v*`` / ``*_attn_mask_v*``: those feed the LLM
-        adapter at training time when ``cache_llm_adapter_outputs=False``,
-        and the adapter's internal cross-attn DOES apply K-side RoPE —
-        permuting them would silently corrupt that path.
-
-        Marker tensor ``aligned_to_v0`` is set unconditionally so legacy
-        readers can detect alignment.
-        """
-        if "crossattn_emb_v0" not in save_dict:
-            # Path-B-only cache (no adapter outputs). Nothing to align;
-            # marker omitted so a future re-run with adapter caching enabled
-            # can apply alignment without skipping.
-            return
-        from scipy.optimize import linear_sum_assignment  # local import: scipy
-        # is heavy and only needed here.
-
-        mask_v0 = save_dict.get("attn_mask_v0")
-        if mask_v0 is None:
-            L = save_dict["crossattn_emb_v0"].shape[0]
-        else:
-            L = int(mask_v0.sum().item())
-        save_dict["aligned_to_v0"] = torch.tensor([1], dtype=torch.uint8)
-        if L == 0:
-            return
-
-        ref = save_dict["crossattn_emb_v0"].float()[:L]
-        ref_n = F.normalize(ref, dim=-1, eps=1e-8)
-
-        for v in range(1, num_variants):
-            key = f"crossattn_emb_v{v}"
-            if key not in save_dict:
-                continue
-            e = save_dict[key].float()[:L]
-            e_n = F.normalize(e, dim=-1, eps=1e-8)
-            sim = (ref_n @ e_n.T).cpu().numpy()
-            _, col = linear_sum_assignment(-sim)
-            col_t = torch.as_tensor(col, dtype=torch.long)
-            permuted = save_dict[key].clone()
-            permuted[:L] = save_dict[key][:L][col_t]
-            save_dict[key] = permuted
 
     def _encode_to_tensors(
         self,
@@ -495,16 +406,12 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
         text_encoding_strategy: TextEncodingStrategy,
         infos: List,
     ):
+        # Inline caching always writes a single variant. Multi-variant caches
+        # are produced exclusively by `preprocess/cache_text_embeddings.py`.
         anima_text_encoding_strategy: AnimaTextEncodingStrategy = text_encoding_strategy
-
-        if self.caption_shuffle_variants > 0:
-            self._cache_batch_outputs_with_variants(
-                tokenize_strategy, models, anima_text_encoding_strategy, infos
-            )
-        else:
-            self._cache_batch_outputs_single(
-                tokenize_strategy, models, anima_text_encoding_strategy, infos
-            )
+        self._cache_batch_outputs_single(
+            tokenize_strategy, models, anima_text_encoding_strategy, infos
+        )
 
     def _cache_batch_outputs_single(
         self,
@@ -562,83 +469,6 @@ class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
                         ce_i,
                         caption_dropout_rate,
                     )
-
-    def _cache_batch_outputs_with_variants(
-        self,
-        tokenize_strategy: TokenizeStrategy,
-        models: List[Any],
-        text_encoding_strategy: "AnimaTextEncodingStrategy",
-        infos: List,
-    ):
-        """Cache N shuffled caption variants per image."""
-        N = self.caption_shuffle_variants
-
-        # For each info, generate N shuffled captions
-        # We batch all variants across all infos for efficient encoding
-        all_captions = []  # flat list of all variant captions
-        variant_map = []  # (info_idx, variant_idx) for each entry in all_captions
-        for info_idx, info in enumerate(infos):
-            variants = self._generate_shuffled_captions(info.caption, N)
-            for vi, caption in enumerate(variants):
-                all_captions.append(caption)
-                variant_map.append((info_idx, vi))
-
-        # Encode all variants in one batch
-        prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
-            self._encode_to_tensors(
-                tokenize_strategy, models, text_encoding_strategy, all_captions
-            )
-        )
-
-        # Group results by info and save
-        for i, info in enumerate(infos):
-            caption_dropout_rate = torch.tensor(
-                info.caption_dropout_rate, dtype=torch.float32
-            )
-            save_dict = {
-                "num_variants": torch.tensor(N, dtype=torch.int64),
-                "caption_dropout_rate": caption_dropout_rate,
-            }
-
-            for vi in range(N):
-                flat_idx = i * N + vi
-                pe_i, am_i, t5_i, t5m_i, ce_i = self._trim_outputs(
-                    prompt_embeds[flat_idx],
-                    attn_mask[flat_idx],
-                    t5_input_ids[flat_idx],
-                    t5_attn_mask[flat_idx],
-                    crossattn_emb[flat_idx] if crossattn_emb is not None else None,
-                )
-                save_dict[f"prompt_embeds_v{vi}"] = pe_i
-                save_dict[f"attn_mask_v{vi}"] = am_i
-                save_dict[f"t5_input_ids_v{vi}"] = t5_i
-                save_dict[f"t5_attn_mask_v{vi}"] = t5m_i
-                if ce_i is not None:
-                    save_dict[f"crossattn_emb_v{vi}"] = ce_i
-
-            # Align variants v1..v{N-1}'s crossattn_emb to v0's positional
-            # convention before save. No-op when adapter outputs aren't cached.
-            self._align_crossattn_to_v0(save_dict, N)
-
-            if self.cache_to_disk:
-                _save_safetensors(save_dict, info.text_encoder_outputs_npz)
-            else:
-                # Build list of variant tuples for in-memory random selection
-                variants = []
-                for vi in range(N):
-                    v = (
-                        save_dict[f"prompt_embeds_v{vi}"],
-                        save_dict[f"attn_mask_v{vi}"],
-                        save_dict[f"t5_input_ids_v{vi}"],
-                        save_dict[f"t5_attn_mask_v{vi}"],
-                    )
-                    if f"crossattn_emb_v{vi}" in save_dict:
-                        v = (*v, save_dict[f"crossattn_emb_v{vi}"])
-                    variants.append(v)
-                info.text_encoder_outputs = _VariantOutputs(
-                    variants, caption_dropout_rate
-                )
-
 
 class AnimaLatentsCachingStrategy(LatentsCachingStrategy):
     """Latent caching strategy for Anima using WanVAE.

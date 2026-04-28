@@ -579,7 +579,9 @@ class AnimaTrainer:
                 cache_llm_adapter_outputs=getattr(
                     args, "cache_llm_adapter_outputs", False
                 ),
-                caption_shuffle_variants=getattr(args, "caption_shuffle_variants", 0),
+                use_shuffled_caption_variants=getattr(
+                    args, "use_shuffled_caption_variants", False
+                ),
             )
         return None
 

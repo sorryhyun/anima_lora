@@ -13,7 +13,7 @@ max_train_epochs = 1
 save_every_n_epochs = 1
 checkpointing_epochs = 1
 
-caption_shuffle_variants = 2
+use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 
 multiscale_loss_weight = 0.5
