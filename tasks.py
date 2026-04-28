@@ -1025,6 +1025,12 @@ def cmd_test_unit(extra):
     run([PY, "-m", "pytest", "-q", "tests/", *extra])
 
 
+def cmd_update(extra):
+    """Update anima_lora from a GitHub release (preserves datasets/output/models;
+    prompts on configs/methods/ + configs/gui-methods/ conflicts; runs uv sync)."""
+    run([PY, "scripts/update.py", *extra])
+
+
 def cmd_export_logs(extra):
     """Dump TB scalar logs to JSON. RUN=<dir> (default output/logs), ALL=1, JSONL=1."""
     run_path = os.environ.get("RUN", "output/logs")
@@ -1313,6 +1319,11 @@ COMMANDS = {
     "print-config": (
         cmd_print_config,
         "Dump merged config (METHOD=<name> PRESET=<name>) with provenance",
+    ),
+    "update": (
+        cmd_update,
+        "Update from GitHub release (preserves datasets/output/models, prompts on "
+        "config conflicts, runs uv sync). Pass --dry-run / --version v1.0 / --no-sync.",
     ),
 }
 
