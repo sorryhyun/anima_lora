@@ -47,6 +47,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "new_variant_prompt": "Name for the new variant (saved to configs/gui-methods/custom/<name>.toml).\nLetters, digits, _ and - only.",
         "new_variant_invalid": "Invalid name. Use letters, digits, _, - only.",
         "new_variant_exists": "Variant '{name}' already exists.",
+        "basic_section": "Basic",
+        "advanced_section": "Advanced (click to expand)",
         # AdapterTab (IP-Adapter / EasyControl)
         "adapter_source_dir": "Source dataset:",
         "adapter_cache_dir": "Cache directory:",
@@ -64,6 +66,29 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "directory": "Directory:",
         "caption": "Caption:",
         "no_caption": "(no caption)",
+        "caption_save": "Save",
+        "caption_revert": "Revert",
+        "caption_versions": "Versions…",
+        "caption_dirty_marker": " *",
+        "caption_diff_stats": "(+{add} / −{rem})",
+        "caption_diff_clean": "(no changes)",
+        "caption_save_failed": "Failed to save caption: {err}",
+        "caption_unsaved_title": "Unsaved caption",
+        "caption_unsaved_body": "You have unsaved caption edits. Save before switching?",
+        "caption_versions_title": "Caption history — {name}",
+        "caption_versions_empty": "(no prior versions)",
+        "caption_versions_restore": "Restore selected",
+        "caption_versions_close": "Close",
+        "caption_no_history": "No history yet for this caption.",
+        "caption_guideline_html": (
+            "<b>Order:</b> rating → count → character (series) → series → "
+            "<span style='color:#c9a227;'>@artist</span> → content tags. "
+            "Per-region sub-sections: end the previous tag with <code>.</code> and "
+            "start the next with <span style='color:#5e8eb0;'>On the&nbsp;…,</span> "
+            "or <span style='color:#5e8eb0;'>In the&nbsp;…,</span>. "
+            "Tags up to and including the first <code>@artist</code> are kept fixed; "
+            "everything after is shuffled within each section."
+        ),
         # Language
         "language": "Language:",
         # Guidebook
@@ -178,6 +203,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "new_variant_prompt": "새 variant 이름 (configs/gui-methods/custom/<name>.toml에 저장됨).\n영문/숫자/_/- 만 사용 가능합니다.",
         "new_variant_invalid": "잘못된 이름. 영문, 숫자, _, - 만 사용 가능합니다.",
         "new_variant_exists": "Variant '{name}'이(가) 이미 존재합니다.",
+        "basic_section": "기본 설정",
+        "advanced_section": "고급 설정 (클릭하여 펼치기)",
         # AdapterTab (IP-Adapter / EasyControl)
         "adapter_source_dir": "소스 데이터셋:",
         "adapter_cache_dir": "캐시 디렉토리:",
@@ -195,6 +222,29 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "directory": "디렉토리:",
         "caption": "캡션:",
         "no_caption": "(캡션 없음)",
+        "caption_save": "저장",
+        "caption_revert": "되돌리기",
+        "caption_versions": "이력…",
+        "caption_dirty_marker": " *",
+        "caption_diff_stats": "(+{add} / −{rem})",
+        "caption_diff_clean": "(변경 없음)",
+        "caption_save_failed": "캡션 저장 실패: {err}",
+        "caption_unsaved_title": "저장되지 않은 캡션",
+        "caption_unsaved_body": "캡션 편집 사항이 저장되지 않았습니다. 전환하기 전에 저장할까요?",
+        "caption_versions_title": "캡션 이력 — {name}",
+        "caption_versions_empty": "(이전 버전 없음)",
+        "caption_versions_restore": "선택 버전으로 되돌리기",
+        "caption_versions_close": "닫기",
+        "caption_no_history": "이 캡션에는 아직 이력이 없습니다.",
+        "caption_guideline_html": (
+            "<b>순서:</b> 등급 → 인원수 → 캐릭터 (작품) → 작품 → "
+            "<span style='color:#c9a227;'>@작가</span> → 내용 태그. "
+            "영역별 하위 섹션: 직전 태그를 <code>.</code> 으로 끝낸 뒤 "
+            "<span style='color:#5e8eb0;'>On the&nbsp;…,</span> 또는 "
+            "<span style='color:#5e8eb0;'>In the&nbsp;…,</span> 로 시작. "
+            "첫 <code>@작가</code> 태그까지는 순서가 고정되고, 그 이후는 "
+            "섹션 내에서 셔플됩니다."
+        ),
         # Language
         "language": "언어:",
         # Guidebook

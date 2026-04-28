@@ -207,6 +207,31 @@ _GROUPS = {
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}
 _SKIP = {"base_config", "dataset_config", "general", "datasets"}
 
+# Fields shown under the "Basic" section. Everything else falls under the
+# collapsible "Advanced" section. Picked to cover the knobs a first-time user
+# realistically wants to touch (rate/length/output, headline architecture
+# size, headline VRAM knobs, dataset/output paths) without exposing the long
+# tail of regularizer / router / adapter-internal parameters.
+_BASIC = {
+    "learning_rate",
+    "max_train_epochs",
+    "save_every_n_epochs",
+    "network_dim",
+    "network_alpha",
+    "output_name",
+    "use_shuffled_caption_variants",
+    "gradient_checkpointing",
+    "blocks_to_swap",
+    "mixed_precision",
+    "source_image_dir",
+    "resized_image_dir",
+    "output_dir",
+}
+
+
+def is_basic_field(key: str) -> bool:
+    return key in _BASIC
+
 # flash4 is not supported yet (flash-attention-sm120 disabled)
 _ATTN_MODES = ["flex", "flash"]
 

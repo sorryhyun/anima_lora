@@ -5,8 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QPalette
+from PySide6.QtCore import QSize, Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -39,9 +39,9 @@ from gui.system_dialog import (
     open_update_dialog,
 )
 
-GUIDEBOOK_PATH = (
-    Path(__file__).resolve().parent.parent / "docs" / "guidelines" / "가이드북.md"
-)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+GUIDEBOOK_PATH = _REPO_ROOT / "docs" / "guidelines" / "가이드북.md"
+ICON_PATH = _REPO_ROOT / "icon.ico"
 
 
 LANG_NAMES = {"en": "English", "ko": "한국어"}
@@ -155,6 +155,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(t("window_title"))
         self.resize(1100, 750)
+        if ICON_PATH.exists():
+            self.setWindowIcon(QIcon(str(ICON_PATH)))
 
         central = QWidget()
         main_lay = QVBoxLayout(central)
@@ -162,6 +164,19 @@ class MainWindow(QMainWindow):
 
         # Language selector bar
         lang_bar = QHBoxLayout()
+        if ICON_PATH.exists():
+            icon_label = QLabel()
+            pix = QPixmap(str(ICON_PATH))
+            if not pix.isNull():
+                icon_label.setPixmap(
+                    pix.scaled(
+                        QSize(28, 28),
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation,
+                    )
+                )
+            icon_label.setContentsMargins(4, 0, 6, 0)
+            lang_bar.addWidget(icon_label)
         self.guide_btn = QPushButton(t("guidebook"))
         self.guide_btn.setToolTip(t("guidebook_tooltip"))
         self.guide_btn.setStyleSheet(
@@ -241,6 +256,8 @@ class MainWindow(QMainWindow):
 def main():
     load_language()
     app = QApplication(sys.argv)
+    if ICON_PATH.exists():
+        app.setWindowIcon(QIcon(str(ICON_PATH)))
     _dark(app)
     win = MainWindow()
     win.show()

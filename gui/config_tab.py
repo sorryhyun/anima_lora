@@ -41,6 +41,7 @@ from gui import (
     _read,
     _save,
     _widget,
+    is_basic_field,
     list_gui_variants,
     list_methods,
     merged_gui_variant_preset,
@@ -80,6 +81,9 @@ class ConfigTab(QWidget):
         super().__init__()
         self._w: dict[str, QWidget] = {}
         self._preprocessed = (ROOT / "post_image_dataset").exists()
+        # Advanced section starts collapsed; user's expand/collapse state
+        # persists across _reload (variant switches, save round-trips).
+        self._advanced_expanded = False
         # (monotonic_anchor_time, anchor_step, label, total) — we measure
         # s/step from the first step *completion*, not process launch, so
         # warmup (model load, compilation) doesn't inflate the reported rate.
@@ -314,11 +318,16 @@ class ConfigTab(QWidget):
             if it.widget():
                 it.widget().deleteLater()
 
-        # Grouped training config fields
-        groups: dict[str, dict] = {g: {} for g in _GROUPS}
-        groups["Other"] = {}
+        # Partition fields by Basic vs Advanced first, then by sub-group
+        # (Architecture/Training/Performance/Paths/Other). Basic stays
+        # always-visible; Advanced is wrapped in a collapsible container.
+        basic: dict[str, dict] = {g: {} for g in _GROUPS}
+        basic["Other"] = {}
+        advanced: dict[str, dict] = {g: {} for g in _GROUPS}
+        advanced["Other"] = {}
         for k, v in cfg.items():
-            groups.setdefault(_K2G.get(k, "Other"), {})[k] = v
+            sub = _K2G.get(k, "Other")
+            (basic if is_basic_field(k) else advanced)[sub][k] = v
 
         # "preset" origin shows where the value comes from today, but on Save
         # everything routes to the variant file — no preset/variant split.
@@ -338,9 +347,7 @@ class ConfigTab(QWidget):
             ),
         }
 
-        for gn, flds in groups.items():
-            if not flds:
-                continue
+        def _build_subgroup_box(gn: str, flds: dict) -> QGroupBox:
             box = QGroupBox(gn)
             form = QFormLayout()
             for k in sorted(flds):
@@ -349,22 +356,56 @@ class ConfigTab(QWidget):
                 lbl = ClickableLabel(k)
 
                 help_text = field_help(k)
-                notes: list[str] = []
                 style, note = origin_style.get(
                     self._origin.get(k, "base"), origin_style["base"]
                 )
                 lbl.setStyleSheet(style)
-                notes.append(note)
+                notes = (note,)
 
                 lbl.clicked.connect(
-                    lambda _k=k, _h=help_text, _n=tuple(notes): self._show_explain(
+                    lambda _k=k, _h=help_text, _n=notes: self._show_explain(
                         _k, _h, _n
                     )
                 )
-
                 form.addRow(lbl, w)
             box.setLayout(form)
-            self._fl.addWidget(box)
+            return box
+
+        # Basic — flat list of sub-group boxes.
+        basic_box = QGroupBox(t("basic_section"))
+        basic_layout = QVBoxLayout()
+        basic_layout.setContentsMargins(8, 12, 8, 8)
+        for gn, flds in basic.items():
+            if not flds:
+                continue
+            basic_layout.addWidget(_build_subgroup_box(gn, flds))
+        basic_box.setLayout(basic_layout)
+        self._fl.addWidget(basic_box)
+
+        # Advanced — collapsible. QGroupBox.setCheckable + a child container
+        # whose visibility is bound to the checkbox gives a free toggle UI.
+        advanced_box = QGroupBox(t("advanced_section"))
+        advanced_box.setCheckable(True)
+        advanced_box.setChecked(self._advanced_expanded)
+        adv_outer = QVBoxLayout()
+        adv_outer.setContentsMargins(8, 12, 8, 8)
+        adv_inner = QWidget()
+        adv_inner_layout = QVBoxLayout(adv_inner)
+        adv_inner_layout.setContentsMargins(0, 0, 0, 0)
+        for gn, flds in advanced.items():
+            if not flds:
+                continue
+            adv_inner_layout.addWidget(_build_subgroup_box(gn, flds))
+        adv_inner.setVisible(self._advanced_expanded)
+        adv_outer.addWidget(adv_inner)
+        advanced_box.setLayout(adv_outer)
+
+        def _on_advanced_toggled(checked: bool, _inner=adv_inner):
+            self._advanced_expanded = checked
+            _inner.setVisible(checked)
+
+        advanced_box.toggled.connect(_on_advanced_toggled)
+        self._fl.addWidget(advanced_box)
 
         self._fl.addStretch()
 
