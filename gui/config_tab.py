@@ -11,7 +11,7 @@ from typing import Any
 import html
 
 import toml
-from PySide6.QtCore import QProcess, Qt, Signal
+from PySide6.QtCore import QProcess, QProcessEnvironment, Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -549,9 +549,19 @@ class ConfigTab(QWidget):
         python = sys.executable
         args = ["tasks.py", "preprocess"]
 
+        # Point tasks.py at the same variant training will use, so any
+        # source_image_dir / resized_image_dir / lora_cache_dir override the
+        # user wrote into the variant file is honored by preprocess too.
+        variant = self._current_variant()
+        env = QProcessEnvironment.systemEnvironment()
+        env.insert("METHOD", variant)
+        env.insert("METHODS_SUBDIR", "gui-methods")
+        env.insert("PRESET", self._IMPLICIT_PRESET)
+        self._proc.setProcessEnvironment(env)
+
         self.log.clear()
         self._reset_progress()
-        self._log(f"> python {' '.join(args)}\n")
+        self._log(f"> METHOD={variant} METHODS_SUBDIR=gui-methods python {' '.join(args)}\n")
         self._running_mode = "preprocess"
         self._proc.start(python, args)
         self.preprocess_btn.setText(t("preprocess") + " ...")

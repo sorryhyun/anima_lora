@@ -153,38 +153,51 @@ def load_dataset_config_from_base(
 
 
 def load_path_overrides(
-    preset: str = "default", configs_dir: str = "configs"
+    preset: str = "default",
+    configs_dir: str = "configs",
+    method: Optional[str] = None,
+    methods_subdir: str = "methods",
 ) -> dict:
-    """Top-level scalar keys from base.toml, overlaid by ``presets.toml[<preset>]``.
+    """Top-level scalar keys from base.toml → ``presets.toml[<preset>]`` →
+    ``<methods_subdir>/<method>.toml`` (when given).
 
-    Lightweight — does not require a method file. Used by ``tasks.py``
-    preprocess commands so they pick up ``source_image_dir`` /
-    ``resized_image_dir`` / ``lora_cache_dir`` overrides without launching
-    accelerate. Missing/unknown preset is silently ignored (callers fall back
-    to base.toml values, which themselves fall back to hard-coded defaults).
+    Lightweight — used by ``tasks.py`` preprocess commands so they pick up
+    ``source_image_dir`` / ``resized_image_dir`` / ``lora_cache_dir`` overrides
+    without launching accelerate. The method layer is the same one training
+    uses (so a value set in ``configs/gui-methods/lora.toml`` is honored by
+    preprocess too). Missing files / unknown presets are silently ignored —
+    callers fall back to whatever earlier layer provided a value, then to
+    hard-coded defaults.
     """
-    base_path = os.path.join(configs_dir, "base.toml")
     out: dict = {}
+
+    def _flat_scalars(d: dict) -> dict:
+        """Pluck top-level non-container values, skipping dataset blueprint
+        sections (``[general]`` / ``[[datasets]]``)."""
+        return {
+            k: v
+            for k, v in d.items()
+            if k not in _DATASET_CONFIG_SECTIONS
+            and not isinstance(v, (dict, list))
+        }
+
+    base_path = os.path.join(configs_dir, "base.toml")
     if os.path.exists(base_path):
         with open(base_path, "r", encoding="utf-8") as f:
-            raw = toml.load(f)
-        out.update(
-            {
-                k: v
-                for k, v in raw.items()
-                if k not in _DATASET_CONFIG_SECTIONS
-                and not isinstance(v, dict)
-                and not isinstance(v, list)
-            }
-        )
+            out.update(_flat_scalars(toml.load(f)))
+
     try:
         section, _path, _tag = _resolve_preset(preset, configs_dir)
+        out.update(_flat_scalars(section))
     except (KeyError, FileNotFoundError, ValueError):
-        return out
-    for k, v in section.items():
-        if isinstance(v, (dict, list)):
-            continue
-        out[k] = v
+        pass
+
+    if method:
+        method_path = os.path.join(configs_dir, methods_subdir, f"{method}.toml")
+        if os.path.exists(method_path):
+            with open(method_path, "r", encoding="utf-8") as f:
+                out.update(_flat_scalars(toml.load(f)))
+
     return out
 
 

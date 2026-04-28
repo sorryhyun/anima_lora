@@ -30,7 +30,12 @@ _PATH_OVERRIDES_CACHE: dict | None = None
 
 
 def _path_overrides() -> dict:
-    """Top-level path scalars from base.toml + active preset (cached).
+    """Top-level path scalars from base.toml → preset → method file (cached).
+
+    Reads ``METHOD`` and ``METHODS_SUBDIR`` env vars so the GUI can point
+    preprocess at the same variant file training will use (e.g.
+    ``METHOD=lora METHODS_SUBDIR=gui-methods`` honors overrides written from
+    ``ConfigTab``). Missing env vars → just base + preset.
 
     Defers the import of ``library.config.io`` so commands that don't touch
     preprocess (e.g. ``test-merge``) keep the module-load surface small.
@@ -41,7 +46,11 @@ def _path_overrides() -> dict:
     sys.path.insert(0, str(ROOT))
     try:
         from library.config.io import load_path_overrides
-        _PATH_OVERRIDES_CACHE = load_path_overrides(_preset())
+        _PATH_OVERRIDES_CACHE = load_path_overrides(
+            preset=_preset(),
+            method=os.environ.get("METHOD") or None,
+            methods_subdir=os.environ.get("METHODS_SUBDIR") or "methods",
+        )
     except Exception as e:  # noqa: BLE001 — fall back silently to defaults
         print(f"warn: could not read base.toml path overrides: {e}", file=sys.stderr)
         _PATH_OVERRIDES_CACHE = {}
