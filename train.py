@@ -1930,6 +1930,15 @@ class AnimaTrainer:
                 # Pin sigma via t_min/t_max (what the noise function reads)
                 args.t_min = args.t_max = sigma
 
+                # Mirror the training loop's cudagraph step-begin marker so
+                # cudagraph_trees doesn't re-record / leak a memory pool on
+                # each val forward (see the train-loop call site for context).
+                if self._cudagraph_mark_step:
+                    net_unwrapped = accelerator.unwrap_model(ctx.network)
+                    if hasattr(net_unwrapped, "clear_step_caches"):
+                        net_unwrapped.clear_step_caches()
+                    torch.compiler.cudagraph_mark_step_begin()
+
                 loss = self.process_batch(ctx, batch, is_train=False)
 
                 current_loss = loss.detach().item()
