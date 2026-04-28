@@ -97,11 +97,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # Update dialog
         "update_title": "Update anima_lora",
         "update_warning": "Update will pull the latest release from GitHub and overwrite the working "
-        "tree (datasets, output/, models/ are preserved). Custom edits to "
-        "configs/methods/ and configs/gui-methods/ will prompt before overwrite. "
-        "Run 'Dry run' first to preview the changes.",
+        "tree (datasets, output/, models/ are preserved). For configs/methods/ "
+        "and configs/gui-methods/, choose whether to keep your edits or overwrite "
+        "them with upstream (your version is backed up first). Run 'Dry run' to "
+        "preview the changes.",
         "update_dry_run": "Dry run",
         "update_run": "Run update",
+        "update_run_keep": "Update — keep my configs",
+        "update_run_overwrite": "Update — overwrite configs (back up mine)",
         "update_confirm": "This will rewrite anima_lora source files. Continue?",
         # MergeTab
         "n_files": "{n} files",
@@ -226,10 +229,13 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "update_title": "anima_lora 업데이트",
         "update_warning": "업데이트는 GitHub에서 최신 릴리스를 받아 작업 트리를 덮어씁니다 "
         "(datasets, output/, models/는 보존됩니다). configs/methods/와 "
-        "configs/gui-methods/의 커스텀 수정사항은 덮어쓰기 전에 확인을 요청합니다. "
-        "먼저 'Dry run'으로 변경사항을 미리 확인하세요.",
+        "configs/gui-methods/에 직접 수정한 내용은, 그대로 유지할지 또는 "
+        "최신 버전으로 덮어쓸지(기존 파일은 자동 백업됨) 선택하세요. "
+        "먼저 'Dry run'으로 변경사항을 미리 확인할 수 있습니다.",
         "update_dry_run": "Dry run",
         "update_run": "업데이트 실행",
+        "update_run_keep": "업데이트 — 내 설정 유지",
+        "update_run_overwrite": "업데이트 — 설정 덮어쓰기 (기존 백업)",
         "update_confirm": "anima_lora 소스 파일이 다시 작성됩니다. 계속하시겠습니까?",
         # MergeTab
         "n_files": "파일 {n}개",

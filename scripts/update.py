@@ -189,6 +189,16 @@ def _print_diff(user: Path, new: Path, rel: str) -> None:
 
 def _prompt_conflict(rel: str, user_path: Path, new_path: Path) -> str:
     """Return action: 'keep' | 'overwrite' | 'backup'."""
+    # When launched without a real TTY (e.g. from the GUI's QProcess), input()
+    # would block forever waiting on stdin that nobody can write to. Bail
+    # immediately with an actionable message instead.
+    if not sys.stdin.isatty():
+        sys.exit(
+            f"\nconflict: {rel} (you modified it AND upstream changed it)\n"
+            "  stdin is not a terminal — cannot prompt. Re-run with one of:\n"
+            "    --keep-conflicts   keep all your modified configs as-is\n"
+            "    --yes-overwrite    back up your configs, then overwrite with upstream"
+        )
     while True:
         choice = input(
             f"\n  conflict: {rel} (you modified it AND upstream changed it)\n"
@@ -210,8 +220,11 @@ def update(
     version: str | None,
     dry_run: bool,
     yes_overwrite: bool,
+    keep_conflicts: bool,
     no_sync: bool,
 ) -> int:
+    if yes_overwrite and keep_conflicts:
+        sys.exit("--yes-overwrite and --keep-conflicts are mutually exclusive")
     print(f"anima_lora update — repo {REPO}")
     tag, tarball_url = _resolve_release(version)
     print(f"  target: {tag}")
@@ -235,6 +248,7 @@ def update(
             extracted_root, tag, baseline_hashes,
             dry_run=dry_run,
             yes_overwrite=yes_overwrite,
+            keep_conflicts=keep_conflicts,
             no_sync=no_sync,
         )
 
@@ -246,6 +260,7 @@ def _apply(
     *,
     dry_run: bool,
     yes_overwrite: bool,
+    keep_conflicts: bool,
     no_sync: bool,
 ) -> int:
     new_files: dict[str, Path] = {}
@@ -310,7 +325,12 @@ def _apply(
             continue
 
         if _is_conflict_path(rel):
-            action = "backup" if yes_overwrite else _prompt_conflict(rel, dest, src)
+            if yes_overwrite:
+                action = "backup"
+            elif keep_conflicts:
+                action = "keep"
+            else:
+                action = _prompt_conflict(rel, dest, src)
             if action == "keep":
                 summary["config_kept"] += 1
                 continue
@@ -383,6 +403,10 @@ def main() -> int:
         help="Non-interactive: on config conflicts, back up user file and overwrite",
     )
     ap.add_argument(
+        "--keep-conflicts", action="store_true",
+        help="Non-interactive: on config conflicts, keep the user's version",
+    )
+    ap.add_argument(
         "--no-sync", action="store_true",
         help="Skip the trailing `uv sync`",
     )
@@ -391,6 +415,7 @@ def main() -> int:
         version=args.version,
         dry_run=args.dry_run,
         yes_overwrite=args.yes_overwrite,
+        keep_conflicts=args.keep_conflicts,
         no_sync=args.no_sync,
     )
 

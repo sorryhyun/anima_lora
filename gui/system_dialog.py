@@ -246,20 +246,37 @@ class UpdateDialog(_StreamingDialog):
         layout.addWidget(warn)
 
         row = QHBoxLayout()
+        # Dry-run uses --keep-conflicts: stdin isn't a TTY under QProcess, so
+        # without a non-interactive flag the script would block on input().
         self.dry_btn = QPushButton(t("update_dry_run"))
-        self.dry_btn.clicked.connect(lambda: self._run(["update", "--dry-run"]))
+        self.dry_btn.clicked.connect(
+            lambda: self._run(["update", "--dry-run", "--keep-conflicts"])
+        )
         row.addWidget(self.dry_btn)
 
-        self.run_btn = QPushButton(t("update_run"))
-        self.run_btn.setStyleSheet(
+        # Two run buttons make the conflict policy explicit instead of an
+        # invisible interactive prompt that the GUI can't service.
+        self.run_keep_btn = QPushButton(t("update_run_keep"))
+        self.run_keep_btn.setStyleSheet(
+            "background:#0e7490;color:white;font-weight:bold;padding:6px 18px;"
+        )
+        self.run_keep_btn.clicked.connect(
+            lambda: self._confirm_and_run("--keep-conflicts")
+        )
+        row.addWidget(self.run_keep_btn)
+
+        self.run_overwrite_btn = QPushButton(t("update_run_overwrite"))
+        self.run_overwrite_btn.setStyleSheet(
             "background:#16a085;color:white;font-weight:bold;padding:6px 18px;"
         )
-        self.run_btn.clicked.connect(self._confirm_and_run)
-        row.addWidget(self.run_btn)
+        self.run_overwrite_btn.clicked.connect(
+            lambda: self._confirm_and_run("--yes-overwrite")
+        )
+        row.addWidget(self.run_overwrite_btn)
         row.addStretch()
         layout.addLayout(row)
 
-    def _confirm_and_run(self):
+    def _confirm_and_run(self, conflict_flag: str):
         ok = QMessageBox.question(
             self,
             t("update_title"),
@@ -268,12 +285,13 @@ class UpdateDialog(_StreamingDialog):
             QMessageBox.No,
         )
         if ok == QMessageBox.Yes:
-            self._run(["update"])
+            self._run(["update", conflict_flag])
 
     def _set_busy(self, busy: bool) -> None:
         super()._set_busy(busy)
         self.dry_btn.setEnabled(not busy)
-        self.run_btn.setEnabled(not busy)
+        self.run_keep_btn.setEnabled(not busy)
+        self.run_overwrite_btn.setEnabled(not busy)
 
 
 # Public helpers for app.py.
