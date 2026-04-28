@@ -78,6 +78,31 @@ def discover_cached_images(data_dir: str) -> list[CachedImage]:
     return images
 
 
+def discover_cached_pairs(cache_dir: str) -> list[CachedImage]:
+    """Find latent+TE cache pairs in a directory without requiring source PNGs.
+
+    Use this when the cache directory is decoupled from the source images
+    (e.g. ``post_image_dataset/lora/`` holds caches written from
+    ``post_image_dataset/resized/`` via the subset-level ``cache_dir`` knob).
+    """
+    images = []
+    te_paths = sorted(glob.glob(os.path.join(cache_dir, f"*{TE_CACHE_SUFFIX}")))
+    for te_path in te_paths:
+        stem = os.path.basename(te_path).removesuffix(TE_CACHE_SUFFIX)
+        npz_files = glob.glob(os.path.join(cache_dir, f"{stem}_*{LATENT_CACHE_SUFFIX}"))
+        if not npz_files:
+            continue
+        images.append(
+            CachedImage(
+                stem=stem,
+                image_path=None,
+                npz_path=npz_files[0],
+                te_path=te_path,
+            )
+        )
+    return images
+
+
 def get_latent_resolution(npz_path: str) -> str:
     """Extract the resolution string (e.g. ``"64x64"``) from a cached latent NPZ."""
     npz_keys = np.load(npz_path).files
