@@ -576,6 +576,9 @@ def main():
     running_loss = 0.0
     log_interval = 50
 
+    val_enabled = val_dataloader is not None and args.validate_every_n_steps > 0
+    best_val_loss = float("inf")
+
     progress = tqdm(range(args.iterations), desc="distill")
     for step in progress:
         accum_loss = 0.0
@@ -687,6 +690,8 @@ def main():
                 or (step + 1) == args.iterations
             )
         )
+        improved = False
+        overall_mean = None
         if do_validate:
             per_sigma_mean, overall_mean = run_validation(
                 model,
@@ -707,16 +712,37 @@ def main():
                 writer.add_scalar("val/loss", overall_mean, step + 1)
                 for s, v in per_sigma_mean.items():
                     writer.add_scalar(f"val/loss_sigma_{s:.2f}", v, step + 1)
+            if overall_mean < best_val_loss:
+                best_val_loss = overall_mean
+                improved = True
 
-        # Save checkpoint
-        if (step + 1) % args.save_every == 0 or (step + 1) == args.iterations:
+        # Save checkpoint: when validation is enabled, only overwrite on
+        # val-loss improvement. Otherwise fall back to step-cadence saves.
+        if val_enabled:
+            should_save = improved
+        else:
+            should_save = (
+                (step + 1) % args.save_every == 0 or (step + 1) == args.iterations
+            )
+        if should_save:
             save_path = args.output_path
             state = {
                 k: v.to(torch.bfloat16)
                 for k, v in model.pooled_text_proj.state_dict().items()
             }
             save_file(state, save_path)
-            logger.info(f"Saved checkpoint at step {step + 1} -> {save_path}")
+            if val_enabled:
+                logger.info(
+                    f"Saved checkpoint at step {step + 1} "
+                    f"(val={overall_mean:.6f}, new best) -> {save_path}"
+                )
+            else:
+                logger.info(f"Saved checkpoint at step {step + 1} -> {save_path}")
+        elif do_validate:
+            logger.info(
+                f"Skipped save at step {step + 1}: "
+                f"val={overall_mean:.6f} >= best={best_val_loss:.6f}"
+            )
 
     if writer is not None:
         writer.close()
