@@ -4,7 +4,7 @@
 # the appended tokens vary with the text. More expressive than plain postfix
 # but still fast to train.
 
-network_module = "networks.postfix_anima"
+network_module = "networks.methods.postfix"
 network_dim = 64
 network_args = [
     "mode=cond",

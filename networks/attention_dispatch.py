@@ -495,7 +495,7 @@ def attention_with_lse(
     is silently dropped — see flash_attn 2.x source). Callers that need
     correct gradients through ``lse`` must use a custom
     ``torch.autograd.Function`` that calls FA's lower-level ops directly —
-    see ``networks/easycontrol_anima.py:_ExtendedSelfAttnLSEFunc``.
+    see ``networks/methods/easycontrol.py:_ExtendedSelfAttnLSEFunc``.
     """
     if attn_mode != "flash" or flash_attn_func is None:
         raise NotImplementedError(

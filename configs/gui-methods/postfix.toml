@@ -4,7 +4,7 @@
 # parameters, independent of the caption. `blocks_to_swap=0` is method-forced
 # because postfix training accumulates on the cached TE side.
 
-network_module = "networks.postfix_anima"
+network_module = "networks.methods.postfix"
 network_dim = 32
 network_args = [
     "mode=postfix",

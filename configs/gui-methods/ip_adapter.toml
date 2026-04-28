@@ -9,7 +9,7 @@
 
 dataset_config = "configs/datasets/ip_adapter.toml"
 
-network_module = "networks.ip_adapter_anima"
+network_module = "networks.methods.ip_adapter"
 
 # K = number of IP tokens (resampler output slots).
 network_dim = 16

@@ -5,7 +5,7 @@
 # if gradients push it. Not compatible with `--spectrum` or tiled inference.
 # `|sigma_residual|` at convergence is the "did σ-conditioning help" knob.
 
-network_module = "networks.postfix_anima"
+network_module = "networks.methods.postfix"
 network_dim = 64
 network_args = [
     "mode=cond-timestep",

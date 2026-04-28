@@ -18,6 +18,9 @@ Phase 0 on a 2D toy reproduced convergence to this neighborhood on its own
 
 from __future__ import annotations
 
+import logging
+from typing import Optional
+
 import torch
 import torch.nn as nn
 
@@ -27,6 +30,8 @@ from library.training.method_adapter import (
     SetupCtx,
     StepCtx,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ConditionShift(nn.Module):
@@ -78,6 +83,73 @@ class ConditionShift(nn.Module):
         return f"dim={self.dim}, mode={self.mode}"
 
 
+# ----------------------------------------------------------------- warm-start helper
+
+
+def promote_warmstart_to_merge(args) -> None:
+    """For APEX, rewire ``--network_weights`` from "trainable adapter" to
+    "merge into DiT at load time, then train a fresh same-rank adapter."
+
+    Keeping the warm-start LoRA as a runtime adapter via
+    ``dim_from_weights`` costs ~1.5 GB more peak VRAM than baking it into
+    the base — empirically OOMs a 16 GB card at rank 32 even though the
+    bench's cold-start at rank 64 fits. Rewriting silently lets the user
+    keep ``network_weights = "..."`` + ``dim_from_weights = true`` in the
+    APEX config without manually picking a rank or a multiplier — both
+    are inferred from the saved file's first ``lora_down`` (rank) and
+    ``alpha`` (network_alpha). Multiplier defaults to 1.0.
+
+    No-op outside APEX. Skips if ``--lora_path`` is already set (caller
+    already chose merge), or if ``--network_weights`` isn't set
+    (cold-start APEX).
+    """
+    method = getattr(args, "method", "") or ""
+    if not (method == "apex" or method.startswith("apex_")):
+        return
+    if not getattr(args, "network_weights", None):
+        return
+    if getattr(args, "lora_path", None):
+        return  # caller already wired the merge path explicitly
+
+    path = args.network_weights
+    if not str(path).endswith(".safetensors"):
+        return  # rank inference below assumes safetensors layout
+
+    from safetensors import safe_open
+
+    rank: Optional[int] = None
+    alpha: Optional[float] = None
+    with safe_open(path, framework="pt") as f:
+        for key in f.keys():
+            if key.endswith(".lora_down.weight") and rank is None:
+                rank = int(f.get_tensor(key).shape[0])
+            elif key.endswith(".alpha") and alpha is None:
+                alpha = float(f.get_tensor(key).item())
+            if rank is not None and alpha is not None:
+                break
+    if rank is None:
+        logger.warning(
+            f"APEX warm-start auto-merge: no lora_down keys found in "
+            f"{path}; leaving --network_weights path intact."
+        )
+        return
+    if alpha is None:
+        alpha = float(rank)
+
+    args.lora_path = path
+    if getattr(args, "lora_multiplier", None) is None:
+        args.lora_multiplier = 1.0
+    args.network_dim = rank
+    args.network_alpha = alpha
+    args.network_weights = None
+    args.dim_from_weights = False
+    logger.info(
+        f"APEX warm-start auto-merge: baking {path} into DiT base "
+        f"(multiplier={args.lora_multiplier}); fresh APEX adapter at "
+        f"rank={rank}, alpha={alpha}."
+    )
+
+
 # ----------------------------------------------------------------- trainer integration
 
 
@@ -100,6 +172,11 @@ class ApexMethodAdapter(MethodAdapter):
 
     def __init__(self) -> None:
         self.step = 0  # exposed via state_for_metrics under "apex_step"
+        # Per-step state stashed by ``extra_forwards`` for the deferred fake-
+        # branch forward in ``extra_forwards_fake``. Cleared at the start of
+        # every step (whether or not the split path is used) so a stale
+        # ``c_fake`` graph never leaks across iterations.
+        self._fake_state: dict | None = None
 
     def on_network_built(self, ctx: SetupCtx) -> None:
         args = ctx.args
@@ -122,6 +199,18 @@ class ApexMethodAdapter(MethodAdapter):
         # accumulation.
         if is_train:
             self.step += 1
+        # Drop any stash from a previous step before this step's forwards run.
+        # Without this, a step that skips the split path (validation, missing
+        # crossattn_emb, network without ConditionShift) would inherit stale
+        # tensors keyed for an earlier batch.
+        self._fake_state = None
+
+    def wants_split_backward(self, *, is_train: bool) -> bool:
+        # APEX runs two grad-tracked DiT forwards per step that share no
+        # autograd graph (forward 3's input is built from ``model_pred.detach()``).
+        # Split-backward roughly halves peak activation memory; only useful at
+        # train time — validation has no fake branch.
+        return is_train
 
     def extra_forwards(self, ctx: StepCtx, primary: ForwardArtifacts):
         if not primary.is_train:
@@ -157,7 +246,9 @@ class ApexMethodAdapter(MethodAdapter):
         # target_fake = z_fake - x_fake (OT velocity on the fake traj)
         target_fake = z_fake - x_fake
 
-        # Shifted condition (grad flows into ConditionShift via L_fake).
+        # Shifted condition (grad flows into ConditionShift via L_fake — the
+        # graph is preserved across the inline real-branch backward because
+        # nothing in the real branch depends on c_fake's autograd chain).
         c_fake = network.apex_condition_shift(crossattn_emb)
 
         # (1) Fake branch at real (x_t, t, c_fake) — stop-gradient target for
@@ -179,26 +270,9 @@ class ApexMethodAdapter(MethodAdapter):
         v_data_5d = (primary.noise - primary.latents).unsqueeze(2)  # [B,C,1,H,W]
         T_mix_v = ((1.0 - lam) * v_data_5d + lam * v_fake_sg).detach()
 
-        # (2) Fake branch at (x_fake_t, t_fake, c_fake) — L_fake target. Grad
-        #     flows back through both LoRA and ConditionShift.
-        F_fake_on_fake_xt = anima(
-            x_fake_t,
-            t_fake,
-            c_fake,
-            padding_mask=padding_mask,
-            **kw,
-        )
-
-        # Weighting for the L_fake term at its own timestep. Imported lazily so
-        # this module doesn't pull in library.anima at definition time.
-        from library.anima.training import compute_loss_weighting_for_anima
+        # Resolve warmup/rampup schedule for L_c / L_f mixing weights.
         from library.training.apex_loss import apex_schedule_weights
 
-        weighting_fake = compute_loss_weighting_for_anima(
-            weighting_scheme=args.weighting_scheme, sigmas=t_fake
-        )
-
-        # Resolve warmup/rampup schedule for L_c / L_f mixing weights.
         total_steps = int(getattr(args, "max_train_steps", 0) or 0)
         warmup_abs = int(getattr(args, "apex_warmup_steps", 0) or 0)
         rampup_abs = int(getattr(args, "apex_rampup_steps", 0) or 0)
@@ -218,15 +292,63 @@ class ApexMethodAdapter(MethodAdapter):
             lam_f_target=float(getattr(args, "apex_lambda_f", 1.0)),
         )
 
+        # Stash everything ``extra_forwards_fake`` needs to run forward 3 after
+        # the trainer has freed forward 1's autograd graph.
+        self._fake_state = {
+            "anima_call": anima,
+            "x_fake_t": x_fake_t,
+            "t_fake": t_fake,
+            "c_fake": c_fake,
+            "padding_mask": padding_mask,
+            "kw": kw,
+            "target_fake": target_fake,
+            "lam_f_eff": lam_f_eff,
+        }
+
+        # Real-branch aux only — apex_fake is computed in compose_fake_branch
+        # after extra_forwards_fake fills in F_fake_on_fake_xt below.
         return {
             "apex": {
                 "T_mix_v": T_mix_v.squeeze(2),
-                "F_fake_on_fake_xt": F_fake_on_fake_xt.squeeze(2),
-                "target_fake": target_fake.squeeze(2),
-                "weighting_fake": weighting_fake,
-                "t_fake": t_fake,
                 "lam_c_eff": lam_c_eff,
                 "lam_f_eff": lam_f_eff,
+            }
+        }
+
+    def extra_forwards_fake(self, ctx: StepCtx):
+        state = self._fake_state
+        if state is None:
+            return None
+        # Single-shot: clear the stash so a buggy double-call can't
+        # double-backward forward 3's graph.
+        self._fake_state = None
+
+        args = ctx.args
+        # Forward 3: F_fake_on_fake_xt at (x_fake_t, t_fake, c_fake). Grad
+        # flows back through both LoRA and ConditionShift via L_fake.
+        F_fake_on_fake_xt = state["anima_call"](
+            state["x_fake_t"],
+            state["t_fake"],
+            state["c_fake"],
+            padding_mask=state["padding_mask"],
+            **state["kw"],
+        )
+
+        # Weighting for the L_fake term at its own timestep. Imported lazily so
+        # this module doesn't pull in library.anima at definition time.
+        from library.anima.training import compute_loss_weighting_for_anima
+
+        weighting_fake = compute_loss_weighting_for_anima(
+            weighting_scheme=args.weighting_scheme, sigmas=state["t_fake"]
+        )
+
+        return {
+            "apex": {
+                "F_fake_on_fake_xt": F_fake_on_fake_xt.squeeze(2),
+                "target_fake": state["target_fake"].squeeze(2),
+                "weighting_fake": weighting_fake,
+                "t_fake": state["t_fake"],
+                "lam_f_eff": state["lam_f_eff"],
             }
         }
 

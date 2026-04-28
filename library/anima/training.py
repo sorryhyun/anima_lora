@@ -149,7 +149,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "--use_ip_adapter",
         action="store_true",
         help="Enable IP-Adapter image conditioning (decoupled cross-attention). "
-        "Requires the network module to expose set_ip_tokens (e.g. networks.ip_adapter_anima). "
+        "Requires the network module to expose set_ip_tokens (e.g. networks.methods.ip_adapter). "
         "Live mode needs --cache_latents=false so batch['images'] carries the raw "
         "reference; pre-cache mode (--ip_features_cache_to_disk) reads PE features "
         "from sibling .safetensors and is compatible with --cache_latents=true.",
@@ -181,7 +181,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         action="store_true",
         help="Enable EasyControl image conditioning (extended self-attn KV with "
         "VAE-encoded reference). Requires the network module to expose set_cond_tokens "
-        "(e.g. networks.easycontrol_anima). The cond input is the clean VAE latent of "
+        "(e.g. networks.methods.easycontrol). The cond input is the clean VAE latent of "
         "the reference image; for ref==target training (Phase 1) this reuses the "
         "existing cache_latents output — no new sidecar required.",
     )
@@ -376,7 +376,7 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     )
 
     # APEX distillation (arXiv:2604.12322) — condition-shift self-adversarial
-    # one-step generator training. See proposal.md §5 and networks/condition_shift.py.
+    # one-step generator training. See proposal.md §5 and networks/methods/apex.py.
     parser.add_argument(
         "--apex_lambda",
         type=float,

@@ -1,7 +1,7 @@
 """Per-method extension protocol for AnimaTrainer.
 
 Concrete adapters live next to their network module (e.g.
-``networks/easycontrol_anima.py::EasyControlMethodAdapter``) and are
+``networks/methods/easycontrol.py::EasyControlMethodAdapter``) and are
 instantiated by ``resolve_adapters`` based on ``args`` + the built network.
 
 The trainer holds ``self._adapters: list[MethodAdapter]`` and dispatches
@@ -108,6 +108,28 @@ class MethodAdapter:
         omit the override) when inactive for this step."""
         return None
 
+    def wants_split_backward(self, *, is_train: bool) -> bool:
+        """If True, the trainer composes / backwards the real branch first
+        (freeing forward-1 activations), then calls ``extra_forwards_fake``
+        before composing / backwarding the fake branch. Used by APEX, where
+        the two grad-tracked DiT forwards are autograd-disjoint and keeping
+        both graphs live until a single backward roughly doubles peak
+        activation memory.
+
+        Default False — adapters that don't need this opt out and the trainer
+        runs the legacy single-pass compose+backward.
+        """
+        return False
+
+    def extra_forwards_fake(self, ctx: StepCtx) -> Optional[dict]:
+        """Deferred fake-branch forwards. Called only when the adapter
+        returned True from ``wants_split_backward`` and only after the
+        trainer has backwarded the real-branch loss (forward-1 activations
+        are gone by this point). Inside the trainer's own
+        ``set_grad_enabled`` / ``autocast`` scope. Returns a dict the trainer
+        merges into ``loss_aux`` before composing the fake-branch loss."""
+        return None
+
     def on_epoch_end(self, ctx: StepCtx) -> None:
         """Called once at the end of each epoch on the main process."""
 
@@ -127,15 +149,16 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
     """
     adapters: list[MethodAdapter] = []
     if getattr(args, "use_ip_adapter", False):
-        from networks.ip_adapter_anima import IPAdapterMethodAdapter
+        from networks.methods.ip_adapter import IPAdapterMethodAdapter
 
         adapters.append(IPAdapterMethodAdapter())
     if getattr(args, "use_easycontrol", False):
-        from networks.easycontrol_anima import EasyControlMethodAdapter
+        from networks.methods.easycontrol import EasyControlMethodAdapter
 
         adapters.append(EasyControlMethodAdapter())
-    if getattr(args, "method", None) == "apex":
-        from networks.condition_shift import ApexMethodAdapter
+    method = getattr(args, "method", None) or ""
+    if method == "apex" or method.startswith("apex_"):
+        from networks.methods.apex import ApexMethodAdapter
 
         adapters.append(ApexMethodAdapter())
     return adapters

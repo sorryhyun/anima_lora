@@ -43,7 +43,7 @@ The only new trainable parameters are the 2 scalars `(a, b)` in `ConditionShift`
 
 | File | Role |
 |------|------|
-| `networks/condition_shift.py` | `ConditionShift(dim, mode, init_a, init_b)` — 3 parameterizations: `scalar` (2 params), `diag` (2D), `full` (D²+D). Runtime-dtype-safe via `.to(c.dtype)` inside forward. |
+| `networks/methods/apex.py` | `ConditionShift(dim, mode, init_a, init_b)` — 3 parameterizations: `scalar` (2 params), `diag` (2D), `full` (D²+D). Runtime-dtype-safe via `.to(c.dtype)` inside forward. |
 | `library/training/apex_loss.py` | `apex_schedule_weights(step, warmup, rampup, ...)` scheduler + `ApexAux` dataclass stashing `F_real / T_mix_v / F_fake_on_fake_xt / target_fake` between the two halves of the loss. |
 | `library/anima/training.py` | CLI args (`--apex_*`) and the `apex_omega` weighting scheme ($\omega(t) = t(1-t)$, the Eq. 24 weight after Prop. 3 endpoint→velocity conversion). |
 | `networks/lora_anima/` | `_maybe_attach_apex_shift(network, kwargs)` — called from both `create_network` and `create_network_from_weights` so warm-start via `dim_from_weights=true` still attaches the shift. Also registers a 0.1× LR param group for `(a, b)`. |

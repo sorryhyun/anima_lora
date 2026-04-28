@@ -143,7 +143,7 @@ def generate_body_tiled(
     # Prefix tuning: prepend learned vectors to cached adapter output
     prefix_weight = getattr(args, "prefix_weight", None)
     if prefix_weight is not None:
-        from networks.postfix_anima import create_network_from_weights
+        from networks.methods.postfix import create_network_from_weights
 
         prefix_net, prefix_sd = create_network_from_weights(
             multiplier=1.0, file=prefix_weight, ae=None, text_encoders=None, unet=None
@@ -159,7 +159,7 @@ def generate_body_tiled(
     # Postfix tuning: append learned vectors after real text tokens
     postfix_weight = getattr(args, "postfix_weight", None)
     if postfix_weight is not None:
-        from networks.postfix_anima import create_network_from_weights
+        from networks.methods.postfix import create_network_from_weights
 
         postfix_net, postfix_sd = create_network_from_weights(
             multiplier=1.0, file=postfix_weight, ae=None, text_encoders=None, unet=None
@@ -423,7 +423,7 @@ def generate_body(
         _pooled_text_neg = negative_embed.max(dim=1).values
 
     if prefix_weight is not None:
-        from networks.postfix_anima import create_network_from_weights
+        from networks.methods.postfix import create_network_from_weights
 
         prefix_net, prefix_sd = create_network_from_weights(
             multiplier=1.0, file=prefix_weight, ae=None, text_encoders=None, unet=None
@@ -442,7 +442,7 @@ def generate_body(
     postfix_base_embed = None
     postfix_base_neg = None
     if postfix_weight is not None:
-        from networks.postfix_anima import create_network_from_weights
+        from networks.methods.postfix import create_network_from_weights
 
         postfix_net, postfix_sd = create_network_from_weights(
             multiplier=1.0, file=postfix_weight, ae=None, text_encoders=None, unet=None
@@ -718,7 +718,7 @@ def _setup_ip_adapter(args, anima, device):
     from PIL import Image
     from torchvision import transforms
 
-    from networks.ip_adapter_anima import create_network_from_weights
+    from networks.methods.ip_adapter import create_network_from_weights
     from library.vision import encode_pe_from_imageminus1to1, load_pe_encoder
 
     # Aspect-match: snap --image_size to the CONSTANT_TOKEN_BUCKETS entry whose
@@ -800,7 +800,7 @@ def _setup_easycontrol(args, anima, device, shared_models):
     from PIL import Image
     from torchvision import transforms
 
-    from networks.easycontrol_anima import create_network_from_weights
+    from networks.methods.easycontrol import create_network_from_weights
     from library.models import qwen_vae as qwen_image_autoencoder_kl
 
     if getattr(args, "easycontrol_image_match_size", False):

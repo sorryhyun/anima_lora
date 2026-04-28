@@ -234,7 +234,7 @@ python inference.py \
 
 ## Files
 
-- `networks/ip_adapter_anima.py` — `IPAdapterNetwork`, the patched-forward closure, save/load, runtime diagnostics (`set_diagnostics_enabled` / `diagnostic_summary`).
+- `networks/methods/ip_adapter.py` — `IPAdapterNetwork`, the patched-forward closure, save/load, runtime diagnostics (`set_diagnostics_enabled` / `diagnostic_summary`).
 - `library/vision/encoder.py` — PE-Core wrapper (`load_pe_encoder`, `encode_pe_from_imageminus1to1`). Used by both the cache script and the live-encoding fallback.
 - `preprocess/cache_pe_encoder.py` — `make ip-adapter-cache` entry point. Writes `{stem}_anima_{encoder}.safetensors` sidecars next to each image.
 - `library/datasets/base.py` — `_try_load_ip_features` reads sidecars in `__getitem__`; stacks into `batch["ip_features"]` per training bucket.

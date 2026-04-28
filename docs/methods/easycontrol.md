@@ -77,7 +77,7 @@ Concrete details:
   two memory-efficient flash-attention-2 forwards on the disjoint key tiles
   plus a Python LSE-arithmetic combine. Backward is custom (FA2's stock
   backward drops the gradient flowing through `softmax_lse`); see the
-  Function's docstring in `networks/easycontrol_anima.py` for the math.
+  Function's docstring in `networks/methods/easycontrol.py` for the math.
   Falls back to masked-SDPA (math kernel) when flash-attn is unavailable
   with a one-shot warning.
 - **No deferred backward.** cond_x is an explicit checkpoint input and
@@ -323,7 +323,7 @@ training (vs Phase 1.5's >16 GiB OOM at the same bucket).
 
 | Path                                            | Purpose                                                |
 | ----------------------------------------------- | ------------------------------------------------------ |
-| `networks/easycontrol_anima.py`                 | `EasyControlNetwork` + patched `Block.forward` closure |
+| `networks/methods/easycontrol.py`                 | `EasyControlNetwork` + patched `Block.forward` closure |
 | `configs/methods/easycontrol.toml`              | Method config                                          |
 | `configs/gui-methods/easycontrol.toml`          | GUI-friendly self-contained variant                    |
 | `bench/easycontrol/step0_equivalence.py` | `b_cond=-10` init recipe + two-stream verification     |

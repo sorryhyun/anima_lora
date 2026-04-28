@@ -12,7 +12,7 @@
 #
 # Per-variant dim/args/epochs are experiment drift, not calibrated defaults.
 
-network_module = "networks.postfix_anima"
+network_module = "networks.methods.postfix"
 
 # ── Postfix ─────────────────────────────────────────────────────────────
 # enum network_dim: postfix=16 | postfix_exp=64 | postfix_func=64 | prefix=16

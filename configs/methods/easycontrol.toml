@@ -21,7 +21,7 @@
 
 dataset_config = "configs/datasets/easycontrol.toml"
 
-network_module = "networks.easycontrol_anima"
+network_module = "networks.methods.easycontrol"
 
 # r = condition LoRA rank (per-projection rank). 16 is a reasonable default.
 network_dim = 32

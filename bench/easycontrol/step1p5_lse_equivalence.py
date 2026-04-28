@@ -66,7 +66,7 @@ import torch.nn.functional as F
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from library.log import setup_logging  # noqa: E402
 from networks import attention_dispatch as anima_attention  # noqa: E402
-from networks.easycontrol_anima import _ExtendedSelfAttnLSEFunc  # noqa: E402
+from networks.methods.easycontrol import _ExtendedSelfAttnLSEFunc  # noqa: E402
 
 setup_logging()
 logger = logging.getLogger(__name__)

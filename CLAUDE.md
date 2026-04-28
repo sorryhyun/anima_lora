@@ -164,10 +164,10 @@ Subsets accept an optional `cache_dir` key — when set, all VAE / text-encoder 
   - `networks/lora_anima/` — LoRA network creation, module targeting, timestep masking orchestration (split into `network.py`, `factory.py`, `loading.py`, `config.py`).
   - `networks/lora_modules/` — Per-variant module implementations: `lora.py`, `ortho.py`, `hydra.py`, `reft.py`, plus `base.py` and `custom_autograd.py`.
   - `networks/lora_save.py` / `lora_utils.py` — Save-time SVD distillation (OrthoLoRA → plain LoRA) and shared helpers.
-  - `networks/postfix_anima.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual).
-  - `networks/ip_adapter_anima.py` — IP-Adapter: PE-Core-L14-336 vision encoder + Perceiver resampler + per-block `to_k_ip`/`to_v_ip`.
-  - `networks/easycontrol_anima.py` — EasyControl: per-block cond LoRA on self-attn (q/k/v/o) + FFN + scalar `b_cond` logit-bias gate; two-stream block forward at training, KV-cache prefill at inference.
-  - `networks/condition_shift.py` — APEX `ConditionShift` module (`c_fake = A·c + b`).
+  - `networks/methods/postfix.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual).
+  - `networks/methods/ip_adapter.py` — IP-Adapter: PE-Core-L14-336 vision encoder + Perceiver resampler + per-block `to_k_ip`/`to_v_ip`.
+  - `networks/methods/easycontrol.py` — EasyControl: per-block cond LoRA on self-attn (q/k/v/o) + FFN + scalar `b_cond` logit-bias gate; two-stream block forward at training, KV-cache prefill at inference.
+  - `networks/methods/apex.py` — APEX `ConditionShift` module (`c_fake = A·c + b`).
 - **Attention dispatch** (`networks/attention_dispatch.py`): Unified `dispatch_attention()` routing to torch SDPA, xformers, flash-attn v2/v3, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD). FA4 (flash-attention-sm120) was evaluated and is currently disabled — see `docs/optimizations/fa4.md`.
 
 ### LoRA variants

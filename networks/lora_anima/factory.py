@@ -12,7 +12,7 @@ import torch
 
 from library.log import setup_logging
 from networks import NETWORK_REGISTRY, resolve_network_spec
-from networks.condition_shift import ConditionShift
+from networks.methods.apex import ConditionShift
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
     _refuse_split_hydra_keys,

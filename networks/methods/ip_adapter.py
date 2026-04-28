@@ -496,7 +496,7 @@ class IPAdapterNetwork(nn.Module):
 
             if metadata is None:
                 metadata = {}
-            metadata["ss_network_module"] = "networks.ip_adapter_anima"
+            metadata["ss_network_module"] = "networks.methods.ip_adapter"
             metadata["ss_network_spec"] = "ip_adapter"
             metadata["ss_num_ip_tokens"] = str(self.num_ip_tokens)
             metadata["ss_encoder"] = self.encoder_name
@@ -622,7 +622,7 @@ class IPAdapterMethodAdapter(MethodAdapter):
         if not (hasattr(net, "set_ip_tokens") and hasattr(net, "encode_ip_tokens")):
             raise ValueError(
                 "--use_ip_adapter requires a network module with set_ip_tokens / "
-                "encode_ip_tokens (e.g. networks.ip_adapter_anima)."
+                "encode_ip_tokens (e.g. networks.methods.ip_adapter)."
             )
         cache_features = getattr(args, "ip_features_cache_to_disk", False)
         if not cache_features and getattr(args, "cache_latents", False):

@@ -161,6 +161,11 @@ class AnimaTrainer:
         # here in ``get_noise_pred_and_target`` and consumed by the loss
         # composer in ``_process_batch_inner``.
         self._extras_for_step: dict = {}
+        # Set by ``_process_batch_inner`` when the split-backward path runs
+        # both ``accelerator.backward`` calls inline. The train loop reads
+        # this and skips its own outer backward to avoid double-stepping or
+        # crashing on the detached return tensor.
+        self._split_backward_consumed: bool = False
 
     # region logging helpers
 
@@ -1119,8 +1124,9 @@ class AnimaTrainer:
             loss_aux["func_loss"] = func_loss
 
         composer = build_loss_composer(args, getattr(self, "_network", network))
-        scalar_loss = composer.compose(
-            LossContext(
+
+        def _build_loss_ctx(aux: dict) -> LossContext:
+            return LossContext(
                 args=args,
                 batch=batch,
                 model_pred=noise_pred,
@@ -1130,10 +1136,76 @@ class AnimaTrainer:
                 huber_c=huber_c,
                 loss_weights=batch["loss_weights"],
                 network=getattr(self, "_network", network),
-                aux=loss_aux,
+                aux=aux,
             )
+
+        # Split-backward: APEX runs two grad-tracked DiT forwards per step
+        # (real branch via L_sup+L_mix, fake branch via L_fake) whose autograd
+        # graphs are disjoint — forward 3's input is built from
+        # ``model_pred.detach()``. Composing+backwarding both as one scalar
+        # keeps both graphs live until backward, roughly doubling peak
+        # activation memory. When an adapter opts in, backward the real
+        # branch inline so forward-1 activations are freed before forward 3
+        # runs, then run forward 3 + L_fake. Total gradient = real + fake.
+        split_backward = is_train and any(
+            a.wants_split_backward(is_train=is_train) for a in self._adapters
         )
-        return scalar_loss
+
+        # APEX warmup: ``lam_f_eff <= 0`` means ``apex_fake`` short-circuits
+        # to a no-graph zero tensor and forward 3 is not needed at all. Fall
+        # back to the legacy single-pass compose so the trainer's outer
+        # backward sees a graph from flow_match. Also catches the case where
+        # the adapter returned no aux (e.g. crossattn_emb is None).
+        if split_backward:
+            apex_aux = loss_aux.get("apex") or {}
+            if float(apex_aux.get("lam_f_eff", 0.0)) <= 0.0:
+                split_backward = False
+
+        if not split_backward:
+            return composer.compose(_build_loss_ctx(loss_aux))
+
+        # --- real branch ---
+        loss_real = composer.compose_real_branch(_build_loss_ctx(loss_aux))
+        # accelerator.backward handles gradient_accumulation scaling. DDP sync
+        # is already manual via all_reduce_network (called once on
+        # sync_gradients in the outer loop), so a second backward in the same
+        # accumulate scope just deposits more gradient into .grad.
+        accelerator.backward(loss_real)
+
+        # --- deferred fake branch (forward 3 + L_fake) ---
+        step_ctx = StepCtx(
+            args=args,
+            accelerator=accelerator,
+            network=network,
+            weight_dtype=weight_dtype,
+        )
+        with torch.set_grad_enabled(is_train), accelerator.autocast():
+            for adapter in self._adapters:
+                if not adapter.wants_split_backward(is_train=is_train):
+                    continue
+                out = adapter.extra_forwards_fake(step_ctx)
+                if not out:
+                    continue
+                # Merge into loss_aux: extend nested dicts (e.g. "apex") rather
+                # than overwriting the real-branch keys T_mix_v / lam_c_eff.
+                for k, v in out.items():
+                    if (
+                        k in loss_aux
+                        and isinstance(loss_aux[k], dict)
+                        and isinstance(v, dict)
+                    ):
+                        loss_aux[k] = {**loss_aux[k], **v}
+                    else:
+                        loss_aux[k] = v
+
+        loss_fake = composer.compose_fake_branch(_build_loss_ctx(loss_aux))
+        if loss_fake.requires_grad:
+            accelerator.backward(loss_fake)
+        # Tell the train loop we've already consumed both branches' graphs;
+        # the returned tensor is detached and only carries the composite scalar
+        # for logging / metrics.
+        self._split_backward_consumed = True
+        return (loss_real.detach() + loss_fake.detach())
 
     # endregion
 
@@ -1982,9 +2054,14 @@ class AnimaTrainer:
         progress_bar.unpause()
 
     def train(self, args):
+        from networks.methods.apex import (
+            promote_warmstart_to_merge as _apex_promote_warmstart_to_merge,
+        )
+
         session_id = random.randint(0, 2**32)
         training_started_at = time.time()
         verify_training_args(args)
+        _apex_promote_warmstart_to_merge(args)
         train_util.prepare_dataset_args(args, True)
         setup_logging(args, reset=True)
 
@@ -2602,8 +2679,16 @@ class AnimaTrainer:
                         torch.compiler.cudagraph_mark_step_begin()
 
                     loss = self.process_batch(ctx, batch, is_train=True)
-
-                    accelerator.backward(loss)
+                    
+                    # Split-backward path (APEX) backwards both branches
+                    # inline inside process_batch and returns a detached
+                    # scalar for logging. Skip the outer backward in that
+                    # case so we don't double-step or crash on a no-grad
+                    # tensor during warmup.
+                    if getattr(self, "_split_backward_consumed", False):
+                        self._split_backward_consumed = False
+                    else:
+                        accelerator.backward(loss)
                     if accelerator.sync_gradients:
                         self.all_reduce_network(
                             accelerator, network
@@ -3085,7 +3170,7 @@ from library.config import schema as _config_schema  # noqa: E402
 from networks import all_network_kwargs as _all_network_kwargs  # noqa: E402
 
 
-# Network-module-consumed flags (networks.lora_anima / networks.postfix_anima).
+# Network-module-consumed flags (networks.lora_anima / networks.methods.postfix).
 # These don't flow through argparse directly because `create_network` reads
 # them from ``kwargs``. Derived from the registry in ``networks/__init__.py``
 # (``SHARED_KWARG_FLAGS`` ∪ per-``NetworkSpec.kwarg_flags``) so adding a new

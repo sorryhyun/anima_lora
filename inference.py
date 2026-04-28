@@ -90,19 +90,19 @@ def parse_args() -> argparse.Namespace:
         "--prefix_weight",
         type=str,
         default=None,
-        help="Prefix tuning weight path (postfix_anima prefix mode .safetensors)",
+        help="Prefix tuning weight path (networks.methods.postfix prefix mode .safetensors)",
     )
     parser.add_argument(
         "--postfix_weight",
         type=str,
         default=None,
-        help="Postfix tuning weight path (postfix_anima postfix mode .safetensors)",
+        help="Postfix tuning weight path (networks.methods.postfix postfix mode .safetensors)",
     )
     parser.add_argument(
         "--ip_adapter_weight",
         type=str,
         default=None,
-        help="IP-Adapter weight path (networks.ip_adapter_anima .safetensors). "
+        help="IP-Adapter weight path (networks.methods.ip_adapter .safetensors). "
         "Requires --ip_image. Modifies DiT cross-attention via parallel image KV.",
     )
     parser.add_argument(
@@ -128,7 +128,7 @@ def parse_args() -> argparse.Namespace:
         "--easycontrol_weight",
         type=str,
         default=None,
-        help="EasyControl weight path (networks.easycontrol_anima .safetensors). "
+        help="EasyControl weight path (networks.methods.easycontrol .safetensors). "
         "Requires --easycontrol_image. Extends DiT self-attention with VAE-encoded reference "
         "K/V plus a per-block additive logit bias.",
     )

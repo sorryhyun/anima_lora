@@ -613,7 +613,7 @@ class PostfixNetwork(nn.Module):
 
             if metadata is None:
                 metadata = {}
-            metadata["ss_network_module"] = "networks.postfix_anima"
+            metadata["ss_network_module"] = "networks.methods.postfix"
             metadata["ss_network_spec"] = "postfix"
             metadata["ss_num_postfix_tokens"] = str(self.num_postfix_tokens)
             metadata["ss_embed_dim"] = str(self.embed_dim)

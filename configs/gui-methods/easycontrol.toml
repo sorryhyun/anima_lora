@@ -11,7 +11,7 @@
 
 dataset_config = "configs/datasets/easycontrol.toml"
 
-network_module = "networks.easycontrol_anima"
+network_module = "networks.methods.easycontrol"
 
 network_dim = 16
 network_alpha = 16

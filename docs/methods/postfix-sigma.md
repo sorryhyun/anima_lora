@@ -14,7 +14,7 @@ sigma_residual   = sigma_mlp(sinusoidal(σ))            # new, zero-init final l
 postfix(σ)       = base_postfix + sigma_residual       # additive
 ```
 
-Both `cond_mlp` and `sigma_mlp` are 2-layer MLPs with zero-init final projections. The sinusoidal σ features match the DiT `t_embedder` functional form (inlined in `networks/postfix_anima.py` rather than coupling to the DiT).
+Both `cond_mlp` and `sigma_mlp` are 2-layer MLPs with zero-init final projections. The sinusoidal σ features match the DiT `t_embedder` functional form (inlined in `networks/methods/postfix.py` rather than coupling to the DiT).
 
 **Motivation:**
 
@@ -80,7 +80,7 @@ Test: `python inference.py --postfix_weight output/anima_postfix_sigma.safetenso
 
 ## Files
 
-- `networks/postfix_anima.py` — mode implementation, save/load, metadata.
+- `networks/methods/postfix.py` — mode implementation, save/load, metadata.
 - `library/inference/generation.py` — per-step postfix in non-tiled and Spectrum paths.
 - `networks/spectrum.py` — actual-step σ-conditional postfix application.
 - `configs/methods/postfix.toml` — commented `cond-timestep` block.

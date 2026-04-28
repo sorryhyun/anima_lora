@@ -736,7 +736,7 @@ class EasyControlNetwork(nn.Module):
 
             if metadata is None:
                 metadata = {}
-            metadata["ss_network_module"] = "networks.easycontrol_anima"
+            metadata["ss_network_module"] = "networks.methods.easycontrol"
             metadata["ss_network_spec"] = "easycontrol"
             metadata["ss_num_blocks"] = str(self.num_blocks)
             metadata["ss_hidden_size"] = str(self.hidden_size)
@@ -1570,7 +1570,7 @@ class EasyControlMethodAdapter(MethodAdapter):
         if not (hasattr(net, "set_cond") and hasattr(net, "encode_cond_latent")):
             raise ValueError(
                 "--use_easycontrol requires a network module with set_cond / "
-                "encode_cond_latent (e.g. networks.easycontrol_anima)."
+                "encode_cond_latent (e.g. networks.methods.easycontrol)."
             )
         ctx.accelerator.print(
             f"EasyControl: two-stream cond enabled "

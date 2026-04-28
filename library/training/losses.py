@@ -473,13 +473,73 @@ class LossComposer:
 
         return scalar
 
+    # ---- Split-backward variants ---------------------------------------------------
+    # APEX runs two autograd-disjoint DiT forwards (real branch via L_sup+L_mix,
+    # fake branch via L_fake). Composing+backwarding them as one scalar keeps
+    # both graphs live until the single backward, roughly doubling peak
+    # activation memory. ``compose_real_branch`` returns everything except
+    # ``apex_fake``; ``compose_fake_branch`` returns ``apex_fake`` alone. Their
+    # sum equals ``compose`` numerically for the common case (no multiscale).
+    # When multiscale is active the blend is applied to the real-branch scalar
+    # only — multiscale operates on forward-1's ``model_pred``/``target`` and
+    # has no fake-branch counterpart.
+
+    def compose_real_branch(self, ctx: LossContext) -> torch.Tensor:
+        per_sample = ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+        apex_active_this_batch = bool(ctx.aux.get("apex"))
+
+        first = True
+        for name in _STAGE_PER_SAMPLE:
+            if name == "apex_fake" or name not in self.active_losses:
+                continue
+            contribution = LOSS_REGISTRY[name](ctx)
+            if (
+                name == "flow_match"
+                and apex_active_this_batch
+                and self.l_sup_scalar != 1.0
+            ):
+                contribution = contribution * self.l_sup_scalar
+            per_sample = contribution if first else (per_sample + contribution)
+            first = False
+        if first:
+            raise RuntimeError(
+                "LossComposer.compose_real_branch: no per-sample loss "
+                "registered; 'flow_match' must be among active_losses"
+            )
+
+        for name in _STAGE_SCALAR_BROADCAST:
+            if name not in self.active_losses:
+                continue
+            reg = LOSS_REGISTRY[name](ctx)
+            if reg is None:
+                continue
+            per_sample = per_sample + reg
+
+        scalar = per_sample.mean()
+
+        if "multiscale" in self.active_losses:
+            ms_weight = float(getattr(ctx.args, "multiscale_loss_weight", 0.0) or 0.0)
+            if ms_weight > 0.0:
+                ms_loss = LOSS_REGISTRY["multiscale"](ctx)
+                if ms_loss is not None and torch.is_tensor(ms_loss) and ms_loss.numel():
+                    if not (ms_loss == 0).all():
+                        scalar = (scalar + ms_loss * ms_weight) / (1.0 + ms_weight)
+
+        return scalar
+
+    def compose_fake_branch(self, ctx: LossContext) -> torch.Tensor:
+        if "apex_fake" not in self.active_losses:
+            return ctx.model_pred.new_zeros(())
+        per_sample = LOSS_REGISTRY["apex_fake"](ctx)
+        return per_sample.mean()
+
 
 def build_loss_composer(args: argparse.Namespace, network: object) -> LossComposer:
     """Inspect args + network and return the active LossComposer.
 
     Rules (pre-refactor parity):
       - flow_match is always active.
-      - apex_mix / apex_fake active iff args.method == "apex".
+      - apex_mix / apex_fake active iff args.method is "apex" or "apex_*".
       - ortho_reg active iff network._ortho_reg_weight > 0.
       - hydra_balance active iff network._balance_loss_weight > 0.
       - functional active iff args.functional_loss_weight > 0.
@@ -491,7 +551,8 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
     active: list[str] = ["flow_match"]
     l_sup_scalar = 1.0
 
-    is_apex = getattr(args, "method", None) == "apex"
+    method = getattr(args, "method", None) or ""
+    is_apex = method == "apex" or method.startswith("apex_")
     if is_apex:
         active.extend(["apex_mix", "apex_fake", "condition_shift"])
         l_sup_scalar = float(getattr(args, "apex_lambda_p", 1.0))

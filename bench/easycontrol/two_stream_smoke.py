@@ -102,7 +102,7 @@ def main():
             "gradient checkpointing ON (plain torch_checkpoint), DiT in train mode"
         )
 
-    from networks.easycontrol_anima import create_network
+    from networks.methods.easycontrol import create_network
 
     net = create_network(
         multiplier=1.0,

@@ -19,13 +19,23 @@
 # --network_weights <path> or keep the apex_warmup_ratio guard below >0.
 
 output_name = "anima_apex"
+logging_dir = "output/logs"
+log_with = "tensorboard"
 
 # Warm-start from the best tlora checkpoint. `save_weights` already converts
 # OrthoLoRA → plain LoRA at save time (thin SVD on ΔW), so this file is a
 # valid plain-LoRA warm-start — no converter needed. `dim_from_weights=true`
 # makes `create_network_from_weights` infer rank/alpha per-module from the
 # checkpoint, which is why network_dim / network_alpha are NOT set here.
-network_weights = "output/ckpt/anima-tlora-0415-12.safetensors"
+#
+# Note: APEX silently rewires this from "trainable adapter" to "merge into
+# DiT at load time, then train a fresh same-rank adapter on top." Keeping
+# the warm-start as a runtime adapter costs ~1.5 GB more peak VRAM and OOMs
+# on a 16 GB card; the merge path matches the bench's cold-start memory
+# profile. Trained file captures only the APEX delta on the merged base —
+# stack with the warm-start tlora at inference, or re-merge via
+# scripts/merge_to_dit.py to ship a single combined LoRA.
+network_weights = "output/ckpt/anima-tlora-0428-04.safetensors"
 dim_from_weights = true
 
 # Longer than plain LoRA because APEX refine needs budget for the adversarial
@@ -33,8 +43,8 @@ dim_from_weights = true
 # trending down at end of training.
 learning_rate = 1e-4
 max_train_epochs = 2
-save_every_n_epochs = 1
-checkpointing_epochs = 1
+save_every_n_epochs = 2
+checkpointing_epochs = 2
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
@@ -62,14 +72,7 @@ apex_condition_shift_init_a = -1.0   # Table 7 stable optimum
 apex_condition_shift_init_b = 0.5    # Table 7 range [0.1, 1.0]
 apex_shift_lr_scale = 0.1            # 0.1x LoRA LR — keeps (a,b) off the unstable corner
 
-# Memory — 3 DiT forwards per step (real + fake@real_xt sg + fake@fake_xt).
-# Block swap is INCOMPATIBLE with APEX's multi-forward pattern: after the
-# first forward, blocks_to_swap blocks are on CPU, and the second forward
-# tries to run through them and crashes with a FakeTensor device-mismatch
-# from torch.compile. postfix_func.toml hits the same constraint (it also
-# does a second no_grad forward) and resolves it the same way: force 0.
-# If the 3× forward is too heavy for your card, reduce rank or batch
-# rather than re-enabling block swap here.
+
 blocks_to_swap = 0
-gradient_checkpointing = true
-unsloth_offload_checkpointing = true
+# gradient_checkpointing = true
+# unsloth_offload_checkpointing = true

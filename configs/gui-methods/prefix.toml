@@ -3,7 +3,7 @@
 # Prepends N learned vectors to the start of the cross-attention sequence.
 # No base LoRA required.
 
-network_module = "networks.postfix_anima"
+network_module = "networks.methods.postfix"
 network_dim = 16
 network_args = ["mode=prefix"]
 output_name = "anima_prefix"

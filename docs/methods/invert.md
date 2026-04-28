@@ -139,7 +139,7 @@ inversions/
 
 A "referencer" variant of embedding inversion: instead of optimizing all 512 token positions of the crossattn embedding, freeze a user-supplied text template and optimize **only K consecutive token vectors** against a single reference image. The resulting K vectors capture the image's subject/style in T5-compatible space; at inference they're spliced into a fresh user prompt, letting the subject travel into new scenes.
 
-This is the original Textual Inversion recipe (Gal et al. 2022) ported to Anima. Because Anima already has a `prefix` tuning network (`networks/postfix_anima.py`, prefix mode) with inference-side splicing via `inference.py --prefix_weight`, reference inversion reuses that entire runtime — **no inference changes required**. It's training-free in the meaningful sense: no dataset, just a single reference image, single-GPU optim, seconds-to-minutes per image.
+This is the original Textual Inversion recipe (Gal et al. 2022) ported to Anima. Because Anima already has a `prefix` tuning network (`networks/methods/postfix.py`, prefix mode) with inference-side splicing via `inference.py --prefix_weight`, reference inversion reuses that entire runtime — **no inference changes required**. It's training-free in the meaningful sense: no dataset, just a single reference image, single-GPU optim, seconds-to-minutes per image.
 
 ## Quick start
 
@@ -245,7 +245,7 @@ Single `.safetensors` holding one tensor:
 
 | Key | Shape | Dtype | Notes |
 |---|---|---|---|
-| `prefix_embeds` | `[K, D]` | bf16 | Same key/schema as `networks/postfix_anima.py` prefix-mode checkpoints |
+| `prefix_embeds` | `[K, D]` | bf16 | Same key/schema as `networks/methods/postfix.py` prefix-mode checkpoints |
 
 Metadata includes `ss_network_module`, `ss_mode=prefix`, `ss_num_postfix_tokens=K`, `ss_embed_dim=D`, plus inversion-specific fields (`ss_reference_image`, `ss_template`, `ss_placeholder_char_offset`, `ss_best_loss`, `ss_steps`, `ss_lr`, `ss_seed`).
 
