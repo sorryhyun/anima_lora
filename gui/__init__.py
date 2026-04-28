@@ -199,6 +199,9 @@ _GROUPS = {
         "output_dir",
         "output_name",
         "save_model_as",
+        "source_image_dir",
+        "resized_image_dir",
+        "lora_cache_dir",
     },
 }
 _K2G = {k: g for g, ks in _GROUPS.items() for k in ks}

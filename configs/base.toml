@@ -11,6 +11,16 @@ save_model_as = "safetensors"
 network_module = "networks.lora_anima"
 network_train_unet_only = true
 
+# ── Dataset paths ────────────────────────────────────────────────────────
+# Top-level scalars so any preset / method can override (the merge chain is
+# base.toml → presets.toml[<preset>] → methods/<method>.toml). The dataset
+# blueprint subset (below) interpolates `{resized_image_dir}` /
+# `{lora_cache_dir}` so editing these keys propagates to training too.
+# `tasks.py` preprocess commands also read them via `load_path_overrides`.
+source_image_dir = "image_dataset"
+resized_image_dir = "post_image_dataset/resized"
+lora_cache_dir = "post_image_dataset/lora"
+
 optimizer_type = "AdamW"
 optimizer_args = ["fused=True"]
 lr_scheduler = "constant"
@@ -60,8 +70,11 @@ validation_split = 0.025
 validation_seed = 42
 
   [[datasets.subsets]]
-  image_dir = 'post_image_dataset/resized'
-  cache_dir = 'post_image_dataset/lora'
+  # Templates resolve against top-level path keys (source_image_dir,
+  # resized_image_dir, lora_cache_dir) at load time — see
+  # library.config.io.load_dataset_config_from_base.
+  image_dir = '{resized_image_dir}'
+  cache_dir = '{lora_cache_dir}'
   num_repeats = 1
   # sample_ratio defaults to 1.0; use `--preset half` for 0.5.
   # caption_dropout_rate is set per-method via args (see configs/methods/*.toml)

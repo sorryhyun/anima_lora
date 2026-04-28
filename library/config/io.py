@@ -89,12 +89,50 @@ def _flatten_toml(
     return out
 
 
+class _SafeFormatDict(dict):
+    """`str.format_map` helper: leaves unknown ``{key}`` placeholders intact
+    rather than raising ``KeyError``. Lets captions / paths with literal
+    braces pass through untouched."""
+
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
+def _substitute_templates(value: Any, ctx: dict) -> Any:
+    """Recursively format-substitute string values in nested dict/list trees.
+
+    Used by ``load_dataset_config_from_base`` so the dataset blueprint can
+    reference top-level path keys (e.g. ``image_dir = '{resized_image_dir}'``)
+    and stay in sync with ``tasks.py`` preprocess commands when users override
+    those paths via preset / method.
+    """
+    if isinstance(value, str):
+        if "{" not in value:
+            return value
+        try:
+            return value.format_map(_SafeFormatDict(ctx))
+        except (ValueError, IndexError):
+            return value
+    if isinstance(value, dict):
+        return {k: _substitute_templates(v, ctx) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_substitute_templates(v, ctx) for v in value]
+    return value
+
+
 def load_dataset_config_from_base(
     configs_dir: str = "configs",
+    overrides: Optional[dict] = None,
 ) -> Optional[dict]:
     """Extract the dataset blueprint (``[general]`` + ``[[datasets]]``) from
     ``configs/base.toml``. Returns ``None`` if no dataset sections are present,
     so callers can fall back to the DreamBooth/in_json code paths.
+
+    String values in the blueprint may reference top-level scalar keys via
+    ``{key}`` placeholders; these are substituted at load time. ``overrides``
+    (typically the merged preset/method args namespace) wins over the raw
+    base.toml top-level — that's how preset / CLI overrides of
+    ``resized_image_dir`` etc. propagate into the dataset subset paths.
     """
     base_path = os.path.join(configs_dir, "base.toml")
     if not os.path.exists(base_path):
@@ -104,7 +142,50 @@ def load_dataset_config_from_base(
     sections = {k: v for k, v in raw.items() if k in _DATASET_CONFIG_SECTIONS}
     if not sections.get("datasets"):
         return None
-    return sections
+    ctx = {
+        k: v
+        for k, v in raw.items()
+        if k not in _DATASET_CONFIG_SECTIONS and isinstance(v, str)
+    }
+    if overrides:
+        ctx.update({k: v for k, v in overrides.items() if isinstance(v, str)})
+    return _substitute_templates(sections, ctx)
+
+
+def load_path_overrides(
+    preset: str = "default", configs_dir: str = "configs"
+) -> dict:
+    """Top-level scalar keys from base.toml, overlaid by ``presets.toml[<preset>]``.
+
+    Lightweight — does not require a method file. Used by ``tasks.py``
+    preprocess commands so they pick up ``source_image_dir`` /
+    ``resized_image_dir`` / ``lora_cache_dir`` overrides without launching
+    accelerate. Missing/unknown preset is silently ignored (callers fall back
+    to base.toml values, which themselves fall back to hard-coded defaults).
+    """
+    base_path = os.path.join(configs_dir, "base.toml")
+    out: dict = {}
+    if os.path.exists(base_path):
+        with open(base_path, "r", encoding="utf-8") as f:
+            raw = toml.load(f)
+        out.update(
+            {
+                k: v
+                for k, v in raw.items()
+                if k not in _DATASET_CONFIG_SECTIONS
+                and not isinstance(v, dict)
+                and not isinstance(v, list)
+            }
+        )
+    try:
+        section, _path, _tag = _resolve_preset(preset, configs_dir)
+    except (KeyError, FileNotFoundError, ValueError):
+        return out
+    for k, v in section.items():
+        if isinstance(v, (dict, list)):
+            continue
+        out[k] = v
+    return out
 
 
 def _load_toml_with_base(path: str, *, strict: bool = False) -> dict:

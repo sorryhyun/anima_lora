@@ -136,6 +136,37 @@ def populate_schema(
         ),
     )
 
+    # Top-level dataset path overrides — consumed by tasks.py preprocess and
+    # by load_dataset_config_from_base for `{...}` template substitution in
+    # the dataset blueprint subset. Presets / methods can override.
+    for _key, _default, _help in (
+        (
+            "source_image_dir",
+            "image_dataset",
+            "Where raw images and .txt captions live. Read by preprocess/resize_images.py and preprocess/cache_text_embeddings.py.",
+        ),
+        (
+            "resized_image_dir",
+            "post_image_dataset/resized",
+            "Where preprocess/resize_images.py writes VAE-aligned PNGs. Also resolved into the dataset subset's image_dir at training time.",
+        ),
+        (
+            "lora_cache_dir",
+            "post_image_dataset/lora",
+            "Where preprocess/cache_latents.py and cache_text_embeddings.py write VAE/TE caches. Also resolved into the dataset subset's cache_dir.",
+        ),
+    ):
+        CONFIG_SCHEMA.setdefault(
+            _key,
+            ConfigKey(
+                name=_key,
+                type="path",
+                default=_default,
+                help=_help,
+                source="manual",
+            ),
+        )
+
     if extras:
         for k, v in extras.items():
             CONFIG_SCHEMA[k] = v

@@ -1413,7 +1413,7 @@ class AnimaTrainer:
                         )
                     )
             else:
-                base_ds = load_dataset_config_from_base()
+                base_ds = load_dataset_config_from_base(overrides=vars(args))
                 if base_ds is not None:
                     logger.info("Loading dataset config from configs/base.toml")
                     user_config = base_ds

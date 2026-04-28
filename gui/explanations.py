@@ -240,6 +240,45 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Checkpoint format. safetensors: recommended (fast, safe).",
         "ko": "체크포인트 형식. safetensors: 권장 (빠르고 안전).",
     },
+    "source_image_dir": {
+        "en": (
+            "Where raw images and .txt captions live. The Preprocess button feeds "
+            "this to resize_images.py (writes resized PNGs) and "
+            "cache_text_embeddings.py (caches captions). Override per preset/method "
+            "if you keep multiple datasets side by side."
+        ),
+        "ko": (
+            "원본 이미지와 .txt 캡션이 있는 디렉토리. 전처리 버튼이 이 경로를 "
+            "resize_images.py(리사이즈된 PNG 저장)와 cache_text_embeddings.py"
+            "(캡션 캐시)에 전달합니다. 여러 데이터셋을 병행할 때 프리셋/메소드별로 "
+            "오버라이드하세요."
+        ),
+    },
+    "resized_image_dir": {
+        "en": (
+            "Where preprocess writes VAE-aligned PNGs. Also resolved into the dataset "
+            "subset's image_dir at training time (via {resized_image_dir} template "
+            "in base.toml), so editing this propagates to both preprocess and training."
+        ),
+        "ko": (
+            "전처리가 VAE에 맞춰 리사이즈한 PNG를 저장하는 디렉토리. 학습 시 "
+            "데이터셋 서브셋의 image_dir로도 사용됩니다(base.toml의 "
+            "{resized_image_dir} 템플릿 치환). 이 값을 바꾸면 전처리와 학습 양쪽에 "
+            "반영됩니다."
+        ),
+    },
+    "lora_cache_dir": {
+        "en": (
+            "Where preprocess writes VAE latent (.npz) and text-encoder "
+            "(_anima_te.safetensors) caches. Also resolved into the dataset subset's "
+            "cache_dir at training time."
+        ),
+        "ko": (
+            "전처리가 VAE 잠재 변수(.npz)와 텍스트 인코더 출력"
+            "(_anima_te.safetensors) 캐시를 저장하는 디렉토리. 학습 시 데이터셋 "
+            "서브셋의 cache_dir로도 사용됩니다."
+        ),
+    },
 }
 
 

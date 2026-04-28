@@ -26,6 +26,34 @@ def _preset(default: str = "default") -> str:
     return os.environ.get("PRESET", default)
 
 
+_PATH_OVERRIDES_CACHE: dict | None = None
+
+
+def _path_overrides() -> dict:
+    """Top-level path scalars from base.toml + active preset (cached).
+
+    Defers the import of ``library.config.io`` so commands that don't touch
+    preprocess (e.g. ``test-merge``) keep the module-load surface small.
+    """
+    global _PATH_OVERRIDES_CACHE
+    if _PATH_OVERRIDES_CACHE is not None:
+        return _PATH_OVERRIDES_CACHE
+    sys.path.insert(0, str(ROOT))
+    try:
+        from library.config.io import load_path_overrides
+        _PATH_OVERRIDES_CACHE = load_path_overrides(_preset())
+    except Exception as e:  # noqa: BLE001 — fall back silently to defaults
+        print(f"warn: could not read base.toml path overrides: {e}", file=sys.stderr)
+        _PATH_OVERRIDES_CACHE = {}
+    return _PATH_OVERRIDES_CACHE
+
+
+def _path(key: str, default: str) -> str:
+    """Fetch a path key from base.toml/preset overrides, with hardcoded fallback."""
+    val = _path_overrides().get(key, default)
+    return str(val) if val is not None else default
+
+
 def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
     """Return the most recently modified .safetensors file in output/ckpt/ matching prefix.
 
@@ -769,9 +797,9 @@ def cmd_preprocess_resize(extra):
             PY,
             "preprocess/resize_images.py",
             "--src",
-            "image_dataset",
+            _path("source_image_dir", "image_dataset"),
             "--dst",
-            "post_image_dataset/resized",
+            _path("resized_image_dir", "post_image_dataset/resized"),
             "--no_copy_captions",
             *extra,
         ]
@@ -784,9 +812,9 @@ def cmd_preprocess_vae(extra):
             PY,
             "preprocess/cache_latents.py",
             "--dir",
-            "post_image_dataset/resized",
+            _path("resized_image_dir", "post_image_dataset/resized"),
             "--cache_dir",
-            "post_image_dataset/lora",
+            _path("lora_cache_dir", "post_image_dataset/lora"),
             "--vae",
             "models/vae/qwen_image_vae.safetensors",
             "--batch_size",
@@ -804,9 +832,9 @@ def cmd_preprocess_te(extra):
             PY,
             "preprocess/cache_text_embeddings.py",
             "--dir",
-            "image_dataset",
+            _path("source_image_dir", "image_dataset"),
             "--cache_dir",
-            "post_image_dataset/lora",
+            _path("lora_cache_dir", "post_image_dataset/lora"),
             "--qwen3",
             "models/text_encoders/qwen_3_06b_base.safetensors",
             "--dit",
