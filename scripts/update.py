@@ -40,6 +40,17 @@ import urllib.request
 from pathlib import Path
 from typing import Iterable
 
+# Korean / non-UTF-8 Windows code pages (cp949, cp1252, …) can't encode the
+# em-dash, arrow, and ellipsis characters used below. Force UTF-8 on stdout
+# and stderr so this script works the same way under the GUI subprocess as
+# it does in a UTF-8 terminal.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 ROOT = Path(__file__).resolve().parent.parent
 REPO = "sorryhyun/anima_lora"
 MANIFEST_FILE = ROOT / ".anima_release.json"
