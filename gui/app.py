@@ -33,8 +33,15 @@ from gui.i18n import (
 )
 from gui.image_tab import ImageViewerTab
 from gui.merge_tab import MergeTab
+from gui.system_dialog import (
+    GITHUB_ISSUES_URL,
+    open_models_dialog,
+    open_update_dialog,
+)
 
-GUIDEBOOK_PATH = Path(__file__).resolve().parent.parent / "docs" / "guidelines" / "가이드북.md"
+GUIDEBOOK_PATH = (
+    Path(__file__).resolve().parent.parent / "docs" / "guidelines" / "가이드북.md"
+)
 
 
 LANG_NAMES = {"en": "English", "ko": "한국어"}
@@ -109,7 +116,9 @@ class GuidebookDialog(QDialog):
         self.browser.setOpenExternalLinks(True)
         # Resolve relative links/images against the markdown file's directory.
         self.browser.setSearchPaths([str(md_path.parent)])
-        self.browser.document().setBaseUrl(QUrl.fromLocalFile(str(md_path.parent) + "/"))
+        self.browser.document().setBaseUrl(
+            QUrl.fromLocalFile(str(md_path.parent) + "/")
+        )
         # Default anchor color is pure blue — illegible on the dark bg.
         self.browser.document().setDefaultStyleSheet(
             "a { color: #ffb86b; text-decoration: underline; }"
@@ -160,6 +169,24 @@ class MainWindow(QMainWindow):
         )
         self.guide_btn.clicked.connect(self._open_guidebook)
         lang_bar.addWidget(self.guide_btn)
+
+        self.models_btn = QPushButton(t("models_btn"))
+        self.models_btn.setToolTip(t("models_btn_tooltip"))
+        self.models_btn.clicked.connect(lambda: open_models_dialog(self))
+        lang_bar.addWidget(self.models_btn)
+
+        self.update_btn = QPushButton(t("update_btn"))
+        self.update_btn.setToolTip(t("update_btn_tooltip"))
+        self.update_btn.clicked.connect(lambda: open_update_dialog(self))
+        lang_bar.addWidget(self.update_btn)
+
+        self.issues_btn = QPushButton(t("report_issue"))
+        self.issues_btn.setToolTip(t("report_issue_tooltip"))
+        self.issues_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(GITHUB_ISSUES_URL))
+        )
+        lang_bar.addWidget(self.issues_btn)
+
         lang_bar.addStretch()
         lang_bar.addWidget(QLabel(t("language")))
         self.lang_combo = QComboBox()

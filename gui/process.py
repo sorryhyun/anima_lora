@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 
 import psutil
-from PySide6.QtCore import QProcess
+from PySide6.QtCore import QProcess, QProcessEnvironment
 
 
 def setup_kill_safe(proc: QProcess) -> None:
@@ -26,12 +26,32 @@ def setup_kill_safe(proc: QProcess) -> None:
     makes it the head of a new process group — handy for ``os.killpg`` style
     teardown, though we let psutil handle the walk itself. On Windows this
     is a no-op; psutil's tree walk works there without extra setup.
+
+    Also sets ``PYTHONUNBUFFERED=1`` on the child process environment so the
+    GUI sees output (especially tqdm progress) in real-time instead of in
+    block-buffered chunks. Pipes from QProcess aren't TTYs, and Python's
+    default stdio is block-buffered when redirected to pipes.
     """
+    env = make_subprocess_env()
+    proc.setProcessEnvironment(env)
     if sys.platform == "win32":
         return
     params = QProcess.UnixProcessParameters()
     params.flags = QProcess.UnixProcessFlag.CreateNewSession
     proc.setUnixProcessParameters(params)
+
+
+def make_subprocess_env(**extras: str) -> QProcessEnvironment:
+    """Build a QProcessEnvironment from the system env + ``PYTHONUNBUFFERED=1``.
+
+    Pass keyword args to add tab-specific vars (e.g. ``METHOD``,
+    ``METHODS_SUBDIR``) without forgetting the unbuffered flag.
+    """
+    env = QProcessEnvironment.systemEnvironment()
+    env.insert("PYTHONUNBUFFERED", "1")
+    for k, v in extras.items():
+        env.insert(k, v)
+    return env
 
 
 def kill_process_tree(proc: QProcess, *, grace_seconds: float = 3.0) -> None:

@@ -19,7 +19,27 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-PY = sys.executable
+
+
+def _python_exe() -> str:
+    """Resolve the venv's ``python.exe`` even if this process runs as pythonw.exe.
+
+    Why python.exe and not just ``sys.executable``: when the GUI is launched
+    via the desktop shortcut, sys.executable is pythonw.exe. pythonw children
+    don't surface a working ``sys.stdout``/``sys.stderr`` to inherited pipes
+    the way python.exe does — tqdm progress (which writes to stderr) silently
+    drops, breaking the GUI's progress bar. python.exe + ``CREATE_NO_WINDOW``
+    (set in ``run()`` when this process has no console) gives us both no
+    console popup AND working stdio for grandchildren.
+    """
+    if sys.platform == "win32":
+        cand = Path(sys.executable).with_name("python.exe")
+        if cand.exists():
+            return str(cand)
+    return sys.executable
+
+
+PY = _python_exe()
 
 
 def _preset(default: str = "default") -> str:
@@ -46,6 +66,7 @@ def _path_overrides() -> dict:
     sys.path.insert(0, str(ROOT))
     try:
         from library.config.io import load_path_overrides
+
         _PATH_OVERRIDES_CACHE = load_path_overrides(
             preset=_preset(),
             method=os.environ.get("METHOD") or None,
@@ -115,19 +136,89 @@ def latest_hydra() -> Path:
     return outputs[0]
 
 
+def _has_console() -> bool:
+    """True if this process is attached to a Windows console (or is non-Windows).
+
+    Used to decide whether to suppress new console popups for child processes.
+    A pythonw.exe-launched process (e.g. desktop GUI shortcut) has no console.
+    """
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.kernel32.GetConsoleWindow())
+    except Exception:  # noqa: BLE001 — err on the safe side: keep output visible
+        return True
+
+
 def run(cmd: list[str], **kwargs):
-    """Run a subprocess, exit on failure."""
+    """Run a subprocess, exit on failure.
+
+    Prepends the venv's Scripts/bin directory to PATH (in both the child env
+    and our own lookup) so venv-installed CLIs (``accelerate``, ``hf``, ...)
+    resolve even when this process was started via a desktop shortcut that
+    invokes ``pythonw.exe`` directly, bypassing venv activation.
+
+    On Windows, ``subprocess.run`` uses the parent's PATH to locate the exe —
+    setting ``env["PATH"]`` only affects the *child's* environment, not the
+    lookup. We resolve the first arg to an absolute path with ``shutil.which``
+    against the boosted PATH so the lookup works regardless.
+
+    When this process has no console (pythonw.exe), Windows would allocate a
+    new console for any console-subsystem child (python.exe, hf.exe, ...).
+    We pass ``CREATE_NO_WINDOW`` to suppress that popup so GUI users don't
+    see a terminal flash for every subprocess.
+    """
     print(f"  > {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=kwargs.pop("cwd", ROOT), **kwargs)
+    env = kwargs.pop("env", None)
+    if env is None:
+        env = os.environ.copy()
+    venv_bin = str(Path(PY).parent)
+    if venv_bin not in env.get("PATH", "").split(os.pathsep):
+        env["PATH"] = venv_bin + os.pathsep + env.get("PATH", "")
+    # Block-buffered stdio over pipes makes progress output (tqdm, training
+    # logs) appear in chunks instead of streaming live. PYTHONUNBUFFERED keeps
+    # children's Python stdio line-/un-buffered so the GUI sees output as it
+    # happens. Inherited by grandchildren too.
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    cmd = list(cmd)
+    if cmd and not Path(cmd[0]).is_absolute():
+        resolved = shutil.which(cmd[0], path=env["PATH"])
+        if resolved:
+            cmd[0] = resolved
+    if sys.platform == "win32" and not _has_console():
+        kwargs.setdefault("creationflags", subprocess.CREATE_NO_WINDOW)
+        # Explicit stdio inheritance: when this process runs under pythonw.exe
+        # (e.g. GUI shortcut), pythonw's fd 1/2 aren't exposed to children the
+        # standard way — subprocess.run's default inheritance silently drops
+        # the grandchild's output. Passing sys.stdout/sys.stderr directly hands
+        # over Python's wrapped file objects, which DO route to the pipes our
+        # parent (QProcess) set up. Only set when the caller hasn't.
+        if sys.stdout is not None:
+            kwargs.setdefault("stdout", sys.stdout)
+        if sys.stderr is not None:
+            kwargs.setdefault("stderr", sys.stderr)
+    result = subprocess.run(cmd, cwd=kwargs.pop("cwd", ROOT), env=env, **kwargs)
     if result.returncode != 0:
         sys.exit(result.returncode)
 
 
 def accelerate_launch(*args: str):
-    """Launch training via accelerate with extra CLI args forwarded."""
+    """Launch training via accelerate with extra CLI args forwarded.
+
+    Invoked as ``python -m accelerate.commands.accelerate_cli launch`` rather
+    than the bare ``accelerate`` console-script. This keeps ``sys.executable``
+    propagating from this process through to accelerate's workers — so when
+    the GUI is launched via pythonw.exe (no console), the workers also run
+    under pythonw.exe and don't pop terminal windows. The accelerate.exe
+    shim hardcodes python.exe as the worker interpreter, defeating that.
+    """
     run(
         [
-            "accelerate",
+            PY,
+            "-m",
+            "accelerate.commands.accelerate_cli",
             "launch",
             "--num_cpu_threads_per_process",
             "3",
@@ -139,7 +230,9 @@ def accelerate_launch(*args: str):
     )
 
 
-def train(method: str, extra, preset: str | None = None, methods_subdir: str | None = None):
+def train(
+    method: str, extra, preset: str | None = None, methods_subdir: str | None = None
+):
     """Launch training for a given method + preset (PRESET env overrides default).
 
     `methods_subdir` selects the folder under `configs/` that holds the method
@@ -253,31 +346,44 @@ def cmd_ip_adapter_preprocess(extra):
         [
             PY,
             "preprocess/cache_latents.py",
-            "--dir", src,
-            "--cache_dir", dst,
-            "--vae", "models/vae/qwen_image_vae.safetensors",
-            "--batch_size", "4",
-            "--chunk_size", "64",
+            "--dir",
+            src,
+            "--cache_dir",
+            dst,
+            "--vae",
+            "models/vae/qwen_image_vae.safetensors",
+            "--batch_size",
+            "4",
+            "--chunk_size",
+            "64",
         ]
     )
     run(
         [
             PY,
             "preprocess/cache_text_embeddings.py",
-            "--dir", src,
-            "--cache_dir", dst,
-            "--qwen3", "models/text_encoders/qwen_3_06b_base.safetensors",
-            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
-            "--caption_shuffle_variants", "4",
+            "--dir",
+            src,
+            "--cache_dir",
+            dst,
+            "--qwen3",
+            "models/text_encoders/qwen_3_06b_base.safetensors",
+            "--dit",
+            "models/diffusion_models/anima-preview3-base.safetensors",
+            "--caption_shuffle_variants",
+            "4",
         ]
     )
     run(
         [
             PY,
             "preprocess/cache_pe_encoder.py",
-            "--dir", src,
-            "--cache_dir", dst,
-            "--encoder", encoder,
+            "--dir",
+            src,
+            "--cache_dir",
+            dst,
+            "--encoder",
+            encoder,
         ]
     )
 
@@ -293,22 +399,32 @@ def cmd_easycontrol_preprocess(extra):
         [
             PY,
             "preprocess/cache_latents.py",
-            "--dir", src,
-            "--cache_dir", dst,
-            "--vae", "models/vae/qwen_image_vae.safetensors",
-            "--batch_size", "4",
-            "--chunk_size", "64",
+            "--dir",
+            src,
+            "--cache_dir",
+            dst,
+            "--vae",
+            "models/vae/qwen_image_vae.safetensors",
+            "--batch_size",
+            "4",
+            "--chunk_size",
+            "64",
         ]
     )
     run(
         [
             PY,
             "preprocess/cache_text_embeddings.py",
-            "--dir", src,
-            "--cache_dir", dst,
-            "--qwen3", "models/text_encoders/qwen_3_06b_base.safetensors",
-            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
-            "--caption_shuffle_variants", "4",
+            "--dir",
+            src,
+            "--cache_dir",
+            dst,
+            "--qwen3",
+            "models/text_encoders/qwen_3_06b_base.safetensors",
+            "--dit",
+            "models/diffusion_models/anima-preview3-base.safetensors",
+            "--caption_shuffle_variants",
+            "4",
         ]
     )
 
@@ -341,9 +457,12 @@ def cmd_test_ip(extra):
 
     args = [
         *INFERENCE_BASE,
-        "--save_path", str(save_dir),
-        "--ip_adapter_weight", str(latest_output("anima_ip_adapter")),
-        "--ip_image", ref_image,
+        "--save_path",
+        str(save_dir),
+        "--ip_adapter_weight",
+        str(latest_output("anima_ip_adapter")),
+        "--ip_image",
+        ref_image,
         "--ip_image_match_size",
     ]
     if scale := os.environ.get("IP_SCALE"):
@@ -399,9 +518,12 @@ def cmd_test_easycontrol(extra):
 
     args = [
         *INFERENCE_BASE,
-        "--save_path", str(save_dir),
-        "--easycontrol_weight", str(latest_output("anima_easycontrol")),
-        "--easycontrol_image", ref_image,
+        "--save_path",
+        str(save_dir),
+        "--easycontrol_weight",
+        str(latest_output("anima_easycontrol")),
+        "--easycontrol_image",
+        ref_image,
         "--easycontrol_image_match_size",
     ]
     if scale := os.environ.get("EC_SCALE"):
@@ -437,14 +559,22 @@ def cmd_distill_mod(extra):
         [
             PY,
             "scripts/distill_modulation.py",
-            "--data_dir", "post_image_dataset",
-            "--dit_path", "models/diffusion_models/anima-preview3-base.safetensors",
-            "--output_path", "output/ckpt/pooled_text_proj.safetensors",
-            "--iterations", "1500",
-            "--lr", "1e-5",
-            "--warmup", "0.05",
-            "--blocks_to_swap", "0",
-            "--attn_mode", "flash",
+            "--data_dir",
+            "post_image_dataset",
+            "--dit_path",
+            "models/diffusion_models/anima-preview3-base.safetensors",
+            "--output_path",
+            "output/ckpt/pooled_text_proj.safetensors",
+            "--iterations",
+            "1500",
+            "--lr",
+            "1e-5",
+            "--warmup",
+            "0.05",
+            "--blocks_to_swap",
+            "0",
+            "--attn_mode",
+            "flash",
             "--no_grad_ckpt",
             *extra,
         ]
@@ -541,11 +671,15 @@ def cmd_img2emb_calibrate(extra):
         [
             PY,
             "scripts/img2emb/finetune.py",
-            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
-            "--warm_start", warm,
+            "--dit",
+            "models/diffusion_models/anima-preview3-base.safetensors",
+            "--warm_start",
+            warm,
             "--calibrate_only",
-            "--batch_size", bs,
-            "--blocks_to_swap", swap,
+            "--batch_size",
+            bs,
+            "--blocks_to_swap",
+            swap,
             *_encoder_args(),
             *extra,
         ]
@@ -669,9 +803,7 @@ def cmd_test_ref(extra):
     # Reference-inversion prefixes ride the same loader as prefix-mode tuning;
     # the prefix loader at inference hard-prepends the K slots to crossattn_emb
     # (matches exactly how invert_reference.py assembled them at training time).
-    run(
-        [*INFERENCE_BASE, "--prefix_weight", str(latest_output("anima_ref")), *extra]
-    )
+    run([*INFERENCE_BASE, "--prefix_weight", str(latest_output("anima_ref")), *extra])
 
 
 def cmd_test_postfix(extra):
@@ -686,7 +818,10 @@ def cmd_test_postfix(extra):
         reverse=True,
     )
     if not outputs:
-        print("No 'anima_postfix*.safetensors' files found in output/ckpt/", file=sys.stderr)
+        print(
+            "No 'anima_postfix*.safetensors' files found in output/ckpt/",
+            file=sys.stderr,
+        )
         sys.exit(1)
     run(
         [
@@ -741,9 +876,7 @@ def cmd_test_merge(extra):
             reverse=True,
         )
         if not candidates:
-            print(
-                f"No '*_merged.safetensors' files found in {target}", file=sys.stderr
-            )
+            print(f"No '*_merged.safetensors' files found in {target}", file=sys.stderr)
             sys.exit(1)
         chosen = candidates[0]
     else:
@@ -886,22 +1019,32 @@ def cmd_download_pe(_extra):
     # PE-Core-L14-336 — only the .pt checkpoint is needed; vision tower is
     # vendored at library/models/pe.py (no perception_models clone required).
     (ROOT / "models" / "pe").mkdir(parents=True, exist_ok=True)
-    run([
-        "hf", "download",
-        "facebook/PE-Core-L14-336", "PE-Core-L14-336.pt",
-        "--local-dir", "models/pe",
-    ])
+    run(
+        [
+            "hf",
+            "download",
+            "facebook/PE-Core-L14-336",
+            "PE-Core-L14-336.pt",
+            "--local-dir",
+            "models/pe",
+        ]
+    )
 
 
 def cmd_download_pe_g(_extra):
     # PE-Core-G14-448 — larger PE sibling (50-layer 1536-wide, 1024 patch tokens
     # at 448 px, no CLS). Same vendored vision tower in library/models/pe.py.
     (ROOT / "models" / "pe").mkdir(parents=True, exist_ok=True)
-    run([
-        "hf", "download",
-        "facebook/PE-Core-G14-448", "PE-Core-G14-448.pt",
-        "--local-dir", "models/pe",
-    ])
+    run(
+        [
+            "hf",
+            "download",
+            "facebook/PE-Core-G14-448",
+            "PE-Core-G14-448.pt",
+            "--local-dir",
+            "models/pe",
+        ]
+    )
 
 
 def cmd_download_mit(_extra):
@@ -1019,6 +1162,100 @@ def cmd_mask_clean(_extra):
 
 def cmd_gui(_extra):
     run([PY, "-m", "gui"])
+
+
+def _ensure_shortcut_icon() -> Path | None:
+    """Return a ready ``.ico`` path for the desktop shortcut, or None.
+
+    Windows .lnk files only accept ``.ico`` (not PNG). If ``icon.png`` exists at
+    the project root, convert it to ``icon.ico`` next to it (rebuilt only when
+    the .png is newer or the .ico is missing). Returns None if there's no
+    source image or Pillow isn't available — caller falls back to the
+    interpreter's own icon.
+    """
+    src = ROOT / "icon.png"
+    if not src.exists():
+        return None
+    dst = ROOT / "icon.ico"
+    if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
+        return dst
+    try:
+        from PIL import Image
+    except ImportError:
+        print("warn: Pillow not available — skipping icon conversion", file=sys.stderr)
+        return None
+    try:
+        img = Image.open(src)
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+        # Multi-resolution ICO so Windows picks the right size for taskbar /
+        # desktop / file explorer at any DPI.
+        img.save(
+            dst,
+            format="ICO",
+            sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+        )
+    except Exception as exc:  # noqa: BLE001 — non-fatal, just skip the icon
+        print(f"warn: could not convert icon.png → icon.ico: {exc}", file=sys.stderr)
+        return None
+    return dst
+
+
+def cmd_gui_shortcut(_extra):
+    """Create a Windows desktop shortcut ('Anima LoRA GUI.lnk') that launches the GUI.
+
+    Targets ``pythonw.exe`` from the active venv with ``tasks.py gui``, so it runs
+    without flashing a console window. Honors the OneDrive-redirected Desktop when
+    present.
+    """
+    if sys.platform != "win32":
+        print("gui-shortcut is Windows-only.", file=sys.stderr)
+        sys.exit(1)
+
+    # Prefer the local Desktop. Only fall back to a OneDrive-redirected one if
+    # the local folder doesn't exist (i.e., OneDrive backup has actually moved it).
+    user = Path(os.environ.get("USERPROFILE", ""))
+    candidates = [user / "Desktop", user / "OneDrive" / "Desktop"]
+    desktop = next((d for d in candidates if d.is_dir()), None)
+    if desktop is None:
+        print(
+            f"Could not locate a Desktop folder (checked: {', '.join(map(str, candidates))})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    shortcut_path = desktop / "Anima LoRA GUI.lnk"
+    pyw = Path(PY).with_name("pythonw.exe")
+    target = pyw if pyw.exists() else Path(PY)
+    icon = _ensure_shortcut_icon() or target
+
+    # Pass paths via env vars to sidestep PowerShell quoting on user paths.
+    env = {
+        **os.environ,
+        "_SC_PATH": str(shortcut_path),
+        "_SC_TARGET": str(target),
+        "_SC_ARGS": f'"{ROOT / "tasks.py"}" gui',
+        "_SC_WD": str(ROOT),
+        "_SC_DESC": "Anima LoRA GUI",
+        "_SC_ICON": str(icon),
+    }
+    ps = (
+        "$ws = New-Object -ComObject WScript.Shell;"
+        "$sc = $ws.CreateShortcut($env:_SC_PATH);"
+        "$sc.TargetPath = $env:_SC_TARGET;"
+        "$sc.Arguments = $env:_SC_ARGS;"
+        "$sc.WorkingDirectory = $env:_SC_WD;"
+        "$sc.Description = $env:_SC_DESC;"
+        "$sc.IconLocation = $env:_SC_ICON;"
+        "$sc.Save()"
+    )
+    print(f"  > Creating shortcut: {shortcut_path}")
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", ps], cwd=ROOT, env=env
+    )
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+    print(f"  > Done. Double-click '{shortcut_path.name}' on your desktop to launch.")
 
 
 def cmd_test_unit(extra):
@@ -1145,12 +1382,17 @@ def cmd_test_invert(extra):
         [
             PY,
             "scripts/inversion/interpret_inversion.py",
-            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
-            "--vae", "models/vae/qwen_image_vae.safetensors",
-            "--attn_mode", "flash",
-            "--name", name,
+            "--dit",
+            "models/diffusion_models/anima-preview3-base.safetensors",
+            "--vae",
+            "models/vae/qwen_image_vae.safetensors",
+            "--attn_mode",
+            "flash",
+            "--name",
+            name,
             "--verify",
-            "--verify_steps", "30",
+            "--verify_steps",
+            "30",
             *extra,
         ]
     )
@@ -1163,11 +1405,16 @@ def cmd_bench_inversion(extra):
         [
             PY,
             "bench/inversion/inversion_stability.py",
-            "--dit", "models/diffusion_models/anima-preview3-base.safetensors",
-            "--vae", "models/vae/qwen_image_vae.safetensors",
-            "--num_inversions", num,
-            "--steps", "100",
-            "--lr", "0.01",
+            "--dit",
+            "models/diffusion_models/anima-preview3-base.safetensors",
+            "--vae",
+            "models/vae/qwen_image_vae.safetensors",
+            "--num_inversions",
+            num,
+            "--steps",
+            "100",
+            "--lr",
+            "0.01",
             *extra,
         ]
     )
@@ -1208,7 +1455,10 @@ def cmd_invert(extra):
 # ── CLI ───────────────────────────────────────────────────────────────
 
 COMMANDS = {
-    "lora": (cmd_lora, "LoRA family (lora|tlora|tlora_rf|hydralora via configs/methods/lora.toml)"),
+    "lora": (
+        cmd_lora,
+        "LoRA family (lora|tlora|tlora_rf|hydralora via configs/methods/lora.toml)",
+    ),
     "lora-fast": (cmd_lora_fast, "Fast LoRA training (16GB, no block swap)"),
     "lora-low-vram": (cmd_lora_low_vram, "LoRA training (low VRAM)"),
     "lora-half": (cmd_lora_half, "LoRA training with sample_ratio=0.5 (half preset)"),
@@ -1218,8 +1468,14 @@ COMMANDS = {
         "(variant from GUI_PRESETS env or 1st positional; e.g. tlora, hydralora, reft, postfix_exp).",
     ),
     "apex": (cmd_apex, "APEX distillation (condition-shift self-adversarial)"),
-    "postfix": (cmd_postfix, "Postfix/prefix tuning (mode selected in configs/methods/postfix.toml)"),
-    "ip-adapter": (cmd_ip_adapter, "IP-Adapter training (decoupled image cross-attention)"),
+    "postfix": (
+        cmd_postfix,
+        "Postfix/prefix tuning (mode selected in configs/methods/postfix.toml)",
+    ),
+    "ip-adapter": (
+        cmd_ip_adapter,
+        "IP-Adapter training (decoupled image cross-attention)",
+    ),
     "ip-adapter-cache": (
         cmd_ip_adapter_cache,
         "Pre-cache PE-Core patch features for IP-Adapter (writes into "
@@ -1230,16 +1486,28 @@ COMMANDS = {
         "Full IP-Adapter preprocess: latents + text emb + PE features. "
         "Source: ip-adapter-dataset/  Cache: post_image_dataset/ip-adapter/.",
     ),
-    "test-ip": (cmd_test_ip, "Inference with latest IP-Adapter weight. Usage: test-ip <ref_image> [--prompt ... --ip_scale ...]"),
-    "easycontrol": (cmd_easycontrol, "EasyControl training (extended self-attn KV with VAE-encoded reference)"),
+    "test-ip": (
+        cmd_test_ip,
+        "Inference with latest IP-Adapter weight. Usage: test-ip <ref_image> [--prompt ... --ip_scale ...]",
+    ),
+    "easycontrol": (
+        cmd_easycontrol,
+        "EasyControl training (extended self-attn KV with VAE-encoded reference)",
+    ),
     "easycontrol-preprocess": (
         cmd_easycontrol_preprocess,
         "Full EasyControl preprocess: latents + text emb. "
         "Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/.",
     ),
-    "test-easycontrol": (cmd_test_easycontrol, "Inference with latest EasyControl weight. Usage: test-easycontrol <ref_image> [--prompt ... --easycontrol_scale ...]"),
+    "test-easycontrol": (
+        cmd_test_easycontrol,
+        "Inference with latest EasyControl weight. Usage: test-easycontrol <ref_image> [--prompt ... --easycontrol_scale ...]",
+    ),
     "test": (cmd_test, "Inference with latest LoRA"),
-    "test-mod": (cmd_test_mod, "Inference with latest pooled_text_proj (modulation guidance)"),
+    "test-mod": (
+        cmd_test_mod,
+        "Inference with latest pooled_text_proj (modulation guidance)",
+    ),
     "test-apex": (cmd_test_apex, "Inference with latest APEX LoRA"),
     "test-hydra": (cmd_test_hydra, "Inference with latest HydraLoRA moe (router-live)"),
     "test-prefix": (cmd_test_prefix, "Inference with latest prefix weight"),
@@ -1276,12 +1544,30 @@ COMMANDS = {
         cmd_img2emb,
         "Train img2emb resampler (pretrain + finetune). Optional stage arg: preprocess|anchors|pretrain|finetune",
     ),
-    "img2emb-preprocess": (cmd_img2emb_preprocess, "img2emb: extract encoder features (stage 1)"),
-    "img2emb-anchors": (cmd_img2emb_anchors, "img2emb: refresh people=* prototypes + phase1_positions (stage 1.5)"),
-    "img2emb-align": (cmd_img2emb_align, "img2emb: re-run Hungarian alignment of T5 variants v1..vN to v0"),
-    "img2emb-pretrain": (cmd_img2emb_pretrain, "img2emb: resampler pretrain on cached targets (stage 2)"),
-    "img2emb-finetune": (cmd_img2emb_finetune, "img2emb: flow-matching finetune through frozen DiT (stage 3)"),
-    "img2emb-calibrate": (cmd_img2emb_calibrate, "img2emb: step-0 loss-weight calibration (no backward); FINETUNE_WARM/BS/SWAP env"),
+    "img2emb-preprocess": (
+        cmd_img2emb_preprocess,
+        "img2emb: extract encoder features (stage 1)",
+    ),
+    "img2emb-anchors": (
+        cmd_img2emb_anchors,
+        "img2emb: refresh people=* prototypes + phase1_positions (stage 1.5)",
+    ),
+    "img2emb-align": (
+        cmd_img2emb_align,
+        "img2emb: re-run Hungarian alignment of T5 variants v1..vN to v0",
+    ),
+    "img2emb-pretrain": (
+        cmd_img2emb_pretrain,
+        "img2emb: resampler pretrain on cached targets (stage 2)",
+    ),
+    "img2emb-finetune": (
+        cmd_img2emb_finetune,
+        "img2emb: flow-matching finetune through frozen DiT (stage 3)",
+    ),
+    "img2emb-calibrate": (
+        cmd_img2emb_calibrate,
+        "img2emb: step-0 loss-weight calibration (no backward); FINETUNE_WARM/BS/SWAP env",
+    ),
     "preprocess-img2emb": (
         cmd_preprocess_img2emb,
         "img2emb preprocessing: extract features + rebuild anchor artifacts",
@@ -1297,20 +1583,36 @@ COMMANDS = {
     "download-mit": (cmd_download_mit, "Download MIT model"),
     "download-tipsv2": (cmd_download_tipsv2, "Download TIPSv2-L/14 (img2emb encoder)"),
     "download-pe": (cmd_download_pe, "Download PE-Core-L14-336 (img2emb encoder)"),
-    "download-pe-g": (cmd_download_pe_g, "Download PE-Core-G14-448 (larger img2emb encoder)"),
+    "download-pe-g": (
+        cmd_download_pe_g,
+        "Download PE-Core-G14-448 (larger img2emb encoder)",
+    ),
     "mask": (cmd_mask, "Generate SAM3 + MIT masks, then merge"),
     "mask-sam": (cmd_mask_sam, "Generate SAM3 masks only"),
     "mask-mit": (cmd_mask_mit, "Generate MIT masks only"),
     "mask-clean": (cmd_mask_clean, "Remove all generated masks"),
     "gui": (cmd_gui, "Launch PySide6 GUI"),
+    "gui-shortcut": (
+        cmd_gui_shortcut,
+        "Create a Windows desktop shortcut that launches the GUI (no console window)",
+    ),
     "invert": (cmd_invert, "Embedding inversion (image → text embedding)"),
     "invert-ref": (
         cmd_invert_ref,
         "Reference inversion (REF_IMAGE=path/to/ref.png; see tasks.py::cmd_invert_ref for env vars)",
     ),
-    "test-invert": (cmd_test_invert, "Verify a saved inversion (INVERT_NAME env, default 'latest')"),
-    "bench-inversion": (cmd_bench_inversion, "Run the inversion-stability benchmark (BENCH_INVERSIONS env)"),
-    "distill-mod": (cmd_distill_mod, "Distill pooled_text_proj MLP for modulation guidance"),
+    "test-invert": (
+        cmd_test_invert,
+        "Verify a saved inversion (INVERT_NAME env, default 'latest')",
+    ),
+    "bench-inversion": (
+        cmd_bench_inversion,
+        "Run the inversion-stability benchmark (BENCH_INVERSIONS env)",
+    ),
+    "distill-mod": (
+        cmd_distill_mod,
+        "Distill pooled_text_proj MLP for modulation guidance",
+    ),
     "test-unit": (cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
     "export-logs": (
         cmd_export_logs,

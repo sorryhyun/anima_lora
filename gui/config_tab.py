@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import shutil
 import sys
 import time
 from typing import Any
@@ -11,7 +10,7 @@ from typing import Any
 import html
 
 import toml
-from PySide6.QtCore import QProcess, QProcessEnvironment, Qt, Signal
+from PySide6.QtCore import QProcess, Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
@@ -49,7 +48,7 @@ from gui import (
 )
 from gui.explanations import field_help, method_guide
 from gui.i18n import t
-from gui.process import kill_process_tree, setup_kill_safe
+from gui.process import kill_process_tree, make_subprocess_env, setup_kill_safe
 
 # Matches tqdm lines like:
 #   "Denoising steps:  40%|####      | 12/30 [00:12<00:34,  2.50it/s]"
@@ -96,7 +95,9 @@ class ConfigTab(QWidget):
         top.addWidget(QLabel("Method"))
         self.method_combo = QComboBox()
         self.method_combo.addItems(list_methods())
-        self.method_combo.currentTextChanged.connect(lambda _: self._on_method_changed())
+        self.method_combo.currentTextChanged.connect(
+            lambda _: self._on_method_changed()
+        )
         top.addWidget(self.method_combo, 1)
 
         save_btn = QPushButton(t("save"))
@@ -278,7 +279,9 @@ class ConfigTab(QWidget):
 
     def _refresh_variant_row(self, method: str) -> None:
         variants = list_gui_variants(method)
-        current = [self.variant_combo.itemText(i) for i in range(self.variant_combo.count())]
+        current = [
+            self.variant_combo.itemText(i) for i in range(self.variant_combo.count())
+        ]
         # Rebuilding the combo resets currentText to the first item, which
         # would clobber the user's selection on every _reload. Only rebuild
         # when the variant list actually changed (i.e. method family switched).
@@ -371,7 +374,9 @@ class ConfigTab(QWidget):
         # When the current method ships variant presets, the right-panel
         # default is the variant guide + Apply-semantics callout (replacing
         # the old collapsible box on the left-side form).
-        method = self.method_combo.currentText() if hasattr(self, "method_combo") else ""
+        method = (
+            self.method_combo.currentText() if hasattr(self, "method_combo") else ""
+        )
         guide = method_guide(method)
         if guide:
             self._explain.setHtml(guide)
@@ -442,14 +447,13 @@ class ConfigTab(QWidget):
         # we treat it as part of the "effective baseline" when deciding which
         # form values are worth writing to disk (skips redundant entries).
         from gui import _load_all_presets  # local import: only needed for save
+
         implicit_pset = _load_all_presets().get(self._IMPLICIT_PRESET, {})
 
         out: dict[str, Any] = dict(method_orig)
 
         for k, w in self._w.items():
-            baseline = method_orig.get(
-                k, implicit_pset.get(k, base.get(k))
-            )
+            baseline = method_orig.get(k, implicit_pset.get(k, base.get(k)))
             v = _read(w, baseline)
             if k in method_orig or v != baseline:
                 out[k] = v
@@ -481,9 +485,7 @@ class ConfigTab(QWidget):
             QMessageBox.information(self, t("saved"), f"Saved {rel}")
 
     def _create_variant(self):
-        name, ok = QInputDialog.getText(
-            self, t("new_variant"), t("new_variant_prompt")
-        )
+        name, ok = QInputDialog.getText(self, t("new_variant"), t("new_variant_prompt"))
         if not ok:
             return
         name = (name or "").strip()
@@ -493,9 +495,7 @@ class ConfigTab(QWidget):
         full = f"custom/{name}"
         new_path = variant_path(full)
         if new_path.exists():
-            QMessageBox.warning(
-                self, t("error"), t("new_variant_exists", name=name)
-            )
+            QMessageBox.warning(self, t("error"), t("new_variant_exists", name=name))
             return
         new_path.parent.mkdir(parents=True, exist_ok=True)
         new_path.write_text("", encoding="utf-8")
@@ -553,15 +553,19 @@ class ConfigTab(QWidget):
         # source_image_dir / resized_image_dir / lora_cache_dir override the
         # user wrote into the variant file is honored by preprocess too.
         variant = self._current_variant()
-        env = QProcessEnvironment.systemEnvironment()
-        env.insert("METHOD", variant)
-        env.insert("METHODS_SUBDIR", "gui-methods")
-        env.insert("PRESET", self._IMPLICIT_PRESET)
-        self._proc.setProcessEnvironment(env)
+        self._proc.setProcessEnvironment(
+            make_subprocess_env(
+                METHOD=variant,
+                METHODS_SUBDIR="gui-methods",
+                PRESET=self._IMPLICIT_PRESET,
+            )
+        )
 
         self.log.clear()
         self._reset_progress()
-        self._log(f"> METHOD={variant} METHODS_SUBDIR=gui-methods python {' '.join(args)}\n")
+        self._log(
+            f"> METHOD={variant} METHODS_SUBDIR=gui-methods python {' '.join(args)}\n"
+        )
         self._running_mode = "preprocess"
         self._proc.start(python, args)
         self.preprocess_btn.setText(t("preprocess") + " ...")
@@ -579,34 +583,26 @@ class ConfigTab(QWidget):
             QMessageBox.warning(self, t("error"), t("preprocess_required"))
             return
 
-        accelerate = shutil.which("accelerate")
-        if not accelerate:
+        try:
+            import accelerate.commands.accelerate_cli  # noqa: F401
+        except ImportError:
             QMessageBox.warning(self, t("error"), t("accelerate_not_found"))
             return
 
         variant = self._current_variant()
-        # --preset default is passed unconditionally; the variant file is the
-        # GUI's source of truth and overrides any preset values it cares about.
-        args = [
-            "launch",
-            "--num_cpu_threads_per_process",
-            "3",
-            "--mixed_precision",
-            "bf16",
-            "train.py",
-            "--method",
-            variant,
-            "--methods_subdir",
-            "gui-methods",
-            "--preset",
-            self._IMPLICIT_PRESET,
-        ]
+        # Route through tasks.py rather than spawning accelerate directly:
+        # tasks.py uses python.exe + CREATE_NO_WINDOW for its subprocess calls,
+        # which keeps tqdm output flowing back to the GUI. If we spawned
+        # accelerate from this process (sys.executable = pythonw.exe under the
+        # desktop shortcut), accelerate's workers would inherit pythonw and
+        # their stdio would silently drop.
+        args = ["tasks.py", "lora-gui", variant]
 
         self.log.clear()
         self._reset_progress()
-        self._log(f"> accelerate {' '.join(args)}\n")
+        self._log(f"> python {' '.join(args)}\n")
         self._running_mode = "train"
-        self._proc.start(accelerate, args)
+        self._proc.start(sys.executable, args)
         self.train_btn.setText(t("train") + " ...")
         self.train_btn.setStyleSheet(self._train_busy_style)
         self.train_btn.setEnabled(False)

@@ -72,6 +72,37 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "guidebook_missing": "Guide not found at {path}",
         "guidebook_open_external": "Open in system viewer",
         "guidebook_close": "Close",
+        # Top-bar buttons (models / update / report issue)
+        "models_btn": "Models",
+        "models_btn_tooltip": "Download or re-download model checkpoints (Anima base, SAM3, MIT, IP-Adapter encoders)",
+        "update_btn": "Update",
+        "update_btn_tooltip": "Pull the latest anima_lora release from GitHub and run uv sync",
+        "report_issue": "Report Issue",
+        "report_issue_tooltip": "Open the GitHub issue tracker in your browser",
+        # Models dialog
+        "models_title": "Download Models",
+        "models_intro": "Pick a model group below or use 'Download all' for the standard set "
+        "(Anima + SAM3 + MIT + TIPSv2). Files are saved under models/.",
+        "models_download_all": "Download all (Anima + SAM3 + MIT + TIPSv2)",
+        "models_download": "Download",
+        "models_redownload": "Re-download",
+        "models_installed": "✓ Installed",
+        "models_missing": "✗ Missing",
+        "model_anima": "Anima — DiT + text encoder + VAE",
+        "model_sam3": "SAM3 — text-bubble masking",
+        "model_mit": "MIT — manga text masking",
+        "model_tipsv2": "TIPSv2-L/14 — img2emb encoder",
+        "model_pe": "PE-Core-L14-336 — IP-Adapter vision encoder",
+        "model_pe_g": "PE-Core-G14-448 — larger IP-Adapter vision encoder",
+        # Update dialog
+        "update_title": "Update anima_lora",
+        "update_warning": "Update will pull the latest release from GitHub and overwrite the working "
+        "tree (datasets, output/, models/ are preserved). Custom edits to "
+        "configs/methods/ and configs/gui-methods/ will prompt before overwrite. "
+        "Run 'Dry run' first to preview the changes.",
+        "update_dry_run": "Dry run",
+        "update_run": "Run update",
+        "update_confirm": "This will rewrite anima_lora source files. Continue?",
         # MergeTab
         "n_files": "{n} files",
         "merge_no_adapter": "No adapters found",
@@ -169,6 +200,37 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "guidebook_missing": "가이드를 찾을 수 없습니다: {path}",
         "guidebook_open_external": "시스템 뷰어로 열기",
         "guidebook_close": "닫기",
+        # Top-bar buttons (models / update / report issue)
+        "models_btn": "모델",
+        "models_btn_tooltip": "모델 체크포인트 다운로드 / 재다운로드 (Anima 베이스, SAM3, MIT, IP-Adapter 인코더)",
+        "update_btn": "업데이트",
+        "update_btn_tooltip": "GitHub에서 최신 anima_lora 릴리스를 가져오고 uv sync를 실행합니다",
+        "report_issue": "이슈 신고",
+        "report_issue_tooltip": "브라우저에서 GitHub 이슈 트래커 열기",
+        # Models dialog
+        "models_title": "모델 다운로드",
+        "models_intro": "아래에서 모델 그룹을 선택하거나 '전체 다운로드'로 표준 세트 "
+        "(Anima + SAM3 + MIT + TIPSv2)를 받으세요. 파일은 models/ 아래에 저장됩니다.",
+        "models_download_all": "전체 다운로드 (Anima + SAM3 + MIT + TIPSv2)",
+        "models_download": "다운로드",
+        "models_redownload": "재다운로드",
+        "models_installed": "✓ 설치됨",
+        "models_missing": "✗ 없음",
+        "model_anima": "Anima — DiT + 텍스트 인코더 + VAE",
+        "model_sam3": "SAM3 — 말풍선 마스킹",
+        "model_mit": "MIT — 만화 텍스트 마스킹",
+        "model_tipsv2": "TIPSv2-L/14 — img2emb 인코더",
+        "model_pe": "PE-Core-L14-336 — IP-Adapter 비전 인코더",
+        "model_pe_g": "PE-Core-G14-448 — 대형 IP-Adapter 비전 인코더",
+        # Update dialog
+        "update_title": "anima_lora 업데이트",
+        "update_warning": "업데이트는 GitHub에서 최신 릴리스를 받아 작업 트리를 덮어씁니다 "
+        "(datasets, output/, models/는 보존됩니다). configs/methods/와 "
+        "configs/gui-methods/의 커스텀 수정사항은 덮어쓰기 전에 확인을 요청합니다. "
+        "먼저 'Dry run'으로 변경사항을 미리 확인하세요.",
+        "update_dry_run": "Dry run",
+        "update_run": "업데이트 실행",
+        "update_confirm": "anima_lora 소스 파일이 다시 작성됩니다. 계속하시겠습니까?",
         # MergeTab
         "n_files": "파일 {n}개",
         "merge_no_adapter": "어댑터를 찾을 수 없습니다",

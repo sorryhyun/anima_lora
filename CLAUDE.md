@@ -82,6 +82,7 @@ make test-spectrum         # Spectrum-accelerated inference (~3.75x speedup)
 # GUI (PySide6 — config editing, IP-Adapter / EasyControl preprocess+train, dataset browsing)
 make gui
 python tasks.py gui        # Windows
+make gui-shortcut          # Create "Anima LoRA GUI.lnk" on the Windows desktop (no console window)
 
 # Masking (for masked loss training)
 # Outputs under masks/{sam,mit,merged}/. Subsets auto-pick masks/merged/ when
