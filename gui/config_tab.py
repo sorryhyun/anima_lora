@@ -13,6 +13,7 @@ import toml
 from PySide6.QtCore import QProcess, Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -624,10 +625,26 @@ class ConfigTab(QWidget):
             QMessageBox.warning(self, t("error"), t("preprocess_required"))
             return
 
+        # Flip button visuals to busy + repaint BEFORE the slow accelerate
+        # import and QProcess.start, otherwise Qt's event loop is blocked
+        # long enough for Windows to flag the GUI as "Not Responding".
+        self.train_btn.setText(t("train") + " ...")
+        self.train_btn.setStyleSheet(self._train_busy_style)
+        self.train_btn.setEnabled(False)
+        self.preprocess_btn.setEnabled(False)
+        self.test_btn.setEnabled(False)
+        self.method_combo.setEnabled(False)
+        self.variant_combo.setEnabled(False)
+        self.new_variant_btn.setEnabled(False)
+        self.log.clear()
+        self._reset_progress()
+        QApplication.processEvents()
+
         try:
             import accelerate.commands.accelerate_cli  # noqa: F401
         except ImportError:
             QMessageBox.warning(self, t("error"), t("accelerate_not_found"))
+            self._restore_train_idle()
             return
 
         variant = self._current_variant()
@@ -639,20 +656,20 @@ class ConfigTab(QWidget):
         # their stdio would silently drop.
         args = ["tasks.py", "lora-gui", variant]
 
-        self.log.clear()
-        self._reset_progress()
         self._log(f"> python {' '.join(args)}\n")
         self._running_mode = "train"
         self._proc.start(sys.executable, args)
-        self.train_btn.setText(t("train") + " ...")
-        self.train_btn.setStyleSheet(self._train_busy_style)
-        self.train_btn.setEnabled(False)
-        self.preprocess_btn.setEnabled(False)
-        self.test_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
-        self.method_combo.setEnabled(False)
-        self.variant_combo.setEnabled(False)
-        self.new_variant_btn.setEnabled(False)
+
+    def _restore_train_idle(self):
+        self.train_btn.setText(t("train"))
+        self.train_btn.setStyleSheet(self._train_idle_style)
+        self.train_btn.setEnabled(self._preprocessed)
+        self.preprocess_btn.setEnabled(True)
+        self.test_btn.setEnabled(self._has_lora_output())
+        self.method_combo.setEnabled(True)
+        self.variant_combo.setEnabled(True)
+        self.new_variant_btn.setEnabled(True)
 
     def _stop_training(self):
         kill_process_tree(self._proc)
