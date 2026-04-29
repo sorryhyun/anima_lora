@@ -7,12 +7,10 @@ dependencies = [
     # Core ML
     # Linux: torch nightly + CUDA 13.2 (see docs/optimizations/cuda132.md).
     # Windows/WSL : torch 2.11 stable + CUDA 13.0 (CUDA 13.2 is Linux-only).
-    # "torch>=2.12.0.dev0,<2.13 ; sys_platform == 'linux'",
-    # "torchvision>=0.27.0.dev0,<0.28 ; sys_platform == 'linux'",
-    # "torch>=2.11.0 ; sys_platform == 'win32'",
-    # "torchvision>=0.26.0 ; sys_platform == 'win32'",
-    "torch>=2.11.0",
-    "torchvision>=0.26.0",
+    "torch>=2.12.0.dev0,<2.13 ; sys_platform == 'linux'",
+    "torchvision>=0.27.0.dev0,<0.28 ; sys_platform == 'linux'",
+    "torch>=2.11.0 ; sys_platform == 'win32'",
+    "torchvision>=0.26.0 ; sys_platform == 'win32'",
     "accelerate>=1.13.0",
     "transformers>=5.3.0",
     "diffusers>=0.37.0",
@@ -47,7 +45,7 @@ dependencies = [
     "pycocotools>=2.0.11",
     # Linux-only CUDA extensions
     # Linux: FA2 built against CUDA 13.2 + torch nightly (see docs/optimizations/cuda132.md).
-    "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
+    "flash-attn @ https://github.com/sorryhyun/flash-attention-sm120-fix/releases/download/fa2cuda132/flash_attn-2.8.3-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
     # flash-attn-4 (flash-attention-sm120) is not supported yet — kernel is unstable on our targets.
     # "flash-attn-4 @ git+https://github.com/sorryhyun/flash-attention-sm120-fix.git@dz/sm120_tma_optimized#subdirectory=flash_attn/cute ; sys_platform == 'linux'",
@@ -84,8 +82,8 @@ dev = [
 index-strategy = "unsafe-best-match"
 # Linux pulls torch nightly + cu132; Windows resolves against cu130 stable.
 extra-index-url = [
-    # "https://download.pytorch.org/whl/nightly/cu132",
-    "https://download.pytorch.org/whl/cu130",
+    "https://download.pytorch.org/whl/nightly/cu132 ; sys_platform == 'linux'",
+    "https://download.pytorch.org/whl/cu130 ; sys_platform == 'win32'",
 ]
 prerelease = "allow"
 override-dependencies = ["numpy>=2.0.0"]
