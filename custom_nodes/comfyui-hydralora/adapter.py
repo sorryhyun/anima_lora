@@ -299,29 +299,30 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
     return hydra_hook
 
 
-def _make_sigma_capture_wrapper(prev_forward, sigma_state: dict):
-    """Record ``timesteps`` into shared state, then delegate to inner forward.
+def _make_sigma_pre_hook(sigma_state: dict):
+    """Forward pre-hook that records the diffusion-step ``timesteps`` arg.
 
     Each hydra hook reads ``sigma_state["sigma"]`` to compute the
-    σ-conditional router bias. Chains over any existing ``diffusion_model.forward``
-    object_patch (postfix wraps on top, hydra wraps innermost — postfix
-    receives ``timesteps`` unchanged and forwards it down).
+    σ-conditional router input. ``args[1]`` is ``timesteps`` from
+    ``BaseModel._apply_model`` (``self.diffusion_model(xc, t, ...)``) — the
+    only call site of the DiT in inference. Hook is a pure dict store; no
+    args are modified, so we return ``None``.
 
-    ``@torch._dynamo.disable`` is load-bearing: under torch.compile the
-    fake-tensor trace propagates through ``prev_forward`` and hits ComfyUI's
-    ``comfy_cast_weights`` path (e.g. cosmos ``x_embedder.proj``), where
-    dynamo can't symbolically execute the conditional CPU→GPU weight cast
-    and aborts with "Unhandled FakeTensor Device Propagation". The wrapper
-    itself is pure bookkeeping (one dict store), so there's nothing to gain
-    from compiling it — eager fallback through here is free.
+    Why a pre-hook rather than overriding ``diffusion_model.forward``:
+    replacing ``forward`` via ``add_object_patch`` strands sub-Linears
+    (e.g. cosmos ``x_embedder.proj``) on CPU under ComfyUI's lowvram-aware
+    load path — exactly the failure mode that retired the old
+    ``block.forward`` override in favor of ``_forward_hooks``. A pre-hook
+    leaves ``forward`` untouched and torch.compile traces cleanly through it
+    (with the dynamo-disable guard below for safety on the dict store).
     """
 
     @torch._dynamo.disable
-    def new_forward(x, timesteps, context, **kwargs):
-        sigma_state["sigma"] = timesteps
-        return prev_forward(x, timesteps, context, **kwargs)
+    def sigma_pre_hook(module, args):
+        if len(args) >= 2:
+            sigma_state["sigma"] = args[1]
 
-    return new_forward
+    return sigma_pre_hook
 
 
 def _resolve_module(model, dotted_path: str):
@@ -343,9 +344,9 @@ def _apply_hydra_live_to_model(
     Replaces the previous uniform-bake fallback. Per-Linear hooks reproduce
     the trained ``HydraLoRAModule.forward`` (per-sample router from layer
     input, per-expert ``lora_up`` blend) so the multi-head specialization
-    fires at inference. σ-conditional router bias is captured via a thin
-    wrapper around ``diffusion_model.forward`` that records ``timesteps``
-    into shared state read by each hook.
+    fires at inference. σ-conditional router bias is captured via a forward
+    pre-hook on ``diffusion_model`` that records ``timesteps`` into shared
+    state read by each hook.
 
     Returns number of hooks installed.
     """
@@ -358,13 +359,17 @@ def _apply_hydra_live_to_model(
 
     sigma_state: dict = {}
 
-    # Wrap diffusion_model.forward to record σ. Chain over any prior patch.
-    prev = model.object_patches.get("diffusion_model.forward")
-    if prev is None:
-        prev = model.model.diffusion_model.forward
+    # Install a forward pre-hook on diffusion_model to record σ. Patch
+    # _forward_pre_hooks (an OrderedDict) via add_object_patch so it's
+    # reverted on ModelPatcher.unpatch_model. Composes with any prior
+    # diffusion_model.forward object_patch (postfix wraps forward; the
+    # pre-hook fires before that wrapper sees args).
+    diffusion_model = model.get_model_object("diffusion_model")
+    sigma_pre_hook = _make_sigma_pre_hook(sigma_state)
+    new_pre_hooks = OrderedDict(diffusion_model._forward_pre_hooks)
+    new_pre_hooks[id(sigma_pre_hook)] = sigma_pre_hook
     model.add_object_patch(
-        "diffusion_model.forward",
-        _make_sigma_capture_wrapper(prev, sigma_state),
+        "diffusion_model._forward_pre_hooks", new_pre_hooks
     )
 
     patched = 0
