@@ -101,6 +101,14 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Train only the DiT (U-Net). Text encoder weights are frozen. Recommended for most LoRA training.",
         "ko": "DiT(U-Net)만 학습. 텍스트 인코더 가중치는 동결. 대부분의 LoRA 학습에 권장.",
     },
+    "network_weights": {
+        "en": "Path to a pre-trained adapter checkpoint to warm-start from. APEX requires this — it distills the warm-start LoRA into a fast-inference (1–4 NFE) variant; cold-start catastrophically regresses. Leave empty for plain LoRA training.",
+        "ko": "워밍업으로 사용할 사전 학습 어댑터 체크포인트 경로. APEX에는 필수 — APEX는 워밍업 LoRA를 빠른 추론(1–4 NFE) 변형으로 distillation 학습하며, cold-start는 학습이 크게 무너집니다. 일반 LoRA 학습 시에는 비워두세요.",
+    },
+    "dim_from_weights": {
+        "en": "Read network_dim from the warm-start checkpoint instead of the form value. Set together with network_weights for APEX so rank matches the warm-start LoRA.",
+        "ko": "network_dim을 폼 값 대신 워밍업 체크포인트에서 읽기. APEX에서 network_weights와 함께 설정하여 랭크를 워밍업 LoRA와 일치시킵니다.",
+    },
     # Training
     "learning_rate": {
         "en": "Base learning rate for the optimizer. Typical: 1e-5 to 1e-4.",
@@ -331,74 +339,124 @@ APPLY_NOTE_HTML: dict[str, str] = {
 
 LORA_GUIDE: dict[str, str] = {
     "en": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>LoRA Variants</h2>"
-        "<p><b>LoRA</b> &mdash; Classic low-rank adaptation. Adds small trainable matrices "
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>LoRA</h2>"
+        "<p>Classic low-rank adaptation. Adds small trainable matrices "
         "(down &times; up) to existing weight layers.<br>"
         "<code>y = x + (x @ down @ up) &times; scale &times; multiplier</code><br>"
-        "Simple, effective, and the default choice for most fine-tuning tasks.</p>"
-        "<p><b>OrthoLoRA</b> &mdash; Orthogonal LoRA. Uses QR-decomposed orthonormal bases "
-        "with learned singular values: <code>P @ diag(&lambda;) @ Q</code>. "
-        "Includes orthogonality regularization to keep updates structured.<br>"
-        "Linear layers only. Enable with <code>use_ortho = true</code>.</p>"
-        "<p><b>T-LoRA</b> &mdash; Timestep-dependent rank masking. The effective LoRA rank changes "
-        "with the denoising timestep via a power-law schedule:<br>"
-        "&bull; High noise (early steps) &rarr; full rank (maximum expressiveness)<br>"
-        "&bull; Low noise (late steps) &rarr; reduced rank (down to <code>min_rank</code>)<br>"
-        "Enable with <code>use_timestep_mask = true</code>.</p>"
-        "<p><b>HydraLoRA</b> &mdash; MoE-style routing: shared <code>lora_down</code> plus "
-        "<code>num_experts</code> per-expert <code>lora_up</code> heads, routed layer-locally "
-        "from the adapted Linear's input. Produces a <code>*_moe.safetensors</code> sibling "
-        "used by <code>make test-hydra</code>.<br>"
-        "Enable with <code>use_hydra = true</code>. Requires <code>cache_llm_adapter_outputs = true</code>.</p>"
-        "<p><b>σ-router</b> &mdash; Add-on to HydraLoRA: a tiny sinusoidal(σ)&rarr;E bias MLP "
-        "in each router so expert choice can vary with denoising timestep. Zero-init at the "
-        "final layer &rarr; step-0 identical to base HydraLoRA.<br>"
-        "Enable with <code>use_sigma_router = true</code>.</p>"
-        "<p><b>ReFT</b> &mdash; Block-level residual-stream intervention (Wu et al., NeurIPS 2024). "
-        "One module per selected DiT block adds <code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code> "
-        "to the block's output &mdash; an additive side-channel that composes with any LoRA variant and "
-        "lives in the same <code>.safetensors</code>.<br>"
-        "Enable with <code>add_reft = true</code>; pick blocks via <code>reft_layers</code> "
-        "(e.g. <code>last_8</code>).</p>"
+        "Simple, effective, and the default choice for most fine-tuning tasks. "
+        "Fully bakeable into the base DiT.</p>"
+        "<p><b>Variants</b><br>"
+        "&bull; <b>lora</b> &mdash; default 24GB+ profile.<br>"
+        "&bull; <b>lora_longer</b> &mdash; same architecture, more epochs for "
+        "datasets that haven't converged.<br>"
+        "&bull; <b>lora-8gb</b> &mdash; low-VRAM profile (block swap + offload "
+        "checkpointing); pick this if you OOM on the default.</p>"
     ),
     "ko": (
-        "<h2 style='margin:0 0 10px 0; font-size:17px;'>LoRA 변형</h2>"
-        "<p><b>LoRA</b> &mdash; 클래식 저랭크 적응. 기존 가중치 레이어에 작은 학습 가능한 "
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>LoRA</h2>"
+        "<p>클래식 저랭크 적응. 기존 가중치 레이어에 작은 학습 가능한 "
         "행렬(down &times; up)을 추가.<br>"
         "<code>y = x + (x @ down @ up) &times; scale &times; multiplier</code><br>"
-        "간단하고 효과적이며, 대부분의 파인튜닝에 기본 선택.</p>"
-        "<p><b>OrthoLoRA</b> &mdash; 직교 LoRA. QR 분해된 정규 직교 기저와 "
-        "학습된 특이값 사용: <code>P @ diag(&lambda;) @ Q</code>. "
-        "업데이트 구조 유지를 위한 직교성 정규화 포함.<br>"
-        "선형 레이어만 지원. <code>use_ortho = true</code>로 활성화.</p>"
-        "<p><b>T-LoRA</b> &mdash; 타임스텝 의존 랭크 마스킹. 디노이징 타임스텝에 따라 "
-        "유효 LoRA 랭크가 거듭제곱 스케줄로 변동:<br>"
-        "&bull; 높은 노이즈 (초기 스텝) &rarr; 전체 랭크 (최대 표현력)<br>"
-        "&bull; 낮은 노이즈 (후기 스텝) &rarr; 축소된 랭크 (<code>min_rank</code>까지)<br>"
-        "<code>use_timestep_mask = true</code>로 활성화.</p>"
-        "<p><b>HydraLoRA</b> &mdash; MoE 스타일 라우팅: 공유 <code>lora_down</code> + "
-        "<code>num_experts</code>개의 전문가별 <code>lora_up</code> 헤드를 적응된 Linear의 "
-        "입력으로부터 레이어 로컬하게 라우팅. <code>make test-hydra</code>에 사용되는 "
-        "<code>*_moe.safetensors</code> 동반 파일 생성.<br>"
-        "<code>use_hydra = true</code>로 활성화. <code>cache_llm_adapter_outputs = true</code> 필요.</p>"
-        "<p><b>σ-router</b> &mdash; HydraLoRA 확장: 각 라우터에 sinusoidal(σ)&rarr;E 바이어스 MLP를 "
-        "추가하여 전문가 선택이 디노이징 타임스텝에 따라 변동. 최종 레이어 zero-init &rarr; "
-        "초기에는 기본 HydraLoRA와 동일.<br>"
-        "<code>use_sigma_router = true</code>로 활성화.</p>"
-        "<p><b>ReFT</b> &mdash; 블록 수준 잔차 스트림 개입 (Wu et al., NeurIPS 2024). "
-        "선택된 각 DiT 블록에 하나의 모듈이 <code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code>을 "
-        "블록 출력에 추가 &mdash; 모든 LoRA 변형과 함께 사용 가능한 추가 사이드 채널이며, "
-        "동일한 <code>.safetensors</code>에 저장됨.<br>"
-        "<code>add_reft = true</code>로 활성화; <code>reft_layers</code>로 블록 선택 "
-        "(예: <code>last_8</code>).</p>"
+        "간단하고 효과적이며, 대부분의 파인튜닝에 기본 선택. 베이스 DiT에 "
+        "완전히 베이킹 가능.</p>"
+        "<p><b>변형</b><br>"
+        "&bull; <b>lora</b> &mdash; 기본 24GB+ 프로필.<br>"
+        "&bull; <b>lora_longer</b> &mdash; 동일 아키텍처, 더 긴 에폭 (수렴이 "
+        "느린 데이터셋용).<br>"
+        "&bull; <b>lora-8gb</b> &mdash; 저VRAM 프로필 (블록 스왑 + 오프로드 "
+        "체크포인팅); 기본 프로필에서 OOM이 나면 이 변형을 사용.</p>"
     ),
 }
 
 
 def lora_guide() -> str:
-    """Return the LoRA variant guide HTML for the current language."""
+    """Return the LoRA method guide HTML for the current language."""
     lang = current_language()
     return LORA_GUIDE.get(lang) or LORA_GUIDE["en"]
+
+
+# ── OrthoLoRA guide ─────────────────────────────────────────
+
+ORTHOLORA_GUIDE: dict[str, str] = {
+    "en": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>OrthoLoRA</h2>"
+        "<p>SVD-based orthogonal parameterization of the update matrix "
+        "(linear layers only). Uses QR-decomposed orthonormal bases with "
+        "learned singular values: <code>P @ diag(&lambda;) @ Q</code>. "
+        "Orthogonality regularization keeps the update structured, which "
+        "tends to reduce interference with unrelated concepts.</p>"
+        "<p>Saved as a plain LoRA at checkpoint time via thin SVD on "
+        "&Delta;W &mdash; the result is a regular LoRA "
+        "<code>.safetensors</code> bakeable into the base DiT. The "
+        "orthogonality machinery is training-only.</p>"
+        "<p>Toggle: <code>use_ortho = true</code>.</p>"
+    ),
+    "ko": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>OrthoLoRA</h2>"
+        "<p>업데이트 행렬의 SVD 기반 직교 파라미터화 (선형 레이어 전용). "
+        "QR 분해된 정규 직교 기저와 학습된 특이값을 사용: "
+        "<code>P @ diag(&lambda;) @ Q</code>. 직교성 정규화로 업데이트가 "
+        "구조화되며, 무관한 컨셉과의 간섭을 줄이는 경향이 있습니다.</p>"
+        "<p>저장 시 &Delta;W에 대한 thin SVD로 일반 LoRA로 변환됨 &mdash; "
+        "결과물은 베이스 DiT에 베이킹 가능한 일반 LoRA "
+        "<code>.safetensors</code>입니다. 직교성 메커니즘은 학습 시에만 "
+        "작동합니다.</p>"
+        "<p>토글: <code>use_ortho = true</code>.</p>"
+    ),
+}
+
+
+def ortholora_guide() -> str:
+    lang = current_language()
+    return ORTHOLORA_GUIDE.get(lang) or ORTHOLORA_GUIDE["en"]
+
+
+# ── T-LoRA guide ────────────────────────────────────────────
+
+TLORA_GUIDE: dict[str, str] = {
+    "en": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>T-LoRA</h2>"
+        "<p>Timestep-dependent rank masking. The effective LoRA rank varies "
+        "with the denoising timestep via a power-law schedule:<br>"
+        "&bull; High noise (early steps) &rarr; full rank (maximum expressiveness)<br>"
+        "&bull; Low noise (late steps) &rarr; reduced rank (down to "
+        "<code>min_rank</code>)<br>"
+        "Concentrates capacity where structure is being decided. The mask is "
+        "training-only — inference uses full rank at every t by design — so "
+        "the saved <code>.safetensors</code> is a regular bakeable LoRA. "
+        "See <code>docs/methods/timestep_mask.md</code>.</p>"
+        "<p>Toggle: <code>use_timestep_mask = true</code>.</p>"
+        "<p><b>Variants</b><br>"
+        "&bull; <b>tlora</b> &mdash; pure T-LoRA, no orthogonality constraint.<br>"
+        "&bull; <b>tlora_ortho</b> &mdash; T-LoRA stacked on OrthoLoRA "
+        "(<code>use_ortho = true</code> + <code>use_timestep_mask = true</code>). "
+        "Recommended general-purpose pick when you want both rank-by-σ scheduling "
+        "and orthogonal regularization. Still fully bakeable.</p>"
+    ),
+    "ko": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>T-LoRA</h2>"
+        "<p>타임스텝 의존 랭크 마스킹. 디노이징 타임스텝에 따라 유효 LoRA "
+        "랭크가 거듭제곱 스케줄로 변동:<br>"
+        "&bull; 높은 노이즈 (초기 스텝) &rarr; 전체 랭크 (최대 표현력)<br>"
+        "&bull; 낮은 노이즈 (후기 스텝) &rarr; 축소된 랭크 (<code>min_rank</code>까지)<br>"
+        "구조가 결정되는 시점에 표현력을 집중시킵니다. 마스크는 학습 시에만 "
+        "적용되며 추론은 모든 t에서 전체 랭크를 사용하므로, 저장된 "
+        "<code>.safetensors</code>는 베이킹 가능한 일반 LoRA입니다. "
+        "<code>docs/methods/timestep_mask.md</code> 참조.</p>"
+        "<p>토글: <code>use_timestep_mask = true</code>.</p>"
+        "<p><b>변형</b><br>"
+        "&bull; <b>tlora</b> &mdash; 순수 T-LoRA, 직교성 제약 없음.<br>"
+        "&bull; <b>tlora_ortho</b> &mdash; T-LoRA + OrthoLoRA 스택 "
+        "(<code>use_ortho = true</code> + <code>use_timestep_mask = true</code>). "
+        "σ별 랭크 스케줄링과 직교성 정규화를 모두 원할 때 추천하는 범용 선택. "
+        "여전히 완전히 베이킹 가능합니다.</p>"
+    ),
+}
+
+
+def tlora_guide() -> str:
+    lang = current_language()
+    return TLORA_GUIDE.get(lang) or TLORA_GUIDE["en"]
 
 
 POSTFIX_GUIDE: dict[str, str] = {
@@ -448,6 +506,193 @@ def postfix_guide() -> str:
     return POSTFIX_GUIDE.get(lang) or POSTFIX_GUIDE["en"]
 
 
+# ── "Not mergeable" callout ───────────────────────────────────
+# Reused by HydraLoRA / ReFT / Postfix guides — these methods can't be
+# baked into a plain DiT via scripts/merge_to_dit.py (router is layer-local
+# / hook-only / not a weight delta), so the user has to load the adapter at
+# inference time instead of distributing a merged checkpoint.
+
+NOT_MERGEABLE_HTML: dict[str, str] = {
+    "en": (
+        "<div style='background:#33231e; padding:10px 14px; border-left:3px solid #e67e22; "
+        "margin-bottom:14px; border-radius:3px;'>"
+        "<p style='margin:0; color:#f0c14b;'><b>⚠ Not mergeable into the base DiT.</b> "
+        "This method can't be baked via the Merge tab / "
+        "<code>scripts/merge_to_dit.py</code> — it relies on a runtime hook, "
+        "layer-local router, or non-weight delta. Distribute the adapter "
+        "<code>.safetensors</code> alongside the base model and load it at "
+        "inference time (e.g. ComfyUI <i>Anima Adapter Loader</i>).</p>"
+        "</div>"
+    ),
+    "ko": (
+        "<div style='background:#33231e; padding:10px 14px; border-left:3px solid #e67e22; "
+        "margin-bottom:14px; border-radius:3px;'>"
+        "<p style='margin:0; color:#f0c14b;'><b>⚠ 베이스 DiT에 병합 불가능.</b> "
+        "이 방식은 Merge 탭 / <code>scripts/merge_to_dit.py</code>로 베이킹할 수 "
+        "없습니다 — 런타임 훅, 레이어 로컬 라우터, 또는 가중치 델타가 아닌 형태로 동작하기 "
+        "때문입니다. 어댑터 <code>.safetensors</code>를 베이스 모델과 함께 배포하고 추론 "
+        "시점에 로드하세요 (예: ComfyUI <i>Anima Adapter Loader</i>).</p>"
+        "</div>"
+    ),
+}
+
+
+def not_mergeable_note() -> str:
+    lang = current_language()
+    return NOT_MERGEABLE_HTML.get(lang) or NOT_MERGEABLE_HTML["en"]
+
+
+# ── HydraLoRA guide ──────────────────────────────────────────
+
+HYDRALORA_GUIDE: dict[str, str] = {
+    "en": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>HydraLoRA</h2>"
+        "<p>MoE-style routing on top of LoRA: shared <code>lora_down</code> + "
+        "<code>num_experts</code> per-expert <code>lora_up</code> heads, routed "
+        "layer-locally from the adapted Linear's input. A load-balance loss "
+        "(<code>balance_loss_weight</code>) discourages router collapse onto a "
+        "single expert.</p>"
+        "<p><b>hydralora_sigma</b> &mdash; Adds a tiny sinusoidal(σ)→E bias MLP per "
+        "router so expert choice can vary with denoising timestep. Zero-init at "
+        "the final layer means step-0 starts identical to base HydraLoRA; σ-"
+        "dependence only emerges if gradients push it.</p>"
+        "<p>Training produces a <code>*_moe.safetensors</code> sibling next to "
+        "the adapter; both files are needed for router-live inference "
+        "(<code>make test-hydra</code> / ComfyUI <i>Anima Adapter Loader</i>). "
+        "Requires <code>cache_llm_adapter_outputs = true</code>.</p>"
+    ),
+    "ko": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>HydraLoRA</h2>"
+        "<p>LoRA 위에 MoE 스타일 라우팅을 얹은 방식: 공유 <code>lora_down</code> + "
+        "<code>num_experts</code>개의 전문가별 <code>lora_up</code> 헤드를, 적응된 "
+        "Linear의 입력으로부터 레이어 로컬하게 라우팅합니다. 부하 균형 손실"
+        "(<code>balance_loss_weight</code>)이 단일 전문가 붕괴를 방지합니다.</p>"
+        "<p><b>hydralora_sigma</b> &mdash; 각 라우터에 sinusoidal(σ)→E 바이어스 MLP를 "
+        "추가하여 전문가 선택이 디노이징 타임스텝에 따라 변동. 최종 레이어 zero-init → "
+        "초기에는 기본 HydraLoRA와 동일하며, σ-의존성은 그래디언트가 발생시킬 때만 "
+        "발현합니다.</p>"
+        "<p>학습 시 어댑터 옆에 <code>*_moe.safetensors</code> 동반 파일이 생성되며, "
+        "라우터-라이브 추론에는 두 파일 모두 필요합니다 "
+        "(<code>make test-hydra</code> / ComfyUI <i>Anima Adapter Loader</i>). "
+        "<code>cache_llm_adapter_outputs = true</code> 필요.</p>"
+    ),
+}
+
+
+def hydralora_guide() -> str:
+    lang = current_language()
+    return HYDRALORA_GUIDE.get(lang) or HYDRALORA_GUIDE["en"]
+
+
+# ── ReFT guide ──────────────────────────────────────────────
+
+REFT_GUIDE: dict[str, str] = {
+    "en": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>ReFT</h2>"
+        "<p>Block-level residual-stream intervention (Wu et al., NeurIPS 2024). "
+        "One <code>ReFTModule</code> per selected DiT block adds "
+        "<code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code> to the "
+        "block's output — an additive side-channel, not a weight delta on any "
+        "Linear. Composes with any LoRA variant and lives in the same "
+        "<code>.safetensors</code>.</p>"
+        "<p>Pick blocks with <code>reft_layers</code> (e.g. <code>last_8</code>, "
+        "<code>stride_2</code>, or comma-separated indices). <code>reft_dim</code> "
+        "controls intervention rank; <code>reft_alpha</code> sets effective scale "
+        "via <code>alpha / dim</code>.</p>"
+        "<p><b>tlora_ortho_reft</b> bundles ReFT with T-LoRA + OrthoLoRA in one "
+        "training run — the LoRA half is bakeable, but the ReFT block hooks "
+        "aren't, so the merged DiT loses ReFT's contribution (the merge tool "
+        "warns and asks for <code>--allow-partial</code>).</p>"
+    ),
+    "ko": (
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>ReFT</h2>"
+        "<p>블록 수준 잔차 스트림 개입 (Wu et al., NeurIPS 2024). 선택된 각 DiT "
+        "블록에 하나의 <code>ReFTModule</code>이 "
+        "<code>R^T &middot; (&Delta;W&middot;h + b) &middot; scale</code>을 블록 "
+        "출력에 추가합니다 — Linear의 가중치 델타가 아닌 추가 사이드 채널입니다. 모든 "
+        "LoRA 변형과 함께 사용 가능하며 동일한 <code>.safetensors</code>에 저장됩니다.</p>"
+        "<p><code>reft_layers</code>로 블록 선택 (예: <code>last_8</code>, "
+        "<code>stride_2</code>, 또는 쉼표 구분 인덱스). <code>reft_dim</code>은 개입 "
+        "랭크를, <code>reft_alpha</code>는 <code>alpha / dim</code>으로 실효 스케일을 "
+        "설정합니다.</p>"
+        "<p><b>tlora_ortho_reft</b>는 ReFT를 T-LoRA + OrthoLoRA와 한 번의 학습으로 "
+        "묶은 변형입니다. LoRA 부분은 베이킹 가능하지만 ReFT 블록 훅은 베이킹할 수 "
+        "없어 병합된 DiT에서는 ReFT 기여가 사라집니다 (Merge 도구가 경고하고 "
+        "<code>--allow-partial</code>을 요구합니다).</p>"
+    ),
+}
+
+
+def reft_guide() -> str:
+    lang = current_language()
+    return REFT_GUIDE.get(lang) or REFT_GUIDE["en"]
+
+
+# ── APEX guide ──────────────────────────────────────────────
+
+APEX_GUIDE: dict[str, str] = {
+    "en": (
+        "<div style='background:#1e3322; padding:10px 14px; border-left:3px solid #27ae60; "
+        "margin-bottom:14px; border-radius:3px;'>"
+        "<p style='margin:0 0 6px 0;'><b>APEX is a distillation step, not a "
+        "from-scratch LoRA.</b></p>"
+        "<p style='margin:0;'>It takes an already-trained LoRA as a warm-start "
+        "and refines it into a 1–4 NFE fast-inference variant via self-"
+        "adversarial condition-shift training. <b>Train a regular LoRA first</b>, "
+        "then point <code>network_weights</code> at that "
+        "<code>.safetensors</code> to start the APEX run. Cold-start (empty "
+        "<code>network_weights</code>) catastrophically regresses.</p>"
+        "</div>"
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>APEX (1-NFE distillation)</h2>"
+        "<p>Self-adversarial condition-shift distillation (Anima implementation of "
+        "arXiv:2604.12322). The \"adversarial\" signal comes from querying the "
+        "same network under a learned shifted text condition "
+        "(<code>ConditionShift</code>, <code>c_fake = A&middot;c + b</code>), so "
+        "no discriminator and no external teacher are needed.</p>"
+        "<p>Training does <b>3 DiT forwards per step</b> (real + fake@real_xt "
+        "stop-grad + fake@fake_xt), so <code>blocks_to_swap</code> is method-"
+        "forced to <code>0</code> — block swapping crashes on the second "
+        "forward with a FakeTensor device mismatch.</p>"
+        "<p>Inference: <code>make test-apex</code> (4 euler steps, "
+        "<code>guidance_scale = 1.0</code>). Output is still a regular LoRA "
+        "<code>.safetensors</code> bakeable into the DiT — it just runs at far "
+        "fewer denoising steps than the warm-start LoRA. See "
+        "<code>docs/methods/apex.md</code>.</p>"
+    ),
+    "ko": (
+        "<div style='background:#1e3322; padding:10px 14px; border-left:3px solid #27ae60; "
+        "margin-bottom:14px; border-radius:3px;'>"
+        "<p style='margin:0 0 6px 0;'><b>APEX는 distillation 단계이며, 처음부터 "
+        "학습하는 LoRA가 아닙니다.</b></p>"
+        "<p style='margin:0;'>이미 학습된 LoRA를 워밍업으로 받아 self-adversarial "
+        "condition-shift 학습으로 1–4 NFE 빠른 추론 변형으로 다듬는 방식입니다. "
+        "<b>먼저 일반 LoRA를 학습</b>한 뒤 <code>network_weights</code>를 그 "
+        "<code>.safetensors</code> 경로로 설정해 APEX 실행을 시작하세요. Cold-start"
+        "(<code>network_weights</code> 비움)는 학습이 크게 무너집니다.</p>"
+        "</div>"
+        "<h2 style='margin:0 0 10px 0; font-size:17px;'>APEX (1-NFE distillation)</h2>"
+        "<p>Self-adversarial condition-shift distillation (Anima에서의 "
+        "arXiv:2604.12322 구현). \"adversarial\" 신호는 학습된 시프트 텍스트 조건"
+        "(<code>ConditionShift</code>, <code>c_fake = A&middot;c + b</code>) 하에서 "
+        "동일한 네트워크를 질의하여 얻으므로, 별도의 discriminator나 외부 teacher가 "
+        "필요 없습니다.</p>"
+        "<p>학습 시 스텝당 <b>DiT를 3번 forward</b>합니다 (real + fake@real_xt "
+        "stop-grad + fake@fake_xt). 그래서 <code>blocks_to_swap</code>은 "
+        "<code>0</code>으로 method-forced됩니다 — 블록 스왑은 두 번째 forward에서 "
+        "FakeTensor 디바이스 불일치로 크래시합니다.</p>"
+        "<p>추론: <code>make test-apex</code> (4 euler 스텝, "
+        "<code>guidance_scale = 1.0</code>). 결과는 여전히 DiT에 베이킹 가능한 일반 "
+        "LoRA <code>.safetensors</code>이며, 워밍업 LoRA보다 훨씬 적은 디노이징 "
+        "스텝으로 동작합니다. <code>docs/methods/apex.md</code> 참조.</p>"
+    ),
+}
+
+
+def apex_guide() -> str:
+    lang = current_language()
+    return APEX_GUIDE.get(lang) or APEX_GUIDE["en"]
+
+
 def apply_note() -> str:
     """HTML block explaining Apply semantics — shown above variant guides."""
     lang = current_language()
@@ -458,6 +703,19 @@ def method_guide(method: str) -> str | None:
     """Right-panel default HTML for *method*, or None if no guide is registered."""
     if method == "lora":
         return apply_note() + lora_guide()
+    if method == "ortholora":
+        return apply_note() + ortholora_guide()
+    if method == "tlora":
+        return apply_note() + tlora_guide()
     if method == "postfix":
-        return apply_note() + postfix_guide()
+        return apply_note() + not_mergeable_note() + postfix_guide()
+    if method == "hydralora":
+        return apply_note() + not_mergeable_note() + hydralora_guide()
+    if method == "reft":
+        return apply_note() + not_mergeable_note() + reft_guide()
+    if method == "apex":
+        # APEX produces a bakeable LoRA, so no "not mergeable" warning — but
+        # the warm-start requirement is the dominant pitfall, surfaced via the
+        # green callout at the top of apex_guide() instead.
+        return apply_note() + apex_guide()
     return None

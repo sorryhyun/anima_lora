@@ -32,23 +32,46 @@ CUSTOM_DIR = CONFIGS_DIR / "custom"
 CUSTOM_VARIANTS_DIR = GUI_METHODS_DIR / "custom"
 
 
-_METHOD_ORDER = ("lora", "postfix", "apex", "ip_adapter", "easycontrol")
+_METHOD_ORDER = (
+    "lora",
+    "ortholora",
+    "tlora",
+    "hydralora",
+    "reft",
+    "postfix",
+    "apex",
+    "ip_adapter",
+    "easycontrol",
+)
 
 # GUI variant picker maps method families → self-contained gui-methods files.
 # Order is display order in the variant combo. Any gui-methods/*.toml not
 # listed here is attached to its best-guess family by prefix.
+#
+# Each family holds the variants of a single algorithmic method. Hardware
+# presets (e.g. `lora-8gb`) and run-length presets (`lora_longer`) sit under
+# their parent algorithm. Combinations like `tlora_ortho` go under the
+# dominant axis (T-LoRA), `tlora_ortho_reft` lives under ReFT (the only
+# component that breaks mergeability, so it dictates the family).
 _FAMILY_VARIANTS: dict[str, list[str]] = {
     "lora": [
         "lora",
-        "lora-fast",
         "lora_longer",
         "lora-8gb",
+    ],
+    "ortholora": [
         "ortholora",
+    ],
+    "tlora": [
         "tlora",
+        "tlora_ortho",
+    ],
+    "hydralora": [
+        "hydralora_sigma",
+    ],
+    "reft": [
         "reft",
         "tlora_ortho_reft",
-        "hydralora",
-        "hydralora_sigma",
     ],
     "postfix": [
         "postfix",
@@ -219,6 +242,7 @@ _BASIC = {
     "save_every_n_epochs",
     "network_dim",
     "network_alpha",
+    "network_weights",
     "output_name",
     "use_shuffled_caption_variants",
     "caption_dropout_rate",

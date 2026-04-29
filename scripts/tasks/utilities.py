@@ -26,7 +26,7 @@ def cmd_merge(extra):
 
 
 def cmd_comfy_batch(extra):
-    workflow = extra[0] if extra else "workflows/lora-batch.json"
+    workflow = extra[0] if extra else "workflows/modhydra.json"
     remaining = extra[1:] if extra else []
     run([PY, "scripts/comfy_batch.py", workflow, *remaining])
 

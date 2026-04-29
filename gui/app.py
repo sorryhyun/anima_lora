@@ -239,18 +239,28 @@ class MainWindow(QMainWindow):
         # button swaps the visible tab bar in place — same window, no popup.
         # Both sets stay alive across switches so subprocess state and log
         # buffers survive toggling between modes.
-        # Standard set: classic LoRA family + APEX share the same config form
-        # (variants encode the rank/router/etc).
+        # Standard set: bakeable methods only — plain LoRA (with hardware
+        # variants), OrthoLoRA, T-LoRA (incl. T-LoRA + OrthoLoRA combo). All
+        # produce checkpoints that can be merged into the base DiT. Non-
+        # mergeable methods (HydraLoRA / ReFT / Postfix) and the APEX
+        # distillation flow live behind the experimental toggle.
         self.tabs = QTabWidget()
-        self.tabs.addTab(ConfigTab(methods=["lora", "apex"]), t("tab_config"))
+        self.tabs.addTab(
+            ConfigTab(methods=["lora", "ortholora", "tlora"]), t("tab_config")
+        )
         self.tabs.addTab(ImageViewerTab(), t("tab_images"))
         self.tabs.addTab(MergeTab(), t("tab_merge"))
 
-        # Experimental set: Postfix + image-conditioning adapters. Different
-        # lifecycles and datasets, so they get their own tab bar.
+        # Experimental set: non-mergeable methods + APEX distillation +
+        # image-conditioning adapters. The first tab hosts a single ConfigTab
+        # with a method picker spanning HydraLoRA / ReFT / Postfix / APEX —
+        # these all share the same training UI so one tab with a picker keeps
+        # the tab bar manageable. IP-Adapter and EasyControl have their own
+        # preprocess/dataset lifecycles, so they keep dedicated tabs.
         self.experimental_tabs = QTabWidget()
         self.experimental_tabs.addTab(
-            ConfigTab(methods=["postfix"]), t("tab_postfix")
+            ConfigTab(methods=["hydralora", "reft", "postfix", "apex"]),
+            t("tab_methods"),
         )
         self.experimental_tabs.addTab(IPAdapterTab(), t("tab_ip_adapter"))
         self.experimental_tabs.addTab(EasyControlTab(), t("tab_easycontrol"))

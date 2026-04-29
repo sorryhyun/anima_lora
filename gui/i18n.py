@@ -10,6 +10,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tab_ip_adapter": "IP-Adapter",
         "tab_easycontrol": "EasyControl",
         "tab_postfix": "Postfix",
+        "tab_methods": "Methods",
         "tab_images": "Dataset",
         "tab_merge": "Merge",
         # ConfigTab
@@ -106,7 +107,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "report_issue": "Report Issue",
         "report_issue_tooltip": "Open the GitHub issue tracker in your browser",
         "experimental_features": "🧪 Experimental",
-        "experimental_features_tooltip": "Open Postfix, IP-Adapter, and EasyControl tabs (experimental methods)",
+        "experimental_features_tooltip": "Open HydraLoRA / ReFT / Postfix / APEX and IP-Adapter / EasyControl tabs (non-mergeable or distillation methods)",
         "experimental_features_title": "Experimental Features",
         # Models dialog
         "models_title": "Download Models",
@@ -183,6 +184,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "tab_ip_adapter": "IP-Adapter",
         "tab_easycontrol": "EasyControl",
         "tab_postfix": "Postfix",
+        "tab_methods": "메소드",
         "tab_images": "데이터셋",
         "tab_merge": "병합",
         # ConfigTab
@@ -279,7 +281,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "report_issue": "이슈 신고",
         "report_issue_tooltip": "브라우저에서 GitHub 이슈 트래커 열기",
         "experimental_features": "🧪 실험 기능",
-        "experimental_features_tooltip": "Postfix, IP-Adapter, EasyControl 탭 열기 (실험적 학습 방식)",
+        "experimental_features_tooltip": "HydraLoRA / ReFT / Postfix / APEX 및 IP-Adapter / EasyControl 탭 열기 (병합 불가 또는 distillation 방식)",
         "experimental_features_title": "실험 기능",
         # Models dialog
         "models_title": "모델 다운로드",

@@ -96,9 +96,10 @@ class ConfigTab(QWidget):
         # (lora-fast, lora-8gb, etc.) already encode the hardware/perf knobs
         # users used to pick via presets, and all saves now write directly to
         # the current variant file (no preset/variant routing distinction).
-        # `methods=` lets callers restrict the picker (e.g. main tab shows only
-        # lora/apex; the experimental dialog mounts a postfix-pinned ConfigTab).
-        # When only one method is allowed, the picker hides itself.
+        # `methods=` lets callers restrict the picker (e.g. the standard tab
+        # shows only lora; the experimental tab mounts a multi-method picker
+        # spanning hydralora / reft / postfix / apex). When only one method is
+        # allowed, the picker hides itself.
         top = QHBoxLayout()
         method_items = methods if methods is not None else list_methods()
         self._method_label = QLabel("Method")
@@ -108,10 +109,28 @@ class ConfigTab(QWidget):
         self.method_combo.currentTextChanged.connect(
             lambda _: self._on_method_changed()
         )
-        top.addWidget(self.method_combo, 1)
+        top.addWidget(self.method_combo)
         if len(method_items) <= 1:
             self._method_label.setVisible(False)
             self.method_combo.setVisible(False)
+
+        # Variant picker sits inline next to the method picker — selecting a
+        # variant swaps the gui-methods/<variant>.toml file the form is bound
+        # to. "+ New" creates a custom variant under gui-methods/custom/;
+        # "Guide" replays the method-level help in the right panel.
+        self._variant_label = QLabel(t("variant"))
+        top.addWidget(self._variant_label)
+        self.variant_combo = QComboBox()
+        self.variant_combo.currentTextChanged.connect(lambda _: self._reload())
+        top.addWidget(self.variant_combo, 1)
+        self.new_variant_btn = QPushButton(t("new_variant"))
+        self.new_variant_btn.setToolTip(t("new_variant_tooltip"))
+        self.new_variant_btn.clicked.connect(self._create_variant)
+        top.addWidget(self.new_variant_btn)
+        self.show_guide_btn = QPushButton(t("show_guide"))
+        self.show_guide_btn.setToolTip(t("show_guide_tooltip"))
+        self.show_guide_btn.clicked.connect(self._show_explain_placeholder)
+        top.addWidget(self.show_guide_btn)
 
         save_btn = QPushButton(t("save"))
         save_btn.clicked.connect(self._save_preset)
@@ -161,29 +180,6 @@ class ConfigTab(QWidget):
         top.addWidget(self.stop_btn)
 
         lay.addLayout(top)
-
-        # Variant picker — each entry is a self-contained file under
-        # configs/gui-methods/. Selecting a variant immediately reloads the
-        # form from that file; saves and training invocations target the same
-        # file. No toggle-block overlays — what you see is what runs.
-        # User-created variants live under gui-methods/custom/ and appear as
-        # "custom/<name>" entries in this combo.
-        self.variant_row = QWidget()
-        vrow = QHBoxLayout(self.variant_row)
-        vrow.setContentsMargins(0, 0, 0, 0)
-        vrow.addWidget(QLabel(t("variant")))
-        self.variant_combo = QComboBox()
-        self.variant_combo.currentTextChanged.connect(lambda _: self._reload())
-        vrow.addWidget(self.variant_combo, 1)
-        self.new_variant_btn = QPushButton(t("new_variant"))
-        self.new_variant_btn.setToolTip(t("new_variant_tooltip"))
-        self.new_variant_btn.clicked.connect(self._create_variant)
-        vrow.addWidget(self.new_variant_btn)
-        self.show_guide_btn = QPushButton(t("show_guide"))
-        self.show_guide_btn.setToolTip(t("show_guide_tooltip"))
-        self.show_guide_btn.clicked.connect(self._show_explain_placeholder)
-        vrow.addWidget(self.show_guide_btn)
-        lay.addWidget(self.variant_row)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
@@ -304,8 +300,6 @@ class ConfigTab(QWidget):
             if variants:
                 self.variant_combo.addItems(variants)
             self.variant_combo.blockSignals(False)
-        # Always visible — the row hosts the variant combo, "+ New", and Guide.
-        self.variant_row.setVisible(True)
 
     def _reload(self):
         method = self.method_combo.currentText()

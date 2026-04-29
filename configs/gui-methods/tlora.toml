@@ -2,7 +2,8 @@
 #
 # Effective rank varies with the denoising timestep via a power-law schedule:
 # full rank at high noise, reduced to `min_rank` at low noise. See
-# docs/methods/timestep_mask.md.
+# docs/methods/timestep_mask.md. Pure T-LoRA — no orthogonality constraint;
+# pick `tlora_ortho` if you want T-LoRA stacked with OrthoLoRA.
 
 network_dim = 32
 network_alpha = 32
@@ -15,8 +16,6 @@ checkpointing_epochs = 2
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
-
-use_ortho = true
 
 use_timestep_mask = true
 min_rank = 1
