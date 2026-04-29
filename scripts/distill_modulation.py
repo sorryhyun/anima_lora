@@ -221,7 +221,7 @@ def main():
         help="Where to save the trained projection weights",
     )
     parser.add_argument("--iterations", type=int, default=10000)
-    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument(
         "--blocks_to_swap",

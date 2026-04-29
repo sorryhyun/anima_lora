@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QTabWidget,
     QTextBrowser,
     QVBoxLayout,
@@ -202,6 +203,27 @@ class MainWindow(QMainWindow):
         )
         lang_bar.addWidget(self.issues_btn)
 
+        self.experimental_btn = QPushButton(t("experimental_features"))
+        self.experimental_btn.setToolTip(t("experimental_features_tooltip"))
+        self.experimental_btn.setCheckable(True)
+        # Two visual states: idle (purple, advertises the toggle) vs active
+        # (orange, signals "you're currently in experimental mode — click to
+        # return"). Style is reapplied in `_update_experimental_btn_style`.
+        self._experimental_idle_style = (
+            "QPushButton { background:#8e44ad; color:white; "
+            "font-weight:bold; padding:4px 12px; border:1px solid #8e44ad; "
+            "border-radius:3px; }"
+            "QPushButton:hover { background:#9b59b6; }"
+        )
+        self._experimental_active_style = (
+            "QPushButton { background:#e67e22; color:white; "
+            "font-weight:bold; padding:4px 12px; border:1px solid #e67e22; "
+            "border-radius:3px; }"
+            "QPushButton:hover { background:#f39c12; }"
+        )
+        self.experimental_btn.toggled.connect(self._toggle_experimental)
+        lang_bar.addWidget(self.experimental_btn)
+
         lang_bar.addStretch()
         lang_bar.addWidget(QLabel(t("language")))
         self.lang_combo = QComboBox()
@@ -213,24 +235,55 @@ class MainWindow(QMainWindow):
         lang_bar.addWidget(self.lang_combo)
         main_lay.addLayout(lang_bar)
 
+        # Two parallel tab sets share a QStackedWidget so the experimental
+        # button swaps the visible tab bar in place — same window, no popup.
+        # Both sets stay alive across switches so subprocess state and log
+        # buffers survive toggling between modes.
+        # Standard set: classic LoRA family + APEX share the same config form
+        # (variants encode the rank/router/etc).
         self.tabs = QTabWidget()
-        self.tabs.addTab(ConfigTab(), t("tab_config"))
-        self.tabs.addTab(IPAdapterTab(), t("tab_ip_adapter"))
-        self.tabs.addTab(EasyControlTab(), t("tab_easycontrol"))
+        self.tabs.addTab(ConfigTab(methods=["lora", "apex"]), t("tab_config"))
         self.tabs.addTab(ImageViewerTab(), t("tab_images"))
         self.tabs.addTab(MergeTab(), t("tab_merge"))
-        main_lay.addWidget(self.tabs)
+
+        # Experimental set: Postfix + image-conditioning adapters. Different
+        # lifecycles and datasets, so they get their own tab bar.
+        self.experimental_tabs = QTabWidget()
+        self.experimental_tabs.addTab(
+            ConfigTab(methods=["postfix"]), t("tab_postfix")
+        )
+        self.experimental_tabs.addTab(IPAdapterTab(), t("tab_ip_adapter"))
+        self.experimental_tabs.addTab(EasyControlTab(), t("tab_easycontrol"))
+
+        self.tab_stack = QStackedWidget()
+        self.tab_stack.addWidget(self.tabs)
+        self.tab_stack.addWidget(self.experimental_tabs)
+        main_lay.addWidget(self.tab_stack)
         self.setCentralWidget(central)
+
+        self._update_experimental_btn_style(False)
 
     def closeEvent(self, event):
         # Without this, closing the window leaves training subprocesses
         # (accelerate → train.py) orphaned and still holding VRAM.
-        for i in range(self.tabs.count()):
-            tab = self.tabs.widget(i)
-            cleanup = getattr(tab, "cleanup_subprocess", None)
-            if callable(cleanup):
-                cleanup()
+        for tabs in (self.tabs, self.experimental_tabs):
+            for i in range(tabs.count()):
+                cleanup = getattr(tabs.widget(i), "cleanup_subprocess", None)
+                if callable(cleanup):
+                    cleanup()
         super().closeEvent(event)
+
+    def _toggle_experimental(self, on: bool):
+        self.tab_stack.setCurrentWidget(
+            self.experimental_tabs if on else self.tabs
+        )
+        self._update_experimental_btn_style(on)
+
+    def _update_experimental_btn_style(self, on: bool):
+        self.experimental_btn.setStyleSheet(
+            self._experimental_active_style if on
+            else self._experimental_idle_style
+        )
 
     def _open_guidebook(self):
         if not GUIDEBOOK_PATH.exists():

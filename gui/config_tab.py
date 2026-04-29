@@ -78,7 +78,7 @@ class ClickableLabel(QLabel):
 
 
 class ConfigTab(QWidget):
-    def __init__(self):
+    def __init__(self, methods: list[str] | None = None):
         super().__init__()
         self._w: dict[str, QWidget] = {}
         self._preprocessed = (ROOT / "post_image_dataset").exists()
@@ -96,14 +96,22 @@ class ConfigTab(QWidget):
         # (lora-fast, lora-8gb, etc.) already encode the hardware/perf knobs
         # users used to pick via presets, and all saves now write directly to
         # the current variant file (no preset/variant routing distinction).
+        # `methods=` lets callers restrict the picker (e.g. main tab shows only
+        # lora/apex; the experimental dialog mounts a postfix-pinned ConfigTab).
+        # When only one method is allowed, the picker hides itself.
         top = QHBoxLayout()
-        top.addWidget(QLabel("Method"))
+        method_items = methods if methods is not None else list_methods()
+        self._method_label = QLabel("Method")
+        top.addWidget(self._method_label)
         self.method_combo = QComboBox()
-        self.method_combo.addItems(list_methods())
+        self.method_combo.addItems(method_items)
         self.method_combo.currentTextChanged.connect(
             lambda _: self._on_method_changed()
         )
         top.addWidget(self.method_combo, 1)
+        if len(method_items) <= 1:
+            self._method_label.setVisible(False)
+            self.method_combo.setVisible(False)
 
         save_btn = QPushButton(t("save"))
         save_btn.clicked.connect(self._save_preset)

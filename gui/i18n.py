@@ -6,10 +6,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "en": {
         # Window / tabs
         "window_title": "Anima LoRA",
-        "tab_config": "Config",
+        "tab_config": "Training Config",
         "tab_ip_adapter": "IP-Adapter",
         "tab_easycontrol": "EasyControl",
-        "tab_images": "Images",
+        "tab_postfix": "Postfix",
+        "tab_images": "Dataset",
         "tab_merge": "Merge",
         # ConfigTab
         "preset": "Preset:",
@@ -104,6 +105,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "update_btn_tooltip": "Pull the latest anima_lora release from GitHub and run uv sync",
         "report_issue": "Report Issue",
         "report_issue_tooltip": "Open the GitHub issue tracker in your browser",
+        "experimental_features": "🧪 Experimental",
+        "experimental_features_tooltip": "Open Postfix, IP-Adapter, and EasyControl tabs (experimental methods)",
+        "experimental_features_title": "Experimental Features",
         # Models dialog
         "models_title": "Download Models",
         "models_intro": "Pick a model group below or use 'Download all' for the standard set "
@@ -175,10 +179,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
     "ko": {
         # Window / tabs
         "window_title": "Anima LoRA",
-        "tab_config": "설정",
+        "tab_config": "학습 설정",
         "tab_ip_adapter": "IP-Adapter",
         "tab_easycontrol": "EasyControl",
-        "tab_images": "이미지",
+        "tab_postfix": "Postfix",
+        "tab_images": "데이터셋",
         "tab_merge": "병합",
         # ConfigTab
         "preset": "프리셋:",
@@ -273,6 +278,9 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "update_btn_tooltip": "GitHub에서 최신 anima_lora 릴리스를 가져오고 uv sync를 실행합니다",
         "report_issue": "이슈 신고",
         "report_issue_tooltip": "브라우저에서 GitHub 이슈 트래커 열기",
+        "experimental_features": "🧪 실험 기능",
+        "experimental_features_tooltip": "Postfix, IP-Adapter, EasyControl 탭 열기 (실험적 학습 방식)",
+        "experimental_features_title": "실험 기능",
         # Models dialog
         "models_title": "모델 다운로드",
         "models_intro": "아래에서 모델 그룹을 선택하거나 '전체 다운로드'로 표준 세트 "
