@@ -18,15 +18,14 @@ def _ensure_shortcut_icon() -> Path | None:
     """Return a ready ``.ico`` path for the desktop shortcut, or None.
 
     Windows .lnk files only accept ``.ico`` (not PNG). If ``icon.png`` exists at
-    the project root, convert it to ``icon.ico`` next to it (rebuilt only when
-    the .png is newer or the .ico is missing). Returns None if there's no
-    source image or Pillow isn't available — caller falls back to the
-    interpreter's own icon.
+    the project root, convert it to ``gui/icon.ico`` (rebuilt only when the .png
+    is newer or the .ico is missing). Returns None if there's no source image or
+    Pillow isn't available — caller falls back to the interpreter's own icon.
     """
     src = ROOT / "icon.png"
     if not src.exists():
         return None
-    dst = ROOT / "icon.ico"
+    dst = ROOT / "gui" / "icon.ico"
     if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
         return dst
     try:

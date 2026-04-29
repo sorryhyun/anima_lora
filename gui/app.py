@@ -42,7 +42,7 @@ from gui.system_dialog import (
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 GUIDEBOOK_PATH = _REPO_ROOT / "docs" / "guidelines" / "가이드북.md"
-ICON_PATH = _REPO_ROOT / "icon.ico"
+ICON_PATH = Path(__file__).resolve().parent / "icon.ico"
 
 
 LANG_NAMES = {"en": "English", "ko": "한국어"}
