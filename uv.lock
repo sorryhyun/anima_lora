@@ -159,7 +159,8 @@ dependencies = [
     { name = "comfy-kitchen" },
     { name = "diffusers" },
     { name = "einops" },
-    { name = "flash-attn", marker = "sys_platform == 'win32'" },
+    { name = "flash-attn", version = "2.8.3+cu130torch2.10", source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.0/flash_attn-2.8.3+cu130torch2.10-cp313-cp313-linux_x86_64.whl" }, marker = "sys_platform == 'linux'" },
+    { name = "flash-attn", version = "2.8.3+cu130torch2.11", source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-win_amd64.whl" }, marker = "sys_platform == 'win32'" },
     { name = "huggingface-hub" },
     { name = "imagesize" },
     { name = "kornia" },
@@ -189,9 +190,11 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "tensorboard" },
     { name = "toml" },
-    { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
+    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform != 'darwin'" },
     { name = "torchsde" },
-    { name = "torchvision", version = "0.26.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
+    { name = "torchvision", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "torchvision", version = "0.26.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform != 'darwin'" },
     { name = "tqdm" },
     { name = "transformers" },
     { name = "triton-windows", marker = "sys_platform == 'win32'" },
@@ -226,6 +229,7 @@ requires-dist = [
     { name = "comfy-kitchen", specifier = ">=0.2.8" },
     { name = "diffusers", specifier = ">=0.37.0" },
     { name = "einops", specifier = ">=0.7.0" },
+    { name = "flash-attn", marker = "sys_platform == 'linux'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.0/flash_attn-2.8.3+cu130torch2.10-cp313-cp313-linux_x86_64.whl" },
     { name = "flash-attn", marker = "sys_platform == 'win32'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-win_amd64.whl" },
     { name = "huggingface-hub", specifier = ">=1.9.0" },
     { name = "imagesize", specifier = ">=1.4.1" },
@@ -259,9 +263,9 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.1.0b2" },
     { name = "tensorboard" },
     { name = "toml", specifier = ">=0.10.2" },
-    { name = "torch", marker = "sys_platform == 'win32'", specifier = ">=2.11.0" },
+    { name = "torch", specifier = ">=2.11.0" },
     { name = "torchsde", specifier = ">=0.2.6" },
-    { name = "torchvision", marker = "sys_platform == 'win32'", specifier = ">=0.26.0" },
+    { name = "torchvision", specifier = ">=0.26.0" },
     { name = "tqdm" },
     { name = "transformers", specifier = ">=5.3.0" },
     { name = "triton-windows", marker = "sys_platform == 'win32'", specifier = ">=3.6.0" },
@@ -651,8 +655,33 @@ wheels = [
 
 [[package]]
 name = "flash-attn"
+version = "2.8.3+cu130torch2.10"
+source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.0/flash_attn-2.8.3+cu130torch2.10-cp313-cp313-linux_x86_64.whl" }
+resolution-markers = [
+    "platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "platform_machine != 'aarch64' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "einops", marker = "sys_platform == 'linux'" },
+    { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
+]
+wheels = [
+    { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.0/flash_attn-2.8.3+cu130torch2.10-cp313-cp313-linux_x86_64.whl", hash = "sha256:4903c0159c807ff7812685be3f7291569a9778132ddabea765d5291331d85c44" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "einops" },
+    { name = "torch" },
+]
+
+[[package]]
+name = "flash-attn"
 version = "2.8.3+cu130torch2.11"
 source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-win_amd64.whl" }
+resolution-markers = [
+    "sys_platform == 'win32'",
+]
 dependencies = [
     { name = "einops", marker = "sys_platform == 'win32'" },
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
