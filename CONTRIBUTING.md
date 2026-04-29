@@ -27,6 +27,35 @@ Lightweight contributions. Examples: fixing a regex in a LoRA target list, a typ
 
 That's it. Open the PR.
 
+## Tier 1.5 — efficiency improvement or algorithm revision
+
+A change that touches an existing method's compute path, scheduling, or numerics — without introducing a new method. Examples: a faster kernel for an existing attention path, replacing an FP32 reduction with a lower-precision one, revising T-LoRA's mask schedule, tweaking HydraLoRA's router temperature handling, changing the LSE correction in `attention_dispatch.py`, swapping the optimizer step order for memory.
+
+These sit between Tier 1 and Tier 2: no new paper or new docs page is required, but **the burden of proof is empirical** — you are claiming the existing method runs faster, uses less memory, or produces equivalent-or-better outputs under a revised algorithm. That claim has to be measurable.
+
+**Requirements:**
+
+1. **Bench script.** A runnable script that quantifies the change. Two acceptable shapes:
+   - **Add to an existing `bench/<method>/`** if the change is scoped to one method (e.g. a HydraLoRA router tweak goes under `bench/hydralora/`). Append a new script and a new section to that bench's README.
+   - **Add a small `bench/<topic>/`** for cross-cutting changes (e.g. an attention dispatch optimization belongs in something like `bench/attention/` or extends the existing `bench/rope_fusion/`).
+
+   The script must report the headline number(s) it claims to move — wall-clock, peak VRAM, loss-at-N-steps, drift, whatever the change targets — for **both before and after**. A single-number claim ("20% faster") with no reproducible script does not clear the bar.
+
+2. **New or extended tests.** At least one test that locks in the invariant the change is supposed to preserve. Examples:
+   - For a kernel rewrite: a numerical-equivalence test against the previous path within a stated tolerance.
+   - For a schedule revision: a test that the new schedule reduces to the old one under a documented config flag, so the change can be A/B'd.
+   - For a memory optimization: an assertion on peak allocator usage on a small fixture, if feasible.
+
+   Add the test to `tests/`, following the patterns in `test_network_registry.py` and `test_lora_custom_autograd.py`. If exact equivalence is impossible (e.g. a deliberately different algorithm), state the tolerance and what would constitute a regression.
+
+3. **Documentation update.** Update the relevant `docs/methods/<name>.md`, `docs/optimizations/<name>.md`, or section of `CLAUDE.md` to reflect the new behavior. No new top-level doc unless the change introduces a user-visible flag that warrants one.
+
+4. **Result in the PR description.** Paste the bench output (before/after) and the test results into the PR description. Link to the bench script that produced them. Reviewers should be able to reproduce the claim with one command.
+
+5. **Backwards-compat statement.** If the change alters numerics (loss curves shift, output images change at fixed seed), say so explicitly. If it does not, say that and explain why — bit-equivalent refactors and behavior-changing optimizations get reviewed differently.
+
+A paper citation is welcome but not required. If the revision is paper-derived, cite the paper as you would in Tier 2; if it's a hand-rolled improvement, the bench results stand on their own.
+
 ## Tier 2 — new LoRA / adapter method
 
 A new entry in `networks/lora_modules/` or `networks/methods/`, or a new variant block in `configs/methods/lora.toml` / a new `configs/methods/<name>.toml`.
@@ -88,9 +117,12 @@ If you want to fork the repo to support a different base model, that's fine and 
 
 Copy this into your PR description and tick what applies:
 
-- [ ] Tier identified (1 / 2 / 3-eligible doc work).
+- [ ] Tier identified (1 / 1.5 / 2 / 3-eligible doc work).
 - [ ] `make test-unit` passes locally.
 - [ ] `ruff check` and `ruff format` clean.
+- [ ] (Tier 1.5) Bench script added or extended; before/after numbers in the PR description.
+- [ ] (Tier 1.5) New or extended test locking in the invariant the change preserves.
+- [ ] (Tier 1.5) Backwards-compat statement: numerics-equivalent or behavior-changing.
 - [ ] (Tier 2) Bench subdirectory present with README, runnable script, and a timestamped baseline run.
 - [ ] (Tier 2) Paper citation in the PR description and method doc.
 - [ ] (Tier 2) `docs/methods/<name>.md` added and cross-linked from `README.md`.
