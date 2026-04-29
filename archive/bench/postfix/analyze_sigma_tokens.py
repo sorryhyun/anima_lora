@@ -313,19 +313,19 @@ def main():
     print(f"Part A — σ-residual structure  —  {os.path.basename(args.postfix_weight)}")
     print("=" * 78)
     print(f"  K={K}   D={D}   num_σ={args.num_sigmas}   base samples (M)={bases.shape[0]}")
-    print(f"\n  Slot-symmetry check (are the K postfix tokens distinguishable?)")
+    print("\n  Slot-symmetry check (are the K postfix tokens distinguishable?)")
     print(f"    residual  max inter-slot |diff|={res_slot_max:.2e}  mean={res_slot_mean:.2e}")
     print(f"    base      max inter-slot |diff|={base_slot_max:.2e}  mean={base_slot_mean:.2e}")
     if slots_symmetric:
         print(f"    → ALL K={K} SLOTS ARE IDENTICAL.  Effective K = 1.")
-        print(f"      Cause: zero-init final MLP layer + positional-symmetric splice of K")
-        print(f"      slots into the zero-padding region keeps permutation symmetry unbroken")
-        print(f"      during training (each slot receives identical gradients → stays identical).")
-        print(f"      Fix: random-init final layer OR add per-slot identity embedding:")
-        print(f"        postfix[k] = mlp_out[k] + slot_embed[k]   # slot_embed: Param(K, D)")
+        print("      Cause: zero-init final MLP layer + positional-symmetric splice of K")
+        print("      slots into the zero-padding region keeps permutation symmetry unbroken")
+        print("      during training (each slot receives identical gradients → stays identical).")
+        print("      Fix: random-init final layer OR add per-slot identity embedding:")
+        print("        postfix[k] = mlp_out[k] + slot_embed[k]   # slot_embed: Param(K, D)")
     else:
-        print(f"    → Slots are distinguishable (max |diff| > 0). Per-slot breakdown below.")
-    print(f"\n  ||sigma_residual(σ)||   (global, flattened K·D)")
+        print("    → Slots are distinguishable (max |diff| > 0). Per-slot breakdown below.")
+    print("\n  ||sigma_residual(σ)||   (global, flattened K·D)")
     print(f"    min = {res_global_norm.min():.3f}   mean = {res_global_norm.mean():.3f}   "
           f"max = {res_global_norm.max():.3f}")
     print(f"    at σ=0.0 : {res_global_norm[0]:.3f}")
@@ -335,24 +335,24 @@ def main():
     print(f"  residual/base ratio   min={residual_over_base.min():.3f}  "
           f"mean={residual_over_base.mean():.3f}  max={residual_over_base.max():.3f}")
     if residual_over_base.mean() > 1.5:
-        print(f"  → residual dominates base. Caption-conditional content is largely washed out;")
-        print(f"    the postfix is mostly a σ-conditional (caption-independent) signal.")
-    print(f"\n  pairwise cos(residual(σ_i), residual(σ_j))")
+        print("  → residual dominates base. Caption-conditional content is largely washed out;")
+        print("    the postfix is mostly a σ-conditional (caption-independent) signal.")
+    print("\n  pairwise cos(residual(σ_i), residual(σ_j))")
     print(f"    cos(σ=0.0, σ=1.0) = {cos_mat[0, -1]:+.3f}    "
           f"(+1 = same direction, -1 = flip, 0 = orthogonal)")
     print(f"    median off-diag   = {np.median(cos_mat[np.triu_indices_from(cos_mat, k=1)]):+.3f}")
     if cos_mat[0, -1] > 0.95:
-        print(f"  → σ-residual is nearly direction-invariant — effectively a gain knob on one")
-        print(f"    fixed direction, not a rotation between different textual regimes.")
-    print(f"\n  SVD (flattened residuals):")
-    print(f"    top-5 σ-modes  = " + " ".join(f"{s:.3f}" for s in singular[:5]))
+        print("  → σ-residual is nearly direction-invariant — effectively a gain knob on one")
+        print("    fixed direction, not a rotation between different textual regimes.")
+    print("\n  SVD (flattened residuals):")
+    print("    top-5 σ-modes  = " + " ".join(f"{s:.3f}" for s in singular[:5]))
     print(f"    effective DoF (90% energy) = {dof90}")
-    print(f"\n  Top-10 channels by residual variance across σ:")
+    print("\n  Top-10 channels by residual variance across σ:")
     print(f"    idx = {top_channel_idx.tolist()}")
     print(f"    var = {[f'{v:.2e}' for v in per_channel_var[top_channel_idx]]}")
     if not slots_symmetric:
-        print(f"\n  Per-slot means (top-10 by residual norm):")
-        print(f"    slot  ||residual|| ||base||   align(res,base)")
+        print("\n  Per-slot means (top-10 by residual norm):")
+        print("    slot  ||residual|| ||base||   align(res,base)")
         order = np.argsort(-res_norm_per_slot.mean(axis=0))
         for slot in order[:10]:
             print(f"     {slot:3d}   {res_norm_per_slot[:, slot].mean():6.3f}      "
@@ -412,7 +412,7 @@ def main():
     print(f"  lexicon size: {len(lex_ids)}   (min_count={args.min_count}, "
           f"max count in corpus={int(lex_counts.max())})")
 
-    print(f"\n  Residual-only NN (pooled over K slots)  — σ sweep")
+    print("\n  Residual-only NN (pooled over K slots)  — σ sweep")
     print(f"  σ      top-{args.top_k} nearest T5 tokens (cosine)")
     step = max(1, len(sigmas) // 11)
     for i in range(0, len(sigmas), step):
@@ -428,7 +428,7 @@ def main():
             toks = format_token_list(idx, cos, tokenizer)
             print(f"   slot {slot:3d}  ||res||={res_norm_per_slot[mid, slot]:5.3f}   {toks}")
     else:
-        print(f"\n  (per-slot NN skipped — all K slots are identical.)")
+        print("\n  (per-slot NN skipped — all K slots are identical.)")
 
     print(f"\n  Full postfix(caption, σ) NN  — {len(full_topk)} sample captions")
     for pf, entry in full_topk.items():

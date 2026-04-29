@@ -162,10 +162,12 @@ class ApexMethodAdapter(MethodAdapter):
     Per step: increment the step counter consumed by the rampup schedule and
     surfaced to TensorBoard via ``state_for_metrics``.
     Extra forwards: run the two fake-branch DiT calls (eq. 11 + eq. 23) and
-    one stop-gradient call for the L_mix target, then mix in the warmup/rampup
-    weights so the LossComposer's APEX term sees ``lam_c_eff`` / ``lam_f_eff``
-    already resolved. No-op outside training and on steps where the network
-    has no ``apex_condition_shift`` attached.
+    one stop-gradient call for the L_mix target. The inner mixing coefficient
+    used to construct ``T_mix_v`` is ramped 0 → ``apex_lambda`` over the
+    warmup+rampup window — at ramp start ``T_mix = x`` so L_mix is pure FM,
+    providing the cold-start bootstrap signal without a separate L_sup term.
+    No-op outside training and on steps where the network has no
+    ``apex_condition_shift`` attached.
     """
 
     name = "apex"
@@ -264,13 +266,9 @@ class ApexMethodAdapter(MethodAdapter):
                 **kw,
             )
 
-        # T_mix_v in velocity space (Eq. 23 after Prop. 3 conversion):
-        #   T_mix_v = (1-lam)*v_data + lam*v_fake_sg
-        lam = float(getattr(args, "apex_lambda", 1.0))
-        v_data_5d = (primary.noise - primary.latents).unsqueeze(2)  # [B,C,1,H,W]
-        T_mix_v = ((1.0 - lam) * v_data_5d + lam * v_fake_sg).detach()
-
-        # Resolve warmup/rampup schedule for L_c / L_f mixing weights.
+        # Resolve warmup/rampup schedule. inner-lambda controls T_mix's
+        # supervision/adversarial blend; lam_f_eff gates the L_fake outer
+        # weight on the fake branch.
         from library.training.apex_loss import apex_schedule_weights
 
         total_steps = int(getattr(args, "max_train_steps", 0) or 0)
@@ -284,13 +282,22 @@ class ApexMethodAdapter(MethodAdapter):
             rampup_abs = int(
                 float(getattr(args, "apex_rampup_ratio", 0.0) or 0.0) * total_steps
             )
-        lam_c_eff, lam_f_eff = apex_schedule_weights(
+        lam_inner_eff, lam_f_eff = apex_schedule_weights(
             step=self.step,
             warmup_steps=warmup_abs,
             rampup_steps=rampup_abs,
-            lam_c_target=float(getattr(args, "apex_lambda_c", 1.0)),
-            lam_f_target=float(getattr(args, "apex_lambda_f", 1.0)),
+            lam_inner_target=float(getattr(args, "apex_lambda", 0.5)),
+            lam_f_target=float(getattr(args, "apex_lambda_p", 1.0)),
         )
+
+        # T_mix_v in velocity space (Eq. 23 after Prop. 3 conversion):
+        #   T_mix_v = (1-lam_inner)*v_data + lam_inner*v_fake_sg
+        # At lam_inner=0 (warmup), T_mix_v == v_data, so L_mix collapses to
+        # pure FM — the bootstrap signal that L_sup used to provide.
+        v_data_5d = (primary.noise - primary.latents).unsqueeze(2)  # [B,C,1,H,W]
+        T_mix_v = (
+            (1.0 - lam_inner_eff) * v_data_5d + lam_inner_eff * v_fake_sg
+        ).detach()
 
         # Stash everything ``extra_forwards_fake`` needs to run forward 3 after
         # the trainer has freed forward 1's autograd graph.
@@ -306,11 +313,13 @@ class ApexMethodAdapter(MethodAdapter):
         }
 
         # Real-branch aux only — apex_fake is computed in compose_fake_branch
-        # after extra_forwards_fake fills in F_fake_on_fake_xt below.
+        # after extra_forwards_fake fills in F_fake_on_fake_xt below. lam_c
+        # is constant (paper Eq. 25 outer L_mix weight); the schedule's job
+        # is to ramp the inner lambda into T_mix_v above, not to gate L_mix.
         return {
             "apex": {
                 "T_mix_v": T_mix_v.squeeze(2),
-                "lam_c_eff": lam_c_eff,
+                "lam_inner_eff": lam_inner_eff,
                 "lam_f_eff": lam_f_eff,
             }
         }

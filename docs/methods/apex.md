@@ -15,27 +15,27 @@ The default config warm-starts from a prior T-LoRA checkpoint (see the note on w
 
 ## What APEX actually is
 
-Standard flow-matching training uses a single supervised term
-
-$$\mathcal{L}_{\text{sup}} = \|\mathbf{F}_\theta(\mathbf{x}_t, t, \mathbf{c}) - (\mathbf{z} - \mathbf{x})\|^2$$
-
-against the OT velocity target. APEX adds a second branch that queries the **same network** with an affine-shifted condition
+APEX replaces the discriminator in GAN-style distillation with a query of the **same network under an affine-shifted condition**
 
 $$\mathbf{c}_{\text{fake}} = \mathbf{A}\mathbf{c} + \mathbf{b}$$
 
-and uses it as an adversarial reference. The fake-branch query at `(x_t, t)` is stop-gradiented and becomes the target for a **mixed consistency** loss on the real branch (Eq. 23–24):
+The fake-branch query at `(x_t, t)` is stop-gradiented and becomes the target for a **mixed consistency** loss on the real branch (Eq. 23–24):
 
-$$\mathbf{T}_{\text{mix}} = (1-\lambda)\mathbf{v}_{\text{data}} + \lambda \cdot \text{sg}(\mathbf{F}_\theta(\mathbf{x}_t, t, \mathbf{c}_{\text{fake}}))$$
+$$\mathbf{T}_{\text{mix}} = (1-\lambda)\mathbf{x} + \lambda \cdot f^x(\mathbf{v}_{\text{fake}}, \mathbf{x}_t, t)$$
 
-$$\mathcal{L}_{\text{mix}} = \|\mathbf{F}_\theta(\mathbf{x}_t, t, \mathbf{c}) - \mathbf{T}_{\text{mix}}\|^2$$
+$$\mathcal{L}_{\text{mix}} = \frac{1}{\omega(t)}\|f^x(\mathbf{F}_\theta, \mathbf{x}_t, t) - \mathbf{T}_{\text{mix}}\|^2$$
+
+where $f^x(F, x_t, t) := x_t - tF$ is the endpoint predictor (Eq. 31) and $\omega(t) = t/(1-t)$. Note that **at $\lambda = 0$, $\mathbf{T}_{\text{mix}} = \mathbf{x}$**, so $\mathcal{L}_{\text{mix}}$ collapses to pure flow-matching (Theorem 1, App. B.5 — gradient-equivalent to $\mathcal{L}_{\text{sup}}$). This is how the cold-start guard provides a bootstrap signal without a separate $\mathcal{L}_{\text{sup}}$ term.
 
 Separately, the fake branch is trained to track the model's *current* one-step fake distribution via an endpoint predictor $\mathbf{x}^{\text{fake}} = \mathbf{x}_t - t\mathbf{F}_\theta$ (Eq. 11) and a fresh OT interpolation (Eq. 12):
 
 $$\mathcal{L}_{\text{fake}} = \|\mathbf{F}_\theta(\mathbf{x}^{\text{fake}}_t, t_{\text{fake}}, \mathbf{c}_{\text{fake}}) - (\mathbf{z}_{\text{fake}} - \mathbf{x}^{\text{fake}})\|^2$$
 
-Total:
+Total (paper Eq. 25 — **no separate $\mathcal{L}_{\text{sup}}$**):
 
-$$\mathcal{L}_{\text{APEX}} = \lambda_p \mathcal{L}_{\text{sup}} + \lambda_c \mathcal{L}_{\text{mix}} + \lambda_f \mathcal{L}_{\text{fake}}$$
+$$\mathcal{L}_{\text{APEX}} = \lambda_p \mathcal{L}_{\text{fake}} + \lambda_c \mathcal{L}_{\text{mix}}$$
+
+Supervision enters only through the inner $\lambda$ inside $\mathbf{T}_{\text{mix}}$. Our schedule ramps $\lambda$ from $0$ to `apex_lambda` (and $\lambda_p$ from $0$ to `apex_lambda_p`) over the warmup+rampup window — at the start the loss is pure FM at strength $\lambda_c$; at the end it is the full paper objective.
 
 The only new trainable parameters are the 2 scalars `(a, b)` in `ConditionShift` (mode=`scalar`, default). The rest of the gradient flows into the existing LoRA delta. Proposition 5 of the paper proves this gradient is proportional to the Fisher divergence $D_F(p_\theta \| p_{\text{mix}})$ with **constant time weighting** $w \equiv 1$ — the GAN-aligned update structure without a discriminator's sample-dependent weight.
 
@@ -44,7 +44,7 @@ The only new trainable parameters are the 2 scalars `(a, b)` in `ConditionShift`
 | File | Role |
 |------|------|
 | `networks/methods/apex.py` | `ConditionShift(dim, mode, init_a, init_b)` — 3 parameterizations: `scalar` (2 params), `diag` (2D), `full` (D²+D). Runtime-dtype-safe via `.to(c.dtype)` inside forward. |
-| `library/training/apex_loss.py` | `apex_schedule_weights(step, warmup, rampup, ...)` scheduler + `ApexAux` dataclass stashing `F_real / T_mix_v / F_fake_on_fake_xt / target_fake` between the two halves of the loss. |
+| `library/training/apex_loss.py` | `apex_schedule_weights(step, warmup, rampup, lam_inner_target, lam_f_target)` — returns `(lam_inner_eff, lam_f_eff)`. Inner λ is baked into `T_mix_v` at forward time; `lam_f_eff` is read by `_apex_fake_loss` from `aux["apex"]`. |
 | `library/anima/training.py` | CLI args (`--apex_*`) and the `apex_omega` weighting scheme ($\omega(t) = t(1-t)$, the Eq. 24 weight after Prop. 3 endpoint→velocity conversion). |
 | `networks/lora_anima/` | `_maybe_attach_apex_shift(network, kwargs)` — called from both `create_network` and `create_network_from_weights` so warm-start via `dim_from_weights=true` still attaches the shift. Also registers a 0.1× LR param group for `(a, b)`. |
 | `train.py` | 3-forward APEX branch inside `get_noise_pred_and_target` (real → fake-sg → fake-on-fake), L_mix/L_fake aggregation inside `_process_batch_inner`, cold-start guard after `network.load_weights`, `_apex_step` counter in `on_step_start`. |
@@ -57,17 +57,17 @@ Per step, inside `get_noise_pred_and_target`:
 1. Real-branch forward `F_real = anima(x_t, t, c)` — grad-enabled, same as standard LoRA training.
 2. Build `x_fake = x_t - t·sg(F_real)` (Eq. 11, endpoint predictor) and a fresh OT trajectory `x_fake_t = t_fake·z_fake + (1-t_fake)·x_fake`.
 3. Compute `c_fake = ConditionShift(c)`. Grad flows into `(a, b)` via L_fake.
-4. `v_fake_sg = anima(x_t, t, c_fake)` **under `torch.no_grad()`** — this is the stop-gradiented target for L_mix.
-5. `F_fake_on_fake_xt = anima(x_fake_t, t_fake, c_fake)` — grad-enabled. Trains the fake branch to fit the current one-step fake distribution.
+4. `v_fake_sg = anima(x_t, t, c_fake)` **under `torch.no_grad()`** — this is the stop-gradiented target.
+5. Resolve `(lam_inner_eff, lam_f_eff)` from the warmup/rampup schedule. Build `T_mix_v = (1 - lam_inner_eff)·v_data + lam_inner_eff·v_fake_sg`. At ramp start `T_mix_v == v_data`, so the L_mix that follows is exactly pure FM.
+6. `F_fake_on_fake_xt = anima(x_fake_t, t_fake, c_fake)` — grad-enabled. Trains the fake branch to fit the current one-step fake distribution.
 
 Then inside `_process_batch_inner`:
 
-6. L_sup = standard FM loss against `noise - latents`, scaled by `lambda_p`.
-7. L_mix = MSE(`F_real`, `T_mix_v`), scaled by `lambda_c × lam_c_eff`.
-8. L_fake = MSE(`F_fake_on_fake_xt`, `target_fake`), scaled by `lambda_f × lam_f_eff`.
-9. `loss = L_sup + L_mix + L_fake`. Single backward.
+7. L_mix = MSE(`F_real`, `T_mix_v`), scaled by `apex_lambda_c` (constant). Replaces standard `flow_match`; at `lam_inner_eff=0` it is exactly pure FM.
+8. L_fake = MSE(`F_fake_on_fake_xt`, `target_fake`), scaled by `lam_f_eff` from the schedule.
+9. `loss = lam_c · L_mix + lam_f_eff · L_fake`. Single backward.
 
-`lam_c_eff` and `lam_f_eff` come from the warmup/rampup schedule (see below).
+The schedule ramps both `lam_inner_eff` (controlling supervision/adversarial blend in T_mix) and `lam_f_eff` (gating L_fake) together. `lam_c` is constant — the bootstrap is provided by `lam_inner_eff = 0`, not by zeroing the outer L_mix weight.
 
 ## Hyperparameters
 
@@ -76,18 +76,17 @@ All fields in `configs/methods/apex.toml`:
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `weighting_scheme` | `"apex_omega"` | Eq. 24 time weight after endpoint→velocity conversion ($\omega = t(1-t)$). |
-| `apex_lambda` | `1.0` | T_mix mixing coefficient (Eq. 23). `0.0` → pure supervised, `1.0` → pure fake-branch target. |
-| `apex_lambda_p` | `1.0` | Weight on L_sup. |
-| `apex_lambda_c` | `1.0` | Weight on L_mix. Gated by rampup schedule. |
-| `apex_lambda_f` | `1.0` | Weight on L_fake. Gated by rampup schedule. |
+| `apex_lambda` | `0.5` | Target inner T_mix coefficient (Eq. 23). Ramped 0 → this over warmup+rampup. `0.0` ≡ pure FM, `1.0` ≡ pure fake-branch target, paper allows the full range. |
+| `apex_lambda_c` | `1.0` | Outer L_mix weight (paper Eq. 25 lam_c). Constant. |
+| `apex_lambda_p` | `1.0` | Target outer L_fake weight (paper Eq. 25 lam_p). Ramped 0 → this over warmup+rampup. |
 | `apex_loss_form` | `"mix"` | Primary form from Phase 0 §7.2. `"gapex"` available as a debug fallback. |
-| `apex_warmup_ratio` | `0.20` | Fraction of `max_train_steps` with `lam_c = lam_f = 0` (pure L_sup). |
-| `apex_rampup_ratio` | `0.10` | Fraction of `max_train_steps` over which `lam_c, lam_f` linearly rise 0 → target. |
+| `apex_warmup_ratio` | `0.20` | Fraction of `max_train_steps` with `lam_inner = lam_f = 0` (pure FM via T_mix=x, no fake branch). |
+| `apex_rampup_ratio` | `0.10` | Fraction of `max_train_steps` over which `lam_inner` and `lam_f` linearly rise 0 → target. |
 | `apex_warmup_steps` | `0` | Absolute override; ignored if `0`. |
 | `apex_rampup_steps` | `0` | Absolute override; ignored if `0`. |
 | `apex_condition_shift_mode` | `"scalar"` | `scalar` (2 params), `diag` (2D), or `full` (D²+D). Start scalar; the other modes are ablation territory. |
-| `apex_condition_shift_init_a` | `-1.0` | Table 7 optimum. |
-| `apex_condition_shift_init_b` | `0.5` | Table 7 stable range center. |
+| `apex_condition_shift_init_a` | `-0.5` | Table 7 peak GenEval cell (a=-0.5, b=1.0 → 0.81). |
+| `apex_condition_shift_init_b` | `1.0` | Same. |
 | `apex_shift_lr_scale` | `0.1` | LR multiplier on `(a, b)` vs. LoRA params. Keeps the shift off the unstable Table 7 corner. |
 | `blocks_to_swap` | **`0` (forced)** | Multi-forward pattern breaks block swap — see below. |
 
@@ -116,8 +115,7 @@ Do **not** re-enable `blocks_to_swap` for APEX — it will crash as above. A pro
 
 ## Gradient flow
 
-- **L_sup** → LoRA delta only (through `F_real`).
-- **L_mix** → LoRA delta only. `T_mix_v` is detached; `v_fake_sg` is computed inside `torch.no_grad()` explicitly to prevent graph attachment.
+- **L_mix** → LoRA delta only. `T_mix_v` is detached; `v_fake_sg` is computed inside `torch.no_grad()` explicitly to prevent graph attachment. At `lam_inner_eff=0` this term is exactly pure FM (T_mix = v_data).
 - **L_fake** → LoRA delta **and** `ConditionShift.(a, b)`. This is the only path by which `(a, b)` learn. (L_mix also uses `c_fake` but it's detached before being fed to the no-grad fake branch.)
 
 The `ConditionShift` parameters live on `network.apex_condition_shift` and are exposed through `prepare_optimizer_params_with_multiple_te_lrs` as a separate param group with LR = `unet_lr × apex_shift_lr_scale`.
@@ -131,8 +129,8 @@ Currently the custom ComfyUI loader does **not** apply ConditionShift — that's
 ## Debug knobs
 
 - `--apex_loss_form gapex` — switches from $\mathcal{L}_{\text{mix}}$ (Eq. 24) to the split $\mathcal{G}_{\text{APEX}} = (1-\lambda)\mathcal{L}_{\text{sup}} + \lambda\mathcal{L}_{\text{cons}}$ form (Eq. 22). Phase 0 §7.2 verified per-sample gradient equivalence to fp32 noise, so this is for debugging only — expect identical training dynamics at higher compute cost.
-- `--apex_lambda 0.0` — disables the fake-branch contribution to `T_mix`, reducing L_mix to a consistency loss against pure $\mathbf{v}_{\text{data}}$. Useful as a sanity check that the fake branch is actually doing something when you see no improvement over plain FM.
-- Set `apex_warmup_ratio = 1.0` to run pure L_sup for debugging the base training loop without APEX terms ever activating. (The schedule clamps to 0 before `warmup_steps`; with ratio=1.0 you never leave warmup.)
+- `--apex_lambda 0.0` — pins the inner mixing coefficient at 0 so T_mix never blends in the fake branch. Equivalent to running pure FM (the schedule has no effect on it). Useful as a sanity check that the fake branch is actually doing something when you see no improvement over plain FM.
+- Set `apex_warmup_ratio = 1.0` to keep `lam_inner = lam_f = 0` for the entire run — pure FM at strength `apex_lambda_c`, with the APEX machinery never activating. Useful for debugging the base training loop.
 
 ## References
 

@@ -86,7 +86,7 @@ def main() -> None:
     err_q = (q_ref.float() - q_fa.float()).abs().max().item()
     err_k = (k_ref.float() - k_fa.float()).abs().max().item()
     ref_scale = q_ref.float().abs().max().item()
-    print(f"Numerical equivalence (bf16):")
+    print("Numerical equivalence (bf16):")
     print(f"  max|q_anima - q_fa| = {err_q:.3e}  (ref scale {ref_scale:.3e})")
     print(f"  max|k_anima - k_fa| = {err_k:.3e}")
     print()

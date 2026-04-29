@@ -380,26 +380,24 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--apex_lambda",
         type=float,
-        default=1.0,
-        help="APEX: mixing coefficient in T_mix = (1-lam)*v_data + lam*v_fake_sg (Eq. 23). Default 1.0.",
-    )
-    parser.add_argument(
-        "--apex_lambda_p",
-        type=float,
-        default=1.0,
-        help="APEX: weight on L_sup (supervised FM real branch), Eq. 25. Default 1.0.",
+        default=0.5,
+        help="APEX: target inner mixing coefficient in T_mix = (1-lam)*v_data + lam*v_fake_sg "
+        "(Eq. 23). Ramped 0 -> apex_lambda over warmup+rampup. lam=0 -> pure FM, "
+        "lam=1 -> pure self-adversarial. Default 0.5.",
     )
     parser.add_argument(
         "--apex_lambda_c",
         type=float,
         default=1.0,
-        help="APEX: weight on L_mix / L_cons (consistency real branch), Eq. 25. Default 1.0.",
+        help="APEX: outer L_mix weight (paper Eq. 25 lam_c). Constant across training; "
+        "the supervision/adversarial blend is governed by the inner lambda ramp. Default 1.0.",
     )
     parser.add_argument(
-        "--apex_lambda_f",
+        "--apex_lambda_p",
         type=float,
         default=1.0,
-        help="APEX: weight on L_fake (fake branch fitting its own trajectory), Eq. 12. Default 1.0.",
+        help="APEX: target outer L_fake weight (paper Eq. 25 lam_p). Ramped 0 -> apex_lambda_p "
+        "over warmup+rampup. Default 1.0.",
     )
     parser.add_argument(
         "--apex_loss_form",
@@ -414,7 +412,8 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "--apex_warmup_ratio",
         type=float,
         default=0.2,
-        help="APEX: pure-L_sup warmup as a fraction of max_train_steps. "
+        help="APEX: pure-FM warmup as a fraction of max_train_steps. During warmup, inner "
+        "lambda=0 so L_mix collapses to pure FM, and L_fake outer weight is 0. "
         "Phase 0 Finding B: cold start catastrophically regresses (-48%% NFE=1 W1) "
         "because L_fake trains the fake branch against random trajectories. "
         "Required unless --network_weights is set. Default 0.2 (~20%% of total steps).",
@@ -423,8 +422,9 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "--apex_rampup_ratio",
         type=float,
         default=0.1,
-        help="APEX: linear rampup of lam_c and lam_f as a fraction of max_train_steps, "
-        "applied after warmup. Removes the sharp transition into full APEX. Default 0.1.",
+        help="APEX: linear rampup of inner lambda and L_fake outer weight as a fraction of "
+        "max_train_steps, applied after warmup. Removes the sharp transition into full APEX. "
+        "Default 0.1.",
     )
     parser.add_argument(
         "--apex_warmup_steps",

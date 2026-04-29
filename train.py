@@ -1140,7 +1140,7 @@ class AnimaTrainer:
             )
 
         # Split-backward: APEX runs two grad-tracked DiT forwards per step
-        # (real branch via L_sup+L_mix, fake branch via L_fake) whose autograd
+        # (real branch via L_mix, fake branch via L_fake) whose autograd
         # graphs are disjoint — forward 3's input is built from
         # ``model_pred.detach()``. Composing+backwarding both as one scalar
         # keeps both graphs live until backward, roughly doubling peak
@@ -1154,7 +1154,7 @@ class AnimaTrainer:
         # APEX warmup: ``lam_f_eff <= 0`` means ``apex_fake`` short-circuits
         # to a no-graph zero tensor and forward 3 is not needed at all. Fall
         # back to the legacy single-pass compose so the trainer's outer
-        # backward sees a graph from flow_match. Also catches the case where
+        # backward sees a graph from apex_mix. Also catches the case where
         # the adapter returned no aux (e.g. crossattn_emb is None).
         if split_backward:
             apex_aux = loss_aux.get("apex") or {}
@@ -1186,7 +1186,7 @@ class AnimaTrainer:
                 if not out:
                     continue
                 # Merge into loss_aux: extend nested dicts (e.g. "apex") rather
-                # than overwriting the real-branch keys T_mix_v / lam_c_eff.
+                # than overwriting the real-branch keys T_mix_v / lam_inner_eff.
                 for k, v in out.items():
                     if (
                         k in loss_aux
@@ -1204,7 +1204,7 @@ class AnimaTrainer:
         # the returned tensor is detached and only carries the composite scalar
         # for logging / metrics.
         self._split_backward_consumed = True
-        return (loss_real.detach() + loss_fake.detach())
+        return loss_real.detach() + loss_fake.detach()
 
     # endregion
 
@@ -2664,7 +2664,7 @@ class AnimaTrainer:
                         torch.compiler.cudagraph_mark_step_begin()
 
                     loss = self.process_batch(ctx, batch, is_train=True)
-                    
+
                     # Split-backward path (APEX) backwards both branches
                     # inline inside process_batch and returns a detached
                     # scalar for logging. Skip the outer backward in that

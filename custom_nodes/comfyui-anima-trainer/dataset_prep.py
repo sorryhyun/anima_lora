@@ -19,7 +19,7 @@ from __future__ import annotations
 import datetime as _dt
 import os
 import tempfile
-from typing import Optional, Tuple
+from typing import Tuple
 
 import numpy as np
 from PIL import Image

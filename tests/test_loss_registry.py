@@ -11,8 +11,6 @@ from __future__ import annotations
 import argparse
 from types import SimpleNamespace
 
-import pytest
-
 import torch
 
 from library.training import (
@@ -30,7 +28,7 @@ def _make_args(**overrides) -> argparse.Namespace:
         masked_loss=False,
         multiscale_loss_weight=0.0,
         functional_loss_weight=0.0,
-        apex_lambda_p=1.0,
+        apex_lambda_c=1.0,
     )
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -61,7 +59,6 @@ def test_lora_composer_is_flow_match_only():
     composer = build_loss_composer(args, _net())
     assert isinstance(composer, LossComposer)
     assert composer.active_losses == ["flow_match"]
-    assert composer.l_sup_scalar == 1.0
 
 
 def test_hydra_balance_activates_when_network_requests_it():
@@ -71,12 +68,13 @@ def test_hydra_balance_activates_when_network_requests_it():
     assert "flow_match" in composer.active_losses
 
 
-def test_apex_activates_mix_fake_conditionshift_and_lambda_p():
-    args = _make_args(method="apex", apex_lambda_p=0.7)
+def test_apex_drops_flow_match_and_uses_apex_mix():
+    """APEX subsumes flow_match into apex_mix (T_mix at lam=0 is pure FM)."""
+    args = _make_args(method="apex")
     composer = build_loss_composer(args, _net())
-    for name in ("flow_match", "apex_mix", "apex_fake", "condition_shift"):
+    for name in ("apex_mix", "apex_fake", "condition_shift"):
         assert name in composer.active_losses
-    assert composer.l_sup_scalar == pytest.approx(0.7)
+    assert "flow_match" not in composer.active_losses
 
 
 def test_postfix_func_activates_functional():
@@ -100,7 +98,7 @@ def test_prefix_activates_multiscale_when_weight_set():
 
 def _apex_loss_ctx(B: int = 2, C: int = 3, H: int = 4, W: int = 4, seed: int = 0):
     g = torch.Generator().manual_seed(seed)
-    args = _make_args(method="apex", apex_lambda_p=1.0)
+    args = _make_args(method="apex", apex_lambda_c=1.0)
     model_pred = torch.randn(B, C, H, W, generator=g)
     target = torch.randn(B, C, H, W, generator=g)
     timesteps = torch.rand(B, generator=g)
@@ -114,7 +112,7 @@ def _apex_loss_ctx(B: int = 2, C: int = 3, H: int = 4, W: int = 4, seed: int = 0
             "target_fake": torch.randn(B, C, H, W, generator=g),
             "weighting_fake": torch.rand(B, 1, 1, 1, generator=g) + 0.1,
             "t_fake": torch.rand(B, generator=g),
-            "lam_c_eff": 0.7,
+            "lam_inner_eff": 0.5,
             "lam_f_eff": 0.4,
         }
     }
@@ -163,12 +161,13 @@ def test_compose_fake_branch_zero_when_lam_f_eff_zero():
     assert fake.item() == 0.0
 
 
-def test_compose_real_branch_zero_lam_c_eff_keeps_flow_match():
+def test_compose_real_branch_apex_mix_active_with_constant_lam_c():
+    """L_mix outer weight is constant (apex_lambda_c) — no schedule gating
+    on the outer weight. With T_mix_v in aux and lam_c=1.0 set in args, the
+    real branch must produce a positive scalar."""
     args, ctx = _apex_loss_ctx()
-    ctx.aux["apex"]["lam_c_eff"] = 0.0
     composer = build_loss_composer(args, _net())
     real = composer.compose_real_branch(ctx)
-    # With lam_c_eff=0 only flow_match contributes — must still be positive.
     assert real.item() > 0.0
 
 

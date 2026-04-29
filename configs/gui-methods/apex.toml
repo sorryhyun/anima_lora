@@ -16,28 +16,26 @@ checkpointing_epochs = 2
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
-caption_dropout_rate = 0.1
+caption_dropout_rate = 0.0   # c_fake on null prompts is degenerate (a*0+b=const)
 
 # APEX velocity-space loss weighting (Eq. 24 after Prop. 3 conversion).
 weighting_scheme = "apex_omega"
 
-# APEX hyperparameters ------------------------------------------------------
-apex_lambda = 1.0           # T_mix mixing coefficient (Eq. 23)
-apex_lambda_p = 1.0         # weight on L_sup
-apex_lambda_c = 1.0         # weight on L_mix (consistency)
-apex_lambda_f = 1.0         # weight on L_fake (fake-flow fitting)
+# APEX hyperparameters (paper Eq. 25: L_APEX = lam_p*L_fake + lam_c*L_mix) ----
+apex_lambda = 0.5           # target inner T_mix coefficient (Eq. 23) — ramps 0 → this
+apex_lambda_c = 1.0         # outer L_mix weight, paper lam_c (constant)
+apex_lambda_p = 1.0         # target outer L_fake weight, paper lam_p — ramps 0 → this
 apex_loss_form = "mix"      # 'mix' (primary) | 'gapex' (debug fallback)
 
-# Warmup + rampup schedule (Phase 0 Finding B — non-optional safety).
-# Expressed as a fraction of max_train_steps so the schedule tracks the
-# actual step budget (sample_ratio and epochs) instead of a fixed count.
-apex_warmup_ratio = 0.20    # pure L_sup window before adversarial terms
-apex_rampup_ratio = 0.10    # linear ramp of lam_c / lam_f after warmup
+# Warmup + rampup schedule (Phase 0 Finding B — Anima cold-start guard).
+# At inner lambda=0, L_mix collapses to pure FM (T_mix = v_data).
+apex_warmup_ratio = 0.20    # pure-FM (lam=0, L_fake off) window
+apex_rampup_ratio = 0.10    # linear ramp of inner lambda + L_fake after warmup
 
-# ConditionShift (c_fake = A*c + b, Eq. 9).
+# ConditionShift (c_fake = A*c + b, Eq. 9). Init at Table 7 peak cell.
 apex_condition_shift_mode = "scalar"
-apex_condition_shift_init_a = -1.0   # Table 7 stable optimum
-apex_condition_shift_init_b = 0.5    # Table 7 range [0.1, 1.0]
+apex_condition_shift_init_a = -0.5   # Table 7 peak: a=-0.5, b=1.0 → 0.81 GenEval
+apex_condition_shift_init_b = 1.0
 apex_shift_lr_scale = 0.1            # 0.1x LoRA LR — keeps (a,b) off the unstable corner
 
 

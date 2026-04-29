@@ -7,11 +7,14 @@ APEX / ortho / multiscale numerics shift.
 
 Reduction order (must match train.py pre-refactor):
   1. Per-sample [B] stage:
-       flow_match   — base FM (weighting + masked + loss_weights)
-       apex_mix     — L_mix scaled by lam_c_eff (adds [B])
-       apex_fake    — L_fake scaled by lam_f_eff (adds [B])
-     flow_match is additionally multiplied by args.apex_lambda_p when APEX is
-     active (matches the L_sup scalar in the paper).
+       flow_match   — base FM (weighting + masked + loss_weights). Skipped
+                      when APEX is active — apex_mix subsumes it (T_mix at
+                      inner lambda=0 is exactly v_data, so L_mix = pure FM).
+       apex_mix     — L_mix scaled by args.apex_lambda_c (constant). Inner
+                      lambda is ramped 0 -> apex_lambda inside T_mix_v at
+                      forward time, so the warmup schedule lives there, not
+                      in the outer L_mix weight. [B]
+       apex_fake    — L_fake scaled by aux["apex"]["lam_f_eff"] (ramped). [B]
   2. Per-sample += scalar broadcast stage (was `post_process_loss`):
        ortho_reg     — OrthoLoRA orthogonality regularizer
        hydra_balance — MoE load-balance loss
@@ -225,11 +228,19 @@ def _flow_match_loss(ctx: LossContext) -> torch.Tensor:
 
 
 def _apex_mix_loss(ctx: LossContext) -> torch.Tensor:
-    """APEX L_mix: MSE(F_real, T_mix_v) gated by lam_c_eff. [B]."""
+    """APEX L_mix: MSE(F_real, T_mix_v) scaled by args.apex_lambda_c. [B].
+
+    Outer L_mix weight (paper Eq. 25 lam_c) is constant across training. The
+    supervision/adversarial blend is governed by the inner lambda baked into
+    T_mix_v at forward time (see ApexMethodAdapter.extra_forwards): at
+    inner=0 T_mix_v == v_data so this is pure FM.
+    """
     apex_aux = ctx.aux.get("apex") or {}
-    lam_c_eff = float(apex_aux.get("lam_c_eff", 0.0))
     T_mix_v = apex_aux.get("T_mix_v")
-    if lam_c_eff <= 0.0 or T_mix_v is None:
+    if T_mix_v is None:
+        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+    lam_c = float(getattr(ctx.args, "apex_lambda_c", 1.0))
+    if lam_c <= 0.0:
         return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
 
     l_mix = _conditional_loss(
@@ -247,7 +258,7 @@ def _apex_mix_loss(ctx: LossContext) -> torch.Tensor:
         l_mix = apply_masked_loss(l_mix, ctx.batch)
     l_mix = l_mix.mean(dim=list(range(1, l_mix.ndim)))
     l_mix = l_mix * ctx.loss_weights
-    return lam_c_eff * l_mix
+    return lam_c * l_mix
 
 
 def _apex_fake_loss(ctx: LossContext) -> torch.Tensor:
@@ -417,13 +428,9 @@ class LossComposer:
     """
 
     active_losses: list[str]
-    # APEX lambda_p target. Applied to flow_match only when ctx.aux has an
-    # "apex" block — matches pre-refactor gating (is_train + apex_aux is not None).
-    l_sup_scalar: float = 1.0
 
     def compose(self, ctx: LossContext) -> torch.Tensor:
         per_sample = ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
-        apex_active_this_batch = bool(ctx.aux.get("apex"))
 
         # Stage 1: per-sample losses.
         first = True
@@ -431,12 +438,6 @@ class LossComposer:
             if name not in self.active_losses:
                 continue
             contribution = LOSS_REGISTRY[name](ctx)
-            if (
-                name == "flow_match"
-                and apex_active_this_batch
-                and self.l_sup_scalar != 1.0
-            ):
-                contribution = contribution * self.l_sup_scalar
             per_sample = contribution if first else (per_sample + contribution)
             first = False
         if first:
@@ -486,19 +487,12 @@ class LossComposer:
 
     def compose_real_branch(self, ctx: LossContext) -> torch.Tensor:
         per_sample = ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
-        apex_active_this_batch = bool(ctx.aux.get("apex"))
 
         first = True
         for name in _STAGE_PER_SAMPLE:
             if name == "apex_fake" or name not in self.active_losses:
                 continue
             contribution = LOSS_REGISTRY[name](ctx)
-            if (
-                name == "flow_match"
-                and apex_active_this_batch
-                and self.l_sup_scalar != 1.0
-            ):
-                contribution = contribution * self.l_sup_scalar
             per_sample = contribution if first else (per_sample + contribution)
             first = False
         if first:
@@ -537,25 +531,25 @@ class LossComposer:
 def build_loss_composer(args: argparse.Namespace, network: object) -> LossComposer:
     """Inspect args + network and return the active LossComposer.
 
-    Rules (pre-refactor parity):
-      - flow_match is always active.
-      - apex_mix / apex_fake active iff args.method is "apex" or "apex_*".
+    Rules:
+      - flow_match is active for every method except APEX. When APEX is
+        active, apex_mix subsumes flow_match (T_mix at inner lambda=0 is
+        v_data exactly, so L_mix is pure FM during the warmup window).
+      - apex_mix / apex_fake / condition_shift active iff args.method is
+        "apex" or "apex_*".
       - ortho_reg active iff network._ortho_reg_weight > 0.
       - hydra_balance active iff network._balance_loss_weight > 0.
       - functional active iff args.functional_loss_weight > 0.
       - multiscale active iff args.multiscale_loss_weight > 0.
-      - condition_shift is included whenever apex is active (reserved).
-
-    l_sup_scalar becomes args.apex_lambda_p when apex is active, else 1.0.
     """
-    active: list[str] = ["flow_match"]
-    l_sup_scalar = 1.0
+    active: list[str] = []
 
     method = getattr(args, "method", None) or ""
     is_apex = method == "apex" or method.startswith("apex_")
     if is_apex:
         active.extend(["apex_mix", "apex_fake", "condition_shift"])
-        l_sup_scalar = float(getattr(args, "apex_lambda_p", 1.0))
+    else:
+        active.append("flow_match")
 
     if float(getattr(network, "_ortho_reg_weight", 0.0) or 0.0) > 0.0:
         active.append("ortho_reg")
@@ -570,4 +564,4 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
     if float(getattr(network, "sigma_budget_weight", 0.0) or 0.0) > 0.0:
         active.append("postfix_sigma_budget")
 
-    return LossComposer(active_losses=active, l_sup_scalar=l_sup_scalar)
+    return LossComposer(active_losses=active)

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import os
-from typing import Optional
 
 import folder_paths  # ComfyUI builtin
 
