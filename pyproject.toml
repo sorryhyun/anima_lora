@@ -82,8 +82,8 @@ dev = [
 index-strategy = "unsafe-best-match"
 # Linux pulls torch nightly + cu132; Windows resolves against cu130 stable.
 extra-index-url = [
-    "https://download.pytorch.org/whl/nightly/cu132 ; sys_platform == 'linux'",
-    "https://download.pytorch.org/whl/cu130 ; sys_platform == 'win32'",
+    "https://download.pytorch.org/whl/nightly/cu132",
+    "https://download.pytorch.org/whl/cu130",
 ]
 prerelease = "allow"
 override-dependencies = ["numpy>=2.0.0"]
