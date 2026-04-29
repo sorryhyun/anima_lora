@@ -128,7 +128,7 @@ name = "lora_unet_blocks_{i}_{submodule}_{linear}"
 
 Filters: `--network_target` regex, `--layer_start`/`--layer_end` (block-index range), `exclude_patterns` / `include_patterns`. These let you constrain plain LoRA to, say, cross-attention only (`*_cross_attn_*`) or just the mid-stack blocks.
 
-After `apply_to()`, LoRA parameters are the **only** trainable tensors. Everything else is frozen. `all_reduce_network()` walks the LoRA network and reduces only those grads.
+After `apply_to()`, LoRA parameters are the **only** trainable tensors. Everything else is frozen.
 
 ---
 

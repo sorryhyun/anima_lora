@@ -761,9 +761,8 @@ class LoRANetwork(torch.nn.Module):
         grad-norm is a first-order proxy for the loss decrease an SGD step on
         that expert would buy.
 
-        Must be called AFTER backward (so .grad is populated) and AFTER DDP
-        all-reduce (so norms reflect the global gradient direction), but
-        BEFORE optimizer.step. Outside the warmup window this is a no-op.
+        Must be called AFTER backward (so .grad is populated) and BEFORE
+        optimizer.step. Outside the warmup window this is a no-op.
 
         Mutually exclusive with ``expert_warmup_ratio``: that path zeros the
         forward mask so non-selected experts have zero grad anyway, which

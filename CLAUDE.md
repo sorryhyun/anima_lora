@@ -185,7 +185,7 @@ All in `networks/lora_modules.py`. Stack freely via toggle flags in `configs/met
 2. Load VAE -> cache latents to disk -> unload VAE
 3. Load DiT lazily (after caching frees VRAM)
 4. Create LoRA/Postfix network, apply to target modules via monkey-patching
-5. Training loop: noise sampling -> DiT forward -> loss -> backward -> manual all_reduce -> optimizer step
+5. Training loop: noise sampling -> DiT forward -> loss -> backward -> optimizer step
 6. Optional validation: multi-timestep loss + sample generation
 
 ## Critical invariants
@@ -201,10 +201,6 @@ All bucket resolutions ensure `(H/16)*(W/16) ~ 4096` patches. Batch elements are
 ### Flash4 LSE correction
 
 When cross-attention KV is trimmed (zero-padding removed for efficiency), the softmax denominator must be corrected. `networks/attention_dispatch.py` applies a sigmoid-based LSE correction using `crossattn_full_len` to account for removed zero-key contributions.
-
-### DDP gradient sync
-
-Built-in DDP grad sync is disabled for LoRA-only training efficiency. Instead, `all_reduce_network()` is called manually after backward to sync only LoRA gradients.
 
 ### Lazy model loading
 

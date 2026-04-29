@@ -611,8 +611,8 @@ def _remove_old_ema_file(old_ckpt_file):
 def _save_ema_model(ema, dit, ckpt_file, sai_metadata, save_dtype):
     """Save EMA model as standard format with ema_ prefix.
 
-    Builds the EMA state dict directly from shadow params without modifying model
-    parameters, which avoids race conditions with DDP workers during stepwise save.
+    Builds the EMA state dict directly from shadow params without mutating model
+    parameters in place — keeps stepwise save side-effect-free on the live model.
     """
     if ema.shadow_params is None:
         logger.warning("EMA shadow_params is None (worker process?), skipping EMA save")

@@ -434,20 +434,6 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     )
 
     parser.add_argument(
-        "--ddp_timeout",
-        type=int,
-        default=None,
-        help="DDP timeout (min, None for default of accelerate)",
-    )
-    parser.add_argument(
-        "--ddp_gradient_as_bucket_view",
-        action="store_true",
-        help="enable gradient_as_bucket_view for DDP",
-    )
-    parser.add_argument(
-        "--ddp_static_graph", action="store_true", help="enable static_graph for DDP"
-    )
-    parser.add_argument(
         "--clip_skip",
         type=int,
         default=None,

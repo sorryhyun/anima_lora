@@ -1725,7 +1725,6 @@ class Anima(nn.Module):
             pooled_text_override: Optional pre-computed pooled text (B, 1024) for modulation guidance.
                 Use to decouple modulation from prefix/postfix tokens in crossattn_emb.
         """
-        # Run LLM adapter inside forward for correct DDP gradient synchronization
         if (
             t5_input_ids is not None
             and self.use_llm_adapter

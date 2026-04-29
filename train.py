@@ -1166,10 +1166,9 @@ class AnimaTrainer:
 
         # --- real branch ---
         loss_real = composer.compose_real_branch(_build_loss_ctx(loss_aux))
-        # accelerator.backward handles gradient_accumulation scaling. DDP sync
-        # is already manual via all_reduce_network (called once on
-        # sync_gradients in the outer loop), so a second backward in the same
-        # accumulate scope just deposits more gradient into .grad.
+        # accelerator.backward handles gradient_accumulation scaling; a second
+        # backward in the same accumulate scope just deposits more gradient
+        # into .grad.
         accelerator.backward(loss_real)
 
         # --- deferred fake branch (forward 3 + L_fake) ---
@@ -1255,20 +1254,6 @@ class AnimaTrainer:
                 f"Functional loss enabled: hooks on cross_attn.output_proj at blocks {self._func_blocks}, "
                 f"weight={args.functional_loss_weight}, num_runs={args.functional_loss_num_runs}"
             )
-
-    def all_reduce_network(self, accelerator, network):
-        if accelerator.num_processes <= 1:
-            return
-        grads = [p.grad for p in network.parameters() if p.grad is not None]
-        if not grads:
-            return
-        # Fuse per-parameter reductions into a single all_reduce on a coalesced buffer.
-        # Avoids N serialized collectives (one per LoRA param) and keeps grad tensors
-        # in-place so optimizer state continues pointing at the same storage.
-        flat = torch._utils._flatten_dense_tensors(grads)
-        flat = accelerator.reduce(flat, reduction="mean")
-        for g, u in zip(grads, torch._utils._unflatten_dense_tensors(flat, grads)):
-            g.copy_(u)
 
     def get_sai_model_spec(self, args):
         return train_util.get_sai_model_spec_dataclass(
@@ -2690,13 +2675,9 @@ class AnimaTrainer:
                     else:
                         accelerator.backward(loss)
                     if accelerator.sync_gradients:
-                        self.all_reduce_network(
-                            accelerator, network
-                        )  # sync DDP grad manually
                         # HydraLoRA "best-expert" warmup: keep grads only on
                         # top-k experts by per-expert grad-norm during warmup.
-                        # No-op unless expert_best_warmup_ratio > 0. Runs after
-                        # all-reduce so norms reflect the global gradient, and
+                        # No-op unless expert_best_warmup_ratio > 0. Runs
                         # before clip_grad_norm so clipping sees the masked grads.
                         net_unwrapped = accelerator.unwrap_model(network)
                         if hasattr(

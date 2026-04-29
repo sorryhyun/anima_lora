@@ -1,29 +1,23 @@
 """HuggingFace Accelerate setup and FP16/BF16 plumbing.
 
 Wraps the ``Accelerator`` construction so training scripts can stay out of the
-DDP-handler / logging-backend plumbing. Also hosts the state-resume helper
-(local dir or HF repo) and the dtype resolver that maps ``--mixed_precision``
-and ``--save_precision`` flags to torch dtypes.
+logging-backend plumbing. Also hosts the state-resume helper (local dir or HF
+repo) and the dtype resolver that maps ``--mixed_precision`` and
+``--save_precision`` flags to torch dtypes.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import datetime
 import logging
 import os
 import time
 from typing import Optional
 
 import torch
-from accelerate import (
-    Accelerator,
-    InitProcessGroupKwargs,
-    DistributedDataParallelKwargs,
-)
+from accelerate import Accelerator
 from huggingface_hub import hf_hub_download
-from packaging.version import Version
 
 logger = logging.getLogger(__name__)
 
@@ -124,42 +118,11 @@ def prepare_accelerator(args: argparse.Namespace):
         # of the full forward (which has varying input H/W per bucket).
         dynamo_backend = args.dynamo_backend
 
-    kwargs_handlers = [
-        (
-            InitProcessGroupKwargs(
-                backend="gloo"
-                if os.name == "nt" or not torch.cuda.is_available()
-                else "nccl",
-                init_method=(
-                    "env://?use_libuv=False"
-                    if os.name == "nt"
-                    and Version(torch.__version__) >= Version("2.4.0")
-                    else None
-                ),
-                timeout=datetime.timedelta(minutes=args.ddp_timeout)
-                if args.ddp_timeout
-                else None,
-            )
-            if torch.cuda.device_count() > 1
-            else None
-        ),
-        (
-            DistributedDataParallelKwargs(
-                gradient_as_bucket_view=args.ddp_gradient_as_bucket_view,
-                static_graph=args.ddp_static_graph,
-            )
-            if args.ddp_gradient_as_bucket_view or args.ddp_static_graph
-            else None
-        ),
-    ]
-    kwargs_handlers = [i for i in kwargs_handlers if i is not None]
-
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=log_with,
         project_dir=logging_dir,
-        kwargs_handlers=kwargs_handlers,
         dynamo_backend=dynamo_backend,
     )
     print("accelerator device:", accelerator.device)

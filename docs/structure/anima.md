@@ -199,8 +199,5 @@ The full step:
          L  = w(σ)·‖v̂ − (ε − x_0)‖²
             │
             ▼        backward
-         all_reduce_network(net)    ← manual grad sync (DDP off)
-            │
-            ▼
          optimizer.step()
 ```

@@ -120,3 +120,9 @@ validation_seed = 42
 ```
 
 Each image needs a corresponding `.txt` caption sidecar file in the same directory.
+
+## Multi-GPU (removed)
+
+The repo is single-GPU only. The launcher (`scripts/tasks/_common.py::accelerate_launch`) hardcodes a single-process invocation, and the trainer no longer carries DDP plumbing — the `--ddp_*` CLI flags, `InitProcessGroupKwargs` / `DistributedDataParallelKwargs` setup, and the manual `all_reduce_network()` grad sync were all removed. Accelerate's built-in collectives still work (so `accelerator.num_processes` scaling for batch size and LR scheduler steps is harmless at 1 process), but nothing in this repo turns them on.
+
+If you re-add multi-GPU later, the non-obvious design choice to preserve is **don't `accelerator.prepare(network)` and rely on the default DDP wrap.** With the DiT frozen and only the adapter trainable, wrapping the LoRA `nn.Module` directly is awkward (the buckets don't match the frozen base) and wrapping the DiT wastes bandwidth on params that never get gradients. The previous approach was: leave the network unwrapped, run a manual fused all-reduce on `[p.grad for p in network.parameters() if p.grad is not None]` once per `sync_gradients` step, fused via `_flatten_dense_tensors` to avoid N serialized collectives. The HydraLoRA `step_expert_best_warmup_post_backward` and any grad-clip must run *after* that all-reduce so they see global-mean grads.
