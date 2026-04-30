@@ -47,7 +47,7 @@ def cmd_test_apex(extra):
             "--infer_steps",
             "4",
             "--guidance_scale",
-            "0.0",
+            "1.0",
             "--sampler",
             "euler",
             *extra,

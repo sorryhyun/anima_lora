@@ -72,6 +72,46 @@ def _clear_sigma_feature_cache(module: torch.nn.Module) -> None:
         _copy_or_rebind_buffer(module, "_sigma_features", zero_feat)
 
 
+def _register_sigma_band_partition(
+    module: torch.nn.Module, num_experts: int, num_sigma_buckets: int
+) -> None:
+    """Register the (E,) ``_expert_band`` lookup buffer for hard σ-partition.
+
+    Each expert is permanently assigned to one σ-band: expert ``e`` belongs to
+    band ``e // (E / num_sigma_buckets)``. At forward time, samples whose σ
+    lands in band ``b`` only see experts with ``_expert_band == b`` (others
+    masked to ``-inf`` before softmax). Caller must validate divisibility.
+    """
+    experts_per_band = num_experts // num_sigma_buckets
+    band = (
+        torch.arange(num_experts, dtype=torch.long) // experts_per_band
+    ).clamp_max(num_sigma_buckets - 1)
+    module.register_buffer("_expert_band", band, persistent=False)
+    module._sigma_num_buckets = int(num_sigma_buckets)
+
+
+def _apply_sigma_band_mask(
+    logits: torch.Tensor,
+    sigma: torch.Tensor,
+    expert_band: torch.Tensor,
+    num_buckets: int,
+) -> torch.Tensor:
+    """Mask out-of-band expert logits with -inf before softmax.
+
+    ``logits``: (B, E). ``sigma``: (B,) per-sample σ ∈ [0, 1] (may broadcast
+    from (1,) if ``set_sigma`` hasn't fired this forward — caller-side
+    invariant). ``expert_band``: (E,) long, registered by
+    ``_register_sigma_band_partition``. Returns logits with positions outside
+    each sample's σ band set to ``-inf`` so softmax produces 0 there and
+    renormalises across the in-band experts.
+    """
+    bucket_ids = (sigma.float() * num_buckets).floor().clamp(0, num_buckets - 1).long()
+    if bucket_ids.shape[0] == 1 and logits.shape[0] > 1:
+        bucket_ids = bucket_ids.expand(logits.shape[0])
+    in_band = bucket_ids[:, None] == expert_band[None, :]  # (B, E) bool
+    return logits.masked_fill(~in_band, float("-inf"))
+
+
 class HydraLoRAModule(BaseLoRAModule):
     """
     HydraLoRA: MoE-style multi-head LoRA with layer-local routing.
@@ -110,6 +150,9 @@ class HydraLoRAModule(BaseLoRAModule):
         channel_scale=None,
         sigma_feature_dim: int = 0,
         sigma_hidden_dim: int = 128,
+        expert_init_std: float = 0.0,
+        specialize_experts_by_sigma_buckets: bool = False,
+        num_sigma_buckets: int = 1,
     ):
         super().__init__(
             lora_name,
@@ -135,10 +178,16 @@ class HydraLoRAModule(BaseLoRAModule):
         # Fused per-expert up projections: (num_experts, out_dim, lora_dim).
         # Zero-init keeps ΔW = 0 at step 0 (LoRA-safe). Per-expert symmetry is
         # broken by `expert_warmup_ratio` (random per-step expert-gradient
-        # masking — see LoRANetwork.step_expert_warmup), not by an init perturb.
+        # masking — see LoRANetwork.step_expert_warmup) for production runs.
+        # `expert_init_std` is a paper-baseline knob (Tian et al. NeurIPS'24
+        # original mitigation): a tiny Gaussian perturb on `lora_up_weight`
+        # that gives the router distinct directions to latch onto at init.
+        # Production training should leave it at 0.0.
         self.lora_up_weight = torch.nn.Parameter(
             torch.zeros(num_experts, out_dim, self.lora_dim)
         )
+        if expert_init_std > 0.0:
+            torch.nn.init.normal_(self.lora_up_weight, mean=0.0, std=expert_init_std)
 
         # Local router: reads [pooled rank-R signal | sinusoidal(σ)] → per-sample
         # expert gates. Operating in rank-R space (not raw in_dim) is load-bearing:
@@ -181,6 +230,15 @@ class HydraLoRAModule(BaseLoRAModule):
         # before every forward, so the placeholder is only used if set_sigma
         # is somehow skipped.
         _register_sigma_feature_cache(self, self.sigma_feature_dim)
+        # Hard σ-band expert partition (Track C). Independent of σ-feature
+        # router — when on, the E experts are split into ``num_sigma_buckets``
+        # bands of ``E // num_sigma_buckets`` each; out-of-band logits are
+        # masked to -inf before softmax so a sample at σ in band b can only
+        # route to the experts in that band. Soft routing still operates
+        # within each band. Validated upstream (network constructor).
+        self._sigma_band_partition: bool = bool(specialize_experts_by_sigma_buckets)
+        if self._sigma_band_partition:
+            _register_sigma_band_partition(self, num_experts, num_sigma_buckets)
         # Expert-warmup gradient masking. Single buffer holding the per-expert
         # grad-scale (1.0 = full gradient, 0.0 = stop-grad). Default all-ones
         # makes the forward branch a no-op (``up*1 + up.detach()*0 == up``),
@@ -230,6 +288,10 @@ class HydraLoRAModule(BaseLoRAModule):
         else:
             router_in = pooled
         logits = self.router(router_in)  # (B, num_experts)
+        if self._sigma_band_partition:
+            logits = _apply_sigma_band_mask(
+                logits, self._sigma, self._expert_band, self._sigma_num_buckets
+            )
         return torch.softmax(logits, dim=-1)
 
     def set_sigma(

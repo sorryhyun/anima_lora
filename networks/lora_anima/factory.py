@@ -208,6 +208,14 @@ def create_network(
             "use_sigma_router=true but no modules matched sigma_router_layers "
             f"regex {cfg.sigma_router_layers!r} — σ-routing is inactive"
         )
+    if cfg.specialize_experts_by_sigma_buckets:
+        experts_per_band = cfg.num_experts // cfg.num_sigma_buckets
+        logger.info(
+            f"Hard σ-band expert partition ON: {cfg.num_experts} experts split "
+            f"into {cfg.num_sigma_buckets} bands of {experts_per_band} experts. "
+            "Out-of-band logits are masked to -inf before softmax — soft routing "
+            "operates only within each σ band."
+        )
     if spec.name == "ortho_hydra":
         logger.info(
             f"OrthoHydraLoRA: Cayley + MoE, num_experts={cfg.num_experts}, "

@@ -123,6 +123,11 @@ class LoRANetworkCfg:
 
     # Hydra (MoE) / expert warmup
     num_experts: int = 4
+    # Gaussian perturb std applied to fused per-expert `lora_up_weight` at
+    # init in plain HydraLoRA only (NOT OrthoHydra disjoint or fallback) —
+    # paper baseline knob; production training should leave at 0.0 and use
+    # `expert_warmup_ratio` instead.
+    expert_init_std: float = 0.0
     expert_warmup_ratio: float = 0.0
     expert_warmup_k: int = 1
     expert_best_warmup_ratio: float = 0.0
@@ -131,6 +136,13 @@ class LoRANetworkCfg:
     hydra_router_names: Optional[List[str]] = None
     per_bucket_balance_weight: float = 0.3
     num_sigma_buckets: int = 3
+    # Hard expert/timestep partition: when on, the E experts are split into
+    # ``num_sigma_buckets`` bands of ``E // num_sigma_buckets`` experts each;
+    # for a sample at σ in band b, only the experts in that band can win the
+    # gate (out-of-band logits masked to -inf before softmax). Soft routing
+    # still operates *within* a band. Independent of (and composes with) the
+    # σ-feature router. Requires ``num_experts % num_sigma_buckets == 0``.
+    specialize_experts_by_sigma_buckets: bool = False
 
     # σ-conditional router (hydra add-on)
     use_sigma_router: bool = False
@@ -195,6 +207,7 @@ class LoRANetworkCfg:
 
         num_experts = kwargs.get("num_experts")
         num_experts = int(num_experts) if num_experts is not None else 4
+        expert_init_std = float(kwargs.get("expert_init_std", 0.0))
         expert_warmup_ratio = float(kwargs.get("expert_warmup_ratio", 0.0))
         expert_warmup_k = int(kwargs.get("expert_warmup_k", 1))
         expert_best_warmup_ratio = float(kwargs.get("expert_best_warmup_ratio", 0.0))
@@ -219,6 +232,21 @@ class LoRANetworkCfg:
             else 0.3
         )
         num_sigma_buckets = int(kwargs.get("num_sigma_buckets", 3))
+        specialize_experts_by_sigma_buckets = _as_bool(
+            kwargs.get("specialize_experts_by_sigma_buckets")
+        )
+        if specialize_experts_by_sigma_buckets:
+            if num_sigma_buckets <= 1:
+                raise ValueError(
+                    "specialize_experts_by_sigma_buckets requires num_sigma_buckets > 1, "
+                    f"got num_sigma_buckets={num_sigma_buckets}."
+                )
+            if num_experts % num_sigma_buckets != 0:
+                raise ValueError(
+                    "specialize_experts_by_sigma_buckets requires num_experts to be "
+                    f"divisible by num_sigma_buckets, got num_experts={num_experts}, "
+                    f"num_sigma_buckets={num_sigma_buckets}."
+                )
 
         use_sigma_router = _as_bool(kwargs.get("use_sigma_router"))
         sigma_feature_dim = int(kwargs.get("sigma_feature_dim", 16))
@@ -256,6 +284,7 @@ class LoRANetworkCfg:
             reft_alpha=reft_alpha,
             reft_layers=reft_layers,
             num_experts=num_experts,
+            expert_init_std=expert_init_std,
             expert_warmup_ratio=expert_warmup_ratio,
             expert_warmup_k=expert_warmup_k,
             expert_best_warmup_ratio=expert_best_warmup_ratio,
@@ -263,6 +292,7 @@ class LoRANetworkCfg:
             hydra_router_layers=hydra_router_layers,
             per_bucket_balance_weight=per_bucket_balance_weight,
             num_sigma_buckets=num_sigma_buckets,
+            specialize_experts_by_sigma_buckets=specialize_experts_by_sigma_buckets,
             use_sigma_router=use_sigma_router,
             sigma_feature_dim=sigma_feature_dim,
             sigma_hidden_dim=sigma_hidden_dim,

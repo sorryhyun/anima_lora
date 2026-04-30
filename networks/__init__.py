@@ -139,6 +139,7 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "num_experts",
     "balance_loss_weight",
     "balance_loss_warmup_ratio",
+    "expert_init_std",
     "expert_warmup_ratio",
     "expert_warmup_k",
     "expert_best_warmup_ratio",
@@ -151,6 +152,7 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "sigma_hidden_dim",
     "per_bucket_balance_weight",
     "num_sigma_buckets",
+    "specialize_experts_by_sigma_buckets",
 )
 
 

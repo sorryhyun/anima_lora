@@ -337,6 +337,21 @@ class LoRANetwork(torch.nn.Module):
                     extra_kwargs["num_experts"] = cfg.num_experts
                 elif effective_module_class == HydraLoRAModule:
                     extra_kwargs["num_experts"] = cfg.num_experts
+                    if cfg.expert_init_std > 0.0:
+                        extra_kwargs["expert_init_std"] = cfg.expert_init_std
+
+                # Hard σ-band expert partition: applied to every Hydra/
+                # OrthoHydra module (independent of the σ-feature router
+                # regex). Each module owns the partition; the network-level
+                # ``set_sigma`` propagates ``_sigma`` to enable per-step band
+                # selection. Validation (E % N == 0) lives in cfg parsing.
+                if (
+                    cfg.specialize_experts_by_sigma_buckets
+                    and effective_module_class in (HydraLoRAModule, OrthoHydraLoRAExpModule)
+                    and is_unet
+                ):
+                    extra_kwargs["specialize_experts_by_sigma_buckets"] = True
+                    extra_kwargs["num_sigma_buckets"] = cfg.num_sigma_buckets
 
                 # σ-conditional router: only widen the router input with
                 # sinusoidal(σ) features on modules whose name matches the
@@ -623,17 +638,26 @@ class LoRANetwork(torch.nn.Module):
         """
         sigmas = sigmas.detach()
         self._last_sigma = sigmas
-        if not self.cfg.use_sigma_router:
+        # Either path needs per-module ``_sigma``: σ-feature concat router
+        # (sigma_feature_dim>0) and hard σ-band expert partition. Skip the
+        # propagation loop only when neither is configured.
+        if not (
+            self.cfg.use_sigma_router or self.cfg.specialize_experts_by_sigma_buckets
+        ):
             return
         sigma_feature_cache: dict[int, torch.Tensor] = {}
         for lora in self.unet_loras + self.text_encoder_loras:
-            if getattr(lora, "sigma_feature_dim", 0) > 0:
-                dim = int(lora.sigma_feature_dim)
-                sigma_features = sigma_feature_cache.get(dim)
+            sigma_dim = int(getattr(lora, "sigma_feature_dim", 0))
+            band_partition = bool(getattr(lora, "_sigma_band_partition", False))
+            if sigma_dim <= 0 and not band_partition:
+                continue
+            sigma_features = None
+            if sigma_dim > 0:
+                sigma_features = sigma_feature_cache.get(sigma_dim)
                 if sigma_features is None:
-                    sigma_features = _sigma_sinusoidal_features(sigmas, dim)
-                    sigma_feature_cache[dim] = sigma_features
-                lora.set_sigma(sigmas, sigma_features)
+                    sigma_features = _sigma_sinusoidal_features(sigmas, sigma_dim)
+                    sigma_feature_cache[sigma_dim] = sigma_features
+            lora.set_sigma(sigmas, sigma_features)
 
     def clear_sigma(self) -> None:
         """Reset cached σ on every HydraLoRA module to zeros.
