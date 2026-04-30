@@ -106,6 +106,14 @@ class ConfigTab(QWidget):
         top.addWidget(self._method_label)
         self.method_combo = QComboBox()
         self.method_combo.addItems(method_items)
+        # Size to the longest entry so names like "ortholora" / "hydralora"
+        # don't get visually clipped on first show. setMinimumContentsLength
+        # reserves char-width room; the AdjustToContents policy keeps the
+        # combo from shrinking back below that on re-layout.
+        self.method_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.method_combo.setMinimumContentsLength(
+            max((len(m) for m in method_items), default=10)
+        )
         self.method_combo.currentTextChanged.connect(
             lambda _: self._on_method_changed()
         )
@@ -121,6 +129,12 @@ class ConfigTab(QWidget):
         self._variant_label = QLabel(t("variant"))
         top.addWidget(self._variant_label)
         self.variant_combo = QComboBox()
+        # Reserve room for the longest variant stem we ship (e.g.
+        # "tlora_ortho_reft", "hydralora_sigma", "custom/<name>"). Without
+        # this, Qt sizes to the shortest entry and the displayed text on
+        # selection ends up elided with "…".
+        self.variant_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.variant_combo.setMinimumContentsLength(20)
         self.variant_combo.currentTextChanged.connect(lambda _: self._reload())
         top.addWidget(self.variant_combo, 1)
         self.new_variant_btn = QPushButton(t("new_variant"))

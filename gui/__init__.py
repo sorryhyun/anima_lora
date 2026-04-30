@@ -243,6 +243,7 @@ _BASIC = {
     "network_dim",
     "network_alpha",
     "network_weights",
+    "num_experts",
     "output_name",
     "use_shuffled_caption_variants",
     "caption_dropout_rate",

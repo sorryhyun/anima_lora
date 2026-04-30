@@ -307,32 +307,14 @@ def field_help(key: str) -> str | None:
 
 APPLY_NOTE_HTML: dict[str, str] = {
     "en": (
-        "<div style='background:#1e2a33; padding:10px 14px; border-left:3px solid #6aa4d8; "
-        "margin-bottom:14px; border-radius:3px;'>"
-        "<p style='margin:0 0 6px 0;'><b>What does <span style='color:#e67e22;'>Apply</span> do?</b></p>"
-        "<p style='margin:0 0 6px 0;'>It fills the form below with a known-good set of values "
-        "for the picked variant — the right toggles (<code>use_ortho</code>, <code>use_hydra</code>, "
-        "<code>add_reft</code>, …), rank defaults, <code>output_name</code>, σ-router knobs, etc. "
-        "It also strips fields the previous variant owned but this one doesn't "
-        "(e.g. <code>num_experts</code> disappears when you switch hydralora → plain lora).</p>"
-        "<p style='margin:0; color:#f0c14b;'><b>Nothing is saved until you click "
-        "<span style='color:#fff;'>Save</span>.</b> Review the filled-in values first, tweak "
-        "whatever you want, then save to overwrite <code>configs/methods/&lt;method&gt;.toml</code>.</p>"
-        "</div>"
+        "<p style='margin:0 0 12px 0; color:#f0c14b; font-size:12px;'>"
+        "<b>Apply</b> fills the form with the picked variant's defaults — "
+        "<b>nothing is saved until you click Save</b>.</p>"
     ),
     "ko": (
-        "<div style='background:#1e2a33; padding:10px 14px; border-left:3px solid #6aa4d8; "
-        "margin-bottom:14px; border-radius:3px;'>"
-        "<p style='margin:0 0 6px 0;'><b><span style='color:#e67e22;'>Apply</span>는 정확히 무엇을 하나요?</b></p>"
-        "<p style='margin:0 0 6px 0;'>선택한 variant의 검증된 값 세트로 아래 폼을 채웁니다 — "
-        "토글(<code>use_ortho</code>, <code>use_hydra</code>, <code>add_reft</code> 등), "
-        "랭크 기본값, <code>output_name</code>, σ-router 파라미터 등. "
-        "이전 variant가 소유했지만 현재 variant에는 없는 필드는 자동으로 제거됩니다 "
-        "(예: hydralora → plain lora로 바꾸면 <code>num_experts</code>가 사라짐).</p>"
-        "<p style='margin:0; color:#f0c14b;'><b><span style='color:#fff;'>Save</span>를 "
-        "누르기 전까지는 디스크에 저장되지 않습니다.</b> 채워진 값을 먼저 확인하고 필요하면 "
-        "수정한 뒤 Save를 눌러 <code>configs/methods/&lt;method&gt;.toml</code>에 기록하세요.</p>"
-        "</div>"
+        "<p style='margin:0 0 12px 0; color:#f0c14b; font-size:12px;'>"
+        "<b>Apply</b>는 선택한 variant의 기본값으로 폼을 채웁니다 — "
+        "<b>Save를 누르기 전까지는 저장되지 않습니다</b>.</p>"
     ),
 }
 
