@@ -9,6 +9,8 @@
 \usepackage{xcolor}
 \usepackage[hidelinks,colorlinks=true,linkcolor=black,citecolor=blue,urlcolor=blue]{hyperref}
 \usepackage{titlesec}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
 
 \titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.6em}{}
 \titleformat{\subsection}{\normalfont\bfseries}{\thesubsection}{0.6em}{}
@@ -46,8 +48,7 @@ Cayley-orthogonal shared basis with per-expert \emph{disjoint output
 subspaces} carved from the top-$(Er)$ left singular vectors of the
 pretrained weight. Disjointness makes the router's per-expert score
 non-degenerate at step~$0$, so specialisation receives gradient signal
-before any expert has trained. The trained delta factors directly into
-a standard plain-LoRA checkpoint without an SVD. We test the predicted
+before any expert has trained. We test the predicted
 deadlock on a DiT pipeline by comparing two HydraLoRA baselines, a
 zero-initialised shared-basis variant and the original
 $\sigma{=}0.1$ Gaussian-jitter mitigation, against Ortho-Hydra under a
@@ -66,9 +67,8 @@ Low-rank adaptation~\cite{hu2022lora} replaces a frozen weight $W_0
 $y = W_0 x + s\,B A x$, where $A \in \Rb^{r\times d_{\mathrm{in}}}$ and
 $B \in \Rb^{d_{\mathrm{out}}\times r}$ are trained and $s = \alpha/r$
 is a fixed scalar. For diffusion-transformer fine-tuning at $r \in [4,
-64]$ this is parameter- and storage-efficient and composes cleanly
-with the ComfyUI weight-patch inference path, which is one reason it
-has become the default adapter format for community LoRA distribution.
+64]$ this is parameter- and storage-efficient, and it
+has become the default adapter format for community model distribution.
 
 Two well-known weaknesses of LoRA compound on \emph{multi-style}
 training data. First, the residual $BA$ can drift in directions that
@@ -119,10 +119,6 @@ RMS-pooled rank-$r$ bottleneck activation rather than the raw input
 or the text embedding, and explain why this aggregator is the only
 one of three obvious choices that survives the long-sequence
 DC-cancellation problem in DiT.
-\item We show the trained network factors losslessly into a plain-LoRA
-checkpoint: $\Delta W$ is already rank-$r$, so no post-hoc SVD is
-needed, and the artefact is deployable through tooling that does not
-understand routed adapters.
 \end{enumerate}
 
 \section{Background}
@@ -179,10 +175,173 @@ to the router until the $B_i$ have drifted apart.
 \section{Method: Ortho-Hydra}
 \label{sec:method}
 
+\begin{figure}[t]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  font=\footnotesize,
+  >={Stealth[length=1.6mm,width=1.2mm]},
+  box/.style={draw, rounded corners=1pt, minimum height=4mm,
+              minimum width=15mm, fill=gray!6, inner sep=1pt},
+  small/.style={draw, rounded corners=1pt, minimum height=4mm,
+                minimum width=5mm, fill=gray!6, inner sep=0pt,
+                font=\scriptsize},
+  ph/.style={minimum height=4mm, minimum width=4mm, inner sep=0pt,
+             font=\scriptsize},
+  router/.style={draw, rounded corners=1pt, minimum height=4mm,
+                 minimum width=12mm, fill=blue!10, inner sep=1pt,
+                 font=\scriptsize},
+  dot/.style={circle, draw, fill=gray!18, inner sep=0pt,
+              minimum size=2mm},
+  plus/.style={circle, draw, inner sep=0pt, minimum size=4mm,
+               font=\scriptsize},
+  io/.style={font=\itshape},
+  arr/.style={->, thin},
+  thinarr/.style={->, thin, gray!60!black},
+  panhead/.style={font=\bfseries\footnotesize},
+  lab/.style={font=\scriptsize, gray!45!black},
+  node distance=2.4mm,
+]
+
+%==== (a) Plain LoRA ============================================
+\begin{scope}[local bounding box=panA]
+  \node[panhead] (titA) {(a) Plain LoRA};
+  \node[io, below=of titA] (xa) {$x$};
+  \node[box, below=of xa] (Aa) {$A$};
+  \node[dot, below=of Aa] (la) {};
+  \node[lab, right=1mm of la] {$\ell\,{\in}\,\mathbb{R}^r$};
+  \node[box, below=of la] (Ba) {$B$\ \scriptsize{(init $0$)}};
+  \node[plus, below=4mm of Ba] (sa) {\scriptsize$+$};
+  \node[box, fill=white, left=5mm of sa] (Wa) {$W_0\,x$};
+  \node[io, below=2mm of sa] (ya) {$y$};
+  \draw[arr] (xa)--(Aa); \draw[arr] (Aa)--(la);
+  \draw[arr] (la)--(Ba); \draw[arr] (Ba)--(sa);
+  \draw[arr] (Wa)--(sa); \draw[arr] (sa)--(ya);
+  \node[draw, thin, minimum width=3.5mm, minimum height=22mm,
+        right=12mm of la, anchor=north] (cspA) {};
+  \node[lab, above=0.4mm of cspA] {$d_{\mathrm{out}}$};
+  \fill[red!55] ([yshift=-9mm]cspA.north west)
+                rectangle ([yshift=-13mm]cspA.north east);
+  \node[lab, right=0.6mm of cspA, anchor=west] {$\mathrm{col}(B)$};
+\end{scope}
+
+%==== (b) HydraLoRA =============================================
+\begin{scope}[local bounding box=panB, shift={(58mm,0)}]
+  \node[panhead] (titB) {(b) HydraLoRA};
+  \node[io, below=of titB] (xb) {$x$};
+  \node[box, below=of xb] (Ab) {$A$ \scriptsize{(shared)}};
+  \node[dot, below=of Ab] (lb) {};
+  \node[lab, right=1mm of lb] {$\ell$};
+  \node[small, below=4mm of lb, xshift=-9mm] (B1) {$B_1$};
+  \node[small, right=0.8mm of B1] (B2) {$B_2$};
+  \node[ph, right=0.8mm of B2] (Bd) {$\cdots$};
+  \node[small, right=0.8mm of Bd] (BE) {$B_E$};
+  \node[plus, below=14mm of lb] (sb) {\scriptsize$+$};
+  \node[box, fill=white, left=5mm of sb] (Wb) {$W_0\,x$};
+  \node[io, below=2mm of sb] (yb) {$y$};
+  \node[router, left=7mm of B1] (rb) {router\,$g(x)$};
+  \draw[arr] (xb)--(Ab); \draw[arr] (Ab)--(lb);
+  \draw[arr] (lb)--(B1.north);
+  \draw[arr] (lb)--(B2.north);
+  \draw[arr] (lb)--(BE.north);
+  \draw[thinarr] (B1.south)--(sb);
+  \draw[thinarr] (B2.south)--(sb);
+  \draw[thinarr] (BE.south)--(sb);
+  \draw[arr] (Wb)--(sb); \draw[arr] (sb)--(yb);
+  \draw[thinarr] (xb.west) to[out=180,in=90] (rb.north);
+  \draw[thinarr] (rb.east) -- node[lab,above=-0.2mm]{$g$} (B1.west);
+  \node[draw, thin, minimum width=3.5mm, minimum height=22mm,
+        right=12mm of lb, anchor=north] (cspB) {};
+  \node[lab, above=0.4mm of cspB] {$d_{\mathrm{out}}$};
+  \fill[red!55, opacity=0.65]
+        ([yshift=-9mm]cspB.north west)
+        rectangle ([yshift=-13mm]cspB.north east);
+  \fill[blue!55, opacity=0.55]
+        ([yshift=-9.4mm]cspB.north west)
+        rectangle ([yshift=-12.6mm]cspB.north east);
+  \fill[green!60!black, opacity=0.45]
+        ([yshift=-9.8mm]cspB.north west)
+        rectangle ([yshift=-12.2mm]cspB.north east);
+  \node[lab, below=0.4mm of cspB] {$\mathrm{col}(B_e)$};
+\end{scope}
+
+%==== (c) Ortho-Hydra ===========================================
+\begin{scope}[local bounding box=panC, shift={(118mm,0)}]
+  \node[panhead] (titC) {(c) Ortho-Hydra};
+  \node[io, below=of titC] (xc) {$x$};
+  \node[box, below=of xc] (Qc) {$R_q\, Q_{\mathrm{basis}}$};
+  \node[dot, below=of Qc] (lc) {};
+  \node[lab, right=1mm of lc] {$\ell$};
+  \node[router, below=2mm of Qc, xshift=-15mm, anchor=east]
+        (rc) {router\,$g(\bar\ell)$};
+  \node[box, below=of lc] (Lam) {$\odot\,\mathrm{diag}(\lambda)$};
+  \node[small, below=4mm of Lam, xshift=-9mm, fill=red!22] (P1) {$P_1$};
+  \node[small, right=0.8mm of P1, fill=blue!22] (P2) {$P_2$};
+  \node[ph, right=0.8mm of P2] (Pd) {$\cdots$};
+  \node[small, right=0.8mm of Pd, fill=green!28!white] (PE) {$P_E$};
+  \node[plus, below=22mm of lc] (sc) {\scriptsize$+$};
+  \node[box, fill=white, left=5mm of sc] (Wc) {$W_0\,x$};
+  \node[io, below=2mm of sc] (yc) {$y$};
+  \draw[arr] (xc)--(Qc); \draw[arr] (Qc)--(lc);
+  \draw[arr] (lc)--(Lam);
+  \draw[arr] (Lam)--(P1.north);
+  \draw[arr] (Lam)--(P2.north);
+  \draw[arr] (Lam)--(PE.north);
+  \draw[thinarr] (P1.south)--(sc);
+  \draw[thinarr] (P2.south)--(sc);
+  \draw[thinarr] (PE.south)--(sc);
+  \draw[arr] (Wc)--(sc); \draw[arr] (sc)--(yc);
+  \draw[thinarr] (lc.west) to[out=180,in=0]
+        node[lab,pos=0.5,above=-0.4mm]{rmspool} (rc.east);
+  \draw[thinarr] (rc.south) to[out=270,in=180]
+        node[lab,pos=0.85,above=-0.4mm]{$g$} (P1.west);
+  \node[draw, thin, minimum width=3.5mm, minimum height=22mm,
+        right=12mm of lc, anchor=north] (cspC) {};
+  \node[lab, above=0.4mm of cspC] {$d_{\mathrm{out}}$};
+  \fill[red!60]
+        ([yshift=-3mm]cspC.north west)
+        rectangle ([yshift=-7mm]cspC.north east);
+  \fill[blue!60]
+        ([yshift=-7.5mm]cspC.north west)
+        rectangle ([yshift=-11mm]cspC.north east);
+  \fill[gray!40]
+        ([yshift=-11.5mm]cspC.north west)
+        rectangle ([yshift=-15mm]cspC.north east);
+  \fill[green!60!black]
+        ([yshift=-15.5mm]cspC.north west)
+        rectangle ([yshift=-19mm]cspC.north east);
+  \node[lab, below=0.4mm of cspC] {$\mathrm{col}(P_e)$};
+\end{scope}
+
+\end{tikzpicture}}
+\caption{Architecture comparison.
+\textbf{(a) Plain LoRA:} a single $(A, B)$ pair; $B$ writes the
+residual into one $r$-dimensional band of
+$\mathbb{R}^{d_{\mathrm{out}}}$ (right cartoon).
+\textbf{(b) HydraLoRA:} shared $A$ with $E$ parallel up-heads
+$\{B_e\}$ mixed by a router $g(x)$ under a Switch-Transformer balance
+loss. With $B_e\!=\!0$ at initialisation, every head shares the same
+column span (overlapping bands at right) and the per-expert router
+score is degenerate; specialisation receives no gradient signal until
+the symmetry is broken externally.
+\textbf{(c) Ortho-Hydra:} the down-projection is a Cayley-rotated SVD
+basis $R_q\,\Qbasis$; the up-projection is a sum
+$\sum_e g_e\, \Peff[e]$ over $E$ \emph{disjoint} orthonormal slices
+of the top-$(Er)$ left singular vectors of $W_0$, each rotated only
+within its own slice by a per-expert Cayley matrix. The
+$\Pbases[i]\T\Pbases[j]\!=\!\mathbf{0}$ invariant
+(non-overlapping bands at right) is preserved exactly through training,
+and the layer-local router reads the RMS-pooled rank-$r$ activation
+$\bar\ell$ rather than the raw input.}
+\label{fig:archs}
+\end{figure}
+
 \subsection{Architecture}
 
 For each adapted Linear $W_0 \in \Rb^{d_{\mathrm{out}}\times
-d_{\mathrm{in}}}$ we store the components in Table~\ref{tab:components}.
+d_{\mathrm{in}}}$ we store the components in
+Table~\ref{tab:components}; Figure~\ref{fig:archs} contrasts the
+resulting architecture against plain LoRA and HydraLoRA.
 
 \begin{center}
 \small
@@ -320,30 +479,6 @@ replicated across experts (with a runtime warning); in that fallback
 the only symmetry-breaker is the original expert warm-up schedule,
 and running with warm-up disabled is unsafe.
 
-\subsection{Lossless bake-down to plain LoRA}
-
-The trained delta is
-\[
-\Delta W(b)
-\;=\; \sum_{e=1}^{E} g_{b,e} \,\Peff[e]\,\mathrm{diag}(\lambda)\,\Qeff
-\;\;\in\;\;\Rb^{d_{\mathrm{out}}\times d_{\mathrm{in}}}.
-\]
-The per-sample $\Delta W(b)$ has rank at most $r$: the sum of $E$
-rank-$r$ outer products lying in disjoint output subspaces but a
-shared $r$-dimensional input subspace via $\Qeff$. At save time we
-average gates across the population (uniform prior approximation,
-$\bar g_e = 1/E$) and write
-\[
-\bar\Delta W = \tfrac{1}{E}\!\sum_{e} \Peff[e]\,\mathrm{diag}(\lambda)\,\Qeff
-= \bar P_{\mathrm{eff}}\,\mathrm{diag}(\lambda)\,\Qeff,
-\]
-which is exactly rank-$r$ and factors directly into
-$(\mathrm{lora\_up}, \mathrm{lora\_down})$ via a square-root split of
-$\lambda$, with no SVD required. We ship two files: a plain-LoRA
-checkpoint that any LoRA-aware loader can consume (lossy, with routing
-collapsed to the uniform prior) and a multi-head sibling that
-preserves the trained gates for a router-aware custom node.
-
 \section{Experiments}
 \label{sec:experiments}
 
@@ -436,17 +571,14 @@ conclusion. We discuss the caveat with the figure.
 \emph{Mean normalised router entropy} $\bar H \in [0,\,1]$: per-Linear
 softmax entropy divided by $\log E$ and averaged across the $56$
 routed Linears, so $\bar H\!=\!1$ at the uniform prior and
-$\bar H\!=\!0$ at one-hot routing. \emph{Top1$-$top2 margin}:
-$g_{(1)}-g_{(2)}$ averaged over batch and routed Linears, a
-complementary decisiveness view that survives soft-routing where
-entropy moves slowly. \emph{Training loss}: the standard
+$\bar H\!=\!0$ at one-hot routing. \emph{Training loss}: the standard
 flow-matching velocity MSE (masked, as configured for training).
 
 \paragraph{Results.}
 Figure~\ref{fig:router-dynamics} shows the cold-start router dynamics
 across the three variants. The two shared-basis runs remain pinned at
 the uniform prior $\bar H\!\approx\!1$ for the full $1\text{k}$ steps
-(both $\bar H$ and the top1$-$top2 margin move by $<\!0.005$), while
+($\bar H$ moves by $<\!0.005$), while
 ortho has already left $\bar H\!\approx\!0.81$ by step $1\text{k}$
 and converges to $\bar H\!\approx\!0.35$ over $28\text{k}$ steps with
 all twelve experts alive at the end. Training loss is essentially
@@ -592,9 +724,7 @@ owns a disjoint slice of the top-$(Er)$ left singular vectors of the
 pretrained weight. Disjointness is preserved exactly through training,
 which removes the cold-start symmetry between zero-initialised experts
 and gives the layer-local router differentiating gradient signal at
-step~$0$. The trained network factors losslessly into a plain-LoRA
-checkpoint, so the contribution is structural and additive rather
-than a new file format. The cold-start router-dynamics experiment
+step~$0$. The cold-start router-dynamics experiment
 confirms the predicted shared-basis deadlock and shows that the
 original $\sigma$-jitter mitigation does not escape it on a matched
 budget; end-task quality on multi-style fine-tuning is left to future
