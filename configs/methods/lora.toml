@@ -64,7 +64,7 @@ num_sigma_buckets = 4
 # experts (others masked to -inf pre-softmax). Forces the per-timestep
 # specialisation that the σ-feature router alone fails to produce — see
 # bench/router_dynamics analysis. Requires num_experts % num_sigma_buckets == 0.
-specialize_experts_by_sigma_buckets = true
+specialize_experts_by_sigma_buckets = false
 
 # -------------
 # reft
