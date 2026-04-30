@@ -69,6 +69,7 @@ dependencies = [
     "comfy-kitchen>=0.2.8",
     "simpleeval>=1.0.7",
     "pytest>=9.0.3",
+    "blake3>=1.0.8",
 ]
 
 [project.optional-dependencies]
