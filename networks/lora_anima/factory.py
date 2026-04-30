@@ -13,6 +13,7 @@ import torch
 from library.log import setup_logging
 from networks import NETWORK_REGISTRY, resolve_network_spec
 from networks.methods.apex import ConditionShift
+from networks.methods.repa import REPAHead
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
     _refuse_split_hydra_keys,
@@ -23,6 +24,34 @@ from networks.lora_anima.network import LoRANetwork
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+
+def _maybe_attach_repa_head(network: "LoRANetwork", kwargs: Dict[str, object]) -> None:
+    """Attach REPAHead (Yu et al., arXiv:2410.06940) when use_repa=true.
+
+    Called from create_network only — warm-start does not currently restore
+    head weights (the LoRA save pipeline doesn't include them yet), so a
+    fresh head is built whenever REPA is enabled. Acceptable for v0; the
+    head is small and re-converges quickly.
+    """
+    use_repa = kwargs.get("use_repa", "false")
+    if isinstance(use_repa, str):
+        use_repa = use_repa.lower() == "true"
+    if not use_repa:
+        return
+    dit_dim = int(kwargs.get("repa_dit_dim", 2048))
+    hidden_dim = int(kwargs.get("repa_hidden_dim", 2048))
+    encoder_dim = int(kwargs.get("repa_encoder_dim", 1024))
+    lr_scale = float(kwargs.get("repa_lr_scale", 1.0))
+    head = REPAHead(
+        dit_dim=dit_dim, hidden_dim=hidden_dim, encoder_dim=encoder_dim
+    )
+    network.repa_head = head
+    network._repa_lr_scale = lr_scale
+    logger.info(
+        f"REPA head attached: {dit_dim} -> {hidden_dim} -> {encoder_dim} "
+        f"(lr_scale={lr_scale}x of unet_lr)"
+    )
 
 
 def _maybe_attach_apex_shift(network: "LoRANetwork", kwargs: Dict[str, object]) -> None:
@@ -147,6 +176,7 @@ def create_network(
         spec.post_init(network, kwargs)
 
     _maybe_attach_apex_shift(network, kwargs)
+    _maybe_attach_repa_head(network, kwargs)
 
     if use_custom_down_autograd:
         _hits = 0
@@ -507,5 +537,6 @@ def create_network_from_weights(
         spec.post_init(network, kwargs)
 
     _maybe_attach_apex_shift(network, kwargs)
+    _maybe_attach_repa_head(network, kwargs)
 
     return network, weights_sd

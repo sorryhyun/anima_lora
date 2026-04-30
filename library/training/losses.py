@@ -346,6 +346,22 @@ def _condition_shift_loss(ctx: LossContext) -> torch.Tensor:
     return ctx.model_pred.new_zeros(())
 
 
+def _repa_loss(ctx: LossContext) -> torch.Tensor:
+    """REPA-style alignment loss (cosine, scalar-broadcast).
+
+    The adapter (networks/methods/repa.py) does the projection + cosine in
+    ``extra_forwards`` and stashes the precomputed scalar in
+    ``ctx.aux['repa']['loss']``. This handler just multiplies by the
+    user-set weight so the loss-side blend logic stays in one place.
+    """
+    weight = float(getattr(ctx.args, "repa_weight", 0.0) or 0.0)
+    repa_aux = ctx.aux.get("repa") or {}
+    loss = repa_aux.get("loss")
+    if weight <= 0.0 or loss is None:
+        return ctx.model_pred.new_zeros(())
+    return weight * loss.float()
+
+
 # ---------------------------------------------------------------------------
 # Scalar post-reduction losses (operate on the scalar mean of the per-sample)
 # ---------------------------------------------------------------------------
@@ -384,6 +400,7 @@ LOSS_REGISTRY: dict[str, LossFn] = {
     "multiscale": _multiscale_loss,
     "postfix_contrastive": _postfix_contrastive_loss,
     "postfix_sigma_budget": _postfix_sigma_budget_loss,
+    "repa": _repa_loss,
 }
 
 
@@ -396,6 +413,7 @@ _STAGE_SCALAR_BROADCAST = (
     "condition_shift",
     "postfix_contrastive",
     "postfix_sigma_budget",
+    "repa",
 )
 _STAGE_SCALAR_POST = ("multiscale",)
 # _STAGE_SCALAR_POST is consulted by LossComposer.compose via the hard-coded
@@ -563,5 +581,10 @@ def build_loss_composer(args: argparse.Namespace, network: object) -> LossCompos
         active.append("postfix_contrastive")
     if float(getattr(network, "sigma_budget_weight", 0.0) or 0.0) > 0.0:
         active.append("postfix_sigma_budget")
+    if (
+        bool(getattr(args, "use_repa", False))
+        and float(getattr(args, "repa_weight", 0.0) or 0.0) > 0.0
+    ):
+        active.append("repa")
 
     return LossComposer(active_losses=active)

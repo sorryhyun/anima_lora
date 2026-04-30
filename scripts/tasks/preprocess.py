@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from ._common import PY, _path, run
 
 
@@ -55,6 +57,35 @@ def cmd_preprocess_te(extra):
             "models/diffusion_models/anima-preview3-base.safetensors",
             "--caption_shuffle_variants",
             "4",
+            *extra,
+        ]
+    )
+
+
+def cmd_preprocess_pe(extra):
+    """Cache PE-Core (or other registered) vision-encoder features.
+
+    Reads pre-resized images from ``post_image_dataset/resized/`` (the
+    standard LoRA pipeline source) and writes
+    ``{stem}_anima_{encoder}.safetensors`` sidecars into the LoRA cache dir
+    so the dataset's existing ``cache_dir`` lookup finds them.
+
+    Consumed by methods that align against frozen vision features —
+    currently REPA (--use_repa) and IP-Adapter when reading PE features off
+    disk. PE_ENCODER env var overrides the encoder registry name (default
+    ``pe`` = PE-Core-L14-336).
+    """
+    encoder = os.environ.get("PE_ENCODER", "pe")
+    run(
+        [
+            PY,
+            "preprocess/cache_pe_encoder.py",
+            "--dir",
+            _path("resized_image_dir", "post_image_dataset/resized"),
+            "--cache_dir",
+            _path("lora_cache_dir", "post_image_dataset/lora"),
+            "--encoder",
+            encoder,
             *extra,
         ]
     )

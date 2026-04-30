@@ -44,7 +44,7 @@ Perceiver resampler ──► IP tokens     [B, K=16, 1024]   (trainable)
 - **`to_k_ip` / `to_v_ip` init: `std=1e-4`.** This *is* the step-0 baseline mechanism — see the previous bullet. It also serves as symmetry-breaking for the K side (which gets RMSNorm'd to unit magnitude on the K direction, but the directions themselves come from this init).
 - **Per-block KV cached once per batch.** `set_ip_tokens(...)` runs the resampler + 28 KV projections + RMSNorms once and stashes `[B, K, n_h, d_h]` tensors on each `cross_attn._ip_k_cached / _ip_v_cached`. The patched cross-attn forward is then a single SDPA call. Under gradient checkpointing the recomputed forward reads the same stashed K/V.
 - **`B=1 → B=N` broadcast.** At inference, the cond and uncond CFG passes both use the same single ref image. `set_ip_tokens` accepts `[1, K, 1024]`; the patched forward `expand`s to match `q`'s batch dimension (free view, no copy).
-- **Pre-cached PE features (default).** `make ip-adapter-cache` runs PE-Core once over `post_image_dataset/` and writes `{stem}_anima_pe.safetensors` sidecars (`[T_pe, d_enc]` bf16). At training time the dataset loads these into `batch["ip_features"]` and `train.py` skips loading the vision encoder entirely (saves ~600 MB VRAM) — same defaults as VAE latents and text encoder outputs. Set `ip_features_cache_to_disk = false` (and `cache_latents = false`) to fall back to the live-encoding path, which keeps PE-Core resident in bf16 and runs it on `batch["images"]` every step.
+- **Pre-cached PE features (default).** `make ip-adapter-preprocess` runs PE-Core once over `ip-adapter-dataset/` and writes `{stem}_anima_pe.safetensors` sidecars (`[T_pe, d_enc]` bf16) into `post_image_dataset/ip-adapter/` alongside the VAE/text caches. At training time the dataset loads these into `batch["ip_features"]` and `train.py` skips loading the vision encoder entirely (saves ~600 MB VRAM) — same defaults as VAE latents and text encoder outputs. Set `ip_features_cache_to_disk = false` (and `cache_latents = false`) to fall back to the live-encoding path, which keeps PE-Core resident in bf16 and runs it on `batch["images"]` every step. (For non-IP-Adapter PE consumers — REPA, etc. — `make preprocess-pe` writes the same sidecars into the LoRA cache dir.)
 
 ### Why PE-Core
 
@@ -206,7 +206,7 @@ python inference.py \
 | `learning_rate` | 1e-4 | Same LR for resampler and per-block KV projections (two param groups: `ip_resampler`, `ip_kv_proj`). |
 | `cache_latents` | true | Inherited from `base.toml`; compatible with cached PE features. Set to `false` only when running the live-encoding fallback. |
 | `cache_text_encoder_outputs` | true | Text path unchanged from LoRA training |
-| `ip_features_cache_to_disk` | true | Reads `{stem}_anima_pe.safetensors` sidecars produced by `make ip-adapter-cache`. Missing cache = `FileNotFoundError`. Disable to fall back to live PE on `batch["images"]` (also set `cache_latents=false`). |
+| `ip_features_cache_to_disk` | true | Reads `{stem}_anima_pe.safetensors` sidecars produced by `make ip-adapter-preprocess` (or `make preprocess-pe` for non-IP consumers). Missing cache = `FileNotFoundError`. Disable to fall back to live PE on `batch["images"]` (also set `cache_latents=false`). |
 | `use_ip_adapter` | true | Method-forced; flips on `_maybe_set_ip_tokens` in train.py |
 | `ip_image_drop_p` | 0.1 | Whole-batch image-conditioning dropout (CFG dropout) |
 | `caption_dropout_rate` | 0.15–0.20 (recommended) | Text-side dropout. **Do not set this to 0.5+** on `post_image_dataset` — see "Caption dropout pitfall" above. Reasonable default is 0.10–0.20; the original IP-Adapter recipe used 0.05. |
@@ -236,7 +236,7 @@ python inference.py \
 
 - `networks/methods/ip_adapter.py` — `IPAdapterNetwork`, the patched-forward closure, save/load, runtime diagnostics (`set_diagnostics_enabled` / `diagnostic_summary`).
 - `library/vision/encoder.py` — PE-Core wrapper (`load_pe_encoder`, `encode_pe_from_imageminus1to1`). Used by both the cache script and the live-encoding fallback.
-- `preprocess/cache_pe_encoder.py` — `make ip-adapter-cache` entry point. Writes `{stem}_anima_{encoder}.safetensors` sidecars next to each image.
+- `preprocess/cache_pe_encoder.py` — entry point for both `make preprocess-pe` (LoRA / REPA pipeline → `post_image_dataset/lora/`) and the PE step of `make ip-adapter-preprocess` (IP-Adapter pipeline → `post_image_dataset/ip-adapter/`). Writes `{stem}_anima_{encoder}.safetensors` sidecars.
 - `library/datasets/base.py` — `_try_load_ip_features` reads sidecars in `__getitem__`; stacks into `batch["ip_features"]` per training bucket.
 - `library/vision/resampler.py` — `PerceiverResampler` (extracted from the archived img2emb pipeline).
 - `library/vision/buckets.py` — per-encoder PE bucket spec for dynamic-resolution resize.

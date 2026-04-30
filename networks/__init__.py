@@ -107,6 +107,17 @@ SHARED_KWARG_FLAGS: Tuple[str, ...] = (
     "apex_condition_shift_init_b",
     "apex_shift_lr_scale",
     "apex_condition_shift_dim",
+    # REPA-style auxiliary alignment (composes with any variant). The factory
+    # ``_maybe_attach_repa_head`` reads ``use_repa`` to decide whether to attach
+    # the head, then sizes/weights it from the rest. Selection of the hooked
+    # block index and the loss weight live as top-level argparse flags
+    # (``--repa_layer``, ``--repa_weight``) — the network module doesn't need
+    # them, only the adapter / loss handler does.
+    "use_repa",
+    "repa_dit_dim",
+    "repa_hidden_dim",
+    "repa_encoder_dim",
+    "repa_lr_scale",
 )
 
 

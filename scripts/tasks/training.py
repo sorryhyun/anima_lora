@@ -68,29 +68,6 @@ def cmd_ip_adapter(extra):
     train("ip_adapter", extra)
 
 
-def cmd_ip_adapter_cache(extra):
-    """Pre-cache PE-Core patch features for IP-Adapter training.
-
-    Writes ``{stem}_anima_pe.safetensors`` files into
-    ``post_image_dataset/ip-adapter/``. IP_ENCODER env var overrides the
-    registry name (default ``pe``).
-    """
-    encoder = os.environ.get("IP_ENCODER", "pe")
-    run(
-        [
-            PY,
-            "preprocess/cache_pe_encoder.py",
-            "--dir",
-            "ip-adapter-dataset",
-            "--cache_dir",
-            "post_image_dataset/ip-adapter",
-            "--encoder",
-            encoder,
-            *extra,
-        ]
-    )
-
-
 def cmd_ip_adapter_preprocess(extra):
     """Full IP-Adapter preprocess: VAE latents + text-encoder outputs + PE features.
 

@@ -12,7 +12,7 @@
 # The cache_dir redirect comes from configs/datasets/ip_adapter.toml referenced below.
 #
 # Feature source: defaults to PRE-CACHED PE features
-# ({stem}_anima_pe.safetensors produced by `make ip-adapter-cache`). This lets
+# ({stem}_anima_pe.safetensors produced by `make ip-adapter-preprocess`). This lets
 # cache_latents / cache_text_encoder_outputs all stay true and skips loading
 # the vision encoder during training. Set `ip_features_cache_to_disk = false`
 # and `cache_latents = false` to fall back to the original live-encoding path.
@@ -46,7 +46,7 @@ checkpointing_epochs = 12
 # Cached-feature path: VAE latents, text encoder outputs, AND PE patch features
 # all live on disk as sibling sidecars of post_image_dataset/*.png. The vision
 # encoder is NOT loaded during training, and batch["images"] is unused.
-# Run `make ip-adapter-cache` once before training to populate the .pe sidecars.
+# Run `make ip-adapter-preprocess` once before training to populate the .pe sidecars.
 # (cache_latents{_to_disk} and cache_text_encoder_outputs{_to_disk} default to
 # true in configs/base.toml — only the IP-specific flag is set here.)
 ip_features_cache_to_disk = true

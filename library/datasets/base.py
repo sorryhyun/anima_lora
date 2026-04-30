@@ -1128,8 +1128,9 @@ class BaseDataset(torch.utils.data.Dataset):
 
         Returns a ``[T_pe, d_enc]`` float tensor, or ``None`` if disabled. When
         the flag is on but the file is missing, raises so the user gets a clear
-        pointer to re-run ``make ip-adapter-cache`` instead of silently training
-        with a partially-cached dataset.
+        pointer to re-run ``make preprocess-pe`` (LoRA / REPA pipeline) or
+        ``make ip-adapter-preprocess`` (IP-Adapter pipeline) instead of silently
+        training with a partially-cached dataset.
         """
         if not self.ip_features_cache_to_disk:
             return None
@@ -1148,17 +1149,18 @@ class BaseDataset(torch.utils.data.Dataset):
         cache_path = next((c for c in candidates if os.path.exists(c)), None)
         if cache_path is None:
             raise FileNotFoundError(
-                f"IP-Adapter feature cache missing for {image_abs_path}. "
-                f"Looked in: {candidates}. Run `make ip-adapter-cache` "
-                f"(or set ip_features_cache_to_disk=false to fall back to "
-                f"live PE encoding)."
+                f"PE feature cache missing for {image_abs_path}. "
+                f"Looked in: {candidates}. Run `make preprocess-pe` "
+                f"(LoRA / REPA pipeline) or `make ip-adapter-preprocess` "
+                f"(IP-Adapter pipeline), or set ip_features_cache_to_disk=false "
+                f"to fall back to live PE encoding."
             )
         sd = load_file(cache_path)
         feats = sd.get("image_features")
         if feats is None:
             raise KeyError(
                 f"Cache {cache_path} has no 'image_features' key; "
-                f"keys={list(sd.keys())}. Re-run `make ip-adapter-cache`."
+                f"keys={list(sd.keys())}. Re-run `make preprocess-pe`."
             )
         return feats.float()
 

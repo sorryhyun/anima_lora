@@ -43,7 +43,6 @@ make apex                   # APEX self-adversarial 1-NFE distillation (methods/
 make ip-adapter             # IP-Adapter image cross-attention (methods/ip_adapter.toml)
                             # Source: ip-adapter-dataset/   Cache: post_image_dataset/ip-adapter/
 make ip-adapter-preprocess  # Resize + VAE + text + PE caches into post_image_dataset/ip-adapter/
-make ip-adapter-cache       # PE-Core features only → post_image_dataset/ip-adapter/{stem}_anima_pe.safetensors
 make easycontrol            # EasyControl image conditioning (methods/easycontrol.toml)
                             # Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/
 make easycontrol-preprocess # Resize + VAE + text caches into post_image_dataset/easycontrol/
@@ -139,7 +138,7 @@ Layout:
   - `lora.toml` — LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT. Variants are toggle blocks; default stacks classic LoRA + OrthoLoRA + T-LoRA + ReFT.
   - `postfix.toml` — postfix / postfix_exp / postfix_func / postfix_sigma / prefix. Toggle blocks.
   - `apex.toml` — APEX self-adversarial distillation (arXiv:2604.12322). Warm-starts from a prior LoRA via `network_weights` + `dim_from_weights`.
-  - `ip_adapter.toml` — IP-Adapter image cross-attention (DiT frozen; trains resampler + per-block `to_k_ip`/`to_v_ip`). Source: `ip-adapter-dataset/`. Caches: `post_image_dataset/ip-adapter/` (subset-level `cache_dir`). Defaults to PRE-CACHED PE features (`make ip-adapter-cache`).
+  - `ip_adapter.toml` — IP-Adapter image cross-attention (DiT frozen; trains resampler + per-block `to_k_ip`/`to_v_ip`). Source: `ip-adapter-dataset/`. Caches: `post_image_dataset/ip-adapter/` (subset-level `cache_dir`). Defaults to PRE-CACHED PE features (`make ip-adapter-preprocess`).
   - `easycontrol.toml` — EasyControl image conditioning (DiT frozen; trains per-block cond LoRA on self-attn + FFN + scalar `b_cond` gate). Source: `easycontrol-dataset/`. Caches: `post_image_dataset/easycontrol/`. Reuses cached VAE latents — no new sidecar.
 - `configs/gui-methods/` — GUI-friendly parallel tree. One self-contained TOML per **variant** instead of per family (`lora`, `lora-8gb`, `lora_longer`, `ortholora`, `tlora`, `reft`, `tlora_ortho_reft`, `hydralora`, `hydralora_sigma`, `postfix`, `postfix_exp`, `postfix_func`, `postfix_sigma`, `prefix`, `ip_adapter`, `easycontrol`, plus a copy of `apex`). No toggle blocks — what you see is what runs. Selected via `train.py --methods_subdir gui-methods` (wrapped by `make lora-gui GUI_PRESETS=<variant>` / `python tasks.py lora-gui <variant>`). Intended for basic users and as the eventual source of truth for the GUI's variant picker.
 
@@ -224,7 +223,7 @@ Text-conditioned AdaLN modulation via a learned `pooled_text_proj` MLP (Starodub
 
 ## IP-Adapter
 
-Decoupled image cross-attention (Ye et al. 2023). DiT is frozen; trains only the Perceiver resampler and per-block parallel `to_k_ip`/`to_v_ip` projections (~150M params at default `K=16`, 28 blocks). Reference image → frozen vision tower (PE-Core-L14-336 by default) → resampler → K compact IP tokens → per-block KV → patched cross-attention adds `scale * SDPA(text_q, ip_k, ip_v)` to the existing text cross-attention. Source images live in `ip-adapter-dataset/`; preprocessed caches (latents, text-emb, PE features) go to `post_image_dataset/ip-adapter/` via the subset-level `cache_dir` knob. Defaults to PRE-CACHED PE features (`{stem}_anima_pe.safetensors` from `make ip-adapter-cache`) so training never loads the vision encoder. CFG dropout (`image_drop_p`) zeros image conditioning so inference can do image-CFG independently of text-CFG. See `docs/methods/ip-adapter.md`.
+Decoupled image cross-attention (Ye et al. 2023). DiT is frozen; trains only the Perceiver resampler and per-block parallel `to_k_ip`/`to_v_ip` projections (~150M params at default `K=16`, 28 blocks). Reference image → frozen vision tower (PE-Core-L14-336 by default) → resampler → K compact IP tokens → per-block KV → patched cross-attention adds `scale * SDPA(text_q, ip_k, ip_v)` to the existing text cross-attention. Source images live in `ip-adapter-dataset/`; preprocessed caches (latents, text-emb, PE features) go to `post_image_dataset/ip-adapter/` via the subset-level `cache_dir` knob. Defaults to PRE-CACHED PE features (`{stem}_anima_pe.safetensors` from `make ip-adapter-preprocess`) so training never loads the vision encoder. CFG dropout (`image_drop_p`) zeros image conditioning so inference can do image-CFG independently of text-CFG. See `docs/methods/ip-adapter.md`.
 
 ## EasyControl
 
@@ -240,7 +239,7 @@ Data preparation scripts in `preprocess/`:
 - `resize_images.py` — VAE-compatible image resizing (used by `make preprocess-resize`). Reads `image_dataset/`, writes resized PNGs to `post_image_dataset/resized/`. Drops images below `--min_pixels` (default 0.5MP). `--no_copy_captions` skips the `.txt` copy so captions stay only in `image_dataset/`.
 - `cache_latents.py` — Cache VAE latents (used by `make preprocess-vae`). Reads `post_image_dataset/resized/`, writes `{stem}_{WxH}_anima.npz` into `post_image_dataset/lora/` via `--cache_dir`.
 - `cache_text_embeddings.py` — Cache text encoder outputs (used by `make preprocess-te`). Reads `image_dataset/` (where `.txt` lives) and writes `{stem}_anima_te.safetensors` into `post_image_dataset/lora/` via `--cache_dir`. Mirrors `resize_images.py`'s `--min_pixels` filter so caches don't accumulate for images that would be dropped at resize.
-- `cache_pe_encoder.py` — Cache PE-Core vision encoder features (`{stem}_anima_pe.safetensors`); used by `make ip-adapter-cache` for IP-Adapter training. Reads `ip-adapter-dataset/`, writes into `post_image_dataset/ip-adapter/`.
+- `cache_pe_encoder.py` — Cache PE-Core vision encoder features (`{stem}_anima_pe.safetensors`). Wrapped by `make preprocess-pe` for the LoRA / REPA pipeline (reads `post_image_dataset/resized/`, writes `post_image_dataset/lora/`) and as one step of `make ip-adapter-preprocess` for the IP-Adapter pipeline (reads `ip-adapter-dataset/`, writes `post_image_dataset/ip-adapter/`).
 - `generate_masks.py` — SAM3-based text bubble mask generation
 - `generate_masks_mit.py` — MIT/ComicTextDetector mask generation (manga-specific)
 - `merge_masks.py` — Combine SAM3 + MIT masks into final mask set

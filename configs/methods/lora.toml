@@ -12,11 +12,11 @@
 # Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
 # defaults — tune freely.
 
-network_alpha = 48
-network_dim = 48
+network_alpha = 32
+network_dim = 32
 
-learning_rate = 2e-5
-max_train_epochs = 12
+learning_rate = 5e-5
+max_train_epochs = 2
 save_every_n_epochs = 2
 checkpointing_epochs = 2
 
@@ -24,14 +24,8 @@ use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
-# Logging (TensorBoard). Writes event files to output/logs/<run>/.
-# View with: `tensorboard --logdir output/logs`. Scalars logged:
-#   - loss/current, loss/average, lr/*, norm/*
-#   - reg/balance, reg/balance_weighted   (Hydra load-balance)
-#   - reg/ortho, reg/ortho_weighted       (OrthoLoRA / ReFT regularizer)
-#   - hydra/router_entropy                (Hydra gate entropy; 1=uniform, 0=one-hot)
-logging_dir = "output/logs"
-log_with = "tensorboard"
+# logging_dir = "output/logs"
+# log_with = "tensorboard"
 
 # -------------
 # Ortho-lora
@@ -49,35 +43,44 @@ alpha_rank_scale = 1.0
 # -------------
 # hydralora
 
-output_name = "anima_hydra"
-use_hydra = true
-num_experts = 12
-balance_loss_weight = 5e-7 # seems lr * 1/10 is proper
+# output_name = "anima_hydra"
+# use_hydra = true
+# num_experts = 12
+# balance_loss_weight = 5e-7 # seems lr * 1/10 is proper
 
-# # # expert_warmup_ratio = 0.1
-# # # expert_warmup_k = 4
+# balance_loss_warmup_ratio = 0.4
+# network_router_lr_scale = 10
+# hydra_router_layers = ".*(mlp\\.layer[12])$" # ".*(cross_attn\\.kv_proj)$"
 
-balance_loss_warmup_ratio = 0.4
-network_router_lr_scale = 10
-hydra_router_layers = ".*(mlp\\.layer[12])$" # ".*(cross_attn\\.kv_proj)$"
-
-use_sigma_router = true
-sigma_feature_dim = 16
-sigma_hidden_dim = 16   # unused; retained for API compat
-sigma_router_layers = ".*(mlp\\.layer[12])$"
-per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
-num_sigma_buckets = 4
+# use_sigma_router = true
+# sigma_feature_dim = 16
+# sigma_hidden_dim = 16   # unused; retained for API compat
+# sigma_router_layers = ".*(mlp\\.layer[12])$"
+# per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
+# num_sigma_buckets = 4
 
 # -------------
 # reft
 
-add_reft = true
-reft_dim = 48
-reft_alpha = 48
-reft_layers = "last_8"
+# add_reft = true
+# reft_dim = 48
+# reft_alpha = 48
+# reft_layers = "last_8"
 
-compile_mode = "full"
-compile_inductor_mode = "reduce-overhead"
+# -------------
+# REPA (Yu et al., arXiv:2410.06940) — auxiliary alignment loss between a
+# mid-block DiT hidden state and a cached PE-Core feature. Composes on top
+# of any LoRA variant. Requires {stem}_anima_pe.safetensors sidecars from
+# `make preprocess-pe` for every image (auto-enables ip_features_cache_to_disk).
+# Hooks one DiT block; default 8 of 28 mirrors the paper's SiT-XL choice.
+
+use_repa = true
+repa_weight = 0.5
+repa_layer = 8
+repa_lr_scale = 1.0       # head LR = repa_lr_scale * unet_lr
+
+# compile_mode = "full"
+# compile_inductor_mode = "reduce-overhead"
 
 
 # ── Per-channel input pre-scaling (SmoothQuant-style, optional) ─────────

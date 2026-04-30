@@ -55,11 +55,6 @@ COMMANDS = {
         training.cmd_ip_adapter,
         "IP-Adapter training (decoupled image cross-attention)",
     ),
-    "ip-adapter-cache": (
-        training.cmd_ip_adapter_cache,
-        "Pre-cache PE-Core patch features for IP-Adapter (writes into "
-        "post_image_dataset/ip-adapter/). IP_ENCODER=pe|pe-g.",
-    ),
     "ip-adapter-preprocess": (
         training.cmd_ip_adapter_preprocess,
         "Full IP-Adapter preprocess: latents + text emb + PE features. "
@@ -123,6 +118,12 @@ COMMANDS = {
     ),
     "preprocess-vae": (preprocess.cmd_preprocess_vae, "Cache VAE latents"),
     "preprocess-te": (preprocess.cmd_preprocess_te, "Cache text encoder embeddings"),
+    "preprocess-pe": (
+        preprocess.cmd_preprocess_pe,
+        "Cache PE-Core (or other registered) vision-encoder features into the "
+        "LoRA cache dir. Consumed by REPA (--use_repa) and IP-Adapter live-disk "
+        "mode. PE_ENCODER=pe|pe-g.",
+    ),
     # ── img2emb ───────────────────────────────────────────────────────
     "img2emb": (
         img2emb.cmd_img2emb,

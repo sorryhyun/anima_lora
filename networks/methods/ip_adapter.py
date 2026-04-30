@@ -630,7 +630,7 @@ class IPAdapterMethodAdapter(MethodAdapter):
                 "--use_ip_adapter without --ip_features_cache_to_disk requires "
                 "--cache_latents=false so batch['images'] carries the raw reference "
                 "image for live PE encoding. Either set ip_features_cache_to_disk=true "
-                "(after `make ip-adapter-cache`) or cache_latents=false."
+                "(after `make ip-adapter-preprocess`) or cache_latents=false."
             )
         if cache_features:
             accelerator.print(
@@ -683,7 +683,7 @@ class IPAdapterMethodAdapter(MethodAdapter):
                 raise RuntimeError(
                     "IP-Adapter expected batch['images'] but got None — re-check "
                     "cache_latents=false in the IP-Adapter config, or set "
-                    "ip_features_cache_to_disk=true with `make ip-adapter-cache`."
+                    "ip_features_cache_to_disk=true with `make ip-adapter-preprocess`."
                 )
             with torch.no_grad():
                 feats_list = encode_pe_from_imageminus1to1(

@@ -1,0 +1,30 @@
+# LoRA + REPA — classic LoRA training with the REPA auxiliary alignment loss
+# (Yu et al., arXiv:2410.06940). REPA cosine-aligns a mid-block DiT hidden
+# state to a cached PE-Core image feature, regularising the DiT toward more
+# discriminative semantic representations.
+#
+# Prerequisite: run `make preprocess-pe` once to generate
+# {stem}_anima_pe.safetensors sidecars under post_image_dataset/lora/
+# (alongside the VAE / text-encoder caches).
+#
+# REPA itself is composable with any LoRA variant; this file is the simplest
+# baseline (classic LoRA + REPA). For T-LoRA + REPA, copy this file and add
+# the T-LoRA flags from gui-methods/tlora.toml.
+
+network_dim = 32
+network_alpha = 32
+learning_rate = 2e-5
+max_train_epochs = 4
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+output_name = "anima_repa"
+blocks_to_swap = 0
+
+# REPA — auxiliary alignment loss
+use_repa = true
+repa_weight = 0.5    # paper default; lower (0.1-0.25) if it overpowers FM loss
+repa_layer = 8       # DiT block index (of 28); paper choice for SiT-XL
+repa_lr_scale = 1.0  # head LR = repa_lr_scale * unet_lr

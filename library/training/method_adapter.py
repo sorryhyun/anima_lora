@@ -156,6 +156,10 @@ def resolve_adapters(args, network) -> list[MethodAdapter]:
         from networks.methods.easycontrol import EasyControlMethodAdapter
 
         adapters.append(EasyControlMethodAdapter())
+    if getattr(args, "use_repa", False):
+        from networks.methods.repa import REPAMethodAdapter
+
+        adapters.append(REPAMethodAdapter())
     method = getattr(args, "method", None) or ""
     if method == "apex" or method.startswith("apex_"):
         from networks.methods.apex import ApexMethodAdapter

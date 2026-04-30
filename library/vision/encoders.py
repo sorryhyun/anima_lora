@@ -25,6 +25,12 @@ from library.vision.buckets import BucketSpec, get_bucket_spec
 
 logger = logging.getLogger(__name__)
 
+# Repo root, used by the ``_default_*_model_id`` helpers to point at vendored
+# checkpoints under ``models/``. encoders.py lives at
+# ``library/vision/encoders.py`` so two ``parents`` jumps land on the repo
+# root regardless of cwd.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 # --------------------------------------------------------------------------- shared output shim
 

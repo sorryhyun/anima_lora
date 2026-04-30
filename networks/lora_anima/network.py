@@ -1378,6 +1378,22 @@ class LoRANetwork(torch.nn.Module):
                         f"({shift_lr_scale}x of unet_lr={base_lr})"
                     )
 
+        if getattr(self, "repa_head", None) is not None:
+            repa_params = list(self.repa_head.parameters())
+            if len(repa_params) > 0:
+                repa_lr_scale = float(getattr(self, "_repa_lr_scale", 1.0))
+                base_lr = unet_lr if unet_lr is not None else default_lr
+                if base_lr is None or base_lr == 0:
+                    logger.info("REPA head: no base LR, skipping param group")
+                else:
+                    repa_lr = float(base_lr) * repa_lr_scale
+                    all_params.append({"params": repa_params, "lr": repa_lr})
+                    lr_descriptions.append("repa head")
+                    logger.info(
+                        f"REPA head param group: lr={repa_lr:.2e} "
+                        f"({repa_lr_scale}x of unet_lr={base_lr})"
+                    )
+
         return all_params, lr_descriptions
 
     def enable_gradient_checkpointing(self):

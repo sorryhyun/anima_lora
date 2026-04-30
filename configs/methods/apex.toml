@@ -35,16 +35,16 @@ log_with = "tensorboard"
 # profile. Trained file captures only the APEX delta on the merged base —
 # stack with the warm-start tlora at inference, or re-merge via
 # scripts/merge_to_dit.py to ship a single combined LoRA.
-network_weights = "output/ckpt/anima-tlora-0428-04.safetensors"
+network_weights = "output/ckpt/anima-tlora-0430-12.safetensors"
 dim_from_weights = true
 
 # Longer than plain LoRA because APEX refine needs budget for the adversarial
 # signal to take effect after warmup. Adjust upward if the loss is still
 # trending down at end of training.
 learning_rate = 1e-4
-max_train_epochs = 2
-save_every_n_epochs = 2
-checkpointing_epochs = 2
+max_train_epochs = 12
+save_every_n_epochs = 12
+checkpointing_epochs = 12
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
