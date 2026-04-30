@@ -171,6 +171,21 @@ def test_compose_real_branch_apex_mix_active_with_constant_lam_c():
     assert real.item() > 0.0
 
 
+def test_apex_mix_falls_back_to_flow_match_during_validation():
+    """Validation runs ApexMethodAdapter.extra_forwards as a no-op (is_train=
+    False), so loss_aux has no "apex" key. apex_mix must fall back to plain FM
+    against ctx.target instead of returning zeros — otherwise the tracker logs
+    a spurious 0 under loss/validation/*."""
+    from library.training.losses import _apex_mix_loss, _flow_match_loss
+
+    args, ctx = _apex_loss_ctx()
+    ctx.aux = {}  # mimic the validation-time aux (extra_forwards skipped)
+    fm_only = _flow_match_loss(ctx)
+    apex_mix = _apex_mix_loss(ctx)
+    assert torch.allclose(apex_mix, fm_only)
+    assert apex_mix.mean().item() > 0.0
+
+
 def test_method_adapter_default_split_backward_off():
     """Default MethodAdapter must not opt into split-backward; only APEX does."""
     from library.training.method_adapter import MethodAdapter

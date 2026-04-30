@@ -238,7 +238,12 @@ def _apex_mix_loss(ctx: LossContext) -> torch.Tensor:
     apex_aux = ctx.aux.get("apex") or {}
     T_mix_v = apex_aux.get("T_mix_v")
     if T_mix_v is None:
-        return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
+        # Validation path: ApexMethodAdapter.extra_forwards is a no-op when
+        # is_train=False, so loss_aux has no "apex" key. T_mix_v at inner
+        # lambda=0 equals v_data == ctx.target exactly, so reporting plain FM
+        # is the correct mathematical limit and avoids the spurious 0 the
+        # tracker would otherwise log under "loss/validation/...".
+        return _flow_match_loss(ctx)
     lam_c = float(getattr(ctx.args, "apex_lambda_c", 1.0))
     if lam_c <= 0.0:
         return ctx.model_pred.new_zeros(ctx.model_pred.shape[0])
