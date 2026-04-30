@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -403,6 +404,15 @@ class ImageViewerTab(QWidget):
         self.dc.addItems(self._dirs)
         self.dc.currentTextChanged.connect(self._load_dir)
         top.addWidget(self.dc, 1)
+        self.reload_btn = QPushButton("↻")
+        self.reload_btn.setFixedWidth(28)
+        self.reload_btn.setToolTip(t("dataset_reload_tooltip"))
+        self.reload_btn.clicked.connect(self._reload_current_dir)
+        top.addWidget(self.reload_btn)
+        self.add_dir_btn = QPushButton(t("dataset_add_dir"))
+        self.add_dir_btn.setToolTip(t("dataset_add_dir_tooltip"))
+        self.add_dir_btn.clicked.connect(self._add_dir)
+        top.addWidget(self.add_dir_btn)
         self.cnt = QLabel()
         top.addWidget(self.cnt)
         lay.addLayout(top)
@@ -469,26 +479,72 @@ class ImageViewerTab(QWidget):
 
     # ── data loading ──────────────────────────────────────────
 
-    def _load_dir(self, name: str):
+    def _load_dir(self, name: str, *, preserve_selection: bool = False):
         if not self._confirm_discard_if_dirty():
             # Roll the combo back without re-firing _load_dir.
             return
         d = self._dirs.get(name)
         if not d:
             return
+        prev_stem: str | None = None
+        if preserve_selection and self._current_caption_path is not None:
+            prev_stem = self._current_caption_path.stem
         self._images = _imgs(d)
         self.fl.clear()
         for p in self._images:
             self.fl.addItem(p.stem)
         self.cnt.setText(t("n_images", n=len(self._images)))
         if self._images:
-            self.fl.setCurrentRow(0)
+            row = 0
+            if prev_stem is not None:
+                for i, p in enumerate(self._images):
+                    if p.stem == prev_stem:
+                        row = i
+                        break
+            self.fl.setCurrentRow(row)
         else:
             self._current_caption_path = None
             self._set_caption_text("")
             self._disk_text = ""
             self._refresh_buttons()
             self._refresh_inline_diff()
+
+    def _reload_current_dir(self) -> None:
+        """Re-scan the currently selected directory (for new/changed images)."""
+        name = self.dc.currentText()
+        if name:
+            self._load_dir(name, preserve_selection=True)
+
+    def _add_dir(self) -> None:
+        """Pick a directory and add it to the combo for this session."""
+        if not self._confirm_discard_if_dirty():
+            return
+        start = str(self._dirs.get(self.dc.currentText(), Path.home()))
+        chosen = QFileDialog.getExistingDirectory(
+            self, t("dataset_add_dir_picker"), start
+        )
+        if not chosen:
+            return
+        path = Path(chosen)
+        # Use the absolute path string as the display key — unambiguous and
+        # avoids collisions with the built-in short labels (image_dataset, …).
+        label = str(path)
+        for existing in self._dirs.values():
+            if existing == path:
+                QMessageBox.information(
+                    self, t("directory"), t("dataset_add_dir_already", name=label)
+                )
+                # Switch to it so the user lands on the dir they tried to add.
+                for k, v in self._dirs.items():
+                    if v == path:
+                        idx = self.dc.findText(k)
+                        if idx >= 0:
+                            self.dc.setCurrentIndex(idx)
+                        break
+                return
+        self._dirs[label] = path
+        self.dc.addItem(label)
+        self.dc.setCurrentText(label)
 
     def _on_row_changed(self, row: int):
         if not self._confirm_discard_if_dirty():

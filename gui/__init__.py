@@ -426,6 +426,12 @@ def _read(w: QWidget, orig: Any = None) -> Any:
             return json.loads(t)
         except (json.JSONDecodeError, ValueError):
             pass
+    # Normalize Windows-style backslashes pasted into path/string fields.
+    # Forward slashes are valid on every OS Python runs on, and avoid
+    # downstream TOML escape errors (e.g. "C:\Users" → \U is not a valid
+    # TOML escape).
+    if "\\" in t:
+        t = t.replace("\\", "/")
     return t
 
 

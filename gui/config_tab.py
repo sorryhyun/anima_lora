@@ -518,14 +518,23 @@ class ConfigTab(QWidget):
 
         # Extra-args textarea: parse as TOML and merge in. Textarea overrides
         # the form for any duplicate key (it's the more explicit signal).
+        # Bare backslashes (Windows path paste) break TOML escape parsing —
+        # try once verbatim, then retry after \→/ before surfacing the error.
         extra_text = self.extra_args_edit.toPlainText().strip()
         extras: dict[str, Any] = {}
         if extra_text:
             try:
                 parsed = toml.loads(extra_text)
             except toml.TomlDecodeError as e:
-                QMessageBox.warning(self, t("invalid_toml"), str(e))
-                return
+                if "\\" in extra_text:
+                    try:
+                        parsed = toml.loads(extra_text.replace("\\", "/"))
+                    except toml.TomlDecodeError:
+                        QMessageBox.warning(self, t("invalid_toml"), str(e))
+                        return
+                else:
+                    QMessageBox.warning(self, t("invalid_toml"), str(e))
+                    return
             extras = {k: v for k, v in parsed.items() if not isinstance(v, dict)}
             out.update(extras)
 
