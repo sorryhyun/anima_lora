@@ -36,6 +36,9 @@ sigma_hidden_dim = 16   # unused; retained for API compat
 sigma_router_layers = ".*(mlp\\.layer[12])$"
 per_bucket_balance_weight = 0.3
 num_sigma_buckets = 3
+# Optional custom σ-bucket edges (length = num_sigma_buckets + 1, monotone
+# 0.0 → 1.0). Defaults to uniform linspace when omitted.
+# sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
 
 output_name = "anima_hydra_sigma"
 

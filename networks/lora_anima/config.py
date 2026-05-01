@@ -47,6 +47,58 @@ def _as_str_list(value: Any) -> Optional[List[str]]:
     return [parsed]
 
 
+def _as_float_list(value: Any) -> Optional[List[float]]:
+    """Parse a kwarg that's either a TOML list, python-literal list string, or None.
+
+    TOML arrays come through as native lists; CLI-stringified lists parse via
+    ast.literal_eval. Raises on malformed input rather than silently dropping
+    it, since a wrong σ-bucket boundary list would change band assignments
+    without surfacing an error.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = ast.literal_eval(value)
+        except (ValueError, SyntaxError) as exc:
+            raise ValueError(
+                f"Could not parse list-of-floats kwarg: {value!r} ({exc})"
+            ) from exc
+    if not isinstance(value, (list, tuple)):
+        raise ValueError(
+            f"Expected list of floats, got {type(value).__name__}: {value!r}"
+        )
+    return [float(v) for v in value]
+
+
+def _validate_sigma_bucket_boundaries(
+    boundaries: List[float], num_sigma_buckets: int
+) -> None:
+    """Validate a custom σ-bucket boundary list. Raises ValueError on any
+    violation: wrong length, non-zero start, non-one end, or non-strictly-
+    increasing edges.
+    """
+    if len(boundaries) != num_sigma_buckets + 1:
+        raise ValueError(
+            "sigma_bucket_boundaries must have length num_sigma_buckets + 1 = "
+            f"{num_sigma_buckets + 1}, got {len(boundaries)}."
+        )
+    if abs(boundaries[0]) > 1e-6:
+        raise ValueError(
+            f"sigma_bucket_boundaries[0] must be 0.0, got {boundaries[0]}."
+        )
+    if abs(boundaries[-1] - 1.0) > 1e-6:
+        raise ValueError(
+            f"sigma_bucket_boundaries[-1] must be 1.0, got {boundaries[-1]}."
+        )
+    for i in range(len(boundaries) - 1):
+        if boundaries[i + 1] <= boundaries[i]:
+            raise ValueError(
+                "sigma_bucket_boundaries must be strictly increasing; "
+                f"violated at index {i}: {boundaries[i]} >= {boundaries[i + 1]}."
+            )
+
+
 def _parse_kv_pairs(kv_pair_str: str, *, is_int: bool) -> Dict[str, Any]:
     """Parse "key1=val1,key2=val2" into a dict, casting values to int/float."""
     pairs: Dict[str, Any] = {}
@@ -137,12 +189,20 @@ class LoRANetworkCfg:
     per_bucket_balance_weight: float = 0.3
     num_sigma_buckets: int = 3
     # Hard expert/timestep partition: when on, the E experts are split into
-    # ``num_sigma_buckets`` bands of ``E // num_sigma_buckets`` experts each;
+    # ``num_sigma_buckets`` bands of ``E // num_sigma_buckets`` experts each
+    # using interleaved layout (expert e → band ``e mod num_sigma_buckets``);
     # for a sample at σ in band b, only the experts in that band can win the
     # gate (out-of-band logits masked to -inf before softmax). Soft routing
     # still operates *within* a band. Independent of (and composes with) the
     # σ-feature router. Requires ``num_experts % num_sigma_buckets == 0``.
     specialize_experts_by_sigma_buckets: bool = False
+    # Optional custom σ-bucket boundaries. Length must equal
+    # ``num_sigma_buckets + 1``, strictly increasing, starting at 0.0 and
+    # ending at 1.0. Defaults (None) to uniform ``linspace(0, 1, B+1)``.
+    # Lets you spend more capacity on a chosen σ regime — e.g.
+    # ``[0.0, 0.5, 0.8, 1.0]`` gives a wide low-σ band and progressively
+    # narrower mid/high-σ bands while expert count per band stays equal.
+    sigma_bucket_boundaries: Optional[List[float]] = None
 
     # σ-conditional router (hydra add-on)
     use_sigma_router: bool = False
@@ -235,6 +295,9 @@ class LoRANetworkCfg:
         specialize_experts_by_sigma_buckets = _as_bool(
             kwargs.get("specialize_experts_by_sigma_buckets")
         )
+        sigma_bucket_boundaries = _as_float_list(
+            kwargs.get("sigma_bucket_boundaries")
+        )
         if specialize_experts_by_sigma_buckets:
             if num_sigma_buckets <= 1:
                 raise ValueError(
@@ -247,6 +310,16 @@ class LoRANetworkCfg:
                     f"divisible by num_sigma_buckets, got num_experts={num_experts}, "
                     f"num_sigma_buckets={num_sigma_buckets}."
                 )
+            if sigma_bucket_boundaries is not None:
+                _validate_sigma_bucket_boundaries(
+                    sigma_bucket_boundaries, num_sigma_buckets
+                )
+        elif sigma_bucket_boundaries is not None:
+            logger.warning(
+                "sigma_bucket_boundaries set but "
+                "specialize_experts_by_sigma_buckets is off — boundaries ignored."
+            )
+            sigma_bucket_boundaries = None
 
         use_sigma_router = _as_bool(kwargs.get("use_sigma_router"))
         sigma_feature_dim = int(kwargs.get("sigma_feature_dim", 16))
@@ -293,6 +366,7 @@ class LoRANetworkCfg:
             per_bucket_balance_weight=per_bucket_balance_weight,
             num_sigma_buckets=num_sigma_buckets,
             specialize_experts_by_sigma_buckets=specialize_experts_by_sigma_buckets,
+            sigma_bucket_boundaries=sigma_bucket_boundaries,
             use_sigma_router=use_sigma_router,
             sigma_feature_dim=sigma_feature_dim,
             sigma_hidden_dim=sigma_hidden_dim,
@@ -320,6 +394,7 @@ class LoRANetworkCfg:
         channel_scales_dict: Optional[Dict[str, torch.Tensor]],
         specialize_experts_by_sigma_buckets: bool = False,
         num_sigma_buckets: Optional[int] = None,
+        sigma_bucket_boundaries: Optional[List[float]] = None,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -329,10 +404,11 @@ class LoRANetworkCfg:
         are placeholders. Training-time schedules (warmup, T-LoRA) stay off
         in the warm-start path.
 
-        ``specialize_experts_by_sigma_buckets`` / ``num_sigma_buckets`` come
-        from safetensors metadata stamped by ``save_weights`` — the partition
-        leaves no tensor footprint (``_expert_band`` is non-persistent) so it
-        has to be reconstructed from those scalars.
+        ``specialize_experts_by_sigma_buckets`` / ``num_sigma_buckets`` /
+        ``sigma_bucket_boundaries`` come from safetensors metadata stamped by
+        ``save_weights`` — the partition leaves no tensor footprint
+        (``_expert_band`` / ``_sigma_edges`` are non-persistent) so it has to
+        be reconstructed from those scalars at load time.
         """
         return cls(
             lora_dim=4,
@@ -355,4 +431,5 @@ class LoRANetworkCfg:
             num_sigma_buckets=(
                 int(num_sigma_buckets) if num_sigma_buckets else 3
             ),
+            sigma_bucket_boundaries=sigma_bucket_boundaries,
         )

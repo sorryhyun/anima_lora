@@ -11,11 +11,12 @@ cast-weights path). Hydra hooks reproduce the trained
 instead of being averaged out by a uniform bake.
 """
 
+import json
 import logging
 import math
 import re
 from collections import OrderedDict
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import torch
 
@@ -191,8 +192,35 @@ def load_adapter(file_path: str) -> dict:
             )
             band_on = False
             num_buckets = 0
+        # Optional custom σ-bucket boundaries: length B+1 list of edges from
+        # 0.0 to 1.0. When absent, defaults to uniform linspace(0, 1, B+1) —
+        # matches training's behaviour with the `sigma_bucket_boundaries`
+        # kwarg unset.
+        boundaries: Optional[List[float]] = None
+        if band_on and "ss_sigma_bucket_boundaries" in file_metadata:
+            try:
+                parsed = json.loads(file_metadata["ss_sigma_bucket_boundaries"])
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.warning(
+                    f"{file_path}: ss_sigma_bucket_boundaries is malformed "
+                    f"({exc}) — falling back to uniform σ-bucket edges."
+                )
+                parsed = None
+            if (
+                isinstance(parsed, list)
+                and len(parsed) == num_buckets + 1
+            ):
+                boundaries = [float(v) for v in parsed]
+            elif parsed is not None:
+                logger.warning(
+                    f"{file_path}: ss_sigma_bucket_boundaries length "
+                    f"{len(parsed) if isinstance(parsed, list) else 'N/A'} "
+                    f"!= num_sigma_buckets+1={num_buckets + 1} — falling back "
+                    "to uniform σ-bucket edges."
+                )
         hydra["sigma_band_partition"] = band_on
         hydra["num_sigma_buckets"] = num_buckets
+        hydra["sigma_bucket_boundaries"] = boundaries
 
     bundle = {
         "path": file_path,
@@ -259,9 +287,9 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
     When ``sigma_band_partition`` is on, expert logits outside each sample's
     σ band are masked to ``-inf`` before softmax — mirrors
     ``networks/lora_modules/hydra.py::_apply_sigma_band_mask``. The expert→
-    band lookup is rebuilt from ``num_sigma_buckets`` alone using the same
-    ``e // (E // N)`` rule as the training-side
-    ``_register_sigma_band_partition``.
+    band lookup uses interleaved layout (``e mod N``) and the bucket lookup
+    uses ``torch.bucketize`` against the optional custom edge list, matching
+    the training-side ``_register_sigma_band_partition``.
     """
     state = {
         "lora_down": params["lora_down"],
@@ -274,6 +302,7 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
         "sigma_band_partition": bool(params.get("sigma_band_partition", False)),
         "num_sigma_buckets": int(params.get("num_sigma_buckets", 0)),
         "expert_band": params.get("expert_band"),  # (E,) long, or None
+        "sigma_edges": params.get("sigma_edges"),  # (B-1,) fp32, or None
         "device": None,
     }
 
@@ -290,6 +319,10 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
         if state["expert_band"] is not None:
             # long bucket-id lookup; no dtype cast.
             state["expert_band"] = state["expert_band"].to(device=x.device)
+        if state["sigma_edges"] is not None:
+            state["sigma_edges"] = state["sigma_edges"].to(
+                device=x.device, dtype=torch.float32
+            )
         state["device"] = x.device
 
     def hydra_hook(module, inputs, output):
@@ -341,7 +374,9 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
             # sigma is already fp32 (normalized in sigma_pre_hook).
             sigma = sigma_state["sigma"].flatten()
             num_buckets = state["num_sigma_buckets"]
-            bucket_ids = (sigma * num_buckets).floor().clamp(0, num_buckets - 1).long()
+            bucket_ids = torch.bucketize(sigma, state["sigma_edges"]).clamp(
+                0, num_buckets - 1
+            )
             if bucket_ids.shape[0] == 1 and logits.shape[0] > 1:
                 bucket_ids = bucket_ids.expand(logits.shape[0])
             in_band = bucket_ids[:, None] == state["expert_band"][None, :]
@@ -428,19 +463,24 @@ def _apply_hydra_live_to_model(
     sigma_state: dict = {}
 
     # Reconstruct the σ-band → expert lookup once per checkpoint. Identical to
-    # training's `_register_sigma_band_partition`: experts are split into N
-    # contiguous bands of E/N each, with the last band absorbing any remainder
-    # via clamp_max. Shared across all per-Linear hooks since the partition is
-    # a property of the checkpoint, not the layer.
+    # training's `_register_sigma_band_partition`: interleaved layout
+    # (expert e → band ``e mod N``) plus optional custom σ edges from
+    # ss_sigma_bucket_boundaries (defaults to uniform ``linspace(0, 1, N+1)``).
+    # Shared across all per-Linear hooks since the partition is a property of
+    # the checkpoint, not the layer.
     band_partition_on = bool(hydra_data.get("sigma_band_partition", False))
     num_sigma_buckets = int(hydra_data.get("num_sigma_buckets", 0))
     expert_band: Optional[torch.Tensor] = None
+    sigma_edges: Optional[torch.Tensor] = None
     if band_partition_on and num_sigma_buckets > 1:
         E = int(hydra_data["num_experts"])
-        experts_per_band = E // num_sigma_buckets
-        expert_band = (
-            torch.arange(E, dtype=torch.long) // experts_per_band
-        ).clamp_max(num_sigma_buckets - 1)
+        expert_band = torch.arange(E, dtype=torch.long) % num_sigma_buckets
+        boundaries = hydra_data.get("sigma_bucket_boundaries")
+        if boundaries is None:
+            edges_full = torch.linspace(0.0, 1.0, num_sigma_buckets + 1)
+        else:
+            edges_full = torch.tensor(boundaries, dtype=torch.float32)
+        sigma_edges = edges_full[1:-1].contiguous()
 
     # Install a forward pre-hook on diffusion_model to record σ. Patch
     # _forward_pre_hooks (an OrderedDict) via add_object_patch so it's
@@ -516,6 +556,7 @@ def _apply_hydra_live_to_model(
             "sigma_band_partition": expert_band is not None,
             "num_sigma_buckets": num_sigma_buckets,
             "expert_band": expert_band,
+            "sigma_edges": sigma_edges,
         }
 
         hook = _make_hydra_hook(params, strength, sigma_state)

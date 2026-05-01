@@ -153,6 +153,7 @@ _HYDRA_KWARG_FLAGS: Tuple[str, ...] = (
     "per_bucket_balance_weight",
     "num_sigma_buckets",
     "specialize_experts_by_sigma_buckets",
+    "sigma_bucket_boundaries",
 )
 
 

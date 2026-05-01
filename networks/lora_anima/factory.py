@@ -3,6 +3,7 @@
 # all the kwarg parsing and checkpoint key-sniffing that used to live in
 # lora_anima.py alongside LoRANetwork itself.
 
+import json
 import logging
 import os
 import re
@@ -210,9 +211,15 @@ def create_network(
         )
     if cfg.specialize_experts_by_sigma_buckets:
         experts_per_band = cfg.num_experts // cfg.num_sigma_buckets
+        edges_str = (
+            f"custom edges {cfg.sigma_bucket_boundaries}"
+            if cfg.sigma_bucket_boundaries is not None
+            else "uniform edges"
+        )
         logger.info(
             f"Hard σ-band expert partition ON: {cfg.num_experts} experts split "
-            f"into {cfg.num_sigma_buckets} bands of {experts_per_band} experts. "
+            f"into {cfg.num_sigma_buckets} bands of {experts_per_band} experts "
+            f"(interleaved layout, {edges_str}). "
             "Out-of-band logits are masked to -inf before softmax — soft routing "
             "operates only within each σ band."
         )
@@ -551,6 +558,21 @@ def create_network_from_weights(
             f"num_experts={hydra_num_experts} which is not divisible. "
             "Checkpoint is malformed."
         )
+    band_boundaries: Optional[List[float]] = None
+    if band_partition_on and "ss_sigma_bucket_boundaries" in file_metadata:
+        try:
+            parsed = json.loads(file_metadata["ss_sigma_bucket_boundaries"])
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise RuntimeError(
+                "ss_sigma_bucket_boundaries metadata is malformed: "
+                f"{file_metadata['ss_sigma_bucket_boundaries']!r} ({exc})"
+            ) from exc
+        if not isinstance(parsed, list) or len(parsed) != band_num_buckets + 1:
+            raise RuntimeError(
+                "ss_sigma_bucket_boundaries metadata length does not match "
+                f"num_sigma_buckets+1={band_num_buckets + 1}: {parsed!r}"
+            )
+        band_boundaries = [float(v) for v in parsed]
 
     cfg = LoRANetworkCfg.from_weights(
         modules_dim=modules_dim,
@@ -568,6 +590,7 @@ def create_network_from_weights(
         channel_scales_dict=channel_scales_dict,
         specialize_experts_by_sigma_buckets=band_partition_on,
         num_sigma_buckets=band_num_buckets if band_partition_on else None,
+        sigma_bucket_boundaries=band_boundaries if band_partition_on else None,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)
@@ -584,10 +607,16 @@ def create_network_from_weights(
 
     if band_partition_on:
         experts_per_band = hydra_num_experts // band_num_buckets
+        edges_str = (
+            f"custom edges {band_boundaries}"
+            if band_boundaries is not None
+            else "uniform edges"
+        )
         logger.info(
             f"Hard σ-band expert partition reconstructed from metadata: "
             f"{hydra_num_experts} experts / {band_num_buckets} bands "
-            f"({experts_per_band} per band) — out-of-band logits masked at inference."
+            f"({experts_per_band} per band, interleaved layout, {edges_str}) "
+            "— out-of-band logits masked at inference."
         )
 
     return network, weights_sd

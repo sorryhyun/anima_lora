@@ -69,6 +69,15 @@ The HydraLoRA toggle block in `configs/methods/lora.toml` (and the dedicated `co
 
 HydraLoRA requires `cache_llm_adapter_outputs = true` (same as standard LoRA in this repo — unrelated to routing, but the cached crossattn is assumed by the surrounding training plumbing).
 
+### Hard σ-band partition
+
+`specialize_experts_by_sigma_buckets = true` (with `num_sigma_buckets > 1` and `num_experts % num_sigma_buckets == 0`) partitions the E experts into B σ-bands. For a sample at σ in band b, only the in-band experts can win the gate (out-of-band logits masked to `-inf` before softmax). Soft routing still operates within a band.
+
+- **Layout: interleaved.** Expert e belongs to band `e mod B`. With OrthoHydra's sequential SVD slicing, interleaving gives every band a representative spread of singular slices instead of binding band 0 to the top slice and band B-1 to the bottom — see `networks/lora_modules/hydra.py::_register_sigma_band_partition`.
+- **Edges: optional.** `sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]` (length B+1, strictly increasing, 0.0 → 1.0) overrides the default uniform `linspace(0, 1, B+1)`. Lets you concentrate capacity in a chosen σ regime — e.g. wide low-σ band, narrow high-σ band — while keeping equal experts per band. With variable bucket widths under uniform σ sampling, narrow buckets see fewer training samples per band; consider oversampling those σ ranges if you want their experts to converge as fast.
+
+Both fields are stamped into safetensors metadata (`ss_specialize_experts_by_sigma_buckets`, `ss_num_sigma_buckets`, `ss_sigma_bucket_boundaries`) so inference (CLI + ComfyUI) reconstructs the partition exactly.
+
 ## Fixes
 
 ### 2026-04-20 — rank-R router rewiring (checkpoint-breaking)

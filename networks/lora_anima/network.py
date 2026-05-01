@@ -352,6 +352,10 @@ class LoRANetwork(torch.nn.Module):
                 ):
                     extra_kwargs["specialize_experts_by_sigma_buckets"] = True
                     extra_kwargs["num_sigma_buckets"] = cfg.num_sigma_buckets
+                    if cfg.sigma_bucket_boundaries is not None:
+                        extra_kwargs["sigma_bucket_boundaries"] = (
+                            cfg.sigma_bucket_boundaries
+                        )
 
                 # σ-conditional router: only widen the router input with
                 # sinusoidal(σ) features on modules whose name matches the
@@ -1459,6 +1463,11 @@ class LoRANetwork(torch.nn.Module):
         if self.cfg.specialize_experts_by_sigma_buckets:
             metadata["ss_specialize_experts_by_sigma_buckets"] = "true"
             metadata["ss_num_sigma_buckets"] = str(int(self.cfg.num_sigma_buckets))
+            if self.cfg.sigma_bucket_boundaries is not None:
+                import json as _json
+                metadata["ss_sigma_bucket_boundaries"] = _json.dumps(
+                    list(self.cfg.sigma_bucket_boundaries)
+                )
 
         state_dict = self.state_dict()
         lora_save.save_network_weights(

@@ -1,6 +1,8 @@
 # OrthoLoRA variants: Cayley-parameterized orthogonal low-rank adapters,
 # plus the OrthoHydra MoE combination.
 
+from typing import List, Optional
+
 import torch
 
 from networks.lora_modules.base import BaseLoRAModule
@@ -193,6 +195,7 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         sigma_hidden_dim: int = 128,
         specialize_experts_by_sigma_buckets: bool = False,
         num_sigma_buckets: int = 1,
+        sigma_bucket_boundaries: Optional[List[float]] = None,
     ):
         super().__init__(
             lora_name,
@@ -289,7 +292,9 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         # Hard σ-band expert partition (see HydraLoRAModule for rationale).
         self._sigma_band_partition: bool = bool(specialize_experts_by_sigma_buckets)
         if self._sigma_band_partition:
-            _register_sigma_band_partition(self, num_experts, num_sigma_buckets)
+            _register_sigma_band_partition(
+                self, num_experts, num_sigma_buckets, sigma_bucket_boundaries
+            )
         # Expert-warmup gradient masking. See HydraLoRAModule for full
         # rationale — for OrthoHydra the mask gates gradient into S_p (which
         # parameterises per-expert P rotations). Default all-ones → applied
@@ -337,7 +342,7 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         logits = self.router(router_in)  # (B, num_experts)
         if self._sigma_band_partition:
             logits = _apply_sigma_band_mask(
-                logits, self._sigma, self._expert_band, self._sigma_num_buckets
+                logits, self._sigma, self._expert_band, self._sigma_edges
             )
         return torch.softmax(logits, dim=-1)
 

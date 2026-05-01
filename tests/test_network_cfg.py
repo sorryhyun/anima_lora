@@ -253,6 +253,109 @@ def test_from_weights_sigma_band_partition_round_trip():
     )
     assert cfg.specialize_experts_by_sigma_buckets is True
     assert cfg.num_sigma_buckets == 4
+    assert cfg.sigma_bucket_boundaries is None
+
+
+def test_from_weights_sigma_band_partition_with_custom_boundaries():
+    cfg = LoRANetworkCfg.from_weights(
+        modules_dim={"foo": 4},
+        modules_alpha={"foo": 1.0},
+        module_class=HydraLoRAModule,
+        train_llm_adapter=False,
+        has_reft=False,
+        reft_dim=None,
+        reft_block_indices=set(),
+        is_hydra_or_ortho_hydra=True,
+        hydra_num_experts=6,
+        sigma_feature_dim_detected=16,
+        sigma_router_names=["foo"],
+        hydra_router_names=None,
+        channel_scales_dict=None,
+        specialize_experts_by_sigma_buckets=True,
+        num_sigma_buckets=3,
+        sigma_bucket_boundaries=[0.0, 0.5, 0.8, 1.0],
+    )
+    assert cfg.sigma_bucket_boundaries == [0.0, 0.5, 0.8, 1.0]
+
+
+def test_sigma_bucket_boundaries_parsed_and_validated():
+    """Custom σ-bucket boundary list parses from native list and from a
+    python-literal string (CLI/TOML pathways), and rejects malformed input.
+    """
+    # native list (TOML path)
+    cfg = LoRANetworkCfg.from_kwargs(
+        {
+            "num_experts": "6",
+            "specialize_experts_by_sigma_buckets": "true",
+            "num_sigma_buckets": "3",
+            "sigma_bucket_boundaries": [0.0, 0.5, 0.8, 1.0],
+        },
+        network_dim=8,
+        network_alpha=8.0,
+        neuron_dropout=None,
+        module_class=HydraLoRAModule,
+    )
+    assert cfg.sigma_bucket_boundaries == [0.0, 0.5, 0.8, 1.0]
+
+    # stringified literal (CLI/legacy path)
+    cfg = LoRANetworkCfg.from_kwargs(
+        {
+            "num_experts": "6",
+            "specialize_experts_by_sigma_buckets": "true",
+            "num_sigma_buckets": "3",
+            "sigma_bucket_boundaries": "[0.0, 0.5, 0.8, 1.0]",
+        },
+        network_dim=8,
+        network_alpha=8.0,
+        neuron_dropout=None,
+        module_class=HydraLoRAModule,
+    )
+    assert cfg.sigma_bucket_boundaries == [0.0, 0.5, 0.8, 1.0]
+
+    # wrong length
+    with pytest.raises(ValueError, match="length"):
+        LoRANetworkCfg.from_kwargs(
+            {
+                "num_experts": "6",
+                "specialize_experts_by_sigma_buckets": "true",
+                "num_sigma_buckets": "3",
+                "sigma_bucket_boundaries": [0.0, 0.5, 1.0],
+            },
+            network_dim=8,
+            network_alpha=8.0,
+            neuron_dropout=None,
+            module_class=HydraLoRAModule,
+        )
+
+    # not strictly increasing
+    with pytest.raises(ValueError, match="increasing"):
+        LoRANetworkCfg.from_kwargs(
+            {
+                "num_experts": "6",
+                "specialize_experts_by_sigma_buckets": "true",
+                "num_sigma_buckets": "3",
+                "sigma_bucket_boundaries": [0.0, 0.5, 0.5, 1.0],
+            },
+            network_dim=8,
+            network_alpha=8.0,
+            neuron_dropout=None,
+            module_class=HydraLoRAModule,
+        )
+
+    # wrong start / end
+    with pytest.raises(ValueError, match="0.0"):
+        LoRANetworkCfg.from_kwargs(
+            {
+                "num_experts": "6",
+                "specialize_experts_by_sigma_buckets": "true",
+                "num_sigma_buckets": "3",
+                "sigma_bucket_boundaries": [0.1, 0.5, 0.8, 1.0],
+            },
+            network_dim=8,
+            network_alpha=8.0,
+            neuron_dropout=None,
+            module_class=HydraLoRAModule,
+        )
 
 
 def test_cfg_is_frozen():

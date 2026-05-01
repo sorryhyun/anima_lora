@@ -1,6 +1,7 @@
 # HydraLoRA: MoE-style multi-head LoRA with layer-local routing.
 
 import math
+from typing import List, Optional
 
 import torch
 
@@ -73,20 +74,36 @@ def _clear_sigma_feature_cache(module: torch.nn.Module) -> None:
 
 
 def _register_sigma_band_partition(
-    module: torch.nn.Module, num_experts: int, num_sigma_buckets: int
+    module: torch.nn.Module,
+    num_experts: int,
+    num_sigma_buckets: int,
+    sigma_bucket_boundaries: Optional[List[float]] = None,
 ) -> None:
-    """Register the (E,) ``_expert_band`` lookup buffer for hard σ-partition.
+    """Register σ-partition buffers: ``_expert_band`` (E,) and ``_sigma_edges``
+    (B-1,).
 
-    Each expert is permanently assigned to one σ-band: expert ``e`` belongs to
-    band ``e // (E / num_sigma_buckets)``. At forward time, samples whose σ
-    lands in band ``b`` only see experts with ``_expert_band == b`` (others
-    masked to ``-inf`` before softmax). Caller must validate divisibility.
+    Layout is **interleaved**: expert ``e`` belongs to band
+    ``e mod num_sigma_buckets``. With sequential SVD slicing in OrthoHydra,
+    interleaving gives every band a representative spread of singular slices
+    instead of binding band 0 to the top slice and band B-1 to the bottom.
+
+    ``sigma_bucket_boundaries`` is an optional length-(B+1) list of σ edges
+    starting at 0.0 and ending at 1.0; the interior B-1 cuts are stored as
+    a buffer for ``torch.bucketize``. When ``None``, defaults to uniform
+    ``linspace(0, 1, B+1)`` (equivalent to the previous ``(σ * B).floor()``
+    rule for typical σ ∈ [0, 1)). Caller validates length and bounds.
+
+    At forward time, samples whose σ lands in band ``b`` only see experts
+    with ``_expert_band == b`` (others masked to ``-inf`` before softmax).
     """
-    experts_per_band = num_experts // num_sigma_buckets
-    band = (
-        torch.arange(num_experts, dtype=torch.long) // experts_per_band
-    ).clamp_max(num_sigma_buckets - 1)
+    band = torch.arange(num_experts, dtype=torch.long) % num_sigma_buckets
     module.register_buffer("_expert_band", band, persistent=False)
+    if sigma_bucket_boundaries is None:
+        edges = torch.linspace(0.0, 1.0, num_sigma_buckets + 1)
+    else:
+        edges = torch.tensor(list(sigma_bucket_boundaries), dtype=torch.float32)
+    interior = edges[1:-1].contiguous()
+    module.register_buffer("_sigma_edges", interior, persistent=False)
     module._sigma_num_buckets = int(num_sigma_buckets)
 
 
@@ -94,18 +111,23 @@ def _apply_sigma_band_mask(
     logits: torch.Tensor,
     sigma: torch.Tensor,
     expert_band: torch.Tensor,
-    num_buckets: int,
+    sigma_edges: torch.Tensor,
 ) -> torch.Tensor:
     """Mask out-of-band expert logits with -inf before softmax.
 
     ``logits``: (B, E). ``sigma``: (B,) per-sample σ ∈ [0, 1] (may broadcast
     from (1,) if ``set_sigma`` hasn't fired this forward — caller-side
     invariant). ``expert_band``: (E,) long, registered by
-    ``_register_sigma_band_partition``. Returns logits with positions outside
-    each sample's σ band set to ``-inf`` so softmax produces 0 there and
-    renormalises across the in-band experts.
+    ``_register_sigma_band_partition``. ``sigma_edges``: (B-1,) interior cuts
+    consumed by ``torch.bucketize`` (right=False default → σ exactly at an
+    edge maps to the upper bucket). Returns logits with out-of-band positions
+    set to ``-inf`` so softmax produces 0 there and renormalises across the
+    in-band experts.
     """
-    bucket_ids = (sigma.float() * num_buckets).floor().clamp(0, num_buckets - 1).long()
+    num_buckets = int(sigma_edges.numel()) + 1
+    bucket_ids = torch.bucketize(sigma.float(), sigma_edges).clamp(
+        0, num_buckets - 1
+    )
     if bucket_ids.shape[0] == 1 and logits.shape[0] > 1:
         bucket_ids = bucket_ids.expand(logits.shape[0])
     in_band = bucket_ids[:, None] == expert_band[None, :]  # (B, E) bool
@@ -153,6 +175,7 @@ class HydraLoRAModule(BaseLoRAModule):
         expert_init_std: float = 0.0,
         specialize_experts_by_sigma_buckets: bool = False,
         num_sigma_buckets: int = 1,
+        sigma_bucket_boundaries: Optional[List[float]] = None,
     ):
         super().__init__(
             lora_name,
@@ -238,7 +261,9 @@ class HydraLoRAModule(BaseLoRAModule):
         # within each band. Validated upstream (network constructor).
         self._sigma_band_partition: bool = bool(specialize_experts_by_sigma_buckets)
         if self._sigma_band_partition:
-            _register_sigma_band_partition(self, num_experts, num_sigma_buckets)
+            _register_sigma_band_partition(
+                self, num_experts, num_sigma_buckets, sigma_bucket_boundaries
+            )
         # Expert-warmup gradient masking. Single buffer holding the per-expert
         # grad-scale (1.0 = full gradient, 0.0 = stop-grad). Default all-ones
         # makes the forward branch a no-op (``up*1 + up.detach()*0 == up``),
@@ -290,7 +315,7 @@ class HydraLoRAModule(BaseLoRAModule):
         logits = self.router(router_in)  # (B, num_experts)
         if self._sigma_band_partition:
             logits = _apply_sigma_band_mask(
-                logits, self._sigma, self._expert_band, self._sigma_num_buckets
+                logits, self._sigma, self._expert_band, self._sigma_edges
             )
         return torch.softmax(logits, dim=-1)
 

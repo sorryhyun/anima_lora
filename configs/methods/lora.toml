@@ -60,11 +60,18 @@ per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
 num_sigma_buckets = 3
 
 # Hard σ-band expert partition: split E experts into ``num_sigma_buckets``
-# bands of E/N each. A sample at σ in band b can only route to its band's
-# experts (others masked to -inf pre-softmax). Forces the per-timestep
-# specialisation that the σ-feature router alone fails to produce — see
-# bench/router_dynamics analysis. Requires num_experts % num_sigma_buckets == 0.
+# bands of E/N each (interleaved layout — expert e → band ``e mod N``). A
+# sample at σ in band b can only route to its band's experts (others masked
+# to -inf pre-softmax). Forces the per-timestep specialisation that the
+# σ-feature router alone fails to produce — see bench/router_dynamics
+# analysis. Requires num_experts % num_sigma_buckets == 0.
 specialize_experts_by_sigma_buckets = true
+# Optional custom σ edges (length = num_sigma_buckets + 1, strictly
+# increasing, starts at 0.0, ends at 1.0). Lets you concentrate capacity on
+# a chosen σ regime — e.g. wide low-σ band, narrow high-σ band — while
+# keeping equal experts per band. Default (omitted) is uniform
+# linspace(0, 1, B+1).
+# sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
 
 # -------------
 # reft
