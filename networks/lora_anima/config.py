@@ -318,6 +318,8 @@ class LoRANetworkCfg:
         sigma_router_names: Optional[List[str]],
         hydra_router_names: Optional[List[str]],
         channel_scales_dict: Optional[Dict[str, torch.Tensor]],
+        specialize_experts_by_sigma_buckets: bool = False,
+        num_sigma_buckets: Optional[int] = None,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -326,6 +328,11 @@ class LoRANetworkCfg:
         ``modules_dim`` / ``modules_alpha``, so ``lora_dim`` / ``alpha`` here
         are placeholders. Training-time schedules (warmup, T-LoRA) stay off
         in the warm-start path.
+
+        ``specialize_experts_by_sigma_buckets`` / ``num_sigma_buckets`` come
+        from safetensors metadata stamped by ``save_weights`` — the partition
+        leaves no tensor footprint (``_expert_band`` is non-persistent) so it
+        has to be reconstructed from those scalars.
         """
         return cls(
             lora_dim=4,
@@ -344,4 +351,8 @@ class LoRANetworkCfg:
             sigma_hidden_dim=128,
             sigma_router_names=sigma_router_names,
             hydra_router_names=hydra_router_names,
+            specialize_experts_by_sigma_buckets=specialize_experts_by_sigma_buckets,
+            num_sigma_buckets=(
+                int(num_sigma_buckets) if num_sigma_buckets else 3
+            ),
         )

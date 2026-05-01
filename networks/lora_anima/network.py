@@ -975,6 +975,15 @@ class LoRANetwork(torch.nn.Module):
         sigma = self._last_sigma  # (B,) or None
         num_buckets = int(self.cfg.num_sigma_buckets)
         want_per_bucket = sigma is not None and num_buckets > 1
+        # When ``specialize_experts_by_sigma_buckets`` is on, each sample can
+        # only route to its band's ``E / num_buckets`` experts (others masked
+        # to -inf pre-softmax). Normalizing entropy by ``log(E)`` then caps
+        # the achievable max at ``log(experts_per_band) / log(E)`` (e.g. 0.44
+        # for E=12, num_buckets=4) — making "uniform within band" look like
+        # collapse. Normalize by the actual reachable support instead.
+        band_partition_active = bool(
+            self.cfg.specialize_experts_by_sigma_buckets and num_buckets > 1
+        )
         bucket_ids: Optional[torch.Tensor] = None
         bucket_counts_t: Optional[torch.Tensor] = None
         if want_per_bucket:
@@ -1005,7 +1014,9 @@ class LoRANetwork(torch.nn.Module):
 
             p = gate.float().clamp_min(1e-12)
             H = -(p * p.log()).sum(dim=-1)  # (B,)
-            per_H_t.append((H.mean() / math.log(E)).detach())
+            effective_E = (E // num_buckets) if band_partition_active else E
+            norm = math.log(effective_E) if effective_E > 1 else 1.0
+            per_H_t.append((H.mean() / norm).detach())
 
             top2 = p.topk(2, dim=-1).values  # (B, 2)
             per_margin_t.append((top2[:, 0] - top2[:, 1]).mean().detach())
@@ -1438,6 +1449,16 @@ class LoRANetwork(torch.nn.Module):
             metadata = {}
         if metadata:
             metadata["ss_network_spec"] = spec.name
+
+        # Hard σ-band partition lives in non-persistent buffers (`_expert_band`)
+        # and a Python attr (`_sigma_band_partition`); nothing of it survives
+        # the state_dict write. Emit the two scalars needed to re-register the
+        # partition at load time so inference (`make test`) and the ComfyUI
+        # node can reconstruct the per-sample band mask. Only stamped when the
+        # partition is on, so older non-band checkpoints stay byte-identical.
+        if self.cfg.specialize_experts_by_sigma_buckets:
+            metadata["ss_specialize_experts_by_sigma_buckets"] = "true"
+            metadata["ss_num_sigma_buckets"] = str(int(self.cfg.num_sigma_buckets))
 
         state_dict = self.state_dict()
         lora_save.save_network_weights(

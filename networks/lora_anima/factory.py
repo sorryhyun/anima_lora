@@ -292,11 +292,15 @@ def create_network_from_weights(
     for_inference=False,
     **kwargs,
 ):
+    file_metadata: Dict[str, str] = {}
     if weights_sd is None:
         if os.path.splitext(file)[1] == ".safetensors":
             from safetensors.torch import load_file
+            from safetensors import safe_open
 
             weights_sd = load_file(file)
+            with safe_open(file, framework="pt") as f:
+                file_metadata = dict(f.metadata() or {})
         else:
             weights_sd = torch.load(file, map_location="cpu")
 
@@ -519,6 +523,35 @@ def create_network_from_weights(
         else None
     )
 
+    # Hard σ-band partition is non-persistent at the tensor level (`_expert_band`
+    # is registered persistent=False; `_sigma_band_partition` is a Python attr).
+    # Recover it from the metadata stamped by `LoRANetwork.save_weights`. Older
+    # checkpoints lack the metadata and stay on the soft-routing path.
+    band_partition_on = (
+        str(file_metadata.get("ss_specialize_experts_by_sigma_buckets", "")).lower()
+        == "true"
+    )
+    band_num_buckets = (
+        int(file_metadata["ss_num_sigma_buckets"])
+        if band_partition_on and "ss_num_sigma_buckets" in file_metadata
+        else 0
+    )
+    if band_partition_on and not (has_hydra or has_ortho_hydra):
+        logger.warning(
+            "Checkpoint metadata declares specialize_experts_by_sigma_buckets "
+            "but no Hydra/OrthoHydra keys were detected — ignoring."
+        )
+        band_partition_on = False
+        band_num_buckets = 0
+    if band_partition_on and hydra_num_experts % band_num_buckets != 0:
+        raise RuntimeError(
+            "Checkpoint metadata declares "
+            f"specialize_experts_by_sigma_buckets with num_sigma_buckets="
+            f"{band_num_buckets}, but the Hydra stack has "
+            f"num_experts={hydra_num_experts} which is not divisible. "
+            "Checkpoint is malformed."
+        )
+
     cfg = LoRANetworkCfg.from_weights(
         modules_dim=modules_dim,
         modules_alpha=modules_alpha,
@@ -533,6 +566,8 @@ def create_network_from_weights(
         sigma_router_names=sigma_router_names or None,
         hydra_router_names=hydra_router_names,
         channel_scales_dict=channel_scales_dict,
+        specialize_experts_by_sigma_buckets=band_partition_on,
+        num_sigma_buckets=band_num_buckets if band_partition_on else None,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)
@@ -546,5 +581,13 @@ def create_network_from_weights(
 
     _maybe_attach_apex_shift(network, kwargs)
     _maybe_attach_repa_head(network, kwargs)
+
+    if band_partition_on:
+        experts_per_band = hydra_num_experts // band_num_buckets
+        logger.info(
+            f"Hard σ-band expert partition reconstructed from metadata: "
+            f"{hydra_num_experts} experts / {band_num_buckets} bands "
+            f"({experts_per_band} per band) — out-of-band logits masked at inference."
+        )
 
     return network, weights_sd

@@ -154,9 +154,12 @@ def load_adapter(file_path: str) -> dict:
     if file_path in _adapter_cache:
         return _adapter_cache[file_path]
 
+    from safetensors import safe_open
     from safetensors.torch import load_file
 
     weights_sd = load_file(file_path)
+    with safe_open(file_path, framework="pt") as f:
+        file_metadata = dict(f.metadata() or {})
 
     if any(k.startswith("_hydra_router") for k in weights_sd.keys()):
         raise ValueError(
@@ -164,10 +167,37 @@ def load_adapter(file_path: str) -> dict:
             "Retrain with the current codebase."
         )
 
+    hydra = _parse_hydra(weights_sd)
+    if hydra is not None:
+        # Hard σ-band partition is non-persistent (training-side `_expert_band`
+        # buffer is registered with persistent=False), so it has to come back
+        # from metadata. Without this, soft routing operates over all E experts
+        # at inference and the partition trained into the router weights is
+        # silently ignored.
+        band_on = (
+            str(file_metadata.get("ss_specialize_experts_by_sigma_buckets", "")).lower()
+            == "true"
+        )
+        num_buckets = (
+            int(file_metadata["ss_num_sigma_buckets"])
+            if band_on and "ss_num_sigma_buckets" in file_metadata
+            else 0
+        )
+        if band_on and hydra["num_experts"] % max(num_buckets, 1) != 0:
+            logger.warning(
+                f"{file_path}: σ-band metadata declares num_sigma_buckets="
+                f"{num_buckets} but num_experts={hydra['num_experts']} is not "
+                "divisible — disabling band partition."
+            )
+            band_on = False
+            num_buckets = 0
+        hydra["sigma_band_partition"] = band_on
+        hydra["num_sigma_buckets"] = num_buckets
+
     bundle = {
         "path": file_path,
         "lora": _extract_lora_sd(weights_sd),
-        "hydra": _parse_hydra(weights_sd),
+        "hydra": hydra,
         "reft": _parse_reft(weights_sd),
     }
     _adapter_cache[file_path] = bundle
@@ -221,6 +251,13 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
     denoising step, and each hook reads it to build sinusoidal(σ) features
     that are concatenated onto the pooled rank-R router input when
     ``sigma_feature_dim > 0``.
+
+    When ``sigma_band_partition`` is on, expert logits outside each sample's
+    σ band are masked to ``-inf`` before softmax — mirrors
+    ``networks/lora_modules/hydra.py::_apply_sigma_band_mask``. The expert→
+    band lookup is rebuilt from ``num_sigma_buckets`` alone using the same
+    ``e // (E // N)`` rule as the training-side
+    ``_register_sigma_band_partition``.
     """
     state = {
         "lora_down": params["lora_down"],
@@ -230,13 +267,16 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
         "inv_scale": params.get("inv_scale"),    # (in_dim,) or None
         "scale": params["scale"],
         "sigma_feature_dim": int(params.get("sigma_feature_dim", 0)),
+        "sigma_band_partition": bool(params.get("sigma_band_partition", False)),
+        "num_sigma_buckets": int(params.get("num_sigma_buckets", 0)),
+        "expert_band": params.get("expert_band"),  # (E,) long, or None
         "device": None,
     }
 
     def _ensure_on_device(x: torch.Tensor) -> None:
         if state["device"] == x.device:
             return
-        for k in ("lora_down", "lora_ups", "router_w", "router_b", "inv_scale"):
+        for k in ("lora_down", "lora_ups", "router_w", "router_b", "inv_scale", "expert_band"):
             if state[k] is not None:
                 state[k] = state[k].to(device=x.device)
         state["device"] = x.device
@@ -283,6 +323,16 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
         logits = torch.nn.functional.linear(
             pooled, state["router_w"].float(), state["router_b"].float()
         )
+        if state["sigma_band_partition"] and sigma_state.get("sigma") is not None:
+            sigma = sigma_state["sigma"].detach().to(
+                device=logits.device, dtype=torch.float32
+            ).flatten()
+            num_buckets = state["num_sigma_buckets"]
+            bucket_ids = (sigma * num_buckets).floor().clamp(0, num_buckets - 1).long()
+            if bucket_ids.shape[0] == 1 and logits.shape[0] > 1:
+                bucket_ids = bucket_ids.expand(logits.shape[0])
+            in_band = bucket_ids[:, None] == state["expert_band"][None, :]
+            logits = logits.masked_fill(~in_band, float("-inf"))
         gate = torch.softmax(logits, dim=-1)
 
         # gate-weighted combined ups (B, out, rank)
@@ -359,6 +409,21 @@ def _apply_hydra_live_to_model(
 
     sigma_state: dict = {}
 
+    # Reconstruct the σ-band → expert lookup once per checkpoint. Identical to
+    # training's `_register_sigma_band_partition`: experts are split into N
+    # contiguous bands of E/N each, with the last band absorbing any remainder
+    # via clamp_max. Shared across all per-Linear hooks since the partition is
+    # a property of the checkpoint, not the layer.
+    band_partition_on = bool(hydra_data.get("sigma_band_partition", False))
+    num_sigma_buckets = int(hydra_data.get("num_sigma_buckets", 0))
+    expert_band: Optional[torch.Tensor] = None
+    if band_partition_on and num_sigma_buckets > 1:
+        E = int(hydra_data["num_experts"])
+        experts_per_band = E // num_sigma_buckets
+        expert_band = (
+            torch.arange(E, dtype=torch.long) // experts_per_band
+        ).clamp_max(num_sigma_buckets - 1)
+
     # Install a forward pre-hook on diffusion_model to record σ. Patch
     # _forward_pre_hooks (an OrderedDict) via add_object_patch so it's
     # reverted on ModelPatcher.unpatch_model. Composes with any prior
@@ -430,6 +495,9 @@ def _apply_hydra_live_to_model(
             "inv_scale": mod.get("inv_scale"),
             "scale": alpha / rank,
             "sigma_feature_dim": sigma_feature_dim,
+            "sigma_band_partition": expert_band is not None,
+            "num_sigma_buckets": num_sigma_buckets,
+            "expert_band": expert_band,
         }
 
         hook = _make_hydra_hook(params, strength, sigma_state)
@@ -449,9 +517,14 @@ def _apply_hydra_live_to_model(
         and m["router_w"].shape[1] > m["lora_down"].shape[0]
         for m in hydra_data["modules"].values()
     )
+    band_msg = (
+        f", σ-band={num_sigma_buckets} buckets"
+        if expert_band is not None
+        else ""
+    )
     logger.info(
         f"Hydra live-routing installed {patched} hooks "
-        f"(strength={strength}, σ-conditional={'yes' if has_sigma else 'no'})"
+        f"(strength={strength}, σ-conditional={'yes' if has_sigma else 'no'}{band_msg})"
     )
     return patched
 

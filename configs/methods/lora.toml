@@ -12,11 +12,11 @@
 # Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
 # defaults — tune freely.
 
-network_alpha = 32
-network_dim = 32
+network_alpha = 48
+network_dim = 48
 
 learning_rate = 2e-5
-max_train_epochs = 12
+max_train_epochs = 4
 save_every_n_epochs = 4
 checkpointing_epochs = 4
 
@@ -30,10 +30,10 @@ log_with = "tensorboard"
 # -------------
 # Ortho-lora
 
-# use_ortho = true
+use_ortho = true
 
 # -------------
-# # Timestep mask
+# Timestep mask
 
 use_timestep_mask = true
 min_rank = 1
@@ -45,8 +45,8 @@ alpha_rank_scale = 1.0
 
 output_name = "anima_hydra"
 use_hydra = true
-num_experts = 12
-balance_loss_weight = 5e-7 # seems lr * 1/10 is proper
+num_experts = 9
+balance_loss_weight = 2e-7 # seems lr * 1/100 is proper
 
 balance_loss_warmup_ratio = 0.4
 network_router_lr_scale = 10
@@ -57,26 +57,26 @@ sigma_feature_dim = 16
 sigma_hidden_dim = 16   # unused; retained for API compat
 sigma_router_layers = ".*(mlp\\.layer[12])$"
 per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
-num_sigma_buckets = 4
+num_sigma_buckets = 3
 
 # Hard σ-band expert partition: split E experts into ``num_sigma_buckets``
 # bands of E/N each. A sample at σ in band b can only route to its band's
 # experts (others masked to -inf pre-softmax). Forces the per-timestep
 # specialisation that the σ-feature router alone fails to produce — see
 # bench/router_dynamics analysis. Requires num_experts % num_sigma_buckets == 0.
-specialize_experts_by_sigma_buckets = false
+specialize_experts_by_sigma_buckets = true
 
 # -------------
 # reft
 
-# add_reft = true
-# reft_dim = 48
-# reft_alpha = 48
-# reft_layers = "last_8"
+add_reft = true
+reft_dim = 48
+reft_alpha = 48
+reft_layers = "last_8"
 
 
 # -------------
-# REPA (Yu et al., arXiv:2410.06940) — auxiliary alignment loss between a
+# REPA (Yu et al., arxiv:2410.06940) — auxiliary alignment loss between a
 # mid-block DiT hidden state and a cached PE-Core feature. Composes on top
 # of any LoRA variant. Requires {stem}_anima_pe.safetensors sidecars from
 # `make preprocess-pe` for every image (auto-enables ip_features_cache_to_disk).
@@ -87,8 +87,8 @@ specialize_experts_by_sigma_buckets = false
 # repa_layer = 8
 # repa_lr_scale = 1.0       # head LR = repa_lr_scale * unet_lr
 
-# compile_mode = "full"
-# compile_inductor_mode = "reduce-overhead"
+compile_mode = "full"
+compile_inductor_mode = "reduce-overhead"
 
 
 # ── Per-channel input pre-scaling (SmoothQuant-style, optional) ─────────
