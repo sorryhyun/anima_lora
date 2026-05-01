@@ -227,8 +227,12 @@ def _sigma_sinusoidal_features(
 
     Trained σ-conditional bias is sensitive to this functional form, so any
     drift between training and inference shows up directly as wrong gates.
+
+    ``sigma`` is expected to already be fp32 — ``sigma_pre_hook`` normalizes
+    it once per step in eager Python so this hot-path call doesn't introduce
+    a redundant ``.float()`` (and a per-Linear inductor DeviceCopy warning).
     """
-    t = sigma.flatten().float()
+    t = sigma.flatten()
     half_dim = sigma_feature_dim // 2
     exponent = (
         -math.log(10000)
@@ -276,9 +280,16 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
     def _ensure_on_device(x: torch.Tensor) -> None:
         if state["device"] == x.device:
             return
-        for k in ("lora_down", "lora_ups", "router_w", "router_b", "inv_scale", "expert_band"):
+        # Hot path runs router math + bottleneck matmuls in fp32 (CLI precision
+        # policy). Cast once on device migration instead of per-call .float()
+        # — otherwise inductor traces every cast as a DeviceCopy in the input
+        # program and emits a warning per adapted Linear per compile.
+        for k in ("lora_down", "lora_ups", "router_w", "router_b", "inv_scale"):
             if state[k] is not None:
-                state[k] = state[k].to(device=x.device)
+                state[k] = state[k].to(device=x.device, dtype=torch.float32)
+        if state["expert_band"] is not None:
+            # long bucket-id lookup; no dtype cast.
+            state["expert_band"] = state["expert_band"].to(device=x.device)
         state["device"] = x.device
 
     def hydra_hook(module, inputs, output):
@@ -287,11 +298,11 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
 
         x_lora = x.float()
         if state["inv_scale"] is not None:
-            x_lora = x_lora * state["inv_scale"].float()
+            x_lora = x_lora * state["inv_scale"]
 
         # down projection (B, *, rank), fp32 — feeds both the router and the
         # gate-weighted bmm downstream.
-        lx = torch.nn.functional.linear(x_lora, state["lora_down"].float())
+        lx = torch.nn.functional.linear(x_lora, state["lora_down"])
 
         # router gate — RMS pool the rank-R signal over the sequence dim, then
         # optionally concat sinusoidal(σ) before the router linear. Mirrors
@@ -306,9 +317,12 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
         else:
             pooled = lx
         if state["sigma_feature_dim"] > 0 and sigma_state.get("sigma") is not None:
+            # σ enters via comfy's timesteps on the model device, and the
+            # sinusoidal builder returns fp32 — same device/dtype as pooled,
+            # so no trailing .to() is needed (avoids inductor DeviceCopy).
             sigma_feat = _sigma_sinusoidal_features(
                 sigma_state["sigma"], state["sigma_feature_dim"]
-            ).to(device=pooled.device, dtype=pooled.dtype)
+            )
             # Broadcast σ features across the batch when σ is shape (1,) but
             # pooled is CFG-doubled.
             if sigma_feat.shape[0] == 1 and pooled.shape[0] != 1:
@@ -321,12 +335,11 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
                 pooled, (0, state["sigma_feature_dim"])
             )
         logits = torch.nn.functional.linear(
-            pooled, state["router_w"].float(), state["router_b"].float()
+            pooled, state["router_w"], state["router_b"]
         )
         if state["sigma_band_partition"] and sigma_state.get("sigma") is not None:
-            sigma = sigma_state["sigma"].detach().to(
-                device=logits.device, dtype=torch.float32
-            ).flatten()
+            # sigma is already fp32 (normalized in sigma_pre_hook).
+            sigma = sigma_state["sigma"].flatten()
             num_buckets = state["num_sigma_buckets"]
             bucket_ids = (sigma * num_buckets).floor().clamp(0, num_buckets - 1).long()
             if bucket_ids.shape[0] == 1 and logits.shape[0] > 1:
@@ -336,7 +349,7 @@ def _make_hydra_hook(params: dict, strength: float, sigma_state: dict):
         gate = torch.softmax(logits, dim=-1)
 
         # gate-weighted combined ups (B, out, rank)
-        combined = torch.einsum("be,eor->bor", gate, state["lora_ups"].float())
+        combined = torch.einsum("be,eor->bor", gate, state["lora_ups"])
 
         # apply via batched matmul
         orig_shape = lx.shape
@@ -369,8 +382,13 @@ def _make_sigma_pre_hook(sigma_state: dict):
 
     @torch._dynamo.disable
     def sigma_pre_hook(module, args):
-        if len(args) >= 2:
-            sigma_state["sigma"] = args[1]
+        if len(args) >= 2 and args[1] is not None:
+            # Normalize to fp32 once per denoising step in eager Python; the
+            # hydra hooks downstream then read it without re-casting (each
+            # cast inside the compiled graph would log a DeviceCopy warning
+            # per adapted Linear). `.detach()` so autograd never sees it,
+            # `.float()` is a no-op when already fp32 (comfy's typical case).
+            sigma_state["sigma"] = args[1].detach().float()
 
     return sigma_pre_hook
 
