@@ -90,6 +90,8 @@ Linear 가중치 델타가 아닌 변형(ReFT / HydraLoRA `_moe` / postfix / pre
 | **Modulation guidance** | AdaLN 계수를 조향하는 `pooled_text_proj` MLP distillation (Starodubcev et al., ICLR 2026). | [mod-guidance.md](docs/methods/mod-guidance.md) |
 | **GRAFT** | 리젝션 샘플링 파인튜닝 — 학습 → 생성 → survivor 큐레이션 → 재학습 루프. | [graft-guideline.md](docs/guidelines/graft-guideline.md) |
 
+> **기여하고 싶으신가요?** 외부 기여가 특히 큰 임팩트를 낼 수 있는 두 영역: **IP-Adapter 프로덕션화** (테스트, 공개 레퍼런스 체크포인트, 더 가벼운 비전 인코더) 와 **EasyControl 어댑터** (canny / depth / pose / … — 컨트롤 타입 하나가 곧 자체 완결 PR 한 건). 자세한 내용은 [CONTRIBUTING.md → Priority areas](CONTRIBUTING.md#priority-areas).
+
 ---
 
 ## 설치

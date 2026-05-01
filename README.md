@@ -87,6 +87,8 @@ Each ships with a doc — see the link for usage, flags, and caveats.
 | **Modulation guidance** | Distill a `pooled_text_proj` MLP that steers AdaLN coefficients (Starodubcev et al., ICLR 2026). | [mod-guidance.md](docs/methods/mod-guidance.md) |
 | **GRAFT** | Rejection-sampling fine-tuning — train, generate, curate survivors, retrain. | [graft-guideline.md](docs/guidelines/graft-guideline.md) |
 
+> **Want to contribute?** Two areas where outside help would have outsized impact: **IP-Adapter productionization** (tests, public reference checkpoint, lighter vision encoder) and **EasyControl adapters** (canny / depth / pose / … — each control type is one self-contained PR). See [CONTRIBUTING.md → Priority areas](CONTRIBUTING.md#priority-areas).
+
 ---
 
 ## Setup

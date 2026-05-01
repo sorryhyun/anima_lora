@@ -12,6 +12,34 @@ Thanks for considering a contribution. This repo welcomes targeted fixes and new
   ruff check . --fix && ruff format .
   ```
 
+## Priority areas
+
+Two areas where outside contributions would have the biggest impact right now. Both are wired and training end-to-end — what's missing is productionization, ecosystem, and breadth. Tier annotations below map each item to the requirements in the rest of this document.
+
+### IP-Adapter
+
+Decoupled image cross-attention (Ye et al. 2023). DiT frozen; resampler + per-block `to_k_ip`/`to_v_ip` train end-to-end and inference works via `inference.py`. See [`docs/methods/ip-adapter.md`](docs/methods/ip-adapter.md).
+
+What's missing:
+
+- **Integration tests** — fixed reference images, recorded resampler outputs, per-block IP KV shape contract, end-to-end seeded SSIM range. *[Tier 1.5]*
+- **Reference checkpoint on HuggingFace** — `anima-ip-adapter-v1` with a model card (training recipe, samples, numbers) so contributors have a baseline to compare against. *[ecosystem; no new code, treat as Tier 1.5 — paste training command + numbers]*
+- **Pluggable vision encoder** — PE-Core-L14-336 is the install-friction tax. SigLIP-L or CLIP-L as a swappable lighter default; PE-Core stays as the high-quality option. *[Tier 1.5]*
+- **ComfyUI parity** — verify `AnimaAdapterLoader` (in `custom_nodes/comfyui-hydralora/`) covers IP-Adapter (resampler + per-block IP KV) or file the gap. *[Tier 1]*
+- **Image-only CFG, batched multi-reference, `--ip_scale` schedule** — small self-contained PRs. *[Tier 1]*
+
+### EasyControl adapters
+
+Per-block cond LoRA on self-attn + FFN with a logit-bias gate. The architecture is naturally contribution-friendly: each control type is one independent adapter. See [`docs/methods/easycontrol.md`](docs/methods/easycontrol.md). What's missing is the **adapter zoo** around it.
+
+- **Trained adapters** — canny, depth, pose, lineart, scribble, segmentation, … each one a self-contained PR with model card, training config, and samples. Hosted under a HuggingFace collection (planned: `anima-easycontrol`). *[Tier 1.5 — bench numbers and side-by-side samples carry the PR; no new method code]*
+- **Per-task dataset spec** — one doc per control type covering pair format, recommended size (~2k pairs), where to source signal images. Currently undocumented. *[Tier 1]*
+- **Toy datasets** — 200-pair CC-licensed bundles per control type so a contributor can validate the pipeline before committing to a full dataset. *[Tier 1]*
+- **One-command training aliases** — `make easycontrol-canny`, `make easycontrol-depth`, … as per-task preset configs in `configs/methods/easycontrol/`. *[Tier 1]*
+- **Eval harness** — held-out ~100-pair sets per control type with a control-fidelity metric (re-extract signal from generation, compare to input). Lets adapter PRs be reviewed on numbers rather than vibes. *[Tier 1.5]*
+
+Open a draft PR or issue early — happy to scope and review.
+
 ## Tier 1 — bug fixes, typos, UI, arg/CLI tweaks
 
 Lightweight contributions. Examples: fixing a regex in a LoRA target list, a typo in a docstring, a confused error message, a GUI label, a missing CLI flag, a `tasks.py` argument-forwarding bug.

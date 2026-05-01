@@ -159,24 +159,7 @@ Subsets accept an optional `cache_dir` key — when set, all VAE / text-encoder 
   - `library/runtime/` — `device.py`, `offloading.py`, `noise.py` (flow-matching sampling).
   - `library/log.py` — logging setup + `fire_in_thread`.
 - **Strategy pattern** for model-specific tokenization/encoding (`library/anima/strategy.py`, `library/strategy_base.py`)
-- **Network modules** are pluggable via `network_module` config key:
-  - `networks/lora_anima/` — LoRA network creation, module targeting, timestep masking orchestration (split into `network.py`, `factory.py`, `loading.py`, `config.py`).
-  - `networks/lora_modules/` — Per-variant module implementations: `lora.py`, `ortho.py`, `hydra.py`, `reft.py`, plus `base.py` and `custom_autograd.py`.
-  - `networks/lora_save.py` / `lora_utils.py` — Save-time SVD distillation (OrthoLoRA → plain LoRA) and shared helpers.
-  - `networks/methods/postfix.py` — Continuous postfix tuning: learns N vectors appended to adapter cross-attention (modes: hidden, embedding, cfg, dual).
-  - `networks/methods/ip_adapter.py` — IP-Adapter: PE-Core-L14-336 vision encoder + Perceiver resampler + per-block `to_k_ip`/`to_v_ip`.
-  - `networks/methods/easycontrol.py` — EasyControl: per-block cond LoRA on self-attn (q/k/v/o) + FFN + scalar `b_cond` logit-bias gate; two-stream block forward at training, KV-cache prefill at inference.
-  - `networks/methods/apex.py` — APEX `ConditionShift` module (`c_fake = A·c + b`).
-- **Attention dispatch** (`networks/attention_dispatch.py`): Unified `dispatch_attention()` routing to torch SDPA, xformers, flash-attn v2/v3, sageattn, or flex attention. Layout varies by backend (BHLD vs BLHD). FA4 (flash-attention-sm120) was evaluated and is currently disabled — see `docs/optimizations/fa4.md`.
-
-### LoRA variants
-
-All in `networks/lora_modules.py`. Stack freely via toggle flags in `configs/methods/lora.toml` — the default is LoRA + OrthoLoRA + T-LoRA + ReFT together.
-- **LoRA** — Classic low-rank: `y = x + (x @ down @ up) * scale * multiplier`
-- **OrthoLoRA** — SVD-based orthogonal parameterization with orthogonality regularization (linear layers only). Saved as plain LoRA via thin SVD on ΔW at save time. See `docs/methods/psoft-integrated-ortholora.md`.
-- **T-LoRA** — Timestep-dependent rank masking: effective rank varies with denoising step via power-law schedule. See `docs/methods/timestep_mask.md`.
-- **HydraLoRA** — MoE-style multi-head routing: shared `lora_down` + per-expert `lora_up_i` heads, layer-local router on the adapted Linear's input. Requires `cache_llm_adapter_outputs=true`. Produces a `*_moe.safetensors` sibling for router-live inference. See `docs/methods/hydra-lora.md`.
-- **ReFT** — Block-level residual-stream intervention (LoReFT, Wu et al. NeurIPS 2024). One `ReFTModule` per selected DiT block wraps the block's `forward` and adds `R^T·(ΔW·h + b)·scale` to the output; orthogonality regularized on `R`. Additive side-channel, composes with any LoRA variant, lives in the same `.safetensors`. Vanilla ComfyUI can't load ReFT (weight-patcher silently drops `reft_*` keys) — use the `AnimaAdapterLoader` custom node. See `docs/methods/reft.md`.
+- **Pluggable adapters** under `networks/` — selected via `network_module` config key. Covers LoRA / OrthoLoRA / T-LoRA / HydraLoRA / ReFT (in `networks/lora_modules/`), postfix / IP-Adapter / EasyControl / APEX (in `networks/methods/`), the unified attention-backend dispatcher (`networks/attention_dispatch.py`), and Spectrum inference (`networks/spectrum.py`). See `networks/CLAUDE.md` for the per-module map, variant details, and dispatch invariants.
 
 ### Training flow (train.py)
 
@@ -199,7 +182,7 @@ All bucket resolutions ensure `(H/16)*(W/16) ~ 4096` patches. Batch elements are
 
 ### Flash4 LSE correction
 
-When cross-attention KV is trimmed (zero-padding removed for efficiency), the softmax denominator must be corrected. `networks/attention_dispatch.py` applies a sigmoid-based LSE correction using `crossattn_full_len` to account for removed zero-key contributions.
+When cross-attention KV is trimmed (zero-padding removed for efficiency), the softmax denominator must be corrected. `networks/attention_dispatch.py` applies a sigmoid-based LSE correction using `crossattn_full_len` — pairs with the text-encoder padding rule above. See `networks/CLAUDE.md` for backend layout details.
 
 ### Lazy model loading
 
@@ -260,7 +243,7 @@ Archived utilities (legacy, no longer wired up): `archive/img2emb/` (resampler t
 
 Spectrum KSampler and mod guidance ComfyUI nodes live in a separate repo: https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler
 
-`custom_nodes/comfyui-hydralora/` — **Anima Adapter Loader** node for ComfyUI (unified LoRA / Hydra / ReFT + prefix/postfix). Auto-detects components by key sniff and applies each via its correct path (`ModelPatcher.add_patches` for plain LoRA; per-Linear / per-block `forward_hook`s installed through `ModelPatcher.add_object_patch` for Hydra and ReFT; `diffusion_model.forward` object patch for prefix / postfix / cond). See `custom_nodes/comfyui-hydralora/README.md` for installation, hook mechanics, and changelog.
+`custom_nodes/comfyui-hydralora/` — **Anima Adapter Loader** node (unified LoRA / Hydra / ReFT + prefix/postfix). See `custom_nodes/comfyui-hydralora/CLAUDE.md` for code-level details and the `forward_hook`-not-`forward`-override invariant; `README.md` for user-facing docs and changelog.
 
 ## External tools
 
