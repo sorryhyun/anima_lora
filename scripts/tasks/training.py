@@ -9,23 +9,11 @@ from __future__ import annotations
 import os
 import sys
 
-from ._common import PY, ROOT, _preset, run, train
+from ._common import PY, ROOT, run, train
 
 
 def cmd_lora(extra):
     train("lora", extra)
-
-
-def cmd_lora_fast(extra):
-    train("lora", extra, preset=_preset("fast_16gb"))
-
-
-def cmd_lora_low_vram(extra):
-    train("lora", extra, preset=_preset("low_vram"))
-
-
-def cmd_lora_half(extra):
-    train("lora", extra, preset=_preset("half"))
 
 
 def cmd_lora_gui(extra):

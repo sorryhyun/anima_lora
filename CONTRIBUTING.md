@@ -51,7 +51,7 @@ Lightweight contributions. Examples: fixing a regex in a LoRA target list, a typ
   ```
 - The change is minimal and scoped. No drive-by refactors, no new abstractions, no "while I'm here" reformatting in unrelated files.
 - For GUI changes, actually launch the GUI (`make gui`) and exercise the affected tab before claiming the PR is done. Type-checking is not a substitute for clicking the button.
-- For training-path changes, smoke-test one short run end-to-end (`make lora-low-vram` truncated to a few steps is fine) and paste the tail of the log into the PR description.
+- For training-path changes, smoke-test one short run end-to-end (`PRESET=low_vram make lora` truncated to a few steps is fine) and paste the tail of the log into the PR description.
 
 That's it. Open the PR.
 

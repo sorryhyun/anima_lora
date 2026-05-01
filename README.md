@@ -105,7 +105,7 @@ CLI path:
 
 ```bash
 make preprocess           # VAE-compatible resize & validation
-make lora                 # or: make lora-fast / lora-low-vram / make postfix / make apex
+make lora                 # or: PRESET=fast_16gb make lora / PRESET=low_vram make lora / make postfix / make apex
 make test                 # sample generation with the latest trained LoRA
 ```
 

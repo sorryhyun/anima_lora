@@ -108,7 +108,7 @@ CLI 경로:
 
 ```bash
 make preprocess           # VAE 호환 리사이즈 및 검증
-make lora                 # 또는: make lora-fast / lora-low-vram / make postfix / make apex
+make lora                 # 또는: PRESET=fast_16gb make lora / PRESET=low_vram make lora / make postfix / make apex
 make test                 # 최신 학습된 LoRA로 샘플 생성
 ```
 

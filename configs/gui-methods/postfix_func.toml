@@ -1,7 +1,7 @@
 # gui-methods/postfix_func.toml — Cond postfix + functional MSE loss.
 #
 # Same as postfix_exp plus a functional MSE loss against saved inversion runs.
-# Needs `inversion_dir` populated (run `make invert` first). `trim_crossattn_kv`
+# Needs `inversion_dir` populated (run `python archive/inversion/invert_embedding.py` first). `trim_crossattn_kv`
 # is incompatible with end_of_sequence splicing, so it's forced off.
 
 network_module = "networks.methods.postfix"

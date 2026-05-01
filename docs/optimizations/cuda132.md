@@ -10,7 +10,7 @@
 Roughly 10%. Benchmark results on a single RTX 5060 Ti 16 GB, fixed seed, bsz=1, 2 epochs / 446 steps, fully compiled (4096-token static pad), r=16, lr=5e-5:
 
 - `make lora`: 1.15 s/step
-- `make lora-fast`: 0.97 s/step
+- `PRESET=fast_16gb make lora`: 0.97 s/step
 - `make lora-gui GUI_PRESETS=tlora`: 1.30 s/step
 
 Environment: CUDA 13.2, torch nightly (2.12), FA2 without gradient checkpointing.

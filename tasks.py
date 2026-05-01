@@ -20,9 +20,7 @@ import sys
 from scripts.tasks import (
     downloads,
     gui,
-    img2emb,
     inference,
-    inversion,
     masking,
     preprocess,
     training,
@@ -34,12 +32,6 @@ COMMANDS = {
     "lora": (
         training.cmd_lora,
         "LoRA family (lora|tlora|tlora_rf|hydralora via configs/methods/lora.toml)",
-    ),
-    "lora-fast": (training.cmd_lora_fast, "Fast LoRA training (16GB, no block swap)"),
-    "lora-low-vram": (training.cmd_lora_low_vram, "LoRA training (low VRAM)"),
-    "lora-half": (
-        training.cmd_lora_half,
-        "LoRA training with sample_ratio=0.5 (half preset)",
     ),
     "lora-gui": (
         training.cmd_lora_gui,
@@ -123,57 +115,6 @@ COMMANDS = {
         "Cache PE-Core (or other registered) vision-encoder features into the "
         "LoRA cache dir. Consumed by REPA (--use_repa) and IP-Adapter live-disk "
         "mode. PE_ENCODER=pe|pe-g.",
-    ),
-    # ── img2emb ───────────────────────────────────────────────────────
-    "img2emb": (
-        img2emb.cmd_img2emb,
-        "Train img2emb resampler (pretrain + finetune). Optional stage arg: preprocess|anchors|pretrain|finetune",
-    ),
-    "img2emb-preprocess": (
-        img2emb.cmd_img2emb_preprocess,
-        "img2emb: extract encoder features (stage 1)",
-    ),
-    "img2emb-anchors": (
-        img2emb.cmd_img2emb_anchors,
-        "img2emb: refresh people=* prototypes + phase1_positions (stage 1.5)",
-    ),
-    "img2emb-align": (
-        img2emb.cmd_img2emb_align,
-        "img2emb: re-run Hungarian alignment of T5 variants v1..vN to v0",
-    ),
-    "img2emb-pretrain": (
-        img2emb.cmd_img2emb_pretrain,
-        "img2emb: resampler pretrain on cached targets (stage 2)",
-    ),
-    "img2emb-finetune": (
-        img2emb.cmd_img2emb_finetune,
-        "img2emb: flow-matching finetune through frozen DiT (stage 3)",
-    ),
-    "img2emb-calibrate": (
-        img2emb.cmd_img2emb_calibrate,
-        "img2emb: step-0 loss-weight calibration (no backward); FINETUNE_WARM/BS/SWAP env",
-    ),
-    "preprocess-img2emb": (
-        img2emb.cmd_preprocess_img2emb,
-        "img2emb preprocessing: extract features + rebuild anchor artifacts",
-    ),
-    "test-img2emb": (
-        img2emb.cmd_test_img2emb,
-        "Generate an image from a ref image via the finetuned resampler. Usage: test-img2emb <ref_image>",
-    ),
-    # ── Inversion ─────────────────────────────────────────────────────
-    "invert": (inversion.cmd_invert, "Embedding inversion (image → text embedding)"),
-    "invert-ref": (
-        inversion.cmd_invert_ref,
-        "Reference inversion (REF_IMAGE=path/to/ref.png; see scripts/tasks/inversion.py::cmd_invert_ref for env vars)",
-    ),
-    "test-invert": (
-        inversion.cmd_test_invert,
-        "Verify a saved inversion (INVERT_NAME env, default 'latest')",
-    ),
-    "bench-inversion": (
-        inversion.cmd_bench_inversion,
-        "Run the inversion-stability benchmark (BENCH_INVERSIONS env)",
     ),
     # ── Downloads ─────────────────────────────────────────────────────
     "download-models": (downloads.cmd_download_models, "Download all models"),

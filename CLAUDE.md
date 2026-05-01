@@ -35,9 +35,8 @@ Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The exa
 make lora                   # LoRA family (methods/lora.toml + presets.toml[default])
 python tasks.py lora        # Same, works on Windows too
 make lora PRESET=low_vram   # Override preset: methods/lora.toml + presets.toml[low_vram]
-make lora-fast              # Shortcut: methods/lora.toml + presets.toml[fast_16gb]
-make lora-low-vram          # Shortcut: methods/lora.toml + presets.toml[low_vram]
-make lora-half              # Shortcut: methods/lora.toml + presets.toml[half] (sample_ratio=0.5)
+make lora PRESET=fast_16gb  # Override preset: methods/lora.toml + presets.toml[fast_16gb]
+make lora PRESET=half       # Override preset: methods/lora.toml + presets.toml[half] (sample_ratio=0.5)
 make postfix                # Postfix/prefix family (methods/postfix.toml)
 make apex                   # APEX self-adversarial 1-NFE distillation (methods/apex.toml)
 make ip-adapter             # IP-Adapter image cross-attention (methods/ip_adapter.toml)
@@ -57,11 +56,10 @@ python tasks.py lora-gui hydralora_sigma            # Windows; variant can also 
 # Modulation guidance distillation
 make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulation)
 
-# Embedding inversion
-make invert                # Optimize text embedding for target images
-make invert-ref            # Learn K prefix-slot vectors for a reference image
-make test-invert           # Verify inversion quality
-make bench-inversion       # Benchmark inversion stability (bench/inversion/)
+# Embedding inversion (archived — run scripts directly under archive/inversion/)
+# python archive/inversion/invert_embedding.py ...
+# python archive/inversion/invert_reference.py ...
+# python archive/inversion/interpret_inversion.py ...
 
 # Inference (test with most recent output)
 make test
@@ -214,7 +212,7 @@ Extended self-attention image conditioning. DiT is frozen; trains per-block cond
 
 ## Embedding inversion
 
-Optimizes text embeddings (post-T5, pre-DiT space) to minimize flow-matching loss for a target image through the frozen DiT. Reveals how the model interprets images in embedding space. `make invert` runs batch inversion from `post_image_dataset/`, `make test-invert` verifies results. See `docs/methods/invert.md`.
+Optimizes text embeddings (post-T5, pre-DiT space) to minimize flow-matching loss for a target image through the frozen DiT. Reveals how the model interprets images in embedding space. Archived — run `python archive/inversion/invert_embedding.py` (or `invert_reference.py` / `interpret_inversion.py`) directly. See `docs/methods/invert.md`.
 
 ## Preprocessing
 
