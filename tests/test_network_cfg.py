@@ -214,6 +214,47 @@ def test_from_weights_no_reft_no_sigma():
     assert cfg.use_sigma_router is False
 
 
+def test_from_weights_sigma_band_partition_off_by_default():
+    cfg = LoRANetworkCfg.from_weights(
+        modules_dim={"foo": 4},
+        modules_alpha={"foo": 1.0},
+        module_class=HydraLoRAModule,
+        train_llm_adapter=False,
+        has_reft=False,
+        reft_dim=None,
+        reft_block_indices=set(),
+        is_hydra_or_ortho_hydra=True,
+        hydra_num_experts=12,
+        sigma_feature_dim_detected=16,
+        sigma_router_names=["foo"],
+        hydra_router_names=None,
+        channel_scales_dict=None,
+    )
+    assert cfg.specialize_experts_by_sigma_buckets is False
+
+
+def test_from_weights_sigma_band_partition_round_trip():
+    cfg = LoRANetworkCfg.from_weights(
+        modules_dim={"foo": 4},
+        modules_alpha={"foo": 1.0},
+        module_class=HydraLoRAModule,
+        train_llm_adapter=False,
+        has_reft=False,
+        reft_dim=None,
+        reft_block_indices=set(),
+        is_hydra_or_ortho_hydra=True,
+        hydra_num_experts=12,
+        sigma_feature_dim_detected=16,
+        sigma_router_names=["foo"],
+        hydra_router_names=None,
+        channel_scales_dict=None,
+        specialize_experts_by_sigma_buckets=True,
+        num_sigma_buckets=4,
+    )
+    assert cfg.specialize_experts_by_sigma_buckets is True
+    assert cfg.num_sigma_buckets == 4
+
+
 def test_cfg_is_frozen():
     cfg = LoRANetworkCfg.from_kwargs(
         {},
