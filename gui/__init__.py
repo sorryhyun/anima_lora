@@ -68,6 +68,7 @@ _FAMILY_VARIANTS: dict[str, list[str]] = {
     ],
     "hydralora": [
         "hydralora_sigma",
+        "hydralora_experimental",
     ],
     "reft": [
         "reft",
@@ -180,6 +181,8 @@ _GROUPS = {
         "sigma_router_layers",
         "per_bucket_balance_weight",
         "num_sigma_buckets",
+        "specialize_experts_by_sigma_buckets",
+        "sigma_bucket_boundaries",
         "network_train_unet_only",
     },
     "Training": {

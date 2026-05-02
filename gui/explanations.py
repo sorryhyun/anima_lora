@@ -85,6 +85,14 @@ FIELD_HELP: dict[str, dict[str, str]] = {
         "en": "Number of timestep buckets used for per-bucket balance accounting. Typical: 3 (low / mid / high noise).",
         "ko": "버킷별 균형 계산에 사용되는 타임스텝 버킷 수. 일반적: 3 (저/중/고 노이즈).",
     },
+    "specialize_experts_by_sigma_buckets": {
+        "en": "Hard-partition the expert pool into σ-bands: each timestep bucket only routes to its assigned experts. Forces specialization on top of the soft σ-router bias. Pairs with sigma_bucket_boundaries.",
+        "ko": "전문가 풀을 σ-밴드로 하드 분할: 각 타임스텝 버킷은 할당된 전문가만 사용. 소프트 σ-라우터 바이어스 위에 강제 특화 부여. sigma_bucket_boundaries와 함께 사용.",
+    },
+    "sigma_bucket_boundaries": {
+        "en": "Custom σ-bucket edges, length = num_sigma_buckets + 1, monotone 0.0 → 1.0. Defaults to uniform linspace(0, 1, N+1) when omitted. Example: [0.0, 0.5, 0.8, 1.0].",
+        "ko": "사용자 지정 σ-버킷 경계, 길이 = num_sigma_buckets + 1, 0.0 → 1.0 단조 증가. 생략 시 uniform linspace(0, 1, N+1) 사용. 예: [0.0, 0.5, 0.8, 1.0].",
+    },
     "network_args": {
         "en": "Extra kwargs passed to the network module. For postfix: list of 'key=value' strings (e.g., 'mode=cond-timestep', 'splice_position=end_of_sequence', 'cond_hidden_dim=256'). Pick a Variant to auto-fill.",
         "ko": "네트워크 모듈에 전달되는 추가 kwargs. postfix의 경우 'key=value' 문자열 리스트 (예: 'mode=cond-timestep', 'splice_position=end_of_sequence', 'cond_hidden_dim=256'). Variant 선택으로 자동 채우기 가능.",
@@ -538,6 +546,16 @@ HYDRALORA_GUIDE: dict[str, str] = {
         "router so expert choice can vary with denoising timestep. Zero-init at "
         "the final layer means step-0 starts identical to base HydraLoRA; σ-"
         "dependence only emerges if gradients push it.</p>"
+        "<p><b>hydralora_experimental</b> &mdash; <code>hydralora_sigma</code> plus "
+        "hard σ-band specialization: <code>specialize_experts_by_sigma_buckets = "
+        "true</code> partitions the expert pool by timestep bucket so each σ-"
+        "band only routes to its assigned experts (e.g. with "
+        "<code>num_experts = 6</code> and 3 buckets, 2 experts per band). "
+        "<code>sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]</code> places the "
+        "splits unevenly &mdash; more capacity in the late, low-noise refinement "
+        "regime. More opinionated than the soft σ-bias router; useful when you "
+        "want experts to diverge along the timestep axis rather than "
+        "co-specialize.</p>"
         "<p>Training produces a <code>*_moe.safetensors</code> sibling next to "
         "the adapter; both files are needed for router-live inference "
         "(<code>make test-hydra</code> / ComfyUI <i>Anima Adapter Loader</i>). "
@@ -553,6 +571,14 @@ HYDRALORA_GUIDE: dict[str, str] = {
         "추가하여 전문가 선택이 디노이징 타임스텝에 따라 변동. 최종 레이어 zero-init → "
         "초기에는 기본 HydraLoRA와 동일하며, σ-의존성은 그래디언트가 발생시킬 때만 "
         "발현합니다.</p>"
+        "<p><b>hydralora_experimental</b> &mdash; <code>hydralora_sigma</code>에 "
+        "σ-밴드 하드 특화를 추가: <code>specialize_experts_by_sigma_buckets = "
+        "true</code>로 전문가 풀을 타임스텝 버킷별로 분할하여 각 σ-밴드가 할당된 "
+        "전문가만 사용합니다 (예: <code>num_experts = 6</code>, 버킷 3개일 때 밴드당 "
+        "전문가 2개). <code>sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]</code>로 "
+        "분할 지점을 비균등하게 배치 &mdash; 후반 저노이즈 디테일 단계에 더 많은 용량을 "
+        "할당합니다. 소프트 σ-바이어스 라우터보다 강한 제약이며, 전문가가 타임스텝 축을 "
+        "따라 분화되도록 명시적으로 강제하고 싶을 때 유용합니다.</p>"
         "<p>학습 시 어댑터 옆에 <code>*_moe.safetensors</code> 동반 파일이 생성되며, "
         "라우터-라이브 추론에는 두 파일 모두 필요합니다 "
         "(<code>make test-hydra</code> / ComfyUI <i>Anima Adapter Loader</i>). "

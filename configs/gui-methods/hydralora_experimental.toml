@@ -1,0 +1,45 @@
+# gui-methods/hydralora_sigma.toml — HydraLoRA + σ-conditional router.
+#
+# HydraLoRA (shared down + per-expert up heads) with a tiny sinusoidal(σ)→E
+# bias MLP per router, letting expert choice vary with denoising timestep.
+# Zero-init at the final layer → step-0 identical to base HydraLoRA, σ-
+# dependence only emerges if gradients push it. See docs/methods/hydra-lora.md.
+
+network_dim = 32
+network_alpha = 32
+
+learning_rate = 2e-5
+max_train_epochs = 4
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.1
+
+use_ortho = true
+
+use_timestep_mask = true
+min_rank = 1
+alpha_rank_scale = 1.0
+
+use_hydra = true
+num_experts = 6
+balance_loss_weight = 3e-7
+
+
+hydra_router_layers = ".*(mlp\\.layer[12])$"
+
+use_sigma_router = true
+sigma_feature_dim = 16
+sigma_hidden_dim = 16   # unused; retained for API compat
+sigma_router_layers = ".*(mlp\\.layer[12])$"
+per_bucket_balance_weight = 0.3
+num_sigma_buckets = 3
+
+specialize_experts_by_sigma_buckets = true
+sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
+
+output_name = "anima_hydra_sigma"
+
+blocks_to_swap = 0
