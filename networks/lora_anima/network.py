@@ -83,6 +83,17 @@ class LoRANetwork(torch.nn.Module):
         # warmup step (random or best-by-grad path). None outside the warmup
         # window — the metric in metrics.py drops out of the dashboard then.
         self._last_expert_warmup_picks: Optional[torch.Tensor] = None
+        # Hydra up-weight grad-norm snapshot (T-LoRA / σ-bucket conflict
+        # diagnostic). Filled by ``capture_up_grad_stats`` between backward
+        # and ``optimizer.zero_grad``; consumed by the ``hydra_up_grad``
+        # metric. Values stay on-device until ``get_up_grad_stats`` runs the
+        # D2H — capture happens every sync step but the metric only reads on
+        # log steps, so the sync was the per-step bottleneck.
+        self._last_up_grad_stats: Dict[str, object] = {}
+        # Per-step cache for ``get_router_stats`` — both the progress-bar
+        # postfix and the metrics layer call it on log steps. Cleared in
+        # ``clear_step_caches`` so the next forward recomputes.
+        self._router_stats_cache: Optional[Dict[str, object]] = None
 
         # Local aliases for the closure body and the post-closure ReFT block.
         # Reading via `cfg.foo` works too; aliases just keep the diff small.
@@ -701,6 +712,7 @@ class LoRANetwork(torch.nn.Module):
         read ``_last_gate`` only within the step that wrote it.
         """
         self._last_sigma = None
+        self._router_stats_cache = None
         for lora in self.unet_loras + self.text_encoder_loras:
             if hasattr(lora, "_last_gate"):
                 lora._last_gate = None
@@ -969,7 +981,13 @@ class LoRANetwork(torch.nn.Module):
         Python float inside the loop forces ~2 ``cudaStreamSynchronize`` per
         Hydra module — at 56 modules per step that produces a periodic
         kernel-launch dip in nvidia-smi.
+
+        Result is memoized on ``self._router_stats_cache`` and invalidated by
+        ``clear_step_caches`` so the progress-bar postfix and the logging
+        metric share one computation per step.
         """
+        if self._router_stats_cache is not None:
+            return self._router_stats_cache
         per_H_t: list[torch.Tensor] = []         # 0-d, on-device
         per_margin_t: list[torch.Tensor] = []    # 0-d, on-device
         per_usage: list[torch.Tensor] = []
@@ -1070,7 +1088,166 @@ class LoRANetwork(torch.nn.Module):
             )
             out["expert_usage_per_bucket"] = bucket_usage_mean
             out["bucket_counts"] = bucket_counts_t.cpu().tolist()
+        self._router_stats_cache = out
         return out
+
+    def capture_up_grad_stats(self) -> None:
+        """Snapshot per-expert grad-norm on Hydra up-weights.
+
+        Diagnoses the T-LoRA × σ-bucket interaction: under the σ-band
+        partition, a high-σ-band expert only fires at high σ, where T-LoRA
+        clamps the rank to ``min_rank``. Rank columns ``[min_rank, R)`` of
+        that expert's ``lora_up`` should then accumulate near-zero gradient
+        — those columns are dead capacity. Reading ``lora_up_weight.grad``
+        and splitting the L2 norm at the ``min_rank`` boundary makes the
+        effect directly visible.
+
+        Must be called between ``accelerator.backward(loss)`` and
+        ``optimizer.zero_grad`` — once ``zero_grad(set_to_none=True)`` has
+        run, ``.grad`` is ``None``.
+
+        Stash format (read by ``library/training/metrics.py``):
+          ``below`` : (E,) Σ_modules ‖grad[e, :, :min_rank]‖²  (only when T-LoRA active)
+          ``above`` : (E,) Σ_modules ‖grad[e, :, min_rank:]‖²  (only when T-LoRA active)
+          ``total`` : (E,) Σ_modules ‖grad[e, ...]‖²
+          ``sp_total`` : (E,) Σ_modules ‖S_p.grad[e]‖²  (OrthoHydra)
+          ``below_band`` / ``above_band`` / ``total_band`` / ``sp_total_band``
+            (B,) per-σ-band sums (sum over experts assigned to band b).
+            Only present when ``specialize_experts_by_sigma_buckets`` is on.
+          ``min_rank`` : float, snapshot of ``cfg.min_rank`` for context.
+          ``num_buckets`` : float, snapshot of ``cfg.num_sigma_buckets``.
+
+        Square-norms (sum-of-squares) are reported, not L2 norms — the
+        metric layer takes ``sqrt`` after summation. This keeps aggregation
+        across modules correct (concatenation-of-grads norm = sqrt of
+        sum-of-squares per chunk).
+        """
+        if not getattr(self, "_use_hydra", False):
+            self._last_up_grad_stats = {}
+            return
+
+        use_tlora = bool(self.cfg.use_timestep_mask)
+        min_rank = int(self.cfg.min_rank) if use_tlora else 0
+        max_rank = int(self.cfg.lora_dim)
+        # Clamp min_rank: a misconfig like min_rank > lora_dim would make the
+        # "above" slice empty and the "below" slice full-rank, silently turning
+        # the diagnostic into a no-op. Pin to [0, R].
+        min_rank = max(0, min(min_rank, max_rank))
+
+        below_per_exp: Optional[torch.Tensor] = None  # (E,) on-device, fp32
+        above_per_exp: Optional[torch.Tensor] = None
+        total_per_exp: Optional[torch.Tensor] = None
+        sp_total_per_exp: Optional[torch.Tensor] = None
+        expert_band_ref: Optional[torch.Tensor] = None  # (E,) long
+        device_ref = None
+
+        for lora in self.unet_loras + self.text_encoder_loras:
+            up = getattr(lora, "lora_up_weight", None)
+            sp = getattr(lora, "S_p", None)
+            up_grad = up.grad if isinstance(up, torch.nn.Parameter) else None
+            sp_grad = sp.grad if isinstance(sp, torch.nn.Parameter) else None
+            if up_grad is None and sp_grad is None:
+                continue
+
+            if up_grad is not None:
+                # (E, out, R)
+                g = up_grad.detach()
+                E = g.shape[0]
+                if device_ref is None:
+                    device_ref = g.device
+                if total_per_exp is None:
+                    total_per_exp = torch.zeros(E, device=device_ref, dtype=torch.float32)
+                t_sq = g.pow(2).reshape(E, -1).sum(dim=-1).float()
+                total_per_exp += t_sq
+                if use_tlora and 0 < min_rank < max_rank:
+                    if below_per_exp is None:
+                        below_per_exp = torch.zeros(E, device=device_ref, dtype=torch.float32)
+                        above_per_exp = torch.zeros(E, device=device_ref, dtype=torch.float32)
+                    b_sq = g[:, :, :min_rank].pow(2).reshape(E, -1).sum(dim=-1).float()
+                    a_sq = g[:, :, min_rank:].pow(2).reshape(E, -1).sum(dim=-1).float()
+                    below_per_exp += b_sq
+                    above_per_exp += a_sq
+
+            if sp_grad is not None and sp_grad.dim() == 3:
+                # (E, r, r) — OrthoHydra rotation generator. No clean rank-col
+                # split (Cayley couples all entries), so we report total only.
+                # Plain OrthoLoRA's S_p is (r, r) with no expert axis — skip it,
+                # since this diagnostic is per-expert.
+                g = sp_grad.detach()
+                E = g.shape[0]
+                if device_ref is None:
+                    device_ref = g.device
+                if sp_total_per_exp is None:
+                    sp_total_per_exp = torch.zeros(E, device=device_ref, dtype=torch.float32)
+                sp_total_per_exp += g.pow(2).reshape(E, -1).sum(dim=-1).float()
+
+            band = getattr(lora, "_expert_band", None)
+            if band is not None and expert_band_ref is None:
+                expert_band_ref = band.detach()
+
+        if total_per_exp is None and sp_total_per_exp is None:
+            self._last_up_grad_stats = {}
+            return
+
+        # Stash on-device tensors only — the D2H happens in
+        # ``get_up_grad_stats`` so non-log steps avoid the
+        # ``cudaStreamSynchronize`` that .cpu().tolist() forces.
+        out: Dict[str, object] = {
+            "min_rank": [float(min_rank)],
+            "num_buckets": [float(self.cfg.num_sigma_buckets)],
+        }
+        if total_per_exp is not None:
+            out["total"] = total_per_exp
+        if below_per_exp is not None and above_per_exp is not None:
+            out["below"] = below_per_exp
+            out["above"] = above_per_exp
+        if sp_total_per_exp is not None:
+            out["sp_total"] = sp_total_per_exp
+
+        # Per-band aggregation: scatter the per-expert sum-of-squares along
+        # _expert_band. Only meaningful when σ-bucket partition is active —
+        # otherwise the band assignment is undefined and per-band rows would
+        # be misleading.
+        if (
+            expert_band_ref is not None
+            and bool(self.cfg.specialize_experts_by_sigma_buckets)
+            and int(self.cfg.num_sigma_buckets) > 1
+        ):
+            B = int(self.cfg.num_sigma_buckets)
+            band = expert_band_ref.to(device_ref)
+
+            def _scatter_to_band(per_exp: torch.Tensor) -> torch.Tensor:
+                buf = torch.zeros(B, device=per_exp.device, dtype=per_exp.dtype)
+                buf.scatter_add_(0, band, per_exp)
+                return buf
+
+            if total_per_exp is not None:
+                out["total_band"] = _scatter_to_band(total_per_exp)
+            if below_per_exp is not None and above_per_exp is not None:
+                out["below_band"] = _scatter_to_band(below_per_exp)
+                out["above_band"] = _scatter_to_band(above_per_exp)
+            if sp_total_per_exp is not None:
+                out["sp_total_band"] = _scatter_to_band(sp_total_per_exp)
+
+        self._last_up_grad_stats = out
+
+    def get_up_grad_stats(self) -> Dict[str, List[float]]:
+        """Materialize the on-device stash from ``capture_up_grad_stats``.
+
+        D2H is deferred to here so non-log steps don't pay the sync — the
+        capture must run between backward and zero_grad (when ``.grad`` is
+        live), but the metric only consumes the result on log steps.
+        """
+        raw = self._last_up_grad_stats
+        if not raw:
+            return {}
+        materialized: Dict[str, List[float]] = {}
+        for k, v in raw.items():
+            if torch.is_tensor(v):
+                materialized[k] = v.detach().cpu().tolist()
+            else:
+                materialized[k] = list(v)  # type: ignore[arg-type]
+        return materialized
 
     def get_ortho_regularization(self) -> torch.Tensor:
         """Sum orthogonality regularization from all OrthoLoRA and ReFT modules."""

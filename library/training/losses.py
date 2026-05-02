@@ -263,6 +263,9 @@ def _apex_mix_loss(ctx: LossContext) -> torch.Tensor:
         l_mix = apply_masked_loss(l_mix, ctx.batch)
     l_mix = l_mix.mean(dim=list(range(1, l_mix.ndim)))
     l_mix = l_mix * ctx.loss_weights
+    # Stash unweighted scalar for the metric layer (read by _apex_loss_breakdown).
+    if ctx.network is not None:
+        ctx.network._last_apex_mix_value = float(l_mix.detach().mean().item())
     return lam_c * l_mix
 
 
@@ -288,6 +291,8 @@ def _apex_fake_loss(ctx: LossContext) -> torch.Tensor:
     # No masked-loss: x_fake is synthetic, not tied to the input image mask.
     l_fake = l_fake.mean(dim=list(range(1, l_fake.ndim)))
     l_fake = l_fake * ctx.loss_weights
+    if ctx.network is not None:
+        ctx.network._last_apex_fake_value = float(l_fake.detach().mean().item())
     return lam_f_eff * l_fake
 
 

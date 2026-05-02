@@ -39,13 +39,56 @@ def cmd_test_mod(extra):
 
 
 def cmd_test_apex(extra):
+    # APEX silently bakes the warm-start LoRA into the DiT base at training
+    # time (see networks/methods/apex.py::promote_warmstart_to_merge), so the
+    # saved anima_apex.safetensors is a delta on top of that merged base. To
+    # reproduce the same base at inference, stack the warm-start (read from
+    # the apex run's .snapshot.toml) ahead of the apex delta.
+    import tomllib
+
+    apex_ckpt = latest_output("anima_apex")
+    snapshot = apex_ckpt.with_suffix(".snapshot.toml")
+    warmstart: Path | None = None
+    if snapshot.is_file():
+        with open(snapshot, "rb") as f:
+            snap = tomllib.load(f)
+        nw = snap.get("network_weights")
+        if isinstance(nw, str) and nw:
+            cand = Path(nw)
+            if not cand.is_absolute():
+                cand = ROOT / cand
+            if cand.is_file():
+                warmstart = cand
+            else:
+                print(
+                    f"  ! APEX warm-start from {snapshot.name} not found at "
+                    f"{cand}; skipping stack — output will likely be garbage.",
+                    file=sys.stderr,
+                )
+    else:
+        print(
+            f"  ! No {snapshot.name} alongside {apex_ckpt.name}; can't recover "
+            f"the warm-start path. Output will likely be garbage if the apex "
+            f"run was warm-started.",
+            file=sys.stderr,
+        )
+
+    lora_args = ["--lora_weight"]
+    if warmstart is not None:
+        lora_args += [str(warmstart), str(apex_ckpt)]
+    else:
+        lora_args += [str(apex_ckpt)]
+
+    # 4 euler steps + guidance_scale=1.0 (no CFG, conditional branch only) per
+    # apex.toml and docs/methods/apex.md. guidance_scale=0.0 here previously
+    # silently collapsed to uncond-only (do_cfg=True, weight=0) so the model
+    # was queried with an empty prompt and produced a featureless blur.
     run(
         [
             *INFERENCE_BASE,
-            "--lora_weight",
-            str(latest_output("anima_apex")),
+            *lora_args,
             "--infer_steps",
-            "4",
+            "2",
             "--guidance_scale",
             "1.0",
             "--sampler",

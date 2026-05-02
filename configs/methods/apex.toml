@@ -35,16 +35,16 @@ log_with = "tensorboard"
 # profile. Trained file captures only the APEX delta on the merged base —
 # stack with the warm-start tlora at inference, or re-merge via
 # scripts/merge_to_dit.py to ship a single combined LoRA.
-network_weights = "output/ckpt/anima-tlora-0430-12.safetensors"
+network_weights = "output/ckpt/anima_lora.safetensors"
 dim_from_weights = true
 
 # Longer than plain LoRA because APEX refine needs budget for the adversarial
 # signal to take effect after warmup. Adjust upward if the loss is still
 # trending down at end of training.
 learning_rate = 1e-4
-max_train_epochs = 12
-save_every_n_epochs = 12
-checkpointing_epochs = 12
+max_train_epochs = 4
+save_every_n_epochs = 4
+checkpointing_epochs = 4
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
@@ -63,17 +63,34 @@ apex_loss_form = "mix"      # 'mix' (primary) | 'gapex' (debug fallback)
 # Inner lambda and outer L_fake weight both ramp 0 → target across this window.
 # At inner lambda=0, L_mix collapses to pure FM (T_mix = v_data), so warmup
 # trains pure flow-matching at strength apex_lambda_c. No-op for the paper
-# at 20B scale; required at Anima scale.
-apex_warmup_ratio = 0.20    # pure-FM (lam=0, L_fake off) window
-apex_rampup_ratio = 0.10    # linear ramp of inner lambda + L_fake after warmup
+# at 20B scale; required at Anima scale only when starting from random init.
+#
+# With network_weights warm-start (baked into DiT via promote_warmstart_to_merge)
+# F_θ at step 0 IS already a converged FM model, so x_fake = x_t - t·F_θ is
+# clean data, not noise — the cold-start failure mode (L_fake fitting random
+# trajectories through shared weights) cannot trigger. Pure-FM warmup just
+# wastes ~20% of the budget AND pays the 3× forward cost during the wasted
+# window. Keeping a 10% rampup as a soft on-ramp into the adversarial regime.
+apex_warmup_ratio = 0.0     # warm-start makes the cold-start guard redundant
+apex_rampup_ratio = 0.10    # linear ramp of inner lambda + L_fake from step 0
 
 # ConditionShift (c_fake = A*c + b, Eq. 9).
-apex_condition_shift_mode = "scalar"
-apex_condition_shift_init_a = -0.5   # Table 7 stable optimum
+# `scalar` (a*c + b, 2 params) is the paper's headline mode at 20B scale but
+# at Anima scale it lands in a degenerate fixed point: the DiT is
+# condition-invariant to a uniform affine on cross-attn embeddings (LN +
+# softmax absorb it), so v_fake_sg ≈ F_real, MSE(v_fake_sg, F_real) → 0,
+# L_mix collapses to 0.25*FM and the adversarial signal vanishes. Watch
+# `apex/v_fake_divergence` in TB to confirm the shift is doing something.
+# `diag` gives 1024 per-channel (a_i, b_i) which can rotate/distort the
+# embedding enough that the model produces a meaningfully different output.
+apex_condition_shift_mode = "diag"
+apex_condition_shift_init_a = -0.5   # Table 7 stable optimum (broadcast per-dim)
 apex_condition_shift_init_b = 1.0    # Table 7 range [0.1, 1.0]
-apex_shift_lr_scale = 0.1            # 0.1x LoRA LR — keeps (a,b) off the unstable corner
+apex_shift_lr_scale = 1.0            # 1x LoRA LR. 0.1 left (a,b) glued to init in
+                                     # the first run (drift <3% over 7k steps),
+                                     # so L_fake never drove the adversarial signal.
+                                     # Table 7's stable region is wide enough.
 
 
 blocks_to_swap = 0
-# gradient_checkpointing = true
-# unsloth_offload_checkpointing = true
+# compile_mode = "full"

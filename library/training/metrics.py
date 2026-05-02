@@ -30,10 +30,43 @@ MetricFn = Callable[[MetricContext], dict[str, float]]
 
 
 def _apex_step_metric(ctx: MetricContext) -> dict[str, float]:
-    if getattr(ctx.args, "method", None) != "apex":
+    method = getattr(ctx.args, "method", None) or ""
+    if not (method == "apex" or method.startswith("apex_")):
         return {}
-    step = int(ctx.trainer_state.get("apex_step", 0))
-    return {"apex/step": float(step)}
+    out: dict[str, float] = {
+        "apex/lam_inner_eff": float(ctx.trainer_state.get("apex_lam_inner_eff", 0.0)),
+        "apex/lam_f_eff": float(ctx.trainer_state.get("apex_lam_f_eff", 0.0)),
+    }
+    # Per-component unweighted MSE means, stashed by _apex_mix_loss /
+    # _apex_fake_loss. Comparable to plain FM loss on the y-axis. L_fake is
+    # only emitted while lam_f_eff > 0 (during warmup it never executes).
+    mix_v = getattr(ctx.network, "_last_apex_mix_value", None)
+    if mix_v is not None:
+        out["apex/loss_mix"] = float(mix_v)
+    fake_v = getattr(ctx.network, "_last_apex_fake_value", None)
+    if fake_v is not None:
+        out["apex/loss_fake"] = float(fake_v)
+    # MSE(v_fake_sg, F_real) — degeneracy detector. ~0 means the shifted
+    # condition produces the same output as the unshifted one, so L_mix
+    # collapses to its trivial self-consistency fixed point.
+    div = ctx.trainer_state.get("apex_v_fake_divergence")
+    if div is not None:
+        out["apex/v_fake_divergence"] = float(div)
+    # ConditionShift parameters — for scalar mode these are 1-element tensors;
+    # for diag/full emit norms instead so the dashboard stays useful.
+    cs = getattr(ctx.network, "apex_condition_shift", None)
+    if cs is not None:
+        mode = getattr(cs, "mode", None)
+        if mode == "scalar":
+            out["apex/cs_a"] = float(cs.a.detach().item())
+            out["apex/cs_b"] = float(cs.b.detach().item())
+        elif mode == "diag":
+            out["apex/cs_a_norm"] = float(cs.a.detach().norm().item())
+            out["apex/cs_b_norm"] = float(cs.b.detach().norm().item())
+        elif mode == "full":
+            out["apex/cs_A_norm"] = float(cs.A.detach().norm().item())
+            out["apex/cs_b_norm"] = float(cs.b.detach().norm().item())
+    return out
 
 
 def _ortho_reg_magnitude(ctx: MetricContext) -> dict[str, float]:
@@ -98,6 +131,73 @@ def _router_entropy_metric(ctx: MetricContext) -> dict[str, float]:
     return {"hydra/router_entropy": float(H)} if H is not None else {}
 
 
+def _hydra_up_grad_metric(ctx: MetricContext) -> dict[str, float]:
+    """Hydra up-weight grad norms split by rank region and σ-band.
+
+    Diagnoses the T-LoRA × σ-bucket conflict (high-σ-band experts only fire
+    at high σ where T-LoRA caps rank to ``min_rank``, so columns
+    ``[min_rank, R)`` of those experts' ``lora_up`` should starve). Compare
+    ``hydra/up_grad/above_below_ratio/band{b}`` across bands: a healthy
+    setup has comparable ratios across bands; if the high-σ band is much
+    smaller than the low-σ band, the conflict is biting and capacity in
+    those experts is wasted.
+
+    Per-expert keys (``hydra/up_grad/{below,above,total}/exp{e}``) are
+    L2 norms (sqrt of summed-squares across modules). Per-band keys
+    aggregate experts within each σ-band. ``sp_total`` is the OrthoHydra
+    fallback (per-expert ``S_p`` grad-norm, no rank-region split because
+    Cayley couples all entries).
+
+    Empty when nothing was captured this step (e.g., ``use_hydra=false``,
+    or the capture call wasn't reached).
+    """
+    if not getattr(ctx.network, "_use_hydra", False):
+        return {}
+    getter = getattr(ctx.network, "get_up_grad_stats", None)
+    if getter is None:
+        return {}
+    stats = getter()
+    if not stats:
+        return {}
+
+    out: dict[str, float] = {}
+    eps = 1e-12
+
+    def _emit_per_expert(prefix: str, sq: list[float]) -> None:
+        for i, v in enumerate(sq):
+            out[f"hydra/up_grad/{prefix}/exp{i}"] = float(v) ** 0.5
+
+    def _emit_per_band(prefix: str, sq: list[float]) -> None:
+        for b, v in enumerate(sq):
+            out[f"hydra/up_grad/{prefix}/band{b}"] = float(v) ** 0.5
+
+    if "total" in stats:
+        _emit_per_expert("total", stats["total"])
+    if "below" in stats and "above" in stats:
+        _emit_per_expert("below", stats["below"])
+        _emit_per_expert("above", stats["above"])
+        for i, (b, a) in enumerate(zip(stats["below"], stats["above"])):
+            out[f"hydra/up_grad/above_below_ratio/exp{i}"] = (
+                float(a) ** 0.5 / (float(b) ** 0.5 + eps)
+            )
+    if "sp_total" in stats:
+        _emit_per_expert("sp_total", stats["sp_total"])
+
+    if "total_band" in stats:
+        _emit_per_band("total", stats["total_band"])
+    if "below_band" in stats and "above_band" in stats:
+        _emit_per_band("below", stats["below_band"])
+        _emit_per_band("above", stats["above_band"])
+        for b, (bv, av) in enumerate(zip(stats["below_band"], stats["above_band"])):
+            out[f"hydra/up_grad/above_below_ratio/band{b}"] = (
+                float(av) ** 0.5 / (float(bv) ** 0.5 + eps)
+            )
+    if "sp_total_band" in stats:
+        _emit_per_band("sp_total", stats["sp_total_band"])
+
+    return out
+
+
 def _expert_warmup_pick_metric(ctx: MetricContext) -> dict[str, float]:
     """Per-expert pick fraction during HydraLoRA expert-warmup.
 
@@ -150,6 +250,7 @@ METRIC_REGISTRY: dict[str, MetricFn] = {
     "ortho_reg": _ortho_reg_magnitude,
     "hydra_balance": _balance_loss_metric,
     "hydra_router_entropy": _router_entropy_metric,
+    "hydra_up_grad": _hydra_up_grad_metric,
     "hydra_expert_warmup_pick": _expert_warmup_pick_metric,
     "postfix_contrastive": _postfix_contrastive_metric,
     "postfix_sigma_budget": _postfix_sigma_budget_metric,

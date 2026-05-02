@@ -179,6 +179,15 @@ class ApexMethodAdapter(MethodAdapter):
         # every step (whether or not the split path is used) so a stale
         # ``c_fake`` graph never leaks across iterations.
         self._fake_state: dict | None = None
+        # Last computed schedule values, surfaced via state_for_metrics so the
+        # TB layer can plot warmup/rampup live. Updated in extra_forwards.
+        self._last_lam_inner_eff: float = 0.0
+        self._last_lam_f_eff: float = 0.0
+        # MSE(v_fake_sg, F_real) — key degeneracy detector. Near-zero means the
+        # shifted condition produces the same DiT output as the unshifted one,
+        # so L_mix collapses to the trivial self-consistency fixed point and
+        # the adversarial signal vanishes. None until the first train step.
+        self._last_v_fake_divergence: float | None = None
 
     def on_network_built(self, ctx: SetupCtx) -> None:
         args = ctx.args
@@ -186,7 +195,12 @@ class ApexMethodAdapter(MethodAdapter):
             int(getattr(args, "apex_warmup_steps", 0) or 0) > 0
             or float(getattr(args, "apex_warmup_ratio", 0.0) or 0.0) > 0.0
         )
-        has_weights = args.network_weights is not None
+        # promote_warmstart_to_merge nulls args.network_weights and rewires the
+        # warm-start to args.lora_path (baked into DiT). Either form counts.
+        has_weights = (
+            getattr(args, "network_weights", None) is not None
+            or getattr(args, "lora_path", None) is not None
+        )
         if not (has_warmup or has_weights):
             raise ValueError(
                 "APEX training requires either --apex_warmup_ratio > 0 "
@@ -265,6 +279,12 @@ class ApexMethodAdapter(MethodAdapter):
                 padding_mask=padding_mask,
                 **kw,
             )
+            # Degeneracy detector: how much does the shift actually change the
+            # model's output? If ~0, ConditionShift is a no-op and L_mix has
+            # no adversarial gradient (collapses to 0.25·MSE(F_real, v_data)).
+            self._last_v_fake_divergence = float(
+                (v_fake_sg - model_pred.detach()).pow(2).mean().item()
+            )
 
         # Resolve warmup/rampup schedule. inner-lambda controls T_mix's
         # supervision/adversarial blend; lam_f_eff gates the L_fake outer
@@ -289,6 +309,8 @@ class ApexMethodAdapter(MethodAdapter):
             lam_inner_target=float(getattr(args, "apex_lambda", 0.5)),
             lam_f_target=float(getattr(args, "apex_lambda_p", 1.0)),
         )
+        self._last_lam_inner_eff = float(lam_inner_eff)
+        self._last_lam_f_eff = float(lam_f_eff)
 
         # T_mix_v in velocity space (Eq. 23 after Prop. 3 conversion):
         #   T_mix_v = (1-lam_inner)*v_data + lam_inner*v_fake_sg
@@ -362,4 +384,10 @@ class ApexMethodAdapter(MethodAdapter):
         }
 
     def state_for_metrics(self) -> dict:
-        return {"apex_step": self.step}
+        out: dict = {
+            "apex_lam_inner_eff": self._last_lam_inner_eff,
+            "apex_lam_f_eff": self._last_lam_f_eff,
+        }
+        if self._last_v_fake_divergence is not None:
+            out["apex_v_fake_divergence"] = self._last_v_fake_divergence
+        return out

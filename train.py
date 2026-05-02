@@ -2697,6 +2697,26 @@ class AnimaTrainer:
                                 int(getattr(self, "_hydra_warmup_step", 0)),
                                 int(getattr(args, "max_train_steps", 0) or 0),
                             )
+                        # Snapshot Hydra up-weight grad norms before zero_grad
+                        # wipes them. The metric ``hydra_up_grad`` reads this
+                        # stash later in the step. Also runs pre-clip so
+                        # absolute magnitudes aren't distorted by the global
+                        # rescale (clipping preserves the below/above ratio).
+                        # Skip on non-log steps — the metric only fires at
+                        # log cadence, so capturing every step burns kernels
+                        # whose output is never read. global_step increments
+                        # below, so predict the post-increment value.
+                        _log_every = max(
+                            1, int(getattr(args, "log_every_n_steps", 1) or 1)
+                        )
+                        _will_log_after = is_tracking and (
+                            ((global_step + 1) % _log_every == 0)
+                            or ((global_step + 1) >= args.max_train_steps)
+                        )
+                        if _will_log_after and hasattr(
+                            net_unwrapped, "capture_up_grad_stats"
+                        ):
+                            net_unwrapped.capture_up_grad_stats()
                         if args.max_grad_norm != 0.0:
                             params_to_clip = accelerator.unwrap_model(
                                 network
@@ -2794,21 +2814,34 @@ class AnimaTrainer:
                                 remove_model(remove_ckpt_name)
                     optimizer_train_fn()
 
+                log_every = max(1, int(getattr(args, "log_every_n_steps", 1) or 1))
+                should_log_step = (global_step % log_every == 0) or (
+                    global_step >= args.max_train_steps
+                )
+
                 current_loss = loss.detach().item()
                 loss_recorder.add(epoch=epoch, step=step, loss=current_loss)
                 avr_loss: float = loss_recorder.moving_average
                 logs = {"avr_loss": avr_loss}
                 _unwrapped_net = accelerator.unwrap_model(network)
-                if getattr(_unwrapped_net, "_use_hydra", False):
+                # The progress-bar postfix only needs ``router_H`` to refresh
+                # at log cadence — calling ``get_router_entropy`` every step
+                # forces a full ``get_router_stats`` compute (with D2H syncs)
+                # whose result the progress bar then truncates to one scalar.
+                # Cache the most recent value on the trainer and reuse it
+                # between log steps; tqdm displays a stale value harmlessly.
+                if (
+                    getattr(_unwrapped_net, "_use_hydra", False)
+                    and should_log_step
+                ):
                     _router_H = _unwrapped_net.get_router_entropy()
                     if _router_H is not None:
-                        logs["router_H"] = f"{_router_H:.3f}"
+                        self._last_router_H_postfix = _router_H
+                _router_H_cached = getattr(self, "_last_router_H_postfix", None)
+                if _router_H_cached is not None:
+                    logs["router_H"] = f"{_router_H_cached:.3f}"
                 progress_bar.set_postfix(refresh=False, **{**max_mean_logs, **logs})
 
-                log_every = max(1, int(getattr(args, "log_every_n_steps", 1) or 1))
-                should_log_step = (global_step % log_every == 0) or (
-                    global_step >= args.max_train_steps
-                )
                 if is_tracking and should_log_step:
                     logs = self.generate_step_logs(
                         args,
