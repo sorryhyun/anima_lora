@@ -1,6 +1,5 @@
 # Anima LoRA training script (merged standalone)
 
-import gc
 import importlib
 import argparse
 import math
@@ -11,7 +10,6 @@ from typing import Any, Callable, Union, Optional
 import sys
 import random
 import time
-import json
 from multiprocessing import Value
 from tqdm import tqdm
 
@@ -53,7 +51,6 @@ from library.config.io import (
 )
 from library.datasets import (
     DatasetGroup,
-    LossRecorder,
     MinimalDataset,
     collator_class,
     debug_dataset,
@@ -67,11 +64,10 @@ from library.runtime.accelerator import (
     resume_from_local_or_hf_if_specified,
 )
 from library.training import (
+    CheckpointSaver,
     LossContext,
-    MetricContext,
     SAMPLER_REGISTRY,
     SamplerContext,
-    collect_metrics,
     add_custom_train_arguments,
     add_dataset_arguments,
     add_dataset_metadata,
@@ -85,24 +81,15 @@ from library.training import (
     build_loss_composer,
     build_training_metadata,
     finalize_metadata,
-    get_checkpoint_ckpt_name,
-    get_checkpoint_state_dir,
-    get_epoch_ckpt_name,
     get_huber_threshold_if_needed,
-    get_last_ckpt_name,
     get_optimizer,
     get_optimizer_train_eval_fn,
-    get_remove_epoch_no,
-    get_remove_step_no,
     get_scheduler_fix,
-    get_step_ckpt_name,
-    save_and_remove_state_on_epoch_end,
-    save_and_remove_state_stepwise,
-    save_checkpoint_state,
     save_state_on_train_end,
     verify_command_line_training_args,
     verify_training_args,
 )
+from library.training.loop import build_loop_state, run_training_loop
 from library.log import setup_logging, add_logging_arguments
 
 setup_logging()
@@ -2112,9 +2099,11 @@ class AnimaTrainer:
                         baseline.enter()
                         try:
                             _cudagraph_step_begin()
-                            bl_loss = self.process_batch(
-                                ctx, batch, is_train=False
-                            ).detach().item()
+                            bl_loss = (
+                                self.process_batch(ctx, batch, is_train=False)
+                                .detach()
+                                .item()
+                            )
                         finally:
                             baseline.exit()
                         per_baseline_per_sigma[baseline.name][sigma].append(bl_loss)
@@ -2153,21 +2142,17 @@ class AnimaTrainer:
             base_prefix = log_avg_key.removesuffix("_average")
             for b in baselines:
                 per_sigma = per_baseline_per_sigma[b.name]
-                all_losses = [
-                    v for losses in per_sigma.values() for v in losses
-                ]
+                all_losses = [v for losses in per_sigma.values() for v in losses]
                 if not all_losses:
                     continue
                 bl_avg = sum(all_losses) / len(all_losses)
                 logs[f"{base_prefix}_baseline_{b.name}"] = bl_avg
-                logs[f"{base_prefix}_baseline_{b.name}_delta"] = (
-                    bl_avg - primary_avg
-                )
+                logs[f"{base_prefix}_baseline_{b.name}_delta"] = bl_avg - primary_avg
                 for s, losses in per_sigma.items():
                     if losses:
-                        logs[
-                            f"{base_prefix}_baseline_{b.name}/sigma_{s:.2f}"
-                        ] = sum(losses) / len(losses)
+                        logs[f"{base_prefix}_baseline_{b.name}/sigma_{s:.2f}"] = sum(
+                            losses
+                        ) / len(losses)
 
             logging_fn(accelerator, logs, global_step, epoch + 1)
 
@@ -2408,80 +2393,6 @@ class AnimaTrainer:
             cache_latents,
         )
 
-        # before resuming make hook for saving/loading to save/load the network weights only
-        def save_model_hook(models, weights, output_dir):
-            if accelerator.is_main_process:
-                remove_indices = []
-                for i, model in enumerate(models):
-                    if not isinstance(model, type(accelerator.unwrap_model(network))):
-                        remove_indices.append(i)
-                for i in reversed(remove_indices):
-                    if len(weights) > i:
-                        weights.pop(i)
-
-            # save current epoch and step
-            train_state_file = os.path.join(output_dir, "train_state.json")
-            logger.info(
-                f"save train state to {train_state_file} at epoch {current_epoch.value} step {current_step.value + 1}"
-            )
-            with open(train_state_file, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "current_epoch": current_epoch.value,
-                        "current_step": current_step.value + 1,
-                    },
-                    f,
-                )
-
-        steps_from_state = None
-
-        def load_model_hook(models, input_dir):
-            # remove models except network
-            remove_indices = []
-            for i, model in enumerate(models):
-                if not isinstance(model, type(accelerator.unwrap_model(network))):
-                    remove_indices.append(i)
-            for i in reversed(remove_indices):
-                models.pop(i)
-
-            # load current epoch and step
-            nonlocal steps_from_state
-            train_state_file = os.path.join(input_dir, "train_state.json")
-            if os.path.exists(train_state_file):
-                with open(train_state_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                steps_from_state = data["current_step"]
-                logger.info(f"load train state from {train_state_file}: {data}")
-
-        accelerator.register_save_state_pre_hook(save_model_hook)
-        accelerator.register_load_state_pre_hook(load_model_hook)
-
-        # auto-resume from checkpoint if checkpointing_epochs is set and a checkpoint exists
-        if getattr(args, "checkpointing_epochs", None) and not args.resume:
-            checkpoint_state_dir = get_checkpoint_state_dir(args)
-            if os.path.exists(checkpoint_state_dir):
-                train_state_file = os.path.join(
-                    checkpoint_state_dir, "train_state.json"
-                )
-                if os.path.exists(train_state_file):
-                    with open(train_state_file, "r", encoding="utf-8") as f:
-                        ckpt_data = json.load(f)
-                    ckpt_step = ckpt_data.get("current_step", 0)
-                    if ckpt_step < args.max_train_steps:
-                        args.resume = checkpoint_state_dir
-                        args.skip_until_initial_step = True
-                        logger.info(
-                            f"auto-resuming from checkpoint at step {ckpt_step}: {checkpoint_state_dir}"
-                        )
-                    else:
-                        logger.info(
-                            f"checkpoint already reached max_train_steps ({ckpt_step} >= {args.max_train_steps}), starting fresh"
-                        )
-
-        # resume
-        resume_from_local_or_hf_if_specified(accelerator, args)
-
-        # calculate epochs
         num_update_steps_per_epoch = math.ceil(
             len(train_dataloader) / args.gradient_accumulation_steps
         )
@@ -2537,6 +2448,29 @@ class AnimaTrainer:
             metadata, net_kwargs=net_kwargs if args.network_args else None
         )
 
+        # Saver owns every save / remove operation plus the accelerator
+        # save/load pre-hooks that persist train_state.json. Hooks must be
+        # registered before resume_from_local_or_hf_if_specified() so the
+        # load hook fires and populates saver.steps_from_state.
+        saver = CheckpointSaver(
+            args=args,
+            accelerator=accelerator,
+            save_dtype=save_dtype,
+            metadata=metadata,
+            minimum_metadata=minimum_metadata,
+            get_sai_model_spec_fn=self.get_sai_model_spec,
+            current_epoch=current_epoch,
+            current_step=current_step,
+        )
+        saver.register_hooks(network)
+
+        # auto-resume from the resumable checkpoint if one exists
+        saver.auto_resume()
+
+        # resume
+        resume_from_local_or_hf_if_specified(accelerator, args)
+        steps_from_state = saver.steps_from_state
+
         # calculate steps to skip when resuming or starting from a specific step
         initial_step = 0
         if args.initial_epoch is not None or args.initial_step is not None:
@@ -2581,566 +2515,49 @@ class AnimaTrainer:
                 )
                 initial_step = 0  # do not skip
 
-        global_step = 0
-
-        noise_scheduler = self.get_noise_scheduler(args, accelerator.device)
-
-        train_util.init_trackers(accelerator, args, "network_train")
-
-        loss_recorder = LossRecorder()
-        val_step_loss_recorder = LossRecorder()
-        val_epoch_loss_recorder = LossRecorder()
-
+        # Drop dataset-group locals before loop entry so the cached references
+        # release memory; the dataloaders already hold the data they need.
         del train_dataset_group
         if val_dataset_group is not None:
             del val_dataset_group
 
-        # callback for step start
-        if hasattr(accelerator.unwrap_model(network), "on_step_start"):
-            on_step_start_for_network = accelerator.unwrap_model(network).on_step_start
-        else:
-
-            def on_step_start_for_network(*args, **kwargs):
-                return None
-
-        # function for saving/removing
-        def save_model(
-            ckpt_name, unwrapped_nw, steps, epoch_no, force_sync_upload=False
-        ):
-            os.makedirs(args.output_dir, exist_ok=True)
-            ckpt_file = os.path.join(args.output_dir, ckpt_name)
-
-            accelerator.print(f"\nsaving checkpoint: {ckpt_file}")
-            metadata["ss_training_finished_at"] = str(time.time())
-            metadata["ss_steps"] = str(steps)
-            metadata["ss_epoch"] = str(epoch_no)
-
-            metadata_to_save = minimum_metadata if args.no_metadata else metadata
-            sai_metadata = self.get_sai_model_spec(args)
-            metadata_to_save.update(sai_metadata)
-
-            unwrapped_nw.save_weights(ckpt_file, save_dtype, metadata_to_save)
-
-        def remove_model(old_ckpt_name):
-            old_ckpt_file = os.path.join(args.output_dir, old_ckpt_name)
-            if os.path.exists(old_ckpt_file):
-                accelerator.print(f"removing old checkpoint: {old_ckpt_file}")
-                os.remove(old_ckpt_file)
-            # Also remove HydraLoRA _moe sibling if present
-            moe_file = os.path.splitext(old_ckpt_file)[0] + "_moe.safetensors"
-            if os.path.exists(moe_file):
-                accelerator.print(f"removing old checkpoint: {moe_file}")
-                os.remove(moe_file)
-
-        # if text_encoder is not needed for training, delete it to save memory.
-        if self.is_text_encoder_not_needed_for_training(args):
-            logger.info(
-                "text_encoder is not needed for training. deleting to save memory."
-            )
-            for t_enc in text_encoders:
-                del t_enc
-            text_encoders = []
-            text_encoder = None
-            gc.collect()
-            clean_memory_on_device(accelerator.device)
-
-        # For --sample_at_first
-        optimizer_eval_fn()
-        self.sample_images(
-            accelerator,
-            args,
-            0,
-            global_step,
-            accelerator.device,
-            vae,
-            tokenizers,
-            text_encoder,
-            unet,
-        )
-        optimizer_train_fn()
-        is_tracking = len(accelerator.trackers) > 0
-        if is_tracking:
-            accelerator.log({}, step=0)
-
-        ctx = TrainCtx(
+        loop_state = build_loop_state(
+            self,
             args=args,
             accelerator=accelerator,
+            saver=saver,
             network=network,
             unet=unet,
-            vae=vae,
+            text_encoder=text_encoder,
             text_encoders=text_encoders,
-            noise_scheduler=noise_scheduler,
+            vae=vae,
+            tokenizers=tokenizers,
+            training_model=training_model,
+            train_dataloader=train_dataloader,
+            val_dataloader=val_dataloader,
+            optimizer=optimizer,
+            lr_scheduler=lr_scheduler,
+            lr_descriptions=lr_descriptions,
+            optimizer_train_fn=optimizer_train_fn,
+            optimizer_eval_fn=optimizer_eval_fn,
+            weight_dtype=weight_dtype,
+            unet_weight_dtype=unet_weight_dtype,
+            vae_dtype=vae_dtype,
             text_encoding_strategy=text_encoding_strategy,
             tokenize_strategy=tokenize_strategy,
-            vae_dtype=vae_dtype,
-            weight_dtype=weight_dtype,
             train_text_encoder=train_text_encoder,
             train_unet=train_unet,
-            optimizer_eval_fn=optimizer_eval_fn,
-            optimizer_train_fn=optimizer_train_fn,
-            is_tracking=is_tracking,
+            current_epoch=current_epoch,
+            current_step=current_step,
+            num_train_epochs=num_train_epochs,
+            epoch_to_start=epoch_to_start,
+            initial_step=initial_step,
+            metadata=metadata,
+            train_ctx_cls=TrainCtx,
+            val_ctx_cls=ValCtx,
         )
 
-        # training loop
-        if initial_step > 0:  # only if skip_until_initial_step is specified
-            global_step = initial_step // args.gradient_accumulation_steps
-            for skip_epoch in range(epoch_to_start):
-                logger.info(
-                    f"skipping epoch {skip_epoch + 1} because initial_step (multiplied) is {initial_step}"
-                )
-                initial_step -= len(train_dataloader)
-
-        # log device and dtype for each model
-        logger.info(f"unet dtype: {unet_weight_dtype}, device: {unet.device}")
-        for i, t_enc in enumerate(text_encoders):
-            params_itr = t_enc.parameters()
-            params_itr.__next__()  # skip the first parameter
-            params_itr.__next__()  # skip the second parameter. because CLIP first two parameters are embeddings
-            param_3rd = params_itr.__next__()
-            logger.info(
-                f"text_encoder [{i}] dtype: {param_3rd.dtype}, device: {t_enc.device}"
-            )
-
-        clean_memory_on_device(accelerator.device)
-
-        progress_bar = tqdm(
-            range(args.max_train_steps - global_step),
-            smoothing=0,
-            disable=not accelerator.is_local_main_process,
-            desc="steps",
-        )
-
-        validation_steps = (
-            min(args.max_validation_steps, len(val_dataloader))
-            if args.max_validation_steps is not None
-            else len(val_dataloader)
-        )
-        # Validate at fixed sigma values across the schedule:
-        # 0.1 = near-clean / fine detail, 0.4 = mid / bulk structure,
-        # 0.7 = high noise / coarse denoising (early inference steps).
-        validation_sigmas = (
-            args.validation_sigmas
-            if args.validation_sigmas is not None
-            else [0.1, 0.4, 0.7]
-        )
-        validation_total_steps = validation_steps * len(validation_sigmas)
-        original_t_min = args.t_min
-        original_t_max = args.t_max
-
-        val = ValCtx(
-            dataloader=val_dataloader,
-            sigmas=validation_sigmas,
-            steps=validation_steps,
-            total_steps=validation_total_steps,
-            train_loss_recorder=loss_recorder,
-            original_t_min=original_t_min,
-            original_t_max=original_t_max,
-        )
-
-        # --- Profiler setup ---
-        # nsys workflow: --profile_steps START-END toggles the cuda profiler
-        # API around the requested step window. Wrap the launch with
-        #   nsys profile --capture-range=cudaProfilerApi --capture-range-end=stop ...
-        # so nsys only records that window. NVTX ranges below label phases.
-        profile_range = self._parse_profile_steps(args)
-        profile_started = False
-
-        for epoch in range(epoch_to_start, num_train_epochs):
-            accelerator.print(f"\nepoch {epoch + 1}/{num_train_epochs}\n")
-            current_epoch.value = epoch + 1
-
-            metadata["ss_epoch"] = str(epoch + 1)
-
-            accelerator.unwrap_model(network).on_epoch_start(
-                text_encoder, unet
-            )  # network.train() is called here
-
-            # TRAINING
-            skipped_dataloader = None
-            if initial_step > 0:
-                skipped_dataloader = accelerator.skip_first_batches(
-                    train_dataloader, initial_step - 1
-                )
-                initial_step = 1
-
-            for step, batch in enumerate(skipped_dataloader or train_dataloader):
-                current_step.value = global_step
-                if initial_step > 0:
-                    initial_step -= 1
-                    continue
-
-                # --- Profiler: start recording ---
-                if (
-                    profile_range
-                    and global_step == profile_range[0]
-                    and not profile_started
-                ):
-                    accelerator.print(f"\n[profiler] starting at step {global_step}")
-                    torch.cuda.synchronize()
-                    torch.cuda.profiler.start()
-                    profile_started = True
-
-                if profile_started:
-                    torch.cuda.nvtx.range_push(f"step={global_step}")
-
-                with accelerator.accumulate(training_model):
-                    on_step_start_for_network(text_encoder, unet)
-
-                    # preprocess batch for each model
-                    self.on_step_start(ctx, batch, is_train=True)
-
-                    # CUDAGraphs (reduce-overhead / max-autotune) need an explicit
-                    # iteration boundary for inductor's cudagraph_trees. Without
-                    # this call, the "pending, uninvoked backwards" fast-path
-                    # check fails every step and cudagraphs silently fall back to
-                    # the eager path — you pay compile latency and keep launch
-                    # overhead. Must be called before the forward on every step.
-                    #
-                    # Also clear Python references to last-step gate/σ tensors
-                    # *before* marking — those tensors live in the cudagraph
-                    # memory pool, and a lingering self._last_gate/self._sigma
-                    # reference keeps the pool pinned regardless of the mark
-                    # call, which defeats the whole point.
-                    if self._cudagraph_mark_step:
-                        net_unwrapped = accelerator.unwrap_model(network)
-                        if hasattr(net_unwrapped, "clear_step_caches"):
-                            net_unwrapped.clear_step_caches()
-                        torch.compiler.cudagraph_mark_step_begin()
-
-                    if profile_started:
-                        torch.cuda.nvtx.range_push("forward")
-                    loss = self.process_batch(ctx, batch, is_train=True)
-                    if profile_started:
-                        torch.cuda.nvtx.range_pop()
-
-                    # Split-backward path (APEX) backwards both branches
-                    # inline inside process_batch and returns a detached
-                    # scalar for logging. Skip the outer backward in that
-                    # case so we don't double-step or crash on a no-grad
-                    # tensor during warmup.
-                    if getattr(self, "_split_backward_consumed", False):
-                        self._split_backward_consumed = False
-                    else:
-                        if profile_started:
-                            torch.cuda.nvtx.range_push("backward")
-                        accelerator.backward(loss)
-                        if profile_started:
-                            torch.cuda.nvtx.range_pop()
-                    if accelerator.sync_gradients:
-                        # HydraLoRA "best-expert" warmup: keep grads only on
-                        # top-k experts by per-expert grad-norm during warmup.
-                        # No-op unless expert_best_warmup_ratio > 0. Runs
-                        # before clip_grad_norm so clipping sees the masked grads.
-                        net_unwrapped = accelerator.unwrap_model(network)
-                        if hasattr(
-                            net_unwrapped, "step_expert_best_warmup_post_backward"
-                        ):
-                            net_unwrapped.step_expert_best_warmup_post_backward(
-                                int(getattr(self, "_hydra_warmup_step", 0)),
-                                int(getattr(args, "max_train_steps", 0) or 0),
-                            )
-                        # Snapshot Hydra up-weight grad norms before zero_grad
-                        # wipes them. The metric ``hydra_up_grad`` reads this
-                        # stash later in the step. Also runs pre-clip so
-                        # absolute magnitudes aren't distorted by the global
-                        # rescale (clipping preserves the below/above ratio).
-                        # Skip on non-log steps — the metric only fires at
-                        # log cadence, so capturing every step burns kernels
-                        # whose output is never read. global_step increments
-                        # below, so predict the post-increment value.
-                        _log_every = max(
-                            1, int(getattr(args, "log_every_n_steps", 1) or 1)
-                        )
-                        _will_log_after = is_tracking and (
-                            ((global_step + 1) % _log_every == 0)
-                            or ((global_step + 1) >= args.max_train_steps)
-                        )
-                        if _will_log_after and hasattr(
-                            net_unwrapped, "capture_up_grad_stats"
-                        ):
-                            net_unwrapped.capture_up_grad_stats()
-                        if args.max_grad_norm != 0.0:
-                            params_to_clip = accelerator.unwrap_model(
-                                network
-                            ).get_trainable_params()
-                            accelerator.clip_grad_norm_(
-                                params_to_clip, args.max_grad_norm
-                            )
-
-                    if profile_started:
-                        torch.cuda.nvtx.range_push("optimizer")
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad(set_to_none=True)
-                    if profile_started:
-                        torch.cuda.nvtx.range_pop()
-
-                # --- Profiler: stop recording ---
-                if profile_started:
-                    # close the per-step NVTX range opened above
-                    torch.cuda.nvtx.range_pop()
-                if profile_started and global_step >= profile_range[1]:
-                    torch.cuda.synchronize()
-                    torch.cuda.profiler.stop()
-                    accelerator.print(f"\n[profiler] stopped at step {global_step}")
-                    accelerator.print(
-                        "[profiler] open the .nsys-rep with the Nsight Systems GUI\n"
-                    )
-                    profile_started = False
-                    profile_range = None  # don't re-trigger
-
-                if args.scale_weight_norms:
-                    keys_scaled, mean_norm, maximum_norm = accelerator.unwrap_model(
-                        network
-                    ).apply_max_norm_regularization(
-                        args.scale_weight_norms, accelerator.device
-                    )
-                    mean_grad_norm = None
-                    mean_combined_norm = None
-                    max_mean_logs = {
-                        "Keys Scaled": keys_scaled,
-                        "Average key norm": mean_norm,
-                    }
-                else:
-                    keys_scaled, mean_norm, maximum_norm = None, None, None
-                    mean_grad_norm = None
-                    mean_combined_norm = None
-                    max_mean_logs = {}
-
-                # Checks if the accelerator has performed an optimization step behind the scenes
-                if accelerator.sync_gradients:
-                    progress_bar.update(1)
-                    global_step += 1
-
-                    optimizer_eval_fn()
-                    self.sample_images(
-                        accelerator,
-                        args,
-                        None,
-                        global_step,
-                        accelerator.device,
-                        vae,
-                        tokenizers,
-                        text_encoder,
-                        unet,
-                    )
-                    progress_bar.unpause()
-
-                    # Save model at specified steps
-                    if (
-                        args.save_every_n_steps is not None
-                        and global_step % args.save_every_n_steps == 0
-                    ):
-                        accelerator.wait_for_everyone()
-                        if accelerator.is_main_process:
-                            ckpt_name = get_step_ckpt_name(
-                                args, "." + args.save_model_as, global_step
-                            )
-                            save_model(
-                                ckpt_name,
-                                accelerator.unwrap_model(network),
-                                global_step,
-                                epoch,
-                            )
-
-                            if args.save_state:
-                                save_and_remove_state_stepwise(
-                                    args, accelerator, global_step
-                                )
-
-                            remove_step_no = get_remove_step_no(args, global_step)
-                            if remove_step_no is not None:
-                                remove_ckpt_name = get_step_ckpt_name(
-                                    args, "." + args.save_model_as, remove_step_no
-                                )
-                                remove_model(remove_ckpt_name)
-                    optimizer_train_fn()
-
-                log_every = max(1, int(getattr(args, "log_every_n_steps", 1) or 1))
-                should_log_step = (global_step % log_every == 0) or (
-                    global_step >= args.max_train_steps
-                )
-
-                current_loss = loss.detach().item()
-                loss_recorder.add(epoch=epoch, step=step, loss=current_loss)
-                avr_loss: float = loss_recorder.moving_average
-                logs = {"avr_loss": avr_loss}
-                _unwrapped_net = accelerator.unwrap_model(network)
-                # The progress-bar postfix only needs ``router_H`` to refresh
-                # at log cadence — calling ``get_router_entropy`` every step
-                # forces a full ``get_router_stats`` compute (with D2H syncs)
-                # whose result the progress bar then truncates to one scalar.
-                # Cache the most recent value on the trainer and reuse it
-                # between log steps; tqdm displays a stale value harmlessly.
-                if (
-                    getattr(_unwrapped_net, "_use_hydra", False)
-                    and should_log_step
-                ):
-                    _router_H = _unwrapped_net.get_router_entropy()
-                    if _router_H is not None:
-                        self._last_router_H_postfix = _router_H
-                _router_H_cached = getattr(self, "_last_router_H_postfix", None)
-                if _router_H_cached is not None:
-                    logs["router_H"] = f"{_router_H_cached:.3f}"
-                progress_bar.set_postfix(refresh=False, **{**max_mean_logs, **logs})
-
-                if is_tracking and should_log_step:
-                    logs = self.generate_step_logs(
-                        args,
-                        current_loss,
-                        avr_loss,
-                        lr_scheduler,
-                        lr_descriptions,
-                        optimizer,
-                        keys_scaled,
-                        mean_norm,
-                        maximum_norm,
-                        mean_grad_norm,
-                        mean_combined_norm,
-                    )
-                    producers = [_unwrapped_net, *self._adapters]
-                    logs.update(
-                        collect_metrics(
-                            producers,
-                            MetricContext(args=args, network=_unwrapped_net),
-                        )
-                    )
-                    self.step_logging(accelerator, logs, global_step, epoch + 1)
-
-                # VALIDATION PER STEP: global_step is already incremented
-                should_validate_step = (
-                    args.validate_every_n_steps is not None
-                    and global_step % args.validate_every_n_steps == 0
-                )
-                if (
-                    accelerator.sync_gradients
-                    and validation_steps > 0
-                    and should_validate_step
-                ):
-                    self._run_validation(
-                        ctx,
-                        val,
-                        val_loss_recorder=val_step_loss_recorder,
-                        epoch=epoch,
-                        global_step=global_step,
-                        progress_bar=progress_bar,
-                        progress_desc="validation steps",
-                        postfix_label="val_avg_loss",
-                        log_avg_key="loss/validation/step_average",
-                        log_div_key="loss/validation/step_divergence",
-                        logging_fn=self.step_logging,
-                    )
-
-                if global_step >= args.max_train_steps:
-                    break
-
-            # EPOCH VALIDATION
-            should_validate_epoch = (
-                (epoch + 1) % args.validate_every_n_epochs == 0
-                if args.validate_every_n_epochs is not None
-                else True
-            )
-
-            if should_validate_epoch and len(val_dataloader) > 0:
-                self._run_validation(
-                    ctx,
-                    val,
-                    val_loss_recorder=val_epoch_loss_recorder,
-                    epoch=epoch,
-                    global_step=global_step,
-                    progress_bar=progress_bar,
-                    progress_desc="epoch validation steps",
-                    postfix_label="val_epoch_avg_loss",
-                    log_avg_key="loss/validation/epoch_average",
-                    log_div_key="loss/validation/epoch_divergence",
-                    logging_fn=self.epoch_logging,
-                )
-
-            # END OF EPOCH
-            if is_tracking:
-                logs = {"loss/epoch_average": loss_recorder.moving_average}
-                self.epoch_logging(accelerator, logs, global_step, epoch + 1)
-
-            # Per-method end-of-epoch hooks (IP-Adapter diagnostic dump, …).
-            # Main process only — adapters that need cross-rank reduction
-            # should do that internally.
-            if self._adapters and is_main_process:
-                epoch_end_ctx = StepCtx(
-                    args=args,
-                    accelerator=accelerator,
-                    network=network,
-                    weight_dtype=weight_dtype,
-                )
-                for adapter in self._adapters:
-                    adapter.on_epoch_end(epoch_end_ctx)
-
-            accelerator.wait_for_everyone()
-
-            # Save model at specified epochs
-            optimizer_eval_fn()
-            if args.save_every_n_epochs is not None:
-                saving = (epoch + 1) % args.save_every_n_epochs == 0 and (
-                    epoch + 1
-                ) < num_train_epochs
-                if is_main_process and saving:
-                    ckpt_name = get_epoch_ckpt_name(
-                        args, "." + args.save_model_as, epoch + 1
-                    )
-                    save_model(
-                        ckpt_name,
-                        accelerator.unwrap_model(network),
-                        global_step,
-                        epoch + 1,
-                    )
-
-                    remove_epoch_no = get_remove_epoch_no(args, epoch + 1)
-                    if remove_epoch_no is not None:
-                        remove_ckpt_name = get_epoch_ckpt_name(
-                            args, "." + args.save_model_as, remove_epoch_no
-                        )
-                        remove_model(remove_ckpt_name)
-
-                    if args.save_state:
-                        save_and_remove_state_on_epoch_end(args, accelerator, epoch + 1)
-
-            # Save resumable checkpoint at specified epoch intervals (overwrites previous)
-            if args.checkpointing_epochs is not None and args.checkpointing_epochs > 0:
-                if (epoch + 1) % args.checkpointing_epochs == 0 and (
-                    epoch + 1
-                ) < num_train_epochs:
-                    if is_main_process:
-                        ckpt_name = get_checkpoint_ckpt_name(
-                            args, "." + args.save_model_as
-                        )
-                        save_model(
-                            ckpt_name,
-                            accelerator.unwrap_model(network),
-                            global_step,
-                            epoch + 1,
-                        )
-                    save_checkpoint_state(args, accelerator)
-
-            self.sample_images(
-                accelerator,
-                args,
-                epoch + 1,
-                global_step,
-                accelerator.device,
-                vae,
-                tokenizers,
-                text_encoder,
-                unet,
-            )
-            progress_bar.unpause()
-            optimizer_train_fn()
-
-            # end of epoch
-
-        # metadata["ss_epoch"] = str(num_train_epochs)
-        metadata["ss_training_finished_at"] = str(time.time())
-
-        if is_main_process:
-            network = accelerator.unwrap_model(network)
+        run_training_loop(self, loop_state)
 
         accelerator.end_training()
         optimizer_eval_fn()
@@ -3148,35 +2565,8 @@ class AnimaTrainer:
         if is_main_process and (args.save_state or args.save_state_on_train_end):
             save_state_on_train_end(args, accelerator)
 
-        # clean up checkpoint files after successful completion
-        if is_main_process and getattr(args, "checkpointing_epochs", None):
-            checkpoint_state_dir = get_checkpoint_state_dir(args)
-            if os.path.exists(checkpoint_state_dir):
-                import shutil
-
-                logger.info(
-                    f"training complete, removing checkpoint state: {checkpoint_state_dir}"
-                )
-                shutil.rmtree(checkpoint_state_dir)
-            checkpoint_ckpt = os.path.join(
-                args.output_dir,
-                get_checkpoint_ckpt_name(args, "." + args.save_model_as),
-            )
-            if os.path.exists(checkpoint_ckpt):
-                logger.info(f"removing checkpoint weights: {checkpoint_ckpt}")
-                os.remove(checkpoint_ckpt)
-
-        if is_main_process:
-            ckpt_name = get_last_ckpt_name(args, "." + args.save_model_as)
-            save_model(
-                ckpt_name,
-                network,
-                global_step,
-                num_train_epochs,
-                force_sync_upload=True,
-            )
-
-            logger.info("model saved.")
+        saver.cleanup_resumable()
+        saver.save_final(network, loop_state.global_step, num_train_epochs)
 
     # endregion
 
