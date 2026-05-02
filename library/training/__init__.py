@@ -63,7 +63,7 @@ from library.training.losses import (
 )
 from library.training.metrics import (
     MetricContext,
-    METRIC_REGISTRY,
+    MetricProducer,
     collect_metrics,
 )
 from library.training.checkpoints import (
@@ -109,7 +109,7 @@ __all__ = [
     "get_huber_threshold_if_needed",
     # metrics
     "MetricContext",
-    "METRIC_REGISTRY",
+    "MetricProducer",
     "collect_metrics",
     # metadata
     "SS_METADATA_KEY_V2",

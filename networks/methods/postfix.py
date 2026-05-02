@@ -31,6 +31,7 @@ import torch
 import torch.nn as nn
 
 from library.log import setup_logging
+from library.training.metrics import MetricContext
 
 import logging
 
@@ -556,6 +557,29 @@ class PostfixNetwork(nn.Module):
         loss = sr.float().pow(2).mean()
         self._last_sigma_budget_value = float(loss.detach().item())
         return loss
+
+    def metrics(self, ctx: MetricContext) -> dict[str, float]:
+        """Emit log-step keys owned by the postfix network.
+
+        Surfaces the contrastive and σ-budget auxiliary losses (raw + weighted)
+        when their drivers are active. Reads the same ``_last_*_value`` floats
+        that the loss methods stash above; producer is co-located so the
+        write/read pair is visible in one file.
+        """
+        out: dict[str, float] = {}
+        cw = float(getattr(self, "contrastive_weight", 0.0) or 0.0)
+        if cw > 0.0:
+            v = getattr(self, "_last_contrastive_value", None)
+            if v is not None:
+                out["reg/postfix_contrastive"] = float(v)
+                out["reg/postfix_contrastive_weighted"] = float(cw * v)
+        sw = float(getattr(self, "sigma_budget_weight", 0.0) or 0.0)
+        if sw > 0.0:
+            v = getattr(self, "_last_sigma_budget_value", None)
+            if v is not None:
+                out["reg/postfix_sigma_budget"] = float(v)
+                out["reg/postfix_sigma_budget_weighted"] = float(sw * v)
+        return out
 
     def get_trainable_params(self):
         if self.mode == "prefix":

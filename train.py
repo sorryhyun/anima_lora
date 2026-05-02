@@ -2856,16 +2856,11 @@ class AnimaTrainer:
                         mean_grad_norm,
                         mean_combined_norm,
                     )
-                    trainer_state: dict = {}
-                    for adapter in self._adapters:
-                        trainer_state.update(adapter.state_for_metrics())
+                    producers = [_unwrapped_net, *self._adapters]
                     logs.update(
                         collect_metrics(
-                            MetricContext(
-                                args=args,
-                                network=_unwrapped_net,
-                                trainer_state=trainer_state,
-                            )
+                            producers,
+                            MetricContext(args=args, network=_unwrapped_net),
                         )
                     )
                     self.step_logging(accelerator, logs, global_step, epoch + 1)

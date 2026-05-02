@@ -133,11 +133,13 @@ class MethodAdapter:
     def on_epoch_end(self, ctx: StepCtx) -> None:
         """Called once at the end of each epoch on the main process."""
 
-    def state_for_metrics(self) -> dict:
-        """Return state the metrics layer should see in ``MetricContext.trainer_state``.
+    def metrics(self, ctx) -> dict:
+        """Return log-step keys for this adapter (TensorBoard / W&B keys).
 
-        Adapters that own internal counters / flags surfaced to TensorBoard
-        (APEX step counter, …) override this. Default empty.
+        Adapters that surface internal counters or auxiliary losses override
+        this. ``ctx`` is the ``MetricContext`` from ``library.training.metrics``;
+        it carries ``args`` and ``network``. Default empty so adapters without
+        per-step metrics don't have to implement anything.
         """
         return {}
 

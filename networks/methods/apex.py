@@ -160,7 +160,7 @@ class ApexMethodAdapter(MethodAdapter):
     Setup: enforce the warmup-or-warmstart precondition (cold-start regresses,
     proposal §7.3).
     Per step: increment the step counter consumed by the rampup schedule and
-    surfaced to TensorBoard via ``state_for_metrics``.
+    surfaced to TensorBoard via ``metrics``.
     Extra forwards: run the two fake-branch DiT calls (eq. 11 + eq. 23) and
     one stop-gradient call for the L_mix target. The inner mixing coefficient
     used to construct ``T_mix_v`` is ramped 0 → ``apex_lambda`` over the
@@ -173,13 +173,13 @@ class ApexMethodAdapter(MethodAdapter):
     name = "apex"
 
     def __init__(self) -> None:
-        self.step = 0  # exposed via state_for_metrics under "apex_step"
+        self.step = 0  # exposed via metrics() under "apex/lam_*"
         # Per-step state stashed by ``extra_forwards`` for the deferred fake-
         # branch forward in ``extra_forwards_fake``. Cleared at the start of
         # every step (whether or not the split path is used) so a stale
         # ``c_fake`` graph never leaks across iterations.
         self._fake_state: dict | None = None
-        # Last computed schedule values, surfaced via state_for_metrics so the
+        # Last computed schedule values, surfaced via metrics() so the
         # TB layer can plot warmup/rampup live. Updated in extra_forwards.
         self._last_lam_inner_eff: float = 0.0
         self._last_lam_f_eff: float = 0.0
@@ -383,11 +383,43 @@ class ApexMethodAdapter(MethodAdapter):
             }
         }
 
-    def state_for_metrics(self) -> dict:
-        out: dict = {
-            "apex_lam_inner_eff": self._last_lam_inner_eff,
-            "apex_lam_f_eff": self._last_lam_f_eff,
+    def metrics(self, ctx) -> dict[str, float]:
+        """Emit log-step keys owned by APEX.
+
+        Adapter-private scalars (warmup/rampup eff, v_fake divergence) are
+        read from ``self``. Loss values stashed by ``library/training/losses.py``
+        and the ``ConditionShift`` parameters live on the network (the loss
+        code that writes them has no adapter handle); read them through
+        ``ctx.network``.
+        """
+        method = getattr(ctx.args, "method", None) or ""
+        if not (method == "apex" or method.startswith("apex_")):
+            return {}
+        out: dict[str, float] = {
+            "apex/lam_inner_eff": float(self._last_lam_inner_eff),
+            "apex/lam_f_eff": float(self._last_lam_f_eff),
         }
         if self._last_v_fake_divergence is not None:
-            out["apex_v_fake_divergence"] = self._last_v_fake_divergence
+            out["apex/v_fake_divergence"] = float(self._last_v_fake_divergence)
+
+        network = ctx.network
+        mix_v = getattr(network, "_last_apex_mix_value", None)
+        if mix_v is not None:
+            out["apex/loss_mix"] = float(mix_v)
+        fake_v = getattr(network, "_last_apex_fake_value", None)
+        if fake_v is not None:
+            out["apex/loss_fake"] = float(fake_v)
+
+        cs = getattr(network, "apex_condition_shift", None)
+        if cs is not None:
+            mode = getattr(cs, "mode", None)
+            if mode == "scalar":
+                out["apex/cs_a"] = float(cs.a.detach().item())
+                out["apex/cs_b"] = float(cs.b.detach().item())
+            elif mode == "diag":
+                out["apex/cs_a_norm"] = float(cs.a.detach().norm().item())
+                out["apex/cs_b_norm"] = float(cs.b.detach().norm().item())
+            elif mode == "full":
+                out["apex/cs_A_norm"] = float(cs.A.detach().norm().item())
+                out["apex/cs_b_norm"] = float(cs.b.detach().norm().item())
         return out

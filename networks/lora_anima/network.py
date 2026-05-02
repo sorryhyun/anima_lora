@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 
 from library.log import setup_logging
+from library.training.metrics import MetricContext
 from networks import NETWORK_REGISTRY, NetworkSpec, lora_save
 from networks.lora_anima.config import LoRANetworkCfg
 from networks.lora_anima.loading import (
@@ -1262,6 +1263,100 @@ class LoRANetwork(torch.nn.Module):
             total_reg = total_reg + reft.regularization()
             count += 1
         return total_reg / max(count, 1)
+
+    def metrics(self, ctx: MetricContext) -> dict[str, float]:
+        """Emit log-step keys owned by the LoRA network.
+
+        Covers ortho regularization, hydra balance loss, router stats, hydra
+        up-weight grad-norm diagnostics, and the per-expert warmup pick
+        distribution. Each block returns nothing if its driver is off
+        (``_ortho_reg_weight == 0``, ``_use_hydra == False``, etc.) so the
+        cost on inactive paths is one attr check.
+        """
+        out: dict[str, float] = {}
+
+        # Ortho regularization magnitude.
+        ortho_w = float(getattr(self, "_ortho_reg_weight", 0.0) or 0.0)
+        if ortho_w > 0.0:
+            v = self.get_ortho_regularization()
+            if torch.is_tensor(v):
+                v = v.detach().item()
+            out["reg/ortho"] = float(v)
+            out["reg/ortho_weighted"] = float(ortho_w * v)
+
+        # Hydra balance loss magnitude.
+        bal_w = float(getattr(self, "_balance_loss_weight", 0.0) or 0.0)
+        if bal_w > 0.0:
+            v = self.get_balance_loss()
+            if torch.is_tensor(v):
+                v = v.detach().item()
+            out["reg/balance"] = float(v)
+            out["reg/balance_weighted"] = float(bal_w * v)
+
+        if not getattr(self, "_use_hydra", False):
+            return out
+
+        # Router diagnostics.
+        stats = self.get_router_stats()
+        if stats:
+            out["hydra/router_entropy"] = float(stats["entropy_mean"])
+            out["hydra/router_entropy_p05"] = float(stats["entropy_p05"])
+            out["hydra/router_entropy_p50"] = float(stats["entropy_p50"])
+            out["hydra/router_entropy_p95"] = float(stats["entropy_p95"])
+            out["hydra/router_margin"] = float(stats["margin_mean"])
+            for i, v in enumerate(stats.get("expert_usage", [])):
+                out[f"hydra/expert_usage/{i}"] = float(v)
+            for b, row in enumerate(stats.get("expert_usage_per_bucket", [])):
+                for i, v in enumerate(row):
+                    out[f"hydra/expert_usage_b{b}/{i}"] = float(v)
+            for b, c in enumerate(stats.get("bucket_counts", [])):
+                out[f"hydra/bucket_count/{b}"] = float(c)
+
+        # Hydra up-weight grad norms by rank region and σ-band.
+        up = self.get_up_grad_stats()
+        if up:
+            eps = 1e-12
+
+            def _emit_per_expert(prefix: str, sq: list[float]) -> None:
+                for i, v in enumerate(sq):
+                    out[f"hydra/up_grad/{prefix}/exp{i}"] = float(v) ** 0.5
+
+            def _emit_per_band(prefix: str, sq: list[float]) -> None:
+                for b, v in enumerate(sq):
+                    out[f"hydra/up_grad/{prefix}/band{b}"] = float(v) ** 0.5
+
+            if "total" in up:
+                _emit_per_expert("total", up["total"])
+            if "below" in up and "above" in up:
+                _emit_per_expert("below", up["below"])
+                _emit_per_expert("above", up["above"])
+                for i, (b_, a_) in enumerate(zip(up["below"], up["above"])):
+                    out[f"hydra/up_grad/above_below_ratio/exp{i}"] = (
+                        float(a_) ** 0.5 / (float(b_) ** 0.5 + eps)
+                    )
+            if "sp_total" in up:
+                _emit_per_expert("sp_total", up["sp_total"])
+            if "total_band" in up:
+                _emit_per_band("total", up["total_band"])
+            if "below_band" in up and "above_band" in up:
+                _emit_per_band("below", up["below_band"])
+                _emit_per_band("above", up["above_band"])
+                for b, (bv, av) in enumerate(
+                    zip(up["below_band"], up["above_band"])
+                ):
+                    out[f"hydra/up_grad/above_below_ratio/band{b}"] = (
+                        float(av) ** 0.5 / (float(bv) ** 0.5 + eps)
+                    )
+            if "sp_total_band" in up:
+                _emit_per_band("sp_total", up["sp_total_band"])
+
+        # Per-expert pick distribution during expert warmup.
+        picks = self.get_expert_warmup_pick_stats()
+        if picks is not None:
+            for i, v in enumerate(picks):
+                out[f"hydra/expert_warmup_pick/{i}"] = float(v)
+
+        return out
 
     @staticmethod
     def _strip_orig_mod_keys(state_dict):
