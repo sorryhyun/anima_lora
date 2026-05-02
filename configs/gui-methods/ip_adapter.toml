@@ -21,7 +21,9 @@ network_args = [
     "encoder_dim=1024",
     "resampler_layers=2",
     "resampler_heads=8",
-    "ip_init_std=1e-4",          # near-zero init so step 0 = baseline DiT
+    # Step 0 = baseline DiT is enforced by the per-block ip_gate (init 0),
+    # not by shrinking K/V. Default Kaiming-uniform init so the IP path
+    # carries signal as soon as the gate opens.
     "ip_scale=1.0",
 ]
 

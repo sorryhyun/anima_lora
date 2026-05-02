@@ -31,8 +31,13 @@ network_args = [
     "encoder_dim=1024",          # PE-Core-L14-336 hidden dim
     "resampler_layers=2",
     "resampler_heads=8",
-    "ip_init_std=1e-4",          # near-zero init so step 0 = baseline DiT
     "ip_scale=1.0",
+    # Per-block gate (init 0) is what enforces "step 0 = baseline DiT".
+    # Default: gate uses the global ``learning_rate`` below. Override here
+    # if the gate isn't opening fast enough — empirically 8 epochs at
+    # 1e-4 only reached abs_max ~0.004. A 10× higher gate LR is a reasonable
+    # first try; watch ``ip_text_ratio/max`` for runaway.
+    "gate_lr=1e-3",
 ]
 
 output_name = "anima_ip_adapter"
@@ -53,7 +58,7 @@ ip_features_cache_to_disk = true
 # Read by train.py when use_ip_adapter is on.
 use_ip_adapter = true
 ip_image_drop_p = 0.05
-caption_dropout_rate = 0.0
+caption_dropout_rate = 0.1
 
 # DiT is frozen; no need for block swapping. Adapter+resampler+vision-encoder
 # fit comfortably alongside the DiT in bf16.

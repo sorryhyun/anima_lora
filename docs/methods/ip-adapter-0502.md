@@ -5,86 +5,184 @@ results. Pairs with `docs/methods/ip-adapter.md` (the architecture reference).
 
 ## What we found
 
-**The `ip_init_std=1e-4` "step 0 ≈ baseline DiT" invariant was silently
-broken.** `set_ip_tokens()` was running the IP K/V through
-`cross_attn.k_norm` / `cross_attn.v_norm` (RMSNorm). RMSNorm rescales its
-input to unit RMS regardless of magnitude, so the small projection output
-got renormalized to ~1.0 and the IP path ran at full magnitude from step 1.
+**The `ip_init_std=1e-4` "step 0 ≈ baseline DiT" invariant was structurally
+unreachable**, not just silently broken — and the original diagnosis
+("RMSNorm rescaled the IP K/V to unit RMS") was half wrong. The DiT's
+`Attention` module (`library/anima/models.py:386`) defines:
 
-Evidence from run `20260502160758` (preset `tenth`, with the new tfevents
-scalars wired up):
+```python
+self.q_norm = RMSNorm(self.head_dim, eps=1e-6)
+self.k_norm = RMSNorm(self.head_dim, eps=1e-6)
+self.v_norm = nn.Identity()
+```
 
-| step | `‖to_k_ip‖.mean` | `ip_text_ratio.mean` |
-|---:|---:|---:|
-| 2   | 0.23 | **2.29** |
-| 54  | 0.89 | **5.26** |
-| 80  | 0.98 | 0.93 |
-| 318 | 1.92 | 0.96 |
+This is the standard QK-norm pattern (ViT-22B, Gemma, Qwen, Flux). V is
+intentionally *not* normalized — V's magnitude linearly modulates the
+attention output, and forcing it to unit-RMS would destroy the model's
+ability to weight tokens. So:
 
-Ratio of 2.3 at step 2 means the IP cross-attn output was already 2.3×
-larger than text cross-attn. This explains the previous run's
-(`20260502140913`) `epoch_baseline_no_ip_delta` being **negative every
-epoch** (−0.006 to −0.011): turning IP off improved validation because it
-removed a loud, mostly-meaningless signal that the model never fully
-learned to use within the budget. The model was learning to *suppress* IP,
-not use it.
+- The K-side bypass in the original fix was real: `k_norm` was rescaling
+  IP K to unit-RMS, and skipping it does drop K-side magnitude.
+- The V-side "bypass" was a no-op the whole time. `v_norm = nn.Identity()`
+  means V was *never* being normalized on either path. Small std=1e-4 on
+  `to_v_ip` was the only thing keeping V small.
 
-## What's fixed
+That's not enough. With `to_v_ip` at std=1e-4 init (weight Frobenius
+~0.145) and the resampler producing unit-scale tokens, even one Adam step
+on `to_v_ip` grows V's weight norm to ~0.26 and ip_out scales with it.
+**Empirically the IP/text ratio was already 3.7 at step 2** in the
+"fixed" run `20260502161937` (vs 2.29 in the buggy `20260502160758`) —
+the K-only fix made the ratio *worse* because text_result happened to be
+smaller in that batch, exposing how V was driving the contribution.
 
-1. **K/V RMSNorm bypass on the IP path** — `set_ip_tokens()` no longer
-   calls `cross_attn.k_norm` / `cross_attn.v_norm`. Step-0 ratio is now
-   `~8e-4` instead of `~2.3` (verified with a numerical smoke test).
-2. **Tensorboard scalars** — `IPAdapterNetwork.metrics()` emits at step
+Evidence from run `20260502160758` (buggy: K rescaled to unit-RMS, V at
+small init) vs `20260502161937` (K-bypass fix only, V unchanged):
+
+| @ step 2 | `to_k_ip_norm/mean` | `to_v_ip_norm/mean` | `ip_text_ratio/mean` |
+|---|---:|---:|---:|
+| Buggy | 0.225 | 0.261 | **2.29** |
+| K-only fix | 0.148 | 0.258 | **3.76** |
+
+V-side norm essentially identical — confirming the fix only touched K.
+
+`epoch_baseline_no_ip_delta` stayed negative (−0.006 to −0.011) in both
+runs: turning IP off improved validation because it removed a loud,
+mostly-meaningless signal. The model was learning to *suppress* IP, not
+use it.
+
+## What's fixed (proper fix)
+
+1. **Per-block learned scalar gate, init 0** (`IPAdapterNetwork.ip_gate`).
+   The patched cross-attn applies `text_result + gate * scale * ip_out`,
+   so step 0 ≡ baseline DiT *by construction* regardless of K/V weight
+   magnitudes. The optimizer learns when (and per which block) to open
+   the IP path.
+2. **K/V default Kaiming init** (no longer `std=1e-4`). With the gate
+   handling step-0 baseline equivalence, K/V can be at "normal"
+   magnitude so the IP path carries real signal as soon as the gate
+   cracks open — instead of two parallel uphill climbs (gate AND K/V
+   growing from near-zero). `ip_init_std` remains a toml knob for a
+   defense-in-depth run.
+3. **K-side RMSNorm bypass** retained — keeps the IP-side softmax near
+   uniform over the K_ip slots so ip_out averages across slots rather
+   than collapsing onto one. (V-side bypass dropped from the comments;
+   `v_norm` is Identity anyway, nothing to bypass.)
+4. **Optional `gate_lr` override** in `network_args` — overrides the
+   global LR for the gate group only. Default `None` ⇒ gate uses the
+   adapter LR. Run #1 evidence (below) showed the gate is the slowest
+   thing in the system at lr=1e-4, so the toml ships with `gate_lr=1e-3`
+   as the recommended starting point for any non-trivial run.
+5. **Tensorboard scalars** — `IPAdapterNetwork.metrics()` emits at step
    cadence:
-   - `ip_adapter/to_k_ip_norm/{mean,max}` (always on; pure weight reads)
+   - `ip_adapter/to_k_ip_norm/{mean,max}` (always on)
    - `ip_adapter/to_v_ip_norm/{mean,max}` (always on)
+   - `ip_adapter/ip_gate/{mean,abs_mean,abs_max}` (always on — track gate
+     opening)
    - `ip_adapter/ip_text_ratio/{mean,max}` (only while runtime
      diagnostics are on; gated by `ip_diagnostics_epochs`)
-3. **`ip_diagnostics_epochs = 999`** in `configs/methods/ip_adapter.toml`
-   so the ratio scalar streams the whole run instead of just epoch 1.
+6. **`ip_diagnostics_epochs = 999`** in `configs/methods/ip_adapter.toml`
+   so the ratio scalar streams the whole run.
+
+Smoke-test verified: gate=0 produces `max |out_with_ip - out_baseline| =
+0.0` exactly. gate=0.1 with default-init K/V produces a meaningful
+contribution (0.46 in the smoke test) — confirming K/V are no longer
+"asleep" at init.
 
 ## Cleanup before the next run
 
-- **Delete `output/ckpt/anima_ip_adapter.safetensors`** (May 2 15:31). It
-  was trained against the buggy unit-RMS K/V, so loading it through the
-  fixed code gives effectively-zero IP contribution.
-- Kill the still-running `20260502160758` task — it's on the buggy
-  trajectory.
+The buggy/K-only-fix runs and their checkpoints have already been
+superseded by Run #1's (`20260502164913`) checkpoint at
+`output/ckpt/anima_ip_adapter.safetensors` (May 2 17:22), which contains
+the gate keys and was trained under the proper fix. Run #2 will warm-start
+from this if `network_weights` is set, or train fresh otherwise — either
+is fine.
 
-## Run #1 — sanity check the fix (do this first)
+If you want to retrain Run #2 from scratch (recommended, given Run #1's
+gate barely moved): just delete the May 2 17:22 checkpoint or skip the
+`network_weights` line.
+
+## Run #1 — sanity check (`20260502164913`, completed)
 
 ```bash
-make ip-adapter PRESET=tenth   # ~30 min, 8 epochs of 10% data
+make ip-adapter PRESET=tenth   # 8 epochs of 10% data, lr=1e-4, gate_lr=global
 ```
 
-Pass criteria — read straight off tensorboard:
+All three pass criteria green. Headline metric, **first time positive in
+this codebase's history**:
 
-| Scalar | Expected at step ~10 | Expected by epoch end |
-|---|---|---|
-| `ip_adapter/ip_text_ratio/mean` | < 0.01 | growing slowly toward 0.05–0.3 |
-| `ip_adapter/to_k_ip_norm/mean` | ~0.145 | growing monotonically (no spike-and-suppress) |
-| `loss/validation/epoch_baseline_no_ip_delta` | (n/a, runs at epoch end) | **≥ 0 by epoch 2**, trending positive |
+| ep | `loss/validation/epoch_baseline_no_ip_delta` |
+|---:|---:|
+| 1 | +0.000154 |
+| 2 | +0.000165 |
+| 3 | +0.000253 |
+| 4 | +0.000340 |
+| 5 | +0.000339 |
+| 6 | +0.000335 |
+| 7 | +0.000285 |
+| 8 | **+0.000449** |
 
-If `ip_text_ratio.mean` blows past 0.3 within the first epoch the IP path
-is ramping too fast — drop `ip_scale` from 1.0 to 0.5 and re-run.
+Δ tripled from epoch 1 to epoch 8, with the largest improvement on the
+σ=0.10 (high-noise / early-step) bin (Δ_σ0.10 = +0.00085 at ep8) — the
+regime where image conditioning *should* help most. Sign convention:
+positive Δ means "no_ip baseline > with_ip", i.e. removing IP makes
+validation worse → the model is *using* IP, not suppressing it.
 
-If the val Δ is still negative after 4 epochs **and** the ratio is healthy
-(< 0.3), the bug isn't init scaling — it's a learning-signal problem.
-Move to Run #2.
+Step-cadence sanity:
 
-## Run #2 — full-budget training (only after #1 passes)
+| Scalar | step 2 | step 1872 (final) |
+|---|---:|---:|
+| `ip_text_ratio/mean` | 0.0025 | 0.26 (in target band 0.05–0.3) |
+| `ip_text_ratio/max` | 0.007 | 1.50 (oscillates 0.4–1.6, never escapes) |
+| `ip_gate/abs_max` | 0.0002 | 0.004 (barely off init=0) |
+| `to_k_ip_norm/mean` | 26.13 | 26.08 (slight shrink) |
+| `to_v_ip_norm/mean` | 26.13 | 26.50 (slight grow) |
+
+**The gate barely opened.** Peak `abs_max` ~0.004, mean ~0.001. Despite
+that, val Δ kept rising — even a sliver of IP signal helped. Most of the
+contribution is coming from default-Kaiming-loud K/V modulated by a
+near-zero gate; the "real" IP semantics learning hasn't kicked in yet at
+this LR + budget.
+
+This is the evidence that motivated the `gate_lr=1e-3` default. At
+lr=1e-4 the gate is the rate-limiter on the entire system.
+
+## Run #2 — full-budget training
 
 ```bash
 make ip-adapter   # default preset, full data
 ```
 
-Bump these in `configs/methods/ip_adapter.toml` first:
+The toml as it stands has the Run #2 settings already applied:
 
-- `max_train_epochs = 30` (was 8 — current budget is order-of-magnitude
-  smaller than reference IP-Adapter recipes; raise until val Δ plateaus)
-- `caption_dropout_rate = 0.1` (currently 0.0 — with text always present
-  the IP path has no incentive to carry conditioning)
-- `ip_image_drop_p = 0.1` (currently 0.05 — half the standard CFG dropout)
+- `caption_dropout_rate = 0.1` — forces ~10% text-free batches so the
+  IP path has a learning signal it can't fake via captions.
+- `gate_lr = 1e-3` — 10× the global LR, so the gate opens fast enough
+  to actually exercise the IP path within the training budget.
+
+Still worth checking before launch:
+
+- `max_train_epochs` — Run #1 was 8 epochs of 10% data (~3700 step·images
+  total). Reference IP-Adapter recipes use ~10× more. Bump to 30 if val Δ
+  is still climbing at the end of the default run.
+- `ip_image_drop_p` — currently 0.05; standard CFG-dropout recipes use 0.1.
+  Helps inference do image-CFG independently of text-CFG.
+
+Watch during training:
+
+- `ip_gate/abs_max` should reach ~0.05–0.1 within the first epoch at
+  `gate_lr=1e-3`. If it stays under 0.01 for a full epoch, the gate
+  gradient is starving (likely a data-pairing problem, not LR).
+- `ip_text_ratio/max` was oscillating 0.4–1.6 in Run #1 with the gate
+  near zero. With the gate ~10× higher, expect ratio max to drift up.
+  **If it climbs steadily past 2.0, the IP path is running away** — set
+  `ip_scale = 0.5` (cuts effective ratio in half) and re-run. If it
+  oscillates at a higher level but stays bounded (e.g. 1.5–2.5), that's
+  fine; the optimizer is balancing.
+- `to_k_ip_norm/mean` and `to_v_ip_norm/mean`. In Run #1 these barely
+  moved (gate was suppressing all gradient). With the gate opening
+  faster, K/V should start drifting visibly. Monotonic growth ⇒ healthy.
+  Spike-and-suppress (sharp grow then sharp shrink) ⇒ gate opening too
+  fast; either drop `gate_lr` to 5e-4 or add `ip_init_std=1e-4`.
 
 ## Backstop ideas if Run #2 still doesn't converge
 
@@ -93,16 +191,16 @@ Run #2 has plateaued, otherwise we won't know which one mattered.
 
 ### A. Warm-start from text-side `kv_proj`
 
-Stronger init than `std=1e-4`. Each block's `cross_attn` already has a
-trained fused `kv_proj` weight (the text K/V producer). Split it and copy
-the K-half to `to_k_ip` and V-half to `to_v_ip` — IP starts as "another
-text-cross-attn that reads image tokens" instead of from random small
+Stronger init than default Kaiming. Each block's `cross_attn` already has
+a trained fused `kv_proj` weight (the text K/V producer). Split it and
+copy the K-half to `to_k_ip` and V-half to `to_v_ip` — IP starts as
+"another text-cross-attn that reads image tokens" instead of from random
 weights. The model already knows how to consume context tokens through
 those weights, so the optimizer doesn't have to discover the basin.
 
-Catch: this breaks "step 0 = baseline DiT" again, so we'd need a learned
-per-block scalar gate (init 0) to keep early-step behavior stable. ~30 LoC,
-add an `ip_init = "kv_clone" | "near_zero"` toml knob.
+The per-block `ip_gate` (already in place) handles the "step 0 = baseline"
+side, so this is now a clean copy: ~30 LoC, add an
+`ip_init = "kv_clone" | "default"` toml knob.
 
 ### B. Reference-image augmentation
 

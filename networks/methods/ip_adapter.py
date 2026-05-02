@@ -9,12 +9,26 @@ Architecture (adapter-only — DiT frozen):
       -> add scale * ip_attn_out to existing text cross-attention output
 
 Init:
-  - to_k_ip / to_v_ip near-zero (std 1e-4) — at step 0, the IP path contributes
-    ~zero so training starts from baseline DiT behavior. Standard IP-Adapter
-    trick (mirrors postfix's zero-init last layer). For this to actually hold,
-    set_ip_tokens deliberately does NOT run the IP K/V through the cross_attn
-    RMSNorms (k_norm/v_norm) — those would rescale to unit RMS and cancel the
-    soft-gate effect.
+  - Per-block ``ip_gate`` scalar at 0 — THIS is what guarantees step 0 ≡
+    baseline DiT. The patched cross-attn adds ``gate * scale * ip_out`` to
+    the text path; with gate=0 every block, the IP contribution is exactly
+    zero on the first forward regardless of K/V weight magnitudes. The
+    optimizer opens each gate as it learns to use the IP path.
+  - to_k_ip / to_v_ip default (PyTorch Kaiming-uniform). The gate is the
+    sole mechanism for step-0 baseline equivalence — once it opens, K/V
+    have meaningful magnitude immediately and the IP path can carry signal
+    without first growing the projections from near-zero. ``ip_init_std``
+    is exposed in the toml as a defense-in-depth override (set it to a
+    small value like 1e-4 to also zero-init the projections) but is no
+    longer required for correctness. The earlier "std=1e-4 acts as a soft
+    gate" theory was incorrect — the DiT's ``v_norm = nn.Identity()`` so
+    V was never being normalized, and small-std weights grew fast enough
+    under Adam that the IP/text ratio still hit ~3.7 by step 2.
+  - set_ip_tokens deliberately does NOT run the IP K/V through the
+    cross_attn RMSNorms. ``v_norm`` is Identity (no-op), but ``k_norm``
+    would rescale K to unit RMS, concentrating the IP-side softmax on a
+    single token instead of averaging — keeping K small lets uniform
+    attention smear ip_out across all K_ip slots.
   - Resampler queries init at N(0, 0.15) (img2emb's PerceiverResampler default).
 
 Hooking:
@@ -74,7 +88,14 @@ DEFAULT_NUM_IP_TOKENS = 16
 DEFAULT_RESAMPLER_HEADS = 8
 DEFAULT_RESAMPLER_LAYERS = 2
 DEFAULT_ENCODER_NAME = "pe"
-DEFAULT_IP_INIT_STD = 1e-4
+# None ⇒ leave nn.Linear's default Kaiming-uniform init in place. Step-0 ≡
+# baseline DiT is enforced by the per-block ``ip_gate`` scalar (init 0), not
+# by shrinking K/V — small init was the old "soft gate" trick that was
+# misdiagnosed (the DiT's v_norm is Identity, so ip_init_std=1e-4 alone could
+# not actually pin step-0 to baseline; see docs/methods/ip-adapter-0502.md).
+# Set ``ip_init_std`` explicitly in the toml to override (e.g. for a
+# defense-in-depth run with both gate AND tiny init).
+DEFAULT_IP_INIT_STD: Optional[float] = None
 
 
 def create_network(
@@ -94,8 +115,14 @@ def create_network(
     encoder_dim = int(kwargs.get("encoder_dim", DEFAULT_CONTEXT_DIM))
     resampler_layers = int(kwargs.get("resampler_layers", DEFAULT_RESAMPLER_LAYERS))
     resampler_heads = int(kwargs.get("resampler_heads", DEFAULT_RESAMPLER_HEADS))
-    ip_init_std = float(kwargs.get("ip_init_std", DEFAULT_IP_INIT_STD))
+    raw_ip_init_std = kwargs.get("ip_init_std", DEFAULT_IP_INIT_STD)
+    ip_init_std = float(raw_ip_init_std) if raw_ip_init_std is not None else None
     ip_scale = float(kwargs.get("ip_scale", 1.0))
+    # Optional per-group LR override for the gate. None ⇒ use the global
+    # adapter LR for the gate too. Set e.g. "gate_lr=1e-3" in network_args
+    # to open the gate ~10× faster than the resampler/KV move.
+    raw_gate_lr = kwargs.get("gate_lr", None)
+    gate_lr = float(raw_gate_lr) if raw_gate_lr is not None else None
 
     num_blocks = (
         getattr(unet, "num_blocks", DEFAULT_NUM_BLOCKS)
@@ -126,6 +153,7 @@ def create_network(
         resampler_heads=resampler_heads,
         ip_init_std=ip_init_std,
         ip_scale=ip_scale,
+        gate_lr=gate_lr,
         multiplier=multiplier,
     )
 
@@ -183,6 +211,7 @@ def create_network_from_weights(
         resampler_heads=resampler_heads,
         ip_init_std=DEFAULT_IP_INIT_STD,
         ip_scale=ip_scale,
+        gate_lr=None,  # inference path; no optimizer
         multiplier=multiplier,
     )
     return network, weights_sd
@@ -201,8 +230,9 @@ class IPAdapterNetwork(nn.Module):
         num_heads: int,
         resampler_layers: int,
         resampler_heads: int,
-        ip_init_std: float,
+        ip_init_std: Optional[float],
         ip_scale: float,
+        gate_lr: Optional[float] = None,
         multiplier: float = 1.0,
     ):
         super().__init__()
@@ -222,6 +252,8 @@ class IPAdapterNetwork(nn.Module):
         self.resampler_heads = resampler_heads
         self.ip_init_std = ip_init_std
         self.ip_scale = ip_scale
+        # None ⇒ gate uses the global adapter LR. Set explicitly to override.
+        self.gate_lr = gate_lr
         self.multiplier = multiplier
 
         # Resampler: PE patch tokens -> K compact image tokens in context-dim space.
@@ -242,16 +274,32 @@ class IPAdapterNetwork(nn.Module):
         self.to_v_ip = nn.ModuleList(
             [nn.Linear(context_dim, hidden_size, bias=False) for _ in range(num_blocks)]
         )
-        for proj in list(self.to_k_ip) + list(self.to_v_ip):
-            nn.init.normal_(proj.weight, std=ip_init_std)
+        # When ip_init_std is None, leave PyTorch's default Linear init
+        # (Kaiming-uniform) in place — the gate is responsible for step-0
+        # baseline equivalence, so K/V can be at "normal" magnitude. An
+        # explicit toml override is honored as a defense-in-depth knob.
+        if ip_init_std is not None:
+            for proj in list(self.to_k_ip) + list(self.to_v_ip):
+                nn.init.normal_(proj.weight, std=ip_init_std)
 
-        # Step 0 ≈ baseline DiT is enforced purely by ip_init_std on K/V; with
-        # ip_init_std=1e-4 the SDPA output is ~1e-4 in magnitude, well below
-        # the text path. This relies on ``set_ip_tokens`` NOT applying
-        # cross_attn.k_norm/v_norm to the IP K/V — RMSNorm would rescale to
-        # unit RMS and cancel the soft-gate effect. See the comment in
-        # ``set_ip_tokens`` for why text-side normalization doesn't apply here.
-        # No learned per-block gate (matches reference Tencent IP-Adapter).
+        # Per-block learned scalar gate, init 0. Step 0 ≡ baseline DiT because
+        # the patched cross-attn applies ``gate * scale * ip_out`` and gate=0.
+        # ``ip_init_std`` alone can't enforce this: the DiT's v_norm is
+        # nn.Identity, so once Adam takes a step on to_v_ip the V output
+        # grows fast and ip_out shoots up — empirically the IP/text ratio
+        # was ~3.7 at step 2 with std=1e-4 alone. The gate decouples
+        # "step 0 = baseline" from the K/V weight scale; the optimizer
+        # learns when (and per which block) to open the IP path.
+        #
+        # Stored as a ParameterList of 0-d Parameters (not a single
+        # Parameter[num_blocks]) so apply_to can hand each block's gate
+        # directly to its cross_attn as ``cross_attn._ip_gate``. The patched
+        # forward reads ``orig_attn._ip_gate`` — no Python-int indexing into
+        # a single tensor, which keeps torch.compile from specializing a
+        # separate graph per block (same rationale as the diagnostic accumulators).
+        self.ip_gate = nn.ParameterList(
+            [nn.Parameter(torch.zeros(())) for _ in range(num_blocks)]
+        )
 
         # Populated by apply_to() — references to the DiT cross-attn Attention
         # modules. Held as a plain list (NOT nn.ModuleList) so PyTorch doesn't
@@ -271,11 +319,14 @@ class IPAdapterNetwork(nn.Module):
         self._diag_enabled: bool = False
 
         total = sum(p.numel() for p in self.parameters())
+        init_desc = f"std={ip_init_std}" if ip_init_std is not None else "default"
+        gate_lr_desc = f"lr={gate_lr}" if gate_lr is not None else "lr=global"
         logger.info(
             f"IPAdapterNetwork: K={num_ip_tokens}, encoder={encoder_name}, "
             f"context_dim={context_dim}, num_blocks={num_blocks}, "
-            f"hidden={hidden_size}/{num_heads}h, ip_init_std={ip_init_std}, "
-            f"ip_scale={ip_scale}, params={total / 1e6:.1f}M"
+            f"hidden={hidden_size}/{num_heads}h, ip_init={init_desc}, "
+            f"gate=per-block (init 0, {gate_lr_desc}), ip_scale={ip_scale}, "
+            f"params={total / 1e6:.1f}M"
         )
 
     # ------------------------------------------------------------ apply / hook
@@ -323,6 +374,7 @@ class IPAdapterNetwork(nn.Module):
             self._original_forwards.append(cross_attn.forward)
             cross_attn._ip_k_cached = None
             cross_attn._ip_v_cached = None
+            cross_attn._ip_gate = self.ip_gate[idx]  # 0-d Parameter, init 0
             cross_attn._ip_diag_ratio_sum = (
                 None  # 0-d float32, set by set_diagnostics_enabled
             )
@@ -341,6 +393,7 @@ class IPAdapterNetwork(nn.Module):
             cross_attn.forward = orig
             cross_attn._ip_k_cached = None
             cross_attn._ip_v_cached = None
+            cross_attn._ip_gate = None
             cross_attn._ip_diag_ratio_sum = None
             cross_attn._ip_diag_count = None
         self._cross_attn_modules.clear()
@@ -383,15 +436,17 @@ class IPAdapterNetwork(nn.Module):
             v = self.to_v_ip[idx](ip_in)
             k = k.unflatten(-1, (self.num_heads, self.head_dim))  # [B, K, n_h, d_h]
             v = v.unflatten(-1, (self.num_heads, self.head_dim))
-            # Intentionally skip cross_attn.k_norm/v_norm here. RMSNorm rescales
-            # its input to unit RMS regardless of magnitude, which would cancel
-            # ip_init_std and put the IP path at full magnitude on step 1
-            # (empirically: ‖scale·ip_out‖/‖text_result‖ ≈ 2 at step 2 with
-            # init std 1e-4). The text path's k_norm pairs with q_norm to keep
-            # text q·k stable within the text distribution; IP K/V come from a
-            # different distribution (vision features through a fresh resampler)
-            # so there's no symmetry to preserve. Leaving K/V un-normalized is
-            # what makes ``ip_init_std`` actually act as a soft gate at init.
+            # Intentionally skip cross_attn.k_norm/v_norm here.
+            # - v_norm is nn.Identity in the DiT so this is a no-op for V,
+            #   listed only for symmetry with the K branch.
+            # - k_norm (RMSNorm) WOULD rescale ip_k to unit RMS. With
+            #   unit-RMS k, qk^T scores are large and the IP-side softmax
+            #   concentrates on a single ip-token; with k left small,
+            #   softmax stays near-uniform and ip_out averages across all
+            #   K_ip slots — gentler when the gate first opens.
+            # The "step 0 = baseline DiT" invariant is enforced by ``ip_gate``
+            # (per-block 0-init scalar applied in the patched forward), NOT
+            # by the K-norm bypass.
             cross_attn._ip_k_cached = k
             cross_attn._ip_v_cached = v
 
@@ -543,7 +598,15 @@ class IPAdapterNetwork(nn.Module):
             v_norms = torch.stack(
                 [self.to_v_ip[i].weight.float().norm() for i in range(self.num_blocks)]
             )
-            agg = [k_norms.mean(), k_norms.max(), v_norms.mean(), v_norms.max()]
+            # Signed mean keeps the sign of the gate visible (it can go
+            # negative — nothing in the loss prevents it). Abs-mean/max
+            # tracks how far the gate has opened in either direction.
+            gates = torch.stack([self.ip_gate[i].float() for i in range(self.num_blocks)])
+            agg = [
+                k_norms.mean(), k_norms.max(),
+                v_norms.mean(), v_norms.max(),
+                gates.mean(), gates.abs().mean(), gates.abs().max(),
+            ]
 
             ratio_keys: list[str] = []
             if self._diag_enabled:
@@ -574,6 +637,9 @@ class IPAdapterNetwork(nn.Module):
             "ip_adapter/to_k_ip_norm/max",
             "ip_adapter/to_v_ip_norm/mean",
             "ip_adapter/to_v_ip_norm/max",
+            "ip_adapter/ip_gate/mean",
+            "ip_adapter/ip_gate/abs_mean",
+            "ip_adapter/ip_gate/abs_max",
             *ratio_keys,
         ]
         return dict(zip(keys, vals))
@@ -605,6 +671,12 @@ class IPAdapterNetwork(nn.Module):
     ):
         del text_encoder_lr
         lr = unet_lr or default_lr
+        # Gate is 28 scalars (one per block). Default to the global LR — Adam's
+        # per-param adaptive rates handle the magnitude difference fine in
+        # most runs. ``gate_lr`` overrides this when the gate moves too slowly
+        # at the global LR (empirically: 8 epochs at lr=1e-4 only opened the
+        # gate to abs_max ~0.004, leaving the IP path largely unused).
+        gate_lr = self.gate_lr if self.gate_lr is not None else lr
         params = [
             {"params": list(self.resampler.parameters()), "lr": lr},
             {
@@ -612,8 +684,9 @@ class IPAdapterNetwork(nn.Module):
                 + list(self.to_v_ip.parameters()),
                 "lr": lr,
             },
+            {"params": list(self.ip_gate.parameters()), "lr": gate_lr},
         ]
-        descriptions = ["ip_resampler", "ip_kv_proj"]
+        descriptions = ["ip_resampler", "ip_kv_proj", "ip_gate"]
         return params, descriptions
 
     def prepare_optimizer_params(self, text_encoder_lr, unet_lr, default_lr=None):
@@ -719,6 +792,11 @@ def _make_patched_forward(
             # Back to [B, S, n_h*d_h] to match text_result's flattened layout.
             ip_out = ip_out.transpose(1, 2).reshape(text_result.shape)
             scale = ip_net.get_effective_scale()
+            # Per-block 0-init learned gate. At step 0 gate=0 → IP path
+            # contributes exactly zero regardless of K/V weight magnitudes.
+            # Cast to ip_out dtype so bf16 forward stays in bf16.
+            gate = orig_attn._ip_gate.to(ip_out.dtype)
+            ip_contribution = gate * scale * ip_out
             diag_sum = orig_attn._ip_diag_ratio_sum
             if ip_net._diag_enabled and diag_sum is not None:
                 # Detached, on-device scalar update on tensors that live on
@@ -726,11 +804,11 @@ def _make_patched_forward(
                 # never via ``block_idx`` as a Python int (which would specialize
                 # one compiled graph per block and break recompile_limit).
                 with torch.no_grad():
-                    ip_norm = (scale * ip_out).float().norm()
+                    ip_norm = ip_contribution.float().norm()
                     txt_norm = text_result.float().norm().clamp_min(1e-12)
                     diag_sum.add_(ip_norm / txt_norm)
                     orig_attn._ip_diag_count.add_(1)
-            text_result = text_result + scale * ip_out
+            text_result = text_result + ip_contribution
 
         return orig_attn.output_dropout(orig_attn.output_proj(text_result))
 
