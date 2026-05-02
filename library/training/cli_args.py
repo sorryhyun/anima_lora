@@ -11,6 +11,12 @@ No real logic lives here — these are pure argparse declarations.
 from __future__ import annotations
 
 import argparse
+import logging
+
+from library.log import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 def add_sd_models_arguments(parser: argparse.ArgumentParser):

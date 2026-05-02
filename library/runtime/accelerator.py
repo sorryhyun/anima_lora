@@ -83,12 +83,18 @@ def prepare_accelerator(args: argparse.Namespace):
     if args.logging_dir is None:
         logging_dir = None
     else:
-        log_prefix = "" if args.log_prefix is None else args.log_prefix
+        if args.log_prefix is not None:
+            log_prefix = args.log_prefix
+        else:
+            method = getattr(args, "method", None)
+            preset = getattr(args, "preset", None)
+            parts = [p for p in (method, preset) if p]
+            log_prefix = ("_".join(parts) + "_") if parts else ""
         logging_dir = (
             args.logging_dir
             + "/"
             + log_prefix
-            + time.strftime("%Y%m%d%H%M%S", time.localtime())
+            + time.strftime("%Y%m%d-%H%M", time.localtime())
         )
 
     if args.log_with is None:

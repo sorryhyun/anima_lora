@@ -123,6 +123,10 @@ def create_network(
     # to open the gate ~10× faster than the resampler/KV move.
     raw_gate_lr = kwargs.get("gate_lr", None)
     gate_lr = float(raw_gate_lr) if raw_gate_lr is not None else None
+    # Optional precomputed PE centroid sidecar (produced by
+    # scripts/compute_pe_centroid.py). Subtracted from every token before the
+    # resampler — see IPAdapterNetwork.__init__ comment on ip_centroid.
+    ip_centroid_path = kwargs.get("ip_centroid_path", None) or None
 
     num_blocks = (
         getattr(unet, "num_blocks", DEFAULT_NUM_BLOCKS)
@@ -141,7 +145,7 @@ def create_network(
     )
     context_dim = DEFAULT_CONTEXT_DIM
 
-    return IPAdapterNetwork(
+    network = IPAdapterNetwork(
         num_ip_tokens=num_ip_tokens,
         encoder_name=encoder_name,
         encoder_dim=encoder_dim,
@@ -156,6 +160,9 @@ def create_network(
         gate_lr=gate_lr,
         multiplier=multiplier,
     )
+    if ip_centroid_path:
+        network.load_centroid_from_file(ip_centroid_path)
+    return network
 
 
 def create_network_from_weights(
@@ -265,6 +272,19 @@ class IPAdapterNetwork(nn.Module):
             n_slots=num_ip_tokens,
             n_layers=resampler_layers,
             d_out=context_dim,
+        )
+
+        # Dataset-mean centroid in PE feature space, subtracted from every
+        # token before the resampler. Targets the participation-ratio-6
+        # manifold collapse measured in bench/ip_adapter/analysis.md: pooled
+        # PE features sit on a ~6-dim sub-space with cross-pair sim ~0.69, so
+        # the resampler is hunting a small per-image delta on top of a strong
+        # shared-aesthetic background. Subtracting the centroid gives the
+        # resampler the per-image delta directly. Init zero ⇒ no-op until a
+        # centroid is loaded; the buffer round-trips through state_dict, so
+        # inference inherits the same shift the network was trained with.
+        self.register_buffer(
+            "ip_centroid", torch.zeros(encoder_dim), persistent=True
         )
 
         # Per-block IP projections. Bias=False matches the existing kv_proj.
@@ -410,7 +430,37 @@ class IPAdapterNetwork(nn.Module):
         Returns:
             [B, K, context_dim]
         """
+        if self.ip_centroid.abs().sum() > 0:
+            image_features = image_features - self.ip_centroid.to(
+                dtype=image_features.dtype, device=image_features.device
+            )
         return self.resampler(image_features)
+
+    def load_centroid_from_file(self, path: str) -> None:
+        """Load a precomputed PE centroid sidecar into ``ip_centroid``.
+
+        Sidecar layout: a safetensors file with a single ``"centroid"`` tensor
+        of shape ``[encoder_dim]`` (fp32 on disk; cast to the buffer's dtype
+        on load). Produced by ``scripts/compute_pe_centroid.py``.
+        """
+        from safetensors.torch import load_file
+
+        sd = load_file(path)
+        if "centroid" not in sd:
+            raise KeyError(
+                f"PE centroid sidecar {path} has no 'centroid' key; keys={list(sd)}"
+            )
+        c = sd["centroid"]
+        if c.shape != (self.encoder_dim,):
+            raise ValueError(
+                f"PE centroid shape mismatch: got {tuple(c.shape)}, "
+                f"expected ({self.encoder_dim},)"
+            )
+        self.ip_centroid.copy_(c.to(self.ip_centroid.dtype))
+        logger.info(
+            f"IP-Adapter: loaded PE centroid from {path} "
+            f"(‖centroid‖={float(self.ip_centroid.norm()):.3f})"
+        )
 
     def set_ip_tokens(self, ip_tokens: Optional[torch.Tensor]) -> None:
         """Pre-compute per-block (K, V) post-norm and cache on each cross_attn.

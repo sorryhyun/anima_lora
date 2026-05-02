@@ -38,6 +38,14 @@ network_args = [
     # 1e-4 only reached abs_max ~0.004. A 10× higher gate LR is a reasonable
     # first try; watch ``ip_text_ratio/max`` for runaway.
     "gate_lr=1e-3",
+    # Dataset-mean PE centroid, subtracted from every token before the
+    # resampler. Targets the participation-ratio-6 manifold collapse measured
+    # in bench/ip_adapter/analysis.md — gives the resampler the per-image
+    # delta directly instead of forcing it to learn discrimination on top of
+    # a strong shared-aesthetic background. Build the sidecar once via
+    # `python scripts/compute_pe_centroid.py`. Comment out to disable (buffer
+    # stays zero ⇒ no-op; equivalent to the pre-centroid behavior).
+    "ip_centroid_path=post_image_dataset/ip_adapter/anima_pe_centroid_pe.safetensors",
 ]
 
 output_name = "anima_ip_adapter"
@@ -53,12 +61,12 @@ checkpointing_epochs = 8
 ip_diagnostics_epochs = 999
 
 ip_features_cache_to_disk = true
-
 # CFG dropout for image conditioning (independent of text dropout).
 # Read by train.py when use_ip_adapter is on.
 use_ip_adapter = true
 ip_image_drop_p = 0.05
-caption_dropout_rate = 0.1
+caption_dropout_rate = 0.05
+# gradient_accumulation_steps = 4
 
 # DiT is frozen; no need for block swapping. Adapter+resampler+vision-encoder
 # fit comfortably alongside the DiT in bf16.

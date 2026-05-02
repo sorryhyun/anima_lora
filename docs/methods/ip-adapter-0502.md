@@ -143,8 +143,107 @@ contribution is coming from default-Kaiming-loud K/V modulated by a
 near-zero gate; the "real" IP semantics learning hasn't kicked in yet at
 this LR + budget.
 
-This is the evidence that motivated the `gate_lr=1e-3` default. At
-lr=1e-4 the gate is the rate-limiter on the entire system.
+This is the evidence that initially motivated bumping `gate_lr`. At
+`lr=1e-4` the gate is the rate-limiter on the entire system. We later
+reframed this — see "Diagnostic on Run #1" below — but the data still
+holds.
+
+## Diagnostic on Run #1: PE feature analysis
+
+Run #1's "gate barely opens, val Δ still positive" pattern was the
+prompt for a feature-only diagnostic before throwing more training at
+the problem (`bench/ip_adapter/pe_feature_analysis.py`, see
+`bench/ip_adapter/analysis.md` for the full write-up). Three measurements
+on the 2407 cached PE features in `post_image_dataset/lora/`:
+
+1. **Aug-invariance histogram** (hflip / crop(0.60) / jitter@0.2 vs
+   random other image, mean-pooled cosine):
+   - hflip 0.992, jitter 0.996, crop(0.60) 0.877; cross 0.686.
+2. **Crop retrieval rank** (60% random crop, index 2407): recall@1 =
+   0.22, median rank 26 / 2407.
+3. **Effective rank**: participation ratio 6.2, 95% energy in 46 dims.
+
+What this tells us:
+
+- **Memorization is NOT the failure mode.** Crop recall@1 = 0.22 says
+  the resampler can't shortcut via feature lookup-from-crop, even at a
+  fairly aggressive 60% crop.
+- **Capacity is fine.** 95%-energy rank 46 ≫ K=16 resampler tokens.
+- **The wall is narrow signal on a collapsed manifold.** Cross-pair
+  pool sim 0.69 + participation ratio 6.2 says the entire dataset's
+  pooled PE features sit on a ~6-dim sub-space. The IP path's
+  discriminative signal is a *small per-image delta on top of a strong
+  shared-aesthetic background* — exactly the regime where a slow
+  optimizer can't extract the signal from a high-baseline-correlation
+  input distribution.
+
+This reframes Run #1's "gate barely opens but val Δ positive" cleanly:
+the signal is real (Δ positive) but small (gate doesn't need to open
+much to capture it). Pure budget/LR levers can move the gate further
+but don't address the underlying narrow-signal regime.
+
+### Detour: reference-image aug was tried and reverted
+
+The first reflex was the standard recipe — hflip + color jitter on the
+reference image (option B from the original backstops). Implemented,
+then reverted on a second look. The bench measured aug invariance at
+the *pool* level (~0.99 cos for hflip and jitter), which is exactly
+what makes them weak augmentations in feature space: the resampler
+sees nearly the same pooled signature, so aug barely changes its input.
+Aug also fights pixel memorization, which the bench just established
+isn't our failure mode. And adding noise to a small discriminative
+signal makes it harder to extract, not easier. See
+`bench/ip_adapter/analysis.md` "Why we considered, then dropped..."
+for the full reasoning trail. The aug code path is gone from the tree.
+
+## Fix: dataset-mean PE centroid (implemented 2026-05-02)
+
+The participation-ratio-6 collapse is what we want to subtract. New
+artifacts:
+
+- `IPAdapterNetwork.ip_centroid` — `[encoder_dim]` persistent buffer,
+  init zero, subtracted from every PE token before the resampler in
+  `encode_ip_tokens`. Buffer ⇒ round-trips through `state_dict` ⇒
+  inference inherits the same shift the network was trained with. No
+  extra deployment file needed; the trained `.safetensors` is
+  self-contained.
+- `IPAdapterNetwork.load_centroid_from_file(path)` — populates the
+  buffer from a sidecar at first-time training only. Resume / inference
+  ignore the path because the checkpoint already carries the buffer.
+- `scripts/compute_pe_centroid.py` — streams the cached PE files,
+  mean-pools each, averages across the dataset, writes a small `[D]`
+  safetensors. ~1 second over 2407 files. Output:
+  `post_image_dataset/ip_adapter/anima_pe_centroid_{encoder}.safetensors`.
+  The centroid is a dataset artifact, not a checkpoint artifact, so it
+  lives in its own dir alongside (not inside) the shared LoRA cache.
+- `network_args` knob `ip_centroid_path=...` in the toml. Default points
+  at the script's output path. Comment out to disable (buffer stays
+  zero ⇒ no-op, equivalent to the pre-centroid behavior).
+
+Centroid stats on this dataset: ‖centroid‖ ≈ 22.3, std ≈ 0.69, mean ≈
+−0.11. Subtracting it makes the resampler's input zero-mean per dim;
+per-element variance is unchanged (~0.69 std, same as before).
+
+### Centroid vs `ip_gate` — orthogonal, both still needed
+
+Tempting question: with the centroid handing the resampler the
+discriminative delta directly, can we drop `ip_gate`? **No** — they
+solve different problems:
+
+- `ip_gate` enforces *step-0 output equivalence* (`text_result + 0 *
+  scale * ip_out = text_result`). Centering doesn't make `ip_out` zero
+  at step 0 — it makes the resampler's *input* zero-mean, but
+  `to_v_ip` at default Kaiming still produces a random nonzero `ip_out`
+  vector that the gate has to suppress.
+- Centering accelerates the *learning dynamics on the resampler input*.
+  It doesn't address output magnitude.
+
+What the centroid *might* enable: relaxing the aggressive `gate_lr`. The
+100× boost was needed because Run #1's gate was the rate-limiter on
+slow-signal extraction. With the resampler already aligned with the
+discriminative sub-space, the optimizer has clear gradient through the
+IP path and the gate may converge at the global LR. Worth A/B-testing
+once Run #2 results are in.
 
 ## Run #2 — full-budget training
 
@@ -152,12 +251,16 @@ lr=1e-4 the gate is the rate-limiter on the entire system.
 make ip-adapter   # default preset, full data
 ```
 
-The toml as it stands has the Run #2 settings already applied:
+The toml as it stands has the Run #2 settings applied:
 
-- `caption_dropout_rate = 0.1` — forces ~10% text-free batches so the
+- `caption_dropout_rate = 0.05` — forces ~5% text-free batches so the
   IP path has a learning signal it can't fake via captions.
-- `gate_lr = 1e-3` — 10× the global LR, so the gate opens fast enough
-  to actually exercise the IP path within the training budget.
+- `gate_lr = 1e-2` — 100× the global LR. With the centroid in place
+  this is probably overkill; consider dropping to global (1e-4) or 5e-4
+  on a follow-up run if the gate runs away.
+- `ip_centroid_path=post_image_dataset/ip_adapter/anima_pe_centroid_pe.safetensors`
+  — pre-built sidecar, loaded into the persistent buffer at network
+  construction.
 
 Still worth checking before launch:
 
@@ -169,20 +272,21 @@ Still worth checking before launch:
 
 Watch during training:
 
-- `ip_gate/abs_max` should reach ~0.05–0.1 within the first epoch at
-  `gate_lr=1e-3`. If it stays under 0.01 for a full epoch, the gate
-  gradient is starving (likely a data-pairing problem, not LR).
+- `ip_gate/abs_max` should now reach ~0.05–0.1 within the first epoch
+  comfortably (centroid + `gate_lr=1e-2`). If it stays under 0.01 for a
+  full epoch, the gate gradient is still starving — most likely
+  paired-but-different data is needed, not more LR (option D below).
 - `ip_text_ratio/max` was oscillating 0.4–1.6 in Run #1 with the gate
-  near zero. With the gate ~10× higher, expect ratio max to drift up.
-  **If it climbs steadily past 2.0, the IP path is running away** — set
-  `ip_scale = 0.5` (cuts effective ratio in half) and re-run. If it
-  oscillates at a higher level but stays bounded (e.g. 1.5–2.5), that's
-  fine; the optimizer is balancing.
+  near zero. With the gate ~10× higher and centroid centering, expect
+  ratio max to drift up. **If it climbs steadily past 2.0, the IP path
+  is running away** — first try dropping `gate_lr` to 1e-3 (centroid
+  may have done the work the boost was compensating for); if it still
+  runs away, set `ip_scale = 0.5` and re-run.
 - `to_k_ip_norm/mean` and `to_v_ip_norm/mean`. In Run #1 these barely
   moved (gate was suppressing all gradient). With the gate opening
   faster, K/V should start drifting visibly. Monotonic growth ⇒ healthy.
   Spike-and-suppress (sharp grow then sharp shrink) ⇒ gate opening too
-  fast; either drop `gate_lr` to 5e-4 or add `ip_init_std=1e-4`.
+  fast; either drop `gate_lr` or add `ip_init_std=1e-4`.
 
 ## Backstop ideas if Run #2 still doesn't converge
 
@@ -202,21 +306,17 @@ The per-block `ip_gate` (already in place) handles the "step 0 = baseline"
 side, so this is now a clean copy: ~30 LoC, add an
 `ip_init = "kv_clone" | "default"` toml knob.
 
-### B. Reference-image augmentation
+### B. Reference-image augmentation — *retired, see "Detour" above*
 
-The current self-paired pipeline (`ref == target`) plus PE-Core's
-high-fidelity features (vs CLIP-L's lossy features) lets the model
-memorize pixels rather than learn appearance. Standard fix: random
-horizontal flip + color jitter + slight random crop on the reference image
-only (target stays clean). Tencent's IP-Adapter relied on CLIP's
-lossiness for this; PE-Core needs explicit aug.
-
-Lives in `prime_for_forward()` of `IPAdapterMethodAdapter` — apply
-augmentation to `images` before `encode_pe_from_imageminus1to1`. **Note:**
-this only works in the live-encode path. The pre-cached PE features
-(`{stem}_anima_pe.safetensors`) are deterministic per-image, so the
-default `ip_features_cache_to_disk=true` path can't augment. Either flip
-to live encoding (slower) or pre-cache N augmented variants per image.
+The standard recipe (hflip + color jitter + small crop) was implemented
+and reverted. Short version: pool-level PE invariance to hflip/jitter is
+too high (~0.99 cos), so aug barely changes the resampler's input;
+memorization isn't the failure mode anyway (recall@1 = 0.22); and adding
+noise to a small discriminative signal makes it harder to extract. The
+right lever for our actual problem (narrow signal on collapsed manifold)
+is the centroid subtraction now in place. Re-bench at the per-token
+level if you ever want to revisit aug — the pool-level number isn't
+informative for the resampler's actual input.
 
 ### C. Trainability bench
 
@@ -249,3 +349,7 @@ Lives in `IPAdapterMethodAdapter.validation_baselines()`.
 - Trainer integration: `IPAdapterMethodAdapter` (same file as the network)
 - Validation Δ infra: `train.py:2007-2120`,
   `library/training/method_adapter.py:156-164`
+- Feature analysis: `bench/ip_adapter/pe_feature_analysis.py` +
+  `bench/ip_adapter/analysis.md`
+- Centroid script: `scripts/compute_pe_centroid.py`
+- Centroid sidecar: `post_image_dataset/ip_adapter/anima_pe_centroid_pe.safetensors`

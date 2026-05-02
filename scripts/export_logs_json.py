@@ -1,7 +1,7 @@
 """Export TensorBoard scalar logs from a training run to JSON.
 
 Usage:
-    python scripts/export_logs_json.py output/logs/20260424161100
+    python scripts/export_logs_json.py output/logs/ip_adapter_default_20260424-1611
     python scripts/export_logs_json.py --all output/logs
     python scripts/export_logs_json.py output/logs/<run> --out metrics.json --jsonl
 
