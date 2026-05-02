@@ -49,8 +49,8 @@ COMMANDS = {
     ),
     "ip-adapter-preprocess": (
         training.cmd_ip_adapter_preprocess,
-        "Full IP-Adapter preprocess: latents + text emb + PE features. "
-        "Source: ip-adapter-dataset/  Cache: post_image_dataset/ip-adapter/.",
+        "Alias for `preprocess` + `preprocess-pe` (IP-Adapter reuses the LoRA "
+        "pipeline's caches under post_image_dataset/lora/).",
     ),
     "easycontrol": (
         training.cmd_easycontrol,

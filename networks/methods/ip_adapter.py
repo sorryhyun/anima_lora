@@ -614,6 +614,7 @@ class IPAdapterMethodAdapter(MethodAdapter):
 
     def __init__(self) -> None:
         self._vision_bundle: Optional[VisionEncoderBundle] = None
+        self._epochs_completed: int = 0
 
     def on_network_built(self, ctx: SetupCtx) -> None:
         args = ctx.args
@@ -630,7 +631,7 @@ class IPAdapterMethodAdapter(MethodAdapter):
                 "--use_ip_adapter without --ip_features_cache_to_disk requires "
                 "--cache_latents=false so batch['images'] carries the raw reference "
                 "image for live PE encoding. Either set ip_features_cache_to_disk=true "
-                "(after `make ip-adapter-preprocess`) or cache_latents=false."
+                "(after `make preprocess-pe`) or cache_latents=false."
             )
         if cache_features:
             accelerator.print(
@@ -650,7 +651,8 @@ class IPAdapterMethodAdapter(MethodAdapter):
                 f"(d_enc={self._vision_bundle.d_enc}, "
                 f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)})"
             )
-        if hasattr(net, "set_diagnostics_enabled"):
+        diag_epochs = int(getattr(args, "ip_diagnostics_epochs", 1) or 0)
+        if hasattr(net, "set_diagnostics_enabled") and diag_epochs > 0:
             net.set_diagnostics_enabled(True, device=accelerator.device)
             if accelerator.is_main_process:
                 net.diagnostic_summary(reset=True, log=True)
@@ -683,7 +685,7 @@ class IPAdapterMethodAdapter(MethodAdapter):
                 raise RuntimeError(
                     "IP-Adapter expected batch['images'] but got None — re-check "
                     "cache_latents=false in the IP-Adapter config, or set "
-                    "ip_features_cache_to_disk=true with `make ip-adapter-preprocess`."
+                    "ip_features_cache_to_disk=true with `make preprocess-pe`."
                 )
             with torch.no_grad():
                 feats_list = encode_pe_from_imageminus1to1(
@@ -706,3 +708,20 @@ class IPAdapterMethodAdapter(MethodAdapter):
         net = ctx.accelerator.unwrap_model(ctx.network)
         if hasattr(net, "diagnostic_summary"):
             net.diagnostic_summary(reset=True, log=True)
+        # Diagnostics add 56 fp32 norm reductions per step (2 per block × 28
+        # blocks). Keep them on only for the warm-up window — once we've
+        # confirmed the IP path is contributing, the per-block norms become
+        # pure overhead on the forward critical path.
+        self._epochs_completed += 1
+        diag_epochs = int(getattr(ctx.args, "ip_diagnostics_epochs", 1) or 0)
+        if (
+            self._epochs_completed >= diag_epochs
+            and hasattr(net, "set_diagnostics_enabled")
+            and getattr(net, "_diag_enabled", False)
+        ):
+            net.set_diagnostics_enabled(False)
+            if ctx.accelerator.is_main_process:
+                logger.info(
+                    f"[IP-Adapter diag] disabled after {self._epochs_completed} epoch(s) "
+                    f"(--ip_diagnostics_epochs={diag_epochs}); per-block norm overhead removed"
+                )

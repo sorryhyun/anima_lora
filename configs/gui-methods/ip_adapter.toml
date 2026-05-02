@@ -4,8 +4,10 @@
 # Adapter-only: DiT is frozen, training updates only the Perceiver resampler
 # and the per-block to_k_ip / to_v_ip projections.
 #
-# Source data: ip-adapter-dataset/   (user puts images + .txt captions here)
-# Caches:      post_image_dataset/ip-adapter/   (latents + text-emb + PE features)
+# Source data: post_image_dataset/resized/   (shared with the LoRA pipeline)
+# Caches:      post_image_dataset/lora/        (shared with the LoRA pipeline —
+#              latents + text-emb + PE features; populate via `make preprocess`
+#              + `make preprocess-pe`)
 
 dataset_config = "configs/datasets/ip_adapter.toml"
 

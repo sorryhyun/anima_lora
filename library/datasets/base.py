@@ -1128,9 +1128,8 @@ class BaseDataset(torch.utils.data.Dataset):
 
         Returns a ``[T_pe, d_enc]`` float tensor, or ``None`` if disabled. When
         the flag is on but the file is missing, raises so the user gets a clear
-        pointer to re-run ``make preprocess-pe`` (LoRA / REPA pipeline) or
-        ``make ip-adapter-preprocess`` (IP-Adapter pipeline) instead of silently
-        training with a partially-cached dataset.
+        pointer to re-run ``make preprocess-pe`` instead of silently training
+        with a partially-cached dataset.
         """
         if not self.ip_features_cache_to_disk:
             return None
@@ -1150,10 +1149,8 @@ class BaseDataset(torch.utils.data.Dataset):
         if cache_path is None:
             raise FileNotFoundError(
                 f"PE feature cache missing for {image_abs_path}. "
-                f"Looked in: {candidates}. Run `make preprocess-pe` "
-                f"(LoRA / REPA pipeline) or `make ip-adapter-preprocess` "
-                f"(IP-Adapter pipeline), or set ip_features_cache_to_disk=false "
-                f"to fall back to live PE encoding."
+                f"Looked in: {candidates}. Run `make preprocess-pe`, or set "
+                f"ip_features_cache_to_disk=false to fall back to live PE encoding."
             )
         sd = load_file(cache_path)
         feats = sd.get("image_features")
@@ -1162,7 +1159,11 @@ class BaseDataset(torch.utils.data.Dataset):
                 f"Cache {cache_path} has no 'image_features' key; "
                 f"keys={list(sd.keys())}. Re-run `make preprocess-pe`."
             )
-        return feats.float()
+        # Hand back the on-disk dtype unchanged (bf16 by default; see
+        # preprocess/cache_pe_encoder.py --dtype). The IP-Adapter resampler
+        # runs in bf16, so upcasting to fp32 here only doubles CPU memory and
+        # H2D bandwidth before being cast right back down.
+        return feats
 
     def _try_load_inversion_runs(self, image_abs_path: str) -> Optional[torch.Tensor]:
         """Load <stem>_inverted_run{0..N-1}.safetensors from self.inversion_dir.

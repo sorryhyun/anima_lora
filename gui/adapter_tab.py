@@ -292,8 +292,11 @@ class _AdapterTab(QWidget):
 
 
 class IPAdapterTab(_AdapterTab):
-    SOURCE_DIR = "ip-adapter-dataset"
-    CACHE_DIR = "post_image_dataset/ip-adapter"
+    # IP-Adapter shares the LoRA pipeline's data layout: source images in
+    # image_dataset/ (with .txt captions), caches in post_image_dataset/lora/.
+    # The "preprocess" button runs `make preprocess` + `make preprocess-pe`.
+    SOURCE_DIR = "image_dataset"
+    CACHE_DIR = "post_image_dataset/lora"
     PREPROCESS_TASK = "ip-adapter-preprocess"
     TRAIN_TASK = "ip-adapter"
     REQUIRE_PE = True

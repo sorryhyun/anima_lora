@@ -8,11 +8,9 @@ encoder's nearest-aspect bucket, runs a single forward, and saves
 ``{stem}_anima_{encoder}.safetensors`` into ``--cache_dir`` (or alongside
 the image when omitted). Skips already-cached entries (idempotent).
 
-Wrapped by ``make preprocess-pe`` (LoRA / REPA pipeline; reads
-``post_image_dataset/resized/``, writes ``post_image_dataset/lora/``) and
-by ``make ip-adapter-preprocess`` as one step of the bundled IP-Adapter
-preprocess (reads ``ip-adapter-dataset/``, writes
-``post_image_dataset/ip-adapter/``).
+Wrapped by ``make preprocess-pe`` (reads ``post_image_dataset/resized/``,
+writes ``post_image_dataset/lora/``). The same sidecars are consumed by the
+LoRA / REPA pipeline and by IP-Adapter — they share the cache directory.
 
 The cache key matches what the encoder produces at training time:
 ``encode_pe_from_imageminus1to1(bundle, x, same_bucket=True)`` -> ``[T_pe, d_enc]``.

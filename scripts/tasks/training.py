@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sys
 
+from . import preprocess as _preprocess
 from ._common import PY, ROOT, run, train
 
 
@@ -57,57 +58,15 @@ def cmd_ip_adapter(extra):
 
 
 def cmd_ip_adapter_preprocess(extra):
-    """Full IP-Adapter preprocess: VAE latents + text-encoder outputs + PE features.
+    """Full IP-Adapter preprocess.
 
-    Source: ``ip-adapter-dataset/``  Caches: ``post_image_dataset/ip-adapter/``.
+    IP-Adapter shares the LoRA pipeline's data layout — source images live in
+    ``image_dataset/`` and caches in ``post_image_dataset/lora/``. This is just
+    a convenience alias for ``make preprocess`` + ``make preprocess-pe`` so the
+    GUI's IP-Adapter tab and ``make ip-adapter-preprocess`` keep working.
     """
-    encoder = os.environ.get("IP_ENCODER", "pe")
-    src = "ip-adapter-dataset"
-    dst = "post_image_dataset/ip-adapter"
-    run(
-        [
-            PY,
-            "preprocess/cache_latents.py",
-            "--dir",
-            src,
-            "--cache_dir",
-            dst,
-            "--vae",
-            "models/vae/qwen_image_vae.safetensors",
-            "--batch_size",
-            "4",
-            "--chunk_size",
-            "64",
-        ]
-    )
-    run(
-        [
-            PY,
-            "preprocess/cache_text_embeddings.py",
-            "--dir",
-            src,
-            "--cache_dir",
-            dst,
-            "--qwen3",
-            "models/text_encoders/qwen_3_06b_base.safetensors",
-            "--dit",
-            "models/diffusion_models/anima-preview3-base.safetensors",
-            "--caption_shuffle_variants",
-            "4",
-        ]
-    )
-    run(
-        [
-            PY,
-            "preprocess/cache_pe_encoder.py",
-            "--dir",
-            src,
-            "--cache_dir",
-            dst,
-            "--encoder",
-            encoder,
-        ]
-    )
+    _preprocess.cmd_preprocess(extra)
+    _preprocess.cmd_preprocess_pe(extra)
 
 
 def cmd_easycontrol(extra):

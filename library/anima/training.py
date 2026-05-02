@@ -158,8 +158,8 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         "--ip_features_cache_to_disk",
         action="store_true",
         help="Read image features from sibling sidecars "
-        "({stem}_anima_{ip_encoder}.safetensors, produced by `make preprocess-pe` "
-        "or `make ip-adapter-preprocess`) instead of running the vision encoder live. "
+        "({stem}_anima_{ip_encoder}.safetensors, produced by `make preprocess-pe`) "
+        "instead of running the vision encoder live. "
         "Compatible with --cache_latents=true. Missing cache files raise FileNotFoundError.",
     )
     parser.add_argument(
@@ -175,6 +175,15 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
         default="pe",
         help="IP-Adapter vision encoder name (registered in library/vision/encoders.py). "
         "Default 'pe' = PE-Core-L14-336 (dynamic resolution).",
+    )
+    parser.add_argument(
+        "--ip_diagnostics_epochs",
+        type=int,
+        default=1,
+        help="Number of epochs to keep IP-Adapter per-block diagnostics on for. "
+        "Each enabled epoch adds 56 fp32 norm reductions per step (2 per block × 28 blocks). "
+        "Default 1 logs the initial summary plus epoch-0 ratios, then auto-disables. "
+        "Set to 0 to skip even the warm-up logs, or a large number to keep them on.",
     )
     parser.add_argument(
         "--use_repa",
