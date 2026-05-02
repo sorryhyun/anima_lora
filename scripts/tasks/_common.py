@@ -203,6 +203,43 @@ def run(cmd: list[str], **kwargs):
         sys.exit(result.returncode)
 
 
+def _nsys_wrapper() -> list[str] | None:
+    """Build an ``nsys profile`` prefix when PROFILE_STEPS is set.
+
+    Returns None unless PROFILE_STEPS is set. Honors NSYS_OUT for the report
+    path (default ``output/profile.nsys-rep``). ``stop-shutdown`` makes nsys
+    finalize the report and exit when ``torch.cuda.profiler.stop()`` fires
+    inside ``train.py``, so the file lands on disk without waiting for the
+    rest of training to complete.
+    """
+    if not os.environ.get("PROFILE_STEPS"):
+        return None
+    nsys = shutil.which("nsys")
+    if nsys is None:
+        print(
+            "warn: PROFILE_STEPS set but `nsys` not found on PATH; "
+            "running without profiler wrapper",
+            file=sys.stderr,
+        )
+        return None
+    out = os.environ.get("NSYS_OUT", "output/profile.nsys-rep")
+    out_path = Path(out)
+    if not out_path.is_absolute():
+        out_path = ROOT / out_path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"  > nsys report -> {out_path}")
+    return [
+        nsys,
+        "profile",
+        "-o",
+        str(out_path.with_suffix("")),  # nsys appends .nsys-rep
+        "--force-overwrite=true",
+        "--capture-range=cudaProfilerApi",
+        "--capture-range-end=stop-shutdown",
+        "--trace=cuda,nvtx,osrt,cudnn,cublas",
+    ]
+
+
 def accelerate_launch(*args: str):
     """Launch training via accelerate with extra CLI args forwarded.
 
@@ -212,21 +249,27 @@ def accelerate_launch(*args: str):
     the GUI is launched via pythonw.exe (no console), the workers also run
     under pythonw.exe and don't pop terminal windows. The accelerate.exe
     shim hardcodes python.exe as the worker interpreter, defeating that.
+
+    When PROFILE_STEPS is set, wraps the launch with ``nsys profile`` so
+    ``make <method> PROFILE_STEPS=3-5`` produces a navigable Nsight report
+    at ``output/profile.nsys-rep`` (override with NSYS_OUT).
     """
-    run(
-        [
-            PY,
-            "-m",
-            "accelerate.commands.accelerate_cli",
-            "launch",
-            "--num_cpu_threads_per_process",
-            "3",
-            "--mixed_precision",
-            "bf16",
-            "train.py",
-            *args,
-        ]
-    )
+    cmd = [
+        PY,
+        "-m",
+        "accelerate.commands.accelerate_cli",
+        "launch",
+        "--num_cpu_threads_per_process",
+        "3",
+        "--mixed_precision",
+        "bf16",
+        "train.py",
+        *args,
+    ]
+    nsys_prefix = _nsys_wrapper()
+    if nsys_prefix is not None:
+        cmd = nsys_prefix + ["--"] + cmd
+    run(cmd)
 
 
 def train(

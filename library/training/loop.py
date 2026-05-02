@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import gc
 import logging
+import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
@@ -519,6 +520,13 @@ def _profiler_step_end(state: LoopState) -> None:
         )
         state.profile_started = False
         state.profile_range = None  # don't re-trigger
+        # Exit so the accelerate launcher (nsys' primary target) tears down its
+        # process tree. Without this the worker stays alive as a reparented
+        # process and nsys blocks on --wait=all forever, leaving only an
+        # incomplete /tmp/*.qdstrm with no finalized .nsys-rep.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        sys.exit(0)
 
 
 def _maybe_scale_norm(state: LoopState):
