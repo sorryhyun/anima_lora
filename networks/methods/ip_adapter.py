@@ -41,7 +41,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from library.log import setup_logging
-from library.training.method_adapter import MethodAdapter, SetupCtx, StepCtx
+from library.training.method_adapter import (
+    MethodAdapter,
+    SetupCtx,
+    StepCtx,
+    ValidationBaseline,
+)
 from library.vision import (
     VisionEncoderBundle,
     encode_pe_from_imageminus1to1,
@@ -615,6 +620,10 @@ class IPAdapterMethodAdapter(MethodAdapter):
     def __init__(self) -> None:
         self._vision_bundle: Optional[VisionEncoderBundle] = None
         self._epochs_completed: int = 0
+        # Set by the validation-baseline sweep to force ip_tokens=None on the
+        # next prime_for_forward, so the baseline forward measures DiT-only
+        # behavior (no IP path). Restored to False after the baseline forward.
+        self._force_drop_ip_tokens: bool = False
 
     def on_network_built(self, ctx: SetupCtx) -> None:
         args = ctx.args
@@ -666,6 +675,10 @@ class IPAdapterMethodAdapter(MethodAdapter):
         if not hasattr(network, "set_ip_tokens"):
             return
 
+        if self._force_drop_ip_tokens:
+            network.set_ip_tokens(None)
+            return
+
         drop_p = float(getattr(args, "ip_image_drop_p", 0.1) or 0.0)
         if is_train and drop_p > 0.0 and random.random() < drop_p:
             network.set_ip_tokens(None)
@@ -700,6 +713,22 @@ class IPAdapterMethodAdapter(MethodAdapter):
         # flows from here.
         ip_tokens = network.encode_ip_tokens(ip_features)
         network.set_ip_tokens(ip_tokens)
+
+    def validation_baselines(self) -> list[ValidationBaseline]:
+        # Reference and target are the same image during training, so naive FM
+        # loss can be lowered just by routing IP tokens through to_k_ip/to_v_ip
+        # (a copy shortcut). Pair the primary forward with a "no_ip" forward —
+        # same noise, same batch, same sigma, but ip_tokens=None — so the
+        # logged delta isolates the IP path's actual contribution. If the
+        # delta is ~0 the resampler / per-block KV aren't learning anything
+        # useful; if it's growing the IP path is doing real work.
+        def _enter() -> None:
+            self._force_drop_ip_tokens = True
+
+        def _exit() -> None:
+            self._force_drop_ip_tokens = False
+
+        return [ValidationBaseline(name="no_ip", enter=_enter, exit=_exit)]
 
     def on_epoch_end(self, ctx: StepCtx) -> None:
         # Dump per-block param norms + ‖ip_out‖/‖text_result‖ ratio averaged

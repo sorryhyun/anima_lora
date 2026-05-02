@@ -306,7 +306,12 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "--profile_steps",
         type=str,
         default=None,
-        help="profile CUDA kernels for the given step range, e.g. '3-5'. Exports a Chrome trace to profile_trace.json",
+        help=(
+            "toggle the CUDA profiler for the given step range, e.g. '3-5'. "
+            "Pair with: nsys profile --capture-range=cudaProfilerApi "
+            "--capture-range-end=stop ... so nsys only records that window. "
+            "NVTX ranges (step / forward / backward / optimizer) label the timeline."
+        ),
     )
     parser.add_argument(
         "--torch_compile",

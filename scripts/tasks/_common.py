@@ -248,6 +248,9 @@ def train(
     artist = os.environ.get("ARTIST")
     if artist and not any(a == "--artist_filter" for a in extra):
         args += ["--artist_filter", artist]
+    profile_steps = os.environ.get("PROFILE_STEPS")
+    if profile_steps and not any(a == "--profile_steps" for a in extra):
+        args += ["--profile_steps", profile_steps]
     accelerate_launch(*args, *extra)
 
 

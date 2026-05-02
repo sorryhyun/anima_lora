@@ -42,6 +42,29 @@ class StepCtx:
 
 
 @dataclass(frozen=True)
+class ValidationBaseline:
+    """A "without-this-method" reference forward run alongside the primary
+    validation pass. The trainer:
+      1. snapshots the RNG before the primary forward,
+      2. runs the primary (with the adapter fully active),
+      3. for each baseline: rewinds the RNG, calls ``enter`` (mutates adapter
+         state), re-runs ``process_batch``, then calls ``exit`` to restore.
+
+    Same noise + same batch + same sigma → the delta isolates the adapter's
+    contribution. Logged as ``<prefix>_baseline_<name>`` (avg) and
+    ``<prefix>_baseline_<name>_delta`` (baseline − primary; positive ⇒ the
+    method is helping).
+
+    Used by IP-Adapter where reference == target leaks information into the
+    primary FM loss; the "no_ip" baseline reveals whether the IP path is
+    actually contributing or just shortcutting via the copy path."""
+
+    name: str
+    enter: Callable[[], None]
+    exit: Callable[[], None]
+
+
+@dataclass(frozen=True)
 class ForwardArtifacts:
     """Inputs and outputs of the primary DiT forward, handed to adapters
     that need to run additional forwards inside ``extra_forwards``.
@@ -129,6 +152,16 @@ class MethodAdapter:
         ``set_grad_enabled`` / ``autocast`` scope. Returns a dict the trainer
         merges into ``loss_aux`` before composing the fake-branch loss."""
         return None
+
+    def validation_baselines(self) -> list[ValidationBaseline]:
+        """Return baselines to evaluate alongside the primary validation
+        forward. For each baseline, the trainer re-runs ``process_batch`` on
+        the same (batch, sigma) with the adapter perturbed (e.g. IP-Adapter
+        zeroing its image conditioning) and logs the delta. Used when the
+        primary FM loss is dominated by paths the method shortcircuits and
+        therefore doesn't reflect the adapter's actual contribution. Default
+        empty — adapters opt in."""
+        return []
 
     def on_epoch_end(self, ctx: StepCtx) -> None:
         """Called once at the end of each epoch on the main process."""

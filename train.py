@@ -44,6 +44,7 @@ from library.training.method_adapter import (
     MethodAdapter,
     SetupCtx,
     StepCtx,
+    ValidationBaseline,
     resolve_adapters,
 )
 from library.config.io import (
@@ -738,6 +739,36 @@ class AnimaTrainer:
             if args.trim_crossattn_kv or hasattr(network, "append_postfix"):
                 t5_attn_mask = t5_attn_mask.to(accelerator.device)
 
+        # On-device caption dropout. The freshly-transferred GPU tensors are
+        # not aliased to the dataloader's CPU copies, so we can write in-place
+        # — no clones, no main-thread CPU memcpy on the critical path.
+        caption_dropout_rates = (
+            batch.get("caption_dropout_rates") if isinstance(batch, dict) else None
+        )
+        if caption_dropout_rates is not None:
+            if crossattn_emb is None:
+                ctx.text_encoding_strategy.apply_caption_dropout_inplace(
+                    caption_dropout_rates,
+                    prompt_embeds=prompt_embeds,
+                    attn_mask=attn_mask,
+                    t5_input_ids=t5_input_ids,
+                    t5_attn_mask=t5_attn_mask,
+                )
+            else:
+                # In this branch prompt_embeds / attn_mask / t5_input_ids stay
+                # on CPU because they're unused downstream — only zero what the
+                # model actually consumes (and only touch t5_attn_mask if it
+                # was moved to device above).
+                ctx.text_encoding_strategy.apply_caption_dropout_inplace(
+                    caption_dropout_rates,
+                    crossattn_emb=crossattn_emb,
+                    t5_attn_mask=(
+                        t5_attn_mask
+                        if t5_attn_mask is not None and t5_attn_mask.is_cuda
+                        else None
+                    ),
+                )
+
         # Create padding mask
         bs = latents.shape[0]
         h_latent = latents.shape[-2]
@@ -978,27 +1009,27 @@ class AnimaTrainer:
         *,
         is_train=True,
     ) -> torch.Tensor:
-        """Override base process_batch for caption dropout with cached text encoder outputs."""
+        """Override base process_batch to surface caption_dropout_rates for on-device dropout."""
 
-        # Text encoder conditions
+        # The cached text-encoder outputs list arrives as
+        # [..., caption_dropout_rates] from the dataset (see strategy.py
+        # cache layout). Split the trailing rates tensor off so the inner
+        # path sees the canonical 4- or 5-element conds list, and stash the
+        # rates on the batch — get_noise_pred_and_target applies the dropout
+        # in-place after the H2D transfer. Doing it here on CPU would clone
+        # prompt_embeds / crossattn_emb on the critical path before the H2D
+        # copy, blocking the main thread.
         text_encoder_outputs_list = batch.get("text_encoder_outputs_list", None)
-        anima_text_encoding_strategy: strategy_anima.AnimaTextEncodingStrategy = (
-            ctx.text_encoding_strategy
-        )
         if text_encoder_outputs_list is not None:
             caption_dropout_rates = text_encoder_outputs_list[-1]
             encoder_outputs = text_encoder_outputs_list[:-1]
-
-            # Apply caption dropout to cached outputs
-            encoder_outputs = (
-                anima_text_encoding_strategy.drop_cached_text_encoder_outputs(
-                    *encoder_outputs, caption_dropout_rates=caption_dropout_rates
-                )
-            )
-            # Use a shallow-copied batch so the original text_encoder_outputs_list
-            # (with caption_dropout_rates appended) stays intact for validation's
-            # multi-timestep loop which reuses the same batch.
-            batch = {**batch, "text_encoder_outputs_list": encoder_outputs}
+            # Shallow copy so the original list (with rates appended) stays
+            # intact for validation's per-sigma loop that reuses the batch.
+            batch = {
+                **batch,
+                "text_encoder_outputs_list": encoder_outputs,
+                "caption_dropout_rates": caption_dropout_rates,
+            }
 
         return self._process_batch_inner(ctx, batch, is_train=is_train)
 
@@ -1430,7 +1461,14 @@ class AnimaTrainer:
 
     @staticmethod
     def _parse_profile_steps(args) -> tuple[int, int] | None:
-        """Parse --profile_steps 'start-end' into (start, end) or None."""
+        """Parse --profile_steps 'start-end' into (start, end) or None.
+
+        When set, the loop calls ``torch.cuda.profiler.start()`` at ``start``
+        and ``stop()`` after ``end``, so pair this with::
+
+            nsys profile --capture-range=cudaProfilerApi --capture-range-end=stop \\
+                accelerate launch ... train.py --profile_steps 3-5
+        """
         raw = getattr(args, "profile_steps", None)
         if not raw:
             return None
@@ -1979,14 +2017,35 @@ class AnimaTrainer:
             args.validation_seed if args.validation_seed is not None else args.seed
         )
 
+        # Adapter-supplied "without-this-method" baselines (e.g. IP-Adapter's
+        # "no_ip"). For each (val_step, sigma) we'll re-run process_batch with
+        # the adapter perturbed and log the delta — this is what isolates the
+        # method's actual contribution when the primary FM loss is dominated
+        # by paths the method shortcircuits.
+        baselines: list[ValidationBaseline] = []
+        for adapter in self._adapters:
+            baselines.extend(adapter.validation_baselines())
+
         val_progress_bar = tqdm(
-            range(val.total_steps),
+            range(val.total_steps * (1 + len(baselines))),
             smoothing=0,
             disable=not accelerator.is_local_main_process,
             desc=progress_desc,
         )
         val_timesteps_step = 0
         per_sigma_losses = {s: [] for s in val.sigmas}
+        per_baseline_per_sigma: dict[str, dict[float, list[float]]] = {
+            b.name: {s: [] for s in val.sigmas} for b in baselines
+        }
+
+        def _cudagraph_step_begin() -> None:
+            if not self._cudagraph_mark_step:
+                return
+            net_unwrapped = accelerator.unwrap_model(ctx.network)
+            if hasattr(net_unwrapped, "clear_step_caches"):
+                net_unwrapped.clear_step_caches()
+            torch.compiler.cudagraph_mark_step_begin()
+
         for val_step, batch in enumerate(val.dataloader):
             if val_step >= val.steps:
                 break
@@ -1997,14 +2056,23 @@ class AnimaTrainer:
                 # Pin sigma via t_min/t_max (what the noise function reads)
                 args.t_min = args.t_max = sigma
 
+                # Snapshot RNG so each baseline forward sees the same noise
+                # the primary did — only the adapter state differs, so the
+                # delta is the adapter's contribution rather than noise.
+                rng_pre_primary = (
+                    (
+                        torch.get_rng_state(),
+                        torch.cuda.get_rng_state(),
+                        random.getstate(),
+                    )
+                    if baselines
+                    else None
+                )
+
                 # Mirror the training loop's cudagraph step-begin marker so
                 # cudagraph_trees doesn't re-record / leak a memory pool on
                 # each val forward (see the train-loop call site for context).
-                if self._cudagraph_mark_step:
-                    net_unwrapped = accelerator.unwrap_model(ctx.network)
-                    if hasattr(net_unwrapped, "clear_step_caches"):
-                        net_unwrapped.clear_step_caches()
-                    torch.compiler.cudagraph_mark_step_begin()
+                _cudagraph_step_begin()
 
                 loss = self.process_batch(ctx, batch, is_train=False)
 
@@ -2024,6 +2092,47 @@ class AnimaTrainer:
                 self.on_validation_step_end(ctx, batch)
                 val_timesteps_step += 1
 
+                # --- Baseline sweep: same (batch, sigma, noise), perturbed
+                # adapter state. Logged separately as `<prefix>_baseline_<n>`.
+                if baselines:
+                    rng_post_primary = (
+                        torch.get_rng_state(),
+                        torch.cuda.get_rng_state(),
+                        random.getstate(),
+                    )
+                    for baseline in baselines:
+                        # Rewind RNG to pre-primary so the baseline draws the
+                        # same noise (and any other randomness) the primary
+                        # saw — without this, the delta is dominated by
+                        # noise variance not the adapter's contribution.
+                        torch.set_rng_state(rng_pre_primary[0])
+                        torch.cuda.set_rng_state(rng_pre_primary[1])
+                        random.setstate(rng_pre_primary[2])
+
+                        baseline.enter()
+                        try:
+                            _cudagraph_step_begin()
+                            bl_loss = self.process_batch(
+                                ctx, batch, is_train=False
+                            ).detach().item()
+                        finally:
+                            baseline.exit()
+                        per_baseline_per_sigma[baseline.name][sigma].append(bl_loss)
+                        val_progress_bar.update(1)
+                        val_progress_bar.set_postfix(
+                            {
+                                postfix_label: val_loss_recorder.moving_average,
+                                "sigma": f"{sigma:.2f}",
+                                f"Δ_{baseline.name}": f"{bl_loss - current_loss:+.4f}",
+                            }
+                        )
+                        self.on_validation_step_end(ctx, batch)
+                    # Resume the RNG stream where the primary left it so the
+                    # next (val_step, sigma) draws fresh noise as before.
+                    torch.set_rng_state(rng_post_primary[0])
+                    torch.cuda.set_rng_state(rng_post_primary[1])
+                    random.setstate(rng_post_primary[2])
+
         if ctx.is_tracking:
             loss_validation_divergence = (
                 val_loss_recorder.moving_average
@@ -2036,6 +2145,30 @@ class AnimaTrainer:
             for s, losses in per_sigma_losses.items():
                 if losses:
                     logs[f"loss/validation/sigma_{s:.2f}"] = sum(losses) / len(losses)
+
+            # Baseline aggregates. Prefix mirrors the primary key
+            # ("loss/validation/step_average" → "loss/validation/step") so
+            # step- and epoch-validation get distinct baseline series.
+            primary_avg = val_loss_recorder.moving_average
+            base_prefix = log_avg_key.removesuffix("_average")
+            for b in baselines:
+                per_sigma = per_baseline_per_sigma[b.name]
+                all_losses = [
+                    v for losses in per_sigma.values() for v in losses
+                ]
+                if not all_losses:
+                    continue
+                bl_avg = sum(all_losses) / len(all_losses)
+                logs[f"{base_prefix}_baseline_{b.name}"] = bl_avg
+                logs[f"{base_prefix}_baseline_{b.name}_delta"] = (
+                    bl_avg - primary_avg
+                )
+                for s, losses in per_sigma.items():
+                    if losses:
+                        logs[
+                            f"{base_prefix}_baseline_{b.name}/sigma_{s:.2f}"
+                        ] = sum(losses) / len(losses)
+
             logging_fn(accelerator, logs, global_step, epoch + 1)
 
         self._restore_rng_state(rng_states)
@@ -2605,8 +2738,12 @@ class AnimaTrainer:
         )
 
         # --- Profiler setup ---
+        # nsys workflow: --profile_steps START-END toggles the cuda profiler
+        # API around the requested step window. Wrap the launch with
+        #   nsys profile --capture-range=cudaProfilerApi --capture-range-end=stop ...
+        # so nsys only records that window. NVTX ranges below label phases.
         profile_range = self._parse_profile_steps(args)
-        profiler_ctx = None
+        profile_started = False
 
         for epoch in range(epoch_to_start, num_train_epochs):
             accelerator.print(f"\nepoch {epoch + 1}/{num_train_epochs}\n")
@@ -2636,18 +2773,15 @@ class AnimaTrainer:
                 if (
                     profile_range
                     and global_step == profile_range[0]
-                    and profiler_ctx is None
+                    and not profile_started
                 ):
                     accelerator.print(f"\n[profiler] starting at step {global_step}")
-                    profiler_ctx = torch.profiler.profile(
-                        activities=[
-                            torch.profiler.ProfilerActivity.CPU,
-                            torch.profiler.ProfilerActivity.CUDA,
-                        ],
-                        record_shapes=True,
-                        with_stack=True,
-                    )
-                    profiler_ctx.__enter__()
+                    torch.cuda.synchronize()
+                    torch.cuda.profiler.start()
+                    profile_started = True
+
+                if profile_started:
+                    torch.cuda.nvtx.range_push(f"step={global_step}")
 
                 with accelerator.accumulate(training_model):
                     on_step_start_for_network(text_encoder, unet)
@@ -2673,7 +2807,11 @@ class AnimaTrainer:
                             net_unwrapped.clear_step_caches()
                         torch.compiler.cudagraph_mark_step_begin()
 
+                    if profile_started:
+                        torch.cuda.nvtx.range_push("forward")
                     loss = self.process_batch(ctx, batch, is_train=True)
+                    if profile_started:
+                        torch.cuda.nvtx.range_pop()
 
                     # Split-backward path (APEX) backwards both branches
                     # inline inside process_batch and returns a detached
@@ -2683,7 +2821,11 @@ class AnimaTrainer:
                     if getattr(self, "_split_backward_consumed", False):
                         self._split_backward_consumed = False
                     else:
+                        if profile_started:
+                            torch.cuda.nvtx.range_push("backward")
                         accelerator.backward(loss)
+                        if profile_started:
+                            torch.cuda.nvtx.range_pop()
                     if accelerator.sync_gradients:
                         # HydraLoRA "best-expert" warmup: keep grads only on
                         # top-k experts by per-expert grad-norm during warmup.
@@ -2725,26 +2867,26 @@ class AnimaTrainer:
                                 params_to_clip, args.max_grad_norm
                             )
 
+                    if profile_started:
+                        torch.cuda.nvtx.range_push("optimizer")
                     optimizer.step()
                     lr_scheduler.step()
                     optimizer.zero_grad(set_to_none=True)
+                    if profile_started:
+                        torch.cuda.nvtx.range_pop()
 
                 # --- Profiler: stop recording ---
-                if profiler_ctx is not None and global_step >= profile_range[1]:
-                    profiler_ctx.__exit__(None, None, None)
-                    trace_path = os.path.join(args.output_dir, "profile_trace.json")
-                    profiler_ctx.export_chrome_trace(trace_path)
+                if profile_started:
+                    # close the per-step NVTX range opened above
+                    torch.cuda.nvtx.range_pop()
+                if profile_started and global_step >= profile_range[1]:
+                    torch.cuda.synchronize()
+                    torch.cuda.profiler.stop()
                     accelerator.print(f"\n[profiler] stopped at step {global_step}")
-                    accelerator.print(f"[profiler] trace saved to {trace_path}")
                     accelerator.print(
-                        "[profiler] open in https://ui.perfetto.dev for visual inspection\n"
+                        "[profiler] open the .nsys-rep with the Nsight Systems GUI\n"
                     )
-                    key_avg = profiler_ctx.key_averages(group_by_stack_n=0)
-                    accelerator.print("[profiler] top 30 CUDA kernels by total time:\n")
-                    accelerator.print(
-                        key_avg.table(sort_by="cuda_time_total", row_limit=30)
-                    )
-                    profiler_ctx = None
+                    profile_started = False
                     profile_range = None  # don't re-trigger
 
                 if args.scale_weight_norms:

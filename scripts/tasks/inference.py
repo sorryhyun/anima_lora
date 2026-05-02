@@ -8,6 +8,7 @@ env or first positional arg, copy the ref alongside the generated output.
 from __future__ import annotations
 
 import os
+import random
 import shutil
 import sys
 from pathlib import Path
@@ -20,6 +21,19 @@ from ._common import (
     latest_output,
     run,
 )
+
+_REF_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def _random_ref_image(directory: Path) -> str | None:
+    if not directory.is_dir():
+        return None
+    pool = [p for p in directory.iterdir() if p.suffix.lower() in _REF_IMAGE_EXTS]
+    if not pool:
+        return None
+    pick = random.choice(pool)
+    print(f"  > Random ref: {pick}")
+    return str(pick)
 
 
 def cmd_test(extra):
@@ -228,21 +242,27 @@ def cmd_test_ip(extra):
     """Inference with latest IP-Adapter weight.
 
     Reference image is taken from REF_IMAGE env or the first positional arg.
+    Falls back to a random image from ``post_image_dataset/resized/`` (the
+    IP-Adapter source layout) when neither is supplied.
     PROMPT, NEG, IP_SCALE env vars override defaults. Saves to output/tests/ip/
     and copies the ref image alongside the generated output as ``<name>_ref.png``.
 
     Examples:
       python tasks.py test-ip ref.png --prompt "a girl in a coffee shop"
       REF_IMAGE=ref.png IP_SCALE=0.8 python tasks.py test-ip
+      python tasks.py test-ip                 # random ref from post_image_dataset/resized/
     """
     ref_image = os.environ.get("REF_IMAGE", "").strip()
     if not ref_image and extra and not extra[0].startswith("-"):
         ref_image = extra[0]
         extra = extra[1:]
     if not ref_image:
+        ref_image = _random_ref_image(ROOT / "post_image_dataset" / "resized") or ""
+    if not ref_image:
         print(
             "Usage: python tasks.py test-ip <ref_image> [extra...]\n"
-            "   or: REF_IMAGE=path/to/ref.png python tasks.py test-ip [extra...]",
+            "   or: REF_IMAGE=path/to/ref.png python tasks.py test-ip [extra...]\n"
+            "   (no ref given and post_image_dataset/resized/ is empty)",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -262,8 +282,7 @@ def cmd_test_ip(extra):
     ]
     if scale := os.environ.get("IP_SCALE"):
         args += ["--ip_scale", scale]
-    if prompt := os.environ.get("PROMPT"):
-        args += ["--prompt", prompt]
+    args += ["--prompt", os.environ.get("PROMPT") or "double peace, v v,"]
     if neg := os.environ.get("NEG"):
         args += ["--negative_prompt", neg]
     args += list(extra)
@@ -284,6 +303,8 @@ def cmd_test_easycontrol(extra):
     """Inference with latest EasyControl weight.
 
     Reference image is taken from REF_IMAGE env or the first positional arg.
+    Falls back to a random image from ``easycontrol-dataset/`` (the EasyControl
+    source layout) when neither is supplied.
     PROMPT, NEG, EC_SCALE env vars override defaults. Saves to
     output/tests/easycontrol/ and copies the ref image alongside the generated
     output as ``<name>_ref.png``.
@@ -291,15 +312,19 @@ def cmd_test_easycontrol(extra):
     Examples:
       python tasks.py test-easycontrol ref.png --prompt "a girl in a coffee shop"
       REF_IMAGE=ref.png EC_SCALE=0.8 python tasks.py test-easycontrol
+      python tasks.py test-easycontrol         # random ref from easycontrol-dataset/
     """
     ref_image = os.environ.get("REF_IMAGE", "").strip()
     if not ref_image and extra and not extra[0].startswith("-"):
         ref_image = extra[0]
         extra = extra[1:]
     if not ref_image:
+        ref_image = _random_ref_image(ROOT / "easycontrol-dataset") or ""
+    if not ref_image:
         print(
             "Usage: python tasks.py test-easycontrol <ref_image> [extra...]\n"
-            "   or: REF_IMAGE=path/to/ref.png python tasks.py test-easycontrol [extra...]",
+            "   or: REF_IMAGE=path/to/ref.png python tasks.py test-easycontrol [extra...]\n"
+            "   (no ref given and easycontrol-dataset/ is empty)",
             file=sys.stderr,
         )
         sys.exit(1)

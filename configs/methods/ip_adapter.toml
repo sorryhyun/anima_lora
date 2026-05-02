@@ -45,19 +45,14 @@ max_train_epochs = 12
 save_every_n_epochs = 12
 checkpointing_epochs = 12
 
-# Cached-feature path: VAE latents, text encoder outputs, AND PE patch features
-# all live on disk under post_image_dataset/lora/. The vision encoder is NOT
-# loaded during training, and batch["images"] is unused.
-# Run `make preprocess` + `make preprocess-pe` once to populate the caches.
-# (cache_latents{_to_disk} and cache_text_encoder_outputs{_to_disk} default to
-# true in configs/base.toml — only the IP-specific flag is set here.)
+
 ip_features_cache_to_disk = true
 
 # CFG dropout for image conditioning (independent of text dropout).
 # Read by train.py when use_ip_adapter is on.
 use_ip_adapter = true
-ip_image_drop_p = 0.1
-caption_dropout_rate = 0.2
+ip_image_drop_p = 0.05
+caption_dropout_rate = 0.0
 
 # DiT is frozen; no need for block swapping. Adapter+resampler+vision-encoder
 # fit comfortably alongside the DiT in bf16.

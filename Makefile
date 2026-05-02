@@ -5,8 +5,8 @@
 # ENCODER=pe, METHOD=lora, MODEL_DIR=..., ADAPTER_DIR=..., MULTIPLIER=...,
 # IP_SCALE=..., EC_SCALE=..., PROMPT="...", NEG="...", INVERT_NAME=...,
 # BENCH_INVERSIONS=..., FINETUNE_WARM=..., FINETUNE_BS=..., FINETUNE_SWAP=...,
-# RUN=..., ALL=1, JSONL=1, GUI_PRESETS=...) are exported as env vars so
-# tasks.py picks them up.
+# RUN=..., ALL=1, JSONL=1, GUI_PRESETS=..., PROFILE_STEPS=3-5) are exported
+# as env vars so tasks.py picks them up.
 #
 # Pass extra training/inference flags via ARGS="--network_dim 32".
 # See `make help` (or `python tasks.py --help`) for the full command list.

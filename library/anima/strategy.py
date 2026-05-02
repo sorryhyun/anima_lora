@@ -116,7 +116,7 @@ class AnimaTextEncodingStrategy(TextEncodingStrategy):
         Returns:
             [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask]
         """
-        # Do not handle dropout here; handled dataset-side or in drop_cached_text_encoder_outputs()
+        # Do not handle dropout here; handled dataset-side or in apply_caption_dropout_inplace()
 
         qwen3_text_encoder = models[0]
         qwen3_input_ids, qwen3_attn_mask, t5_input_ids, t5_attn_mask = tokens
@@ -134,60 +134,54 @@ class AnimaTextEncodingStrategy(TextEncodingStrategy):
 
         return [prompt_embeds, qwen3_attn_mask, t5_input_ids, t5_attn_mask]
 
-    def drop_cached_text_encoder_outputs(
+    def apply_caption_dropout_inplace(
         self,
-        prompt_embeds: torch.Tensor,
-        attn_mask: torch.Tensor,
-        t5_input_ids: torch.Tensor,
-        t5_attn_mask: torch.Tensor,
+        caption_dropout_rates: torch.Tensor,
+        *,
+        prompt_embeds: Optional[torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
+        t5_input_ids: Optional[torch.Tensor] = None,
+        t5_attn_mask: Optional[torch.Tensor] = None,
         crossattn_emb: Optional[torch.Tensor] = None,
-        caption_dropout_rates: Optional[torch.Tensor] = None,
-    ) -> List[torch.Tensor]:
-        """Apply dropout to cached text encoder outputs.
+    ) -> None:
+        """Zero per-sample text conditioning at the per-sample dropout rate.
 
-        Called during training when using cached outputs.
-        Replaces dropped items with pre-cached unconditional embeddings (from encoding "")
+        Operates in-place on whichever tensors are passed — caller must own
+        them (e.g. fresh outputs of a `.to(device)` H2D copy that aren't
+        aliased to the dataloader's CPU tensors). Pass only the tensors
+        actually consumed downstream so the unused ones can stay on CPU.
+
+        Replaces dropped items with the unconditional encoding (encoding "")
         to match diffusion-pipe-main behavior.
         """
-        if caption_dropout_rates is None:
-            outputs = [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask]
-            if crossattn_emb is not None:
-                outputs.append(crossattn_emb)
-            return outputs
-
-        # Vectorized dropout: single RNG call, boolean-indexed assignment
-        drop_mask = (
-            torch.rand(prompt_embeds.shape[0], device=caption_dropout_rates.device)
-            < caption_dropout_rates
+        device_tensor = next(
+            (
+                t
+                for t in (prompt_embeds, crossattn_emb, t5_attn_mask, attn_mask, t5_input_ids)
+                if t is not None
+            ),
+            None,
         )
-        if not drop_mask.any():
-            outputs = [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask]
-            if crossattn_emb is not None:
-                outputs.append(crossattn_emb)
-            return outputs
+        if device_tensor is None:
+            return
+        device = device_tensor.device
+        rates = caption_dropout_rates.to(device, non_blocking=True)
+        # No `.any()` early-out: that would force a GPU sync. Indexed
+        # assignment with an all-False mask is a cheap no-op on device.
+        drop_mask = torch.rand(rates.shape[0], device=device) < rates
 
-        # Only clone tensors that will be modified
-        prompt_embeds = prompt_embeds.clone()
-        prompt_embeds[drop_mask] = 0
+        if prompt_embeds is not None:
+            prompt_embeds[drop_mask] = 0
         if attn_mask is not None:
-            attn_mask = attn_mask.clone()
             attn_mask[drop_mask] = 0
         if t5_input_ids is not None:
-            t5_input_ids = t5_input_ids.clone()
-            t5_input_ids[drop_mask, 0] = 1  # Set to </s> token ID
+            t5_input_ids[drop_mask, 0] = 1  # </s> token ID
             t5_input_ids[drop_mask, 1:] = 0
         if t5_attn_mask is not None:
-            t5_attn_mask = t5_attn_mask.clone()
             t5_attn_mask[drop_mask, 0] = 1
             t5_attn_mask[drop_mask, 1:] = 0
         if crossattn_emb is not None:
-            crossattn_emb = crossattn_emb.clone()
             crossattn_emb[drop_mask] = 0
-
-        outputs = [prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask]
-        if crossattn_emb is not None:
-            outputs.append(crossattn_emb)
-        return outputs
 
 
 class AnimaTextEncoderOutputsCachingStrategy(TextEncoderOutputsCachingStrategy):
