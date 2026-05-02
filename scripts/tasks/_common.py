@@ -207,10 +207,18 @@ def _nsys_wrapper() -> list[str] | None:
     """Build an ``nsys profile`` prefix when PROFILE_STEPS is set.
 
     Returns None unless PROFILE_STEPS is set. Honors NSYS_OUT for the report
-    path (default ``output/profile.nsys-rep``). ``stop-shutdown`` makes nsys
-    finalize the report and exit when ``torch.cuda.profiler.stop()`` fires
-    inside ``train.py``, so the file lands on disk without waiting for the
-    rest of training to complete.
+    path (default ``output/profile.nsys-rep``).
+
+    Why ``--capture-range-end=stop`` (not ``stop-shutdown``) and ``--wait=primary``:
+    the wrapped tree is ``nsys → accelerate launcher → train.py worker``. With
+    ``stop-shutdown`` nsys SIGTERMs the launcher the moment ``cuProfilerStop``
+    fires, the launcher dies before reaping the worker, the worker gets
+    reparented to init, and the default ``--wait=all`` blocks forever waiting
+    for it. Instead: the worker calls ``cuProfilerStop`` and then voluntarily
+    ``sys.exit(0)`` (see ``library/training/loop.py`` ``_profiler_step_end``),
+    the launcher exits naturally, and ``--wait=primary`` lets nsys finalize
+    the report as soon as the launcher (its primary target) is gone — no
+    leftover ``/tmp/*.qdstrm``.
     """
     if not os.environ.get("PROFILE_STEPS"):
         return None
@@ -235,7 +243,8 @@ def _nsys_wrapper() -> list[str] | None:
         str(out_path.with_suffix("")),  # nsys appends .nsys-rep
         "--force-overwrite=true",
         "--capture-range=cudaProfilerApi",
-        "--capture-range-end=stop-shutdown",
+        "--capture-range-end=stop",
+        "--wait=primary",
         "--trace=cuda,nvtx,osrt,cudnn,cublas",
     ]
 

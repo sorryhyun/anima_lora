@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import gc
 import logging
+import os
 import sys
 import time
 from dataclasses import dataclass
@@ -520,13 +521,15 @@ def _profiler_step_end(state: LoopState) -> None:
         )
         state.profile_started = False
         state.profile_range = None  # don't re-trigger
-        # Exit so the accelerate launcher (nsys' primary target) tears down its
-        # process tree. Without this the worker stays alive as a reparented
-        # process and nsys blocks on --wait=all forever, leaving only an
-        # incomplete /tmp/*.qdstrm with no finalized .nsys-rep.
+        # Hard-exit so the accelerate launcher exits and nsys finalizes the
+        # report. sys.exit(0) hangs in interpreter shutdown here (DataLoader
+        # workers + NCCL/CUDA atexit handlers all wait on futexes). os._exit
+        # skips that cleanup; the profile buffer is already flushed by the
+        # preceding cuda.synchronize() + cuProfilerStop, and the .nsys-rep is
+        # owned by nsys, not this process, so the hard exit is safe.
         sys.stdout.flush()
         sys.stderr.flush()
-        sys.exit(0)
+        os._exit(0)
 
 
 def _maybe_scale_norm(state: LoopState):

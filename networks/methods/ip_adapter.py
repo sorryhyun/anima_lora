@@ -11,7 +11,10 @@ Architecture (adapter-only — DiT frozen):
 Init:
   - to_k_ip / to_v_ip near-zero (std 1e-4) — at step 0, the IP path contributes
     ~zero so training starts from baseline DiT behavior. Standard IP-Adapter
-    trick (mirrors postfix's zero-init last layer).
+    trick (mirrors postfix's zero-init last layer). For this to actually hold,
+    set_ip_tokens deliberately does NOT run the IP K/V through the cross_attn
+    RMSNorms (k_norm/v_norm) — those would rescale to unit RMS and cancel the
+    soft-gate effect.
   - Resampler queries init at N(0, 0.15) (img2emb's PerceiverResampler default).
 
 Hooking:
@@ -23,10 +26,11 @@ Hooking:
 
 Train-time contract:
   Caller invokes network.set_ip_tokens(ip_tokens) ONCE per batch before the
-  DiT forward. set_ip_tokens precomputes per-block (K, V) post-RMSNorm so the
-  patched cross-attn forward is a single SDPA call (no redundant projection
-  on each step). Pass ``None`` (or call clear_ip_tokens) for unconditional
-  passes / CFG dropout.
+  DiT forward. set_ip_tokens precomputes per-block (K, V) so the patched
+  cross-attn forward is a single SDPA call (no redundant projection on each
+  step). K/V are intentionally un-normalized — see set_ip_tokens for the
+  init-gate rationale. Pass ``None`` (or call clear_ip_tokens) for
+  unconditional passes / CFG dropout.
 """
 
 from __future__ import annotations
@@ -63,7 +67,9 @@ DEFAULT_NUM_BLOCKS = 28
 DEFAULT_HIDDEN_SIZE = 2048  # query_dim
 DEFAULT_NUM_HEADS = 16
 DEFAULT_HEAD_DIM = DEFAULT_HIDDEN_SIZE // DEFAULT_NUM_HEADS  # 128
-DEFAULT_CONTEXT_DIM = 1024  # crossattn_emb_channels — also matches PE-Core / TIPSv2 d_enc
+DEFAULT_CONTEXT_DIM = (
+    1024  # crossattn_emb_channels — also matches PE-Core / TIPSv2 d_enc
+)
 DEFAULT_NUM_IP_TOKENS = 16
 DEFAULT_RESAMPLER_HEADS = 8
 DEFAULT_RESAMPLER_LAYERS = 2
@@ -91,9 +97,21 @@ def create_network(
     ip_init_std = float(kwargs.get("ip_init_std", DEFAULT_IP_INIT_STD))
     ip_scale = float(kwargs.get("ip_scale", 1.0))
 
-    num_blocks = getattr(unet, "num_blocks", DEFAULT_NUM_BLOCKS) if unet is not None else DEFAULT_NUM_BLOCKS
-    hidden_size = getattr(unet, "model_channels", DEFAULT_HIDDEN_SIZE) if unet is not None else DEFAULT_HIDDEN_SIZE
-    num_heads = getattr(unet, "num_heads", DEFAULT_NUM_HEADS) if unet is not None else DEFAULT_NUM_HEADS
+    num_blocks = (
+        getattr(unet, "num_blocks", DEFAULT_NUM_BLOCKS)
+        if unet is not None
+        else DEFAULT_NUM_BLOCKS
+    )
+    hidden_size = (
+        getattr(unet, "model_channels", DEFAULT_HIDDEN_SIZE)
+        if unet is not None
+        else DEFAULT_HIDDEN_SIZE
+    )
+    num_heads = (
+        getattr(unet, "num_heads", DEFAULT_NUM_HEADS)
+        if unet is not None
+        else DEFAULT_NUM_HEADS
+    )
     context_dim = DEFAULT_CONTEXT_DIM
 
     return IPAdapterNetwork(
@@ -126,6 +144,7 @@ def create_network_from_weights(
     if weights_sd is None:
         if os.path.splitext(file)[1] == ".safetensors":
             from safetensors.torch import load_file
+
             weights_sd = load_file(file)
         else:
             weights_sd = torch.load(file, map_location="cpu")
@@ -133,17 +152,22 @@ def create_network_from_weights(
     metadata = {}
     if file is not None and os.path.splitext(file)[1] == ".safetensors":
         from safetensors import safe_open
+
         with safe_open(file, framework="pt") as f:
             metadata = f.metadata() or {}
 
-    encoder_name = kwargs.get("encoder") or metadata.get("ss_encoder", DEFAULT_ENCODER_NAME)
+    encoder_name = kwargs.get("encoder") or metadata.get(
+        "ss_encoder", DEFAULT_ENCODER_NAME
+    )
     encoder_dim = int(metadata.get("ss_encoder_dim", DEFAULT_CONTEXT_DIM))
     context_dim = int(metadata.get("ss_context_dim", DEFAULT_CONTEXT_DIM))
     num_ip_tokens = int(metadata.get("ss_num_ip_tokens", DEFAULT_NUM_IP_TOKENS))
     num_blocks = int(metadata.get("ss_num_blocks", DEFAULT_NUM_BLOCKS))
     hidden_size = int(metadata.get("ss_hidden_size", DEFAULT_HIDDEN_SIZE))
     num_heads = int(metadata.get("ss_num_heads", DEFAULT_NUM_HEADS))
-    resampler_layers = int(metadata.get("ss_resampler_layers", DEFAULT_RESAMPLER_LAYERS))
+    resampler_layers = int(
+        metadata.get("ss_resampler_layers", DEFAULT_RESAMPLER_LAYERS)
+    )
     resampler_heads = int(metadata.get("ss_resampler_heads", DEFAULT_RESAMPLER_HEADS))
     ip_scale = float(kwargs.get("ip_scale") or metadata.get("ss_ip_scale", 1.0))
 
@@ -221,10 +245,13 @@ class IPAdapterNetwork(nn.Module):
         for proj in list(self.to_k_ip) + list(self.to_v_ip):
             nn.init.normal_(proj.weight, std=ip_init_std)
 
-        # Step 0 = baseline DiT is enforced purely by ip_init_std on K/V; with
+        # Step 0 ≈ baseline DiT is enforced purely by ip_init_std on K/V; with
         # ip_init_std=1e-4 the SDPA output is ~1e-4 in magnitude, well below
-        # the text path. This matches reference IP-Adapter (Tencent), which
-        # also has no learned per-block gate.
+        # the text path. This relies on ``set_ip_tokens`` NOT applying
+        # cross_attn.k_norm/v_norm to the IP K/V — RMSNorm would rescale to
+        # unit RMS and cancel the soft-gate effect. See the comment in
+        # ``set_ip_tokens`` for why text-side normalization doesn't apply here.
+        # No learned per-block gate (matches reference Tencent IP-Adapter).
 
         # Populated by apply_to() — references to the DiT cross-attn Attention
         # modules. Held as a plain list (NOT nn.ModuleList) so PyTorch doesn't
@@ -268,18 +295,25 @@ class IPAdapterNetwork(nn.Module):
                 "Re-create the network with matching num_blocks."
             )
 
-        from networks import attention_dispatch as anima_attention  # local: avoid import cycle at file load
+        from networks import (
+            attention_dispatch as anima_attention,
+        )  # local: avoid import cycle at file load
 
         for idx, block in enumerate(unet.blocks):
             cross_attn = block.cross_attn
             if cross_attn.is_selfattn:
-                raise RuntimeError(f"block[{idx}].cross_attn unexpectedly self-attention")
+                raise RuntimeError(
+                    f"block[{idx}].cross_attn unexpectedly self-attention"
+                )
             if cross_attn.context_dim != self.context_dim:
                 raise ValueError(
                     f"block[{idx}].cross_attn context_dim {cross_attn.context_dim} "
                     f"!= IP context_dim {self.context_dim}"
                 )
-            if cross_attn.n_heads != self.num_heads or cross_attn.head_dim != self.head_dim:
+            if (
+                cross_attn.n_heads != self.num_heads
+                or cross_attn.head_dim != self.head_dim
+            ):
                 raise ValueError(
                     f"block[{idx}].cross_attn heads/head_dim mismatch: "
                     f"({cross_attn.n_heads}, {cross_attn.head_dim}) vs "
@@ -289,9 +323,13 @@ class IPAdapterNetwork(nn.Module):
             self._original_forwards.append(cross_attn.forward)
             cross_attn._ip_k_cached = None
             cross_attn._ip_v_cached = None
-            cross_attn._ip_diag_ratio_sum = None  # 0-d float32, set by set_diagnostics_enabled
+            cross_attn._ip_diag_ratio_sum = (
+                None  # 0-d float32, set by set_diagnostics_enabled
+            )
             cross_attn._ip_diag_count = None  # 0-d int64
-            cross_attn.forward = _make_patched_forward(cross_attn, self, idx, anima_attention)
+            cross_attn.forward = _make_patched_forward(
+                cross_attn, self, idx, anima_attention
+            )
 
         self._patched = True
         logger.info(
@@ -345,10 +383,15 @@ class IPAdapterNetwork(nn.Module):
             v = self.to_v_ip[idx](ip_in)
             k = k.unflatten(-1, (self.num_heads, self.head_dim))  # [B, K, n_h, d_h]
             v = v.unflatten(-1, (self.num_heads, self.head_dim))
-            # Match the text-side normalization so the dot-product scale is
-            # consistent with the existing (post-RMSNorm) text Q.
-            k = cross_attn.k_norm(k)
-            v = cross_attn.v_norm(v)
+            # Intentionally skip cross_attn.k_norm/v_norm here. RMSNorm rescales
+            # its input to unit RMS regardless of magnitude, which would cancel
+            # ip_init_std and put the IP path at full magnitude on step 1
+            # (empirically: ‖scale·ip_out‖/‖text_result‖ ≈ 2 at step 2 with
+            # init std 1e-4). The text path's k_norm pairs with q_norm to keep
+            # text q·k stable within the text distribution; IP K/V come from a
+            # different distribution (vision features through a fresh resampler)
+            # so there's no symmetry to preserve. Leaving K/V un-normalized is
+            # what makes ``ip_init_std`` actually act as a soft gate at init.
             cross_attn._ip_k_cached = k
             cross_attn._ip_v_cached = v
 
@@ -362,7 +405,9 @@ class IPAdapterNetwork(nn.Module):
 
     # ------------------------------------------------------------ diagnostics
 
-    def set_diagnostics_enabled(self, enabled: bool, device: Optional[torch.device] = None) -> None:
+    def set_diagnostics_enabled(
+        self, enabled: bool, device: Optional[torch.device] = None
+    ) -> None:
         """Toggle per-step accumulation of ‖scale·ip_out‖/‖text_result‖.
 
         Buffers are lazy-allocated on first enable, as 0-d tensors on each
@@ -378,8 +423,12 @@ class IPAdapterNetwork(nn.Module):
                 device = next(self.to_k_ip[0].parameters()).device
             for cross_attn in self._cross_attn_modules:
                 if cross_attn._ip_diag_ratio_sum is None:
-                    cross_attn._ip_diag_ratio_sum = torch.zeros((), dtype=torch.float32, device=device)
-                    cross_attn._ip_diag_count = torch.zeros((), dtype=torch.int64, device=device)
+                    cross_attn._ip_diag_ratio_sum = torch.zeros(
+                        (), dtype=torch.float32, device=device
+                    )
+                    cross_attn._ip_diag_count = torch.zeros(
+                        (), dtype=torch.int64, device=device
+                    )
         self._diag_enabled = bool(enabled)
 
     def reset_diagnostics(self) -> None:
@@ -398,16 +447,24 @@ class IPAdapterNetwork(nn.Module):
         """
         with torch.no_grad():
             k_norms = torch.tensor(
-                [self.to_k_ip[i].weight.detach().float().norm().item() for i in range(self.num_blocks)]
+                [
+                    self.to_k_ip[i].weight.detach().float().norm().item()
+                    for i in range(self.num_blocks)
+                ]
             )
             v_norms = torch.tensor(
-                [self.to_v_ip[i].weight.detach().float().norm().item() for i in range(self.num_blocks)]
+                [
+                    self.to_v_ip[i].weight.detach().float().norm().item()
+                    for i in range(self.num_blocks)
+                ]
             )
             sums_list = []
             counts_list = []
             for cross_attn in self._cross_attn_modules:
                 if cross_attn._ip_diag_ratio_sum is not None:
-                    sums_list.append(cross_attn._ip_diag_ratio_sum.detach().float().cpu())
+                    sums_list.append(
+                        cross_attn._ip_diag_ratio_sum.detach().float().cpu()
+                    )
                     counts_list.append(cross_attn._ip_diag_count.detach().float().cpu())
                 else:
                     sums_list.append(torch.zeros(()))
@@ -415,13 +472,16 @@ class IPAdapterNetwork(nn.Module):
             if sums_list:
                 sums = torch.stack(sums_list)
                 counts = torch.stack(counts_list)
-                ratios = torch.where(counts > 0, sums / counts.clamp_min(1), torch.zeros_like(sums))
+                ratios = torch.where(
+                    counts > 0, sums / counts.clamp_min(1), torch.zeros_like(sums)
+                )
                 total_calls = int(counts.sum().item())
             else:
                 ratios = torch.zeros(self.num_blocks)
                 total_calls = 0
 
         if log:
+
             def _stats(t: torch.Tensor) -> str:
                 return f"min={t.min().item():.3e} mean={t.mean().item():.3e} max={t.max().item():.3e}"
 
@@ -448,6 +508,75 @@ class IPAdapterNetwork(nn.Module):
             "ip_text_ratio": ratios,
             "num_calls": total_calls,
         }
+
+    def metrics(self, ctx) -> dict[str, float]:
+        """Step-cadence tfevents scalars for the IP path. Single CPU sync.
+
+        Always emits ``ip_adapter/to_k_ip_norm/{mean,max}`` and
+        ``ip_adapter/to_v_ip_norm/{mean,max}`` — pure weight reads with no
+        forward overhead, so they track across the full run regardless of
+        ``ip_diagnostics_epochs``.
+
+        Emits ``ip_adapter/ip_text_ratio/{mean,max}`` only while
+        ``_diag_enabled`` is True (the patched cross-attn forward populates
+        the per-block accumulator). Each call resets the accumulator so the
+        scalar reflects the window since the previous log step rather than a
+        running mean over the whole epoch — matters once the value moves.
+
+        Reading these:
+        - ``to_k_ip_norm/mean`` flat near init (~4.6e-3 for fan-in 1024 with
+          std 1e-4) ⇒ projections aren't growing, the resampler+KV are
+          undertrained.
+        - ``ip_text_ratio/mean`` < 1e-2 ⇒ IP signal is too small to nudge
+          cross-attn output regardless of what the resampler emits.
+        - Both growing but the validation ``no_ip`` Δ stays ≤ 0 ⇒ projections
+          are moving but in a direction that doesn't help held-out loss
+          (overfit / noise direction; see ip_adapter.py:717-723).
+        """
+        del ctx
+        if not self._patched:
+            return {}
+        with torch.no_grad():
+            k_norms = torch.stack(
+                [self.to_k_ip[i].weight.float().norm() for i in range(self.num_blocks)]
+            )
+            v_norms = torch.stack(
+                [self.to_v_ip[i].weight.float().norm() for i in range(self.num_blocks)]
+            )
+            agg = [k_norms.mean(), k_norms.max(), v_norms.mean(), v_norms.max()]
+
+            ratio_keys: list[str] = []
+            if self._diag_enabled:
+                sums = []
+                counts = []
+                for cross_attn in self._cross_attn_modules:
+                    if cross_attn._ip_diag_ratio_sum is None:
+                        continue
+                    sums.append(cross_attn._ip_diag_ratio_sum.float())
+                    counts.append(cross_attn._ip_diag_count.float())
+                if sums:
+                    sums_t = torch.stack(sums)
+                    counts_t = torch.stack(counts).clamp_min(1)
+                    ratios = sums_t / counts_t
+                    agg.extend([ratios.mean(), ratios.max()])
+                    ratio_keys = [
+                        "ip_adapter/ip_text_ratio/mean",
+                        "ip_adapter/ip_text_ratio/max",
+                    ]
+                    for cross_attn in self._cross_attn_modules:
+                        if cross_attn._ip_diag_ratio_sum is not None:
+                            cross_attn._ip_diag_ratio_sum.zero_()
+                            cross_attn._ip_diag_count.zero_()
+            vals = torch.stack(agg).cpu().tolist()
+
+        keys = [
+            "ip_adapter/to_k_ip_norm/mean",
+            "ip_adapter/to_k_ip_norm/max",
+            "ip_adapter/to_v_ip_norm/mean",
+            "ip_adapter/to_v_ip_norm/max",
+            *ratio_keys,
+        ]
+        return dict(zip(keys, vals))
 
     # ------------------------------------------------------------ trainer hooks
 
@@ -478,7 +607,11 @@ class IPAdapterNetwork(nn.Module):
         lr = unet_lr or default_lr
         params = [
             {"params": list(self.resampler.parameters()), "lr": lr},
-            {"params": list(self.to_k_ip.parameters()) + list(self.to_v_ip.parameters()), "lr": lr},
+            {
+                "params": list(self.to_k_ip.parameters())
+                + list(self.to_v_ip.parameters()),
+                "lr": lr,
+            },
         ]
         descriptions = ["ip_resampler", "ip_kv_proj"]
         return params, descriptions
@@ -524,6 +657,7 @@ class IPAdapterNetwork(nn.Module):
     def load_weights(self, file):
         if os.path.splitext(file)[1] == ".safetensors":
             from safetensors.torch import load_file
+
             sd = load_file(file)
         else:
             sd = torch.load(file, map_location="cpu")
@@ -539,7 +673,9 @@ class IPAdapterNetwork(nn.Module):
 # ----------------------------------------------------------------- patched forward
 
 
-def _make_patched_forward(orig_attn, ip_net: "IPAdapterNetwork", block_idx: int, anima_attention):
+def _make_patched_forward(
+    orig_attn, ip_net: "IPAdapterNetwork", block_idx: int, anima_attention
+):
     """Build a closure that replaces ``Attention.forward`` for one block's cross-attn.
 
     Mirrors the original ``Attention.forward`` logic (library/anima/models.py:446)
@@ -557,7 +693,9 @@ def _make_patched_forward(orig_attn, ip_net: "IPAdapterNetwork", block_idx: int,
                 q = q.to(target_dtype)
                 k = k.to(target_dtype)
         text_qkv = [q, k, v]
-        text_result = anima_attention.dispatch_attention(text_qkv, attn_params=attn_params)
+        text_result = anima_attention.dispatch_attention(
+            text_qkv, attn_params=attn_params
+        )
 
         ip_k = getattr(orig_attn, "_ip_k_cached", None)
         ip_v = getattr(orig_attn, "_ip_v_cached", None)

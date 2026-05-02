@@ -1,8 +1,8 @@
 """Shared data-loading + loss utilities for the img2emb resampler pipeline.
 
-Consumed by the phase-0/phase-1 bench trainers under ``bench/img2emb/`` and by
-the archived img2emb training stages under ``archive/img2emb/``. Extracted
-here so live consumers don't have to depend on the archived training code.
+Consumed by the phase-0/phase-1 bench trainers under ``archive/bench/img2emb/``
+and by the archived img2emb training stages under ``archive/img2emb/``.
+Extracted here so live consumers don't have to depend on the archived training code.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class _VariantMeanDataset(Dataset):
     """Load one TE file, zero-clamp the padded tail across every variant,
     return the variant-mean ``(S, D)`` slice. Parallelizable via DataLoader.
 
-    Only used by the phase-0 diagnostic probes (``bench/img2emb/phase0_probes``)
+    Only used by the phase-0 diagnostic probes (``archive/bench/img2emb/phase0_probes``)
     where the analytic OLS solution requires the per-image mean. All production
     training stages (phase 1 / 1.5 / 2) sample one variant per step via
     ``_ResamplerTrainDataset`` and never touch this class.
