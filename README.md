@@ -101,6 +101,8 @@ make download-models      # DiT + Qwen3 text encoder + QwenImage VAE into models
 make gui                  # recommended — config editor + dataset browser + training monitor
 ```
 
+`uv sync` resolves to **torch 2.12 nightly + CUDA 13.2 on Linux** and **torch 2.11 stable + CUDA 13.0 on Windows**. Windows users who want the ~10% throughput win from CUDA 13.2 + nightly torch can switch by editing the comment-toggled lines in `pyproject.toml` (search for `cuda132 opt-in`) and re-running `uv sync`. Prerequisites (CUDA 13.2 toolkit + a trimmed FA2 wheel) are in [docs/optimizations/cuda132.md](docs/optimizations/cuda132.md).
+
 CLI path:
 
 ```bash

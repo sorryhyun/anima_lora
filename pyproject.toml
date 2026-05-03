@@ -4,13 +4,29 @@ version = "0.1.0"
 description = "Standalone Anima LoRA training pipeline"
 requires-python = "==3.13.*"
 dependencies = [
-    # Core ML
-    # Linux: torch nightly + CUDA 13.2 (see docs/optimizations/cuda132.md).
-    # Windows/WSL : torch 2.11 stable + CUDA 13.0 (CUDA 13.2 is Linux-only).
+    # Core ML.
+    # Default: torch 2.12 nightly + CUDA 13.2 on Linux, torch 2.11 stable +
+    # CUDA 13.0 on Windows (a prebuilt FA2 wheel for that torch ABI exists).
+    #
+    # To switch Windows to CUDA 13.2 + torch 2.12 nightly (~10% throughput
+    # win, see docs/optimizations/cuda132.md):
+    #   1. Install CUDA 13.2 toolkit + MSVC 2019 Build Tools.
+    #   2. Build the trimmed FA2 wheel per docs/optimizations/cuda132.md
+    #      (or use the prebuilt one if you have access).
+    #   3. Comment out the three "Windows: stable" lines below and uncomment
+    #      the three "Windows: cuda132" lines.
+    #   4. uv sync
+    #
+    # Linux (always cu132 nightly):
     "torch>=2.12.0.dev0,<2.13 ; sys_platform == 'linux'",
     "torchvision>=0.27.0.dev0,<0.28 ; sys_platform == 'linux'",
-    "torch>=2.11.0 ; sys_platform == 'win32'",
-    "torchvision>=0.26.0 ; sys_platform == 'win32'",
+    # Windows: stable (default).
+    "torch>=2.11.0,<2.12 ; sys_platform == 'win32'",
+    "torchvision>=0.26.0,<0.27 ; sys_platform == 'win32'",
+    # Windows: cuda132 opt-in. Uncomment to switch (and comment out the two
+    # "Windows: stable" lines above).
+    # "torch>=2.12.0.dev0,<2.13 ; sys_platform == 'win32'",
+    # "torchvision>=0.27.0.dev0,<0.28 ; sys_platform == 'win32'",
     "accelerate>=1.13.0",
     "transformers>=5.3.0",
     "diffusers>=0.37.0",
@@ -43,13 +59,16 @@ dependencies = [
     "albumentations>=1.4.0",
     "packaging",
     "pycocotools>=2.0.11",
-    # Linux-only CUDA extensions
-    # Linux: FA2 built against CUDA 13.2 + torch nightly (see docs/optimizations/cuda132.md).
+    # FA2 wheels — paired with the torch lines above. Switch the Windows
+    # FA2 wheel together with torch when toggling between stable and cuda132.
+    # flash-attn-4 (flash-attention-sm120) is disabled — kernel is unstable
+    # on our targets, see docs/methods/fa4.md.
     "flash-attn @ https://github.com/sorryhyun/flash-attention-sm120-fix/releases/download/fa2cuda132/flash_attn-2.8.3-cp313-cp313-linux_x86_64.whl ; sys_platform == 'linux'",
+    # Windows: stable (default) — built against torch 2.11 + CUDA 13.0.
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.6/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
-    # flash-attn-4 (flash-attention-sm120) is not supported yet — kernel is unstable on our targets.
-    # "flash-attn-4 @ git+https://github.com/sorryhyun/flash-attention-sm120-fix.git@dz/sm120_tma_optimized#subdirectory=flash_attn/cute ; sys_platform == 'linux'",
-    # "nvidia-cutlass-dsl>=4.4.2 ; sys_platform == 'linux'",
+    # Windows: cuda132 opt-in — trimmed FA2 (bf16 + head_dim=128 + non-causal)
+    # built against torch 2.12 + CUDA 13.2. See flash-attention/repack_wheel.py.
+    # "flash-attn @ https://github.com/sorryhyun/flash-attention-sm120-fix/releases/download/fa2cuda132/flash_attn-2.8.4-cp313-cp313-win_amd64.whl ; sys_platform == 'win32'",
     "triton-windows>=3.6.0 ; sys_platform == 'win32'",
     "pyside6>=6.11.0",
     "ruff>=0.15.9",
@@ -81,10 +100,11 @@ dev = [
 
 [tool.uv]
 index-strategy = "unsafe-best-match"
-# Linux pulls torch nightly + cu132; Windows resolves against cu130 stable.
+# Both wheels are looked up from these indexes — the version pin in
+# `dependencies` (active vs. commented) decides which one resolves.
 extra-index-url = [
-    "https://download.pytorch.org/whl/nightly/cu132",
     "https://download.pytorch.org/whl/cu130",
+    "https://download.pytorch.org/whl/nightly/cu132",
 ]
 prerelease = "allow"
 override-dependencies = ["numpy>=2.0.0"]

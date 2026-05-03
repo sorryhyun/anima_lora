@@ -2,8 +2,40 @@
 
 ## How to install
 
-1. Install CUDA 13.2 (Linux only, `nvidia-driver-595` **open** variant needed).
-2. Install FA2 and build. Python 3.13 requires a custom wheel; [prebuilt here](https://github.com/sorryhyun/flash-attention-sm120-fix/releases/download/fa2cuda132/flash_attn-2.8.3-cp313-cp313-linux_x86_64.whl).
+### Linux — default
+
+`uv sync` already resolves to torch 2.12 nightly + CUDA 13.2 on Linux (see `[tool.uv.sources]` in `pyproject.toml`). Prerequisites:
+
+1. Install CUDA 13.2 toolkit. `nvidia-driver-595` **open** variant required.
+2. `uv sync` — pulls the [prebuilt FA2 wheel](https://github.com/sorryhyun/flash-attention-sm120-fix/releases/download/fa2cuda132/flash_attn-2.8.3-cp313-cp313-linux_x86_64.whl) (Python 3.13, CUDA 13.2, torch 2.12).
+
+### Windows — opt-in
+
+Default Windows is torch 2.11 stable + CUDA 13.0. To switch to CUDA 13.2 + torch 2.12 nightly:
+
+1. **Install CUDA 13.2 toolkit** at the standard path (`C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2`).
+2. **Toggle `pyproject.toml` comments.** In the `dependencies` list:
+   - Comment out the two lines under `# Windows: stable (default).` (torch and torchvision).
+   - Uncomment the two lines under `# Windows: cuda132 opt-in.` (torch and torchvision).
+   - Comment out the line under `# Windows: stable (default) — built against torch 2.11 + CUDA 13.0.` (flash-attn).
+   - Uncomment the line under `# Windows: cuda132 opt-in — trimmed FA2 ...` (flash-attn).
+3. **Re-sync**: `uv sync`. Pulls torch 2.12 nightly from the cu132 index and the prebuilt trimmed FA2 wheel from the GitHub release.
+
+No build tools needed for this path — the FA2 wheel is prebuilt at the URL referenced in `pyproject.toml`.
+
+### Building the trimmed FA2 wheel (maintainer / fork)
+
+If you're targeting a different GPU / Python version / your own fork and need to rebuild the wheel:
+
+1. **CUDA 13.2 toolkit** at `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2`.
+2. **MSVC 2019 Build Tools** + Windows 10 SDK + Python 3.13. Open the *x64 Native Tools Command Prompt for VS 2019* and `set DISTUTILS_USE_SDK=1` before building if MSVC isn't on `PATH` by default.
+3. Build:
+   ```powershell
+   uv pip install --no-build-isolation -e flash-attention
+   python flash-attention\repack_wheel.py   # produces .whl at project root
+   ```
+   Sources are trimmed to bf16 + `head_dim=128` + non-causal kernels only (see `flash-attention/setup.py` and `csrc/flash_attn/src/static_switch.h` for the `FLASHATTENTION_DIFFUSION_ONLY` / `FLASHATTENTION_DISABLE_CAUSAL` macros). Cuts the build from 92 → 3 `.cu` files. Misuse (calling FA2 with fp16, head_dim ≠ 128, or causal=True) fails loudly via `TORCH_CHECK`.
+4. Upload the resulting `flash_attn-2.8.4-cp313-cp313-win_amd64.whl` to your release tag (or use a local `file://` URL in `pyproject.toml`).
 
 ## How much faster?
 
