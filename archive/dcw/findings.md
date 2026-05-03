@@ -147,3 +147,37 @@ Honest list:
 - The script's default `integrated |gap|` ranker overrates configs that overshoot. **Late-step `|gap|` weighted by `(1 − σ)` plus sign-flip penalty** is the perceptually-aligned ranker.
 - `plan.md` simplifies considerably: pixel-only, one schedule, one scalar, no DWT deps.
 - Decision is contingent on a 16-prompt visual panel; mechanistic case is solid, perceptual case is in progress.
+
+---
+
+## 8. Per-band finding (2026-05-03) — LL-only is the new default
+
+`bench/dcw/results/20260503-2102-band-mask-eyeball/` ran a per-Haar-subband sweep on the same 4-image / 2-seed bench used in §1–§5. Headline:
+
+| Config | late-half integrated \|gap\| | Δ vs baseline | per-band signed gap (LL / LH / HL / HH) |
+|---|---|---|---|
+| baseline | 330.1 | — | −317 / −165 / −165 / −127 |
+| **`λ=-0.01_one_minus_sigma_LL`** | **235.7** | **−28.6%** | **−225 / −120 / −122 / −92** *(all bands improved)* |
+| `λ=-0.01_one_minus_sigma_all` *(prior default)* | 340.6 | **+3.2%** | −180 / −240 / −242 / −222 *(LL improved, detail bands worsened)* |
+| `λ=-0.01_one_minus_sigma_HH` | 363.6 | +10.2% | −300 / −146 / −147 / **−287** *(HH sign-flipped)* |
+
+The previously-shipped `_all` form makes the late-half gap **worse** than baseline. It only "wins" on max-|gap| at the very last step (σ=0.04), bought by worsening steps 12–22 — the σ-weighted summation in the `_all` config hid LH/HL/HH degradation under the LL improvement. The total-gap ranker mistook this for an improvement.
+
+Restricting the correction to LL is **strictly better** by every metric checked: lower late-half |gap|, no sign flips, all four per-band gaps improved vs baseline, and visually equivalent or slightly better on the 4-image panel. Mechanism: LL is an upstream causal lever — applying LL-only correction at step `i` propagates through the DiT's nonlinear forward and tightens all four band gaps at step `i+1` and after. Detail bands are downstream symptoms, not independent failures.
+
+**HH-only is dead** in both schedules — perceptually indistinguishable from baseline (file-size delta < 1%) when not actively breaking things.
+
+### Re-tuning λ for LL-only
+
+LL is a more responsive lever than all-bands. `λ=-0.01_const_LL` already overshoots LL by 2× (sign-flips it from −317 → +659 and visibly breaks the image). With `one_minus_sigma`, the schedule's late-weighted shape keeps the correction in-bounds — a magnitude sweep on the same 4-image / 2-seed bench (`bench/dcw/results/20260503-2124-ll-magnitude/`) showed monotone improvement from −0.005 → −0.015 with no sign flips and no visible image damage:
+
+| λ | late-half \|gap\| | Δ vs baseline | max \|gap\| |
+|---|---|---|---|
+| baseline | 330.1 | — | 64.0 |
+| −0.005 | 281.5 | −14.7% | 53.0 |
+| −0.010 | 235.7 | −28.6% | 42.1 |
+| **−0.015** | **192.6** | **−41.7%** | **31.8** |
+
+**Shipped LL-only default: `λ = -0.015`, `schedule = one_minus_sigma`, `band_mask = LL`.** The closed-form solver predicts λ* ≈ −0.033 but that extrapolation crosses the nonlinear regime where `LL_const`-style overshoot kicks in (|λ · w(σ)| > ~0.01 late-step). −0.015 is conservative — closes 83% of the LL gap at the worst step (σ=0.04) and leaves headroom for per-LoRA calibration to push either direction.
+
+§§4.4 / 4.5 / 5.5 above all mooted the wavelet path on the basis of the broadband bias envelope; the LL band mask reinstates a single subband as a deliberate restriction *of* the pixel-mode correction, not a return to the paper's full DWT decomposition. Cross-reference: `docs/methods/dcw.md §LL-only correction` is the canonical user-facing write-up; the result envelope lives in `bench/dcw/results/20260503-2102-band-mask-eyeball/result.json` and `bench/dcw/results/20260503-2124-ll-magnitude/result.json`.

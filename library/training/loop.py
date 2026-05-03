@@ -648,6 +648,16 @@ def _maybe_run_step_validation(trainer, state: LoopState, epoch: int) -> None:
             log_div_key="loss/validation/step_divergence",
             logging_fn=trainer.step_logging,
         )
+        if hasattr(trainer, "_run_bias_validation"):
+            trainer._run_bias_validation(
+                state.train_ctx,
+                state.val_ctx,
+                epoch=epoch,
+                global_step=state.global_step,
+                progress_bar=state.progress_bar,
+                log_prefix="loss/validation/bias_step",
+                logging_fn=trainer.step_logging,
+            )
 
 
 def _run_epoch_validation(trainer, state: LoopState, epoch: int) -> None:
@@ -671,6 +681,16 @@ def _run_epoch_validation(trainer, state: LoopState, epoch: int) -> None:
             log_div_key="loss/validation/epoch_divergence",
             logging_fn=trainer.epoch_logging,
         )
+        if hasattr(trainer, "_run_bias_validation"):
+            trainer._run_bias_validation(
+                state.train_ctx,
+                state.val_ctx,
+                epoch=epoch,
+                global_step=state.global_step,
+                progress_bar=state.progress_bar,
+                log_prefix="loss/validation/bias_epoch",
+                logging_fn=trainer.epoch_logging,
+            )
 
 
 def _log_epoch_average(trainer, state: LoopState, epoch: int) -> None:

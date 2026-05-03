@@ -250,8 +250,9 @@ def spectrum_denoise(
     postfix_embed_seqlens: Optional[torch.Tensor] = None,
     postfix_neg_seqlens: Optional[torch.Tensor] = None,
     dcw: bool = False,
-    dcw_lambda: float = -0.010,
+    dcw_lambda: float = -0.015,
     dcw_schedule: str = "one_minus_sigma",
+    dcw_band_mask: str = "LL",
 ) -> torch.Tensor:
     """Spectrum-accelerated denoising loop.
 
@@ -436,7 +437,7 @@ def spectrum_denoise(
                 # DCW: bias-correct against denoised x0_pred (carries Spectrum's
                 # cached-step prediction error, but correction is bias-agnostic).
                 if dcw and float(sigmas[i + 1]) > 0.0:
-                    from networks.dcw import apply_dcw
+                    from networks.dcw import apply_dcw, parse_band_mask
 
                     new_latents = apply_dcw(
                         new_latents.float(),
@@ -444,6 +445,7 @@ def spectrum_denoise(
                         float(sigmas[i]),
                         lam=dcw_lambda,
                         schedule=dcw_schedule,
+                        bands=parse_band_mask(dcw_band_mask),
                     )
 
                 latents = new_latents.to(latents.dtype)

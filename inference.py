@@ -428,9 +428,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dcw_lambda",
         type=float,
-        default=-0.010,
-        help="DCW scaler λ. Anima default -0.010 (negative — see bench/dcw/findings.md). "
-        "Paper-positive values widen |gap| on Anima.",
+        default=-0.015,
+        help="DCW scaler λ. Anima default -0.015 for the LL-only band mask "
+        "(negative — see docs/methods/dcw.md). Paper-positive values widen "
+        "|gap| on Anima. Use λ ≈ -0.010 if you switch --dcw_band_mask to 'all'.",
     )
     parser.add_argument(
         "--dcw_schedule",
@@ -439,6 +440,15 @@ def parse_args() -> argparse.Namespace:
         choices=["one_minus_sigma", "sigma_i", "const", "none"],
         help="Per-step schedule: scaler(i) = λ · sched(σ_i). Default one_minus_sigma "
         "matches Anima's late-σ bias envelope.",
+    )
+    parser.add_argument(
+        "--dcw_band_mask",
+        type=str,
+        default="LL",
+        help="Restrict DCW correction to a subset of Haar subbands. Default 'LL' "
+        "(LL-only is strictly better than broadband on Anima — see "
+        "docs/methods/dcw.md §LL-only correction). Format: 'LL', 'HH', "
+        "'LH+HL+HH', or 'all' for the broadband paper-form correction.",
     )
 
     # arguments for batch and interactive modes

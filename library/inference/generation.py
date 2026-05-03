@@ -324,7 +324,7 @@ def generate_body_tiled(
                     new_latents = inference_utils.step(latents, noise_pred, sigmas, i)
 
                 if getattr(args, "dcw", False) and float(sigmas[i + 1]) > 0.0:
-                    from networks.dcw import apply_dcw
+                    from networks.dcw import apply_dcw, parse_band_mask
 
                     new_latents = apply_dcw(
                         new_latents.float(),
@@ -332,6 +332,7 @@ def generate_body_tiled(
                         float(sigmas[i]),
                         lam=args.dcw_lambda,
                         schedule=args.dcw_schedule,
+                        bands=parse_band_mask(getattr(args, "dcw_band_mask", "LL")),
                     )
 
                 latents = new_latents.to(latents.dtype)
@@ -560,8 +561,9 @@ def generate_body(
             postfix_embed_seqlens=embed_seqlens,
             postfix_neg_seqlens=neg_seqlens,
             dcw=getattr(args, "dcw", False),
-            dcw_lambda=getattr(args, "dcw_lambda", -0.010),
+            dcw_lambda=getattr(args, "dcw_lambda", -0.015),
             dcw_schedule=getattr(args, "dcw_schedule", "one_minus_sigma"),
+            dcw_band_mask=getattr(args, "dcw_band_mask", "LL"),
         )
     else:
         try:
@@ -649,7 +651,7 @@ def generate_body(
                         )
 
                     if getattr(args, "dcw", False) and float(sigmas[i + 1]) > 0.0:
-                        from networks.dcw import apply_dcw
+                        from networks.dcw import apply_dcw, parse_band_mask
 
                         new_latents = apply_dcw(
                             new_latents.float(),
@@ -657,6 +659,9 @@ def generate_body(
                             float(sigmas[i]),
                             lam=args.dcw_lambda,
                             schedule=args.dcw_schedule,
+                            bands=parse_band_mask(
+                                getattr(args, "dcw_band_mask", "LL")
+                            ),
                         )
 
                     latents = new_latents.to(latents.dtype)

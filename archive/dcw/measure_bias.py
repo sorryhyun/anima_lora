@@ -42,7 +42,14 @@ Outputs (bench/dcw/results/<YYYYMMDD-HHMM>[-<label>]/)
 ------------------------------------------------------
     result.json            standard envelope (args, git, env, metrics, artifacts)
     per_step.csv           wide: step, v_fwd, v_rev, gap per config
-    gap_curves.png         matplotlib Fig 1c reproduction + gap overlay
+    per_step_bands.csv     same as per_step.csv but with v_fwd / v_rev / gap
+                           split into Haar subbands {LL, LH, HL, HH} —
+                           single-level orthonormal 2D DWT on the latent
+                           velocity at each step. Settles whether the SNR-t
+                           bias has a frequency profile that single-λ pixel
+                           DCW misses; see ``haar_band_norms`` below.
+    gap_curves.png         (1×3) Fig 1c reproduction, gap overlay across
+                           configs, baseline gap broken out by subband.
 
 Usage
 -----
@@ -112,13 +119,150 @@ def dcw_scaler(lam: float, sigma_i: float, schedule: str) -> float:
     raise ValueError(f"unknown schedule: {schedule}")
 
 
+# ------------------------------------------------------------------
+# Per-Haar-subband bias decomposition + band-masked correction
+# ------------------------------------------------------------------
+#
+# Single-level 2D orthonormal Haar DWT on the (H, W) plane of the latent
+# velocity, applied per channel / batch / depth. Under orthonormal Haar
+# Σ_b ||v_b||² = ||v||² (Parseval), so band norms decompose the global
+# norm exactly and `iDWT(DWT(x)) == x` to float roundoff.
+#
+# Used both for (a) measuring whether the bias has a frequency profile
+# (paper §5.3 motivation, Tab. 6 ablation) and (b) restricting the DCW
+# differential signal to a subset of bands so we can eyeball whether
+# LL-only or HH-only correction outperforms the broadband single-λ
+# default. Latent space is 16-ch Qwen-VAE; the "low/high freq"
+# interpretation of these bands is *latent*, not pixel-space (cf.
+# archive/dcw/findings.md §4.2 caveat).
+
+BANDS = ("LL", "LH", "HL", "HH")
+ALL_BANDS = frozenset(BANDS)
+
+
+def _parse_band_mask(label: str) -> frozenset[str]:
+    """CLI string → frozenset of band names. ``all`` → all four bands.
+
+    Format: ``LL``, ``HH``, ``LH+HL+HH``, ``all``. Case-insensitive on
+    the band names; ``all`` must be exactly that token (a singleton
+    set containing the literal string ``"all"`` would be ambiguous).
+    """
+    if label == "all":
+        return ALL_BANDS
+    parts = [p.upper() for p in label.split("+") if p]
+    bad = [p for p in parts if p not in BANDS]
+    if bad or not parts:
+        raise ValueError(
+            f"unknown band(s) in mask {label!r}: {bad or '<empty>'}; "
+            f"valid bands {BANDS!r} or 'all'"
+        )
+    return frozenset(parts)
+
+
+def _band_mask_label(bands_active: frozenset[str]) -> str:
+    """Inverse of _parse_band_mask for stable config naming."""
+    if bands_active == ALL_BANDS:
+        return "all"
+    return "+".join(b for b in BANDS if b in bands_active)
+
+
+@torch.no_grad()
+def haar_dwt_2d(
+    v: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Single-level 2D orthonormal Haar DWT on the last two dims.
+
+    Args:
+        v: (..., H, W) with H, W even.
+
+    Returns:
+        ``(LL, LH, HL, HH)``, each (..., H/2, W/2). Forward of
+        ``haar_idwt_2d`` (orthonormal, so ``iDWT(DWT(v)) == v`` to
+        float roundoff).
+    """
+    a = v[..., 0::2, 0::2]
+    b = v[..., 0::2, 1::2]
+    c = v[..., 1::2, 0::2]
+    d = v[..., 1::2, 1::2]
+    s = 0.5  # 2D orthonormal Haar coefficient
+    LL = (a + b + c + d) * s
+    LH = (a + b - c - d) * s  # vertical detail (low along rows, high along cols)
+    HL = (a - b + c - d) * s  # horizontal detail
+    HH = (a - b - c + d) * s  # diagonal detail
+    return LL, LH, HL, HH
+
+
+@torch.no_grad()
+def haar_idwt_2d(
+    LL: torch.Tensor, LH: torch.Tensor, HL: torch.Tensor, HH: torch.Tensor
+) -> torch.Tensor:
+    """Inverse of ``haar_dwt_2d``. Each input (..., H/2, W/2)."""
+    s = 0.5
+    a = (LL + LH + HL + HH) * s
+    b = (LL + LH - HL - HH) * s
+    c = (LL - LH + HL - HH) * s
+    d = (LL - LH - HL + HH) * s
+    out = torch.empty(
+        *LL.shape[:-2], LL.shape[-2] * 2, LL.shape[-1] * 2,
+        dtype=LL.dtype, device=LL.device,
+    )
+    out[..., 0::2, 0::2] = a
+    out[..., 0::2, 1::2] = b
+    out[..., 1::2, 0::2] = c
+    out[..., 1::2, 1::2] = d
+    return out
+
+
+@torch.no_grad()
+def haar_band_norms(v: torch.Tensor) -> dict[str, float]:
+    """Single-level 2D orthonormal Haar DWT → L2 norm per subband."""
+    LL, LH, HL, HH = haar_dwt_2d(v.float())
+    return {
+        "LL": LL.flatten().norm().item(),
+        "LH": LH.flatten().norm().item(),
+        "HL": HL.flatten().norm().item(),
+        "HH": HH.flatten().norm().item(),
+    }
+
+
 def apply_dcw_pixel(
     prev: torch.Tensor, x0_pred: torch.Tensor, s: float
 ) -> torch.Tensor:
-    """Eq. 17 (pixel-space): prev += s · (prev − x0_pred)."""
+    """Eq. 17 (pixel-space): prev += s · (prev − x0_pred). All bands."""
     if s == 0.0:
         return prev
     return prev + s * (prev - x0_pred)
+
+
+def apply_dcw_banded(
+    prev: torch.Tensor,
+    x0_pred: torch.Tensor,
+    scalar: float,
+    bands_active: frozenset[str],
+) -> torch.Tensor:
+    """Pixel-mode DCW restricted to a subset of Haar subbands.
+
+    Decomposes ``(prev − x0_pred)`` via single-level Haar DWT, zeros out
+    the bands NOT in ``bands_active``, reconstructs via iDWT, then adds
+    ``scalar · masked_diff`` to ``prev``. With ``bands_active == ALL_BANDS``
+    this is exactly equivalent to ``apply_dcw_pixel`` (orthonormal Haar
+    is invertible to float roundoff) and falls through to the cheaper
+    code path so the "all" config stays bit-identical to the pre-band
+    sweep.
+    """
+    if scalar == 0.0:
+        return prev
+    if bands_active == ALL_BANDS:
+        return prev + scalar * (prev - x0_pred)
+    diff = (prev - x0_pred).float()
+    LL, LH, HL, HH = haar_dwt_2d(diff)
+    z = torch.zeros_like(LL)
+    LL_m = LL if "LL" in bands_active else z
+    LH_m = LH if "LH" in bands_active else z
+    HL_m = HL if "HL" in bands_active else z
+    HH_m = HH if "HH" in bands_active else z
+    masked = haar_idwt_2d(LL_m, LH_m, HL_m, HH_m).to(prev.dtype)
+    return prev + scalar * masked
 
 
 # ------------------------------------------------------------------
@@ -188,16 +332,20 @@ def measure_forward_norms(
     *,
     noise_seed: int,
     device: torch.device,
-) -> np.ndarray:
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     """Forward branch only: ||v_θ((1−σ)x_0 + σε, t)|| at every step.
 
     Bit-identical across DCW configs given the same (x_0, noise_seed), so we
     compute it once per (image, seed) and cache it for every config below.
+
+    Returns ``(total_norms, band_norms)`` where ``band_norms`` is keyed by
+    ``BANDS`` and each value is a length-``num_steps`` array.
     """
     num_steps = len(sigmas) - 1
     padding_mask = _padding_mask(x_0, device)
     g_fwd = torch.Generator(device="cpu").manual_seed(noise_seed + 10_000)
     v_fwd_norms = np.zeros(num_steps, dtype=np.float64)
+    v_fwd_bands = {b: np.zeros(num_steps, dtype=np.float64) for b in BANDS}
     for i in range(num_steps):
         sigma_i = float(sigmas[i])
         t_i = torch.full((1,), sigma_i, device=device, dtype=torch.bfloat16)
@@ -206,7 +354,10 @@ def measure_forward_norms(
         set_hydra_sigma(anima, t_i)
         v_fwd = anima(x_t_fwd, t_i, embed, padding_mask=padding_mask)
         v_fwd_norms[i] = v_fwd.float().flatten().norm().item()
-    return v_fwd_norms
+        bn = haar_band_norms(v_fwd)
+        for b in BANDS:
+            v_fwd_bands[b][i] = bn[b]
+    return v_fwd_norms, v_fwd_bands
 
 
 @torch.no_grad()
@@ -219,6 +370,7 @@ def run_reverse(
     noise_seed: int,
     dcw_lam: float,
     dcw_schedule: str,
+    dcw_bands: frozenset[str] = ALL_BANDS,
     device: torch.device,
 ) -> dict:
     """Reverse trajectory from σ=1 noise, with optional DCW correction.
@@ -232,6 +384,7 @@ def run_reverse(
     x_hat = eps_init  # reverse trajectory starts at σ≈1
 
     v_rev_norms = np.zeros(num_steps, dtype=np.float64)
+    v_rev_bands = {b: np.zeros(num_steps, dtype=np.float64) for b in BANDS}
     for i in range(num_steps):
         sigma_i = float(sigmas[i])
         sigma_next = float(sigmas[i + 1])
@@ -240,15 +393,22 @@ def run_reverse(
         set_hydra_sigma(anima, t_i)
         v_rev = anima(x_hat, t_i, embed, padding_mask=padding_mask)
         v_rev_norms[i] = v_rev.float().flatten().norm().item()
+        bn = haar_band_norms(v_rev)
+        for b in BANDS:
+            v_rev_bands[b][i] = bn[b]
 
         prev = x_hat.float() + (sigma_next - sigma_i) * v_rev.float()
         if dcw_lam != 0.0 and sigma_next > 0.0:
             x0_pred = x_hat.float() - sigma_i * v_rev.float()
             s = dcw_scaler(dcw_lam, sigma_i, dcw_schedule)
-            prev = apply_dcw_pixel(prev, x0_pred, s)
+            prev = apply_dcw_banded(prev, x0_pred, s, dcw_bands)
         x_hat = prev.to(torch.bfloat16)
 
-    return dict(v_rev=v_rev_norms, x_hat=x_hat.detach().to("cpu"))
+    return dict(
+        v_rev=v_rev_norms,
+        v_rev_bands=v_rev_bands,
+        x_hat=x_hat.detach().to("cpu"),
+    )
 
 
 # ------------------------------------------------------------------
@@ -332,6 +492,17 @@ def parse_args() -> argparse.Namespace:
         choices=["const", "sigma_i", "one_minus_sigma"],
         help="Schedule forms to sweep",
     )
+    p.add_argument(
+        "--dcw_band_masks",
+        type=str,
+        nargs="+",
+        default=["all"],
+        help="Haar-subband masks to sweep. Each mask restricts the DCW "
+        "differential signal to a subset of {LL, LH, HL, HH}; 'all' is "
+        "the original broadband pixel-mode (bit-identical to no DWT). "
+        "Examples: 'all', 'LL', 'HH', 'LH+HL+HH'. Cross-products with "
+        "--dcw_scalers and --dcw_schedules.",
+    )
     # Image decoding (optional eyeball check on sweep winners)
     p.add_argument(
         "--save_images",
@@ -365,21 +536,21 @@ def parse_args() -> argparse.Namespace:
 
 def compute_optimal_lambda(
     accum: dict,
-    configs: list[tuple[str, float, str]],
+    configs: list[tuple[str, float, str, frozenset[str]]],
     sigmas: torch.Tensor,
     num_steps: int,
 ) -> dict:
-    """Closed-form (1−σ)-weighted least-squares λ* per schedule.
+    """Closed-form (1−σ)-weighted least-squares λ* per (schedule, band_mask).
 
-    For each schedule s_kind, gathers anchor configs with that schedule
-    (plus baseline at λ=0, which is schedule-agnostic), fits per-step slope
-    s_i = ∂gap/∂λ via least-squares over the anchors, then applies
+    For each (schedule, band_mask) pair, gathers anchor configs with those
+    settings (plus baseline at λ=0, which is mode-agnostic), fits per-step
+    slope s_i = ∂gap/∂λ via least-squares over the anchors, then applies
 
         λ* = − Σ w_i · g_i · s_i  /  Σ w_i · s_i²        (i ≥ N/2)
 
     with w_i = (1 − σ_i) and g_i = baseline gap. See plan.md §3.
 
-    Returns a dict keyed by schedule name, each value:
+    Returns a dict keyed by ``"<schedule>:<band_mask>"``, each value:
       {anchors: [(λ, name)], slopes: np.ndarray (num_steps,),
        lambda_star: float, late_idx: (start, end)}
     """
@@ -388,14 +559,16 @@ def compute_optimal_lambda(
     late_start = num_steps // 2
     w = 1.0 - sigmas_np[:num_steps]
 
-    by_schedule: dict[str, list[tuple[float, str]]] = {}
-    for name, lam, sched in configs:
+    by_group: dict[tuple[str, str], list[tuple[float, str]]] = {}
+    for name, lam, sched, bands in configs:
         if name == "baseline":
             continue
-        by_schedule.setdefault(sched, []).append((lam, name))
+        key = (sched, _band_mask_label(bands))
+        by_group.setdefault(key, []).append((lam, name))
 
     out: dict[str, dict] = {}
-    for sched, anchors in by_schedule.items():
+    for (sched, mask_label), anchors in by_group.items():
+        group_key = f"{sched}:{mask_label}"
         # Include baseline (λ=0) in the fit — it's schedule-agnostic.
         pts = [(0.0, "baseline")] + sorted(anchors, key=lambda t: t[0])
         if len(pts) < 2:
@@ -417,11 +590,13 @@ def compute_optimal_lambda(
         den = float((w_late * s_late ** 2).sum())
         lambda_star = num / den if den != 0.0 else float("nan")
 
-        out[sched] = {
+        out[group_key] = {
             "anchors": pts,
             "slopes": slopes,
             "lambda_star": lambda_star,
             "late_idx": (late_start, num_steps),
+            "schedule": sched,
+            "band_mask": mask_label,
         }
     return out
 
@@ -535,13 +710,20 @@ def main() -> None:
     )
 
     # -------- DCW configs --------
-    configs: list[tuple[str, float, str]] = [("baseline", 0.0, "const")]
+    # Each tuple is (display_name, λ, schedule, bands_active). The baseline
+    # is band-mask-agnostic (λ=0 → no correction at all).
+    configs: list[tuple[str, float, str, frozenset[str]]] = [
+        ("baseline", 0.0, "const", ALL_BANDS)
+    ]
+    parsed_band_masks = [(label, _parse_band_mask(label)) for label in args.dcw_band_masks]
     if args.dcw_sweep:
-        for sched in args.dcw_schedules:
-            for lam in args.dcw_scalers:
-                if lam == 0.0:
-                    continue  # already covered by baseline
-                configs.append((f"λ={lam}_{sched}", lam, sched))
+        for mask_label, bands_active in parsed_band_masks:
+            for sched in args.dcw_schedules:
+                for lam in args.dcw_scalers:
+                    if lam == 0.0:
+                        continue  # already covered by baseline
+                    name = f"λ={lam}_{sched}_{mask_label}"
+                    configs.append((name, lam, sched, bands_active))
     n_fwd = len(samples) * args.n_seeds
     n_rev = len(configs) * n_fwd
     log.info(
@@ -566,9 +748,12 @@ def main() -> None:
             "v_fwd": np.zeros(num_steps),
             "v_rev": np.zeros(num_steps),
             "gap": np.zeros(num_steps),
+            "v_fwd_bands": {b: np.zeros(num_steps) for b in BANDS},
+            "v_rev_bands": {b: np.zeros(num_steps) for b in BANDS},
+            "gap_bands": {b: np.zeros(num_steps) for b in BANDS},
             "n": 0,
         }
-        for name, _, _ in configs
+        for name, _, _, _ in configs
     }
 
     # (config_name, stem) → final x_hat (cpu, bf16) for the FIRST seed of the
@@ -578,7 +763,7 @@ def main() -> None:
     t0 = time.time()
 
     # -------- Phase 1: forward-branch norms (once per (img, seed)) --------
-    fwd_cache: dict[tuple[int, int], np.ndarray] = {}
+    fwd_cache: dict[tuple[int, int], tuple[np.ndarray, dict[str, np.ndarray]]] = {}
     pbar_fwd = tqdm(total=n_fwd, desc="fwd  ")
     for img_idx, (stem, x_0, embed) in enumerate(encoded):
         for seed_idx in range(args.n_seeds):
@@ -592,7 +777,7 @@ def main() -> None:
 
     # -------- Phase 2: reverse trajectories (per config) --------
     pbar_rev = tqdm(total=n_rev, desc="rev  ")
-    for name, lam, sched in configs:
+    for name, lam, sched, bands in configs:
         for img_idx, (stem, x_0, embed) in enumerate(encoded):
             for seed_idx in range(args.n_seeds):
                 seed = args.seed_base + 1000 * img_idx + seed_idx
@@ -604,12 +789,17 @@ def main() -> None:
                     noise_seed=seed,
                     dcw_lam=lam,
                     dcw_schedule=sched,
+                    dcw_bands=bands,
                     device=device,
                 )
-                v_fwd = fwd_cache[(img_idx, seed_idx)]
+                v_fwd, v_fwd_bands = fwd_cache[(img_idx, seed_idx)]
                 accum[name]["v_fwd"] += v_fwd
                 accum[name]["v_rev"] += res["v_rev"]
                 accum[name]["gap"] += res["v_rev"] - v_fwd
+                for b in BANDS:
+                    accum[name]["v_fwd_bands"][b] += v_fwd_bands[b]
+                    accum[name]["v_rev_bands"][b] += res["v_rev_bands"][b]
+                    accum[name]["gap_bands"][b] += res["v_rev_bands"][b] - v_fwd_bands[b]
                 accum[name]["n"] += 1
                 if (
                     args.save_images > 0
@@ -627,6 +817,9 @@ def main() -> None:
         n = accum[name]["n"]
         for k in ("v_fwd", "v_rev", "gap"):
             accum[name][k] = accum[name][k] / n
+        for k in ("v_fwd_bands", "v_rev_bands", "gap_bands"):
+            for b in BANDS:
+                accum[name][k][b] = accum[name][k][b] / n
 
     # -------- Summary --------
     ranked = sorted(
@@ -649,6 +842,14 @@ def main() -> None:
             {"config": name, "integrated_abs_gap": a, "integrated_signed_gap": s}
             for name, a, s in ranked
         ],
+        "per_band_integrated_signed_gap": {
+            name: {b: float(accum[name]["gap_bands"][b].sum()) for b in BANDS}
+            for name in accum
+        },
+        "per_band_integrated_abs_gap": {
+            name: {b: float(np.abs(accum[name]["gap_bands"][b]).sum()) for b in BANDS}
+            for name in accum
+        },
     }
 
     # -------- CSV --------
@@ -670,6 +871,31 @@ def main() -> None:
             w.writerow(row)
     log.info(f"CSV → {csv_path}")
 
+    # -------- Per-band CSV (separate to keep per_step.csv compact) --------
+    band_csv_path = out_dir / "per_step_bands.csv"
+    with band_csv_path.open("w", newline="") as f:
+        w = csv.writer(f)
+        headers = ["step", "sigma_i"]
+        for name in accum:
+            for b in BANDS:
+                headers += [
+                    f"{name}_v_fwd_{b}",
+                    f"{name}_v_rev_{b}",
+                    f"{name}_gap_{b}",
+                ]
+        w.writerow(headers)
+        for i in range(num_steps):
+            row: list = [i, float(sigmas[i])]
+            for name in accum:
+                for b in BANDS:
+                    row += [
+                        accum[name]["v_fwd_bands"][b][i],
+                        accum[name]["v_rev_bands"][b][i],
+                        accum[name]["gap_bands"][b][i],
+                    ]
+            w.writerow(row)
+    log.info(f"per-band CSV → {band_csv_path}")
+
     # -------- Plot --------
     try:
         import matplotlib
@@ -677,7 +903,7 @@ def main() -> None:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharex=True)
+        fig, axes = plt.subplots(1, 3, figsize=(18, 4.5), sharex=True)
 
         base = accum["baseline"]
         axes[0].plot(
@@ -708,6 +934,29 @@ def main() -> None:
         axes[1].set_ylabel("gap")
         axes[1].legend(fontsize=8)
         axes[1].grid(True, alpha=0.3)
+
+        # Baseline gap broken out by Haar subband — does each band have the
+        # same shape, or does the bias have a frequency profile?
+        band_colors = {
+            "LL": "#264653",
+            "LH": "#2a9d8f",
+            "HL": "#e9c46a",
+            "HH": "#e76f51",
+        }
+        for b in BANDS:
+            axes[2].plot(
+                range(num_steps),
+                base["gap_bands"][b],
+                label=b,
+                color=band_colors[b],
+                alpha=0.9,
+            )
+        axes[2].axhline(0, color="k", lw=0.5)
+        axes[2].set_title("Baseline gap by Haar subband (latent-space DWT)")
+        axes[2].set_xlabel("step i")
+        axes[2].set_ylabel("gap (band)")
+        axes[2].legend(fontsize=8)
+        axes[2].grid(True, alpha=0.3)
 
         fig.tight_layout()
         png_path = out_dir / "gap_curves.png"
@@ -757,7 +1006,7 @@ def main() -> None:
         log.info(f"images → {img_dir} ({len(image_artifacts)} files)")
 
     artifacts = (
-        ["per_step.csv"]
+        ["per_step.csv", "per_step_bands.csv"]
         + (["gap_curves.png"] if plot_written else [])
         + image_artifacts
     )
@@ -777,6 +1026,28 @@ def main() -> None:
         f"baseline integrated signed gap: {accum['baseline']['gap'].sum():+.3f}  "
         f"(>0 means reverse > forward, as the paper predicts)"
     )
+
+    # Per-band integrated signed gap on the baseline — answers "does the bias
+    # have a frequency profile?" If LL / HH gaps differ in sign or σ-shape,
+    # paper-style per-band λ is justified; if they're scaled copies of each
+    # other, single-λ pixel-mode is sufficient.
+    print("\nbaseline integrated signed gap by Haar subband:")
+    base_band_gap = accum["baseline"]["gap_bands"]
+    for b in BANDS:
+        g = float(base_band_gap[b].sum())
+        a = float(np.abs(base_band_gap[b]).sum())
+        print(f"  {b}: signed={g:+8.3f}  |gap|={a:7.3f}")
+    # Parseval cross-check: sum of squared band norms == squared total norm.
+    base_total_sq = (accum["baseline"]["v_fwd"] ** 2).sum()
+    base_band_sq = sum(
+        (accum["baseline"]["v_fwd_bands"][b] ** 2).sum() for b in BANDS
+    )
+    rel_err = abs(base_band_sq - base_total_sq) / max(base_total_sq, 1e-12)
+    print(
+        f"  (Parseval check on v_fwd: Σ_b ||v_b||² / ||v||² = "
+        f"{base_band_sq / max(base_total_sq, 1e-12):.6f},  rel.err = {rel_err:.2e})"
+    )
+
     if args.dcw_sweep:
         print("\nconfigs ranked by integrated |gap|  (smaller = closer alignment):")
         for rank, (name, a, s) in enumerate(ranked, 1):
@@ -796,21 +1067,23 @@ def main() -> None:
                 )
             else:
                 print("\n=== closed-form λ* (late half, (1−σ)-weighted) ===")
-                for sched, info in calib.items():
+                for group_key, info in calib.items():
                     anchors_str = ", ".join(f"{lam:+g}" for lam, _ in info["anchors"])
                     a, b = info["late_idx"]
                     print(
-                        f"  schedule={sched:<18s}  anchors=[{anchors_str}]  "
+                        f"  {group_key:<32s}  anchors=[{anchors_str}]  "
                         f"λ*={info['lambda_star']:+.4f}  (over steps {a}..{b - 1})"
                     )
                 metrics["optimal_lambda"] = {
-                    sched: {
+                    group_key: {
+                        "schedule": info["schedule"],
+                        "band_mask": info["band_mask"],
                         "lambda_star": info["lambda_star"],
                         "anchors": [lam for lam, _ in info["anchors"]],
                         "slopes_per_step": info["slopes"].tolist(),
                         "late_step_range": list(info["late_idx"]),
                     }
-                    for sched, info in calib.items()
+                    for group_key, info in calib.items()
                 }
                 # Re-emit result.json with the calibrator block included.
                 write_result(
