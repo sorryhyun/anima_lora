@@ -16,6 +16,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # ConfigTab
         "preset": "Preset:",
         "save": "Save",
+        "save_dirty_tooltip": "Form has unsaved edits. Click Save to write them to the variant file (Train/Preprocess auto-saves first if you skip this).",
         "train": "Train",
         "test": "Test",
         "stop": "Stop",
@@ -196,6 +197,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         # ConfigTab
         "preset": "프리셋:",
         "save": "저장",
+        "save_dirty_tooltip": "저장되지 않은 편집이 있습니다. Save를 누르면 variant 파일에 기록됩니다 (학습/전처리 시작 시 자동 저장됨).",
         "train": "학습",
         "test": "테스트",
         "stop": "정지",

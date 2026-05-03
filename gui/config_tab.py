@@ -85,6 +85,10 @@ class ConfigTab(QWidget):
         # Advanced section starts collapsed; user's expand/collapse state
         # persists across _reload (variant switches, save round-trips).
         self._advanced_expanded = False
+        # Dirty = form has edits not yet flushed to the variant file.
+        # Train/Preprocess auto-saves before launching, since the subprocess
+        # re-reads the file from disk and would otherwise miss form edits.
+        self._dirty = False
         # (monotonic_anchor_time, anchor_step, label, total) — we measure
         # s/step from the first step *completion*, not process launch, so
         # warmup (model load, compilation) doesn't inflate the reported rate.
@@ -146,9 +150,13 @@ class ConfigTab(QWidget):
         self.show_guide_btn.clicked.connect(self._show_explain_placeholder)
         top.addWidget(self.show_guide_btn)
 
-        save_btn = QPushButton(t("save"))
-        save_btn.clicked.connect(self._save_preset)
-        top.addWidget(save_btn)
+        self._save_btn = QPushButton(t("save"))
+        self._save_btn_idle_style = ""
+        self._save_btn_dirty_style = (
+            "background:#e67e22;color:white;font-weight:bold;padding:4px 16px;"
+        )
+        self._save_btn.clicked.connect(self._save_preset)
+        top.addWidget(self._save_btn)
 
         self.preprocess_btn = QPushButton(t("preprocess"))
         self._preprocess_idle_style = (
@@ -239,6 +247,7 @@ class ConfigTab(QWidget):
         self.extra_args_edit.setToolTip(t("extra_args_tooltip"))
         self.extra_args_edit.setMaximumHeight(120)
         self.extra_args_edit.setVisible(False)
+        self.extra_args_edit.textChanged.connect(self._mark_dirty)
         outer.addWidget(self.extra_args_edit)
         outer.addStretch()
 
@@ -426,6 +435,51 @@ class ConfigTab(QWidget):
 
         self._fl.addStretch()
 
+        # Reload rebuilt the form to match disk → no pending edits.
+        # Connect change signals AFTER the values have been seeded by _widget,
+        # so the initial setValue/addItems calls don't trip the dirty flag.
+        for w in self._w.values():
+            self._connect_dirty_signal(w)
+        self._clear_dirty()
+
+    # ── Dirty tracking ──
+
+    def _connect_dirty_signal(self, w: QWidget) -> None:
+        """Wire each form widget's change signal to _mark_dirty so the Save
+        button reflects whether the form has drifted from the variant file."""
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QLineEdit, QSpinBox
+
+        if isinstance(w, QComboBox):
+            w.currentTextChanged.connect(self._mark_dirty)
+        elif isinstance(w, QCheckBox):
+            w.toggled.connect(self._mark_dirty)
+        elif isinstance(w, QSpinBox):
+            w.valueChanged.connect(self._mark_dirty)
+        elif isinstance(w, QLineEdit):
+            w.textChanged.connect(self._mark_dirty)
+
+    def _mark_dirty(self, *_):
+        if self._dirty:
+            return
+        self._dirty = True
+        self._update_save_button()
+
+    def _clear_dirty(self):
+        self._dirty = False
+        self._update_save_button()
+
+    def _update_save_button(self):
+        if not hasattr(self, "_save_btn"):
+            return
+        if self._dirty:
+            self._save_btn.setText(t("save") + " *")
+            self._save_btn.setStyleSheet(self._save_btn_dirty_style)
+            self._save_btn.setToolTip(t("save_dirty_tooltip"))
+        else:
+            self._save_btn.setText(t("save"))
+            self._save_btn.setStyleSheet(self._save_btn_idle_style)
+            self._save_btn.setToolTip("")
+
     # ── Explanation panel ──
 
     def _show_explain_placeholder(self) -> None:
@@ -543,7 +597,9 @@ class ConfigTab(QWidget):
 
         if extras:
             self.extra_args_edit.clear()
-            self._reload()
+            self._reload()  # _reload calls _clear_dirty itself
+        else:
+            self._clear_dirty()
         if not silent:
             try:
                 rel = path.relative_to(CONFIGS_DIR.parent)
@@ -613,6 +669,11 @@ class ConfigTab(QWidget):
         self.new_variant_btn.setEnabled(False)
 
     def _start_preprocess(self):
+        # Flush form edits to disk first — the subprocess re-reads the variant
+        # file, so unsaved knobs (paths, source dirs, …) would otherwise be lost.
+        if self._dirty:
+            self._save_preset(silent=True)
+
         python = sys.executable
         args = ["tasks.py", "preprocess"]
 
@@ -649,6 +710,11 @@ class ConfigTab(QWidget):
         if not self._preprocessed:
             QMessageBox.warning(self, t("error"), t("preprocess_required"))
             return
+
+        # Flush form edits to disk first — train.py reads the variant file
+        # from disk, so unsaved form values would otherwise be ignored.
+        if self._dirty:
+            self._save_preset(silent=True)
 
         # Flip button visuals to busy + repaint BEFORE the slow accelerate
         # import and QProcess.start, otherwise Qt's event loop is blocked
