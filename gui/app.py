@@ -98,6 +98,13 @@ def _dark(app: QApplication):
         QTabBar::tab:selected { background: #1e1e1e; }
         QTabBar::tab:hover { background: #3a3a3a; }
         QToolTip { max-width: 400px; }
+        QMenu {
+            background: #2a2a2a; color: #dcdcdc; border: 1px solid #555;
+        }
+        QMenu::item { padding: 4px 20px; background: transparent; color: #dcdcdc; }
+        QMenu::item:selected { background: #3c78c8; color: #ffffff; }
+        QMenu::item:disabled { color: #777; }
+        QMenu::separator { height: 1px; background: #444; margin: 4px 8px; }
     """)
 
 

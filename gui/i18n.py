@@ -33,6 +33,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "test_output_title": "Latest test output",
         "test_output_empty": "output/tests/ is empty.",
         "finished": "--- Finished (exit code {code}) ---",
+        "resume_checkpoint_title": "Resume training?",
+        "resume_checkpoint_question": (
+            "A resumable checkpoint was found at step {step}.\n\n"
+            "• Yes — resume training from step {step}\n"
+            "• No — discard the checkpoint and start fresh\n"
+            "• Cancel — don't launch training"
+        ),
+        "resume_checkpoint_delete_failed": "Could not remove old checkpoint state:\n{error}",
         "locked_by_preset": "Locked by preset (performance settings are fixed for this VRAM profile)",
         "lora_variants": "LoRA Variants",
         "variant": "Variant:",
@@ -214,6 +222,14 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "test_output_title": "최신 테스트 출력",
         "test_output_empty": "output/tests/가 비어 있습니다.",
         "finished": "--- 완료 (종료 코드 {code}) ---",
+        "resume_checkpoint_title": "학습을 재개할까요?",
+        "resume_checkpoint_question": (
+            "재개 가능한 체크포인트가 감지되었습니다 (스텝 {step}).\n\n"
+            "• 예 — 스텝 {step}부터 학습을 재개합니다\n"
+            "• 아니오 — 기존 체크포인트를 삭제하고 처음부터 새로 학습합니다\n"
+            "• 취소 — 학습을 시작하지 않습니다"
+        ),
+        "resume_checkpoint_delete_failed": "기존 체크포인트 상태를 삭제하지 못했습니다:\n{error}",
         "locked_by_preset": "프리셋에 의해 잠김 (이 VRAM 프로필의 성능 설정은 고정되어 있습니다)",
         "lora_variants": "LoRA 변형",
         "variant": "변형:",

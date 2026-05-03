@@ -42,6 +42,7 @@ from gui import (
     _read,
     _save,
     _widget,
+    confirm_resumable_checkpoint,
     is_basic_field,
     list_gui_variants,
     list_methods,
@@ -716,6 +717,11 @@ class ConfigTab(QWidget):
         if self._dirty:
             self._save_preset(silent=True)
 
+        variant = self._current_variant()
+        merged, _ = merged_gui_variant_preset(variant, self._IMPLICIT_PRESET)
+        if not confirm_resumable_checkpoint(self, merged):
+            return
+
         # Flip button visuals to busy + repaint BEFORE the slow accelerate
         # import and QProcess.start, otherwise Qt's event loop is blocked
         # long enough for Windows to flag the GUI as "Not Responding".
@@ -738,7 +744,6 @@ class ConfigTab(QWidget):
             self._restore_train_idle()
             return
 
-        variant = self._current_variant()
         # Route through tasks.py rather than spawning accelerate directly:
         # tasks.py uses python.exe + CREATE_NO_WINDOW for its subprocess calls,
         # which keeps tqdm output flowing back to the GUI. If we spawned

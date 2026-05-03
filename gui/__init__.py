@@ -14,9 +14,12 @@ from PySide6.QtWidgets import (
     QComboBox,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QSpinBox,
     QWidget,
 )
+
+from gui.i18n import t
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIGS_DIR = ROOT / "configs"
@@ -317,6 +320,83 @@ def merged_gui_variant_preset(
         merged[k] = v
         origin[k] = "method"
     return merged, origin
+
+
+def confirm_resumable_checkpoint(parent: QWidget | None, merged: dict) -> bool:
+    """Prompt the user when a checkpoint is on disk; return whether to launch.
+
+    Returns True if training should proceed (Yes = let train.py auto-resume,
+    No = wipe the state dir + adapter sidecar so train.py starts fresh),
+    False if the user cancelled. Returns True with no prompt when there is
+    nothing to resume from — the call site can wrap every train launch in
+    this helper unconditionally.
+    """
+    found = find_resumable_checkpoint(merged)
+    if found is None:
+        return True
+    state_dir, step = found
+    choice = QMessageBox.question(
+        parent,
+        t("resume_checkpoint_title"),
+        t("resume_checkpoint_question", step=step),
+        QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+        QMessageBox.Yes,
+    )
+    if choice == QMessageBox.Cancel:
+        return False
+    if choice == QMessageBox.Yes:
+        return True
+    # No → start fresh. Wipe both the state dir and the sibling
+    # ``-checkpoint.safetensors`` adapter so train.py's auto_resume sees
+    # nothing on disk. Bail with a warning if the deletion fails — better
+    # than silently launching a resume the user explicitly opted out of.
+    import shutil
+
+    sidecar = state_dir.parent / f"{state_dir.name.removesuffix('-state')}.safetensors"
+    try:
+        shutil.rmtree(state_dir)
+        if sidecar.is_file():
+            sidecar.unlink()
+    except OSError as e:
+        QMessageBox.warning(
+            parent,
+            t("error"),
+            t("resume_checkpoint_delete_failed", error=str(e)),
+        )
+        return False
+    return True
+
+
+def find_resumable_checkpoint(merged: dict) -> tuple[Path, int] | None:
+    """If the merged config has a writable ``checkpointing_epochs`` and an
+    on-disk checkpoint state directory exists with a usable ``train_state.json``,
+    return ``(state_dir, current_step)``. Returns ``None`` when there is
+    nothing to resume — that's the common case and callers should treat it as
+    "just launch training normally".
+
+    Mirrors ``library.training.checkpoints.AnimaCheckpointer.auto_resume``: the
+    same ``<output_dir>/<output_name>-checkpoint-state/`` path that ``train.py``
+    would auto-pick up. We deliberately do NOT enforce ``current_step <
+    max_train_steps`` here — that check varies with dataset size and is
+    re-evaluated at launch; the GUI prompt only needs to know "is there
+    something on disk that train.py would consider resumable".
+    """
+    if not merged.get("checkpointing_epochs"):
+        return None
+    output_dir = merged.get("output_dir")
+    output_name = merged.get("output_name") or "last"
+    if not output_dir:
+        return None
+    state_dir = ROOT / output_dir / f"{output_name}-checkpoint-state"
+    train_state_file = state_dir / "train_state.json"
+    if not train_state_file.is_file():
+        return None
+    try:
+        data = json.loads(train_state_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    step = int(data.get("current_step", 0))
+    return state_dir, step
 
 
 def _imgs(d: Path) -> list[Path]:

@@ -28,7 +28,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui import ROOT, ScaledImageLabel, _imgs
+from gui import (
+    ROOT,
+    ScaledImageLabel,
+    _imgs,
+    confirm_resumable_checkpoint,
+    merged_method_preset,
+)
 from gui.i18n import t
 from gui.process import kill_process_tree, setup_kill_safe
 
@@ -250,6 +256,12 @@ class _AdapterTab(QWidget):
             QMessageBox.warning(
                 self, t("error"), t("adapter_no_dataset")
             )
+            return
+        # tasks.py <task> resolves to methods/<task with - → _>.toml; mirror
+        # the same merge train.py would do so the resume prompt reads the
+        # right output_dir / output_name.
+        merged, _ = merged_method_preset(self.TRAIN_TASK.replace("-", "_"), "default")
+        if not confirm_resumable_checkpoint(self, merged):
             return
         self._launch([sys.executable, "tasks.py", self.TRAIN_TASK])
 
