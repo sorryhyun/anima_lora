@@ -332,7 +332,7 @@ class AnimaTrainer:
             assert train_dataset_group.is_text_encoder_output_cacheable(
                 cache_supports_dropout=True
             ), (
-                "when caching Text Encoder output, shuffle_caption, token_warmup_step or caption_tag_dropout_rate cannot be used"
+                "when caching Text Encoder output, token_warmup_step or caption_tag_dropout_rate cannot be used"
             )
             if getattr(args, "cache_llm_adapter_outputs", False):
                 # Adapter output caching is only valid when the adapter is frozen (no LoRA on adapter).
@@ -370,18 +370,6 @@ class AnimaTrainer:
             assert args.blocks_to_swap is None or args.blocks_to_swap == 0, (
                 "blocks_to_swap is not supported with unsloth_offload_checkpointing"
             )
-
-        # Install smart caption shuffle for Anima (respects @artist prefix and "on the ..." sections)
-        if args.shuffle_caption:
-            for dataset in train_dataset_group.datasets:
-                dataset.custom_shuffle_caption_fn = (
-                    anima_train_utils.anima_smart_shuffle_caption
-                )
-            if val_dataset_group is not None:
-                for dataset in val_dataset_group.datasets:
-                    dataset.custom_shuffle_caption_fn = (
-                        anima_train_utils.anima_smart_shuffle_caption
-                    )
 
         # Propagate inversion_dir to datasets for functional-loss supervision (postfix-func).
         inversion_dir = getattr(args, "inversion_dir", None)

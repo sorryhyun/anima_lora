@@ -114,10 +114,6 @@ class BaseDataset(torch.utils.data.Dataset):
 
         self.image_transforms = IMAGE_TRANSFORMS
 
-        self.custom_shuffle_caption_fn = (
-            None  # optional: fn(flex_tokens) -> shuffled list
-        )
-
         if resize_interpolation is not None:
             assert validate_interpolation_fn(resize_interpolation), (
                 f'Resize interpolation "{resize_interpolation}" is not a valid interpolation'
@@ -294,8 +290,7 @@ class BaseDataset(torch.utils.data.Dataset):
                 caption = caption.split("\n")[0]
 
             if (
-                subset.shuffle_caption
-                or subset.token_warmup_step > 0
+                subset.token_warmup_step > 0
                 or subset.caption_tag_dropout_rate > 0
             ):
                 fixed_tokens = []
@@ -367,12 +362,6 @@ class BaseDataset(torch.utils.data.Dataset):
                         if random.random() >= subset.caption_tag_dropout_rate:
                             filtered.append(token)
                     return filtered
-
-                if subset.shuffle_caption:
-                    if self.custom_shuffle_caption_fn is not None:
-                        flex_tokens = self.custom_shuffle_caption_fn(flex_tokens)
-                    else:
-                        random.shuffle(flex_tokens)
 
                 flex_tokens = dropout_tags(flex_tokens)
 
@@ -622,7 +611,6 @@ class BaseDataset(torch.utils.data.Dataset):
                 not (
                     subset.caption_dropout_rate > 0
                     and not cache_supports_dropout
-                    or subset.shuffle_caption
                     or subset.token_warmup_step > 0
                     or subset.caption_tag_dropout_rate > 0
                 )

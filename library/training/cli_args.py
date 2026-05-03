@@ -1007,9 +1007,6 @@ def add_dataset_arguments(
         help="cache meta information for faster dataset loading",
     )
     parser.add_argument(
-        "--shuffle_caption", action="store_true", help="shuffle separated caption"
-    )
-    parser.add_argument(
         "--caption_separator", type=str, default=",", help="separator for caption"
     )
     parser.add_argument(

@@ -54,7 +54,6 @@ class BaseSubsetParams:
     image_dir: Optional[str] = None
     num_repeats: int = 1
     sample_ratio: float = 1.0
-    shuffle_caption: bool = False
     caption_separator: str = (",",)
     keep_tokens: int = 0
     keep_tokens_separator: str = (None,)
@@ -159,7 +158,6 @@ class ConfigSanitizer:
         "num_repeats": int,
         "sample_ratio": Any(float, int),
         "random_crop": bool,
-        "shuffle_caption": bool,
         "keep_tokens": int,
         "keep_tokens_separator": str,
         "secondary_separator": str,
@@ -458,7 +456,6 @@ def generate_dataset_group_by_blueprint(
                     image_count: {subset.img_count}
                     num_repeats: {subset.num_repeats}
                     sample_ratio: {subset.sample_ratio}
-                    shuffle_caption: {subset.shuffle_caption}
                     keep_tokens: {subset.keep_tokens}
                     caption_dropout_rate: {subset.caption_dropout_rate}
                     caption_dropout_every_n_epochs: {subset.caption_dropout_every_n_epochs}

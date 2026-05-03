@@ -58,8 +58,8 @@ Removed — the trim path only ran under `attn_mode = "flash4"`, which we evalua
 Generates multiple shuffled caption permutations per image per epoch, cached as separate text encoder outputs. Increases caption diversity without disk overhead.
 
 ```toml
-caption_shuffle_variants = 4    # number of variants per image
-shuffle_caption = true
+caption_shuffle_variants = 4         # number of variants per image (preprocess)
+use_shuffled_caption_variants = true # pick one at random per batch item (train)
 cache_text_encoder_outputs = true
 ```
 
@@ -100,7 +100,6 @@ Masks are interpolated to match the latent spatial dimensions and applied elemen
 
 ```toml
 [general]
-shuffle_caption = false
 caption_extension = '.txt'
 keep_tokens = 3              # preserve first N tokens from shuffling
 

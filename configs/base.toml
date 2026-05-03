@@ -58,7 +58,6 @@ persistent_data_loader_workers=true
 # argparse namespace.
 
 [general]
-shuffle_caption = false
 caption_extension = '.txt'
 keep_tokens = 3
 

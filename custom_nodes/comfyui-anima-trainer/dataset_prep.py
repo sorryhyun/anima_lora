@@ -42,7 +42,6 @@ def _tensor_to_pil(image_tensor) -> list[Image.Image]:
 def _write_dataset_config(work_dir: str, output_path: str) -> None:
     cfg = (
         "[general]\n"
-        "shuffle_caption = false\n"
         "caption_extension = '.txt'\n"
         "keep_tokens = 3\n"
         "\n"

@@ -150,7 +150,6 @@ class BaseSubset:
         alpha_mask: Optional[bool],
         num_repeats: int,
         sample_ratio: float,
-        shuffle_caption: bool,
         caption_separator: str,
         keep_tokens: int,
         keep_tokens_separator: str,
@@ -176,7 +175,6 @@ class BaseSubset:
         self.alpha_mask = alpha_mask if alpha_mask is not None else False
         self.num_repeats = num_repeats
         self.sample_ratio = sample_ratio
-        self.shuffle_caption = shuffle_caption
         self.caption_separator = caption_separator
         self.keep_tokens = keep_tokens
         self.keep_tokens_separator = keep_tokens_separator
@@ -218,7 +216,6 @@ class DreamBoothSubset(BaseSubset):
         alpha_mask: bool,
         num_repeats,
         sample_ratio,
-        shuffle_caption,
         caption_separator: str,
         keep_tokens,
         keep_tokens_separator,
@@ -249,7 +246,6 @@ class DreamBoothSubset(BaseSubset):
             alpha_mask,
             num_repeats,
             sample_ratio,
-            shuffle_caption,
             caption_separator,
             keep_tokens,
             keep_tokens_separator,

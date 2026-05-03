@@ -6,7 +6,6 @@
 # so the source directory stays clean.
 
 [general]
-shuffle_caption = false
 caption_extension = '.txt'
 keep_tokens = 3
 

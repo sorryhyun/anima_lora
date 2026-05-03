@@ -6,7 +6,6 @@
 # image and the VAE target are the same image, so no separate dataset is needed.
 
 [general]
-shuffle_caption = false
 caption_extension = '.txt'
 keep_tokens = 3
 
