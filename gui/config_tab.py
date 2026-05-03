@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import html
@@ -42,6 +43,7 @@ from gui import (
     _read,
     _save,
     _widget,
+    confirm_existing_caches,
     confirm_resumable_checkpoint,
     is_basic_field,
     list_gui_variants,
@@ -675,13 +677,24 @@ class ConfigTab(QWidget):
         if self._dirty:
             self._save_preset(silent=True)
 
+        # Resolve the cache dir that tasks.py preprocess will write into and
+        # confirm with the user that any pre-existing caches there will be
+        # reused, not wiped. Mirrors scripts/tasks/preprocess.py's fallback.
+        variant = self._current_variant()
+        merged, _ = merged_gui_variant_preset(variant, self._IMPLICIT_PRESET)
+        cache_rel = merged.get("lora_cache_dir") or "post_image_dataset/lora"
+        cache_dir = Path(cache_rel)
+        if not cache_dir.is_absolute():
+            cache_dir = ROOT / cache_dir
+        if not confirm_existing_caches(self, cache_dir):
+            return
+
         python = sys.executable
         args = ["tasks.py", "preprocess"]
 
         # Point tasks.py at the same variant training will use, so any
         # source_image_dir / resized_image_dir / lora_cache_dir override the
         # user wrote into the variant file is honored by preprocess too.
-        variant = self._current_variant()
         self._proc.setProcessEnvironment(
             make_subprocess_env(
                 METHOD=variant,

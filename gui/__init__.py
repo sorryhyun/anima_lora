@@ -367,6 +367,74 @@ def confirm_resumable_checkpoint(parent: QWidget | None, merged: dict) -> bool:
     return True
 
 
+# Cache-file suffixes written by the preprocess scripts. Kept in sync with
+# preprocess/cache_latents.py, cache_text_embeddings.py, cache_pe_encoder.py.
+_LATENT_SUFFIX = "_anima.npz"
+_TE_SUFFIX = "_anima_te.safetensors"
+_PE_SUFFIX = "_anima_pe.safetensors"
+
+
+def count_preprocess_caches(cache_dir: Path) -> dict[str, int]:
+    """Count existing latent / TE / PE cache sidecars in a cache directory.
+
+    Returns zeros (without raising) if the directory does not exist. Used to
+    surface a reassurance popup that ``make preprocess`` reuses existing caches
+    rather than wiping them — a recurring point of confusion for new users.
+    """
+    out = {"latents": 0, "te": 0, "pe": 0}
+    if not cache_dir.is_dir():
+        return out
+    for p in cache_dir.iterdir():
+        if not p.is_file():
+            continue
+        n = p.name
+        if n.endswith(_TE_SUFFIX):
+            out["te"] += 1
+        elif n.endswith(_PE_SUFFIX):
+            out["pe"] += 1
+        elif n.endswith(_LATENT_SUFFIX):
+            out["latents"] += 1
+    return out
+
+
+def confirm_existing_caches(
+    parent: QWidget | None, cache_dir: Path, require_pe: bool = False
+) -> bool:
+    """Reassure the user that existing preprocess caches will be reused, not
+    deleted. Returns True to proceed, False if the user cancelled.
+
+    No-op (returns True without prompting) when the cache directory is empty
+    or missing, so the call site can wrap every preprocess launch in this.
+    """
+    counts = count_preprocess_caches(cache_dir)
+    has_any = counts["latents"] > 0 or counts["te"] > 0 or (
+        require_pe and counts["pe"] > 0
+    )
+    if not has_any:
+        return True
+
+    parts: list[str] = []
+    if counts["latents"]:
+        parts.append(t("preprocess_cache_count_latents", n=counts["latents"]))
+    if counts["te"]:
+        parts.append(t("preprocess_cache_count_te", n=counts["te"]))
+    if require_pe and counts["pe"]:
+        parts.append(t("preprocess_cache_count_pe", n=counts["pe"]))
+
+    body = t(
+        "preprocess_existing_caches_body",
+        cache_dir=str(cache_dir),
+        items="  • " + "\n  • ".join(parts),
+    )
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Information)
+    box.setWindowTitle(t("preprocess_existing_caches_title"))
+    box.setText(body)
+    box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+    box.setDefaultButton(QMessageBox.Ok)
+    return box.exec() == QMessageBox.Ok
+
+
 def find_resumable_checkpoint(merged: dict) -> tuple[Path, int] | None:
     """If the merged config has a writable ``checkpointing_epochs`` and an
     on-disk checkpoint state directory exists with a usable ``train_state.json``,

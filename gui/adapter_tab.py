@@ -32,6 +32,7 @@ from gui import (
     ROOT,
     ScaledImageLabel,
     _imgs,
+    confirm_existing_caches,
     confirm_resumable_checkpoint,
     merged_method_preset,
 )
@@ -249,6 +250,8 @@ class _AdapterTab(QWidget):
     # ── Subprocess actions ────────────────────────────────────────
 
     def _start_preprocess(self):
+        if not confirm_existing_caches(self, self._cache, require_pe=self.REQUIRE_PE):
+            return
         self._launch([sys.executable, "tasks.py", self.PREPROCESS_TASK])
 
     def _start_train(self):

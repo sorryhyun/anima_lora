@@ -29,6 +29,19 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "accelerate_not_found": "accelerate not found on PATH",
         "preprocess": "Preprocess",
         "preprocess_required": "Please run Preprocess before training.",
+        "preprocess_existing_caches_title": "Existing caches will be reused",
+        "preprocess_existing_caches_body": (
+            "Cache files already exist in:\n  {cache_dir}\n\n"
+            "{items}\n\n"
+            "Preprocess will REUSE these — they are NOT deleted or "
+            "regenerated. Only missing entries will be processed.\n\n"
+            "If you want to force a full rebuild (e.g. after editing "
+            "captions or changing tokenizer settings), cancel and delete "
+            "the cache directory first."
+        ),
+        "preprocess_cache_count_latents": "{n} VAE latents (.npz)",
+        "preprocess_cache_count_te": "{n} text embeddings (_te.safetensors)",
+        "preprocess_cache_count_pe": "{n} PE features (_pe.safetensors)",
         "no_lora_for_test": "No LoRA in output/ckpt/ to test. Run training first.",
         "test_output_title": "Latest test output",
         "test_output_empty": "output/tests/ is empty.",
@@ -218,6 +231,19 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "accelerate_not_found": "PATH에서 accelerate를 찾을 수 없습니다",
         "preprocess": "전처리",
         "preprocess_required": "학습 전에 전처리를 먼저 실행해주세요.",
+        "preprocess_existing_caches_title": "기존 캐시를 그대로 재사용합니다",
+        "preprocess_existing_caches_body": (
+            "다음 경로에 이미 캐시 파일이 있습니다:\n  {cache_dir}\n\n"
+            "{items}\n\n"
+            "전처리는 기존 캐시를 그대로 재사용합니다 — 삭제하거나 다시 "
+            "만들지 않습니다. 누락된 항목만 새로 처리됩니다.\n\n"
+            "캡션을 수정했거나 토크나이저 설정 등을 바꿔서 캐시를 처음부터 "
+            "다시 만들고 싶다면, 취소를 누르고 캐시 폴더를 직접 삭제한 뒤 "
+            "다시 실행하세요."
+        ),
+        "preprocess_cache_count_latents": "VAE 잠재변수 {n}개 (.npz)",
+        "preprocess_cache_count_te": "텍스트 임베딩 {n}개 (_te.safetensors)",
+        "preprocess_cache_count_pe": "PE 피처 {n}개 (_pe.safetensors)",
         "no_lora_for_test": "테스트할 LoRA가 output/ckpt/에 없습니다. 먼저 학습을 실행하세요.",
         "test_output_title": "최신 테스트 출력",
         "test_output_empty": "output/tests/가 비어 있습니다.",
