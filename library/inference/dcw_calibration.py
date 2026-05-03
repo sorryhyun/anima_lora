@@ -1,18 +1,25 @@
-"""Per-LoRA DCW calibration solver — LL-only.
+"""Per-LoRA DCW calibration selector — LL-only, multi-anchor.
 
-Closed-form, single-band specialization of
-``archive/dcw/measure_bias.py::compute_optimal_lambda``. Given the late-half
-LL gap from a baseline reverse rollout and one ε-probe rollout (DCW with
-λ=−ε on band LL), solve for the scalar λ_LL* that minimizes the weighted
-late-half integrated squared LL gap under linear-response:
+Given the late-half LL gap from a baseline reverse rollout (λ=0) and N
+anchor rollouts (DCW with λ=anchor_i on band LL), pick the anchor that
+**actually measured** the lowest weighted late-half ``Σ w(σ_i) · gap(i)²``.
+Baseline (λ=0) is always treated as a candidate so flat-style LoRAs that
+DCW hurts can land on "no correction".
 
-    gap_corrected(i) ≈ gap_baseline(i) + λ · s(i)
-    s(i) = (gap_probe(i) − gap_baseline(i)) / (−ε)
-    λ* = − Σ_late w(σ_i) · gap(i) · s(i)  /  Σ_late w(σ_i) · s(i)²
+This replaces an earlier closed-form linear-response solver
+(``archive/dcw/measure_bias.py::compute_optimal_lambda``) which
+extrapolated from a single ε-probe under
+``gap_corrected(i) ≈ gap_baseline(i) + λ·s(i)``. LL is a strongly
+nonlinear lever (per ``docs/methods/dcw.md`` §"Re-tuning λ for LL-only");
+the extrapolation systematically over-shot — it picked λ ≈ −0.033 on
+bench (vs the empirical safe optimum at −0.015) and could blow up to
+λ ≈ −0.1 on LoRAs with weaker probe response, producing visibly drifting
+samples. Picking from a small set of measured anchors avoids the
+extrapolation entirely.
 
 The result is one number plus a fixed schedule string, written to the
 LoRA's safetensors metadata as ``ss_dcw_recipe``. See
-``docs/proposal/lora-dcw-proposal.md`` for the full design and
+``docs/proposal/lora-dcw-proposal.md`` for the original design and
 ``docs/methods/dcw.md`` §LL-only correction for the empirical motivation.
 
 This module is dependency-free — no torch tensors come in, only Python
@@ -48,89 +55,93 @@ def _w(sigma_i: float, schedule: Schedule) -> float:
     return 0.0
 
 
-def solve_recipe_LL(
+def _weighted_late_loss(
+    gap: Sequence[float], sigmas: Sequence[float], schedule: Schedule, late_start: int
+) -> float:
+    """``Σ_{i ≥ late_start} w(σ_i) · gap(i)²`` — the loss the selector
+    minimizes across candidates."""
+    return sum(
+        _w(sigmas[i], schedule) * gap[i] * gap[i] for i in range(late_start, len(gap))
+    )
+
+
+def select_best_anchor_LL(
     gap_LL_baseline: Iterable[float],
-    gap_LL_probe: Iterable[float],
+    anchor_results: Sequence[tuple[float, Iterable[float]]],
     sigmas: Iterable[float],
     *,
-    eps: float,
     schedule: Schedule = "one_minus_sigma",
     late_fraction: float = 0.5,
 ) -> dict:
-    """Closed-form solve for λ_LL* on the late half of the schedule.
+    """Pick the λ_LL anchor with the lowest measured late-half weighted
+    ``Σ w(σ_i) · gap_LL(i)²``. Baseline (λ=0) is always a candidate.
 
     Args:
-        gap_LL_baseline: per-step LL gap at λ=0, length ``num_steps``.
-        gap_LL_probe: per-step LL gap at λ=−eps on band LL, same length.
+        gap_LL_baseline: per-step LL gap at λ=0 (no correction), length
+            ``num_steps``. Defines the ``λ=0`` candidate.
+        anchor_results: list of ``(lambda_value, gap_LL_at_lambda)``
+            pairs, one per probe rollout. Each ``gap_LL_at_lambda`` must
+            have the same length as ``gap_LL_baseline``.
         sigmas: σ_i schedule used during measurement, same length.
-        eps: probe magnitude — the ε in ``λ=−ε`` (positive scalar).
-        schedule: σ-shape used to weight the loss (must match the
-            schedule the recipe will be applied with at inference).
-        late_fraction: which fraction of the schedule (counted from the
-            tail) to weight in the solve. Default 0.5 = late half, per
-            the 2026-05-03 finding that bias is concentrated at low σ.
+        schedule: σ-shape that weights the late-half loss. Must match the
+            schedule the recipe will be applied with at inference.
+        late_fraction: tail fraction of the schedule that the loss is
+            integrated over. Default 0.5 = late half, per the 2026-05-03
+            finding that bias is concentrated at low σ.
 
     Returns:
-        dict with keys ``lambda_LL`` (float), ``schedule_LL`` (str),
-        ``residual_gap_LL_late`` (float, predicted Σ w·gap_corrected²
-        under linear-response), ``baseline_gap_LL_late`` (float, the
-        same quantity at λ=0), and ``num_late_steps`` (int).
+        dict with keys:
+            ``lambda_LL`` — winning anchor (may be 0.0 if baseline won).
+            ``schedule_LL`` — passed through.
+            ``baseline_gap_LL_late`` — λ=0 weighted loss.
+            ``best_gap_LL_late`` — winning anchor's weighted loss.
+            ``num_late_steps`` — number of steps in the late-half sum.
+            ``candidates`` — list of ``{"lambda": float, "loss": float}``
+                in input order with baseline first; for logging.
+            ``baseline_was_best`` — bool.
 
     Raises:
-        ValueError: if the inputs disagree in length, ``eps <= 0``, or
-            the late-half ``Σ w·s²`` is exactly zero (probe had no
-            effect — would divide by zero).
+        ValueError: on length mismatches or empty inputs.
     """
-    if eps <= 0.0:
-        raise ValueError(f"eps must be > 0, got {eps}")
-
     gap_b = list(map(float, gap_LL_baseline))
-    gap_p = list(map(float, gap_LL_probe))
     sig = list(map(float, sigmas))
     n = len(gap_b)
-    if not (n == len(gap_p) == len(sig)):
-        raise ValueError(
-            f"length mismatch: gap_baseline={n}, gap_probe={len(gap_p)}, "
-            f"sigmas={len(sig)}"
-        )
     if n == 0:
         raise ValueError("empty inputs")
+    if len(sig) != n:
+        raise ValueError(f"sigmas length {len(sig)} != gap_baseline length {n}")
 
     late_start = int(n * (1.0 - late_fraction))
 
-    num = 0.0
-    den = 0.0
-    base_loss = 0.0
-    for i in range(late_start, n):
-        w = _w(sig[i], schedule)
-        s = (gap_p[i] - gap_b[i]) / (-eps)
-        num += w * gap_b[i] * s
-        den += w * s * s
-        base_loss += w * gap_b[i] * gap_b[i]
-
-    if den == 0.0:
-        raise ValueError(
-            "late-half Σ w·s² is zero — probe produced no measurable LL "
-            "gap response. Increase --validation_bias_calibration_eps or "
-            "check that DCW correction is wired into the probe path."
+    candidates: list[dict] = [
+        {
+            "lambda": 0.0,
+            "loss": _weighted_late_loss(gap_b, sig, schedule, late_start),
+        }
+    ]
+    for lam, gap_at_lam in anchor_results:
+        gap_a = list(map(float, gap_at_lam))
+        if len(gap_a) != n:
+            raise ValueError(
+                f"anchor λ={lam} gap length {len(gap_a)} != baseline length {n}"
+            )
+        candidates.append(
+            {
+                "lambda": float(lam),
+                "loss": _weighted_late_loss(gap_a, sig, schedule, late_start),
+            }
         )
 
-    lam = -num / den
-    # Linear-response prediction of post-correction late-half loss:
-    # Σ w · (gap + λ·s)² with λ = λ*.
-    residual = 0.0
-    for i in range(late_start, n):
-        w = _w(sig[i], schedule)
-        s = (gap_p[i] - gap_b[i]) / (-eps)
-        g = gap_b[i] + lam * s
-        residual += w * g * g
+    best = min(candidates, key=lambda c: c["loss"])
 
     return {
-        "lambda_LL": float(lam),
+        "lambda_LL": float(best["lambda"]),
         "schedule_LL": schedule,
-        "residual_gap_LL_late": float(residual),
-        "baseline_gap_LL_late": float(base_loss),
+        "baseline_gap_LL_late": float(candidates[0]["loss"]),
+        "best_gap_LL_late": float(best["loss"]),
         "num_late_steps": int(n - late_start),
+        "candidates": candidates,
+        "baseline_was_best": best is candidates[0],
     }
 
 

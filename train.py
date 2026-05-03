@@ -2359,81 +2359,52 @@ class AnimaTrainer:
             logs[f"{log_prefix}/v_rev_step_{i:02d}"] = float(v_rev[i])
         logging_fn(accelerator, logs, global_step, epoch + 1)
 
-    def _calibrate_dcw_recipe(
+    def _run_bias_LL_pass(
         self,
         ctx: "TrainCtx",
         val: "ValCtx",
         *,
-        metadata: dict,
-    ) -> None:
-        """End-of-training: solve a per-LoRA LL-band DCW recipe and stuff
-        it into the safetensors metadata.
+        num_steps: int,
+        flow_shift: float,
+        val_seed_base: int,
+        dcw_probe_lambda: float,
+        dcw_probe_schedule: str,
+        pbar: "tqdm | None" = None,
+        pbar_label: str = "",
+    ) -> tuple[torch.Tensor, torch.Tensor, int]:
+        """One sweep of the val dataloader returning summed LL-band
+        ``v_fwd`` / ``v_rev`` trajectories (length ``num_steps``, float64
+        on CPU) and the count of usable batches. With
+        ``dcw_probe_lambda=0.0`` this is a baseline pass; with a nonzero λ
+        it's the calibration probe pass.
 
-        Re-iterates the val dataloader once with a small λ_LL=−ε DCW
-        probe injected into the reverse rollout, computes per-step
-        ``gap_LL_probe``, then closed-form solves for the late-half
-        optimum λ_LL* against the cached baseline ``gap_LL`` from the
-        most recent regular bias validation.
+        When ``pbar`` is provided, advances by 1 per val batch (skipped or
+        not) and updates the postfix with ``pbar_label`` plus the running
+        mean late-half ``|gap_LL|`` from this pass so far. Caller owns the
+        bar's lifecycle.
 
-        Skipped silently when ``--validation_bias_metric`` was off, no
-        baseline is cached, the active adapter is bias-incompatible
-        (APEX / IP-Adapter / EasyControl), or the val pass produces zero
-        usable batches. See ``docs/proposal/lora-dcw-proposal.md``.
+        Caller is responsible for putting models in eval mode, switching
+        block-swap, clearing timestep masks, and restoring RNG / train
+        state — this just iterates and accumulates.
         """
         args = ctx.args
-        if not getattr(args, "validation_bias_metric", False):
-            return
-        if not getattr(args, "calibrate_dcw_recipe", True):
-            return
-
-        baseline = getattr(self, "_last_bias_validation", None)
-        if baseline is None:
-            return
-
-        skipped = sorted(
-            getattr(a, "name", "?")
-            for a in self._adapters
-            if getattr(a, "name", None) in self._BIAS_INCOMPATIBLE_ADAPTERS
-        )
-        if skipped:
-            return
-
         accelerator = ctx.accelerator
-        if not accelerator.is_main_process:
-            return
-
         device = accelerator.device
         weight_dtype = ctx.weight_dtype
-        unwrapped_net = accelerator.unwrap_model(ctx.network)
         unwrapped_unet = accelerator.unwrap_model(ctx.unet)
-
-        ctx.optimizer_eval_fn()
-        unwrapped_net.eval()
-        if hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
-            unwrapped_unet.switch_block_swap_for_inference()
-        if hasattr(unwrapped_net, "clear_timestep_mask"):
-            unwrapped_net.clear_timestep_mask()
-        rng_states = self._switch_rng_state(
-            args.validation_seed if args.validation_seed is not None else args.seed
-        )
-
-        num_steps = baseline["num_steps"]
-        flow_shift = baseline["flow_shift"]
-        eps = float(getattr(args, "dcw_calibration_eps", 0.005))
-        schedule = getattr(args, "dcw_calibration_schedule", "one_minus_sigma")
-        val_seed_base = int(
-            args.validation_seed if args.validation_seed is not None else args.seed
-        )
 
         sum_v_fwd_LL = torch.zeros(num_steps, dtype=torch.float64)
         sum_v_rev_LL = torch.zeros(num_steps, dtype=torch.float64)
         n_batches = 0
+        late = num_steps // 2
         try:
             for val_step, batch in enumerate(val.dataloader):
                 if val_step >= val.steps:
                     break
                 latents = batch["latents"]
                 if latents is None:
+                    if pbar is not None:
+                        pbar.update(1)
                     continue
                 latents = latents.to(device, dtype=weight_dtype)
                 if latents.ndim == 4:
@@ -2441,6 +2412,8 @@ class AnimaTrainer:
 
                 teo = batch.get("text_encoder_outputs_list")
                 if teo is None or len(teo) < 6 or teo[4] is None:
+                    if pbar is not None:
+                        pbar.update(1)
                     continue
                 crossattn_emb = teo[4].to(device, dtype=weight_dtype)
                 t5_attn_mask = teo[3]
@@ -2474,51 +2447,204 @@ class AnimaTrainer:
                     num_steps=num_steps,
                     flow_shift=flow_shift,
                     noise_seed=seed,
-                    dcw_probe_lambda=-eps,
-                    dcw_probe_schedule=schedule,
+                    dcw_probe_lambda=dcw_probe_lambda,
+                    dcw_probe_schedule=dcw_probe_schedule,
                 )
                 sum_v_fwd_LL += traj["v_fwd_LL"]
                 sum_v_rev_LL += traj["v_rev_LL"]
                 n_batches += 1
+                if pbar is not None:
+                    pbar.update(1)
+                    mean_gap_LL = (sum_v_rev_LL - sum_v_fwd_LL) / n_batches
+                    abs_gap_late = float(mean_gap_LL[late:].abs().sum())
+                    pbar.set_postfix_str(
+                        f"{pbar_label} |gap_LL|_late={abs_gap_late:.2f} "
+                        f"({n_batches} batch{'es' if n_batches != 1 else ''})"
+                    )
         finally:
             clear_hydra_sigma(unwrapped_unet)
 
-        self._restore_rng_state(rng_states)
-        ctx.optimizer_train_fn()
-        unwrapped_net.train()
-        if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
-            unwrapped_unet.switch_block_swap_for_training()
-        clean_memory_on_device(device)
+        return sum_v_fwd_LL, sum_v_rev_LL, n_batches
 
-        if n_batches == 0:
+    def _calibrate_dcw_recipe(
+        self,
+        ctx: "TrainCtx",
+        val: "ValCtx",
+        *,
+        metadata: dict,
+    ) -> None:
+        """End-of-training: solve a per-LoRA LL-band DCW recipe and stuff
+        it into the safetensors metadata.
+
+        Iterates the val dataloader once with a small λ_LL=−ε DCW probe
+        injected into the reverse rollout, computes per-step
+        ``gap_LL_probe``, then closed-form solves for the late-half
+        optimum λ_LL* against a baseline ``gap_LL``. The baseline is
+        reused from the most recent ``--validation_bias_metric`` pass
+        when available, otherwise an extra non-probe pass is run inline
+        — so calibration works whether or not bias-metric validation was
+        enabled during training.
+
+        Skipped silently when the active adapter is bias-incompatible
+        (APEX / IP-Adapter / EasyControl) or the val pass produces zero
+        usable batches. See ``docs/proposal/lora-dcw-proposal.md``.
+        """
+        args = ctx.args
+        if not getattr(args, "calibrate_dcw_recipe", True):
             return
 
-        gap_LL_probe = ((sum_v_rev_LL - sum_v_fwd_LL) / n_batches).tolist()
+        skipped = sorted(
+            getattr(a, "name", "?")
+            for a in self._adapters
+            if getattr(a, "name", None) in self._BIAS_INCOMPATIBLE_ADAPTERS
+        )
+        if skipped:
+            return
 
-        from library.inference.dcw_calibration import solve_recipe_LL
+        accelerator = ctx.accelerator
+        if not accelerator.is_main_process:
+            return
+
+        device = accelerator.device
+        unwrapped_net = accelerator.unwrap_model(ctx.network)
+        unwrapped_unet = accelerator.unwrap_model(ctx.unet)
+
+        ctx.optimizer_eval_fn()
+        unwrapped_net.eval()
+        if hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
+            unwrapped_unet.switch_block_swap_for_inference()
+        if hasattr(unwrapped_net, "clear_timestep_mask"):
+            unwrapped_net.clear_timestep_mask()
+        rng_states = self._switch_rng_state(
+            args.validation_seed if args.validation_seed is not None else args.seed
+        )
+
+        anchors = list(
+            getattr(args, "dcw_calibration_anchors", [-0.015, -0.022, -0.030])
+        )
+        anchors = [float(a) for a in anchors if float(a) != 0.0]
+        if not anchors:
+            accelerator.print(
+                "[dcw-calibration] no nonzero anchors configured — skipping"
+            )
+            return
+        schedule = getattr(args, "dcw_calibration_schedule", "one_minus_sigma")
+        val_seed_base = int(
+            args.validation_seed if args.validation_seed is not None else args.seed
+        )
+
+        flow_shift = float(getattr(args, "flow_shift", 1.0))
+        num_steps = int(
+            getattr(args, "dcw_calibration_steps", None)
+            or getattr(args, "validation_bias_steps", 12)
+        )
+
+        # Cached bias-metric baseline (cheap per-cycle diagnostic) is only
+        # reusable when its step count matches calibration's. Otherwise σ
+        # samples differ and the late-half gap is not comparable across
+        # the baseline-vs-anchor passes the selector reads.
+        baseline = getattr(self, "_last_bias_validation", None)
+        if baseline is not None and baseline["num_steps"] != num_steps:
+            baseline = None
+
+        anchor_gaps: list[tuple[float, list[float]]] = []
+        n_batches = 0
+        n_passes = (1 if baseline is None else 0) + len(anchors)
+        cal_pbar = tqdm(
+            total=n_passes * val.steps,
+            smoothing=0,
+            disable=not accelerator.is_local_main_process,
+            desc=f"dcw-calib (steps={num_steps})",
+        )
+        try:
+            if baseline is None:
+                accelerator.print(
+                    f"[dcw-calibration] running baseline val pass at "
+                    f"num_steps={num_steps} before {len(anchors)} anchor pass(es)"
+                )
+                fwd_LL_base, rev_LL_base, n_batches_base = self._run_bias_LL_pass(
+                    ctx,
+                    val,
+                    num_steps=num_steps,
+                    flow_shift=flow_shift,
+                    val_seed_base=val_seed_base,
+                    dcw_probe_lambda=0.0,
+                    dcw_probe_schedule=schedule,
+                    pbar=cal_pbar,
+                    pbar_label="baseline",
+                )
+                if n_batches_base == 0:
+                    return
+                gap_LL_base_list = (
+                    (rev_LL_base - fwd_LL_base) / n_batches_base
+                ).tolist()
+                from library.inference.sampling import get_timesteps_sigmas
+
+                _, sig_t = get_timesteps_sigmas(num_steps, flow_shift, device)
+                baseline = {
+                    "gap_LL": gap_LL_base_list,
+                    "sigmas": sig_t.cpu()[:num_steps].to(torch.float64).tolist(),
+                    "num_steps": num_steps,
+                    "flow_shift": flow_shift,
+                    "n_batches": n_batches_base,
+                }
+
+            for lam in anchors:
+                sum_v_fwd_LL, sum_v_rev_LL, n_batches = self._run_bias_LL_pass(
+                    ctx,
+                    val,
+                    num_steps=num_steps,
+                    flow_shift=flow_shift,
+                    val_seed_base=val_seed_base,
+                    dcw_probe_lambda=lam,
+                    dcw_probe_schedule=schedule,
+                    pbar=cal_pbar,
+                    pbar_label=f"λ={lam:+.4f}",
+                )
+                if n_batches == 0:
+                    accelerator.print(
+                        f"[dcw-calibration] anchor λ={lam:+.4f} produced no usable "
+                        "batches — skipping recipe"
+                    )
+                    return
+                gap_LL_at_lam = (
+                    (sum_v_rev_LL - sum_v_fwd_LL) / n_batches
+                ).tolist()
+                anchor_gaps.append((lam, gap_LL_at_lam))
+        finally:
+            cal_pbar.close()
+            self._restore_rng_state(rng_states)
+            ctx.optimizer_train_fn()
+            unwrapped_net.train()
+            if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
+                unwrapped_unet.switch_block_swap_for_training()
+            clean_memory_on_device(device)
+
+        from library.inference.dcw_calibration import select_best_anchor_LL
 
         try:
-            solved = solve_recipe_LL(
+            selected = select_best_anchor_LL(
                 baseline["gap_LL"],
-                gap_LL_probe,
+                anchor_gaps,
                 baseline["sigmas"],
-                eps=eps,
                 schedule=schedule,
             )
         except ValueError as exc:
-            accelerator.print(f"[dcw-calibration] solver failed: {exc} — skipping recipe")
+            accelerator.print(
+                f"[dcw-calibration] selector failed: {exc} — skipping recipe"
+            )
             return
 
         recipe_payload = {
-            "lambda_LL": solved["lambda_LL"],
-            "schedule_LL": solved["schedule_LL"],
+            "lambda_LL": selected["lambda_LL"],
+            "schedule_LL": selected["schedule_LL"],
         }
         late_idx = num_steps // 2
         gap_LL_base = baseline["gap_LL"]
         provenance = {
-            "version": 1,
+            "version": 2,  # bump: was linear-response solver, now anchor selection
             "band": "LL",
-            "eps": eps,
+            "anchors": anchors,
             "num_steps": num_steps,
             "n_batches": n_batches,
             "n_batches_baseline": baseline.get("n_batches", n_batches),
@@ -2526,9 +2652,13 @@ class AnimaTrainer:
             "baseline_abs_gap_LL_late": float(
                 sum(abs(g) for g in gap_LL_base[late_idx:])
             ),
-            "baseline_gap_LL_late_loss": solved["baseline_gap_LL_late"],
-            "residual_gap_LL_late_loss": solved["residual_gap_LL_late"],
-            "num_late_steps": solved["num_late_steps"],
+            "baseline_gap_LL_late_loss": selected["baseline_gap_LL_late"],
+            "best_gap_LL_late_loss": selected["best_gap_LL_late"],
+            "candidate_losses": [
+                {"lambda": c["lambda"], "loss": c["loss"]}
+                for c in selected["candidates"]
+            ],
+            "num_late_steps": selected["num_late_steps"],
         }
 
         metadata["ss_dcw_recipe"] = json.dumps(
@@ -2538,12 +2668,17 @@ class AnimaTrainer:
             provenance, separators=(",", ":")
         )
 
+        cand_str = " ".join(
+            f"λ={c['lambda']:+.4f}→{c['loss']:.1f}"
+            for c in selected["candidates"]
+        )
+        winner_note = (
+            "baseline (no DCW)" if selected["baseline_was_best"]
+            else f"λ={selected['lambda_LL']:+.4f}"
+        )
         accelerator.print(
-            f"[dcw-calibration] λ_LL*={solved['lambda_LL']:+.5f} "
-            f"({solved['schedule_LL']}); late |gap_LL|² "
-            f"{solved['baseline_gap_LL_late']:.1f} → "
-            f"{solved['residual_gap_LL_late']:.1f} "
-            f"(linear-response prediction); n_batches={n_batches}"
+            f"[dcw-calibration] selected {winner_note} ({selected['schedule_LL']}); "
+            f"candidates: {cand_str}; n_batches={n_batches}"
         )
 
     def train(self, args):
@@ -3098,22 +3233,39 @@ def setup_parser() -> argparse.ArgumentParser:
         "--calibrate_dcw_recipe",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="At end-of-training, run one extra reverse-rollout pass with "
-        "λ_LL=−ε DCW correction injected, closed-form-solve for the "
-        "per-LoRA optimal λ_LL*, and write it to safetensors metadata as "
-        "ss_dcw_recipe (read at inference by --dcw). Requires "
-        "--validation_bias_metric. Adds ~one validation pass of cost. "
-        "See docs/proposal/lora-dcw-proposal.md.",
+        help="At end-of-training, run one reverse-rollout per --dcw_calibration_anchors "
+        "(plus a baseline if --validation_bias_metric didn't cache one), pick the "
+        "anchor that empirically minimized the late-half weighted |gap_LL|², and "
+        "write it to safetensors metadata as ss_dcw_recipe (read at inference by "
+        "--dcw). Baseline (λ=0) is always a candidate so flat-style LoRAs that DCW "
+        "hurts can land on no correction. Cost: N+(0|1) validation passes where N "
+        "is len(anchors). See docs/proposal/lora-dcw-proposal.md.",
     )
     parser.add_argument(
-        "--dcw_calibration_eps",
+        "--dcw_calibration_anchors",
         type=float,
-        default=0.005,
-        help="Probe magnitude ε used in the calibration's finite-difference "
-        "estimate of ∂gap_LL/∂λ_LL. Probe rollout uses λ_LL=−ε on band LL. "
-        "Default 0.005 — large enough for measurable response, small "
-        "enough to stay in linear-response. Ignored without "
-        "--calibrate_dcw_recipe.",
+        nargs="+",
+        default=[-0.015, -0.022, -0.030],
+        help="λ_LL anchor values to probe; recipe writes the empirically best one "
+        "(lowest weighted late-half |gap_LL|²). Defaults span the safe LL operating "
+        "range from docs/methods/dcw.md §Re-tuning λ for LL-only. Earlier versions "
+        "ran a single ε-probe and closed-form-solved for λ* under linear-response, "
+        "which extrapolated past LL's nonlinear knee and could pick λ ≈ −0.1 (visible "
+        "drift). Picking from measured anchors avoids the extrapolation. Ignored "
+        "without --calibrate_dcw_recipe.",
+    )
+    parser.add_argument(
+        "--dcw_calibration_steps",
+        type=int,
+        default=28,
+        help="Reverse-rollout step count for the end-of-training calibration "
+        "passes. Decoupled from --validation_bias_steps (which is the cheap "
+        "per-cycle diagnostic, default 12). Default 28 matches typical "
+        "inference settings — the σ schedule is sampled at the same density "
+        "the saved λ will be applied with. When this differs from "
+        "--validation_bias_steps the cached baseline can't be reused, so "
+        "calibration always runs an extra baseline pass (N+1 passes total). "
+        "Ignored without --calibrate_dcw_recipe.",
     )
     parser.add_argument(
         "--dcw_calibration_schedule",

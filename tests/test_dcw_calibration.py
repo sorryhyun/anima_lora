@@ -1,6 +1,6 @@
 """Smoke tests for the per-LoRA DCW calibration path.
 
-Covers the closed-form solver math, safetensors round-trip of the
+Covers the multi-anchor selector, safetensors round-trip of the
 ``ss_dcw_recipe`` metadata key, and the stacked-LoRA combination rule.
 Does NOT exercise the trainer end-to-end — that needs a GPU and a real
 val dataloader.
@@ -22,75 +22,91 @@ from library.inference.dcw_calibration import (
     combine_recipes,
     read_recipe_from_safetensors,
     resolve_dcw_args,
-    solve_recipe_LL,
+    select_best_anchor_LL,
 )
 
 
-def _const_gap_inputs(num_steps: int = 12, gap_value: float = 1.0):
-    """Build a synthetic baseline+probe pair with constant gap and
-    perfect linear-response (s = 1 across all steps).
-
-    With s=1, schedule weight w, and constant gap g:
-        λ* = -Σ_late w·g·1 / Σ_late w·1²  =  -g
-    """
-    sigmas = [(num_steps - i) / num_steps for i in range(num_steps)]
-    eps = 0.01
-    gap_baseline = [gap_value] * num_steps
-    # gap_probe = baseline + s * (-eps); s = 1 → gap_probe = baseline - eps
-    gap_probe = [g - eps for g in gap_baseline]
-    return gap_baseline, gap_probe, sigmas, eps
+def _sigmas(n: int) -> list[float]:
+    return [(n - i) / n for i in range(n)]
 
 
-def test_solver_constant_gap_recovers_minus_gap():
-    g, gp, sig, eps = _const_gap_inputs(num_steps=12, gap_value=2.5)
-    out = solve_recipe_LL(g, gp, sig, eps=eps, schedule="const")
-    # const schedule + s=1 + constant gap → λ* = -gap exactly.
-    assert math.isclose(out["lambda_LL"], -2.5, rel_tol=1e-9, abs_tol=1e-9)
+def test_selector_picks_lowest_loss_anchor():
+    # Constant baseline gap = 1.0; anchor λ=-0.015 cuts it to 0.5,
+    # λ=-0.022 cuts it to 0.2 (best), λ=-0.030 overshoots to -0.4.
+    n = 12
+    sig = _sigmas(n)
+    gap_b = [1.0] * n
+    out = select_best_anchor_LL(
+        gap_b,
+        [(-0.015, [0.5] * n), (-0.022, [0.2] * n), (-0.030, [-0.4] * n)],
+        sig,
+        schedule="const",
+    )
+    assert math.isclose(out["lambda_LL"], -0.022)
     assert out["schedule_LL"] == "const"
     assert out["num_late_steps"] == 6
-    # Linear-response prediction: gap + λ*s = 0 everywhere → residual ≈ 0.
-    assert out["residual_gap_LL_late"] < 1e-12
-    assert out["baseline_gap_LL_late"] > 0.0
+    assert not out["baseline_was_best"]
+    # Candidates dict has baseline (λ=0) first, then anchors in order.
+    assert [c["lambda"] for c in out["candidates"]] == [0.0, -0.015, -0.022, -0.030]
 
 
-def test_solver_one_minus_sigma_uses_late_weighting():
-    # Increasing baseline gap toward late steps; (1-σ) schedule weights
-    # the late half more, so λ* should land closer to a late-half mean
-    # than to a uniform mean.
-    num_steps = 12
-    gap_baseline = [float(i) for i in range(num_steps)]  # 0,1,...,11
-    eps = 0.01
-    gap_probe = [g - eps for g in gap_baseline]  # s = 1 everywhere
-    sigmas = [(num_steps - i) / num_steps for i in range(num_steps)]
-
-    out = solve_recipe_LL(
-        gap_baseline, gap_probe, sigmas, eps=eps, schedule="one_minus_sigma"
+def test_selector_picks_baseline_when_all_anchors_worse():
+    # Flat-style LoRA — DCW makes every anchor worse than no correction.
+    n = 12
+    sig = _sigmas(n)
+    gap_b = [0.5] * n
+    out = select_best_anchor_LL(
+        gap_b,
+        [(-0.015, [1.5] * n), (-0.022, [2.0] * n), (-0.030, [3.0] * n)],
+        sig,
+        schedule="const",
     )
-    # With s=1 everywhere, λ* = -Σ_late w·g / Σ_late w
-    late = num_steps // 2
-    num = sum((1.0 - sigmas[i]) * gap_baseline[i] for i in range(late, num_steps))
-    den = sum((1.0 - sigmas[i]) for i in range(late, num_steps))
-    expected = -num / den
-    assert math.isclose(out["lambda_LL"], expected, rel_tol=1e-9, abs_tol=1e-9)
+    assert out["lambda_LL"] == 0.0
+    assert out["baseline_was_best"]
 
 
-def test_solver_rejects_zero_eps():
-    with pytest.raises(ValueError, match="eps must be > 0"):
-        solve_recipe_LL([0.0], [0.0], [0.5], eps=0.0)
+def test_selector_one_minus_sigma_weights_late_steps():
+    # Anchor A reduces gap on early-late steps but worsens it on the
+    # very last step; anchor B does the opposite. Under one_minus_sigma
+    # the very-last step gets the highest weight, so B should win.
+    n = 12
+    sig = _sigmas(n)
+    gap_b = [2.0] * n
+    gap_a = list(gap_b)
+    gap_a[6:11] = [0.5] * 5  # A: huge improvement mid-late
+    gap_a[11] = 4.0          # A: blows up at very last step
+    gap_b_anchor = list(gap_b)
+    gap_b_anchor[6:11] = [1.8] * 5  # B: marginal improvement mid-late
+    gap_b_anchor[11] = 0.2          # B: nails the last step
+    out = select_best_anchor_LL(
+        gap_b,
+        [(-0.015, gap_a), (-0.022, gap_b_anchor)],
+        sig,
+        schedule="one_minus_sigma",
+    )
+    assert math.isclose(out["lambda_LL"], -0.022)
 
 
-def test_solver_rejects_length_mismatch():
-    with pytest.raises(ValueError, match="length mismatch"):
-        solve_recipe_LL([0.0, 1.0], [0.0], [0.5, 0.4], eps=0.01)
+def test_selector_rejects_length_mismatch():
+    with pytest.raises(ValueError, match="length"):
+        select_best_anchor_LL(
+            [1.0, 1.0], [(-0.015, [0.5])], [0.5, 0.4], schedule="const"
+        )
 
 
-def test_solver_rejects_zero_response():
-    # Probe identical to baseline → s=0 everywhere → division by zero.
+def test_selector_rejects_empty_inputs():
+    with pytest.raises(ValueError, match="empty"):
+        select_best_anchor_LL([], [(-0.015, [])], [], schedule="const")
+
+
+def test_selector_no_anchors_returns_baseline():
     n = 8
-    g = [1.0] * n
-    sig = [(n - i) / n for i in range(n)]
-    with pytest.raises(ValueError, match="zero"):
-        solve_recipe_LL(g, list(g), sig, eps=0.01)
+    sig = _sigmas(n)
+    gap_b = [1.0] * n
+    out = select_best_anchor_LL(gap_b, [], sig, schedule="const")
+    assert out["lambda_LL"] == 0.0
+    assert out["baseline_was_best"]
+    assert len(out["candidates"]) == 1
 
 
 def _write_lora_with_recipe(path: Path, recipe_json: str | None) -> None:

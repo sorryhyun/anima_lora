@@ -16,9 +16,9 @@ network_alpha = 32
 network_dim = 32
 
 learning_rate = 5e-5
-max_train_epochs = 12
-save_every_n_epochs = 12
-checkpointing_epochs = 12
+max_train_epochs = 4
+save_every_n_epochs = 4
+checkpointing_epochs = 4
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
@@ -93,21 +93,24 @@ alpha_rank_scale = 1.0
 # Cost: one full reverse rollout per val batch (~val_steps × bias_steps
 # extra DiT forwards per validation pass).
 
-validation_bias_metric = true
+# validation_bias_metric = true
 # validation_bias_steps = 12   # half of inference's 24; raise for higher resolution
 
 # -------------
-# Per-LoRA DCW calibration — at end-of-training, run one extra reverse
-# rollout with λ_LL=−ε DCW correction injected, closed-form-solve for the
-# per-LoRA optimal λ_LL*, and write it into the safetensors metadata as
-# ss_dcw_recipe. `inference.py --dcw` (and `make test-lora-dcw`) reads
-# that recipe automatically. Requires validation_bias_metric = true.
-# Cost: roughly one extra validation pass at the end of training.
-# See docs/proposal/lora-dcw-proposal.md.
+# Per-LoRA DCW calibration — at end-of-training, run one reverse rollout
+# per anchor in dcw_calibration_anchors (plus a baseline if not cached
+# from validation_bias_metric), pick the λ_LL that empirically minimized
+# the late-half weighted |gap_LL|², and write it into the safetensors
+# metadata as ss_dcw_recipe. `inference.py --dcw` (and `make test-lora-dcw`)
+# reads that recipe automatically. Baseline (λ=0) is always a candidate
+# so flat-style LoRAs that DCW hurts can land on "no correction". Cost:
+# N anchor passes + (0 or 1) baseline pass per training run. See
+# docs/proposal/lora-dcw-proposal.md.
 
 calibrate_dcw_recipe = true
-dcw_calibration_eps = 0.005           # finite-difference probe magnitude
-dcw_calibration_schedule = "one_minus_sigma"   # σ-shape solver fits against
+dcw_calibration_anchors = [-0.015, -0.022, -0.030]   # λ_LL values to probe
+dcw_calibration_steps = 28                            # match inference; cheap (one-shot)
+dcw_calibration_schedule = "one_minus_sigma"          # σ-shape weighting
 
 compile_mode = "full"
 compile_inductor_mode = "reduce-overhead"
