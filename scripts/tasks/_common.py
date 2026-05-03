@@ -203,11 +203,13 @@ def run(cmd: list[str], **kwargs):
         sys.exit(result.returncode)
 
 
-def _nsys_wrapper() -> list[str] | None:
+def _nsys_wrapper() -> tuple[list[str], Path] | tuple[None, None]:
     """Build an ``nsys profile`` prefix when PROFILE_STEPS is set.
 
-    Returns None unless PROFILE_STEPS is set. Honors NSYS_OUT for the report
-    path (default ``output/profile.nsys-rep``).
+    Returns ``(prefix, out_path)`` when active so the caller can both wrap the
+    launch AND run ``nsys stats`` against the resulting report afterward.
+    Returns ``(None, None)`` when PROFILE_STEPS is unset. Honors NSYS_OUT for
+    the report path (default ``output/nsys/profile.nsys-rep``).
 
     Why ``--capture-range-end=stop`` (not ``stop-shutdown``) and ``--wait=primary``:
     the wrapped tree is ``nsys → accelerate launcher → train.py worker``. With
@@ -221,7 +223,7 @@ def _nsys_wrapper() -> list[str] | None:
     leftover ``/tmp/*.qdstrm``.
     """
     if not os.environ.get("PROFILE_STEPS"):
-        return None
+        return None, None
     nsys = shutil.which("nsys")
     if nsys is None:
         print(
@@ -229,14 +231,45 @@ def _nsys_wrapper() -> list[str] | None:
             "running without profiler wrapper",
             file=sys.stderr,
         )
-        return None
-    out = os.environ.get("NSYS_OUT", "output/profile.nsys-rep")
+        return None, None
+    out = os.environ.get("NSYS_OUT", "output/nsys/profile.nsys-rep")
     out_path = Path(out)
     if not out_path.is_absolute():
         out_path = ROOT / out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"  > nsys report -> {out_path}")
-    return [
+    # Profile config tuned for kernel optimization + bottleneck analysis.
+    #
+    # Bottleneck-analysis additions (none of these need symbol downloads):
+    #   --gpu-metrics-devices=cuda-visible  HW perf counters: SM occupancy,
+    #       tensor-core util, DRAM/L2 bandwidth, warp stall reasons. The single
+    #       most useful signal for "is this kernel compute- or memory-bound".
+    #       nsys auto-picks the metric set (gb20x for Blackwell, ad10x for Ada,
+    #       etc.); override with NSYS_GPU_METRICS_SET if needed.
+    #   --gpu-metrics-frequency=10000       10 kHz sampling — fine enough to
+    #       see per-step variation in a 3-step capture window.
+    #   --cuda-graph-trace=node             per-node timing inside CUDA graphs
+    #       (torch.compile emits these). Without it you only see the whole
+    #       graph as one opaque blob.
+    #   --cuda-memory-usage=true            tracks cudaMalloc/Free over time so
+    #       you can correlate VRAM spikes with NVTX step ranges. Marked
+    #       "significant runtime overhead" by nsys but fine inside a 3-step
+    #       window — and essential for catching allocator thrash.
+    #   --python-sampling=true @ 1 kHz      Python-side IP samples. Catches
+    #       "Python is the bottleneck" cases (data loader, cache misses,
+    #       config merging) that pure CUDA traces miss. Uses Python's own
+    #       frame metadata, no debug-symbol download.
+    #   --stats=true                        emit a sqlite next to the .nsys-rep
+    #       so you can grep/SQL kernel timings without opening the GUI.
+    #
+    # Symbol-resolution is still OFF (--resolve-symbols=false + the three
+    # *=none flags below). Without these, nsys finalize stalls for many
+    # minutes on "Press Ctrl-C to stop symbol files downloading" reaching
+    # out to NVIDIA's symbol servers — VRAM stays reserved, CPU sits at 0%.
+    # The additions above are perf-counter and Python-frame data; none of
+    # them need C++/CUDA-API symbol resolution.
+    metrics_set = os.environ.get("NSYS_GPU_METRICS_SET")
+    cmd = [
         nsys,
         "profile",
         "-o",
@@ -245,8 +278,121 @@ def _nsys_wrapper() -> list[str] | None:
         "--capture-range=cudaProfilerApi",
         "--capture-range-end=stop",
         "--wait=primary",
-        "--trace=cuda,nvtx,osrt,cudnn,cublas",
+        "--trace=cuda,nvtx,cudnn,cublas",
+        "--cuda-graph-trace=node",
+        "--cuda-memory-usage=true",
+        "--python-sampling=true",
+        "--python-sampling-frequency=1000",
+        "--stats=true",
+        "--sample=none",
+        "--cpuctxsw=none",
+        "--cudabacktrace=none",
+        "--resolve-symbols=false",
     ]
+    if _nsys_gpu_metrics_available(nsys):
+        cmd += [
+            "--gpu-metrics-devices=cuda-visible",
+            "--gpu-metrics-frequency=10000",
+        ]
+        if metrics_set:
+            cmd.append(f"--gpu-metrics-set={metrics_set}")
+    else:
+        print(
+            "  > nsys: GPU metrics disabled (perf counters restricted to admin). "
+            "To enable SM occupancy / tensor-core / memory-bandwidth counters:\n"
+            "      sudo tee /etc/modprobe.d/nvidia-perf.conf <<<'options nvidia "
+            '"NVreg_RestrictProfilingToAdminUsers=0"\'\n'
+            "      sudo update-initramfs -u && sudo reboot\n"
+            "    See https://developer.nvidia.com/ERR_NVGPUCTRPERM",
+            file=sys.stderr,
+        )
+    return cmd, out_path
+
+
+def _nsys_gpu_metrics_available(nsys: str) -> bool:
+    """Probe whether nsys can collect GPU metrics on this host.
+
+    nsys validates ``--gpu-metrics-devices`` at argv-parse time and aborts the
+    whole run if the perf-counter ioctl is restricted to root (the default on
+    most distros — see ERR_NVGPUCTRPERM). Probing first lets us silently skip
+    the flag instead of crashing the training task.
+    """
+    try:
+        out = subprocess.run(
+            [nsys, "profile", "--gpu-metrics-devices=help"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    blob = (out.stdout or "") + (out.stderr or "")
+    return "Insufficient privilege" not in blob and "None of the installed GPUs" not in blob
+
+
+# nsys stats reports auto-generated after profiling. Tuned for kernel
+# optimization + bottleneck analysis on a per-step NVTX trace:
+#   cuda_gpu_kern_sum     — top kernels by total GPU time (the "what to
+#                           optimize" list)
+#   nvtx_kern_sum         — kernels grouped under our `step=N` NVTX ranges
+#                           (which step is slow + which kernels caused it)
+#   cuda_gpu_mem_time_sum — host↔device mem ops by total time (catches
+#                           transfer-bound steps, e.g. uncached latents)
+#   cuda_gpu_mem_size_sum — same ops by bytes moved (cross-check time vs size
+#                           to spot small-but-frequent thrash)
+#   cuda_api_sum          — host-side CUDA API calls (cudaLaunchKernel,
+#                           cudaStreamSynchronize blocking, etc.)
+#   cuda_kern_exec_sum    — per-kernel queue/exec timings (launch overhead
+#                           vs. on-GPU runtime — small kernels dominated by
+#                           launch latency show up here)
+_NSYS_STATS_REPORTS = (
+    "cuda_gpu_kern_sum",
+    "nvtx_kern_sum",
+    "cuda_gpu_mem_time_sum",
+    "cuda_gpu_mem_size_sum",
+    "cuda_api_sum",
+    "cuda_kern_exec_sum",
+)
+
+
+def _nsys_run_stats(rep_path: Path) -> None:
+    """Generate textual ``nsys stats`` reports next to the .nsys-rep.
+
+    Writes one ``<stem>_<report>.txt`` per report into the same directory as
+    the .nsys-rep. Best-effort: if the .nsys-rep didn't materialize (e.g. nsys
+    aborted before finalizing) or stats fails, prints a warning and returns —
+    a missing summary shouldn't fail the training task itself.
+    """
+    if not rep_path.exists():
+        print(
+            f"warn: nsys report not found at {rep_path}; skipping stats",
+            file=sys.stderr,
+        )
+        return
+    nsys = shutil.which("nsys")
+    if nsys is None:
+        return
+    out_prefix = rep_path.with_suffix("")  # strip .nsys-rep
+    cmd = [
+        nsys,
+        "stats",
+        "--force-export=true",
+        "--force-overwrite=true",
+        "--format=column",
+        "--output",
+        str(out_prefix),
+    ]
+    for report in _NSYS_STATS_REPORTS:
+        cmd += ["--report", report]
+    cmd.append(str(rep_path))
+    print(f"  > nsys stats -> {out_prefix.parent}/")
+    # Don't sys.exit on failure — best-effort summary, the .nsys-rep is the
+    # canonical artifact and the GUI can always open it directly.
+    try:
+        subprocess.run(cmd, cwd=ROOT, check=False)
+    except OSError as e:
+        print(f"warn: nsys stats failed: {e}", file=sys.stderr)
 
 
 def accelerate_launch(*args: str):
@@ -261,7 +407,9 @@ def accelerate_launch(*args: str):
 
     When PROFILE_STEPS is set, wraps the launch with ``nsys profile`` so
     ``make <method> PROFILE_STEPS=3-5`` produces a navigable Nsight report
-    at ``output/profile.nsys-rep`` (override with NSYS_OUT).
+    at ``output/nsys/profile.nsys-rep`` (override with NSYS_OUT). After the
+    run, generates per-report textual summaries via ``nsys stats`` next to
+    the .nsys-rep.
     """
     cmd = [
         PY,
@@ -275,10 +423,12 @@ def accelerate_launch(*args: str):
         "train.py",
         *args,
     ]
-    nsys_prefix = _nsys_wrapper()
+    nsys_prefix, nsys_out = _nsys_wrapper()
     if nsys_prefix is not None:
         cmd = nsys_prefix + ["--"] + cmd
     run(cmd)
+    if nsys_out is not None:
+        _nsys_run_stats(nsys_out)
 
 
 def train(

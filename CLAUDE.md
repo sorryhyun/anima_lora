@@ -18,7 +18,7 @@ make preprocess            # Resize → post_image_dataset/resized/, cache → p
 
 ## Commands
 
-Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The examples below show both forms.
+Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The examples below show both forms. The `Makefile` is a thin catch-all dispatcher — every target forwards to `python tasks.py <target> $(ARGS)`. **`tasks.py` is the source of truth**; per-domain command implementations live in `scripts/tasks/{training,inference,preprocess,masking,gui,downloads,utilities}.py`. Don't grep the Makefile for a target's recipe — look in `scripts/tasks/`.
 
 ```bash
 # Training (run from anima_lora/)
@@ -49,9 +49,9 @@ make easycontrol-preprocess # Resize + VAE + text caches into post_image_dataset
 # GUI-friendly per-variant path (configs/gui-methods/<variant>.toml — clean,
 # self-contained, no toggle blocks). Intended for basic users who don't want
 # to hand-edit methods/lora.toml's comment-toggle system.
-make lora-gui GUI_PRESETS=tlora                     # gui-methods/tlora.toml + preset default
-make lora-gui GUI_PRESETS=hydralora PRESET=low_vram # override preset as usual
-python tasks.py lora-gui hydralora_sigma            # Windows; variant can also be 1st positional arg
+make lora-gui GUI_PRESETS=tlora                                # gui-methods/tlora.toml + preset default
+make lora-gui GUI_PRESETS=hydralora_experimental PRESET=low_vram  # override preset as usual
+python tasks.py lora-gui hydralora_sigma                       # Windows; variant can also be 1st positional arg
 
 # Modulation guidance distillation
 make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulation)
@@ -103,7 +103,13 @@ make comfy-batch           # Run ComfyUI batch workflow
 # Debugging + tests
 make print-config METHOD=lora PRESET=default   # Dump merged config chain (base→preset→method→CLI)
 make test-unit                                  # pytest on tests/ (smoke, config, loss/network registries)
+                                                # Use existing tests as templates: test_smoke.py, test_network_registry.py,
+                                                # test_lora_custom_autograd.py, test_loss_registry.py, test_config.py.
 make export-logs RUN=...                        # Export TensorBoard run to JSON (scripts/export_logs_json.py)
+
+# Maintenance
+make update                # Update from a GitHub release (preserves datasets/output/models, prompts on
+                           # config conflicts, runs uv sync). Pass --dry-run / --version v1.0 / --no-sync.
 
 # Linting
 ruff check . --fix && ruff format .
@@ -121,7 +127,8 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 | `inference.py` | Standalone image generation (`--help` for all flags) |
 | `networks/spectrum.py` | Spectrum inference acceleration (Chebyshev feature forecasting) |
 | `gui/` | PySide6 GUI package: config editing with presets, IP-Adapter / EasyControl preprocess+train tabs, dataset browser, training monitor |
-| `tasks.py` | Cross-platform task runner (Windows-compatible Makefile alternative) |
+| `tasks.py` | Cross-platform task runner (Windows-compatible Makefile alternative). Source of truth for every `make` target. |
+| `scripts/tasks/` | Per-domain task implementations (`training`, `inference`, `preprocess`, `masking`, `gui`, `downloads`, `utilities`) — where command bodies actually live; `_common.py` holds shared helpers. |
 
 Deep-dives in `docs/methods/`: `apex.md`, `easycontrol.md`, `hydra-lora.md`, `invert.md`, `ip-adapter.md`, `mod-guidance.md`, `postfix-sigma.md`, `prefix-tuning.md`, `psoft-integrated-ortholora.md`, `reft.md`, `spectrum.md`, `timestep_mask.md`.
 
@@ -138,7 +145,7 @@ Layout:
   - `apex.toml` — APEX self-adversarial distillation (arXiv:2604.12322). Warm-starts from a prior LoRA via `network_weights` + `dim_from_weights`.
   - `ip_adapter.toml` — IP-Adapter image cross-attention (DiT frozen; trains resampler + per-block `to_k_ip`/`to_v_ip`). Reuses the LoRA pipeline's data layout (`post_image_dataset/resized/` + `post_image_dataset/lora/`). Defaults to PRE-CACHED PE features (`make preprocess-pe`).
   - `easycontrol.toml` — EasyControl image conditioning (DiT frozen; trains per-block cond LoRA on self-attn + FFN + scalar `b_cond` gate). Source: `easycontrol-dataset/`. Caches: `post_image_dataset/easycontrol/`. Reuses cached VAE latents — no new sidecar.
-- `configs/gui-methods/` — GUI-friendly parallel tree. One self-contained TOML per **variant** instead of per family (`lora`, `lora-8gb`, `lora_longer`, `ortholora`, `tlora`, `reft`, `tlora_ortho_reft`, `hydralora`, `hydralora_sigma`, `postfix`, `postfix_exp`, `postfix_func`, `postfix_sigma`, `prefix`, `ip_adapter`, `easycontrol`, plus a copy of `apex`). No toggle blocks — what you see is what runs. Selected via `train.py --methods_subdir gui-methods` (wrapped by `make lora-gui GUI_PRESETS=<variant>` / `python tasks.py lora-gui <variant>`). Intended for basic users and as the eventual source of truth for the GUI's variant picker.
+- `configs/gui-methods/` — GUI-friendly parallel tree. One self-contained TOML per **variant** instead of per family (`lora`, `lora-8gb`, `lora_longer`, `lora_repa`, `ortholora`, `tlora`, `tlora_ortho`, `tlora_ortho_reft`, `reft`, `hydralora_experimental`, `hydralora_sigma`, `postfix`, `postfix_exp`, `postfix_func`, `postfix_sigma`, `prefix`, `ip_adapter`, `easycontrol`, plus a copy of `apex`). No toggle blocks — what you see is what runs. Selected via `train.py --methods_subdir gui-methods` (wrapped by `make lora-gui GUI_PRESETS=<variant>` / `python tasks.py lora-gui <variant>`). Intended for basic users and as the eventual source of truth for the GUI's variant picker. Run `ls configs/gui-methods/` for the live list — variants get added/renamed.
 
 Subsets accept an optional `cache_dir` key — when set, all VAE / text-encoder / PE caches are written to (and read from) that directory using stem-mirrored filenames, instead of sitting next to the source image. IP-Adapter and EasyControl method configs use this to keep `ip-adapter-dataset/` and `easycontrol-dataset/` purely user-facing source dirs while caches live under `post_image_dataset/`.
 
@@ -246,3 +253,7 @@ Spectrum KSampler and mod guidance ComfyUI nodes live in a separate repo: https:
 ## External tools
 
 ComfyUI, SAM3, and manga-image-translator live in the parent directory (`../comfy/`, `../sam3/`, etc.).
+
+## Contributing
+
+PRs are reviewed against a tier system spelled out in `CONTRIBUTING.md` (Tier 1 = bug fixes / typos; Tier 1.5 = efficiency or numerics revisions to existing methods — bench script + invariant test required; Tier 2 = new adapter method — paper citation + `bench/<method>/` subdir + docs entry + `make <name>` / `make test-<name>` targets; Tier 3 = new base-model support, currently not accepted). The `bench/<method>/` convention (README + runnable script + timestamped `results/`) is how method PRs prove their claims.

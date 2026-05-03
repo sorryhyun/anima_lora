@@ -30,45 +30,45 @@ caption_dropout_rate = 0.1
 # -------------
 # Ortho-lora
 
-# use_ortho = true
+use_ortho = true
 
-# # -------------
-# # Timestep mask
+# -------------
+# Timestep mask
 
-# use_timestep_mask = true
-# min_rank = 1
-# alpha_rank_scale = 1.0
+use_timestep_mask = true
+min_rank = 1
+alpha_rank_scale = 1.0
 
 
 # -------------
 # hydralora
 
-# output_name = "anima_hydra"
-# use_hydra = true
-# num_experts = 12
-# balance_loss_weight = 2e-7 # seems lr * 1/100 is proper
+output_name = "anima_hydra"
+use_hydra = true
+num_experts = 12
+balance_loss_weight = 2e-7 # seems lr * 1/100 is proper
 
-# balance_loss_warmup_ratio = 0.4
-# network_router_lr_scale = 10
-# hydra_router_layers = ".*(mlp\\.layer[12])$" # ".*(cross_attn\\.kv_proj)$"
+balance_loss_warmup_ratio = 0.4
+network_router_lr_scale = 10
+hydra_router_layers = ".*(mlp\\.layer[12])$" # ".*(cross_attn\\.kv_proj)$"
 
-# use_sigma_router = true
-# sigma_feature_dim = 16
-# sigma_hidden_dim = 16   # unused; retained for API compat
-# sigma_router_layers = ".*(mlp\\.layer[12])$"
-# per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
-# num_sigma_buckets = 3
+use_sigma_router = true
+sigma_feature_dim = 16
+sigma_hidden_dim = 16   # unused; retained for API compat
+sigma_router_layers = ".*(mlp\\.layer[12])$"
+per_bucket_balance_weight = 0.3   # × balance_loss_weight, per-bucket term
+num_sigma_buckets = 3
 
-# specialize_experts_by_sigma_buckets = true
-# sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
+specialize_experts_by_sigma_buckets = true
+sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]
 
-# # -------------
-# # reft
+# -------------
+# reft
 
-# add_reft = true
-# reft_dim = 48
-# reft_alpha = 48
-# reft_layers = "last_8"
+add_reft = true
+reft_dim = 48
+reft_alpha = 48
+reft_layers = "last_8"
 
 
 # -------------
