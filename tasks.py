@@ -95,6 +95,10 @@ COMMANDS = {
         inference.cmd_test_dcw,
         "Inference with latest LoRA + DCW post-step bias correction",
     ),
+    "test-lora-dcw": (
+        inference.cmd_test_lora_dcw,
+        "Inference with latest LoRA + per-LoRA DCW recipe from ss_dcw_recipe metadata",
+    ),
     "test-spectrum-dcw": (
         inference.cmd_test_spectrum_dcw,
         "Spectrum-accelerated inference + DCW post-step bias correction",

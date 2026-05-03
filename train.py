@@ -5,6 +5,7 @@ import argparse
 import math
 import os
 import typing
+import json
 from dataclasses import dataclass
 from typing import Any, Callable, Union, Optional
 import sys
@@ -2225,6 +2226,8 @@ class AnimaTrainer:
 
         sum_v_fwd = torch.zeros(num_steps, dtype=torch.float64)
         sum_v_rev = torch.zeros(num_steps, dtype=torch.float64)
+        sum_v_fwd_LL = torch.zeros(num_steps, dtype=torch.float64)
+        sum_v_rev_LL = torch.zeros(num_steps, dtype=torch.float64)
         n_batches = 0
         skipped_no_crossattn = 0
 
@@ -2287,6 +2290,8 @@ class AnimaTrainer:
                 )
                 sum_v_fwd += traj["v_fwd"]
                 sum_v_rev += traj["v_rev"]
+                sum_v_fwd_LL += traj["v_fwd_LL"]
+                sum_v_rev_LL += traj["v_rev_LL"]
                 n_batches += 1
                 bias_pbar.update(1)
                 bias_pbar.set_postfix_str(
@@ -2318,20 +2323,228 @@ class AnimaTrainer:
 
         v_fwd = sum_v_fwd / n_batches
         v_rev = sum_v_rev / n_batches
+        v_fwd_LL = sum_v_fwd_LL / n_batches
+        v_rev_LL = sum_v_rev_LL / n_batches
         gap = v_rev - v_fwd
+        gap_LL = v_rev_LL - v_fwd_LL
         late = num_steps // 2
+
+        # Stash the final aggregated trajectory so the end-of-training
+        # recipe-write hook can reuse it without re-running validation
+        # (see _maybe_calibrate_dcw_recipe). Sigmas come from the same
+        # get_timesteps_sigmas call used inside measure_bias_trajectory.
+        from library.inference.sampling import get_timesteps_sigmas
+
+        _, sig_t = get_timesteps_sigmas(num_steps, flow_shift, device)
+        self._last_bias_validation = {
+            "gap_LL": gap_LL.tolist(),
+            "sigmas": sig_t.cpu()[:num_steps].to(torch.float64).tolist(),
+            "num_steps": num_steps,
+            "flow_shift": flow_shift,
+            "n_batches": n_batches,
+        }
 
         logs: dict = {
             f"{log_prefix}/integrated_signed_gap": float(gap.sum()),
             f"{log_prefix}/integrated_abs_gap": float(gap.abs().sum()),
             f"{log_prefix}/integrated_signed_gap_late": float(gap[late:].sum()),
             f"{log_prefix}/integrated_abs_gap_late": float(gap[late:].abs().sum()),
+            f"{log_prefix}/integrated_signed_gap_LL_late": float(gap_LL[late:].sum()),
+            f"{log_prefix}/integrated_abs_gap_LL_late": float(gap_LL[late:].abs().sum()),
         }
         for i in range(num_steps):
             logs[f"{log_prefix}/gap_step_{i:02d}"] = float(gap[i])
+            logs[f"{log_prefix}/gap_LL_step_{i:02d}"] = float(gap_LL[i])
             logs[f"{log_prefix}/v_fwd_step_{i:02d}"] = float(v_fwd[i])
             logs[f"{log_prefix}/v_rev_step_{i:02d}"] = float(v_rev[i])
         logging_fn(accelerator, logs, global_step, epoch + 1)
+
+    def _calibrate_dcw_recipe(
+        self,
+        ctx: "TrainCtx",
+        val: "ValCtx",
+        *,
+        metadata: dict,
+    ) -> None:
+        """End-of-training: solve a per-LoRA LL-band DCW recipe and stuff
+        it into the safetensors metadata.
+
+        Re-iterates the val dataloader once with a small λ_LL=−ε DCW
+        probe injected into the reverse rollout, computes per-step
+        ``gap_LL_probe``, then closed-form solves for the late-half
+        optimum λ_LL* against the cached baseline ``gap_LL`` from the
+        most recent regular bias validation.
+
+        Skipped silently when ``--validation_bias_metric`` was off, no
+        baseline is cached, the active adapter is bias-incompatible
+        (APEX / IP-Adapter / EasyControl), or the val pass produces zero
+        usable batches. See ``docs/proposal/lora-dcw-proposal.md``.
+        """
+        args = ctx.args
+        if not getattr(args, "validation_bias_metric", False):
+            return
+        if not getattr(args, "calibrate_dcw_recipe", True):
+            return
+
+        baseline = getattr(self, "_last_bias_validation", None)
+        if baseline is None:
+            return
+
+        skipped = sorted(
+            getattr(a, "name", "?")
+            for a in self._adapters
+            if getattr(a, "name", None) in self._BIAS_INCOMPATIBLE_ADAPTERS
+        )
+        if skipped:
+            return
+
+        accelerator = ctx.accelerator
+        if not accelerator.is_main_process:
+            return
+
+        device = accelerator.device
+        weight_dtype = ctx.weight_dtype
+        unwrapped_net = accelerator.unwrap_model(ctx.network)
+        unwrapped_unet = accelerator.unwrap_model(ctx.unet)
+
+        ctx.optimizer_eval_fn()
+        unwrapped_net.eval()
+        if hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
+            unwrapped_unet.switch_block_swap_for_inference()
+        if hasattr(unwrapped_net, "clear_timestep_mask"):
+            unwrapped_net.clear_timestep_mask()
+        rng_states = self._switch_rng_state(
+            args.validation_seed if args.validation_seed is not None else args.seed
+        )
+
+        num_steps = baseline["num_steps"]
+        flow_shift = baseline["flow_shift"]
+        eps = float(getattr(args, "dcw_calibration_eps", 0.005))
+        schedule = getattr(args, "dcw_calibration_schedule", "one_minus_sigma")
+        val_seed_base = int(
+            args.validation_seed if args.validation_seed is not None else args.seed
+        )
+
+        sum_v_fwd_LL = torch.zeros(num_steps, dtype=torch.float64)
+        sum_v_rev_LL = torch.zeros(num_steps, dtype=torch.float64)
+        n_batches = 0
+        try:
+            for val_step, batch in enumerate(val.dataloader):
+                if val_step >= val.steps:
+                    break
+                latents = batch["latents"]
+                if latents is None:
+                    continue
+                latents = latents.to(device, dtype=weight_dtype)
+                if latents.ndim == 4:
+                    latents = latents.unsqueeze(2)
+
+                teo = batch.get("text_encoder_outputs_list")
+                if teo is None or len(teo) < 6 or teo[4] is None:
+                    continue
+                crossattn_emb = teo[4].to(device, dtype=weight_dtype)
+                t5_attn_mask = teo[3]
+                if t5_attn_mask is not None:
+                    t5_attn_mask = t5_attn_mask.to(device)
+
+                B, _, _, h_lat, w_lat = latents.shape
+                pm_key = (B, h_lat, w_lat, weight_dtype, device)
+                padding_mask = self._padding_mask_cache.get(pm_key)
+                if padding_mask is None:
+                    padding_mask = torch.zeros(
+                        B, 1, h_lat, w_lat, dtype=weight_dtype, device=device
+                    )
+                    self._padding_mask_cache[pm_key] = padding_mask
+
+                fwd_kwargs: dict = {}
+                if getattr(args, "trim_crossattn_kv", False) and t5_attn_mask is not None:
+                    seqlens = t5_attn_mask.sum(dim=-1).to(torch.int32)
+                    fwd_kwargs["crossattn_seqlens"] = seqlens
+                    fwd_kwargs["max_crossattn_seqlen"] = int(seqlens.max())
+
+                def forward_fn(x_t, sigma_b, _emb=crossattn_emb, _pm=padding_mask, _kw=fwd_kwargs):
+                    set_hydra_sigma(unwrapped_unet, sigma_b)
+                    with accelerator.autocast():
+                        return unwrapped_unet(x_t, sigma_b, _emb, padding_mask=_pm, **_kw)
+
+                seed = val_seed_base + 1000 * val_step
+                traj = measure_bias_trajectory(
+                    forward_fn,
+                    latents,
+                    num_steps=num_steps,
+                    flow_shift=flow_shift,
+                    noise_seed=seed,
+                    dcw_probe_lambda=-eps,
+                    dcw_probe_schedule=schedule,
+                )
+                sum_v_fwd_LL += traj["v_fwd_LL"]
+                sum_v_rev_LL += traj["v_rev_LL"]
+                n_batches += 1
+        finally:
+            clear_hydra_sigma(unwrapped_unet)
+
+        self._restore_rng_state(rng_states)
+        ctx.optimizer_train_fn()
+        unwrapped_net.train()
+        if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
+            unwrapped_unet.switch_block_swap_for_training()
+        clean_memory_on_device(device)
+
+        if n_batches == 0:
+            return
+
+        gap_LL_probe = ((sum_v_rev_LL - sum_v_fwd_LL) / n_batches).tolist()
+
+        from library.inference.dcw_calibration import solve_recipe_LL
+
+        try:
+            solved = solve_recipe_LL(
+                baseline["gap_LL"],
+                gap_LL_probe,
+                baseline["sigmas"],
+                eps=eps,
+                schedule=schedule,
+            )
+        except ValueError as exc:
+            accelerator.print(f"[dcw-calibration] solver failed: {exc} — skipping recipe")
+            return
+
+        recipe_payload = {
+            "lambda_LL": solved["lambda_LL"],
+            "schedule_LL": solved["schedule_LL"],
+        }
+        late_idx = num_steps // 2
+        gap_LL_base = baseline["gap_LL"]
+        provenance = {
+            "version": 1,
+            "band": "LL",
+            "eps": eps,
+            "num_steps": num_steps,
+            "n_batches": n_batches,
+            "n_batches_baseline": baseline.get("n_batches", n_batches),
+            "baseline_signed_gap_LL_late": float(sum(gap_LL_base[late_idx:])),
+            "baseline_abs_gap_LL_late": float(
+                sum(abs(g) for g in gap_LL_base[late_idx:])
+            ),
+            "baseline_gap_LL_late_loss": solved["baseline_gap_LL_late"],
+            "residual_gap_LL_late_loss": solved["residual_gap_LL_late"],
+            "num_late_steps": solved["num_late_steps"],
+        }
+
+        metadata["ss_dcw_recipe"] = json.dumps(
+            recipe_payload, separators=(",", ":")
+        )
+        metadata["ss_dcw_calibration"] = json.dumps(
+            provenance, separators=(",", ":")
+        )
+
+        accelerator.print(
+            f"[dcw-calibration] λ_LL*={solved['lambda_LL']:+.5f} "
+            f"({solved['schedule_LL']}); late |gap_LL|² "
+            f"{solved['baseline_gap_LL_late']:.1f} → "
+            f"{solved['residual_gap_LL_late']:.1f} "
+            f"(linear-response prediction); n_batches={n_batches}"
+        )
 
     def train(self, args):
         from networks.methods.apex import (
@@ -2732,6 +2945,15 @@ class AnimaTrainer:
         if is_main_process and (args.save_state or args.save_state_on_train_end):
             save_state_on_train_end(args, accelerator)
 
+        # Per-LoRA DCW recipe is computed BEFORE save_final so the solver's
+        # output lands in saver.metadata (the same dict CheckpointSaver
+        # holds by reference) and gets serialized into the .safetensors.
+        self._calibrate_dcw_recipe(
+            loop_state.train_ctx,
+            loop_state.val_ctx,
+            metadata=metadata,
+        )
+
         saver.cleanup_resumable()
         saver.save_final(network, loop_state.global_step, num_train_epochs)
 
@@ -2871,6 +3093,37 @@ def setup_parser() -> argparse.ArgumentParser:
         "Default 12 (half of inference's 24) — late-half gap envelope is "
         "preserved while keeping val cost bounded. Raise to 24 for "
         "production-resolution numbers.",
+    )
+    parser.add_argument(
+        "--calibrate_dcw_recipe",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="At end-of-training, run one extra reverse-rollout pass with "
+        "λ_LL=−ε DCW correction injected, closed-form-solve for the "
+        "per-LoRA optimal λ_LL*, and write it to safetensors metadata as "
+        "ss_dcw_recipe (read at inference by --dcw). Requires "
+        "--validation_bias_metric. Adds ~one validation pass of cost. "
+        "See docs/proposal/lora-dcw-proposal.md.",
+    )
+    parser.add_argument(
+        "--dcw_calibration_eps",
+        type=float,
+        default=0.005,
+        help="Probe magnitude ε used in the calibration's finite-difference "
+        "estimate of ∂gap_LL/∂λ_LL. Probe rollout uses λ_LL=−ε on band LL. "
+        "Default 0.005 — large enough for measurable response, small "
+        "enough to stay in linear-response. Ignored without "
+        "--calibrate_dcw_recipe.",
+    )
+    parser.add_argument(
+        "--dcw_calibration_schedule",
+        type=str,
+        default="one_minus_sigma",
+        choices=["one_minus_sigma", "sigma_i", "const"],
+        help="σ-schedule the calibration solves against (and writes to the "
+        "recipe). Should match the schedule the LoRA will be applied with "
+        "at inference. Default one_minus_sigma per docs/methods/dcw.md "
+        "§Re-tuning λ for LL-only.",
     )
     parser.add_argument(
         "--unsloth_offload_checkpointing",

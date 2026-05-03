@@ -247,6 +247,19 @@ def cmd_test_dcw(extra):
     run([*INFERENCE_BASE, "--lora_weight", str(latest_lora()), "--dcw", *extra])
 
 
+def cmd_test_lora_dcw(extra):
+    """Inference with latest LoRA + per-LoRA DCW recipe (ss_dcw_recipe metadata).
+
+    --dcw enables DCW correction; library/inference/dcw_calibration.py reads
+    ss_dcw_recipe from the LoRA's safetensors metadata to set λ_LL and the
+    schedule automatically. Falls back to the global LL default
+    (-0.015 / one_minus_sigma) when no recipe is present. Pass
+    --dcw_disable_per_lora_recipe in extra to force the global default
+    even when a recipe is available. See docs/proposal/lora-dcw-proposal.md.
+    """
+    run([*INFERENCE_BASE, "--lora_weight", str(latest_lora()), "--dcw", *extra])
+
+
 def cmd_test_spectrum_dcw(extra):
     """Spectrum + DCW composed. Same Spectrum knobs as test-spectrum."""
     run(
