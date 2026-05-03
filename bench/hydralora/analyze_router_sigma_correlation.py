@@ -42,7 +42,6 @@ Notes
 
 import argparse
 import glob
-import json
 import logging
 import os
 import sys
@@ -55,6 +54,7 @@ from safetensors.torch import load_file
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from bench._common import make_run_dir, write_result
 from library.anima import weights as anima_utils
 from library.log import setup_logging
 from networks import lora_anima
@@ -82,12 +82,17 @@ def parse_args():
         "--sigmas",
         default="0.05,0.15,0.3,0.45,0.6,0.75,0.9",
         help="Comma-separated flow-matching sigmas to forward at. Denser is better "
-             "for the equal-frequency bucketing to be meaningful.",
+        "for the equal-frequency bucketing to be meaningful.",
     )
     p.add_argument("--num_buckets", type=int, default=3)
     p.add_argument("--attn_mode", default="flash")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--out_json", default=None)
+    p.add_argument(
+        "--label",
+        default=None,
+        help="Run-dir label (bench/hydralora/results/<ts>-<label>/). "
+        "Defaults to the lora_weight basename.",
+    )
     p.add_argument(
         "--print_top_n",
         type=int,
@@ -198,9 +203,7 @@ def install_gate_hooks(network):
             gate = orig(x_lora)  # (B, num_experts)
             sigma = shared["sigma"]
             if sigma is not None:
-                captures[name]["gates"].append(
-                    gate.detach().to(torch.float32).cpu()
-                )
+                captures[name]["gates"].append(gate.detach().to(torch.float32).cpu())
                 # broadcast σ to batch size
                 B = gate.shape[0]
                 s = torch.full((B,), float(sigma), dtype=torch.float32)
@@ -307,7 +310,12 @@ def classify_module(lora_name: str) -> str:
         return "cross_attn.kv"
     if "cross.attn.output.proj" in p or "cross.attn.out.proj" in p:
         return "cross_attn.out"
-    if "mlp.layer1" in p or "mlp.fc1" in p or "mlp.gate.proj" in p or "mlp.up.proj" in p:
+    if (
+        "mlp.layer1" in p
+        or "mlp.fc1" in p
+        or "mlp.gate.proj" in p
+        or "mlp.up.proj" in p
+    ):
         return "mlp.layer1"
     if "mlp.layer2" in p or "mlp.fc2" in p or "mlp.down.proj" in p:
         return "mlp.layer2"
@@ -438,9 +446,7 @@ def main():
         pairwise = []
         for i in range(args.num_buckets):
             for j in range(i + 1, args.num_buckets):
-                pairwise.append(
-                    js_divergence(per_bucket_mean[i], per_bucket_mean[j])
-                )
+                pairwise.append(js_divergence(per_bucket_mean[i], per_bucket_mean[j]))
         max_pairwise = float(max(pairwise)) if pairwise else 0.0
 
         balance = expert_balance_metrics(gates, args.dominant_top1_threshold)
@@ -487,7 +493,9 @@ def main():
         msg = "implement Option 2 (σ-conditional router); explicit σ is free gain"
     elif median > 0.5:
         case = "C"
-        msg = "consider Option 3 (full 2D grid); router is already strongly σ-specialized"
+        msg = (
+            "consider Option 3 (full 2D grid); router is already strongly σ-specialized"
+        )
     else:
         case = "B"
         msg = "skip Option 2; router is already implicitly σ-aware — prioritize Track A"
@@ -517,7 +525,9 @@ def main():
         if m["block"] >= 0:
             by_block[m["block"]].append(m["max_pairwise_js"])
     if by_block:
-        print("\nPer-block-depth median JS (Open Q #2: is σ-correlation depth-dependent?):")
+        print(
+            "\nPer-block-depth median JS (Open Q #2: is σ-correlation depth-dependent?):"
+        )
         for blk in sorted(by_block.keys()):
             vals = np.array(by_block[blk])
             print(
@@ -533,11 +543,13 @@ def main():
     total_experts = sum(m["num_experts"] for m in per_module.values())
 
     collapsed_modules = [
-        m for m in per_module.values()
+        m
+        for m in per_module.values()
         if m["normalized_entropy"] < args.collapse_entropy_threshold
     ]
     balanced_modules = [
-        m for m in per_module.values()
+        m
+        for m in per_module.values()
         if m["normalized_entropy"] > args.balanced_entropy_threshold
     ]
 
@@ -576,7 +588,9 @@ def main():
     if median_H < args.collapse_entropy_threshold:
         verdict = "COLLAPSED — majority of modules routing to a single expert"
     elif median_H < args.balanced_entropy_threshold:
-        verdict = "PARTIAL — router using experts unevenly; specialization or slow warm-up"
+        verdict = (
+            "PARTIAL — router using experts unevenly; specialization or slow warm-up"
+        )
     else:
         verdict = "HEALTHY — experts utilized broadly across modules"
     print(f"  → verdict: {verdict}")
@@ -601,46 +615,48 @@ def main():
                 f"dom={r['dominant_top1_fraction']:.2f}  {r['name']}"
             )
 
-    if args.out_json:
-        os.makedirs(os.path.dirname(args.out_json) or ".", exist_ok=True)
-        with open(args.out_json, "w") as f:
-            json.dump(
-                {
-                    "lora_weight": args.lora_weight,
-                    "sigmas": sigma_list,
-                    "num_buckets": args.num_buckets,
-                    "num_samples": len(stems),
-                    "n_forward": n_forward,
-                    "overall": {
-                        "mean_max_js": float(all_js.mean()),
-                        "median_max_js": float(np.median(all_js)),
-                        "p90_max_js": float(np.percentile(all_js, 90)),
-                        "max_max_js": float(all_js.max()),
-                        "case": case,
-                    },
-                    "expert_balance": {
-                        "mean_norm_entropy": float(norm_H.mean()),
-                        "median_norm_entropy": float(np.median(norm_H)),
-                        "p10_norm_entropy": float(np.percentile(norm_H, 10)),
-                        "min_norm_entropy": float(norm_H.min()),
-                        "mean_dead_per_module": float(dead_per_module.mean()),
-                        "total_dead_experts": int(dead_per_module.sum()),
-                        "total_experts": int(total_experts),
-                        "mean_dominant_top1_fraction": float(dom_frac.mean()),
-                        "mean_per_sample_norm_entropy": float(row_H.mean()),
-                        "num_collapsed_modules": len(collapsed_modules),
-                        "num_balanced_modules": len(balanced_modules),
-                        "collapse_entropy_threshold": args.collapse_entropy_threshold,
-                        "balanced_entropy_threshold": args.balanced_entropy_threshold,
-                        "dominant_top1_threshold": args.dominant_top1_threshold,
-                        "verdict": verdict,
-                    },
-                    "per_module": per_module,
-                },
-                f,
-                indent=2,
-            )
-        logger.info(f"wrote {args.out_json}")
+    metrics = {
+        "lora_weight": args.lora_weight,
+        "sigmas": sigma_list,
+        "num_buckets": args.num_buckets,
+        "num_samples": len(stems),
+        "n_forward": n_forward,
+        "overall": {
+            "mean_max_js": float(all_js.mean()),
+            "median_max_js": float(np.median(all_js)),
+            "p90_max_js": float(np.percentile(all_js, 90)),
+            "max_max_js": float(all_js.max()),
+            "case": case,
+        },
+        "expert_balance": {
+            "mean_norm_entropy": float(norm_H.mean()),
+            "median_norm_entropy": float(np.median(norm_H)),
+            "p10_norm_entropy": float(np.percentile(norm_H, 10)),
+            "min_norm_entropy": float(norm_H.min()),
+            "mean_dead_per_module": float(dead_per_module.mean()),
+            "total_dead_experts": int(dead_per_module.sum()),
+            "total_experts": int(total_experts),
+            "mean_dominant_top1_fraction": float(dom_frac.mean()),
+            "mean_per_sample_norm_entropy": float(row_H.mean()),
+            "num_collapsed_modules": len(collapsed_modules),
+            "num_balanced_modules": len(balanced_modules),
+            "collapse_entropy_threshold": args.collapse_entropy_threshold,
+            "balanced_entropy_threshold": args.balanced_entropy_threshold,
+            "dominant_top1_threshold": args.dominant_top1_threshold,
+            "verdict": verdict,
+        },
+        "per_module": per_module,
+    }
+    label = args.label or os.path.splitext(os.path.basename(args.lora_weight))[0]
+    out_dir = make_run_dir("hydralora", label=label)
+    result_path = write_result(
+        out_dir,
+        script=__file__,
+        args=args,
+        label=label,
+        metrics=metrics,
+    )
+    logger.info(f"result → {result_path}")
 
 
 if __name__ == "__main__":

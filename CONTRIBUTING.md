@@ -105,10 +105,21 @@ A new entry in `networks/lora_modules/` or `networks/methods/`, or a new variant
    └── results/               # gitignored except for the timestamped run you cite in the PR
    ```
 
+   Wire the script's output through `bench/_common.py` so it produces a standard `result.json` envelope (script path, git SHA, env, args, metrics, artifacts) under `results/<YYYYMMDD-HHMM>[-<label>]/`. The two helpers are:
+
+   ```python
+   from bench._common import make_run_dir, write_result
+
+   out_dir = make_run_dir("<method_name>", label=args.label)
+   # ... write CSVs / PNGs / etc. into out_dir ...
+   write_result(out_dir, script=__file__, args=args,
+                metrics={...}, artifacts=[...], device=device)
+   ```
+
    The bench README must include:
    - **What it measures** — the headline number(s) and what "good" looks like.
    - **Run command** — copy-pasteable, defaults reasonable, runs on a single 12–16 GB GPU in under 30 minutes.
-   - **Output layout** — what files land in `results/<timestamp>/`.
+   - **Output layout** — what files land alongside `result.json` under `results/<YYYYMMDD-HHMM>[-<label>]/`.
    - **Interpretation** — what the numbers mean, including what would falsify the method.
    - **Baseline run** — at least one results directory checked in (or linked from a release artifact if large), with the exact CLI used to produce it.
 

@@ -83,15 +83,19 @@ import argparse
 import csv
 import json
 import math
+import sys
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bench._common import make_run_dir, write_result  # noqa: E402
+
 # Plotting is optional — fail gracefully if matplotlib isn't installed.
 try:
     import matplotlib.pyplot as plt
+
     HAS_MPL = True
 except ImportError:
     HAS_MPL = False
@@ -101,13 +105,15 @@ except ImportError:
 # Scheduler sigma grids (matched to comfy.k_diffusion.sampling formulas)
 # ---------------------------------------------------------------------------
 
+
 def sigmas_simple(n: int, s_min: float = 0.02, s_max: float = 14.6) -> np.ndarray:
     """Linear-in-sigma, roughly log-uniform for Anima's sigma range."""
     return np.concatenate([np.linspace(s_max, s_min, n), [0.0]])
 
 
-def sigmas_karras(n: int, s_min: float = 0.02, s_max: float = 14.6,
-                  rho: float = 7.0) -> np.ndarray:
+def sigmas_karras(
+    n: int, s_min: float = 0.02, s_max: float = 14.6, rho: float = 7.0
+) -> np.ndarray:
     """Karras: sigma^(1/rho) linearly spaced. Front-loaded."""
     ramp = np.linspace(0, 1, n)
     x = (s_max ** (1 / rho) + ramp * (s_min ** (1 / rho) - s_max ** (1 / rho))) ** rho
@@ -116,10 +122,12 @@ def sigmas_karras(n: int, s_min: float = 0.02, s_max: float = 14.6,
 
 def sigmas_exponential(n: int, s_min: float = 0.02, s_max: float = 14.6) -> np.ndarray:
     """Log-uniform — equivalent to karras with rho=1 in log-space."""
-    return np.concatenate([
-        np.exp(np.linspace(math.log(s_max), math.log(s_min), n)),
-        [0.0],
-    ])
+    return np.concatenate(
+        [
+            np.exp(np.linspace(math.log(s_max), math.log(s_min), n)),
+            [0.0],
+        ]
+    )
 
 
 def sigmas_kl_optimal(n: int, s_min: float = 0.02, s_max: float = 14.6) -> np.ndarray:
@@ -135,8 +143,9 @@ def sigmas_karras_rho3(n: int, s_min: float = 0.02, s_max: float = 14.6) -> np.n
     return sigmas_karras(n, s_min, s_max, rho=3.0)
 
 
-def sigmas_linear_quadratic(n: int, s_min: float = 0.02, s_max: float = 14.6,
-                            split_ratio: float = 0.25) -> np.ndarray:
+def sigmas_linear_quadratic(
+    n: int, s_min: float = 0.02, s_max: float = 14.6, split_ratio: float = 0.25
+) -> np.ndarray:
     """Linear σ for the first split_ratio fraction, quadratic decay after.
 
     Approximates ComfyUI's linear_quadratic scheduler. Hybrid that retains
@@ -147,12 +156,13 @@ def sigmas_linear_quadratic(n: int, s_min: float = 0.02, s_max: float = 14.6,
     linear_part = np.linspace(s_max, s_mid, k, endpoint=False)
     rest = n - k
     ramp = np.linspace(0.0, 1.0, rest)
-    quad_part = s_mid + (s_min - s_mid) * (ramp ** 2)
+    quad_part = s_mid + (s_min - s_mid) * (ramp**2)
     return np.concatenate([linear_part, quad_part, [0.0]])
 
 
-def sigmas_polyexp(n: int, s_min: float = 0.02, s_max: float = 14.6,
-                   rho: float = 1.5) -> np.ndarray:
+def sigmas_polyexp(
+    n: int, s_min: float = 0.02, s_max: float = 14.6, rho: float = 1.5
+) -> np.ndarray:
     """Power-law in sigma with adjustable rho. rho=1 → exponential,
     rho>1 → simple-flavored with growing tail snap."""
     ramp = np.linspace(0.0, 1.0, n)
@@ -204,6 +214,7 @@ def auto_stop_caching_step(sigmas: np.ndarray, base_keep: int = 3) -> int:
 # Toy denoised function
 # ---------------------------------------------------------------------------
 
+
 def posterior_denoised(
     x: np.ndarray, sigma: float, target: np.ndarray, prior_var: float
 ) -> np.ndarray:
@@ -240,6 +251,7 @@ def posterior_denoised(
 # denoisers are always actual — modeling spectrum's per-forward cache trigger
 # where the corrector pass typically misses the cache window.
 
+
 def sampler_euler(x, sigma, sigma_next, denoised, state, noise, denoise_fn):
     if sigma == 0:
         return denoised
@@ -247,14 +259,20 @@ def sampler_euler(x, sigma, sigma_next, denoised, state, noise, denoise_fn):
     return x + (sigma_next - sigma) * d
 
 
-def sampler_euler_ancestral(x, sigma, sigma_next, denoised, state, noise, denoise_fn, eta=1.0):
+def sampler_euler_ancestral(
+    x, sigma, sigma_next, denoised, state, noise, denoise_fn, eta=1.0
+):
     if sigma_next == 0:
         return denoised
     # k-diffusion get_ancestral_step
-    sigma_up = min(sigma_next, eta * math.sqrt(
-        max(0.0, (sigma_next ** 2) * (sigma ** 2 - sigma_next ** 2) / (sigma ** 2))
-    ))
-    sigma_down = math.sqrt(max(0.0, sigma_next ** 2 - sigma_up ** 2))
+    sigma_up = min(
+        sigma_next,
+        eta
+        * math.sqrt(
+            max(0.0, (sigma_next**2) * (sigma**2 - sigma_next**2) / (sigma**2))
+        ),
+    )
+    sigma_down = math.sqrt(max(0.0, sigma_next**2 - sigma_up**2))
     d = (x - denoised) / sigma
     x_det = x + (sigma_down - sigma) * d
     return x_det + sigma_up * noise
@@ -272,16 +290,21 @@ def sampler_heun(x, sigma, sigma_next, denoised, state, noise, denoise_fn):
     return x + (sigma_next - sigma) * 0.5 * (d + d_2)
 
 
-def sampler_dpmpp_2s_ancestral(x, sigma, sigma_next, denoised, state, noise,
-                               denoise_fn, eta=1.0):
+def sampler_dpmpp_2s_ancestral(
+    x, sigma, sigma_next, denoised, state, noise, denoise_fn, eta=1.0
+):
     """2nd-order single-step ancestral DPM-Solver++. Ancestral noise + a
     corrector step at the midpoint."""
     if sigma_next == 0:
         return denoised
-    sigma_up = min(sigma_next, eta * math.sqrt(
-        max(0.0, (sigma_next ** 2) * (sigma ** 2 - sigma_next ** 2) / (sigma ** 2))
-    ))
-    sigma_down = math.sqrt(max(0.0, sigma_next ** 2 - sigma_up ** 2))
+    sigma_up = min(
+        sigma_next,
+        eta
+        * math.sqrt(
+            max(0.0, (sigma_next**2) * (sigma**2 - sigma_next**2) / (sigma**2))
+        ),
+    )
+    sigma_down = math.sqrt(max(0.0, sigma_next**2 - sigma_up**2))
     if sigma_down <= 0:
         return denoised + sigma_up * noise
     t = -math.log(max(sigma, 1e-9))
@@ -306,15 +329,18 @@ def sampler_dpmpp_2m(x, sigma, sigma_next, denoised, state, noise, denoise_fn):
         h_prev = state["h_prev"]
         r = h_prev / h
         # 2nd-order extrapolation of denoised
-        denoised_d = (1.0 + 1.0 / (2.0 * r)) * denoised - (1.0 / (2.0 * r)) * denoised_prev
+        denoised_d = (1.0 + 1.0 / (2.0 * r)) * denoised - (
+            1.0 / (2.0 * r)
+        ) * denoised_prev
         x_next = (sigma_next / sigma) * x - math.expm1(-h) * denoised_d
     state["denoised_prev"] = denoised
     state["h_prev"] = h
     return x_next
 
 
-def sampler_dpmpp_2m_sde(x, sigma, sigma_next, denoised, state, noise,
-                         denoise_fn, eta=1.0):
+def sampler_dpmpp_2m_sde(
+    x, sigma, sigma_next, denoised, state, noise, denoise_fn, eta=1.0
+):
     """Multistep DPM-Solver++ with stochastic kick. Combines FD amplification
     (cached denoised in 2nd-order extrapolation) with ancestral-style noise."""
     if sigma_next == 0:
@@ -322,14 +348,17 @@ def sampler_dpmpp_2m_sde(x, sigma, sigma_next, denoised, state, noise,
     t_fn = lambda s: -math.log(max(s, 1e-9))
     h = t_fn(sigma_next) - t_fn(sigma)
     eta_h = eta * h
-    x_next = ((sigma_next / sigma) * math.exp(-eta_h) * x
-              + (1.0 - math.exp(-(h + eta_h))) * denoised)
+    x_next = (sigma_next / sigma) * math.exp(-eta_h) * x + (
+        1.0 - math.exp(-(h + eta_h))
+    ) * denoised
     prev = state.get("denoised_prev")
     if prev is not None:
         h_prev = state["h_prev"]
         r = h_prev / h
         # Same FD-amplification source as dpmpp_2m, weighted differently.
-        x_next = x_next + (1.0 - math.exp(-(h + eta_h))) * (1.0 / (-2.0 * r)) * (denoised - prev)
+        x_next = x_next + (1.0 - math.exp(-(h + eta_h))) * (1.0 / (-2.0 * r)) * (
+            denoised - prev
+        )
     sigma_up = sigma_next * math.sqrt(max(0.0, 1.0 - math.exp(-2.0 * eta_h)))
     state["denoised_prev"] = denoised
     state["h_prev"] = h
@@ -395,6 +424,7 @@ FRAGILE = {"dpmpp_2m", "dpmpp_2m_sde", "euler_a", "dpmpp_2s_a"}
 # Spectrum cache-decision mirror (matches the ComfyUI node's should_cache)
 # ---------------------------------------------------------------------------
 
+
 def spectrum_cache_mask(
     sigmas: np.ndarray,
     warmup_steps: int,
@@ -422,7 +452,9 @@ def spectrum_cache_mask(
     log_s_next = np.log(np.maximum(sigmas[1:n], 1e-8)) if n >= 2 else np.array([])
     forward_dl = np.full(n, np.inf, dtype=np.float64)
     if log_s_next.size > 0:
-        forward_dl[: log_s_next.size] = np.abs(log_s_all[: log_s_next.size] - log_s_next)
+        forward_dl[: log_s_next.size] = np.abs(
+            log_s_all[: log_s_next.size] - log_s_next
+        )
     if stop_caching_step is None or stop_caching_step < 0:
         stop_caching_step = max(warmup_steps, n - 3)
 
@@ -478,6 +510,7 @@ def spectrum_cache_mask(
 # Simulation core
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SimResult:
     trajectory: np.ndarray  # shape: (n_steps + 1, dim)
@@ -521,7 +554,8 @@ def simulate(
 # Sweep driver
 # ---------------------------------------------------------------------------
 
-def sweep(args, out_dir: Path):
+
+def sweep(args, out_dir: Path) -> tuple[list[dict], list[str]]:
     rng_master = np.random.default_rng(args.seed)
 
     # Per-trial invariants shared across all (sampler, scheduler) cells so
@@ -529,14 +563,24 @@ def sweep(args, out_dir: Path):
     trials = []
     for t in range(args.trials):
         target = rng_master.standard_normal(args.dim).astype(np.float32)
-        x0_unit = rng_master.standard_normal(args.dim).astype(np.float32)  # scale by sigma_max per scheduler
+        x0_unit = rng_master.standard_normal(args.dim).astype(
+            np.float32
+        )  # scale by sigma_max per scheduler
         # One step-noise and cache-error sequence per trial — same across all cells.
-        step_noise = rng_master.standard_normal((args.steps, args.dim)).astype(np.float32)
-        cache_error = rng_master.standard_normal((args.steps, args.dim)).astype(np.float32)
-        trials.append({
-            "target": target, "x0_unit": x0_unit,
-            "step_noise": step_noise, "cache_error": cache_error,
-        })
+        step_noise = rng_master.standard_normal((args.steps, args.dim)).astype(
+            np.float32
+        )
+        cache_error = rng_master.standard_normal((args.steps, args.dim)).astype(
+            np.float32
+        )
+        trials.append(
+            {
+                "target": target,
+                "x0_unit": x0_unit,
+                "step_noise": step_noise,
+                "cache_error": cache_error,
+            }
+        )
 
     rows = []
     # Store per-cell drift trajectories for plotting.
@@ -548,17 +592,24 @@ def sweep(args, out_dir: Path):
             forbid = (samp_name in FRAGILE) and not args.no_guards
             if args.forbid_consec_all:
                 forbid = True
-            stop = (auto_stop_caching_step(sigmas) if args.auto_stop
-                    else args.stop_caching_step)
-            mask = (spectrum_cache_mask(
-                sigmas,
-                warmup_steps=args.warmup_steps,
-                window_size=args.window_size,
-                flex_window=args.flex_window,
-                stop_caching_step=stop,
-                forbid_consec=forbid,
-                min_dl_factor=args.min_dl_factor,
-            ) if not args.no_caching else np.zeros(len(sigmas) - 1, dtype=bool))
+            stop = (
+                auto_stop_caching_step(sigmas)
+                if args.auto_stop
+                else args.stop_caching_step
+            )
+            mask = (
+                spectrum_cache_mask(
+                    sigmas,
+                    warmup_steps=args.warmup_steps,
+                    window_size=args.window_size,
+                    flex_window=args.flex_window,
+                    stop_caching_step=stop,
+                    forbid_consec=forbid,
+                    min_dl_factor=args.min_dl_factor,
+                )
+                if not args.no_caching
+                else np.zeros(len(sigmas) - 1, dtype=bool)
+            )
 
             drifts = np.zeros((args.trials, len(sigmas)), dtype=np.float32)
             ref_endpoint = np.zeros(args.trials, dtype=np.float32)
@@ -566,19 +617,23 @@ def sweep(args, out_dir: Path):
             for ti, t_ in enumerate(trials):
                 x0 = t_["x0_unit"] * sigmas[0]  # scale noise to sigma_max
                 ref = simulate(
-                    sigmas, samp_fn,
+                    sigmas,
+                    samp_fn,
                     cache_mask=np.zeros_like(mask),
                     error_mag=0.0,
-                    target=t_["target"], x0=x0,
+                    target=t_["target"],
+                    x0=x0,
                     step_noise=t_["step_noise"],
                     cache_error=t_["cache_error"],
                     prior_var=args.prior_var,
                 )
                 spec = simulate(
-                    sigmas, samp_fn,
+                    sigmas,
+                    samp_fn,
                     cache_mask=mask,
                     error_mag=args.error_mag,
-                    target=t_["target"], x0=x0,
+                    target=t_["target"],
+                    x0=x0,
                     step_noise=t_["step_noise"],
                     cache_error=t_["cache_error"],
                     prior_var=args.prior_var,
@@ -596,20 +651,24 @@ def sweep(args, out_dir: Path):
             spec_ep_mean = float(spec_endpoint.mean())
             ratio = spec_ep_mean / ref_ep_mean if ref_ep_mean > 1e-8 else float("nan")
 
-            rows.append({
-                "sampler": samp_name,
-                "scheduler": sched_name,
-                "n_cached": n_cached,
-                "n_steps": len(sigmas) - 1,
-                "forbid_consec": forbid,
-                "final_drift_mean": float(mean_drift[-1]),
-                "final_drift_std": float(std_drift[-1]),
-                "peak_drift_mean": float(mean_drift.max()),
-                "peak_drift_step": int(mean_drift.argmax()),
-                "ref_endpoint_err": ref_ep_mean,
-                "spec_endpoint_err": spec_ep_mean,
-                "endpoint_err_ratio": ratio,
-            })
+            rows.append(
+                {
+                    "sampler": samp_name,
+                    "scheduler": sched_name,
+                    "n_cached": n_cached,
+                    "n_steps": len(sigmas) - 1,
+                    "forbid_consec": forbid,
+                    "final_drift_mean": float(mean_drift[-1]),
+                    "final_drift_std": float(std_drift[-1]),
+                    "peak_drift_mean": float(mean_drift.max()),
+                    "peak_drift_step": int(mean_drift.argmax()),
+                    "ref_endpoint_err": ref_ep_mean,
+                    "spec_endpoint_err": spec_ep_mean,
+                    "endpoint_err_ratio": ratio,
+                }
+            )
+
+    artifacts: list[str] = []
 
     # CSV
     csv_path = out_dir / "drift_summary.csv"
@@ -617,12 +676,13 @@ def sweep(args, out_dir: Path):
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
         w.writerows(rows)
+    artifacts.append(csv_path.name)
     print(f"CSV → {csv_path}")
 
-    # JSON with full trajectories
+    # JSON with full trajectories. result.json holds the headline rows; this
+    # sidecar keeps the per-step mean/std curves for replotting.
     json_path = out_dir / "drift_curves.json"
     json_payload = {
-        "config": vars(args),
         "curves": {
             f"{s}__{p}": {"mean": m.tolist(), "std": sd.tolist()}
             for (s, p), arr in curves.items()
@@ -630,21 +690,24 @@ def sweep(args, out_dir: Path):
         },
     }
     json_path.write_text(json.dumps(json_payload, indent=2))
+    artifacts.append(json_path.name)
     print(f"JSON → {json_path}")
 
     # Plot
     if not HAS_MPL and not args.no_plot:
-        print("[plot skipped — matplotlib not installed. Run `uv add matplotlib` "
-              "for plotting, or --no_plot to silence this message]")
+        print(
+            "[plot skipped — matplotlib not installed. Run `uv add matplotlib` "
+            "for plotting, or --no_plot to silence this message]"
+        )
     if HAS_MPL and not args.no_plot:
         # Per-step drift curves: one subplot per scheduler. Wrap to 2 rows
         # if many schedulers.
         n_sched = len(SCHEDULERS)
         ncols = min(4, n_sched)
         nrows = (n_sched + ncols - 1) // ncols
-        fig, axes = plt.subplots(nrows, ncols,
-                                 figsize=(4.2 * ncols, 3.2 * nrows),
-                                 sharey=True, squeeze=False)
+        fig, axes = plt.subplots(
+            nrows, ncols, figsize=(4.2 * ncols, 3.2 * nrows), sharey=True, squeeze=False
+        )
         axes_flat = axes.flatten()
         for ax, (sched_name, _) in zip(axes_flat, SCHEDULERS.items()):
             for samp_name in SAMPLERS:
@@ -659,18 +722,22 @@ def sweep(args, out_dir: Path):
         for ax in axes_flat[n_sched:]:
             ax.set_visible(False)
         axes[0, 0].set_ylabel(r"$\|x_\mathrm{spec} - x_\mathrm{ref}\|_2$")
-        axes_flat[n_sched - 1].legend(loc="upper left", framealpha=0.9, fontsize=8,
-                                      ncol=1)
-        title = (f"Spectrum drift (ε={args.error_mag:g}, "
-                 f"prior_var={args.prior_var:g}, "
-                 f"{args.trials} trials, {args.steps} steps, "
-                 f"guards {'ON' if not args.no_guards else 'OFF'}, "
-                 f"auto_stop={'ON' if args.auto_stop else 'OFF'})")
+        axes_flat[n_sched - 1].legend(
+            loc="upper left", framealpha=0.9, fontsize=8, ncol=1
+        )
+        title = (
+            f"Spectrum drift (ε={args.error_mag:g}, "
+            f"prior_var={args.prior_var:g}, "
+            f"{args.trials} trials, {args.steps} steps, "
+            f"guards {'ON' if not args.no_guards else 'OFF'}, "
+            f"auto_stop={'ON' if args.auto_stop else 'OFF'})"
+        )
         fig.suptitle(title, y=1.00)
         plt.tight_layout()
         png_path = out_dir / "drift.png"
         fig.savefig(png_path, dpi=110, bbox_inches="tight")
         plt.close(fig)
+        artifacts.append(png_path.name)
         print(f"Plot → {png_path}")
 
         # Heatmap: final_drift_mean per (sampler × scheduler). Headline view
@@ -683,8 +750,9 @@ def sweep(args, out_dir: Path):
             for j, sc in enumerate(sched_order):
                 H[i, j] = lookup.get((sa, sc), np.nan)
         log_H = np.log10(np.maximum(H, 1e-4))
-        fig2, ax = plt.subplots(figsize=(1.0 * len(sched_order) + 2.5,
-                                         0.55 * len(sampler_order) + 1.8))
+        fig2, ax = plt.subplots(
+            figsize=(1.0 * len(sched_order) + 2.5, 0.55 * len(sampler_order) + 1.8)
+        )
         im = ax.imshow(log_H, cmap="viridis_r", aspect="auto")
         ax.set_xticks(range(len(sched_order)))
         ax.set_xticklabels(sched_order, rotation=35, ha="right")
@@ -701,23 +769,44 @@ def sweep(args, out_dir: Path):
                     continue
                 color = "white" if log_H[i, j] > vmid else "black"
                 weight = "bold" if (i, j) == (best_i, best_j) else "normal"
-                ax.text(j, i, f"{v:.3f}", ha="center", va="center",
-                        color=color, fontsize=8, fontweight=weight)
-        ax.add_patch(plt.Rectangle((best_j - 0.5, best_i - 0.5), 1, 1,
-                                   fill=False, edgecolor="red", linewidth=2.0))
-        ax.set_title(f"final_drift_mean — bold = best ({sampler_order[best_i]} "
-                     f"+ {sched_order[best_j]} = {H[best_i, best_j]:.3f})")
+                ax.text(
+                    j,
+                    i,
+                    f"{v:.3f}",
+                    ha="center",
+                    va="center",
+                    color=color,
+                    fontsize=8,
+                    fontweight=weight,
+                )
+        ax.add_patch(
+            plt.Rectangle(
+                (best_j - 0.5, best_i - 0.5),
+                1,
+                1,
+                fill=False,
+                edgecolor="red",
+                linewidth=2.0,
+            )
+        )
+        ax.set_title(
+            f"final_drift_mean — bold = best ({sampler_order[best_i]} "
+            f"+ {sched_order[best_j]} = {H[best_i, best_j]:.3f})"
+        )
         plt.colorbar(im, ax=ax, label=r"$\log_{10}$ final drift")
         plt.tight_layout()
         heatmap_path = out_dir / "drift_heatmap.png"
         fig2.savefig(heatmap_path, dpi=120, bbox_inches="tight")
         plt.close(fig2)
+        artifacts.append(heatmap_path.name)
         print(f"Heatmap → {heatmap_path}")
 
     # Summary table — `final_drift_mean` is the headline number; rank cells
     # by it within each sampler. Endpoint columns live in the CSV.
-    print(f"\n{'sampler':12s} {'scheduler':12s} {'cached':>8s}  "
-          f"{'peak@step':>10s}  {'final drift':>22s}")
+    print(
+        f"\n{'sampler':12s} {'scheduler':12s} {'cached':>8s}  "
+        f"{'peak@step':>10s}  {'final drift':>22s}"
+    )
     print("-" * 74)
     for r in sorted(rows, key=lambda r: (r["sampler"], r["scheduler"])):
         print(
@@ -727,55 +816,104 @@ def sweep(args, out_dir: Path):
             f"{r['final_drift_mean']:>10.3f} ± {r['final_drift_std']:<7.3f}"
         )
 
+    return rows, artifacts
+
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--steps", type=int, default=28)
-    ap.add_argument("--dim", type=int, default=256,
-                    help="Latent vector dim (higher = tighter std error bars)")
+    ap.add_argument(
+        "--dim",
+        type=int,
+        default=256,
+        help="Latent vector dim (higher = tighter std error bars)",
+    )
     ap.add_argument("--trials", type=int, default=32)
-    ap.add_argument("--error_mag", type=float, default=0.02,
-                    help="Relative Gaussian error on cached denoised. 0.02 ~ "
-                    "2%% of |denoised| — typical Spectrum prediction error.")
-    ap.add_argument("--prior_var", type=float, default=1.0,
-                    help="Toy data prior variance for the Tweedie denoiser. "
-                    "Controls feedback strength: Jacobian = prior_var/(σ²+prior_var). "
-                    "0 → x-independent oracle (legacy behavior). 1.0 (default) "
-                    "gives meaningful low-σ feedback. Higher = more amplification.")
+    ap.add_argument(
+        "--error_mag",
+        type=float,
+        default=0.02,
+        help="Relative Gaussian error on cached denoised. 0.02 ~ "
+        "2%% of |denoised| — typical Spectrum prediction error.",
+    )
+    ap.add_argument(
+        "--prior_var",
+        type=float,
+        default=1.0,
+        help="Toy data prior variance for the Tweedie denoiser. "
+        "Controls feedback strength: Jacobian = prior_var/(σ²+prior_var). "
+        "0 → x-independent oracle (legacy behavior). 1.0 (default) "
+        "gives meaningful low-σ feedback. Higher = more amplification.",
+    )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--warmup_steps", type=int, default=7)
     ap.add_argument("--window_size", type=float, default=2.0)
     ap.add_argument("--flex_window", type=float, default=0.25)
     ap.add_argument("--stop_caching_step", type=int, default=-1)
-    ap.add_argument("--no_guards", action="store_true",
-                    help="Disable the fragile-sampler consecutive-cache guard")
-    ap.add_argument("--forbid_consec_all", action="store_true",
-                    help="Apply the no-consecutive-cached guard to every sampler")
-    ap.add_argument("--min_dl_factor", type=float, default=0.0,
-                    help="Δλ-aware cache guard. Skip caching at step i if "
-                    "|log σ_i − log σ_{i+1}| < k · dlu. 0 disables (legacy), "
-                    "0.5 trims karras/exp tail, 1.0 only caches where local "
-                    "gap ≥ region average. Try sweeping 0 / 0.3 / 0.5 / 0.7.")
-    ap.add_argument("--auto_stop", action="store_true",
-                    help="Pick stop_caching_step per scheduler from tail-snap "
-                    "ratio (last-3-gap mean / overall mean). Strong tail-snap "
-                    "(simple ≈ 6) keeps last 3 actuals; uniform schedules "
-                    "(karras / exp / kl_optimal, ratio ≤ 1.5) push stop "
-                    "earlier so more late actuals dilute accumulated drift.")
-    ap.add_argument("--no_caching", action="store_true",
-                    help="Sanity check — all steps actual, drift should be 0")
+    ap.add_argument(
+        "--no_guards",
+        action="store_true",
+        help="Disable the fragile-sampler consecutive-cache guard",
+    )
+    ap.add_argument(
+        "--forbid_consec_all",
+        action="store_true",
+        help="Apply the no-consecutive-cached guard to every sampler",
+    )
+    ap.add_argument(
+        "--min_dl_factor",
+        type=float,
+        default=0.0,
+        help="Δλ-aware cache guard. Skip caching at step i if "
+        "|log σ_i − log σ_{i+1}| < k · dlu. 0 disables (legacy), "
+        "0.5 trims karras/exp tail, 1.0 only caches where local "
+        "gap ≥ region average. Try sweeping 0 / 0.3 / 0.5 / 0.7.",
+    )
+    ap.add_argument(
+        "--auto_stop",
+        action="store_true",
+        help="Pick stop_caching_step per scheduler from tail-snap "
+        "ratio (last-3-gap mean / overall mean). Strong tail-snap "
+        "(simple ≈ 6) keeps last 3 actuals; uniform schedules "
+        "(karras / exp / kl_optimal, ratio ≤ 1.5) push stop "
+        "earlier so more late actuals dilute accumulated drift.",
+    )
+    ap.add_argument(
+        "--no_caching",
+        action="store_true",
+        help="Sanity check — all steps actual, drift should be 0",
+    )
     ap.add_argument("--no_plot", action="store_true")
-    ap.add_argument("--out", default="bench/spectrum/results/drift")
+    ap.add_argument(
+        "--label",
+        type=str,
+        default="drift",
+        help="Run-dir label (bench/spectrum/results/<ts>-<label>/). "
+        "Default 'drift' so analyze_drift runs cluster together.",
+    )
     args = ap.parse_args()
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = Path(args.out) / stamp
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "config.json").write_text(json.dumps(vars(args), indent=2))
+    out_dir = make_run_dir("spectrum", label=args.label)
     print(f"out_dir = {out_dir}")
 
-    sweep(args, out_dir)
+    rows, artifacts = sweep(args, out_dir)
+
+    metrics = {
+        "n_cells": len(rows),
+        "rows": rows,
+        "best_cell": min(rows, key=lambda r: r["final_drift_mean"]) if rows else None,
+    }
+    result_path = write_result(
+        out_dir,
+        script=__file__,
+        args=args,
+        label=args.label,
+        metrics=metrics,
+        artifacts=artifacts,
+    )
+    print(f"result → {result_path}")
 
 
 if __name__ == "__main__":

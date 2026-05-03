@@ -72,7 +72,6 @@ Usage
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import math
 import sys
@@ -80,7 +79,8 @@ from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bench._common import make_run_dir, write_result  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 
 setup_logging()
@@ -551,7 +551,9 @@ def main():
         "useful when you only want the Section B verification)",
     )
     p.add_argument(
-        "--out_json", default="bench/easycontrol/results/step0_equivalence.json"
+        "--label",
+        default="step0",
+        help="Run-dir label (bench/easycontrol/results/<ts>-<label>/).",
     )
     args = p.parse_args()
 
@@ -560,21 +562,7 @@ def main():
     ]
     device = torch.device(args.device)
 
-    summary = {
-        "config": {
-            "s_t": args.s_t,
-            "s_c": args.s_c,
-            "s_c_two_stream": args.s_c_two_stream,
-            "n_heads": args.n_heads,
-            "head_dim": args.head_dim,
-            "batch": args.batch,
-            "n_trials": args.n_trials,
-            "dtype": args.dtype,
-            "device": str(device),
-            "b_cond": args.b_cond,
-            "cond_position_offset": args.cond_position_offset,
-        },
-    }
+    metrics: dict = {}
 
     # ------------------------------------------------------------ Section A
     if not args.skip_sweep:
@@ -605,7 +593,7 @@ def main():
         print("Verdict (rel_l2_max thresholded):")
         for strategy, rel, tier in verdict(rows):
             print(f"  {strategy:30s}  rel_l2_max = {rel:.3e}   →  {tier}")
-        summary["section_a"] = {
+        metrics["section_a"] = {
             "rows": rows,
             "verdict": [
                 {"strategy": s, "rel_l2_max": rel, "tier": tier}
@@ -664,13 +652,18 @@ def main():
     print(f"  cond_out finite       : {agg['cond_out_all_finite']}")
     print(f"  cond_out |max|        : {agg['cond_out_abs_max_overall']:.3e}")
     print(f"  Verdict               : {tier}")
-    summary["section_b"] = {**agg, "verdict": tier}
+    metrics["section_b"] = {**agg, "verdict": tier}
 
-    out_path = Path(args.out_json)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w") as f:
-        json.dump(summary, f, indent=2)
-    logger.info(f"saved summary to {out_path}")
+    out_dir = make_run_dir("easycontrol", label=args.label)
+    result_path = write_result(
+        out_dir,
+        script=__file__,
+        args=args,
+        label=args.label,
+        metrics=metrics,
+        device=device,
+    )
+    logger.info(f"result → {result_path}")
 
 
 if __name__ == "__main__":

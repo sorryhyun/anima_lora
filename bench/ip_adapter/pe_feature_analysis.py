@@ -52,7 +52,6 @@ Outputs a text report to stdout and (optional) JSON to ``--report``.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import random
 import sys
@@ -68,11 +67,13 @@ from safetensors.torch import load_file as load_safetensors
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from bench._common import make_run_dir, write_result
 from library.datasets.image_utils import IMAGE_EXTENSIONS, IMAGE_TRANSFORMS
 from library.vision.encoder import encode_pe_from_imageminus1to1, load_pe_encoder
 
 
 # ----- pooling -----
+
 
 def _pool_pe(feats: torch.Tensor, *, drop_cls: bool = True) -> torch.Tensor:
     """Mean-over-tokens pool. ``feats`` is ``[T, D]``; returns ``[D]``."""
@@ -86,6 +87,7 @@ def _l2norm(x: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
 
 # ----- cached-feature loading -----
+
 
 def _load_cached_pool(path: Path) -> torch.Tensor:
     """Read one ``*_anima_pe.safetensors`` and return mean-pooled ``[D]`` (fp32)."""
@@ -105,6 +107,7 @@ def _load_all_cached_pools(cache_dir: Path) -> tuple[list[Path], torch.Tensor]:
 
 # ----- live encoding for augmented variants -----
 
+
 def _read_image_minus1to1(path: Path) -> torch.Tensor:
     """Same path as preprocess/cache_pe_encoder.py — IMAGE_TRANSFORMS gives [-1, 1]."""
     with Image.open(path) as img:
@@ -116,21 +119,27 @@ def _hflip(x: torch.Tensor) -> torch.Tensor:
     return torch.flip(x, dims=[-1])
 
 
-def _random_crop_resize(x: torch.Tensor, frac: float, *, rng: random.Random) -> torch.Tensor:
+def _random_crop_resize(
+    x: torch.Tensor, frac: float, *, rng: random.Random
+) -> torch.Tensor:
     """Random crop of side fraction ``frac`` then resize back to original HW."""
     _, H, W = x.shape
     crop_h = max(1, int(round(H * frac)))
     crop_w = max(1, int(round(W * frac)))
     top = rng.randint(0, H - crop_h)
     left = rng.randint(0, W - crop_w)
-    cropped = x[:, top:top + crop_h, left:left + crop_w]
+    cropped = x[:, top : top + crop_h, left : left + crop_w]
     return F.interpolate(
         cropped.unsqueeze(0), size=(H, W), mode="bilinear", align_corners=False
     )[0]
 
 
 def _color_jitter(
-    x: torch.Tensor, *, brightness: float, contrast: float, saturation: float,
+    x: torch.Tensor,
+    *,
+    brightness: float,
+    contrast: float,
+    saturation: float,
     rng: random.Random,
 ) -> torch.Tensor:
     """Cheap brightness/contrast/saturation jitter on a [-1, 1] CHW tensor.
@@ -152,7 +161,10 @@ def _color_jitter(
 
 
 def _encode_pooled_batch(
-    bundle, images: list[torch.Tensor], *, device: torch.device,
+    bundle,
+    images: list[torch.Tensor],
+    *,
+    device: torch.device,
 ) -> torch.Tensor:
     """Encode a list of variable-shape ``[3, H, W]`` images, mean-pool each.
 
@@ -169,8 +181,13 @@ def _encode_pooled_batch(
 
 # ----- step 1: aug-invariance histogram -----
 
+
 def step_aug_histogram(
-    args, *, image_paths: list[Path], cached_pools: torch.Tensor, all_files: list[Path],
+    args,
+    *,
+    image_paths: list[Path],
+    cached_pools: torch.Tensor,
+    all_files: list[Path],
 ) -> dict:
     """Live-encode N images + 3 aug variants, compare cos-sims to cross pairs.
 
@@ -199,8 +216,11 @@ def step_aug_histogram(
         crops.append(_random_crop_resize(x, frac=args.crop_frac, rng=rng))
         jitters.append(
             _color_jitter(
-                x, brightness=args.jitter, contrast=args.jitter,
-                saturation=args.jitter, rng=rng,
+                x,
+                brightness=args.jitter,
+                contrast=args.jitter,
+                saturation=args.jitter,
+                rng=rng,
             )
         )
 
@@ -231,7 +251,9 @@ def step_aug_histogram(
             j = rng.randrange(n_cached)
             if j != forbidden:
                 break
-        sim = F.cosine_similarity(pe_orig[i:i+1], cached_pools[j:j+1], dim=-1).item()
+        sim = F.cosine_similarity(
+            pe_orig[i : i + 1], cached_pools[j : j + 1], dim=-1
+        ).item()
         cross_sims.append(sim)
     cross_sims_arr = np.array(cross_sims)
 
@@ -255,7 +277,9 @@ def step_aug_histogram(
     }
 
     print()
-    print(f"  {'pair':24s}  {'mean':>6s} {'std':>6s} {'p10':>6s} {'p50':>6s} {'p90':>6s} {'min':>6s} {'max':>6s}")
+    print(
+        f"  {'pair':24s}  {'mean':>6s} {'std':>6s} {'p10':>6s} {'p50':>6s} {'p90':>6s} {'min':>6s} {'max':>6s}"
+    )
     for s in summaries.values():
         print(
             f"  {s['name']:24s}  {s['mean']:6.3f} {s['std']:6.3f} "
@@ -279,14 +303,20 @@ def step_aug_histogram(
 
 # ----- step 2: crop retrieval rank -----
 
+
 def step_crop_retrieval(
-    args, *, image_paths: list[Path], cached_pools: torch.Tensor,
+    args,
+    *,
+    image_paths: list[Path],
+    cached_pools: torch.Tensor,
     all_files: list[Path],
 ) -> dict:
     """For Q query images, encode a 60% random crop, find rank of self in cache."""
     rng = random.Random(args.seed + 1)
     Q = min(args.n_retrieval, len(image_paths))
-    print(f"\n=== Step 2: crop retrieval rank (Q={Q}, index size={cached_pools.shape[0]}) ===")
+    print(
+        f"\n=== Step 2: crop retrieval rank (Q={Q}, index size={cached_pools.shape[0]}) ==="
+    )
     print(f"  Crop fraction: {args.crop_frac:.2f}")
 
     # Map source stem -> cached index for self-rank lookup. Skip queries whose
@@ -331,10 +361,12 @@ def step_crop_retrieval(
     median_rank = float(np.median(ranks))
 
     print()
-    print(f"  recall@1   = {recall_at_1:.3f}  ({int(recall_at_1*Q)}/{Q})")
+    print(f"  recall@1   = {recall_at_1:.3f}  ({int(recall_at_1 * Q)}/{Q})")
     print(f"  recall@10  = {recall_at_10:.3f}")
     print(f"  recall@100 = {recall_at_100:.3f}")
-    print(f"  median rank = {median_rank:.0f}  (0 = top hit; lower is more memorizable)")
+    print(
+        f"  median rank = {median_rank:.0f}  (0 = top hit; lower is more memorizable)"
+    )
 
     return dict(
         Q=Q,
@@ -349,20 +381,21 @@ def step_crop_retrieval(
 
 # ----- step 3: effective rank -----
 
+
 def step_effective_rank(args, *, cached_pools: torch.Tensor) -> dict:
     """SVD of pooled-feature matrix. Report 95% / 99% energy and participation ratio."""
     print(f"\n=== Step 3: effective rank of PE pooled features ===")
     X = cached_pools - cached_pools.mean(dim=0, keepdim=True)
     print(f"  Matrix: {tuple(X.shape)}  (centered)")
     s = torch.linalg.svdvals(X.to(torch.float32))
-    s2 = (s ** 2).numpy()
+    s2 = (s**2).numpy()
     total = s2.sum()
     cum = np.cumsum(s2) / total
     k95 = int(np.searchsorted(cum, 0.95) + 1)
     k99 = int(np.searchsorted(cum, 0.99) + 1)
     # Participation ratio of the squared singular values (a continuous "effective
     # rank"; equals N for uniform spectrum, 1 for rank-1).
-    pr = float((s2.sum() ** 2) / (s2 ** 2).sum())
+    pr = float((s2.sum() ** 2) / (s2**2).sum())
 
     print(f"  95% energy in top {k95} dims")
     print(f"  99% energy in top {k99} dims")
@@ -385,6 +418,7 @@ def step_effective_rank(args, *, cached_pools: torch.Tensor) -> dict:
 
 
 # ----- decision rule -----
+
 
 def _verdict(report: dict) -> str:
     s1 = report.get("step1")
@@ -429,6 +463,7 @@ def _verdict(report: dict) -> str:
 
 # ----- main -----
 
+
 def parse_steps(s: str) -> list[int]:
     if not s or s == "all":
         return [1, 2, 3]
@@ -436,28 +471,70 @@ def parse_steps(s: str) -> list[int]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--resized_dir", type=str, default="post_image_dataset/resized",
-                        help="Directory of post-resize images (default: post_image_dataset/resized).")
-    parser.add_argument("--cache_dir", type=str, default="post_image_dataset/lora",
-                        help="Directory of cached *_anima_pe.safetensors (default: post_image_dataset/lora).")
-    parser.add_argument("--n", type=int, default=200,
-                        help="Sample size for step 1 aug histogram (default: 200).")
-    parser.add_argument("--n_retrieval", type=int, default=50,
-                        help="Sample size for step 2 crop retrieval (default: 50).")
-    parser.add_argument("--crop_frac", type=float, default=0.6,
-                        help="Random-crop side fraction for step 2 (default: 0.6).")
-    parser.add_argument("--jitter", type=float, default=0.2,
-                        help="Color-jitter amount for step 1 (default: 0.2).")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--resized_dir",
+        type=str,
+        default="post_image_dataset/resized",
+        help="Directory of post-resize images (default: post_image_dataset/resized).",
+    )
+    parser.add_argument(
+        "--cache_dir",
+        type=str,
+        default="post_image_dataset/lora",
+        help="Directory of cached *_anima_pe.safetensors (default: post_image_dataset/lora).",
+    )
+    parser.add_argument(
+        "--n",
+        type=int,
+        default=200,
+        help="Sample size for step 1 aug histogram (default: 200).",
+    )
+    parser.add_argument(
+        "--n_retrieval",
+        type=int,
+        default=50,
+        help="Sample size for step 2 crop retrieval (default: 50).",
+    )
+    parser.add_argument(
+        "--crop_frac",
+        type=float,
+        default=0.6,
+        help="Random-crop side fraction for step 2 (default: 0.6).",
+    )
+    parser.add_argument(
+        "--jitter",
+        type=float,
+        default=0.2,
+        help="Color-jitter amount for step 1 (default: 0.2).",
+    )
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--steps", type=str, default="all",
-                        help="Comma-separated step numbers, or 'all' (default).")
-    parser.add_argument("--report", type=str, default=None,
-                        help="Optional path to write JSON report.")
+    parser.add_argument(
+        "--steps",
+        type=str,
+        default="all",
+        help="Comma-separated step numbers, or 'all' (default).",
+    )
+    parser.add_argument(
+        "--label",
+        type=str,
+        default="pe_features",
+        help="Run-dir label (bench/ip_adapter/results/<ts>-<label>/).",
+    )
     args = parser.parse_args()
 
-    resized_dir = (ROOT / args.resized_dir).resolve() if not Path(args.resized_dir).is_absolute() else Path(args.resized_dir)
-    cache_dir = (ROOT / args.cache_dir).resolve() if not Path(args.cache_dir).is_absolute() else Path(args.cache_dir)
+    resized_dir = (
+        (ROOT / args.resized_dir).resolve()
+        if not Path(args.resized_dir).is_absolute()
+        else Path(args.resized_dir)
+    )
+    cache_dir = (
+        (ROOT / args.cache_dir).resolve()
+        if not Path(args.cache_dir).is_absolute()
+        else Path(args.cache_dir)
+    )
     if not resized_dir.is_dir():
         print(f"resized_dir not found: {resized_dir}", file=sys.stderr)
         sys.exit(1)
@@ -470,17 +547,20 @@ def main() -> None:
     print(f"Cache:   {cache_dir}")
     print(f"Steps:   {steps}")
 
-    image_paths = sorted(p for p in resized_dir.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS)
+    image_paths = sorted(
+        p for p in resized_dir.iterdir() if p.suffix.lower() in IMAGE_EXTENSIONS
+    )
     if not image_paths:
         print(f"No images under {resized_dir}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"\nLoading {sum(1 for _ in cache_dir.glob('*_anima_pe.safetensors'))} cached PE pools...")
+    print(
+        f"\nLoading {sum(1 for _ in cache_dir.glob('*_anima_pe.safetensors'))} cached PE pools..."
+    )
     all_files, cached_pools = _load_all_cached_pools(cache_dir)
     print(f"  pools: {tuple(cached_pools.shape)}  dtype={cached_pools.dtype}")
 
     report: dict = {
-        "args": vars(args),
         "n_images": len(image_paths),
         "n_cached": cached_pools.shape[0],
         "d_enc": int(cached_pools.shape[1]),
@@ -488,13 +568,17 @@ def main() -> None:
 
     if 1 in steps:
         report["step1"] = step_aug_histogram(
-            args, image_paths=image_paths,
-            cached_pools=cached_pools, all_files=all_files,
+            args,
+            image_paths=image_paths,
+            cached_pools=cached_pools,
+            all_files=all_files,
         )
     if 2 in steps:
         report["step2"] = step_crop_retrieval(
-            args, image_paths=image_paths,
-            cached_pools=cached_pools, all_files=all_files,
+            args,
+            image_paths=image_paths,
+            cached_pools=cached_pools,
+            all_files=all_files,
         )
     if 3 in steps:
         report["step3"] = step_effective_rank(args, cached_pools=cached_pools)
@@ -502,12 +586,15 @@ def main() -> None:
     print("\n=== Decision support ===\n")
     print(_verdict(report))
 
-    if args.report:
-        out = Path(args.report)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        with out.open("w") as f:
-            json.dump(report, f, indent=2)
-        print(f"\nJSON report → {out}")
+    out_dir = make_run_dir("ip_adapter", label=args.label)
+    result_path = write_result(
+        out_dir,
+        script=__file__,
+        args=args,
+        label=args.label,
+        metrics=report,
+    )
+    print(f"\nresult → {result_path}")
 
 
 if __name__ == "__main__":

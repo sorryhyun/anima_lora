@@ -38,10 +38,9 @@ Schedule forms (pixel-mode DCW):
     sigma_i           scaler(i) = λ · σ_i            (paper Eq. 20)
     one_minus_sigma   scaler(i) = λ · (1 − σ_i)      (inverse)
 
-Outputs (bench/dcw/results/<timestamp>/)
-----------------------------------------
-    config.json            CLI args
-    summary.json           integrated gap + |gap| per DCW config, ranked
+Outputs (bench/dcw/results/<YYYYMMDD-HHMM>[-<label>]/)
+------------------------------------------------------
+    result.json            standard envelope (args, git, env, metrics, artifacts)
     per_step.csv           wide: step, v_fwd, v_rev, gap per config
     gap_curves.png         matplotlib Fig 1c reproduction + gap overlay
 
@@ -72,12 +71,10 @@ from __future__ import annotations
 import argparse
 import csv
 import gc
-import json
 import logging
 import re
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -88,6 +85,7 @@ from tqdm import tqdm
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from bench._common import make_run_dir, write_result
 from library.anima import weights as anima_utils
 from library.inference import sampling as inference_utils
 
@@ -113,7 +111,9 @@ def dcw_scaler(lam: float, sigma_i: float, schedule: str) -> float:
     raise ValueError(f"unknown schedule: {schedule}")
 
 
-def apply_dcw_pixel(prev: torch.Tensor, x0_pred: torch.Tensor, s: float) -> torch.Tensor:
+def apply_dcw_pixel(
+    prev: torch.Tensor, x0_pred: torch.Tensor, s: float
+) -> torch.Tensor:
     """Eq. 17 (pixel-space): prev += s · (prev − x0_pred)."""
     if s == 0.0:
         return prev
@@ -125,7 +125,9 @@ def apply_dcw_pixel(prev: torch.Tensor, x0_pred: torch.Tensor, s: float) -> torc
 # ------------------------------------------------------------------
 
 
-def pick_cached_samples(dataset_dir: Path, n: int, text_variant: int) -> list[tuple[str, Path, Path]]:
+def pick_cached_samples(
+    dataset_dir: Path, n: int, text_variant: int
+) -> list[tuple[str, Path, Path]]:
     """Return list of (stem, latent_npz_path, text_safetensors_path)."""
     out = []
     for npz_path in sorted(dataset_dir.glob("*_anima.npz")):
@@ -151,12 +153,16 @@ def load_cached(
         if not latent_keys:
             raise RuntimeError(f"no latents_* key in {npz_path}")
         lat = torch.from_numpy(z[latent_keys[0]])  # (16, H, W) float32
-    x_0 = lat.unsqueeze(0).unsqueeze(2).to(device, dtype=torch.bfloat16)  # (1, 16, 1, H, W)
+    x_0 = (
+        lat.unsqueeze(0).unsqueeze(2).to(device, dtype=torch.bfloat16)
+    )  # (1, 16, 1, H, W)
 
     sd = load_file(str(te_path))
     key = f"crossattn_emb_v{text_variant}"
     if key not in sd:
-        raise KeyError(f"{key} not in {te_path}; available: {[k for k in sd if k.startswith('crossattn_emb_')]}")
+        raise KeyError(
+            f"{key} not in {te_path}; available: {[k for k in sd if k.startswith('crossattn_emb_')]}"
+        )
     embed = sd[key].to(device, dtype=torch.bfloat16).unsqueeze(0)  # (1, 512, 1024)
     return x_0, embed
 
@@ -169,9 +175,9 @@ def load_cached(
 @torch.no_grad()
 def run_trajectory(
     anima,
-    x_0: torch.Tensor,              # (1, 16, 1, H, W) bf16
-    embed: torch.Tensor,            # (1, 512, D) bf16
-    sigmas: torch.Tensor,           # (num_steps+1,) float32
+    x_0: torch.Tensor,  # (1, 16, 1, H, W) bf16
+    embed: torch.Tensor,  # (1, 512, D) bf16
+    sigmas: torch.Tensor,  # (num_steps+1,) float32
     *,
     noise_seed: int,
     dcw_lam: float,
@@ -230,40 +236,75 @@ def run_trajectory(
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--dit", type=str, required=True, help="DiT .safetensors path")
-    p.add_argument("--dataset_dir", type=str, default="post_image_dataset",
-                   help="Directory with cached *_anima.npz + *_anima_te.safetensors pairs")
-    p.add_argument("--text_variant", type=int, default=0,
-                   help="Which cached caption variant to use (crossattn_emb_v<N>); 0 = canonical")
-    p.add_argument("--attn_mode", type=str, default="flash",
-                   help="torch | sdpa | xformers | sage | flash ")
-    p.add_argument("--n_images", type=int, default=6, help="Number of cached samples to use")
+    p.add_argument(
+        "--dataset_dir",
+        type=str,
+        default="post_image_dataset",
+        help="Directory with cached *_anima.npz + *_anima_te.safetensors pairs",
+    )
+    p.add_argument(
+        "--text_variant",
+        type=int,
+        default=0,
+        help="Which cached caption variant to use (crossattn_emb_v<N>); 0 = canonical",
+    )
+    p.add_argument(
+        "--attn_mode",
+        type=str,
+        default="flash",
+        help="torch | sdpa | xformers | sage | flash ",
+    )
+    p.add_argument(
+        "--n_images", type=int, default=6, help="Number of cached samples to use"
+    )
     p.add_argument("--n_seeds", type=int, default=3, help="Seeds per sample")
     p.add_argument("--infer_steps", type=int, default=28)
-    p.add_argument("--flow_shift", type=float, default=1.0, help="Sigma shift (matches inference.py default)")
+    p.add_argument(
+        "--flow_shift",
+        type=float,
+        default=1.0,
+        help="Sigma shift (matches inference.py default)",
+    )
     p.add_argument("--seed_base", type=int, default=1234)
     # DCW sweep
-    p.add_argument("--dcw_sweep", action="store_true", help="Also run DCW-corrected trajectories")
+    p.add_argument(
+        "--dcw_sweep", action="store_true", help="Also run DCW-corrected trajectories"
+    )
     # Default grid sweeps both signs: Anima's baseline gap is negative, so we
     # expect negative λ to close it and positive λ to widen it. Including a
     # couple of positive values acts as a direction-sanity check that the
     # correction and the measurement agree on sign.
-    p.add_argument("--dcw_scalers", type=float, nargs="+",
-                   default=[-0.3, -0.1, -0.03, -0.01, 0.0, 0.01, 0.1],
-                   help="λ values to sweep (negative expected on Anima; see docstring)")
-    p.add_argument("--dcw_schedules", type=str, nargs="+", default=["one_minus_sigma", "const"],
-                   choices=["const", "sigma_i", "one_minus_sigma"], help="Schedule forms to sweep")
-    default_out = Path(__file__).resolve().parent / "results" / datetime.now().strftime("%Y%m%d_%H%M%S")
-    p.add_argument("--output", type=str, default=str(default_out), help="Output directory")
+    p.add_argument(
+        "--dcw_scalers",
+        type=float,
+        nargs="+",
+        default=[-0.3, -0.1, -0.03, -0.01, 0.0, 0.01, 0.1],
+        help="λ values to sweep (negative expected on Anima; see docstring)",
+    )
+    p.add_argument(
+        "--dcw_schedules",
+        type=str,
+        nargs="+",
+        default=["one_minus_sigma", "const"],
+        choices=["const", "sigma_i", "one_minus_sigma"],
+        help="Schedule forms to sweep",
+    )
+    p.add_argument(
+        "--label",
+        type=str,
+        default=None,
+        help="Optional label appended to the run dir (bench/dcw/results/<ts>-<label>/).",
+    )
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    out_dir = Path(args.output)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "config.json").write_text(json.dumps(vars(args), indent=2, default=str))
+    out_dir = make_run_dir("dcw", label=args.label)
     log.info(f"output → {out_dir}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -282,7 +323,9 @@ def main() -> None:
     anima.eval().requires_grad_(False)
 
     # -------- Pick data --------
-    samples = pick_cached_samples(Path(args.dataset_dir), args.n_images, args.text_variant)
+    samples = pick_cached_samples(
+        Path(args.dataset_dir), args.n_images, args.text_variant
+    )
     if not samples:
         raise SystemExit(
             f"no cached samples found under {args.dataset_dir}. "
@@ -291,10 +334,14 @@ def main() -> None:
     log.info(f"using {len(samples)} cached samples (variant v{args.text_variant})")
 
     # -------- Schedule (same math as inference.py) --------
-    _, sigmas_t = inference_utils.get_timesteps_sigmas(args.infer_steps, args.flow_shift, device)
+    _, sigmas_t = inference_utils.get_timesteps_sigmas(
+        args.infer_steps, args.flow_shift, device
+    )
     sigmas = sigmas_t.cpu()
     num_steps = args.infer_steps
-    log.info(f"infer_steps={num_steps}, flow_shift={args.flow_shift}, σ₀={float(sigmas[0]):.3f}, σₙ={float(sigmas[-1]):.3f}")
+    log.info(
+        f"infer_steps={num_steps}, flow_shift={args.flow_shift}, σ₀={float(sigmas[0]):.3f}, σₙ={float(sigmas[-1]):.3f}"
+    )
 
     # -------- DCW configs --------
     configs: list[tuple[str, float, str]] = [("baseline", 0.0, "const")]
@@ -304,8 +351,10 @@ def main() -> None:
                 if lam == 0.0:
                     continue  # already covered by baseline
                 configs.append((f"λ={lam}_{sched}", lam, sched))
-    log.info(f"{len(configs)} configs × {len(samples)} samples × {args.n_seeds} seeds "
-             f"= {len(configs) * len(samples) * args.n_seeds} trajectories")
+    log.info(
+        f"{len(configs)} configs × {len(samples)} samples × {args.n_seeds} seeds "
+        f"= {len(configs) * len(samples) * args.n_seeds} trajectories"
+    )
 
     # -------- Preload cached data onto device --------
     log.info("loading cached latents + text embeds…")
@@ -319,8 +368,12 @@ def main() -> None:
 
     # -------- Sweep trajectories --------
     accum = {
-        name: {"v_fwd": np.zeros(num_steps), "v_rev": np.zeros(num_steps),
-               "gap": np.zeros(num_steps), "n": 0}
+        name: {
+            "v_fwd": np.zeros(num_steps),
+            "v_rev": np.zeros(num_steps),
+            "gap": np.zeros(num_steps),
+            "n": 0,
+        }
         for name, _, _ in configs
     }
 
@@ -331,8 +384,14 @@ def main() -> None:
             for seed_idx in range(args.n_seeds):
                 seed = args.seed_base + 1000 * img_idx + seed_idx
                 res = run_trajectory(
-                    anima, x_0, embed, sigmas,
-                    noise_seed=seed, dcw_lam=lam, dcw_schedule=sched, device=device,
+                    anima,
+                    x_0,
+                    embed,
+                    sigmas,
+                    noise_seed=seed,
+                    dcw_lam=lam,
+                    dcw_schedule=sched,
+                    device=device,
                 )
                 for k in ("v_fwd", "v_rev", "gap"):
                     accum[name][k] += res[k]
@@ -349,11 +408,17 @@ def main() -> None:
 
     # -------- Summary --------
     ranked = sorted(
-        [(name, float(np.abs(accum[name]["gap"]).sum()), float(accum[name]["gap"].sum()))
-         for name in accum],
+        [
+            (
+                name,
+                float(np.abs(accum[name]["gap"]).sum()),
+                float(accum[name]["gap"].sum()),
+            )
+            for name in accum
+        ],
         key=lambda t: t[1],
     )
-    summary = {
+    metrics = {
         "infer_steps": num_steps,
         "n_samples": len(samples),
         "n_seeds": args.n_seeds,
@@ -363,7 +428,6 @@ def main() -> None:
             for name, a, s in ranked
         ],
     }
-    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
     # -------- CSV --------
     csv_path = out_dir / "per_step.csv"
@@ -376,22 +440,39 @@ def main() -> None:
         for i in range(num_steps):
             row = [i, float(sigmas[i])]
             for name in accum:
-                row += [accum[name]["v_fwd"][i], accum[name]["v_rev"][i], accum[name]["gap"][i]]
+                row += [
+                    accum[name]["v_fwd"][i],
+                    accum[name]["v_rev"][i],
+                    accum[name]["gap"][i],
+                ]
             w.writerow(row)
     log.info(f"CSV → {csv_path}")
 
     # -------- Plot --------
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
         fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharex=True)
 
         base = accum["baseline"]
-        axes[0].plot(range(num_steps), base["v_fwd"], label="forward ||v(x_t, t)||", color="#2a9d8f")
-        axes[0].plot(range(num_steps), base["v_rev"], label="reverse ||v(x̂_t, t)||", color="#e76f51")
-        axes[0].set_title("Baseline: forward vs reverse velocity norm (Fig 1c reproduction)")
+        axes[0].plot(
+            range(num_steps),
+            base["v_fwd"],
+            label="forward ||v(x_t, t)||",
+            color="#2a9d8f",
+        )
+        axes[0].plot(
+            range(num_steps),
+            base["v_rev"],
+            label="reverse ||v(x̂_t, t)||",
+            color="#e76f51",
+        )
+        axes[0].set_title(
+            "Baseline: forward vs reverse velocity norm (Fig 1c reproduction)"
+        )
         axes[0].set_xlabel("step i")
         axes[0].set_ylabel("||v||₂")
         axes[0].legend()
@@ -410,12 +491,28 @@ def main() -> None:
         png_path = out_dir / "gap_curves.png"
         fig.savefig(png_path, dpi=130)
         log.info(f"plot → {png_path}")
+        plot_written = True
     except ImportError:
         log.warning("matplotlib not installed; skipping plot")
+        plot_written = False
+
+    artifacts = ["per_step.csv"] + (["gap_curves.png"] if plot_written else [])
+    result_path = write_result(
+        out_dir,
+        script=__file__,
+        args=args,
+        label=args.label,
+        metrics=metrics,
+        artifacts=artifacts,
+        device=device,
+    )
+    log.info(f"result → {result_path}")
 
     print("\n=== SNR-t bias measurement ===")
-    print(f"baseline integrated signed gap: {accum['baseline']['gap'].sum():+.3f}  "
-          f"(>0 means reverse > forward, as the paper predicts)")
+    print(
+        f"baseline integrated signed gap: {accum['baseline']['gap'].sum():+.3f}  "
+        f"(>0 means reverse > forward, as the paper predicts)"
+    )
     if args.dcw_sweep:
         print("\nconfigs ranked by integrated |gap|  (smaller = closer alignment):")
         for rank, (name, a, s) in enumerate(ranked, 1):

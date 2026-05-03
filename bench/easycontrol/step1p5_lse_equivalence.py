@@ -55,7 +55,6 @@ Usage
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import sys
 from pathlib import Path
@@ -63,7 +62,8 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bench._common import make_run_dir, write_result  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 from networks import attention_dispatch as anima_attention  # noqa: E402
 from networks.methods.easycontrol import _ExtendedSelfAttnLSEFunc  # noqa: E402
@@ -299,8 +299,9 @@ def main():
         help="rel_l2 above which the path is considered to disagree with reference.",
     )
     p.add_argument(
-        "--out_json",
-        default="bench/easycontrol/results/step1p5_lse_equivalence.json",
+        "--label",
+        default="step1p5",
+        help="Run-dir label (bench/easycontrol/results/<ts>-<label>/).",
     )
     args = p.parse_args()
 
@@ -327,7 +328,7 @@ def main():
         f"b_cond_sweep={b_conds} device={device}"
     )
 
-    summary = {"config": vars(args), "results": []}
+    metrics: dict = {"results": []}
     for b_cond_value in b_conds:
         all_rows = []
         for trial in range(args.n_trials):
@@ -364,7 +365,7 @@ def main():
             verdict.append(
                 {"name": name, "rel_l2_max": rel, "abs_max": amax, "tier": tier}
             )
-        summary["results"].append({"b_cond": b_cond_value, "rows": verdict})
+        metrics["results"].append({"b_cond": b_cond_value, "rows": verdict})
         print()
         print("Verdict:")
         for v in verdict:
@@ -372,11 +373,16 @@ def main():
                 f"  {v['name']:30s}  rel_l2_max = {v['rel_l2_max']:.3e}  →  {v['tier']}"
             )
 
-    out_path = Path(args.out_json)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w") as f:
-        json.dump(summary, f, indent=2, default=str)
-    logger.info(f"saved summary to {out_path}")
+    out_dir = make_run_dir("easycontrol", label=args.label)
+    result_path = write_result(
+        out_dir,
+        script=__file__,
+        args=args,
+        label=args.label,
+        metrics=metrics,
+        device=device,
+    )
+    logger.info(f"result → {result_path}")
 
 
 if __name__ == "__main__":

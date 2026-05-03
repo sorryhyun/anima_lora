@@ -19,12 +19,15 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 import time
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bench._common import make_run_dir, write_result  # noqa: E402
 
 
 def _post_json(url: str, body: dict) -> dict:
@@ -42,9 +45,7 @@ def _get_json(url: str) -> dict:
 
 
 def queue_prompt(host: str, workflow: dict, client_id: str) -> str:
-    resp = _post_json(
-        f"{host}/prompt", {"prompt": workflow, "client_id": client_id}
-    )
+    resp = _post_json(f"{host}/prompt", {"prompt": workflow, "client_id": client_id})
     return resp["prompt_id"]
 
 
@@ -102,9 +103,7 @@ def patch_workflow(
     return wf
 
 
-def extract_output_image(
-    host: str, history_entry: dict, out_path: Path
-) -> str | None:
+def extract_output_image(host: str, history_entry: dict, out_path: Path) -> str | None:
     outputs = history_entry.get("outputs", {})
     for _nid, o in outputs.items():
         images = o.get("images") or []
@@ -169,7 +168,13 @@ def main() -> None:
     ap.add_argument("--window_size", type=float, default=2.0)
     ap.add_argument("--flex_window", type=float, default=0.25)
     ap.add_argument("--stop_caching_step", type=int, default=-1)
-    ap.add_argument("--out", default="bench/spectrum/results")
+    ap.add_argument(
+        "--label",
+        type=str,
+        default="comfy",
+        help="Run-dir label (bench/spectrum/results/<ts>-<label>/). "
+        "Default 'comfy' to distinguish from analyze_drift's 'drift'.",
+    )
     ap.add_argument(
         "--sampler_node", default="19", help="Node ID of SpectrumKSamplerAdvanced."
     )
@@ -192,25 +197,22 @@ def main() -> None:
     if not prompts:
         raise SystemExit(f"No prompts found in {args.prompts}")
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = Path(args.out) / stamp
-    out_dir.mkdir(parents=True, exist_ok=True)
-    # Stash run config so you can reconstruct what produced each grid.
-    (out_dir / "config.json").write_text(
-        json.dumps(
-            {"argv": vars(args), "cells": cells, "n_prompts": len(prompts)},
-            indent=2,
-        )
-    )
+    out_dir = make_run_dir("spectrum", label=args.label)
     print(f"writing results → {out_dir}")
 
     csv_path = out_dir / "results.csv"
+    image_files: list[str] = []
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(
             f,
             fieldnames=[
-                "prompt_idx", "sampler", "scheduler", "spectrum",
-                "wall_s", "filename", "prompt",
+                "prompt_idx",
+                "sampler",
+                "scheduler",
+                "spectrum",
+                "wall_s",
+                "filename",
+                "prompt",
             ],
         )
         writer.writeheader()
@@ -251,6 +253,8 @@ def main() -> None:
                     entry = wait_for_completion(args.host, pid, args.timeout)
                     wall = time.time() - start
                     saved = extract_output_image(args.host, entry, out_dir / fname)
+                    if saved:
+                        image_files.append(fname)
                     writer.writerow(
                         {
                             "prompt_idx": pi,
@@ -269,8 +273,28 @@ def main() -> None:
                         f"{tag:4s} {wall:5.1f}s → {fname}"
                     )
 
+    metrics = {
+        "cells": [{"sampler": s, "scheduler": sc} for s, sc in cells],
+        "n_prompts": len(prompts),
+        "n_images": len(image_files),
+        "modes": {
+            "reference": not args.skip_reference,
+            "spectrum": not args.skip_spectrum,
+        },
+    }
+    artifacts = ["results.csv"] + image_files
+    result_path = write_result(
+        out_dir,
+        script=__file__,
+        args=args,
+        label=args.label,
+        metrics=metrics,
+        artifacts=artifacts,
+    )
+
     print(f"\nDone. Results → {out_dir}")
     print(f"CSV: {csv_path}")
+    print(f"result → {result_path}")
 
 
 if __name__ == "__main__":

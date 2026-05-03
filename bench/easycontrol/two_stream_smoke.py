@@ -24,7 +24,8 @@ from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from bench._common import make_run_dir, write_result  # noqa: E402
 from library.log import setup_logging  # noqa: E402
 
 setup_logging()
@@ -82,6 +83,11 @@ def main():
         "--no_cond",
         action="store_true",
         help="Skip set_cond — measures baseline DiT memory for A/B.",
+    )
+    p.add_argument(
+        "--label",
+        default="two_stream_smoke",
+        help="Run-dir label (bench/easycontrol/results/<ts>-<label>/).",
     )
     args = p.parse_args()
 
@@ -166,9 +172,9 @@ def main():
     logger.info("backward done")
 
     # Confirm cond LoRAs received gradients (only meaningful when cond was set).
+    n_with_grad = 0
+    n_total = 0
     if not args.no_cond:
-        n_with_grad = 0
-        n_total = 0
         for name, p in net.named_parameters():
             n_total += 1
             if p.grad is not None and p.grad.abs().sum().item() != 0.0:
@@ -192,6 +198,25 @@ def main():
         f"GPU memory:  pre={mem_pre:.1f} MiB   peak={mem_peak:.1f} MiB   "
         f"post={mem_post:.1f} MiB"
     )
+
+    metrics = {
+        "loss": float(loss.item()),
+        "out_shape": list(out.shape),
+        "cond_lora_grads": {"with_grad": n_with_grad, "total": n_total}
+        if not args.no_cond
+        else None,
+        "gpu_memory_mib": {"pre": mem_pre, "peak": mem_peak, "post": mem_post},
+    }
+    out_dir = make_run_dir("easycontrol", label=args.label)
+    result_path = write_result(
+        out_dir,
+        script=__file__,
+        args=args,
+        label=args.label,
+        metrics=metrics,
+        device=device,
+    )
+    logger.info(f"result → {result_path}")
 
 
 if __name__ == "__main__":
