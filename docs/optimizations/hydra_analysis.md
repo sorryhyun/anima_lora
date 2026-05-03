@@ -33,6 +33,66 @@ looking for GPU-idle gaps inside `:step=N` ranges.
 
 ## Implemented
 
+### 0. Inter-step orchestration — `networks/lora_anima/network.py`
+
+Earlier audits (above bucket table, §1–3 below) focused on per-block forward
+kernels. A second look at thin Nsight slices between training steps surfaced
+a different category: **per-Hydra-module Python loops emitting tiny CUDA
+kernels at the step boundary**. With ~56 Hydra modules in the default stack,
+each loop fans out to hundreds of launches per step.
+
+Two offenders matched the trace pattern (clusters of
+`vectorized_elementwise_kernel` / `_scatter_gather_elementwise_kernel` /
+`reduce_kernel`, with `gatherTopK + bitonicSortKVInPlace` pairs on log
+steps):
+
+#### a. `get_router_stats` — log-step diagnostic, ~9 kernels per module
+
+`networks/lora_anima/network.py::get_router_stats` walked
+`_last_gate` per module and emitted `clamp / log / sum / topk(2) /
+argmax / scatter_add_ / ones_like / div` against each one. At the
+56-module default stack that was ~500 launches per log step — pure
+overhead between backward and the next forward.
+
+Vectorized: matching gates are stacked once into `(M, B, E)` and every
+metric (entropy, top-2 margin, argmax usage, per-bucket usage) is
+reduced in a single pass. One batched `torch.topk(2, dim=-1)` replaces
+the per-module loop's topk; one `F.one_hot(...).sum(dim=1)` replaces
+the per-module `scatter_add_` for argmax-usage. Drops ~500 launches per
+log step to ~10. Numerical parity verified across 5 cases (no σ; σ +
+buckets; σ + buckets + band partition; M=1; mismatched-E filter) — max
+diff `0.0` against the reference for every output field.
+
+Mirrors the cat-then-reduce pattern that landed in
+`capture_up_grad_stats` (commit 99b50be).
+
+#### b. `set_sigma` propagation — every-step, 56×2 elementwise copies
+
+`LoRANetwork.set_sigma` previously called each Hydra module's
+`set_sigma`, which `copy_`'d into that module's own `_sigma` and
+`_sigma_features` buffers. With 56 sigma-aware modules, that's 112
+elementwise kernels per training step — every step, default config.
+
+Fix: register a single network-level shared tensor for `_sigma` (and
+one per unique `sigma_feature_dim` for `_sigma_features`), then alias
+each module's `_buffers["_sigma"]` / `_buffers["_sigma_features"]` to
+the same tensor object. Wiring runs once at the end of
+`LoRANetwork.__init__` (`_wire_shared_sigma_buffers`), before any
+forward fires, so Inductor / cudagraphs capture the shared data
+pointer on first compile and never see a per-module pointer-mismatch
+event. `set_sigma` now does one `copy_` per shared tensor (1 for σ +
+1 per feature dim — typically 1 in practice = 2 total) and modules
+read the new value through their aliased buffer attribute.
+
+Pointer stability: the very first `set_sigma` resizes from the
+`(1,)` / `(1, dim)` placeholder to `(B,)` / `(B, dim)`; the wiring
+re-aliases all modules at the same time. Subsequent same-shape calls
+are pure in-place copies. Same fall-through path handles a rare
+batch-shape change later.
+
+`clear_sigma` is updated to operate on the shared buffers directly
+for the same reason — one zero per shared tensor instead of 56 × 2.
+
 ### 1. `_eye_r` buffer — `networks/lora_modules/ortho.py`
 
 `OrthoLoRAExpModule.__init__` and `OrthoHydraLoRAExpModule.__init__`
@@ -160,6 +220,8 @@ inside `:step=N` ranges and correlate with the Python-sampling track
 
 | Item | State |
 |---|---|
+| Vectorize `get_router_stats` (§Impl 0a) | done |
+| Shared `_sigma` / `_sigma_features` buffers (§Impl 0b) | done |
 | `_eye_r` buffer (§Impl 1) | done |
 | `_FREQS_CACHE` (§Impl 2) | done |
 | Within-module batched Cayley (§Impl 3) | done |

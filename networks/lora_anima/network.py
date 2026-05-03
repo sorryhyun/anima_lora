@@ -359,7 +359,8 @@ class LoRANetwork(torch.nn.Module):
                 # selection. Validation (E % N == 0) lives in cfg parsing.
                 if (
                     cfg.specialize_experts_by_sigma_buckets
-                    and effective_module_class in (HydraLoRAModule, OrthoHydraLoRAExpModule)
+                    and effective_module_class
+                    in (HydraLoRAModule, OrthoHydraLoRAExpModule)
                     and is_unet
                 ):
                     extra_kwargs["specialize_experts_by_sigma_buckets"] = True
@@ -534,6 +535,57 @@ class LoRANetwork(torch.nn.Module):
             )
             names.add(lora.lora_name)
 
+        # Alias each sigma-aware module's ``_sigma`` / ``_sigma_features``
+        # buffer to a single network-level shared tensor. ``set_sigma`` then
+        # updates the shared tensor in place once and every aliased module
+        # buffer sees the new value through shared storage — instead of
+        # ~56 per-module ``copy_`` calls per training step.
+        self._wire_shared_sigma_buffers()
+
+    def _wire_shared_sigma_buffers(self) -> None:
+        """Replace each HydraLoRA / OrthoHydraLoRA module's ``_sigma`` and
+        ``_sigma_features`` buffers with references to a single network-level
+        tensor (per sigma_feature_dim for the features). Modules then read the
+        same tensor object as their own attribute, so an in-place ``copy_`` on
+        the network's shared buffer flows to every module without a Python
+        propagation loop.
+
+        Run once at the end of ``__init__`` — before any forward fires, so
+        Dynamo / cudagraphs capture the aliased data pointer on first compile
+        and never see a per-module pointer-mismatch event.
+        """
+        sigma_loras: List[torch.nn.Module] = []
+        by_dim: Dict[int, List[torch.nn.Module]] = {}
+        for lora in self.unet_loras + self.text_encoder_loras:
+            if "_sigma" not in lora._buffers:
+                continue
+            sigma_loras.append(lora)
+            d = int(getattr(lora, "sigma_feature_dim", 0))
+            if d > 0 and "_sigma_features" in lora._buffers:
+                by_dim.setdefault(d, []).append(lora)
+        self._sigma_aware_loras = sigma_loras
+        self._sigma_aware_loras_by_dim = by_dim
+        if not sigma_loras:
+            self._shared_sigma = None
+            self._shared_sigma_features: Dict[int, torch.Tensor] = {}
+            return
+
+        # Pick the first module's placeholder buffer as the canonical shared
+        # tensor; rebind every other module's buffer to the same object. The
+        # placeholder is shape (1,) / (1, dim) — set_sigma replaces it with a
+        # full-shape tensor on the first call (and re-aliases at the same time).
+        shared_sigma = sigma_loras[0]._buffers["_sigma"]
+        for lora in sigma_loras:
+            lora._buffers["_sigma"] = shared_sigma
+        self._shared_sigma = shared_sigma
+
+        self._shared_sigma_features = {}
+        for dim, loras in by_dim.items():
+            shared_feat = loras[0]._buffers["_sigma_features"]
+            for lora in loras:
+                lora._buffers["_sigma_features"] = shared_feat
+            self._shared_sigma_features[dim] = shared_feat
+
     def prepare_network(self, args):
         if getattr(args, "lora_fp32_accumulation", False):
             logger.warning(
@@ -636,59 +688,88 @@ class LoRANetwork(torch.nn.Module):
     def set_sigma(self, sigmas: torch.Tensor) -> None:
         """Stash per-sample σ on every HydraLoRA module whose router accepts σ.
 
-        Mirrors ``set_timestep_mask`` — one call per training step, propagates
-        σ to every module that opts in (``sigma_feature_dim > 0``). Other
-        modules ignore it. The network also caches σ on itself so the per-
-        σ-bucket balance loss can bucket the cached gates at loss-compute
-        time, and so router stats can report per-σ-bucket expert usage even
-        when ``use_sigma_router=False`` (sigma-independent gating can still
-        develop sigma-correlated usage from data drift).
+        Mirrors ``set_timestep_mask`` — one call per training step. σ and the
+        sinusoidal-features tensor are stored in network-level shared buffers
+        whose storage is aliased into every sigma-aware module's ``_sigma`` /
+        ``_sigma_features`` (see ``_wire_shared_sigma_buffers``), so the
+        update is one in-place ``copy_`` per shared tensor instead of a
+        per-module Python loop.
 
-        IMPORTANT: write into the existing ``_sigma`` buffer in place rather
-        than rebinding it. Inductor captures ``_sigma`` as a static cudagraph
-        input (it's a registered buffer) and re-records the whole graph if
-        the data pointer changes — rebinding to a fresh ``sigmas`` tensor
-        every step caused per-step re-record under
-        ``compile_inductor_mode=reduce-overhead`` (cudagraph_trees log:
-        "static input data pointer changed").
+        IMPORTANT: write in place rather than rebinding. Inductor captures
+        the buffers as static cudagraph inputs and re-records the whole graph
+        if the data pointer changes — rebinding every step caused per-step
+        re-record under ``compile_inductor_mode=reduce-overhead``
+        (cudagraph_trees log: "static input data pointer changed"). Pointer
+        only changes on the first call (placeholder → full-shape) and on a
+        rare batch-shape change; both re-alias every module to the new tensor.
         """
         sigmas = sigmas.detach()
         self._last_sigma = sigmas
         # Either path needs per-module ``_sigma``: σ-feature concat router
         # (sigma_feature_dim>0) and hard σ-band expert partition. Skip the
-        # propagation loop only when neither is configured.
+        # propagation entirely when neither is configured.
         if not (
             self.cfg.use_sigma_router or self.cfg.specialize_experts_by_sigma_buckets
         ):
             return
-        sigma_feature_cache: dict[int, torch.Tensor] = {}
-        for lora in self.unet_loras + self.text_encoder_loras:
-            sigma_dim = int(getattr(lora, "sigma_feature_dim", 0))
-            band_partition = bool(getattr(lora, "_sigma_band_partition", False))
-            if sigma_dim <= 0 and not band_partition:
-                continue
-            sigma_features = None
-            if sigma_dim > 0:
-                sigma_features = sigma_feature_cache.get(sigma_dim)
-                if sigma_features is None:
-                    sigma_features = _sigma_sinusoidal_features(sigmas, sigma_dim)
-                    sigma_feature_cache[sigma_dim] = sigma_features
-            lora.set_sigma(sigmas, sigma_features)
+        sigma_loras = self._sigma_aware_loras
+        if not sigma_loras:
+            return
+
+        shared_sigma = self._shared_sigma
+        target_dtype = shared_sigma.dtype
+        cast = sigmas.to(dtype=target_dtype, device=shared_sigma.device)
+        if shared_sigma.shape == cast.shape:
+            shared_sigma.copy_(cast)
+        else:
+            new_sigma = cast.detach().clone()
+            for lora in sigma_loras:
+                lora._buffers["_sigma"] = new_sigma
+            self._shared_sigma = new_sigma
+            shared_sigma = new_sigma
+
+        for dim, loras in self._sigma_aware_loras_by_dim.items():
+            feat = _sigma_sinusoidal_features(shared_sigma, dim).detach()
+            shared_feat = self._shared_sigma_features[dim]
+            cast_feat = feat.to(dtype=shared_feat.dtype, device=shared_feat.device)
+            if shared_feat.shape == cast_feat.shape:
+                shared_feat.copy_(cast_feat)
+            else:
+                new_feat = cast_feat.clone()
+                for lora in loras:
+                    lora._buffers["_sigma_features"] = new_feat
+                self._shared_sigma_features[dim] = new_feat
 
     def clear_sigma(self) -> None:
-        """Reset cached σ on every HydraLoRA module to zeros.
+        """Reset cached σ to zeros.
 
         Never set to None: ``_sigma`` stays a Tensor so the unconditional
         sinusoidal path in ``_compute_gate`` has no None-vs-Tensor guard to
         recompile on under ``compile_mode=full``. Used in eval / validation
         and by inference teardown (``clear_hydra_sigma``). Zero in place to
         keep the cudagraph data pointer stable (see ``set_sigma`` note).
+
+        Operates on the shared buffers populated by
+        ``_wire_shared_sigma_buffers`` — one zero per shared tensor flows to
+        every aliased module.
         """
         self._last_sigma = None
-        for lora in self.unet_loras + self.text_encoder_loras:
-            clear_sigma = getattr(lora, "clear_sigma", None)
-            if callable(clear_sigma):
-                clear_sigma()
+        if not self._sigma_aware_loras:
+            return
+        if self._shared_sigma is not None:
+            self._shared_sigma.zero_()
+            for dim, shared_feat in self._shared_sigma_features.items():
+                zero_feat = _sigma_sinusoidal_features(self._shared_sigma, dim)
+                cast_feat = zero_feat.to(
+                    dtype=shared_feat.dtype, device=shared_feat.device
+                )
+                if shared_feat.shape == cast_feat.shape:
+                    shared_feat.copy_(cast_feat)
+                else:
+                    new_feat = cast_feat.detach().clone()
+                    for lora in self._sigma_aware_loras_by_dim[dim]:
+                        lora._buffers["_sigma_features"] = new_feat
+                    self._shared_sigma_features[dim] = new_feat
 
     def clear_step_caches(self) -> None:
         """Drop per-step tensor references (``_last_gate``) between training
@@ -950,7 +1031,9 @@ class LoRANetwork(torch.nn.Module):
         stats = self.get_router_stats()
         return stats.get("entropy_mean") if stats else None
 
-    def get_router_stats(self) -> Dict[str, Union[float, List[float], List[List[float]], List[int]]]:
+    def get_router_stats(
+        self,
+    ) -> Dict[str, Union[float, List[float], List[List[float]], List[int]]]:
         """Per-step router diagnostics aggregated across hydra modules.
 
         Returns a dict with:
@@ -973,15 +1056,16 @@ class LoRANetwork(torch.nn.Module):
           Per-bucket entries omitted when σ wasn't set this step or
           ``num_sigma_buckets <= 1``.
 
-        Empty dict when no hydra module cached a gate this step. One reduction
-        per module on (B, E) gates — cheap.
+        Empty dict when no hydra module cached a gate this step.
 
-        All per-module reductions stay on-device as 0-d / small tensors; we
-        sync once at the end (stacked summary, mean usage vector, optional
-        per-bucket usage, bucket counts). Pulling each per-module mean as a
-        Python float inside the loop forces ~2 ``cudaStreamSynchronize`` per
-        Hydra module — at 56 modules per step that produces a periodic
-        kernel-launch dip in nvidia-smi.
+        Vectorized: per-module gates with matching shape are stacked into one
+        ``(M, B, E)`` tensor and reduced in a single pass per metric. The
+        previous per-module Python loop emitted ~9 small kernels per Hydra
+        module (clamp / log / sum / topk(2) / argmax / scatter_add_ / ones_like
+        / div), stalling the post-step boundary by ~500 launches at the
+        56-module default stack. This implementation issues a constant ~10
+        launches regardless of module count (see
+        ``docs/optimizations/nsys_analysis_0503.md``).
 
         Result is memoized on ``self._router_stats_cache`` and invalidated by
         ``clear_step_caches`` so the progress-bar postfix and the logging
@@ -989,11 +1073,30 @@ class LoRANetwork(torch.nn.Module):
         """
         if self._router_stats_cache is not None:
             return self._router_stats_cache
-        per_H_t: list[torch.Tensor] = []         # 0-d, on-device
-        per_margin_t: list[torch.Tensor] = []    # 0-d, on-device
-        per_usage: list[torch.Tensor] = []
-        per_bucket_usage: list[torch.Tensor] = []  # each (num_buckets, E)
+
+        # Collect gates with matching expert count. Modules with mismatched E
+        # are skipped (aggregating usage vectors of different length isn't
+        # meaningful) — same policy as the previous per-module loop.
+        gates: List[torch.Tensor] = []
         E_ref: Optional[int] = None
+        for lora in self.unet_loras + self.text_encoder_loras:
+            gate = getattr(lora, "_last_gate", None)
+            if gate is None:
+                continue
+            E = gate.shape[-1]
+            if E <= 1:
+                continue
+            if E_ref is None:
+                E_ref = E
+            elif E != E_ref:
+                continue
+            gates.append(gate)
+
+        if not gates:
+            return {}
+
+        g = torch.stack(gates, dim=0)  # (M, B, E)
+        M, B, E = g.shape
 
         sigma = self._last_sigma  # (B,) or None
         num_buckets = int(self.cfg.num_sigma_buckets)
@@ -1007,74 +1110,31 @@ class LoRANetwork(torch.nn.Module):
         band_partition_active = bool(
             self.cfg.specialize_experts_by_sigma_buckets and num_buckets > 1
         )
-        bucket_ids: Optional[torch.Tensor] = None
-        bucket_counts_t: Optional[torch.Tensor] = None
-        if want_per_bucket:
-            thresholds = torch.linspace(
-                0.0, 1.0, num_buckets + 1, device=sigma.device
-            )[1:-1]
-            bucket_ids = torch.bucketize(sigma.float(), thresholds)  # (B,) in [0, N)
-            bucket_counts_t = torch.zeros(
-                num_buckets, device=sigma.device, dtype=torch.long
-            )
-            bucket_counts_t.scatter_add_(
-                0, bucket_ids, torch.ones_like(bucket_ids, dtype=torch.long)
-            )
+        effective_E = (E // num_buckets) if band_partition_active else E
+        norm = math.log(effective_E) if effective_E > 1 else 1.0
 
-        for lora in self.unet_loras + self.text_encoder_loras:
-            gate = getattr(lora, "_last_gate", None)
-            if gate is None:
-                continue
-            E = gate.shape[-1]
-            if E <= 1:
-                continue
-            if E_ref is None:
-                E_ref = E
-            elif E != E_ref:
-                # Skip modules with mismatched expert count — aggregating
-                # usage vectors of different length isn't meaningful.
-                continue
+        p = g.float().clamp_min(1e-12)
+        # (M,) per-module mean entropy, normalized to [0, 1] over reachable support
+        H_per_module = -(p * p.log()).sum(dim=-1).mean(dim=-1) / norm
+        # (M, B, 2) top-2 in one batched topk → (M,) mean margin
+        top2 = p.topk(2, dim=-1).values
+        margin_per_module = (top2[..., 0] - top2[..., 1]).mean(dim=-1)
+        # Argmax usage: one_hot + sum → (M, E) histograms in one pass
+        expert_idx = g.argmax(dim=-1)  # (M, B)
+        usage_per_module = torch.nn.functional.one_hot(expert_idx, num_classes=E).to(
+            g.dtype
+        ).sum(dim=1) / float(B)  # (M, E)
 
-            p = gate.float().clamp_min(1e-12)
-            H = -(p * p.log()).sum(dim=-1)  # (B,)
-            effective_E = (E // num_buckets) if band_partition_active else E
-            norm = math.log(effective_E) if effective_E > 1 else 1.0
-            per_H_t.append((H.mean() / norm).detach())
-
-            top2 = p.topk(2, dim=-1).values  # (B, 2)
-            per_margin_t.append((top2[:, 0] - top2[:, 1]).mean().detach())
-
-            expert_idx = gate.argmax(dim=-1)  # (B,)
-            usage = torch.zeros(E, device=gate.device, dtype=gate.dtype)
-            usage.scatter_add_(
-                0, expert_idx, torch.ones_like(expert_idx, dtype=gate.dtype)
-            )
-            per_usage.append((usage / gate.shape[0]).detach())
-
-            if want_per_bucket and bucket_ids is not None:
-                # Per-bucket argmax frequency, normalized within each bucket
-                # so each row sums to ~1 (or 0 for empty buckets).
-                bu = torch.zeros(
-                    num_buckets, E, device=gate.device, dtype=gate.dtype
-                )
-                # Combined index = bucket * E + expert -> flat scatter_add
-                flat_idx = bucket_ids.to(expert_idx.device) * E + expert_idx
-                bu.view(-1).scatter_add_(
-                    0, flat_idx, torch.ones_like(flat_idx, dtype=gate.dtype)
-                )
-                bc = bucket_counts_t.to(gate.dtype).clamp_min(1).unsqueeze(-1)
-                per_bucket_usage.append((bu / bc).detach())
-
-        if not per_H_t:
-            return {}
-
-        H_stack = torch.stack(per_H_t)  # (M,)
-        margin_stack = torch.stack(per_margin_t)  # (M,)
-        q_probs = torch.tensor([0.05, 0.5, 0.95], device=H_stack.device, dtype=H_stack.dtype)
-        q = torch.quantile(H_stack, q_probs)  # (3,)
+        H_per_module = H_per_module.detach()
+        q_probs = torch.tensor(
+            [0.05, 0.5, 0.95], device=H_per_module.device, dtype=H_per_module.dtype
+        )
+        q = torch.quantile(H_per_module, q_probs)  # (3,)
         # Single packed summary: [mean_H, p05, p50, p95, margin_mean]. One DtoH.
-        summary = torch.stack([H_stack.mean(), q[0], q[1], q[2], margin_stack.mean()]).cpu()
-        usage_mean = torch.stack(per_usage).mean(dim=0).cpu().tolist()
+        summary = torch.stack(
+            [H_per_module.mean(), q[0], q[1], q[2], margin_per_module.detach().mean()]
+        ).cpu()
+        usage_mean = usage_per_module.detach().mean(dim=0).cpu().tolist()
         out: Dict[str, Union[float, List[float], List[List[float]], List[int]]] = {
             "entropy_mean": float(summary[0]),
             "entropy_p05": float(summary[1]),
@@ -1083,12 +1143,33 @@ class LoRANetwork(torch.nn.Module):
             "margin_mean": float(summary[4]),
             "expert_usage": usage_mean,
         }
-        if per_bucket_usage and bucket_counts_t is not None:
-            bucket_usage_mean = (
-                torch.stack(per_bucket_usage).mean(dim=0).cpu().tolist()
+
+        if want_per_bucket and sigma is not None:
+            thresholds = torch.linspace(0.0, 1.0, num_buckets + 1, device=sigma.device)[
+                1:-1
+            ]
+            bucket_ids = torch.bucketize(sigma.float(), thresholds).clamp(
+                0, num_buckets - 1
+            )  # (B,)
+            bucket_counts_t = torch.zeros(
+                num_buckets, device=sigma.device, dtype=torch.long
             )
+            bucket_counts_t.scatter_add_(
+                0, bucket_ids, torch.ones_like(bucket_ids, dtype=torch.long)
+            )
+            # Per-bucket argmax frequency, normalized within each bucket so
+            # each row sums to ~1 (or 0 for empty buckets). Flat scatter_add
+            # over (M, num_buckets * E) avoids a per-module loop.
+            bucket_ids_dev = bucket_ids.to(expert_idx.device)
+            flat_idx = bucket_ids_dev[None, :] * E + expert_idx  # (M, B)
+            bu = torch.zeros(M, num_buckets * E, device=g.device, dtype=g.dtype)
+            bu.scatter_add_(1, flat_idx, torch.ones_like(flat_idx, dtype=g.dtype))
+            bu = bu.view(M, num_buckets, E)
+            bc = bucket_counts_t.to(g.dtype).clamp_min(1).view(1, num_buckets, 1)
+            bucket_usage_mean = (bu / bc).detach().mean(dim=0).cpu().tolist()
             out["expert_usage_per_bucket"] = bucket_usage_mean
             out["bucket_counts"] = bucket_counts_t.cpu().tolist()
+
         self._router_stats_cache = out
         return out
 
@@ -1333,9 +1414,9 @@ class LoRANetwork(torch.nn.Module):
                 _emit_per_expert("below", up["below"])
                 _emit_per_expert("above", up["above"])
                 for i, (b_, a_) in enumerate(zip(up["below"], up["above"])):
-                    out[f"hydra/up_grad/above_below_ratio/exp{i}"] = (
-                        float(a_) ** 0.5 / (float(b_) ** 0.5 + eps)
-                    )
+                    out[f"hydra/up_grad/above_below_ratio/exp{i}"] = float(
+                        a_
+                    ) ** 0.5 / (float(b_) ** 0.5 + eps)
             if "sp_total" in up:
                 _emit_per_expert("sp_total", up["sp_total"])
             if "total_band" in up:
@@ -1343,12 +1424,10 @@ class LoRANetwork(torch.nn.Module):
             if "below_band" in up and "above_band" in up:
                 _emit_per_band("below", up["below_band"])
                 _emit_per_band("above", up["above_band"])
-                for b, (bv, av) in enumerate(
-                    zip(up["below_band"], up["above_band"])
-                ):
-                    out[f"hydra/up_grad/above_below_ratio/band{b}"] = (
-                        float(av) ** 0.5 / (float(bv) ** 0.5 + eps)
-                    )
+                for b, (bv, av) in enumerate(zip(up["below_band"], up["above_band"])):
+                    out[f"hydra/up_grad/above_below_ratio/band{b}"] = float(
+                        av
+                    ) ** 0.5 / (float(bv) ** 0.5 + eps)
             if "sp_total_band" in up:
                 _emit_per_band("sp_total", up["sp_total_band"])
 
@@ -1739,6 +1818,7 @@ class LoRANetwork(torch.nn.Module):
             metadata["ss_num_sigma_buckets"] = str(int(self.cfg.num_sigma_buckets))
             if self.cfg.sigma_bucket_boundaries is not None:
                 import json as _json
+
                 metadata["ss_sigma_bucket_boundaries"] = _json.dumps(
                     list(self.cfg.sigma_bucket_boundaries)
                 )
