@@ -1134,61 +1134,63 @@ class LoRANetwork(torch.nn.Module):
         # "above" slice empty and the "below" slice full-rank, silently turning
         # the diagnostic into a no-op. Pin to [0, R].
         min_rank = max(0, min(min_rank, max_rank))
+        has_tlora_split = use_tlora and 0 < min_rank < max_rank
 
-        below_per_exp: Optional[torch.Tensor] = None  # (E,) on-device, fp32
-        above_per_exp: Optional[torch.Tensor] = None
-        total_per_exp: Optional[torch.Tensor] = None
-        sp_total_per_exp: Optional[torch.Tensor] = None
-        expert_band_ref: Optional[torch.Tensor] = None  # (E,) long
-        device_ref = None
+        # Collect grads first; reduce in a few fused passes at the end. The
+        # naive per-module loop launched ~4–7 tiny kernels per Hydra module
+        # and stalled the post-backward / pre-optimizer boundary by hundreds
+        # of ms on log steps (see docs/optimizations/nsys_analysis_0503.md).
+        up_grads: List[torch.Tensor] = []  # each (E, out_i, R)
+        sp_grads: List[torch.Tensor] = []  # each (E, r, r)
+        expert_band_ref: Optional[torch.Tensor] = None
 
         for lora in self.unet_loras + self.text_encoder_loras:
             up = getattr(lora, "lora_up_weight", None)
             sp = getattr(lora, "S_p", None)
             up_grad = up.grad if isinstance(up, torch.nn.Parameter) else None
             sp_grad = sp.grad if isinstance(sp, torch.nn.Parameter) else None
-            if up_grad is None and sp_grad is None:
-                continue
-
             if up_grad is not None:
-                # (E, out, R)
-                g = up_grad.detach()
-                E = g.shape[0]
-                if device_ref is None:
-                    device_ref = g.device
-                if total_per_exp is None:
-                    total_per_exp = torch.zeros(E, device=device_ref, dtype=torch.float32)
-                t_sq = g.pow(2).reshape(E, -1).sum(dim=-1).float()
-                total_per_exp += t_sq
-                if use_tlora and 0 < min_rank < max_rank:
-                    if below_per_exp is None:
-                        below_per_exp = torch.zeros(E, device=device_ref, dtype=torch.float32)
-                        above_per_exp = torch.zeros(E, device=device_ref, dtype=torch.float32)
-                    b_sq = g[:, :, :min_rank].pow(2).reshape(E, -1).sum(dim=-1).float()
-                    a_sq = g[:, :, min_rank:].pow(2).reshape(E, -1).sum(dim=-1).float()
-                    below_per_exp += b_sq
-                    above_per_exp += a_sq
-
+                up_grads.append(up_grad.detach())
             if sp_grad is not None and sp_grad.dim() == 3:
                 # (E, r, r) — OrthoHydra rotation generator. No clean rank-col
                 # split (Cayley couples all entries), so we report total only.
-                # Plain OrthoLoRA's S_p is (r, r) with no expert axis — skip it,
-                # since this diagnostic is per-expert.
-                g = sp_grad.detach()
-                E = g.shape[0]
-                if device_ref is None:
-                    device_ref = g.device
-                if sp_total_per_exp is None:
-                    sp_total_per_exp = torch.zeros(E, device=device_ref, dtype=torch.float32)
-                sp_total_per_exp += g.pow(2).reshape(E, -1).sum(dim=-1).float()
+                # Plain OrthoLoRA's S_p is (r, r) with no expert axis — skipped
+                # by the dim==3 check, since this diagnostic is per-expert.
+                sp_grads.append(sp_grad.detach())
+            if expert_band_ref is None:
+                band = getattr(lora, "_expert_band", None)
+                if band is not None:
+                    expert_band_ref = band.detach()
 
-            band = getattr(lora, "_expert_band", None)
-            if band is not None and expert_band_ref is None:
-                expert_band_ref = band.detach()
-
-        if total_per_exp is None and sp_total_per_exp is None:
+        if not up_grads and not sp_grads:
             self._last_up_grad_stats = {}
             return
+
+        total_per_exp: Optional[torch.Tensor] = None
+        below_per_exp: Optional[torch.Tensor] = None
+        above_per_exp: Optional[torch.Tensor] = None
+        sp_total_per_exp: Optional[torch.Tensor] = None
+        device_ref: Optional[torch.device] = None
+
+        if up_grads:
+            # All entries share E and R; only out_i varies. Cat along the out
+            # axis into one (E, sum_out, R) tensor and reduce in one pass.
+            big_up = torch.cat(up_grads, dim=1).float()
+            sq_up = big_up.square()
+            total_per_exp = sq_up.sum(dim=(1, 2))
+            device_ref = total_per_exp.device
+            if has_tlora_split:
+                # Slices are views into ``sq_up``; sum along (out, rank-slice).
+                below_per_exp = sq_up[:, :, :min_rank].sum(dim=(1, 2))
+                above_per_exp = sq_up[:, :, min_rank:].sum(dim=(1, 2))
+
+        if sp_grads:
+            # All entries share (E, r, r). Stack into (M, E, r, r) and reduce
+            # over modules + r×r in one pass.
+            big_sp = torch.stack(sp_grads, dim=0).float()
+            sp_total_per_exp = big_sp.square().sum(dim=(0, 2, 3))
+            if device_ref is None:
+                device_ref = sp_total_per_exp.device
 
         # Stash on-device tensors only — the D2H happens in
         # ``get_up_grad_stats`` so non-log steps avoid the
