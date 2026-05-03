@@ -98,10 +98,22 @@ class OrthoLoRAExpModule(BaseLoRAModule):
         # legacy path (its input ``lx`` is already rank-sized and cheap).
         self.use_custom_down_autograd = False
 
+        # Pre-allocated identity for Cayley solves; allocating fresh `torch.eye`
+        # in every forward emitted ~2 small kernels per module per step.
+        self.register_buffer(
+            "_eye_r",
+            torch.eye(lora_dim, dtype=torch.float32),
+            persistent=False,
+        )
+
     # --- Cayley transform (exact inverse, r×r is tiny) ---
     @staticmethod
     def _cayley(S: torch.Tensor) -> torch.Tensor:
-        """Cayley transform: R = (I - A)(I + A)^{-1}, A = S - S^T."""
+        """Cayley transform: R = (I - A)(I + A)^{-1}, A = S - S^T.
+
+        Kept for save-time SVD distillation (`networks/lora_save.py`); the
+        forward now batches the S_q / S_p solves into a single call instead.
+        """
         A = S - S.T  # guaranteed skew-symmetric
         eye = torch.eye(A.shape[0], device=A.device, dtype=A.dtype)
         return torch.linalg.solve(eye + A, eye - A)
@@ -112,8 +124,12 @@ class OrthoLoRAExpModule(BaseLoRAModule):
         if self._skip_module():
             return org_forwarded
 
-        # Cayley-parameterized orthogonal rotations (r × r)
-        R_q = self._cayley(self.S_q)  # (r, r)
+        # Batched Cayley: stack S_q and S_p into one (2, r, r) solve. Halves
+        # the LU/TRSM launch count vs. solving them separately.
+        skew = torch.stack([self.S_q, self.S_p])  # (2, r, r)
+        A = skew - skew.transpose(-2, -1)
+        R = torch.linalg.solve(self._eye_r + A, self._eye_r - A)  # (2, r, r)
+        R_q, R_p = R[0], R[1]
         Q_eff = R_q @ self.Q_basis  # (r, in_dim)
 
         # x @ Q_eff^T → (*, r), then scale by lambda
@@ -134,7 +150,7 @@ class OrthoLoRAExpModule(BaseLoRAModule):
 
         lx, scale = self._apply_rank_dropout(lx)
 
-        R_p = self._cayley(self.S_p)  # (r, r)
+        # R_p was computed in the batched Cayley solve above.
         P_eff = self.P_basis @ R_p  # (out_dim, r)
         out = torch.nn.functional.linear(lx, P_eff)  # (*, out_dim)
 
@@ -306,10 +322,22 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
             persistent=False,
         )
 
+        # Pre-allocated identity for Cayley solves; allocating fresh `torch.eye`
+        # per forward emitted ~2 small kernels per module per step.
+        self.register_buffer(
+            "_eye_r",
+            torch.eye(lora_dim, dtype=torch.float32),
+            persistent=False,
+        )
+
     @staticmethod
     def _cayley(S: torch.Tensor) -> torch.Tensor:
         """Cayley transform: R = (I - A)(I + A)^{-1}, A = S - S^T.
-        Supports both 2D (r, r) and batched 3D (E, r, r) input."""
+
+        Supports both 2D (r, r) and batched 3D (E, r, r) input. Kept for
+        save-time SVD distillation (`networks/lora_save.py`); the forward
+        batches the S_q / S_p solves into a single call instead.
+        """
         A = S - S.transpose(-2, -1)  # skew-symmetric
         r = A.shape[-1]
         eye = torch.eye(r, device=A.device, dtype=A.dtype)
@@ -363,8 +391,22 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
         if self._skip_module():
             return org_forwarded
 
-        # Shared down: Cayley-parameterized Q
-        R_q = self._cayley(self.S_q)  # (r, r)
+        # Expert-warmup masking — see HydraLoRAModule.forward for rationale.
+        # Applied unconditionally: outside warmup the mask is all-ones and
+        # ``S_p*1 + S_p.detach()*0`` collapses to ``S_p`` (autograd-equivalent),
+        # so no Python-bool guard is needed. Computed early so S_p_eff joins
+        # the batched Cayley solve below.
+        expert_mask = self._expert_grad_mask.to(self.S_p.dtype).view(-1, 1, 1)
+        S_p_eff = self.S_p * expert_mask + self.S_p.detach() * (1.0 - expert_mask)
+
+        # Batched Cayley: stack S_q with S_p_eff into one (E+1, r, r) solve.
+        # Single LU + TRSM launch covers both the shared down rotation and
+        # all per-expert up rotations, instead of two separate solves.
+        skew = torch.cat([self.S_q.unsqueeze(0), S_p_eff], dim=0)  # (E+1, r, r)
+        A = skew - skew.transpose(-2, -1)
+        R = torch.linalg.solve(self._eye_r + A, self._eye_r - A)  # (E+1, r, r)
+        R_q = R[0]  # (r, r)
+        R_p = R[1:]  # (E, r, r)
         Q_eff = R_q @ self.Q_basis  # (r, in)
 
         if self.use_custom_down_autograd and self.training:
@@ -397,15 +439,7 @@ class OrthoHydraLoRAExpModule(BaseLoRAModule):
 
         lx, scale = self._apply_rank_dropout(lx)
 
-        # Expert-warmup masking — see HydraLoRAModule.forward for rationale.
-        # Applied unconditionally: outside warmup the mask is all-ones and
-        # ``S_p*1 + S_p.detach()*0`` collapses to ``S_p`` (autograd-equivalent),
-        # so no Python-bool guard is needed.
-        expert_mask = self._expert_grad_mask.to(self.S_p.dtype).view(-1, 1, 1)
-        S_p_eff = self.S_p * expert_mask + self.S_p.detach() * (1.0 - expert_mask)
-
-        # Per-expert up: batched Cayley on P rotations
-        R_p = self._cayley(S_p_eff)  # (E, r, r)
+        # R_p was computed in the batched Cayley solve above.
         # P_bases: (E, out, r), R_p: (E, r, r) → P_eff: (E, out, r)
         P_eff = self.P_bases @ R_p
 

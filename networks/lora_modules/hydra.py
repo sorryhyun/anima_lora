@@ -9,6 +9,12 @@ from networks.lora_modules.base import BaseLoRAModule
 from networks.lora_modules.custom_autograd import lora_down_project
 
 
+# freqs only depend on (half_dim, device) and never change once built; caching
+# keeps `_sigma_sinusoidal_features` from emitting a fresh `arange` + `exp`
+# kernel on every call (one per module per step under set_sigma).
+_FREQS_CACHE: dict[tuple[int, torch.device], torch.Tensor] = {}
+
+
 def _sigma_sinusoidal_features(
     sigma: torch.Tensor, sigma_feature_dim: int
 ) -> torch.Tensor:
@@ -20,12 +26,16 @@ def _sigma_sinusoidal_features(
     """
     t = sigma.flatten().float()
     half_dim = sigma_feature_dim // 2
-    exponent = (
-        -math.log(10000)
-        * torch.arange(half_dim, dtype=torch.float32, device=t.device)
-        / max(half_dim, 1)
-    )
-    freqs = torch.exp(exponent)
+    key = (half_dim, t.device)
+    freqs = _FREQS_CACHE.get(key)
+    if freqs is None:
+        exponent = (
+            -math.log(10000)
+            * torch.arange(half_dim, dtype=torch.float32, device=t.device)
+            / max(half_dim, 1)
+        )
+        freqs = torch.exp(exponent)
+        _FREQS_CACHE[key] = freqs
     angles = t[:, None] * freqs[None, :]  # [B, half_dim]
     return torch.cat([torch.cos(angles), torch.sin(angles)], dim=-1)
 
