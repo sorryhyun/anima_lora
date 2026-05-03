@@ -238,6 +238,45 @@ def cmd_test_spectrum(extra):
     )
 
 
+def cmd_test_dcw(extra):
+    """Inference with latest LoRA + DCW post-step correction.
+
+    Defaults bake in λ=-0.010 + one_minus_sigma schedule (see
+    bench/dcw/findings.md). Override via --dcw_lambda / --dcw_schedule in extra.
+    """
+    run([*INFERENCE_BASE, "--lora_weight", str(latest_lora()), "--dcw", *extra])
+
+
+def cmd_test_spectrum_dcw(extra):
+    """Spectrum + DCW composed. Same Spectrum knobs as test-spectrum."""
+    run(
+        [
+            *INFERENCE_BASE,
+            "--lora_weight",
+            str(latest_lora()),
+            "--spectrum",
+            "--spectrum_window_size",
+            "2.0",
+            "--spectrum_flex_window",
+            "0.25",
+            "--spectrum_warmup",
+            "7",
+            "--spectrum_w",
+            "0.3",
+            "--spectrum_m",
+            "3",
+            "--spectrum_lam",
+            "0.1",
+            "--spectrum_stop_caching_step",
+            "29",
+            "--spectrum_calibration",
+            "0.0",
+            "--dcw",
+            *extra,
+        ]
+    )
+
+
 def cmd_test_ip(extra):
     """Inference with latest IP-Adapter weight.
 

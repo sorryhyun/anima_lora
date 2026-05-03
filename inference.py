@@ -417,6 +417,30 @@ def parse_args() -> argparse.Namespace:
         "Adds residual bias correction from last actual forward to cached predictions.",
     )
 
+    # DCW: SNR-t bias correction (arXiv:2604.16044). Opposite-sign on Anima — see
+    # bench/dcw/findings.md.
+    parser.add_argument(
+        "--dcw",
+        action="store_true",
+        help="Enable post-step DCW correction (pixel mode). Composes with --spectrum, "
+        "--sampler, --tiled_diffusion. Negligible overhead.",
+    )
+    parser.add_argument(
+        "--dcw_lambda",
+        type=float,
+        default=-0.010,
+        help="DCW scaler λ. Anima default -0.010 (negative — see bench/dcw/findings.md). "
+        "Paper-positive values widen |gap| on Anima.",
+    )
+    parser.add_argument(
+        "--dcw_schedule",
+        type=str,
+        default="one_minus_sigma",
+        choices=["one_minus_sigma", "sigma_i", "const", "none"],
+        help="Per-step schedule: scaler(i) = λ · sched(σ_i). Default one_minus_sigma "
+        "matches Anima's late-σ bias envelope.",
+    )
+
     # arguments for batch and interactive modes
     parser.add_argument(
         "--from_file", type=str, default=None, help="Read prompts from a file"

@@ -317,13 +317,24 @@ def generate_body_tiled(
                         noise_pred - uncond_noise_pred
                     )
 
+                denoised = latents.float() - sigmas[i] * noise_pred.float()
                 if er_sde is not None:
-                    denoised = latents.float() - sigmas[i] * noise_pred.float()
-                    latents = er_sde.step(latents, denoised, i).to(latents.dtype)
+                    new_latents = er_sde.step(latents, denoised, i)
                 else:
-                    latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
-                        latents.dtype
+                    new_latents = inference_utils.step(latents, noise_pred, sigmas, i)
+
+                if getattr(args, "dcw", False) and float(sigmas[i + 1]) > 0.0:
+                    from networks.dcw import apply_dcw
+
+                    new_latents = apply_dcw(
+                        new_latents.float(),
+                        denoised,
+                        float(sigmas[i]),
+                        lam=args.dcw_lambda,
+                        schedule=args.dcw_schedule,
                     )
+
+                latents = new_latents.to(latents.dtype)
                 pbar.update()
     finally:
         clear_hydra_sigma(anima)
@@ -548,6 +559,9 @@ def generate_body(
             postfix_base_neg=postfix_base_neg,
             postfix_embed_seqlens=embed_seqlens,
             postfix_neg_seqlens=neg_seqlens,
+            dcw=getattr(args, "dcw", False),
+            dcw_lambda=getattr(args, "dcw_lambda", -0.010),
+            dcw_schedule=getattr(args, "dcw_schedule", "one_minus_sigma"),
         )
     else:
         try:
@@ -626,13 +640,26 @@ def generate_body(
                         )
 
                     # ensure latents dtype is consistent
+                    denoised = latents.float() - sigmas[i] * noise_pred.float()
                     if er_sde is not None:
-                        denoised = latents.float() - sigmas[i] * noise_pred.float()
-                        latents = er_sde.step(latents, denoised, i).to(latents.dtype)
+                        new_latents = er_sde.step(latents, denoised, i)
                     else:
-                        latents = inference_utils.step(
+                        new_latents = inference_utils.step(
                             latents, noise_pred, sigmas, i
-                        ).to(latents.dtype)
+                        )
+
+                    if getattr(args, "dcw", False) and float(sigmas[i + 1]) > 0.0:
+                        from networks.dcw import apply_dcw
+
+                        new_latents = apply_dcw(
+                            new_latents.float(),
+                            denoised,
+                            float(sigmas[i]),
+                            lam=args.dcw_lambda,
+                            schedule=args.dcw_schedule,
+                        )
+
+                    latents = new_latents.to(latents.dtype)
 
                     pbar.update()
         finally:

@@ -50,20 +50,19 @@ Usage
     uv run python bench/dcw/measure_bias.py \
         --dit models/diffusion_models/anima-preview3-base.safetensors
 
-    # Full sweep — pixel-mode.
-    #
-    # Anima-specific note (2026-04-20 baseline, shift=1.0, 28 steps):
-    # the measured gap is predominantly NEGATIVE (reverse velocity < forward) —
-    # opposite sign from Yu et al. Fig 1c. Paper-form positive λ would widen
-    # |gap|; closing it requires NEGATIVE λ. The grid below sweeps both sides
-    # (positive values serve as a direction-sanity-check — they should make
-    # |gap| worse on Anima). `one_minus_sigma` concentrates correction at low
-    # σ, where |gap| is largest.
+    # Full sweep — pixel-mode. Default --dcw_scalers / --dcw_schedules
+    # already encode the negative-λ + one_minus_sigma grid that Anima's
+    # 2026-04-20 baseline points to (positive values stay in as a
+    # direction-sanity check; they should make |gap| worse).
     uv run python bench/dcw/measure_bias.py \
-        --dit models/... \
-        --dcw_sweep \
-        --dcw_scalers -0.3 -0.1 -0.03 -0.01 0.0 0.01 0.1 \
-        --dcw_schedules one_minus_sigma const
+        --dit models/diffusion_models/anima-preview3-base.safetensors \
+        --dcw_sweep
+
+    # Same sweep + decode the first 4 sweep-winner latents per config to PNG
+    # (loads the VAE; ~+30 s).
+    uv run python bench/dcw/measure_bias.py \
+        --dit models/diffusion_models/anima-preview3-base.safetensors \
+        --dcw_sweep --save_images 4
 """
 
 from __future__ import annotations
@@ -88,6 +87,8 @@ sys.path.insert(0, str(ROOT))
 from bench._common import make_run_dir, write_result
 from library.anima import weights as anima_utils
 from library.inference import sampling as inference_utils
+from library.inference.adapters import clear_hydra_sigma, set_hydra_sigma
+from library.inference.models import _is_hydra_moe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("dcw-bench")
@@ -173,9 +174,45 @@ def load_cached(
 
 
 @torch.no_grad()
-def run_trajectory(
+def _padding_mask(x_0: torch.Tensor, device: torch.device) -> torch.Tensor:
+    h_lat, w_lat = x_0.shape[-2], x_0.shape[-1]
+    return torch.zeros(1, 1, h_lat, w_lat, dtype=torch.bfloat16, device=device)
+
+
+@torch.no_grad()
+def measure_forward_norms(
     anima,
     x_0: torch.Tensor,  # (1, 16, 1, H, W) bf16
+    embed: torch.Tensor,  # (1, 512, D) bf16
+    sigmas: torch.Tensor,  # (num_steps+1,) float32
+    *,
+    noise_seed: int,
+    device: torch.device,
+) -> np.ndarray:
+    """Forward branch only: ||v_θ((1−σ)x_0 + σε, t)|| at every step.
+
+    Bit-identical across DCW configs given the same (x_0, noise_seed), so we
+    compute it once per (image, seed) and cache it for every config below.
+    """
+    num_steps = len(sigmas) - 1
+    padding_mask = _padding_mask(x_0, device)
+    g_fwd = torch.Generator(device="cpu").manual_seed(noise_seed + 10_000)
+    v_fwd_norms = np.zeros(num_steps, dtype=np.float64)
+    for i in range(num_steps):
+        sigma_i = float(sigmas[i])
+        t_i = torch.full((1,), sigma_i, device=device, dtype=torch.bfloat16)
+        eps_fwd = torch.randn(x_0.shape, generator=g_fwd).to(device, torch.bfloat16)
+        x_t_fwd = (1.0 - sigma_i) * x_0 + sigma_i * eps_fwd
+        set_hydra_sigma(anima, t_i)
+        v_fwd = anima(x_t_fwd, t_i, embed, padding_mask=padding_mask)
+        v_fwd_norms[i] = v_fwd.float().flatten().norm().item()
+    return v_fwd_norms
+
+
+@torch.no_grad()
+def run_reverse(
+    anima,
+    x_0: torch.Tensor,  # (1, 16, 1, H, W) bf16, used only for shape
     embed: torch.Tensor,  # (1, 512, D) bf16
     sigmas: torch.Tensor,  # (num_steps+1,) float32
     *,
@@ -184,42 +221,26 @@ def run_trajectory(
     dcw_schedule: str,
     device: torch.device,
 ) -> dict:
-    """Run reverse sampling + paired forward-noise measurement at each step.
+    """Reverse trajectory from σ=1 noise, with optional DCW correction.
 
-    Forward-noise RNG is re-seeded identically across DCW configs → the
-    forward branch is bit-identical across configs → any change in the gap
-    is attributable to DCW changing the reverse trajectory alone.
+    Returns ``v_rev`` (norm per step) and the final ``x_hat`` (cpu, bf16).
     """
-    h_lat, w_lat = x_0.shape[-2], x_0.shape[-1]
     num_steps = len(sigmas) - 1
-
-    padding_mask = torch.zeros(1, 1, h_lat, w_lat, dtype=torch.bfloat16, device=device)
-
+    padding_mask = _padding_mask(x_0, device)
     g_init = torch.Generator(device="cpu").manual_seed(noise_seed)
-    g_fwd = torch.Generator(device="cpu").manual_seed(noise_seed + 10_000)
-
     eps_init = torch.randn(x_0.shape, generator=g_init).to(device, torch.bfloat16)
-    x_hat = eps_init.clone()  # reverse trajectory starts at σ=1
+    x_hat = eps_init  # reverse trajectory starts at σ≈1
 
-    v_fwd_norms = np.zeros(num_steps, dtype=np.float64)
     v_rev_norms = np.zeros(num_steps, dtype=np.float64)
-
     for i in range(num_steps):
         sigma_i = float(sigmas[i])
         sigma_next = float(sigmas[i + 1])
         t_i = torch.full((1,), sigma_i, device=device, dtype=torch.bfloat16)
 
-        # Forward branch
-        eps_fwd = torch.randn(x_0.shape, generator=g_fwd).to(device, torch.bfloat16)
-        x_t_fwd = (1.0 - sigma_i) * x_0 + sigma_i * eps_fwd
-        v_fwd = anima(x_t_fwd, t_i, embed, padding_mask=padding_mask)
-        v_fwd_norms[i] = v_fwd.float().flatten().norm().item()
-
-        # Reverse branch: evaluate velocity on current x_hat
+        set_hydra_sigma(anima, t_i)
         v_rev = anima(x_hat, t_i, embed, padding_mask=padding_mask)
         v_rev_norms[i] = v_rev.float().flatten().norm().item()
 
-        # Euler step + optional DCW correction
         prev = x_hat.float() + (sigma_next - sigma_i) * v_rev.float()
         if dcw_lam != 0.0 and sigma_next > 0.0:
             x0_pred = x_hat.float() - sigma_i * v_rev.float()
@@ -227,7 +248,7 @@ def run_trajectory(
             prev = apply_dcw_pixel(prev, x0_pred, s)
         x_hat = prev.to(torch.bfloat16)
 
-    return dict(v_fwd=v_fwd_norms, v_rev=v_rev_norms, gap=v_rev_norms - v_fwd_norms)
+    return dict(v_rev=v_rev_norms, x_hat=x_hat.detach().to("cpu"))
 
 
 # ------------------------------------------------------------------
@@ -241,10 +262,28 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--dit", type=str, required=True, help="DiT .safetensors path")
     p.add_argument(
+        "--lora_weight",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional LoRA / HydraLoRA adapter(s) to stack on the base DiT. "
+        "Auto-detects HydraLoRA moe (lora_ups.* keys) and attaches router-live "
+        "via dynamic forward hooks; plain LoRA goes through the same dynamic "
+        "path (math-equivalent to static merge for this measurement).",
+    )
+    p.add_argument(
+        "--lora_multiplier",
+        type=float,
+        nargs="+",
+        default=[1.0],
+        help="Multiplier per --lora_weight entry (broadcast if a single value).",
+    )
+    p.add_argument(
         "--dataset_dir",
         type=str,
-        default="post_image_dataset",
-        help="Directory with cached *_anima.npz + *_anima_te.safetensors pairs",
+        default="post_image_dataset/lora",
+        help="Directory with cached *_anima.npz + *_anima_te.safetensors pairs "
+        "(make preprocess writes here via subset cache_dir).",
     )
     p.add_argument(
         "--text_variant",
@@ -259,10 +298,10 @@ def parse_args() -> argparse.Namespace:
         help="torch | sdpa | xformers | sage | flash ",
     )
     p.add_argument(
-        "--n_images", type=int, default=6, help="Number of cached samples to use"
+        "--n_images", type=int, default=4, help="Number of cached samples to use"
     )
-    p.add_argument("--n_seeds", type=int, default=3, help="Seeds per sample")
-    p.add_argument("--infer_steps", type=int, default=28)
+    p.add_argument("--n_seeds", type=int, default=2, help="Seeds per sample")
+    p.add_argument("--infer_steps", type=int, default=24)
     p.add_argument(
         "--flow_shift",
         type=float,
@@ -282,7 +321,7 @@ def parse_args() -> argparse.Namespace:
         "--dcw_scalers",
         type=float,
         nargs="+",
-        default=[-0.3, -0.1, -0.03, -0.01, 0.0, 0.01, 0.1],
+        default=[-0.01, 0.01],
         help="λ values to sweep (negative expected on Anima; see docstring)",
     )
     p.add_argument(
@@ -293,13 +332,98 @@ def parse_args() -> argparse.Namespace:
         choices=["const", "sigma_i", "one_minus_sigma"],
         help="Schedule forms to sweep",
     )
+    # Image decoding (optional eyeball check on sweep winners)
+    p.add_argument(
+        "--save_images",
+        type=int,
+        default=0,
+        help="If >0, decode the final reverse-trajectory latent for the first "
+        "N samples (first seed only) per config and save as PNG. Loads the VAE "
+        "lazily; off by default to keep the bench DiT-only.",
+    )
+    p.add_argument(
+        "--vae",
+        type=str,
+        default="models/vae/qwen_image_vae.safetensors",
+        help="VAE path (only loaded when --save_images > 0).",
+    )
     p.add_argument(
         "--label",
         type=str,
         default=None,
         help="Optional label appended to the run dir (bench/dcw/results/<ts>-<label>/).",
     )
+    p.add_argument(
+        "--report_optimal_lambda",
+        action="store_true",
+        help="Compute and print the (1−σ)-weighted closed-form λ* for each "
+        "schedule in the sweep, plus per-step response slopes s_i = ∂gap/∂λ. "
+        "Requires --dcw_sweep with ≥2 nonzero λ values per schedule.",
+    )
     return p.parse_args()
+
+
+def compute_optimal_lambda(
+    accum: dict,
+    configs: list[tuple[str, float, str]],
+    sigmas: torch.Tensor,
+    num_steps: int,
+) -> dict:
+    """Closed-form (1−σ)-weighted least-squares λ* per schedule.
+
+    For each schedule s_kind, gathers anchor configs with that schedule
+    (plus baseline at λ=0, which is schedule-agnostic), fits per-step slope
+    s_i = ∂gap/∂λ via least-squares over the anchors, then applies
+
+        λ* = − Σ w_i · g_i · s_i  /  Σ w_i · s_i²        (i ≥ N/2)
+
+    with w_i = (1 − σ_i) and g_i = baseline gap. See plan.md §3.
+
+    Returns a dict keyed by schedule name, each value:
+      {anchors: [(λ, name)], slopes: np.ndarray (num_steps,),
+       lambda_star: float, late_idx: (start, end)}
+    """
+    sigmas_np = sigmas.numpy()
+    g_baseline = accum["baseline"]["gap"]
+    late_start = num_steps // 2
+    w = 1.0 - sigmas_np[:num_steps]
+
+    by_schedule: dict[str, list[tuple[float, str]]] = {}
+    for name, lam, sched in configs:
+        if name == "baseline":
+            continue
+        by_schedule.setdefault(sched, []).append((lam, name))
+
+    out: dict[str, dict] = {}
+    for sched, anchors in by_schedule.items():
+        # Include baseline (λ=0) in the fit — it's schedule-agnostic.
+        pts = [(0.0, "baseline")] + sorted(anchors, key=lambda t: t[0])
+        if len(pts) < 2:
+            continue
+        lam_arr = np.array([p[0] for p in pts], dtype=np.float64)
+        gap_mat = np.stack([accum[p[1]]["gap"] for p in pts], axis=0)  # (A, num_steps)
+        # Per-step least-squares slope: gap_i(λ) ≈ a + s_i · λ.
+        lam_centered = lam_arr - lam_arr.mean()
+        denom = float((lam_centered ** 2).sum())
+        if denom == 0.0:
+            continue
+        slopes = (lam_centered[:, None] * (gap_mat - gap_mat.mean(axis=0))).sum(axis=0) / denom
+
+        # λ* over the late half, weighted by (1−σ_i).
+        w_late = w[late_start:]
+        g_late = g_baseline[late_start:]
+        s_late = slopes[late_start:]
+        num = -float((w_late * g_late * s_late).sum())
+        den = float((w_late * s_late ** 2).sum())
+        lambda_star = num / den if den != 0.0 else float("nan")
+
+        out[sched] = {
+            "anchors": pts,
+            "slopes": slopes,
+            "lambda_star": lambda_star,
+            "late_idx": (late_start, num_steps),
+        }
+    return out
 
 
 def main() -> None:
@@ -320,7 +444,74 @@ def main() -> None:
         loading_device=device,
         dit_weight_dtype=dtype,
     )
+    # load_anima_model only moves checkpoint-resident submodules; the
+    # non-persistent mod-guidance buffers (`_mod_guidance_delta` etc.) are
+    # created on CPU during __init__ and need an explicit move. Production
+    # inference does this in library/inference/models.py:108. Then
+    # reset_mod_guidance() zeros them so the per-block addition is identity.
+    anima.to(device, dtype=dtype)
+    anima.reset_mod_guidance()
     anima.eval().requires_grad_(False)
+
+    # -------- Optional LoRA / HydraLoRA stacking --------
+    # Mirrors library/inference/models.py:152-198 (router-live attach via
+    # dynamic forward hooks). Plain LoRA goes through the same path; with
+    # multiplier=1.0 it is mathematically equivalent to a static merge for
+    # the measurement here. Keeps the bench DiT-only loader untouched.
+    if args.lora_weight:
+        from networks import lora_anima
+
+        hydra_flags = [_is_hydra_moe(p) for p in args.lora_weight]
+        if any(hydra_flags) and not all(hydra_flags):
+            raise SystemExit(
+                "Mixing HydraLoRA moe files with regular LoRA files in --lora_weight "
+                "is not supported (matches the inference-time restriction)."
+            )
+        any_hydra = any(hydra_flags)
+        kind = "router-live HydraLoRA" if any_hydra else "LoRA"
+        log.info(f"attaching {len(args.lora_weight)} adapter(s) as {kind} hooks…")
+
+        mults = args.lora_multiplier
+        if len(mults) == 1:
+            mults = mults * len(args.lora_weight)
+        if len(mults) != len(args.lora_weight):
+            raise SystemExit(
+                f"--lora_multiplier has {len(mults)} entries but --lora_weight has "
+                f"{len(args.lora_weight)}. Pass one multiplier per weight, or one shared."
+            )
+
+        for path, mult in zip(args.lora_weight, mults):
+            lora_sd = load_file(path)
+            lora_sd = {k: v for k, v in lora_sd.items() if k.startswith("lora_unet_")}
+            network, weights_sd = lora_anima.create_network_from_weights(
+                multiplier=mult,
+                file=None,
+                ae=None,
+                text_encoders=[],
+                unet=anima,
+                weights_sd=lora_sd,
+                for_inference=True,
+            )
+            network.apply_to([], anima, apply_text_encoder=False, apply_unet=True)
+            info = network.load_state_dict(weights_sd, strict=False)
+            if info.unexpected_keys:
+                log.warning(
+                    f"{path}: unexpected keys (first 5): {info.unexpected_keys[:5]}"
+                )
+            if info.missing_keys:
+                log.warning(
+                    f"{path}: missing keys (first 5): {info.missing_keys[:5]}"
+                )
+            network.to(device, dtype=dtype)
+            network.eval().requires_grad_(False)
+            if any_hydra:
+                hydra_networks = list(getattr(anima, "_hydra_networks", []))
+                hydra_networks.append(network)
+                anima._hydra_networks = hydra_networks
+                anima._hydra_network = network
+            log.info(
+                f"  attached {path} (mult={mult}, modules={len(network.unet_loras)})"
+            )
 
     # -------- Pick data --------
     samples = pick_cached_samples(
@@ -351,9 +542,12 @@ def main() -> None:
                 if lam == 0.0:
                     continue  # already covered by baseline
                 configs.append((f"λ={lam}_{sched}", lam, sched))
+    n_fwd = len(samples) * args.n_seeds
+    n_rev = len(configs) * n_fwd
     log.info(
-        f"{len(configs)} configs × {len(samples)} samples × {args.n_seeds} seeds "
-        f"= {len(configs) * len(samples) * args.n_seeds} trajectories"
+        f"{len(configs)} configs × {len(samples)} samples × {args.n_seeds} seeds: "
+        f"{n_fwd} forward-branch + {n_rev} reverse-branch trajectories "
+        f"({n_fwd + n_rev} total; was {2 * n_rev} before fwd caching)"
     )
 
     # -------- Preload cached data onto device --------
@@ -377,13 +571,32 @@ def main() -> None:
         for name, _, _ in configs
     }
 
-    pbar = tqdm(total=len(configs) * len(samples) * args.n_seeds, desc="trajectories")
+    # (config_name, stem) → final x_hat (cpu, bf16) for the FIRST seed of the
+    # first --save_images samples. Populated only when --save_images > 0.
+    saved_latents: dict[tuple[str, str], torch.Tensor] = {}
+
     t0 = time.time()
+
+    # -------- Phase 1: forward-branch norms (once per (img, seed)) --------
+    fwd_cache: dict[tuple[int, int], np.ndarray] = {}
+    pbar_fwd = tqdm(total=n_fwd, desc="fwd  ")
+    for img_idx, (stem, x_0, embed) in enumerate(encoded):
+        for seed_idx in range(args.n_seeds):
+            seed = args.seed_base + 1000 * img_idx + seed_idx
+            fwd_cache[(img_idx, seed_idx)] = measure_forward_norms(
+                anima, x_0, embed, sigmas, noise_seed=seed, device=device
+            )
+            pbar_fwd.update(1)
+            pbar_fwd.set_postfix_str(f"stem={stem} seed={seed}")
+    pbar_fwd.close()
+
+    # -------- Phase 2: reverse trajectories (per config) --------
+    pbar_rev = tqdm(total=n_rev, desc="rev  ")
     for name, lam, sched in configs:
         for img_idx, (stem, x_0, embed) in enumerate(encoded):
             for seed_idx in range(args.n_seeds):
                 seed = args.seed_base + 1000 * img_idx + seed_idx
-                res = run_trajectory(
+                res = run_reverse(
                     anima,
                     x_0,
                     embed,
@@ -393,12 +606,21 @@ def main() -> None:
                     dcw_schedule=sched,
                     device=device,
                 )
-                for k in ("v_fwd", "v_rev", "gap"):
-                    accum[name][k] += res[k]
+                v_fwd = fwd_cache[(img_idx, seed_idx)]
+                accum[name]["v_fwd"] += v_fwd
+                accum[name]["v_rev"] += res["v_rev"]
+                accum[name]["gap"] += res["v_rev"] - v_fwd
                 accum[name]["n"] += 1
-                pbar.update(1)
-                pbar.set_postfix_str(f"{name} stem={stem} seed={seed}")
-    pbar.close()
+                if (
+                    args.save_images > 0
+                    and img_idx < args.save_images
+                    and seed_idx == 0
+                ):
+                    saved_latents[(name, stem)] = res["x_hat"]
+                pbar_rev.update(1)
+                pbar_rev.set_postfix_str(f"{name} stem={stem} seed={seed}")
+    pbar_rev.close()
+    clear_hydra_sigma(anima)
     log.info(f"done in {time.time() - t0:.0f}s")
 
     for name in accum:
@@ -496,7 +718,49 @@ def main() -> None:
         log.warning("matplotlib not installed; skipping plot")
         plot_written = False
 
-    artifacts = ["per_step.csv"] + (["gap_curves.png"] if plot_written else [])
+    # -------- Optional image decode (sweep-winner eyeball) --------
+    image_artifacts: list[str] = []
+    if saved_latents:
+        log.info(
+            f"decoding {len(saved_latents)} latents (first {args.save_images} sample(s) × "
+            f"{len(configs)} config(s), seed_idx=0)…"
+        )
+        # Free the DiT-side activations before bringing in the VAE.
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        from library.models import qwen_vae
+        from library.inference import output as out_io
+        from PIL import Image
+
+        vae = qwen_vae.load_vae(args.vae, device="cpu", disable_mmap=True)
+        vae.to(torch.bfloat16)
+        vae.eval()
+
+        img_dir = out_dir / "images"
+        img_dir.mkdir(exist_ok=True)
+        for (name, stem), latent in saved_latents.items():
+            pixels = out_io.decode_latent(vae, latent, device)  # (C,H,W) f32 in [-1,1]
+            x = torch.clamp(pixels, -1.0, 1.0)
+            x = ((x + 1.0) * 127.5).to(torch.uint8).cpu().numpy()
+            x = x.transpose(1, 2, 0)
+            safe_name = name.replace("/", "_").replace(" ", "")
+            png = img_dir / f"{stem}__{safe_name}.png"
+            Image.fromarray(x).save(png)
+            image_artifacts.append(f"images/{png.name}")
+
+        del vae
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        log.info(f"images → {img_dir} ({len(image_artifacts)} files)")
+
+    artifacts = (
+        ["per_step.csv"]
+        + (["gap_curves.png"] if plot_written else [])
+        + image_artifacts
+    )
     result_path = write_result(
         out_dir,
         script=__file__,
@@ -517,6 +781,47 @@ def main() -> None:
         print("\nconfigs ranked by integrated |gap|  (smaller = closer alignment):")
         for rank, (name, a, s) in enumerate(ranked, 1):
             print(f"  {rank:>2}. {name:<30s}  |gap|={a:7.3f}  signed={s:+7.3f}")
+
+    if args.report_optimal_lambda:
+        if not args.dcw_sweep:
+            print(
+                "\n--report_optimal_lambda needs --dcw_sweep — skipping calibrator."
+            )
+        else:
+            calib = compute_optimal_lambda(accum, configs, sigmas, num_steps)
+            if not calib:
+                print(
+                    "\n--report_optimal_lambda: no schedule had ≥1 nonzero anchor; "
+                    "add nonzero --dcw_scalers values."
+                )
+            else:
+                print("\n=== closed-form λ* (late half, (1−σ)-weighted) ===")
+                for sched, info in calib.items():
+                    anchors_str = ", ".join(f"{lam:+g}" for lam, _ in info["anchors"])
+                    a, b = info["late_idx"]
+                    print(
+                        f"  schedule={sched:<18s}  anchors=[{anchors_str}]  "
+                        f"λ*={info['lambda_star']:+.4f}  (over steps {a}..{b - 1})"
+                    )
+                metrics["optimal_lambda"] = {
+                    sched: {
+                        "lambda_star": info["lambda_star"],
+                        "anchors": [lam for lam, _ in info["anchors"]],
+                        "slopes_per_step": info["slopes"].tolist(),
+                        "late_step_range": list(info["late_idx"]),
+                    }
+                    for sched, info in calib.items()
+                }
+                # Re-emit result.json with the calibrator block included.
+                write_result(
+                    out_dir,
+                    script=__file__,
+                    args=args,
+                    label=args.label,
+                    metrics=metrics,
+                    artifacts=artifacts,
+                    device=device,
+                )
 
 
 if __name__ == "__main__":

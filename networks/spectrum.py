@@ -249,6 +249,9 @@ def spectrum_denoise(
     postfix_base_neg: Optional[torch.Tensor] = None,
     postfix_embed_seqlens: Optional[torch.Tensor] = None,
     postfix_neg_seqlens: Optional[torch.Tensor] = None,
+    dcw: bool = False,
+    dcw_lambda: float = -0.010,
+    dcw_schedule: str = "one_minus_sigma",
 ) -> torch.Tensor:
     """Spectrum-accelerated denoising loop.
 
@@ -424,13 +427,26 @@ def spectrum_denoise(
                     pbar.set_postfix(mode="cached", n=fwd_count)
 
                 # Sampler step
+                denoised = latents.float() - sigmas[i] * noise_pred.float()
                 if sampler is not None:
-                    denoised = latents.float() - sigmas[i] * noise_pred.float()
-                    latents = sampler.step(latents, denoised, i).to(latents.dtype)
+                    new_latents = sampler.step(latents, denoised, i)
                 else:
-                    latents = inference_utils.step(latents, noise_pred, sigmas, i).to(
-                        latents.dtype
+                    new_latents = inference_utils.step(latents, noise_pred, sigmas, i)
+
+                # DCW: bias-correct against denoised x0_pred (carries Spectrum's
+                # cached-step prediction error, but correction is bias-agnostic).
+                if dcw and float(sigmas[i + 1]) > 0.0:
+                    from networks.dcw import apply_dcw
+
+                    new_latents = apply_dcw(
+                        new_latents.float(),
+                        denoised,
+                        float(sigmas[i]),
+                        lam=dcw_lambda,
+                        schedule=dcw_schedule,
                     )
+
+                latents = new_latents.to(latents.dtype)
 
                 pbar.update()
 

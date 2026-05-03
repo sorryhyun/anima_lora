@@ -55,16 +55,18 @@ Schedule forms supported (pixel-mode only — wavelet sweeps are downstream):
 
 ## Data
 
-Consumes cached latents + text embeddings from `post_image_dataset/`:
+Consumes cached latents + text embeddings from `post_image_dataset/lora/`
+(the LoRA pipeline's default cache_dir target):
 
 - `<stem>_<H>x<W>_anima.npz` — `latents_<H>x<W>` key, shape `(16, H, W)` float32
 - `<stem>_anima_te.safetensors` — `crossattn_emb_v0..v7` keys, shape
   `(512, 1024)` bfloat16 (post-LLMAdapter, pad-masked, ready for DiT)
 
 Both are produced by `make preprocess` and already sit in
-`post_image_dataset/`. **No VAE or text encoder is loaded at runtime** —
-the bench is DiT-only. Variable-resolution latents are fine: each
-reverse trajectory runs on one sample's shape at a time.
+`post_image_dataset/lora/`. **No VAE or text encoder is loaded at runtime
+unless `--save_images > 0`** — the bench is DiT-only by default.
+Variable-resolution latents are fine: each reverse trajectory runs on
+one sample's shape at a time.
 
 ## Usage
 
@@ -77,13 +79,17 @@ uv run python bench/dcw/measure_bias.py \
     --n_images 4 --n_seeds 2
 
 # Tune DCW: sweep scaler × schedule
-# NOTE: default grid is both-signed and biased negative on purpose — see the
-# "Observed on Anima" section. Positive λ rows double as a direction check.
+# NOTE: defaults already encode the negative-biased grid (see "Observed on
+# Anima" below). Positive λ rows double as a direction check.
 uv run python bench/dcw/measure_bias.py \
     --dit models/diffusion_models/anima-preview3-base.safetensors \
-    --dcw_sweep \
-    --dcw_scalers -0.3 -0.1 -0.03 -0.01 0.0 0.01 0.1 \
-    --dcw_schedules one_minus_sigma const
+    --dcw_sweep
+
+# Same sweep, plus decode the first 4 samples per config so you can eyeball
+# whether closing |gap| translates to perceptual changes.
+uv run python bench/dcw/measure_bias.py \
+    --dit models/diffusion_models/anima-preview3-base.safetensors \
+    --dcw_sweep --save_images 4
 
 # Faster preview
 uv run python bench/dcw/measure_bias.py \

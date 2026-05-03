@@ -91,6 +91,14 @@ COMMANDS = {
         "Inference with latest *_merged.safetensors (MODEL_DIR=..., default 'output_temp')",
     ),
     "test-spectrum": (inference.cmd_test_spectrum, "Spectrum-accelerated inference"),
+    "test-dcw": (
+        inference.cmd_test_dcw,
+        "Inference with latest LoRA + DCW post-step bias correction",
+    ),
+    "test-spectrum-dcw": (
+        inference.cmd_test_spectrum_dcw,
+        "Spectrum-accelerated inference + DCW post-step bias correction",
+    ),
     "test-ip": (
         inference.cmd_test_ip,
         "Inference with latest IP-Adapter weight. Usage: test-ip <ref_image> [--prompt ... --ip_scale ...]",
