@@ -34,7 +34,7 @@ Two ways to run it:
 make lora-gui GUI_PRESETS=postfix_sigma
 
 # Toggle-block path: activate the cond-timestep block in configs/methods/postfix.toml, then:
-make postfix
+make exp-postfix
 ```
 
 The toggle block looks like:
@@ -52,7 +52,7 @@ output_name = "anima_postfix_sigma"
 max_train_epochs = 2
 ```
 
-Test: `python inference.py --postfix_weight output/anima_postfix_sigma.safetensors ...`, or `make test-postfix` against the latest postfix output.
+Test: `python inference.py --postfix_weight output/anima_postfix_sigma.safetensors ...`, or `make exp-test-postfix` against the latest postfix output.
 
 ---
 

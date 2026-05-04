@@ -638,12 +638,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed_base", type=int, default=1234)
     p.add_argument(
         "--compile",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="torch.compile the DiT before the bench loop. Each unique latent "
         "(H, W) pays a one-time warm-up; steady-state is much faster. Best "
         "amortized when n_images is moderate (every sample's ~150+ forwards "
         "run at the same shape, and dynamo auto-flips to dynamic shapes after "
-        "the second distinct (H, W)).",
+        "the second distinct (H, W)). Pass --no-compile to disable.",
     )
     p.add_argument(
         "--dcw_sweep",

@@ -151,10 +151,10 @@ make invert-ref
 make invert-ref REF_IMAGE=path/to/ref.png
 
 # Render a test image using the inverted prefix
-make test-ref
+make exp-test-ref
 ```
 
-Both commands also work via `python tasks.py invert-ref` / `test-ref` on Windows.
+Both commands also work via `python tasks.py invert-ref` / `exp-test-ref` on Windows.
 
 ## How it differs from full inversion
 
@@ -195,7 +195,7 @@ The assembly in step 4 byte-for-byte matches what `PostfixNetwork.prepend_prefix
 
 When `REF_IMAGE` is unset, a random image is picked from `REF_IMAGE_DIR` and **frozen for the whole target run** (one image, not a different pick per shell expansion). Re-running `make invert-ref` picks a new random image. Explicit `REF_IMAGE=...` always wins.
 
-### `make test-ref`
+### `make exp-test-ref`
 
 Runs inference using the most recently modified `output/anima_ref*.safetensors` via `--prefix_weight`. Inherits the `TEST_COMMON` prompt and flags from the Makefile, so you test the prefix against your usual reference prompt.
 

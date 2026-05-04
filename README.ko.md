@@ -82,8 +82,8 @@ Linear 가중치 델타가 아닌 변형(ReFT / HydraLoRA `_moe` / postfix / pre
 |---|---|---|
 | **HydraLoRA** | MoE 스타일 멀티헤드 라우팅: 공유 `lora_down`, 전문가별 `lora_up_i`, 레이어 로컬 라우터. `AnimaAdapterLoader` ComfyUI 노드 필요. | [hydra-lora.md](docs/methods/hydra-lora.md) |
 | **ReFT** | 블록 단위 residual-stream intervention (LoReFT, NeurIPS 2024). 어떤 LoRA 변형과도 조합 가능. | [reft.md](docs/methods/reft.md) |
-| **APEX** | 학습된 condition shift를 활용한 self-adversarial 1–4 NFE distillation. 판별자 · 외부 teacher 불필요. | [apex.md](docs/methods/apex.md) |
-| **Postfix / prefix tuning** | 어댑터 cross-attention에 연속 벡터를 뒤에(postfix) 또는 앞에(prefix) 붙임. postfix 변형 5종. | [postfix-sigma.md](docs/methods/postfix-sigma.md), [prefix-tuning.md](docs/methods/prefix-tuning.md) |
+| **APEX** | 학습된 condition shift를 활용한 self-adversarial 1–4 NFE distillation. 판별자 · 외부 teacher 불필요. | [apex.md](docs/experimental/apex.md) |
+| **Postfix / prefix tuning** | 어댑터 cross-attention에 연속 벡터를 뒤에(postfix) 또는 앞에(prefix) 붙임. postfix 변형 5종. | [postfix-sigma.md](docs/experimental/postfix-sigma.md), [prefix-tuning.md](docs/experimental/prefix-tuning.md) |
 | **임베딩 인버전** | frozen DiT를 통과시켜 타깃 이미지에 맞도록 텍스트 임베딩을 최적화. | [invert.md](docs/methods/invert.md) |
 | **img2emb 리샘플러** | TIPSv2-L/14 features + anchor injection을 이용한 참조 이미지 → 임베딩 매핑 학습. | [archive/img2emb/README.md](archive/img2emb/README.md) |
 | **Spectrum 추론** | Chebyshev 특성 예측으로 학습 없이 약 3.75× 가속 (Han et al., CVPR 2026). 별도 안정판 ComfyUI 노드: [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler). | [spectrum.md](docs/methods/spectrum.md) |
@@ -108,7 +108,7 @@ CLI 경로:
 
 ```bash
 make preprocess           # VAE 호환 리사이즈 및 검증
-make lora                 # 또는: PRESET=fast_16gb make lora / PRESET=low_vram make lora / make postfix / make apex
+make lora                 # 또는: PRESET=fast_16gb make lora / PRESET=low_vram make lora / make exp-postfix / make exp-apex
 make test                 # 최신 학습된 LoRA로 샘플 생성
 ```
 

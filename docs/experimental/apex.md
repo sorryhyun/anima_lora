@@ -7,8 +7,8 @@ Paper: Liu et al., *Self-Adversarial One Step Generation via Condition Shifting*
 ## Quick start
 
 ```bash
-make apex                           # default preset
-python tasks.py apex                # cross-platform
+make exp-apex                       # default preset
+python tasks.py exp-apex            # cross-platform
 ```
 
 The default config warm-starts from a prior T-LoRA checkpoint (see the note on warm-start requirement below) and trains for 2 epochs with `apex_warmup_ratio=0.20`, `apex_rampup_ratio=0.10`. Block swap is forced off: APEX runs 3 DiT forwards per step and block swap is incompatible with the multi-forward pattern (see §"Memory and block swap").

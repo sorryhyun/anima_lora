@@ -153,14 +153,14 @@ count, `encode_cond_latent` raises — the caller must downsample explicitly
 ### Training
 
 ```bash
-make easycontrol                          # default preset
-python tasks.py easycontrol               # cross-platform
-make easycontrol PRESET=low_vram          # override hardware preset
+make exp-easycontrol                          # default preset
+python tasks.py exp-easycontrol               # cross-platform
+make exp-easycontrol PRESET=low_vram          # override hardware preset
 ```
 
 Reuses the existing `cache_latents` output as the cond input — no separate
 sidecar cache. Run `make preprocess` once if VAE latents aren't already
-cached, then `make easycontrol`.
+cached, then `make exp-easycontrol`.
 
 CFG dropout for image conditioning (independent of text):
 - `easycontrol_drop_p = 0.1` (default) — per batch, drop the cond entirely.
@@ -170,15 +170,15 @@ CFG dropout for image conditioning (independent of text):
 ### Inference
 
 ```bash
-make test-easycontrol REF_IMAGE=post_image_dataset/foo.png \
-                      PROMPT="a girl drinking coffee at a cafe"
+make exp-test-easycontrol REF_IMAGE=post_image_dataset/foo.png \
+                          PROMPT="a girl drinking coffee at a cafe"
 ```
 
 Equivalents:
 
 ```bash
-python tasks.py test-easycontrol post_image_dataset/foo.png \
-                                 --prompt "a girl drinking coffee at a cafe"
+python tasks.py exp-test-easycontrol post_image_dataset/foo.png \
+                                     --prompt "a girl drinking coffee at a cafe"
 ```
 
 Optional `EC_SCALE=0.8` to override the saved scale at test time.

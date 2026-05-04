@@ -44,7 +44,7 @@ Perceiver resampler ──► IP tokens     [B, K=16, 1024]   (trainable)
 - **`to_k_ip` / `to_v_ip` init: `std=1e-4`.** This *is* the step-0 baseline mechanism — see the previous bullet. It also serves as symmetry-breaking for the K side (which gets RMSNorm'd to unit magnitude on the K direction, but the directions themselves come from this init).
 - **Per-block KV cached once per batch.** `set_ip_tokens(...)` runs the resampler + 28 KV projections + RMSNorms once and stashes `[B, K, n_h, d_h]` tensors on each `cross_attn._ip_k_cached / _ip_v_cached`. The patched cross-attn forward is then a single SDPA call. Under gradient checkpointing the recomputed forward reads the same stashed K/V.
 - **`B=1 → B=N` broadcast.** At inference, the cond and uncond CFG passes both use the same single ref image. `set_ip_tokens` accepts `[1, K, 1024]`; the patched forward `expand`s to match `q`'s batch dimension (free view, no copy).
-- **Pre-cached PE features (default).** `make preprocess-pe` runs PE-Core once over `post_image_dataset/resized/` and writes `{stem}_anima_pe.safetensors` sidecars (`[T_pe, d_enc]` bf16) into `post_image_dataset/lora/` alongside the VAE/text caches. At training time the dataset loads these into `batch["ip_features"]` and `train.py` skips loading the vision encoder entirely (saves ~600 MB VRAM) — same defaults as VAE latents and text encoder outputs. Set `ip_features_cache_to_disk = false` (and `cache_latents = false`) to fall back to the live-encoding path, which keeps PE-Core resident in bf16 and runs it on `batch["images"]` every step. IP-Adapter shares the LoRA pipeline's caches end-to-end (REPA reads the same sidecars). `make ip-adapter-preprocess` is kept as a convenience alias that runs `make preprocess` + `make preprocess-pe`.
+- **Pre-cached PE features (default).** `make preprocess-pe` runs PE-Core once over `post_image_dataset/resized/` and writes `{stem}_anima_pe.safetensors` sidecars (`[T_pe, d_enc]` bf16) into `post_image_dataset/lora/` alongside the VAE/text caches. At training time the dataset loads these into `batch["ip_features"]` and `train.py` skips loading the vision encoder entirely (saves ~600 MB VRAM) — same defaults as VAE latents and text encoder outputs. Set `ip_features_cache_to_disk = false` (and `cache_latents = false`) to fall back to the live-encoding path, which keeps PE-Core resident in bf16 and runs it on `batch["images"]` every step. IP-Adapter shares the LoRA pipeline's caches end-to-end (REPA reads the same sidecars). `make exp-ip-adapter-preprocess` is kept as a convenience alias that runs `make preprocess` + `make preprocess-pe`.
 
 ### Why PE-Core
 
@@ -109,7 +109,7 @@ denoising loop (cond + uncond CFG passes)
 
 The IP path is **always on** during the denoising loop in v1 — image conditioning rides along but isn't part of the text-CFG steering. This is the simplest, most predictable behavior. A future `--ip_negative_drop` flag could clear IP for the uncond pass to do true image-CFG.
 
-### How to drive `make test-ip`
+### How to drive `make exp-test-ip`
 
 Three usage patterns, with the prompt strategy that matches each:
 
@@ -130,13 +130,13 @@ A debug ladder for a fresh checkpoint:
 
 ```bash
 # 1. Pure reproduction — does IP do anything?
-make test-ip REF_IMAGE=post_image_dataset/foo.png PROMPT="" IP_SCALE=1.0
+make exp-test-ip REF_IMAGE=post_image_dataset/foo.png PROMPT="" IP_SCALE=1.0
 
 # 2. Crank IP — confirm the path is alive at all
-make test-ip REF_IMAGE=post_image_dataset/foo.png PROMPT="" IP_SCALE=2.0
+make exp-test-ip REF_IMAGE=post_image_dataset/foo.png PROMPT="" IP_SCALE=2.0
 
 # 3. Style transfer — different content, ref's style
-make test-ip REF_IMAGE=post_image_dataset/foo.png \
+make exp-test-ip REF_IMAGE=post_image_dataset/foo.png \
     PROMPT="1girl, drinking coffee at a cafe" IP_SCALE=1.0
 ```
 
@@ -149,25 +149,25 @@ If step 1 returns the model's "default" image regardless of ref → IP path isn'
 ### Train
 
 ```bash
-make ip-adapter
+make exp-ip-adapter
 ```
 
-Runs `train.py --method ip_adapter --preset default`. Override the preset like the LoRA targets (`PRESET=low_vram make ip-adapter`).
+Runs `train.py --method ip_adapter --preset default`. Override the preset like the LoRA targets (`PRESET=low_vram make exp-ip-adapter`).
 
 ### Inference
 
 ```bash
 # Default prompt is "double peace, v v," — minimal so the ref image drives style.
-make test-ip REF_IMAGE=post_image_dataset/foo.png
+make exp-test-ip REF_IMAGE=post_image_dataset/foo.png
 
 # Custom content with the ref's style:
-make test-ip REF_IMAGE=foo.png PROMPT="a girl drinking coffee at a cafe"
+make exp-test-ip REF_IMAGE=foo.png PROMPT="a girl drinking coffee at a cafe"
 
 # Tune adapter strength:
-make test-ip REF_IMAGE=foo.png PROMPT="..." IP_SCALE=0.7
+make exp-test-ip REF_IMAGE=foo.png PROMPT="..." IP_SCALE=0.7
 
 # Negative prompt:
-make test-ip REF_IMAGE=foo.png PROMPT="..." NEG="bad anatomy"
+make exp-test-ip REF_IMAGE=foo.png PROMPT="..." NEG="bad anatomy"
 ```
 
 Outputs land under `output/tests/ip/`. Each generated PNG gets a paired `*_ref.png` copy of the reference for side-by-side review. The output resolution auto-snaps to the closest `CONSTANT_TOKEN_BUCKETS` entry to the ref's aspect ratio (`--ip_image_match_size`, set by the make target).

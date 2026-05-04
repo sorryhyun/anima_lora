@@ -10,13 +10,18 @@ Examples:
     python tasks.py test
     python tasks.py test-spectrum
     python tasks.py download-models
+    python tasks.py exp-apex                 # experimental method
+    python tasks.py exp-test-ip ref.png      # experimental inference
 
-Command implementations live under ``scripts/tasks/`` (one module per
-category). This file is just a name → callable dispatch table.
+Command implementations live under ``scripts/tasks/`` (shipped methods) and
+``scripts/experimental_tasks/`` (unstable methods exposed under ``exp-*``).
+This file is just a name → callable dispatch table.
 """
 
 import sys
 
+from scripts.experimental_tasks import inference as exp_inference
+from scripts.experimental_tasks import training as exp_training
 from scripts.tasks import (
     dcw,
     downloads,
@@ -39,53 +44,15 @@ COMMANDS = {
         "Train from a self-contained configs/gui-methods/<variant>.toml "
         "(variant from GUI_PRESETS env or 1st positional; e.g. tlora, hydralora, reft, postfix_exp).",
     ),
-    "apex": (training.cmd_apex, "APEX distillation (condition-shift self-adversarial)"),
-    "postfix": (
-        training.cmd_postfix,
-        "Postfix/prefix tuning (mode selected in configs/methods/postfix.toml)",
-    ),
-    "ip-adapter": (
-        training.cmd_ip_adapter,
-        "IP-Adapter training (decoupled image cross-attention)",
-    ),
-    "ip-adapter-preprocess": (
-        training.cmd_ip_adapter_preprocess,
-        "Alias for `preprocess` + `preprocess-pe` (IP-Adapter reuses the LoRA "
-        "pipeline's caches under post_image_dataset/lora/).",
-    ),
-    "easycontrol": (
-        training.cmd_easycontrol,
-        "EasyControl training (extended self-attn KV with VAE-encoded reference)",
-    ),
-    "easycontrol-preprocess": (
-        training.cmd_easycontrol_preprocess,
-        "Full EasyControl preprocess: latents + text emb. "
-        "Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/.",
-    ),
     # ── Inference ─────────────────────────────────────────────────────
     "test": (inference.cmd_test, "Inference with latest LoRA"),
     "test-mod": (
         inference.cmd_test_mod,
         "Inference with latest pooled_text_proj (modulation guidance)",
     ),
-    "test-apex": (inference.cmd_test_apex, "Inference with latest APEX LoRA"),
     "test-hydra": (
         inference.cmd_test_hydra,
         "Inference with latest HydraLoRA moe (router-live)",
-    ),
-    "test-prefix": (inference.cmd_test_prefix, "Inference with latest prefix weight"),
-    "test-ref": (
-        inference.cmd_test_ref,
-        "Inference with latest reference-inversion prefix (output/ckpt/anima_ref*.safetensors)",
-    ),
-    "test-postfix": (inference.cmd_test_postfix, "Inference with latest postfix weight"),
-    "test-postfix-exp": (
-        inference.cmd_test_postfix_exp,
-        "Inference with latest postfix-exp weight",
-    ),
-    "test-postfix-func": (
-        inference.cmd_test_postfix_func,
-        "Inference with latest postfix-func weight",
     ),
     "test-merge": (
         inference.cmd_test_merge,
@@ -111,14 +78,6 @@ COMMANDS = {
     "test-spectrum-dcw": (
         inference.cmd_test_spectrum_dcw,
         "Spectrum-accelerated inference + DCW post-step bias correction",
-    ),
-    "test-ip": (
-        inference.cmd_test_ip,
-        "Inference with latest IP-Adapter weight. Usage: test-ip <ref_image> [--prompt ... --ip_scale ...]",
-    ),
-    "test-easycontrol": (
-        inference.cmd_test_easycontrol,
-        "Inference with latest EasyControl weight. Usage: test-easycontrol <ref_image> [--prompt ... --easycontrol_scale ...]",
     ),
     # ── Preprocess ────────────────────────────────────────────────────
     "preprocess": (
@@ -189,6 +148,67 @@ COMMANDS = {
         "Update from GitHub release (preserves datasets/output/models, prompts on "
         "config conflicts, runs uv sync). Pass --dry-run / --version v1.0 / --no-sync.",
     ),
+    # ── Experimental ──────────────────────────────────────────────────
+    # Unstable methods kept under exp-* so they don't pollute the main command
+    # surface. May produce broken output, change without notice, or be removed.
+    "exp-apex": (
+        exp_training.cmd_apex,
+        "[experimental] APEX distillation (condition-shift self-adversarial)",
+    ),
+    "exp-postfix": (
+        exp_training.cmd_postfix,
+        "[experimental] Postfix/prefix tuning (mode selected in configs/methods/postfix.toml)",
+    ),
+    "exp-ip-adapter": (
+        exp_training.cmd_ip_adapter,
+        "[experimental] IP-Adapter training (decoupled image cross-attention)",
+    ),
+    "exp-ip-adapter-preprocess": (
+        exp_training.cmd_ip_adapter_preprocess,
+        "[experimental] Alias for `preprocess` + `preprocess-pe` (IP-Adapter "
+        "reuses the LoRA pipeline's caches under post_image_dataset/lora/).",
+    ),
+    "exp-easycontrol": (
+        exp_training.cmd_easycontrol,
+        "[experimental] EasyControl training (extended self-attn KV with VAE-encoded reference)",
+    ),
+    "exp-easycontrol-preprocess": (
+        exp_training.cmd_easycontrol_preprocess,
+        "[experimental] Full EasyControl preprocess: latents + text emb. "
+        "Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/.",
+    ),
+    "exp-test-apex": (
+        exp_inference.cmd_test_apex,
+        "[experimental] Inference with latest APEX LoRA",
+    ),
+    "exp-test-prefix": (
+        exp_inference.cmd_test_prefix,
+        "[experimental] Inference with latest prefix weight",
+    ),
+    "exp-test-ref": (
+        exp_inference.cmd_test_ref,
+        "[experimental] Inference with latest reference-inversion prefix (output/ckpt/anima_ref*.safetensors)",
+    ),
+    "exp-test-postfix": (
+        exp_inference.cmd_test_postfix,
+        "[experimental] Inference with latest postfix weight",
+    ),
+    "exp-test-postfix-exp": (
+        exp_inference.cmd_test_postfix_exp,
+        "[experimental] Inference with latest postfix-exp weight",
+    ),
+    "exp-test-postfix-func": (
+        exp_inference.cmd_test_postfix_func,
+        "[experimental] Inference with latest postfix-func weight",
+    ),
+    "exp-test-ip": (
+        exp_inference.cmd_test_ip,
+        "[experimental] Inference with latest IP-Adapter weight. Usage: exp-test-ip <ref_image> [--prompt ... --ip_scale ...]",
+    ),
+    "exp-test-easycontrol": (
+        exp_inference.cmd_test_easycontrol,
+        "[experimental] Inference with latest EasyControl weight. Usage: exp-test-easycontrol <ref_image> [--prompt ... --easycontrol_scale ...]",
+    ),
 }
 
 
@@ -197,7 +217,7 @@ def main():
         print("Usage: python tasks.py <command> [extra args...]\n")
         print("Commands:")
         for name, (_, desc) in COMMANDS.items():
-            print(f"  {name:20s} {desc}")
+            print(f"  {name:30s} {desc}")
         print("\nExtra arguments are forwarded to the underlying command.")
         print("Example: python tasks.py lora --network_dim 32 --max_train_epochs 64")
         sys.exit(0)

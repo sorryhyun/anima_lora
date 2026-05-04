@@ -115,7 +115,7 @@ make lora-gui GUI_PRESETS=prefix
 
 # Toggle-block path: edit configs/methods/postfix.toml to activate the prefix
 # block, then run:
-make postfix
+make exp-postfix
 ```
 
 ### Inference
@@ -130,7 +130,7 @@ python inference.py \
     --image_size 1024 1024
 ```
 
-Or `make test-prefix` to run against the most recent `output/anima_prefix*.safetensors`.
+Or `make exp-test-prefix` to run against the most recent `output/anima_prefix*.safetensors`.
 
 ## Config reference
 

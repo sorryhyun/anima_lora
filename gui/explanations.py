@@ -661,11 +661,11 @@ APEX_GUIDE: dict[str, str] = {
         "stop-grad + fake@fake_xt), so <code>blocks_to_swap</code> is method-"
         "forced to <code>0</code> — block swapping crashes on the second "
         "forward with a FakeTensor device mismatch.</p>"
-        "<p>Inference: <code>make test-apex</code> (4 euler steps, "
+        "<p>Inference: <code>make exp-test-apex</code> (4 euler steps, "
         "<code>guidance_scale = 1.0</code>). Output is still a regular LoRA "
         "<code>.safetensors</code> bakeable into the DiT — it just runs at far "
         "fewer denoising steps than the warm-start LoRA. See "
-        "<code>docs/methods/apex.md</code>.</p>"
+        "<code>docs/experimental/apex.md</code>.</p>"
     ),
     "ko": (
         "<div style='background:#1e3322; padding:10px 14px; border-left:3px solid #27ae60; "
@@ -688,10 +688,10 @@ APEX_GUIDE: dict[str, str] = {
         "stop-grad + fake@fake_xt). 그래서 <code>blocks_to_swap</code>은 "
         "<code>0</code>으로 method-forced됩니다 — 블록 스왑은 두 번째 forward에서 "
         "FakeTensor 디바이스 불일치로 크래시합니다.</p>"
-        "<p>추론: <code>make test-apex</code> (4 euler 스텝, "
+        "<p>추론: <code>make exp-test-apex</code> (4 euler 스텝, "
         "<code>guidance_scale = 1.0</code>). 결과는 여전히 DiT에 베이킹 가능한 일반 "
         "LoRA <code>.safetensors</code>이며, 워밍업 LoRA보다 훨씬 적은 디노이징 "
-        "스텝으로 동작합니다. <code>docs/methods/apex.md</code> 참조.</p>"
+        "스텝으로 동작합니다. <code>docs/experimental/apex.md</code> 참조.</p>"
     ),
 }
 

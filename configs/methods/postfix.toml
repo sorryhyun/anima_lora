@@ -7,8 +7,8 @@
 #   - postfix_sigma = postfix_exp + σ-conditional residual ("cond-timestep" mode)
 #   - prefix       = prepends vectors at start of sequence
 # Uncomment the target block and comment out the postfix values it overrides.
-# Each variant sets its own `output_name` so `make test-postfix[-exp|-func]`
-# and `make test-prefix` each pick up the right artifact.
+# Each variant sets its own `output_name` so `make exp-test-postfix[-exp|-func]`
+# and `make exp-test-prefix` each pick up the right artifact.
 #
 # Per-variant dim/args/epochs are experiment drift, not calibrated defaults.
 

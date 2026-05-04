@@ -82,8 +82,9 @@ class _AdapterTab(QWidget):
 
     SOURCE_DIR: str = ""        # e.g. "ip-adapter-dataset"
     CACHE_DIR: str = ""         # e.g. "post_image_dataset/ip-adapter"
-    PREPROCESS_TASK: str = ""   # tasks.py target, e.g. "ip-adapter-preprocess"
-    TRAIN_TASK: str = ""        # tasks.py target, e.g. "ip-adapter"
+    PREPROCESS_TASK: str = ""   # tasks.py target, e.g. "exp-ip-adapter-preprocess"
+    TRAIN_TASK: str = ""        # tasks.py target, e.g. "exp-ip-adapter"
+    TRAIN_METHOD: str = ""      # configs/methods/<TRAIN_METHOD>.toml, e.g. "ip_adapter"
     REQUIRE_PE: bool = False
     METHOD_LABEL: str = ""
 
@@ -260,10 +261,9 @@ class _AdapterTab(QWidget):
                 self, t("error"), t("adapter_no_dataset")
             )
             return
-        # tasks.py <task> resolves to methods/<task with - → _>.toml; mirror
-        # the same merge train.py would do so the resume prompt reads the
-        # right output_dir / output_name.
-        merged, _ = merged_method_preset(self.TRAIN_TASK.replace("-", "_"), "default")
+        # Mirror the same merge train.py would do (configs/methods/<TRAIN_METHOD>.toml)
+        # so the resume prompt reads the right output_dir / output_name.
+        merged, _ = merged_method_preset(self.TRAIN_METHOD, "default")
         if not confirm_resumable_checkpoint(self, merged):
             return
         self._launch([sys.executable, "tasks.py", self.TRAIN_TASK])
@@ -312,8 +312,9 @@ class IPAdapterTab(_AdapterTab):
     # The "preprocess" button runs `make preprocess` + `make preprocess-pe`.
     SOURCE_DIR = "image_dataset"
     CACHE_DIR = "post_image_dataset/lora"
-    PREPROCESS_TASK = "ip-adapter-preprocess"
-    TRAIN_TASK = "ip-adapter"
+    PREPROCESS_TASK = "exp-ip-adapter-preprocess"
+    TRAIN_TASK = "exp-ip-adapter"
+    TRAIN_METHOD = "ip_adapter"
     REQUIRE_PE = True
     METHOD_LABEL = "IP-Adapter"
 
@@ -321,7 +322,8 @@ class IPAdapterTab(_AdapterTab):
 class EasyControlTab(_AdapterTab):
     SOURCE_DIR = "easycontrol-dataset"
     CACHE_DIR = "post_image_dataset/easycontrol"
-    PREPROCESS_TASK = "easycontrol-preprocess"
-    TRAIN_TASK = "easycontrol"
+    PREPROCESS_TASK = "exp-easycontrol-preprocess"
+    TRAIN_TASK = "exp-easycontrol"
+    TRAIN_METHOD = "easycontrol"
     REQUIRE_PE = False
     METHOD_LABEL = "EasyControl"

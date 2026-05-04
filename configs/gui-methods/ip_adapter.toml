@@ -37,7 +37,7 @@ max_train_epochs = 12
 save_every_n_epochs = 12
 checkpointing_epochs = 12
 
-# PE features must be pre-cached via `make ip-adapter-preprocess` so training never
+# PE features must be pre-cached via `make exp-ip-adapter-preprocess` so training never
 # loads the vision encoder. Set ip_features_cache_to_disk=false to fall back
 # to live PE encoding (slower; only useful for ad-hoc experimentation).
 ip_features_cache_to_disk = true

@@ -11,8 +11,8 @@
 # both expressed as fractions of max_train_steps.
 #
 # USAGE:
-#   make apex                            # default preset
-#   python tasks.py apex                 # cross-platform
+#   make exp-apex                        # default preset
+#   python tasks.py exp-apex             # cross-platform
 #
 # Warm-start from a prior LoRA checkpoint is REQUIRED in most cases — cold
 # start catastrophically regresses (−48% NFE=1 W1 in Phase 0). Either load

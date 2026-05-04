@@ -79,8 +79,8 @@ Each ships with a doc — see the link for usage, flags, and caveats.
 |---|---|---|
 | **HydraLoRA** | MoE-style multi-head routing: shared `lora_down`, per-expert `lora_up_i`, layer-local router. Needs the `AnimaAdapterLoader` ComfyUI node. | [hydra-lora.md](docs/methods/hydra-lora.md) |
 | **ReFT** | Block-level residual-stream intervention (LoReFT, NeurIPS 2024). Composes with any LoRA variant. | [reft.md](docs/methods/reft.md) |
-| **APEX** | Self-adversarial 1–4 NFE distillation via learned condition shift; no discriminator, no teacher. | [apex.md](docs/methods/apex.md) |
-| **Postfix / prefix tuning** | Continuous vectors appended (postfix) or prepended (prefix) to adapter cross-attention. Five postfix variants. | [postfix-sigma.md](docs/methods/postfix-sigma.md), [prefix-tuning.md](docs/methods/prefix-tuning.md) |
+| **APEX** | Self-adversarial 1–4 NFE distillation via learned condition shift; no discriminator, no teacher. | [apex.md](docs/experimental/apex.md) |
+| **Postfix / prefix tuning** | Continuous vectors appended (postfix) or prepended (prefix) to adapter cross-attention. Five postfix variants. | [postfix-sigma.md](docs/experimental/postfix-sigma.md), [prefix-tuning.md](docs/experimental/prefix-tuning.md) |
 | **Embedding inversion** | Optimize a text embedding to match a target image through the frozen DiT. | [invert.md](docs/methods/invert.md) |
 | **img2emb resampler** | Learn a reference-image → embedding mapping via TIPSv2-L/14 features + anchor injection. | [archive/img2emb/README.md](archive/img2emb/README.md) |
 | **Spectrum inference** | Training-free ~3.75× speedup via Chebyshev feature forecasting (Han et al., CVPR 2026). Stable ComfyUI node in a separate repo: [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler). | [spectrum.md](docs/methods/spectrum.md) |
@@ -107,7 +107,7 @@ CLI path:
 
 ```bash
 make preprocess           # VAE-compatible resize & validation
-make lora                 # or: PRESET=fast_16gb make lora / PRESET=low_vram make lora / make postfix / make apex
+make lora                 # or: PRESET=fast_16gb make lora / PRESET=low_vram make lora / make exp-postfix / make exp-apex
 make test                 # sample generation with the latest trained LoRA
 ```
 

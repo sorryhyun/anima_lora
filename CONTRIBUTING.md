@@ -18,7 +18,7 @@ Two areas where outside contributions would have the biggest impact right now. B
 
 ### IP-Adapter
 
-Decoupled image cross-attention (Ye et al. 2023). DiT frozen; resampler + per-block `to_k_ip`/`to_v_ip` train end-to-end and inference works via `inference.py`. See [`docs/methods/ip-adapter.md`](docs/methods/ip-adapter.md).
+Decoupled image cross-attention (Ye et al. 2023). DiT frozen; resampler + per-block `to_k_ip`/`to_v_ip` train end-to-end and inference works via `inference.py`. See [`docs/experimental/ip-adapter.md`](docs/experimental/ip-adapter.md).
 
 What's missing:
 
@@ -30,7 +30,7 @@ What's missing:
 
 ### EasyControl adapters
 
-Per-block cond LoRA on self-attn + FFN with a logit-bias gate. The architecture is naturally contribution-friendly: each control type is one independent adapter. See [`docs/methods/easycontrol.md`](docs/methods/easycontrol.md). What's missing is the **adapter zoo** around it.
+Per-block cond LoRA on self-attn + FFN with a logit-bias gate. The architecture is naturally contribution-friendly: each control type is one independent adapter. See [`docs/experimental/easycontrol.md`](docs/experimental/easycontrol.md). What's missing is the **adapter zoo** around it.
 
 - **Trained adapters** — canny, depth, pose, lineart, scribble, segmentation, … each one a self-contained PR with model card, training config, and samples. Hosted under a HuggingFace collection (planned: `anima-easycontrol`). *[Tier 1.5 — bench numbers and side-by-side samples carry the PR; no new method code]*
 - **Per-task dataset spec** — one doc per control type covering pair format, recommended size (~2k pairs), where to source signal images. Currently undocumented. *[Tier 1]*
@@ -90,7 +90,7 @@ A new entry in `networks/lora_modules/` or `networks/methods/`, or a new variant
 
 **Requirements:**
 
-1. **Paper reference.** New methods exist because someone published a result that justifies the complexity. The PR description must cite the paper (title, authors, venue, arXiv id) and the upstream code if any. Method docs in `docs/methods/<name>.md` follow the same format as the existing ones — see `docs/methods/reft.md` and `docs/methods/easycontrol.md` for the shape.
+1. **Paper reference.** New methods exist because someone published a result that justifies the complexity. The PR description must cite the paper (title, authors, venue, arXiv id) and the upstream code if any. Method docs follow the same format as the existing ones — see `docs/methods/reft.md` (shipped) and `docs/experimental/easycontrol.md` (experimental) for the shape. Stable methods land in `docs/methods/<name>.md`; unstable / unmerged-into-shipped methods land in `docs/experimental/<name>.md`.
 
    Hand-rolled methods without prior art are not categorically rejected, but the bar is higher: in the absence of a paper, the bench results have to carry the argument alone, and reviewers will be skeptical. If you are confident, propose the method in an issue first.
 

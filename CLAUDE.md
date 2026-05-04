@@ -18,7 +18,7 @@ make preprocess            # Resize → post_image_dataset/resized/, cache → p
 
 ## Commands
 
-Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The examples below show both forms. The `Makefile` is a thin catch-all dispatcher — every target forwards to `python tasks.py <target> $(ARGS)`. **`tasks.py` is the source of truth**; per-domain command implementations live in `scripts/tasks/{training,inference,preprocess,masking,gui,downloads,utilities}.py`. Don't grep the Makefile for a target's recipe — look in `scripts/tasks/`.
+Both `make` (Unix) and `python tasks.py` (cross-platform) are supported. The examples below show both forms. The `Makefile` is a thin catch-all dispatcher — every target forwards to `python tasks.py <target> $(ARGS)`. **`tasks.py` is the source of truth**; per-domain command implementations live in `scripts/tasks/{training,inference,preprocess,masking,gui,downloads,utilities}.py`, with the experimental commands (`exp-*`) in `scripts/experimental_tasks/{training,inference}.py`. Don't grep the Makefile for a target's recipe — look in `scripts/tasks/` (or `scripts/experimental_tasks/` for `exp-*`).
 
 ```bash
 # Training (run from anima_lora/)
@@ -37,14 +37,17 @@ python tasks.py lora        # Same, works on Windows too
 make lora PRESET=low_vram   # Override preset: methods/lora.toml + presets.toml[low_vram]
 make lora PRESET=fast_16gb  # Override preset: methods/lora.toml + presets.toml[fast_16gb]
 make lora PRESET=half       # Override preset: methods/lora.toml + presets.toml[half] (sample_ratio=0.5)
-make postfix                # Postfix/prefix family (methods/postfix.toml)
-make apex                   # APEX self-adversarial 1-NFE distillation (methods/apex.toml)
-make ip-adapter             # IP-Adapter image cross-attention (methods/ip_adapter.toml)
-                            # Reuses LoRA paths: source image_dataset/, cache post_image_dataset/lora/
-make ip-adapter-preprocess  # Alias for `make preprocess` + `make preprocess-pe`
-make easycontrol            # EasyControl image conditioning (methods/easycontrol.toml)
-                            # Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/
-make easycontrol-preprocess # Resize + VAE + text caches into post_image_dataset/easycontrol/
+# Experimental methods are exposed under exp-* (postfix, apex, ip-adapter,
+# easycontrol). They may produce broken output, change without notice, or be
+# removed.
+make exp-postfix                # Postfix/prefix family (methods/postfix.toml)
+make exp-apex                   # APEX self-adversarial 1-NFE distillation (methods/apex.toml)
+make exp-ip-adapter             # IP-Adapter image cross-attention (methods/ip_adapter.toml)
+                                # Reuses LoRA paths: source image_dataset/, cache post_image_dataset/lora/
+make exp-ip-adapter-preprocess  # Alias for `make preprocess` + `make preprocess-pe`
+make exp-easycontrol            # EasyControl image conditioning (methods/easycontrol.toml)
+                                # Source: easycontrol-dataset/  Cache: post_image_dataset/easycontrol/
+make exp-easycontrol-preprocess # Resize + VAE + text caches into post_image_dataset/easycontrol/
 
 # GUI-friendly per-variant path (configs/gui-methods/<variant>.toml — clean,
 # self-contained, no toggle blocks). Intended for basic users who don't want
@@ -64,17 +67,18 @@ make distill-mod           # Train pooled_text_proj MLP (text → AdaLN modulati
 # Inference (test with most recent output)
 make test
 make test-mod              # Test with modulation guidance (pooled_text_proj)
-make test-apex             # APEX 4-NFE euler inference
 make test-hydra            # HydraLoRA router-live (anima_hydra*_moe.safetensors)
-make test-prefix           # Test with prefix tuning
-make test-postfix          # Test with postfix tuning
-make test-postfix-exp      # Test with postfix tuning (exp variant)
-make test-postfix-func     # Test with postfix tuning (func variant)
-make test-ip REF_IMAGE=... # IP-Adapter inference (image-conditioned)
-make test-easycontrol REF_IMAGE=...  # EasyControl inference (image-conditioned)
-make test-ref              # Inference with a learned prefix-slot weight (--prefix_weight)
 make test-merge            # Inference with a merged/baked DiT (no adapter loaded)
 make test-spectrum         # Spectrum-accelerated inference (~3.75x speedup)
+# Experimental inference (matched to make exp-* training)
+make exp-test-apex             # APEX 4-NFE euler inference
+make exp-test-prefix           # Test with prefix tuning
+make exp-test-postfix          # Test with postfix tuning
+make exp-test-postfix-exp      # Test with postfix tuning (exp variant)
+make exp-test-postfix-func     # Test with postfix tuning (func variant)
+make exp-test-ip REF_IMAGE=... # IP-Adapter inference (image-conditioned)
+make exp-test-easycontrol REF_IMAGE=...  # EasyControl inference (image-conditioned)
+make exp-test-ref              # Inference with a learned prefix-slot weight (--prefix_weight)
 
 # GUI (PySide6 — config editing, IP-Adapter / EasyControl preprocess+train, dataset browsing)
 make gui
@@ -129,8 +133,9 @@ On Windows, use `python tasks.py <command>` instead of `make <command>`. Extra a
 | `gui/` | PySide6 GUI package: config editing with presets, IP-Adapter / EasyControl preprocess+train tabs, dataset browser, training monitor |
 | `tasks.py` | Cross-platform task runner (Windows-compatible Makefile alternative). Source of truth for every `make` target. |
 | `scripts/tasks/` | Per-domain task implementations (`training`, `inference`, `preprocess`, `masking`, `gui`, `downloads`, `utilities`) — where command bodies actually live; `_common.py` holds shared helpers. |
+| `scripts/experimental_tasks/` | Bodies for the `exp-*` commands (apex, postfix, ip-adapter, easycontrol training + their `exp-test-*` inference). Reuses helpers from `scripts/tasks/_common.py`. |
 
-Deep-dives in `docs/methods/`: `apex.md`, `easycontrol.md`, `hydra-lora.md`, `invert.md`, `ip-adapter.md`, `mod-guidance.md`, `postfix-sigma.md`, `prefix-tuning.md`, `psoft-integrated-ortholora.md`, `reft.md`, `spectrum.md`, `timestep_mask.md`.
+Deep-dives in `docs/methods/` (shipped): `dcw.md`, `hydra-lora.md`, `invert.md`, `mod-guidance.md`, `psoft-integrated-ortholora.md`, `reft.md`, `spectrum.md`, `timestep_mask.md`. Experimental method docs live under `docs/experimental/`: `apex.md`, `easycontrol.md`, `ip-adapter.md`, `postfix-sigma.md`, `prefix-tuning.md`.
 
 ## Config flow
 
@@ -203,7 +208,7 @@ P-GRAFT (`--pgraft` flag on `inference.py`) is a mid-denoise LoRA cutoff: it loa
 
 ## APEX (1-NFE distillation)
 
-Self-adversarial condition-shift distillation — turns the pretrained velocity-field DiT into a 1–4 NFE generator without a discriminator or external teacher (`configs/methods/apex.toml`, `docs/methods/apex.md`). The "adversarial" signal comes from querying the same network under a learned shifted text condition (`ConditionShift`, `c_fake = A·c + b`). Training does **3 DiT forwards per step** (real + fake@real_xt stop-grad + fake@fake_xt), so `blocks_to_swap = 0` is method-forced — block swapping would crash on the second forward with a `FakeTensor` device mismatch. Warm-start from a prior LoRA checkpoint is effectively mandatory (`network_weights` + `dim_from_weights=true`); cold-start catastrophically regressed in Phase 0 testing. Inference is `make test-apex` (4 euler steps, `guidance_scale=1.0`).
+Self-adversarial condition-shift distillation — turns the pretrained velocity-field DiT into a 1–4 NFE generator without a discriminator or external teacher (`configs/methods/apex.toml`, `docs/experimental/apex.md`). The "adversarial" signal comes from querying the same network under a learned shifted text condition (`ConditionShift`, `c_fake = A·c + b`). Training does **3 DiT forwards per step** (real + fake@real_xt stop-grad + fake@fake_xt), so `blocks_to_swap = 0` is method-forced — block swapping would crash on the second forward with a `FakeTensor` device mismatch. Warm-start from a prior LoRA checkpoint is effectively mandatory (`network_weights` + `dim_from_weights=true`); cold-start catastrophically regressed in Phase 0 testing. Inference is `make exp-test-apex` (4 euler steps, `guidance_scale=1.0`).
 
 ## Modulation guidance
 
@@ -211,11 +216,11 @@ Text-conditioned AdaLN modulation via a learned `pooled_text_proj` MLP (Starodub
 
 ## IP-Adapter
 
-Decoupled image cross-attention (Ye et al. 2023). DiT is frozen; trains only the Perceiver resampler and per-block parallel `to_k_ip`/`to_v_ip` projections (~150M params at default `K=16`, 28 blocks). Reference image → frozen vision tower (PE-Core-L14-336 by default) → resampler → K compact IP tokens → per-block KV → patched cross-attention adds `scale * SDPA(text_q, ip_k, ip_v)` to the existing text cross-attention. Reuses the LoRA pipeline's data layout — source images live under `post_image_dataset/resized/` and caches (latents, text-emb, PE features) live under `post_image_dataset/lora/`. Defaults to PRE-CACHED PE features (`{stem}_anima_pe.safetensors` from `make preprocess-pe`) so training never loads the vision encoder. CFG dropout (`image_drop_p`) zeros image conditioning so inference can do image-CFG independently of text-CFG. See `docs/methods/ip-adapter.md`.
+Decoupled image cross-attention (Ye et al. 2023). DiT is frozen; trains only the Perceiver resampler and per-block parallel `to_k_ip`/`to_v_ip` projections (~150M params at default `K=16`, 28 blocks). Reference image → frozen vision tower (PE-Core-L14-336 by default) → resampler → K compact IP tokens → per-block KV → patched cross-attention adds `scale * SDPA(text_q, ip_k, ip_v)` to the existing text cross-attention. Reuses the LoRA pipeline's data layout — source images live under `post_image_dataset/resized/` and caches (latents, text-emb, PE features) live under `post_image_dataset/lora/`. Defaults to PRE-CACHED PE features (`{stem}_anima_pe.safetensors` from `make preprocess-pe`) so training never loads the vision encoder. CFG dropout (`image_drop_p`) zeros image conditioning so inference can do image-CFG independently of text-CFG. See `docs/experimental/ip-adapter.md`.
 
 ## EasyControl
 
-Extended self-attention image conditioning. DiT is frozen; trains per-block cond LoRA on self-attn (q/k/v/o) + FFN (layer1/layer2) plus a per-block scalar logit-bias `b_cond` (init `-10`) that gates cond-position softmax mass. Reference is VAE-encoded and patch-embedded by the DiT's frozen `x_embedder` into condition tokens that flow through every block alongside the target stream; target self-attention attends to a key set extended with the cond stream's keys/values. Training uses a **two-stream block forward** (target + cond in one scope, no deferred-backward dance); inference prefills a per-block `(K_c, V_c)` cache once at setup and reuses it across every denoising step and every CFG branch (cond is deterministic — `cond_temb = t_embedder(0)`). Source images live in `easycontrol-dataset/`; caches go to `post_image_dataset/easycontrol/` via subset `cache_dir`. Reuses cached VAE latents — no new sidecar. See `docs/methods/easycontrol.md`.
+Extended self-attention image conditioning. DiT is frozen; trains per-block cond LoRA on self-attn (q/k/v/o) + FFN (layer1/layer2) plus a per-block scalar logit-bias `b_cond` (init `-10`) that gates cond-position softmax mass. Reference is VAE-encoded and patch-embedded by the DiT's frozen `x_embedder` into condition tokens that flow through every block alongside the target stream; target self-attention attends to a key set extended with the cond stream's keys/values. Training uses a **two-stream block forward** (target + cond in one scope, no deferred-backward dance); inference prefills a per-block `(K_c, V_c)` cache once at setup and reuses it across every denoising step and every CFG branch (cond is deterministic — `cond_temb = t_embedder(0)`). Source images live in `easycontrol-dataset/`; caches go to `post_image_dataset/easycontrol/` via subset `cache_dir`. Reuses cached VAE latents — no new sidecar. See `docs/experimental/easycontrol.md`.
 
 ## Embedding inversion
 
