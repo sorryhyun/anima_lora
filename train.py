@@ -5,7 +5,6 @@ import argparse
 import math
 import os
 import typing
-import json
 from dataclasses import dataclass
 from typing import Any, Callable, Union, Optional
 import sys
@@ -90,9 +89,8 @@ from library.training import (
     verify_command_line_training_args,
     verify_training_args,
 )
-from library.training.bias_metric import measure_bias_trajectory
+from library.training.dcw_validation import BiasMetrics
 from library.training.loop import build_loop_state, run_training_loop
-from library.inference.adapters import clear_hydra_sigma, set_hydra_sigma
 from library.log import setup_logging, add_logging_arguments
 
 setup_logging()
@@ -157,6 +155,16 @@ class AnimaTrainer:
         # this and skips its own outer backward to avoid double-stepping or
         # crashing on the detached return tensor.
         self._split_backward_consumed: bool = False
+        # SNR-t bias validation + end-of-training DCW recipe calibration.
+        # Holds list refs to ``_adapters`` and ``_padding_mask_cache`` so it
+        # observes the trainer's late-bound adapter resolution and shares
+        # the same cache keys as ``_process_batch_inner``'s forwards.
+        self._bias = BiasMetrics(
+            adapters=self._adapters,
+            padding_mask_cache=self._padding_mask_cache,
+            switch_rng=self._switch_rng_state,
+            restore_rng=self._restore_rng_state,
+        )
 
     # region logging helpers
 
@@ -2157,8 +2165,6 @@ class AnimaTrainer:
         clean_memory_on_device(accelerator.device)
         progress_bar.unpause()
 
-    _BIAS_INCOMPATIBLE_ADAPTERS = frozenset({"apex", "ip_adapter", "easycontrol"})
-
     def _run_bias_validation(
         self,
         ctx: "TrainCtx",
@@ -2170,515 +2176,17 @@ class AnimaTrainer:
         log_prefix: str,
         logging_fn,
     ) -> None:
-        """SNR-t bias diagnostic — paired forward/reverse velocity-norm gap
-        across the inference schedule, averaged over the val dataloader.
-
-        The headline scalar (``<prefix>/integrated_signed_gap`` over the late
-        half) tracks the same bias DCW patches at sampler-time, so it
-        correlates with sample quality where FM-MSE val loss does not. See
-        ``docs/methods/dcw.md``.
-
-        LoRA family only — incompatible adapters short-circuit with a one-time
-        warning. Requires cached ``crossattn_emb`` (LoRA training default);
-        batches without it are skipped.
-        """
-        args = ctx.args
-        if not getattr(args, "validation_bias_metric", False):
-            return
-
-        skipped = sorted(
-            getattr(a, "name", "?")
-            for a in self._adapters
-            if getattr(a, "name", None) in self._BIAS_INCOMPATIBLE_ADAPTERS
-        )
-        if skipped:
-            if not getattr(self, "_bias_skip_warned", False):
-                ctx.accelerator.print(
-                    f"[bias-metric] disabled — incompatible adapter(s) active: {skipped}"
-                )
-                self._bias_skip_warned = True
-            return
-
-        accelerator = ctx.accelerator
-        device = accelerator.device
-        weight_dtype = ctx.weight_dtype
-        unwrapped_net = accelerator.unwrap_model(ctx.network)
-        unwrapped_unet = accelerator.unwrap_model(ctx.unet)
-
-        progress_bar.pause() if hasattr(progress_bar, "pause") else None
-        ctx.optimizer_eval_fn()
-        unwrapped_net.eval()
-        if hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
-            unwrapped_unet.switch_block_swap_for_inference()
-        # Inference semantics: full-rank T-LoRA / ReFT (training masks are
-        # not applied at sampling time; see networks/CLAUDE.md).
-        if hasattr(unwrapped_net, "clear_timestep_mask"):
-            unwrapped_net.clear_timestep_mask()
-        rng_states = self._switch_rng_state(
-            args.validation_seed if args.validation_seed is not None else args.seed
-        )
-
-        num_steps = int(getattr(args, "validation_bias_steps", 12))
-        flow_shift = float(getattr(args, "flow_shift", 1.0))
-        val_seed_base = int(
-            args.validation_seed if args.validation_seed is not None else args.seed
-        )
-
-        sum_v_fwd = torch.zeros(num_steps, dtype=torch.float64)
-        sum_v_rev = torch.zeros(num_steps, dtype=torch.float64)
-        sum_v_fwd_LL = torch.zeros(num_steps, dtype=torch.float64)
-        sum_v_rev_LL = torch.zeros(num_steps, dtype=torch.float64)
-        n_batches = 0
-        skipped_no_crossattn = 0
-
-        bias_pbar = tqdm(
-            total=val.steps,
-            smoothing=0,
-            disable=not accelerator.is_local_main_process,
-            desc=f"{log_prefix.split('/')[-1]} bias",
-        )
-        try:
-            for val_step, batch in enumerate(val.dataloader):
-                if val_step >= val.steps:
-                    break
-
-                latents = batch["latents"]
-                if latents is None:
-                    bias_pbar.update(1)
-                    continue
-                latents = latents.to(device, dtype=weight_dtype)
-                if latents.ndim == 4:
-                    latents = latents.unsqueeze(2)  # (B, C, 1, H, W)
-
-                teo = batch.get("text_encoder_outputs_list")
-                if teo is None or len(teo) < 6 or teo[4] is None:
-                    skipped_no_crossattn += 1
-                    bias_pbar.update(1)
-                    continue
-                crossattn_emb = teo[4].to(device, dtype=weight_dtype)
-                t5_attn_mask = teo[3]
-                if t5_attn_mask is not None:
-                    t5_attn_mask = t5_attn_mask.to(device)
-
-                B, _, _, h_lat, w_lat = latents.shape
-                pm_key = (B, h_lat, w_lat, weight_dtype, device)
-                padding_mask = self._padding_mask_cache.get(pm_key)
-                if padding_mask is None:
-                    padding_mask = torch.zeros(
-                        B, 1, h_lat, w_lat, dtype=weight_dtype, device=device
-                    )
-                    self._padding_mask_cache[pm_key] = padding_mask
-
-                fwd_kwargs: dict = {}
-                if getattr(args, "trim_crossattn_kv", False) and t5_attn_mask is not None:
-                    seqlens = t5_attn_mask.sum(dim=-1).to(torch.int32)
-                    fwd_kwargs["crossattn_seqlens"] = seqlens
-                    fwd_kwargs["max_crossattn_seqlen"] = int(seqlens.max())
-
-                def forward_fn(x_t, sigma_b, _emb=crossattn_emb, _pm=padding_mask, _kw=fwd_kwargs):
-                    set_hydra_sigma(unwrapped_unet, sigma_b)
-                    with accelerator.autocast():
-                        return unwrapped_unet(x_t, sigma_b, _emb, padding_mask=_pm, **_kw)
-
-                seed = val_seed_base + 1000 * val_step
-                traj = measure_bias_trajectory(
-                    forward_fn,
-                    latents,
-                    num_steps=num_steps,
-                    flow_shift=flow_shift,
-                    noise_seed=seed,
-                )
-                sum_v_fwd += traj["v_fwd"]
-                sum_v_rev += traj["v_rev"]
-                sum_v_fwd_LL += traj["v_fwd_LL"]
-                sum_v_rev_LL += traj["v_rev_LL"]
-                n_batches += 1
-                bias_pbar.update(1)
-                bias_pbar.set_postfix_str(
-                    f"|gap|={float(traj['gap'].abs().sum()):.2f}"
-                )
-        finally:
-            bias_pbar.close()
-            clear_hydra_sigma(unwrapped_unet)
-
-        self._restore_rng_state(rng_states)
-        ctx.optimizer_train_fn()
-        unwrapped_net.train()
-        if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
-            unwrapped_unet.switch_block_swap_for_training()
-        clean_memory_on_device(device)
-        if hasattr(progress_bar, "unpause"):
-            progress_bar.unpause()
-
-        if skipped_no_crossattn and not getattr(self, "_bias_no_crossattn_warned", False):
-            accelerator.print(
-                f"[bias-metric] skipped {skipped_no_crossattn} batch(es) without "
-                "cached crossattn_emb — set cache_text_encoder_outputs=true "
-                "(default for LoRA) to enable."
-            )
-            self._bias_no_crossattn_warned = True
-
-        if n_batches == 0 or not ctx.is_tracking:
-            return
-
-        v_fwd = sum_v_fwd / n_batches
-        v_rev = sum_v_rev / n_batches
-        v_fwd_LL = sum_v_fwd_LL / n_batches
-        v_rev_LL = sum_v_rev_LL / n_batches
-        gap = v_rev - v_fwd
-        gap_LL = v_rev_LL - v_fwd_LL
-        late = num_steps // 2
-
-        # Stash the final aggregated trajectory so the end-of-training
-        # recipe-write hook can reuse it without re-running validation
-        # (see _maybe_calibrate_dcw_recipe). Sigmas come from the same
-        # get_timesteps_sigmas call used inside measure_bias_trajectory.
-        from library.inference.sampling import get_timesteps_sigmas
-
-        _, sig_t = get_timesteps_sigmas(num_steps, flow_shift, device)
-        self._last_bias_validation = {
-            "gap_LL": gap_LL.tolist(),
-            "sigmas": sig_t.cpu()[:num_steps].to(torch.float64).tolist(),
-            "num_steps": num_steps,
-            "flow_shift": flow_shift,
-            "n_batches": n_batches,
-        }
-
-        logs: dict = {
-            f"{log_prefix}/integrated_signed_gap": float(gap.sum()),
-            f"{log_prefix}/integrated_abs_gap": float(gap.abs().sum()),
-            f"{log_prefix}/integrated_signed_gap_late": float(gap[late:].sum()),
-            f"{log_prefix}/integrated_abs_gap_late": float(gap[late:].abs().sum()),
-            f"{log_prefix}/integrated_signed_gap_LL_late": float(gap_LL[late:].sum()),
-            f"{log_prefix}/integrated_abs_gap_LL_late": float(gap_LL[late:].abs().sum()),
-        }
-        for i in range(num_steps):
-            logs[f"{log_prefix}/gap_step_{i:02d}"] = float(gap[i])
-            logs[f"{log_prefix}/gap_LL_step_{i:02d}"] = float(gap_LL[i])
-            logs[f"{log_prefix}/v_fwd_step_{i:02d}"] = float(v_fwd[i])
-            logs[f"{log_prefix}/v_rev_step_{i:02d}"] = float(v_rev[i])
-        logging_fn(accelerator, logs, global_step, epoch + 1)
-
-    def _run_bias_LL_pass(
-        self,
-        ctx: "TrainCtx",
-        val: "ValCtx",
-        *,
-        num_steps: int,
-        flow_shift: float,
-        val_seed_base: int,
-        dcw_probe_lambda: float,
-        dcw_probe_schedule: str,
-        pbar: "tqdm | None" = None,
-        pbar_label: str = "",
-    ) -> tuple[torch.Tensor, torch.Tensor, int]:
-        """One sweep of the val dataloader returning summed LL-band
-        ``v_fwd`` / ``v_rev`` trajectories (length ``num_steps``, float64
-        on CPU) and the count of usable batches. With
-        ``dcw_probe_lambda=0.0`` this is a baseline pass; with a nonzero λ
-        it's the calibration probe pass.
-
-        When ``pbar`` is provided, advances by 1 per val batch (skipped or
-        not) and updates the postfix with ``pbar_label`` plus the running
-        mean late-half ``|gap_LL|`` from this pass so far. Caller owns the
-        bar's lifecycle.
-
-        Caller is responsible for putting models in eval mode, switching
-        block-swap, clearing timestep masks, and restoring RNG / train
-        state — this just iterates and accumulates.
-        """
-        args = ctx.args
-        accelerator = ctx.accelerator
-        device = accelerator.device
-        weight_dtype = ctx.weight_dtype
-        unwrapped_unet = accelerator.unwrap_model(ctx.unet)
-
-        sum_v_fwd_LL = torch.zeros(num_steps, dtype=torch.float64)
-        sum_v_rev_LL = torch.zeros(num_steps, dtype=torch.float64)
-        n_batches = 0
-        late = num_steps // 2
-        try:
-            for val_step, batch in enumerate(val.dataloader):
-                if val_step >= val.steps:
-                    break
-                latents = batch["latents"]
-                if latents is None:
-                    if pbar is not None:
-                        pbar.update(1)
-                    continue
-                latents = latents.to(device, dtype=weight_dtype)
-                if latents.ndim == 4:
-                    latents = latents.unsqueeze(2)
-
-                teo = batch.get("text_encoder_outputs_list")
-                if teo is None or len(teo) < 6 or teo[4] is None:
-                    if pbar is not None:
-                        pbar.update(1)
-                    continue
-                crossattn_emb = teo[4].to(device, dtype=weight_dtype)
-                t5_attn_mask = teo[3]
-                if t5_attn_mask is not None:
-                    t5_attn_mask = t5_attn_mask.to(device)
-
-                B, _, _, h_lat, w_lat = latents.shape
-                pm_key = (B, h_lat, w_lat, weight_dtype, device)
-                padding_mask = self._padding_mask_cache.get(pm_key)
-                if padding_mask is None:
-                    padding_mask = torch.zeros(
-                        B, 1, h_lat, w_lat, dtype=weight_dtype, device=device
-                    )
-                    self._padding_mask_cache[pm_key] = padding_mask
-
-                fwd_kwargs: dict = {}
-                if getattr(args, "trim_crossattn_kv", False) and t5_attn_mask is not None:
-                    seqlens = t5_attn_mask.sum(dim=-1).to(torch.int32)
-                    fwd_kwargs["crossattn_seqlens"] = seqlens
-                    fwd_kwargs["max_crossattn_seqlen"] = int(seqlens.max())
-
-                def forward_fn(x_t, sigma_b, _emb=crossattn_emb, _pm=padding_mask, _kw=fwd_kwargs):
-                    set_hydra_sigma(unwrapped_unet, sigma_b)
-                    with accelerator.autocast():
-                        return unwrapped_unet(x_t, sigma_b, _emb, padding_mask=_pm, **_kw)
-
-                seed = val_seed_base + 1000 * val_step
-                traj = measure_bias_trajectory(
-                    forward_fn,
-                    latents,
-                    num_steps=num_steps,
-                    flow_shift=flow_shift,
-                    noise_seed=seed,
-                    dcw_probe_lambda=dcw_probe_lambda,
-                    dcw_probe_schedule=dcw_probe_schedule,
-                )
-                sum_v_fwd_LL += traj["v_fwd_LL"]
-                sum_v_rev_LL += traj["v_rev_LL"]
-                n_batches += 1
-                if pbar is not None:
-                    pbar.update(1)
-                    mean_gap_LL = (sum_v_rev_LL - sum_v_fwd_LL) / n_batches
-                    abs_gap_late = float(mean_gap_LL[late:].abs().sum())
-                    pbar.set_postfix_str(
-                        f"{pbar_label} |gap_LL|_late={abs_gap_late:.2f} "
-                        f"({n_batches} batch{'es' if n_batches != 1 else ''})"
-                    )
-        finally:
-            clear_hydra_sigma(unwrapped_unet)
-
-        return sum_v_fwd_LL, sum_v_rev_LL, n_batches
-
-    def _calibrate_dcw_recipe(
-        self,
-        ctx: "TrainCtx",
-        val: "ValCtx",
-        *,
-        metadata: dict,
-    ) -> None:
-        """End-of-training: solve a per-LoRA LL-band DCW recipe and stuff
-        it into the safetensors metadata.
-
-        Iterates the val dataloader once with a small λ_LL=−ε DCW probe
-        injected into the reverse rollout, computes per-step
-        ``gap_LL_probe``, then closed-form solves for the late-half
-        optimum λ_LL* against a baseline ``gap_LL``. The baseline is
-        reused from the most recent ``--validation_bias_metric`` pass
-        when available, otherwise an extra non-probe pass is run inline
-        — so calibration works whether or not bias-metric validation was
-        enabled during training.
-
-        Skipped silently when the active adapter is bias-incompatible
-        (APEX / IP-Adapter / EasyControl) or the val pass produces zero
-        usable batches. See ``docs/proposal/lora-dcw-proposal.md``.
-        """
-        args = ctx.args
-        if not getattr(args, "calibrate_dcw_recipe", True):
-            return
-
-        skipped = sorted(
-            getattr(a, "name", "?")
-            for a in self._adapters
-            if getattr(a, "name", None) in self._BIAS_INCOMPATIBLE_ADAPTERS
-        )
-        if skipped:
-            return
-
-        accelerator = ctx.accelerator
-        if not accelerator.is_main_process:
-            return
-
-        device = accelerator.device
-        unwrapped_net = accelerator.unwrap_model(ctx.network)
-        unwrapped_unet = accelerator.unwrap_model(ctx.unet)
-
-        ctx.optimizer_eval_fn()
-        unwrapped_net.eval()
-        if hasattr(unwrapped_unet, "switch_block_swap_for_inference"):
-            unwrapped_unet.switch_block_swap_for_inference()
-        if hasattr(unwrapped_net, "clear_timestep_mask"):
-            unwrapped_net.clear_timestep_mask()
-        rng_states = self._switch_rng_state(
-            args.validation_seed if args.validation_seed is not None else args.seed
-        )
-
-        anchors = list(
-            getattr(args, "dcw_calibration_anchors", [-0.015, -0.022, -0.030])
-        )
-        anchors = [float(a) for a in anchors if float(a) != 0.0]
-        if not anchors:
-            accelerator.print(
-                "[dcw-calibration] no nonzero anchors configured — skipping"
-            )
-            return
-        schedule = getattr(args, "dcw_calibration_schedule", "one_minus_sigma")
-        val_seed_base = int(
-            args.validation_seed if args.validation_seed is not None else args.seed
-        )
-
-        flow_shift = float(getattr(args, "flow_shift", 1.0))
-        num_steps = int(
-            getattr(args, "dcw_calibration_steps", None)
-            or getattr(args, "validation_bias_steps", 12)
-        )
-
-        # Cached bias-metric baseline (cheap per-cycle diagnostic) is only
-        # reusable when its step count matches calibration's. Otherwise σ
-        # samples differ and the late-half gap is not comparable across
-        # the baseline-vs-anchor passes the selector reads.
-        baseline = getattr(self, "_last_bias_validation", None)
-        if baseline is not None and baseline["num_steps"] != num_steps:
-            baseline = None
-
-        anchor_gaps: list[tuple[float, list[float]]] = []
-        n_batches = 0
-        n_passes = (1 if baseline is None else 0) + len(anchors)
-        cal_pbar = tqdm(
-            total=n_passes * val.steps,
-            smoothing=0,
-            disable=not accelerator.is_local_main_process,
-            desc=f"dcw-calib (steps={num_steps})",
-        )
-        try:
-            if baseline is None:
-                accelerator.print(
-                    f"[dcw-calibration] running baseline val pass at "
-                    f"num_steps={num_steps} before {len(anchors)} anchor pass(es)"
-                )
-                fwd_LL_base, rev_LL_base, n_batches_base = self._run_bias_LL_pass(
-                    ctx,
-                    val,
-                    num_steps=num_steps,
-                    flow_shift=flow_shift,
-                    val_seed_base=val_seed_base,
-                    dcw_probe_lambda=0.0,
-                    dcw_probe_schedule=schedule,
-                    pbar=cal_pbar,
-                    pbar_label="baseline",
-                )
-                if n_batches_base == 0:
-                    return
-                gap_LL_base_list = (
-                    (rev_LL_base - fwd_LL_base) / n_batches_base
-                ).tolist()
-                from library.inference.sampling import get_timesteps_sigmas
-
-                _, sig_t = get_timesteps_sigmas(num_steps, flow_shift, device)
-                baseline = {
-                    "gap_LL": gap_LL_base_list,
-                    "sigmas": sig_t.cpu()[:num_steps].to(torch.float64).tolist(),
-                    "num_steps": num_steps,
-                    "flow_shift": flow_shift,
-                    "n_batches": n_batches_base,
-                }
-
-            for lam in anchors:
-                sum_v_fwd_LL, sum_v_rev_LL, n_batches = self._run_bias_LL_pass(
-                    ctx,
-                    val,
-                    num_steps=num_steps,
-                    flow_shift=flow_shift,
-                    val_seed_base=val_seed_base,
-                    dcw_probe_lambda=lam,
-                    dcw_probe_schedule=schedule,
-                    pbar=cal_pbar,
-                    pbar_label=f"λ={lam:+.4f}",
-                )
-                if n_batches == 0:
-                    accelerator.print(
-                        f"[dcw-calibration] anchor λ={lam:+.4f} produced no usable "
-                        "batches — skipping recipe"
-                    )
-                    return
-                gap_LL_at_lam = (
-                    (sum_v_rev_LL - sum_v_fwd_LL) / n_batches
-                ).tolist()
-                anchor_gaps.append((lam, gap_LL_at_lam))
-        finally:
-            cal_pbar.close()
-            self._restore_rng_state(rng_states)
-            ctx.optimizer_train_fn()
-            unwrapped_net.train()
-            if hasattr(unwrapped_unet, "switch_block_swap_for_training"):
-                unwrapped_unet.switch_block_swap_for_training()
-            clean_memory_on_device(device)
-
-        from library.inference.dcw_calibration import select_best_anchor_LL
-
-        try:
-            selected = select_best_anchor_LL(
-                baseline["gap_LL"],
-                anchor_gaps,
-                baseline["sigmas"],
-                schedule=schedule,
-            )
-        except ValueError as exc:
-            accelerator.print(
-                f"[dcw-calibration] selector failed: {exc} — skipping recipe"
-            )
-            return
-
-        recipe_payload = {
-            "lambda_LL": selected["lambda_LL"],
-            "schedule_LL": selected["schedule_LL"],
-        }
-        late_idx = num_steps // 2
-        gap_LL_base = baseline["gap_LL"]
-        provenance = {
-            "version": 2,  # bump: was linear-response solver, now anchor selection
-            "band": "LL",
-            "anchors": anchors,
-            "num_steps": num_steps,
-            "n_batches": n_batches,
-            "n_batches_baseline": baseline.get("n_batches", n_batches),
-            "baseline_signed_gap_LL_late": float(sum(gap_LL_base[late_idx:])),
-            "baseline_abs_gap_LL_late": float(
-                sum(abs(g) for g in gap_LL_base[late_idx:])
-            ),
-            "baseline_gap_LL_late_loss": selected["baseline_gap_LL_late"],
-            "best_gap_LL_late_loss": selected["best_gap_LL_late"],
-            "candidate_losses": [
-                {"lambda": c["lambda"], "loss": c["loss"]}
-                for c in selected["candidates"]
-            ],
-            "num_late_steps": selected["num_late_steps"],
-        }
-
-        metadata["ss_dcw_recipe"] = json.dumps(
-            recipe_payload, separators=(",", ":")
-        )
-        metadata["ss_dcw_calibration"] = json.dumps(
-            provenance, separators=(",", ":")
-        )
-
-        cand_str = " ".join(
-            f"λ={c['lambda']:+.4f}→{c['loss']:.1f}"
-            for c in selected["candidates"]
-        )
-        winner_note = (
-            "baseline (no DCW)" if selected["baseline_was_best"]
-            else f"λ={selected['lambda_LL']:+.4f}"
-        )
-        accelerator.print(
-            f"[dcw-calibration] selected {winner_note} ({selected['schedule_LL']}); "
-            f"candidates: {cand_str}; n_batches={n_batches}"
+        """Thin shim — loop.py gates calls with ``hasattr(trainer,
+        "_run_bias_validation")``, so the trainer keeps this attribute even
+        though the implementation now lives in ``BiasMetrics``."""
+        self._bias.run_validation(
+            ctx,
+            val,
+            epoch=epoch,
+            global_step=global_step,
+            progress_bar=progress_bar,
+            log_prefix=log_prefix,
+            logging_fn=logging_fn,
         )
 
     def train(self, args):
@@ -3083,7 +2591,7 @@ class AnimaTrainer:
         # Per-LoRA DCW recipe is computed BEFORE save_final so the solver's
         # output lands in saver.metadata (the same dict CheckpointSaver
         # holds by reference) and gets serialized into the .safetensors.
-        self._calibrate_dcw_recipe(
+        self._bias.calibrate_recipe(
             loop_state.train_ctx,
             loop_state.val_ctx,
             metadata=metadata,
