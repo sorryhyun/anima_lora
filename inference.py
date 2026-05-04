@@ -455,6 +455,35 @@ def parse_args() -> argparse.Namespace:
         "'LH+HL+HH', or 'all'.",
     )
 
+    # DCW v4 — learnable calibrator (online observation + prompt + aspect fusion).
+    # See docs/proposal/dcw-learnable-calibrator-v4.md.
+    parser.add_argument(
+        "--dcw_v4",
+        type=str,
+        default=None,
+        help="Path to a fusion_head.safetensors artifact (or a directory "
+        "containing one). When set, overrides --dcw_lambda with a per-step λ "
+        "from the v4 controller. LL-only by default.",
+    )
+    parser.add_argument(
+        "--dcw_v4_warmup_k",
+        type=int,
+        default=None,
+        help="Override the warmup-k baked into the artifact's metadata.",
+    )
+    parser.add_argument(
+        "--dcw_v4_disable_shrinkage",
+        action="store_true",
+        help="Skip the σ̂²-based shrinkage on α̂ (use raw α̂). Recommended if the "
+        "artifact's σ̂² channel didn't pass Gate B (the shipped prototype's didn't).",
+    )
+    parser.add_argument(
+        "--dcw_v4_disable_backstop",
+        action="store_true",
+        help="Skip the caption-length backstop. Currently unused (tau_short not "
+        "shipped in artifact yet).",
+    )
+
     # arguments for batch and interactive modes
     parser.add_argument(
         "--from_file", type=str, default=None, help="Read prompts from a file"

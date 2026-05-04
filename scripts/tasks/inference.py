@@ -247,6 +247,45 @@ def cmd_test_dcw(extra):
     run([*INFERENCE_BASE, "--lora_weight", str(latest_lora()), "--dcw", *extra])
 
 
+def _latest_fusion_head() -> str:
+    """Resolve the most recent fusion_head.safetensors under any DCW root.
+
+    Scans post_image_dataset/dcw/ (new `make dcw` output) first, then
+    bench/dcw/results/ (legacy). Newest mtime wins across both.
+    """
+    from pathlib import Path
+
+    roots = [Path("post_image_dataset/dcw"), Path("bench/dcw/results")]
+    candidates: list[Path] = []
+    for root in roots:
+        if root.exists():
+            candidates.extend(root.glob("*/fusion_head.safetensors"))
+    if not candidates:
+        raise SystemExit(
+            "no fusion_head.safetensors found under post_image_dataset/dcw/ "
+            "or bench/dcw/results/ — run `make dcw-train` first"
+        )
+    return str(max(candidates, key=lambda p: p.stat().st_mtime))
+
+
+def cmd_test_dcw_v4(extra):
+    """Inference with latest LoRA + DCW v4 learnable calibrator.
+
+    Auto-resolves the most recent fusion_head.safetensors. Pass
+    --dcw_v4 <path> in extra to override. Pass --dcw_v4_disable_shrinkage
+    if the artifact's σ̂² channel didn't pass Gate B (the prototype's didn't).
+    """
+    extra_has_v4 = any(a.startswith("--dcw_v4") and not a.startswith("--dcw_v4_") for a in extra)
+    v4_args = [] if extra_has_v4 else ["--dcw_v4", _latest_fusion_head()]
+    run([
+        *INFERENCE_BASE,
+        "--lora_weight", str(latest_lora()),
+        *v4_args,
+        "--dcw_v4_disable_shrinkage",  # prototype σ̂² channel doesn't pass Gate B
+        *extra,
+    ])
+
+
 def cmd_test_spectrum_dcw(extra):
     """Spectrum + DCW composed. Same Spectrum knobs as test-spectrum."""
     run(

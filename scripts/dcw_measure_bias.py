@@ -108,7 +108,7 @@ import torch
 from safetensors.torch import load_file
 from tqdm import tqdm
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from bench._common import make_run_dir, write_result
@@ -725,7 +725,15 @@ def parse_args() -> argparse.Namespace:
         "--label",
         type=str,
         default=None,
-        help="Optional label appended to the run dir (bench/dcw/results/<ts>-<label>/).",
+        help="Optional label appended to the run dir (<out_root>/<ts>-<label>/).",
+    )
+    p.add_argument(
+        "--out_root",
+        type=str,
+        default=None,
+        help="Override the run-dir root. Default bench/dcw/results/. "
+        "`make dcw` redirects to post_image_dataset/dcw/ since calibration "
+        "trajectories are cache, not published-bench artifacts.",
     )
     return p.parse_args()
 
@@ -885,7 +893,7 @@ def main() -> None:
         raise SystemExit(
             "--image_h and --image_w must be set together (or both omitted)."
         )
-    out_dir = make_run_dir("dcw", label=args.label)
+    out_dir = make_run_dir("dcw", label=args.label, root=args.out_root)
     log.info(f"output → {out_dir}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1052,10 +1060,12 @@ def main() -> None:
     }
 
     per_sample_bands: dict[str, np.ndarray] | None = None
+    per_sample_v_rev_bands: dict[str, np.ndarray] | None = None
     per_sample_stems: list[str] | None = None
     if args.dump_per_sample_gaps:
         n_traj = len(encoded) * args.n_seeds
         per_sample_bands = {b: np.zeros((n_traj, n_steps)) for b in BANDS}
+        per_sample_v_rev_bands = {b: np.zeros((n_traj, n_steps)) for b in BANDS}
         per_sample_stems = [""] * n_traj
 
     t0 = time.time()
@@ -1113,6 +1123,7 @@ def main() -> None:
                     if name == "baseline" and per_sample_bands is not None:
                         row = img_idx * args.n_seeds + seed_idx
                         per_sample_bands[b][row] = gap_b
+                        per_sample_v_rev_bands[b][row] = rev_bands[b]
                         per_sample_stems[row] = stem
                 accum[name]["n"] += 1
             pbar.update(1)
@@ -1174,6 +1185,7 @@ def main() -> None:
             sigmas=sigmas.numpy()[:n_steps],
             stems=np.array(per_sample_stems, dtype=object),
             **{f"gap_{b}": per_sample_bands[b] for b in BANDS},
+            **{f"v_rev_{b}": per_sample_v_rev_bands[b] for b in BANDS},
         )
         log.info(f"per-sample gaps → {per_sample_path}")
 

@@ -18,6 +18,7 @@ category). This file is just a name → callable dispatch table.
 import sys
 
 from scripts.tasks import (
+    dcw,
     downloads,
     gui,
     inference,
@@ -94,6 +95,18 @@ COMMANDS = {
     "test-dcw": (
         inference.cmd_test_dcw,
         "Inference with latest LoRA + DCW post-step bias correction",
+    ),
+    "test-dcw-v4": (
+        inference.cmd_test_dcw_v4,
+        "Inference with latest LoRA + DCW v4 learnable calibrator (auto-resolves fusion_head.safetensors)",
+    ),
+    "dcw": (
+        dcw.cmd_dcw,
+        "Calibrate DCW v4: sample 3 aspect buckets (default 80×3 seeds) + train fusion head",
+    ),
+    "dcw-train": (
+        dcw.cmd_dcw_train,
+        "Train-only on existing bench/dcw/results/ pool (~30s, no sampling)",
     ),
     "test-spectrum-dcw": (
         inference.cmd_test_spectrum_dcw,

@@ -22,6 +22,7 @@ Models" (CVPR 2026, arXiv:2604.16044).
 from typing import Literal
 
 import torch
+import torch.nn as nn
 
 Schedule = Literal["one_minus_sigma", "sigma_i", "const", "none"]
 
@@ -132,3 +133,69 @@ def apply_dcw(
     HH_m = HH if "HH" in bands else z
     masked = _haar_idwt_2d(LL_m, LH_m, HL_m, HH_m).to(prev_sample.dtype)
     return prev_sample + s * masked
+
+
+def haar_LL_norm(v: torch.Tensor) -> float:
+    """Single-level Haar LL-band Frobenius norm of a velocity tensor.
+
+    Mirrors ``haar_band_norms_batched`` in ``scripts/dcw_measure_bias.py`` —
+    used at inference to compute v_rev_LL[i] for the v4 fusion head's g_obs
+    channel. Caller passes velocity in any layout where the last two dims
+    are spatial (e.g. (B, C, T, H, W) or (B, C, H, W)); the DWT is taken on
+    those last two dims and we take the global Frobenius norm of LL.
+    """
+    LL, _, _, _ = _haar_dwt_2d(v.float())
+    return float(LL.flatten().norm())
+
+
+class FusionHead(nn.Module):
+    """v4 fusion head: (c_pool, aspect, g_obs[0:k], aux) → (α̂, log σ̂²).
+
+    Shared by the trainer (``scripts/dcw_train_fusion_head.py``) and the
+    inference controller (``library/inference/dcw_v4.py``) so the MLP
+    architecture is in one place. The trainer's saved state-dict keys are
+    prefixed with ``head.`` (so e.g. ``head.aspect_emb.weight`` /
+    ``head.mlp.X.weight`` in the artifact); inference module strips the
+    prefix when loading.
+    """
+
+    def __init__(
+        self,
+        c_pool_dim: int = 1024,
+        n_aspects: int = 3,
+        aspect_emb_dim: int = 16,
+        k: int = 7,
+        aux_dim: int = 3,
+        hidden: tuple[int, ...] = (256, 128),
+        dropout: float = 0.2,
+        log_sigma2_init: float = 0.0,
+    ):
+        super().__init__()
+        self.k = k
+        self.aspect_emb = nn.Embedding(n_aspects, aspect_emb_dim)
+        nn.init.normal_(self.aspect_emb.weight, std=0.02)
+        in_dim = c_pool_dim + aspect_emb_dim + k + aux_dim
+        layers: list[nn.Module] = [nn.LayerNorm(in_dim)]
+        prev = in_dim
+        for h in hidden:
+            layers += [nn.Linear(prev, h), nn.GELU(), nn.Dropout(dropout)]
+            prev = h
+        head = nn.Linear(prev, 2)
+        nn.init.zeros_(head.weight)
+        nn.init.zeros_(head.bias)
+        with torch.no_grad():
+            head.bias[1] = log_sigma2_init
+        layers.append(head)
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(
+        self,
+        c_pool: torch.Tensor,
+        aspect_id: torch.Tensor,
+        g_obs: torch.Tensor,
+        aux: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        a = self.aspect_emb(aspect_id)
+        x = torch.cat([c_pool, a, g_obs, aux], dim=-1)
+        out = self.mlp(x)
+        return out[..., 0], out[..., 1]

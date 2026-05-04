@@ -117,11 +117,24 @@ def make_run_dir(
     method: str,
     label: str | None = None,
     when: datetime | None = None,
+    *,
+    root: str | Path | None = None,
 ) -> Path:
-    """Create and return ``bench/<method>/results/<YYYYMMDD-HHMM>[-<label>]/``."""
+    """Create and return ``<root>/<YYYYMMDD-HHMM>[-<label>]/``.
+
+    Default ``root`` is ``<repo>/bench/<method>/results/``. Pass an explicit
+    ``root`` (e.g. ``post_image_dataset/dcw``) to redirect — useful for
+    calibration data that's logically a cache, not a published-bench artifact.
+    """
     ts = (when or datetime.now()).strftime("%Y%m%d-%H%M")
     name = f"{ts}-{label}" if label else ts
-    run_dir = REPO_ROOT / "bench" / method / "results" / name
+    if root is not None:
+        base = Path(root)
+        if not base.is_absolute():
+            base = REPO_ROOT / base
+    else:
+        base = REPO_ROOT / "bench" / method / "results"
+    run_dir = base / name
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
