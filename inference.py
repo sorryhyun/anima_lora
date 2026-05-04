@@ -33,6 +33,10 @@ from library.inference import (
     save_output,
 )
 
+# Side-effect import: registers spectrum_denoise with library.inference.generation
+# so --spectrum dispatches without library.inference holding a hard edge into networks/.
+import networks.spectrum  # noqa: F401, E402
+
 lycoris_available = find_spec("lycoris") is not None
 if lycoris_available:
     pass

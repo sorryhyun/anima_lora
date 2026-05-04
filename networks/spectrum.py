@@ -467,3 +467,10 @@ def spectrum_denoise(
         hook.remove()
 
     return latents
+
+
+# Register with library.inference.generation so generate() can dispatch to us
+# without holding a hard import edge from generation.py back into this file.
+from library.inference.generation import register_spectrum_runner  # noqa: E402
+
+register_spectrum_runner(spectrum_denoise)

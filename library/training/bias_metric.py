@@ -14,7 +14,7 @@ caller's seed.
 In addition to the global norms, the trajectory dict carries the LL Haar
 subband norms (``v_fwd_LL``, ``v_rev_LL``, ``gap_LL``). LL is the only band
 needed by the per-LoRA DCW calibration solver — see
-``docs/proposal/lora-dcw-proposal.md`` and the 2026-05-03 LL-only finding in
+``archive/dcw-learnable-calibrator/proposals/lora-dcw-proposal.md`` and the 2026-05-03 LL-only finding in
 ``docs/methods/dcw.md``.
 
 The forward closure encapsulates per-method DiT call setup (text conds,

@@ -21,6 +21,23 @@ from library.inference.mod_guidance import setup_mod_guidance
 
 logger = logging.getLogger(__name__)
 
+# Spectrum runner registry. The spectrum implementation lives in
+# networks/spectrum.py (or a downstream package); it self-registers on import.
+# generation.py never imports it directly so the dep edge can point inward
+# from a downstream inference package without inverting.
+_SPECTRUM_RUNNER = None
+
+
+def register_spectrum_runner(fn):
+    """Plug in a spectrum_denoise implementation.
+
+    The runner must accept the same kwargs as networks.spectrum.spectrum_denoise.
+    Called by networks/spectrum.py at import time, or by a downstream inference
+    package that ships its own spectrum module.
+    """
+    global _SPECTRUM_RUNNER
+    _SPECTRUM_RUNNER = fn
+
 
 class GenerationSettings:
     def __init__(
@@ -529,9 +546,14 @@ def generate_body(
     lora_cutoff_step = getattr(args, "lora_cutoff_step", None)
 
     if getattr(args, "spectrum", False):
-        from networks.spectrum import spectrum_denoise
+        if _SPECTRUM_RUNNER is None:
+            raise RuntimeError(
+                "--spectrum was passed but no spectrum runner is registered. "
+                "Import networks.spectrum (or the downstream inference package "
+                "that registers it) before calling generate()."
+            )
 
-        latents = spectrum_denoise(
+        latents = _SPECTRUM_RUNNER(
             anima,
             latents,
             timesteps,

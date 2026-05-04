@@ -4,7 +4,7 @@
 Reads a ``gaps_per_sample.npz`` produced by ``measure_bias.py
 --dump_per_sample_gaps`` and computes the early-vs-late per-sample
 gap correlation that gates v0 (offline head) vs v0a (online controller)
-in ``docs/proposal/dcw-learnable-calibrator.md``.
+in ``archive/dcw-learnable-calibrator/proposals/dcw-learnable-calibrator.md``.
 
 Decision (per proposal):
     abs(r) > 0.7 → v0a (online controller, no MLP)

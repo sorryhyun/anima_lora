@@ -609,8 +609,8 @@ def parse_args() -> argparse.Namespace:
         default="flash",
         help="torch | sdpa | xformers | sage | flash",
     )
-    p.add_argument("--n_images", type=int, default=16, help="Cached samples to use")
-    p.add_argument("--n_seeds", type=int, default=2, help="Seeds per sample")
+    p.add_argument("--n_images", type=int, default=8, help="Cached samples to use")
+    p.add_argument("--n_seeds", type=int, default=1, help="Seeds per sample")
     p.add_argument(
         "--image_h",
         type=int,
@@ -655,7 +655,7 @@ def parse_args() -> argparse.Namespace:
         "--dcw_scalers",
         type=float,
         nargs="+",
-        default=[-0.010, 0, 0.010],
+        default=[0.010],
         help="λ values to sweep when --dcw_sweep is set (negative on Anima; "
         "v2 §A4 uses {0, -0.015, -0.020, -0.025}).",
     )
@@ -692,7 +692,7 @@ def parse_args() -> argparse.Namespace:
     g_mod.add_argument(
         "--pooled_text_proj",
         type=str,
-        default="output/ckpt/pooled_text_proj-0429.safetensors",
+        default="",
         help="Path to trained pooled_text_proj weights (.safetensors). "
         "Default enables modulation guidance with the production-baseline "
         "0429 checkpoint and the pos/neg prompts below. Pass an empty "
