@@ -6,11 +6,16 @@ Qwen3 text encoder, and optionally runs the LLM adapter to produce crossattn_emb
 Saves results as *_anima_te.safetensors alongside each image.
 
 Supports caption shuffle variants: with --caption_shuffle_variants N, generates
-N shuffled permutations of each caption and caches all variants in one file.
+N variants per image and caches them all in one file. v0 is the pristine
+original caption (no shuffle, no dropout); v1..v{N-1} are smart-shuffled and,
+if --caption_tag_dropout_rate > 0, have non-prefix tags independently dropped
+at that rate. The strategy loader picks v0 with 20% probability and uniform
+v1..v{N-1} with 80% probability when use_shuffled_caption_variants is on.
 """
 
 import argparse
 import os
+import random
 import sys
 from pathlib import Path
 
@@ -24,15 +29,43 @@ from library.io.cache import TE_CACHE_SUFFIX
 from library.datasets.image_utils import IMAGE_EXTENSIONS
 
 
-def _generate_shuffled_captions(caption: str, num_variants: int) -> list[str]:
-    """Generate N shuffled caption variants using smart shuffle logic."""
+def _generate_caption_variants(
+    caption: str, num_variants: int, tag_dropout_rate: float
+) -> list[str]:
+    """Generate N caption variants for stochastic sampling at training time.
+
+    v0 = pristine original caption. v1..v{N-1} are smart-shuffled (preserving
+    the @artist prefix and "On the …" / "In the …" section anchors), then
+    every tag *after* the @artist prefix is independently dropped with
+    probability ``tag_dropout_rate``. The prefix up to and including the first
+    @-tag is never shuffled or dropped.
+    """
     from library.anima import training as anima_train_utils
 
     tags = [t.strip() for t in caption.split(",")]
-    return [
-        ", ".join(anima_train_utils.anima_smart_shuffle_caption(tags.copy()))
-        for _ in range(num_variants)
-    ]
+
+    # Match anima_smart_shuffle_caption's prefix boundary: tags up to and
+    # including the first @artist tag are protected from both shuffle and
+    # dropout.
+    split_idx = 0
+    for idx, tag in enumerate(tags):
+        if tag.startswith("@"):
+            split_idx = idx + 1
+            break
+
+    variants = [caption]
+    for _ in range(max(0, num_variants - 1)):
+        shuffled = anima_train_utils.anima_smart_shuffle_caption(tags.copy())
+        if tag_dropout_rate > 0.0 and len(shuffled) > split_idx:
+            kept = list(shuffled[:split_idx])
+            for tag in shuffled[split_idx:]:
+                if random.random() >= tag_dropout_rate:
+                    kept.append(tag)
+            if not kept:
+                kept = shuffled[:1]
+            shuffled = kept
+        variants.append(", ".join(shuffled))
+    return variants
 
 
 def _encode_batch(
@@ -109,7 +142,21 @@ def main() -> None:
         "--caption_shuffle_variants",
         type=int,
         default=0,
-        help="Number of shuffled caption variants per image (0 = single caption)",
+        help=(
+            "Number of caption variants per image (0 = single caption). v0 is "
+            "the pristine original; v1..v{N-1} are shuffled (and tag-dropped "
+            "if --caption_tag_dropout_rate > 0)."
+        ),
+    )
+    parser.add_argument(
+        "--caption_tag_dropout_rate",
+        type=float,
+        default=0.0,
+        help=(
+            "Per-tag dropout probability applied to v1..v{N-1} only. Tags up "
+            "to and including the first @artist marker are never dropped. "
+            "Ignored when --caption_shuffle_variants <= 0."
+        ),
     )
     parser.add_argument(
         "--min_pixels",
@@ -191,8 +238,23 @@ def main() -> None:
     skipped = 0
     caption_dropout_rate = torch.tensor(0.0, dtype=torch.float32)
 
+    tag_dropout_rate = float(args.caption_tag_dropout_rate)
     if N > 0:
-        print(f"Caption shuffle variants: {N}")
+        print(
+            f"Caption shuffle variants: {N} "
+            f"(v0=pristine, v1..v{N - 1}=shuffled"
+            + (
+                f" + tag dropout p={tag_dropout_rate:.3f}"
+                if tag_dropout_rate > 0.0
+                else ""
+            )
+            + ")"
+        )
+    elif tag_dropout_rate > 0.0:
+        print(
+            "warn: --caption_tag_dropout_rate ignored because "
+            "--caption_shuffle_variants <= 0 (single-variant cache)."
+        )
 
     pbar = tqdm(total=total, desc="Caching text embeddings")
     for batch_start in range(0, total, args.batch_size):
@@ -246,10 +308,13 @@ def main() -> None:
                 pbar.update(1)
                 pbar.set_postfix_str(f"{img_path.name}")
         else:
-            # Multi-variant: generate N shuffled captions per image, encode all at once
+            # Multi-variant: generate N captions per image (v0 pristine,
+            # v1..v{N-1} shuffled+dropped), encode all at once.
             all_captions: list[str] = []
             for _, caption, _ in to_encode:
-                all_captions.extend(_generate_shuffled_captions(caption, N))
+                all_captions.extend(
+                    _generate_caption_variants(caption, N, tag_dropout_rate)
+                )
 
             prompt_embeds, attn_mask, t5_input_ids, t5_attn_mask, crossattn_emb = (
                 _encode_batch(
@@ -265,6 +330,10 @@ def main() -> None:
             for i, (img_path, _, cache_path) in enumerate(to_encode):
                 save_dict = {
                     "num_variants": torch.tensor(N, dtype=torch.int64),
+                    # Marker: v0 is the pristine original caption (no shuffle,
+                    # no tag dropout). Loaders use this to switch on weighted
+                    # 20%/80% sampling between v0 and v1..v{N-1}.
+                    "v0_intact": torch.tensor(1, dtype=torch.int8),
                     "caption_dropout_rate": caption_dropout_rate,
                 }
                 for vi in range(N):

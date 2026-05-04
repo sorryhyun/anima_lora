@@ -57,6 +57,8 @@ def cmd_preprocess_te(extra):
             "models/diffusion_models/anima-preview3-base.safetensors",
             "--caption_shuffle_variants",
             "4",
+            "--caption_tag_dropout_rate",
+            "0.1",
             *extra,
         ]
     )
