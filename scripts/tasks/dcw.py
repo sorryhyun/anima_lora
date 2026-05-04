@@ -71,7 +71,7 @@ def cmd_dcw(extra):
     (--dit, --lora_weight, --pooled_text_proj '', --guidance_scale, etc.).
     """
     with_a2, extra = _pop_flag(extra, "--with_a2")
-    n_images, extra = _pop_kv(extra, "--n_images", "10")
+    n_images, extra = _pop_kv(extra, "--n_images", "35")
     n_seeds, extra = _pop_kv(extra, "--n_seeds", "3")
     a2_n_images, extra = _pop_kv(extra, "--a2_n_images", "8")
     label, extra = _pop_kv(extra, "--label", "make-dcw")
