@@ -12,13 +12,13 @@
 # Per-variant dim/alpha/lr/epochs are experiment drift, not calibrated
 # defaults — tune freely.
 
-network_alpha = 64
-network_dim = 64
+network_alpha = 16
+network_dim = 16
 
-learning_rate = 2e-5
+learning_rate = 1e-4
 max_train_epochs = 12
-save_every_n_epochs = 4
-checkpointing_epochs = 4
+save_every_n_epochs = 2
+checkpointing_epochs = 2
 
 use_shuffled_caption_variants = true
 cache_llm_adapter_outputs = true
@@ -94,7 +94,7 @@ alpha_rank_scale = 1.0
 # extra DiT forwards per validation pass).
 
 validation_bias_metric = true
-validation_bias_steps = 4   # half of inference's 24; raise for higher resolution
+validation_bias_steps = 12
 
 compile_mode = "full"
 compile_inductor_mode = "reduce-overhead"
