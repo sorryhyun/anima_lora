@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "script": "archive/dcw/measure_bias.py",
+  "label": "hydra-0503-lower",
+  "timestamp_utc": "2026-05-04T01:07:12Z",
+  "git": {
+    "sha": "96272c8",
+    "branch": "main",
+    "dirty": true
+  },
+  "env": {
+    "python": "3.13.12",
+    "platform": "Linux-6.17.0-22-generic-x86_64-with-glibc2.39",
+    "torch": "2.12.0.dev20260415+cu132",
+    "cuda": "13.2",
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 5060 Ti"
+  },
+  "args": {
+    "dit": "models/diffusion_models/anima-preview3-base.safetensors",
+    "lora_weight": [
+      "output/ckpt/anima-hydra-0502-4812.safetensors"
+    ],
+    "lora_multiplier": [
+      0.5
+    ],
+    "dataset_dir": "post_image_dataset/lora",
+    "text_variant": 0,
+    "attn_mode": "flash",
+    "n_images": 8,
+    "n_seeds": 2,
+    "infer_steps": 24,
+    "flow_shift": 1.0,
+    "seed_base": 1234,
+    "dcw_sweep": false,
+    "dcw_scalers": [
+      -0.01
+    ],
+    "dcw_schedules": [
+      "one_minus_sigma"
+    ],
+    "dcw_band_masks": [
+      "LL"
+    ],
+    "save_images": 0,
+    "vae": "models/vae/qwen_image_vae.safetensors",
+    "label": "hydra-0503-lower",
+    "report_optimal_lambda": false
+  },
+  "metrics": {
+    "infer_steps": 24,
+    "n_samples": 8,
+    "n_seeds": 2,
+    "text_variant": 0,
+    "configs_ranked_by_integrated_abs_gap": [
+      {
+        "config": "baseline",
+        "integrated_abs_gap": 434.1822700500488,
+        "integrated_signed_gap": -429.9141273498535
+      }
+    ],
+    "per_band_integrated_signed_gap": {
+      "baseline": {
+        "LL": -361.7515707015991,
+        "LH": -160.74283123016357,
+        "HL": -164.36083316802979,
+        "HH": -121.04206371307373
+      }
+    },
+    "per_band_integrated_abs_gap": {
+      "baseline": {
+        "LL": 368.10763454437256,
+        "LH": 160.74283123016357,
+        "HL": 166.60865688323975,
+        "HH": 123.4631814956665
+      }
+    },
+    "per_band_cross_sample_snr": {
+      "baseline": {
+        "LL": 1.0123022085468907,
+        "LH": 2.6956526828385723,
+        "HL": 2.949520546771961,
+        "HH": 2.1846162186894342
+      }
+    },
+    "per_band_mean_step_std": {
+      "baseline": {
+        "LL": 15.151422150932769,
+        "LH": 2.4845997448272032,
+        "HL": 2.3536121413809243,
+        "HH": 2.3547839592952413
+      }
+    }
+  },
+  "artifacts": [
+    "per_step.csv",
+    "per_step_bands.csv",
+    "gap_curves.png"
+  ]
+}

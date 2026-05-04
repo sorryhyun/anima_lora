@@ -458,7 +458,7 @@ def parse_args() -> argparse.Namespace:
         help="torch | sdpa | xformers | sage | flash ",
     )
     p.add_argument(
-        "--n_images", type=int, default=4, help="Number of cached samples to use"
+        "--n_images", type=int, default=8, help="Number of cached samples to use"
     )
     p.add_argument("--n_seeds", type=int, default=2, help="Seeds per sample")
     p.add_argument("--infer_steps", type=int, default=24)
@@ -481,14 +481,14 @@ def parse_args() -> argparse.Namespace:
         "--dcw_scalers",
         type=float,
         nargs="+",
-        default=[-0.01, 0.01],
+        default=[-0.01],
         help="λ values to sweep (negative expected on Anima; see docstring)",
     )
     p.add_argument(
         "--dcw_schedules",
         type=str,
         nargs="+",
-        default=["one_minus_sigma", "const"],
+        default=["one_minus_sigma"],
         choices=["const", "sigma_i", "one_minus_sigma"],
         help="Schedule forms to sweep",
     )
@@ -496,7 +496,7 @@ def parse_args() -> argparse.Namespace:
         "--dcw_band_masks",
         type=str,
         nargs="+",
-        default=["all"],
+        default=["LL"],
         help="Haar-subband masks to sweep. Each mask restricts the DCW "
         "differential signal to a subset of {LL, LH, HL, HH}; 'all' is "
         "the original broadband pixel-mode (bit-identical to no DWT). "
@@ -530,6 +530,14 @@ def parse_args() -> argparse.Namespace:
         help="Compute and print the (1−σ)-weighted closed-form λ* for each "
         "schedule in the sweep, plus per-step response slopes s_i = ∂gap/∂λ. "
         "Requires --dcw_sweep with ≥2 nonzero λ values per schedule.",
+    )
+    p.add_argument(
+        "--dump_per_sample_gaps",
+        action="store_true",
+        help="Also dump per-(sample, step) baseline LL/LH/HL/HH gap arrays "
+        "(shape (n_images*n_seeds, n_steps)) to gaps_per_sample.npz in the "
+        "run dir. Used by the dcw-learnable-calibrator transfer-hypothesis "
+        "check (early-vs-late per-sample correlation).",
     )
     return p.parse_args()
 
@@ -748,9 +756,11 @@ def main() -> None:
             "v_fwd": np.zeros(num_steps),
             "v_rev": np.zeros(num_steps),
             "gap": np.zeros(num_steps),
+            "gap_sq": np.zeros(num_steps),  # running Σ gap_i²; std across (img × seed)
             "v_fwd_bands": {b: np.zeros(num_steps) for b in BANDS},
             "v_rev_bands": {b: np.zeros(num_steps) for b in BANDS},
             "gap_bands": {b: np.zeros(num_steps) for b in BANDS},
+            "gap_bands_sq": {b: np.zeros(num_steps) for b in BANDS},
             "n": 0,
         }
         for name, _, _, _ in configs
@@ -759,6 +769,17 @@ def main() -> None:
     # (config_name, stem) → final x_hat (cpu, bf16) for the FIRST seed of the
     # first --save_images samples. Populated only when --save_images > 0.
     saved_latents: dict[tuple[str, str], torch.Tensor] = {}
+
+    # Per-(traj, step) per-band baseline gaps; populated only under
+    # --dump_per_sample_gaps. Rows are (img_idx * n_seeds + seed_idx).
+    per_sample_baseline_bands: dict[str, np.ndarray] | None = None
+    per_sample_stems: list[str] | None = None
+    if args.dump_per_sample_gaps:
+        n_traj = len(encoded) * args.n_seeds
+        per_sample_baseline_bands = {
+            b: np.zeros((n_traj, num_steps), dtype=np.float64) for b in BANDS
+        }
+        per_sample_stems = [""] * n_traj
 
     t0 = time.time()
 
@@ -793,13 +814,24 @@ def main() -> None:
                     device=device,
                 )
                 v_fwd, v_fwd_bands = fwd_cache[(img_idx, seed_idx)]
+                gap_traj = res["v_rev"] - v_fwd
                 accum[name]["v_fwd"] += v_fwd
                 accum[name]["v_rev"] += res["v_rev"]
-                accum[name]["gap"] += res["v_rev"] - v_fwd
+                accum[name]["gap"] += gap_traj
+                accum[name]["gap_sq"] += gap_traj ** 2
                 for b in BANDS:
+                    gap_b_traj = res["v_rev_bands"][b] - v_fwd_bands[b]
                     accum[name]["v_fwd_bands"][b] += v_fwd_bands[b]
                     accum[name]["v_rev_bands"][b] += res["v_rev_bands"][b]
-                    accum[name]["gap_bands"][b] += res["v_rev_bands"][b] - v_fwd_bands[b]
+                    accum[name]["gap_bands"][b] += gap_b_traj
+                    accum[name]["gap_bands_sq"][b] += gap_b_traj ** 2
+                    if (
+                        per_sample_baseline_bands is not None
+                        and name == "baseline"
+                    ):
+                        row = img_idx * args.n_seeds + seed_idx
+                        per_sample_baseline_bands[b][row] = gap_b_traj
+                        per_sample_stems[row] = stem
                 accum[name]["n"] += 1
                 if (
                     args.save_images > 0
@@ -815,6 +847,18 @@ def main() -> None:
 
     for name in accum:
         n = accum[name]["n"]
+        # std of gap across (img × seed) trajectories, before dividing the running sum.
+        # Population std (1/n, not 1/(n-1)) — small n=n_images*n_seeds, just a band.
+        mean_gap = accum[name]["gap"] / n
+        mean_gap_sq = accum[name]["gap_sq"] / n
+        accum[name]["gap_std"] = np.sqrt(np.maximum(mean_gap_sq - mean_gap ** 2, 0.0))
+        accum[name]["gap_bands_std"] = {}
+        for b in BANDS:
+            mean_b = accum[name]["gap_bands"][b] / n
+            mean_sq_b = accum[name]["gap_bands_sq"][b] / n
+            accum[name]["gap_bands_std"][b] = np.sqrt(
+                np.maximum(mean_sq_b - mean_b ** 2, 0.0)
+            )
         for k in ("v_fwd", "v_rev", "gap"):
             accum[name][k] = accum[name][k] / n
         for k in ("v_fwd_bands", "v_rev_bands", "gap_bands"):
@@ -850,6 +894,25 @@ def main() -> None:
             name: {b: float(np.abs(accum[name]["gap_bands"][b]).sum()) for b in BANDS}
             for name in accum
         },
+        # Per-band cross-sample consistency: integrated |mean| / integrated std
+        # across (img × seed) trajectories. Larger = samples agree on this band's
+        # bias profile, so a single λ generalizes; smaller = sample-conditional
+        # λ would be better. Reported for every config (not just baseline) so we
+        # can also see whether DCW changes the consistency profile.
+        "per_band_cross_sample_snr": {
+            name: {
+                b: float(
+                    np.abs(accum[name]["gap_bands"][b]).sum()
+                    / max(accum[name]["gap_bands_std"][b].sum(), 1e-12)
+                )
+                for b in BANDS
+            }
+            for name in accum
+        },
+        "per_band_mean_step_std": {
+            name: {b: float(accum[name]["gap_bands_std"][b].mean()) for b in BANDS}
+            for name in accum
+        },
     }
 
     # -------- CSV --------
@@ -858,7 +921,12 @@ def main() -> None:
         w = csv.writer(f)
         headers = ["step", "sigma_i"]
         for name in accum:
-            headers += [f"{name}_v_fwd", f"{name}_v_rev", f"{name}_gap"]
+            headers += [
+                f"{name}_v_fwd",
+                f"{name}_v_rev",
+                f"{name}_gap",
+                f"{name}_gap_std",
+            ]
         w.writerow(headers)
         for i in range(num_steps):
             row = [i, float(sigmas[i])]
@@ -867,6 +935,7 @@ def main() -> None:
                     accum[name]["v_fwd"][i],
                     accum[name]["v_rev"][i],
                     accum[name]["gap"][i],
+                    accum[name]["gap_std"][i],
                 ]
             w.writerow(row)
     log.info(f"CSV → {csv_path}")
@@ -882,6 +951,7 @@ def main() -> None:
                     f"{name}_v_fwd_{b}",
                     f"{name}_v_rev_{b}",
                     f"{name}_gap_{b}",
+                    f"{name}_gap_{b}_std",
                 ]
         w.writerow(headers)
         for i in range(num_steps):
@@ -892,9 +962,22 @@ def main() -> None:
                         accum[name]["v_fwd_bands"][b][i],
                         accum[name]["v_rev_bands"][b][i],
                         accum[name]["gap_bands"][b][i],
+                        accum[name]["gap_bands_std"][b][i],
                     ]
             w.writerow(row)
     log.info(f"per-band CSV → {band_csv_path}")
+
+    # -------- Per-sample baseline gap dump (transfer-hypothesis input) --------
+    per_sample_npz_path: str | None = None
+    if per_sample_baseline_bands is not None:
+        per_sample_npz_path = str(out_dir / "gaps_per_sample.npz")
+        np.savez(
+            per_sample_npz_path,
+            sigmas=sigmas.numpy()[:num_steps],
+            stems=np.array(per_sample_stems, dtype=object),
+            **{f"gap_{b}": per_sample_baseline_bands[b] for b in BANDS},
+        )
+        log.info(f"per-sample gaps → {per_sample_npz_path}")
 
     # -------- Plot --------
     try:
@@ -928,6 +1011,15 @@ def main() -> None:
 
         for name in accum:
             axes[1].plot(range(num_steps), accum[name]["gap"], label=name, alpha=0.85)
+        # Std band on baseline only (other configs would clutter the panel).
+        axes[1].fill_between(
+            range(num_steps),
+            base["gap"] - base["gap_std"],
+            base["gap"] + base["gap_std"],
+            color="#888888",
+            alpha=0.20,
+            label="baseline ±1σ across (img×seed)",
+        )
         axes[1].axhline(0, color="k", lw=0.5)
         axes[1].set_title("gap(i) = ||v_rev|| − ||v_fwd||  (closer to 0 = better)")
         axes[1].set_xlabel("step i")
@@ -1008,6 +1100,7 @@ def main() -> None:
     artifacts = (
         ["per_step.csv", "per_step_bands.csv"]
         + (["gap_curves.png"] if plot_written else [])
+        + (["gaps_per_sample.npz"] if per_sample_npz_path is not None else [])
         + image_artifacts
     )
     result_path = write_result(
@@ -1026,6 +1119,11 @@ def main() -> None:
         f"baseline integrated signed gap: {accum['baseline']['gap'].sum():+.3f}  "
         f"(>0 means reverse > forward, as the paper predicts)"
     )
+    print(
+        f"baseline gap std across {accum['baseline']['n']} (img×seed) trajectories: "
+        f"mean per-step σ = {accum['baseline']['gap_std'].mean():.3f}, "
+        f"max per-step σ = {accum['baseline']['gap_std'].max():.3f}"
+    )
 
     # Per-band integrated signed gap on the baseline — answers "does the bias
     # have a frequency profile?" If LL / HH gaps differ in sign or σ-shape,
@@ -1033,10 +1131,29 @@ def main() -> None:
     # other, single-λ pixel-mode is sufficient.
     print("\nbaseline integrated signed gap by Haar subband:")
     base_band_gap = accum["baseline"]["gap_bands"]
+    base_band_std = accum["baseline"]["gap_bands_std"]
+    # Per-band cross-sample consistency: integrated |mean| / integrated std.
+    # Larger SNR ⇒ samples agree on this band's bias ⇒ a single λ on that band
+    # generalizes; small SNR ⇒ samples disagree ⇒ band needs sample-conditional λ.
+    print(
+        f"  {'band':<4s}  {'signed':>9s}  {'|gap|':>8s}  {'mean σ':>8s}  "
+        f"{'max σ':>8s}  {'SNR=Σ|μ|/Σσ':>11s}"
+    )
+    band_snr = metrics["per_band_cross_sample_snr"]["baseline"]
     for b in BANDS:
         g = float(base_band_gap[b].sum())
         a = float(np.abs(base_band_gap[b]).sum())
-        print(f"  {b}: signed={g:+8.3f}  |gap|={a:7.3f}")
+        s_mean = float(base_band_std[b].mean())
+        s_max = float(base_band_std[b].max())
+        print(
+            f"  {b:<4s}  {g:+9.3f}  {a:8.3f}  {s_mean:8.3f}  {s_max:8.3f}  {band_snr[b]:11.3f}"
+        )
+    most_consistent = max(band_snr, key=band_snr.get)
+    least_consistent = min(band_snr, key=band_snr.get)
+    print(
+        f"  → most consistent across samples: {most_consistent} (SNR={band_snr[most_consistent]:.3f})"
+        f"   least: {least_consistent} (SNR={band_snr[least_consistent]:.3f})"
+    )
     # Parseval cross-check: sum of squared band norms == squared total norm.
     base_total_sq = (accum["baseline"]["v_fwd"] ** 2).sum()
     base_band_sq = sum(

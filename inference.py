@@ -428,39 +428,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dcw_lambda",
         type=float,
-        default=None,
-        help="DCW scaler λ. Default reads ss_dcw_recipe.lambda_LL from the loaded "
-        "LoRA's safetensors metadata; falls back to -0.015 (negative — see "
-        "docs/methods/dcw.md). Paper-positive values widen |gap| on Anima. "
-        "Use λ ≈ -0.010 if you switch --dcw_band_mask to 'all'. Explicit CLI "
-        "value always wins over the per-LoRA recipe.",
+        default=-0.015,
+        help="DCW scaler λ. Default -0.015 (negative — see docs/methods/dcw.md). "
+        "Paper-positive values widen |gap| on Anima. Use λ ≈ -0.010 if you "
+        "switch --dcw_band_mask to 'all'.",
     )
     parser.add_argument(
         "--dcw_schedule",
         type=str,
-        default=None,
+        default="one_minus_sigma",
         choices=["one_minus_sigma", "sigma_i", "const", "none"],
-        help="Per-step schedule: scaler(i) = λ · sched(σ_i). Default reads "
-        "ss_dcw_recipe.schedule_LL from the loaded LoRA, falls back to "
+        help="Per-step schedule: scaler(i) = λ · sched(σ_i). Default "
         "one_minus_sigma — matches Anima's late-σ bias envelope.",
     )
     parser.add_argument(
         "--dcw_band_mask",
         type=str,
-        default=None,
+        default="LL",
         help="Restrict DCW correction to a subset of Haar subbands. Default 'LL' "
         "(LL-only is strictly better than broadband on Anima — see "
         "docs/methods/dcw.md §LL-only correction). Format: 'LL', 'HH', "
-        "'LH+HL+HH', or 'all'. The per-LoRA recipe always implies LL; pass "
-        "this flag to override.",
-    )
-    parser.add_argument(
-        "--dcw_disable_per_lora_recipe",
-        action="store_true",
-        help="Ignore ss_dcw_recipe metadata on the loaded LoRA(s) and use the "
-        "global LL defaults instead (-0.015 / one_minus_sigma / LL). Use when "
-        "you don't trust auto-calibration. CLI overrides for --dcw_lambda / "
-        "--dcw_schedule / --dcw_band_mask still win.",
+        "'LH+HL+HH', or 'all'.",
     )
 
     # arguments for batch and interactive modes
@@ -850,14 +838,6 @@ def process_interactive(args: argparse.Namespace) -> None:
 
 def main():
     args = parse_args()
-
-    # Resolve DCW args against per-LoRA recipe metadata BEFORE any model
-    # load. CLI explicit values win; sentinel None on --dcw_lambda /
-    # --dcw_schedule / --dcw_band_mask falls through to ss_dcw_recipe
-    # then global defaults. See library/inference/dcw_calibration.py.
-    from library.inference.dcw_calibration import resolve_dcw_args
-
-    resolve_dcw_args(args)
 
     # Check if latents are provided
     latents_mode = args.latent_path is not None and len(args.latent_path) > 0

@@ -2588,15 +2588,6 @@ class AnimaTrainer:
         if is_main_process and (args.save_state or args.save_state_on_train_end):
             save_state_on_train_end(args, accelerator)
 
-        # Per-LoRA DCW recipe is computed BEFORE save_final so the solver's
-        # output lands in saver.metadata (the same dict CheckpointSaver
-        # holds by reference) and gets serialized into the .safetensors.
-        self._bias.calibrate_recipe(
-            loop_state.train_ctx,
-            loop_state.val_ctx,
-            metadata=metadata,
-        )
-
         saver.cleanup_resumable()
         saver.save_final(network, loop_state.global_step, num_train_epochs)
 
@@ -2736,54 +2727,6 @@ def setup_parser() -> argparse.ArgumentParser:
         "Default 12 (half of inference's 24) — late-half gap envelope is "
         "preserved while keeping val cost bounded. Raise to 24 for "
         "production-resolution numbers.",
-    )
-    parser.add_argument(
-        "--calibrate_dcw_recipe",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="At end-of-training, run one reverse-rollout per --dcw_calibration_anchors "
-        "(plus a baseline if --validation_bias_metric didn't cache one), pick the "
-        "anchor that empirically minimized the late-half weighted |gap_LL|², and "
-        "write it to safetensors metadata as ss_dcw_recipe (read at inference by "
-        "--dcw). Baseline (λ=0) is always a candidate so flat-style LoRAs that DCW "
-        "hurts can land on no correction. Cost: N+(0|1) validation passes where N "
-        "is len(anchors). See docs/proposal/lora-dcw-proposal.md.",
-    )
-    parser.add_argument(
-        "--dcw_calibration_anchors",
-        type=float,
-        nargs="+",
-        default=[-0.015, -0.022, -0.030],
-        help="λ_LL anchor values to probe; recipe writes the empirically best one "
-        "(lowest weighted late-half |gap_LL|²). Defaults span the safe LL operating "
-        "range from docs/methods/dcw.md §Re-tuning λ for LL-only. Earlier versions "
-        "ran a single ε-probe and closed-form-solved for λ* under linear-response, "
-        "which extrapolated past LL's nonlinear knee and could pick λ ≈ −0.1 (visible "
-        "drift). Picking from measured anchors avoids the extrapolation. Ignored "
-        "without --calibrate_dcw_recipe.",
-    )
-    parser.add_argument(
-        "--dcw_calibration_steps",
-        type=int,
-        default=28,
-        help="Reverse-rollout step count for the end-of-training calibration "
-        "passes. Decoupled from --validation_bias_steps (which is the cheap "
-        "per-cycle diagnostic, default 12). Default 28 matches typical "
-        "inference settings — the σ schedule is sampled at the same density "
-        "the saved λ will be applied with. When this differs from "
-        "--validation_bias_steps the cached baseline can't be reused, so "
-        "calibration always runs an extra baseline pass (N+1 passes total). "
-        "Ignored without --calibrate_dcw_recipe.",
-    )
-    parser.add_argument(
-        "--dcw_calibration_schedule",
-        type=str,
-        default="one_minus_sigma",
-        choices=["one_minus_sigma", "sigma_i", "const"],
-        help="σ-schedule the calibration solves against (and writes to the "
-        "recipe). Should match the schedule the LoRA will be applied with "
-        "at inference. Default one_minus_sigma per docs/methods/dcw.md "
-        "§Re-tuning λ for LL-only.",
     )
     parser.add_argument(
         "--unsloth_offload_checkpointing",
