@@ -617,6 +617,7 @@ def generate_body(
             dcw_lambda=getattr(args, "dcw_lambda", -0.015),
             dcw_schedule=getattr(args, "dcw_schedule", "one_minus_sigma"),
             dcw_band_mask=getattr(args, "dcw_band_mask", "LL"),
+            dcw_v4_ctrl=dcw_v4_ctrl,
         )
     else:
         try:

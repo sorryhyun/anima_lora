@@ -146,6 +146,8 @@ def cmd_test_dcw_v4(extra):
         "--lora_weight", str(latest_lora()),
         *v4_args,
         "--dcw_v4_disable_shrinkage",  # prototype σ̂² channel doesn't pass Gate B
+        "--infer_steps",
+        "28",
         *extra,
     ])
 
@@ -175,6 +177,46 @@ def cmd_test_spectrum_dcw(extra):
             "--spectrum_calibration",
             "0.0",
             "--dcw",
+            *extra,
+        ]
+    )
+
+
+def cmd_test_dcw_v4_spectrum(extra):
+    """Spectrum + DCW v4 learnable calibrator composed.
+
+    Same Spectrum knobs as test-spectrum (with stop_caching_step=27 to match
+    DCW v4's 28-step contract), plus DCW v4 (auto-resolves the most recent
+    fusion_head.safetensors). Pass --dcw_v4 <path> in extra to override.
+    """
+    extra_has_v4 = any(a.startswith("--dcw_v4") and not a.startswith("--dcw_v4_") for a in extra)
+    v4_args = [] if extra_has_v4 else ["--dcw_v4", _latest_fusion_head()]
+    run(
+        [
+            *INFERENCE_BASE,
+            "--lora_weight",
+            str(latest_lora()),
+            "--spectrum",
+            "--spectrum_window_size",
+            "2.0",
+            "--spectrum_flex_window",
+            "0.25",
+            "--spectrum_warmup",
+            "7",
+            "--spectrum_w",
+            "0.3",
+            "--spectrum_m",
+            "3",
+            "--spectrum_lam",
+            "0.1",
+            "--spectrum_stop_caching_step",
+            "27",
+            "--spectrum_calibration",
+            "0.0",
+            *v4_args,
+            "--dcw_v4_disable_shrinkage",
+            "--infer_steps",
+            "28",
             *extra,
         ]
     )

@@ -79,6 +79,10 @@ COMMANDS = {
         inference.cmd_test_spectrum_dcw,
         "Spectrum-accelerated inference + DCW post-step bias correction",
     ),
+    "test-dcw-v4-spectrum": (
+        inference.cmd_test_dcw_v4_spectrum,
+        "Spectrum-accelerated inference + DCW v4 learnable calibrator (auto-resolves fusion_head.safetensors)",
+    ),
     # ── Preprocess ────────────────────────────────────────────────────
     "preprocess": (
         preprocess.cmd_preprocess,
