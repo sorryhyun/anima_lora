@@ -114,20 +114,25 @@ def cmd_test_dcw(extra):
 def _latest_fusion_head() -> str:
     """Resolve the most recent fusion_head.safetensors under any DCW root.
 
-    Scans post_image_dataset/dcw/ (new `make dcw` output) first, then
-    bench/dcw/results/ (legacy). Newest mtime wins across both.
+    Scans output/dcw/ (new `make dcw` output), post_image_dataset/dcw/
+    (legacy), and bench/dcw/results/ (legacy). Newest mtime wins.
     """
     from pathlib import Path
 
-    roots = [Path("post_image_dataset/dcw"), Path("bench/dcw/results")]
+    roots = [
+        Path("output/dcw"),
+        Path("post_image_dataset/dcw"),
+        Path("bench/dcw/results"),
+    ]
     candidates: list[Path] = []
     for root in roots:
         if root.exists():
             candidates.extend(root.glob("*/fusion_head.safetensors"))
     if not candidates:
         raise SystemExit(
-            "no fusion_head.safetensors found under post_image_dataset/dcw/ "
-            "or bench/dcw/results/ — run `make dcw-train` first"
+            "no fusion_head.safetensors found under output/dcw/, "
+            "post_image_dataset/dcw/, or bench/dcw/results/ — "
+            "run `make dcw-train` first"
         )
     return str(max(candidates, key=lambda p: p.stat().st_mtime))
 

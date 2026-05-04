@@ -36,11 +36,13 @@ from networks.dcw import FusionHead, haar_LL_norm
 logger = logging.getLogger(__name__)
 
 ASPECT_TABLE: dict[tuple[int, int], int] = {
-    (1024, 1024): 0,
-    (832, 1248): 1,
-    (1248, 832): 2,
+    (832, 1248): 0,
+    (896, 1152): 1,
+    (768, 1344): 2,
+    (1152, 896): 3,
+    (1248, 832): 4,
 }
-ASPECT_NAMES = ["1024x1024", "832x1248", "1248x832"]
+ASPECT_NAMES = ["832x1248", "896x1152", "768x1344", "1152x896", "1248x832"]
 
 
 @dataclass

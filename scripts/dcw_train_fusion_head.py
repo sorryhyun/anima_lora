@@ -31,12 +31,14 @@ from bench._common import make_run_dir, write_result  # noqa: E402
 from networks.dcw import FusionHead  # noqa: E402
 
 ASPECT_TABLE = {
-    (1024, 1024): 0,  # square
-    (832, 1248): 1,   # HD (portrait)
-    (1248, 832): 2,   # inv-HD (landscape)
+    (832, 1248): 0,   # HD portrait — most common in cache
+    (896, 1152): 1,   # 3:4 portrait
+    (768, 1344): 2,   # tall portrait
+    (1152, 896): 3,   # 3:4 landscape
+    (1248, 832): 4,   # HD landscape
 }
-ASPECT_NAMES = ["1024x1024", "832x1248", "1248x832"]
-N_ASPECTS = 3
+ASPECT_NAMES = ["832x1248", "896x1152", "768x1344", "1152x896", "1248x832"]
+N_ASPECTS = 5
 
 
 @dataclass
@@ -178,41 +180,66 @@ def build_bucket_prior(rows: list[Row], n_steps: int) -> np.ndarray:
 
 
 def load_a2_calibration(results_roots: Path | list[Path]) -> dict[str, dict]:
-    """Read S_pop and λ_scalar from the three A2 runs' per_step_bands.csv.
+    """Auto-discover per-aspect A2 λ-sweep runs and compute S_pop / λ_scalar.
 
-    S_pop[i] := (g_λ[i] − g_base[i]) / λ.  λ_scalar by least-squares per-step
-    zeroing: λ* = −Σ(μ_g · S_pop) / Σ(S_pop²). Searches all configured roots.
+    Scans every run dir under the configured roots, keeps those whose
+    ``result.json`` has ``args.dcw_sweep == true`` and ``(image_h, image_w)``
+    in ``ASPECT_TABLE``, and picks the newest mtime per aspect. This makes
+    `make dcw` self-contained (it generates A2 runs into output/dcw/ and
+    the trainer finds them by structure, not by hardcoded run name) while
+    still honouring legacy A2 runs under bench/dcw/results/ for the kept
+    aspects.
+
+    S_pop[i] := (g_λ[i] − g_base[i]) / λ. λ_scalar by least-squares
+    per-step zeroing: λ* = −Σ(μ_g · S_pop) / Σ(S_pop²). Buckets with no
+    matching A2 run get lam_scalar=0 + S_pop=0 — the head still operates,
+    only the scalar baseline correction is skipped.
     """
     if isinstance(results_roots, (str, Path)):
         results_roots = [Path(results_roots)]
-    a2_runs = {
-        "1024x1024": "20260504-1648-v4-A2-1024x1024-pos01",
-        "832x1248":  "20260504-1721-v4-A2-832x1248-pos01",
-        "1248x832":  "20260504-1747-v4-A2-1248x832-pos01",
-    }
-    out: dict[str, dict] = {}
-    for aspect_name, run_name in a2_runs.items():
-        csv_path: Path | None = None
-        for root in results_roots:
-            cand = root / run_name / "per_step_bands.csv"
-            if cand.exists():
-                csv_path = cand
-                break
-        if csv_path is None:
-            print(f"warn: missing A2 csv for {aspect_name}")
+
+    candidate_dirs: list[Path] = []
+    for root in results_roots:
+        if not root.exists():
             continue
+        candidate_dirs.extend(p for p in root.iterdir() if p.is_dir())
+
+    # Pick newest A2 run per aspect (mtime).
+    by_aspect: dict[str, tuple[Path, float]] = {}
+    for d in candidate_dirs:
+        rj_path = d / "result.json"
+        csv_path = d / "per_step_bands.csv"
+        if not (rj_path.exists() and csv_path.exists()):
+            continue
+        try:
+            rj = json.loads(rj_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        a = rj.get("args", {})
+        if not a.get("dcw_sweep"):
+            continue
+        H, W = a.get("image_h"), a.get("image_w")
+        if (H, W) not in ASPECT_TABLE:
+            continue
+        aspect_name = ASPECT_NAMES[ASPECT_TABLE[(H, W)]]
+        mtime = d.stat().st_mtime
+        if aspect_name not in by_aspect or mtime > by_aspect[aspect_name][1]:
+            by_aspect[aspect_name] = (d, mtime)
+
+    out: dict[str, dict] = {}
+    for aspect_name, (d, _mtime) in by_aspect.items():
+        csv_path = d / "per_step_bands.csv"
         with csv_path.open() as f:
             reader = csv.DictReader(f)
             rowdicts = list(reader)
         base_LL = np.array([float(r["baseline_gap_LL"]) for r in rowdicts])
-        # find the λ=0.01 LL column
         lam_col = next(
             (k for k in rowdicts[0]
              if k.startswith("λ=0.01") and k.endswith("_gap_LL")),
             None,
         )
         if lam_col is None:
-            print(f"warn: no λ=0.01 LL column in {run_name}")
+            print(f"warn: no λ=0.01 LL column in {d.name}")
             continue
         lam_LL = np.array([float(r[lam_col]) for r in rowdicts])
         s_pop = (lam_LL - base_LL) / 0.01
@@ -222,6 +249,12 @@ def load_a2_calibration(results_roots: Path | list[Path]) -> dict[str, dict]:
             "S_pop": s_pop.astype(np.float32),
             "lam_scalar": lam_lsq,
         }
+        print(f"  A2 {aspect_name} ← {d.name}")
+
+    missing = [n for n in ASPECT_NAMES if n not in out]
+    if missing:
+        print(f"  no A2 sweep found for: {', '.join(missing)} "
+              f"(lam_scalar=0 + S_pop=0 for these — head still operates)")
     return out
 
 
@@ -254,6 +287,7 @@ def train_one_fold(
 ) -> tuple[FusionHead, dict]:
     head = FusionHead(
         c_pool_dim=features["c_pool"].shape[1],
+        n_aspects=N_ASPECTS,
         k=features["g_obs"].shape[1],
         aux_dim=features["aux"].shape[1],
         log_sigma2_init=float(np.log(max(sigma2_pop, 1e-6))),
@@ -317,18 +351,20 @@ def main():
     p.add_argument(
         "--results_root", type=Path, nargs="+",
         default=[
+            REPO_ROOT / "output" / "dcw",
             REPO_ROOT / "post_image_dataset" / "dcw",
             REPO_ROOT / "bench" / "dcw" / "results",
         ],
         help="One or more directories holding bench-script run dirs. "
-        "Default scans both post_image_dataset/dcw/ (new `make dcw` output) "
-        "and bench/dcw/results/ (legacy + A2 calibration). De-dups by run "
-        "name; first-found wins.",
+        "Default scans output/dcw/ (new `make dcw` output) first, then "
+        "post_image_dataset/dcw/ (legacy `make dcw` output) and "
+        "bench/dcw/results/ (A2 calibration + legacy benches). De-dups by "
+        "run name; first-found wins.",
     )
     p.add_argument(
-        "--out_root", type=Path, default=REPO_ROOT / "post_image_dataset" / "dcw",
+        "--out_root", type=Path, default=REPO_ROOT / "output" / "dcw",
         help="Where to write the trained fusion_head.safetensors run dir. "
-        "Default post_image_dataset/dcw/.",
+        "Default output/dcw/.",
     )
     p.add_argument("--dataset_dir", type=Path,
                    default=REPO_ROOT / "post_image_dataset" / "lora")
@@ -347,6 +383,12 @@ def main():
                    help="Ablate aspect_emb (force to zero) to test "
                    "whether the bucket-residualized target still has "
                    "aspect-conditional structure for the head to use.")
+    p.add_argument("--with_a2", action="store_true",
+                   help="Auto-discover A2 λ-sweep runs and populate the "
+                   "per-aspect S_pop / λ_scalar bucket prior. Default off — "
+                   "every aspect gets lam_scalar=0 + S_pop=0 (head carries "
+                   "all correction). Empirically cosmetic on Anima; flag "
+                   "exists for ablations.")
     args = p.parse_args()
 
     torch.manual_seed(args.seed)
@@ -372,13 +414,17 @@ def main():
 
     print("[3/6] computing bucket prior + A2 calibration ...")
     mu_g = build_bucket_prior(rows, n_steps)  # (N_ASPECTS, n_steps)
-    a2 = load_a2_calibration(args.results_root)
     s_pop = np.zeros_like(mu_g)
     lam_scalar = np.zeros(N_ASPECTS, dtype=np.float32)
-    for a, name in enumerate(ASPECT_NAMES):
-        if name in a2:
-            s_pop[a] = a2[name]["S_pop"]
-            lam_scalar[a] = a2[name]["lam_scalar"]
+    if args.with_a2:
+        a2 = load_a2_calibration(args.results_root)
+        for a, name in enumerate(ASPECT_NAMES):
+            if name in a2:
+                s_pop[a] = a2[name]["S_pop"]
+                lam_scalar[a] = a2[name]["lam_scalar"]
+    else:
+        print("  A2 calibration disabled (use --with_a2 to enable); "
+              "lam_scalar=0 + S_pop=0 for every aspect")
     for a, name in enumerate(ASPECT_NAMES):
         print(f"  {name}: integrated μ_g = {mu_g[a].sum():+.2f}, "
               f"λ_scalar = {lam_scalar[a]:+.4f}")

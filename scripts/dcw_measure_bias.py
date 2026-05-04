@@ -71,14 +71,21 @@ Caveats
 
 Speed notes
 -----------
-The hot loop fuses three speedups vs the v1 implementation:
+The hot loop fuses four speedups vs the v1 implementation:
 
 1. **Batched CFG.** Cond and uncond run as a single forward at batch=2·B
    (see ``_cfg_velocity``).
-2. **Batched λ sweep.** When ``--dcw_sweep`` is set, all configured λ
+2. **Batched seed sweep.** Forward branch always batches all
+   ``--n_seeds`` trajectories per image into one DiT call at batch=N_seeds
+   (or 2·N_seeds under CFG > 1). Reverse branch does the same when
+   ``--dcw_sweep`` is off (the ``make dcw`` path), running λ=0 across
+   all seeds in parallel. See ``measure_forward_norms`` /
+   ``run_reverse_batched``.
+3. **Batched λ sweep.** When ``--dcw_sweep`` is set, all configured λ
    trajectories share the same step's DiT forward at batch=N_λ (or
-   2·N_λ under CFG > 1). See ``run_reverse_batched``.
-3. **GPU-resident norm accumulation.** Per-step ``‖v‖`` and Haar-band
+   2·N_λ under CFG > 1). Mutually exclusive with seed-batching on the
+   reverse branch — λ-sweep mode keeps the per-seed outer loop.
+4. **GPU-resident norm accumulation.** Per-step ``‖v‖`` and Haar-band
    norms accumulate on-device; one ``.cpu()`` sync at trajectory end
    instead of 5 syncs per step.
 
@@ -367,49 +374,66 @@ def measure_forward_norms(
     embed: torch.Tensor,
     sigmas: torch.Tensor,
     *,
-    noise_seed: int,
+    noise_seeds: list[int],
     device: torch.device,
     embed_uncond: torch.Tensor | None = None,
     cfg_scale: float = 1.0,
-) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+) -> list[tuple[np.ndarray, dict[str, np.ndarray]]]:
     """Forward branch only: ‖v_θ((1−σ)x_0 + σε, σ)‖ at every step.
 
-    Bit-identical across DCW configs given the same (x_0, noise_seed),
-    so cache once per (image, seed) and reuse across the λ sweep.
+    Runs all ``len(noise_seeds)`` trajectories as a single DiT forward
+    per step at batch B = ``len(noise_seeds)`` (or 2·B under CFG > 1).
+    The same (x_0, embed) is shared across rows — only the per-step
+    noise ε differs. Bit-equivalent to a per-seed serial loop because
+    each row uses its own CPU generator (same RNG sequence as before).
 
     Under CFG > 1 each step runs the cond+uncond pair as a single
     batched forward (see ``_cfg_velocity``); norms / bands are taken on
     the combined velocity. Per-step ``‖v‖`` and band norms accumulate
     on-device and sync once at trajectory end.
-    """
-    n_steps = len(sigmas) - 1
-    pad = _padding_mask(x_0, device)
-    g = torch.Generator(device="cpu").manual_seed(noise_seed + 10_000)
 
-    norms_gpu = torch.zeros(n_steps, dtype=torch.float32, device=device)
-    bands_gpu = torch.zeros(n_steps, 4, dtype=torch.float32, device=device)
+    Returns one (norms, bands) tuple per seed, in input order.
+    """
+    B = len(noise_seeds)
+    n_steps = len(sigmas) - 1
+    pad_one = _padding_mask(x_0, device)
+    pad = pad_one.expand(B, -1, -1, -1).contiguous()
+    embed_b = embed.expand(B, -1, -1).contiguous()
+    x_0_b = x_0.expand(B, -1, -1, -1, -1).contiguous()
+    gens = [torch.Generator(device="cpu").manual_seed(s + 10_000) for s in noise_seeds]
+
+    norms_gpu = torch.zeros(B, n_steps, dtype=torch.float32, device=device)
+    bands_gpu = torch.zeros(B, n_steps, 4, dtype=torch.float32, device=device)
     for i in range(n_steps):
         sigma_i = float(sigmas[i])
-        t_i = torch.full((1,), sigma_i, device=device, dtype=torch.bfloat16)
-        eps = torch.randn(x_0.shape, generator=g).to(device, torch.bfloat16)
-        x_t = (1.0 - sigma_i) * x_0 + sigma_i * eps
-        set_hydra_sigma(anima, t_i)
+        # σ is shared across rows; pass shape (1,) to the Hydra router
+        # (state is a scalar) and shape (B,) to the model forward.
+        t_one = torch.full((1,), sigma_i, device=device, dtype=torch.bfloat16)
+        t_b = torch.full((B,), sigma_i, device=device, dtype=torch.bfloat16)
+        eps_rows = [torch.randn(x_0.shape, generator=g) for g in gens]
+        eps = torch.cat(eps_rows, dim=0).to(device, torch.bfloat16)
+        x_t = (1.0 - sigma_i) * x_0_b + sigma_i * eps
+        set_hydra_sigma(anima, t_one)
         v = _cfg_velocity(
             anima,
             x_t,
-            t_i,
-            embed,
+            t_b,
+            embed_b,
             pad,
             embed_uncond=embed_uncond,
             cfg_scale=cfg_scale,
         )
-        norms_gpu[i] = v.float().flatten().norm()
-        bands_gpu[i] = haar_band_norms_batched(v)[0]
+        norms_gpu[:, i] = v.float().flatten(start_dim=1).norm(dim=1)
+        bands_gpu[:, i] = haar_band_norms_batched(v)
 
-    norms = norms_gpu.cpu().numpy().astype(np.float64)
-    bands_arr = bands_gpu.cpu().numpy().astype(np.float64)
-    bands = {b: bands_arr[:, j] for j, b in enumerate(BANDS)}
-    return norms, bands
+    norms_np = norms_gpu.cpu().numpy().astype(np.float64)
+    bands_np = bands_gpu.cpu().numpy().astype(np.float64)
+
+    out: list[tuple[np.ndarray, dict[str, np.ndarray]]] = []
+    for r in range(B):
+        bands_dict = {b: bands_np[r, :, j] for j, b in enumerate(BANDS)}
+        out.append((norms_np[r], bands_dict))
+    return out
 
 
 @torch.no_grad()
@@ -419,52 +443,65 @@ def run_reverse_batched(
     embed: torch.Tensor,
     sigmas: torch.Tensor,
     *,
-    noise_seed: int,
+    noise_seeds: list[int],
     dcw_lams: list[float],
     device: torch.device,
     embed_uncond: torch.Tensor | None = None,
     cfg_scale: float = 1.0,
 ) -> list[tuple[np.ndarray, dict[str, np.ndarray]]]:
-    """Run ``len(dcw_lams)`` reverse trajectories in parallel along batch.
+    """Run N reverse trajectories in parallel along batch, where each row
+    is the (seed, λ) pair ``(noise_seeds[r], dcw_lams[r])``.
 
-    All trajectories share (x_0, embed, schedule, initial noise); only
-    the DCW correction λ differs per row, so they diverge after step 0.
-    Each step does **one** DiT forward at batch = ``len(dcw_lams)`` (or
-    2× under CFG > 1, see ``_cfg_velocity``), replacing what was
-    previously ``len(dcw_lams) × n_steps`` separate forwards. For the
-    common A4 sweep (4 λ values, CFG=4) this is ~3-4× faster on the
-    reverse branch — the dominant cost when ``--dcw_sweep`` is set.
+    All rows share (x_0, embed, schedule); they diverge via per-row
+    initial noise ε₀ (from ``noise_seeds[r]``) and DCW correction λ
+    (from ``dcw_lams[r]``). Each step does **one** DiT forward at
+    batch = N (or 2×N under CFG > 1, see ``_cfg_velocity``).
+
+    Two production patterns share this signature:
+
+    * **λ-sweep mode** (``--dcw_sweep``): N = #λ values, all rows
+      share the same seed (caller passes ``noise_seeds=[s]*N``).
+      Bit-equivalent to the previous shared-noise implementation —
+      same generator state across rows yields identical ε₀.
+    * **Seed-batched mode** (``make dcw``, no sweep): N = ``--n_seeds``,
+      ``dcw_lams = [0.0]*N`` (no correction), per-row seeds. Replaces
+      the per-seed serial loop with a single batched forward per step.
 
     DCW correction (when ``λ != 0``): LL-only with
     ``scalar_i = λ · (1 − σ_i)``, applied to ``(prev − x0_pred)``
     independently per row.
 
-    Returns one (norms, bands) tuple per ``dcw_lams`` entry, in input
-    order. ``norms`` shape: (n_steps,). ``bands[b]`` shape: (n_steps,).
+    Returns one (norms, bands) tuple per row, in input order.
+    ``norms`` shape: (n_steps,). ``bands[b]`` shape: (n_steps,).
     """
-    n_lams = len(dcw_lams)
+    if len(noise_seeds) != len(dcw_lams):
+        raise ValueError(
+            f"noise_seeds (len={len(noise_seeds)}) must match dcw_lams "
+            f"(len={len(dcw_lams)}) — each row is one (seed, λ) pair."
+        )
+    n_rows = len(dcw_lams)
     n_steps = len(sigmas) - 1
     pad_one = _padding_mask(x_0, device)
-    pad = pad_one.expand(n_lams, -1, -1, -1).contiguous()
-    embed_b = embed.expand(n_lams, -1, -1).contiguous()
+    pad = pad_one.expand(n_rows, -1, -1, -1).contiguous()
+    embed_b = embed.expand(n_rows, -1, -1).contiguous()
 
-    g = torch.Generator(device="cpu").manual_seed(noise_seed)
-    x_hat0 = torch.randn(x_0.shape, generator=g).to(device, torch.bfloat16)
-    x_hat = x_hat0.expand(n_lams, -1, -1, -1, -1).contiguous()
+    gens = [torch.Generator(device="cpu").manual_seed(s) for s in noise_seeds]
+    x_hat0_rows = [torch.randn(x_0.shape, generator=g) for g in gens]
+    x_hat = torch.cat(x_hat0_rows, dim=0).to(device, torch.bfloat16)
 
     lams_t = torch.tensor(dcw_lams, dtype=torch.float32, device=device)
 
-    norms_gpu = torch.zeros(n_steps, n_lams, dtype=torch.float32, device=device)
-    bands_gpu = torch.zeros(n_steps, n_lams, 4, dtype=torch.float32, device=device)
+    norms_gpu = torch.zeros(n_steps, n_rows, dtype=torch.float32, device=device)
+    bands_gpu = torch.zeros(n_steps, n_rows, 4, dtype=torch.float32, device=device)
 
     for i in range(n_steps):
         sigma_i = float(sigmas[i])
         sigma_next = float(sigmas[i + 1])
         # σ is shared across rows; pass shape (1,) to the Hydra router
-        # (state is a scalar) and shape (n_lams,) to the model forward
+        # (state is a scalar) and shape (n_rows,) to the model forward
         # to match the batch.
         t_one = torch.full((1,), sigma_i, device=device, dtype=torch.bfloat16)
-        t_b = torch.full((n_lams,), sigma_i, device=device, dtype=torch.bfloat16)
+        t_b = torch.full((n_rows,), sigma_i, device=device, dtype=torch.bfloat16)
 
         set_hydra_sigma(anima, t_one)
         v = _cfg_velocity(
@@ -491,7 +528,7 @@ def run_reverse_batched(
     bands_np = bands_gpu.cpu().numpy().astype(np.float64)
 
     out: list[tuple[np.ndarray, dict[str, np.ndarray]]] = []
-    for j in range(n_lams):
+    for j in range(n_rows):
         bands_dict = {b: bands_np[:, j, k] for k, b in enumerate(BANDS)}
         out.append((norms_np[:, j], bands_dict))
     return out
@@ -733,8 +770,8 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Override the run-dir root. Default bench/dcw/results/. "
-        "`make dcw` redirects to post_image_dataset/dcw/ since calibration "
-        "trajectories are cache, not published-bench artifacts.",
+        "`make dcw` redirects to output/dcw/ since calibration "
+        "trajectories are runtime artifacts, not published bench results.",
     )
     return p.parse_args()
 
@@ -742,6 +779,40 @@ def parse_args() -> argparse.Namespace:
 # ------------------------------------------------------------------
 # Output helpers.
 # ------------------------------------------------------------------
+
+
+def _accumulate_row(
+    accum: dict,
+    name: str,
+    v_fwd: np.ndarray,
+    fwd_bands: dict[str, np.ndarray],
+    rev_norms: np.ndarray,
+    rev_bands: dict[str, np.ndarray],
+    per_sample_bands: dict[str, np.ndarray] | None,
+    per_sample_v_rev_bands: dict[str, np.ndarray] | None,
+    per_sample_stems: list[str] | None,
+    img_idx: int,
+    seed_idx: int,
+    n_seeds: int,
+    stem: str,
+) -> None:
+    """Fold one (img, seed, config) trajectory into the accumulator."""
+    gap = rev_norms - v_fwd
+    accum[name]["v_fwd"] += v_fwd
+    accum[name]["v_rev"] += rev_norms
+    accum[name]["gap"] += gap
+    accum[name]["gap_sq"] += gap**2
+    for b in BANDS:
+        gap_b = rev_bands[b] - fwd_bands[b]
+        accum[name]["v_fwd_bands"][b] += fwd_bands[b]
+        accum[name]["v_rev_bands"][b] += rev_bands[b]
+        accum[name]["gap_bands"][b] += gap_b
+        if name == "baseline" and per_sample_bands is not None:
+            row = img_idx * n_seeds + seed_idx
+            per_sample_bands[b][row] = gap_b
+            per_sample_v_rev_bands[b][row] = rev_bands[b]
+            per_sample_stems[row] = stem
+    accum[name]["n"] += 1
 
 
 def write_per_step_csv(
@@ -1028,12 +1099,21 @@ def main() -> None:
                 continue
             configs.append((f"λ={lam}_LL_oneminussigma", lam))
     n_fwd = len(samples) * args.n_seeds
-    n_rev = len(configs) * n_fwd
+    cfg_mult = 2 if args.guidance_scale > 1.0 else 1
+    fwd_calls = len(samples)
+    fwd_batch = args.n_seeds * cfg_mult
+    if args.dcw_sweep:
+        rev_calls = n_fwd
+        rev_batch = len(configs) * cfg_mult
+        rev_desc = f"{len(configs)} λ trajectories"
+    else:
+        rev_calls = len(samples)
+        rev_batch = args.n_seeds * cfg_mult
+        rev_desc = f"{args.n_seeds} seed trajectories at λ=0"
     log.info(
         f"{len(configs)} config(s) × {len(samples)} samples × {args.n_seeds} seeds: "
-        f"{n_fwd} fwd calls + {n_fwd} batched-rev calls "
-        f"(each rev advances {len(configs)} λ trajectories at batch={len(configs)}"
-        f"{' × 2 under CFG' if args.guidance_scale > 1.0 else ''})"
+        f"{fwd_calls} fwd calls (batch={fwd_batch}) + {rev_calls} rev calls "
+        f"(batch={rev_batch}, advances {rev_desc} per call)"
     )
 
     # Preload cached data onto device.
@@ -1071,65 +1151,110 @@ def main() -> None:
 
     t0 = time.time()
 
-    # Phase 1: forward-branch norms (cached per (img, seed) across configs).
+    def _seeds_for(img_idx: int) -> list[int]:
+        return [args.seed_base + 1000 * img_idx + j for j in range(args.n_seeds)]
+
+    # Phase 1: forward-branch norms — always batched across seeds per image
+    # (bit-equivalent to the per-seed serial loop; per-row CPU generators
+    # produce the same RNG sequence). Cached per (img, seed) for phase 2.
     fwd_cache: dict[tuple[int, int], tuple[np.ndarray, dict[str, np.ndarray]]] = {}
-    pbar = tqdm(total=n_fwd, desc="fwd")
+    pbar = tqdm(total=len(encoded), desc=f"fwd (×{args.n_seeds} seeds batched)")
     for img_idx, (stem, x_0, embed) in enumerate(encoded):
-        for seed_idx in range(args.n_seeds):
-            seed = args.seed_base + 1000 * img_idx + seed_idx
-            fwd_cache[(img_idx, seed_idx)] = measure_forward_norms(
-                anima,
-                x_0,
-                embed,
-                sigmas,
-                noise_seed=seed,
-                device=device,
-                embed_uncond=embed_uncond,
-                cfg_scale=args.guidance_scale,
-            )
-            pbar.update(1)
-            pbar.set_postfix_str(f"{stem} seed={seed}")
+        seeds = _seeds_for(img_idx)
+        fwd_results = measure_forward_norms(
+            anima,
+            x_0,
+            embed,
+            sigmas,
+            noise_seeds=seeds,
+            device=device,
+            embed_uncond=embed_uncond,
+            cfg_scale=args.guidance_scale,
+        )
+        for seed_idx, res in enumerate(fwd_results):
+            fwd_cache[(img_idx, seed_idx)] = res
+        pbar.update(1)
+        pbar.set_postfix_str(stem)
     pbar.close()
 
-    # Phase 2: all-λ reverse trajectories batched per (img, seed).
+    # Phase 2: reverse trajectories.
+    # * --dcw_sweep: keep the per-seed outer loop; each call batches over λ
+    #   (sweep semantics — all rows share one initial-noise seed).
+    # * default (make dcw): batch all seeds per image; one row per seed at
+    #   λ=0. Mutually exclusive — outer-product (seed × λ) is out of scope.
     config_lams = [lam for _, lam in configs]
-    pbar = tqdm(total=n_fwd, desc=f"rev (×{len(configs)} λ batched)")
-    for img_idx, (stem, x_0, embed) in enumerate(encoded):
-        for seed_idx in range(args.n_seeds):
-            seed = args.seed_base + 1000 * img_idx + seed_idx
+    if args.dcw_sweep:
+        pbar = tqdm(total=n_fwd, desc=f"rev (×{len(configs)} λ batched)")
+        for img_idx, (stem, x_0, embed) in enumerate(encoded):
+            for seed_idx in range(args.n_seeds):
+                seed = args.seed_base + 1000 * img_idx + seed_idx
+                rev_results = run_reverse_batched(
+                    anima,
+                    x_0,
+                    embed,
+                    sigmas,
+                    noise_seeds=[seed] * len(configs),
+                    dcw_lams=config_lams,
+                    device=device,
+                    embed_uncond=embed_uncond,
+                    cfg_scale=args.guidance_scale,
+                )
+                v_fwd, fwd_bands = fwd_cache[(img_idx, seed_idx)]
+                for j, (name, _lam) in enumerate(configs):
+                    rev_norms, rev_bands = rev_results[j]
+                    _accumulate_row(
+                        accum,
+                        name,
+                        v_fwd,
+                        fwd_bands,
+                        rev_norms,
+                        rev_bands,
+                        per_sample_bands,
+                        per_sample_v_rev_bands,
+                        per_sample_stems,
+                        img_idx,
+                        seed_idx,
+                        args.n_seeds,
+                        stem,
+                    )
+                pbar.update(1)
+                pbar.set_postfix_str(f"{stem} seed={seed}")
+        pbar.close()
+    else:
+        pbar = tqdm(total=len(encoded), desc=f"rev (×{args.n_seeds} seeds batched)")
+        for img_idx, (stem, x_0, embed) in enumerate(encoded):
+            seeds = _seeds_for(img_idx)
             rev_results = run_reverse_batched(
                 anima,
                 x_0,
                 embed,
                 sigmas,
-                noise_seed=seed,
-                dcw_lams=config_lams,
+                noise_seeds=seeds,
+                dcw_lams=[0.0] * args.n_seeds,
                 device=device,
                 embed_uncond=embed_uncond,
                 cfg_scale=args.guidance_scale,
             )
-            v_fwd, fwd_bands = fwd_cache[(img_idx, seed_idx)]
-            for j, (name, _lam) in enumerate(configs):
-                rev_norms, rev_bands = rev_results[j]
-                gap = rev_norms - v_fwd
-                accum[name]["v_fwd"] += v_fwd
-                accum[name]["v_rev"] += rev_norms
-                accum[name]["gap"] += gap
-                accum[name]["gap_sq"] += gap**2
-                for b in BANDS:
-                    gap_b = rev_bands[b] - fwd_bands[b]
-                    accum[name]["v_fwd_bands"][b] += fwd_bands[b]
-                    accum[name]["v_rev_bands"][b] += rev_bands[b]
-                    accum[name]["gap_bands"][b] += gap_b
-                    if name == "baseline" and per_sample_bands is not None:
-                        row = img_idx * args.n_seeds + seed_idx
-                        per_sample_bands[b][row] = gap_b
-                        per_sample_v_rev_bands[b][row] = rev_bands[b]
-                        per_sample_stems[row] = stem
-                accum[name]["n"] += 1
+            for seed_idx, (rev_norms, rev_bands) in enumerate(rev_results):
+                v_fwd, fwd_bands = fwd_cache[(img_idx, seed_idx)]
+                _accumulate_row(
+                    accum,
+                    "baseline",
+                    v_fwd,
+                    fwd_bands,
+                    rev_norms,
+                    rev_bands,
+                    per_sample_bands,
+                    per_sample_v_rev_bands,
+                    per_sample_stems,
+                    img_idx,
+                    seed_idx,
+                    args.n_seeds,
+                    stem,
+                )
             pbar.update(1)
-            pbar.set_postfix_str(f"{stem} seed={seed}")
-    pbar.close()
+            pbar.set_postfix_str(stem)
+        pbar.close()
     clear_hydra_sigma(anima)
     log.info(f"done in {time.time() - t0:.0f}s")
 
