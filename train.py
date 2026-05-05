@@ -89,7 +89,6 @@ from library.training import (
     verify_command_line_training_args,
     verify_training_args,
 )
-from library.training.dcw_validation import BiasMetrics
 from library.training.loop import build_loop_state, run_training_loop
 from library.log import setup_logging, add_logging_arguments
 
@@ -155,16 +154,6 @@ class AnimaTrainer:
         # this and skips its own outer backward to avoid double-stepping or
         # crashing on the detached return tensor.
         self._split_backward_consumed: bool = False
-        # SNR-t bias validation + end-of-training DCW recipe calibration.
-        # Holds list refs to ``_adapters`` and ``_padding_mask_cache`` so it
-        # observes the trainer's late-bound adapter resolution and shares
-        # the same cache keys as ``_process_batch_inner``'s forwards.
-        self._bias = BiasMetrics(
-            adapters=self._adapters,
-            padding_mask_cache=self._padding_mask_cache,
-            switch_rng=self._switch_rng_state,
-            restore_rng=self._restore_rng_state,
-        )
 
     # region logging helpers
 
@@ -2165,30 +2154,6 @@ class AnimaTrainer:
         clean_memory_on_device(accelerator.device)
         progress_bar.unpause()
 
-    def _run_bias_validation(
-        self,
-        ctx: "TrainCtx",
-        val: "ValCtx",
-        *,
-        epoch: int,
-        global_step: int,
-        progress_bar,
-        log_prefix: str,
-        logging_fn,
-    ) -> None:
-        """Thin shim -- loop.py gates calls with ``hasattr(trainer,
-        "_run_bias_validation")``, so the trainer keeps this attribute even
-        though the implementation now lives in ``BiasMetrics``."""
-        self._bias.run_validation(
-            ctx,
-            val,
-            epoch=epoch,
-            global_step=global_step,
-            progress_bar=progress_bar,
-            log_prefix=log_prefix,
-            logging_fn=logging_fn,
-        )
-
     def train(self, args):
         from networks.methods.apex import (
             promote_warmstart_to_merge as _apex_promote_warmstart_to_merge,
@@ -2709,24 +2674,6 @@ def setup_parser() -> argparse.ArgumentParser:
         nargs="+",
         default=None,
         help="Sigma values for validation loss (0.0~1.0). Low values = fine detail. Default: 0.1 0.4 0.7",
-    )
-    parser.add_argument(
-        "--validation_bias_metric",
-        action="store_true",
-        help="Log the SNR-t bias gap (||v(x̂_t)|| − ||v(x_t_fwd)||, integrated "
-        "over the late half) on the validation set, alongside FM-MSE. The "
-        "headline scalar correlates with sample quality where FM-MSE often "
-        "does not. LoRA family only -- no APEX / IP-Adapter / EasyControl. "
-        "See docs/methods/dcw.md.",
-    )
-    parser.add_argument(
-        "--validation_bias_steps",
-        type=int,
-        default=12,
-        help="Inference-schedule length for the bias-metric reverse rollout. "
-        "Default 12 (half of inference's 24) -- late-half gap envelope is "
-        "preserved while keeping val cost bounded. Raise to 24 for "
-        "production-resolution numbers.",
     )
     parser.add_argument(
         "--unsloth_offload_checkpointing",

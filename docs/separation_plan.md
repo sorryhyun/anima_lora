@@ -28,8 +28,7 @@ Stays:
   `library/config/`, `library/log.py`.
 - All adapter code: `networks/{lora_anima, lora_modules, methods,
   attention_dispatch.py, lora_save.py, lora_utils.py}`.
-- DCW (ongoing experiment): `networks/dcw.py`,
-  `library/training/{dcw_validation, bias_metric}.py`, `bench/dcw/`.
+- DCW (ongoing experiment): `networks/dcw.py`, `bench/dcw/`.
 - `library/inference/*` — the package stays. Training and bench import
   from `sampling.py`, `adapters.py`, `models.py`, `mod_guidance.py`.
 - `networks/spectrum.py` — stays as a leaf module. Decoupled from
