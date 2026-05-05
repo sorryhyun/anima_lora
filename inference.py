@@ -473,15 +473,30 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--dcw_v4_disable_shrinkage",
-        action="store_true",
-        help="Skip the σ̂²-based shrinkage on α̂ (use raw α̂). Recommended if the "
-        "artifact's σ̂² channel didn't pass Gate B (the shipped prototype's didn't).",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Skip the σ̂²-based shrinkage on α̂ (use raw α̂). Default is ON: "
+        "the 2026-05-05 k_supervision_sweep + tw7-14 ablation showed the σ̂² "
+        "channel fails Gate B at every target window (NLL net-negative vs "
+        "constant baseline), so shrinkage hurts more than it helps. Pass "
+        "--no-dcw_v4_disable_shrinkage to opt back in once σ̂² passes Gate B.",
     )
     parser.add_argument(
         "--dcw_v4_disable_backstop",
         action="store_true",
         help="Skip the caption-length backstop. Currently unused (tau_short not "
         "shipped in artifact yet).",
+    )
+    parser.add_argument(
+        "--dcw_v4_alpha_gain",
+        type=float,
+        default=5e-3,
+        help="Scale factor mapping α̂ (gap-residual units) to λ (gain units). "
+        "Default 1e-2. The trainer's α̂ is in raw integrated-gap units; this "
+        "knob carries the gap→λ conversion that S_pop calibration used to "
+        "provide before the 2026-05-05 A2-cosmetic ablation zeroed S_pop. "
+        "Tune empirically — λ at peak μ_g is roughly α̂ · gain · μ_g_max / "
+        "Σμ_g; the per-step λ is clamped to ±0.05.",
     )
 
     # arguments for batch and interactive modes

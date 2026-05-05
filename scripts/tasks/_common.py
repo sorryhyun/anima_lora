@@ -473,7 +473,7 @@ INFERENCE_BASE = [
     "--lora_multiplier",
     "1.0",
     "--prompt",
-    "masterpiece, best quality, score_7, safe. An anime girl wearing a black tank-top"
+    "masterpiece, best quality, score_7, safe, An anime girl wearing a black tank-top"
     " and denim shorts is standing outdoors. She's holding a rectangular sign out in"
     ' front of her that reads "ANIMA". She\'s looking at the viewer with a smile. The'
     " background features some trees and blue sky with clouds.",
@@ -483,7 +483,7 @@ INFERENCE_BASE = [
     "1024",
     "1024",
     "--infer_steps",
-    "30",
+    "28",
     "--flow_shift",
     "1.0",
     "--sampler",

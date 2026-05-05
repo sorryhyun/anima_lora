@@ -138,7 +138,7 @@ def apply_dcw(
 def haar_LL_norm(v: torch.Tensor) -> float:
     """Single-level Haar LL-band Frobenius norm of a velocity tensor.
 
-    Mirrors ``haar_band_norms_batched`` in ``scripts/dcw_measure_bias.py`` —
+    Mirrors ``haar_band_norms_batched`` in ``scripts/dcw/measure_bias.py`` —
     used at inference to compute v_rev_LL[i] for the v4 fusion head's g_obs
     channel. Caller passes velocity in any layout where the last two dims
     are spatial (e.g. (B, C, T, H, W) or (B, C, H, W)); the DWT is taken on
@@ -151,7 +151,7 @@ def haar_LL_norm(v: torch.Tensor) -> float:
 class FusionHead(nn.Module):
     """v4 fusion head: (c_pool, aspect, g_obs[0:k], aux) → (α̂, log σ̂²).
 
-    Shared by the trainer (``scripts/dcw_train_fusion_head.py``) and the
+    Shared by the trainer (``scripts/dcw/train_fusion_head.py``) and the
     inference controller (``library/inference/dcw_v4.py``) so the MLP
     architecture is in one place. The trainer's saved state-dict keys are
     prefixed with ``head.`` (so e.g. ``head.aspect_emb.weight`` /

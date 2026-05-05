@@ -65,7 +65,7 @@ make dcw --n_images 32 --n_seeds 2      # smaller pool, ~1h, lower σ̂² fideli
 make dcw-train                          # train-only on existing pool (~30s)
 ```
 
-`make dcw` runs `scripts/dcw_measure_bias.py --dump_per_sample_gaps` against three aspect buckets (1024², 832×1248, 1248×832) at the production env (CFG=4, mod_w=3.0), then chains `scripts/dcw_train_fusion_head.py` on the pooled output. Defaults: 80 prompts × 3 seeds × 3 buckets. All outputs land in `post_image_dataset/dcw/<timestamp>-<label>/`; the trainer also reads from `bench/dcw/results/` so the legacy A2 calibration runs (S_pop, λ_scalar per bucket) and prototype trajectories continue to count.
+`make dcw` runs `scripts/dcw/measure_bias.py --dump_per_sample_gaps` against three aspect buckets (1024², 832×1248, 1248×832) at the production env (CFG=4, mod_w=3.0), then chains `scripts/dcw/train_fusion_head.py` on the pooled output. Defaults: 80 prompts × 3 seeds × 3 buckets. All outputs land in `post_image_dataset/dcw/<timestamp>-<label>/`; the trainer also reads from `bench/dcw/results/` so the legacy A2 calibration runs (S_pop, λ_scalar per bucket) and prototype trajectories continue to count.
 
 End artifact: `<run>/fusion_head.safetensors` — single file, ~285k params + per-aspect bucket profile + standardization stats + metadata. `make test-dcw-v4` auto-resolves the newest by mtime across both roots.
 
@@ -137,7 +137,7 @@ The bias is concentrated at low σ on Anima — `gap` is small around σ=0.5 and
 
 The default `λ=-0.015` was derived from two independent estimates that agreed (perceptual winner of a wide sweep + closed-form fit on a narrow sweep). To re-tune for a different checkpoint / CFG-on / on a LoRA stack:
 
-1. `python scripts/dcw_measure_bias.py --dcw_sweep --dcw_scalers 0 -0.010 -0.020` (or any 3+ anchors).
+1. `python scripts/dcw/measure_bias.py --dcw_sweep --dcw_scalers 0 -0.010 -0.020` (or any 3+ anchors).
 2. Read `λ*` from the printed line — `(1−σ)`-weighted least-squares optimum:
    ```
    s_i  = ∂gap/∂λ                            (finite-diff from any 2 anchors)
@@ -189,7 +189,7 @@ Closes 83% of the LL gap at the worst step (σ=0.04) and leaves headroom for per
 | `networks/dcw.py` | `apply_dcw` (the apply site, shared by both modes) + `FusionHead` (shared by trainer + inference) + `haar_LL_norm` |
 | `library/inference/dcw_v4.py` | `OnlineFusionDCWController` — loads artifact, observes warmup, fires head at step `k`, emits per-step `λ_i` |
 | `library/inference/generation.py` | controller setup pre-loop + per-step apply at the DCW call site (non-tiled path) |
-| `scripts/dcw_measure_bias.py` | offline trajectory dump + S_pop sweep — produces `gaps_per_sample.npz` consumed by the trainer |
-| `scripts/dcw_train_fusion_head.py` | offline head training — produces `fusion_head.safetensors` |
+| `scripts/dcw/measure_bias.py` | offline trajectory dump + S_pop sweep — produces `gaps_per_sample.npz` consumed by the trainer |
+| `scripts/dcw/train_fusion_head.py` | offline head training — produces `fusion_head.safetensors` |
 | `scripts/tasks/dcw.py` | `make dcw` / `make dcw-train` task wrappers |
 | `docs/proposal/dcw-learnable-calibrator-v4.md` | v4 derivation, gates, fallback ladder, evidence appendix |

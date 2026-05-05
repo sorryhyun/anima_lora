@@ -13,7 +13,7 @@ make test-dcw           # inference with the v4 controller
                         # falls back to v3 / v2 / scalar in that order if missing
 ```
 
-`make dcw` runs `scripts/dcw_measure_bias.py --dump_per_sample_gaps` once per aspect bucket (1024², 832×1248, 1248×832) at the production env (CFG=4, mod_w=3.0), then trains the fusion head via `scripts/dcw_train_fusion_head.py` on the pooled output, then drops `<base_dit_name>_dcw_v4.safetensors` next to the DiT. The artifact is single-file, self-contained: per-aspect bucket profile + fusion-head weights + standardization stats + metadata.
+`make dcw` runs `scripts/dcw/measure_bias.py --dump_per_sample_gaps` once per aspect bucket (1024², 832×1248, 1248×832) at the production env (CFG=4, mod_w=3.0), then trains the fusion head via `scripts/dcw/train_fusion_head.py` on the pooled output, then drops `<base_dit_name>_dcw_v4.safetensors` next to the DiT. The artifact is single-file, self-contained: per-aspect bucket profile + fusion-head weights + standardization stats + metadata.
 
 `make test-dcw` is the v4 equivalent of `make test` with the controller wired in at `library/inference/generation.py`'s sampling loop.
 
@@ -71,7 +71,7 @@ Per-aspect bucket profile `μ_g[aspect, i]`, `S_pop[aspect, i]`, `λ_scalar[aspe
 Mean-pooled `crossattn_emb_v0` → `c_pool` (1024-dim) + auxiliary scalars `[caption_length, cos(c_pool, μ_centroid), token_l2_std]` (3-dim).
 
 ### Input 3 — observed prefix gap
-First k=7 LL-band gap measurements `g_obs[0:k]`. Computed at runtime using the same single-level orthonormal 2D Haar DWT path as `scripts/dcw_measure_bias.py`, extracted into a runtime module (`library/inference/dcw_observation.py`).
+First k=7 LL-band gap measurements `g_obs[0:k]`. Computed at runtime using the same single-level orthonormal 2D Haar DWT path as `scripts/dcw/measure_bias.py`, extracted into a runtime module (`library/inference/dcw_observation.py`).
 
 ### Fusion head
 Single shared MLP `h(c_pool, aspect_emb, g_obs[0:k], aux) → (α̂, log σ̂²)`:
@@ -189,8 +189,8 @@ This *strengthens* the case for v4's architecture (head-driven correction, bucke
 
 | # | Status | Deliverable | Files |
 |---|---|---|---|
-| **I1** | TODO | `make dcw` sampling wrapper | extend `scripts/tasks/training.py` (or new `scripts/tasks/dcw.py`) — calls `scripts/dcw_measure_bias.py --dump_per_sample_gaps` over 3 buckets at production env, then chains to I2 |
-| **I2** | ✓ done | Head training script | `scripts/dcw_train_fusion_head.py` |
+| **I1** | TODO | `make dcw` sampling wrapper | extend `scripts/tasks/training.py` (or new `scripts/tasks/dcw.py`) — calls `scripts/dcw/measure_bias.py --dump_per_sample_gaps` over 3 buckets at production env, then chains to I2 |
+| **I2** | ✓ done | Head training script | `scripts/dcw/train_fusion_head.py` |
 | **I3** | ✓ done | Reference artifact aggregator | folded into I2 (single `fusion_head.safetensors` output) |
 | **I4** | TODO | Online observation module | new `library/inference/dcw_observation.py` — DWT + LL-gap measurement during warmup. **Critical:** reuse CFG cond-branch forward where possible to avoid 2× warmup cost |
 | **I5** | TODO | Inference module | new `library/inference/dcw_online.py` — `OnlineFusionDCWController` with warmup-loop observation, fusion at step k, head correction for tail. Wires into `library/inference/generation.py:343` and `:675` |
@@ -290,7 +290,7 @@ Three tiers, resolved at controller init:
 - [x] A2 — per-aspect 2-point anchor at CFG=4 (`λ_scalar`: +0.0046 / +0.0059 / +0.0127; bucket prior cosmetic)
 - [x] **Prototype head — Gate B α̂ channels pass at +0.89 / +0.88 r on 8-fold CV (n=176)**
 - [ ] I1 — `make dcw` sampling wrapper (n=80 × 3 seeds × 3 buckets default)
-- [x] I2 — head training script (`scripts/dcw_train_fusion_head.py`)
+- [x] I2 — head training script (`scripts/dcw/train_fusion_head.py`)
 - [x] I3 — reference artifact aggregator (folded into I2)
 - [ ] I4 — online observation module (CFG cond-branch reuse critical)
 - [ ] I5 — fusion DCW controller

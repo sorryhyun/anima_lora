@@ -557,8 +557,9 @@ def generate_body(
             dcw_v4_ctrl.setup(
                 H=height, W=width,
                 embed=embed, embed_mask=v4_embed_mask,
-                disable_shrinkage=getattr(args, "dcw_v4_disable_shrinkage", False),
+                disable_shrinkage=getattr(args, "dcw_v4_disable_shrinkage", True),
                 disable_backstop=getattr(args, "dcw_v4_disable_backstop", False),
+                alpha_gain=getattr(args, "dcw_v4_alpha_gain", 1e-2),
             )
             if not dcw_v4_ctrl.is_active:
                 dcw_v4_ctrl = None  # graceful degrade to scalar/none

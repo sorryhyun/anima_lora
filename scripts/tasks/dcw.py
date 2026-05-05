@@ -1,9 +1,9 @@
 """DCW v4 calibrator: collect calibration data + train fusion head.
 
-`make dcw` runs `dcw_measure_bias.py --dump_per_sample_gaps` once per
-aspect bucket (top-5 by sample count: 832×1248, 896×1152, 768×1344,
+`make dcw` runs `scripts/dcw/measure_bias.py --dump_per_sample_gaps` once
+per aspect bucket (top-5 by sample count: 832×1248, 896×1152, 768×1344,
 1152×896, 1248×832) at the production env (CFG=4, mod_w=3.0), then
-chains `dcw_train_fusion_head.py`. End artifact is
+chains `scripts/dcw/train_fusion_head.py`. End artifact is
 `output/dcw/<timestamp>-v4-fusion-head-make-dcw/fusion_head.safetensors`,
 which `make test-dcw-v4` auto-resolves.
 
@@ -68,7 +68,7 @@ def cmd_dcw(extra):
         run(
             [
                 sys.executable,
-                "scripts/dcw_measure_bias.py",
+                "scripts/dcw/measure_bias.py",
                 "--image_h",
                 str(H),
                 "--image_w",
@@ -90,7 +90,7 @@ def cmd_dcw(extra):
     run(
         [
             sys.executable,
-            "scripts/dcw_train_fusion_head.py",
+            "scripts/dcw/train_fusion_head.py",
             "--label",
             label,
         ]
@@ -103,4 +103,4 @@ def cmd_dcw(extra):
 
 def cmd_dcw_train(extra):
     """Train-only on existing pool (no sampling, ~30s)."""
-    run([sys.executable, "scripts/dcw_train_fusion_head.py", *extra])
+    run([sys.executable, "scripts/dcw/train_fusion_head.py", *extra])

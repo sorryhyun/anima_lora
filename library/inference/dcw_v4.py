@@ -71,6 +71,8 @@ class OnlineFusionDCWController:
         n_steps: int,
         device: torch.device,
         dtype: torch.dtype = torch.float32,
+        target_start: Optional[int] = None,
+        target_end: Optional[int] = None,
     ):
         self.head = head.to(device=device, dtype=dtype).eval()
         self.profiles = profiles
@@ -81,6 +83,9 @@ class OnlineFusionDCWController:
         self.g_obs_std = g_obs_std.to(device=device, dtype=dtype)
         self.k_warmup = int(k_warmup)
         self.n_steps = int(n_steps)
+        # Window over which α̂ was supervised; head_corr applies on these steps only.
+        self.target_start = int(k_warmup if target_start is None else target_start)
+        self.target_end = int(n_steps if target_end is None else target_end)
         self.device = device
         self.dtype = dtype
         # set per request via setup()
@@ -92,6 +97,7 @@ class OnlineFusionDCWController:
         self.g_obs_buf: list[float] = []
         self.alpha_eff: float = 0.0
         self.tail_norm: float = 1.0
+        self.alpha_gain: float = 1e-2  # gap-units → λ-gain-units; tunable per request
         self.disable_shrinkage: bool = False
         self.disable_backstop: bool = False
 
@@ -113,6 +119,9 @@ class OnlineFusionDCWController:
         n_aspects = int(meta.get("n_aspects", 3))
         n_steps = int(meta.get("n_steps", 28))
         sigma2_pop = float(meta.get("sigma2_pop", 1.0))
+        # Pre-tw7-14 artifacts won't have these — fall back to full-tail behaviour.
+        target_start = int(meta.get("target_start", k_warmup))
+        target_end = int(meta.get("target_end", n_steps))
 
         head_sd = {
             k[len("head.") :]: v for k, v in tensors.items() if k.startswith("head.")
@@ -180,11 +189,15 @@ class OnlineFusionDCWController:
             k_warmup=k_warmup,
             n_steps=n_steps,
             device=device,
+            target_start=target_start,
+            target_end=target_end,
         )
         logger.info(
-            "DCW v4: loaded %s (k=%d, %d aspects, %d steps, sigma2_pop=%.2f)",
+            "DCW v4: loaded %s (k=%d, target=[%d:%d], %d aspects, %d steps, sigma2_pop=%.2f)",
             path.name,
             k_warmup,
+            target_start,
+            target_end,
             n_aspects,
             n_steps,
             sigma2_pop,
@@ -200,6 +213,7 @@ class OnlineFusionDCWController:
         *,
         disable_shrinkage: bool = False,
         disable_backstop: bool = False,
+        alpha_gain: float = 1e-2,
     ) -> None:
         """Resolve aspect, compute c_pool + aux for this generation. Idempotent."""
         self.is_active = False
@@ -207,6 +221,7 @@ class OnlineFusionDCWController:
         self.alpha_eff = 0.0
         self.disable_shrinkage = disable_shrinkage
         self.disable_backstop = disable_backstop
+        self.alpha_gain = float(alpha_gain)
 
         # Bucket conditioning is dead (see project_dcw_bucket_prior_cosmetic):
         # all profiles in the artifact are broadcast from a single population
@@ -245,15 +260,25 @@ class OnlineFusionDCWController:
         self.profile = self.profiles[aspect_id]
         self.c_pool = c_pool
         self.aux = aux_n
-        self.tail_norm = float(self.profile.mu_g[self.k_warmup :].sum().item())
+        # Distribute α̂ proportionally to μ_g over the supervised window only,
+        # so the per-step λ matches the integrated-residual units α̂ was
+        # trained on. Falls through to full tail [k_warmup:n_steps] for legacy
+        # artifacts that don't carry target_start/target_end metadata.
+        self.tail_norm = float(
+            self.profile.mu_g[self.target_start : self.target_end].sum().item()
+        )
         if abs(self.tail_norm) < 1e-6:
             self.tail_norm = 1.0  # head_corr will be ~0; harmless
         self.is_active = True
         logger.info(
-            "DCW v4: setup %dx%d lam_scalar=%+.4f cap_len=%d cos_centroid=%.3f",
+            "DCW v4: setup %dx%d target=[%d:%d] tail_norm=%+.2f "
+            "alpha_gain=%.4g cap_len=%d cos_centroid=%.3f",
             H,
             W,
-            self.profile.lam_scalar,
+            self.target_start,
+            self.target_end,
+            self.tail_norm,
+            self.alpha_gain,
             cap_len,
             cos_centroid,
         )
@@ -316,15 +341,26 @@ class OnlineFusionDCWController:
     def lambda_for_step(self, step_i: int, sigma_i: float) -> float:
         """Per-step λ for ``apply_dcw(..., schedule='const', lam=λ_i)``.
 
-        Tail formula deviates from the proposal pseudocode to fix a dimensional
-        bug: α̂ is in gap units (the trainer's target is integrated tail gap
-        residual), so the LSQ-projected per-step λ that cancels α̂ under the
-        mu_g-proportional distribution is
+        Distributes α̂ proportionally to μ_g over the supervised target window
+        ``[target_start, target_end)``::
 
-            Δλ_i = −α̂ · mu_g[i] / Σ_{j∈tail}(mu_g[j] · S_pop[j])
+            λ_i = alpha_gain · α̂ · μ_g[i] / Σ_{j∈[target_start, target_end)} μ_g[j]
 
-        not the proposal's ``α̂ · mu_g[i] / tail_norm``. Output is then clamped
-        to ±3·|lam_scalar| as an overshoot guard.
+        for ``i`` inside the window, 0 otherwise. ``alpha_gain`` carries the
+        gap-units → λ-gain-units conversion that S_pop used to provide before
+        the 0505 A2-cosmetic ablation removed S_pop calibration. Tunable via
+        ``--dcw_v4_alpha_gain`` (default 1e-2).
+
+        The pre-0505 LSQ formula divided by Σ(μ_g · S_pop) to make this
+        scale-exact; with S_pop now zeros in the artifact, that denominator
+        collapses to 0 and the entire correction silently zeroed. The new
+        formula trades scale-exactness for survivability.
+
+        Warmup steps (i < target_start) and post-window steps
+        (i ≥ target_end) get the v2-style ``base + bucket_corr`` only —
+        which is identically 0 in current artifacts since lam_scalar and
+        S_pop are both zeroed. Future calibration runs that restore those
+        values (or new schemas) will reactivate the warmup/post terms.
         """
         if not self.is_active:
             return 0.0
@@ -336,11 +372,10 @@ class OnlineFusionDCWController:
         mu_g_i = float(p.mu_g[i].item())
         s_pop_i = float(p.s_pop[i].item())
         bucket_corr = mu_g_i * p.lam_scalar / s_pop_i if abs(s_pop_i) > 1e-6 else 0.0
-        if step_i < self.k_warmup:
-            lam_i = base + bucket_corr
+        if self.target_start <= step_i < self.target_end:
+            head_corr = self.alpha_gain * self.alpha_eff * mu_g_i / self.tail_norm
         else:
-            denom = p.mu_g_S_pop_tail_dot
-            head_corr = -self.alpha_eff * mu_g_i / denom if abs(denom) > 1e-6 else 0.0
-            lam_i = base + bucket_corr + head_corr
-        lam_max = 3.0 * abs(p.lam_scalar) if p.lam_scalar != 0.0 else 0.05
+            head_corr = 0.0
+        lam_i = base + bucket_corr + head_corr
+        lam_max = max(0.05, 3.0 * abs(p.lam_scalar))
         return max(-lam_max, min(lam_max, lam_i))

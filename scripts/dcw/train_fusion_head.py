@@ -22,168 +22,24 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import torch
-from safetensors import safe_open
 from safetensors.torch import save_file
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 from bench._common import make_run_dir, write_result  # noqa: E402
 from networks.dcw import FusionHead  # noqa: E402
-
-ASPECT_TABLE = {
-    (832, 1248): 0,  # HD portrait — most common in cache
-    (896, 1152): 1,  # 3:4 portrait
-    (768, 1344): 2,  # tall portrait
-    (1152, 896): 3,  # 3:4 landscape
-    (1248, 832): 4,  # HD landscape
-}
-ASPECT_NAMES = ["832x1248", "896x1152", "768x1344", "1152x896", "1248x832"]
-N_ASPECTS = 5
-
-
-@dataclass
-class Row:
-    run_id: str
-    aspect_id: int
-    stem: str
-    seed_idx: int
-    gap_LL: np.ndarray  # (n_steps,) — used for target (residual on tail)
-    v_rev_LL: np.ndarray  # (n_steps,) — used for input g_obs
-    v_rev_source: str  # "native" | "synthetic" | "fallback"
-
-
-def load_bench_runs(
-    results_roots: Path | list[Path],
-    *,
-    require_cfg: float = 4.0,
-    require_mod_w: float = 3.0,
-    skip_with_lora: bool = True,
-) -> list[Row]:
-    if isinstance(results_roots, (str, Path)):
-        results_roots = [Path(results_roots)]
-    rows: list[Row] = []
-    seen_run_names: set[str] = set()  # de-dup if same name appears in multiple roots
-    candidate_dirs: list[Path] = []
-    for root in results_roots:
-        if not root.exists():
-            continue
-        candidate_dirs.extend(p for p in root.iterdir() if p.is_dir())
-    for run_dir in sorted(candidate_dirs):
-        if run_dir.name in seen_run_names:
-            continue
-        seen_run_names.add(run_dir.name)
-        npz_path = run_dir / "gaps_per_sample.npz"
-        rj_path = run_dir / "result.json"
-        if not (npz_path.exists() and rj_path.exists()):
-            continue
-        rj = json.loads(rj_path.read_text())
-        a = rj.get("args", {})
-        H, W = a.get("image_h"), a.get("image_w")
-        if (H, W) not in ASPECT_TABLE:
-            print(f"skip {run_dir.name}: aspect {H}x{W} not in table")
-            continue
-        if a.get("guidance_scale") != require_cfg:
-            print(
-                f"skip {run_dir.name}: cfg={a.get('guidance_scale')} != {require_cfg}"
-            )
-            continue
-        if a.get("mod_w") != require_mod_w:
-            print(f"skip {run_dir.name}: mod_w={a.get('mod_w')} != {require_mod_w}")
-            continue
-        if skip_with_lora and a.get("lora_weight"):
-            print(f"skip {run_dir.name}: has LoRA {a['lora_weight']}")
-            continue
-        n_seeds = int(a.get("n_seeds", 1))
-        z = np.load(npz_path, allow_pickle=True)
-        stems = z["stems"]
-        gap_LL = z["gap_LL"]  # (N, n_steps)
-        if "v_rev_LL" in z.files:
-            v_rev_LL = z["v_rev_LL"]
-            source = "native"
-        else:
-            v_fwd_pop = _load_v_fwd_pop_mean(run_dir, band="LL")
-            if v_fwd_pop is not None:
-                v_rev_LL = (
-                    gap_LL + v_fwd_pop[None, :]
-                )  # broadcast (n_steps,) → (N, n_steps)
-                source = "synthetic"
-            else:
-                v_rev_LL = gap_LL
-                source = "fallback"
-        aspect_id = ASPECT_TABLE[(H, W)]
-        for r in range(len(stems)):
-            img_idx = r // n_seeds
-            seed_idx = r % n_seeds
-            rows.append(
-                Row(
-                    run_id=run_dir.name,
-                    aspect_id=aspect_id,
-                    stem=str(stems[r]),
-                    seed_idx=int(
-                        img_idx * 1000 + seed_idx
-                    ),  # globally unique within run
-                    gap_LL=np.asarray(gap_LL[r], dtype=np.float64),
-                    v_rev_LL=np.asarray(v_rev_LL[r], dtype=np.float64),
-                    v_rev_source=source,
-                )
-            )
-    return rows
-
-
-def _load_v_fwd_pop_mean(run_dir: Path, *, band: str = "LL") -> np.ndarray | None:
-    """Read baseline_v_fwd_<band> column from per_step_bands.csv as a per-step mean."""
-    csv_path = run_dir / "per_step_bands.csv"
-    if not csv_path.exists():
-        return None
-    col = f"baseline_v_fwd_{band}"
-    with csv_path.open() as f:
-        reader = csv.DictReader(f)
-        try:
-            return np.array([float(r[col]) for r in reader], dtype=np.float64)
-        except KeyError:
-            return None
-
-
-def load_text_features(
-    stems: list[str], dataset_dir: Path, variant: int = 0
-) -> dict[str, dict]:
-    """Per-stem c_pool + caption_length + token_l2_std from te cache."""
-    out: dict[str, dict] = {}
-    for stem in stems:
-        if stem in out:
-            continue
-        te_path = dataset_dir / f"{stem}_anima_te.safetensors"
-        if not te_path.exists():
-            print(f"warn: missing te cache for {stem}")
-            continue
-        with safe_open(str(te_path), framework="pt") as f:
-            emb = f.get_tensor(f"crossattn_emb_v{variant}").float()  # (512, 1024)
-            mask = f.get_tensor(f"attn_mask_v{variant}").bool()  # (512,)
-        valid = emb[mask]  # (L, 1024)
-        if valid.numel() == 0:
-            continue
-        c_pool = valid.mean(dim=0)  # (1024,)
-        token_l2 = valid.norm(dim=-1)  # (L,)
-        out[stem] = {
-            "c_pool": c_pool.numpy().astype(np.float32),
-            "caption_length": int(mask.sum().item()),
-            "token_l2_std": float(token_l2.std().item()),
-        }
-    return out
-
-
-def build_population_mu_g(rows: list[Row], n_steps: int) -> np.ndarray:
-    """Single population-mean LL gap trajectory across all rows."""
-    if not rows:
-        return np.zeros(n_steps, dtype=np.float64)
-    return np.stack([r.gap_LL for r in rows]).mean(axis=0)
+from scripts.dcw.fusion_data import (  # noqa: E402
+    ASPECT_NAMES,
+    N_ASPECTS,
+    build_population_mu_g,
+    load_bench_runs,
+    load_text_features,
+)
 
 
 # Clamp range needs to span the realistic σ²_pop on Anima (~3e5 → log ≈ 12.7).
@@ -355,16 +211,13 @@ def main():
         "--results_root",
         type=Path,
         nargs="+",
-        default=[
-            REPO_ROOT / "output" / "dcw",
-            REPO_ROOT / "post_image_dataset" / "dcw",
-            REPO_ROOT / "bench" / "dcw" / "results",
-        ],
-        help="One or more directories holding bench-script run dirs. "
-        "Default scans output/dcw/ (new `make dcw` output) first, then "
-        "post_image_dataset/dcw/ (legacy `make dcw` output) and "
-        "bench/dcw/results/ (legacy benches). De-dups by run name; "
-        "first-found wins.",
+        default=[REPO_ROOT / "output" / "dcw"],
+        help="Directories holding bench-script run dirs. Default = output/dcw/ "
+        "only (the clean `make dcw` baseline pool). Legacy roots "
+        "(post_image_dataset/dcw, bench/dcw/results) are excluded by default "
+        "because they contained heterogeneous configs (A2 calibration runs "
+        "with dcw_sweep=True mixed with λ=0 baselines), which contaminated "
+        "the 2026-05-05 seed-mean ablation. Pass them explicitly to opt back in.",
     )
     p.add_argument(
         "--out_root",
@@ -378,6 +231,26 @@ def main():
     )
     p.add_argument("--text_variant", type=int, default=0)
     p.add_argument("--k_warmup", type=int, default=7)
+    p.add_argument(
+        "--target_window",
+        type=str,
+        default=None,
+        help="Target window as 'start:end' (exclusive end). Default = "
+        "'k_warmup:n_steps' (full tail), matching the production inference "
+        "contract. The 2026-05-05 k_supervision_sweep bench showed mid-tail "
+        "windows (7:14, 21:) carry r_α≈0.52–0.55 vs full-tail's 0.47, so "
+        "narrowing the supervision target is a cheap win — but the inference "
+        "path must also be windowed to match (apply λ only over those steps).",
+    )
+    p.add_argument(
+        "--seed_mean_targets",
+        action="store_true",
+        help="Replace each row's target with its per-prompt seed-mean. "
+        "Direct attack on the seed-noise ceiling (project_dcw_seed_variance_dominates) "
+        "for prompts with ≥2 seeds. Requires multi-seed pool (output/dcw/ "
+        "make-dcw-* runs ship 3 seeds/prompt). Inputs (g_obs, c_pool, aux) "
+        "stay per-row so the head still sees per-seed observations.",
+    )
     p.add_argument("--n_folds", type=int, default=8)
     p.add_argument("--epochs", type=int, default=600)
     p.add_argument("--lr", type=float, default=1e-3)
@@ -442,7 +315,26 @@ def main():
         "(single profile, broadcast to all aspects in artifact)"
     )
 
-    print(f"[4/6] building feature matrices (k={args.k_warmup}) ...")
+    if args.target_window is not None:
+        if ":" not in args.target_window:
+            sys.exit(f"--target_window must contain ':' (got {args.target_window!r})")
+        a, b = args.target_window.split(":", 1)
+        t_start = int(a) if a else 0
+        t_end = int(b) if b else n_steps
+        if t_start < 0:
+            t_start = max(0, n_steps + t_start)
+        if t_end < 0:
+            t_end = max(0, n_steps + t_end)
+        t_end = min(t_end, n_steps)
+        if t_start >= t_end:
+            sys.exit(f"empty target_window {args.target_window!r} for n_steps={n_steps}")
+    else:
+        t_start, t_end = args.k_warmup, n_steps
+
+    print(
+        f"[4/6] building feature matrices (k_obs={args.k_warmup}, "
+        f"target=[{t_start}:{t_end}]) ..."
+    )
     c_pool_arr = np.stack([feat[r.stem]["c_pool"] for r in rows]).astype(np.float32)
     centroid = c_pool_arr.mean(axis=0)
     cap_len_arr = np.array(
@@ -480,11 +372,46 @@ def main():
 
     targets = np.array(
         [
-            float((r.gap_LL[args.k_warmup :] - mu_g_pop[args.k_warmup :]).sum())
+            float((r.gap_LL[t_start:t_end] - mu_g_pop[t_start:t_end]).sum())
             for r in rows
         ],
         dtype=np.float32,
     )
+    if args.seed_mean_targets:
+        # Group by (stem, aspect_id) — same prompt at different aspects has
+        # different gap shape (∂∫g/∂λ flips sign across aspects per the
+        # bucket-cosmetic memo's table), so pooling those rows would erase
+        # real per-aspect signal as if it were seed noise. Within one
+        # (stem, aspect) group, each row is one seed of the same setup.
+        groups_by_idx = np.array(
+            [(r.stem, r.aspect_id) for r in rows], dtype=object
+        )
+        per_group_mean: dict[tuple, float] = {}
+        per_group_n: dict[tuple, int] = {}
+        for i, g in enumerate(groups_by_idx):
+            t = tuple(g)
+            per_group_n[t] = per_group_n.get(t, 0) + 1
+        for t in per_group_n:
+            mask = np.array([tuple(g) == t for g in groups_by_idx])
+            per_group_mean[t] = float(targets[mask].mean())
+        targets_seedmean = np.array(
+            [per_group_mean[(r.stem, r.aspect_id)] for r in rows], dtype=np.float32
+        )
+        n_multi = sum(1 for n in per_group_n.values() if n >= 2)
+        n_single = len(per_group_n) - n_multi
+        std_before = float(targets.std())
+        std_after = float(targets_seedmean.std())
+        print(
+            f"  --seed_mean_targets: collapsed labels to per-(stem,aspect) mean "
+            f"({n_multi} groups w/ ≥2 seeds, {n_single} singleton groups, "
+            f"{len(per_group_n)} total groups)"
+        )
+        print(
+            f"  target std: per-row={std_before:.1f} → seed-mean={std_after:.1f} "
+            f"(seed-noise share = 1 - (after/before)² = "
+            f"{1 - (std_after / max(std_before, 1e-9)) ** 2:.1%})"
+        )
+        targets = targets_seedmean
     sigma2_pop = float(targets.var())
     print(
         f"  targets: mean={targets.mean():+.2f}, std={targets.std():.2f}, "
@@ -635,6 +562,8 @@ def main():
     meta = {
         "schema": "dcw_v4_fusion_head",
         "k_warmup": str(args.k_warmup),
+        "target_start": str(t_start),
+        "target_end": str(t_end),
         "n_aspects": str(N_ASPECTS),
         "aspect_names": ",".join(ASPECT_NAMES),
         "n_steps": str(n_steps),
@@ -678,6 +607,8 @@ def main():
         "n_unique_stems": len(unique_stems),
         "per_aspect_counts": {ASPECT_NAMES[a]: counts[a] for a in range(N_ASPECTS)},
         "k_warmup": args.k_warmup,
+        "target_start": t_start,
+        "target_end": t_end,
         "n_folds": args.n_folds,
         "sigma2_pop": sigma2_pop,
         "sigma2_prior": {
