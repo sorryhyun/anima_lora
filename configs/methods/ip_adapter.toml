@@ -45,7 +45,21 @@ network_args = [
     # a strong shared-aesthetic background. Build the sidecar once via
     # `python scripts/compute_pe_centroid.py`. Comment out to disable (buffer
     # stays zero ⇒ no-op; equivalent to the pre-centroid behavior).
-    "ip_centroid_path=post_image_dataset/ip_adapter/anima_pe_centroid_pe.safetensors",
+    # "ip_centroid_path=post_image_dataset/ip_adapter/anima_pe_centroid_pe.safetensors",
+    # PE-Core LoRA (experimental prototype — see docs/proposal/ip-adapter_plan.md).
+    # When enabled, the network owns PE-Core and trains LoRA on every
+    # transformer.resblock (qkv + attn_out + mlp). FM gradient flows back
+    # through PE so the encoder can adapt to the manga/anime distribution
+    # (targets the PR=6.2 manifold collapse from the diagnostic memory note).
+    # Forces ip_features_cache_to_disk=false because cached features can't
+    # track a moving encoder.
+    "pe_lora_enabled=true",
+    "pe_lora_rank=16",
+    "pe_lora_alpha=16",
+    # "pe_lora_lr=1e-4",         # default = global learning_rate
+    # "pe_lora_qkv=true",
+    # "pe_lora_attn_out=true",
+    # "pe_lora_mlp=true",
 ]
 
 output_name = "anima_ip_adapter"
@@ -54,13 +68,18 @@ logging_dir = "output/logs"
 log_with = "tensorboard"
 
 learning_rate = 1e-4
-max_train_epochs = 8
-save_every_n_epochs = 8
-checkpointing_epochs = 8
+max_train_epochs = 4
+save_every_n_epochs = 4
+checkpointing_epochs = 4
 
 ip_diagnostics_epochs = 999
 
-ip_features_cache_to_disk = true
+# PE-LoRA owns the encoder and trains it live — pre-cached PE features can't
+# track the moving LoRA, so caching is off. cache_latents follows for the same
+# reason (the dataset must surface batch["images"] in [-1, 1] for live PE).
+ip_features_cache_to_disk = false
+cache_latents = false
+cache_latents_to_disk = false
 # CFG dropout for image conditioning (independent of text dropout).
 # Read by train.py when use_ip_adapter is on.
 use_ip_adapter = true
@@ -68,7 +87,8 @@ ip_image_drop_p = 0.05
 caption_dropout_rate = 0.05
 # gradient_accumulation_steps = 4
 
-# DiT is frozen; no need for block swapping. Adapter+resampler+vision-encoder
-# fit comfortably alongside the DiT in bf16.
-blocks_to_swap = 0
+# DiT is frozen; resampler + KV proj + PE-LoRA + live PE encoder all sit on
+# the GPU alongside the DiT. blocks_to_swap=12 leaves headroom for the live
+# PE forward without disturbing the DiT-side memory budget.
+blocks_to_swap = 18
 # compile_mode = "full"

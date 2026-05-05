@@ -70,7 +70,9 @@ from library.vision import (
     encode_pe_from_imageminus1to1,
     load_pe_encoder,
 )
+from library.vision.encoders import get_encoder_info
 from library.vision.resampler import PerceiverResampler
+from networks.methods.ip_adapter_pe_lora import inject_pe_lora
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -128,6 +130,18 @@ def create_network(
     # resampler — see IPAdapterNetwork.__init__ comment on ip_centroid.
     ip_centroid_path = kwargs.get("ip_centroid_path", None) or None
 
+    # PE-Core LoRA prototype: when enabled, the network owns the PE encoder
+    # and trains LoRA on every resblock (qkv + attn_out + mlp). Forces live
+    # PE encoding (cached features can't track a moving encoder).
+    pe_lora_enabled = _parse_bool(kwargs.get("pe_lora_enabled", False))
+    pe_lora_rank = int(kwargs.get("pe_lora_rank", 16))
+    pe_lora_alpha = float(kwargs.get("pe_lora_alpha", 16.0))
+    raw_pe_lora_lr = kwargs.get("pe_lora_lr", None)
+    pe_lora_lr = float(raw_pe_lora_lr) if raw_pe_lora_lr is not None else None
+    pe_lora_qkv = _parse_bool(kwargs.get("pe_lora_qkv", True))
+    pe_lora_attn_out = _parse_bool(kwargs.get("pe_lora_attn_out", True))
+    pe_lora_mlp = _parse_bool(kwargs.get("pe_lora_mlp", True))
+
     num_blocks = (
         getattr(unet, "num_blocks", DEFAULT_NUM_BLOCKS)
         if unet is not None
@@ -159,10 +173,25 @@ def create_network(
         ip_scale=ip_scale,
         gate_lr=gate_lr,
         multiplier=multiplier,
+        pe_lora_enabled=pe_lora_enabled,
+        pe_lora_rank=pe_lora_rank,
+        pe_lora_alpha=pe_lora_alpha,
+        pe_lora_lr=pe_lora_lr,
+        pe_lora_qkv=pe_lora_qkv,
+        pe_lora_attn_out=pe_lora_attn_out,
+        pe_lora_mlp=pe_lora_mlp,
     )
     if ip_centroid_path:
         network.load_centroid_from_file(ip_centroid_path)
     return network
+
+
+def _parse_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
 def create_network_from_weights(
@@ -206,6 +235,13 @@ def create_network_from_weights(
     resampler_heads = int(metadata.get("ss_resampler_heads", DEFAULT_RESAMPLER_HEADS))
     ip_scale = float(kwargs.get("ip_scale") or metadata.get("ss_ip_scale", 1.0))
 
+    pe_lora_enabled = _parse_bool(metadata.get("ss_pe_lora_enabled", False))
+    pe_lora_rank = int(metadata.get("ss_pe_lora_rank", 16))
+    pe_lora_alpha = float(metadata.get("ss_pe_lora_alpha", 16.0))
+    pe_lora_qkv = _parse_bool(metadata.get("ss_pe_lora_qkv", True))
+    pe_lora_attn_out = _parse_bool(metadata.get("ss_pe_lora_attn_out", True))
+    pe_lora_mlp = _parse_bool(metadata.get("ss_pe_lora_mlp", True))
+
     network = IPAdapterNetwork(
         num_ip_tokens=num_ip_tokens,
         encoder_name=encoder_name,
@@ -220,6 +256,13 @@ def create_network_from_weights(
         ip_scale=ip_scale,
         gate_lr=None,  # inference path; no optimizer
         multiplier=multiplier,
+        pe_lora_enabled=pe_lora_enabled,
+        pe_lora_rank=pe_lora_rank,
+        pe_lora_alpha=pe_lora_alpha,
+        pe_lora_lr=None,
+        pe_lora_qkv=pe_lora_qkv,
+        pe_lora_attn_out=pe_lora_attn_out,
+        pe_lora_mlp=pe_lora_mlp,
     )
     return network, weights_sd
 
@@ -241,6 +284,13 @@ class IPAdapterNetwork(nn.Module):
         ip_scale: float,
         gate_lr: Optional[float] = None,
         multiplier: float = 1.0,
+        pe_lora_enabled: bool = False,
+        pe_lora_rank: int = 16,
+        pe_lora_alpha: float = 16.0,
+        pe_lora_lr: Optional[float] = None,
+        pe_lora_qkv: bool = True,
+        pe_lora_attn_out: bool = True,
+        pe_lora_mlp: bool = True,
     ):
         super().__init__()
         if hidden_size % num_heads != 0:
@@ -262,6 +312,13 @@ class IPAdapterNetwork(nn.Module):
         # None ⇒ gate uses the global adapter LR. Set explicitly to override.
         self.gate_lr = gate_lr
         self.multiplier = multiplier
+        self.pe_lora_enabled = pe_lora_enabled
+        self.pe_lora_rank = pe_lora_rank
+        self.pe_lora_alpha = pe_lora_alpha
+        self.pe_lora_lr = pe_lora_lr
+        self.pe_lora_qkv = pe_lora_qkv
+        self.pe_lora_attn_out = pe_lora_attn_out
+        self.pe_lora_mlp = pe_lora_mlp
 
         # Resampler: PE patch tokens -> K compact image tokens in context-dim space.
         # d_out=context_dim so to_k_ip/to_v_ip can read directly without another proj.
@@ -337,6 +394,21 @@ class IPAdapterNetwork(nn.Module):
         # ``set_diagnostics_enabled(True)`` call. Read out via
         # ``diagnostic_summary()``.
         self._diag_enabled: bool = False
+
+        # PE-Core encoder + LoRA. When enabled, the network owns the encoder so
+        # FM gradients flow back through PE during training and inference can
+        # reuse the same instance. Base PE params are frozen — only the LoRA
+        # ModuleDict trains. Saved metadata round-trips the pe_lora_* config
+        # so create_network_from_weights can rebuild this surface before
+        # load_state_dict.
+        #
+        # PE base params live under ``self._pe_inner.*`` and are EXCLUDED from
+        # save_weights (they're loaded fresh from the .pt checkpoint each time).
+        self._pe_inner: Optional[nn.Module] = None
+        self._pe_lora: Optional[nn.ModuleDict] = None
+        self._pe_bundle_info = None
+        if pe_lora_enabled:
+            self._build_pe_with_lora()
 
         total = sum(p.numel() for p in self.parameters())
         init_desc = f"std={ip_init_std}" if ip_init_std is not None else "default"
@@ -507,6 +579,74 @@ class IPAdapterNetwork(nn.Module):
 
     def get_effective_scale(self) -> float:
         return self.ip_scale * self.multiplier
+
+    # ------------------------------------------------------------ PE-LoRA path
+
+    def _build_pe_with_lora(self) -> None:
+        """Instantiate PE base + inject LoRA. Called from __init__ when enabled."""
+        from library.models.pe import PE_CONFIGS, build_pe_vision
+
+        info = get_encoder_info(self.encoder_name)
+        # encoder_name is the registry key ("pe", "pe-g"); the underlying PE
+        # config name is what build_pe_vision wants. The registry's
+        # default_model_id() points at the .pt path; we infer the config from
+        # the encoder_name and validate dim consistency below.
+        config_name = {
+            "pe": "PE-Core-L14-336",
+            "pe-g": "PE-Core-G14-448",
+        }.get(self.encoder_name)
+        if config_name is None or config_name not in PE_CONFIGS:
+            raise ValueError(
+                f"PE-LoRA: unknown encoder_name={self.encoder_name!r} (need 'pe' or 'pe-g')"
+            )
+        if info.d_enc != self.encoder_dim:
+            raise ValueError(
+                f"PE-LoRA: registry d_enc {info.d_enc} != encoder_dim {self.encoder_dim}"
+            )
+
+        ckpt_path = info.default_model_id()
+        pe = build_pe_vision(config_name)
+        pe.load_pe_checkpoint(ckpt_path, verbose=True)
+        pe.requires_grad_(False)  # base PE frozen; LoRA params trainable
+
+        self._pe_inner = pe
+        self._pe_lora = inject_pe_lora(
+            pe,
+            rank=self.pe_lora_rank,
+            alpha=self.pe_lora_alpha,
+            target_qkv=self.pe_lora_qkv,
+            target_attn_out=self.pe_lora_attn_out,
+            target_mlp=self.pe_lora_mlp,
+        )
+        self._pe_bundle_info = info  # for bucket_spec lookup at encode time
+
+    def encode_images(self, images_minus1to1: torch.Tensor) -> torch.Tensor:
+        """Run the owned PE encoder on [B, 3, H, W] in [-1, 1]; gradient flows
+        through the injected LoRA. Returns ``[B, T_pe, encoder_dim]``.
+
+        Bucketing: dataloader is per-batch homogeneous, so we resize to one
+        bucket-pixels target and run a single PE forward. Mirrors
+        ``library.vision.encoder.encode_pe_from_imageminus1to1(same_bucket=True)``
+        but skips the VisionEncoderBundle indirection and the ``torch.no_grad``
+        context that path bakes in.
+        """
+        if not self.pe_lora_enabled or self._pe_inner is None:
+            raise RuntimeError("encode_images requires pe_lora_enabled=True")
+        from library.vision.buckets import pick_bucket
+
+        device = next(self._pe_lora.parameters()).device
+        dtype = next(self._pe_lora.parameters()).dtype
+        spec = self._pe_bundle_info.bucket_spec
+        x = images_minus1to1.to(device=device, dtype=dtype)
+        h, w = x.shape[-2:]
+        h_p, w_p = pick_bucket(h, w, spec)
+        target_h, target_w = h_p * spec.patch, w_p * spec.patch
+        if (h, w) != (target_h, target_w):
+            x = F.interpolate(
+                x, size=(target_h, target_w), mode="bilinear", align_corners=False
+            )
+        feats, _pooled = self._pe_inner.encode(x)  # [B, T_pe, encoder_dim]
+        return feats
 
     # ------------------------------------------------------------ diagnostics
 
@@ -709,12 +849,16 @@ class IPAdapterNetwork(nn.Module):
 
     def prepare_grad_etc(self, text_encoder, unet):
         self.requires_grad_(True)
+        if self.pe_lora_enabled and self._pe_inner is not None:
+            # Re-freeze the base PE; only the injected LoRA params train.
+            for p in self._pe_inner.parameters():
+                p.requires_grad_(False)
 
     def on_epoch_start(self, text_encoder, unet):
         self.train()
 
     def get_trainable_params(self):
-        return list(self.parameters())
+        return [p for p in self.parameters() if p.requires_grad]
 
     def prepare_optimizer_params_with_multiple_te_lrs(
         self, text_encoder_lr, unet_lr, default_lr
@@ -737,6 +881,12 @@ class IPAdapterNetwork(nn.Module):
             {"params": list(self.ip_gate.parameters()), "lr": gate_lr},
         ]
         descriptions = ["ip_resampler", "ip_kv_proj", "ip_gate"]
+        if self.pe_lora_enabled and self._pe_lora is not None:
+            pe_lora_lr = self.pe_lora_lr if self.pe_lora_lr is not None else lr
+            params.append(
+                {"params": list(self._pe_lora.parameters()), "lr": pe_lora_lr}
+            )
+            descriptions.append("ip_pe_lora")
         return params, descriptions
 
     def prepare_optimizer_params(self, text_encoder_lr, unet_lr, default_lr=None):
@@ -749,7 +899,14 @@ class IPAdapterNetwork(nn.Module):
 
     def save_weights(self, file, dtype, metadata):
         dtype = dtype or torch.bfloat16
-        sd = {k: v.detach().cpu().to(dtype) for k, v in self.state_dict().items()}
+        # Drop the frozen PE base — it's loaded fresh from the .pt checkpoint
+        # at create_network_from_weights time. Only the LoRA delta + adapter
+        # state actually need to be persisted.
+        sd = {
+            k: v.detach().cpu().to(dtype)
+            for k, v in self.state_dict().items()
+            if not k.startswith("_pe_inner.")
+        }
 
         if os.path.splitext(file)[1] == ".safetensors":
             from safetensors.torch import save_file
@@ -769,6 +926,13 @@ class IPAdapterNetwork(nn.Module):
             metadata["ss_resampler_layers"] = str(self.resampler_layers)
             metadata["ss_resampler_heads"] = str(self.resampler_heads)
             metadata["ss_ip_scale"] = str(self.ip_scale)
+            metadata["ss_pe_lora_enabled"] = str(self.pe_lora_enabled)
+            if self.pe_lora_enabled:
+                metadata["ss_pe_lora_rank"] = str(self.pe_lora_rank)
+                metadata["ss_pe_lora_alpha"] = str(self.pe_lora_alpha)
+                metadata["ss_pe_lora_qkv"] = str(self.pe_lora_qkv)
+                metadata["ss_pe_lora_attn_out"] = str(self.pe_lora_attn_out)
+                metadata["ss_pe_lora_mlp"] = str(self.pe_lora_mlp)
 
             model_hash, legacy_hash = precalculate_safetensors_hashes(sd, metadata)
             metadata["sshs_model_hash"] = model_hash
@@ -785,9 +949,13 @@ class IPAdapterNetwork(nn.Module):
         else:
             sd = torch.load(file, map_location="cpu")
         missing, unexpected = self.load_state_dict(sd, strict=False)
-        if missing or unexpected:
+        # PE base params are intentionally absent from the saved state dict
+        # (see save_weights) — they come from the .pt checkpoint loaded inside
+        # _build_pe_with_lora. Filter them so the warning only flags real gaps.
+        real_missing = [m for m in missing if not m.startswith("_pe_inner.")]
+        if real_missing or unexpected:
             logger.warning(
-                f"IPAdapterNetwork.load_state_dict: missing={missing}, unexpected={unexpected}"
+                f"IPAdapterNetwork.load_state_dict: missing={real_missing}, unexpected={unexpected}"
             )
         else:
             logger.info(f"Loaded IP-Adapter weights from {file} ({len(sd)} tensors)")
@@ -900,32 +1068,54 @@ class IPAdapterMethodAdapter(MethodAdapter):
                 "--use_ip_adapter requires a network module with set_ip_tokens / "
                 "encode_ip_tokens (e.g. networks.methods.ip_adapter)."
             )
-        cache_features = getattr(args, "ip_features_cache_to_disk", False)
-        if not cache_features and getattr(args, "cache_latents", False):
-            raise ValueError(
-                "--use_ip_adapter without --ip_features_cache_to_disk requires "
-                "--cache_latents=false so batch['images'] carries the raw reference "
-                "image for live PE encoding. Either set ip_features_cache_to_disk=true "
-                "(after `make preprocess-pe`) or cache_latents=false."
-            )
-        if cache_features:
+        pe_lora = getattr(net, "pe_lora_enabled", False)
+        if pe_lora:
+            # PE-LoRA owns the encoder and needs gradient-flowing live encoding.
+            # Pre-cached PE features are frozen-encoder-only; reject the combo.
+            if getattr(args, "ip_features_cache_to_disk", False):
+                raise ValueError(
+                    "PE-LoRA: ip_features_cache_to_disk=true is incompatible with "
+                    "pe_lora_enabled=true (cached features can't track a moving "
+                    "encoder). Set ip_features_cache_to_disk=false."
+                )
+            if getattr(args, "cache_latents", False):
+                raise ValueError(
+                    "PE-LoRA requires cache_latents=false so batch['images'] "
+                    "carries the raw reference image for live encoding."
+                )
             accelerator.print(
-                f"IP-Adapter: reading cached vision features "
-                f"(encoder={getattr(args, 'ip_encoder', 'pe')}, "
-                f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)}) — "
-                "vision encoder NOT loaded."
-            )
-        else:
-            self._vision_bundle = load_pe_encoder(
-                accelerator.device,
-                name=getattr(args, "ip_encoder", "pe"),
-                dtype=torch.bfloat16,
-            )
-            accelerator.print(
-                f"IP-Adapter: loaded vision encoder {self._vision_bundle.name} "
-                f"(d_enc={self._vision_bundle.d_enc}, "
+                f"IP-Adapter + PE-LoRA: encoder owned by network "
+                f"(rank={getattr(net, 'pe_lora_rank', None)}, "
+                f"alpha={getattr(net, 'pe_lora_alpha', None)}, "
                 f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)})"
             )
+        else:
+            cache_features = getattr(args, "ip_features_cache_to_disk", False)
+            if not cache_features and getattr(args, "cache_latents", False):
+                raise ValueError(
+                    "--use_ip_adapter without --ip_features_cache_to_disk requires "
+                    "--cache_latents=false so batch['images'] carries the raw reference "
+                    "image for live PE encoding. Either set ip_features_cache_to_disk=true "
+                    "(after `make preprocess-pe`) or cache_latents=false."
+                )
+            if cache_features:
+                accelerator.print(
+                    f"IP-Adapter: reading cached vision features "
+                    f"(encoder={getattr(args, 'ip_encoder', 'pe')}, "
+                    f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)}) — "
+                    "vision encoder NOT loaded."
+                )
+            else:
+                self._vision_bundle = load_pe_encoder(
+                    accelerator.device,
+                    name=getattr(args, "ip_encoder", "pe"),
+                    dtype=torch.bfloat16,
+                )
+                accelerator.print(
+                    f"IP-Adapter: loaded vision encoder {self._vision_bundle.name} "
+                    f"(d_enc={self._vision_bundle.d_enc}, "
+                    f"image_drop_p={getattr(args, 'ip_image_drop_p', 0.1)})"
+                )
         diag_epochs = int(getattr(args, "ip_diagnostics_epochs", 1) or 0)
         if hasattr(net, "set_diagnostics_enabled") and diag_epochs > 0:
             net.set_diagnostics_enabled(True, device=accelerator.device)
@@ -950,8 +1140,21 @@ class IPAdapterMethodAdapter(MethodAdapter):
             network.set_ip_tokens(None)
             return
 
+        pe_lora = getattr(network, "pe_lora_enabled", False)
         cached = batch.get("ip_features") if isinstance(batch, dict) else None
-        if cached is not None:
+        if pe_lora:
+            images = batch.get("images") if isinstance(batch, dict) else None
+            if images is None:
+                raise RuntimeError(
+                    "PE-LoRA expected batch['images'] but got None — set "
+                    "cache_latents=false in the IP-Adapter config."
+                )
+            # No torch.no_grad: gradient flows through PE-LoRA. Base PE params
+            # are frozen via prepare_grad_etc; only the LoRA params accumulate.
+            ip_features = network.encode_images(images.to(accelerator.device)).to(
+                ctx.weight_dtype
+            )
+        elif cached is not None:
             ip_features = cached.to(accelerator.device, dtype=ctx.weight_dtype)
         else:
             if self._vision_bundle is None:

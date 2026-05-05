@@ -875,15 +875,20 @@ def _setup_ip_adapter(args, anima, device):
     network.to(device, dtype=torch.bfloat16)
     network.apply_to(text_encoders=None, unet=anima)
 
-    bundle = load_pe_encoder(device, name=network.encoder_name, dtype=torch.bfloat16)
-
     img = Image.open(ip_image).convert("RGB")
     tfm = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
     img_t = tfm(img).unsqueeze(0).to(device, dtype=torch.bfloat16)  # [1, 3, H, W] in [-1, 1]
 
     with torch.no_grad():
-        feats_list = encode_pe_from_imageminus1to1(bundle, img_t, same_bucket=True)
-        ip_features = torch.stack(feats_list, dim=0)  # [1, T_pe, d_enc]
+        if getattr(network, "pe_lora_enabled", False):
+            # PE-LoRA path: encoder lives on the network with LoRA active.
+            ip_features = network.encode_images(img_t)  # [1, T_pe, d_enc]
+        else:
+            bundle = load_pe_encoder(
+                device, name=network.encoder_name, dtype=torch.bfloat16
+            )
+            feats_list = encode_pe_from_imageminus1to1(bundle, img_t, same_bucket=True)
+            ip_features = torch.stack(feats_list, dim=0)  # [1, T_pe, d_enc]
         ip_tokens = network.encode_ip_tokens(ip_features.to(torch.bfloat16))
 
     network.set_ip_tokens(ip_tokens)
