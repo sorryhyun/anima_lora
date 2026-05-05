@@ -38,7 +38,7 @@ def main() -> None:
     for name in tqdm(sorted(all_names), desc="Merging masks"):
         sources = [d / name for d in mask_dirs if (d / name).exists()]
         if len(sources) == 1:
-            # Single source — just copy
+            # Single source -- just copy
             arr = np.array(Image.open(sources[0]))
         else:
             # Pixel-wise minimum: lower alpha = more masking

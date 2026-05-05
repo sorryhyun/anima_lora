@@ -103,7 +103,7 @@ logger = logging.getLogger(__name__)
 class TrainCtx:
     """Training-wide state built once near the top of train() and passed to
     per-step / per-batch methods instead of 15-arg parameter lists. Fields here
-    are fixed for the whole training run — per-call values (epoch, global_step,
+    are fixed for the whole training run -- per-call values (epoch, global_step,
     progress_bar, logging keys, …) stay explicit at call sites."""
 
     args: Any
@@ -146,7 +146,7 @@ class AnimaTrainer:
         # Per-method extensions (EasyControl, IP-Adapter, APEX, …). Resolved
         # from args+network in train() right after _create_and_apply_network.
         self._adapters: list[MethodAdapter] = []
-        # Per-step aux dict — adapters' ``extra_forwards`` returns are merged
+        # Per-step aux dict -- adapters' ``extra_forwards`` returns are merged
         # here in ``get_noise_pred_and_target`` and consumed by the loss
         # composer in ``_process_batch_inner``.
         self._extras_for_step: dict = {}
@@ -322,12 +322,12 @@ class AnimaTrainer:
         train_dataset_group: Union[DatasetGroup, MinimalDataset],
         val_dataset_group: Optional[DatasetGroup],
     ):
-        # FP8 is not supported yet — force-disable all fp8 flags.
+        # FP8 is not supported yet -- force-disable all fp8 flags.
         if getattr(args, "fp8_base", False):
-            logger.warning("fp8_base is not supported yet — disabling.")
+            logger.warning("fp8_base is not supported yet -- disabling.")
             args.fp8_base = False
         if getattr(args, "fp8_base_unet", False):
-            logger.warning("fp8_base_unet is not supported yet — disabling.")
+            logger.warning("fp8_base_unet is not supported yet -- disabling.")
             args.fp8_base_unet = False
 
         if (
@@ -396,7 +396,7 @@ class AnimaTrainer:
 
         # Propagate IP-Adapter / REPA feature-cache flag so datasets load
         # {stem}_anima_{encoder}.safetensors sidecars into batch["ip_features"].
-        # REPA forces this on automatically — the alignment loss is meaningless
+        # REPA forces this on automatically -- the alignment loss is meaningless
         # without the cached PE features as alignment targets.
         if getattr(args, "use_repa", False) and not getattr(
             args, "ip_features_cache_to_disk", False
@@ -464,7 +464,7 @@ class AnimaTrainer:
         if attn_mode == "flash4":
             # Flash Attention 4 (flash-attention-sm120) is not supported yet.
             raise RuntimeError(
-                "attn_mode='flash4' is not supported yet — the flash-attention-sm120 "
+                "attn_mode='flash4' is not supported yet -- the flash-attention-sm120 "
                 "kernel is disabled in this build. Use 'flash', 'torch', 'flex', "
                 "'sageattn', or 'xformers' instead."
             )
@@ -515,7 +515,7 @@ class AnimaTrainer:
             attn_softmax_scale=attn_softmax_scale,
         )
 
-        # FP8 base weights (fp8_base_unet) are not supported yet — the fp8 path is disabled.
+        # FP8 base weights (fp8_base_unet) are not supported yet -- the fp8 path is disabled.
         # if args.fp8_base_unet:
         #     from library.anima.models import quantize_to_fp8
         #     n = quantize_to_fp8(model)
@@ -727,7 +727,7 @@ class AnimaTrainer:
 
         # On-device caption dropout. The freshly-transferred GPU tensors are
         # not aliased to the dataloader's CPU copies, so we can write in-place
-        # — no clones, no main-thread CPU memcpy on the critical path.
+        # -- no clones, no main-thread CPU memcpy on the critical path.
         caption_dropout_rates = (
             batch.get("caption_dropout_rates") if isinstance(batch, dict) else None
         )
@@ -742,7 +742,7 @@ class AnimaTrainer:
                 )
             else:
                 # In this branch prompt_embeds / attn_mask / t5_input_ids stay
-                # on CPU because they're unused downstream — only zero what the
+                # on CPU because they're unused downstream -- only zero what the
                 # model actually consumes (and only touch t5_attn_mask if it
                 # was moved to device above).
                 ctx.text_encoding_strategy.apply_caption_dropout_inplace(
@@ -1001,7 +1001,7 @@ class AnimaTrainer:
         # [..., caption_dropout_rates] from the dataset (see strategy.py
         # cache layout). Split the trailing rates tensor off so the inner
         # path sees the canonical 4- or 5-element conds list, and stash the
-        # rates on the batch — get_noise_pred_and_target applies the dropout
+        # rates on the batch -- get_noise_pred_and_target applies the dropout
         # in-place after the H2D transfer. Doing it here on CPU would clone
         # prompt_embeds / crossattn_emb on the critical path before the H2D
         # copy, blocking the main thread.
@@ -1168,7 +1168,7 @@ class AnimaTrainer:
 
         # Split-backward: APEX runs two grad-tracked DiT forwards per step
         # (real branch via L_mix, fake branch via L_fake) whose autograd
-        # graphs are disjoint — forward 3's input is built from
+        # graphs are disjoint -- forward 3's input is built from
         # ``model_pred.detach()``. Composing+backwarding both as one scalar
         # keeps both graphs live until backward, roughly doubling peak
         # activation memory. When an adapter opts in, backward the real
@@ -1560,7 +1560,7 @@ class AnimaTrainer:
                 for subset in ds.subsets
             ]
             if rates and any(r > 0 for r in rates):
-                logger.info(f"caption dropout ENABLED — per-subset rates: {rates}")
+                logger.info(f"caption dropout ENABLED -- per-subset rates: {rates}")
             else:
                 logger.info("caption dropout DISABLED (rate=0.0 on all subsets)")
         else:
@@ -1929,7 +1929,7 @@ class AnimaTrainer:
 
         # compile_mode='full': narrow torch.compile to _run_blocks (the constant-
         # shape block stack). Pre-blocks (patch/embed/static-pad/RoPE-pad/t_embedder/
-        # BlockMask) and post-blocks (unpad/final_layer/unpatchify) stay eager —
+        # BlockMask) and post-blocks (unpad/final_layer/unpatchify) stay eager --
         # their shapes vary per CONSTANT_TOKEN_BUCKETS entry, so wrapping them
         # would force one CUDAGraph per bucket. Pinning the compile boundary to
         # the shape-invariant region yields a single CUDAGraph across all buckets.
@@ -2005,7 +2005,7 @@ class AnimaTrainer:
 
         # Adapter-supplied "without-this-method" baselines (e.g. IP-Adapter's
         # "no_ip"). For each (val_step, sigma) we'll re-run process_batch with
-        # the adapter perturbed and log the delta — this is what isolates the
+        # the adapter perturbed and log the delta -- this is what isolates the
         # method's actual contribution when the primary FM loss is dominated
         # by paths the method shortcircuits.
         baselines: list[ValidationBaseline] = []
@@ -2043,7 +2043,7 @@ class AnimaTrainer:
                 args.t_min = args.t_max = sigma
 
                 # Snapshot RNG so each baseline forward sees the same noise
-                # the primary did — only the adapter state differs, so the
+                # the primary did -- only the adapter state differs, so the
                 # delta is the adapter's contribution rather than noise.
                 rng_pre_primary = (
                     (
@@ -2089,7 +2089,7 @@ class AnimaTrainer:
                     for baseline in baselines:
                         # Rewind RNG to pre-primary so the baseline draws the
                         # same noise (and any other randomness) the primary
-                        # saw — without this, the delta is dominated by
+                        # saw -- without this, the delta is dominated by
                         # noise variance not the adapter's contribution.
                         torch.set_rng_state(rng_pre_primary[0])
                         torch.cuda.set_rng_state(rng_pre_primary[1])
@@ -2176,7 +2176,7 @@ class AnimaTrainer:
         log_prefix: str,
         logging_fn,
     ) -> None:
-        """Thin shim — loop.py gates calls with ``hasattr(trainer,
+        """Thin shim -- loop.py gates calls with ``hasattr(trainer,
         "_run_bias_validation")``, so the trainer keeps this attribute even
         though the implementation now lives in ``BiasMetrics``."""
         self._bias.run_validation(
@@ -2207,7 +2207,7 @@ class AnimaTrainer:
             args.seed = random.randint(0, 2**32)
         set_seed(args.seed)
 
-        # Whether inductor will have CUDAGraphs active — governs whether the
+        # Whether inductor will have CUDAGraphs active -- governs whether the
         # training loop needs to call torch.compiler.cudagraph_mark_step_begin()
         # each step (see the call site inside the accumulate block).
         self._cudagraph_mark_step = bool(
@@ -2641,7 +2641,7 @@ def setup_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="learning rate for Text Encoder, can be multiple",
     )
-    # FP8 is not supported yet — flag is kept for CLI compatibility but force-disabled in assert_extra_args.
+    # FP8 is not supported yet -- flag is kept for CLI compatibility but force-disabled in assert_extra_args.
     parser.add_argument(
         "--fp8_base_unet",
         action="store_true",
@@ -2716,7 +2716,7 @@ def setup_parser() -> argparse.ArgumentParser:
         help="Log the SNR-t bias gap (||v(x̂_t)|| − ||v(x_t_fwd)||, integrated "
         "over the late half) on the validation set, alongside FM-MSE. The "
         "headline scalar correlates with sample quality where FM-MSE often "
-        "does not. LoRA family only — no APEX / IP-Adapter / EasyControl. "
+        "does not. LoRA family only -- no APEX / IP-Adapter / EasyControl. "
         "See docs/methods/dcw.md.",
     )
     parser.add_argument(
@@ -2724,7 +2724,7 @@ def setup_parser() -> argparse.ArgumentParser:
         type=int,
         default=12,
         help="Inference-schedule length for the bias-metric reverse rollout. "
-        "Default 12 (half of inference's 24) — late-half gap envelope is "
+        "Default 12 (half of inference's 24) -- late-half gap envelope is "
         "preserved while keeping val cost bounded. Raise to 24 for "
         "production-resolution numbers.",
     )
@@ -2770,7 +2770,7 @@ from networks import all_network_kwargs as _all_network_kwargs  # noqa: E402
 NETWORK_KWARG_ALLOWLIST: tuple[str, ...] = _all_network_kwargs()
 
 # Top-level training args that aren't network kwargs but still flow through
-# ``net_kwargs`` because a network module reads them. Kept explicit — any
+# ``net_kwargs`` because a network module reads them. Kept explicit -- any
 # growth here should be reviewed, since the right answer is usually to
 # expose the value as a proper argparse flag the network module reads
 # directly rather than tunneling it through kwargs.

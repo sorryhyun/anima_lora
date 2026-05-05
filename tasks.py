@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform task runner — replaces Makefile for Windows compatibility.
+"""Cross-platform task runner -- replaces Makefile for Windows compatibility.
 
 Usage:
     python tasks.py <command> [extra args...]
@@ -236,7 +236,7 @@ def main():
     extra = sys.argv[2:]
     fn, desc = COMMANDS[command]
     if extra and extra[0] in ("-h", "--help"):
-        print(f"python tasks.py {command} — {desc}\n")
+        print(f"python tasks.py {command} -- {desc}\n")
         if fn.__doc__:
             print(fn.__doc__.strip())
         else:

@@ -30,7 +30,7 @@ def process_image(
     bucket_args: tuple,
     copy_captions: bool = True,
 ) -> tuple[str, tuple[int, int]]:
-    """Worker function — receives bucket params instead of BucketManager to be picklable."""
+    """Worker function -- receives bucket params instead of BucketManager to be picklable."""
     max_reso, min_size, max_size, reso_steps, use_constant = bucket_args
     bucket_mgr = BucketManager(
         no_upscale=False,

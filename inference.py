@@ -1,4 +1,4 @@
-"""Anima inference CLI — argument parsing, batch/interactive modes, and main entry point."""
+"""Anima inference CLI -- argument parsing, batch/interactive modes, and main entry point."""
 
 import argparse
 import copy
@@ -381,7 +381,7 @@ def parse_args() -> argparse.Namespace:
         "--spectrum_flex_window",
         type=float,
         default=0.25,
-        help="Spectrum flex parameter alpha — N grows by this after each actual forward (default 0.25)",
+        help="Spectrum flex parameter alpha -- N grows by this after each actual forward (default 0.25)",
     )
     parser.add_argument(
         "--spectrum_warmup",
@@ -421,7 +421,7 @@ def parse_args() -> argparse.Namespace:
         "Adds residual bias correction from last actual forward to cached predictions.",
     )
 
-    # DCW: SNR-t bias correction (arXiv:2604.16044). Opposite-sign on Anima — see
+    # DCW: SNR-t bias correction (arXiv:2604.16044). Opposite-sign on Anima -- see
     # bench/dcw/findings.md.
     parser.add_argument(
         "--dcw",
@@ -433,7 +433,7 @@ def parse_args() -> argparse.Namespace:
         "--dcw_lambda",
         type=float,
         default=-0.015,
-        help="DCW scaler λ. Default -0.015 (negative — see docs/methods/dcw.md). "
+        help="DCW scaler λ. Default -0.015 (negative -- see docs/methods/dcw.md). "
         "Paper-positive values widen |gap| on Anima. Use λ ≈ -0.010 if you "
         "switch --dcw_band_mask to 'all'.",
     )
@@ -443,14 +443,14 @@ def parse_args() -> argparse.Namespace:
         default="one_minus_sigma",
         choices=["one_minus_sigma", "sigma_i", "const", "none"],
         help="Per-step schedule: scaler(i) = λ · sched(σ_i). Default "
-        "one_minus_sigma — matches Anima's late-σ bias envelope.",
+        "one_minus_sigma -- matches Anima's late-σ bias envelope.",
     )
     parser.add_argument(
         "--dcw_band_mask",
         type=str,
         default="LL",
         help="Restrict DCW correction to a subset of Haar subbands. Default 'LL' "
-        "(LL-only is strictly better than broadband on Anima — see "
+        "(LL-only is strictly better than broadband on Anima -- see "
         "docs/methods/dcw.md §LL-only correction). Format: 'LL', 'HH', "
         "'LH+HL+HH', or 'all'.",
     )
@@ -459,7 +459,7 @@ def parse_args() -> argparse.Namespace:
     # See docs/proposal/dcw-learnable-calibrator-v4.md.
     parser.add_argument(
         "--dcw_calibrator",
-        "--dcw_v4",  # legacy alias — drop after one release
+        "--dcw_v4",  # legacy alias -- drop after one release
         type=str,
         default=None,
         dest="dcw_calibrator",
@@ -469,13 +469,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--dcw_calibrator_gain",
-        "--dcw_v4_alpha_gain",  # legacy alias — drop after one release
+        "--dcw_v4_alpha_gain",  # legacy alias -- drop after one release
         type=float,
         default=1.0,
         dest="dcw_calibrator_gain",
         help="Multiplier on top of the head's α̂. α̂ is in λ-units "
         "(median |α̂| ≈ lambda_anchor from training, default 0.015) so 1.0 is "
-        "identity — use 2.0 to double the per-prompt magnitude, or a negative "
+        "identity -- use 2.0 to double the per-prompt magnitude, or a negative "
         "value to flip sign. The per-step λ is clamped to ±0.05.",
     )
 
@@ -502,7 +502,7 @@ def parse_args() -> argparse.Namespace:
 
     args = parser.parse_args()
 
-    # FP8 autocast is not supported yet — force-disable so downstream code paths
+    # FP8 autocast is not supported yet -- force-disable so downstream code paths
     # see a consistent False on this flag.
     args.fp8 = False
 

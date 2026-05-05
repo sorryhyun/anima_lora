@@ -230,7 +230,7 @@ def main() -> None:
     if skipped_small:
         print(
             f"Skipping {skipped_small} images below {args.min_pixels:,} pixels "
-            f"({args.min_pixels / 1e6:.2f}MP) — same filter as resize_images.py."
+            f"({args.min_pixels / 1e6:.2f}MP) -- same filter as resize_images.py."
         )
 
     total = len(entries)
