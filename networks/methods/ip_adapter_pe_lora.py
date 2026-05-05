@@ -45,9 +45,15 @@ def inject_pe_lora(
     target_qkv: bool = True,
     target_attn_out: bool = True,
     target_mlp: bool = True,
+    layer_from: int = -1,
 ) -> nn.ModuleDict:
-    """Wrap Linear modules across all resblocks; return a ModuleDict the caller
+    """Wrap Linear modules across resblocks; return a ModuleDict the caller
     registers as a child so params show up in optimizer / state_dict.
+
+    ``layer_from``: count of TRAILING resblocks to adapt. ``-1`` (default) or
+    ``>= n_blocks`` adapts all blocks. Positive ``N`` < n_blocks adapts only
+    the last ``N`` blocks (block indices ``[n_blocks - N, n_blocks)``); earlier
+    blocks stay fully frozen with no LoRA params.
 
     qkv path: ``_SelfAttention.in_proj_weight`` is a raw Parameter (not nn.Linear),
     so we monkey-patch the whole ``_SelfAttention.forward`` to add a LoRA residual
@@ -60,7 +66,19 @@ def inject_pe_lora(
 
     layers: dict[str, PELoRALayer] = {}
     n_blocks = len(pe_vit.transformer.resblocks)
+    if layer_from is None or layer_from < 0 or layer_from >= n_blocks:
+        first_idx = 0
+    elif layer_from == 0:
+        logger.warning(
+            "PE-LoRA: layer_from=0 ⇒ no resblocks will be adapted; encoder is "
+            "effectively frozen. Use -1 for all layers."
+        )
+        first_idx = n_blocks  # adapt nothing
+    else:
+        first_idx = n_blocks - layer_from
     for i, block in enumerate(pe_vit.transformer.resblocks):
+        if i < first_idx:
+            continue
         attn = block.attn
         # qkv must be patched before attn.out_proj — _patch_pe_qkv calls
         # attn.out_proj(...) inside the patched forward, and we want THAT call
@@ -82,10 +100,12 @@ def inject_pe_lora(
                 if isinstance(lin, nn.Linear):
                     _wrap_linear(lin, layers, f"b{i}_mlp_{name}", rank, alpha)
 
+    n_adapted = n_blocks - first_idx if first_idx < n_blocks else 0
     logger.info(
-        f"PE-LoRA: injected {len(layers)} LoRA layers across {n_blocks} resblocks "
+        f"PE-LoRA: injected {len(layers)} LoRA layers across {n_adapted}/{n_blocks} resblocks "
         f"(rank={rank}, alpha={alpha}, qkv={target_qkv}, "
-        f"attn_out={target_attn_out}, mlp={target_mlp})"
+        f"attn_out={target_attn_out}, mlp={target_mlp}, "
+        f"layer_from={layer_from} ⇒ first_idx={first_idx})"
     )
     return nn.ModuleDict(layers)
 

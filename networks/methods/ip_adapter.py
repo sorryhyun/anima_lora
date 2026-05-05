@@ -141,6 +141,12 @@ def create_network(
     pe_lora_qkv = _parse_bool(kwargs.get("pe_lora_qkv", True))
     pe_lora_attn_out = _parse_bool(kwargs.get("pe_lora_attn_out", True))
     pe_lora_mlp = _parse_bool(kwargs.get("pe_lora_mlp", True))
+    # Trailing-layer count: -1 (default) ⇒ adapt every PE resblock. Positive
+    # N adapts only the last N (e.g. =8 trains the deepest 8 of 24 in
+    # PE-Core-L14-336, freezing layers 0..15). Cuts trainable param count
+    # roughly proportionally and concentrates capacity on the high-level
+    # semantic layers most likely to need manga/anime adaptation.
+    pe_lora_layer_from = int(kwargs.get("pe_lora_layer_from", -1))
 
     num_blocks = (
         getattr(unet, "num_blocks", DEFAULT_NUM_BLOCKS)
@@ -180,6 +186,7 @@ def create_network(
         pe_lora_qkv=pe_lora_qkv,
         pe_lora_attn_out=pe_lora_attn_out,
         pe_lora_mlp=pe_lora_mlp,
+        pe_lora_layer_from=pe_lora_layer_from,
     )
     if ip_centroid_path:
         network.load_centroid_from_file(ip_centroid_path)
@@ -241,6 +248,7 @@ def create_network_from_weights(
     pe_lora_qkv = _parse_bool(metadata.get("ss_pe_lora_qkv", True))
     pe_lora_attn_out = _parse_bool(metadata.get("ss_pe_lora_attn_out", True))
     pe_lora_mlp = _parse_bool(metadata.get("ss_pe_lora_mlp", True))
+    pe_lora_layer_from = int(metadata.get("ss_pe_lora_layer_from", -1))
 
     network = IPAdapterNetwork(
         num_ip_tokens=num_ip_tokens,
@@ -263,6 +271,7 @@ def create_network_from_weights(
         pe_lora_qkv=pe_lora_qkv,
         pe_lora_attn_out=pe_lora_attn_out,
         pe_lora_mlp=pe_lora_mlp,
+        pe_lora_layer_from=pe_lora_layer_from,
     )
     return network, weights_sd
 
@@ -291,6 +300,7 @@ class IPAdapterNetwork(nn.Module):
         pe_lora_qkv: bool = True,
         pe_lora_attn_out: bool = True,
         pe_lora_mlp: bool = True,
+        pe_lora_layer_from: int = -1,
     ):
         super().__init__()
         if hidden_size % num_heads != 0:
@@ -319,6 +329,7 @@ class IPAdapterNetwork(nn.Module):
         self.pe_lora_qkv = pe_lora_qkv
         self.pe_lora_attn_out = pe_lora_attn_out
         self.pe_lora_mlp = pe_lora_mlp
+        self.pe_lora_layer_from = pe_lora_layer_from
 
         # Resampler: PE patch tokens -> K compact image tokens in context-dim space.
         # d_out=context_dim so to_k_ip/to_v_ip can read directly without another proj.
@@ -617,6 +628,7 @@ class IPAdapterNetwork(nn.Module):
             target_qkv=self.pe_lora_qkv,
             target_attn_out=self.pe_lora_attn_out,
             target_mlp=self.pe_lora_mlp,
+            layer_from=self.pe_lora_layer_from,
         )
         self._pe_bundle_info = info  # for bucket_spec lookup at encode time
 
@@ -933,6 +945,7 @@ class IPAdapterNetwork(nn.Module):
                 metadata["ss_pe_lora_qkv"] = str(self.pe_lora_qkv)
                 metadata["ss_pe_lora_attn_out"] = str(self.pe_lora_attn_out)
                 metadata["ss_pe_lora_mlp"] = str(self.pe_lora_mlp)
+                metadata["ss_pe_lora_layer_from"] = str(self.pe_lora_layer_from)
 
             model_hash, legacy_hash = precalculate_safetensors_hashes(sd, metadata)
             metadata["sshs_model_hash"] = model_hash
