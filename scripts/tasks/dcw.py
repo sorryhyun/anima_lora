@@ -22,8 +22,10 @@ import sys
 
 from ._common import run
 
-# (H, W) — must match library/inference/dcw_v4.py:ASPECT_TABLE.
+# (H, W) — buckets the trainer's data loader stratifies over.
 # Top 5 buckets by post_image_dataset/lora/ count (aspect_id = list index).
+# Note: the inference calibrator no longer keys off aspect (post-cleanup), so
+# this list is only relevant for `make dcw` data collection.
 DCW_BUCKETS = [
     (832, 1248),  # HD portrait — most common
     (896, 1152),  # 3:4 portrait

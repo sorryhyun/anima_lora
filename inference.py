@@ -455,48 +455,28 @@ def parse_args() -> argparse.Namespace:
         "'LH+HL+HH', or 'all'.",
     )
 
-    # DCW v4 — learnable calibrator (online observation + prompt + aspect fusion).
+    # DCW learnable calibrator (online observation + prompt fusion).
     # See docs/proposal/dcw-learnable-calibrator-v4.md.
     parser.add_argument(
-        "--dcw_v4",
+        "--dcw_calibrator",
+        "--dcw_v4",  # legacy alias — drop after one release
         type=str,
         default=None,
+        dest="dcw_calibrator",
         help="Path to a fusion_head.safetensors artifact (or a directory "
         "containing one). When set, overrides --dcw_lambda with a per-step λ "
-        "from the v4 controller. LL-only by default.",
+        "from the calibrator. LL-only by default.",
     )
     parser.add_argument(
-        "--dcw_v4_warmup_k",
-        type=int,
-        default=None,
-        help="Override the warmup-k baked into the artifact's metadata.",
-    )
-    parser.add_argument(
-        "--dcw_v4_disable_shrinkage",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Skip the σ̂²-based shrinkage on α̂ (use raw α̂). Default is ON: "
-        "the 2026-05-05 k_supervision_sweep + tw7-14 ablation showed the σ̂² "
-        "channel fails Gate B at every target window (NLL net-negative vs "
-        "constant baseline), so shrinkage hurts more than it helps. Pass "
-        "--no-dcw_v4_disable_shrinkage to opt back in once σ̂² passes Gate B.",
-    )
-    parser.add_argument(
-        "--dcw_v4_disable_backstop",
-        action="store_true",
-        help="Skip the caption-length backstop. Currently unused (tau_short not "
-        "shipped in artifact yet).",
-    )
-    parser.add_argument(
-        "--dcw_v4_alpha_gain",
+        "--dcw_calibrator_gain",
+        "--dcw_v4_alpha_gain",  # legacy alias — drop after one release
         type=float,
-        default=5e-3,
-        help="Scale factor mapping α̂ (gap-residual units) to λ (gain units). "
-        "Default 1e-2. The trainer's α̂ is in raw integrated-gap units; this "
-        "knob carries the gap→λ conversion that S_pop calibration used to "
-        "provide before the 2026-05-05 A2-cosmetic ablation zeroed S_pop. "
-        "Tune empirically — λ at peak μ_g is roughly α̂ · gain · μ_g_max / "
-        "Σμ_g; the per-step λ is clamped to ±0.05.",
+        default=1.0,
+        dest="dcw_calibrator_gain",
+        help="Multiplier on top of the head's α̂. α̂ is in λ-units "
+        "(median |α̂| ≈ lambda_anchor from training, default 0.015) so 1.0 is "
+        "identity — use 2.0 to double the per-prompt magnitude, or a negative "
+        "value to flip sign. The per-step λ is clamped to ±0.05.",
     )
 
     # arguments for batch and interactive modes

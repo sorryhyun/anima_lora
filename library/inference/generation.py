@@ -533,36 +533,35 @@ def generate_body(
     timesteps /= 1000  # scale to [0,1] range
     timesteps = timesteps.to(device, dtype=torch.bfloat16)
 
-    # DCW v4: load + setup the learnable calibrator if requested.
-    dcw_v4_ctrl = None
-    if getattr(args, "dcw_v4", None):
-        from library.inference.dcw_v4 import OnlineFusionDCWController
+    # DCW: load + setup the learnable calibrator if requested.
+    dcw_calibrator = None
+    calibrator_path = getattr(args, "dcw_calibrator", None) or getattr(args, "dcw_v4", None)
+    if calibrator_path:
+        from library.inference.dcw_calibrator import OnlineDCWCalibrator
 
-        v4_path = Path(args.dcw_v4)
-        if v4_path.is_dir():
-            v4_path = v4_path / "fusion_head.safetensors"
+        artifact_path = Path(calibrator_path)
+        if artifact_path.is_dir():
+            artifact_path = artifact_path / "fusion_head.safetensors"
         try:
-            dcw_v4_ctrl = OnlineFusionDCWController.from_safetensors(
-                v4_path, device=device
+            dcw_calibrator = OnlineDCWCalibrator.from_safetensors(
+                artifact_path, device=device
             )
         except Exception as e:
-            logger.warning("DCW v4: failed to load %s: %s — disabling", v4_path, e)
-            dcw_v4_ctrl = None
-        if dcw_v4_ctrl is not None:
-            v4_embed_mask = (
+            logger.warning("DCW calibrator: failed to load %s: %s — disabling", artifact_path, e)
+            dcw_calibrator = None
+        if dcw_calibrator is not None:
+            calib_embed_mask = (
                 context["embed"][3].to(device)
                 if len(context["embed"]) > 3 and context["embed"][3] is not None
                 else None
             )
-            dcw_v4_ctrl.setup(
-                H=height, W=width,
-                embed=embed, embed_mask=v4_embed_mask,
-                disable_shrinkage=getattr(args, "dcw_v4_disable_shrinkage", True),
-                disable_backstop=getattr(args, "dcw_v4_disable_backstop", False),
-                alpha_gain=getattr(args, "dcw_v4_alpha_gain", 1e-2),
+            dcw_calibrator.setup(
+                embed=embed, embed_mask=calib_embed_mask,
+                gain=getattr(args, "dcw_calibrator_gain", None)
+                    or getattr(args, "dcw_v4_alpha_gain", 1.0),
             )
-            if not dcw_v4_ctrl.is_active:
-                dcw_v4_ctrl = None  # graceful degrade to scalar/none
+            if not dcw_calibrator.is_active:
+                dcw_calibrator = None  # graceful degrade to scalar/none
 
     # Create sampler
     er_sde = None
@@ -618,7 +617,7 @@ def generate_body(
             dcw_lambda=getattr(args, "dcw_lambda", -0.015),
             dcw_schedule=getattr(args, "dcw_schedule", "one_minus_sigma"),
             dcw_band_mask=getattr(args, "dcw_band_mask", "LL"),
-            dcw_v4_ctrl=dcw_v4_ctrl,
+            dcw_calibrator=dcw_calibrator,
         )
     else:
         try:
@@ -705,21 +704,21 @@ def generate_body(
                             latents, noise_pred, sigmas, i
                         )
 
-                    if dcw_v4_ctrl is not None:
-                        dcw_v4_ctrl.record(i, noise_pred)
-                        dcw_v4_ctrl.fire_head_if_due(i)
+                    if dcw_calibrator is not None:
+                        dcw_calibrator.record(i, noise_pred)
+                        dcw_calibrator.fire_head_if_due(i)
 
-                    lam_i_v4: Optional[float] = None
+                    lam_i_calib: Optional[float] = None
                     if float(sigmas[i + 1]) > 0.0 and (
-                        dcw_v4_ctrl is not None or getattr(args, "dcw", False)
+                        dcw_calibrator is not None or getattr(args, "dcw", False)
                     ):
                         from networks.dcw import apply_dcw, parse_band_mask
 
-                        if dcw_v4_ctrl is not None:
-                            lam_i_v4 = dcw_v4_ctrl.lambda_for_step(i, float(sigmas[i]))
+                        if dcw_calibrator is not None:
+                            lam_i_calib = dcw_calibrator.lambda_for_step(i, float(sigmas[i]))
                             new_latents = apply_dcw(
                                 new_latents.float(), denoised, float(sigmas[i]),
-                                lam=lam_i_v4, schedule="const",
+                                lam=lam_i_calib, schedule="const",
                                 bands=frozenset({"LL"}),
                             )
                         else:
@@ -736,17 +735,22 @@ def generate_body(
 
                     latents = new_latents.to(latents.dtype)
 
-                    if dcw_v4_ctrl is not None and dcw_v4_ctrl.is_active:
-                        if i < dcw_v4_ctrl.k_warmup:
+                    if dcw_calibrator is not None and dcw_calibrator.is_active:
+                        # λ_scalar = α̂·gain — the prompt-adaptive equivalent of
+                        # the bench's fixed `lam=0.01, schedule="one_minus_sigma"` scalar.
+                        # λ_i is the post-envelope per-step value actually applied.
+                        lam_scalar = dcw_calibrator.gain * dcw_calibrator.alpha_eff
+                        if i < dcw_calibrator.k_warmup:
                             pbar.set_postfix_str(
-                                f"λ={lam_i_v4:+.4f} (warmup {i + 1}/{dcw_v4_ctrl.k_warmup})"
-                                if lam_i_v4 is not None else f"warmup {i + 1}/{dcw_v4_ctrl.k_warmup}"
+                                f"λ_i={lam_i_calib:+.4f} (warmup {i + 1}/{dcw_calibrator.k_warmup})"
+                                if lam_i_calib is not None else f"warmup {i + 1}/{dcw_calibrator.k_warmup}"
                             )
                         else:
                             pbar.set_postfix_str(
-                                f"λ={lam_i_v4:+.4f} α={dcw_v4_ctrl.alpha_eff:+.1f}"
-                                if lam_i_v4 is not None
-                                else f"α={dcw_v4_ctrl.alpha_eff:+.1f}"
+                                f"λ_scalar={lam_scalar:+.4f} λ_i={lam_i_calib:+.4f} "
+                                f"α={dcw_calibrator.alpha_eff:+.4g}"
+                                if lam_i_calib is not None
+                                else f"λ_scalar={lam_scalar:+.4f} α={dcw_calibrator.alpha_eff:+.4g}"
                             )
 
                     pbar.update()

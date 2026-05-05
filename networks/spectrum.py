@@ -253,7 +253,7 @@ def spectrum_denoise(
     dcw_lambda: float = -0.015,
     dcw_schedule: str = "one_minus_sigma",
     dcw_band_mask: str = "LL",
-    dcw_v4_ctrl=None,
+    dcw_calibrator=None,
 ) -> torch.Tensor:
     """Spectrum-accelerated denoising loop.
 
@@ -439,24 +439,24 @@ def spectrum_denoise(
                 # Warmup observations all land within Spectrum's warmup window
                 # (Spectrum forces actual forwards while i < warmup_steps), so
                 # v4 sees real-DiT velocities even when caching kicks in later.
-                if dcw_v4_ctrl is not None:
-                    dcw_v4_ctrl.record(i, noise_pred)
-                    dcw_v4_ctrl.fire_head_if_due(i)
+                if dcw_calibrator is not None:
+                    dcw_calibrator.record(i, noise_pred)
+                    dcw_calibrator.fire_head_if_due(i)
 
                 # DCW: bias-correct against denoised x0_pred (carries Spectrum's
                 # cached-step prediction error, but correction is bias-agnostic).
                 if float(sigmas[i + 1]) > 0.0 and (
-                    dcw_v4_ctrl is not None or dcw
+                    dcw_calibrator is not None or dcw
                 ):
                     from networks.dcw import apply_dcw, parse_band_mask
 
-                    if dcw_v4_ctrl is not None:
-                        lam_i_v4 = dcw_v4_ctrl.lambda_for_step(i, float(sigmas[i]))
+                    if dcw_calibrator is not None:
+                        lam_i_calib = dcw_calibrator.lambda_for_step(i, float(sigmas[i]))
                         new_latents = apply_dcw(
                             new_latents.float(),
                             denoised,
                             float(sigmas[i]),
-                            lam=lam_i_v4,
+                            lam=lam_i_calib,
                             schedule="const",
                             bands=frozenset({"LL"}),
                         )

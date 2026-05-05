@@ -152,7 +152,7 @@ class FusionHead(nn.Module):
     """v4 fusion head: (c_pool, aspect, g_obs[0:k], aux) → (α̂, log σ̂²).
 
     Shared by the trainer (``scripts/dcw/train_fusion_head.py``) and the
-    inference controller (``library/inference/dcw_v4.py``) so the MLP
+    inference controller (``library/inference/dcw_calibrator.py``) so the MLP
     architecture is in one place. The trainer's saved state-dict keys are
     prefixed with ``head.`` (so e.g. ``head.aspect_emb.weight`` /
     ``head.mlp.X.weight`` in the artifact); inference module strips the

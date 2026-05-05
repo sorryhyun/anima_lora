@@ -138,19 +138,19 @@ def _latest_fusion_head() -> str:
 
 
 def cmd_test_dcw_v4(extra):
-    """Inference with latest LoRA + DCW v4 learnable calibrator.
+    """Inference with latest LoRA + DCW learnable calibrator.
 
     Auto-resolves the most recent fusion_head.safetensors. Pass
-    --dcw_v4 <path> in extra to override. σ̂²-shrinkage is off by default
-    (failed Gate B in the 0505 sweep); pass --no-dcw_v4_disable_shrinkage
-    in extra to re-enable.
+    --dcw_calibrator <path> (or legacy --dcw_v4 <path>) in extra to override.
     """
-    extra_has_v4 = any(a.startswith("--dcw_v4") and not a.startswith("--dcw_v4_") for a in extra)
-    v4_args = [] if extra_has_v4 else ["--dcw_v4", _latest_fusion_head()]
+    extra_has_calib = any(
+        a == "--dcw_calibrator" or a == "--dcw_v4" for a in extra
+    )
+    calib_args = [] if extra_has_calib else ["--dcw_calibrator", _latest_fusion_head()]
     run([
         *INFERENCE_BASE,
         "--lora_weight", str(latest_lora()),
-        *v4_args,
+        *calib_args,
         *extra,
     ])
 
@@ -186,14 +186,16 @@ def cmd_test_spectrum_dcw(extra):
 
 
 def cmd_test_dcw_v4_spectrum(extra):
-    """Spectrum + DCW v4 learnable calibrator composed.
+    """Spectrum + DCW learnable calibrator composed.
 
     Same Spectrum knobs as test-spectrum (with stop_caching_step=27 to match
-    DCW v4's 28-step contract), plus DCW v4 (auto-resolves the most recent
-    fusion_head.safetensors). Pass --dcw_v4 <path> in extra to override.
+    DCW's 28-step contract), plus DCW calibrator (auto-resolves the most recent
+    fusion_head.safetensors). Pass --dcw_calibrator <path> in extra to override.
     """
-    extra_has_v4 = any(a.startswith("--dcw_v4") and not a.startswith("--dcw_v4_") for a in extra)
-    v4_args = [] if extra_has_v4 else ["--dcw_v4", _latest_fusion_head()]
+    extra_has_calib = any(
+        a == "--dcw_calibrator" or a == "--dcw_v4" for a in extra
+    )
+    calib_args = [] if extra_has_calib else ["--dcw_calibrator", _latest_fusion_head()]
     run(
         [
             *INFERENCE_BASE,
@@ -216,7 +218,7 @@ def cmd_test_dcw_v4_spectrum(extra):
             "27",
             "--spectrum_calibration",
             "0.0",
-            *v4_args,
+            *calib_args,
             "--infer_steps",
             "28",
             *extra,

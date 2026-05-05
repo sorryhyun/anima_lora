@@ -11,11 +11,12 @@ hypothesis on existing bench data before committing to the A3 sample run.
 Bucket conditioning was removed 2026-05-05 after the aggregate ablation
 (memory `project_dcw_bucket_prior_cosmetic`) showed `aspect_emb` and
 per-aspect μ_g residualization were both within-noise no-ops. The script
-trains a single aggregate head; the artifact still writes per-aspect
-tensors (broadcast from the single profile) for inference-side schema
-compatibility.
+trains a single aggregate head; per-aspect bucket tensors and the σ̂² head
+weights are no longer serialised — the artifact ships only the α̂ MLP plus
+standardisation stats (schema ``dcw_v5_lambda_scalar``).
 
-See docs/proposal/dcw-learnable-calibrator-v4.md §A7 / §I2.
+See docs/proposal/dcw-cleanup-plan.md and the archived
+docs/proposal/archive/dcw-learnable-calibrator-v4.md §A7 / §I2.
 """
 
 from __future__ import annotations
@@ -230,17 +231,31 @@ def main():
         "--dataset_dir", type=Path, default=REPO_ROOT / "post_image_dataset" / "lora"
     )
     p.add_argument("--text_variant", type=int, default=0)
-    p.add_argument("--k_warmup", type=int, default=7)
+    p.add_argument("--k_warmup", type=int, default=4)
     p.add_argument(
         "--target_window",
         type=str,
         default=None,
-        help="Target window as 'start:end' (exclusive end). Default = "
-        "'k_warmup:n_steps' (full tail), matching the production inference "
-        "contract. The 2026-05-05 k_supervision_sweep bench showed mid-tail "
-        "windows (7:14, 21:) carry r_α≈0.52–0.55 vs full-tail's 0.47, so "
-        "narrowing the supervision target is a cheap win — but the inference "
-        "path must also be windowed to match (apply λ only over those steps).",
+        help="Inference-time application window as 'start:end' (exclusive end). "
+        "LSQ supervision uses --supervision_window separately. Default = "
+        "'k_warmup:n_steps' (full tail).",
+    )
+    p.add_argument(
+        "--supervision_window",
+        type=str,
+        default=None,
+        help="LSQ-fit window (format 'start:end', exclusive end). Default '0:4' "
+        "(early-commitment regime — see memory project_dcw_v4_target_window_signal_shape).",
+    )
+    p.add_argument(
+        "--lambda_anchor",
+        type=float,
+        default=0.015,
+        help="Target median |λ̂*_p| in λ-units. After computing raw LSQ targets "
+        "in gap-norm units (typical |raw|≈350), scale them by "
+        "K = lambda_anchor / median(|raw|) so the head learns to emit "
+        "λ-scalars directly — no inference-side gain conversion needed. "
+        "Default 0.015 = magnitude of shipped DCW. K is saved in metadata for audit.",
     )
     p.add_argument(
         "--seed_mean_targets",
@@ -315,25 +330,32 @@ def main():
         "(single profile, broadcast to all aspects in artifact)"
     )
 
+    def _parse_window(label: str, spec: str) -> tuple[int, int]:
+        if ":" not in spec:
+            sys.exit(f"--{label} must contain ':' (got {spec!r})")
+        a, b = spec.split(":", 1)
+        s = int(a) if a else 0
+        e = int(b) if b else n_steps
+        if s < 0:
+            s = max(0, n_steps + s)
+        if e < 0:
+            e = max(0, n_steps + e)
+        e = min(e, n_steps)
+        if s >= e:
+            sys.exit(f"empty --{label} {spec!r} for n_steps={n_steps}")
+        return s, e
+
     if args.target_window is not None:
-        if ":" not in args.target_window:
-            sys.exit(f"--target_window must contain ':' (got {args.target_window!r})")
-        a, b = args.target_window.split(":", 1)
-        t_start = int(a) if a else 0
-        t_end = int(b) if b else n_steps
-        if t_start < 0:
-            t_start = max(0, n_steps + t_start)
-        if t_end < 0:
-            t_end = max(0, n_steps + t_end)
-        t_end = min(t_end, n_steps)
-        if t_start >= t_end:
-            sys.exit(f"empty target_window {args.target_window!r} for n_steps={n_steps}")
+        t_start, t_end = _parse_window("target_window", args.target_window)
     else:
         t_start, t_end = args.k_warmup, n_steps
 
+    sup_spec = args.supervision_window or "0:4"
+    s_start, s_end = _parse_window("supervision_window", sup_spec)
+
     print(
         f"[4/6] building feature matrices (k_obs={args.k_warmup}, "
-        f"target=[{t_start}:{t_end}]) ..."
+        f"app=[{t_start}:{t_end}], sup=[{s_start}:{s_end}]) ..."
     )
     c_pool_arr = np.stack([feat[r.stem]["c_pool"] for r in rows]).astype(np.float32)
     centroid = c_pool_arr.mean(axis=0)
@@ -370,13 +392,30 @@ def main():
     g_obs_std = g_obs_arr.std(axis=0).clip(min=1.0)
     g_obs_n = (g_obs_arr - g_obs_mean) / g_obs_std
 
-    targets = np.array(
-        [
-            float((r.gap_LL[t_start:t_end] - mu_g_pop[t_start:t_end]).sum())
-            for r in rows
-        ],
-        dtype=np.float32,
-    )
+    # Per-(stem, seed) LSQ fit: λ̂*_p = Σ gap·s / Σ s² over [s_start:s_end],
+    # where s_i = 1 − σ_i. Single scalar per row, in raw gap-norm-per-(1−σ)
+    # units (typical magnitude ~350). Then rescale targets to λ-units so
+    # the head emits directly-usable λ_scalars at inference.
+    raw = np.empty(len(rows), dtype=np.float64)
+    for i, r in enumerate(rows):
+        s = 1.0 - r.sigma_i[s_start:s_end]
+        g = r.gap_LL[s_start:s_end]
+        denom = float((s * s).sum())
+        raw[i] = float((g * s).sum() / denom) if denom > 1e-9 else 0.0
+    median_abs_raw = float(np.median(np.abs(raw)))
+    if median_abs_raw < 1e-9:
+        target_scale = 1.0
+        print(
+            f"  WARN: median |raw LSQ| = {median_abs_raw:.3e} (~0); "
+            "target_scale = 1.0 (no rescaling)."
+        )
+    else:
+        target_scale = float(args.lambda_anchor) / median_abs_raw
+        print(
+            f"  target_scale = lambda_anchor ({args.lambda_anchor:.3g}) "
+            f"/ median(|raw|) ({median_abs_raw:.1f}) = {target_scale:.3e}"
+        )
+    targets = (raw * target_scale).astype(np.float32)
     if args.seed_mean_targets:
         # Group by (stem, aspect_id) — same prompt at different aspects has
         # different gap shape (∂∫g/∂λ flips sign across aspects per the
@@ -549,28 +588,34 @@ def main():
         "dcw", label=f"v4-fusion-head-{args.label}", root=args.out_root
     )
 
-    state = {f"head.{k}": v.cpu() for k, v in final_head.state_dict().items()}
-    state["bucket_prior_mu_g"] = torch.tensor(mu_g, dtype=torch.float32)
-    state["bucket_prior_S_pop"] = torch.tensor(s_pop, dtype=torch.float32)
-    state["bucket_prior_lam_scalar"] = torch.tensor(lam_scalar, dtype=torch.float32)
+    # Strip aspect_emb + sigma_mlp from the artifact: aspect_emb is zero-frozen
+    # by training and contributes nothing at inference; σ̂² head fails Gate B
+    # at every target window so the inference controller no longer reads it.
+    # bucket_prior_* and sigma2_prior are dropped for the same reason — the
+    # post-cleanup controller is a single (1−σ) envelope keyed only off α̂.
+    _DROP_PREFIXES = ("aspect_emb.", "sigma_mlp.")
+    state = {
+        f"head.{k}": v.cpu()
+        for k, v in final_head.state_dict().items()
+        if not any(k.startswith(pfx) for pfx in _DROP_PREFIXES)
+    }
     state["centroid_c_pool"] = torch.tensor(centroid, dtype=torch.float32)
     state["aux_mean"] = torch.tensor(aux_mean, dtype=torch.float32)
     state["aux_std"] = torch.tensor(aux_std, dtype=torch.float32)
     state["g_obs_mean"] = torch.tensor(g_obs_mean, dtype=torch.float32)
     state["g_obs_std"] = torch.tensor(g_obs_std, dtype=torch.float32)
-    state["sigma2_prior"] = torch.tensor(sigma2_prior, dtype=torch.float32)
     meta = {
-        "schema": "dcw_v4_fusion_head",
+        "schema": "dcw_v5_lambda_scalar",
         "k_warmup": str(args.k_warmup),
         "target_start": str(t_start),
         "target_end": str(t_end),
-        "n_aspects": str(N_ASPECTS),
-        "aspect_names": ",".join(ASPECT_NAMES),
+        "supervision_start": str(s_start),
+        "supervision_end": str(s_end),
+        "target_scale": f"{target_scale:.6e}",
+        "lambda_anchor": f"{args.lambda_anchor:.6g}",
         "n_steps": str(n_steps),
         "text_variant": str(args.text_variant),
         "n_train_rows": str(len(rows)),
-        "sigma2_pop": f"{sigma2_pop:.4f}",
-        "c_proj_dim": str(args.c_proj_dim),
     }
     save_file(state, str(run_dir / "fusion_head.safetensors"), metadata=meta)
 
@@ -609,6 +654,10 @@ def main():
         "k_warmup": args.k_warmup,
         "target_start": t_start,
         "target_end": t_end,
+        "supervision_start": s_start,
+        "supervision_end": s_end,
+        "target_scale": target_scale,
+        "lambda_anchor": args.lambda_anchor,
         "n_folds": args.n_folds,
         "sigma2_pop": sigma2_pop,
         "sigma2_prior": {

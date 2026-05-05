@@ -35,6 +35,7 @@ class Row:
     gap_LL: np.ndarray  # (n_steps,) — used for target (residual on tail)
     v_rev_LL: np.ndarray  # (n_steps,) — used for input g_obs
     v_rev_source: str  # "native" | "synthetic" | "fallback"
+    sigma_i: np.ndarray  # (n_steps,) — σ schedule for the run; per-row for LSQ targets
 
 
 def load_bench_runs(
@@ -95,6 +96,7 @@ def load_bench_runs(
             else:
                 v_rev_LL = gap_LL
                 source = "fallback"
+        sigma_i = _load_sigma_schedule(run_dir, n_steps=gap_LL.shape[1])
         aspect_id = ASPECT_TABLE[(H, W)]
         for r in range(len(stems)):
             img_idx = r // n_seeds
@@ -110,6 +112,7 @@ def load_bench_runs(
                     gap_LL=np.asarray(gap_LL[r], dtype=np.float64),
                     v_rev_LL=np.asarray(v_rev_LL[r], dtype=np.float64),
                     v_rev_source=source,
+                    sigma_i=sigma_i,
                 )
             )
     return rows
@@ -127,6 +130,29 @@ def _load_v_fwd_pop_mean(run_dir: Path, *, band: str = "LL") -> np.ndarray | Non
             return np.array([float(r[col]) for r in reader], dtype=np.float64)
         except KeyError:
             return None
+
+
+def _load_sigma_schedule(run_dir: Path, *, n_steps: int) -> np.ndarray:
+    """Read the sigma_i column from per_step_bands.csv (or per_step.csv as fallback).
+
+    The σ schedule is run-level (same across rows within a run), so we read
+    once per run_dir. Falls back to a linear ramp from 1.0 → 0.0 over n_steps
+    if neither csv carries the column — old runs without the schedule will
+    silently degrade to that approximation.
+    """
+    for name in ("per_step_bands.csv", "per_step.csv"):
+        csv_path = run_dir / name
+        if not csv_path.exists():
+            continue
+        with csv_path.open() as f:
+            reader = csv.DictReader(f)
+            try:
+                arr = np.array([float(r["sigma_i"]) for r in reader], dtype=np.float64)
+            except KeyError:
+                continue
+            if len(arr) >= n_steps:
+                return arr[:n_steps]
+    return np.linspace(1.0, 0.0, n_steps, dtype=np.float64)
 
 
 def load_text_features(
