@@ -24,7 +24,7 @@
 \newcommand{\Qbasis}{Q_{\mathrm{basis}}}
 \newcommand{\Pbases}{P_{\mathrm{bases}}}
 
-\title{\textbf{Ortho-Hydra: Orthogonalised Experts for DiT LoRA}\\[2pt]
+\title{\textbf{Ortho-Hydra: Orthogonalized Experts for DiT LoRA}\\[2pt]
 \large A structural fix for the MoE-LoRA cold-start deadlock}
 \author{Seunghyun Ji\\\small\texttt{standingbehindnv@gmail.com}}
 \date{April 2026}
@@ -38,18 +38,18 @@ suffers from \emph{style bleed}: a single low-rank residual cannot
 represent several distinct artist fingerprints, and the optimiser
 converges to their average. Mixture-of-experts LoRA in the HydraLoRA
 style replaces the up-projection with $E$ heads under a router, but
-when every expert is zero-initialised the router receives identical
+when every expert is zero-initialized the router receives identical
 gradient from each head and remains at the uniform prior. The
 experts then evolve permutation-symmetrically, and the network trains
 as a single rank-$r$ LoRA at $E{\times}$ the cost. We present
-\textbf{Ortho-Hydra}, a re-parameterisation that combines an OFT-style
+\textbf{Ortho-Hydra}, a re-parameterization that combines an OFT-style
 Cayley-orthogonal shared basis with per-expert \emph{disjoint output
 subspaces} carved from the top-$(Er)$ left singular vectors of the
 pretrained weight. Disjointness makes the router's per-expert score
-non-degenerate at step~$0$, so specialisation receives gradient signal
+non-degenerate at step~$0$, so specialization receives gradient signal
 before any expert has trained. We test the predicted
 deadlock on a DiT pipeline by comparing two HydraLoRA baselines, a
-zero-initialised shared-basis variant and the original
+zero-initialized shared-basis variant and the original
 $\sigma{=}0.1$ Gaussian-jitter mitigation, against Ortho-Hydra under a
 matched optimiser, dataset, and step budget. Neither baseline leaves
 the uniform prior within the first $1\text{k}$ steps; Ortho-Hydra
@@ -86,9 +86,9 @@ push different heads in different directions.
 The two fixes solve different problems and compose poorly when stacked
 naively. Section~\ref{sec:method} describes an MoE-LoRA cold-start
 deadlock that arises when a shared orthogonal basis is paired with
-multiple zero-initialised expert heads, and a structural fix:
+multiple zero-initialized expert heads, and a structural fix:
 partitioning the top-$(Er)$ singular directions into disjoint
-per-expert slices breaks the deadlock at initialisation, before the
+per-expert slices breaks the deadlock at initialization, before the
 router has trained.
 
 This is a focused methods report. The construction is implemented and
@@ -107,7 +107,7 @@ are out of scope.
 shared orthogonal basis: every expert lives in the same rank-$r$
 column span, the router's per-expert score is an orthogonal-matrix
 inner product that cannot vanish, and gradients to differentiate
-experts are degenerate at initialisation.
+experts are degenerate at initialization.
 \item We propose \emph{disjoint SVD-slice expert bases}: the
 top-$(Er)$ left singular vectors of $W_0$ are partitioned into $E$
 orthonormal slices, one per expert, and rotated only \emph{within}
@@ -125,7 +125,7 @@ DC-cancellation problem in DiT.
 
 \paragraph{LoRA.} For frozen $W_0$, the residual is $y = W_0 x + s\,
 B A x$ with $s = \alpha/r$. Standard practice~\cite{hu2022lora}
-initialises $B = 0$ so that step~$0$ reproduces the base model exactly.
+initializes $B = 0$ so that step~$0$ reproduces the base model exactly.
 
 \paragraph{Orthogonal fine-tuning (OFT, BOFT, PSOFT).} These methods
 replace the free delta $BA$ with a structurally constrained one.
@@ -133,11 +133,11 @@ OFT~\cite{qiu2023oft} multiplies $W_0$ by a learned orthogonal matrix;
 BOFT~\cite{liu2024boft} factors that matrix as a butterfly product
 for parameter efficiency; PSOFT~\cite{wu2026psoft} restricts the
 rotation to the \emph{principal subspace} of $W_0$ via a frozen SVD
-basis with a Cayley-parameterised rotation inside that subspace.
-Cayley parameterisation~\cite{lezcano2019cayley} guarantees
+basis with a Cayley-parameterized rotation inside that subspace.
+Cayley parameterization~\cite{lezcano2019cayley} guarantees
 orthogonality at every step: for skew-symmetric $A = S - S\T$,
 $R = (I-A)(I+A)^{-1}$ satisfies $R\T R = I$ exactly, with no
-regularisation hyperparameter.
+regularization hyperparameter.
 
 \paragraph{HydraLoRA.} The closest prior work~\cite{tian2024hydralora}
 keeps the shared down-projection $A$ but replaces $B$ with $E$
@@ -146,9 +146,9 @@ parallel up-heads $\{B_i\}_{i=1}^E$ and a router $g(\cdot) \in
 up-projection $B_{\mathrm{eff}}(x) = \sum_i g_i(x)\, B_i$ becomes
 sample-dependent. With a Switch-Transformer~\cite{fedus2022switch}
 balance loss to keep all experts alive, this admits per-cluster
-specialisation in principle.
+specialization in principle.
 
-\paragraph{Soft expert-specialisation regularisers.} A separate
+\paragraph{Soft expert-specialization regularizers.} A separate
 line of work~\cite{guo2025advancing} attacks expert overlap from the
 loss side rather than the architecture: an output-orthogonality term
 penalising inner products between selected experts' per-token outputs,
@@ -159,7 +159,7 @@ driven back toward uniformity by the balance objective during
 fine-tuning. We compare against this line in
 \S\ref{sec:discussion}, after the construction is on the table.
 
-\paragraph{The cold-start deadlock.} HydraLoRA initialises every $B_i$
+\paragraph{The cold-start deadlock.} HydraLoRA initializes every $B_i$
 to zero so the residual is zero at step~$0$. Under a near-uniform
 router every expert receives \emph{identical} gradient, and the
 experts evolve permutation-symmetrically: they remain identical
@@ -319,9 +319,9 @@ residual into one $r$-dimensional band of
 $\mathbb{R}^{d_{\mathrm{out}}}$ (right cartoon).
 \textbf{(b) HydraLoRA:} shared $A$ with $E$ parallel up-heads
 $\{B_e\}$ mixed by a router $g(x)$ under a Switch-Transformer balance
-loss. With $B_e\!=\!0$ at initialisation, every head shares the same
+loss. With $B_e\!=\!0$ at initialization, every head shares the same
 column span (overlapping bands at right) and the per-expert router
-score is degenerate; specialisation receives no gradient signal until
+score is degenerate; specialization receives no gradient signal until
 the symmetry is broken externally.
 \textbf{(c) Ortho-Hydra:} the down-projection is a Cayley-rotated SVD
 basis $R_q\,\Qbasis$; the up-projection is a sum
@@ -425,7 +425,7 @@ $\lVert\Qbasis\rVert\cdot\lVert x\rVert$ with no such outliers. RMS,
 unlike mean, does not cancel zero-mean signals by $\sqrt{L}$ because
 signs square to positive before averaging. Of the three pool/space
 combinations we tried, this is the only one whose router weight norm
-moves from initialisation; the other two leave the router
+moves from initialization; the other two leave the router
 indistinguishable from random init at end of training.
 
 \subsection{Why disjoint slices break the deadlock}
@@ -461,8 +461,8 @@ expert has trained.
 \end{itemize}
 
 The construction is structural rather than scheduled, and operates
-one level below loss-side specialisation
-regularisers~\cite{guo2025advancing}: we revisit this comparison in
+one level below loss-side specialization
+regularizers~\cite{guo2025advancing}: we revisit this comparison in
 \S\ref{sec:discussion}. It does not replace the Switch-Transformer
 balance loss, which still keeps all experts alive against the
 tendency of a sharp router to collapse onto one; it removes the
@@ -500,7 +500,7 @@ $\bar H\!\in\![0.997, 1.0006]$, showing that jitter buys only modest
 extra drift over naive. The vertical at step $11266$ marks the
 balance-loss weight turning on ($0.4\!\cdot\!28164$ max steps); the
 small entropy bump in ortho around that step is the load-balance
-penalty pulling a specialised router back toward uniform. Training
+penalty pulling a specialized router back toward uniform. Training
 loss confirms all three variants reach the same $\sim\!0.08$ band, so
 the gap is in routing rather than optimisation. The ortho run used
 $r\!=\!48$ versus $r\!=\!32$ for the baselines; the $\bar H$ gap is
@@ -632,7 +632,7 @@ with no help from the load balancer. Second, the $\sigma$-jitter
 window has an upper bound at the balance-loss turn-on step
 $\rho_b\!\cdot\!N$: whatever per-expert separation has accumulated
 by then is pulled back toward uniform by the load-balance penalty,
-so $\sigma$ must be aggressive enough for stable specialisation to
+so $\sigma$ must be aggressive enough for stable specialization to
 emerge from shared-basis flattening within $\rho_b\!\cdot\!N$ steps
 but not so aggressive that the random initial residual destabilises
 early training. This is a fragile two-knob region $(\sigma, \rho_b)$
@@ -643,9 +643,9 @@ by construction and survives every gradient step thereafter, so the
 balance-loss schedule and the noise scale are both irrelevant to
 whether the router de-uniformises.
 
-\paragraph{Comparison with soft specialisation regularisers.}
+\paragraph{Comparison with soft specialization regularizers.}
 A complementary line of work~\cite{guo2025advancing} attacks the
-specialisation--uniformity tension with loss-side terms: an
+specialization--uniformity tension with loss-side terms: an
 output-orthogonality penalty on selected experts' per-token outputs,
 \[
 \mathcal{L}_o = \!\!\sum_{i,j\neq k}\!\!
@@ -665,16 +665,16 @@ differ non-trivially and the failure mode is regression toward
 uniformity under aux-loss pressure.
 
 The cold-start regime that motivates Ortho-Hydra is different.
-Experts are freshly initialised ($S_p\!=\!0$, $\lambda\!=\!0$) and
+Experts are freshly initialized ($S_p\!=\!0$, $\lambda\!=\!0$) and
 the router sits at the uniform prior, so a per-token
 output-orthogonality loss operates on $E$ identical (zero) expert
 outputs and a score-variance loss operates on $E$ identical logits.
-The gradients of both regularisers are themselves
+The gradients of both regularizers are themselves
 permutation-symmetric in the expert index $e$ at that initial
-condition, and a regulariser cannot break a symmetry its own
+condition, and a regularizer cannot break a symmetry its own
 gradient shares. Structural cross-expert orthogonality is what the
 soft variant approximates asymptotically, made exact and runtime-free
-in the parameterisation: $\Pbases[i]\T\Pbases[j] = \mathbf{0}$ holds
+in the parameterization: $\Pbases[i]\T\Pbases[j] = \mathbf{0}$ holds
 at step~$0$ by construction and survives every gradient step, with
 no activation-memory cost for materialising per-token, per-expert
 pre-gate outputs $\tilde x_{ij}$ across the sequence.
@@ -691,16 +691,55 @@ de-uniformisation in Figure~\ref{fig:router-dynamics}. After
 liftoff, both terms can ride on top of the disjoint geometry as a
 router-side counter-pressure to the late-training balance-loss
 pull-back (visible as the small entropy bump at step $11266$ in the
-figure, where the balance loss turns on and pulls a specialised
+figure, where the balance loss turns on and pulls a specialized
 router back toward uniform). A combined experiment is the natural
 follow-up: the geometric construction bootstraps the router out of
 the deadlock, and $\mathcal{L}_v + \mathcal{L}_o$ defends decisive
 routing in the regime where asymptotic output orthogonality is what
 the soft variant approximates anyway. The soft fix is logically
-posterior to the structural one; output-orthogonality regularisation
+posterior to the structural one; output-orthogonality regularization
 cannot escape a starting state in which its own direction is
 undefined, and that starting state is the default for adapter-MoE on
 a frozen backbone.
+
+\paragraph{Timestep-axis specialization has the same shape.}
+The reported runs feed the diffusion noise level $\sigma$ into the
+router as $4$-bucket sinusoidal features and add a per-bucket
+coefficient ($0.3$) to the Switch balance loss, asking each
+$\sigma$-bucket's expert distribution to stay near-uniform on its
+own, in the hope that different experts would specialize on
+different denoising regimes (early high-noise structure vs late
+refinement). We did not observe meaningful per-bucket specialization:
+per-expert utilisation across $\sigma$-buckets stayed
+near-symmetric and the $\sigma$-input columns of the router behaved
+as a small additive perturbation on an otherwise content-driven
+gate. The diagnosis transfers from the cold-start case. A per-bucket
+balance loss is a soft constraint, and it cannot create a
+specialization axis the gradient geometry does not already favour:
+at the uniform router every $\sigma$-bucket's per-bucket balance
+gradient is permutation-symmetric across experts, just as the global
+balance gradient is. The structural analogue of disjoint slices is
+to partition experts \emph{by} $\sigma$-band at the architecture
+level — assign each expert $e$ to a band $e\bmod B$ and mask
+out-of-band logits with $-\infty$ before the softmax — so that
+\emph{which} experts fire \emph{when} is fixed by construction
+rather than by the optimiser. Combined with the disjoint SVD-slice
+partitioning, in-band experts remain disjoint in output subspace
+while out-of-band experts are disjoint in $\sigma$-coverage. The
+implementation ships in the released code with an interleaved
+expert-to-band layout, so each band inherits a representative
+spread of singular slices instead of binding band $0$ to the top
+slice and band $B{-}1$ to the bottom. Band edges are themselves a
+design lever: the default uniform $\mathrm{linspace}(0,1,B{+}1)$
+weights every $\sigma$-decade equally, but a non-uniform schedule
+such as $[0, 0.5, 0.8, 1.0]$ concentrates expert capacity on the
+high-$\sigma$ structure-defining regime while sharing a single wide
+band across the broad late-refinement window where the velocity
+field is approximately linear and per-step adaptation is cheaper.
+The dual schedule $[0, 0.2, 0.5, 1.0]$ inverts the choice when
+late-step refinement is the bottleneck. Rerunning the cold-start
+diagnostic with the hard $\sigma$-partition enabled, and ablating
+the band schedule, is left to future work.
 
 \paragraph{Scope of the cold-start experiment.}
 Figure~\ref{fig:router-dynamics} tests the mechanism claim at its
@@ -717,17 +756,26 @@ end-task quality on multi-style data remains open.
 
 \section{Conclusion}
 
-Ortho-Hydra is a re-parameterisation of HydraLoRA in which the
+Ortho-Hydra is a re-parameterization of HydraLoRA in which the
 shared down-projection is a Cayley-rotated SVD basis and each expert
 owns a disjoint slice of the top-$(Er)$ left singular vectors of the
 pretrained weight. Disjointness is preserved exactly through training,
-which removes the cold-start symmetry between zero-initialised experts
+which removes the cold-start symmetry between zero-initialized experts
 and gives the layer-local router differentiating gradient signal at
 step~$0$. The cold-start router-dynamics experiment
 confirms the predicted shared-basis deadlock and shows that the
 original $\sigma$-jitter mitigation does not escape it on a matched
 budget; end-task quality on multi-style fine-tuning is left to future
 work.
+
+\section*{Acknowledgements}
+
+Portions of the text in this manuscript were drafted and edited with
+the assistance of large language models (LLMs). The technical
+contributions, experimental design, implementation, results, and
+conclusions are those of the author, who has reviewed all generated
+text and takes full intellectual responsibility for the content of
+the paper.
 
 \small
 
