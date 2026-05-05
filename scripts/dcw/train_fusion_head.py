@@ -244,8 +244,11 @@ def main():
         "--supervision_window",
         type=str,
         default=None,
-        help="LSQ-fit window (format 'start:end', exclusive end). Default '0:4' "
-        "(early-commitment regime — see memory project_dcw_v4_target_window_signal_shape).",
+        help="LSQ-fit window (format 'start:end', exclusive end). Default '4:28' "
+        "— matches the inference apply window [k_warmup:n_steps]. The 2026-05-05 "
+        "covariance-ceiling bench (bench/dcw/results/20260505-1617-cov-ceiling-window-4-28) "
+        "showed grouped-CV r ≈ 0.44 here vs 0.39 on the prior '0:4' default; "
+        "within-group seed-noise share drops from 21.5%% → 13.5%%.",
     )
     p.add_argument(
         "--lambda_anchor",
@@ -279,6 +282,18 @@ def main():
         help="Project c_pool down to this many dims before concat. 0 = "
         "identity (raw 1024-d). The 2026-05-05 sweep showed projection "
         "balances slot capacity but hurts CV r — kept as ablation knob.",
+    )
+    p.add_argument(
+        "--c_pool_norm",
+        type=str,
+        default="none",
+        choices=("none", "l2", "standardize", "l2_then_standardize"),
+        help="Per-row c_pool preprocessing before the head sees it. "
+        "l2 = unit-norm per row (removes caption-length magnitude bias). "
+        "standardize = z-score per dim (saves mean/std into artifact). "
+        "Default l2_then_standardize stabilises grouped-CV r (std 0.169 → "
+        "0.016 on the 525-row pool) — see bench/dcw/results/20260505-*-cov-cpoolnorm-*. "
+        "Raw cos_centroid aux feature is unaffected (computed on raw c_pool).",
     )
     p.add_argument(
         "--lambda_sigma_aux",
@@ -350,7 +365,7 @@ def main():
     else:
         t_start, t_end = args.k_warmup, n_steps
 
-    sup_spec = args.supervision_window or "0:4"
+    sup_spec = args.supervision_window or "4:28"
     s_start, s_end = _parse_window("supervision_window", sup_spec)
 
     print(
@@ -376,6 +391,27 @@ def main():
     aux_mean = aux.mean(axis=0)
     aux_std = aux.std(axis=0).clip(min=1e-6)
     aux_n = (aux - aux_mean) / aux_std
+
+    # c_pool preprocessing — keeps `centroid` and `cos_centroid` (above) computed
+    # on RAW c_pool because cos is L2-invariant and the aux feature semantically
+    # requires raw-space angle. Only the head's c_pool input goes through l2 +
+    # standardize. 2026-05-05 covariance-ceiling bench
+    # (bench/dcw/results/20260505-*-cov-cpoolnorm-*) shows l2_then_standardize
+    # collapses the +c_pool block's grouped-CV r std from 0.169 → 0.016 vs raw,
+    # at near-equal mean (0.302 → 0.376).
+    do_l2 = args.c_pool_norm in ("l2", "l2_then_standardize")
+    do_stdz = args.c_pool_norm in ("standardize", "l2_then_standardize")
+    if do_l2:
+        norms = np.linalg.norm(c_pool_arr, axis=1, keepdims=True).clip(min=1e-9)
+        c_pool_arr = (c_pool_arr / norms).astype(np.float32)
+    if do_stdz:
+        c_pool_mean = c_pool_arr.mean(axis=0).astype(np.float32)
+        c_pool_std = c_pool_arr.std(axis=0).clip(min=1e-6).astype(np.float32)
+        c_pool_arr = ((c_pool_arr - c_pool_mean) / c_pool_std).astype(np.float32)
+    else:
+        c_pool_mean = np.zeros(c_pool_arr.shape[1], dtype=np.float32)
+        c_pool_std = np.ones(c_pool_arr.shape[1], dtype=np.float32)
+    print(f"  c_pool_norm = {args.c_pool_norm}")
 
     aspect_arr = np.array([r.aspect_id for r in rows], dtype=np.int64)
     src_counts: dict[str, int] = {}
@@ -604,6 +640,8 @@ def main():
     state["aux_std"] = torch.tensor(aux_std, dtype=torch.float32)
     state["g_obs_mean"] = torch.tensor(g_obs_mean, dtype=torch.float32)
     state["g_obs_std"] = torch.tensor(g_obs_std, dtype=torch.float32)
+    state["c_pool_mean"] = torch.tensor(c_pool_mean, dtype=torch.float32)
+    state["c_pool_std"] = torch.tensor(c_pool_std, dtype=torch.float32)
     meta = {
         "schema": "dcw_v5_lambda_scalar",
         "k_warmup": str(args.k_warmup),
@@ -616,6 +654,7 @@ def main():
         "n_steps": str(n_steps),
         "text_variant": str(args.text_variant),
         "n_train_rows": str(len(rows)),
+        "c_pool_norm": args.c_pool_norm,
     }
     save_file(state, str(run_dir / "fusion_head.safetensors"), metadata=meta)
 

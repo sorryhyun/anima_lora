@@ -51,6 +51,9 @@ class OnlineDCWCalibrator:
         dtype: torch.dtype = torch.float32,
         target_start: Optional[int] = None,
         target_end: Optional[int] = None,
+        c_pool_norm: str = "none",
+        c_pool_mean: Optional[torch.Tensor] = None,
+        c_pool_std: Optional[torch.Tensor] = None,
     ):
         self.head = head.to(device=device, dtype=dtype).eval()
         self.centroid = centroid.to(device=device, dtype=dtype)
@@ -64,6 +67,17 @@ class OnlineDCWCalibrator:
         self.target_end = int(n_steps if target_end is None else target_end)
         self.device = device
         self.dtype = dtype
+        self.c_pool_norm = c_pool_norm
+        self.c_pool_mean = (
+            c_pool_mean.to(device=device, dtype=dtype)
+            if c_pool_mean is not None
+            else None
+        )
+        self.c_pool_std = (
+            c_pool_std.to(device=device, dtype=dtype)
+            if c_pool_std is not None
+            else None
+        )
         self.is_active: bool = False
         self.c_pool: Optional[torch.Tensor] = None
         self.aux: Optional[torch.Tensor] = None
@@ -150,6 +164,12 @@ class OnlineDCWCalibrator:
         head.load_state_dict(head_sd, strict=False)
         head.aspect_emb.weight.data.zero_()
 
+        c_pool_norm = meta.get("c_pool_norm", "none")
+        if c_pool_norm not in ("none", "l2", "standardize", "l2_then_standardize"):
+            raise ValueError(
+                f"{path}: unknown c_pool_norm={c_pool_norm!r}. "
+                "Either retrain with the current trainer or update the calibrator."
+            )
         ctrl = cls(
             head=head,
             centroid=tensors["centroid_c_pool"],
@@ -162,15 +182,20 @@ class OnlineDCWCalibrator:
             device=device,
             target_start=target_start,
             target_end=target_end,
+            c_pool_norm=c_pool_norm,
+            c_pool_mean=tensors.get("c_pool_mean"),
+            c_pool_std=tensors.get("c_pool_std"),
         )
         logger.info(
-            "DCW calibrator: loaded %s (schema=%s, k=%d, target=[%d:%d], %d steps)",
+            "DCW calibrator: loaded %s (schema=%s, k=%d, target=[%d:%d], "
+            "%d steps, c_pool_norm=%s)",
             path.name,
             schema,
             k_warmup,
             target_start,
             target_end,
             n_steps,
+            c_pool_norm,
         )
         return ctrl
 
@@ -201,27 +226,42 @@ class OnlineDCWCalibrator:
             logger.warning("DCW calibrator: empty embed mask — disabling")
             return
 
-        c_pool = valid.mean(dim=0)
+        c_pool_raw = valid.mean(dim=0)
         token_l2 = valid.norm(dim=-1)
+        # cos_centroid stays raw — the trainer's centroid was computed on raw
+        # c_pool, and the cos itself is the aux feature, not the head input.
         cos_centroid = float(
-            torch.dot(c_pool, self.centroid)
-            / (c_pool.norm() * self.centroid.norm() + 1e-9)
+            torch.dot(c_pool_raw, self.centroid)
+            / (c_pool_raw.norm() * self.centroid.norm() + 1e-9)
         )
         aux_raw = torch.tensor(
             [float(cap_len), cos_centroid, float(token_l2.std().item())],
             device=self.device,
             dtype=self.dtype,
         )
+        # Apply the same preprocessing the trainer used to the head's c_pool input.
+        c_pool = c_pool_raw
+        if self.c_pool_norm in ("l2", "l2_then_standardize"):
+            c_pool = c_pool / (c_pool.norm() + 1e-9)
+        if self.c_pool_norm in ("standardize", "l2_then_standardize"):
+            if self.c_pool_mean is None or self.c_pool_std is None:
+                raise RuntimeError(
+                    "c_pool_norm requests standardize but artifact has no "
+                    "c_pool_mean / c_pool_std tensors — retrain to ship them."
+                )
+            c_pool = (c_pool - self.c_pool_mean) / self.c_pool_std
         self.c_pool = c_pool
         self.aux = (aux_raw - self.aux_mean) / self.aux_std
         self.is_active = True
         logger.info(
-            "DCW calibrator: setup target=[%d:%d] gain=%.4g cap_len=%d cos_centroid=%.3f",
+            "DCW calibrator: setup target=[%d:%d] gain=%.4g cap_len=%d "
+            "cos_centroid=%.3f c_pool_norm=%s",
             self.target_start,
             self.target_end,
             self.gain,
             cap_len,
             cos_centroid,
+            self.c_pool_norm,
         )
 
     def record(self, step_i: int, noise_pred: torch.Tensor) -> None:
