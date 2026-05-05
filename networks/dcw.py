@@ -166,27 +166,63 @@ class FusionHead(nn.Module):
         aspect_emb_dim: int = 16,
         k: int = 7,
         aux_dim: int = 3,
+        c_proj_dim: int = 0,
         hidden: tuple[int, ...] = (256, 128),
+        sigma_hidden: int = 64,
         dropout: float = 0.2,
         log_sigma2_init: float = 0.0,
     ):
         super().__init__()
         self.k = k
+        self.c_pool_dim = c_pool_dim
+        # c_proj_dim == 0 → identity passthrough (raw c_pool into concat).
+        # > 0 → LN + Linear(c_pool_dim → c_proj_dim) before concat. The
+        # 2026-05-05 sweep showed projection balances slot capacity but
+        # hurts CV metrics on Anima — supervision-side variance, not arch
+        # capacity, is the bottleneck. Kept as an ablation knob.
+        self.c_proj_dim = c_proj_dim
+        if c_proj_dim > 0:
+            self.c_proj = nn.Sequential(
+                nn.LayerNorm(c_pool_dim),
+                nn.Linear(c_pool_dim, c_proj_dim),
+            )
+            cat_dim = c_proj_dim
+        else:
+            self.c_proj = nn.Identity()
+            cat_dim = c_pool_dim
         self.aspect_emb = nn.Embedding(n_aspects, aspect_emb_dim)
         nn.init.normal_(self.aspect_emb.weight, std=0.02)
-        in_dim = c_pool_dim + aspect_emb_dim + k + aux_dim
-        layers: list[nn.Module] = [nn.LayerNorm(in_dim)]
+        in_dim = cat_dim + aspect_emb_dim + k + aux_dim
+
+        # α̂ and log σ̂² use independent trunks. Sharing a single trunk turned
+        # the per-prompt seed-variance aux loss into a destructive interference
+        # term (any λ>0 collapsed α̂'s correlation), because aux gradients
+        # rewrote shared features the NLL needed for point prediction.
+        alpha_layers: list[nn.Module] = [nn.LayerNorm(in_dim)]
         prev = in_dim
         for h in hidden:
-            layers += [nn.Linear(prev, h), nn.GELU(), nn.Dropout(dropout)]
+            alpha_layers += [nn.Linear(prev, h), nn.GELU(), nn.Dropout(dropout)]
             prev = h
-        head = nn.Linear(prev, 2)
-        nn.init.zeros_(head.weight)
-        nn.init.zeros_(head.bias)
+        alpha_out = nn.Linear(prev, 1)
+        nn.init.zeros_(alpha_out.weight)
+        nn.init.zeros_(alpha_out.bias)
+        alpha_layers.append(alpha_out)
+        self.alpha_mlp = nn.Sequential(*alpha_layers)
+
+        # Smaller σ̂² trunk: aux supervision is per-prompt aggregate (only
+        # ~175 effective points), so capacity must be modest.
+        sigma_out = nn.Linear(sigma_hidden, 1)
+        nn.init.zeros_(sigma_out.weight)
+        nn.init.zeros_(sigma_out.bias)
         with torch.no_grad():
-            head.bias[1] = log_sigma2_init
-        layers.append(head)
-        self.mlp = nn.Sequential(*layers)
+            sigma_out.bias.fill_(log_sigma2_init)
+        self.sigma_mlp = nn.Sequential(
+            nn.LayerNorm(in_dim),
+            nn.Linear(in_dim, sigma_hidden),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            sigma_out,
+        )
 
     def forward(
         self,
@@ -196,6 +232,6 @@ class FusionHead(nn.Module):
         aux: torch.Tensor,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         a = self.aspect_emb(aspect_id)
-        x = torch.cat([c_pool, a, g_obs, aux], dim=-1)
-        out = self.mlp(x)
-        return out[..., 0], out[..., 1]
+        c = self.c_proj(c_pool)
+        x = torch.cat([c, a, g_obs, aux], dim=-1)
+        return self.alpha_mlp(x).squeeze(-1), self.sigma_mlp(x).squeeze(-1)

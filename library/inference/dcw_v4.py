@@ -16,8 +16,10 @@ State machine:
   top of the warmup formula.
 
 The controller is **inactive** (``is_active == False``) when the artifact
-fails to load or the request's aspect bucket isn't in the artifact's
-table — callers should fall back to scalar ``--dcw`` in that case.
+fails to load or ``setup`` hits an empty embed mask. Any (H, W) is
+accepted at inference time — bucket conditioning was removed (see
+``project_dcw_bucket_prior_cosmetic`` memory) so out-of-table aspects
+just resolve to profile 0 (which is identical to all other profiles).
 """
 
 from __future__ import annotations
@@ -47,8 +49,8 @@ ASPECT_NAMES = ["832x1248", "896x1152", "768x1344", "1152x896", "1248x832"]
 
 @dataclass
 class _Profile:
-    mu_g: torch.Tensor          # (n_steps,)
-    s_pop: torch.Tensor         # (n_steps,)
+    mu_g: torch.Tensor  # (n_steps,)
+    s_pop: torch.Tensor  # (n_steps,)
     lam_scalar: float
     sigma2_prior: float
     mu_g_S_pop_tail_dot: float  # Σ_{i≥k}(mu_g[i] · S_pop[i]); LSQ denominator
@@ -113,19 +115,41 @@ class OnlineFusionDCWController:
         sigma2_pop = float(meta.get("sigma2_pop", 1.0))
 
         head_sd = {
-            k[len("head."):]: v for k, v in tensors.items() if k.startswith("head.")
+            k[len("head.") :]: v for k, v in tensors.items() if k.startswith("head.")
         }
-        # mlp.0 is LayerNorm — its weight shape is (in_dim,)
-        in_dim = int(head_sd["mlp.0.weight"].shape[0])
+        # alpha_mlp.0 is LayerNorm; its weight shape is (in_dim,).
+        if "alpha_mlp.0.weight" not in head_sd:
+            raise ValueError(
+                f"{path}: missing 'alpha_mlp.*' keys — this artifact predates "
+                "the alpha/sigma trunk split. Retrain with `make dcw-train`."
+            )
+        in_dim = int(head_sd["alpha_mlp.0.weight"].shape[0])
         aspect_emb_dim = int(head_sd["aspect_emb.weight"].shape[1])
         aux_dim = 3
-        c_pool_dim = in_dim - (aspect_emb_dim + k_warmup + aux_dim)
+        if "c_proj.1.weight" in head_sd:
+            c_proj_w = head_sd["c_proj.1.weight"]
+            c_proj_dim = int(c_proj_w.shape[0])
+            c_pool_dim = int(c_proj_w.shape[1])
+            cat_dim = c_proj_dim
+        else:
+            c_proj_dim = 0
+            c_pool_dim = in_dim - (aspect_emb_dim + k_warmup + aux_dim)
+            cat_dim = c_pool_dim
+        if cat_dim + aspect_emb_dim + k_warmup + aux_dim != in_dim:
+            raise ValueError(
+                f"{path}: shape mismatch — cat({cat_dim}) + aspect_emb"
+                f"({aspect_emb_dim}) + k({k_warmup}) + aux({aux_dim}) != "
+                f"alpha_mlp.0 in_dim({in_dim})"
+            )
+        sigma_hidden = int(head_sd["sigma_mlp.1.weight"].shape[0])
         head = FusionHead(
             c_pool_dim=c_pool_dim,
             n_aspects=n_aspects,
             aspect_emb_dim=aspect_emb_dim,
             k=k_warmup,
             aux_dim=aux_dim,
+            c_proj_dim=c_proj_dim,
+            sigma_hidden=sigma_hidden,
             log_sigma2_init=math.log(max(sigma2_pop, 1e-6)),
         )
         head.load_state_dict(head_sd)
@@ -159,7 +183,11 @@ class OnlineFusionDCWController:
         )
         logger.info(
             "DCW v4: loaded %s (k=%d, %d aspects, %d steps, sigma2_pop=%.2f)",
-            path.name, k_warmup, n_aspects, n_steps, sigma2_pop,
+            path.name,
+            k_warmup,
+            n_aspects,
+            n_steps,
+            sigma2_pop,
         )
         return ctrl
 
@@ -180,17 +208,11 @@ class OnlineFusionDCWController:
         self.disable_shrinkage = disable_shrinkage
         self.disable_backstop = disable_backstop
 
-        aspect_id = ASPECT_TABLE.get((H, W))
-        if aspect_id is None:
-            logger.warning(
-                "DCW v4: aspect (%d, %d) not in table %s — disabling, "
-                "fall back to scalar --dcw if you set it",
-                H, W, ASPECT_NAMES,
-            )
-            return
-        if aspect_id >= len(self.profiles):
-            logger.warning("DCW v4: aspect_id %d out of range — disabling", aspect_id)
-            return
+        # Bucket conditioning is dead (see project_dcw_bucket_prior_cosmetic):
+        # all profiles in the artifact are broadcast from a single population
+        # μ_g and aspect_emb is zeroed at train time. So any (H, W) is fine —
+        # we just need *some* valid aspect_id to index into self.profiles.
+        aspect_id = ASPECT_TABLE.get((H, W), 0)
 
         # Pool the first batch row's embed (single-prompt assumption — matches the
         # prototype's per-prompt training format). embed: (B, L, 1024).
@@ -206,15 +228,16 @@ class OnlineFusionDCWController:
             logger.warning("DCW v4: empty embed mask — disabling")
             return
 
-        c_pool = valid.mean(dim=0)                                         # (1024,)
-        token_l2 = valid.norm(dim=-1)                                      # (L,)
+        c_pool = valid.mean(dim=0)  # (1024,)
+        token_l2 = valid.norm(dim=-1)  # (L,)
         cos_centroid = float(
             torch.dot(c_pool, self.centroid)
             / (c_pool.norm() * self.centroid.norm() + 1e-9)
         )
         aux_raw = torch.tensor(
             [float(cap_len), cos_centroid, float(token_l2.std().item())],
-            device=self.device, dtype=self.dtype,
+            device=self.device,
+            dtype=self.dtype,
         )
         aux_n = (aux_raw - self.aux_mean) / self.aux_std
 
@@ -222,13 +245,17 @@ class OnlineFusionDCWController:
         self.profile = self.profiles[aspect_id]
         self.c_pool = c_pool
         self.aux = aux_n
-        self.tail_norm = float(self.profile.mu_g[self.k_warmup:].sum().item())
+        self.tail_norm = float(self.profile.mu_g[self.k_warmup :].sum().item())
         if abs(self.tail_norm) < 1e-6:
             self.tail_norm = 1.0  # head_corr will be ~0; harmless
         self.is_active = True
         logger.info(
-            "DCW v4: setup aspect=%s lam_scalar=%+.4f cap_len=%d cos_centroid=%.3f",
-            ASPECT_NAMES[aspect_id], self.profile.lam_scalar, cap_len, cos_centroid,
+            "DCW v4: setup %dx%d lam_scalar=%+.4f cap_len=%d cos_centroid=%.3f",
+            H,
+            W,
+            self.profile.lam_scalar,
+            cap_len,
+            cos_centroid,
         )
 
     def record(self, step_i: int, noise_pred: torch.Tensor) -> None:
@@ -245,7 +272,8 @@ class OnlineFusionDCWController:
             logger.warning(
                 "DCW v4: only %d/%d warmup obs collected — disabling head, "
                 "tail will use bucket prior only",
-                len(self.g_obs_buf), self.k_warmup,
+                len(self.g_obs_buf),
+                self.k_warmup,
             )
             self.alpha_eff = 0.0
             return
@@ -279,7 +307,10 @@ class OnlineFusionDCWController:
 
         logger.info(
             "DCW v4: head fired at step %d — α̂=%+.2f, σ̂²=%.2f, α_eff=%+.2f",
-            step_i, alpha_hat_v, sigma2, self.alpha_eff,
+            step_i,
+            alpha_hat_v,
+            sigma2,
+            self.alpha_eff,
         )
 
     def lambda_for_step(self, step_i: int, sigma_i: float) -> float:
@@ -304,16 +335,12 @@ class OnlineFusionDCWController:
         i = min(step_i, p.mu_g.shape[0] - 1)
         mu_g_i = float(p.mu_g[i].item())
         s_pop_i = float(p.s_pop[i].item())
-        bucket_corr = (
-            mu_g_i * p.lam_scalar / s_pop_i if abs(s_pop_i) > 1e-6 else 0.0
-        )
+        bucket_corr = mu_g_i * p.lam_scalar / s_pop_i if abs(s_pop_i) > 1e-6 else 0.0
         if step_i < self.k_warmup:
             lam_i = base + bucket_corr
         else:
             denom = p.mu_g_S_pop_tail_dot
-            head_corr = (
-                -self.alpha_eff * mu_g_i / denom if abs(denom) > 1e-6 else 0.0
-            )
+            head_corr = -self.alpha_eff * mu_g_i / denom if abs(denom) > 1e-6 else 0.0
             lam_i = base + bucket_corr + head_corr
         lam_max = 3.0 * abs(p.lam_scalar) if p.lam_scalar != 0.0 else 0.05
         return max(-lam_max, min(lam_max, lam_i))
