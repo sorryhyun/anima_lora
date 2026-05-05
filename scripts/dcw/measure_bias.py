@@ -202,6 +202,15 @@ def parse_args() -> argparse.Namespace:
         help="Restrict to cached samples with this image-space width.",
     )
     p.add_argument(
+        "--shuffle_seed",
+        type=int,
+        default=None,
+        help="Deterministically shuffle the candidate pool before truncating "
+        "to --n_images. Default None preserves alphabetical-first selection "
+        "(legacy behavior). Used by `make dcw` to broaden prompt diversity "
+        "beyond the alphabetical-first 35 stems per bucket.",
+    )
+    p.add_argument(
         "--infer_steps",
         type=int,
         default=28,
@@ -242,6 +251,24 @@ def parse_args() -> argparse.Namespace:
         "(shape (n_images*n_seeds, n_steps)) to gaps_per_sample.npz. "
         "Consumed by the dcw-learnable-calibrator analysis scripts "
         "(transfer hypothesis, PCA, S_pop).",
+    )
+    p.add_argument(
+        "--save_images",
+        action="store_true",
+        help="Decode the final reverse-trajectory latent for each "
+        "(sample, seed, config) row and save as PNG under "
+        "<run_dir>/images/. Loads the VAE transiently after the bench "
+        "loop completes, decodes one row at a time, frees the VAE. "
+        "Lets you visually compare baseline vs. each --dcw_scalers config "
+        "at matched (sample, seed) — i.e., actually see whether a "
+        "gap-narrowing λ improves perceptual quality, not just integrated "
+        "|gap|. ~25 MB extra peak RAM at 832×1248 × 48 rows.",
+    )
+    p.add_argument(
+        "--vae",
+        type=str,
+        default="models/vae/qwen_image_vae.safetensors",
+        help="VAE path used by --save_images to decode final latents.",
     )
     p.add_argument(
         "--guidance_scale",
@@ -416,6 +443,7 @@ def main() -> None:
         args.n_images,
         image_h=args.image_h,
         image_w=args.image_w,
+        shuffle_seed=args.shuffle_seed,
     )
     if not samples:
         shape_msg = (
@@ -504,6 +532,14 @@ def main() -> None:
         per_sample_v_rev_bands = {b: np.zeros((n_traj, n_steps)) for b in BANDS}
         per_sample_stems = [""] * n_traj
 
+    # Per-(stem, seed_int, config_name) final latent collected for VAE decode
+    # at end-of-run, when --save_images is set. Each entry is a single-row
+    # tensor shape (1, *x_0.shape[1:]) on CPU/float32 — typically ~520 KB at
+    # 832×1248 (16-channel latent, fp32).
+    finals_to_decode: list[tuple[str, int, str, torch.Tensor]] | None = (
+        [] if args.save_images else None
+    )
+
     t0 = time.time()
 
     def _seeds_for(img_idx: int) -> list[int]:
@@ -543,7 +579,7 @@ def main() -> None:
         for img_idx, (stem, x_0, embed) in enumerate(encoded):
             for seed_idx in range(args.n_seeds):
                 seed = args.seed_base + 1000 * img_idx + seed_idx
-                rev_results = run_reverse_batched(
+                rev_out = run_reverse_batched(
                     anima,
                     x_0,
                     embed,
@@ -553,7 +589,13 @@ def main() -> None:
                     device=device,
                     embed_uncond=embed_uncond,
                     cfg_scale=args.guidance_scale,
+                    return_final=args.save_images,
                 )
+                if args.save_images:
+                    rev_results, final_latents = rev_out
+                else:
+                    rev_results = rev_out
+                    final_latents = None
                 v_fwd, fwd_bands = fwd_cache[(img_idx, seed_idx)]
                 for j, (name, _lam) in enumerate(configs):
                     rev_norms, rev_bands = rev_results[j]
@@ -572,6 +614,10 @@ def main() -> None:
                         args.n_seeds,
                         stem,
                     )
+                    if finals_to_decode is not None and final_latents is not None:
+                        finals_to_decode.append(
+                            (stem, seed, name, final_latents[j : j + 1].clone())
+                        )
                 pbar.update(1)
                 pbar.set_postfix_str(f"{stem} seed={seed}")
         pbar.close()
@@ -579,7 +625,7 @@ def main() -> None:
         pbar = tqdm(total=len(encoded), desc=f"rev (×{args.n_seeds} seeds batched)")
         for img_idx, (stem, x_0, embed) in enumerate(encoded):
             seeds = _seeds_for(img_idx)
-            rev_results = run_reverse_batched(
+            rev_out = run_reverse_batched(
                 anima,
                 x_0,
                 embed,
@@ -589,7 +635,13 @@ def main() -> None:
                 device=device,
                 embed_uncond=embed_uncond,
                 cfg_scale=args.guidance_scale,
+                return_final=args.save_images,
             )
+            if args.save_images:
+                rev_results, final_latents = rev_out
+            else:
+                rev_results = rev_out
+                final_latents = None
             for seed_idx, (rev_norms, rev_bands) in enumerate(rev_results):
                 v_fwd, fwd_bands = fwd_cache[(img_idx, seed_idx)]
                 _accumulate_row(
@@ -607,11 +659,89 @@ def main() -> None:
                     args.n_seeds,
                     stem,
                 )
+                if finals_to_decode is not None and final_latents is not None:
+                    finals_to_decode.append(
+                        (stem, seeds[seed_idx], "baseline", final_latents[seed_idx : seed_idx + 1].clone())
+                    )
             pbar.update(1)
             pbar.set_postfix_str(stem)
         pbar.close()
     clear_hydra_sigma(anima)
     log.info(f"done in {time.time() - t0:.0f}s")
+
+    # Optional: VAE decode of stashed final latents → PNGs under
+    # <out_dir>/images/. Loads VAE transiently; frees DiT first to
+    # maximise free VRAM. Each row decoded individually (memory-safe at
+    # any --n_images / config count). Filenames include the config name
+    # so a 3-config sweep produces an interleaved baseline / λ_a / λ_b
+    # set per (stem, seed) pair, suitable for direct visual A/B/C.
+    images_dir: Path | None = None
+    if finals_to_decode is not None:
+        from PIL import Image
+
+        from library.models import qwen_vae as qwen_image_autoencoder_kl
+
+        images_dir = out_dir / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        log.info(
+            f"decoding {len(finals_to_decode)} final latents → {images_dir}"
+        )
+
+        # Free the DiT (and the encoded latent / text cache) before
+        # loading the VAE — keeps peak VRAM bounded by max(DiT, VAE).
+        del anima
+        encoded.clear()
+        fwd_cache.clear()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        vae = qwen_image_autoencoder_kl.load_vae(
+            args.vae,
+            device="cpu",
+            disable_mmap=True,
+            spatial_chunk_size=None,
+            disable_cache=False,
+        )
+        vae.to(torch.bfloat16)
+        vae.eval()
+        vae.to(device)
+
+        def _safe(name: str) -> str:
+            return (
+                name.replace("=", "_eq").replace("λ", "lam").replace(" ", "_")
+            )
+
+        with torch.no_grad():
+            decode_pbar = tqdm(total=len(finals_to_decode), desc="decode")
+            for stem, seed_int, cfg_name, latent in finals_to_decode:
+                pixels = vae.decode_to_pixels(
+                    latent.to(device, dtype=vae.dtype)
+                )
+                if pixels.ndim == 5:
+                    pixels = pixels.squeeze(2)  # [1, 3, H, W]
+                img_t = (
+                    (pixels[0].clamp(-1.0, 1.0) * 0.5 + 0.5)
+                    .to("cpu", dtype=torch.float32)
+                    .mul(255)
+                    .round()
+                    .clamp(0, 255)
+                    .byte()
+                    .permute(1, 2, 0)
+                    .numpy()
+                )
+                fname = f"{stem}__seed{seed_int}__{_safe(cfg_name)}.png"
+                Image.fromarray(img_t).save(images_dir / fname)
+                decode_pbar.update(1)
+                decode_pbar.set_postfix_str(fname)
+            decode_pbar.close()
+
+        vae.to("cpu")
+        del vae
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        log.info(f"images → {images_dir}")
 
     # Reduce: mean over (img × seed); std on the gap from running Σ gap².
     for name in accum:
@@ -676,6 +806,7 @@ def main() -> None:
         ["per_step.csv", "per_step_bands.csv"]
         + (["gap_curves.png"] if plot_written else [])
         + (["gaps_per_sample.npz"] if per_sample_path is not None else [])
+        + (["images/"] if images_dir is not None else [])
     )
     result_path = write_result(
         out_dir,

@@ -69,7 +69,8 @@ COMMANDS = {
     ),
     "dcw": (
         dcw.cmd_dcw,
-        "Calibrate DCW v4: sample 3 aspect buckets (default 80×3 seeds) + train fusion head",
+        "Calibrate DCW v4: sample 5 aspect buckets (default 130×1 seeds, "
+        "shuffle_seed=0) + train fusion head",
     ),
     "dcw-train": (
         dcw.cmd_dcw_train,
@@ -233,7 +234,18 @@ def main():
         sys.exit(1)
 
     extra = sys.argv[2:]
-    fn, _ = COMMANDS[command]
+    fn, desc = COMMANDS[command]
+    if extra and extra[0] in ("-h", "--help"):
+        print(f"python tasks.py {command} — {desc}\n")
+        if fn.__doc__:
+            print(fn.__doc__.strip())
+        else:
+            print("(no detailed help available)")
+        print(
+            "\nUnrecognised flags are forwarded verbatim to the underlying script. "
+            "Run the underlying script with --help for its full flag set."
+        )
+        sys.exit(0)
     fn(extra)
 
 

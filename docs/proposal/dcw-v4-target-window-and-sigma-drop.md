@@ -2,6 +2,8 @@
 
 **Status:** findings / decision (2026-05-05) · supplements [`dcw-learnable-calibrator-v4.md`](dcw-learnable-calibrator-v4.md) · **No retraining required to adopt the σ̂²-drop**; narrow-window deployment is gated on inference-side window plumbing (not yet wired).
 
+> **Scope reframe (2026-05-05, later same day)** — the "α-signal lives in mid/late tail (`7:14`/`14:21`/`21:`)" finding below is a **measurement of where r_α is highest**, not a recommendation for the v4/v5 supervision target window. Late-trajectory tails are smoother → easier to fit → higher r_α; that doesn't make them a better target for a calibrator whose job is to learn the early-commitment signal and emit a corrector that propagates AR(1)-style. The principled supervision target is `:4` or `:7` (where the seed-vs-prompt decision is made), and the previous "split-window" recommendation (α̂ on `7:14`, σ̂² on `:7`) collapses to "both on early window". The σ̂²-shrinkage default-off decision below is unchanged (it was based on NLL net-negative across *every* window, not on window choice). Decision gate for any window-choice change is Gate C (perceptual A/B), not r_α improvement. See memory [`project_dcw_target_window_signal_shape`](../../.claude/projects/-home-sorryhyun-anima-anima-lora/memory/project_dcw_target_window_signal_shape.md) and [`dcw-questions.md §4`](../../dcw-questions.md).
+
 ## TL;DR
 
 1. **Narrowing the supervision target from `7:` (full tail) to `7:14` lifts r_α by ~9% relative** (0.474 → 0.518 per-prompt CV r). The hot α-window across width-7 slices is **`7:14`, `14:21`, `21:`** — all clustered at r_α ≈ 0.52–0.55. Production `7:` (W=21) averages across the whole tail and dilutes per-window signal.

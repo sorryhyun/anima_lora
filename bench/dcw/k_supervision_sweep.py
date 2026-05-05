@@ -250,6 +250,15 @@ def main() -> None:
         help="Also run per-step targets (one CV per step t in 0..N-1). "
         "Expensive: n_folds × n_steps fold trainings.",
     )
+    p.add_argument(
+        "--no_g_obs",
+        action="store_true",
+        help="Drop the warmup observation feature (k=0 → FusionHead is "
+        "prompt+aspect+aux only). Tests whether g_obs carries any marginal "
+        "signal at this data scale, and whether a prompt-only head is viable "
+        "(removes the k_warmup observation contract — calibration can run at "
+        "step 0 with no warmup forwards needed).",
+    )
     p.add_argument("--n_folds", type=int, default=8)
     p.add_argument("--epochs", type=int, default=600)
     p.add_argument("--lr", type=float, default=1e-3)
@@ -305,8 +314,11 @@ def main() -> None:
     aux = np.stack([cap_len_arr, cos_centroid, tok_l2_arr], axis=-1)
     aux_n = (aux - aux.mean(axis=0)) / aux.std(axis=0).clip(min=1e-6)
 
-    g_obs_arr = np.stack([r.v_rev_LL[: args.k_warmup] for r in rows]).astype(np.float32)
-    g_obs_n = (g_obs_arr - g_obs_arr.mean(axis=0)) / g_obs_arr.std(axis=0).clip(min=1.0)
+    if args.no_g_obs:
+        g_obs_n = np.zeros((len(rows), 0), dtype=np.float32)
+    else:
+        g_obs_arr = np.stack([r.v_rev_LL[: args.k_warmup] for r in rows]).astype(np.float32)
+        g_obs_n = (g_obs_arr - g_obs_arr.mean(axis=0)) / g_obs_arr.std(axis=0).clip(min=1.0)
 
     aspect_arr = np.array([r.aspect_id for r in rows], dtype=np.int64)
     stems_arr = np.array([r.stem for r in rows])

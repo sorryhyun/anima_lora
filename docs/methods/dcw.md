@@ -4,7 +4,7 @@ Training-free, sampler-level correction that closes the SNR-t bias of flow-match
 
 Paper: [Elucidating the SNR-t Bias of Diffusion Probabilistic Models](https://arxiv.org/abs/2604.16044) (Yu et al., CVPR 2026)
 
-**Read first:** `archive/dcw/findings.md`. The paper's bias direction does not reproduce on Anima — Anima's λ is **negative**, opposite the paper. Everything below assumes you've internalized that.
+**Read first:** `archive/dcw/findings.md` (CFG=1 / no-LoRA bench, integrated signed gap −406, paper-opposite — this is where the scalar default `λ = −0.015` comes from). At production CFG=4 the picture is **(CFG × aspect)-dependent**: paper-direction (positive integrated gap) on non-square aspects, paper-opposite on 1024² and at CFG=1. v4 per-aspect bucket priors land at small *positive* λ_scalar on every CFG=4 bucket; the negative scalar default is a CFG=1 artifact that has been carried forward. See §"Bias direction by CFG × aspect" below.
 
 ## Two modes
 
@@ -86,9 +86,11 @@ The final step (`σ_{i+1} == 0`) is always skipped in both modes — at that ste
 
 ## When to use which
 
-Scalar DCW helps when the **target is detail-dense** (busy compositions, intricate textures, complex backgrounds) — the late-step bias correction tightens edges and recovers fine structure. It is **not helpful — and can hurt — when the target is intentionally simple** (e.g. the flat, minimal style of channel/caststation-class artists). On those, the correction over-sharpens what should be deliberately smooth, and the scalar baseline is preferable.
+The **scalar default `λ = −0.015`** was tuned on the CFG=1 / no-LoRA bench. Production CFG=4 has a (CFG × aspect)-dependent bias direction (see §"Bias direction by CFG × aspect" above): on CFG=4 non-square aspects the optimal λ is small and *positive*, so a uniformly-negative scalar pushes the wrong way. This is what causes scalar DCW to over-sharpen intentionally flat styles (channel/caststation-class artists) — not a "calibrator can't see style" failure (cross-attention embeddings clearly do represent artist style; otherwise generation couldn't render it), but uniform-λ-across-prompts mismatching the per-cell optimum.
 
-The v4 controller was designed to handle this prompt-dependent gap automatically — its `c_pool` channel + observed-prefix channel together can downweight `α_eff` on flat-style prompts (e.g. via the implicit α̂ prediction shrinking when `g_obs[0:k]` looks small). The caption-length backstop (`tau_short`) is a separate planned safety net for short prompts; not yet calibrated. Until Gate C (perceptual side-by-side, see proposal §"Quality gates") passes, scalar remains the safer default for production runs of unknown style.
+Practical guidance:
+- **Scalar mode**: helps when the target is detail-dense (busy compositions, intricate textures); leave off for intentionally simple/flat styles. The recommendation gates on prompt intent. Detail-dense + non-square at CFG=4 is the cell where the scalar's negative λ is most clearly wrong-direction; the perceptual win there comes from the LL-band restriction + `(1−σ)` schedule shape, not from the sign of λ.
+- **v4 mode**: addresses the uniform-λ problem by predicting per-prompt α̂. Cross-attention features feed the head directly via `c_pool`, so style-intent is in scope; `g_obs` adds per-trajectory steering. The expected behaviour on flat-style prompts is α̂ near zero or sign-corrected — that's the validation point in `dcw-questions.md §7`. Until Gate C (perceptual side-by-side) passes, scalar remains the safer default for production runs of unknown style.
 
 ## Composition
 
@@ -125,9 +127,20 @@ Trained on existing `bench/dcw/results/` data — 176 rows, 40 unique stems, 8-f
 
 ## Anima form details (kept for reference)
 
-### Why λ < 0
+### Bias direction by CFG × aspect
 
-Yu et al.'s Key Finding 2 (`||v_θ(x̂_t)|| > ||v_θ(x_t_fwd)||`) does **not** reproduce on Anima — the inequality is reversed at every late step, integrated signed gap −405.6 on the 24-step baseline. Paper-form positive λ widens `|gap|` on Anima; closing the gap requires negative λ. Speculative mechanism (manifold-mismatch readout) is in `archive/dcw/README.md §"Observed on Anima"`.
+The bias direction is a **(CFG × aspect)** interaction, not a fixed property of Anima. Integrated signed LL gap on 28-step baselines:
+
+| Setting | ∫ gap_LL | Direction | λ_scalar (LSQ) |
+|---|---:|---|---:|
+| CFG=1, no LoRA, no mod-guidance (`archive/dcw/results/20260503-1720`) | −406 | paper-opposite | −0.015 (shipped scalar) |
+| CFG=4, 1024² (`bench/dcw/results/20260504-1648`) | −188 | paper-opposite | +0.0046 |
+| CFG=4, 832×1248 HD portrait (`output/dcw/20260505-0130`) | +89 | paper-direction | +0.0059 |
+| CFG=4, 1248×832 inv-HD landscape (`output/dcw/20260505-0612`) | +205 | paper-direction | +0.0127 |
+
+Paper-direction means Yu et al.'s Key Finding 2 (`||v_θ(x̂_t)|| > ||v_θ(x_t_fwd)||`) holds — gap is positive late, closed by **positive** λ. Paper-opposite is the inverse, closed by negative λ. The `λ_scalar` column is the LSQ-optimal `(1−σ)`-weighted constant per cell; the v4 controller distributes a per-trajectory `α̂` on top.
+
+The scalar default `λ = −0.015` was tuned against the CFG=1 bench before A2 measured the per-aspect CFG=4 baseline and is correct only in that regime; on CFG=4 non-square it pushes the gap further from zero. The v4 fallback ladder uses the per-aspect bucket prior at CFG=4 instead of the scalar. Speculative mechanisms in `archive/dcw/README.md §"Observed on Anima"` (manifold-mismatch readout, max-padded cross-attention sink, mod-guidance interaction) — none tightly explain why the CFG × aspect interaction inverts the sign.
 
 ### Why `(1 − σ)` schedule (scalar mode)
 

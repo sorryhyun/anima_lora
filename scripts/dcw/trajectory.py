@@ -173,7 +173,11 @@ def run_reverse_batched(
     device: torch.device,
     embed_uncond: torch.Tensor | None = None,
     cfg_scale: float = 1.0,
-) -> list[tuple[np.ndarray, dict[str, np.ndarray]]]:
+    return_final: bool = False,
+) -> (
+    list[tuple[np.ndarray, dict[str, np.ndarray]]]
+    | tuple[list[tuple[np.ndarray, dict[str, np.ndarray]]], torch.Tensor]
+):
     """Run N reverse trajectories in parallel along batch, where each row
     is the (seed, λ) pair ``(noise_seeds[r], dcw_lams[r])``.
 
@@ -198,6 +202,11 @@ def run_reverse_batched(
 
     Returns one (norms, bands) tuple per row, in input order.
     ``norms`` shape: (n_steps,). ``bands[b]`` shape: (n_steps,).
+
+    If ``return_final`` is True, additionally returns the final
+    reverse-trajectory latent per row (the σ → 0 endpoint), shape
+    ``(n_rows, *x_0.shape[1:])``, float32 on CPU. Suitable for VAE
+    decode.
     """
     if len(noise_seeds) != len(dcw_lams):
         raise ValueError(
@@ -256,4 +265,7 @@ def run_reverse_batched(
     for j in range(n_rows):
         bands_dict = {b: bands_np[:, j, k] for k, b in enumerate(BANDS)}
         out.append((norms_np[:, j], bands_dict))
+
+    if return_final:
+        return out, x_hat.float().cpu()
     return out

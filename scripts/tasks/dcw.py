@@ -48,22 +48,33 @@ def cmd_dcw(extra):
     """Sample baseline trajectories per bucket, then train fusion head.
 
     Generates ``--n_images`` × ``--n_seeds`` baseline trajectories per
-    bucket (default 35×3) into ``output/dcw/``, then trains the head on
+    bucket (default 130×1) into ``output/dcw/``, then trains the head on
     the pooled rows. Buckets only stratify the prompt pool — the trainer
     aggregates them.
+
+    Defaults reflect the 2026-05-05 findings: prompt breadth dominates
+    seed multiplicity for r_α (single-seed labels carry only ~13% noise
+    floor at production target_window 7:; seed-mean averaging is
+    net-harmful at this data scale — see project_dcw_seed_variance_dominates).
+    n_images=130 is capped at the rarest top-5 bucket so all buckets stay
+    aspect-balanced (132 stems available for 1248×832). ``--shuffle_seed=0``
+    deterministically randomizes selection across the cache's 14×
+    headroom (2477 stems vs 175 previously sampled).
 
     Other extra args pass through to every measure_bias invocation
     (--dit, --lora_weight, --pooled_text_proj '', --guidance_scale, etc.).
     """
-    n_images, extra = _pop_kv(extra, "--n_images", "35")
-    n_seeds, extra = _pop_kv(extra, "--n_seeds", "3")
+    n_images, extra = _pop_kv(extra, "--n_images", "130")
+    n_seeds, extra = _pop_kv(extra, "--n_seeds", "1")
+    shuffle_seed, extra = _pop_kv(extra, "--shuffle_seed", "0")
     label, extra = _pop_kv(extra, "--label", "make-dcw")
 
     out_root = "output/dcw"
     for H, W in DCW_BUCKETS:
         bucket_label = f"{label}-{H}x{W}"
         print(
-            f"\n=== DCW sample: bucket {H}x{W} ({n_images} imgs × {n_seeds} seeds) ==="
+            f"\n=== DCW sample: bucket {H}x{W} ({n_images} imgs × {n_seeds} seeds, "
+            f"shuffle_seed={shuffle_seed}) ==="
         )
         run(
             [
@@ -77,6 +88,8 @@ def cmd_dcw(extra):
                 n_images,
                 "--n_seeds",
                 n_seeds,
+                "--shuffle_seed",
+                shuffle_seed,
                 "--dump_per_sample_gaps",
                 "--label",
                 bucket_label,

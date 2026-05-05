@@ -1,5 +1,7 @@
 # DCW Findings — what the bench told us, what `plan.md` should change
 
+> **Scope note (2026-05-05)** — the §1 "sign is flipped on Anima" claim below is **CFG=1 specific**. At production CFG=4 the bias direction is (CFG × aspect)-dependent: paper-direction (positive ∫gap) on non-square aspects, paper-opposite on 1024² and at CFG=1. See `docs/methods/dcw.md §"Bias direction by CFG × aspect"` for the live table. The negative-λ scalar default that ships from this doc is correct only in the CFG=1 regime; v4 per-aspect bucket priors are positive at CFG=4. Everything else here (one_minus_sigma schedule, LL-only band mask) still holds.
+
 Provenance: `bench/dcw/results/20260503-1720/` (sweep, 4 samples × 2 seeds × 24 steps, flow_shift=1.0, plain Euler, no CFG, no LoRA). Earlier baseline-only run: `20260420_223406+` cluster (28 steps × 6 × 3). Repo SHA at write time: `f9aa144`. Decode side-by-side images live under `20260503-1720/images/`.
 
 This document is a delta on `plan.md`. Read it together; anywhere the two disagree, this file wins until the numbers change.

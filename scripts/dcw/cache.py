@@ -18,6 +18,7 @@ def pick_cached_samples(
     n: int,
     image_h: int | None = None,
     image_w: int | None = None,
+    shuffle_seed: int | None = None,
 ) -> list[tuple[str, Path, Path]]:
     """Return list of (stem, latent_npz_path, text_safetensors_path).
 
@@ -27,8 +28,14 @@ def pick_cached_samples(
     a single graph, and for direct cross-run comparability of v_fwd / v_rev
     norms (different bucket resolutions → different patch counts → different
     norms — see CLAUDE.md "Constant-token bucketing").
+
+    With ``shuffle_seed=None`` (default) the bucket-matched stems are
+    returned in alphabetical order — deterministic and reproducible.
+    Pass an int to deterministically shuffle the candidate pool before
+    truncating to ``n`` (used by ``make dcw`` to widen prompt diversity
+    across the 14× cache headroom we previously ignored).
     """
-    out = []
+    candidates: list[tuple[str, Path, Path]] = []
     for npz_path in sorted(dataset_dir.glob("*_anima.npz")):
         m = _LATENT_RE.match(npz_path.name)
         if not m:
@@ -41,10 +48,13 @@ def pick_cached_samples(
         te_path = dataset_dir / f"{stem}_anima_te.safetensors"
         if not te_path.exists():
             continue
-        out.append((stem, npz_path, te_path))
-        if len(out) >= n:
-            break
-    return out
+        candidates.append((stem, npz_path, te_path))
+
+    if shuffle_seed is not None:
+        rng = np.random.default_rng(shuffle_seed)
+        rng.shuffle(candidates)
+
+    return candidates[:n]
 
 
 def load_cached(

@@ -152,6 +152,8 @@ Guidance for reading a run:
 
 ## Observed on Anima — 2026-04-20 baseline
 
+> **Scope note (2026-05-05)** — this section describes the **CFG=1, no-LoRA** regime. At production CFG=4 the bias direction depends on aspect: paper-direction (positive ∫gap) on non-square buckets (832×1248 ≈ +89, 1248×832 ≈ +205), paper-opposite on 1024² (≈ −188). The "Anima flips the sign universally" framing below is the CFG=1 finding. See `docs/methods/dcw.md §"Bias direction by CFG × aspect"` and memory `project_dcw_cfg_aspect_signflip` for the live picture.
+
 Run: `--infer_steps 28 --flow_shift 1.0 --n_images 6 --n_seeds 3`
 (inference-matched to `make test`), plain Euler, no CFG, no DCW.
 
