@@ -197,7 +197,9 @@ class QueueTab(LazyTabMixin, QWidget):
     def refresh(self) -> None:
         selected = self._selected_job_id
         try:
-            jobs = gui_daemon.list_jobs()
+            # Passive: a monitor that polls on a timer must never spawn a daemon
+            # just by being open, nor block the UI thread waiting for one.
+            jobs = gui_daemon.list_jobs_passive()
         except Exception as exc:  # noqa: BLE001
             self._jobs = []
             self.job_list.clear()
@@ -241,9 +243,7 @@ class QueueTab(LazyTabMixin, QWidget):
         self.job_list.blockSignals(False)
 
         live = sum(1 for job in self._jobs if job.get("state") in _LIVE_STATES)
-        self.status_label.setText(
-            t("queue_status", total=len(self._jobs), live=live)
-        )
+        self.status_label.setText(t("queue_status", total=len(self._jobs), live=live))
         self._update_selected_view()
 
     def _selection_changed(self, current: QListWidgetItem | None, _prev) -> None:

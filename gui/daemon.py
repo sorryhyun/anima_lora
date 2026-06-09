@@ -24,6 +24,14 @@ from scripts.daemon import config as _cfg
 from scripts.daemon.jobs import STATE_ERROR, STATE_STOPPED, TERMINAL_STATES
 
 
+class DaemonUnavailable(RuntimeError):
+    """No root-matching daemon is currently running.
+
+    Raised by the passive (non-spawning) query path so a monitor can show an
+    "unavailable" state instead of booting a daemon as a side effect.
+    """
+
+
 def _current_health() -> Optional[dict]:
     health = _client.DaemonClient().health()
     if health and _client.daemon_matches_root(health, _cfg.ROOT):
@@ -123,6 +131,20 @@ def stop_job(job_id: str) -> dict:
 def list_jobs() -> list:
     """Return all daemon jobs for this checkout, starting the daemon if needed."""
     return ensure_daemon(timeout=20.0).list_jobs()
+
+
+def list_jobs_passive() -> list:
+    """List jobs only if a root-matching daemon is already up.
+
+    Unlike :func:`list_jobs`, this never spawns a daemon and never blocks waiting
+    for one to boot — it is for passive monitors (the Queue tab) that poll on a
+    timer and must not start a daemon merely by being viewed, nor freeze the UI
+    thread on a slow/failed daemon launch. Raises :class:`DaemonUnavailable` when
+    no matching daemon answers ``/health``.
+    """
+    if _current_health() is None:
+        raise DaemonUnavailable("no training daemon is running for this checkout")
+    return _client.DaemonClient().list_jobs()
 
 
 def active_job_id() -> Optional[str]:
