@@ -40,6 +40,7 @@ is to show the raw primitives. Either way each script keeps a `sys.path` shim so
 | [`04_load_models.py`](04_load_models.py) | Load DiT / VAE / text encoder directly; encode a prompt to the DiT-ready cross-attn embedding | DiT + VAE + text encoder |
 | [`05_vae_and_dataset.py`](05_vae_and_dataset.py) | VAE pixel↔latent round-trip; iterate the on-disk training cache (`CachedDataset`) | VAE (+ cache for part B) |
 | [`06_frozen_dit_training_build.py`](06_frozen_dit_training_build.py) | Frozen DiT + fresh adapter build for *training* via the `harness` helpers (`place_dit_for_training` / `compile_dit_blocks` / `enable_training_grad_ckpt`) — the `scripts/distill_*` model-build sequence | DiT |
+| [`07_stack_ortho_init_tlora.py`](07_stack_ortho_init_tlora.py) | Stacking LoRA-family **variants** from Python — `create_network(use_ortho_init=True, use_timestep_mask=True, …)` (kwargs → `resolve_network_spec`, no TOML) + the one per-step `apply_router_conditioning` hook; prints the live T-LoRA mask rank per step | DiT |
 
 ## Setup
 
@@ -77,6 +78,7 @@ python examples/04_load_models.py --prompt "a lighthouse at dusk"
 python examples/05_vae_and_dataset.py                       # iterate the cache
 python examples/05_vae_and_dataset.py --image some/photo.png  # VAE round-trip
 python examples/06_frozen_dit_training_build.py             # build a trainable adapter
+python examples/07_stack_ortho_init_tlora.py --steps 3      # stack OrthoInit + T-LoRA
 ```
 
 ## Notes for embedders
@@ -95,6 +97,13 @@ python examples/06_frozen_dit_training_build.py             # build a trainable 
 - **Adapter family is in the checkpoint, not the call.** `01 --lora_weight` passes
   any LoRA / OrthoLoRA / T-LoRA / Hydra / FeRA `.safetensors`; the DiT loader reads
   the metadata and merges-or-keeps-live accordingly.
+- **Variant stacking is kwargs, not config.** The toggle blocks in
+  `configs/methods/lora.toml` are just one way to pick variants — the same keys
+  pass straight through `create_network(**kwargs)` to `resolve_network_spec`. `07`
+  stacks OrthoInit + T-LoRA that way and shows the single per-step driving hook
+  (`apply_router_conditioning`). Which combos exist is the three-axis matrix in
+  `networks/CLAUDE.md`; impossible combos raise at build, they don't silently
+  degrade.
 - **Prompt encoding uses two process-global strategy singletons.** `generate()` /
   `prepare_text_inputs()` lazily install them from `args.text_encoder` (via
   `anima_lora.ensure_text_strategies`), so the high-level flows just work; `04`

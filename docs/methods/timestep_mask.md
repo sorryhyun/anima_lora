@@ -55,3 +55,11 @@ network_dim = 64
 | `networks/lora_anima/network.py` | `clear_timestep_mask()` — removes mask (for inference) |
 | `networks/lora_modules/lora.py` | Per-module mask application in each forward method |
 | `train.py` | Calls `set_timestep_mask()` each step after noise sampling |
+
+## Programmatic example
+
+`examples/07_stack_ortho_init_tlora.py` builds a fresh OrthoInit + T-LoRA stack
+from Python (no config file) and drives the mask via the one per-step hook
+`apply_router_conditioning`, printing the live effective rank each step. It is the
+runnable counterpart to the "T-LoRA is not a class, it's a buffer" note above —
+see `examples/README.md` (row 07).
