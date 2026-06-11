@@ -8,17 +8,9 @@ import torch
 
 from networks.lora_modules.base import BaseLoRAModule
 from networks.lora_modules.router_state import (
+    RouterStateMixin,
     _apply_sigma_band_mask,
-    _clear_fei_feature_cache,
-    _clear_routing_weights,
-    _clear_sigma_feature_cache,
-    _register_fei_feature_cache,
-    _register_routing_weights_buffer,
     _register_sigma_band_partition,
-    _register_sigma_feature_cache,
-    _set_fei_feature_cache,
-    _set_routing_weights,
-    _set_sigma_feature_cache,
 )
 
 
@@ -360,7 +352,7 @@ class OrthoInitLoRAModule(BaseLoRAModule):
                 state_dict[f"{prefix}.alpha"] = alpha
 
 
-class OrthoHydraLoRAModule(BaseLoRAModule):
+class OrthoHydraLoRAModule(RouterStateMixin, BaseLoRAModule):
     """OrthoLoRA + HydraLoRA: Cayley-rotated MoE with disjoint per-expert P-bases.
 
     Shared Q_basis + trainable S_q (down). Up takes the top E*r singular
@@ -498,10 +490,7 @@ class OrthoHydraLoRAModule(BaseLoRAModule):
         self._last_gate = None
         # See router_state.py + HydraLoRAModule for the always-a-Tensor +
         # pointer-stable buffer protocol that drops the compile guards.
-        _register_sigma_feature_cache(self, self.sigma_feature_dim)
-        _register_fei_feature_cache(self, self.fei_feature_dim)
-        if self.use_global_router:
-            _register_routing_weights_buffer(self, num_experts)
+        self._register_router_io_buffers(num_experts)
         if specialize_experts_by_sigma_buckets and self.use_global_router:
             raise ValueError(
                 "specialize_experts_by_sigma_buckets is incompatible with "
@@ -567,30 +556,9 @@ class OrthoHydraLoRAModule(BaseLoRAModule):
             )
         return torch.softmax(logits, dim=-1)
 
-    def set_sigma(
-        self, sigmas: torch.Tensor, sigma_features: torch.Tensor | None = None
-    ) -> None:
-        _set_sigma_feature_cache(self, sigmas, sigma_features)
-
-    def clear_sigma(self) -> None:
-        _clear_sigma_feature_cache(self)
-
-    def set_fei(self, fei: torch.Tensor) -> None:
-        _set_fei_feature_cache(self, fei)
-
-    def clear_fei(self) -> None:
-        _clear_fei_feature_cache(self)
-
-    def set_routing_weights(self, weights: torch.Tensor) -> None:
-        # Shared helper preserves grad_fn (router_state._set_routing_weights).
-        if not getattr(self, "use_global_router", False):
-            return
-        _set_routing_weights(self, weights)
-
-    def clear_routing_weights(self) -> None:
-        if not getattr(self, "use_global_router", False):
-            return
-        _clear_routing_weights(self)
+    # σ / FEI / routing-weights method surface is inherited from
+    # RouterStateMixin (set_sigma / clear_sigma / set_fei / clear_fei /
+    # set_routing_weights / clear_routing_weights — each buffer-presence-guarded).
 
     def forward(self, x):
         org_forwarded = self.org_forward(x)

@@ -8,17 +8,9 @@ import torch
 from networks.attn_fuse import match_fused_spec
 from networks.lora_modules.base import BaseLoRAModule
 from networks.lora_modules.router_state import (
+    RouterStateMixin,
     _apply_sigma_band_mask,
-    _clear_fei_feature_cache,
-    _clear_routing_weights,
-    _clear_sigma_feature_cache,
-    _register_fei_feature_cache,
-    _register_routing_weights_buffer,
     _register_sigma_band_partition,
-    _register_sigma_feature_cache,
-    _set_fei_feature_cache,
-    _set_routing_weights,
-    _set_sigma_feature_cache,
     _sigma_sinusoidal_features,
 )
 
@@ -31,7 +23,7 @@ __all__ = [
 ]
 
 
-class HydraLoRAModule(BaseLoRAModule):
+class HydraLoRAModule(RouterStateMixin, BaseLoRAModule):
     """HydraLoRA: shared lora_down + per-expert lora_up, layer-local routing.
 
     See docs/methods/hydra-lora.md.
@@ -203,12 +195,9 @@ class HydraLoRAModule(BaseLoRAModule):
         self._last_gate = None  # (B, E), cached each forward for balance loss
         # σ / FEI / routing-weights placeholders: always-a-Tensor invariant +
         # pointer-stable buffers (see router_state.py). Routes through the
-        # registration helpers so the cat / branch in ``_compute_gate`` runs
+        # registration helper so the cat / branch in ``_compute_gate`` runs
         # unconditionally — no None-vs-Tensor guard under torch.compile.
-        _register_sigma_feature_cache(self, self.sigma_feature_dim)
-        _register_fei_feature_cache(self, self.fei_feature_dim)
-        if self.use_global_router:
-            _register_routing_weights_buffer(self, num_experts)
+        self._register_router_io_buffers(num_experts)
         # ChimeraHydra freq-pool gate buffer. Uniform 1/K_f placeholder; the
         # network-level FreqRouter overwrites via direct slot assignment
         # (``set_freq_routing_weights`` — no .detach()/.copy_(), grad_fn
@@ -366,30 +355,11 @@ class HydraLoRAModule(BaseLoRAModule):
         K_c = int(self._content_routing_weights.shape[-1])
         self._content_routing_weights.fill_(1.0 / max(K_c, 1))
 
-    def set_sigma(
-        self, sigmas: torch.Tensor, sigma_features: torch.Tensor | None = None
-    ) -> None:
-        _set_sigma_feature_cache(self, sigmas, sigma_features)
-
-    def clear_sigma(self) -> None:
-        _clear_sigma_feature_cache(self)
-
-    def set_fei(self, fei: torch.Tensor) -> None:
-        _set_fei_feature_cache(self, fei)
-
-    def clear_fei(self) -> None:
-        _clear_fei_feature_cache(self)
-
-    def set_routing_weights(self, weights: torch.Tensor) -> None:
-        # Shared helper preserves grad_fn — see router_state._set_routing_weights.
-        if not getattr(self, "use_global_router", False):
-            return
-        _set_routing_weights(self, weights)
-
-    def clear_routing_weights(self) -> None:
-        if not getattr(self, "use_global_router", False):
-            return
-        _clear_routing_weights(self)
+    # σ / FEI / routing-weights method surface (set_sigma / clear_sigma /
+    # set_fei / clear_fei / set_routing_weights / clear_routing_weights) is
+    # inherited from RouterStateMixin. The chimera dual-pool freq/content
+    # setters above stay local — they wrap two extra buffers the mixin
+    # doesn't know about.
 
     def forward(self, x):
         # Training computes the rank GEMMs in the activation dtype — under the

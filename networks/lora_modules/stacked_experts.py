@@ -31,13 +31,12 @@ import torch
 from networks.attn_fuse import match_fused_spec
 from networks.lora_modules.base import BaseLoRAModule
 from networks.lora_modules.router_state import (
-    _clear_routing_weights,
+    RouterStateMixin,
     _register_routing_weights_buffer,
-    _set_routing_weights,
 )
 
 
-class StackedExpertsLoRAModule(BaseLoRAModule):
+class StackedExpertsLoRAModule(RouterStateMixin, BaseLoRAModule):
     """Independent-A multi-expert LoRA, gated from a broadcast buffer.
 
     Free mode params: lora_down_weight (E, r, in), lora_up_weight (E, out, r).
@@ -150,11 +149,10 @@ class StackedExpertsLoRAModule(BaseLoRAModule):
 
         _register_routing_weights_buffer(self, self.num_experts)
 
-    def set_routing_weights(self, weights: torch.Tensor) -> None:
-        _set_routing_weights(self, weights)
-
-    def clear_routing_weights(self) -> None:
-        _clear_routing_weights(self)
+    # set_routing_weights / clear_routing_weights inherited from
+    # RouterStateMixin (always-on here — ``_routing_weights`` is registered
+    # unconditionally above, so the mixin's ``hasattr`` guard never trips).
+    # set_sigma / set_fei are inherited too but no-op (no σ/FEI buffers).
 
     def _cayley_rotations(self):
         """Stacked S_q + S_p → one (2E, r, r) solve. Returns R_q, R_p (E, r, r)."""

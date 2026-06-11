@@ -1,7 +1,7 @@
 # Programmatic variant stacking (examples) + `lora_modules/` dedup
 
-Status: Part A **shipped** (2026-06-11); Part B **B0 + B1 shipped** (2026-06-11),
-B2/B3 still proposal (plan-shaped — ready to execute, no open questions blocking them)
+Status: Part A **shipped** (2026-06-11); Part B **fully shipped** (B0 + B1 + B2 + B3,
+2026-06-11)
 Date: 2026-06-11
 
 Two threads, independently shippable, ordered by risk:
@@ -220,6 +220,27 @@ unconditional. Still verified explicitly (see Verification).
 
 ### B2 — `RouterStateMixin`
 
+> **Status: shipped 2026-06-11.** `RouterStateMixin` landed in
+> `router_state.py` carrying the six-method surface (`set_sigma` / `clear_sigma`
+> / `set_fei` / `clear_fei` / `set_routing_weights` / `clear_routing_weights`)
+> plus a `_register_router_io_buffers` helper for the σ/FEI/routing-weights
+> placeholder trio. HydraLoRA / OrthoHydra / StackedExperts now inherit it
+> (`class X(RouterStateMixin, BaseLoRAModule)`), deleting their pasted wrappers.
+> One design refinement over the sketch below: each setter is
+> **buffer-presence-guarded** (`hasattr(self, "_sigma"/"_fei"/"_routing_weights")`)
+> rather than flag-guarded. That single guard (a) subsumes the old
+> `getattr(self, "use_global_router", False)` check — the routing buffer is
+> registered iff `use_global_router`, so `hasattr` is the exact condition — and
+> (b) lets StackedExperts (which registers only `_routing_weights`) inherit the
+> full surface with `set_sigma`/`set_fei` as safe no-ops, equivalent to never
+> defining them: `network.py::_wire_shared_*` keys its `_*_aware_loras` lists on
+> *buffer* presence, not method presence, so the mixin adds zero new wiring. The
+> FeRA grad-path contract (slot-assign, no `.detach()`/`.copy_()`) stays in
+> `router_state._set_routing_weights` (one place) and the mixin just gates it.
+> Chimera keeps its own `_ChimeraRoutingMixin` (two routing buffers, different
+> surface). Verified bit-exact via B0's golden harness + the full routing test
+> set (`test_global_router`, `test_hydra_sigma_band`, `test_lora_dtype_policy`).
+
 `router_state.py` already centralizes the *functions* (`_register_*` / `_set_*` /
 `_clear_*`, pointer-stability + grad-carrying contracts in its docstrings). What's
 still duplicated is the per-class *method surface* wrapping them. Promote to a mixin
@@ -231,6 +252,24 @@ registration calls in `__init__`, consumed by hydra / ortho_hydra / stacked_expe
 each class must remember. A future router source becomes a one-place edit.
 
 ### B3 — network-level `Protocol` + contract test (cheap, optional but recommended)
+
+> **Status: shipped 2026-06-11.** `networks/protocol.py` defines two
+> `@runtime_checkable` non-data protocols: `AdapterNetwork` (the core
+> trainer-facing surface — `apply_to` / `load_weights` /
+> `prepare_optimizer_params_with_multiple_te_lrs` / `set_multiplier` /
+> `is_mergeable` / `enable_gradient_checkpointing` / `prepare_grad_etc` /
+> `on_epoch_start` / `get_trainable_params`) and `RouterConditionableNetwork`
+> (the optional per-step setters `set_timestep_mask` / `set_sigma` / `set_fei`
+> / `set_crossattn_routing`). `tests/test_adapter_protocol.py` asserts all three
+> shipped networks (`LoRANetwork`, `EasyControlNetwork`, `SoftTokensNetwork`)
+> satisfy the core protocol via `issubclass` (no instantiation — non-data
+> protocols check method presence on the class, so no live DiT needed), that
+> only the LoRA family satisfies the routing sub-protocol, and the import-
+> boundary invariant (`library/inference/` + `anima_lora/` import nothing from
+> `library/training/` or `train`) via an AST scan. The de facto interface
+> chose `prepare_optimizer_params_with_multiple_te_lrs` (not the plain
+> `prepare_optimizer_params`, which exists only on the method networks) as the
+> always-present optimizer entry — that's the one `train.py` falls back to.
 
 The trainer/inference-facing surface already exists informally:
 `apply_to` / `load_weights` / `prepare_optimizer_params*` /
@@ -289,8 +328,8 @@ invariant test but not a quality bench:
 | A ✅ | `examples/07` + README/doc links | ~150 lines, additive | none (**shipped 2026-06-11**) |
 | B0 ✅ | Golden-tensor equivalence harness (full variant matrix, captured against HEAD *before* touching modules) | `tests/test_lora_module_equivalence.py` + `tests/golden/*.pt` | none (**shipped 2026-06-11**) |
 | B1 ✅ | Forward scaffold on `BaseLoRAModule`; migrated lora + ortho_init + step_expert (the `org_forwarded.dtype` two-GEMM family). Cayley/MoE forwards stay bespoke — see B1 status note | −~80 net in modules, +75 base scaffold | low — **shipped 2026-06-11**, golden-equivalent |
-| B2 | `RouterStateMixin`; migrate the three (or four) routing variants | −~250 net | low |
-| B3 | `AdapterNetwork` Protocol + the two contract tests | +~120 | none |
+| B2 ✅ | `RouterStateMixin` (6-method surface + `_register_router_io_buffers`); migrated Hydra / OrthoHydra / StackedExperts, buffer-presence-guarded | −~50 net in modules, +~85 mixin | low — **shipped 2026-06-11**, golden-equivalent |
+| B3 ✅ | `AdapterNetwork` + `RouterConditionableNetwork` protocols + the two contract tests | +~80 protocol, +~110 test | none (**shipped 2026-06-11**) |
 
 Net effect: `lora_modules/` shrinks ~600–800 lines, the dtype policy and the
 T-LoRA mask become single-point definitions, and the next "fix it in seven places"
