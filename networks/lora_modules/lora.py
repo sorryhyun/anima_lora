@@ -70,53 +70,27 @@ class LoRAModule(BaseLoRAModule):
         self.org_module_ref = [org_module]
         self._fused = False
 
-    def forward(self, x):
-        if not self.enabled or self._fused:
-            return self.org_forward(x)
+    # Forward is the shared BaseLoRAModule scaffold; this class supplies the
+    # down / up GEMMs (Linear-or-Conv2d dispatch) and the eval delta. The
+    # T-LoRA gate is the inherited default (``lx * _timestep_mask``). The
+    # ``_fused`` short-circuit + the dtype-policy commentary live in the base.
 
-        org_forwarded = self.org_forward(x)
-
-        if not self.training:
-            x_lora = self._rebalance(x)
-            lx = self.lora_up(self.lora_down(x_lora))
-            return org_forwarded + lx * self.multiplier * self.scale
-
-        # Training: rank GEMMs in the model COMPUTE dtype (``org_forwarded.dtype``
-        # — what the frozen bf16 base just produced = the autocast/model dtype),
-        # NOT the activation dtype. ``x`` arrives fp32 here: the AdaLN
-        # ``nn.LayerNorm`` feeding this Linear emits fp32 under autocast(bf16).
-        # Keying the GEMM off ``x`` (the old ``weight.to(x_lora.dtype)``) left the
-        # whole rank path in fp32 — and ``_rebalance`` then allocated a fresh
-        # full-size fp32 activation (``x * inv_scale``), the per-channel-scaling
-        # path that OOMed — for zero numeric gain (autocast re-casts the GEMM to
-        # bf16 regardless). The LoRA params are fp32 master weights, so the
-        # compute dtype can't come from them; cast x + weights DOWN to the base's
-        # dtype, which equals what autocast already computed. Bit-identical to the
-        # retired fp32-bottleneck path under autocast; see bench/lora_fp32_bottleneck.
-        if self._skip_module():
-            return org_forwarded
-
-        work = org_forwarded.dtype
-        x_lora = self._rebalance(x.to(work))
+    def _down(self, x_lora, work):
         if isinstance(self.lora_down, torch.nn.Linear):
-            lx = torch.nn.functional.linear(x_lora, self.lora_down.weight.to(work))
-        else:
-            lx = self.lora_down(x_lora)  # Conv2d
+            return torch.nn.functional.linear(x_lora, self.lora_down.weight.to(work))
+        return self.lora_down(x_lora)  # Conv2d
 
-        # fp32 mask buffer promotes lx; the binary T-LoRA mask is exact in
-        # either dtype and the up GEMM below casts back to ``work``.
-        lx = lx * self._timestep_mask
-
-        if self.dropout is not None:
-            lx = torch.nn.functional.dropout(lx, p=self.dropout)
-
-        lx, scale = self._apply_rank_dropout(lx)
-
+    def _up(self, lx, work):
         if isinstance(self.lora_up, torch.nn.Linear):
-            lx = torch.nn.functional.linear(lx.to(work), self.lora_up.weight.to(work))
-        else:
-            lx = self.lora_up(lx.to(work))  # Conv2d
-        return org_forwarded + (lx * self.multiplier * scale).to(org_forwarded.dtype)
+            return torch.nn.functional.linear(lx, self.lora_up.weight.to(work))
+        return self.lora_up(lx)  # Conv2d
+
+    def _eval_delta(self, x, org_forwarded):
+        # Full-rank inference path: no T-LoRA mask, plain module calls (params
+        # already in the model dtype), so no work-dtype cast dance.
+        x_lora = self._rebalance(x)
+        lx = self.lora_up(self.lora_down(x_lora))
+        return lx * self.multiplier * self.scale
 
     def get_weight(self, multiplier=None):
         """Return the LoRA delta as a tensor matching org_module.weight shape."""

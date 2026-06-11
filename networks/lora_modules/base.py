@@ -142,6 +142,81 @@ class BaseLoRAModule(torch.nn.Module):
             return lx, self.scale * (1.0 / (1.0 - self.rank_dropout))
         return lx, self.scale
 
+    # ------------------------------------------------------------------
+    # Forward scaffold (template method). The invariant chain — enable/fuse
+    # short-circuit, eval delegation, module dropout, dtype policy, T-LoRA
+    # gate, dropout / rank-dropout, residual add — lives here ONCE; the
+    # standard two-GEMM variants (LoRA, OrthoInit, StepExpert) supply only the
+    # down / gate / up rank computation via the hooks below.
+    #
+    # Variants whose forward genuinely differs — the frozen-basis Cayley
+    # modules (OrthoLoRA / OrthoHydra: a single batched Cayley solve shared
+    # between down and up, ``work`` = basis dtype) and the router-gated MoE
+    # modules (Hydra / StackedExperts / Chimera: the "gate" is a routing
+    # tensor consumed inside the up-projection, not an elementwise ``lx``
+    # multiply) — keep their own ``forward`` and do NOT call this scaffold.
+    # ------------------------------------------------------------------
+
+    def forward(self, x):
+        if not self.enabled or getattr(self, "_fused", False):
+            return self.org_forward(x)
+
+        org_forwarded = self.org_forward(x)
+
+        if not self.training:
+            # Inference runs full rank at every t (T-LoRA is training-only) —
+            # each variant's eval path is its own simplest form.
+            return org_forwarded + self._eval_delta(x, org_forwarded)
+
+        if self._skip_module():
+            return org_forwarded
+
+        # THE dtype policy, stated once. Rank GEMMs run in the model COMPUTE
+        # dtype (``org_forwarded.dtype`` — what the frozen bf16 base just
+        # produced = the autocast/model dtype), NOT the activation dtype: ``x``
+        # arrives fp32 from the AdaLN ``nn.LayerNorm`` under autocast(bf16).
+        # Keying off ``x`` left the rank path fp32 and made ``_rebalance``
+        # allocate a full fp32 activation (``x * inv_scale``) — the OOM the
+        # per-channel-scaling path hit — for zero numeric gain (autocast
+        # re-casts the GEMM to bf16 regardless). LoRA params are fp32 masters,
+        # so cast x + weights DOWN to the base dtype; bit-identical to the
+        # retired fp32-bottleneck path under autocast (bench/lora_fp32_bottleneck,
+        # tests/test_lora_dtype_policy.py). Single-point home of commit 8c2005c.
+        work = org_forwarded.dtype
+        x_lora = self._rebalance(x.to(work))
+        lx = self._down(x_lora, work)
+        lx = self._gate(lx, work)
+        if self.dropout is not None:
+            lx = torch.nn.functional.dropout(lx, p=self.dropout)
+        lx, scale = self._apply_rank_dropout(lx)
+        lx = self._up(lx.to(work), work)
+        return org_forwarded + (lx * self.multiplier * scale).to(org_forwarded.dtype)
+
+    def _gate(self, lx: torch.Tensor, work: torch.dtype) -> torch.Tensor:
+        """Default T-LoRA gate: ``lx * mask``. The fp32 mask promotes ``lx``;
+        the ``_up`` hook casts back to ``work``. Inherited unchanged by every
+        scaffold variant unless it gates the rank latent differently (e.g.
+        OrthoInit folds in its ``lambda_layer``)."""
+        return lx * self._timestep_mask
+
+    def _down(self, x_lora: torch.Tensor, work: torch.dtype) -> torch.Tensor:
+        raise NotImplementedError(
+            f"{type(self).__name__} uses the forward scaffold but does not "
+            "implement _down"
+        )
+
+    def _up(self, lx: torch.Tensor, work: torch.dtype) -> torch.Tensor:
+        raise NotImplementedError(
+            f"{type(self).__name__} uses the forward scaffold but does not "
+            "implement _up"
+        )
+
+    def _eval_delta(self, x: torch.Tensor, org_forwarded: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError(
+            f"{type(self).__name__} uses the forward scaffold but does not "
+            "implement _eval_delta"
+        )
+
     @property
     def device(self):
         return next(self.parameters()).device

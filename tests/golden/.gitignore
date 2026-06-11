@@ -1,0 +1,3 @@
+# Golden tensors for tests/test_lora_module_equivalence.py are checked-in
+# fixtures — re-include them past the repo-root `*.pt` ignore.
+!*.pt

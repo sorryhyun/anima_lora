@@ -101,38 +101,21 @@ class StepExpertLoRAModule(BaseLoRAModule):
             )
         self._step = int(k)
 
-    def forward(self, x):
-        if not self.enabled:
-            return self.org_forward(x)
+    # Forward is the shared BaseLoRAModule scaffold; this class supplies the
+    # shared-down / step-selected-up GEMMs and the eval delta. The active
+    # up-head is ``self.lora_ups[self._step]`` (a guarded Python int, so Dynamo
+    # specializes one graph per step value). T-LoRA gate is the inherited
+    # default; dtype policy lives in the base.
 
-        org_forwarded = self.org_forward(x)
+    def _down(self, x_lora, work):
+        return torch.nn.functional.linear(x_lora, self.lora_down.weight.to(work))
+
+    def _up(self, lx, work):
         up = self.lora_ups[self._step]
+        return torch.nn.functional.linear(lx, up.weight.to(work))
 
-        if not self.training:
-            x_lora = self._rebalance(x)
-            lx = up(self.lora_down(x_lora))
-            return org_forwarded + lx * self.multiplier * self.scale
-
-        # Training: rank GEMMs in the model COMPUTE dtype (``org_forwarded.dtype``
-        # = the frozen base's output = the autocast/model dtype), mirroring
-        # LoRAModule. ``x`` arrives fp32 from the AdaLN LayerNorm under
-        # autocast(bf16); keying the GEMM dtype off it left the rank path fp32 +
-        # allocated a fp32 ``_rebalance`` activation and OOMed. The LoRA params
-        # are fp32 master weights, so cast x + weights DOWN to the base dtype.
-        # Bit-identical under autocast; see bench/lora_fp32_bottleneck.
-        if self._skip_module():
-            return org_forwarded
-
-        work = org_forwarded.dtype
-        x_lora = self._rebalance(x.to(work))
-        lx = torch.nn.functional.linear(x_lora, self.lora_down.weight.to(work))
-
-        lx = lx * self._timestep_mask
-
-        if self.dropout is not None:
-            lx = torch.nn.functional.dropout(lx, p=self.dropout)
-
-        lx, scale = self._apply_rank_dropout(lx)
-
-        lx = torch.nn.functional.linear(lx.to(work), up.weight.to(work))
-        return org_forwarded + (lx * self.multiplier * scale).to(org_forwarded.dtype)
+    def _eval_delta(self, x, org_forwarded):
+        up = self.lora_ups[self._step]
+        x_lora = self._rebalance(x)
+        lx = up(self.lora_down(x_lora))
+        return lx * self.multiplier * self.scale
