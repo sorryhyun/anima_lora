@@ -14,6 +14,7 @@ from library.datasets.image_utils import (
     _assert_unique_stems,
     glob_images,
 )
+from library.io.walk import safe_walk
 from library.datasets.subsets import (
     DreamBoothSubset,
     ImageInfo,
@@ -52,7 +53,7 @@ def stems_with_any_tag(caption_master_dir: str, tags) -> frozenset:
         return cached
     stems: set = set()
     if os.path.isdir(caption_master_dir):
-        for dirpath, _dirnames, filenames in os.walk(
+        for dirpath, _dirnames, filenames in safe_walk(
             caption_master_dir, followlinks=True
         ):
             for name in filenames:

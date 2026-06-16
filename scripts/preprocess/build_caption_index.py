@@ -43,6 +43,7 @@ from pathlib import Path
 from library.captioning.taxonomy import CAPTION_RATINGS, is_artist_tag, is_count_tag
 from library.datasets.image_utils import IMAGE_EXTENSIONS
 from library.datasets.subsets import filter_paths_by_glob
+from library.io.walk import safe_walk
 
 
 DEFAULT_VOCAB = "models/captioners/anima-tagger-v2/vocab.json"
@@ -118,7 +119,7 @@ def _iter_captions(src: Path, path_pattern: str | None = None):
     descends into neither. Stems are assumed unique across the tree (the same
     invariant the stem-keyed VAE/PE caches rely on)."""
     root = Path(os.path.realpath(src))
-    for dirpath, _dirnames, filenames in os.walk(root, followlinks=True):
+    for dirpath, _dirnames, filenames in safe_walk(root, followlinks=True):
         for name in filenames:
             if not name.endswith(".txt"):
                 continue

@@ -89,8 +89,9 @@ def ensure_tagger_checkpoint(
     ckpt_dir = Path(ckpt_dir)
     if all((ckpt_dir / f).exists() for f in TAGGER_REQUIRED_FILES):
         return ckpt_dir
-    from huggingface_hub import hf_hub_download
     from huggingface_hub.utils import EntryNotFoundError
+
+    from library.runtime.hf_download import hf_download
 
     logger.info(
         "AnimaTagger: %s missing required files — fetching %s%s (one-time).",
@@ -103,7 +104,12 @@ def ensure_tagger_checkpoint(
     def _fetch_flat(fname: str) -> Path:
         repo_path = f"{subfolder}/{fname}" if subfolder else fname
         downloaded = Path(
-            hf_hub_download(repo_id=repo, filename=repo_path, local_dir=str(ckpt_dir))
+            hf_download(
+                what="AnimaTagger weights",
+                repo_id=repo,
+                filename=repo_path,
+                local_dir=str(ckpt_dir),
+            )
         )
         dest = ckpt_dir / fname
         if downloaded.resolve() != dest.resolve():

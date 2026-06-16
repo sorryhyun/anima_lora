@@ -129,7 +129,7 @@ def _load_pe_variant(
     ckpt_path = Path(model_id)
     if not ckpt_path.is_file():
         try:
-            from huggingface_hub import hf_hub_download
+            from library.runtime.hf_download import hf_download
         except ImportError as e:
             raise FileNotFoundError(
                 f"{config_name} checkpoint not found at {ckpt_path} and "
@@ -142,7 +142,9 @@ def _load_pe_variant(
         )
         ckpt_path.parent.mkdir(parents=True, exist_ok=True)
         downloaded = Path(
-            hf_hub_download(
+            hf_download(
+                what=f"{config_name} checkpoint",
+                hint=f"make {download_make_target}",
                 repo_id=repo_id,
                 filename=filename,
                 local_dir=str(ckpt_path.parent),

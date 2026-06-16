@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import queue
+import re
 import shutil
 import threading
 import time
@@ -378,6 +379,15 @@ class JobManager:
             if self._kill_on_shutdown:
                 self._kill_job_tree(job)
                 break
+            stalled = self._stall_reason(job)
+            if stalled is not None:
+                logger.warning("job %s killed by stall watchdog: %s", job.id, stalled)
+                self._kill_job_tree(job)
+                # Finalize now so the post-loop _finalize_from_exit (which would
+                # otherwise classify the SIGKILL exit) sees a terminal state and
+                # no-ops, preserving the actionable stall diagnostic.
+                self._finalize(job, STATE_ERROR, error=stalled)
+                break
             time.sleep(_POLL_INTERVAL)
         # Reap our own child to avoid a zombie.
         if popen is not None:
@@ -393,6 +403,74 @@ class JobManager:
         if popen is not None:
             return popen.poll() is None
         return proc.is_alive(job.pid, job.create_time)
+
+    @staticmethod
+    def _stall_reason(job: Job) -> Optional[str]:
+        """If the running job has produced no output for longer than the
+        configured stall timeout, return an actionable error naming where it
+        wedged; otherwise ``None``.
+
+        Liveness is the most recent mtime of stdout.log *or* progress.jsonl, so
+        both a preprocess job (tqdm-to-stdout, no progress.jsonl) and a training
+        job (progress.jsonl) are covered, and any phase that still flushes the
+        occasional line — including a slow download's tqdm bar — counts as
+        alive. A truly wedged process (stalled socket with no bytes, a
+        symlink-cycle walk, a deadlock) writes nothing, so its files freeze and
+        the watchdog fires. ``TQDM_MININTERVAL`` (10s) keeps even a busy bar
+        well under either budget.
+
+        The budget is per *kind*: a command (preprocess / mask) job is tight
+        (it never legitimately goes quiet for more than a model-load), while a
+        train job is unwatched by default (budget 0 → skipped here) because its
+        silent first-step torch.compile trace would false-positive; it can be
+        opted in via ANIMA_DAEMON_JOB_STALL_TIMEOUT.
+        """
+        timeout = (
+            config.CMD_STALL_TIMEOUT
+            if job.kind == "command"
+            else config.JOB_STALL_TIMEOUT
+        )
+        if not timeout or timeout <= 0 or job.started_at is None:
+            return None
+        last = job.started_at
+        for path in (job.stdout_path, job.progress_path):
+            if not path:
+                continue
+            try:
+                last = max(last, os.path.getmtime(path))
+            except OSError:
+                continue
+        idle = time.time() - last
+        if idle < timeout:
+            return None
+        where = JobManager._last_output_line(job)
+        detail = f" last output: {where!r}" if where else " (no output captured)"
+        return (
+            f"stalled: no output for {int(idle)}s (limit {int(timeout)}s); daemon "
+            f"killed the job so the queue can advance.{detail}"
+        )
+
+    @staticmethod
+    def _last_output_line(job: Job, *, max_bytes: int = 8192) -> Optional[str]:
+        """Best-effort last non-empty stdout line (carriage-return aware, so a
+        tqdm bar's latest redraw is returned rather than an empty fragment) —
+        this is the "where did it wedge" hint folded into the stall error."""
+        path = job.stdout_path
+        if not path:
+            return None
+        try:
+            with open(path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                size = f.tell()
+                f.seek(max(0, size - max_bytes))
+                blob = f.read()
+        except OSError:
+            return None
+        parts = [
+            p.strip() for p in re.split(r"[\r\n]", blob.decode("utf-8", "replace"))
+        ]
+        parts = [p for p in parts if p]
+        return parts[-1] if parts else None
 
     def _finalize_from_exit(self, job: Job, popen) -> None:
         if job.state in TERMINAL_STATES:

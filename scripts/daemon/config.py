@@ -44,6 +44,23 @@ GPU_GUARD_BUSY_FRAC = float(os.environ.get("ANIMA_DAEMON_GPU_BUSY_FRAC", "0.85")
 GPU_GUARD_RETRIES = int(os.environ.get("ANIMA_DAEMON_GPU_RETRIES", "1"))
 GPU_GUARD_DELAY = float(os.environ.get("ANIMA_DAEMON_GPU_DELAY", "2.0"))
 
+# Stall watchdog: kill a *running* job that has emitted no output at all —
+# neither stdout.log nor progress.jsonl has advanced — for this many seconds,
+# then finalize it as an error naming its last output line. Turns a wedged
+# download / symlink-cycle walk / deadlock into a loud, queue-freeing failure
+# instead of an indefinite hang. 0 disables a bound (see manager._stall_reason).
+#
+# Only *command* jobs (preprocess / mask) are watched by default: they front-
+# load a model load (~60-90s worst case) then emit a tqdm bar every ~10s, so a
+# 120s silence already means wedged. Training is *not* watched by default
+# (budget 0): its first step is legitimately silent for the whole torch.compile
+# trace — the harness budgets "~30-60s" and warming every token family up front
+# can push that to minutes on a slow card — and a false kill mid-compile costs
+# far more than the rare genuinely-hung run (which a frozen step makes obvious).
+# Opt training in by setting ANIMA_DAEMON_JOB_STALL_TIMEOUT to a generous value.
+CMD_STALL_TIMEOUT = float(os.environ.get("ANIMA_DAEMON_CMD_STALL_TIMEOUT", "120"))
+JOB_STALL_TIMEOUT = float(os.environ.get("ANIMA_DAEMON_JOB_STALL_TIMEOUT", "0"))
+
 
 def ensure_state_dirs() -> None:
     JOBS_DIR.mkdir(parents=True, exist_ok=True)

@@ -30,6 +30,7 @@ from pathlib import Path
 from PIL import Image
 
 from library.datasets.buckets import BucketManager, buckets_for_edges, choose_edge
+from library.io.walk import safe_walk
 
 NPZ_RE = re.compile(r"^(?P<stem>.+)_(?P<w>\d{4})x(?P<h>\d{4})_anima\.npz$")
 TE_RE = re.compile(r"^(?P<stem>.+)_anima_te\.safetensors$")
@@ -81,7 +82,7 @@ def _native_size_index(image_dir: Path) -> dict[tuple[str, str], tuple[int, int]
         # Large source art legitimately trips PIL's decompression-bomb guard;
         # we only read the header (.size), never decode pixels.
         warnings.simplefilter("ignore", Image.DecompressionBombWarning)
-        for dirpath, _, files in os.walk(image_dir, followlinks=True):
+        for dirpath, _, files in safe_walk(image_dir, followlinks=True):
             rel = os.path.relpath(dirpath, image_dir)
             rel = "" if rel == "." else rel
             for fn in files:
@@ -127,7 +128,7 @@ def _native_keys(image_dir: Path) -> set[tuple[str, str]]:
     to nested artist dirs.
     """
     keys: set[tuple[str, str]] = set()
-    for dirpath, _, files in os.walk(image_dir, followlinks=True):
+    for dirpath, _, files in safe_walk(image_dir, followlinks=True):
         rel = os.path.relpath(dirpath, image_dir)
         rel = "" if rel == "." else rel
         for fn in files:
