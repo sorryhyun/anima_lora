@@ -548,11 +548,18 @@ def main():
             )
         repa_spec = get_bucket_spec(cfg.repa_encoder)
         repa_feature_set = {cfg.repa_layer}
+        # dog replaces spatial_norm's DC removal when on (mutually exclusive).
+        repa_target_desc = (
+            f"dog(σ1=min/{cfg.repa_dog_sigma1_div:g}, "
+            f"σ2={'off' if cfg.repa_dog_sigma2_div <= 0 else f'min/{cfg.repa_dog_sigma2_div:g}'})"
+            if cfg.repa_target_dog
+            else f"spatial_norm={cfg.repa_spatial_norm}"
+        )
         logger.info(
             f"REPA: aligning student block {cfg.repa_layer}/{len(model.blocks)} "
             f"to {cfg.repa_encoder} (grid≤{repa_spec.t_max_patches}tok) on real "
             f"data, weight={cfg.repa_weight}, every_n={cfg.repa_every_n}, "
-            f"spatial_norm={cfg.repa_spatial_norm}"
+            f"{repa_target_desc}"
         )
 
     # ---------------- Dataset ----------------
@@ -1115,6 +1122,10 @@ def main():
                     int(model.patch_spatial),
                     repa_spec,
                     spatial_norm=cfg.repa_spatial_norm,
+                    dog=cfg.repa_target_dog,
+                    dog_sigma1_div=cfg.repa_dog_sigma1_div,
+                    dog_sigma2_div=cfg.repa_dog_sigma2_div,
+                    dog_norm_std=cfg.repa_dog_norm_std,
                 )
                 (cfg.repa_weight * repa_loss).backward()
                 repa_loss = repa_loss.detach()  # metrics-only from here

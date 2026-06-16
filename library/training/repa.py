@@ -156,7 +156,11 @@ def pool_dit_tokens_to_grid(
 
 
 def relational_gram_loss(
-    dit_tok: torch.Tensor, pe: torch.Tensor, *, spatial_norm: bool = False
+    dit_tok: torch.Tensor,
+    pe: torch.Tensor,
+    *,
+    spatial_norm: bool = False,
+    sample_weights: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Arm-B relational loss: ``MSE(Gram(dit_tok), Gram(pe))`` in fp32.
 
@@ -165,6 +169,10 @@ def relational_gram_loss(
     iREPA target standardization (lever 2): standardize ``pe`` across the
     token axis before per-token L2-norm, removing the shared global component
     that compresses pairwise cosines.
+
+    ``sample_weights`` (``[B]`` or None): per-sample multipliers applied to the
+    per-sample Gram MSE before the batch mean (timestep reweighting). None is
+    bit-exact to the unweighted ``F.mse_loss`` reduction.
     """
     if spatial_norm:
         pe = (pe - pe.mean(dim=1, keepdim=True)) / (pe.std(dim=1, keepdim=True) + 1e-6)
@@ -172,7 +180,10 @@ def relational_gram_loss(
     pe_hat = F.normalize(pe, dim=-1)
     g_dit = torch.bmm(dit_hat, dit_hat.transpose(1, 2))  # (B, N, N)
     g_pe = torch.bmm(pe_hat, pe_hat.transpose(1, 2))
-    return F.mse_loss(g_dit, g_pe)
+    if sample_weights is None:
+        return F.mse_loss(g_dit, g_pe)
+    per_sample = (g_dit - g_pe).pow(2).mean(dim=(1, 2))  # [B]
+    return (per_sample * sample_weights.to(per_sample.dtype)).mean()
 
 
 def _safe_blur(grid: torch.Tensor, sigma: float, gh: int, gw: int) -> torch.Tensor:
@@ -334,6 +345,8 @@ class REPAMethodAdapter(MethodAdapter):
         self._dog_sigma1_div = 16.0
         self._dog_sigma2_div = 0.0
         self._dog_norm_std = 0.0
+        # Timestep reweighting of the alignment term (0 = uniform = legacy path).
+        self._timestep_weighting = 0.0
         # Optimizer-step clock: train micro-batches seen, converted with
         # gradient_accumulation_steps at the anneal gate.
         self._train_micro_steps = 0
@@ -389,6 +402,13 @@ class REPAMethodAdapter(MethodAdapter):
             )
             self._dog = False
 
+        # Timestep reweighting (docs/experimental/repa.md): tilt the alignment
+        # term across the diffusion noise level σ. 0 = uniform (legacy). See
+        # _timestep_weights for the parameterization.
+        self._timestep_weighting = float(
+            getattr(net, "_repa_timestep_weighting", 0.0) or 0.0
+        )
+
         if self._mode == "absolute" and getattr(net, "repa_head", None) is None:
             raise ValueError(
                 "repa_mode='absolute' requires the network to expose a "
@@ -433,8 +453,35 @@ class REPAMethodAdapter(MethodAdapter):
             f"{', spatial_norm' if self._spatial_norm and not self._dog else ''}"
             f"{f', grad_heatmap/{self._grad_heatmap_every}' if self._grad_heatmap_every else ''}"
             f"{f', dog(σ1=min/{self._dog_sigma1_div:g}, σ2={"off" if self._dog_sigma2_div <= 0 else f"min/{self._dog_sigma2_div:g}"}, norm_std={"empirical" if self._dog_norm_std <= 0 else self._dog_norm_std})' if self._dog else ''}"
+            f"{f', tsw={self._timestep_weighting:g}' if self._timestep_weighting else ''}"
             f"{head_desc}"
         )
+
+    def _timestep_weights(self, sigma: torch.Tensor) -> Optional[torch.Tensor]:
+        """Per-sample alignment weight as a function of the noise level σ∈[0,1]
+        (σ→1 high noise, σ→0 low noise — ``primary.timesteps`` *is* σ here).
+
+        ``repa_timestep_weighting`` g (signed; 0 ⇒ uniform = legacy path):
+
+          g > 0 ⇒ w(σ) = (g+1)·σ**g          — emphasize HIGH noise, where (with
+                  the DiT frozen) the alignment target is only reachable through
+                  the clean cond, so REPA acts as pure cond-utilization pressure.
+          g < 0 ⇒ w(σ) = (|g|+1)·(1−σ)**|g|  — emphasize LOW noise, where REPA is
+                  otherwise satisfiable from the target latent and decouples from
+                  the cond.
+
+        Both branches integrate to 1 under uniform σ (∫₀¹(p+1)σ^p dσ = 1), so the
+        knob reshapes *where* REPA acts across t without changing its expected
+        magnitude — a shape-not-scale A/B. Batch-size independent. Returns None at
+        g == 0 (bit-exact to the unweighted loss)."""
+        g = self._timestep_weighting
+        if g == 0.0:
+            return None
+        s = sigma.detach().float().clamp(0.0, 1.0)
+        if g > 0.0:
+            return (g + 1.0) * s.pow(g)
+        p = -g
+        return (p + 1.0) * (1.0 - s).pow(p)
 
     # ------------------------------------------------------------------- step
     def prime_for_forward(
@@ -527,12 +574,21 @@ class REPAMethodAdapter(MethodAdapter):
             self._captured, (h_lat, w_lat), self._patch, gh, gw
         )  # (B, gh*gw, D) fp32
 
+        w = None
+        if self._timestep_weighting != 0.0:
+            w = self._timestep_weights(primary.timesteps)
+            if w is not None:
+                self._metrics["repa/tsw_w_mean"] = float(w.mean().detach())
+
         if self._mode == "absolute":
             head = ctx.network.repa_head
             head_dtype = next(head.parameters()).dtype
             proj = head(dit_tok.to(head_dtype)).float()  # (B, N, d_enc)
             cos = F.cosine_similarity(proj, pe, dim=-1)  # (B, N)
-            loss = (1.0 - cos).mean()
+            if w is None:
+                loss = (1.0 - cos).mean()
+            else:
+                loss = ((1.0 - cos).mean(dim=1) * w.to(cos.dtype)).mean()
         else:
             if self._dog:
                 # REPA-DoG: band-pass the target instead of spatial_norm's DC
@@ -545,10 +601,12 @@ class REPAMethodAdapter(MethodAdapter):
                     self._dog_sigma2_div,
                     self._dog_norm_std,
                 )
-                loss = relational_gram_loss(dit_tok, pe_t, spatial_norm=False)
+                loss = relational_gram_loss(
+                    dit_tok, pe_t, spatial_norm=False, sample_weights=w
+                )
             else:
                 loss = relational_gram_loss(
-                    dit_tok, pe, spatial_norm=self._spatial_norm
+                    dit_tok, pe, spatial_norm=self._spatial_norm, sample_weights=w
                 )
 
             if self._grad_heatmap_every > 0:

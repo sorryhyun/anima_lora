@@ -32,9 +32,12 @@ def _make_adapter(mode: str, *, patch: int = 2) -> REPAMethodAdapter:
     return a
 
 
-def _primary(latents: torch.Tensor, *, is_train: bool = True):
-    # extra_forwards only reads .is_train and .latents.
-    return types.SimpleNamespace(is_train=is_train, latents=latents)
+def _primary(latents: torch.Tensor, *, is_train: bool = True, timesteps=None):
+    # extra_forwards reads .is_train, .latents, and (only when timestep
+    # reweighting is on) .timesteps — per-sample σ∈[0,1].
+    return types.SimpleNamespace(
+        is_train=is_train, latents=latents, timesteps=timesteps
+    )
 
 
 def _ctx(network=None):
@@ -115,6 +118,44 @@ def test_metrics_surface_align_loss():
     # metrics() returns a copy — mutating it must not poison the adapter stash.
     m["repa/align_loss"] = -1.0
     assert a.metrics(_ctx())["repa/align_loss"] != -1.0
+
+
+def test_timestep_weighting_off_is_bit_identical():
+    """g=0 (default) never reads timesteps and is bit-exact to the legacy loss."""
+    a = _make_adapter("relational")
+    _spec, pe, latents = _square_inputs()
+    cap = torch.randn(2, 1, 32, 32, 64)
+    a._captured, a._pe_features, a._latent_hw = cap, pe, (64, 64)
+    base = a.extra_forwards(_ctx(), _primary(latents, timesteps=None))["repa"]
+
+    a._timestep_weighting = 0.0  # explicit
+    a._captured = cap
+    same = a.extra_forwards(_ctx(), _primary(latents, timesteps=None))["repa"]
+    assert torch.equal(base, same)
+    assert "repa/tsw_w_mean" not in a.metrics(_ctx())
+
+
+def test_timestep_weighting_high_noise_emphasis():
+    """g>0 up-weights high-σ samples; an all-high-σ batch loss > all-low-σ batch."""
+    _spec, pe, latents = _square_inputs(b=2)
+    cap = torch.randn(2, 1, 32, 32, 64)
+
+    def _loss(g, sigma):
+        a = _make_adapter("relational")
+        a._timestep_weighting = g
+        a._captured, a._pe_features, a._latent_hw = cap.clone(), pe, (64, 64)
+        t = torch.full((2,), sigma)
+        return a.extra_forwards(_ctx(), _primary(latents, timesteps=t))["repa"]
+
+    # Same Gram error per sample; only the σ weight differs. (g+1)·σ^g: high σ
+    # gets a larger multiplier → larger weighted mean.
+    hi = _loss(2.0, 0.9)
+    lo = _loss(2.0, 0.1)
+    assert hi > lo
+    # g<0 inverts the ordering (low-noise emphasis).
+    hi_n = _loss(-2.0, 0.9)
+    lo_n = _loss(-2.0, 0.1)
+    assert lo_n > hi_n
 
 
 def test_pe_grid_orientation_disambiguation():

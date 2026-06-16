@@ -69,6 +69,35 @@ def test_config_toml_and_cli_precedence():
     assert c.repa_weight == 0.1
     assert c.repa_layer == 6
     assert c.repa_spatial_norm is True
+    # REPA-DoG band-pass off by default (spatial_norm path).
+    assert c.repa_target_dog is False
+    assert c.repa_dog_sigma1_div == 16.0
+    assert c.repa_dog_sigma2_div == 0.0
+    assert c.repa_dog_norm_std == 0.0
+
+
+def test_config_dog_toml_and_cli_precedence():
+    toml = {
+        "repa": {
+            "weight": 0.05,
+            "target_dog": True,
+            "dog_sigma1_div": 32.0,
+            "dog_sigma2_div": 8.0,
+            "dog_norm_std": 1.0,
+        }
+    }
+    c = _resolve(toml=toml)
+    assert c.repa_target_dog is True
+    assert c.repa_dog_sigma1_div == 32.0
+    assert c.repa_dog_sigma2_div == 8.0
+    assert c.repa_dog_norm_std == 1.0
+    # CLI overrides win over TOML (BooleanOptionalAction + sentinel floats).
+    c = _resolve(
+        ["--no-repa_target_dog", "--repa_dog_sigma1_div", "24"],
+        toml=toml,
+    )
+    assert c.repa_target_dog is False
+    assert c.repa_dog_sigma1_div == 24.0
 
 
 def test_config_validation():
@@ -84,6 +113,11 @@ def test_config_validation():
         _resolve(
             ["--grad_ckpt", "--per_step_expert"],
             toml={"repa": {"weight": 0.05}},
+        )
+    # DoG low-pass σ1 divisor must be positive when the band-pass is on.
+    with pytest.raises(ValueError, match="dog_sigma1_div"):
+        _resolve(
+            toml={"repa": {"weight": 0.05, "target_dog": True, "dog_sigma1_div": 0}},
         )
 
 

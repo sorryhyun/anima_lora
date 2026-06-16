@@ -412,6 +412,35 @@ def build_argparser() -> argparse.ArgumentParser:
         help="iREPA spatial standardization of the encoder target. Default: "
         "TOML (repa.spatial_norm, default true).",
     )
+    parser.add_argument(
+        "--repa_target_dog",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="REPA-DoG target band-pass (replaces spatial_norm's DC removal "
+        "with a broader low-band strip; the two are mutually exclusive and dog "
+        "wins). Default: TOML (repa.target_dog, default false).",
+    )
+    parser.add_argument(
+        "--repa_dog_sigma1_div",
+        type=float,
+        default=-1.0,
+        help="REPA-DoG low-pass σ₁ as min(gh,gw)/div (larger div = narrower "
+        "strip). Default: TOML (repa.dog_sigma1_div, default 16).",
+    )
+    parser.add_argument(
+        "--repa_dog_sigma2_div",
+        type=float,
+        default=-1.0,
+        help="REPA-DoG second σ₂ as min(gh,gw)/div (0 = single low-pass, σ₂ "
+        "off). Default: TOML (repa.dog_sigma2_div, default 0).",
+    )
+    parser.add_argument(
+        "--repa_dog_norm_std",
+        type=float,
+        default=-1.0,
+        help="REPA-DoG post band-pass std normalization (0 = empirical per-batch "
+        "std). Default: TOML (repa.dog_norm_std, default 0).",
+    )
 
     # ---- f-distill reweighting (FastGen idea 2; needs the GAN disc) ----
     parser.add_argument(
@@ -516,6 +545,10 @@ class TurboConfig:
     repa_encoder: str
     repa_every_n: int
     repa_spatial_norm: bool
+    repa_target_dog: bool
+    repa_dog_sigma1_div: float
+    repa_dog_sigma2_div: float
+    repa_dog_norm_std: float
 
     # Mean-variance reg (lever B / Eq. 7)
     mean_var_weight: float
@@ -662,6 +695,22 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         repa_spatial_norm = bool(_flatten(cfg, "repa.spatial_norm", True))
     else:
         repa_spatial_norm = bool(args.repa_spatial_norm)
+    # REPA-DoG target band-pass (docs/proposal/repa_dog_target.md). When on it
+    # replaces the spatial_norm DC-removal block in the relational loss (dog
+    # wins; they're the same family — DoG at σ₁→0 is DC removal).
+    if args.repa_target_dog is None:
+        repa_target_dog = bool(_flatten(cfg, "repa.target_dog", False))
+    else:
+        repa_target_dog = bool(args.repa_target_dog)
+    repa_dog_sigma1_div = float(
+        _pick(args.repa_dog_sigma1_div, cfg, "repa.dog_sigma1_div", 16.0)
+    )
+    repa_dog_sigma2_div = float(
+        _pick(args.repa_dog_sigma2_div, cfg, "repa.dog_sigma2_div", 0.0)
+    )
+    repa_dog_norm_std = float(
+        _pick(args.repa_dog_norm_std, cfg, "repa.dog_norm_std", 0.0)
+    )
 
     # Per-step expert (dual-B-head student). step_expert_K is derived from
     # student_steps so head k ↔ denoise step k by construction (the plan's
@@ -814,10 +863,24 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
                 "head switch corrupts the rollout's checkpoint recompute. "
                 "Disable one of the three."
             )
+        if repa_target_dog and repa_dog_sigma1_div <= 0.0:
+            raise ValueError(
+                f"repa.dog_sigma1_div={repa_dog_sigma1_div}: must be > 0 "
+                "(σ₁ = min(gh,gw)/div)."
+            )
+        # dog replaces spatial_norm's DC removal — they're mutually exclusive
+        # (same family; dog wins). Surface the effective target preprocessing.
+        target_desc = (
+            f"dog(σ1=min/{repa_dog_sigma1_div:g}, "
+            f"σ2={'off' if repa_dog_sigma2_div <= 0 else f'min/{repa_dog_sigma2_div:g}'}, "
+            f"norm_std={'empirical' if repa_dog_norm_std <= 0 else repa_dog_norm_std})"
+            if repa_target_dog
+            else f"spatial_norm={repa_spatial_norm}"
+        )
         logger.info(
             f"REPA (turbo×REPA relational alignment) ON: weight={repa_weight}, "
             f"layer={repa_layer}, encoder={repa_encoder!r}, "
-            f"every_n={repa_every_n}, spatial_norm={repa_spatial_norm}."
+            f"every_n={repa_every_n}, {target_desc}."
         )
     if bool(args.grad_ckpt) and gan_loss_weight_gen > 0.0:
         # Pre-existing member of the same hazard class (predates REPA): under
@@ -1011,6 +1074,10 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         repa_encoder=repa_encoder,
         repa_every_n=repa_every_n,
         repa_spatial_norm=repa_spatial_norm,
+        repa_target_dog=repa_target_dog,
+        repa_dog_sigma1_div=repa_dog_sigma1_div,
+        repa_dog_sigma2_div=repa_dog_sigma2_div,
+        repa_dog_norm_std=repa_dog_norm_std,
         mean_var_weight=mean_var_weight,
         mv_mu_t=mv_mu_t,
         mv_sigma2_t=mv_sigma2_t,
@@ -1075,6 +1142,10 @@ def tb_config_text(c: TurboConfig) -> str:
         "base_loss": c.base_loss,
         "gan_loss_weight_gen": c.gan_loss_weight_gen,
         "repa_weight": c.repa_weight,
+        "repa_target_dog": c.repa_target_dog,
+        "repa_dog_sigma1_div": c.repa_dog_sigma1_div,
+        "repa_dog_sigma2_div": c.repa_dog_sigma2_div,
+        "repa_dog_norm_std": c.repa_dog_norm_std,
         "f_div": c.f_div,
         "k_anchor": c.k_anchor,
         "teacher_anchor_steps": c.teacher_anchor_steps,

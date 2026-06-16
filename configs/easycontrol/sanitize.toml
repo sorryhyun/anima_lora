@@ -89,10 +89,16 @@ network_args = [
     "use_repa=true",
     "repa_weight=0.05",
     "repa_layer=8",
-    "repa_target_dog=true"
+    "repa_target_dog=true",
+    # Timestep reweighting A/B (signed; 0/absent = uniform = current shipped arm).
+    # >0 tilts REPA toward HIGH noise, where (DiT frozen) the alignment target is
+    # only reachable through the clean cond → pure cond-utilization pressure. <0
+    # tilts toward LOW noise, where REPA otherwise decouples from the cond. Mean-1
+    # under uniform σ, so this is a shape-not-scale A/B. Uncomment to test.
+    "repa_timestep_weighting=1.0",
 ]
 # Keep the REPA arm from clobbering the baseline checkpoint during the A/B.
-output_name = "anima_easycontrol_sanitize_repaMA2"
+output_name = "anima_easycontrol_sanitize_repaMA3"
 
 learning_rate = 2e-5
 max_train_epochs = 12
