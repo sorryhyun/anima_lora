@@ -89,8 +89,9 @@ from .engine import (
     normalize_tag,
     prune_for_pairing,
     run_artist,
+    select_identity_members,
 )
-from .outputs import export_pairs, write_dataset_config
+from .outputs import export_identity_members, export_pairs, write_dataset_config
 
 
 # ---------------------------------------------------------------------------- config ([staging])
@@ -294,6 +295,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     p.add_argument(
+        "--add-identity-pairs",
+        type=float,
+        default=0.0,
+        help="fraction of the final tree to fill with identity (cond==target) pairs "
+        "— clean singles carrying no target tag, staged so the adapter learns the "
+        "no-op and stops globally transforming clean inputs (0=off, e.g. 0.25). "
+        "Sized as a fraction of the total, so n_identity = round(n_pairs·f/(1−f)).",
+    )
+    p.add_argument(
+        "--identity-saturation-min",
+        type=float,
+        default=0.0,
+        help="only draw identity images with mean HSV saturation >= this (0..1, "
+        "0=off); biases the identity set vivid to counter the mined-twin "
+        "desaturation bias",
+    )
+    p.add_argument(
+        "--identity-seed",
+        type=int,
+        default=0,
+        help="RNG seed for identity-image sampling (run-to-run idempotency)",
+    )
+    p.add_argument(
         "--export-dir",
         default="post_image_dataset/easycontrol/near_twins/staging",
         help="materialized _tags/_no_tags pair tree (empty string disables)",
@@ -408,11 +432,57 @@ def main(argv: list[str] | None = None) -> int:
             f"  pairs → {export_dir}/  ({n} pair tree(s), {'copied' if args.copy else 'symlinked'})",
             file=sys.stderr,
         )
+        _export_identity(args, export_dir, by_artist, all_pairs, target_tags)
         if args.config_out:
             write_dataset_config(export_dir, Path(args.config_out))
             print(f"  cfg   → {args.config_out}", file=sys.stderr)
 
     return 0
+
+
+def _export_identity(
+    args: argparse.Namespace,
+    export_dir: Path,
+    by_artist: dict[str, list],
+    all_pairs: list[PairRecord],
+    target_tags: set[str],
+) -> None:
+    """Stage the identity (cond==target) no-op regularizer alongside the mined pairs.
+
+    Count is a fraction of the final tree (``n = round(n_pairs·f/(1−f))``), drawn
+    from clean singles with no target tag (optionally saturation-floored). No-op
+    when ``--add-identity-pairs`` is 0; needs ≥1 mined pair to size against.
+    """
+    f = float(args.add_identity_pairs)
+    if f <= 0.0:
+        return
+    if not 0.0 < f < 1.0:
+        print(
+            f"  [warn] --add-identity-pairs must be in (0, 1); got {f} — skipping",
+            file=sys.stderr,
+        )
+        return
+    n_id = round(len(all_pairs) * f / (1.0 - f))
+    if n_id <= 0:
+        return
+    exclude = {m.stem for p in all_pairs for m in (p.holder_member(), p.clean_member())}
+    members = select_identity_members(
+        by_artist,
+        target_tags,
+        n_id,
+        saturation_min=float(args.identity_saturation_min),
+        seed=int(args.identity_seed),
+        exclude_stems=exclude,
+    )
+    written = export_identity_members(members, export_dir, copy=args.copy)
+    sat = float(args.identity_saturation_min)
+    print(
+        f"  identity → {export_dir}/  ({written}/{n_id} cond==target pair(s)"
+        + (f", sat≥{sat:g}" if sat > 0 else "")
+        + ")"
+        + ("  [pool exhausted before target]" if written < n_id else ""),
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":

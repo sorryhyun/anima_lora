@@ -17,6 +17,7 @@ import numpy as np
 from PIL import Image
 
 from .engine import (
+    Member,
     PairRecord,
     caption_text,
 )
@@ -60,6 +61,36 @@ def export_pairs(
             _write_mask(p, adir / f"{p.pair_id}_mask.png")
         written += 1
         _ = ext  # holder ext informational only
+    return written
+
+
+def export_identity_members(members: list[Member], export_dir: Path, copy: bool) -> int:
+    """Materialize identity (cond==target) pairs into the ``_tags`` / ``_no_tags`` tree.
+
+    Each clean single is written as BOTH sides of a degenerate pair from the same
+    source image — ``id_{stem}_tags`` (the condition) and ``id_{stem}_no_tags`` (the
+    target) — so the preprocess cond-pairing symlinks an identical latent as the
+    cond and the adapter sees a no-op edit. The ``id_`` prefix keeps these clear of
+    the ``{a}-{b}`` mined-pair ids; both members share one image so they always
+    land in the same bucket (the cond-pairing requires a same-bucket twin).
+    Captions mirror to both sides (sanitize blanks them via caption_dropout anyway).
+    """
+    written = 0
+    for m in members:
+        adir = export_dir / m.artist
+        pid = f"id_{m.stem}"
+        ext = ".png" if copy else m.image_path.suffix
+        for side in ("_tags", "_no_tags"):
+            img_dst = adir / f"{pid}{side}{ext}"
+            if copy:
+                with Image.open(m.image_path) as im:
+                    img_dst.parent.mkdir(parents=True, exist_ok=True)
+                    im.convert("RGB").save(img_dst)
+            else:
+                _materialize_one(m.image_path, img_dst, copy=False)
+            txt_dst = adir / f"{pid}{side}.txt"
+            txt_dst.write_text(caption_text(m.txt_path), encoding="utf-8")
+        written += 1
     return written
 
 

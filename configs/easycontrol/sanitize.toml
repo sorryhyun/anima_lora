@@ -31,6 +31,17 @@ match_frac_min = 0.3
 cell_match_min = 0.9
 max_extra_diff = 25
 
+# Identity (cond==target) regularizer. Fills a fraction of the staged tree with
+# clean singles that carry NO tag_any tag, staged as cond==target so the adapter
+# learns the no-op — without it every training example is a change, so the model
+# acquires a standing bias to globally transform clean inputs (the desaturation /
+# wash-out failure mode). identity_saturation_min additionally biases those
+# singles vivid, injecting the saturated clean targets the mined twins under-
+# represent (94% are pale). Sized as a fraction of the FINAL tree. An A/B dial —
+# set add_identity_pairs = 0.0 to restore the pairs-only baseline.
+add_identity_pairs = 0.25
+identity_saturation_min = 0.4
+
 # Resize + VAE/TE caching pass over the mined pair tree (read by
 # `make easycontrol-preprocess EASYADAPTER=sanitize`). The native-res staging
 # tree is first resized into constant-token buckets under resized_dir (that

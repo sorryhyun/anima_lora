@@ -13,6 +13,7 @@ export live in ``near_twin.outputs``; the CLI + config layering in
 from __future__ import annotations
 
 import argparse
+import random
 import sys
 from collections import deque
 from dataclasses import dataclass, field
@@ -86,6 +87,65 @@ def prune_for_pairing(
         if any(flags) and not all(flags):  # both a tagged and an untagged member
             kept.extend(grp)
     return kept
+
+
+# ---------------------------------------------------------------------------- identity pairs
+
+
+def _mean_saturation(image_path: Path) -> float:
+    """Mean HSV saturation in [0, 1] over a small thumbnail (cheap, size-robust)."""
+    try:
+        with Image.open(image_path) as im:
+            thumb = im.convert("RGB")
+            thumb.thumbnail((256, 256))
+            s = np.asarray(thumb.convert("HSV"))[..., 1]
+    except (
+        Exception
+    ):  # unreadable / truncated → treat as fully desaturated (won't pass a floor)
+        return 0.0
+    return float(s.mean()) / 255.0
+
+
+def select_identity_members(
+    by_artist: dict[str, list[Member]],
+    target_tags: set[str],
+    n: int,
+    saturation_min: float,
+    seed: int,
+    exclude_stems: set[str] | None = None,
+) -> list[Member]:
+    """Pick ``n`` clean singles to stage as identity (cond==target) pairs.
+
+    Draws from the **full** gathered pool (not the same-size/twin-gated set) —
+    every member carrying NONE of ``target_tags`` is a case whose correct sanitize
+    output is "do nothing", so staging it as cond==target teaches the no-op and
+    counters the adapter's standing bias to globally transform every input (the
+    wash-out failure mode). With ``saturation_min`` > 0 the pool is filtered to
+    vivid images, which *also* injects the saturated clean targets the mined twins
+    under-represent. Selection is random but ``seed``-fixed for run-to-run
+    idempotency, and lazy — tags/saturation are read only until ``n`` are
+    collected, so a saturation floor never decodes the whole corpus.
+    """
+    if n <= 0:
+        return []
+    exclude = exclude_stems or set()
+    pool = [
+        m
+        for members in by_artist.values()
+        for m in members
+        if m.wh != (0, 0) and m.stem not in exclude
+    ]
+    random.Random(seed).shuffle(pool)
+    picked: list[Member] = []
+    for m in pool:
+        if target_tags & read_tags(m.txt_path):
+            continue  # carries the attribute we remove — not an identity case
+        if saturation_min > 0.0 and _mean_saturation(m.image_path) < saturation_min:
+            continue
+        picked.append(m)
+        if len(picked) >= n:
+            break
+    return picked
 
 
 # ---------------------------------------------------------------------------- Stage B match

@@ -128,8 +128,15 @@ The blueprint write preserves everything above its sentinel, so your edited
 | `--match-frac-min` | `0.5` | inlier fraction to call a near-twin |
 | `--geom-check` | off | RANSAC translation consistency (reject pose twins) |
 | `--max-extra-diff` | `6` | cap on non-target differing tags (`-1` = off) |
+| `--add-identity-pairs` | `0.0` | fraction of the final tree to fill with identity (cond==target) pairs — clean singles (no target tag) staged so the adapter learns the no-op (stops globally washing out clean inputs). Sized as `round(n_pairs·f/(1−f))` |
+| `--identity-saturation-min` | `0.0` | only draw identity images with mean HSV saturation ≥ this (`0`=off); biases them vivid to counter the mined-twin desaturation bias |
 | `--export-dir` | `…/easycontrol/near_twins/staging` | pair tree (`''` disables) |
 | `--copy` / `--emit-mask` | off | copy instead of symlink / also write diff-region mask |
+
+Identity pairs are written as `id_{stem}_{tags,no_tags}` from one source image, so
+the preprocess cond-pairing symlinks an identical cond latent (cond==target). They
+need ≥1 mined pair to size against; `--identity-seed` (default `0`) fixes the
+random draw for idempotent re-runs.
 
 Run `python -m easycontrol_adapters.tools.near_twins --help` for the full list
 (`--signal-delta`, `--region-*`, `--id-window`, `--per-artist-topk`,
