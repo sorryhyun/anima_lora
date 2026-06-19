@@ -55,3 +55,19 @@ def test_preprocess_te_uses_corrected_resized_captions(monkeypatch):
     ]
     assert te_cmd[te_cmd.index("--min_pixels") + 1] == "0"
 
+
+def test_caption_correction_config_parses_trigger_cli_args():
+    from scripts.tasks.preprocess import _caption_correction_config
+
+    config, cleaned = _caption_correction_config(
+        [
+            "--caption_trigger_word",
+            "@foo",
+            "--caption_trigger_at_front",
+            "--other",
+        ]
+    )
+
+    assert config["trigger_word"] == "@foo"
+    assert config["trigger_at_front"] is True
+    assert cleaned == ["--other"]

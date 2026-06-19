@@ -89,6 +89,7 @@ STRINGS: dict[str, str] = {
         "補正済みキャプションに配置する任意のトリガータグです。先頭固定がオフの場合、"
         "既存アーティストタグより前の artist 位置に置かれます。シャッフル/ドロップアウト"
         "保護の artist マーカーとして使う場合は @ を含めてください。"
+        "アンダースコアはスペースに正規化されます。"
     ),
     "preprocess_caption_trigger_at_front": "トリガーを先頭に固定",
     "preprocess_caption_trigger_at_front_tip": (

@@ -129,6 +129,7 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
     from ._common import _path_overrides
 
     overrides = _path_overrides()
+    env_trigger = os.environ.get("CAPTION_TRIGGER_WORD")
     config: dict[str, object] = {
         "correct_order": _boolish(
             os.environ.get("CAPTION_CORRECT_ORDER"),
@@ -139,8 +140,8 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
             _boolish(overrides.get("caption_insert_no_artist"), False),
         ),
         "trigger_word": str(
-            os.environ.get("CAPTION_TRIGGER_WORD")
-            if os.environ.get("CAPTION_TRIGGER_WORD") is not None
+            env_trigger
+            if env_trigger is not None
             else overrides.get("caption_trigger_word", "")
         ).strip(),
         "trigger_at_front": _boolish(
@@ -721,6 +722,9 @@ def cmd_preprocess(extra):
         except (SystemExit, OSError) as e:
             print(f"  [preprocess] tagger vocab auto-download failed: {e}")
     if os.path.exists(vocab):
+        # Caption correction writes TE-only sidecars under resized_image_dir. The
+        # caption index intentionally stays on source captions because its
+        # consumers care about tag presence/relations, not corrected order.
         cmd_caption_index([])
     else:
         print(

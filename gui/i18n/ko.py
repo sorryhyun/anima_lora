@@ -85,7 +85,8 @@ STRINGS: dict[str, str] = {
     "preprocess_caption_trigger_word_tip": (
         "교정 캡션에 배치할 선택 트리거 태그입니다. 맨 앞 고정 옵션이 "
         "꺼져 있으면 기존 작가 태그보다 앞의 artist 위치에 둡니다. "
-        "셔플/드롭아웃 보호용 작가 마커처럼 쓰려면 @를 포함하세요."
+        "셔플/드롭아웃 보호용 작가 마커처럼 쓰려면 @를 포함하세요. "
+        "underscore는 공백으로 정규화됩니다."
     ),
     "preprocess_caption_trigger_at_front": "트리거를 맨 앞에 고정",
     "preprocess_caption_trigger_at_front_tip": (

@@ -89,7 +89,7 @@ STRINGS: dict[str, str] = {
         "Optional trigger tag to move into the corrected caption. With the "
         "front option off it is placed in the artist slot before existing "
         "artist tags. Include @ if you want it to behave as an artist marker "
-        "for shuffle/dropout protection."
+        "for shuffle/dropout protection. Underscores are normalized to spaces."
     ),
     "preprocess_caption_trigger_at_front": "Keep trigger first",
     "preprocess_caption_trigger_at_front_tip": (
