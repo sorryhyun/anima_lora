@@ -9,6 +9,7 @@ separately on ``make preprocess-pe`` (needs the encoder weights).
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -177,6 +178,67 @@ def test_count_preprocess_caches_path_pattern_filters_nested_caches(
     }
 
 
+def test_write_corrected_preprocess_captions_preserves_source(tmp_path: Path) -> None:
+    from library.captioning.correction import (
+        CaptionCorrectionOptions,
+        load_tag_knowledge_base,
+    )
+    from library.captioning.preprocess import write_corrected_preprocess_captions
+    from tests.test_caption_correction import _csv
+
+    source = tmp_path / "image_dataset"
+    resized = tmp_path / "post_image_dataset" / "resized"
+    _write_image(source / "charA" / "cover.jpg", (64, 64))
+    _write_image(resized / "charA" / "cover.png", (64, 64))
+    original = "long hair, vocaloid, hatsune miku, 1girl"
+    (source / "charA" / "cover.txt").write_text(original, encoding="utf-8")
+
+    stats = write_corrected_preprocess_captions(
+        source,
+        resized,
+        load_tag_knowledge_base(_csv(tmp_path / "tags.csv")),
+        options=CaptionCorrectionOptions(
+            insert_no_artist=True,
+            trigger_word="@dataset-trigger",
+        ),
+        recursive=True,
+    )
+
+    assert stats.written == 1
+    assert (source / "charA" / "cover.txt").read_text(encoding="utf-8") == original
+    assert (resized / "charA" / "cover.txt").read_text(encoding="utf-8") == (
+        "1girl, hatsune miku, vocaloid, @dataset-trigger, long hair"
+    )
+
+
+def test_write_corrected_preprocess_captions_removes_stale_missing_source(
+    tmp_path: Path,
+) -> None:
+    from library.captioning.correction import CaptionCorrectionOptions
+    from library.captioning.correction import load_tag_knowledge_base
+    from library.captioning.preprocess import write_corrected_preprocess_captions
+    from tests.test_caption_correction import _csv
+
+    source = tmp_path / "image_dataset"
+    resized = tmp_path / "post_image_dataset" / "resized"
+    source.mkdir()
+    _write_image(resized / "charA" / "cover.png", (64, 64))
+    stale = resized / "charA" / "cover.txt"
+    stale.write_text("stale", encoding="utf-8")
+
+    stats = write_corrected_preprocess_captions(
+        source,
+        resized,
+        load_tag_knowledge_base(_csv(tmp_path / "tags.csv")),
+        options=CaptionCorrectionOptions(),
+        recursive=True,
+    )
+
+    assert stats.missing_source == 1
+    assert stats.removed_stale == 1
+    assert not stale.exists()
+
+
 def test_confirm_train_using_cache_requires_pe_when_repa_on(tmp_path: Path) -> None:
     """use_repa Train gating: a built latent/TE cache that lacks PE sidecars
     must return None (→ auto-chain the PE-caching preprocess) rather than
@@ -263,6 +325,28 @@ def test_count_pending_text_counts_uncaptioned(tmp_path: Path) -> None:
     te.parent.mkdir(parents=True, exist_ok=True)
     te.touch()
     assert count_pending_text(data, cache_dir=cache, min_pixels=0) == (1, 2)
+
+
+def test_count_pending_text_recaches_when_caption_is_newer(tmp_path: Path) -> None:
+    from library.preprocess import count_pending_text
+    from library.preprocess.text import _te_cache_path
+
+    data = tmp_path / "imgs"
+    cache = tmp_path / "cache"
+    img = data / "a.png"
+    caption = data / "a.txt"
+    _write_image(img, (64, 64))
+    caption.write_text("old", encoding="utf-8")
+    te = _te_cache_path(img, cache, data)
+    te.parent.mkdir(parents=True, exist_ok=True)
+    te.touch()
+
+    os.utime(caption, (100, 100))
+    os.utime(te, (200, 200))
+    assert count_pending_text(data, cache_dir=cache, min_pixels=0) == (0, 1)
+
+    os.utime(caption, (300, 300))
+    assert count_pending_text(data, cache_dir=cache, min_pixels=0) == (1, 1)
 
 
 def test_count_pending_text_min_pixels_filter(tmp_path: Path) -> None:

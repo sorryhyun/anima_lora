@@ -73,6 +73,28 @@ STRINGS: dict[str, str] = {
         "最初の @artist マーカー以前のタグはドロップされません。"
         "シャッフルバリアント ≤ 0 の場合は無視されます。"
     ),
+    "preprocess_caption_correct_order": "キャプション順序補正",
+    "preprocess_caption_correct_order_tip": (
+        "補正済み .txt キャプションをリサイズ画像の隣に保存し、"
+        "テキストエンコーダーキャッシュに使用します。元のソースキャプションは変更しません。"
+    ),
+    "preprocess_caption_insert_no_artist": "@no-artist を挿入",
+    "preprocess_caption_insert_no_artist_tip": (
+        "キャプション順序補正が有効で、アーティストマーカーがない場合に "
+        "artist 位置へ @no-artist を挿入します。トリガー語が artist 位置にある場合は"
+        "トリガーが優先され、@no-artist は挿入されません。"
+    ),
+    "preprocess_caption_trigger_word": "トリガー語:",
+    "preprocess_caption_trigger_word_tip": (
+        "補正済みキャプションに配置する任意のトリガータグです。先頭固定がオフの場合、"
+        "既存アーティストタグより前の artist 位置に置かれます。シャッフル/ドロップアウト"
+        "保護の artist マーカーとして使う場合は @ を含めてください。"
+    ),
+    "preprocess_caption_trigger_at_front": "トリガーを先頭に固定",
+    "preprocess_caption_trigger_at_front_tip": (
+        "トリガー語をキャプションの最初に置きます。このモードでは @no-artist 挿入は、"
+        "既存アーティストタグの有無と no-artist オプションに従って別に動作します。"
+    ),
     "preprocess_run_te": "キャッシュ実行 (VAE + テキスト)",
     "preprocess_run_pe": "PE キャッシュ実行",
     "preprocess_add_to_queue": "キューに追加",

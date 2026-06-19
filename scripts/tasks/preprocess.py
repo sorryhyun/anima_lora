@@ -97,6 +97,113 @@ def _preprocess_path_pattern_args(extra) -> list[str]:
     return ["--path_pattern", pattern]
 
 
+def _resolved_path_pattern_args(extra) -> list[str]:
+    for i, tok in enumerate(extra):
+        if tok in {"--path_pattern", "--path-pattern"}:
+            if i + 1 >= len(extra):
+                raise SystemExit(f"{tok} requires a value")
+            return ["--path_pattern", str(extra[i + 1])]
+    return _preprocess_path_pattern_args(extra)
+
+
+def _boolish(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
+    """Caption correction flags/config for preprocess-time TE caching.
+
+    CLI ARGS wins over env/config. Returned ``extra`` has these flags removed so
+    resize/cache scripts that do not know them never see unknown arguments.
+    """
+
+    from ._common import _path_overrides
+
+    overrides = _path_overrides()
+    config: dict[str, object] = {
+        "correct_order": _boolish(
+            os.environ.get("CAPTION_CORRECT_ORDER"),
+            _boolish(overrides.get("caption_correct_order"), False),
+        ),
+        "insert_no_artist": _boolish(
+            os.environ.get("CAPTION_INSERT_NO_ARTIST"),
+            _boolish(overrides.get("caption_insert_no_artist"), False),
+        ),
+        "trigger_word": str(
+            os.environ.get("CAPTION_TRIGGER_WORD")
+            if os.environ.get("CAPTION_TRIGGER_WORD") is not None
+            else overrides.get("caption_trigger_word", "")
+        ).strip(),
+        "trigger_at_front": _boolish(
+            os.environ.get("CAPTION_TRIGGER_AT_FRONT"),
+            _boolish(overrides.get("caption_trigger_at_front"), False),
+        ),
+    }
+
+    cleaned: list[str] = []
+    i = 0
+    while i < len(extra):
+        tok = extra[i]
+        if tok in {"--caption_correct_order", "--caption-correct-order"}:
+            config["correct_order"] = True
+            i += 1
+        elif tok in {"--no_caption_correct_order", "--no-caption-correct-order"}:
+            config["correct_order"] = False
+            i += 1
+        elif tok in {"--caption_insert_no_artist", "--caption-insert-no-artist"}:
+            config["insert_no_artist"] = True
+            i += 1
+        elif tok in {
+            "--no_caption_insert_no_artist",
+            "--no-caption-insert-no-artist",
+        }:
+            config["insert_no_artist"] = False
+            i += 1
+        elif tok in {"--caption_trigger_at_front", "--caption-trigger-at-front"}:
+            config["trigger_at_front"] = True
+            i += 1
+        elif tok in {
+            "--no_caption_trigger_at_front",
+            "--no-caption-trigger-at-front",
+        }:
+            config["trigger_at_front"] = False
+            i += 1
+        elif tok in {"--caption_trigger_word", "--caption-trigger-word"}:
+            if i + 1 >= len(extra):
+                raise SystemExit(f"{tok} requires a value")
+            config["trigger_word"] = str(extra[i + 1]).strip()
+            i += 2
+        else:
+            cleaned.append(tok)
+            i += 1
+    return config, cleaned
+
+
+def _caption_correction_enabled(config: dict[str, object]) -> bool:
+    return bool(config.get("correct_order"))
+
+
+def _caption_correction_args(config: dict[str, object]) -> list[str]:
+    args: list[str] = []
+    if config.get("insert_no_artist"):
+        args.append("--caption_insert_no_artist")
+    trigger = str(config.get("trigger_word") or "").strip()
+    if trigger:
+        args += ["--caption_trigger_word", trigger]
+    if config.get("trigger_at_front"):
+        args.append("--caption_trigger_at_front")
+    return args
+
+
 def _resize_crop_args(extra) -> list[str]:
     """Preprocess-only resize crop controls from the merged config chain."""
     if "--resize_crop_anchor" in extra or "--resize-crop-anchor" in extra:
@@ -314,6 +421,18 @@ def _resolve_lowres_filter(extra) -> tuple[list[str], list[str]]:
     return _min_pixels_args(), cleaned
 
 
+def _drop_option_with_value(extra, names: set[str]) -> list[str]:
+    cleaned: list[str] = []
+    i = 0
+    while i < len(extra):
+        if extra[i] in names:
+            i += 2
+            continue
+        cleaned.append(extra[i])
+        i += 1
+    return cleaned
+
+
 def cmd_preprocess_resize(extra):
     mp_args, extra = _resolve_lowres_filter(extra)
     tr_args = _target_res_args(extra)
@@ -396,10 +515,34 @@ def cmd_preprocess_vae(extra):
     )
 
 
-def cmd_preprocess_te(extra):
+def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = None):
+    if caption_config is None:
+        caption_config, extra = _caption_correction_config(extra)
+    if not _caption_correction_enabled(caption_config):
+        print("  [preprocess] caption correction disabled")
+        return
+    pp_args = _resolved_path_pattern_args(extra)
+    run(
+        [
+            PY,
+            "scripts/preprocess/correct_captions.py",
+            "--src",
+            _path("source_image_dir", "image_dataset"),
+            "--dst",
+            _path("resized_image_dir", "post_image_dataset/resized"),
+            "--recursive",
+            *pp_args,
+            *_caption_correction_args(caption_config),
+        ]
+    )
+
+
+def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
     # CAPTION_SHUFFLE_VARIANTS / CAPTION_TAG_DROPOUT_RATE let the GUI tune these;
     # env override → preprocess.toml → historical default (so non-GUI/non-config
     # invocations are unchanged).
+    if caption_config is None:
+        caption_config, extra = _caption_correction_config(extra)
     shuffle_variants = os.environ.get("CAPTION_SHUFFLE_VARIANTS") or _path(
         "caption_shuffle_variants", "4"
     )
@@ -413,18 +556,32 @@ def cmd_preprocess_te(extra):
     randomize_rate = os.environ.get("CAPTION_TAG_RANDOMIZE_RATE") or _path(
         "caption_tag_randomize_rate", "0.0"
     )
-    mp_args, extra = _resolve_lowres_filter(extra)
-    pp_args = _preprocess_path_pattern_args(extra)
+    caption_correct = _caption_correction_enabled(caption_config)
+    if caption_correct:
+        _, extra = _resolve_lowres_filter(extra)
+        extra = _drop_option_with_value(extra, {"--min_pixels"})
+        pp_args = _preprocess_path_pattern_args(extra)
+        cmd_preprocess_captions(extra, caption_config=caption_config)
+        text_dir = _path("resized_image_dir", "post_image_dataset/resized")
+        match_args: list[str] = []
+        mp_args: list[str] = ["--min_pixels", "0"]
+    else:
+        pp_args = _preprocess_path_pattern_args(extra)
+        text_dir = _path("source_image_dir", "image_dataset")
+        match_args = [
+            "--match_images_from",
+            _path("resized_image_dir", "post_image_dataset/resized"),
+        ]
+        mp_args, extra = _resolve_lowres_filter(extra)
     run(
         [
             PY,
             "scripts/preprocess/cache_text_embeddings.py",
             "--dir",
-            _path("source_image_dir", "image_dataset"),
+            text_dir,
             "--cache_dir",
             _path("lora_cache_dir", "post_image_dataset/lora"),
-            "--match_images_from",
-            _path("resized_image_dir", "post_image_dataset/resized"),
+            *match_args,
             "--qwen3",
             "models/text_encoders/qwen_3_06b_base.safetensors",
             "--dit",
@@ -530,6 +687,7 @@ _CAPTION_INDEX_VOCAB = "models/captioners/anima-tagger-v2/vocab.json"
 
 
 def cmd_preprocess(extra):
+    caption_config, extra = _caption_correction_config(extra)
     # PE features are NOT cached here by default (CMMD/DCW v4 chain `preprocess-pe`
     # explicitly) — keeps the default LoRA preprocess fast. Exception: a
     # `use_repa=true` variant aligns against PE every step, so they're chained at
@@ -547,7 +705,7 @@ def cmd_preprocess(extra):
     downstream = _pop_resize_only_args(extra)
     _, vae_extra = _resolve_lowres_filter(downstream)
     cmd_preprocess_vae(vae_extra)
-    cmd_preprocess_te(downstream)
+    cmd_preprocess_te(downstream, caption_config=caption_config)
     # Caption index as a free by-product — consumed by the IP-Adapter pair sampler,
     # artist balancing, analytics, AND soft-tokens (which hard-errors without it).
     vocab = _path("caption_index_vocab", _CAPTION_INDEX_VOCAB)

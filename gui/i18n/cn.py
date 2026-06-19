@@ -72,6 +72,26 @@ STRINGS: dict[str, str] = {
         "直到首个 @artist 标记之前的标签 (含该标记) 永不丢弃。"
         "当随机变体数 ≤ 0 时忽略。"
     ),
+    "preprocess_caption_correct_order": "校正标注顺序",
+    "preprocess_caption_correct_order_tip": (
+        "将校正后的 .txt 标注保存到已调整大小的图像旁边，并用于文本编码器缓存。"
+        "不会修改原始源标注。"
+    ),
+    "preprocess_caption_insert_no_artist": "插入 @no-artist",
+    "preprocess_caption_insert_no_artist_tip": (
+        "启用标注顺序校正且没有作者标记时，在 artist 位置插入 @no-artist。"
+        "若触发词位于 artist 位置，则触发词优先，不插入 @no-artist。"
+    ),
+    "preprocess_caption_trigger_word": "触发词:",
+    "preprocess_caption_trigger_word_tip": (
+        "要放入校正标注的可选触发标签。未启用置顶时，它会放在现有作者标签"
+        "之前的 artist 位置。若要作为随机/丢弃保护用的作者标记，请包含 @。"
+    ),
+    "preprocess_caption_trigger_at_front": "触发词固定在最前",
+    "preprocess_caption_trigger_at_front_tip": (
+        "将触发词放在标注最前方。在此模式下，@no-artist 插入会根据现有作者"
+        "标签和 no-artist 选项单独处理。"
+    ),
     "preprocess_run_te": "运行缓存 (VAE + 文本)",
     "preprocess_run_pe": "运行 PE 缓存",
     "preprocess_add_to_queue": "加入队列",

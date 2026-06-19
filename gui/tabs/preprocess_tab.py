@@ -110,6 +110,10 @@ DEFAULT_RESIZE_BUCKET_RESOS: list[str] = []
 DEFAULT_RESIZE_CROP_MARGINS = {"top": 0.0, "right": 0.0, "bottom": 0.0, "left": 0.0}
 DEFAULT_TE_SHUFFLE_VARIANTS = 4
 DEFAULT_TE_TAG_DROPOUT = 0.1
+DEFAULT_CAPTION_CORRECT_ORDER = False
+DEFAULT_CAPTION_INSERT_NO_ARTIST = False
+DEFAULT_CAPTION_TRIGGER_WORD = ""
+DEFAULT_CAPTION_TRIGGER_AT_FRONT = False
 DEFAULT_SAM_PROMPTS = ("speech bubble", "text bubble")
 DEFAULT_SAM_THRESHOLD = 0.5
 DEFAULT_SAM_DILATE = 5
@@ -132,6 +136,10 @@ _GUI_PREPROCESS_KEYS = {
     "freefit_max_ratio",
     "caption_shuffle_variants",
     "caption_tag_dropout_rate",
+    "caption_correct_order",
+    "caption_insert_no_artist",
+    "caption_trigger_word",
+    "caption_trigger_at_front",
     "run_sam_mask",
     "run_mit_mask",
     "mask_path_pattern",
@@ -667,6 +675,58 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             ),
             self.dropout_edit,
         )
+
+        self.caption_correct_order_chk = QCheckBox(t("preprocess_caption_correct_order"))
+        self.caption_correct_order_chk.setToolTip(t("preprocess_caption_correct_order_tip"))
+        self.caption_correct_order_chk.setChecked(DEFAULT_CAPTION_CORRECT_ORDER)
+        text_form.addRow(
+            self._field_label(
+                "caption_correct_order",
+                t("preprocess_caption_correct_order"),
+            ),
+            self.caption_correct_order_chk,
+        )
+
+        self.caption_insert_no_artist_chk = QCheckBox(
+            t("preprocess_caption_insert_no_artist")
+        )
+        self.caption_insert_no_artist_chk.setToolTip(
+            t("preprocess_caption_insert_no_artist_tip")
+        )
+        self.caption_insert_no_artist_chk.setChecked(DEFAULT_CAPTION_INSERT_NO_ARTIST)
+        text_form.addRow(
+            self._field_label(
+                "caption_insert_no_artist",
+                t("preprocess_caption_insert_no_artist"),
+            ),
+            self.caption_insert_no_artist_chk,
+        )
+
+        self.caption_trigger_word_edit = QLineEdit(DEFAULT_CAPTION_TRIGGER_WORD)
+        self.caption_trigger_word_edit.setPlaceholderText("@trigger")
+        self.caption_trigger_word_edit.setToolTip(t("preprocess_caption_trigger_word_tip"))
+        text_form.addRow(
+            self._field_label(
+                "caption_trigger_word",
+                t("preprocess_caption_trigger_word"),
+            ),
+            self.caption_trigger_word_edit,
+        )
+
+        self.caption_trigger_at_front_chk = QCheckBox(
+            t("preprocess_caption_trigger_at_front")
+        )
+        self.caption_trigger_at_front_chk.setToolTip(
+            t("preprocess_caption_trigger_at_front_tip")
+        )
+        self.caption_trigger_at_front_chk.setChecked(DEFAULT_CAPTION_TRIGGER_AT_FRONT)
+        text_form.addRow(
+            self._field_label(
+                "caption_trigger_at_front",
+                t("preprocess_caption_trigger_at_front"),
+            ),
+            self.caption_trigger_at_front_chk,
+        )
         text_box.setLayout(text_form)
         form_layout.addWidget(text_box)
 
@@ -865,6 +925,18 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             "caption_tag_dropout_rate",
             settings.get("caption_tag_dropout_rate", DEFAULT_TE_TAG_DROPOUT),
         )
+        caption_correct_order = meta.get(
+            "caption_correct_order", DEFAULT_CAPTION_CORRECT_ORDER
+        )
+        caption_insert_no_artist = meta.get(
+            "caption_insert_no_artist", DEFAULT_CAPTION_INSERT_NO_ARTIST
+        )
+        caption_trigger_word = meta.get(
+            "caption_trigger_word", DEFAULT_CAPTION_TRIGGER_WORD
+        )
+        caption_trigger_at_front = meta.get(
+            "caption_trigger_at_front", DEFAULT_CAPTION_TRIGGER_AT_FRONT
+        )
         run_sam_mask = meta.get(
             "run_sam_mask",
             settings.get("run_sam_mask", DEFAULT_RUN_SAM_MASK),
@@ -904,6 +976,10 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             self.freefit_max_ratio_spin.setValue(float(freefit_max_ratio))
             self.shuffle_spin.setValue(int(shuffle_variants))
             self.dropout_edit.setText(f"{float(tag_dropout):g}")
+            self.caption_correct_order_chk.setChecked(bool(caption_correct_order))
+            self.caption_insert_no_artist_chk.setChecked(bool(caption_insert_no_artist))
+            self.caption_trigger_word_edit.setText(str(caption_trigger_word or ""))
+            self.caption_trigger_at_front_chk.setChecked(bool(caption_trigger_at_front))
             self.run_sam_mask_chk.setChecked(bool(run_sam_mask))
             self.mask_path_pattern_edit.setText(str(mask_path_pattern or "*"))
             self._set_rule_cards(mask_rules)
@@ -1009,6 +1085,10 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             self.freefit_max_ratio_spin,
             self.shuffle_spin,
             self.dropout_edit,
+            self.caption_correct_order_chk,
+            self.caption_insert_no_artist_chk,
+            self.caption_trigger_word_edit,
+            self.caption_trigger_at_front_chk,
             self.run_sam_mask_chk,
             self.mask_path_pattern_edit,
             self.run_mit_mask_chk,
@@ -1275,6 +1355,16 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         return {
             "CAPTION_SHUFFLE_VARIANTS": str(int(self.shuffle_spin.value())),
             "CAPTION_TAG_DROPOUT_RATE": self.dropout_edit.text().strip(),
+            "CAPTION_CORRECT_ORDER": (
+                "1" if self.caption_correct_order_chk.isChecked() else "0"
+            ),
+            "CAPTION_INSERT_NO_ARTIST": (
+                "1" if self.caption_insert_no_artist_chk.isChecked() else "0"
+            ),
+            "CAPTION_TRIGGER_WORD": self.caption_trigger_word_edit.text().strip(),
+            "CAPTION_TRIGGER_AT_FRONT": (
+                "1" if self.caption_trigger_at_front_chk.isChecked() else "0"
+            ),
             "PREPROCESS_PATH_PATTERN": (
                 self.preprocess_path_pattern_edit.text().strip()
                 or DEFAULT_PREPROCESS_PATH_PATTERN
@@ -1292,6 +1382,10 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             "resize_crop_margins": self._resize_crop_margins(),
             # Free-fit is the only resize mode; only the max-ratio clamp is tunable.
             "freefit_max_ratio": float(self.freefit_max_ratio_spin.value()),
+            "caption_correct_order": self.caption_correct_order_chk.isChecked(),
+            "caption_insert_no_artist": self.caption_insert_no_artist_chk.isChecked(),
+            "caption_trigger_word": self.caption_trigger_word_edit.text().strip(),
+            "caption_trigger_at_front": self.caption_trigger_at_front_chk.isChecked(),
         }
 
     def preprocess_config_snapshot(self) -> dict[str, object]:
@@ -1468,6 +1562,30 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             meta.pop("caption_tag_dropout_rate", None)
         else:
             meta["caption_tag_dropout_rate"] = float(dropout)
+
+        caption_correct_order = self.caption_correct_order_chk.isChecked()
+        if caption_correct_order == DEFAULT_CAPTION_CORRECT_ORDER:
+            meta.pop("caption_correct_order", None)
+        else:
+            meta["caption_correct_order"] = caption_correct_order
+
+        caption_insert_no_artist = self.caption_insert_no_artist_chk.isChecked()
+        if caption_insert_no_artist == DEFAULT_CAPTION_INSERT_NO_ARTIST:
+            meta.pop("caption_insert_no_artist", None)
+        else:
+            meta["caption_insert_no_artist"] = caption_insert_no_artist
+
+        trigger_word = self.caption_trigger_word_edit.text().strip()
+        if trigger_word == DEFAULT_CAPTION_TRIGGER_WORD:
+            meta.pop("caption_trigger_word", None)
+        else:
+            meta["caption_trigger_word"] = trigger_word
+
+        trigger_at_front = self.caption_trigger_at_front_chk.isChecked()
+        if trigger_at_front == DEFAULT_CAPTION_TRIGGER_AT_FRONT:
+            meta.pop("caption_trigger_at_front", None)
+        else:
+            meta["caption_trigger_at_front"] = trigger_at_front
 
         if include_mask:
             mask_path_pattern = (

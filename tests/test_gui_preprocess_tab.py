@@ -218,6 +218,55 @@ def test_preprocess_overrides_carry_freefit_max_ratio():
             tab.deleteLater()
 
 
+def test_preprocess_tab_caption_options_round_trip_to_variant():
+    from gui import _load
+
+    tab = None
+    with _temporary_custom_variant("__pytest_preprocess_caption_options__") as (
+        variant,
+        path,
+    ):
+        tab = _make_tab()
+        tab.set_variant(variant, method="lora")
+
+        tab.caption_correct_order_chk.setChecked(True)
+        tab.caption_insert_no_artist_chk.setChecked(True)
+        tab.caption_trigger_word_edit.setText("@dataset-trigger")
+        tab.caption_trigger_at_front_chk.setChecked(True)
+
+        assert tab._save_all()
+        meta = _load(path)["variant"]
+        assert meta["caption_correct_order"] is True
+        assert meta["caption_insert_no_artist"] is True
+        assert meta["caption_trigger_word"] == "@dataset-trigger"
+        assert meta["caption_trigger_at_front"] is True
+
+        env = tab.preprocess_env()
+        assert env["CAPTION_CORRECT_ORDER"] == "1"
+        assert env["CAPTION_INSERT_NO_ARTIST"] == "1"
+        assert env["CAPTION_TRIGGER_WORD"] == "@dataset-trigger"
+        assert env["CAPTION_TRIGGER_AT_FRONT"] == "1"
+
+        overrides = tab.preprocess_overrides()
+        assert overrides["caption_correct_order"] is True
+        assert overrides["caption_insert_no_artist"] is True
+        assert overrides["caption_trigger_word"] == "@dataset-trigger"
+        assert overrides["caption_trigger_at_front"] is True
+
+        tab.caption_correct_order_chk.setChecked(False)
+        tab.caption_insert_no_artist_chk.setChecked(False)
+        tab.caption_trigger_word_edit.clear()
+        tab.caption_trigger_at_front_chk.setChecked(False)
+        tab.set_variant(variant, method="lora")
+        assert tab.caption_correct_order_chk.isChecked()
+        assert tab.caption_insert_no_artist_chk.isChecked()
+        assert tab.caption_trigger_word_edit.text() == "@dataset-trigger"
+        assert tab.caption_trigger_at_front_chk.isChecked()
+
+        if tab is not None:
+            tab.deleteLater()
+
+
 def test_masking_task_reads_gui_sam_config_snapshot(monkeypatch):
     from scripts.tasks import masking
 

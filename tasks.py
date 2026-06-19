@@ -207,6 +207,10 @@ COMMANDS = {
     ),
     "preprocess-vae": (preprocess.cmd_preprocess_vae, "Cache VAE latents"),
     "preprocess-te": (preprocess.cmd_preprocess_te, "Cache text encoder embeddings"),
+    "preprocess-captions": (
+        preprocess.cmd_preprocess_captions,
+        "Write corrected caption sidecars next to resized preprocessing images",
+    ),
     "preprocess-pe": (
         preprocess.cmd_preprocess_pe,
         "Cache PE-Core vision-encoder features into the LoRA cache dir. "

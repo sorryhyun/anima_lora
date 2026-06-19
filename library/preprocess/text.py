@@ -239,6 +239,18 @@ def _cache_has_randomized(cache_path: Path) -> bool:
         return False
 
 
+def _cache_is_current(image_path: Path, cache_path: Path) -> bool:
+    if not cache_path.exists():
+        return False
+    caption_path = image_path.with_suffix(".txt")
+    if not caption_path.exists():
+        return True
+    try:
+        return cache_path.stat().st_mtime >= caption_path.stat().st_mtime
+    except OSError:
+        return False
+
+
 def _walk_te_candidates(
     data_dir: Path,
     *,
@@ -350,7 +362,9 @@ def count_pending_text(
     if overwrite:
         return len(candidates), len(candidates)
     pending = sum(
-        1 for p in candidates if not _te_cache_path(p, cache_dir, data_dir).exists()
+        1
+        for p in candidates
+        if not _cache_is_current(p, _te_cache_path(p, cache_dir, data_dir))
     )
     return pending, len(candidates)
 
@@ -488,7 +502,7 @@ def cache_text_embeddings(
             # randomize rate / variant count, which the existence check can't see).
             if (
                 not overwrite
-                and cache_path.exists()
+                and _cache_is_current(img_path, cache_path)
                 and not (want_randomized and not _cache_has_randomized(cache_path))
             ):
                 stats.skipped += 1

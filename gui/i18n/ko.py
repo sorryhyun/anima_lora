@@ -70,6 +70,29 @@ STRINGS: dict[str, str] = {
         "첫 번째 @artist 마커까지의 태그는 절대 드롭되지 않습니다. "
         "셔플 변형 수가 0 이하이면 무시됩니다."
     ),
+    "preprocess_caption_correct_order": "캡션 순서 교정",
+    "preprocess_caption_correct_order_tip": (
+        "교정된 .txt 캡션을 리사이즈 이미지 옆에 저장하고 텍스트 인코더 "
+        "캐싱에 사용합니다. 원본 소스 캡션은 수정하지 않습니다."
+    ),
+    "preprocess_caption_insert_no_artist": "@no-artist 삽입",
+    "preprocess_caption_insert_no_artist_tip": (
+        "캡션 순서 교정이 켜져 있을 때 작가 마커가 없으면 artist 위치에 "
+        "@no-artist를 넣습니다. 트리거 워드가 artist 위치에 있으면 "
+        "트리거를 우선하며 @no-artist는 넣지 않습니다."
+    ),
+    "preprocess_caption_trigger_word": "트리거 워드:",
+    "preprocess_caption_trigger_word_tip": (
+        "교정 캡션에 배치할 선택 트리거 태그입니다. 맨 앞 고정 옵션이 "
+        "꺼져 있으면 기존 작가 태그보다 앞의 artist 위치에 둡니다. "
+        "셔플/드롭아웃 보호용 작가 마커처럼 쓰려면 @를 포함하세요."
+    ),
+    "preprocess_caption_trigger_at_front": "트리거를 맨 앞에 고정",
+    "preprocess_caption_trigger_at_front_tip": (
+        "트리거 워드를 캡션의 가장 앞에 둡니다. 이 모드에서는 "
+        "@no-artist 삽입이 기존 작가 태그 유무와 no-artist 옵션에 따라 "
+        "별도로 동작합니다."
+    ),
     "preprocess_run_te": "캐싱 실행 (VAE + 텍스트)",
     "preprocess_run_pe": "PE 캐싱 실행",
     "preprocess_add_to_queue": "큐에 추가",

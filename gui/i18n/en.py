@@ -73,6 +73,30 @@ STRINGS: dict[str, str] = {
         "including the first @artist marker are never dropped. Ignored when "
         "shuffle variants ≤ 0."
     ),
+    "preprocess_caption_correct_order": "Correct caption order",
+    "preprocess_caption_correct_order_tip": (
+        "Write corrected .txt captions next to resized images and use them for "
+        "text-encoder caching. Original source captions are not modified."
+    ),
+    "preprocess_caption_insert_no_artist": "Insert @no-artist",
+    "preprocess_caption_insert_no_artist_tip": (
+        "When caption order correction is enabled, insert @no-artist at the "
+        "artist slot only when there is no artist marker. A trigger word in the "
+        "artist slot takes priority and suppresses @no-artist."
+    ),
+    "preprocess_caption_trigger_word": "Trigger word:",
+    "preprocess_caption_trigger_word_tip": (
+        "Optional trigger tag to move into the corrected caption. With the "
+        "front option off it is placed in the artist slot before existing "
+        "artist tags. Include @ if you want it to behave as an artist marker "
+        "for shuffle/dropout protection."
+    ),
+    "preprocess_caption_trigger_at_front": "Keep trigger first",
+    "preprocess_caption_trigger_at_front_tip": (
+        "Place the trigger word at the very front of the caption. In this mode "
+        "@no-artist insertion follows the normal no-artist option and existing "
+        "artist tags."
+    ),
     "preprocess_run_te": "Run caching (VAE + text)",
     "preprocess_run_pe": "Run PE caching",
     "preprocess_add_to_queue": "Add to queue",
