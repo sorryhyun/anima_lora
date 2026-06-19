@@ -162,6 +162,16 @@ def test_variants_v0_byte_identical_when_no_sentinel():
     assert out[0] == raw
 
 
+def test_direct_te_caption_strips_sentinel_without_normalizing_clean_caption():
+    from library.preprocess.text import _strip_no_artist_sentinel_from_caption
+
+    assert _strip_no_artist_sentinel_from_caption(
+        f"{NO_ARTIST_SENTINEL}, blue hair, 1girl"
+    ) == "blue hair, 1girl"
+    raw = "@sincos,blue hair  ,1girl"
+    assert _strip_no_artist_sentinel_from_caption(raw) == raw
+
+
 def test_variants_strip_sentinel_after_dropout():
     random.seed(0)
     # High dropout rate to exercise the kept-list path.

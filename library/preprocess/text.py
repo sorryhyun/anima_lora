@@ -172,6 +172,16 @@ def generate_caption_variants(
     return variants
 
 
+def _strip_no_artist_sentinel_from_caption(caption: str) -> str:
+    from library.anima import training as anima_train_utils
+
+    sentinel = anima_train_utils.NO_ARTIST_SENTINEL
+    tags = [t.strip() for t in caption.split(",")]
+    if sentinel not in tags:
+        return caption
+    return ", ".join(anima_train_utils.strip_no_artist_sentinel(tags))
+
+
 def _encode_batch(
     captions: list[str],
     tokenize_strategy,
@@ -446,6 +456,7 @@ def cache_text_embeddings(
             caption = ""
         if caption_transform is not None:
             caption = caption_transform(caption)
+        caption = _strip_no_artist_sentinel_from_caption(caption)
         entries.append((p, caption))
 
     stats = PreprocessStats(seen=len(entries))
