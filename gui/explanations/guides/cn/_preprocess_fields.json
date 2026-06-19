@@ -6,7 +6,7 @@
   "caption_tag_dropout_rate": "仅应用于v1..v(N-1)洗牌变体的逐标签丢弃概率。第一个@artist标记之前的标签不会被丢弃 — 作者标签结构上重要，评级/角色/系列前缀对顺序敏感。洗牌变体≤0时忽略。典型值：0.05–0.15。越高LoRA对缺失标签越鲁棒，但可能稀释信号。",
   "caption_correct_order": "启用后，预处理会读取源 .txt 标注，将其校正为 Anima 顺序，并把校正后的 .txt 保存到已调整大小的图像旁边。不会修改原始标注。文本编码器缓存会读取这些校正后的已调整大小标注。",
   "caption_insert_no_artist": "启用标注校正且没有作者标记时，在 artist 位置插入 @no-artist。若触发词位于 artist 位置，则触发词优先，不插入 @no-artist。",
-  "caption_trigger_word": "标注校正时要放置的可选触发标签。未启用「触发词固定在最前」时，它会放在现有作者标签之前的 artist 位置。若要在随机/丢弃边界中作为 artist 标记，请包含 @。下划线会规范化为空格。",
+  "caption_trigger_word": "标注校正时要放置的可选触发标签。未启用「触发词固定在最前」时，它会放在现有作者标签之前的 artist 位置。若要在随机/丢弃边界中作为 artist 标记，请包含 @。触发词中的下划线会保留。",
   "caption_trigger_at_front": "将触发词放在校正后标注的最前方。在此模式下 artist 位置按普通规则处理，因此启用 no-artist 选项且没有作者标记时可能会添加 @no-artist。",
   "run_sam_mask": "'运行遮罩'时是否运行SAM3气泡分割。取消勾选则完全跳过SAM — 当SAM在数据集上产生误检，或只需要MIT的文字检测时很有用。SAM和MIT都取消勾选时，运行按钮被禁用。",
   "run_mit_mask": "'运行遮罩'时是否运行MIT/ComicTextDetector文字分割。取消勾选则跳过MIT — 对于MIT先验无效的非漫画数据集，或快速迭代仅SAM配置时很有用。SAM和MIT都取消勾选时，运行按钮被禁用。",

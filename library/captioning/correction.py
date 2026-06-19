@@ -169,13 +169,10 @@ def correct_caption(
     }
     unknown: list[str] = []
     seen: set[str] = set()
-    trigger = normalize_tag(options.trigger_word) if options.trigger_word.strip() else ""
-    trigger_key = tag_key(trigger) if trigger else ""
+    trigger = options.trigger_word.strip()
 
     for tag in tags:
         key = tag_key(tag)
-        if trigger_key and key == trigger_key:
-            continue
         if key in seen:
             continue
         seen.add(key)

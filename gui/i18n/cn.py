@@ -86,7 +86,7 @@ STRINGS: dict[str, str] = {
     "preprocess_caption_trigger_word_tip": (
         "要放入校正标注的可选触发标签。未启用置顶时，它会放在现有作者标签"
         "之前的 artist 位置。若要作为随机/丢弃保护用的作者标记，请包含 @。"
-        "下划线会规范化为空格。"
+        "触发词中的下划线会保留。"
     ),
     "preprocess_caption_trigger_at_front": "触发词固定在最前",
     "preprocess_caption_trigger_at_front_tip": (
