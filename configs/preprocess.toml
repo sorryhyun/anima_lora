@@ -31,6 +31,14 @@ caption_tag_dropout_rate = 0.1
 # Override: make preprocess ARGS="--caption_tag_randomize_rate 0.2"
 caption_tag_randomize_rate = 0.0
 
+# σ-demote sibling latents (sigma_lowres Phase 1b). true = after every VAE pass
+# (`make preprocess` / `preprocess-vae`) also emit the demoted_{H}x{W} keys the
+# `--sigma_lowres` trainer swaps to, on the measured-safe 1024:896 route — so the
+# sibling cache never goes stale as images are added. A "NATIVE:DEMOTE" string
+# picks another route (probe it first — 1024:896 is the only measured-safe one).
+# false = emit only via the explicit `make preprocess-demote`. Env: SIGMA_DEMOTE.
+sigma_demote = false
+
 # Preprocess input filter. drop_lowres_images = false keeps every image; otherwise
 # images under min_pixels are skipped at resize/VAE/TE. Override per-run:
 #   make preprocess ARGS="--min_pixels 0 | --no_drop_lowres | --drop_lowres"

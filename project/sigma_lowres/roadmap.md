@@ -43,7 +43,8 @@ material). 512 was already closed (Resid_512 ≈ 0.22). Safe set unchanged:
 
 ## YaRN-banded gate-widening probe for 1024→896 **[RUN 2026-07-27 — no gate widening; the owed retune was superseded by the SigMa gate probe below]**
 
-Outcome (`bench/results/20260727-1421/`, full read in `bench/report.md`):
+Outcome (`bench/results/20260727-1421/`, full read in
+`bench/yarnsig_report.md`):
 between the pre-registered branches. (1)'s improvement leg passed at
 σ=0.59 (paired yarn−896 −0.050, 2.1 SEM) but the **in-band leg failed
 everywhere** (yarn−reenc +0.06–0.19, ≥3.4 SEM out at every bin σ ≤ 0.65)
@@ -79,8 +80,8 @@ regardless of mid-σ behavior.
 
 ## SigMa σ-gated YaRN boundaries **[RUN 2026-07-27 — PASS both legs; yarnsig = the Phase-1b refinement candidate]**
 
-Outcome (`bench/results/20260727-1639/`, full read in `bench/report.md`
-§"SigMa σ-gated YaRN boundaries"): liability leg PASS (+0.033 ± 0.025 at
+Outcome (`bench/results/20260727-1639/`, full read in
+`bench/yarnsig_report.md` §"SigMa σ-gated YaRN boundaries"): liability leg PASS (+0.033 ± 0.025 at
 σ=0.21, within 2 SEM; static yarn replicated +0.079 in-pool → gate cut it
 ~58%, residual trend noted), preservation leg PASS (yarnsig ≈ yarn at
 σ=0.59 + endpoint; best/most-stable arm at the endpoint). Per
@@ -131,6 +132,85 @@ the gate params; comparator is **static yarn**, not PI):
    cannot beat 896's own S1 below the gate (in-band vs reenc at σ≤0.46 is
    reported but not a pass criterion). Gate stays σ>0.5 regardless.
 
+## yarnsig 1024→768 rescue probe **[PRE-REGISTERED 2026-07-27]**
+
+Motivation: G11 closed the 768 route against **uniform PI** only; the
+YaRN-banded probe then refuted that premise's generalization at 896 —
+yarn beats PI by −0.090 ± 0.018 (5 SEM) in-window, i.e. frequency
+selectivity avoids exactly the off-manifold penalty that closed G11. And
+G10 puts the largest erasable RoPE share of any edge at 768 (Floor_768
+≈ RoPE-dominated at σ=1). Frequency-selective alignment has never been
+measured at 768. This is NOT a PI re-proposal (G11's "do not re-propose
+trainer-side pi-rope" stands — yarn keeps high-frequency bands at native
+spacing, the property uniform PI lacked).
+
+Priors are against a full rescue: yarn's paired shave at 896 was
+−0.03…−0.05 vs a 768 in-window excess of +0.09…+0.22 over reenc (G11
+leg 2). The probe either closes the alignment family at 768 with the
+right comparator, or finds the shave scales with the RoPE share.
+
+Run (mirrors G11's σ-resolved window bin-for-bin, + alignment arms;
+7 arms ≈ 2 h): `run_sigma_probe.py --adapter
+output/ckpt/anima_soup_sincos.safetensors --bins 4 --sigma_window 0.5,1.0
+--endpoint_bin --demote_edges 768 --pi_align --yarn_align 1,4
+--yarn_sigma_gate 0.35,2` (40 images × 8 draws/bin; bins ≈ 0.56 / 0.69 /
+0.81 / 0.94 + σ=1 endpoint; pi kept as the in-pool comparator; yarnsig ≈
+yarn in this window — μ ≥ 0.78 — included because it is the rope the
+trainer would actually ship).
+
+Pre-registered read (one shot; no α,β / γ,σ_c iteration):
+
+1. **Rescue leg**: gap_768yarn within 2 combined SEM of gap_reenc at any
+   bin σ < 0.875 AND paired yarn−768 negative at ≥ 2 SEM there → the 768
+   route conditionally REOPENS at that bin's σ (route 1024→768 @
+   σ>σ\*_yarn with yarnsig rope mandatory; 0.56× token cost), still
+   shippable only via the Phase-1b CMMD A/B. Both sub-legs required.
+2. **Mechanism leg** (no route implication): paired yarn−pi ≤ −2 SEM
+   in-window confirms frequency-selectivity generalizes to ratio 0.75;
+   paired yarn−768 ≤ −0.08 at any window bin (a shave that scales with
+   768's larger RoPE share instead of staying at 896's −0.05) is the
+   RoPE-share-scaling read even if leg 1 fails.
+3. **FAIL both** → the alignment family closes at 768 for good; safe set
+   unchanged; 768's in-window excess is attributed to capacity
+   (S1/Resid), completing the G11 leg-2 account.
+
+## yarnsig 1280→1024 gate probe **[PRE-REGISTERED 2026-07-27]**
+
+Resumes the deprioritized σ\*-localization run (partial rows
+`bench/results/20260726-2109/`) with alignment arms added: does
+frequency-selective alignment move the 1280→1024 crossover left from
+(0.625, 0.875) — ideally to ≤ 0.5625, letting the route share the
+896-route's single σ>0.5 threshold? At 896 yarn was NOT a gate-widener
+(its in-band leg failed vs reenc below the gate), but 1280→1024 is the
+opposite regime: the largest absolute target capacity ever probed (4116
+tokens — capacity, not ratio, governs the threshold per the 20260726
+probe), so plain-1024's S1 budget near σ\* is small and a −0.05-class
+alignment shave could plausibly flip a bin.
+
+Run (probe-local 1280 cache, production chains, TE symlinked; 6 arms ×
+8 draws ≈ 2.5 h): `run_sigma_probe.py --adapter
+output/ckpt/anima_soup_sincos.safetensors --tier 1280 --demote_edges 1024
+--data_root project/sigma_lowres/bench/probe1280_cache --bins 4
+--sigma_window 0.5,1.0 --endpoint_bin --draws_per_bin 8 --yarn_align 1,4
+--yarn_sigma_gate 0.35,2 --pool 8` (24 images; bins ≈ 0.56 / 0.69 / 0.81 /
+0.94 bracket the known σ\* interval; same (0.35, 2) gate — as-shipped
+rope, μ ≥ 0.78 in-window).
+
+Pre-registered read:
+
+1. **σ\* localization** (plain 1024 arm, banked regardless of yarn):
+   the first bin where gap_1024 sits within 2 combined SEM of gap_reenc
+   narrows σ\* from (0.625, 0.875) to ~0.125 resolution. Payoff map:
+   σ\* ≈ 0.65 → ~9% epoch saving on 1280-tier data, ≈ 0.75 → ~5%
+   (conditional on ever adopting a 1280 tier — corpus has none today).
+2. **Gate-widening leg**: at the lowest bin where plain 1024 is OUT of
+   band, paired yarn(sig)−1024 ≤ −2 SEM AND gap_1024yarn within 2 SEM of
+   gap_reenc → the route's gate moves left one bin with yarnsig rope
+   mandatory; reaching 0.5625 = single-threshold trainer simplification.
+3. **FAIL** (no bin flips) → yarnsig is not a gate-widener at 1280
+   either (consistent with 896); the run still banks read 1 and the
+   route keeps σ\*∈(0.625, 0.875) with plain rope.
+
 ## Phase 1b — trainer wiring **[BUILT 2026-07-26]** + the gate **[OPEN]**
 
 Wiring shipped opt-in (`--sigma_lowres`, route pinned to 1024→896 @ σ>0.5) —
@@ -144,7 +224,7 @@ discovery needed no changes at all.
 **yarnsig wiring [BUILT 2026-07-27] + in-vivo arm [RUN 2026-07-27 — benign]**:
 `--sigma_lowres_yarnsig` (bare = the probe's `1,4,0.35,2`) applies the
 SigMa-gated banded rope on demoted forwards only. Fifth paired tenth4s arm +
-rank-space ΔW read (`bench/report.md` §"yarnsig in-vivo arm",
+rank-space ΔW read (`bench/yarnsig_report.md` §"yarnsig in-vivo arm",
 `bench/compare_ckpt_dw.py` now the permanent instrument): base↔yarnsig
 0.319 ≈ base↔sigma 0.320 (no added displacement), sigma↔yarnsig 0.402 with
 the best late-block agreement of any pair — the rope footprint sits in the

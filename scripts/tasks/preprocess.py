@@ -143,6 +143,41 @@ def _boolish(value, default: bool = False) -> bool:
     return default
 
 
+def _sigma_demote_route(extra) -> str | None:
+    """The σ-demote route (``"N:D"``) when the demote emit is enabled, else None.
+
+    Enable with ``sigma_demote = true`` in ``configs/preprocess.toml`` (the
+    measured-safe ``1024:896`` route) or a ``"N:D"`` string to pick another
+    route (probe it first). Env ``SIGMA_DEMOTE`` wins over the merged config
+    (GUI auto-chain parity — the CONFIG_FILE snapshot strips preprocess-only
+    keys). An explicit ``--sigma_demote`` in ``ARGS`` means this invocation IS
+    a demote run already — never chain a second one.
+    """
+    if "--sigma_demote" in extra:
+        return None
+    raw = os.environ.get("SIGMA_DEMOTE")
+    if raw is None:
+        from ._common import _path_overrides
+
+        raw = _path_overrides().get("sigma_demote")
+    if raw is None or raw is False:
+        return None
+    if raw is True:
+        return "1024:896"
+    text = str(raw).strip()
+    if not text or text.lower() in {"0", "false", "no", "off"}:
+        return None
+    if text.lower() in {"1", "true", "yes", "on"}:
+        return "1024:896"
+    if ":" not in text:
+        print(
+            f"  [preprocess] ignoring sigma_demote={text!r} — expected "
+            'true/false or "NATIVE:DEMOTE" (e.g. "1024:896")'
+        )
+        return None
+    return text
+
+
 def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
     """Caption correction flags/config for preprocess-time TE caching.
 
@@ -554,6 +589,13 @@ def cmd_preprocess_vae(extra):
             *extra,
         ]
     )
+    # sigma_demote = true in preprocess.toml chains the demote emit here, so
+    # `make preprocess` / `preprocess-vae` keep the sibling keys current and a
+    # --sigma_lowres run never trains against a stale/missing demoted cache.
+    route = _sigma_demote_route(extra)
+    if route is not None:
+        print(f"  [preprocess] sigma_demote={route} → emitting demoted sibling latents")
+        cmd_preprocess_demote(["--sigma_demote", route, *extra])
 
 
 def cmd_preprocess_demote(extra):
@@ -563,6 +605,8 @@ def cmd_preprocess_demote(extra):
     key inside each 1024-tier image's existing native npz. Idempotent.
     Requires ``preprocess-vae`` to have run first. Pass ``ARGS="--sigma_demote
     N:D"`` to override the route (probe a new one before shipping it).
+    ``sigma_demote = true`` in ``configs/preprocess.toml`` chains this
+    automatically after every ``preprocess-vae`` / ``preprocess`` pass.
     """
     pp_args = _preprocess_path_pattern_args(extra)
     route_args = [] if "--sigma_demote" in extra else ["--sigma_demote", "1024:896"]

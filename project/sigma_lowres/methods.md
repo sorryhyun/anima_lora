@@ -16,7 +16,8 @@ The 1024→896 @ σ>0.5 route, wired end-to-end on the train.py path:
   discovery, reconcile, and every `{stem}_*_anima.npz` glob consumer are
   untouched; the key deliberately avoids the `latents_*` prefix (several
   readers grab the first `latents_*` key). Idempotent per-key; emit lives in
-  `library/preprocess/latents.py::cache_demoted_latents`.
+  `library/preprocess/latents.py::cache_demoted_latents`. `sigma_demote =  true` in `configs/preprocess.toml` (or env `SIGMA_DEMOTE`; a `"N:D"` string overrides the route) auto-chains the emit after every `preprocess-vae` /
+  `preprocess` pass so the sibling keys never go stale (added 2026-07-27).
 - **Shared grid derivation**: `library/datasets/buckets.py::demote_bucket_for`
   (+ `SIGMA_DEMOTE_ROUTE = (1024, 896)`) is the single pure function both the
   emit and the trainer fetch call — off-route shapes (native-896 originals)
@@ -47,7 +48,7 @@ The 1024→896 @ σ>0.5 route, wired end-to-end on the train.py path:
   flag = the probe-validated `1,4,0.35,2`): on demoted steps only, RoPE is
   built by `VideoRopePosition3DEmb.generate_embeddings_yarn` — the σ-gated
   YaRN banded alignment that PASSED both pre-registered legs in the SigMa
-  probe (`bench/report.md` §"SigMa σ-gated YaRN boundaries"). Spatial bands
+  probe (`bench/yarnsig_report.md` §"SigMa σ-gated YaRN boundaries"). Spatial bands
   with < α·μ(σ) rotations across the demoted extent get the full PI stretch
   to native coordinates, bands above β·μ(σ) keep native integer spacing,
   linear ramp between; μ(σ) = sigmoid(γ·[logit σ − logit σ_c]) with μ from

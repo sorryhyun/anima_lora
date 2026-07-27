@@ -89,6 +89,9 @@ gradient_accumulation_steps=1
 train_adaln = true
 adaln_rank = 16
 
+sigma_lowres = false
+sigma_lowres_yarnsig = "1,4,0.35,2"
+
 use_repa = false
 
 [general]
