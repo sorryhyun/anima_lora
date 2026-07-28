@@ -7,7 +7,8 @@ on a run that never exercised the hypothesis. **Arm 2 trained the same day
 with the gate open, and gate (c) — the decisive DirectEdit-free probe —
 PASSED: position-free identity retrieval demonstrated at b_offset +2/+3.**
 Next work item is gates (a) and (b) against the arm-2 checkpoint, engaged
-offsets ≈ +2…+4.
+offsets ≈ +2…+4. **Phase 2.5 (subject_edit) trained and its instruction
+probe PASSED 2026-07-26 — engaged at b_offset 0, see below.**
 
 ## Phase 2 — cross-image subject descriptor (one standard EasyControl train)
 
@@ -121,7 +122,7 @@ python project/directedit_ec/bench/run_subject_probe.py --n_pairs 3 \
   edit — answers Q2. **Run (c) first on any new arm**: it is cheap, has no
   composition confound, and a null there makes (a)/(b) uninterpretable.
 
-## Phase 2.5 — delta-caption edit descriptor (subject_edit; first arm queued 2026-07-25)
+## Phase 2.5 — delta-caption edit descriptor (subject_edit; instruction probe PASSED 2026-07-26)
 
 Mined, teacher-free path to *edit-instruction* semantics: same cross-image
 pairs as Phase 2, but the prompt is the **tag delta** between the captions —
@@ -159,10 +160,26 @@ e.g. eye-color flips on the same character). Training config = the arm-2
 open-gate recipe (`b_cond_init=-4`, `cond_res_scale=1.0`, ffn LoRA), 12
 epochs ≈ subject's optimizer-step count.
 
-Gate: needs its own edit-instruction probe (cond = A, prompt = mined delta,
-judged on whether the *instructed* changes land while identity holds — the
-subject probe only exercises retrieval). Bench artifact TBD after the first
-checkpoint; `run_subject_probe.py` stays the smoke check.
+Gate: its own edit-instruction probe (cond = A, prompt = mined delta, judged
+on whether the *instructed* changes land while identity holds — the subject
+probe only exercises retrieval). Bench artifact: `bench/run_edit_probe.py`
+(replays the training task; `--rating` filters pair draws by the Anima rating
+band, `--max_delta` caps instruction length for judgeability).
+
+**First arm RUN + probe PASSED (2026-07-26).** Train: 7860 steps / 12 epochs,
+loss 0.0781, clean; probed ckpt = epoch-12 final. Judged run:
+`bench/results/20260726-1033-phase2p5-edit-probe-sfw` (3 same-artist
+safe/sensitive pairs, offsets 0,2,3,4,6). Headline: **the adapter is engaged
+at the TRAINED point (b_offset 0)** — identity retrieval (halo, heterochromia,
+accessories) and instruction following (scene moves, clothing-state changes
+like "jacket partially removed") land simultaneously at b0, with the noec
+control proving both that tags alone miss the character and that the base TE
+reads `-tag` removals as attractors. Copy regime starts at +2, near-verbatim
+cond copy by +3 — the band is narrow but centered where inference runs by
+default. Systematic weakness: object *removals* mostly fail (cond objects
+survive their `-` tags). Full data: `bench/report.md#phase-25`. Owed next:
+held-out draw (train pairs = upper bound); removal-lever arm only if removal
+performance matters for the use case.
 
 ## Phase 3 — feed-forward editor (endgame, gated on Phase 2)
 
@@ -181,8 +198,11 @@ ceiling, questions.md Q3, bounds this).
   checkpoint exists (Q6) — retro-scores existing result dirs too.
 - Swap the manual hole box for the cfgdelta subject localizer (Q5) — small
   edit.py flag, benchable on the existing 1a set.
-- Paper go/no-go **after** the Phase-2 gate (Q7): if written, the matched-NFE
-  baseline table is the first work item, not the last.
+- Paper: **GO** (2026-07-26, Q7) — the Phase-2.5 result completes the
+  two-contribution story; matched-NFE baseline table is the first work item,
+  not the last. Ship track runs in parallel:
+  `docs/proposal/easyedit_comfy_node.md` (held-out validation = Phase 0 gate,
+  shared with the paper's Q10).
 
 ## Kill criteria
 
@@ -204,4 +224,5 @@ scoped. If BYG's Phase-0 gate ever passes, a BYG arm belongs in this bench.
 
 Proposal: `project/directedit_ec/initial_proposal.md` · Data:
 `project/directedit_ec/bench/report.md` · Memory: `project_directedit_ec_phase0` ·
-Recipe + component map: `methods.md`.
+Recipe + component map: `methods.md` · Shippable artifacts: `outcomes.md` ·
+EasyEdit ship proposal: `docs/proposal/easyedit_comfy_node.md`.

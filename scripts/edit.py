@@ -334,6 +334,37 @@ def parse_args() -> argparse.Namespace:
         "ψ_tar. The fill happens in pixel space, never on the latent. "
         "Requires --easycontrol_weight.",
     )
+    p.add_argument(
+        "--easycontrol_edit_only",
+        action="store_true",
+        help="Prime the EC cond KV cache AFTER inversion instead of before, "
+        "so the inversion pass runs the exact baseline DiT and only the edit "
+        "pass sees the adapter. Breaks the ψ_tar == ψ_src exact-recon "
+        "guarantee (the anchor residuals come from a different effective "
+        "model than the edit pass). Requires --easycontrol_weight.",
+    )
+    p.add_argument(
+        "--anchor_scale",
+        type=float,
+        default=1.0,
+        help="Global multiplier λ on the Δz anchor residuals in the edit pass "
+        "(1.0 = full anchor, 0 = unanchored generation from the inverted "
+        "init). The continuous composition↔edit dial for whole-image "
+        "instruction edits with no region mask; composes with --mask "
+        "(regional release on top of the scaled residual).",
+    )
+    p.add_argument(
+        "--easycontrol_invert_b_offset",
+        type=float,
+        default=None,
+        help="Use this b_cond offset during the INVERSION pass only; the edit "
+        "pass keeps --easycontrol_b_offset. b_cond is a live logit bias (not "
+        "baked into the KV cache), so the per-pass swap needs no re-priming. "
+        "E.g. invert in the copy regime (+2/+3 on subject_edit) so the cond "
+        "stream explains the source, then edit at the trained point. "
+        "Requires --easycontrol_weight; incompatible with "
+        "--easycontrol_edit_only (inversion has no cond there).",
+    )
 
     args = p.parse_args()
     args.compile = False
@@ -592,6 +623,18 @@ def main() -> None:
 
     if args.easycontrol_mask and not args.easycontrol_weight:
         raise SystemExit("--easycontrol_mask requires --easycontrol_weight")
+    if args.easycontrol_edit_only and not args.easycontrol_weight:
+        raise SystemExit("--easycontrol_edit_only requires --easycontrol_weight")
+    if args.easycontrol_invert_b_offset is not None:
+        if not args.easycontrol_weight:
+            raise SystemExit(
+                "--easycontrol_invert_b_offset requires --easycontrol_weight"
+            )
+        if args.easycontrol_edit_only:
+            raise SystemExit(
+                "--easycontrol_invert_b_offset is meaningless with "
+                "--easycontrol_edit_only (the inversion pass runs without cond)"
+            )
     if args.t_inj > 0 and args.compile_blocks:
         # V-injection monkey-patches Attention.forward at runtime, invalidating
         # dynamo's per-block graph; recompile cost > compile's speedup, so off
@@ -912,13 +955,20 @@ def main() -> None:
                 z_cond = vae.encode_pixels_to_latents(cond_t)
         else:
             z_cond = z_clean
-        ec_network.set_cond(z_cond.to(device, dtype=torch.bfloat16))
-        ec_network.precompute_cond_kv()
-        logger.info(
-            "EasyControl: cond KV cache primed from %s (cond latent %s).",
-            args.easycontrol_image or args.image,
-            tuple(z_cond.shape),
-        )
+        ec_z_cond = z_cond.to(device, dtype=torch.bfloat16)
+        if args.easycontrol_edit_only:
+            logger.info(
+                "EasyControl: cond priming DEFERRED to post-inversion "
+                "(--easycontrol_edit_only); inversion runs the baseline DiT."
+            )
+        else:
+            ec_network.set_cond(ec_z_cond)
+            ec_network.precompute_cond_kv()
+            logger.info(
+                "EasyControl: cond KV cache primed from %s (cond latent %s).",
+                args.easycontrol_image or args.image,
+                tuple(z_cond.shape),
+            )
 
     # Move VAE off-device for the DiT loop, bring it back for decode.
     vae.to("cpu")
@@ -968,9 +1018,27 @@ def main() -> None:
 
     # Inversion -> editing per variant. Hold all z_edits before re-mounting the
     # VAE so we do only one DiT-off / VAE-on swap.
+    # Per-pass b_cond offset: shift into the inversion-pass operating point at
+    # the top of each variant (before the FM probe, so it measures the
+    # inversion-pass model), revert right after invert().
+    ec_invert_shift = 0.0
+    if ec_network is not None and args.easycontrol_invert_b_offset is not None:
+        ec_invert_shift = float(args.easycontrol_invert_b_offset) - float(
+            args.easycontrol_b_offset or 0.0
+        )
+
     z_edits: list[tuple[Optional[str], torch.Tensor]] = []
     for variant, e_src, e_tar in variant_passes:
         tag = f"variant={variant}, " if variant else ""
+        if ec_network is not None and ec_invert_shift:
+            with torch.no_grad():
+                for b in ec_network.b_cond:
+                    b += ec_invert_shift
+            logger.info(
+                "EasyControl: inversion-pass b_offset=%s (shift %+.2f vs edit pass).",
+                args.easycontrol_invert_b_offset,
+                ec_invert_shift,
+            )
         if fm_grid is not None:
             fm = _fm_error_score(anima, z_clean, e_src, fm_grid[0], fm_grid[1])
             fm_rows.append(
@@ -998,6 +1066,10 @@ def main() -> None:
                 else "off"
             ),
         )
+        if ec_network is not None and args.easycontrol_edit_only:
+            # Baseline inversion: no cond state, patched Block.forward falls
+            # through to original_forward. Idempotent across variants.
+            ec_network.clear_cond()
         z_inv, delta_z = directedit.invert(
             anima=anima,
             z_clean=z_clean,
@@ -1006,6 +1078,16 @@ def main() -> None:
             sigmas=sigmas,
             guidance_scale=args.invert_guidance,
         )
+        if ec_network is not None and ec_invert_shift:
+            with torch.no_grad():
+                for b in ec_network.b_cond:
+                    b -= ec_invert_shift
+        if ec_network is not None and args.easycontrol_edit_only:
+            ec_network.set_cond(ec_z_cond)
+            ec_network.precompute_cond_kv()
+            logger.info(
+                "EasyControl: cond KV cache primed post-inversion (edit pass only)."
+            )
         t_inj_blocks = (
             _parse_t_inj_blocks(args.t_inj_blocks, len(anima.blocks))
             if args.t_inj > 0
@@ -1024,6 +1106,7 @@ def main() -> None:
             t_inj_blocks=t_inj_blocks,
             z_inv=z_inv if args.t_inj > 0 else None,
             mask=anchor_mask,
+            anchor_scale=args.anchor_scale,
             smc_cfg_state=smc_state,
         )
         z_edits.append((variant, z_edit))

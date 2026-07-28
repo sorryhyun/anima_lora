@@ -109,15 +109,64 @@ planned automatic source. Open: does a loose auto-box degrade the recipe
 Render judging caps phase gates at small n. Tag-readback
 (`docs/proposal/tag_readback_reward.md`, Phase 0a passed) would give a
 scalable edit-lands metric — blocked on a trained tagger checkpoint at bench
-time. Wire it into `run_bench.py` when available.
+time. Wire it into `run_bench.py` when available. **Paper-critical as of
+2026-07-26**: the delta-caption editor's natural metric IS tag readback
+(instructed additions present, removals absent, off-instruction tags
+unchanged) — per-tag precision/recall over the instruction, plus an identity
+metric on the untouched tags. Every quantitative table in the paper (Q7)
+wants this; prioritize the tagger checkpoint accordingly.
 
-## Q7 — Paper bar (decide after Phase 2)
+## Q7 — Paper bar (GO as of 2026-07-26 — Phase 2.5 completes the story)
 
-The novel claim: *a pretrained image-conditioning adapter's attention gate is
-a continuous preservation dial for flow-inversion editing, composing exactly
-with residual-anchored inversion.* Missing for a paper: matched-NFE external
-baselines (RF-Inversion / RF-Solver / FireFlow / FlowEdit), PIE-Bench,
-quantitative edit-success + identity metrics, and the Phase-2 adapter so the
-story isn't one off-label inpaint checkpoint. Per the FSG lesson
-(`project_fsg_golden_path_phase0`): no free-quality claims without the
-matched-NFE table.
+The claim is now two connected contributions, stronger than the original
+single-dial story:
+
+1. *A pretrained image-conditioning adapter's attention gate is a continuous
+   preservation dial for flow-inversion editing, composing exactly with
+   residual-anchored inversion* (Phases 0–1b, zero-training).
+2. *Retraining the same adapter on mined tag-delta instructions turns it into
+   a feed-forward instruction editor whose engaged band sits at the trained
+   operating point* (Phase 2.5) — inversion removed entirely, 1× NFE.
+
+The subject-vs-subject_edit contrast is the key ablation: same architecture,
+same open-gate recipe, same pair source — full-caption objective leaves the
+trained point inert (engagement only at hunted offsets), delta-caption
+objective (name-tag cancellation forcing identity through cond) opens it at
+b0. That isolates the *objective* as the mechanism. Supporting mechanism
+findings worth a section: `b_cond` never trains (Q8), the architectural
+aligned-cond copy path, removals-as-attractors in the base TE (noec
+controls).
+
+Missing, all evaluation (matched-NFE table FIRST, per the FSG lesson
+`project_fsg_golden_path_phase0`):
+
+- Inversion side: RF-Inversion / RF-Solver / FireFlow / FlowEdit at matched
+  NFE; PIE-Bench.
+- Instruction side: InstructPix2Pix-family baselines (IP2P, MagicBrush-tuned)
+  — note domain mismatch (photo-centric, natural-language instructions) and
+  handle honestly: report on their benches AND on an anima-domain tag bench.
+- Quantitative metrics via Q6 tag-readback + an identity metric; held-out
+  splits (Q10). Single-seed render-judged n=3 probes do not go in a paper.
+
+## Q9 — Why do object removals fail, and what is the lever? (new, 2026-07-26)
+
+Phase 2.5's one systematic weakness: `-tag` removals of cond-present objects
+mostly fail (ramune/orca/beads survive), while additions and state-changes
+land. The noec control shows the base TE reads `-x` as "x" — negation is
+entirely adapter-learned and is fighting both the text attractor and the cond
+stream's copy of the object. Candidate levers, none tested: removal-heavy
+pair mining (weight pairs by n_removals), a dedicated removal token in fresh
+vocabulary instead of the `-` prefix (TE-blind syntax may be the bottleneck),
+`cond_noise_max > 0` (weaken the cond copy), or instruction-side loss
+weighting on removal regions. Also open: do removals fail uniformly, or only
+for objects the cond renders saliently?
+
+## Q10 — Held-out generalization (new, 2026-07-26; gates the ship AND the paper)
+
+Every 2.5 verdict is on train pairs — an upper bound. Three widening rings,
+in order: (a) corpus images outside the pair manifest, (b) hand-written
+instructions (the user distribution — includes instruction styles mining
+never produces, e.g. removal-only), (c) out-of-corpus anime images. Ring (b)
+is the ship gate (`docs/proposal/easyedit_comfy_node.md` Phase 0); rings
+(a)+(c) with Q6 metrics are the paper's held-out split. A collapse at (a)
+means pair memorization — retrain with more pairs before anything ships.

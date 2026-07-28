@@ -1,5 +1,162 @@
 # directedit_ec — EasyControl cond stream as a learned preservation prior for DirectEdit
 
+## In-place instruction editing probes (2026-07-26)
+
+**Runs:** `results/20260726-{1129-inplace-edit-probe-sfw, 1145-inplace-lambda-sweep,
+1213-inplace-src0-probe, 1826-inplace-ecinvonly-probe}` (subject_edit adapter)
+plus twin_edit-e3 capability checks `…-1753-phase2p5-edit-probe-twinedit-e3` /
+`…-1758-inplace-probe-twinedit-e3` · **Bench:** `run_inplace_probe.py` (new —
+`--arms_spec` grammar: `kind/ec/off/lam/src/ioff/tar`; per-pass b via
+`--easycontrol_invert_b_offset`, `tar=caption` for base-model edit passes) ·
+3 same-artist train pairs (izuna / yanami / hoshino), seed 42, judgeability
+cap `max_delta 24`, rating safe+sensitive. All upper bounds: train pairs,
+single seed.
+
+### Verdict ladder
+
+1. **src="" fixes the wash-out** (1213): ψ_src=caption during inversion caused
+   the cross-pass conditioning mismatch; the shipped zero-training in-place
+   recipe is `ec=both, src="", λ0.5, b0` — instruction-only, composition-held.
+   Fails only on the trivially-copyable class (aligned-copy lock).
+2. **EC-inversion-only REFUTED** (1826): cond-engaged inversion (net b0) +
+   ~base edit pass (b −12) ≈ promptless base inversion on 2/3 pairs
+   (fm_error 0.088 vs 0.102; mse_vs_src within noise) and **wash-out on the
+   copyable pair** — EC-field Δz anchors don't replay under the base field
+   where cond dominated. Mismatch absorption is one-directional
+   (`--easycontrol_edit_only` = safe; the reverse = not).
+3. **The 1826 control is a new recipe**: base inversion (ψ_src="") +
+   full-caption ψ_tar + λ0.5 lands in-place edits with zero adapter, ~2–3×
+   closer to source than feed-forward EasyEdit. The old `inv_noec` failure
+   was ψ_tar=delta, not inversion.
+4. **twin_edit e3** (killed at step 7210/13380, epoch-3 save): feed-forward
+   instruction probe **passes at b0** on all 3 pairs (+2 = copy regime) —
+   open-gate recipe carried over, pairs off its training manifest. Under
+   inversion it copy-locks **harder** than subject_edit (yanami 0.0010 vs
+   0.0069) — aligned twins + empty-instruction identity no-ops teach exact
+   copy-through for precisely the src="" inversion configuration.
+
+5. **Minimal-edit probes** (`…-1847-inplace-glasses-min-edit`,
+   `…-1857-inplace-glasses-twinedit-e3`; `--delta_override glasses`,
+   `tar=srccap` = source caption + ", glasses"): NO mask-free recipe lands a
+   1-tag edit. subject_edit ff **loses identity entirely** (rich instructions
+   were load-bearing for cond retrieval; 1 tag = off its length distribution);
+   twin_edit-e3 ff is the mirror image — composition holds (mse 0.015–0.082
+   vs subject's 0.09–0.12) but the edit is ignored, output = slightly
+   degraded near-copy (the 25% empty-instruction no-ops plausibly teach
+   "short instruction ≈ copy"). Base-inv srccap arms re-confirm phase-1a:
+   the global anchor suppresses small edits at λ1 AND λ0.5 — minimal
+   in-place edits remain the mask recipe's (outcome 1) territory. Caveats:
+   e3 = half-trained; "glasses" may be off twin's pivot-tag distribution
+   (its home minimal edits are expression/text-removal pivots); hoshino is a
+   bad glasses case (source already wears eyewear on head).
+
+Roll-up table + division of labor: `../outcomes.md` §In-place editing surface
+map.
+
+## Phase 0 (aligned-pair arm): pair census (2026-07-26)
+
+**Run:** `results/20260726-1337-pair-census-full` (full corpus; smoke =
+`…-1315-pair-census-smoke`) · **Bench:** `run_pair_census.py` · **Spec:**
+`../easycontrol_request.md` §Phase 0 — the volume blocker nobody recorded for
+sanitize.
+
+One shared pass over `$CAPTION_CORPUS_DIR/retrieved` (15,780 images, 98
+artists): same-size prune → 8,671 embeddable → Stage-A/B twin match at
+sanitize's gates (sim 0.85 / match_frac 0.3 / cell 0.9) → **4,264 accepted
+twins**, then every twin scored against all four slices at once with
+**per-tag pivot** semantics (a slice tag counts when it's in exactly one
+member — i.e. exactly when it lands in the delta caption); sanitize's
+stricter set-level `tag_any` count recorded alongside.
+
+### Verdict: PASS — 2,349 usable twins → 4,698 post-doubling vs the ~600 floor
+
+| Slice | pairs | strict `tag_any` | artists | top pivots |
+|---|---|---|---|---|
+| expression | 1,828 | 303 | 66 | open mouth 745 · closed eyes 437 · tongue out 370 |
+| clothing_state | 650 | 371 | 60 | nude 326 · bottomless 125 · clothes lift 98 |
+| text_bubbles | 229 | 202 | 33 | speech bubble 132 · english text 71 · sound effects 51 |
+| object | 169 | 93 | 45 | holding 38 · gloves 27 · halo 26 |
+
+Findings against the request doc's priors:
+
+- **The slice priority inverts.** The doc ranked text/bubbles first ("known
+  to exist in volume") — at *pair* level it's third (229; still enough for
+  the Q9 removal probe at 458 post-doubling). Expression variants dominate
+  (1,828), clothing/state second (650) — the highest-value user slice is well
+  fed.
+- **Per-tag pivot is the volume unlock.** Set-level `tag_any` semantics would
+  have seen 969 pairs total vs 2,349 (expression 6× undercounted: both twins
+  usually carry *some* expression tag, so the set-level pivot fails exactly
+  where the per-tag delta is cleanest).
+- **Delta lengths sit inside the band, not far below it.** Median 13, p90 24,
+  92.2% ≤ `max_delta` 24 — the "twins should sit far below the corpus median
+  31" hope is only half-true; keep the cap and accept ~8% attrition.
+- **Saturation skew replicates sanitize.** 96.5% of pair members < 0.4 mean
+  HSV saturation (hist peak at 0.2) — `identity_saturation_min 0.4` for the
+  identity fill stays justified, unchanged.
+- Direction doubling is counted, not staged: doubling is a staging-time knob;
+  all counts above are per-twin.
+
+**Remaining Phase-0 items:** the by-eye pass over
+`results/20260726-1337-pair-census-full/spotcheck/<slice>/index.html` (20
+sheets per slice: alignment quality + delta sanity), which is a human gate;
+caption generation itself is exercised and recorded per-pair in
+`pairs_manifest.json`. If the eyeball pass holds, the aligned-pair arm is
+unblocked for staging + training per the request doc's objective table.
+
+## Phase 2.5: delta-caption edit descriptor — instruction probe (2026-07-26)
+
+**Train:** `anima_easycontrol_subject_edit`, 7860 steps / 12 epochs over the
+655-pair set (2h55m, `loss/epoch_average` 0.0781, clean). Arm-2 open-gate
+recipe: `b_cond_init=-4.0`, `cond_res_scale=1.0`, `apply_ffn_lora=1`,
+drop_p 0.05, lr 2e-5. Probed checkpoint = the epoch-12 final.
+
+**Runs:** `results/20260726-1023-phase2p5-edit-probe` (first draw — all three
+pairs landed nsfw/explicit, kept for the record, not judged) ·
+`results/20260726-1033-phase2p5-edit-probe-sfw` (judged: `--rating
+safe,sensitive --pair_scope same_artist --max_delta 24`; izuna (swimsuit) /
+yanami anna / hoshino (swimsuit), offsets 0,2,3,4,6, seed 42). Bench:
+`run_edit_probe.py` — replays the training task (cond = A, prompt = mined
+delta caption), noec control + one arm per offset.
+
+### Verdict: instruction probe PASSES at the TRAINED point — b0 is the operating band
+
+The decisive difference from the subject descriptor: **the adapter is engaged
+at b_offset 0**, where subject-v2's probe was inert. The delta objective
+forces identity through the cond stream (the name tag cancels out of every
+prompt), and it shows:
+
+- **noec control** — proves both starvations at once. Renders miss the
+  character (izuna: blue eyes/no halo; hoshino: no heterochromia/no halo), and
+  the `-`-prefixed removals act as *attractors* (noec izuna holds the ramune
+  the prompt says to remove; noec hoshino keeps orca + sunglasses + wading):
+  the base TE reads `-ramune` as "ramune". Negation semantics exist only in
+  the adapter.
+- **ec_b0** — identity retrieval + instruction following simultaneously.
+  Izuna: correct eyes/halo/scarf/visor/ear coloring, scene moved
+  chair→wading-in-water per the instruction. Hoshino: exact heterochromia
+  (orange/blue), halo, and the *clothing-state* instruction "jacket partially
+  removed" lands (cond wears it on; render slips it off the shoulders), plus
+  tinted eyewear + frilled bikini + skin fang. Yanami: artist style + additions
+  land (arm up / armpits / white shirt / long hair).
+- **ec_b2 → b3** — the copy regime arrives almost immediately: +2 drifts back
+  toward the cond composition, +3 is a near-verbatim cond copy (izuna b3 =
+  cond's chair/ramune/signboard scene). The band is *narrow and centered at
+  the trained point* — no offset hunting needed, which is exactly what
+  shipping wants.
+
+**Systematic weakness: removals.** Additions and state-changes land; removals
+of *objects present in the cond* mostly fail across all three rows (ramune
+bottles, inflatable orca, hair beads survive their `-` tags). Plausible
+levers, untested: removal-heavy pair mining, higher removal weighting, or
+`cond_noise_max > 0`.
+
+**Caveats:** train pairs (upper bound — held-out draw still owed, e.g.
+`--seed` change or a held-out character split), single seed, render-judged
+n=3. The `-`-prefix syntax is TE-blind (noec shows it), so all negation logic
+is adapter-side — a fresh-vocabulary removal token is an open alternative if
+removal performance needs a lever.
+
 ## Phase 2: cross-image subject descriptor (2026-07-25)
 
 **Train:** `anima_easycontrol_subject`, 8928 steps / 8 epochs over the 1116-pair

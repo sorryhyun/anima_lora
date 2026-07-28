@@ -1,0 +1,123 @@
+# twin_edit — aligned-pair instruction-edit descriptor (arm 1 of
+# project/directedit_ec/easycontrol_request.md). Feed-forward in-place editor:
+# cond = source image, prompt = tag-delta instruction (`additions, -removals`),
+# target = the same image with only the instructed changes applied. Data =
+# aligned in-artist near-twins from the Phase-0 census (2,349 usable pairs,
+# bench/results/20260726-1337-pair-census-full), slice-balanced + direction-
+# doubled + identity no-ops. Recipe = sanitize's data/loss shape (aligned pairs,
+# cond_diff_loss, identity fill) × subject_edit's objective (delta captions,
+# caption_dropout 0, open-gate config) — both halves individually proven.
+#
+# Pipeline (staging is CPU symlinks + delta-caption .txt over the census
+# manifest — re-run the census first if the corpus changed):
+#   make easycontrol-staging    EASYADAPTER=twin_edit   # census manifest → pair tree
+#   make easycontrol-preprocess EASYADAPTER=twin_edit   # resize + VAE/TE + cond/
+#   make easycontrol            EASYADAPTER=twin_edit   # train
+# Gate: project/directedit_ec/bench/run_inplace_probe.py (aligned-lock flip at
+# b0 — the yanami-class cell every current checkpoint fails) + run_edit_probe.py.
+
+name = "twin_edit"
+
+# Staging knobs (CLI flags of easycontrol_adapters/tools/twin_edit_pairs.py win).
+[staging]
+manifest = 'project/directedit_ec/bench/results/20260726-1337-pair-census-full/pairs_manifest.json'
+image_dirs = ["{CAPTION_CORPUS_DIR}/retrieved"]  # must match the census run
+# Slice-balanced selection: priority order text_bubbles > clothing_state >
+# expression > object claims shared pairs first; per-slice cap counteracts the
+# expression dominance the census found (1,828 vs 169..650 elsewhere).
+slice_cap = 250
+min_delta = 1
+max_delta = 24            # instruction-length cap (census: 92% of pairs fit)
+identity_fraction = 0.25  # no-op share of the final tree (request doc §3)
+identity_saturation_min = 0.4  # census: mined members 96.5% below 0.4
+seed = 42
+
+# Resize + VAE/TE caching over the staged tree (near_twins preprocess pass).
+# The delta caption is the staged _no_tags .txt, so the TE pass encodes the
+# instruction directly into cache/ — no separate text cache. Shuffle variants
+# are fine (a tag instruction is order-free) but tag DROPOUT must stay 0:
+# dropping part of an instruction leaves the target unexplained (request §2).
+[preprocess]
+min_pixels = 0  # 0 = never drop a member (dropping one orphans its pair partner)
+recursive = true
+vae = 'models/vae/qwen_image_vae.safetensors'
+batch_size = 4
+chunk_size = 64
+qwen3 = 'models/text_encoders/qwen_3_06b_base.safetensors'
+dit = 'models/diffusion_models/anima-base-v1.0.safetensors'
+caption_shuffle_variants = 4
+caption_tag_dropout_rate = 0.0
+target_res = [896, 1024]
+
+# Training overrides for `make easycontrol EASYADAPTER=twin_edit` — the request
+# doc's objective table verbatim. REPA intentionally absent for arm 1 (optional
+# A/B, not load-bearing).
+[training]
+network_dim = 32
+network_alpha = 32
+network_args = [
+    "b_cond_init=-4.0",   # open-gate recipe: b_cond never trains, the init IS
+    "cond_scale=1.0",     # the operating point — engaged band must sit at b0
+    "apply_ffn_lora=1",
+    "cond_res_scale=1.0",
+]
+output_name = "anima_easycontrol_twin_edit"
+masked_loss = false
+learning_rate = 2e-5
+# ~870 twins post-band → ~1.7k direction-doubled examples + ~0.6k identity ≈
+# 2.3k steps/epoch; 6 epochs ≈ 14k optimizer steps (subject_edit-comparable).
+max_train_epochs = 6
+save_every_n_epochs = 3
+checkpointing_epochs = 3
+easycontrol_drop_p = 0.05          # the no-cond branch must stay sane
+easycontrol_cond_noise_max = 0.0   # >0 is the fallback A/B if copy pressure dominates
+# THE knob (request doc): sanitize's 1.0 baked its behavior in as a task prior;
+# 0 makes the edit prompt-driven. This line is the difference between
+# "sanitize v2" and "instruction editor".
+caption_dropout_rate = 0.0
+use_shuffled_caption_variants = true
+blocks_to_swap = 0
+# Diff-weighted FM loss (floor 0.2 / blur 1.5 / quantile 0.9 defaults): twins
+# are near-identical outside the edit; concentrates gradient on the change
+# instead of the copy-through the extended attention gives for free — the
+# anti-copy-lock loss shaping.
+cond_diff_loss = true
+# VRAM (16GB card, launches 2026-07-26): 0.7 alone OOMs at step 0 (14.6GiB);
+# 0.7 + aggressive recomputation OOMs at step ~918 when a worst-case bucket
+# first arrives (14.03GiB allocated + 0.66GiB fragmented, 34MiB short, with
+# expandable_segments already on). 0.3 is the easycontrol method's own shipped
+# value — deep-recompute region, buys the ~1.5GB of real headroom this
+# direction-doubled 896/1024 tree needs.
+activation_memory_budget = 0.3
+partitioner_aggressive_recomputation = true
+
+# === generated dataset blueprint (rewritten by the miner; do not edit below) ===
+# Aligned near-twin pairs wired as an EasyControl *instruction-edit* control
+# task. staging/ holds direction-doubled `{pair}-f|r_tags` / `_no_tags`
+# couples: `_tags` = the edit SOURCE (cond), `_no_tags` = the edit TARGET,
+# whose .txt is the TAG-DELTA instruction (additions + `-`-prefixed removals;
+# identity pairs carry an EMPTY instruction). The preprocess pass resizes into
+# `resized/`, VAE/TE-encodes into `cache/` (the delta caption is the staged
+# caption, so no separate text cache), and symlinks each `_tags` latent into
+# `cond/` under its `_no_tags` stem.
+#
+# Roles (EasyControl: cache_dir = denoising target, cond_cache_dir = condition):
+#   target = the `_no_tags` member; prompt = the delta instruction
+#   cond   = the paired `_tags` latent (the pre-edit image)
+# So the adapter learns: given THIS image and THIS instruction, apply exactly
+# the instructed changes in place. `{name}` interpolates at train time.
+
+[general]
+caption_extension = '.txt'
+
+[[datasets]]
+batch_size = 1
+
+  [[datasets.subsets]]
+  image_dir = 'post_image_dataset/easycontrol/{name}/resized'
+  cache_dir = 'post_image_dataset/easycontrol/{name}/cache'        # denoising target: the _no_tags members (delta captions)
+  cond_cache_dir = 'post_image_dataset/easycontrol/{name}/cond'    # condition: the paired _tags latent (keyed by the _no_tags stem)
+  path_pattern = '*_no_tags.*'     # targets only; the _tags twin rides in as the cond
+  recursive = true                 # tree is nested <artist>/<pair_id>_{tags,no_tags}
+  flip_aug = false                 # cond latents have no flipped variant
+  num_repeats = 1
