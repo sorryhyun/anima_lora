@@ -249,6 +249,41 @@ Cost: one standard LoRA train + ~4 probe runs at reduced grid; cheapest
 item on the generalization axis and the only one that addresses a stated
 limitation with existing hardware.
 
+## E8 [FIX] — gap-native restructure: ε\* detectability threshold + null→gap bridge
+
+**Proposal (2026-07-28).** Present the paper's spine in the representative
+metric itself, three parts, all in debiased units:
+
+1. **ε\* — the minimum detectable gap.** Derive the instrument's
+   detectability threshold as a function of (N, D, floor cosine): below
+   ε\*, a demotion is indistinguishable from redraw noise. Sources: E1
+   self-floors (bias) + per-bin SEM (variance). "Safe" ≡ one-sided 95%
+   CI of the debiased gap below ε\* — E3's non-inferiority criterion
+   promoted from an ad-hoc reenc±0.04 band to the *definition*.
+   Analysis over existing `per_image.jsonl` + E1 rows; no new GPU.
+2. **The guarantee region.** Restate the safety map as the (route, σ)
+   region where debiased gap ≤ ε\* at one-sided 95% — i.e. E1(b)+E3
+   output verbatim, no new runs. Wording stays "statistical
+   non-inferiority at instrument resolution", never a hard bound; keep
+   the per-example vs batch-aggregate map split (E3/R3).
+3. **Null→gap bridge (new analysis).** Convert each published tolerance
+   δ into a predicted *gap curve*, not just a boundary: under the
+   diagonal model on the measured P(f), compute the destroyed-band
+   Bayes-residual mismatch m_null,e(σ; δ), map through the measured
+   G(σ)^p with the route gain A calibrated on the one safe route, and
+   overlay predicted vs measured curves per (δ, route). This is the
+   Table-1 confrontation restated in gap units; it subsumes the
+   continuous t\*(δ) sweep figure (family spread ≤ 0.13) and the
+   δ_reenc-anchored row (`reenc_noise_floor.py`, owed in E4). Unit
+   honesty: the null emits residual units only — the bridge (G^p,
+   calibrated A) belongs to the two-term account, so the paper must say
+   "the null read through our bridge", which also makes §3 load-bearing
+   for the confrontation rather than decorative.
+
+**Depends on:** E1 (all three parts consume debiased numbers); part 3
+additionally on E4's `reenc_noise_floor` run for the anchored row.
+**Cost:** analysis + figures only.
+
 ## Reproducibility deliverables (paper_bench/ contents) [FIX]
 
 - `make_all.py` — single entry that regenerates every table/figure in
@@ -273,5 +308,6 @@ E1(a) endpoint sweep first (cheapest decisive run — if the floors melt,
 E2/E5 are moot and the rewrite is different) → E1(b,c) full debiased map
 → E2 + E3 in parallel (kick off E7's controlled-LoRA train here — it's
 GPU-cheap and its probes need E1's debiased instrument anyway) → paper
-edits → E4 (Phase 1b as owed) → E7 probes → E5 → E6 if targeting a top
-venue.
+edits + E8 (analysis-only; consumes E1's debiased numbers; E8.3's
+anchored row waits on E4's `reenc_noise_floor` run) → E4 (Phase 1b as
+owed) → E7 probes → E5 → E6 if targeting a top venue.
