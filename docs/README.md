@@ -20,7 +20,7 @@ Shipped training algorithms — adapter families.
 |-----|-------------|
 | [methods/psoft-integrated-ortholora.md](methods/psoft-integrated-ortholora.md) | OrthoLoRA (Cayley) — SVD-informed init, structural orthogonality via tiny skew-symmetric seeds |
 | [methods/hydra-lora.md](methods/hydra-lora.md) | HydraLoRA — MoE multi-head routing (shared-A experts), one cell of the three-axis routing surface in `configs/methods/lora.toml` |
-| [methods/timestep_mask.md](methods/timestep_mask.md) | T-LoRA — timestep-dependent rank masking (full rank at noise, rank 1 at clean) |
+| [methods/timestep_mask.md](methods/timestep_mask.md) | T-LoRA — timestep-dependent rank masking (rank 1 at noise, full rank at clean) |
 | [methods/turbo.md](methods/turbo.md) | Turbo (DP-DMD) — diversity-preserved few-step distillation of the CFG=4 teacher into an N-step LoRA student (`make turbo`; published 4-step student on HF) |
 
 ## Inference

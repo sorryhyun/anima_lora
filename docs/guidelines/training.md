@@ -54,7 +54,9 @@ Linear layers only (no Conv2d). See [`../methods/psoft-integrated-ortholora.md`]
 
 ### T-LoRA (timestep-dependent rank masking)
 
-Early (high-noise) steps use full rank; later steps use reduced rank.
+High-noise (σ→1) steps use reduced rank, down to `min_rank`; rank opens up to
+full toward the clean end (σ→0). High noise is where layout/identity — the
+memorization surface — is decided, so capacity is withheld there.
 Composes with every variant in the family. Training-time only — inference
 runs full rank by design.
 
