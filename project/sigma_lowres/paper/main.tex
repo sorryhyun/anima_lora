@@ -91,19 +91,35 @@ downscaled latent is claimed to carry \emph{almost} the full surviving
 signal --- the premise behind scale-wise distillation
 \citep{starodubcev2025swd}, spectral progressive diffusion
 \citep{xiao2026spd}, pyramidal flow matching \citep{jin2024pyramidal},
-and progressive-resolution training schedules more broadly
+spectrally-guided noise schedules \citep{esteves2026spectral}, and
+progressive-resolution training schedules more broadly
 \citep{karras2018progressive,chen2024pixartalpha,hoogeboom2023simple}.
 
-These methods change the \emph{inference} trajectory or the model itself.
-We ask a narrower, training-side question: at high noise, can the
-\emph{gradient} of an adapter be computed on a downscaled latent as a
-drop-in substitute for the native one --- same model, same objective, same
-$\sigma$ distribution, only the spatial grid changed on some steps? If the
-spectral account governed, the answer would be yes above a per-route
-boundary --- for our latents, $\sigma \approx 0.14$ at the classical
-equal-power tolerance, and $\sigma \approx 0.6$ even at the strict
-tolerance SPD ships (\S\ref{sec:null}). The payoff would be large: on
-our corpus roughly half of all training draws sit at $\sigma>0.5$.
+The evidence for these methods is collected where they operate: at the
+level of the generated output. Reduced-resolution computation, suitably
+scheduled, can drive the \emph{quality-score} difference against
+full-resolution computation nearly to zero. Our central finding is that
+this success statement does not transfer to training: a small
+quality-score difference does not imply a small difference in what a
+training step \emph{learns}. On our latents the spectral account,
+computed from the measured radially-averaged power spectrum, predicts
+that a downscaled latent is a safe substitute from $\sigma \approx 0.14$
+(and by $\sigma \approx 0.6$ at any published tolerance); the measured
+\emph{training-signal} boundary for even the mildest downscale is
+$\sigma \approx 0.5$, and harsher downscales have no safe noise level at
+all (\S\ref{sec:phase0}, Fig.~\ref{fig:phase0}). Existing low-resolution
+training can make the quality gap small; it does not make the learning
+gap small.
+
+Our goal is therefore to derive the regime --- if one exists --- in
+which training on downscaled data changes the training signal by almost
+nothing. This is a narrower, training-side question than the
+inference-side ones above: at high noise, can the \emph{gradient} of an
+adapter be computed on a downscaled latent as a drop-in substitute for
+the native one --- same model, same objective, same $\sigma$
+distribution, only the spatial grid changed on some steps? The payoff
+would be large: on our corpus roughly half of all training draws sit at
+$\sigma>0.5$.
 
 Rather than measuring first and rationalizing after, we first derive what
 the substitution can cost, and then let the measurements discriminate.
@@ -112,51 +128,37 @@ The contributions:
 \begin{enumerate}
 \item \textbf{A two-term account of the demotion gap, derived before it is
 fit} (\S\ref{sec:account}). Writing the adapter gradient as
-$g = J^{\!\top} r$ (Jacobian times residual), demotion perturbs exactly
-two things --- the information the input still carries, and the compute
-graph itself --- and first-order perturbation plus cosine geometry force
-the form
-$\gap_e(\sigma) \approx A_e\, m(\sigma)/G(\sigma)^p + \Floor_e$
-with $p \in [1,2]$: a noise-dependent input branch read through the
-U-shaped gradient norm, plus a $\sigma$-independent floor carried by the
-network function. The derivation fixes the \emph{form}; the coefficients
-are measured, and we keep an explicit ledger of what is derived, what is
-assumed, and what is measured. We then embed the spectral argument, in
-its strongest tolerance-parameterized form (SPD, \citealp{xiao2026spd}),
-as the null model of the input branch --- and show, before any gradient
-is measured, that on our latent spectrum the null is a one-parameter
-family that depends on the downscale \emph{ratio} alone, is compressed to
-a ${\sim}0.13$ spread in $\sigma$ across all tolerances, and structurally
-admits no floor.
+$g = J^{\!\top} r$, demotion perturbs exactly two things --- the
+information the input still carries, and the compute graph itself ---
+forcing the form
+$\gap_e(\sigma) \approx A_e\, m(\sigma)/G(\sigma)^p + \Floor_e$: a
+noise-dependent input branch read through the U-shaped gradient norm,
+plus a $\sigma$-independent floor. The spectral argument, in its
+strongest tolerance-parameterized form (SPD, \citealp{xiao2026spd}), is
+embedded as the null model of the input branch --- a null that on our
+latent spectrum depends on the downscale \emph{ratio} alone, spans only
+${\sim}0.13$ in $\sigma$ across all tolerances, and admits no floor.
 \item \textbf{Measurements that reject the null on every axis where the
-accounts diverge} (\S\ref{sec:experiments}). Our instrument computes, per
-noise-level bin, the cosine between adapter gradients from native and
-downscaled latents, calibrated by a fresh-noise floor and a VAE
-re-encoding control. The measured crossover for the mildest downscale
-($0.875\times$ edge) is $\sigma\!\approx\!0.5$; no tolerance reproduces
-the map (the one matching this route predicts the two never-safe routes
-safe by $\sigma = 0.63$); a $2\times$ downscale never becomes safe,
-retaining a gap of ${\sim}0.3$ at $\sigma=0.94$ where the input is
-essentially pure noise. Term by term: the floor is real,
-$\sigma$-independent, governed by absolute target token count rather than
-ratio, concentrated in early blocks, and decomposes --- via an exact
-positional-interpolation intervention on the rotary embedding --- into a
-coordinate-system share $\mathrm{RoPE}_e$ and a non-positional graph
-residue $\mathrm{Resid}_e$; the input branch's amplitude is governed by
-the downscale ratio (an iso-severity probe at $1.6\times$ different
-absolute size reproduces the same curve); and the prediction-residual
-mismatch is \emph{route-uniform}, placing all route identity in the
-Jacobian --- the residual-level kill of the diagonal spectral null.
+accounts diverge} (\S\ref{sec:experiments}). Per-noise-bin gradient
+cosines, calibrated by a fresh-noise floor and a VAE re-encoding
+control, put the mildest route's crossover at $\sigma\!\approx\!0.5$ ---
+no tolerance reproduces the map --- and show a $2\times$ downscale is
+never gradient-safe, retaining a gap of ${\sim}0.3$ at $\sigma=0.94$
+where the input is essentially pure noise. The floor is
+$\sigma$-independent, governed by absolute token count rather than
+ratio, concentrated in early blocks, and splits --- via a
+positional-interpolation intervention --- into a rotary
+coordinate-system share and an irreducible graph residue; the
+prediction-residual mismatch is \emph{route-uniform}, placing all route
+identity in the Jacobian.
 \item \textbf{A measured safety map and a practical trainer}
 (\S\ref{sec:practical}). Safety is a per-route boundary
 $\sigmastar(\text{route})$, not a universal ratio rule:
 $\{1024{\to}896$ at $\sigma>0.5$; $1280{\to}1024$ at
-$\sigma \gtrsim 0.75\}$, while $896{\to}768$ and every ${\to}512$ route are
-never safe. We wire the measured-safe route into an opt-in
-$\sigma$-conditional trainer --- draw $\sigma$ first, fetch the downscaled
-latent only when the whole batch is above the gate --- for a ${\sim}14\%$
-wall-clock reduction at a fixed step budget, with a $\sigma$-gated
-banded rotary alignment as a measured refinement.
+$\sigma \gtrsim 0.75\}$, while $896{\to}768$ and every ${\to}512$ route
+are never safe. An opt-in $\sigma$-conditional trainer draws the noise
+level first and substitutes the downscaled latent only on measured-safe
+steps, for a ${\sim}14\%$ wall-clock reduction at a fixed step budget.
 \end{enumerate}
 
 The presentation is theory-first; the practice was observational-first:
@@ -189,8 +191,12 @@ targets} along the progressive trajectory --- changing the objective per
 resolution stage rather than substituting the latent under the native
 objective, which is our question; that they observe a training--inference
 gap motivating this fine-tuning is independently consistent with our
-finding that resolution changes are not free at the training level. Our
-contribution is orthogonal to all of these: we measure whether input-level
+finding that resolution changes are not free at the training level.
+Spectrally-guided noise schedules \citep{esteves2026spectral} apply the
+same per-frequency reasoning to schedule design, deriving bounds on the
+useful minimum and maximum noise levels from the image spectrum --- the
+spectral account operating as the field's working model of what noise
+masks. Our contribution is orthogonal to all of these: we measure whether input-level
 closeness transfers to the \emph{training gradient}, holding model and
 objective fixed --- and find it does not transfer at any tolerance.
 
@@ -306,7 +312,7 @@ does not reference $\sigma$.
 
 To first order the gradient perturbation is
 $\delta g \approx J^{\!\top}\Delta r(\sigma) + \Delta J^{\!\top} r$, with
-the cross term second-order. One caveat is worth stating precisely:
+the cross term second-order. One qualification is worth stating precisely:
 $J_{\mathrm{nat}}$ and $J_{e}$ act on different grids, so the two terms
 are not literal matrix products across arms; they are defined
 \emph{operationally}, as the two independent perturbation directions in
@@ -403,7 +409,10 @@ gap vanishes above a finite boundary: every route becomes safe at some
 $\sigma$.
 
 And under the same diagonal-Gaussian assumption the null extends to the
-residual level: the posterior mean is a per-band Wiener shrinkage, so with
+residual level: the posterior mean is a per-band Wiener shrinkage ---
+under a Gaussian prior and Gaussian noise the minimum-mean-square-error
+estimator is linear with per-band gain $P_\omega/(P_\omega + n_\omega)$,
+the classical Wiener filter \citep{wiener1949} --- so with
 no cross-frequency coupling the cross-grid mean-residual mismatch is
 confined to the destroyed band and \textbf{(N4)} ordered across routes by
 destroyed-band energy.
@@ -420,7 +429,7 @@ each other at \emph{every} $\delta$.
 
 \paragraph{Which tolerance?}
 Eq.~\ref{eq:spd} needs a $\delta$, and it is worth asking where one could
-legitimately come from. SPD's shipped $\delta = 0.01$ is an
+legitimately come from. SPD's published $\delta = 0.01$ is an
 inference-side choice, selected on a speed--quality Pareto ablation over
 generated images \citep{xiao2026spd} --- nothing ties it to gradients.
 Machine precision is not the relevant floor either: bf16 rounding on
@@ -445,7 +454,8 @@ structural failures (N2, N3) are $\delta$-independent.
 \begin{table}[t]
 \caption{The spectral null (Eq.~\ref{eq:spd}) instantiated on the
 measured latent spectrum: predicted safe boundaries $t^{*}$ per route as
-the tolerance $\delta$ sweeps its range. SPD ships $\delta = 0.01$; the
+the tolerance $\delta$ sweeps its range. SPD's published default is
+$\delta = 0.01$; the
 equal-power slice is the classical crossover. No row reproduces the
 measured pattern (last line): the $\delta$ that matches the safe route's
 boundary predicts both never-safe routes safe by $\sigma = 0.63$.}
@@ -459,7 +469,7 @@ tolerance $\delta$ & $1024{\to}896$ & $1024{\to}768$ & $1024{\to}512$ & \\
 $(1+P_\omega)/2$ (equal power) & $0.14$ & $0.15$ & $0.20$ & classical crossover \\
 $0.05$ & $0.41$ & $0.43$ & $0.53$ & \\
 $0.025$ & $0.50$ & $0.52$ & $0.62$ & tuned to the measured $896$ gate \\
-$0.01$ & $0.61$ & $0.63$ & $0.72$ & SPD's shipped default \\
+$0.01$ & $0.61$ & $0.63$ & $0.72$ & SPD's published default \\
 $0.005$ & $0.69$ & $0.71$ & $0.79$ & \\
 \midrule
 \textbf{measured} (\S\ref{sec:map}) & ${\approx}\,0.5$ &
@@ -526,20 +536,22 @@ renormalizing by $G$ removes (\S\ref{sec:inputbranch}).
 \label{sec:setup}
 
 \paragraph{Model and data.}
-All measurements use Anima, an open DiT-based flow-matching text-to-image
-model (28 transformer blocks, 3D rotary position embeddings, Qwen-family
-VAE), fine-tuned with LoRA adapters on an illustration corpus. Images are
+All measurements use Anima \citep{circlestone2025anima}, an open
+DiT-based flow-matching text-to-image model (2B parameters, 28
+transformer blocks, 3D rotary position embeddings, and the Qwen-Image
+VAE, \citealp{wu2025qwenimage}), fine-tuned with LoRA adapters on an
+illustration corpus. Images are
 bucketed by native aspect ratio into resolution \emph{tiers} indexed by
 nominal edge length $e \in \{512, 768, 896, 1024, 1280\}$; a tier-$e$ image
 occupies roughly $(e/16)^2$ latent-patch tokens (e.g.\ ${\sim}4{,}100$
 tokens at 1024, ${\sim}3{,}000$ at 896, ${\sim}2{,}160$ at 768,
-${\sim}1{,}000$ at 512). The probe adapter is a LoRA soup checkpoint
-trained at native tiers; we return to this operating-point caveat in
+${\sim}1{,}000$ at 512). The probe adapter is a plain LoRA checkpoint
+trained at native tiers; we return to this operating-point dependence in
 \S\ref{sec:limitations}.
 
 \paragraph{The gradient probe.}
 For each image and each of $B$ uniform $\sigma$-bins we accumulate adapter
-gradients over $D$ stratified noise draws per arm (shipped runs:
+gradients over $D$ stratified noise draws per arm (verdict runs:
 $8 \times 8$ unless noted; $N = 40$ images) and compare arms by cosine
 similarity of the flattened accumulated gradients (Eq.~\ref{eq:gapdef}):
 \begin{itemize}
@@ -568,22 +580,37 @@ Appendix~\ref{app:instrument}.
 
 \begin{figure}[t]
 \centering
-\begin{subfigure}[t]{0.495\textwidth}
-\includegraphics[width=\linewidth]{figs/rapsd.png}
-\caption{Latent RAPSD and the equal-power slice
-$\sigma_{\mathrm{eq}}(f)$ of the spectral family. Predicted $\sigmastar$:
-$0.136$ / $0.146$ / ${\sim}0.20$ for demotion to 896 / 768 / 512.}
+\begin{subfigure}[t]{0.485\textwidth}
+\includegraphics[width=\linewidth]{figs/rapsd_spectrum.png}
+\caption{Latent RAPSD against the flow-matching noise floor at four
+noise levels; dashed lines mark the demoted grids' Nyquist cuts.}
 \label{fig:rapsd}
 \end{subfigure}\hfill
-\begin{subfigure}[t]{0.495\textwidth}
-\includegraphics[width=\linewidth]{figs/gap_vs_sigma.png}
+\begin{subfigure}[t]{0.49\textwidth}
+\includegraphics[width=\linewidth]{figs/rapsd_crossover.png}
+\caption{The equal-power slice $\sigma_{\mathrm{eq}}(f)$ of the spectral
+family. Predicted $\sigmastar$: $0.136$ / $0.146$ / ${\sim}0.20$ for
+demotion to 896 / 768 / 512.}
+\label{fig:sigmaeq}
+\end{subfigure}\\[3pt]
+\begin{subfigure}[t]{0.46\textwidth}
+\includegraphics[width=\linewidth]{figs/gap_curves.png}
 \caption{Measured demotion gap per $\sigma$-bin ($1024$-tier natives,
 $N{=}40$). The 896 route floors at $\sigma\!\approx\!0.5$; 512 never
 floors.}
 \label{fig:gapcurves}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.515\textwidth}
+\includegraphics[width=\linewidth]{figs/estimator_context.png}
+\caption{Estimator context: the redraw-floor cosine and the U-shaped
+gradient norm $G(\sigma)$ through which every gap is read
+(\S\ref{sec:inputbranch}).}
+\label{fig:estimator}
 \end{subfigure}
-\caption{The spectral family (left, equal-power slice) versus the gradient
-measurement (right). No tolerance reproduces the measured pattern
+\caption{The spectral account (top row: computed from the measured
+RAPSD, predicting safety from $\sigma \approx 0.14$) versus the gradient
+measurement (bottom row: safe only from $\sigma \approx 0.5$, and only
+on the mildest route). No tolerance reproduces the measured pattern
 (Table~\ref{tab:null}): the equal-power crossover is off by
 ${\sim}3.5\times$ and the $2\times$ downscale never becomes safe.}
 \label{fig:phase0}
@@ -596,7 +623,7 @@ equal-power crossovers $\sigmastar(896) = 0.136$,
 $\sigmastar(768) = 0.146$, $\sigmastar(512) \approx 0.20$, with tight
 per-image spread (p10--p90 ${\approx}\,0.11$--$0.16$): the spectral
 crossover is image-generic, and at that tolerance demotion would be safe
-over almost the entire $\sigma$ axis (Fig.~\ref{fig:rapsd}). The full
+over almost the entire $\sigma$ axis (Fig.~\ref{fig:phase0}, top row). The full
 tolerance family these cuts admit is Table~\ref{tab:null}.
 
 \paragraph{The measurement.}
@@ -635,7 +662,7 @@ at every bin --- the \emph{qualitative} spectral intuition survives;
 $3.5\times$ the equal-power prediction, and no tolerance rescues the
 family: the $\delta$ that matches this boundary ($\delta = 0.025$,
 Table~\ref{tab:null}) predicts $768$ safe at $0.52$ and $512$ safe at
-$0.62$, while SPD's own shipped $\delta = 0.01$ predicts all three routes
+$0.62$, while SPD's own published $\delta = 0.01$ predicts all three routes
 safe by $0.72$;
 (iii)~the $2\times$ downscale route retains $\gap \approx 0.3$ at
 $\sigma = 0.94$, where the input is ${\sim}97\%$ noise by power in every
@@ -731,7 +758,8 @@ instrument band, not at $\sigma_{\mathrm{eq}}$.
 \paragraph{$G(\sigma)$ shapes the curve.}
 Because the gap is a cosine it measures a mismatch \emph{fraction}; the
 total gradient norm is U-shaped in $\sigma$ ($2.6 \to 0.4$ at
-$\sigma\!\approx\!0.3 \to 9.3$; Table~\ref{tab:phase0}, last row) --- large
+$\sigma\!\approx\!0.3 \to 9.3$; Table~\ref{tab:phase0}, last row;
+Fig.~\ref{fig:estimator}) --- large
 at high $\sigma$ where the model is pulling composition out of the prior
 and the residual is image-scale, small in the mid-$\sigma$ refinement
 regime, and inflated again at low $\sigma$ by irreducible $\epsilon$.
