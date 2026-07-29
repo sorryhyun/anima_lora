@@ -295,6 +295,45 @@ A(r) convexity go into the account's stated limits.**
 
 ---
 
+## E5 refit — three functional forms for the data-branch term [DONE 2026-07-29]
+
+paper_plan §6 step 2 (analysis-only, no GPU): same fit → governors →
+held-out pipeline as `e5_holdout.py` under three candidate forms for
+S_e (shared additive floor in each): **P** power `A·m/G^p` (p shared,
+scanned — the shipped form), **Q** derived small-perturbation quadratic
+`A·(m/G)²`, **X** exact angular link `1−1/√(1+(c·m/G)²)` (exact 1−cos
+of a pure orthogonal perturbation with ‖δg⊥‖ = c·m; small-κ limit = Q
+with A = c²/2). Script `paper_bench/e5_refit.py`, run
+`paper_bench/runs/20260729-1322-e5-refit/` (result.json + 3-panel
+overlay `e5_refit.png`).
+
+**RESULTS:**
+
+- **P's scan lands on p\* = 2.00 exactly** — the "free" exponent picks
+  the quadratic on its own; P and Q are near-duplicates everywhere.
+- **In-sample 512** (the severe route, gap ~0.3): χ²/bin 3.5–3.9
+  across all three forms (Q narrowly best) — the floor absorbs most of
+  512, so the small-κ worry does not discriminate in-sample.
+- **Held-out is decisive: X wins** — mean RMSE 0.071 vs 0.093 (P) /
+  0.094 (Q). The entire margin is the 1280→1024 route (0.049 vs
+  ~0.095): **the saturation of the exact link removes the peak
+  overshoot E5 had booked as "A(r) evidently convex"** (miss #2). On
+  768 all three tie (0.089–0.093) — the mid-σ dip is form-independent
+  (it is the interaction term I_768 < 0, not a form artifact).
+- **Form-invariant governors:** floor exp-law F(2160) = +0.087/+0.088
+  in all three; ratio-twin z = 0.14 (P) / 0.44 (Q) / 0.15 (X).
+
+**Ledger naming (consumed by main.tex §3.3/§4.6):** the **exact
+angular link X headlines as the best empirical predictor** — its
+empirical ingredient is the linear mismatch loading ‖δg⊥‖ = c·m, and
+it is labeled empirical on that account; **Q is reported as the
+derived small-perturbation form** and is X's small-κ limit. One
+geometry at two orders: the derived quadratic is not a competitor to
+the headline form but its local law, and E5 miss #2 (A(r) convexity)
+is retired — the "convexity" was quadratic-form overshoot.
+
+---
+
 ## E8.1 + E8.2 [DONE 2026-07-29 — written into main.tex]
 
 From the gap-native restructure proposal (E8, 2026-07-28); part 3 (the
@@ -315,22 +354,34 @@ null→gap bridge) is still open and remains in `required_experiments.md`.
 
 ---
 
-## Manuscript status (Branch A, written 2026-07-29)
+## Manuscript status (theory→evidence→application + question-first reframe, written 2026-07-29)
 
-E1(a,b,c) landed and rule 1 fired, so the paper_plan §2 spine is now the
-manuscript: new §3 metrology (gap def + instrument + finite-draw-bias
-subsection + ε\* and the safe(ε) definition), §4 account (softened,
-"derive"→account; Table 1 + retrodict moved out), §5 Measurements (raw
-tables kept as marked historical record, new debiased verdict-map +
-debiased floor tables, floor waterfall ledger, x-zero≡endpoint equality,
-PI/iso-severity/depth re-anchored with the one-signed-bias argument),
-§6 "The null read in gap units" (Table 1 + scoring + E8.3 bridge stub),
-§7 two-maps framing + projected-ceiling wording, limitations gain
-ε\*-relative + debiased-coverage items, repro statement now matches what
-is public (paper_bench/runs in-repo; raw-run tarball pending).
-Abstract/intro/conclusion rewritten (narrowed headline, metrology as
-contribution, 14% as projected ceiling). Compiles clean under tectonic
-(0 overfull, no broken refs).
+Superseded the Branch-A spine the same day: `paper_plan.md` §3 spine
+landed together with the question-first reframe (title now "When Does
+Training on Downscaled Images Yield the Same Gradients?"; §1 leads with
+the practical question, the map is presented as the answer). New
+structure: §3 Theory (3.1 estimand — d_e vs reenc-excess Δ_e both
+stated, aggregation operator part of the estimand, ε\* renamed "median
+certification resolution" with the power footnote; 3.2 data/graph
+branches — endpoint NOT data-free by construction, "data branch" rename
+throughout; 3.3 four-term expansion d = S+F+I+R derived + A1–A4
+reduction + exact angular link labeled empirical; 3.4 spectral null
+with exact scope sentence; 3.5 seven discriminating predictions each
+naming its probe), §4 Evidence (4.1 instrument+debiasing+"debiased
+units only from here" + consolidated coverage statement; 4.2 phenomenon
++ Table-null boundary scoring; 4.3 endpoint≡x-zero≡α-flat; 4.4 data
+branch + governors; 4.5 depth + RoPE/Resid waterfall; 4.6 the account
+confronted — E5 held-out + three-form refit + 768 mid-σ dip as I_e<0
+interaction signature delimiting the reduction's domain + E9 designated
++ claims-ledger table as the consolidated hedge), §5 Application
+("the answer, in deployable form"), §6/§7 updated. Raw/historical
+tables all moved to a dedicated appendix (incl. new raw-vs-debiased
+endpoint revision-record table); per-sentence hedges replaced by the
+ledger. E5 refit figure `figs/e5_refit.png` is the §4.6 figure
+(`figs/e5_overlay.png` also staged). Abstract intentionally NOT
+revised yet (user will revise after reading the rewrite; it still says
+"input term"). Compiles clean under tectonic (0 overfull, no broken
+refs, 22 pp).
 
 Still open in the manuscript, each marked **[pending]** in place: E3
 pooled-with-self-floors run, E4 A/B + `reenc_noise_floor.py` (δ_reenc
