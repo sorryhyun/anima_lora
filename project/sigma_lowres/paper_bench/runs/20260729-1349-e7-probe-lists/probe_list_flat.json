@@ -1,0 +1,392 @@
+{
+ "adapter": "output/ckpt/anima_soup_e7_flat.safetensors",
+ "manifest": "project/sigma_lowres/paper_bench/runs/20260729-1158-e7-manifest/e7_manifest.json",
+ "seed": 20260729,
+ "rule": "(deterministic, no RNG beyond the manifest's frozen content):\n  S1: train stems sorted by redundancy, 12 evenly spaced picks with an\n      outward-walk per-artist cap of 2 (select_probe_set's rule).\n  S2: for each S1 stem in order, the unused holdout stem (trained\n      artists only) with nearest redundancy, per-artist cap 2.\n  R:  reserved stems sorted by redundancy, 12 evenly spaced picks with\n      per-artist cap 3 (4 reserved artists per cluster).\n\nEvery selected stem is validated against the live cache (complete\n1024-tier record) so the GPU runs cannot die on a stale stem.",
+ "images": [
+  {
+   "artist": "fizz_(pixiv34498626)",
+   "stem": "6539097",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.6969
+  },
+  {
+   "artist": "sweetonedollar",
+   "stem": "10345790",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.7519
+  },
+  {
+   "artist": "gin00",
+   "stem": "10212312",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.7684
+  },
+  {
+   "artist": "fizz_(pixiv34498626)",
+   "stem": "6817910",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.7845
+  },
+  {
+   "artist": "ama_mitsuki",
+   "stem": "9471795",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.7947
+  },
+  {
+   "artist": "yamamoto_souichirou",
+   "stem": "8953796",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.8012
+  },
+  {
+   "artist": "asou_(asabu202)",
+   "stem": "10008808",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.8178
+  },
+  {
+   "artist": "asou_(asabu202)",
+   "stem": "6179956",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.8284
+  },
+  {
+   "artist": "yamamoto_souichirou",
+   "stem": "7599503",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.8431
+  },
+  {
+   "artist": "coro_fae",
+   "stem": "12485575",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.862
+  },
+  {
+   "artist": "sweetonedollar",
+   "stem": "12692758",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.8804
+  },
+  {
+   "artist": "coro_fae",
+   "stem": "10448332",
+   "cell": "S1",
+   "membership": "train",
+   "style": "flat",
+   "manifest_redundancy": 0.9223
+  },
+  {
+   "artist": "fizz_(pixiv34498626)",
+   "stem": "6566711",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.6988
+  },
+  {
+   "artist": "ama_mitsuki",
+   "stem": "6378235",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.7515
+  },
+  {
+   "artist": "ama_mitsuki",
+   "stem": "5828196",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.7677
+  },
+  {
+   "artist": "asou_(asabu202)",
+   "stem": "12413979",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.7844
+  },
+  {
+   "artist": "fizz_(pixiv34498626)",
+   "stem": "6596085",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.7945
+  },
+  {
+   "artist": "asou_(asabu202)",
+   "stem": "13602191",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.8022
+  },
+  {
+   "artist": "takaman_(gaffe)",
+   "stem": "7092340",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.8175
+  },
+  {
+   "artist": "sweetonedollar",
+   "stem": "12968860",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.8288
+  },
+  {
+   "artist": "sweetonedollar",
+   "stem": "11301635",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.8468
+  },
+  {
+   "artist": "coro_fae",
+   "stem": "8742515",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.863
+  },
+  {
+   "artist": "coro_fae",
+   "stem": "10745585",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.8818
+  },
+  {
+   "artist": "takaman_(gaffe)",
+   "stem": "7214588",
+   "cell": "S2",
+   "membership": "holdout",
+   "style": "flat",
+   "manifest_redundancy": 0.8843
+  },
+  {
+   "artist": "moursho",
+   "stem": "13551601",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.7093
+  },
+  {
+   "artist": "moursho",
+   "stem": "12137456",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.7179
+  },
+  {
+   "artist": "ebifurya",
+   "stem": "8788006",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.7293
+  },
+  {
+   "artist": "moursho",
+   "stem": "8392696",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.7598
+  },
+  {
+   "artist": "madana_(xesa7885)",
+   "stem": "12755485",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.7785
+  },
+  {
+   "artist": "ebifurya",
+   "stem": "8029024",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.7937
+  },
+  {
+   "artist": "madana_(xesa7885)",
+   "stem": "10536470",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.8064
+  },
+  {
+   "artist": "ebifurya",
+   "stem": "10084072",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.8246
+  },
+  {
+   "artist": "hamao",
+   "stem": "8454029",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.8287
+  },
+  {
+   "artist": "hamao",
+   "stem": "8671446",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.8593
+  },
+  {
+   "artist": "hamao",
+   "stem": "10910201",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.8767
+  },
+  {
+   "artist": "madana_(xesa7885)",
+   "stem": "13178247",
+   "cell": "S3s",
+   "membership": "reserved",
+   "style": "flat",
+   "manifest_redundancy": 0.8266
+  },
+  {
+   "artist": "belko",
+   "stem": "10566921",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.4896
+  },
+  {
+   "artist": "belko",
+   "stem": "10803116",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.613
+  },
+  {
+   "artist": "belko",
+   "stem": "10582709",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.6376
+  },
+  {
+   "artist": "nvl",
+   "stem": "10730671",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.6607
+  },
+  {
+   "artist": "yomiji292",
+   "stem": "12219794",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.6737
+  },
+  {
+   "artist": "dikko",
+   "stem": "12980958",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.6796
+  },
+  {
+   "artist": "dikko",
+   "stem": "8983949",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.689
+  },
+  {
+   "artist": "yomiji292",
+   "stem": "12219928",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.7013
+  },
+  {
+   "artist": "nvl",
+   "stem": "12243536",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.7183
+  },
+  {
+   "artist": "dikko",
+   "stem": "11138166",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.7225
+  },
+  {
+   "artist": "nvl",
+   "stem": "10087924",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.7447
+  },
+  {
+   "artist": "yomiji292",
+   "stem": "12219886",
+   "cell": "S3x",
+   "membership": "reserved",
+   "style": "dirty",
+   "manifest_redundancy": 0.7807
+  }
+ ]
+}

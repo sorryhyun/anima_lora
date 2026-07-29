@@ -121,7 +121,16 @@ distribution-relationship effect.
   `make soup CUSTOM=e7 PATH_PATTERN="$(cat path_pattern_<c>.txt)"
   POOL_PATH_PATTERN=<same> NAME=e7_<c> --queue`. Bonus read: two fresh
   checkpoints' floors = the G5 checkpoint-dependence ("carving") test
-  for free.
+  for free. **Adapters TRAINED 2026-07-29**: daemon jobs
+  20260729-124257-{8ec9e2 (flat), 6f3dc8 (dirty)} both done →
+  `output/ckpt/anima_soup_e7_flat.safetensors` /
+  `anima_soup_e7_dirty.safetensors` (+ per-seed s1001–s1003 siblings +
+  snapshots; snapshots verified — dim 32/alpha 128, 6 epochs,
+  stem-exact 124-stem patterns over the 8 manifest artists per
+  cluster, cluster-own uncond init `anima_uncond_abd30619`, not the
+  corpus-wide pool). Remaining: the `--probe_list` instrument delta,
+  then the two probe runs (scheduled after E3 per order of
+  operations).
 - **Probe cells per adapter, N≈12 each** (S1/S2 redundancy-matched
   within cluster; one probe list per adapter, cells as row tags —
   cross-cluster stems shared between the two adapters so the

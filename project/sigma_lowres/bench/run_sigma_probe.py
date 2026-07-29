@@ -89,6 +89,19 @@ def parse_args() -> argparse.Namespace:
         "post_image_dataset",
     )
     p.add_argument("--artists", default=None, help="csv restriction on the corpus")
+    p.add_argument(
+        "--probe_list",
+        default=None,
+        help="E7 instrument delta: JSON file naming the EXACT probe images "
+        "plus per-image tags — either a list of objects or {'images': [...]}, "
+        "each {'artist': ..., 'stem': ..., <tag>: <value>, ...}. Replaces "
+        "stratified selection (--num_images/--artists/--max_per_artist/"
+        "--score_limit are ignored); images run in file order, and every key "
+        "besides artist/stem is copied verbatim into that image's "
+        "per_image.jsonl row (cell/membership/style tags). A listed stem "
+        "that is missing, incomplete, or off-tier is a hard error — the "
+        "probe set is a frozen design object, not a best-effort filter.",
+    )
     p.add_argument("--max_per_artist", type=int, default=None)
     p.add_argument("--score_limit", type=int, default=None)
     p.add_argument("--no_reenc_control", action="store_true")
@@ -801,6 +814,24 @@ def main() -> None:
                 "--pool/--per_group/--draw_sweep/--x_zero"
             )
         log.info(f"target-alpha sweep: alphas={alphas} (alpha=1 keys unsuffixed)")
+    probe_tags: dict[tuple[str, str], dict] | None = None
+    probe_order: list[tuple[str, str]] | None = None
+    if args.probe_list:
+        entries = json.loads(Path(args.probe_list).read_text())
+        if isinstance(entries, dict):
+            entries = entries["images"]
+        probe_order = [(e["artist"], e["stem"]) for e in entries]
+        if len(set(probe_order)) != len(probe_order):
+            raise SystemExit("--probe_list contains duplicate artist/stem entries")
+        probe_tags = {
+            (e["artist"], e["stem"]): {
+                k: v for k, v in e.items() if k not in ("artist", "stem")
+            }
+            for e in entries
+        }
+        args.num_images = len(probe_order)
+        args.score_limit = None  # a truncated scoring pool could drop listed stems
+        log.info(f"probe list: {len(probe_order)} images from {args.probe_list}")
     if args.self_floor and args.num_images > 50:
         # the alt seed base (+500_000) sits above i*10_000 only for i < 50
         raise SystemExit("--self_floor seed spacing supports --num_images <= 50")
@@ -815,15 +846,33 @@ def main() -> None:
 
     log.info("scoring corpus + selecting probe set (3a-compatible)…")
     artists = args.artists.split(",") if args.artists else None
+    if probe_order is not None:
+        artists = sorted({a for a, _ in probe_order})
     records = score_corpus(
         artists=artists,
         k=args.quant_k,
         limit=args.score_limit,
         data_root=Path(args.data_root).resolve() if args.data_root else None,
     )
-    probe = select_probe_set(
-        records, args.num_images, tier=args.tier, max_per_artist=args.max_per_artist
-    )
+    if probe_order is not None:
+        by_key = {(r.artist, r.stem): r for r in records}
+        missing = [k for k in probe_order if k not in by_key]
+        bad = [
+            k
+            for k in probe_order
+            if k in by_key
+            and not (by_key[k].tier == args.tier and by_key[k].complete())
+        ]
+        if missing or bad:
+            raise SystemExit(
+                f"--probe_list stems not usable as frozen: "
+                f"missing={missing[:5]} incomplete-or-off-tier={bad[:5]}"
+            )
+        probe = [by_key[k] for k in probe_order]
+    else:
+        probe = select_probe_set(
+            records, args.num_images, tier=args.tier, max_per_artist=args.max_per_artist
+        )
     if not probe:
         raise SystemExit(f"no complete tier-{args.tier} records in the scored pool")
     if args.pool:
@@ -967,6 +1016,8 @@ def main() -> None:
             "tokens_native": r.tokens,
             "sigma_centers": centers,
         }
+        if probe_tags is not None:
+            row.update(probe_tags[(r.artist, r.stem)])
         if sweep:
             row["draw_prefixes"] = sweep
 
