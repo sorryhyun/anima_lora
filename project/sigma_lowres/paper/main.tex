@@ -18,9 +18,11 @@
 \iclrfinalcopy
 
 \newcommand{\gap}{\mathrm{gap}}
+\newcommand{\dgap}{\widehat{\mathrm{gap}}}
 \newcommand{\Floor}{\mathrm{Floor}}
 \newcommand{\reenc}{\mathrm{reenc}}
 \newcommand{\sigmastar}{\sigma^{\!*}}
+\newcommand{\epsstar}{\varepsilon^{\!*}}
 
 % \textit (not \emph): the style sets the title in small caps, where \emph's
 % shape toggle is silently substituted away.
@@ -47,33 +49,37 @@ level a downscaled latent carries \emph{almost} the full surviving signal.
 We ask whether this licenses a training-side substitution --- can the
 gradient of a low-rank adapter be computed from a downscaled latent at high
 noise without changing what is learned?
-We first derive what the substitution can cost: a first-order account in
-which the gradient gap decomposes into a noise-dependent \emph{input term},
-read through the gradient norm, plus a $\sigma$-independent \emph{floor}
+We give a first-order account of what the substitution can cost: the
+gradient gap decomposes into a noise-dependent \emph{input term}, read
+through the gradient norm, plus a $\sigma$-independent \emph{floor}
 carried by the network's input--output Jacobian --- and we embed the
 spectral argument, in its strongest tolerance-parameterized form
-\citep{xiao2026spd}, as the null model of the input term. On a measured
-latent spectrum the null is structurally confined: a one-parameter family
-of per-route boundaries that depends on the downscale \emph{ratio} alone,
-is compressed to a ${\sim}0.13$ spread in $\sigma$, and admits no floor.
-Per-noise-level gradient measurements on a DiT-based flow-matching model,
-with a fresh-noise floor and a VAE re-encoding control, reject the null on
-every axis where the accounts diverge: the mildest route's crossover sits
-at $\sigma\!\approx\!0.5$ and no tolerance reproduces the map (the one
-matching it predicts two never-safe routes safe by $\sigma\!=\!0.63$); a
-$2\times$ downscale is never gradient-safe at any noise level, retaining a
-gap of $0.3$ at $\sigma=0.94$ where the input is $97\%$ noise by power;
-and the floor is governed by the \emph{absolute token count} of the
-downscaled grid, concentrates in early blocks, and separates --- by a
-positional-interpolation intervention --- into a rotary-position-embedding
-share and an irreducible graph residue. The reason is structural: expected
-gradients average noise out rather than being masked by it, and the
-flow-matching target $v=\epsilon-x$ carries the clean image at unit
-amplitude at every $\sigma$.
-The practical output is a measured $(\text{route},\sigma)$ safety map and
-an opt-in $\sigma$-conditional trainer that draws the noise level first and
-substitutes the downscaled latent only on measured-safe steps, for a
-${\sim}14\%$ wall-clock reduction at fixed step count on our corpus.
+\citep{xiao2026spd}, as the null model of the input term: a one-parameter
+family of per-route boundaries that depends on the downscale \emph{ratio}
+alone, is compressed to a ${\sim}0.13$ spread in $\sigma$ on our measured
+latent spectrum, and admits no floor.
+Testing this takes metrology, not just measurement: naive finite-draw gap
+estimators \emph{manufacture} exactly the token-count-ordered floors at
+issue, so we build a debiased estimator (per-arm self-floors with an
+attenuation correction, plus draw-count extrapolation) and state every
+claim at the instrument's measured resolution. The debiased measurements
+on a DiT-based flow-matching model reject the null where the accounts
+diverge: the mildest route's crossover sits at $\sigma\!\approx\!0.5$,
+${\sim}3.5\times$ the equal-power prediction; a $2\times$ downscale is
+certifiably unsafe at \emph{every} noise level, retaining a debiased gap
+of ${\approx}\,0.30$ on pure-noise input; and the surviving endpoint gap
+equals its image-free control at every route --- a floor carried by the
+compute graph, governed by the \emph{absolute token count} of the
+downscaled grid, concentrated in early blocks, and separable into a
+rotary-position-embedding share and a graph residue. Debiasing also cuts
+both ways: about half of the intermediate route's raw floor was estimator
+bias; what remains ($+0.056$, CI $[0.043, 0.071]$) is real but leaves no
+certifiable safe window at our resolution.
+The practical output is a measured $(\text{route},\sigma)$ safety map with
+explicit detectability thresholds, and an opt-in $\sigma$-conditional
+trainer that substitutes the downscaled latent only on measured-safe
+steps, for a projected wall-clock ceiling of ${\sim}14\%$ at fixed step
+count on our corpus (end-to-end A/B pending).
 \end{abstract}
 
 \section{Introduction}
@@ -106,10 +112,11 @@ computed from the measured radially-averaged power spectrum, predicts
 that a downscaled latent is a safe substitute from $\sigma \approx 0.14$
 (and by $\sigma \approx 0.6$ at any published tolerance); the measured
 \emph{training-signal} boundary for even the mildest downscale is
-$\sigma \approx 0.5$, and harsher downscales have no safe noise level at
-all (\S\ref{sec:phase0}, Fig.~\ref{fig:phase0}). Existing low-resolution
-training can make the quality gap small; it does not make the learning
-gap small.
+$\sigma \approx 0.5$, and no harsher route certifies at any noise level
+--- the $2\times$ downscale retains a debiased gap of ${\approx}\,0.30$
+even on pure-noise input (\S\ref{sec:phase0}, Fig.~\ref{fig:phase0}).
+Existing low-resolution training can make the quality gap small; it does
+not make the learning gap small.
 
 Our goal is therefore to derive the regime --- if one exists --- in
 which training on downscaled data changes the training signal by almost
@@ -121,16 +128,29 @@ distribution, only the spatial grid changed on some steps? The payoff
 would be large: on our corpus roughly half of all training draws sit at
 $\sigma>0.5$.
 
-Rather than measuring first and rationalizing after, we first derive what
-the substitution can cost, and then let the measurements discriminate.
+Rather than measuring first and rationalizing after, we first state what
+the substitution can cost, then build an instrument whose resolution is
+itself measured, and then let the measurements discriminate.
 The contributions:
 
 \begin{enumerate}
-\item \textbf{A two-term account of the demotion gap, derived before it is
+\item \textbf{Gap metrology: a debiased estimator and a detectability
+threshold} (\S\ref{sec:metric}). The natural gap estimator --- redraw
+floor minus a single demoted-arm cosine --- is biased by finite-draw
+variance, and the bias \emph{grows as the demoted grid shrinks}: it
+manufactures exactly the token-count-ordered floor signature under test.
+An uncorrected native self-cosine reads $0.85$ at the noise endpoint;
+corrected, it extrapolates to $1.005$ (CI $[0.994, 1.016]$). We introduce
+per-arm self-floors with a split-half attenuation correction and a
+draw-count extrapolation $\gap(D) = \gap_\infty + c/D$, and derive the
+instrument's minimum certifiable margin $\epsstar(N, D, \text{floor})$;
+``safe'' is a one-sided non-inferiority statement at that resolution,
+never an absolute claim.
+\item \textbf{A two-term account of the demotion gap, stated before it is
 fit} (\S\ref{sec:account}). Writing the adapter gradient as
 $g = J^{\!\top} r$, demotion perturbs exactly two things --- the
 information the input still carries, and the compute graph itself ---
-forcing the form
+giving the first-order form
 $\gap_e(\sigma) \approx A_e\, m(\sigma)/G(\sigma)^p + \Floor_e$: a
 noise-dependent input branch read through the U-shaped gradient norm,
 plus a $\sigma$-independent floor. The spectral argument, in its
@@ -138,35 +158,42 @@ strongest tolerance-parameterized form (SPD, \citealp{xiao2026spd}), is
 embedded as the null model of the input branch --- a null that on our
 latent spectrum depends on the downscale \emph{ratio} alone, spans only
 ${\sim}0.13$ in $\sigma$ across all tolerances, and admits no floor.
-\item \textbf{Measurements that reject the null on every axis where the
-accounts diverge} (\S\ref{sec:experiments}). Per-noise-bin gradient
-cosines, calibrated by a fresh-noise floor and a VAE re-encoding
-control, put the mildest route's crossover at $\sigma\!\approx\!0.5$ ---
-no tolerance reproduces the map --- and show a $2\times$ downscale is
-never gradient-safe, retaining a gap of ${\sim}0.3$ at $\sigma=0.94$
-where the input is essentially pure noise. The floor is
+\item \textbf{Debiased measurements that reject the null where the
+accounts diverge} (\S\ref{sec:experiments}, \S\ref{sec:nullgap}). The
+mildest route's crossover sits at $\sigma\!\approx\!0.5$ --- no
+tolerance reproduces the map --- and a $2\times$ downscale is certifiably
+unsafe at every noise level, retaining a debiased gap of ${\approx}\,0.30$
+on pure-noise input ($12/12$ probe images above the pre-registered
+$0.15$ bar). The endpoint gap is statistically identical to its
+image-free control at every route: the floor is pure graph term ---
 $\sigma$-independent, governed by absolute token count rather than
-ratio, concentrated in early blocks, and splits --- via a
+ratio, concentrated in early blocks, and split --- via a
 positional-interpolation intervention --- into a rotary
-coordinate-system share and an irreducible graph residue; the
-prediction-residual mismatch is \emph{route-uniform}, placing all route
-identity in the Jacobian.
+coordinate-system share and a graph residue; the prediction-residual
+mismatch is \emph{route-uniform}, placing all route identity in the
+Jacobian. Debiasing also revises us: half the intermediate route's raw
+floor was estimator bias, and its ``never safe'' verdict softens to ``no
+certifiable window at instrument resolution.''
 \item \textbf{A measured safety map and a practical trainer}
 (\S\ref{sec:practical}). Safety is a per-route boundary
-$\sigmastar(\text{route})$, not a universal ratio rule:
-$\{1024{\to}896$ at $\sigma>0.5$; $1280{\to}1024$ at
-$\sigma \gtrsim 0.75\}$, while $896{\to}768$ and every ${\to}512$ route
-are never safe. An opt-in $\sigma$-conditional trainer draws the noise
-level first and substitutes the downscaled latent only on measured-safe
-steps, for a ${\sim}14\%$ wall-clock reduction at a fixed step budget.
+$\sigmastar(\text{route})$ at a stated resolution, not a universal ratio
+rule: $\{1024{\to}896$ at $\sigma>0.5$; $1280{\to}1024$ at
+$\sigma \gtrsim 0.75\}$, while $1024{\to}768$ has no certifiable window
+and every ${\to}512$ route is certifiably unsafe everywhere. An opt-in
+$\sigma$-conditional trainer draws the noise level first and substitutes
+the downscaled latent only on measured-safe steps, for a projected
+wall-clock ceiling of ${\sim}14\%$ at a fixed step budget (end-to-end
+A/B pending).
 \end{enumerate}
 
 The presentation is theory-first; the practice was observational-first:
 verdict criteria were frozen before each probe ran, the two-term account
 was pre-registered with an outcome matrix (including a kill switch) before
-the discriminating runs, and each mechanistic claim is grounded in a
-designated falsification test (several of which fired and killed proposed
-routes; we report those too).
+the discriminating runs, and the debiasing campaign's decision rules ---
+including the rule under which our own headline floors would have been
+retracted as variance artifacts --- were pre-registered before it ran.
+Each mechanistic claim is grounded in a designated falsification test
+(several of which fired and killed proposed routes; we report those too).
 
 \section{Related work}
 \label{sec:related}
@@ -196,9 +223,15 @@ Spectrally-guided noise schedules \citep{esteves2026spectral} apply the
 same per-frequency reasoning to schedule design, deriving bounds on the
 useful minimum and maximum noise levels from the image spectrum --- the
 spectral account operating as the field's working model of what noise
-masks. Our contribution is orthogonal to all of these: we measure whether input-level
-closeness transfers to the \emph{training gradient}, holding model and
-objective fixed --- and find it does not transfer at any tolerance.
+masks. We are explicit about scope: neither SPD nor SwD \emph{claims}
+naive gradient equivalence under latent substitution --- SwD validates
+its pipeline at the output level, and SPD fine-tunes precisely because
+resolution changes are not free. What we test is the tempting extension
+of their shared premise --- that spectral sufficiency of the input
+licenses a training-side swap --- not their methods. Our contribution is
+orthogonal to all of these: we measure whether input-level closeness
+transfers to the \emph{training gradient}, holding model and objective
+fixed --- and find it does not transfer at any tolerance.
 
 \paragraph{Flow matching and DiT.}
 We work in the flow-matching / rectified-flow formulation
@@ -226,8 +259,16 @@ $\sigma$-bin with means over images, the regime we found reliable
 (split-half reliability $0.73$--$0.88$), rather than per-image rankings,
 which were pure noise in our earlier attempts.
 
-\section{What demotion can cost: a two-term account}
-\label{sec:account}
+\section{The demotion gap and what it can resolve}
+\label{sec:metric}
+
+Every claim in this paper is stated in one metric --- the demotion gap
+--- and at a stated resolution. This section defines the metric and the
+instrument, exhibits the estimator-variance confound that a naive read
+of the metric suffers (it manufactures exactly the floor signature under
+test), constructs the debiased estimator that removes it, and derives
+the detectability threshold $\epsstar$ against which ``safe'' is
+defined.
 
 \paragraph{Objective and noising.}
 With clean latent $x$, noise $\epsilon \sim \mathcal{N}(0, I)$, and
@@ -255,10 +296,157 @@ per arm and compared by cosine; the \emph{demotion gap} is
 \end{equation}
 where $\cos_{\mathrm{floor}}$ is the same-bin cosine between two
 independent native draw sets --- the ``how much do gradients differ
-anyway'' null. The full instrument, including a VAE re-encoding control
-that prices the round trip demotion necessarily pays, is specified in
-\S\ref{sec:setup}; this section asks what structure
+anyway'' null. The re-encoding control below prices the VAE round trip
+that demotion necessarily pays; \S\ref{sec:account} asks what structure
 Eq.~\ref{eq:gapdef} can have.
+
+\subsection{Instrument}
+\label{sec:setup}
+
+\paragraph{Model and data.}
+All measurements use Anima \citep{circlestone2025anima}, an open
+DiT-based flow-matching text-to-image model (2B parameters, 28
+transformer blocks, 3D rotary position embeddings, and the Qwen-Image
+VAE, \citealp{wu2025qwenimage}), fine-tuned with LoRA adapters on an
+illustration corpus. Images are
+bucketed by native aspect ratio into resolution \emph{tiers} indexed by
+nominal edge length $e \in \{512, 768, 896, 1024, 1280\}$; a tier-$e$ image
+occupies roughly $(e/16)^2$ latent-patch tokens (e.g.\ ${\sim}4{,}100$
+tokens at 1024, ${\sim}3{,}000$ at 896, ${\sim}2{,}160$ at 768,
+${\sim}1{,}000$ at 512). The probe adapter is a plain LoRA checkpoint
+trained at native tiers; we return to this operating-point dependence in
+\S\ref{sec:limitations}.
+
+\paragraph{The gradient probe.}
+For each image and each of $B$ uniform $\sigma$-bins we accumulate adapter
+gradients over $D$ stratified noise draws per arm (verdict runs:
+$8 \times 8$ unless noted; $N = 40$ images) and compare arms by cosine
+similarity of the flattened accumulated gradients (Eq.~\ref{eq:gapdef}):
+\begin{itemize}
+\item \textbf{floor}: two independent draw sets at native resolution ---
+the redraw null;
+\item \textbf{reenc}: decode--re-encode at native resolution --- isolates
+the VAE round-trip cost that demotion necessarily pays;
+\item \textbf{demote arms}: one per edge $e$ under test;
+\item \textbf{self-floors} (debiased runs): a second independent draw set
+for \emph{every} arm, giving each arm the same two-estimate structure the
+native floor has (\S\ref{sec:bias}).
+\end{itemize}
+The gap is in cosine units (a mismatch \emph{fraction}, scale-free;
+bin-mean SEM ${\sim}0.02$ at $N{=}40$). Gap subtraction, not absolute
+cosines, is the valid read: the floor itself moves with $\|g\|$ across
+bins. Every bin-mean curve
+must pass a split-half reliability check over images --- a discipline
+forced on us by an earlier failure in which per-image rankings from the
+same gradients had split-half reliability indistinguishable from zero.
+Uniform $\sigma$-bins make the training-time $\sigma$-density irrelevant
+to the map; density-weighting the bins reproduces our earlier pooled
+(marginalized) measurements as a consistency check. Estimator details and
+the endpoint / x-zero probe modes are specified in
+Appendix~\ref{app:instrument}.
+
+\subsection{Finite draws manufacture floors}
+\label{sec:bias}
+
+Eq.~\ref{eq:gapdef} as naively estimated is asymmetric: the floor is a
+cosine between \emph{two} finite-draw estimates of the native gradient,
+while each demote arm contributes \emph{one} estimate compared against
+the native mean. Finite-draw noise attenuates every such cosine below
+its population value, and the attenuation is arm-dependent: per-draw
+gradient variance grows as the token count falls (the MSE loss averages
+over fewer elements), so a demoted arm's single estimate is noisier than
+the native estimates it is compared to. An iso-direction null ---
+demotion changing \emph{nothing} but the variance --- therefore still
+produces a positive gap that grows as the target grid shrinks: the same
+signature as ``absolute token count sets the floor.'' A back-of-envelope
+with the raw endpoint floor and noise $\propto 1/\text{tokens}$ predicts
+spurious endpoint gaps of ${\approx}\,0.02 / 0.05 / 0.15$ for
+$896/768/512$ --- not the whole of the raw measurements
+($-0.01 / 0.13 / 0.33$), but plausibly ${\sim}40\%$ of the intermediate
+floors. A retroactive scan of earlier runs confirms the confound is
+live: the $1024{\to}896$ endpoint gap decays as ${+}0.100 / {+}0.035 /
+{-}0.016$ at $D = 4/8/16$ --- a clean $c/D$ decay with fitted
+$c \approx 0.5$. No conclusion in this paper survives on the naive
+estimator alone.
+
+The native floor itself makes the point sharpest: at $D{=}8$--$16$ the
+raw endpoint self-cosine reads $0.79$--$0.85$, but a nested draw sweep
+($D = 4 \ldots 64$) extrapolates it to $1.005$ (bootstrap 95\% CI
+$[0.994, 1.016]$). The population-level per-bin native gradient is a
+\emph{fixed direction}; the entire redraw floor is finite-draw noise,
+not intrinsic gradient stochasticity.
+
+\paragraph{The debiased estimator.}
+Two corrections, used together:
+\begin{enumerate}
+\item \textbf{Self-floors with attenuation correction.} Every arm runs a
+second independent draw set $g_d'$, giving a per-arm self-cosine
+$\cos_{\mathrm{self}} = \cos(g_d, g_d')$. The debiased cosine is the
+classical split-half disattenuation \citep{spearman1904},
+\begin{equation}
+\hat c \;=\; \frac{\cos(\bar g_{\mathrm{nat}},\, \bar g_{d})}
+{\sqrt{\cos_{\mathrm{floor}} \cdot \cos_{\mathrm{self},d}}},
+\qquad
+\dgap \;=\; 1 - \hat c,
+\label{eq:debias}
+\end{equation}
+which cancels the finite-draw attenuation of numerator and denominator
+to first order. Raw gaps are reported alongside for continuity.
+\item \textbf{Draw-count extrapolation.} Endpoint-mode runs sweep nested
+draw prefixes $D \in \{4, 8, 16, 32, 64\}$ (the $D{=}64$ pass contains
+the smaller draw sets --- one set of forwards) and fit
+$\gap(D) = \gap_\infty + c/D$ per route, with a bootstrap CI over
+images. The two corrections cross-validate: debiased fits are $D$-flat
+($|c| \le 0.05$ for the $512$ route, against $c \approx +0.29$ raw) ---
+the attenuation correction removes exactly the $1/D$ component the sweep
+isolates.
+\end{enumerate}
+One caveat delimits where Eq.~\ref{eq:debias} is readable. At $D{=}8$
+per bin, the \emph{unpaired} debiased estimator is unstable in bins
+where the floors themselves are small (mid-$\sigma$; the denominator is
+noisy): there the readable object is the \emph{paired per-image
+difference} against the re-encoding control,
+$\Delta_i = \dgap_{e,i} - \dgap_{\reenc,i}$, with non-finite and
+$|\Delta| > 1.5$ values trimmed --- pairing cancels the shared
+per-image, per-bin draw structure. All verdict maps below report this
+paired object. Finite-draw cosines are also compiler-kernel-path
+sensitive, so all pairings live within one run
+(Appendix~\ref{app:instrument}).
+
+\subsection{$\epsstar$: what the instrument can certify}
+\label{sec:epsstar}
+
+A safety claim needs a stated resolution. For a route whose true gap is
+zero, the paired difference $\Delta$ fluctuates around zero with
+standard error $\mathrm{SE}(N, D, \sigma\text{-bin})$, so the one-sided
+95\% upper bound $\bar\Delta + 1.645\,\mathrm{SE}$ concentrates near
+$1.645\,\mathrm{SE}$: no margin smaller than
+\begin{equation}
+\epsstar(N, D, \text{bin}) \;=\; 1.645\,\mathrm{SE}(N, D, \text{bin})
+\label{eq:epsstar}
+\end{equation}
+is certifiable even for a truly safe route. We therefore \emph{define}
+``safe at margin $\varepsilon$'' as the non-inferiority statement
+\begin{equation}
+\text{UB}_{95}\!\left(\bar\Delta\right) \;<\; \varepsilon,
+\qquad \varepsilon \ge \epsstar,
+\label{eq:safe}
+\end{equation}
+replacing the ad-hoc $\pm 0.04$ re-encoding band of our earlier drafts.
+Measured values: at the verdict grid's operating point ($N{=}40$,
+$D{=}8$/bin) the bin-level $\epsstar$ is $0.03$--$0.08$; endpoint-mode
+draw sweeps ($D$ up to $64$) tighten it to ${\approx}\,0.01$--$0.02$.
+Two consequences are worth stating before any measurement. First, a
+``safe'' verdict is always a statistical non-inferiority claim at
+instrument resolution --- never a hard bound; a true gap below
+$\epsstar$ is undetectable by construction. Second, $\epsstar$ is the
+honest currency for negative claims too: ``no certifiable window''
+means the route's upper bounds never cross below $\varepsilon$ at the
+current $(N, D)$, which a larger campaign could still change ---
+whereas ``certifiably unsafe'' (lower bound above $\varepsilon$) cannot.
+
+\section{What demotion can cost: a two-term account}
+\label{sec:account}
 
 \subsection{Why input-level spectral sufficiency cannot bound the
 gradient}
@@ -417,66 +605,16 @@ no cross-frequency coupling the cross-grid mean-residual mismatch is
 confined to the destroyed band and \textbf{(N4)} ordered across routes by
 destroyed-band energy.
 
-Table~\ref{tab:null} instantiates the family on our measured latent
-spectrum (\S\ref{sec:phase0}; $P$ at the $896/768/512$ cuts $=$
-$0.025/0.029/0.065$). Because the latents are high-frequency-quiet, $P$
-barely varies across the cuts and the family is \emph{compressed}: the
-spread between the mildest and harshest route never exceeds ${\sim}0.13$
-in $\sigma$ at any tolerance. In particular the two routes our
-measurements will separate maximally --- $1024{\to}896$ (ratio $0.875$)
-and $896{\to}768$ (ratio $0.857$) --- receive boundaries within $0.01$ of
-each other at \emph{every} $\delta$.
-
-\paragraph{Which tolerance?}
-Eq.~\ref{eq:spd} needs a $\delta$, and it is worth asking where one could
-legitimately come from. SPD's published $\delta = 0.01$ is an
-inference-side choice, selected on a speed--quality Pareto ablation over
-generated images \citep{xiao2026spd} --- nothing ties it to gradients.
-Machine precision is not the relevant floor either: bf16 rounding on
-unit-scale per-band amplitudes injects power of order $10^{-5}$ or below,
-orders of magnitude beneath any boundary-moving tolerance. Our setting,
-however, fixes a tolerance \emph{by construction}: the demotion recipe
-pays a resize--VAE-encode round trip whose latent error has measurable
-per-band power $D(f)$ --- the same pipeline noise the re-encoding control
-prices at the gradient level --- and $D$ is expressed in exactly
-Eq.~\ref{eq:spd}'s units (per-band power against unit noise). Band
-content below $D(f_{\mathrm{cut}})$ is invisible to the substitution
-pipeline even with no resolution change, so
-$\delta_{\reenc}(e) := D(f_{\mathrm{cut}}(e))$ anchors the null with zero
-free parameters. On the probe set this floor and its implied boundaries
-are \textbf{[pending: \texttt{reenc\_noise\_floor.py}, queued]}; we will
-report the anchored row alongside the family in Table~\ref{tab:null}.
-% TODO(reenc-floor): fill delta_reenc + t* per route from
-% bench/results/<reenc-floor run>/result.json, add row to tab:null.
-Either way the confrontation below does not hinge on the choice: the
-structural failures (N2, N3) are $\delta$-independent.
-
-\begin{table}[t]
-\caption{The spectral null (Eq.~\ref{eq:spd}) instantiated on the
-measured latent spectrum: predicted safe boundaries $t^{*}$ per route as
-the tolerance $\delta$ sweeps its range. SPD's published default is
-$\delta = 0.01$; the
-equal-power slice is the classical crossover. No row reproduces the
-measured pattern (last line): the $\delta$ that matches the safe route's
-boundary predicts both never-safe routes safe by $\sigma = 0.63$.}
-\label{tab:null}
-\centering
-\small
-\begin{tabular}{lcccl}
-\toprule
-tolerance $\delta$ & $1024{\to}896$ & $1024{\to}768$ & $1024{\to}512$ & \\
-\midrule
-$(1+P_\omega)/2$ (equal power) & $0.14$ & $0.15$ & $0.20$ & classical crossover \\
-$0.05$ & $0.41$ & $0.43$ & $0.53$ & \\
-$0.025$ & $0.50$ & $0.52$ & $0.62$ & tuned to the measured $896$ gate \\
-$0.01$ & $0.61$ & $0.63$ & $0.72$ & SPD's published default \\
-$0.005$ & $0.69$ & $0.71$ & $0.79$ & \\
-\midrule
-\textbf{measured} (\S\ref{sec:map}) & ${\approx}\,0.5$ &
-never safe & never safe & floors $0$ / $0.06$--$0.13$ / ${\sim}0.3$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+The family is instantiated on our measured latent spectrum, and
+confronted with the measurements in gap units, in \S\ref{sec:nullgap}
+(Table~\ref{tab:null}). Two properties of that instantiation are worth
+previewing because they are fixed before any gradient is measured: the
+latents are high-frequency-quiet, so the family is \emph{compressed} ---
+the spread between the mildest and harshest route never exceeds
+${\sim}0.13$ in $\sigma$ at any tolerance --- and the two routes our
+measurements will separate maximally ($1024{\to}896$, ratio $0.875$, and
+$896{\to}768$, ratio $0.857$) receive boundaries within $0.01$ of each
+other at \emph{every} $\delta$.
 
 \subsection{The graph term: a positional share and a graph residue}
 \label{sec:graphterm}
@@ -529,51 +667,17 @@ where the U-shaped $G$ is smallest, and a low-$\sigma$ dip that
 renormalizing by $G$ removes (\S\ref{sec:inputbranch}).
 \end{enumerate}
 
-\section{Experiments}
+\section{Measurements}
 \label{sec:experiments}
 
-\subsection{Instrument}
-\label{sec:setup}
-
-\paragraph{Model and data.}
-All measurements use Anima \citep{circlestone2025anima}, an open
-DiT-based flow-matching text-to-image model (2B parameters, 28
-transformer blocks, 3D rotary position embeddings, and the Qwen-Image
-VAE, \citealp{wu2025qwenimage}), fine-tuned with LoRA adapters on an
-illustration corpus. Images are
-bucketed by native aspect ratio into resolution \emph{tiers} indexed by
-nominal edge length $e \in \{512, 768, 896, 1024, 1280\}$; a tier-$e$ image
-occupies roughly $(e/16)^2$ latent-patch tokens (e.g.\ ${\sim}4{,}100$
-tokens at 1024, ${\sim}3{,}000$ at 896, ${\sim}2{,}160$ at 768,
-${\sim}1{,}000$ at 512). The probe adapter is a plain LoRA checkpoint
-trained at native tiers; we return to this operating-point dependence in
-\S\ref{sec:limitations}.
-
-\paragraph{The gradient probe.}
-For each image and each of $B$ uniform $\sigma$-bins we accumulate adapter
-gradients over $D$ stratified noise draws per arm (verdict runs:
-$8 \times 8$ unless noted; $N = 40$ images) and compare arms by cosine
-similarity of the flattened accumulated gradients (Eq.~\ref{eq:gapdef}):
-\begin{itemize}
-\item \textbf{floor}: two independent draw sets at native resolution ---
-the redraw null;
-\item \textbf{reenc}: decode--re-encode at native resolution --- isolates
-the VAE round-trip cost that demotion necessarily pays;
-\item \textbf{demote arms}: one per edge $e$ under test.
-\end{itemize}
-The gap is in cosine units (a mismatch \emph{fraction}, scale-free;
-bin-mean SEM ${\sim}0.02$ at $N{=}40$). Gap subtraction, not absolute
-cosines, is the valid read: the floor itself moves with $\|g\|$ across
-bins. The re-encoding control $\gap_\reenc \approx 0$ (band $\pm 0.04$) is
-the instrument-validity witness in every run, and every bin-mean curve
-must pass a split-half reliability check over images --- a discipline
-forced on us by an earlier failure in which per-image rankings from the
-same gradients had split-half reliability indistinguishable from zero.
-Uniform $\sigma$-bins make the training-time $\sigma$-density irrelevant
-to the map; density-weighting the bins reproduces our earlier pooled
-(marginalized) measurements as a consistency check. Estimator details and
-the endpoint / x-zero probe modes are specified in
-Appendix~\ref{app:instrument}.
+Reporting convention: headline floors and the verdict map are stated in
+\emph{debiased} units --- draw-limit values $\dgap_\infty$ with bootstrap
+95\% CIs from the endpoint sweeps, and the paired per-image object
+(\S\ref{sec:bias}) for per-bin maps. Raw single-estimate values are
+retained where they are the historical record (the original verdict-grid
+curves, and secondary probes whose conclusions rest on \emph{paired}
+same-grid contrasts that cancel the finite-draw bias to first order);
+every raw number is marked as such.
 
 \subsection{The gap curves versus the spectral family}
 \label{sec:phase0}
@@ -596,8 +700,9 @@ demotion to 896 / 768 / 512.}
 \begin{subfigure}[t]{0.46\textwidth}
 \includegraphics[width=\linewidth]{figs/gap_curves.png}
 \caption{Measured demotion gap per $\sigma$-bin ($1024$-tier natives,
-$N{=}40$). The 896 route floors at $\sigma\!\approx\!0.5$; 512 never
-floors.}
+$N{=}40$; raw estimator --- debiased map in
+Table~\ref{tab:debiasedmap}). The 896 route floors at
+$\sigma\!\approx\!0.5$; 512 never floors.}
 \label{fig:gapcurves}
 \end{subfigure}\hfill
 \begin{subfigure}[t]{0.515\textwidth}
@@ -627,16 +732,21 @@ over almost the entire $\sigma$ axis (Fig.~\ref{fig:phase0}, top row). The full
 tolerance family these cuts admit is Table~\ref{tab:null}.
 
 \paragraph{The measurement.}
-Table~\ref{tab:phase0} gives the measured gap curves for $1024$-tier
-natives demoted to $896/768/512$.
+Table~\ref{tab:phase0} gives the original (raw-estimator) gap curves for
+$1024$-tier natives demoted to $896/768/512$;
+Table~\ref{tab:debiasedmap} gives the debiased re-measurement of the
+same grid --- the verdict object.
 
 \begin{table}[t]
-\caption{Demotion gap by $\sigma$-bin, $1024$-tier natives ($N{=}40$,
+\caption{\textbf{Raw estimator} (historical record): demotion gap by
+$\sigma$-bin, $1024$-tier natives ($N{=}40$,
 bin-mean SEM ${\sim}0.02$, re-encoding control $|\gap_\reenc| \le 0.054$
 everywhere, split-half reliability $0.73$--$0.83$). Bold = within the
 re-encoding band. The equal-power slice of the spectral family predicts
 collapse above the second bin for every route; no other slice fits either
-(Table~\ref{tab:null}).}
+(Table~\ref{tab:null}). Raw values understate mid-$\sigma$ gaps (the
+floor attenuates the read) and overstate endpoint floors (single-estimate
+variance bias); Table~\ref{tab:debiasedmap} corrects both.}
 \label{tab:phase0}
 \centering
 \small
@@ -654,59 +764,117 @@ $\|g\|$ (native) & 2.6 & 0.5 & 0.4 & 0.5 & 0.7 & 1.1 & 2.0 & 9.3 \\
 \end{tabular}
 \end{table}
 
-Three reads, against criteria frozen before the run:
+\begin{table}[t]
+\caption{\textbf{Debiased verdict map}: paired per-image debiased gap
+against the re-encoding control, $\bar\Delta$ (SEM), $1024$-tier natives
+($N{=}40$, $D{=}8$/bin plus a $\sigma{=}1$ endpoint bin at the same
+draws; non-finite and $|\Delta| > 1.5$ per-image values trimmed,
+retaining $35$--$40$ images per cell). Bin-level $\epsstar$ at this
+$(N, D)$ is $0.03$--$0.08$ (Eq.~\ref{eq:epsstar}). Debiasing
+\emph{raises} the mid-$\sigma$ gaps the raw read attenuated and
+\emph{lowers} the endpoint floors the raw read inflated; the $896$
+crossover at $\sigma \approx 0.5$ and the $512$ verdict survive
+unchanged.}
+\label{tab:debiasedmap}
+\centering
+\small
+\begin{tabular}{lccccccccc}
+\toprule
+$\sigma$ bin center & 0.06 & 0.19 & 0.31 & 0.44 & 0.56 & 0.69 & 0.81 & 0.94 & 1.0 \\
+\midrule
+$896$  & .091 & .155 & .208 & .032 & .013 & $-$.029 & .016 & .004 & .043 \\
+(SEM)  & .013 & .047 & .047 & .024 & .024 & .021 & .024 & .021 & .011 \\
+$768$  & .149 & .238 & .324 & .206 & $-$.034 & $-$.032 & .011 & .015 & .092 \\
+(SEM)  & .014 & .034 & .049 & .045 & .042 & .047 & .022 & .034 & .012 \\
+$512$  & .340 & .525 & .599 & .598 & .312 & .220 & .081 & .166 & .329 \\
+(SEM)  & .029 & .048 & .073 & .050 & .045 & .046 & .056 & .061 & .030 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three reads, against criteria frozen before the runs:
 (i)~$\sigma$-dependence is real and in the predicted direction
-(Spearman $\sigma{\to}\gap$: $-0.69/-0.57/-0.36$), and tier ordering holds
-at every bin --- the \emph{qualitative} spectral intuition survives;
-(ii)~the crossover for the mildest route is $\sigma \approx 0.5$ ---
-$3.5\times$ the equal-power prediction, and no tolerance rescues the
-family: the $\delta$ that matches this boundary ($\delta = 0.025$,
-Table~\ref{tab:null}) predicts $768$ safe at $0.52$ and $512$ safe at
-$0.62$, while SPD's own published $\delta = 0.01$ predicts all three routes
-safe by $0.72$;
-(iii)~the $2\times$ downscale route retains $\gap \approx 0.3$ at
+(raw Spearman $\sigma{\to}\gap$: $-0.69/-0.57/-0.36$), and tier ordering
+holds at every bin --- the \emph{qualitative} spectral intuition
+survives;
+(ii)~the crossover for the mildest route is $\sigma \approx 0.5$ in raw
+\emph{and} debiased units (debiased $896$: clearly gapped through
+$\sigma \le 0.31$, marginal at $0.44$, means within $\pm 0.03$ of zero
+from $0.56$ on) --- $3.5\times$ the equal-power prediction, and no
+tolerance rescues the family: the $\delta$ that matches this boundary
+($\delta = 0.025$, Table~\ref{tab:null}) predicts $768$ safe at $0.52$
+and $512$ safe at $0.62$, while SPD's own published $\delta = 0.01$
+predicts all three routes safe by $0.72$;
+(iii)~the $2\times$ downscale route is \emph{certifiably unsafe at every
+noise level}: its paired debiased lower bound stays above $\epsstar$ in
+every bin (means $+0.08$ to $+0.60$), including $+0.17 \pm 0.06$ at
 $\sigma = 0.94$, where the input is ${\sim}97\%$ noise by power in every
-band the coarse grid cannot represent --- the high-$\sigma$ persistence of
-axis~2 in \S\ref{sec:diverge}, which no member of the null family can
+band the coarse grid cannot represent --- the high-$\sigma$ persistence
+of axis~2 in \S\ref{sec:diverge}, which no member of the null family can
 produce. There is no noise level at which a $2\times$-downscaled latent
 yields the native gradient.
+
+The debiased map also revises two raw reads, in opposite directions.
+The $768$ route's high-$\sigma$ plateau ($0.12$--$0.16$ raw) was roughly
+half estimator bias: debiased means sit within noise of zero across
+$\sigma \in [0.56, 0.94]$, but with upper bounds that never cross below
+the $0.02$ margin at this $(N, D)$, and a real endpoint floor of
+$+0.092 \pm 0.012$ remains --- so ``never safe'' softens to \emph{no
+certifiable window at instrument resolution} (\S\ref{sec:map}).
+Conversely the $896$ route's endpoint, in band raw, shows a small
+\emph{real} gap ($+0.042 \pm 0.011$) that single-estimate variance had
+buried; its safe window is the interior $\sigma \in (0.5, 0.94]$, not
+the endpoint itself.
 
 \paragraph{Ratio does not transfer --- the null's blind spot, measured.}
 Re-running the probe one tier down ($896$-tier natives, demote to
 $768/512$) fails its pre-registered bar: $896{\to}768$ (ratio $0.857$,
 nearly identical to the passing $0.875$) retains a high-$\sigma$ residual
-of $0.06$--$0.12$, roughly $2\times$ the $1024{\to}896$ plateau and
-outside the re-encoding band, while the two-tiers-down control stays
-elevated everywhere (Appendix Table~\ref{tab:phase1a}). This is exactly
-property N2's blindness made concrete: the null assigns these two routes
-boundaries within $0.01$ of each other at every tolerance, and the
-measurement separates them into \emph{safe} versus \emph{never safe}.
+of $0.06$--$0.12$ (raw), roughly $2\times$ the $1024{\to}896$ plateau
+and outside the re-encoding band, while the two-tiers-down control stays
+elevated everywhere (Appendix Table~\ref{tab:phase1a}). This run predates
+the debiased instrument, and by the variance model of \S\ref{sec:bias}
+roughly half of that residual is expected to be estimator bias; the
+separation itself does not rest on it, because the debiased floors of
+the \emph{same target grids} reproduce it independently ---
+$+0.02$--$0.04$ on the $896$-token-count grid versus $+0.06$--$0.09$ on
+the $768$ grid (\S\ref{sec:floor}). This is exactly property N2's
+blindness made concrete: the null assigns these two routes boundaries
+within $0.01$ of each other at every tolerance, and the measurement
+separates them into \emph{safe} versus \emph{no certifiable window}.
 ``One tier down at high $\sigma$'' is not the invariant;
 \S\ref{sec:governors} locates why (the floor is governed by absolute
-size, and $896{\to}768$'s floor alone exceeds the band).
+size, and the $768$-grid floor alone fills the $0.02$ margin).
 
 \subsection{The floor exists, is $\sigma$-independent, and is not carried
 by the input}
 \label{sec:floor}
 
 \begin{table}[t]
-\caption{Isolating the floor. \textbf{Endpoint}: at $\sigma{=}1$ the input
-is exactly $\epsilon$, so any gap \emph{is} the floor by construction
-($16$ draws). \textbf{x-zero}: the image is zeroed in both input and
-target on every grid; any surviving gap is pure graph-shape sensitivity.
-Pre-registered bands in brackets; all pass, and the account's kill switch
-(all endpoint gaps ${\approx}\,0$) does not fire.}
+\caption{The floor, debiased. \textbf{Endpoint}: at $\sigma{=}1$ the
+input is exactly $\epsilon$ on every grid, so the input-information term
+vanishes by construction. \textbf{x-zero}: the image is removed from
+input \emph{and} target; any surviving gap is pure graph-shape
+sensitivity. Debiased draw-limit values $\dgap_\infty$ [bootstrap 95\%
+CI over images] from nested draw sweeps (endpoint: $N{=}12$,
+$D = 4 \ldots 64$; x-zero: $N{=}40$, $D = 4 \ldots 32$); raw
+single-estimate endpoint reads ($D{=}16$, $N{=}40$) retained for
+comparison. The endpoint and x-zero columns agree within CI at every
+route, and the account's pre-registered kill switch (all endpoint gaps
+${\approx}\,0$) does not fire.}
 \label{tab:floor}
 \centering
 \small
-\begin{tabular}{lcccc}
+\begin{tabular}{lccc}
 \toprule
-route & endpoint gap @ $\sigma{=}1$ (SEM) & band & x-zero @ $\sigma{=}1$ (SEM) \\
+route & raw endpoint ($D{=}16$) & endpoint $\dgap_\infty$ [95\% CI] &
+x-zero $\dgap_\infty$ [95\% CI] \\
 \midrule
-re-encoding control & $-0.038$ (.032) & $[-.04, .04]$ & --- \\
-$1024{\to}896$ & $-0.009$ (.042) & $[0, 0.08]$ & $0.004$ (.018) \\
-$1024{\to}768$ & $+0.127$ (.054) & $[0.04, 0.15]$ & $0.064$ (.028) \\
-$1024{\to}512$ & $+0.326$ (.059) & $[0.2, 0.4]$ & $0.299$ (.040) \\
+native self-floor (cosine) & $0.85$ & $1.005$ $[0.994, 1.016]$ & --- \\
+re-encoding control & $-0.038$ & $-0.003$ $[-0.017, +0.008]$ & --- \\
+$1024{\to}896$ & $-0.009$ & $+0.019$ $[+0.010, +0.030]$ & $+0.034$ $[+0.017, +0.058]$ \\
+$1024{\to}768$ & $+0.127$ & $+0.056$ $[+0.043, +0.071]$ & $+0.074$ $[+0.053, +0.094]$ \\
+$1024{\to}512$ & $+0.326$ & $+0.304$ $[+0.197, +0.424]$ & $+0.283$ $[+0.232, +0.332]$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -714,15 +882,45 @@ $1024{\to}512$ & $+0.326$ (.059) & $[0.2, 0.4]$ & $0.299$ (.040) \\
 Two designated probes (Table~\ref{tab:floor}) establish the graph term ---
 and with it assumptions A1--A2 of \S\ref{sec:form}. At the $\sigma = 1$
 \emph{endpoint} the input is pure $\epsilon$ --- identical in distribution
-across arms --- so the input-information term is zero by construction, and
-the measured gaps ($\approx\!0$ / $0.13$ / $0.33$ for $896/768/512$) match
-the high-$\sigma$ plateaus of Table~\ref{tab:phase0}: the plateau \emph{is}
-the floor, exactly the additivity the form requires. The \emph{x-zero}
-probe removes the image from input \emph{and} target everywhere; for the
-$2\times$ route the surviving gap equals the endpoint gap ($0.30$ vs
-$0.33$) --- the floor is essentially all network-function term, with
-per-image content contributing nothing. Two further exonerations: the
-re-encoding control sits in band (the VAE round trip is not the cause),
+across arms --- so the input-information term is zero by construction.
+The debiased floors are $+0.019 / +0.056 / +0.304$ for $896/768/512$;
+the $512$ value clears the pre-registered confirmation bar
+($\dgap_\infty \ge 0.15$) on $12$ of $12$ probe images individually ---
+the token-count floor is not an estimator artifact. The debiasing cuts
+in both directions across routes: the published raw $768$ floor
+($0.127$) was roughly half variance bias, while the raw-in-band $896$
+endpoint concealed a small real floor.
+
+The \emph{x-zero} probe removes the image from input \emph{and} target
+everywhere, isolating pure graph-shape sensitivity --- and its debiased
+draw-limit gaps are statistically equal to the endpoint gaps at
+\emph{every} route (Table~\ref{tab:floor}, last two columns). The
+endpoint gap \emph{is} the graph floor. This equality is itself a
+debiasing product: in raw units the $768$ endpoint ($0.127$) sat
+$2\times$ above its x-zero read ($0.064$), suggesting a large
+target-content share (the target $v = \epsilon - x$ still carries $x$ at
+$\sigma{=}1$); that share was estimator bias. A target-strength sweep at
+the endpoint (target $\epsilon - \alpha x$, $\alpha \in [0,1]$) is the
+designated cheap confirmation, with predicted slope
+${\approx}\,0$ \textbf{[pending]}.
+
+How does the floor relate to the interior high-$\sigma$ bins? For $512$
+the debiased window means ($+0.08$--$0.60$) sit at or above the floor,
+as additivity requires. For $896$ and $768$ the floors ($0.02$--$0.04$
+and $0.06$--$0.09$) are \emph{at or below} the interior bins'
+detectability threshold ($\epsstar = 0.03$--$0.08$ at $N{=}40$,
+$D{=}8$): the endpoint sweeps resolve them only because their effective
+draw budget is an order of magnitude larger. The raw claim ``the
+high-$\sigma$ plateau is the floor'' therefore sharpens to: the floor is
+what the plateau converges to when the input term dies and the estimator
+is given enough draws to see it.
+
+Two further exonerations: the
+re-encoding control sits at zero within CI --- debiased
+$-0.003$ $[-0.017, +0.008]$ --- so the VAE round trip is not the cause
+(and, the converse asymmetry: the round trip has \emph{measurable}
+input-level error, yet its gradient cost is below instrument resolution
+--- input-level error neither implies nor excuses gradient-level cost);
 and a forward-only probe of the model's caption-conditioned \emph{prior}
 across grids shows route distances that are flat where the floors are
 strongly ordered --- so the floor's route-ordering lives in the Jacobian
@@ -730,6 +928,29 @@ factor $J$, not in the model's resolution-conditioned prior $\hat
 x_{\mathrm{prior}}$, and not in a training-distribution discontinuity (the
 never-trained 1280 grid is no more distant from 1024 than heavily-trained
 adjacent pairs are from each other).
+
+\paragraph{The floor as a ledger.}
+Combining the designated probes, the floor decomposes additively, each
+share measured by its own intervention:
+\begin{equation*}
+\Floor_e \;=\;
+\underbrace{\reenc}_{{\approx}\,0 \text{ by control}}
+\;+\; \underbrace{\text{target content}}_{{\approx}\,0 \text{ by
+x-zero equality}}
+\;+\; \underbrace{\mathrm{RoPE}_e}_{\text{erased by PI at }\sigma{=}1}
+\;+\; \underbrace{\mathrm{Resid}_e}_{\text{remainder}}
+\end{equation*}
+with debiased totals $0.02$--$0.04$ ($896$; below the PI probe's paired
+resolution, undecomposed), ${\approx}\,0.07$ ($768$; the paired PI
+erasure of $+0.081$ --- a same-grid contrast that cancels draw bias ---
+accounts for essentially all of it, $\mathrm{Resid} \approx 0$), and
+${\approx}\,0.30$ ($512$; $\mathrm{RoPE} \approx 0.10$,
+$\mathrm{Resid} \approx 0.20$) --- the positional decomposition itself
+is \S\ref{sec:rope}. One honest caveat on the first share: the
+re-encoding control (native decode$\to$re-encode) is a \emph{proxy} for
+the pipeline cost demotion actually pays (source downscale$\to$encode);
+a demote$\to$re-promote arm would close that gap empirically and is left
+as designed future work.
 
 \subsection{The input branch: a route-uniform numerator over a U-shaped
 denominator}
@@ -753,7 +974,7 @@ error --- a pre-registered null that would equally have falsified the
 two-term account had the residual curves been route-ordered. The decay is
 smooth, Wiener-like posterior shrinkage with no hard gate at the spectral
 crossover: gap curves read as ``collapsed'' where $S_1$ sinks below the
-instrument band, not at $\sigma_{\mathrm{eq}}$.
+instrument's detectability threshold, not at $\sigma_{\mathrm{eq}}$.
 
 \paragraph{$G(\sigma)$ shapes the curve.}
 Because the gap is a cosine it measures a mismatch \emph{fraction}; the
@@ -769,21 +990,22 @@ measured interior-peaked gap curves: bin-mean gap tracks $1/\|g\|$
 renormalizing by $G$ flips the anomalous low-$\sigma$ dip into the
 monotone maximum in every arm of both runs --- axis~5 of
 \S\ref{sec:diverge}, resolved for the two-term account. This is a
-post-hoc consistency analysis (flagged as such): it explains the
-\emph{shape}; all safety criteria stay in cosine units, since direction is
-what a normalized optimizer consumes.
+post-hoc consistency analysis over the raw curves (flagged as such): it
+explains the \emph{shape}; all safety criteria stay in cosine units,
+since direction is what a normalized optimizer consumes.
 
 \subsection{The governors: ratio sets the amplitude, absolute size sets
 the floor}
 \label{sec:governors}
 
 \begin{table}[t]
-\caption{Iso-severity probe: gap by $\sigma$-bin on the $1280$-tier cache
+\caption{Iso-severity probe (\textbf{raw estimator}): gap by $\sigma$-bin
+on the $1280$-tier cache
 ($N{=}24$, $4$ draws/bin) against the corpus $1024{\to}896$ curve. The
 ratio-matched routes coincide within ${\sim}1.4$ combined SEM at every bin
 despite a $1.6\times$ difference in absolute target size; the same-native
 harsher-ratio route separates. $^{*}$$896$'s canonical $16$-draw endpoint
-is $-0.009$ (Table~\ref{tab:floor}).}
+is $-0.009$ raw, $+0.019$ debiased (Table~\ref{tab:floor}).}
 \label{tab:isoseverity}
 \centering
 \small
@@ -800,15 +1022,21 @@ $1024{\to}896$ (ratio $.875$)  & .132 & .076 & .077 & .049 & .100$^{*}$ \\
 \end{table}
 
 With the floor isolated, what orders the routes? Two probes give a clean
-division of labor --- axis~3 of \S\ref{sec:diverge}:
+division of labor --- axis~3 of \S\ref{sec:diverge}. The $1280$-tier
+runs predate the debiased instrument, but the finite-draw bias is
+strictly \emph{positive} (\S\ref{sec:bias}): an in-band or ${\approx}\,0$
+raw read is therefore conservative --- bias could only have inflated it
+--- while raw positive values carry some inflation that does not affect
+the ordering reads below.
 
 \textbf{Absolute size, not ratio, sets the floor.} The route
-$1280{\to}1024$ is \emph{more} aggressive by ratio ($0.80$) than the
-never-safe $896{\to}768$ ($0.857$), yet its floor is ${\approx}\,0$ and it
+$1280{\to}1024$ is \emph{more} aggressive by ratio ($0.80$) than
+$896{\to}768$ ($0.857$, no certifiable window), yet its floor is
+${\approx}\,0$ (a bias-conservative read) and it
 enters the re-encoding band at $\sigma \gtrsim 0.75$ --- refuting any pure
 ratio rule for the floor, and with it the null's only degree of freedom.
 Conversely the floor grows monotonically as the \emph{target} grid shrinks
-($0 / 0.06$--$0.13 / {\sim}0.3$ at
+(debiased $0.02$--$0.04$ / $0.06$--$0.09$ / ${\approx}\,0.30$ at
 target ${\sim}3{,}000 / 2{,}160 / 1{,}000$ tokens), consistent with
 ``floor $=$ how well the coarse graph approximates the fine graph's
 computation.''
@@ -855,15 +1083,24 @@ origin-side intervention of \S\ref{sec:graphterm}: evaluate the demoted
 grid with positionally-interpolated fractional rotary coordinates (patch
 $i$ at $i \cdot H_{\mathrm{nat}}/H_{\mathrm{dem}}$ per axis), making its
 relative phase geometry exactly match native. At the $\sigma{=}1$ endpoint
-this \emph{erases} the $768$ floor ($+0.080 \to -0.001$; paired
+this \emph{erases} the $768$ floor ($+0.080 \to -0.001$ raw; paired
 $\Delta = +0.081$, $78\%$ of images improved) and removes ${\sim}30\%$ of
-the $512$ floor ($+0.320 \to +0.224$), while leaving the in-band $896$
-control untouched (Appendix Table~\ref{tab:pi}). The mild-route floor is
+the $512$ floor ($+0.320 \to +0.224$ raw), while leaving the in-band
+$896$ control untouched (Appendix Table~\ref{tab:pi}). The paired
+$\Delta$s are same-grid contrasts at matched draws, so the finite-draw
+bias cancels to first order and they survive re-anchoring in debiased
+units: against the debiased $768$ floor of $+0.056$--$0.092$, the
+$+0.081$ erasure accounts for essentially all of it
+($\mathrm{Resid}_{768} \approx 0$); against the debiased $512$ floor of
+${\approx}\,0.30$, the $+0.096$ erasure leaves a
+$\mathrm{Resid}_{512} \approx 0.2$ bulk. The mild-route floor is
 mostly a \emph{coordinate-system artifact}; the harsh-route bulk is a
 genuine non-positional graph residue (attention-over-$N$ statistics,
 sequence-length-dependent normalization, capacity). The capacity governor
 of \S\ref{sec:governors} attaches to $\mathrm{Resid}_e$, as the
-band-counting sketch anticipated.
+band-counting sketch anticipated. The $896$ route's small debiased floor
+($0.02$--$0.04$) sits below the PI probe's paired resolution and remains
+undecomposed.
 
 \paragraph{The positional share is a noise-regime artifact only.}
 A $\sigma$-resolved follow-up closes the tempting route this opens
@@ -878,24 +1115,98 @@ fatal on its own ($+0.09$--$0.22$ over control across the window). A
 frequency-\emph{selective} banded alignment does survive in-window
 (\S\ref{sec:trainer}).
 
+\section{The null read in gap units}
+\label{sec:nullgap}
+
+The confrontation is stated last because it consumes the measurements:
+the null's tolerances are instantiated on the measured spectrum
+(\S\ref{sec:phase0}), and reading them in gap units requires the
+measured $G(\sigma)$ and a route gain calibrated on the safe route.
+
+\subsection{The tolerance family on the measured spectrum}
+\label{sec:tolfamily}
+
+Table~\ref{tab:null} instantiates Eq.~\ref{eq:spd} on the measured
+latent spectrum ($P$ at the $896/768/512$ cuts $=$
+$0.025/0.029/0.065$). Because the latents are high-frequency-quiet, $P$
+barely varies across the cuts and the family is \emph{compressed}: the
+spread between the mildest and harshest route never exceeds ${\sim}0.13$
+in $\sigma$ at any tolerance.
+
+\paragraph{Which tolerance?}
+Eq.~\ref{eq:spd} needs a $\delta$, and it is worth asking where one could
+legitimately come from. SPD's published $\delta = 0.01$ is an
+inference-side choice, selected on a speed--quality Pareto ablation over
+generated images \citep{xiao2026spd} --- nothing ties it to gradients.
+Machine precision is not the relevant floor either: bf16 rounding on
+unit-scale per-band amplitudes injects power of order $10^{-5}$ or below,
+orders of magnitude beneath any boundary-moving tolerance. Our setting,
+however, fixes a tolerance \emph{by construction}: the demotion recipe
+pays a resize--VAE-encode round trip whose latent error has measurable
+per-band power $D(f)$ --- the same pipeline noise the re-encoding control
+prices at the gradient level --- and $D$ is expressed in exactly
+Eq.~\ref{eq:spd}'s units (per-band power against unit noise). Band
+content below $D(f_{\mathrm{cut}})$ is invisible to the substitution
+pipeline even with no resolution change, so
+$\delta_{\reenc}(e) := D(f_{\mathrm{cut}}(e))$ anchors the null with zero
+free parameters. On the probe set this floor and its implied boundaries
+are \textbf{[pending: \texttt{reenc\_noise\_floor.py}, queued]}; we will
+report the anchored row alongside the family in Table~\ref{tab:null}.
+% TODO(reenc-floor): fill delta_reenc + t* per route from
+% bench/results/<reenc-floor run>/result.json, add row to tab:null.
+Either way the confrontation does not hinge on the choice: the
+structural failures (N2, N3) are $\delta$-independent.
+
+\begin{table}[t]
+\caption{The spectral null (Eq.~\ref{eq:spd}) instantiated on the
+measured latent spectrum: predicted safe boundaries $t^{*}$ per route as
+the tolerance $\delta$ sweeps its range. SPD's published default is
+$\delta = 0.01$; the
+equal-power slice is the classical crossover. No row reproduces the
+measured pattern (last line; \S\ref{sec:map}): the $\delta$ that matches
+the safe route's
+boundary predicts both failing routes safe by $\sigma = 0.63$, and no
+$\delta$ can produce a floor.}
+\label{tab:null}
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccl}
+\toprule
+tolerance $\delta$ & $1024{\to}896$ & $1024{\to}768$ & $1024{\to}512$ & \\
+\midrule
+$(1+P_\omega)/2$ (equal power) & $0.14$ & $0.15$ & $0.20$ & classical crossover \\
+$0.05$ & $0.41$ & $0.43$ & $0.53$ & \\
+$0.025$ & $0.50$ & $0.52$ & $0.62$ & tuned to the measured $896$ gate \\
+$0.01$ & $0.61$ & $0.63$ & $0.72$ & SPD's published default \\
+$0.005$ & $0.69$ & $0.71$ & $0.79$ & \\
+\midrule
+\textbf{measured, debiased} & ${\approx}\,0.5$ &
+none certified & unsafe, all $\sigma$ & floors $.02$--$.04$ / $.06$--$.09$ / ${\approx}\,.3$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{Scoring the accounts}
 \label{sec:retrodict}
 
 Against the five axes of \S\ref{sec:diverge}, the null loses each one:
-the boundary pattern is $\{0.5,$ never, never$\}$ (axis 1,
-\S\ref{sec:phase0}); gaps persist at pure-noise input, equal to the floor
-(axis 2, \S\ref{sec:floor}); ratio governs the amplitude while absolute
-size governs the floor (axis 3, \S\ref{sec:governors}); the residual
-curves are route-uniform under route-ordered gaps (axis 4,
+the boundary pattern is $\{{\approx}\,0.5$, no certifiable window,
+certifiably unsafe everywhere$\}$ (axis 1, \S\ref{sec:phase0}); gaps
+persist at pure-noise input, equal to the floor and to the image-free
+control (axis 2, \S\ref{sec:floor}); ratio governs the amplitude while
+absolute size governs the floor (axis 3, \S\ref{sec:governors}); the
+residual curves are route-uniform under route-ordered gaps (axis 4,
 \S\ref{sec:inputbranch}); and the curve shape follows $m/G^p$, not
 per-band SNR (axis 5, \S\ref{sec:inputbranch}). Taking
 Eq.~\ref{eq:twoterm} with measured $m$, $G$, $A_e$, $\Floor_e$, the
 account also retrodicts the observations that motivated no probe:
-(i)~$\sigmastar \approx 0.5$ rather than $0.14$ --- the crossover is where
-$A_e\,m/G^p$ sinks below the instrument band, a property of the ratio, so
-the $3.5\times$ discrepancy is expected, not anomalous;
-(ii)~the $896{\to}768$ failure (its floor alone exceeds the band --- no
-$\sigma$-gate can rescue it);
+(i)~$\sigmastar \approx 0.5$ rather than $0.14$ --- the crossover is
+where $A_e\,m/G^p$ sinks below the instrument's detectability threshold,
+a property of the ratio, so the $3.5\times$ discrepancy is expected, not
+anomalous;
+(ii)~the $896{\to}768$ failure (the $768$-grid floor alone fills the
+certifiable margin --- no $\sigma$-gate can rescue it);
 (iii)~$1280{\to}1024$ flooring \emph{later} ($\sigmastar \approx 0.75$)
 but cleanly (harsher ratio $\Rightarrow$ larger $A_e$; large target
 $\Rightarrow$ $\Floor \approx 0$) --- the single observation that breaks
@@ -906,6 +1217,29 @@ A corollary worth stating plainly: the safety of $1024{\to}896$ is an
 nearby token counts}, not an information-theoretic statement about the
 data. There was never a reason to expect a universal ratio invariant.
 
+\subsection{From tolerances to predicted gap curves}
+\label{sec:bridge}
+
+Boundary comparison undersells the confrontation: a tolerance $\delta$
+determines not just where the null's gap vanishes but a full predicted
+\emph{curve}. Under the diagonal model on the measured $P(f)$, each
+$\delta$ implies a destroyed-band Bayes-residual mismatch
+$m_{\mathrm{null},e}(\sigma; \delta)$; mapped through the measured
+$G(\sigma)^p$ with the route gain $A$ calibrated on the one safe route,
+it becomes a predicted gap curve overlayable on
+Table~\ref{tab:debiasedmap}'s measured ones. Unit honesty: the null
+emits residual units only --- the $G^p$ bridge and the calibrated $A$
+belong to the two-term account, so this is \emph{the null read through
+our bridge}, and \S\ref{sec:account} is load-bearing for the
+confrontation rather than decorative. The overlay figure and the
+continuous $t^{*}(\delta)$ sweep (three near-coincident route curves,
+family spread $\le 0.13$, measured boundaries as markers,
+$\delta_{\reenc}$ as the anchor line) are
+\textbf{[pending: analysis over existing rows; the anchored line
+additionally waits on \texttt{reenc\_noise\_floor.py}]}.
+% TODO(E8.3): generate null->gap overlay + t*(delta) sweep figures from
+% e1b rows + rapsd fit; add \begin{figure} here.
+
 \section{From the gap to low-resolution training}
 \label{sec:practical}
 
@@ -913,37 +1247,61 @@ data. There was never a reason to expect a universal ratio invariant.
 \label{sec:map}
 
 \begin{table}[t]
-\caption{The measured safety map. $\sigmastar$ = noise level above which
-the demotion gap is within the re-encoding control band; token ratio =
-per-forward cost of the demoted grid. Every entry is a bin-mean read at
-$N \ge 24$ with split-half reliability and in-band controls.}
+\caption{The measured safety map --- \emph{per-example} object (the
+worst case, what a batch-1 user sees). $\Floor_e$ = debiased endpoint
+floor where the debiased instrument ran; $^{\dagger}$ marks
+raw-instrument-only routes (the finite-draw bias is strictly positive,
+so their ${\approx}\,0$ floors and in-band verdicts are conservative
+reads). $\sigmastar$ = noise level above which the paired debiased gap
+is non-inferior at instrument resolution (\S\ref{sec:epsstar}); token
+ratio = per-forward cost of the demoted grid.}
 \label{tab:map}
 \centering
 \small
+\setlength{\tabcolsep}{5pt}
 \begin{tabular}{lccccl}
 \toprule
 route & edge ratio & target tokens & $\Floor_e$ & $\sigmastar$ & verdict \\
 \midrule
-$1024 {\to} 896$ & $0.875$ & ${\sim}3{,}000$ & ${\approx}\,0$ & ${\approx}\,0.5$ & \textbf{safe}, $\sigma > 0.5$ \\
-$1280 {\to} 1024$ & $0.80$ & ${\sim}4{,}100$ & ${\approx}\,0$ & $\in (0.625, 0.875)$ & \textbf{safe}, $\sigma \gtrsim 0.75$ \\
-$1280 {\to} 1120$ & $0.875$ & ${\sim}4{,}800$ & ${\approx}\,0$ & ${\approx}\,0.5$ & safe (synthetic grid) \\
-$896 {\to} 768$ & $0.857$ & ${\sim}2{,}160$ & $0.06$--$0.13$ & --- & never in band \\
-$1024 {\to} 768$ & $0.75$ & ${\sim}2{,}160$ & $0.06$--$0.13$ & --- & never in band \\
-any ${\to} 512$ & $\le 0.57$ & ${\sim}1{,}000$ & ${\sim}0.3$ & --- & never in band \\
+$1024 {\to} 896$ & $0.875$ & ${\sim}3{,}000$ & $0.02$--$0.04$ & ${\approx}\,0.5$ & \textbf{safe}, $\sigma \in (0.5, 0.94]$ \\
+$1280 {\to} 1024$$^{\dagger}$ & $0.80$ & ${\sim}4{,}100$ & ${\approx}\,0$ & $\in (0.625, 0.875)$ & \textbf{safe}, $\sigma \gtrsim 0.75$ \\
+$1280 {\to} 1120$$^{\dagger}$ & $0.875$ & ${\sim}4{,}800$ & ${\approx}\,0$ & ${\approx}\,0.5$ & safe (synthetic grid) \\
+$896 {\to} 768$$^{\dagger}$ & $0.857$ & ${\sim}2{,}160$ & $0.06$--$0.12$ raw & --- & no certifiable window \\
+$1024 {\to} 768$ & $0.75$ & ${\sim}2{,}160$ & $0.06$--$0.09$ & --- & no certifiable window \\
+any ${\to} 512$ & $\le 0.57$ & ${\sim}1{,}000$ & ${\approx}\,0.30$ & --- & certifiably unsafe, all $\sigma$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Table~\ref{tab:map} is the practical summary of \S\ref{sec:experiments}:
 what replaces the spectral rule is not a corrected formula but a measured
-map. Safety is a per-route boundary $\sigmastar(\text{route})$, jointly
+map at a stated resolution. Safety is a per-route boundary
+$\sigmastar(\text{route})$, jointly
 determined by ratio (through $A_e$) and absolute target size (through
-$\Floor_e$); neither alone predicts the ordering. The batch-aggregate view
-is, if anything, stronger than the per-image one: summing per-image
-gradients before the cosine --- the object SGD actually follows ---
-collapses the $1024{\to}896$ gap to ${\approx}\,0$ at every bin
-$\sigma \ge 0.625$, i.e.\ the small per-image residual behaves as draw
-noise that cancels across images rather than as a shared bias. A
+$\Floor_e$); neither alone predicts the ordering. For the corpus safe
+route the fine print is: every bin in $(0.5, 0.94]$ has a debiased mean
+within $\pm 0.03$ of zero, formal certification at the strict $0.02$
+margin is achieved at $\sigma = 0.688$ (elsewhere bin-level $\epsstar$
+exceeds it at the current $N, D$), and the $\sigma{=}1$ endpoint itself
+carries a small real gap ($+0.042 \pm 0.011$) --- the safe window is the
+interior.
+
+\paragraph{The map depends on the aggregation object.}
+``Safe for whom'' matters: the per-example map above is the worst case,
+and the object SGD actually follows --- per-image gradients summed over
+the batch before the cosine --- is more forgiving. Pooled-arm probes
+(pool size $4$) collapse the $1024{\to}896$ gap to ${\approx}\,0$ at
+every bin $\sigma \ge 0.625$ \emph{and} the $1024{\to}768$ gap to
+${\approx}\,0$ at $\sigma \ge 0.875$: the per-example and
+batch-aggregate objects genuinely disagree at high $\sigma$, so any
+safety claim must state which object it is a claim about. The small
+per-image residual behaves as draw noise that cancels across images
+rather than as a shared bias. We publish the per-example map as the
+verdict (it bounds every batch size from below; pooled raw reads are
+bias-conservative in the in-band direction but pooled arms do not yet
+have self-floors), and a debiased verdict grid at the shipped trainer's
+actual batch$\times$accumulation operating point is designed
+\textbf{[pending]}. A
 redundancy-stratified analysis finds no per-image demotion-targeting lever
 (null trend across strata), consistent with the floor being an
 image-generic network property.
@@ -962,7 +1320,11 @@ the reverse). When every sample in the batch is above the gate
 demoted-grid sibling produced by the probe's own measured-safe recipe
 (pixel-space downscale, VAE re-encode); everything downstream --- noise,
 target, masking, loss --- derives from the swapped latent. Off-route
-images always train native, as does validation.
+images always train native, as does validation. The small real gap at
+the exact $\sigma{=}1$ endpoint (\S\ref{sec:floor}) does not bite here:
+it is a boundary point of measure zero for the continuous training
+$\sigma$-density, and the last interior bin ($\sigma \in (0.875, 1)$)
+reads ${\approx}\,0$ debiased.
 
 \textbf{Banded rotary alignment, $\sigma$-gated.} Motivated by
 \S\ref{sec:rope}, a frequency-selective alignment (YaRN-style bands:
@@ -979,9 +1341,11 @@ candidate, not a gate-widener: the gate stays $\sigma > 0.5$.
 
 \textbf{Cost accounting.} With ${\sim}50\%$ of draws above the gate and
 the demoted forward at ${\sim}0.72\times$ tokens, the fixed-step epoch
-cost is ${\approx}\,0.5 \cdot 0.72 + 0.5 = 0.86$ --- a ${\sim}14\%$
-wall-clock ceiling on our corpus ($96\%$ of records are on the safe
-route), scaling with high-tier content. The pitch is wall-clock at fixed
+cost is ${\approx}\,0.5 \cdot 0.72 + 0.5 = 0.86$ --- a \emph{projected
+ceiling} of ${\sim}14\%$ wall-clock on our corpus ($96\%$ of records are
+on the safe route), scaling with high-tier content; the realized saving
+(including cache-load overheads) is measured only by the pending A/B
+below. The pitch is wall-clock at fixed
 steps, never ``more steps in the same time.''
 
 \textbf{Weight-space sanity.} Under bit-exact deterministic training
@@ -1010,7 +1374,12 @@ mixed-resolution-trained adapter might equalize (or widen) its own
 gradients; probing such a checkpoint first is the designated bound on how
 far the map generalizes. The floor's dependence on the fine-tuning
 operating point through $J$ is untested (the designated probe: fine-tune
-at the 1280 tier, re-probe $1280{\to}1024$).
+at the 1280 tier, re-probe $1280{\to}1024$). Relatedly, the probe pool's
+relationship to the adapter's own fine-tune set was never a controlled
+axis ($2$ of $40$ verdict stems are in it); a controlled-LoRA probe with
+a frozen membership manifest (trained-on / held-out / near-OOD cells) is
+designed to measure this dependence rather than concede it
+\textbf{[pending]}.
 
 \textbf{Gradient-level, not end-task.} The map is built from accumulated
 per-step gradients; integration over an optimizer trajectory is addressed
@@ -1024,10 +1393,22 @@ and floor), not a quantitative fit of its $\sigma$-shape. Likewise the
 band-counting sketch for $\mathrm{RoPE}_e$/$\mathrm{Resid}_e$ is
 calibrated, not derived.
 
-\textbf{Instrument resolution.} Bin-mean SEM ${\sim}0.02$ and the
-re-encoding band $\pm 0.04$ set the floor on what ``safe'' can mean;
-residual gaps of that order are undetectable by construction. The
-$\sigmastar$ boundaries are localized only to a bin.
+\textbf{Instrument resolution.} ``Safe'' is one-sided non-inferiority at
+the measured detectability threshold (\S\ref{sec:epsstar}):
+$\epsstar = 0.03$--$0.08$ per bin at the verdict grid's $(N, D)$,
+${\approx}\,0.01$--$0.02$ at the endpoint sweeps. True gaps below
+$\epsstar$ are undetectable by construction, the $\sigmastar$ boundaries
+are localized only to a bin, and every ``no certifiable window'' claim
+is $(N, D)$-relative --- a larger campaign could certify (or refute) the
+$768$ high-$\sigma$ window whose debiased means already sit near zero.
+
+\textbf{Debiased coverage.} The debiasing campaign covered the corpus
+verdict grid: the endpoint draw sweeps, the $8$-bin map, and x-zero. The
+$1280$-tier iso-severity, $896$-tier transfer, depth-split, and
+PI-intervention runs remain raw-instrument reads, defended where used by
+the one-signed-bias argument (a raw ${\approx}\,0$ read is conservative)
+and by paired same-grid contrasts (the bias cancels to first order);
+pooled arms have no self-floors yet.
 
 \textbf{Scope.} Adapter (LoRA) gradients on a frozen backbone; full
 fine-tuning may differ. Pixel-space demotion only (latent-space
@@ -1039,39 +1420,60 @@ pre-registered values, not searched.
 \label{sec:conclusion}
 
 ``Almost equivalent'' input signal is not almost-equivalent training
-signal. Derived to first order, the training-side cost of demotion has
-two terms, and the spectral argument --- even in its strongest
-tolerance-parameterized form --- is a model of only one of them: a
-one-parameter, ratio-only family that cannot express the
-$\sigma$-independent floor the network's grid-calibrated computation
-carries. The measurements bear the structure out at every point of
-divergence: the mildest route's crossover sits at $3.5\times$ the
+signal --- and measuring the difference honestly is itself a metrology
+problem. Spectral sufficiency of the noisy input does not guarantee
+gradient equivalence under resolution substitution: to first order the
+training-side cost of demotion has two terms, and the spectral argument
+--- even in its strongest tolerance-parameterized form --- is a model of
+only one of them, a one-parameter, ratio-only family that cannot express
+the $\sigma$-independent floor the network's grid-calibrated computation
+carries. The debiased measurements bear the structure out at every point
+of divergence: the mildest route's crossover sits at $3.5\times$ the
 equal-power prediction and no tolerance reproduces the map; a
-$2\times$-downscaled latent never yields the native gradient at any noise
-level --- because expected gradients are not noise-masked, the
-flow-matching target carries the clean image at every $\sigma$, and the
+$2\times$-downscaled latent is certifiably unsafe at every noise
+level --- because expected gradients are not noise-masked and the
 network function itself is grid-calibrated in its early blocks, partly
 through its positional coordinate system and partly through an
-irreducible dependence of the computation on token count. What replaces
-the spectral rule is a measured map: per-route boundaries governed by
-downscale ratio on the noise-dependent term and absolute grid size on the
-noise-independent one. On the one route our corpus makes safe, the map
-converts into a free ${\sim}14\%$ of wall-clock. We offer the account and
-its instrument --- per-$\sigma$-bin gradient agreement with a redraw floor
-and a re-encoding control, criteria frozen before data --- as the cheap,
+irreducible dependence of the computation on token count; and the
+surviving endpoint gap equals its image-free control everywhere, placing
+the whole floor in the compute graph. The metrology cut both ways: naive
+finite-draw gap estimation manufactures exactly the token-count-ordered
+floor signature under test, half the intermediate route's raw floor was
+estimator bias, and our own headline claims were re-derived --- and in
+one case softened --- under the correction. What replaces
+the spectral rule is a measured map at a stated resolution: per-route
+boundaries governed by downscale ratio on the noise-dependent term and
+absolute grid size on the noise-independent one. On the one route our
+corpus makes safe, the map projects a ceiling of ${\sim}14\%$ wall-clock
+at fixed steps, pending the end-to-end A/B. We offer the account and
+its instrument --- per-$\sigma$-bin gradient agreement with a redraw
+floor, a re-encoding control, per-arm self-floors, and a stated
+detectability threshold, criteria frozen before data --- as the cheap,
 general test that any future ``train part of the time at lower
-resolution'' proposal should pass before it is believed.
+resolution'' proposal should pass before it is believed; without the
+debiasing, that test manufactures the very effect it looks for.
 
 \subsubsection*{Reproducibility statement}
-The probe scripts (\texttt{run\_sigma\_probe.py},
+The probe scripts (\texttt{run\_sigma\_probe.py} --- including the
+\texttt{--self\_floor} and \texttt{--draw\_sweep} debiasing modes ---
 \texttt{run\_prior\_distance.py}, \texttt{rapsd.py},
 \texttt{compare\_ckpt\_dw.py}), the trainer wiring
-(\texttt{--sigma\_lowres}), frozen pre-registration documents, and every
-run's raw per-image records are in the public repository at
+(\texttt{--sigma\_lowres}), and the frozen pre-registration documents
+(including the debiasing campaign's decision rules) are in the public
+repository at
 \url{https://github.com/sorryhyun/anima_lora} (project line
-\texttt{project/sigma\_lowres/}). Paired training runs use a
+\texttt{project/sigma\_lowres/}). The debiased verdict runs' complete
+per-image records (\texttt{result.json} + \texttt{per\_image.jsonl})
+ship in-repo under \texttt{project/sigma\_lowres/paper\_bench/runs/};
+the earlier raw-instrument run archives are excluded by the repository's
+results ignore rule and will be published as a companion tarball
+\textbf{[pending]} --- until then, raw-run numbers are reproducible from
+the scripts but their original records are not themselves public.
+Paired training runs use a
 \texttt{--deterministic} mode (deterministic attention backward included)
-verified bit-identical across twin runs.
+verified bit-identical across twin runs; finite-draw cosines are
+kernel-path-sensitive, so all cosine pairings are computed within a
+single run (Appendix~\ref{app:instrument}).
 
 \bibliography{references}
 \bibliographystyle{iclr2026_conference}
@@ -1090,12 +1492,33 @@ reliability over images of each bin-mean curve is mandatory
 quantity has split-half reliability ${\approx}\,0$ and is never used.
 
 \paragraph{Controls.} The re-encoding arm prices the VAE decode--encode
-round trip that demotion necessarily pays; its gap is the validity band
-($\pm 0.04$; observed $|\cdot| \le 0.054$ across all bins of the main
-runs, per-module-group $\le 0.045$ in the split runs). The redraw floor
+round trip that demotion necessarily pays; in raw runs its gap served as
+the validity band ($\pm 0.04$; observed $|\cdot| \le 0.054$ across all
+bins of the main runs, per-module-group $\le 0.045$ in the split runs),
+a role superseded by the paired debiased read of \S\ref{sec:bias}. The
+redraw floor
 prices finite-draw noise. Density-weighting the uniform bins by the
 trainer's $\sigma$-density reproduces earlier $\sigma$-marginalized
 measurements from the same instrument family (consistency check).
+
+\paragraph{Debiasing (\S\ref{sec:bias}), implementation.} Under
+\texttt{--self\_floor}, every arm (re-encoding and each demote variant)
+runs a second independent draw set from a disjoint seed stream, giving
+per-arm self-cosines alongside the native floor; Eq.~\ref{eq:debias} is
+then computed per image and bin, and the map read is the paired
+difference $\Delta_i = \dgap_{e,i} - \dgap_{\reenc,i}$ with non-finite
+values (negative self-cosines under the square root at low $D$) and
+$|\Delta_i| > 1.5$ trimmed ($0$--$5$ of $40$ images per cell). Under
+\texttt{--draw\_sweep}, draw prefixes are nested ($D = 64$ contains the
+$D \le 32$ sets; prefix sums, no extra forwards) and
+$\gap(D) = \gap_\infty + c/D$ is fit on route means with a bootstrap CI
+over images. Finite-draw cosines are kernel-path chaotic: twin runs
+sharing a warm compiler kernel cache agree to $|\Delta\cos| \le 0.015$,
+while a run compiled to a different kernel set lands up to
+${\approx}\,0.3$ away at $D{=}2$ --- so gap/floor/self-floor pairings
+are never compared across processes, a guarantee the single-run
+instrument provides by construction; a \texttt{--deterministic} mode
+(bit-exact across twin runs) covers the paired training A/Bs.
 
 \paragraph{Endpoint and x-zero modes.} The $\sigma{=}1$ endpoint bin feeds
 input exactly $\epsilon$ (the input-information term vanishes by
@@ -1128,10 +1551,13 @@ frequency \textbf{[pending: \texttt{reenc\_noise\_floor.py}]}.
 \label{app:tables}
 
 \begin{table}[h]
-\caption{Ratio-transfer run: $896$-tier natives ($N{=}40$), pre-registered
+\caption{Ratio-transfer run (\textbf{raw estimator}): $896$-tier natives
+($N{=}40$), pre-registered
 bar ``$\gap_{768}$ within the re-encoding band at $\sigma \ge 0.5$'' ---
 \textbf{fails} (residual $0.06$--$0.12$, ${\sim}2\times$ the
-$1024{\to}896$ plateau).}
+$1024{\to}896$ plateau; ${\sim}$half of it is expected estimator bias,
+\S\ref{sec:bias} --- the separation is independently confirmed by the
+debiased same-grid floors, \S\ref{sec:floor}).}
 \label{tab:phase1a}
 \centering
 \small
@@ -1168,11 +1594,14 @@ $768{\to}512$   & .897 & .872 & .767 & .508 & .435 \\
 \end{table}
 
 \begin{table}[h]
-\caption{Depth localization of the floor: mean per-block gap at
+\caption{Depth localization of the floor (\textbf{raw estimator}): mean
+per-block gap at
 $\sigma{=}1$, early $=$ blocks 0--9, late $=$ 14--27, for the endpoint
 (ep) and x-zero (xz) probes. Early blocks carry ${\sim}3\times$ the
-late-block gap; the content share (ep $-$ xz) is a late-block minority
-effect.}
+late-block gap. The apparent content share (ep $-$ xz) is a late-block
+minority effect in raw units; the debiased draw-limit comparison finds
+ep $=$ xz within CI at the whole-adapter level
+(Table~\ref{tab:floor}).}
 \label{tab:depth}
 \centering
 \small
@@ -1189,7 +1618,9 @@ $1024{\to}896$ & .023 & .015 & .044 & .012 \\
 
 \begin{table}[h]
 \caption{Positional-interpolation intervention at the $\sigma{=}1$
-endpoint ($N{=}40$, $16$ draws): exact phase-geometry alignment erases the
+endpoint ($N{=}40$, $16$ draws; \textbf{raw} arm values --- the paired
+$\Delta$ column is a same-grid contrast in which the finite-draw bias
+cancels to first order): exact phase-geometry alignment erases the
 mild-route floor and ${\sim}30\%$ of the harsh-route floor.}
 \label{tab:pi}
 \centering

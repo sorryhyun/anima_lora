@@ -5,6 +5,28 @@ run*; this file says *what the manuscript becomes*. Drafted 2026-07-28
 from the gap-native restructure discussion; supersedes nothing — the
 current `paper/main.tex` stays the working draft until E1 lands.
 
+**STATUS 2026-07-29 — Branch A written into `paper/main.tex`.** E1(a,b,c)
+landed and rule 1 fired (512 floor confirmed debiased), so the §2 spine
+below is now the manuscript: new §3 metrology (gap def + instrument +
+finite-draw-bias subsection + ε\* and the safe(ε) definition), §4 account
+(softened, "derive"→account; Table 1 + retrodict moved out), §5
+Measurements (raw tables kept as marked historical record, new debiased
+verdict-map + debiased floor tables, floor waterfall ledger, x-zero≡
+endpoint equality, PI/iso-severity/depth re-anchored with the
+one-signed-bias argument), §6 "The null read in gap units" (Table 1 +
+scoring + E8.3 bridge stub), §7 two-maps framing + projected-ceiling
+wording, limitations gain ε\*-relative + debiased-coverage items, repro
+statement now matches what is public (paper_bench/runs in-repo; raw-run
+tarball pending). Abstract/intro/conclusion rewritten (narrowed headline,
+metrology as contribution, 14% as projected ceiling). Compiles clean
+under tectonic (0 overfull, no broken refs). Still open in the
+manuscript, each marked **[pending]** in place: E2 α-sweep confirmation,
+E3 pooled-with-self-floors run, E4 A/B + `reenc_noise_floor.py`
+(δ_reenc row + D(f) numbers), E7 membership probe, E8.3 overlay +
+t\*(δ) figures, results tarball. Figures not yet regenerated in debiased
+units (raw figs marked as raw in captions); Fig-1 enlargement + waterfall
++ overlay figures owed with E8 analysis.
+
 ---
 
 ## 1. Direction in one paragraph
