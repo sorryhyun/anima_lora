@@ -57,54 +57,90 @@ three pending markers.
   existing instrument verbatim — largely subsumed by E7's controlled
   adapter if that runs.
 
-## E7 — controlled-LoRA 2×2: data relationship to the adapter
+## E7 — controlled-LoRA 2×2 style factorial: data relationship to the adapter
 
-**Question.** Does the safety map depend on the probe data's relationship
-to the adapter — i.e. is the map a property of the (model, route) or of
-the (model, route, *adapter's training distribution*)? The paper already
-concedes operating-point dependence in Limitations; this measures it
-instead of conceding it. It also cleans up a known wart: the current
-verdict pool contains 2/40 stems from the probe adapter's own fine-tune
-set (`report.md` in-pool overlap check, 2026-07-26) — membership was
-never a controlled axis.
+**Question.** Does the safety map depend on the probe data's
+relationship to the adapter — is the map a property of (model, route)
+or of (model, route, *adapter's training distribution*)? Post-E5 this
+carries the deployment half of the calibration-recipe claim:
+adapter-agnostic ⇒ "calibrate once per model, use with any adapter";
+adapter-dependent ⇒ recalibrate per adapter. Also cleans up the known
+wart (2/40 verdict stems were in the shipped probe adapter's fine-tune
+set — membership was never a controlled axis).
 
-**Design.** Train a **controlled LoRA** with a frozen, manifest-recorded
-fine-tune set (a dedicated `path_pattern` slice; standard `make lora`,
-same recipe as the shipped probe adapter), holding out a matched split of
-the same artists. Probe cells, N≈12 each, redundancy-matched across
-cells:
+**Design (upgraded 2026-07-29 — factorial, two adapters).** Two
+controlled LoRAs on opposite **style clusters**, probed on both
+clusters. The reverse arm converts the style-statistics confound into
+an estimable main effect: probe-style main effect = image-statistics
+dependence; adapter×probe-style **interaction** = the pure
+distribution-relationship effect.
 
-| cell | membership | domain |
-|---|---|---|
-| S1 | trained-on (in the fine-tune manifest) | in-domain |
-| S2 | held-out, same artists | in-domain |
-| S3 | held-out, different artists / style cluster | near-OOD |
-| S4 | (optional) far-OOD — outside the illustration corpus | OOD |
+- **Frozen style axis (operational, decided before any training):**
+  per-artist median latent redundancy (the established tier_routing
+  scalar, high = flat), over qualifying images (1024-tier cache +
+  complete sidecars). Inventory: `paper_bench/e7_inventory.py`, run
+  `runs/20260729-1147-e7-inventory/e7_inventory.tsv` — 2901 qualifying
+  images, 70 artists with ≥8. **Clusters = top-12 ("flat", median
+  ≥ 0.787) and bottom-12 ("dirty", ≤ 0.707) artist medians among
+  eligible artists.** `sincos` (shipped adapter's artist) falls
+  mid-pack and is excluded by construction. Known correlate stated up
+  front: redundancy anti-correlates with tag count (ρ = −0.40), so
+  supervision density rides the style axis — acknowledged, not
+  controlled.
+- **Pool composition per cluster:** train on **8 of the 12 artists**
+  (4 reserved entirely → the same-style-never-seen cell), splitting
+  **within** each trained artist ~65/35 (held-out side ≥3 images);
+  per-artist train contribution capped (≤16 images) so large-n artists
+  don't dominate; total train set ~100–150 images ≈ a realistic
+  targeted fine-tune. Within-artist split random-seeded; **stem-level
+  manifest frozen and committed before training** (`path_pattern`
+  can't express within-artist splits — needs a stem-list knob or a
+  dedicated symlink subtree).
+- **Probe cells per adapter, N≈12 each** (S1/S2 redundancy-matched
+  within cluster; one probe list per adapter, cells as row tags —
+  cross-cluster stems shared between the two adapters so the
+  interaction reads paired per-stem):
 
-Run the E1-debiased instrument (endpoint + the 4-bin high-σ grid, routes
-{896, 768}) per cell. Instrument delta: probe selection currently goes
-through redundancy scoring with `--artists`/`--max_per_artist` only — add
-a `--probe_list <file>` override (explicit stem list per cell) plus a
-membership tag in `per_image.jsonl` rows, so cells are exact rather than
-glob-approximate.
+| cell | relationship to adapter |
+|---|---|
+| S1 | trained-on (in manifest) |
+| S2 | held-out images, trained artists |
+| S3s | never-seen artists, same style cluster |
+| S3x | never-seen artists, opposite cluster |
+| S4 (optional) | outside the illustration corpus — model-level OOD, NOT part of the factorial (probes the backbone's manifold, not the adapter relationship) |
 
-**Pre-registered readout.**
-- Two-term prediction: the **floor** is a Jacobian/graph property →
-  invariant across all four cells (strong, falsifiable). The **input
-  branch** rides the residual and gradient norm, which plausibly shrink
-  on trained-on images (memorized → small residual) → A_e and possibly
-  the measured σ* may shift between S1 and S2–S4.
-- S1 vs S2 shift ⇒ the map drifts *during* training as images become
-  trained-on — directly relevant to deployment, since the trainer demotes
-  its own fine-tune set. If this fires, add the trajectory variant:
-  re-probe S1/S2 at an early-epoch checkpoint of the same controlled run
-  (checkpoints are free — they already exist as `save_every` artifacts).
-- No shift anywhere ⇒ one Limitations paragraph becomes a supported
-  robustness claim; the safety map is adapter-agnostic on this model.
+- **Runs:** ONE probe run per adapter (≈48 stems, endpoint + 4-bin
+  high-σ grid, routes {896, 768}, `--self_floor`, D=8) — all
+  within-adapter cell contrasts stay inside one process (kernel-path
+  rule); cross-adapter reads are of paired gaps. Instrument delta:
+  `--probe_list <file>` (explicit stems) + membership/style tags in
+  `per_image.jsonl` rows.
 
-Cost: one standard LoRA train + ~4 probe runs at reduced grid; cheapest
-item on the generalization axis and the only one that addresses a stated
-limitation with existing hardware.
+**Pre-registered readout (E5-upgraded: fit A_e, F_e per cell).**
+
+| effect | prediction |
+|---|---|
+| Floor_e (and exp-law τ) across all cells | **invariant** — graph property (strong, falsifiable) |
+| A_e: S1 vs S2 (membership, style-matched) | may shrink on trained-on (memorized → small residual) |
+| A_e: probe-style main effect (flat vs dirty pools) | ≈ 0 — the designed-contrast version of the per-image spectral-predictor question (correlational null so far; first time tested by design at the cell level, where bin means are reliable) |
+| A_e: adapter×probe-style interaction | the E7 verdict quantity |
+
+Power, stated so a null is bounded: at N=12/cell the resolvable
+bin-mean effect is ~0.03–0.05 gap units; effects below that are
+"bounded by instrument resolution", not absent.
+
+- S1 vs S2 shift ⇒ the map drifts *during* training (the trainer
+  demotes its own fine-tune set) → add the trajectory variant:
+  re-probe S1/S2 at an early-epoch checkpoint (free — `save_every`
+  artifacts exist).
+- No shift anywhere ⇒ the Limitations operating-point paragraph
+  becomes a supported robustness claim: the map is adapter- AND
+  content-agnostic on this model, and the recipe is "calibrate once
+  per model".
+
+Cost: two standard LoRA trains + two probe runs (~E1b-scale each) +
+the `--probe_list` delta. Still the cheapest generalization item;
+kick off both trains alongside E3's GPU time as already planned.
 
 ## E8.3 [FIX] — null→gap bridge (remaining part of E8)
 
@@ -151,6 +187,6 @@ than decorative.
 E1 + E2 + E5 done → main.tex restructure per `paper_plan.md` (E5's
 qualified PASS sets the voice) → E3 (kick off E7's controlled-LoRA
 train here — it's GPU-cheap and its probes need E1's debiased
-instrument anyway) → E8.3 analysis (its anchored row waits on E4's
+instrument anyway; two trains now — the E7 factorial) → E8.3 analysis (its anchored row waits on E4's
 `reenc_noise_floor` run) → E4 (Phase 1b as owed) → E7 probes → E6 if
 targeting a top venue.
