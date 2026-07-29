@@ -1,0 +1,643 @@
+{
+  "schema_version": 1,
+  "script": "project/sigma_lowres/bench/run_sigma_probe.py",
+  "label": null,
+  "timestamp_utc": "2026-07-29T01:47:18Z",
+  "git": {
+    "sha": "7e6ed556",
+    "branch": "sigma-lowres-yarnsig",
+    "dirty": true
+  },
+  "env": {
+    "python": "3.13.14",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.12.0+cu132",
+    "cuda": "13.2"
+  },
+  "args": {
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "dit": "models/diffusion_models/anima-base-v1.0.safetensors",
+    "vae": "models/vae/qwen_image_vae.safetensors",
+    "num_images": 12,
+    "bins": 0,
+    "draws_per_bin": 16,
+    "sigma_window": "0,1",
+    "tier": 1024,
+    "demote_edges": "768,512",
+    "data_root": null,
+    "artists": null,
+    "max_per_artist": null,
+    "score_limit": null,
+    "no_reenc_control": false,
+    "per_group": false,
+    "endpoint_bin": true,
+    "x_zero": false,
+    "target_alpha": "0,0.25,0.5,0.75,1",
+    "pi_align": false,
+    "yarn_align": null,
+    "yarn_sigma_gate": null,
+    "pool": 0,
+    "self_floor": true,
+    "draw_sweep": null,
+    "draw_batch_tokens": 0,
+    "grad_ckpt": false,
+    "activation_memory_budget": 0.99,
+    "deterministic": false,
+    "seed": 42,
+    "quant_k": 4,
+    "results_root": "project/sigma_lowres/paper_bench/runs",
+    "label": null,
+    "smoke": false,
+    "gradient_checkpointing": false,
+    "compile": false
+  },
+  "metrics": {
+    "n_images": 12,
+    "bins": 0,
+    "draws_per_bin": 16,
+    "sigma_centers": [
+      1.0
+    ],
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "cos_floor": {
+      "mean": [
+        0.984
+      ],
+      "sem": [
+        0.00524
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gnorm_native": {
+      "mean": [
+        55.73425
+      ],
+      "sem": [
+        13.56571
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "wall_time_s": 3646.3,
+    "gap_reenc": {
+      "mean": [
+        -0.00132
+      ],
+      "sem": [
+        0.00167
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_reenc": {
+      "mean": [
+        0.97648
+      ],
+      "sem": [
+        0.00933
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_reenc": {
+      "mean": [
+        -0.00943
+      ],
+      "sem": [
+        0.00299
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_768": {
+      "mean": [
+        0.06306
+      ],
+      "sem": [
+        0.01049
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_768": {
+      "mean": [
+        0.96275
+      ],
+      "sem": [
+        0.00993
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_768": {
+      "mean": [
+        0.03942
+      ],
+      "sem": [
+        0.00866
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_512": {
+      "mean": [
+        0.34735
+      ],
+      "sem": [
+        0.07224
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_512": {
+      "mean": [
+        0.91911
+      ],
+      "sem": [
+        0.0213
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_512": {
+      "mean": [
+        0.32756
+      ],
+      "sem": [
+        0.06625
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "target_alphas": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "cos_floor@a0": {
+      "mean": [
+        0.96959
+      ],
+      "sem": [
+        0.01552
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gnorm_native@a0": {
+      "mean": [
+        60.31692
+      ],
+      "sem": [
+        10.43128
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_reenc@a0": {
+      "mean": [
+        -0.01253
+      ],
+      "sem": [
+        0.00976
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_reenc@a0": {
+      "mean": [
+        0.98051
+      ],
+      "sem": [
+        0.00482
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_reenc@a0": {
+      "mean": [
+        -0.01933
+      ],
+      "sem": [
+        0.01013
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_768@a0": {
+      "mean": [
+        0.06264
+      ],
+      "sem": [
+        0.01201
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_768@a0": {
+      "mean": [
+        0.9761
+      ],
+      "sem": [
+        0.0056
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_768@a0": {
+      "mean": [
+        0.05085
+      ],
+      "sem": [
+        0.01214
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_512@a0": {
+      "mean": [
+        0.28035
+      ],
+      "sem": [
+        0.03444
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_512@a0": {
+      "mean": [
+        0.9241
+      ],
+      "sem": [
+        0.0184
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_512@a0": {
+      "mean": [
+        0.24932
+      ],
+      "sem": [
+        0.0396
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_floor@a0.25": {
+      "mean": [
+        0.98099
+      ],
+      "sem": [
+        0.00488
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gnorm_native@a0.25": {
+      "mean": [
+        44.79483
+      ],
+      "sem": [
+        6.43311
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_reenc@a0.25": {
+      "mean": [
+        -0.00447
+      ],
+      "sem": [
+        0.00243
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_reenc@a0.25": {
+      "mean": [
+        0.97739
+      ],
+      "sem": [
+        0.00656
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_reenc@a0.25": {
+      "mean": [
+        -0.01291
+      ],
+      "sem": [
+        0.00297
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_768@a0.25": {
+      "mean": [
+        0.07119
+      ],
+      "sem": [
+        0.01317
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_768@a0.25": {
+      "mean": [
+        0.97452
+      ],
+      "sem": [
+        0.00639
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_768@a0.25": {
+      "mean": [
+        0.05484
+      ],
+      "sem": [
+        0.01269
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_512@a0.25": {
+      "mean": [
+        0.28727
+      ],
+      "sem": [
+        0.03531
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_512@a0.25": {
+      "mean": [
+        0.92763
+      ],
+      "sem": [
+        0.01715
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_512@a0.25": {
+      "mean": [
+        0.25058
+      ],
+      "sem": [
+        0.0397
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_floor@a0.5": {
+      "mean": [
+        0.8729
+      ],
+      "sem": [
+        0.07542
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gnorm_native@a0.5": {
+      "mean": [
+        32.65133
+      ],
+      "sem": [
+        7.75675
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_reenc@a0.5": {
+      "mean": [
+        0.07511
+      ],
+      "sem": [
+        0.13645
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_reenc@a0.5": {
+      "mean": [
+        0.90248
+      ],
+      "sem": [
+        0.05516
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_reenc@a0.5": {
+      "mean": [
+        -0.1709
+      ],
+      "sem": [
+        0.301
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_768@a0.5": {
+      "mean": [
+        0.02011
+      ],
+      "sem": [
+        0.0391
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_768@a0.5": {
+      "mean": [
+        0.9656
+      ],
+      "sem": [
+        0.00986
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_768@a0.5": {
+      "mean": [
+        -0.0566
+      ],
+      "sem": [
+        0.12167
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_512@a0.5": {
+      "mean": [
+        0.21006
+      ],
+      "sem": [
+        0.0603
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_512@a0.5": {
+      "mean": [
+        0.93722
+      ],
+      "sem": [
+        0.0148
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_512@a0.5": {
+      "mean": [
+        0.13943
+      ],
+      "sem": [
+        0.13679
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_floor@a0.75": {
+      "mean": [
+        0.96115
+      ],
+      "sem": [
+        0.01085
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gnorm_native@a0.75": {
+      "mean": [
+        37.50608
+      ],
+      "sem": [
+        10.47473
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_reenc@a0.75": {
+      "mean": [
+        -0.00173
+      ],
+      "sem": [
+        0.00486
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_reenc@a0.75": {
+      "mean": [
+        0.96377
+      ],
+      "sem": [
+        0.01556
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_reenc@a0.75": {
+      "mean": [
+        -0.02597
+      ],
+      "sem": [
+        0.01196
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_768@a0.75": {
+      "mean": [
+        0.18651
+      ],
+      "sem": [
+        0.08463
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_768@a0.75": {
+      "mean": [
+        0.91583
+      ],
+      "sem": [
+        0.02618
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_768@a0.75": {
+      "mean": [
+        0.16341
+      ],
+      "sem": [
+        0.09576
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_512@a0.75": {
+      "mean": [
+        0.51681
+      ],
+      "sem": [
+        0.14349
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_512@a0.75": {
+      "mean": [
+        0.942
+      ],
+      "sem": [
+        0.01188
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_512@a0.75": {
+      "mean": [
+        0.54336
+      ],
+      "sem": [
+        0.16182
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "alpha_slope_reenc": 0.0027,
+    "alpha_slope_768": 0.03428,
+    "alpha_slope_512": 0.1797
+  },
+  "artifacts": [
+    "per_image.jsonl"
+  ],
+  "extra": {
+    "probe_set": [
+      "belko/10566921",
+      "channel_(caststation)/12248671",
+      "sincos/8222101",
+      "smewed/11021220",
+      "wantan_meo/dan_10849904",
+      "ame_(uten_cancel)/dan_9777551",
+      "sushispin/10988519",
+      "mikozin/10239387",
+      "yamamoto_souichirou/13529774",
+      "akipeko/13345970",
+      "oldsickkim/11945456",
+      "haku89/13745769"
+    ]
+  }
+}

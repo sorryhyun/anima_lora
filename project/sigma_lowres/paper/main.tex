@@ -903,10 +903,20 @@ endpoint gap \emph{is} the graph floor. This equality is itself a
 debiasing product: in raw units the $768$ endpoint ($0.127$) sat
 $2\times$ above its x-zero read ($0.064$), suggesting a large
 target-content share (the target $v = \epsilon - x$ still carries $x$ at
-$\sigma{=}1$); that share was estimator bias. A target-strength sweep at
-the endpoint (target $\epsilon - \alpha x$, $\alpha \in [0,1]$) is the
-designated cheap confirmation, with predicted slope
-${\approx}\,0$ \textbf{[pending]}.
+$\sigma{=}1$); that share was estimator bias. The target-strength sweep at the
+endpoint (target $\epsilon - \alpha x$,
+$\alpha \in \{0, 0.25, 0.5, 0.75, 1\}$, $N{=}12$, $D{=}16$, one run,
+shared draws across $\alpha$) confirms it: the paired debiased gap is
+$\alpha$-flat at the well-conditioned anchors ($768$:
+$+0.070 \pm 0.015$ at $\alpha{=}0$ versus $+0.049 \pm 0.010$ at
+$\alpha{=}1$; $512$: $+0.269 \pm 0.041$ versus $+0.337 \pm 0.067$;
+re-encoding control slope $+0.003$) --- no resolvable target-content
+share. The interior points $\alpha \in [0.5, 0.75]$ are unreadable by
+construction and excluded: there the native residual
+$\alpha x - \hat{x}$ passes near cancellation, the gradient norm dips
+($60 \to 33$) and the redraw floor falls to $0.87$, so the estimator
+reads through a small $G$ --- the amplification mechanism of
+\S\ref{sec:inputbranch}, surfacing along the $\alpha$ axis.
 
 How does the floor relate to the interior high-$\sigma$ bins? For $512$
 the debiased window means ($+0.08$--$0.60$) sit at or above the floor,

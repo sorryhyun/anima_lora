@@ -1,9 +1,9 @@
 # paper_bench — required experiments before the sigma_lowres paper ships
 
 Open runs only. Completed items — the 2026-07-28 review triage (R1–R5),
-E1 (all of a/b/c + instrument changes), and E8.1/E8.2 — live in
-`completed_experiments.md` with their results; `paper_plan.md` is the
-manuscript plan.
+E1 (all of a/b/c + instrument changes), E2 (target-α sweep, slope ≈ 0
+confirmed), and E8.1/E8.2 — live in `completed_experiments.md` with
+their results; `paper_plan.md` is the manuscript plan.
 
 **Context: E1 landed 2026-07-29 and decision rule 1 fired (512 debiased
 gap_∞ +0.304 → token-count floor confirmed → Branch A).** Everything
@@ -15,18 +15,6 @@ owed by `roadmap.md` (Phase 1b); **[STRETCH]** = raises acceptance
 ceiling, not required for correctness.
 
 ---
-
-## E2 — target-strength sweep at the endpoint (relabel the floor)
-
-`--target_alpha 0,0.25,0.5,0.75,1`: at σ=1, input = ε unchanged, target
-= ε − α·x (per-arm x). Decomposes the endpoint gap into graph share
-(α=0, ≡ x-zero-in-target-only), target-content share (slope in α), and
-interaction. N=12, D=16, routes {768, 512} (896 is ≈0 already). Cheap —
-one afternoon run. **Post-E1(c) status: demoted from gate-adjacent to
-cheap confirmation** — x-zero ≡ endpoint at every route predicts
-α-slope ≈ 0. Paper edits regardless of outcome: rename "endpoint gap @
-σ=1" → "high-noise endpoint gap"; x-zero is the graph-only control;
-768's text stops claiming the plateau *is* the floor.
 
 ## E3 — aggregation-conditioned safety map
 
@@ -167,8 +155,7 @@ than decorative.
 
 ## Order of operations
 
-E1 done (Branch A written) → E2 + E3 in parallel (kick off E7's
-controlled-LoRA train here — it's GPU-cheap and its probes need E1's
-debiased instrument anyway) → E8.3 analysis (its anchored row waits on
-E4's `reenc_noise_floor` run) → E4 (Phase 1b as owed) → E7 probes → E5 →
-E6 if targeting a top venue.
+E1 + E2 done → E3 (kick off E7's controlled-LoRA train here — it's
+GPU-cheap and its probes need E1's debiased instrument anyway) → E8.3
+analysis (its anchored row waits on E4's `reenc_noise_floor` run) → E4
+(Phase 1b as owed) → E7 probes → E5 → E6 if targeting a top venue.
