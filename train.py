@@ -158,6 +158,10 @@ class AnimaTrainer:
         # skip-if-missing loss; the loop audits it (step-25 early check +
         # run end) and flags configured-but-dead features with `LIVENESS:`.
         self._liveness = LivenessLedger()
+        # Realized patch-token histogram over train steps ({tokens: examples},
+        # post σ-demote swap) — per-arm FLOPs accounting for the sigma_lowres
+        # E4 A/B; merged into the run_end progress event.
+        self._token_step_hist: dict[int, int] = {}
 
     # region logging helpers
 
@@ -646,6 +650,27 @@ class AnimaTrainer:
         return g_sigma, g_noise
 
     @staticmethod
+    def _sigma_route(args):
+        """Parsed ``--sigma_lowres_route`` as ``(native_edge, demote_edge)``.
+
+        Defaults to the measured-safe 1024:896 (``SIGMA_DEMOTE_ROUTE``);
+        validates the shape once per call site.
+        """
+        raw = str(getattr(args, "sigma_lowres_route", None) or "1024:896")
+        try:
+            native, demote = (int(x) for x in raw.split(":"))
+        except ValueError:
+            raise ValueError(
+                f"--sigma_lowres_route expects NATIVE:DEMOTE (e.g. 1024:896), "
+                f"got {raw!r}"
+            ) from None
+        if not (native > demote > 0):
+            raise ValueError(
+                f"--sigma_lowres_route needs NATIVE > DEMOTE > 0, got {raw!r}"
+            )
+        return native, demote
+
+    @staticmethod
     def _yarnsig_params(args):
         """Parsed ``--sigma_lowres_yarnsig`` as ``(alpha, beta, center, gamma)``,
         or None when off. Validates once; cached on the args namespace."""
@@ -1090,6 +1115,14 @@ class AnimaTrainer:
         latents, sigmas_flat = self._maybe_sigma_demote(
             ctx, batch, latents, is_train, generator=g_sigma
         )
+        if is_train:
+            # Realized patch-token histogram (per-arm FLOPs accounting, E4):
+            # counts examples at the grid the step ACTUALLY ran on (post
+            # demote swap). Emitted with the run_end progress event.
+            tok = (latents.shape[-2] // 2) * (latents.shape[-1] // 2)
+            self._token_step_hist[tok] = self._token_step_hist.get(tok, 0) + int(
+                latents.shape[0]
+            )
         if sigmas_flat is None and g_sigma is not None:
             # Paired mode on a batch the demote path didn't draw for (no
             # --sigma_lowres, or an off-route/un-emitted batch): still take σ
@@ -1822,18 +1855,18 @@ class AnimaTrainer:
         # datasets only — validation stays native so val loss is comparable
         # across the A/B arms the gate requires.
         if getattr(args, "sigma_lowres", False):
-            from library.datasets.buckets import SIGMA_DEMOTE_ROUTE
+            route = self._sigma_route(args)
 
             enabled_on = 0
             for ds in getattr(train_dataset_group, "datasets", []):
                 if hasattr(ds, "enable_sigma_demote"):
-                    ds.enable_sigma_demote(*SIGMA_DEMOTE_ROUTE)
+                    ds.enable_sigma_demote(*route)
                     enabled_on += 1
             logger.info(
                 "sigma_lowres ENABLED: %d→%d demote at σ > %s on %d train "
                 "dataset(s); validation stays native.",
-                SIGMA_DEMOTE_ROUTE[0],
-                SIGMA_DEMOTE_ROUTE[1],
+                route[0],
+                route[1],
                 getattr(args, "sigma_lowres_threshold", 0.5),
                 enabled_on,
             )
@@ -1896,12 +1929,9 @@ class AnimaTrainer:
         # which must sit inside the compiled dynamic-seq range (same failure
         # mode as #42's out-of-range sample prompts).
         if getattr(args, "sigma_lowres", False):
-            from library.datasets.buckets import (
-                SIGMA_DEMOTE_ROUTE,
-                demoted_token_counts,
-            )
+            from library.datasets.buckets import demoted_token_counts
 
-            counts |= demoted_token_counts(resos, *SIGMA_DEMOTE_ROUTE)
+            counts |= demoted_token_counts(resos, *self._sigma_route(args))
         return len(counts), (min(counts), max(counts))
 
     def _sample_prompt_token_counts(self, args) -> set:
@@ -2872,7 +2902,18 @@ class AnimaTrainer:
         with run_scope(
             self.progress_sink,
             final_step=lambda: loop_state.global_step,
-            extra_fields=self._liveness.run_end_fields,
+            extra_fields=lambda: {
+                **self._liveness.run_end_fields(),
+                **(
+                    {
+                        "token_step_hist": {
+                            str(k): v for k, v in sorted(self._token_step_hist.items())
+                        }
+                    }
+                    if self._token_step_hist
+                    else {}
+                ),
+            },
         ):
             run_training_loop(self, loop_state)
 

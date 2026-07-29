@@ -468,6 +468,18 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "values are OUTSIDE the probe's safe region.",
     )
     parser.add_argument(
+        "--sigma_lowres_route",
+        type=str,
+        default="1024:896",
+        metavar="NATIVE:DEMOTE",
+        help="demote route for --sigma_lowres as native:demote edge. The "
+        "default 1024:896 is the only measured-safe route; other values "
+        "(e.g. 1024:768 — the E4 negative-control arm) are for probe/control "
+        "runs only. The sibling latents must have been emitted with the SAME "
+        'route (`make preprocess-demote ARGS="--sigma_demote N:D"`) — a '
+        "missing key degrades that batch to native with a warn-once.",
+    )
+    parser.add_argument(
         "--sigma_lowres_yarnsig",
         type=str,
         nargs="?",

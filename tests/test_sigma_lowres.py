@@ -76,6 +76,36 @@ class TestDemoteBucket:
         assert all(lo <= c <= hi for c in counts)
 
 
+class TestSigmaRoute:
+    def test_default_and_custom(self):
+        from train import AnimaTrainer
+
+        assert AnimaTrainer._sigma_route(SimpleNamespace()) == (1024, 896)
+        assert AnimaTrainer._sigma_route(SimpleNamespace(sigma_lowres_route=None)) == (
+            1024,
+            896,
+        )
+        assert AnimaTrainer._sigma_route(
+            SimpleNamespace(sigma_lowres_route="1024:768")
+        ) == (1024, 768)
+
+    def test_bad_routes_rejected(self):
+        from train import AnimaTrainer
+
+        for bad in ("1024", "896:1024", "1024:0", "a:b", "1024:896:768"):
+            with pytest.raises(ValueError):
+                AnimaTrainer._sigma_route(SimpleNamespace(sigma_lowres_route=bad))
+
+    def test_unsafe_768_bucket_derivable(self):
+        # The E4 negative-control route must derive a 768-band sibling grid
+        # for 1024-tier shapes (same pure function the emit uses).
+        lo, hi = freefit_band_for_edge(768)
+        bucket = demote_bucket_for(896, 1200, 1024, 768)
+        assert bucket is not None
+        bw, bh = bucket
+        assert lo <= (bw // 16) * (bh // 16) <= hi
+
+
 class TestDemotedKey:
     def test_never_in_latents_namespace(self):
         key = demoted_latents_key(880, 1184)
