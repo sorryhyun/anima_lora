@@ -96,6 +96,32 @@ distribution-relationship effect.
   manifest frozen and committed before training** (`path_pattern`
   can't express within-artist splits — needs a stem-list knob or a
   dedicated symlink subtree).
+- **Training recipe (frozen 2026-07-29, `configs/gui-methods/custom/e7.toml`):**
+  verbatim the shipped probe adapter's recipe
+  (`anima_soup_sincos.snapshot.toml` is the authority — NOT
+  `configs/methods/lora.toml`, whose default stacks Ortho/T-LoRA/Hydra
+  and changes both checkpoint keys and gradient geometry, and NOT
+  `configs/soup/soup.toml`, whose defaults drifted from what actually
+  trained the shipped adapter): plain-LoRA soup, dim 32 / alpha 128,
+  weight_svd init, 6 epochs, per-ingredient `lr_pool 1e-5,2e-5,5e-5`,
+  adaln 16/90, timestep mask, REPA relational 0.05@8, caption dropout
+  0.05, full pipeline (uncond init → 3 seeded fine-tunes 1001–1003 →
+  SVD soup @32). **Pre-registered deviations from shipped:** (1)
+  Phase-1 uncond pool = the cluster's own train manifest, NOT the
+  corpus-wide `anima_uncond_df58248c` (which saw every image
+  caption-dropped and would contaminate S2/S3 membership); (2) train
+  totals equalized across clusters (124 images each); (3) identical
+  seeds both clusters. **Frozen split manifest:**
+  `paper_bench/e7_manifest.py` (seed 20260729) →
+  `runs/20260729-1158-e7-manifest/` — train 124 = 8 largest-n artists
+  × ≤16 (65/35 within-artist), holdout 418 (dirty) / 236 (flat),
+  reserved-artist cells belko/dikko/nvl/yomiji292 (dirty) and
+  ebifurya/hamao/madana/moursho (flat); patterns verified stem-exact
+  via `filter_paths_by_glob`. Launch:
+  `make soup CUSTOM=e7 PATH_PATTERN="$(cat path_pattern_<c>.txt)"
+  POOL_PATH_PATTERN=<same> NAME=e7_<c> --queue`. Bonus read: two fresh
+  checkpoints' floors = the G5 checkpoint-dependence ("carving") test
+  for free.
 - **Probe cells per adapter, N≈12 each** (S1/S2 redundancy-matched
   within cluster; one probe list per adapter, cells as row tags —
   cross-cluster stems shared between the two adapters so the

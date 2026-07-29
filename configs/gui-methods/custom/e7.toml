@@ -1,0 +1,42 @@
+# E7 controlled-LoRA recipe — FROZEN 2026-07-29 (sigma_lowres paper, E7 factorial).
+#
+# A verbatim copy of the shipped probe adapter's ingredient recipe
+# (output/ckpt/anima_soup_sincos.snapshot.toml — the authority), with the three
+# pre-registered deviations recorded in
+# project/sigma_lowres/paper_bench/required_experiments.md §E7:
+#   1. NO pinned uncond_init: Phase 1 retrains per cluster with
+#      POOL_PATH_PATTERN = the cluster's own train manifest (the shipped
+#      corpus-wide uncond init would contaminate S2/S3 membership).
+#   2. Train pools equalized across the two clusters (manifest generator).
+#   3. Same ingredient seeds (1001..1003) for both clusters.
+# Selection comes from the CLI (--path_pattern = the frozen stem manifest);
+# launch: make soup CUSTOM=e7 PATH_PATTERN=... POOL_PATH_PATTERN=... NAME=...
+# Do not edit after the e7 trains launch — probes replay membership from here.
+
+network_alpha = 128
+network_dim = 32
+down_init = "weight_svd"
+learning_rate = 2e-5          # base; [soup].lr_pool overrides per ingredient
+max_train_epochs = 6
+save_every_n_epochs = 6
+checkpointing_epochs = 6
+use_shuffled_caption_variants = true
+cache_llm_adapter_outputs = true
+caption_dropout_rate = 0.05   # Phase 1 overrides to 1.0 (uncond); Phase 2 keeps this
+use_timestep_mask = true
+min_rank = 1
+alpha_rank_scale = 1.0
+use_repa     = true
+repa_mode    = "relational"
+repa_weight  = 0.05
+repa_layer   = 8
+repa_encoder = "pe_spatial"
+train_adaln = true
+adaln_rank = 16
+adaln_alpha = 90
+
+[soup]
+uncond_ratio = 1.0
+uncond_epochs = 4
+num_soup = 3
+lr_pool = "1e-5,2e-5,5e-5"    # matches the shipped soup's per-ingredient spread
