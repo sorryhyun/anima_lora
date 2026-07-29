@@ -1,0 +1,347 @@
+{
+  "schema_version": 1,
+  "script": "project/sigma_lowres/bench/run_sigma_probe.py",
+  "label": "e1c-xzero-endpoint",
+  "timestamp_utc": "2026-07-28T20:41:11Z",
+  "git": {
+    "sha": "efe8c5a2",
+    "branch": "sigma-lowres-yarnsig",
+    "dirty": true
+  },
+  "env": {
+    "python": "3.13.14",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.12.0+cu132",
+    "cuda": "13.2"
+  },
+  "args": {
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "dit": "models/diffusion_models/anima-base-v1.0.safetensors",
+    "vae": "models/vae/qwen_image_vae.safetensors",
+    "num_images": 40,
+    "bins": 0,
+    "draws_per_bin": 32,
+    "sigma_window": "0,1",
+    "tier": 1024,
+    "demote_edges": "896,768,512",
+    "data_root": null,
+    "artists": null,
+    "max_per_artist": null,
+    "score_limit": null,
+    "no_reenc_control": true,
+    "per_group": false,
+    "endpoint_bin": true,
+    "x_zero": true,
+    "pi_align": false,
+    "yarn_align": null,
+    "yarn_sigma_gate": null,
+    "pool": 0,
+    "self_floor": true,
+    "draw_sweep": "4,8,16,32",
+    "draw_batch_tokens": 0,
+    "grad_ckpt": false,
+    "activation_memory_budget": 0.99,
+    "deterministic": false,
+    "seed": 42,
+    "quant_k": 4,
+    "label": "e1c-xzero-endpoint",
+    "smoke": false,
+    "gradient_checkpointing": false,
+    "compile": false
+  },
+  "metrics": {
+    "n_images": 40,
+    "bins": 0,
+    "draws_per_bin": 32,
+    "sigma_centers": [
+      1.0
+    ],
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "cos_floor": {
+      "mean": [
+        0.93532,
+        0.95921,
+        0.98202,
+        0.98925
+      ],
+      "sem": [
+        0.0144,
+        0.00906,
+        0.00359,
+        0.0026
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.995
+    },
+    "gnorm_native": {
+      "mean": [
+        20.11175,
+        38.17432,
+        75.3989,
+        151.63285
+      ],
+      "sem": [
+        2.70686,
+        4.29868,
+        8.76543,
+        17.16851
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9996
+    },
+    "wall_time_s": 4827.4,
+    "gap_896": {
+      "mean": [
+        0.07561,
+        0.0713,
+        0.03009,
+        0.0269
+      ],
+      "sem": [
+        0.04347,
+        0.03222,
+        0.00686,
+        0.00533
+      ],
+      "spearman_sigma": -1.0,
+      "splithalf_pearson": 0.8016
+    },
+    "cos_self_896": {
+      "mean": [
+        0.87231,
+        0.91644,
+        0.96947,
+        0.98018
+      ],
+      "sem": [
+        0.03842,
+        0.02701,
+        0.00679,
+        0.00521
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9782
+    },
+    "debiased_gap_896": {
+      "mean": [
+        -0.02893,
+        0.03721,
+        0.01245,
+        0.01881
+      ],
+      "sem": [
+        0.01392,
+        0.03924,
+        0.00481,
+        0.00519
+      ],
+      "spearman_sigma": 0.4,
+      "splithalf_pearson": 0.3303
+    },
+    "gap_768": {
+      "mean": [
+        0.1041,
+        0.1012,
+        0.0901,
+        0.08524
+      ],
+      "sem": [
+        0.01898,
+        0.01338,
+        0.01175,
+        0.0098
+      ],
+      "spearman_sigma": -1.0,
+      "splithalf_pearson": 0.6794
+    },
+    "cos_self_768": {
+      "mean": [
+        0.7928,
+        0.89541,
+        0.95043,
+        0.97058
+      ],
+      "sem": [
+        0.04983,
+        0.01987,
+        0.00888,
+        0.00601
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9955
+    },
+    "debiased_gap_768": {
+      "mean": [
+        0.02379,
+        0.03807,
+        0.06358,
+        0.06932
+      ],
+      "sem": [
+        0.01066,
+        0.0111,
+        0.00892,
+        0.00786
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9209
+    },
+    "gap_512": {
+      "mean": [
+        0.32411,
+        0.31104,
+        0.30272,
+        0.31667
+      ],
+      "sem": [
+        0.0295,
+        0.02235,
+        0.02312,
+        0.02333
+      ],
+      "spearman_sigma": -0.4,
+      "splithalf_pearson": -0.9887
+    },
+    "cos_self_512": {
+      "mean": [
+        0.80349,
+        0.88153,
+        0.91456,
+        0.94261
+      ],
+      "sem": [
+        0.02297,
+        0.01309,
+        0.01125,
+        0.00885
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9584
+    },
+    "debiased_gap_512": {
+      "mean": [
+        0.25665,
+        0.26522,
+        0.27146,
+        0.28563
+      ],
+      "sem": [
+        0.02613,
+        0.02363,
+        0.02412,
+        0.02418
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.6304
+    },
+    "draw_prefixes": [
+      4,
+      8,
+      16,
+      32
+    ],
+    "drawfit_floor": {
+      "y_inf": 0.99567,
+      "c": -0.2494,
+      "y_inf_ci95": [
+        0.9903,
+        1.00076
+      ]
+    },
+    "drawfit_gap_896": {
+      "y_inf": 0.02325,
+      "c": 0.23656,
+      "y_inf_ci95": [
+        0.00324,
+        0.04045
+      ]
+    },
+    "drawfit_debiased_896": {
+      "y_inf": 0.0343,
+      "c": -0.2083,
+      "y_inf_ci95": [
+        0.01681,
+        0.05772
+      ]
+    },
+    "drawfit_gap_768": {
+      "y_inf": 0.08529,
+      "c": 0.08419,
+      "y_inf_ci95": [
+        0.06618,
+        0.10666
+      ]
+    },
+    "drawfit_debiased_768": {
+      "y_inf": 0.07364,
+      "c": -0.21293,
+      "y_inf_ci95": [
+        0.05296,
+        0.09413
+      ]
+    },
+    "drawfit_gap_512": {
+      "y_inf": 0.30651,
+      "c": 0.06078,
+      "y_inf_ci95": [
+        0.25044,
+        0.35769
+      ]
+    },
+    "drawfit_debiased_512": {
+      "y_inf": 0.28323,
+      "c": -0.11514,
+      "y_inf_ci95": [
+        0.23238,
+        0.33184
+      ]
+    }
+  },
+  "artifacts": [
+    "per_image.jsonl"
+  ],
+  "extra": {
+    "probe_set": [
+      "belko/10566921",
+      "ningen_mame/dan_6789229",
+      "kat_(bu-kunn)/dan_11415046",
+      "kat_(bu-kunn)/dan_8657484",
+      "hews/12672980",
+      "hews/7655626",
+      "mignon/dan_9540972",
+      "dikko/10437732",
+      "nvl/12882239",
+      "jumonji/8688344",
+      "fizz_(pixiv34498626)/6539097",
+      "sumiyao_(amam)/7614272",
+      "suujiniku/dan_10403110",
+      "mignon/dan_10884841",
+      "mignon/10573613",
+      "deyui/12728668",
+      "abmayo/13109140",
+      "songchuan_li/dan_6583014",
+      "kawakami_rokkaku/11531058",
+      "suujiniku/dan_10315869",
+      "jumonji/11957441",
+      "ru_zhai/10778612",
+      "sincos/7082181",
+      "koh_(minagi_kou)/dan_9398241",
+      "sumiyao_(amam)/6408147",
+      "moursho/12738905",
+      "yamamoto_souichirou/7727759",
+      "ootomo_takuji/dan_9016251",
+      "akipeko/7365254",
+      "coro_fae/13164819",
+      "yaegashi_nan/8228445",
+      "jumonji/10125232",
+      "ame_(uten_cancel)/dan_7035976",
+      "sincos/8774442",
+      "ama_mitsuki/12971566",
+      "deyui/10050204",
+      "gin00/13407704",
+      "ama_mitsuki/5828775",
+      "manglifer/13052789",
+      "haku89/13745769"
+    ]
+  }
+}

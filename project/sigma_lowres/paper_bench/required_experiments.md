@@ -112,6 +112,14 @@ noise alone. Caveat: cross-run points differ in seeds/arm structure, so
 this is indicative, not a substitute for (a). **Verdict: confound is
 live, observed, with a fitted c on one route — E1 is not optional.**
 
+Measured cross-run sensitivity (2026-07-28 smoke twins, D=2, same seeds
+and inputs): two runs sharing the warm inductor kernel cache agree to
+|Δcos| ≤ 0.015 (atomics-order noise); a run with a different kernel set
+(cold-autotune first compile) lands up to |Δcos| ≈ 0.29–0.36 away. So
+per-bin cosines at low D are *kernel-path chaotic* — never compare them
+across processes; every reported gap/floor/debias pairing must stay
+within one run, which the instrument already guarantees.
+
 Note on what the existing per-bin SEM band can and cannot do: the band
 is cross-image scatter of the *biased* estimator — it tightens with N
 around a number whose bias only shrinks with D. It does license the E3
@@ -140,6 +148,48 @@ bound the variance bias; only demoted self-floors do.
 
 Everything downstream (E2–E5, the map, the trainer gate) consumes E1's
 debiased numbers.
+
+**E1 RESULTS (2026-07-29; runs live in `paper_bench/runs/`
+(gitignore-exempt, committable — future paper-bench runs pass
+`--results_root project/sigma_lowres/paper_bench/runs`):
+`20260728-2302-e1a-drawsweep`, `20260729-0014-e1b-debiased-map`,
+`20260729-0420-e1c-xzero-endpoint`; instrument: `--self_floor` +
+`--draw_sweep` + `--deterministic` landed, det-twins bit-exact,
+stats-overlap cut wall ~2-3x).**
+
+- **(a) endpoint draw-sweep, N=12, D=4..64 nested.** Debiased gap_∞:
+  reenc −0.003 [−0.017,+0.008]; 896 +0.019 [+0.010,+0.030]; 768 +0.056
+  [+0.043,+0.071]; **512 +0.304 [+0.197,+0.424], 12/12 images > 0.15 →
+  decision rule 1 fires: token-count floor CONFIRMED debiased.** Rule 2
+  does not fire (768 paired vs reenc +0.054±0.009 > margin), but the
+  published 768 endpoint floor +0.127 is ~half estimator bias (debiased
+  ~0.056) — floor-table magnitudes must be rewritten. Native floor
+  extrapolates to 1.005 [0.994,1.016]: the draft's "endpoint floor
+  ≈ 0.85" was pure draw noise (R1 vindicated on the native floor).
+  Debiased fits are D-flat (|c| ≤ 0.05 for 512 vs raw c ≈ +0.29) — the
+  attenuation correction works as designed.
+- **(b) verdict grid 8×8+endpoint, N=40, --self_floor.** Caveat first:
+  at D=8/bin the *unpaired* debiased estimator overshoots (reenc bins to
+  −0.4 where floors are small, σ≈0.19–0.44) — the readable object is the
+  **paired per-image difference (arm − reenc)**, |Δ|>1.5 dropped.
+  Paired-debiased map: 512 unsafe at every σ (+0.08..+0.60). 896 unsafe
+  σ<0.5, ≈0 in σ∈[0.56,0.94] (formal 0.02-UB pass only at 0.688 —
+  bin-level ε* at N=40/D=8 is ~0.03–0.08, see E8.1), **small real gap at
+  the exact endpoint (+0.042±0.011)** that raw analysis missed. 768 ≈ 0
+  in σ∈[0.69,0.94] (means −0.03..+0.015) but clearly gapped at the
+  endpoint (+0.092±0.012) and everywhere σ<0.6 — "never safe" softens to
+  "no certifiable window at current instrument resolution; means ≈ 0 in
+  [0.69,0.94]". Shipped 896@σ>0.5 map: re-confirmed debiased except the
+  σ=1.0 endpoint itself.
+- **(c) x-zero endpoint sweep, N=40, D=4..32, --self_floor.** Debiased
+  graph-term gap_∞: 896 +0.034 [+0.017,+0.058]; 768 +0.074
+  [+0.053,+0.094]; 512 +0.283 [+0.232,+0.332] — statistically equal to
+  (a)'s full-endpoint gaps at every route. **The endpoint gap IS the
+  graph/Jacobian floor: the target-content share R2 flagged (raw 768
+  0.127 vs x-zero 0.064) was estimator bias, not content.** The paper's
+  original "any endpoint gap is the floor by construction" survives in
+  debiased units; E2's α-sweep is demoted from gate-adjacent to cheap
+  confirmation (predicted α-slope ≈ 0).
 
 ## E2 — target-strength sweep at the endpoint (relabel the floor)
 

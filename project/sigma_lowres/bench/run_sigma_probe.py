@@ -28,10 +28,12 @@ import argparse
 import json
 import logging
 import math
+import os
 import re
 import shutil
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from functools import partial
 from pathlib import Path
@@ -173,6 +175,44 @@ def parse_args() -> argparse.Namespace:
         "floor. Per-image rows are still written unchanged.",
     )
     p.add_argument(
+        "--self_floor",
+        action="store_true",
+        help="E1 debiasing: run a SECOND independent draw set for every arm "
+        "(reenc + each demote/pi/yarn arm) and report cos_self_<key> per bin "
+        "plus the split-half attenuation-corrected cosine "
+        "c_hat = cos(a+b, d+d') / sqrt(cos(a,b) * cos(d,d')) and "
+        "debiased_gap_<key> = 1 - c_hat. Raw gaps unchanged (first draw set "
+        "only). Doubles the per-arm forward/backward cost. With --pool, "
+        "pooled arms get pooled self-floors + debiased gaps too.",
+    )
+    p.add_argument(
+        "--draw_sweep",
+        default=None,
+        metavar="D1,D2,...,DMAX",
+        help="E1 draw-count extrapolation: endpoint-only mode (forces "
+        "--bins 0 --endpoint_bin --draws_per_bin DMAX); one pass at DMAX "
+        "draws with NESTED seeds — the accumulated gradient is snapshotted "
+        "at each prefix D, so the D=DMAX estimate contains the D=D1 draws "
+        "(no extra forwards). Every per-bin array in rows/headline is "
+        "indexed by prefix D instead of sigma-bin; headline adds per-arm "
+        "fits gap(D) = gap_inf + c/D with a bootstrap CI over images.",
+    )
+    p.add_argument(
+        "--draw_batch_tokens",
+        type=int,
+        default=0,
+        help="GPU-efficiency: batch noise draws into one forward/backward, "
+        "B = pow2-floor(BUDGET // grid_tokens) per arm (small demoted grids "
+        "batch hardest; native may stay at B=1). Statistically identical to "
+        "B=1 — per-draw seeds/noise unchanged, loss = B * batch-mean-MSE "
+        "which equals the accumulated sum of per-draw mean losses exactly "
+        "(up to float reduction order). Draw chunks never cross --draw_sweep "
+        "snapshot boundaries; σ-gated rope arms (yarnsig) fall back to B=1 "
+        "within any chunk whose σ values differ. Each distinct B adds one "
+        "compile graph per token family (one-time warmup). ~8400 batches "
+        "2x native / 8x at 512; 0 = off.",
+    )
+    p.add_argument(
         "--grad_ckpt",
         action="store_true",
         help="use gradient checkpointing INSTEAD of block compile (fallback)",
@@ -183,8 +223,29 @@ def parse_args() -> argparse.Namespace:
         default=0.99,
         help="partitioner knapsack cap under compile (freefit knee; 1.0 = off)",
     )
+    p.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="mirror train.py's deterministic mode (flash-attn deterministic "
+        "backward, use_deterministic_algorithms warn_only, cudnn "
+        "deterministic, CUBLAS_WORKSPACE_CONFIG): kills the atomics-order "
+        "run-to-run noise (measured |Δcos| ≤ 0.015 at D=2) so runs sharing "
+        "a warm inductor cache are bit-comparable. Use for any CROSS-RUN "
+        "read (E7 cells, adapter bridging). NB does NOT pin the kernel set "
+        "itself — a cold /tmp inductor cache (e.g. post-reboot) re-autotunes "
+        "and can still shift results by ~0.3 at D=2; within-run pairings "
+        "never need this flag.",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--quant_k", type=int, default=4)
+    p.add_argument(
+        "--results_root",
+        default=None,
+        help="run-dir root override (default: <script dir>/results). Paper-"
+        "bench runs pass project/sigma_lowres/paper_bench/runs — a name the "
+        "global 'results' gitignore does NOT match, so verdict runs are "
+        "committable (repro deliverable).",
+    )
     p.add_argument("--label", default=None)
     p.add_argument("--smoke", action="store_true")
     args = p.parse_args()
@@ -423,6 +484,18 @@ def pool_stats(acc: PoolAccumulator, arm_keys: list[str]) -> dict:
             c = [0.5 * (cosine(x, g) + cosine(y, g)) for x, y, g in zip(a, b, d)]
             out[f"{prefix}cos_{key}"] = [round(v, 5) for v in c]
             out[f"{prefix}gap_{key}"] = [round(f - v, 5) for f, v in zip(floor, c)]
+            d2 = store.get(f"{key}__2")
+            if d2 is None:  # no --self_floor second draw set pooled
+                continue
+            selfc = [cosine(x, y) for x, y in zip(d, d2)]
+            out[f"{prefix}cos_self_{key}"] = [round(v, 5) for v in selfc]
+            dg = []
+            for f_, s_, x, y, u, v in zip(floor, selfc, a, b, d, d2):
+                if f_ <= 0 or s_ <= 0:
+                    dg.append(None)
+                else:
+                    dg.append(round(1.0 - cosine(x + y, u + v) / math.sqrt(f_ * s_), 5))
+            out[f"{prefix}debiased_gap_{key}"] = dg
     out["gnorm_pooled"] = [
         round(0.5 * (float(x.norm()) + float(y.norm())), 3)
         for x, y in zip(acc.sums["a"], acc.sums["b"])
@@ -555,6 +628,8 @@ def grad_estimate_binned(
     sigmas: torch.Tensor,  # (bins, draws)
     seeds: list[int],  # len == bins * draws
     rope_patch=None,  # no-arg callable returning a rope-patch context manager
+    prefix_draws: list[int] | None = None,
+    batch_draws: int = 1,
 ) -> tuple[list[torch.Tensor], list[float]]:
     """Per-σ-bin accumulated-gradient estimates.
 
@@ -562,6 +637,19 @@ def grad_estimate_binned(
     over that bin's draws (float32, CPU) and its L2 norm. Same forward/
     backward cost as the pooled 3a estimator at equal total draws — only the
     accumulator is split.
+
+    ``prefix_draws`` (draw-sweep mode, single-bin grids only): instead of one
+    vector per bin, snapshot the accumulating gradient after each listed draw
+    count — nested-seed estimates at D ∈ prefix_draws from one pass; the
+    returned lists are indexed by prefix.
+
+    ``batch_draws`` > 1 runs that many draws per forward/backward: per-draw
+    noise is generated from the same per-draw seeds and stacked, σ rides the
+    batch axis, and the loss is ``B * mse_mean`` — exactly the accumulated
+    sum of per-draw mean losses (same-shape elements), so the resulting bin
+    gradient is unchanged up to float reduction order. Chunks are clamped at
+    prefix-snapshot boundaries; a σ-gated rope arm falls back to per-draw
+    stepping inside any chunk whose σ values differ.
     """
     device = bundle.device
     params = [
@@ -574,31 +662,70 @@ def grad_estimate_binned(
     vecs: list[torch.Tensor] = []
     norms: list[float] = []
     n_bins, n_draws = sigmas.shape
+    snap = set(prefix_draws) if prefix_draws else None
+    if snap is not None:
+        assert n_bins == 1, "prefix_draws needs a single-bin (endpoint-only) grid"
+        assert max(snap) == n_draws, "largest prefix must equal draws_per_bin"
+
+    def flat_grad() -> torch.Tensor:
+        return torch.cat([p.grad.detach().float().flatten().cpu() for p in params])
+
     ctx = rope_patch() if rope_patch else nullcontext()
     with ctx as rope_handle:
         for b in range(n_bins):
             for p in params:
                 p.grad = None
-            for j in range(n_draws):
-                seed = seeds[b * n_draws + j]
-                gen = torch.Generator(device=device).manual_seed(seed)
-                noise = torch.randn(
-                    lat.shape, generator=gen, device=device, dtype=lat.dtype
+            j = 0
+            while j < n_draws:
+                nb = min(batch_draws, n_draws - j)
+                if snap is not None:  # never straddle a snapshot boundary
+                    nb = min(nb, min(s for s in snap if s > j) - j)
+                sig = sigmas[b, j : j + nb]
+                if rope_handle is not None and nb > 1 and len(set(sig.tolist())) > 1:
+                    nb, sig = 1, sigmas[b, j : j + 1]  # σ-gated rope: uniform σ only
+                noise = torch.cat(
+                    [
+                        torch.randn(
+                            lat.shape,
+                            generator=torch.Generator(device=device).manual_seed(
+                                seeds[b * n_draws + j + k]
+                            ),
+                            device=device,
+                            dtype=lat.dtype,
+                        )
+                        for k in range(nb)
+                    ],
+                    dim=0,
                 )
-                sigma_b = sigmas[b, j].to(device).view(1)
+                sigma_b = sig.to(device)  # (nb,)
                 if rope_handle is not None:  # σ-gated rope (yarnsig arm)
-                    rope_handle.set_sigma(float(sigmas[b, j]))
-                noisy = (1.0 - sigma_b) * lat + sigma_b * noise
+                    rope_handle.set_sigma(float(sig[0]))
+                sview = sigma_b.view(-1, 1, 1, 1)
+                noisy = (1.0 - sview) * lat + sview * noise
                 target = noise - lat
                 noisy_5d = noisy.unsqueeze(2).to(torch.bfloat16)
+                # nb == 1 must hand the compiled blocks the EXACT tensors the
+                # pre-batching code did — an expand() view changes strides,
+                # which changes dynamo guards → re-autotuned kernels → fp
+                # drift vs. earlier runs' cached graphs
+                ca = crossattn if nb == 1 else crossattn.expand(nb, -1, -1)
+                pm = pad if nb == 1 else pad.expand(nb, -1, -1, -1)
                 with torch.autocast("cuda", dtype=torch.bfloat16):
-                    pred = bundle.anima(noisy_5d, sigma_b, crossattn, padding_mask=pad)
+                    pred = bundle.anima(noisy_5d, sigma_b, ca, padding_mask=pm)
                 pred = pred.squeeze(2).float()
                 loss = torch.nn.functional.mse_loss(pred, target)
+                if nb > 1:  # recover the accumulated sum of per-draw means
+                    loss = loss * nb
                 loss.backward()
-            vec = torch.cat([p.grad.detach().float().flatten().cpu() for p in params])
-            vecs.append(vec)
-            norms.append(float(vec.norm()))
+                j += nb
+                if snap is not None and j in snap:
+                    vec = flat_grad()
+                    vecs.append(vec)
+                    norms.append(float(vec.norm()))
+            if snap is None:
+                vec = flat_grad()
+                vecs.append(vec)
+                norms.append(float(vec.norm()))
     for p in params:
         p.grad = None
     return vecs, norms
@@ -606,6 +733,15 @@ def grad_estimate_binned(
 
 def main() -> None:
     args = parse_args()
+    if args.deterministic:  # must precede any CUDA/cublas init
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        from networks import attention_dispatch
+
+        attention_dispatch.set_deterministic(True)
+        log.info("deterministic mode on (train.py-mirrored knobs)")
     start_heartbeat()
     edges = [int(e) for e in args.demote_edges.split(",") if e]
     if args.yarn_sigma_gate:
@@ -619,6 +755,20 @@ def main() -> None:
     if args.x_zero:
         args.no_reenc_control = True
     reenc_control = not args.no_reenc_control
+    sweep: list[int] | None = None
+    if args.draw_sweep:
+        sweep = sorted({int(v) for v in args.draw_sweep.split(",") if v})
+        if len(sweep) < 2:
+            raise SystemExit("--draw_sweep needs >= 2 draw counts")
+        if args.pool or args.per_group:
+            raise SystemExit("--draw_sweep is incompatible with --pool/--per_group")
+        args.bins = 0
+        args.endpoint_bin = True
+        args.draws_per_bin = sweep[-1]
+        log.info(f"draw-sweep mode: endpoint-only, nested prefixes D={sweep}")
+    if args.self_floor and args.num_images > 50:
+        # the alt seed base (+500_000) sits above i*10_000 only for i < 50
+        raise SystemExit("--self_floor seed spacing supports --num_images <= 50")
     device = torch.device("cuda")
     lo, hi = (float(v) for v in args.sigma_window.split(","))
     if not 0.0 <= lo < hi <= 1.0:
@@ -692,7 +842,11 @@ def main() -> None:
 
     centers = [round(float(s), 4) for s in sigmas.mean(dim=1)]
     run_dir = make_run_dir(
-        "sigma_lowres", args.label, root=Path(__file__).resolve().parent / "results"
+        "sigma_lowres",
+        args.label,
+        root=Path(args.results_root).resolve()
+        if args.results_root
+        else Path(__file__).resolve().parent / "results",
     )
     rows_path = run_dir / "per_image.jsonl"
     rows: list[dict] = []
@@ -727,6 +881,9 @@ def main() -> None:
         )
 
     t0 = time.time()
+    # single worker: per-arm stat jobs are serial among themselves (cheap
+    # relative to an arm's forwards) — the point is overlap with the GPU
+    stats_pool = ThreadPoolExecutor(max_workers=1)
 
     for i, r in enumerate(probe):
         crossattn, _ = load_cached_text_features(r.te_path, variant=0)
@@ -738,12 +895,37 @@ def main() -> None:
         if args.x_zero:
             native = torch.zeros_like(native)
 
-        def seeds(arm_idx: int) -> list[int]:
-            base = args.seed * 1_000_000 + i * 10_000 + arm_idx * 1_000
+        def seeds(arm_idx: int, alt: bool = False) -> list[int]:
+            # alt (self-floor second draw set): +500_000 keeps the base
+            # disjoint from every primary base (i*10_000 < 500_000 for
+            # i < 50) without shifting any primary seed vs. earlier runs
+            base = (
+                args.seed * 1_000_000
+                + (500_000 if alt else 0)
+                + i * 10_000
+                + arm_idx * 1_000
+            )
             return [base + d for d in range(total_draws)]
 
-        g_a, n_a = grad_estimate_binned(bundle, native, crossattn, sigmas, seeds(0))
-        g_b, n_b = grad_estimate_binned(bundle, native, crossattn, sigmas, seeds(1))
+        def estimate(lat_, seed_list, rope_patch=None):
+            bd = 1
+            if args.draw_batch_tokens:
+                grid_tokens = (lat_.shape[-2] // 2) * (lat_.shape[-1] // 2)
+                bd = max(1, args.draw_batch_tokens // grid_tokens)
+                bd = 1 << (bd.bit_length() - 1)  # pow2 → bounded graph count
+            return grad_estimate_binned(
+                bundle,
+                lat_,
+                crossattn,
+                sigmas,
+                seed_list,
+                rope_patch=rope_patch,
+                prefix_draws=sweep,
+                batch_draws=bd,
+            )
+
+        g_a, n_a = estimate(native, seeds(0))
+        g_b, n_b = estimate(native, seeds(1))
         floor = [cosine(a, b) for a, b in zip(g_a, g_b)]
         row = {
             "artist": r.artist,
@@ -754,6 +936,25 @@ def main() -> None:
             "cos_floor": [round(c, 5) for c in floor],
             "gnorm_native": [round(0.5 * (x + y), 3) for x, y in zip(n_a, n_b)],
         }
+        if sweep:
+            row["draw_prefixes"] = sweep
+
+        def debias(g_d, g_d2) -> tuple[list[float], list[float]]:
+            """cos_self per bin + debiased gap 1 − cos(a+b, d+d′)/√(floor·self).
+            NaN where either floor is ≤ 0 (attenuation correction undefined —
+            only plausible in the lowest-σ bins, never near the endpoint)."""
+            selfc, dgap = [], []
+            for a, b, fl, d, d2 in zip(g_a, g_b, floor, g_d, g_d2):
+                sc = cosine(d, d2)
+                selfc.append(round(sc, 5))
+                if fl <= 0 or sc <= 0:
+                    dgap.append(float("nan"))
+                else:
+                    dgap.append(
+                        round(1.0 - cosine(a + b, d + d2) / math.sqrt(fl * sc), 5)
+                    )
+            return selfc, dgap
+
         floor_g: list[dict[str, float]] = []
         if args.per_group:
             floor_g = [grouped_cosine(a, b, groups) for a, b in zip(g_a, g_b)]
@@ -768,19 +969,36 @@ def main() -> None:
                     out[g].append(round(floor_g[bi][g] - 0.5 * (ca[g] + cb[g]), 5))
             return out
 
+        def arm_stats(key, g_d, n_d, g_d2):
+            """Per-arm CPU bookkeeping — runs on the stats worker thread so
+            the 77M-element dots overlap the NEXT arm's GPU forwards (torch
+            CPU ops release the GIL). Reads g_a/g_b/floor/floor_g read-only;
+            results merged into ``row`` when the image's futures resolve."""
+            out = {}
+            c = [0.5 * (cosine(a, g) + cosine(b, g)) for a, b, g in zip(g_a, g_b, g_d)]
+            out[f"cos_{key}"] = [round(v, 5) for v in c]
+            out[f"gap_{key}"] = [round(f - v, 5) for f, v in zip(floor, c)]
+            if n_d is not None:
+                out[f"gnorm_{key}"] = [round(v, 3) for v in n_d]
+            if args.per_group:
+                out[f"gapg_{key}"] = grouped_gaps(g_d)
+            if g_d2 is not None:
+                out[f"cos_self_{key}"], out[f"debiased_gap_{key}"] = debias(g_d, g_d2)
+            return out
+
+        stat_futs = []
         arms: dict[str, list[torch.Tensor]] = {"a": g_a, "b": g_b}
         arm_idx = 2
         if reenc_control:
             re_lat = extra_latents[(r.stem, "reenc")]
-            g_re, _ = grad_estimate_binned(
-                bundle, re_lat, crossattn, sigmas, seeds(arm_idx)
-            )
+            g_re, _ = estimate(re_lat, seeds(arm_idx))
+            g_re2 = None
+            if args.self_floor:
+                g_re2, _ = estimate(re_lat, seeds(arm_idx, alt=True))
+                if args.pool:
+                    arms["reenc__2"] = g_re2
+            stat_futs.append(stats_pool.submit(arm_stats, "reenc", g_re, None, g_re2))
             arm_idx += 1
-            c = [0.5 * (cosine(a, g) + cosine(b, g)) for a, b, g in zip(g_a, g_b, g_re)]
-            row["cos_reenc"] = [round(v, 5) for v in c]
-            row["gap_reenc"] = [round(f - v, 5) for f, v in zip(floor, c)]
-            if args.per_group:
-                row["gapg_reenc"] = grouped_gaps(g_re)
             arms["reenc"] = g_re
         demote_arms: list = []  # (key, latent, rope-patch factory | None)
         for e in edges:
@@ -810,17 +1028,17 @@ def main() -> None:
                         )
                     )
         for key, lat, patch in demote_arms:
-            g_d, n_d = grad_estimate_binned(
-                bundle, lat, crossattn, sigmas, seeds(arm_idx), rope_patch=patch
-            )
+            g_d, n_d = estimate(lat, seeds(arm_idx), rope_patch=patch)
+            g_d2 = None
+            if args.self_floor:
+                g_d2, _ = estimate(lat, seeds(arm_idx, alt=True), rope_patch=patch)
+                if args.pool:
+                    arms[f"{key}__2"] = g_d2
+            stat_futs.append(stats_pool.submit(arm_stats, key, g_d, n_d, g_d2))
             arm_idx += 1
-            c = [0.5 * (cosine(a, g) + cosine(b, g)) for a, b, g in zip(g_a, g_b, g_d)]
-            row[f"cos_{key}"] = [round(v, 5) for v in c]
-            row[f"gap_{key}"] = [round(f - v, 5) for f, v in zip(floor, c)]
-            row[f"gnorm_{key}"] = [round(v, 3) for v in n_d]
-            if args.per_group:
-                row[f"gapg_{key}"] = grouped_gaps(g_d)
             arms[key] = g_d
+        for fut in stat_futs:  # join stats before pooling/freeing this image
+            row.update(fut.result())
         if args.pool:
             cur_pool.add_image(arms, r.redundancy)
             if cur_pool.n == args.pool:
@@ -843,11 +1061,13 @@ def main() -> None:
     finalize_stratum()  # remainder stratum (may be smaller than --pool)
 
     def bin_stats(key: str) -> dict:
-        m = np.array([r[key] for r in rows])  # (n_images, bins)
-        mean = m.mean(axis=0)
-        sem = m.std(axis=0, ddof=1) / np.sqrt(m.shape[0])
+        # nan-aware: debiased gaps are NaN where a floor was <= 0
+        m = np.array([r[key] for r in rows], dtype=np.float64)  # (n_images, bins)
+        n_fin = np.isfinite(m).sum(axis=0).clip(min=1)
+        mean = np.nanmean(m, axis=0)
+        sem = np.nanstd(m, axis=0, ddof=1) / np.sqrt(n_fin)
         # split-half reliability of the bin-mean curve (odd/even image split)
-        h1, h2 = m[0::2].mean(axis=0), m[1::2].mean(axis=0)
+        h1, h2 = np.nanmean(m[0::2], axis=0), np.nanmean(m[1::2], axis=0)
         return {
             "mean": [round(float(v), 5) for v in mean],
             "sem": [round(float(v), 5) for v in sem],
@@ -871,6 +1091,53 @@ def main() -> None:
     }
     for k in arm_keys:  # reenc + demote edges + any <edge>pi arms
         headline[f"gap_{k}"] = bin_stats(f"gap_{k}")
+        if args.self_floor:
+            headline[f"cos_self_{k}"] = bin_stats(f"cos_self_{k}")
+            headline[f"debiased_gap_{k}"] = bin_stats(f"debiased_gap_{k}")
+
+    if sweep:
+        headline["draw_prefixes"] = sweep
+        x = 1.0 / np.asarray(sweep, dtype=np.float64)
+
+        def sweep_fit(key: str) -> dict:
+            """Least-squares fit y(D) = y_inf + c/D on the per-image-mean
+            curve; 95% CI on y_inf from a 2000-resample image bootstrap."""
+            m = np.array([r[key] for r in rows], dtype=np.float64)
+
+            def fit(y: np.ndarray) -> tuple[float, float]:
+                msk = np.isfinite(y)
+                if msk.sum() < 2:
+                    return float("nan"), float("nan")
+                a_mat = np.stack([np.ones(int(msk.sum())), x[msk]], axis=1)
+                coef, *_ = np.linalg.lstsq(a_mat, y[msk], rcond=None)
+                return float(coef[0]), float(coef[1])
+
+            y_inf, c_ = fit(np.nanmean(m, axis=0))
+            rng = np.random.default_rng(args.seed)
+            n = m.shape[0]
+            boots = [
+                fit(np.nanmean(m[rng.integers(0, n, n)], axis=0))[0]
+                for _ in range(2000)
+            ]
+            lo_b, hi_b = np.nanpercentile(boots, [2.5, 97.5])
+            return {
+                "y_inf": round(y_inf, 5),
+                "c": round(c_, 5),
+                "y_inf_ci95": [round(float(lo_b), 5), round(float(hi_b), 5)],
+            }
+
+        headline["drawfit_floor"] = sweep_fit("cos_floor")
+        for k in arm_keys:
+            headline[f"drawfit_gap_{k}"] = sweep_fit(f"gap_{k}")
+            if args.self_floor:
+                headline[f"drawfit_debiased_{k}"] = sweep_fit(f"debiased_gap_{k}")
+        for k in arm_keys:
+            f_ = headline[f"drawfit_gap_{k}"]
+            log.info(
+                f"[drawfit] gap_{k}: gap_inf={f_['y_inf']:+.4f} "
+                f"ci95=[{f_['y_inf_ci95'][0]:+.4f},{f_['y_inf_ci95'][1]:+.4f}] "
+                f"c={f_['c']:+.4f}"
+            )
 
     if args.pool and pool_strata:
         # stratum-level redundancy trend: spearman of stratum redundancy mean
