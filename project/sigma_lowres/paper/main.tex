@@ -698,11 +698,14 @@ demotion to 896 / 768 / 512.}
 \label{fig:sigmaeq}
 \end{subfigure}\\[3pt]
 \begin{subfigure}[t]{0.46\textwidth}
-\includegraphics[width=\linewidth]{figs/gap_curves.png}
-\caption{Measured demotion gap per $\sigma$-bin ($1024$-tier natives,
-$N{=}40$; raw estimator --- debiased map in
-Table~\ref{tab:debiasedmap}). The 896 route floors at
-$\sigma\!\approx\!0.5$; 512 never floors.}
+\includegraphics[width=\linewidth]{figs/gap_debiased.png}
+\caption{Debiased demotion gap per $\sigma$-bin, paired against the
+re-encoding control ($1024$-tier natives, $N{=}40$; values in
+Table~\ref{tab:debiasedmap}, raw historical curves in
+Table~\ref{tab:phase0}). Gray band: bin-level $\pm\epsstar$
+(Eq.~\ref{eq:epsstar}); open markers: the $\sigma{=}1$ endpoint bin.
+The 896 route enters the band at $\sigma\!\approx\!0.5$; 512 never
+does.}
 \label{fig:gapcurves}
 \end{subfigure}\hfill
 \begin{subfigure}[t]{0.515\textwidth}
@@ -765,7 +768,8 @@ $\|g\|$ (native) & 2.6 & 0.5 & 0.4 & 0.5 & 0.7 & 1.1 & 2.0 & 9.3 \\
 \end{table}
 
 \begin{table}[t]
-\caption{\textbf{Debiased verdict map}: paired per-image debiased gap
+\caption{\textbf{Debiased verdict map} (plotted in
+Fig.~\ref{fig:gapcurves}): paired per-image debiased gap
 against the re-encoding control, $\bar\Delta$ (SEM), $1024$-tier natives
 ($N{=}40$, $D{=}8$/bin plus a $\sigma{=}1$ endpoint bin at the same
 draws; non-finite and $|\Delta| > 1.5$ per-image values trimmed,
