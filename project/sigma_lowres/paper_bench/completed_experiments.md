@@ -224,6 +224,66 @@ endpoint-only, routes {768, 512} + reenc, `--self_floor`, wall 1.0 h):
 
 ---
 
+## E4 — the end-to-end A/B [CORE DISCHARGED 2026-07-30 — exercise grid; residuals stay in required_experiments.md]
+
+**Design realized** (frozen manifest `runs/20260729-1537-e4-manifest/` +
+`launch_20260729_exercise.md` amendments): **4 arms** — native /
+sigma896 (σ>0.5 gate + yarnsig) / **896only** (added: threshold 0 on the
+safe route — isolates the σ-gate) / unsafe768 (threshold 0 on 1024→768,
+the review's negative control, via the new `--sigma_lowres_route`,
+commit 5b63ebb9) — × **3 seeds** (1001–1003) × 2 artists (hews 60-stem
+train / 8 ep; channel\_(caststation) 15-stem / 32 ep; 480 steps bs 1
+each), `--deterministic --paired_step_rng`, stock lora recipe. 24
+checkpoints. In-vivo CRN check: sigma896 demoted the **identical
+244/480 step set on both artists** (σ stream is seed-keyed, not
+data-keyed).
+
+**Throughput — the paper's headline number is now measured** (n=3
+means; exact FLOPs via `token_step_hist` × FlopCounterMode,
+`e4_flops.py`; wall tracks FLOPs ~1:1):
+
+| arm | fwd PFLOPs | Δ | wall | Δ |
+|---|---|---|---|---|
+| native | 8.64 | — | 388 s | — |
+| sigma896 | 7.35 | **−15.1%** | 331 s | **−14.6%** |
+| 896only | 5.99 | −30.8% | 266 s | −31.4% |
+| unsafe768 | 4.13 | −52.2% | 185 s | −52.3% |
+
+The "projected ceiling of ~14%" reads as **measured −14.6% wall /
+−15.1% FLOPs** for the shipped gate.
+
+**Sample-level defensibility (seed-noise yardstick,
+`runs/20260729-2148-e4-yardstick/`)**: within-seed
+cos(native~sigma896) vs cross-seed cos(native~native) on the frozen
+(prompt, gen_seed) grid — channel **0.9641 vs 0.9541 (inside the seed
+lottery)**; hews 0.9551 vs 0.9558 (boundary tie). Headline: *swapping
+σ>0.5 steps to the 896 sibling perturbs renders about as much as
+changing the training seed.* Arm orderings shuffle between seeds —
+single-seed visual impressions were substantially seed lottery.
+
+**Negative control did its job by exposing the metric**: at exercise N
+(9–12 SFW prompts, rating-mismatched pools) CMMD cannot separate the
+known-bad route from anything (unsafe768 ≈ native on channel, ≤
+sigma896 on hews) → **no quality verdict is read from this pass**;
+CMMD non-inferiority needs the full-band rescoring (residual). Also
+banked: Δ(member−holdout) > 0 everywhere (no memorization pathology);
+figure sheets committed (9430c182: 10607820 main, 14296235 + 8508115
+appendix).
+
+**Open tension for the gate story**: sigma896~896only is the closest
+arm pair (hews s1001 cos 0.977) and 896only is another 16% cheaper —
+the σ-gate is endpoint-invisible at this recipe, so its justification
+currently rests entirely on the σ-resolved per-step certification
+(`claim_accumulated_bias.md`'s accumulated-bias question, now with an
+empirical handle: the full-protocol quality read of sigma896 vs
+896only).
+
+Eval/scoring stack committed as 4f538d7e (`e4_render_eval.py`,
+`e4_flops.py`, `e4_seed_yardstick.py`); results in
+`runs/20260729-2148-e4-eval-sfw-s100{1,2,3}/` + `-yardstick/`.
+
+---
+
 ## E5 — Eq. 3 held-out validation [DONE 2026-07-29 — qualified PASS]
 
 **Question.** Does the two-term account *predict* routes it was not fit

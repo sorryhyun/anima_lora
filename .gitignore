@@ -54,3 +54,7 @@ sincos_decensored/
 # LaTeX build artifacts (paper dirs; main.pdf stays tracked)
 project/*/paper/*.log
 project/*/paper/*.blg
+# E4 exercise eval run with the pre-SFW-amendment renders — keep out of git
+project/sigma_lowres/paper_bench/runs/20260729-2137-e4-eval-s1001/
+# E4 eval render PNGs (result.json/report.md stay tracked)
+project/sigma_lowres/paper_bench/runs/*/renders/

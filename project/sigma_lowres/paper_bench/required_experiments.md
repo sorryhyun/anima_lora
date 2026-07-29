@@ -2,10 +2,11 @@
 
 Open runs only. Completed items — the 2026-07-28 review triage (R1–R5),
 E1 (all of a/b/c + instrument changes), E2 (target-α sweep, slope ≈ 0
-confirmed), E5 (held-out validation, qualified PASS — Eq. 3 predicts,
-governors upgrade to measured), and E8.1/E8.2 — live in
-`completed_experiments.md` with their results; `paper_plan.md` is the
-manuscript plan.
+confirmed), **E4 core (4-arm × 3-seed grid: measured −14.6% wall,
+seed-noise yardstick; residuals below)**, E5 (held-out validation,
+qualified PASS — Eq. 3 predicts, governors upgrade to measured), and
+E8.1/E8.2 — live in `completed_experiments.md` with their results;
+`paper_plan.md` is the manuscript plan.
 
 **Context: E1 landed 2026-07-29 and decision rule 1 fired (512 debiased
 gap_∞ +0.304 → token-count floor confirmed → Branch A).** Everything
@@ -34,19 +35,32 @@ one run at the real operating point:
   inside it is E1's paired object. This resolves the report-vs-paper 768
   contradiction the review found instead of hiding it.
 
-## E4 [OWED] — the end-to-end A/B (Phase 1b, already gated in roadmap.md)
+## E4 [CORE DISCHARGED 2026-07-30] — residuals only
 
-Unchanged from `roadmap.md` but now with the review's negative control:
-native baseline vs σ-conditional demotion (map from E1/E3, yarnsig
-refinement per the 2026-07-27 PASS) vs **an unsafe-route arm**
-(e.g. 1024→768 unconditional) as the negative control; identical data
-order/noise/init, 3 seeds; measure realized wall-clock (incl. cache
-load), examples/s, peak mem, CMMD, val loss, matched renders. Until this
-lands, every "14%" in the paper reads "a projected ceiling of ~14%".
-Also run `reenc_noise_floor.py` (script exists, queued) and clear the
-three pending markers. Why the A/B is epistemically load-bearing (the
-instrument is valence-blind; the residual risk is accumulated sub-band
-bias): `claim_accumulated_bias.md`.
+The 4-arm × 3-seed × 2-artist grid ran and the throughput claim is now
+**measured** (sigma896: −14.6% wall / −15.1% FLOPs; full results +
+seed-noise yardstick verdicts in `completed_experiments.md` §E4).
+Still owed before the paper's E4 story closes:
+
+- **Full-band CMMD rescoring** — the exercise scored on the SFW prompt
+  amendment (9/12 prompts vs rating-mismatched all-band pools) and the
+  negative control exposed the resulting lack of power (unsafe768 ≈
+  native). Re-run `e4_render_eval.py` with the manifest's frozen 24/15
+  full-band prompts (metrics stay private; SFW sheets remain the
+  figures) and state the non-inferiority test in ε\* terms (E8.1).
+  This is also the empirical handle on the **σ-gate vs 896only**
+  question (gate is endpoint-invisible so far — see the tension noted
+  in `completed_experiments.md`).
+- **val loss + peak mem** — not captured in the exercise runs (no
+  validation split configured); add both to the full-band pass.
+- `reenc_noise_floor.py` run (unchanged — script exists, queued;
+  δ_reenc row + D(f) numbers for the manuscript).
+- Manuscript: clear the E4 `[pending]` markers and upgrade every
+  "projected ceiling of ~14%" to the measured numbers.
+
+Why the A/B is epistemically load-bearing (the instrument is
+valence-blind; the residual risk is accumulated sub-band bias):
+`claim_accumulated_bias.md`.
 
 ## E6 [STRETCH] — one generalization arm each
 

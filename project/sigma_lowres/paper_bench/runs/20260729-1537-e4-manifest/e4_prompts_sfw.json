@@ -1,0 +1,161 @@
+{
+ "seed": 20260729,
+ "rule": "amendment 2026-07-29: eval prompts restricted to safe/sensitive rating bands (first caption tag). Seeded permutation over the SFW holdout subset per artist, gen_seed = 20000+i; sizes = the stem's free-fit bucket from the frozen manifest. Reference pools unchanged.",
+ "cells": {
+  "hews": {
+   "prompts": [
+    {
+     "stem": "6135998",
+     "caption": "sensitive, 1girl, makima (chainsaw man), chainsaw man, @hews, armpits, bare shoulders, black bra, black panties, breasts, cleavage, collared shirt, dress shirt, hair behind ear, long hair, medium breasts, navel, pants, red hair, sidelocks, sitting, solo, sweat, thighs, underwear, white shirt, window, yellow eyes",
+     "width": 768,
+     "height": 1376,
+     "gen_seed": 20000
+    },
+    {
+     "stem": "14296235",
+     "caption": "sensitive, 1girl, almond eye (the changer) (umamusume), almond eye (umamusume), umamusume, @hews, animal ears, armpits, arms up, blue eyes, blush, brown hair, cleavage, hair ornament, hairclip, horse ears, horse girl, large breasts, long hair, parted lips, simple background, solo, upper body, white background, white hairband",
+     "width": 832,
+     "height": 1280,
+     "gen_seed": 20001
+    },
+    {
+     "stem": "8262330",
+     "caption": "sensitive, 1boy, 2girls, fubuki (one-punch man), saitama (one-punch man), tatsumaki, one-punch man, @hews, bald, bare shoulders, black hair, black leotard, blush, cellphone, coattails, covered navel, curly hair, detached collar, green eyes, green hair, highleg, highleg leotard, large breasts, mirror selfie, multiple girls, open mouth, phone, pout, selfie, short hair, small breasts, smile, tailcoat, thighs, wrist cuffs",
+     "width": 800,
+     "height": 1328,
+     "gen_seed": 20002
+    },
+    {
+     "stem": "10607820",
+     "caption": "sensitive, 2girls, fern (sousou no frieren), frieren, sousou no frieren, @hews, :t, asymmetrical docking, barefoot, black coat, breast press, breasts, brown coat, feet out of frame, from side, green eyes, huge breasts, kneeling, light frown, long hair, long sleeves, looking at viewer, multiple girls, off shoulder, parted bangs, pout, purple eyes, purple hair, simple background, sweatdrop, twintails, white background, white dress, white hair",
+     "width": 816,
+     "height": 1312,
+     "gen_seed": 20003
+    },
+    {
+     "stem": "11975391",
+     "caption": "sensitive, 1girl, raora panthera, hololive, hololive english, @hews, animal ears, animal print, bad anatomy, bad hands, belt, bikini, black belt, black bow, bow, closed mouth, clothes hanger, cow print, cow print bikini, fingernails, hair ornament, hair scrunchie, hashtag-only commentary, holding, holding clothes hanger, large breasts, leopard print, leopard print bra, leopard print panties, long hair, micro bikini, nail polish, navel, open clothes, open shirt, panther ears, panther girl, pink bra, pink hair, pink nails, pink panties, pink scrunchie, ponytail, print bikini, print bra, print panties, scrunchie, sketch, smile, solo, swimsuit, thighs, underwear, unworn bikini, virtual youtuber, white shirt, yellow eyes",
+     "width": 672,
+     "height": 1568,
+     "gen_seed": 20004
+    },
+    {
+     "stem": "5118916",
+     "caption": "sensitive, 1boy, 2girls, original, @hews, age difference, assertive female, black coat, blush, brown coat, brown hair, chijo, chikan, child, collared shirt, finger in another's mouth, girl sandwich, groping, indoors, long sleeves, mole, mole under eye, molestation, multiple boys, multiple girls, onee-shota, open mouth, pink sweater, public indecency, red eyes, ribbed sweater, sandwiched, short hair, short hair with long locks, smile, standing, sweat, tongue, twintails, white shirt",
+     "width": 864,
+     "height": 1216,
+     "gen_seed": 20005
+    },
+    {
+     "stem": "6321464",
+     "caption": "sensitive, 2girls, ereshkigal (fate), ishtar (fate), fate/grand order, fate (series), @hews, armlet, armpits, arms behind head, bare shoulders, blush, breasts, closed mouth, detached sleeves, earrings, female focus, frown, gold trim, hair ribbon, highleg, highleg bikini, hoop earrings, jewelry, long hair, looking at viewer, medium breasts, midriff, multiple girls, navel, neck ring, parted bangs, ribbon, shawl, siblings, single detached sleeve, single thighhigh, sisters, skindentation, skull, smile, spine, stomach, sweat, swimsuit, tears, thighhighs, thighs, tiara, two side up. On the left, mismatched bikini, black hair, red eyes, ishtar (fate). On the right, black bikini, blonde hair, orange eyes, ereshkigal (fate).",
+     "width": 864,
+     "height": 1200,
+     "gen_seed": 20006
+    },
+    {
+     "stem": "4615461",
+     "caption": "sensitive, 1boy, 2girls, ereshkigal (fate), ishtar (fate), fate/grand order, fate (series), @hews, @ @, age difference, aged down, alternate costume, belt, black hair, black leggings, blonde hair, bow, bowtie, breasts, brown eyes, chandelier, checkered ceiling, condom, condom wrapper, cropped jacket, drooling, earrings, frown, girl sandwich, grin, hair ribbon, hand on own hip, heart, heart-shaped pillow, jewelry, long hair, medium breasts, multiple girls, nail polish, necklace, off shoulder, onee-shota, pantyhose, parted bangs, pillow, ribbon, sandwiched, short hair, shorts, siblings, sisters, smile, striped clothes, striped dress, sweat, tears, twintails, two side up, vertical-striped clothes, vertical-striped dress, white socks. On the left, red eyes, ereshkigal (fate). On the right, ishtar (fate). On the middle, collared shirt, shota.",
+     "width": 864,
+     "height": 1216,
+     "gen_seed": 20007
+    },
+    {
+     "stem": "12672980",
+     "caption": "sensitive, 1girl, nice nature (umamusume), umamusume, @hews, animal ears, bare shoulders, black bra, bottomless, brown eyes, ear covers, from above, groin, hands on own stomach, heavy breathing, horse ears, horse girl, large tail, looking at viewer, lying, medium hair, navel, no panties, off shoulder, on back, out-of-frame censoring, parted lips, red hair, solo, stomach, sweat, tail, underwear, white shirt",
+     "width": 784,
+     "height": 1344,
+     "gen_seed": 20008
+    }
+   ]
+  },
+  "channel_(caststation)": {
+   "prompts": [
+    {
+     "stem": "12248742",
+     "caption": "sensitive, 1girl, asuna (blue archive), blue archive, @channel (caststation), alternate costume, ass, asymmetrical bangs, black bra, blue eyes, blue halo, blue panties, blue shirt, cleavage, electric fan, fan speaking, floating hair, grin, hair over one eye, halo, kneehighs, large breasts, long bangs, long hair, looking at viewer, multiple views, no pants, one eye covered, panties under shorts, pink shorts, puffy short sleeves, puffy sleeves, red shorts, short shorts, short sleeves, shorts, simple background, smile, t-shirt, top-down bottom-up, underwear, very long hair, white background, white panties, white socks",
+     "width": 944,
+     "height": 1136,
+     "gen_seed": 20000
+    },
+    {
+     "stem": "8254793",
+     "caption": "sensitive, 1girl, arona (blue archive), asuna (blue archive), blue archive, @channel (caststation), black skirt, blue bow, blue bowtie, blue bra, blue eyes, blue nails, blue ribbon, blue scrunchie, blush, bow, bowtie, bra visible through clothes, brown hair, cellphone, chibi, choker, cleavage, collarbone, collared shirt, flashing, grin, hair ornament, hair over one eye, hair ribbon, holding, holding phone, large breasts, light brown hair, long hair, looking at viewer, mole, mole on breast, phone, pleated skirt, school uniform, scrunchie, selfie, short sleeves, smartphone, smile, solo, sweat, swept bangs, teeth, underwear, upper body, white shirt, wrist scrunchie",
+     "width": 832,
+     "height": 1248,
+     "gen_seed": 20001
+    },
+    {
+     "stem": "12248674",
+     "caption": "sensitive, 1girl, hatsune miku, racing miku, racing miku (2022), goodsmile company, goodsmile racing, vocaloid, @channel (caststation), aqua eyes, aqua hair, ass, asymmetrical bodysuit, black bodysuit, black boots, black gloves, blush, bodysuit, closed eyes, closed mouth, cropped jacket, flag, flexible, green flag, green gloves, hair between eyes, hair ornament, holding, holding flag, jack-o' challenge, kneepits, leg lift, long hair, multiple views, open mouth, simple background, single leg bodysuit, single thigh boot, split, spread legs, squatting, standing, standing on one leg, standing split, sweat, thigh boots, top-down bottom-up, twintails, two-tone gloves, very long hair, white background, white jacket",
+     "width": 1008,
+     "height": 1040,
+     "gen_seed": 20002
+    },
+    {
+     "stem": "8593437",
+     "caption": "sensitive, 1girl, hatsune miku, vocaloid, world is mine (vocaloid), @channel (caststation), aqua eyes, aqua hair, aqua nails, bdsm, blush, bondage, bound, bound wrists, bra, cable tie, clothes lift, collarbone, cowboy shot, crossover, dot nose, flying sweatdrops, hair between eyes, headset, long hair, looking at viewer, meme, multiple views, navel, no pants, open mouth, pajamas challenge (meme), panties, parted lips, pubic tattoo, restrained, shirt, shirt lift, side-tie panties, sidelocks, simple background, single bare shoulder, skinny, small breasts, standing, straight-on, striped bra, striped clothes, striped panties, sweat, t-shirt, tattoo, twintails, underwear, very long hair, white background",
+     "width": 960,
+     "height": 1104,
+     "gen_seed": 20003
+    },
+    {
+     "stem": "12248673",
+     "caption": "sensitive, 1girl, hatsune miku, fitness boxing, fitness boxing feat. hatsune miku: isshoni exercise, vocaloid, @channel (caststation), :d, alternate costume, aqua eyes, aqua hair, aqua nails, arched back, ass, black leggings, blush, bottle, bracelet, breasts, cropped jacket, drawstring, feet out of frame, fingerless gloves, hair between eyes, hair ornament, headset, holding, holding bottle, hood, hooded jacket, jewelry, long hair, looking at viewer, medium breasts, motion lines, multiple views, nail polish, navel, open mouth, planking, short sleeves, side sitting split, simple background, sitting split, smile, split, stomach, sweatdrop, thighs, twintails, very long hair, water bottle, white background, white gloves, yellow jacket",
+     "width": 976,
+     "height": 1072,
+     "gen_seed": 20004
+    },
+    {
+     "stem": "8293513",
+     "caption": "sensitive, 1girl, asuna (bunny) (blue archive), blue archive, @channel (caststation), animal ears, bare shoulders, black pantyhose, blue bow, blue bowtie, blue eyes, blue leotard, blue ribbon, bow, bowtie, brown hair, cleavage, detached collar, fake animal ears, fake tail, hair ribbon, halo, large breasts, leotard, long hair, looking at viewer, mole, mole on breast, playboy bunny, rabbit ears, rabbit tail, smile, solo, white gloves",
+     "width": 848,
+     "height": 1248,
+     "gen_seed": 20005
+    },
+    {
+     "stem": "11429918",
+     "caption": "safe, 2girls, kaai yuki, otomachi una, vocaloid, zako (vocaloid), @channel (caststation), bag, black hair, black skirt, blush stickers, bow, bowtie, collared shirt, diagonal-striped bow, diagonal-striped bowtie, diagonal-striped clothes, diagonal-striped neckerchief, emphasis lines, hair bobbles, hair ornament, hands on own cheeks, hands on own face, holding, holding phone, jitome, long sleeves, multiple girls, multiple views, neckerchief, notice lines, one eye closed, outstretched arm, phone, pink background, pink jacket, plaid clothes, plaid skirt, school bag, small sweatdrop, striped bow, striped bowtie, striped clothes, striped neckerchief, tongue, tongue out, v, v over eye, v over mouth, white shirt, wink star",
+     "width": 1024,
+     "height": 1024,
+     "gen_seed": 20006
+    },
+    {
+     "stem": "channel4",
+     "caption": "safe, 2girls, hatsune miku, vocaloid, @channel (caststation), blue hair, closed mouth, collar, hair between eyes, hair intakes, hair ribbon, high heels, holding, holding staff, magical girl, multiple girls, on person, pink bow, pink hairband, pink ribbon, pink skirt, pink sleeves, puffy short sleeves, puffy sleeves, purple eyes, shaded face, short hair, short sleeves, staff, star-shaped pupils, star (symbol), symbol-shaped pupils, twintails, very long hair, white collar, white gloves, white pantyhose, white shoes, On the bottom, she is being stepped on, smile, black hair, black shirt, black eyes.",
+     "width": 1024,
+     "height": 1024,
+     "gen_seed": 20007
+    },
+    {
+     "stem": "12248671",
+     "caption": "sensitive, 1girl, brazilian miku, hatsune miku, vocaloid, @abstractpurple, @channel (caststation), :3, aqua eyes, aqua hair, arms up, ass, back, bead necklace, beads, bikini under clothes, black bikini, blush, bracelet, brazilian flag, brazilian flag print, breast press, butt crack, can, collarbone, cropped shirt, cutoffs, denim, denim shorts, dimples of venus, drink, earrings, english text, eyewear on head, fang, flag print, flower, from behind, green nails, green trim, hair between eyes, hair flower, hair ornament, heart, holding, holding can, jewelry, large breasts, long hair, looking at viewer, looking back, lying, multicolored nails, multiple views, nail polish, navel, navel piercing, necklace, on stomach, open clothes, open fly, open mouth, open shorts, piercing, portuguese text, profile, rectangular earrings, red flower, saliva, short shorts, short sleeves, shorts, side-tie bikini bottom, simple background, skin fang, skol, smile, speech bubble, squatting, standing, sunglasses, swimsuit, tan, tanline, tanline peek, torn clothes, torn shorts, twintails, v, white background, yellow nails, yellow shirt",
+     "width": 944,
+     "height": 1120,
+     "gen_seed": 20008
+    },
+    {
+     "stem": "8517433",
+     "caption": "sensitive, 1girl, gotoh hitori, bocchi the rock!, @channel (caststation), ?, before and after, bent v, black shirt, blue eyes, blush, cable tie, closed mouth, collarbone, cowboy shot, cube hair ornament, group name, hair ornament, heavy breathing, large breasts, like and retweet, long hair, looking at viewer, meme, multiple views, no pants, one side up, pajamas challenge (meme), pants, pink hair, print shirt, simple background, single bare shoulder, straight-on, sweatdrop, taut clothes, taut shirt, trembling, underwear, v, very long hair, white background, white panties",
+     "width": 960,
+     "height": 1088,
+     "gen_seed": 20009
+    },
+    {
+     "stem": "8508115",
+     "caption": "sensitive, 1girl, hoshino ai, oshi no ko, @channel (caststation), bare shoulders, black gloves, blowing kiss, collarbone, covering own mouth, fingerless gloves, hand over own mouth, large breasts, long hair, multicolored eyes, multicolored hair, one eye closed, purple hair, sidelocks, simple background, star-shaped pupils, star (symbol), streaked hair, sweat, symbol-shaped pupils, upper body, white sports bra",
+     "width": 1120,
+     "height": 928,
+     "gen_seed": 20010
+    },
+    {
+     "stem": "8615514",
+     "caption": "sensitive, 1girl, hatsune miku, vocaloid, @channel (caststation), 2koma, aqua eyes, aqua hair, aqua necktie, bikini, clothes hanger, comic, disgust, fingernails, headset, holding, holding clothes hanger, long hair, looking at object, looking at viewer, meme, miku collar bikini, nail polish, necktie, shirt, silent comic, sleeveless, sleeveless shirt, small breasts, striped bikini, striped clothes, swimsuit, twintails, unworn bikini, upper body, very long hair, winnie the pooh reading (meme)",
+     "width": 880,
+     "height": 1200,
+     "gen_seed": 20011
+    }
+   ]
+  }
+ }
+}
