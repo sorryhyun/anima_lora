@@ -272,6 +272,20 @@ per-run gnorm.
    "shape + magnitude class + governors at ~0.09 RMSE", never
    "predicts within ε\*".
 
+**Post-hoc addendum (leave-896-out, NOT pre-registered; same session).**
+896 was a fit route, so it had no held-out prediction; re-deriving the
+governors from 512+1120 alone and predicting 896 gives: A(0.875) from
+the ratio-twin 1120 alone = 0.0068 (vs 0.0076 fitted on 896 itself);
+floor exp-law refit through 512+1120 (fragile leg: F_1120 =
+0.002±0.014 enters a log fit) → **F(3012) = +0.019 vs E1a's measured
+896 debiased floor +0.019 [+0.010,+0.030] — dead center. The floor law
+is 2-for-2 on floors it never saw** (768 +0.088/+0.092, 896
++0.019/+0.019). Curve-level RMSE 0.072 vs oracle 0.064 (ratio 1.13),
+χ²/bin 6.4 — same character: low-σ bins under-predicted (measured
++0.09..+0.21 vs predicted +0.02..+0.05 at σ ≤ 0.31), mid/high-σ
+tracked, and the E1b σ=1 endpoint reads +0.042±0.011 vs +0.019
+predicted — the endpoint-vs-window anomaly again, now visible on 896.
+
 **Voice decision (paper_plan §2) resolved → Eq. 3 headlines as a
 *predictive* first-order account with stated ~0.09 RMSE resolution;
 "ratio sets amplitude / absolute size sets floor" upgrade from
