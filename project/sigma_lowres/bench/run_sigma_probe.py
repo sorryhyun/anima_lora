@@ -116,6 +116,22 @@ def parse_args() -> argparse.Namespace:
         "--no_reenc_control (re-encode of nothing = the floor arm).",
     )
     p.add_argument(
+        "--target_alpha",
+        default=None,
+        metavar="A1,A2,...",
+        help="E2 target-strength sweep: run every arm at each alpha with "
+        "target = noise - alpha*lat (input untouched — at sigma=1 it stays "
+        "pure eps for every alpha). alpha=0 is the graph-only target "
+        "(== x-zero-in-target at the endpoint), alpha=1 the standard target "
+        "(must be included; its keys stay unsuffixed). Other alphas suffix "
+        "every per-arm/native key with @a<alpha>. Draw seeds are shared "
+        "across alphas (same noise draws -> the alpha-slope carries no draw "
+        "noise) and all alphas live in ONE run (cross-process cosines are "
+        "kernel-path chaotic). Cost: x len(alphas) forwards/backwards. "
+        "Incompatible with --pool/--per_group/--draw_sweep/--x_zero. "
+        "e.g. --target_alpha 0,0.25,0.5,0.75,1",
+    )
+    p.add_argument(
         "--pi_align",
         action="store_true",
         help="add a '<edge>pi' arm per demote edge: the SAME demoted latent, "
@@ -630,6 +646,7 @@ def grad_estimate_binned(
     rope_patch=None,  # no-arg callable returning a rope-patch context manager
     prefix_draws: list[int] | None = None,
     batch_draws: int = 1,
+    target_alpha: float = 1.0,
 ) -> tuple[list[torch.Tensor], list[float]]:
     """Per-σ-bin accumulated-gradient estimates.
 
@@ -702,7 +719,10 @@ def grad_estimate_binned(
                     rope_handle.set_sigma(float(sig[0]))
                 sview = sigma_b.view(-1, 1, 1, 1)
                 noisy = (1.0 - sview) * lat + sview * noise
-                target = noise - lat
+                # target_alpha scales the image in the TARGET only (input
+                # untouched); 1.0 * lat is exact, so the default is
+                # bit-identical to the historical target
+                target = noise - target_alpha * lat
                 noisy_5d = noisy.unsqueeze(2).to(torch.bfloat16)
                 # nb == 1 must hand the compiled blocks the EXACT tensors the
                 # pre-batching code did — an expand() view changes strides,
@@ -766,6 +786,21 @@ def main() -> None:
         args.endpoint_bin = True
         args.draws_per_bin = sweep[-1]
         log.info(f"draw-sweep mode: endpoint-only, nested prefixes D={sweep}")
+    alphas: list[float] = [1.0]
+    if args.target_alpha:
+        alphas = sorted({round(float(v), 4) for v in args.target_alpha.split(",") if v})
+        if not all(0.0 <= a <= 1.0 for a in alphas):
+            raise SystemExit("--target_alpha values must be in [0, 1]")
+        if 1.0 not in alphas:
+            raise SystemExit(
+                "--target_alpha must include 1 (the standard-target anchor)"
+            )
+        if args.pool or args.per_group or sweep or args.x_zero:
+            raise SystemExit(
+                "--target_alpha is incompatible with "
+                "--pool/--per_group/--draw_sweep/--x_zero"
+            )
+        log.info(f"target-alpha sweep: alphas={alphas} (alpha=1 keys unsuffixed)")
     if args.self_floor and args.num_images > 50:
         # the alt seed base (+500_000) sits above i*10_000 only for i < 50
         raise SystemExit("--self_floor seed spacing supports --num_images <= 50")
@@ -907,7 +942,7 @@ def main() -> None:
             )
             return [base + d for d in range(total_draws)]
 
-        def estimate(lat_, seed_list, rope_patch=None):
+        def estimate(lat_, seed_list, rope_patch=None, alpha=1.0):
             bd = 1
             if args.draw_batch_tokens:
                 grid_tokens = (lat_.shape[-2] // 2) * (lat_.shape[-1] // 2)
@@ -922,132 +957,161 @@ def main() -> None:
                 rope_patch=rope_patch,
                 prefix_draws=sweep,
                 batch_draws=bd,
+                target_alpha=alpha,
             )
 
-        g_a, n_a = estimate(native, seeds(0))
-        g_b, n_b = estimate(native, seeds(1))
-        floor = [cosine(a, b) for a, b in zip(g_a, g_b)]
         row = {
             "artist": r.artist,
             "stem": r.stem,
             "redundancy": round(r.redundancy, 4),
             "tokens_native": r.tokens,
             "sigma_centers": centers,
-            "cos_floor": [round(c, 5) for c in floor],
-            "gnorm_native": [round(0.5 * (x + y), 3) for x, y in zip(n_a, n_b)],
         }
         if sweep:
             row["draw_prefixes"] = sweep
 
-        def debias(g_d, g_d2) -> tuple[list[float], list[float]]:
-            """cos_self per bin + debiased gap 1 − cos(a+b, d+d′)/√(floor·self).
-            NaN where either floor is ≤ 0 (attenuation correction undefined —
-            only plausible in the lowest-σ bins, never near the endpoint)."""
-            selfc, dgap = [], []
-            for a, b, fl, d, d2 in zip(g_a, g_b, floor, g_d, g_d2):
-                sc = cosine(d, d2)
-                selfc.append(round(sc, 5))
-                if fl <= 0 or sc <= 0:
-                    dgap.append(float("nan"))
-                else:
-                    dgap.append(
-                        round(1.0 - cosine(a + b, d + d2) / math.sqrt(fl * sc), 5)
-                    )
-            return selfc, dgap
+        # --target_alpha: one full pass per alpha. arm_idx (and therefore the
+        # seeds) resets per alpha, so every alpha sees the SAME noise draws —
+        # the alpha-slope is free of draw noise, and the seed-space bounds
+        # (arm_idx * 1_000 < i * 10_000 spacing) are preserved.
+        for alpha_ in alphas:
+            sfx = "" if alpha_ == 1.0 else f"@a{alpha_:g}"
+            g_a, n_a = estimate(native, seeds(0), alpha=alpha_)
+            g_b, n_b = estimate(native, seeds(1), alpha=alpha_)
+            floor = [cosine(a, b) for a, b in zip(g_a, g_b)]
+            row[f"cos_floor{sfx}"] = [round(c, 5) for c in floor]
+            row[f"gnorm_native{sfx}"] = [
+                round(0.5 * (x + y), 3) for x, y in zip(n_a, n_b)
+            ]
 
-        floor_g: list[dict[str, float]] = []
-        if args.per_group:
-            floor_g = [grouped_cosine(a, b, groups) for a, b in zip(g_a, g_b)]
-            row["cosg_floor"] = {g: [round(fb[g], 5) for fb in floor_g] for g in groups}
+            def debias(g_d, g_d2) -> tuple[list[float], list[float]]:
+                """cos_self per bin + debiased gap 1 − cos(a+b, d+d′)/√(floor·self).
+                NaN where either floor is ≤ 0 (attenuation correction undefined —
+                only plausible in the lowest-σ bins, never near the endpoint)."""
+                selfc, dgap = [], []
+                for a, b, fl, d, d2 in zip(g_a, g_b, floor, g_d, g_d2):
+                    sc = cosine(d, d2)
+                    selfc.append(round(sc, 5))
+                    if fl <= 0 or sc <= 0:
+                        dgap.append(float("nan"))
+                    else:
+                        dgap.append(
+                            round(1.0 - cosine(a + b, d + d2) / math.sqrt(fl * sc), 5)
+                        )
+                return selfc, dgap
 
-        def grouped_gaps(g_arm: list[torch.Tensor]) -> dict[str, list[float]]:
-            out: dict[str, list[float]] = {g: [] for g in groups}
-            for bi, (a, b, d) in enumerate(zip(g_a, g_b, g_arm)):
-                ca = grouped_cosine(a, d, groups)
-                cb = grouped_cosine(b, d, groups)
-                for g in groups:
-                    out[g].append(round(floor_g[bi][g] - 0.5 * (ca[g] + cb[g]), 5))
-            return out
-
-        def arm_stats(key, g_d, n_d, g_d2):
-            """Per-arm CPU bookkeeping — runs on the stats worker thread so
-            the 77M-element dots overlap the NEXT arm's GPU forwards (torch
-            CPU ops release the GIL). Reads g_a/g_b/floor/floor_g read-only;
-            results merged into ``row`` when the image's futures resolve."""
-            out = {}
-            c = [0.5 * (cosine(a, g) + cosine(b, g)) for a, b, g in zip(g_a, g_b, g_d)]
-            out[f"cos_{key}"] = [round(v, 5) for v in c]
-            out[f"gap_{key}"] = [round(f - v, 5) for f, v in zip(floor, c)]
-            if n_d is not None:
-                out[f"gnorm_{key}"] = [round(v, 3) for v in n_d]
+            floor_g: list[dict[str, float]] = []
             if args.per_group:
-                out[f"gapg_{key}"] = grouped_gaps(g_d)
-            if g_d2 is not None:
-                out[f"cos_self_{key}"], out[f"debiased_gap_{key}"] = debias(g_d, g_d2)
-            return out
+                floor_g = [grouped_cosine(a, b, groups) for a, b in zip(g_a, g_b)]
+                row["cosg_floor"] = {
+                    g: [round(fb[g], 5) for fb in floor_g] for g in groups
+                }
 
-        stat_futs = []
-        arms: dict[str, list[torch.Tensor]] = {"a": g_a, "b": g_b}
-        arm_idx = 2
-        if reenc_control:
-            re_lat = extra_latents[(r.stem, "reenc")]
-            g_re, _ = estimate(re_lat, seeds(arm_idx))
-            g_re2 = None
-            if args.self_floor:
-                g_re2, _ = estimate(re_lat, seeds(arm_idx, alt=True))
-                if args.pool:
-                    arms["reenc__2"] = g_re2
-            stat_futs.append(stats_pool.submit(arm_stats, "reenc", g_re, None, g_re2))
-            arm_idx += 1
-            arms["reenc"] = g_re
-        demote_arms: list = []  # (key, latent, rope-patch factory | None)
-        for e in edges:
-            lat = extra_latents[(r.stem, f"demote{e}")]
-            demote_arms.append((str(e), lat, None))
-            # per-axis stretch in patch units: demoted patch i sits at
-            # i * (native_patches / demoted_patches), spanning the native
-            # coordinate range so relative RoPE phases match native's
-            hs = (native.shape[-2] // 2) / (lat.shape[-2] // 2)
-            ws = (native.shape[-1] // 2) / (lat.shape[-1] // 2)
-            if args.pi_align:
-                demote_arms.append(
-                    (f"{e}pi", lat, partial(pi_rope, bundle.anima, hs, ws))
+            def grouped_gaps(g_arm: list[torch.Tensor]) -> dict[str, list[float]]:
+                out: dict[str, list[float]] = {g: [] for g in groups}
+                for bi, (a, b, d) in enumerate(zip(g_a, g_b, g_arm)):
+                    ca = grouped_cosine(a, d, groups)
+                    cb = grouped_cosine(b, d, groups)
+                    for g in groups:
+                        out[g].append(round(floor_g[bi][g] - 0.5 * (ca[g] + cb[g]), 5))
+                return out
+
+            def arm_stats(key, g_d, n_d, g_d2):
+                """Per-arm CPU bookkeeping — runs on the stats worker thread so
+                the 77M-element dots overlap the NEXT arm's GPU forwards (torch
+                CPU ops release the GIL). Reads g_a/g_b/floor/floor_g read-only;
+                results merged into ``row`` when the image's futures resolve."""
+                out = {}
+                c = [
+                    0.5 * (cosine(a, g) + cosine(b, g))
+                    for a, b, g in zip(g_a, g_b, g_d)
+                ]
+                out[f"cos_{key}"] = [round(v, 5) for v in c]
+                out[f"gap_{key}"] = [round(f - v, 5) for f, v in zip(floor, c)]
+                if n_d is not None:
+                    out[f"gnorm_{key}"] = [round(v, 3) for v in n_d]
+                if args.per_group:
+                    out[f"gapg_{key}"] = grouped_gaps(g_d)
+                if g_d2 is not None:
+                    out[f"cos_self_{key}"], out[f"debiased_gap_{key}"] = debias(
+                        g_d, g_d2
+                    )
+                return out
+
+            stat_futs = []
+            arms: dict[str, list[torch.Tensor]] = {"a": g_a, "b": g_b}
+            arm_idx = 2
+            if reenc_control:
+                re_lat = extra_latents[(r.stem, "reenc")]
+                g_re, _ = estimate(re_lat, seeds(arm_idx), alpha=alpha_)
+                g_re2 = None
+                if args.self_floor:
+                    g_re2, _ = estimate(re_lat, seeds(arm_idx, alt=True), alpha=alpha_)
+                    if args.pool:
+                        arms["reenc__2"] = g_re2
+                stat_futs.append(
+                    stats_pool.submit(arm_stats, "reenc" + sfx, g_re, None, g_re2)
                 )
-            if args.yarn_align:
-                a, b_ = (float(v) for v in args.yarn_align.split(","))
-                demote_arms.append(
-                    (f"{e}yarn", lat, partial(yarn_rope, bundle.anima, hs, ws, a, b_))
-                )
-                if args.yarn_sigma_gate:
-                    c_, g_ = (float(v) for v in args.yarn_sigma_gate.split(","))
+                arm_idx += 1
+                arms["reenc"] = g_re
+            demote_arms: list = []  # (key, latent, rope-patch factory | None)
+            for e in edges:
+                lat = extra_latents[(r.stem, f"demote{e}")]
+                demote_arms.append((str(e), lat, None))
+                # per-axis stretch in patch units: demoted patch i sits at
+                # i * (native_patches / demoted_patches), spanning the native
+                # coordinate range so relative RoPE phases match native's
+                hs = (native.shape[-2] // 2) / (lat.shape[-2] // 2)
+                ws = (native.shape[-1] // 2) / (lat.shape[-1] // 2)
+                if args.pi_align:
+                    demote_arms.append(
+                        (f"{e}pi", lat, partial(pi_rope, bundle.anima, hs, ws))
+                    )
+                if args.yarn_align:
+                    a, b_ = (float(v) for v in args.yarn_align.split(","))
                     demote_arms.append(
                         (
-                            f"{e}yarnsig",
+                            f"{e}yarn",
                             lat,
-                            partial(yarn_rope, bundle.anima, hs, ws, a, b_, (c_, g_)),
+                            partial(yarn_rope, bundle.anima, hs, ws, a, b_),
                         )
                     )
-        for key, lat, patch in demote_arms:
-            g_d, n_d = estimate(lat, seeds(arm_idx), rope_patch=patch)
-            g_d2 = None
-            if args.self_floor:
-                g_d2, _ = estimate(lat, seeds(arm_idx, alt=True), rope_patch=patch)
-                if args.pool:
-                    arms[f"{key}__2"] = g_d2
-            stat_futs.append(stats_pool.submit(arm_stats, key, g_d, n_d, g_d2))
-            arm_idx += 1
-            arms[key] = g_d
-        for fut in stat_futs:  # join stats before pooling/freeing this image
-            row.update(fut.result())
-        if args.pool:
-            cur_pool.add_image(arms, r.redundancy)
-            if cur_pool.n == args.pool:
-                finalize_stratum()
-        # free this image's ~8 GB of flat gradient vectors now — otherwise
-        # the locals keep them resident through the next image's compute
-        for vecs in arms.values():
-            vecs.clear()
-        g_a = g_b = arms = None  # noqa: F841
+                    if args.yarn_sigma_gate:
+                        c_, g_ = (float(v) for v in args.yarn_sigma_gate.split(","))
+                        demote_arms.append(
+                            (
+                                f"{e}yarnsig",
+                                lat,
+                                partial(
+                                    yarn_rope, bundle.anima, hs, ws, a, b_, (c_, g_)
+                                ),
+                            )
+                        )
+            for key, lat, patch in demote_arms:
+                g_d, n_d = estimate(lat, seeds(arm_idx), rope_patch=patch, alpha=alpha_)
+                g_d2 = None
+                if args.self_floor:
+                    g_d2, _ = estimate(
+                        lat, seeds(arm_idx, alt=True), rope_patch=patch, alpha=alpha_
+                    )
+                    if args.pool:
+                        arms[f"{key}__2"] = g_d2
+                stat_futs.append(
+                    stats_pool.submit(arm_stats, key + sfx, g_d, n_d, g_d2)
+                )
+                arm_idx += 1
+                arms[key] = g_d
+            for fut in stat_futs:  # join stats before pooling/freeing this image
+                row.update(fut.result())
+            if args.pool:
+                cur_pool.add_image(arms, r.redundancy)
+                if cur_pool.n == args.pool:
+                    finalize_stratum()
+            # free this image's ~8 GB of flat gradient vectors now — otherwise
+            # the locals keep them resident through the next image's compute
+            for vecs in arms.values():
+                vecs.clear()
+            g_a = g_b = arms = None  # noqa: F841
         rows.append(row)
         with rows_path.open("a") as f:
             f.write(json.dumps(row) + "\n")
@@ -1094,6 +1158,42 @@ def main() -> None:
         if args.self_floor:
             headline[f"cos_self_{k}"] = bin_stats(f"cos_self_{k}")
             headline[f"debiased_gap_{k}"] = bin_stats(f"debiased_gap_{k}")
+
+    if len(alphas) > 1:
+        headline["target_alphas"] = alphas
+        for alpha_ in alphas:
+            if alpha_ == 1.0:
+                continue
+            sfx = f"@a{alpha_:g}"
+            headline[f"cos_floor{sfx}"] = bin_stats(f"cos_floor{sfx}")
+            headline[f"gnorm_native{sfx}"] = bin_stats(f"gnorm_native{sfx}")
+            for k in arm_keys:
+                headline[f"gap_{k}{sfx}"] = bin_stats(f"gap_{k}{sfx}")
+                if args.self_floor:
+                    headline[f"cos_self_{k}{sfx}"] = bin_stats(f"cos_self_{k}{sfx}")
+                    headline[f"debiased_gap_{k}{sfx}"] = bin_stats(
+                        f"debiased_gap_{k}{sfx}"
+                    )
+        if args.self_floor:
+            for k in arm_keys:  # E2 readout: last bin = endpoint under --endpoint_bin
+                pts = [
+                    (
+                        a,
+                        headline[
+                            f"debiased_gap_{k}" + ("" if a == 1.0 else f"@a{a:g}")
+                        ]["mean"][-1],
+                    )
+                    for a in alphas
+                ]
+                slope = float(
+                    np.polyfit([p[0] for p in pts], [p[1] for p in pts], 1)[0]
+                )
+                headline[f"alpha_slope_{k}"] = round(slope, 5)
+                log.info(
+                    f"[alpha-sweep] debiased_gap_{k}@last: "
+                    + " ".join(f"a{a:g}={v:+.4f}" for a, v in pts)
+                    + f" slope={slope:+.4f}"
+                )
 
     if sweep:
         headline["draw_prefixes"] = sweep
