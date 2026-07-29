@@ -224,6 +224,63 @@ endpoint-only, routes {768, 512} + reenc, `--self_floor`, wall 1.0 h):
 
 ---
 
+## E5 — Eq. 3 held-out validation [DONE 2026-07-29 — qualified PASS]
+
+**Question.** Does the two-term account *predict* routes it was not fit
+on? Fit A_e, Floor_e on {1024→896, 1024→512, 1280→1120}, fit governor
+models A(ratio) and F(target tokens), predict {1024→768, 1280→1024}
+from measured m̄(σ) (G7, route-uniform mean) and each run's own G(σ).
+Analysis-only: `paper_bench/e5_holdout.py` (pass criteria pre-registered
+in the script header before the numbers), run
+`paper_bench/runs/20260729-1130-e5-holdout/` (result.json +
+`e5_overlay.png`). Sources: E1b paired-debiased (1024 tier), G9 raw
+paired (1280 tier — no self-floors exist there, D=4 caveat), G7 m(σ),
+per-run gnorm.
+
+**RESULTS — all four pre-registered gates fire; PASS with character:**
+
+- **p\* = 2.00** (grid boundary — but that *is* the small-mismatch
+  cosine-geometry limit the account pins a priori).
+- **Ratio governor, amplitude-level:** A_512 0.077±0.010,
+  A_896 0.0076±0.0053, A_1120 0.0068±0.0015 — the two ratio-0.875
+  routes agree at **z = 0.14** despite 1.6× different target capacity.
+  G9 showed the ratio governor at the σ\* level; this is the same
+  verdict at the fitted-amplitude level.
+- **Floor governor, interpolation-level:** fitted floors 512 +0.264,
+  896 +0.039, 1120 +0.002; exp-law F(n) = 0.70·exp(−n/1041 tok) fit on
+  512+896 predicts F(4825) = +0.007 (1120 fitted +0.002 ✓) and
+  **F(2160) = +0.088 for 768 vs measured debiased endpoint
+  +0.092±0.012** — the held-out floor is hit dead-on.
+- **Held-out 1024→768:** RMSE 0.093 — *better than the oracle
+  quadratic fit on the held-out data itself* (0.105); null committed
+  region (σ > σ_eq: gap ≈ 0) RMSE 0.164 vs ours 0.096.
+- **Held-out 1280→1024:** RMSE 0.092 vs oracle 0.056 (ratio 1.64,
+  inside the 2× gate); null 0.104 vs ours 0.100 (marginal).
+
+**Misses, recorded honestly (the "character"):**
+
+1. **768 mid-σ window:** measured ≈ 0 in σ∈[0.56,0.94] vs predicted
+   flat ~0.09–0.14 — the two-term form cannot dip below Floor_e. Same
+   window-vs-endpoint anomaly E1(b) already recorded; E5 sharpens it
+   into the account's one visible structural failure.
+2. **1280→1024 peak overshoot** (predicted 0.37 vs measured 0.18 at
+   σ=0.375): A(0.8) comes from linear-in-ratio interpolation resting on
+   only two distinct ratio values; A(r) is evidently convex between
+   0.5 and 0.875.
+3. **χ²/bin 7.6 / 9.2 held-out (0.9–5.2 in-sample):** the prediction is
+   NOT within instrument resolution anywhere — the claim licensed is
+   "shape + magnitude class + governors at ~0.09 RMSE", never
+   "predicts within ε\*".
+
+**Voice decision (paper_plan §2) resolved → Eq. 3 headlines as a
+*predictive* first-order account with stated ~0.09 RMSE resolution;
+"ratio sets amplitude / absolute size sets floor" upgrade from
+"consistent with" to measured-governor statements (ratio-twin z=0.14;
+floor exp-law hitting the held-out 768). The mid-σ 768 dip and the
+A(r) convexity go into the account's stated limits.**
+
+---
+
 ## E8.1 + E8.2 [DONE 2026-07-29 — written into main.tex]
 
 From the gap-native restructure proposal (E8, 2026-07-28); part 3 (the

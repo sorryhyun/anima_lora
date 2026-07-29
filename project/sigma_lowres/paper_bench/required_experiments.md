@@ -2,8 +2,10 @@
 
 Open runs only. Completed items — the 2026-07-28 review triage (R1–R5),
 E1 (all of a/b/c + instrument changes), E2 (target-α sweep, slope ≈ 0
-confirmed), and E8.1/E8.2 — live in `completed_experiments.md` with
-their results; `paper_plan.md` is the manuscript plan.
+confirmed), E5 (held-out validation, qualified PASS — Eq. 3 predicts,
+governors upgrade to measured), and E8.1/E8.2 — live in
+`completed_experiments.md` with their results; `paper_plan.md` is the
+manuscript plan.
 
 **Context: E1 landed 2026-07-29 and decision rule 1 fired (512 debiased
 gap_∞ +0.304 → token-count floor confirmed → Branch A).** Everything
@@ -43,15 +45,6 @@ load), examples/s, peak mem, CMMD, val loss, matched renders. Until this
 lands, every "14%" in the paper reads "a projected ceiling of ~14%".
 Also run `reenc_noise_floor.py` (script exists, queued) and clear the
 three pending markers.
-
-## E5 — Eq. 3 held-out validation, or demotion to "conceptual"
-
-Unlocked by E1 (floors confirmed): fit A_e, Floor_e on {1024→896,
-1024→512, 1280→1120}, predict {1024→768, 1280→1024} from measured m(σ),
-G(σ); compare vs spectral-null and an unconstrained smooth fit. If it
-fails to predict, keep Eq. 3 but present it as a decomposition, and
-change "ratio sets / token count sets" to "consistent with". No new
-instrument needed — this is analysis over existing + E1 rows.
 
 ## E6 [STRETCH] — one generalization arm each
 
@@ -155,7 +148,9 @@ than decorative.
 
 ## Order of operations
 
-E1 + E2 done → E3 (kick off E7's controlled-LoRA train here — it's
-GPU-cheap and its probes need E1's debiased instrument anyway) → E8.3
-analysis (its anchored row waits on E4's `reenc_noise_floor` run) → E4
-(Phase 1b as owed) → E7 probes → E5 → E6 if targeting a top venue.
+E1 + E2 + E5 done → main.tex restructure per `paper_plan.md` (E5's
+qualified PASS sets the voice) → E3 (kick off E7's controlled-LoRA
+train here — it's GPU-cheap and its probes need E1's debiased
+instrument anyway) → E8.3 analysis (its anchored row waits on E4's
+`reenc_noise_floor` run) → E4 (Phase 1b as owed) → E7 probes → E6 if
+targeting a top venue.

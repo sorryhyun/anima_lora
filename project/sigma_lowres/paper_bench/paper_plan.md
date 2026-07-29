@@ -1,162 +1,153 @@
-# paper_plan — revision direction for the sigma_lowres paper
+# paper_plan — restructure direction for the sigma_lowres paper
 
 Companion to `required_experiments.md` (open runs) and
 `completed_experiments.md` (discharge record): those say *what must run*
-and *what ran*; this file says *what the manuscript becomes*. Drafted
-2026-07-28 from the gap-native restructure discussion.
+and *what ran*; this file says *what the manuscript becomes*. Rewritten
+2026-07-29, superseding the Branch-A plan (E1 fired rule 1, the
+gap-native restructure is already in `paper/main.tex` — that plan is
+discharged; its claim-level revisions all landed).
 
-**Status:** E1 fired decision rule 1 → **Branch A** (§5 below) was
-written into `paper/main.tex` on 2026-07-29; the full manuscript status
-and remaining [pending] items live in `completed_experiments.md`.
+**Status:** the manuscript is currently the Branch-A spine (metrology →
+account → measurements → null-in-gap-units → application). This plan
+restructures it once more, into **theory → evidence → application**,
+to fix the remaining structural problem: it reads as an exploration
+log — evidence organized by run/question instead of by claim, hedges
+scattered per-sentence instead of consolidated.
 
 ---
 
 ## 1. Direction in one paragraph
 
-The paper moves from "a two-term account confronts a spectral null" to
-**gap-native metrology**: gap() is promoted from verdict quantity to the
-paper's protagonist, and every claim is stated in its units and at its
-measured resolution. Three-part spine: (1) what the instrument can
-detect — a derived detectability threshold ε\*, replacing the ad-hoc
-reenc ±0.04 band; (2) the guarantee region — the (route, σ) set where
-the debiased gap is non-inferior to ε\* at one-sided 95%; (3) the prior
-work's tolerances read *in gap units* — each published δ converted into
-a predicted gap curve through our measured bridge, overlaid on the
-measured curves. The two-term account is not demoted by this: it becomes
-the load-bearing unit bridge (m/G^p) that part (3) needs, rather than a
-free-standing theory chapter. Everything is restated in **debiased
-units** (E1) — the restructure is conditional on E1 and must not be
-written before it.
+Claim-first. The paper states the two-term account as its theoretical
+object up front — the **form** (additive two terms, G^p denominator,
+p ∈ [1,2], σ-flat floor) *is* derived, from the perturbation expansion
+plus cosine geometry, conditional on A1–A3; the **coefficients** (A_e,
+m(σ), G(σ), Floor_e) are measured, not derived. That ledger is stated
+once, prominently, in the theory section — and then the rest of the
+paper is written assertively, without re-hedging each claim. Every
+assumption and every discriminating prediction made in the theory
+section names its designated probe; the evidence section discharges
+them one term at a time, all in debiased units. The spectral account
+appears in the theory section as what it is — the null model of the
+input branch — and is scored in the evidence section. Application
+(safety maps, trainer, cost) comes last and consumes the evidence.
 
-Headline narrows to: *spectral sufficiency of the noisy input does not
-guarantee gradient equivalence under resolution substitution* — and the
-converse asymmetry gets one explicit sentence: the VAE round trip has
-measurable input-level error (D(f), the δ_reenc anchor) yet a gradient
-cost below instrument resolution. Input-level error neither implies nor
-excuses gradient-level cost; the paper's thesis, both directions.
+Headline unchanged: *spectral sufficiency of the noisy input does not
+guarantee gradient equivalence under resolution substitution* — plus
+the converse-asymmetry sentence (reenc: input-level error real,
+gradient cost below instrument resolution; input-level error neither
+implies nor excuses gradient-level cost).
 
-## 2. New section spine (old → new)
+## 2. Voice and hedging policy
 
-| new | content | built from |
+Distinguish structural hedging from protective hedging:
+
+- **Structural (remove):** the exploration narrative ("the spectral
+  prediction failed, we then…"), raw-vs-debiased double bookkeeping in
+  the main text, per-sentence "at our operating point" qualifiers.
+  Raw/historical tables move to the appendix wholesale; after the
+  instrument-validation block (§4.1), every main-text number is
+  debiased and the text never mentions raw again.
+- **Protective (keep, consolidate):** pre-registered / confirmatory /
+  post-hoc labels, ε\*-relative "safe" wording, "projected ceiling
+  until E4". These survived the external review for a reason.
+  Consolidate into **one epistemic-status ledger** — a paragraph or a
+  status column in the claims table — instead of inline hedges.
+
+**E5 decided the voice (qualified PASS, 2026-07-29 — see
+`completed_experiments.md`).** Eq. 3 headlines as a **predictive**
+first-order account with stated resolution: held-out routes at ~0.09
+RMSE (768 beats the oracle smooth on its own data; 1280→1024 within
+the 2× gate), governors upgraded from "consistent with" to measured —
+ratio-twin amplitudes agree at z=0.14, and the floor exp-law
+F(n) = 0.70·exp(−n/1041 tok) hits the held-out 768 floor dead-on
+(+0.088 predicted vs +0.092±0.012 measured). Stated limits, verbatim
+in the theory/evidence sections: the prediction is NOT within ε\*
+anywhere (χ²/bin 7.6–9.2); the 768 mid-σ window (measured ≈ 0,
+predicted ~0.1 — the form cannot dip below Floor_e) is the account's
+one structural failure; A(r) interpolation rests on two distinct
+ratios and is evidently convex (the 1280→1024 peak overshoot).
+
+## 3. New section spine (current tex → new)
+
+| new | content | built from (current tex) |
 |---|---|---|
-| §1 Intro | narrowed headline; 14% stated as *projected ceiling* until E4 | R4 fix |
-| §2 Related | + explicit "neither SPD nor SwD claims naive gradient equivalence; we test the tempting extension, not their methods" | framing fix |
-| §3 The metric and its resolution | gap definition, redraw floor, reenc control, **ε\*(N, D, floor) derivation**, debiased estimator (self-floors, attenuation correction), "safe" ≡ one-sided 95% CI below ε\* | old §4.1 + E1 + E8.1 |
-| §4 What demotion can cost | two-term account, presented as a **first-order account whose terms are individually evidenced** (drop "derive" from abstract); null as model of the input branch; graph term | old §3, softened per review |
-| §5 Measurements | gap curves, floor, input branch, governors, RoPE — all debiased. Floor section gains the **waterfall decomposition** (see §4 below) and the R2 relabel: "endpoint gap" → "high-noise endpoint gap"; x-zero is the graph-only control; 768's text stops claiming the plateau *is* the floor | old §4.2–4.6 + E1/E2 |
-| §6 The null in gap units | predicted-gap-curve overlay per (δ, route) via the m_null/G^p bridge with A calibrated on the safe route; continuous t\*(δ) sweep figure; δ_reenc-anchored row. States plainly: "the null read through our bridge" | old §3.3 Table 1 + §4.7, upgraded by E8.3 |
-| §7 Guarantee region + trainer | **two maps** — per-example (batch-1 worst case) and batch-aggregate (what the shipped trainer consumes); non-inferiority wording throughout; cost accounting as ceiling until E4 lands | old §5 + E3 |
-| §8 Limitations / conclusion | + operating-point item resolved or measured by E7 if it ran | old §6–7 |
+| §1 Intro | claim-first; narrowed headline; 14% as projected ceiling until E4 | §1, tightened |
+| §2 Related | unchanged framing ("we test the tempting extension, not their methods") | §2 |
+| §3 Theory: the demotion gap and a two-term account | **3.1 Setup**: gap definition, redraw floor, reenc control, ε\*(N, D, floor), safe(ε) — *definitions only*, no demonstrations. **3.2 The two perturbations and the first-order form**: input branch vs graph term, A1–A3, Eq. 3, the derivation ledger. **3.3 The spectral null**: tolerance family as the null model of the input branch. **3.4 Discriminating predictions**: where the accounts diverge; each prediction and each assumption names its §4 probe | §3.1 + §3.3 (defs only) + §4 (all) + §6.1 (family statement) |
+| §4 Evidence, per term | **4.1 The instrument, validated**: finite draws manufacture floors (c/D decay, native floor 0.85→1.005), self-floor debiasing is D-flat, det-twins; from here on, debiased units only. **4.2 The phenomenon**: gap curves vs σ; the null scored against them. **4.3 The floor is graph**: endpoint ≡ x-zero ≡ α-flat — three independent probes converging (E1a/c + E2); σ-flatness; the strongest single figure. **4.4 Input-branch anatomy**: m(σ) route-uniform, G(σ) U-shape and small-G amplification, A_e governors (ratio vs absolute size, 1280→1024). **4.5 Floor decomposition**: depth band + RoPE_e/Resid_e waterfall (mechanism, not a lever). **4.6 The account confronted**: E5 held-out prediction; null→gap overlay + t\*(δ) sweep (E8.3) | §3.2 (as 4.1) + §5 (all) + §6.2–6.3 |
+| §5 Application | **two safety maps** — per-example (batch-1 worst case) and batch-aggregate (what the shipped trainer consumes; E3), verdicts at ε\*; σ-conditional training on the measured-safe route; E4 A/B turns 14% from projected to measured; cost accounting | §7 + E3/E4 |
+| §6 Limitations | ε\*-relative coverage, debiased-coverage, operating point (measured by E7 if it runs) | §8 |
+| §7 Conclusion | metrology + counterexample + map, one epistemic-status recap | §9 |
+| App | instrument details; **raw/historical tables** (moved out of main text); extra figures | App A/B + §5's raw tables |
 
-Reordering rationale: the confrontation (§6) moves *after* the
-measurements because its bridge consumes measured G(σ) and a calibrated
-A — presenting it before the curves would hide that dependence.
+Ordering rationale kept from the previous plan: the null's *scoring*
+(4.2/4.6) stays after the instrument and curves because the bridge
+consumes measured G(σ) and a calibrated A — confronting before the
+curves would hide that dependence. Only the null's *statement* moves
+forward into theory.
 
-## 3. Claim-level revisions
+## 4. The floor waterfall (§4.5)
 
-**Strengthened (if E1 confirms):**
-- The 512 floor, reported raw *and* debiased — survives the variance
-  confound explicitly instead of ignoring it.
-- "Never safe" restated per aggregation object (R3): per-example map vs
-  batch-aggregate map, each with its own verdict column. The lenient
-  read (batch-aggregate on 768/512) is reported either way — if 768
-  stays out of band under the most lenient read, the verdict hardens;
-  if it enters band, that is a finding, and the map says so.
-
-**Softened / relabeled (regardless of E1):**
-- Abstract "we first derive" → first-order account language; "ratio sets
-  amplitude / token count sets floor" → "consistent with" unless E5's
-  held-out prediction passes.
-- Endpoint ≠ pure graph (R2): target still carries x at σ=1. All
-  "graph-only" claims re-anchored to x-zero; 768's endpoint split into
-  target-content share (E2's α-slope) + graph share.
-- Every "14%" → "projected ceiling of ~14%" until E4's A/B lands.
-- Reproducibility statement matched to what is actually public
-  (results tarball or un-ignored verdict runs).
-
-**New content:**
-- ε\* derivation (§3) — the one genuinely new theory-ish element, and it
-  is metrology, not physics.
-- The reverse-asymmetry sentence (reenc: input error real, gradient cost
-  ≤ band) + D(f) numbers once `reenc_noise_floor.py` runs.
-- Null→gap overlay figure + t\*(δ) sweep (§6).
-- Waterfall decomposition of the floor (§5).
-
-## 4. The floor waterfall
-
-Present Floor_e as an explicit additive ledger, one stacked bar or
-4-column table per route, components measured by designated probes:
+Floor_e as an explicit additive ledger, one stacked bar or 4-column
+table per route, components measured by designated probes:
 
     Floor_e = reenc (≤ band, by control)
-            + target-content share (E2 α-slope at endpoint)
+            + target-content share (≈ 0 — E2 α-flat)
             + RoPE_e (erased by PI at endpoint)
-            + Resid_e (remainder; carries the capacity governor)
+            + Resid_e (remainder; carries the absolute-size governor)
 
-Numbers currently in hand (raw units; all to be re-stated debiased):
-896 ≈ 0+0+0+0; 768 ≈ 0 + [E2] + 0.081 + ~0; 512 ≈ 0 + ~0.02 + 0.096 +
-~0.22. The 768 row is the one E2 materially changes (half its endpoint
-gap is target-content per the x-zero comparison). Caveat kept from the
-discussion: reenc control (native decode→re-encode) is a *proxy* for the
-pipeline cost demotion actually pays (source downscale→encode) — one
-sentence, and the optional demote→re-promote arm (below) closes it
-empirically if run.
+Debiased anchors in hand: 896 ≈ +0.02–0.04 total; 768 ≈ +0.056
+(RoPE_e the large majority — G10 tempered, "not exactly all");
+512 ≈ +0.30 (RoPE_e ~0.096 raw-paired, Resid_e the bulk). Caveat kept:
+reenc control is a *proxy* for the pipeline cost demotion actually
+pays; the optional demote→re-promote arm (§7) closes it empirically.
 
-## 5. Branch plan on E1's decision rule
+## 5. Figure/table plan
 
-The restructure is written three ways depending on E1 (decision rule
-pre-registered with E1, now in `completed_experiments.md`; outcome:
-Branch A):
-
-- **Branch A — floors confirmed** (`gap_∞(512) ≥ 0.15` debiased): the
-  spine above verbatim. E5 held-out prediction becomes the optional
-  §4-strengthener.
-- **Branch B — 768 melts into band**: safety map and abstract rewritten
-  (768 safe at high σ; "never safe" claims retreat to 512); the
-  absolute-size-governs-floor story loses its middle point and is
-  re-examined against {896≈0, 512 large}; RoPE/depth decompositions
-  re-checked in debiased units before any of §5's mechanism text
-  survives.
-- **Branch C — everything collapses into band**: the headline becomes
-  the (still true, still novel) low/mid-σ result + the metrology
-  contribution (ε\*, debiased estimator, the confound itself as a
-  finding — "naive gap estimators manufacture token-count floors").
-  Kill-switch honesty: the paper says its own earlier reads were
-  variance-inflated.
-
-Do not draft §5–§7 prose before E1(b); §3–§4 and the figure scaffolding
-can be written now.
-
-## 6. Figure/table plan
-
-- **Fig 1** (enlarged, first page): measured debiased gap curves + the
-  null's predicted curves at its published δ — the confrontation visible
-  before any prose.
-- **Fig: t\*(δ) sweep** — x: δ (log), y: t\*, three near-coincident route
-  curves (family spread ≤ 0.13), measured boundaries as markers, δ_reenc
-  as a vertical anchor line. Replaces/absorbs Table 1's sampled rows.
-- **Fig: floor waterfall** (§4 above).
+- **Fig 1** (enlarged, first page): measured debiased gap curves +
+  the null's predicted curves at its published δ — the confrontation
+  visible before any prose. (Fig 1c debiased map exists,
+  `plot_debiased_map.py`; RAPSD σ\* vlines removed — the null curves
+  come from E8.3.)
+- **Fig: floor convergence** (§4.3): endpoint vs x-zero vs α-sweep per
+  route — three probes, one number.
+- **Fig: floor waterfall** (§4.4 above).
+- **Fig: t\*(δ) sweep** — x: δ (log), y: t\*, three near-coincident
+  route curves (family spread ≤ 0.13), measured boundaries as markers,
+  δ_reenc as vertical anchor (needs `reenc_noise_floor.py`, E4).
 - **Table: two safety maps** (per-example / batch-aggregate), columns:
   route, Floor_e (debiased), σ\*, verdict at ε\*.
-- Existing estimator-context and RAPSD figures survive in §3/§6.
+- **Table: claims ledger** — claim, status label (pre-registered /
+  confirmatory / post-hoc), probe, section. This is the consolidated
+  hedge (§2 policy).
 
-## 7. Optional items (not gating, decide after E1)
+## 6. Order of work
+
+1. ~~E5 analysis~~ **DONE 2026-07-29** (`paper_bench/e5_holdout.py`,
+   run `runs/20260729-1130-e5-holdout/`) — qualified PASS, voice set
+   (§2). The overlay figure is a §4.6 candidate as-is.
+2. Restructure `main.tex` to the §3 spine — mostly *moving* existing
+   debiased blocks, not rewriting; raw tables to appendix; hedging
+   pass per §2 policy (structural out, ledger in).
+3. **E8.3 analysis** → overlay + t\*(δ) figures (δ_reenc row waits on
+   E4's `reenc_noise_floor.py`).
+4. **E3** pooled-with-self-floors run → two-maps table (§5). Kick off
+   E7's controlled-LoRA train alongside (GPU-cheap).
+5. **E4** (Phase 1b A/B + `reenc_noise_floor.py`) → 14% measured,
+   δ_reenc anchor lands, clear remaining [pending] markers.
+6. Hygiene pass per `required_experiments.md` [FIX] list: `make_all.py`
+   + MANIFEST, results archive matching the repro statement, abstract
+   shortened, claims-ledger labels linked to freeze commits.
+7. E7 probes / E6 arms if targeting a top venue.
+
+## 7. Optional items (not gating)
 
 - **Demote→re-promote arm** (pixel down→up at native grid, encode):
-  Floor = 0 by construction, isolates the input branch across the full σ
-  axis, and tests two-term additivity per bin (gap_demote ≈
-  gap_repromote + Floor_e). Built-in falsification: its endpoint must be
-  in band. Worth one run if E1 confirms the floors and E5 is attempted —
-  it is the cleanest independent check of the form. Not yet in
-  `required_experiments.md`; add as E9 if adopted.
+  Floor = 0 by construction, isolates the input branch across the full
+  σ axis, tests two-term additivity per bin (gap_demote ≈
+  gap_repromote + Floor_e); built-in falsification (endpoint must be
+  in band). The cleanest independent check of the form — worth one run
+  if E5 is attempted. Add as E9 in `required_experiments.md` if
+  adopted.
 - **E6/E7 generalization arms** per their existing entries.
-
-## 8. Order of work
-
-1. E1(a) endpoint sweep → E1(b,c) full debiased map (GATE).
-2. Pick branch (A/B/C). Write §3 (ε\*) + §4 (account) — branch-invariant.
-3. E2 + E3 runs; §5 prose + waterfall in debiased units.
-4. E8 analysis: null→gap bridge + t\*(δ) figure → §6.
-5. E4 (Phase 1b A/B + `reenc_noise_floor.py`) → clear pending markers,
-   14% becomes measured, δ_reenc row lands.
-6. Hygiene pass per `required_experiments.md` [FIX] list (abstract,
-   pre-registered/post-hoc labels, reproducibility artifacts).
