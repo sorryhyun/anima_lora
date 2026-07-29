@@ -1,0 +1,1114 @@
+{
+ "seed": 20260729,
+ "rule": "per artist: qualifying = 1024-tier npz + TE cache + caption; seeded permutation split, train = min(64, round(0.5*n), n-3); prompts = first 24 of a seeded holdout permutation, gen_seed = 20000+i, render size = the holdout image's own free-fit bucket",
+ "artists": [
+  "hews",
+  "channel_(caststation)"
+ ],
+ "train_seeds": [
+  1001,
+  1002,
+  1003
+ ],
+ "common_argv": [
+  "--deterministic",
+  "--paired_step_rng"
+ ],
+ "arms": {
+  "native": {
+   "extra_argv": [],
+   "demote_routes": []
+  },
+  "sigma896": {
+   "extra_argv": [
+    "--sigma_lowres",
+    "--sigma_lowres_yarnsig"
+   ],
+   "demote_routes": [
+    "1024:896"
+   ],
+   "note": "threshold default 0.5 (measured-safe gate); bare yarnsig = probe operating point 1,4,0.35,2"
+  },
+  "unsafe768": {
+   "extra_argv": [
+    "--sigma_lowres",
+    "--sigma_lowres_threshold",
+    "0.0"
+   ],
+   "demote_routes": [
+    "1024:768"
+   ],
+   "note": "negative control: unconditional demotion on the no-certifiable-window route",
+   "requires": [
+    "1024:768 demote-sibling emit (preprocess --sigma_demote 1024:768)",
+    "trainer patch: SIGMA_DEMOTE_ROUTE (library/datasets/buckets.py) made selectable per run (currently 1024:896 constant)"
+   ]
+  }
+ },
+ "eval_protocol": {
+  "infer_steps": 20,
+  "cfg": 1.0,
+  "reference_pool": "all holdout stems (real images)",
+  "member_pool": "all train stems (real images)",
+  "metrics": [
+   "cmmd_holdout (PE-Core pooled MMD^2 vs holdout pool)",
+   "cmmd_member (memorization pull)",
+   "real-vs-real noise floor",
+   "paired PE-Core cosine across arms at matched (prompt, gen_seed)",
+   "realized wall-clock / examples/s / peak mem / val loss"
+  ],
+  "convention": "bench/reft/eval_cmmd.py + bench/memorization/generalize.py"
+ },
+ "cells": {
+  "hews": {
+   "n_qualifying": 121,
+   "train": [
+    "10021799",
+    "10025585",
+    "10151243",
+    "10280678",
+    "10619279",
+    "10813798",
+    "11118680",
+    "11121452",
+    "11271316",
+    "11663807",
+    "11663809",
+    "11670666",
+    "11819465",
+    "11858968",
+    "11930309",
+    "12076715",
+    "12256806",
+    "12752712",
+    "13158115",
+    "13226689",
+    "13286261",
+    "14063333",
+    "14125392",
+    "14216645",
+    "14264981",
+    "14333087",
+    "14384146",
+    "14402883",
+    "14411540",
+    "5020293",
+    "5714909",
+    "5784903",
+    "5984441",
+    "6031541",
+    "6187602",
+    "6776696",
+    "7869706",
+    "8458652",
+    "8458665",
+    "8804746",
+    "9056047",
+    "9157757",
+    "9159849",
+    "9184394",
+    "9213281",
+    "9237733",
+    "9257031",
+    "9266817",
+    "9463475",
+    "9526509",
+    "9566314",
+    "9645681",
+    "9654275",
+    "9677169",
+    "9697683",
+    "9785860",
+    "9845600",
+    "9861855",
+    "9922089",
+    "9941792"
+   ],
+   "holdout": [
+    "10333391",
+    "10358830",
+    "10423586",
+    "10439504",
+    "10446340",
+    "10519340",
+    "10556508",
+    "10607820",
+    "10707169",
+    "10916772",
+    "10942975",
+    "11067631",
+    "11150203",
+    "11254343",
+    "11303073",
+    "11663805",
+    "11889944",
+    "11975391",
+    "12672980",
+    "12887892",
+    "12915467",
+    "13059899",
+    "13126245",
+    "13431011",
+    "13497194",
+    "13502228",
+    "13539749",
+    "13554346",
+    "14156665",
+    "14172290",
+    "14208265",
+    "14230176",
+    "14248167",
+    "14296235",
+    "14309413",
+    "14393806",
+    "4480033",
+    "4480035",
+    "4615461",
+    "5118916",
+    "6135998",
+    "6262643",
+    "6262646",
+    "6321464",
+    "6595690",
+    "6795089",
+    "7049250",
+    "7655625",
+    "7655626",
+    "8074558",
+    "8262330",
+    "8458671",
+    "9056045",
+    "9122555",
+    "9206460",
+    "9450524",
+    "9502106",
+    "9685835",
+    "9700788",
+    "9724914",
+    "9834204"
+   ],
+   "sizes": {
+    "10021799": [
+     752,
+     1408
+    ],
+    "10025585": [
+     736,
+     1424
+    ],
+    "10151243": [
+     832,
+     1280
+    ],
+    "10280678": [
+     768,
+     1360
+    ],
+    "10333391": [
+     864,
+     1232
+    ],
+    "10358830": [
+     800,
+     1328
+    ],
+    "10423586": [
+     864,
+     1216
+    ],
+    "10439504": [
+     800,
+     1328
+    ],
+    "10446340": [
+     768,
+     1344
+    ],
+    "10519340": [
+     768,
+     1376
+    ],
+    "10556508": [
+     816,
+     1280
+    ],
+    "10607820": [
+     816,
+     1312
+    ],
+    "10619279": [
+     816,
+     1312
+    ],
+    "10707169": [
+     768,
+     1392
+    ],
+    "10813798": [
+     800,
+     1296
+    ],
+    "10916772": [
+     1216,
+     864
+    ],
+    "10942975": [
+     832,
+     1280
+    ],
+    "11067631": [
+     704,
+     1472
+    ],
+    "11118680": [
+     768,
+     1376
+    ],
+    "11121452": [
+     832,
+     1280
+    ],
+    "11150203": [
+     768,
+     1344
+    ],
+    "11254343": [
+     816,
+     1312
+    ],
+    "11271316": [
+     800,
+     1312
+    ],
+    "11303073": [
+     816,
+     1312
+    ],
+    "11663805": [
+     928,
+     1152
+    ],
+    "11663807": [
+     768,
+     1344
+    ],
+    "11663809": [
+     864,
+     1232
+    ],
+    "11670666": [
+     768,
+     1344
+    ],
+    "11819465": [
+     816,
+     1312
+    ],
+    "11858968": [
+     912,
+     1168
+    ],
+    "11889944": [
+     720,
+     1472
+    ],
+    "11930309": [
+     752,
+     1424
+    ],
+    "11975391": [
+     672,
+     1568
+    ],
+    "12076715": [
+     736,
+     1408
+    ],
+    "12256806": [
+     784,
+     1344
+    ],
+    "12672980": [
+     784,
+     1344
+    ],
+    "12752712": [
+     752,
+     1392
+    ],
+    "12887892": [
+     784,
+     1344
+    ],
+    "12915467": [
+     880,
+     1184
+    ],
+    "13059899": [
+     768,
+     1376
+    ],
+    "13126245": [
+     784,
+     1344
+    ],
+    "13158115": [
+     848,
+     1232
+    ],
+    "13226689": [
+     768,
+     1376
+    ],
+    "13286261": [
+     752,
+     1408
+    ],
+    "13431011": [
+     1216,
+     864
+    ],
+    "13497194": [
+     752,
+     1376
+    ],
+    "13502228": [
+     784,
+     1328
+    ],
+    "13539749": [
+     800,
+     1296
+    ],
+    "13554346": [
+     832,
+     1280
+    ],
+    "14063333": [
+     800,
+     1328
+    ],
+    "14125392": [
+     736,
+     1408
+    ],
+    "14156665": [
+     784,
+     1328
+    ],
+    "14172290": [
+     1184,
+     896
+    ],
+    "14208265": [
+     784,
+     1360
+    ],
+    "14216645": [
+     864,
+     1216
+    ],
+    "14230176": [
+     784,
+     1344
+    ],
+    "14248167": [
+     768,
+     1344
+    ],
+    "14264981": [
+     768,
+     1344
+    ],
+    "14296235": [
+     832,
+     1280
+    ],
+    "14309413": [
+     816,
+     1280
+    ],
+    "14333087": [
+     800,
+     1312
+    ],
+    "14384146": [
+     720,
+     1472
+    ],
+    "14393806": [
+     720,
+     1488
+    ],
+    "14402883": [
+     1264,
+     848
+    ],
+    "14411540": [
+     848,
+     1232
+    ],
+    "4480033": [
+     832,
+     1280
+    ],
+    "4480035": [
+     864,
+     1216
+    ],
+    "4615461": [
+     864,
+     1216
+    ],
+    "5020293": [
+     864,
+     1216
+    ],
+    "5118916": [
+     864,
+     1216
+    ],
+    "5714909": [
+     848,
+     1264
+    ],
+    "5784903": [
+     880,
+     1216
+    ],
+    "5984441": [
+     896,
+     1200
+    ],
+    "6031541": [
+     816,
+     1280
+    ],
+    "6135998": [
+     768,
+     1376
+    ],
+    "6187602": [
+     784,
+     1344
+    ],
+    "6262643": [
+     800,
+     1344
+    ],
+    "6262646": [
+     784,
+     1328
+    ],
+    "6321464": [
+     864,
+     1200
+    ],
+    "6595690": [
+     800,
+     1312
+    ],
+    "6776696": [
+     848,
+     1248
+    ],
+    "6795089": [
+     880,
+     1216
+    ],
+    "7049250": [
+     816,
+     1296
+    ],
+    "7655625": [
+     752,
+     1424
+    ],
+    "7655626": [
+     752,
+     1424
+    ],
+    "7869706": [
+     768,
+     1344
+    ],
+    "8074558": [
+     864,
+     1216
+    ],
+    "8262330": [
+     800,
+     1328
+    ],
+    "8458652": [
+     816,
+     1312
+    ],
+    "8458665": [
+     816,
+     1280
+    ],
+    "8458671": [
+     800,
+     1328
+    ],
+    "8804746": [
+     768,
+     1360
+    ],
+    "9056045": [
+     864,
+     1216
+    ],
+    "9056047": [
+     864,
+     1216
+    ],
+    "9122555": [
+     832,
+     1280
+    ],
+    "9157757": [
+     848,
+     1232
+    ],
+    "9159849": [
+     816,
+     1296
+    ],
+    "9184394": [
+     1328,
+     800
+    ],
+    "9206460": [
+     1120,
+     960
+    ],
+    "9213281": [
+     816,
+     1296
+    ],
+    "9237733": [
+     848,
+     1232
+    ],
+    "9257031": [
+     848,
+     1248
+    ],
+    "9266817": [
+     800,
+     1344
+    ],
+    "9450524": [
+     1184,
+     880
+    ],
+    "9463475": [
+     1280,
+     816
+    ],
+    "9502106": [
+     816,
+     1312
+    ],
+    "9526509": [
+     848,
+     1232
+    ],
+    "9566314": [
+     1216,
+     864
+    ],
+    "9645681": [
+     816,
+     1312
+    ],
+    "9654275": [
+     1296,
+     816
+    ],
+    "9677169": [
+     832,
+     1264
+    ],
+    "9685835": [
+     832,
+     1280
+    ],
+    "9697683": [
+     1376,
+     752
+    ],
+    "9700788": [
+     800,
+     1328
+    ],
+    "9724914": [
+     800,
+     1312
+    ],
+    "9785860": [
+     784,
+     1360
+    ],
+    "9834204": [
+     848,
+     1248
+    ],
+    "9845600": [
+     800,
+     1312
+    ],
+    "9861855": [
+     800,
+     1328
+    ],
+    "9922089": [
+     832,
+     1280
+    ],
+    "9941792": [
+     816,
+     1280
+    ]
+   },
+   "prompts": [
+    {
+     "stem": "10556508",
+     "caption": "explicit, 1boy, 1girl, suou yuki, tokidoki bosotto roshia-go de dereru tonari no alya-san, @hews, black bra, black panties, bow, bow bra, bow panties, brown hair, clothing aside, cowgirl position, female pubic hair, grey eyes, happy sex, hetero, lace, lace-trimmed bra, lace trim, large breasts, long hair, long sleeves, looking at viewer, navel, open clothes, open mouth, open shirt, orgasm, panties aside, pov, pussy, saliva, sex, stomach, straddling, sweat, tongue, tongue out, uncensored, underwear, vehicle interior, white shirt",
+     "width": 816,
+     "height": 1280,
+     "gen_seed": 20000
+    },
+    {
+     "stem": "11067631",
+     "caption": "nsfw, 1girl, anya (mouthwashing), mouthwashing, @hews, cellphone, cleavage, clothes pull, frown, furrowed brow, grey hair, grey panties, holding, holding phone, indoors, jacket, large breasts, long hair, looking at viewer, navel, open clothes, open jacket, pants, pants pull, phone, pubic hair, pubic hair peek, selfie, smartphone, solo, standing, sweat, underwear, wavy hair",
+     "width": 704,
+     "height": 1472,
+     "gen_seed": 20001
+    },
+    {
+     "stem": "13431011",
+     "caption": "nsfw, 1girl, waguri kaoruko, kaoru hana wa rin to saku, @hews, black hair, blue eyes, breasts, clenched teeth, finger to mouth, grin, hanging breasts, happy, index finger raised, long hair, looking at viewer, medium breasts, puffy short sleeves, puffy sleeves, see-through clothes, see-through dress, short sleeves, shushing, smile, solo, teeth, wavy hair, white dress, window",
+     "width": 1216,
+     "height": 864,
+     "gen_seed": 20002
+    },
+    {
+     "stem": "4480033",
+     "caption": "explicit, 1girl, priestess (goblin slayer!), goblin slayer!, @hews, 10s, black panties, blonde hair, blue eyes, censored, cleft of venus, clothes lift, covered erect nipples, crotchless, crotchless panties, cup, female focus, heart, heart censor, lifting own clothes, lingerie, long hair, looking at viewer, mouth hold, pee, pee in container, peeing, peeing in cup, pussy, skirt, skirt lift, solo, teacup, underwear, white thighhighs",
+     "width": 832,
+     "height": 1280,
+     "gen_seed": 20003
+    },
+    {
+     "stem": "4480035",
+     "caption": "explicit, 1boy, 1girl, goblin slayer, guild girl (goblin slayer!), goblin slayer!, @hews, 10s, all fours, arm support, ass, black gloves, black panties, blush, braid, breath, brown eyes, clothed sex, clothing aside, cum, cum in pussy, doggystyle, drooling, ejaculation, from above, fucked silly, hair between eyes, hair over shoulder, heart, heart-shaped pupils, heavy breathing, hetero, long sleeves, male pubic hair, medium hair, orgasm, panties aside, reverse suspended congress, sex, sex from behind, solo focus, symbol-shaped pupils, thong, tongue, tongue out, torogao, torso grab, trembling, underwear, vambraces, yellow eyes",
+     "width": 864,
+     "height": 1216,
+     "gen_seed": 20004
+    },
+    {
+     "stem": "6795089",
+     "caption": "nsfw, 2girls, chiyo (ane naru mono), oosuki mamako, ane naru mono, tsuujou kougeki ga zentai kougeki de ni-kai kougeki no okaasan wa suki desu ka?, @hews, ass, asymmetrical bangs, bare shoulders, bright pupils, brown hair, cleavage, collarbone, collared shirt, cowboy shot, creator connection, crossover, dress shirt, empty eyes, female focus, garter belt, gluteal fold, grin, half-closed eyes, hand on own chest, highleg, highleg panties, lace, lace-trimmed bra, lace-trimmed panties, lace trim, large breasts, lingerie, long hair, long sleeves, looking at viewer, mature female, multiple girls, navel, open clothes, open mouth, open shirt, parted lips, purple eyes, purple hair, purple panties, see-through clothes, skindentation, sleeves rolled up, smile, stomach, sweat, teeth, thighs, tongue, underwear, underwear only, very long hair. On the left, purple bra, white shirt, black hair, chiyo (ane naru mono). On the right, black bra, black panties, blush, white pupils, oosuki mamako.",
+     "width": 880,
+     "height": 1216,
+     "gen_seed": 20005
+    },
+    {
+     "stem": "11150203",
+     "caption": "explicit, 1boy, 1girl, burnice white, zenless zone zero, @hews, :q, black jacket, blonde hair, blush, cleavage, crossed bangs, cum, drooling, ejaculation, eyewear on head, large breasts, looking at viewer, male pubic hair, medium hair, paizuri, penis, pov, red eyes, red shirt, saliva, saliva trail, shirt, solo focus, tongue, tongue out, uncensored",
+     "width": 768,
+     "height": 1344,
+     "gen_seed": 20006
+    },
+    {
+     "stem": "13554346",
+     "caption": "explicit, 1boy, 1girl, waguri kaoruko, kaoru hana wa rin to saku, @hews, black hair, blue eyes, blush, female pubic hair, hand on another's face, hand on another's neck, heart, heavy breathing, hetero, large breasts, long hair, missionary, navel, nipples, nude, open mouth, penis, pillow, pov, sex, solo focus, stomach, stomach bulge, sweat, teeth, thumb to mouth, tongue, uncensored, vaginal, veins, veiny arms, white thighhighs",
+     "width": 832,
+     "height": 1280,
+     "gen_seed": 20007
+    },
+    {
+     "stem": "10333391",
+     "caption": "explicit, 1girl, yinlin (wuthering waves), wuthering waves, @hews, bottomless, breasts, circle facial mark, couch, cum, cum in pussy, cum overflow, facial mark, gloves, high ponytail, legs apart, licking lips, lying, m legs, on back, pillow, ponytail, purple eyes, pussy, red hair, spread legs, spread pussy, spreading own pussy, tongue, tongue out, uncensored",
+     "width": 864,
+     "height": 1232,
+     "gen_seed": 20008
+    },
+    {
+     "stem": "14208265",
+     "caption": "nsfw, 1boy, 1girl, hoshimi miyabi, zenless zone zero, @hews, after kiss, animal ear fluff, animal ears, black hair, black pantyhose, black skirt, blunt bangs, blush, box, bulge, curvy, erection, erection under clothes, fox ears, fox girl, grabbing another's breast, groping, height difference, hetero, indoors, large breasts, long hair, nervous sweating, red eyes, saliva, saliva trail, short hair, sketch, standing on box, sweat, sweatdrop, thick thighs, thighs, tongue, tongue out, white hair, white shirt",
+     "width": 784,
+     "height": 1360,
+     "gen_seed": 20009
+    },
+    {
+     "stem": "6595690",
+     "caption": "nsfw, 1girl, kugisaki nobara, jujutsu kaisen, @hews, against fourth wall, against glass, bandages, breast press, breasts on glass, brown eyes, brown hair, closed mouth, female focus, hair between eyes, hands up, large breasts, looking at viewer, nipple slip, nipples, open clothes, open shirt, short hair, solo, upper body, white shirt",
+     "width": 800,
+     "height": 1312,
+     "gen_seed": 20010
+    },
+    {
+     "stem": "6135998",
+     "caption": "sensitive, 1girl, makima (chainsaw man), chainsaw man, @hews, armpits, bare shoulders, black bra, black panties, breasts, cleavage, collared shirt, dress shirt, hair behind ear, long hair, medium breasts, navel, pants, red hair, sidelocks, sitting, solo, sweat, thighs, underwear, white shirt, window, yellow eyes",
+     "width": 768,
+     "height": 1376,
+     "gen_seed": 20011
+    },
+    {
+     "stem": "7049250",
+     "caption": "explicit, 1boy, 1girl, gawr gura, hololive, hololive english, @hews, blue eyes, blue hair, blue ribbon, blush, breath, cowgirl position, erection, fins, fish tail, flat chest, functionally nude, girl on top, happy sex, hetero, loli, looking at viewer, multicolored hair, navel, nipples, nude, open mouth, parted lips, penis, pov, pov crotch, pussy, sex, shark girl, shark tail, sharp teeth, solo focus, spread legs, straddling, tail, teeth, uncensored, vaginal, virtual youtuber",
+     "width": 816,
+     "height": 1296,
+     "gen_seed": 20012
+    },
+    {
+     "stem": "10423586",
+     "caption": "explicit, 1girl, fern (sousou no frieren), sousou no frieren, @hews, blunt bangs, blush, book, bukkake, cum, cum on body, cum on hair, cum on hands, cup, drinking glass, facial, long hair, long sleeves, one eye closed, open hand, parted lips, purple eyes, purple hair, solo, upper body",
+     "width": 864,
+     "height": 1216,
+     "gen_seed": 20013
+    },
+    {
+     "stem": "10607820",
+     "caption": "sensitive, 2girls, fern (sousou no frieren), frieren, sousou no frieren, @hews, :t, asymmetrical docking, barefoot, black coat, breast press, breasts, brown coat, feet out of frame, from side, green eyes, huge breasts, kneeling, light frown, long hair, long sleeves, looking at viewer, multiple girls, off shoulder, parted bangs, pout, purple eyes, purple hair, simple background, sweatdrop, twintails, white background, white dress, white hair",
+     "width": 816,
+     "height": 1312,
+     "gen_seed": 20014
+    },
+    {
+     "stem": "6262646",
+     "caption": "nsfw, 1girl, reze (chainsaw man), chainsaw man, @hews, armpits, backlighting, bare shoulders, black bra, black hair, black panties, blush, breasts, cleavage, clothes lift, cowboy shot, green eyes, hair between eyes, hair bun, indoors, lingerie, looking at viewer, lowleg, lowleg panties, medium breasts, medium hair, multi-strapped panties, navel, see-through clothes, shirt lift, sidelocks, single hair bun, solo, stomach, sweat, underwear, undressing, wet, wet clothes, wet shirt, white shirt, window",
+     "width": 784,
+     "height": 1328,
+     "gen_seed": 20015
+    },
+    {
+     "stem": "10707169",
+     "caption": "nsfw, 1girl, noa (blue archive), blue archive, @hews, backlighting, breasts apart, cleavage, large breasts, lingerie, navel, panties, thighhighs, underwear, underwear only, veil",
+     "width": 768,
+     "height": 1392,
+     "gen_seed": 20016
+    },
+    {
+     "stem": "5118916",
+     "caption": "sensitive, 1boy, 2girls, original, @hews, age difference, assertive female, black coat, blush, brown coat, brown hair, chijo, chikan, child, collared shirt, finger in another's mouth, girl sandwich, groping, indoors, long sleeves, mole, mole under eye, molestation, multiple boys, multiple girls, onee-shota, open mouth, pink sweater, public indecency, red eyes, ribbed sweater, sandwiched, short hair, short hair with long locks, smile, standing, sweat, tongue, twintails, white shirt",
+     "width": 864,
+     "height": 1216,
+     "gen_seed": 20017
+    },
+    {
+     "stem": "14230176",
+     "caption": "nsfw, 1boy, 1girl, yvonne (arknights), arknights, arknights: endfield, @hews, :d, bare shoulders, black horns, blue eyes, blush, bulge, cone hair bun, crop top, diamond in eye, double bun, dragon girl, dragon horns, erection, erection under clothes, girl on top, hair bun, hair intakes, horns, large breasts, long hair, long sleeves, looking at viewer, multicolored horns, navel, open mouth, pants, pink hair, pink horns, pink jacket, pointy ears, pov, sketch, smile, solo focus, stomach, sweat, thick eyebrows, trembling, twintails, two-tone horns, underwear, white panties",
+     "width": 784,
+     "height": 1344,
+     "gen_seed": 20018
+    },
+    {
+     "stem": "14393806",
+     "caption": "nsfw, 1girl, frieren, sousou no frieren, @hews, blush, book, closed mouth, collarbone, completely nude, covering crotch, covering privates, elf, green eyes, grey hair, hair down, holding, holding book, long hair, navel, parted bangs, pointy ears, pout, small breasts, solo, sweat, thick eyebrows, thighs, very long hair",
+     "width": 720,
+     "height": 1488,
+     "gen_seed": 20019
+    },
+    {
+     "stem": "9724914",
+     "caption": "explicit, 1girl, ubel (sousou no frieren), sousou no frieren, @hews, armpits, arms behind head, arms up, colored pubic hair, female pubic hair, green hair, green pubic hair, large breasts, navel, nipples, ponytail, presenting armpit, seductive smile, smile, sweat",
+     "width": 800,
+     "height": 1312,
+     "gen_seed": 20020
+    },
+    {
+     "stem": "9685835",
+     "caption": "explicit, 1boy, 1girl, ubel (sousou no frieren), sousou no frieren, @hews, arm up, armband, armpits, bare shoulders, between breasts, black armband, black dress, cleavage, clothed female nude male, collarbone, colored pubic hair, cowgirl position, deep penetration, fangs, girl on top, green hair, green pubic hair, hetero, large breasts, licking lips, looking at viewer, naughty face, nipple slip, nipples, nude, open mouth, purple eyes, seductive gaze, sex, side ponytail, smile, solo, straddling, sweat, tongue, tongue out",
+     "width": 832,
+     "height": 1280,
+     "gen_seed": 20021
+    },
+    {
+     "stem": "14156665",
+     "caption": "nsfw, 1girl, shaula (re:zero), re:zero kara hajimeru isekai seikatsu, @hews, armpits, arms behind head, bikini top lift, black bikini, blush, cape, clothes lift, front-tie bikini top, front-tie top, green eyes, hair between eyes, hair ribbon, inverted nipples, large breasts, long hair, looking at viewer, ribbon, smile, solo, sweat, swimsuit, upper body",
+     "width": 784,
+     "height": 1328,
+     "gen_seed": 20022
+    },
+    {
+     "stem": "8458671",
+     "caption": "explicit, 1girl, gotoh hitori, gotoh hitori (octopus), kita ikuyo, bocchi the rock!, @hews, 1futa, bathing, bathroom, blush, censored, cleft of venus, collarbone, completely nude, cube hair ornament, female pov, from below, futa with female, futanari, futanari pov, green eyes, hair between eyes, hair ornament, looking at viewer, medium breasts, medium hair, navel, nipples, novelty censor, one side up, open mouth, penis, pov, pov crotch, pov hands, pussy, red hair, same-sex bathing, shared bathing, small breasts, smile, solo focus, sparkle, stomach, thighs, water, wet, you gonna get raped",
+     "width": 800,
+     "height": 1328,
+     "gen_seed": 20023
+    }
+   ]
+  },
+  "channel_(caststation)": {
+   "n_qualifying": 30,
+   "train": [
+    "11036780",
+    "11126524",
+    "12248604",
+    "12248608",
+    "12248609",
+    "8090164",
+    "8562493",
+    "8887050",
+    "9141971",
+    "9146144",
+    "9270249",
+    "9708447",
+    "channel1",
+    "channel5",
+    "channel6"
+   ],
+   "holdout": [
+    "10391952",
+    "11429918",
+    "11606822",
+    "12248603",
+    "12248671",
+    "12248673",
+    "12248674",
+    "12248742",
+    "8254793",
+    "8293513",
+    "8508115",
+    "8517433",
+    "8593437",
+    "8615514",
+    "channel4"
+   ],
+   "sizes": {
+    "10391952": [
+     896,
+     1152
+    ],
+    "11036780": [
+     880,
+     1200
+    ],
+    "11126524": [
+     1024,
+     1024
+    ],
+    "11429918": [
+     1024,
+     1024
+    ],
+    "11606822": [
+     960,
+     1120
+    ],
+    "12248603": [
+     960,
+     1120
+    ],
+    "12248604": [
+     896,
+     1168
+    ],
+    "12248608": [
+     960,
+     1088
+    ],
+    "12248609": [
+     912,
+     1168
+    ],
+    "12248671": [
+     944,
+     1120
+    ],
+    "12248673": [
+     976,
+     1072
+    ],
+    "12248674": [
+     1008,
+     1040
+    ],
+    "12248742": [
+     944,
+     1136
+    ],
+    "8090164": [
+     992,
+     1072
+    ],
+    "8254793": [
+     832,
+     1248
+    ],
+    "8293513": [
+     848,
+     1248
+    ],
+    "8508115": [
+     1120,
+     928
+    ],
+    "8517433": [
+     960,
+     1088
+    ],
+    "8562493": [
+     960,
+     1088
+    ],
+    "8593437": [
+     960,
+     1104
+    ],
+    "8615514": [
+     880,
+     1200
+    ],
+    "8887050": [
+     1024,
+     1024
+    ],
+    "9141971": [
+     976,
+     1088
+    ],
+    "9146144": [
+     944,
+     1104
+    ],
+    "9270249": [
+     992,
+     1056
+    ],
+    "9708447": [
+     992,
+     1072
+    ],
+    "channel1": [
+     672,
+     1536
+    ],
+    "channel4": [
+     1024,
+     1024
+    ],
+    "channel5": [
+     688,
+     1504
+    ],
+    "channel6": [
+     880,
+     1200
+    ]
+   },
+   "prompts": [
+    {
+     "stem": "8508115",
+     "caption": "sensitive, 1girl, hoshino ai, oshi no ko, @channel (caststation), bare shoulders, black gloves, blowing kiss, collarbone, covering own mouth, fingerless gloves, hand over own mouth, large breasts, long hair, multicolored eyes, multicolored hair, one eye closed, purple hair, sidelocks, simple background, star-shaped pupils, star (symbol), streaked hair, sweat, symbol-shaped pupils, upper body, white sports bra",
+     "width": 1120,
+     "height": 928,
+     "gen_seed": 20000
+    },
+    {
+     "stem": "8593437",
+     "caption": "sensitive, 1girl, hatsune miku, vocaloid, world is mine (vocaloid), @channel (caststation), aqua eyes, aqua hair, aqua nails, bdsm, blush, bondage, bound, bound wrists, bra, cable tie, clothes lift, collarbone, cowboy shot, crossover, dot nose, flying sweatdrops, hair between eyes, headset, long hair, looking at viewer, meme, multiple views, navel, no pants, open mouth, pajamas challenge (meme), panties, parted lips, pubic tattoo, restrained, shirt, shirt lift, side-tie panties, sidelocks, simple background, single bare shoulder, skinny, small breasts, standing, straight-on, striped bra, striped clothes, striped panties, sweat, t-shirt, tattoo, twintails, underwear, very long hair, white background",
+     "width": 960,
+     "height": 1104,
+     "gen_seed": 20001
+    },
+    {
+     "stem": "12248603",
+     "caption": "nsfw, 1girl, hatsune miku, rabbit hole (vocaloid), vocaloid, @channel (caststation), anal beads, anal tail, anger vein, arched back, ass, black hoodie, blue eyes, blue hair, blush, butt plug, fake tail, fishnet thighhighs, fishnets, hands in pocket, hood, medium hair, multicolored hair, no panties, pink hair, price tag, rabbit tail, sex toy, simple background, solo, spoken anger vein, streaked hair, thighhighs, tongue, tongue out, white background",
+     "width": 960,
+     "height": 1120,
+     "gen_seed": 20002
+    },
+    {
+     "stem": "11606822",
+     "caption": "nsfw, 1girl, hatsune miku, rabbit hole (vocaloid), vocaloid, @channel (caststation), animal ears, arms behind back, arrow (symbol), ball gag, bare shoulders, bdsm, black leotard, blindfold, blue eyes, blue hair, bondage, bound, bow, cigarette, fake animal ears, full body, gag, gagged, glory hole, gradient hair, grey pantyhose, head rest, heart, high heels, holding, holding cigarette, multicolored hair, multiple views, official alternate costume, open mouth, pantyhose, pink hair, playboy bunny, rabbit ears, red bow, red ribbon, riding, simple background, smoking, spoken heart, spring rider, squatting, streaked hair, thigh strap, tongue, tongue out, twintails, white background, wiffle gag, wrist bow, wrist ribbon",
+     "width": 960,
+     "height": 1120,
+     "gen_seed": 20003
+    },
+    {
+     "stem": "8615514",
+     "caption": "sensitive, 1girl, hatsune miku, vocaloid, @channel (caststation), 2koma, aqua eyes, aqua hair, aqua necktie, bikini, clothes hanger, comic, disgust, fingernails, headset, holding, holding clothes hanger, long hair, looking at object, looking at viewer, meme, miku collar bikini, nail polish, necktie, shirt, silent comic, sleeveless, sleeveless shirt, small breasts, striped bikini, striped clothes, swimsuit, twintails, unworn bikini, upper body, very long hair, winnie the pooh reading (meme)",
+     "width": 880,
+     "height": 1200,
+     "gen_seed": 20004
+    },
+    {
+     "stem": "12248673",
+     "caption": "sensitive, 1girl, hatsune miku, fitness boxing, fitness boxing feat. hatsune miku: isshoni exercise, vocaloid, @channel (caststation), :d, alternate costume, aqua eyes, aqua hair, aqua nails, arched back, ass, black leggings, blush, bottle, bracelet, breasts, cropped jacket, drawstring, feet out of frame, fingerless gloves, hair between eyes, hair ornament, headset, holding, holding bottle, hood, hooded jacket, jewelry, long hair, looking at viewer, medium breasts, motion lines, multiple views, nail polish, navel, open mouth, planking, short sleeves, side sitting split, simple background, sitting split, smile, split, stomach, sweatdrop, thighs, twintails, very long hair, water bottle, white background, white gloves, yellow jacket",
+     "width": 976,
+     "height": 1072,
+     "gen_seed": 20005
+    },
+    {
+     "stem": "8254793",
+     "caption": "sensitive, 1girl, arona (blue archive), asuna (blue archive), blue archive, @channel (caststation), black skirt, blue bow, blue bowtie, blue bra, blue eyes, blue nails, blue ribbon, blue scrunchie, blush, bow, bowtie, bra visible through clothes, brown hair, cellphone, chibi, choker, cleavage, collarbone, collared shirt, flashing, grin, hair ornament, hair over one eye, hair ribbon, holding, holding phone, large breasts, light brown hair, long hair, looking at viewer, mole, mole on breast, phone, pleated skirt, school uniform, scrunchie, selfie, short sleeves, smartphone, smile, solo, sweat, swept bangs, teeth, underwear, upper body, white shirt, wrist scrunchie",
+     "width": 832,
+     "height": 1248,
+     "gen_seed": 20006
+    },
+    {
+     "stem": "channel4",
+     "caption": "safe, 2girls, hatsune miku, vocaloid, @channel (caststation), blue hair, closed mouth, collar, hair between eyes, hair intakes, hair ribbon, high heels, holding, holding staff, magical girl, multiple girls, on person, pink bow, pink hairband, pink ribbon, pink skirt, pink sleeves, puffy short sleeves, puffy sleeves, purple eyes, shaded face, short hair, short sleeves, staff, star-shaped pupils, star (symbol), symbol-shaped pupils, twintails, very long hair, white collar, white gloves, white pantyhose, white shoes, On the bottom, she is being stepped on, smile, black hair, black shirt, black eyes.",
+     "width": 1024,
+     "height": 1024,
+     "gen_seed": 20007
+    },
+    {
+     "stem": "8517433",
+     "caption": "sensitive, 1girl, gotoh hitori, bocchi the rock!, @channel (caststation), ?, before and after, bent v, black shirt, blue eyes, blush, cable tie, closed mouth, collarbone, cowboy shot, cube hair ornament, group name, hair ornament, heavy breathing, large breasts, like and retweet, long hair, looking at viewer, meme, multiple views, no pants, one side up, pajamas challenge (meme), pants, pink hair, print shirt, simple background, single bare shoulder, straight-on, sweatdrop, taut clothes, taut shirt, trembling, underwear, v, very long hair, white background, white panties",
+     "width": 960,
+     "height": 1088,
+     "gen_seed": 20008
+    },
+    {
+     "stem": "12248671",
+     "caption": "sensitive, 1girl, brazilian miku, hatsune miku, vocaloid, @abstractpurple, @channel (caststation), :3, aqua eyes, aqua hair, arms up, ass, back, bead necklace, beads, bikini under clothes, black bikini, blush, bracelet, brazilian flag, brazilian flag print, breast press, butt crack, can, collarbone, cropped shirt, cutoffs, denim, denim shorts, dimples of venus, drink, earrings, english text, eyewear on head, fang, flag print, flower, from behind, green nails, green trim, hair between eyes, hair flower, hair ornament, heart, holding, holding can, jewelry, large breasts, long hair, looking at viewer, looking back, lying, multicolored nails, multiple views, nail polish, navel, navel piercing, necklace, on stomach, open clothes, open fly, open mouth, open shorts, piercing, portuguese text, profile, rectangular earrings, red flower, saliva, short shorts, short sleeves, shorts, side-tie bikini bottom, simple background, skin fang, skol, smile, speech bubble, squatting, standing, sunglasses, swimsuit, tan, tanline, tanline peek, torn clothes, torn shorts, twintails, v, white background, yellow nails, yellow shirt",
+     "width": 944,
+     "height": 1120,
+     "gen_seed": 20009
+    },
+    {
+     "stem": "8293513",
+     "caption": "sensitive, 1girl, asuna (bunny) (blue archive), blue archive, @channel (caststation), animal ears, bare shoulders, black pantyhose, blue bow, blue bowtie, blue eyes, blue leotard, blue ribbon, bow, bowtie, brown hair, cleavage, detached collar, fake animal ears, fake tail, hair ribbon, halo, large breasts, leotard, long hair, looking at viewer, mole, mole on breast, playboy bunny, rabbit ears, rabbit tail, smile, solo, white gloves",
+     "width": 848,
+     "height": 1248,
+     "gen_seed": 20010
+    },
+    {
+     "stem": "10391952",
+     "caption": "nsfw, 2girls, hatsune miku, vocaloid, @channel (caststation), ?, alternate breast size (larger), aqua eyes, aqua hair, aqua necktie, arm tattoo, armpits, arms up, between breasts, bikini, black thighhighs, clothes between breasts, detached sleeves, feet out of frame, grey shirt, headset, large breasts, long hair, miku collar bikini, miniskirt, multicolored hair, multiple girls, multiple persona, necktie, necktie between breasts, number tattoo, pleated skirt, scared, simple background, skirt, sleeveless, sleeveless shirt, small breasts, smile, star (symbol), star in eye, sweat, sweatdrop, swimsuit, symbol in eye, tattoo, tongue, tongue out, twintails, two-tone hair, v, v over eye, very long hair, white background, white shirt",
+     "width": 896,
+     "height": 1152,
+     "gen_seed": 20011
+    },
+    {
+     "stem": "11429918",
+     "caption": "safe, 2girls, kaai yuki, otomachi una, vocaloid, zako (vocaloid), @channel (caststation), bag, black hair, black skirt, blush stickers, bow, bowtie, collared shirt, diagonal-striped bow, diagonal-striped bowtie, diagonal-striped clothes, diagonal-striped neckerchief, emphasis lines, hair bobbles, hair ornament, hands on own cheeks, hands on own face, holding, holding phone, jitome, long sleeves, multiple girls, multiple views, neckerchief, notice lines, one eye closed, outstretched arm, phone, pink background, pink jacket, plaid clothes, plaid skirt, school bag, small sweatdrop, striped bow, striped bowtie, striped clothes, striped neckerchief, tongue, tongue out, v, v over eye, v over mouth, white shirt, wink star",
+     "width": 1024,
+     "height": 1024,
+     "gen_seed": 20012
+    },
+    {
+     "stem": "12248742",
+     "caption": "sensitive, 1girl, asuna (blue archive), blue archive, @channel (caststation), alternate costume, ass, asymmetrical bangs, black bra, blue eyes, blue halo, blue panties, blue shirt, cleavage, electric fan, fan speaking, floating hair, grin, hair over one eye, halo, kneehighs, large breasts, long bangs, long hair, looking at viewer, multiple views, no pants, one eye covered, panties under shorts, pink shorts, puffy short sleeves, puffy sleeves, red shorts, short shorts, short sleeves, shorts, simple background, smile, t-shirt, top-down bottom-up, underwear, very long hair, white background, white panties, white socks",
+     "width": 944,
+     "height": 1136,
+     "gen_seed": 20013
+    },
+    {
+     "stem": "12248674",
+     "caption": "sensitive, 1girl, hatsune miku, racing miku, racing miku (2022), goodsmile company, goodsmile racing, vocaloid, @channel (caststation), aqua eyes, aqua hair, ass, asymmetrical bodysuit, black bodysuit, black boots, black gloves, blush, bodysuit, closed eyes, closed mouth, cropped jacket, flag, flexible, green flag, green gloves, hair between eyes, hair ornament, holding, holding flag, jack-o' challenge, kneepits, leg lift, long hair, multiple views, open mouth, simple background, single leg bodysuit, single thigh boot, split, spread legs, squatting, standing, standing on one leg, standing split, sweat, thigh boots, top-down bottom-up, twintails, two-tone gloves, very long hair, white background, white jacket",
+     "width": 1008,
+     "height": 1040,
+     "gen_seed": 20014
+    }
+   ]
+  }
+ }
+}

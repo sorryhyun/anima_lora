@@ -1,0 +1,322 @@
+{
+  "schema_version": 1,
+  "script": "project/sigma_lowres/bench/run_sigma_probe.py",
+  "label": null,
+  "timestamp_utc": "2026-07-29T08:02:12Z",
+  "git": {
+    "sha": "8c879572",
+    "branch": "sigma-lowres-yarnsig",
+    "dirty": true
+  },
+  "env": {
+    "python": "3.13.14",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.12.0+cu132",
+    "cuda": "13.2"
+  },
+  "args": {
+    "adapter": "output/ckpt/anima_soup_e7_flat.safetensors",
+    "dit": "models/diffusion_models/anima-base-v1.0.safetensors",
+    "vae": "models/vae/qwen_image_vae.safetensors",
+    "num_images": 48,
+    "bins": 4,
+    "draws_per_bin": 8,
+    "sigma_window": "0.5,1.0",
+    "tier": 1024,
+    "demote_edges": "896,768",
+    "data_root": null,
+    "artists": null,
+    "probe_list": "project/sigma_lowres/paper_bench/runs/20260729-1349-e7-probe-lists/probe_list_flat.json",
+    "max_per_artist": null,
+    "score_limit": null,
+    "no_reenc_control": false,
+    "per_group": false,
+    "endpoint_bin": true,
+    "x_zero": false,
+    "target_alpha": null,
+    "pi_align": false,
+    "yarn_align": null,
+    "yarn_sigma_gate": null,
+    "pool": 0,
+    "self_floor": true,
+    "draw_sweep": null,
+    "draw_batch_tokens": 0,
+    "grad_ckpt": false,
+    "activation_memory_budget": 0.99,
+    "deterministic": true,
+    "seed": 42,
+    "quant_k": 4,
+    "results_root": "project/sigma_lowres/paper_bench/runs",
+    "label": null,
+    "smoke": false,
+    "gradient_checkpointing": false,
+    "compile": false
+  },
+  "metrics": {
+    "n_images": 48,
+    "bins": 4,
+    "draws_per_bin": 8,
+    "sigma_centers": [
+      0.5625,
+      0.6875,
+      0.8125,
+      0.9375,
+      1.0
+    ],
+    "adapter": "output/ckpt/anima_soup_e7_flat.safetensors",
+    "cos_floor": {
+      "mean": [
+        0.67938,
+        0.73025,
+        0.75733,
+        0.77271,
+        0.95735
+      ],
+      "sem": [
+        0.02187,
+        0.01982,
+        0.01795,
+        0.02371,
+        0.0059
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9576
+    },
+    "gnorm_native": {
+      "mean": [
+        0.49748,
+        0.72946,
+        1.3849,
+        5.51415,
+        11.97779
+      ],
+      "sem": [
+        0.02431,
+        0.02545,
+        0.05243,
+        0.42922,
+        1.84803
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9994
+    },
+    "wall_time_s": 11543.7,
+    "gap_reenc": {
+      "mean": [
+        0.013,
+        0.00405,
+        0.01015,
+        -0.00226,
+        0.03602
+      ],
+      "sem": [
+        0.01079,
+        0.01171,
+        0.00891,
+        0.0171,
+        0.02715
+      ],
+      "spearman_sigma": 0.1,
+      "splithalf_pearson": -0.2532
+    },
+    "cos_self_reenc": {
+      "mean": [
+        0.66016,
+        0.73213,
+        0.74625,
+        0.74328,
+        0.9567
+      ],
+      "sem": [
+        0.02427,
+        0.015,
+        0.02323,
+        0.0366,
+        0.00597
+      ],
+      "spearman_sigma": 0.9,
+      "splithalf_pearson": 0.9756
+    },
+    "debiased_gap_reenc": {
+      "mean": [
+        -0.15328,
+        -0.15375,
+        -0.15148,
+        -0.20839,
+        0.01333
+      ],
+      "sem": [
+        0.01433,
+        0.01448,
+        0.02291,
+        0.06777,
+        0.03155
+      ],
+      "spearman_sigma": 0.3,
+      "splithalf_pearson": 0.7865
+    },
+    "gap_896": {
+      "mean": [
+        0.10386,
+        0.06741,
+        0.03981,
+        0.02674,
+        0.06516
+      ],
+      "sem": [
+        0.01528,
+        0.0184,
+        0.01094,
+        0.0207,
+        0.02071
+      ],
+      "spearman_sigma": -0.7,
+      "splithalf_pearson": 0.4577
+    },
+    "cos_self_896": {
+      "mean": [
+        0.59249,
+        0.64057,
+        0.67824,
+        0.74042,
+        0.95178
+      ],
+      "sem": [
+        0.02198,
+        0.0271,
+        0.01933,
+        0.03052,
+        0.00746
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9832
+    },
+    "debiased_gap_896": {
+      "mean": [
+        -0.0775,
+        -0.14296,
+        -0.14392,
+        -0.15589,
+        0.04808
+      ],
+      "sem": [
+        0.02969,
+        0.0184,
+        0.01423,
+        0.03682,
+        0.02293
+      ],
+      "spearman_sigma": 0.0,
+      "splithalf_pearson": 0.7421
+    },
+    "gap_768": {
+      "mean": [
+        0.19053,
+        0.17191,
+        0.12312,
+        0.12423,
+        0.07123
+      ],
+      "sem": [
+        0.01806,
+        0.01364,
+        0.02077,
+        0.0389,
+        0.01021
+      ],
+      "spearman_sigma": -0.9,
+      "splithalf_pearson": 0.5801
+    },
+    "cos_self_768": {
+      "mean": [
+        0.49077,
+        0.56907,
+        0.61884,
+        0.71424,
+        0.921
+      ],
+      "sem": [
+        0.02781,
+        0.01924,
+        0.02607,
+        0.02895,
+        0.02142
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9823
+    },
+    "debiased_gap_768": {
+      "mean": [
+        -0.12537,
+        -0.04349,
+        -0.074,
+        -0.00057,
+        -0.07112
+      ],
+      "sem": [
+        0.07262,
+        0.0288,
+        0.02272,
+        0.0621,
+        0.11997
+      ],
+      "spearman_sigma": 0.5,
+      "splithalf_pearson": -0.5241
+    }
+  },
+  "artifacts": [
+    "per_image.jsonl"
+  ],
+  "extra": {
+    "probe_set": [
+      "fizz_(pixiv34498626)/6539097",
+      "sweetonedollar/10345790",
+      "gin00/10212312",
+      "fizz_(pixiv34498626)/6817910",
+      "ama_mitsuki/9471795",
+      "yamamoto_souichirou/8953796",
+      "asou_(asabu202)/10008808",
+      "asou_(asabu202)/6179956",
+      "yamamoto_souichirou/7599503",
+      "coro_fae/12485575",
+      "sweetonedollar/12692758",
+      "coro_fae/10448332",
+      "fizz_(pixiv34498626)/6566711",
+      "ama_mitsuki/6378235",
+      "ama_mitsuki/5828196",
+      "asou_(asabu202)/12413979",
+      "fizz_(pixiv34498626)/6596085",
+      "asou_(asabu202)/13602191",
+      "takaman_(gaffe)/7092340",
+      "sweetonedollar/12968860",
+      "sweetonedollar/11301635",
+      "coro_fae/8742515",
+      "coro_fae/10745585",
+      "takaman_(gaffe)/7214588",
+      "moursho/13551601",
+      "moursho/12137456",
+      "ebifurya/8788006",
+      "moursho/8392696",
+      "madana_(xesa7885)/12755485",
+      "ebifurya/8029024",
+      "madana_(xesa7885)/10536470",
+      "ebifurya/10084072",
+      "hamao/8454029",
+      "hamao/8671446",
+      "hamao/10910201",
+      "madana_(xesa7885)/13178247",
+      "belko/10566921",
+      "belko/10803116",
+      "belko/10582709",
+      "nvl/10730671",
+      "yomiji292/12219794",
+      "dikko/12980958",
+      "dikko/8983949",
+      "yomiji292/12219928",
+      "nvl/12243536",
+      "dikko/11138166",
+      "nvl/10087924",
+      "yomiji292/12219886"
+    ]
+  }
+}

@@ -189,21 +189,33 @@ than hedged sentence-by-sentence.
 \section{Related work}
 \label{sec:related}
 
+\paragraph{Flow matching and DiT.}
+We work in the flow-matching / rectified-flow formulation
+\citep{lipman2023flow,liu2023rectified,esser2024scaling} on a Diffusion
+Transformer \citep{peebles2023dit} with rotary position embeddings
+\citep{su2024roformer}. Adapters are LoRA \citep{hu2022lora}.
+
 \paragraph{Scale-wise and progressive-resolution diffusion.}
 Progressive growing \citep{karras2018progressive} and resolution curricula
 \citep{chen2024pixartalpha,hoogeboom2023simple} train at increasing
-resolution as a schedule. Pyramidal flow matching \citep{jin2024pyramidal}
-and scale-wise distillation (SwD) \citep{starodubcev2025swd} tie resolution
-to the noise level itself, with SwD giving the spectral analysis we take as
-the hypothesis under test: their Fig.~1-style argument shows the noised
-downscaled latent is close in distribution to a downscaled noised latent
-above a crossover $\sigma$. Spectral Progressive Diffusion (SPD)
-\citep{xiao2026spd} gives that argument its sharpest available form: a
+resolution as a schedule. A more recent family ties resolution to the
+noise level itself, on a spectral premise. Under flow-matching noising,
+each spatial-frequency band of the signal retains an effective
+signal-to-noise ratio that falls as $\sigma$ grows, and the finest bands
+sink below the noise floor first; the noise level above which a band is
+masked is that band's \emph{crossover} $\sigma$. Above the crossover of
+the bands a coarse grid cannot represent, a downscaled latent should
+therefore carry almost the full surviving signal. Pyramidal flow
+matching \citep{jin2024pyramidal} builds its training and sampling
+pyramid on this premise, and scale-wise distillation (SwD)
+\citep{starodubcev2025swd} states the claim directly: above the
+crossover, the noised downscaled latent is close in distribution to the
+downscaled noised latent. Spectral Progressive Diffusion (SPD)
+\citep{xiao2026spd} gives the argument its sharpest available form: a
 tolerance-parameterized per-frequency activation time under a diagonal
 Gaussian spectral model --- a criterion on the \emph{Bayes-optimal
 predictor's} per-band output, not merely on input SNR --- from which an
-inference-time resolution schedule follows; we adopt their Proposition~1
-as the null model of our data term (\S\ref{sec:null}). SPD also
+inference-time resolution schedule follows. SPD also
 fine-tunes (with LoRA) against \emph{stage-specific modified velocity
 targets} along the progressive trajectory --- changing the objective per
 resolution stage rather than substituting the latent under the native
@@ -224,12 +236,6 @@ orthogonal to all of these: we measure whether input-level closeness
 transfers to the \emph{training gradient}, holding model and objective
 fixed --- and find it does not transfer at any tolerance.
 
-\paragraph{Flow matching and DiT.}
-We work in the flow-matching / rectified-flow formulation
-\citep{lipman2023flow,liu2023rectified,esser2024scaling} on a Diffusion
-Transformer \citep{peebles2023dit} with rotary position embeddings
-\citep{su2024roformer}. Adapters are LoRA \citep{hu2022lora}.
-
 \paragraph{Positional extension.}
 Position interpolation \citep{chen2023pi}, banded/frequency-selective
 variants (YaRN, \citealp{peng2024yarn}), and diffusion-specific dynamic
@@ -238,52 +244,57 @@ rotary coordinates to evaluate a model at unseen grid sizes. We use exact
 positional interpolation as a \emph{causal intervention} --- matching the
 downscaled grid's relative phase geometry to native --- to decompose the
 resolution-sensitivity floor, and adopt the $\sigma$-gated band schedule of
-\citet{zhao2026sigma} (functional form only; their spectral scale laws
-mispredict our measured boundaries, consistent with our main finding) as a
-training-time refinement.
-
-\paragraph{Gradient-agreement methodology.}
-Reading training decisions off gradient cosines against a
-noise-redraw floor follows the general logic of gradient-noise-scale
-analyses \citep{mccandlish2018gns}; our estimator operates per
-$\sigma$-bin with means over images, the regime we found reliable
-(split-half reliability $0.73$--$0.88$), rather than per-image rankings,
-which were pure noise in our earlier attempts.
+\citet{zhao2026sigma} as a training-time refinement.
 
 \section{Theory: the demotion gap and a two-term account}
 \label{sec:theory}
-
-This section is definitions and derivations only; every demonstration
-lives in \S\ref{sec:evidence}. It defines the estimand and the
-resolution at which it can be known (\S\ref{sec:estimand}), decomposes
-the perturbation demotion applies to a training gradient
-(\S\ref{sec:branches}), derives the angular expansion of the gap and its
-conditional reduction to a two-term account (\S\ref{sec:geometry}),
-states the spectral argument as a null model of one branch
-(\S\ref{sec:null}), and lists the discriminating predictions, each with
-its designated probe (\S\ref{sec:predictions}).
 
 \subsection{Estimand and resolution}
 \label{sec:estimand}
 
 \paragraph{Objective and noising.}
-With clean latent $x$, noise $\epsilon \sim \mathcal{N}(0, I)$, and
-$\sigma \in (0,1]$, the noised input is
-$z_\sigma = (1-\sigma)\,x + \sigma\,\epsilon$ and the flow-matching target
-is $v = \epsilon - x$; the loss is
-$\|\hat v_\theta(z_\sigma, \sigma, c) - v\|^2$ with gradients taken with
-respect to adapter parameters only.
+We first define the training objective whose gradients are under test.
+A flow-matching model is trained to predict the constant-velocity
+transport between a clean latent and pure noise. With clean latent $x$,
+noise $\epsilon \sim \mathcal{N}(0, I)$, and a noise level
+$\sigma \in (0,1]$, the noised input is the linear interpolation
+$z_\sigma = (1-\sigma)\,x + \sigma\,\epsilon$ --- at $\sigma \to 0$ the
+input is the clean latent, at $\sigma = 1$ it is pure noise --- and the
+regression target is the velocity $v = \epsilon - x$ that carries
+$z_\sigma$ along the interpolation. With caption condition $c$, the loss
+is $\|\hat v_\theta(z_\sigma, \sigma, c) - v\|^2$, and gradients are
+taken with respect to the LoRA adapter parameters only; the backbone is
+frozen.
 
 \paragraph{Demotion.}
 A \emph{demotion} $e_{\mathrm{nat}} {\to} e$ replaces the native latent
-with one produced by pixel-space downscaling of the source image to the
-tier-$e$ bucket followed by VAE re-encoding --- the ordering SwD validated
-(``strategy~B''); we never downsample in latent space. The caption, the
-noise draw structure, and the $\sigma$ under test are held fixed; only the
-spatial grid changes.
+with a coarser-grid one, produced exactly as a scale-wise trainer would
+produce it. With $y$ the source image, $\mathcal{R}_e$ the pixel-space
+downscale to the tier-$e$ bucket (native aspect ratio preserved), and
+$\mathcal{E}$ the VAE encoder,
+\begin{equation*}
+x_{\mathrm{nat}} \;=\;
+\mathcal{E}\big(\mathcal{R}_{e_{\mathrm{nat}}}(y)\big)
+\quad\longrightarrow\quad
+x_{e} \;=\; \mathcal{E}\big(\mathcal{R}_{e}(y)\big),
+\end{equation*}
+a latent with proportionally fewer spatial tokens; we never downsample
+in latent space. Everything else about the training step is held fixed:
+the caption $c$, the $\sigma$ under test, and the noise draw structure
+(the same stratified draw scheme, with $\epsilon$ drawn at the tier-$e$
+shape). The demoted step then trains on
+$z_\sigma = (1-\sigma)\,x_e + \sigma\,\epsilon$ with target
+$v = \epsilon - x_e$, so the substitution changes both what the network
+sees and what it is asked to predict --- but only through the spatial
+grid; nothing else in the step references the resolution.
 
 \paragraph{The estimand.}
-For an arm $a \in \{\mathrm{nat}, \reenc, e\}$, let
+Three \emph{arms} recur throughout: $\mathrm{nat}$, the native arm,
+which trains on $x_{\mathrm{nat}}$; $e$, the demoted arm, which trains
+on $x_e$; and $\reenc$, a control arm that decodes and re-encodes the
+native latent at native resolution --- it pays the VAE round trip that
+demotion necessarily pays, with no grid change. For an arm
+$a \in \{\mathrm{nat}, \reenc, e\}$, let
 $\bar g_a(\sigma) = \mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$ be
 the population per-bin mean adapter gradient of a query (image,
 caption). The \emph{population demotion distance} is
@@ -296,64 +307,70 @@ d_e(\sigma) \;=\; 1 - \cos\!\big(\bar g_{\mathrm{nat}}(\sigma),\,
 with $\hat g$ the unit-normalized gradients; $d_e \ge 0$ always. The
 \emph{reported} quantity of every bin-resolved map and every fit in this
 paper is the \emph{re-encoding excess}
-$\Delta_e(\sigma) = d_e(\sigma) - d_{\reenc}(\sigma)$, where the
-re-encoding control (decode--re-encode at native resolution) prices the
-VAE round trip that demotion necessarily pays; $\Delta_e$ can be
+$\Delta_e(\sigma) = d_e(\sigma) - d_{\reenc}(\sigma)$ --- the demotion
+distance beyond what the control already pays; $\Delta_e$ can be
 negative, $d_e$ cannot. Endpoint and floor tables report debiased
 estimates of $d_e$ with the control as its own row; each table states
 which object it reports.
 
-\paragraph{The aggregation operator is part of the estimand.}
-$d_e$ can be aggregated over a probe set per-example (cosine per image,
-then mean --- the batch-1 worst case) or batch-aggregate (gradients
-summed over the batch before the cosine --- the object SGD actually
-follows). These are different estimands, and no coefficient fitted on
-one is guaranteed to transfer to the other; the application section
-publishes one map for each (\S\ref{sec:map}).
+In a batched training scenario the same definition admits two
+aggregations over a probe set, and the aggregation operator is part of
+the estimand: per-example (cosine per image, then mean --- the batch-1
+worst case) or batch-aggregate (gradients summed over the batch before
+the cosine --- the object SGD actually follows). These are different
+estimands, and no coefficient fitted on one is guaranteed to transfer
+to the other; the application section publishes one map for each
+(\S\ref{sec:map}).
 
 \paragraph{Resolution: what an instrument can certify.}
 Any estimate of Eq.~\ref{eq:gapdef} compares finite-draw estimates of
-population directions, so every claim carries the instrument's
-resolution. For a route whose true excess is zero, the paired estimate
-$\bar\Delta$ fluctuates with standard error
-$\mathrm{SE}(N, D, \sigma\text{-bin})$, so the one-sided 95\% upper
-bound concentrates near $1.645\,\mathrm{SE}$: no margin smaller than the
-\emph{median certification resolution}
+population directions --- the general situation of gradient-noise-scale
+analysis \citep{mccandlish2018gns} --- so every claim carries the
+instrument's resolution. For a route whose true excess is zero, the
+paired estimate $\bar\Delta$ fluctuates with standard error
+$\mathrm{SE}(N, D, \sigma\text{-bin})$; considering its one-sided 95\%
+upper bound ($1.645\,\mathrm{SE}$ for a zero-mean estimate), we define
+the \emph{certification resolution}
 \begin{equation}
-\epsstar(N, D, \text{bin}) \;=\; 1.645\,\mathrm{SE}(N, D, \text{bin})
+\epsstar(N, D, \text{bin}) \;=\; 1.645\,\mathrm{SE}(N, D, \text{bin}),
 \label{eq:epsstar}
 \end{equation}
-is certifiable even for a truly safe route.\footnote{\emph{Median}
-because at margin exactly $1.645\,\mathrm{SE}$ a truly-safe route
-certifies with only ${\sim}50\%$ power; the general margin at size
-$\alpha$ and power $1{-}\beta$ is
-$\epsstar_{\alpha,\beta} = b_D + (z_{1-\alpha} + z_{1-\beta})\,
-\mathrm{SE}$, with $b_D$ a residual finite-draw bias allowance.
-Eq.~\ref{eq:epsstar} is the $\beta = 0.5$, $b_D{=}0$ slice.} We
-\emph{define} ``safe at margin $\varepsilon$'' as the non-inferiority
-statement
+the smallest margin certifiable even for a truly safe route, and
+``safe at margin $\varepsilon$'' as the non-inferiority statement
 \begin{equation}
 \text{UB}_{95}\!\left(\bar\Delta\right) \;<\; \varepsilon,
 \qquad \varepsilon \ge \epsstar.
 \label{eq:safe}
 \end{equation}
-Two consequences hold before any measurement. A ``safe'' verdict is
-always a statistical non-inferiority claim at instrument resolution ---
-never a hard bound; a true gap below $\epsstar$ is undetectable by
-construction. And $\epsstar$ is the honest currency for negative claims
-too: ``no certifiable window'' means the route's upper bounds never
-cross below $\varepsilon$ at the current $(N, D)$, which a larger
-campaign could change --- whereas ``certifiably unsafe'' (lower bound
-above $\varepsilon$) cannot.
+A ``safe'' verdict is thus a statistical non-inferiority claim at
+instrument resolution, never a hard bound, and a true gap below
+$\epsstar$ is undetectable by construction; throughout, ``no
+certifiable window'' means a route's upper bounds never cross below
+$\varepsilon$ at the current $(N, D)$, while ``certifiably unsafe''
+means its lower bound stays above it.
 
 \subsection{Data and graph perturbations}
 \label{sec:branches}
 
-Demotion changes exactly two things about the map from (image, noise,
-caption) to adapter gradient. Writing the adapter gradient as
-$g = J^{\!\top} r$ (input--output Jacobian times prediction residual),
-the perturbation $\delta g = \bar g_e - \bar g_{\mathrm{nat}}$
-decomposes as
+We now derive the perturbation demotion applies to the gradient.
+Differentiating the loss of \S\ref{sec:estimand} in the adapter
+parameters gives, per draw and up to a constant,
+\begin{equation*}
+g \;=\; \nabla_\theta\, \tfrac{1}{2}
+\big\|\hat v_\theta - v\big\|^2 \;=\; J^{\!\top} r,
+\end{equation*}
+with $r = \hat v_\theta - v$ the prediction residual and
+$J = \partial \hat v_\theta / \partial \theta$ the Jacobian through
+which the compute graph turns a residual into an adapter gradient.
+Demotion changes exactly the two factors of this product --- the
+residual, because it changes the data the objective consumes, and the
+Jacobian, because it changes the compute graph the gradient flows
+through --- and nothing else about the map from (image, noise, caption)
+to adapter gradient. Averaging over draws and expanding the product of
+the perturbed factors --- an elementary but bookkeeping-heavy step,
+written out in Appendix~\ref{app:branches} together with what exactly
+the remainder collects --- the perturbation
+$\delta g = \bar g_e - \bar g_{\mathrm{nat}}$ decomposes as
 \begin{equation}
 \delta g \;=\;
 \underbrace{J^{\!\top}\Delta \bar r(\sigma)}_{\text{data branch }B_e}
@@ -401,38 +418,36 @@ references the spectrum at all. Input-level sufficiency licenses
 inference-time substitution; it does not extend to training-gradient
 equivalence.
 
-\paragraph{The graph branch has identifiable parts.}
-Changing the grid changes (i)~the rotary coordinate system --- every
-band of the position embedding accumulates phase at a different density
-across the image --- and (ii)~non-positional graph statistics: attention
-softmax over a different token count, sequence-length-dependent
-normalization, and the sheer capacity of the coarse graph to approximate
-the fine graph's computation. Splitting the graph share
-$\Floor_e = \mathrm{RoPE}_e + \mathrm{Resid}_e$ yields one sharp
-prediction: the positional share is a \emph{coordinate-system artifact},
-so an exact positional-interpolation intervention --- evaluating the
-demoted grid at fractional rotary coordinates that reproduce the native
-relative phase geometry --- should remove $\mathrm{RoPE}_e$ wherever the
-data branch is inactive ($\sigma \to 1$); and a band-counting sketch
-says the residue should grow with absolute grid change (the number of
-rotary bands whose per-extent rotation count crosses decorrelation grows
-with the extent), attaching an absolute-size governor to
-$\mathrm{Resid}_e$. We flag the sketch's epistemic status plainly: like
-YaRN's own band thresholds \citep{peng2024yarn}, its constants are
-calibrated, not derived; we claim no closed form for $\Floor_e$.
-
-\subsection{Angular geometry: the four-term expansion and its
-reduction}
+\subsection{Angular geometry: the exact form and its expansions}
 \label{sec:geometry}
 
-Cosine geometry fixes how a perturbation is read. With
+It remains to read the perturbation of Eq.~\ref{eq:branches} in the
+units of the estimand, Eq.~\ref{eq:gapdef} --- a pure exercise in
+cosine geometry, whose forms below are what every measurement in
+\S\ref{sec:evidence} is fit against (step-by-step derivation in
+Appendix~\ref{app:geometry}). With
 $G(\sigma) = \|\bar g_{\mathrm{nat}}\|$ and $P_{\!\perp}$ the projector
-orthogonal to $\bar g_{\mathrm{nat}}$, the local identity
-$1 - \cos(g, g + \delta g) \approx
-\tfrac{1}{2}\|P_{\!\perp}\delta g\|^2 / G^2$ holds in the small-mismatch
-limit. Substituting Eq.~\ref{eq:branches} and expanding the square gives
-the \emph{four-term angular expansion} --- derived unconditionally from
-the perturbation expansion plus the local cosine identity:
+orthogonal to $\bar g_{\mathrm{nat}}$, split the perturbation into a
+rescaling and a rotation:
+$\kappa_\parallel = \hat g_{\mathrm{nat}}^{\!\top}\delta g \,/\, G$
+and $\kappa_\perp = \|P_{\!\perp}\delta g\| \,/\, G$. Substituting
+$\bar g_e = \bar g_{\mathrm{nat}} + \delta g$ into
+Eq.~\ref{eq:gapdef} then gives, \emph{exactly},
+\begin{equation}
+d_e \;=\; 1 - \frac{1}{\sqrt{1 + \kappa_{\mathrm{eff}}^2}}\,,
+\qquad
+\kappa_{\mathrm{eff}} \;=\; \frac{\kappa_\perp}{1 + \kappa_\parallel}\,:
+\label{eq:exact}
+\end{equation}
+the gap is a saturating function of a single rotation-to-scale ratio
+--- only the orthogonal component rotates the gradient direction, and
+a parallel component merely renormalizes it. Taylor-expanding
+Eq.~\ref{eq:exact} at small $\kappa$
+($d_e = \tfrac{1}{2}\|P_{\!\perp}\delta g\|^2/G^2 + \cdots$) and
+substituting the branch decomposition
+$\delta g = B_e + C_e + R_e$ of Eq.~\ref{eq:branches} into the square
+gives the \emph{four-term angular expansion} --- like
+Eq.~\ref{eq:exact}, derived unconditionally:
 \begin{equation}
 d_e(\sigma) \;\approx\;
 \underbrace{\frac{\|P_{\!\perp}B_e\|^2}{2G^2}}_{\text{data share }S_e}
@@ -443,9 +458,12 @@ d_e(\sigma) \;\approx\;
 \;+\; R'_e,
 \label{eq:fourterm}
 \end{equation}
-where $R'_e$ collects the remainder branch and the beyond-quadratic
-cosine terms. $S_e$ and $F_e$ are non-negative; $I_e$ can carry either
-sign --- a fact that matters in \S\ref{sec:confronted}.
+where $R'_e$ now has an exact characterization
+(Appendix~\ref{app:geometry}): it collects the remainder branch $R_e$,
+the beyond-quadratic terms of Eq.~\ref{eq:exact}, and the
+parallel-component correction. $S_e$ and $F_e$ are non-negative; $I_e$
+can carry either sign --- a fact that matters in
+\S\ref{sec:confronted}.
 
 \paragraph{The reduced two-term account.}
 Under four named assumptions ---
@@ -471,33 +489,50 @@ where $m(\sigma) = \|\Delta \bar r(\sigma)\|$ is the mismatch of the
 model's mean prediction residual across grids (directly measurable,
 \S\ref{sec:anatomy}) and $G(\sigma)$ is the total gradient norm. The
 quadratic power on $m/G$ is fixed by the cosine geometry \emph{locally};
-it is not licensed far from the small-mismatch regime.
+far from the small-mismatch regime the licensed read is the parent form
+itself: keeping Eq.~\ref{eq:exact} un-expanded, with A3's loading
+written as $\kappa_e(\sigma) = c_e \, m(\sigma)/G(\sigma)$ (so
+$A_e = c_e^2/2$ in the small-$\kappa$ limit), yields a data term that
+\emph{saturates} instead of overshooting when $\kappa$ is comparable to
+one. The loading itself --- that the orthogonal gradient mismatch is
+proportional to the residual mismatch, $\|P_{\!\perp}\delta g\| =
+c_e\, m(\sigma)$ --- is an \emph{empirical} ingredient, not a
+derivation; so wherever a fitted functional form is reported, the
+un-expanded Eq.~\ref{eq:exact} is labeled the \emph{best empirical
+predictor} and Eq.~\ref{eq:twoterm} the \emph{derived
+small-perturbation form}; \S\ref{sec:confronted} scores both, held
+out.
 
-\paragraph{The exact angular form.}
-For a perturbation that is purely orthogonal at relative size
-$\kappa = \|\delta g_\perp\| / G$, the cosine is exactly
-$1/\sqrt{1 + \kappa^2}$, so the corresponding exact gap is
-\begin{equation}
-d \;=\; 1 - \frac{1}{\sqrt{1 + \kappa^2}}\,,
-\qquad \kappa_e(\sigma) = c_e \cdot m(\sigma)/G(\sigma),
-\label{eq:exact}
-\end{equation}
-which saturates instead of overshooting when $\kappa$ is comparable to
-one, and whose small-$\kappa$ limit is Eq.~\ref{eq:twoterm}'s data term
-with $A_e = c_e^2/2$. The linear mismatch loading
-$\|\delta g_\perp\| = c_e\, m(\sigma)$ is an \emph{empirical}
-ingredient, not a derivation --- so wherever a fitted functional form is
-reported, Eq.~\ref{eq:exact} is labeled the \emph{best empirical
-predictor} and Eq.~\ref{eq:twoterm} the \emph{derived small-perturbation
-form}; \S\ref{sec:confronted} scores both, held out.
+\paragraph{The graph term has identifiable parts.}
+Changing the grid changes (i)~the rotary coordinate system --- every
+band of the position embedding accumulates phase at a different density
+across the image --- and (ii)~non-positional graph statistics: attention
+softmax over a different token count, sequence-length-dependent
+normalization, and the sheer capacity of the coarse graph to approximate
+the fine graph's computation. Splitting the graph share
+$\Floor_e = \mathrm{RoPE}_e + \mathrm{Resid}_e$ yields one sharp
+prediction: the positional share is a \emph{coordinate-system artifact},
+so an exact positional-interpolation intervention --- evaluating the
+demoted grid at fractional rotary coordinates that reproduce the native
+relative phase geometry --- should remove $\mathrm{RoPE}_e$ wherever the
+data branch is inactive ($\sigma \to 1$); and a band-counting sketch
+says the residue should grow with absolute grid change (the number of
+rotary bands whose per-extent rotation count crosses decorrelation grows
+with the extent), attaching an absolute-size governor to
+$\mathrm{Resid}_e$. We flag the sketch's epistemic status plainly: like
+YaRN's own band thresholds \citep{peng2024yarn}, its constants are
+calibrated, not derived; we claim no closed form for $\Floor_e$.
 
 \paragraph{The ledger.}
-Explicitly: the four-term expansion (Eq.~\ref{eq:fourterm}) is derived
-unconditionally; the two-term reduction (Eq.~\ref{eq:twoterm}) is
-derived \emph{conditional on A1--A4}, each of which is tested by a
-designated probe (\S\ref{sec:predictions}); the coefficients $A_e$ (or
-$c_e$), $m(\sigma)$, $G(\sigma)$, $\Floor_e$ are measured, not derived;
-and any fitted power or loading is labeled empirical. The account was
+Explicitly: the exact form (Eq.~\ref{eq:exact}) and the four-term
+expansion (Eq.~\ref{eq:fourterm}) are derived unconditionally from
+Eqs.~\ref{eq:gapdef} and~\ref{eq:branches}
+(Appendix~\ref{app:geometry}); the two-term reduction
+(Eq.~\ref{eq:twoterm}) is derived \emph{conditional on A1--A4}, each of
+which is tested by a designated probe (\S\ref{sec:predictions}); the
+coefficients $A_e$ (or $c_e$), $m(\sigma)$, $G(\sigma)$, $\Floor_e$ are
+measured, not derived; and any fitted power or loading is labeled
+empirical. The account was
 pre-registered with an outcome matrix (including a kill switch: all
 endpoint gaps ${\approx}\,0$ would have falsified the graph term) before
 the discriminating runs.
@@ -513,17 +548,25 @@ frequency $\omega$ (with $P$ the clean-latent power spectrum), their
 Proposition~1 states that for all $\sigma \ge t_\omega$ the
 \emph{Bayes-optimal} per-band velocity prediction is within tolerance
 $\delta$ of pure noise,
-$\mathbb{E}[|v^{*(\omega)} - \epsilon^{(\omega)}|^2] \le \delta$, at
+$\mathbb{E}[|v^{*(\omega)} - \epsilon^{(\omega)}|^2] \le \delta$, and
+their Proposition~2 places the safe-substitution boundary for a coarse
+grid at the $t_\omega$ of its Nyquist band $\omega_e$. In the terms of
+the angular expansion (Eq.~\ref{eq:fourterm}), the null is therefore
+the claim that the gap is the data share alone, gated at the Nyquist
+band's activation time --- no graph share, no interaction:
 \begin{equation}
+\gap_e^{\mathrm{null}}(\sigma) \;=\;
+S_e(\sigma)\,\mathbf{1}\!\big[\sigma < t_{\omega_e}\big],
+\qquad
 t_\omega \;=\;
 \frac{1}{1 + \sqrt{\delta \,/\, \big(P_\omega\,(1 + P_\omega -
 \delta)\big)}},
+\qquad
+F_e = I_e = 0.
 \label{eq:spd}
 \end{equation}
-and their Proposition~2 places the safe-substitution boundary for a
-coarse grid at the $t_\omega$ of its Nyquist band. This is a
-prediction-level criterion, strictly stronger than raw input SNR; the
-often-quoted equal-power crossover
+This is a prediction-level criterion, strictly stronger than raw input
+SNR; the often-quoted equal-power crossover
 $\sigma_{\mathrm{eq}}(f) = \sqrt{P(f)}/(1+\sqrt{P(f)})$ is its
 $\delta = (1+P_\omega)/2$ slice.
 
@@ -572,13 +615,69 @@ will separate maximally ($1024{\to}896$, ratio $0.875$, and
 $896{\to}768$, ratio $0.857$) receive boundaries within $0.01$ of each
 other at \emph{every} $\delta$.
 
-\subsection{Discriminating predictions and falsifiers}
+\subsection{Finite draws and the debiased estimator}
+\label{sec:debias}
+
+The estimand of Eq.~\ref{eq:gapdef} is defined on population mean
+gradients; any instrument estimates them from $D$ noise draws. This
+finite-draw step is not a neutral nuisance: in principle it biases the
+naive estimate in exactly the direction under test, so the correction
+belongs to the theory, not to the lab notebook.
+
+\paragraph{Why finite draws manufacture floors.}
+The natural estimate of Eq.~\ref{eq:gapdef} --- a redraw floor minus a
+single demoted-arm cosine --- is asymmetric: the floor is a cosine
+between \emph{two} finite-draw estimates of the native gradient, while
+each demote arm contributes \emph{one} estimate compared against the
+native mean. Finite-draw noise attenuates every such cosine below its
+population value (each estimated direction carries variance the
+population direction lacks), and the attenuation is arm-dependent:
+per-draw gradient variance grows as the token count falls, because the
+MSE loss averages over fewer elements, so a demoted arm's single
+estimate is noisier than the native estimates it is compared to. An
+iso-direction null --- demotion changing \emph{nothing} but the
+variance --- therefore still produces a positive gap, and one that
+\emph{grows as the target grid shrinks}: the same signature as
+``absolute token count sets the floor.'' A token-count-ordered floor
+can thus be manufactured entirely by the estimator, and no naive read
+can tell the two apart --- which is why every verdict in this paper is
+stated in debiased units.
+
+\paragraph{The debiased estimator.}
+Two corrections, used together. First, \emph{self-floors with
+attenuation correction}: every arm runs a second independent draw set
+$g_d'$, giving a per-arm self-cosine
+$\cos_{\mathrm{self}} = \cos(g_d, g_d')$ --- each arm gets the same
+two-estimate structure the native floor has. The debiased cosine is
+the classical split-half disattenuation correction,
+\begin{equation}
+\hat c \;=\; \frac{\cos(\bar g_{\mathrm{nat}},\, \bar g_{d})}
+{\sqrt{\cos_{\mathrm{floor}} \cdot \cos_{\mathrm{self},d}}},
+\qquad
+\dgap \;=\; 1 - \hat c,
+\label{eq:debias}
+\end{equation}
+which cancels the finite-draw attenuation of numerator and denominator
+to first order. Second, \emph{draw-count extrapolation}: the
+attenuation of an accumulated-draw cosine decays as $1/D$, so sweeping
+nested draw subsets and fitting
+$\gap(D) = \gap_\infty + c/D$ reads off the draw-limit gap
+$\gap_\infty$ directly. The two corrections are mutually checking: if
+the disattenuation removes the finite-draw component, debiased
+estimates must come out $D$-flat ($c \approx 0$) under the sweep --- a
+prediction the instrument verifies (\S\ref{sec:instrument}).
+
+\section{Experiments}
+\label{sec:evidence}
+
+\subsection{Discriminating predictions and designated probes}
 \label{sec:predictions}
 
 The account and the null agree that gaps shrink with $\sigma$ and order
 by severity. Everything else is discriminating. Each prediction below
-names the designated probe that discharges it in \S\ref{sec:evidence};
-several double as falsifiers of the account's own assumptions.
+names the designated probe that discharges it in the subsections that
+follow; several double as falsifiers of the account's own assumptions
+(A1--A4).
 
 \begin{enumerate}
 \item \textbf{High-$\sigma$ persistence} (null: every gap vanishes as
@@ -611,10 +710,7 @@ the data branch with $\Floor = 0$ by construction
 (\textbf{[pending]}, \S\ref{sec:confronted}).
 \end{enumerate}
 
-\section{Evidence}
-\label{sec:evidence}
-
-The evidence discharges the theory one term at a time: the instrument
+The experiments discharge these one term at a time: the instrument
 and its validation (\S\ref{sec:instrument}), the phenomenon and the
 null's boundary-level score (\S\ref{sec:phenomenon}), the graph floor
 (\S\ref{sec:floor}), the data branch and its governors
@@ -650,9 +746,9 @@ the redraw null;
 \item \textbf{reenc}: decode--re-encode at native resolution --- the
 control of \S\ref{sec:estimand};
 \item \textbf{demote arms}: one per edge $e$ under test;
-\item \textbf{self-floors} (debiased runs): a second independent draw set
-for \emph{every} arm, giving each arm the same two-estimate structure the
-native floor has.
+\item \textbf{self-floors} (debiased runs): the per-arm second
+independent draw set the debiased estimator of \S\ref{sec:debias}
+requires.
 \end{itemize}
 The gap is in cosine units (a mismatch \emph{fraction}, scale-free;
 bin-mean SEM ${\sim}0.02$ at $N{=}40$). Gap subtraction, not absolute
@@ -666,59 +762,32 @@ the bins reproduces our earlier pooled measurements as a consistency
 check. Estimator details and the endpoint / x-zero probe modes are in
 Appendix~\ref{app:instrument}.
 
-\paragraph{Finite draws manufacture floors.}
-The naive estimate of Eq.~\ref{eq:gapdef} --- redraw floor minus a
-single demoted-arm cosine --- is asymmetric: the floor is a cosine
-between \emph{two} finite-draw estimates of the native gradient, while
-each demote arm contributes \emph{one} estimate compared against the
-native mean. Finite-draw noise attenuates every such cosine below its
-population value, and the attenuation is arm-dependent: per-draw
-gradient variance grows as the token count falls (the MSE loss averages
-over fewer elements), so a demoted arm's single estimate is noisier than
-the native estimates it is compared to. An iso-direction null ---
-demotion changing \emph{nothing} but the variance --- therefore still
-produces a positive gap that grows as the target grid shrinks: the same
-signature as ``absolute token count sets the floor.'' A variance
-back-of-envelope predicts spurious endpoint gaps of
-${\approx}\,0.02 / 0.05 / 0.15$ for $896/768/512$ --- plausibly
-${\sim}40\%$ of the uncorrected intermediate floors --- and a
-retroactive scan confirms the confound is live: the $1024{\to}896$
-endpoint gap decays as ${+}0.100 / {+}0.035 / {-}0.016$ at
-$D = 4/8/16$, a clean $c/D$ decay with fitted $c \approx 0.5$. No
-conclusion in this paper survives on the naive estimator alone.
+\paragraph{Finite-draw bias, measured.}
+The bias mechanism of \S\ref{sec:debias} is live at our operating
+point, and large. A variance back-of-envelope predicts spurious
+endpoint gaps of ${\approx}\,0.02 / 0.05 / 0.15$ for $896/768/512$ ---
+plausibly ${\sim}40\%$ of the uncorrected intermediate floors --- and a
+retroactive scan confirms the confound: the $1024{\to}896$ endpoint gap
+decays as ${+}0.100 / {+}0.035 / {-}0.016$ at $D = 4/8/16$, a clean
+$c/D$ decay with fitted $c \approx 0.5$. The native floor itself makes
+the point sharpest: at $D{=}8$--$16$ the uncorrected endpoint
+self-cosine reads $0.79$--$0.85$, but a nested draw sweep
+($D = 4 \ldots 64$) extrapolates it to $1.005$ (bootstrap 95\% CI
+$[0.994, 1.016]$) --- the population-level per-bin native gradient is a
+\emph{fixed direction}, and the entire redraw floor is finite-draw
+noise, not intrinsic gradient stochasticity. No conclusion in this
+paper survives on the naive estimator alone.
 
-The native floor itself makes the point sharpest: at $D{=}8$--$16$ the
-uncorrected endpoint self-cosine reads $0.79$--$0.85$, but a nested draw
-sweep ($D = 4 \ldots 64$) extrapolates it to $1.005$ (bootstrap 95\% CI
-$[0.994, 1.016]$). The population-level per-bin native gradient is a
-\emph{fixed direction}; the entire redraw floor is finite-draw noise,
-not intrinsic gradient stochasticity.
-
-\paragraph{The debiased estimator.}
-Two corrections, used together:
-\begin{enumerate}
-\item \textbf{Self-floors with attenuation correction.} Every arm runs a
-second independent draw set $g_d'$, giving a per-arm self-cosine
-$\cos_{\mathrm{self}} = \cos(g_d, g_d')$. The debiased cosine is the
-classical split-half disattenuation \citep{spearman1904},
-\begin{equation}
-\hat c \;=\; \frac{\cos(\bar g_{\mathrm{nat}},\, \bar g_{d})}
-{\sqrt{\cos_{\mathrm{floor}} \cdot \cos_{\mathrm{self},d}}},
-\qquad
-\dgap \;=\; 1 - \hat c,
-\label{eq:debias}
-\end{equation}
-which cancels the finite-draw attenuation of numerator and denominator
-to first order.
-\item \textbf{Draw-count extrapolation.} Endpoint-mode runs sweep nested
-draw prefixes $D \in \{4, 8, 16, 32, 64\}$ (the $D{=}64$ pass contains
-the smaller draw sets --- one set of forwards) and fit
-$\gap(D) = \gap_\infty + c/D$ per route, with a bootstrap CI over
-images. The two corrections cross-validate: debiased fits are $D$-flat
-($|c| \le 0.05$ for the $512$ route, against $c \approx +0.29$
-uncorrected) --- the attenuation correction removes exactly the $1/D$
-component the sweep isolates.
-\end{enumerate}
+\paragraph{The debiased estimator, operated.}
+Endpoint-mode runs sweep nested draw prefixes
+$D \in \{4, 8, 16, 32, 64\}$ (the $D{=}64$ pass contains the smaller
+draw sets --- one set of forwards) and fit
+$\gap(D) = \gap_\infty + c/D$ per route with a bootstrap CI over
+images; verdict-grid runs compute Eq.~\ref{eq:debias} per image and
+bin. The mutual check of \S\ref{sec:debias} passes: debiased fits are
+$D$-flat ($|c| \le 0.05$ for the $512$ route, against
+$c \approx +0.29$ uncorrected) --- the attenuation correction removes
+exactly the $1/D$ component the sweep isolates.
 One caveat delimits where Eq.~\ref{eq:debias} is readable. At $D{=}8$
 per bin, the \emph{unpaired} debiased estimator is unstable in bins
 where the floors themselves are small (mid-$\sigma$; the denominator is
@@ -1494,9 +1563,11 @@ relationship to the adapter's own fine-tune set was never a controlled
 axis ($2$ of $40$ verdict stems are in it); a controlled-adapter
 $2{\times}2$ factorial --- two LoRAs trained on opposite style clusters
 under frozen stem-level membership manifests, probed on both clusters
---- is designed to measure this dependence rather than concede it, and
-its adapter training is in progress at the time of writing
-\textbf{[pending]}.
+--- measured this dependence rather than conceding it: the map's shape
+replicates on both checkpoints and the adapter$\times$probe-style
+interaction is below instrument resolution, while the absolute
+redraw-floor level is checkpoint-dependent
+(Appendix~\ref{app:e7}).
 
 \textbf{Gradient-level, not end-task.} The map is built from accumulated
 per-step gradients; integration over an optimizer trajectory is addressed
@@ -1598,251 +1669,6 @@ single run (Appendix~\ref{app:instrument}).
 \bibliography{references}
 \bibliographystyle{iclr2026_conference}
 
-\appendix
-\section{Instrument details}
-\label{app:instrument}
-
-\paragraph{Estimator.} Per image, arm, and $\sigma$-bin, adapter gradients
-are accumulated over $D$ stratified draws and flattened; cosines are taken
-between accumulated vectors. Per-bin cosines at $D{=}8$ are not comparable
-\emph{across} bins (the floor drops where $\|g\|$ is small); the gap
-subtraction against the same-bin floor is the valid read. Split-half
-reliability over images of each bin-mean curve is mandatory
-(observed $0.73$--$0.88$ on verdict runs); a per-image variant of the same
-quantity has split-half reliability ${\approx}\,0$ and is never used.
-
-\paragraph{Controls.} The re-encoding arm prices the VAE decode--encode
-round trip that demotion necessarily pays; in pre-debiasing runs its gap
-served as the validity band ($\pm 0.04$; observed $|\cdot| \le 0.054$
-across all bins of the main runs, per-module-group $\le 0.045$ in the
-split runs), a role superseded by the paired debiased read of
-\S\ref{sec:instrument}. The redraw floor prices finite-draw noise.
-Density-weighting the uniform bins by the trainer's $\sigma$-density
-reproduces earlier $\sigma$-marginalized measurements from the same
-instrument family (consistency check).
-
-\paragraph{Debiasing (\S\ref{sec:instrument}), implementation.} Under
-\texttt{--self\_floor}, every arm (re-encoding and each demote variant)
-runs a second independent draw set from a disjoint seed stream, giving
-per-arm self-cosines alongside the native floor; Eq.~\ref{eq:debias} is
-then computed per image and bin, and the map read is the paired
-excess $\Delta_i = \dgap_{e,i} - \dgap_{\reenc,i}$ with non-finite
-values (negative self-cosines under the square root at low $D$) and
-$|\Delta_i| > 1.5$ trimmed ($0$--$5$ of $40$ images per cell). Under
-\texttt{--draw\_sweep}, draw prefixes are nested ($D = 64$ contains the
-$D \le 32$ sets; prefix sums, no extra forwards) and
-$\gap(D) = \gap_\infty + c/D$ is fit on route means with a bootstrap CI
-over images. Finite-draw cosines are kernel-path chaotic: twin runs
-sharing a warm compiler kernel cache agree to $|\Delta\cos| \le 0.015$,
-while a run compiled to a different kernel set lands up to
-${\approx}\,0.3$ away at $D{=}2$ --- so gap/floor/self-floor pairings
-are never compared across processes, a guarantee the single-run
-instrument provides by construction; a \texttt{--deterministic} mode
-(bit-exact across twin runs) covers the paired training A/Bs.
-
-\paragraph{Endpoint and x-zero modes.} The $\sigma{=}1$ endpoint bin feeds
-input exactly $\epsilon$ (the input-mediated data term vanishes by
-construction). The x-zero mode zeroes $x$ in input \emph{and} target on
-every grid, keeping captions and exact demoted latent shapes; with the
-$(1{-}\sigma)x$ term absent, low-$\sigma$ bins are off-manifold and the
-$\sigma{=}1$ read is primary. In that regime the residual is
-${\approx}\,{-}\hat x_{\mathrm{prior}}$, so ``graph-dominated'' includes
-the model's grid-conditioned prior; the prior-distance probe
-(\S\ref{sec:floor}) subsequently dissociated the prior from the floor's
-route ordering.
-
-\paragraph{Held-out validation and refit (\S\ref{sec:confronted}),
-sources.} The fit consumes the debiased paired curves of the
-$1024$-tier verdict run, the $1280$-tier curves (pre-debiasing paired
-reads; caveat recorded in \S\ref{sec:limitations}), the route-uniform
-$m(\sigma)$ from the residual probe, and each run's own bin-mean
-$G(\sigma)$ (gap and $G$ always from the same process, per the
-kernel-path rule). The shared-power fit scans $p \in [1, 2]$ jointly
-across fit routes with per-route weighted least squares; the exact-link
-fit is a per-route grid with profile-likelihood uncertainties on $c_e$.
-Oracle baselines are quadratic-in-$\sigma$ fits on the held-out data
-itself (the noise ceiling for a 3-dof curve); the null baseline is
-gap $= 0$ on the null's committed region $\sigma > \sigma_{\mathrm{eq}}$.
-
-\paragraph{Spectral-null computation.} Table~\ref{tab:null} evaluates
-Eq.~\ref{eq:spd} at the demoted grids' Nyquist frequencies
-$f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_{\mathrm{nat}}$ on the $N{=}40$
-mean radially-averaged latent power spectrum ($64$ radial bins; $P$ at
-the $896/768/512$ cuts $= 0.025/0.029/0.065$). The equal-power slice
-$\delta = (1+P_\omega)/2$ recovers
-$\sigma_{\mathrm{eq}} = \sqrt{P}/(1+\sqrt{P})$ exactly. Across
-$\delta \in [0.001, 0.5]$ the mildest--harshest spread never exceeds
-$0.13$, and the $1024{\to}896$ versus $896{\to}768$ boundaries (cut
-frequencies $0.4375$ vs $0.4286$) never separate by more than $0.01$.
-The parameter-free anchor $\delta_{\reenc}$ of \S\ref{sec:phenomenon} is
-measured by the same estimator: RAPSD of the re-encode arm's latent error
-(fresh resize--encode minus cached latent, the gradient probe's own
-control chain) on the same probe set, interpolated at each route's cut
-frequency \textbf{[pending: \texttt{reenc\_noise\_floor.py}]}.
-
-\section{Historical (pre-debiasing) tables}
-\label{app:tables}
-
-The tables in this appendix are the raw-estimator record: retained for
-continuity and for the reads defended in \S\ref{sec:instrument}
-(one-signed bias; paired same-grid contrasts), never cited as debiased
-evidence.
-
-\begin{table}[h]
-\caption{\textbf{Raw estimator} (historical record; superseded by
-Table~\ref{tab:debiasedmap}): demotion gap by
-$\sigma$-bin, $1024$-tier natives ($N{=}40$,
-bin-mean SEM ${\sim}0.02$, re-encoding control $|\gap_\reenc| \le 0.054$
-everywhere, split-half reliability $0.73$--$0.83$). Bold = within the
-re-encoding band. Raw values understate mid-$\sigma$ gaps (the floor
-attenuates the read) and overstate endpoint floors (single-estimate
-variance bias); the debiased map corrects both. The $\cos_{\mathrm{floor}}$
-and $\|g\|$ rows are the estimator context plotted in
-Fig.~\ref{fig:estimator}.}
-\label{tab:phase0}
-\centering
-\small
-\begin{tabular}{lcccccccc}
-\toprule
-$\sigma$ bin center & 0.06 & 0.19 & 0.31 & 0.44 & 0.56 & 0.69 & 0.81 & 0.94 \\
-\midrule
-$\gap_{896}$ (ratio $0.875$) & .110 & .162 & .148 & .137 & \textbf{.048} & \textbf{.030} & \textbf{.030} & .053 \\
-$\gap_{768}$ (ratio $0.75$)  & .144 & .216 & .208 & .223 & .164 & .163 & .115 & .063 \\
-$\gap_{512}$ (ratio $0.5$)   & .348 & .410 & .355 & .469 & .430 & .391 & .289 & .296 \\
-\midrule
-$\cos_{\mathrm{floor}}$ & .84 & .65 & .51 & .65 & .70 & .77 & .80 & .83 \\
-$\|g\|$ (native) & 2.6 & 0.5 & 0.4 & 0.5 & 0.7 & 1.1 & 2.0 & 9.3 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[h]
-\caption{Raw endpoint reads ($D{=}16$, $N{=}40$) beside their debiased
-draw-limit values (Table~\ref{tab:floor}) --- the debiasing's revision
-record: the $768$ floor halves, the $896$ floor surfaces.}
-\label{tab:rawendpoint}
-\centering
-\small
-\begin{tabular}{lcc}
-\toprule
-route & raw endpoint ($D{=}16$) & endpoint $\dgap_\infty$ [95\% CI] \\
-\midrule
-native self-floor (cosine) & $0.85$ & $1.005$ $[0.994, 1.016]$ \\
-re-encoding control & $-0.038$ & $-0.003$ $[-0.017, +0.008]$ \\
-$1024{\to}896$ & $-0.009$ & $+0.019$ $[+0.010, +0.030]$ \\
-$1024{\to}768$ & $+0.127$ & $+0.056$ $[+0.043, +0.071]$ \\
-$1024{\to}512$ & $+0.326$ & $+0.304$ $[+0.197, +0.424]$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[h]
-\caption{Iso-severity probe (\textbf{raw estimator}): gap by $\sigma$-bin
-on the $1280$-tier cache
-($N{=}24$, $4$ draws/bin) against the corpus $1024{\to}896$ curve. The
-ratio-matched routes coincide within ${\sim}1.4$ combined SEM at every bin
-despite a $1.6\times$ difference in absolute target size; the same-native
-harsher-ratio route separates. $^{*}$$896$'s canonical $16$-draw endpoint
-is $-0.009$ raw, $+0.019$ debiased (Table~\ref{tab:floor}).}
-\label{tab:isoseverity}
-\centering
-\small
-\begin{tabular}{lccccc}
-\toprule
-$\sigma$ & 0.125 & 0.375 & 0.625 & 0.875 & 1.0 \\
-\midrule
-re-encoding control & $+.047$ & $-.005$ & $+.048$ & $+.020$ & $-.012$ \\
-$1280{\to}1120$ (ratio $.875$) & .129 & .110 & .054 & $-.012$ & $-.007$ \\
-$1280{\to}1024$ (ratio $.80$)  & .170 & .178 & .111 & .002 & .061 \\
-$1024{\to}896$ (ratio $.875$)  & .132 & .076 & .077 & .049 & .100$^{*}$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[h]
-\caption{Ratio-transfer run (\textbf{raw estimator}): $896$-tier natives
-($N{=}40$), pre-registered
-bar ``$\gap_{768}$ within the re-encoding band at $\sigma \ge 0.5$'' ---
-\textbf{fails} (residual $0.06$--$0.12$, ${\sim}2\times$ the
-$1024{\to}896$ plateau; ${\sim}$half of it is expected estimator bias,
-\S\ref{sec:instrument} --- the separation is independently confirmed by
-the debiased same-grid floors, \S\ref{sec:floor}).}
-\label{tab:phase1a}
-\centering
-\small
-\begin{tabular}{lcccccccc}
-\toprule
-$\sigma$ bin & 0.06 & 0.19 & 0.31 & 0.44 & 0.56 & 0.69 & 0.81 & 0.94 \\
-\midrule
-$896{\to}768$ & .114 & .209 & .168 & .143 & .124 & .056 & .092 & .061 \\
-$896{\to}512$ & .318 & .372 & .308 & .340 & .320 & .280 & .329 & .217 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[h]
-\caption{Route-uniformity of the mean prediction residual: cross-grid
-excess of $\bar r = \mathbb{E}_\epsilon[\hat v - (\epsilon - x)]$ over
-split-half floors (relative $L_2$; same-grid re-encoding control
-$\le 0.02$ everywhere). The three main routes coincide within
-${\sim}\pm 0.02$ at every $\sigma$ while their gradient floors span $0$ to
-$0.3$.}
-\label{tab:residual}
-\centering
-\small
-\begin{tabular}{lccccc}
-\toprule
-$\sigma$ & 0.125 & 0.375 & 0.625 & 0.875 & 1.0 \\
-\midrule
-$1280{\to}1024$ & .885 & .825 & .715 & .465 & .360 \\
-$1024{\to}896$  & .862 & .808 & .706 & .459 & .378 \\
-$896{\to}768$   & .860 & .814 & .715 & .466 & .393 \\
-$768{\to}512$   & .897 & .872 & .767 & .508 & .435 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[h]
-\caption{Depth localization of the floor (\textbf{raw estimator}): mean
-per-block gap at
-$\sigma{=}1$, early $=$ blocks 0--9, late $=$ 14--27, for the endpoint
-(ep) and x-zero (xz) probes. Early blocks carry ${\sim}3\times$ the
-late-block gap. The apparent content share (ep $-$ xz) is a late-block
-minority effect in raw units; the debiased draw-limit comparison finds
-ep $=$ xz within CI at the whole-adapter level
-(Table~\ref{tab:floor}).}
-\label{tab:depth}
-\centering
-\small
-\begin{tabular}{lcccc}
-\toprule
-route & ep early & ep late & xz early & xz late \\
-\midrule
-$1024{\to}512$ & .357 & .223 & .351 & .125 \\
-$1024{\to}768$ & .164 & .085 & .121 & .033 \\
-$1024{\to}896$ & .023 & .015 & .044 & .012 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[h]
-\caption{Positional-interpolation intervention at the $\sigma{=}1$
-endpoint ($N{=}40$, $16$ draws; \textbf{raw} arm values --- the paired
-$\Delta$ column is a same-grid contrast in which the finite-draw bias
-cancels to first order): exact phase-geometry alignment erases the
-mild-route floor and ${\sim}30\%$ of the harsh-route floor.}
-\label{tab:pi}
-\centering
-\small
-\begin{tabular}{lcccc}
-\toprule
-route & plain (SEM) & PI-aligned (SEM) & paired $\Delta$ (SEM) & improved \\
-\midrule
-$1024{\to}896$ (control) & $-0.021$ (.041) & $-0.040$ (.040) & --- & --- \\
-$1024{\to}768$ & $+0.080$ (.048) & $-0.001$ (.039) & $+0.081$ (.031) & $78\%$ \\
-$1024{\to}512$ & $+0.320$ (.058) & $+0.224$ (.056) & $+0.096$ (.039) & $70\%$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+\input{appendix}
 
 \end{document}

@@ -51,3 +51,6 @@ sincos_decensored/
 /sr/data/
 /sr/**/weights/
 /post_image_dataset
+# LaTeX build artifacts (paper dirs; main.pdf stays tracked)
+project/*/paper/*.log
+project/*/paper/*.blg

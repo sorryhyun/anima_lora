@@ -27,6 +27,11 @@ ROUTE_COLORS = {"896": "C0", "768": "C1", "512": "C3"}  # matches the raw gap_cu
 TRIM_ABS = 1.5
 
 
+def detect_routes(rec: dict) -> tuple[str, ...]:
+    """Routes actually present in a per-image row (E7 runs carry no 512 arm)."""
+    return tuple(r for r in ROUTES if f"debiased_gap_{r}" in rec)
+
+
 def paired_stats(recs: list[dict], route: str, n_bins: int):
     means, sems = [], []
     for b in range(n_bins):
@@ -51,18 +56,36 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run", default="runs/20260729-0014-e1b-debiased-map")
     ap.add_argument("--out", default="../paper/figs/gap_debiased.png")
+    ap.add_argument("--title", default=None, help="override the axes title")
+    ap.add_argument(
+        "--split-ood-cell",
+        default=None,
+        help="cell tag treated as OOD (e.g. S3x for E7 runs): plot ID and OOD "
+        "stems as separate curves per route",
+    )
+    ap.add_argument(
+        "--ylim",
+        default=None,
+        help="shared y-axis limits as 'lo,hi' (for side-by-side panels)",
+    )
     args = ap.parse_args()
 
     run_dir = (HERE / args.run).resolve()
     recs = [json.loads(line) for line in (run_dir / "per_image.jsonl").open()]
     sigma = recs[0]["sigma_centers"]
     n_bins = len(sigma)
+    routes = detect_routes(recs[0])
 
-    stats = {route: paired_stats(recs, route, n_bins) for route in ROUTES}
+    stats = {route: paired_stats(recs, route, n_bins) for route in routes}
     eps_star = [
-        1.645 * sorted(stats[route][1][b] for route in ROUTES)[len(ROUTES) // 2]
+        1.645 * sorted(stats[route][1][b] for route in routes)[len(routes) // 2]
         for b in range(n_bins)
     ]
+    groups = [(recs, "", "-", 1.0)]
+    if args.split_ood_cell:
+        id_recs = [r for r in recs if r.get("cell") != args.split_ood_cell]
+        ood_recs = [r for r in recs if r.get("cell") == args.split_ood_cell]
+        groups = [(id_recs, " (ID)", "-", 1.0), (ood_recs, " (OOD)", "--", 0.55)]
 
     fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=150)
     ax.fill_between(
@@ -77,33 +100,44 @@ def main() -> None:
     )
     ax.axhline(0.0, color="black", linewidth=0.8, zorder=2)
 
-    for route in ROUTES:
-        means, sems = stats[route]
-        ax.errorbar(
-            sigma,
-            means,
-            yerr=sems,
-            color=ROUTE_COLORS[route],
-            marker="o",
-            markersize=4,
-            capsize=3,
-            label=rf"$\bar\Delta_{{{route}}}$",
-            zorder=3,
-        )
-        # The sigma=1 endpoint bin is a separate endpoint-mode measurement.
-        ax.plot(
-            sigma[-1],
-            means[-1],
-            marker="o",
-            markersize=4,
-            markerfacecolor="white",
-            color=ROUTE_COLORS[route],
-            zorder=4,
-        )
+    for route in routes:
+        for grecs, suffix, ls, alpha in groups:
+            means, sems = paired_stats(grecs, route, n_bins)
+            ax.errorbar(
+                sigma,
+                means,
+                yerr=sems,
+                color=ROUTE_COLORS[route],
+                linestyle=ls,
+                alpha=alpha,
+                marker="o",
+                markersize=4,
+                capsize=3,
+                label=rf"$\bar\Delta_{{{route}}}${suffix}",
+                zorder=3,
+            )
+            # The sigma=1 endpoint bin is a separate endpoint-mode measurement.
+            ax.plot(
+                sigma[-1],
+                means[-1],
+                marker="o",
+                markersize=4,
+                markerfacecolor="white",
+                color=ROUTE_COLORS[route],
+                alpha=alpha,
+                zorder=4,
+            )
 
     ax.set_xlabel(r"$\sigma$ (bin center)")
     ax.set_ylabel(r"debiased paired gap $\bar\Delta$")
-    ax.set_title(r"Debiased demotion gap vs $\sigma$ (paired, 40 images, SEM)")
+    if args.ylim:
+        lo, hi = (float(v) for v in args.ylim.split(","))
+        ax.set_ylim(lo, hi)
+    title = (
+        args.title
+        or rf"Debiased demotion gap vs $\sigma$ (paired, {len(recs)} images, SEM)"
+    )
+    ax.set_title(title)
     ax.legend(loc="upper right", framealpha=0.9)
 
     out = (HERE / args.out).resolve()

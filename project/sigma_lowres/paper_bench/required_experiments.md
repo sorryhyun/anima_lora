@@ -44,7 +44,9 @@ order/noise/init, 3 seeds; measure realized wall-clock (incl. cache
 load), examples/s, peak mem, CMMD, val loss, matched renders. Until this
 lands, every "14%" in the paper reads "a projected ceiling of ~14%".
 Also run `reenc_noise_floor.py` (script exists, queued) and clear the
-three pending markers.
+three pending markers. Why the A/B is epistemically load-bearing (the
+instrument is valence-blind; the residual risk is accumulated sub-band
+bias): `claim_accumulated_bias.md`.
 
 ## E6 [STRETCH] — one generalization arm each
 
@@ -128,9 +130,47 @@ distribution-relationship effect.
   snapshots; snapshots verified — dim 32/alpha 128, 6 epochs,
   stem-exact 124-stem patterns over the 8 manifest artists per
   cluster, cluster-own uncond init `anima_uncond_abd30619`, not the
-  corpus-wide pool). Remaining: the `--probe_list` instrument delta,
-  then the two probe runs (scheduled after E3 per order of
-  operations).
+  corpus-wide pool). **Probe runs DONE 2026-07-29** (daemon jobs
+  20260729-134926-{a4a4ba (flat), 52e01d (dirty)}, frozen probe lists
+  `runs/20260729-1349-e7-probe-lists/`): flat →
+  `runs/20260729-1349/`, dirty → `runs/20260729-1702/` (48 stems each,
+  cell/membership/style tags in `per_image.jsonl`, endpoint debiased
+  gaps ≈ 0 both arms). **Bin-mean readout** (`e7_cells.py`; A_e/F_e
+  per-cell fits still owed for the formal ledger): (1) map shape
+  replicates on both adapters — 896 reaches the ±ε\* band in-window,
+  768 stays above until the top; (2) probe-style main effect ≈ 0 and
+  the adapter×probe-style **interaction** (verdict quantity) null
+  below resolution — raw-gap paired −0.022±0.027 (896), −0.015±0.059
+  (768); (3) membership S1−S2 does not replicate in sign across
+  adapters (no trajectory variant needed); (4) NEW FACT: redraw-floor
+  *level* is checkpoint-dependent (in-window cos_floor ≈0.73 flat vs
+  ≈0.50 dirty; gnorm endpoint 11.98 vs 7.12) while cell-invariant
+  within each adapter incl. opposite-cluster stems — the G5 carving
+  read came back positive. **In the paper**: Appendix `app:e7`
+  (figure `figs/gap_debiased_e7_{flat,dirty}.png` via
+  `plot_debiased_map.py --run … --title …`) + Limitations `[pending]`
+  marker resolved; one outlier stem (dirty S1 `10541215`, debiased-896
+  ≈ −3.05) noted for the formal fit. Naming: the paper calls the
+  clusters **high-redundancy** (= `flat` in every artifact/ckpt/run
+  name) and **low-redundancy** (= `dirty`); figs
+  `gap_debiased_e7_route{896,768}.png` (`plot_e7_routes.py` — one
+  panel per route, color = adapter, solid ID own-cluster S1/S2/S3s vs
+  dashed OOD S3x, shared axes; the per-adapter variant stays available
+  via `plot_debiased_map.py --split-ood-cell S3x`). **Correlation
+  post-hoc (2026-07-29, not in paper — guard against re-proposing a
+  redundancy→gap law):** (a) per-stem redundancy vs in-window gap
+  within-run stays null across all three runs (flat/dirty/E1b; one
+  nominal hit in 10 tests, sign not replicated); (b) per-stem gaps do
+  NOT correlate across adapters on the 24 shared stems (gap_896
+  ρ=+0.30 ns, gap_768 ρ=−0.45 nominal-negative, floor ρ=+0.15 ns) —
+  gap magnitude is not an image property; (c) adapter-level train-red
+  → floor is NOT monotonic once shipped-sincos/E1b is added as a third
+  point (0.670→0.499, 0.773→0.783, 0.806→0.735; cross-run caveats:
+  different probe pool/grid, gnorm@1 37.5 vs 12.0/7.1), and the
+  adapter ordering of "bigger gap" flips between raw and debiased
+  units — so the checkpoint effect stays "adapter-dependent floor,
+  mechanism unresolved" (supervision-density confound ρ=−0.40 still
+  rides the style axis).
 - **Probe cells per adapter, N≈12 each** (S1/S2 redundancy-matched
   within cluster; one probe list per adapter, cells as row tags —
   cross-cluster stems shared between the two adapters so the
