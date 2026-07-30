@@ -21,6 +21,8 @@
 \newcommand{\dgap}{\widehat{\mathrm{gap}}}
 \newcommand{\Floor}{\mathrm{Floor}}
 \newcommand{\reenc}{\mathrm{reenc}}
+\newcommand{\src}{\mathrm{src}}
+\newcommand{\dem}{\mathrm{dem}}
 \newcommand{\sigmastar}{\sigma^{\!*}}
 \newcommand{\epsstar}{\varepsilon^{\!*}}
 
@@ -100,7 +102,9 @@ frequencies the coarse grid loses}.
 None of this work, however, analyzes the gap at \emph{training} time,
 that is, whether a downscaled step delivers the native gradient under
 an unchanged objective; that is the route this paper takes. What a training step consumes is the expected adapter gradient,
-and demotion perturbs more than the network's input: the regression
+and \emph{demotion} --- our term for the training-time substitution of
+a downscaled, re-encoded latent for the native one --- perturbs more
+than the network's input: the regression
 target carries the clean image at unit weight at every noise level,
 and the compute graph itself changes with the grid. Nor does
 output-level evidence settle the matter: a small quality-score
@@ -128,8 +132,8 @@ certification resolution $\epsstar(N, D)$ under which ``safe'' is a
 one-sided non-inferiority statement, not an absolute claim. From the
 perturbation expansion and cosine geometry, the gap reduces under four
 named assumptions to a \emph{two-term account}: a route amplitude on a
-universal mismatch shape read through the U-shaped gradient norm, plus
-a $\sigma$-independent graph floor. The account connects directly to
+universal mismatch-amplitude curve read through the U-shaped gradient
+norm, plus a $\sigma$-independent graph floor. The account connects directly to
 the inference-side literature: the spectral argument, in its strongest
 tolerance-parameterized form (SPD, \citealp{xiao2026spd}), enters as
 the null model of the data term's input-mediated part, a null that is
@@ -250,49 +254,56 @@ taken with respect to the LoRA adapter parameters only; the backbone is
 frozen.
 
 \paragraph{Demotion.}
-A \emph{demotion} $e_{\mathrm{src}} {\to} e$ replaces the native latent
+A \emph{demotion} $e_0 {\to} e$ replaces the native latent
 with a coarser-grid one, produced exactly as a scale-wise trainer would
-produce it; $e_{\mathrm{src}}$ denotes the route's source (native) edge
-and $e$ its target edge. With $y$ the source image, $\mathcal{R}_e$ the pixel-space
-downscale to the tier-$e$ bucket (native aspect ratio preserved), and
-$\mathcal{E}$ the VAE encoder,
+produce it; $e_0$ denotes the route's source (native) edge
+and $e$ its target edge. With $y$ the image at its native (tier-$e_0$)
+resolution, $\mathcal{E}$ the VAE encoder, and $\mathcal{R}_e$ the
+pixel-space downscale to the tier-$e$ bucket (native aspect ratio
+preserved),
 \begin{equation*}
-x_{\mathrm{src}} \;=\;
-\mathcal{E}\big(\mathcal{R}_{e_{\mathrm{src}}}(y)\big)
+x_{\src} \;=\; \mathcal{E}(y)
 \quad\longrightarrow\quad
-x_{e} \;=\; \mathcal{E}\big(\mathcal{R}_{e}(y)\big),
+x_{\dem} \;=\; \mathcal{E}\big(\mathcal{R}_{e}(y)\big),
 \end{equation*}
 a latent with proportionally fewer spatial tokens; we do not downsample
 in latent space. Everything else about the training step is held fixed:
 the caption $c$, the $\sigma$ under test, and the noise draw structure
 (the same stratified draw scheme, with $\epsilon$ drawn at the tier-$e$
 shape). The demoted step then trains on
-$z_\sigma = (1-\sigma)\,x_e + \sigma\,\epsilon$ with target
-$v = \epsilon - x_e$, so the substitution changes both what the network
+$z_\sigma = (1-\sigma)\,x_{\dem} + \sigma\,\epsilon$ with target
+$v = \epsilon - x_{\dem}$, so the substitution changes both what the network
 sees and what it is asked to predict, but only through the spatial
 grid; nothing else in the step references the resolution.
 
 \paragraph{The estimand.}
-Three \emph{arms} recur throughout: $\mathrm{src}$, the source arm,
-which trains on the native-resolution latent $x_{\mathrm{src}}$; $e$,
-the target arm, which trains on the demoted latent $x_e$; and $\reenc$,
+Three \emph{arms} recur throughout: $\src$, the source arm,
+which trains on the native-resolution latent $x_{\src}$; $\dem$,
+the demoted arm, which trains on $x_{\dem}$; and $\reenc$,
 a control arm that decodes and re-encodes the native latent at native
 resolution: it pays the VAE round trip that demotion necessarily pays,
 with no grid change. For an arm
-$a \in \{\mathrm{src}, \reenc, e\}$, let
+$a \in \{\src, \reenc, \dem\}$, let
 $\bar g_a(\sigma) = \mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$ be
 the population per-bin mean adapter gradient of a query (image,
 caption). The \emph{population demotion distance} is
 \begin{equation}
-d_e(\sigma) \;=\; 1 - \cos\!\big(\bar g_{\mathrm{src}}(\sigma),\,
-\bar g_{e}(\sigma)\big)
-\;=\; \tfrac{1}{2}\,\big\|\hat g_{\mathrm{src}} - \hat g_{e}\big\|^2,
+d_e(\sigma) \;=\; 1 - \cos\!\big(\bar g_{\src}(\sigma),\,
+\bar g_{\dem}(\sigma)\big)
+\;=\; \tfrac{1}{2}\,\big\|\hat g_{\src} - \hat g_{\dem}\big\|^2,
 \label{eq:gapdef}
 \end{equation}
-with $\hat g$ the unit-normalized gradients; $d_e \ge 0$ always. The
-subscript on $d_e$ names the route's target edge, the source grid being
-fixed by context (tables write the full route $e_{\mathrm{src}} {\to} e$
-where several sources appear). The
+with $\hat g$ the unit-normalized gradients; $d_e \ge 0$ always. One
+notational convention holds from here on: arm labels ($\src$, $\reenc$,
+$\dem$) mark \emph{whose} gradient, latent, or Jacobian an object is;
+the subscript on $d_e$ --- and on every route-level scalar to follow
+--- is the route's \emph{target edge}, an edge value, never an arm
+label, so it instantiates numerically ($\Floor_{1120}$,
+$\mathrm{Resid}_{768}$), with the source edge fixed by context (tables
+write the full route $e_0 {\to} e$ where several sources appear). The
+control's distance $d_{\reenc}$ --- Eq.~\ref{eq:gapdef} with
+$\bar g_{\reenc}$ in place of $\bar g_{\dem}$ --- carries its arm label
+instead: the control changes no grid and has no target edge. The
 \emph{reported} quantity of every bin-resolved map and every fit in this
 paper is the \emph{re-encoding excess}
 $\Delta_e(\sigma) = d_e(\sigma) - d_{\reenc}(\sigma)$, the demotion
@@ -351,18 +362,18 @@ through. Averaging over draws and expanding the product of
 the perturbed factors (an elementary but bookkeeping-heavy step,
 written out in Appendix~\ref{app:branches} together with what exactly
 the remainder collects), the perturbation
-$\delta g = \bar g_e - \bar g_{\mathrm{src}}$ decomposes as
+$\delta g = \bar g_{\dem} - \bar g_{\src}$ decomposes as
 \begin{equation}
 \delta g \;=\;
-\underbrace{J^{\!\top}\Delta \bar r(\sigma)}_{\text{data branch }B_e}
-\;+\; \underbrace{\Delta J^{\!\top}\, \bar r}_{\text{graph branch }C_e}
+\underbrace{J^{\!\top}\Delta \bar r(\sigma)}_{\text{data branch}}
+\;+\; \underbrace{\Delta J^{\!\top}\, \bar r}_{\text{graph branch}}
 \;+\; \underbrace{\Delta J^{\!\top}\Delta \bar r + \cdots}_{\text{remainder }R_e},
 \label{eq:branches}
 \end{equation}
 where:
 
 \begin{enumerate}
-\item \textbf{the data branch $B_e$}: demotion changes the \emph{data}
+\item \textbf{the data branch $J^{\!\top}\Delta\bar r$}: demotion changes the \emph{data}
 the objective consumes; spatial-frequency bands above the coarse
 grid's Nyquist limit are absent from the input \emph{and} from the
 target $v = \epsilon - x$, and the re-encode perturbs what survives,
@@ -376,15 +387,18 @@ carries unit weight at every $\sigma$. At $\sigma{=}1$ the input is pure
 noise on every grid, so the input-mediated part vanishes in
 distribution; the endpoint is nevertheless \emph{not} data-free by
 construction, and whether the surviving target-mediated share is
-resolvable is an empirical question, discharged in \S\ref{sec:floor}.
-\item \textbf{the graph branch $C_e$}: token count, rotary phase
+resolvable is an empirical question, discharged in \S\ref{sec:floor}
+(it is real and large, but demotion perturbs it almost entirely
+\emph{parallel} to the native gradient, so the angular estimand does
+not see it).
+\item \textbf{the graph branch $\Delta J^{\!\top}\bar r$}: token count, rotary phase
 density, and sequence-length-dependent normalization, collected as an
 operator perturbation $\Delta J$ that is $\sigma$-\emph{independent},
 because the grid change does not reference $\sigma$.
 \end{enumerate}
 
-One qualification is worth stating precisely: $J_{\mathrm{src}}$ and
-$J_{e}$ act on different grids, so the two branches are not literal
+One qualification is worth stating precisely: $J_{\src}$ and
+$J_{\dem}$ act on different grids, so the two branches are not literal
 matrix products across arms; they are defined \emph{operationally}, as
 the two independent perturbation directions in the shared
 adapter-parameter space where both gradients live, isolated by the
@@ -407,13 +421,13 @@ It remains to read the perturbation of Eq.~\ref{eq:branches} in the
 units of the estimand, Eq.~\ref{eq:gapdef}: a pure exercise in
 cosine geometry, whose forms below are what every measurement in
 \S\ref{sec:evidence} is fit against (step-by-step derivation in
-Appendix~\ref{app:geometry}). With
-$G(\sigma) = \|\bar g_{\mathrm{src}}\|$ and $P_{\!\perp}$ the projector
-orthogonal to $\bar g_{\mathrm{src}}$, split the perturbation into a
-rescaling and a rotation:
-$\kappa_\parallel = \hat g_{\mathrm{src}}^{\!\top}\delta g \,/\, G$
-and $\kappa_\perp = \|P_{\!\perp}\delta g\| \,/\, G$. Substituting
-$\bar g_e = \bar g_{\mathrm{src}} + \delta g$ into
+Appendix~\ref{app:geometry}). Writing
+$u^{\perp} = u - (\hat g_{\src}^{\!\top}u)\,\hat g_{\src}$ for the
+component of a vector orthogonal to $\bar g_{\src}(\sigma)$, split the
+perturbation into a rescaling and a rotation:
+$\kappa_\parallel = \hat g_{\src}^{\!\top}\delta g \,/\, \|\bar g_{\src}\|$
+and $\kappa_\perp = \|\delta g^{\perp}\| \,/\, \|\bar g_{\src}\|$. Substituting
+$\bar g_{\dem} = \bar g_{\src} + \delta g$ into
 Eq.~\ref{eq:gapdef} then gives, \emph{exactly},
 \begin{equation}
 d_e \;=\; 1 - \frac{1}{\sqrt{1 + \kappa_{\mathrm{eff}}^2}}\,,
@@ -425,18 +439,18 @@ the gap is a saturating function of a single rotation-to-scale ratio:
 only the orthogonal component rotates the gradient direction, and
 a parallel component merely renormalizes it. Taylor-expanding
 Eq.~\ref{eq:exact} at small $\kappa$
-($d_e = \tfrac{1}{2}\|P_{\!\perp}\delta g\|^2/G^2 + \cdots$) and
-substituting the branch decomposition
-$\delta g = B_e + C_e + R_e$ of Eq.~\ref{eq:branches} into the square
+($d_e = \tfrac{1}{2}\|\delta g^{\perp}\|^2/\|\bar g_{\src}\|^2 + \cdots$) and
+substituting the branch decomposition of Eq.~\ref{eq:branches} into
+the square
 gives the \emph{four-term angular expansion}, which, like
 Eq.~\ref{eq:exact}, is derived unconditionally:
 \begin{equation}
 d_e(\sigma) \;\approx\;
-\underbrace{\frac{\|P_{\!\perp}B_e\|^2}{2G^2}}_{\text{data share }S_e}
+\underbrace{\frac{\big\|(J^{\!\top}\Delta\bar r)^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{data share }S_e}
 \;+\;
-\underbrace{\frac{\|P_{\!\perp}C_e\|^2}{2G^2}}_{\text{graph share }F_e}
+\underbrace{\frac{\big\|(\Delta J^{\!\top}\bar r)^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{graph share }F_e}
 \;+\;
-\underbrace{\frac{\langle P_{\!\perp}B_e,\, P_{\!\perp}C_e\rangle}{G^2}}_{\text{projected interaction }I_e}
+\underbrace{\frac{\big\langle (J^{\!\top}\Delta\bar r)^{\perp},\, (\Delta J^{\!\top}\bar r)^{\perp}\big\rangle}{\|\bar g_{\src}\|^2}}_{\text{projected interaction }I_e}
 \;+\; R'_e,
 \label{eq:fourterm}
 \end{equation}
@@ -445,50 +459,83 @@ where $R'_e$ now has an exact characterization
 the beyond-quadratic terms of Eq.~\ref{eq:exact}, and the
 parallel-component correction. $S_e$ and $F_e$ are non-negative; $I_e$
 can carry either sign, a fact that matters in
-\S\ref{sec:confronted}.
+\S\ref{sec:confronted}. The expansion's validity domain deserves
+stating where it is introduced: at the harshest measured operating
+point ($d = 0.30$ at $512$, $\sigma{=}1$) the implied perturbation is
+$\kappa_{\mathrm{eff}} = \sqrt{(1-d)^{-2} - 1} \approx 1.02$ --- not
+small --- so quadratic-order reads on that route are indicative, and
+the exact form (Eq.~\ref{eq:exact}) carries the quantitative claims.
+
+\paragraph{From the expansion to the excess.}
+The reported object is the excess over the control
+(\S\ref{sec:estimand}), and the control's own expansion is degenerate:
+the $\reenc$ arm changes no grid, so $\Delta J = 0$ --- no graph
+share, no interaction --- and its data branch is the re-encode
+perturbation alone, collapsing Eq.~\ref{eq:fourterm} to
+$d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$, with $S_{\reenc}$ the
+re-encode share (measured ${\approx}\,0$ where probed: the control row
+of Table~\ref{tab:floor}). Subtracting the two expansions,
+\begin{equation*}
+\Delta_e(\sigma) \;\approx\;
+\big(S_e - S_{\reenc}\big) \;+\; F_e \;+\; I_e
+\;+\; \big(R'_e - R'_{\reenc}\big).
+\end{equation*}
+The subtraction cancels only the re-encode component of the data share
+(up to a cross term suppressed by $\sqrt{S_{\reenc}}$, bounded by the
+control's near-zero reading), so $m$ is henceforth read net of
+re-encode; the graph share and the interaction pass through untouched
+--- the control has nothing to cancel them with. Disposing of the
+surviving terms is what the assumptions below are for.
 
 \paragraph{The reduced two-term account.}
-Under four named assumptions ---
-\textbf{small remainder}: $R'_e$ negligible over the claimed
-domain;
-\textbf{graph-relative stationarity}:
-$\|P_{\!\perp}C_e\| / G$ is $\sigma$-constant (numerator and denominator
-share the residual's scale), so $F_e = \Floor_e$;
-\textbf{data-branch factorization}:
-$\|P_{\!\perp}B_e\| \approx a_e\, m(\sigma)$, a $\sigma$-independent
-route amplitude times a route-independent mismatch shape;
-\textbf{negligible projected interaction}:
-$|I_e| \ll S_e + F_e$ over the claimed domain ---
-the expansion reduces to the \emph{two-term account}, stated on the
-reported form of the estimand, the re-encoding excess of
-\S\ref{sec:estimand}:
-\begin{equation}
-\gap_e(\sigma) \;:=\; \Delta_e(\sigma) \;=\; d_e(\sigma) -
-d_{\reenc}(\sigma)
-\;\approx\;
-\underbrace{A_e \cdot \big(m(\sigma)/G(\sigma)\big)^{2}}_{\text{data term}}
+The subtraction form above is exact bookkeeping, but not yet an
+instrument: none of its four terms is separately measurable per bin.
+Four named assumptions --- each tested by a designated probe in
+\S\ref{sec:evidence} --- trade it for a form built from measurable
+curves and per-route constants:
+(i)~\textbf{small remainder}: $R'_e$ (and its control counterpart)
+negligible over the claimed domain;
+(ii)~\textbf{negligible projected interaction}:
+$|I_e| \ll S_e + F_e$ over the claimed domain;
+(iii)~\textbf{graph-relative stationarity}:
+$\|(\Delta J^{\!\top}\bar r)^{\perp}\| / \|\bar g_{\src}\|$ is
+$\sigma$-constant (numerator and denominator
+share the residual's scale), so the graph share $F_e$ is flat in
+$\sigma$; write $\Floor_e$ for its constant value;
+(iv)~\textbf{data-branch factorization}:
+$\|(J^{\!\top}\Delta\bar r)^{\perp}\| \approx a_e\, m(\sigma)$, a
+$\sigma$-independent route amplitude times the route-independent
+mismatch shape $m(\sigma) = \|\Delta \bar r(\sigma)\|$ of the model's
+mean prediction residual across grids (directly measurable,
+\S\ref{sec:anatomy}; read net of re-encode per the subtraction above).
+Note $m$ is a \emph{norm}: the factorization assumes a
+route-independent amplitude curve, not a shared mismatch
+\emph{direction} --- and \S\ref{sec:anatomy} finds the directions are
+in fact image- and route-specific.
+Applied in that order,
+\begin{align}
+\gap_e(\sigma) \;:=\; \Delta_e(\sigma)
+\;&\approx\; \big(S_e - S_{\reenc}\big) \;+\; F_e
+&&\text{by (i), (ii)}
+\nonumber\\
+\;&\approx\;
+\underbrace{A_e \cdot \big(m(\sigma)/\|\bar g_{\src}\|\big)^{2}}_{\text{data term}}
 \;+\; \underbrace{\Floor_e}_{\text{graph term}},
-\qquad A_e = a_e^2/2,
+\qquad A_e = \tfrac{1}{2}\,a_e^2,
+&&\text{by (iii), (iv)}
 \label{eq:twoterm}
-\end{equation}
-where $m(\sigma) = \|\Delta \bar r(\sigma)\|$ is the mismatch of the
-model's mean prediction residual across grids (directly measurable,
-\S\ref{sec:anatomy}) and $G(\sigma)$ is the total gradient norm. The
-reduction survives the subtraction of the control because the
-$\reenc$ arm pays no grid change: it contributes no graph share, and
-its data share is precisely the re-encode component of $B_e$
-(Eq.~\ref{eq:branches}), which the excess cancels to the expansion's
-quadratic order; hence $m(\sigma)$ in Eq.~\ref{eq:twoterm} is read net
-of re-encode, and the four-term structure of $d_e$ carries over to
-$\Delta_e$ term by term. The
-quadratic power on $m/G$ is fixed by the cosine geometry \emph{locally};
+\end{align}
+the \emph{two-term account}, stated on the reported form of the
+estimand, the re-encoding excess of \S\ref{sec:estimand}, with
+$\|\bar g_{\src}(\sigma)\|$ the total gradient norm. The
+quadratic power on $m/\|\bar g_{\src}\|$ is fixed by the cosine geometry \emph{locally};
 far from the small-mismatch regime the licensed read is the parent form
 itself: keeping Eq.~\ref{eq:exact} un-expanded, with the factorization's loading
-written as $\kappa_e(\sigma) = c_e \, m(\sigma)/G(\sigma)$ (so
+written as $\kappa_e(\sigma) = c_e \, m(\sigma)/\|\bar g_{\src}(\sigma)\|$ (so
 $A_e = c_e^2/2$ in the small-$\kappa$ limit), yields a data term that
 \emph{saturates} instead of overshooting when $\kappa$ is comparable to
 one. The loading itself (that the orthogonal gradient mismatch is
-proportional to the residual mismatch, $\|P_{\!\perp}\delta g\| =
+proportional to the residual mismatch, $\|\delta g^{\perp}\| =
 c_e\, m(\sigma)$) is an \emph{empirical} ingredient, not a
 derivation; so wherever a fitted functional form is reported, the
 un-expanded Eq.~\ref{eq:exact} is labeled the \emph{best empirical
@@ -502,7 +549,11 @@ every band of the position embedding accumulates phase at a different
 density across the image, and (ii)~non-positional graph statistics: attention
 softmax over a different token count, sequence-length-dependent
 normalization, and the sheer capacity of the coarse graph to approximate
-the fine graph's computation. Splitting the graph share
+the fine graph's computation (the conceptual frame is attention as a
+discretization of a function-space operator,
+\citealp{calvello2024continuum}, whose statistics need not be
+discretization-invariant; the frame supplies no quantitative law for
+the dependence). Splitting the graph share
 $\Floor_e = \mathrm{RoPE}_e + \mathrm{Resid}_e$ yields one sharp
 prediction: the positional share is a \emph{coordinate-system artifact},
 so an exact positional-interpolation intervention (evaluating the
@@ -524,7 +575,7 @@ Eqs.~\ref{eq:gapdef} and~\ref{eq:branches}
 (Eq.~\ref{eq:twoterm}) is derived \emph{conditional on the four named
 assumptions}, each of which is tested by a designated probe
 (\S\ref{sec:evidence}); the
-coefficients $A_e$ (or $c_e$), $m(\sigma)$, $G(\sigma)$, $\Floor_e$ are
+coefficients $A_e$ (or $c_e$), $m(\sigma)$, $\|\bar g_{\src}(\sigma)\|$, $\Floor_e$ are
 measured, not derived; and any fitted power or loading is labeled
 empirical. The account was
 pre-registered with an outcome matrix (including a kill switch: all
@@ -569,8 +620,8 @@ $\sigma_{\mathrm{eq}}(f) = \sqrt{P(f)}/(1+\sqrt{P(f)})$ is its
 $\delta = (1+P_\omega)/2$ slice.
 
 Its scope must be stated exactly: the null constrains only the
-\emph{input-mediated part of the data branch} $B_e$. It does not
-constrain the target-mediated share, the graph branch $C_e$, the
+\emph{input-mediated part of the data branch}. It does not
+constrain the target-mediated share, the graph branch, the
 interaction $I_e$, or the Jacobian gain through which a residual
 mismatch becomes a gradient mismatch. Read as the null model of the data
 term, Eq.~\ref{eq:spd} has three structural properties, each checkable
@@ -580,7 +631,7 @@ before any gradient is measured:
 under the single tolerance $\delta$; the family is totally ordered.
 
 \textbf{(N2) Ratio-only.} In normalized frequency the demoted grid's
-Nyquist sits at $f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_{\mathrm{src}}$,
+Nyquist sits at $f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_0$,
 a function of the downscale \emph{ratio} alone. The null therefore cannot
 distinguish routes of equal ratio at different absolute sizes, and
 assigns nearly identical boundaries to nearly equal ratios regardless of
@@ -603,7 +654,7 @@ The family is instantiated on our measured latent spectrum in
 \S\ref{sec:phenomenon} (Table~\ref{tab:null}); its curve-level read in
 gap units necessarily borrows our bridge: the null emits residual
 units only, so any gap-unit prediction is \emph{the null transported
-through the account's} $G$ \emph{and a calibrated route gain}, not a
+through the account's} $\|\bar g_{\src}\|$ \emph{and a calibrated route gain}, not a
 parameter-free prediction (\S\ref{sec:confronted}). Two properties of
 the instantiation are fixed before any gradient is measured: the latents
 are high-frequency-quiet, so the family is \emph{compressed} (the
@@ -644,13 +695,13 @@ stated in debiased units.
 \paragraph{The debiased estimator.}
 Two corrections, used together. First, \emph{self-floors with
 attenuation correction}: every arm runs a second independent draw set
-$g_d'$, giving a per-arm self-cosine
-$\cos_{\mathrm{self}} = \cos(g_d, g_d')$, so that each arm has the same
+$g_a'$, giving a per-arm self-cosine
+$\cos_{\mathrm{self}} = \cos(g_a, g_a')$, so that each arm has the same
 two-estimate structure the native floor has. The debiased cosine is
 the classical split-half disattenuation correction,
 \begin{equation}
-\hat c \;=\; \frac{\cos(\bar g_{\mathrm{src}},\, \bar g_{d})}
-{\sqrt{\cos_{\mathrm{floor}} \cdot \cos_{\mathrm{self},d}}},
+\hat c \;=\; \frac{\cos(\bar g_{\src},\, \bar g_{a})}
+{\sqrt{\cos_{\mathrm{floor}} \cdot \cos_{\mathrm{self},a}}},
 \qquad
 \dgap \;=\; 1 - \hat c,
 \label{eq:debias}
@@ -707,8 +758,8 @@ not enter at any noise level), against the spectral family's prediction
 of $\sigma \approx 0.14$--$0.20$ (Fig.~\ref{fig:spectrum},
 \S\ref{sec:phenomenon}).
 (b)~The estimator context those curves are read through: the
-redraw-floor cosine and the U-shaped gradient norm $G(\sigma)$
-(\S\ref{sec:anatomy}).}
+redraw-floor cosine and the U-shaped gradient norm
+$\|\bar g_{\src}(\sigma)\|$ (\S\ref{sec:anatomy}).}
 \label{fig:verdict}
 \end{figure}
 
@@ -725,7 +776,7 @@ labeled; governors from $512{+}1120$ alone). Dashed: each route's
 predicted floor $F(n)$; the gap between dashed and solid is the data
 term. Bands: $68\%/95\%$ full-pipeline bootstrap (resample images
 $\to$ re-bin $\to$ refit $\to$ re-derive governors $\to$ re-predict;
-$B{=}1000$; $\bar m$ and $G$ are run-level instruments, held fixed).
+$B{=}1000$; $\bar m$ and $\|\bar g_{\src}\|$ are run-level instruments, held fixed).
 The $768$ mid-$\sigma$ dip sits outside the $95\%$ band
 (\S\ref{sec:confronted}). Right: predicted vs measured across all five
 routes and bins under the pre-registered pipeline; filled: the two
@@ -744,7 +795,7 @@ level, and the
 $2\times$ downscale is gapped at every noise level, including
 pure-noise input. Panel~(b) is the context every such number is read
 through: the redraw-floor cosine, which is what finite draws do to the
-estimator, and the U-shaped gradient norm $G(\sigma)$ that shapes
+estimator, and the U-shaped gradient norm $\|\bar g_{\src}(\sigma)\|$ that shapes
 the curves (\S\ref{sec:anatomy}). The rest of this subsection builds
 the instrument behind the figure: the model and probe, the verdict
 table the figure plots, and the finite-draw ablation that forces every
@@ -1086,14 +1137,46 @@ $\alpha$-flat at the well-conditioned anchors ($768$:
 $+0.070 \pm 0.015$ at $\alpha{=}0$ versus $+0.049 \pm 0.010$ at
 $\alpha{=}1$; $512$: $+0.269 \pm 0.041$ versus $+0.337 \pm 0.067$;
 re-encoding control slope $+0.003$): no resolvable target-content
-share. The interior points $\alpha \in [0.5, 0.75]$ are unreadable by
+share \emph{in the angular estimand}. The interior points $\alpha \in [0.5, 0.75]$ are unreadable by
 construction and excluded: there the native residual
 $\alpha x - \hat{x}$ passes near cancellation, the gradient norm dips
 ($60 \to 33$) and the redraw floor falls to $0.87$, so the estimator
-reads through a small $G$, the low-$G$ amplification of
+reads through a small gradient norm, the low-norm amplification of
 \S\ref{sec:anatomy} surfacing along the $\alpha$ axis. Endpoint $\equiv$
 x-zero $\equiv$ $\alpha$-flat: three independent probes converge on one
-number per route. The endpoint gap \emph{is} the graph floor, as an
+number per route.
+
+\paragraph{Why the target term is angularly invisible: it lands
+parallel.}
+The $\alpha$-flatness is not a cancellation mystery, and it does not
+mean the target-mediated share of \S\ref{sec:branches} is absent.
+Because the objective is quadratic, $\bar g$ is \emph{affine} in
+$\alpha$, so the exact target-mediated gradient
+$t = \bar g(1) - \bar g(0)$ is computable from the endpoint arms with
+zero draw noise beyond theirs; measuring it directly ($N{=}40$
+endpoint, two independent draw sets) shows the term is real and large
+--- $\|t_{\src}\| / \|\bar g_{\src}\| \approx 2.2$, so $J^{\!\top}$
+does \emph{not} annihilate target content --- but demotion's change to
+it, $\delta t = t_{\dem} - t_{\src}$, lands almost entirely
+\emph{along} $\hat g_{\src}$: $\kappa_\parallel = -0.75 / -1.18 /
+-1.86$ on $896/768/512$ against $\kappa_\perp = 0.09 / 0.14 / 0.20$,
+an $8$--$9\times$ parallel dominance, reproducible across the
+independent draw sets ($\delta t$ direction agreement $\ge 0.995$)
+while the re-encoding control sits at the noise floor with an
+irreproducible $\delta t$ direction. Demotion \emph{shortens} the
+target-mediated gradient along $\hat g_{\src}$, severity-ordered
+($\|t\| / \|\bar g_{\src}\|$: $2.2 \to 1.5 \to 1.1 \to 0.5$);
+direction rotation appears only on the harshest route
+($\cos(t_{512}, t_{\src}) = 0.74$ against $0.99/0.98$ for $896/768$).
+The cosine gap is blind to a parallel rescaling (Eq.~\ref{eq:exact}),
+and the orthogonal part enters only at second order,
+$\kappa_\perp^2 / 2 \approx 0.004$--$0.02$, below the floors it would
+have to move: the $\alpha$-flat scalar result stands \emph{because}
+the target term lands parallel, not because it vanishes. (Per image
+the orthogonal loading is ${\sim}10\times$ the aggregate's;
+image-specific directions cancel in the mean, the same motif as the
+residual-direction read of \S\ref{sec:anatomy}.) The endpoint gap
+\emph{is} the graph floor as the angular estimand reads it, an
 empirical result established at our operating point, not assumed by
 construction.
 
@@ -1125,8 +1208,8 @@ from 1024 than heavily trained adjacent pairs are from each other).
 denominator}
 \label{sec:anatomy}
 
-\paragraph{$m(\sigma)$ is route-uniform: the residual-level null
-fails.}
+\paragraph{$m(\sigma)$ is route-uniform in amplitude: the
+residual-level null fails.}
 Measuring the mean prediction residual
 $\bar r = \mathbb{E}_\epsilon[\hat v - (\epsilon - x)]$ per grid and
 $\sigma$ (the exact $r$ in $g = J^{\!\top} r$) shows a strong,
@@ -1142,13 +1225,43 @@ mismatch is carried by cross-band structure the diagonal model cannot
 express. All route identity therefore lives in $J$, not in the prediction
 error, a pre-registered null that would equally have falsified the
 account's factorization had the residual curves been route-ordered;
-instead it \emph{establishes} the shape factorization directly. The decay is
-smooth, Wiener-like posterior shrinkage with no hard gate at the spectral
-crossover: gap curves read as ``collapsed'' where the data term sinks
-below the instrument's certification resolution, not at
-$\sigma_{\mathrm{eq}}$.
+instead it \emph{establishes} the shape factorization directly. The
+decay is smooth, Wiener-like posterior shrinkage with no hard gate at
+the spectral crossover: gap curves read as ``collapsed'' where the
+data term sinks below the instrument's certification resolution, not
+at $\sigma_{\mathrm{eq}}$.
 
-\paragraph{$G(\sigma)$ shapes the curve.}
+A direction-resolved follow-up sharpens what ``route-uniform'' means:
+the uniformity is a property of the \emph{amplitude} only. Saving the
+per-image mismatch vectors and comparing $\Delta \bar r$ directions
+with a split-half attenuation correction, non-adjacent route pairs are
+near-orthogonal at low $\sigma$ (corrected cosine $0.00$--$0.08$ at
+$\sigma \le 0.375$) with only a weak shared component at high $\sigma$
+($+0.2$--$0.3$ at $\sigma \ge 0.875$); the top mode of a stacked SVD
+carries $0.33$--$0.36$ of the energy against the $0.25$
+rank-4-uniform baseline (a rank-one common mode would give
+${\approx}\,1$); and cross-image direction consistency is zero at
+every (route, $\sigma$) cell (max $+0.019$ at split-half
+reliabilities $0.73$--$0.99$), so the mismatch direction is fully
+image-specific --- refuting a grid-conditional composition prior
+(``small canvas $\Rightarrow$ portrait framing'') as the carrier, at
+least under full captions. What \emph{is} shared is scale and
+spectral drift: $\Delta \bar r$ energy migrates toward low
+frequencies as $\sigma$ rises (low-third share $0.40 \to 0.67$ by
+$\sigma = 0.875$), composition-scale but per-image. The factorization
+of Eq.~\ref{eq:twoterm} only ever consumes the norm
+$m(\sigma) = \|\Delta \bar r(\sigma)\|$, so the account is untouched;
+what sharpens is the open question, now ``why is only the
+\emph{amplitude} universal when the directions are image- and
+route-specific.'' A closed-form candidate for cross-band coupling per
+se exists --- the flow posterior covariance, whose off-diagonal
+$D_z v^*$ entries are
+$-\big((1{-}\sigma)/\sigma^3\big)\,\mathrm{Cov}(x_\omega, x_{\omega'}
+\mid z)$ \citep{xing2026divunc}, set to zero by the diagonal null ---
+but its rank-one common-mode version is excluded by the SVD read
+above.
+
+\paragraph{$\|\bar g_{\src}(\sigma)\|$ shapes the curve.}
 Because the gap is a cosine it measures a mismatch \emph{fraction}; the
 total gradient norm is U-shaped in $\sigma$ ($2.6 \to 0.4$ at
 $\sigma\!\approx\!0.3 \to 9.3$; Fig.~\ref{fig:estimator}): large at
@@ -1156,11 +1269,12 @@ high $\sigma$ where the model is pulling composition out of the prior
 and the residual is image-scale, small in the mid-$\sigma$ refinement
 regime, and inflated again at low $\sigma$ by irreducible $\epsilon$. A
 monotone absolute mismatch divided by a U-shaped norm yields exactly the
-measured interior-peaked gap curves: bin-mean gap tracks $1/\|g\|$
+measured interior-peaked gap curves: bin-mean gap tracks
+$1/\|\bar g_{\src}\|$
 (Spearman $+0.55$ to $+0.90$ across arms and runs, and within images),
-and renormalizing by $G$ flips the anomalous low-$\sigma$ dip into the
-monotone maximum in every arm of both runs, the predicted $m/G$
-shape. This is a post-hoc consistency analysis (so labeled): it
+and renormalizing by $\|\bar g_{\src}\|$ flips the anomalous
+low-$\sigma$ dip into the monotone maximum in every arm of both runs,
+the predicted $m/\|\bar g_{\src}\|$ shape. This is a post-hoc consistency analysis (so labeled): it
 explains the \emph{shape}; all safety criteria stay in
 cosine units, since direction is what a normalized optimizer consumes.
 
@@ -1223,7 +1337,7 @@ originating in the position embedding propagates through the block and
 lands on all module types. The discriminating experiment is the
 origin-side intervention of \S\ref{sec:branches}: evaluate the demoted
 grid with positionally-interpolated fractional rotary coordinates (patch
-$i$ at $i \cdot H_{\mathrm{src}}/H_{\mathrm{dem}}$ per axis), making its
+$i$ at $i \cdot H_{\src}/H_{\dem}$ per axis), making its
 relative phase geometry exactly match native. At the $\sigma{=}1$
 endpoint this \emph{erases} the $768$ floor (paired
 $\Delta = +0.081$, $78\%$ of images improved) and removes ${\sim}30\%$
@@ -1239,7 +1353,14 @@ a \emph{coordinate-system artifact}; the harsh-route bulk is a genuine
 non-positional graph residue (attention-over-$N$ statistics,
 sequence-length-dependent normalization, capacity). The capacity
 governor of \S\ref{sec:anatomy} attaches to $\mathrm{Resid}_e$, as the
-band-counting sketch anticipated. The $896$ route's small floor
+band-counting sketch anticipated. The attention-over-$N$ piece has
+inference-side prior art: attention-entropy corrections derive
+length-dependent temperatures to preserve the $\log N$ entropy term
+\citep{li2025infoscale}, and TIDE applies the same dilution correction
+jointly to resolution and diffusion timestep \citep{liu2026tide} ---
+the closest prior work to a $\sigma$-gated resolution correction,
+though on the inference side; our gate is training-side and set by
+measured gradient safety, not by an entropy invariance. The $896$ route's small floor
 ($0.02$--$0.04$) sits below the PI probe's paired resolution and remains
 undecomposed.
 
@@ -1249,8 +1370,8 @@ share measured by its own intervention:
 \begin{equation*}
 \Floor_e \;=\;
 \underbrace{\reenc}_{{\approx}\,0 \text{ by control}}
-\;+\; \underbrace{\text{target content}}_{{\approx}\,0 \text{ by
-x-zero / }\alpha\text{-flat}}
+\;+\; \underbrace{\text{target content}}_{\text{lands }\parallel\;
+\hat g_{\src}\text{: angular share}\,{\approx}\,0}
 \;+\; \underbrace{\mathrm{RoPE}_e}_{\text{erased by PI at }\sigma{=}1}
 \;+\; \underbrace{\mathrm{Resid}_e}_{\text{remainder}}
 \end{equation*}
@@ -1287,7 +1408,8 @@ account on three routes, then predict two held-out routes from
 the governors alone (Fig.~\ref{fig:e5}). Fit routes: $\{1024{\to}896,\ 1024{\to}512,\ 1280{\to}1120\}$;
 held-out: $\{1024{\to}768,\ 1280{\to}1024\}$. Per fit route the excess
 curve $\bar\Delta_e(\sigma)$ is fit with a route amplitude and floor on
-the measured route-uniform $m(\sigma)$ and each run's own $G(\sigma)$;
+the measured route-uniform amplitude $m(\sigma)$ and each run's own
+$\|\bar g_{\src}(\sigma)\|$;
 two governor models ($A(\mathrm{ratio})$ interpolating the fitted
 amplitudes, and an exponential floor law $F(n) = F_0\,e^{-n/\tau}$ in
 target tokens $n$) then generate the held-out predictions with zero
@@ -1317,6 +1439,32 @@ post-hoc leave-$896$-out addendum (so labeled) re-derives the governors
 from $512$+$1120$ alone and predicts the $896$ floor at $+0.019$ against
 the measured $+0.019$ $[+0.010, +0.030]$: the floor law is correct on
 both floors outside its fit set.
+
+\paragraph{The floor law is a calibrated interpolation, not a
+mechanism.}
+Two anchors and one held-out check cannot identify a functional form,
+and the cosine gap is the wrong scale to fit one in: it saturates
+(Eq.~\ref{eq:exact}). Refitting the same anchors in the unsaturated
+perturbation-energy units,
+$\kappa_{\mathrm{eff}}^2 = (1-F)^{-2} - 1$, gives
+$\tau \approx 860$ tokens and predicts $F(2160) = +0.096$, equally
+consistent with the measured $+0.092 \pm 0.012$; and the same two
+anchors pushed through $e^{-\sqrt{n}/\ell}$ or a power law $n^{-p}$
+predict $+0.085$ and $+0.075$ --- every form lands within the union of
+the measured CI and the prediction's own bootstrap spread
+(\S\ref{sec:trainer}). The exponential is therefore one member of a
+candidate family $\{e^{-n/\tau},\ e^{-\sqrt{n}/\ell},\ n^{-p}\}$ our
+operating points cannot distinguish, and the mechanical reading of
+$\tau$ ($\approx 860$--$1040$ tokens across the two unit
+conventions) as an effective-rank decay length of the early-block
+gradient operator is a hypothesis, not a law. It is a discriminable
+one: a spectral-tail account predicts a source-capacity dependence
+$F \propto e^{-n/\tau} - e^{-n_0/\tau}$ where the
+absolute-target-capacity governor of \S\ref{sec:anatomy} predicts
+none (at our operating points the secant correction sits within
+calibration slack, so the existing anchors do not discriminate); the
+designated run is a fixed-target, varied-source token ladder, not yet
+scheduled.
 
 \paragraph{Functional form: the exact link headlines.}
 Refitting the same pipeline under three forms for the data term (a
@@ -1358,17 +1506,33 @@ $\Floor_{768} \approx 0.09$ and outside the bootstrap $95\%$ band
 (Fig.~\ref{fig:e5}). This is structural, not sampling noise: a positive
 two-term form cannot produce a gap under its own floor, under any
 coefficients. In the four-term
-expansion (Eq.~\ref{eq:fourterm}) this is exactly the signature of a
-negative projected interaction $I_{768}(\sigma) < 0$ in that window;
-equivalently, graph-relative stationarity fails there: the reduced
-account fails precisely where its named assumptions say it can, and the
-derived four-term form represents the failure rather than excusing it.
-The window therefore \emph{delimits the reduction's domain}; the
-demote--re-promote probe (which isolates the data
-branch with $\Floor = 0$ by construction and reads $I_e$ per bin as
-$\Delta_{\mathrm{demote}} - \Delta_{\mathrm{repromote}} - \Floor_e$)
-is the designated direct test, with the pre-registrable sign
-$I_{768} < 0$ in-window \textbf{[pending]}.
+expansion (Eq.~\ref{eq:fourterm}) a gap below the floor admits exactly
+two mechanisms, and we pre-register both, ahead of the direct probe:
+either (i)~the projected interaction is negative in the window,
+$I_{768}(\sigma) < 0$ --- in which case an amplitude-matching account
+predicts the window center sits where the two perturbation legs have
+equal orthogonal magnitude, a testable localization --- or (ii)~the
+graph share is itself $\sigma$-dependent, $F_{768}(\sigma)$ collapsing
+below its endpoint value in-window, which would rewrite assumption
+(iii) rather than (ii). Either way a named assumption fails exactly
+where the account says it can, and the derived four-term form
+represents the failure rather than excusing it. The window therefore
+\emph{delimits the reduction's domain}. One honesty note on the probe
+design: the scalar read we originally planned,
+$\Delta_{\mathrm{demote}} - \Delta_{\mathrm{repromote}} - \Floor_e$,
+cannot arbitrate --- it estimates $I(\sigma) + [F(\sigma) - F(1)]$
+plus higher-order terms, conflating the two branches. The designated
+direct test is therefore vector-resolved: the demote--re-promote
+probe stores arm-mean gradients and reads the data, graph, and
+interaction shares per (route, $\sigma$-bin) from the interventional
+split $B = \bar g_{\mathrm{repromote}} - \bar g_{\src}$,
+$C = \bar g_{\mathrm{demote}} - \bar g_{\mathrm{repromote}}$
+($S = \|B^{\perp}\|^2/2\|\bar g\|^2$,
+$F = \|C^{\perp}\|^2/2\|\bar g\|^2$,
+$I = \langle B^{\perp}, C^{\perp}\rangle/\|\bar g\|^2$, with
+cross-draw-set inner products to cancel shared-noise bias and exact
+counterfactual angles alongside the quadratic ledger)
+\textbf{[pending]}.
 
 \paragraph{The null, scored.}
 Against the account's discriminating predictions, the
@@ -1378,8 +1542,9 @@ everywhere$\}$ (\S\ref{sec:phenomenon}); gaps persist at pure-noise
 input, equal to the floor and to the image-free control
 (\S\ref{sec:floor}); ratio governs the amplitude while absolute size
 governs the floor (\S\ref{sec:anatomy}); the residual curves are
-route-uniform under route-ordered gaps (\S\ref{sec:anatomy}); and the
-curve shape follows the $m/G$ read, not per-band SNR. The account also
+route-uniform in amplitude under route-ordered gaps
+(\S\ref{sec:anatomy}); and the
+curve shape follows the $m/\|\bar g_{\src}\|$ read, not per-band SNR. The account also
 retrodicts the observations that motivated no probe:
 (i)~$\sigmastar \approx 0.5$ rather than $0.14$: the crossover is
 where the data term sinks below certification resolution, a property of
@@ -1392,7 +1557,7 @@ $\Rightarrow$ $\Floor \approx 0$), the single observation that breaks
 both pure-ratio and pure-capacity route-ordering stories. A curve-level
 overlay, in which each published tolerance $\delta$ is converted to a
 predicted gap curve through the account's bridge (destroyed-band
-Bayes-residual mismatch, measured $G$, route gain calibrated on the one
+Bayes-residual mismatch, measured $\|\bar g_{\src}\|$, route gain calibrated on the one
 safe route),
 is \textbf{[pending: analysis over existing rows; $\delta_{\reenc}$ for
 the anchored line is now measured, \S\ref{sec:phenomenon}]}; unit honesty
@@ -1625,7 +1790,9 @@ open.
 routes at ${\sim}0.07$--$0.09$ RMSE, not within $\epsstar$
 (\S\ref{sec:confronted}); its $A(\mathrm{ratio})$ governor rests on two
 distinct ratio values; the reduction's domain excludes the $768$
-mid-$\sigma$ window pending the direct interaction probe; and the
+mid-$\sigma$ window pending the direct vector-resolved probe; the
+floor law's functional form is unidentified at our operating points
+(two anchors and one check; \S\ref{sec:confronted}); and the
 band-counting sketch for $\mathrm{RoPE}_e$/$\mathrm{Resid}_e$ is
 calibrated, not derived.
 

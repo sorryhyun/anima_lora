@@ -1,8 +1,11 @@
 # Claim — the in-band verdict is valence-blind; the residual risk is accumulated sub-band bias
 
 *2026-07-29, out of a discussion of whether the reenc control could be
-"biased toward a beneficial direction". Status: acknowledged limitation,
-closed by E4; no instrument change required.*
+"biased toward a beneficial direction". Status: acknowledged limitation;
+no instrument change required. E4 core discharged 2026-07-30 (throughput
++ seed-noise yardstick); the outcome-level read that answers this claim —
+full-band CMMD, sigma896 vs 896only — is still owed
+(`required_experiments.md` §E4).*
 
 ## The claim
 
@@ -48,13 +51,21 @@ readings is exactly what E4 exists to close.
 
 ## Consequence for the paper
 
-Every efficiency number stays "a projected ceiling" until E4 lands.
-E4's three arms answer this claim in both directions: if sub-band
+E4's arm structure answers this claim in both directions: if sub-band
 accumulation is real, the σ-conditional arm degrades vs native
 (instrument too lenient); if the unconditional-768 negative control does
 *not* degrade, the instrument is too conservative. Either outcome is
 informative; only "conditional ≈ native ≠ 768-unconditional" validates
 the map as an outcome-level safety criterion.
+
+**Where E4 left it (2026-07-30)**: throughput is measured (−14.6% wall)
+and the seed-noise yardstick puts sigma896's render deltas inside the
+seed lottery — but the exercise pass had no metric power for *this*
+question (CMMD could not separate unsafe768 from native at exercise N),
+so the accumulated-bias claim stays open until the full-band CMMD
+rescoring. The sharpest empirical handle is sigma896 vs 896only: the
+σ-gate is endpoint-invisible so far, so its justification rests on
+exactly the per-step certification this claim interrogates.
 
 ## Optional direct probe (deprioritized below E4)
 

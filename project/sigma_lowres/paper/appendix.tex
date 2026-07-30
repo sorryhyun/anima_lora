@@ -19,21 +19,21 @@ arm $a$ is then
 \label{eq:appmean}
 \end{equation}
 Write the demoted arm's mean factors as native plus a perturbation,
-$\bar J_e = \bar J + \Delta J$ and $\bar r_e = \bar r + \Delta \bar r$
+$\bar J_{\dem} = \bar J + \Delta J$ and $\bar r_{\dem} = \bar r + \Delta \bar r$
 (bars without an arm subscript denote the native arm). Subtracting
 Eq.~\ref{eq:appmean} across arms and expanding the product,
 \begin{equation}
-\delta g \;=\; \bar g_e - \bar g_{\mathrm{src}}
+\delta g \;=\; \bar g_{\dem} - \bar g_{\src}
 \;=\;
-\underbrace{\bar J^{\!\top} \Delta\bar r}_{B_e}
+\underbrace{\bar J^{\!\top} \Delta\bar r}_{\text{data branch }B_e}
 \;+\;
-\underbrace{\Delta J^{\!\top}\, \bar r}_{C_e}
+\underbrace{\Delta J^{\!\top}\, \bar r}_{\text{graph branch }C_e}
 \;+\;
 \underbrace{\Delta J^{\!\top} \Delta\bar r
 \;+\;
-\mathbb{E}_\epsilon\!\big[\tilde J_e^{\!\top}\tilde r_e\big]
-- \mathbb{E}_\epsilon\!\big[\tilde J_{\mathrm{src}}^{\!\top}
-\tilde r_{\mathrm{src}}\big]}_{R_e}.
+\mathbb{E}_\epsilon\!\big[\tilde J_{\dem}^{\!\top}\tilde r_{\dem}\big]
+- \mathbb{E}_\epsilon\!\big[\tilde J_{\src}^{\!\top}
+\tilde r_{\src}\big]}_{\text{remainder }R_e}.
 \label{eq:appbranches}
 \end{equation}
 This is an exact identity: no linearization is involved.
@@ -47,7 +47,7 @@ notation.
 One remark delimits the identity's literal scope, expanding the
 qualification stated in \S\ref{sec:branches}. When the two arms share
 a grid (as for the re-encoding control), every operation above is
-literal. Across grids, $J_{\mathrm{src}}$ and $J_e$ act on different
+literal. Across grids, $J_{\src}$ and $J_{\dem}$ act on different
 token counts, so the differences $\Delta J$ and $\Delta \bar r$ require
 a fixed identification of the two output spaces (e.g.\ spectral
 zero-padding of the coarse grid onto the fine grid's bands); any such
@@ -65,11 +65,12 @@ and~\ref{eq:fourterm})}
 
 Both angular forms follow from Eq.~\ref{eq:gapdef} and the split of
 $\delta g$ by the native direction; no property of demotion enters.
-Write $g = \bar g_{\mathrm{src}}$, $G = \|g\|$, $\hat g = g/G$, and
-decompose
-$\delta g = G\,\kappa_\parallel\, \hat g + P_{\!\perp}\delta g$ with
+Write $g = \bar g_{\src}$, $G = \|g\|$, $\hat g = g/G$, and
+$u^{\perp} = u - (\hat g^{\!\top}u)\,\hat g$ for the component of a
+vector orthogonal to $g$ (the main text's notation); decompose
+$\delta g = G\,\kappa_\parallel\, \hat g + \delta g^{\perp}$ with
 $\kappa_\parallel = \hat g^{\!\top}\delta g / G$ and
-$\kappa_\perp = \|P_{\!\perp}\delta g\| / G$.
+$\kappa_\perp = \|\delta g^{\perp}\| / G$.
 
 \paragraph{The exact form.} The two components are orthogonal, so
 $\|g + \delta g\|^2 = G^2 (1+\kappa_\parallel)^2 + G^2 \kappa_\perp^2$
@@ -97,21 +98,21 @@ $1 - (1 + \kappa_{\mathrm{eff}}^2)^{-1/2}
 $\kappa_{\mathrm{eff}}^2 = \kappa_\perp^2\big(1 - 2\kappa_\parallel
 + O(\kappa_\parallel^2)\big)$, so
 \begin{equation}
-d_e \;=\; \frac{\|P_{\!\perp}\delta g\|^2}{2 G^2}
+d_e \;=\; \frac{\|\delta g^{\perp}\|^2}{2 G^2}
 \;+\; \underbrace{O(\kappa_\perp^2 \kappa_\parallel)
 + O(\kappa_\perp^4)}_{\text{beyond-quadratic}}.
 \label{eq:appquad}
 \end{equation}
 
 \paragraph{The four-term expansion.} Substituting
-$\delta g = B_e + C_e + R_e$ (Eq.~\ref{eq:branches}) into the leading
+$\delta g = B_e + C_e + R_e$ (Eq.~\ref{eq:appbranches}) into the leading
 term and expanding the square,
 \begin{equation*}
-\|P_{\!\perp}\delta g\|^2
-= \|P_{\!\perp}B_e\|^2 + \|P_{\!\perp}C_e\|^2
-+ 2\,\langle P_{\!\perp}B_e,\, P_{\!\perp}C_e\rangle
-+ \Big(2\,\langle P_{\!\perp}(B_e{+}C_e),\, P_{\!\perp}R_e\rangle
-+ \|P_{\!\perp}R_e\|^2\Big),
+\|\delta g^{\perp}\|^2
+= \|B_e^{\perp}\|^2 + \|C_e^{\perp}\|^2
++ 2\,\langle B_e^{\perp},\, C_e^{\perp}\rangle
++ \Big(2\,\langle (B_e{+}C_e)^{\perp},\, R_e^{\perp}\rangle
++ \|R_e^{\perp}\|^2\Big),
 \end{equation*}
 whose first three terms, divided by $2G^2$, are exactly the data
 share $S_e$, the graph share $F_e$, and the projected interaction
@@ -123,7 +124,7 @@ suppressed by an extra power of perturbation size relative to the
 retained terms.
 
 \paragraph{What is not derived.} The loading
-$\|P_{\!\perp}\delta g\| = c_e\, m(\sigma)$ (that the orthogonal
+$\|\delta g^{\perp}\| = c_e\, m(\sigma)$ (that the orthogonal
 gradient mismatch is proportional to the residual mismatch with a
 $\sigma$-independent route gain) is an empirical ingredient
 (the data-branch factorization at the amplitude level), fit and tested
@@ -201,8 +202,8 @@ why the exact link headlines in Fig.~\ref{fig:e5}.}
 sources.} The fit consumes the debiased paired curves of the
 $1024$-tier verdict run, the $1280$-tier curves (pre-debiasing paired
 reads; caveat recorded in \S\ref{sec:limitations}), the route-uniform
-$m(\sigma)$ from the residual probe, and each run's own bin-mean
-$G(\sigma)$ (gap and $G$ always from the same process, per the
+amplitude $m(\sigma)$ from the residual probe, and each run's own bin-mean
+gradient norm $\|\bar g_{\src}(\sigma)\|$ (gap and norm always from the same process, per the
 kernel-path rule). The shared-power fit scans $p \in [1, 2]$ jointly
 across fit routes with per-route weighted least squares; the exact-link
 fit is a per-route grid with profile-likelihood uncertainties on $c_e$.
@@ -216,7 +217,7 @@ gap $= 0$ on the null's committed region $\sigma > \sigma_{\mathrm{eq}}$.
 replacement within each run ($N{=}40$ / $N{=}24$), re-bin the paired
 curves, refit the exact-link $(c_e, \Floor_e)$ on every fit route,
 re-derive the ratio governor and floor law, re-predict. $\bar m$ and
-the bin-mean $G(\sigma)$ are run-level instruments with no per-image
+the bin-mean $\|\bar g_{\src}(\sigma)\|$ are run-level instruments with no per-image
 decomposition and are held fixed. The replica includes the committed
 floor law's positive-floor filter ($\Floor > 0.005$): in $41\%$ of
 draws the resampled $1120$ floor clears the filter and the law
@@ -233,7 +234,7 @@ counterpart of the quadratic-form addendum
 
 \paragraph{Spectral-null computation.} Table~\ref{tab:null} evaluates
 Eq.~\ref{eq:spd} at the demoted grids' Nyquist frequencies
-$f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_{\mathrm{src}}$ on the $N{=}40$
+$f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_0$ on the $N{=}40$
 mean radially-averaged latent power spectrum ($64$ radial bins; $P$ at
 the $896/768/512$ cuts $= 0.025/0.029/0.065$). The equal-power slice
 $\delta = (1+P_\omega)/2$ recovers
@@ -423,12 +424,15 @@ $896{\to}512$ & .318 & .372 & .308 & .340 & .320 & .280 & .329 & .217 \\
 \end{table}
 
 \begin{table}[h]
-\caption{Route-uniformity of the mean prediction residual: cross-grid
+\caption{Route-uniformity (in amplitude) of the mean prediction
+residual: cross-grid
 excess of $\bar r = \mathbb{E}_\epsilon[\hat v - (\epsilon - x)]$ over
 split-half floors (relative $L_2$; same-grid re-encoding control
 $\le 0.02$ everywhere). The three main routes coincide within
 ${\sim}\pm 0.02$ at every $\sigma$ while their gradient floors span $0$ to
-$0.3$.}
+$0.3$. This is a norm read; the direction-resolved follow-up
+(\S\ref{sec:anatomy}) shows the underlying mismatch directions are
+image- and route-specific.}
 \label{tab:residual}
 \centering
 \small

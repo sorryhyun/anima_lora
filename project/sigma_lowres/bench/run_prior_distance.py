@@ -97,6 +97,26 @@ def parse_args() -> argparse.Namespace:
         "1280 cache from prep_1280_probe.py)",
     )
     p.add_argument("--max_per_artist", type=int, default=None)
+    p.add_argument(
+        "--uncond",
+        action="store_true",
+        help="condition every forward on the T5('') uncond crossattn (bundled "
+        "sidecar asset) instead of each image's caption embedding. With full "
+        "captions the model may never fall back to a grid-conditional content "
+        "prior (composition pinned by text); this arm frees it to — the "
+        "designated test of the 'small canvas → portrait prior' account of "
+        "cross-route Δr̄ direction structure (cross-image direction "
+        "consistency should appear at high σ if that account is real).",
+    )
+    p.add_argument(
+        "--save_residuals",
+        action="store_true",
+        help="dump every per-image per-grid per-σ residual parity half-mean "
+        "pair (m1, m2) as fp16 npz under <run_dir>/residuals/ — the raw "
+        "objects behind d/floor/excess, so cross-route Δr̄ structure "
+        "(pairwise cosines / stacked SVD; the 'is m route-uniform per-band "
+        "or only in norm' read) is a CPU reanalysis instead of a rerun.",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--quant_k", type=int, default=4)
     p.add_argument("--label", default=None)
@@ -178,6 +198,17 @@ def main() -> None:
     bundle = build_anima(args, dit_path=args.dit, adapter=None, train_mode=False)
     anima = bundle.anima
 
+    uncond = None
+    if args.uncond:
+        from library.preprocess.uncond import ensure_uncond_crossattn
+
+        uncond = ensure_uncond_crossattn(
+            qwen3_path="",  # bundled sidecar asset — staging fallback unused
+            dit_path=args.dit,
+            device=device,
+            dtype=torch.bfloat16,
+        )
+
     run_dir = make_run_dir(
         "sigma_lowres", args.label, root=Path(__file__).resolve().parent / "results"
     )
@@ -189,11 +220,14 @@ def main() -> None:
     t0 = time.time()
 
     for i, r in enumerate(probe):
-        crossattn, _ = load_cached_text_features(r.te_path, variant=0)
-        if crossattn is None:
-            log.info(f"  [{i}] {r.artist}/{r.stem}: no crossattn_emb — skipped")
-            continue
-        crossattn = crossattn.unsqueeze(0).to(device=device, dtype=torch.bfloat16)
+        if uncond is not None:
+            crossattn = uncond
+        else:
+            crossattn, _ = load_cached_text_features(r.te_path, variant=0)
+            if crossattn is None:
+                log.info(f"  [{i}] {r.artist}/{r.stem}: no crossattn_emb — skipped")
+                continue
+            crossattn = crossattn.unsqueeze(0).to(device=device, dtype=torch.bfloat16)
 
         lats: dict[str, torch.Tensor] = {native: load_cached_latents(r.npz_path)[0]}
         lats["reenc"] = extra_latents[(r.stem, "reenc")]
@@ -211,6 +245,16 @@ def main() -> None:
                     crossattn,
                     args.draws,
                     args.seed * 1_000_000 + i * 10_000 + gi * 1_000 + si * 100,
+                )
+        if args.save_residuals:
+            res_dir = run_dir / "residuals"
+            res_dir.mkdir(exist_ok=True)
+            for (g, si), (m1, m2) in halves.items():
+                np.savez_compressed(
+                    res_dir / f"{r.stem}__{g}__s{si}.npz",
+                    m1=m1.half().cpu().numpy(),
+                    m2=m2.half().cpu().numpy(),
+                    sigma=np.float32(sigmas[si]),
                 )
 
         row: dict = {

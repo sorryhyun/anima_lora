@@ -126,9 +126,18 @@ def encode_probe_latents(
     vae_path: str,
     device: torch.device,
     reenc_control: bool,
+    *,
+    repromote: bool = False,
 ) -> dict[tuple[str, str], torch.Tensor]:
     """VAE-encode the non-cached arms; VAE is loaded, used, and freed before
-    the DiT ever loads (lazy-loading invariant)."""
+    the DiT ever loads (lazy-loading invariant).
+
+    ``repromote`` adds a ``repromote<e>`` arm per edge: the demoted pixels
+    resized straight back up to the native bucket and encoded there — the same
+    band destruction as ``demote<e>`` but on the NATIVE grid/graph (the
+    operational data-branch intervention B of the interventional split; its
+    pipeline cost is the demote arm's own down+up resize, with ``reenc`` as
+    the same-grid encode-chain control)."""
     from library.datasets.image_utils import IMAGE_TRANSFORMS
     from library.models.qwen_vae import load_vae
     from library.preprocess.images import resize_to_bucket
@@ -137,21 +146,28 @@ def encode_probe_latents(
     vae = load_vae(
         vae_path, device=device, dtype=torch.bfloat16, eval=True, vae_2d=True
     )
+
+    def encode(vae_, px_img) -> torch.Tensor:
+        px = (
+            IMAGE_TRANSFORMS(np.array(px_img))
+            .unsqueeze(0)
+            .to(device=device, dtype=vae_.dtype)
+        )
+        with torch.no_grad():
+            return vae_.encode_pixels_to_latents(px)[0].float().cpu()
+
     out: dict[tuple[str, str], torch.Tensor] = {}
     for r in records:
         img = Image.open(r.png_path).convert("RGB")
-        jobs = [(f"demote{e}", demoted_bucket(r, e)) for e in edges]
+        for e in edges:
+            dem_img = resize_to_bucket(img, demoted_bucket(r, e))
+            out[(r.stem, f"demote{e}")] = encode(vae, dem_img)
+            if repromote:
+                out[(r.stem, f"repromote{e}")] = encode(
+                    vae, resize_to_bucket(dem_img, r.cached_px)
+                )
         if reenc_control:
-            jobs.append(("reenc", r.cached_px))
-        for arm, bucket in jobs:
-            px_img = resize_to_bucket(img, bucket)
-            px = (
-                IMAGE_TRANSFORMS(np.array(px_img))
-                .unsqueeze(0)
-                .to(device=device, dtype=vae.dtype)
-            )
-            with torch.no_grad():
-                out[(r.stem, arm)] = vae.encode_pixels_to_latents(px)[0].float().cpu()
+            out[(r.stem, "reenc")] = encode(vae, resize_to_bucket(img, r.cached_px))
     del vae
     torch.cuda.empty_cache()
     return out

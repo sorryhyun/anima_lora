@@ -211,7 +211,7 @@ Pre-registered read:
    either (consistent with 896); the run still banks read 1 and the
    route keeps σ\*∈(0.625, 0.875) with plain rope.
 
-## Phase 1b — trainer wiring **[BUILT 2026-07-26]** + the gate **[OPEN]**
+## Phase 1b — trainer wiring **[BUILT 2026-07-26]** + the gate **[E4 core RUN 2026-07-30 — CMMD read owed]**
 
 Wiring shipped opt-in (`--sigma_lowres`, route pinned to 1024→896 @ σ>0.5) —
 full description in `methods.md` §"Phase 1b trainer wiring". Key deviations
@@ -230,13 +230,16 @@ rank-space ΔW read (`bench/yarnsig_report.md` §"yarnsig in-vivo arm",
 the best late-block agreement of any pair — the rope footprint sits in the
 low-signal early/mid blocks. No red flag; not a gate substitute.
 
-- **Gate (still owed)**: fixed-steps A/B — CMMD non-inferior (within-run
-  usage only, per `project_cmmd_val_signal`) + rendered spot-check + realized
-  wall-clock logged. Now **three-armed**: baseline vs `--sigma_lowres` vs
-  `--sigma_lowres --sigma_lowres_yarnsig` (`tenth` preset × 4 epochs; paired
-  checkpoints already exist for weight-space reads). Pitch is wall-clock at
-  fixed steps, never "more steps in the same time" (autoscale lesson). CMMD
-  regression → close the line (pre-committed).
+- **Gate**: the E4 grid (`paper_bench/completed_experiments.md` §E4 — 4 arms
+  × 3 seeds × 2 artists, superseding the three-armed sketch) ran 2026-07-30:
+  wall-clock **measured −14.6% / −15.1% FLOPs** at fixed steps, and the
+  seed-noise yardstick puts sigma896's render deltas inside the seed lottery.
+  **Still owed**: the CMMD non-inferiority read — the exercise pass had no
+  metric power (negative control unsafe768 ≈ native at exercise N; full-band
+  rescoring queued, `paper_bench/required_experiments.md` §E4) — plus val
+  loss + peak mem. Pitch is wall-clock at fixed steps, never "more steps in
+  the same time" (autoscale lesson). CMMD regression → close the line
+  (pre-committed).
 
 ## Phase 1c — bespoke loops (EC / turbo) — gated on separate probes
 

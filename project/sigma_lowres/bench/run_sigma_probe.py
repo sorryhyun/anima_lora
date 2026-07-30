@@ -188,6 +188,44 @@ def parse_args() -> argparse.Namespace:
         "e.g. --yarn_sigma_gate 0.35,2",
     )
     p.add_argument(
+        "--repromote",
+        action="store_true",
+        help="add an '<e>rp' arm per demote edge: the demoted pixels resized "
+        "straight back UP to the native bucket and re-encoded — the same band "
+        "destruction as the demote arm but on the NATIVE grid/graph. This is "
+        "the operational data intervention B = g_rp - g_native of the "
+        "interventional split (graph intervention C = g_demote - g_rp), so "
+        "gap_<e>rp reads the data branch with Floor = 0 by construction and "
+        "C(sigma) reads the graph share per bin without assuming it "
+        "sigma-flat. Pair with --keep_arm_sums to retain the mean vectors "
+        "the B/C ledger needs.",
+    )
+    p.add_argument(
+        "--keep_arm_sums",
+        action="store_true",
+        help="retain the cross-image SUM of every arm's per-bin flat LoRA "
+        "gradient (both draw sets, every target-alpha) as fp32 memmaps under "
+        "<run_dir>/arm_sums/ + manifest.json. Turns scalar-cosine runs into "
+        "vector-ledger runs (B/C split, kappa_par/kappa_perp, exact "
+        "counterfactual angles) at ~311 MB x arms x bins of disk and zero "
+        "extra forwards. Vectors are sums over images of per-image "
+        "draw-summed gradients — divide by n_images*draws for means.",
+    )
+    p.add_argument(
+        "--target_kappa",
+        action="store_true",
+        help="with --target_alpha 0,1 (endpoint-only: --bins 0 "
+        "--endpoint_bin): per image, form the EXACT target-content gradient "
+        "t_arm = g_arm(alpha=1) - g_arm(alpha=0) (the forward pass is "
+        "alpha-independent, so the difference is exact at shared seeds) and "
+        "report per-arm kappa_par_<k> = ghat_src . (t_k - t_src) / G and "
+        "kappa_perp_<k> = |P_perp (t_k - t_src)| / G, plus the a-vs-b "
+        "null and |t|/G observability norms. Resolves whether an "
+        "unresolvable alpha-slope means parallel landing (rescaling, "
+        "invisible to the angular gap) or genuine J^T attenuation of the "
+        "destroyed band.",
+    )
+    p.add_argument(
         "--pool",
         type=int,
         default=0,
@@ -487,6 +525,61 @@ class PoolAccumulator:
                 self._add(name, mine, key, vecs)
         self.n += other.n
         self.redundancy.extend(other.redundancy)
+
+
+class ArmSumAccumulator:
+    """Cross-image sums of per-bin flat LoRA gradients, one fp32 disk memmap
+    per (arm key, bin) under ``dir/``. Unlike :class:`PoolAccumulator` this
+    keeps EVERY arm (native a/b, alt draw sets, every target-alpha suffix)
+    and survives the run — the raw material for the interventional
+    vector ledger (B/C split, kappa components, exact angles). Keys are
+    sanitized for filenames (``@`` → ``~``); ``manifest.json`` records the
+    mapping plus the scale convention (sum over images of per-image
+    draw-summed gradients).
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.maps: dict[tuple[str, int], np.memmap] = {}
+        self.n_images: dict[str, int] = {}
+
+    @staticmethod
+    def _fname(key: str, bi: int) -> str:
+        return f"{key.replace('@', '~')}__b{bi}.npy"
+
+    def add(self, key: str, vecs: list[torch.Tensor]) -> None:
+        from numpy.lib.format import open_memmap
+
+        for bi, v in enumerate(vecs):
+            mm = self.maps.get((key, bi))
+            if mm is None:
+                path = self.root / self._fname(key, bi)
+                mm = open_memmap(path, mode="w+", dtype=np.float32, shape=(v.numel(),))
+                self.maps[(key, bi)] = mm
+            mm += v.numpy()
+        self.n_images[key] = self.n_images.get(key, 0) + 1
+
+    def finalize(self, meta: dict) -> None:
+        for mm in self.maps.values():
+            mm.flush()
+        keys = sorted({k for k, _ in self.maps})
+        manifest = {
+            **meta,
+            "scale": "sum over images of per-image draw-summed gradients "
+            "(divide by n_images * draws_per_bin for the mean gradient)",
+            "keys": {
+                k: {
+                    "n_images": self.n_images[k],
+                    "files": [
+                        self._fname(k, bi)
+                        for bi in sorted(bi for kk, bi in self.maps if kk == k)
+                    ],
+                }
+                for k in keys
+            },
+        }
+        (self.root / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
 
 def pool_stats(acc: PoolAccumulator, arm_keys: list[str]) -> dict:
@@ -814,6 +907,14 @@ def main() -> None:
                 "--pool/--per_group/--draw_sweep/--x_zero"
             )
         log.info(f"target-alpha sweep: alphas={alphas} (alpha=1 keys unsuffixed)")
+    if args.target_kappa:
+        if not (0.0 in alphas and 1.0 in alphas):
+            raise SystemExit("--target_kappa needs --target_alpha including 0 and 1")
+        if args.bins != 0 or not args.endpoint_bin:
+            raise SystemExit(
+                "--target_kappa is endpoint-only (--bins 0 --endpoint_bin): "
+                "per-image cross-alpha vector retention is sized for one bin"
+            )
     probe_tags: dict[tuple[str, str], dict] | None = None
     probe_order: list[tuple[str, str]] | None = None
     if args.probe_list:
@@ -887,8 +988,13 @@ def main() -> None:
         f"{2 + int(reenc_control) + len(edges)} arms"
     )
 
-    log.info(f"encoding demoted arms ({edges}) + reenc={reenc_control}…")
-    extra_latents = encode_probe_latents(probe, edges, args.vae, device, reenc_control)
+    log.info(
+        f"encoding demoted arms ({edges}) + reenc={reenc_control}"
+        f" + repromote={args.repromote}…"
+    )
+    extra_latents = encode_probe_latents(
+        probe, edges, args.vae, device, reenc_control, repromote=args.repromote
+    )
     if args.x_zero:
         # keep the exact demoted grid shapes, drop all content
         extra_latents = {k: torch.zeros_like(v) for k, v in extra_latents.items()}
@@ -937,12 +1043,23 @@ def main() -> None:
     arm_keys = ["reenc"] if reenc_control else []
     for e in edges:
         arm_keys.append(str(e))
+        if args.repromote:
+            arm_keys.append(f"{e}rp")
         if args.pi_align:
             arm_keys.append(f"{e}pi")
         if args.yarn_align:
             arm_keys.append(f"{e}yarn")
             if args.yarn_sigma_gate:
                 arm_keys.append(f"{e}yarnsig")
+    # seeds() spaces arms 1_000 apart inside a 10_000-wide per-image block;
+    # a/b take indices 0/1 and each arm key one more, so the last arm's
+    # draw range must stay inside the block
+    if (1 + len(arm_keys)) * 1_000 + total_draws > 10_000:
+        raise SystemExit(
+            f"{len(arm_keys)} arms x {total_draws} draws overflows the "
+            "per-image seed block (arm_idx*1000 spacing) — drop arms or draws"
+        )
+    arm_sums = ArmSumAccumulator(run_dir / "arm_sums") if args.keep_arm_sums else None
     pool_strata: list[dict] = []
     pool_spill = run_dir / "pool_agg_spill"
     pool_agg = PoolAccumulator(backing_dir=pool_spill)
@@ -1025,6 +1142,7 @@ def main() -> None:
         # seeds) resets per alpha, so every alpha sees the SAME noise draws —
         # the alpha-slope is free of draw noise, and the seed-space bounds
         # (arm_idx * 1_000 < i * 10_000 spacing) are preserved.
+        kap0: dict[str, list[torch.Tensor]] = {}
         for alpha_ in alphas:
             sfx = "" if alpha_ == 1.0 else f"@a{alpha_:g}"
             g_a, n_a = estimate(native, seeds(0), alpha=alpha_)
@@ -1098,8 +1216,7 @@ def main() -> None:
                 g_re2 = None
                 if args.self_floor:
                     g_re2, _ = estimate(re_lat, seeds(arm_idx, alt=True), alpha=alpha_)
-                    if args.pool:
-                        arms["reenc__2"] = g_re2
+                    arms["reenc__2"] = g_re2
                 stat_futs.append(
                     stats_pool.submit(arm_stats, "reenc" + sfx, g_re, None, g_re2)
                 )
@@ -1109,6 +1226,10 @@ def main() -> None:
             for e in edges:
                 lat = extra_latents[(r.stem, f"demote{e}")]
                 demote_arms.append((str(e), lat, None))
+                if args.repromote:
+                    demote_arms.append(
+                        (f"{e}rp", extra_latents[(r.stem, f"repromote{e}")], None)
+                    )
                 # per-axis stretch in patch units: demoted patch i sits at
                 # i * (native_patches / demoted_patches), spanning the native
                 # coordinate range so relative RoPE phases match native's
@@ -1145,8 +1266,7 @@ def main() -> None:
                     g_d2, _ = estimate(
                         lat, seeds(arm_idx, alt=True), rope_patch=patch, alpha=alpha_
                     )
-                    if args.pool:
-                        arms[f"{key}__2"] = g_d2
+                    arms[f"{key}__2"] = g_d2
                 stat_futs.append(
                     stats_pool.submit(arm_stats, key + sfx, g_d, n_d, g_d2)
                 )
@@ -1158,6 +1278,62 @@ def main() -> None:
                 cur_pool.add_image(arms, r.redundancy)
                 if cur_pool.n == args.pool:
                     finalize_stratum()
+            if arm_sums is not None:
+                for k, v in arms.items():
+                    arm_sums.add(k + sfx, v)
+            if args.target_kappa and alpha_ == 0.0:
+                # tensors survive the free below (only the LISTS are cleared)
+                kap0 = {k: list(v) for k, v in arms.items()}
+            if args.target_kappa and alpha_ == 1.0 and kap0:
+                # exact target-content gradients: the forward pass is
+                # alpha-independent and seeds are shared across alphas, so
+                # t = g(1) - g(0) = E_draws[J^T x] with zero draw noise
+                inv2d = 1.0 / (2.0 * args.draws_per_bin)
+                invd = 1.0 / args.draws_per_bin
+                kap: dict[str, list[float]] = {}
+                for bi in range(len(arms["a"])):
+                    a1, b1 = arms["a"][bi].double(), arms["b"][bi].double()
+                    a0, b0 = kap0["a"][bi].double(), kap0["b"][bi].double()
+                    src = (a1 + b1) * inv2d
+                    g_norm = float(src.norm())
+                    ghat = src / g_norm
+                    t_src = ((a1 - a0) + (b1 - b0)) * inv2d
+                    t_null = ((a1 - a0) - (b1 - b0)) * inv2d
+                    del src
+
+                    def kap_of(dt: torch.Tensor, name: str) -> None:
+                        par = float(torch.dot(ghat, dt))
+                        perp = math.sqrt(max(0.0, float(dt.norm()) ** 2 - par * par))
+                        kap.setdefault(f"kappa_par_{name}", []).append(
+                            round(par / g_norm, 6)
+                        )
+                        kap.setdefault(f"kappa_perp_{name}", []).append(
+                            round(perp / g_norm, 6)
+                        )
+
+                    kap.setdefault("tnorm_src", []).append(
+                        round(float(t_src.norm()) / g_norm, 6)
+                    )
+                    kap_of(t_null, "null")  # a-vs-b draw-noise floor of t_src
+                    for k in arms:
+                        if k in ("a", "b"):
+                            continue
+                        t_k = (arms[k][bi].double() - kap0[k][bi].double()) * invd
+                        kap.setdefault(f"tnorm_{k}", []).append(
+                            round(float(t_k.norm()) / g_norm, 6)
+                        )
+                        kap_of(t_k - t_src, k)
+                        del t_k
+                row.update(kap)
+                kap0 = {}
+                log.info(
+                    "  [kappa] "
+                    + " ".join(
+                        f"{k[10:]}=({row[k][-1]:+.4f},{row['kappa_perp_' + k[10:]][-1]:.4f})"
+                        for k in row
+                        if k.startswith("kappa_par_")
+                    )
+                )
             # free this image's ~8 GB of flat gradient vectors now — otherwise
             # the locals keep them resident through the next image's compute
             for vecs in arms.values():
@@ -1245,6 +1421,20 @@ def main() -> None:
                     + " ".join(f"a{a:g}={v:+.4f}" for a, v in pts)
                     + f" slope={slope:+.4f}"
                 )
+
+    if args.target_kappa:
+        for key in sorted(
+            k for k in rows[0] if k.startswith(("kappa_par_", "kappa_perp_", "tnorm_"))
+        ):
+            headline[key] = bin_stats(key)
+        for key in sorted(k for k in headline if k.startswith("kappa_par_")):
+            arm = key[len("kappa_par_") :]
+            log.info(
+                f"[target-kappa] {arm}: par={headline[key]['mean'][-1]:+.5f}"
+                f"±{headline[key]['sem'][-1]:.5f} "
+                f"perp={headline[f'kappa_perp_{arm}']['mean'][-1]:+.5f}"
+                f"±{headline[f'kappa_perp_{arm}']['sem'][-1]:.5f}"
+            )
 
     if sweep:
         headline["draw_prefixes"] = sweep
@@ -1340,6 +1530,25 @@ def main() -> None:
                 f"[per-group] {e} type gaps @ last bin: "
                 + ", ".join(f"{n}={v:+.3f}" for n, v in ranked)
             )
+
+    if arm_sums is not None:
+        arm_sums.finalize(
+            {
+                "adapter": args.adapter,
+                "sigma_centers": centers,
+                "bins": args.bins,
+                "endpoint_bin": args.endpoint_bin,
+                "draws_per_bin": args.draws_per_bin,
+                "target_alphas": alphas,
+                "arm_keys": arm_keys,
+                "self_floor": args.self_floor,
+                "repromote": args.repromote,
+                "demote_edges": args.demote_edges,
+                "n_images": len(rows),
+                "seed": args.seed,
+            }
+        )
+        log.info(f"arm sums → {run_dir / 'arm_sums'} ({len(arm_sums.maps)} vectors)")
 
     log.info(json.dumps(headline, indent=2))
     write_result(

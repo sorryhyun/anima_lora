@@ -3,7 +3,9 @@
 What exists in code for the σ-conditional low-res gradient line: the
 observability instrumentation (Measurements A/B below) **and, since
 2026-07-26, the Phase 1b trainer wiring** (next section) — built opt-in
-(`--sigma_lowres`), gate (fixed-steps CMMD A/B) still owed.
+(`--sigma_lowres`). The E4 grid measured the wiring end-to-end 2026-07-30
+(−14.6% wall at fixed steps); the CMMD non-inferiority read is still owed
+(`paper_bench/required_experiments.md` §E4).
 
 ## Phase 1b trainer wiring (shipped 2026-07-26, opt-in)
 
