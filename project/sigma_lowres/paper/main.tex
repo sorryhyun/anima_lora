@@ -41,29 +41,30 @@ Independent researcher\\
 \renewcommand{\headrulewidth}{0pt}
 
 \begin{abstract}
-Training a diffusion transformer consumes compute superlinearly in
-resolution, and a recent family of methods therefore trains or samples
-at reduced resolution on a spectral premise: at high noise, a
-downscaled latent carries almost the full surviving signal. But
-low-resolution steps are reported to deliver a training signal that
-differs from native --- these methods observe a training--inference
-gap and retrain against stage-specific targets rather than
-substituting latents under the native objective. We measure
-directly \emph{when} a downscaled training step yields the native
-gradient, with a debiased gap estimator (naive finite-draw estimation
-manufactures the very effect under test). The substitution's cost
-splits in two: a noise-dependent term governed by the downscale
-\emph{ratio}, and a $\sigma$-independent floor governed by the target
-grid's \emph{absolute token count}, carried by the compute graph
-itself. No noise level rescues a $2\times$ downscale; but on the
-mildest route ($1024{\to}896$) the training signal is indistinguishable
-from native at instrument resolution for $\sigma > 0.5$ --- a window no
-spectral tolerance predicts, and which our two-term account predicts on
-held-out routes at $0.07$--$0.09$ RMSE. Gating substitution on that
-window gives \emph{selective} low-resolution training: $-14.6\%$
-wall-clock at a fixed step budget, with a sample-level footprint within
-the training-seed lottery (quality non-inferiority at production scale
-remains open).
+Diffusion transformers deliver strong image generation, but their
+training cost grows superlinearly with resolution. A recent family of
+methods therefore trains or samples at reduced resolution on a
+spectral premise: at high noise, a downscaled latent preserves almost
+the full surviving signal. The evidence for that premise, however,
+lives at the level of generated output --- whether a downscaled step
+also delivers the \emph{native training gradient}, under the same
+model and objective, has not been measured; existing methods sidestep
+the question by retraining against stage-specific targets. We measure
+it directly, with a debiased gap estimator (naive finite-draw
+estimation manufactures the very effect under test), and find the
+substitution's cost splits into two parts: a noise-dependent term
+governed by the downscale \emph{ratio}, and a $\sigma$-independent
+floor governed by the target grid's \emph{absolute token count},
+carried by the compute graph itself. No noise level rescues a
+$2\times$ downscale; but on the mildest route ($1024{\to}896$) the
+training gradient is indistinguishable from native at instrument
+resolution for $\sigma > 0.5$, despite roughly a quarter fewer input
+tokens --- a window no spectral tolerance predicts, and which our
+two-term account predicts on held-out routes at $0.07$--$0.09$ RMSE.
+Gating substitution on that window gives \emph{selective}
+low-resolution training: $-14.6\%$ wall-clock at a fixed step budget,
+with a sample-level footprint within the training-seed lottery
+(quality non-inferiority at production scale remains open).
 \end{abstract}
 
 \section{Introduction}
@@ -77,29 +78,35 @@ adapter be computed on a downscaled latent as a drop-in substitute for
 the native one --- same model, same objective, same $\sigma$
 distribution, only the spatial grid changed on some steps?
 
-Under flow-matching noising
-$z_\sigma = (1-\sigma)x + \sigma\epsilon$, the per-frequency
-signal-to-noise ratio falls with $\sigma$, and high spatial frequencies
-drop below the noise floor first --- so above a spectral crossover, a
-downscaled latent carries \emph{almost} the full surviving signal. This
-observation underwrites scale-wise distillation
+There is a well-studied reason to hope the answer is yes. As the noise
+level $\sigma$ grows, per-frequency signal-to-noise falls, and high
+spatial frequencies drop below the noise floor first --- so above a
+spectral crossover, a downscaled latent carries \emph{almost} the full
+surviving signal. But the studies of this resolution gap live almost
+entirely on the \emph{inference} side: scale-wise distillation
 \citep{starodubcev2025swd}, spectral progressive diffusion
-\citep{xiao2026spd}, pyramidal flow matching \citep{jin2024pyramidal},
-spectrally-guided noise schedules \citep{esteves2026spectral}, and
-progressive-resolution training more broadly
-\citep{karras2018progressive,chen2024pixartalpha,hoogeboom2023simple}.
-By this spectral premise, substitution is safe \emph{whenever the noise
-has masked the frequencies the coarse grid loses}.
+\citep{xiao2026spd}, and spectrally-guided noise schedules
+\citep{esteves2026spectral} run high-noise \emph{sampling} steps at
+reduced resolution and judge the premise by the generated output. And
+where resolution is reduced during training --- pyramidal flow
+matching \citep{jin2024pyramidal}, progressive-resolution training
+more broadly
+\citep{karras2018progressive,chen2024pixartalpha,hoogeboom2023simple}
+--- the low-resolution stage is given its own, modified objective, and
+success is again read off the final samples. By the spectral premise,
+substitution is safe \emph{whenever the noise has masked the
+frequencies the coarse grid loses}.
 
-Whether that premise licenses a training-side substitution is a
-different question. What a training step consumes is the expected
-adapter gradient, and demotion perturbs more than the network's input:
-the regression target carries the clean image at unit weight at every
-noise level, and the compute graph itself changes with the grid. Nor
-does the premise's original evidence settle the matter: it lives at the
-level of generated output, and a small quality-score difference does
-not transfer to a small difference in what a training step
-\emph{learns}. This paper measures the question directly, at the
+None of this work, however, analyzes the gap at \emph{training} time
+--- whether a downscaled step delivers the native gradient under an
+unchanged objective --- and that is the different route this paper
+takes. What a training step consumes is the expected adapter gradient,
+and demotion perturbs more than the network's input: the regression
+target carries the clean image at unit weight at every noise level,
+and the compute graph itself changes with the grid. Nor does
+output-level evidence settle the matter: a small quality-score
+difference does not transfer to a small difference in what a training
+step \emph{learns}. This paper measures the question directly, at the
 gradient level, holding model and objective fixed.
 
 Measuring it honestly is, unexpectedly, a metrology problem. The
@@ -113,62 +120,46 @@ measured resolution.
 The contributions:
 
 \begin{enumerate}
-\item \textbf{Gap metrology: a debiased estimator and a certification
-resolution} (\S\ref{sec:estimand}, \S\ref{sec:instrument}). We introduce
-per-arm self-floors with a split-half attenuation correction and a
-draw-count extrapolation $\gap(D) = \gap_\infty + c/D$ (an uncorrected
-native self-cosine reads $0.85$ at the noise endpoint; corrected, it
-extrapolates to $1.005$, CI $[0.994, 1.016]$), and derive the
-instrument's median certification resolution $\epsstar(N, D)$: ``safe''
-is a one-sided non-inferiority statement at that resolution, never an
-absolute claim.
-\item \textbf{A theory of the demotion gap, stated before it is fit}
-(\S\ref{sec:theory}). From the perturbation expansion and cosine
-geometry we derive, unconditionally, a four-term angular expansion of
-the gap --- data share, graph share, projected interaction, remainder
---- and, under four named assumptions, its reduction to a two-term
-account: a route amplitude on a universal mismatch shape read through
-the U-shaped gradient norm, plus a $\sigma$-independent graph floor. The
-spectral argument, in its strongest tolerance-parameterized form (SPD,
-\citealp{xiao2026spd}), enters as the null model of the data term's
-input-mediated part --- ratio-only, and floorless by construction.
-\item \textbf{Debiased measurements that discharge the theory's
-predictions and reject the null where the accounts diverge}
-(\S\ref{sec:evidence}). The floor exists, is $\sigma$-flat, equals its
-image-free control at every route, and decomposes into a rotary
-coordinate-system share and a graph residue; ratio governs the
-amplitude while absolute size governs the floor; the null is scored
-across its entire tolerance family, including a parameter-free anchor
-measured from the pipeline's own re-encode noise floor, and no member
-reproduces the map; the account \emph{predicts} held-out routes at
+\item \textbf{Gap metrology and a two-term account of what demotion
+costs} (\S\ref{sec:theory}). We define the
+demotion gap at the gradient level and build a debiased instrument for
+it: per-arm self-floors with a split-half attenuation correction, a
+draw-count extrapolation $\gap(D) = \gap_\infty + c/D$, and a
+certification resolution $\epsstar(N, D)$ under which ``safe'' is a
+one-sided non-inferiority statement, never an absolute claim. From the
+perturbation expansion and cosine geometry, the gap reduces under four
+named assumptions to a \emph{two-term account}: a route amplitude on a
+universal mismatch shape read through the U-shaped gradient norm, plus
+a $\sigma$-independent graph floor. The account connects directly to
+the inference-side literature: the spectral argument, in its strongest
+tolerance-parameterized form (SPD, \citealp{xiao2026spd}), enters as
+the null model of the data term's input-mediated part --- ratio-only,
+and floorless by construction.
+\item \textbf{A measured safety map and a predictive tool}
+(\S\ref{sec:evidence}, \S\ref{sec:practical}). Measured with that
+instrument, the mildest route ($1024{\to}896$) is indistinguishable
+from the re-encode control for $\sigma > 0.5$ at instrument
+resolution, while no noise level rescues a $2\times$ downscale --- and
+no member of the spectral tolerance family reproduces the measured
+map. The two-term account \emph{predicts} held-out routes at
 ${\sim}0.07$--$0.09$ RMSE, with the floor law hitting two floors it
-never saw. The exact angular form of the account resolves a systematic
-overshoot its quadratic reduction leaves (\S\ref{sec:confronted}).
-\item \textbf{The answer, in deployable form} (\S\ref{sec:practical}). A
-measured $(\text{route}, \sigma)$ safety map at stated resolution ---
-$\{1024{\to}896$ at $\sigma>0.5$; $1280{\to}1024$ at
-$\sigma \gtrsim 0.75\}$, no certifiable window for $1024{\to}768$,
-certifiably unsafe everywhere for ${\to}512$ --- and an opt-in
-$\sigma$-conditional trainer that substitutes the downscaled latent
-only on measured-safe steps. On a fixed-step exercise grid ($5$ arms
-$\times$ $3$ seeds $\times$ $2$ corpora, bit-exact paired draws) it
-realizes $-15.1\%$ forward FLOPs and $-14.6\%$ wall-clock while
-perturbing endpoint samples no more than a change of training seed
-(the seed-noise yardstick, Table~\ref{tab:yardstick});
-generation-quality non-inferiority at production scale remains the
-stated open gate.
+never saw --- a tool for anticipating a route's gap before measuring
+it. Gating substitution on the measured-safe windows gives an opt-in
+$\sigma$-conditional trainer realizing $-15.1\%$ forward FLOPs and
+$-14.6\%$ wall-clock at a fixed step budget, with a sample-level
+footprint within the training-seed lottery (the seed-noise yardstick,
+Table~\ref{tab:yardstick}); generation-quality non-inferiority at
+production scale remains the stated open gate.
 \end{enumerate}
 
-The paper proceeds theory-first. \S\ref{sec:related} situates the
-question; \S\ref{sec:theory} defines the estimand and its certification
-resolution, derives the angular account of the demotion gap, states the
-spectral argument as a null model of its data term, and constructs the
-debiased estimator; \S\ref{sec:evidence} builds the instrument and
-discharges the account's predictions against the null;
+We first situate the question in the prior literature
+(\S\ref{sec:related}); \S\ref{sec:theory} defines the estimand and its
+certification resolution, derives the angular account of the demotion
+gap, states the spectral argument as a null model of its data term, and
+constructs the debiased estimator; \S\ref{sec:evidence} builds the
+instrument and discharges the account's predictions against the null;
 \S\ref{sec:practical} gives the resulting safety map and the
-$\sigma$-conditional trainer. Each claim is tagged with its epistemic
-status (pre-registered / confirmatory / post-hoc) where it is
-discharged.
+$\sigma$-conditional trainer.
 
 \section{Related work}
 \label{sec:related}
@@ -197,19 +188,20 @@ the gradient regime all our probes measure.
 \paragraph{Scale-wise and progressive-resolution diffusion.}
 Progressive growing \citep{karras2018progressive} and resolution curricula
 \citep{chen2024pixartalpha,hoogeboom2023simple} train at increasing
-resolution as a schedule. A more recent family ties resolution to the
+resolution as a schedule, each low-resolution stage carrying its own
+stage-specific objective. A more recent family ties resolution to the
 noise level itself, on a spectral premise. Under flow-matching noising,
 each spatial-frequency band of the signal retains an effective
 signal-to-noise ratio that falls as $\sigma$ grows, and the finest bands
 sink below the noise floor first; the noise level above which a band is
 masked is that band's \emph{crossover} $\sigma$. Above the crossover of
 the bands a coarse grid cannot represent, a downscaled latent should
-therefore carry almost the full surviving signal. Pyramidal flow
-matching \citep{jin2024pyramidal} builds its training and sampling
-pyramid on this premise, and scale-wise distillation (SwD)
-\citep{starodubcev2025swd} states the claim directly: above the
-crossover, the noised downscaled latent is close in distribution to the
-downscaled noised latent. Spectral Progressive Diffusion (SPD)
+therefore carry almost the full surviving signal. This resolution gap
+has so far been studied on the \emph{inference} side. Scale-wise
+distillation (SwD) \citep{starodubcev2025swd} states the claim
+directly --- above the crossover, the noised downscaled latent is
+close in distribution to the downscaled noised latent --- and samples
+early steps at reduced resolution. Spectral Progressive Diffusion (SPD)
 \citep{xiao2026spd} gives the argument its sharpest available form: a
 tolerance-parameterized per-frequency activation time under a diagonal
 Gaussian spectral model --- a criterion on the \emph{Bayes-optimal
@@ -219,10 +211,14 @@ Spectrally-guided noise schedules \citep{esteves2026spectral} apply the
 same per-frequency reasoning to schedule design, deriving bounds on the
 useful minimum and maximum noise levels from the image spectrum --- the
 spectral account operating as the field's working model of what noise
-masks. Our contribution is
-orthogonal to all of these: we measure whether input-level closeness
-transfers to the \emph{training gradient}, holding model and objective
-fixed --- and find it does not transfer at any tolerance.
+masks. Where the premise does enter training, as in pyramidal flow
+matching \citep{jin2024pyramidal}, the objective is restaged per
+pyramid level rather than left native, and the premise is again
+validated by the generated output. None of these analyzes what a
+low-resolution step does to the \emph{training gradient} of an
+unchanged objective; that is the question we measure, holding model
+and objective fixed --- and we find input-level closeness does not
+transfer at any tolerance.
 
 \paragraph{Positional extension.}
 Position interpolation \citep{chen2023pi}, banded/frequency-selective
@@ -237,7 +233,7 @@ resolution-sensitivity floor, and adopt the $\sigma$-gated band schedule of
 \section{Theory: the demotion gap and a two-term account}
 \label{sec:theory}
 
-\subsection{Estimand and resolution}
+\subsection{Estimand}
 \label{sec:estimand}
 
 \paragraph{Objective and noising.}
@@ -310,29 +306,25 @@ estimands, and no coefficient fitted on one is guaranteed to transfer
 to the other; the application section publishes one map for each
 (\S\ref{sec:map}).
 
-\paragraph{Resolution: what an instrument can certify.}
-Any estimate of Eq.~\ref{eq:gapdef} compares finite-draw estimates of
-population directions --- the general situation of gradient-noise-scale
-analysis \citep{mccandlish2018gns} --- so every claim carries the
-instrument's resolution. For a route whose true excess is zero, the
-paired estimate $\bar\Delta$ fluctuates with standard error
+Finally, any estimate of $d_e(\sigma)$ compares finite-draw estimates
+of population directions, so every claim carries the instrument's
+resolution. For a route whose true excess is zero, the paired estimate
+$\bar\Delta$ fluctuates with standard error
 $\mathrm{SE}(N, D, \sigma\text{-bin})$; its one-sided 95\% upper bound
-defines the \emph{certification resolution} $\epsstar$ --- the smallest
-margin certifiable even for a truly safe route --- and ``safe at margin
-$\varepsilon$'' as the non-inferiority statement
+defines the \emph{certification resolution} $\epsstar$ --- the
+smallest margin certifiable even for a truly safe route --- and ``safe
+at margin $\varepsilon$'' as the non-inferiority statement
 \begin{equation}
 \text{UB}_{95}\!\left(\bar\Delta\right) \;<\; \varepsilon,
 \qquad
 \varepsilon \;\ge\; \epsstar(N, D, \text{bin})
-\;=\; 1.645\,\mathrm{SE}(N, D, \text{bin}).
+\;=\; 1.645\,\mathrm{SE}(N, D, \text{bin}),
 \label{eq:safe}
 \end{equation}
-A ``safe'' verdict is thus a statistical non-inferiority claim at
-instrument resolution, never a hard bound, and a true gap below
-$\epsstar$ is undetectable by construction; throughout, ``no
-certifiable window'' means a route's upper bounds never cross below
-$\varepsilon$ at the current $(N, D)$, while ``certifiably unsafe''
-means its lower bound stays above it.
+never a hard bound. Throughout, ``no certifiable window'' means a
+route's upper bounds never cross below $\varepsilon$ at the current
+$(N, D)$, while ``certifiably unsafe'' means its lower bound stays
+above it.
 
 \subsection{Data and graph perturbations}
 \label{sec:branches}
@@ -462,9 +454,13 @@ $\|P_{\!\perp}B_e\| \approx a_e\, m(\sigma)$ --- a $\sigma$-independent
 route amplitude times a route-independent mismatch shape;
 \textbf{negligible projected interaction}:
 $|I_e| \ll S_e + F_e$ over the claimed domain ---
-the expansion reduces to the \emph{two-term account}
+the expansion reduces to the \emph{two-term account}, stated on the
+reported form of the estimand, the re-encoding excess of
+\S\ref{sec:estimand}:
 \begin{equation}
-\gap_e(\sigma) \;\approx\;
+\gap_e(\sigma) \;:=\; \Delta_e(\sigma) \;=\; d_e(\sigma) -
+d_{\reenc}(\sigma)
+\;\approx\;
 \underbrace{A_e \cdot \big(m(\sigma)/G(\sigma)\big)^{2}}_{\text{data term}}
 \;+\; \underbrace{\Floor_e}_{\text{graph term}},
 \qquad A_e = a_e^2/2,
@@ -473,6 +469,13 @@ the expansion reduces to the \emph{two-term account}
 where $m(\sigma) = \|\Delta \bar r(\sigma)\|$ is the mismatch of the
 model's mean prediction residual across grids (directly measurable,
 \S\ref{sec:anatomy}) and $G(\sigma)$ is the total gradient norm. The
+reduction survives the subtraction of the control because the
+$\reenc$ arm pays no grid change: it contributes no graph share, and
+its data share is precisely the re-encode component of $B_e$
+(Eq.~\ref{eq:branches}), which the excess cancels to the expansion's
+quadratic order --- so $m(\sigma)$ in Eq.~\ref{eq:twoterm} is read net
+of re-encode, and the four-term structure of $d_e$ carries over to
+$\Delta_e$ term by term. The
 quadratic power on $m/G$ is fixed by the cosine geometry \emph{locally};
 far from the small-mismatch regime the licensed read is the parent form
 itself: keeping Eq.~\ref{eq:exact} un-expanded, with the factorization's loading
