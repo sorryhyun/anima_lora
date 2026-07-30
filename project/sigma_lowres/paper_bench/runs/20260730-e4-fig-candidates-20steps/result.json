@@ -1,0 +1,22 @@
+{
+ "prompts": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/runs/20260729-1537-e4-manifest/e4_prompts_sfw.json",
+ "stems": [
+  "10607820",
+  "14296235",
+  "8508115"
+ ],
+ "arms": [
+  "native",
+  "sigma896",
+  "896only",
+  "sigma768",
+  "unsafe768"
+ ],
+ "train_seeds": [
+  1001,
+  1002,
+  1003
+ ],
+ "steps": 20,
+ "cfg": 1.0
+}

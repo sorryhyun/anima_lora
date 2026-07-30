@@ -282,6 +282,24 @@ Eval/scoring stack committed as 4f538d7e (`e4_render_eval.py`,
 `e4_flops.py`, `e4_seed_yardstick.py`); results in
 `runs/20260729-2148-e4-eval-sfw-s100{1,2,3}/` + `-yardstick/`.
 
+**2026-07-30 addendum — 5th arm `sigma768`** (σ>0.5 gate + yarnsig on
+1024→768: the off-map route under the paper's own gate, deconfounding
+unsafe768's three-knob difference; jobs 20260730-0835*, ~11 min for all
+6). SFW evals rescored 5-arm in place (renders resume-reused);
+yardstick rerun → `runs/20260730-e4-yardstick-5arm/` (4-arm original
+kept). Means vs native (hews / channel): yardstick 0.9558/0.9541,
+sigma896 **0.9551/0.9641**, 896only 0.9504/0.9500, sigma768
+0.9503/0.9553 — **sigma896 is the only arm at-or-inside the yardstick
+on both corpora**; both controls fall below on ≥1 corpus (ordering
+consistent with the map, margins small). Route-only pair
+sigma896~sigma768: 0.9488/0.9594. Paper §5 updated: measured
+−14.6%/−15.1% in Cost accounting, new `tab:yardstick` + Sample-level
+footprint paragraph (sigma768 shown as the off-map control instead of
+unsafe768), "not yet run" claim narrowed to the CMMD gate;
+`bolya2025perception` added to the bib. Fig candidate sheets with the
+sigma768 column: `runs/20260730-e4-fig-candidates-20steps/` (arm-only
+addition — other columns pixel-identical to the committed sheets).
+
 ---
 
 ## E5 — Eq. 3 held-out validation [DONE 2026-07-29 — qualified PASS]

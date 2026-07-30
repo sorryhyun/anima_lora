@@ -1527,9 +1527,12 @@ gate-widener: the gate stays $\sigma > 0.5$.
 the demoted forward at ${\sim}0.72\times$ tokens, the fixed-step epoch
 cost is ${\approx}\,0.5 \cdot 0.72 + 0.5 = 0.86$ --- a \emph{projected
 ceiling} of ${\sim}14\%$ wall-clock on our corpus ($96\%$ of records are
-on the safe route), scaling with high-tier content; the realized saving
-(including cache-load overheads) is measured only by the pending A/B
-below. The pitch is wall-clock at fixed
+on the safe route), scaling with high-tier content. On the fixed-step
+exercise grid below, the realized saving is $-15.1\%$ forward FLOPs
+(exact operator-level counts over each run's realized token histogram)
+and $-14.6\%$ wall-clock ($n{=}3$ seed means on two single-artist
+corpora; wall tracks FLOPs ${\approx}\,1{:}1$, cache-load overheads
+included) --- the projection is achieved. The pitch is wall-clock at fixed
 steps, never ``more steps in the same time.''
 
 \textbf{Weight-space sanity.} Under bit-exact deterministic training
@@ -1540,14 +1543,64 @@ refinement adds no displacement over the demotion arm it refines
 $0.320$), with its footprint concentrated in the low-signal early/mid
 blocks --- consistent with \S\ref{sec:decomposition}'s depth profile.
 
-\textbf{What this section does not claim.} The end-to-end acceptance gate
---- a fixed-step A/B at training scale scoring generation-quality
-non-inferiority (CMMD; \citealp{jayasumana2024cmmd}) against the realized
-wall-clock saving --- is designed and pre-committed (a regression closes
-the line) but not yet run; all claims above are gradient-level and
-weight-space-level. We flag this deliberately: the gap between
-gradient-level equivalence at $N{=}40$ and thousands of optimizer steps is
-exactly the kind of gap this paper is about.
+\begin{table}[t]
+\caption{Sample-level footprint vs.\ the seed lottery: paired PE-Core
+cosine at matched (prompt, noise seed), mean over the frozen prompt set
+and $3$ training seeds, on two single-artist corpora ($60$/$15$
+training images). The yardstick row is the same cosine between native
+checkpoints that differ \emph{only} in training seed --- an arm reading
+at or above it perturbs endpoint samples less than a seed change
+does.}
+\label{tab:yardstick}
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+arm pair (matched training seed) & corpus A & corpus B \\
+\midrule
+native $\leftrightarrow$ native, cross-seed (yardstick) & $0.956$ & $0.954$ \\
+shipped ($1024{\to}896$, $\sigma{>}0.5$ + alignment) $\leftrightarrow$ native & $0.955$ & $0.964$ \\
+gate off (unconditional $1024{\to}896$) $\leftrightarrow$ native & $0.950$ & $0.950$ \\
+off-map route ($1024{\to}768$, same gate + alignment) $\leftrightarrow$ native & $0.950$ & $0.955$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Sample-level footprint.} A fixed-step exercise grid ($5$ arms
+$\times$ $3$ training seeds $\times$ $2$ single-artist corpora, $480$
+optimizer steps each, bit-exact deterministic paired-RNG so every arm
+sees identical draws) renders a frozen prompt set at matched
+(prompt, noise-seed) pairs per checkpoint and embeds each render with a
+frozen vision encoder (PE-Core, pooled and unit-normalized;
+\citealp{bolya2025perception}). Table~\ref{tab:yardstick} reads each
+arm's paired cosine against its native twin, judged against a
+seed-noise yardstick --- the same cosine between native checkpoints
+differing only in training seed. The shipped path is the only arm at or
+inside the yardstick on both corpora ($0.9551$ vs $0.9558$, a tie at
+instrument resolution; $0.9641$ vs $0.9541$): swapping every
+$\sigma > 0.5$ step to the demoted sibling perturbs endpoint samples
+about as much as changing the training seed. Both controls --- the gate
+removed, and the off-map $1024 {\to} 768$ route under the same gate and
+alignment --- fall below the yardstick on at least one corpus, an
+ordering consistent with the map; but the margins are small relative to
+the spread of individual pairs, so this instrument certifies the
+absence of a gross sample-level footprint, not quality non-inferiority
+--- that read belongs to the CMMD gate below. Arm orderings shuffle
+between seeds; single-seed visual impressions of the grid are lottery
+reads.
+
+\textbf{What this section does not claim.} The generation-quality
+acceptance gate --- CMMD (\citealp{jayasumana2024cmmd}) non-inferiority
+at training scale against the realized wall-clock saving --- remains
+open. The exercise grid's first scoring pass used rating-restricted
+display prompts against mismatched reference pools and could not
+separate even the off-map control from native, so we read no quality
+verdict from it; the pre-committed full-band rescoring closes the line
+(a regression closes it negatively). Throughput and sample-level
+footprint above are measured; quality non-inferiority is not. We flag
+this deliberately: the gap between a $480$-step exercise grid and
+production-scale training is exactly the kind of gap this paper is
+about.
 
 \section{Limitations}
 \label{sec:limitations}

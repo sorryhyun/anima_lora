@@ -89,8 +89,10 @@ gradient_accumulation_steps=1
 train_adaln = true
 adaln_rank = 16
 
+# sigma_lowres_yarnsig must NOT get a default here: train.py rejects yarnsig
+# without sigma_lowres, so a base-level value crashes every non-sigma_lowres
+# run. The bare CLI flag already defaults to the probe operating point.
 sigma_lowres = false
-sigma_lowres_yarnsig = "1,4,0.35,2"
 
 use_repa = false
 

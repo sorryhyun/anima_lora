@@ -1,0 +1,158 @@
+{
+ "manifest": "project/sigma_lowres/paper_bench/runs/20260729-1537-e4-manifest/e4_manifest.json",
+ "train_seed": 1001,
+ "steps": 28,
+ "cfg": 4.0,
+ "arms": [
+  "native",
+  "sigma896",
+  "unsafe768"
+ ],
+ "cells": {
+  "hews": {
+   "n_prompts": 9,
+   "n_ref_holdout": 61,
+   "n_ref_member": 60,
+   "noise_floor": 0.42879581451416016,
+   "arms": {
+    "native": {
+     "cmmd_holdout": 1.348733901977539,
+     "cmmd_member": 1.3892650604248047
+    },
+    "sigma896": {
+     "cmmd_holdout": 1.2011528015136719,
+     "cmmd_member": 1.2705326080322266
+    },
+    "unsafe768": {
+     "cmmd_holdout": 1.4765262603759766,
+     "cmmd_member": 1.5532970428466797
+    }
+   },
+   "paired_cosine": {
+    "native~sigma896": {
+     "mean": 0.9774261116981506,
+     "min": 0.9302263855934143,
+     "per_prompt": [
+      0.9925,
+      0.9891,
+      0.9818,
+      0.9636,
+      0.9806,
+      0.9302,
+      0.9964,
+      0.9737,
+      0.9889
+     ]
+    },
+    "native~unsafe768": {
+     "mean": 0.9802732467651367,
+     "min": 0.9612511396408081,
+     "per_prompt": [
+      0.9887,
+      0.9852,
+      0.9694,
+      0.9901,
+      0.9918,
+      0.9706,
+      0.997,
+      0.9613,
+      0.9685
+     ]
+    },
+    "sigma896~unsafe768": {
+     "mean": 0.9728299379348755,
+     "min": 0.9375215768814087,
+     "per_prompt": [
+      0.9903,
+      0.9759,
+      0.9683,
+      0.9375,
+      0.9724,
+      0.9564,
+      0.9961,
+      0.9726,
+      0.9859
+     ]
+    }
+   }
+  },
+  "channel_(caststation)": {
+   "n_prompts": 12,
+   "n_ref_holdout": 15,
+   "n_ref_member": 15,
+   "noise_floor": 1.6208887100219727,
+   "arms": {
+    "native": {
+     "cmmd_holdout": 0.5301237106323242,
+     "cmmd_member": 0.6866455078125
+    },
+    "sigma896": {
+     "cmmd_holdout": 0.4049539566040039,
+     "cmmd_member": 0.5317926406860352
+    },
+    "unsafe768": {
+     "cmmd_holdout": 0.5426406860351562,
+     "cmmd_member": 0.6252527236938477
+    }
+   },
+   "paired_cosine": {
+    "native~sigma896": {
+     "mean": 0.9752013683319092,
+     "min": 0.9405918717384338,
+     "per_prompt": [
+      0.9798,
+      0.9866,
+      0.9784,
+      0.9845,
+      0.9838,
+      0.9406,
+      0.9475,
+      0.9692,
+      0.9752,
+      0.9951,
+      0.9703,
+      0.9914
+     ]
+    },
+    "native~unsafe768": {
+     "mean": 0.9710304141044617,
+     "min": 0.917930543422699,
+     "per_prompt": [
+      0.9877,
+      0.9906,
+      0.9643,
+      0.9874,
+      0.9775,
+      0.9325,
+      0.9179,
+      0.9531,
+      0.994,
+      0.9833,
+      0.9872,
+      0.9767
+     ]
+    },
+    "sigma896~unsafe768": {
+     "mean": 0.9813990592956543,
+     "min": 0.9598994255065918,
+     "per_prompt": [
+      0.9922,
+      0.9724,
+      0.985,
+      0.9975,
+      0.9875,
+      0.9775,
+      0.9716,
+      0.9724,
+      0.9846,
+      0.9897,
+      0.9599,
+      0.9866
+     ]
+    }
+   }
+  }
+ },
+ "protocol_deviation": "steps/cfg 28/4.0 vs pre-registered 20/1.0",
+ "prompts_override": "project/sigma_lowres/paper_bench/runs/20260729-1537-e4-manifest/e4_prompts_sfw.json"
+}

@@ -68,3 +68,16 @@ used). FLOPs from `token_step_hist` in each run's `run_end` event.
   The queued 3-arm evals/yardstick were killed and requeued as 4-arm
   versions (evals resume-reuse existing renders; result.json rescored over
   all 4 arms). Final FLOPs pass over all 24 runs → yardstick dir.
+
+## Amendments (2026-07-30)
+
+- **5th arm added — `sigma768`** (σ>0.5 gate + yarnsig on the 1024→768
+  route: `--sigma_lowres --sigma_lowres_route 1024:768
+  --sigma_lowres_yarnsig`, threshold default 0.5): 3 seeds × 2 artists
+  (jobs 20260730-0835*), recipe otherwise verbatim from sigma896.
+  Rationale: unsafe768 (threshold 0, no yarnsig) differs from sigma896 in
+  route AND gate AND yarnsig — sigma768 keeps the paper's gate + yarnsig so
+  sigma896 vs sigma768 is a clean **route-only** comparison (and sigma768
+  vs unsafe768 reads the gate+yarnsig contribution on the unsafe route).
+  NB the sigma896-vs-896only "σ-gate isolation" comparison is still
+  two-knob confounded (gate AND yarnsig) — 896only has no yarnsig.
