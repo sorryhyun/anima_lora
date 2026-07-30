@@ -53,8 +53,11 @@ Still owed before the paper's E4 story closes:
   in `completed_experiments.md`).
 - **val loss + peak mem** — not captured in the exercise runs (no
   validation split configured); add both to the full-band pass.
-- `reenc_noise_floor.py` run (unchanged — script exists, queued;
-  δ_reenc row + D(f) numbers for the manuscript).
+- `reenc_noise_floor.py` run — **DONE 2026-07-30**
+  (`bench/results/20260730-0940-reenc-floor/`): δ_reenc ≈ 1.0e-5 at
+  all three cuts (p10–p90 within [1,2]e-5; err var 2.7e-5 vs latent
+  var 0.419; SNR at cut 2.5–4.4e3) → t\*_reenc = 0.98/0.98/0.99.
+  Anchored row added to `tab:null`; §4.2 + appendix pendings cleared.
 - Manuscript: clear the E4 `[pending]` markers and upgrade every
   "projected ceiling of ~14%" to the measured numbers.
 
@@ -248,7 +251,8 @@ two-term account, so the paper must say "the null read through our
 bridge", which also makes §3 load-bearing for the confrontation rather
 than decorative.
 
-**Depends on:** E4's `reenc_noise_floor` run for the anchored row.
+**Depends on:** E4's `reenc_noise_floor` run for the anchored row —
+satisfied 2026-07-30 (`bench/results/20260730-0940-reenc-floor/`).
 **Cost:** analysis + figures only.
 
 ## Reproducibility deliverables (paper_bench/ contents) [FIX]

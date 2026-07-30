@@ -126,7 +126,8 @@ retained terms.
 $\|P_{\!\perp}\delta g\| = c_e\, m(\sigma)$ --- that the orthogonal
 gradient mismatch is proportional to the residual mismatch with a
 $\sigma$-independent route gain --- is an empirical ingredient
-(A3 at the amplitude level), fit and tested held-out in
+(the data-branch factorization at the amplitude level), fit and tested
+held-out in
 \S\ref{sec:confronted}. The geometry above fixes only how a given
 $\delta g$ is read into gap units.
 
@@ -182,6 +183,18 @@ the model's grid-conditioned prior; the prior-distance probe
 (\S\ref{sec:floor}) subsequently dissociated the prior from the floor's
 route ordering.
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.55\linewidth]{figs/e5_refit_1280.png}
+\caption{The second held-out route, $1280{\to}1024$, under the same
+three functional forms as Fig.~\ref{fig:e5} --- predicted from
+governors fitted on other routes. The derived quadratic systematically
+overshoots the mid-$\sigma$ peak; the exact angular link's saturation
+removes the overshoot (RMSE $0.049$ vs ${\approx}\,0.095$,
+\S\ref{sec:confronted}).}
+\label{fig:e51280}
+\end{figure}
+
 \paragraph{Held-out validation and refit (\S\ref{sec:confronted}),
 sources.} The fit consumes the debiased paired curves of the
 $1024$-tier verdict run, the $1280$-tier curves (pre-debiasing paired
@@ -209,7 +222,11 @@ The parameter-free anchor $\delta_{\reenc}$ of \S\ref{sec:phenomenon} is
 measured by the same estimator: RAPSD of the re-encode arm's latent error
 (fresh resize--encode minus cached latent, the gradient probe's own
 control chain) on the same probe set, interpolated at each route's cut
-frequency \textbf{[pending: \texttt{reenc\_noise\_floor.py}]}.
+frequency. Measured ($N{=}40$, $64$ radial bins): error variance
+$2.7\times10^{-5}$ against latent variance $0.419$;
+$D(f_{\mathrm{cut}}) \approx 1.0\times10^{-5}$ at all three cuts
+(p10--p90 over images within $[1, 2]\times10^{-5}$), giving
+$t^{*}_{\reenc} = 0.98 / 0.98 / 0.99$ for $896/768/512$.
 
 \section{Controlled-adapter replication of the verdict map}
 \label{app:e7}
@@ -236,7 +253,7 @@ solid curves are in-distribution stems --- the adapter's own style
 cluster ($n{=}36$: trained-on, held-out, and never-seen-artist cells)
 --- and dashed curves are out-of-distribution stems from the opposite
 cluster ($n{=}12$). Gray band: bin-level $\pm\epsstar$ per
-Eq.~\ref{eq:epsstar}, median of the two runs' full-$N$ SEMs for the
+Eq.~\ref{eq:safe}, median of the two runs' full-$N$ SEMs for the
 panel's route. The map replicates: on the certified route all four
 adapter$\times$distribution curves reach the band inside the window,
 on $768$ all four sit above it until the top, and within each panel the

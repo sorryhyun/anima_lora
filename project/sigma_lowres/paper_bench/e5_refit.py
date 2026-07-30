@@ -255,13 +255,14 @@ def main() -> None:
     out_dir = HERE / "runs" / f"{stamp}-e5-refit"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---- figure: in-sample 512 + the two held-out routes, three forms each ----
-    panels = ["512"] + HELD_OUT
+    # ---- figures: held-out 768 first, then the fit routes 896/512 (paper
+    # main figure); the second held-out route 1280->1024 as its own figure
+    # (paper appendix). Three forms each.
     colors = {"P": "C3", "Q": "C2", "X": "C1"}
     label = {"P": f"P: A·m/G^p (p={p_star:.2f})", "Q": "Q: A·(m/G)² (derived)",
              "X": "X: 1−1/√(1+(c·m/G)²)"}
-    fig, axes = plt.subplots(1, 3, figsize=(13.5, 3.8))
-    for ax, route in zip(axes, panels):
+
+    def draw_panel(ax, route):
         sig, y, sem = curves[route]
         ax.errorbar(sig, y, yerr=sem, fmt="o", ms=4, color="C0", capsize=2,
                     label="measured (paired)")
@@ -279,10 +280,20 @@ def main() -> None:
         ax.set_title(f"{src} ({kind})")
         ax.set_xlabel(r"$\sigma$")
         ax.legend(fontsize=6.5, loc="best")
+
+    panels = ["768", "896", "512"]
+    fig, axes = plt.subplots(1, 3, figsize=(13.5, 3.8))
+    for ax, route in zip(axes, panels):
+        draw_panel(ax, route)
     axes[0].set_ylabel(r"paired gap $\bar\Delta$")
-    fig.suptitle("E5 refit: three functional forms for the data-branch term", y=1.02)
     fig.tight_layout()
     fig.savefig(out_dir / "e5_refit.png", dpi=180, bbox_inches="tight")
+
+    fig2, ax2 = plt.subplots(figsize=(5.4, 3.8))
+    draw_panel(ax2, "1024")
+    ax2.set_ylabel(r"paired gap $\bar\Delta$")
+    fig2.tight_layout()
+    fig2.savefig(out_dir / "e5_refit_1280.png", dpi=180, bbox_inches="tight")
 
     envelope = dict(
         schema_version=1,
