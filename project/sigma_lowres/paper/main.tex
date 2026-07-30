@@ -702,18 +702,22 @@ redraw-floor cosine and the U-shaped gradient norm $G(\sigma)$
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{figs/e5_refit.png}
+\includegraphics[width=\linewidth]{figs/e5_main.png}
 \caption{The account as a predictive theory (discharged in
-\S\ref{sec:confronted}), under three functional forms for the data term
-(shared floor structure): the fitted-power form, the derived
-small-perturbation quadratic (Eq.~\ref{eq:twoterm}), and the exact
-angular link (Eq.~\ref{eq:exact}). Left: the held-out route
-$1024{\to}768$ --- every curve is predicted from governors fitted on
-\emph{other} routes; its mid-$\sigma$ dip below the predicted floor is
-form-independent (\S\ref{sec:confronted}). Middle/right: the fit routes
-$1024{\to}896$ and $1024{\to}512$. The second held-out route,
-$1280{\to}1024$ --- where the exact link's saturation removes the
-quadratic's peak overshoot --- is Appendix Fig.~\ref{fig:e51280}.}
+\S\ref{sec:confronted}), under the headline exact angular link
+(Eq.~\ref{eq:exact}; the three-form comparison is Appendix
+Fig.~\ref{fig:e51280}). Left: $1024$-tier predictions with zero
+per-route freedom --- the pre-registered held-out route $1024{\to}768$,
+and $1024{\to}896$ under the post-hoc leave-$896$-out re-derivation (so
+labeled; governors from $512{+}1120$ alone). Dashed: each route's
+predicted floor $F(n)$; the gap between dashed and solid is the data
+term. Bands: $68\%/95\%$ full-pipeline bootstrap (resample images
+$\to$ re-bin $\to$ refit $\to$ re-derive governors $\to$ re-predict;
+$B{=}1000$; $\bar m$ and $G$ are run-level instruments, held fixed).
+The $768$ mid-$\sigma$ dip sits outside the $95\%$ band
+(\S\ref{sec:confronted}). Right: predicted vs measured across all five
+routes and bins under the pre-registered pipeline; filled: the two
+held-out routes; open: fit routes (in-sample).}
 \label{fig:e5}
 \end{figure}
 
@@ -1288,7 +1292,11 @@ difference in target capacity;
 (iv)~the floor law $F(n) = 0.70\,e^{-n/1041\,\mathrm{tok}}$, fit on the
 $512$ and $896$ floors, predicts $F(4825) = +0.007$ for the $1120$ grid
 (fitted $+0.002$) and $F(2160) = +0.088$ for the held-out $768$ grid ---
-against a measured endpoint floor of $+0.092 \pm 0.012$, dead-on. A
+against a measured endpoint floor of $+0.092 \pm 0.012$. The point
+estimate lands dead-on, but its own sampling spread is wide: a
+full-pipeline bootstrap (Fig.~\ref{fig:e5}; \S\ref{sec:trainer}) puts
+$F(2160)$ at $68\%$ $[+0.042, +0.091]$ --- consistent at the interval's
+upper edge, so the licensed read is agreement, not exactness. A
 post-hoc leave-$896$-out addendum (so labeled) re-derives the governors
 from $512$+$1120$ alone and predicts the $896$ floor at $+0.019$ against
 the measured $+0.019$ $[+0.010, +0.030]$: the floor law is 2-for-2 on
@@ -1299,7 +1307,9 @@ Refitting the same pipeline under three forms for the data term --- a
 fitted power $A\,m/G^p$ with $p$ shared and free, the derived quadratic
 $A\,(m/G)^2$, and the exact angular link (Eq.~\ref{eq:exact}) ---
 resolves the form question in the geometry's favor twice over
-(Fig.~\ref{fig:e5}). First, the free exponent's own optimum lands on
+(Appendix Fig.~\ref{fig:e51280}; on the fit routes the three forms are
+visually indistinguishable, so Fig.~\ref{fig:e5} carries the headline
+form only). First, the free exponent's own optimum lands on
 $p = 2.00$ exactly: the ``empirical'' power form recovers the derived
 quadratic on its own. Second, the exact link is the best held-out
 predictor (mean RMSE $0.071$ vs $0.093$--$0.094$ for the other two),
@@ -1328,8 +1338,10 @@ signature.}
 The $768$ route's mid-$\sigma$ window is the reduction's one structural
 failure --- and its shape is diagnostic. Measured excess sits at zero
 across $\sigma \in [0.56, 0.94]$, \emph{below} the predicted
-$\Floor_{768} \approx 0.09$: a positive two-term form cannot produce a
-gap under its own floor, under any coefficients. In the four-term
+$\Floor_{768} \approx 0.09$ and outside the bootstrap $95\%$ band
+(Fig.~\ref{fig:e5}) --- structural, not sampling noise: a positive
+two-term form cannot produce a gap under its own floor, under any
+coefficients. In the four-term
 expansion (Eq.~\ref{eq:fourterm}) this is exactly the signature of a
 negative projected interaction $I_{768}(\sigma) < 0$ in that window ---
 equivalently, graph-relative stationarity fails there: the reduced
@@ -1533,6 +1545,23 @@ absence of a gross sample-level footprint, not quality non-inferiority
 --- that read belongs to the CMMD gate below. Arm orderings shuffle
 between seeds; single-seed visual impressions of the grid are lottery
 reads.
+
+\textbf{The account's predictions, under the same discipline.} The
+yardstick's lesson --- point reads ride the draw --- applies equally to
+the predictive account of \S\ref{sec:confronted} standing behind the
+map. A full-pipeline bootstrap (resample the verdict runs' images,
+re-bin, refit every route, re-derive both governors, re-predict;
+$B{=}1000$, fixed seed; bands in Fig.~\ref{fig:e5}) licenses two reads.
+The $768$ mid-$\sigma$ failure sits outside the $95\%$ band ---
+structural, not sampling luck --- while the floor law's headline hit
+softens from ``dead-on'' to ``consistent'': $F(2160)$ bootstraps to
+$68\%$ $[+0.042, +0.091]$ against the measured $+0.092 \pm 0.012$, the
+point estimate's exactness sitting at the interval's edge. The
+bootstrap also exposes the pipeline's own branch fragility: the floor
+law's positive-floor filter re-anchors its legs in $41\%$ of draws
+(Appendix~\ref{app:instrument} for the tally). We deploy the
+\emph{measured} map (\S\ref{sec:map}), never the predicted one, for
+exactly this reason.
 
 \textbf{What this section does not claim.} The generation-quality
 acceptance gate --- CMMD (\citealp{jayasumana2024cmmd}) non-inferiority

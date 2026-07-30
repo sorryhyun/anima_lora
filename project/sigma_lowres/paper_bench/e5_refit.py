@@ -21,6 +21,18 @@ Deliverable for the claims ledger: name the "best empirical predictor"
 (headlines, labeled empirical) and the "derived small-perturbation form"
 (reported separately) — see paper_plan.md §6.2.
 
+Also emitted (paper Fig 2 redesign, 2026-07-30): a leave-896-out lane
+(governors re-derived from 512+1120 alone, post-hoc — the addendum of
+completed_experiments.md, here under the X form) and a full-pipeline
+image bootstrap (resample images -> re-bin -> refit routes -> re-derive
+governors -> re-predict, B=1000, fixed seed) whose 68/95% quantiles band
+the predictions in e5_main.png. m_bar and the bin-mean G are run-level
+instruments with no per-image decomposition and are held fixed. The
+bootstrap replicates exp_floor_law verbatim, including its positive-
+floor filter — draws where the resampled 1120 floor clears the filter
+re-anchor the law on the (896, 1120) legs; the branch tally lands in
+the envelope.
+
 Sources: identical to e5_holdout.py (no new instrument, no GPU).
 
 Usage:
@@ -48,6 +60,7 @@ from e5_holdout import (  # noqa: E402
     HELD_OUT,
     RATIO,
     TOKENS,
+    TRIM_ABS,
     bin_gnorm,
     interp_extrap,
     m_bar,
@@ -109,6 +122,111 @@ def exp_floor_law(fpts):
     tau = (n1 - n2) / (l2 - l1)
     F0 = math.exp(l1 + n1 / tau)
     return F0, tau
+
+
+def per_image_matrix(run_dir, route, key):
+    """(sigma, (n_images, n_bins)) paired deltas; trim -> nan."""
+    recs = [json.loads(line) for line in (run_dir / "per_image.jsonl").open()]
+    sigma = np.array(recs[0]["sigma_centers"])
+    rows = []
+    for r in recs:
+        d = np.array([np.nan if v is None else v for v in r[f"{key}_{route}"]], float)
+        c = np.array([np.nan if v is None else v for v in r[f"{key}_reenc"]], float)
+        delta = d - c
+        delta[np.abs(delta) > TRIM_ABS] = np.nan
+        rows.append(delta)
+    return sigma, np.array(rows)
+
+
+def fit_sat_vec(x, y, w):
+    """Vectorized two-stage grid version of fit_sat_route (c, F only)."""
+    c_med = 1.0 / max(float(np.median(x)), 1e-12)
+    grid = np.geomspace(c_med * 1e-2, c_med * 1e2, 300)
+    for _ in range(2):
+        s = sat(np.outer(grid, x))
+        F = np.sum(w * (y - s), axis=1) / np.sum(w)
+        sse = np.sum(w * (y - s - F[:, None]) ** 2, axis=1)
+        i = int(np.argmin(sse))
+        c0 = grid[i]
+        grid = np.geomspace(c0 / 1.3, c0 * 1.3, 300)
+    return float(c0), float(F[i])
+
+
+def loo896_floor(F512, F1120):
+    """Leave-896-out floor law: 512+1120 legs, fragile F_1120 enters the
+    log fit clamped positive (addendum convention)."""
+    F512, F1120 = max(F512, 1e-4), max(F1120, 1e-4)
+    if F1120 >= F512:
+        return None
+    tau = (TOKENS["512"] - TOKENS["1120"]) / (math.log(F1120) - math.log(F512))
+    F0 = math.exp(math.log(F512) + TOKENS["512"] / tau)
+    return F0 * math.exp(-TOKENS["896"] / tau)
+
+
+def bootstrap_predictions(mats, x_of, B=1000, seed=0):
+    """Full-pipeline bootstrap of the X-form fit->governor->predict chain.
+
+    Resamples images within each run, re-bins, refits (c, F) per fit
+    route, re-derives the ratio governor and both floor laws (pre-reg
+    replica of exp_floor_law incl. its >0.005 filter and FIT_ROUTES
+    ordering; leave-896-out via loo896_floor), then re-predicts the
+    768 (pre-registered pipeline) and 896 (leave-out) curves.
+    """
+    rng = np.random.default_rng(seed)
+    n_e1b = mats["896"].shape[0]
+    n_g9 = mats["1120"].shape[0]
+    pred768, pred896, f2160s, f3012s = [], [], [], []
+    legs = {}
+    n_clamp = n_drop = 0
+    for _ in range(B):
+        ie = rng.integers(0, n_e1b, n_e1b)
+        ig = rng.integers(0, n_g9, n_g9)
+        fit = {}
+        ok = True
+        for r in FIT_ROUTES:
+            sub = mats[r][ie if TIER_OF[r] == "1024tier" else ig]
+            n = np.sum(np.isfinite(sub), axis=0)
+            y = np.nanmean(sub, axis=0)
+            sem = np.nanstd(sub, axis=0, ddof=1) / np.sqrt(n)
+            if not np.all(np.isfinite(sem)) or np.any(sem <= 0):
+                ok = False
+                break
+            fit[r] = fit_sat_vec(x_of(r), y, 1.0 / sem**2)
+        if not ok:
+            n_drop += 1
+            continue
+        # pre-registered floor law: exp_floor_law replica
+        fpts = [(TOKENS[r], fit[r][1]) for r in FIT_ROUTES]
+        logpts = [(n, math.log(F)) for n, F in fpts if F > 0.005]
+        if len(logpts) < 2 or logpts[0][1] == logpts[-1][1]:
+            n_drop += 1
+            continue
+        (n1, l1), (n2, l2) = logpts[0], logpts[-1]
+        tau = (n1 - n2) / (l2 - l1)
+        if tau <= 0:
+            n_drop += 1
+            continue
+        F0 = math.exp(l1 + n1 / tau)
+        F3012_lo = loo896_floor(fit["512"][1], fit["1120"][1])
+        if F3012_lo is None:
+            n_drop += 1
+            continue
+        n_clamp += fit["1120"][1] <= 1e-4 or fit["512"][1] <= 1e-4
+        key = "+".join(str(n) for n in sorted((n1, n2)))
+        legs[key] = legs.get(key, 0) + 1
+        t = (RATIO["768"] - 0.5) / (0.875 - 0.5)
+        c768 = (1 - t) * fit["512"][0] + t * 0.5 * (fit["896"][0] + fit["1120"][0])
+        F2160 = F0 * math.exp(-TOKENS["768"] / tau)
+        pred768.append(sat(c768 * x_of("768")) + F2160)
+        pred896.append(sat(fit["1120"][0] * x_of("896")) + F3012_lo)
+        f2160s.append(F2160)
+        f3012s.append(F3012_lo)
+    return dict(
+        pred768=np.array(pred768), pred896=np.array(pred896),
+        f2160=np.array(f2160s), f3012=np.array(f3012s),
+        kept=len(pred768), dropped=n_drop, loo_clamped=n_clamp,
+        floor_law_legs=legs, B=B, seed=seed,
+    )
 
 
 def two_point_governor(vals, ses):
@@ -295,6 +413,85 @@ def main() -> None:
     fig2.tight_layout()
     fig2.savefig(out_dir / "e5_refit_1280.png", dpi=180, bbox_inches="tight")
 
+    # ---- leave-896-out lane (X form; post-hoc addendum) ----
+    c_lo = fitX["1120"]["A"]
+    F3012_lo = loo896_floor(fitX["512"]["F"], fitX["1120"]["F"])
+    pred896_lo = sat(c_lo * x_ratio("896")) + F3012_lo
+    _, y896, _ = curves["896"]
+    loo896 = dict(
+        c=c_lo, F3012=F3012_lo,
+        rmse=float(np.sqrt(np.mean((y896 - pred896_lo) ** 2))),
+    )
+
+    # ---- full-pipeline bootstrap (X form) ----
+    mats = {}
+    for r in ("896", "512"):
+        _, mats[r] = per_image_matrix(E1B, r, "debiased_gap")
+    _, mats["1120"] = per_image_matrix(G9, "1120", "gap")
+    boot = bootstrap_predictions(mats, x_ratio)
+
+    def qtiles(a):
+        q = np.percentile(a, [2.5, 16, 50, 84, 97.5], axis=0)
+        return q
+
+    # ---- paper main figure: X-only predictions with bootstrap bands +
+    # full-gap parity across every route ----
+    figm, (axa, axp) = plt.subplots(1, 2, figsize=(10.6, 3.8),
+                                    gridspec_kw={"width_ratios": [1.35, 1]})
+    F2160_pre = report["X"]["f768_predicted"]
+    main_panels = [
+        ("768", np.array(report["X"]["held_out"]["768"]["predicted"]),
+         boot["pred768"], F2160_pre,
+         f"held-out, pre-reg.; RMSE {report['X']['held_out']['768']['rmse']:.3f}"),
+        ("896", pred896_lo, boot["pred896"], F3012_lo,
+         f"leave-896-out, post-hoc; RMSE {loo896['rmse']:.3f}"),
+    ]
+    disp = {"768": "1024→768", "896": "1024→896", "1024": "1280→1024"}
+    acolor = {"768": "C0", "896": "C1"}
+    for r, center, draws, floor_val, tag in main_panels:
+        sig, y, sem = curves[r]
+        col = acolor[r]
+        q = qtiles(draws)
+        axa.fill_between(sig, q[0], q[4], color=col, alpha=0.10, lw=0)
+        axa.fill_between(sig, q[1], q[3], color=col, alpha=0.22, lw=0)
+        axa.plot(sig, center, "-", color=col, label=f"{disp[r]} predicted ({tag})")
+        axa.errorbar(sig, y, yerr=sem, fmt="o", ms=4, color=col, capsize=2,
+                     label=f"{disp[r]} measured")
+        axa.axhline(floor_val, color=col, lw=1.0, ls="--", alpha=0.6)
+        axa.annotate(f"$F({TOKENS[r]})$", (1.005, floor_val),
+                     xycoords=("axes fraction", "data"), color=col,
+                     fontsize=7, va="center")
+    axa.axhline(0, color="0.8", lw=0.8)
+    axa.set_xlabel(r"$\sigma$")
+    axa.set_ylabel(r"paired gap $\bar\Delta$")
+    axa.set_title("Predicted from governors alone (bands: 68%/95% bootstrap)",
+                  fontsize=10)
+    axa.legend(fontsize=6.5, loc="upper right")
+
+    lims = [-0.08, 0.7]
+    axp.plot(lims, lims, color="0.75", lw=0.8, zorder=0)
+    for r in FIT_ROUTES:
+        _, y, sem = curves[r]
+        axp.errorbar(insample_pred(forms["X"], r), y, yerr=sem, fmt="o", ms=4,
+                     mfc="white", color="0.45", capsize=0, lw=0.7, zorder=2)
+    pcolor = {"768": "C0", "1024": "C2"}
+    for r in HELD_OUT:
+        _, y, sem = curves[r]
+        axp.errorbar(report["X"]["held_out"][r]["predicted"], y, yerr=sem,
+                     fmt="o", ms=5, color=pcolor[r], capsize=0, lw=0.9,
+                     zorder=3, label=f"{disp[r]} (held-out)")
+    axp.errorbar([], [], fmt="o", ms=4, mfc="white", color="0.45",
+                 label="fit routes (in-sample)")
+    axp.set_xlim(lims)
+    axp.set_ylim(lims)
+    axp.set_xlabel(r"predicted $\bar\Delta$")
+    axp.set_ylabel(r"measured $\bar\Delta$")
+    axp.set_title("All routes, one axis", fontsize=10)
+    axp.set_aspect("equal")
+    axp.legend(fontsize=6.5, loc="upper left")
+    figm.tight_layout()
+    figm.savefig(out_dir / "e5_main.png", dpi=180, bbox_inches="tight")
+
     envelope = dict(
         schema_version=1,
         script="project/sigma_lowres/paper_bench/e5_refit.py",
@@ -308,6 +505,18 @@ def main() -> None:
         ],
         forms=report,
         verdict=verdict,
+        loo896=loo896,
+        bootstrap=dict(
+            B=boot["B"], seed=boot["seed"], kept=boot["kept"],
+            dropped=boot["dropped"], loo_floor_clamped=boot["loo_clamped"],
+            floor_law_legs=boot["floor_law_legs"],
+            F2160_quantiles=dict(zip(("p2_5", "p16", "p50", "p84", "p97_5"),
+                                     qtiles(boot["f2160"]).tolist())),
+            F3012_quantiles=dict(zip(("p2_5", "p16", "p50", "p84", "p97_5"),
+                                     qtiles(boot["f3012"]).tolist())),
+            held_fixed=["m_bar (G7, route-uniform shape)",
+                        "bin-mean G(sigma) (run-level)"],
+        ),
     )
     (out_dir / "result.json").write_text(json.dumps(envelope, indent=1))
 
@@ -326,6 +535,14 @@ def main() -> None:
             + f"   F(2160)={report[n]['f768_predicted']:+.3f}")
     print(f"VERDICT: best in-sample 512 = {best_512}, best held-out = {best_ho} "
           f"(headline empirical = {best_ho}; derived form = Q)")
+    print(f"LOO-896 (X): c={loo896['c']:.4f}  F(3012)={loo896['F3012']:+.4f}  "
+          f"RMSE {loo896['rmse']:.3f}")
+    print(f"bootstrap: kept {boot['kept']}/{boot['B']}  dropped {boot['dropped']}  "
+          f"LOO-clamped {boot['loo_clamped']}  legs {boot['floor_law_legs']}")
+    for nm, arr in (("F(2160)", boot["f2160"]), ("F(3012)", boot["f3012"])):
+        q = qtiles(arr)
+        print(f"{nm}: median {q[2]:+.3f}  68% [{q[1]:+.3f},{q[3]:+.3f}]  "
+              f"95% [{q[0]:+.3f},{q[4]:+.3f}]")
     print("out:", out_dir)
 
 

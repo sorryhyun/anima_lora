@@ -186,12 +186,14 @@ route ordering.
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.55\linewidth]{figs/e5_refit_1280.png}
-\caption{The second held-out route, $1280{\to}1024$, under the same
-three functional forms as Fig.~\ref{fig:e5} --- predicted from
-governors fitted on other routes. The derived quadratic systematically
+\caption{The second held-out route, $1280{\to}1024$, under all three
+functional forms for the data term (\S\ref{sec:confronted}) ---
+fitted power, derived quadratic, exact angular link --- predicted from
+governors fitted on other routes. This is the one route where the
+forms visibly separate: the derived quadratic systematically
 overshoots the mid-$\sigma$ peak; the exact angular link's saturation
-removes the overshoot (RMSE $0.049$ vs ${\approx}\,0.095$,
-\S\ref{sec:confronted}).}
+removes the overshoot (RMSE $0.049$ vs ${\approx}\,0.095$), which is
+why the exact link headlines in Fig.~\ref{fig:e5}.}
 \label{fig:e51280}
 \end{figure}
 
@@ -207,6 +209,27 @@ fit is a per-route grid with profile-likelihood uncertainties on $c_e$.
 Oracle baselines are quadratic-in-$\sigma$ fits on the held-out data
 itself (the noise ceiling for a 3-dof curve); the null baseline is
 gap $= 0$ on the null's committed region $\sigma > \sigma_{\mathrm{eq}}$.
+
+\paragraph{Bootstrap bands and the leave-$896$-out lane
+(Fig.~\ref{fig:e5}).} The bands are a full-pipeline image bootstrap
+($B{=}1000$, fixed seed; $981$ draws kept): resample images with
+replacement within each run ($N{=}40$ / $N{=}24$), re-bin the paired
+curves, refit the exact-link $(c_e, \Floor_e)$ on every fit route,
+re-derive the ratio governor and floor law, re-predict. $\bar m$ and
+the bin-mean $G(\sigma)$ are run-level instruments with no per-image
+decomposition and are held fixed. The replica includes the committed
+floor law's positive-floor filter ($\Floor > 0.005$): in $41\%$ of
+draws the resampled $1120$ floor clears the filter and the law
+re-anchors on the $(896, 1120)$ legs rather than $(512, 896)$ ---
+branch variability the bands therefore contain. The $896$ curve in
+Fig.~\ref{fig:e5} is the post-hoc leave-$896$-out lane under the exact
+link ($c$ from the ratio-twin $1120$ alone $= 0.142$ vs $0.150$ fitted
+on $896$ itself; floor law through $512{+}1120$, whose fragile
+$\Floor_{1120}$ leg enters the log fit clamped positive --- $36\%$ of
+bootstrap draws clamp --- giving $F(3012) = +0.012$ vs measured
+$+0.019$ $[+0.010, +0.030]$; curve RMSE $0.073$), the X-form
+counterpart of the quadratic-form addendum
+(\S\ref{sec:confronted}).
 
 \paragraph{Spectral-null computation.} Table~\ref{tab:null} evaluates
 Eq.~\ref{eq:spd} at the demoted grids' Nyquist frequencies
