@@ -23,7 +23,7 @@ $\bar J_e = \bar J + \Delta J$ and $\bar r_e = \bar r + \Delta \bar r$
 (bars without an arm subscript denote the native arm). Subtracting
 Eq.~\ref{eq:appmean} across arms and expanding the product,
 \begin{equation}
-\delta g \;=\; \bar g_e - \bar g_{\mathrm{nat}}
+\delta g \;=\; \bar g_e - \bar g_{\mathrm{src}}
 \;=\;
 \underbrace{\bar J^{\!\top} \Delta\bar r}_{B_e}
 \;+\;
@@ -32,11 +32,11 @@ Eq.~\ref{eq:appmean} across arms and expanding the product,
 \underbrace{\Delta J^{\!\top} \Delta\bar r
 \;+\;
 \mathbb{E}_\epsilon\!\big[\tilde J_e^{\!\top}\tilde r_e\big]
-- \mathbb{E}_\epsilon\!\big[\tilde J_{\mathrm{nat}}^{\!\top}
-\tilde r_{\mathrm{nat}}\big]}_{R_e}.
+- \mathbb{E}_\epsilon\!\big[\tilde J_{\mathrm{src}}^{\!\top}
+\tilde r_{\mathrm{src}}\big]}_{R_e}.
 \label{eq:appbranches}
 \end{equation}
-This is an exact identity --- no linearization is involved.
+This is an exact identity: no linearization is involved.
 ``First-order'' in the main text refers only to the content of $R_e$:
 it collects every term that is a product of two perturbations
 ($\Delta J^{\!\top} \Delta\bar r$) or a difference of noise-covariance
@@ -47,16 +47,16 @@ notation.
 One remark delimits the identity's literal scope, expanding the
 qualification stated in \S\ref{sec:branches}. When the two arms share
 a grid (as for the re-encoding control), every operation above is
-literal. Across grids, $J_{\mathrm{nat}}$ and $J_e$ act on different
+literal. Across grids, $J_{\mathrm{src}}$ and $J_e$ act on different
 token counts, so the differences $\Delta J$ and $\Delta \bar r$ require
 a fixed identification of the two output spaces (e.g.\ spectral
 zero-padding of the coarse grid onto the fine grid's bands); any such
 identification changes the split between $B_e$, $C_e$, and $R_e$ but
 not their sum $\delta g$, which lives in the shared adapter-parameter
 space regardless. This is why the main text defines the branches
-\emph{operationally} --- as the two independent perturbation directions
+\emph{operationally} (as the two independent perturbation directions
 in adapter-parameter space, isolated by the designated probes of
-\S\ref{sec:floor} --- and treats Eq.~\ref{eq:branches} as fixing what
+\S\ref{sec:floor}) and treats Eq.~\ref{eq:branches} as fixing what
 each branch collects rather than as a computable matrix formula.
 
 \section{Derivation of the angular forms (Eqs.~\ref{eq:exact}
@@ -65,7 +65,7 @@ and~\ref{eq:fourterm})}
 
 Both angular forms follow from Eq.~\ref{eq:gapdef} and the split of
 $\delta g$ by the native direction; no property of demotion enters.
-Write $g = \bar g_{\mathrm{nat}}$, $G = \|g\|$, $\hat g = g/G$, and
+Write $g = \bar g_{\mathrm{src}}$, $G = \|g\|$, $\hat g = g/G$, and
 decompose
 $\delta g = G\,\kappa_\parallel\, \hat g + P_{\!\perp}\delta g$ with
 $\kappa_\parallel = \hat g^{\!\top}\delta g / G$ and
@@ -118,14 +118,14 @@ share $S_e$, the graph share $F_e$, and the projected interaction
 $I_e$ of Eq.~\ref{eq:fourterm}. The remainder $R'_e$ of
 Eq.~\ref{eq:fourterm} therefore has an exact content: the
 $R_e$-bearing terms above, the beyond-quadratic terms of
-Eq.~\ref{eq:appquad}, and the parallel-component correction --- each
+Eq.~\ref{eq:appquad}, and the parallel-component correction, each
 suppressed by an extra power of perturbation size relative to the
 retained terms.
 
 \paragraph{What is not derived.} The loading
-$\|P_{\!\perp}\delta g\| = c_e\, m(\sigma)$ --- that the orthogonal
+$\|P_{\!\perp}\delta g\| = c_e\, m(\sigma)$ (that the orthogonal
 gradient mismatch is proportional to the residual mismatch with a
-$\sigma$-independent route gain --- is an empirical ingredient
+$\sigma$-independent route gain) is an empirical ingredient
 (the data-branch factorization at the amplitude level), fit and tested
 held-out in
 \S\ref{sec:confronted}. The geometry above fixes only how a given
@@ -141,7 +141,7 @@ between accumulated vectors. Per-bin cosines at $D{=}8$ are not comparable
 subtraction against the same-bin floor is the valid read. Split-half
 reliability over images of each bin-mean curve is mandatory
 (observed $0.73$--$0.88$ on verdict runs); a per-image variant of the same
-quantity has split-half reliability ${\approx}\,0$ and is never used.
+quantity has split-half reliability ${\approx}\,0$ and is not used.
 
 \paragraph{Controls.} The re-encoding arm prices the VAE decode--encode
 round trip that demotion necessarily pays; in pre-debiasing runs its gap
@@ -167,8 +167,8 @@ $\gap(D) = \gap_\infty + c/D$ is fit on route means with a bootstrap CI
 over images. Finite-draw cosines are kernel-path chaotic: twin runs
 sharing a warm compiler kernel cache agree to $|\Delta\cos| \le 0.015$,
 while a run compiled to a different kernel set lands up to
-${\approx}\,0.3$ away at $D{=}2$ --- so gap/floor/self-floor pairings
-are never compared across processes, a guarantee the single-run
+${\approx}\,0.3$ away at $D{=}2$, so gap/floor/self-floor pairings
+are not compared across processes, a guarantee the single-run
 instrument provides by construction; a \texttt{--deterministic} mode
 (bit-exact across twin runs) covers the paired training A/Bs.
 
@@ -187,8 +187,8 @@ route ordering.
 \centering
 \includegraphics[width=0.55\linewidth]{figs/e5_refit_1280.png}
 \caption{The second held-out route, $1280{\to}1024$, under all three
-functional forms for the data term (\S\ref{sec:confronted}) ---
-fitted power, derived quadratic, exact angular link --- predicted from
+functional forms for the data term of \S\ref{sec:confronted}
+(fitted power, derived quadratic, exact angular link), predicted from
 governors fitted on other routes. This is the one route where the
 forms visibly separate: the derived quadratic systematically
 overshoots the mid-$\sigma$ peak; the exact angular link's saturation
@@ -220,27 +220,27 @@ the bin-mean $G(\sigma)$ are run-level instruments with no per-image
 decomposition and are held fixed. The replica includes the committed
 floor law's positive-floor filter ($\Floor > 0.005$): in $41\%$ of
 draws the resampled $1120$ floor clears the filter and the law
-re-anchors on the $(896, 1120)$ legs rather than $(512, 896)$ ---
+re-anchors on the $(896, 1120)$ legs rather than $(512, 896)$,
 branch variability the bands therefore contain. The $896$ curve in
 Fig.~\ref{fig:e5} is the post-hoc leave-$896$-out lane under the exact
 link ($c$ from the ratio-twin $1120$ alone $= 0.142$ vs $0.150$ fitted
 on $896$ itself; floor law through $512{+}1120$, whose fragile
-$\Floor_{1120}$ leg enters the log fit clamped positive --- $36\%$ of
-bootstrap draws clamp --- giving $F(3012) = +0.012$ vs measured
+$\Floor_{1120}$ leg enters the log fit clamped positive ($36\%$ of
+bootstrap draws clamp), giving $F(3012) = +0.012$ vs measured
 $+0.019$ $[+0.010, +0.030]$; curve RMSE $0.073$), the X-form
 counterpart of the quadratic-form addendum
 (\S\ref{sec:confronted}).
 
 \paragraph{Spectral-null computation.} Table~\ref{tab:null} evaluates
 Eq.~\ref{eq:spd} at the demoted grids' Nyquist frequencies
-$f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_{\mathrm{nat}}$ on the $N{=}40$
+$f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_{\mathrm{src}}$ on the $N{=}40$
 mean radially-averaged latent power spectrum ($64$ radial bins; $P$ at
 the $896/768/512$ cuts $= 0.025/0.029/0.065$). The equal-power slice
 $\delta = (1+P_\omega)/2$ recovers
 $\sigma_{\mathrm{eq}} = \sqrt{P}/(1+\sqrt{P})$ exactly. Across
-$\delta \in [0.001, 0.5]$ the mildest--harshest spread never exceeds
+$\delta \in [0.001, 0.5]$ the mildest--harshest spread remains below
 $0.13$, and the $1024{\to}896$ versus $896{\to}768$ boundaries (cut
-frequencies $0.4375$ vs $0.4286$) never separate by more than $0.01$.
+frequencies $0.4375$ vs $0.4286$) separate by no more than $0.01$.
 The parameter-free anchor $\delta_{\reenc}$ of \S\ref{sec:phenomenon} is
 measured by the same estimator: RAPSD of the re-encode arm's latent error
 (fresh resize--encode minus cached latent, the gradient probe's own
@@ -272,15 +272,15 @@ adapters trained on opposite style clusters, one panel per route
 paired debiased estimator and trim; open markers the $\sigma{=}1$
 endpoint bin; axes shared across panels). Unlike the main-text figures,
 color encodes the \emph{adapter} (high- vs low-redundancy cluster);
-solid curves are in-distribution stems --- the adapter's own style
-cluster ($n{=}36$: trained-on, held-out, and never-seen-artist cells)
---- and dashed curves are out-of-distribution stems from the opposite
+solid curves are in-distribution stems, the adapter's own style
+cluster ($n{=}36$: trained-on, held-out, and unseen-artist cells),
+and dashed curves are out-of-distribution stems from the opposite
 cluster ($n{=}12$). Gray band: bin-level $\pm\epsstar$ per
 Eq.~\ref{eq:safe}, median of the two runs' full-$N$ SEMs for the
 panel's route. The map replicates: on the certified route all four
 adapter$\times$distribution curves reach the band inside the window,
 on $768$ all four sit above it until the top, and within each panel the
-dashed OOD curves track their solid ID counterparts --- the
+dashed OOD curves track their solid ID counterparts: the
 adapter$\times$probe-style interaction is not visible at this
 resolution.}
 \label{fig:e7maps}
@@ -289,14 +289,14 @@ resolution.}
 The one-adapter caveat of \S\ref{sec:limitations} pre-registered a
 controlled $2{\times}2$ factorial: two plain-LoRA checkpoints trained
 under the shipped probe adapter's frozen recipe on opposite style
-clusters --- the top and bottom $12$ artists by median latent
-redundancy, hereafter the high-redundancy (visually flat) and
-low-redundancy (heavily textured) clusters --- with stem-level
+clusters (the top and bottom $12$ artists by median latent
+redundancy, hereafter the high-redundancy, visually flat, and
+low-redundancy, heavily textured, clusters), with stem-level
 membership manifests frozen
 before training ($124$ training images each, identical seeds). Each
 adapter was probed on $48$ stems spanning four membership cells
 ($N{=}12$ each): trained-on, held-out images of trained artists,
-never-seen artists of the same cluster, and never-seen artists of the
+unseen artists of the same cluster, and unseen artists of the
 opposite cluster, with the cross-cluster stems shared between the two
 runs so cross-adapter contrasts read paired per stem.
 Figure~\ref{fig:e7maps} repeats the verdict-map recipe per route,
@@ -307,7 +307,7 @@ from the archived per-image rows). First, the $(\text{route}, \sigma)$
 shape replicates on both checkpoints (Fig.~\ref{fig:e7maps}). Second,
 the factorial contrasts are null at instrument resolution: the
 probe-style main effect and the adapter$\times$probe-style interaction
---- the pre-registered verdict quantity --- are both bounded below the
+(the pre-registered verdict quantity) are both bounded below the
 resolvable bin-mean effect (raw-gap paired interaction
 $-0.022 \pm 0.027$ at $896$, $-0.015 \pm 0.059$ at $768$), and the
 membership contrast (trained-on versus held-out) does not replicate in
@@ -327,7 +327,7 @@ top of it is not.
 
 The tables in this appendix are the raw-estimator record: retained for
 continuity and for the reads defended in \S\ref{sec:instrument}
-(one-signed bias; paired same-grid contrasts), never cited as debiased
+(one-signed bias; paired same-grid contrasts), not cited as debiased
 evidence.
 
 \begin{table}[h]
@@ -360,7 +360,7 @@ $\|g\|$ (native) & 2.6 & 0.5 & 0.4 & 0.5 & 0.7 & 1.1 & 2.0 & 9.3 \\
 
 \begin{table}[h]
 \caption{Raw endpoint reads ($D{=}16$, $N{=}40$) beside their debiased
-draw-limit values (Table~\ref{tab:floor}) --- the debiasing's revision
+draw-limit values (Table~\ref{tab:floor}), the debiasing's revision
 record: the $768$ floor halves, the $896$ floor surfaces.}
 \label{tab:rawendpoint}
 \centering
@@ -404,10 +404,10 @@ $1024{\to}896$ (ratio $.875$)  & .132 & .076 & .077 & .049 & .100$^{*}$ \\
 \begin{table}[h]
 \caption{Ratio-transfer run (\textbf{raw estimator}): $896$-tier natives
 ($N{=}40$), pre-registered
-bar ``$\gap_{768}$ within the re-encoding band at $\sigma \ge 0.5$'' ---
+bar ``$\gap_{768}$ within the re-encoding band at $\sigma \ge 0.5$'':
 \textbf{fails} (residual $0.06$--$0.12$, ${\sim}2\times$ the
 $1024{\to}896$ plateau; ${\sim}$half of it is expected estimator bias,
-\S\ref{sec:instrument} --- the separation is independently confirmed by
+\S\ref{sec:instrument}; the separation is independently confirmed by
 the debiased same-grid floors, \S\ref{sec:floor}).}
 \label{tab:phase1a}
 \centering
@@ -469,7 +469,7 @@ $1024{\to}896$ & .023 & .015 & .044 & .012 \\
 
 \begin{table}[h]
 \caption{Positional-interpolation intervention at the $\sigma{=}1$
-endpoint ($N{=}40$, $16$ draws; \textbf{raw} arm values --- the paired
+endpoint ($N{=}40$, $16$ draws; \textbf{raw} arm values; the paired
 $\Delta$ column is a same-grid contrast in which the finite-draw bias
 cancels to first order): exact phase-geometry alignment erases the
 mild-route floor and ${\sim}30\%$ of the harsh-route floor.}
