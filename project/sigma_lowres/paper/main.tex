@@ -89,40 +89,26 @@ spectrally-guided noise schedules \citep{esteves2026spectral}, and
 progressive-resolution training more broadly
 \citep{karras2018progressive,chen2024pixartalpha,hoogeboom2023simple}.
 By this spectral premise, substitution is safe \emph{whenever the noise
-has masked the frequencies the coarse grid loses} --- on our measured
-latent spectrum, from $\sigma \approx 0.14$.
+has masked the frequencies the coarse grid loses}.
 
-The measured answer is different in structure, not just in degree.
-Safety is a per-route boundary jointly governed by two quantities the
-spectral answer cannot express together: the downscale \emph{ratio}
-governs a noise-dependent data term, and the \emph{absolute token count}
-of the target grid governs a $\sigma$-independent floor carried by the
-compute graph itself. The mildest route's measured boundary sits at
-$\sigma \approx 0.5$ --- $3.5\times$ the equal-power prediction ---
-while a $2\times$ downscale is certifiably unsafe at \emph{every} noise
-level, retaining a gap of ${\approx}\,0.30$ on pure-noise input
-(\S\ref{sec:instrument}, Fig.~\ref{fig:verdict}). And no choice of
-tolerance rescues the spectral family: the $\delta$ tuned to the one
-safe boundary predicts the failing routes safe, the published default
-predicts every route safe, and the zero-free-parameter tolerance our
-own pipeline fixes --- the measured noise floor of the resize--encode
-round trip itself --- moves all three boundaries together to
-$\sigma \approx 0.98$ while still admitting no floor
-(\S\ref{sec:phenomenon}). The family is ratio-only and floorless; the
-measurement is neither. Nor does the premise's original evidence
-settle the question: it lives at the level of generated output, and a
-small quality-score difference does not transfer to a small difference
-in what a training step \emph{learns}.
+Whether that premise licenses a training-side substitution is a
+different question. What a training step consumes is the expected
+adapter gradient, and demotion perturbs more than the network's input:
+the regression target carries the clean image at unit weight at every
+noise level, and the compute graph itself changes with the grid. Nor
+does the premise's original evidence settle the matter: it lives at the
+level of generated output, and a small quality-score difference does
+not transfer to a small difference in what a training step
+\emph{learns}. This paper measures the question directly, at the
+gradient level, holding model and objective fixed.
 
-Answering the question honestly is, unexpectedly, a metrology problem.
-The natural gap estimator --- a redraw floor minus a single demoted-arm
+Measuring it honestly is, unexpectedly, a metrology problem. The
+natural gap estimator --- a redraw floor minus a single demoted-arm
 cosine --- is biased by finite-draw variance, and the bias grows as the
 demoted grid shrinks: it \emph{manufactures} exactly the
 token-count-ordered floor signature under test. Every claim in this
 paper is therefore stated in debiased units, at the instrument's
-measured resolution --- and the correction cut both ways, halving one
-route's raw floor while surfacing a small real endpoint gap that
-single-estimate variance had buried on another.
+measured resolution.
 
 The contributions:
 
@@ -173,15 +159,16 @@ generation-quality non-inferiority at production scale remains the
 stated open gate.
 \end{enumerate}
 
-The presentation is theory-first; the practice was observational-first:
-verdict criteria were frozen before each probe ran, the account was
-pre-registered with an outcome matrix (including a kill switch) before
-the discriminating runs, and the debiasing campaign's decision rules ---
-including the rule under which our own headline floors would have been
-retracted as variance artifacts --- were pre-registered before it ran.
-Each claim is tagged with its epistemic status (pre-registered /
-confirmatory / post-hoc) where it is discharged, rather than hedged
-sentence-by-sentence.
+The paper proceeds theory-first. \S\ref{sec:related} situates the
+question; \S\ref{sec:theory} defines the estimand and its certification
+resolution, derives the angular account of the demotion gap, states the
+spectral argument as a null model of its data term, and constructs the
+debiased estimator; \S\ref{sec:evidence} builds the instrument and
+discharges the account's predictions against the null;
+\S\ref{sec:practical} gives the resulting safety map and the
+$\sigma$-conditional trainer. Each claim is tagged with its epistemic
+status (pre-registered / confirmatory / post-hoc) where it is
+discharged.
 
 \section{Related work}
 \label{sec:related}
@@ -689,27 +676,27 @@ with routes it never saw (\S\ref{sec:confronted}, Fig.~\ref{fig:e5}).
 \centering
 \begin{subfigure}[t]{0.46\textwidth}
 \includegraphics[width=\linewidth]{figs/gap_debiased.png}
-\caption{Debiased demotion gap per $\sigma$-bin, paired against the
-re-encoding control ($1024$-tier natives, $N{=}40$; values in
-Table~\ref{tab:debiasedmap}). Gray band: bin-level $\pm\epsstar$
-(Eq.~\ref{eq:safe}); open markers: the $\sigma{=}1$ endpoint bin.
-The 896 route enters the band at $\sigma\!\approx\!0.5$; 512 never
-does.}
+\phantomcaption
 \label{fig:gapcurves}
 \end{subfigure}\hfill
 \begin{subfigure}[t]{0.515\textwidth}
 \includegraphics[width=\linewidth]{figs/estimator_context.png}
-\caption{Estimator context: the redraw-floor cosine and the U-shaped
-gradient norm $G(\sigma)$ through which every gap is read
-(\S\ref{sec:anatomy}).}
+\phantomcaption
 \label{fig:estimator}
 \end{subfigure}
-\caption{The verdict, before the apparatus: (a)~safety is a per-route
-boundary --- $\sigma \approx 0.5$ on the mildest route, no certifiable
-window for $768$, unsafe at every noise level for $512$ --- against
-the spectral family's prediction of $\sigma \approx 0.14$--$0.20$
-(Fig.~\ref{fig:spectrum}, \S\ref{sec:phenomenon});
-(b)~the estimator context those curves are read through.}
+\caption{The verdict, before the apparatus.
+(a)~Debiased demotion gap per $\sigma$-bin, paired against the
+re-encoding control ($1024$-tier natives, $N{=}40$; values in
+Table~\ref{tab:debiasedmap}; gray band: bin-level $\pm\epsstar$,
+Eq.~\ref{eq:safe}; open markers: the $\sigma{=}1$ endpoint bin):
+safety is a per-route boundary --- the $896$ route enters the band at
+$\sigma \approx 0.5$, $768$ has no certifiable window, and $512$ never
+enters at any noise level --- against the spectral family's prediction
+of $\sigma \approx 0.14$--$0.20$ (Fig.~\ref{fig:spectrum},
+\S\ref{sec:phenomenon}).
+(b)~The estimator context those curves are read through: the
+redraw-floor cosine and the U-shaped gradient norm $G(\sigma)$
+(\S\ref{sec:anatomy}).}
 \label{fig:verdict}
 \end{figure}
 
