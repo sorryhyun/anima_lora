@@ -1635,17 +1635,49 @@ certifiable margin, so no $\sigma$-gate can rescue it);
 (iii)~$1280{\to}1024$ flooring \emph{later} ($\sigmastar \approx 0.75$)
 but cleanly (harsher ratio $\Rightarrow$ larger $A_e$; large target
 $\Rightarrow$ $\Floor \approx 0$), the single observation that breaks
-both pure-ratio and pure-capacity route-ordering stories. A curve-level
-overlay, in which each published tolerance $\delta$ is converted to a
-predicted gap curve through the account's bridge (destroyed-band
-Bayes-residual mismatch, measured $\|\bar g_{\src}\|$, route gain calibrated on the one
-safe route),
-is \textbf{[pending: analysis over existing rows; $\delta_{\reenc}$ for
-the anchored line is now measured, \S\ref{sec:phenomenon}]}; unit honesty
-requires saying it will be \emph{the spectral account read through our
-bridge}, since it emits residual units only.
-% TODO(E8.3): generate spec->gap overlay + t*(delta) sweep figures from
-% e1b rows + rapsd fit; add \begin{figure} here.
+both pure-ratio and pure-capacity route-ordering stories.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/e83_overlay.png}
+\caption{The spectral account at the curve level. Left three panels:
+measured debiased curves against the account transported through our
+bridge --- the diagonal model's destroyed-band mean-residual mismatch
+on the measured spectrum, through the measured
+$\|\bar g_{\src}(\sigma)\|$ with a single gain calibrated on the one
+safe route ($1024{\to}896$) and no floor (the family expresses none)
+--- gated at $t^{*}(\delta)$ (dashed verticals) for the equal-power
+slice, SPD's published default $\delta = 0.01$, and the measured
+anchor $\delta_{\reenc}$. The transported curve dies by
+$\sigma \approx 0.35$ on every route, so the default and anchored
+gates act on an already-zero curve and their lines coincide.
+Right: the boundary family $t^{*}(\delta)$ on the measured spectrum;
+maximum route spread $0.125$ in $\sigma$ over
+$\delta \in [10^{-3}, 0.5]$. Unit honesty: these curves are
+\emph{the spectral account read through our bridge}, since it emits
+residual units only.}
+\label{fig:e83}
+\end{figure}
+
+The curve-level overlay (Fig.~\ref{fig:e83}) completes the
+confrontation, and it fails in both directions at once, at every
+tolerance. In-window, the transported family cannot produce the
+measured mid-$\sigma$ structure: the latents are high-frequency-quiet,
+so the model's destroyed-band mismatch is concentrated below
+$\sigma \approx 0.3$ and the predicted curve is near zero exactly
+where the measured curves peak (RMSE $0.147$ at $768$ and $0.355$ at
+$512$, against $0.093$ held-out and $0.093$ in-sample for our
+account) --- and because the curve has already died, every tolerance
+from the equal-power slice to the measured anchor scores within
+$0.01$ RMSE of every other: $\delta$, the family's one degree of
+freedom, is inert at the curve level. Above each tolerance's
+committed boundary, where every family member predicts exactly zero,
+the floor persists: committed-region RMSE $0.027/0.049/0.218$ for
+$896/768/512$ at SPD's default. Both reads are insensitive to the
+residual-shape choice in the transport (per-draw vs mean-residual
+within $10\%$; identical committed-region numbers), and the sweep
+panel is the continuous form of Table~\ref{tab:null}'s rows
+(analysis in \texttt{e83\_bridge.py}).
 
 A corollary worth stating plainly: the safety of $1024{\to}896$ is an
 \emph{empirical smoothness statement about this network's function across
@@ -1955,7 +1987,8 @@ The probe scripts (\texttt{run\_sigma\_probe.py}, including the
 \texttt{--self\_floor} and \texttt{--draw\_sweep} debiasing modes;
 \texttt{run\_prior\_distance.py}, \texttt{rapsd.py},
 \texttt{compare\_ckpt\_dw.py}), the held-out validation and refit
-analyses (\texttt{e5\_holdout.py}, \texttt{e5\_refit.py}), the trainer
+analyses (\texttt{e5\_holdout.py}, \texttt{e5\_refit.py},
+\texttt{e83\_bridge.py}), the trainer
 wiring (\texttt{--sigma\_lowres}), and the frozen pre-registration
 documents (including the debiasing campaign's decision rules) are in
 the public repository at

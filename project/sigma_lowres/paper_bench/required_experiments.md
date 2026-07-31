@@ -68,6 +68,24 @@ than decorative.
 satisfied 2026-07-30 (`bench/results/20260730-0940-reenc-floor/`).
 **Cost:** analysis + figures only.
 
+**[DONE 2026-07-31** (`paper_bench/e83_bridge.py`,
+`runs/20260731-1939-e83-bridge/`; figure `paper/figs/e83_overlay.png`,
+written into §4.6 as Fig. `fig:e83`): the transported family fails in
+both directions at every tolerance. (1) In-window the model's
+destroyed-band mean-residual (diagonal Wiener on measured P(f)) is
+concentrated below σ ≈ 0.3 — high-frequency-quiet latents — so it
+cannot produce the measured mid-σ structure: RMSE 0.147 (768) / 0.355
+(512) vs our account's 0.093/0.093; δ is *inert at the curve level*
+(eq / 0.01 / δ_reenc all within 0.01 RMSE of each other — the gates
+land where the curve has already died). (2) On each δ's committed
+region (predicted gap ≡ 0) the floor persists: RMSE 0.027/0.049/0.218
+for 896/768/512 at SPD's default. Robust to the transport-shape choice
+(per-draw vs mean-residual ≤ 10%, identical committed reads).
+Consistency: reproduces Table 1's t\* rows exactly, E5's 768
+committed-region 0.164, and the ≤ 0.13 family-spread claim (measured
+0.125). Bridge convention: single gain calibrated floorless on
+1024→896; unit honesty stated in the figure caption.]
+
 ## E9–E11 — response.md-driven vector instruments (launched 2026-07-30)
 
 The `question.md` review (`paper/response.md`) found the pre-registered
@@ -200,5 +218,5 @@ E1 + E2 + E4 + E5 + E7 + E8.1/8.2 done → E9–E11 (E9 done 2026-07-31,
 E10/E11 done 2026-07-30; only E11's `--uncond` rerun still pending;
 their ledgers gate the `paper/action.md` §4.3/§4.5/§4.6 rewrites) →
 E3 pooled-arm run + a/(b/B) batch-size fit (`action.md` estimand fix) →
-E8.3 analysis (anchored row satisfied) → reproducibility deliverables →
+~~E8.3 analysis~~ (done 2026-07-31) → reproducibility deliverables →
 E6 if targeting a top venue.

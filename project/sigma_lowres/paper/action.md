@@ -235,6 +235,14 @@ measured). AQ4 scored in `additional_question.md` (center CONFIRMED,
 edge rule did not fire as stated, route disjuncts half-right); its E9
 registry entry flipped to LANDED.
 
+Same day, E8.3 closed (`paper_bench/e83_bridge.py`, CPU-only over
+existing rows): the spec→gap overlay + t\*(δ) sweep are in §4.6 as
+Fig. `fig:e83` and the last spectral-account [pending] is stripped.
+Verdict: fails both directions at every δ — the transported curve dies
+below σ ≈ 0.3 (misses the measured mid-σ structure; δ inert at the
+curve level) and the floor persists on every committed region. Full
+numbers in `paper_bench/required_experiments.md` E8.3.
+
 ## Applied 2026-07-30 (record)
 
 All unblocked manuscript changes are in `main.tex`/`appendix.tex`
