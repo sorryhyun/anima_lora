@@ -19,7 +19,7 @@ cfg 1.0 / 20 steps passes), PE-Core-pools each (seed, arm) set once, and writes
 
 Usage (GPU — daemon)::
 
-    make daemon-run ARGS="project/sigma_lowres/paper_bench/e4_seed_yardstick.py \
+    make daemon-run ARGS="project/sigma_lowres/paper_bench/experiments/e4/e4_seed_yardstick.py \
         --prompts .../e4_prompts_sfw.json \
         --evals s1001=<dir> s1002=<dir> s1003=<dir> --out <dir>"
 """
@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+REPO = HERE.parents[4]
 sys.path.insert(0, str(REPO))
 
 import numpy as np  # noqa: E402

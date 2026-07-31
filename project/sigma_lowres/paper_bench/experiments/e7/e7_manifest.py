@@ -1,7 +1,7 @@
 """E7 frozen train/holdout manifest generator (run ONCE, before training).
 
 Implements the pre-registered pool composition from
-`required_experiments.md` §E7:
+`experiments/e7/README.md`:
 
 - clusters = top-12 ("flat") / bottom-12 ("dirty") artist-median latent
   redundancy among artists with >= 8 qualifying images (1024-tier cache
@@ -23,7 +23,7 @@ Outputs (runs/<stamp>-e7-manifest/):
   (`library.datasets.path_filter.filter_paths_by_glob`).
 
 Usage:
-    python project/sigma_lowres/paper_bench/e7_manifest.py
+    python project/sigma_lowres/paper_bench/experiments/e7/e7_manifest.py
 """
 
 from __future__ import annotations
@@ -36,8 +36,11 @@ from pathlib import Path
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
-sys.path.insert(0, str(HERE.parent / "bench" / "tier_routing"))
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
+REPO = HERE.parents[4]
+sys.path.insert(0, str(SIGMA / "bench" / "tier_routing"))
 sys.path.insert(0, str(REPO))
 
 from library.datasets.path_filter import filter_paths_by_glob  # noqa: E402
@@ -128,7 +131,7 @@ def main() -> None:
         patterns[name] = pattern
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out = HERE / "runs" / f"{stamp}-e7-manifest"
+    out = RUNS / f"{stamp}-e7-manifest"
     out.mkdir(parents=True, exist_ok=True)
     (out / "e7_manifest.json").write_text(
         json.dumps(

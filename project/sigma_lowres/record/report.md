@@ -9,7 +9,7 @@ RAPSD-predicted σ\* ≈ 0.14** (H3 quantitative: **fail**, off by ~3.5×), and
 σ=0.94 where the latent is ~pure noise). The SwD noise-masking argument does
 not govern LoRA gradients on Anima.
 
-Design: `project/sigma_lowres/initial_proposal.md` (criteria frozen before
+Design: `project/sigma_lowres/record/initial_proposal.md` (criteria frozen before
 data). Runs: RAPSD `results/20260724-1202-phase0/`, gradient probe
 `results/20260724-1237-phase0/` (40 images, 6 arms, 8 uniform σ-bins × 8
 draws, ~2.6 h; plot `gap_vs_sigma.png`).
@@ -108,13 +108,13 @@ Pre-registered bar: gap_768 within the reenc band at σ ≥ 0.5.
 
 ## Mechanism addendum (2026-07-24): two-term account confirmed
 
-`hypothesis.md` pre-registered gap_e(σ) ≈ S1_e(σ) (input branch, Wiener-decay,
+`record/hypothesis.md` pre-registered gap_e(σ) ≈ S1_e(σ) (input branch, Wiener-decay,
 no hard gate) + Floor_e (target × graph, σ-independent). Both discriminating
 probes passed: the σ=1 endpoint bin (`results/20260724-2101-endpoint/` —
 input pure ε, gaps −0.01/0.13/0.33 for 896/768/512, all in pre-committed
 bands) and the x-zero probe (`results/20260724-2136-xzero/` — x=0 in input
-AND target; 512 xz ≈ endpoint ⇒ Floor graph-dominated). See hypothesis.md
-for the account and groundings.md for the full test records (G1/G2) +
+AND target; 512 xz ≈ endpoint ⇒ Floor graph-dominated). See record/hypothesis.md
+for the account and record/groundings.md for the full test records (G1/G2) +
 outcome matrix.
 
 ## Phase Q2 (2026-07-25): per-module / per-block Floor localization
@@ -259,7 +259,7 @@ pooled 0.007 — the σ=1 bin is in-band by every robust read.
   capacity (4116 vs 3012 tokens) predicts exactly this ordering.
 - **What replaces "σ > 0.5" is a route-dependent crossover σ\*(route)**:
   ≈ 0.5 for 1024→896, somewhere in (0.625, 0.875) for 1280→1024, > 0.95 (or
-  nonexistent) for 896→768. Consistent with hypothesis.md's smoothness
+  nonexistent) for 896→768. Consistent with record/hypothesis.md's smoothness
   reading — no universal invariant, safety = how well the coarse graph
   approximates the fine one, which degrades with both ratio *and* absolute
   coarseness.
@@ -278,18 +278,18 @@ Follow-ups: the σ-window refinement (`--sigma_window 0.5,1.0`, bins packed
 into the crossover region) was started then **deprioritized at 5/24 images**
 (partial rows in `results/20260726-2109/`; same command re-runs it) in favor
 of the **forward-only prior-distance probe** (`run_prior_distance.py`,
-`results/20260726-2120/`, 4.5 min) — result in groundings.md G6
+`results/20260726-2120/`, 4.5 min) — result in record/groundings.md G6
 ("prior-distance probe"): no discontinuity at the training-distribution edge
 (the checkpoint's prior distinguishes 1280-vs-1024 as much as trained
 pairs), and prior distance dissociates from the gradient Floor → the
 Floor's route-ordering lives in the graph (J) factor, not the prior.
 Its σ-resolved v2 (`--sigmas`, mean-residual verdict object;
 `results/20260726-2133/`, 16 min) found the residual-distance σ-shape is
-strong but **route-uniform** — groundings.md G7 ("σ-resolved residual
+strong but **route-uniform** — record/groundings.md G7 ("σ-resolved residual
 curve"): gap_e(σ) ≈ A_e·s(σ) + Floor_e with s universal and both A_e and Floor_e
 J-side; the σ\* ordering is not prediction-side. The **iso-severity
 discriminator** (1280→1120, ratio 0.875 matched to 1024→896;
-`results/20260726-2153/`) landed the same day — groundings.md G9:
+`results/20260726-2153/`) landed the same day — record/groundings.md G9:
 **A ~ ratio** (ratio-matched routes coincide despite 1.6× target-capacity
 difference; σ\*(1280→1120) ∈ (0.375, 0.625) ≈ 1024→896's). NB this does
 not conflict with "ratio is refuted as the governor" above — that verdict

@@ -1,8 +1,9 @@
 # paper_plan — restructure direction for the sigma_lowres paper
 
-Companion to `required_experiments.md` (open runs) and
-`completed_experiments.md` (discharge record): those say *what must run*
-and *what ran*; this file says *what the manuscript becomes*. Rewritten
+Companion to `README.md` (the experiment index) and
+`experiments/<eN>/README.md` (per-experiment records): those say *what
+ran and what it showed*; this file says *what the manuscript becomes*,
+and §9 records where the manuscript currently stands. Rewritten
 2026-07-29, superseding the Branch-A plan (E1 fired rule 1, the
 gap-native restructure is already in `paper/main.tex` — that plan is
 discharged; its claim-level revisions all landed).
@@ -72,7 +73,7 @@ Distinguish structural hedging from protective hedging:
   status column in the claims table — instead of inline hedges.
 
 **E5 decided the voice (qualified PASS, 2026-07-29 — see
-`completed_experiments.md`).** Eq. 3 headlines as a **predictive**
+`experiments/e5/`).** Eq. 3 headlines as a **predictive**
 first-order account with stated resolution: held-out routes at ~0.09
 RMSE (768 beats the oracle smooth on its own data; 1280→1024 within
 the 2× gate), governors upgraded from "consistent with" to measured —
@@ -149,30 +150,30 @@ pays; the optional demote→re-promote arm (§7) closes it empirically.
 
 ## 6. Order of work
 
-1. ~~E5 analysis~~ **DONE 2026-07-29** (`paper_bench/e5_holdout.py`,
+1. ~~E5 analysis~~ **DONE 2026-07-29** (`experiments/e5/e5_holdout.py`,
    run `runs/20260729-1130-e5-holdout/`) — qualified PASS, voice set
    (§2). The overlay figure is a §4.6 candidate as-is.
 2. ~~E5 three-form refit~~ **DONE 2026-07-29**
-   (`paper_bench/e5_refit.py`, run `runs/20260729-1322-e5-refit/`) —
+   (`experiments/e5/e5_refit.py`, run `runs/20260729-1322-e5-refit/`) —
    the exact angular link `1−1/√(1+(c·m/G)²)` headlines (held-out mean
    RMSE 0.071 vs 0.093/0.094; cures the 1280→1024 overshoot, retiring
    E5 miss #2), labeled empirical via its `‖δg⊥‖ = c·m` loading; the
    derived quadratic is its small-κ limit (p\* scan lands on 2.00
-   exactly). Floor law form-invariant. See `completed_experiments.md`.
+   exactly). Floor law form-invariant. See `experiments/e5/`.
 3. ~~Restructure `main.tex` to the §3 spine~~ **DONE 2026-07-29**,
    landed together with the question-first reframe (new title "When
    Does Training on Downscaled Images Yield the Same Gradients?";
    §5 = "the answer, in deployable form"). §8 fixes + data-branch
    rename + claims-ledger table all in; raw tables in a dedicated
    appendix; abstract deliberately untouched (revised after review of
-   the rewrite). See `completed_experiments.md` manuscript status.
+   the rewrite). See §9 below.
 4. **E8.3 analysis** → overlay + t\*(δ) figures (δ_reenc row waits on
    E4's `reenc_noise_floor.py`).
 5. **E3** pooled-with-self-floors run → two-maps table (§5). Kick off
    E7's controlled-LoRA train alongside (GPU-cheap).
 6. **E4** (Phase 1b A/B + `reenc_noise_floor.py`) → 14% measured,
    δ_reenc anchor lands, clear remaining [pending] markers.
-7. Hygiene pass per `required_experiments.md` [FIX] list: `make_all.py`
+7. Hygiene pass per the README's open-work [FIX] list: `make_all.py`
    + MANIFEST, results archive matching the repro statement, abstract
    shortened, claims-ledger labels linked to freeze commits.
 8. E7 probes / E9 / E6 arms if targeting a top venue (E9 first among
@@ -189,8 +190,7 @@ pays; the optional demote→re-promote arm (§7) closes it empirically.
   interaction probe: I_e ≈ Δ_demote − Δ_repromote − Floor_e per bin.
   The 768 mid-σ dip predicts I_768 < 0 there — a pre-registrable
   sign. Built-in falsification (endpoint must be in band). One
-  verdict-scale run. Add as E9 in `required_experiments.md` when
-  scheduled. If I_e is bounded over the claimed region, the two-term
+  verdict-scale run. **Done 2026-07-31 — see `experiments/e9/`.** If I_e is bounded over the claimed region, the two-term
   reduction keeps "derived (conditional)"; if not, the manuscript
   keeps I_e explicit in Eq. 3 and the reduction is demoted to a
   semi-empirical account — either way the paper is consistent.
@@ -227,3 +227,48 @@ Concrete, evidence-already-in-hand; none change any measurement:
   the input-mediated part of B_e — not the target share, not C_e, not
   I_e, not the Jacobian gain; E8.3 is a calibrated transport into gap
   units, not a parameter-free prediction.
+
+## 9. Manuscript status
+
+*(theory→evidence→application + question-first reframe, written
+2026-07-29; moved here from the old `completed_experiments.md`.)*
+
+Superseded the Branch-A spine the same day: the §3 spine above landed
+together with the question-first reframe (title now "When Does Training
+on Downscaled Images Yield the Same Gradients?"; §1 leads with the
+practical question, the map is presented as the answer). New structure:
+§3 Theory (3.1 estimand — d_e vs reenc-excess Δ_e both stated,
+aggregation operator part of the estimand, ε\* renamed "median
+certification resolution" with the power footnote; 3.2 data/graph
+branches — endpoint NOT data-free by construction, "data branch" rename
+throughout; 3.3 four-term expansion d = S+F+I+R derived + A1–A4
+reduction + exact angular link labeled empirical; 3.4 spectral null
+with exact scope sentence; 3.5 seven discriminating predictions each
+naming its probe), §4 Evidence (4.1 instrument+debiasing+"debiased
+units only from here" + consolidated coverage statement; 4.2 phenomenon
++ Table-null boundary scoring; 4.3 endpoint≡x-zero≡α-flat; 4.4 data
+branch + governors; 4.5 depth + RoPE/Resid waterfall; 4.6 the account
+confronted — E5 held-out + three-form refit + 768 mid-σ dip as I_e<0
+interaction signature delimiting the reduction's domain + E9 designated
++ claims-ledger table as the consolidated hedge), §5 Application
+("the answer, in deployable form"), §6/§7 updated. Raw/historical
+tables all moved to a dedicated appendix (incl. new raw-vs-debiased
+endpoint revision-record table); per-sentence hedges replaced by the
+ledger. E5's refit figure `figs/e5_refit.png` is the §4.6 figure
+(`figs/e5_overlay.png` also staged). Abstract intentionally NOT
+revised yet (user will revise after reading the rewrite; it still says
+"input term"). Compiles clean under tectonic (0 overfull, no broken
+refs, 22 pp).
+
+**Still open in the manuscript**, each marked **[pending]** in place:
+E3 pooled-with-self-floors run (`experiments/e3/`), E8.3 overlay
+figures (`experiments/e8/`), results tarball. Cleared since: E2's
+marker (2026-07-29, measured sweep), E4's A/B + `reenc_noise_floor.py`
+(2026-07-30), E7's membership probe (2026-07-29), §4.5 reenc-proxy +
+§4.6 probe pendings (2026-07-31, with the E9 write-in).
+
+**Figures:** Fig 1c regenerated in debiased units 2026-07-29
+(`plot_debiased_map.py` → `figs/gap_debiased.png` — paired per-image
+map with the bin-level ±ε\* band; RAPSD σ\* vlines removed, to be
+addressed separately). Remaining raw figures are marked as raw in
+captions; Fig-1 enlargement + waterfall figures are still owed.

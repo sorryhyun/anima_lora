@@ -1,6 +1,6 @@
 """E4 frozen train/prompt manifest generator (run ONCE, before training).
 
-E4 (`required_experiments.md`) is the end-to-end A/B: native baseline vs
+E4 (`experiments/e4/README.md`) is the end-to-end A/B: native baseline vs
 σ-conditional demotion (measured-safe 1024→896 @ σ>0.5, + yarnsig) vs an
 unsafe-route negative control (1024→768 unconditional), identical data
 order/noise/init, 3 seeds — scored by realized wall-clock, examples/s,
@@ -29,7 +29,7 @@ selectable (`SIGMA_DEMOTE_ROUTE` in `library/datasets/buckets.py` is a
 1024:896 constant today) — both recorded in the manifest as prereqs.
 
 Usage:
-    python project/sigma_lowres/paper_bench/e4_manifest.py
+    python project/sigma_lowres/paper_bench/experiments/e4/e4_manifest.py
 """
 
 from __future__ import annotations
@@ -43,7 +43,10 @@ from pathlib import Path
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
+REPO = HERE.parents[4]
 sys.path.insert(0, str(REPO))
 
 from library.datasets.path_filter import filter_paths_by_glob  # noqa: E402
@@ -168,7 +171,7 @@ def main() -> None:
     )
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out = HERE / "runs" / f"{stamp}-e4-manifest"
+    out = RUNS / f"{stamp}-e4-manifest"
     out.mkdir(parents=True, exist_ok=True)
     (out / "e4_manifest.json").write_text(
         json.dumps(

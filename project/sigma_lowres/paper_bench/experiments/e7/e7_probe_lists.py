@@ -27,7 +27,7 @@ Every selected stem is validated against the live cache (complete
 1024-tier record) so the GPU runs cannot die on a stale stem.
 
 Usage:
-    python project/sigma_lowres/paper_bench/e7_probe_lists.py
+    python project/sigma_lowres/paper_bench/experiments/e7/e7_probe_lists.py
 """
 
 from __future__ import annotations
@@ -38,14 +38,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO_ROOT = HERE.parents[2]
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
+REPO_ROOT = HERE.parents[4]
 sys.path.insert(0, str(REPO_ROOT))
 
 from project.sigma_lowres.bench.tier_routing.redundancy import (  # noqa: E402
     score_corpus,
 )
 
-MANIFEST = HERE / "runs" / "20260729-1158-e7-manifest" / "e7_manifest.json"
+MANIFEST = RUNS / "20260729-1158-e7-manifest" / "e7_manifest.json"
 N_CELL = 12
 TIER = 1024
 
@@ -147,7 +150,7 @@ def main() -> None:
         raise SystemExit("probe-list validation FAILED:\n" + "\n".join(problems))
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out_dir = HERE / "runs" / f"{stamp}-e7-probe-lists"
+    out_dir = RUNS / f"{stamp}-e7-probe-lists"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     other = {"flat": "dirty", "dirty": "flat"}

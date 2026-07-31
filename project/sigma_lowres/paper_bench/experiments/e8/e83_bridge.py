@@ -1,6 +1,6 @@
 """E8.3 — spectral-account -> gap bridge overlay (analysis-only, no GPU).
 
-required_experiments.md E8.3: convert each published tolerance delta into
+experiments/e8/README.md (E8.3): convert each published tolerance delta into
 a predicted *gap curve*, not just a boundary, and overlay it on the
 measured debiased curves per (delta, route). Subsumes the continuous
 t*(delta) sweep figure and the delta_reenc-anchored row.
@@ -52,7 +52,7 @@ Sources (all existing rows, no new instrument):
     64 radial bins; same run anchors delta_reenc and t*_reenc)
 
 Usage:
-    python project/sigma_lowres/paper_bench/e83_bridge.py
+    python project/sigma_lowres/paper_bench/experiments/e8/e83_bridge.py
 """
 
 from __future__ import annotations
@@ -67,12 +67,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
+sys.path.insert(0, str(HERE.parent / "e5"))  # reuses E5's fit/paired-stats helpers
 
 from e5_holdout import E1B, bin_gnorm, paired_stats  # noqa: E402
 
-REENC_FLOOR = HERE.parent / "bench" / "results" / "20260730-0940-reenc-floor"
-FIGS = HERE.parent / "paper" / "figs"
+REENC_FLOOR = SIGMA / "bench" / "results" / "20260730-0940-reenc-floor"
+FIGS = SIGMA / "paper" / "figs"
 
 ROUTES = ("896", "768", "512")
 FCUT = {"896": 0.4375, "768": 0.375, "512": 0.25}
@@ -228,14 +231,14 @@ def main() -> None:
     fig.tight_layout()
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out_dir = HERE / "runs" / f"{stamp}-e83-bridge"
+    out_dir = RUNS / f"{stamp}-e83-bridge"
     out_dir.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_dir / "e83_overlay.png", dpi=180, bbox_inches="tight")
     shutil.copy2(out_dir / "e83_overlay.png", FIGS / "e83_overlay.png")
 
     envelope = dict(
         schema_version=1,
-        script="project/sigma_lowres/paper_bench/e83_bridge.py",
+        script="project/sigma_lowres/paper_bench/experiments/e8/e83_bridge.py",
         label="e83-bridge",
         timestamp_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         sources=dict(e1b=str(E1B), rapsd=str(REENC_FLOOR)),

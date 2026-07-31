@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """sigma_lowres — build the probe-local 1280-tier cache for the 1280→1024 probe.
 
-The roadmap's discriminating experiment (ratio-vs-capacity, questions.md Q1)
+The roadmap's discriminating experiment (ratio-vs-capacity, record/questions.md Q1)
 needs native-1280 caches, but a corpus re-preprocess at a 1280 tier would (a)
 be expensive and (b) leak a new tier into training — on-disk caches are the
 source of truth for training buckets. So this script builds a tiny standalone

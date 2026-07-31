@@ -12,7 +12,7 @@ machinery is e4_render_eval's (imported).
 
 Usage (GPU — submit via daemon)::
 
-    make daemon-run ARGS="project/sigma_lowres/paper_bench/e4_fig_render.py"
+    make daemon-run ARGS="project/sigma_lowres/paper_bench/experiments/e4/e4_fig_render.py"
 """
 
 from __future__ import annotations
@@ -23,7 +23,10 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
+REPO = HERE.parents[4]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(HERE))
 
@@ -36,7 +39,7 @@ from library.inference.output import decode_latent  # noqa: E402
 from library.runtime.device import clean_memory_on_device  # noqa: E402
 
 DEFAULT_PROMPTS = (
-    HERE / "runs" / "20260729-1537-e4-manifest" / "e4_prompts_sfw.json"
+    RUNS / "20260729-1537-e4-manifest" / "e4_prompts_sfw.json"
 )
 DEFAULT_STEMS = ("10607820", "14296235", "8508115")
 ARMS = ("native", "sigma896", "896only", "unsafe768")
@@ -131,7 +134,7 @@ def main() -> None:
 
     out = Path(
         args.out
-        or HERE / "runs" / f"20260730-e4-fig-candidates-{args.steps}steps"
+        or RUNS / f"20260730-e4-fig-candidates-{args.steps}steps"
     )
     out.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

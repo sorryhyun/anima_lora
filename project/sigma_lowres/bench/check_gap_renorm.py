@@ -8,7 +8,7 @@ cosine-denominator effect. gap is scale-free (a mismatch *fraction*), so under
 ``(gap − Floor_e)·G^p`` should be low-σ-maximal even though raw gap dips at
 the lowest bin. Reports per-edge: bin-mean gap, the ·G and ·G² proxies,
 Spearman(gap, 1/G) at bin level and per image, and the bin0-vs-peak flip.
-Record + policy note: ``project/sigma_lowres/groundings.md`` G8 (the proxy is
+Record + policy note: ``project/sigma_lowres/record/groundings.md`` G8 (the proxy is
 noise-dominated at σ ≳ 0.8 — read the S1 region only; gap stays the
 criterion metric).
 

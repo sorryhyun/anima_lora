@@ -27,7 +27,7 @@ mismatch direction; matched norms with low cosines ⇒ uniform-in-norm only.
 
 Usage::
 
-    uv run python project/sigma_lowres/paper_bench/resid_structure.py \
+    uv run python project/sigma_lowres/paper_bench/experiments/e11/resid_structure.py \
         --run project/sigma_lowres/bench/results/<run>
 """
 
@@ -40,7 +40,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[5]
 sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np  # noqa: E402

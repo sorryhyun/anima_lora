@@ -9,7 +9,7 @@ adapter (not the route, unlike the main-text figures); linestyle
 encodes ID (solid) vs OOD (dashed).
 
 Usage:
-    python project/sigma_lowres/paper_bench/plot_e7_routes.py \
+    python project/sigma_lowres/paper_bench/experiments/e7/plot_e7_routes.py \
         [--out-dir ../paper/figs] [--ylim " -0.3,0.44"]
 """
 
@@ -23,7 +23,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+RUN_ROOT = PAPER_BENCH / "runs"
+sys.path.insert(0, str(PAPER_BENCH))  # plot_debiased_map lives at the paper_bench root
 
 from plot_debiased_map import paired_stats  # noqa: E402
 
@@ -41,10 +43,7 @@ def main() -> None:
     args = ap.parse_args()
 
     recs = {
-        name: [
-            json.loads(line)
-            for line in (HERE / "runs" / run / "per_image.jsonl").open()
-        ]
+        name: [json.loads(line) for line in (RUN_ROOT / run / "per_image.jsonl").open()]
         for name, run in RUNS.items()
     }
     sigma = next(iter(recs.values()))[0]["sigma_centers"]
@@ -108,7 +107,9 @@ def main() -> None:
         ax.set_title(rf"$1024{{\to}}{route}$ route, both adapters (paired, SEM)")
         ax.legend(loc="upper right", framealpha=0.9)
 
-        out = (HERE / args.out_dir / f"gap_debiased_e7_route{route}.png").resolve()
+        out = (
+            PAPER_BENCH / args.out_dir / f"gap_debiased_e7_route{route}.png"
+        ).resolve()
         fig.tight_layout()
         fig.savefig(out)
         print(f"wrote {out}")

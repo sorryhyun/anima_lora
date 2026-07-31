@@ -23,7 +23,7 @@ Deliverable for the claims ledger: name the "best empirical predictor"
 
 Also emitted (paper Fig 2 redesign, 2026-07-30): a leave-896-out lane
 (governors re-derived from 512+1120 alone, post-hoc — the addendum of
-completed_experiments.md, here under the X form) and a full-pipeline
+experiments/e5/README.md, here under the X form) and a full-pipeline
 image bootstrap (resample images -> re-bin -> refit routes -> re-derive
 governors -> re-predict, B=1000, fixed seed) whose 68/95% quantiles band
 the predictions in e5_main.png. m_bar and the bin-mean G are run-level
@@ -36,7 +36,7 @@ the envelope.
 Sources: identical to e5_holdout.py (no new instrument, no GPU).
 
 Usage:
-    python project/sigma_lowres/paper_bench/e5_refit.py
+    python project/sigma_lowres/paper_bench/experiments/e5/e5_refit.py
 """
 
 from __future__ import annotations
@@ -51,6 +51,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
 sys.path.insert(0, str(HERE))
 
 from e5_holdout import (  # noqa: E402
@@ -370,7 +373,7 @@ def main() -> None:
     )
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out_dir = HERE / "runs" / f"{stamp}-e5-refit"
+    out_dir = RUNS / f"{stamp}-e5-refit"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- figures: held-out 768 first, then the fit routes 896/512 (paper
@@ -494,7 +497,7 @@ def main() -> None:
 
     envelope = dict(
         schema_version=1,
-        script="project/sigma_lowres/paper_bench/e5_refit.py",
+        script="project/sigma_lowres/paper_bench/experiments/e5/e5_refit.py",
         label="e5-refit",
         timestamp_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         sources=dict(e1b=str(E1B), g9=str(G9)),

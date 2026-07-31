@@ -4,8 +4,8 @@
 "biased toward a beneficial direction". Status: acknowledged limitation;
 no instrument change required. E4 core discharged 2026-07-30 (throughput
 + seed-noise yardstick); the outcome-level read that answers this claim —
-full-band CMMD, sigma896 vs 896only — is still owed
-(`required_experiments.md` §E4).*
+full-band CMMD, sigma896 vs 896only — was retired as a residual
+2026-07-30 (see [`README.md`](README.md)), so this claim stays open.*
 
 ## The claim
 

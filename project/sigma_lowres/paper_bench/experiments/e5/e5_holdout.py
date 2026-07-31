@@ -25,10 +25,10 @@ Pre-registered read (written before the numbers):
           predicted F(2160 tok) inside the measured 768 floor CI
           (debiased 0.043..0.094 from E1a/E1c).
   FAIL  = otherwise; Eq. 3 stays a decomposition, governors stay
-          "consistent with" (required_experiments.md E5).
+          "consistent with" (experiments/e5/README.md).
 
 Usage:
-    python project/sigma_lowres/paper_bench/e5_holdout.py
+    python project/sigma_lowres/paper_bench/experiments/e5/e5_holdout.py
 """
 
 from __future__ import annotations
@@ -42,9 +42,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-BENCH = HERE.parent / "bench"
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
+BENCH = SIGMA / "bench"
 
-E1B = HERE / "runs" / "20260729-0014-e1b-debiased-map"
+E1B = RUNS / "20260729-0014-e1b-debiased-map"
 G9 = BENCH / "results" / "20260726-2153"
 G5 = BENCH / "results" / "20260726-2017"
 G7 = BENCH / "results" / "20260726-2133"
@@ -241,7 +244,7 @@ def main() -> None:
     )
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out_dir = HERE / "runs" / f"{stamp}-e5-holdout"
+    out_dir = RUNS / f"{stamp}-e5-holdout"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- figure: measured vs predicted per held-out route ----
@@ -270,7 +273,7 @@ def main() -> None:
 
     envelope = dict(
         schema_version=1,
-        script="project/sigma_lowres/paper_bench/e5_holdout.py",
+        script="project/sigma_lowres/paper_bench/experiments/e5/e5_holdout.py",
         label="e5-holdout",
         timestamp_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         sources=dict(e1b=str(E1B), g9=str(G9), g5=str(G5), g7=str(G7)),

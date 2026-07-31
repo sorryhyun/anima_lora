@@ -15,7 +15,7 @@ Writes e7_inventory.tsv (one row per artist) next to this script under
 runs/<stamp>-e7-inventory/ and prints the cluster picture.
 
 Usage:
-    python project/sigma_lowres/paper_bench/e7_inventory.py
+    python project/sigma_lowres/paper_bench/experiments/e7/e7_inventory.py
 """
 
 from __future__ import annotations
@@ -26,7 +26,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "bench" / "tier_routing"))
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
+sys.path.insert(0, str(SIGMA / "bench" / "tier_routing"))
 
 from redundancy import score_corpus  # noqa: E402
 
@@ -61,7 +64,7 @@ def main() -> None:
         )
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out_dir = HERE / "runs" / f"{stamp}-e7-inventory"
+    out_dir = RUNS / f"{stamp}-e7-inventory"
     out_dir.mkdir(parents=True, exist_ok=True)
     tsv = out_dir / "e7_inventory.tsv"
     with tsv.open("w") as f:

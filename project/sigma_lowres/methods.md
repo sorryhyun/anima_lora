@@ -5,7 +5,7 @@ observability instrumentation (Measurements A/B below) **and, since
 2026-07-26, the Phase 1b trainer wiring** (next section) — built opt-in
 (`--sigma_lowres`). The E4 grid measured the wiring end-to-end 2026-07-30
 (−14.6% wall at fixed steps); the CMMD non-inferiority read is still owed
-(`paper_bench/required_experiments.md` §E4).
+(`paper_bench/experiments/e4/README.md`).
 
 ## Phase 1b trainer wiring (shipped 2026-07-26, opt-in)
 
@@ -130,7 +130,7 @@ across images, SEM ~0.02), not the per-image ranking that failed there.
 - **CLI**: `--tier <native_edge> --demote_edges <e1,e2,...>` selects the
   operating point (Phase 0 ran 1024→{896,768,512}; Phase 1a ran
   896→{768,512}).
-- **Mechanism flags** (groundings.md tests G1/G2, added 2026-07-24):
+- **Mechanism flags** (record/groundings.md tests G1/G2, added 2026-07-24):
   `--endpoint_bin` appends an exact σ=1.0 bin (input pure ε → any gap = the
   Floor by construction; `--bins 0 --endpoint_bin` = endpoint-only run).
   `--x_zero` zeroes the image in BOTH input and target on every grid

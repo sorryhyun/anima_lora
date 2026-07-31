@@ -1,13 +1,13 @@
 """E7 cell readout: per-cell means + factorial contrasts from the two probe runs.
 
 Bin-mean first read of the pre-registered E7 quantities
-(required_experiments.md): per-cell means over the in-window sigma bins,
+(experiments/e7/README.md): per-cell means over the in-window sigma bins,
 membership contrast (S1 vs S2), probe-style main effect, and the paired
 adapter x probe-style interaction on the shared cross-cluster stems.
 Source of the numbers quoted in the paper's Appendix E7 section.
 
 Usage:
-    python project/sigma_lowres/paper_bench/e7_cells.py
+    python project/sigma_lowres/paper_bench/experiments/e7/e7_cells.py
 """
 
 import json
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parent / "runs"
+ROOT = Path(__file__).resolve().parents[2] / "runs"
 # Artifact names: "flat" = the paper's high-redundancy cluster, "dirty" = low-redundancy.
 RUNS = {"flat": ROOT / "20260729-1349", "dirty": ROOT / "20260729-1702"}
 INWIN = slice(

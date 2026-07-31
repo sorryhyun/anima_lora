@@ -15,7 +15,7 @@ cache + `--data_root` — no corpus re-preprocess, ~47 min/probe).
 cache — all bins in the crossover region (centers 0.55…0.95). **Started
 2026-07-26, deprioritized at 5/24 images** (partial rows
 `bench/results/20260726-2109/`; same command re-runs) in favor of the
-prior-distance discriminator, which landed the same day (groundings.md G6:
+prior-distance discriminator, which landed the same day (record/groundings.md G6:
 no 1280 discontinuity, prior ↮ Floor — the Floor is graph-side). Payoff of resuming is gate-position-sensitive: σ\* ≈ 0.65 →
 ~9% epoch saving on 1280-tier data, σ\* ≈ 0.75 → ~5%. Then the decision
 point:
@@ -230,20 +230,20 @@ rank-space ΔW read (`bench/yarnsig_report.md` §"yarnsig in-vivo arm",
 the best late-block agreement of any pair — the rope footprint sits in the
 low-signal early/mid blocks. No red flag; not a gate substitute.
 
-- **Gate**: the E4 grid (`paper_bench/completed_experiments.md` §E4 — 4 arms
+- **Gate**: the E4 grid (`paper_bench/experiments/e4/README.md` — 4 arms
   × 3 seeds × 2 artists, superseding the three-armed sketch) ran 2026-07-30:
   wall-clock **measured −14.6% / −15.1% FLOPs** at fixed steps, and the
   seed-noise yardstick puts sigma896's render deltas inside the seed lottery.
   **Still owed**: the CMMD non-inferiority read — the exercise pass had no
   metric power (negative control unsafe768 ≈ native at exercise N; full-band
-  rescoring queued, `paper_bench/required_experiments.md` §E4) — plus val
+  rescoring queued, `paper_bench/experiments/e4/README.md`) — plus val
   loss + peak mem. Pitch is wall-clock at fixed steps, never "more steps in
   the same time" (autoscale lesson). CMMD regression → close the line
   (pre-committed).
 
 ## Phase 1c — bespoke loops (EC / turbo) — gated on separate probes
 
-Each needs its own operating-point probe before any wiring (questions.md Q5).
+Each needs its own operating-point probe before any wiring (record/questions.md Q5).
 Do not schedule until Phase 1b has shipped and survived its gate.
 
 ## Kill criteria
@@ -255,6 +255,6 @@ Do not schedule until Phase 1b has shipped and survived its gate.
 
 ## Pointers
 
-Design: `project/sigma_lowres/initial_proposal.md` · Data:
+Design: `project/sigma_lowres/record/initial_proposal.md` · Data:
 `project/sigma_lowres/bench/report.md` · Memory: `project_sigma_lowres_phase0`,
 `project_tier_routing_phase3a_failed` (split-half check mandatory).

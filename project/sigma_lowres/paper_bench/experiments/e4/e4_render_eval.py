@@ -20,7 +20,7 @@ leave the thin channel cell with zero refs). Machinery is generalize.py's
 
 Usage (GPU — submit via daemon)::
 
-    make daemon-run ARGS="project/sigma_lowres/paper_bench/e4_render_eval.py \
+    make daemon-run ARGS="project/sigma_lowres/paper_bench/experiments/e4/e4_render_eval.py \
         --manifest project/sigma_lowres/paper_bench/runs/20260729-1537-e4-manifest/e4_manifest.json"
 """
 
@@ -35,7 +35,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
+REPO = HERE.parents[4]
 sys.path.insert(0, str(REPO))
 
 import numpy as np  # noqa: E402
@@ -168,7 +171,7 @@ def main() -> None:
         out = Path(args.out)
     else:
         stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-        out = HERE / "runs" / f"{stamp}-e4-eval-s{args.train_seed}"
+        out = RUNS / f"{stamp}-e4-eval-s{args.train_seed}"
     out.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

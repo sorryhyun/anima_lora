@@ -2,7 +2,7 @@
 """sigma_lowres — forward-only prior/residual-distance probe (grid conditioning).
 
 Discriminator (1) from the 1280→1024 read-through (account:
-``hypothesis.md``; records: ``groundings.md`` G5/G6), generalized
+``record/hypothesis.md``; records: ``record/groundings.md`` G5/G6), generalized
 to a σ-resolved curve. No adapter, no gradients: per image, grid and σ, the
 K-draw **mean residual** ``r̄ = E_ε[v̂(z_σ) − (ε − x)]`` is the model's mean
 prediction error on that grid — the exact ``r`` factor the LoRA gradient
@@ -21,7 +21,7 @@ half-mean distance overestimates full-mean noise 2×). A same-grid reenc pair
 (native cache vs re-encoded PNG at the native bucket) is the encode-chain
 control.
 
-Pre-registered σ-curve reads (the hybrid account, hypothesis.md):
+Pre-registered σ-curve reads (the hybrid account, record/hypothesis.md):
 
 - **S1-severity**: excess(σ) declines toward its σ=1 asymptote, and the
   1280→1024 curve stays elevated to HIGHER σ than 1024→896's — the forward

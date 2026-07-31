@@ -19,7 +19,7 @@ excluded, identical across arms).
 
 Usage (GPU — daemon)::
 
-    make daemon-run ARGS="project/sigma_lowres/paper_bench/e4_flops.py \
+    make daemon-run ARGS="project/sigma_lowres/paper_bench/experiments/e4/e4_flops.py \
         --jobs <job_id> [<job_id> …]"
 """
 
@@ -33,7 +33,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
+PAPER_BENCH = HERE.parents[1]  # project/sigma_lowres/paper_bench
+SIGMA = HERE.parents[2]  # project/sigma_lowres
+RUNS = PAPER_BENCH / "runs"
+REPO = HERE.parents[4]
 sys.path.insert(0, str(REPO))
 
 import torch  # noqa: E402
@@ -141,7 +144,7 @@ def main() -> None:
         out_dir = Path(args.out)
     else:
         stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-        out_dir = HERE / "runs" / f"{stamp}-e4-flops"
+        out_dir = RUNS / f"{stamp}-e4-flops"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "flops.json").write_text(json.dumps(out, indent=1))
     print(f"wrote {out_dir / 'flops.json'}", flush=True)
