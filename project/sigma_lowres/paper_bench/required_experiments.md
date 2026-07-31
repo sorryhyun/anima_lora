@@ -76,8 +76,7 @@ I(σ)) and the "banded ≤ 0.10 erasure" bound invalid (cross-terms). The
 manuscript consequences are in `paper/action.md`; the replacement
 instruments, all launched 2026-07-30:
 
-- **E9 — interventional B/C ledger** [STOPPED before start 2026-07-30
-  (hold); relaunch with the same command when GPU frees]
+- **E9 — interventional B/C ledger**
   (`run_sigma_probe.py --repromote
   --keep_arm_sums --self_floor`, routes 896/768/512, σ ∈ [0.5,1.0] 4 bins
   + endpoint, D=8, N=24, deterministic): B = ḡ_rp − ḡ₀ (data, native
@@ -87,6 +86,24 @@ instruments, all launched 2026-07-30:
   collapse — pre-registered branches in `action.md`), localizes the
   Goldilocks prediction (window center at |B⊥| ≈ |C⊥|), and closes the
   §4.5 reenc-proxy [pending] (B vs native vs B vs reenc).
+  **[DONE 2026-07-31 — verdict: branch (i), negative interference**
+  (`bench/results/20260731-0721/` + `ledger.json`; wall 3.8 h):
+  I_768(σ) < 0 at every bin (−0.31 → −0.014 window→endpoint) with B, C
+  near anti-parallel (ρ ≈ −0.93 in-window; sign robust to cross-set
+  debiasing, same-set −0.37 vs cross −0.31 at bin 0). Amplitude
+  matching localizes the 768 window center at σ ≈ 0.69
+  (|B⊥|/|C⊥| = 0.98). Branch (ii) dead: F_768 falls monotonically to
+  its endpoint (0.200 → 0.0036), never below it in-window — Q1's σ=1
+  endpoint reduction stands (though F(σ) is strongly σ-dependent for
+  every route, confirming the retracted σ-flat extension stays
+  retracted). The cancellation itself is universal (ρ −0.62…−1.24 on
+  all routes); routes differ by amplitude matching: 896 matched but
+  small (net S+F+I ≤ +0.012), 768 matched mid-window (≤ +0.029), 512
+  amplitude-mismatched at low σ (|C⊥|/|B⊥| ≈ 1.8 at bin 0, net up to
+  +0.197). Reenc-proxy closed: |B⊥| against reenc is within ~4% of
+  |B⊥| against native at the signal-carrying low-σ bins (worst ±23%
+  at bins where B is already small) — the shared down+up+encode
+  pipeline cost is a minor share of the data intervention.]
 - **E10 — exact target-content vectors** (same instrument,
   `--target_alpha 0,1 --target_kappa --keep_arm_sums`, endpoint-only,
   N=40): the forward pass is α-independent, so t = ḡ(1) − ḡ(0) is exact
@@ -114,6 +131,38 @@ instruments, all launched 2026-07-30:
   universal amplitude law). `--uncond` rerun implemented; first launch
   stopped mid-run 2026-07-30 (hold) — relaunch to close the
   caption-conditioning caveat.]
+- **E12 — posterior-budget (quantization-regime) probes**
+  (`run_posterior_budget.py`, native-only, forward-only, deterministic
+  by default; design registered `paper/action.md` §4.4/Q5): **Probe A**
+  Hutchinson trace of Cov(x|z,c) via the Divergence-is-Uncertainty
+  identity tr Cov = σ²/(1−σ)·tr(I − σ·D_z v̂), Rademacher FD-JVP
+  (δ = 2⁻⁵, 2δ linearity check, σ < 1 grid — identity degenerates at
+  σ=1); **Probe B** ε-sweep saturation along repromote/reenc/random
+  unit directions at matched norms plus each direction's natural
+  amplitude, response in E11's rel-L2 mean-residual units. Predictions:
+  m(σ) ∝ √tr-Cov route-independently (shape mismatch kills the
+  hypothesis); plateau at m(σ) with reenc below the knee; plateau
+  departure locates the validity domain (512 rotation candidate).
+  Payoff if confirmed: native-only pre-screening — the data term's
+  σ-shape without demotion arms. **[DONE 2026-07-31 — verdict:
+  REFUTED on both probes** (`bench/results/20260731-0023/`, 36 images,
+  FD linearity 0.96–1.0): **(A) shape mismatch** — √tr-Cov rises
+  1 → 1.66 → 2.81 over σ 0.375→0.875 while the absolute nat-amplitude
+  response falls 1 → 0.85 → 0.82 on both routes; per-image
+  dabs/√tr-Cov corr ≈ −0.25, ratio CV ≈ 0.5 and route-dependent
+  (0.87 vs 1.50) — no universal constant. **(B) no saturation
+  plateau** — response is near-linear in ε (log-log slope 0.84–0.90)
+  through every route's natural amplitude; routes at nat differ ~1.7×,
+  tracking their perturbation sizes, so amplitude is set by input
+  size × a direction/σ gain, NOT a σ-only posterior budget. Demotion
+  directions are ~1.5× *softer* than random at matched ε (0.13 vs
+  0.20 rel @ ε=0.05) — opposite of a re-roll story. The "native-only
+  pre-screening" payoff is void. Side finding: the deterministic VAE
+  re-encode reproduces the cached latent **bit-exactly** for most
+  images (reenc direction exists for only 4/12) — E11's reenc ≤ 0.02
+  control was carried by draw noise, not an encode-chain perturbation.
+  AQ6 answered: amplitude-universality fails at the first (cheapest)
+  test. Manuscript consequence in `paper/action.md` §4.4/Q5.]
 
 Instrument deltas live in `run_sigma_probe.py` (`--repromote`,
 `--keep_arm_sums`, `--target_kappa`; arm-sum memmaps under
@@ -133,8 +182,10 @@ runs stay under the gitignored `bench/results/`; only the derived
   still need either the same carve-out or a published tarball (HF
   dataset) — the reproducibility statement must match what's actually
   public.
-- Manuscript pass: strip pending markers (E9/E10 clear the last two —
-  the §4.5 reenc-proxy and §4.6 probe pendings), shorten
+- Manuscript pass: ~~strip pending markers~~ (§4.5 reenc-proxy + §4.6
+  probe pendings stripped 2026-07-31 with the E9 write-in; still
+  pending in-manuscript: E8.3 overlay, E3 batch-aggregate grid, raw-run
+  tarball), shorten
   abstract, enlarge Fig. 1, drop colored link boxes, label every claim
   pre-registered / confirmatory / post-hoc (the freeze dates exist in
   `questions.md` — link the commits), and narrow the headline to
@@ -145,7 +196,8 @@ runs stay under the gitignored `bench/results/`; only the derived
 
 ## Order of operations
 
-E1 + E2 + E4 + E5 + E7 + E8.1/8.2 done → E9–E11 (in flight 2026-07-30;
+E1 + E2 + E4 + E5 + E7 + E8.1/8.2 done → E9–E11 (E9 done 2026-07-31,
+E10/E11 done 2026-07-30; only E11's `--uncond` rerun still pending;
 their ledgers gate the `paper/action.md` §4.3/§4.5/§4.6 rewrites) →
 E3 pooled-arm run + a/(b/B) batch-size fit (`action.md` estimand fix) →
 E8.3 analysis (anchored row satisfied) → reproducibility deliverables →

@@ -84,6 +84,40 @@ amplitude-matching *story for the collapse itself* (e.g. the positional
 component of C rotating toward ḡ₀ as content vanishes), or does that
 branch simply hand the question back to a σ-resolved RoPE theory (AQ2)?
 
+**Update 2026-07-31 — E9 landed on branch (i); the localization scored.**
+(`bench/results/20260731-0721/ledger.json`; full ledger now in the
+manuscript's Appendix Table on the B/C instrument.)
+
+- **(i) window center at |B⊥| ≈ |C⊥|: CONFIRMED.** |B⊥|/|C⊥| = 0.98 at
+  the σ = 0.6875 bin (0.83/0.83 at the neighboring 0.5625/0.8125
+  bins), putting the predicted center at σ ≈ 0.69, interior to the
+  measured [0.56, 0.94] window. This is the headline hit for the
+  Goldilocks account.
+- **(ii) edges where ρ crosses −b/2c: DID NOT FIRE as stated.** ρ is
+  essentially flat in-window at 768 (−0.93 ± 0.01) and crosses
+  nothing; the window closes toward the endpoint because both
+  amplitudes collapse (|B⊥|, |C⊥| → 0.07–0.09) into the floor's
+  scale, not because the angle moves. Edge localization is
+  amplitude-driven, not ρ-driven.
+- **(iii) route discrimination: HALF-RIGHT.** 512's exclusion is
+  indeed amplitude mismatch (|C⊥|/|B⊥| ≈ 1.8 at the low-σ bin, net
+  S+F+I up to +0.20) — the b ≪ c disjunct, with b and c as you
+  labeled them. But the "ρ route-differently directed" disjunct is
+  wrong: the anti-parallel geometry is universal (ρ ∈ [−1.24, −0.62]
+  across every route and bin). 896 is amplitude-matched like 768 but
+  low net amplitude (S+F+I ≤ +0.012), consistent with your "too small
+  everywhere" reading at the net level.
+- Your fallback question (an amplitude-matching story for an F-collapse)
+  is moot: branch (ii) did not fire — F_768 falls monotonically to its
+  endpoint value (0.200 → 0.0036) and never drops below it in-window.
+- Quantitative content of branch (i), for the record: realized h(B+C)
+  is ~20–30% of the additive h(B) + h(C) in-window — ~70–80% of the
+  additively-predicted gap is erased by the interference. The
+  quadratic ledger S+F+I is sign- and localization-accurate but
+  underpredicts realized magnitudes ~3–4× in-window (|B⊥|, |C⊥| ≈
+  0.5–1.0 G there — outside the truncation's domain), so magnitudes
+  are quoted from the exact h(·) counterfactuals.
+
 ## AQ5 — shadow-Adam replay: validity horizon
 
 For the frozen-state replay you propose (same optimizer state +
@@ -114,9 +148,14 @@ tests amplitude-universality directly rather than mode-sharing?
 
 ## What will exist shortly (predict now if inclined)
 
-- **E9** (queued): routes {896, 768, 512}, σ-window 0.5–1.0 in 4 bins +
-  endpoint, D=8, two draw sets/arm, repromote arms, full arm-mean
-  vectors retained. Emits S/F/I per (route, bin) + h() exact angles.
+- **E9** (LANDED 2026-07-31): routes {896, 768, 512}, σ-window 0.5–1.0
+  in 4 bins + endpoint, D=8, two draw sets/arm, repromote arms, full
+  arm-mean vectors retained; S/F/I per (route, bin) + h() exact
+  angles. **Verdict: branch (i), negative interference** — I_768 < 0
+  at every bin, ρ ≈ −0.93 in-window, window center localized at
+  σ ≈ 0.69 by amplitude matching (scored against your Goldilocks
+  pre-registration under AQ4 above); branch (ii) dead (F_768 monotone
+  to its endpoint, never below it in-window).
 - **E10** (LANDED 2026-07-30): endpoint-only, α ∈ {0,1}, exact
   per-image t-vectors + aggregate; κ∥/κ⊥ per route with a-vs-b null.
   **Verdict: parallel landing, confirmed with sign and order.**
@@ -149,5 +188,8 @@ standing puzzle handed to Q5 is now sharper: one m(σ) amplitude across
 routes whose mismatch directions are image- and route-specific. E10
 also landed (above): κ reads grew with severity and were κ∥-heavy —
 the parallel-landing branch of your three-way readout, consistent with
-the target-only floor law's endpoint equivalences. Still pending: your
-Goldilocks predicts E9's window localization (AQ4).
+the target-only floor law's endpoint equivalences. E9 has now landed
+as well (2026-07-31): branch (i), with your Goldilocks localization
+scored under AQ4 — the center prediction confirmed at σ ≈ 0.69, the
+ρ-crossing edge rule and the route-discrimination disjuncts partially
+so.

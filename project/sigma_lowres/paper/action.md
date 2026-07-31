@@ -13,23 +13,57 @@ and `additional_question.md` AQ4.*
 
 ## Open items
 
-### §4.6 — the 768 anomaly [GATED ON E9]
+### §4.6 — the 768 anomaly [E9 DONE — BRANCH (i): NEGATIVE INTERFERENCE]
 
-- **E9 relaunch pending** (stopped before start 2026-07-30, user hold).
-  When it lands: publish the vector-resolved ledger — per (route,
-  σ-bin) S = |B⊥|²/2G², F = |C⊥|²/2G², I = ⟨B⊥,C⊥⟩/G², with
-  cross-draw-set debiasing and exact counterfactual angles
-  h(u) = 1 − cos(ḡ, ḡ+u) — and report which pre-registered branch the
-  data picks: (i) I_768(σ) < 0 with the amplitude-matching
-  localization (window center where |B⊥(σ)| ≈ |C⊥(σ)|), or (ii)
-  F_768(σ) collapsing below its endpoint value in-window (which would
-  also rewrite Q1's "σ-flat Floor_e" reduction). The fork + the
-  scalar-probe conflation + the B/C design are already written into
-  §4.6; Goldilocks scoring spec is AQ4 in `additional_question.md`.
-- **Reenc-proxy caveat** (§4.5 ledger [pending]): E9's repromote arm
-  carries the demote arm's own down+up resize, so B measured against
-  reenc vs against native bounds the pipeline-cost share empirically.
-  Clear the [pending] with E9 numbers.
+*Verdict 2026-07-31 (`bench/results/20260731-0721/` + `ledger.json`;
+full numbers in `paper_bench/required_experiments.md` E9): the data
+picks branch (i). I_768(σ) < 0 at every bin (−0.31 → −0.014) with B, C
+near anti-parallel (ρ ≈ −0.93 in-window), and the amplitude-matching
+localization puts the 768 window center at σ ≈ 0.69 (|B⊥|/|C⊥| = 0.98
+at the 0.6875 bin). Branch (ii) did not fire: F_768 decreases
+monotonically to its endpoint value (0.200 → 0.0036) and never drops
+below it in-window, so Q1's σ=1 endpoint reduction is untouched. Note
+the anti-parallel cancellation is universal across routes
+(ρ −0.62…−1.24); what distinguishes them is amplitude matching — 896
+matched but low-amplitude (net S+F+I ≤ +0.012), 768 matched at
+mid-window (≤ +0.029), 512 mismatched at low σ (|C⊥|/|B⊥| ≈ 1.8, net
+up to +0.197). **Manuscript: APPLIED 2026-07-31** — ledger +
+branch-(i) resolution written into §4.6 (two new paragraphs after the
+fork text), the full ledger + instrument details added as an appendix
+table (`tab:e9ledger`), the Goldilocks localization scored per AQ4 in
+`additional_question.md`, and the §4.6 [pending] marker stripped (the
+limitations mention updated too).*
+
+- **How the interference account narrows the predicted gap**
+  (quantified 2026-07-31 from `ledger.json`; APPLIED to §4.6 as the
+  "How much of the gap the interference erases" paragraph, incl. the
+  honest caveat). The actual demote gap is exactly h(B+C) (ḡ_dem = ḡ₀+B+C by
+  construction), so each account's predicted/actual ratio is directly
+  computable per (route, bin):
+  - **No-interference scalar account (S+F)**: overpredicts the
+    in-window gap **2.4–3.8× at 768** (2.4/3.3/3.8 across the three
+    in-window bins), 1.6–5.8× at 896, 1.2–3.0× at 512.
+  - **Fully additive counterfactuals (h_B + h_C)**: overpredicts
+    3.5–8× — the realized gap is only **~20–30% of the additive sum**
+    in-window; i.e. ~70–80% of the additively-predicted gap is erased
+    by the interference. That is the quantitative content of
+    branch (i).
+  - **Vector account (B+C)**: exact by construction — including I is
+    what removes the overprediction.
+  - **Honest caveat for the manuscript**: the quadratic scalar ledger
+    S+F+I itself *under*predicts in-window magnitudes ~3–4× (median
+    ratio 0.24×) because |B⊥|, |C⊥| ≈ 0.5–1.0 G there — the
+    small-perturbation truncation is out of its domain. So in §4.6:
+    use S/F/I for **sign, decomposition, and window localization**;
+    quote **magnitudes via the exact h(·) counterfactuals** (h_B, h_C,
+    h(B+C) are all in `ledger.json`). Do not cite S/F/I values as gap
+    magnitudes.
+- **Reenc-proxy caveat — CLEARED** (§4.5 ledger [pending] → strip):
+  |B⊥| measured against reenc agrees with |B⊥| against native to ~4%
+  at the signal-carrying low-σ bins (worst ±23% only where B is
+  already small), so the down+up+encode pipeline cost is a minor share
+  of the data intervention. §4.5 text APPLIED 2026-07-31 (pending
+  stripped, numbers in, pointer to `tab:e9ledger`).
 
 ### §4.5 — the 512-banded leg [runs later]
 
@@ -60,7 +94,26 @@ composition-prior story (as a caption-suppressed mechanism); another
 null retires it. Implemented; first launch stopped mid-run 2026-07-30
 (user hold) — relaunch pending.
 
-### §4.4 / Q5 — posterior-budget (quantization-regime) hypothesis [E12, proposed]
+### §4.4 / Q5 — posterior-budget (quantization-regime) hypothesis [E12 DONE — REFUTED]
+
+*Verdict 2026-07-31 (`bench/results/20260731-0023/`, full design +
+numbers in `paper_bench/required_experiments.md` E12): both
+pre-registered kill criteria fired. Probe A: √tr-Cov(σ) rises ~2.8×
+over σ 0.375→0.875 while the absolute demotion response falls ~0.85×
+— shape mismatch; no universal dabs/√tr-Cov constant (route-dependent,
+CV ≈ 0.5, per-image corr ≈ −0.25). Probe B: response near-linear in ε
+(slope 0.84–0.90) with no plateau through the routes' natural
+amplitudes; route amplitudes track perturbation size (~1.7× apart).
+So E11's route-uniform m(σ) is NOT saturation — it must come from
+route-uniform delivered perturbation × a direction/σ gain (demotion
+directions are ~1.5× softer than random at matched ε — a lead worth
+keeping). Native-only pre-screening payoff void. AQ6's
+amplitude-universality question: answered negative. Do not re-propose
+the lossy-code saturation account without new evidence; the Probe A
+posterior-trace instrument itself is sound and reusable
+(`run_posterior_budget.py`, FD linearity 0.96–1.0).*
+
+Original proposal (kept for the record):
 
 *Added 2026-07-30 after reading Lottery Prior (ICML 2026,
 26571_Lottery_Prior_Randomized): in their Thm 3.1 the operator enters
@@ -108,17 +161,23 @@ input-decorrelated direction. That is E11's exact signature.*
   1024-tier map numbers do not move either way (m is already measured
   there).
 
-### §4.1/§6 estimands + E3 — batch aggregation [FIX with E3]
+### §4.1/§6 estimands + E3 — batch aggregation [phrasing APPLIED; E3 open]
 
-Delete every "per-example map is the batch-size-1 lower bound"
-phrasing. The correct statement is the decomposition
-E[d_B] ≈ |P⊥b|²/2‖μ‖² + tr(P⊥Σ_η P⊥)/2B‖μ‖²: an intercept (coherent
-drift that never averages out) plus a 1/B term; monotone improvement
-with B needs an iid zero-mean disagreement model we have not verified.
-E3's pooled-arm run gains an **a + b/B batch-size fit** as its
-headline readout, and the pre-A/B instrument for the long-horizon
-question becomes a paired shadow-Adam replay (frozen optimizer state,
-real batch/accum — validity-horizon questions on record as AQ5).
+*Phrasing fix APPLIED 2026-07-31: every "batch-size-1 lower
+bound"/"bounds every batch size from below" claim is deleted from the
+manuscript; §3.1 now states the decomposition
+E[d_B] ≈ |P⊥b|²/2‖μ‖² + tr(P⊥Σ_η P⊥)/2B‖μ‖² (intercept = coherent
+drift that never averages out, plus a 1/B term; monotone improvement
+with B needs an unverified iid zero-mean disagreement model), and the
+§6 aggregation paragraph now reads the pooled collapse through it and
+names the a + b/B fit as the batch-aggregate grid's headline readout
+(still [pending] the run).*
+
+Still open with E3: the pooled-arm run gains the **a + b/B batch-size
+fit** as its headline readout, and the pre-A/B instrument for the
+long-horizon question becomes a paired shadow-Adam replay (frozen
+optimizer state, real batch/accum — validity-horizon questions on
+record as AQ5).
 
 ### Unregistered lever (salvaged from response.md §4; not planned)
 
@@ -151,14 +210,30 @@ story ever needs a per-band read.
 
 | id | run | reads | status 2026-07-30 |
 |---|---|---|---|
-| E9 | `run_sigma_probe.py --repromote --keep_arm_sums --self_floor`, routes 896/768/512, window 0.5–1.0 + endpoint | B/C/S/F/I per bin, F(σ) directly, Goldilocks localization, reenc-proxy closure | stopped before start (user hold) — relaunch pending |
+| E9 | `run_sigma_probe.py --repromote --keep_arm_sums --self_floor`, routes 896/768/512, window 0.5–1.0 + endpoint | B/C/S/F/I per bin, F(σ) directly, Goldilocks localization, reenc-proxy closure | **DONE 2026-07-31 — branch (i), I_768 < 0, window center σ ≈ 0.69; F-collapse dead; reenc-proxy cleared** (`bench/results/20260731-0721/`); verdict above + `required_experiments.md` |
 | E10 | `--target_alpha 0,1 --target_kappa`, endpoint-only | exact t-vectors, κ∥/κ⊥ | **DONE — parallel landing**; in manuscript §4.3 + `required_experiments.md` |
 | E11 | `run_prior_distance.py --save_residuals` + `resid_structure.py` | Δr̄ direction structure | **DONE — norm-only**; in manuscript §4.4 + `required_experiments.md`; `--uncond` rerun pending (above) |
-| E12 | posterior-trace (Hutchinson on D_z v̂) + ε-sweep saturation, native-only, FD, `--deterministic` | m(σ) ∝ √tr-Cov profile; saturation plateau + validity domain | proposed (above) — not scheduled; ~1.5 h GPU full / ~20 min pilot |
+| E12 | posterior-trace (Hutchinson on D_z v̂) + ε-sweep saturation, native-only, FD, `--deterministic` | m(σ) ∝ √tr-Cov profile; saturation plateau + validity domain | **DONE 2026-07-31 — REFUTED both probes** (`bench/results/20260731-0023/`); verdict above + `required_experiments.md` |
 
 Analysis lands via `paper_bench/vector_ledger.py` (E9/E10) and
 `paper_bench/resid_structure.py` (E11); both are CPU reanalyses of the
 runs' saved vectors, so re-reads don't cost GPU time.
+
+## Applied 2026-07-31 (record)
+
+PR #79 (route-explicit d notation, gap-only excess, derived
+subtraction; spectral null → "spectral account" reframe) merged into
+`sigma-lowres-yarnsig`. On top of it, in `main.tex`/`appendix.tex`:
+the §4.6 branch-(i) resolution ("The probe, run" + "How much of the
+gap the interference erases" paragraphs, with the S/F/I-vs-h(·)
+unit-honesty caveat), the appendix B/C-instrument paragraph + full
+ledger Table `tab:e9ledger`, the §4.5 reenc-proxy closure numbers,
+the §3.1 batch-aggregation decomposition replacing the batch-1
+lower-bound claim (echoed in the §6 map paragraph with the a + b/B
+readout named), and the limitations update (768 window mechanism now
+measured). AQ4 scored in `additional_question.md` (center CONFIRMED,
+edge rule did not fire as stated, route disjuncts half-right); its E9
+registry entry flipped to LANDED.
 
 ## Applied 2026-07-30 (record)
 

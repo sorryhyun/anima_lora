@@ -233,6 +233,66 @@ $+0.019$ $[+0.010, +0.030]$; curve RMSE $0.073$), the X-form
 counterpart of the quadratic-form addendum
 (\S\ref{sec:confronted}).
 
+\paragraph{Interventional $B/C$ ledger (\S\ref{sec:confronted}),
+implementation.} Routes $1024{\to}\{896, 768, 512\}$,
+$\sigma \in [0.5, 1.0]$ in four bins plus the $\sigma{=}1$ endpoint
+bin, $D{=}8$ draws per bin, $N{=}24$ images, deterministic mode, two
+independent draw sets per arm. Each arm's draw-summed adapter
+gradient is stored per bin; the interventional split is
+$B = \bar g_{\mathrm{repromote}} - \bar g_{\src}$ (the data
+intervention at fixed native graph: the demote--re-promote arm's
+input passed through the downscale$\to$upscale$\to$encode pipeline
+but is evaluated on the native grid) and
+$C = \bar g_{\mathrm{demote}} - \bar g_{\mathrm{repromote}}$ (the
+graph intervention at fixed demoted data). The quadratic shares $S$,
+$F$, $I$, and $\rho = \cos(B^{\perp}, C^{\perp})$ use cross-draw-set
+inner products to cancel shared draw noise; the debiased estimates
+are not confined to $[-1, 1]$ (hence $\rho = -1.24$ at one
+low-amplitude bin). The exact counterfactual angles $h(B)$, $h(C)$,
+$h(B{+}C)$, with
+$h(X) = 1 - \cos(\bar g_{\src}, \bar g_{\src} + X)$, are computed on
+the raw arm means. The re-encoding proxy check re-references the data
+leg against the control arm,
+$B_{\reenc} = \bar g_{\mathrm{repromote}} - \bar g_{\reenc}$, and
+compares $|B^{\perp}_{\reenc}|$ to $|B^{\perp}|$ per bin.
+
+\begin{table}[t]
+\caption{The interventional $B/C$ ledger behind
+\S\ref{sec:confronted}: per (route, $\sigma$-bin) orthogonal
+amplitudes (units of $\|\bar g_{\src}\|$), interaction geometry, the
+cross-set-debiased quadratic shares, and the exact counterfactual
+angles. In-window $S{+}F{+}I$ is sign- and localization-accurate but
+underpredicts $h(B{+}C)$ (small-perturbation truncation out of
+domain); magnitude claims in the text use $h(\cdot)$.}
+\label{tab:e9ledger}
+\begin{center}
+\small
+\begin{tabular}{llrrrrrrrrr}
+\toprule
+route & $\sigma$ & $|B^{\perp}|$ & $|C^{\perp}|$ & $\rho$ & $S$ & $F$ & $I$ & $h(B)$ & $h(C)$ & $h(B{+}C)$ \\
+\midrule
+$896$ & $0.563$ & $0.55$ & $0.59$ & $-0.95$ & $0.103$ & $0.115$ & $-0.206$ & $0.107$ & $0.206$ & $0.037$ \\
+      & $0.688$ & $0.42$ & $0.39$ & $-0.91$ & $0.036$ & $0.059$ & $-0.085$ & $0.083$ & $0.077$ & $0.062$ \\
+      & $0.813$ & $0.20$ & $0.23$ & $-0.94$ & $0.016$ & $0.019$ & $-0.033$ & $0.022$ & $0.027$ & $0.010$ \\
+      & $0.938$ & $0.10$ & $0.10$ & $-1.24$ & $0.002$ & $0.003$ & $-0.006$ & $0.007$ & $0.006$ & $0.003$ \\
+      & $1.000$ & $0.05$ & $0.06$ & $-0.71$ & $0.001$ & $0.001$ & $-0.001$ & $0.002$ & $0.003$ & $0.002$ \\
+\midrule
+$768$ & $0.563$ & $0.57$ & $0.68$ & $-0.93$ & $0.139$ & $0.200$ & $-0.309$ & $0.107$ & $0.346$ & $0.088$ \\
+      & $0.688$ & $0.56$ & $0.57$ & $-0.93$ & $0.100$ & $0.136$ & $-0.218$ & $0.106$ & $0.242$ & $0.098$ \\
+      & $0.813$ & $0.35$ & $0.42$ & $-0.93$ & $0.049$ & $0.067$ & $-0.105$ & $0.059$ & $0.110$ & $0.035$ \\
+      & $0.938$ & $0.14$ & $0.17$ & $-1.02$ & $0.005$ & $0.009$ & $-0.014$ & $0.010$ & $0.033$ & $0.008$ \\
+      & $1.000$ & $0.07$ & $0.09$ & $-0.62$ & $0.001$ & $0.004$ & $-0.003$ & $0.003$ & $0.014$ & $0.013$ \\
+\midrule
+$512$ & $0.563$ & $0.60$ & $1.09$ & $-0.72$ & $0.166$ & $0.403$ & $-0.372$ & $0.085$ & $0.854$ & $0.466$ \\
+      & $0.688$ & $0.63$ & $0.88$ & $-0.86$ & $0.153$ & $0.332$ & $-0.388$ & $0.107$ & $0.623$ & $0.305$ \\
+      & $0.813$ & $0.57$ & $0.72$ & $-0.87$ & $0.152$ & $0.226$ & $-0.323$ & $0.131$ & $0.285$ & $0.126$ \\
+      & $0.938$ & $0.25$ & $0.29$ & $-0.96$ & $0.026$ & $0.036$ & $-0.058$ & $0.028$ & $0.201$ & $0.037$ \\
+      & $1.000$ & $0.13$ & $0.15$ & $-0.88$ & $0.007$ & $0.010$ & $-0.015$ & $0.007$ & $0.379$ & $0.098$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
 \paragraph{Spectral-account computation.} Table~\ref{tab:null} evaluates
 Eq.~\ref{eq:spd} at the demoted grids' Nyquist frequencies
 $f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_0$ on the $N{=}40$
