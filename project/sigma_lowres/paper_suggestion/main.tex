@@ -14,8 +14,8 @@
 \usepackage{multirow}
 \usepackage{subcaption}
 
-% De-anonymized draft; comment out for double-blind submission.
-\iclrfinalcopy
+% Anonymous (double-blind) draft; uncomment for the de-anonymized copy.
+% \iclrfinalcopy
 
 \newcommand{\gap}{\mathrm{gap}}
 \newcommand{\dgap}{\widehat{\mathrm{gap}}}
@@ -30,16 +30,16 @@
 \title{When Does Training on Downscaled Images\\
 Yield the Same Gradients?}
 
-\author{Seunghyun Ji\\
-Independent researcher\\
-\texttt{standingbehindnv@gmail.com}
-}
+% Restored (with \iclrfinalcopy above) for the de-anonymized draft:
+% \author{Seunghyun Ji\\
+% Independent researcher\\
+% \texttt{standingbehindnv@gmail.com}
+% }
 
 \begin{document}
 
 \maketitle
-% Drop the "Published as a conference paper at ICLR 2026" running head
-% (set by \maketitle under \iclrfinalcopy) for this draft.
+% Drop the running head set by \maketitle for this draft.
 \fancyhead{}
 \renewcommand{\headrulewidth}{0pt}
 
@@ -69,8 +69,7 @@ misses at $0.147$--$0.355$ RMSE where ours predicts at
 $0.07$--$0.09$, better than an oracle fit on the held-out data
 itself. Gating substitution on that window gives \emph{selective}
 low-resolution training: $-14.6\%$ wall-clock at a fixed step budget,
-with a sample-level footprint within the training-seed lottery
-(quality non-inferiority at production scale remains open).
+with a sample-level footprint within the training-seed lottery.
 \end{abstract}
 
 % ---- Body ----------------------------------------------------------

@@ -678,7 +678,9 @@ stochasticity), while the safety map built on top of it is not.
 \label{app:tables}
 
 Table~\ref{tab:debiasedmap} is the numerical form of
-Fig.~\ref{fig:gapcurves}, the paper's verdict map. The remaining tables
+Fig.~\ref{fig:gapcurves}, the paper's verdict map, and
+Table~\ref{tab:floor} the debiased floor reads that
+\S\ref{sec:ourscored} scores the graph term on. The remaining tables
 are the raw-estimator record: retained for continuity and for the reads
 defended in \S\ref{sec:instrument} (one-signed bias; paired same-grid
 contrasts), not cited as debiased evidence. Table~\ref{tab:phase0} is
@@ -709,6 +711,35 @@ $\sigma$ bin center & $1024{\to}896$ & $1024{\to}768$ & $1024{\to}512$ \\
 0.94 & $+.004$ {\scriptsize(.021)} & $+.015$ {\scriptsize(.034)} & $+.166$ {\scriptsize(.061)} \\
 \midrule
 1.0 (endpoint) & $+.043$ {\scriptsize(.011)} & $+.092$ {\scriptsize(.012)} & $+.329$ {\scriptsize(.030)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\caption{\textbf{The floor, debiased} (scored in
+\S\ref{sec:ourscored}). \textbf{Endpoint}: at $\sigma{=}1$ the
+input is exactly $\epsilon$ on every grid, so the input-mediated data
+term vanishes by construction. \textbf{x-zero}: the image is removed
+from input \emph{and} target; any surviving gap is pure graph-shape
+sensitivity. Debiased draw-limit values $\dgap_\infty$ [bootstrap 95\%
+CI over images] from nested draw sweeps (endpoint: $N{=}12$,
+$D = 4 \ldots 64$; x-zero: $N{=}40$, $D = 4 \ldots 32$). The two
+columns agree within CI at every route; our pre-registered kill switch
+(all endpoint gaps ${\approx}\,0$) does not fire; and no member of the
+spectral family can produce a nonzero entry here.}
+\label{tab:floor}
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+route & endpoint $\dgap_\infty$ [95\% CI] &
+x-zero $\dgap_\infty$ [95\% CI] \\
+\midrule
+native self-floor (cosine) & $1.005$ $[0.994, 1.016]$ & --- \\
+re-encoding control & $-0.003$ $[-0.017, +0.008]$ & --- \\
+$1024{\to}896$ & $+0.019$ $[+0.010, +0.030]$ & $+0.034$ $[+0.017, +0.058]$ \\
+$1024{\to}768$ & $+0.056$ $[+0.043, +0.071]$ & $+0.074$ $[+0.053, +0.094]$ \\
+$1024{\to}512$ & $+0.304$ $[+0.197, +0.424]$ & $+0.283$ $[+0.232, +0.332]$ \\
 \bottomrule
 \end{tabular}
 \end{table}

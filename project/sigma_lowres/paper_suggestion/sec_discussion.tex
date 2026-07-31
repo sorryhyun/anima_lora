@@ -46,6 +46,10 @@ shipped trainer's actual batch$\times$accumulation operating point
 
 We wire the one measured-safe corpus route into the LoRA trainer as an
 opt-in path, exactly as measured, with no extrapolation beyond the map.
+The intervention is deliberately small: three lines inside an otherwise
+standard flow-matching step, and no change to the objective, the
+optimizer, or the noise density (pseudocode in
+Table~\ref{alg:sigmastep}).
 
 \textbf{$\sigma$-first draw.} The trainer draws each batch's $\sigma$
 \emph{before} fetching latents, from the unchanged training density
@@ -89,31 +93,60 @@ tracks FLOPs ${\approx}\,1{:}1$): the projection is achieved. The claim
 is wall-clock at fixed steps, not ``more steps in the same time.''
 
 \begin{table}[t]
+\begin{minipage}[t]{0.615\linewidth}
 \caption{Sample-level footprint vs.\ the seed lottery: paired PE-Core
-cosine at matched (prompt, noise seed), mean $\pm$ seed spread (SD over
-the three matched-seed pairs; seed pairs for the yardstick row) over
-the frozen prompt set, on two single-artist corpora ($60$/$15$
-training images). The yardstick row is the same cosine between native
-checkpoints that differ \emph{only} in training seed; an arm reading
-at or above it perturbs endpoint samples less than a seed change does.
-\textbf{Bold}: the closest-to-native arm per corpus; the shipped path
-is the only arm at or inside the yardstick on both corpora.}
+cosine at matched (prompt, noise seed) against the \emph{native} twin
+of the same training seed, mean $\pm$ seed spread (SD over the three
+matched-seed pairs; seed pairs for the yardstick row) over the frozen
+prompt set, on two single-artist corpora ($60$/$15$ training images).
+The yardstick row is the same cosine between native checkpoints that
+differ \emph{only} in training seed; an arm reading at or above it
+perturbs endpoint samples less than a seed change does. \textbf{Bold}:
+the closest-to-native arm per corpus; the shipped path is the only arm
+at or inside the yardstick on both corpora.}
 \label{tab:yardstick}
 \centering
-\small
-\setlength{\tabcolsep}{5pt}
-\begin{tabular}{lcc}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lcc@{}}
 \toprule
-arm pair (matched training seed) & corpus A & corpus B \\
+arm (vs.\ native, matched seed) & corpus A & corpus B \\
 \midrule
-native $\leftrightarrow$ native, cross-seed (yardstick) & $0.9558 \pm .0046$ & $0.9541 \pm .0093$ \\
+native, cross-seed (yardstick) & $0.9558 \pm .0046$ & $0.9541 \pm .0093$ \\
 \midrule
-shipped ($1024{\to}896$, $\sigma{>}0.5$ + alignment) $\leftrightarrow$ native & $\mathbf{0.9551 \pm .0057}$ & $\mathbf{0.9641 \pm .0023}$ \\
-gate off (unconditional $1024{\to}896$) $\leftrightarrow$ native & $0.9504 \pm .0179$ & $0.9500 \pm .0141$ \\
-off-map route ($1024{\to}768$, same gate + alignment) $\leftrightarrow$ native & $0.9503 \pm .0013$ & $0.9553 \pm .0127$ \\
-negative control (unconditional $1024{\to}768$) $\leftrightarrow$ native & $0.9527 \pm .0118$ & $0.9545 \pm .0127$ \\
+shipped: $896$, $\sigma{>}0.5$, aligned & $\mathbf{0.9551 \pm .0057}$ & $\mathbf{0.9641 \pm .0023}$ \\
+gate off: $896$, every $\sigma$ & $0.9504 \pm .0179$ & $0.9500 \pm .0141$ \\
+off-map: $768$, $\sigma{>}0.5$, aligned & $0.9503 \pm .0013$ & $0.9553 \pm .0127$ \\
+control: $768$, every $\sigma$ & $0.9527 \pm .0118$ & $0.9545 \pm .0127$ \\
 \bottomrule
 \end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.355\linewidth}
+\caption{The shipped step, in full. Lines 3--5 are the entire
+change: the gate $\sigmastar{=}0.5$ and the route are read off the
+measured map (\S\ref{sec:verdict}), line 5 is the optional refinement,
+and lines 1--2 are only a reordering of a standard step --- $\sigma$ is
+drawn before the latent is fetched.}
+\label{alg:sigmastep}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}r@{~}l@{}}
+\toprule
+\multicolumn{2}{@{}l@{}}{\textbf{one LoRA training step}} \\
+\midrule
+1 & $\sigma \sim p_{\mathrm{train}}$ \\
+2 & $x \leftarrow$ native latent of $y$ \\
+3 & \textbf{if} $\sigma > \sigmastar$ \textbf{and} $y$ on-route: \\
+4 & \quad $x \leftarrow$ demoted latent of $y$ \\
+5 & \quad rotary $\leftarrow$ banded$(\sigma)$ \\
+6 & $\epsilon \sim \mathcal{N}(0, I)$ at shape$(x)$ \\
+7 & $z \leftarrow (1{-}\sigma)x + \sigma\epsilon$ \\
+8 & $v \leftarrow \epsilon - x$ \\
+9 & step on $\|\hat v_\theta(z, \sigma, c) - v\|^2$ \\
+\bottomrule
+\end{tabular}
+\end{minipage}
 \end{table}
 
 \textbf{Sample-level footprint.} A fixed-step exercise grid ($5$ arms

@@ -37,11 +37,12 @@ apparatus: the same measured, debiased gap curves with each account of
 where the measurement peaks and predicts zero where the measurement
 floors; ours tracks both, on routes it never saw. The rest of this
 section earns those overlays. We build the instrument
-(\S\ref{sec:instrument}), read the map it certifies
-(\S\ref{sec:verdict}), score the spectral account at the boundary and
-curve level (\S\ref{sec:specscored}), score ours term by term
-(\S\ref{sec:ourscored}), and put both head to head as predictors of
-held-out routes (\S\ref{sec:headtohead}). Each subsection states the
+(\S\ref{sec:instrument}), score both accounts against the measured
+curves --- the spectral one at the boundary and the curve level, ours
+term by term (\S\ref{sec:scored}) --- read the per-route map those
+curves certify (\S\ref{sec:verdict}), and put both accounts head to
+head as predictors of held-out routes
+(\S\ref{sec:headtohead}). Each subsection states the
 prediction it discharges against criteria frozen before the runs;
 several probes double as falsifiers of our own account's assumptions.
 
@@ -143,8 +144,10 @@ bias makes an in-band read conservative, or where a paired same-grid
 contrast cancels the bias to first order
 (Appendices~\ref{app:instrument},~\ref{app:tables}).
 
-\subsection{The measured map}
-\label{sec:verdict}
+\subsection{Both accounts, scored}
+\label{sec:scored}
+\label{sec:specscored}
+\label{sec:ourscored}
 
 \begin{figure}[t]
 \centering
@@ -173,38 +176,17 @@ $\|\bar g_{\src}(\sigma)\|$.}
 \label{fig:verdict}
 \end{figure}
 
-Figure~\ref{fig:verdict} gives the debiased verdict map for $1024$-tier
-natives demoted to $896/768/512$ (per-bin numbers: Appendix
-Table~\ref{tab:debiasedmap}). Three reads, against criteria frozen
-before the runs. (i)~$\sigma$-dependence is real and in the predicted
-direction, and tier ordering holds at every bin: the
-\emph{qualitative} spectral intuition survives. (ii)~The crossover for
-the mildest route is $\sigma \approx 0.5$ --- the $896$ route is
-clearly gapped through $\sigma \le 0.31$, marginal at $0.44$, and its
-means sit within $\pm 0.03$ of zero from $0.56$ on --- $3.5\times$ the
-equal-power prediction. (iii)~The $2\times$ downscale route is
-\emph{certifiably unsafe at every noise level}: its paired debiased
-lower bound stays above $\epsstar$ in every bin (means $+0.08$ to
-$+0.60$), including $+0.17 \pm 0.06$ at $\sigma = 0.94$, where the
-input is ${\sim}97\%$ noise by power in every band the coarse grid
-cannot represent. There is no noise level at which a
-$2\times$-downscaled latent yields the native gradient.
-
-Debiasing moved verdicts in both directions, and two revisions against
-the historical record are part of the result. The $768$ route's
-high-$\sigma$ plateau was roughly half estimator bias: debiased means
-sit within noise of zero across $\sigma \in [0.56, 0.94]$, but with
-upper bounds that do not cross below the $0.02$ margin at this
-$(N, D)$, and a real endpoint floor of $+0.092 \pm 0.012$ remains, so
-the earlier verdict of ``unsafe at every noise level'' softens to
-\emph{no certifiable window at instrument resolution}. Conversely the
-$896$ endpoint shows a small \emph{real} gap ($+0.042 \pm 0.011$) that
-single-estimate variance had buried; its safe window is the interior
-$\sigma \in (0.5, 0.94]$, not the endpoint (Appendix
-Table~\ref{tab:rawendpoint}).
-
-\subsection{The spectral account, scored}
-\label{sec:specscored}
+Both accounts are scored against one measured object: the debiased gap
+curves of Figs.~\ref{fig:accounts} and~\ref{fig:verdict}, whose per-bin
+reading --- and the two revisions debiasing forced on the historical
+record --- \S\ref{sec:verdict} then sets out in full. Four features of
+those curves are all the scoring needs: the $896$ route enters the
+re-encoding band at $\sigma \approx 0.5$, $768$ has no certifiable
+window, $512$ is gapped at every noise level, and every route's
+high-$\sigma$ plateau converges to a nonzero level ordered by the
+target grid's token count. We score the spectral account against those
+features first, at the boundary and then the curve level, and ours
+after, term by term.
 
 \begin{table}[t]
 \caption{The spectral account (Eq.~\ref{eq:spd}) instantiated on the
@@ -235,14 +217,15 @@ none certified & unsafe, all $\sigma$ & floors $.02$--$.04$ / $.06$--$.09$ / ${\
 \end{tabular}
 \end{table}
 
-\paragraph{At the boundary level.}
+\paragraph{The spectral account, at the boundary level.}
 The Qwen-Image VAE's latents are high-frequency-quiet ($P(f) < 1$ above
 $f \approx 0.16$ cycles/latent-pixel; latent variance $0.42$), giving
 equal-power crossovers of $0.136 / 0.146 / {\approx}\,0.20$ for
 $896/768/512$ with tight per-image spread (p10--p90
 ${\approx}\,0.11$--$0.16$): at that tolerance demotion would be safe
 over almost the entire $\sigma$ axis. Table~\ref{tab:null} sweeps the
-whole family, and no row reproduces \S\ref{sec:verdict}: the $\delta$
+whole family, and no row reproduces the measured map
+(\S\ref{sec:verdict}): the $\delta$
 matching the measured $896$ boundary ($0.025$) predicts $768$ safe at
 $0.52$ and $512$ safe at $0.62$, while SPD's published $\delta = 0.01$
 predicts all three safe by $0.72$.
@@ -267,7 +250,7 @@ downscale eventually safe when no noise level is. The confrontation
 does not hinge on the choice: the structural failures of
 \S\ref{sec:spectral}(a--c) are $\delta$-independent.
 
-\paragraph{At the curve level: $\delta$ is inert.}
+\paragraph{And at the curve level: $\delta$ is inert.}
 Boundaries are a coarse read, so Fig.~\ref{fig:e83} transports the
 family to full curves. It fails in both directions at once, at every
 tolerance. In-window, it cannot produce the measured mid-$\sigma$
@@ -285,42 +268,13 @@ $896/768/512$ at SPD's default. Both reads are insensitive to the
 residual-shape choice in the transport (per-draw vs mean-residual
 within $10\%$; identical committed-region numbers).
 
-\subsection{The two-term account, scored term by term}
-\label{sec:ourscored}
-
-\begin{table}[t]
-\caption{The floor, debiased. \textbf{Endpoint}: at $\sigma{=}1$ the
-input is exactly $\epsilon$ on every grid, so the input-mediated data
-term vanishes by construction. \textbf{x-zero}: the image is removed
-from input \emph{and} target; any surviving gap is pure graph-shape
-sensitivity. Debiased draw-limit values $\dgap_\infty$ [bootstrap 95\%
-CI over images] from nested draw sweeps (endpoint: $N{=}12$,
-$D = 4 \ldots 64$; x-zero: $N{=}40$, $D = 4 \ldots 32$). The two
-columns agree within CI at every route; our pre-registered kill switch
-(all endpoint gaps ${\approx}\,0$) does not fire; and no member of the
-spectral family can produce a nonzero entry here.}
-\label{tab:floor}
-\centering
-\small
-\begin{tabular}{lcc}
-\toprule
-route & endpoint $\dgap_\infty$ [95\% CI] &
-x-zero $\dgap_\infty$ [95\% CI] \\
-\midrule
-native self-floor (cosine) & $1.005$ $[0.994, 1.016]$ & --- \\
-re-encoding control & $-0.003$ $[-0.017, +0.008]$ & --- \\
-$1024{\to}896$ & $+0.019$ $[+0.010, +0.030]$ & $+0.034$ $[+0.017, +0.058]$ \\
-$1024{\to}768$ & $+0.056$ $[+0.043, +0.071]$ & $+0.074$ $[+0.053, +0.094]$ \\
-$1024{\to}512$ & $+0.304$ $[+0.197, +0.424]$ & $+0.283$ $[+0.232, +0.332]$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\paragraph{The graph term exists: three probes, one number.}
+\paragraph{Ours, first term: the graph term exists (three probes, one
+number).}
 At the $\sigma = 1$ \emph{endpoint} the input is pure $\epsilon$,
 identical in distribution across arms, so the input-mediated data term
 is zero by construction; the debiased endpoint floors are
-$+0.019 / +0.056 / +0.304$ for $896/768/512$ (Table~\ref{tab:floor}),
+$+0.019 / +0.056 / +0.304$ for $896/768/512$ (Appendix
+Table~\ref{tab:floor}),
 and the $512$ value clears the pre-registered confirmation bar
 ($\dgap_\infty \ge 0.15$) on $12$ of $12$ probe images individually.
 Per \S\ref{sec:ouraccount} the target-mediated share need not vanish
@@ -452,6 +406,40 @@ per-block/per-module depth localization behind this design, and the
 inference-side prior art on the attention-over-$N$ piece
 \citep{li2025infoscale,liu2026tide} are in
 Appendix~\ref{app:instrument}.
+
+\subsection{The measured map}
+\label{sec:verdict}
+
+The curves both accounts were just scored on carry a verdict of their
+own, read per bin. Figure~\ref{fig:verdict} gives the debiased map for
+$1024$-tier natives demoted to $896/768/512$ (per-bin numbers: Appendix
+Table~\ref{tab:debiasedmap}). Three reads, against criteria frozen
+before the runs. (i)~$\sigma$-dependence is real and in the predicted
+direction, and tier ordering holds at every bin: the
+\emph{qualitative} spectral intuition survives. (ii)~The crossover for
+the mildest route is $\sigma \approx 0.5$ --- the $896$ route is
+clearly gapped through $\sigma \le 0.31$, marginal at $0.44$, and its
+means sit within $\pm 0.03$ of zero from $0.56$ on --- $3.5\times$ the
+equal-power prediction. (iii)~The $2\times$ downscale route is
+\emph{certifiably unsafe at every noise level}: its paired debiased
+lower bound stays above $\epsstar$ in every bin (means $+0.08$ to
+$+0.60$), including $+0.17 \pm 0.06$ at $\sigma = 0.94$, where the
+input is ${\sim}97\%$ noise by power in every band the coarse grid
+cannot represent. There is no noise level at which a
+$2\times$-downscaled latent yields the native gradient.
+
+Debiasing moved verdicts in both directions, and two revisions against
+the historical record are part of the result. The $768$ route's
+high-$\sigma$ plateau was roughly half estimator bias: debiased means
+sit within noise of zero across $\sigma \in [0.56, 0.94]$, but with
+upper bounds that do not cross below the $0.02$ margin at this
+$(N, D)$, and a real endpoint floor of $+0.092 \pm 0.012$ remains, so
+the earlier verdict of ``unsafe at every noise level'' softens to
+\emph{no certifiable window at instrument resolution}. Conversely the
+$896$ endpoint shows a small \emph{real} gap ($+0.042 \pm 0.011$) that
+single-estimate variance had buried; its safe window is the interior
+$\sigma \in (0.5, 0.94]$, not the endpoint (Appendix
+Table~\ref{tab:rawendpoint}).
 
 \subsection{Head to head: predicting held-out routes}
 \label{sec:headtohead}
