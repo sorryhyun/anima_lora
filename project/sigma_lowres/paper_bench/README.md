@@ -28,6 +28,9 @@ spawned E1–E4/E6; `paper_plan.md` remains the manuscript plan.*
 | [E10](experiments/e10/) | exact target-content vectors | DONE 2026-07-30 | parallel landing (κ∥ ≫ κ⊥); explains E2's flat α-slope |
 | [E11](experiments/e11/) | Δr̄ direction structure | DONE 2026-07-30 (`--uncond` rerun pending) | norm-only — universal amplitude law, not a universal direction |
 | [E12](experiments/e12/) | posterior-budget probes | DONE 2026-07-31 | REFUTED on both probes; native-only pre-screening is void |
+| [E13](experiments/e13/) | resolving both ends of the σ curve (segmented grid) | **PLANNED** | segmented `--sigma_window` + one run; σ→1 rise is real in raw units but its shape — and the mid-σ peak — are unresolved |
+| [E14](experiments/e14/) | two-level unbiased demotion (MLMC roulette, model-priced coin) | DONE 2026-07-31 (14.0 only) | **priced out** — per-sample correction 2nd moment ≈ V_total/2 ⇒ q̄≈0.45 at the 1.5× cap ⇒ net +2.6–4.1% vs ≥20% gate; yield = the aggregate-coherence finding (per-sample ‖Δ‖≈0.7–1.6‖g‖ vs aggregate 0.15–0.35); redesign lever = anchored control variate (own record if pursued) |
+| [E15](experiments/e15/) | placement vs dilution: demotion scheduling (trajectory-propagator probe) | **PROPOSED** | zero-cost successor to E14 — same-mass early/late/spread 768 twins → ΔW ordering picks washout / linear / amplification regime; washout ⇒ hybrid768 ("768 early, clean finish") targets ~−21–24% wall inside the yardstick |
 
 ## Layout
 
@@ -52,8 +55,18 @@ land in `paper_bench/runs/`.
 Ordering: **[E3](experiments/e3/)** pooled-arm run + the a/(b/B)
 batch-size fit (`paper/action.md` estimand fix) → reproducibility
 deliverables (below) → **[E6](experiments/e6/)** if targeting a top
-venue. [E11](experiments/e11/)'s `--uncond` rerun closes the
+venue. **[E13](experiments/e13/)** is orthogonal and can go whenever GPU
+is free, but note it can move §4.7: its H2 tests whether the mid-σ peak
+E5's data-term fit is calibrated against is partly an artifact of the
+attenuation correction at the floor minimum. [E11](experiments/e11/)'s `--uncond` rerun closes the
 caption-conditioning caveat whenever GPU is free.
+**[E14](experiments/e14/)** closed at 14.0 (priced out, pre-registered
+kill); what remains is writing its §5 paragraph + the
+aggregate-coherence sharpening into the manuscript, and deciding
+whether the anchored-control-variate redesign gets its own record.
+**[E15](experiments/e15/)** is E14's zero-cost successor (scheduling
+instead of roulette); its 15.0 ΔW-ordering probe is ~1 h of
+deterministic twins and self-contained.
 
 ### Reproducibility deliverables [FIX]
 

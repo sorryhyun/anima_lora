@@ -21,3 +21,7 @@ The line is currently in **paper mode** — most activity is in
 
 Start at [`paper_bench/README.md`](paper_bench/README.md) for what has
 been measured and what is still open.
+
+Build the manuscript with `tectonic main.tex` from `paper/` (~6 s,
+29 pp.). The remaining warnings — `main.bbl` consistency, "rerun needed,
+stopping at 6 passes", underfull boxes — are long-standing and benign.

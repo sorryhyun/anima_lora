@@ -309,11 +309,36 @@ Note $m$ is a \emph{norm}: the factorization assumes a
 route-independent amplitude curve, not a shared mismatch
 \emph{direction} --- and \S\ref{sec:anatomy} finds the directions are
 in fact image- and route-specific.
+
+Assumptions (i) and (ii) are not unstructured hopes: both discarded
+terms obey exact bounds in the retained shares
+(Cauchy--Schwarz on each inner product; Appendix~\ref{app:geometry}),
+\begin{equation}
+|I_e| \;\le\; 2\sqrt{S_e\,F_e}\,,
+\qquad
+\big|R'_e\big| \;\le\; 2\sqrt{\big(S_e + F_e + I_e\big)\,\rho_e}
+\;+\; \rho_e
+\;+\; O\big(\kappa_\perp^2\kappa_\parallel,\; \kappa_\perp^4\big),
+\label{eq:dropbounds}
+\end{equation}
+with $\rho_e = \|R_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$ the
+remainder branch's own share. The first bound says the interaction can
+never exceed the retained sum ($2\sqrt{S_eF_e} \le S_e + F_e$) and is
+automatically negligible wherever one share dominates the other, so
+(ii) carries independent content only near share crossover. The second
+says the first-order part of the remainder enters at half power ---
+one factor of $\sqrt{\rho_e}$ per retained share --- so (i) reduces to
+the branch-level statement that $R_e$ is small against $B_e$ and
+$C_e$, plus the small-$\kappa$ domain for the tail. The control
+counterpart $R'_{\reenc}$ needs no bound of its own: the control's
+degenerate expansion $d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$ is
+itself the measured near-zero row of Table~\ref{tab:floor}, which pins
+$R'_{\reenc}$ jointly with $S_{\reenc}$.
 Applied in that order,
 \begin{align}
 \gap_e(\sigma)
 \;&\approx\; \big(S_e - S_{\reenc}\big) \;+\; F_e
-&&\text{by (i), (ii)}
+&&\text{by (i), (ii) via Eq.~\ref{eq:dropbounds}}
 \nonumber\\
 \;&\approx\;
 \underbrace{A_e \cdot \big(m(\sigma)/\|\bar g_{\src}\|\big)^{2}}_{\text{data term}}

@@ -1,0 +1,48 @@
+{
+ "source_run": "20260731-2114-e14-pricing",
+ "estimand": "q per sigma bin, flat-sigma interior bins; endpoint measure-zero (train never lands there)",
+ "candidates": {
+  "A": {
+   "route": 768,
+   "desc": "768 @ sigma>0.5 + MLMC",
+   "best": {
+    "qbar": 0.44,
+    "net_flops": 0.041,
+    "inflation_lb": 1.499,
+    "spike_ratio": 2.61,
+    "q_per_bin": {
+     "0.5625": 0.705,
+     "0.6875": 0.471,
+     "0.8125": 0.318,
+     "0.9375": 0.266
+    }
+   }
+  },
+  "B": {
+   "route": 896,
+   "desc": "896 all-sigma + MLMC",
+   "best": {
+    "qbar": 0.56,
+    "net_flops": -0.252,
+    "inflation_lb": 1.495,
+    "spike_ratio": 1.79,
+    "q_per_bin": {
+     "0.0625": 0.395,
+     "0.1875": 0.591,
+     "0.3125": 0.657,
+     "0.4375": 0.854,
+     "0.5625": 0.641,
+     "0.6875": 0.497,
+     "0.8125": 0.448,
+     "0.9375": 0.397
+    }
+   }
+  },
+  "C": {
+   "route": 768,
+   "desc": "768 all-sigma + MLMC",
+   "best": null
+  }
+ },
+ "winner": "A"
+}

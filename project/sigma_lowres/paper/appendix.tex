@@ -123,6 +123,25 @@ Eq.~\ref{eq:appquad}, and the parallel-component correction, each
 suppressed by an extra power of perturbation size relative to the
 retained terms.
 
+\paragraph{The drop bounds (Eq.~\ref{eq:dropbounds}).} Both bounds are
+Cauchy--Schwarz on the expansion above. For the interaction,
+\begin{equation*}
+|I_e| \;=\; \frac{\big|\langle B_e^{\perp},\,
+C_e^{\perp}\rangle\big|}{G^2}
+\;\le\; \frac{\|B_e^{\perp}\|\,\|C_e^{\perp}\|}{G^2}
+\;=\; 2\sqrt{S_e\,F_e}\,.
+\end{equation*}
+For the remainder, write $\rho_e = \|R_e^{\perp}\|^2/(2G^2)$ and note
+$\|(B_e{+}C_e)^{\perp}\|^2/(2G^2) = S_e + F_e + I_e$; the
+$R_e$-bearing terms of the expansion then obey
+\begin{equation*}
+\frac{\big|2\,\langle (B_e{+}C_e)^{\perp},\, R_e^{\perp}\rangle
+\;+\; \|R_e^{\perp}\|^2\big|}{2G^2}
+\;\le\; 2\sqrt{\big(S_e + F_e + I_e\big)\,\rho_e} \;+\; \rho_e\,,
+\end{equation*}
+with the beyond-quadratic terms of Eq.~\ref{eq:appquad} supplying the
+$O(\kappa_\perp^2\kappa_\parallel,\, \kappa_\perp^4)$ tail.
+
 \paragraph{What is not derived.} The loading
 $\|\delta g^{\perp}\| = c_e\, m(\sigma)$ (that the orthogonal
 gradient mismatch is proportional to the residual mismatch with a
@@ -130,7 +149,20 @@ $\sigma$-independent route gain) is an empirical ingredient
 (the data-branch factorization at the amplitude level), fit and tested
 held-out in
 \S\ref{sec:confronted}. The geometry above fixes only how a given
-$\delta g$ is read into gap units.
+$\delta g$ is read into gap units. What \emph{is} derivable from first
+principles is only a one-sided envelope,
+$\|\bar J^{\!\top}\Delta\bar r\| \le \sigma_{\max}(\bar J)\,
+m(\sigma)$, which would turn the data term into an inequality in the
+observed $m$ given a $\sigma$-uniform bound on the mean Jacobian's top
+singular value. Promoting the envelope to a proportionality with a
+$\sigma$-independent gain requires the mismatch \emph{direction}
+$\widehat{\Delta\bar r}(\sigma)$ to hold a $\sigma$-stationary
+alignment with $\bar J$'s singular directions (isotropy, for instance,
+would give gain $\|\bar J\|_F/\sqrt{n}$) while $\bar J$ itself varies
+with $\sigma$ through the network input --- and the image- and
+route-specific directions of \S\ref{sec:anatomy} license no such
+axiom. Hence the loading stays an assumption with a designated probe
+rather than a theorem.
 
 \section{Instrument details}
 \label{app:instrument}
