@@ -44,7 +44,7 @@ material). 512 was already closed (Resid_512 ≈ 0.22). Safe set unchanged:
 ## YaRN-banded gate-widening probe for 1024→896 **[RUN 2026-07-27 — no gate widening; the owed retune was superseded by the SigMa gate probe below]**
 
 Outcome (`bench/results/20260727-1421/`, full read in
-`bench/yarnsig_report.md`):
+`record/yarnsig_report.md`):
 between the pre-registered branches. (1)'s improvement leg passed at
 σ=0.59 (paired yarn−896 −0.050, 2.1 SEM) but the **in-band leg failed
 everywhere** (yarn−reenc +0.06–0.19, ≥3.4 SEM out at every bin σ ≤ 0.65)
@@ -81,7 +81,7 @@ regardless of mid-σ behavior.
 ## SigMa σ-gated YaRN boundaries **[RUN 2026-07-27 — PASS both legs; yarnsig = the Phase-1b refinement candidate]**
 
 Outcome (`bench/results/20260727-1639/`, full read in
-`bench/yarnsig_report.md` §"SigMa σ-gated YaRN boundaries"): liability leg PASS (+0.033 ± 0.025 at
+`record/yarnsig_report.md` §"SigMa σ-gated YaRN boundaries"): liability leg PASS (+0.033 ± 0.025 at
 σ=0.21, within 2 SEM; static yarn replicated +0.079 in-pool → gate cut it
 ~58%, residual trend noted), preservation leg PASS (yarnsig ≈ yarn at
 σ=0.59 + endpoint; best/most-stable arm at the endpoint). Per
@@ -224,7 +224,7 @@ discovery needed no changes at all.
 **yarnsig wiring [BUILT 2026-07-27] + in-vivo arm [RUN 2026-07-27 — benign]**:
 `--sigma_lowres_yarnsig` (bare = the probe's `1,4,0.35,2`) applies the
 SigMa-gated banded rope on demoted forwards only. Fifth paired tenth4s arm +
-rank-space ΔW read (`bench/yarnsig_report.md` §"yarnsig in-vivo arm",
+rank-space ΔW read (`record/yarnsig_report.md` §"yarnsig in-vivo arm",
 `bench/compare_ckpt_dw.py` now the permanent instrument): base↔yarnsig
 0.319 ≈ base↔sigma 0.320 (no added displacement), sigma↔yarnsig 0.402 with
 the best late-block agreement of any pair — the rope footprint sits in the
@@ -256,5 +256,5 @@ Do not schedule until Phase 1b has shipped and survived its gate.
 ## Pointers
 
 Design: `project/sigma_lowres/record/initial_proposal.md` · Data:
-`project/sigma_lowres/bench/report.md` · Memory: `project_sigma_lowres_phase0`,
+`project/sigma_lowres/record/report.md` · Memory: `project_sigma_lowres_phase0`,
 `project_tier_routing_phase3a_failed` (split-half check mandatory).

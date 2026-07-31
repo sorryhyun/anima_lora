@@ -4,7 +4,7 @@
 > same day: `--deterministic` (train.py) produces **bit-identical checkpoints**
 > across runs, twin-validated over full compiled 1200-step runs. Memory:
 > [[project_deterministic_flag_chaos_floor]]. Data:
-> `project/sigma_lowres/bench/report.md` §"Twin controls".
+> `project/sigma_lowres/record/report.md` §"Twin controls".
 
 ## The trap
 

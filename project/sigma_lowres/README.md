@@ -13,11 +13,11 @@ The line is currently in **paper mode** — most activity is in
 | where | what |
 |---|---|
 | [`paper_bench/`](paper_bench/) | **the experiment tree** — `README.md` indexes E1–E12, one dir per experiment under `experiments/<eN>/` with its record and scripts; `runs/` holds the committed run artifacts |
-| [`paper/`](paper/) | the manuscript (`main.tex`, `appendix.tex`, `figs/`), `action.md` (open items), `review/` (the review correspondence) |
-| [`bench/`](bench/) | the instruments (`run_sigma_probe.py`, `run_prior_distance.py`, `run_posterior_budget.py`, …) and `report.md` — raw verdicts + full tables |
+| [`paper/`](paper/) | the manuscript — `main.tex` is now just the shell (preamble, abstract, bibliography); the body lives in `sec_intro.tex` / `sec_theory.tex` / `sec_experiments.tex` / `sec_discussion.tex` + `appendix.tex`, **edit those, not `main.tex`**. Plus `figs/`, `action.md` (open items), `review/` (the review correspondence) |
+| [`bench/`](bench/) | the instruments — `run_sigma_probe.py` (the σ-binned gradient probe; internals in `bench/sigma_probe/`), `run_prior_distance.py`, `run_posterior_budget.py`, … — plus their raw run dirs in `bench/results/` |
 | [`methods.md`](methods.md) | the implementation: what code exists, where it lives, how to run it |
 | [`roadmap.md`](roadmap.md) | remaining phases, gates, and kill criteria for the *line* (the paper's own open work is in `paper_bench/README.md`) |
-| [`record/`](record/) | the frozen pre-paper record — proposal, hypothesis, groundings ledger, open-questions list. Historical, still cited for pre-registration provenance |
+| [`record/`](record/) | the frozen pre-paper record — proposal, hypothesis, groundings ledger, open-questions list, and the two probe logs `report.md` / `yarnsig_report.md` (moved out of `bench/` 2026-07-31). Historical, still cited for pre-registration provenance |
 
 Start at [`paper_bench/README.md`](paper_bench/README.md) for what has
 been measured and what is still open.

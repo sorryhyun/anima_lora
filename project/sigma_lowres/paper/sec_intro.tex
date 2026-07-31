@@ -1,0 +1,165 @@
+\section{Introduction}
+\label{sec:intro}
+
+The cost of a diffusion-transformer forward pass grows superlinearly with
+resolution: token count grows quadratically with edge length, and
+attention cost grows again in token count. That makes the title question
+worth asking precisely. At high noise, can the \emph{gradient} of an
+adapter be computed on a downscaled latent as a drop-in substitute for
+the native one, with the same model, the same objective, and the same
+$\sigma$ distribution, only the spatial grid changed on some steps?
+
+There is a well-studied reason to hope the answer is yes. As the noise
+level $\sigma$ grows, per-frequency signal-to-noise falls, and high
+spatial frequencies drop below the noise floor first, so that above a
+spectral crossover a downscaled latent carries \emph{almost} the full
+surviving signal. But the studies of this resolution gap live almost
+entirely on the \emph{inference} side: scale-wise distillation
+\citep{starodubcev2025swd}, spectral progressive diffusion
+\citep{xiao2026spd}, and spectrally-guided noise schedules
+\citep{esteves2026spectral} run high-noise \emph{sampling} steps at
+reduced resolution and judge the premise by the generated output. And
+where resolution is reduced during training (pyramidal flow
+matching, \citealp{jin2024pyramidal}; progressive-resolution training
+more broadly,
+\citealp{karras2018progressive,chen2024pixartalpha,hoogeboom2023simple}),
+the low-resolution stage is given its own, modified objective, and
+success is again read off the final samples. By the spectral premise,
+substitution is safe \emph{whenever the noise has masked the
+frequencies the coarse grid loses}.
+
+None of this work, however, analyzes the gap at \emph{training} time,
+that is, whether a downscaled step delivers the native gradient under
+an unchanged objective; that is the route this paper takes. What a training step consumes is the expected adapter gradient,
+and \emph{demotion} --- our term for the training-time substitution of
+a downscaled, re-encoded latent for the native one --- perturbs more
+than the network's input: the regression
+target carries the clean image at unit weight at every noise level,
+and the compute graph itself changes with the grid. Nor does
+output-level evidence settle the matter: a small quality-score
+difference does not transfer to a small difference in what a training
+step \emph{learns}. This paper measures the question directly, at the
+gradient level, holding model and objective fixed.
+
+Measuring it honestly is, unexpectedly, a metrology problem. The
+natural gap estimator (a redraw floor minus a single demoted-arm
+cosine) is biased by finite-draw variance, and the bias grows as the
+demoted grid shrinks: it \emph{manufactures} exactly the
+token-count-ordered floor signature under test. Every claim in this
+paper is therefore stated in debiased units, at the instrument's
+measured resolution.
+
+The contributions:
+
+\begin{enumerate}
+\item \textbf{Gap metrology and a two-term account of what demotion
+costs} (\S\ref{sec:theory}). We define the
+demotion gap at the gradient level and build a debiased instrument for
+it: per-arm self-floors with a split-half attenuation correction, a
+draw-count extrapolation $\gap(D) = \gap_\infty + c/D$, and a
+certification resolution $\epsstar(N, D)$ under which ``safe'' is a
+one-sided non-inferiority statement, not an absolute claim. From the
+perturbation expansion and cosine geometry, the gap reduces under four
+named assumptions to a \emph{two-term account}: a route amplitude on a
+universal mismatch-amplitude curve read through the U-shaped gradient
+norm, plus a $\sigma$-independent graph floor. The account connects directly to
+the inference-side literature: the spectral argument, in its strongest
+tolerance-parameterized form (SPD, \citealp{xiao2026spd}), yields its
+own account of the data term's input-mediated part, one that is
+ratio-only and floorless by construction.
+\item \textbf{A measured safety map and a predictive tool}
+(\S\ref{sec:evidence}, \S\ref{sec:practical}). Measured with that
+instrument, the mildest route ($1024{\to}896$) is indistinguishable
+from the re-encode control for $\sigma > 0.5$ at instrument
+resolution, while no noise level rescues a $2\times$ downscale, and
+no member of the spectral tolerance family reproduces the measured
+map. The two-term account \emph{predicts} held-out routes at
+${\sim}0.07$--$0.09$ RMSE, with the floor law correctly predicting
+both held-out floors: a tool for anticipating a route's gap before
+measuring it. Gating substitution on the measured-safe windows gives an opt-in
+$\sigma$-conditional trainer realizing $-15.1\%$ forward FLOPs and
+$-14.6\%$ wall-clock at a fixed step budget, with a sample-level
+footprint within the training-seed lottery (the seed-noise yardstick,
+Table~\ref{tab:yardstick}); generation-quality non-inferiority at
+production scale remains the stated open gate.
+\end{enumerate}
+
+We first situate the question in the prior literature
+(\S\ref{sec:related}); \S\ref{sec:theory} defines the estimand and its
+certification resolution, derives the angular account of the demotion
+gap and the gradient gap the spectral argument implies for its data
+term, and constructs the debiased estimator; \S\ref{sec:evidence}
+builds the instrument and discharges both accounts' predictions
+against the measurements;
+\S\ref{sec:practical} gives the resulting safety map and the
+$\sigma$-conditional trainer.
+
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Flow matching and DiT.}
+Flow matching \citep{lipman2023flow} trains a continuous-time generative
+model by regressing a velocity field along prescribed probability paths
+between noise and data; rectified flow \citep{liu2023rectified} takes the
+paths to be straight lines, giving the linear noising
+$z_\sigma = (1-\sigma)x + \sigma\epsilon$ and the constant regression
+target $v = \epsilon - x$ used throughout this paper, and this
+formulation is the training objective of current large text-to-image
+systems \citep{esser2024scaling}. The Diffusion Transformer
+\citep{peebles2023dit} replaces the U-Net denoiser with a plain
+transformer over patchified latent tokens, so a spatial grid enters the
+network only as a token sequence: token count grows quadratically
+with edge length and attention cost quadratically again in token count,
+the cost structure that makes resolution the expensive axis. Spatial
+position is carried by rotary position embeddings \citep{su2024roformer},
+whose per-band phases accumulate with grid coordinates; this
+grid-dependent coordinate system is the one whose contribution to the
+demotion floor \S\ref{sec:decomposition} isolates by intervention. Fine-tuning is
+LoRA \citep{hu2022lora}: low-rank adapter updates on a frozen backbone,
+the gradient regime all our probes measure.
+
+\paragraph{Scale-wise and progressive-resolution diffusion.}
+Progressive growing \citep{karras2018progressive} and resolution curricula
+\citep{chen2024pixartalpha,hoogeboom2023simple} train at increasing
+resolution as a schedule, each low-resolution stage carrying its own
+stage-specific objective. A more recent family ties resolution to the
+noise level itself, on a spectral premise. Under flow-matching noising,
+each spatial-frequency band of the signal retains an effective
+signal-to-noise ratio that falls as $\sigma$ grows, and the finest bands
+sink below the noise floor first; the noise level above which a band is
+masked is that band's \emph{crossover} $\sigma$. Above the crossover of
+the bands a coarse grid cannot represent, a downscaled latent should
+therefore carry almost the full surviving signal. This resolution gap
+has so far been studied on the \emph{inference} side. Scale-wise
+distillation (SwD) \citep{starodubcev2025swd} states the claim
+directly (above the crossover, the noised downscaled latent is
+close in distribution to the downscaled noised latent) and samples
+early steps at reduced resolution. Spectral Progressive Diffusion (SPD)
+\citep{xiao2026spd} gives the argument its sharpest available form: a
+tolerance-parameterized per-frequency activation time under a diagonal
+Gaussian spectral model, a criterion on the \emph{Bayes-optimal
+predictor's} per-band output rather than merely on input SNR, from
+which an inference-time resolution schedule follows.
+Spectrally-guided noise schedules \citep{esteves2026spectral} apply the
+same per-frequency reasoning to schedule design, deriving bounds on the
+useful minimum and maximum noise levels from the image spectrum; here
+the spectral account operates as the field's working model of what
+noise masks. Where the premise does enter training, as in pyramidal flow
+matching \citep{jin2024pyramidal}, the objective is restaged per
+pyramid level rather than left native, and the premise is again
+validated by the generated output. None of these analyzes what a
+low-resolution step does to the \emph{training gradient} of an
+unchanged objective; that is the question we measure, holding model
+and objective fixed. We find that input-level closeness does not
+transfer at any tolerance.
+
+\paragraph{Positional extension.}
+Position interpolation \citep{chen2023pi}, banded/frequency-selective
+variants (YaRN, \citealp{peng2024yarn}), and diffusion-specific dynamic
+position extrapolation \citep{issachar2025dype,zhao2026sigma} rescale
+rotary coordinates to evaluate a model at unseen grid sizes. We use exact
+positional interpolation as a \emph{causal intervention} (matching the
+downscaled grid's relative phase geometry to native) to decompose the
+resolution-sensitivity floor, and adopt the $\sigma$-gated band schedule of
+\citet{zhao2026sigma} as a training-time refinement.
+

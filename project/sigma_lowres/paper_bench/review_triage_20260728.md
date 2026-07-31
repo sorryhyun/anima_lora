@@ -2,7 +2,7 @@
 
 Triage of the 2026-07-28 external review (ChatGPT), verified against the
 actual instrument (`bench/run_sigma_probe.py`), the report
-(`bench/report.md`), and `paper/main.tex`. This is the origin document
+(`record/report.md`), and `paper/main.tex`. This is the origin document
 for E1–E4 and E6; each finding's discharge lives in the corresponding
 `experiments/<eN>/README.md`.
 
@@ -35,7 +35,7 @@ for E1–E4 and E6; each finding's discharge lives in the corresponding
   [E1](experiments/e1/)(c): the apparent target-content share was
   estimator bias.*
 - **R3 — "never safe" is aggregation-dependent.** Confirmed in
-  `bench/report.md` (pool4 addendum): pooled gap_768 ≈ 0 at σ ≥ 0.875,
+  `record/report.md` (pool4 addendum): pooled gap_768 ≈ 0 at σ ≥ 0.875,
   pooled gap_896 ≈ 0 at σ ≥ 0.625. The per-image and batch-SGD objects
   genuinely disagree at high σ; the safety map must state which object it
   is a map *of*, and the trainer claim should be conditioned on the real

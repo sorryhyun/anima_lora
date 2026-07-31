@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | **OPEN** — one GPU run + a framing edit |
-| **Why it exists** | Review finding R3: "never safe" is aggregation-dependent. `bench/report.md` (pool4 addendum) has pooled gap_768 ≈ 0 at σ ≥ 0.875 and pooled gap_896 ≈ 0 at σ ≥ 0.625 — the per-image and batch-SGD objects genuinely disagree at high σ. |
+| **Why it exists** | Review finding R3: "never safe" is aggregation-dependent. `record/report.md` (pool4 addendum) has pooled gap_768 ≈ 0 at σ ≥ 0.875 and pooled gap_896 ≈ 0 at σ ≥ 0.625 — the per-image and batch-SGD objects genuinely disagree at high σ. |
 | **Depends on** | [E1](../e1/) (paired debiased object + self-floors), [E8.1](../e8/) (ε\* is now the definition of "safe") |
 | **In the paper** | §3.1 (aggregation operator is part of the estimand, not an application detail), §5 two-maps table — **[pending]** marker still in `main.tex` |
 

@@ -50,7 +50,7 @@ The 1024→896 @ σ>0.5 route, wired end-to-end on the train.py path:
   flag = the probe-validated `1,4,0.35,2`): on demoted steps only, RoPE is
   built by `VideoRopePosition3DEmb.generate_embeddings_yarn` — the σ-gated
   YaRN banded alignment that PASSED both pre-registered legs in the SigMa
-  probe (`bench/yarnsig_report.md` §"SigMa σ-gated YaRN boundaries"). Spatial bands
+  probe (`record/yarnsig_report.md` §"SigMa σ-gated YaRN boundaries"). Spatial bands
   with < α·μ(σ) rotations across the demoted extent get the full PI stretch
   to native coordinates, bands above β·μ(σ) keep native integer spacing,
   linear ramp between; μ(σ) = sigmoid(γ·[logit σ − logit σ_c]) with μ from
@@ -110,6 +110,11 @@ infra, not sigma_lowres-specific).
 ## Measurement B — per-σ-bin gradient probe
 
 `project/sigma_lowres/bench/run_sigma_probe.py` (~2–2.6 h GPU for 40 images × 6 arms).
+The CLI is the whole surface; the internals were split out 2026-07-31 into
+`bench/sigma_probe/` — `cli.py` (flags + the cross-flag validation that
+derives the run's shape), `kernel.py` (σ grids, the PI/YaRN RoPE patches, the
+per-bin gradient estimator), `stats.py` (the pool/arm-sum accumulators and
+every cosine/gap/κ reduction). Flags, seeds and outputs are unchanged.
 
 The tier_routing Phase-3a instrument extended with per-σ-bin gradient
 accumulators — the estimator class that was *reliable* in 3a (per-bin means

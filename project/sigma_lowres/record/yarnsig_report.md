@@ -1,5 +1,10 @@
 # yarnsig — σ-gated YaRN-banded RoPE alignment (probe log)
 
+> **Frozen 2026-07-31, moved here from `../bench/yarnsig_report.md`** along
+> with `report.md`, which it was extracted from. Last live 2026-07-27; the
+> open probes in the closing section were never run. Bare `results/<run-id>/`
+> paths below are relative to **`../bench/results/`**.
+
 The yarnsig sub-line of sigma_lowres, extracted from `report.md`
 2026-07-27: frequency-selective (YaRN/NTK-by-parts) RoPE alignment on
 demoted steps, with SigMa-style σ-gated band boundaries. Status:

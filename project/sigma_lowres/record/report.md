@@ -1,5 +1,13 @@
 # sigma_lowres — Phase 0: σ-conditional low-res gradient equivalence
 
+> **Frozen 2026-07-31, moved here from `../bench/report.md`.** The pre-paper
+> probe log: every Phase 0 / 1a / 1b verdict and full table, last live
+> 2026-07-27. It is **no longer appended to** — measurements since the paper
+> reorg live in `../paper_bench/experiments/<eN>/README.md` (index in
+> `../paper_bench/README.md`), and the account as the paper states it is in
+> `../paper/main.tex`. Bare `results/<run-id>/` paths below are relative to
+> **`../bench/results/`** (the instruments themselves stay in `../bench/`).
+
 **Verdict (2026-07-24): spectral mechanism REFUTED as the governor; σ-dependence
 real but the payoff collapses.** The demotion gap is genuinely σ-dependent in
 the predicted direction (H2 qualitative: pass), and tier-ordered at every bin

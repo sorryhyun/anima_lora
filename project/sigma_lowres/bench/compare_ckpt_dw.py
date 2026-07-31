@@ -5,7 +5,7 @@ displacements ΔW = (alpha/r)·up@down, accumulated module-by-module in RANK
 space — ⟨ΔWa, ΔWb⟩ = s_a·s_b·Σ((UaᵀUb) ⊙ (Da·Dbᵀ)) — so the (out×in) product
 is never materialized (the full-ΔW version eats all RAM). Emits the global
 cosine plus a per-block depth profile (the demote signature lives in late
-blocks — bench/report.md §"Phase 1b in-vivo weight-space A/B").
+blocks — record/report.md §"Phase 1b in-vivo weight-space A/B").
 
 Meaningful on PAIRED runs only (--seed N --paired_step_rng): unpaired arms
 sit at the ~0.09–0.10 init/noise-lottery floor regardless of intervention.
