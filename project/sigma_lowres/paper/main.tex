@@ -19,6 +19,7 @@
 
 \newcommand{\gap}{\mathrm{gap}}
 \newcommand{\dgap}{\widehat{\mathrm{gap}}}
+\newcommand{\bgap}{\overline{\mathrm{gap}}}
 \newcommand{\Floor}{\mathrm{Floor}}
 \newcommand{\reenc}{\mathrm{reenc}}
 \newcommand{\src}{\mathrm{src}}
@@ -286,28 +287,31 @@ with no grid change. For an arm
 $a \in \{\src, \reenc, \dem\}$, let
 $\bar g_a(\sigma) = \mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$ be
 the population per-bin mean adapter gradient of a query (image,
-caption). The \emph{population demotion distance} is
+caption). The \emph{population demotion distance} of the route
+$e_0 {\to} e$ is
 \begin{equation}
-d_e(\sigma) \;=\; 1 - \cos\!\big(\bar g_{\src}(\sigma),\,
+d_{e_0 \to e}(\sigma) \;=\; 1 - \cos\!\big(\bar g_{\src}(\sigma),\,
 \bar g_{\dem}(\sigma)\big)
 \;=\; \tfrac{1}{2}\,\big\|\hat g_{\src} - \hat g_{\dem}\big\|^2,
 \label{eq:gapdef}
 \end{equation}
-with $\hat g$ the unit-normalized gradients; $d_e \ge 0$ always. One
+with $\hat g$ the unit-normalized gradients;
+$d_{e_0 \to e} \ge 0$ always. One
 notational convention holds from here on: arm labels ($\src$, $\reenc$,
 $\dem$) mark \emph{whose} gradient, latent, or Jacobian an object is;
-the subscript on $d_e$ --- and on every route-level scalar to follow
---- is the route's \emph{target edge}, an edge value, never an arm
-label, so it instantiates numerically ($\Floor_{1120}$,
-$\mathrm{Resid}_{768}$), with the source edge fixed by context (tables
-write the full route $e_0 {\to} e$ where several sources appear). The
+the subscript on every route-level scalar is the \emph{route},
+written in full, $d_{e_0 \to e}$, where several sources appear, and
+abbreviated to the target edge alone --- an edge value, never an arm
+label, so it instantiates numerically ($d_e$, $\Floor_{1120}$,
+$\mathrm{Resid}_{768}$) --- wherever the source edge is fixed by
+context, as it is below. The
 control's distance $d_{\reenc}$ --- Eq.~\ref{eq:gapdef} with
 $\bar g_{\reenc}$ in place of $\bar g_{\dem}$ --- carries its arm label
 instead: the control changes no grid and has no target edge. The
 \emph{reported} quantity of every bin-resolved map and every fit in this
 paper is the \emph{re-encoding excess}
-$\Delta_e(\sigma) = d_e(\sigma) - d_{\reenc}(\sigma)$, the demotion
-distance beyond what the control already pays; $\Delta_e$ can be
+$\gap_e(\sigma) := d_e(\sigma) - d_{\reenc}(\sigma)$, the demotion
+distance beyond what the control already pays; $\gap_e$ can be
 negative, $d_e$ cannot. Endpoint and floor tables report debiased
 estimates of $d_e$ with the control as its own row; each table states
 which object it reports.
@@ -324,13 +328,13 @@ to the other; the application section publishes one map for each
 Finally, any estimate of $d_e(\sigma)$ compares finite-draw estimates
 of population directions, so every claim carries the instrument's
 resolution. For a route whose true excess is zero, the paired estimate
-$\bar\Delta$ fluctuates with standard error
+$\bgap$ fluctuates with standard error
 $\mathrm{SE}(N, D, \sigma\text{-bin})$; its one-sided 95\% upper bound
 defines the \emph{certification resolution} $\epsstar$ (the
 smallest margin certifiable even for a truly safe route) and ``safe
 at margin $\varepsilon$'' as the non-inferiority statement
 \begin{equation}
-\text{UB}_{95}\!\left(\bar\Delta\right) \;<\; \varepsilon,
+\text{UB}_{95}\!\left(\bgap\right) \;<\; \varepsilon,
 \qquad
 \varepsilon \;\ge\; \epsstar(N, D, \text{bin})
 \;=\; 1.645\,\mathrm{SE}(N, D, \text{bin}),
@@ -468,18 +472,31 @@ the exact form (Eq.~\ref{eq:exact}) carries the quantitative claims.
 
 \paragraph{From the expansion to the excess.}
 The reported object is the excess over the control
-(\S\ref{sec:estimand}), and the control's own expansion is degenerate:
-the $\reenc$ arm changes no grid, so $\Delta J = 0$ --- no graph
-share, no interaction --- and its data branch is the re-encode
-perturbation alone, collapsing Eq.~\ref{eq:fourterm} to
+(\S\ref{sec:estimand}): let
+$\gap_e(\sigma) = d_e(\sigma) - d_{\reenc}(\sigma)$. The control's own
+expansion is degenerate: the $\reenc$ arm changes no grid, so
+$\Delta J_{\reenc} = 0$, and both control terms built from it vanish
+identically --- its graph share $F_{\reenc}$ and its projected
+interaction $I_{\reenc}$ each carry a factor
+$(\Delta J_{\reenc}^{\!\top}\bar r)^{\perp} = 0$ --- leaving only the
+re-encode perturbation in its data branch. Writing
+Eq.~\ref{eq:fourterm} for each arm and subtracting term by term,
+\begin{align*}
+\gap_e(\sigma)
+\;&=\; d_e(\sigma) \;-\; d_{\reenc}(\sigma)\\
+&\approx\;
+\big(S_e - S_{\reenc}\big) \;+\; \big(F_e - F_{\reenc}\big)
+\;+\; \big(I_e - I_{\reenc}\big) \;+\; \big(R'_e - R'_{\reenc}\big)
+&&\text{Eq.~\ref{eq:fourterm}, each arm}\\
+&=\;
+\big(S_e - S_{\reenc}\big) \;+\; F_e \;+\; I_e
+\;+\; \big(R'_e - R'_{\reenc}\big),
+&&F_{\reenc} = I_{\reenc} = 0
+\end{align*}
+so the control collapses to
 $d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$, with $S_{\reenc}$ the
 re-encode share (measured ${\approx}\,0$ where probed: the control row
-of Table~\ref{tab:floor}). Subtracting the two expansions,
-\begin{equation*}
-\Delta_e(\sigma) \;\approx\;
-\big(S_e - S_{\reenc}\big) \;+\; F_e \;+\; I_e
-\;+\; \big(R'_e - R'_{\reenc}\big).
-\end{equation*}
+of Table~\ref{tab:floor}).
 The subtraction cancels only the re-encode component of the data share
 (up to a cross term suppressed by $\sqrt{S_{\reenc}}$, bounded by the
 control's near-zero reading), so $m$ is henceforth read net of
@@ -514,7 +531,7 @@ route-independent amplitude curve, not a shared mismatch
 in fact image- and route-specific.
 Applied in that order,
 \begin{align}
-\gap_e(\sigma) \;:=\; \Delta_e(\sigma)
+\gap_e(\sigma)
 \;&\approx\; \big(S_e - S_{\reenc}\big) \;+\; F_e
 &&\text{by (i), (ii)}
 \nonumber\\
@@ -851,9 +868,9 @@ curves are Appendix Table~\ref{tab:phase0}).
 \begin{table}[t]
 \caption{\textbf{Debiased verdict map} (plotted in
 Fig.~\ref{fig:gapcurves}): paired per-image debiased excess
-$\bar\Delta$ (SEM) against the re-encoding control, $1024$-tier natives
+$\bgap$ (SEM) against the re-encoding control, $1024$-tier natives
 ($N{=}40$, $D{=}8$/bin plus a $\sigma{=}1$ endpoint bin at the same
-draws; non-finite and $|\Delta| > 1.5$ per-image values trimmed,
+draws; non-finite and $|\gap_{e,i}| > 1.5$ per-image values trimmed,
 retaining $35$--$40$ images per cell). Bin-level $\epsstar$ at this
 $(N, D)$ is $0.03$--$0.08$ (Eq.~\ref{eq:safe}).}
 \label{tab:debiasedmap}
@@ -937,8 +954,8 @@ One caveat delimits where Eq.~\ref{eq:debias} is readable. At $D{=}8$
 per bin, the \emph{unpaired} debiased estimator is unstable in bins
 where the floors themselves are small (mid-$\sigma$; the denominator is
 noisy): there the readable object is the \emph{paired per-image excess}
-$\Delta_i = \dgap_{e,i} - \dgap_{\reenc,i}$ of \S\ref{sec:estimand},
-with non-finite and $|\Delta| > 1.5$ values trimmed; pairing cancels
+$\gap_{e,i} = \dgap_{e,i} - \dgap_{\reenc,i}$ of \S\ref{sec:estimand},
+with non-finite and $|\gap_{e,i}| > 1.5$ values trimmed; pairing cancels
 the shared per-image, per-bin draw structure. All verdict maps below
 report this paired object. Finite-draw cosines are also
 compiler-kernel-path sensitive, so all pairings live within one run
@@ -1407,7 +1424,7 @@ test is whether it is a \emph{predictive} theory: fit the reduced
 account on three routes, then predict two held-out routes from
 the governors alone (Fig.~\ref{fig:e5}). Fit routes: $\{1024{\to}896,\ 1024{\to}512,\ 1280{\to}1120\}$;
 held-out: $\{1024{\to}768,\ 1280{\to}1024\}$. Per fit route the excess
-curve $\bar\Delta_e(\sigma)$ is fit with a route amplitude and floor on
+curve $\bgap_e(\sigma)$ is fit with a route amplitude and floor on
 the measured route-uniform amplitude $m(\sigma)$ and each run's own
 $\|\bar g_{\src}(\sigma)\|$;
 two governor models ($A(\mathrm{ratio})$ interpolating the fitted
@@ -1519,7 +1536,7 @@ where the account says it can, and the derived four-term form
 represents the failure rather than excusing it. The window therefore
 \emph{delimits the reduction's domain}. One honesty note on the probe
 design: the scalar read we originally planned,
-$\Delta_{\mathrm{demote}} - \Delta_{\mathrm{repromote}} - \Floor_e$,
+$\gap_{\mathrm{demote}} - \gap_{\mathrm{repromote}} - \Floor_e$,
 cannot arbitrate --- it estimates $I(\sigma) + [F(\sigma) - F(1)]$
 plus higher-order terms, conflating the two branches. The designated
 direct test is therefore vector-resolved: the demote--re-promote

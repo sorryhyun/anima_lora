@@ -159,9 +159,9 @@ instrument family (consistency check).
 runs a second independent draw set from a disjoint seed stream, giving
 per-arm self-cosines alongside the native floor; Eq.~\ref{eq:debias} is
 then computed per image and bin, and the map read is the paired
-excess $\Delta_i = \dgap_{e,i} - \dgap_{\reenc,i}$ with non-finite
+excess $\gap_{e,i} = \dgap_{e,i} - \dgap_{\reenc,i}$ with non-finite
 values (negative self-cosines under the square root at low $D$) and
-$|\Delta_i| > 1.5$ trimmed ($0$--$5$ of $40$ images per cell). Under
+$|\gap_{e,i}| > 1.5$ trimmed ($0$--$5$ of $40$ images per cell). Under
 \texttt{--draw\_sweep}, draw prefixes are nested ($D = 64$ contains the
 $D \le 32$ sets; prefix sums, no extra forwards) and
 $\gap(D) = \gap_\infty + c/D$ is fit on route means with a bootstrap CI
