@@ -1,0 +1,89 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2026_conference}
+
+\input{math_commands.tex}
+
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+% The template's `times` package silently falls back to Latin Modern under
+% tectonic; newtx is the same Times look with matching math (subsumes amssymb).
+\usepackage{newtxtext,newtxmath}
+\usepackage{multirow}
+\usepackage{subcaption}
+
+% De-anonymized draft; comment out for double-blind submission.
+\iclrfinalcopy
+
+\newcommand{\gap}{\mathrm{gap}}
+\newcommand{\dgap}{\widehat{\mathrm{gap}}}
+\newcommand{\bgap}{\overline{\mathrm{gap}}}
+\newcommand{\Floor}{\mathrm{Floor}}
+\newcommand{\reenc}{\mathrm{reenc}}
+\newcommand{\src}{\mathrm{src}}
+\newcommand{\dem}{\mathrm{dem}}
+\newcommand{\sigmastar}{\sigma^{\!*}}
+\newcommand{\epsstar}{\varepsilon^{\!*}}
+
+\title{When Does Training on Downscaled Images\\
+Yield the Same Gradients?}
+
+\author{Seunghyun Ji\\
+Independent researcher\\
+\texttt{standingbehindnv@gmail.com}
+}
+
+\begin{document}
+
+\maketitle
+% Drop the "Published as a conference paper at ICLR 2026" running head
+% (set by \maketitle under \iclrfinalcopy) for this draft.
+\fancyhead{}
+\renewcommand{\headrulewidth}{0pt}
+
+\begin{abstract}
+Diffusion transformers deliver strong image generation, but their
+training cost grows superlinearly with resolution. A recent family of
+methods therefore trains or samples at reduced resolution on a
+spectral premise: at high noise, a downscaled latent preserves almost
+the full surviving signal. The evidence for that premise, however,
+lives at the level of generated output; whether a downscaled step also
+delivers the \emph{native training gradient}, under the same model and
+objective, has not been measured. We measure it directly, with a
+debiased gap estimator (naive finite-draw estimation manufactures the
+very effect under test), and score two accounts against the same
+curves. The spectral account, transported to the gradient and given
+its best tolerance, is wrong in both directions at once and its one
+free parameter is inert. Ours splits the cost in two: a
+noise-dependent term governed by the downscale \emph{ratio}, and a
+$\sigma$-independent floor governed by the target grid's
+\emph{absolute token count}, carried by the compute graph itself. No
+noise level rescues a $2\times$ downscale; but on the mildest route
+($1024{\to}896$) the training gradient is indistinguishable from
+native at instrument resolution for $\sigma > 0.5$, despite roughly a
+quarter fewer input tokens --- a window no spectral tolerance
+predicts. Head to head on held-out routes, the spectral account
+misses at $0.147$--$0.355$ RMSE where ours predicts at
+$0.07$--$0.09$, better than an oracle fit on the held-out data
+itself. Gating substitution on that window gives \emph{selective}
+low-resolution training: $-14.6\%$ wall-clock at a fixed step budget,
+with a sample-level footprint within the training-seed lottery
+(quality non-inferiority at production scale remains open).
+\end{abstract}
+
+% ---- Body ----------------------------------------------------------
+% Sections live in separate files; edit those, not this shell.
+
+\input{sec_intro}      % Introduction + Related work
+\input{sec_theory}     % Two accounts of what demotion costs
+\input{sec_experiments} % Experiments: both accounts, scored
+\input{sec_discussion} % Deployable form + Limitations + Conclusion
+
+\bibliography{references}
+\bibliographystyle{iclr2026_conference}
+
+\input{appendix}
+
+\end{document}

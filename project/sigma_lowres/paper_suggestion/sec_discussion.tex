@@ -1,0 +1,262 @@
+\section{The answer, in deployable form}
+\label{sec:practical}
+
+\subsection{The $(\text{route}, \sigma)$ safety map}
+\label{sec:map}
+
+The answer to the title question at our operating point is not a
+corrected formula but a measured map at a stated resolution; the map
+needs no table, because the verdict quantity self-describes it: a route
+is safe exactly where its debiased excess over the re-encoding control
+is indistinguishable from zero at instrument resolution
+(Eq.~\ref{eq:safe}). Measured, on the \emph{per-example} object:
+$1024{\to}896$ (ratio $0.875$, floor $0.02$--$0.04$) is \textbf{safe} on
+the interior window $\sigma \in (0.5, 0.94]$; $1280{\to}1024$ (ratio
+$0.80$, floor ${\approx}\,0$) is \textbf{safe} from
+$\sigma \gtrsim 0.75$; the synthetic iso-severity grid $1280{\to}1120$
+is safe with $\sigmastar \approx 0.5$, as its ratio twin predicts;
+$1024{\to}768$ and $896{\to}768$ (floors $0.06$--$0.09$ and
+$0.06$--$0.12$) have \emph{no certifiable window}; and any route to
+$512$ (floor ${\approx}\,0.30$) is \emph{certifiably unsafe at every}
+$\sigma$. Safety is a per-route boundary, jointly determined by ratio
+(through $A_e$) and absolute target size (through $\Floor_e$); neither
+alone predicts the ordering. For the corpus safe route the fine print
+is: every bin in $(0.5, 0.94]$ has a debiased mean within $\pm 0.03$ of
+zero, formal certification at the strict $0.02$ margin is achieved at
+$\sigma = 0.688$, and the $\sigma{=}1$ endpoint carries a small real
+gap ($+0.042 \pm 0.011$) --- the safe window is the interior.
+
+\paragraph{The map depends on the aggregation object.}
+Per \S\ref{sec:estimand} the aggregation operator is part of the
+estimand, and the two objects genuinely disagree at high $\sigma$:
+pooled-arm probes (pool size $4$) collapse the $1024{\to}896$ excess to
+${\approx}\,0$ at every bin $\sigma \ge 0.625$ \emph{and} the
+$1024{\to}768$ excess to ${\approx}\,0$ at $\sigma \ge 0.875$ --- the
+batch-aggregate object SGD follows is more forgiving here than the
+per-example read. We publish the per-example map as the verdict (pooled
+arms do not yet have self-floors): the pooled collapse says the $1/B$
+term dominates at these bins, but the intercept --- the coherent drift
+no batch size removes --- is bounded only by an $a + b/B$ fit across
+pool sizes, the designated readout of a debiased verdict grid at the
+shipped trainer's actual batch$\times$accumulation operating point
+\textbf{[pending]}.
+
+\subsection{$\sigma$-conditional training on the measured-safe route}
+\label{sec:trainer}
+
+We wire the one measured-safe corpus route into the LoRA trainer as an
+opt-in path, exactly as measured, with no extrapolation beyond the map.
+
+\textbf{$\sigma$-first draw.} The trainer draws each batch's $\sigma$
+\emph{before} fetching latents, from the unchanged training density
+(demotion conditions on $\sigma$, not the reverse). When every sample
+in the batch is above the gate ($\sigma > 0.5$), the native
+$1024$-tier latent is swapped for a cached demoted-grid sibling
+produced by the probe's own measured-safe recipe (pixel-space
+downscale, VAE re-encode); everything downstream derives from the
+swapped latent. Off-route images always train native, as does
+validation. The small real gap at the exact $\sigma{=}1$ endpoint does
+not bite: it is a boundary point of measure zero for the continuous
+training density, and the last interior bin reads ${\approx}\,0$
+debiased.
+
+\textbf{Banded rotary alignment, $\sigma$-gated.} Motivated by
+\S\ref{sec:ourscored}, a frequency-selective alignment (YaRN-style
+bands: full positional-interpolation stretch for rotary bands with few
+rotations across the demoted extent, native spacing for high-frequency
+bands, ramp between, thresholds scheduled by a sigmoid gate in $\sigma$
+following \citealp{zhao2026sigma}) is applied on demoted forwards only.
+Unlike uniform interpolation it is \emph{not} off-manifold in-window:
+it passed both pre-registered legs, erasing the static variant's
+low-$\sigma$ liability ($+0.064 \to +0.033 \pm 0.025$) while preserving
+its high-$\sigma$ gains (paired $-0.05$ vs plain demotion at
+$\sigma \ge 0.59$). It is a refinement candidate, not a gate-widener:
+the gate stays $\sigma > 0.5$. Under bit-exact deterministic training
+it adds no weight-space displacement over the demotion arm it refines
+(base$\leftrightarrow$refined $0.319$ vs base$\leftrightarrow$demoted
+$0.320$; without determinism a twin-run chaos floor of $0.41$ would
+swamp this read).
+
+\textbf{Cost accounting.} With ${\sim}50\%$ of draws above the gate and
+the demoted forward at ${\sim}0.72\times$ tokens, the fixed-step epoch
+cost is ${\approx}\,0.86$, a \emph{projected ceiling} of ${\sim}14\%$
+wall-clock on our corpus ($96\%$ of records are on the safe route),
+scaling with high-tier content. On the fixed-step exercise grid below
+the realized saving is $-15.1\%$ forward FLOPs (exact operator-level
+counts over each run's realized token histogram) and $-14.6\%$
+wall-clock ($n{=}3$ seed means on two single-artist corpora; wall
+tracks FLOPs ${\approx}\,1{:}1$): the projection is achieved. The claim
+is wall-clock at fixed steps, not ``more steps in the same time.''
+
+\begin{table}[t]
+\caption{Sample-level footprint vs.\ the seed lottery: paired PE-Core
+cosine at matched (prompt, noise seed), mean $\pm$ seed spread (SD over
+the three matched-seed pairs; seed pairs for the yardstick row) over
+the frozen prompt set, on two single-artist corpora ($60$/$15$
+training images). The yardstick row is the same cosine between native
+checkpoints that differ \emph{only} in training seed; an arm reading
+at or above it perturbs endpoint samples less than a seed change does.
+\textbf{Bold}: the closest-to-native arm per corpus; the shipped path
+is the only arm at or inside the yardstick on both corpora.}
+\label{tab:yardstick}
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lcc}
+\toprule
+arm pair (matched training seed) & corpus A & corpus B \\
+\midrule
+native $\leftrightarrow$ native, cross-seed (yardstick) & $0.9558 \pm .0046$ & $0.9541 \pm .0093$ \\
+\midrule
+shipped ($1024{\to}896$, $\sigma{>}0.5$ + alignment) $\leftrightarrow$ native & $\mathbf{0.9551 \pm .0057}$ & $\mathbf{0.9641 \pm .0023}$ \\
+gate off (unconditional $1024{\to}896$) $\leftrightarrow$ native & $0.9504 \pm .0179$ & $0.9500 \pm .0141$ \\
+off-map route ($1024{\to}768$, same gate + alignment) $\leftrightarrow$ native & $0.9503 \pm .0013$ & $0.9553 \pm .0127$ \\
+negative control (unconditional $1024{\to}768$) $\leftrightarrow$ native & $0.9527 \pm .0118$ & $0.9545 \pm .0127$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Sample-level footprint.} A fixed-step exercise grid ($5$ arms
+$\times$ $3$ training seeds $\times$ $2$ single-artist corpora, $480$
+optimizer steps each, bit-exact deterministic paired-RNG so every arm
+sees identical draws) renders a frozen prompt set at matched
+(prompt, noise-seed) pairs per checkpoint and embeds each render with a
+frozen vision encoder (PE-Core; \citealp{bolya2025perception}).
+Table~\ref{tab:yardstick} reads each arm's paired cosine against its
+native twin, judged against a seed-noise yardstick. The shipped path is
+the only arm at or inside the yardstick on both corpora ($0.9551$ vs
+$0.9558$, a tie at instrument resolution; $0.9641$ vs $0.9541$):
+swapping every $\sigma > 0.5$ step to the demoted sibling perturbs
+endpoint samples about as much as changing the training seed. All three
+controls fall below the yardstick on at least one corpus, an ordering
+consistent with the map; but the margins are small relative to the seed
+spreads, so this instrument certifies the absence of a gross
+sample-level footprint, not quality non-inferiority.
+
+\textbf{What this section does not claim.} The generation-quality
+acceptance gate (CMMD, \citealp{jayasumana2024cmmd}, non-inferiority at
+training scale against the realized wall-clock saving) remains open:
+the exercise grid's first scoring pass used rating-restricted display
+prompts against mismatched reference pools and could not separate even
+the off-map control from native, so we read no quality verdict from it,
+and the pre-committed full-band rescoring closes the line (a regression
+closes it negatively). Throughput and sample-level footprint above are
+measured; quality non-inferiority is not. We flag this deliberately:
+the gap between a $480$-step exercise grid and production-scale
+training is exactly the kind of gap this paper is about. For the same
+reason we deploy the \emph{measured} map, not the predicted one --- a
+full-pipeline bootstrap of \S\ref{sec:headtohead} exposes the
+prediction pipeline's own branch fragility
+(Appendix~\ref{app:instrument}).
+
+\section{Limitations}
+\label{sec:limitations}
+
+\textbf{One model family, one operating point.} All gradient probes ran
+on one DiT (Anima) with one adapter checkpoint trained at native tiers.
+A mixed-resolution-trained adapter might equalize (or widen) its own
+gradients; probing such a checkpoint is the designated bound on how far
+the map generalizes, as is re-probing $1280{\to}1024$ after fine-tuning
+at the 1280 tier. The probe pool's relationship to the adapter's own
+fine-tune set was measured rather than conceded: a controlled
+$2{\times}2$ factorial (two LoRAs trained on opposite style clusters
+under frozen membership manifests, probed on both) replicates the map's
+shape on both checkpoints with the adapter$\times$probe-style
+interaction below instrument resolution, while the absolute
+redraw-floor level is checkpoint-dependent (Appendix~\ref{app:e7}).
+
+\textbf{Gradient-level, not end-task.} The map is built from
+accumulated per-step gradients; integration over an optimizer
+trajectory is addressed by the exercise grid's weight-space and
+sample-level reads at $480$ steps rather than production scale, and the
+generation-quality (CMMD) gate remains open.
+
+\textbf{Account resolution and domain.} The account predicts held-out
+routes at ${\sim}0.07$--$0.09$ RMSE, not within $\epsstar$; its
+$A(\mathrm{ratio})$ governor rests on two distinct ratio values; the
+reduction's domain excludes the $768$ mid-$\sigma$ window, whose
+mechanism the vector-resolved probe has measured (negative
+interference) but which the two-term form still does not predict; the
+floor law's functional form is unidentified at our operating points;
+and the band-counting sketch for $\mathrm{RoPE}_e$/$\mathrm{Resid}_e$
+is calibrated, not derived.
+
+\textbf{Instrument resolution and coverage.} ``Safe'' is one-sided
+non-inferiority at the measured certification resolution
+($\epsstar = 0.03$--$0.08$ per bin; ${\approx}\,0.01$--$0.02$ at the
+endpoint sweeps). True gaps below $\epsstar$ are undetectable by
+construction, $\sigmastar$ boundaries are localized only to a bin, and
+every ``no certifiable window'' claim is $(N, D)$-relative: a larger
+campaign could certify (or refute) the $768$ high-$\sigma$ window. The
+debiasing campaign covered the corpus verdict grid; the $1280$-tier
+iso-severity, $896$-tier transfer, depth-split, and PI-intervention
+probes remain pre-debiasing reads, and the $1280$-tier curves enter the
+held-out validation with that caveat.
+
+\textbf{Scope.} Adapter (LoRA) gradients on a frozen backbone; full
+fine-tuning may differ. Pixel-space demotion only (latent-space
+downsampling was not tested here; SwD found it inferior). The
+$\sigma$-gated banded-alignment parameters were taken from one shot at
+pre-registered values, not searched.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+When does training on downscaled images yield the same gradients? Not
+when the noise has masked the frequencies the coarse grid loses. That
+spectral answer was advanced by prior work for inference-time
+substitution and had not previously been confronted with the training
+gradient; transported to the training question it is a model of only
+one part of one branch of what demotion perturbs, and the measurements
+reject it at every point of structural divergence --- the mildest
+route's crossover sits at $3.5\times$ the equal-power prediction, no
+tolerance reproduces the map, its one free parameter is inert at the
+curve level, and a $2\times$-downscaled latent is certifiably unsafe at
+every noise level, because the network function itself is
+grid-calibrated: partly through its positional coordinate system,
+partly through an irreducible dependence of the computation on token
+count.
+
+The measured answer has two conditions, matching the two terms of our
+account: the target grid must be large enough in \emph{absolute token
+count} that its graph floor sits below certification resolution, and the
+noise level must exceed a per-route boundary where the ratio-governed
+data term dies. On our model that means $1024{\to}896$ at
+$\sigma > 0.5$ and $1280{\to}1024$ at $\sigma \gtrsim 0.75$, and a
+$2\times$ downscale at no noise level. The answer is predictive, not
+merely descriptive: head to head on the same curves the account
+predicts held-out routes at ${\sim}0.07$--$0.09$ RMSE against the
+spectral family's $0.147$--$0.355$, beating an oracle fit on the
+held-out data itself on one route. Getting there required treating the
+question as a metrology problem: naive finite-draw estimation
+manufactures exactly the token-count-ordered floor signature under
+test, half the intermediate route's raw floor was estimator bias, and
+our own headline claims were re-derived, and in one case softened,
+under the correction. On the one route our corpus makes safe, the
+trainer realizes the map's projected ceiling ($-14.6\%$ wall-clock at
+fixed steps) with a sample-level footprint within the seed lottery;
+quality non-inferiority at production scale remains the open gate. We
+offer the account and its instrument as the cheap, general test that
+any future ``train part of the time at lower resolution'' proposal
+should pass before it is believed --- and without the debiasing, that
+test manufactures the very effect it looks for.
+
+\subsubsection*{Reproducibility statement}
+The probe scripts (\texttt{run\_sigma\_probe.py}, including the
+\texttt{--self\_floor} and \texttt{--draw\_sweep} debiasing modes;
+\texttt{run\_prior\_distance.py}, \texttt{rapsd.py},
+\texttt{compare\_ckpt\_dw.py}), the held-out validation and refit
+analyses (\texttt{e5\_holdout.py}, \texttt{e5\_refit.py},
+\texttt{e83\_bridge.py}), the trainer wiring
+(\texttt{--sigma\_lowres}), and the frozen pre-registration documents
+are in the public repository at
+\url{https://github.com/sorryhyun/anima_lora} (project line
+\texttt{project/sigma\_lowres/}), together with the debiased verdict
+runs' complete per-image records. The earlier raw-instrument archives
+are excluded by the repository's results ignore rule and will be
+published as a companion tarball \textbf{[pending]}; until then those
+numbers are reproducible from the scripts but their original records
+are not public. Paired training runs use a \texttt{--deterministic}
+mode verified bit-identical across twin runs; finite-draw cosines are
+kernel-path-sensitive, so all cosine pairings are computed within a
+single run (Appendix~\ref{app:instrument}).

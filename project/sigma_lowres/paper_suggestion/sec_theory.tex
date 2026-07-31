@@ -1,0 +1,372 @@
+\section{Two accounts of what demotion costs}
+\label{sec:theory}
+
+This section fixes the estimand (\S\ref{sec:estimand}), then states two
+accounts of it in those same units: the existing spectral one
+(\S\ref{sec:spectral}), carried over from the inference-side
+literature, and ours
+(\S\ref{sec:ouraccount}--\S\ref{sec:reduction}). They are not variants
+of one model: they disagree about which quantity governs a route's
+cost, about what happens at pure noise, and about whether a single
+parameter can order all routes (Table~\ref{tab:accounts}). Every
+experiment in \S\ref{sec:evidence} is sited where they disagree.
+
+\subsection{The estimand}
+\label{sec:estimand}
+
+\paragraph{Objective and noising.}
+A flow-matching model regresses the constant-velocity transport between
+a clean latent and pure noise. With clean latent $x$, noise
+$\epsilon \sim \mathcal{N}(0, I)$, and noise level $\sigma \in (0,1]$,
+the noised input is $z_\sigma = (1-\sigma)\,x + \sigma\,\epsilon$ and
+the target is the velocity $v = \epsilon - x$; with caption condition
+$c$ the loss is $\|\hat v_\theta(z_\sigma, \sigma, c) - v\|^2$, and
+gradients are taken with respect to the LoRA adapter parameters only,
+on a frozen backbone.
+
+\paragraph{Demotion.}
+A \emph{demotion} $e_0 {\to} e$ replaces the native latent with a
+coarser-grid one, produced exactly as a scale-wise trainer would
+produce it ($e_0$ the route's source edge, $e$ its target edge). With
+$y$ the image at its native resolution, $\mathcal{E}$ the VAE encoder,
+and $\mathcal{R}_e$ the pixel-space downscale to the tier-$e$ bucket
+(native aspect ratio preserved),
+$x_{\src} = \mathcal{E}(y) \longrightarrow
+x_{\dem} = \mathcal{E}\big(\mathcal{R}_{e}(y)\big)$ --- a latent with
+proportionally fewer spatial tokens; we do not downsample in latent
+space. Everything else is held fixed: the caption, the $\sigma$ under
+test, and the stratified noise draw scheme (with $\epsilon$ drawn at
+the tier-$e$ shape). The demoted step trains on
+$z_\sigma = (1-\sigma)\,x_{\dem} + \sigma\,\epsilon$ with target
+$v = \epsilon - x_{\dem}$, so the substitution changes both what the
+network sees and what it is asked to predict, but only through the
+spatial grid.
+
+\paragraph{The estimand.}
+Three \emph{arms} recur throughout: $\src$, the source arm,
+which trains on the native-resolution latent $x_{\src}$; $\dem$,
+the demoted arm, which trains on $x_{\dem}$; and $\reenc$,
+a control arm that decodes and re-encodes the native latent at native
+resolution: it pays the VAE round trip that demotion necessarily pays,
+with no grid change. For an arm
+$a \in \{\src, \reenc, \dem\}$, let
+$\bar g_a(\sigma) = \mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$ be
+the population per-bin mean adapter gradient of a query (image,
+caption). The \emph{population demotion distance} of the route
+$e_0 {\to} e$ is
+\begin{equation}
+d_{e_0 \to e}(\sigma) \;=\; 1 - \cos\!\big(\bar g_{\src}(\sigma),\,
+\bar g_{\dem}(\sigma)\big)
+\;=\; \tfrac{1}{2}\,\big\|\hat g_{\src} - \hat g_{\dem}\big\|^2
+\;\ge\; 0,
+\label{eq:gapdef}
+\end{equation}
+with $\hat g$ the unit-normalized gradients. Route-level scalars carry
+the \emph{route} as a subscript, abbreviated to the target edge alone
+($d_e$, $\Floor_{1120}$) wherever the source is fixed by context; the
+control's distance $d_{\reenc}$ carries its arm label instead, since it
+changes no grid (full convention: Appendix~\ref{app:notation}). The
+\emph{reported} quantity of every bin-resolved map and every fit in this
+paper is the \emph{re-encoding excess}
+$\gap_e(\sigma) := d_e(\sigma) - d_{\reenc}(\sigma)$, the demotion
+distance beyond what the control already pays; $\gap_e$ can be
+negative, $d_e$ cannot. Endpoint and floor tables report debiased
+estimates of $d_e$ with the control as its own row.
+
+Two further properties are load-bearing and easy to lose. First, the
+\emph{aggregation operator is part of the estimand}: per-example
+(cosine per image, then mean) and batch-aggregate (gradients summed
+over the batch before the cosine, the object SGD follows) are related
+by a decomposition, not an ordering --- the batch-aggregate distance is
+an intercept (a coherent share that never averages out) plus a $1/B$
+term, so the per-example map is \emph{not} a lower bound for larger
+batches and no coefficient fitted on one transfers automatically to the
+other (Appendix~\ref{app:notation}; \S\ref{sec:map} publishes one map
+for each). Second, any estimate of $d_e(\sigma)$ compares finite-draw
+estimates of population directions. For a route whose true excess is
+zero, the paired estimate $\bgap$ fluctuates with standard error
+$\mathrm{SE}(N, D, \sigma\text{-bin})$; its one-sided 95\% upper bound
+defines the \emph{certification resolution} $\epsstar$ (the smallest
+margin certifiable even for a truly safe route) and ``safe at margin
+$\varepsilon$'' as the non-inferiority statement
+\begin{equation}
+\text{UB}_{95}\!\left(\bgap\right) \;<\; \varepsilon,
+\qquad
+\varepsilon \;\ge\; \epsstar(N, D, \text{bin})
+\;=\; 1.645\,\mathrm{SE}(N, D, \text{bin}),
+\label{eq:safe}
+\end{equation}
+not a hard bound. ``No certifiable window'' means a route's upper
+bounds do not cross below $\varepsilon$ at the current $(N, D)$;
+``certifiably unsafe'' means its lower bound stays above it. Getting an
+unbiased $\bgap$ out of finite draws is itself nontrivial and is the
+first business of \S\ref{sec:instrument}.
+
+\subsection{The existing account: safety is masked spectrum}
+\label{sec:spectral}
+
+The spectral argument of \S\ref{sec:related} supplies the field's
+working model of the same gap, and it is worth deriving in the units
+Eq.~\ref{eq:gapdef} just fixed. Its strongest available form is
+SPD's tolerance-parameterized crossover \citep{xiao2026spd}: under
+the premise that each clean-latent frequency $\omega$ is Gaussian,
+$x_0^{(\omega)} \sim \mathcal{N}(0, P_\omega)$ (with $P$ the
+clean-latent power spectrum), their
+Proposition~1 states that for all $\sigma \ge t_\omega$ the
+\emph{Bayes-optimal} per-band velocity prediction is within tolerance
+$\delta$ of pure noise,
+$\mathbb{E}[|v^{*(\omega)} - \epsilon^{(\omega)}|^2] \le \delta$, and
+their Proposition~2 places the safe-substitution boundary for a coarse
+grid at the $t_\omega$ of its Nyquist band $\omega_e$. Carried to the
+training gradient --- under the premise that demotion costs only what
+the destroyed bands still contribute to the prediction --- the implied
+gradient gap is the destroyed-band contribution $S_e$, gated at the
+Nyquist band's activation time:
+\begin{equation}
+\gap_e^{\mathrm{spec}}(\sigma) \;=\;
+S_e(\sigma)\,\mathbf{1}\!\big[\sigma < t_{\omega_e}\big],
+\qquad
+t_\omega \;=\;
+\frac{1}{1 + \sqrt{\delta \,/\, \big(P_\omega\,(1 + P_\omega -
+\delta)\big)}}.
+\label{eq:spd}
+\end{equation}
+This is a prediction-level criterion, strictly stronger than raw input
+SNR; the often-quoted equal-power crossover
+$\sigma_{\mathrm{eq}}(f) = \sqrt{P(f)}/(1+\sqrt{P(f)})$ is its
+$\delta = (1+P_\omega)/2$ slice. Under the same premise the account
+also extends to the residual level: the posterior mean is a per-band
+Wiener shrinkage (with Gaussian prior and noise the MMSE estimator is
+linear with per-band gain $P_\omega/(P_\omega + n_\omega)$,
+\citealp{wiener1949}), so with no cross-frequency coupling the
+cross-grid mean-residual mismatch is confined to the destroyed band and
+ordered across routes by destroyed-band energy.
+
+Three structural consequences are fixed by the \emph{form} of
+Eq.~\ref{eq:spd}, before any gradient is measured, and each is a place
+the account can be falsified without arguing about $\delta$.
+\textbf{(a)~One parameter orders every route}: all boundaries move
+together under the single tolerance, so the family is totally ordered.
+\textbf{(b)~Ratio only}: in normalized frequency the demoted grid's
+Nyquist sits at $f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_0$, a function of
+the downscale \emph{ratio} alone, so the account is structurally blind
+to any absolute-size effect. \textbf{(c)~No floor}: for every route and
+every $\delta$ the predicted gap vanishes above a finite boundary, so
+no $\sigma$-independent term is expressible.
+
+Two properties of the instantiation on \emph{our} latents are likewise
+fixed in advance (\S\ref{sec:specscored}, Appendix~\ref{app:spectral}):
+they are high-frequency-quiet, so the family is \emph{compressed}
+(mildest-to-harshest spread below ${\sim}0.13$ in $\sigma$ at every
+tolerance), and the two routes our measurements separate maximally
+($1024{\to}896$, ratio $0.875$, and $896{\to}768$, ratio $0.857$)
+receive boundaries within $0.01$ of each other at \emph{every} $\delta$.
+One unit caveat matters when we score curves: the derivation emits
+residual units only, so any gap-unit prediction is \emph{the spectral
+account transported through} $\|\bar g_{\src}\|$ \emph{and a calibrated
+route gain}, not a parameter-free prediction.
+
+\subsection{What demotion actually perturbs: two branches}
+\label{sec:ouraccount}
+
+Our account starts one level lower, from what the substitution touches
+in the gradient itself. Differentiating the loss of
+\S\ref{sec:estimand} gives, per draw and up to a constant,
+$g = \nabla_\theta \tfrac12\|\hat v_\theta - v\|^2 = J^{\!\top} r$,
+with $r = \hat v_\theta - v$ the prediction residual and
+$J = \partial \hat v_\theta / \partial \theta$ the Jacobian through
+which the compute graph turns a residual into an adapter gradient.
+Demotion changes exactly the two factors of this product, and nothing
+else about the map from (image, noise, caption) to adapter gradient:
+the residual, because it changes the data the objective consumes, and
+the Jacobian, because it changes the compute graph the gradient flows
+through. Averaging over draws and expanding the product
+(Appendix~\ref{app:branches}), the perturbation
+$\delta g = \bar g_{\dem} - \bar g_{\src}$ decomposes as
+\begin{equation}
+\delta g \;=\;
+\underbrace{J^{\!\top}\Delta \bar r(\sigma)}_{\text{data branch }B_e}
+\;+\; \underbrace{\Delta J^{\!\top}\, \bar r}_{\text{graph branch }C_e}
+\;+\; \underbrace{\Delta J^{\!\top}\Delta \bar r + \cdots}_{\text{remainder }R_e}.
+\label{eq:branches}
+\end{equation}
+$J_{\src}$ and $J_{\dem}$ act on different grids, so the branches are
+not literal matrix products across arms; they are defined
+\emph{operationally}, as the two independent perturbation directions in
+the shared adapter-parameter space where both gradients live, and
+\S\ref{sec:ourscored} isolates each by its own intervention.
+
+Read against Eq.~\ref{eq:branches}, the spectral account of
+\S\ref{sec:spectral} is a \emph{strict special case}: it keeps the
+input-mediated part of the data branch, gated at Nyquist, and sets
+everything else to zero --- no target-mediated share, no graph branch
+($\Delta J \equiv 0$), no interaction. Both omissions are structural.
+The graph branch does not reference $\sigma$ at all, since the grid
+change does not: token count, rotary phase density, and
+sequence-length-dependent normalization change identically at every
+noise level, so nothing about noise masking can remove them. And within
+the data branch, only the \emph{input}-mediated part shrinks with
+$\sigma$: perturbing the image by $\delta x$ perturbs the residual by
+$D_z f\,[(1{-}\sigma)\,\delta x] + \delta x$, and the second,
+target-mediated term carries unit weight at every $\sigma$. At
+$\sigma{=}1$ the input is pure noise on every grid, so the
+input-mediated part vanishes in distribution, but the endpoint is not
+data-free by construction; whether the surviving target-mediated share
+is \emph{resolvable in the angular estimand} is an empirical question,
+discharged in \S\ref{sec:ourscored}. Input-level spectral sufficiency
+licenses inference-time substitution; what training consumes is
+$\mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$, and that is not
+bounded by an input-masking argument.
+
+\subsection{The angular reduction: a two-term account}
+\label{sec:reduction}
+
+It remains to read Eq.~\ref{eq:branches} in the units of the estimand
+(step-by-step in Appendix~\ref{app:geometry}). Writing
+$u^{\perp} = u - (\hat g_{\src}^{\!\top}u)\,\hat g_{\src}$ for the
+component orthogonal to $\bar g_{\src}(\sigma)$, split the perturbation
+into a rescaling and a rotation:
+$\kappa_\parallel = \hat g_{\src}^{\!\top}\delta g / \|\bar g_{\src}\|$
+and $\kappa_\perp = \|\delta g^{\perp}\| / \|\bar g_{\src}\|$.
+Substituting $\bar g_{\dem} = \bar g_{\src} + \delta g$ into
+Eq.~\ref{eq:gapdef} gives, \emph{exactly},
+\begin{equation}
+d_e \;=\; 1 - \frac{1}{\sqrt{1 + \kappa_{\mathrm{eff}}^2}}\,,
+\qquad
+\kappa_{\mathrm{eff}} \;=\; \frac{\kappa_\perp}{1 + \kappa_\parallel}\,:
+\label{eq:exact}
+\end{equation}
+the gap is a saturating function of a single rotation-to-scale ratio ---
+only the orthogonal component rotates the gradient direction, and a
+parallel component merely renormalizes it. Taylor-expanding
+Eq.~\ref{eq:exact} at small $\kappa$ and substituting
+Eq.~\ref{eq:branches} into the square gives the \emph{four-term angular
+expansion}, derived as unconditionally as Eq.~\ref{eq:exact} itself:
+\begin{equation}
+d_e(\sigma) \;\approx\;
+\underbrace{\frac{\big\|B_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{data share }S_e}
+\;+\;
+\underbrace{\frac{\big\|C_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{graph share }F_e}
+\;+\;
+\underbrace{\frac{\big\langle B_e^{\perp},\, C_e^{\perp}\big\rangle}{\|\bar g_{\src}\|^2}}_{\text{projected interaction }I_e}
+\;+\; R'_e,
+\label{eq:fourterm}
+\end{equation}
+where $R'_e$ collects the remainder branch, the beyond-quadratic terms
+of Eq.~\ref{eq:exact}, and the parallel-component correction
+(exact content: Appendix~\ref{app:geometry}). $S_e$ and $F_e$ are
+non-negative; $I_e$ can carry either sign, a fact that matters in
+\S\ref{sec:headtohead}. At the harshest measured operating point
+($d = 0.30$ at $512$, $\sigma{=}1$) the implied perturbation is
+$\kappa_{\mathrm{eff}} \approx 1.02$ --- not small --- so
+quadratic-order reads on that route are indicative and the exact form
+carries the quantitative claims. Note that Eq.~\ref{eq:spd} is
+Eq.~\ref{eq:fourterm} with $F_e = I_e = 0$ and $S_e$ gated at Nyquist.
+
+\paragraph{From the expansion to a measurable form.}
+The reported object is the excess over the control, whose own expansion
+is degenerate --- the $\reenc$ arm changes no grid, so
+$\Delta J_{\reenc} = 0$ and both terms built from it vanish, leaving
+$d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$. Subtracting term by term
+therefore cancels only the re-encode component of the data share and
+passes the graph share and interaction through untouched. Four named
+assumptions, each tested by a designated probe in
+\S\ref{sec:evidence}, then trade the exact bookkeeping (in which no
+term is separately measurable per bin) for a form built from measurable
+curves and per-route constants:
+(i)~\textbf{small remainder}, $R'_e$ negligible over the claimed
+domain;
+(ii)~\textbf{negligible projected interaction},
+$|I_e| \ll S_e + F_e$;
+(iii)~\textbf{graph-relative stationarity},
+$\|C_e^{\perp}\| / \|\bar g_{\src}\|$ $\sigma$-constant (numerator and
+denominator share the residual's scale), so $F_e$ is flat in $\sigma$
+--- write $\Floor_e$ for its value;
+(iv)~\textbf{data-branch factorization},
+$\|B_e^{\perp}\| \approx a_e\, m(\sigma)$: a $\sigma$-independent route
+amplitude times the route-independent mismatch \emph{norm}
+$m(\sigma) = \|\Delta \bar r(\sigma)\|$ of the model's mean prediction
+residual across grids (directly measurable, \S\ref{sec:ourscored}).
+The first two are not unstructured hopes: both discarded terms obey
+exact Cauchy--Schwarz bounds in the retained shares
+($|I_e| \le 2\sqrt{S_eF_e} \le S_e + F_e$, the remainder entering at
+half power in its own share), so (ii) carries independent content only
+near share crossover (Appendix~\ref{app:geometry}). Applied,
+\begin{equation}
+\gap_e(\sigma)
+\;\approx\;
+\underbrace{A_e \cdot \big(m(\sigma)/\|\bar g_{\src}(\sigma)\|\big)^{2}}_{\text{data term}}
+\;+\; \underbrace{\Floor_e}_{\text{graph term}},
+\qquad A_e = \tfrac{1}{2}\,a_e^2,
+\label{eq:twoterm}
+\end{equation}
+the \emph{two-term account}, stated on the reported excess. The
+quadratic power is fixed by the cosine geometry \emph{locally}; far
+from the small-mismatch regime the licensed read is the un-expanded
+parent form, Eq.~\ref{eq:exact} with loading
+$\kappa_e(\sigma) = c_e\, m(\sigma)/\|\bar g_{\src}(\sigma)\|$ (so
+$A_e = c_e^2/2$ in the small-$\kappa$ limit), whose data term
+\emph{saturates} instead of overshooting. The loading itself is an
+\emph{empirical} ingredient, not a derivation, so
+\S\ref{sec:headtohead} scores both forms held out, labelling
+Eq.~\ref{eq:exact} the best empirical predictor and Eq.~\ref{eq:twoterm}
+the derived small-perturbation form. To keep the ledger explicit:
+Eqs.~\ref{eq:exact} and~\ref{eq:fourterm} are unconditional;
+Eq.~\ref{eq:twoterm} is conditional on the four assumptions; the
+coefficients $A_e$ (or $c_e$), $m(\sigma)$, $\|\bar g_{\src}(\sigma)\|$
+and $\Floor_e$ are measured. The account was pre-registered with an
+outcome matrix --- including a kill switch, all endpoint gaps
+${\approx}\,0$, that would have falsified the graph term --- before the
+discriminating runs.
+
+\paragraph{The graph term has identifiable parts.}
+Changing the grid changes (i)~the rotary coordinate system, in which
+every band of the position embedding accumulates phase at a different
+density across the image, and (ii)~non-positional graph statistics:
+attention softmax over a different token count,
+sequence-length-dependent normalization, and the capacity of the coarse
+graph to approximate the fine graph's computation (the conceptual frame
+is attention as a discretization of a function-space operator,
+\citealp{calvello2024continuum}, whose statistics need not be
+discretization-invariant). Splitting
+$\Floor_e = \mathrm{RoPE}_e + \mathrm{Resid}_e$ yields one sharp
+prediction: the positional share is a \emph{coordinate-system
+artifact}, so an exact positional-interpolation intervention should
+remove $\mathrm{RoPE}_e$ wherever the data branch is inactive
+($\sigma \to 1$); a band-counting sketch attaches an
+absolute-\emph{size} governor to $\mathrm{Resid}_e$. Like YaRN's own
+band thresholds \citep{peng2024yarn}, that sketch's constants are
+calibrated, not derived; we claim no closed form for $\Floor_e$.
+
+\subsection{The two accounts, side by side}
+\label{sec:sidebyside}
+
+\begin{table}[t]
+\caption{The two accounts disagree structurally, before any gradient is
+measured. Each row is an experiment in \S\ref{sec:evidence}; the last
+column names where it is decided.}
+\label{tab:accounts}
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{0.215\textwidth}p{0.26\textwidth}p{0.30\textwidth}l}
+\toprule
+& spectral account (Eq.~\ref{eq:spd}) & two-term account (Eq.~\ref{eq:twoterm}) & decided in \\
+\midrule
+what orders routes & downscale ratio alone & ratio (amplitude $A_e$) \emph{and} absolute target tokens (floor $\Floor_e$) & \S\ref{sec:ourscored} \\
+free parameters & one tolerance $\delta$, shared by all routes & per-route $A_e, \Floor_e$, generated by two governors & \S\ref{sec:headtohead} \\
+as $\sigma \to 1$ & $\gap_e \to 0$ on every route & $\gap_e \to \Floor_e > 0$ & \S\ref{sec:ourscored} \\
+curve shape & gated step at $t_{\omega_e}$ & $m(\sigma)/\|\bar g_{\src}(\sigma)\|$ through Eq.~\ref{eq:exact} & \S\ref{sec:specscored} \\
+cross-grid residual $\Delta\bar r$ & confined to the destroyed band; ordered by its energy & a norm $m(\sigma)$ shared by all routes; identity lives in $J$ & \S\ref{sec:ourscored} \\
+equal-ratio routes at different sizes & identical & same $A_e$, different $\Floor_e$ & \S\ref{sec:ourscored} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both accounts agree that gaps shrink with $\sigma$ and order by
+severity; everything else in Table~\ref{tab:accounts} is
+discriminating. Two rows are decidable without fitting anything: if a
+route's gap survives at $\sigma = 1$, where the input is pure noise on
+every grid, no member of the spectral family can produce it; and if two
+routes of the \emph{same ratio} at different absolute sizes differ,
+ratio is not the whole governor.
