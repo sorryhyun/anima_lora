@@ -208,8 +208,9 @@ kernel-path rule). The shared-power fit scans $p \in [1, 2]$ jointly
 across fit routes with per-route weighted least squares; the exact-link
 fit is a per-route grid with profile-likelihood uncertainties on $c_e$.
 Oracle baselines are quadratic-in-$\sigma$ fits on the held-out data
-itself (the noise ceiling for a 3-dof curve); the null baseline is
-gap $= 0$ on the null's committed region $\sigma > \sigma_{\mathrm{eq}}$.
+itself (the noise ceiling for a 3-dof curve); the spectral baseline is
+gap $= 0$ on the spectral account's committed region
+$\sigma > \sigma_{\mathrm{eq}}$.
 
 \paragraph{Bootstrap bands and the leave-$896$-out lane
 (Fig.~\ref{fig:e5}).} The bands are a full-pipeline image bootstrap
@@ -232,7 +233,7 @@ $+0.019$ $[+0.010, +0.030]$; curve RMSE $0.073$), the X-form
 counterpart of the quadratic-form addendum
 (\S\ref{sec:confronted}).
 
-\paragraph{Spectral-null computation.} Table~\ref{tab:null} evaluates
+\paragraph{Spectral-account computation.} Table~\ref{tab:null} evaluates
 Eq.~\ref{eq:spd} at the demoted grids' Nyquist frequencies
 $f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_0$ on the $N{=}40$
 mean radially-averaged latent power spectrum ($64$ radial bins; $P$ at

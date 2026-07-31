@@ -136,8 +136,8 @@ named assumptions to a \emph{two-term account}: a route amplitude on a
 universal mismatch-amplitude curve read through the U-shaped gradient
 norm, plus a $\sigma$-independent graph floor. The account connects directly to
 the inference-side literature: the spectral argument, in its strongest
-tolerance-parameterized form (SPD, \citealp{xiao2026spd}), enters as
-the null model of the data term's input-mediated part, a null that is
+tolerance-parameterized form (SPD, \citealp{xiao2026spd}), yields its
+own account of the data term's input-mediated part, one that is
 ratio-only and floorless by construction.
 \item \textbf{A measured safety map and a predictive tool}
 (\S\ref{sec:evidence}, \S\ref{sec:practical}). Measured with that
@@ -159,9 +159,10 @@ production scale remains the stated open gate.
 We first situate the question in the prior literature
 (\S\ref{sec:related}); \S\ref{sec:theory} defines the estimand and its
 certification resolution, derives the angular account of the demotion
-gap, states the spectral argument as a null model of its data term, and
-constructs the debiased estimator; \S\ref{sec:evidence} builds the
-instrument and discharges the account's predictions against the null;
+gap and the gradient gap the spectral argument implies for its data
+term, and constructs the debiased estimator; \S\ref{sec:evidence}
+builds the instrument and discharges both accounts' predictions
+against the measurements;
 \S\ref{sec:practical} gives the resulting safety map and the
 $\sigma$-conditional trainer.
 
@@ -599,29 +600,30 @@ pre-registered with an outcome matrix (including a kill switch: all
 endpoint gaps ${\approx}\,0$ would have falsified the graph term) before
 the discriminating runs.
 
-\subsection{The spectral account as a null model of the data term}
+\subsection{The spectral account of the data term, from prior work}
 \label{sec:null}
 
-The spectral argument reviewed in \S\ref{sec:related} was advanced as
-a license for inference-time substitution; no prior work applies it to
-the training gradient, so the null model below is our own transport of
-the argument to the training question, not a claim its authors make.
-Made precise, the argument is a model of one part of one branch of what
-demotion perturbs, and its strongest available form is SPD's
-tolerance-parameterized crossover \citep{xiao2026spd}. Under the
-modeling assumption $x_0^{(\omega)} \sim \mathcal{N}(0, P_\omega)$ per
-frequency $\omega$ (with $P$ the clean-latent power spectrum), their
+The spectral argument reviewed in \S\ref{sec:related} supplies a
+second reading of the same gap, and it is worth deriving in the units
+the measurements will be stated in. Its strongest available form is
+SPD's tolerance-parameterized crossover \citep{xiao2026spd}: under
+the premise that each clean-latent frequency $\omega$ is Gaussian,
+$x_0^{(\omega)} \sim \mathcal{N}(0, P_\omega)$ (with $P$ the
+clean-latent power spectrum), their
 Proposition~1 states that for all $\sigma \ge t_\omega$ the
 \emph{Bayes-optimal} per-band velocity prediction is within tolerance
 $\delta$ of pure noise,
 $\mathbb{E}[|v^{*(\omega)} - \epsilon^{(\omega)}|^2] \le \delta$, and
 their Proposition~2 places the safe-substitution boundary for a coarse
-grid at the $t_\omega$ of its Nyquist band $\omega_e$. In the terms of
-the angular expansion (Eq.~\ref{eq:fourterm}), the null is therefore
-the claim that the gap is the data share alone, gated at the Nyquist
-band's activation time, with no graph share and no interaction:
+grid at the $t_\omega$ of its Nyquist band $\omega_e$. Carrying this
+to the training gradient --- under the premise that demotion costs
+only what the destroyed bands still contribute to the prediction, so
+that in the terms of Eq.~\ref{eq:fourterm} the gap is the data share
+alone, gated at the Nyquist band's activation time, with no
+target-mediated share, no graph share, and no interaction --- the
+gradient gap the argument implies is
 \begin{equation}
-\gap_e^{\mathrm{null}}(\sigma) \;=\;
+\gap_e^{\mathrm{spec}}(\sigma) \;=\;
 S_e(\sigma)\,\mathbf{1}\!\big[\sigma < t_{\omega_e}\big],
 \qquad
 t_\omega \;=\;
@@ -636,42 +638,32 @@ SNR; the often-quoted equal-power crossover
 $\sigma_{\mathrm{eq}}(f) = \sqrt{P(f)}/(1+\sqrt{P(f)})$ is its
 $\delta = (1+P_\omega)/2$ slice.
 
-Its scope must be stated exactly: the null constrains only the
-\emph{input-mediated part of the data branch}. It does not
-constrain the target-mediated share, the graph branch, the
-interaction $I_e$, or the Jacobian gain through which a residual
-mismatch becomes a gradient mismatch. Read as the null model of the data
-term, Eq.~\ref{eq:spd} has three structural properties, each checkable
-before any gradient is measured:
-
-\textbf{(N1) One-parameter family.} All route boundaries move together
-under the single tolerance $\delta$; the family is totally ordered.
-
-\textbf{(N2) Ratio-only.} In normalized frequency the demoted grid's
-Nyquist sits at $f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_0$,
-a function of the downscale \emph{ratio} alone. The null therefore cannot
-distinguish routes of equal ratio at different absolute sizes, and
-assigns nearly identical boundaries to nearly equal ratios regardless of
-grid size. It is structurally blind to any absolute-size effect.
-
-\textbf{(N3) No floor.} For every route and every $\delta$, the null's
-gap vanishes above a finite boundary: every route becomes safe at some
-$\sigma$.
-
-And under the same diagonal-Gaussian assumption the null extends to the
-residual level: the posterior mean is a per-band Wiener shrinkage
+Three structural consequences are fixed by the form of
+Eq.~\ref{eq:spd} before any gradient is measured. All route
+boundaries move together under the single tolerance $\delta$: the
+family is totally ordered by one parameter. In normalized frequency
+the demoted grid's Nyquist sits at
+$f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_0$, a function of the downscale
+\emph{ratio} alone, so the account cannot distinguish routes of equal
+ratio at different absolute sizes and is structurally blind to any
+absolute-size effect. And for every route and every $\delta$ the
+predicted gap vanishes above a finite boundary: every route becomes
+safe at some $\sigma$, and no $\sigma$-independent floor is
+expressible. Under the same diagonal-Gaussian premise the account
+also extends to the residual level: the posterior mean is a per-band
+Wiener shrinkage
 (under a Gaussian prior and Gaussian noise the minimum-mean-square-error
 estimator is linear with per-band gain $P_\omega/(P_\omega + n_\omega)$,
 the classical Wiener filter, \citealp{wiener1949}), so with
 no cross-frequency coupling the cross-grid mean-residual mismatch is
-confined to the destroyed band and \textbf{(N4)} ordered across routes by
+confined to the destroyed band and ordered across routes by
 destroyed-band energy.
 
 The family is instantiated on our measured latent spectrum in
 \S\ref{sec:phenomenon} (Table~\ref{tab:null}); its curve-level read in
-gap units necessarily borrows our bridge: the null emits residual
-units only, so any gap-unit prediction is \emph{the null transported
-through the account's} $\|\bar g_{\src}\|$ \emph{and a calibrated route gain}, not a
+gap units necessarily borrows our bridge: the derivation emits residual
+units only, so any gap-unit prediction is \emph{the spectral account
+transported through} $\|\bar g_{\src}\|$ \emph{and a calibrated route gain}, not a
 parameter-free prediction (\S\ref{sec:confronted}). Two properties of
 the instantiation are fixed before any gradient is measured: the latents
 are high-frequency-quiet, so the family is \emph{compressed} (the
@@ -736,7 +728,7 @@ prediction the instrument verifies (\S\ref{sec:instrument}).
 \section{Experiments}
 \label{sec:evidence}
 
-The account and the null agree that gaps shrink with $\sigma$ and order
+The two accounts agree that gaps shrink with $\sigma$ and order
 by severity; everything else is discriminating, and each subsection
 below states the prediction it discharges, against criteria frozen
 before the runs, together with its designated probe, several of
@@ -909,7 +901,7 @@ noise level}: its paired debiased lower bound stays above $\epsstar$ in
 every bin (means $+0.08$ to $+0.60$), including $+0.17 \pm 0.06$ at
 $\sigma = 0.94$, where the input is ${\sim}97\%$ noise by power in every
 band the coarse grid cannot represent, a high-$\sigma$ persistence
-that no member of the null family can produce. There is no noise level at which a
+that no member of the spectral family can produce. There is no noise level at which a
 $2\times$-downscaled latent yields the native gradient.
 
 Two revisions against the historical record are part of the result. The
@@ -983,7 +975,7 @@ strictly positive, so an in-band read is conservative; and paired
 same-grid contrasts cancel the bias to first order. Their tables
 are likewise in Appendix~\ref{app:tables}.
 
-\subsection{The spectral null, confronted at the boundary level}
+\subsection{The spectral account, confronted at the boundary level}
 \label{sec:phenomenon}
 
 \begin{figure}[t]
@@ -1048,25 +1040,26 @@ prices at the gradient level), and $D$ is expressed in exactly
 Eq.~\ref{eq:spd}'s units (per-band power against unit noise). Band
 content below $D(f_{\mathrm{cut}})$ is invisible to the substitution
 pipeline even with no resolution change, so
-$\delta_{\reenc}(e) := D(f_{\mathrm{cut}}(e))$ anchors the null with zero
+$\delta_{\reenc}(e) := D(f_{\mathrm{cut}}(e))$ anchors the family with zero
 free parameters. Measured on the probe set ($N{=}40$, same
 resize--encode chain as the re-encoding control), the anchor is tiny
 and image-generic: $\delta_{\reenc} \approx 1.0\times10^{-5}$ at all
 three cuts (p10--p90 within $[1, 2]\times10^{-5}$; per-band SNR
 $P(f_{\mathrm{cut}})/D(f_{\mathrm{cut}}) \approx 2.5$--$4.4\times10^{3}$),
 pushing the anchored boundaries to $t^{*} \approx 0.98$ on every route
-(Table~\ref{tab:null}). The parameter-free null is therefore maximally
+(Table~\ref{tab:null}). The parameter-free anchor is therefore maximally
 conservative and still structurally wrong in both directions at once:
 it moves all three boundaries together (spread $< 0.01$), it certifies
 the measured-safe route only above $\sigma \approx 0.98$ where the
 measurement certifies it from $\sigma \approx 0.5$, and, like every
 member of the family, it predicts that the $2\times$ downscale becomes
 safe, when no noise level does. Either way the confrontation does not
-hinge on the choice: the structural failures (N2, N3) are
+hinge on the choice: the structural failures --- ratio-only
+boundaries, and a finite safe boundary for every route --- are
 $\delta$-independent.
 
 \begin{table}[t]
-\caption{The spectral null (Eq.~\ref{eq:spd}) instantiated on the
+\caption{The spectral account (Eq.~\ref{eq:spd}) instantiated on the
 measured latent spectrum: predicted safe boundaries $t^{*}$ per route as
 the tolerance $\delta$ sweeps its range. SPD's published default is
 $\delta = 0.01$; the
@@ -1226,7 +1219,7 @@ denominator}
 \label{sec:anatomy}
 
 \paragraph{$m(\sigma)$ is route-uniform in amplitude: the
-residual-level null fails.}
+residual-level spectral prediction fails.}
 Measuring the mean prediction residual
 $\bar r = \mathbb{E}_\epsilon[\hat v - (\epsilon - x)]$ per grid and
 $\sigma$ (the exact $r$ in $g = J^{\!\top} r$) shows a strong,
@@ -1234,13 +1227,13 @@ monotone $\sigma$-shape (cross-grid excess $0.89 \to 0.36$ in relative
 $L_2$ from $\sigma{=}0.125$ to $1$) that is the \emph{same for every
 route} within $\pm 0.02$, across routes whose gradient floors span $0$ to
 $0.3$ and whose crossovers span $0.5$ to nonexistent (Appendix
-Table~\ref{tab:residual}). This kills the diagonal null at the residual
-level (N4): with no cross-frequency coupling, its mismatch is confined to
+Table~\ref{tab:residual}). This kills the residual-level prediction of
+\S\ref{sec:null}: with no cross-frequency coupling, its mismatch is confined to
 the destroyed band and ordered by destroyed-band energy, which differs
 substantially across these routes; route-uniformity says the real
 mismatch is carried by cross-band structure the diagonal model cannot
 express. All route identity therefore lives in $J$, not in the prediction
-error, a pre-registered null that would equally have falsified the
+error, a pre-registered contrast that would equally have falsified the
 account's factorization had the residual curves been route-ordered;
 instead it \emph{establishes} the shape factorization directly. The
 decay is smooth, Wiener-like posterior shrinkage with no hard gate at
@@ -1274,7 +1267,8 @@ route-specific.'' A closed-form candidate for cross-band coupling per
 se exists --- the flow posterior covariance, whose off-diagonal
 $D_z v^*$ entries are
 $-\big((1{-}\sigma)/\sigma^3\big)\,\mathrm{Cov}(x_\omega, x_{\omega'}
-\mid z)$ \citep{xing2026divunc}, set to zero by the diagonal null ---
+\mid z)$ \citep{xing2026divunc}, set to zero by the diagonal-Gaussian
+premise ---
 but its rank-one common-mode version is excluded by the SVD read
 above.
 
@@ -1304,11 +1298,11 @@ $1280{\to}1024$ is \emph{more} aggressive by ratio ($0.80$) than
 $896{\to}768$ ($0.857$, no certifiable window), yet its floor is
 ${\approx}\,0$ and it enters the re-encoding band at
 $\sigma \gtrsim 0.75$, refuting any pure ratio rule for the floor,
-and with it the null's only degree of freedom. (The $896{\to}768$ read
+and with it the spectral account's only degree of freedom. (The $896{\to}768$ read
 is direct: re-run one tier down, the route fails its pre-registered bar
 with a high-$\sigma$ residual ${\sim}2\times$ the $1024{\to}896$
 plateau, at ratio $0.857$ against the passing $0.875$, while the
-null puts these two boundaries within $0.01$ of each other at every
+spectral family puts these two boundaries within $0.01$ of each other at every
 tolerance; Appendix Table~\ref{tab:phase1a}.) Conversely the floor
 grows monotonically as the \emph{target} grid shrinks
 ($0.02$--$0.04$ / $0.06$--$0.09$ / ${\approx}\,0.30$ at
@@ -1327,7 +1321,7 @@ $A_e$; absolute target capacity sets $\Floor_e$}. The pre-registered
 contrast (ratio-governed $\Rightarrow$ $\sigmastar \approx 0.5$;
 capacity-governed $\Rightarrow$ earlier floor) discriminated cleanly.
 Note what survives of the spectral account here: ratio \emph{is} the
-right governor for the data term; the null's error is not its
+right governor for the data term; its error is not its
 governor but its scope, mistaking one term for the whole gap.
 
 \subsection{Decomposing the floor: depth, and a positional share}
@@ -1437,8 +1431,9 @@ script before the numbers.
 All four pre-registered gates fire:
 (i)~held-out $1024{\to}768$: RMSE $0.093$, \emph{better than an
 oracle quadratic fit on the held-out data itself} ($0.105$), and better
-than the null on its committed region ($\sigma > \sigma_{\mathrm{eq}}$,
-where the null predicts gap $0$: RMSE $0.164$ null vs $0.096$ ours);
+than the spectral account on its committed region
+($\sigma > \sigma_{\mathrm{eq}}$,
+where it predicts gap $0$: RMSE $0.164$ vs $0.096$ ours);
 (ii)~held-out $1280{\to}1024$: RMSE $0.092$ vs oracle $0.056$, inside
 the pre-registered $2\times$ gate;
 (iii)~the ratio governor holds at the amplitude level: the two
@@ -1551,9 +1546,9 @@ cross-draw-set inner products to cancel shared-noise bias and exact
 counterfactual angles alongside the quadratic ledger)
 \textbf{[pending]}.
 
-\paragraph{The null, scored.}
-Against the account's discriminating predictions, the
-null loses each one it is party to: the boundary pattern is
+\paragraph{The spectral account, scored.}
+Against our account's discriminating predictions, the
+spectral account loses each one it is party to: the boundary pattern is
 $\{{\approx}\,0.5$, no certifiable window, certifiably unsafe
 everywhere$\}$ (\S\ref{sec:phenomenon}); gaps persist at pure-noise
 input, equal to the floor and to the image-free control
@@ -1578,9 +1573,9 @@ Bayes-residual mismatch, measured $\|\bar g_{\src}\|$, route gain calibrated on 
 safe route),
 is \textbf{[pending: analysis over existing rows; $\delta_{\reenc}$ for
 the anchored line is now measured, \S\ref{sec:phenomenon}]}; unit honesty
-requires saying it will be \emph{the null read through our bridge},
-since the null emits residual units only.
-% TODO(E8.3): generate null->gap overlay + t*(delta) sweep figures from
+requires saying it will be \emph{the spectral account read through our
+bridge}, since it emits residual units only.
+% TODO(E8.3): generate spec->gap overlay + t*(delta) sweep figures from
 % e1b rows + rapsd fit; add \begin{figure} here.
 
 A corollary worth stating plainly: the safety of $1024{\to}896$ is an
