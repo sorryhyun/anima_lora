@@ -189,7 +189,8 @@ re-encode share (measured ${\approx}\,0$ where probed: the control row
 of Table~\ref{tab:floor}). The subtraction cancels only the re-encode
 component of the data share (up to a cross term suppressed by
 $\sqrt{S_{\reenc}}$, bounded by the control's near-zero reading), so
-$m$ is read net of re-encode; the graph share and the interaction pass
+$\|\Delta\bar r\|$ is read net of re-encode; the graph share and the
+interaction pass
 through untouched --- the control has nothing to cancel them with.
 
 \paragraph{The drop bounds.} Both discarded terms obey exact bounds in
@@ -218,7 +219,7 @@ Table~\ref{tab:floor}, which pins $R'_{\reenc}$ jointly with
 $S_{\reenc}$.
 
 \paragraph{What is not derived.} The loading
-$\|\delta g^{\perp}\| = c_e\, m(\sigma)$ (that the orthogonal
+$\|\delta g^{\perp}\| = c_e\, \|\Delta\bar r(\sigma)\|$ (that the orthogonal
 gradient mismatch is proportional to the residual mismatch with a
 $\sigma$-independent route gain) is an empirical ingredient
 (the data-branch factorization at the amplitude level), fit and tested
@@ -226,8 +227,9 @@ held-out in \S\ref{sec:headtohead}. The geometry above fixes only how a
 given $\delta g$ is read into gap units. What \emph{is} derivable from
 first principles is only a one-sided envelope,
 $\|\bar J^{\!\top}\Delta\bar r\| \le \sigma_{\max}(\bar J)\,
-m(\sigma)$, which would turn the data term into an inequality in the
-observed $m$ given a $\sigma$-uniform bound on the mean Jacobian's top
+\|\Delta\bar r(\sigma)\|$, which would turn the data term into an
+inequality in the observed mismatch norm given a $\sigma$-uniform bound
+on the mean Jacobian's top
 singular value. Promoting the envelope to a proportionality with a
 $\sigma$-independent gain requires the mismatch \emph{direction}
 $\widehat{\Delta\bar r}(\sigma)$ to hold a $\sigma$-stationary
@@ -300,7 +302,8 @@ image-specific directions cancel in the mean, the same motif as the
 residual-direction read below.
 
 \paragraph{Direction-resolved mismatch (behind
-\S\ref{sec:ourscored}).} The route-uniformity of $m(\sigma)$ is a
+\S\ref{sec:ourscored}).} The route-uniformity of
+$\|\Delta \bar r(\sigma)\|$ is a
 property of the \emph{amplitude} only. Saving the per-image mismatch
 vectors and comparing $\Delta \bar r$ directions with a split-half
 attenuation correction, non-adjacent route pairs are near-orthogonal at
@@ -332,19 +335,21 @@ read above.
 \includegraphics[width=0.55\linewidth]{figs/e5_refit_1280.png}
 \caption{The second held-out route, $1280{\to}1024$, under all three
 functional forms for the data term of \S\ref{sec:headtohead}
-(fitted power, derived quadratic, exact angular link), predicted from
+(fitted power, derived quadratic, exact angular link; legend
+$G := \|\bar g_{\src}(\sigma)\|$), predicted from
 governors fitted on other routes. This is the one route where the
 forms visibly separate: the derived quadratic systematically
 overshoots the mid-$\sigma$ peak; the exact angular link's saturation
 removes the overshoot (RMSE $0.049$ vs ${\approx}\,0.095$), which is
-why the exact link headlines in Fig.~\ref{fig:e5}.}
+why the exact link headlines in Fig.~\ref{fig:accounts}.}
 \label{fig:e51280}
 \end{figure}
 
 \paragraph{Held-out validation and refit, sources.} The fit consumes the
 debiased paired curves of the $1024$-tier verdict run, the $1280$-tier
 curves (pre-debiasing paired reads; caveat in \S\ref{sec:limitations}),
-the route-uniform amplitude $m(\sigma)$ from the residual probe, and
+the route-uniform mismatch norm $\|\Delta \bar r(\sigma)\|$ from the
+residual probe, and
 each run's own bin-mean gradient norm $\|\bar g_{\src}(\sigma)\|$ (gap
 and norm always from the same process, per the kernel-path rule). The
 shared-power fit scans $p \in [1, 2]$ jointly across fit routes with
@@ -377,11 +382,12 @@ existing anchors do not discriminate); the designated run is a
 fixed-target, varied-source token ladder, not yet scheduled.
 
 \paragraph{Bootstrap bands and the leave-$896$-out lane
-(Fig.~\ref{fig:e5}).} The bands are a full-pipeline image bootstrap
+(Fig.~\ref{fig:accounts}).} The bands are a full-pipeline image bootstrap
 ($B{=}1000$, fixed seed; $981$ draws kept): resample images with
 replacement within each run ($N{=}40$ / $N{=}24$), re-bin the paired
 curves, refit the exact-link $(c_e, \Floor_e)$ on every fit route,
-re-derive the ratio governor and floor law, re-predict. $\bar m$ and
+re-derive the ratio governor and floor law, re-predict.
+$\|\Delta \bar r(\sigma)\|$ and
 the bin-mean $\|\bar g_{\src}(\sigma)\|$ are run-level instruments with
 no per-image decomposition and are held fixed. The replica includes the
 committed floor law's positive-floor filter ($\Floor > 0.005$): in
@@ -389,7 +395,7 @@ $41\%$ of draws the resampled $1120$ floor clears the filter and the law
 re-anchors on the $(896, 1120)$ legs rather than $(512, 896)$ ---
 branch variability the bands therefore contain, and the reason
 \S\ref{sec:trainer} deploys the measured map rather than the predicted
-one. The $896$ curve in Fig.~\ref{fig:e5} is the post-hoc
+one. The $896$ curve in Fig.~\ref{fig:accounts} is the post-hoc
 leave-$896$-out lane under the exact link ($c$ from the ratio-twin
 $1120$ alone $= 0.142$ vs $0.150$ fitted on $896$ itself; floor law
 through $512{+}1120$, whose fragile $\Floor_{1120}$ leg enters the log
@@ -554,6 +560,29 @@ would be predicted from $\sigma \approx 0.14$. Against the measurement
 ${\sim}3.5\times$, and the $2\times$ downscale, predicted safe by every
 tolerance, is measured unsafe at every noise level.}
 \label{fig:spectrum}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/e83_overlay.png}
+\caption{The \emph{whole} tolerance family against the measurement ---
+the detail behind the single red curve of Fig.~\ref{fig:accounts}. Left
+three panels: the measured debiased gap curves against the spectral
+account transported through our bridge (the diagonal model's
+destroyed-band mean-residual mismatch on the measured spectrum, through
+the measured $\|\bar g_{\src}(\sigma)\|$ with a single gain calibrated
+on the one safe route and no floor --- the family expresses none),
+gated at $t^{*}(\delta)$ (dashed verticals) for the equal-power slice,
+SPD's default $\delta = 0.01$, and the measured anchor
+$\delta_{\reenc}$. The transported curve dies by $\sigma \approx 0.35$
+on every route, so the two larger gates ($0.61$--$0.72$ and
+$0.98$--$0.99$) act on an already-zero curve and coincide exactly;
+the equal-power gate ($0.14$--$0.20$) is the only one that truncates
+live curve, and it moves RMSE by at most $0.008$. All three therefore
+land within $0.01$ of each other: $\delta$ is inert at the curve
+level. Right: the boundary family $t^{*}(\delta)$; maximum route spread
+$0.125$ in $\sigma$ over $\delta \in [10^{-3}, 0.5]$.}
+\label{fig:e83}
 \end{figure}
 
 Table~\ref{tab:null} evaluates Eq.~\ref{eq:spd} at the demoted grids'

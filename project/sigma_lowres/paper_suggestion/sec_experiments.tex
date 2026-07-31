@@ -3,44 +3,35 @@
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{figs/e83_overlay.png}
-\caption{\textbf{The existing account against the measurement.} Left
-three panels: measured debiased gap curves (Eq.~\ref{eq:gapdef})
-against the spectral account transported through our bridge --- the
-diagonal model's destroyed-band mean-residual mismatch on the measured
-spectrum, through the measured $\|\bar g_{\src}(\sigma)\|$ with a
-single gain calibrated on the one safe route and no floor (the family
-expresses none) --- gated at $t^{*}(\delta)$ (dashed verticals) for the
-equal-power slice, SPD's default $\delta = 0.01$, and the measured
-anchor $\delta_{\reenc}$. The transported curve dies by
-$\sigma \approx 0.35$ on every route, so the latter two gates act on an
-already-zero curve and coincide. Right: the boundary family
-$t^{*}(\delta)$; maximum route spread $0.125$ in $\sigma$ over
-$\delta \in [10^{-3}, 0.5]$. Unit honesty: these curves are \emph{the
-spectral account read through our bridge}, since it emits residual
-units only (\S\ref{sec:specscored}).}
-\label{fig:e83}
+\includegraphics[width=\linewidth]{figs/accounts_headtohead.png}
+\caption{\textbf{Both accounts on the same axes.} Per route, one set of
+measured debiased gap curves (Eq.~\ref{eq:gapdef}, black) carries both
+predictions of \S\ref{sec:theory}: the spectral account (red dashed)
+and ours under the exact angular link (blue, Eq.~\ref{eq:exact};
+three-form comparison in Appendix Fig.~\ref{fig:e51280}), with each
+route's predicted floor (blue dashed --- dashed-to-solid is the data
+term) and a $68\%/95\%$ full-pipeline bootstrap band ($B{=}1000$;
+Appendix~\ref{app:instrument}). Neither account is fit to the route it
+is drawn on except as labelled in-panel: ours predicts $1024{\to}768$
+from governors alone with zero per-route freedom (pre-registered
+held-out) and $1024{\to}896$ under the post-hoc leave-$896$-out
+re-derivation, while the spectral account's single gain is calibrated
+on $1024{\to}896$ and frozen. Unit honesty: the red curve is
+\emph{the spectral account read through our bridge}, since it emits
+residual units only, with the tolerance $\delta$ set to the measured
+anchor $\delta_{\reenc}$; the transported curve dies by
+$\sigma \approx 0.35$ on every route, so every tolerance from the
+equal-power slice to $\delta_{\reenc}$ scores within $0.01$ RMSE of
+every other --- $\delta$ is inert at the curve level (the whole family,
+and the boundary sweep, in Appendix Fig.~\ref{fig:e83}).
+The $768$ mid-$\sigma$ dip sits outside the $95\%$ band and is our
+reduction's one structural failure (\S\ref{sec:headtohead}). Bottom
+right: predicted vs measured over every bin, with ours also on the two
+$1280$-tier routes the spectral bridge does not cover.}
+\label{fig:accounts}
 \end{figure}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{figs/e5_main.png}
-\caption{\textbf{Our account against the same measurement}, under the
-headline exact angular link (Eq.~\ref{eq:exact}; three-form comparison
-in Appendix Fig.~\ref{fig:e51280}). Left: $1024$-tier predictions with
-zero per-route freedom --- the pre-registered held-out route
-$1024{\to}768$, and $1024{\to}896$ under the post-hoc leave-$896$-out
-re-derivation (so labeled; governors from $512{+}1120$ alone). Dashed:
-each route's predicted floor $F(n)$, so dashed-to-solid is the data
-term. Bands: $68\%/95\%$ full-pipeline bootstrap ($B{=}1000$;
-Appendix~\ref{app:instrument}). The $768$ mid-$\sigma$ dip sits outside
-the $95\%$ band and is the reduction's one structural failure
-(\S\ref{sec:headtohead}). Right: predicted vs measured across all five
-routes and bins; filled: held-out, open: fit routes.}
-\label{fig:e5}
-\end{figure}
-
-Figures~\ref{fig:e83} and~\ref{fig:e5} state the comparison before the
+Figure~\ref{fig:accounts} states the comparison before the
 apparatus: the same measured, debiased gap curves with each account of
 \S\ref{sec:theory} laid over them. The existing account is near zero
 where the measurement peaks and predicts zero where the measurement
@@ -411,8 +402,8 @@ since direction is what a normalized optimizer consumes.
 \paragraph{The governors: ratio sets the amplitude, absolute size sets
 the floor.}
 With the floor isolated, what orders the routes? Two probes give a
-clean division of labor, and together they decide the equal-ratio row
-of Table~\ref{tab:accounts}. \emph{Absolute size, not ratio, sets the
+clean division of labor, and together they decide the equal-ratio
+disagreement of \S\ref{sec:sidebyside}. \emph{Absolute size, not ratio, sets the
 floor}: the route $1280{\to}1024$ is \emph{more} aggressive by ratio
 ($0.80$) than $896{\to}768$ ($0.857$, no certifiable window), yet its
 floor is ${\approx}\,0$ and it enters the re-encoding band at
@@ -497,7 +488,7 @@ predict two held-out routes from the governors alone. Fit routes:
 $\{1024{\to}896,\ 1024{\to}512,\ 1280{\to}1120\}$; held out:
 $\{1024{\to}768,\ 1280{\to}1024\}$. Per fit route the excess curve
 $\bgap_e(\sigma)$ is fit with a route amplitude and floor on the
-measured route-uniform $m(\sigma)$ and each run's own
+measured route-uniform $\|\Delta \bar r(\sigma)\|$ and each run's own
 $\|\bar g_{\src}(\sigma)\|$; two governor models ($A(\mathrm{ratio})$
 interpolating the fitted amplitudes, and an exponential floor law
 $F(n) = F_0 e^{-n/\tau}$ in target tokens $n$) then generate the
@@ -506,7 +497,7 @@ pre-registered in the analysis script before the numbers.
 
 \paragraph{Held-out results, and the comparison.}
 All four pre-registered gates fire (Table~\ref{tab:headtohead},
-Fig.~\ref{fig:e5}). (i)~Held-out $1024{\to}768$: RMSE $0.093$,
+Fig.~\ref{fig:accounts}). (i)~Held-out $1024{\to}768$: RMSE $0.093$,
 \emph{better than an oracle quadratic fit on the held-out data itself}
 ($0.105$), and better than the spectral account both across all bins
 ($0.147$) and on the spectral account's own committed region, where it
@@ -562,7 +553,7 @@ The $768$ route's mid-$\sigma$ window is the reduction's one structural
 failure, and its shape is diagnostic. Measured excess sits at zero
 across $\sigma \in [0.56, 0.94]$, \emph{below} the predicted
 $\Floor_{768} \approx 0.09$ and outside the bootstrap $95\%$ band
-(Fig.~\ref{fig:e5}): a positive two-term form cannot produce a gap
+(Fig.~\ref{fig:accounts}): a positive two-term form cannot produce a gap
 under its own floor, under any coefficients. In the four-term expansion
 (Eq.~\ref{eq:fourterm}) this admits exactly two mechanisms, both
 pre-registered ahead of the probe --- either the projected interaction

@@ -380,8 +380,13 @@ def main() -> None:
     # main figure); the second held-out route 1280->1024 as its own figure
     # (paper appendix). Three forms each.
     colors = {"P": "C3", "Q": "C2", "X": "C1"}
-    label = {"P": f"P: A·m/G^p (p={p_star:.2f})", "Q": "Q: A·(m/G)² (derived)",
-             "X": "X: 1−1/√(1+(c·m/G)²)"}
+    # m := ||dr_bar||, spelled out in the labels to match the manuscript,
+    # which carries no separate symbol for it; G := ||g_bar_src(sigma)||.
+    label = {
+        "P": rf"P: $A\,\|\Delta\bar r\|/G^p$  ($p={p_star:.2f}$)",
+        "Q": r"Q: $A\,(\|\Delta\bar r\|/G)^2$  (derived)",
+        "X": r"X: $1-1/\sqrt{1+(c\,\|\Delta\bar r\|/G)^2}$",
+    }
 
     def draw_panel(ax, route):
         sig, y, sem = curves[route]
