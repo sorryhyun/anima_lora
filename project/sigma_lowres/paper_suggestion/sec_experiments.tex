@@ -281,7 +281,9 @@ resolution-conditioned prior or a training-distribution discontinuity.
 denominator.}
 Measuring the mean prediction residual
 $\bar r = \mathbb{E}_\epsilon[\hat v - (\epsilon - x)]$ per grid and
-$\sigma$ (the exact $r$ in $g = J^{\!\top}r$) shows a strong, monotone
+$\sigma$ (the exact $r$ in $g = J^{\!\top}r$; by
+Eq.~\ref{eq:posterior} intrinsic posterior bias plus the frozen
+model's approximation error, not model error alone) shows a strong, monotone
 $\sigma$-shape (cross-grid excess $0.89 \to 0.36$ in relative $L_2$
 from $\sigma{=}0.125$ to $1$) that is the \emph{same for every route}
 within $\pm 0.02$, across routes whose gradient floors span $0$ to

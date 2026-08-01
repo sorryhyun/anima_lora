@@ -58,3 +58,5 @@ project/*/paper/*.blg
 project/sigma_lowres/paper_bench/runs/20260729-2137-e4-eval-s1001/
 # E4 eval render PNGs (result.json/report.md stay tracked)
 project/sigma_lowres/paper_bench/runs/*/renders/
+# E14 vector-ledger arm-sum stores (~75 GB fp32) — scalar deliverables stay tracked
+project/sigma_lowres/paper_bench/runs/*/arm_sums/

@@ -77,6 +77,143 @@ in adapter-parameter space, isolated by the designated probes of
 \S\ref{sec:ourscored}) and treats Eq.~\ref{eq:branches} as fixing what
 each branch collects rather than as a computable matrix formula.
 
+\section{The mean residual as a posterior operator
+(Eq.~\ref{eq:posterior})}
+\label{app:posterior}
+
+This appendix derives the posterior form of the fixed-image mean
+residual, the exact split of the measured object into intrinsic
+posterior bias plus model approximation error, and the Gaussian
+closure referenced in \S\ref{sec:reduction}. Fix a caption $c$ and
+grid $e$, write $a = 1 - \sigma$, and let $x \sim p_e(\cdot \mid c)$
+be the grid-$e$ clean latent, $z_\sigma = a x + \sigma \epsilon$ with
+$\epsilon \sim \mathcal{N}(0, I)$.
+
+\paragraph{Bayes field and fixed-image residual.}
+For the squared objective the population-optimal field is the
+conditional mean of the target
+$v = \epsilon - x = (z_\sigma - x)/\sigma$:
+\begin{equation}
+v_e^{*}(z, \sigma, c)
+\;=\; \mathbb{E}[v \mid z_\sigma = z,\, c]
+\;=\; \frac{z - m_e(z, c)}{\sigma},
+\qquad
+m_e(z, c) := \mathbb{E}[x \mid z_\sigma = z,\, c].
+\label{eq:appbayesfield}
+\end{equation}
+Averaging over noise at fixed image
+($\mathbb{E}_\epsilon[\epsilon] = 0$,
+$\mathbb{E}_\epsilon[z_\sigma] = a x$) gives
+Eq.~\ref{eq:posterior}:
+\begin{equation}
+\bar r_e^{*}(\sigma; x)
+\;=\; \mathbb{E}_\epsilon\big[v_e^{*}(a x + \sigma \epsilon, \sigma, c)
+      - (\epsilon - x)\big]
+\;=\; \frac{x - \mathbb{E}_{z_\sigma \mid x}\big[m_e(z_\sigma,
+      c)\big]}{\sigma}.
+\label{eq:appposterior}
+\end{equation}
+With $p_{\sigma,e}(z \mid c)$ the noised marginal, Tweedie's identity
+for the linear interpolant reads
+$m_e(z, c) = \big(z + \sigma^2 \nabla_z \log p_{\sigma,e}(z \mid
+c)\big)/a$ for $\sigma < 1$, so equivalently
+\begin{equation}
+\bar r_e^{*}(\sigma; x)
+\;=\; -\frac{\sigma}{1 - \sigma}\,
+\mathbb{E}_{z_\sigma \mid x}\big[\nabla_z \log
+p_{\sigma,e}(z_\sigma \mid c)\big],
+\label{eq:appscore}
+\end{equation}
+which makes the missing ingredient explicit: the numerical curve
+requires the grid- and caption-conditional smoothed score, i.e.\ a
+model of $p_e(x \mid c)$. At $\sigma = 1$, where $z = \epsilon$ is
+independent of $x$, $m_e(z, c) \to \mathbb{E}[x \mid c]$ and
+$\bar r_e^{*}(1; x) = x - \mathbb{E}[x \mid c]$. With $A_e$ the
+alignment operator that places the source-grid residual on the demoted
+grid (\S\ref{sec:instrument}), the Bayes-level cross-grid mismatch is
+$\Delta \bar r_e^{*}(\sigma; x) = \bar
+r_{\dem}^{*}(\sigma; x_{\dem}) - A_e \bar r_{\src}^{*}(\sigma;
+x_{\src})$.
+
+\paragraph{What the instrument measures.}
+MSE optimality gives $\mathbb{E}[v^{*} - v \mid z, c] = 0$ and hence a
+zero residual after a \emph{joint} average over $(x, \epsilon)$; it
+does not zero the fixed-image average
+$\mathbb{E}_\epsilon[v^{*} - v \mid x, c]$, which is
+Eq.~\ref{eq:appposterior} and generally nonzero. Writing the trained
+network as $\hat v_{\theta,e} = v_e^{*} + q_{\theta,e}$, the probe's
+per-image object splits exactly as
+\begin{equation}
+\bar r_{\theta,e}(\sigma; x)
+\;=\; \bar r_e^{*}(\sigma; x)
+\;+\; \mathbb{E}_{z_\sigma \mid x}\big[q_{\theta,e}(z_\sigma, \sigma,
+c)\big]:
+\label{eq:appsplit}
+\end{equation}
+intrinsic posterior reconstruction bias, derivable in principle from
+$p_e(x \mid c)$, plus genuinely model-specific approximation error.
+The measured $\|\Delta \bar r(\sigma)\|$ therefore has definite
+theoretical status --- an empirical closure of
+Eq.~\ref{eq:appposterior} --- but is not a pure model-error
+difference, and no claim in the paper requires it to be one: the
+two-term account consumes the measured curve as-is
+(assumption~(iv)), and the trained-model residual is in any case the
+exact $r$-factor that the LoRA gradient $g = J^{\!\top} r$ is built
+from.
+
+\paragraph{Gaussian closure.}
+The cheapest nontrivial closure is a full Gaussian model
+$x \mid c \sim \mathcal{N}(\mu_e, C_e)$ per grid. With
+$Q_e(\sigma) = a^2 C_e + \sigma^2 I$, the posterior mean is linear,
+$m_e(z, c) = \mu_e + a C_e Q_e^{-1}(z - a \mu_e)$, and substituting
+into Eq.~\ref{eq:appposterior} collapses (via
+$I - a^2 C_e Q_e^{-1} = \sigma^2 Q_e^{-1}$) to
+\begin{equation}
+\bar r_e^{*}(\sigma; x) \;=\; \sigma\, Q_e(\sigma)^{-1} (x - \mu_e).
+\label{eq:appgaussian}
+\end{equation}
+For paired source and demoted latents with covariance blocks
+$C_{ss}, C_{dd}, C_{ds}$ and $L_s = \sigma Q_s^{-1}$,
+$L_d = \sigma Q_d^{-1}$, the image-population mean squared mismatch is
+\begin{equation}
+\mathbb{E}\big\|\Delta \bar r_e^{*}\big\|^2
+= \operatorname{tr}\!\big(L_d C_{dd} L_d^{\!\top}\big)
++ \operatorname{tr}\!\big(A_e L_s C_{ss} L_s^{\!\top}
+  A_e^{\!\top}\big)
+- 2 \operatorname{tr}\!\big(L_d C_{ds} L_s^{\!\top}
+  A_e^{\!\top}\big),
+\label{eq:apptrace}
+\end{equation}
+a $\sigma$-curve computable from paired \emph{clean latents only},
+with the source--demote cross-covariance $C_{ds}$ load-bearing. A
+\emph{diagonal Fourier} $C_e$ makes Eq.~\ref{eq:appgaussian} the
+per-band Wiener shrinkage of \S\ref{sec:spectral}, confining the
+mismatch to the destroyed band and ordering it by destroyed-band
+energy --- the residual-level prediction that route-uniformity
+falsifies (\S\ref{sec:ourscored}). We tested whether any structured
+second-order closure suffices, entirely on stored paired clean
+latents (no denoiser forward): three nested covariance models
+(diagonal spectral; $+$\,within-band channel blocks;
+$+$\,octave-pair cross-band coupling), fitted on held-out-from-probe
+images and scored on the probe set against the measured curves. All
+three reproduce the curve's monotone $\sigma$-shape (Pearson
+$0.94$--$0.97$), its route-uniformity, the near-zero re-encoding
+control, and the $\sigma{=}1$ endpoint, but over-predict the
+low-$\sigma$ amplitude by ${\sim}40\%$, failing a pre-registered
+RMSE bar --- so second-order data-only structure recovers the shape
+but not the level, and the essential missing ingredients are the ones
+the identity names: caption-conditioning (the closure is
+caption-marginal), non-Gaussian posterior structure, and the
+$q_{\theta}$ term of Eq.~\ref{eq:appsplit}. The paper therefore
+retains the measured $\|\Delta \bar r(\sigma)\|$ as its minimal
+honest closure. A theory--instrument
+comparison must also reproduce the instrument's estimand --- the
+split-half-corrected \emph{relative} $L_2$ distance of
+\S\ref{sec:instrument}, i.e.\
+$\sqrt{\mathbb{E}\|\bar r_d - A_e \bar r_s\|^2}$ normalized by the
+mean of the two arms' root-mean-square norms --- not a raw mismatch
+norm.
+
 \section{Derivation of the angular forms (Eqs.~\ref{eq:exact}
 and~\ref{eq:fourterm})}
 \label{app:geometry}
@@ -195,7 +332,7 @@ Table~\ref{tab:floor}, which pins $R'_{\reenc}$ jointly with
 $S_{\reenc}$.
 
 \paragraph{What is not derived.} The loading
-$\|\delta g^{\perp}\| = c_e\, \|\Delta\bar r(\sigma)\|$ (that the orthogonal
+$\|\delta g^{\perp}\| = a_e\, \|\Delta\bar r(\sigma)\|$ (that the orthogonal
 gradient mismatch is proportional to the residual mismatch with a
 $\sigma$-independent route gain) is an empirical ingredient
 (the data-branch factorization at the amplitude level), fit and tested
@@ -368,7 +505,7 @@ each run's own bin-mean gradient norm $\|\bar g_{\src}(\sigma)\|$ (gap
 and norm always from the same process, per the kernel-path rule). The
 shared-power fit scans $p \in [1, 2]$ jointly across fit routes with
 per-route weighted least squares; the exact-link fit is a per-route grid
-with profile-likelihood uncertainties on $c_e$. Oracle baselines are
+with profile-likelihood uncertainties on $a_e$. Oracle baselines are
 quadratic-in-$\sigma$ fits on the held-out data itself (the noise
 ceiling for a 3-dof curve); the spectral baseline on its committed
 region is gap $= 0$ for $\sigma > \sigma_{\mathrm{eq}}$, and its
@@ -399,7 +536,7 @@ fixed-target, varied-source token ladder, not yet scheduled.
 (Fig.~\ref{fig:accounts}).} The bands are a full-pipeline image bootstrap
 ($B{=}1000$, fixed seed; $981$ draws kept): resample images with
 replacement within each run ($N{=}40$ / $N{=}24$), re-bin the paired
-curves, refit the exact-link $(c_e, \Floor_e)$ on every fit route,
+curves, refit the exact-link $(a_e, \Floor_e)$ on every fit route,
 re-derive the ratio governor and floor law, re-predict.
 $\|\Delta \bar r(\sigma)\|$ and
 the bin-mean $\|\bar g_{\src}(\sigma)\|$ are run-level instruments with

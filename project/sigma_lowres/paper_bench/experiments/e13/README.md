@@ -392,29 +392,17 @@ ends contribute almost nothing to the amplitude.
 **Re-run the segmented grid on E1b's exact 40-image probe list.** Then the
 1024-tier legs are the *same images* as the published fit, G9 stays fixed, and
 any movement in A/F **is** the resolution correction. The list is generated at
-`e1b_probe_list.json` (40 images, from E1b's `result.json`).
+`e1b_probe_list.json` (40 images, from E1b's `result.json`; `--probe_list`
+sets `num_images`, and `--self_floor` supports ≤50). With m, G and y all
+describing the same images, A becomes comparable and the 896 F↔A
+redistribution can be read as curve change rather than normalization.
 
-```bash
-make daemon-run ARGS="project/sigma_lowres/bench/run_sigma_probe.py \
-  --adapter output/ckpt/anima_soup_sincos.safetensors \
-  --sigma_window '0,0.1,4 : 0.1,0.9,6 : 0.9,1.0,4' \
-  --draws_per_bin 12 --endpoint_bin --self_floor --deterministic \
-  --demote_edges 896,768,512 \
-  --probe_list project/sigma_lowres/paper_bench/experiments/e13/e1b_probe_list.json \
-  --results_root project/sigma_lowres/paper_bench/runs \
-  --label e13b-probematched --queue"
-```
-
-Cost ≈ **12 h** (7.3 h × 40/24; `--probe_list` sets `num_images`, and
-`--self_floor` supports ≤50). With m, G and y all describing the same images,
-A becomes comparable and the 896 F↔A redistribution can be read as curve
-change rather than normalization.
-
-**Reserved 2026-08-01 — [E14](../e14/) rides this rerun.** The e13b
-submission gains `--repromote --keep_arm_sums` (E9-style B/C ledger arms) so
-one process also decomposes the 896 low-σ plateau; combined command,
-pre-registered branches, and the ~18 h revised cost live in E14's record,
-which supersedes the plain command above.
+**This rerun is [E14](../e14/)** (reserved 2026-08-01; consolidated same
+day — there is no separate "e13b" submission). One process carries both the
+probe-matched refit owed here and the E9-style B/C ledger arms
+(`--repromote --keep_arm_sums`) that decompose the 896 low-σ plateau.
+Command, instrument prep, pre-registered branches, and measured cost live in
+E14's record, which supersedes the command formerly here.
 
 Until then: §4.7 keeps the published fit — **it is not refuted**, the
 prediction transfers (table above). E13's H1/H2/H3 verdicts stand on their own

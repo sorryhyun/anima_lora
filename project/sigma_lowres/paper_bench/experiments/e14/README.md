@@ -1,12 +1,12 @@
-# E14 — low-σ vector ledger: decomposing the 896 bump
+# E14 — low-σ vector ledger: decomposing the 896 bump (+ the probe-matched refit E13 owes)
 
 | | |
 |---|---|
-| **Status** | **PROPOSED 2026-08-01** — reserved as ledger arms on E13's probe-matched **e13b** rerun (one process, per the kernel-path rule; command below). Numbering note: this record takes the E14 slot; the prior E14 (MLMC pricing) is now [E15](../e15/), the prior E15 (placement) is now [E16](../e16/). |
+| **Status** | **READY 2026-08-01** — instrument prep DONE (streaming arm retirement, config timing/floor twins; see [Instrument prep](#instrument-prep--calibration-2026-08-01)); one pre-launch decision open ([grid](#the-one-open-decision--the-dense-high-segment)). Numbering note: this record takes the E14 slot; the prior E14 (MLMC pricing) is now [E15](../e15/), the prior E15 (placement) is now [E16](../e16/). **Consolidated 2026-08-01**: the "e13b" probe-matched rerun E13 owed is not a separate submission — this run carries it; E13's record now points here. |
 | **Question** | The measured 1024→896 curve carries a low-σ plateau (≈+0.20 over σ≈0.05–0.30 on E13's grid) that the account's prediction misses by ~4× — the one panel of the head-to-head figure where ours does not beat the spectral account (`runs/20260801-1118-fig-accounts-e13`). Three explanations produce the same scalar signature: (a) a genuinely large data term the A(ratio) governor starves, (b) negative B/C interference shaping the σ≈0.4 cliff, (c) attenuation-correction inflation at mid-σ. Which is it? |
-| **Depends on** | [E9](../e9/) (the B/C instrument, `vector_ledger.py`, the unit-honesty rule, the amplitude-matching localization it validated on 768 — but its grid was σ ∈ [0.5, 1.0]: it stops exactly where the bump begins); [E13](../e13/) (segmented `--sigma_window`, `e1b_probe_list.json`, the 2/24-overlap scope rule that forbids a standalone ledger run on a fresh probe set); [E5](../e5/) (the governor under test; the per-run G normalization of A) |
-| **Instrument** | `bench/run_sigma_probe.py --repromote --keep_arm_sums --self_floor` on E13's segmented grid; analysis `../../vector_ledger.py` (shared with E9/E10) |
-| **In the paper** | the 896 panel of Fig. 1 (`accounts_headtohead`); §4.6's reduction-domain paragraph (does the 768 failure have a sibling?); the A(ratio) governor's standing (§4.7); potentially the 1120 ratio-twin claim (§4.5) |
+| **Depends on** | [E9](../e9/) (the B/C instrument, `vector_ledger.py`, the unit-honesty rule, the amplitude-matching localization it validated on 768 — but its grid was σ ∈ [0.5, 1.0]: it stops exactly where the bump begins); [E13](../e13/) (segmented `--sigma_window`, `e1b_probe_list.json`, the 2/24-overlap scope rule that forbids a standalone ledger run on a fresh probe set, and the owed §4.7 probe-matched refit this run discharges); [E5](../e5/) (the governor under test; the per-run G normalization of A) |
+| **Instrument** | `bench/run_sigma_probe.py --repromote --keep_arm_sums --self_floor --deterministic` on E13's segmented grid, E1b's 40-image probe list; analysis `../../vector_ledger.py` (shared with E9/E10). Instrument deltas landed 2026-08-01 (streaming arm retirement — **required**, see below; `--arm_sums_dtype`; `--partitioner_aggressive` now opt-in). |
+| **In the paper** | the 896 panel of Fig. 1 (`accounts_headtohead`); §4.6's reduction-domain paragraph (does the 768 failure have a sibling?); the A(ratio) governor's standing (§4.7 — this run's 1024-tier legs are the probe-matched refit); potentially the 1120 ratio-twin claim (§4.5) |
 
 ## Why the scalar curve cannot answer this
 
@@ -54,13 +54,13 @@ sign, decomposition, and localization only).
   debiased gap exceeds ±0.15 anywhere in the dense low segment, the
   affected bins are excluded from H-a/H-c reads.
 
-## Design — ride the e13b rerun, don't run standalone
+## Design — one process, probe-matched
 
 A standalone ledger run on a fresh probe set would recreate exactly the
 cross-run level-comparison trap E13 documented (2/24 overlap). Instead
-the reservation is: **e13b (the probe-matched rerun E13 already owes)
-gains `--repromote --keep_arm_sums`**, so one process on E1b's 40-image
-list yields (i) the probe-matched curve refit E13 owes §4.7, and
+**one process on E1b's 40-image list** yields (i) the probe-matched
+curve refit E13 owes §4.7 (same images ⇒ same G ⇒ A comparable, so the
+896 F↔A redistribution reads as curve change, not normalization), and
 (ii) this ledger, on the same images, same G, same kernel path.
 
 ```bash
@@ -72,26 +72,87 @@ make daemon-run ARGS="project/sigma_lowres/bench/run_sigma_probe.py \
   --demote_edges 896,768,512 \
   --probe_list project/sigma_lowres/paper_bench/experiments/e13/e1b_probe_list.json \
   --results_root project/sigma_lowres/paper_bench/runs \
-  --label e13b-probematched-ledger --queue"
+  --label e14-ledger-probematched --queue"
 ```
 
-**Cost.** e13b alone ≈ 12 h (E13's calibration, 7.3 h × 40/24). The
-repromote arms are native-grid forwards; E9's calibrated overhead for
-`--repromote --keep_arm_sums --deterministic` was ~1.5× ⇒ **~18 h**
-total. Cheaper variant if the queue is tight: `--repromote` on 896 only
-(the bump route) ≈ +20% instead of +50% — but the cross-route ledger is
-what lets H-b use E9's universality result, so all three routes is the
-recommendation.
+Config rationale (all measured, runs under
+`bench/results/20260801-{1226,1425,1515}`):
 
-**Smoke first.** `--repromote` (E9-era) and the segmented
-`--sigma_window` (E13-era) have never run together; a `--smoke` pass
-must confirm they compose (the window only builds the σ tensor, so they
-should, but the arm-key seed-budget check in `cli.py` is the thing to
-watch).
+- **`--deterministic` stays.** The nondet twin study (T5a/T5b, identical
+  args, D=12) put the atomics floor at |Δ| 0.03–0.14 on per-image raw
+  gaps over σ≈0.04–0.43 — *the payload bins*, where ‖ḡ‖ bottoms out and
+  the same amplification that makes ĉ large magnifies atomics noise —
+  versus 0.008 at the endpoint. (The old "|Δcos| ≤ 0.015" nondet number
+  was endpoint-only.) Propagated to N=40 bin means that is ~5–12% wider
+  SEMs exactly where H-a–H-d read; det costs ~10% wall. Bad trade.
+- **No draw batching.** B=2 native OOMs at budgets 0.99/0.95/0.90 (fits
+  at 0.85 + `expandable_segments`, but the GPU is already 100%-utilized
+  at B=1, so batching was a wash paid for with recompute). Dead lever
+  for this arm mix; `--draw_batch_tokens` remains for small-grid-heavy
+  configs.
+- **Partitioner aggressive recompute OFF** (new probe default;
+  `--partitioner_aggressive` restores ≤E13 behavior). Issue-58 bench:
+  −2.25 GB for +12.6% s/it — a VRAM trade the B=1 probe (~11.5 GB peak)
+  doesn't need. Measured +7% on the probe (T2 vs T5).
+- **Budget 0.99, B=1** — the proven envelope; 0.99↔1.0 is ~inert.
 
-**Storage.** Arm-sum vectors at 15 bins × ~9 arms × 40 images — same
-order as E9's store × ~4. Stays under the gitignored `bench/results/`
-(vector stores never ship in `runs/`).
+## Instrument prep + calibration (2026-08-01)
+
+- **Streaming arm retirement (required).** The probe used to hold every
+  arm's per-bin CPU fp32 vectors until image end; at 77.7M adapter params
+  (311 MB/vector) the repromote × self-floor × 15-bin arm set is 16
+  lists ≈ **75 GB against 46 GB RAM** — the first e13b smoke died to the
+  kernel OOM-killer, not the GPU (E13's own 10-list set ≈ 47 GB was
+  already riding swap; E9 survived repromote only because its grid was
+  5 bins). Arms are now archived to `arm_sums` + freed by the stats
+  worker right after their stats job (FIFO ⇒ safe), keeping only a/b +
+  in-flight arms resident (~28 GB). `--pool`/`--target_kappa` keep the
+  old whole-set path.
+- **`--arm_sums_dtype {fp32,fp16}`** (default fp32 — this run ships
+  fp32 per 2026-08-01 decision). The store is 16 keys × 15 bins ×
+  311 MB ≈ **75 GB fp32**; all 240 memmaps materialize during image 1,
+  so a too-full disk fails in the first ~30 min, not at hour 15. Check
+  ≥78 GB free before submitting. fp16 (~37 GB, ~1e-3 accumulation
+  rounding) is the escape hatch.
+- **Main-thread stalls removed**: `flat_grad` now cats on-GPU + one D2H
+  copy (was 560 small sync copies per bin); the 4.7 GB/arm store write
+  runs on the stats worker, off the GPU-driving thread.
+- **Composition validated** (formerly the owed smoke): `--repromote` ×
+  segmented `--sigma_window` × `--keep_arm_sums` × `--self_floor` ran
+  end-to-end (smoke + 2-image T-runs); the `cli.py` arm-key seed-budget
+  check passes with margin (8 blocks × 1000 + 180 draws = 8180 < 10000).
+- **Timing (2-image probe-pair runs, 16 arm passes, D=12)**: nondet +
+  aggressive-off = 24.8 min/img; twins agree within 0.7%. Det production
+  estimate ~27–29 min/img.
+
+## Cost
+
+Measured basis (above), det, full 15-bin grid, N=40: **~19 h**. The
+repromote arms are ~6/16 of the passes; dropping them to 896-only would
+save ~25% but forfeits the cross-route ledger H-b leans on — not
+recommended.
+
+### The one open decision — the dense-high segment
+
+Dropping `0.9,1.0,4` (11 bins + endpoint instead of 15) saves **~27% ⇒
+~14 h**. For: E13 settled everything that window existed for (H1
+falsified within-run, H3 confirmed, and the refit showed the dense ends
+contribute ~nothing to A); no E14 hypothesis reads σ ∈ (0.9, 1); H-d
+needs only the endpoint bin, which stays. Against: the grid would no
+longer exactly match E13's, adding a second difference axis to the
+"movement in A/F = probe-set correction" attribution (blunted by E13's
+own finding that the grid barely moves A), and the high-σ raw-flatness
+claim stays at N=24. Decide before submitting; the command above is the
+full-grid form.
+
+## Storage
+
+Arm-sum store ≈ 75 GB fp32 under `<run_dir>/arm_sums/`. The run dir
+lands in the committable `paper_bench/runs/` tree, but **vector stores
+never ship** — `paper_bench/runs/*/arm_sums/` must be gitignored (add
+the rule before committing the run) or the store moved to
+`bench/results/` after analysis. Scalar deliverables
+(`result.json`, `per_image.jsonl`) commit as usual.
 
 ## Phase 2 (conditional on H-a): the twin, in vector units
 
@@ -113,6 +174,6 @@ fit's failure was plumbing (weights + grid), not physics. Separate run
   routes — coherence, not damage.
 - H-c ⇒ raw-paired primary for the affected bins (E13 protocol).
 - H-d ⇒ explicit domain bound on assumption (iii).
-- Either way: the e13b half of the run discharges E13's owed §4.7
-  refit, so this reservation supersedes the plain e13b command in E13's
-  record.
+- Either way: the probe-matched half of the run discharges E13's owed
+  §4.7 refit (E13's record points here), so any movement in A/F against
+  the published E1b fit reads as the resolution/probe-set correction.

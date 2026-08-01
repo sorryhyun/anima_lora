@@ -201,6 +201,47 @@ licenses inference-time substitution; what training consumes is
 $\mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$, and that is not
 bounded by an input-masking argument.
 
+\paragraph{The residual factor has an exact posterior form.}
+The data branch's $\sigma$-curve ingredient $\Delta\bar r$ is not a
+black box. For the population-optimal (Bayes) velocity field
+$v_e^{*}(z, \sigma, c) = \mathbb{E}[v \mid z, c] =
+\big(z - m_e(z, c)\big)/\sigma$, with
+$m_e(z, c) = \mathbb{E}[x \mid z, c]$ the grid-$e$ posterior mean, the
+fixed-image mean residual evaluates exactly to
+\begin{equation}
+\bar r_e^{*}(\sigma; x)
+\;=\;
+\frac{x \;-\; \mathbb{E}_{z_\sigma \mid x}\big[m_e(z_\sigma, c)\big]}{\sigma},
+\qquad
+\bar r_e^{*}(1; x) \;=\; x - \mathbb{E}[x \mid c],
+\label{eq:posterior}
+\end{equation}
+so the cross-grid mismatch is a difference of two posterior
+reconstruction-bias operators, and the target-mediated $\sigma{=}1$
+survivor of the previous paragraph is exactly the image's deviation
+from the caption-conditional prior mean (derivation, score form, and a
+Gaussian closure: Appendix~\ref{app:posterior}). Two consequences are
+used below. First, MSE optimality zeroes the residual conditional on
+the \emph{input}, not the image:
+$\mathbb{E}[v^{*} - v \mid z, c] = 0$ does not imply
+$\mathbb{E}_\epsilon[v^{*} - v \mid x, c] = 0$, and
+Eq.~\ref{eq:posterior} is generally nonzero --- so the measured
+residual of a trained network splits exactly as
+$\bar r_{\theta,e} = \bar r_e^{*} +
+\mathbb{E}_{z_\sigma \mid x}[q_{\theta,e}]$, intrinsic posterior bias
+plus approximation error
+($q_{\theta,e} = \hat v_{\theta,e} - v_e^{*}$), a
+\emph{mean-residual} mismatch rather than a model-error difference
+alone. Second, the noising path fixes only how the posterior operators
+are smoothed in $\sigma$; a numerical curve requires a model of the
+grid-conditional clean-latent distribution, which is not analytically
+available. In these terms the spectral account's residual-level form
+(\S\ref{sec:spectral}) is the \emph{diagonal-Gaussian} closure of this
+identity, and the measured $\|\Delta \bar r(\sigma)\|$ consumed by
+assumption (iv) below is its \emph{empirical} closure --- an estimate
+of a defined functional of the two posterior operators, not an
+unconstrained fitted shape.
+
 It remains to read Eq.~\ref{eq:branches} in the units of the estimand
 (step-by-step in Appendix~\ref{app:geometry}). Writing
 $u^{\perp} = u - (\hat g_{\src}^{\!\top}u)\,\hat g_{\src}$ for the
@@ -276,17 +317,17 @@ near share crossover (Appendix~\ref{app:geometry}). Applied,
 \begin{equation}
 \gap_e(\sigma)
 \;\approx\;
-\underbrace{A_e \cdot \big(\|\Delta \bar r(\sigma)\| \,/\, \|\bar g_{\src}(\sigma)\|\big)^{2}}_{\text{data term}}
+\underbrace{\tfrac{1}{2}\,a_e^2 \cdot \big(\|\Delta \bar r(\sigma)\| \,/\, \|\bar g_{\src}(\sigma)\|\big)^{2}}_{\text{data term}}
 \;+\; \underbrace{\Floor_e}_{\text{graph term}},
-\qquad A_e = \tfrac{1}{2}\,a_e^2,
 \label{eq:twoterm}
 \end{equation}
 the \emph{two-term account}, stated on the reported excess. The
 quadratic power is fixed by the cosine geometry \emph{locally}; far
 from the small-mismatch regime the licensed read is the un-expanded
 parent form, Eq.~\ref{eq:exact} with loading
-$\kappa_e(\sigma) = c_e\, \|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$ (so
-$A_e = c_e^2/2$ in the small-$\kappa$ limit), whose data term
+$\kappa_e(\sigma) = a_e\, \|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$ (the
+same amplitude, recovering Eq.~\ref{eq:twoterm}'s data term in the
+small-$\kappa$ limit), whose data term
 \emph{saturates} instead of overshooting. The loading itself is an
 \emph{empirical} ingredient, not a derivation, so
 Appendix~\ref{sec:headtohead} scores both forms held out, labelling
@@ -294,7 +335,7 @@ Eq.~\ref{eq:exact} the best empirical predictor and Eq.~\ref{eq:twoterm}
 the derived small-perturbation form. To keep the ledger explicit:
 Eqs.~\ref{eq:exact} and~\ref{eq:fourterm} are unconditional;
 Eq.~\ref{eq:twoterm} is conditional on the four assumptions; the
-coefficients $A_e$ (or $c_e$), $\|\Delta \bar r(\sigma)\|$,
+coefficients $a_e$, $\|\Delta \bar r(\sigma)\|$,
 $\|\bar g_{\src}(\sigma)\|$ and $\Floor_e$ are measured. The account was pre-registered with an
 outcome matrix --- including a kill switch, all endpoint gaps
 ${\approx}\,0$, that would have falsified the graph term --- before the
@@ -325,9 +366,9 @@ Both accounts agree that gaps shrink with $\sigma$ and order by
 severity. Everything else is fixed by the \emph{form} of
 Eq.~\ref{eq:spd} against Eq.~\ref{eq:twoterm} before any gradient is
 measured: what orders routes (the downscale ratio alone, against the
-ratio through the amplitude $A_e$ \emph{and} the absolute target token
+ratio through the amplitude $a_e$ \emph{and} the absolute target token
 count through the floor $\Floor_e$); what is free (one tolerance
-$\delta$ shared by every route, against per-route $A_e, \Floor_e$
+$\delta$ shared by every route, against per-route $a_e, \Floor_e$
 generated by two governors); the endpoint ($\gap_e \to 0$ on every
 route, against $\gap_e \to \Floor_e > 0$); the curve shape (a gated
 step at $t_{\omega_e}$, against
@@ -335,7 +376,7 @@ $\|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$ carried through
 Eq.~\ref{eq:exact}); the cross-grid residual $\Delta \bar r$ (confined
 to the destroyed band and ordered by its energy, against a norm shared
 by all routes with route identity living in $J$); and equal-ratio
-routes at different absolute sizes (identical, against same $A_e$ and
+routes at different absolute sizes (identical, against same $a_e$ and
 different $\Floor_e$). Each disagreement is an experiment in
 \S\ref{sec:evidence}, and two are decidable without fitting anything:
 if a route's gap survives at $\sigma = 1$, where the input is pure

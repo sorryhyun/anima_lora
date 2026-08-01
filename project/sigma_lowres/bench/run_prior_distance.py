@@ -5,9 +5,13 @@ Discriminator (1) from the 1280→1024 read-through (account:
 ``record/hypothesis.md``; records: ``record/groundings.md`` G5/G6), generalized
 to a σ-resolved curve. No adapter, no gradients: per image, grid and σ, the
 K-draw **mean residual** ``r̄ = E_ε[v̂(z_σ) − (ε − x)]`` is the model's mean
-prediction error on that grid — the exact ``r`` factor the LoRA gradient
-``g = Jᵀr`` is built from. A perfect model has r̄ = 0 on every grid, so
-cross-grid distances of r̄ measure *model-error differences only*, free of the
+prediction residual on that grid — the exact ``r`` factor the LoRA gradient
+``g = Jᵀr`` is built from. NB the fixed-image noise average is NOT zero for a
+perfect (Bayes-optimal) model: MSE optimality zeroes the residual conditional
+on z, not on x, so even the Bayes field leaves
+``r̄* = (x − E_z|x[E[x|z,c]])/σ`` — intrinsic posterior reconstruction bias.
+Cross-grid distances of r̄ therefore measure *posterior-bias-plus-model-error*
+differences (paper Appendix: the mean residual as a posterior operator), free of the
 σ-independent content/resampling baseline that pollutes raw-prediction
 comparisons (that baseline is still reported per pair as ``d_content``). At
 σ = 1 the input is pure ε and r̄ = x − x̄_prior — the content-corrected form of
