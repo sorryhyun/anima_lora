@@ -1,25 +1,47 @@
 \section{Training on downscaled images}
 \label{sec:practical}
 
-\subsection{The $(\text{route}, \sigma)$ safety map}
+\subsection{The measured $(\text{route}, \sigma)$ map}
+\label{sec:verdict}
 \label{sec:map}
 
 The answer to the title question at our operating point is not a
-corrected formula but a measured map at a stated resolution; the map
-needs no table, because the verdict quantity self-describes it: a
-route is \emph{safe at margin $\varepsilon$} exactly where its
-debiased excess over the re-encoding control is indistinguishable from
-zero at instrument resolution --- the one-sided non-inferiority
-statement
-\begin{equation}
-\text{UB}_{95}\!\left(\bgap\right) \;<\; \varepsilon,
-\qquad
-\varepsilon \;\ge\; \epsstar(N, D, \text{bin})
-\;=\; 1.645\,\mathrm{SE}(N, D, \text{bin}),
-\label{eq:safe}
-\end{equation}
-not a hard bound, with $\epsstar$ the certification resolution of
-\S\ref{sec:instrument}. Measured, on the \emph{per-example} object:
+corrected formula but a measured map at a stated resolution: the
+curves both accounts were scored on carry the verdict, read per bin
+against the safety statement of Eq.~\ref{eq:safe}.
+Figure~\ref{fig:verdict} gives the debiased map for $1024$-tier
+natives demoted to $896/768/512$ (per-bin numbers: Appendix
+Table~\ref{tab:debiasedmap}). Three reads, against criteria frozen
+before the runs. (i)~$\sigma$-dependence is real and in the predicted
+direction, and tier ordering holds at every bin: the
+\emph{qualitative} spectral intuition survives. (ii)~The crossover for
+the mildest route is $\sigma \approx 0.5$ --- the $896$ route is
+clearly gapped through $\sigma \le 0.31$, marginal at $0.44$, and its
+means sit within $\pm 0.03$ of zero from $0.56$ on --- $3.5\times$ the
+equal-power prediction. (iii)~The $2\times$ downscale route is
+\emph{certifiably unsafe at every noise level}: its paired debiased
+lower bound stays above $\epsstar$ in every bin (means $+0.08$ to
+$+0.60$), including $+0.17 \pm 0.06$ at $\sigma = 0.94$, where the
+input is ${\sim}97\%$ noise by power in every band the coarse grid
+cannot represent. There is no noise level at which a
+$2\times$-downscaled latent yields the native gradient direction.
+
+Debiasing moved verdicts in both directions, and two revisions against
+the historical record are part of the result. The $768$ route's
+high-$\sigma$ plateau was roughly half estimator bias: debiased means
+sit within noise of zero across $\sigma \in [0.56, 0.94]$, but with
+upper bounds that do not cross below the $0.02$ margin at this
+$(N, D)$, and a real endpoint floor of $+0.092 \pm 0.012$ remains, so
+the earlier verdict of ``unsafe at every noise level'' softens to
+\emph{no certifiable window at instrument resolution}. Conversely the
+$896$ endpoint shows a small \emph{real} gap ($+0.042 \pm 0.011$) that
+single-estimate variance had buried; its safe window is the interior
+$\sigma \in (0.5, 0.94]$, not the endpoint (Appendix
+Table~\ref{tab:rawendpoint}).
+
+Collected route by route --- \emph{safe} meaning Eq.~\ref{eq:safe}
+holds at the certification resolution of \S\ref{sec:instrument}, on
+the \emph{per-example} object --- the map needs no table:
 $1024{\to}896$ (ratio $0.875$, floor $0.02$--$0.04$) is \textbf{safe} on
 the interior window $\sigma \in (0.5, 0.94]$; $1280{\to}1024$ (ratio
 $0.80$, floor ${\approx}\,0$) is \textbf{safe} from
@@ -32,9 +54,15 @@ $\sigma$. Safety is a per-route boundary, jointly determined by ratio
 (through $A_e$) and absolute target size (through $\Floor_e$); neither
 alone predicts the ordering. For the corpus safe route the fine print
 is: every bin in $(0.5, 0.94]$ has a debiased mean within $\pm 0.03$ of
-zero, formal certification at the strict $0.02$ margin is achieved at
-$\sigma = 0.688$, and the $\sigma{=}1$ endpoint carries a small real
-gap ($+0.042 \pm 0.011$) --- the safe window is the interior.
+zero, and formal certification at the strict $0.02$ margin is achieved
+at $\sigma = 0.688$.
+
+\paragraph{A corollary worth stating plainly.}
+The safety of $1024{\to}896$ is an \emph{empirical smoothness statement
+about this network's function across nearby token counts}, not an
+information-theoretic statement about the data. There was no a priori
+reason to expect a universal ratio invariant, and the spectral
+account's deepest error is having promised one.
 
 \paragraph{The map depends on the aggregation object.}
 Per \S\ref{sec:estimand} the aggregation operator is part of the
@@ -222,7 +250,12 @@ mechanism the vector-resolved probe has measured (negative
 interference) but which the two-term form still does not predict; the
 floor law's functional form is unidentified at our operating points;
 and the band-counting sketch for $\mathrm{RoPE}_e$/$\mathrm{Resid}_e$
-is calibrated, not derived.
+is calibrated, not derived. The graph-floor reading of the endpoint is
+also estimand-specific: the target-mediated perturbation is real at the
+vector level and lands parallel to the native gradient
+(Appendix~\ref{app:instrument}), so a magnitude-sensitive estimand ---
+an un-normalized optimizer, say --- could apportion the endpoint gap
+differently than the angular read does.
 
 \textbf{Instrument resolution and coverage.} ``Safe'' is one-sided
 non-inferiority at the measured certification resolution

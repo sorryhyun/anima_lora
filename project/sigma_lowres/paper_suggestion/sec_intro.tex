@@ -26,22 +26,24 @@ success is again read off the final samples. By the spectral premise,
 substitution is safe \emph{whenever the noise has masked the
 frequencies the coarse grid loses}.
 
-None of this work analyzes the gap at \emph{training} time --- whether a
-downscaled step delivers the native gradient direction under an
-unchanged objective. That is the route this paper takes. What a training step
-consumes is the expected adapter gradient, and \emph{demotion} --- our
-term for the training-time substitution of a downscaled, re-encoded
-latent for the native one --- perturbs more than the network's input:
-the regression target carries the clean image at unit weight at every
-noise level, and the compute graph itself changes with the grid. Nor
-does output-level evidence settle the matter: a small quality-score
-difference does not transfer to a small difference in what a training
-step \emph{learns}. Measuring it honestly is, unexpectedly, a metrology
-problem: the natural gap estimator (a redraw floor minus a single
-demoted-arm cosine) is biased by finite-draw variance, and the bias
-grows as the demoted grid shrinks, \emph{manufacturing} exactly the
-token-count-ordered floor signature under test. Every claim below is
-stated in debiased units, at the instrument's measured resolution.
+The gap at \emph{training} time --- whether a downscaled step delivers
+the native gradient direction under an unchanged objective --- is not
+yet revealed unambiguously by any of this evidence: output-level
+success reads the substitution only through a full training or
+sampling pipeline's confounds, and a small quality-score difference
+does not transfer to a small difference in what a training step
+\emph{learns}. Measuring that gap directly is the route this paper
+takes. What a training step consumes is the expected adapter gradient,
+and \emph{demotion} --- our term for the training-time substitution of
+a downscaled, re-encoded latent for the native one --- perturbs more
+than the network's input: the regression target carries the clean
+image at unit weight at every noise level, and the compute graph
+itself changes with the grid. Measuring it honestly is, unexpectedly,
+a metrology problem: the natural gap estimator (a redraw floor minus a
+single demoted-arm cosine) is biased by finite-draw variance, and the
+bias grows as the demoted grid shrinks, \emph{manufacturing} exactly
+the token-count-ordered floor signature under test. Every claim below
+is stated in debiased units, at the instrument's measured resolution.
 
 The contributions:
 
@@ -59,7 +61,8 @@ floor. The two differ structurally before any measurement
 (\S\ref{sec:sidebyside}), and every experiment is a place they
 disagree.
 \item \textbf{A debiased measurement that scores both, and a
-predictive tool} (\S\ref{sec:evidence}). Measured with per-arm
+predictive tool} (\S\ref{sec:evidence}; the resulting
+$(\text{route}, \sigma)$ map in \S\ref{sec:map}). Measured with per-arm
 self-floors, a draw-count extrapolation, and a stated certification
 resolution, the mildest route ($1024{\to}896$) is indistinguishable
 from the re-encode control for $\sigma > 0.5$, while no noise level

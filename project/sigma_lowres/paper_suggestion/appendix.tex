@@ -286,10 +286,34 @@ and excluded: there the native residual $\alpha x - \hat x$ passes near
 cancellation, the gradient norm dips ($60 \to 33$) and the redraw floor
 falls to $0.87$, so the estimator reads through a small gradient norm
 --- the low-norm amplification of \S\ref{sec:ourscored} surfacing along
-the $\alpha$ axis. In the parallel-landing read, the per-image
-orthogonal loading is ${\sim}10\times$ the aggregate's:
-image-specific directions cancel in the mean, the same motif as the
-residual-direction read below.
+the $\alpha$ axis. The $512$ route's sweep anchors are
+$+0.269 \pm 0.041$ at $\alpha{=}0$ vs $+0.337 \pm 0.067$ at
+$\alpha{=}1$, $\alpha$-flat like the $768$ anchors quoted in the main
+text.
+
+\paragraph{Parallel-landing decomposition of the target term (behind
+\S\ref{sec:ourscored}).} The $\alpha$-flatness has an exact mechanism.
+Because the objective is quadratic, $\bar g$ is affine in $\alpha$, so
+the exact target-mediated gradient $t = \bar g(1) - \bar g(0)$ is
+computable from the endpoint arms; measured, it is real and large
+($\|t_{\src}\|/\|\bar g_{\src}\| \approx 2.2$, so $J^{\!\top}$ does not
+annihilate target content), but demotion's change to it lands almost
+entirely \emph{along} $\hat g_{\src}$ ($\kappa_\parallel =
+-0.75/-1.18/-1.86$ against $\kappa_\perp = 0.09/0.14/0.20$, an
+$8$--$9\times$ parallel dominance reproducible across draw sets). The
+cosine gap is blind to a parallel rescaling (Eq.~\ref{eq:exact}) and
+the orthogonal part enters only at second order
+($\kappa_\perp^2/2 \approx 0.004$--$0.02$), so the $\alpha$-flat result
+stands \emph{because} the target term lands parallel, not because it
+vanishes. In this read the per-image orthogonal loading is
+${\sim}10\times$ the aggregate's: image-specific directions cancel in
+the mean, the same motif as the residual-direction read below. For
+$896$ and $768$ the floors sit at or below the interior bins'
+certification resolution, which the endpoint sweeps resolve only
+through their order-of-magnitude larger draw budget --- so ``the
+high-$\sigma$ plateau is the floor'' sharpens to: the floor is what the
+plateau converges to once the data term dies and the estimator can see
+it.
 
 \paragraph{Direction-resolved mismatch (behind
 \S\ref{sec:ourscored}).} The route-uniformity of
@@ -756,6 +780,29 @@ $D(f_{\mathrm{cut}}) \approx 1.0\times10^{-5}$ at all three cuts
 (p10--p90 over images within $[1, 2]\times10^{-5}$; per-band SNR
 $P(f_{\mathrm{cut}})/D(f_{\mathrm{cut}}) \approx 2.5$--$4.4\times10^{3}$),
 giving $t^{*}_{\reenc} = 0.98 / 0.98 / 0.99$ for $896/768/512$.
+
+\paragraph{The ``wrong $\delta$'' objection, closed by construction.}
+One might object that the right $\delta$ has simply not been chosen:
+SPD's is an inference-side value selected on a speed--quality Pareto
+ablation over generated images \citep{xiao2026spd}, and nothing ties it
+to gradients. Our setting fixes one \emph{by construction}. The
+demotion recipe pays a resize--VAE-encode round trip whose latent error
+has measurable per-band power $D(f)$, expressed in exactly
+Eq.~\ref{eq:spd}'s units, so $\delta_{\reenc}(e) :=
+D(f_{\mathrm{cut}}(e))$ anchors the family with zero free parameters.
+Measured (above), that anchor is tiny and image-generic, and the
+boundary moves it forces are measured in Table~\ref{tab:null} and
+Fig.~\ref{fig:e83}: every boundary is pushed to $t^{*} \approx 0.98$,
+maximally conservative, and still structurally wrong in both
+directions at once --- it moves all three boundaries together (spread
+$< 0.01$), certifies the measured-safe route only above
+$\sigma \approx 0.98$ where the measurement certifies it from $0.5$,
+and, like every member of the family, predicts the $2\times$ downscale
+eventually safe when no noise level is. The confrontation of
+\S\ref{sec:specscored} therefore does not hinge on the choice of
+tolerance: the structural failures of \S\ref{sec:spectral}(a--c) are
+$\delta$-independent at the boundary level, and $\delta$ is inert
+outright at the curve level (Fig.~\ref{fig:e83}).
 
 \section{Controlled-adapter replication of the verdict map}
 \label{app:e7}

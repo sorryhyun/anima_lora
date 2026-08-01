@@ -53,27 +53,25 @@ training cost grows superlinearly with resolution. A recent family of
 methods therefore trains or samples at reduced resolution on a
 spectral premise: at high noise, a downscaled latent preserves almost
 the full surviving signal. The evidence for that premise, however,
-lives at the level of generated output; whether a downscaled step also
-delivers the \emph{native training gradient direction}, under the same
-model and objective, has not been measured. We measure it directly, with a
-debiased gap estimator (naive finite-draw estimation manufactures the
-very effect under test), and score two accounts against the same
-curves. The spectral account, transported to the gradient and given
-its best tolerance, is wrong in both directions at once and its one
-free parameter is inert. Ours splits the cost in two: a
-noise-dependent term governed by the downscale \emph{ratio}, and a
-$\sigma$-independent floor governed by the target grid's
-\emph{absolute token count}, carried by the compute graph itself. No
-noise level rescues a $2\times$ downscale; but on the mildest route
-($1024{\to}896$) the training gradient direction is indistinguishable
-from native at instrument resolution for $\sigma > 0.5$, despite roughly a
-quarter fewer input tokens --- a window no spectral tolerance
-predicts. Head to head on held-out routes, the spectral account
-misses at $0.147$--$0.355$ RMSE where ours predicts at
-$0.07$--$0.09$, better than an oracle fit on the held-out data
-itself. Gating substitution on that window gives \emph{selective}
-low-resolution training: $-14.6\%$ wall-clock at a fixed step budget,
-with a sample-level footprint within the training-seed lottery.
+lives at the level of generated output, which reads the substitution
+only through a full pipeline's confounds; whether a downscaled step
+also delivers the \emph{native training gradient direction}, under the
+same model and objective, has remained unresolved. We measure it
+directly, with a debiased gap estimator (naive finite-draw estimation
+manufactures the very effect under test), and propose a two-term
+account of what the substitution costs: a noise-dependent term
+governed by the downscale \emph{ratio}, and a $\sigma$-independent
+floor governed by the target grid's \emph{absolute token count},
+carried by the compute graph itself. On held-out routes it predicts
+where the spectral account, transported to the gradient and given its
+best tolerance, misses. On the mildest route ($1024{\to}896$) the
+training gradient direction is indistinguishable from native at
+instrument resolution for $\sigma > 0.5$, despite roughly a quarter
+fewer input tokens --- a window no spectral tolerance predicts.
+Gating substitution on that
+window gives \emph{selective} low-resolution LoRA training:
+$-14.6\%$ wall-clock at a fixed step budget, with a sample-level
+footprint within the training-seed lottery.
 \end{abstract}
 
 % ---- Body ----------------------------------------------------------
