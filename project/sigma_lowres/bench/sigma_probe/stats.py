@@ -147,7 +147,7 @@ class PoolAccumulator:
 
 
 class ArmSumAccumulator:
-    """Cross-image sums of per-bin flat LoRA gradients, one fp32 disk memmap
+    """Cross-image sums of per-bin flat LoRA gradients, one disk memmap
     per (arm key, bin) under ``dir/``. Unlike :class:`PoolAccumulator` this
     keeps EVERY arm (native a/b, alt draw sets, every target-alpha suffix)
     and survives the run — the raw material for the interventional
@@ -155,11 +155,18 @@ class ArmSumAccumulator:
     sanitized for filenames (``@`` → ``~``); ``manifest.json`` records the
     mapping plus the scale convention (sum over images of per-image
     draw-summed gradients).
+
+    ``dtype`` fp16 halves the store (a full repromote×self-floor 15-bin
+    grid is ~75 GB fp32 — over this machine's disk headroom); the fp16
+    accumulation rounds at ~1e-3 relative per add, well under the
+    ledger's read precision (cosines/κ at two significant figures).
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, dtype: str = "fp32") -> None:
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
+        self.dtype = np.float16 if dtype == "fp16" else np.float32
+        self.dtype_name = dtype
         self.maps: dict[tuple[str, int], np.memmap] = {}
         self.n_images: dict[str, int] = {}
 
@@ -174,9 +181,9 @@ class ArmSumAccumulator:
             mm = self.maps.get((key, bi))
             if mm is None:
                 path = self.root / self._fname(key, bi)
-                mm = open_memmap(path, mode="w+", dtype=np.float32, shape=(v.numel(),))
+                mm = open_memmap(path, mode="w+", dtype=self.dtype, shape=(v.numel(),))
                 self.maps[(key, bi)] = mm
-            mm += v.numpy()
+            mm += v.numpy().astype(self.dtype, copy=False)
         self.n_images[key] = self.n_images.get(key, 0) + 1
 
     def finalize(self, meta: dict) -> None:
@@ -185,6 +192,7 @@ class ArmSumAccumulator:
         keys = sorted({k for k, _ in self.maps})
         manifest = {
             **meta,
+            "dtype": self.dtype_name,
             "scale": "sum over images of per-image draw-summed gradients "
             "(divide by n_images * draws_per_bin for the mean gradient)",
             "keys": {

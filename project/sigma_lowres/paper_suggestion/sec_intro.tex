@@ -27,8 +27,8 @@ substitution is safe \emph{whenever the noise has masked the
 frequencies the coarse grid loses}.
 
 None of this work analyzes the gap at \emph{training} time --- whether a
-downscaled step delivers the native gradient under an unchanged
-objective. That is the route this paper takes. What a training step
+downscaled step delivers the native gradient direction under an
+unchanged objective. That is the route this paper takes. What a training step
 consumes is the expected adapter gradient, and \emph{demotion} --- our
 term for the training-time substitution of a downscaled, re-encoded
 latent for the native one --- perturbs more than the network's input:

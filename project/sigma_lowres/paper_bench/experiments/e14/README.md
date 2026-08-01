@@ -1,288 +1,118 @@
-# E14 — two-level unbiased demotion: MLMC roulette with a model-priced coin
+# E14 — low-σ vector ledger: decomposing the 896 bump
 
 | | |
 |---|---|
-| **Status** | **14.0 DONE 2026-07-31 — GATE FAILED, line priced out.** 14.1/14.2 not run (pre-registered kill). Run: `runs/20260731-2114-e14-pricing/` |
-| **Verdict** | The per-sample correction second moment is ~**half the intrinsic per-step variance** (E2 ≈ V_total/2 per bin, lower bound), so the 1/q roulette is unaffordable: A needs q̄ ≈ 0.45 at the 1.5× inflation cap → net **+2.6–4.1%** vs the ≥20% gate. In-window safety of static demotion is an **aggregate-coherence** phenomenon — per-sample differences are O(‖g‖) and cancel across images/steps; MLMC pays the per-sample second moment to buy back a tiny aggregate first moment. Redesign lever recorded below (anchored control variate), not pursued under this record. |
-| **Question** | The map certifies one route in one window by *measurement*. Can a randomized two-level correction make demotion unbiased **by construction** at every σ — turning the gap map from a gatekeeper into a *price list* — and buy the routes the map rejects (768; all-σ) at their measured E4 discount? |
-| **Depends on** | [E9](../e9/) (arm sums → ‖Δḡ‖ per bin; the I-switch-off mechanism), [E5](../e5/) (the X-form gap model that prices the coin), [E4](../e4/) (cost calibration, the already-measured static-768 control, the seed-noise yardstick, `claim_accumulated_bias.md`), [E1](../e1/) (paired debiased object, kernel-path rule). [E13](../e13/) refines the coin at the curve ends but does not block. |
-| **Instrument** | trainer delta in `train.py::_maybe_sigma_demote` (below) + `bench/compare_ckpt_dw.py` (14.1) + the E4 harness (`e4_flops.py`, `e4_seed_yardstick.py`, `e4_render_eval.py`) (14.2) |
-| **In the paper** | §5 discussion paragraph at minimum ("the gap map doubles as the variance/price map of an unbiased estimator"); the method itself is line work beyond the current manuscript |
+| **Status** | **PROPOSED 2026-08-01** — reserved as ledger arms on E13's probe-matched **e13b** rerun (one process, per the kernel-path rule; command below). Numbering note: this record takes the E14 slot; the prior E14 (MLMC pricing) is now [E15](../e15/), the prior E15 (placement) is now [E16](../e16/). |
+| **Question** | The measured 1024→896 curve carries a low-σ plateau (≈+0.20 over σ≈0.05–0.30 on E13's grid) that the account's prediction misses by ~4× — the one panel of the head-to-head figure where ours does not beat the spectral account (`runs/20260801-1118-fig-accounts-e13`). Three explanations produce the same scalar signature: (a) a genuinely large data term the A(ratio) governor starves, (b) negative B/C interference shaping the σ≈0.4 cliff, (c) attenuation-correction inflation at mid-σ. Which is it? |
+| **Depends on** | [E9](../e9/) (the B/C instrument, `vector_ledger.py`, the unit-honesty rule, the amplitude-matching localization it validated on 768 — but its grid was σ ∈ [0.5, 1.0]: it stops exactly where the bump begins); [E13](../e13/) (segmented `--sigma_window`, `e1b_probe_list.json`, the 2/24-overlap scope rule that forbids a standalone ledger run on a fresh probe set); [E5](../e5/) (the governor under test; the per-run G normalization of A) |
+| **Instrument** | `bench/run_sigma_probe.py --repromote --keep_arm_sums --self_floor` on E13's segmented grid; analysis `../../vector_ledger.py` (shared with E9/E10) |
+| **In the paper** | the 896 panel of Fig. 1 (`accounts_headtohead`); §4.6's reduction-domain paragraph (does the 768 failure have a sibling?); the A(ratio) governor's standing (§4.7); potentially the 1120 ratio-twin claim (§4.5) |
 
-## The estimator
+## Why the scalar curve cannot answer this
 
-On an eligible step, demote always; with probability q also compute the
-native gradient and add the inflated correction:
+`gap(σ)` is one number per bin; causes (a)–(c) all read as "elevated
+plateau". The ledger factors it: **B = ḡ_rp − ḡ₀** (data branch, native
+graph — a same-grid contrast, so finite-draw bias cancels to first
+order), **C = ḡ_dem − ḡ_rp** (graph branch, demoted data), with
+cross-set-debiased S/F/I, ρ = cos(B⊥, C⊥), |B⊥|/|C⊥|, and the exact
+counterfactual angles h(B), h(C), h(B+C) (= the realized gap, by
+construction). Each cause lands in a different column:
 
-> ĝ = g_dem + (𝟙[U < q]/q) · (g_nat − g_dem),  E[ĝ] = g_nat exactly, at every σ.
+| cause | signature at σ ∈ [0.05, 0.45] |
+|---|---|
+| (a) data term, governor starved | h(B) ≈ measured plateau; I ≈ 0; C⊥ small — the route's true loading, no A-transport, no per-run-G normalization |
+| (b) interference cliff | \|C⊥\|/\|B⊥\| crosses ~1 at the cliff and I swings negative there — E9's validated localization signature (768: crossing 0.98 at σ=0.688 = window center) |
+| (c) estimator inflation | h(B+C) from arm means sits well below the scalar debiased plateau; the per-bin excess is the correction layer |
+| (d) low-σ graph share (assumption-iii failure) | F_896(σ) elevated below σ≈0.5 — the branch-(ii) alternative, untested at low σ; E9 already found F strongly σ-dependent in-window |
 
-Rhee–Glynn / Russian-roulette debiasing — the two-level case of unbiased
-MLMC. Safety stops being a measured property of a (route, window) cell
-and becomes algebra; the map's job shifts to *pricing*: the variance
-added is (1/q − 1)·E‖g_nat − g_dem‖², and ‖Δg(σ)‖ is exactly what the
-probe line has been measuring all along.
+## Pre-registered decision rules
 
-Two structural free lunches:
+Frozen before the run. The outcomes are not exclusive; shares are read
+per bin, magnitudes **only** via h(·) (E9's unit-honesty rule: at
+plateau magnitudes κ ≈ 0.7–0.9, S/F/I is out of its truncation domain —
+sign, decomposition, and localization only).
 
-- **CRN pairing is automatic.** On a correction step the two gradients
-  share batch, ε, and σ — only the latent grid is swapped. The
-  difference is the *paired* object of the whole probe program, i.e.
-  the small one (E9: the realized in-window difference is 20–30% of
-  the additive |B|+|C| sum, because I < 0 cancels it).
-- **Peak VRAM = native peak.** Implement as two sequential backwards
-  with loss weights (1 − 1/q)·L_dem then (1/q)·L_nat (grads accumulate
-  in `.grad`; the negative first weight is fine for autograd). Never
-  hold both graphs.
+- **H-a** (data term): h(B) ≥ 0.7 × measured plateau in the clean
+  segment (σ ≤ 0.17, where E13's control is inside ±0.07) with I within
+  ±0.02 there ⇒ the two-term *form* is fine and the A(ratio) governor is
+  starving 896 ⇒ fires **phase 2** (below): the 1120 twin must be
+  re-measured in vector units before the ratio governor is used again.
+- **H-b** (interference cliff): |B⊥|/|C⊥| crosses 1 within one bin of
+  the measured cliff (σ≈0.4–0.5) and I < 0 beyond it ⇒ the 896 shoulder
+  is the 768 failure's sibling ⇒ §4.6's domain paragraph widens to both
+  routes; the figure's 896 panel gets the same "reduction's domain"
+  annotation as 768.
+- **H-c** (estimator): h(B+C) < 0.6 × the scalar debiased plateau at
+  matched bins ⇒ the plateau is partly correction inflation ⇒ per E13's
+  kill-switch protocol, that σ-region publishes raw-paired as primary
+  with the debiased read as the appendix row.
+- **H-d** (graph share): F_896(σ ≤ 0.45) > 2 × F_896(1.0) resolved by
+  the cross-set read ⇒ assumption (iii) fails outside the endpoint's
+  protection ⇒ the "σ-independent floor" claim gets an explicit low-σ
+  domain bound.
+- **Kill switch** (inherited from E13): if the reenc control's unpaired
+  debiased gap exceeds ±0.15 anywhere in the dense low segment, the
+  affected bins are excluded from H-a/H-c reads.
 
-## What it buys — priced from E4's measured FLOPs
+## Design — ride the e13b rerun, don't run standalone
 
-Per-step relative cost derived from E4 (`e4_flops.py`, n=3):
-c_896 = 1 − 0.308 = **0.692** (896only, 100% demote), c_768 = 1 − 0.522
-= **0.478** (unsafe768). In-window mass at this recipe m = 244/480 =
-0.508. A correction step adds one native fwd+bwd (relative cost 1), so
-net FLOPs saving = (demoted mass)·(1 − c_e) − (mass)·q̄.
-
-| candidate | route / gate | gross | net @ q̄=0.1 | net @ q̄=0.2 | static status today |
-|---|---|---|---|---|---|
-| **A** | 768 @ σ>0.5 + MLMC | −26.5% | **−21.4%** | −16.4% | `sigma768` measured, **below the yardstick on ≥1 corpus** (E4 5-arm) — the rescue target |
-| **B** | 896 all-σ + MLMC | −30.8% | −20.8% | −10.8% | `896only` measured, below yardstick on ≥1 corpus; dissolves E4's open σ-gate tension into allocation |
-| **C** | 768 all-σ + MLMC | −52.2% | (needs q̄(σ) ≥ ~0.3 at low σ) | — | `unsafe768` = the review's negative control |
-| — | shipped `sigma896` | −15.1% | — | — | the bar to beat |
-
-Break-even vs shipped for A at q̄ ≈ 0.22. B and C spend corrections in
-the low-σ region priced by the mid-σ peak — whose height E13 suspects
-is partly estimator-manufactured; 14.0 scores all three, prior on A.
-
-## The coin — three tiers
-
-**q0 — constant.** Baseline; the variance-optimal σ-blind choice.
-
-**q1(σ) — model-priced.** The variance-under-cost-constraint optimum is
-Neyman-style: q\*(σ) ∝ √E[‖Δg(σ)‖²] / √(correction cost). E5's
-headline X form supplies precisely the needed quantity — its empirical
-ingredient **is** the linear mismatch loading ‖δg⊥‖ = c·m(σ) (held-out
-RMSE ~0.09) — and the *posterior* second moment √(μ̂²(σ) + s²(σ))
-replaces the point estimate, with s(σ) from the fit covariance plus a
-structural inflation where E13 flags the curve unresolved (the σ→1
-approach, the mid-σ peak flank). So "sample more where the model is
-uncertain" is not a heuristic bolt-on; it falls out of the optimal
-allocation. Mechanism agreement worth pre-registering: E9's I_768 goes
-−0.31 → −0.014 window→endpoint, so q1 should *rise toward σ=1* — the
-corrections concentrate exactly where the interference protection
-switches off. Frozen as `q_table.json` in the manifest; deterministic
-and CRN-compatible across arms.
-
-**q2(σ, optimizer state) — drift-priced.** Gradient-space unbiasedness
-is not update-space unbiasedness: AdamW preconditions by 1/(√v̂+ε), so
-a raw-space bias component landing on low-v̂ coordinates moves weights
-disproportionately — and *accumulated drift in update space* is
-exactly the object `claim_accumulated_bias.md` says the per-step
-verdict does not certify. The drift-priced coin scales q1 by
-ρ_P = ‖P_t Δg‖ / ‖Δg‖ (norms relative to their preconditioned/raw
-gradient scales), estimated online for free: every coin-hit step
-yields an actual Δg sample, so an EMA of ρ_P costs nothing extra.
-**Scoped as telemetry-first**: a trajectory-dependent coin breaks CRN
-pairing across arms and muddies pre-registration, so 14.1 only *logs*
-ρ_P(σ); q2 is promoted to a 14.2 arm iff ρ_P is structured in σ
-(decision rule below), else the finding is "raw-space pricing
-suffices" and q2 dies without an arm.
-
-## Groundings
-
-| # | design choice | grounded by | pointer |
-|---|---|---|---|
-| g1 | the correction is cheap in-window (variance ∝ realized ‖B+C‖, not additive) | I < 0 cancels 70–80% of the additive gap in-window; realized = h(B+C) exactly | E9 `ledger.json`, `bench/results/20260731-0721/` |
-| g2 | corrections should concentrate σ→1 | I_768 −0.31 → −0.014 window→endpoint; endpoint gaps real (896 gap_∞ +0.019, 768 +0.092±0.012 debiased) | E9; E1a/E1b; E13 free reanalysis table |
-| g3 | q1's magnitude model exists and predicts held-out | X form, ‖δg⊥‖ = c·m(σ); RMSE ~0.09; floor law 2-for-2 on unseen floors | E5 `runs/20260729-1130-e5-holdout/`, `-refit/` |
-| g4 | the static candidates' costs and failures are measured | −30.8% (896only), −52.2% (unsafe768), sigma768 −26.5% gross; sigma768/896only below yardstick on ≥1 corpus; sigma896 inside | E4 FLOPs table + `runs/20260730-e4-yardstick-5arm/` |
-| g5 | the drift-risk object is already named | in-band per-step verdicts do not certify accumulated update-space drift | `../e4/claim_accumulated_bias.md` |
-| g6 | wiring is a delta, not new plumbing | per-batch σ-first gate, sibling `demoted_{H}x{W}` keys, `--sigma_lowres_route` (768 arms already ran), token-budget union, seed-keyed σ stream (identical demote set across arms) | `methods.md` Phase 1b; E4 commit `5b63ebb9`, in-vivo CRN check |
-| g7 | paired deterministic ΔW comparison has no chaos floor | twin runs bit-identical over 1200 compiled steps with `--deterministic`; nondeterministic floor 0.413 | `methods.md`; `bench/compare_ckpt_dw.py` |
-| g8 | clipping would re-bias | `max_grad_norm` defaults 1.0, applied to the *combined* grad | `library/config/cli_args.py:86`, `library/training/loop.py:481` |
-| g9 | mean-difference norms are recoverable without GPU; per-draw second moments are NOT | E9 kept arm sums, not per-draw vectors | E9 `--keep_arm_sums`; honesty item h4 |
-
-## Phases
-
-### 14.0 — pricing, free (no GPU)
-
-From E9 arm sums: ‖B+C‖ per (route, bin) → predicted variance inflation
-V(q)/V₀ and expected cost per candidate × coin tier; E5-X fit +
-covariance → the q1 table. Emit `q_table.json` + a candidate-ranking
-`result.json` into `runs/`.
-
-- **Gate to 14.1**: some candidate has predicted net ≥ **−20% FLOPs at
-  ≤ 1.5× variance inflation**. Else the line closes as "priced out" —
-  itself a publishable one-liner (the map prices the estimator out).
-- Stated limit (h4): arm sums give the *mean*-difference norm; per-draw
-  dispersion around it is not in the stored vectors, so 14.0 variance
-  predictions are lower bounds. 14.1 measures the realized number.
-
-### 14.1 — in-vivo estimator validation (~40 min GPU)
-
-Three deterministic paired twins at E4 tenth scale (480 steps, bs 1,
-`--deterministic --paired_step_rng`, stock lora recipe, hews):
-**native / static-768@σ>0.5 / MLMC-768@σ>0.5 (q1)**. Coin on its own
-seed-keyed RNG stream (σ-stream precedent) so the hit set is
-arm-reproducible. All arms `--max_grad_norm 0` (h1).
-
-Pre-registered:
-
-- **H1 (rescue, primary):** cos(ΔW_mlmc, ΔW_native) **>**
-  cos(ΔW_static768, ΔW_native) via `compare_ckpt_dw.py` (global + depth
-  profile). *Falsifies*: ordering flat or reversed ⇒ per-step
-  unbiasedness does not survive the optimizer at this q — jump to h2
-  diagnostics before burning 14.2.
-- **H2 (variance):** realized correction-term second moment within
-  ~2× of 14.0's lower bound. *Falsifies*: ≫2× ⇒ per-draw dispersion
-  dominates the mean difference; reprice (q up, net savings down)
-  and re-run the 14.0 gate.
-- **H3 (drift telemetry, decides q2):** log ρ_P(σ) on every coin hit.
-  *Promote q2* iff ρ_P varies ≥ 2× across σ bins with a stable shape
-  across the run; else q2 dies here.
-- Free telemetry: fraction-of-steps-corrected vs q_table prediction;
-  `norm/avg_grad_norm` native clip-vs-noclip check (h1's side
-  condition: confirm clipping was inert for the native arm at this
-  recipe, so `--max_grad_norm 0` is not itself a confound).
-
-### 14.2 — the E4-protocol A/B (~2–3 h GPU + evals)
-
-Winner candidate only. Arms: **native / sigma896 (shipped) /
-MLMC-winner (q1)** [+ q2 iff H3 promoted] × 3 seeds × 2 artists (E4
-grid: hews 60-stem/8ep, channel 15-stem/32ep, 480 steps). Frozen
-manifest first (`e4_manifest.py` pattern), q_table + coin seeds inside.
-
-- **H4 (headline):** the MLMC arm lands **at-or-inside the seed-noise
-  yardstick on both corpora** — the bar its static sibling measurably
-  failed — at net wall ≤ −20%. *Confirms*: routes off the map are
-  purchasable at list price. *Falsifies*: below yardstick where
-  static also fell ⇒ record "estimator-level unbiasedness does not
-  transfer through AdamW at practical q" — a real finding; the coin
-  tiers (q floor, q2) are the only retry levers, one retry max.
-- **H5 (no optimizer pathology):** no loss excursions time-locked to
-  coin hits beyond the paired native band; `norm/avg_grad_norm` tail
-  bounded by 1/q · native tail.
-- **Kill switch:** if H4 fails with H1 having passed, the gap is
-  between single-tenth ΔW fidelity and full-recipe rendering — write
-  the negative result into `claim_accumulated_bias.md`'s ledger and
-  stop; do not tune q by render iteration (that reintroduces the
-  seed-lottery reading E4 exists to prevent).
-
-## 14.0 results (2026-07-31, `runs/20260731-2114-e14-pricing/`, `e14_price.py`)
-
-**Gate FAILED under both accountings, which agree.** Two independent
-reads, ambiguities resolved in opposite directions:
-
-- *E1b conservative* (per-image relative units, within-image-only
-  baseline, N=40, full σ range): A best net **+4.1% @ q̄ 0.44**,
-  B −25.2% @ 0.56, C infeasible at any q̄ ≤ 0.6.
-- *E9 one-process optimistic* (absolute units vs ‖μ̄‖², **full**
-  baseline = between-image + within-image, lower-bound numerator —
-  every ambiguity favors the estimator): A best net **+2.6% @ q̄ 0.47**.
-
-| bin σ | ‖μ̄‖ | between | within | V_total | E2(768), LB |
-|---|---|---|---|---|---|
-| 0.5625 | 0.061 | 120 | 211 | 330 | 189 |
-| 0.6875 | 0.096 | 242 | 187 | 430 | 254 |
-| 0.8125 | 0.198 | 101 | 90 | 191 | 89 |
-| 0.9375 | 1.078 | 101 | 46 | 147 | 43 |
-
-**The mechanism (the real yield of 14.0).** The map's in-window
-"gap ≈ 0" is a *cosine-of-aggregates* statement. At the per-sample
-level the difference is O(‖g‖): per-image rel-diff ‖Δᵢ‖/‖gᵢ‖ ≈
-0.7–1.6 in-window (E1b law-of-cosines), vs aggregate ‖Δḡ‖/‖ḡ‖ ≈
-0.15–0.35 (E9 exact vectors) — a ~3× coherence gap, so per-sample
-differences mostly cancel across images and steps. Static demotion is
-safe *because training averages them* — and that is precisely why
-roulette debiasing is priced out: the correction term carries the
-per-sample second moment (≈ V_total/2, before per-draw dispersion up
-to 8× worse) while the bias it removes is the tiny aggregate first
-moment. E[ĝ] = g_nat is bought at a variance price the map's cosine
-units never showed. The estimator isn't wrong; it's expensive in
-exactly the regime where it's unnecessary, and unaffordable (512-like
-rel-diffs 2–5) where it would matter.
-
-**Pre-registered consequence honored:** 14.1/14.2 do not run; no q
-tuning beyond the frozen sweep. Deviation recorded in `result.json`:
-q1 was data-priced from E1b/E9 vectors rather than model-priced from
-E5-X (the full σ range turned out to be measured; E5-X stays the
-extrapolation tool for unmeasured tiers).
-
-**Redesign lever (out of scope here, needs its own record):** debias
-the *mean*, not each step — an anchored control variate (SVRG-flavor):
-estimate μ_Δ(σ) on occasional paired steps *without* 1/q inflation,
-add μ_Δ deterministically on every demoted step. Deterministic
-additive term ⇒ near-zero added variance; the price moves from
-variance to *staleness bias* of the anchor, which is where the q2
-drift-pricing idea (AdamW-preconditioned norm) naturally re-enters as
-the refresh trigger. The 14.0 tables above are exactly the inputs that
-would price it.
-
-## Hazards, pre-registered
-
-- **h1 — clipping re-biases.** `clip_grad_norm_` on the combined grad
-  fires preferentially on 1/q-inflated coin steps ⇒ E[α_t·ĝ] ≠ g_nat.
-  All arms run `--max_grad_norm 0`, with the native clip-inertness
-  check above. If clipping is *not* inert at this recipe, redesign
-  (clip-aware coin) before any arm burns.
-- **h2 — Adam nonlinearity.** Unbiasedness is gradient-space; v̂
-  spikes from rare 1/q hits transiently deflate effective LR on hit
-  coordinates. Floor q ≥ 0.05; H3/H5 telemetry is the watch.
-- **h3 — estimand drift vs probe data.** Trainer g_dem includes
-  yarnsig rope; E9's Δ data is plain-demote. 14.0 prices are
-  approximate; 14.1 measures the wired estimand.
-- **h4 — variance honesty.** See 14.0 stated limit.
-- **h5 — kernel-path chaos.** Every paired read in-process (E1 rule);
-  the 14.1 twins are one process per arm with `--deterministic`, so
-  cross-arm ΔW comparison is chaos-floor-free (g7).
-- **h6 — loss-log pollution.** progress.jsonl gets raw L_dem; the
-  weighted correction magnitude logs to its own tag
-  (`sigma_lowres/mlmc_corr`), else `run-status` losses look insane on
-  coin steps.
-- **h7 — bs>1 gate conservatism** unchanged (every-sample-σ gate);
-  exact at bs 1, which is what 14.1/14.2 run.
-
-## Implementation deltas
-
-1. `_maybe_sigma_demote`: coin draw from a dedicated seed-keyed
-   generator; on hit, flag the step for the second (native) pass.
-2. Loop: two-backward combination with weights (1−1/q, 1/q) on hit
-   steps; grad-accum interaction = none new (weights are per-loss).
-3. `--sigma_lowres_mlmc q|path/to/q_table.json` (scalar = q0; table =
-   q1/q2), `--sigma_lowres_route` reused for 768 (exists, g6).
-4. Token budget already unions demoted counts; a hit step runs both
-   token counts — both already inside the dynamic-seq range.
-5. 768 sibling keys: `SIGMA_DEMOTE="1024:768"` emit pass (already
-   exercised by E4's 768 arms).
-6. ρ_P telemetry hook reading Adam `exp_avg_sq` on hit steps (q2 EMA
-   lives here later; 14.1 logs only).
-
-## Run commands (sketch — pin at manifest freeze)
+A standalone ledger run on a fresh probe set would recreate exactly the
+cross-run level-comparison trap E13 documented (2/24 overlap). Instead
+the reservation is: **e13b (the probe-matched rerun E13 already owes)
+gains `--repromote --keep_arm_sums`**, so one process on E1b's 40-image
+list yields (i) the probe-matched curve refit E13 owes §4.7, and
+(ii) this ledger, on the same images, same G, same kernel path.
 
 ```bash
-# 14.0 — free
-uv run python project/sigma_lowres/paper_bench/experiments/e14/e14_price.py \
-  --ledger bench/results/20260731-0721/ledger.json \
-  --e5_fit project/sigma_lowres/paper_bench/runs/20260729-1322-e5-refit/ \
-  --results_root project/sigma_lowres/paper_bench/runs
-
-# 14.1 — three twins through the daemon (GPU work never in background bash)
-make lora --queue ARGS="--sigma_lowres --sigma_lowres_route 1024:768 \
-  --sigma_lowres_mlmc runs/<14.0>/q_table.json \
-  --deterministic --paired_step_rng --max_grad_norm 0 ..."   # + native & static twins
+make daemon-run ARGS="project/sigma_lowres/bench/run_sigma_probe.py \
+  --adapter output/ckpt/anima_soup_sincos.safetensors \
+  --sigma_window '0,0.1,4 : 0.1,0.9,6 : 0.9,1.0,4' \
+  --draws_per_bin 12 --endpoint_bin --self_floor --deterministic \
+  --repromote --keep_arm_sums \
+  --demote_edges 896,768,512 \
+  --probe_list project/sigma_lowres/paper_bench/experiments/e13/e1b_probe_list.json \
+  --results_root project/sigma_lowres/paper_bench/runs \
+  --label e13b-probematched-ledger --queue"
 ```
+
+**Cost.** e13b alone ≈ 12 h (E13's calibration, 7.3 h × 40/24). The
+repromote arms are native-grid forwards; E9's calibrated overhead for
+`--repromote --keep_arm_sums --deterministic` was ~1.5× ⇒ **~18 h**
+total. Cheaper variant if the queue is tight: `--repromote` on 896 only
+(the bump route) ≈ +20% instead of +50% — but the cross-route ledger is
+what lets H-b use E9's universality result, so all three routes is the
+recommendation.
+
+**Smoke first.** `--repromote` (E9-era) and the segmented
+`--sigma_window` (E13-era) have never run together; a `--smoke` pass
+must confirm they compose (the window only builds the σ tensor, so they
+should, but the arm-key seed-budget check in `cli.py` is the thing to
+watch).
+
+**Storage.** Arm-sum vectors at 15 bins × ~9 arms × 40 images — same
+order as E9's store × ~4. Stays under the gitignored `bench/results/`
+(vector stores never ship in `runs/`).
+
+## Phase 2 (conditional on H-a): the twin, in vector units
+
+If the plateau is a real data term, the ratio governor's defense — the
+1120 twin — must be re-measured on the same instrument: the E9-style
+probe on 1280-tier natives (route 1280→1120, matched bins). If
+h(B)_1120 ≪ h(B)_896 at matched bins in one unit system, "ratio sets the
+amplitude" is falsified in debiased vector units and §4.5/§4.7 are
+rewritten; if they agree, the published governor stands and the E1b-era
+fit's failure was plumbing (weights + grid), not physics. Separate run
+(~4–6 h); not scheduled until H-a fires.
 
 ## What lands in the paper
 
-The kill branch fired, and it earns *more* than the planned paragraph:
-
-- §5 discussion: the map prices an unbiased two-level estimator — and
-  prices it **out** (A: net +2.6% at the inflation cap vs −15.1%
-  shipped). Measurement as pricing, with a number.
-- The aggregate-coherence finding is a genuine sharpening of the
-  paper's account: the certified safety is a property of the
-  σ-averaged aggregate gradient, not of per-step gradients (per-sample
-  ‖Δ‖ ≈ 0.7–1.6‖g‖ in-window vs aggregate 0.15–0.35). This gives
-  `claim_accumulated_bias.md` its cleanest statement of *why* the
-  per-step-vs-accumulated distinction matters, and independently
-  motivates why the E4 A/B — not any per-step read — was the right
-  certification instrument.
+- H-a ⇒ governor asterisk in §4.7 + phase-2 twin run before any
+  A(ratio) reuse; the 896 panel keeps the measured curve with the
+  starved prediction explained.
+- H-b ⇒ §4.6 domain paragraph covers 896's shoulder; one mechanism, two
+  routes — coherence, not damage.
+- H-c ⇒ raw-paired primary for the affected bins (E13 protocol).
+- H-d ⇒ explicit domain bound on assumption (iii).
+- Either way: the e13b half of the run discharges E13's owed §4.7
+  refit, so this reservation supersedes the plain e13b command in E13's
+  record.

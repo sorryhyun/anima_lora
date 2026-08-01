@@ -3,6 +3,8 @@
 
 \input{math_commands.tex}
 
+\usepackage{xcolor}
+\usepackage{array}
 \usepackage{hyperref}
 \usepackage{url}
 \usepackage{booktabs}
@@ -14,8 +16,7 @@
 \usepackage{multirow}
 \usepackage{subcaption}
 
-% Anonymous (double-blind) draft; uncomment for the de-anonymized copy.
-% \iclrfinalcopy
+\iclrfinalcopy
 
 \newcommand{\gap}{\mathrm{gap}}
 \newcommand{\dgap}{\widehat{\mathrm{gap}}}
@@ -27,14 +28,17 @@
 \newcommand{\sigmastar}{\sigma^{\!*}}
 \newcommand{\epsstar}{\varepsilon^{\!*}}
 
+% Pseudocode styling (Table \ref{alg:sigmastep}): added lines in color.
+\definecolor{codeadd}{RGB}{0,90,180}
+\newcommand{\addedline}[1]{\textcolor{codeadd}{#1}}
+
 \title{When Does Training on Downscaled Images\\
 Yield the Same Gradients?}
 
-% Restored (with \iclrfinalcopy above) for the de-anonymized draft:
-% \author{Seunghyun Ji\\
-% Independent researcher\\
-% \texttt{standingbehindnv@gmail.com}
-% }
+\author{Seunghyun Ji\\
+Independent researcher\\
+\texttt{standingbehindnv@gmail.com}
+}
 
 \begin{document}
 
@@ -50,8 +54,8 @@ methods therefore trains or samples at reduced resolution on a
 spectral premise: at high noise, a downscaled latent preserves almost
 the full surviving signal. The evidence for that premise, however,
 lives at the level of generated output; whether a downscaled step also
-delivers the \emph{native training gradient}, under the same model and
-objective, has not been measured. We measure it directly, with a
+delivers the \emph{native training gradient direction}, under the same
+model and objective, has not been measured. We measure it directly, with a
 debiased gap estimator (naive finite-draw estimation manufactures the
 very effect under test), and score two accounts against the same
 curves. The spectral account, transported to the gradient and given
@@ -61,8 +65,8 @@ noise-dependent term governed by the downscale \emph{ratio}, and a
 $\sigma$-independent floor governed by the target grid's
 \emph{absolute token count}, carried by the compute graph itself. No
 noise level rescues a $2\times$ downscale; but on the mildest route
-($1024{\to}896$) the training gradient is indistinguishable from
-native at instrument resolution for $\sigma > 0.5$, despite roughly a
+($1024{\to}896$) the training gradient direction is indistinguishable
+from native at instrument resolution for $\sigma > 0.5$, despite roughly a
 quarter fewer input tokens --- a window no spectral tolerance
 predicts. Head to head on held-out routes, the spectral account
 misses at $0.147$--$0.355$ RMSE where ours predicts at

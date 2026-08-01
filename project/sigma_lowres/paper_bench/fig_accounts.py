@@ -57,6 +57,7 @@ from e5_holdout import (  # noqa: E402
     RATIO,
     TOKENS,
     bin_gnorm,
+    bin_widths,
     interp_extrap,
     m_bar,
     paired_stats,
@@ -82,12 +83,15 @@ DISP = {"896": r"$1024\to896$", "768": r"$1024\to768$",
 C_MEAS, C_SPEC, C_OURS = "0.15", "C3", "C0"
 
 
-def build() -> dict:
+def build(tier1024: Path = E1B) -> dict:
     """Recompute both accounts on the same measured curves."""
-    curves = {r: paired_stats(E1B, r, "debiased_gap") for r in ROUTES}
+    curves = {r: paired_stats(tier1024, r, "debiased_gap") for r in ROUTES}
     for r in ("1120", "1024"):
         curves[r] = paired_stats(G9, r, "gap")
-    gnorm = {"1024tier": bin_gnorm(E1B), "1280tier": bin_gnorm(G9)}
+    gnorm = {"1024tier": bin_gnorm(tier1024), "1280tier": bin_gnorm(G9)}
+    src = {"1024tier": tier1024, "1280tier": G9}
+    widths = {r: bin_widths(src[TIER_OF[r]], len(curves[r][0]))
+              for r in curves}
     msig, mvals = m_bar()
 
     def x_ratio(route):
@@ -98,7 +102,8 @@ def build() -> dict:
     fitX = {}
     for route in FIT_ROUTES:
         _, y, sem = curves[route]
-        c, F, se_c, se_F, _ = fit_sat_route(x_ratio(route), y, 1.0 / sem**2)
+        c, F, se_c, se_F, _ = fit_sat_route(
+            x_ratio(route), y, widths[route] / sem**2)
         fitX[route] = dict(A=c, F=F, se_A=se_c, se_F=se_F)
     gov_A, _ = two_point_governor(
         {r: fitX[r]["A"] for r in FIT_ROUTES},
@@ -120,9 +125,10 @@ def build() -> dict:
     floors["896"] = loo896_floor(fitX["512"]["F"], fitX["1120"]["F"])
     ours["896"] = sat(fitX["1120"]["A"] * x_ratio("896")) + floors["896"]
 
-    mats = {r: per_image_matrix(E1B, r, "debiased_gap")[1] for r in ("896", "512")}
+    mats = {r: per_image_matrix(tier1024, r, "debiased_gap")[1]
+            for r in ("896", "512")}
     mats["1120"] = per_image_matrix(G9, "1120", "gap")[1]
-    boot = bootstrap_predictions(mats, x_ratio)
+    boot = bootstrap_predictions(mats, x_ratio, widths)
     bands = {"768": boot["pred768"], "896": boot["pred896"]}
 
     # ---- spectral account: destroyed-band bridge, one gain on 896 ----
@@ -133,7 +139,7 @@ def build() -> dict:
     xs = {r: (m_spec(sigma, freq, P, FCUT[r]) / gnorm["1024tier"]) ** 2
           for r in ROUTES}
     _, y896, sem896 = curves["896"]
-    w = 1.0 / sem896**2
+    w = widths["896"] / sem896**2
     A_spec = float(np.sum(w * xs["896"] * y896) / np.sum(w * xs["896"] ** 2))
     spec, gates = {}, {}
     for r in ROUTES:
@@ -228,24 +234,28 @@ def draw(d: dict):
     return fig
 
 
-def main() -> None:
-    d = build()
+def main(tier1024: Path = E1B, tag: str = "") -> None:
+    d = build(tier1024)
     fig = draw(d)
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out_dir = RUNS / f"{stamp}-fig-accounts"
+    out_dir = RUNS / f"{stamp}-fig-accounts{tag}"
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "accounts_headtohead.png"
     fig.savefig(out, dpi=180, bbox_inches="tight")
-    for fd in FIG_DIRS:
-        if fd.is_dir():
-            shutil.copy2(out, fd / "accounts_headtohead.png")
+    # the paper figure tracks the published verdict run only: an alternate
+    # --tier1024_run render stays in its run dir and never touches figs/
+    if tier1024 == E1B:
+        for fd in FIG_DIRS:
+            if fd.is_dir():
+                shutil.copy2(out, fd / "accounts_headtohead.png")
 
     envelope = dict(
         schema_version=1,
         script="project/sigma_lowres/paper_bench/fig_accounts.py",
         label="fig-accounts",
         timestamp_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        sources=dict(e1b=str(E1B), g9=str(G9), rapsd=str(REENC_FLOOR)),
+        sources=dict(tier1024=str(tier1024), g9=str(G9),
+                     rapsd=str(REENC_FLOOR)),
         caveats=[
             "figure assembly only: every fit is recomputed by calling the "
             "published helpers of e83_bridge.py and e5_refit.py",
@@ -276,4 +286,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument(
+        "--tier1024_run", default=str(E1B),
+        help="run dir supplying the 1024-tier curves (default: the "
+             "published E1b verdict run; anything else skips the figs/ copy)",
+    )
+    ap.add_argument("--tag", default="", help="suffix on the output run dir")
+    _a = ap.parse_args()
+    main(Path(_a.tier1024_run), _a.tag)

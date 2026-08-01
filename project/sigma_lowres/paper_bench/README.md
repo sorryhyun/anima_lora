@@ -28,9 +28,10 @@ spawned E1–E4/E6; `paper_plan.md` remains the manuscript plan.*
 | [E10](experiments/e10/) | exact target-content vectors | DONE 2026-07-30 | parallel landing (κ∥ ≫ κ⊥); explains E2's flat α-slope |
 | [E11](experiments/e11/) | Δr̄ direction structure | DONE 2026-07-30 (`--uncond` rerun pending) | norm-only — universal amplitude law, not a universal direction |
 | [E12](experiments/e12/) | posterior-budget probes | DONE 2026-07-31 | REFUTED on both probes; native-only pre-screening is void |
-| [E13](experiments/e13/) | resolving both ends of the σ curve (segmented grid) | **PLANNED** | segmented `--sigma_window` + one run; σ→1 rise is real in raw units but its shape — and the mid-σ peak — are unresolved |
-| [E14](experiments/e14/) | two-level unbiased demotion (MLMC roulette, model-priced coin) | DONE 2026-07-31 (14.0 only) | **priced out** — per-sample correction 2nd moment ≈ V_total/2 ⇒ q̄≈0.45 at the 1.5× cap ⇒ net +2.6–4.1% vs ≥20% gate; yield = the aggregate-coherence finding (per-sample ‖Δ‖≈0.7–1.6‖g‖ vs aggregate 0.15–0.35); redesign lever = anchored control variate (own record if pursued) |
-| [E15](experiments/e15/) | placement vs dilution: demotion scheduling (trajectory-propagator probe) | **PROPOSED** | zero-cost successor to E14 — same-mass early/late/spread 768 twins → ΔW ordering picks washout / linear / amplification regime; washout ⇒ hybrid768 ("768 early, clean finish") targets ~−21–24% wall inside the yardstick |
+| [E13](experiments/e13/) | resolving both ends of the σ curve (segmented grid) | DONE 2026-08-01 | H1 falsified (high-σ flat + a *correction-regime* step at σ=1), H2 falsified (the mid-σ peak is a plateau ≈0.09–0.43, not an artifact), H3 confirmed (896's approach is an instrument limit); E5's prediction survives the refit, its ratio-governor does not (A carries a per-run G normalization) |
+| [E14](experiments/e14/) | low-σ vector ledger: decomposing the 896 bump (B/C below σ=0.5) | **PROPOSED 2026-08-01** | reserved as `--repromote --keep_arm_sums` arms on the e13b probe-matched rerun (~18 h total) — separates data-term / interference / estimator / graph-share explanations of the 896 plateau the account underpredicts (`runs/20260801-1118-fig-accounts-e13`); phase 2 (conditional): the 1120 ratio-twin re-measured in vector units |
+| [E15](experiments/e15/) | two-level unbiased demotion (MLMC roulette, model-priced coin) | DONE 2026-07-31 (15.0 only; **E14 until 2026-08-01**, run dir keeps the `e14` label) | **priced out** — per-sample correction 2nd moment ≈ V_total/2 ⇒ q̄≈0.45 at the 1.5× cap ⇒ net +2.6–4.1% vs ≥20% gate; yield = the aggregate-coherence finding (per-sample ‖Δ‖≈0.7–1.6‖g‖ vs aggregate 0.15–0.35); redesign lever = anchored control variate (own record if pursued) |
+| [E16](experiments/e16/) | placement vs dilution: demotion scheduling (trajectory-propagator probe) | **PROPOSED** (E15 until 2026-08-01) | zero-cost successor to E15 — same-mass early/late/spread 768 twins → ΔW ordering picks washout / linear / amplification regime; washout ⇒ hybrid768 ("768 early, clean finish") targets ~−21–24% wall inside the yardstick |
 
 ## Layout
 
@@ -55,17 +56,25 @@ land in `paper_bench/runs/`.
 Ordering: **[E3](experiments/e3/)** pooled-arm run + the a/(b/B)
 batch-size fit (`paper/action.md` estimand fix) → reproducibility
 deliverables (below) → **[E6](experiments/e6/)** if targeting a top
-venue. **[E13](experiments/e13/)** is orthogonal and can go whenever GPU
-is free, but note it can move §4.7: its H2 tests whether the mid-σ peak
-E5's data-term fit is calibrated against is partly an artifact of the
-attenuation correction at the floor minimum. [E11](experiments/e11/)'s `--uncond` rerun closes the
-caption-conditioning caveat whenever GPU is free.
-**[E14](experiments/e14/)** closed at 14.0 (priced out, pre-registered
+venue. **[E13](experiments/e13/)** is closed as a run; what remains is
+its manuscript write-in (Fig. 1a redraw off `runs/20260801-0125`, dense-end
+rows into Table 2, §4.4 re-derived rather than assumed, §4.7's shape
+claims re-scored against a plateau instead of a peak, 896 stated as an
+instrument limit, and the per-run G normalization of A written down).
+Optional and GPU-priced: the **e13b probe-matched rerun** — now reserved
+to carry **[E14](experiments/e14/)**'s B/C ledger arms in the same
+process (~18 h combined; E14's record has the command and supersedes the
+plain one in E13's) — is the only thing that would let the curve-shape
+refit move A/F, and its ledger half decomposes the 896 low-σ plateau the
+head-to-head figure underpredicts. Until then §4.7 keeps the published
+fit, which E13 does *not* refute. [E11](experiments/e11/)'s `--uncond`
+rerun closes the caption-conditioning caveat whenever GPU is free.
+**[E15](experiments/e15/)** closed at 15.0 (priced out, pre-registered
 kill); what remains is writing its §5 paragraph + the
 aggregate-coherence sharpening into the manuscript, and deciding
 whether the anchored-control-variate redesign gets its own record.
-**[E15](experiments/e15/)** is E14's zero-cost successor (scheduling
-instead of roulette); its 15.0 ΔW-ordering probe is ~1 h of
+**[E16](experiments/e16/)** is E15's zero-cost successor (scheduling
+instead of roulette); its 16.0 ΔW-ordering probe is ~1 h of
 deterministic twins and self-contained.
 
 ### Reproducibility deliverables [FIX]
@@ -82,7 +91,8 @@ deterministic twins and self-contained.
 - Manuscript pass: ~~strip pending markers~~ (§4.5 reenc-proxy + §4.6
   probe pendings stripped 2026-07-31 with the E9 write-in; **still
   pending in-manuscript: E8.3 overlay, E3 batch-aggregate grid, raw-run
-  tarball**), shorten abstract, enlarge Fig. 1, drop colored link boxes,
+  tarball, the whole E13 write-in (Fig. 1a / Table 2 / §4.4 / §4.7 /
+  A-normalization)**), shorten abstract, enlarge Fig. 1, drop colored link boxes,
   label every claim pre-registered / confirmatory / post-hoc (the freeze
   dates exist in `record/questions.md` — link the commits), and narrow the
   headline to "spectral sufficiency of the noisy input does not
@@ -94,9 +104,28 @@ deterministic twins and self-contained.
   |Δcos| ≈ 0.3 across processes with different inductor kernel sets.
   Never compare cosines across runs — every gap/floor/debias pairing
   must stay inside one process. See [E1](experiments/e1/).
+- **Probe sets bound the claim, not just kernel paths.** Two runs with
+  different image sets share no *levels* — only within-run shape claims
+  transfer. E13 overlaps E1b by 2 of 24 images, so E1a/E1b keep every
+  endpoint level. Match `--probe_list` when levels are the point.
+- **Non-uniform σ grids need bin-width weights.** Any WLS over bins
+  (E5's fits) must carry a bin-width term alongside `1/sem²`, or a
+  segmented grid silently concentrates the fit where the bins are thin
+  (E13: 45% of the weight in 10% of the axis, which flipped p\* 2→1).
+  `bin_widths()` is normalized to mean 1, so it is exactly inert on a
+  uniform grid. See [E13](experiments/e13/).
+- **`A` in E5's fits carries a per-run G normalization.** `m(σ)` comes
+  from a fixed run while `G(σ)` floats with the probe run, so raw `A`
+  is not comparable across runs and the ratio-governor z is a
+  scale-dependent statistic. Predictions (`A·x`) are unaffected.
 - **Debiased units only.** After the instrument-validation block, every
   main-text number is the paired per-image debiased gap (arm − reenc,
   |Δ|>1.5 trimmed). Raw numbers live in the manuscript appendix.
+- **Segmented σ grids ship.** `--sigma_window` takes `LO,HI,BINS`
+  segments joined by `:` (`'0,0.1,4 : 0.1,0.9,6 : 0.9,1.0,4'`) at a
+  global `--draws_per_bin`; the single-interval form still works.
+  Per-segment draws-per-bin is *not* possible — the estimator iterates a
+  rectangular `(bins, draws)`; vary bin density instead.
 - **Results root.** Paper-bench runs pass
   `--results_root project/sigma_lowres/paper_bench/runs`.
 - **`make daemon-run` eats `--label`** from ARGS as the *job* label, so

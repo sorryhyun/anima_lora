@@ -1,4 +1,4 @@
-\section{The answer, in deployable form}
+\section{Training on downscaled images}
 \label{sec:practical}
 
 \subsection{The $(\text{route}, \sigma)$ safety map}
@@ -6,10 +6,20 @@
 
 The answer to the title question at our operating point is not a
 corrected formula but a measured map at a stated resolution; the map
-needs no table, because the verdict quantity self-describes it: a route
-is safe exactly where its debiased excess over the re-encoding control
-is indistinguishable from zero at instrument resolution
-(Eq.~\ref{eq:safe}). Measured, on the \emph{per-example} object:
+needs no table, because the verdict quantity self-describes it: a
+route is \emph{safe at margin $\varepsilon$} exactly where its
+debiased excess over the re-encoding control is indistinguishable from
+zero at instrument resolution --- the one-sided non-inferiority
+statement
+\begin{equation}
+\text{UB}_{95}\!\left(\bgap\right) \;<\; \varepsilon,
+\qquad
+\varepsilon \;\ge\; \epsstar(N, D, \text{bin})
+\;=\; 1.645\,\mathrm{SE}(N, D, \text{bin}),
+\label{eq:safe}
+\end{equation}
+not a hard bound, with $\epsstar$ the certification resolution of
+\S\ref{sec:instrument}. Measured, on the \emph{per-example} object:
 $1024{\to}896$ (ratio $0.875$, floor $0.02$--$0.04$) is \textbf{safe} on
 the interior window $\sigma \in (0.5, 0.94]$; $1280{\to}1024$ (ratio
 $0.80$, floor ${\approx}\,0$) is \textbf{safe} from
@@ -114,32 +124,32 @@ arm (vs.\ native, matched seed) & corpus A & corpus B \\
 \midrule
 native, cross-seed (yardstick) & $0.9558 \pm .0046$ & $0.9541 \pm .0093$ \\
 \midrule
-shipped: $896$, $\sigma{>}0.5$, aligned & $\mathbf{0.9551 \pm .0057}$ & $\mathbf{0.9641 \pm .0023}$ \\
-gate off: $896$, every $\sigma$ & $0.9504 \pm .0179$ & $0.9500 \pm .0141$ \\
-off-map: $768$, $\sigma{>}0.5$, aligned & $0.9503 \pm .0013$ & $0.9553 \pm .0127$ \\
-control: $768$, every $\sigma$ & $0.9527 \pm .0118$ & $0.9545 \pm .0127$ \\
+$896$, $\sigma{>}0.5$, aligned & $\mathbf{0.9551 \pm .0057}$ & $\mathbf{0.9641 \pm .0023}$ \\
+$896$, every $\sigma$ & $0.9504 \pm .0179$ & $0.9500 \pm .0141$ \\
+$768$, $\sigma{>}0.5$, aligned & $0.9503 \pm .0013$ & $0.9553 \pm .0127$ \\
+$768$, every $\sigma$ & $0.9527 \pm .0118$ & $0.9545 \pm .0127$ \\
 \bottomrule
 \end{tabular}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.355\linewidth}
-\caption{The shipped step, in full. Lines 3--5 are the entire
-change: the gate $\sigmastar{=}0.5$ and the route are read off the
-measured map (\S\ref{sec:verdict}), line 5 is the optional refinement,
-and lines 1--2 are only a reordering of a standard step --- $\sigma$ is
-drawn before the latent is fetched.}
+\caption{The shipped step, in full. Lines 3--5 (colored) are the
+entire change: the gate $\sigmastar{=}0.5$ and the route are read off
+the measured map (\S\ref{sec:verdict}), line 5 is the optional
+refinement, and lines 1--2 are only a reordering of a standard step
+--- $\sigma$ is drawn before the latent is fetched.}
 \label{alg:sigmastep}
 \centering
 \footnotesize
 \setlength{\tabcolsep}{2pt}
-\begin{tabular}{@{}r@{~}l@{}}
+\begin{tabular}{@{}>{\ttfamily}r@{~}>{\ttfamily}l@{}}
 \toprule
 \multicolumn{2}{@{}l@{}}{\textbf{one LoRA training step}} \\
 \midrule
 1 & $\sigma \sim p_{\mathrm{train}}$ \\
 2 & $x \leftarrow$ native latent of $y$ \\
-3 & \textbf{if} $\sigma > \sigmastar$ \textbf{and} $y$ on-route: \\
-4 & \quad $x \leftarrow$ demoted latent of $y$ \\
-5 & \quad rotary $\leftarrow$ banded$(\sigma)$ \\
+\addedline{3} & \addedline{if $\sigma > \sigmastar$ and $y$ on-route:} \\
+\addedline{4} & \addedline{\quad $x \leftarrow$ demoted latent of $y$} \\
+\addedline{5} & \addedline{\quad rotary $\leftarrow$ banded$(\sigma)$} \\
 6 & $\epsilon \sim \mathcal{N}(0, I)$ at shape$(x)$ \\
 7 & $z \leftarrow (1{-}\sigma)x + \sigma\epsilon$ \\
 8 & $v \leftarrow \epsilon - x$ \\
@@ -178,7 +188,7 @@ measured; quality non-inferiority is not. We flag this deliberately:
 the gap between a $480$-step exercise grid and production-scale
 training is exactly the kind of gap this paper is about. For the same
 reason we deploy the \emph{measured} map, not the predicted one --- a
-full-pipeline bootstrap of \S\ref{sec:headtohead} exposes the
+full-pipeline bootstrap of Appendix~\ref{sec:headtohead} exposes the
 prediction pipeline's own branch fragility
 (Appendix~\ref{app:instrument}).
 
@@ -224,7 +234,7 @@ campaign could certify (or refute) the $768$ high-$\sigma$ window. The
 debiasing campaign covered the corpus verdict grid; the $1280$-tier
 iso-severity, $896$-tier transfer, depth-split, and PI-intervention
 probes remain pre-debiasing reads, and the $1280$-tier curves enter the
-held-out validation with that caveat.
+held-out validation on that basis.
 
 \textbf{Scope.} Adapter (LoRA) gradients on a frozen backbone; full
 fine-tuning may differ. Pixel-space demotion only (latent-space
@@ -235,7 +245,8 @@ pre-registered values, not searched.
 \section{Conclusion}
 \label{sec:conclusion}
 
-When does training on downscaled images yield the same gradients? Not
+When does training on downscaled images yield the same gradient
+direction? Not
 when the noise has masked the frequencies the coarse grid loses. That
 spectral answer was advanced by prior work for inference-time
 substitution and had not previously been confronted with the training

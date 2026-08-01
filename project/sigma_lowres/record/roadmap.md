@@ -1,5 +1,21 @@
 # sigma_lowres — roadmap
 
+> **Frozen 2026-08-01, moved here from `../roadmap.md`.** The line's
+> phase plan as of 2026-07-27, kept for pre-registration provenance —
+> `report.md`, `groundings.md` and `yarnsig_report.md` all cite it as the
+> place a prediction was committed before its run. It is **no longer
+> maintained**; the line moved to paper mode and the live open work is
+> `../paper_bench/README.md` §"Open work".
+>
+> Superseded since it was written: the Phase-1b gate resolved with
+> **E4** (measured −14.6% wall / −15.1% FLOPs 2026-07-30; the CMMD
+> residual was retired rather than run — `../paper_bench/experiments/e4/`),
+> and the two probes pre-registered below on 2026-07-27 — the **yarnsig
+> 1024→768 rescue** and the **yarnsig 1280→1024 gate** — were **never
+> run**, as was the σ-window refinement under "Next" (deprioritized at
+> 5/24 images 2026-07-26). Bare `results/<run-id>/` paths are relative to
+> `../bench/results/`.
+
 Status: Phase 0 DONE (spectral mechanism refuted, σ-map measured), Phase 1a
 DONE (ratio transfer FAILED), pooled-gradient probe DONE 2026-07-25,
 **1280→1024 probe DONE 2026-07-26** (Q1 answered: ratio refuted as governor,
@@ -14,8 +30,8 @@ cache + `--data_root` — no corpus re-preprocess, ~47 min/probe).
 `run_sigma_probe.py --sigma_window 0.5,1.0 --bins 5` on the same probe-local
 cache — all bins in the crossover region (centers 0.55…0.95). **Started
 2026-07-26, deprioritized at 5/24 images** (partial rows
-`bench/results/20260726-2109/`; same command re-runs) in favor of the
-prior-distance discriminator, which landed the same day (record/groundings.md G6:
+`../bench/results/20260726-2109/`; same command re-runs) in favor of the
+prior-distance discriminator, which landed the same day (groundings.md G6:
 no 1280 discontinuity, prior ↮ Floor — the Floor is graph-side). Payoff of resuming is gate-position-sensitive: σ\* ≈ 0.65 →
 ~9% epoch saving on 1280-tier data, σ\* ≈ 0.75 → ~5%. Then the decision
 point:
@@ -43,8 +59,8 @@ material). 512 was already closed (Resid_512 ≈ 0.22). Safe set unchanged:
 
 ## YaRN-banded gate-widening probe for 1024→896 **[RUN 2026-07-27 — no gate widening; the owed retune was superseded by the SigMa gate probe below]**
 
-Outcome (`bench/results/20260727-1421/`, full read in
-`record/yarnsig_report.md`):
+Outcome (`../bench/results/20260727-1421/`, full read in
+`yarnsig_report.md`):
 between the pre-registered branches. (1)'s improvement leg passed at
 σ=0.59 (paired yarn−896 −0.050, 2.1 SEM) but the **in-band leg failed
 everywhere** (yarn−reenc +0.06–0.19, ≥3.4 SEM out at every bin σ ≤ 0.65)
@@ -80,8 +96,8 @@ regardless of mid-σ behavior.
 
 ## SigMa σ-gated YaRN boundaries **[RUN 2026-07-27 — PASS both legs; yarnsig = the Phase-1b refinement candidate]**
 
-Outcome (`bench/results/20260727-1639/`, full read in
-`record/yarnsig_report.md` §"SigMa σ-gated YaRN boundaries"): liability leg PASS (+0.033 ± 0.025 at
+Outcome (`../bench/results/20260727-1639/`, full read in
+`yarnsig_report.md` §"SigMa σ-gated YaRN boundaries"): liability leg PASS (+0.033 ± 0.025 at
 σ=0.21, within 2 SEM; static yarn replicated +0.079 in-pool → gate cut it
 ~58%, residual trend noted), preservation leg PASS (yarnsig ≈ yarn at
 σ=0.59 + endpoint; best/most-stable arm at the endpoint). Per
@@ -177,7 +193,7 @@ Pre-registered read (one shot; no α,β / γ,σ_c iteration):
 ## yarnsig 1280→1024 gate probe **[PRE-REGISTERED 2026-07-27]**
 
 Resumes the deprioritized σ\*-localization run (partial rows
-`bench/results/20260726-2109/`) with alignment arms added: does
+`../bench/results/20260726-2109/`) with alignment arms added: does
 frequency-selective alignment move the 1280→1024 crossover left from
 (0.625, 0.875) — ideally to ≤ 0.5625, letting the route share the
 896-route's single σ>0.5 threshold? At 896 yarn was NOT a gate-widener
@@ -214,7 +230,7 @@ Pre-registered read:
 ## Phase 1b — trainer wiring **[BUILT 2026-07-26]** + the gate **[E4 core RUN 2026-07-30 — CMMD read owed]**
 
 Wiring shipped opt-in (`--sigma_lowres`, route pinned to 1024→896 @ σ>0.5) —
-full description in `methods.md` §"Phase 1b trainer wiring". Key deviations
+full description in `../methods.md` §"Phase 1b trainer wiring". Key deviations
 from the sketch below: σ is drawn trainer-side (σ-first via
 `draw_flat_sigmas`, single source of density truth) rather than at batch
 assembly, and the sibling cache is an **in-npz key** (`demoted_{H}x{W}`, `make
@@ -224,26 +240,26 @@ discovery needed no changes at all.
 **yarnsig wiring [BUILT 2026-07-27] + in-vivo arm [RUN 2026-07-27 — benign]**:
 `--sigma_lowres_yarnsig` (bare = the probe's `1,4,0.35,2`) applies the
 SigMa-gated banded rope on demoted forwards only. Fifth paired tenth4s arm +
-rank-space ΔW read (`record/yarnsig_report.md` §"yarnsig in-vivo arm",
+rank-space ΔW read (`yarnsig_report.md` §"yarnsig in-vivo arm",
 `bench/compare_ckpt_dw.py` now the permanent instrument): base↔yarnsig
 0.319 ≈ base↔sigma 0.320 (no added displacement), sigma↔yarnsig 0.402 with
 the best late-block agreement of any pair — the rope footprint sits in the
 low-signal early/mid blocks. No red flag; not a gate substitute.
 
-- **Gate**: the E4 grid (`paper_bench/experiments/e4/README.md` — 4 arms
+- **Gate**: the E4 grid (`../paper_bench/experiments/e4/README.md` — 4 arms
   × 3 seeds × 2 artists, superseding the three-armed sketch) ran 2026-07-30:
   wall-clock **measured −14.6% / −15.1% FLOPs** at fixed steps, and the
   seed-noise yardstick puts sigma896's render deltas inside the seed lottery.
   **Still owed**: the CMMD non-inferiority read — the exercise pass had no
   metric power (negative control unsafe768 ≈ native at exercise N; full-band
-  rescoring queued, `paper_bench/experiments/e4/README.md`) — plus val
+  rescoring queued, `../paper_bench/experiments/e4/README.md`) — plus val
   loss + peak mem. Pitch is wall-clock at fixed steps, never "more steps in
   the same time" (autoscale lesson). CMMD regression → close the line
   (pre-committed).
 
 ## Phase 1c — bespoke loops (EC / turbo) — gated on separate probes
 
-Each needs its own operating-point probe before any wiring (record/questions.md Q5).
+Each needs its own operating-point probe before any wiring (questions.md Q5).
 Do not schedule until Phase 1b has shipped and survived its gate.
 
 ## Kill criteria
@@ -255,6 +271,6 @@ Do not schedule until Phase 1b has shipped and survived its gate.
 
 ## Pointers
 
-Design: `project/sigma_lowres/record/initial_proposal.md` · Data:
-`project/sigma_lowres/record/report.md` · Memory: `project_sigma_lowres_phase0`,
+Design: `initial_proposal.md` · Data:
+`report.md` · Memory: `project_sigma_lowres_phase0`,
 `project_tier_routing_phase3a_failed` (split-half check mandatory).

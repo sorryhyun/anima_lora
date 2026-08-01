@@ -5,7 +5,7 @@ This section fixes the estimand (\S\ref{sec:estimand}), then states two
 accounts of it in those same units: the existing spectral one
 (\S\ref{sec:spectral}), carried over from the inference-side
 literature, and ours
-(\S\ref{sec:ouraccount}--\S\ref{sec:reduction}). They are not variants
+(\S\ref{sec:ouraccount}). They are not variants
 of one model: they disagree about which quantity governs a route's
 cost, about what happens at pure noise, and about whether a single
 parameter can order all routes (\S\ref{sec:sidebyside}). Every
@@ -20,23 +20,20 @@ a clean latent and pure noise. With clean latent $x$, noise
 $\epsilon \sim \mathcal{N}(0, I)$, and noise level $\sigma \in (0,1]$,
 the noised input is $z_\sigma = (1-\sigma)\,x + \sigma\,\epsilon$ and
 the target is the velocity $v = \epsilon - x$; with caption condition
-$c$ the loss is $\|\hat v_\theta(z_\sigma, \sigma, c) - v\|^2$, and
-gradients are taken with respect to the LoRA adapter parameters only,
-on a frozen backbone.
+$c$ the loss is $\|\hat v_\theta(z_\sigma, \sigma, c) - v\|^2$.
 
 \paragraph{Demotion.}
 A \emph{demotion} $e_0 {\to} e$ replaces the native latent with a
-coarser-grid one, produced exactly as a scale-wise trainer would
-produce it ($e_0$ the route's source edge, $e$ its target edge). With
-$y$ the image at its native resolution, $\mathcal{E}$ the VAE encoder,
-and $\mathcal{R}_e$ the pixel-space downscale to the tier-$e$ bucket
-(native aspect ratio preserved),
+coarser-grid one ($e_0$ the route's source edge, $e$ its target edge).
+With $y$ the image at its native resolution, $\mathcal{E}$ the VAE
+encoder, and $\mathcal{R}_e$ the pixel-space downscale to the tier-$e$
+bucket (native aspect ratio preserved),
 $x_{\src} = \mathcal{E}(y) \longrightarrow
 x_{\dem} = \mathcal{E}\big(\mathcal{R}_{e}(y)\big)$ --- a latent with
-proportionally fewer spatial tokens; we do not downsample in latent
-space. Everything else is held fixed: the caption, the $\sigma$ under
-test, and the stratified noise draw scheme (with $\epsilon$ drawn at
-the tier-$e$ shape). The demoted step trains on
+proportionally fewer spatial tokens, the downscale acting in pixel
+space, not latent space. Everything else is unchanged: the caption,
+the $\sigma$ under test, and the noise distribution ($\epsilon$ drawn
+at the tier-$e$ shape). The demoted step trains on
 $z_\sigma = (1-\sigma)\,x_{\dem} + \sigma\,\epsilon$ with target
 $v = \epsilon - x_{\dem}$, so the substitution changes both what the
 network sees and what it is asked to predict, but only through the
@@ -68,56 +65,52 @@ control's distance $d_{\reenc}$ carries its arm label instead, since it
 changes no grid (full convention: Appendix~\ref{app:notation}). The
 \emph{reported} quantity of every bin-resolved map and every fit in this
 paper is the \emph{re-encoding excess}
-$\gap_e(\sigma) := d_e(\sigma) - d_{\reenc}(\sigma)$, the demotion
-distance beyond what the control already pays; $\gap_e$ can be
-negative, $d_e$ cannot. Endpoint and floor tables report debiased
-estimates of $d_e$ with the control as its own row.
-
-Two further properties are load-bearing and easy to lose. First, the
-\emph{aggregation operator is part of the estimand}: per-example
-(cosine per image, then mean) and batch-aggregate (gradients summed
-over the batch before the cosine, the object SGD follows) are related
-by a decomposition, not an ordering --- the batch-aggregate distance is
-an intercept (a coherent share that never averages out) plus a $1/B$
-term, so the per-example map is \emph{not} a lower bound for larger
-batches and no coefficient fitted on one transfers automatically to the
-other (Appendix~\ref{app:notation}; \S\ref{sec:map} publishes one map
-for each). Second, any estimate of $d_e(\sigma)$ compares finite-draw
-estimates of population directions. For a route whose true excess is
-zero, the paired estimate $\bgap$ fluctuates with standard error
-$\mathrm{SE}(N, D, \sigma\text{-bin})$; its one-sided 95\% upper bound
-defines the \emph{certification resolution} $\epsstar$ (the smallest
-margin certifiable even for a truly safe route) and ``safe at margin
-$\varepsilon$'' as the non-inferiority statement
 \begin{equation}
-\text{UB}_{95}\!\left(\bgap\right) \;<\; \varepsilon,
-\qquad
-\varepsilon \;\ge\; \epsstar(N, D, \text{bin})
-\;=\; 1.645\,\mathrm{SE}(N, D, \text{bin}),
-\label{eq:safe}
+\gap_e(\sigma) \;:=\; d_e(\sigma) \;-\; d_{\reenc}(\sigma),
+\label{eq:excess}
 \end{equation}
-not a hard bound. ``No certifiable window'' means a route's upper
-bounds do not cross below $\varepsilon$ at the current $(N, D)$;
-``certifiably unsafe'' means its lower bound stays above it. Getting an
-unbiased $\bgap$ out of finite draws is itself nontrivial and is the
-first business of \S\ref{sec:instrument}.
+the demotion distance beyond what the control already pays; $\gap_e$
+can be negative, $d_e$ cannot. Endpoint and floor tables report
+debiased estimates of $d_e$ with the control as its own row.
 
-\subsection{The existing account: safety is masked spectrum}
+\paragraph{The two aggregations.}
+In a batched training scenario Eq.~\ref{eq:gapdef} admits two
+aggregations over a probe set: per-example (cosine per image, then
+mean) or batch-aggregate (gradients summed over the batch before the
+cosine, the object SGD actually follows). Writing each image's
+demotion-induced gradient disagreement as a coherent mean $b$ plus a
+zero-mean idiosyncratic deviation with covariance $\Sigma_\eta$, the
+batch-aggregate distance at batch size $B$ is, to second order,
+\begin{equation*}
+\mathbb{E}[d_B] \;\approx\;
+\frac{\|P^{\perp} b\|^2}{2\|\mu\|^2}
+\;+\;
+\frac{\mathrm{tr}\!\big(P^{\perp} \Sigma_\eta P^{\perp}\big)}{2B\|\mu\|^2},
+\end{equation*}
+with $\mu$ the mean source gradient and $P^{\perp}$ the projector off
+$\hat\mu$: an intercept (the coherent share, which never averages out)
+plus a $1/B$ term. The per-example map is therefore \emph{not} a lower
+bound for larger batches --- monotone improvement with $B$ would
+require an iid zero-mean disagreement model we have not verified ---
+and no coefficient fitted on one is guaranteed to transfer to the
+other. These are different estimands; the aggregation operator is part
+of the estimand, and \S\ref{sec:map} publishes one map for each.
+
+\subsection{The spectral account}
 \label{sec:spectral}
 
 The spectral argument of \S\ref{sec:related} supplies the field's
 working model of the same gap, and it is worth deriving in the units
 Eq.~\ref{eq:gapdef} just fixed. Its strongest available form is
-SPD's tolerance-parameterized crossover \citep{xiao2026spd}: under
-the premise that each clean-latent frequency $\omega$ is Gaussian,
+SPD's tolerance-parameterized crossover: under the premise that each
+clean-latent frequency $\omega$ is Gaussian,
 $x_0^{(\omega)} \sim \mathcal{N}(0, P_\omega)$ (with $P$ the
-clean-latent power spectrum), their
-Proposition~1 states that for all $\sigma \ge t_\omega$ the
-\emph{Bayes-optimal} per-band velocity prediction is within tolerance
-$\delta$ of pure noise,
+clean-latent power spectrum), \citet{xiao2026spd} state that for all
+$\sigma \ge t_\omega$ the \emph{Bayes-optimal} per-band velocity
+prediction is within tolerance $\delta$ of pure noise,
 $\mathbb{E}[|v^{*(\omega)} - \epsilon^{(\omega)}|^2] \le \delta$, and
-their Proposition~2 places the safe-substitution boundary for a coarse
-grid at the $t_\omega$ of its Nyquist band $\omega_e$. Carried to the
+place the safe-substitution boundary for a coarse grid at the
+$t_\omega$ of its Nyquist band $\omega_e$. Carried to the
 training gradient --- under the premise that demotion costs only what
 the destroyed bands still contribute to the prediction --- the implied
 gradient gap is the destroyed-band contribution $S_e$, gated at the
@@ -154,22 +147,12 @@ to any absolute-size effect. \textbf{(c)~No floor}: for every route and
 every $\delta$ the predicted gap vanishes above a finite boundary, so
 no $\sigma$-independent term is expressible.
 
-Two properties of the instantiation on \emph{our} latents are likewise
-fixed in advance (\S\ref{sec:specscored}, Appendix~\ref{app:spectral}):
-they are high-frequency-quiet, so the family is \emph{compressed}
-(mildest-to-harshest spread below ${\sim}0.13$ in $\sigma$ at every
-tolerance), and the two routes our measurements separate maximally
-($1024{\to}896$, ratio $0.875$, and $896{\to}768$, ratio $0.857$)
-receive boundaries within $0.01$ of each other at \emph{every} $\delta$.
-One unit caveat matters when we score curves: the derivation emits
-residual units only, so any gap-unit prediction is \emph{the spectral
-account transported through} $\|\bar g_{\src}\|$ \emph{and a calibrated
-route gain}, not a parameter-free prediction.
-
-\subsection{What demotion actually perturbs: two branches}
+\subsection{Our account: what demotion perturbs, and its angular
+reduction}
 \label{sec:ouraccount}
+\label{sec:reduction}
 
-Our account starts one level lower, from what the substitution touches
+We start one level lower, from what the substitution touches
 in the gradient itself. Differentiating the loss of
 \S\ref{sec:estimand} gives, per draw and up to a constant,
 $g = \nabla_\theta \tfrac12\|\hat v_\theta - v\|^2 = J^{\!\top} r$,
@@ -218,9 +201,6 @@ licenses inference-time substitution; what training consumes is
 $\mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$, and that is not
 bounded by an input-masking argument.
 
-\subsection{The angular reduction: a two-term account}
-\label{sec:reduction}
-
 It remains to read Eq.~\ref{eq:branches} in the units of the estimand
 (step-by-step in Appendix~\ref{app:geometry}). Writing
 $u^{\perp} = u - (\hat g_{\src}^{\!\top}u)\,\hat g_{\src}$ for the
@@ -256,7 +236,7 @@ where $R'_e$ collects the remainder branch, the beyond-quadratic terms
 of Eq.~\ref{eq:exact}, and the parallel-component correction
 (exact content: Appendix~\ref{app:geometry}). $S_e$ and $F_e$ are
 non-negative; $I_e$ can carry either sign, a fact that matters in
-\S\ref{sec:headtohead}. At the harshest measured operating point
+Appendix~\ref{sec:headtohead}. At the harshest measured operating point
 ($d = 0.30$ at $512$, $\sigma{=}1$) the implied perturbation is
 $\kappa_{\mathrm{eff}} \approx 1.02$ --- not small --- so
 quadratic-order reads on that route are indicative and the exact form
@@ -309,7 +289,7 @@ $\kappa_e(\sigma) = c_e\, \|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$ (
 $A_e = c_e^2/2$ in the small-$\kappa$ limit), whose data term
 \emph{saturates} instead of overshooting. The loading itself is an
 \emph{empirical} ingredient, not a derivation, so
-\S\ref{sec:headtohead} scores both forms held out, labelling
+Appendix~\ref{sec:headtohead} scores both forms held out, labelling
 Eq.~\ref{eq:exact} the best empirical predictor and Eq.~\ref{eq:twoterm}
 the derived small-perturbation form. To keep the ledger explicit:
 Eqs.~\ref{eq:exact} and~\ref{eq:fourterm} are unconditional;
@@ -339,30 +319,26 @@ absolute-\emph{size} governor to $\mathrm{Resid}_e$. Like YaRN's own
 band thresholds \citep{peng2024yarn}, that sketch's constants are
 calibrated, not derived; we claim no closed form for $\Floor_e$.
 
-\subsection{The two accounts, side by side}
+\paragraph{The two accounts, side by side.}
 \label{sec:sidebyside}
-
 Both accounts agree that gaps shrink with $\sigma$ and order by
-severity. Everything else is discriminating, and fixed by the
-\emph{form} of Eq.~\ref{eq:spd} against Eq.~\ref{eq:twoterm} before any
-gradient is measured. They disagree about \emph{what orders routes}
-(the downscale ratio alone, against the ratio through the amplitude
-$A_e$ \emph{and} the absolute target token count through the floor
-$\Floor_e$; \S\ref{sec:ourscored}); about \emph{what is free} (one
-tolerance $\delta$ shared by every route, against per-route
-$A_e, \Floor_e$ generated by two governors; \S\ref{sec:headtohead});
-about the \emph{endpoint} ($\gap_e \to 0$ on every route, against
-$\gap_e \to \Floor_e > 0$; \S\ref{sec:ourscored}); about \emph{curve
-shape} (a gated step at $t_{\omega_e}$, against
+severity. Everything else is fixed by the \emph{form} of
+Eq.~\ref{eq:spd} against Eq.~\ref{eq:twoterm} before any gradient is
+measured: what orders routes (the downscale ratio alone, against the
+ratio through the amplitude $A_e$ \emph{and} the absolute target token
+count through the floor $\Floor_e$); what is free (one tolerance
+$\delta$ shared by every route, against per-route $A_e, \Floor_e$
+generated by two governors); the endpoint ($\gap_e \to 0$ on every
+route, against $\gap_e \to \Floor_e > 0$); the curve shape (a gated
+step at $t_{\omega_e}$, against
 $\|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$ carried through
-Eq.~\ref{eq:exact}; \S\ref{sec:specscored}); about the \emph{cross-grid
-residual} $\Delta \bar r$ (confined to the destroyed band and ordered
-by its energy, against a norm shared by all routes with route identity
-living in $J$; \S\ref{sec:ourscored}); and about \emph{equal-ratio
-routes at different absolute sizes} (identical, against same $A_e$ and
-different $\Floor_e$; \S\ref{sec:ourscored}). Each disagreement is an
-experiment in \S\ref{sec:evidence}. Two of them are decidable without
-fitting anything: if a route's gap survives at $\sigma = 1$, where the
-input is pure noise on every grid, no member of the spectral family can
-produce it; and if two routes of the \emph{same ratio} at different
-absolute sizes differ, ratio is not the whole governor.
+Eq.~\ref{eq:exact}); the cross-grid residual $\Delta \bar r$ (confined
+to the destroyed band and ordered by its energy, against a norm shared
+by all routes with route identity living in $J$); and equal-ratio
+routes at different absolute sizes (identical, against same $A_e$ and
+different $\Floor_e$). Each disagreement is an experiment in
+\S\ref{sec:evidence}, and two are decidable without fitting anything:
+if a route's gap survives at $\sigma = 1$, where the input is pure
+noise on every grid, no member of the spectral family can produce it;
+and if two routes of the \emph{same ratio} at different absolute sizes
+differ, ratio is not the whole governor.

@@ -33,6 +33,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 from datetime import datetime, timezone
@@ -84,6 +85,35 @@ def paired_stats(run_dir: Path, route: str, key: str):
     return np.array(sigma), np.array(means), np.array(sems)
 
 
+def bin_widths(run_dir: Path, n_bins: int):
+    """Per-bin sigma width, normalized to mean 1.
+
+    The WLS below weights bins by 1/sem^2 alone, which silently assumes every
+    bin covers the same slice of the sigma axis. That holds for a uniform grid
+    and FAILS for E13's segmented one, whose dense end bins are 0.025 wide
+    against 0.133 in the middle — and whose dense low-sigma bins also carry the
+    smallest SEMs, so 1/sem^2 is largest exactly where the bins are narrowest
+    (45% of the fit weight lands in sigma<0.1, which is 10% of the axis).
+    Multiplying by width restores the sigma-measure the uniform grid gave for
+    free. Normalizing to mean 1 makes this **exactly inert** on a uniform grid,
+    so the published E1b fit is reproduced bit-for-bit.
+
+    The sigma=1 endpoint bin has no width; it is assigned the mean interior
+    width, which is what the uniform grid implicitly gave it.
+    """
+    args = json.load((run_dir / "result.json").open())["args"]
+    segs = []
+    for part in (s for s in args["sigma_window"].split(":") if s.strip()):
+        f = [v for v in part.split(",") if v.strip()]
+        lo, hi = float(f[0]), float(f[1])
+        segs.append((lo, hi, int(f[2]) if len(f) == 3 else int(args["bins"])))
+    w = [(hi - lo) / b for lo, hi, b in segs for _ in range(b)]
+    if len(w) < n_bins:  # --endpoint_bin
+        w += [sum(w) / len(w)] * (n_bins - len(w))
+    w = np.array(w, dtype=float)
+    return w / w.mean()
+
+
 def bin_gnorm(run_dir: Path):
     m = json.load((run_dir / "result.json").open())["metrics"]
     return np.array(m["gnorm_native"]["mean"])
@@ -122,20 +152,22 @@ def wls_line(x, y, w):
     return A, F, se_A, se_F
 
 
-def main() -> None:
+def main(tier1024: Path = E1B, tag: str = "") -> None:
     msig, mvals = m_bar()
 
     # measured paired curves
     curves = {}
     for route in ("896", "768", "512"):
-        curves[route] = paired_stats(E1B, route, "debiased_gap")
+        curves[route] = paired_stats(tier1024, route, "debiased_gap")
     for route in ("1120", "1024"):
         curves[route] = paired_stats(G9, route, "gap")
     g5_1024 = paired_stats(G5, "1024", "gap")  # cross-check only
 
-    gnorm = {"1024tier": bin_gnorm(E1B), "1280tier": bin_gnorm(G9)}
+    gnorm = {"1024tier": bin_gnorm(tier1024), "1280tier": bin_gnorm(G9)}
     tier_of = {"896": "1024tier", "768": "1024tier", "512": "1024tier",
                "1120": "1280tier", "1024": "1280tier"}
+    src = {"1024tier": tier1024, "1280tier": G9}
+    widths = {r: bin_widths(src[tier_of[r]], len(curves[r][0])) for r in curves}
 
     def design(route, p):
         sig, _, _ = curves[route]
@@ -148,7 +180,7 @@ def main() -> None:
         params = {}
         for route in FIT_ROUTES:
             _, y, sem = curves[route]
-            x, w = design(route, p), 1.0 / sem**2
+            x, w = design(route, p), widths[route] / sem**2
             A, F, se_A, se_F = wls_line(x, y, w)
             sse += float(np.sum(w * (y - (A * x + F)) ** 2))
             params[route] = dict(A=A, F=F, se_A=se_A, se_F=se_F)
@@ -192,7 +224,7 @@ def main() -> None:
         F = F_of_tokens(TOKENS[route])
         pred = A * x + F
         band = np.sqrt((x * se_A) ** 2 + np.median([f[2] for f in fpts]) ** 2)
-        w = 1.0 / sem**2
+        w = widths[route] / sem**2
         rmse = float(np.sqrt(np.mean((y - pred) ** 2)))
         chi2 = float(np.mean(((y - pred) / sem) ** 2))
         # oracle: quadratic in sigma fit on the held-out data itself (3 dof)
@@ -244,7 +276,7 @@ def main() -> None:
     )
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out_dir = RUNS / f"{stamp}-e5-holdout"
+    out_dir = RUNS / f"{stamp}-e5-holdout{tag}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- figure: measured vs predicted per held-out route ----
@@ -276,7 +308,7 @@ def main() -> None:
         script="project/sigma_lowres/paper_bench/experiments/e5/e5_holdout.py",
         label="e5-holdout",
         timestamp_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        sources=dict(e1b=str(E1B), g9=str(G9), g5=str(G5), g7=str(G7)),
+        sources=dict(e1b=str(tier1024), g9=str(G9), g5=str(G5), g7=str(G7)),
         caveats=[
             "1280-tier curves are RAW paired (no self-floors in G9/G5 runs; D=4)",
             "m(sigma) linearly extrapolated below sigma=0.125 for the two lowest 1024-tier bins",
@@ -310,4 +342,15 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument(
+        "--tier1024_run",
+        default=str(E1B),
+        help="run dir supplying the 1024-tier debiased paired curves + gnorm "
+        "(default: the published E1b run). Point at E13's segmented-grid run "
+        "to refit against the resolved curve; the 1280-tier legs (G9) and "
+        "m_bar (G7) are unaffected.",
+    )
+    ap.add_argument("--tag", default="", help="suffix on the output run dir")
+    _a = ap.parse_args()
+    main(Path(_a.tier1024_run), _a.tag)

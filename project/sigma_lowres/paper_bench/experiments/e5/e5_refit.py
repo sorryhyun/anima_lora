@@ -41,6 +41,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import sys
@@ -65,6 +66,7 @@ from e5_holdout import (  # noqa: E402
     TOKENS,
     TRIM_ABS,
     bin_gnorm,
+    bin_widths,
     interp_extrap,
     m_bar,
     paired_stats,
@@ -166,7 +168,7 @@ def loo896_floor(F512, F1120):
     return F0 * math.exp(-TOKENS["896"] / tau)
 
 
-def bootstrap_predictions(mats, x_of, B=1000, seed=0):
+def bootstrap_predictions(mats, x_of, widths, B=1000, seed=0):
     """Full-pipeline bootstrap of the X-form fit->governor->predict chain.
 
     Resamples images within each run, re-bins, refits (c, F) per fit
@@ -194,7 +196,7 @@ def bootstrap_predictions(mats, x_of, B=1000, seed=0):
             if not np.all(np.isfinite(sem)) or np.any(sem <= 0):
                 ok = False
                 break
-            fit[r] = fit_sat_vec(x_of(r), y, 1.0 / sem**2)
+            fit[r] = fit_sat_vec(x_of(r), y, widths[r] / sem**2)
         if not ok:
             n_drop += 1
             continue
@@ -247,14 +249,16 @@ def two_point_governor(vals, ses):
     return gov, z
 
 
-def main() -> None:
+def main(tier1024: Path = E1B, tag: str = "") -> None:
     msig, mvals = m_bar()
     curves = {}
     for route in ("896", "768", "512"):
-        curves[route] = paired_stats(E1B, route, "debiased_gap")
+        curves[route] = paired_stats(tier1024, route, "debiased_gap")
     for route in ("1120", "1024"):
         curves[route] = paired_stats(G9, route, "gap")
-    gnorm = {"1024tier": bin_gnorm(E1B), "1280tier": bin_gnorm(G9)}
+    gnorm = {"1024tier": bin_gnorm(tier1024), "1280tier": bin_gnorm(G9)}
+    src = {"1024tier": tier1024, "1280tier": G9}
+    widths = {r: bin_widths(src[TIER_OF[r]], len(curves[r][0])) for r in curves}
 
     def x_ratio(route):
         """m(sigma)/G(sigma) on the route's own sigma grid."""
@@ -273,7 +277,7 @@ def main() -> None:
         sse, params = 0.0, {}
         for route in FIT_ROUTES:
             _, y, sem = curves[route]
-            x, w = x_power(route, p), 1.0 / sem**2
+            x, w = x_power(route, p), widths[route] / sem**2
             A, F, se_A, se_F = wls_line(x, y, w)
             sse += float(np.sum(w * (y - (A * x + F)) ** 2))
             params[route] = dict(A=A, F=F, se_A=se_A, se_F=se_F)
@@ -286,7 +290,7 @@ def main() -> None:
     fitQ = {}
     for route in FIT_ROUTES:
         _, y, sem = curves[route]
-        x, w = x_ratio(route) ** 2, 1.0 / sem**2
+        x, w = x_ratio(route) ** 2, widths[route] / sem**2
         A, F, se_A, se_F = wls_line(x, y, w)
         fitQ[route] = dict(A=A, F=F, se_A=se_A, se_F=se_F)
     forms["Q"] = dict(kind="quad", fit=fitQ)
@@ -295,7 +299,7 @@ def main() -> None:
     fitX = {}
     for route in FIT_ROUTES:
         _, y, sem = curves[route]
-        c, F, se_c, se_F, _ = fit_sat_route(x_ratio(route), y, 1.0 / sem**2)
+        c, F, se_c, se_F, _ = fit_sat_route(x_ratio(route), y, widths[route] / sem**2)
         fitX[route] = dict(A=c, F=F, se_A=se_c, se_F=se_F)  # A slot holds c
     forms["X"] = dict(kind="exact", fit=fitX)
 
@@ -338,7 +342,7 @@ def main() -> None:
         for route in HELD_OUT:
             sig, y, sem = curves[route]
             pred = predict(form, route, gov_A, F_law)
-            w = 1.0 / sem**2
+            w = widths[route] / sem**2
             coef = np.polyfit(sig, y, 2, w=np.sqrt(w))
             oracle = np.polyval(coef, sig)
             held[route] = dict(
@@ -373,7 +377,7 @@ def main() -> None:
     )
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
-    out_dir = RUNS / f"{stamp}-e5-refit"
+    out_dir = RUNS / f"{stamp}-e5-refit{tag}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- figures: held-out 768 first, then the fit routes 896/512 (paper
@@ -434,9 +438,9 @@ def main() -> None:
     # ---- full-pipeline bootstrap (X form) ----
     mats = {}
     for r in ("896", "512"):
-        _, mats[r] = per_image_matrix(E1B, r, "debiased_gap")
+        _, mats[r] = per_image_matrix(tier1024, r, "debiased_gap")
     _, mats["1120"] = per_image_matrix(G9, "1120", "gap")
-    boot = bootstrap_predictions(mats, x_ratio)
+    boot = bootstrap_predictions(mats, x_ratio, widths)
 
     def qtiles(a):
         q = np.percentile(a, [2.5, 16, 50, 84, 97.5], axis=0)
@@ -505,7 +509,7 @@ def main() -> None:
         script="project/sigma_lowres/paper_bench/experiments/e5/e5_refit.py",
         label="e5-refit",
         timestamp_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        sources=dict(e1b=str(E1B), g9=str(G9)),
+        sources=dict(e1b=str(tier1024), g9=str(G9)),
         caveats=[
             "same sources and caveats as e5_holdout.py (RAW 1280-tier, D=4; "
             "m extrapolated below sigma=0.125)",
@@ -555,4 +559,15 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument(
+        "--tier1024_run",
+        default=str(E1B),
+        help="run dir supplying the 1024-tier debiased paired curves + gnorm "
+        "(default: the published E1b run). Point at E13's segmented-grid run "
+        "to refit against the resolved curve; the 1280-tier legs (G9) and "
+        "m_bar (G7) are unaffected.",
+    )
+    ap.add_argument("--tag", default="", help="suffix on the output run dir")
+    _a = ap.parse_args()
+    main(Path(_a.tier1024_run), _a.tag)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E14 14.0 — pricing the two-level unbiased demotion estimator. No GPU.
+"""E15 15.0 — pricing the two-level unbiased demotion estimator. No GPU.
 
 Prices candidates A (768 @ sigma>0.5), B (896 all-sigma), C (768 all-sigma)
 from already-committed run data:
@@ -301,7 +301,7 @@ def main():
 
     result = {
         "schema_version": 1,
-        "script": "project/sigma_lowres/paper_bench/experiments/e14/e14_price.py",
+        "script": "project/sigma_lowres/paper_bench/experiments/e15/e15_price.py",
         "label": "e14-pricing",
         "timestamp_utc": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sources": {"e1b": str(E1B_DIR), "e9": str(E9_DIR), "e5": str(E5_RESULT)},
@@ -314,7 +314,7 @@ def main():
             "E2 is a LOWER BOUND on per-draw correction second moment (per-image D=8 means; h4)",
             "V0 baseline = within-image draw noise only (no between-image term): inflation overstated -> gate conservative",
             "raw (undebiased) cross-grid cosines used: attenuation overstates rel-diff -> conservative",
-            "E1b arms are plain demote; trainer g_dem includes yarnsig (h3) — 14.1 measures the wired estimand",
+            "E1b arms are plain demote; trainer g_dem includes yarnsig (h3) — 15.1 measures the wired estimand",
             "E9 cross-check is a different process AND different estimand (aggregate vs per-image); norms only, no cross-process cosines (E1 rule)",
         ],
         "constants": {"E4_cost": E4_COST, "q_floor": Q_FLOOR, "infl_gate": INFL_GATE, "net_gate": NET_GATE},
@@ -351,7 +351,7 @@ def main():
     (out / "q_table.json").write_text(json.dumps(q_table, indent=1))
 
     # readable report
-    print(f"== E14 14.0 pricing -> {out}")
+    print(f"== E15 15.0 pricing -> {out}")
     print("\nrel-diff map  sqrt(E2) = mean ||g_dem-g_nat||/||g_nat|| per image (E1b, N=40, D=8)")
     hdr = "route " + " ".join(f"{c:>7.3f}" for c in centers)
     print(hdr)

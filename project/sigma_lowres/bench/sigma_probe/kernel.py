@@ -62,14 +62,16 @@ def bin_sigmas(bins: int, draws: int, lo: float = 0.0, hi: float = 1.0) -> torch
 
 
 def build_sigmas(
-    bins: int, draws: int, endpoint: bool, lo: float = 0.0, hi: float = 1.0
+    segments: list[tuple[float, float, int]], draws: int, endpoint: bool
 ) -> torch.Tensor:
-    """Uniform-bin grid over the (lo, hi) window, optionally with an exact
-    σ=1.0 bin appended. ``--bins 0 --endpoint_bin`` gives an endpoint-only
-    grid."""
-    parts = []
-    if bins > 0:
-        parts.append(bin_sigmas(bins, draws, lo, hi))
+    """Concatenated uniform-bin grid over one or more σ segments, optionally
+    with an exact σ=1.0 bin appended. Each segment is ``(lo, hi, bins)`` and
+    contributes its own ``bin_sigmas`` block — bin *density* varies per segment
+    (E13's dense ends), draws-per-bin stays global so the tensor stays
+    rectangular ``(total_bins, draws)``; everything downstream keys off that
+    shape. Segments with ``bins == 0`` are skipped, so ``--bins 0
+    --endpoint_bin`` still gives an endpoint-only grid."""
+    parts = [bin_sigmas(b, draws, lo, hi) for lo, hi, b in segments if b > 0]
     if endpoint:
         parts.append(torch.ones(1, draws, dtype=torch.float32))
     if not parts:
@@ -279,7 +281,7 @@ def build_probe_bundle(args, probe, extra_latents):
             seq_range=(min(counts), max(counts)),
             dynamic_seq=True,
             activation_memory_budget=args.activation_memory_budget,
-            partitioner_aggressive_recomputation=True,
+            partitioner_aggressive_recomputation=args.partitioner_aggressive,
             grad_ckpt=False,
         )
     return bundle
@@ -333,7 +335,9 @@ def grad_estimate_binned(
         assert max(snap) == n_draws, "largest prefix must equal draws_per_bin"
 
     def flat_grad() -> torch.Tensor:
-        return torch.cat([p.grad.detach().float().flatten().cpu() for p in params])
+        # cat on-GPU then one D2H copy: per-param .cpu() is 560 small sync
+        # transfers per bin, whose launch latency stalls the draw loop
+        return torch.cat([p.grad.detach().float().flatten() for p in params]).cpu()
 
     ctx = rope_patch() if rope_patch else nullcontext()
     with ctx as rope_handle:

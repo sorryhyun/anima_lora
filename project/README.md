@@ -24,9 +24,11 @@ Active projects:
 - [`sigma_lowres/`](sigma_lowres/) — σ-conditional low-res gradient routing.
   Spectral mechanism refuted; one measured-safe route (1024→896 @ σ>0.5),
   measured −14.6% wall. Now in paper mode: the experiment tree is
-  [`paper_bench/`](sigma_lowres/paper_bench/) (E1–E12, one dir each) and
-  the pre-paper docs — including this table's `questions.md` — are frozen
-  under [`record/`](sigma_lowres/record/). Line home:
+  [`paper_bench/`](sigma_lowres/paper_bench/) (E1–E15, one dir each) and
+  the pre-paper docs — including this table's `questions.md` and
+  `roadmap.md` (frozen 2026-08-01; open work now lives in
+  `paper_bench/README.md`) — are frozen under
+  [`record/`](sigma_lowres/record/). `methods.md` stays live. Line home:
   [`sigma_lowres/README.md`](sigma_lowres/README.md).
 - [`directedit_ec/`](directedit_ec/) — EasyControl cond stream as a learned
   preservation prior for DirectEdit. Phases 0–1b passed zero-training;

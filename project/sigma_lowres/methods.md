@@ -4,8 +4,14 @@ What exists in code for the σ-conditional low-res gradient line: the
 observability instrumentation (Measurements A/B below) **and, since
 2026-07-26, the Phase 1b trainer wiring** (next section) — built opt-in
 (`--sigma_lowres`). The E4 grid measured the wiring end-to-end 2026-07-30
-(−14.6% wall at fixed steps); the CMMD non-inferiority read is still owed
+(**−14.6% wall / −15.1% FLOPs** at fixed steps, render deltas inside the
+seed lottery); the CMMD non-inferiority read was **retired rather than
+run** — the 5-arm seed yardstick is the shipped read
 (`paper_bench/experiments/e4/README.md`).
+
+*This file is live.* The line's phase plan froze into
+`record/roadmap.md` 2026-08-01; open work is `paper_bench/README.md`
+§"Open work".
 
 ## Phase 1b trainer wiring (shipped 2026-07-26, opt-in)
 
@@ -125,10 +131,20 @@ across images, SEM ~0.02), not the per-image ranking that failed there.
   (decode→re-encode at native res — isolates VAE round-trip cost), and demote
   arms (pixel-space downscale → VAE re-encode → noise; SwD's validated
   "strategy B" ordering — never latent-space downsampling).
-- **Binning**: B uniform σ bins × D stratified draws per bin per arm
-  (shipped runs: 8 × 8). Uniform bins make the training marginal density
+- **Binning**: B σ bins × D stratified draws per bin per arm (Phase 0 /
+  E1 runs: 8 × 8). Uniform bins make the training marginal density
   irrelevant; density-weighting the bins by the trainer's sigmoid σ-density
-  reproduces 3a's pooled numbers (consistency check, passed).
+  reproduces 3a's pooled numbers (consistency check, passed). **Segmented
+  grids** shipped with E13 (`parse_sigma_window`): `--sigma_window` takes
+  `LO,HI,BINS` segments joined by `:` at one global `--draws_per_bin`
+  (`'0,0.1,4 : 0.1,0.9,6 : 0.9,1.0,4'`), so bin *density* can vary across
+  the axis; the single-interval form still works. Per-segment
+  draws-per-bin is not possible — the estimator iterates a rectangular
+  `(bins, draws)`. Non-uniform bins make bin **width** a required WLS
+  weight downstream (E13's refit).
+- **Fixed probe sets**: `--probe_list <json>` pins the exact
+  artist/stem list (and sets `num_images`), which is what makes *levels*
+  comparable across runs — without it two runs share only shape claims.
 - **Per image × bin outputs**: cos_floor, cos_reenc, cos_e, gap_e =
   floor − cos_e, grad norms. Verdicts read off bin-mean curves with a
   mandatory split-half reliability check.

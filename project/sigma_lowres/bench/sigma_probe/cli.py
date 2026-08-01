@@ -43,7 +43,12 @@ def parse_args(
         "--sigma_window",
         default="0,1",
         help="LO,HI sub-interval the uniform bins cover (e.g. 0.5,1.0 puts "
-        "every bin in the high-σ crossover region); --endpoint_bin unaffected",
+        "every bin in the high-σ crossover region); --endpoint_bin unaffected. "
+        "Segmented form (E13): ':'-separated LO,HI,BINS segments — "
+        "'0,0.1,4 : 0.1,0.9,6 : 0.9,1.0,4' resolves both ends of the curve "
+        "densely in ONE process. Segments must be sorted, non-overlapping and "
+        "inside [0,1]; --bins is then ignored (it is set to the total) and "
+        "draws-per-bin stays global (the estimator grid is rectangular)",
     )
     p.add_argument("--tier", type=int, default=1024)
     p.add_argument("--demote_edges", default="896,768")
@@ -178,6 +183,15 @@ def parse_args(
         "draw-summed gradients — divide by n_images*draws for means.",
     )
     p.add_argument(
+        "--arm_sums_dtype",
+        choices=("fp32", "fp16"),
+        default="fp32",
+        help="--keep_arm_sums store dtype. fp16 halves the disk footprint "
+        "(a repromote x self-floor 15-bin store is ~75 GB fp32 — over this "
+        "box's headroom) at ~1e-3 relative accumulation rounding, well "
+        "under the vector ledger's read precision; manifest records it.",
+    )
+    p.add_argument(
         "--target_kappa",
         action="store_true",
         help="with --target_alpha 0,1 (endpoint-only: --bins 0 "
@@ -257,6 +271,15 @@ def parse_args(
         help="partitioner knapsack cap under compile (freefit knee; 1.0 = off)",
     )
     p.add_argument(
+        "--partitioner_aggressive",
+        action="store_true",
+        help="opt back into partitioner aggressive recomputation (the "
+        "issue-58 bench: −2.25 GB for +12.6% s/it). Historical probe runs "
+        "(≤ E13) had it hardwired ON; at B=1 the probe peaks well under "
+        "16 GB without it, so the default is now the faster ship_base "
+        "partitioner.",
+    )
+    p.add_argument(
         "--deterministic",
         action="store_true",
         help="mirror train.py's deterministic mode (flash-attn deterministic "
@@ -299,12 +322,52 @@ class RunConfig:
     reenc_control: bool
     sigma_lo: float
     sigma_hi: float
+    # (lo, hi, bins) per --sigma_window segment; single-entry for the plain form
+    segments: list[tuple[float, float, int]] = field(default_factory=list)
     alphas: list[float] = field(default_factory=lambda: [1.0])
     sweep: list[int] | None = None
     yarn_bands: tuple[float, float] | None = None
     yarn_gate: tuple[float, float] | None = None
     probe_order: list[tuple[str, str]] | None = None
     probe_tags: dict[tuple[str, str], dict] | None = None
+
+
+def parse_sigma_window(spec: str, fallback_bins: int) -> list[tuple[float, float, int]]:
+    """``--sigma_window`` → sorted, non-overlapping ``(lo, hi, bins)`` segments.
+
+    ``"0.5,1.0"`` (one segment, no BINS) keeps the historical meaning and takes
+    its bin count from ``--bins``. ``"0,0.1,4 : 0.1,0.9,6 : 0.9,1.0,4"`` is the
+    segmented form — per-segment bin *density*, global draws-per-bin.
+    """
+    segs: list[tuple[float, float, int]] = []
+    parts = [s for s in spec.split(":") if s.strip()]
+    if not parts:
+        raise SystemExit("--sigma_window is empty")
+    for part in parts:
+        fields = [f for f in part.split(",") if f.strip()]
+        if len(fields) == 2 and len(parts) == 1:
+            lo, hi, bins = float(fields[0]), float(fields[1]), fallback_bins
+        elif len(fields) == 3:
+            lo, hi = float(fields[0]), float(fields[1])
+            bins = int(fields[2])
+            if bins < 1:
+                raise SystemExit(f"--sigma_window segment '{part}' needs BINS >= 1")
+        else:
+            raise SystemExit(
+                f"--sigma_window segment '{part}' must be LO,HI,BINS "
+                "(LO,HI only allowed for the single-segment form)"
+            )
+        if not 0.0 <= lo < hi <= 1.0:
+            raise SystemExit(
+                f"--sigma_window must satisfy 0 <= LO < HI <= 1, got {lo},{hi}"
+            )
+        if segs and lo < segs[-1][1]:
+            raise SystemExit(
+                "--sigma_window segments must be sorted and non-overlapping, "
+                f"got [{segs[-1][0]},{segs[-1][1]}] then [{lo},{hi}]"
+            )
+        segs.append((lo, hi, bins))
+    return segs
 
 
 def resolve_run_config(args: argparse.Namespace) -> RunConfig:
@@ -390,17 +453,24 @@ def resolve_run_config(args: argparse.Namespace) -> RunConfig:
         # the alt seed base (+500_000) sits above i*10_000 only for i < 50
         raise SystemExit("--self_floor seed spacing supports --num_images <= 50")
 
-    lo, hi = (float(v) for v in args.sigma_window.split(","))
-    if not 0.0 <= lo < hi <= 1.0:
-        raise SystemExit(
-            f"--sigma_window must satisfy 0 <= LO < HI <= 1, got {lo},{hi}"
+    segments = parse_sigma_window(args.sigma_window, args.bins)
+    if len(segments) > 1:
+        # the segmented form owns the bin count; --bins is only the
+        # single-segment fallback. result.json and the seed-budget check both
+        # read args.bins, so it has to become the total.
+        args.bins = sum(b for _, _, b in segments)
+        log.info(
+            "segmented σ window: "
+            + " : ".join(f"[{lo},{hi}]×{b}" for lo, hi, b in segments)
+            + f" = {args.bins} bins"
         )
 
     return RunConfig(
         edges=edges,
         reenc_control=reenc_control,
-        sigma_lo=lo,
-        sigma_hi=hi,
+        sigma_lo=segments[0][0],
+        sigma_hi=segments[-1][1],
+        segments=segments,
         alphas=alphas,
         sweep=sweep,
         yarn_bands=yarn_bands,

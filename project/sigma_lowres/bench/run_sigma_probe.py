@@ -166,9 +166,7 @@ def main() -> None:
     start_heartbeat()
     cfg = resolve_run_config(args)
     device = torch.device("cuda")
-    sigmas = build_sigmas(
-        args.bins, args.draws_per_bin, args.endpoint_bin, cfg.sigma_lo, cfg.sigma_hi
-    )
+    sigmas = build_sigmas(cfg.segments, args.draws_per_bin, args.endpoint_bin)
     total_draws = int(sigmas.numel())
 
     probe = select_probe(args, cfg)
@@ -209,7 +207,11 @@ def main() -> None:
     rows_path = run_dir / "per_image.jsonl"
     rows: list[dict] = []
     arm_keys = build_arm_keys(args, cfg, total_draws)
-    arm_sums = ArmSumAccumulator(run_dir / "arm_sums") if args.keep_arm_sums else None
+    arm_sums = (
+        ArmSumAccumulator(run_dir / "arm_sums", dtype=args.arm_sums_dtype)
+        if args.keep_arm_sums
+        else None
+    )
     pool_strata: list[dict] = []
     pool_spill = run_dir / "pool_agg_spill"
     pool_agg = PoolAccumulator(backing_dir=pool_spill)
@@ -311,8 +313,39 @@ def main() -> None:
                 }
             statter = ArmStatter(g_a, g_b, floor, groups=groups, floor_g=floor_g)
 
+            # Streaming arm retirement: a full repromote × self-floor arm set
+            # on a 15-bin grid is ~16 lists × bins × 311 MB ≈ 75 GB of CPU
+            # fp32 — over this machine's RAM (the arm dict, not the GPU, is
+            # what killed the first e13b smoke). Unless a consumer needs the
+            # whole set at once (--pool / --target_kappa), each arm's vectors
+            # are archived to arm_sums and freed by the stats worker right
+            # after its stats job, keeping only a/b + in-flight arms resident
+            # while the main thread never blocks on stats or store I/O.
+            streaming = not args.pool and not args.target_kappa
+
             stat_futs = []
+            arch_futs = []
             arms: dict[str, list[torch.Tensor]] = {"a": g_a, "b": g_b}
+
+            def track(fut, key: str, g1, g2) -> None:
+                stat_futs.append(fut)
+                entry = [(key, g1)] + ([] if g2 is None else [(f"{key}__2", g2)])
+                if streaming:
+                    # the 1-worker pool is FIFO, so this archive job runs
+                    # strictly after the arm's stats job has finished reading
+                    # the vectors; the 4.7 GB/arm store write + free happen
+                    # off the GPU-driving thread
+                    def _archive(entry=entry, sfx=sfx) -> None:
+                        for k_, v_ in entry:
+                            if arm_sums is not None:
+                                arm_sums.add(k_ + sfx, v_)
+                            v_.clear()
+
+                    arch_futs.append(stats_pool.submit(_archive))
+                else:
+                    for k_, v_ in entry:
+                        arms[k_] = v_
+
             arm_idx = 2
             if cfg.reenc_control:
                 re_lat = extra_latents[(r.stem, "reenc")]
@@ -320,12 +353,14 @@ def main() -> None:
                 g_re2 = None
                 if args.self_floor:
                     g_re2, _ = estimate(re_lat, seeds(arm_idx, alt=True), alpha=alpha_)
-                    arms["reenc__2"] = g_re2
-                stat_futs.append(
-                    stats_pool.submit(statter.stats, "reenc" + sfx, g_re, None, g_re2)
+                track(
+                    stats_pool.submit(statter.stats, "reenc" + sfx, g_re, None, g_re2),
+                    "reenc",
+                    g_re,
+                    g_re2,
                 )
                 arm_idx += 1
-                arms["reenc"] = g_re
+                g_re = g_re2 = None  # noqa: F841
             for key, lat, patch in build_demote_arms(
                 args, cfg, bundle, extra_latents, r.stem, native
             ):
@@ -335,14 +370,18 @@ def main() -> None:
                     g_d2, _ = estimate(
                         lat, seeds(arm_idx, alt=True), rope_patch=patch, alpha=alpha_
                     )
-                    arms[f"{key}__2"] = g_d2
-                stat_futs.append(
-                    stats_pool.submit(statter.stats, key + sfx, g_d, n_d, g_d2)
+                track(
+                    stats_pool.submit(statter.stats, key + sfx, g_d, n_d, g_d2),
+                    key,
+                    g_d,
+                    g_d2,
                 )
                 arm_idx += 1
-                arms[key] = g_d
+                g_d = g_d2 = None  # noqa: F841
             for fut in stat_futs:  # join stats before pooling/freeing this image
                 row.update(fut.result())
+            for fut in arch_futs:  # streamed arms archived + freed off-thread
+                fut.result()
             if args.pool:
                 cur_pool.add_image(arms, r.redundancy)
                 if cur_pool.n == args.pool:

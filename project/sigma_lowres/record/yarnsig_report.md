@@ -23,7 +23,7 @@ bands with < α rotations across the demoted extent, native spacing above
 
 Sections below are moved verbatim from `report.md` (stubs left in place
 there). New yarnsig probes (the 1024→768 rescue probe and the 1280→1024
-gate probe, pre-registered in `../roadmap.md` 2026-07-27) land here.
+gate probe, pre-registered in `roadmap.md` 2026-07-27) land here.
 
 ## YaRN-banded alignment probe (2026-07-27): gate does NOT widen — but frequency-selectivity rescues alignment from the PI penalty
 
@@ -145,7 +145,7 @@ unchanged: {1024→896 @ σ>0.5, 1280→1024 @ σ\*∈(0.625, 0.875)}.
 
 Trainer wiring for the SigMa-probe winner landed the same day
 (`--sigma_lowres_yarnsig`, bare flag = the probe's `1,4,0.35,2`;
-`methods.md` §"Phase 1b trainer wiring" for mechanics — μ from batch-min σ,
+`../methods.md` §"Phase 1b trainer wiring" for mechanics — μ from batch-min σ,
 rope swapped only on demoted forwards, invariants pinned in
 `tests/test_sigma_lowres.py::TestYarnsigRope`). Fifth paired arm trained
 into the tenth4s sweep (`anima_lora_tenth4s_yarnsig`, seed 42 CRN, 1200
@@ -193,7 +193,7 @@ change's weight-space footprint is real, landing in the same low-signal
 early/mid blocks as every trajectory perturbation; endpoint ΔW cosine
 detects separation but cannot rank treatment magnitudes.
 
-## Open probes (pre-registered 2026-07-27, `../roadmap.md`)
+## Open probes (pre-registered 2026-07-27, `roadmap.md`)
 
 1. **yarnsig 1024→768 rescue probe** — the G11 closure of 768 tested only
    uniform PI; frequency-selective alignment was never measured at 768,
