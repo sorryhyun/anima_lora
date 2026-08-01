@@ -121,32 +121,42 @@ ${\approx}\,1$ --- the population per-bin native gradient is a
 noise (validation numbers: Appendix~\ref{app:instrument}). No
 conclusion in this paper survives on the naive estimator alone.
 
-\paragraph{Resolution, pairing, and coverage.}
+\paragraph{Margins, resolution, pairing, and coverage.}
 Any estimate of $\gap_e(\sigma)$ compares finite-draw estimates of
-population directions, so every verdict needs a stated resolution. For
-a route whose true excess is zero, the paired estimate $\bgap$
-fluctuates with standard error $\mathrm{SE}(N, D, \sigma\text{-bin})$.
-A route is accordingly \emph{safe at margin $\varepsilon$} exactly
-where its debiased excess is indistinguishable from zero at instrument
-resolution --- the one-sided non-inferiority statement
+population directions, so a safety verdict needs two numbers, and they
+must be stated \emph{separately}: a margin --- the largest excess
+considered practically equivalent, a property of the question --- and
+the instrument's resolution, which determines only the power available
+to certify that margin. Conflating them would let a noisier experiment
+buy itself a looser definition of safety. We fix the practical margin
+at $\varepsilon = 0.02$, comparable to the re-encode control's own
+confidence half-width (Table~\ref{tab:floor}), independent of $N$,
+$D$, and the observed standard errors. A route is \emph{certified safe
+at margin $\varepsilon$} in a bin exactly where the one-sided
+non-inferiority bound clears it,
 \begin{equation}
 \text{UB}_{95}\!\left(\bgap\right) \;<\; \varepsilon,
-\qquad
-\varepsilon \;\ge\; \epsstar(N, D, \text{bin})
-\;=\; 1.645\,\mathrm{SE}(N, D, \text{bin}),
 \label{eq:safe}
 \end{equation}
-not a hard bound, with $\epsstar$, the zero-excess estimate's one-sided
-95\% upper bound, the \emph{certification resolution} --- the smallest
-margin certifiable even for a truly safe route (the measured map of
-\S\ref{sec:map} is stated in exactly these terms). ``No certifiable
-window'' means a route's upper
-bounds do not cross below the margin at the current $(N, D)$;
-``certifiably unsafe'' means its lower bound stays above it. At the
+and a \emph{window} claim over several bins requires the simultaneous
+(Bonferroni-corrected) one-sided bounds to clear it in every bin.
+Resolution enters only through power: for a route whose true excess is
+zero the paired estimate $\bgap$ fluctuates with standard error
+$\mathrm{SE}(N, D, \sigma\text{-bin})$, and its zero-excess upper
+bound $\epsstar(N, D, \text{bin}) = 1.645\,\mathrm{SE}$ is the
+\emph{certification resolution}. A cell with $\epsstar > \varepsilon$
+is \emph{underpowered} at the margin: a crossing there can occur on a
+favorable draw and is reported but not counted as certification, and
+the remedy is more images or draws, never a looser margin. ``No
+certifiable window'' means a route's simultaneous upper bounds do not
+cross below $\varepsilon$ at the current $(N, D)$; ``certifiably
+unsafe'' means the corresponding lower bound stays above it. At the
 verdict grid's operating point ($N{=}40$, $D{=}8$/bin) the bin-level
-$\epsstar$ is $0.03$--$0.08$; endpoint-mode draw sweeps ($D$ up to
-$64$) tighten it to
-${\approx}\,0.01$--$0.02$. At $D{=}8$ the \emph{unpaired} debiased
+$\epsstar$ is $0.03$--$0.08$ --- underpowered at
+$\varepsilon = 0.02$, so interior verdicts below are stated as the
+margins they \emph{do} certify --- while endpoint-mode draw sweeps
+($D$ up to $64$) reach $\epsstar \approx 0.01$--$0.02$ and are powered
+for the strict margin. At $D{=}8$ the \emph{unpaired} debiased
 estimator is unstable where the floors are small (mid-$\sigma$; the
 denominator is noisy), so all verdict maps report the \emph{paired
 per-image excess} $\gap_{e,i} = \dgap_{e,i} - \dgap_{\reenc,i}$,
@@ -185,7 +195,8 @@ SEMs in Appendix Table~\ref{tab:debiasedmap}; gray band: bin-level
 $\pm\epsstar$ (\S\ref{sec:instrument}); open markers: the $\sigma{=}1$
 endpoint bin): safety is a per-route boundary --- the $896$ route
 enters the band at $\sigma \approx 0.5$, $768$ has no certifiable
-window, and $512$ does not enter at any noise level --- against the
+window, and $512$ never falls inside it (grazing its boundary at
+$\sigma = 0.81$) --- against the
 spectral family's prediction of $\sigma \approx 0.14$--$0.20$.
 (b)~The estimator context those curves are read through: the
 redraw-floor cosine and the U-shaped gradient norm

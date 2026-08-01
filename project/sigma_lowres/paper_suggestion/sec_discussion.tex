@@ -19,43 +19,59 @@ the mildest route is $\sigma \approx 0.5$ --- the $896$ route is
 clearly gapped through $\sigma \le 0.31$, marginal at $0.44$, and its
 means sit within $\pm 0.03$ of zero from $0.56$ on --- $3.5\times$ the
 equal-power prediction. (iii)~The $2\times$ downscale route is
-\emph{certifiably unsafe at every noise level}: its paired debiased
-lower bound stays above $\epsstar$ in every bin (means $+0.08$ to
-$+0.60$), including $+0.17 \pm 0.06$ at $\sigma = 0.94$, where the
-input is ${\sim}97\%$ noise by power in every band the coarse grid
-cannot represent. There is no noise level at which a
-$2\times$-downscaled latent yields the native gradient direction.
+\emph{certifiably unsafe} across the noise axis: its paired debiased
+lower bound stays above the margin in eight of nine bins (means
+$+0.08$ to $+0.60$), including $+0.17 \pm 0.06$ at $\sigma = 0.94$,
+where the input is ${\sim}97\%$ noise by power in every band the
+coarse grid cannot represent; the one exception ($\sigma = 0.81$,
+whose interval widens to include zero) certifies nothing either way
+--- its upper bound is $0.17$. There is no noise level at which a
+$2\times$-downscaled latent certifies, or comes near certifying, the
+native gradient direction.
 
 Debiasing moved verdicts in both directions, and two revisions against
 the historical record are part of the result. The $768$ route's
 high-$\sigma$ plateau was roughly half estimator bias: debiased means
 sit within noise of zero across $\sigma \in [0.56, 0.94]$, but with
-upper bounds that do not cross below the $0.02$ margin at this
-$(N, D)$, and a real endpoint floor of $+0.092 \pm 0.012$ remains, so
-the earlier verdict of ``unsafe at every noise level'' softens to
-\emph{no certifiable window at instrument resolution}. Conversely the
+upper bounds that do not cross below the $\varepsilon = 0.02$ margin
+at this $(N, D)$, and a real endpoint floor of $+0.092 \pm 0.012$
+remains, so the earlier verdict of ``unsafe at every noise level''
+softens to \emph{no window certifiable at the practical margin} ---
+the margins its window bins do certify (${\approx}\,0.09$
+simultaneous) would not even separate the route from its own measured
+endpoint floor. Conversely the
 $896$ endpoint shows a small \emph{real} gap ($+0.042 \pm 0.011$) that
 single-estimate variance had buried; its safe window is the interior
 $\sigma \in (0.5, 0.94]$, not the endpoint (Appendix
 Table~\ref{tab:rawendpoint}).
 
 Collected route by route --- \emph{safe} meaning Eq.~\ref{eq:safe}
-holds at the certification resolution of \S\ref{sec:instrument}, on
-the \emph{per-example} object --- the map needs no table:
-$1024{\to}896$ (ratio $0.875$, floor $0.02$--$0.04$) is \textbf{safe} on
-the interior window $\sigma \in (0.5, 0.94]$; $1280{\to}1024$ (ratio
+holds at the stated margin, on the \emph{per-example} object --- the
+map needs no table: $1024{\to}896$ (ratio $0.875$, floor
+$0.02$--$0.04$) is \textbf{safe} on the interior window
+$\sigma \in (0.5, 0.94]$, certified at margin $0.07$ (simultaneous
+over the four window bins; $0.056$ pointwise); $1280{\to}1024$ (ratio
 $0.80$, floor ${\approx}\,0$) is \textbf{safe} from
-$\sigma \gtrsim 0.75$; the synthetic iso-severity grid $1280{\to}1120$
-is safe with $\sigmastar \approx 0.5$, as its ratio twin predicts;
-$1024{\to}768$ and $896{\to}768$ (floors $0.06$--$0.09$ and
-$0.06$--$0.12$) have \emph{no certifiable window}; and any route to
-$512$ (floor ${\approx}\,0.30$) is \emph{certifiably unsafe at every}
-$\sigma$. Safety is a per-route boundary, jointly determined by ratio
-(through $a_e$) and absolute target size (through $\Floor_e$); neither
-alone predicts the ordering. For the corpus safe route the fine print
-is: every bin in $(0.5, 0.94]$ has a debiased mean within $\pm 0.03$ of
-zero, and formal certification at the strict $0.02$ margin is achieved
-at $\sigma = 0.688$.
+$\sigma \gtrsim 0.75$, and the synthetic iso-severity grid
+$1280{\to}1120$ is safe with $\sigmastar \approx 0.5$, as its ratio
+twin predicts (both $1280$-tier reads on the pre-debiasing
+instrument; \S\ref{sec:limitations}); $1024{\to}768$ and
+$896{\to}768$ (floors $0.06$--$0.09$ and $0.06$--$0.12$) have
+\emph{no certifiable window}; and any route to $512$ (floor
+${\approx}\,0.30$) is \emph{certifiably unsafe} across the axis.
+Safety is a per-route boundary, jointly determined by ratio (through
+$a_e$) and absolute target size (through $\Floor_e$); neither alone
+predicts the ordering. For the corpus safe route the fine print is:
+every window bin's debiased mean sits within $\pm 0.03$ of zero, the
+pointwise and simultaneous one-sided bounds certify $0.056$ and
+$0.07$ respectively, and the strict $\varepsilon = 0.02$ margin is
+\emph{not yet powered} on the interior grid
+($\epsstar = 0.03$--$0.08$ per bin). One bin's upper bound does cross
+it ($\sigma = 0.69$, $\mathrm{UB}_{95} = 0.006$, on a negative point
+estimate), but by the protocol of \S\ref{sec:instrument} an
+underpowered crossing is reported, not counted; powering the interior
+window at the strict margin is a draw-count exercise, designated for
+the next probe campaign.
 
 \paragraph{A corollary worth stating plainly.}
 The safety of $1024{\to}896$ is an \emph{empirical smoothness statement
@@ -97,10 +113,24 @@ $1024$-tier latent is swapped for a cached demoted-grid sibling
 produced by the probe's own measured-safe recipe (pixel-space
 downscale, VAE re-encode); everything downstream derives from the
 swapped latent. Off-route images always train native, as does
-validation. The small real gap at the exact $\sigma{=}1$ endpoint does
-not bite: it is a boundary point of measure zero for the continuous
-training density, and the last interior bin reads ${\approx}\,0$
-debiased.
+validation. One honest asymmetry between the gate and the map must be
+stated: the gate is one-sided ($\sigma > 0.5$) while certification
+stops at $\sigma = 0.94$, and the endpoint carries a small real gap
+($+0.042 \pm 0.011$). Since the expected gradient should vary
+continuously in $\sigma$, that gap cannot be dismissed as a
+measure-zero boundary point --- it implies a neighborhood, of
+unmeasured width, over which some of it survives, and the tail
+$\sigma \in (0.94, 1)$ is exactly the interval the verdict grid does
+not resolve. Two facts bound the exposure meanwhile: the last
+interior bin reads $+0.004 \pm 0.021$, and the exercise grid of
+Table~\ref{tab:yardstick} trained \emph{with} the tail demoted and
+still landed inside the seed lottery, so any tail effect is below
+that instrument's resolution at $480$ steps. A dense upper-tail sweep
+($\sigma \in (0.9, 1)$ in four bins plus the endpoint, at higher draw
+count) is designated to resolve the shape; until it lands, the
+certified condition is $\sigma \in (0.5, 0.94]$, and the unbounded
+gate should be read as the form we exercised, not the form the map
+certifies.
 
 \textbf{Banded rotary alignment, $\sigma$-gated.} Motivated by
 \S\ref{sec:ourscored}, a frequency-selective alignment (YaRN-style
@@ -258,12 +288,19 @@ an un-normalized optimizer, say --- could apportion the endpoint gap
 differently than the angular read does.
 
 \textbf{Instrument resolution and coverage.} ``Safe'' is one-sided
-non-inferiority at the measured certification resolution
-($\epsstar = 0.03$--$0.08$ per bin; ${\approx}\,0.01$--$0.02$ at the
-endpoint sweeps). True gaps below $\epsstar$ are undetectable by
-construction, $\sigmastar$ boundaries are localized only to a bin, and
-every ``no certifiable window'' claim is $(N, D)$-relative: a larger
-campaign could certify (or refute) the $768$ high-$\sigma$ window. The
+non-inferiority against a fixed margin ($\varepsilon = 0.02$ strict;
+the interior window currently certifies at $0.056$--$0.07$), with the
+certification resolution ($\epsstar = 0.03$--$0.08$ per bin;
+${\approx}\,0.01$--$0.02$ at the endpoint sweeps) setting the power
+available, not the margin. True gaps below $\epsstar$ are undetectable
+by construction, $\sigmastar$ boundaries are localized only to a bin,
+and every ``no certifiable window'' claim is $(N, D)$-relative: a
+larger campaign could certify (or refute) the $768$ high-$\sigma$
+window at the strict margin. The upper tail $\sigma \in (0.94, 1)$ of
+the safe route is unmeasured between the last interior bin and the
+endpoint's real gap; the designated dense sweep (\S\ref{sec:trainer})
+closes it. Verdict stability under the per-image trim rule of
+\S\ref{sec:instrument} has not been separately audited. The
 debiasing campaign covered the corpus verdict grid; the $1280$-tier
 iso-severity, $896$-tier transfer, depth-split, and PI-intervention
 probes remain pre-debiasing reads, and the $1280$-tier curves enter the
@@ -288,8 +325,8 @@ one part of one branch of what demotion perturbs, and the measurements
 reject it at every point of structural divergence --- the mildest
 route's crossover sits at $3.5\times$ the equal-power prediction, no
 tolerance reproduces the map, its one free parameter is inert at the
-curve level, and a $2\times$-downscaled latent is certifiably unsafe at
-every noise level, because the network function itself is
+curve level, and a $2\times$-downscaled latent certifies at no noise
+level, because the network function itself is
 grid-calibrated: partly through its positional coordinate system,
 partly through an irreducible dependence of the computation on token
 count.
@@ -298,9 +335,10 @@ The measured answer has two conditions, matching the two terms of our
 account: the target grid must be large enough in \emph{absolute token
 count} that its graph floor sits below certification resolution, and the
 noise level must exceed a per-route boundary where the ratio-governed
-data term dies. On our model that means $1024{\to}896$ at
-$\sigma > 0.5$ and $1280{\to}1024$ at $\sigma \gtrsim 0.75$, and a
-$2\times$ downscale at no noise level. The answer is predictive, not
+data term dies. On our model that means $1024{\to}896$ on
+$\sigma \in (0.5, 0.94]$ (the upper tail toward the endpoint's small
+real gap still unresolved) and $1280{\to}1024$ at
+$\sigma \gtrsim 0.75$, and a $2\times$ downscale at no noise level. The answer is predictive, not
 merely descriptive: head to head on the same curves the account
 predicts held-out routes at ${\sim}0.07$--$0.09$ RMSE against the
 spectral family's $0.147$--$0.355$, beating an oracle fit on the

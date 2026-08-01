@@ -66,8 +66,9 @@ carried by the compute graph itself. On held-out routes it predicts
 where the spectral account, transported to the gradient and given its
 best tolerance, misses. On the mildest route ($1024{\to}896$) the
 training gradient direction is indistinguishable from native at
-instrument resolution for $\sigma > 0.5$, despite roughly a quarter
-fewer input tokens --- a window no spectral tolerance predicts.
+instrument resolution across the interior high-noise window
+$0.5 < \sigma \le 0.94$, despite roughly a quarter fewer input tokens
+--- a window no spectral tolerance predicts.
 Gating substitution on that
 window gives \emph{selective} low-resolution LoRA training:
 $-14.6\%$ wall-clock at a fixed step budget, with a sample-level

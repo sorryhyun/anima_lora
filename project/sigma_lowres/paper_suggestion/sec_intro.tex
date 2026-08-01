@@ -63,9 +63,11 @@ disagree.
 \item \textbf{A debiased measurement that scores both, and a
 predictive tool} (\S\ref{sec:evidence}; the resulting
 $(\text{route}, \sigma)$ map in \S\ref{sec:map}). Measured with per-arm
-self-floors, a draw-count extrapolation, and a stated certification
-resolution, the mildest route ($1024{\to}896$) is indistinguishable
-from the re-encode control for $\sigma > 0.5$, while no noise level
+self-floors, a draw-count extrapolation, and a pre-specified margin
+whose certification power is set --- not defined --- by the
+instrument's resolution, the mildest route ($1024{\to}896$) is
+indistinguishable from the re-encode control over the interior
+high-noise window $\sigma \in (0.5, 0.94]$, while no noise level
 rescues a $2\times$ downscale. No member of the spectral tolerance
 family reproduces that map, and at the curve level its one free
 parameter is inert. Head to head on the same curves it misses at
