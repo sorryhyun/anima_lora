@@ -40,6 +40,8 @@ gains per-α aggregates + `alpha_slope_<arm>`.
 
 ## Ops gotcha
 
-`make daemon-run` consumes `--label` from ARGS as the *job* label
-(documented dispatcher behavior), so the script never saw it and the run
-dir was created label-less — renamed by hand afterward.
+`make daemon-run` consumed `--label` from ARGS as the *job* label
+(dispatcher behavior at the time), so the script never saw it and the run
+dir was created label-less — renamed by hand afterward. **Fixed
+2026-08-01** (flags now scoped to the prefix before the script path); the
+E14 launch hit the same trap and prompted the fix.

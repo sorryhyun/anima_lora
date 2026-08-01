@@ -173,8 +173,10 @@ the low-σ question (H2) is deferred.
 
 Instrument change first, then one submission. GPU work goes through the
 daemon (a direct background GPU process is SIGKILLed by the harness
-sandbox); `make daemon-run` consumes `--label` from ARGS as the *job*
-label, so the script never sees it — the run dir is timestamped.
+sandbox); at the time `make daemon-run` consumed `--label` from ARGS as
+the *job* label, so the script never saw it — the run dir is timestamped.
+(Fixed 2026-08-01: daemon-run flags are now prefix-scoped, `--label`
+passes through.)
 
 ```bash
 # design B

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **READY 2026-08-01** — instrument prep DONE (streaming arm retirement, config timing/floor twins; see [Instrument prep](#instrument-prep--calibration-2026-08-01)); one pre-launch decision open ([grid](#the-one-open-decision--the-dense-high-segment)). Numbering note: this record takes the E14 slot; the prior E14 (MLMC pricing) is now [E15](../e15/), the prior E15 (placement) is now [E16](../e16/). **Consolidated 2026-08-01**: the "e13b" probe-matched rerun E13 owed is not a separate submission — this run carries it; E13's record now points here. |
+| **Status** | **RUNNING 2026-08-01** — submitted 23:03 as daemon job `20260801-230338-a2211a` (~19 h ETA). The [grid decision](#the-one-open-decision--the-dense-high-segment) resolved **full grid**: it was coupled to disk headroom (77 GB free vs the ≥78 GB fp32 mandate), space was freed to 84 GB, so the registered plan runs unmodified — exact E13 grid match, fp32 store. Instrument prep DONE (streaming arm retirement, config timing/floor twins; see [Instrument prep](#instrument-prep--calibration-2026-08-01)). Numbering note: this record takes the E14 slot; the prior E14 (MLMC pricing) is now [E15](../e15/), the prior E15 (placement) is now [E16](../e16/). **Consolidated 2026-08-01**: the "e13b" probe-matched rerun E13 owed is not a separate submission — this run carries it; E13's record now points here. |
 | **Question** | The measured 1024→896 curve carries a low-σ plateau (≈+0.20 over σ≈0.05–0.30 on E13's grid) that the account's prediction misses by ~4× — the one panel of the head-to-head figure where ours does not beat the spectral account (`runs/20260801-1118-fig-accounts-e13`). Three explanations produce the same scalar signature: (a) a genuinely large data term the A(ratio) governor starves, (b) negative B/C interference shaping the σ≈0.4 cliff, (c) attenuation-correction inflation at mid-σ. Which is it? |
 | **Depends on** | [E9](../e9/) (the B/C instrument, `vector_ledger.py`, the unit-honesty rule, the amplitude-matching localization it validated on 768 — but its grid was σ ∈ [0.5, 1.0]: it stops exactly where the bump begins); [E13](../e13/) (segmented `--sigma_window`, `e1b_probe_list.json`, the 2/24-overlap scope rule that forbids a standalone ledger run on a fresh probe set, and the owed §4.7 probe-matched refit this run discharges); [E5](../e5/) (the governor under test; the per-run G normalization of A) |
 | **Instrument** | `bench/run_sigma_probe.py --repromote --keep_arm_sums --self_floor --deterministic` on E13's segmented grid, E1b's 40-image probe list; analysis `../../vector_ledger.py` (shared with E9/E10). Instrument deltas landed 2026-08-01 (streaming arm retirement — **required**, see below; `--arm_sums_dtype`; `--partitioner_aggressive` now opt-in). |
@@ -64,7 +64,13 @@ curve refit E13 owes §4.7 (same images ⇒ same G ⇒ A comparable, so the
 (ii) this ledger, on the same images, same G, same kernel path.
 
 ```bash
-make daemon-run ARGS="project/sigma_lowres/bench/run_sigma_probe.py \
+# NB: submitted via `python -m anima_daemon submit` with `--` because at
+# launch time `make daemon-run` stole `--label` for the job display name
+# (unlabeled run dir; cost one false start). Fixed same day — daemon-run's
+# flags are now scoped to the prefix before the script path, so the
+# daemon-run form works too.
+uv run python -m anima_daemon submit --label e14-ledger-probematched -- \
+  project/sigma_lowres/bench/run_sigma_probe.py \
   --adapter output/ckpt/anima_soup_sincos.safetensors \
   --sigma_window '0,0.1,4 : 0.1,0.9,6 : 0.9,1.0,4' \
   --draws_per_bin 12 --endpoint_bin --self_floor --deterministic \
@@ -72,7 +78,7 @@ make daemon-run ARGS="project/sigma_lowres/bench/run_sigma_probe.py \
   --demote_edges 896,768,512 \
   --probe_list project/sigma_lowres/paper_bench/experiments/e13/e1b_probe_list.json \
   --results_root project/sigma_lowres/paper_bench/runs \
-  --label e14-ledger-probematched --queue"
+  --label e14-ledger-probematched
 ```
 
 Config rationale (all measured, runs under

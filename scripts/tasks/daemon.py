@@ -393,8 +393,80 @@ def cmd_daemon_wait(extra):
     sys.exit(_wait_and_report(cl, job, timeout=timeout))
 
 
+def _parse_daemon_run_argv(extra):
+    """Split daemon-run's own flags from the child argv; return
+    ``(label, stall_timeout, mode, argv)``.
+
+    daemon-run's flags are scoped to the prefix **before** the child command —
+    everything from the first non-flag token (the script path), or from an
+    explicit ``--``, passes to the child verbatim. This is what keeps a child
+    script's own ``--label``/``--queue`` from being stolen by the wrapper (a
+    whole-argv scan silently de-labeled a paper run on 2026-08-01).
+
+    When no prefix ``--label`` is given but the child argv carries one, the
+    child's value is mirrored into the job display label (display-only — the
+    child still receives its flag untouched).
+    """
+    from scripts.tasks import _common
+
+    extra = list(extra or [])
+    label = None
+    stall_timeout = None
+    mode_flag = None
+    i = 0
+    while i < len(extra):
+        tok = extra[i]
+        if tok == "--":
+            i += 1
+            break
+        if tok in _common._RUN_MODE_FLAGS:
+            mode_flag = tok
+            i += 1
+            continue
+        flag, eq, inline_value = tok.partition("=")
+        if flag in ("--label", "--stall-timeout"):
+            if eq:
+                value = inline_value
+                i += 1
+            else:
+                if i + 1 >= len(extra):
+                    print(f"{flag} needs a value", file=sys.stderr)
+                    sys.exit(2)
+                value = extra[i + 1]
+                i += 2
+            if flag == "--label":
+                label = value
+            else:
+                try:
+                    stall_timeout = float(value)
+                except ValueError:
+                    print(f"bad --stall-timeout value: {value!r}", file=sys.stderr)
+                    sys.exit(2)
+            continue
+        if tok.startswith("-"):
+            print(
+                f"unknown daemon-run flag {tok!r} — daemon-run's own flags "
+                "(--label/--stall-timeout/--queue/--inline/…) go before the "
+                "script path; use `-- ` to start the child argv with a flag",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        break
+    argv = extra[i:]
+    mode, _ = _common._resolve_run_mode([mode_flag] if mode_flag else [])
+    if label is None:
+        for j, tok in enumerate(argv):
+            if tok == "--label" and j + 1 < len(argv):
+                label = argv[j + 1]
+                break
+            if tok.startswith("--label="):
+                label = tok.partition("=")[2]
+                break
+    return label, stall_timeout, mode, argv
+
+
 def cmd_daemon_run(extra):
-    """Submit an arbitrary GPU command job (``ARGS="<script.py> [flags…]"``).
+    """Submit an arbitrary GPU command job (``ARGS="[flags…] <script.py> [child flags…]"``).
 
     The generic front door for "run this on the serial GPU queue": a bench script,
     a one-off probe, anything that would otherwise be started from a background
@@ -404,31 +476,13 @@ def cmd_daemon_run(extra):
     daemon. ``--stall-timeout S`` sets this job's stall-watchdog budget (0 = off)
     for a legitimately quiet loop; the label defaults to the script basename and
     ``--label NAME`` overrides it.
+
+    daemon-run's own flags go **before** the script path; everything after it
+    (or after ``--``) reaches the child verbatim — see ``_parse_daemon_run_argv``.
     """
     from scripts.tasks import _common
 
-    extra = list(extra or [])
-    label = None
-    stall_timeout = None
-    for flag in ("--label", "--stall-timeout"):
-        if flag in extra:
-            i = extra.index(flag)
-            if i + 1 >= len(extra):
-                print(f"{flag} needs a value", file=sys.stderr)
-                sys.exit(2)
-            value = extra[i + 1]
-            del extra[i : i + 2]
-            if flag == "--label":
-                label = value
-            else:
-                try:
-                    stall_timeout = float(value)
-                except ValueError:
-                    print(f"bad --stall-timeout value: {value!r}", file=sys.stderr)
-                    sys.exit(2)
-    mode, argv = _common._resolve_run_mode(extra)
-    if argv and argv[0] == "--":
-        argv = argv[1:]
+    label, stall_timeout, mode, argv = _parse_daemon_run_argv(extra)
     if not argv:
         print(
             'nothing to run. e.g. make daemon-run ARGS="project/x/bench/run_probe.py '

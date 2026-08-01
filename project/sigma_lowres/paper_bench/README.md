@@ -128,5 +128,8 @@ deterministic twins and self-contained.
   rectangular `(bins, draws)`; vary bin density instead.
 - **Results root.** Paper-bench runs pass
   `--results_root project/sigma_lowres/paper_bench/runs`.
-- **`make daemon-run` eats `--label`** from ARGS as the *job* label, so
-  a script never sees it — name the run dir another way.
+- **`--label` passes through since 2026-08-01.** `make daemon-run`'s own
+  flags are scoped to the prefix before the script path; everything after
+  the script (incl. `--label`) reaches it verbatim, and the child's label
+  is mirrored into the job display name. (Before the fix the wrapper ate
+  `--label` anywhere in ARGS — the label-less run dirs E2/E13 note.)

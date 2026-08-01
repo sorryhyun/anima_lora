@@ -76,6 +76,60 @@ def test_build_method_args_respects_explicit_overrides():
     assert "alice" not in args
 
 
+@pytest.fixture
+def _plain_run_mode_env(monkeypatch):
+    for var in ("ANIMA_RUN_MODE", "PROFILE_STEPS", "ANIMA_ACCELERATE_LAUNCH"):
+        monkeypatch.delenv(var, raising=False)
+
+
+def test_daemon_run_flags_scoped_to_prefix(_plain_run_mode_env):
+    # the e14-launch trap: a whole-argv scan stole the child's --label/--queue
+    from scripts.tasks.daemon import _parse_daemon_run_argv
+
+    label, stall, mode, argv = _parse_daemon_run_argv(
+        ["--queue", "--label", "job", "probe.py", "--label", "run", "--queue"]
+    )
+    assert (label, stall, mode) == ("job", None, "detach")
+    assert argv == ["probe.py", "--label", "run", "--queue"]
+
+
+def test_daemon_run_value_flag_is_not_a_boundary(_plain_run_mode_env):
+    from scripts.tasks.daemon import _parse_daemon_run_argv
+
+    label, stall, mode, argv = _parse_daemon_run_argv(
+        ["--stall-timeout", "0", "loop.py"]
+    )
+    assert (label, stall, mode) == (None, 0.0, "attach")
+    assert argv == ["loop.py"]
+
+
+def test_daemon_run_label_mirrors_from_child(_plain_run_mode_env):
+    from scripts.tasks.daemon import _parse_daemon_run_argv
+
+    for child in (["probe.py", "--label", "e14"], ["probe.py", "--label=e14"]):
+        label, _, _, argv = _parse_daemon_run_argv(child)
+        assert label == "e14"
+        assert argv == child  # mirror is display-only; child argv untouched
+    # an explicit prefix label wins over the child's
+    label, _, _, _ = _parse_daemon_run_argv(["--label", "job", *child])
+    assert label == "job"
+
+
+def test_daemon_run_dashdash_starts_child_verbatim(_plain_run_mode_env):
+    from scripts.tasks.daemon import _parse_daemon_run_argv
+
+    label, _, _, argv = _parse_daemon_run_argv(["--label", "x", "--", "--queue", "y"])
+    assert label == "x"
+    assert argv == ["--queue", "y"]
+
+
+def test_daemon_run_unknown_prefix_flag_errors(_plain_run_mode_env):
+    from scripts.tasks.daemon import _parse_daemon_run_argv
+
+    with pytest.raises(SystemExit):
+        _parse_daemon_run_argv(["--labe1", "x", "probe.py"])
+
+
 def test_job_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "JOBS_DIR", tmp_path / "jobs")
     job = jobs.Job(

@@ -42,9 +42,16 @@ JOB=<id> python tasks.py daemon-status        # one record, envelope inlined
 ```
 
 `daemon-run` exits with the job's own exit code (so `&&` chains work), ctrl-C
-detaches, and `--label NAME` overrides the auto-derived label. The same three
-verbs exist inside the package for callers that can't import `tasks.py` (a
-vendored node tree, a bare checkout):
+detaches, and `--label NAME` overrides the auto-derived label. **Its own flags
+(`--label`, `--stall-timeout`, `--queue`/`--inline`/…) are scoped to the prefix
+before the script path** — everything from the script path onward (or after an
+explicit `--`) reaches the child verbatim, so a child script's own `--label` or
+`--queue` is never consumed by the wrapper (before 2026-08-01 a whole-argv scan
+would steal them; a trailing `--queue` now goes to the child and fails loudly
+there). If no prefix `--label` is given but the child argv carries one, its
+value is mirrored into the job display label. The same three verbs exist inside
+the package for callers that can't import `tasks.py` (a vendored node tree, a
+bare checkout):
 
 ```bash
 python -m anima_daemon submit [--label L] [--stall-timeout S] [--wait] [--hold] -- <argv…>
