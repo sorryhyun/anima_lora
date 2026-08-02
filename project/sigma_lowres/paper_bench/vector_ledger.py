@@ -63,45 +63,94 @@ def parse_args() -> argparse.Namespace:
         "'reenc' (B = rp − reenc̄, strips the shared encode-chain cost). "
         "Both are reported; this picks which one feeds S/I/h.",
     )
+    p.add_argument(
+        "--device",
+        default="cpu",
+        help="'cuda' runs the fp64 dot products on GPU (~minutes instead of "
+        "~half an hour on a full 15-bin repromote store); numerically "
+        "equivalent to the CPU path within reduction-order noise, well "
+        "below the 5-decimal output rounding",
+    )
     return p.parse_args()
 
 
 class Sums:
-    """Lazy loader for the fp32 arm-sum memmaps (read-only)."""
+    """Lazy loader for the fp32 arm-sum memmaps (read-only).
 
-    def __init__(self, root: Path) -> None:
+    ``device="cuda"`` returns fp32 torch tensors on the GPU — vector
+    arithmetic stays fp32 (the store itself is fp32, so that is already the
+    precision floor), while every reduction (``_dot``/``_norm``) accumulates
+    in fp64. Resident-fp64 vectors would not fit a 16 GB card (~20 live
+    622 MB intermediates per bin). Per-bin vectors are cached across calls
+    (the shared a/b/reenc arms are used by every route); ``drop_bin`` frees
+    a bin's cache once all routes consumed it.
+    """
+
+    def __init__(self, root: Path, device: str = "cpu") -> None:
         self.root = root
+        self.device = device
         self.man = json.loads((root / "manifest.json").read_text())
         self.n_bins = len(self.man["sigma_centers"])
         self.draws = self.man["draws_per_bin"]
+        self._cache: dict[tuple[str, int], object] = {}
 
     def has(self, key: str) -> bool:
         return key in self.man["keys"]
 
-    def mean(self, key: str, bi: int) -> np.ndarray:
+    def mean(self, key: str, bi: int):
         """Per-draw-mean gradient vector for (arm key, bin), float64."""
+        hit = self._cache.get((key, bi))
+        if hit is not None:
+            return hit
         info = self.man["keys"][key]
         fname = f"{key.replace('@', '~')}__b{bi}.npy"
         v = np.load(self.root / fname, mmap_mode="r")
-        return np.asarray(v, dtype=np.float64) / (info["n_images"] * self.draws)
+        scale = 1.0 / (info["n_images"] * self.draws)
+        if self.device == "cpu":
+            out = np.asarray(v, dtype=np.float64) * scale
+        else:
+            import torch
+
+            out = torch.from_numpy(np.asarray(v)).to(self.device) * scale
+        self._cache[(key, bi)] = out
+        return out
+
+    def drop_bin(self, bi: int) -> None:
+        for k in [k for k in self._cache if k[1] == bi]:
+            del self._cache[k]
 
 
-def perp(v: np.ndarray, ghat: np.ndarray) -> np.ndarray:
-    return v - float(ghat @ v) * ghat
+def _norm(v) -> float:
+    if isinstance(v, np.ndarray):
+        return float(np.linalg.norm(v))
+    import torch
+
+    return float(torch.linalg.vector_norm(v, dtype=torch.float64))
 
 
-def cosine(a: np.ndarray, b: np.ndarray) -> float:
-    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+def _dot(a, b) -> float:
+    """Inner product with fp64 accumulation on either backend."""
+    if isinstance(a, np.ndarray):
+        return float(a @ b)
+    return float(a.double() @ b.double())
+
+
+def perp(v, ghat):
+    return v - _dot(ghat, v) * ghat
+
+
+def cosine(a, b) -> float:
+    na, nb = _norm(a), _norm(b)
     if na == 0 or nb == 0:
         return float("nan")
-    return float(a @ b) / (na * nb)
+    return _dot(a, b) / (na * nb)
 
 
 def bc_ledger(s: Sums, edge: str, bi: int, data_ref: str) -> dict:
     """B/C split for one (route, bin). Requires a,b, <e>, <e>rp (+ __2 sets)."""
     a, b = s.mean("a", bi), s.mean("b", bi)
     g0 = 0.5 * (a + b)
-    G = float(np.linalg.norm(g0))
+    G = _norm(g0)
     ghat = g0 / G
     dem1, dem2 = s.mean(edge, bi), s.mean(f"{edge}__2", bi)
     rp1, rp2 = s.mean(f"{edge}rp", bi), s.mean(f"{edge}rp__2", bi)
@@ -125,11 +174,11 @@ def bc_ledger(s: Sums, edge: str, bi: int, data_ref: str) -> dict:
     # sets), which survives the cross-set product: E⟨B1⊥,B2⊥⟩ = |B⊥|² +
     # (ref noise power)/2 with the power estimated from the ref set diff
     # (E|d⊥|² = 2·per-set power ⇒ shared power = |d⊥|²/4).
-    ref_noise = float(np.linalg.norm(perp(ref_diff, ghat)) ** 2) / 4.0
-    S_deb = (float(B1p @ B2p) - ref_noise) / (2 * G2)
-    F_deb = float(C1p @ C2p) / (2 * G2)
-    I_deb = (float(B1p @ C2p) + float(B2p @ C1p)) / (2 * G2)
-    I_same = (float(B1p @ C1p) + float(B2p @ C2p)) / (2 * G2)  # bias check
+    ref_noise = (_norm(perp(ref_diff, ghat)) ** 2) / 4.0
+    S_deb = (_dot(B1p, B2p) - ref_noise) / (2 * G2)
+    F_deb = _dot(C1p, C2p) / (2 * G2)
+    I_deb = (_dot(B1p, C2p) + _dot(B2p, C1p)) / (2 * G2)
+    I_same = (_dot(B1p, C1p) + _dot(B2p, C2p)) / (2 * G2)  # bias check
     denom = 2.0 * math.sqrt(max(S_deb * F_deb, 0.0)) or float("nan")
 
     def h(u: np.ndarray) -> float:
@@ -138,10 +187,10 @@ def bc_ledger(s: Sums, edge: str, bi: int, data_ref: str) -> dict:
     out = {
         "G": round(G, 4),
         # raw (noise-inflated) magnitudes + parallel components, both refs
-        "b_perp_rawnorm": round(float(np.linalg.norm(Bp)) / G, 5),
-        "c_perp_rawnorm": round(float(np.linalg.norm(Cp)) / G, 5),
-        "kappa_par_B": round(float(ghat @ Bm) / G, 5),
-        "kappa_par_C": round(float(ghat @ Cm) / G, 5),
+        "b_perp_rawnorm": round((_norm(Bp)) / G, 5),
+        "c_perp_rawnorm": round((_norm(Cp)) / G, 5),
+        "kappa_par_B": round(_dot(ghat, Bm) / G, 5),
+        "kappa_par_C": round(_dot(ghat, Cm) / G, 5),
         # reliability: direction reproducibility across independent draw sets
         "rel_cos_B": round(cosine(B1p, B2p), 5),
         "rel_cos_C": round(cosine(C1p, C2p), 5),
@@ -161,9 +210,7 @@ def bc_ledger(s: Sums, edge: str, bi: int, data_ref: str) -> dict:
     if "reenc" in refs and data_ref == "native":
         re_mean = refs["reenc"][0]
         Br = 0.5 * ((rp1 - re_mean) + (rp2 - re_mean))
-        out["b_perp_rawnorm_reencref"] = round(
-            float(np.linalg.norm(perp(Br, ghat))) / G, 5
-        )
+        out["b_perp_rawnorm_reencref"] = round((_norm(perp(Br, ghat))) / G, 5)
     return out
 
 
@@ -172,17 +219,17 @@ def kappa_ledger(s: Sums, arm: str, bi: int) -> dict:
     a1, b1 = s.mean("a", bi), s.mean("b", bi)
     a0, b0 = s.mean("a@a0", bi), s.mean("b@a0", bi)
     g0 = 0.5 * (a1 + b1)
-    G = float(np.linalg.norm(g0))
+    G = _norm(g0)
     ghat = g0 / G
     t_src = 0.5 * ((a1 - a0) + (b1 - b0))
     k1, k0 = s.mean(arm, bi), s.mean(f"{arm}@a0", bi)
     t_arm = k1 - k0
     dt = t_arm - t_src
-    par = float(ghat @ dt)
-    perp_n = math.sqrt(max(0.0, float(dt @ dt) - par * par))
+    par = _dot(ghat, dt)
+    perp_n = math.sqrt(max(0.0, _dot(dt, dt) - par * par))
     out = {
-        "tnorm_src": round(float(np.linalg.norm(t_src)) / G, 5),
-        f"tnorm_{arm}": round(float(np.linalg.norm(t_arm)) / G, 5),
+        "tnorm_src": round((_norm(t_src)) / G, 5),
+        f"tnorm_{arm}": round((_norm(t_arm)) / G, 5),
         "kappa_par": round(par / G, 5),
         "kappa_perp": round(perp_n / G, 5),
         "cos_t_arm_vs_src": round(cosine(t_arm, t_src), 5),
@@ -196,18 +243,23 @@ def kappa_ledger(s: Sums, arm: str, bi: int) -> dict:
 def main() -> None:
     args = parse_args()
     run = Path(args.run).resolve()
-    s = Sums(run / "arm_sums")
+    s = Sums(run / "arm_sums", device=args.device)
     man = s.man
     centers = man["sigma_centers"]
     edges = [e for e in man["demote_edges"].split(",") if e]
     result: dict = {"run": str(run), "sigma_centers": centers, "manifest": man}
 
     if man.get("repromote"):
-        bc: dict = {}
-        for e in edges:
-            if not (s.has(e) and s.has(f"{e}rp")):
-                continue
-            bc[e] = [bc_ledger(s, e, bi, args.data_ref) for bi in range(s.n_bins)]
+        # bins-outer so every memmap is read exactly once and the shared
+        # a/b/reenc arms are cached for all routes of a bin (route-outer
+        # re-read them per route: 360 loads instead of 240 on a 3-route
+        # repromote store — most of the old wall time).
+        bc = {e: [None] * s.n_bins for e in edges if s.has(e) and s.has(f"{e}rp")}
+        for bi in range(s.n_bins):
+            for e in bc:
+                bc[e][bi] = bc_ledger(s, e, bi, args.data_ref)
+            s.drop_bin(bi)
+        for e in bc:
             print(f"\n== route {e} (data_ref={args.data_ref}) ==")
             hdr = "σ       S        F        I        rho     relB    relC   quad   h(B+C)"
             print(hdr)

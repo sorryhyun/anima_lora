@@ -1,0 +1,61 @@
+{
+ "schema_version": 1,
+ "script": "project/sigma_lowres/paper_bench/fig_accounts.py",
+ "label": "fig-accounts",
+ "timestamp_utc": "2026-08-02T12:13:19Z",
+ "sources": {
+  "tier1024": "runs/20260801-2304-e14-ledger-probematched",
+  "g9": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/bench/results/20260726-2153",
+  "rapsd": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/bench/results/20260730-0940-reenc-floor"
+ },
+ "caveats": [
+  "figure assembly only: every fit is recomputed by calling the published helpers of e83_bridge.py and e5_refit.py",
+  "spectral curves are the account read through OUR bridge (G(sigma) + one gain calibrated on 1024->896, floorless)",
+  "the delta_reenc gate is plotted; the family is delta-inert at the curve level (rmse identical to SPD's default, see e8)",
+  "ours is in-sample on 512 and post-hoc leave-896-out on 896; only 768 (and the 1280-tier 1024) are pre-registered held out"
+ ],
+ "A_spectral_calibrated_on_896": 2.0003960759806687,
+ "floor_law": {
+  "F0": 0.8340771261638965,
+  "tau_tokens": 829.6843337253741
+ },
+ "gates": {
+  "896": 0.9804941355915933,
+  "768": 0.9820604462717075,
+  "512": 0.9880935469924319
+ },
+ "rmse": {
+  "896": {
+   "spectral": 0.12197486936716828,
+   "ours": 0.12954299481960288
+  },
+  "768": {
+   "spectral": 0.1716449908129344,
+   "ours": 0.10903829096943629
+  },
+  "512": {
+   "spectral": 0.3480820283779862,
+   "ours": 0.12151586396218776
+  },
+  "1120": {
+   "spectral": null,
+   "ours": 0.03162034832383225
+  },
+  "1024": {
+   "spectral": null,
+   "ours": 0.1488464702588412
+  }
+ },
+ "floors": {
+  "768": 0.061739635164264464,
+  "1024": 0.005843926920105507,
+  "512": 0.2451238917877906,
+  "1120": 0.0007578336091893673,
+  "896": 0.011862846772983712
+ },
+ "bootstrap": {
+  "B": 1000,
+  "kept": 889,
+  "dropped": 111
+ }
+}

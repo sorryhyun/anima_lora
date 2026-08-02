@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **RUNNING 2026-08-01** — submitted 23:03 as daemon job `20260801-230338-a2211a` (~19 h ETA). The [grid decision](#the-one-open-decision--the-dense-high-segment) resolved **full grid**: it was coupled to disk headroom (77 GB free vs the ≥78 GB fp32 mandate), space was freed to 84 GB, so the registered plan runs unmodified — exact E13 grid match, fp32 store. Instrument prep DONE (streaming arm retirement, config timing/floor twins; see [Instrument prep](#instrument-prep--calibration-2026-08-01)). Numbering note: this record takes the E14 slot; the prior E14 (MLMC pricing) is now [E15](../e15/), the prior E15 (placement) is now [E16](../e16/). **Consolidated 2026-08-01**: the "e13b" probe-matched rerun E13 owed is not a separate submission — this run carries it; E13's record now points here. |
+| **Status** | **DONE 2026-08-02** — run `runs/20260801-2304-e14-ledger-probematched` (job `20260801-230338-a2211a`, 40/40 images, 21.7 h, full 15-bin grid fp32; the grid decision resolved full-grid after disk was freed to 84 GB). Ledgers: `ledger.json` (reenc ref, CPU) + `ledger_native.json` (native ref, GPU path — validated 719/720 fields identical vs CPU). **Verdicts below** ([Results](#results-2026-08-02)): kill switch clean; **H-a FAILS** (no phase-2 twin), **H-b FIRES**, H-c fires σ≤0.062 only, **H-d fires substantively**. Headline: the 896 bump is a **two-large-opposing-terms regime** (ρ ≈ −0.7…−0.9 at every σ), not a starved data term. Numbering note: this record takes the E14 slot; the prior E14 (MLMC pricing) is now [E15](../e15/), the prior E15 (placement) is now [E16](../e16/). **Consolidated 2026-08-01**: the "e13b" probe-matched rerun E13 owed is not a separate submission — this run carries it; E13's record now points here. |
 | **Question** | The measured 1024→896 curve carries a low-σ plateau (≈+0.20 over σ≈0.05–0.30 on E13's grid) that the account's prediction misses by ~4× — the one panel of the head-to-head figure where ours does not beat the spectral account (`runs/20260801-1118-fig-accounts-e13`). Three explanations produce the same scalar signature: (a) a genuinely large data term the A(ratio) governor starves, (b) negative B/C interference shaping the σ≈0.4 cliff, (c) attenuation-correction inflation at mid-σ. Which is it? |
 | **Depends on** | [E9](../e9/) (the B/C instrument, `vector_ledger.py`, the unit-honesty rule, the amplitude-matching localization it validated on 768 — but its grid was σ ∈ [0.5, 1.0]: it stops exactly where the bump begins); [E13](../e13/) (segmented `--sigma_window`, `e1b_probe_list.json`, the 2/24-overlap scope rule that forbids a standalone ledger run on a fresh probe set, and the owed §4.7 probe-matched refit this run discharges); [E5](../e5/) (the governor under test; the per-run G normalization of A) |
 | **Instrument** | `bench/run_sigma_probe.py --repromote --keep_arm_sums --self_floor --deterministic` on E13's segmented grid, E1b's 40-image probe list; analysis `../../vector_ledger.py` (shared with E9/E10). Instrument deltas landed 2026-08-01 (streaming arm retirement — **required**, see below; `--arm_sums_dtype`; `--partitioner_aggressive` now opt-in). |
@@ -159,6 +159,37 @@ never ship** — `paper_bench/runs/*/arm_sums/` must be gitignored (add
 the rule before committing the run) or the store moved to
 `bench/results/` after analysis. Scalar deliverables
 (`result.json`, `per_image.jsonl`) commit as usual.
+
+## Results (2026-08-02)
+
+Run `runs/20260801-2304-e14-ledger-probematched`; scalar curves from
+`per_image.jsonl` (N=40, nan-guarded — 2 images produced 3 NaN cells via
+self-floor≈0 blowups), vector reads from `ledger.json` (reenc ref) /
+`ledger_native.json` (native ref). Kill switch: **not tripped** (dense-low
+reenc control ≤ |0.045|, bound ±0.15); clean segment = all five σ ≤ 0.17
+bins (|control| ≤ 0.07).
+
+| rule | verdict | read |
+|---|---|---|
+| **H-a** (data term, governor starved) | **FAILS** | The I ≈ 0 / C⊥-small signature is decisively violated: I = −0.10…−0.33 across the clean segment and \|B⊥\|/\|C⊥\| ≈ 1.0–1.2 (C⊥ is *not* small). Native-ref h(B) alone is ≈ 104–112 % of the plateau, but it is immediately half-cancelled by C — this is not "the route's true loading, no interference". **Phase 2 (1120 twin) is not triggered.** |
+| **H-b** (interference cliff) | **FIRES** | \|B⊥\|/\|C⊥\| crosses 1 between σ = 0.433 and 0.567 — within one bin of the measured cliff (scalar debiased sign flip between 0.30 and 0.433) — with I < 0 everywhere beyond it and ρ ≈ −0.88…−0.96 through the shoulder. The 896 shoulder is the 768 failure's sibling: §4.6's domain paragraph widens to both routes; the 896 panel gets the "reduction's domain" annotation. |
+| **H-c** (estimator inflation) | fires **σ ≤ 0.062 only** | h(B+C) < 0.6 × scalar debiased plateau at 0.013/0.037/0.062 (0.010/0.058/0.132 vs plateaus 0.057/0.149/0.238); NOT at the plateau peak (0.087, 0.167). Practical impact small — raw ≈ debiased in those bins anyway (the excess is largely mean-of-gaps vs gap-of-means estimand mismatch); per E13 protocol the affected bins publish raw-paired primary. |
+| **H-d** (graph share) | **FIRES** (substantively) | F_896 is strongly σ-dependent below 0.45: 0.02 → 0.19 (σ=0.087–0.167) → 0.86 (σ=0.30) vs F(1.0) ≈ 0. The registered >2× threshold is trivially met because the endpoint F ≈ 0 — the honest statement is that assumption (iii) fails at low σ and the "σ-independent floor" claim needs an explicit low-σ domain bound. |
+
+**Headline mechanism**: at every σ, B⊥ and C⊥ are strongly anti-aligned
+(ρ ≈ −0.7…−0.9, cross-set debiased, reproducible: relB/relC mostly
+0.6–0.99; even the huge σ=0.30 bin — S 0.90, F 0.86, I −1.55 — replicates
+at relB 0.92/relC 0.72). Both interventions are individually far larger
+than the realized gap; the measured curve is the *residual of a near-
+cancellation*. The plateau exists because cancellation is incomplete where
+\|B⊥\|/\|C⊥\| > 1 (σ ≈ 0.04–0.30) and the cliff is the crossing back
+through 1. This is why the spectral-account prediction misses by ~4×: it
+transports amplitude without the interference structure. One mechanism,
+two routes (768 crossing: 0.688; 896: ≈0.5).
+
+The probe-matched half (E13's owed §4.7 refit) reads from the same run;
+A/F redistribution vs the published E1b fit is now attributable to the
+probe-set correction alone (same images, same G, same kernel path).
 
 ## Phase 2 (conditional on H-a): the twin, in vector units
 

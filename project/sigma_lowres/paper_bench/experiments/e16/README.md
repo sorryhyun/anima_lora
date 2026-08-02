@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PROPOSED 2026-07-31** — 16.0 is ~1 h of deterministic twins; 16.1 conditional on a 16.0 ordering. Renumbered from **E15** 2026-08-01 |
+| **Status** | **16.0 RUNNING 2026-08-02** — `--sigma_lowres_span` landed (+`TestSigmaSpan`); 4 twins queued, see [`launch_20260802_160.md`](launch_20260802_160.md). **Amendment**: placement arms run the 768 route unconditionally (threshold 0, no yarnsig) — E14's ledger measures the route's σ-structure directly, so the σ>0.5 gate is dropped from the probe (span gate alone controls placement; ~240/480 demoted per arm). A 5th twin **win768** (window gate 0.65<σ<0.95 via the new `--sigma_lowres_threshold_max`, no scheduling) reads whether E14's measured 768 window alone rescues the route — the zero-scheduling rescue candidate. 16.1 conditional on a 16.0 ordering. Renumbered from **E15** 2026-08-01. PROPOSED 2026-07-31 |
 | **Question** | Is a protected span ("don't demote the first/last N% of steps") just η-weighted dilution of the demotion effect, or does *placement* matter? Equivalently: which regime does the training trajectory live in — washout, linear, or amplification? |
 | **Depends on** | [E4](../e4/) (harness, the below-yardstick `sigma768` arm = the rescue target, seed-keyed σ stream, `claim_accumulated_bias.md`), [E15](../e15/) (the currency argument: schedules spend neither FLOPs nor variance), `--deterministic` ΔW twins (no chaos floor) |
 | **Instrument** | trainer: a step-span gate on top of the σ-gate (few lines in `_maybe_sigma_demote`); readout: `bench/compare_ckpt_dw.py` (16.0), E4 yardstick/render harness (16.1) |

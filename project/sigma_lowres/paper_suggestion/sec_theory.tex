@@ -31,9 +31,7 @@ bucket (native aspect ratio preserved),
 $x_{\src} = \mathcal{E}(y) \longrightarrow
 x_{\dem} = \mathcal{E}\big(\mathcal{R}_{e}(y)\big)$ --- a latent with
 proportionally fewer spatial tokens, the downscale acting in pixel
-space, not latent space. Everything else is unchanged: the caption,
-the $\sigma$ under test, and the noise distribution ($\epsilon$ drawn
-at the tier-$e$ shape). The demoted step trains on
+space, not latent space. The demoted step trains on
 $z_\sigma = (1-\sigma)\,x_{\dem} + \sigma\,\epsilon$ with target
 $v = \epsilon - x_{\dem}$, so the substitution changes both what the
 network sees and what it is asked to predict, but only through the
@@ -43,8 +41,8 @@ spatial grid.
 Three \emph{arms} recur throughout: the source arm $\src$, which
 trains on the native-resolution latent $x_{\src}$; the demoted arm
 $\dem$, which trains on $x_{\dem}$; and the control arm $\reenc$,
-which decodes and re-encodes the native latent at native resolution: it pays the VAE round trip that demotion necessarily pays,
-with no grid change. For an arm
+which decodes and re-encodes the native latent at native resolution.
+For an arm
 $a \in \{\src, \reenc, \dem\}$, let
 $\bar g_a(\sigma) = \mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$ be
 the population per-bin mean adapter gradient of a query (image,
@@ -70,21 +68,12 @@ paper is the \emph{re-encoding excess}
 \end{equation}
 the demotion distance beyond what the control already pays; $\gap_e$
 can be negative, $d_e$ cannot. Endpoint and floor tables report
-debiased estimates of $d_e$ with the control as its own row.
-
-\paragraph{The two aggregations.}
-In a batched training scenario Eq.~\ref{eq:gapdef} admits two
-aggregations over a probe set: per-example (cosine per image, then
-mean) or batch-aggregate (gradients summed over the batch before the
-cosine, the object SGD actually follows). These are different
-estimands --- the aggregation operator is part of the estimand ---
-and the per-example map is \emph{not} a lower bound for larger
-batches: to second order the batch-aggregate distance is a coherent
-intercept that no batch size removes plus a $1/B$ term
-(Appendix~\ref{app:notation}), and monotone improvement with $B$
-would require an iid zero-mean disagreement model we have not
-verified, so no coefficient fitted on one object is guaranteed to
-transfer to the other. \S\ref{sec:map} publishes one map for each.
+debiased estimates of $d_e$ with the control as its own row. Every
+map in the body aggregates per example (cosine per image, then mean);
+the batch-aggregate object SGD follows in batched training is a
+distinct estimand, treated in Appendix~\ref{app:notation} --- where
+measured, it reads as the \emph{more forgiving} of the two
+(\S\ref{sec:map}).
 
 \subsection{The spectral account}
 \label{sec:spectral}

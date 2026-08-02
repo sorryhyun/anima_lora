@@ -21,12 +21,18 @@ carries an arm label: the control changes no grid and has no target
 edge. Each table states which object it reports, $d_e$ or the excess
 $\gap_e$.
 
-\paragraph{The two aggregations at second order.}
-The batch-size decomposition asserted in \S\ref{sec:estimand} is the
-following. Writing each image's demotion-induced gradient
-disagreement as a coherent mean $b$ plus a zero-mean idiosyncratic
-deviation with covariance $\Sigma_\eta$, the batch-aggregate distance
-at batch size $B$ is, to second order,
+\paragraph{The two aggregations.}
+In a batched training scenario Eq.~\ref{eq:gapdef} admits two
+aggregations over a probe set: per-example (cosine per image, then
+mean --- the object every map in the body reports) or batch-aggregate
+(gradients summed over the batch before the cosine, the object SGD
+actually follows). These are different estimands --- the aggregation
+operator is part of the estimand --- and no coefficient fitted on
+one is guaranteed to transfer to the other. At second order the two
+are related by a batch-size decomposition: writing each image's
+demotion-induced gradient disagreement as a coherent mean $b$ plus a
+zero-mean idiosyncratic deviation with covariance $\Sigma_\eta$, the
+batch-aggregate distance at batch size $B$ is
 \begin{equation*}
 \mathbb{E}[d_B] \;\approx\;
 \frac{\|P^{\perp} b\|^2}{2\|\mu\|^2}
@@ -35,8 +41,15 @@ at batch size $B$ is, to second order,
 \end{equation*}
 with $\mu$ the mean source gradient and $P^{\perp}$ the projector off
 $\hat\mu$: an intercept (the coherent share, which never averages
-out) plus a $1/B$ term. The intercept is exactly the coherent drift
-that the intercept-plus-$1/B$ fit across pool sizes
+out) plus a $1/B$ term. Monotone improvement with $B$ is not
+automatic --- it would require an iid zero-mean disagreement model we
+have not verified --- but where we have measured the batch object it
+is the more forgiving of the two: pooled-arm probes at pool size $4$
+collapse the $1024{\to}896$ excess to ${\approx}\,0$ at every bin
+$\sigma \ge 0.625$ and the $1024{\to}768$ excess at
+$\sigma \ge 0.875$ (\S\ref{sec:map}), the $1/B$ term dominating
+there. What the collapse does not bound is the intercept, exactly the
+coherent drift that the intercept-plus-$1/B$ fit across pool sizes
 (\S\ref{sec:map}) is designated to bound.
 
 \subsection{Derivation of the branch decomposition
@@ -1054,16 +1067,25 @@ Table~\ref{tab:floor} the debiased floor reads that
 are the raw-estimator record: retained for continuity and for the reads
 defended in \S\ref{sec:instrument} (one-signed bias; paired same-grid
 contrasts), not cited as debiased evidence. Table~\ref{tab:phase0} is
-the uncorrected counterpart of the verdict map, and its last two rows
-are the estimator context plotted in Fig.~\ref{fig:estimator}.
+the uncorrected counterpart of the verdict map on the original coarse
+grid, and its last two rows are the coarse-grid estimator context
+(Fig.~\ref{fig:estimator} plots the same two curves on the dense
+verdict grid).
 
 \begin{table}[h]
 \caption{\textbf{Debiased verdict map} (plotted in
 Fig.~\ref{fig:gapcurves}): paired per-image debiased excess
 $\bgap$ (SEM) against the re-encoding control, $1024$-tier natives
-($N{=}40$, $D{=}8$/bin plus a $\sigma{=}1$ endpoint bin at the same
-draws; trimmed per \S\ref{sec:instrument}, retaining $35$--$40$ images
-per cell). Bin-level $\epsstar$ at this $(N, D)$ is $0.03$--$0.08$.}
+($N{=}40$, $D{=}12$/bin, deterministic kernels, on a segmented grid
+dense below $\sigma = 0.1$ and above $0.9$ --- $14$ interior bins plus
+a $\sigma{=}1$ endpoint bin; trimmed per \S\ref{sec:instrument},
+retaining $36$--$40$ images per cell). Bin-level $\epsstar$ at this
+$(N, D)$ is $0.02$--$0.07$. A reconstruction check (the realized
+excess rebuilt from per-arm means) flags the three $\sigma \le 0.06$
+bins as partly estimator inflation, so the raw-paired excess is the
+primary read there ($896$: $+.037/+.118/+.221$; $768$:
+$+.065/+.202/+.275$; $512$: $+.172/+.406/+.497$) --- up to $0.08$
+smaller, same verdicts.}
 \label{tab:debiasedmap}
 \centering
 \small
@@ -1071,16 +1093,22 @@ per cell). Bin-level $\epsstar$ at this $(N, D)$ is $0.03$--$0.08$.}
 \toprule
 $\sigma$ bin center & $1024{\to}896$ & $1024{\to}768$ & $1024{\to}512$ \\
 \midrule
-0.06 & $+.091$ {\scriptsize(.013)} & $+.149$ {\scriptsize(.014)} & $+.340$ {\scriptsize(.029)} \\
-0.19 & $+.155$ {\scriptsize(.047)} & $+.238$ {\scriptsize(.034)} & $+.525$ {\scriptsize(.048)} \\
-0.31 & $+.208$ {\scriptsize(.047)} & $+.324$ {\scriptsize(.049)} & $+.599$ {\scriptsize(.073)} \\
-0.44 & $+.032$ {\scriptsize(.024)} & $+.206$ {\scriptsize(.045)} & $+.598$ {\scriptsize(.050)} \\
-0.56 & $+.013$ {\scriptsize(.024)} & $-.034$ {\scriptsize(.042)} & $+.312$ {\scriptsize(.045)} \\
-0.69 & $-.029$ {\scriptsize(.021)} & $-.032$ {\scriptsize(.047)} & $+.220$ {\scriptsize(.046)} \\
-0.81 & $+.016$ {\scriptsize(.024)} & $+.011$ {\scriptsize(.022)} & $+.081$ {\scriptsize(.056)} \\
-0.94 & $+.004$ {\scriptsize(.021)} & $+.015$ {\scriptsize(.034)} & $+.166$ {\scriptsize(.061)} \\
+0.013 & $+.029$ {\scriptsize(.006)} & $+.059$ {\scriptsize(.012)} & $+.154$ {\scriptsize(.025)} \\
+0.038 & $+.158$ {\scriptsize(.016)} & $+.219$ {\scriptsize(.026)} & $+.480$ {\scriptsize(.029)} \\
+0.063 & $+.239$ {\scriptsize(.019)} & $+.323$ {\scriptsize(.028)} & $+.575$ {\scriptsize(.037)} \\
+0.088 & $+.282$ {\scriptsize(.026)} & $+.366$ {\scriptsize(.024)} & $+.622$ {\scriptsize(.033)} \\
+0.167 & $+.218$ {\scriptsize(.041)} & $+.348$ {\scriptsize(.033)} & $+.640$ {\scriptsize(.050)} \\
+0.300 & $+.291$ {\scriptsize(.047)} & $+.378$ {\scriptsize(.038)} & $+.714$ {\scriptsize(.045)} \\
+0.433 & $+.067$ {\scriptsize(.032)} & $+.253$ {\scriptsize(.041)} & $+.504$ {\scriptsize(.065)} \\
+0.567 & $+.029$ {\scriptsize(.023)} & $+.078$ {\scriptsize(.019)} & $+.360$ {\scriptsize(.055)} \\
+0.700 & $+.026$ {\scriptsize(.016)} & $+.032$ {\scriptsize(.023)} & $+.242$ {\scriptsize(.039)} \\
+0.833 & $-.027$ {\scriptsize(.020)} & $+.034$ {\scriptsize(.023)} & $+.218$ {\scriptsize(.053)} \\
+0.913 & $-.007$ {\scriptsize(.014)} & $+.039$ {\scriptsize(.013)} & $+.205$ {\scriptsize(.047)} \\
+0.938 & $-.039$ {\scriptsize(.026)} & $+.019$ {\scriptsize(.019)} & $+.200$ {\scriptsize(.049)} \\
+0.963 & $-.008$ {\scriptsize(.015)} & $+.026$ {\scriptsize(.016)} & $+.120$ {\scriptsize(.045)} \\
+0.988 & $+.018$ {\scriptsize(.028)} & $+.034$ {\scriptsize(.045)} & $+.217$ {\scriptsize(.052)} \\
 \midrule
-1.0 (endpoint) & $+.043$ {\scriptsize(.011)} & $+.092$ {\scriptsize(.012)} & $+.329$ {\scriptsize(.030)} \\
+1.0 (endpoint) & $+.034$ {\scriptsize(.011)} & $+.130$ {\scriptsize(.030)} & $+.406$ {\scriptsize(.049)} \\
 \bottomrule
 \end{tabular}
 \end{table}

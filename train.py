@@ -694,6 +694,77 @@ class AnimaTrainer:
         args._yarnsig_parsed = (alpha, beta, center, gamma)
         return args._yarnsig_parsed
 
+    @staticmethod
+    def _sigma_span_params(args):
+        """Parsed ``--sigma_lowres_span`` as ``(mode, frac)``, or None when
+        off. ``mode`` ∈ early|late|spread, 0 < frac < 1 (default 0.5).
+        Validates once; cached on the args namespace."""
+        raw = getattr(args, "sigma_lowres_span", None)
+        if not raw:
+            return None
+        cached = getattr(args, "_sigma_span_parsed", None)
+        if cached is not None:
+            return cached
+        parts = str(raw).split(":")
+        mode, frac = parts[0], 0.5
+        ok = mode in ("early", "late", "spread") and len(parts) <= 2
+        if ok and len(parts) == 2:
+            try:
+                frac = float(parts[1])
+            except ValueError:
+                ok = False
+        if not ok or not (0.0 < frac < 1.0):
+            raise ValueError(
+                "--sigma_lowres_span expects early|late|spread[:FRAC] with "
+                f"0<FRAC<1, got {raw!r}"
+            )
+        args._sigma_span_parsed = (mode, frac)
+        return args._sigma_span_parsed
+
+    @staticmethod
+    def _sigma_gate_allows(args, sigmas_flat):
+        """σ gate: every σ in the batch above --sigma_lowres_threshold and,
+        when --sigma_lowres_threshold_max is set, below it too — the
+        measured demote-safe region is a per-route σ WINDOW, not a
+        half-line (e.g. 768's least-liability region is ~(0.65, 0.95),
+        with the σ=1 endpoint elevated again — tab:debiasedmap)."""
+        threshold = float(getattr(args, "sigma_lowres_threshold", 0.5))
+        if not bool((sigmas_flat > threshold).all()):
+            return False
+        threshold_max = getattr(args, "sigma_lowres_threshold_max", None)
+        if threshold_max is not None:
+            return bool((sigmas_flat < float(threshold_max)).all())
+        return True
+
+    @staticmethod
+    def _sigma_span_allows(args, step_idx):
+        """Step-span gate (E16 placement probe): may step ``step_idx``
+        (1-based train-forward index) demote? True when no span is set.
+
+        early/late split total train forwards (max_train_steps ×
+        grad-accum) at the FRAC point; spread is a per-step coin seeded
+        from (--seed, step_idx) alone — deterministic, arm-invariant, and
+        it touches neither the global nor the paired RNG streams, so CRN
+        pairing across arms is untouched.
+        """
+        span = AnimaTrainer._sigma_span_params(args)
+        if span is None:
+            return True
+        mode, frac = span
+        total = int(getattr(args, "max_train_steps", 0) or 0) * int(
+            getattr(args, "gradient_accumulation_steps", 1) or 1
+        )
+        if total <= 0:
+            raise ValueError("--sigma_lowres_span needs a finalized max_train_steps")
+        if mode == "early":
+            return step_idx <= round(frac * total)
+        if mode == "late":
+            # Boundary at (1-frac)·T, same rounding as early's — so
+            # early:f and late:1-f partition [1, T] exactly for any T.
+            return step_idx > round((1.0 - frac) * total)
+        seed = int(getattr(args, "seed", 0) or 0)
+        return random.Random(seed * 1_000_003 + step_idx).random() < frac
+
     def _maybe_sigma_demote(
         self, ctx: TrainCtx, batch, latents, is_train, generator=None
     ):
@@ -704,7 +775,9 @@ class AnimaTrainer:
         the untouched default path). Active only when --sigma_lowres is on,
         the batch carries ``demoted_latents`` (train datasets with the sidecar
         enabled and the emit present), and this is a train step. ``generator``
-        (paired-step-RNG mode) sources the σ draw.
+        (paired-step-RNG mode) sources the σ draw. ``--sigma_lowres_span``
+        further restricts demotion to a placement span of training progress
+        (E16); the σ draw itself is never skipped.
 
         Side effect: ``self._yarnsig_step`` is (re)set every call — a
         ``(h_scale, w_scale, alpha, beta, mu)`` tuple on a demoted step under
@@ -715,6 +788,11 @@ class AnimaTrainer:
         self._yarnsig_step = None
         if not is_train or not getattr(args, "sigma_lowres", False):
             return latents, None
+        # Train-forward index for the step-span gate — counted on EVERY
+        # sigma_lowres train forward (off-route batches included) so the
+        # index stays aligned to global training progress.
+        step_idx = getattr(self, "_sigma_span_step", 0) + 1
+        self._sigma_span_step = step_idx
         demoted = batch.get("demoted_latents")
         if demoted is None:
             return latents, None
@@ -747,10 +825,11 @@ class AnimaTrainer:
                     getattr(args, "timestep_sampling", None),
                 )
             return latents, None
-        threshold = float(getattr(args, "sigma_lowres_threshold", 0.5))
         total = getattr(self, "_sigma_lowres_seen", 0) + 1
         self._sigma_lowres_seen = total
-        if bool((sigmas_flat > threshold).all()):
+        if self._sigma_gate_allows(args, sigmas_flat) and self._sigma_span_allows(
+            args, step_idx
+        ):
             native_hw = tuple(latents.shape[-2:])
             latents = demoted.to(device=latents.device, dtype=latents.dtype)
             yarn = self._yarnsig_params(args)

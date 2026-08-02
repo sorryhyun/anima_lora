@@ -24,8 +24,9 @@ $\sigma \approx 0.35$ on every route, so every tolerance from the
 equal-power slice to $\delta_{\reenc}$ scores within $0.01$ RMSE of
 every other --- $\delta$ is inert at the curve level (the whole family,
 and the boundary sweep, in Appendix Fig.~\ref{fig:e83}).
-The $768$ mid-$\sigma$ dip sits outside the $95\%$ band and is our
-reduction's one structural failure (Appendix~\ref{sec:headtohead}). Bottom
+The $768$ mid-$\sigma$ dip and the $896$ low-$\sigma$ plateau sit
+outside the $95\%$ band --- the two edges of the reduction's domain
+(Appendix~\ref{sec:headtohead}). Bottom
 right: predicted vs measured over every bin, with ours also on the two
 $1280$-tier routes the spectral bridge does not cover.}
 \label{fig:accounts}
@@ -42,7 +43,7 @@ curves --- the spectral one at the boundary and the curve level, ours
 term by term (\S\ref{sec:scored}); the per-route map those curves
 certify is read in \S\ref{sec:map}, where it becomes the deployed
 artifact, and the held-out prediction protocol behind the figure's
-overlays, its pre-registered gates, and the one structural failure it
+overlays, its pre-registered gates, and the structural failures it
 exposes are quantified in Appendix~\ref{sec:headtohead}. Each
 subsection states the prediction it discharges against criteria frozen
 before the runs; several probes double as falsifiers of our own
@@ -65,7 +66,7 @@ adapter is a plain LoRA checkpoint trained at native tiers; we return to
 this operating-point dependence in \S\ref{sec:limitations}.
 
 \paragraph{The gradient probe.}
-For each image and each of $B$ uniform $\sigma$-bins we accumulate
+For each image and each of $B$ $\sigma$-bins we accumulate
 adapter gradients over $D$ stratified noise draws per
 arm\footnote{Finite draws are not innocuous here. Every finite-draw
 cosine is attenuated below its population value; the attenuation is
@@ -81,13 +82,15 @@ signature as ``absolute token count sets the floor'' --- and no naive
 read can tell the two apart. The mechanism is live and large at our
 operating point (measured magnitudes and $c/D$ decay:
 Appendix~\ref{app:instrument}).} (verdict
-runs: $8 \times 8$; $N = 40$ images) and compare arms by cosine
+run: $14$ interior bins on a segmented grid dense below $\sigma = 0.1$
+and above $0.9$, plus a $\sigma{=}1$ endpoint bin, $D{=}12$,
+deterministic kernels; $N = 40$ images) and compare arms by cosine
 similarity of the flattened accumulated gradients: a \textbf{floor}
 (two independent draw sets at native resolution, the redraw null); the
 \textbf{reenc} control of \S\ref{sec:estimand}; one \textbf{demote} arm
 per edge $e$; and, on debiased runs, per-arm \textbf{self-floors} (a
 second independent draw set for every arm). The gap is in cosine units,
-a scale-free mismatch \emph{fraction} (bin-mean SEM ${\sim}0.02$ at
+a scale-free mismatch \emph{fraction} (bin-mean SEM $0.01$--$0.07$ at
 $N{=}40$). Gap subtraction, not absolute cosines, is the valid read:
 the floor itself moves with $\|g\|$ across bins. Every bin-mean curve
 must pass a split-half reliability check over images, a discipline
@@ -151,13 +154,13 @@ the remedy is more images or draws, never a looser margin. ``No
 certifiable window'' means a route's simultaneous upper bounds do not
 cross below $\varepsilon$ at the current $(N, D)$; ``certifiably
 unsafe'' means the corresponding lower bound stays above it. At the
-verdict grid's operating point ($N{=}40$, $D{=}8$/bin) the bin-level
-$\epsstar$ is $0.03$--$0.08$ --- underpowered at
+verdict grid's operating point ($N{=}40$, $D{=}12$/bin) the bin-level
+$\epsstar$ is $0.02$--$0.07$ --- underpowered at
 $\varepsilon = 0.02$, so interior verdicts below are stated as the
 margins they \emph{do} certify --- while endpoint-mode draw sweeps
 ($D$ up to $64$) reach $\epsstar \approx 0.01$--$0.02$ and are powered
-for the strict margin. At $D{=}8$ the \emph{unpaired} debiased
-estimator is unstable where the floors are small (mid-$\sigma$; the
+for the strict margin. At interior draw counts the \emph{unpaired}
+debiased estimator is unstable where the floors are small (mid-$\sigma$; the
 denominator is noisy), so all verdict maps report the \emph{paired
 per-image excess} $\gap_{e,i} = \dgap_{e,i} - \dgap_{\reenc,i}$,
 trimmed of non-finite and $|\gap_{e,i}| > 1.5$ values; pairing cancels
@@ -195,8 +198,8 @@ SEMs in Appendix Table~\ref{tab:debiasedmap}; gray band: bin-level
 $\pm\epsstar$ (\S\ref{sec:instrument}); open markers: the $\sigma{=}1$
 endpoint bin): safety is a per-route boundary --- the $896$ route
 enters the band at $\sigma \approx 0.5$, $768$ has no certifiable
-window, and $512$ never falls inside it (grazing its boundary at
-$\sigma = 0.81$) --- against the
+window, and $512$ never falls inside it (closest approach
+$+0.12 \pm 0.05$ at $\sigma = 0.96$) --- against the
 spectral family's prediction of $\sigma \approx 0.14$--$0.20$.
 (b)~The estimator context those curves are read through: the
 redraw-floor cosine and the U-shaped gradient norm

@@ -15,60 +15,63 @@ Table~\ref{tab:debiasedmap}). Three reads, against criteria frozen
 before the runs. (i)~$\sigma$-dependence is real and in the predicted
 direction, and tier ordering holds at every bin: the
 \emph{qualitative} spectral intuition survives. (ii)~The crossover for
-the mildest route is $\sigma \approx 0.5$ --- the $896$ route is
-clearly gapped through $\sigma \le 0.31$, marginal at $0.44$, and its
-means sit within $\pm 0.03$ of zero from $0.56$ on --- $3.5\times$ the
-equal-power prediction. (iii)~The $2\times$ downscale route is
-\emph{certifiably unsafe} across the noise axis: its paired debiased
-lower bound stays above the margin in eight of nine bins (means
-$+0.08$ to $+0.60$), including $+0.17 \pm 0.06$ at $\sigma = 0.94$,
+the mildest route is $\sigma \approx 0.5$ --- the $896$ route's excess
+is already $+0.16$ by $\sigma = 0.04$, plateaus at $+0.22$--$0.29$
+through $\sigma = 0.3$, is marginal at $0.43$ ($+0.067 \pm 0.032$),
+and its means sit within $\pm 0.04$ of zero from $0.57$ on ---
+$3.5\times$ the equal-power prediction. (iii)~The $2\times$ downscale
+route is \emph{certifiably unsafe} across the noise axis: its paired
+debiased lower bound stays above the margin in all fifteen bins (means
+$+0.12$ to $+0.71$), including $+0.20 \pm 0.05$ at $\sigma = 0.94$,
 where the input is ${\sim}97\%$ noise by power in every band the
-coarse grid cannot represent; the one exception ($\sigma = 0.81$,
-whose interval widens to include zero) certifies nothing either way
---- its upper bound is $0.17$. There is no noise level at which a
-$2\times$-downscaled latent certifies, or comes near certifying, the
+coarse grid cannot represent (the earlier coarse-$\sigma$ run's one
+apparent exception, $\sigma = 0.81$ with an interval widening to
+include zero, does not survive the dense deterministic rerun:
+$+0.22 \pm 0.05$ at $\sigma = 0.83$). There is no noise level at which
+a $2\times$-downscaled latent certifies, or comes near certifying, the
 native gradient direction.
 
 Debiasing moved verdicts in both directions, and two revisions against
 the historical record are part of the result. The $768$ route's
 high-$\sigma$ plateau was roughly half estimator bias: debiased means
-sit within noise of zero across $\sigma \in [0.56, 0.94]$, but with
+sit at $+0.02$--$0.04$ across $\sigma \in [0.7, 0.99]$, but with
 upper bounds that do not cross below the $\varepsilon = 0.02$ margin
-at this $(N, D)$, and a real endpoint floor of $+0.092 \pm 0.012$
+at this $(N, D)$, and a real endpoint floor of $+0.130 \pm 0.030$
 remains, so the earlier verdict of ``unsafe at every noise level''
 softens to \emph{no window certifiable at the practical margin} ---
-the margins its window bins do certify (${\approx}\,0.09$
-simultaneous) would not even separate the route from its own measured
-endpoint floor. Conversely the
-$896$ endpoint shows a small \emph{real} gap ($+0.042 \pm 0.011$) that
+the margins its flattest bins do certify (${\approx}\,0.09$
+simultaneous over $\sigma \in [0.7, 0.96]$) are still $4\times$ the
+practical margin. Conversely the
+$896$ endpoint shows a small \emph{real} gap ($+0.034 \pm 0.011$) that
 single-estimate variance had buried; its safe window is the interior
-$\sigma \in (0.5, 0.94]$, not the endpoint (Appendix
+$\sigma \in (0.5, 1)$, not the endpoint (Appendix
 Table~\ref{tab:rawendpoint}).
 
 Collected route by route --- \emph{safe} meaning Eq.~\ref{eq:safe}
 holds at the stated margin, on the \emph{per-example} object --- the
 map needs no table: $1024{\to}896$ (ratio $0.875$, floor
 $0.02$--$0.04$) is \textbf{safe} on the interior window
-$\sigma \in (0.5, 0.94]$, certified at margin $0.07$ (simultaneous
-over the four window bins; $0.056$ pointwise); $1280{\to}1024$ (ratio
+$\sigma \in (0.5, 1)$, certified at margin $0.09$ (simultaneous
+over the seven window bins; $0.066$ pointwise); $1280{\to}1024$ (ratio
 $0.80$, floor ${\approx}\,0$) is \textbf{safe} from
 $\sigma \gtrsim 0.75$, and the synthetic iso-severity grid
 $1280{\to}1120$ is safe with $\sigmastar \approx 0.5$, as its ratio
 twin predicts (both $1280$-tier reads on the pre-debiasing
 instrument; \S\ref{sec:limitations}); $1024{\to}768$ and
-$896{\to}768$ (floors $0.06$--$0.09$ and $0.06$--$0.12$) have
+$896{\to}768$ (floors $0.06$--$0.13$ and $0.06$--$0.12$) have
 \emph{no certifiable window}; and any route to $512$ (floor
 ${\approx}\,0.30$) is \emph{certifiably unsafe} across the axis.
 Safety is a per-route boundary, jointly determined by ratio (through
 $a_e$) and absolute target size (through $\Floor_e$); neither alone
 predicts the ordering. For the corpus safe route the fine print is:
-every window bin's debiased mean sits within $\pm 0.03$ of zero, the
-pointwise and simultaneous one-sided bounds certify $0.056$ and
-$0.07$ respectively, and the strict $\varepsilon = 0.02$ margin is
+every window bin's debiased mean sits within $\pm 0.04$ of zero, the
+pointwise and simultaneous one-sided bounds certify $0.066$ and
+$0.09$ respectively, and the strict $\varepsilon = 0.02$ margin is
 \emph{not yet powered} on the interior grid
-($\epsstar = 0.03$--$0.08$ per bin). One bin's upper bound does cross
-it ($\sigma = 0.69$, $\mathrm{UB}_{95} = 0.006$, on a negative point
-estimate), but by the protocol of \S\ref{sec:instrument} an
+($\epsstar = 0.02$--$0.07$ per bin). Four bins' upper bounds do cross
+it ($\sigma \in [0.83, 0.96]$, $\mathrm{UB}_{95} = 0.004$--$0.018$,
+all on negative point estimates), but by the protocol of
+\S\ref{sec:instrument} an
 underpowered crossing is reported, not counted; powering the interior
 window at the strict margin is a draw-count exercise, designated for
 the next probe campaign.
@@ -81,8 +84,9 @@ reason to expect a universal ratio invariant, and the spectral
 account's deepest error is having promised one.
 
 \paragraph{The map depends on the aggregation object.}
-Per \S\ref{sec:estimand} the aggregation operator is part of the
-estimand, and the two objects genuinely disagree at high $\sigma$:
+The aggregation operator is part of the estimand
+(\S\ref{sec:estimand}, Appendix~\ref{app:notation}), and the two
+objects genuinely disagree at high $\sigma$:
 pooled-arm probes (pool size $4$) collapse the $1024{\to}896$ excess to
 ${\approx}\,0$ at every bin $\sigma \ge 0.625$ \emph{and} the
 $1024{\to}768$ excess to ${\approx}\,0$ at $\sigma \ge 0.875$ --- the

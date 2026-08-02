@@ -468,6 +468,18 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "values are OUTSIDE the probe's safe region.",
     )
     parser.add_argument(
+        "--sigma_lowres_threshold_max",
+        type=float,
+        default=None,
+        metavar="SIGMA",
+        help="optional upper σ bound for --sigma_lowres: demote only when "
+        "every σ in the batch is BELOW this too, turning the half-line gate "
+        "into a window (threshold, threshold_max). The measured demote-safe "
+        "region is a per-route window — e.g. 768's least-liability region is "
+        "~(0.65, 0.95), with the σ=1 endpoint elevated again. Default: no "
+        "upper bound (the shipped 1024:896 half-line gate).",
+    )
+    parser.add_argument(
         "--sigma_lowres_route",
         type=str,
         default="1024:896",
@@ -495,6 +507,18 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "logit(CENTER)]) is SigMa's boundary gate. No second σ-threshold — "
         "the gate lives inside the rope schedule; native steps are untouched. "
         "Bare flag = the probe's operating point (1,4,0.35,2).",
+    )
+    parser.add_argument(
+        "--sigma_lowres_span",
+        type=str,
+        default=None,
+        metavar="MODE[:FRAC]",
+        help="step-span gate on top of the σ gate (E16 placement probe): "
+        "demote only inside a span of training progress. MODE early = first "
+        "FRAC of train steps, late = last FRAC, spread = seed-keyed per-step "
+        "coin with p=FRAC (deterministic in --seed + step index, touches no "
+        "RNG stream — CRN pairing holds). FRAC defaults to 0.5. Steps outside "
+        "the span train native; the σ draw itself is untouched.",
     )
     parser.add_argument(
         "--deterministic",
