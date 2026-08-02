@@ -107,32 +107,21 @@ x^{(\omega)}, & |\omega| < \omega_e,\\[3pt]
 deleting exactly the bands above the coarse grid's Nyquist frequency
 $\omega_e$ and leaving the rest intact.
 
-\paragraph{When a band stops mattering.}
-The noising is linear, so it acts band by band:
-$z_\sigma^{(\omega)} = (1-\sigma)\,x^{(\omega)} +
-\sigma\,\epsilon^{(\omega)}$, and the velocity target splits as
-$v^{(\omega)} = \epsilon^{(\omega)} - x^{(\omega)}$. Under the premise
+\paragraph{Carried to the training gradient.}
+The noising is linear, so it acts band by band, and under the premise
 that each clean-latent band is independently Gaussian,
-$x^{(\omega)} \sim \mathcal{N}(0, P_\omega)$, where $P_\omega$ is the
-band's clean-latent power --- the power spectrum $P$ evaluated at
-$\omega$ --- the \emph{Bayes-optimal} per-band velocity prediction
-$v^{*(\omega)} = \mathbb{E}\big[v^{(\omega)} \mid z_\sigma\big]$ is a
-per-band linear shrinkage of the input, and as $\sigma$ grows the
-band's posterior collapses to its prior: the optimal prediction tends
-to the pure-noise answer $\epsilon^{(\omega)}$. The crossover
-$t_\omega$ makes this quantitative --- for all $\sigma \ge t_\omega$
-the prediction is within a tolerance $\delta$ of pure noise,
-$\mathbb{E}[|v^{*(\omega)} - \epsilon^{(\omega)}|^2] \le \delta$. The
-tolerance is the account's one free parameter, setting how strict
-``stops mattering'' is; choosing $\delta = (1+P_\omega)/2$ recovers
+$x^{(\omega)} \sim \mathcal{N}(0, P_\omega)$ with $P_\omega$ the
+band's clean-latent power, \citet{xiao2026spd} attach to each band an
+activation time: a crossover $t_\omega$ past which the Bayes-optimal
+per-band velocity prediction sits within a tolerance $\delta$ --- the
+account's one free parameter --- of the pure-noise answer
+$\epsilon^{(\omega)}$; the choice $\delta = (1+P_\omega)/2$ recovers
 the often-quoted equal-power (input-SNR) crossover
 $\sigma_{\mathrm{eq}} = \sqrt{P_\omega}/(1+\sqrt{P_\omega})$ as one
 slice of the family. How $\delta$ is set in practice --- including a
 zero-free-parameter anchor measured from our own pipeline --- is
 treated in Appendix~\ref{app:spectral}; no conclusion below hinges on
 the choice.
-
-\paragraph{Carried to the training gradient.}
 The destroyed bands of Eq.~\ref{eq:lowpass} all sit at or above
 $\omega_e$; on a decaying spectrum the lowest of them is the most
 powerful, so it crosses last, and the safe-substitution boundary for
