@@ -2,14 +2,13 @@
 \label{sec:theory}
 
 This section fixes the estimand (\S\ref{sec:estimand}), then states two
-accounts of it in those same units: the existing spectral one
-(\S\ref{sec:spectral}), carried over from the inference-side
-literature, and ours
+accounts of it in those same units: a training-gap interpretation built
+on the spectral account of the inference-side literature
+(\S\ref{sec:spectral}), and ours
 (\S\ref{sec:ouraccount}). They are not variants
 of one model: they disagree about which quantity governs a route's
 cost, about what happens at pure noise, and about whether a single
-parameter can order all routes (\S\ref{sec:sidebyside}). Every
-experiment in \S\ref{sec:evidence} is sited where they disagree.
+parameter can order all routes (\S\ref{sec:sidebyside}).
 
 \subsection{The estimand}
 \label{sec:estimand}
@@ -23,8 +22,9 @@ the target is the velocity $v = \epsilon - x$; with caption condition
 $c$ the loss is $\|\hat v_\theta(z_\sigma, \sigma, c) - v\|^2$.
 
 \paragraph{Demotion.}
-A \emph{demotion} $e_0 {\to} e$ replaces the native latent with a
-coarser-grid one ($e_0$ the route's source edge, $e$ its target edge).
+We write $e_0 {\to} e$ for a \emph{demotion}: the native latent at the
+route's source edge $e_0$ is replaced with a coarser-grid one at its
+target edge $e$.
 With $y$ the image at its native resolution, $\mathcal{E}$ the VAE
 encoder, and $\mathcal{R}_e$ the pixel-space downscale to the tier-$e$
 bucket (native aspect ratio preserved),
@@ -40,17 +40,16 @@ network sees and what it is asked to predict, but only through the
 spatial grid.
 
 \paragraph{The estimand.}
-Three \emph{arms} recur throughout: $\src$, the source arm,
-which trains on the native-resolution latent $x_{\src}$; $\dem$,
-the demoted arm, which trains on $x_{\dem}$; and $\reenc$,
-a control arm that decodes and re-encodes the native latent at native
-resolution: it pays the VAE round trip that demotion necessarily pays,
+Three \emph{arms} recur throughout: the source arm $\src$, which
+trains on the native-resolution latent $x_{\src}$; the demoted arm
+$\dem$, which trains on $x_{\dem}$; and the control arm $\reenc$,
+which decodes and re-encodes the native latent at native resolution: it pays the VAE round trip that demotion necessarily pays,
 with no grid change. For an arm
 $a \in \{\src, \reenc, \dem\}$, let
 $\bar g_a(\sigma) = \mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$ be
 the population per-bin mean adapter gradient of a query (image,
-caption). The \emph{population demotion distance} of the route
-$e_0 {\to} e$ is
+caption). The \emph{population demotion distance} of the route,
+$d_{e_0 \to e}$, is
 \begin{equation}
 d_{e_0 \to e}(\sigma) \;=\; 1 - \cos\!\big(\bar g_{\src}(\sigma),\,
 \bar g_{\dem}(\sigma)\big)
@@ -60,7 +59,7 @@ d_{e_0 \to e}(\sigma) \;=\; 1 - \cos\!\big(\bar g_{\src}(\sigma),\,
 \end{equation}
 with $\hat g$ the unit-normalized gradients. Route-level scalars carry
 the \emph{route} as a subscript, abbreviated to the target edge alone
-($d_e$, $\Floor_{1120}$) wherever the source is fixed by context; the
+($d_e$) wherever the source is fixed by context; the
 control's distance $d_{\reenc}$ carries its arm label instead, since it
 changes no grid (full convention: Appendix~\ref{app:notation}). The
 \emph{reported} quantity of every bin-resolved map and every fit in this
@@ -101,20 +100,69 @@ of the estimand, and \S\ref{sec:map} publishes one map for each.
 
 The spectral argument of \S\ref{sec:related} supplies the field's
 working model of the same gap, and it is worth deriving in the units
-Eq.~\ref{eq:gapdef} just fixed. Its strongest available form is
-SPD's tolerance-parameterized crossover: under the premise that each
-clean-latent frequency $\omega$ is Gaussian,
-$x_0^{(\omega)} \sim \mathcal{N}(0, P_\omega)$ (with $P$ the
-clean-latent power spectrum), \citet{xiao2026spd} state that for all
-$\sigma \ge t_\omega$ the \emph{Bayes-optimal} per-band velocity
-prediction is within tolerance $\delta$ of pure noise,
-$\mathbb{E}[|v^{*(\omega)} - \epsilon^{(\omega)}|^2] \le \delta$, and
-place the safe-substitution boundary for a coarse grid at the
-$t_\omega$ of its Nyquist band $\omega_e$. Carried to the
-training gradient --- under the premise that demotion costs only what
-the destroyed bands still contribute to the prediction --- the implied
-gradient gap is the destroyed-band contribution $S_e$, gated at the
-Nyquist band's activation time:
+Eq.~\ref{eq:gapdef} just fixed. Its strongest available form is the
+tolerance-parameterized crossover of \citet{xiao2026spd}.
+
+\paragraph{Demotion deletes a band.}
+Write $u^{(\omega)}$ for the frequency-$\omega$ component of a field
+$u$ in the latent's spatial Fourier decomposition, with $\omega$ in
+normalized units --- cycles per sample of the \emph{native} grid, so
+the native Nyquist sits at $\tfrac12$. The downscale $\mathcal{R}_e$
+resamples the image with $e/e_0$ times fewer samples per axis, and a
+grid at that density can represent no frequency above half its own
+sampling rate; the resampler's anti-aliasing prefilter removes, rather
+than aliases, whatever lies above. Idealizing the VAE round trip away
+--- its residue is exactly what the $\reenc$ control of
+\S\ref{sec:estimand} pays --- demotion is an ideal low-pass:
+\begin{equation}
+x_{\dem}^{(\omega)} \;=\;
+\begin{cases}
+x^{(\omega)}, & |\omega| < \omega_e,\\[3pt]
+0, & |\omega| \ge \omega_e,
+\end{cases}
+\qquad
+\omega_e \;=\; \frac{1}{2}\,\frac{e}{e_0}\,,
+\label{eq:lowpass}
+\end{equation}
+deleting exactly the bands above the coarse grid's Nyquist frequency
+$\omega_e$ and leaving the rest intact.
+
+\paragraph{When a band stops mattering.}
+The noising is linear, so it acts band by band:
+$z_\sigma^{(\omega)} = (1-\sigma)\,x^{(\omega)} +
+\sigma\,\epsilon^{(\omega)}$, and the velocity target splits as
+$v^{(\omega)} = \epsilon^{(\omega)} - x^{(\omega)}$. Under the premise
+that each clean-latent band is independently Gaussian,
+$x^{(\omega)} \sim \mathcal{N}(0, P_\omega)$ with $P$ the clean-latent
+power spectrum, the \emph{Bayes-optimal} per-band velocity prediction
+$v^{*(\omega)} = \mathbb{E}\big[v^{(\omega)} \mid z_\sigma\big]$ is a
+per-band linear shrinkage of the input, and as $\sigma$ grows the
+band's posterior collapses to its prior: the optimal prediction tends
+to the pure-noise answer $\epsilon^{(\omega)}$. The crossover
+$t_\omega$ makes this quantitative --- for all $\sigma \ge t_\omega$
+the prediction is within a tolerance $\delta$ of pure noise,
+$\mathbb{E}[|v^{*(\omega)} - \epsilon^{(\omega)}|^2] \le \delta$. The
+tolerance is the account's one free parameter, setting how strict
+``stops mattering'' is; choosing $\delta = (1+P_\omega)/2$ recovers
+the often-quoted equal-power (input-SNR) crossover
+$\sigma_{\mathrm{eq}} = \sqrt{P_\omega}/(1+\sqrt{P_\omega})$ as one
+slice of the family. How $\delta$ is set in practice --- including a
+zero-free-parameter anchor measured from our own pipeline --- is
+treated in Appendix~\ref{app:spectral}; no conclusion below hinges on
+the choice.
+
+\paragraph{Carried to the training gradient.}
+The destroyed bands of Eq.~\ref{eq:lowpass} all sit at or above
+$\omega_e$; on a decaying spectrum the lowest of them is the most
+powerful, so it crosses last, and the safe-substitution boundary for
+the whole route sits at $t_{\omega_e}$. Under the premise that
+demotion costs only what the destroyed bands still contribute to the
+prediction, the cost has one place to land: whatever those bands
+contribute to the residual, and through the backward pass to the
+adapter gradient, perturbs $\bar g_{\dem}$ away from $\bar g_{\src}$.
+Writing $S_e(\sigma)$ for that destroyed-band contribution to the
+distance of Eq.~\ref{eq:gapdef}, the implied gradient gap is $S_e$
+gated at the Nyquist band's activation time:
 \begin{equation}
 \gap_e^{\mathrm{spec}}(\sigma) \;=\;
 S_e(\sigma)\,\mathbf{1}\!\big[\sigma < t_{\omega_e}\big],
@@ -124,26 +172,20 @@ t_\omega \;=\;
 \delta)\big)}}.
 \label{eq:spd}
 \end{equation}
-This is a prediction-level criterion, strictly stronger than raw input
-SNR; the often-quoted equal-power crossover
-$\sigma_{\mathrm{eq}}(f) = \sqrt{P(f)}/(1+\sqrt{P(f)})$ is its
-$\delta = (1+P_\omega)/2$ slice. Under the same premise the account
-also extends to the residual level: the posterior mean is a per-band
-Wiener shrinkage (with Gaussian prior and noise the MMSE estimator is
-linear with per-band gain $P_\omega/(P_\omega + n_\omega)$,
-\citealp{wiener1949}), so with no cross-frequency coupling the
-cross-grid mean-residual mismatch is confined to the destroyed band and
-ordered across routes by destroyed-band energy.
+Under the same premise the account also fixes the residual level: with
+no cross-frequency coupling, the cross-grid mean-residual mismatch is
+confined to the destroyed band and ordered across routes by
+destroyed-band energy (the Gaussian posterior mean is the classical
+per-band Wiener shrinkage, \citealp{wiener1949}).
 
 Three structural consequences are fixed by the \emph{form} of
 Eq.~\ref{eq:spd}, before any gradient is measured, and each is a place
 the account can be falsified without arguing about $\delta$.
 \textbf{(a)~One parameter orders every route}: all boundaries move
 together under the single tolerance, so the family is totally ordered.
-\textbf{(b)~Ratio only}: in normalized frequency the demoted grid's
-Nyquist sits at $f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_0$, a function of
-the downscale \emph{ratio} alone, so the account is structurally blind
-to any absolute-size effect. \textbf{(c)~No floor}: for every route and
+\textbf{(b)~Ratio only}: the cut $\omega_e = \tfrac{1}{2}\,e/e_0$ of
+Eq.~\ref{eq:lowpass} is a function of the downscale \emph{ratio} alone,
+so the account is structurally blind to any absolute-size effect. \textbf{(c)~No floor}: for every route and
 every $\delta$ the predicted gap vanishes above a finite boundary, so
 no $\sigma$-independent term is expressible.
 

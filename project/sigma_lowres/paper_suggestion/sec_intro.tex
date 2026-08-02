@@ -99,12 +99,8 @@ over patchified latent tokens, so a spatial grid enters the network
 only as a token sequence: token count grows quadratically with edge
 length and attention cost quadratically again in token count, the cost
 structure that makes resolution the expensive axis. Spatial position is
-carried by rotary embeddings \citep{su2024roformer}, whose per-band
-phases accumulate with grid coordinates; this grid-dependent coordinate
-system is the one whose contribution to the demotion floor we isolate
-by intervention. Fine-tuning is LoRA \citep{hu2022lora}: low-rank
-adapter updates on a frozen backbone, the gradient regime all our
-probes measure.
+now widely carried by a grid-dependent coordinate system, most commonly
+rotary embeddings \citep{su2024roformer}.
 
 \paragraph{Scale-wise and progressive-resolution diffusion.}
 Progressive growing \citep{karras2018progressive} and resolution
@@ -121,9 +117,7 @@ gives the argument its sharpest available form: a
 tolerance-parameterized per-frequency activation time under a diagonal
 Gaussian spectral model --- a criterion on the \emph{Bayes-optimal
 predictor's} per-band output rather than merely on input SNR --- from
-which an inference-time resolution schedule follows. We take it as the
-account to beat and derive its gradient-level consequence in
-\S\ref{sec:spectral}. Spectrally-guided noise schedules
+which an inference-time resolution schedule follows. Spectrally-guided noise schedules
 \citep{esteves2026spectral} apply the same reasoning to schedule
 design; and where the premise does enter training, as in pyramidal flow
 matching \citep{jin2024pyramidal}, the objective is restaged per
