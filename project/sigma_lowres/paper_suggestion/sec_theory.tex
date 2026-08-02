@@ -8,7 +8,7 @@ on the spectral account of the inference-side literature
 (\S\ref{sec:ouraccount}). They are not variants
 of one model: they disagree about which quantity governs a route's
 cost, about what happens at pure noise, and about whether a single
-parameter can order all routes (\S\ref{sec:sidebyside}).
+parameter can order all routes.
 
 \subsection{The estimand}
 \label{sec:estimand}
@@ -76,24 +76,15 @@ debiased estimates of $d_e$ with the control as its own row.
 In a batched training scenario Eq.~\ref{eq:gapdef} admits two
 aggregations over a probe set: per-example (cosine per image, then
 mean) or batch-aggregate (gradients summed over the batch before the
-cosine, the object SGD actually follows). Writing each image's
-demotion-induced gradient disagreement as a coherent mean $b$ plus a
-zero-mean idiosyncratic deviation with covariance $\Sigma_\eta$, the
-batch-aggregate distance at batch size $B$ is, to second order,
-\begin{equation*}
-\mathbb{E}[d_B] \;\approx\;
-\frac{\|P^{\perp} b\|^2}{2\|\mu\|^2}
-\;+\;
-\frac{\mathrm{tr}\!\big(P^{\perp} \Sigma_\eta P^{\perp}\big)}{2B\|\mu\|^2},
-\end{equation*}
-with $\mu$ the mean source gradient and $P^{\perp}$ the projector off
-$\hat\mu$: an intercept (the coherent share, which never averages out)
-plus a $1/B$ term. The per-example map is therefore \emph{not} a lower
-bound for larger batches --- monotone improvement with $B$ would
-require an iid zero-mean disagreement model we have not verified ---
-and no coefficient fitted on one is guaranteed to transfer to the
-other. These are different estimands; the aggregation operator is part
-of the estimand, and \S\ref{sec:map} publishes one map for each.
+cosine, the object SGD actually follows). These are different
+estimands --- the aggregation operator is part of the estimand ---
+and the per-example map is \emph{not} a lower bound for larger
+batches: to second order the batch-aggregate distance is a coherent
+intercept that no batch size removes plus a $1/B$ term
+(Appendix~\ref{app:notation}), and monotone improvement with $B$
+would require an iid zero-mean disagreement model we have not
+verified, so no coefficient fitted on one object is guaranteed to
+transfer to the other. \S\ref{sec:map} publishes one map for each.
 
 \subsection{The spectral account}
 \label{sec:spectral}
@@ -133,8 +124,9 @@ $z_\sigma^{(\omega)} = (1-\sigma)\,x^{(\omega)} +
 \sigma\,\epsilon^{(\omega)}$, and the velocity target splits as
 $v^{(\omega)} = \epsilon^{(\omega)} - x^{(\omega)}$. Under the premise
 that each clean-latent band is independently Gaussian,
-$x^{(\omega)} \sim \mathcal{N}(0, P_\omega)$ with $P$ the clean-latent
-power spectrum, the \emph{Bayes-optimal} per-band velocity prediction
+$x^{(\omega)} \sim \mathcal{N}(0, P_\omega)$, where $P_\omega$ is the
+band's clean-latent power --- the power spectrum $P$ evaluated at
+$\omega$ --- the \emph{Bayes-optimal} per-band velocity prediction
 $v^{*(\omega)} = \mathbb{E}\big[v^{(\omega)} \mid z_\sigma\big]$ is a
 per-band linear shrinkage of the input, and as $\sigma$ grows the
 band's posterior collapses to its prior: the optimal prediction tends
@@ -160,32 +152,41 @@ demotion costs only what the destroyed bands still contribute to the
 prediction, the cost has one place to land: whatever those bands
 contribute to the residual, and through the backward pass to the
 adapter gradient, perturbs $\bar g_{\dem}$ away from $\bar g_{\src}$.
-Writing $S_e(\sigma)$ for that destroyed-band contribution to the
-distance of Eq.~\ref{eq:gapdef}, the implied gradient gap is $S_e$
-gated at the Nyquist band's activation time:
+The implied gradient gap is that contribution, gated at the Nyquist
+band's activation time:
 \begin{equation}
 \gap_e^{\mathrm{spec}}(\sigma) \;=\;
 S_e(\sigma)\,\mathbf{1}\!\big[\sigma < t_{\omega_e}\big],
 \qquad
 t_\omega \;=\;
 \frac{1}{1 + \sqrt{\delta \,/\, \big(P_\omega\,(1 + P_\omega -
-\delta)\big)}}.
+\delta)\big)}},
 \label{eq:spd}
 \end{equation}
-Under the same premise the account also fixes the residual level: with
-no cross-frequency coupling, the cross-grid mean-residual mismatch is
-confined to the destroyed band and ordered across routes by
-destroyed-band energy (the Gaussian posterior mean is the classical
-per-band Wiener shrinkage, \citealp{wiener1949}).
+where $S_e(\sigma)$ is the destroyed-band contribution to the distance
+of Eq.~\ref{eq:gapdef}. $S_e$ can be computed. At the residual level
+the premise is complete: the Gaussian posterior mean is the classical
+per-band Wiener shrinkage \citep{wiener1949}, so the cross-grid
+mean-residual mismatch is confined to the destroyed band, ordered
+across routes by destroyed-band energy, and follows in closed form
+from the power spectrum (Appendix~\ref{app:posterior}); carrying it
+into the gradient units of Eq.~\ref{eq:gapdef} costs one calibrated
+gain, since the map passes through the network's Jacobian, about which
+a spectral model of the \emph{data} says nothing.
+Appendix~\ref{app:spectral} instantiates exactly this pipeline when
+the account is scored.
 
-Three structural consequences are fixed by the \emph{form} of
-Eq.~\ref{eq:spd}, before any gradient is measured, and each is a place
-the account can be falsified without arguing about $\delta$.
+Our claim is therefore not that $S_e$ cannot be estimated --- it can,
+one way or another --- but that a gap estimate built from it is
+structurally insufficient for $\gap_e$: three limits are fixed by the
+\emph{form} of Eq.~\ref{eq:spd}, before any gradient is measured and
+however $S_e$ is computed, and each is a place the account can be
+falsified without arguing about $\delta$.
 \textbf{(a)~One parameter orders every route}: all boundaries move
 together under the single tolerance, so the family is totally ordered.
 \textbf{(b)~Ratio only}: the cut $\omega_e = \tfrac{1}{2}\,e/e_0$ of
 Eq.~\ref{eq:lowpass} is a function of the downscale \emph{ratio} alone,
-so the account is structurally blind to any absolute-size effect. \textbf{(c)~No floor}: for every route and
+so the estimate is structurally blind to any absolute-size effect. \textbf{(c)~No floor}: for every route and
 every $\delta$ the predicted gap vanishes above a finite boundary, so
 no $\sigma$-independent term is expressible.
 
@@ -205,8 +206,15 @@ Demotion changes exactly the two factors of this product, and nothing
 else about the map from (image, noise, caption) to adapter gradient:
 the residual, because it changes the data the objective consumes, and
 the Jacobian, because it changes the compute graph the gradient flows
-through. Averaging over draws and expanding the product
-(Appendix~\ref{app:branches}), the perturbation
+through. The estimand is built from noise means, so the relevant
+residual object is the \emph{mean residual} at fixed query,
+$\bar r_a(\sigma) = \mathbb{E}_\epsilon[\hat v_\theta - v]$ --- the
+same averaging that defines $\bar g_a$ in \S\ref{sec:estimand} --- a
+velocity-shaped field with a definite $\sigma$-curve for each arm;
+write $\Delta \bar r(\sigma)$ for its cross-arm mismatch
+$\bar r_{\dem} - \bar r_{\src}$, and $\Delta J$ likewise for the
+noise-mean Jacobians. Averaging each factor over draws and expanding
+the product (Appendix~\ref{app:branches}), the perturbation
 $\delta g = \bar g_{\dem} - \bar g_{\src}$ decomposes as
 \begin{equation}
 \delta g \;=\;
@@ -222,70 +230,37 @@ the shared adapter-parameter space where both gradients live, and
 \S\ref{sec:ourscored} isolates each by its own intervention.
 
 Read against Eq.~\ref{eq:branches}, the spectral account of
-\S\ref{sec:spectral} is a \emph{strict special case}: it keeps the
-input-mediated part of the data branch, gated at Nyquist, and sets
-everything else to zero --- no target-mediated share, no graph branch
-($\Delta J \equiv 0$), no interaction. Both omissions are structural.
-The graph branch does not reference $\sigma$ at all, since the grid
-change does not: token count, rotary phase density, and
-sequence-length-dependent normalization change identically at every
-noise level, so nothing about noise masking can remove them. And within
-the data branch, only the \emph{input}-mediated part shrinks with
-$\sigma$: perturbing the image by $\delta x$ perturbs the residual by
+\S\ref{sec:spectral} keeps the input-mediated part of the data
+branch, gated at Nyquist, and sets everything else to zero --- no
+target-mediated share, no graph branch ($\Delta J \equiv 0$), no
+interaction --- and the three limits fixed there are these discarded
+terms read back. The graph branch does not reference $\sigma$ at all,
+since the grid change does not: token count, rotary phase density,
+and sequence-length-dependent normalization change identically at
+every noise level, so nothing about noise masking can remove them ---
+limit~(c)'s inexpressible $\sigma$-independent term --- and, being a
+property of the two grids rather than of the downscale map, it need
+not be a function of their ratio (limit~(b)); a gap governed by two
+terms rather than one admits no single-parameter ordering of the
+family (limit~(a)). Within the data branch, only the
+\emph{input}-mediated part shrinks with $\sigma$: perturbing the
+image by $\delta x$ perturbs the residual by
 $D_z f\,[(1{-}\sigma)\,\delta x] + \delta x$, and the second,
-target-mediated term carries unit weight at every $\sigma$. At
-$\sigma{=}1$ the input is pure noise on every grid, so the
-input-mediated part vanishes in distribution, but the endpoint is not
-data-free by construction; whether the surviving target-mediated share
-is \emph{resolvable in the angular estimand} is an empirical question,
-discharged in \S\ref{sec:ourscored}. Input-level spectral sufficiency
-licenses inference-time substitution; what training consumes is
-$\mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$, and that is not
-bounded by an input-masking argument.
+target-mediated term carries unit weight at every $\sigma$, so at
+$\sigma{=}1$ --- where the input is pure noise on every grid and the
+input-mediated part vanishes in distribution --- the endpoint is
+still not data-free by construction: at the Bayes level the surviving
+mean residual is exactly the image's deviation from the
+caption-conditional prior mean, $x - \mathbb{E}[x \mid c]$
+(Appendix~\ref{app:posterior}). Whether that survivor is
+\emph{resolvable in the angular estimand} is an empirical question,
+discharged in \S\ref{sec:ourscored}.
 
-\paragraph{The residual factor has an exact posterior form.}
-The data branch's $\sigma$-curve ingredient $\Delta\bar r$ is not a
-black box. For the population-optimal (Bayes) velocity field
-$v_e^{*}(z, \sigma, c) = \mathbb{E}[v \mid z, c] =
-\big(z - m_e(z, c)\big)/\sigma$, with
-$m_e(z, c) = \mathbb{E}[x \mid z, c]$ the grid-$e$ posterior mean, the
-fixed-image mean residual evaluates exactly to
-\begin{equation}
-\bar r_e^{*}(\sigma; x)
-\;=\;
-\frac{x \;-\; \mathbb{E}_{z_\sigma \mid x}\big[m_e(z_\sigma, c)\big]}{\sigma},
-\qquad
-\bar r_e^{*}(1; x) \;=\; x - \mathbb{E}[x \mid c],
-\label{eq:posterior}
-\end{equation}
-so the cross-grid mismatch is a difference of two posterior
-reconstruction-bias operators, and the target-mediated $\sigma{=}1$
-survivor of the previous paragraph is exactly the image's deviation
-from the caption-conditional prior mean (derivation, score form, and a
-Gaussian closure: Appendix~\ref{app:posterior}). Two consequences are
-used below. First, MSE optimality zeroes the residual conditional on
-the \emph{input}, not the image:
-$\mathbb{E}[v^{*} - v \mid z, c] = 0$ does not imply
-$\mathbb{E}_\epsilon[v^{*} - v \mid x, c] = 0$, and
-Eq.~\ref{eq:posterior} is generally nonzero --- so the measured
-residual of a trained network splits exactly as
-$\bar r_{\theta,e} = \bar r_e^{*} +
-\mathbb{E}_{z_\sigma \mid x}[q_{\theta,e}]$, intrinsic posterior bias
-plus approximation error
-($q_{\theta,e} = \hat v_{\theta,e} - v_e^{*}$), a
-\emph{mean-residual} mismatch rather than a model-error difference
-alone. Second, the noising path fixes only how the posterior operators
-are smoothed in $\sigma$; a numerical curve requires a model of the
-grid-conditional clean-latent distribution, which is not analytically
-available. In these terms the spectral account's residual-level form
-(\S\ref{sec:spectral}) is the \emph{diagonal-Gaussian} closure of this
-identity, and the measured $\|\Delta \bar r(\sigma)\|$ consumed by
-assumption (iv) below is its \emph{empirical} closure --- an estimate
-of a defined functional of the two posterior operators, not an
-unconstrained fitted shape.
-
-It remains to read Eq.~\ref{eq:branches} in the units of the estimand
-(step-by-step in Appendix~\ref{app:geometry}). Writing
+\paragraph{The angular reduction.}
+It remains to read Eq.~\ref{eq:branches} in the units of the estimand.
+The geometry is pure bookkeeping, so the displayed forms live in
+Appendix~\ref{app:geometry}; what the argument needs is their content.
+Writing
 $u^{\perp} = u - (\hat g_{\src}^{\!\top}u)\,\hat g_{\src}$ for the
 component orthogonal to $\bar g_{\src}(\sigma)$, split the perturbation
 into a rescaling and a rotation:
@@ -293,37 +268,28 @@ $\kappa_\parallel = \hat g_{\src}^{\!\top}\delta g / \|\bar g_{\src}\|$
 and $\kappa_\perp = \|\delta g^{\perp}\| / \|\bar g_{\src}\|$.
 Substituting $\bar g_{\dem} = \bar g_{\src} + \delta g$ into
 Eq.~\ref{eq:gapdef} gives, \emph{exactly},
-\begin{equation}
-d_e \;=\; 1 - \frac{1}{\sqrt{1 + \kappa_{\mathrm{eff}}^2}}\,,
-\qquad
-\kappa_{\mathrm{eff}} \;=\; \frac{\kappa_\perp}{1 + \kappa_\parallel}\,:
-\label{eq:exact}
-\end{equation}
-the gap is a saturating function of a single rotation-to-scale ratio ---
-only the orthogonal component rotates the gradient direction, and a
-parallel component merely renormalizes it. Taylor-expanding
-Eq.~\ref{eq:exact} at small $\kappa$ and substituting
+$d_e = 1 - 1/\sqrt{1 + \kappa_{\mathrm{eff}}^2}$ with
+$\kappa_{\mathrm{eff}} = \kappa_\perp/(1 + \kappa_\parallel)$
+(Eq.~\ref{eq:exact}): the gap is a saturating function of a single
+rotation-to-scale ratio --- only the orthogonal component rotates the
+gradient direction, and the cosine estimand is \emph{blind} to a
+parallel rescaling, a fact the endpoint probes of \S\ref{sec:ourscored}
+lean on. Taylor-expanding at small $\kappa$ and substituting
 Eq.~\ref{eq:branches} into the square gives the \emph{four-term angular
-expansion}, derived as unconditionally as Eq.~\ref{eq:exact} itself:
-\begin{equation}
-d_e(\sigma) \;\approx\;
-\underbrace{\frac{\big\|B_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{data share }S_e}
-\;+\;
-\underbrace{\frac{\big\|C_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{graph share }F_e}
-\;+\;
-\underbrace{\frac{\big\langle B_e^{\perp},\, C_e^{\perp}\big\rangle}{\|\bar g_{\src}\|^2}}_{\text{projected interaction }I_e}
-\;+\; R'_e,
-\label{eq:fourterm}
-\end{equation}
-where $R'_e$ collects the remainder branch, the beyond-quadratic terms
-of Eq.~\ref{eq:exact}, and the parallel-component correction
-(exact content: Appendix~\ref{app:geometry}). $S_e$ and $F_e$ are
-non-negative; $I_e$ can carry either sign, a fact that matters in
-Appendix~\ref{sec:headtohead}. At the harshest measured operating point
-($d = 0.30$ at $512$, $\sigma{=}1$) the implied perturbation is
-$\kappa_{\mathrm{eff}} \approx 1.02$ --- not small --- so
-quadratic-order reads on that route are indicative and the exact form
-carries the quantitative claims. Note that Eq.~\ref{eq:spd} is
+expansion} (Eq.~\ref{eq:fourterm}), derived as unconditionally as the
+exact form itself: a data share
+$S_e = \|B_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$, a graph share
+$F_e = \|C_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$, a projected
+interaction
+$I_e = \langle B_e^{\perp}, C_e^{\perp}\rangle / \|\bar g_{\src}\|^2$,
+and a remainder $R'_e$ collecting the remainder branch, the
+beyond-quadratic terms, and the parallel-component correction. $S_e$
+and $F_e$ are non-negative; $I_e$ can carry either sign, a fact that
+matters in Appendix~\ref{sec:headtohead}. At the harshest measured
+operating point ($d = 0.30$ at $512$, $\sigma{=}1$) the implied
+perturbation is $\kappa_{\mathrm{eff}} \approx 1.02$ --- not small ---
+so quadratic-order reads on that route are indicative and the exact
+form carries the quantitative claims. Note that Eq.~\ref{eq:spd} is
 Eq.~\ref{eq:fourterm} with $F_e = I_e = 0$ and $S_e$ gated at Nyquist.
 
 \paragraph{From the expansion to a measurable form.}
@@ -350,7 +316,9 @@ $\|B_e^{\perp}\| \approx a_e\,\|\Delta \bar r(\sigma)\|$: a
 $\sigma$-independent route amplitude times the \emph{norm} of the
 cross-grid mean-prediction-residual mismatch of Eq.~\ref{eq:branches},
 asserted to be route-independent and directly measurable as such
-(\S\ref{sec:ourscored}).
+(\S\ref{sec:ourscored}); the measured curve is an \emph{empirical}
+closure of the mean residual's exact posterior form
+(Appendix~\ref{app:posterior}), not an unconstrained fitted shape.
 The first two are not unstructured hopes: both discarded terms obey
 exact Cauchy--Schwarz bounds in the retained shares
 ($|I_e| \le 2\sqrt{S_eF_e} \le S_e + F_e$, the remainder entering at
@@ -401,27 +369,3 @@ remove $\mathrm{RoPE}_e$ wherever the data branch is inactive
 absolute-\emph{size} governor to $\mathrm{Resid}_e$. Like YaRN's own
 band thresholds \citep{peng2024yarn}, that sketch's constants are
 calibrated, not derived; we claim no closed form for $\Floor_e$.
-
-\paragraph{The two accounts, side by side.}
-\label{sec:sidebyside}
-Both accounts agree that gaps shrink with $\sigma$ and order by
-severity. Everything else is fixed by the \emph{form} of
-Eq.~\ref{eq:spd} against Eq.~\ref{eq:twoterm} before any gradient is
-measured: what orders routes (the downscale ratio alone, against the
-ratio through the amplitude $a_e$ \emph{and} the absolute target token
-count through the floor $\Floor_e$); what is free (one tolerance
-$\delta$ shared by every route, against per-route $a_e, \Floor_e$
-generated by two governors); the endpoint ($\gap_e \to 0$ on every
-route, against $\gap_e \to \Floor_e > 0$); the curve shape (a gated
-step at $t_{\omega_e}$, against
-$\|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$ carried through
-Eq.~\ref{eq:exact}); the cross-grid residual $\Delta \bar r$ (confined
-to the destroyed band and ordered by its energy, against a norm shared
-by all routes with route identity living in $J$); and equal-ratio
-routes at different absolute sizes (identical, against same $a_e$ and
-different $\Floor_e$). Each disagreement is an experiment in
-\S\ref{sec:evidence}, and two are decidable without fitting anything:
-if a route's gap survives at $\sigma = 1$, where the input is pure
-noise on every grid, no member of the spectral family can produce it;
-and if two routes of the \emph{same ratio} at different absolute sizes
-differ, ratio is not the whole governor.

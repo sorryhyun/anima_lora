@@ -1,6 +1,9 @@
 \appendix
 
-\section{Notation and estimand fine print}
+\section{Notation and derivations}
+\label{app:derivations}
+
+\subsection{Notation and estimand fine print}
 \label{app:notation}
 
 \paragraph{Arm labels versus route subscripts.}
@@ -18,7 +21,25 @@ carries an arm label: the control changes no grid and has no target
 edge. Each table states which object it reports, $d_e$ or the excess
 $\gap_e$.
 
-\section{Derivation of the branch decomposition
+\paragraph{The two aggregations at second order.}
+The batch-size decomposition asserted in \S\ref{sec:estimand} is the
+following. Writing each image's demotion-induced gradient
+disagreement as a coherent mean $b$ plus a zero-mean idiosyncratic
+deviation with covariance $\Sigma_\eta$, the batch-aggregate distance
+at batch size $B$ is, to second order,
+\begin{equation*}
+\mathbb{E}[d_B] \;\approx\;
+\frac{\|P^{\perp} b\|^2}{2\|\mu\|^2}
+\;+\;
+\frac{\mathrm{tr}\!\big(P^{\perp} \Sigma_\eta P^{\perp}\big)}{2B\|\mu\|^2},
+\end{equation*}
+with $\mu$ the mean source gradient and $P^{\perp}$ the projector off
+$\hat\mu$: an intercept (the coherent share, which never averages
+out) plus a $1/B$ term. The intercept is exactly the coherent drift
+that the intercept-plus-$1/B$ fit across pool sizes
+(\S\ref{sec:map}) is designated to bound.
+
+\subsection{Derivation of the branch decomposition
 (Eq.~\ref{eq:branches})}
 \label{app:branches}
 
@@ -77,8 +98,7 @@ in adapter-parameter space, isolated by the designated probes of
 \S\ref{sec:ourscored}) and treats Eq.~\ref{eq:branches} as fixing what
 each branch collects rather than as a computable matrix formula.
 
-\section{The mean residual as a posterior operator
-(Eq.~\ref{eq:posterior})}
+\subsection{The mean residual as a posterior operator}
 \label{app:posterior}
 
 This appendix derives the posterior form of the fixed-image mean
@@ -103,8 +123,8 @@ m_e(z, c) := \mathbb{E}[x \mid z_\sigma = z,\, c].
 \end{equation}
 Averaging over noise at fixed image
 ($\mathbb{E}_\epsilon[\epsilon] = 0$,
-$\mathbb{E}_\epsilon[z_\sigma] = a x$) gives
-Eq.~\ref{eq:posterior}:
+$\mathbb{E}_\epsilon[z_\sigma] = a x$) gives the posterior form
+used in \S\ref{sec:reduction}:
 \begin{equation}
 \bar r_e^{*}(\sigma; x)
 \;=\; \mathbb{E}_\epsilon\big[v_e^{*}(a x + \sigma \epsilon, \sigma, c)
@@ -214,13 +234,13 @@ $\sqrt{\mathbb{E}\|\bar r_d - A_e \bar r_s\|^2}$ normalized by the
 mean of the two arms' root-mean-square norms --- not a raw mismatch
 norm.
 
-\section{Derivation of the angular forms (Eqs.~\ref{eq:exact}
-and~\ref{eq:fourterm})}
+\subsection{The angular reduction: exact form and four-term expansion}
 \label{app:geometry}
 
-Both angular forms follow from Eq.~\ref{eq:gapdef} and the split of
-$\delta g$ by the native direction; no property of demotion enters.
-Write $g = \bar g_{\src}$, $G = \|g\|$, $\hat g = g/G$, and
+This appendix states and derives the two angular forms summarized in
+\S\ref{sec:reduction}. Both follow from Eq.~\ref{eq:gapdef} and the
+split of $\delta g$ by the native direction; no property of demotion
+enters. Write $g = \bar g_{\src}$, $G = \|g\|$, $\hat g = g/G$, and
 $u^{\perp} = u - (\hat g^{\!\top}u)\,\hat g$; decompose
 $\delta g = G\,\kappa_\parallel\, \hat g + \delta g^{\perp}$ with
 $\kappa_\parallel = \hat g^{\!\top}\delta g / G$ and
@@ -240,8 +260,13 @@ and
 \label{eq:appexact}
 \end{equation}
 valid whenever $1 + \kappa_\parallel > 0$ (the perturbation does not
-reverse the gradient direction); $d_e = 1 - \cos$ is
-Eq.~\ref{eq:exact}. Since
+reverse the gradient direction). The gap of Eq.~\ref{eq:gapdef} is
+therefore, \emph{exactly},
+\begin{equation}
+d_e \;=\; 1 - \frac{1}{\sqrt{1 + \kappa_{\mathrm{eff}}^2}}\,,
+\label{eq:exact}
+\end{equation}
+the exact angular link of \S\ref{sec:reduction}. Since
 $1 - \cos(\hat g_1, \hat g_2) = \tfrac12 \|\hat g_1 - \hat g_2\|^2$
 for unit vectors, starting from either expression in
 Eq.~\ref{eq:gapdef} lands on the same result.
@@ -268,10 +293,20 @@ term and expanding the square,
 + \Big(2\,\langle (B_e{+}C_e)^{\perp},\, R_e^{\perp}\rangle
 + \|R_e^{\perp}\|^2\Big),
 \end{equation*}
-whose first three terms, divided by $2G^2$, are exactly the data
-share $S_e$, the graph share $F_e$, and the projected interaction
-$I_e$ of Eq.~\ref{eq:fourterm}. The remainder $R'_e$ of
-Eq.~\ref{eq:fourterm} therefore has an exact content: the
+whose first three terms, divided by $2G^2$, define the data share, the
+graph share, and the projected interaction:
+\begin{equation}
+d_e(\sigma) \;\approx\;
+\underbrace{\frac{\big\|B_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{data share }S_e}
+\;+\;
+\underbrace{\frac{\big\|C_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{graph share }F_e}
+\;+\;
+\underbrace{\frac{\big\langle B_e^{\perp},\, C_e^{\perp}\big\rangle}{\|\bar g_{\src}\|^2}}_{\text{projected interaction }I_e}
+\;+\; R'_e,
+\label{eq:fourterm}
+\end{equation}
+the four-term expansion of \S\ref{sec:reduction}. The remainder
+$R'_e$ has an exact content: the
 $R_e$-bearing terms above, the beyond-quadratic terms of
 Eq.~\ref{eq:appquad}, and the parallel-component correction, each
 suppressed by an extra power of perturbation size relative to the

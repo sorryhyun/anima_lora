@@ -293,7 +293,7 @@ denominator.}
 Measuring the mean prediction residual
 $\bar r = \mathbb{E}_\epsilon[\hat v - (\epsilon - x)]$ per grid and
 $\sigma$ (the exact $r$ in $g = J^{\!\top}r$; by
-Eq.~\ref{eq:posterior} intrinsic posterior bias plus the frozen
+Eq.~\ref{eq:appsplit} intrinsic posterior bias plus the frozen
 model's approximation error, not model error alone) shows a strong, monotone
 $\sigma$-shape (cross-grid excess $0.89 \to 0.36$ in relative $L_2$
 from $\sigma{=}0.125$ to $1$) that is the \emph{same for every route}
@@ -328,7 +328,7 @@ since direction is what a normalized optimizer consumes.
 the floor.}
 With the floor isolated, what orders the routes? Two probes give a
 clean division of labor, and together they decide the equal-ratio
-disagreement of \S\ref{sec:sidebyside}. \emph{Absolute size, not ratio, sets the
+disagreement --- limit~(b) of \S\ref{sec:spectral}. \emph{Absolute size, not ratio, sets the
 floor}: re-run one tier down, the route $896{\to}768$ fails its
 pre-registered bar with a high-$\sigma$ residual ${\sim}2\times$ the
 $1024{\to}896$ plateau, at ratio $0.857$ against the passing $0.875$
