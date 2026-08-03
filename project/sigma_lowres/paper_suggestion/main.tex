@@ -70,9 +70,10 @@ gives \emph{selective} low-resolution LoRA training with a $14.6\%$
 smaller training footprint at a fixed step budget, while producing
 near-native adapter weights: with demotion scheduled late and both
 routes stacked, the trained $\Delta W$ matches its matched-seed
-native twin at cosine $0.75$, where a change of training seed alone
-reads $0.121$ and demoting $1024{\to}896$ at every $\sigma$ reads
-$0.183$.
+native twin at cosine $0.75$ --- well above the $0.26$ at which an
+identical retrain reproduces itself once deterministic kernels are
+disabled --- where a change of training seed alone reads $0.121$ and
+demoting $1024{\to}896$ at every $\sigma$ reads $0.183$.
 \end{abstract}
 
 % ---- Body ----------------------------------------------------------

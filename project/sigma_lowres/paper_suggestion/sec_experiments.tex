@@ -4,13 +4,13 @@
 This section scores both accounts of \S\ref{sec:theory} against one
 measured object: debiased demotion-gap curves over the full $\sigma$
 axis, on routes neither account saw. We build the instrument
-(\S\ref{sec:instrument}), then score both accounts against the
-measured curves --- the spectral one at the boundary and the curve
-level, ours term by term (\S\ref{sec:scored}); the per-route map those
-curves certify is read in \S\ref{sec:map}, where it becomes the
-deployed artifact, and the held-out prediction protocol, its
-pre-registered gates, and the structural failures it exposes are
-quantified in Appendix~\ref{sec:headtohead}. Each subsection states
+(\S\ref{sec:instrument}); read the per-route map its curves certify
+--- the deployed artifact (\S\ref{sec:map}); then score both accounts
+against the same curves --- the spectral one at the boundary and the
+curve level, ours term by term (\S\ref{sec:scored}). The held-out
+prediction protocol, its pre-registered gates, and the structural
+failures it exposes are quantified in
+Appendix~\ref{sec:headtohead}. Each subsection states
 the prediction it discharges against criteria frozen before the runs;
 several probes double as falsifiers of our own account's assumptions.
 
@@ -89,7 +89,7 @@ ${\approx}\,1$ --- the population per-bin native gradient is a
 noise (validation numbers: Appendix~\ref{app:instrument}). No
 conclusion in this paper survives on the naive estimator alone.
 
-\paragraph{Margins, resolution, pairing, and coverage.}
+\paragraph{Margins and resolution.}
 Any estimate of $\gap_e(\sigma)$ compares finite-draw estimates of
 population directions, so a safety verdict needs two numbers, and they
 must be stated \emph{separately}: a margin --- the largest excess
@@ -139,6 +139,96 @@ bias makes an in-band read conservative, or where a paired same-grid
 contrast cancels the bias to first order
 (Appendices~\ref{app:instrument},~\ref{app:tables}).
 
+\subsection{The measured $(\text{route}, \sigma)$ map}
+\label{sec:verdict}
+\label{sec:map}
+
+\begin{figure}[t]
+\centering
+\begin{subfigure}[t]{0.46\textwidth}
+\includegraphics[width=\linewidth]{figs/gap_debiased.png}
+\phantomcaption
+\label{fig:gapcurves}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.515\textwidth}
+\includegraphics[width=\linewidth]{figs/estimator_context.png}
+\phantomcaption
+\label{fig:estimator}
+\end{subfigure}
+\caption{The measurement in detail.
+(a)~Debiased demotion gap per $\sigma$-bin, paired against the
+re-encoding control ($1024$-tier natives, $N{=}40$; per-bin values and
+SEMs in Appendix Table~\ref{tab:debiasedmap}; gray band: bin-level
+$\pm\epsstar$ (\S\ref{sec:instrument}); open markers: the $\sigma{=}1$
+endpoint bin): safety is a per-route boundary --- the $896$ route
+enters the band at $\sigma \approx 0.5$, $768$ falls only to a
+low-excess shelf ($+0.02$--$0.04$ over $0.65 < \sigma < 0.95$, short
+of the strict margin), and $512$ never falls inside the band (closest
+approach $+0.12 \pm 0.05$ at $\sigma = 0.96$) --- against the
+spectral family's prediction of $\sigma \approx 0.14$--$0.20$.
+(b)~The estimator context those curves are read through: the
+redraw-floor cosine and the U-shaped gradient norm
+$\|\bar g_{\src}(\sigma)\|$.}
+\label{fig:verdict}
+\end{figure}
+
+The answer to the title question at our operating point is not a
+corrected formula but a measured map at a stated resolution: the
+debiased gap curves both accounts are scored on (\S\ref{sec:scored})
+carry the verdict, read per bin against the safety statement of
+Eq.~\ref{eq:safe} (Fig.~\ref{fig:verdict}; per-bin numbers in Appendix
+Table~\ref{tab:debiasedmap}). Collected route by route --- \emph{safe}
+meaning Eq.~\ref{eq:safe} holds at the stated margin, on the
+\emph{per-example} object --- the map needs no table: $1024{\to}896$
+(floor $0.02$--$0.04$) is \textbf{safe} on the interior window
+$\sigma \in (0.5, 1)$, certified at margin $0.09$ simultaneous over
+the seven window bins ($0.066$ pointwise; the strict
+$\varepsilon = 0.02$ margin is not yet powered on the interior grid,
+and powering it is a draw-count exercise, designated for the next
+probe campaign); $1280{\to}1024$ (floor ${\approx}\,0$) is
+\textbf{safe} from $\sigma \gtrsim 0.75$, and the synthetic
+iso-severity grid $1280{\to}1120$ is safe with
+$\sigmastar \approx 0.5$, as its ratio twin predicts (both
+$1280$-tier reads on the pre-debiasing instrument;
+\S\ref{sec:limitations}); $1024{\to}768$ and $896{\to}768$ (floors
+$0.06$--$0.13$) certify no window at the strict margin, but
+$1024{\to}768$ retains a narrow \textbf{low-excess window}
+$\sigma \in (0.65, 0.95)$ --- paired excess $+0.02$--$0.04$ per bin,
+certified at margin $0.09$ simultaneous over its four window bins
+($0.072$ pointwise), atop a floor no noise level removes --- the
+window \S\ref{sec:trainer} stacks as a second route; and any route to
+$512$ (floor ${\approx}\,0.30$) is \emph{certifiably unsafe} in all
+fifteen bins --- no noise level comes near certifying a $2\times$
+downscale. Safety is a per-route boundary, jointly determined by
+ratio (through $a_e$) and absolute target size (through $\Floor_e$);
+neither alone predicts the ordering. Debiasing itself moved verdicts
+in both directions, and the two revisions against the historical
+record are part of the result: roughly half the $768$ route's
+high-$\sigma$ plateau was estimator bias, softening ``unsafe at every
+noise level'' into the narrow window just stated, while the $896$
+endpoint shows a small \emph{real} gap ($+0.034 \pm 0.011$) that
+single-estimate variance had buried --- its safe window is the
+interior, not the endpoint (Appendix Table~\ref{tab:rawendpoint}).
+
+\paragraph{A corollary worth stating plainly.}
+The safety of $1024{\to}896$ is an \emph{empirical smoothness statement
+about this network's function across nearby token counts}, not an
+information-theoretic statement about the data. There was no a priori
+reason to expect a universal ratio invariant, and the spectral
+account's deepest error is having promised one.
+
+\paragraph{The map depends on the aggregation object.}
+The aggregation operator is part of the estimand
+(\S\ref{sec:estimand}, Appendix~\ref{app:notation}), and the two
+objects genuinely disagree at high $\sigma$: pooled-arm probes (pool
+size $4$) collapse the $1024{\to}896$ and $1024{\to}768$ excesses to
+${\approx}\,0$ over the upper bins --- the batch-aggregate object SGD
+follows is more forgiving here than the per-example read we publish
+as the verdict. The coherent drift no batch size removes is bounded
+only by an $a + b/B$ fit across pool sizes, the designated readout of
+a debiased verdict grid at the trainer's actual
+batch$\times$accumulation operating point \textbf{[pending]}.
+
 \subsection{Both accounts, scored}
 \label{sec:scored}
 \label{sec:specscored}
@@ -170,41 +260,13 @@ spectral bridge does not cover.}
 \label{fig:accounts}
 \end{figure}
 
-\begin{figure}[t]
-\centering
-\begin{subfigure}[t]{0.46\textwidth}
-\includegraphics[width=\linewidth]{figs/gap_debiased.png}
-\phantomcaption
-\label{fig:gapcurves}
-\end{subfigure}\hfill
-\begin{subfigure}[t]{0.515\textwidth}
-\includegraphics[width=\linewidth]{figs/estimator_context.png}
-\phantomcaption
-\label{fig:estimator}
-\end{subfigure}
-\caption{The measurement in detail.
-(a)~Debiased demotion gap per $\sigma$-bin, paired against the
-re-encoding control ($1024$-tier natives, $N{=}40$; per-bin values and
-SEMs in Appendix Table~\ref{tab:debiasedmap}; gray band: bin-level
-$\pm\epsstar$ (\S\ref{sec:instrument}); open markers: the $\sigma{=}1$
-endpoint bin): safety is a per-route boundary --- the $896$ route
-enters the band at $\sigma \approx 0.5$, $768$ has no certifiable
-window, and $512$ never falls inside it (closest approach
-$+0.12 \pm 0.05$ at $\sigma = 0.96$) --- against the
-spectral family's prediction of $\sigma \approx 0.14$--$0.20$.
-(b)~The estimator context those curves are read through: the
-redraw-floor cosine and the U-shaped gradient norm
-$\|\bar g_{\src}(\sigma)\|$.}
-\label{fig:verdict}
-\end{figure}
-
 Both accounts are scored against one measured object: the debiased gap
 curves of Figs.~\ref{fig:accounts} and~\ref{fig:verdict}, whose per-bin
-reading --- and the two revisions debiasing forced on the historical
-record --- \S\ref{sec:map} sets out in full. Four features of
+reading \S\ref{sec:map} has just set out. Four features of
 those curves are all the scoring needs: the $896$ route enters the
-re-encoding band at $\sigma \approx 0.5$, $768$ has no certifiable
-window, $512$ is gapped at every noise level, and every route's
+re-encoding band at $\sigma \approx 0.5$, $768$ falls only to a low
+but persistent excess at high noise (its $(0.65, 0.95)$ window),
+$512$ is gapped at every noise level, and every route's
 high-$\sigma$ plateau converges to a nonzero level ordered by the
 target grid's token count. We score the spectral account against those
 features first, at the boundary and then the curve level, and ours
