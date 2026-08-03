@@ -54,7 +54,7 @@ ${\approx}\,0$ over the upper bins --- the batch-aggregate object SGD
 follows is more forgiving here than the per-example read we publish
 as the verdict. The coherent drift no batch size removes is bounded
 only by an $a + b/B$ fit across pool sizes, the designated readout of
-a debiased verdict grid at the shipped trainer's actual
+a debiased verdict grid at the trainer's actual
 batch$\times$accumulation operating point \textbf{[pending]}.
 
 \subsection{$\sigma$-conditional training on the measured-safe route}
@@ -130,7 +130,7 @@ at matched training seed, mean $\pm$ seed spread (SD over the three
 matched-seed pairs; the three seed pairs for the yardstick row), on two
 single-artist corpora ($60$/$15$ training images). The yardstick row is
 the same cosine between native endpoints that differ \emph{only} in
-training seed (arm-independent: the shipped arm's cross-seed values
+training seed (arm-independent: the gated arm's cross-seed values
 coincide with it within $.006$). An arm reading above the yardstick
 displaces the endpoint \emph{less} than a seed change does. Training is
 bit-exact deterministic --- an identical retrain reads $1.000$ --- so
@@ -159,7 +159,7 @@ $896$, every $\sigma$ & $0.183 \pm .009$ & $0.236 \pm .009$ \\
 \end{tabular}
 \end{minipage}\hfill
 \begin{minipage}[t]{0.355\linewidth}
-\caption{The shipped step, in full. Lines 3--5 (colored) are the
+\caption{The proposed step, in full. Lines 3--5 (colored) are the
 entire change: the gate $\sigmastar{=}0.5$ and the route are read off
 the measured map (\S\ref{sec:verdict}), line 5 is the optional
 refinement, and lines 1--2 are only a reordering of a standard step
@@ -211,7 +211,7 @@ differ only in training seed. Determinism makes the read exact --- an
 identical retrain reproduces its twin at $1.000$ --- and the yardstick
 is tight, so the margins are many seed-spreads wide. Every arm lands
 above the yardstick: even demoting \emph{all} $480$ steps displaces the
-endpoint less than changing the training seed, and the shipped gate
+endpoint less than changing the training seed, and the $\sigma{>}0.5$ gate
 sits a factor $2$--$3$ above it ($0.365$ vs $0.121$; $0.432$ vs
 $0.199$). The ordering, however, is set by \emph{placement}, not by
 per-step severity: protecting the first quarter of training doubles the
