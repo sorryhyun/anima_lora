@@ -509,6 +509,40 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "Bare flag = the probe's operating point (1,4,0.35,2).",
     )
     parser.add_argument(
+        "--sigma_lowres_route2",
+        type=str,
+        default=None,
+        metavar="NATIVE:DEMOTE",
+        help="secondary demote rule (E16 stacked router), PRIORITY over the "
+        "primary: when set, steps passing --sigma_lowres_threshold2/_max "
+        "(and --sigma_lowres_span2) demote on THIS route instead — e.g. "
+        "1024:768 inside its measured window (0.65, 0.95) stacked on the "
+        "shipped σ>0.5 1024:896 rule. yarnsig applies to primary-rule "
+        "demotes only. Sibling latents for BOTH routes must be emitted.",
+    )
+    parser.add_argument(
+        "--sigma_lowres_threshold2",
+        type=float,
+        default=0.5,
+        help="lower σ bound for the secondary rule (--sigma_lowres_route2).",
+    )
+    parser.add_argument(
+        "--sigma_lowres_threshold2_max",
+        type=float,
+        default=None,
+        metavar="SIGMA",
+        help="upper σ bound for the secondary rule — window semantics as "
+        "--sigma_lowres_threshold_max.",
+    )
+    parser.add_argument(
+        "--sigma_lowres_span2",
+        type=str,
+        default=None,
+        metavar="MODE[:FRAC]",
+        help="step-span gate for the secondary rule — semantics as "
+        "--sigma_lowres_span.",
+    )
+    parser.add_argument(
         "--sigma_lowres_span",
         type=str,
         default=None,

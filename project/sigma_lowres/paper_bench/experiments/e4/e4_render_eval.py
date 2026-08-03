@@ -144,6 +144,12 @@ def main() -> None:
         "still come from the manifest.",
     )
     ap.add_argument("--train_seed", type=int, default=1001)
+    ap.add_argument(
+        "--ckpt_prefix",
+        default="e4",
+        help="Checkpoint name prefix: <prefix>_<slug>_<arm>_s<seed>.safetensors "
+        "(e.g. e16 for the E16 placement twins).",
+    )
     ap.add_argument("--arms", nargs="+", default=list(ARMS))
     ap.add_argument("--artists", nargs="+", default=None)
     ap.add_argument("--steps", type=int, default=20)
@@ -213,7 +219,7 @@ def main() -> None:
                 REPO
                 / "output"
                 / "ckpt"
-                / f"e4_{s}_{arm}_s{args.train_seed}.safetensors"
+                / f"{args.ckpt_prefix}_{s}_{arm}_s{args.train_seed}.safetensors"
                 for s in dict.fromkeys((aslug, aslug.split("_")[0]))
             ]
             ckpt = next((c for c in candidates if c.exists()), None)

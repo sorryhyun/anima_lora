@@ -242,6 +242,11 @@ class BaseDataset(torch.utils.data.Dataset):
         # validation group stays native so val loss remains arm-comparable.
         self._sigma_demote: Optional[Tuple[int, int]] = None
         self._sigma_demote_warned: bool = False
+        # Secondary demote route (E16 stacked router: e.g. 1024→768 on the
+        # measured window, priority over the primary 1024→896 rule). Set via
+        # ``enable_sigma_demote2``; batches then also carry
+        # ``demoted_latents2``.
+        self._sigma_demote2: Optional[Tuple[int, int]] = None
 
         # Soft-tokens contrastive negatives. When a sampler is attached via
         # ``setup_contrastive_negatives`` each example carries
@@ -297,6 +302,16 @@ class BaseDataset(torch.utils.data.Dataset):
                 # native instead of crashing the epoch.
                 uniform_shape=True,
                 enabled_attr="_sigma_demote",
+            )
+        )
+        self.register_sidecar(
+            SidecarSpec(
+                name="sigma_demote2",
+                loader=self._try_load_demoted_latent2,
+                out_key="demoted_latents2",
+                policy="all_or_nothing",
+                uniform_shape=True,
+                enabled_attr="_sigma_demote2",
             )
         )
         self.register_sidecar(
@@ -1503,6 +1518,12 @@ class BaseDataset(torch.utils.data.Dataset):
         """
         self._sigma_demote = (int(native_edge), int(demote_edge))
 
+    def enable_sigma_demote2(self, native_edge: int, demote_edge: int) -> None:
+        """E16 stacked router: activate the SECONDARY σ-demote sidecar
+        (``demoted_latents2``) for a second, deeper route — the trainer's
+        rule 2 (own gate/window/span, priority over rule 1)."""
+        self._sigma_demote2 = (int(native_edge), int(demote_edge))
+
     def _try_load_demoted_latent(self, info: ImageInfo) -> Optional[torch.Tensor]:
         """σ-demote sibling latent: the ``demoted_{H}x{W}`` key inside the
         native npz (emitted by ``make preprocess-demote``). None when the image
@@ -1510,7 +1531,16 @@ class BaseDataset(torch.utils.data.Dataset):
         route), latents aren't npz-cached, or the npz predates the emit — the
         batch then trains native, so a partial emit degrades instead of
         crashing."""
-        route = self._sigma_demote
+        return self._load_demoted_sibling(info, self._sigma_demote)
+
+    def _try_load_demoted_latent2(self, info: ImageInfo) -> Optional[torch.Tensor]:
+        """Secondary-route sibling (``demoted_latents2``) — same npz, its own
+        ``demoted_{H}x{W}`` key (the two routes' buckets never collide)."""
+        return self._load_demoted_sibling(info, self._sigma_demote2)
+
+    def _load_demoted_sibling(
+        self, info: ImageInfo, route: Optional[Tuple[int, int]]
+    ) -> Optional[torch.Tensor]:
         if not route or info.latents_npz is None or info.bucket_reso is None:
             return None
         from library.datasets.buckets import demote_bucket_for

@@ -529,3 +529,73 @@ class TestSigmaWindow:
         assert not self._gate(torch.tensor([0.7, 0.96]), lo, hi)
         # no upper bound = the shipped half-line gate
         assert self._gate(torch.tensor([0.96]), lo, None)
+
+
+class TestSigmaStackedRouter:
+    """--sigma_lowres_route2 (E16 combo arm): 768 if sigma in its window,
+    elif sigma>0.5 -> 896, else native. Pins rule-2 priority, per-rule
+    gate/span independence, and that rule-1-only behavior is unchanged."""
+
+    @staticmethod
+    def _combo_args(**kw):
+        base = dict(
+            sigma_lowres_threshold=0.5,
+            sigma_lowres_route2="1024:768",
+            sigma_lowres_threshold2=0.65,
+            sigma_lowres_threshold2_max=0.95,
+            max_train_steps=480,
+            gradient_accumulation_steps=1,
+            seed=1001,
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def test_route2_parse(self):
+        from train import AnimaTrainer
+
+        assert AnimaTrainer._sigma_route2(SimpleNamespace()) is None
+        assert (
+            AnimaTrainer._sigma_route2(SimpleNamespace(sigma_lowres_route2=None))
+            is None
+        )
+        assert AnimaTrainer._sigma_route2(
+            SimpleNamespace(sigma_lowres_route2="1024:768")
+        ) == (1024, 768)
+        for bad in ("1024", "768:1024", "a:b"):
+            with pytest.raises(ValueError):
+                AnimaTrainer._sigma_route2(SimpleNamespace(sigma_lowres_route2=bad))
+
+    def test_combo_choice_matches_spec(self):
+        """768 if sigma in (0.65, 0.95); elif sigma > 0.5 -> 896; else native."""
+        from train import AnimaTrainer
+
+        args = self._combo_args()
+        cases = {
+            0.70: 2,  # in window -> deep route
+            0.94: 2,
+            0.55: 1,  # above primary threshold, outside window -> 896
+            0.96: 1,  # above window top -> falls back to primary
+            0.99: 1,
+            0.30: None,  # below both -> native
+            0.50: None,  # primary gate is strict >
+        }
+        for sigma, want in cases.items():
+            got = AnimaTrainer._sigma_demote_choice(args, torch.tensor([sigma]), 1)
+            assert got == want, (sigma, got, want)
+
+    def test_rule1_only_unchanged(self):
+        from train import AnimaTrainer
+
+        args = self._combo_args(sigma_lowres_route2=None)
+        assert AnimaTrainer._sigma_demote_choice(args, torch.tensor([0.7]), 1) == 1
+        assert AnimaTrainer._sigma_demote_choice(args, torch.tensor([0.3]), 1) is None
+
+    def test_per_rule_spans_independent(self):
+        """rule 2 late-gated while rule 1 has no span: an in-window sigma in
+        the first half falls back to the primary rule."""
+        from train import AnimaTrainer
+
+        args = self._combo_args(sigma_lowres_span2="late")
+        sig = torch.tensor([0.7])
+        assert AnimaTrainer._sigma_demote_choice(args, sig, 100) == 1
+        assert AnimaTrainer._sigma_demote_choice(args, sig, 300) == 2
