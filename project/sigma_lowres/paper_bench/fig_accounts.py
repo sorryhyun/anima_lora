@@ -13,11 +13,16 @@ prediction, plus the full-pipeline bootstrap), so this script cannot
 drift from the two run envelopes it mirrors.
 
 Panels (2x2):
-  1024->896 / 1024->768 / 1024->512   measured points, spectral curve
-                                      (delta_reenc-anchored; the family
-                                      is delta-inert at the curve level)
-                                      and ours (exact angular link) with
-                                      68/95% bootstrap band + floor line
+  1024->896 / 1024->768 / 1024->512   measured points (sigma=1 endpoint
+                                      bin detached as an open marker),
+                                      spectral curve (delta_reenc-
+                                      anchored; the family is delta-inert
+                                      at the curve level) and ours (exact
+                                      angular link) with 95% bootstrap
+                                      band + floor line, read against the
+                                      bin-level +/-eps* certification
+                                      band (1.645 x route-median SEM,
+                                      same recipe as plot_debiased_map)
   parity                              predicted vs measured, all bins;
                                       ours also on the two 1280-tier
                                       routes the spectral bridge does
@@ -86,6 +91,10 @@ C_MEAS, C_SPEC, C_OURS = "0.15", "C3", "C0"
 def build(tier1024: Path = E1B) -> dict:
     """Recompute both accounts on the same measured curves."""
     curves = {r: paired_stats(tier1024, r, "debiased_gap") for r in ROUTES}
+    # bin-level certification resolution, identical to plot_debiased_map.py:
+    # 1.645 x per-bin median SEM over the 1024-tier routes
+    eps_star = 1.645 * np.median(
+        np.stack([curves[r][2] for r in ROUTES]), axis=0)
     for r in ("1120", "1024"):
         curves[r] = paired_stats(G9, r, "gap")
     gnorm = {"1024tier": bin_gnorm(tier1024), "1280tier": bin_gnorm(G9)}
@@ -159,7 +168,7 @@ def build(tier1024: Path = E1B) -> dict:
                        ours=float(np.sqrt(np.mean((y - ours[r]) ** 2))))
     return dict(curves=curves, ours=ours, spec=spec, floors=floors,
                 bands=bands, gates=gates, rmse=rmse, A_spec=A_spec,
-                boot=boot, F0=F0, tau=tau, fitX=fitX)
+                boot=boot, F0=F0, tau=tau, fitX=fitX, eps_star=eps_star)
 
 
 def draw(d: dict):
@@ -173,18 +182,30 @@ def draw(d: dict):
     handles = None
     for ax, r in zip(axes.ravel()[:3], ROUTES):
         sig, y, sem = curves[r]
+        ax.fill_between(sig, -d["eps_star"], d["eps_star"], color="0.5",
+                        alpha=0.35, lw=0, zorder=1,
+                        label=r"$\pm\varepsilon^{*}$ (bin-level)")
         if r in d["bands"]:
-            q = np.percentile(d["bands"][r], [2.5, 16, 84, 97.5], axis=0)
-            ax.fill_between(sig, q[0], q[3], color=C_OURS, alpha=0.10, lw=0)
-            ax.fill_between(sig, q[1], q[2], color=C_OURS, alpha=0.22, lw=0)
+            q = np.percentile(d["bands"][r], [2.5, 97.5], axis=0)
+            ax.fill_between(sig, q[0], q[1], color=C_OURS, alpha=0.15, lw=0)
         ax.plot(sig, spec[r], "--", color=C_SPEC, lw=1.8, zorder=2,
                 label="spectral account")
         ax.plot(sig, ours[r], "-", color=C_OURS, lw=1.8, zorder=2,
                 label="ours (exact angular link)")
         ax.axhline(d["floors"][r], color=C_OURS, lw=0.9, ls="--", alpha=0.6,
                    zorder=1, label=r"our predicted floor $F_e$")
-        ax.errorbar(sig, y, yerr=sem, fmt="o", ms=4.5, color=C_MEAS,
-                    capsize=2, lw=1.0, zorder=4, label="measured (debiased)")
+        # sigma=1 is a different probe mode (exact endpoint, not a stratified
+        # window draw) -- detached as an open marker, as in the verdict map
+        has_end = math.isclose(float(sig[-1]), 1.0, abs_tol=1e-9)
+        n_in = len(sig) - 1 if has_end else len(sig)
+        ax.errorbar(sig[:n_in], y[:n_in], yerr=sem[:n_in], fmt="o", ms=4.5,
+                    color=C_MEAS, capsize=2, lw=1.0, zorder=4,
+                    label="measured (debiased)")
+        if has_end:
+            ax.errorbar(sig[-1:], y[-1:], yerr=sem[-1:], fmt="o", ms=5,
+                        color=C_MEAS, mfc="white", mew=1.2, capsize=2,
+                        lw=1.0, zorder=4,
+                        label=r"$\sigma{=}1$ endpoint mode")
         ax.axhline(0, color="0.8", lw=0.8, zorder=0)
         ax.set_title(DISP[r], fontsize=11)
         ax.set_xlabel(r"$\sigma$")
@@ -201,8 +222,13 @@ def draw(d: dict):
         )
         if r == "896":
             h, lab = ax.get_legend_handles_labels()
-            order = [3, 0, 1, 2]
-            handles = ([h[i] for i in order], [lab[i] for i in order])
+            by_label = dict(zip(lab, h))
+            want = ["measured (debiased)", r"$\sigma{=}1$ endpoint mode",
+                    "spectral account", "ours (exact angular link)",
+                    r"our predicted floor $F_e$",
+                    r"$\pm\varepsilon^{*}$ (bin-level)"]
+            keep = [k for k in want if k in by_label]
+            handles = ([by_label[k] for k in keep], keep)
 
     # ---- parity ----
     ax = axes.ravel()[3]
@@ -228,9 +254,9 @@ def draw(d: dict):
     ax.set_ylabel(r"measured $\overline{\mathrm{gap}}$")
     ax.set_title("All bins, one axis", fontsize=11)
     ax.legend(fontsize=7.0, loc="lower right", framealpha=0.9)
-    fig.legend(*handles, ncol=4, fontsize=8.5, loc="lower center",
+    fig.legend(*handles, ncol=3, fontsize=8.5, loc="lower center",
                bbox_to_anchor=(0.5, -0.005), frameon=False)
-    fig.tight_layout(rect=(0, 0.045, 1, 1))
+    fig.tight_layout(rect=(0, 0.075, 1, 1))
     return fig
 
 
@@ -265,7 +291,11 @@ def main(tier1024: Path = E1B, tag: str = "") -> None:
             "the curve level (rmse identical to SPD's default, see e8)",
             "ours is in-sample on 512 and post-hoc leave-896-out on 896; "
             "only 768 (and the 1280-tier 1024) are pre-registered held out",
+            "the gray +/-eps* band (1.645 x per-bin route-median SEM over "
+            "the 1024-tier routes) reproduces plot_debiased_map.py's band "
+            "so the verdict is readable off this figure",
         ],
+        eps_star=[float(e) for e in d["eps_star"]],
         A_spectral_calibrated_on_896=d["A_spec"],
         floor_law=dict(F0=d["F0"], tau_tokens=d["tau"]),
         gates=d["gates"],

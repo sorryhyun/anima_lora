@@ -113,15 +113,11 @@ that each clean-latent band is independently Gaussian,
 $x^{(\omega)} \sim \mathcal{N}(0, P_\omega)$ with $P_\omega$ the
 band's clean-latent power, \citet{xiao2026spd} attach to each band an
 activation time: a crossover $t_\omega$ past which the Bayes-optimal
-per-band velocity prediction sits within a tolerance $\delta$ --- the
-account's one free parameter --- of the pure-noise answer
-$\epsilon^{(\omega)}$; the choice $\delta = (1+P_\omega)/2$ recovers
-the often-quoted equal-power (input-SNR) crossover
-$\sigma_{\mathrm{eq}} = \sqrt{P_\omega}/(1+\sqrt{P_\omega})$ as one
-slice of the family. How $\delta$ is set in practice --- including a
-zero-free-parameter anchor measured from our own pipeline --- is
-treated in Appendix~\ref{app:spectral}; no conclusion below hinges on
-the choice.
+per-band velocity prediction sits within a tolerance $\delta$ of the
+pure-noise answer $\epsilon^{(\omega)}$; $\delta$ is the account's one
+free parameter, whose instantiations are explored in
+Appendix~\ref{app:spectral}, and no conclusion below hinges on its
+choice.
 The destroyed bands of Eq.~\ref{eq:lowpass} all sit at or above
 $\omega_e$; on a decaying spectrum the lowest of them is the most
 powerful, so it crosses last, and the safe-substitution boundary for
@@ -180,11 +176,9 @@ $g = \nabla_\theta \tfrac12\|\hat v_\theta - v\|^2 = J^{\!\top} r$,
 with $r = \hat v_\theta - v$ the prediction residual and
 $J = \partial \hat v_\theta / \partial \theta$ the Jacobian through
 which the compute graph turns a residual into an adapter gradient.
-Demotion changes exactly the two factors of this product, and nothing
-else about the map from (image, noise, caption) to adapter gradient:
-the residual, because it changes the data the objective consumes, and
-the Jacobian, because it changes the compute graph the gradient flows
-through. The estimand is built from noise means, so the relevant
+Demotion perturbs both factors: the residual, through the data the
+objective consumes, and the Jacobian, through the compute graph. The
+estimand is built from noise means, so the relevant
 residual object is the \emph{mean residual} at fixed query,
 $\bar r_a(\sigma) = \mathbb{E}_\epsilon[\hat v_\theta - v]$ --- the
 same averaging that defines $\bar g_a$ in \S\ref{sec:estimand} --- a
@@ -292,17 +286,15 @@ parent form, Eq.~\ref{eq:exact} with loading
 $\kappa_e(\sigma) = a_e\, \|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$ (the
 same amplitude, recovering Eq.~\ref{eq:twoterm}'s data term in the
 small-$\kappa$ limit), whose data term
-\emph{saturates} instead of overshooting. The loading itself is an
-\emph{empirical} ingredient, not a derivation, so
-Appendix~\ref{sec:headtohead} scores both forms held out, labelling
-Eq.~\ref{eq:exact} the best empirical predictor and Eq.~\ref{eq:twoterm}
-the derived small-perturbation form. To keep the ledger explicit:
-Eqs.~\ref{eq:exact} and~\ref{eq:fourterm} are unconditional;
-Eq.~\ref{eq:twoterm} is conditional on the four assumptions; the
-coefficients $a_e$, $\|\Delta \bar r(\sigma)\|$,
-$\|\bar g_{\src}(\sigma)\|$ and $\Floor_e$ are measured. The account was pre-registered with an
-outcome matrix --- including a kill switch, all endpoint gaps
-${\approx}\,0$, that would have falsified the graph term --- before the
+\emph{saturates} instead of overshooting. Appendix~\ref{sec:headtohead}
+scores both forms held out: Eq.~\ref{eq:exact} is the best empirical
+predictor, Eq.~\ref{eq:twoterm} the derived small-perturbation form.
+The ledger: Eqs.~\ref{eq:exact} and~\ref{eq:fourterm} are
+unconditional, Eq.~\ref{eq:twoterm} is conditional on the four
+assumptions, and the coefficients $a_e$, $\|\Delta \bar r(\sigma)\|$,
+$\|\bar g_{\src}(\sigma)\|$, $\Floor_e$ are measured. The account,
+with an outcome matrix that included a kill switch on the graph term
+(all endpoint gaps ${\approx}\,0$), was pre-registered before the
 discriminating runs.
 
 \paragraph{The graph term has identifiable parts.}

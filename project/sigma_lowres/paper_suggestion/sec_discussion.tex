@@ -64,70 +64,6 @@ wall-clock ($n{=}3$ seed means on two single-artist corpora; wall
 tracks FLOPs ${\approx}\,1{:}1$): the projection is achieved. The claim
 is wall-clock at fixed steps, not ``more steps in the same time.''
 
-\begin{table}[t]
-\begin{minipage}[t]{0.615\linewidth}
-\caption{Weight-space footprint vs.\ the seed lottery: cosine between
-adapter endpoints, $\cos(\Delta W_{\text{arm}}, \Delta W_{\text{native}})$
-at matched training seed, mean $\pm$ seed spread (SD over the three
-matched-seed pairs; the three seed pairs for the yardstick row), on two
-single-artist corpora ($60$/$15$ training images). The yardstick row is
-the same cosine between native endpoints that differ \emph{only} in
-training seed (arm-independent: the gated arm's cross-seed values
-coincide with it within $.006$). An arm reading above the yardstick
-displaces the endpoint \emph{less} than a seed change does. Training is
-bit-exact deterministic --- an identical retrain reads $1.000$ --- so
-the table reads caused displacement, not run-to-run chaos. \emph{late}:
-demotion restricted to the last $75\%$ of steps; the stacked row adds a
-second certified route ($1024{\to}768$ on $0.65{<}\sigma{<}0.95$, last
-$50\%$) on top of \emph{late}. \textbf{Bold}: the late-scheduled arms
---- the closest endpoints; the stacked row adds strictly deeper
-substitutions at no endpoint cost, an ordering set by placement that a
-per-step spectral account cannot produce.}
-\label{tab:yardstick}
-\centering
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}lcc@{}}
-\toprule
-arm (vs.\ native, matched seed) & corpus A & corpus B \\
-\midrule
-native, cross-seed (yardstick) & $0.121 \pm .007$ & $0.199 \pm .003$ \\
-\midrule
-$896$, $\sigma{>}0.5$, aligned & $0.365 \pm .020$ & $0.432 \pm .026$ \\
-\quad + late & $\mathbf{0.753 \pm .019}$ & $\mathbf{0.770 \pm .009}$ \\
-\quad + late, stacked $768$ & $\mathbf{0.753 \pm .017}$ & $\mathbf{0.771 \pm .009}$ \\
-$896$, every $\sigma$ & $0.183 \pm .009$ & $0.236 \pm .009$ \\
-\bottomrule
-\end{tabular}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.355\linewidth}
-\caption{The proposed step, in full. Lines 3--5 (colored) are the
-entire change: the gate $\sigmastar{=}0.5$ and the route are read off
-the measured map (\S\ref{sec:verdict}), line 5 is the optional
-refinement, and lines 1--2 are only a reordering of a standard step
---- $\sigma$ is drawn before the latent is fetched.}
-\label{alg:sigmastep}
-\centering
-\footnotesize
-\setlength{\tabcolsep}{2pt}
-\begin{tabular}{@{}>{\ttfamily}r@{~}>{\ttfamily}l@{}}
-\toprule
-\multicolumn{2}{@{}l@{}}{\textbf{one LoRA training step}} \\
-\midrule
-1 & $\sigma \sim p_{\mathrm{train}}$ \\
-2 & $x \leftarrow$ native latent of $y$ \\
-\addedline{3} & \addedline{if $\sigma > \sigmastar$ and $y$ on-route:} \\
-\addedline{4} & \addedline{\quad $x \leftarrow$ demoted latent of $y$} \\
-\addedline{5} & \addedline{\quad rotary $\leftarrow$ banded$(\sigma)$} \\
-6 & $\epsilon \sim \mathcal{N}(0, I)$ at shape$(x)$ \\
-7 & $z \leftarrow (1{-}\sigma)x + \sigma\epsilon$ \\
-8 & $v \leftarrow \epsilon - x$ \\
-9 & step on $\|\hat v_\theta(z, \sigma, c) - v\|^2$ \\
-\bottomrule
-\end{tabular}
-\end{minipage}
-\end{table}
-
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figs/kaai_yuki_arms_grid.jpg}
@@ -250,8 +186,7 @@ gradient; transported to the training question it is a model of only
 one part of one branch of what demotion perturbs, and the measurements
 reject it at every point of structural divergence --- the mildest
 route's crossover sits at $3.5\times$ the equal-power prediction, no
-tolerance reproduces the map, its one free parameter is inert at the
-curve level, and a $2\times$-downscaled latent certifies at no noise
+tolerance reproduces the map, and a $2\times$-downscaled latent certifies at no noise
 level, because the network function itself is
 grid-calibrated: partly through its positional coordinate system,
 partly through an irreducible dependence of the computation on token

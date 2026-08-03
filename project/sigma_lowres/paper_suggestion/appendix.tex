@@ -945,13 +945,20 @@ $0.125$ in $\sigma$ over $\delta \in [10^{-3}, 0.5]$.}
 \label{fig:e83}
 \end{figure}
 
+The tolerance $\delta$ of Eq.~\ref{eq:spd} is the account's one free
+parameter, and this appendix instantiates the whole family. The choice
+$\delta = (1+P_\omega)/2$ recovers the often-quoted equal-power
+(input-SNR) crossover
+$\sigma_{\mathrm{eq}} = \sqrt{P_\omega}/(1+\sqrt{P_\omega})$ as one
+slice; \citet{xiao2026spd} ship an inference-side default
+$\delta = 0.01$; and our own pipeline fixes a zero-free-parameter
+anchor $\delta_{\reenc}$ by construction (below).
+
 Table~\ref{tab:null} evaluates Eq.~\ref{eq:spd} at the demoted grids'
 Nyquist frequencies $f_{\mathrm{cut}} = \tfrac{1}{2}\,e/e_0$ on the
 $N{=}40$ mean radially-averaged latent power spectrum ($64$ radial
 bins; $P$ at the $896/768/512$ cuts $= 0.025/0.029/0.065$;
-Fig.~\ref{fig:spectrum}). The equal-power slice
-$\delta = (1+P_\omega)/2$ recovers
-$\sigma_{\mathrm{eq}} = \sqrt{P}/(1+\sqrt{P})$ exactly. Across
+Fig.~\ref{fig:spectrum}). Across
 $\delta \in [0.001, 0.5]$ the mildest--harshest spread remains below
 $0.13$, and the $1024{\to}896$ versus $896{\to}768$ boundaries (cut
 frequencies $0.4375$ vs $0.4286$) separate by no more than $0.01$.
@@ -1071,6 +1078,36 @@ the uncorrected counterpart of the verdict map on the original coarse
 grid, and its last two rows are the coarse-grid estimator context
 (Fig.~\ref{fig:estimator} plots the same two curves on the dense
 verdict grid).
+
+\begin{figure}[t]
+\centering
+\begin{subfigure}[t]{0.46\textwidth}
+\includegraphics[width=\linewidth]{figs/gap_debiased.png}
+\phantomcaption
+\label{fig:gapcurves}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.515\textwidth}
+\includegraphics[width=\linewidth]{figs/estimator_context.png}
+\phantomcaption
+\label{fig:estimator}
+\end{subfigure}
+\caption{The measurement in detail.
+(a)~Debiased demotion gap per $\sigma$-bin, all three routes on one
+shared axis, paired against the re-encoding control ($1024$-tier
+natives, $N{=}40$; per-bin values and
+SEMs in Table~\ref{tab:debiasedmap}; gray band: bin-level
+$\pm\epsstar$ (\S\ref{sec:instrument}); open markers: the $\sigma{=}1$
+endpoint bin): safety is a per-route boundary --- the $896$ route
+enters the band at $\sigma \approx 0.5$, $768$ falls only to a
+low-excess shelf ($+0.02$--$0.04$ over $0.65 < \sigma < 0.95$, short
+of the strict margin), and $512$ never falls inside the band (closest
+approach $+0.12 \pm 0.05$ at $\sigma = 0.96$) --- against the
+spectral family's prediction of $\sigma \approx 0.14$--$0.20$.
+(b)~The estimator context those curves are read through: the
+redraw-floor cosine and the U-shaped gradient norm
+$\|\bar g_{\src}(\sigma)\|$.}
+\label{fig:verdict}
+\end{figure}
 
 \begin{table}[h]
 \caption{\textbf{Debiased verdict map} (plotted in
