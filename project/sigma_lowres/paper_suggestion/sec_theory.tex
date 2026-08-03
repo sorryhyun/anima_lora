@@ -208,67 +208,43 @@ the shared adapter-parameter space where both gradients live, and
 \S\ref{sec:ourscored} isolates each by its own intervention.
 
 Read against Eq.~\ref{eq:branches}, the spectral account of
-\S\ref{sec:spectral} keeps the input-mediated part of the data
-branch, gated at Nyquist, and sets everything else to zero --- no
-target-mediated share, no graph branch ($\Delta J \equiv 0$), no
-interaction --- and the three limits fixed there are these discarded
-terms read back. The graph branch does not reference $\sigma$ at all,
-since the grid change does not: token count, rotary phase density,
-and sequence-length-dependent normalization change identically at
-every noise level, so nothing about noise masking can remove them ---
-limit~(c)'s inexpressible $\sigma$-independent term --- and, being a
-property of the two grids rather than of the downscale map, it need
-not be a function of their ratio (limit~(b)); a gap governed by two
-terms rather than one admits no single-parameter ordering of the
-family (limit~(a)). Within the data branch, only the
-\emph{input}-mediated part shrinks with $\sigma$: perturbing the
-image by $\delta x$ perturbs the residual by
-$D_z f\,[(1{-}\sigma)\,\delta x] + \delta x$, and the second,
-target-mediated term carries unit weight at every $\sigma$, so at
-$\sigma{=}1$ --- where the input is pure noise on every grid and the
-input-mediated part vanishes in distribution --- the endpoint is
-still not data-free by construction: at the Bayes level the surviving
-mean residual is exactly the image's deviation from the
-caption-conditional prior mean, $x - \mathbb{E}[x \mid c]$
-(Appendix~\ref{app:posterior}). Whether that survivor is
-\emph{resolvable in the angular estimand} is an empirical question,
-discharged in \S\ref{sec:ourscored}.
+\S\ref{sec:spectral} keeps only the input-mediated part of the data
+branch, gated at Nyquist, and sets the rest to zero --- the three
+limits fixed there are exactly the discarded terms read back: the
+graph branch is a property of the two grids, referencing neither
+$\sigma$ (limit~c) nor their ratio (limit~b), and a two-term gap
+admits no single-parameter ordering (limit~a). One discarded term
+matters later: the regression target carries the clean image at unit
+weight at every $\sigma$, so even at $\sigma{=}1$ the mean residual
+retains an image-dependent survivor, $x - \mathbb{E}[x \mid c]$
+(Appendix~\ref{app:posterior}); whether it is resolvable in the
+angular estimand is an empirical question, discharged in
+\S\ref{sec:ourscored}.
 
 \paragraph{The angular reduction.}
 It remains to read Eq.~\ref{eq:branches} in the units of the estimand.
-The geometry is pure bookkeeping, so the displayed forms live in
+The geometry is pure bookkeeping, so the displayed forms --- and the
+$\kappa$ notation they are stated in --- live in
 Appendix~\ref{app:geometry}; what the argument needs is their content.
-Writing
-$u^{\perp} = u - (\hat g_{\src}^{\!\top}u)\,\hat g_{\src}$ for the
-component orthogonal to $\bar g_{\src}(\sigma)$, split the perturbation
-into a rescaling and a rotation:
-$\kappa_\parallel = \hat g_{\src}^{\!\top}\delta g / \|\bar g_{\src}\|$
-and $\kappa_\perp = \|\delta g^{\perp}\| / \|\bar g_{\src}\|$.
-Substituting $\bar g_{\dem} = \bar g_{\src} + \delta g$ into
-Eq.~\ref{eq:gapdef} gives, \emph{exactly},
-$d_e = 1 - 1/\sqrt{1 + \kappa_{\mathrm{eff}}^2}$ with
-$\kappa_{\mathrm{eff}} = \kappa_\perp/(1 + \kappa_\parallel)$
-(Eq.~\ref{eq:exact}): the gap is a saturating function of a single
-rotation-to-scale ratio --- only the orthogonal component rotates the
-gradient direction, and the cosine estimand is \emph{blind} to a
-parallel rescaling, a fact the endpoint probes of \S\ref{sec:ourscored}
-lean on. Taylor-expanding at small $\kappa$ and substituting
-Eq.~\ref{eq:branches} into the square gives the \emph{four-term angular
-expansion} (Eq.~\ref{eq:fourterm}), derived as unconditionally as the
-exact form itself: a data share
+Splitting the perturbation $\delta g$ into a rescaling of
+$\bar g_{\src}$ and a rotation away from it, the gap is,
+\emph{exactly}, a saturating function of a single rotation-to-scale
+ratio (Eq.~\ref{eq:exact}): only the orthogonal component moves the
+estimand, and the cosine is \emph{blind} to a parallel rescaling --- a
+fact the endpoint probes of \S\ref{sec:ourscored} lean on. Expanding
+at small perturbation and substituting Eq.~\ref{eq:branches} gives the
+\emph{four-term angular expansion} (Eq.~\ref{eq:fourterm}), derived as
+unconditionally as the exact form itself: writing $u^{\perp}$ for the
+component of $u$ orthogonal to $\bar g_{\src}$, a data share
 $S_e = \|B_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$, a graph share
-$F_e = \|C_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$, a projected
-interaction
-$I_e = \langle B_e^{\perp}, C_e^{\perp}\rangle / \|\bar g_{\src}\|^2$,
-and a remainder $R'_e$ collecting the remainder branch, the
-beyond-quadratic terms, and the parallel-component correction. $S_e$
-and $F_e$ are non-negative; $I_e$ can carry either sign, a fact that
-matters in Appendix~\ref{sec:headtohead}. At the harshest measured
-operating point ($d = 0.30$ at $512$, $\sigma{=}1$) the implied
-perturbation is $\kappa_{\mathrm{eff}} \approx 1.02$ --- not small ---
-so quadratic-order reads on that route are indicative and the exact
-form carries the quantitative claims. Note that Eq.~\ref{eq:spd} is
-Eq.~\ref{eq:fourterm} with $F_e = I_e = 0$ and $S_e$ gated at Nyquist.
+$F_e$ built likewise from $C_e^{\perp}$ (both non-negative), a
+projected interaction $I_e$ that can carry either sign (a fact that
+matters in Appendix~\ref{sec:headtohead}), and a remainder $R'_e$.
+Where the measured perturbation turns out large (the $512$ route;
+\S\ref{sec:ourscored}), quadratic-order reads are indicative only and
+the exact form carries the quantitative claims. Note that
+Eq.~\ref{eq:spd} is Eq.~\ref{eq:fourterm} with $F_e = I_e = 0$ and
+$S_e$ gated at Nyquist.
 
 \paragraph{From the expansion to a measurable form.}
 The reported object is the excess over the control, whose own expansion
@@ -306,7 +282,7 @@ near share crossover (Appendix~\ref{app:geometry}). Applied,
 \gap_e(\sigma)
 \;\approx\;
 \underbrace{\tfrac{1}{2}\,a_e^2 \cdot \big(\|\Delta \bar r(\sigma)\| \,/\, \|\bar g_{\src}(\sigma)\|\big)^{2}}_{\text{data term}}
-\;+\; \underbrace{\Floor_e}_{\text{graph term}},
+\;+\; \underbrace{\mathrm{RoPE}_e + \mathrm{Resid}_e}_{\text{graph term }\Floor_e},
 \label{eq:twoterm}
 \end{equation}
 the \emph{two-term account}, stated on the reported excess. The
@@ -338,9 +314,9 @@ sequence-length-dependent normalization, and the capacity of the coarse
 graph to approximate the fine graph's computation (the conceptual frame
 is attention as a discretization of a function-space operator,
 \citealp{calvello2024continuum}, whose statistics need not be
-discretization-invariant). Splitting
-$\Floor_e = \mathrm{RoPE}_e + \mathrm{Resid}_e$ yields one sharp
-prediction: the positional share is a \emph{coordinate-system
+discretization-invariant) --- the two parts $\mathrm{RoPE}_e$ and
+$\mathrm{Resid}_e$ written into Eq.~\ref{eq:twoterm}. The split
+yields one sharp prediction: the positional share is a \emph{coordinate-system
 artifact}, so an exact positional-interpolation intervention should
 remove $\mathrm{RoPE}_e$ wherever the data branch is inactive
 ($\sigma \to 1$); a band-counting sketch attaches an

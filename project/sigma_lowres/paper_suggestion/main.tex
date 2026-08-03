@@ -71,8 +71,12 @@ $0.5 < \sigma \le 0.94$, despite roughly a quarter fewer input tokens
 --- a window no spectral tolerance predicts.
 Gating substitution on that
 window gives \emph{selective} low-resolution LoRA training:
-$-14.6\%$ wall-clock at a fixed step budget, with a sample-level
-footprint within the training-seed lottery.
+$-14.6\%$ wall-clock at a fixed step budget, with an adapter endpoint
+a factor $2$--$3$ closer to the native endpoint than a change of
+training seed (cosine $0.37$--$0.43$ against a $0.12$--$0.20$
+cross-seed yardstick); scheduling demotion late and stacking a second
+certified route holds a comparable saving while raising the endpoint
+cosine to $0.75$.
 \end{abstract}
 
 % ---- Body ----------------------------------------------------------

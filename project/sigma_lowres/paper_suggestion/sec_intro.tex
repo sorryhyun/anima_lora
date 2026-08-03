@@ -77,8 +77,9 @@ itself --- with the floor law correctly predicting both held-out floors.
 \item \textbf{Selective low-resolution training} (\S\ref{sec:practical}).
 Gating substitution on the measured-safe window gives an opt-in
 $\sigma$-conditional trainer realizing $-15.1\%$ forward FLOPs and
-$-14.6\%$ wall-clock at a fixed step budget, with a sample-level
-footprint within the training-seed lottery
+$-14.6\%$ wall-clock at a fixed step budget, with a weight-space
+endpoint footprint a factor $2$--$3$ inside the training-seed lottery
+--- rising to endpoint cosine $0.75$ when demotion is late-scheduled
 (Table~\ref{tab:yardstick}); generation-quality non-inferiority at
 production scale remains the stated open gate.
 \end{enumerate}

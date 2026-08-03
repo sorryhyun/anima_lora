@@ -8,73 +8,35 @@
 The answer to the title question at our operating point is not a
 corrected formula but a measured map at a stated resolution: the
 curves both accounts were scored on carry the verdict, read per bin
-against the safety statement of Eq.~\ref{eq:safe}.
-Figure~\ref{fig:verdict} gives the debiased map for $1024$-tier
-natives demoted to $896/768/512$ (per-bin numbers: Appendix
-Table~\ref{tab:debiasedmap}). Three reads, against criteria frozen
-before the runs. (i)~$\sigma$-dependence is real and in the predicted
-direction, and tier ordering holds at every bin: the
-\emph{qualitative} spectral intuition survives. (ii)~The crossover for
-the mildest route is $\sigma \approx 0.5$ --- the $896$ route's excess
-is already $+0.16$ by $\sigma = 0.04$, plateaus at $+0.22$--$0.29$
-through $\sigma = 0.3$, is marginal at $0.43$ ($+0.067 \pm 0.032$),
-and its means sit within $\pm 0.04$ of zero from $0.57$ on ---
-$3.5\times$ the equal-power prediction. (iii)~The $2\times$ downscale
-route is \emph{certifiably unsafe} across the noise axis: its paired
-debiased lower bound stays above the margin in all fifteen bins (means
-$+0.12$ to $+0.71$), including $+0.20 \pm 0.05$ at $\sigma = 0.94$,
-where the input is ${\sim}97\%$ noise by power in every band the
-coarse grid cannot represent (the earlier coarse-$\sigma$ run's one
-apparent exception, $\sigma = 0.81$ with an interval widening to
-include zero, does not survive the dense deterministic rerun:
-$+0.22 \pm 0.05$ at $\sigma = 0.83$). There is no noise level at which
-a $2\times$-downscaled latent certifies, or comes near certifying, the
-native gradient direction.
-
-Debiasing moved verdicts in both directions, and two revisions against
-the historical record are part of the result. The $768$ route's
-high-$\sigma$ plateau was roughly half estimator bias: debiased means
-sit at $+0.02$--$0.04$ across $\sigma \in [0.7, 0.99]$, but with
-upper bounds that do not cross below the $\varepsilon = 0.02$ margin
-at this $(N, D)$, and a real endpoint floor of $+0.130 \pm 0.030$
-remains, so the earlier verdict of ``unsafe at every noise level''
-softens to \emph{no window certifiable at the practical margin} ---
-the margins its flattest bins do certify (${\approx}\,0.09$
-simultaneous over $\sigma \in [0.7, 0.96]$) are still $4\times$ the
-practical margin. Conversely the
-$896$ endpoint shows a small \emph{real} gap ($+0.034 \pm 0.011$) that
-single-estimate variance had buried; its safe window is the interior
-$\sigma \in (0.5, 1)$, not the endpoint (Appendix
-Table~\ref{tab:rawendpoint}).
-
-Collected route by route --- \emph{safe} meaning Eq.~\ref{eq:safe}
-holds at the stated margin, on the \emph{per-example} object --- the
-map needs no table: $1024{\to}896$ (ratio $0.875$, floor
-$0.02$--$0.04$) is \textbf{safe} on the interior window
-$\sigma \in (0.5, 1)$, certified at margin $0.09$ (simultaneous
-over the seven window bins; $0.066$ pointwise); $1280{\to}1024$ (ratio
-$0.80$, floor ${\approx}\,0$) is \textbf{safe} from
-$\sigma \gtrsim 0.75$, and the synthetic iso-severity grid
-$1280{\to}1120$ is safe with $\sigmastar \approx 0.5$, as its ratio
-twin predicts (both $1280$-tier reads on the pre-debiasing
-instrument; \S\ref{sec:limitations}); $1024{\to}768$ and
-$896{\to}768$ (floors $0.06$--$0.13$ and $0.06$--$0.12$) have
-\emph{no certifiable window}; and any route to $512$ (floor
-${\approx}\,0.30$) is \emph{certifiably unsafe} across the axis.
-Safety is a per-route boundary, jointly determined by ratio (through
-$a_e$) and absolute target size (through $\Floor_e$); neither alone
-predicts the ordering. For the corpus safe route the fine print is:
-every window bin's debiased mean sits within $\pm 0.04$ of zero, the
-pointwise and simultaneous one-sided bounds certify $0.066$ and
-$0.09$ respectively, and the strict $\varepsilon = 0.02$ margin is
-\emph{not yet powered} on the interior grid
-($\epsstar = 0.02$--$0.07$ per bin). Four bins' upper bounds do cross
-it ($\sigma \in [0.83, 0.96]$, $\mathrm{UB}_{95} = 0.004$--$0.018$,
-all on negative point estimates), but by the protocol of
-\S\ref{sec:instrument} an
-underpowered crossing is reported, not counted; powering the interior
-window at the strict margin is a draw-count exercise, designated for
-the next probe campaign.
+against the safety statement of Eq.~\ref{eq:safe}
+(Fig.~\ref{fig:verdict}; per-bin numbers in Appendix
+Table~\ref{tab:debiasedmap}). Collected route by route --- \emph{safe}
+meaning Eq.~\ref{eq:safe} holds at the stated margin, on the
+\emph{per-example} object --- the map needs no table: $1024{\to}896$
+(floor $0.02$--$0.04$) is \textbf{safe} on the interior window
+$\sigma \in (0.5, 1)$, certified at margin $0.09$ simultaneous over
+the seven window bins ($0.066$ pointwise; the strict
+$\varepsilon = 0.02$ margin is not yet powered on the interior grid,
+and powering it is a draw-count exercise, designated for the next
+probe campaign); $1280{\to}1024$ (floor ${\approx}\,0$) is
+\textbf{safe} from $\sigma \gtrsim 0.75$, and the synthetic
+iso-severity grid $1280{\to}1120$ is safe with
+$\sigmastar \approx 0.5$, as its ratio twin predicts (both
+$1280$-tier reads on the pre-debiasing instrument;
+\S\ref{sec:limitations}); $1024{\to}768$ and $896{\to}768$ (floors
+$0.06$--$0.13$) have \emph{no certifiable window}; and any route to
+$512$ (floor ${\approx}\,0.30$) is \emph{certifiably unsafe} in all
+fifteen bins --- no noise level comes near certifying a $2\times$
+downscale. Safety is a per-route boundary, jointly determined by
+ratio (through $a_e$) and absolute target size (through $\Floor_e$);
+neither alone predicts the ordering. Debiasing itself moved verdicts
+in both directions, and the two revisions against the historical
+record are part of the result: roughly half the $768$ route's
+high-$\sigma$ plateau was estimator bias, softening ``unsafe at every
+noise level'' to no-certifiable-window, while the $896$ endpoint
+shows a small \emph{real} gap ($+0.034 \pm 0.011$) that
+single-estimate variance had buried --- its safe window is the
+interior, not the endpoint (Appendix Table~\ref{tab:rawendpoint}).
 
 \paragraph{A corollary worth stating plainly.}
 The safety of $1024{\to}896$ is an \emph{empirical smoothness statement
@@ -86,18 +48,14 @@ account's deepest error is having promised one.
 \paragraph{The map depends on the aggregation object.}
 The aggregation operator is part of the estimand
 (\S\ref{sec:estimand}, Appendix~\ref{app:notation}), and the two
-objects genuinely disagree at high $\sigma$:
-pooled-arm probes (pool size $4$) collapse the $1024{\to}896$ excess to
-${\approx}\,0$ at every bin $\sigma \ge 0.625$ \emph{and} the
-$1024{\to}768$ excess to ${\approx}\,0$ at $\sigma \ge 0.875$ --- the
-batch-aggregate object SGD follows is more forgiving here than the
-per-example read. We publish the per-example map as the verdict (pooled
-arms do not yet have self-floors): the pooled collapse says the $1/B$
-term dominates at these bins, but the intercept --- the coherent drift
-no batch size removes --- is bounded only by an $a + b/B$ fit across
-pool sizes, the designated readout of a debiased verdict grid at the
-shipped trainer's actual batch$\times$accumulation operating point
-\textbf{[pending]}.
+objects genuinely disagree at high $\sigma$: pooled-arm probes (pool
+size $4$) collapse the $1024{\to}896$ and $1024{\to}768$ excesses to
+${\approx}\,0$ over the upper bins --- the batch-aggregate object SGD
+follows is more forgiving here than the per-example read we publish
+as the verdict. The coherent drift no batch size removes is bounded
+only by an $a + b/B$ fit across pool sizes, the designated readout of
+a debiased verdict grid at the shipped trainer's actual
+batch$\times$accumulation operating point \textbf{[pending]}.
 
 \subsection{$\sigma$-conditional training on the measured-safe route}
 \label{sec:trainer}
@@ -128,8 +86,8 @@ $\sigma \in (0.94, 1)$ is exactly the interval the verdict grid does
 not resolve. Two facts bound the exposure meanwhile: the last
 interior bin reads $+0.004 \pm 0.021$, and the exercise grid of
 Table~\ref{tab:yardstick} trained \emph{with} the tail demoted and
-still landed inside the seed lottery, so any tail effect is below
-that instrument's resolution at $480$ steps. A dense upper-tail sweep
+still landed a factor $2$--$3$ inside the seed lottery, so any tail
+effect is below that instrument's resolution at $480$ steps. A dense upper-tail sweep
 ($\sigma \in (0.9, 1)$ in four bins plus the endpoint, at higher draw
 count) is designated to resolve the shape; until it lands, the
 certified condition is $\sigma \in (0.5, 0.94]$, and the unbounded
@@ -166,16 +124,23 @@ is wall-clock at fixed steps, not ``more steps in the same time.''
 
 \begin{table}[t]
 \begin{minipage}[t]{0.615\linewidth}
-\caption{Sample-level footprint vs.\ the seed lottery: paired PE-Core
-cosine at matched (prompt, noise seed) against the \emph{native} twin
-of the same training seed, mean $\pm$ seed spread (SD over the three
-matched-seed pairs; seed pairs for the yardstick row) over the frozen
-prompt set, on two single-artist corpora ($60$/$15$ training images).
-The yardstick row is the same cosine between native checkpoints that
-differ \emph{only} in training seed; an arm reading at or above it
-perturbs endpoint samples less than a seed change does. \textbf{Bold}:
-the closest-to-native arm per corpus; the shipped path is the only arm
-at or inside the yardstick on both corpora.}
+\caption{Weight-space footprint vs.\ the seed lottery: cosine between
+adapter endpoints, $\cos(\Delta W_{\text{arm}}, \Delta W_{\text{native}})$
+at matched training seed, mean $\pm$ seed spread (SD over the three
+matched-seed pairs; the three seed pairs for the yardstick row), on two
+single-artist corpora ($60$/$15$ training images). The yardstick row is
+the same cosine between native endpoints that differ \emph{only} in
+training seed (arm-independent: the shipped arm's cross-seed values
+coincide with it within $.006$). An arm reading above the yardstick
+displaces the endpoint \emph{less} than a seed change does. Training is
+bit-exact deterministic --- an identical retrain reads $1.000$ --- so
+the table reads caused displacement, not run-to-run chaos. \emph{late}:
+demotion restricted to the last $75\%$ of steps; the stacked row adds a
+second certified route ($1024{\to}768$ on $0.65{<}\sigma{<}0.95$, last
+$50\%$) on top of \emph{late}. \textbf{Bold}: the late-scheduled arms
+--- the closest endpoints; the stacked row adds strictly deeper
+substitutions at no endpoint cost, an ordering set by placement that a
+per-step spectral account cannot produce.}
 \label{tab:yardstick}
 \centering
 \footnotesize
@@ -184,12 +149,12 @@ at or inside the yardstick on both corpora.}
 \toprule
 arm (vs.\ native, matched seed) & corpus A & corpus B \\
 \midrule
-native, cross-seed (yardstick) & $0.9558 \pm .0046$ & $0.9541 \pm .0093$ \\
+native, cross-seed (yardstick) & $0.121 \pm .007$ & $0.199 \pm .003$ \\
 \midrule
-$896$, $\sigma{>}0.5$, aligned & $\mathbf{0.9551 \pm .0057}$ & $\mathbf{0.9641 \pm .0023}$ \\
-$896$, every $\sigma$ & $0.9504 \pm .0179$ & $0.9500 \pm .0141$ \\
-$768$, $\sigma{>}0.5$, aligned & $0.9503 \pm .0013$ & $0.9553 \pm .0127$ \\
-$768$, every $\sigma$ & $0.9527 \pm .0118$ & $0.9545 \pm .0127$ \\
+$896$, $\sigma{>}0.5$, aligned & $0.365 \pm .020$ & $0.432 \pm .026$ \\
+\quad + late & $\mathbf{0.753 \pm .019}$ & $\mathbf{0.770 \pm .009}$ \\
+\quad + late, stacked $768$ & $\mathbf{0.753 \pm .017}$ & $\mathbf{0.771 \pm .009}$ \\
+$896$, every $\sigma$ & $0.183 \pm .009$ & $0.236 \pm .009$ \\
 \bottomrule
 \end{tabular}
 \end{minipage}\hfill
@@ -221,38 +186,48 @@ refinement, and lines 1--2 are only a reordering of a standard step
 \end{minipage}
 \end{table}
 
-\textbf{Sample-level footprint.} A fixed-step exercise grid ($5$ arms
-$\times$ $3$ training seeds $\times$ $2$ single-artist corpora, $480$
-optimizer steps each, bit-exact deterministic paired-RNG so every arm
-sees identical draws) renders a frozen prompt set at matched
-(prompt, noise-seed) pairs per checkpoint and embeds each render with a
-frozen vision encoder (PE-Core; \citealp{bolya2025perception}).
-Table~\ref{tab:yardstick} reads each arm's paired cosine against its
-native twin, judged against a seed-noise yardstick. The shipped path is
-the only arm at or inside the yardstick on both corpora ($0.9551$ vs
-$0.9558$, a tie at instrument resolution; $0.9641$ vs $0.9541$):
-swapping every $\sigma > 0.5$ step to the demoted sibling perturbs
-endpoint samples about as much as changing the training seed. All three
-controls fall below the yardstick on at least one corpus, an ordering
-consistent with the map; but the margins are small relative to the seed
-spreads, so this instrument certifies the absence of a gross
-sample-level footprint, not quality non-inferiority.
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/kaai_yuki_arms_grid.jpg}
+\caption{Visual counterpart to Table~\ref{tab:yardstick}: matched
+(prompt, noise-seed) renders from each arm's endpoint on a corpus-B
+display prompt, $20$ steps; columns are the table's arms, rows the
+three training seeds. Moving along a row (arms, seed fixed) changes
+the render on the same visual order as moving down a column (seed
+lottery, arm fixed); the gate-removed arm (rightmost) drifts the
+most, matching its eroded margin in Table~\ref{tab:yardstick}.}
+\label{fig:kaaiyuki}
+\end{figure}
 
-\textbf{What this section does not claim.} The generation-quality
-acceptance gate (CMMD, \citealp{jayasumana2024cmmd}, non-inferiority at
-training scale against the realized wall-clock saving) remains open:
-the exercise grid's first scoring pass used rating-restricted display
-prompts against mismatched reference pools and could not separate even
-the off-map control from native, so we read no quality verdict from it,
-and the pre-committed full-band rescoring closes the line (a regression
-closes it negatively). Throughput and sample-level footprint above are
-measured; quality non-inferiority is not. We flag this deliberately:
-the gap between a $480$-step exercise grid and production-scale
-training is exactly the kind of gap this paper is about. For the same
-reason we deploy the \emph{measured} map, not the predicted one --- a
-full-pipeline bootstrap of Appendix~\ref{sec:headtohead} exposes the
-prediction pipeline's own branch fragility
-(Appendix~\ref{app:instrument}).
+\textbf{Weight-space endpoint footprint.} A fixed-step exercise grid
+(gated, scheduled, and gate-removed arms $\times$ $3$ training seeds
+$\times$ $2$ single-artist corpora, $480$ optimizer steps each,
+bit-exact deterministic paired-RNG so every arm sees identical draws)
+compares the trained adapters directly in weight space.
+Table~\ref{tab:yardstick} reads the cosine between each arm's endpoint
+$\Delta W$ and its matched-seed native twin's, judged against a
+seed-noise yardstick: the same cosine between native endpoints that
+differ only in training seed. Determinism makes the read exact --- an
+identical retrain reproduces its twin at $1.000$ --- and the yardstick
+is tight, so the margins are many seed-spreads wide. Every arm lands
+above the yardstick: even demoting \emph{all} $480$ steps displaces the
+endpoint less than changing the training seed, and the shipped gate
+sits a factor $2$--$3$ above it ($0.365$ vs $0.121$; $0.432$ vs
+$0.199$). The ordering, however, is set by \emph{placement}, not by
+per-step severity: protecting the first quarter of training doubles the
+closeness ($0.365 \to 0.753$) --- consistent with early subspace
+selection in a from-zero adapter --- and stacking a strictly deeper
+certified $768$ route onto the late rule is endpoint-free ($0.753$,
+$0.771$), although the spectral account of \S\ref{sec:ourscored} prices
+every $768$ substitution as more severe than $896$. A per-step account
+is placement-blind by construction; the endpoint statistic resolves
+what it cannot: \emph{when} a demoted step happens dominates \emph{how
+deep} it goes, provided the route stays inside the certified window.
+Removing the $\sigma$-gate erodes the margin toward the lottery radius
+($0.183$; $0.236$). Weight-space proximity is a footprint statement,
+not a quality statement: sample-level orderings need not track it, and
+generation-quality non-inferiority at production scale remains the
+stated open gate (\S\ref{sec:limitations}).
 
 \section{Limitations}
 \label{sec:limitations}
@@ -272,9 +247,12 @@ redraw-floor level is checkpoint-dependent (Appendix~\ref{app:e7}).
 
 \textbf{Gradient-level, not end-task.} The map is built from
 accumulated per-step gradients; integration over an optimizer
-trajectory is addressed by the exercise grid's weight-space and
-sample-level reads at $480$ steps rather than production scale, and the
-generation-quality (CMMD) gate remains open.
+trajectory is addressed by the exercise grid's weight-space read at
+$480$ steps rather than production scale, and the
+generation-quality (CMMD, \citealp{jayasumana2024cmmd}) gate remains
+open: the exercise grid's first scoring pass could not separate even
+the off-map control from native at this scale, so we read no quality
+verdict from it.
 
 \textbf{Account resolution and domain.} The account predicts held-out
 routes at ${\sim}0.07$--$0.09$ RMSE, not within $\epsstar$; its
@@ -353,7 +331,9 @@ test, half the intermediate route's raw floor was estimator bias, and
 our own headline claims were re-derived, and in one case softened,
 under the correction. On the one route our corpus makes safe, the
 trainer realizes the map's projected ceiling ($-14.6\%$ wall-clock at
-fixed steps) with a sample-level footprint within the seed lottery;
+fixed steps) with a weight-space endpoint footprint a factor $2$--$3$
+inside the seed lottery --- rising to cosine $0.75$ against the native
+endpoint when demotion is late-scheduled;
 quality non-inferiority at production scale remains the open gate. We
 offer the account and its instrument as the cheap, general test that
 any future ``train part of the time at lower resolution'' proposal

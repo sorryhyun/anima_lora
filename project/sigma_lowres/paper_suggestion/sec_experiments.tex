@@ -1,53 +1,18 @@
 \section{Experiments: both accounts, scored}
 \label{sec:evidence}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{figs/accounts_headtohead.png}
-\caption{\textbf{Both accounts on the same axes.} Per route, one set of
-measured debiased gap curves (Eq.~\ref{eq:gapdef}, black) carries both
-predictions of \S\ref{sec:theory}: the spectral account (red dashed)
-and ours under the exact angular link (blue, Eq.~\ref{eq:exact};
-three-form comparison in Appendix Fig.~\ref{fig:e51280}), with each
-route's predicted floor (blue dashed --- dashed-to-solid is the data
-term) and a $68\%/95\%$ full-pipeline bootstrap band ($B{=}1000$;
-Appendix~\ref{app:instrument}). Neither account is fit to the route it
-is drawn on except as labelled in-panel: ours predicts $1024{\to}768$
-from governors alone with zero per-route freedom (pre-registered
-held-out) and $1024{\to}896$ under the post-hoc leave-$896$-out
-re-derivation, while the spectral account's single gain is calibrated
-on $1024{\to}896$ and frozen. Unit honesty: the red curve is
-\emph{the spectral account read through our bridge}, since it emits
-residual units only, with the tolerance $\delta$ set to the measured
-anchor $\delta_{\reenc}$; the transported curve dies by
-$\sigma \approx 0.35$ on every route, so every tolerance from the
-equal-power slice to $\delta_{\reenc}$ scores within $0.01$ RMSE of
-every other --- $\delta$ is inert at the curve level (the whole family,
-and the boundary sweep, in Appendix Fig.~\ref{fig:e83}).
-The $768$ mid-$\sigma$ dip and the $896$ low-$\sigma$ plateau sit
-outside the $95\%$ band --- the two edges of the reduction's domain
-(Appendix~\ref{sec:headtohead}). Bottom
-right: predicted vs measured over every bin, with ours also on the two
-$1280$-tier routes the spectral bridge does not cover.}
-\label{fig:accounts}
-\end{figure}
-
-Figure~\ref{fig:accounts} states the comparison before the
-apparatus: the same measured, debiased gap curves with each account of
-\S\ref{sec:theory} laid over them. The existing account is near zero
-where the measurement peaks and predicts zero where the measurement
-floors; ours tracks both, on routes it never saw. The rest of this
-section earns those overlays. We build the instrument
-(\S\ref{sec:instrument}) and score both accounts against the measured
-curves --- the spectral one at the boundary and the curve level, ours
-term by term (\S\ref{sec:scored}); the per-route map those curves
-certify is read in \S\ref{sec:map}, where it becomes the deployed
-artifact, and the held-out prediction protocol behind the figure's
-overlays, its pre-registered gates, and the structural failures it
-exposes are quantified in Appendix~\ref{sec:headtohead}. Each
-subsection states the prediction it discharges against criteria frozen
-before the runs; several probes double as falsifiers of our own
-account's assumptions.
+This section scores both accounts of \S\ref{sec:theory} against one
+measured object: debiased demotion-gap curves over the full $\sigma$
+axis, on routes neither account saw. We build the instrument
+(\S\ref{sec:instrument}), then score both accounts against the
+measured curves --- the spectral one at the boundary and the curve
+level, ours term by term (\S\ref{sec:scored}); the per-route map those
+curves certify is read in \S\ref{sec:map}, where it becomes the
+deployed artifact, and the held-out prediction protocol, its
+pre-registered gates, and the structural failures it exposes are
+quantified in Appendix~\ref{sec:headtohead}. Each subsection states
+the prediction it discharges against criteria frozen before the runs;
+several probes double as falsifiers of our own account's assumptions.
 
 \subsection{The instrument}
 \label{sec:instrument}
@@ -181,6 +146,32 @@ contrast cancels the bias to first order
 
 \begin{figure}[t]
 \centering
+\includegraphics[width=\linewidth]{figs/accounts_headtohead.png}
+\caption{\textbf{Both accounts on the same axes.} Per route, one set of
+measured debiased gap curves (Eq.~\ref{eq:gapdef}, black) carries both
+predictions of \S\ref{sec:theory}: the spectral account (red dashed;
+transported through the residual$\to$gradient bridge at the measured
+anchor tolerance --- the whole family scores alike, Appendix
+Fig.~\ref{fig:e83}) and ours under the exact angular link (blue,
+Eq.~\ref{eq:exact}; three-form comparison in Appendix
+Fig.~\ref{fig:e51280}), with each route's predicted floor (blue dashed
+--- dashed-to-solid is the data term) and a $68\%/95\%$ full-pipeline
+bootstrap band ($B{=}1000$; Appendix~\ref{app:instrument}). Neither
+account is fit to the route it is drawn on except as labelled
+in-panel: ours predicts $1024{\to}768$ from governors alone with zero
+per-route freedom (pre-registered held-out) and $1024{\to}896$ under
+the post-hoc leave-$896$-out re-derivation, while the spectral
+account's single gain is calibrated on $1024{\to}896$ and frozen. The
+$768$ mid-$\sigma$ dip and the $896$ low-$\sigma$ plateau sit outside
+the $95\%$ band --- the two edges of the reduction's domain
+(Appendix~\ref{sec:headtohead}). Bottom right: predicted vs measured
+over every bin, with ours also on the two $1280$-tier routes the
+spectral bridge does not cover.}
+\label{fig:accounts}
+\end{figure}
+
+\begin{figure}[t]
+\centering
 \begin{subfigure}[t]{0.46\textwidth}
 \includegraphics[width=\linewidth]{figs/gap_debiased.png}
 \phantomcaption
@@ -224,36 +215,27 @@ $\delta$.}
 The Qwen-Image VAE's latents are high-frequency-quiet ($P(f) < 1$ above
 $f \approx 0.16$ cycles/latent-pixel; latent variance $0.42$), giving
 equal-power crossovers of $0.136 / 0.146 / {\approx}\,0.20$ for
-$896/768/512$ with tight per-image spread (p10--p90
-${\approx}\,0.11$--$0.16$): at that tolerance demotion would be safe
-over almost the entire $\sigma$ axis.
-Table~\ref{tab:null} (Appendix~\ref{app:spectral}) sweeps the
-whole family, and no row reproduces the measured map
-(\S\ref{sec:map}): the $\delta$
-matching the measured $896$ boundary ($0.025$) predicts $768$ safe at
-$0.52$ and $512$ safe at $0.62$, while $\delta = 0.01$, the published
-default of \citet{xiao2026spd}, predicts all three safe by $0.72$.
-Appendix~\ref{app:spectral} also closes the ``wrong $\delta$''
-objection by construction: our own pipeline's measured re-encode error
-anchors the family with zero free parameters
-($\delta_{\reenc} \approx 10^{-5}$), and the anchored boundaries,
-measured where they move, land together at $t^{*} \approx 0.98$ ---
-maximally conservative and still structurally wrong in both directions
-at once. At the curve level (Fig.~\ref{fig:e83}, the family transported
-to full curves) the same failure is sharper: the latents are
-high-frequency-quiet, so the predicted mismatch is concentrated below
-$\sigma \approx 0.3$ and the transported curve is near zero exactly
-where the measured curves peak (RMSE $0.147$ at $768$ and $0.355$ at
-$512$), while above each tolerance's committed boundary, where every
-member predicts exactly zero, the floor persists (committed-region RMSE
-$0.027/0.049/0.218$ for $896/768/512$ at SPD's default). And because
-the transported curve has already died by $\sigma \approx 0.35$, every
-tolerance from the equal-power slice to the measured anchor scores
-within $0.01$ RMSE of every other: $\delta$, the family's one degree of
-freedom, is \emph{inert} at the curve level, so the structural failures
-of \S\ref{sec:spectral}(a--c) do not hinge on its choice. Both reads
-are insensitive to the residual-shape choice in the transport (per-draw
-vs mean-residual within $10\%$; identical committed-region numbers).
+$896/768/512$: at that tolerance demotion would be safe over almost
+the entire $\sigma$ axis.
+Table~\ref{tab:null} (Appendix~\ref{app:spectral}) sweeps the whole
+tolerance family, and no row reproduces the measured map
+(\S\ref{sec:map}) --- including the zero-free-parameter member
+anchored by our own pipeline's measured re-encode error, which lands
+maximally conservative and is still structurally wrong in both
+directions at once. At the curve level (Fig.~\ref{fig:e83}, the family
+transported to full curves) the failure is sharper: the predicted
+mismatch is concentrated below $\sigma \approx 0.3$ and the
+transported curve is near zero exactly where the measured curves peak
+(RMSE $0.147$ at $768$ and $0.355$ at $512$), while above each
+tolerance's committed boundary, where every member predicts exactly
+zero, the floor persists (committed-region RMSE $0.027/0.049/0.218$
+for $896/768/512$). And because the transported curve has already died
+by $\sigma \approx 0.35$, every tolerance scores within $0.01$ RMSE of
+every other: $\delta$, the family's one degree of freedom, is
+\emph{inert} at the curve level, so the structural failures of
+\S\ref{sec:spectral}(a--c) do not hinge on its choice. Both reads are
+insensitive to the residual-shape choice in the transport.
+
 
 \paragraph{Ours, first term: the graph term exists (three probes, one
 number).}
@@ -281,15 +263,11 @@ $\hat g_{\src}$, to which the cosine gap is blind (Eq.~\ref{eq:exact})
 --- the endpoint gap is the graph floor as the angular estimand reads
 it (parallel-landing decomposition, with the
 $\kappa_\parallel/\kappa_\perp$ numbers, in
-Appendix~\ref{app:instrument}). Two exonerations complete the picture.
-The re-encoding control sits at zero within CI, so the VAE round trip
-is not the cause --- and, conversely, that round trip has
-\emph{measurable} input-level error at below-resolution gradient cost,
-so input-level error neither implies nor excuses gradient-level cost.
-And a forward-only probe of the model's caption-conditioned \emph{prior}
-across grids gives route distances that are flat where the floors are
-strongly ordered, placing the ordering in $J$ rather than in a
-resolution-conditioned prior or a training-distribution discontinuity.
+Appendix~\ref{app:instrument}). Finally, a forward-only probe of the
+model's caption-conditioned \emph{prior} across grids gives route
+distances that are flat where the floors are strongly ordered, placing
+the ordering in $J$ rather than in a resolution-conditioned prior or a
+training-distribution discontinuity.
 
 \paragraph{The data branch: a route-uniform numerator over a U-shaped
 denominator.}
@@ -308,10 +286,10 @@ band and ordered by its energy, which differs substantially across
 these routes. Route-uniformity says the real mismatch is carried by
 cross-band structure the diagonal model cannot express, and that all
 route identity lives in $J$ --- a pre-registered contrast that would
-equally have falsified our own assumption (iv) had the residual curves
-been route-ordered; instead it \emph{establishes} the shape
-factorization directly. The decay is smooth, Wiener-like shrinkage with
-no hard gate at the spectral crossover.
+equally have falsified our own assumption~(iv); instead it
+\emph{establishes} the shape factorization directly. The decay is
+smooth, Wiener-like shrinkage with no hard gate at the spectral
+crossover.
 
 The denominator then does real work: the total gradient norm is
 U-shaped in $\sigma$ ($2.6 \to 0.4$ at $\sigma\!\approx\!0.3 \to 9.3$;
@@ -320,8 +298,8 @@ pulls composition out of the prior, small in the mid-$\sigma$
 refinement regime, inflated again at low $\sigma$ by irreducible
 $\epsilon$. A monotone absolute mismatch over a U-shaped norm yields
 exactly the measured interior-peaked curves: bin-mean gap tracks
-$1/\|\bar g_{\src}\|$ (Spearman $+0.55$ to $+0.90$ across arms, runs,
-and within images), and renormalizing by $\|\bar g_{\src}\|$ flips the
+$1/\|\bar g_{\src}\|$ (Spearman $+0.55$--$+0.90$), and
+renormalizing by $\|\bar g_{\src}\|$ flips the
 anomalous low-$\sigma$ dip into the monotone maximum in every arm of
 both runs. This is a post-hoc consistency analysis (so labeled): it
 explains the \emph{shape}; all safety criteria stay in cosine units,
@@ -331,28 +309,26 @@ since direction is what a normalized optimizer consumes.
 the floor.}
 With the floor isolated, what orders the routes? Two probes give a
 clean division of labor, and together they decide the equal-ratio
-disagreement --- limit~(b) of \S\ref{sec:spectral}. \emph{Absolute size, not ratio, sets the
-floor}: re-run one tier down, the route $896{\to}768$ fails its
-pre-registered bar with a high-$\sigma$ residual ${\sim}2\times$ the
-$1024{\to}896$ plateau, at ratio $0.857$ against the passing $0.875$
---- two boundaries the spectral family puts within $0.01$ of each
-other at every tolerance (Appendix Table~\ref{tab:phase1a}) --- while
-the two routes sharing the ${\sim}2{,}160$-token target grid,
-$1024{\to}768$ (ratio $0.75$) and $896{\to}768$ (ratio $0.857$), land
-on the same floor ($0.06$--$0.09$ vs $0.06$--$0.12$). Near-equal
-ratio, different target: different verdict; same target, different
-ratio: same floor --- refuting any pure ratio rule for the floor, and
-with it the spectral account's only degree of freedom. And
-the floor grows monotonically as the \emph{target} grid
-shrinks ($0.02$--$0.04$ / $0.06$--$0.09$ / ${\approx}\,0.30$ at target
-${\sim}3{,}000/2{,}160/1{,}000$ tokens), consistent with ``floor $=$
-how well the coarse graph approximates the fine graph's computation.''
+disagreement --- limit~(b) of \S\ref{sec:spectral}. \emph{Absolute
+size, not ratio, sets the floor}: re-run one tier down, the route
+$896{\to}768$ fails its pre-registered bar with a high-$\sigma$
+residual ${\sim}2\times$ the $1024{\to}896$ plateau despite a
+near-identical downscale ratio, while the two routes sharing the
+${\sim}2{,}160$-token target grid, $1024{\to}768$ and $896{\to}768$,
+land on the same floor despite different ratios (Appendix
+Table~\ref{tab:phase1a}). Near-equal ratio, different target:
+different verdict; same target, different ratio: same floor ---
+refuting any pure ratio rule for the floor, and with it the spectral
+account's only degree of freedom. And the floor grows monotonically as
+the \emph{target} grid shrinks ($0.02$--$0.04$ / $0.06$--$0.09$ /
+${\approx}\,0.30$ at target ${\sim}3{,}000/2{,}160/1{,}000$ tokens),
+consistent with ``floor $=$ how well the coarse graph approximates the
+fine graph's computation.''
 \emph{Ratio, not absolute size, sets the amplitude}: a synthetic
-iso-severity route $1280{\to}1120$ (edge ratio $0.875$ exactly matched
-to $1024{\to}896$, but $1.6\times$ its absolute target size) reproduces
-the $1024{\to}896$ curve bin-for-bin and its crossover
-$\sigmastar\!\approx\!0.5$ (Appendix Table~\ref{tab:isoseverity}). The
-pre-registered contrast discriminated cleanly. Note what survives of
+iso-severity route $1280{\to}1120$ (edge ratio exactly matched to
+$1024{\to}896$, at $1.6\times$ its absolute target size) reproduces
+the $1024{\to}896$ curve bin-for-bin, crossover included (Appendix
+Table~\ref{tab:isoseverity}). Note what survives of
 the spectral account here: ratio \emph{is} the right governor for the
 data term; its error is not its governor but its scope, mistaking one
 term for the whole gap.
@@ -365,8 +341,7 @@ intervention: evaluate the demoted grid at positionally-interpolated
 fractional rotary coordinates (patch $i$ at $i \cdot
 H_{\src}/H_{\dem}$), making its relative phase geometry exactly match
 native. At the $\sigma{=}1$ endpoint this \emph{erases} the $768$ floor
-(paired $\Delta = +0.081$, $78\%$ of images improved) and removes
-${\sim}30\%$ of the $512$ floor ($\Delta = +0.096$), leaving the
+and removes ${\sim}30\%$ of the $512$ floor, leaving the
 in-band $896$ control untouched: re-anchored against the debiased
 floors, $\mathrm{Resid}_{768} \approx 0$ while $512$ retains a
 $\mathrm{Resid}_{512} \approx 0.2$ bulk. The mild-route floor is mostly
