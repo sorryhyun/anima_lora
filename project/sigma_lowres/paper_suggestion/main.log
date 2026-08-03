@@ -596,64 +596,64 @@ language=dflt;-ss05;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;"
 ;language=dflt;-ss05;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;"
 
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 10.0pt on input line 43.
+(Font)              scaled to size 10.0pt on input line 42.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 10.0pt
  -> TeXGyreTermesX-Regular.otf
  (main.aux)
 \openout1 = `main.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/ntxmi/m/it on input line 43.
+LaTeX Font Info:    Checking defaults for OML/ntxmi/m/it on input line 42.
 LaTeX Font Info:    Trying to load font information for OML+ntxmi on input line
- 43.
+ 42.
  (omlntxmi.fd
 File: omlntxmi.fd 2015/08/25 Fontinst v1.933 font definitions for OML/ntxmi.
 )
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 43.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 42.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 42.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 42.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 42.
 LaTeX Font Info:    Trying to load font information for TS1+cmr on input line 4
-3.
+2.
  (ts1cmr.fd
 File: ts1cmr.fd 2019/12/16 v2.5j Standard LaTeX font definitions
 )
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for U/ntxexa/m/n on input line 43.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 42.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 42.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for U/ntxexa/m/n on input line 42.
 LaTeX Font Info:    Trying to load font information for U+ntxexa on input line 
-43.
+42.
  (untxexa.fd
 File: untxexa.fd 2012/04/16 Fontinst v1.933 font definitions for U/ntxexa.
 )
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for LMS/ntxsy/m/n on input line 43.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 42.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 42.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for LMS/ntxsy/m/n on input line 42.
 LaTeX Font Info:    Trying to load font information for LMS+ntxsy on input line
- 43.
+ 42.
 
 (lmsntxsy.fd
 File: lmsntxsy.fd 2016/07/02 Fontinst v1.933 font definitions for LMS/ntxsy.
 )
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for LMX/ntxexx/m/n on input line 43.
+LaTeX Font Info:    ... okay on input line 42.
+LaTeX Font Info:    Checking defaults for LMX/ntxexx/m/n on input line 42.
 LaTeX Font Info:    Trying to load font information for LMX+ntxexx on input lin
-e 43.
+e 42.
  (lmxntxexx.fd
 File: lmxntxexx.fd 2016/07/03 Fontinst v1.933 font definitions for LMX/ntxexx.
 )
-LaTeX Font Info:    ... okay on input line 43.
-Package hyperref Info: Link coloring OFF on input line 43.
+LaTeX Font Info:    ... okay on input line 42.
+Package hyperref Info: Link coloring OFF on input line 42.
  (nameref.sty
 Package: nameref 2021-04-02 v2.47 Cross-referencing by name of section
  (refcount.sty
@@ -663,9 +663,9 @@ Package: gettitlestring 2019/12/15 v1.6 Cleanup title references (HO)
 )
 \c@section@level=\count321
 )
-LaTeX Info: Redefining \ref on input line 43.
-LaTeX Info: Redefining \pageref on input line 43.
-LaTeX Info: Redefining \nameref on input line 43.
+LaTeX Info: Redefining \ref on input line 42.
+LaTeX Info: Redefining \pageref on input line 42.
+LaTeX Info: Redefining \nameref on input line 42.
 
 (main.out) (main.out)
 \@outlinefile=\write3
@@ -674,17 +674,17 @@ LaTeX Info: Redefining \nameref on input line 43.
 Package caption Info: Begin \AtBeginDocument code.
 Package caption Info: End \AtBeginDocument code.
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 17.28pt on input line 47.
+(Font)              scaled to size 17.28pt on input line 46.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 17.28pt
  -> TeXGyreTermesX-Regular.otf
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
-(Font)              scaled to size 17.28pt on input line 47.
+(Font)              scaled to size 17.28pt on input line 46.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 17.28pt
  -> TeXGyreTermesX-Regular.otf
 LaTeX Font Info:    Trying to load font information for OT1+minntx on input lin
-e 47.
+e 46.
  (ot1minntx.fd
 File: ot1minntx.fd 2022/01/20 v1.0 font definition file for OT1/minntx
 )
@@ -712,7 +712,7 @@ Requested font "ntxexx" at 7.3pt
  -> ntxexx
 Requested font "ntxexx" at 5.5pt
  -> ntxexx
-LaTeX Font Info:    Trying to load font information for U+msa on input line 47.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 46.
 
  (umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
@@ -723,7 +723,7 @@ Requested font "msam7" at 7.3pt
  -> msam7
 Requested font "msam5" at 5.5pt
  -> msam5
-LaTeX Font Info:    Trying to load font information for U+msb on input line 47.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 46.
 
  (umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
@@ -741,7 +741,7 @@ Requested font "cmbx7" at 7.0pt
 
 
 LaTeX Font Warning: Font shape `OT1/cmr/bx/n' in size <5.5> not available
-(Font)              size <5> substituted on input line 47.
+(Font)              size <5> substituted on input line 46.
 
 Requested font "cmbx5" at 5.0pt
  -> cmbx5
@@ -751,7 +751,7 @@ Requested font "cmmib7" at 7.0pt
  -> cmmib7
 
 LaTeX Font Warning: Font shape `OML/cmm/b/it' in size <5.5> not available
-(Font)              size <5> substituted on input line 47.
+(Font)              size <5> substituted on input line 46.
 
 Requested font "cmmib5" at 5.0pt
  -> cmmib5
@@ -761,12 +761,12 @@ Requested font "cmbsy7" at 7.0pt
  -> cmbsy7
 
 LaTeX Font Warning: Font shape `OMS/cmsy/b/n' in size <5.5> not available
-(Font)              size <5> substituted on input line 47.
+(Font)              size <5> substituted on input line 46.
 
 Requested font "cmbsy5" at 5.0pt
  -> cmbsy5
 LaTeX Font Info:    Trying to load font information for U+ntxmia on input line 
-47.
+46.
 (untxmia.fd
 File: untxmia.fd 2018/04/14 Fontinst v1.933 font definitions for U/ntxmia.
 )
@@ -777,7 +777,7 @@ Requested font "ntxmia" at 7.3pt
 Requested font "ntxmia" at 5.5pt
  -> ntxmia
 LaTeX Font Info:    Trying to load font information for U+ntxsym on input line 
-47.
+46.
  (untxsym.fd
 File: untxsym.fd 2015/03/20 Fontinst v1.933 font definitions for U/ntxsym.
 )
@@ -788,7 +788,7 @@ Requested font "ntxsym" at 7.3pt
 Requested font "ntxsym" at 5.5pt
  -> ntxsym
 LaTeX Font Info:    Trying to load font information for U+ntxsyc on input line 
-47.
+46.
  (untxsyc.fd
 File: untxsyc.fd 2012/04/12 Fontinst v1.933 font definitions for U/ntxsyc.
 )
@@ -805,19 +805,19 @@ Requested font "ntxexa" at 7.3pt
 Requested font "ntxexa" at 5.5pt
  -> ntxexa
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/b/n' will be
-(Font)              scaled to size 10.0pt on input line 47.
+(Font)              scaled to size 10.0pt on input line 46.
 Requested font "[TeXGyreTermesX-Bold.otf]/OT:script=latn;language=dflt;-ss05;+t
 num;+lnum;mapping=tex-text;" at 10.0pt
  -> TeXGyreTermesX-Bold.otf
 Requested font "[lmmono10-regular]:" at 10.0pt
  -> lmmono10-regular
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 12.0pt on input line 50.
+(Font)              scaled to size 12.0pt on input line 49.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 12.0pt
  -> TeXGyreTermesX-Regular.otf
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
-(Font)              scaled to size 12.0pt on input line 50.
+(Font)              scaled to size 12.0pt on input line 49.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 12.0pt
  -> TeXGyreTermesX-Regular.otf
@@ -826,22 +826,21 @@ LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/it' will be
 Requested font "[TeXGyreTermesX-Italic.otf]/OT:script=latn;language=dflt;-ss05;
 +tnum;+lnum;mapping=tex-text;" at 10.0pt
  -> TeXGyreTermesX-Italic.otf
- (sec_intro [1
-
-]
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 7.3pt on input line 65.
+(Font)              scaled to size 7.3pt on input line 63.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 7.3pt
  -> TeXGyreTermesX-Regular.otf
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 5.5pt on input line 65.
+(Font)              scaled to size 5.5pt on input line 63.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 5.5pt
  -> TeXGyreTermesX-Regular.otf
- [2]) (sec_theory
+ (sec_intro [1
+
+] [2]) (sec_theory
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
-(Font)              scaled to size 10.0pt on input line 13.
+(Font)              scaled to size 10.0pt on input line 12.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 10.0pt
  -> TeXGyreTermesX-Regular.otf
@@ -853,87 +852,47 @@ Requested font "ntx-Bold-tlf-ot1" at 7.3pt
 Requested font "ntx-Bold-tlf-ot1" at 5.5pt
  -> ntx-Bold-tlf-ot1
 
-[4]) (sec_experiments [5]
-
-Package fontspec Info: Font family 'TeXGyreTermesX(1)' created for font
-(fontspec)             'TeXGyreTermesX' with options [Ligatures = TeX,Scale =
-(fontspec)             1,Extension = .otf,SmallCapsFeatures={RawFeature =
-(fontspec)             +pcap, },RawFeature=-ss05,Ligatures=TeX,Extension =
-(fontspec)             .otf,UprightFont = TeXGyreTermesX-Regular,BoldFont =
-(fontspec)             TeXGyreTermesX-Bold,ItalicFont =
-(fontspec)             TeXGyreTermesX-Italic,BoldItalicFont =
-(fontspec)             TeXGyreTermesX-BoldItalic,SlantedFont =
-(fontspec)             *-Slanted,BoldSlantedFont= *-BoldSlanted,Numbers =
-(fontspec)             {Monospaced,Lining},UprightFont = *-Regular,ItalicFont
-(fontspec)             = *-Italic,BoldFont = *-Bold,BoldItalicFont =
-(fontspec)             *-BoldItalic,SlantedFont = *-Slanted,BoldSlantedFont=
-(fontspec)             *-BoldSlanted,VerticalPosition=Superior].
-(fontspec)              
-(fontspec)              This font family consists of the following NFSS
-(fontspec)             series/shapes:
-(fontspec)              
-(fontspec)             - 'normal' (m/n) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-Regular.otf]/OT:script=latn;lan
-guage=dflt;-ss05;+tnum;+lnum;+sups;mapping=tex-text;"
-(fontspec)             - 'small caps'  (m/sc) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-Regular.otf]/OT:script=latn;lan
-guage=dflt;-ss05;+tnum;+lnum;+sups;+smcp;+pcap;mapping=tex-text;"
-(fontspec)             - 'bold' (b/n) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-Bold.otf]/OT:script=latn;langua
-ge=dflt;-ss05;+tnum;+lnum;+sups;mapping=tex-text;"
-(fontspec)             - 'bold small caps'  (b/sc) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-Bold.otf]/OT:script=latn;langua
-ge=dflt;-ss05;+tnum;+lnum;+sups;+smcp;+pcap;mapping=tex-text;"
-(fontspec)             - 'italic' (m/it) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-Italic.otf]/OT:script=latn;lang
-uage=dflt;-ss05;+tnum;+lnum;+sups;mapping=tex-text;"
-(fontspec)             - 'italic small caps'  (m/scit) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-Italic.otf]/OT:script=latn;lang
-uage=dflt;-ss05;+tnum;+lnum;+sups;+smcp;+pcap;mapping=tex-text;"
-(fontspec)             - 'slanted' (m/sl) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-Slanted.otf]/OT:script=latn;lan
-guage=dflt;-ss05;+tnum;+lnum;+sups;mapping=tex-text;"
-(fontspec)             - 'slanted small caps'  (m/scsl) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-Slanted.otf]/OT:script=latn;lan
-guage=dflt;-ss05;+tnum;+lnum;+sups;+smcp;+pcap;mapping=tex-text;"
-(fontspec)             - 'bold italic' (b/it) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-BoldItalic.otf]/OT:script=latn;
-language=dflt;-ss05;+tnum;+lnum;+sups;mapping=tex-text;"
-(fontspec)             - 'bold italic small caps'  (b/scit) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-BoldItalic.otf]/OT:script=latn;
-language=dflt;-ss05;+tnum;+lnum;+sups;+smcp;+pcap;mapping=tex-text;"
-(fontspec)             - 'bold slanted' (b/sl) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-BoldSlanted.otf]/OT:script=latn
-;language=dflt;-ss05;+tnum;+lnum;+sups;mapping=tex-text;"
-(fontspec)             - 'bold slanted small caps'  (b/scsl) with NFSS spec.:
-(fontspec)             <->s*[1]"[TeXGyreTermesX-BoldSlanted.otf]/OT:script=latn
-;language=dflt;-ss05;+tnum;+lnum;+sups;+smcp;+pcap;mapping=tex-text;"
-
-LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(1)/m/n' will be
-(Font)              scaled to size 10.0pt on input line 36.
+[4] [5]) (sec_experiments [6]
+LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
+(Font)              scaled to size 7.3pt on input line 148.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
-;+tnum;+lnum;+sups;mapping=tex-text;" at 10.0pt
+;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 7.3pt
  -> TeXGyreTermesX-Regular.otf
+LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
+(Font)              scaled to size 5.5pt on input line 148.
+Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
+;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 5.5pt
+ -> TeXGyreTermesX-Regular.otf
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 148.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `\sigma' on input line 148.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 148.
+
+File: figs/accounts_headtohead.png Graphic file (type bmp)
+<figs/accounts_headtohead.png>
+[7]
+Underfull \vbox (badness 1132) has occurred while \output is active []
+
+ [8]
+[9]
+Underfull \hbox (badness 5147) in paragraph at lines 376--376
+[]\TU/TeXGyreTermesX(0)/m/n/10 Table 1: |Weight-space footprint vs. the seed lo
+ttery:
+ []
+
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 9.0pt on input line 49.
+(Font)              scaled to size 9.0pt on input line 379.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 9.0pt
  -> TeXGyreTermesX-Regular.otf
-Requested font "[TeXGyreTermesX-Regular.otf]/OT" at 8.99997pt
- -> TeXGyreTermesX-Regular.otf
-Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;" at 
-9.00003pt
- -> TeXGyreTermesX-Regular.otf
-LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(1)/m/n' will be
-(Font)              scaled to size 9.0pt on input line 49.
-Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
-;+tnum;+lnum;+sups;mapping=tex-text;" at 9.0pt
- -> TeXGyreTermesX-Regular.otf
-LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/it' will be
-(Font)              scaled to size 9.0pt on input line 49.
-Requested font "[TeXGyreTermesX-Italic.otf]/OT:script=latn;language=dflt;-ss05;
-+tnum;+lnum;mapping=tex-text;" at 9.0pt
- -> TeXGyreTermesX-Italic.otf
 Requested font "ntx-Regular-tlf-ot1" at 9.0pt
  -> ntx-Regular-tlf-ot1
 Requested font "ntxmi" at 9.0pt
@@ -962,45 +921,14 @@ Requested font "ntxsyc" at 9.0pt
  -> ntxsyc
 Requested font "ntxexa" at 9.0pt
  -> ntxexa
- [6]
-LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
-(Font)              scaled to size 7.3pt on input line 132.
-Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
-;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 7.3pt
- -> TeXGyreTermesX-Regular.otf
-LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
-(Font)              scaled to size 5.5pt on input line 132.
-Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
-;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 5.5pt
- -> TeXGyreTermesX-Regular.otf
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 132.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\sigma' on input line 132.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 132.
-
-File: figs/gap_debiased.png Graphic file (type bmp)
-<figs/gap_debiased.png>
-File: figs/estimator_context.png Graphic file (type bmp)
-<figs/estimator_context.png>
-[7]
-File: figs/accounts_headtohead.png Graphic file (type bmp)
-<figs/accounts_headtohead.png>
-
-Underfull \vbox (badness 2376) has occurred while \output is active []
-
- [8]
-Underfull \vbox (badness 10000) has occurred while \output is active []
-
- [9])
-(sec_discussion
+LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/b/n' will be
+(Font)              scaled to size 9.0pt on input line 407.
+Requested font "[TeXGyreTermesX-Bold.otf]/OT:script=latn;language=dflt;-ss05;+t
+num;+lnum;mapping=tex-text;" at 9.0pt
+ -> TeXGyreTermesX-Bold.otf
+Requested font "[lmmono9-regular]:" at 9.0pt
+ -> lmmono9-regular
+) (sec_discussion
 Requested font "ntx-Regular-tlf-ot1" at 12.0pt
  -> ntx-Regular-tlf-ot1
 Requested font "ntx-Regular-tlf-ot1" at 8.8pt
@@ -1086,32 +1014,22 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 1.
 
-[10]
-LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/b/n' will be
-(Font)              scaled to size 9.0pt on input line 115.
-Requested font "[TeXGyreTermesX-Bold.otf]/OT:script=latn;language=dflt;-ss05;+t
-num;+lnum;mapping=tex-text;" at 9.0pt
- -> TeXGyreTermesX-Bold.otf
-Requested font "[lmmono9-regular]:" at 9.0pt
- -> lmmono9-regular
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
+ [10]
 File: figs/kaai_yuki_arms_grid.jpg Graphic file (type bmp)
 <figs/kaai_yuki_arms_grid.jpg>
 
-Underfull \vbox (badness 1810) has occurred while \output is active []
+Underfull \vbox (badness 10000) has occurred while \output is active []
 
  [11]
-Underfull \vbox (badness 1281) has occurred while \output is active []
-
- [12])
-[13] (main.bbl [14]) (appendix [15] [16] [17] [18] [19]
+[12]) [13] (main.bbl [14]) (appendix [15] [16] [17] [18] [19]
 File: figs/e5_refit_1280.png Graphic file (type bmp)
 <figs/e5_refit_1280.png>
-
-Underfull \vbox (badness 1178) has occurred while \output is active []
-
- [20]
-[21] [22] [23]
-Overfull \hbox (0.77655pt too wide) in paragraph at lines 885--898
+ [20] [21]
+[22] [23]
+Overfull \hbox (0.77655pt too wide) in paragraph at lines 892--905
  [][] 
  []
 
@@ -1127,8 +1045,12 @@ File: figs/gap_debiased_e7_route896.png Graphic file (type bmp)
 File: figs/gap_debiased_e7_route768.png Graphic file (type bmp)
 <figs/gap_debiased_e7_route768.png>
  [25]
+File: figs/gap_debiased.png Graphic file (type bmp)
+<figs/gap_debiased.png>
+File: figs/estimator_context.png Graphic file (type bmp)
+<figs/estimator_context.png>
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 7.0pt on input line 1103.
+(Font)              scaled to size 7.0pt on input line 1141.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 7.0pt
  -> TeXGyreTermesX-Regular.otf
@@ -1168,4 +1090,4 @@ LaTeX Font Warning: Size substitutions with differences
 Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: AB13F9CA5A95BB67E6C2A70DA6AA5E33;5121.
  )
-Output written on main.xdv (29 pages, 1088412 bytes).
+Output written on main.xdv (29 pages, 1116720 bytes).

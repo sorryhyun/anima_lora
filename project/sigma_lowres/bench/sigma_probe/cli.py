@@ -222,6 +222,23 @@ def parse_args(
         "floor. Per-image rows are still written unchanged.",
     )
     p.add_argument(
+        "--pool_spill",
+        action="store_true",
+        help="back the per-stratum pool accumulator with disk memmaps under "
+        "the run dir (the all-images aggregate already is). Required when "
+        "arms x bins x 311 MB won't fit in RAM twice — an E1b-shaped grid "
+        "(10 self-floor arm lists x 9 bins) is ~28 GB per accumulator set, "
+        "which OOM-killed the first E3 launch on this 46 GB box. Spill is "
+        "transient (~2x accumulator size on disk) and deleted at the end.",
+    )
+    p.add_argument(
+        "--pool_no_norm",
+        action="store_true",
+        help="skip the per-image-normalized pooled side-channel (norm_* "
+        "keys): halves each accumulator's footprint. The unweighted "
+        "(batch-SGD) pooled object — the a + b/B fit's input — is unaffected.",
+    )
+    p.add_argument(
         "--self_floor",
         action="store_true",
         help="E1 debiasing: run a SECOND independent draw set for every arm "

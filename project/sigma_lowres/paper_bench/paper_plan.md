@@ -260,9 +260,12 @@ revised yet (user will revise after reading the rewrite; it still says
 "input term"). Compiles clean under tectonic (0 overfull, no broken
 refs, 22 pp).
 
-**Still open in the manuscript**, each marked **[pending]** in place:
-E3 pooled-with-self-floors run (`experiments/e3/`), E8.3 overlay
-figures (`experiments/e8/`), results tarball. Cleared since: E2's
+**Still open in the manuscript**: none — the last **[pending]**
+marker (results tarball) was removed 2026-08-04; the abstract now
+carries the repo link, and *publishing* the raw-run tarball itself
+stays on the reproducibility-deliverables list in the README. Cleared
+since: E8.3 overlay + t\*(δ) figure (in the appendix as `fig:e83`), E3 pooled-with-self-floors run + a + b/B fit (2026-08-04,
+`runs/20260804-0002-e3-pooled-verdict/`, §4 map paragraph rewritten), E2's
 marker (2026-07-29, measured sweep), E4's A/B + `reenc_noise_floor.py`
 (2026-07-30), E7's membership probe (2026-07-29), §4.5 reenc-proxy +
 §4.6 probe pendings (2026-07-31, with the E9 write-in).

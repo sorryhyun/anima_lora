@@ -217,10 +217,20 @@ objects genuinely disagree at high $\sigma$: pooled-arm probes at
 pool size $4$ collapse the $1024{\to}896$ and $1024{\to}768$ excesses
 to ${\approx}\,0$ over the upper bins, so the batch-aggregate object
 SGD follows is more forgiving here than the per-example read we
-publish as the verdict. The coherent drift no batch size removes is
-bounded only by an $a + b/B$ fit across pool sizes, the designated
-readout of a debiased verdict grid at the trainer's actual
-batch$\times$accumulation operating point \textbf{[pending]}.
+publish as the verdict. A debiased verdict grid with pooled
+self-floors (pool $4$, $N{=}40$; paired arm$-$reenc gaps at
+$B \in \{1, 4, 40\}$) bounds the coherent drift no batch size
+removes: the $a + b/B$ fit's intercept is ${\leq}\,0.02$
+($1024{\to}896$) and ${\leq}\,0.03$ ($1024{\to}768$) at
+$\sigma \geq 0.44$, but persists over the lower bins
+($+0.04$--$0.09$, $+0.05$--$0.28$, and $+0.15$--$0.60$ for
+$896/768/512$) — aggregation buys safety only where the per-example
+map is already near-safe. The small real $896$ endpoint gap
+($+0.042$) averages out in the aggregate ($+0.001$). The shipped
+trainer's operating point is batch~$1 \times$ accumulation~$1$, so
+the per-example map is not merely the worst case — it \emph{is} the
+shipped-trainer object; the pooled maps bound users who raise the
+batch or accumulation.
 
 \subsection{Both accounts, scored}
 \label{sec:scored}

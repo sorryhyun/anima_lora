@@ -214,8 +214,18 @@ def main() -> None:
     )
     pool_strata: list[dict] = []
     pool_spill = run_dir / "pool_agg_spill"
-    pool_agg = PoolAccumulator(backing_dir=pool_spill)
-    cur_pool = PoolAccumulator()
+    cur_spill = run_dir / "pool_cur_spill"
+    keep_norm = not args.pool_no_norm
+    pool_agg = PoolAccumulator(backing_dir=pool_spill, keep_norm=keep_norm)
+    cur_pool = PoolAccumulator(
+        backing_dir=cur_spill if args.pool_spill else None, keep_norm=keep_norm
+    )
+    if args.pool:
+        log.info(
+            f"pool: stratum={args.pool}, per-stratum accumulator "
+            f"{'disk-backed' if args.pool_spill else 'in-RAM'}, "
+            f"norm side-channel {'off' if args.pool_no_norm else 'on'}"
+        )
 
     def finalize_stratum() -> None:
         if not args.pool or cur_pool.n == 0:
@@ -224,7 +234,7 @@ def main() -> None:
         pool_strata.append(stats)
         pool_agg.merge(cur_pool)
         pool_agg.release()  # drop memmap handles — RSS-free between merges
-        cur_pool.__init__()
+        cur_pool.reset()
         gaps = " ".join(f"gap_{k}@last={stats[f'gap_{k}'][-1]:+.4f}" for k in arm_keys)
         log.info(
             f"[pool s{len(pool_strata) - 1}] n={stats['n_images']} "
@@ -316,12 +326,16 @@ def main() -> None:
             # Streaming arm retirement: a full repromote × self-floor arm set
             # on a 15-bin grid is ~16 lists × bins × 311 MB ≈ 75 GB of CPU
             # fp32 — over this machine's RAM (the arm dict, not the GPU, is
-            # what killed the first e13b smoke). Unless a consumer needs the
-            # whole set at once (--pool / --target_kappa), each arm's vectors
-            # are archived to arm_sums and freed by the stats worker right
-            # after its stats job, keeping only a/b + in-flight arms resident
-            # while the main thread never blocks on stats or store I/O.
-            streaming = not args.pool and not args.target_kappa
+            # what killed the first e13b smoke; holding 10 self-floor arm
+            # lists killed the first E3 pooled launch the same way). Unless a
+            # consumer needs the whole set at once (--target_kappa), each
+            # arm's vectors are archived to arm_sums — and, when pooling,
+            # accumulated into cur_pool — then freed by the stats worker
+            # right after its stats job, keeping only a/b + in-flight arms
+            # resident while the main thread never blocks on stats or store
+            # I/O. Per-key accumulation order matches add_image, so pooled
+            # results are bit-identical to the non-streaming path.
+            streaming = not args.target_kappa
 
             stat_futs = []
             arch_futs = []
@@ -339,6 +353,8 @@ def main() -> None:
                         for k_, v_ in entry:
                             if arm_sums is not None:
                                 arm_sums.add(k_ + sfx, v_)
+                            if args.pool:  # sfx == "" (pool ⊥ target_alpha)
+                                cur_pool.add_arm(k_, v_)
                             v_.clear()
 
                     arch_futs.append(stats_pool.submit(_archive))
@@ -383,9 +399,12 @@ def main() -> None:
             for fut in arch_futs:  # streamed arms archived + freed off-thread
                 fut.result()
             if args.pool:
-                cur_pool.add_image(arms, r.redundancy)
+                # demote/reenc arms were streamed into cur_pool by _archive;
+                # a/b + halves close out the image here
+                cur_pool.add_native(g_a, g_b, r.redundancy)
                 if cur_pool.n == args.pool:
                     finalize_stratum()
+                cur_pool.release()  # backed mode: drop handles between images
             if arm_sums is not None:
                 for k, v in arms.items():
                     arm_sums.add(k + sfx, v)
@@ -425,8 +444,9 @@ def main() -> None:
         pool_agg=pool_agg,
     )
     if args.pool and pool_strata:
-        del pool_agg  # release memmap handles before removing the spill
+        del pool_agg, cur_pool  # release memmap handles before removing spills
         shutil.rmtree(pool_spill, ignore_errors=True)
+        shutil.rmtree(cur_spill, ignore_errors=True)
 
     if arm_sums is not None:
         arm_sums.finalize(

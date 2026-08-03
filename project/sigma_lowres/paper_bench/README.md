@@ -18,7 +18,7 @@ spawned E1–E4/E6; `paper_plan.md` remains the manuscript plan.*
 |---|---|---|---|
 | [E1](experiments/e1/) | debiased gaps: self-floors + draw-count extrapolation **[GATE]** | DONE 2026-07-29 | Rule 1 fired — token-count floor confirmed debiased (512 gap_∞ +0.304); endpoint gap **is** the graph floor |
 | [E2](experiments/e2/) | target-strength sweep at the endpoint | DONE 2026-07-29 | α-flat at the anchors — no resolvable target-content share |
-| [E3](experiments/e3/) | aggregation-conditioned safety map | **OPEN** | one pooled `--self_floor` grid + the two-maps framing |
+| [E3](experiments/e3/) | aggregation-conditioned safety map | DONE 2026-08-04 | intercept ≤ 0.02/0.03 (896/768) at σ ≥ 0.44, persists at low σ; shipped operating point = the per-example map |
 | [E4](experiments/e4/) | the end-to-end A/B | DONE 2026-07-30 | measured **−14.6% wall / −15.1% FLOPs**; render deltas inside the seed lottery |
 | [E5](experiments/e5/) | Eq. 3 held-out validation + three-form refit | DONE 2026-07-29 | qualified PASS at ~0.09 RMSE; exact angular link X headlines |
 | [E6](experiments/e6/) | generalization arms | **OPEN [STRETCH]** | one extra DiT + one full-FT probe |
@@ -53,10 +53,10 @@ land in `paper_bench/runs/`.
 
 ## Open work
 
-Ordering: **[E3](experiments/e3/)** pooled-arm run + the a/(b/B)
-batch-size fit (`paper/action.md` estimand fix) → reproducibility
-deliverables (below) → **[E6](experiments/e6/)** if targeting a top
-venue. **[E13](experiments/e13/)** is closed as a run; what remains is
+Ordering: ~~[E3](experiments/e3/) pooled-arm run + the a + b/B
+batch-size fit~~ (DONE 2026-08-04, §4 map paragraph rewritten) →
+reproducibility deliverables (below) → **[E6](experiments/e6/)** if
+targeting a top venue. **[E13](experiments/e13/)** is closed as a run; what remains is
 its manuscript write-in (Fig. 1a redraw off `runs/20260801-0125`, dense-end
 rows into Table 2, §4.4 re-derived rather than assumed, §4.7's shape
 claims re-scored against a plateau instead of a peak, 896 stated as an
@@ -89,10 +89,13 @@ deterministic twins and self-contained.
   dataset) — the reproducibility statement must match what's actually
   public.
 - Manuscript pass: ~~strip pending markers~~ (§4.5 reenc-proxy + §4.6
-  probe pendings stripped 2026-07-31 with the E9 write-in; **still
-  pending in-manuscript: E8.3 overlay, E3 batch-aggregate grid, raw-run
-  tarball, the whole E13 write-in (Fig. 1a / Table 2 / §4.4 / §4.7 /
-  A-normalization)**), shorten abstract, enlarge Fig. 1, drop colored link boxes,
+  probe pendings stripped 2026-07-31 with the E9 write-in; ~~E8.3
+  overlay~~ (in the appendix as `fig:e83`), ~~E3 batch-aggregate grid~~
+  (written in 2026-08-04), ~~raw-run tarball marker~~ (marker removed
+  2026-08-04, repo link added to the abstract — publishing the tarball
+  itself stays under Reproducibility deliverables above); **still
+  pending in-manuscript: the whole E13 write-in
+  (Fig. 1a / Table 2 / §4.4 / §4.7 / A-normalization)**), shorten abstract, enlarge Fig. 1, drop colored link boxes,
   label every claim pre-registered / confirmatory / post-hoc (the freeze
   dates exist in `record/questions.md` — link the commits), and narrow the
   headline to "spectral sufficiency of the noisy input does not

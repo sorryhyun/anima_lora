@@ -54,14 +54,23 @@ class PoolAccumulator:
     reclaimable, so a released aggregate costs ~zero RSS outside merges.
     """
 
-    def __init__(self, backing_dir: Path | None = None) -> None:
+    def __init__(self, backing_dir: Path | None = None, keep_norm: bool = True) -> None:
         self.backing_dir = backing_dir
+        self.keep_norm = keep_norm
         self._numel: int | None = None
         self.sums: dict[str, list[torch.Tensor]] = {}
         self.nsums: dict[str, list[torch.Tensor]] = {}
         self.halves: dict[int, list[torch.Tensor]] = {}
         self.n = 0
         self.redundancy: list[float] = []
+
+    def reset(self) -> None:
+        """Empty the accumulator for the next stratum, keeping the backing
+        config (``__init__`` would drop ``backing_dir``). Backed mode reuses
+        the same on-disk files — ``_materialize`` reopens them ``w+``."""
+        self.sums, self.nsums, self.halves = {}, {}, {}
+        self.n = 0
+        self.redundancy = []
 
     def _stores(self) -> tuple[tuple[str, dict], ...]:
         return ("sums", self.sums), ("nsums", self.nsums), ("halves", self.halves)
@@ -121,9 +130,13 @@ class PoolAccumulator:
                 if isinstance(val, int):
                     store[key] = [self._open(name, key, i, "r+") for i in range(val)]
 
-    def add_image(self, arms: dict[str, list[torch.Tensor]], redundancy: float) -> None:
-        for key, vecs in arms.items():
-            self._add("sums", self.sums, key, vecs)
+    def add_arm(self, key: str, vecs: list[torch.Tensor]) -> None:
+        """Add one arm's per-bin vectors for the current image. Safe to call
+        as each arm finishes (streaming) — per-key accumulation order is
+        identical to a whole-image ``add_image``, so results are bit-equal."""
+        self.ensure_open()
+        self._add("sums", self.sums, key, vecs)
+        if self.keep_norm:
             self._add(
                 "nsums",
                 self.nsums,
@@ -131,13 +144,31 @@ class PoolAccumulator:
                 vecs,
                 [1.0 / (float(v.norm()) + 1e-12) for v in vecs],
             )
-        native = [a + b for a, b in zip(arms["a"], arms["b"])]
+
+    def add_native(
+        self,
+        g_a: list[torch.Tensor],
+        g_b: list[torch.Tensor],
+        redundancy: float,
+    ) -> None:
+        """Add the native draw pair and close out the current image (halves
+        parity split + image count). Call once per image, after ``add_arm``."""
+        self.add_arm("a", g_a)
+        self.add_arm("b", g_b)
+        native = [a + b for a, b in zip(g_a, g_b)]
         self._add("halves", self.halves, self.n % 2, native)
         self.n += 1
         self.redundancy.append(redundancy)
 
+    def add_image(self, arms: dict[str, list[torch.Tensor]], redundancy: float) -> None:
+        for key, vecs in arms.items():
+            if key not in ("a", "b"):
+                self.add_arm(key, vecs)
+        self.add_native(arms["a"], arms["b"], redundancy)
+
     def merge(self, other: "PoolAccumulator") -> None:
         self.ensure_open()
+        other.ensure_open()
         for name, mine in self._stores():
             theirs = getattr(other, name)
             for key, vecs in theirs.items():
@@ -225,6 +256,8 @@ def pool_stats(acc: PoolAccumulator, arm_keys: list[str]) -> dict:
         ],
     }
     for prefix, store in (("", acc.sums), ("norm_", acc.nsums)):
+        if not store:  # norm side-channel skipped (keep_norm=False)
+            continue
         a, b = store["a"], store["b"]
         floor = [cosine(x, y) for x, y in zip(a, b)]
         out[f"{prefix}cos_floor"] = [round(v, 5) for v in floor]
