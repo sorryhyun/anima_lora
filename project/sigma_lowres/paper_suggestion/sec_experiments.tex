@@ -54,7 +54,14 @@ similarity of the flattened accumulated gradients: a \textbf{floor}
 (two independent draw sets at native resolution, the redraw null); the
 \textbf{reenc} control of \S\ref{sec:estimand}; one \textbf{demote} arm
 per edge $e$; and, on debiased runs, per-arm \textbf{self-floors} (a
-second independent draw set for every arm). The gap is in cosine units,
+second independent draw set for every arm). The $\sigma{=}1$ endpoint
+bin is a distinct probe \emph{mode} --- its input is pure $\epsilon$,
+so the input-mediated data term vanishes by construction --- and an
+\textbf{x-zero} companion mode removes the image from input \emph{and}
+target entirely; both read only at the endpoint (with the
+$(1{-}\sigma)x$ term absent, lower bins are off-manifold,
+Appendix~\ref{app:instrument}), and together they carry the floor
+measurement of \S\ref{sec:scored}. The gap is in cosine units,
 a scale-free mismatch \emph{fraction} (bin-mean SEM $0.01$--$0.07$ at
 $N{=}40$). Gap subtraction, not absolute cosines, is the valid read:
 the floor itself moves with $\|g\|$ across bins. Every bin-mean curve
@@ -184,7 +191,7 @@ certified at margin $0.09$ simultaneous over its four window bins
 window \S\ref{sec:trainer} stacks as a second route; and any route to
 $512$ (floor ${\approx}\,0.30$) is \emph{certifiably unsafe} in all
 fifteen bins. Safety is a per-route boundary, jointly determined by
-ratio (through $a_e$) and absolute target size (through $\Floor_e$).
+ratio (through $a_e$) and absolute target size (through the floor).
 Debiasing itself moved verdicts
 in both directions, and the two revisions against the historical
 record are part of the result: roughly half the $768$ route's
@@ -236,40 +243,8 @@ every other, so no conclusion hinges on the choice of $\delta$
 residual-shape choice in the transport.
 
 
-\paragraph{Ours, first term: the graph term exists (three probes, one
-number).}
-At the $\sigma = 1$ \emph{endpoint} the input is pure $\epsilon$,
-identical in distribution across arms, so the input-mediated data term
-is zero by construction; the debiased endpoint floors are
-$+0.019 / +0.056 / +0.304$ for $896/768/512$ (Appendix
-Table~\ref{tab:floor}),
-and the $512$ value clears the pre-registered confirmation bar
-($\dgap_\infty \ge 0.15$) on $12$ of $12$ probe images individually.
-Per \S\ref{sec:ouraccount} the target-mediated share need not vanish
-there, so two further probes close the step. The \emph{x-zero} probe
-removes the image from input \emph{and} target everywhere, isolating
-pure graph-shape sensitivity, and its debiased draw-limit gaps equal
-the endpoint gaps at every route. The \emph{target-strength sweep}
-re-runs the endpoint with target $\epsilon - \alpha x$,
-$\alpha \in \{0, \ldots, 1\}$, and the paired debiased excess is
-$\alpha$-flat at the well-conditioned anchors (e.g.\ $768$:
-$+0.070 \pm 0.015$ at $\alpha{=}0$ vs $+0.049 \pm 0.010$ at
-$\alpha{=}1$; control slope $+0.003$): no resolvable target-content
-share \emph{in the angular estimand}. The flatness is not a
-cancellation mystery: the target-mediated gradient itself is real and
-large, but demotion's change to it lands almost entirely \emph{along}
-$\hat g_{\src}$, to which the cosine gap is blind (Eq.~\ref{eq:exact})
---- the endpoint gap is the graph floor as the angular estimand reads
-it (parallel-landing decomposition, with the
-$\kappa_\parallel/\kappa_\perp$ numbers, in
-Appendix~\ref{app:instrument}). Finally, a forward-only probe of the
-model's caption-conditioned \emph{prior} across grids gives route
-distances that are flat where the floors are strongly ordered, placing
-the ordering in $J$ rather than in a resolution-conditioned prior or a
-training-distribution discontinuity.
-
-\paragraph{The data branch: a route-uniform numerator over a U-shaped
-denominator.}
+\paragraph{Ours, the data branch: a route-uniform numerator over a
+U-shaped denominator.}
 Measuring the mean prediction residual
 $\bar r = \mathbb{E}_\epsilon[\hat v - (\epsilon - x)]$ per grid and
 $\sigma$ (the exact $r$ in $g = J^{\!\top}r$; by
@@ -288,21 +263,49 @@ route identity lives in $J$ --- a pre-registered contrast that would
 equally have falsified our own assumption~(iv); instead it
 \emph{establishes} the shape factorization directly. The decay is
 smooth, Wiener-like shrinkage with no hard gate at the spectral
-crossover.
+crossover. The denominator then does real work: the total gradient
+norm is U-shaped in $\sigma$ ($2.6 \to 0.4$ at
+$\sigma\!\approx\!0.3 \to 9.3$; Appendix Fig.~\ref{fig:estimator}),
+and a monotone absolute mismatch over a U-shaped norm yields exactly
+the measured interior-peaked curves --- bin-mean gap tracks
+$1/\|\bar g_{\src}\|$ (Spearman $+0.55$--$+0.90$; regime-by-regime
+reading and the renormalization check in
+Appendix~\ref{app:instrument}). This shape read is a post-hoc
+consistency analysis (so labeled); all safety criteria stay in cosine
+units, since direction is what a normalized optimizer consumes.
 
-The denominator then does real work: the total gradient norm is
-U-shaped in $\sigma$ ($2.6 \to 0.4$ at $\sigma\!\approx\!0.3 \to 9.3$;
-Appendix Fig.~\ref{fig:estimator}) --- large at high $\sigma$ where the model
-pulls composition out of the prior, small in the mid-$\sigma$
-refinement regime, inflated again at low $\sigma$ by irreducible
-$\epsilon$. A monotone absolute mismatch over a U-shaped norm yields
-exactly the measured interior-peaked curves: bin-mean gap tracks
-$1/\|\bar g_{\src}\|$ (Spearman $+0.55$--$+0.90$), and
-renormalizing by $\|\bar g_{\src}\|$ flips the
-anomalous low-$\sigma$ dip into the monotone maximum in every arm of
-both runs. This is a post-hoc consistency analysis (so labeled): it
-explains the \emph{shape}; all safety criteria stay in cosine units,
-since direction is what a normalized optimizer consumes.
+\paragraph{The graph branch: the floor exists (three probes, one
+number).}
+At the $\sigma = 1$ \emph{endpoint} the input is pure $\epsilon$,
+identical in distribution across arms, so the input-mediated data term
+is zero by construction; the debiased endpoint floors are
+$+0.019 / +0.056 / +0.304$ for $896/768/512$ (Appendix
+Table~\ref{tab:floor}),
+and the $512$ value clears the pre-registered confirmation bar
+($\dgap_\infty \ge 0.15$) on $12$ of $12$ probe images individually.
+Per \S\ref{sec:ouraccount} the target-mediated share need not vanish
+there, so two further probes close the step. The \emph{x-zero} probe
+(\S\ref{sec:instrument}) removes the image from input \emph{and}
+target, isolating pure graph-shape sensitivity, and its debiased
+draw-limit gaps equal the endpoint gaps at every route. The
+\emph{target-strength sweep}
+re-runs the endpoint with target $\epsilon - \alpha x$,
+$\alpha \in \{0, \ldots, 1\}$, and the paired debiased excess is
+$\alpha$-flat at the well-conditioned anchors (e.g.\ $768$:
+$+0.070 \pm 0.015$ at $\alpha{=}0$ vs $+0.049 \pm 0.010$ at
+$\alpha{=}1$; control slope $+0.003$): no resolvable target-content
+share \emph{in the angular estimand}. The flatness is not a
+cancellation mystery: the target-mediated gradient itself is real and
+large, but demotion's change to it lands almost entirely \emph{along}
+$\hat g_{\src}$, to which the cosine gap is blind (Eq.~\ref{eq:exact})
+--- the endpoint gap is the graph floor as the angular estimand reads
+it (parallel-landing decomposition, with the
+$\kappa_\parallel/\kappa_\perp$ numbers, in
+Appendix~\ref{app:instrument}). Finally, a forward-only probe of the
+model's caption-conditioned \emph{prior} across grids gives route
+distances that are flat where the floors are strongly ordered, placing
+the ordering in $J$ rather than in a resolution-conditioned prior or a
+training-distribution discontinuity.
 
 \paragraph{The governors: ratio sets the amplitude, absolute size sets
 the floor.}
@@ -398,7 +401,7 @@ refinement, and lines 1--2 are only a reordering of a standard step
 \end{minipage}
 \end{table}
 
-\paragraph{The floor's own parts: $\Floor_e = \mathrm{RoPE}_e +
+\paragraph{The floor's own parts: $\mathrm{RoPE}_e +
 \mathrm{Resid}_e$.}
 The prediction of \S\ref{sec:reduction} --- that the positional share
 is a coordinate-system artifact --- is testable by an origin-side

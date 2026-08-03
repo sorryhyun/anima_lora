@@ -13,7 +13,7 @@ object is; the subscript on every route-level scalar is the
 \emph{route}, written in full ($d_{e_0 \to e}$) where several sources
 appear, and abbreviated to the target edge alone --- an edge value,
 never an arm label, so it always instantiates numerically ($d_e$,
-$\Floor_{1120}$, $\mathrm{Resid}_{768}$) --- wherever the source edge is
+$\Phi_{1120}$, $\mathrm{Resid}_{768}$) --- wherever the source edge is
 fixed by context, as it is in almost every measured statement. The
 control's distance $d_{\reenc}$ (Eq.~\ref{eq:gapdef} with
 $\bar g_{\reenc}$ in place of $\bar g_{\dem}$) is the one exception that
@@ -312,7 +312,7 @@ graph share, and the projected interaction:
 d_e(\sigma) \;\approx\;
 \underbrace{\frac{\big\|B_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{data share }S_e}
 \;+\;
-\underbrace{\frac{\big\|C_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{graph share }F_e}
+\underbrace{\frac{\big\|C_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{graph share }\Phi_e}
 \;+\;
 \underbrace{\frac{\big\langle B_e^{\perp},\, C_e^{\perp}\big\rangle}{\|\bar g_{\src}\|^2}}_{\text{projected interaction }I_e}
 \;+\; R'_e,
@@ -328,7 +328,7 @@ retained terms.
 \paragraph{From the four-term form to the excess.} The reported object
 is the excess over the control. The $\reenc$ arm changes no grid, so
 $\Delta J_{\reenc} = 0$, and both control terms built from it vanish
-identically --- its graph share $F_{\reenc}$ and its projected
+identically --- its graph share $\Phi_{\reenc}$ and its projected
 interaction $I_{\reenc}$ each carry a factor
 $(\Delta J_{\reenc}^{\!\top}\bar r)^{\perp} = 0$. Writing
 Eq.~\ref{eq:fourterm} for each arm and subtracting term by term,
@@ -336,13 +336,13 @@ Eq.~\ref{eq:fourterm} for each arm and subtracting term by term,
 \gap_e(\sigma)
 \;&=\; d_e(\sigma) \;-\; d_{\reenc}(\sigma)\\
 &\approx\;
-\big(S_e - S_{\reenc}\big) \;+\; \big(F_e - F_{\reenc}\big)
+\big(S_e - S_{\reenc}\big) \;+\; \big(\Phi_e - \Phi_{\reenc}\big)
 \;+\; \big(I_e - I_{\reenc}\big) \;+\; \big(R'_e - R'_{\reenc}\big)
 &&\text{Eq.~\ref{eq:fourterm}, each arm}\\
 &=\;
-\big(S_e - S_{\reenc}\big) \;+\; F_e \;+\; I_e
+\big(S_e - S_{\reenc}\big) \;+\; \Phi_e \;+\; I_e
 \;+\; \big(R'_e - R'_{\reenc}\big),
-&&F_{\reenc} = I_{\reenc} = 0
+&&\Phi_{\reenc} = I_{\reenc} = 0
 \end{align*}
 so the control collapses to
 $d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$, with $S_{\reenc}$ the
@@ -357,16 +357,16 @@ through untouched --- the control has nothing to cancel them with.
 \paragraph{The drop bounds.} Both discarded terms obey exact bounds in
 the retained shares (Cauchy--Schwarz on the expansion above),
 \begin{equation}
-|I_e| \;\le\; 2\sqrt{S_e\,F_e}\,,
+|I_e| \;\le\; 2\sqrt{S_e\,\Phi_e}\,,
 \qquad
-\big|R'_e\big| \;\le\; 2\sqrt{\big(S_e + F_e + I_e\big)\,\rho_e}
+\big|R'_e\big| \;\le\; 2\sqrt{\big(S_e + \Phi_e + I_e\big)\,\rho_e}
 \;+\; \rho_e
 \;+\; O\big(\kappa_\perp^2\kappa_\parallel,\; \kappa_\perp^4\big),
 \label{eq:dropbounds}
 \end{equation}
 with $\rho_e = \|R_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$ the
 remainder branch's own share. The first says the interaction can never
-exceed the retained sum ($2\sqrt{S_eF_e} \le S_e + F_e$) and is
+exceed the retained sum ($2\sqrt{S_e\Phi_e} \le S_e + \Phi_e$) and is
 automatically negligible wherever one share dominates the other, so
 assumption (ii) carries independent content only near share crossover
 --- which is exactly where Appendix~\ref{sec:headtohead} finds it failing. The
@@ -456,6 +456,18 @@ $0.79$--$0.85$, but the nested sweep ($D = 4 \ldots 64$) extrapolates
 it to $1.005$ (bootstrap 95\% CI $[0.994, 1.016]$) --- the entire
 redraw floor is finite-draw noise.
 
+\paragraph{The U-shaped denominator (behind \S\ref{sec:ourscored}).}
+The regimes of the total gradient norm $\|\bar g_{\src}(\sigma)\|$
+(Fig.~\ref{fig:estimator}): large at high $\sigma$, where the model
+pulls composition out of the prior; small in the mid-$\sigma$
+refinement regime; inflated again at low $\sigma$ by irreducible
+$\epsilon$. The renormalization check reads the amplification
+directly: multiplying each bin-mean gap by
+$\|\bar g_{\src}(\sigma)\|$ flips the anomalous low-$\sigma$ dip into
+the monotone-in-$\sigma$ maximum in every arm of both verdict runs ---
+the low-norm amplification behind the interior peak of the measured
+curves.
+
 \paragraph{Endpoint and x-zero modes.} The $\sigma{=}1$ endpoint bin feeds
 input exactly $\epsilon$ (the input-mediated data term vanishes by
 construction). The x-zero mode zeroes $x$ in input \emph{and} target on
@@ -470,7 +482,7 @@ interior points $\alpha \in [0.5, 0.75]$ are unreadable by construction
 and excluded: there the native residual $\alpha x - \hat x$ passes near
 cancellation, the gradient norm dips ($60 \to 33$) and the redraw floor
 falls to $0.87$, so the estimator reads through a small gradient norm
---- the low-norm amplification of \S\ref{sec:ourscored} surfacing along
+--- the low-norm amplification above surfacing along
 the $\alpha$ axis. The $512$ route's sweep anchors are
 $+0.269 \pm 0.041$ at $\alpha{=}0$ vs $+0.337 \pm 0.067$ at
 $\alpha{=}1$, $\alpha$-flat like the $768$ anchors quoted in the main
@@ -584,12 +596,12 @@ fixed-target, varied-source token ladder, not yet scheduled.
 (Fig.~\ref{fig:accounts}).} The bands are a full-pipeline image bootstrap
 ($B{=}1000$, fixed seed; $981$ draws kept): resample images with
 replacement within each run ($N{=}40$ / $N{=}24$), re-bin the paired
-curves, refit the exact-link $(a_e, \Floor_e)$ on every fit route,
+curves, refit the exact-link $(a_e, \Phi_e)$ on every fit route,
 re-derive the ratio governor and floor law, re-predict.
 $\|\Delta \bar r(\sigma)\|$ and
 the bin-mean $\|\bar g_{\src}(\sigma)\|$ are run-level instruments with
 no per-image decomposition and are held fixed. The replica includes the
-committed floor law's positive-floor filter ($\Floor > 0.005$): in
+committed floor law's positive-floor filter ($\Phi_e > 0.005$): in
 $41\%$ of draws the resampled $1120$ floor clears the filter and the law
 re-anchors on the $(896, 1120)$ legs rather than $(512, 896)$ ---
 branch variability the bands therefore contain, and the reason
@@ -597,7 +609,7 @@ branch variability the bands therefore contain, and the reason
 one. The $896$ curve in Fig.~\ref{fig:accounts} is the post-hoc
 leave-$896$-out lane under the exact link ($c$ from the ratio-twin
 $1120$ alone $= 0.142$ vs $0.150$ fitted on $896$ itself; floor law
-through $512{+}1120$, whose fragile $\Floor_{1120}$ leg enters the log
+through $512{+}1120$, whose fragile $\Phi_{1120}$ leg enters the log
 fit clamped positive ($36\%$ of bootstrap draws clamp), giving
 $F(3012) = +0.012$ vs measured $+0.019$ $[+0.010, +0.030]$; curve RMSE
 $0.073$).
@@ -684,7 +696,7 @@ measured gradient safety, not by an entropy invariance.
 \S\ref{sec:ourscored}, the floor decomposes additively, each share
 measured by its own intervention:
 \begin{equation*}
-\Floor_e \;=\;
+\Phi_e \;=\;
 \underbrace{\reenc}_{{\approx}\,0 \text{ by control}}
 \;+\; \underbrace{\text{target content}}_{\text{lands }\parallel\;
 \hat g_{\src}\text{: angular share}\,{\approx}\,0}
@@ -832,7 +844,7 @@ mechanism.}
 The $768$ route's mid-$\sigma$ window is the reduction's one structural
 failure, and its shape is diagnostic. Measured excess sits at zero
 across $\sigma \in [0.56, 0.94]$, \emph{below} the predicted
-$\Floor_{768} \approx 0.09$ and outside the bootstrap $95\%$ band
+$\Phi_{768} \approx 0.09$ and outside the bootstrap $95\%$ band
 (Fig.~\ref{fig:accounts}): a positive two-term form cannot produce a gap
 under its own floor, under any coefficients. In the four-term expansion
 (Eq.~\ref{eq:fourterm}) this admits exactly two mechanisms, both
@@ -853,7 +865,7 @@ shrinking to $-0.014$ by $0.94$), with the two legs near anti-parallel
 in-window ($\rho = \cos(B^{\perp}, C^{\perp}) \approx -0.93$), and the
 predicted window center lands at $\sigma \approx 0.69$
 ($|B^{\perp}|/|C^{\perp}| = 0.98$ there), interior to the measured
-window. Branch (ii) did not fire: $F_{768}(\sigma)$ decreases
+window. Branch (ii) did not fire: $\Phi_{768}(\sigma)$ decreases
 monotonically to its endpoint value and never drops below it, so the
 endpoint reads of \S\ref{sec:ourscored} are untouched. The
 anti-parallel geometry turns out to be universal

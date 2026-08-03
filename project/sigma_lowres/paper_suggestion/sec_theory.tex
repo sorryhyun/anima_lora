@@ -231,14 +231,14 @@ at small perturbation and substituting Eq.~\ref{eq:branches} gives the
 unconditionally as the exact form itself: writing $u^{\perp}$ for the
 component of $u$ orthogonal to $\bar g_{\src}$, a data share
 $S_e = \|B_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$, a graph share
-$F_e$ built likewise from $C_e^{\perp}$ (both non-negative), a
+built likewise from $C_e^{\perp}$ (both non-negative), a
 projected interaction $I_e$ that can carry either sign (a fact that
 matters in Appendix~\ref{sec:headtohead}), and a remainder $R'_e$.
 Where the measured perturbation turns out large (the $512$ route;
 \S\ref{sec:ourscored}), quadratic-order reads are indicative only and
 the exact form carries the quantitative claims. Note that
-Eq.~\ref{eq:spd} is Eq.~\ref{eq:fourterm} with $F_e = I_e = 0$ and
-$S_e$ gated at Nyquist.
+Eq.~\ref{eq:spd} is Eq.~\ref{eq:fourterm} with the graph share and
+interaction zeroed and $S_e$ gated at Nyquist.
 
 \paragraph{From the expansion to a measurable form.}
 The reported object is the excess over the control, whose own expansion
@@ -254,11 +254,11 @@ curves and per-route constants:
 (i)~\textbf{small remainder}, $R'_e$ negligible over the claimed
 domain;
 (ii)~\textbf{negligible projected interaction},
-$|I_e| \ll S_e + F_e$;
+$|I_e|$ small against the retained shares;
 (iii)~\textbf{graph-relative stationarity},
 $\|C_e^{\perp}\| / \|\bar g_{\src}\|$ $\sigma$-constant (numerator and
-denominator share the residual's scale), so $F_e$ is flat in $\sigma$
---- write $\Floor_e$ for its value;
+denominator share the residual's scale), so the graph share is flat in
+$\sigma$ --- the per-route \emph{floor} of Eq.~\ref{eq:twoterm};
 (iv)~\textbf{data-branch factorization},
 $\|B_e^{\perp}\| \approx a_e\,\|\Delta \bar r(\sigma)\|$: a
 $\sigma$-independent route amplitude times the \emph{norm} of the
@@ -268,15 +268,15 @@ asserted to be route-independent and directly measurable as such
 closure of the mean residual's exact posterior form
 (Appendix~\ref{app:posterior}), not an unconstrained fitted shape.
 The first two are not unstructured hopes: both discarded terms obey
-exact Cauchy--Schwarz bounds in the retained shares
-($|I_e| \le 2\sqrt{S_eF_e} \le S_e + F_e$, the remainder entering at
-half power in its own share), so (ii) carries independent content only
-near share crossover (Appendix~\ref{app:geometry}). Applied,
+exact Cauchy--Schwarz bounds in the retained shares (the interaction
+by their geometric mean, the remainder entering at half power in its
+own share), so (ii) carries independent content only near share
+crossover (Appendix~\ref{app:geometry}). Applied,
 \begin{equation}
 \gap_e(\sigma)
 \;\approx\;
 \underbrace{\tfrac{1}{2}\,a_e^2 \cdot \big(\|\Delta \bar r(\sigma)\| \,/\, \|\bar g_{\src}(\sigma)\|\big)^{2}}_{\text{data term}}
-\;+\; \underbrace{\mathrm{RoPE}_e + \mathrm{Resid}_e}_{\text{graph term }\Floor_e},
+\;+\; \underbrace{\mathrm{RoPE}_e + \mathrm{Resid}_e}_{\text{graph term (the floor)}},
 \label{eq:twoterm}
 \end{equation}
 the \emph{two-term account}, stated on the reported excess. The
@@ -291,8 +291,8 @@ scores both forms held out: Eq.~\ref{eq:exact} is the best empirical
 predictor, Eq.~\ref{eq:twoterm} the derived small-perturbation form.
 The ledger: Eqs.~\ref{eq:exact} and~\ref{eq:fourterm} are
 unconditional, Eq.~\ref{eq:twoterm} is conditional on the four
-assumptions, and the coefficients $a_e$, $\|\Delta \bar r(\sigma)\|$,
-$\|\bar g_{\src}(\sigma)\|$, $\Floor_e$ are measured. The account,
+assumptions, and the coefficients --- $a_e$, $\|\Delta \bar r(\sigma)\|$,
+$\|\bar g_{\src}(\sigma)\|$, and each route's floor --- are measured. The account,
 with an outcome matrix that included a kill switch on the graph term
 (all endpoint gaps ${\approx}\,0$), was pre-registered before the
 discriminating runs.
@@ -314,4 +314,4 @@ remove $\mathrm{RoPE}_e$ wherever the data branch is inactive
 ($\sigma \to 1$); a band-counting sketch attaches an
 absolute-\emph{size} governor to $\mathrm{Resid}_e$. Like YaRN's own
 band thresholds \citep{peng2024yarn}, that sketch's constants are
-calibrated, not derived; we claim no closed form for $\Floor_e$.
+calibrated, not derived; we claim no closed form for the floor.

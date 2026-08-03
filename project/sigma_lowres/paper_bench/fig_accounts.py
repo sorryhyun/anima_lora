@@ -193,7 +193,7 @@ def draw(d: dict):
         ax.plot(sig, ours[r], "-", color=C_OURS, lw=1.8, zorder=2,
                 label="ours (exact angular link)")
         ax.axhline(d["floors"][r], color=C_OURS, lw=0.9, ls="--", alpha=0.6,
-                   zorder=1, label=r"our predicted floor $F_e$")
+                   zorder=1, label=r"our predicted floor")
         # sigma=1 is a different probe mode (exact endpoint, not a stratified
         # window draw) -- detached as an open marker, as in the verdict map
         has_end = math.isclose(float(sig[-1]), 1.0, abs_tol=1e-9)
@@ -225,7 +225,7 @@ def draw(d: dict):
             by_label = dict(zip(lab, h))
             want = ["measured (debiased)", r"$\sigma{=}1$ endpoint mode",
                     "spectral account", "ours (exact angular link)",
-                    r"our predicted floor $F_e$",
+                    r"our predicted floor",
                     r"$\pm\varepsilon^{*}$ (bin-level)"]
             keep = [k for k in want if k in by_label]
             handles = ([by_label[k] for k in keep], keep)
