@@ -33,20 +33,7 @@ this operating-point dependence in \S\ref{sec:limitations}.
 \paragraph{The gradient probe.}
 For each image and each of $B$ $\sigma$-bins we accumulate
 adapter gradients over $D$ stratified noise draws per
-arm\footnote{Finite draws are not innocuous here. Every finite-draw
-cosine is attenuated below its population value. The attenuation is
-arm-dependent, because per-draw gradient variance grows as the token
-count falls, the MSE loss averaging over fewer elements. And the
-natural estimate of Eq.~\ref{eq:gapdef}, a redraw floor minus a
-single demoted-arm cosine, is asymmetric: the floor compares
-\emph{two} finite-draw estimates of the native gradient where each
-demote arm contributes one. An iso-direction null, in which demotion
-changes \emph{nothing} but the variance, therefore still produces a
-positive gap that \emph{grows as the target grid shrinks}, the same
-signature as ``absolute token count sets the floor,'' and no naive
-read can tell the two apart. The mechanism is live and large at our
-operating point; measured magnitudes and the $c/D$ decay are given in
-Appendix~\ref{app:instrument}.} (verdict
+arm (verdict
 run: $14$ interior bins on a segmented grid dense below $\sigma = 0.1$
 and above $0.9$, plus a $\sigma{=}1$ endpoint bin, $D{=}12$,
 deterministic kernels, $N = 40$ images) and compare arms by cosine
@@ -70,6 +57,25 @@ check over images, a discipline imposed after an earlier failure in
 which per-image rankings from the same gradients had reliability
 indistinguishable from zero.
 
+\paragraph{Finite-draw attenuation.}
+Finite draws are not innocuous here. Every finite-draw cosine is
+attenuated below its population value, and the attenuation is
+arm-dependent: per-draw gradient variance grows as the token count
+falls, the MSE loss averaging over fewer elements. The natural
+estimate of Eq.~\ref{eq:gapdef}, a redraw floor minus a single
+demoted-arm cosine, is also asymmetric: the floor compares \emph{two}
+finite-draw estimates of the native gradient where each demote arm
+contributes one. An iso-direction null, in which demotion changes
+\emph{nothing} but the variance, therefore still produces a positive
+gap that \emph{grows as the target grid shrinks}, the same signature
+as ``absolute token count sets the floor,'' and no naive read can
+tell the two apart. The mechanism is live and large at our operating
+point: a variance back-of-envelope predicts spurious iso-direction
+endpoint gaps of ${\approx}\,0.02/0.05/0.15$ for $896/768/512$, and
+the uncorrected $1024{\to}896$ endpoint gap indeed decays as
+${+}0.100/{+}0.035/{-}0.016$ at $D = 4/8/16$, a clean $c/D$ decay
+(Appendix~\ref{app:instrument}).
+
 \paragraph{The debiased estimator.}
 Two corrections, used together, remove the finite-draw attenuation.
 First, \emph{self-floors with
@@ -90,11 +96,13 @@ to first order. Second, \emph{draw-count extrapolation}: the attenuation
 of an accumulated-draw cosine decays as $1/D$, so sweeping nested draw
 subsets and fitting $\gap(D) = \gap_\infty + c/D$ recovers the
 draw-limit gap directly. The two are mutually checking, and the check
-passes: debiased fits come out $D$-flat, and the nested sweep
-extrapolates the native redraw floor to a self-cosine of
-${\approx}\,1$. That is, the population per-bin native gradient is a
-\emph{fixed direction}, and the entire redraw floor is finite-draw
-noise; validation numbers are given in Appendix~\ref{app:instrument}.
+passes: debiased fits come out $D$-flat ($|c| \le 0.05$ on the $512$
+route, against $c \approx +0.29$ uncorrected), and the nested sweep
+extrapolates the native redraw floor to a self-cosine of $1.005$
+(bootstrap $95\%$ CI $[0.994, 1.016]$). That is, the population
+per-bin native gradient is a \emph{fixed direction}, and the entire
+redraw floor is finite-draw noise; remaining validation detail is in
+Appendix~\ref{app:instrument}.
 
 \paragraph{Margins and resolution.}
 A safety verdict needs two numbers, stated separately: a margin, the
