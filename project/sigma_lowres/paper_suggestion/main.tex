@@ -52,27 +52,28 @@ training cost grows superlinearly with resolution. A recent family of
 methods therefore trains or samples at reduced resolution on a
 spectral premise: at high noise, a downscaled latent preserves almost
 the full surviving signal. The evidence for that premise, however,
-lives at the level of generated output, which reads the substitution
-only through a full pipeline's confounds; whether a downscaled step
-also delivers the \emph{native training gradient direction}, under the
-same model and objective, has remained unresolved. We propose a
-two-term account of what the substitution costs: a noise-dependent
-term governed by the downscale \emph{ratio}, and a
-$\sigma$-independent floor governed by the target grid's
-\emph{absolute token count}, carried by the compute graph itself. Our account uncovers a window no
-spectral tolerance predicts: on the $1024{\to}768$ route, at high
-noise ($0.65 < \sigma < 0.95$), the downscaled step's training
-gradient direction is indistinguishable from native at instrument
-resolution.
-Gating substitution on the measured-safe windows
-gives \emph{selective} low-resolution LoRA training with a $14.6\%$
-smaller training footprint at a fixed step budget, while producing
-near-native adapter weights: with demotion scheduled late and both
+has been gathered at the level of generated output, where the
+substitution is observed only through the confounds of a full
+pipeline; whether a downscaled step also delivers the \emph{native
+training gradient direction}, under the same model and objective, has
+remained unresolved. We propose a two-term account of what the
+substitution costs: a noise-dependent term governed by the downscale
+\emph{ratio}, and a $\sigma$-independent floor governed by the target
+grid's \emph{absolute token count} and carried by the compute graph
+itself. This account uncovers a window that no spectral tolerance
+predicts: on the $1024{\to}768$ route at high noise
+($0.65 < \sigma < 0.95$), the training gradient direction of the
+downscaled step is indistinguishable from the native one at
+instrument resolution.
+Gating substitution on the measured-safe windows yields
+\emph{selective} low-resolution LoRA training with a $14.6\%$ smaller
+training footprint at a fixed step budget, while producing
+near-native adapter weights. With demotion scheduled late and both
 routes stacked, the trained $\Delta W$ matches its matched-seed
-native twin at cosine $0.75$ --- well above the $0.26$ at which an
+native twin at cosine $0.75$, well above the $0.26$ at which an
 identical retrain reproduces itself once deterministic kernels are
-disabled --- where a change of training seed alone reads $0.121$ and
-demoting $1024{\to}896$ at every $\sigma$ reads $0.183$.
+disabled; a change of training seed alone reads $0.121$, and demoting
+$1024{\to}896$ at every $\sigma$ reads $0.183$.
 \end{abstract}
 
 % ---- Body ----------------------------------------------------------

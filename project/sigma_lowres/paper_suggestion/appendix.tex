@@ -11,10 +11,11 @@ One notational convention holds throughout. Arm labels ($\src$,
 $\reenc$, $\dem$) mark \emph{whose} gradient, latent, or Jacobian an
 object is; the subscript on every route-level scalar is the
 \emph{route}, written in full ($d_{e_0 \to e}$) where several sources
-appear, and abbreviated to the target edge alone --- an edge value,
-never an arm label, so it always instantiates numerically ($d_e$,
-$\Phi_{1120}$, $\mathrm{Resid}_{768}$) --- wherever the source edge is
-fixed by context, as it is in almost every measured statement. The
+appear, and abbreviated to the target edge alone wherever the source
+edge is fixed by context, as it is in almost every measured
+statement; the abbreviation is an edge value, never an arm label, so
+it always instantiates numerically ($d_e$, $\Phi_{1120}$,
+$\mathrm{Resid}_{768}$). The
 control's distance $d_{\reenc}$ (Eq.~\ref{eq:gapdef} with
 $\bar g_{\reenc}$ in place of $\bar g_{\dem}$) is the one exception that
 carries an arm label: the control changes no grid and has no target
@@ -24,11 +25,11 @@ $\gap_e$.
 \paragraph{The two aggregations.}
 In a batched training scenario Eq.~\ref{eq:gapdef} admits two
 aggregations over a probe set: per-example (cosine per image, then
-mean --- the object every map in the body reports) or batch-aggregate
-(gradients summed over the batch before the cosine, the object SGD
-actually follows). These are different estimands --- the aggregation
-operator is part of the estimand --- and no coefficient fitted on
-one is guaranteed to transfer to the other. At second order the two
+mean; the object every map in the body reports) or batch-aggregate
+(gradients summed over the batch before the cosine; the object SGD
+actually follows). These are different estimands, since the
+aggregation operator is part of the estimand, and no coefficient
+fitted on one is guaranteed to transfer to the other. At second order the two
 are related by a batch-size decomposition: writing each image's
 demotion-induced gradient disagreement as a coherent mean $b$ plus a
 zero-mean idiosyncratic deviation with covariance $\Sigma_\eta$, the
@@ -42,8 +43,8 @@ batch-aggregate distance at batch size $B$ is
 with $\mu$ the mean source gradient and $P^{\perp}$ the projector off
 $\hat\mu$: an intercept (the coherent share, which never averages
 out) plus a $1/B$ term. Monotone improvement with $B$ is not
-automatic --- it would require an iid zero-mean disagreement model we
-have not verified --- but where we have measured the batch object it
+automatic, since it would require an iid zero-mean disagreement model
+we have not verified, but where we have measured the batch object it
 is the more forgiving of the two: pooled-arm probes at pool size $4$
 collapse the $1024{\to}896$ excess to ${\approx}\,0$ at every bin
 $\sigma \ge 0.625$ and the $1024{\to}768$ excess at
@@ -186,8 +187,8 @@ c)\big]:
 intrinsic posterior reconstruction bias, derivable in principle from
 $p_e(x \mid c)$, plus genuinely model-specific approximation error.
 The measured $\|\Delta \bar r(\sigma)\|$ therefore has definite
-theoretical status --- an empirical closure of
-Eq.~\ref{eq:appposterior} --- but is not a pure model-error
+theoretical status, as an empirical closure of
+Eq.~\ref{eq:appposterior}, but is not a pure model-error
 difference, and no claim in the paper requires it to be one: the
 two-term account consumes the measured curve as-is
 (assumption~(iv)), and the trained-model residual is in any case the
@@ -222,7 +223,7 @@ with the source--demote cross-covariance $C_{ds}$ load-bearing. A
 \emph{diagonal Fourier} $C_e$ makes Eq.~\ref{eq:appgaussian} the
 per-band Wiener shrinkage of \S\ref{sec:spectral}, confining the
 mismatch to the destroyed band and ordering it by destroyed-band
-energy --- the residual-level prediction that route-uniformity
+energy: the residual-level prediction that route-uniformity
 falsifies (\S\ref{sec:ourscored}). We tested whether any structured
 second-order closure suffices, entirely on stored paired clean
 latents (no denoiser forward): three nested covariance models
@@ -233,19 +234,18 @@ three reproduce the curve's monotone $\sigma$-shape (Pearson
 $0.94$--$0.97$), its route-uniformity, the near-zero re-encoding
 control, and the $\sigma{=}1$ endpoint, but over-predict the
 low-$\sigma$ amplitude by ${\sim}40\%$, failing a pre-registered
-RMSE bar --- so second-order data-only structure recovers the shape
-but not the level, and the essential missing ingredients are the ones
-the identity names: caption-conditioning (the closure is
+RMSE bar. Second-order data-only structure therefore recovers the
+shape but not the level, and the essential missing ingredients are
+the ones the identity names: caption-conditioning (the closure is
 caption-marginal), non-Gaussian posterior structure, and the
 $q_{\theta}$ term of Eq.~\ref{eq:appsplit}. The paper therefore
 retains the measured $\|\Delta \bar r(\sigma)\|$ as its minimal
-honest closure. A theory--instrument
-comparison must also reproduce the instrument's estimand --- the
-split-half-corrected \emph{relative} $L_2$ distance of
-\S\ref{sec:instrument}, i.e.\
+honest closure. A theory--instrument comparison must also reproduce
+the instrument's estimand, the split-half-corrected \emph{relative}
+$L_2$ distance of \S\ref{sec:instrument}, i.e.\
 $\sqrt{\mathbb{E}\|\bar r_d - A_e \bar r_s\|^2}$ normalized by the
-mean of the two arms' root-mean-square norms --- not a raw mismatch
-norm.
+mean of the two arms' root-mean-square norms, rather than a raw
+mismatch norm.
 
 \subsection{The angular reduction: exact form and four-term expansion}
 \label{app:geometry}
@@ -328,7 +328,7 @@ retained terms.
 \paragraph{From the four-term form to the excess.} The reported object
 is the excess over the control. The $\reenc$ arm changes no grid, so
 $\Delta J_{\reenc} = 0$, and both control terms built from it vanish
-identically --- its graph share $\Phi_{\reenc}$ and its projected
+identically: its graph share $\Phi_{\reenc}$ and its projected
 interaction $I_{\reenc}$ each carry a factor
 $(\Delta J_{\reenc}^{\!\top}\bar r)^{\perp} = 0$. Writing
 Eq.~\ref{eq:fourterm} for each arm and subtracting term by term,
@@ -351,8 +351,8 @@ of Table~\ref{tab:floor}). The subtraction cancels only the re-encode
 component of the data share (up to a cross term suppressed by
 $\sqrt{S_{\reenc}}$, bounded by the control's near-zero reading), so
 $\|\Delta\bar r\|$ is read net of re-encode; the graph share and the
-interaction pass
-through untouched --- the control has nothing to cancel them with.
+interaction pass through untouched, since the control has nothing to
+cancel them with.
 
 \paragraph{The drop bounds.} Both discarded terms obey exact bounds in
 the retained shares (Cauchy--Schwarz on the expansion above),
@@ -368,12 +368,13 @@ with $\rho_e = \|R_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$ the
 remainder branch's own share. The first says the interaction can never
 exceed the retained sum ($2\sqrt{S_e\Phi_e} \le S_e + \Phi_e$) and is
 automatically negligible wherever one share dominates the other, so
-assumption (ii) carries independent content only near share crossover
---- which is exactly where Appendix~\ref{sec:headtohead} finds it failing. The
-second says the first-order part of the remainder enters at half power
---- one factor of $\sqrt{\rho_e}$ per retained share --- so assumption
-(i) reduces to the branch-level statement that $R_e$ is small against
-$B_e$ and $C_e$, plus the small-$\kappa$ domain for the tail. The
+assumption (ii) carries independent content only near share
+crossover, which is exactly where Appendix~\ref{sec:headtohead} finds
+it failing. The second says the first-order part of the remainder
+enters at half power, one factor of $\sqrt{\rho_e}$ per retained
+share, so assumption (i) reduces to the branch-level statement that
+$R_e$ is small against $B_e$ and $C_e$, plus the small-$\kappa$
+domain for the tail. The
 control counterpart $R'_{\reenc}$ needs no bound of its own: the
 control's degenerate expansion is itself the measured near-zero row of
 Table~\ref{tab:floor}, which pins $R'_{\reenc}$ jointly with
@@ -396,7 +397,7 @@ $\sigma$-independent gain requires the mismatch \emph{direction}
 $\widehat{\Delta\bar r}(\sigma)$ to hold a $\sigma$-stationary
 alignment with $\bar J$'s singular directions (isotropy, for instance,
 would give gain $\|\bar J\|_F/\sqrt{n}$) while $\bar J$ itself varies
-with $\sigma$ through the network input --- and the image- and
+with $\sigma$ through the network input; the image- and
 route-specific mismatch directions of Appendix~\ref{app:instrument}
 license no such axiom. Hence the loading stays an assumption with a
 designated probe rather than a theorem.
@@ -453,7 +454,7 @@ $D$-flat ($|c| \le 0.05$ for the $512$ route, against
 $c \approx +0.29$ uncorrected). The native floor makes the point
 sharpest: at $D{=}8$--$16$ the uncorrected endpoint self-cosine reads
 $0.79$--$0.85$, but the nested sweep ($D = 4 \ldots 64$) extrapolates
-it to $1.005$ (bootstrap 95\% CI $[0.994, 1.016]$) --- the entire
+it to $1.005$ (bootstrap 95\% CI $[0.994, 1.016]$): the entire
 redraw floor is finite-draw noise.
 
 \paragraph{The U-shaped denominator (behind \S\ref{sec:ourscored}).}
@@ -464,9 +465,9 @@ refinement regime; inflated again at low $\sigma$ by irreducible
 $\epsilon$. The renormalization check reads the amplification
 directly: multiplying each bin-mean gap by
 $\|\bar g_{\src}(\sigma)\|$ flips the anomalous low-$\sigma$ dip into
-the monotone-in-$\sigma$ maximum in every arm of both verdict runs ---
-the low-norm amplification behind the interior peak of the measured
-curves.
+the monotone-in-$\sigma$ maximum in every arm of both verdict runs,
+which is the low-norm amplification behind the interior peak of the
+measured curves.
 
 \paragraph{Endpoint and x-zero modes.} The $\sigma{=}1$ endpoint bin feeds
 input exactly $\epsilon$ (the input-mediated data term vanishes by
@@ -481,9 +482,8 @@ floor's route ordering. In the target-strength ($\alpha$) sweep the
 interior points $\alpha \in [0.5, 0.75]$ are unreadable by construction
 and excluded: there the native residual $\alpha x - \hat x$ passes near
 cancellation, the gradient norm dips ($60 \to 33$) and the redraw floor
-falls to $0.87$, so the estimator reads through a small gradient norm
---- the low-norm amplification above surfacing along
-the $\alpha$ axis. The $512$ route's sweep anchors are
+falls to $0.87$, so the estimator reads through a small gradient norm:
+the low-norm amplification above, surfacing along the $\alpha$ axis. The $512$ route's sweep anchors are
 $+0.269 \pm 0.041$ at $\alpha{=}0$ vs $+0.337 \pm 0.067$ at
 $\alpha{=}1$, $\alpha$-flat like the $768$ anchors quoted in the main
 text.
@@ -507,10 +507,10 @@ ${\sim}10\times$ the aggregate's: image-specific directions cancel in
 the mean, the same motif as the residual-direction read below. For
 $896$ and $768$ the floors sit at or below the interior bins'
 certification resolution, which the endpoint sweeps resolve only
-through their order-of-magnitude larger draw budget --- so ``the
-high-$\sigma$ plateau is the floor'' sharpens to: the floor is what the
-plateau converges to once the data term dies and the estimator can see
-it.
+through their order-of-magnitude larger draw budget. The statement
+``the high-$\sigma$ plateau is the floor'' therefore sharpens to: the
+floor is what the plateau converges to once the data term dies and
+the estimator can see it.
 
 \paragraph{Direction-resolved mismatch (behind
 \S\ref{sec:ourscored}).} The route-uniformity of
@@ -525,7 +525,7 @@ $0.33$--$0.36$ of the energy against the $0.25$ rank-4-uniform baseline
 (a rank-one common mode would give ${\approx}\,1$); and cross-image
 direction consistency is zero at every (route, $\sigma$) cell (max
 $+0.019$ at split-half reliabilities $0.73$--$0.99$), so the mismatch
-direction is fully image-specific --- refuting a grid-conditional
+direction is fully image-specific, refuting a grid-conditional
 composition prior (``small canvas $\Rightarrow$ portrait framing'') as
 the carrier, at least under full captions. What \emph{is} shared is
 scale and spectral drift: $\Delta \bar r$ energy migrates toward low
@@ -534,12 +534,12 @@ $\sigma = 0.875$), composition-scale but per-image. Eq.~\ref{eq:twoterm}
 only ever consumes the norm, so the account is untouched; what sharpens
 is the open question, now ``why is only the \emph{amplitude} universal
 when the directions are image- and route-specific.'' A closed-form
-candidate for cross-band coupling exists --- the flow posterior
+candidate for cross-band coupling exists, namely the flow posterior
 covariance, whose off-diagonal $D_z v^*$ entries are
 $-\big((1{-}\sigma)/\sigma^3\big)\,\mathrm{Cov}(x_\omega, x_{\omega'}
-\mid z)$ \citep{xing2026divunc}, set to zero by the diagonal-Gaussian
-premise --- but its rank-one common-mode version is excluded by the SVD
-read above.
+\mid z)$ \citep{xing2026divunc} and are set to zero by the
+diagonal-Gaussian premise; but its rank-one common-mode version is
+excluded by the SVD read above.
 
 \begin{figure}[t]
 \centering
@@ -603,8 +603,8 @@ the bin-mean $\|\bar g_{\src}(\sigma)\|$ are run-level instruments with
 no per-image decomposition and are held fixed. The replica includes the
 committed floor law's positive-floor filter ($\Phi_e > 0.005$): in
 $41\%$ of draws the resampled $1120$ floor clears the filter and the law
-re-anchors on the $(896, 1120)$ legs rather than $(512, 896)$ ---
-branch variability the bands therefore contain, and the reason
+re-anchors on the $(896, 1120)$ legs rather than $(512, 896)$. The
+bands therefore contain this branch variability, which is the reason
 \S\ref{sec:trainer} deploys the measured map rather than the predicted
 one. The $896$ curve in Fig.~\ref{fig:accounts} is the post-hoc
 leave-$896$-out lane under the exact link ($c$ from the ratio-twin
@@ -651,10 +651,10 @@ the control arm, $B_{\reenc} = \bar g_{\mathrm{repromote}} -
 \bar g_{\reenc}$: $|B^{\perp}_{\reenc}|$ agrees with $|B^{\perp}|$ to
 ${\sim}4\%$ at the signal-carrying low-$\sigma$ bins (worst $\pm 23\%$
 only where $B$ is already small), so the shared downscale$\to$encode
-pipeline cost is a minor share of the data intervention --- closing the
-one open item on the floor ledger's first share, where the re-encoding
-control (native decode$\to$re-encode) is a \emph{proxy} for the pipeline
-cost demotion actually pays.
+pipeline cost is a minor share of the data intervention. This closes
+the one open item on the floor ledger's first share, where the
+re-encoding control (native decode$\to$re-encode) is a \emph{proxy}
+for the pipeline cost demotion actually pays.
 
 \paragraph{Floor decomposition, detail (behind
 \S\ref{sec:ourscored}).} Splitting the probe gradients per module type
@@ -668,8 +668,8 @@ blocks build grid-calibrated token statistics, the divergence
 propagates into every parameter type's gradient in those blocks roughly
 equally, and deeper blocks inherit a washed-out version. Query and key
 projections show \emph{zero} excess over value projections, which we
-initially read as refuting a rotary mechanism --- an instructive error,
-since landing-side uniformity cannot localize \emph{origin}: a
+initially read as refuting a rotary mechanism. That was an instructive
+error, since landing-side uniformity cannot localize \emph{origin}: a
 perturbation originating in the position embedding propagates through
 the block and lands on all module types. Hence the origin-side
 positional-interpolation intervention (Table~\ref{tab:pi}; the paired
@@ -687,7 +687,7 @@ non-positional residue, the attention-over-$N$ piece has inference-side
 prior art: attention-entropy corrections derive length-dependent
 temperatures to preserve the $\log N$ entropy term
 \citep{li2025infoscale}, and TIDE applies the same dilution correction
-jointly to resolution and diffusion timestep \citep{liu2026tide} ---
+jointly to resolution and diffusion timestep \citep{liu2026tide},
 the closest prior work to a $\sigma$-gated resolution correction,
 though on the inference side; our gate is training-side and set by
 measured gradient safety, not by an entropy invariance.
@@ -757,8 +757,8 @@ $\delta$-inert. Our two columns are the derived small-perturbation form
 both with \emph{zero per-route freedom} on held-out routes: amplitudes
 and floors come from the two governors of \S\ref{sec:ourscored} fitted
 on $\{1024{\to}896,\ 1024{\to}512,\ 1280{\to}1120\}$. The oracle is a
-quadratic-in-$\sigma$ fit on the held-out data itself --- the noise
-ceiling for a 3-dof curve --- so beating it on $1024{\to}768$ means the
+quadratic-in-$\sigma$ fit on the held-out data itself, the noise
+ceiling for a 3-dof curve, so beating it on $1024{\to}768$ means the
 prediction is at the data's own resolution.}
 \label{tab:headtohead}
 \centering
@@ -806,13 +806,13 @@ against a measured endpoint floor of $+0.092 \pm 0.012$; a post-hoc
 leave-$896$-out re-derivation from $512{+}1120$ alone predicts the
 $896$ floor at $+0.019$ against the measured $+0.019$
 $[+0.010, +0.030]$. The floor law is thus correct on both floors
-outside its fit set --- though its point estimates ride the draw: a
+outside its fit set, though its point estimates ride the draw: a
 full-pipeline bootstrap puts $F(2160)$ at $68\%$ $[+0.042, +0.091]$,
 so the licensed read is agreement, not exactness.
 
 The margin in Table~\ref{tab:headtohead} has a structural reading, not
 merely a numerical one. The spectral family's error is not a bad
-tolerance --- $\delta$ is inert --- but a missing term and a missing
+tolerance, since $\delta$ is inert, but a missing term and a missing
 governor: it has nothing to put in the high-$\sigma$ region where the
 floor lives, and nothing to distinguish $1280{\to}1024$ from a
 same-ratio route at a quarter of the token count. Our account's
@@ -833,7 +833,7 @@ the fit does \emph{not} establish: the prediction is not within
 certification resolution anywhere ($\chi^2$/bin $7.6$--$9.2$ held-out
 under the quadratic), so the licensed claim is shape, magnitude class,
 and governors at ${\sim}0.07$--$0.09$ RMSE; and the floor law's
-functional form is unidentified at our operating points --- two anchors
+functional form is unidentified at our operating points, as two anchors
 and one held-out check cannot separate $\{e^{-n/\tau},
 e^{-\sqrt{n}/\ell}, n^{-p}\}$, all of which land within the union of
 the measured CI and the prediction's bootstrap spread
@@ -848,7 +848,7 @@ $\Phi_{768} \approx 0.09$ and outside the bootstrap $95\%$ band
 (Fig.~\ref{fig:accounts}): a positive two-term form cannot produce a gap
 under its own floor, under any coefficients. In the four-term expansion
 (Eq.~\ref{eq:fourterm}) this admits exactly two mechanisms, both
-pre-registered ahead of the probe --- either the projected interaction
+pre-registered ahead of the probe: either the projected interaction
 is negative in the window ($I_{768} < 0$, in which case amplitude
 matching predicts the window center sits where the two perturbation
 legs have equal orthogonal magnitude, a testable localization), or the
@@ -937,13 +937,13 @@ tolerance, certifies at no noise level.}
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figs/e83_overlay.png}
-\caption{The \emph{whole} tolerance family against the measurement ---
+\caption{The \emph{whole} tolerance family against the measurement:
 the detail behind the single red curve of Fig.~\ref{fig:accounts}. Left
 three panels: the measured debiased gap curves against the spectral
 account transported through our bridge (the diagonal model's
 destroyed-band mean-residual mismatch on the measured spectrum, through
 the measured $\|\bar g_{\src}(\sigma)\|$ with a single gain calibrated
-on the one safe route and no floor --- the family expresses none),
+on the one safe route and no floor, which the family cannot express),
 gated at $t^{*}(\delta)$ (dashed verticals) for the equal-power slice,
 SPD's default $\delta = 0.01$, and the measured anchor
 $\delta_{\reenc}$. The transported curve dies by $\sigma \approx 0.35$
@@ -998,7 +998,7 @@ Measured (above), that anchor is tiny and image-generic, and the
 boundary moves it forces are measured in Table~\ref{tab:null} and
 Fig.~\ref{fig:e83}: every boundary is pushed to $t^{*} \approx 0.98$,
 maximally conservative, and still structurally wrong in both
-directions at once --- it moves all three boundaries together (spread
+directions at once: it moves all three boundaries together (spread
 $< 0.01$), certifies the measured-safe route only above
 $\sigma \approx 0.98$ where the measurement certifies it from $0.5$,
 and, like every member of the family, predicts the $2\times$ downscale
@@ -1109,12 +1109,13 @@ shared axis, paired against the re-encoding control ($1024$-tier
 natives, $N{=}40$; per-bin values and
 SEMs in Table~\ref{tab:debiasedmap}; gray band: bin-level
 $\pm\epsstar$ (\S\ref{sec:instrument}); open markers: the $\sigma{=}1$
-endpoint bin): safety is a per-route boundary --- the $896$ route
+endpoint bin): safety is a per-route boundary. The $896$ route
 enters the band at $\sigma \approx 0.5$, $768$ falls only to a
 low-excess shelf ($+0.02$--$0.04$ over $0.65 < \sigma < 0.95$, short
 of the strict margin), and $512$ never falls inside the band (closest
-approach $+0.12 \pm 0.05$ at $\sigma = 0.96$) --- against the
-spectral family's prediction of $\sigma \approx 0.14$--$0.20$.
+approach $+0.12 \pm 0.05$ at $\sigma = 0.96$); all three boundaries
+stand against the spectral family's prediction of
+$\sigma \approx 0.14$--$0.20$.
 (b)~The estimator context those curves are read through: the
 redraw-floor cosine and the U-shaped gradient norm
 $\|\bar g_{\src}(\sigma)\|$.}
@@ -1126,15 +1127,15 @@ $\|\bar g_{\src}(\sigma)\|$.}
 Fig.~\ref{fig:gapcurves}): paired per-image debiased excess
 $\bgap$ (SEM) against the re-encoding control, $1024$-tier natives
 ($N{=}40$, $D{=}12$/bin, deterministic kernels, on a segmented grid
-dense below $\sigma = 0.1$ and above $0.9$ --- $14$ interior bins plus
+dense below $\sigma = 0.1$ and above $0.9$: $14$ interior bins plus
 a $\sigma{=}1$ endpoint bin; trimmed per \S\ref{sec:instrument},
 retaining $36$--$40$ images per cell). Bin-level $\epsstar$ at this
 $(N, D)$ is $0.02$--$0.07$. A reconstruction check (the realized
 excess rebuilt from per-arm means) flags the three $\sigma \le 0.06$
 bins as partly estimator inflation, so the raw-paired excess is the
 primary read there ($896$: $+.037/+.118/+.221$; $768$:
-$+.065/+.202/+.275$; $512$: $+.172/+.406/+.497$) --- up to $0.08$
-smaller, same verdicts.}
+$+.065/+.202/+.275$; $512$: $+.172/+.406/+.497$), up to $0.08$
+smaller with the same verdicts.}
 \label{tab:debiasedmap}
 \centering
 \small
@@ -1316,7 +1317,7 @@ minority effect in raw units; the debiased draw-limit comparison finds
 ep $=$ xz within CI at the whole-adapter level
 (Table~\ref{tab:floor}). Within a block every module type sits in
 $0.22$--$0.31$ at $512/\sigma{=}1$, including the query and key rows of
-the fused QKV projection --- landing-side uniformity, which is why the
+the fused QKV projection: landing-side uniformity, which is why the
 positional share needed an origin-side intervention to find.}
 \label{tab:depth}
 \centering
