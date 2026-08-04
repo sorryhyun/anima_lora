@@ -274,26 +274,15 @@ Eq.~\ref{eq:fourterm} with the graph share and interaction zeroed and
 $S_e$ gated at Nyquist.
 
 \paragraph{From the expansion to a measurable form.}
-On the reported excess, four named assumptions reduce the expansion
-to the \emph{two-term account},
-\begin{equation}
-\gap_e(\sigma)
-\;\approx\;
-\underbrace{\tfrac{1}{2}\,a_e^2 \cdot \big(\|\Delta \bar r(\sigma)\| \,/\, \|\bar g_{\src}(\sigma)\|\big)^{2}}_{\text{data term}}
-\;+\; \underbrace{\mathrm{RoPE}_e + \mathrm{Resid}_e}_{\text{graph term (the floor)}},
-\label{eq:twoterm}
-\end{equation}
-a route amplitude $a_e$ on a measurable mismatch curve plus a
-per-route constant; the supporting derivations are in
-Appendix~\ref{app:geometry}. The excess itself does part of the work:
-the $\reenc$ arm changes no grid, so $\Delta J_{\reenc} = 0$, its
-expansion degenerates to
+On the reported excess, Eq.~\ref{eq:fourterm} is exact but not yet an
+instrument: no term in it is separately measurable per bin. The
+excess itself does part of the work: the $\reenc$ arm changes no
+grid, so $\Delta J_{\reenc} = 0$, its expansion degenerates to
 $d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$, and subtracting it
 cancels only the re-encode component of the data share, passing the
-graph share and interaction through untouched. The four assumptions,
-each tested by a designated probe in \S\ref{sec:evidence}, then trade
-the exact expansion, in which no term is separately measurable per
-bin, for the displayed form:
+graph share and interaction through untouched. The rest is carried by
+four named assumptions, each tested by a designated probe in
+\S\ref{sec:evidence}:
 \begin{itemize}
 \item \textbf{(i)~Small remainder}: $R'_e$ negligible over the
 claimed domain.
@@ -302,8 +291,8 @@ against the retained shares.
 \item \textbf{(iii)~Graph-relative stationarity}:
 $\|C_e^{\perp}\| / \|\bar g_{\src}\|$ $\sigma$-constant, since
 numerator and denominator share the residual's scale, so that the
-graph share is flat in $\sigma$: the per-route \emph{floor} of
-Eq.~\ref{eq:twoterm}.
+graph share is flat in $\sigma$: a per-route constant, the
+\emph{floor}.
 \item \textbf{(iv)~Data-branch factorization}:
 $\|B_e^{\perp}\| \approx a_e\,\|\Delta \bar r(\sigma)\|$, a
 $\sigma$-independent route amplitude times the \emph{norm} of the
@@ -313,6 +302,26 @@ asserted to be route-independent and directly measurable as such
 closure of the mean residual's exact posterior form
 (Appendix~\ref{app:posterior}), not an unconstrained fitted shape.
 \end{itemize}
+Under (i)--(iv) the expansion collapses to the \emph{two-term
+account},
+\begin{equation}
+\gap_e(\sigma)
+\;\approx\;
+\underbrace{\tfrac{1}{2}\,a_e^2 \cdot \big(\|\Delta \bar r(\sigma)\| \,/\, \|\bar g_{\src}(\sigma)\|\big)^{2}}_{\text{data term}}
+\;+\; \underbrace{\mathrm{RoPE}_e + \mathrm{Resid}_e}_{\text{graph term (the floor)}},
+\label{eq:twoterm}
+\end{equation}
+a route amplitude $a_e$ on a measurable mismatch curve plus a
+per-route constant; the supporting derivations are in
+Appendix~\ref{app:geometry}. The floor is written with two parts
+because a grid change touches two distinct things: the rotary
+coordinate system, in which every band of the position embedding
+accumulates phase at a different density across the image
+($\mathrm{RoPE}_e$), and the non-positional graph statistics,
+attention softmax over a different token count and the coarse graph's
+capacity to approximate the fine graph's computation
+($\mathrm{Resid}_e$).
+
 The first two assumptions are not unstructured hopes: both discarded
 terms obey exact Cauchy--Schwarz bounds in the retained shares, the
 interaction by their geometric mean and the remainder entering at
@@ -335,26 +344,6 @@ $\|\bar g_{\src}(\sigma)\|$, and each route's floor are measured. The
 account was pre-registered before the discriminating runs, with an
 outcome matrix that included a kill switch on the graph term (all
 endpoint gaps ${\approx}\,0$).
-
-\paragraph{The graph term has identifiable parts.}
-Changing the grid changes (i)~the rotary coordinate system, in which
-every band of the position embedding accumulates phase at a different
-density across the image, and (ii)~non-positional graph statistics:
-attention softmax over a different token count,
-sequence-length-dependent normalization, and the capacity of the
-coarse graph to approximate the fine graph's computation. The
-conceptual frame for the latter is attention as a discretization of a
-function-space operator \citep{calvello2024continuum}, whose
-statistics need not be discretization-invariant. These are the two
-parts $\mathrm{RoPE}_e$ and $\mathrm{Resid}_e$ written into
-Eq.~\ref{eq:twoterm}. The split yields one sharp prediction: the
-positional share is a \emph{coordinate-system artifact}, so an exact
-positional-interpolation intervention should remove $\mathrm{RoPE}_e$
-wherever the data branch is inactive ($\sigma \to 1$); a
-band-counting sketch attaches an absolute-\emph{size} governor to
-$\mathrm{Resid}_e$. Like YaRN's own band thresholds
-\citep{peng2024yarn}, that sketch's constants are calibrated, not
-derived; we claim no closed form for the floor.
 
 \paragraph{The estimand forces a debiased instrument.}
 The angular reduction carries a metrological corollary. The estimand

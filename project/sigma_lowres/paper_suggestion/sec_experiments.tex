@@ -360,19 +360,20 @@ such that $\sigma$ is drawn before the latent is fetched.}
 
 \paragraph{The floor's own parts: $\mathrm{RoPE}_e +
 \mathrm{Resid}_e$.}
-The prediction of \S\ref{sec:reduction}, that the positional share is
-a coordinate-system artifact, is testable by an origin-side
-intervention: evaluate the demoted grid at positionally-interpolated
-fractional rotary coordinates (patch $i$ at $i \cdot
-H_{\src}/H_{\dem}$), making its relative phase geometry exactly match
-native. At the $\sigma{=}1$ endpoint this \emph{erases} the $768$ floor
+The floor's split into $\mathrm{RoPE}_e + \mathrm{Resid}_e$
+(\S\ref{sec:reduction}) carries one sharp prediction: the positional
+part is a coordinate-system artifact, so an origin-side intervention
+should erase it wherever the data branch is inactive. Evaluate the
+demoted grid at positionally-interpolated fractional rotary
+coordinates (patch $i$ at $i \cdot H_{\src}/H_{\dem}$), making its
+relative phase geometry exactly match native. At the $\sigma{=}1$ endpoint this \emph{erases} the $768$ floor
 and removes ${\sim}30\%$ of the $512$ floor, leaving the
 in-band $896$ control untouched: re-anchored against the debiased
 floors, $\mathrm{Resid}_{768} \approx 0$ while $512$ retains a
 $\mathrm{Resid}_{512} \approx 0.2$ bulk. The mild-route floor is mostly
 a coordinate-system artifact; the harsh-route bulk is a genuine
-non-positional graph residue, and the capacity governor attaches to it,
-as the band-counting sketch anticipated. The erasure is \emph{not} a
+non-positional graph residue, and the capacity governor attaches to
+it. The erasure is \emph{not} a
 training lever, since with image content in the input the stretched
 forward is off-manifold, but a frequency-\emph{selective} banded
 alignment survives in-window (\S\ref{sec:trainer}). Full numbers, the
