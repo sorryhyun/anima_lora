@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "script": "project/sigma_lowres/paper_bench/fig_ledger_geometry.py",
+  "label": "fig-ledger-geometry",
+  "timestamp_utc": "2026-08-04T14:17:07Z",
+  "sources": {
+    "ledger": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/bench/results/20260731-0721/ledger.json"
+  },
+  "metrics": {
+    "net_resultant_sigma0563": {
+      "896": 0.19316019605179535,
+      "768": 0.25977487482048756,
+      "512": 0.7811873045464988
+    }
+  },
+  "caveats": [
+    "figure assembly only: all numbers read from the vector-ledger reanalysis behind Table e9ledger; nothing refit",
+    "vector panels draw the sigma=0.5625 bin; the drawn angle uses the debiased rho clamped to [-1, 1] (the estimator itself is not confined to that range)",
+    "lattice panel is schematic (arm identities, not magnitudes)"
+  ]
+}

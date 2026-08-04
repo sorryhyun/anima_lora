@@ -651,6 +651,64 @@ the one open item on the floor ledger's first share, where the
 re-encoding control (native decode$\to$re-encode) is a \emph{proxy}
 for the pipeline cost demotion actually pays.
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/ledger_geometry.png}
+\caption{\textbf{The ledger's geometry.} Left: the three arms as
+corners of the data--graph lattice. $B$ and $C$ are the partial
+differences along the lattice's only realizable path — the fourth
+corner (native content on the coarse graph) does not exist — so the
+split is a round trip off the matched configuration
+($\bar g_{\src}$, $\bar g_{\dem}$) through the single mismatched
+corner ($\bar g_{\mathrm{repromote}}$). Right: the measured legs
+tip-to-tail at $\sigma = 0.563$ (Table~\ref{tab:e9ledger}), to a
+common scale in units of $\|\bar g_{\src}\|$; the drawn angle is the
+debiased $\rho$. Amplitude-matched legs leave a stub of a resultant
+($896$, $768$); the $512$ graph leg is ${\sim}1.8\times$ the data
+leg, and the unmatched share survives as the realized gap.}
+\label{fig:ledgergeom}
+\end{figure}
+
+\paragraph{The ledger's geometry: why the legs anti-align.}
+The near anti-parallelism of Table~\ref{tab:e9ledger} is structural,
+not found (Fig.~\ref{fig:ledgergeom}). The three arm means are values of one map on a
+$2 \times 2$ data--graph lattice — $\bar g_{\src}$ at (native
+content, fine graph), $\bar g_{\mathrm{repromote}}$ at (demoted
+content, fine graph), $\bar g_{\dem}$ at (demoted content, coarse
+graph) — all living in the shared adapter-parameter space, so the
+differences are literal, and $B$ and $C$ are the partial differences
+along the path (native, fine) $\to$ (demoted, fine) $\to$ (demoted,
+coarse). That is the lattice's only realizable path: its fourth
+corner, native content on the coarse graph, does not exist, since
+placing native content on the coarse grid \emph{is} the demotion
+pipeline — the coarse graph forces the demoted data. The endpoints
+are the two content--graph \emph{matched} corners (native content on
+its own grid; band-limited content on the grid whose Nyquist matches
+it); the unavoidable waypoint is the single mismatched corner. The
+split is therefore a round trip off the matched configuration and
+back — $B$ creates the content--graph mismatch at fixed graph, $C$
+removes it at fixed data — so, to leading order in the mismatch,
+whatever share of each leg passes through it is the same vector with
+opposite sign, which fixes the sign of $\rho$. Its depth is then
+bookkeeping: projection off $\hat g_{\src}$ is linear, so
+$|(B{+}C)^{\perp}|^2 = |B^{\perp}|^2 + |C^{\perp}|^2
++ 2\rho\,|B^{\perp}||C^{\perp}|$, and the ledger carries two
+independent measurements — how far the waypoint sits from the corners
+(the leg amplitudes) and how nearly the endpoints coincide (the
+resultant) — with $\rho$ their law-of-cosines consequence; the
+separately debiased sign column is a consistency check on the raw
+$h(\cdot)$ reads, not a third fact. Two corollaries follow, and the
+data confirms both. Route verdicts reduce to amplitude matching, the
+realized $h(B{+}C)$ collapsing where
+$|B^{\perp}| \approx |C^{\perp}|$ (the window-center localization of
+Appendix~\ref{sec:headtohead}); and what no matching can cancel is
+the graph-intrinsic share of $C$ with no data-side counterpart — the
+resultant collects exactly the residue the floor ledger below
+decomposes into $\mathrm{RoPE}_e + \mathrm{Resid}_e$, and at the
+$\sigma = 1$ endpoint, where the input is $\epsilon$ on every arm and
+the data leg has nothing left to act on, that uncancelled residue is
+the whole of the floor.
+
 \paragraph{Floor decomposition, detail (behind
 \S\ref{sec:ourscored}).} Splitting the probe gradients per module type
 ($15$ groups, including separate rows of the fused QKV projections) and
@@ -864,7 +922,9 @@ window. Branch (ii) did not fire: $\Phi_{768}(\sigma)$ decreases
 monotonically to its endpoint value and never drops below it, so the
 endpoint reads of \S\ref{sec:ourscored} are untouched. The
 anti-parallel geometry turns out to be universal
-($\rho \in [-1.24, -0.62]$ across every route and bin), so what
+($\rho \in [-1.24, -0.62]$ across every route and bin), as the
+round-trip reading of the split says it must be
+(Appendix~\ref{app:instrument}, \emph{the ledger's geometry}), so what
 distinguishes routes is amplitude matching, not sign; measured against
 the exact counterfactual angles, roughly three quarters of the
 additively-predicted gap is erased by the interference in-window
