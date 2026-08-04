@@ -28,9 +28,9 @@ Panels (2x2):
                                       routes the spectral bridge does
                                       not cover
 
-Per-panel status labels mirror Table "headtohead" exactly: ours is
-held-out (pre-registered) on 768, leave-896-out (post-hoc) on 896, and
-in-sample on 512; the spectral gain is calibrated on 896 and frozen.
+Per-panel RMSE boxes carry the numbers only; the fit-status ledger
+(ours held-out on 768, leave-896-out on 896, in-sample on 512; the
+spectral gain calibrated on 896 and frozen) lives in Table "headtohead".
 
 Usage:
     python project/sigma_lowres/paper_bench/fig_accounts.py
@@ -173,11 +173,6 @@ def build(tier1024: Path = E1B) -> dict:
 
 def draw(d: dict):
     curves, ours, spec = d["curves"], d["ours"], d["spec"]
-    status = {  # (ours label, spectral label)
-        "896": ("leave-896-out, post-hoc", "gain calibrated here"),
-        "768": ("held out, pre-registered", "gain from 896"),
-        "512": ("in-sample fit route", "gain from 896"),
-    }
     fig, axes = plt.subplots(2, 2, figsize=(9.8, 6.8))
     handles = None
     for ax, r in zip(axes.ravel()[:3], ROUTES):
@@ -209,13 +204,12 @@ def draw(d: dict):
         ax.axhline(0, color="0.8", lw=0.8, zorder=0)
         ax.set_title(DISP[r], fontsize=11)
         ax.set_xlabel(r"$\sigma$")
-        ax.set_ylabel(r"paired gap $\overline{\mathrm{gap}}$")
+        ax.set_ylabel(r"paired $\overline{\mathrm{gap}}$")
         lo, hi = ax.get_ylim()  # headroom for the RMSE box
         ax.set_ylim(lo, hi + 0.22 * (hi - lo))
-        so, ss = status[r]
         ax.annotate(
-            f"RMSE  spectral {d['rmse'][r]['spectral']:.3f}   ({ss})\n"
-            f"{'':10s}ours {d['rmse'][r]['ours']:.3f}   ({so})",
+            f"RMSE  spectral {d['rmse'][r]['spectral']:.3f}\n"
+            f"{'':6s}ours {d['rmse'][r]['ours']:.3f}",
             (0.5, 0.97), xycoords="axes fraction", ha="center", va="top",
             fontsize=7.0, linespacing=1.5,
             bbox=dict(boxstyle="round,pad=0.35", fc="white", ec="0.8", lw=0.6),
@@ -252,7 +246,7 @@ def draw(d: dict):
     ax.set_aspect("equal")
     ax.set_xlabel(r"predicted $\overline{\mathrm{gap}}$")
     ax.set_ylabel(r"measured $\overline{\mathrm{gap}}$")
-    ax.set_title("All bins, one axis", fontsize=11)
+    ax.set_title("Predicted vs. measured", fontsize=11)
     ax.legend(fontsize=7.0, loc="lower right", framealpha=0.9)
     fig.legend(*handles, ncol=3, fontsize=8.5, loc="lower center",
                bbox_to_anchor=(0.5, -0.005), frameon=False)

@@ -855,42 +855,41 @@ Requested font "ntx-Bold-tlf-ot1" at 5.5pt
 
 [4] [5]) (sec_experiments [6] [7]
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
-(Font)              scaled to size 7.3pt on input line 148.
+(Font)              scaled to size 7.3pt on input line 140.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 7.3pt
  -> TeXGyreTermesX-Regular.otf
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
-(Font)              scaled to size 5.5pt on input line 148.
+(Font)              scaled to size 5.5pt on input line 140.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 5.5pt
  -> TeXGyreTermesX-Regular.otf
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 148.
+(hyperref)                removing `math shift' on input line 140.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\sigma' on input line 148.
+(hyperref)                removing `\sigma' on input line 140.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 148.
+(hyperref)                removing `math shift' on input line 140.
 
 File: figs/accounts_headtohead.png Graphic file (type bmp)
 <figs/accounts_headtohead.png>
+[8]
+Underfull \vbox (badness 1132) has occurred while \output is active []
 
-Underfull \vbox (badness 10000) has occurred while \output is active []
-
- [8]
-[9]
-Underfull \hbox (badness 5147) in paragraph at lines 376--376
+ [9]
+Underfull \hbox (badness 5147) in paragraph at lines 355--355
 []\TU/TeXGyreTermesX(0)/m/n/10 Table 1: |Weight-space footprint vs. the seed lo
 ttery:
  []
 
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 9.0pt on input line 379.
+(Font)              scaled to size 9.0pt on input line 358.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 9.0pt
  -> TeXGyreTermesX-Regular.otf
@@ -923,7 +922,7 @@ Requested font "ntxsyc" at 9.0pt
 Requested font "ntxexa" at 9.0pt
  -> ntxexa
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/b/n' will be
-(Font)              scaled to size 9.0pt on input line 407.
+(Font)              scaled to size 9.0pt on input line 386.
 Requested font "[TeXGyreTermesX-Bold.otf]/OT:script=latn;language=dflt;-ss05;+t
 num;+lnum;mapping=tex-text;" at 9.0pt
  -> TeXGyreTermesX-Bold.otf
@@ -1016,7 +1015,7 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 1.
 
 
-Underfull \vbox (badness 2285) has occurred while \output is active []
+Underfull \vbox (badness 10000) has occurred while \output is active []
 
  [10]
 Underfull \vbox (badness 2277) has occurred while \output is active []
@@ -1035,7 +1034,7 @@ File: figs/e5_refit_1280.png Graphic file (type bmp)
 Underfull \vbox (badness 1231) has occurred while \output is active []
 
  [23]
-Overfull \hbox (0.77655pt too wide) in paragraph at lines 878--891
+Overfull \hbox (0.77655pt too wide) in paragraph at lines 879--892
  [][] 
  []
 
@@ -1061,7 +1060,7 @@ File: figs/estimator_context.png Graphic file (type bmp)
 
 [26]
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 7.0pt on input line 1127.
+(Font)              scaled to size 7.0pt on input line 1128.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 7.0pt
  -> TeXGyreTermesX-Regular.otf
@@ -1098,4 +1097,4 @@ LaTeX Font Warning: Size substitutions with differences
 Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: EA0717D32E6D8265BDB976C3478BF501;5280.
  )
-Output written on main.xdv (29 pages, 1111740 bytes).
+Output written on main.xdv (29 pages, 1112332 bytes).

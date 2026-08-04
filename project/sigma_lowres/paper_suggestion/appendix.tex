@@ -48,10 +48,17 @@ we have not verified, but where we have measured the batch object it
 is the more forgiving of the two: pooled-arm probes at pool size $4$
 collapse the $1024{\to}896$ excess to ${\approx}\,0$ at every bin
 $\sigma \ge 0.625$ and the $1024{\to}768$ excess at
-$\sigma \ge 0.875$ (\S\ref{sec:map}), the $1/B$ term dominating
-there. What the collapse does not bound is the intercept, exactly the
-coherent drift that the intercept-plus-$1/B$ fit across pool sizes
-(\S\ref{sec:map}) is designated to bound.
+$\sigma \ge 0.875$, the $1/B$ term dominating
+there. What the collapse does not bound is the intercept, the
+coherent drift no batch size removes. A debiased verdict grid with
+pooled self-floors (pool $4$, $N{=}40$; paired arm$-$reenc gaps at
+$B \in \{1, 4, 40\}$) bounds it: the $a + b/B$ fit's intercept is
+${\leq}\,0.02$ ($1024{\to}896$) and ${\leq}\,0.03$ ($1024{\to}768$)
+at $\sigma \geq 0.44$, but persists over the lower bins
+($+0.04$--$0.09$, $+0.05$--$0.28$, and $+0.15$--$0.60$ for
+$896/768/512$) — aggregation buys safety only where the per-example
+map of \S\ref{sec:map} is already near-safe. The small real $896$
+endpoint gap ($+0.042$) averages out in the aggregate ($+0.001$).
 
 \subsection{Derivation of the branch decomposition
 (Eq.~\ref{eq:branches})}
@@ -441,15 +448,21 @@ extrapolates it to the unit self-cosine reported in
 
 \paragraph{The U-shaped denominator (behind \S\ref{sec:ourscored}).}
 The regimes of the total gradient norm $\|\bar g_{\src}(\sigma)\|$
-(Fig.~\ref{fig:estimator}): large at high $\sigma$, where the model
+($2.6 \to 0.4$ at $\sigma\!\approx\!0.3 \to 9.3$;
+Fig.~\ref{fig:estimator}): large at high $\sigma$, where the model
 pulls composition out of the prior; small in the mid-$\sigma$
 refinement regime; inflated again at low $\sigma$ by irreducible
-$\epsilon$. The renormalization check reads the amplification
+$\epsilon$. A monotone absolute mismatch over this U-shaped norm
+yields exactly the measured interior-peaked curves: bin-mean gap
+tracks $1/\|\bar g_{\src}\|$ (Spearman $+0.55$--$+0.90$). The
+renormalization check reads the amplification
 directly: multiplying each bin-mean gap by
 $\|\bar g_{\src}(\sigma)\|$ flips the anomalous low-$\sigma$ dip into
 the monotone-in-$\sigma$ maximum in every arm of both verdict runs,
 which is the low-norm amplification behind the interior peak of the
-measured curves.
+measured curves. This shape read is post-hoc consistency analysis;
+all safety criteria stay in cosine units, since direction is what a
+normalized optimizer consumes.
 
 \paragraph{Endpoint and x-zero modes.} The $\sigma{=}1$ endpoint bin feeds
 input exactly $\epsilon$ (the input-mediated data term vanishes by
