@@ -302,16 +302,14 @@ term for the whole gap.
 % on p.9 so it lands atop p.10, next to the \S5 text that reads it.
 \begin{table}[t]
 \begin{minipage}[t]{0.615\linewidth}
-\caption{Weight-space footprint vs.\ the seed lottery:
+\caption{Weight-space footprint:
 $\cos(\Delta W_{\text{arm}}, \Delta W_{\text{native}})$ at matched
 training seed, mean $\pm$ SD over three seed pairs, on two
-single-artist corpora ($60$/$15$ training images). The cross-seed row is the same
-cosine between native endpoints differing \emph{only} in training
-seed; an arm above it displaces the endpoint \emph{less} than a seed
-change. Training is bit-exact deterministic (an identical retrain
-reads $1.000$); the non-det.\ row retrains native at the same seed
-\emph{without} deterministic kernels (one twin pair per corpus), so it
-reads run-to-run chaos alone. \emph{late}: demotion only in the last
+single-artist corpora ($60$/$15$ training images). Training is
+bit-exact deterministic (an identical retrain reads $1.000$); the
+non-det.\ row retrains native at the same seed \emph{without}
+deterministic kernels (one twin pair per corpus), so it reads
+run-to-run kernel chaos alone. \emph{late}: demotion only in the last
 $75\%$ of steps; the stacked row adds a second certified route
 ($1024{\to}768$ on $0.65{<}\sigma{<}0.95$, last $50\%$).
 \textbf{Bold}: closest endpoints.}
@@ -323,7 +321,6 @@ $75\%$ of steps; the stacked row adds a second certified route
 \toprule
 arm (vs.\ native, matched seed) & corpus A & corpus B \\
 \midrule
-native, cross-seed & $0.121 \pm .007$ & $0.199 \pm .003$ \\
 native, same-seed non-det.\ retrain & $0.264$ & $0.427$ \\
 \midrule
 $896$, $\sigma{>}0.5$, aligned & $0.365 \pm .020$ & $0.432 \pm .026$ \\

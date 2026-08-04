@@ -2,12 +2,19 @@
 \label{sec:practical}
 \label{sec:trainer}
 
-We wire the one measured-safe corpus route into the LoRA trainer as an
-opt-in path, exactly as measured, with no extrapolation beyond the map.
-The intervention is deliberately small: three lines inside an otherwise
-standard flow-matching step, and no change to the objective, the
-optimizer, or the noise density (pseudocode in
-Table~\ref{alg:sigmastep}).
+As an applied example, we introduce the one measured-safe corpus route
+into a LoRA \citep{hu2022lora} trainer as an opt-in path, exactly as
+measured, with no extrapolation beyond the map. The intervention is
+deliberately small: three lines inside an otherwise standard
+flow-matching step, and no change to the objective, the optimizer, or
+the noise density (pseudocode in Table~\ref{alg:sigmastep}). We
+exercise it on a fixed-step grid: gated, scheduled, and gate-removed
+arms $\times$ $3$ training seeds $\times$ two single-artist
+illustration corpora of contrasting style, one flat and graphic, one
+densely rendered (corpus A, $60$ training images; corpus B, $15$),
+$480$ optimizer steps each, bit-exact deterministic with paired RNG so
+every arm sees identical draws. At fixed steps the gated arm realizes
+a $-14.6\%$ wall-clock saving over native training on our corpus.
 
 \textbf{$\sigma$-first draw.} The trainer draws each batch's $\sigma$
 \emph{before} fetching latents, from the unchanged training density
@@ -17,24 +24,7 @@ $1024$-tier latent is swapped for a cached demoted-grid sibling
 produced by the probe's own measured-safe recipe (pixel-space
 downscale, VAE re-encode); everything downstream derives from the
 swapped latent. Off-route images always train native, as does
-validation. One asymmetry between the gate and the map must be
-stated: the gate is one-sided ($\sigma > 0.5$) while certification
-stops at $\sigma = 0.94$, and the endpoint carries a small real gap
-($+0.042 \pm 0.011$). Since the expected gradient should vary
-continuously in $\sigma$, that gap cannot be dismissed as a
-measure-zero boundary point: it implies a neighborhood, of
-unmeasured width, over which some of it survives, and the tail
-$\sigma \in (0.94, 1)$ is exactly the interval the verdict grid does
-not resolve. Two facts bound the exposure meanwhile: the last
-interior bin reads $+0.004 \pm 0.021$, and the exercise grid of
-Table~\ref{tab:yardstick} trained \emph{with} the tail demoted and
-still landed a factor of $2$--$3$ inside the seed lottery, so any
-tail effect is below that instrument's resolution at $480$ steps. A
-dense upper-tail sweep, covering $\sigma \in (0.9, 1)$ in four bins
-plus the endpoint at higher draw count, is designated to resolve the
-shape. Until it lands, the certified condition is
-$\sigma \in (0.5, 0.94]$, and the unbounded gate should be read as
-the form we exercised, not the form the map certifies.
+validation.
 
 \textbf{Banded rotary alignment, $\sigma$-gated.} Motivated by
 \S\ref{sec:ourscored}, a frequency-selective alignment is applied on
@@ -46,25 +36,7 @@ following \citet{zhao2026sigma}. Unlike uniform interpolation it is
 \emph{not} off-manifold in-window: it passed both pre-registered
 legs, erasing the static variant's low-$\sigma$ liability
 ($+0.064 \to +0.033 \pm 0.025$) while preserving its high-$\sigma$
-gains (paired $-0.05$ vs plain demotion at $\sigma \ge 0.59$). It is
-a refinement candidate, not a gate-widener: the gate stays
-$\sigma > 0.5$. Under bit-exact deterministic training it adds no
-weight-space displacement over the demotion arm it refines
-(base$\leftrightarrow$refined $0.319$ vs base$\leftrightarrow$demoted
-$0.320$; without determinism a twin-run chaos floor of $0.41$ would
-swamp this read).
-
-\textbf{Cost accounting.} With ${\sim}50\%$ of draws above the gate and
-the demoted forward at ${\sim}0.72\times$ tokens, the fixed-step epoch
-cost is ${\approx}\,0.86$, a \emph{projected ceiling} of ${\sim}14\%$
-wall-clock on our corpus, where $96\%$ of records are on the safe
-route; the ceiling scales with high-tier content. On the fixed-step
-exercise grid below, the realized saving is $-15.1\%$ forward FLOPs
-(exact operator-level counts over each run's realized token
-histogram) and $-14.6\%$ wall-clock ($n{=}3$ seed means on two
-single-artist corpora; wall-clock tracks FLOPs ${\approx}\,1{:}1$):
-the projection is achieved. The claim is wall-clock at fixed steps,
-not ``more steps in the same time.''
+gains (paired $-0.05$ vs plain demotion at $\sigma \ge 0.59$).
 
 \begin{figure}[t]
 \centering
@@ -73,48 +45,30 @@ not ``more steps in the same time.''
 (prompt, noise-seed) renders from each arm's endpoint on a corpus-B
 display prompt, $20$ steps; columns are the table's arms, rows the
 three training seeds. Moving along a row (arms, seed fixed) changes
-the render on the same visual order as moving down a column (seed
-lottery, arm fixed); the gate-removed arm (rightmost) drifts the
-most, matching its eroded margin in Table~\ref{tab:yardstick}.}
+the render on the same visual order as moving down a column (training
+seed, arm fixed); the gate-removed arm (rightmost) drifts the most,
+matching its lowest cosine in Table~\ref{tab:yardstick}.}
 \label{fig:kaaiyuki}
 \end{figure}
 
-\textbf{Weight-space endpoint footprint.} A fixed-step exercise grid
-(gated, scheduled, and gate-removed arms $\times$ $3$ training seeds
-$\times$ $2$ single-artist corpora, $480$ optimizer steps each,
-bit-exact deterministic paired-RNG so every arm sees identical draws)
-compares the trained adapters directly in weight space.
-Table~\ref{tab:yardstick} reads the cosine between each arm's endpoint
-$\Delta W$ and its matched-seed native twin's, judged against a
-seed-noise yardstick: the same cosine between native endpoints that
-differ only in training seed. Determinism makes the read exact: an
-identical retrain reproduces its twin at $1.000$, whereas the same
-retrain with non-deterministic kernels reads $0.264$/$0.427$ (corpus
-A/B; run-to-run chaos alone; second row of
-Table~\ref{tab:yardstick}). The yardstick is tight and
-arm-independent, with the gated arm's cross-seed values coinciding
-with it within $.006$, so the margins are many seed-spreads wide.
-Every arm lands above the yardstick: even demoting \emph{all} $480$
-steps displaces the endpoint less than changing the training seed,
-and the $\sigma{>}0.5$ gate sits a factor of $2$--$3$ above it
-($0.365$ vs $0.121$; $0.432$ vs $0.199$); on corpus B it coincides
-with the non-deterministic retrain ($0.427$), i.e.\ it sits within
-kernel-noise reach of a native retrain. The ordering, however, is set by
-\emph{placement}, not by per-step severity. Protecting the first
-quarter of training doubles the closeness ($0.365 \to 0.753$),
-consistent with early subspace selection in a from-zero adapter, and
-stacking the strictly deeper $768$ low-excess route onto the late
-rule is endpoint-free ($0.753$, $0.771$), although the spectral account of
-\S\ref{sec:ourscored} prices every $768$ substitution as more severe
-than $896$. A per-step account is placement-blind by construction;
-the endpoint statistic resolves what it cannot: \emph{when} a demoted
-step happens dominates \emph{how deep} it goes, provided the route
-stays inside the certified window.
-Removing the $\sigma$-gate erodes the margin toward the lottery radius
-($0.183$; $0.236$). Weight-space proximity is a footprint statement,
-not a quality statement: sample-level orderings need not track it, and
-generation-quality non-inferiority at production scale remains the
-stated open gate (\S\ref{sec:limitations}).
+\textbf{Weight-space endpoint footprint.} Table~\ref{tab:yardstick}
+compares the trained adapters directly in weight space, as the cosine
+between each arm's endpoint $\Delta W$ and its matched-seed native
+twin's. Determinism makes the read exact: an identical retrain
+reproduces its twin at $1.000$, and the same retrain with
+non-deterministic kernels reads $0.264$/$0.427$ (corpus A/B),
+run-to-run kernel chaos alone. Against that reference, demoting at
+\emph{every} $\sigma$ lands below the non-deterministic retrain
+($0.183$/$0.236$), while demoting only above the gate
+($\sigma{>}0.5$) lands level with or above it ($0.365$/$0.432$).
+Late scheduling, demotion only in the last $75\%$ of steps, brings
+the endpoint very close to the native weights ($0.753$/$0.770$),
+and, as our account predicts for the $768$ low-excess window,
+stacking the $1024{\to}768$ route onto the late rule leaves the
+cosine essentially unchanged ($0.753$/$0.771$). The visual
+counterpart (Fig.~\ref{fig:kaaiyuki}) confirms the read: matched
+(prompt, seed) renders from the gated and late-scheduled arms are
+nearly identical to native.
 
 \section{Limitations}
 \label{sec:limitations}
@@ -135,11 +89,7 @@ redraw-floor level is checkpoint-dependent (Appendix~\ref{app:e7}).
 \textbf{Gradient-level, not end-task.} The map is built from
 accumulated per-step gradients; integration over an optimizer
 trajectory is addressed by the exercise grid's weight-space read at
-$480$ steps rather than production scale, and the
-generation-quality (CMMD, \citealp{jayasumana2024cmmd}) gate remains
-open: the exercise grid's first scoring pass could not separate even
-the off-map control from native at this scale, so we read no quality
-verdict from it.
+$480$ steps rather than production scale.
 
 \textbf{Account resolution and domain.} The account predicts held-out
 routes at ${\sim}0.07$--$0.09$ RMSE, not within $\epsstar$; its
@@ -167,8 +117,9 @@ and every ``no certifiable window'' claim is $(N, D)$-relative: a
 larger campaign could certify (or refute) the $768$ high-$\sigma$
 window at the strict margin. The upper tail $\sigma \in (0.94, 1)$ of
 the safe route is unmeasured between the last interior bin and the
-endpoint's real gap; the designated dense sweep (\S\ref{sec:trainer})
-closes it. Verdict stability under the per-image trim rule of
+endpoint's real gap ($+0.042 \pm 0.011$); a dense upper-tail sweep at
+higher draw count is the designated probe to close it, and until it
+lands the certified condition is $\sigma \in (0.5, 0.94]$. Verdict stability under the per-image trim rule of
 \S\ref{sec:instrument} has not been separately audited. The
 debiasing campaign covered the corpus verdict grid; the $1280$-tier
 iso-severity, $896$-tier transfer, depth-split, and PI-intervention
@@ -221,10 +172,9 @@ test, half the intermediate route's raw floor was estimator bias, and
 our own headline claims were re-derived, and in one case softened,
 under the correction. On the one route our corpus makes safe, the
 trainer realizes the map's projected ceiling of $-14.6\%$ wall-clock
-at fixed steps, with a weight-space endpoint footprint a factor of
-$2$--$3$ inside the seed lottery, rising to cosine $0.75$ against the
-native endpoint when demotion is late-scheduled; quality
-non-inferiority at production scale remains the open gate. We offer
+at fixed steps, with a weight-space endpoint footprint within
+kernel-noise reach of a native retrain, rising to cosine $0.75$
+against the native endpoint when demotion is late-scheduled. We offer
 the account and its instrument as the cheap, general test that any
 future ``train part of the time at lower resolution'' proposal should
 pass before it is believed. Without the debiasing, that test

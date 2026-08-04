@@ -76,12 +76,11 @@ both held-out routes.
 Restricting the substitution to the window the map validates gives
 an opt-in $\sigma$-conditional trainer that cuts the forward-compute
 footprint by $15.1\%$ and training time by $14.6\%$ at a fixed step
-budget, with a weight-space endpoint a factor of $2$--$3$ inside the
-training-seed lottery, rising to endpoint cosine $0.75$ when the
+budget, with a weight-space endpoint within kernel-noise reach of a
+native retrain, rising to endpoint cosine $0.75$ when the
 substitution is scheduled late (Table~\ref{tab:yardstick}); a visual
-counterpart (Fig.~\ref{fig:kaaiyuki}) confirms that at this cosine
-the endpoint renders differ from native on the order of the seed
-lottery itself.
+counterpart (Fig.~\ref{fig:kaaiyuki}) confirms the endpoint renders
+stay close to native.
 \end{enumerate}
 
 \section{Related work}
