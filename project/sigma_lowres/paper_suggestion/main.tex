@@ -48,38 +48,27 @@ Independent researcher\\
 
 \begin{abstract}
 Diffusion transformers deliver strong image generation, but their
-training cost grows superlinearly with resolution. A recent family of
-methods therefore trains or samples at reduced resolution on a
-spectral premise: at high noise, a downscaled latent preserves almost
-the full surviving signal. The evidence for that premise, however,
-has been gathered at the level of generated output, where the
-substitution is observed only through the confounds of a full
-pipeline; whether a downscaled step also delivers the \emph{native
-training gradient direction}, under the same model and objective, has
-remained unresolved. We propose a two-term account of what the
-substitution costs: a noise-dependent term governed by the downscale
-\emph{ratio}, and a $\sigma$-independent floor governed by the target
-grid's \emph{absolute token count} and carried by the compute graph
-itself. On the resulting $(\text{route}, \sigma)$ map, the mildest
-route ($1024{\to}896$) is measured safe against a re-encode control
-over the interior high-noise window, and the account uncovers a
-window that no spectral tolerance predicts: on the deeper
-$1024{\to}768$ route at $0.65 < \sigma < 0.95$, the downscaled
-step's gradient direction retains only a small residual excess over
-the native one ($+0.02$--$0.04$ per noise bin, certified at a
-relaxed margin of $0.09$, short of strict certification at $0.02$)
-atop a floor that no noise level removes.
-Gating substitution on the measured-safe route yields
-\emph{selective} low-resolution LoRA training with a $14.6\%$ smaller
-training footprint at a fixed step budget, while producing
-near-native adapter weights. With demotion scheduled late and both
-routes stacked, the trained $\Delta W$ matches its matched-seed
-native twin at cosine $0.75$, well above the $0.26$ at which an
-identical retrain reproduces itself once deterministic kernels are
-disabled; a change of training seed alone reads $0.121$, and demoting
-$1024{\to}896$ at every $\sigma$ reads $0.183$.
-Probe scripts, trainer wiring, and the debiased verdict runs'
-complete per-image records are available at
+training cost grows superlinearly with resolution. Recent work
+justifies training or sampling at reduced resolution on a spectral
+premise: at high noise, a downscaled latent preserves almost the full
+surviving signal. Whether a downscaled step also preserves the native
+\emph{training gradient} signal, however, has remained unresolved. We
+explain how that signal changes under downscaling with a two-term
+account: a noise-dependent term governed by the downscale
+\emph{ratio}, which decays at high noise as the spectral premise
+predicts, and a $\sigma$-independent floor governed by the target
+grid's \emph{absolute token count}, carried by the compute graph
+itself and removed by no noise level. The account explains routes the
+spectral picture alone cannot: on the $1024{\to}768$ route it
+uncovers a window ($0.65<\sigma<0.95$), predicted by no spectral
+criterion, where the downscaled gradient stays within a small margin
+of the native one. Training LoRA adapters with downscaled steps
+restricted to the routes and noise windows the map validates cuts
+the training footprint by $14.6\%$ at a fixed step budget while
+remaining near-native in weight space: the trained $\Delta W$ matches
+its matched-seed native twin at cosine $0.75$, where an identical
+native retrain reproduces itself only at $0.26$--$0.43$ once
+non-deterministic kernels are enabled. Code is available at
 \url{https://github.com/sorryhyun/anima_lora}.
 \end{abstract}
 

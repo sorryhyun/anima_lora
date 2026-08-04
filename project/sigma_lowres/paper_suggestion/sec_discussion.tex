@@ -230,22 +230,10 @@ future ``train part of the time at lower resolution'' proposal should
 pass before it is believed. Without the debiasing, that test
 manufactures the very effect it looks for.
 
-\subsubsection*{Reproducibility statement}
-The probe scripts (\texttt{run\_sigma\_probe.py}, including the
-\texttt{--self\_floor} and \texttt{--draw\_sweep} debiasing modes;
-\texttt{run\_prior\_distance.py}, \texttt{rapsd.py},
-\texttt{compare\_ckpt\_dw.py}), the held-out validation and refit
-analyses (\texttt{e5\_holdout.py}, \texttt{e5\_refit.py},
-\texttt{e83\_bridge.py}), the trainer wiring
-(\texttt{--sigma\_lowres}), and the frozen pre-registration documents
-are in the public repository at
-\url{https://github.com/sorryhyun/anima_lora} (project line
-\texttt{project/sigma\_lowres/}), together with the debiased verdict
-runs' complete per-image records. The earlier raw-instrument archives
-are excluded by the repository's results ignore rule and will be
-published as a companion tarball; until then those
-numbers are reproducible from the scripts but their original records
-are not public. Paired training runs use a \texttt{--deterministic}
-mode verified bit-identical across twin runs; finite-draw cosines are
-kernel-path-sensitive, so all cosine pairings are computed within a
-single run (Appendix~\ref{app:instrument}).
+\subsubsection*{The use of large language models}
+Portions of the text in this manuscript were drafted and edited with
+the assistance of large language models (LLMs). The technical
+contributions, experimental design, implementation, results, and
+conclusions are those of the author, who has reviewed all generated
+text and takes full intellectual responsibility for the content of
+the paper.
