@@ -250,7 +250,7 @@ mismatch norm.
 \subsection{The angular reduction: exact form and four-term expansion}
 \label{app:geometry}
 
-This appendix states and derives the two angular forms summarized in
+This appendix derives the two angular forms displayed in
 \S\ref{sec:reduction}. Both follow from Eq.~\ref{eq:gapdef} and the
 split of $\delta g$ by the native direction; no property of demotion
 enters. Write $g = \bar g_{\src}$, $G = \|g\|$, $\hat g = g/G$, and
@@ -274,12 +274,8 @@ and
 \end{equation}
 valid whenever $1 + \kappa_\parallel > 0$ (the perturbation does not
 reverse the gradient direction). The gap of Eq.~\ref{eq:gapdef} is
-therefore, \emph{exactly},
-\begin{equation}
-d_e \;=\; 1 - \frac{1}{\sqrt{1 + \kappa_{\mathrm{eff}}^2}}\,,
-\label{eq:exact}
-\end{equation}
-the exact angular link of \S\ref{sec:reduction}. Since
+therefore exactly the saturating form displayed as Eq.~\ref{eq:exact}
+in \S\ref{sec:reduction}. Since
 $1 - \cos(\hat g_1, \hat g_2) = \tfrac12 \|\hat g_1 - \hat g_2\|^2$
 for unit vectors, starting from either expression in
 Eq.~\ref{eq:gapdef} lands on the same result.
@@ -306,19 +302,9 @@ term and expanding the square,
 + \Big(2\,\langle (B_e{+}C_e)^{\perp},\, R_e^{\perp}\rangle
 + \|R_e^{\perp}\|^2\Big),
 \end{equation*}
-whose first three terms, divided by $2G^2$, define the data share, the
-graph share, and the projected interaction:
-\begin{equation}
-d_e(\sigma) \;\approx\;
-\underbrace{\frac{\big\|B_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{data share }S_e}
-\;+\;
-\underbrace{\frac{\big\|C_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{graph share }\Phi_e}
-\;+\;
-\underbrace{\frac{\big\langle B_e^{\perp},\, C_e^{\perp}\big\rangle}{\|\bar g_{\src}\|^2}}_{\text{projected interaction }I_e}
-\;+\; R'_e,
-\label{eq:fourterm}
-\end{equation}
-the four-term expansion of \S\ref{sec:reduction}. The remainder
+whose first three terms, divided by $2G^2$, are the data share $S_e$,
+the graph share $\Phi_e$, and the projected interaction $I_e$ of the
+four-term expansion, Eq.~\ref{eq:fourterm}. The remainder
 $R'_e$ has an exact content: the
 $R_e$-bearing terms above, the beyond-quadratic terms of
 Eq.~\ref{eq:appquad}, and the parallel-component correction, each
@@ -433,8 +419,8 @@ excess $\gap_{e,i} = \dgap_{e,i} - \dgap_{\reenc,i}$ with non-finite
 values (negative self-cosines under the square root at low $D$) and
 $|\gap_{e,i}| > 1.5$ trimmed ($0$--$5$ of $40$ images per cell). Under
 \texttt{--draw\_sweep}, draw prefixes are nested ($D = 64$ contains the
-$D \le 32$ sets; prefix sums, no extra forwards) and
-$\gap(D) = \gap_\infty + c/D$ is fit on route means with a bootstrap CI
+$D \le 32$ sets; prefix sums, no extra forwards) and the $c/D$ fit of
+\S\ref{sec:instrument} is run on route means with a bootstrap CI
 over images. Finite-draw cosines are kernel-path chaotic: twin runs
 sharing a warm compiler kernel cache agree to $|\Delta\cos| \le 0.015$,
 while a run compiled to a different kernel set lands up to
@@ -450,7 +436,8 @@ floor makes the point sharpest: at the verdict grid's $D{=}8$--$16$
 the uncorrected endpoint self-cosine reads $0.79$--$0.85$, a naive
 read pricing the native gradient's agreement with \emph{itself} at a
 $0.15$--$0.2$ gap, before the nested sweep ($D = 4 \ldots 64$)
-extrapolates it to $1.005$ (bootstrap 95\% CI $[0.994, 1.016]$).
+extrapolates it to the unit self-cosine reported in
+\S\ref{sec:instrument}.
 
 \paragraph{The U-shaped denominator (behind \S\ref{sec:ourscored}).}
 The regimes of the total gradient norm $\|\bar g_{\src}(\sigma)\|$

@@ -192,18 +192,7 @@ exactly,
 \bar r_a(\sigma) \;=\; \mathbb{E}_\epsilon\big[\hat v_\theta - v\big],
 \end{equation*}
 and the \emph{mean residual} $\bar r_a$ is a velocity-shaped field
-with a definite $\sigma$-curve for each arm. Two interventions on the
-data factor follow immediately, from the decomposition rather than
-from experimental convention. At $\sigma = 1$ the input is pure noise
-in every arm, carrying no trace of the image, so the input-mediated
-part of the cross-arm residual mismatch vanishes by construction; the
-regression target, however, carries the clean image at unit weight at
-every $\sigma$, so the mean residual retains an image-dependent
-survivor, $\bar r_a(1) = x_a - \mathbb{E}[x \mid c]$ up to the frozen
-model's approximation error (Appendix~\ref{app:posterior}). Zeroing
-the image in input \emph{and} target removes the survivor as well:
-the arms then differ in nothing but the grid, and every data-mediated
-term vanishes by construction.
+with a definite $\sigma$-curve for each arm.
 
 Writing the demoted
 arm's mean factors as source plus a perturbation,
@@ -228,39 +217,62 @@ not literal matrix products across arms; they are defined
 the shared adapter-parameter space where both gradients live. Read
 against Eq.~\ref{eq:branches}, the spectral account of
 \S\ref{sec:spectral} keeps only the input-mediated part of the data
-branch, gated at Nyquist, and sets the rest to zero. The two
-interventions above now read as branch isolations: the $\sigma{=}1$
-endpoint reads the graph branch plus a target-mediated data share,
-and the x-zero probe the graph branch alone. The one question they
-cannot settle, whether the survivor is \emph{resolvable} in the
-angular estimand, is discharged in \S\ref{sec:ourscored}.
+branch, gated at Nyquist, and sets the rest to zero.
+
+Two interventions follow immediately from the decomposition, rather
+than from experimental convention, and each isolates a branch. At
+$\sigma = 1$ the input is pure noise in every arm, carrying no trace
+of the image, so the input-mediated part of the data branch vanishes
+by construction; the regression target, however, carries the clean
+image at unit weight at every $\sigma$, so the mean residual retains
+an image-dependent survivor,
+$\bar r_a(1) = x_a - \mathbb{E}[x \mid c]$ up to the frozen model's
+approximation error (Appendix~\ref{app:posterior}): the endpoint
+reads the graph branch plus that target-mediated remnant of the data
+branch. Zeroing the image in input \emph{and} target removes the
+survivor as well: the arms then differ in nothing but the grid, every
+data-mediated term vanishes by construction, and the x-zero probe
+reads the graph branch alone. The one question the two probes cannot
+settle, whether the survivor is \emph{resolvable} in the angular
+estimand, is discharged in \S\ref{sec:ourscored}.
 
 \subsection{The angular reduction and the two-term account}
 \label{sec:reduction}
 
 It remains to read Eq.~\ref{eq:branches} in the units of the estimand.
-The displayed forms are deferred to Appendix~\ref{app:geometry};
-what the argument needs is their content.
-Splitting the perturbation $\delta g$ into a rescaling of
-$\bar g_{\src}$ and a rotation away from it, the gap is,
-\emph{exactly}, a saturating function of a single rotation-to-scale
-ratio (Eq.~\ref{eq:exact}): only the orthogonal component moves the
-estimand, and the cosine is \emph{blind} to a parallel rescaling, a
-fact on which the endpoint probes of \S\ref{sec:ourscored} rely.
-Expanding at small perturbation and substituting
-Eq.~\ref{eq:branches} gives the \emph{four-term angular expansion}
-(Eq.~\ref{eq:fourterm}), derived as unconditionally as the exact form
-itself. Writing $u^{\perp}$ for the component of $u$ orthogonal to
-$\bar g_{\src}$, its terms are a data share
-$S_e = \|B_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$, a graph share
-built likewise from $C_e^{\perp}$, both non-negative; a projected
-interaction $I_e$ that can carry either sign, a fact that matters in
-Appendix~\ref{sec:headtohead}; and a remainder $R'_e$.
-Where the measured perturbation turns out large (the $512$ route;
-\S\ref{sec:ourscored}), quadratic-order reads are indicative only and
-the exact form carries the quantitative claims. Note that
-Eq.~\ref{eq:spd} is Eq.~\ref{eq:fourterm} with the graph share and
-interaction zeroed and $S_e$ gated at Nyquist.
+Split the perturbation $\delta g$ into a rescaling of $\bar g_{\src}$
+and a rotation away from it, with $\kappa_\parallel$ and
+$\kappa_\perp$ the two components in units of $\|\bar g_{\src}\|$.
+The gap is then, \emph{exactly}, a saturating function of a single
+rotation-to-scale ratio,
+\begin{equation}
+d_e \;=\; 1 - \frac{1}{\sqrt{1 + \kappa_{\mathrm{eff}}^2}}\,,
+\qquad
+\kappa_{\mathrm{eff}} \;=\; \frac{\kappa_\perp}{1 + \kappa_\parallel}\,,
+\label{eq:exact}
+\end{equation}
+so only the orthogonal component moves the estimand, and the cosine
+is \emph{blind} to a parallel rescaling, a fact on which the endpoint
+probes of \S\ref{sec:ourscored} rely. Expanding at small perturbation
+and substituting Eq.~\ref{eq:branches} gives the \emph{four-term
+angular expansion}: writing $u^{\perp}$ for the component of $u$
+orthogonal to $\bar g_{\src}$,
+\begin{equation}
+d_e(\sigma) \;\approx\;
+\underbrace{\frac{\big\|B_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{data share }S_e}
+\;+\;
+\underbrace{\frac{\big\|C_e^{\perp}\big\|^2}{2\,\|\bar g_{\src}\|^2}}_{\text{graph share }\Phi_e}
+\;+\;
+\underbrace{\frac{\big\langle B_e^{\perp},\, C_e^{\perp}\big\rangle}{\|\bar g_{\src}\|^2}}_{\text{projected interaction }I_e}
+\;+\; R'_e,
+\label{eq:fourterm}
+\end{equation}
+with both shares non-negative, an interaction that can carry either
+sign (a fact that matters in Appendix~\ref{sec:headtohead}), and a
+remainder $R'_e$; the derivations, and the remainder's exact content,
+are in Appendix~\ref{app:geometry}. Note that Eq.~\ref{eq:spd} is
+Eq.~\ref{eq:fourterm} with the graph share and interaction zeroed and
+$S_e$ gated at Nyquist.
 
 \paragraph{From the expansion to a measurable form.}
 On the reported excess, four named assumptions reduce the expansion
@@ -308,7 +320,8 @@ interaction by their geometric mean and the remainder entering at
 half power in its own share, so (ii) carries independent content only
 near share crossover (Appendix~\ref{app:geometry}). The quadratic
 power of the data term is fixed by the cosine geometry \emph{locally};
-far from the small-mismatch regime the licensed read is the
+where the measured perturbation turns out large (the $512$ route;
+\S\ref{sec:ourscored}) the licensed read is the
 un-expanded parent form, Eq.~\ref{eq:exact} evaluated at the same
 amplitude $a_e\,\|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$
 (recovering Eq.~\ref{eq:twoterm}'s data term in the small-mismatch
@@ -347,7 +360,7 @@ derived; we claim no closed form for the floor.
 \paragraph{The estimand forces a debiased instrument.}
 The angular reduction carries a metrological corollary. The estimand
 is a cosine of population means; any measurement replaces $\bar g_a$
-with a finite-draw average $\bar g_a + \xi_a$, and the draw noise
+with a finite-draw average $g_a = \bar g_a + \xi_a$, and the draw noise
 $\xi_a$, being uncorrelated with the mean, enters the geometry of
 Eq.~\ref{eq:fourterm} as an orthogonal perturbation share of its own.
 Every finite-draw cosine is therefore attenuated below its population
@@ -357,6 +370,28 @@ count falls, so the inflation is larger on coarser grids and does not
 cancel in the excess of Eq.~\ref{eq:excess}. The resulting artifact,
 a positive offset persisting at every $\sigma$ and growing as the
 target grid shrinks, has exactly the signature of the graph floor.
-The floor claim is therefore readable only through an estimator that
-removes the finite-draw attenuation; \S\ref{sec:instrument} builds
-and validates that estimator.
+The same geometry dictates the remedy's form. The draw noise is
+uncorrelated with the mean and independent across arms and draw sets,
+so it cancels in every expected cross term while inflating every
+squared norm: to first order the measured cosine factorizes,
+$\cos(g_{\src}, g_a) \approx \lambda_{\src}\,\lambda_a
+\cos(\bar g_{\src}, \bar g_a)$, one attenuation factor
+$\lambda_a = \big(1 + \mathbb{E}\|\xi_a\|^2 /
+\|\bar g_a\|^2\big)^{-1/2}$ per arm. Each factor is measurable in
+place, since an arm's cosine with an independent redraw of itself,
+$\cos_{\mathrm{self},a} = \cos(g_a, g_a')$, has expectation
+$\lambda_a^2$; dividing by the geometric mean of the two self-cosines
+is Spearman's classical correction for attenuation
+\citep{spearman1904},
+\begin{equation}
+\hat c \;=\; \frac{\cos(g_{\src},\, g_{a})}
+{\sqrt{\cos_{\mathrm{self},\src} \cdot \cos_{\mathrm{self},a}}},
+\qquad
+\dgap \;=\; 1 - \hat c,
+\label{eq:debias}
+\end{equation}
+which cancels the finite-draw attenuation of numerator and
+denominator to first order. The floor claim is therefore readable
+only through the debiased gap $\dgap$;
+\S\ref{sec:instrument} instruments Eq.~\ref{eq:debias} and validates
+it.

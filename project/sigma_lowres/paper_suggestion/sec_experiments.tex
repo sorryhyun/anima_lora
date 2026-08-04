@@ -58,10 +58,10 @@ which per-image rankings from the same gradients had reliability
 indistinguishable from zero.
 
 \paragraph{Finite-draw attenuation.}
-Finite draws are not innocuous here. Every finite-draw cosine is
-attenuated below its population value, and the attenuation is
-arm-dependent: per-draw gradient variance grows as the token count
-falls, the MSE loss averaging over fewer elements. The natural
+Finite draws are not innocuous here. The arm dependence of
+\S\ref{sec:reduction} is concrete: per-draw gradient variance grows
+as the token count falls, the MSE loss averaging over fewer
+elements. The natural
 estimate of Eq.~\ref{eq:gapdef}, a redraw floor minus a single
 demoted-arm cosine, is also asymmetric: the floor compares \emph{two}
 finite-draw estimates of the native gradient where each demote arm
@@ -78,24 +78,16 @@ ${+}0.100/{+}0.035/{-}0.016$ at $D = 4/8/16$, a clean $c/D$ decay
 
 \paragraph{The debiased estimator.}
 Two corrections, used together, remove the finite-draw attenuation.
-First, \emph{self-floors with
-attenuation correction}: every arm runs a second independent draw set
-$g_a'$, giving a per-arm self-cosine
-$\cos_{\mathrm{self}} = \cos(g_a, g_a')$, so that each arm has the same
-two-estimate structure the native floor has. The debiased cosine is the
-classical split-half disattenuation correction,
-\begin{equation}
-\hat c \;=\; \frac{\cos(\bar g_{\src},\, \bar g_{a})}
-{\sqrt{\cos_{\mathrm{floor}} \cdot \cos_{\mathrm{self},a}}},
-\qquad
-\dgap \;=\; 1 - \hat c,
-\label{eq:debias}
-\end{equation}
-which cancels the finite-draw attenuation of numerator and denominator
-to first order. Second, \emph{draw-count extrapolation}: the attenuation
-of an accumulated-draw cosine decays as $1/D$, so sweeping nested draw
-subsets and fitting $\gap(D) = \gap_\infty + c/D$ recovers the
-draw-limit gap directly. The two are mutually checking, and the check
+First, \emph{self-floors with attenuation correction}: every arm runs
+a second independent draw set $g_a'$, giving the per-arm self-cosines
+that Eq.~\ref{eq:debias} consumes, so that each arm has the same
+two-estimate structure the native floor has; the floor is exactly the
+source arm's self-cosine,
+$\cos_{\mathrm{floor}} = \cos_{\mathrm{self},\src}$, and the debiased
+gap $\dgap$ is computed per image and bin. Second,
+\emph{draw-count extrapolation}: the attenuation is the $c/D$ decay
+just measured, so fitting $\gap(D) = \gap_\infty + c/D$ over nested
+draw subsets recovers the draw-limit gap directly. The two are mutually checking, and the check
 passes: debiased fits come out $D$-flat ($|c| \le 0.05$ on the $512$
 route, against $c \approx +0.29$ uncorrected), and the nested sweep
 extrapolates the native redraw floor to a self-cosine of $1.005$

@@ -822,25 +822,26 @@ Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 12.0pt
  -> TeXGyreTermesX-Regular.otf
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/it' will be
-(Font)              scaled to size 10.0pt on input line 58.
+(Font)              scaled to size 10.0pt on input line 55.
 Requested font "[TeXGyreTermesX-Italic.otf]/OT:script=latn;language=dflt;-ss05;
 +tnum;+lnum;mapping=tex-text;" at 10.0pt
  -> TeXGyreTermesX-Italic.otf
+ (sec_intro [1
+
+]
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 7.3pt on input line 63.
+(Font)              scaled to size 7.3pt on input line 65.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 7.3pt
  -> TeXGyreTermesX-Regular.otf
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 5.5pt on input line 63.
+(Font)              scaled to size 5.5pt on input line 65.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 5.5pt
  -> TeXGyreTermesX-Regular.otf
- (sec_intro [1
-
-] [2]) (sec_theory
+) (sec_theory [2]
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
-(Font)              scaled to size 10.0pt on input line 12.
+(Font)              scaled to size 10.0pt on input line 13.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;+smcp;+pcap;mapping=tex-text;" at 10.0pt
  -> TeXGyreTermesX-Regular.otf
@@ -852,7 +853,7 @@ Requested font "ntx-Bold-tlf-ot1" at 7.3pt
 Requested font "ntx-Bold-tlf-ot1" at 5.5pt
  -> ntx-Bold-tlf-ot1
 
-[4] [5]) (sec_experiments [6]
+[4] [5]) (sec_experiments [6] [7]
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/sc' will be
 (Font)              scaled to size 7.3pt on input line 148.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
@@ -878,8 +879,8 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 
 File: figs/accounts_headtohead.png Graphic file (type bmp)
 <figs/accounts_headtohead.png>
-[7]
-Underfull \vbox (badness 1132) has occurred while \output is active []
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
 
  [8]
 [9]
@@ -1015,21 +1016,26 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 1.
 
 
-Underfull \vbox (badness 10000) has occurred while \output is active []
+Underfull \vbox (badness 2285) has occurred while \output is active []
 
  [10]
+Underfull \vbox (badness 2277) has occurred while \output is active []
+
+ [11]
 File: figs/kaai_yuki_arms_grid.jpg Graphic file (type bmp)
 <figs/kaai_yuki_arms_grid.jpg>
 
 Underfull \vbox (badness 10000) has occurred while \output is active []
 
- [11]
-[12]) [13] (main.bbl [14]) (appendix [15] [16] [17] [18] [19]
+ [12]
+[13]) (main.bbl [14]) (appendix [15] [16] [17] [18] [19]
 File: figs/e5_refit_1280.png Graphic file (type bmp)
 <figs/e5_refit_1280.png>
- [20] [21]
-[22] [23]
-Overfull \hbox (0.77655pt too wide) in paragraph at lines 892--905
+ [20] [21] [22]
+Underfull \vbox (badness 1231) has occurred while \output is active []
+
+ [23]
+Overfull \hbox (0.77655pt too wide) in paragraph at lines 878--891
  [][] 
  []
 
@@ -1044,13 +1050,18 @@ File: figs/gap_debiased_e7_route896.png Graphic file (type bmp)
 <figs/gap_debiased_e7_route896.png>
 File: figs/gap_debiased_e7_route768.png Graphic file (type bmp)
 <figs/gap_debiased_e7_route768.png>
+
+Underfull \vbox (badness 10000) has occurred while \output is active []
+
  [25]
 File: figs/gap_debiased.png Graphic file (type bmp)
 <figs/gap_debiased.png>
 File: figs/estimator_context.png Graphic file (type bmp)
 <figs/estimator_context.png>
+
+[26]
 LaTeX Font Info:    Font shape `TU/TeXGyreTermesX(0)/m/n' will be
-(Font)              scaled to size 7.0pt on input line 1141.
+(Font)              scaled to size 7.0pt on input line 1127.
 Requested font "[TeXGyreTermesX-Regular.otf]/OT:script=latn;language=dflt;-ss05
 ;+tnum;+lnum;mapping=tex-text;" at 7.0pt
  -> TeXGyreTermesX-Regular.otf
@@ -1079,15 +1090,12 @@ LaTeX Warning: `h' float specifier changed to `ht'.
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-) [26] [27] [28] [29] (main.aux)
+) [27] [28] [29] (main.aux)
 
 LaTeX Font Warning: Size substitutions with differences
 (Font)              up to 0.5pt have occurred.
 
 Package rerunfilecheck Info: File `main.out' has not changed.
-(rerunfilecheck)             Checksum: AB13F9CA5A95BB67E6C2A70DA6AA5E33;5121.
+(rerunfilecheck)             Checksum: EA0717D32E6D8265BDB976C3478BF501;5280.
  )
-Output written on main.xdv (29 pages, 1116720 bytes).
+Output written on main.xdv (29 pages, 1111740 bytes).
