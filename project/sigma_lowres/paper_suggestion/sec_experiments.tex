@@ -4,7 +4,7 @@
 This section scores both accounts of \S\ref{sec:theory} against one
 measured object: debiased demotion-gap curves over the full $\sigma$
 axis, on routes neither account saw. We build the instrument
-(\S\ref{sec:instrument}), read the per-route map its curves certify
+(\S\ref{sec:instrument}), read the per-route map its curves support
 (\S\ref{sec:map}), and then score both
 accounts against the same curves: the spectral account at the
 boundary and the curve level, the gradient-perturbation account term
@@ -90,12 +90,12 @@ Appendix~\ref{app:instrument}.
 A safety verdict needs two numbers, stated separately: a margin, the
 largest excess considered practically equivalent and a property of
 the question, and the instrument's resolution, which sets only the
-power available to certify it. We fix the strict margin at
+power available to decide it. We fix the strict margin at
 $\varepsilon = 0.02$, comparable to the re-encode control's own
 confidence half-width (Table~\ref{tab:floor}); a verdict underpowered
-there is stated at the smallest margin its bounds do certify. A route
+there is stated at the smallest margin its bounds do clear. A route
 is
-\emph{certified safe at margin $\varepsilon$} in a bin where
+\emph{safe at margin $\varepsilon$} in a bin where
 the one-sided non-inferiority bound clears it,
 \begin{equation}
 \text{UB}_{95}\!\left(\bgap\right) \;<\; \varepsilon,
@@ -105,12 +105,12 @@ and a \emph{window} claim over several bins requires the simultaneous
 (Bonferroni-corrected) bounds to clear it in every bin. For a route
 whose true excess is zero the paired estimate $\bgap$ fluctuates with
 standard error $\mathrm{SE}(N, D, \sigma\text{-bin})$, so
-$\epsstar = 1.645\,\mathrm{SE}$ is the \emph{certification
+$\epsstar = 1.645\,\mathrm{SE}$ is the \emph{verdict
 resolution}: a cell with $\epsstar > \varepsilon$ is
 \emph{underpowered} at the margin, and a crossing there is reported
-but not counted as certification. At the verdict grid's operating point of $N{=}40$ and
+but not counted as a safe verdict. At the verdict grid's operating point of $N{=}40$ and
 $D{=}12$ per bin, the bin-level $\epsstar$ is $0.02$--$0.07$, so
-window verdicts below are stated at the margins they do certify
+window verdicts below are stated at the margins they do support
 ($0.09$ for the windows of \S\ref{sec:map});
 endpoint-mode draw sweeps, with $D$ up to $64$, reach
 $\epsstar \approx 0.01$--$0.02$, powered for the strict margin. All
@@ -137,7 +137,7 @@ axes.} Per route, one set of measured debiased gap curves
 (Eq.~\ref{eq:gapdef}, black; open markers detach the $\sigma{=}1$
 endpoint bin, a distinct probe mode) carries the verdict of
 \S\ref{sec:map}, read per bin against the gray band, the bin-level
-$\pm\epsstar$ certification resolution (\S\ref{sec:instrument}). The
+$\pm\epsstar$ verdict resolution (\S\ref{sec:instrument}). The
 same axes carry both predictions of \S\ref{sec:theory}: the spectral
 account (red dashed), transported through the residual$\to$gradient
 bridge at the measured anchor tolerance, the whole family scoring
@@ -156,23 +156,23 @@ gray $\pm\epsstar$ band per Eq.~\ref{eq:safe} (all three routes on one
 axis, with the estimator context, in Appendix Fig.~\ref{fig:verdict};
 per-bin numbers in Appendix Table~\ref{tab:debiasedmap});
 \S\ref{sec:scored} scores both accounts on the same curves.
-Throughout, \emph{safe} means the certification of
+Throughout, \emph{safe} means the verdict of
 Eq.~\ref{eq:safe} on the \emph{per-example} object: the sense in
 which a demoted gradient is indistinguishable from a native one.
 Route by route: $1024{\to}896$ (floor $0.02$--$0.04$) is
-safe on the window $\sigma \in (0.5, 1)$, certified
-at margin $0.09$ simultaneously over the seven window bins; above
+safe on the window $\sigma \in (0.5, 1)$ at margin $0.09$,
+simultaneously over the seven window bins; above
 $\sigma = 0.94$ the bins are underpowered at margins below
 ${\approx}\,0.05$ and the $\sigma{=}1$ endpoint carries a small real
-gap (below), so the certified condition is $\sigma \in (0.5, 0.94]$
+gap (below), so the safe condition is $\sigma \in (0.5, 0.94]$
 (\S\ref{sec:limitations}).
-$1024{\to}768$ and $896{\to}768$ (floors $0.06$--$0.09$) certify no
+$1024{\to}768$ and $896{\to}768$ (floors $0.06$--$0.09$) are safe on no
 window at the strict margin, but $1024{\to}768$ retains a narrow
 low-excess window $\sigma \in (0.65, 0.95)$, with paired
-excess $+0.02$--$0.04$ per bin, certified at margin $0.09$
+excess $+0.02$--$0.04$ per bin, safe at margin $0.09$
 simultaneously over its four window bins ($0.072$ pointwise). That
 excess sits \emph{below} the route's own floor, a dip the two-term
-account does not predict (the vector-resolved probe traces it to
+reduction does not predict (the vector-resolved probe traces it to
 negative data--graph interference; \S\ref{sec:limitations}); it is
 the window \S\ref{sec:trainer}
 stacks as a second route. Any route to $512$ (floor ${\approx}\,0.30$)

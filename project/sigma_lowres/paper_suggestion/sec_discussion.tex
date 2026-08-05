@@ -57,7 +57,8 @@ unscheduled gated arm is omitted), rows the
 three training seeds. Moving along a row (arms, seed fixed) changes
 the render on the same visual order as moving down a column (training
 seed, arm fixed); the gate-removed arm (rightmost) drifts the most,
-matching its lowest cosine in Table~\ref{tab:yardstick}.}
+matching its lowest cosine in Table~\ref{tab:yardstick}. The positive
+prompt is given in Appendix~\ref{app:armsprompt}.}
 \label{fig:kaaiyuki}
 \end{figure}
 
@@ -109,7 +110,7 @@ its
 $A(\mathrm{ratio})$ governor rests on two distinct ratio values; the
 reduction's domain excludes the $768$ mid-$\sigma$ window, whose
 mechanism the vector-resolved probe has measured (negative
-interference) but which the two-term form still does not predict; and
+interference) but which the two-term reduction still does not predict; and
 the floor law's functional form is unidentified at our operating
 points. The graph-floor reading of the endpoint is
 also estimand-specific: the target-mediated perturbation is real at the
@@ -120,20 +121,20 @@ differently than the angular read does.
 
 \textbf{Instrument resolution and coverage.} ``Safe'' is one-sided
 non-inferiority against a fixed margin ($\varepsilon = 0.02$ strict;
-the map's windows currently certify at $0.09$ simultaneous,
+the map's windows are currently safe at $0.09$ simultaneous,
 ${\approx}\,0.07$ pointwise), with the
-certification resolution ($\epsstar = 0.02$--$0.07$ per bin;
+verdict resolution ($\epsstar = 0.02$--$0.07$ per bin;
 ${\approx}\,0.01$--$0.02$ at the endpoint sweeps) setting the power
 available, not the margin. True gaps below $\epsstar$ are undetectable
 by construction, $\sigmastar$ boundaries are localized only to a bin,
-and every failure to certify a window is $(N, D)$-relative: a
-larger campaign could certify (or refute) the $768$ high-$\sigma$
+and every failure to reach a safe verdict on a window is $(N, D)$-relative: a
+larger campaign could establish (or refute) the $768$ high-$\sigma$
 window at the strict margin. The upper tail $\sigma \in (0.94, 1)$ of
 the safe route is underpowered: its two non-endpoint bins resolve only
 margins above ${\approx}\,0.05$, and the $\sigma{=}1$ endpoint
 carries a small real gap ($+0.034 \pm 0.011$); an upper-tail sweep at
 higher draw count is the designated probe to close the region, and
-until it lands the certified condition is $\sigma \in (0.5, 0.94]$. Verdict stability under the per-image trim rule of
+until it lands the safe condition is $\sigma \in (0.5, 0.94]$. Verdict stability under the per-image trim rule of
 \S\ref{sec:instrument} has not been separately audited. The
 debiasing campaign covered the corpus verdict grid; the $1280$-tier
 iso-severity, $896$-tier transfer, depth-split, and PI-intervention
@@ -152,12 +153,10 @@ finite-draw estimation manufactures the very floor signature under
 test. Measured under that instrument, the spectral answer of the
 inference-side literature (safe once noise masks the frequencies the
 coarse grid loses) models only one part of one branch of what
-demotion perturbs: no tolerance reproduces the map, the mildest
-route's crossover sits at $3.5\times$ the equal-power prediction, and
-a $2\times$ downscale certifies at no noise level, because the
+demotion perturbs: the
 network function itself is grid-calibrated, partly through its rotary
 coordinate system and partly through an irreducible dependence of the
-computation on token count. The two-term account is predictive, not
+computation on token count. The gradient-perturbation account is predictive, not
 merely descriptive, reaching held-out routes at ${\sim}0.07$--$0.09$
 RMSE against the spectral family's $0.147$--$0.355$, and its map
 licenses a selective trainer: on our model, $1024{\to}896$ at
