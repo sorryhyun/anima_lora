@@ -246,8 +246,7 @@ U-shaped total gradient norm, yields the measured interior-peaked
 curves is a post-hoc consistency read deferred to
 Appendix~\ref{app:instrument}.
 
-\paragraph{The graph branch: the floor exists (three probes, one
-number).}
+\paragraph{The graph branch: the floor exists.}
 At the $\sigma = 1$ \emph{endpoint} the input-mediated data term is
 zero by construction (\S\ref{sec:ouraccount}); the debiased
 draw-limit endpoint floors are
@@ -255,28 +254,18 @@ $+0.019 / +0.056 / +0.304$ for $896/768/512$ (Appendix
 Table~\ref{tab:floor}),
 and the $512$ value clears the pre-registered confirmation bar
 ($\dgap_\infty \ge 0.15$) on $12$ of $12$ probe images individually.
-Per \S\ref{sec:ouraccount} the target-mediated share need not vanish
-there, so two further probes close the step. The \emph{x-zero}
-probe's debiased
-draw-limit gaps equal the endpoint gaps at every route
-(Table~\ref{tab:floor}), and a \emph{target-strength sweep},
-re-running the endpoint with target $\epsilon - \alpha x$,
-$\alpha \in [0, 1]$, finds the paired debiased excess
-$\alpha$-flat at the well-conditioned anchors: no resolvable
-target-content
-share \emph{in the angular estimand}. The flatness is not an
-unexplained cancellation. The target-mediated gradient itself is real and
-large, but demotion's change to it lands almost entirely \emph{along}
-$\hat g_{\src}$, to which the cosine gap is blind
-(Eq.~\ref{eq:exact}); the endpoint gap is therefore the graph floor
-as the angular estimand reads it. We provide the sweep's anchors and
-the parallel-landing decomposition,
-with the $\kappa_\parallel/\kappa_\perp$ numbers, in
-Appendix~\ref{app:instrument}. Finally, a forward-only probe of the
-model's caption-conditioned \emph{prior} across grids gives route
-distances that are flat where the floors are strongly ordered, placing
-the ordering in $J$ rather than in a resolution-conditioned prior or a
-training-distribution discontinuity.
+Three companion probes harden this number without adding to it. The
+\emph{x-zero} probe reproduces the endpoint floors at every route
+(Table~\ref{tab:floor}); a \emph{target-strength sweep} (target
+$\epsilon - \alpha x$, $\alpha \in [0, 1]$) finds the paired debiased
+excess $\alpha$-flat, discharging the survivor question of
+\S\ref{sec:ouraccount} --- the target-mediated gradient is real but
+demotion's change to it lands along $\hat g_{\src}$, to which the
+angular estimand is blind (Eq.~\ref{eq:exact}); and a forward-only
+probe of the model's caption-conditioned \emph{prior} dissociates the
+prior from the floors' route ordering, placing the ordering in $J$.
+Constructions, anchors, and the parallel-landing decomposition behind
+the $\alpha$-flatness are in Appendix~\ref{app:instrument}.
 
 \paragraph{The governors: ratio sets the amplitude, absolute size sets
 the floor.}
