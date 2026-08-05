@@ -2,21 +2,28 @@
 \label{sec:practical}
 \label{sec:trainer}
 
-As an applied example, we introduce the one measured-safe corpus route
-into a LoRA \citep{hu2022lora} trainer as an opt-in path, as
-measured, with no extrapolation beyond the map. The intervention is
+As an applied example, we introduce the measured-safe corpus route
+($1024{\to}896$) into a LoRA \citep{hu2022lora} trainer as an opt-in
+path, read off the map as measured, with one stated liberty: the
+gate is one-sided ($\sigma > \sigmastar$), so demoted steps also land
+in the underpowered upper tail $\sigma \in (0.94, 1]$
+(\S\ref{sec:limitations}). The intervention is
 deliberately small: three lines inside an otherwise standard
 flow-matching step, and no change to the objective, the optimizer, or
 the noise density (pseudocode in Table~\ref{alg:sigmastep}). We
-exercise it on a fixed-step grid: gated, scheduled, and gate-removed
+exercise it on a fixed-step grid: gated, late-scheduled (alone and
+with the $768$ low-excess window stacked as a second route), and
+gate-removed
 arms $\times$ $3$ training seeds $\times$ two single-artist
 illustration corpora of contrasting style, one flat and graphic, one
 densely rendered (corpus A, $60$ training images; corpus B, $15$),
 $480$ optimizer steps each, run with deterministic kernels (including
 FlashAttention's deterministic backward,
 \citealp{dao2022flashattention}) and paired RNG so
-every arm sees identical draws. At fixed steps the gated arm realizes
-a $-14.6\%$ wall-clock saving over native training on our corpus.
+every arm sees identical draws. At fixed steps the always-gated arm
+realizes a $-14.6\%$ wall-clock saving over native training on our
+corpora; the late-scheduled arms demote only part of the run and save
+proportionally less.
 
 \textbf{$\sigma$-first draw.} The trainer draws each batch's $\sigma$
 \emph{before} fetching latents, from the unchanged training density.
@@ -65,7 +72,7 @@ run-to-run kernel chaos alone. Against that reference, demoting at
 ($\sigma{>}0.5$) lands level with or above it ($0.365$/$0.432$).
 Late scheduling, demotion only in the last $75\%$ of steps, brings
 the endpoint very close to the native weights ($0.753$/$0.770$),
-and, as our account predicts for the $768$ low-excess window,
+and, as the map's low-excess read of the $768$ window predicts,
 stacking the $1024{\to}768$ route onto the late rule leaves the
 cosine essentially unchanged ($0.753$/$0.771$). The visual
 counterpart (Fig.~\ref{fig:kaaiyuki}) confirms the read: matched
@@ -109,18 +116,20 @@ differently than the angular read does.
 
 \textbf{Instrument resolution and coverage.} ``Safe'' is one-sided
 non-inferiority against a fixed margin ($\varepsilon = 0.02$ strict;
-the interior window currently certifies at $0.056$--$0.07$), with the
-certification resolution ($\epsstar = 0.03$--$0.08$ per bin;
+the interior windows currently certify at $0.09$ simultaneous,
+${\approx}\,0.07$ pointwise), with the
+certification resolution ($\epsstar = 0.02$--$0.07$ per bin;
 ${\approx}\,0.01$--$0.02$ at the endpoint sweeps) setting the power
 available, not the margin. True gaps below $\epsstar$ are undetectable
 by construction, $\sigmastar$ boundaries are localized only to a bin,
 and every ``no certifiable window'' claim is $(N, D)$-relative: a
 larger campaign could certify (or refute) the $768$ high-$\sigma$
 window at the strict margin. The upper tail $\sigma \in (0.94, 1)$ of
-the safe route is unmeasured between the last interior bin and the
-endpoint's real gap ($+0.042 \pm 0.011$); a dense upper-tail sweep at
-higher draw count is the designated probe to close it, and until it
-lands the certified condition is $\sigma \in (0.5, 0.94]$. Verdict stability under the per-image trim rule of
+the safe route is underpowered: its two interior bins resolve only
+margins above ${\approx}\,0.05$, and the $\sigma{=}1$ endpoint
+carries a small real gap ($+0.034 \pm 0.011$); an upper-tail sweep at
+higher draw count is the designated probe to close the region, and
+until it lands the certified condition is $\sigma \in (0.5, 0.94]$. Verdict stability under the per-image trim rule of
 \S\ref{sec:instrument} has not been separately audited. The
 debiasing campaign covered the corpus verdict grid; the $1280$-tier
 iso-severity, $896$-tier transfer, depth-split, and PI-intervention
@@ -157,7 +166,8 @@ licenses a selective trainer: on our model, $1024{\to}896$ at
 $\sigma \in (0.5, 0.94]$ with a stackable $1024{\to}768$ window,
 realizing $-14.6\%$ wall-clock at fixed steps with a weight-space
 endpoint within kernel-noise reach of a native retrain, rising to
-cosine $0.75$ when demotion is late-scheduled. We offer
+cosine $0.75$ when demotion is late-scheduled at proportionally
+reduced saving. We offer
 the account and its instrument as the cheap, general test that any
 future ``train part of the time at lower resolution'' proposal should
 pass before it is believed.

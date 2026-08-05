@@ -58,17 +58,20 @@ account: a noise-dependent term governed by the downscale
 \emph{ratio}, which decays at high noise as the spectral premise
 predicts, and a $\sigma$-independent floor governed by the target
 grid's \emph{absolute token count}, carried by the compute graph
-itself and removed by no noise level. The account explains routes the
-spectral picture alone cannot: on the $1024{\to}768$ route it
-uncovers a window ($0.65<\sigma<0.95$), predicted by no spectral
-criterion, where the downscaled gradient stays within a small margin
-of the native one. Training LoRA adapters with downscaled steps
-restricted to the routes and noise windows the map validates cuts
-the training footprint by $14.6\%$ at a fixed step budget while
-remaining near-native in weight space: the trained $\Delta W$ matches
-its matched-seed native twin at cosine $0.75$, where an identical
-native retrain reproduces itself only at $0.26$--$0.43$ once
-non-deterministic kernels are enabled. Code is available at
+itself and removed by no noise level. The measured
+$(\text{route},\sigma)$ map bears the account out and uncovers
+structure the spectral picture cannot express: on the $1024{\to}768$
+route, a window ($0.65<\sigma<0.95$), predicted by no spectral
+criterion at any tolerance, where the downscaled gradient stays
+within a small margin of the native one. Training LoRA adapters with
+downscaled steps restricted to the routes and noise windows the map
+validates cuts wall-clock training time by $14.6\%$ at a fixed step
+budget while remaining near-native in weight space: an identical
+native retrain reproduces itself only at cosine $0.26$--$0.43$ once
+non-deterministic kernels are enabled, the always-gated arm lands
+level with or above that reference, and scheduling the substitution
+late, at proportionally reduced saving, lifts the trained
+$\Delta W$'s match to its matched-seed native twin to $0.75$. Code is available at
 \url{https://github.com/sorryhyun/anima_lora}.
 \end{abstract}
 

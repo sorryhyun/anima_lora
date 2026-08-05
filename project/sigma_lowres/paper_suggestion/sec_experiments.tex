@@ -61,17 +61,14 @@ indistinguishable from zero.
 
 \paragraph{Finite-draw attenuation.}
 The arm dependence of
-\S\ref{sec:reduction} is concrete: per-draw gradient variance grows
-as the token count falls, the MSE loss averaging over fewer
-elements. The natural
-estimate of Eq.~\ref{eq:gapdef}, a redraw floor minus a single
-demoted-arm cosine, is also asymmetric: the floor compares \emph{two}
+\S\ref{sec:reduction} is concrete here: the MSE loss averages over
+fewer elements on the coarser grid, and the natural estimate of
+Eq.~\ref{eq:gapdef}, a redraw floor minus a single demoted-arm
+cosine, adds an asymmetry of its own: the floor compares \emph{two}
 finite-draw estimates of the native gradient where each demote arm
-contributes one. An iso-direction null, in which demotion changes
-\emph{nothing} but the variance, therefore still produces a positive
-gap that \emph{grows as the target grid shrinks}, the same signature
-as ``absolute token count sets the floor,'' and no naive read can
-tell the two apart. We observed this bias live and large at our
+contributes one. We observed the resulting bias, whose
+floor-mimicking signature \S\ref{sec:reduction} derives, live and
+large at our
 operating point: a variance back-of-envelope predicts spurious
 iso-direction
 endpoint gaps of ${\approx}\,0.02/0.05/0.15$ for $896/768/512$, and
@@ -135,8 +132,11 @@ $\gap_{e,i} = \dgap_{e,i} - \dgap_{\reenc,i}$, trimmed of non-finite
 and $|\gap_{e,i}| > 1.5$ values, which cancels the shared per-image
 draw structure and stays stable at mid-$\sigma$ where the unpaired
 estimator is not; finite-draw cosines are compiler-kernel-path
-sensitive, so all pairings are computed within one run. Every number
-in the main text is debiased.
+sensitive, so all pairings are computed within one run. Every
+verdict-carrying number in the main text is debiased; the
+iso-severity, tier-transfer, and positional-interpolation probes of
+\S\ref{sec:scored} remain raw-estimator reads, flagged where cited
+(\S\ref{sec:limitations}).
 
 \subsection{The measured $(\text{route}, \sigma)$ map}
 \label{sec:verdict}
@@ -170,25 +170,33 @@ axis, with the estimator context, in Appendix Fig.~\ref{fig:verdict};
 per-bin numbers in Appendix Table~\ref{tab:debiasedmap});
 \S\ref{sec:scored} scores both accounts on the same curves.
 Throughout, \emph{safe} means the certification of
-Eq.~\ref{eq:safe}, namely gap excess over the re-encode control below
-the stated margin, on the \emph{per-example} object: the sense in
+Eq.~\ref{eq:safe} on the \emph{per-example} object: the sense in
 which a demoted gradient is indistinguishable from a native one.
 Route by route: $1024{\to}896$ (floor $0.02$--$0.04$) is
 safe on the interior window $\sigma \in (0.5, 1)$, certified
-at margin $0.09$ simultaneously over the seven window bins.
-$1024{\to}768$ and $896{\to}768$ (floors $0.06$--$0.13$) certify no
+at margin $0.09$ simultaneously over the seven window bins; above
+$\sigma = 0.94$ the bins are underpowered at margins below
+${\approx}\,0.05$ and the $\sigma{=}1$ endpoint carries a small real
+gap (below), so the certified condition is $\sigma \in (0.5, 0.94]$
+(\S\ref{sec:limitations}).
+$1024{\to}768$ and $896{\to}768$ (floors $0.06$--$0.09$) certify no
 window at the strict margin, but $1024{\to}768$ retains a narrow
 low-excess window $\sigma \in (0.65, 0.95)$, with paired
 excess $+0.02$--$0.04$ per bin, certified at margin $0.09$
-simultaneously over its four window bins ($0.072$ pointwise), atop a
-floor no noise level removes; this is the window \S\ref{sec:trainer}
+simultaneously over its four window bins ($0.072$ pointwise). That
+excess sits \emph{below} the route's own floor, a dip the two-term
+account does not predict (the vector-resolved probe traces it to
+negative data--graph interference; \S\ref{sec:limitations}); it is
+the window \S\ref{sec:trainer}
 stacks as a second route. Any route to $512$ (floor ${\approx}\,0.30$)
 is \emph{certifiably unsafe} in all fifteen bins. Debiasing itself moved
 verdicts in both directions: roughly half the $768$
 route's high-$\sigma$ plateau was estimator bias, softening ``unsafe
 at every noise level'' into the narrow window just stated, while the
-$896$ endpoint shows a small \emph{real} gap ($+0.034 \pm 0.011$)
-that single-estimate variance had buried.
+$896$ endpoint shows a small \emph{real} gap that single-estimate
+variance had buried ($+0.034 \pm 0.011$ in the verdict grid's
+endpoint bin; $+0.019$ $[+0.010, +0.030]$ in the draw-limit sweep
+that \S\ref{sec:scored} scores).
 
 \subsection{Both accounts, scored}
 \label{sec:scored}
@@ -242,9 +250,9 @@ Appendix~\ref{app:instrument}.
 
 \paragraph{The graph branch: the floor exists (three probes, one
 number).}
-At the $\sigma = 1$ \emph{endpoint} the input is pure $\epsilon$,
-identical in distribution across arms, so the input-mediated data term
-is zero by construction; the debiased endpoint floors are
+At the $\sigma = 1$ \emph{endpoint} the input-mediated data term is
+zero by construction (\S\ref{sec:ouraccount}); the debiased
+draw-limit endpoint floors are
 $+0.019 / +0.056 / +0.304$ for $896/768/512$ (Appendix
 Table~\ref{tab:floor}),
 and the $512$ value clears the pre-registered confirmation bar
@@ -282,7 +290,8 @@ $896{\to}768$ fails its pre-registered bar with a high-$\sigma$
 residual ${\sim}2\times$ the $1024{\to}896$ plateau despite a
 near-identical downscale ratio, while the two routes sharing the
 ${\sim}2{,}160$-token target grid, $1024{\to}768$ and $896{\to}768$,
-land on the same floor despite different ratios (Appendix
+land on the same floor despite different ratios (raw-estimator read,
+the separation confirmed by the debiased same-grid floors; Appendix
 Table~\ref{tab:phase1a}). Near-equal ratio with a different target
 gives a different verdict; the same target with a different ratio
 gives the same floor. This refutes any pure ratio rule for the floor,
@@ -295,8 +304,8 @@ fine graph's computation.
 \emph{Ratio, not absolute size, sets the amplitude}: a synthetic
 iso-severity route $1280{\to}1120$, with edge ratio exactly matched to
 $1024{\to}896$ at $1.6\times$ its absolute target size, reproduces
-the $1024{\to}896$ curve bin-for-bin, crossover included (Appendix
-Table~\ref{tab:isoseverity}). Note what survives of
+the $1024{\to}896$ curve bin-for-bin, crossover included
+(raw-estimator read; Appendix Table~\ref{tab:isoseverity}). Note what survives of
 the spectral account here: ratio \emph{is} the right governor for the
 data term; its error is not its governor but its scope, mistaking one
 term for the whole gap.
@@ -315,8 +324,8 @@ $1.000$); the
 non-det.\ row retrains native at the same seed \emph{without}
 deterministic kernels (one twin pair per corpus), so it reads
 run-to-run kernel chaos alone. \emph{late}: demotion only in the last
-$75\%$ of steps; the stacked row adds a second certified route
-($1024{\to}768$ on $0.65{<}\sigma{<}0.95$, last $50\%$).
+$75\%$ of steps; the stacked row adds the $768$ low-excess window as
+a second route ($1024{\to}768$ on $0.65{<}\sigma{<}0.95$, last $50\%$).
 \textbf{Bold}: closest endpoints.}
 \label{tab:yardstick}
 \centering
@@ -371,7 +380,8 @@ part is a coordinate-system artifact, so an origin-side intervention
 should erase it wherever the data branch is inactive. Evaluate the
 demoted grid at positionally-interpolated fractional rotary
 coordinates (patch $i$ at $i \cdot H_{\src}/H_{\dem}$), making its
-relative phase geometry match native. At the $\sigma{=}1$ endpoint this \emph{erases} the $768$ floor
+relative phase geometry match native (a raw-estimator probe;
+\S\ref{sec:limitations}). At the $\sigma{=}1$ endpoint this \emph{erases} the $768$ floor
 and removes ${\sim}30\%$ of the $512$ floor, leaving the
 in-band $896$ control untouched: re-anchored against the debiased
 floors, $\mathrm{Resid}_{768} \approx 0$ while $512$ retains a
