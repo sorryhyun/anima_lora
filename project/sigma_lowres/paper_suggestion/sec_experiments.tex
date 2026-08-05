@@ -116,10 +116,7 @@ standard error $\mathrm{SE}(N, D, \sigma\text{-bin})$, so
 $\epsstar = 1.645\,\mathrm{SE}$ is the \emph{certification
 resolution}: a cell with $\epsstar > \varepsilon$ is
 \emph{underpowered} at the margin, and a crossing there is reported
-but not counted as certification. ``No certifiable window'' means a
-route's simultaneous upper bounds never fall below $\varepsilon$ at
-the current $(N, D)$; ``certifiably unsafe'' means the lower bound
-stays above it. At the verdict grid's operating point of $N{=}40$ and
+but not counted as certification. At the verdict grid's operating point of $N{=}40$ and
 $D{=}12$ per bin, the bin-level $\epsstar$ is $0.02$--$0.07$, so
 interior verdicts below are stated at the margins they do certify
 ($0.09$ for the interior windows of \S\ref{sec:map});
@@ -187,7 +184,8 @@ account does not predict (the vector-resolved probe traces it to
 negative data--graph interference; \S\ref{sec:limitations}); it is
 the window \S\ref{sec:trainer}
 stacks as a second route. Any route to $512$ (floor ${\approx}\,0.30$)
-is \emph{certifiably unsafe} in all fifteen bins. Debiasing itself moved
+is \emph{unsafe} in all fifteen bins, the lower bound clearing the
+margin in every one. Debiasing itself moved
 verdicts in both directions: roughly half the $768$
 route's high-$\sigma$ plateau was estimator bias, softening ``unsafe
 at every noise level'' into the narrow window just stated, while the

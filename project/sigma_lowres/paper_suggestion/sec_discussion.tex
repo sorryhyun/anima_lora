@@ -125,7 +125,7 @@ certification resolution ($\epsstar = 0.02$--$0.07$ per bin;
 ${\approx}\,0.01$--$0.02$ at the endpoint sweeps) setting the power
 available, not the margin. True gaps below $\epsstar$ are undetectable
 by construction, $\sigmastar$ boundaries are localized only to a bin,
-and every ``no certifiable window'' claim is $(N, D)$-relative: a
+and every failure to certify a window is $(N, D)$-relative: a
 larger campaign could certify (or refute) the $768$ high-$\sigma$
 window at the strict margin. The upper tail $\sigma \in (0.94, 1)$ of
 the safe route is underpowered: its two interior bins resolve only
@@ -138,12 +138,6 @@ debiasing campaign covered the corpus verdict grid; the $1280$-tier
 iso-severity, $896$-tier transfer, depth-split, and PI-intervention
 probes remain pre-debiasing reads, and the $1280$-tier curves enter the
 held-out validation on that basis.
-
-\textbf{Scope.} Adapter (LoRA) gradients on a frozen backbone; full
-fine-tuning may differ. Pixel-space demotion only (latent-space
-downsampling was not tested here; SwD found it inferior). The
-$\sigma$-gated banded-alignment parameters were fixed at
-pre-registered values in a single run, not searched.
 
 \section{Conclusion}
 \label{sec:conclusion}
