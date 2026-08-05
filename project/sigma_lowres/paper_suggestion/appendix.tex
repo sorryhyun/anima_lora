@@ -56,9 +56,10 @@ $B \in \{1, 4, 40\}$) bounds it: the $a + b/B$ fit's intercept is
 ${\leq}\,0.02$ ($1024{\to}896$) and ${\leq}\,0.03$ ($1024{\to}768$)
 at $\sigma \geq 0.44$, but persists over the lower bins
 ($+0.04$--$0.09$, $+0.05$--$0.28$, and $+0.15$--$0.60$ for
-$896/768/512$) — aggregation buys safety only where the per-example
+$896/768/512$) — aggregation confers safety only where the per-example
 map of \S\ref{sec:map} is already near-safe. The small real $896$
-endpoint gap ($+0.042$) averages out in the aggregate ($+0.001$).
+endpoint gap ($+0.042$ in this run's $B{=}1$ read) averages out in the
+aggregate ($+0.001$).
 
 \subsection{Derivation of the branch decomposition
 (Eq.~\ref{eq:branches})}
@@ -203,7 +204,7 @@ exact $r$-factor that the LoRA gradient $g = J^{\!\top} r$ is built
 from.
 
 \paragraph{Gaussian closure.}
-The cheapest nontrivial closure is a full Gaussian model
+The simplest nontrivial closure is a full Gaussian model
 $x \mid c \sim \mathcal{N}(\mu_e, C_e)$ per grid. With
 $Q_e(\sigma) = a^2 C_e + \sigma^2 I$, the posterior mean is linear,
 $m_e(z, c) = \mu_e + a C_e Q_e^{-1}(z - a \mu_e)$, and substituting
@@ -312,7 +313,7 @@ term and expanding the square,
 whose first three terms, divided by $2G^2$, are the data share $S_e$,
 the graph share $\Phi_e$, and the projected interaction $I_e$ of the
 four-term expansion, Eq.~\ref{eq:fourterm}. The remainder
-$R'_e$ has an exact content: the
+$R'_e$ has an exact expansion: the
 $R_e$-bearing terms above, the beyond-quadratic terms of
 Eq.~\ref{eq:appquad}, and the parallel-component correction, each
 suppressed by an extra power of perturbation size relative to the
@@ -428,7 +429,7 @@ $|\gap_{e,i}| > 1.5$ trimmed ($0$--$5$ of $40$ images per cell). Under
 \texttt{--draw\_sweep}, draw prefixes are nested ($D = 64$ contains the
 $D \le 32$ sets; prefix sums, no extra forwards) and the $c/D$ fit of
 \S\ref{sec:instrument} is run on route means with a bootstrap CI
-over images. Finite-draw cosines are kernel-path chaotic: twin runs
+over images. Finite-draw cosines are kernel-path sensitive: twin runs
 sharing a warm compiler kernel cache agree to $|\Delta\cos| \le 0.015$,
 while a run compiled to a different kernel set lands up to
 ${\approx}\,0.3$ away at $D{=}2$, so gap/floor/self-floor pairings
@@ -505,8 +506,8 @@ $896$ and $768$ the floors sit at or below the interior bins'
 certification resolution, which the endpoint sweeps resolve only
 through their order-of-magnitude larger draw budget. The statement
 ``the high-$\sigma$ plateau is the floor'' therefore sharpens to: the
-floor is what the plateau converges to once the data term dies and
-the estimator can see it.
+floor is what the plateau converges to once the data term vanishes and
+the estimator can resolve it.
 
 \paragraph{Direction-resolved mismatch (behind
 \S\ref{sec:ourscored}).} The route-uniformity of
@@ -548,7 +549,7 @@ governors fitted on other routes. This is the one route where the
 forms visibly separate: the derived quadratic systematically
 overshoots the mid-$\sigma$ peak; the exact angular link's saturation
 removes the overshoot (RMSE $0.049$ vs ${\approx}\,0.095$), which is
-why the exact link headlines in Fig.~\ref{fig:accounts}.}
+why the exact link is the form displayed in Fig.~\ref{fig:accounts}.}
 \label{fig:e51280}
 \end{figure}
 
@@ -575,7 +576,7 @@ $\kappa_{\mathrm{eff}}^2 = (1-F)^{-2} - 1$ gives $\tau \approx 860$
 tokens and predicts $F(2160) = +0.096$, equally consistent with the
 measured $+0.092 \pm 0.012$; the same two anchors pushed through
 $e^{-\sqrt{n}/\ell}$ or a power law $n^{-p}$ predict $+0.085$ and
-$+0.075$. Every form lands within the union of the measured CI and the
+$+0.075$. Every form falls within the union of the measured CI and the
 prediction's own bootstrap spread, so the exponential is one member of
 a family our operating points cannot distinguish, and the mechanical
 reading of $\tau$ ($\approx 860$--$1040$ tokens across the two unit
@@ -623,7 +624,8 @@ $C = \bar g_{\mathrm{demote}} - \bar g_{\mathrm{repromote}}$ (the graph
 intervention at fixed demoted data). The quadratic shares $S$, $F$, $I$
 and $\rho = \cos(B^{\perp}, C^{\perp})$ use cross-draw-set inner
 products to cancel shared draw noise; the debiased estimates are not
-confined to $[-1, 1]$ (hence $\rho = -1.24$ at one low-amplitude bin).
+confined to $[-1, 1]$ (hence $\rho = -1.24$ at one low-amplitude
+bin).
 The exact counterfactual angles $h(B)$, $h(C)$, $h(B{+}C)$, with
 $h(X) = 1 - \cos(\bar g_{\src}, \bar g_{\src} + X)$, are computed on
 the raw arm means; since $\bar g_{\dem} = \bar g_{\src} + B + C$ by
@@ -635,7 +637,7 @@ $1.2$--$3.0\times$ at $512$); the fully additive counterfactual
 $h(B) + h(C)$ overpredicts $3.5$--$8\times$, the realized $h(B{+}C)$
 being only ${\sim}20$--$30\%$ of the additive sum in-window. Including
 $I$ is what removes the overprediction; the vector account $B{+}C$ is
-exact by construction. One unit-honesty note on
+exact by construction. One caveat on the units of
 Table~\ref{tab:e9ledger}: in-window
 $|B^{\perp}|, |C^{\perp}| \approx 0.5$--$1.0\,\|\bar g_{\src}\|$,
 outside the quadratic truncation's domain, so the truncated ledger
@@ -664,15 +666,15 @@ split is a round trip off the matched configuration
 corner ($\bar g_{\mathrm{repromote}}$). Right: the measured legs
 tip-to-tail at $\sigma = 0.563$ (Table~\ref{tab:e9ledger}), to a
 common scale in units of $\|\bar g_{\src}\|$; the drawn angle is the
-debiased $\rho$. Amplitude-matched legs leave a stub of a resultant
+debiased $\rho$. Amplitude-matched legs leave only a small resultant
 ($896$, $768$); the $512$ graph leg is ${\sim}1.8\times$ the data
 leg, and the unmatched share survives as the realized gap.}
 \label{fig:ledgergeom}
 \end{figure}
 
 \paragraph{The ledger's geometry: why the legs anti-align.}
-The near anti-parallelism of Table~\ref{tab:e9ledger} is structural,
-not found (Fig.~\ref{fig:ledgergeom}). The three arm means are values of one map on a
+The near anti-parallelism of Table~\ref{tab:e9ledger} is structural
+rather than incidental (Fig.~\ref{fig:ledgergeom}). The three arm means are values of one map on a
 $2 \times 2$ data--graph lattice — $\bar g_{\src}$ at (native
 content, fine graph), $\bar g_{\mathrm{repromote}}$ at (demoted
 content, fine graph), $\bar g_{\dem}$ at (demoted content, coarse
@@ -730,7 +732,7 @@ positional-interpolation intervention (Table~\ref{tab:pi}; the paired
 $\Delta$s are same-grid contrasts at matched draws, in which the
 finite-draw bias cancels to first order). The $896$ route's small floor
 sits below that probe's paired resolution and remains undecomposed. A
-$\sigma$-resolved follow-up closes the tempting route this opens
+$\sigma$-resolved follow-up forecloses the route this suggests
 (training $1024{\to}768$ through interpolated coordinates): with image
 content in the input the stretched forward is off-manifold, and the
 interpolated arm is \emph{worse} than the plain demoted arm through
@@ -842,7 +844,7 @@ held-out predictions with zero per-route freedom. Pass criteria were
 pre-registered in the analysis script before the numbers.
 
 \paragraph{Held-out results, and the comparison.}
-All four pre-registered gates fire (Table~\ref{tab:headtohead},
+All four pre-registered gates pass (Table~\ref{tab:headtohead},
 Fig.~\ref{fig:accounts}). (i)~Held-out $1024{\to}768$: RMSE $0.093$,
 \emph{better than an oracle quadratic fit on the held-out data itself}
 ($0.105$), and better than the spectral account both across all bins
@@ -858,9 +860,10 @@ $512$ and $896$ floors, predicts $F(4825) = +0.007$ for the $1120$ grid
 (fitted $+0.002$) and $F(2160) = +0.088$ for the held-out $768$ grid,
 against a measured endpoint floor of $+0.092 \pm 0.012$; a post-hoc
 leave-$896$-out re-derivation from $512{+}1120$ alone predicts the
-$896$ floor at $+0.019$ against the measured $+0.019$
-$[+0.010, +0.030]$. The floor law is thus correct on both floors
-outside its fit set, though its point estimates ride the draw: a
+$896$ floor at $+0.019$ under the fitted-power form ($+0.012$ under
+the exact link, Appendix~\ref{app:instrument}) against the measured
+$+0.019$ $[+0.010, +0.030]$. The floor law is thus correct on both floors
+outside its fit set, though its point estimates vary with the draw: a
 full-pipeline bootstrap puts $F(2160)$ at $68\%$ $[+0.042, +0.091]$,
 so the licensed read is agreement, not exactness.
 
@@ -887,11 +890,8 @@ the fit does \emph{not} establish: the prediction is not within
 certification resolution anywhere ($\chi^2$/bin $7.6$--$9.2$ held-out
 under the quadratic), so the licensed claim is shape, magnitude class,
 and governors at ${\sim}0.07$--$0.09$ RMSE; and the floor law's
-functional form is unidentified at our operating points, as two anchors
-and one held-out check cannot separate $\{e^{-n/\tau},
-e^{-\sqrt{n}/\ell}, n^{-p}\}$, all of which land within the union of
-the measured CI and the prediction's bootstrap spread
-(Appendix~\ref{app:instrument}).
+functional form is unidentified at our operating points
+(the identifiability analysis is in Appendix~\ref{app:instrument}).
 
 \paragraph{The reduction's domain: one signed failure, and its
 mechanism.}
@@ -913,13 +913,14 @@ interventional split $B = \bar g_{\mathrm{repromote}} - \bar g_{\src}$,
 $C = \bar g_{\mathrm{demote}} - \bar g_{\mathrm{repromote}}$
 (Appendix~\ref{app:instrument}, Table~\ref{tab:e9ledger}).
 
-Run, the data picks the first branch with its localization confirmed.
+When the probe is run, the data select the first branch, with its
+localization confirmed:
 $I_{768}(\sigma) < 0$ at every bin ($-0.31$ at $\sigma = 0.56$,
 shrinking to $-0.014$ by $0.94$), with the two legs near anti-parallel
 in-window ($\rho = \cos(B^{\perp}, C^{\perp}) \approx -0.93$), and the
 predicted window center lands at $\sigma \approx 0.69$
 ($|B^{\perp}|/|C^{\perp}| = 0.98$ there), interior to the measured
-window. Branch (ii) did not fire: $\Phi_{768}(\sigma)$ decreases
+window. Branch (ii) is ruled out: $\Phi_{768}(\sigma)$ decreases
 monotonically to its endpoint value and never drops below it, so the
 endpoint reads of \S\ref{sec:ourscored} are untouched. The
 anti-parallel geometry turns out to be universal
@@ -1002,11 +1003,12 @@ the measured $\|\bar g_{\src}(\sigma)\|$ with a single gain calibrated
 on the one safe route and no floor, which the family cannot express),
 gated at $t^{*}(\delta)$ (dashed verticals) for the equal-power slice,
 SPD's default $\delta = 0.01$, and the measured anchor
-$\delta_{\reenc}$. The transported curve dies by $\sigma \approx 0.35$
+$\delta_{\reenc}$. The transported curve decays to zero by
+$\sigma \approx 0.35$
 on every route, so the two larger gates ($0.61$--$0.72$ and
 $0.98$--$0.99$) act on an already-zero curve and coincide exactly;
 the equal-power gate ($0.14$--$0.20$) is the only one that truncates
-live curve, and it moves RMSE by at most $0.008$. All three therefore
+a nonzero curve, and it moves RMSE by at most $0.008$. All three therefore
 land within $0.01$ of each other: $\delta$ is inert at the curve
 level. Right: the boundary family $t^{*}(\delta)$; maximum route spread
 $0.125$ in $\sigma$ over $\delta \in [10^{-3}, 0.5]$.}
@@ -1018,7 +1020,7 @@ parameter, and this appendix instantiates the whole family. The choice
 $\delta = (1+P_\omega)/2$ recovers the often-quoted equal-power
 (input-SNR) crossover
 $\sigma_{\mathrm{eq}} = \sqrt{P_\omega}/(1+\sqrt{P_\omega})$ as one
-slice; \citet{xiao2026spd} ship an inference-side default
+slice; \citet{xiao2026spd} provide an inference-side default
 $\delta = 0.01$; and our own pipeline fixes a zero-free-parameter
 anchor $\delta_{\reenc}$ by construction (below).
 
@@ -1228,8 +1230,9 @@ from input \emph{and} target; any surviving gap is pure graph-shape
 sensitivity. Debiased draw-limit values $\dgap_\infty$ [bootstrap 95\%
 CI over images] from nested draw sweeps (endpoint: $N{=}12$,
 $D = 4 \ldots 64$; x-zero: $N{=}40$, $D = 4 \ldots 32$). The two
-columns agree within CI at every route; our pre-registered kill switch
-(all endpoint gaps ${\approx}\,0$) does not fire; and no member of the
+columns agree within CI at every route; our pre-registered
+falsification criterion (all endpoint gaps ${\approx}\,0$) is not met;
+and no member of the
 spectral family can produce a nonzero entry here.}
 \label{tab:floor}
 \centering
@@ -1270,26 +1273,6 @@ $\gap_{512}$ (ratio $0.5$)   & .348 & .410 & .355 & .469 & .430 & .391 & .289 & 
 \midrule
 $\cos_{\mathrm{floor}}$ & .84 & .65 & .51 & .65 & .70 & .77 & .80 & .83 \\
 $\|g\|$ (native) & 2.6 & 0.5 & 0.4 & 0.5 & 0.7 & 1.1 & 2.0 & 9.3 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[h]
-\caption{Raw endpoint reads ($D{=}16$, $N{=}40$) beside their debiased
-draw-limit values (Table~\ref{tab:floor}), the debiasing's revision
-record: the $768$ floor halves, the $896$ floor surfaces.}
-\label{tab:rawendpoint}
-\centering
-\small
-\begin{tabular}{lcc}
-\toprule
-route & raw endpoint ($D{=}16$) & endpoint $\dgap_\infty$ [95\% CI] \\
-\midrule
-native self-floor (cosine) & $0.85$ & $1.005$ $[0.994, 1.016]$ \\
-re-encoding control & $-0.038$ & $-0.003$ $[-0.017, +0.008]$ \\
-$1024{\to}896$ & $-0.009$ & $+0.019$ $[+0.010, +0.030]$ \\
-$1024{\to}768$ & $+0.127$ & $+0.056$ $[+0.043, +0.071]$ \\
-$1024{\to}512$ & $+0.326$ & $+0.304$ $[+0.197, +0.424]$ \\
 \bottomrule
 \end{tabular}
 \end{table}

@@ -8,10 +8,7 @@ axis, on routes neither account saw. We build the instrument
 (\S\ref{sec:map}), and then score both
 accounts against the same curves: the spectral account at the
 boundary and the curve level, the gradient-perturbation account term
-by term (\S\ref{sec:scored}).
-The held-out prediction protocol, its pre-registered gates, and the
-structural failures it exposes are quantified in
-Appendix~\ref{sec:headtohead}. Each subsection states the prediction
+by term (\S\ref{sec:scored}). Each subsection states the prediction
 it discharges against criteria frozen before the runs.
 
 \subsection{The instrument}
@@ -35,11 +32,12 @@ trains the same class.
 \paragraph{The gradient probe.}
 For each image and each of $B$ $\sigma$-bins we accumulate
 adapter gradients over $D$ stratified noise draws per
-arm (verdict
-run: $14$ interior bins on a segmented grid dense below $\sigma = 0.1$
-and above $0.9$, plus a $\sigma{=}1$ endpoint bin, $D{=}12$,
-deterministic kernels, $N = 40$ images) and compare arms by cosine
-similarity of the flattened accumulated gradients. The arms are: a
+arm and compare arms by cosine
+similarity of the flattened accumulated gradients. The verdict run
+uses $N = 40$ images and $D = 12$ draws per bin, on a segmented grid
+of $14$ interior bins, dense below $\sigma = 0.1$ and above $0.9$,
+plus a $\sigma{=}1$ endpoint bin, with deterministic kernels. The
+arms are: a
 \textbf{floor}, two independent draw sets at native resolution, the
 redraw null; the \textbf{reenc} control of \S\ref{sec:estimand}; one
 \textbf{demote} arm per edge $e$; and, on debiased runs, per-arm
@@ -67,9 +65,9 @@ Eq.~\ref{eq:gapdef}, a redraw floor minus a single demoted-arm
 cosine, adds an asymmetry of its own: the floor compares \emph{two}
 finite-draw estimates of the native gradient where each demote arm
 contributes one. We observed the resulting bias, whose
-floor-mimicking signature \S\ref{sec:reduction} derives, live and
-large at our
-operating point: a variance back-of-envelope predicts spurious
+floor-mimicking signature \S\ref{sec:reduction} derives, directly
+and at substantial magnitude at our
+operating point: a first-order variance estimate predicts spurious
 iso-direction
 endpoint gaps of ${\approx}\,0.02/0.05/0.15$ for $896/768/512$, and
 the uncorrected $1024{\to}896$ endpoint gap indeed decays as
@@ -266,8 +264,8 @@ re-running the endpoint with target $\epsilon - \alpha x$,
 $\alpha \in [0, 1]$, finds the paired debiased excess
 $\alpha$-flat at the well-conditioned anchors: no resolvable
 target-content
-share \emph{in the angular estimand}. The flatness is not a
-cancellation mystery. The target-mediated gradient itself is real and
+share \emph{in the angular estimand}. The flatness is not an
+unexplained cancellation. The target-mediated gradient itself is real and
 large, but demotion's change to it lands almost entirely \emph{along}
 $\hat g_{\src}$, to which the cosine gap is blind
 (Eq.~\ref{eq:exact}); the endpoint gap is therefore the graph floor
@@ -323,7 +321,7 @@ backward \citep{dao2022flashattention} (an identical retrain reads
 $1.000$); the
 non-det.\ row retrains native at the same seed \emph{without}
 deterministic kernels (one twin pair per corpus), so it reads
-run-to-run kernel chaos alone. \emph{late}: demotion only in the last
+run-to-run kernel nondeterminism alone. \emph{late}: demotion only in the last
 $75\%$ of steps; the stacked row adds the $768$ low-excess window as
 a second route ($1024{\to}768$ on $0.65{<}\sigma{<}0.95$, last $50\%$).
 \textbf{Bold}: closest endpoints.}

@@ -29,10 +29,10 @@ proportionally less.
 \emph{before} fetching latents, from the unchanged training density.
 When every sample
 in the batch is above the gate ($\sigma > 0.5$), the native
-$1024$-tier latent is swapped for a cached demoted-grid sibling
+$1024$-tier latent is replaced with a cached demoted-grid counterpart
 produced by the probe's own measured-safe recipe (pixel-space
 downscale, VAE re-encode); everything downstream derives from the
-swapped latent. Off-route images always train native, as does
+substituted latent. Off-route images always train native, as does
 validation.
 
 \textbf{Banded rotary alignment, $\sigma$-gated.} Motivated by
@@ -66,10 +66,10 @@ between each arm's endpoint $\Delta W$ and its matched-seed native
 twin's. Determinism makes the read exact: an identical retrain
 reproduces its twin at $1.000$, and the same retrain with
 non-deterministic kernels reads $0.264$/$0.427$ (corpus A/B),
-run-to-run kernel chaos alone. Against that reference, demoting at
-\emph{every} $\sigma$ lands below the non-deterministic retrain
+run-to-run kernel nondeterminism alone. Against that reference, demoting
+at \emph{every} $\sigma$ falls below the non-deterministic retrain
 ($0.183$/$0.236$), while demoting only above the gate
-($\sigma{>}0.5$) lands level with or above it ($0.365$/$0.432$).
+($\sigma{>}0.5$) matches or exceeds it ($0.365$/$0.432$).
 Late scheduling, demotion only in the last $75\%$ of steps, brings
 the endpoint very close to the native weights ($0.753$/$0.770$),
 and, as the map's low-excess read of the $768$ window predicts,
@@ -101,7 +101,10 @@ trajectory is addressed by the exercise grid's weight-space read at
 $480$ steps rather than production scale.
 
 \textbf{Account resolution and domain.} The account predicts held-out
-routes at ${\sim}0.07$--$0.09$ RMSE, not within $\epsstar$; its
+routes at ${\sim}0.07$--$0.09$ RMSE, not within $\epsstar$ (the
+held-out protocol, its pre-registered gates, and the structural
+failures it exposes are quantified in Appendix~\ref{sec:headtohead});
+its
 $A(\mathrm{ratio})$ governor rests on two distinct ratio values; the
 reduction's domain excludes the $768$ mid-$\sigma$ window, whose
 mechanism the vector-resolved probe has measured (negative
@@ -139,8 +142,8 @@ held-out validation on that basis.
 \textbf{Scope.} Adapter (LoRA) gradients on a frozen backbone; full
 fine-tuning may differ. Pixel-space demotion only (latent-space
 downsampling was not tested here; SwD found it inferior). The
-$\sigma$-gated banded-alignment parameters were taken from one shot at
-pre-registered values, not searched.
+$\sigma$-gated banded-alignment parameters were fixed at
+pre-registered values in a single run, not searched.
 
 \section{Conclusion}
 \label{sec:conclusion}
@@ -168,7 +171,7 @@ realizing $-14.6\%$ wall-clock at fixed steps with a weight-space
 endpoint within kernel-noise reach of a native retrain, rising to
 cosine $0.75$ when demotion is late-scheduled at proportionally
 reduced saving. We offer
-the account and its instrument as the cheap, general test that any
+the account and its instrument as the inexpensive, general test that any
 future ``train part of the time at lower resolution'' proposal should
 pass before it is believed.
 
