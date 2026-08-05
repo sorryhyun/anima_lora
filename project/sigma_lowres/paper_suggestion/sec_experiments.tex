@@ -264,8 +264,23 @@ demotion's change to it lands along $\hat g_{\src}$, to which the
 angular estimand is blind (Eq.~\ref{eq:exact}); and a forward-only
 probe of the model's caption-conditioned \emph{prior} dissociates the
 prior from the floors' route ordering, placing the ordering in $J$.
-Constructions, anchors, and the parallel-landing decomposition behind
-the $\alpha$-flatness are in Appendix~\ref{app:instrument}.
+The floor's split into $\mathrm{RoPE}_e + \mathrm{Resid}_e$
+(Eq.~\ref{eq:twoterm}) is then read by one origin-side intervention:
+evaluating the demoted grid at positionally-interpolated fractional
+rotary coordinates, which matches its relative phase geometry to
+native, \emph{erases} the $768$ endpoint floor and removes
+${\sim}30\%$ of the $512$ floor, the in-band $896$ control untouched
+(a raw-estimator probe; \S\ref{sec:limitations}). Re-anchored against
+the debiased floors, $\mathrm{Resid}_{768} \approx 0$: what survives
+the coordinate fix is the harsh route's
+$\mathrm{Resid}_{512} \approx 0.2$ bulk, a genuine non-positional
+graph residue, to which the capacity governor below attaches. (The
+erasure itself is no training lever; the frequency-selective banded
+alignment of \S\ref{sec:trainer} is the form that survives
+in-window.) Constructions, anchors, the parallel-landing
+decomposition behind the $\alpha$-flatness, and the floor ledger's
+full numbers with their per-block depth localization are in
+Appendix~\ref{app:instrument}.
 
 \paragraph{The governors: ratio sets the amplitude, absolute size sets
 the floor.}
@@ -358,29 +373,4 @@ such that $\sigma$ is drawn before the latent is fetched.}
 \end{tabular}
 \end{minipage}
 \end{table}
-
-\paragraph{The floor's own parts: $\mathrm{RoPE}_e +
-\mathrm{Resid}_e$.}
-The floor's split into $\mathrm{RoPE}_e + \mathrm{Resid}_e$
-(Eq.~\ref{eq:twoterm}) carries one sharp prediction: the positional
-part is a coordinate-system artifact, so an origin-side intervention
-should erase it wherever the data branch is inactive. Evaluate the
-demoted grid at positionally-interpolated fractional rotary
-coordinates (patch $i$ at $i \cdot H_{\src}/H_{\dem}$), making its
-relative phase geometry match native (a raw-estimator probe;
-\S\ref{sec:limitations}). At the $\sigma{=}1$ endpoint this \emph{erases} the $768$ floor
-and removes ${\sim}30\%$ of the $512$ floor, leaving the
-in-band $896$ control untouched: re-anchored against the debiased
-floors, $\mathrm{Resid}_{768} \approx 0$ while $512$ retains a
-$\mathrm{Resid}_{512} \approx 0.2$ bulk. The mild-route floor is mostly
-a coordinate-system artifact; the harsh-route bulk is a genuine
-non-positional graph residue, and the capacity governor attaches to
-it. The erasure is \emph{not} a
-training lever, since with image content in the input the stretched
-forward is off-manifold, but a frequency-\emph{selective} banded
-alignment survives in-window (\S\ref{sec:trainer}). Full numbers, the
-per-block/per-module depth localization behind this design, and the
-inference-side prior art on the attention-over-$N$ piece
-\citep{li2025infoscale,liu2026tide} are in
-Appendix~\ref{app:instrument}.
 
