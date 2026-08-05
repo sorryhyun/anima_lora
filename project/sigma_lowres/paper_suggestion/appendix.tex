@@ -362,7 +362,7 @@ remainder branch's own share. The first says the interaction can never
 exceed the retained sum ($2\sqrt{S_e\Phi_e} \le S_e + \Phi_e$) and is
 automatically negligible wherever one share dominates the other, so
 assumption (ii) carries independent content only near share
-crossover, which is exactly where Appendix~\ref{sec:headtohead} finds
+crossover, which is precisely where Appendix~\ref{sec:headtohead} finds
 it failing. The second says the first-order part of the remainder
 enters at half power, one factor of $\sqrt{\rho_e}$ per retained
 share, so assumption (i) reduces to the branch-level statement that
@@ -453,7 +453,7 @@ Fig.~\ref{fig:estimator}): large at high $\sigma$, where the model
 pulls composition out of the prior; small in the mid-$\sigma$
 refinement regime; inflated again at low $\sigma$ by irreducible
 $\epsilon$. A monotone absolute mismatch over this U-shaped norm
-yields exactly the measured interior-peaked curves: bin-mean gap
+yields the measured interior-peaked curves: bin-mean gap
 tracks $1/\|\bar g_{\src}\|$ (Spearman $+0.55$--$+0.90$). The
 renormalization check reads the amplification
 directly: multiplying each bin-mean gap by
@@ -478,10 +478,11 @@ interior points $\alpha \in [0.5, 0.75]$ are unreadable by construction
 and excluded: there the native residual $\alpha x - \hat x$ passes near
 cancellation, the gradient norm dips ($60 \to 33$) and the redraw floor
 falls to $0.87$, so the estimator reads through a small gradient norm:
-the low-norm amplification above, surfacing along the $\alpha$ axis. The $512$ route's sweep anchors are
-$+0.269 \pm 0.041$ at $\alpha{=}0$ vs $+0.337 \pm 0.067$ at
-$\alpha{=}1$, $\alpha$-flat like the $768$ anchors quoted in the main
-text.
+the low-norm amplification above, surfacing along the $\alpha$ axis.
+The well-conditioned anchors behind the $\alpha$-flatness claim of
+\S\ref{sec:ourscored}: $768$ reads $+0.070 \pm 0.015$ at $\alpha{=}0$
+vs $+0.049 \pm 0.010$ at $\alpha{=}1$ (control slope $+0.003$), and
+$512$ reads $+0.269 \pm 0.041$ vs $+0.337 \pm 0.067$.
 
 \paragraph{Parallel-landing decomposition of the target term (behind
 \S\ref{sec:ourscored}).} The $\alpha$-flatness has an exact mechanism.
@@ -869,7 +870,7 @@ tolerance, since $\delta$ is inert, but a missing term and a missing
 governor: it has nothing to put in the high-$\sigma$ region where the
 floor lives, and nothing to distinguish $1280{\to}1024$ from a
 same-ratio route at a quarter of the token count. Our account's
-held-out accuracy comes from exactly the two ingredients it adds.
+held-out accuracy comes from precisely the two ingredients it adds.
 
 \paragraph{Which functional form, and what the fit does not identify.}
 Refitting the same pipeline under three forms for the data term (a
@@ -1046,8 +1047,8 @@ SPD's is an inference-side value selected on a speed--quality Pareto
 ablation over generated images \citep{xiao2026spd}, and nothing ties it
 to gradients. Our setting fixes one \emph{by construction}. The
 demotion recipe pays a resize--VAE-encode round trip whose latent error
-has measurable per-band power $D(f)$, expressed in exactly
-Eq.~\ref{eq:spd}'s units, so $\delta_{\reenc}(e) :=
+has measurable per-band power $D(f)$, expressed in
+Eq.~\ref{eq:spd}'s own units, so $\delta_{\reenc}(e) :=
 D(f_{\mathrm{cut}}(e))$ anchors the family with zero free parameters.
 Measured (above), that anchor is tiny and image-generic, and the
 boundary moves it forces are measured in Table~\ref{tab:null} and

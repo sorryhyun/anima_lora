@@ -8,8 +8,8 @@ superlinearly with resolution: token count grows quadratically with
 edge length, and attention cost grows again in token count. This
 cost structure makes the title question worth stating precisely: can
 the \emph{gradient} of an adapter be computed on a downscaled latent
-as a drop-in substitute for the native one, with the same model, the
-same objective, and the same $\sigma$ distribution, and with only
+as a drop-in substitute for the native one, with the model, the
+objective, and the $\sigma$ distribution unchanged and only
 the spatial grid changed on some steps?
 
 There is a well-studied reason to expect an affirmative answer
@@ -51,16 +51,17 @@ The contributions of this paper are as follows:
 \begin{enumerate}
 \item \textbf{Two accounts of the gap, and a debiased measurement
 that scores them} (\S\ref{sec:theory}, \S\ref{sec:evidence}). We
-define the substitution gap at the gradient level and derive two
-competing accounts of it in the same units. The first is the gap
+define the substitution gap at the gradient level and state two
+accounts of it in the same units. The first is the gap
 implied by the existing spectral argument, taken in its strongest
 tolerance-parameterized form (SPD, \citealp{xiao2026spd}); it
 depends on the downscale \emph{ratio} alone by construction. The
-second is our own: it treats the substitution as a perturbation of
-both factors of $g = J^{\!\top}r$ and reduces, under four named
-assumptions, to a route amplitude on a universal mismatch curve
-\emph{plus} a $\sigma$-independent term set by the target grid's
-token count. The two differ structurally before
+second, the \emph{gradient-perturbation} account, treats the
+substitution as a perturbation of
+both factors of $g = J^{\!\top}r$ and reduces, under mild,
+realistic assumptions, to a route amplitude on a universal mismatch
+curve \emph{plus} a $\sigma$-independent term set by the target
+grid's token count. The two differ structurally before
 any measurement (\S\ref{sec:spectral}), and the resulting
 $(\text{route}, \sigma)$ map (\S\ref{sec:map}), read with each
 route's finite-sample bias estimated and subtracted and against a
@@ -69,9 +70,8 @@ $1024{\to}768$ route a window ($0.65 < \sigma < 0.95$) that the
 spectral account does not predict at any tolerance. Head to head on
 the same curves, the spectral account misses at $0.147$--$0.355$
 RMSE, whereas ours predicts held-out routes at ${\sim}0.07$--$0.09$,
-better than an oracle fit on the held-out data itself, and the
-token-count law correctly predicts the $\sigma$-independent term on
-both held-out routes.
+and the token-count law correctly predicts the $\sigma$-independent
+term on both held-out routes.
 \item \textbf{Selective low-resolution training} (\S\ref{sec:practical}).
 Restricting the substitution to the window the map validates gives
 an opt-in $\sigma$-conditional trainer that cuts the forward-compute

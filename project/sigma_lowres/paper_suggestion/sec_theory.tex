@@ -4,7 +4,7 @@
 This section fixes the estimand (\S\ref{sec:estimand}), then states
 two accounts of it in the same units: a training-gap interpretation
 built on the spectral account of the inference-side literature
-(\S\ref{sec:spectral}), and our own
+(\S\ref{sec:spectral}), and the gradient-perturbation account
 (\S\S\ref{sec:ouraccount}--\ref{sec:reduction}). The two
 are not variants of one model: they disagree about which quantity
 governs a route's cost, about what happens at pure noise, and about
@@ -38,8 +38,8 @@ spatial grid.
 
 \paragraph{The estimand.}
 For an arm $a \in \{\src, \reenc, \dem\}$, where the source arm
-$\src$ trains on the native-resolution latent $x_{\src}$, the demoted
-arm $\dem$ trains on $x_{\dem}$, and the control arm $\reenc$ trains
+\emph{src} trains on the native-resolution latent $x_{\src}$, the demoted
+arm \emph{dem} trains on $x_{\dem}$, and the control arm \emph{reenc} trains
 on the native latent decoded and re-encoded at native resolution, let
 $\bar g_a(\sigma) = \mathbb{E}_\epsilon[\nabla_\theta \mathcal{L}]$ be
 the population per-bin mean adapter gradient of a query (image,
@@ -48,8 +48,7 @@ $d_{e_0 \to e}$, is
 \begin{equation}
 d_{e_0 \to e}(\sigma) \;=\; 1 - \cos\!\big(\bar g_{\src}(\sigma),\,
 \bar g_{\dem}(\sigma)\big)
-\;=\; \tfrac{1}{2}\,\big\|\hat g_{\src} - \hat g_{\dem}\big\|^2
-\;\ge\; 0,
+\;=\; \tfrac{1}{2}\,\big\|\hat g_{\src} - \hat g_{\dem}\big\|^2,
 \label{eq:gapdef}
 \end{equation}
 with $\hat g$ the unit-normalized gradients. Route-level scalars carry
@@ -144,7 +143,7 @@ from the power spectrum (Appendix~\ref{app:posterior}). Carrying it
 into the gradient units of Eq.~\ref{eq:gapdef} costs one calibrated
 gain, since the map passes through the network's Jacobian, about which
 a spectral model of the \emph{data} says nothing.
-Appendix~\ref{app:spectral} instantiates exactly this pipeline when
+Appendix~\ref{app:spectral} instantiates this pipeline when
 the account is scored.
 
 Whatever the estimate of $S_e$, the account above commits to three
@@ -155,11 +154,11 @@ together under the single tolerance, so the family is totally ordered.
 \textbf{(b)~Ratio only}: the cut $\omega_e = \tfrac{1}{2}\,e/e_0$ of
 Eq.~\ref{eq:lowpass} is a function of the downscale \emph{ratio} alone,
 so the estimate is structurally blind to any absolute-size effect.
-\textbf{(c)~No persistent term}: for every route and every $\delta$
+\textbf{(c)~No bias term}: for every route and every $\delta$
 the predicted gap vanishes above a finite boundary, so no
 $\sigma$-independent contribution is expressible.
 
-\subsection{Our account: what demotion perturbs}
+\subsection{The gradient-perturbation account: what demotion perturbs}
 \label{sec:ouraccount}
 
 We start one level lower, from what the substitution touches
@@ -180,8 +179,7 @@ objective consumes, and the Jacobian, through the compute graph. The
 estimand is built from noise means, so split each factor into its
 noise mean and fluctuation under the averaging that defines
 $\bar g_a$ in \S\ref{sec:estimand}, $r_a = \bar r_a + \tilde r_a$ and
-$J_a = \bar J_a + \tilde J_a$; the arm's mean gradient is then,
-exactly,
+$J_a = \bar J_a + \tilde J_a$; the arm's mean gradient is then
 \begin{equation*}
 \bar g_a(\sigma)
 \;=\; \mathbb{E}_\epsilon\!\big[J_a^{\!\top} r_a\big]
@@ -242,7 +240,7 @@ It remains to read Eq.~\ref{eq:branches} in the units of the estimand.
 Split the perturbation $\delta g$ into a rescaling of $\bar g_{\src}$
 and a rotation away from it, with $\kappa_\parallel$ and
 $\kappa_\perp$ the two components in units of $\|\bar g_{\src}\|$.
-The gap is then, \emph{exactly}, a saturating function of a single
+The gap is then an exact saturating function of a single
 rotation-to-scale ratio,
 \begin{equation}
 d_e \;=\; 1 - \frac{1}{\sqrt{1 + \kappa_{\mathrm{eff}}^2}}\,,
@@ -267,11 +265,9 @@ d_e(\sigma) \;\approx\;
 \label{eq:fourterm}
 \end{equation}
 with both shares non-negative, an interaction that can carry either
-sign (a fact that matters in Appendix~\ref{sec:headtohead}), and a
+sign, and a
 remainder $R'_e$; the derivations, and the remainder's exact content,
-are in Appendix~\ref{app:geometry}. Note that Eq.~\ref{eq:spd} is
-Eq.~\ref{eq:fourterm} with the graph share and interaction zeroed and
-$S_e$ gated at Nyquist.
+are in Appendix~\ref{app:geometry}.
 
 \paragraph{From the expansion to a measurable form.}
 On the reported excess, Eq.~\ref{eq:fourterm} is exact but not yet an
@@ -281,13 +277,18 @@ grid, so $\Delta J_{\reenc} = 0$, its expansion degenerates to
 $d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$, and subtracting it
 cancels only the re-encode component of the data share, passing the
 graph share and interaction through untouched. The rest is carried by
-four named assumptions, each tested by a designated probe in
+four assumptions, each tested by a designated probe in
 \S\ref{sec:evidence}:
 \begin{itemize}
 \item \textbf{(i)~Small remainder}: $R'_e$ negligible over the
 claimed domain.
 \item \textbf{(ii)~Negligible projected interaction}: $|I_e|$ small
-against the retained shares.
+against the retained shares.\footnote{Assumptions (i)--(ii) are not
+unstructured hopes: both discarded terms obey Cauchy--Schwarz bounds
+in the retained shares, the interaction by their geometric mean and
+the remainder entering at half power in its own share, so (ii)
+carries independent content only near share crossover
+(Appendix~\ref{app:geometry}).}
 \item \textbf{(iii)~Graph-relative stationarity}:
 $\|C_e^{\perp}\| / \|\bar g_{\src}\|$ $\sigma$-constant, since
 numerator and denominator share the residual's scale, so that the
@@ -322,28 +323,18 @@ attention softmax over a different token count and the coarse graph's
 capacity to approximate the fine graph's computation
 ($\mathrm{Resid}_e$).
 
-The first two assumptions are not unstructured hopes: both discarded
-terms obey exact Cauchy--Schwarz bounds in the retained shares, the
-interaction by their geometric mean and the remainder entering at
-half power in its own share, so (ii) carries independent content only
-near share crossover (Appendix~\ref{app:geometry}). The quadratic
+The quadratic
 power of the data term is fixed by the cosine geometry \emph{locally};
-where the measured perturbation turns out large (the $512$ route;
-\S\ref{sec:ourscored}) the licensed read is the
+where the measured perturbation turns out large the licensed read is the
 un-expanded parent form, Eq.~\ref{eq:exact} evaluated at the same
 amplitude $a_e\,\|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$
 (recovering Eq.~\ref{eq:twoterm}'s data term in the small-mismatch
 limit), whose data term
-\emph{saturates} instead of overshooting. Appendix~\ref{sec:headtohead}
-scores both forms held out: Eq.~\ref{eq:exact} is the best empirical
-predictor, Eq.~\ref{eq:twoterm} the derived small-perturbation form.
+\emph{saturates} instead of overshooting.
 The ledger is as follows: Eqs.~\ref{eq:exact} and~\ref{eq:fourterm}
 are unconditional; Eq.~\ref{eq:twoterm} is conditional on the four
 assumptions; and the coefficients $a_e$, $\|\Delta \bar r(\sigma)\|$,
-$\|\bar g_{\src}(\sigma)\|$, and each route's floor are measured. The
-account was pre-registered before the discriminating runs, with an
-outcome matrix that included a kill switch on the graph term (all
-endpoint gaps ${\approx}\,0$).
+$\|\bar g_{\src}(\sigma)\|$, and each route's floor are measured.
 
 \paragraph{The estimand forces a debiased instrument.}
 The angular reduction carries a metrological corollary. The estimand
@@ -357,7 +348,7 @@ bias is arm-dependent: per-draw gradient variance grows as the token
 count falls, so the inflation is larger on coarser grids and does not
 cancel in the excess of Eq.~\ref{eq:excess}. The resulting artifact,
 a positive offset persisting at every $\sigma$ and growing as the
-target grid shrinks, has exactly the signature of the graph floor.
+target grid shrinks, matches the signature of the graph floor.
 The same geometry dictates the remedy's form. The draw noise is
 uncorrelated with the mean and independent across arms and draw sets,
 so it cancels in every expected cross term while inflating every

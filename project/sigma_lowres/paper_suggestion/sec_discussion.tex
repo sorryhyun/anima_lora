@@ -3,7 +3,7 @@
 \label{sec:trainer}
 
 As an applied example, we introduce the one measured-safe corpus route
-into a LoRA \citep{hu2022lora} trainer as an opt-in path, exactly as
+into a LoRA \citep{hu2022lora} trainer as an opt-in path, as
 measured, with no extrapolation beyond the map. The intervention is
 deliberately small: three lines inside an otherwise standard
 flow-matching step, and no change to the objective, the optimizer, or
@@ -12,13 +12,15 @@ exercise it on a fixed-step grid: gated, scheduled, and gate-removed
 arms $\times$ $3$ training seeds $\times$ two single-artist
 illustration corpora of contrasting style, one flat and graphic, one
 densely rendered (corpus A, $60$ training images; corpus B, $15$),
-$480$ optimizer steps each, bit-exact deterministic with paired RNG so
+$480$ optimizer steps each, run with deterministic kernels (including
+FlashAttention's deterministic backward,
+\citealp{dao2022flashattention}) and paired RNG so
 every arm sees identical draws. At fixed steps the gated arm realizes
 a $-14.6\%$ wall-clock saving over native training on our corpus.
 
 \textbf{$\sigma$-first draw.} The trainer draws each batch's $\sigma$
-\emph{before} fetching latents, from the unchanged training density
-(demotion conditions on $\sigma$, not the reverse). When every sample
+\emph{before} fetching latents, from the unchanged training density.
+When every sample
 in the batch is above the gate ($\sigma > 0.5$), the native
 $1024$-tier latent is swapped for a cached demoted-grid sibling
 produced by the probe's own measured-safe recipe (pixel-space
@@ -135,51 +137,32 @@ pre-registered values, not searched.
 \label{sec:conclusion}
 
 When does training on downscaled images yield the same gradient
-direction? Not
-when the noise has masked the frequencies the coarse grid loses. That
-spectral answer was advanced by prior work for inference-time
-substitution and had not previously been confronted with the training
-gradient. Transported to the training question, it is a model of only
-one part of one branch of what demotion perturbs, and the
-measurements reject it at every point of structural divergence: the
-mildest route's crossover sits at $3.5\times$ the equal-power
-prediction, no tolerance reproduces the map, and a
-$2\times$-downscaled latent certifies at no noise level, because the
-network function itself is grid-calibrated, partly through its
-positional coordinate system and partly through an irreducible
-dependence of the computation on token count.
-
-The measured answer has two conditions, matching the two terms of our
-account: the target grid must be large enough in \emph{absolute token
-count} that its graph floor sits below certification resolution, and the
-noise level must exceed a per-route boundary where the ratio-governed
-data term dies. On our model that means $1024{\to}896$ on
-$\sigma \in (0.5, 0.94]$ (the upper tail toward the endpoint's small
-real gap still unresolved) and $1280{\to}1024$ at
-$\sigma \gtrsim 0.75$, and a $2\times$ downscale at no noise level.
-Between the regimes, $1024{\to}768$ keeps a narrow low-excess window
-($0.65 < \sigma < 0.95$) atop its floor, low enough to stack onto
-the trainer at no endpoint cost, short of strict
-certification. The answer is predictive, not
-merely descriptive: head to head on the same curves the account
-predicts held-out routes at ${\sim}0.07$--$0.09$ RMSE against the
-spectral family's $0.147$--$0.355$, beating an oracle fit on the
-held-out data itself on one route. Getting there required treating the
-question as a metrology problem: naive finite-draw estimation
-manufactures exactly the token-count-ordered floor signature under
-test, half the intermediate route's raw floor was estimator bias, and
-our own headline claims were re-derived, and in one case softened,
-under the correction. On the one route our corpus makes safe, the
-trainer realizes the map's projected ceiling of $-14.6\%$ wall-clock
-at fixed steps, with a weight-space endpoint footprint within
-kernel-noise reach of a native retrain, rising to cosine $0.75$
-against the native endpoint when demotion is late-scheduled. We offer
+direction? We answered by decomposing the demoted gradient's
+perturbation into a ratio-governed data term and a
+$\sigma$-independent, token-count-governed graph floor, and by
+building the debiased estimator the question requires, since naive
+finite-draw estimation manufactures the very floor signature under
+test. Measured under that instrument, the spectral answer of the
+inference-side literature (safe once noise masks the frequencies the
+coarse grid loses) models only one part of one branch of what
+demotion perturbs: no tolerance reproduces the map, the mildest
+route's crossover sits at $3.5\times$ the equal-power prediction, and
+a $2\times$ downscale certifies at no noise level, because the
+network function itself is grid-calibrated, partly through its rotary
+coordinate system and partly through an irreducible dependence of the
+computation on token count. The two-term account is predictive, not
+merely descriptive, reaching held-out routes at ${\sim}0.07$--$0.09$
+RMSE against the spectral family's $0.147$--$0.355$, and its map
+licenses a selective trainer: on our model, $1024{\to}896$ at
+$\sigma \in (0.5, 0.94]$ with a stackable $1024{\to}768$ window,
+realizing $-14.6\%$ wall-clock at fixed steps with a weight-space
+endpoint within kernel-noise reach of a native retrain, rising to
+cosine $0.75$ when demotion is late-scheduled. We offer
 the account and its instrument as the cheap, general test that any
 future ``train part of the time at lower resolution'' proposal should
-pass before it is believed. Without the debiasing, that test
-manufactures the very effect it looks for.
+pass before it is believed.
 
-\subsubsection*{The use of large language models}
+\subsubsection*{Acknowledgements}
 Portions of the text in this manuscript were drafted and edited with
 the assistance of large language models (LLMs). The technical
 contributions, experimental design, implementation, results, and

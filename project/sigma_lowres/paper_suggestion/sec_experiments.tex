@@ -4,15 +4,15 @@
 This section scores both accounts of \S\ref{sec:theory} against one
 measured object: debiased demotion-gap curves over the full $\sigma$
 axis, on routes neither account saw. We build the instrument
-(\S\ref{sec:instrument}), read the per-route map its curves certify,
-which is the deployed artifact (\S\ref{sec:map}), and then score both
+(\S\ref{sec:instrument}), read the per-route map its curves certify
+(\S\ref{sec:map}), and then score both
 accounts against the same curves: the spectral account at the
-boundary and the curve level, ours term by term (\S\ref{sec:scored}).
+boundary and the curve level, the gradient-perturbation account term
+by term (\S\ref{sec:scored}).
 The held-out prediction protocol, its pre-registered gates, and the
 structural failures it exposes are quantified in
 Appendix~\ref{sec:headtohead}. Each subsection states the prediction
-it discharges against criteria frozen before the runs; several probes
-double as falsifiers of our own account's assumptions.
+it discharges against criteria frozen before the runs.
 
 \subsection{The instrument}
 \label{sec:instrument}
@@ -27,8 +27,10 @@ resolution \emph{tiers} indexed by nominal edge length
 $e \in \{512, 768, 896, 1024, 1280\}$; a tier-$e$ image occupies roughly
 $(e/16)^2$ latent-patch tokens (${\sim}4{,}100$ at 1024, ${\sim}3{,}000$
 at 896, ${\sim}2{,}160$ at 768, ${\sim}1{,}000$ at 512). The probe
-adapter is a plain LoRA checkpoint trained at native tiers; we return to
-this operating-point dependence in \S\ref{sec:limitations}.
+adapter is a plain LoRA \citep{hu2022lora} checkpoint trained at
+native tiers: low-rank adapters are the dominant fine-tuning vehicle
+for models at this scale, and the trainer of \S\ref{sec:practical}
+trains the same class.
 
 \paragraph{The gradient probe.}
 For each image and each of $B$ $\sigma$-bins we accumulate
@@ -58,7 +60,7 @@ which per-image rankings from the same gradients had reliability
 indistinguishable from zero.
 
 \paragraph{Finite-draw attenuation.}
-Finite draws are not innocuous here. The arm dependence of
+The arm dependence of
 \S\ref{sec:reduction} is concrete: per-draw gradient variance grows
 as the token count falls, the MSE loss averaging over fewer
 elements. The natural
@@ -69,8 +71,9 @@ contributes one. An iso-direction null, in which demotion changes
 \emph{nothing} but the variance, therefore still produces a positive
 gap that \emph{grows as the target grid shrinks}, the same signature
 as ``absolute token count sets the floor,'' and no naive read can
-tell the two apart. The mechanism is live and large at our operating
-point: a variance back-of-envelope predicts spurious iso-direction
+tell the two apart. We observed this bias live and large at our
+operating point: a variance back-of-envelope predicts spurious
+iso-direction
 endpoint gaps of ${\approx}\,0.02/0.05/0.15$ for $896/768/512$, and
 the uncorrected $1024{\to}896$ endpoint gap indeed decays as
 ${+}0.100/{+}0.035/{-}0.016$ at $D = 4/8/16$, a clean $c/D$ decay
@@ -81,7 +84,7 @@ Two corrections, used together, remove the finite-draw attenuation.
 First, \emph{self-floors with attenuation correction}: every arm runs
 a second independent draw set $g_a'$, giving the per-arm self-cosines
 that Eq.~\ref{eq:debias} consumes, so that each arm has the same
-two-estimate structure the native floor has; the floor is exactly the
+two-estimate structure the native floor has; the floor is precisely the
 source arm's self-cosine,
 $\cos_{\mathrm{floor}} = \cos_{\mathrm{self},\src}$, and the debiased
 gap $\dgap$ is computed per image and bin. Second,
@@ -100,10 +103,12 @@ Appendix~\ref{app:instrument}.
 A safety verdict needs two numbers, stated separately: a margin, the
 largest excess considered practically equivalent and a property of
 the question, and the instrument's resolution, which sets only the
-power available to certify it. We fix the margin at
+power available to certify it. We fix the strict margin at
 $\varepsilon = 0.02$, comparable to the re-encode control's own
-confidence half-width (Table~\ref{tab:floor}). A route is
-\emph{certified safe at margin $\varepsilon$} in a bin exactly where
+confidence half-width (Table~\ref{tab:floor}); a verdict underpowered
+there is stated at the smallest margin its bounds do certify. A route
+is
+\emph{certified safe at margin $\varepsilon$} in a bin where
 the one-sided non-inferiority bound clears it,
 \begin{equation}
 \text{UB}_{95}\!\left(\bgap\right) \;<\; \varepsilon,
@@ -121,7 +126,8 @@ route's simultaneous upper bounds never fall below $\varepsilon$ at
 the current $(N, D)$; ``certifiably unsafe'' means the lower bound
 stays above it. At the verdict grid's operating point of $N{=}40$ and
 $D{=}12$ per bin, the bin-level $\epsstar$ is $0.02$--$0.07$, so
-interior verdicts below are stated at the margins they do certify;
+interior verdicts below are stated at the margins they do certify
+($0.09$ for the interior windows of \S\ref{sec:map});
 endpoint-mode draw sweeps, with $D$ up to $64$, reach
 $\epsstar \approx 0.01$--$0.02$, powered for the strict margin. All
 verdict maps report the \emph{paired per-image excess}
@@ -130,12 +136,7 @@ and $|\gap_{e,i}| > 1.5$ values, which cancels the shared per-image
 draw structure and stays stable at mid-$\sigma$ where the unpaired
 estimator is not; finite-draw cosines are compiler-kernel-path
 sensitive, so all pairings are computed within one run. Every number
-in the main text is debiased. Four secondary probes (the $1280$-tier
-iso-severity twin, the $896$-tier transfer, the depth split, and the
-positional-interpolation intervention) predate the debiased instrument
-and are retained only where their strictly positive bias is
-conservative or cancels in a paired same-grid contrast
-(Appendices~\ref{app:instrument},~\ref{app:tables}).
+in the main text is debiased.
 
 \subsection{The measured $(\text{route}, \sigma)$ map}
 \label{sec:verdict}
@@ -153,7 +154,8 @@ $\pm\epsstar$ certification resolution (\S\ref{sec:instrument}). The
 same axes carry both predictions of \S\ref{sec:theory}: the spectral
 account (red dashed), transported through the residual$\to$gradient
 bridge at the measured anchor tolerance, the whole family scoring
-alike (Appendix Fig.~\ref{fig:e83}); and ours under the exact angular
+alike (Appendix Fig.~\ref{fig:e83}); and the gradient-perturbation
+account under the exact angular
 link (blue, Eq.~\ref{eq:exact}; three-form comparison in Appendix
 Fig.~\ref{fig:e51280}), with each route's predicted floor (blue
 dashed; dashed-to-solid is the data term) and a $95\%$ full-pipeline
@@ -167,7 +169,7 @@ gray $\pm\epsstar$ band per Eq.~\ref{eq:safe} (all three routes on one
 axis, with the estimator context, in Appendix Fig.~\ref{fig:verdict};
 per-bin numbers in Appendix Table~\ref{tab:debiasedmap});
 \S\ref{sec:scored} scores both accounts on the same curves.
-Throughout, \emph{safe} means exactly the certification of
+Throughout, \emph{safe} means the certification of
 Eq.~\ref{eq:safe}, namely gap excess over the re-encode control below
 the stated margin, on the \emph{per-example} object: the sense in
 which a demoted gradient is indistinguishable from a native one.
@@ -196,15 +198,16 @@ that single-estimate variance had buried.
 Both accounts are scored against one measured object: the debiased
 gap curves of Fig.~\ref{fig:accounts}, read as \S\ref{sec:map} has
 just set out. The spectral account is scored first, at the boundary
-and then at the curve level; ours follows, term by term.
+and then at the curve level; the gradient-perturbation account
+follows, term by term.
 
-\paragraph{The spectral account: scored.}
-The spectral account's prediction is monotone: the mismatch is
+\paragraph{The spectral account.}
+The spectral account's prediction is monotone: the predicted gap is
 concentrated at low $\sigma$ and vanishes at high $\sigma$, once
 noise drowns the destroyed band (equal-power crossovers
 $\sigma \approx 0.14/0.15/0.20$ for $896/768/512$, zero predicted gap
 above). The measurement disagrees in both regimes: the transported
-curves are near zero exactly where the measured curves peak (RMSE
+curves are near zero precisely where the measured curves peak (RMSE
 $0.147$ at $768$, $0.355$ at $512$), and above the crossover the
 floor persists (committed-region RMSE $0.027/0.049/0.218$). Neither
 read depends on the tolerance or the residual-shape choice in the
@@ -212,7 +215,7 @@ transport (within $0.01$ RMSE; Table~\ref{tab:null},
 Fig.~\ref{fig:e83}, Appendix~\ref{app:spectral}).
 
 
-\paragraph{Ours, the data branch: a route-uniform residual
+\paragraph{The data branch: a route-uniform residual
 mismatch.}
 Measuring the mean prediction residual
 $\bar r = \mathbb{E}_\epsilon[\hat v - (\epsilon - x)]$ of
@@ -227,9 +230,10 @@ with no cross-frequency coupling, that mismatch is confined to the
 destroyed band and ordered by its energy, which differs substantially
 across these routes. Route-uniformity implies that the real mismatch
 is carried by cross-band structure the diagonal model cannot express,
-and that all route identity lives in $J$. This was a pre-registered
-contrast that would equally have falsified our own assumption~(iv);
-instead it \emph{establishes} the shape factorization directly. The
+and that all route identity lives in $J$. The same contrast reads on
+assumption~(iv): the measured route-uniformity is the shape
+factorization that assumption asserts, established here directly
+rather than assumed. The
 decay is smooth, Wiener-like shrinkage with no hard gate at the
 spectral crossover. How this monotone mismatch, read over the
 U-shaped total gradient norm, yields the measured interior-peaked
@@ -246,24 +250,23 @@ Table~\ref{tab:floor}),
 and the $512$ value clears the pre-registered confirmation bar
 ($\dgap_\infty \ge 0.15$) on $12$ of $12$ probe images individually.
 Per \S\ref{sec:ouraccount} the target-mediated share need not vanish
-there, so two further probes close the step. The \emph{x-zero} probe
-(\S\ref{sec:instrument}) removes the image from input \emph{and}
-target, isolating pure graph-shape sensitivity, and its debiased
-draw-limit gaps equal the endpoint gaps at every route. The
-\emph{target-strength sweep}
-re-runs the endpoint with target $\epsilon - \alpha x$,
-$\alpha \in \{0, \ldots, 1\}$, and the paired debiased excess is
-$\alpha$-flat at the well-conditioned anchors (e.g.\ $768$:
-$+0.070 \pm 0.015$ at $\alpha{=}0$ vs $+0.049 \pm 0.010$ at
-$\alpha{=}1$; control slope $+0.003$): no resolvable target-content
+there, so two further probes close the step. The \emph{x-zero}
+probe's debiased
+draw-limit gaps equal the endpoint gaps at every route
+(Table~\ref{tab:floor}), and a \emph{target-strength sweep},
+re-running the endpoint with target $\epsilon - \alpha x$,
+$\alpha \in [0, 1]$, finds the paired debiased excess
+$\alpha$-flat at the well-conditioned anchors: no resolvable
+target-content
 share \emph{in the angular estimand}. The flatness is not a
 cancellation mystery. The target-mediated gradient itself is real and
 large, but demotion's change to it lands almost entirely \emph{along}
 $\hat g_{\src}$, to which the cosine gap is blind
 (Eq.~\ref{eq:exact}); the endpoint gap is therefore the graph floor
-as the angular estimand reads it (parallel-landing decomposition,
+as the angular estimand reads it. We provide the sweep's anchors and
+the parallel-landing decomposition,
 with the $\kappa_\parallel/\kappa_\perp$ numbers, in
-Appendix~\ref{app:instrument}). Finally, a forward-only probe of the
+Appendix~\ref{app:instrument}. Finally, a forward-only probe of the
 model's caption-conditioned \emph{prior} across grids gives route
 distances that are flat where the floors are strongly ordered, placing
 the ordering in $J$ rather than in a resolution-conditioned prior or a
@@ -305,8 +308,10 @@ term for the whole gap.
 \caption{Weight-space footprint:
 $\cos(\Delta W_{\text{arm}}, \Delta W_{\text{native}})$ at matched
 training seed, mean $\pm$ SD over three seed pairs, on two
-single-artist corpora ($60$/$15$ training images). Training is
-bit-exact deterministic (an identical retrain reads $1.000$); the
+single-artist corpora ($60$/$15$ training images). Training uses
+deterministic kernels, including FlashAttention's deterministic
+backward \citep{dao2022flashattention} (an identical retrain reads
+$1.000$); the
 non-det.\ row retrains native at the same seed \emph{without}
 deterministic kernels (one twin pair per corpus), so it reads
 run-to-run kernel chaos alone. \emph{late}: demotion only in the last
@@ -361,12 +366,12 @@ such that $\sigma$ is drawn before the latent is fetched.}
 \paragraph{The floor's own parts: $\mathrm{RoPE}_e +
 \mathrm{Resid}_e$.}
 The floor's split into $\mathrm{RoPE}_e + \mathrm{Resid}_e$
-(\S\ref{sec:reduction}) carries one sharp prediction: the positional
+(Eq.~\ref{eq:twoterm}) carries one sharp prediction: the positional
 part is a coordinate-system artifact, so an origin-side intervention
 should erase it wherever the data branch is inactive. Evaluate the
 demoted grid at positionally-interpolated fractional rotary
 coordinates (patch $i$ at $i \cdot H_{\src}/H_{\dem}$), making its
-relative phase geometry exactly match native. At the $\sigma{=}1$ endpoint this \emph{erases} the $768$ floor
+relative phase geometry match native. At the $\sigma{=}1$ endpoint this \emph{erases} the $768$ floor
 and removes ${\sim}30\%$ of the $512$ floor, leaving the
 in-band $896$ control untouched: re-anchored against the debiased
 floors, $\mathrm{Resid}_{768} \approx 0$ while $512$ retains a
