@@ -75,7 +75,7 @@ sys.path.insert(0, str(HERE.parent / "e5"))  # reuses E5's fit/paired-stats help
 from e5_holdout import E1B, bin_gnorm, paired_stats  # noqa: E402
 
 REENC_FLOOR = SIGMA / "bench" / "results" / "20260730-0940-reenc-floor"
-FIGS = SIGMA / "paper" / "figs"
+FIGS = SIGMA / "paper_suggestion" / "figs"
 
 ROUTES = ("896", "768", "512")
 FCUT = {"896": 0.4375, "768": 0.375, "512": 0.25}

@@ -21,7 +21,7 @@ $480$ optimizer steps each, run with deterministic kernels (including
 FlashAttention's deterministic backward,
 \citealp{dao2022flashattention}) and paired RNG so
 every arm sees identical draws. At fixed steps the always-gated arm
-realizes a $-14.6\%$ wall-clock saving over native training on our
+realizes a $-14.6\%$ training-time saving over native training on our
 corpora; the late-scheduled arms demote only part of the run and save
 proportionally less.
 
@@ -51,8 +51,9 @@ gains (paired $-0.05$ vs plain demotion at $\sigma \ge 0.59$).
 \centering
 \includegraphics[width=\linewidth]{figs/kaai_yuki_arms_grid.jpg}
 \caption{Visual counterpart to Table~\ref{tab:yardstick}: matched
-(prompt, noise-seed) renders from each arm's endpoint on a corpus-B
-display prompt, $20$ steps; columns are the table's arms, rows the
+(prompt, noise-seed) renders from the arms' endpoints on a corpus-B
+display prompt, $20$ steps; columns are four of the table's arms (the
+unscheduled gated arm is omitted), rows the
 three training seeds. Moving along a row (arms, seed fixed) changes
 the render on the same visual order as moving down a column (training
 seed, arm fixed); the gate-removed arm (rightmost) drifts the most,
@@ -76,7 +77,7 @@ and, as the map's low-excess read of the $768$ window predicts,
 stacking the $1024{\to}768$ route onto the late rule leaves the
 cosine essentially unchanged ($0.753$/$0.771$). The visual
 counterpart (Fig.~\ref{fig:kaaiyuki}) confirms the read: matched
-(prompt, seed) renders from the gated and late-scheduled arms are
+(prompt, seed) renders from the late-scheduled arms are
 nearly identical to native.
 
 \section{Limitations}
@@ -119,7 +120,7 @@ differently than the angular read does.
 
 \textbf{Instrument resolution and coverage.} ``Safe'' is one-sided
 non-inferiority against a fixed margin ($\varepsilon = 0.02$ strict;
-the interior windows currently certify at $0.09$ simultaneous,
+the map's windows currently certify at $0.09$ simultaneous,
 ${\approx}\,0.07$ pointwise), with the
 certification resolution ($\epsstar = 0.02$--$0.07$ per bin;
 ${\approx}\,0.01$--$0.02$ at the endpoint sweeps) setting the power
@@ -128,7 +129,7 @@ by construction, $\sigmastar$ boundaries are localized only to a bin,
 and every failure to certify a window is $(N, D)$-relative: a
 larger campaign could certify (or refute) the $768$ high-$\sigma$
 window at the strict margin. The upper tail $\sigma \in (0.94, 1)$ of
-the safe route is underpowered: its two interior bins resolve only
+the safe route is underpowered: its two non-endpoint bins resolve only
 margins above ${\approx}\,0.05$, and the $\sigma{=}1$ endpoint
 carries a small real gap ($+0.034 \pm 0.011$); an upper-tail sweep at
 higher draw count is the designated probe to close the region, and
@@ -161,7 +162,7 @@ merely descriptive, reaching held-out routes at ${\sim}0.07$--$0.09$
 RMSE against the spectral family's $0.147$--$0.355$, and its map
 licenses a selective trainer: on our model, $1024{\to}896$ at
 $\sigma \in (0.5, 0.94]$ with a stackable $1024{\to}768$ window,
-realizing $-14.6\%$ wall-clock at fixed steps with a weight-space
+realizing $-14.6\%$ training time at fixed steps with a weight-space
 endpoint within kernel-noise reach of a native retrain, rising to
 cosine $0.75$ when demotion is late-scheduled at proportionally
 reduced saving. We offer

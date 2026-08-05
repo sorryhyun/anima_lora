@@ -35,7 +35,7 @@ adapter gradients over $D$ stratified noise draws per
 arm and compare arms by cosine
 similarity of the flattened accumulated gradients. The verdict run
 uses $N = 40$ images and $D = 12$ draws per bin, on a segmented grid
-of $14$ interior bins, dense below $\sigma = 0.1$ and above $0.9$,
+of $14$ bins in $(0, 1)$, dense below $\sigma = 0.1$ and above $0.9$,
 plus a $\sigma{=}1$ endpoint bin, with deterministic kernels. The
 arms are: a
 \textbf{floor}, two independent draw sets at native resolution, the
@@ -57,41 +57,33 @@ check over images, a discipline imposed after an earlier failure in
 which per-image rankings from the same gradients had reliability
 indistinguishable from zero.
 
-\paragraph{Finite-draw attenuation.}
-The arm dependence of
-\S\ref{sec:reduction} is concrete here: the MSE loss averages over
-fewer elements on the coarser grid, and the natural estimate of
-Eq.~\ref{eq:gapdef}, a redraw floor minus a single demoted-arm
-cosine, adds an asymmetry of its own: the floor compares \emph{two}
-finite-draw estimates of the native gradient where each demote arm
-contributes one. We observed the resulting bias, whose
-floor-mimicking signature \S\ref{sec:reduction} derives, directly
-and at substantial magnitude at our
-operating point: a first-order variance estimate predicts spurious
-iso-direction
-endpoint gaps of ${\approx}\,0.02/0.05/0.15$ for $896/768/512$, and
-the uncorrected $1024{\to}896$ endpoint gap indeed decays as
+\paragraph{Finite-draw attenuation and the debiased estimator.}
+The arm-dependent attenuation of \S\ref{sec:reduction} is
+substantial at our operating point — the natural estimate of
+Eq.~\ref{eq:gapdef} also sets a redraw floor built from \emph{two}
+finite-draw estimates against demote arms contributing one — and we
+observed it directly: a first-order variance estimate predicts
+spurious iso-direction endpoint gaps of
+${\approx}\,0.02/0.05/0.15$ for $896/768/512$, and the uncorrected
+$1024{\to}896$ endpoint gap indeed decays as
 ${+}0.100/{+}0.035/{-}0.016$ at $D = 4/8/16$, a clean $c/D$ decay
-(Appendix~\ref{app:instrument}).
-
-\paragraph{The debiased estimator.}
-Two corrections, used together, remove the finite-draw attenuation.
-First, \emph{self-floors with attenuation correction}: every arm runs
-a second independent draw set $g_a'$, giving the per-arm self-cosines
-that Eq.~\ref{eq:debias} consumes, so that each arm has the same
-two-estimate structure the native floor has; the floor is precisely the
-source arm's self-cosine,
-$\cos_{\mathrm{floor}} = \cos_{\mathrm{self},\src}$, and the debiased
-gap $\dgap$ is computed per image and bin. Second,
+(Appendix~\ref{app:instrument}). Two corrections, used together,
+remove it. First, \emph{self-floors}: every arm runs a second
+independent draw set $g_a'$, restoring the floor's two-estimate
+structure to every arm and supplying the per-arm self-cosines that
+Eq.~\ref{eq:debias} consumes; the floor is precisely the source
+arm's self-cosine, $\cos_{\mathrm{floor}} = \cos_{\mathrm{self},\src}$,
+and the debiased gap $\dgap$ is computed per image and bin. Second,
 \emph{draw-count extrapolation}: the attenuation is the $c/D$ decay
 just measured, so fitting $\gap(D) = \gap_\infty + c/D$ over nested
-draw subsets recovers the draw-limit gap directly. The two are mutually checking, and the check
-passes: debiased fits come out $D$-flat ($|c| \le 0.05$ on the $512$
-route, against $c \approx +0.29$ uncorrected), and the nested sweep
-extrapolates the native redraw floor to a self-cosine of $1.005$
-(bootstrap $95\%$ CI $[0.994, 1.016]$). That is, the population
-per-bin native gradient is a \emph{fixed direction}, and the entire
-redraw floor is finite-draw noise; remaining validation detail is in
+draw subsets recovers the draw-limit gap directly. The two are
+mutually checking, and the check passes: debiased fits come out
+$D$-flat ($|c| \le 0.05$ on the $512$ route, against
+$c \approx +0.29$ uncorrected), and the nested sweep extrapolates the
+native redraw floor to a self-cosine of $1.005$ (bootstrap $95\%$ CI
+$[0.994, 1.016]$). That is, the population per-bin native gradient is
+a \emph{fixed direction}, and the entire redraw floor is finite-draw
+noise; remaining validation detail is in
 Appendix~\ref{app:instrument}.
 
 \paragraph{Margins and resolution.}
@@ -118,8 +110,8 @@ resolution}: a cell with $\epsstar > \varepsilon$ is
 \emph{underpowered} at the margin, and a crossing there is reported
 but not counted as certification. At the verdict grid's operating point of $N{=}40$ and
 $D{=}12$ per bin, the bin-level $\epsstar$ is $0.02$--$0.07$, so
-interior verdicts below are stated at the margins they do certify
-($0.09$ for the interior windows of \S\ref{sec:map});
+window verdicts below are stated at the margins they do certify
+($0.09$ for the windows of \S\ref{sec:map});
 endpoint-mode draw sweeps, with $D$ up to $64$, reach
 $\epsstar \approx 0.01$--$0.02$, powered for the strict margin. All
 verdict maps report the \emph{paired per-image excess}
@@ -168,7 +160,7 @@ Throughout, \emph{safe} means the certification of
 Eq.~\ref{eq:safe} on the \emph{per-example} object: the sense in
 which a demoted gradient is indistinguishable from a native one.
 Route by route: $1024{\to}896$ (floor $0.02$--$0.04$) is
-safe on the interior window $\sigma \in (0.5, 1)$, certified
+safe on the window $\sigma \in (0.5, 1)$, certified
 at margin $0.09$ simultaneously over the seven window bins; above
 $\sigma = 0.94$ the bins are underpowered at margins below
 ${\approx}\,0.05$ and the $\sigma{=}1$ endpoint carries a small real
@@ -240,7 +232,7 @@ factorization that assumption asserts, established here directly
 rather than assumed. The
 decay is smooth, Wiener-like shrinkage with no hard gate at the
 spectral crossover. How this monotone mismatch, read over the
-U-shaped total gradient norm, yields the measured interior-peaked
+U-shaped total gradient norm, yields the measured mid-$\sigma$-peaked
 curves is a post-hoc consistency read deferred to
 Appendix~\ref{app:instrument}.
 

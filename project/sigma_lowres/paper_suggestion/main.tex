@@ -66,13 +66,8 @@ route, a window ($0.65<\sigma<0.95$), predicted by no spectral
 criterion at any tolerance, where the downscaled gradient stays
 within a small margin of the native one. Training LoRA adapters with
 downscaled steps restricted to the routes and noise windows the map
-validates reduces wall-clock training time by $14.6\%$ at a fixed step
-budget while remaining near-native in weight space: an identical
-native retrain reproduces itself only at cosine $0.26$--$0.43$ once
-non-deterministic kernels are enabled, the always-gated arm matches
-or exceeds that reference, and scheduling the substitution
-late, at proportionally reduced saving, raises the trained
-$\Delta W$'s agreement with its matched-seed native twin to $0.75$. Code is available at
+validates reduces training time by $14.6\%$ at a fixed step
+budget while remaining near-native in weight space. Code is available at
 \url{https://github.com/sorryhyun/anima_lora}.
 \end{abstract}
 

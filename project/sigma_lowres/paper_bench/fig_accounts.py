@@ -80,7 +80,7 @@ from e5_refit import (  # noqa: E402
 from e83_bridge import DELTA_REENC, FCUT, ROUTES, m_spec, t_star  # noqa: E402
 
 REENC_FLOOR = SIGMA / "bench" / "results" / "20260730-0940-reenc-floor"
-FIG_DIRS = (SIGMA / "paper_suggestion" / "figs", SIGMA / "paper" / "figs")
+FIG_DIRS = (SIGMA / "paper_suggestion" / "figs",)
 
 DISP = {"896": r"$1024\to896$", "768": r"$1024\to768$",
         "512": r"$1024\to512$", "1120": r"$1280\to1120$",
@@ -206,12 +206,12 @@ def draw(d: dict):
         ax.set_xlabel(r"$\sigma$")
         ax.set_ylabel(r"paired $\overline{\mathrm{gap}}$")
         lo, hi = ax.get_ylim()  # headroom for the RMSE box
-        ax.set_ylim(lo, hi + 0.22 * (hi - lo))
+        ax.set_ylim(lo, hi + 0.28 * (hi - lo))
         ax.annotate(
             f"RMSE  spectral {d['rmse'][r]['spectral']:.3f}\n"
             f"{'':6s}ours {d['rmse'][r]['ours']:.3f}",
             (0.5, 0.97), xycoords="axes fraction", ha="center", va="top",
-            fontsize=7.0, linespacing=1.5,
+            fontsize=9.5, linespacing=1.5,
             bbox=dict(boxstyle="round,pad=0.35", fc="white", ec="0.8", lw=0.6),
         )
         if r == "896":
@@ -248,8 +248,8 @@ def draw(d: dict):
     ax.set_ylabel(r"measured $\overline{\mathrm{gap}}$")
     ax.set_title("Predicted vs. measured", fontsize=11)
     ax.legend(fontsize=7.0, loc="lower right", framealpha=0.9)
-    fig.legend(*handles, ncol=3, fontsize=8.5, loc="lower center",
-               bbox_to_anchor=(0.5, -0.005), frameon=False)
+    fig.legend(*handles, ncol=3, fontsize=11, loc="lower center",
+               bbox_to_anchor=(0.5, -0.01), frameon=False)
     fig.tight_layout(rect=(0, 0.075, 1, 1))
     return fig
 

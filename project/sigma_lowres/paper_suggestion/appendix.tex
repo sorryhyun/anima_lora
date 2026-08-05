@@ -454,13 +454,13 @@ Fig.~\ref{fig:estimator}): large at high $\sigma$, where the model
 pulls composition out of the prior; small in the mid-$\sigma$
 refinement regime; inflated again at low $\sigma$ by irreducible
 $\epsilon$. A monotone absolute mismatch over this U-shaped norm
-yields the measured interior-peaked curves: bin-mean gap
+yields the measured mid-$\sigma$-peaked curves: bin-mean gap
 tracks $1/\|\bar g_{\src}\|$ (Spearman $+0.55$--$+0.90$). The
 renormalization check reads the amplification
 directly: multiplying each bin-mean gap by
 $\|\bar g_{\src}(\sigma)\|$ flips the anomalous low-$\sigma$ dip into
 the monotone-in-$\sigma$ maximum in every arm of both verdict runs,
-which is the low-norm amplification behind the interior peak of the
+which is the low-norm amplification behind the mid-$\sigma$ peak of the
 measured curves. This shape read is post-hoc consistency analysis;
 all safety criteria stay in cosine units, since direction is what a
 normalized optimizer consumes.
@@ -479,7 +479,7 @@ prior from the floor's route ordering: its route distances are flat
 where the floors are strongly ordered, ruling out a
 resolution-conditioned prior or a training-distribution discontinuity
 as the carrier. In the target-strength ($\alpha$) sweep the
-interior points $\alpha \in [0.5, 0.75]$ are unreadable by construction
+mid-sweep points $\alpha \in [0.5, 0.75]$ are unreadable by construction
 and excluded: there the native residual $\alpha x - \hat x$ passes near
 cancellation, the gradient norm dips ($60 \to 33$) and the redraw floor
 falls to $0.87$, so the estimator reads through a small gradient norm:
@@ -506,7 +506,7 @@ stands \emph{because} the target term lands parallel, not because it
 vanishes. In this read the per-image orthogonal loading is
 ${\sim}10\times$ the aggregate's: image-specific directions cancel in
 the mean, the same motif as the residual-direction read below. For
-$896$ and $768$ the floors sit at or below the interior bins'
+$896$ and $768$ the floors sit at or below the verdict grid's
 certification resolution, which the endpoint sweeps resolve only
 through their order-of-magnitude larger draw budget. The statement
 ``the high-$\sigma$ plateau is the floor'' therefore sharpens to: the
@@ -923,7 +923,7 @@ $I_{768}(\sigma) < 0$ at every bin ($-0.31$ at $\sigma = 0.56$,
 shrinking to $-0.014$ by $0.94$), with the two legs near anti-parallel
 in-window ($\rho = \cos(B^{\perp}, C^{\perp}) \approx -0.93$), and the
 predicted window center lands at $\sigma \approx 0.69$
-($|B^{\perp}|/|C^{\perp}| = 0.98$ there), interior to the measured
+($|B^{\perp}|/|C^{\perp}| = 0.98$ there), inside the measured
 window. Branch (ii) is ruled out: $\Phi_{768}(\sigma)$ decreases
 monotonically to its endpoint value and never drops below it, so the
 endpoint reads of \S\ref{sec:ourscored} are untouched. The
@@ -1189,7 +1189,7 @@ $\|\bar g_{\src}(\sigma)\|$.}
 Fig.~\ref{fig:gapcurves}): paired per-image debiased excess
 $\bgap$ (SEM) against the re-encoding control, $1024$-tier natives
 ($N{=}40$, $D{=}12$/bin, deterministic kernels, on a segmented grid
-dense below $\sigma = 0.1$ and above $0.9$: $14$ interior bins plus
+dense below $\sigma = 0.1$ and above $0.9$: $14$ bins in $(0, 1)$ plus
 a $\sigma{=}1$ endpoint bin; trimmed per \S\ref{sec:instrument},
 retaining $36$--$40$ images per cell). Bin-level $\epsstar$ at this
 $(N, D)$ is $0.02$--$0.07$. A reconstruction check (the realized

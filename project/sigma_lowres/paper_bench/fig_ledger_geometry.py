@@ -33,7 +33,7 @@ from matplotlib.patches import FancyArrowPatch
 HERE = Path(__file__).resolve().parent  # project/sigma_lowres/paper_bench
 SIGMA = HERE.parent  # project/sigma_lowres
 RUNS = HERE / "runs"
-FIG_DIRS = (SIGMA / "paper_suggestion" / "figs", SIGMA / "paper" / "figs")
+FIG_DIRS = (SIGMA / "paper_suggestion" / "figs",)
 
 LEDGER = SIGMA / "bench" / "results" / "20260731-0721" / "ledger.json"
 
