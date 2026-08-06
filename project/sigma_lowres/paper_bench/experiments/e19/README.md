@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **19.0 + 19.1 DONE 2026-08-06** — completeness/decoherence verdicts + frozen ρ_r prediction below; 19.2 is the next step (scores the frozen prediction), 19.3/19.4 pending the L1 verdict |
+| **Status** | **19.0 + 19.1 + 19.2 DONE 2026-08-07** — L1 verdict below: the mid-σ anti-alignment depth is **Jᵀ-born** (measured ρ_r weak, −0.12…−0.22, where ρ_g ≈ −0.9); the residual level carries a weak seed whose sign/σ-shape/route-ordering the closure derives (magnitude under-predicted ~1.5–2×). L2/L3 (19.3/19.4) are now the live steps |
 | **Question** | [E14](../e14/)'s headline turned the measured gap curve into the *residual of a near-cancellation*: at every σ the data-branch and graph-branch perturbations are strongly anti-aligned (ρ ≈ −0.7…−0.9), both individually far larger than the realized gap, and the σ≈0.4–0.7 cliffs are the \|B⊥\|/\|C⊥\| = 1 crossings. This is why the spectral account misses by ~4× — it transports amplitude without the interference structure. So the theory-facing question is no longer "a law per branch" but: **where is the anti-alignment born — in the residual field r (a property of the trained denoiser + data statistics) or in the pull-back through Jᵀ (a property of the graph/Jacobian)? And is it derivable?** |
 | **Depends on** | [E14](../e14/) (the headline + the validated B/C instrument `vector_ledger.py`; unit-honesty rule), [E9](../e9/) (crossing↔window-center localization on 768), [E17](../e17/) (the Gaussian-closure machinery `run_posterior_closure.py` — failed on low-σ *amplitude*, reproduced *shape*/route-uniformity/endpoint), [E11](../e11/) (residual direction structure: norm-only, image-specific directions; `--save_residuals` harness), Q2/G10/G11 in `record/questions.md` (depth band 3–8; RoPE_e origin; PI off-manifold qualifier), [E7](../e7/)+Q3 (adapter axis), [E18](../e18/proposal.md) (the per-draw projection hook — a shared instrument delta, see 19.3) |
 | **Instrument** | `vector_ledger.py` re-reads (19.0); `run_posterior_closure.py` + a paired-B/C emitter (19.1); `run_prior_distance.py` + a repromote arm (19.2); `run_sigma_probe.py --repromote --keep_arm_sums` sliced per param group, or the E18 per-draw hook with block-keyed projections (19.3); `--pi_align --repromote` in one process (19.4) |
@@ -216,6 +216,55 @@ at the residual level; 19.1's closure comparison decides whether it is
 modifier. ρ_r ≈ 0 (or weakly negative) while ρ_g ≈ −0.9 → the
 Jacobian creates it; L2/L3 take over and the theory target becomes the
 shared low-dimensional range of the early-block gradient operator.
+
+## 19.2 — RESULTS (DONE 2026-08-07; run `results/20260806-2342-e192-rho-r-measured`, ledger `measured_192.json`)
+
+Instrument: `run_prior_distance.py --repromote --save_residuals` on E14's
+40-image probe list (arm latents reused **bit-identically** from 19.1's
+`closure_latents/` cache), 16 draws, E14's 15 σ centers; ledger =
+`ledger_rho_r.py` (cross-half debiased, shared-rp + shared-ref corrections
+mirroring `bc_ledger`; same estimand as the frozen prediction). All verdict
+cells pass the rel ≥ 0.5 gate (rel_cos_B 0.73–0.99, rel_cos_C 0.86–1.0).
+
+1. **L1 verdict: the mid-σ anti-alignment depth is created through Jᵀ.**
+   At the verdict bins σ = 0.3–0.83 (reenc ref, area), measured ρ_r =
+   **−0.12…−0.22** on all three routes while ρ_g ≈ −0.83…−0.96 — every
+   gated mid-σ cell classifies `weak_derivable_seed` under the
+   pre-registered rule (|ρ_r| ≤ 0.35). The residual level does NOT carry
+   the deep, flat mid-σ cancellation; per the decision tree, the theory
+   target becomes the shared low-dimensional range of the early-block
+   gradient operator (L2/L3).
+2. **The seed is real, and the closure derives its structure.** Measured
+   ρ_r < 0 at every (route, bin) — the frozen sign prediction holds
+   everywhere. The measured σ-profile is the closure's predicted
+   **U-shape** (elevated ≈ −0.25 at low σ, minimum at σ ≈ 0.57–0.7,
+   deepening toward σ = 1) — the opposite of the g-level's deep-flat
+   profile, and the |ρ_r| minimum sits exactly where ρ_g is deepest.
+   Endpoint deepening is route-ordered as predicted: measured −0.33 /
+   −0.49 / −0.61 (896/768/512) at σ = 1 vs closure −0.22 / −0.30 / −0.39
+   — same ordering, uniform ~1.5–1.6× scale miss. Magnitude is
+   under-predicted ~1.5–2× throughout (nearly all bins `above_band`), so
+   the closure is the *seed account* in sign/shape/ordering with a
+   committed level miss — the same failure axis E17 recorded, opposite
+   direction.
+3. **No r-level amplitude crossings.** Measured |B_r⊥|/|C_r⊥| = 0.34–0.76,
+   rising with σ, never reaching 1 on any route/ref/operator — the
+   g-ledger's measured 896 crossing at σ ≈ 0.47 (the cliff mechanism) has
+   **no residual-level counterpart**: the crossings are also Jᵀ-made.
+4. **σ → 1 tail: the one regime the residual level partly owns.** On 512,
+   ρ_r reaches −0.53…−0.62 at σ ≥ 0.9625 (`deep` class); 768 tops at
+   −0.49. Deepening starts σ ≈ 0.9 and is steepest on the unsafe route —
+   consistent with the r̄ → x − x̄_prior limit where content statistics
+   dominate. Mid-σ and endpoint conclusions are therefore different:
+   the paper-facing claim (the σ ≈ 0.4–0.7 cliffs and the safe-window
+   cancellation) stays Jᵀ-born.
+5. **Controls.** Shared-arm bias is large and the correction load-bearing:
+   naive same-half ρ reads −0.18…−0.67 vs cross-half −0.12…−0.26 at
+   low/mid σ (converging at σ = 1 where draw noise vanishes). Bicubic is
+   1.5–2.5× deeper than area with stable sign (operator owns magnitude —
+   exactly the closure control's finding; area = conservative read).
+   Native ref ≈ reenc ref throughout. Per-image cosines are weak at mid σ
+   (−0.14…−0.19 ± 0.04) — the pooled read hides no per-image structure.
 
 ## 19.3 — depth-resolved ρ_ℓ (re-analysis if the store survives; else one reduced-grid rerun)
 
