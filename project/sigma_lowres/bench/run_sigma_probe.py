@@ -212,6 +212,13 @@ def main() -> None:
         if args.keep_arm_sums
         else None
     )
+    if arm_sums is not None:
+        # the store's flat-vector layout (same sorted-name flatten as
+        # grad_estimate_binned) — lets the depth ledger (E19.3) slice arm
+        # sums per module type x block without reloading the network
+        (run_dir / "arm_sums" / "groups.json").write_text(
+            json.dumps(groups if groups is not None else build_groups(bundle.network))
+        )
     pool_strata: list[dict] = []
     pool_spill = run_dir / "pool_agg_spill"
     cur_spill = run_dir / "pool_cur_spill"
