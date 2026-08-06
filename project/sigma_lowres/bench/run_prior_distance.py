@@ -121,6 +121,30 @@ def parse_args() -> argparse.Namespace:
         "(pairwise cosines / stacked SVD; the 'is m route-uniform per-band "
         "or only in norm' read) is a CPU reanalysis instead of a rerun.",
     )
+    p.add_argument(
+        "--repromote",
+        action="store_true",
+        help="add a repromote<e> forward arm per edge (demoted pixels resized "
+        "straight back up to the native bucket and re-encoded) — the "
+        "data-branch intervention B of the E14 interventional split at the "
+        "residual level; enables the E19.2 r-ledger (ledger_rho_r.py) on the "
+        "saved residuals",
+    )
+    p.add_argument(
+        "--probe_list",
+        default=None,
+        help="json probe list ({'images': [{'artist','stem'}, ...]}, e.g. "
+        "e13/e1b_probe_list.json) pinning the image set exactly for "
+        "probe-matched runs; overrides --num_images/--max_per_artist",
+    )
+    p.add_argument(
+        "--latent_cache",
+        default=None,
+        help="dir of {stem}__{arm}.npz encodes to reuse (e.g. E19.1's "
+        "probe1024_closure/closure_latents); missing arms are VAE-encoded "
+        "once and saved back, so probe-matched reruns share bit-identical "
+        "arm latents",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--quant_k", type=int, default=4)
     p.add_argument("--label", default=None)
@@ -180,20 +204,74 @@ def main() -> None:
     sigmas = [float(s) for s in args.sigmas.split(",") if s]
     device = torch.device("cuda")
 
-    records = score_corpus(k=args.quant_k, data_root=Path(args.data_root).resolve())
-    probe = select_probe_set(
-        records, args.num_images, tier=args.tier, max_per_artist=args.max_per_artist
+    records = score_corpus(
+        k=args.quant_k,
+        data_root=Path(args.data_root).resolve() if args.data_root else None,
     )
+    if args.probe_list:
+        keys = {
+            (p["artist"], p["stem"])
+            for p in json.loads(Path(args.probe_list).read_text())["images"]
+        }
+        probe = sorted(
+            (
+                r
+                for r in records
+                if r.complete() and r.tier == args.tier and (r.artist, r.stem) in keys
+            ),
+            key=lambda r: r.stem,
+        )
+        if len(probe) != len(keys):
+            raise SystemExit(f"probe list: only {len(probe)}/{len(keys)} matched")
+    else:
+        probe = select_probe_set(
+            records, args.num_images, tier=args.tier, max_per_artist=args.max_per_artist
+        )
     if not probe:
-        raise SystemExit(f"no complete tier-{args.tier} records under {args.data_root}")
+        raise SystemExit(
+            f"no complete tier-{args.tier} records under "
+            f"{args.data_root or 'the default corpus'}"
+        )
     log.info(
         f"probe set: {len(probe)} images ({len({r.artist for r in probe})} artists), "
         f"grids [{args.tier}]+reenc+{edges}, σ={sigmas}, {args.draws} draws each"
     )
 
-    # VAE loads, encodes the demoted + reenc arms, and frees BEFORE the DiT
-    # loads (lazy-loading invariant) — same chain as the gradient probes.
-    extra_latents = encode_probe_latents(probe, edges, args.vae, device, True)
+    # VAE loads, encodes the demoted (+ repromoted) + reenc arms, and frees
+    # BEFORE the DiT loads (lazy-loading invariant) — same chain as the
+    # gradient probes.
+    arm_names = [f"demote{e}" for e in edges] + ["reenc"]
+    if args.repromote:
+        arm_names += [f"repromote{e}" for e in edges]
+    if args.latent_cache:
+        cache = Path(args.latent_cache)
+        cache.mkdir(parents=True, exist_ok=True)
+        missing = [
+            r
+            for r in probe
+            if not all((cache / f"{r.stem}__{a}.npz").exists() for a in arm_names)
+        ]
+        if missing:
+            log.info(f"VAE-encoding {len(missing)} images into {cache} (one-time)")
+            enc = encode_probe_latents(
+                missing, edges, args.vae, device, True, repromote=args.repromote
+            )
+            for (stem, a), lat in enc.items():
+                np.savez_compressed(
+                    cache / f"{stem}__{a}.npz",
+                    latent=lat.numpy().astype(np.float32),
+                )
+        extra_latents = {
+            (r.stem, a): torch.from_numpy(
+                np.load(cache / f"{r.stem}__{a}.npz")["latent"]
+            )
+            for r in probe
+            for a in arm_names
+        }
+    else:
+        extra_latents = encode_probe_latents(
+            probe, edges, args.vae, device, True, repromote=args.repromote
+        )
 
     from library.runtime.harness import build_anima
 
@@ -237,9 +315,12 @@ def main() -> None:
         lats["reenc"] = extra_latents[(r.stem, "reenc")]
         for e in edges:
             lats[str(e)] = extra_latents[(r.stem, f"demote{e}")]
+        if args.repromote:
+            for e in edges:
+                lats[f"repromote{e}"] = extra_latents[(r.stem, f"repromote{e}")]
 
         halves: dict[tuple[str, int], tuple[torch.Tensor, torch.Tensor]] = {}
-        for gi, g in enumerate([native, "reenc"] + [str(e) for e in edges]):
+        for gi, g in enumerate(lats):
             for si, sig in enumerate(sigmas):
                 halves[(g, si)] = residual_halves(
                     anima,
@@ -277,7 +358,7 @@ def main() -> None:
                     )
                     for si in range(len(sigmas))
                 ]
-                for g in grid_names
+                for g in lats
             },
         }
         # reenc control: same grid, cache latent vs re-encoded latent
