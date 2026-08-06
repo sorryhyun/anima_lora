@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PROPOSED 2026-08-06** — numbered after [E18](../e18/proposal.md) (PROPOSED); file named `proposal.md` until adopted into the index, per E18's convention |
+| **Status** | **19.0 + 19.1 DONE 2026-08-06** — completeness/decoherence verdicts + frozen ρ_r prediction below; 19.2 is the next step (scores the frozen prediction), 19.3/19.4 pending the L1 verdict |
 | **Question** | [E14](../e14/)'s headline turned the measured gap curve into the *residual of a near-cancellation*: at every σ the data-branch and graph-branch perturbations are strongly anti-aligned (ρ ≈ −0.7…−0.9), both individually far larger than the realized gap, and the σ≈0.4–0.7 cliffs are the \|B⊥\|/\|C⊥\| = 1 crossings. This is why the spectral account misses by ~4× — it transports amplitude without the interference structure. So the theory-facing question is no longer "a law per branch" but: **where is the anti-alignment born — in the residual field r (a property of the trained denoiser + data statistics) or in the pull-back through Jᵀ (a property of the graph/Jacobian)? And is it derivable?** |
 | **Depends on** | [E14](../e14/) (the headline + the validated B/C instrument `vector_ledger.py`; unit-honesty rule), [E9](../e9/) (crossing↔window-center localization on 768), [E17](../e17/) (the Gaussian-closure machinery `run_posterior_closure.py` — failed on low-σ *amplitude*, reproduced *shape*/route-uniformity/endpoint), [E11](../e11/) (residual direction structure: norm-only, image-specific directions; `--save_residuals` harness), Q2/G10/G11 in `record/questions.md` (depth band 3–8; RoPE_e origin; PI off-manifold qualifier), [E7](../e7/)+Q3 (adapter axis), [E18](../e18/proposal.md) (the per-draw projection hook — a shared instrument delta, see 19.3) |
 | **Instrument** | `vector_ledger.py` re-reads (19.0); `run_posterior_closure.py` + a paired-B/C emitter (19.1); `run_prior_distance.py` + a repromote arm (19.2); `run_sigma_probe.py --repromote --keep_arm_sums` sliced per param group, or the E18 per-draw hook with block-keyed projections (19.3); `--pi_align --repromote` in one process (19.4) |
@@ -63,6 +63,41 @@ h(B)/h(C)/h(B+C), κ∥, both data refs.
    amplitude ratio across both routes' windows so 19.1's prediction has
    a frozen target curve.
 
+## 19.0 — RESULTS (DONE 2026-08-06; `reads_190.py` → `frozen_target_190.json`)
+
+All numbers from the committed E14 ledgers, reliability-gated at
+rel_cos ≥ 0.5, both data refs (reenc = primary, matching `ledger.json`).
+
+1. **Completeness ordering CONFIRMED** under both refs. Mean cancellation
+   fraction 1 − h(B+C)/(h(B)+h(C)) over reliable bins, 896/768/512:
+   **0.770 / 0.725 / 0.631** (reenc ref); 0.638 / 0.593 / 0.343 (native
+   ref). 512 least complete, exactly the safety-map ordering the
+   scale-covariance account predicts.
+2. **The decoherence version is REFUTED.** 512 keeps mean |ρ| = 0.864
+   (reenc) / 0.824 (native) — indistinguishable from 896's 0.860/0.727
+   and 768's 0.891/0.802 — while its amplitude ratio |B⊥|/|C⊥| = √(S/F)
+   never crosses 1 (0.63–0.95 across all bins). The anti-alignment
+   *angle* is route-uniform; what breaks on the unsafe route is the
+   *magnitude matching*. Per the decision tree: **unsafe = mismatched
+   magnitudes, not decoherence** — the open half is the amplitude law
+   (why |B|, |C| diverge on 512).
+3. **Shared-arm validity closed.** Mean |I_same − I_cross| = 0.062; at a
+   few low/mid-σ bins the naive same-set read inflates |I| up to ~2.3×
+   (768 @ σ=0.0625: −1.33 vs −0.59), so the artifact is real and the
+   cross-set debias is load-bearing — but the headline uses cross-set
+   only, and cross-set ρ stays −0.7…−0.9 throughout. **The headline is
+   not a shared-arm artifact.**
+4. **Crossings vs E9.** 896: crossing at σ ≈ 0.47 (reenc) / 0.53
+   (native) — consistent with E9's ≈ 0.5. 768: **no in-window crossing
+   on E14's probe-matched grid** — the reenc-ref ratio peaks ≈ 0.99 at
+   σ = 0.0875 and sits at 0.76–0.88 through the E9 window (E9's N=24
+   run had 0.98 at σ ≈ 0.69; probe sets bound the claim). So the
+   crossing↔window-center localization survives cleanly on 896 only; on
+   768 the window sits where the ratio is *closest to* 1 from below.
+   The frozen target for 19.1 is E14's table, not E9's.
+5. Endpoint σ=1 and gate-failed cells are non-verdict-bearing
+   (ratio-of-small-numbers; 896's endpoint fails both rel gates).
+
 ## 19.1 — closure-predicted ρ_r (CPU + one VAE encode pass; theory first)
 
 Extend E17's fitted machinery to emit **paired branch predictions**:
@@ -91,6 +126,73 @@ If the closure predicts ρ_r < 0 with roughly the measured profile, the
 anti-alignment is *derivable from second-order data statistics* — the
 interaction term graduates from measured to derived, which is the
 single highest-value theoretical outcome available to this line.
+
+**Instrument (`bench/run_closure_rho.py`, 2026-08-06) — the A_e pin.**
+The comparison grid is pinned to the **demoted (lo) grid**, with
+native-grid arms brought down by the instrument's area-downsample D_e
+(the same operator as `run_prior_distance.py`'s scalar read and E11's
+`resid_structure.py`) — i.e. B_r = D_e r̂_rp − D_e r̂_ref,
+C_r = r̂_dem − D_e r̂_rp, so **B_r + C_r = r̂_dem − D_e r̂_ref exactly**,
+the measured mismatch object — mirroring the g-ledger's exactness. This
+replaces the proposal's original up-sampling A_e formulation: an
+upsampled C would carry the promote operator's smoothing signature in
+one branch only. ⊥ projects out D_e r̂_native per image; pooling is by
+summed inner products across images (per-image cosines are secondary —
+E11's norm-only verdict). Grid is fully probe-matched to E14: tier-1024
+native, routes {896, 768, 512}, E14's 40-image list as holdout, a
+disjoint stratified 40-image tier-1024 fit split, σ = E14's 15 centers.
+Controls: (a) **cross-fit** — B and C share the repromote arm's fitted
+model, whose estimation error enters with opposite signs and biases a
+naive ρ_r negative (the residual-level analog of `I_sameset`); the fit
+split is halved and B/C use different halves' rp models, symmetrized;
+(b) **operator sensitivity** — the ledger re-pooled with bicubic
+instead of area; (c) both data refs, matching the E14 ledger pair.
+Coherence criterion, pre-registered: the prediction counts as coherent
+iff all three closures (diag/block/octave) agree in ρ_r sign per bin at
+σ ≥ 0.3 (low-σ reported, not verdict-bearing — E17's caution).
+
+## 19.1 — FROZEN PREDICTION (committed 2026-08-06, before any 19.2 run)
+
+Run `bench/results/20260806-2223-e19-closure-rho` (holdout = E14's 40
+probe images; fit = 40 disjoint tier-1024 images); summary in
+`prediction_191.json`. The wager resolves as a **qualified yes with a
+committed magnitude**:
+
+1. **Sign: ρ_r < 0 at every (route, bin), all three closures, both
+   refs** — the pre-registered coherence criterion passes on all three
+   routes. The Gaussian closure *does* place the anti-alignment at the
+   residual level.
+2. **Magnitude: weak.** At the verdict bins (σ ≥ 0.3, area, reenc ref)
+   ρ_r ≈ **−0.06…−0.14** (block/diag; octave within 0.02), deepening to
+   −0.22/−0.31/−0.39 (896/768/512) only at σ = 1. Far shallower than
+   the measured g-level ρ ≈ −0.7…−0.9. Per-image cosines are equally
+   weak (−0.10 ± 0.06 at σ=0.57) — the pooled read is not hiding strong
+   per-image anti-alignment.
+3. **Predicted amplitude ratio |B_r⊥|/|C_r⊥| ≈ 0.21–0.61**, rising with
+   σ, **no crossings on any route** — misses the g-ledger's measured
+   896 crossing at σ ≈ 0.47. σ-profile: |ρ_r| is U-shaped (largest at
+   the σ extremes, weakest at σ ≈ 0.17–0.43), unlike the measured
+   g-level profile (deep and flat through mid σ).
+4. **Controls.** Cross-fit ≈ same-fit (Δρ ≤ 0.01) — the negative sign
+   is not the shared-rp-model artifact. Bicubic pooling is 2–3× more
+   negative than area (sign stable) — the pinned area operator reads as
+   the conservative magnitude; operator choice owns magnitude, not
+   sign. Holdout ≈ fit split (no overfitting).
+
+**Pre-registered reading rule for 19.2** (fixing the "strongly negative"
+threshold my proposal left loose): score measured ρ_r against this
+band at the verdict bins, reenc ref, area operator, same estimand.
+
+- Measured ρ_r within/below the closure band (|ρ_r| ≲ 0.35): the
+  r-level seed is **derivable and weak** → the *depth* of the g-level
+  anti-alignment is created through Jᵀ; L2/L3 take over with the
+  closure as the seed account.
+- Measured ρ_r deep (|ρ_r| ≥ 0.5) with the g-level profile: the
+  residual level owns the cancellation and the second-order closure
+  under-predicts it → beyond-Gaussian/caption-conditional closure is
+  the theory home (E17's named missing ingredients).
+- Measured ρ_r ≥ 0 at verdict bins: the closure's sign prediction is
+  falsified at the trained model; the interaction is Jᵀ-born outright.
 
 ## 19.2 — the r-level ledger (forward-only GPU; the L1 discriminator)
 
