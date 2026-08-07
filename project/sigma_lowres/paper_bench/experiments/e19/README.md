@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | **19.0–19.3 DONE 2026-08-07; 19.4 running** (job `20260807-140010-6edca8`). Verdict chain so far: the anti-alignment's mid-σ depth is **Jᵀ-born** (19.2), with a weak residual-level seed the Gaussian closure derives in sign/shape/ordering (19.1); the Jᵀ mechanism is **global** — depth-uniform, type-uniform, magnitude ∝ branch energy (19.3, early-band localization refuted). Working account: model-level scale covariance along the demotion diagonal (B ≈ −C at the function level). 19.4 is the causal RoPE check on a weakened PE-mediation prior |
+| **Status** | **19.0–19.3, 19.5 DONE 2026-08-07; 19.4 run finished (verdict unread); 19.6 queued** (jobs `20260807-190140-{90ac19,d5b042}`). Verdict chain so far: the anti-alignment's mid-σ depth is **Jᵀ-born** (19.2), with a weak residual-level seed the Gaussian closure derives in sign/shape/ordering (19.1); the Jᵀ mechanism is **global** — depth-uniform, type-uniform, magnitude ∝ branch energy (19.3, early-band localization refuted). Working account: model-level scale covariance along the demotion diagonal (B ≈ −C at the function level). 19.4 is the causal RoPE check on a weakened PE-mediation prior |
 | **Question** | [E14](../e14/)'s headline turned the measured gap curve into the *residual of a near-cancellation*: at every σ the data-branch and graph-branch perturbations are strongly anti-aligned (ρ ≈ −0.7…−0.9), both individually far larger than the realized gap, and the σ≈0.4–0.7 cliffs are the \|B⊥\|/\|C⊥\| = 1 crossings. This is why the spectral account misses by ~4× — it transports amplitude without the interference structure. So the theory-facing question is no longer "a law per branch" but: **where is the anti-alignment born — in the residual field r (a property of the trained denoiser + data statistics) or in the pull-back through Jᵀ (a property of the graph/Jacobian)? And is it derivable?** |
 | **Depends on** | [E14](../e14/) (headline + `vector_ledger.py`; unit-honesty rule), [E9](../e9/) (crossing↔window localization), [E17](../e17/) (Gaussian-closure machinery), [E11](../e11/) (residual directions norm-only; `--save_residuals`), Q2/G10/G11 in `record/questions.md`, [E7](../e7/)+Q3 (adapter axis), [E18](../e18/proposal.md) (per-draw projection hook — the storage-free alternative 19.3 didn't need) |
-| **Instruments** | 19.0 `reads_190.py` (committed-ledger re-reads); 19.1 `bench/run_closure_rho.py`; 19.2 `run_prior_distance.py --repromote --save_residuals` + `bench/ledger_rho_r.py`; 19.3 `run_sigma_probe.py --repromote --keep_arm_sums` (now dumps `groups.json`) + `paper_bench/ledger_depth.py`; 19.4 `--pi_align --repromote` in one process + `paper_bench/ledger_pi.py` |
+| **Instruments** | 19.0 `reads_190.py` (committed-ledger re-reads); 19.1 `bench/run_closure_rho.py`; 19.2 `run_prior_distance.py --repromote --save_residuals` + `bench/ledger_rho_r.py`; 19.3 `run_sigma_probe.py --repromote --keep_arm_sums` (now dumps `groups.json`) + `paper_bench/ledger_depth.py`; 19.4 `--pi_align --repromote` in one process + `paper_bench/ledger_pi.py`; 19.5 `bench/ledger_b_scoreshift.py` (CPU, 19.2 store × 19.1 closure); 19.6 `run_prior_distance.py --adapter` + `bench/ledger_operating_point.py` |
 | **In the paper** | The cancellation account is the theoretical spine of the follow-up paper (§3/§4.6 of paper 2); the current draft's Fig. `ledgergeom` + "why the legs anti-align" paragraph stand, now with measured backing (see 19.3 item 4). [appendix.md](appendix.md) holds the per-σ geometry figure |
 
 ## The reframe
@@ -191,6 +191,62 @@ type-uniformity, the PE-mediation prior is weakened: a no-rotation
 result now coheres with the global scale-covariance account rather than
 contradicting Q2/G10.
 
+## 19.5 — measured-vs-closure leg DIRECTIONS (run `20260807-1928-e195-dircos`, `dircos_195.json`, DONE 2026-08-07)
+
+`bench/ledger_b_scoreshift.py` (committed `68c87d57` before the run):
+pooled direction cosine between the 19.2 measured r-level legs and the
+19.1 closure-predicted legs, per (route, σ, closure), common
+⊥-to-measured-native subspace, measured second moments cross-half
+debiased (shared-ref correction), reenc/area primary. The question the
+Yang-Song picture poses: is B literally the *derivable score-shift* of
+demotion, with the beyond-Gaussian structure living in the graph leg?
+
+1. **The closure owns BOTH leg directions at mid/high σ.** On gated
+   verdict bins σ ≥ 0.4333, all three routes: dircos_B 0.64–0.87,
+   dircos_C 0.76–0.95, and the resultant's direction is nearly exact
+   near the endpoint (dircos_net 0.94–0.99). The 19.1/19.2 magnitude
+   miss is mostly a **scale story, not a direction story**.
+2. **The pre-registered "B is the derivable score-shift" contrast comes
+   back REVERSED**: gap = dircos_B − dircos_C has gated median
+   **−0.104 / −0.111 / −0.109** (896/768/512; 30 gated bins each,
+   closures near-identical) — the *data* leg is the less-predicted one
+   at every mid/high-σ bin. Read with the score-field picture: the
+   manifold (beyond-Gaussian) content of p_σ lives on the data side;
+   the graph leg is operator-like and second-order statistics capture
+   its direction better.
+3. **σ-profile matches the score-field intuition**: every leg's dircos
+   falls monotonically toward low σ (≈ 0.20–0.25 at σ = 0.0125) —
+   where the score is manifold-dominated the Gaussian closure loses
+   the *direction* first, long before the verdict window. (Low-σ bins
+   non-verdict as usual.)
+4. **Per-leg amplitude resolves the level miss**: the closure
+   over-predicts leg energy at mid σ (amp pred/meas ≈ 1.15–1.31 for B,
+   1.39–1.60 for C at σ 0.3–0.57) and under-predicts toward the
+   endpoint (B ≈ 0.68–0.86) — the 19.2 σ-uniform ~1.5–2× ρ-level miss
+   decomposes into a σ-*dependent* per-leg scale miss.
+5. **Controls tight**: bicubic / native-ref / predicted-native
+   projector / no-projection move dircos by ≤ 0.04 at the checked
+   bins; diag/block/octave agree to ~0.01.
+
+Operating-point caveat, now explicit: the 19.2 store (and hence this
+read) is **base-DiT**, while the E14 g-ledger is **sincos-attached** —
+the two ledgers the line compares straddle operating points. 19.6
+closes exactly this.
+
+## 19.6 — adapter operating-point arm (QUEUED; jobs `20260807-190140-{90ac19,d5b042}`, instruments committed `416ca762`)
+
+`run_prior_distance.py --adapter` (default None keeps the 19.2
+estimand) reruns the 19.2 probe bit-matched (same probe list, latent
+cache, seed, draws) at the shipped `anima_soup_sincos` operating point;
+`bench/ledger_operating_point.py` then diffs the two stores in x-space
+— pooled dircos + amplitude ratio per leg and for the native residual
+field itself, common ⊥-to-base-native subspace, both sides cross-half
+debiased. Pre-registered: the LoRA-moves-B account predicts
+dircos_B < dircos_C − 0.2 (and/or |log amp_B| ≫ |log amp_C|); dircos ≈ 1
+with amp ≈ 1 for both legs = leg-level operating-point invariance,
+extending E7's map-level null and retroactively cleaning 19.5 and the
+r(base)-vs-g(sincos) comparisons throughout E19.
+
 ## Decision tree (resolution marked)
 
 | observation | conclusion | status |
@@ -252,6 +308,8 @@ contradicting Q2/G10.
 | 19.2 | ~4.5 h | forward-only, latent-sized vectors |
 | 19.3 | 5.7 h | reduced grid, 18 GB store (kept on the training box) |
 | 19.4 | ~6 h (est) | 2 routes × 4 bins, one process |
+| 19.5 | none | CPU: 19.2 residual store × warm 19.1 closure cache |
+| 19.6 | ~4.5 h (est) | 19.2 mirror at the sincos operating point |
 
 No verdict-grid-scale spend anywhere; the full σ-map stays reserved for
 confirming whatever theory survives 19.4.
