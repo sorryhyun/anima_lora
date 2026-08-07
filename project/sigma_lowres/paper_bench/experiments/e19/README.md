@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **19.0 + 19.1 + 19.2 DONE 2026-08-07** — L1 verdict below: the mid-σ anti-alignment depth is **Jᵀ-born** (measured ρ_r weak, −0.12…−0.22, where ρ_g ≈ −0.9); the residual level carries a weak seed whose sign/σ-shape/route-ordering the closure derives (magnitude under-predicted ~1.5–2×). L2/L3 (19.3/19.4) are now the live steps |
+| **Status** | **19.0–19.3 DONE 2026-08-07** — L1 verdict: the mid-σ anti-alignment depth is **Jᵀ-born** (measured ρ_r weak, −0.12…−0.22, where ρ_g ≈ −0.9); the residual level carries a weak seed whose sign/σ-shape/route-ordering the closure derives. L2 verdict below: **ρ_ℓ is depth-uniform and type-uniform** — the early-band (3–8) localization is refuted, the interaction magnitude tracks branch energy exactly at every depth, and the Jᵀ mechanism is a *global* property of the pull-back (B ≈ −C slice-wise everywhere, incl. modules RoPE never touches). L3 (19.4) is the remaining live step, now as the causal check on a weakened PE-mediation prior |
 | **Question** | [E14](../e14/)'s headline turned the measured gap curve into the *residual of a near-cancellation*: at every σ the data-branch and graph-branch perturbations are strongly anti-aligned (ρ ≈ −0.7…−0.9), both individually far larger than the realized gap, and the σ≈0.4–0.7 cliffs are the \|B⊥\|/\|C⊥\| = 1 crossings. This is why the spectral account misses by ~4× — it transports amplitude without the interference structure. So the theory-facing question is no longer "a law per branch" but: **where is the anti-alignment born — in the residual field r (a property of the trained denoiser + data statistics) or in the pull-back through Jᵀ (a property of the graph/Jacobian)? And is it derivable?** |
 | **Depends on** | [E14](../e14/) (the headline + the validated B/C instrument `vector_ledger.py`; unit-honesty rule), [E9](../e9/) (crossing↔window-center localization on 768), [E17](../e17/) (the Gaussian-closure machinery `run_posterior_closure.py` — failed on low-σ *amplitude*, reproduced *shape*/route-uniformity/endpoint), [E11](../e11/) (residual direction structure: norm-only, image-specific directions; `--save_residuals` harness), Q2/G10/G11 in `record/questions.md` (depth band 3–8; RoPE_e origin; PI off-manifold qualifier), [E7](../e7/)+Q3 (adapter axis), [E18](../e18/proposal.md) (the per-draw projection hook — a shared instrument delta, see 19.3) |
 | **Instrument** | `vector_ledger.py` re-reads (19.0); `run_posterior_closure.py` + a paired-B/C emitter (19.1); `run_prior_distance.py` + a repromote arm (19.2); `run_sigma_probe.py --repromote --keep_arm_sums` sliced per param group, or the E18 per-draw hook with block-keyed projections (19.3); `--pi_align --repromote` in one process (19.4) |
@@ -290,6 +290,74 @@ cross-check with 19.2 — the two must agree on which branch owns it).
 projections in `grad_estimate_binned`) makes this storage question
 moot if it lands first — block-keyed projections give ρ_ℓ at MB scale.
 One implementation should serve both records.
+
+## 19.3 — RESULTS (DONE 2026-08-07; run `results/20260807-0745-e193-depth-ledger`, summary `depth_193.json`)
+
+E14's `arm_sums/` store was reclaimed, so this is the reduced-grid-rerun
+branch: `run_sigma_probe.py --repromote --keep_arm_sums --self_floor
+--deterministic` on E14's 40-image probe list, routes {896, 768}, σ grid =
+E14's four crossing-region bins **bit-exactly** (segment
+`0.2333…,0.7667…,4` ≡ E14 mid-segment bins 1–4; centers 0.3 / 0.4333 /
+0.5667 / 0.7) + endpoint. ~5.7 GPU-h, 18 GB store. Instrument delta
+(committed first, `fa3b0352`): every `--keep_arm_sums` store now carries
+`groups.json` (the `build_groups` layout — 28 blocks covering all 77.76M
+adapter params + 15 module-type groups incl. the `self_attn_up_{q,k,v}`
+row splits); `paper_bench/ledger_depth.py` runs the E14 estimator per
+slice, emitting slice-local ρ_ℓ (slice-own ĝ_ℓ, rel-gated 0.5) **and** a
+global-⊥ partition S/F/I_part whose block sum reproduces the global
+cross-set S/F/I exactly (verified ≤ 1e-5 every bin). The rerun replicates
+E14's globals at the shared bins (ρ_g −0.87…−0.95, rel 0.60–0.88; 896's
+endpoint fails both rel gates exactly as E14 recorded) — the reduced
+store is a faithful replica, not a new instrument regime.
+
+1. **L2 verdict: the pre-registered early-band localization is REFUTED —
+   ρ_ℓ is depth-uniform.** At the mid-σ verdict bins every block that
+   passes the rel gate reads deep on both routes and both refs: ρ_ℓ ∈
+   [−0.99, −0.56] with median ≈ −0.93 (14–18 of 28 blocks read per bin;
+   the gated-out cells are the low-energy early/mid blocks, ~0.1–1% of
+   arm energy each). The gate-free cross-check agrees: the parts-derived
+   per-block ratio I_part/2√(S_part·F_part) is deep-negative for **all 28
+   blocks**, band 3–8 included (896: −0.86…−0.98; 768: −0.74…−0.97). No
+   depth band carries a distinguished share of the anti-alignment angle.
+2. **The interaction magnitude tracks branch energy exactly.** Per-block
+   mid-σ shares of I match the S and F shares block-by-block: block:27
+   owns 43%/52% (896/768) of I but equally 36–55% of S/F; block:01 owns
+   14–19% of all three; band 3–8 owns 4–6% of all three. There is **zero
+   excess interaction at any depth** — the depth profile of I is just the
+   depth profile of where the perturbations land. The only depth texture
+   is in the amplitude ratio: block:27 is C-heavy (F share > S share) and
+   block:01 B-heavy — the crossing structure is depth-textured even
+   though the angle is not.
+3. **Type-uniformity kills the module-local version too.** All 15
+   module-type groups read deep where gated (−0.8…−0.97 at mid σ) —
+   including cross-attn and MLP projections, which RoPE never touches.
+   The fused-qkv row splits show **no q/k-vs-v excess** anywhere they
+   read (mid-σ cells mostly gated; at the 768 endpoint up_q −0.73 vs
+   up_v −0.89) — the RoPE-row discriminator comes back negative.
+4. **Joint reading with 19.2.** The pre-registered tree said
+   depth-uniform ρ_ℓ "corroborates the r-level account" — but 19.2
+   already measured the r-level seed weak. The consistent joint verdict:
+   the deep mid-σ anti-alignment is Jᵀ-born (19.2) yet **not localized**
+   in depth or module type (19.3), so the theory target is *not* the
+   shared range of an early-block operator — it is the model-level scale
+   covariance along the demotion diagonal. Depth-uniformity is exactly
+   what that account predicts: if the joint demotion direction is a
+   near-flat direction of the trained function, B ≈ −C holds at the
+   function level and every parameter slice inherits the anti-alignment
+   through the chain rule — which is what the ledger shows, down to the
+   energy-proportional magnitude split.
+5. **Endpoint (non-verdict, unit-honesty).** σ=1 magnitudes are
+   ratio-of-small-numbers (S ≈ 0.001); 896's endpoint fails both gates.
+   Directionally, 768's endpoint reads deep across blocks 6–27 while
+   896's early blocks flip weakly positive — consistent with 19.2's
+   finding that the σ→1 tail is the one regime the residual level partly
+   owns, and route-ordered the same way.
+
+19.4's prior updates accordingly: with no early-band concentration and no
+q/k-row signature, PE-geometry mediation of the *angle* is disfavored
+before the causal arm runs; 19.4 remains the direct test (does PI-aligning
+the demoted grid's phases rotate C at the noise-dominated bins), but a
+null there would now cohere with 19.3 rather than contradict Q2/G10.
 
 ## 19.4 — the PI-align causal arm (few bins, one route pair)
 
