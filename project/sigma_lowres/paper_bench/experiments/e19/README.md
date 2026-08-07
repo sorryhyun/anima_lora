@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **19.0–19.3, 19.5 DONE 2026-08-07; 19.4 run finished (verdict unread); 19.6 PLANNED** (smoke landed `20260807-1928-e196-sincos-smoke`; full run deliberately stopped pre-start 2026-08-07 — instruments ready). Verdict chain so far: the anti-alignment's mid-σ depth is **Jᵀ-born** (19.2), with a weak residual-level seed the Gaussian closure derives in sign/shape/ordering (19.1); the Jᵀ mechanism is **global** — depth-uniform, type-uniform, magnitude ∝ branch energy (19.3, early-band localization refuted). Working account: model-level scale covariance along the demotion diagonal (B ≈ −C at the function level). 19.4 is the causal RoPE check on a weakened PE-mediation prior |
+| **Status** | **19.0–19.5 DONE 2026-08-07; 19.6 PLANNED** (smoke landed `20260807-1928-e196-sincos-smoke`; full run deliberately stopped pre-start 2026-08-07 — instruments ready). Verdict chain: the anti-alignment's mid-σ depth is **Jᵀ-born** (19.2), with a weak residual-level seed the Gaussian closure derives in sign/shape/ordering (19.1); the Jᵀ mechanism is **global** — depth-uniform, type-uniform, magnitude ∝ branch energy (19.3, early-band localization refuted); and at the noise-dominated bins it is **partially RoPE-phase-mediated** — PI-aligning phases rotates C (cos(C, C_pi) 0.50–0.67 on 768) and halves the anti-alignment, growing h(C) ~2× (19.4). Working account: model-level scale covariance along the demotion diagonal, with a **phase-borne component of the cancellation** the account must now carry |
 | **Question** | [E14](../e14/)'s headline turned the measured gap curve into the *residual of a near-cancellation*: at every σ the data-branch and graph-branch perturbations are strongly anti-aligned (ρ ≈ −0.7…−0.9), both individually far larger than the realized gap, and the σ≈0.4–0.7 cliffs are the \|B⊥\|/\|C⊥\| = 1 crossings. This is why the spectral account misses by ~4× — it transports amplitude without the interference structure. So the theory-facing question is no longer "a law per branch" but: **where is the anti-alignment born — in the residual field r (a property of the trained denoiser + data statistics) or in the pull-back through Jᵀ (a property of the graph/Jacobian)? And is it derivable?** |
 | **Depends on** | [E14](../e14/) (headline + `vector_ledger.py`; unit-honesty rule), [E9](../e9/) (crossing↔window localization), [E17](../e17/) (Gaussian-closure machinery), [E11](../e11/) (residual directions norm-only; `--save_residuals`), Q2/G10/G11 in `record/questions.md`, [E7](../e7/)+Q3 (adapter axis), [E18](../e18/proposal.md) (per-draw projection hook — the storage-free alternative 19.3 didn't need) |
 | **Instruments** | 19.0 `reads_190.py` (committed-ledger re-reads); 19.1 `bench/run_closure_rho.py`; 19.2 `run_prior_distance.py --repromote --save_residuals` + `bench/ledger_rho_r.py`; 19.3 `run_sigma_probe.py --repromote --keep_arm_sums` (now dumps `groups.json`) + `paper_bench/ledger_depth.py`; 19.4 `--pi_align --repromote` in one process + `paper_bench/ledger_pi.py`; 19.5 `bench/ledger_b_scoreshift.py` (CPU, 19.2 store × 19.1 closure); 19.6 `run_prior_distance.py --adapter` + `bench/ledger_operating_point.py` |
@@ -29,7 +29,7 @@ The discriminator ladder, cheap→expensive, with verdicts:
 | **L0** (19.0) | what do the committed ledgers already pin? | completeness tracks the safety map; unsafe = mismatched magnitudes, not decoherence; headline not a shared-arm artifact |
 | **L1** (19.1+19.2) | residual-level or Jᵀ-born? | **Jᵀ-born**; weak derivable r-level seed (closure gets sign/shape/ordering, misses level ~1.5–2×) |
 | **L2** (19.3) | depth-localized in the Q2 band 3–8, or uniform? | **depth-uniform and type-uniform**; interaction magnitude ∝ branch energy at every depth |
-| **L3** (19.4) | is the graph side RoPE-causal — does PI-aligning phases rotate C? | running (prior weakened by L2's null q/k-row read) |
+| **L3** (19.4) | is the graph side RoPE-causal — does PI-aligning phases rotate C? | **C ROTATES, partially** — cos(C⊥, C_pi⊥) 0.50–0.67 (768), ρ −0.89…−0.92 → −0.34…−0.60; residual anti-alignment survives, and h(C_pi) ≈ 2×h(C) at σ 0.7/0.83 — the near-cancellation is partly phase-borne |
 
 ## 19.0 — re-reads from the committed E14 ledgers (0 GPU; `reads_190.py` → `frozen_target_190.json`, DONE 2026-08-06)
 
@@ -172,7 +172,7 @@ The rerun replicates E14's globals at the shared bins (ρ_g −0.87…−0.95;
    6–27 while 896's early blocks flip weakly positive — consistent with
    19.2's σ→1 tail finding, same route ordering.
 
-## 19.4 — the PI-align causal arm (RUNNING; job `20260807-140010-6edca8`, `ledger_pi.py` committed `610c8958`)
+## 19.4 — the PI-align causal arm (DONE 2026-08-07; run `bench/results/20260807-1400-e194-pi-causal`, ledger `pi_194.json`, instrument committed `610c8958`)
 
 `--pi_align --repromote` in ONE process (kernel-path rule): the `<e>pi`
 arm re-runs the demoted-graph forward with PI-stretched RoPE phases, so
@@ -190,6 +190,38 @@ RoPE_e), 896 as small-floor control. After 19.3's null q/k-row read and
 type-uniformity, the PE-mediation prior is weakened: a no-rotation
 result now coheres with the global scale-covariance account rather than
 contradicting Q2/G10.
+
+Verdict (reenc ref; all three verdict bins gated on both routes):
+
+1. **C ROTATES.** 768: cos(C⊥, C_pi⊥) = **0.504 / 0.648 / 0.671** at
+   σ = 0.7 / 0.8333 / 0.9625, with ρ → ρ_pi = −0.891→−0.344,
+   −0.924→−0.534, −0.845→−0.600. The pre-registered rotation
+   criterion (direction change, not mere shrinkage) is met — the
+   graph leg's anti-aligned component is **phase-geometry-mediated**.
+2. **Partially.** ρ_pi does not reach 0 at any verdict bin
+   (−0.34…−0.60): a phase-independent share of the anti-alignment
+   survives PI-stretching — mediation, not sole ownership.
+3. **The near-cancellation is partly phase-borne.** h(C_pi) ≈ 2× h(C)
+   at σ 0.7/0.8333 on 768 (0.178→0.307, 0.084→0.176) and
+   \|B\|/\|C_pi\| drops to 0.28–0.30 (vs 0.76–0.87 for C): with phases
+   PI-aligned the graph leg *grows* and stops magnitude-matching B —
+   the phase geometry is part of what lets the legs cancel on the
+   safe route.
+4. **896 control, same direction, weaker**: cos 0.572/0.733/0.872,
+   ρ −0.893→−0.413 at σ = 0.7 — ordering consistent with the smaller
+   RoPE_e floor; rotation fades toward the endpoint on both routes.
+5. **Endpoint non-verdict as expected**: 896 relC = 0.48 gate-fails
+   and its ρ = −1.066 is the small-denominator artifact; 768's
+   ρ_pi = −0.003 at σ = 1 is directionally striking but unreadable at
+   these reliabilities.
+
+Joint with 19.3: phase-mediated yet depth/type-uniform — the phase
+share of the anti-alignment is carried globally (every block/module
+inherits it through the chain rule), not by an early-band RoPE
+operator. The scale-covariance account keeps the flat-diagonal claim
+but must now carry an explicitly phase-borne component of the
+cancellation; Q2/G10's PE-mediation reading survives in this weakened,
+delocalized form.
 
 ## 19.5 — measured-vs-closure leg DIRECTIONS (run `20260807-1928-e195-dircos`, `dircos_195.json`, DONE 2026-08-07)
 
@@ -262,7 +294,7 @@ therefore genuinely open and needs the debiased full read.
 | 19.1 predicts ρ_r < 0 AND 19.2 measures it | interaction derivable from second-order data statistics | **partial** — sign/shape/ordering derivable; depth is Jᵀ's (closure = seed account, level miss committed) |
 | 19.2: ρ_r < 0, but 19.1's closure misses it | residual-level but beyond-Gaussian | not taken (closure did not miss sign/shape) |
 | 19.2: ρ_r ≈ 0 while ρ_g ≈ −0.9 | Jᵀ creates it | **✓ (weak-seed variant)** — L2/L3 took over |
-| 19.3: ρ_ℓ concentrated in blocks ~3–8 + 19.4 rotates C | graph side is PE-geometry-mediated | **19.3 half REFUTED** (depth-uniform); 19.4 pending |
+| 19.3: ρ_ℓ concentrated in blocks ~3–8 + 19.4 rotates C | graph side is PE-geometry-mediated | **19.3 half REFUTED** (depth-uniform); **19.4 half CONFIRMED** (C rotates, partially) — phase-mediated but **not** depth-localized |
 | 19.0: 512 keeps ρ ≈ −0.9 with broken amplitude ratio | unsafe = mismatched magnitudes, not decoherence | **✓** — amplitude law is the open half |
 | 19.0: `I_sameset` − cross-set I large | part of the headline is shared-arm noise | **✗** — artifact real but headline cross-set-only |
 
@@ -315,7 +347,7 @@ therefore genuinely open and needs the debiased full read.
 | 19.1 | one VAE encode pass | then CPU on stored latents |
 | 19.2 | ~4.5 h | forward-only, latent-sized vectors |
 | 19.3 | 5.7 h | reduced grid, 18 GB store (kept on the training box) |
-| 19.4 | ~6 h (est) | 2 routes × 4 bins, one process |
+| 19.4 | ~4.8 h | 2 routes × 4 bins, one process |
 | 19.5 | none | CPU: 19.2 residual store × warm 19.1 closure cache |
 | 19.6 | ~4.5 h (est) | 19.2 mirror at the sincos operating point |
 
