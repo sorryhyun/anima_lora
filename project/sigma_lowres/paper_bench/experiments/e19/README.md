@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **19.0–19.3, 19.5 DONE 2026-08-07; 19.4 run finished (verdict unread); 19.6 queued** (jobs `20260807-190140-{90ac19,d5b042}`). Verdict chain so far: the anti-alignment's mid-σ depth is **Jᵀ-born** (19.2), with a weak residual-level seed the Gaussian closure derives in sign/shape/ordering (19.1); the Jᵀ mechanism is **global** — depth-uniform, type-uniform, magnitude ∝ branch energy (19.3, early-band localization refuted). Working account: model-level scale covariance along the demotion diagonal (B ≈ −C at the function level). 19.4 is the causal RoPE check on a weakened PE-mediation prior |
+| **Status** | **19.0–19.3, 19.5 DONE 2026-08-07; 19.4 run finished (verdict unread); 19.6 PLANNED** (smoke landed `20260807-1928-e196-sincos-smoke`; full run deliberately stopped pre-start 2026-08-07 — instruments ready). Verdict chain so far: the anti-alignment's mid-σ depth is **Jᵀ-born** (19.2), with a weak residual-level seed the Gaussian closure derives in sign/shape/ordering (19.1); the Jᵀ mechanism is **global** — depth-uniform, type-uniform, magnitude ∝ branch energy (19.3, early-band localization refuted). Working account: model-level scale covariance along the demotion diagonal (B ≈ −C at the function level). 19.4 is the causal RoPE check on a weakened PE-mediation prior |
 | **Question** | [E14](../e14/)'s headline turned the measured gap curve into the *residual of a near-cancellation*: at every σ the data-branch and graph-branch perturbations are strongly anti-aligned (ρ ≈ −0.7…−0.9), both individually far larger than the realized gap, and the σ≈0.4–0.7 cliffs are the \|B⊥\|/\|C⊥\| = 1 crossings. This is why the spectral account misses by ~4× — it transports amplitude without the interference structure. So the theory-facing question is no longer "a law per branch" but: **where is the anti-alignment born — in the residual field r (a property of the trained denoiser + data statistics) or in the pull-back through Jᵀ (a property of the graph/Jacobian)? And is it derivable?** |
 | **Depends on** | [E14](../e14/) (headline + `vector_ledger.py`; unit-honesty rule), [E9](../e9/) (crossing↔window localization), [E17](../e17/) (Gaussian-closure machinery), [E11](../e11/) (residual directions norm-only; `--save_residuals`), Q2/G10/G11 in `record/questions.md`, [E7](../e7/)+Q3 (adapter axis), [E18](../e18/proposal.md) (per-draw projection hook — the storage-free alternative 19.3 didn't need) |
 | **Instruments** | 19.0 `reads_190.py` (committed-ledger re-reads); 19.1 `bench/run_closure_rho.py`; 19.2 `run_prior_distance.py --repromote --save_residuals` + `bench/ledger_rho_r.py`; 19.3 `run_sigma_probe.py --repromote --keep_arm_sums` (now dumps `groups.json`) + `paper_bench/ledger_depth.py`; 19.4 `--pi_align --repromote` in one process + `paper_bench/ledger_pi.py`; 19.5 `bench/ledger_b_scoreshift.py` (CPU, 19.2 store × 19.1 closure); 19.6 `run_prior_distance.py --adapter` + `bench/ledger_operating_point.py` |
@@ -233,7 +233,7 @@ read) is **base-DiT**, while the E14 g-ledger is **sincos-attached** —
 the two ledgers the line compares straddle operating points. 19.6
 closes exactly this.
 
-## 19.6 — adapter operating-point arm (QUEUED; jobs `20260807-190140-{90ac19,d5b042}`, instruments committed `416ca762`)
+## 19.6 — adapter operating-point arm (PLANNED; smoke `20260807-1928-e196-sincos-smoke` landed, full run stopped by choice; instruments committed `416ca762`)
 
 `run_prior_distance.py --adapter` (default None keeps the 19.2
 estimand) reruns the 19.2 probe bit-matched (same probe list, latent
@@ -246,6 +246,14 @@ dircos_B < dircos_C − 0.2 (and/or |log amp_B| ≫ |log amp_C|); dircos ≈ 1
 with amp ≈ 1 for both legs = leg-level operating-point invariance,
 extending E7's map-level null and retroactively cleaning 19.5 and the
 r(base)-vs-g(sincos) comparisons throughout E19.
+
+Smoke interim (2 images, 4 draws, route 896, σ 0.3/0.7 — NOT
+verdict-bearing): the adapter moves the raw mean-residual field itself
+substantially (per-arm cos(base, sincos) ≈ 0.16–0.24 against
+within-store parity reliabilities 0.55–0.86; amp 0.6–0.88), but the
+movement is near-uniform ACROSS arms at matched σ — an arm-shared
+component that would cancel in the legs. The leg-level verdict is
+therefore genuinely open and needs the debiased full read.
 
 ## Decision tree (resolution marked)
 
