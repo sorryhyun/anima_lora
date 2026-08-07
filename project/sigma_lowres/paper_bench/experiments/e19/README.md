@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **19.0–19.5 DONE 2026-08-07; 19.6 PLANNED** (smoke landed `20260807-1928-e196-sincos-smoke`; full run deliberately stopped pre-start 2026-08-07 — instruments ready). Verdict chain: the anti-alignment's mid-σ depth is **Jᵀ-born** (19.2), with a weak residual-level seed the Gaussian closure derives in sign/shape/ordering (19.1); the Jᵀ mechanism is **global** — depth-uniform, type-uniform, magnitude ∝ branch energy (19.3, early-band localization refuted); and at the noise-dominated bins it is **partially RoPE-phase-mediated** — PI-aligning phases rotates C (cos(C, C_pi) 0.50–0.67 on 768) and halves the anti-alignment, growing h(C) ~2× (19.4). Working account: model-level scale covariance along the demotion diagonal, with a **phase-borne component of the cancellation** the account must now carry |
+| **Status** | **DONE 2026-08-08 (19.0–19.6)**. Verdict chain: the anti-alignment's mid-σ depth is **Jᵀ-born** (19.2), with a weak residual-level seed the Gaussian closure derives in sign/shape/ordering (19.1); the Jᵀ mechanism is **global** — depth-uniform, type-uniform, magnitude ∝ branch energy (19.3, early-band localization refuted); and at the noise-dominated bins it is **partially RoPE-phase-mediated** — PI-aligning phases rotates C (cos(C, C_pi) 0.50–0.67 on 768) and halves the anti-alignment, growing h(C) ~2× (19.4). The whole read is **operating-point clean**: rerunning the 19.2 probe bit-matched with `anima_soup_sincos` merged leaves both legs and the native residual field unmoved (dircos ≈ 1, amp within ~3% at every gated bin, all routes) — leg-level operating-point invariance, extending E7's map-level null (19.6). Working account: model-level scale covariance along the demotion diagonal, with a **phase-borne component of the cancellation** the account must now carry |
 | **Question** | [E14](../e14/)'s headline turned the measured gap curve into the *residual of a near-cancellation*: at every σ the data-branch and graph-branch perturbations are strongly anti-aligned (ρ ≈ −0.7…−0.9), both individually far larger than the realized gap, and the σ≈0.4–0.7 cliffs are the \|B⊥\|/\|C⊥\| = 1 crossings. This is why the spectral account misses by ~4× — it transports amplitude without the interference structure. So the theory-facing question is no longer "a law per branch" but: **where is the anti-alignment born — in the residual field r (a property of the trained denoiser + data statistics) or in the pull-back through Jᵀ (a property of the graph/Jacobian)? And is it derivable?** |
 | **Depends on** | [E14](../e14/) (headline + `vector_ledger.py`; unit-honesty rule), [E9](../e9/) (crossing↔window localization), [E17](../e17/) (Gaussian-closure machinery), [E11](../e11/) (residual directions norm-only; `--save_residuals`), Q2/G10/G11 in `record/questions.md`, [E7](../e7/)+Q3 (adapter axis), [E18](../e18/proposal.md) (per-draw projection hook — the storage-free alternative 19.3 didn't need) |
 | **Instruments** | 19.0 `reads_190.py` (committed-ledger re-reads); 19.1 `bench/run_closure_rho.py`; 19.2 `run_prior_distance.py --repromote --save_residuals` + `bench/ledger_rho_r.py`; 19.3 `run_sigma_probe.py --repromote --keep_arm_sums` (now dumps `groups.json`) + `paper_bench/ledger_depth.py`; 19.4 `--pi_align --repromote` in one process + `paper_bench/ledger_pi.py`; 19.5 `bench/ledger_b_scoreshift.py` (CPU, 19.2 store × 19.1 closure); 19.6 `run_prior_distance.py --adapter` + `bench/ledger_operating_point.py` |
@@ -263,9 +263,9 @@ demotion, with the beyond-Gaussian structure living in the graph leg?
 Operating-point caveat, now explicit: the 19.2 store (and hence this
 read) is **base-DiT**, while the E14 g-ledger is **sincos-attached** —
 the two ledgers the line compares straddle operating points. 19.6
-closes exactly this.
+closed exactly this: leg-level invariance, so the straddle is benign.
 
-## 19.6 — adapter operating-point arm (PLANNED; smoke `20260807-1928-e196-sincos-smoke` landed, full run stopped by choice; instruments committed `416ca762`)
+## 19.6 — adapter operating-point arm (DONE 2026-08-08 — **leg-level operating-point invariance**; run `20260808-0102-e196-rho-r-sincos`, ledger `20260808-0625` → [opdiff_196.json](opdiff_196.json))
 
 `run_prior_distance.py --adapter` (default None keeps the 19.2
 estimand) reruns the 19.2 probe bit-matched (same probe list, latent
@@ -279,13 +279,33 @@ with amp ≈ 1 for both legs = leg-level operating-point invariance,
 extending E7's map-level null and retroactively cleaning 19.5 and the
 r(base)-vs-g(sincos) comparisons throughout E19.
 
-Smoke interim (2 images, 4 draws, route 896, σ 0.3/0.7 — NOT
-verdict-bearing): the adapter moves the raw mean-residual field itself
-substantially (per-arm cos(base, sincos) ≈ 0.16–0.24 against
-within-store parity reliabilities 0.55–0.86; amp 0.6–0.88), but the
-movement is near-uniform ACROSS arms at matched σ — an arm-shared
-component that would cancel in the legs. The leg-level verdict is
-therefore genuinely open and needs the debiased full read.
+**Verdict — the invariance branch of the pre-registration** (40 images,
+16 draws, 15 σ, all 3 routes; all 10 verdict bins pass the rel gate on
+every route):
+
+1. **Both legs are operating-point invariant**: dircos_C ≈ 1.02–1.07
+   with amp_C 0.98–1.00 across every gated bin and route; dircos_B sits
+   at or *above* 1 (1.02–1.42) with amp_B 0.93–1.02. The gated gap
+   dircos_C − dircos_B has median **−0.284 / −0.153 / −0.081**
+   (896/768/512) — the *opposite sign* of the LoRA-moves-B prediction
+   (dircos_B < dircos_C − 0.2), and B's systematic >1 overshoot cannot
+   be rotation (rotation lowers cos; overshoot = cross-half debiasing
+   dividing by an underestimated B reliability, the noisier leg). The
+   debias-free confirmation: **per-image raw cos(base, sincos) is
+   0.95–0.98 (B) / 0.93–0.99 (C)** at every gated bin, all routes.
+   Read: **LoRA-moves-B refuted; E7's map-level null extends to the leg
+   level**, and 19.5 plus every r(base)-vs-g(sincos) comparison in E19
+   is retroactively operating-point clean.
+2. **The native residual field itself is also unmoved** at the verdict
+   band: natres dircos 0.95–1.03, amp 0.99–1.02 at σ ≥ 0.3 (low-σ bins
+   overshoot to 1.09–1.22 / amp 1.15 — non-verdict as usual). This
+   *supersedes* the smoke's suggestive per-arm raw cos ≈ 0.16–0.24 (2
+   images, 4 draws): that was parity noise at small N, not real field
+   movement — the full cross-half-debiased pooled read finds none.
+3. **Controls tight**: own-projector / no-projection / native-ref
+   variants move dircos by ≤ 0.06 at the gated bins (all routes);
+   bicubic moves B by up to 0.19 on 896 (the known-noisier control —
+   its C stays ≤ 0.03), never in the direction of the refuted branch.
 
 ## Decision tree (resolution marked)
 
@@ -349,7 +369,7 @@ therefore genuinely open and needs the debiased full read.
 | 19.3 | 5.7 h | reduced grid, 18 GB store (kept on the training box) |
 | 19.4 | ~4.8 h | 2 routes × 4 bins, one process |
 | 19.5 | none | CPU: 19.2 residual store × warm 19.1 closure cache |
-| 19.6 | ~4.5 h (est) | 19.2 mirror at the sincos operating point |
+| 19.6 | 5.3 h | 19.2 mirror at the sincos operating point; ledger CPU |
 
 No verdict-grid-scale spend anywhere; the full σ-map stays reserved for
 confirming whatever theory survives 19.4.
