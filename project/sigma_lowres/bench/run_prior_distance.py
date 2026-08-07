@@ -80,6 +80,16 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     p.add_argument("--dit", default=DIT)
     p.add_argument("--vae", default=VAE)
+    p.add_argument(
+        "--adapter",
+        default=None,
+        help="LoRA checkpoint to merge before probing (operating-point arm; "
+        "default None = base DiT, the 19.2 operating point). The E19.6 "
+        "adapter-axis read reruns the 19.2 probe with the shipped "
+        "anima_soup_sincos here and diffs the r-level legs against the "
+        "base-DiT store — r̄ lives in x-space, so cross-operating-point "
+        "direction comparisons are well-defined.",
+    )
     p.add_argument("--num_images", type=int, default=16)
     p.add_argument(
         "--sigmas",
@@ -277,7 +287,9 @@ def main() -> None:
 
     args.compile = False
     args.gradient_checkpointing = False
-    bundle = build_anima(args, dit_path=args.dit, adapter=None, train_mode=False)
+    bundle = build_anima(
+        args, dit_path=args.dit, adapter=args.adapter, train_mode=False
+    )
     anima = bundle.anima
 
     uncond = None
