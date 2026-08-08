@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **20.1 + 20.2 DONE 2026-08-08 — verdict PARTIAL** (better on exactly one safe lane: 768 wins with dip in-window, LOO-896 loses; 1280-tier guard fails on 1024). Per the reading rules: geometry right, amplitude law open; **no 20.3 spend**. Results below; run `runs/20260808-0924-e20-refit/`. Pre-registration (frozen constants, lanes, reading rules) unchanged below. |
+| **Status** | **20.1 + 20.2 DONE 2026-08-08 — verdict PARTIAL** (better on exactly one safe lane: 768 wins with dip in-window, LOO-896 loses; 1280-tier guard fails on 1024). Per the reading rules: geometry right, amplitude law open; **no 20.3 spend**. **20.4 DONE 2026-08-08 — NEGATIVE** (derived data term fails the lanes; failure is estimand-level, not closure-level — see §20.4 Results). Results below; runs `runs/20260808-0924-e20-refit/`, `runs/20260808-0944-e20-stretch/`. Pre-registration (frozen constants, lanes, reading rules) unchanged below. |
 | **Question** | E19 located the near-cancellation's geometry (global, Jᵀ-born, ρ̄ ≈ −0.91) and the Fig.-1 demonstration (`fig_accounts_canc.py`, in `e19/accounts_canc.png`) showed the cancellation-aware link fits the measured map in-sample and lands its crossings in the E9 window. Open: does it survive the **same governor / held-out protocol** the paper's additive account runs under — same parameter count per route, same lanes, same bootstrap — and does it thereby earn the reserved full-σ-map confirmation spend? |
 | **Depends on** | [E19](../e19/) (ρ̄ license: 19.0 route-uniform, 19.3 depth/type-uniform, 19.6 operating-point invariant), [E14](../e14/) (ledger; source of ρ̄), [E5](../e5/) (`e5_refit.py` lanes: FIT_ROUTES 896/512/1120, HELD_OUT 768/1024, LOO-896; governors; bootstrap), [E9](../e9/) (window ↔ crossing), `paper_bench/fig_accounts_canc.py` (feasibility demo, NOT lane-matched) |
 | **Instruments** | 20.1 `e20_refit.py` (extends `e5_refit`; CPU); 20.2 free re-read of 20.1; 20.3 decision-gated GPU (the reserved spend); 20.4 stretch (closure-derived data term) |
@@ -151,6 +151,54 @@ measured x(σ) with the closure-predicted B-leg amplitude curve (one
 fitted scale, or a linear-in-σ correction) and re-run 20.1's lanes.
 This bounds how much of the account can be *derived* rather than
 measured. Not verdict-bearing for 20.1; separate reading.
+
+### 20.4 Results (2026-08-08) — NEGATIVE, failure is estimand-level, not closure-level
+
+Instruments: `e20_stretch.py` (imports 20.1's chain from `e20_refit`,
+so the lanes are bit-identical; measured-arm cross-check reproduces
+20.1's 768 RMSE* to 0.0e+00) over amplitude curves from a rerun of
+`bench/ledger_b_scoreshift.py` patched to emit absolute per-image RMS
+leg amplitudes (`amp_pred_B`/`amp_meas_B`; new `--closures` arg, diag
+closure — closures agree to ~0.01 in 19.5). Runs:
+`bench/results/20260808-0939-e204-amp` (amp dump, daemon job
+`20260808-093836-7bb1f0`) → `runs/20260808-0944-e20-stretch/`.
+1280-tier routes keep measured x in every arm (no closure instrument
+there); the clean read is the 768 held-out lane.
+
+| arm (768 held-out lane) | RMSE* | dip |
+|---|---|---|
+| measured m̄/G (20.1) | **0.078** | 0.673 IN |
+| measured B amp (r-ledger, diagnostic) | 0.412 | 0.883 |
+| closure-predicted B amp (the pre-registered arm) | 0.436 | 0.874 |
+| closure B × (1 + 0.93σ) (the one-dof correction) | 0.510 | 0.914 |
+| per-route closure B / no-/G variants | 0.29–0.46 | 0.06–0.88 |
+| (additive reference) | 0.099 | — |
+
+- **Every derived arm fails at lane level** (4–6× the measured lane's
+  RMSE*, worse than the additive account; dips out of window), robust
+  to pooled-vs-per-route, /G-vs-raw, and the linear-σ dof (whose
+  in-sample b* = +0.93 makes 768 *worse*).
+- **The failure is not the closure**: the *measured* B-amplitude arm
+  fails equally (0.412 vs 0.436) — swapping measured→closure
+  amplitudes moves almost nothing. The ledger's B-leg amplitude is
+  simply **not the account's x(σ)**: an estimand mismatch, not a
+  prediction miss.
+- **Where they part** (normalized, mean 1 over σ ≥ 0.3, 896 grid): the
+  derived x agrees with the lane's x to **≤ 5–7 % over σ ≈ 0.3–0.7**
+  — the band where E19 licensed the closure — but diverges at both
+  tails: 0.60× (pred) / 1.47× (meas) at the lowest bin, and **missing
+  the σ→1 upturn entirely** (67 % / 175 % rel. dev. at the endpoint).
+  The tails are exactly what the lanes lean on: low-σ bins carry the
+  largest fit weights (smallest SEMs) and the high-σ upturn carries
+  the dip/crossing geometry.
+- **Reading**: the data term is derivable *only over the mid-σ band*;
+  the account's operative structure lives in the tails, where the
+  r-level leg estimand and the mismatch-curve estimand part ways.
+  Derivability of the account through the closure B-leg: **none at
+  lane level**. Any future "derive the amplitudes" attempt (the E21
+  sketch in the 20.1 reading) must first build the estimand bridge
+  between the ledger legs and the gap account's x — the closure is
+  not the bottleneck.
 
 ## Kill switches / honesty
 

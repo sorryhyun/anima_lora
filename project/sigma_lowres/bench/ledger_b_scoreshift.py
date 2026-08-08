@@ -92,6 +92,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--shrink_R", type=float, default=0.2)
     p.add_argument("--clip_pc", type=float, default=0.6)
     p.add_argument("--quant_k", type=int, default=4)
+    p.add_argument(
+        "--closures",
+        default=",".join(CLOSURES),
+        help="comma list of closures to run (subset of diag,block,octave)",
+    )
     p.add_argument("--label", default=None)
     p.add_argument("--smoke", action="store_true", help="2 images, 1 route, block only")
     p.add_argument(
@@ -140,6 +145,9 @@ def pooled_row(s: dict[str, float], pic: dict[str, list[float]]) -> dict:
         out[f"amp_pred_over_meas_{leg}"] = (
             round(math.sqrt(pp / mm), 5) if mm > 0 else float("nan")
         )
+        # absolute per-image RMS amplitudes (E20.4 consumes amp_pred_B):
+        out[f"amp_pred_{leg}"] = round(math.sqrt(pp / s["n"]), 6)
+        out[f"amp_meas_{leg}"] = round(math.sqrt(max(mm, 0.0) / s["n"]), 6)
         out[f"rel_cos_{leg}"] = round(rel[leg], 5)
         out[f"per_image_cos_{leg}_mean"] = (
             round(float(pa.mean()), 5) if len(pa) else None
@@ -162,7 +170,7 @@ def main() -> None:
         raise SystemExit(f"no residuals/ under {run}")
     native = str(args.tier)
     edges = [e for e in args.edges.split(",") if e]
-    closures = CLOSURES
+    closures = tuple(c for c in args.closures.split(",") if c)
 
     # measured store index
     index: dict[tuple[str, str, int], Path] = {}
