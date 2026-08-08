@@ -5,7 +5,7 @@
 | **Status** | **DONE 2026-08-08 — verdict INSTRUMENT-LIMITED** (all three σ void at the pre-registered ≥ 8-image reliability floor; run recorded, stopped, draws NOT escalated — see Results). Pre-registration committed same day before the 22.1 instrument existed (theory-first, mirroring 19.1/20/21). |
 | **Question** | Every anti-alignment number in this line so far — E14's pooled ρ̄ ≈ −0.91, E21's cell-level LOCAL verdict — is a **cross-image mean** (40 images × 12 draws summed before any cosine). A training-facing correction acts on **one sample at one step**. Is the B/C cancellation a per-sample property (each image's data damage mirrored by its own graph response), or a population property that only emerges in the mean? This is the missing link ("estimand bridge") that E20.4 crashed into from the objective side — E22 closes it from the measurement side, **before** any correction is proposed. Secondary, observational: training "at 1024" is itself training on **preprocess-resized** pixels (source → bucket downscale; free-fit drove crop bias to ~0 but the downscale low-pass remains). Per-image records let us stratify the ledger by each image's realized resize factor — a first, hypothesis-generating look at whether that preprocessing bias is visible in LoRA-gradient space. |
 | **Depends on** | [E21](../e21/) (LOCAL verdict — licenses factorized per-cell reads; adaln amplitude concentration — the candidate lever this experiment gates); [E20.4](../e20/) (derived data term fails at estimand level — the standing reason per-sample must be measured, not assumed); `run_sigma_probe.py` + `sigma_probe/` (the per-image arm loop this amends); E14/E19 ledger conventions. **The 19.3/19.4 stores cannot answer this**: they are cross-image sums, and `per_image.jsonl` carries only arm-vs-native cosines (`cos_<arm>`), never the arm×arm cross products that ρ_i needs. New GPU arm required. |
-| **Instruments** | 22.1 probe amendment `--per_image_ledger` (GPU, daemon): emit per-image debiased B/C scalar reductions inside the existing per-image loop; 22.2 `e22_per_image.py` (CPU digest + figures); 22.3 free re-reads of 22.2. |
+| **Instruments** | 22.0 `e22_corpus.py` (CPU corpus prep → `resize_factors.json` + `e22_probe_list.json`); 22.1 probe amendment `--per_image_ledger` (`sigma_probe/cli.py` + `stats.py` + driver; GPU, daemon job `20260808-163340-13b303` → `runs/20260808-1633-e221-per-image-ledger`); 22.2 `e22_per_image.py` (CPU digest + figure → `e22_per_image.json`, `e22_rho_i.png`); 22.3 applied — see Results. |
 | **In the paper** | The mechanism→prescription bridge for §5/discussion: PER-SAMPLE HOLDS licenses a training-facing lever (E23a); POOLED-ONLY kills the whole per-sample correction family in one pre-registered stroke and confines prescriptions to scheduler-side routing (the shipped σ-gated demotion recipe). Either outcome is a paper paragraph. |
 
 **Numbering note**: e20's informally sketched "derive the amplitudes"
@@ -68,21 +68,38 @@ images), so it can generate hypotheses, never causal claims.
   pooled values non-comparable to E14/E21's (selection differs) — the
   cross-check is internal consistency, not replication.
 
-## 22.1 — probe amendment (GPU, daemon job)
+## 22.1 — probe amendment (GPU, daemon job) — RAN
 
 `run_sigma_probe.py --per_image_ledger`: inside the existing per-image
 arm loop, before accumulation, compute the per-image scalar reductions
 above and append them to `per_image_ledger.jsonl`. No new forwards — the
-same arm gradients, reduced per image instead of only summed. Costed
-below; runs as one daemon job.
+same arm gradients, reduced per image instead of only summed.
 
-## 22.2 — digest + figures (CPU)
+As implemented: flag + cross-flag validation in `sigma_probe/cli.py`
+(requires `--repromote --self_floor` + the reenc control; refuses
+pool / target-kappa / draw-sweep / x-zero / target-alpha modes); ledger
+math in `sigma_probe/stats.py` (`image_ledger` + `build_ledger_slices` —
+global row mirrors `vector_ledger.bc_ledger`, band/cell rows mirror
+`e21_cells.cell_row` incl. the additive global-perp partition); the
+driver retains each image's arm vectors non-streaming (8 lists × 3 bins
+≈ 7.5 GB CPU RAM at this grid) and reduces them synchronously
+(~10–20 s/image against the run's GPU-hours). Validated **before any
+GPU** on synthetic arms against both committed implementations (global
+row exact at output rounding, slice rows bit-exact, core cells resum to
+the global row), then smoke-tested end-to-end on a 2-image daemon job.
+The verdict run is one daemon job, 2.1 h wall, `--deterministic
+--keep_arm_sums`, launched with the frozen grid/corpus unchanged.
+
+## 22.2 — digest + figures (CPU) — RAN
 
 `e22_per_image.py`: per-σ distributions of gated ρ_i (global; band);
-stratum overlays (near-native vs heavy); reliability accounting; digest
-`e22_per_image.json` in this dir + `e22_rho_i.png`.
+stratum overlays (near-native vs heavy); reliability accounting; the
+22.3 verdict logic incl. the reliability floor; pooled same-run
+cross-check read from `<run>/ledger.json` (`vector_ledger.py
+--data_ref reenc`). Digest `e22_per_image.json` in this dir +
+`e22_rho_i.png`; `--figs_only` redraws from the committed digest.
 
-## 22.3 — pre-registered readings
+## 22.3 — pre-registered readings (applied — outcome in Results)
 
 | outcome (gated images, global ρ_i, every verdict σ) | verdict |
 |---|---|
@@ -106,7 +123,7 @@ stratum overlays (near-native vs heavy); reliability accounting; digest
   untested and NOT claimed — wording must say "per-image at this
   operating point".
 
-## E23 sketch (NOT pre-registered here — gated on 22.3)
+## E23 sketch (NOT pre-registered here — gated on 22.3; **gate not met**, see Results)
 
 - **E23a** (only if PER-SAMPLE HOLDS): adaln-targeted lever A/B on the
   shipped σ-gated demotion recipe — damp/gate the adaln branch for
@@ -188,6 +205,35 @@ draw deficit. The floor did exactly what it was frozen to do.
   ungated pattern (the factor-39 outlier image carries the two
   shallowest ρ_i of the corpus) is noted for completeness only.
 
+### Post-hoc band diagnostic (descriptive, free re-read of the committed jsonl)
+
+Asked after the verdict ("is the unreliability carried by the text
+pathway? would an unconditional rerun fix the gates?") — answered from
+the stored per-band slice-local scalars, no new compute:
+
+| band | G_l (median native grad mass) | median relC | median ρ_i |
+|---|---|---|---|
+| adaln | 0.045–0.116 | 0.35–0.42 | −0.82…−0.87 |
+| self_attn | 0.014–0.024 | 0.16–0.23 | −0.64…−0.74 |
+| mlp | 0.013–0.023 | 0.28–0.34 | −0.69…−0.75 |
+| cross_attn | 0.0025–0.0058 | 0.31–0.38 | −0.47…−0.55 |
+
+Two separate facts that must not be conflated: (a) cross-attn is where
+ρ_i is **shallowest** (−0.5ish vs adaln's −0.85 — consistent with E21's
+cross-attn ≈ 0 amplitude share of the phase response), and (b) cross-attn
+carries **~2 orders of magnitude less gradient mass and C-leg noise**
+than the image-pathway bands, so it contributes ~nothing to the global
+rel failure — the least reliable band is self_attn (0/16 gated at every
+σ), and the global ρ_i is already effectively "global minus cross-attn"
+by mass. A no-prompt (uncond) rerun therefore **cannot rescue the
+reliability floor**: the rel gate measures reproducibility across
+independent noise-draw sets at a *fixed* caption — the caption is not a
+draw-noise source, and the failing variance lives in the ε/σ draws
+through adaln/self-attn/mlp. An uncond variant remains a legitimate
+*separate* mechanism question (text-independence of the cancellation,
+predicted "yes" by E21 + row (a)) and would need its own pre-registered
+amendment; it inherits the same floor at D = 24.
+
 ### What this buys the paper
 
 The estimand-bridge question stays open at the pre-registered bar, but
@@ -208,11 +254,11 @@ A single-σ (0.7, best pass rate + strongest pooled rel) D = 96 rerun on
 the same 16 images ≈ 0.9× this run's wall clock. Not launched — an
 amendment must freeze it first.
 
-## Cost ladder
+## Cost ladder (planned → actual)
 
-| item | cost |
-|---|---|
-| resize-factor table | CPU, minutes (header reads over the corpus) |
-| 22.1 | **GPU ~1.5–2.5 h** (scale from 19.3's 5.6 h: ×16/40 images, ×3/5 bins, ×3/5 arm families, ×2 draws), one daemon job |
-| 22.2 | CPU, ~minutes |
-| 22.3 | free (re-read of 22.2) |
+| item | planned | actual |
+|---|---|---|
+| resize-factor table | CPU, minutes (header reads over the corpus) | seconds (`e22_corpus.py`) |
+| 22.1 | **GPU ~1.5–2.5 h** (scale from 19.3's 5.6 h: ×16/40 images, ×3/5 bins, ×3/5 arm families, ×2 draws), one daemon job | **2.1 h** (7686 s) incl. compile warmup (25 token families, cold signature) + in-loop ledger CPU |
+| 22.2 | CPU, ~minutes | seconds (+ ~2 min `vector_ledger.py` cross-check) |
+| 22.3 | free (re-read of 22.2) | free — INSTRUMENT-LIMITED via the reliability floor |
