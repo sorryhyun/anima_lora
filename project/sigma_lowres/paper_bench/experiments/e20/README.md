@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PLANNED 2026-08-08** — this file is the pre-registration. The frozen constant and reading rules below are committed **before** `e20_refit.py` exists (theory-first, mirroring 19.1). |
+| **Status** | **20.1 + 20.2 DONE 2026-08-08 — verdict PARTIAL** (better on exactly one safe lane: 768 wins with dip in-window, LOO-896 loses; 1280-tier guard fails on 1024). Per the reading rules: geometry right, amplitude law open; **no 20.3 spend**. Results below; run `runs/20260808-0924-e20-refit/`. Pre-registration (frozen constants, lanes, reading rules) unchanged below. |
 | **Question** | E19 located the near-cancellation's geometry (global, Jᵀ-born, ρ̄ ≈ −0.91) and the Fig.-1 demonstration (`fig_accounts_canc.py`, in `e19/accounts_canc.png`) showed the cancellation-aware link fits the measured map in-sample and lands its crossings in the E9 window. Open: does it survive the **same governor / held-out protocol** the paper's additive account runs under — same parameter count per route, same lanes, same bootstrap — and does it thereby earn the reserved full-σ-map confirmation spend? |
 | **Depends on** | [E19](../e19/) (ρ̄ license: 19.0 route-uniform, 19.3 depth/type-uniform, 19.6 operating-point invariant), [E14](../e14/) (ledger; source of ρ̄), [E5](../e5/) (`e5_refit.py` lanes: FIT_ROUTES 896/512/1120, HELD_OUT 768/1024, LOO-896; governors; bootstrap), [E9](../e9/) (window ↔ crossing), `paper_bench/fig_accounts_canc.py` (feasibility demo, NOT lane-matched) |
 | **Instruments** | 20.1 `e20_refit.py` (extends `e5_refit`; CPU); 20.2 free re-read of 20.1; 20.3 decision-gated GPU (the reserved spend); 20.4 stretch (closure-derived data term) |
@@ -76,6 +76,62 @@ amplitude law's fingerprint.
 **1280-tier guard**: canc predictions on 1120/1024 must stay within
 the additive lane's bootstrap band envelope — the new link must not
 break the tier the old account already covers.
+
+## Results (2026-08-08) — 20.1 + 20.2, verdict PARTIAL
+
+Run: `runs/20260808-0924-e20-refit/` (`e20_main.png`, `result.json`).
+Verdict RMSEs (RMSE*) are σ=1-endpoint-detached from **both** lanes
+symmetrically; all-bin values in the envelope agree in direction on
+every verdict lane.
+
+**Fit routes** (A, c | profile se): 896 → 0.389±0.040 / 0.340±0.033;
+512 → 1.808±0.100 / 1.339±0.074; **1120 → 0.142±0.016 / c ≈ 0.0007**.
+The graph-leg constant **collapses to ~0 on the 1280-tier**, exactly
+mirroring the additive lane's F₁₁₂₀ ≈ 0 — so the c-law's >0.005 filter
+drops 1120 and the exp-in-TOKENS law anchors on the same (896, 512)
+legs as the additive floor law (c₀ = 2.69, τ = 1456 tok, c(2160) =
+0.610). The LOO-896 c comes out nearly floorless (c = 0.026). Honesty
+note: the canc A's ratio-twin z = 5.69 (A₈₉₆ vs A₁₁₂₀ far apart) — the
+A-governor is strained in this lane.
+
+| lane | RMSE* canc | RMSE* additive | dip (window 0.56–0.81) |
+|---|---|---|---|
+| **768 held-out (safe)** | **0.0778** | 0.0987 | **0.673 IN** |
+| **LOO-896 (safe)** | 0.0856 | **0.0769** | 0.871 OUT |
+| 1024 held-out (guard tier) | 0.1993 | **0.0462** | 0.856 OUT |
+| 512 in-sample (diagnostic) | 0.1190 | 0.0961 | — |
+
+- **768 is the clean win**: RMSE beat + the canc curve reproduces the
+  measured non-monotone shape (peak σ≈0.3, dip σ≈0.67) that the
+  additive account structurally cannot. From held-out parameters only,
+  **dip 0.673, crossing Ax = c at 0.655** — inside the E9 window and
+  close to E9's 768 crossing estimate 0.688 (20.2's zero-cost check).
+- **LOO-896 loses** because its lane inherits the 1120 collapse:
+  c_loo ≈ 0.026 makes the canc curve floorless-flat, missing the low-σ
+  bump the additive floor F(3012) partially captures.
+- **1280-tier guard: 1120 PASS (0/4 bins out), 1024 FAIL (3/4 out,
+  max excursion +0.196)** — extrapolating the 1024-tier c-law up-tier
+  (c(4116) = 0.159) over-shapes 1024, whose own tier wants c ≈ 0.
+- **512 diagnostic** (pre-registered expected failure, not a kill):
+  mean mid-window residual **+0.054** — the global ρ̄ over-cancels the
+  mismatched-magnitude route, same sign as the demo. Amplitude-law
+  fingerprint confirmed.
+- **Ablations**: ρ̄ = 0 degrades 768 to RMSE* 0.168 (the interference
+  term does the work, not the extra grid axis — sanity holds) while
+  *improving* 1024 to 0.082 (the interference + extrapolated c is what
+  breaks the guard tier). ρ̄ ± 0.05: 768 stays 0.076–0.082 — verdict
+  insensitive. ±ε*: 5/9 (768) and 4/9 (896) bins exceed the band.
+- Bootstrap kept 999 (canc) / 981 (additive) of B = 1000.
+
+**Reading**: the interference *geometry* transfers through governors on
+the tier that licensed ρ̄ (768: win + in-window dip/crossing), but the
+amplitude law does not — c is a **1024-tier quantity, not
+token-governed across tiers**. Per the pre-registered table this is
+PARTIAL ("geometry right, amplitude law open", 19.0's split): recorded
+here, **no 20.3**; Eq. (8) stands as paper 2's operational form and
+`accounts_canc.png` stays labeled a demonstration. Reopening would
+need a per-tier c account (e.g. c ≈ 0 above the 1024 tier) — that is a
+new pre-registration, not a refit of this one.
 
 ## 20.3 — the reserved full-σ-map spend (GPU, decision-gated)
 
