@@ -5,7 +5,7 @@
 | **Status** | **DONE 2026-08-08 — verdict STRUCTURED** (σ-indexed axis field: one direction across route/store/corpus at fixed σ, smooth rotation across σ that tracks the native anchor's own rotation; knob read: the residual is angle-borne — see Results). Pre-registered same day before the `e24_axis.py` instrument existed. CPU-only as planned. |
 | **Question** | ρ̄ ≈ −0.91 means that per (route, σ) the pooled legs B⊥, C⊥ span a nearly 1-D subspace — a "cancellation axis" along which the data damage and the graph response slide against each other. Everything so far measures the *angle inside* each condition; nothing yet asks whether the axis itself is **one shared direction** across σ, routes, and runs ("a scale mode of the adapter-gradient space" — the geometric reading: demotion as an approximate symmetry the network absorbs, residual = failure of equivariance), or a per-condition direction that merely always cancels locally. Secondary, free from the same scalars: what actually dominates the residual gap — the incomplete **angle** (ρ > −1) or the **amplitude mismatch** (\|B\| ≠ \|C\|)? That pins which knob any population-level lever should target, *before* one is proposed. |
 | **Depends on** | [E19](../e19/) 19.3 + [E19.4] surviving `arm_sums/` stores and [E22](../e22/) 22.1's `--keep_arm_sums` store (all three verified on disk 2026-08-08, same adapter `anima_soup_sincos` — one operating point); `paper_bench/vector_ledger.py` (leg/debias conventions, `Sums` loader); [E21](../e21/) (LOCAL — the axis question is the *cross-condition* complement of E21's *within-condition* cell read); [E20](../e20/) 20.4 (closed: no ledger-derived objective term — this experiment derives nothing, it only measures geometry). |
-| **Instruments** | 24.1 `e24_axis.py` (CPU; cross-condition axis cosines + subspace rank + figure); 24.2 free re-read of 24.1's scalars (residual knob decomposition). |
+| **Instruments** | 24.1 `e24_axis.py` (CPU; cross-condition axis cosines + subspace rank + figure); 24.2 free re-read of 24.1's scalars (residual knob decomposition); 24.4 `e24_axis_fig.py` (illustration-only figures from the committed digest — added post-verdict, no new quantities). |
 | **In the paper** | The §5 geometric paragraph gets its missing measurement: SHARED-AXIS licenses the "scale mode" language (and, downstream, the population-level lever family sketched in E25 below); LOCAL-AXIS confines the geometric reading to "locally 1-D, globally unstructured" and kills projection-style levers in one stroke. The knob decomposition feeds the discussion of *why* the shipped scheduler-side recipe is the right family (or what a training-facing family should target if ever licensed). |
 
 **Numbering note**: E23a/E23b are reserved by [E22](../e22/)'s gated lever
@@ -195,6 +195,32 @@ amplitude mismatch, at every gated verdict condition.
   rebalancing.
 - Population-level licensing only; every per-sample variant stays gated
   on E22 → 22.4 → E23a, unchanged.
+
+### 24.4 figures (illustration only — verdicts live in `e24_axis.json`)
+
+`e24_axis_fig.py`, reading only the committed digest:
+
+- **`e24_axis_field.png`** — the axis *fan*: every gated verdict
+  condition's B̂ / Ĉ drawn in the top-2 eigenplane of its Gram (plane
+  share 0.92 / 0.93; per-arrow in-plane share annotated — the
+  `fig_bc_plane` out-of-plane honesty convention). Route pairs at each σ
+  nearly coincide; the σ = 0.7 quadruple (768/896 × e193/e194) is one
+  bundle. Third panel: the descriptive co-rotation curves (B̂ vs ĝ
+  rotation away from σ = 0.7) — no frame-relative claim.
+- **`e24_bc_comb_rot.png`** — E19's `bc_comb` redrawn with the
+  **measured** between-bin orientation (θ_B from the shared top-2
+  plane) replacing the original "C always vertical" per-bin convention.
+  Within-bin lengths (√2S, √2F in ‖g‖ units) and mutual angle
+  (arccos ρ) stay exact as before, one true scale — σ = 0.3's ~4×
+  larger legs are drawn as they are. C's side of B remains a drawing
+  convention (annotated on the figure). What the upgrade makes visible:
+  the pairs are *not* parallel copies along σ — the internal
+  near-antiparallel geometry persists while the whole frame rotates
+  (+61° → −16°) and shrinks.
+
+The E19 originals (`bc_comb*`, `fig_ledger_geometry`) are not modified —
+they made no cross-bin orientation claim and remain valid; these are the
+E24-informed successors for the paper to choose from.
 
 ## Cost ladder (planned → actual)
 
