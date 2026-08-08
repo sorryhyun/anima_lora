@@ -1,0 +1,161 @@
+{
+  "run": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/runs/20260808-1633-e221-per-image-ledger",
+  "sigma_centers": [
+    0.4333,
+    0.5667,
+    0.7
+  ],
+  "manifest": {
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "sigma_centers": [
+      0.4333,
+      0.5667,
+      0.7
+    ],
+    "bins": 3,
+    "endpoint_bin": false,
+    "draws_per_bin": 24,
+    "target_alphas": [
+      1.0
+    ],
+    "arm_keys": [
+      "reenc",
+      "768",
+      "768rp"
+    ],
+    "self_floor": true,
+    "repromote": true,
+    "demote_edges": "768",
+    "n_images": 16,
+    "seed": 42,
+    "dtype": "fp32",
+    "scale": "sum over images of per-image draw-summed gradients (divide by n_images * draws_per_bin for the mean gradient)",
+    "keys": {
+      "768": {
+        "n_images": 16,
+        "files": [
+          "768__b0.npy",
+          "768__b1.npy",
+          "768__b2.npy"
+        ]
+      },
+      "768__2": {
+        "n_images": 16,
+        "files": [
+          "768__2__b0.npy",
+          "768__2__b1.npy",
+          "768__2__b2.npy"
+        ]
+      },
+      "768rp": {
+        "n_images": 16,
+        "files": [
+          "768rp__b0.npy",
+          "768rp__b1.npy",
+          "768rp__b2.npy"
+        ]
+      },
+      "768rp__2": {
+        "n_images": 16,
+        "files": [
+          "768rp__2__b0.npy",
+          "768rp__2__b1.npy",
+          "768rp__2__b2.npy"
+        ]
+      },
+      "a": {
+        "n_images": 16,
+        "files": [
+          "a__b0.npy",
+          "a__b1.npy",
+          "a__b2.npy"
+        ]
+      },
+      "b": {
+        "n_images": 16,
+        "files": [
+          "b__b0.npy",
+          "b__b1.npy",
+          "b__b2.npy"
+        ]
+      },
+      "reenc": {
+        "n_images": 16,
+        "files": [
+          "reenc__b0.npy",
+          "reenc__b1.npy",
+          "reenc__b2.npy"
+        ]
+      },
+      "reenc__2": {
+        "n_images": 16,
+        "files": [
+          "reenc__2__b0.npy",
+          "reenc__2__b1.npy",
+          "reenc__2__b2.npy"
+        ]
+      }
+    }
+  },
+  "bc_ledger": {
+    "768": [
+      {
+        "G": 0.039,
+        "b_perp_rawnorm": 0.60888,
+        "c_perp_rawnorm": 0.77317,
+        "kappa_par_B": 0.3791,
+        "kappa_par_C": -0.67899,
+        "rel_cos_B": 0.7798,
+        "rel_cos_C": 0.65947,
+        "S": 0.15678,
+        "F": 0.23601,
+        "I": -0.34967,
+        "I_sameset_biascheck": -0.43767,
+        "rho": -0.90891,
+        "quad_pred_gap": 0.04312,
+        "h_B": 0.08519,
+        "h_C": 0.61656,
+        "h_B_plus_C": 0.14554,
+        "data_ref": "reenc"
+      },
+      {
+        "G": 0.0658,
+        "b_perp_rawnorm": 0.44019,
+        "c_perp_rawnorm": 0.56747,
+        "kappa_par_B": 0.24492,
+        "kappa_par_C": -0.46563,
+        "rel_cos_B": 0.83465,
+        "rel_cos_C": 0.79154,
+        "S": 0.08481,
+        "F": 0.14104,
+        "I": -0.20047,
+        "I_sameset_biascheck": -0.22861,
+        "rho": -0.91646,
+        "quad_pred_gap": 0.02538,
+        "h_B": 0.0572,
+        "h_C": 0.31445,
+        "h_B_plus_C": 0.06455,
+        "data_ref": "reenc"
+      },
+      {
+        "G": 0.1163,
+        "b_perp_rawnorm": 0.36808,
+        "c_perp_rawnorm": 0.51006,
+        "kappa_par_B": 0.06531,
+        "kappa_par_C": -0.21755,
+        "rel_cos_B": 0.83775,
+        "rel_cos_C": 0.80149,
+        "S": 0.05967,
+        "F": 0.11573,
+        "I": -0.1481,
+        "I_sameset_biascheck": -0.17018,
+        "rho": -0.89103,
+        "quad_pred_gap": 0.02731,
+        "h_B": 0.05483,
+        "h_C": 0.16228,
+        "h_B_plus_C": 0.04984,
+        "data_ref": "reenc"
+      }
+    ]
+  }
+}

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PLANNED 2026-08-08** — this file is the pre-registration, committed **before** the 22.1 instrument amendment exists (theory-first, mirroring 19.1/20/21). |
+| **Status** | **DONE 2026-08-08 — verdict INSTRUMENT-LIMITED** (all three σ void at the pre-registered ≥ 8-image reliability floor; run recorded, stopped, draws NOT escalated — see Results). Pre-registration committed same day before the 22.1 instrument existed (theory-first, mirroring 19.1/20/21). |
 | **Question** | Every anti-alignment number in this line so far — E14's pooled ρ̄ ≈ −0.91, E21's cell-level LOCAL verdict — is a **cross-image mean** (40 images × 12 draws summed before any cosine). A training-facing correction acts on **one sample at one step**. Is the B/C cancellation a per-sample property (each image's data damage mirrored by its own graph response), or a population property that only emerges in the mean? This is the missing link ("estimand bridge") that E20.4 crashed into from the objective side — E22 closes it from the measurement side, **before** any correction is proposed. Secondary, observational: training "at 1024" is itself training on **preprocess-resized** pixels (source → bucket downscale; free-fit drove crop bias to ~0 but the downscale low-pass remains). Per-image records let us stratify the ledger by each image's realized resize factor — a first, hypothesis-generating look at whether that preprocessing bias is visible in LoRA-gradient space. |
 | **Depends on** | [E21](../e21/) (LOCAL verdict — licenses factorized per-cell reads; adaln amplitude concentration — the candidate lever this experiment gates); [E20.4](../e20/) (derived data term fails at estimand level — the standing reason per-sample must be measured, not assumed); `run_sigma_probe.py` + `sigma_probe/` (the per-image arm loop this amends); E14/E19 ledger conventions. **The 19.3/19.4 stores cannot answer this**: they are cross-image sums, and `per_image.jsonl` carries only arm-vs-native cosines (`cos_<arm>`), never the arm×arm cross products that ρ_i needs. New GPU arm required. |
 | **Instruments** | 22.1 probe amendment `--per_image_ledger` (GPU, daemon): emit per-image debiased B/C scalar reductions inside the existing per-image loop; 22.2 `e22_per_image.py` (CPU digest + figures); 22.3 free re-reads of 22.2. |
@@ -137,6 +137,76 @@ stratum overlays (near-native vs heavy); reliability accounting; digest
 - Wording: "per-image at this operating point, probe corpus" — never
   "per-user-sample at training time".
 - The resize-factor read is labeled observational in every output.
+
+## Results (2026-08-08)
+
+Instrument: `--per_image_ledger` amendment to `run_sigma_probe.py`
+(validated synthetically against the committed `vector_ledger.bc_ledger` +
+`e21_cells.cell_row` before any GPU; smoke-tested on a 2-image daemon job).
+Corpus: `e22_corpus.py` → `resize_factors.json` + `e22_probe_list.json`
+(near-native stratum could NOT fill at the ≤ ~1.3 target — realized
+boundary 1.7857, extreme ranks taken per the pre-registration; heavy
+realized min 8.7351). Run: `runs/20260808-1633-e221-per-image-ledger`
+(daemon job `20260808-163340-13b303`, 2.1 h wall, deterministic, 16 images
+× 3 σ × 24 draws × 2 sets, arm sums kept). Digest: `e22_per_image.json` +
+`e22_rho_i.png` (22.2).
+
+### 22.3 verdict: **INSTRUMENT-LIMITED** (pre-registered reliability floor)
+
+Gate passes (global rel ≥ 0.5, both legs) per σ: **3/16, 3/16, 5/16** —
+all three verdict σ fall below the ≥ 8-image floor ⇒ every σ is void and
+the run verdict is INSTRUMENT-LIMITED. Per the pre-registration this is
+recorded as instrument, not evidence; the run stops here and **no draw
+escalation happens without an amendment to this file**. The failing leg is
+overwhelmingly C (relC < 0.5 in 37/48 image-bins; relB in 23/48): at 24
+draws the per-image graph-leg direction is not reproducible for most
+images — quantitatively consistent with scaling the pooled leg
+reliabilities (0.66–0.84 on this same run) down by the ~√20 per-image
+draw deficit. The floor did exactly what it was frozen to do.
+
+### Descriptive record (no verdict weight — every reading, gates reported)
+
+- **All 48 (image × σ) global ρ_i are negative**; 46/48 ≤ −0.53; median
+  −0.815. The 11 gated readings: median **−0.815**, range [−0.880,
+  −0.531], every one ≤ −0.53 and 9/11 ≤ −0.70. No image anywhere in the
+  corpus — either stratum, factor 0.93 → 39.0 — shows a positive or
+  even near-zero ρ_i at any σ. Had the floor been met with these values,
+  the reading would have been HOLDS-shaped at σ = 0.4333/0.7 and
+  MIXED-shaped at 0.5667 (gated frac ≤ −0.7 = 1.0 / 0.67 / 0.8).
+- **Pooled same-run cross-check** (`ledger.json`, reenc ref): ρ =
+  −0.909 / −0.916 / −0.891 with relB/relC 0.66–0.84 — the estimator
+  reproduces the deep constant on this stratified corpus (internal
+  consistency; NOT comparable to E14/E21 selection).
+- Bands (gated, small n): adaln ρ_i medians −0.82…−0.85 (n = 4–5);
+  cross_attn −0.51…−0.67 (n = 2–3); self_attn 0 gated everywhere; mlp
+  n ≤ 2. Cells: single-digit gated counts per image — recorded in the
+  digest, no reading taken.
+- **Resize-factor read (observational, pre-registered null)**: with 2–5
+  gated images per σ the strata are not distinguishable (Mann-Whitney
+  p ≥ 0.2 everywhere) — the null stands by default at this reliability;
+  no hypothesis is generated for E23b from this run. The one suggestive
+  ungated pattern (the factor-39 outlier image carries the two
+  shallowest ρ_i of the corpus) is noted for completeness only.
+
+### What this buys the paper
+
+The estimand-bridge question stays open at the pre-registered bar, but
+the measurement now exists and is uniformly signed: the honest §5
+sentence is "per-image estimates are reliability-limited at D = 24; every
+per-image reading that clears (and fails) the gate is deep-negative,
+consistent with a per-sample mechanism, but the pre-registered per-sample
+verdict is instrument-limited — no per-sample lever is licensed." E23a
+remains gated (22.3 did not return PER-SAMPLE HOLDS); E20.4's
+retroactive-explanation clause is NOT triggered (that required
+POOLED-ONLY, which this is not).
+
+### Amendment path (requires a new pre-registration edit to this file)
+
+The measured reliabilities pin the cost of a follow-up: rel 0.5 on C
+needs roughly SNR² = 1 ⇒ ~4× the draws (D ≈ 96) at the strongest σ.
+A single-σ (0.7, best pass rate + strongest pooled rel) D = 96 rerun on
+the same 16 images ≈ 0.9× this run's wall clock. Not launched — an
+amendment must freeze it first.
 
 ## Cost ladder
 

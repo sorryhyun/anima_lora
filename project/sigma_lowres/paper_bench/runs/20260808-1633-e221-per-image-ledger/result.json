@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "script": "project/sigma_lowres/bench/run_sigma_probe.py",
+  "label": "e221-per-image-ledger",
+  "timestamp_utc": "2026-08-08T09:42:04Z",
+  "git": {
+    "sha": "14a6f801",
+    "branch": "sigma-lowres-yarnsig",
+    "dirty": true
+  },
+  "env": {
+    "python": "3.13.14",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.12.0+cu132",
+    "cuda": "13.2"
+  },
+  "args": {
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "dit": "models/diffusion_models/anima-base-v1.0.safetensors",
+    "vae": "models/vae/qwen_image_vae.safetensors",
+    "num_images": 16,
+    "bins": 3,
+    "draws_per_bin": 24,
+    "sigma_window": "0.36666666666666664,0.7666666666666667",
+    "tier": 1024,
+    "demote_edges": "768",
+    "data_root": null,
+    "artists": null,
+    "probe_list": "project/sigma_lowres/paper_bench/experiments/e22/e22_probe_list.json",
+    "max_per_artist": null,
+    "score_limit": null,
+    "no_reenc_control": false,
+    "per_group": false,
+    "endpoint_bin": false,
+    "x_zero": false,
+    "target_alpha": null,
+    "pi_align": false,
+    "yarn_align": null,
+    "yarn_sigma_gate": null,
+    "repromote": true,
+    "per_image_ledger": true,
+    "keep_arm_sums": true,
+    "arm_sums_dtype": "fp32",
+    "target_kappa": false,
+    "pool": 0,
+    "pool_spill": false,
+    "pool_no_norm": false,
+    "self_floor": true,
+    "draw_sweep": null,
+    "draw_batch_tokens": 0,
+    "grad_ckpt": false,
+    "activation_memory_budget": 0.99,
+    "partitioner_aggressive": false,
+    "deterministic": true,
+    "seed": 42,
+    "quant_k": 4,
+    "results_root": "project/sigma_lowres/paper_bench/runs",
+    "label": "e221-per-image-ledger",
+    "smoke": false,
+    "gradient_checkpointing": false,
+    "compile": false
+  },
+  "metrics": {
+    "n_images": 16,
+    "bins": 3,
+    "draws_per_bin": 24,
+    "sigma_centers": [
+      0.4333,
+      0.5667,
+      0.7
+    ],
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "cos_floor": {
+      "mean": [
+        0.75445,
+        0.86299,
+        0.91102
+      ],
+      "sem": [
+        0.04037,
+        0.02449,
+        0.01692
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9851
+    },
+    "gnorm_native": {
+      "mean": [
+        1.31119,
+        1.88013,
+        3.19106
+      ],
+      "sem": [
+        0.07283,
+        0.09549,
+        0.15987
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9995
+    },
+    "wall_time_s": 7685.6,
+    "gap_reenc": {
+      "mean": [
+        -0.01865,
+        -0.01293,
+        -0.0056
+      ],
+      "sem": [
+        0.02574,
+        0.00936,
+        0.00867
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.6272
+    },
+    "cos_self_reenc": {
+      "mean": [
+        0.79384,
+        0.86074,
+        0.91496
+      ],
+      "sem": [
+        0.03923,
+        0.03343,
+        0.01555
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.7058
+    },
+    "debiased_gap_reenc": {
+      "mean": [
+        -0.11481,
+        -0.08164,
+        -0.0439
+      ],
+      "sem": [
+        0.02197,
+        0.01719,
+        0.00848
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9049
+    },
+    "gap_768": {
+      "mean": [
+        0.26934,
+        0.19734,
+        0.1067
+      ],
+      "sem": [
+        0.04491,
+        0.02835,
+        0.01534
+      ],
+      "spearman_sigma": -1.0,
+      "splithalf_pearson": 0.9192
+    },
+    "cos_self_768": {
+      "mean": [
+        0.48852,
+        0.65434,
+        0.7367
+      ],
+      "sem": [
+        0.06279,
+        0.05308,
+        0.03989
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.9957
+    },
+    "debiased_gap_768": {
+      "mean": [
+        0.07414,
+        0.025,
+        -0.01256
+      ],
+      "sem": [
+        0.07267,
+        0.01501,
+        0.01034
+      ],
+      "spearman_sigma": -1.0,
+      "splithalf_pearson": 0.7691
+    },
+    "gap_768rp": {
+      "mean": [
+        0.13178,
+        0.10658,
+        0.11826
+      ],
+      "sem": [
+        0.03963,
+        0.02325,
+        0.03181
+      ],
+      "spearman_sigma": -0.5,
+      "splithalf_pearson": 0.2196
+    },
+    "cos_self_768rp": {
+      "mean": [
+        0.72415,
+        0.79643,
+        0.82636
+      ],
+      "sem": [
+        0.05156,
+        0.03422,
+        0.02744
+      ],
+      "spearman_sigma": 1.0,
+      "splithalf_pearson": 0.0708
+    },
+    "debiased_gap_768rp": {
+      "mean": [
+        0.06318,
+        0.00733,
+        0.0015
+      ],
+      "sem": [
+        0.02852,
+        0.0201,
+        0.00827
+      ],
+      "spearman_sigma": -1.0,
+      "splithalf_pearson": 0.3211
+    }
+  },
+  "artifacts": [
+    "per_image.jsonl"
+  ],
+  "extra": {
+    "probe_set": [
+      "yaegashi_nan/8228445",
+      "haku89/13745769",
+      "sumiyao_(amam)/7614272",
+      "kat_(bu-kunn)/dan_8657484",
+      "mignon/dan_9540972",
+      "ru_zhai/10778612",
+      "deyui/10050204",
+      "kat_(bu-kunn)/dan_11415046",
+      "jumonji/8688344",
+      "abmayo/13109140",
+      "koh_(minagi_kou)/dan_9398241",
+      "nvl/12882239",
+      "jumonji/11957441",
+      "jumonji/10125232",
+      "gin00/13407704",
+      "hews/7655626"
+    ]
+  }
+}
