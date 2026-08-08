@@ -1,13 +1,14 @@
-"""One-picture version (user sketch): B/C leg pairs planted along a single
-sigma axis, route 1024->768, E14 probe-matched ledger (reenc ref).
+"""Variant of fig_bc_comb: the resultant B+C is pinned VERTICAL at each bin,
+route 1024->768, E14 probe-matched ledger (reenc ref).
 
 The sigma axis runs obliquely (rising to the right) and each bin sits at its
-TRUE sigma position (not equally spaced slots). Tip-to-tail construction:
-C_perp (red) points straight up from the base at true debiased scale, B_perp
-(blue) arrives at the base (arrow reversed, at arccos(rho) from C), and the
-resultant B+C (black) runs from B's start to C's tip. A dashed envelope
-traces the C-tip heights. Everything shares one scale (bar at right, units
-of ||g_src||).
+TRUE sigma position. At each bin the B->C tip-to-tail chain is rotated so the
+resultant stands straight up from the base: B_perp (blue) leaves the base,
+C_perp (red) continues from B's tip to the resultant's tip, and B+C (black)
+is the vertical base -> tip arrow at true realized-gap scale. The interior
+angle between B and C stays arccos(rho). A dashed envelope traces the
+resultant tips, i.e. |B+C|(sigma). Everything shares one scale (bar at
+right, units of ||g_src||).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from matplotlib.patches import Polygon
 
 HERE = Path(__file__).resolve().parent  # experiments/e19
 LEDGER = HERE.parents[1] / "runs/20260801-2304-e14-ledger-probematched/ledger.json"
-OUT = Path(__file__).parent / "bc_comb_768.png"
+OUT = Path(__file__).parent / "bc_comb_768_vert.png"
 
 C_B, C_C, C_NET, C_AX = "#1f77b4", "#d62728", "0.15", "#20c9ab"
 E9_WINDOW = (0.56, 0.81)
@@ -83,47 +84,52 @@ ax.annotate(
     color="0.45",
 )
 
-c_tips = []
-b_starts = []
+r_tips = []
+b_tips = []
 prev_x = None
-stagger = False
+stagger = 0
 for sig, x, row in zip(centers, xs, rows):
     b = math.sqrt(2 * row["S"]) * K if row["S"] > 0 else float("nan")
     c = math.sqrt(2 * row["F"]) * K if row["F"] > 0 else float("nan")
-    th = math.acos(max(-1.0, min(1.0, row["rho"])))
+    rho = max(-1.0, min(1.0, row["rho"]))
+    r = math.sqrt(max(b * b + c * c + 2 * b * c * rho, 0.0))
     base = (x, base_y(x))
-    ct = (base[0], base[1] + c)  # C straight up from the base
-    # B arrives at the base: tail at base - bvec, head at base
-    bvec = (b * math.sin(th), b * math.cos(th))
-    bstart = (base[0] - bvec[0], base[1] - bvec[1])
+    rt = (base[0], base[1] + r)  # resultant straight up
+    # rotate the triangle so B+C is vertical: B at angle alpha from vertical
+    if r > 1e-9:
+        cos_a = max(-1.0, min(1.0, (b * b + r * r - c * c) / (2 * b * r)))
+    else:
+        cos_a = 0.0
+    sin_a = math.sqrt(max(1.0 - cos_a * cos_a, 0.0))  # fold B toward +x
+    bt = (base[0] + b * sin_a, base[1] + b * cos_a)
     ax.annotate(
         "",
+        bt,
         base,
-        bstart,
         arrowprops=dict(arrowstyle="-|>", color=C_B, lw=2.0, shrinkA=0, shrinkB=0),
         annotation_clip=False,
     )
     ax.annotate(
         "",
-        ct,
-        base,
+        rt,
+        bt,
         arrowprops=dict(arrowstyle="-|>", color=C_C, lw=2.0, shrinkA=0, shrinkB=0),
         annotation_clip=False,
     )
     ax.annotate(
         "",
-        ct,
-        bstart,
+        rt,
+        base,
         arrowprops=dict(arrowstyle="-|>", color=C_NET, lw=1.7, shrinkA=0, shrinkB=0),
         annotation_clip=False,
     )
     ax.plot(*base, "o", ms=3, color=C_NET, zorder=5)
-    c_tips.append(ct)
-    b_starts.append(bstart)
-    # stagger tick labels into two rows wherever bins crowd
-    stagger = not stagger if (prev_x is not None and x - prev_x < 0.8) else False
+    r_tips.append(rt)
+    b_tips.append(bt)
+    # cycle tick labels through three rows wherever bins crowd
+    stagger = (stagger + 1) % 3 if (prev_x is not None and x - prev_x < 0.8) else 0
     prev_x = x
-    y_off = -0.32 - (0.42 if stagger else 0.0)
+    y_off = -0.32 - 0.42 * stagger
     lbl = f"{sig:g}" if sig != 1.0 else "1"
     ax.annotate(
         lbl,
@@ -135,42 +141,42 @@ for sig, x, row in zip(centers, xs, rows):
         rotation=45,
     )
 
-# envelope through C tips
+# envelope through resultant tips
 ax.plot(
-    [p[0] for p in c_tips],
-    [p[1] for p in c_tips],
+    [p[0] for p in r_tips],
+    [p[1] for p in r_tips],
     ls=(0, (4, 3)),
     color="0.4",
     lw=1.4,
     zorder=1,
 )
 
-# labels at the tallest bin
-i_max = max(range(n), key=lambda i: c_tips[i][1] - base_y(xs[i]))
+# labels at the bin with the widest B swing
+i_max = max(range(n), key=lambda i: b_tips[i][0] - xs[i])
 x_max = xs[i_max]
 ax.annotate(
+    r"$B^{\perp}$ (data)",
+    (b_tips[i_max][0] + 0.3, b_tips[i_max][1] - 0.35),
+    ha="left",
+    fontsize=10,
+    color=C_B,
+)
+ax.annotate(
     r"$C^{\perp}$ (graph)",
-    (x_max + 0.5, base_y(x_max) + (c_tips[i_max][1] - base_y(x_max)) * 0.85),
+    (b_tips[i_max][0] + 0.35, b_tips[i_max][1] + 0.6),
     ha="left",
     fontsize=10,
     color=C_C,
 )
 ax.annotate(
-    r"$B^{\perp}$ (data)",
-    (b_starts[i_max][0] - 0.2, b_starts[i_max][1] + 0.1),
-    ha="right",
-    fontsize=10,
-    color=C_B,
-)
-ax.annotate(
     r"$B{+}C$ (realized gap)",
-    (b_starts[i_max][0] + 0.5, c_tips[i_max][1] + 0.4),
+    (x_max - 0.5, r_tips[i_max][1] + 0.45),
     ha="right",
     fontsize=10,
     color=C_NET,
 )
 ax.annotate(
-    "envelope $=|C^{\\perp}|(\\sigma)$",
+    "envelope $=|B{+}C|(\\sigma)$",
     (0.0, base_y(0.0) + 2.9),
     fontsize=8.5,
     color="0.4",
@@ -193,8 +199,8 @@ ax.set_ylim(-0.95, base_y(X_SCALE) + 2.1)
 ax.set_aspect("equal")
 ax.axis("off")
 ax.set_title(
-    "$1024\\to768$ — B/C legs planted on the $\\sigma$ axis "
-    "(true debiased scale, angle = $\\arccos\\rho$; "
+    "$1024\\to768$ — B/C legs with the resultant $B{+}C$ pinned vertical "
+    "(true debiased scale, interior angle = $\\arccos\\rho$; "
     "E14 probe-matched ledger, reenc ref)",
     fontsize=11.5,
     pad=12,

@@ -1,13 +1,18 @@
-"""One-picture version (user sketch): B/C leg pairs planted along a single
-sigma axis, route 1024->768, E14 probe-matched ledger (reenc ref).
+"""Fig-4 variant with the 19.4 C-decomposition overlaid: at the PI-causal
+bins (sigma 0.7 / 0.8333 / 0.9625 / 1.0) the graph leg C is drawn as the
+resultant of TWO arrows, C = C_pi + Delta_phase, where
 
-The sigma axis runs obliquely (rising to the right) and each bin sits at its
-TRUE sigma position (not equally spaced slots). Tip-to-tail construction:
-C_perp (red) points straight up from the base at true debiased scale, B_perp
-(blue) arrives at the base (arrow reversed, at arccos(rho) from C), and the
-resultant B+C (black) runs from B's start to C's tip. A dashed envelope
-traces the C-tip heights. Everything shares one scale (bar at right, units
-of ||g_src||).
+    C_pi        = g_dem,pi - g_rp   (graph leg with PI-aligned RoPE phases)
+    Delta_phase = g_dem - g_dem,pi  (the phase-geometry response)
+
+Base comb identical to fig_bc_comb.py (E14 probe-matched ledger, route
+1024->768, reenc ref, true-sigma oblique axis). Overlay numbers come from
+pi_194.json; at each shared bin the 19.4 triangle is rescaled by
+C_e14/C_194 (~1.05) so the decomposition lands exactly on the comb's C
+arrow. Drawn in the C/C_pi plane: |C_pi|, |Delta|, ang(C, C_pi) and
+ang(B, C) are to scale; ang(B, C_pi) is NOT (B/C/C_pi span 3D — planar
+mismatch 14-27 deg, values in pi_194.json). The sigma=1 bin is faded
+(non-verdict: rel_cos_Cpi 0.58, ratio-of-small-numbers).
 """
 
 from __future__ import annotations
@@ -21,9 +26,11 @@ from matplotlib.patches import Polygon
 
 HERE = Path(__file__).resolve().parent  # experiments/e19
 LEDGER = HERE.parents[1] / "runs/20260801-2304-e14-ledger-probematched/ledger.json"
-OUT = Path(__file__).parent / "bc_comb_768.png"
+PI_LEDGER = HERE / "pi_194.json"
+OUT = HERE / "bc_comb_768_split.png"
 
 C_B, C_C, C_NET, C_AX = "#1f77b4", "#d62728", "0.15", "#20c9ab"
+C_CPI, C_DPH = "#f08c8c", "#e8931a"  # C_pi (light red), Delta_phase (orange)
 E9_WINDOW = (0.56, 0.81)
 K = 0.85  # ||g|| units -> axis units
 SLOPE = 0.22  # oblique sigma axis: rise per x unit
@@ -40,7 +47,12 @@ rows = led["bc_ledger"]["768"]
 n = len(rows)
 xs = [s * X_SCALE for s in centers]
 
-fig, ax = plt.subplots(figsize=(13.5, 6.4))
+pi = json.loads(PI_LEDGER.read_text())
+pi_rows = {
+    round(s, 4): r for s, r in zip(pi["sigma_centers"], pi["pi_ledger"]["768"])
+}
+
+fig, ax = plt.subplots(figsize=(13.5, 7.2))
 
 # oblique sigma axis (true sigma positions)
 x_end = X_SCALE + 0.6
@@ -85,6 +97,7 @@ ax.annotate(
 
 c_tips = []
 b_starts = []
+pi_labeled = False
 prev_x = None
 stagger = False
 for sig, x, row in zip(centers, xs, rows):
@@ -118,6 +131,37 @@ for sig, x, row in zip(centers, xs, rows):
         annotation_clip=False,
     )
     ax.plot(*base, "o", ms=3, color=C_NET, zorder=5)
+
+    # 19.4 overlay: C = C_pi + Delta_phase, in the C/C_pi plane, tilted away
+    # from B (right of vertical); rescaled so C_pi + Delta lands on C's tip
+    prow = pi_rows.get(round(sig, 4))
+    if prow is not None:
+        alpha = 0.35 if sig == 1.0 else 1.0  # endpoint non-verdict
+        c194 = math.sqrt(2 * prow["F"])
+        rescale = (c / K) / c194 if c194 > 0 else 1.0
+        cpi = math.sqrt(2 * prow["F_pi"]) * rescale * K
+        a_ccpi = math.acos(max(-1.0, min(1.0, prow["cos_C_Cpi"])))
+        cpi_tip = (base[0] + cpi * math.sin(a_ccpi), base[1] + cpi * math.cos(a_ccpi))
+        ax.annotate(
+            "",
+            cpi_tip,
+            base,
+            arrowprops=dict(
+                arrowstyle="-|>", color=C_CPI, lw=1.6, shrinkA=0, shrinkB=0, alpha=alpha
+            ),
+            annotation_clip=False,
+        )
+        ax.annotate(
+            "",
+            ct,
+            cpi_tip,
+            arrowprops=dict(
+                arrowstyle="-|>", color=C_DPH, lw=1.6, shrinkA=0, shrinkB=0, alpha=alpha
+            ),
+            annotation_clip=False,
+        )
+        pi_labeled = True
+
     c_tips.append(ct)
     b_starts.append(bstart)
     # stagger tick labels into two rows wherever bins crowd
@@ -176,9 +220,30 @@ ax.annotate(
     color="0.4",
 )
 
+# 19.4 overlay legend (arrows themselves stay unlabeled to avoid clutter)
+leg_x, leg_y = 0.3, base_y(0.3) + 5.3
+ax.annotate(
+    "19.4 overlay ($\\sigma \\geq 0.7$):  $C = C_\\pi + \\Delta_{\\rm phase}$",
+    (leg_x, leg_y),
+    fontsize=10,
+    color="0.25",
+)
+ax.annotate(
+    r"$C_\pi^{\perp} = \bar g_{{\rm dem},\pi} - \bar g_{\rm rp}$ (PI-aligned graph leg)",
+    (leg_x + 0.4, leg_y - 0.5),
+    fontsize=9.5,
+    color=C_CPI,
+)
+ax.annotate(
+    r"$\Delta_{\rm phase} = \bar g_{\rm dem} - \bar g_{{\rm dem},\pi}$ (phase-geometry response)",
+    (leg_x + 0.4, leg_y - 1.0),
+    fontsize=9.5,
+    color=C_DPH,
+)
+
 # scale bar
 sb_x = X_SCALE - 0.2
-sb_y = base_y(sb_x) + 1.0
+sb_y = base_y(sb_x) + 2.2
 ax.plot([sb_x, sb_x], [sb_y, sb_y + 0.5 * K], color="0.5", lw=2.5)
 ax.annotate(
     r"$0.5\,\|\bar g_{\rm src}\|$",
@@ -189,14 +254,15 @@ ax.annotate(
 )
 
 ax.set_xlim(-1.0, X_SCALE + 1.3)
-ax.set_ylim(-0.95, base_y(X_SCALE) + 2.1)
+ax.set_ylim(-0.95, base_y(X_SCALE) + 2.4)
 ax.set_aspect("equal")
 ax.axis("off")
 ax.set_title(
-    "$1024\\to768$ — B/C legs planted on the $\\sigma$ axis "
-    "(true debiased scale, angle = $\\arccos\\rho$; "
-    "E14 probe-matched ledger, reenc ref)",
-    fontsize=11.5,
+    "$1024\\to768$ — B/C legs on the $\\sigma$ axis; at the 19.4 bins the graph leg "
+    "splits as $C = C_\\pi + \\Delta_{\\rm phase}$\n"
+    "(E14 ledger + pi_194, reenc ref; $C/C_\\pi$ plane — "
+    "$\\angle(B, C_\\pi)$ not to scale; $\\sigma{=}1$ faded = non-verdict)",
+    fontsize=11,
     pad=12,
 )
 fig.savefig(OUT, dpi=170, bbox_inches="tight")
