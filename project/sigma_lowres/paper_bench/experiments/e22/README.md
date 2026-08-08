@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | **DONE 2026-08-08 — verdict INSTRUMENT-LIMITED** (all three σ void at the pre-registered ≥ 8-image reliability floor; run recorded, stopped, draws NOT escalated — see Results). Pre-registration committed same day before the 22.1 instrument existed (theory-first, mirroring 19.1/20/21). |
+| **Status** | **DONE 2026-08-08 — verdict INSTRUMENT-LIMITED** (all three σ void at the pre-registered ≥ 8-image reliability floor; run recorded, stopped, draws NOT escalated — see Results). Pre-registration committed same day before the 22.1 instrument existed (theory-first, mirroring 19.1/20/21). **Amendment 22.4 pre-registered 2026-08-08 — PLANNED** (D = 96 single-σ rerun; frozen below, not yet launched). |
 | **Question** | Every anti-alignment number in this line so far — E14's pooled ρ̄ ≈ −0.91, E21's cell-level LOCAL verdict — is a **cross-image mean** (40 images × 12 draws summed before any cosine). A training-facing correction acts on **one sample at one step**. Is the B/C cancellation a per-sample property (each image's data damage mirrored by its own graph response), or a population property that only emerges in the mean? This is the missing link ("estimand bridge") that E20.4 crashed into from the objective side — E22 closes it from the measurement side, **before** any correction is proposed. Secondary, observational: training "at 1024" is itself training on **preprocess-resized** pixels (source → bucket downscale; free-fit drove crop bias to ~0 but the downscale low-pass remains). Per-image records let us stratify the ledger by each image's realized resize factor — a first, hypothesis-generating look at whether that preprocessing bias is visible in LoRA-gradient space. |
 | **Depends on** | [E21](../e21/) (LOCAL verdict — licenses factorized per-cell reads; adaln amplitude concentration — the candidate lever this experiment gates); [E20.4](../e20/) (derived data term fails at estimand level — the standing reason per-sample must be measured, not assumed); `run_sigma_probe.py` + `sigma_probe/` (the per-image arm loop this amends); E14/E19 ledger conventions. **The 19.3/19.4 stores cannot answer this**: they are cross-image sums, and `per_image.jsonl` carries only arm-vs-native cosines (`cos_<arm>`), never the arm×arm cross products that ρ_i needs. New GPU arm required. |
-| **Instruments** | 22.0 `e22_corpus.py` (CPU corpus prep → `resize_factors.json` + `e22_probe_list.json`); 22.1 probe amendment `--per_image_ledger` (`sigma_probe/cli.py` + `stats.py` + driver; GPU, daemon job `20260808-163340-13b303` → `runs/20260808-1633-e221-per-image-ledger`); 22.2 `e22_per_image.py` (CPU digest + figure → `e22_per_image.json`, `e22_rho_i.png`); 22.3 applied — see Results. |
+| **Instruments** | 22.0 `e22_corpus.py` (CPU corpus prep → `resize_factors.json` + `e22_probe_list.json`); 22.1 probe amendment `--per_image_ledger` (`sigma_probe/cli.py` + `stats.py` + driver; GPU, daemon job `20260808-163340-13b303` → `runs/20260808-1633-e221-per-image-ledger`); 22.2 `e22_per_image.py` (CPU digest + figure → `e22_per_image.json`, `e22_rho_i.png`); 22.3 applied — see Results; 22.4 amendment rerun (GPU, PLANNED — same instrument, no code change). |
 | **In the paper** | The mechanism→prescription bridge for §5/discussion: PER-SAMPLE HOLDS licenses a training-facing lever (E23a); POOLED-ONLY kills the whole per-sample correction family in one pre-registered stroke and confines prescriptions to scheduler-side routing (the shipped σ-gated demotion recipe). Either outcome is a paper paragraph. |
 
 **Numbering note**: e20's informally sketched "derive the amplitudes"
@@ -174,7 +174,8 @@ Gate passes (global rel ≥ 0.5, both legs) per σ: **3/16, 3/16, 5/16** —
 all three verdict σ fall below the ≥ 8-image floor ⇒ every σ is void and
 the run verdict is INSTRUMENT-LIMITED. Per the pre-registration this is
 recorded as instrument, not evidence; the run stops here and **no draw
-escalation happens without an amendment to this file**. The failing leg is
+escalation happens without an amendment to this file** (that amendment
+now exists — 22.4 below, pre-registered after this verdict). The failing leg is
 overwhelmingly C (relC < 0.5 in 37/48 image-bins; relB in 23/48): at 24
 draws the per-image graph-leg direction is not reproducible for most
 images — quantitatively consistent with scaling the pooled leg
@@ -246,13 +247,50 @@ remains gated (22.3 did not return PER-SAMPLE HOLDS); E20.4's
 retroactive-explanation clause is NOT triggered (that required
 POOLED-ONLY, which this is not).
 
-### Amendment path (requires a new pre-registration edit to this file)
+## 22.4 — amendment (pre-registered 2026-08-08): D = 96 single-σ rerun — PLANNED
 
-The measured reliabilities pin the cost of a follow-up: rel 0.5 on C
-needs roughly SNR² = 1 ⇒ ~4× the draws (D ≈ 96) at the strongest σ.
-A single-σ (0.7, best pass rate + strongest pooled rel) D = 96 rerun on
-the same 16 images ≈ 0.9× this run's wall clock. Not launched — an
-amendment must freeze it first.
+This is that amendment: the follow-up is **decided** (pinned 2026-08-08)
+and frozen here before launch. Rationale from the measured reliabilities:
+rel 0.5 on C needs roughly SNR² = 1 ⇒ ~4× the draws (D ≈ 96); dropping
+to the single strongest σ (0.7 — best gate pass rate, 5/16, and strongest
+pooled rel) prices the rerun at ≈ 0.9× 22.1's wall clock (~2 h, one
+daemon job).
+
+**Frozen grid (no tuning on outputs):**
+
+- Same instrument, **no code change**: `run_sigma_probe.py
+  --per_image_ledger --repromote --self_floor --keep_arm_sums
+  --deterministic --seed 42`, same adapter (`anima_soup_sincos` — same
+  operating point as 22.1), same route **1024→768**, same arms (native
+  a/b, reenc(+`__2`), 768(+`__2`), 768rp(+`__2`)). **No PI arms** (G11
+  untouched; per-image C_π is explicitly out of scope — it would need
+  its own amendment *after* this one clears the floor).
+- **Single σ bin centered 0.7, same 2/15 bin width as 22.1**:
+  `--bins 1 --sigma_window 0.6333333333333333,0.7666666666666667`.
+- **`--draws_per_bin 96`.** No further escalation inside this amendment:
+  if the ≥ 8-image floor fails again at D = 96, the priced SNR model is
+  wrong — the verdict is INSTRUMENT-LIMITED again, record and **diagnose
+  before spending more** (a third run needs a new amendment with a
+  stated reason the scaling failed).
+- **Corpus unchanged**: the same 16 images, `e22_probe_list.json` /
+  `resize_factors.json` as committed — no re-stratification.
+- **Estimand, gates, floor unchanged**: per-image estimand as frozen
+  above; rel gate ≥ 0.5 both legs; reliability floor ≥ 8 gated images at
+  the (single) verdict σ.
+
+**Pre-registered readings** — the 22.3 table applied at σ = 0.7 alone;
+all wording is scoped **"per-image at σ = 0.7, this operating point"**:
+
+- PER-SAMPLE HOLDS at σ = 0.7 licenses drafting E23a's pre-registration
+  (adaln-targeted, per the E21 amplitude finding), carrying the single-σ
+  scope caveat into E23a's own design.
+- POOLED-ONLY at σ = 0.7 — the *best* per-image bin — kills the
+  per-sample correction family in this line (single-σ caveat recorded,
+  but no further per-image spend without new mechanism evidence).
+- MIXED / floor-fail → record, stop, no downstream claim.
+- Secondary resize-factor read re-applied under the same pre-registered
+  null (observational only, as above); D = 96 may simply raise the gated
+  count per stratum — still hypothesis-generating for E23b at best.
 
 ## Cost ladder (planned → actual)
 
@@ -262,3 +300,4 @@ amendment must freeze it first.
 | 22.1 | **GPU ~1.5–2.5 h** (scale from 19.3's 5.6 h: ×16/40 images, ×3/5 bins, ×3/5 arm families, ×2 draws), one daemon job | **2.1 h** (7686 s) incl. compile warmup (25 token families, cold signature) + in-loop ledger CPU |
 | 22.2 | CPU, ~minutes | seconds (+ ~2 min `vector_ledger.py` cross-check) |
 | 22.3 | free (re-read of 22.2) | free — INSTRUMENT-LIMITED via the reliability floor |
+| 22.4 | GPU ≈ 0.9× 22.1 (~2 h), one daemon job | — (PLANNED) |
