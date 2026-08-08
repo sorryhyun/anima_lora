@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PLANNED 2026-08-08** — this file is the pre-registration, committed **before** `e21_cells.py` exists (theory-first, mirroring 19.1/20). |
+| **Status** | **DONE 2026-08-08** — pre-registered same day before `e21_cells.py` existed; 21.1 ran clean (daemon job `20260808-102525-b93090`, 11.5 min CPU). Verdict **LOCAL** on both routes; π-swing dual-read (see Results). |
 | **Question** | E19 established the deep g-level anti-alignment as one global constant (route-uniform 19.0, depth/type-uniform 19.3, operating-point-invariant 19.6) at **pooled** granularity, and the r-level field figure (`e19/fig_score_field.py`) showed the r-level spatial analog is ubiquitous-but-mild, with pooling amplitude-weighted. Open, at the estimand where ρ̄ ≈ −0.91 actually lives (LoRA-gradient space): is the cancellation carried **pointwise by (depth × module-type) cells**, or by **cross-cell global modes**? And cell-wise, *where* does 19.4's phase-borne component live — uniformly (the "carried globally through the chain rule" reading) or concentrated in specific type bands? Payoff either way: the Yang–Song-style mechanism figure at the **correct estimand** — arrow pairs (B_cell, C_cell) over the network's depth×type lattice — with an honest caption dictated by the verdict. |
 | **Depends on** | [E14](../e14/) (pooled ρ̄; digests only — its arm sums were deleted); [E19](../e19/) 19.3 + 19.4 **surviving `arm_sums/` stores** (verified on disk 2026-08-08, see Sources); `paper_bench/vector_ledger.py` / `ledger_depth.py` / `ledger_pi.py` (leg + debias + gate conventions); `e19/fig_score_field.py` (r-level counterpart); G11 (PI off-manifold at mid σ — standing restriction) |
 | **Instruments** | 21.1 `e21_cells.py` (CPU; cell ledger + lattice figure); 21.2 free re-reads of 21.1. **No GPU item** — see Cost ladder. |
@@ -98,6 +98,71 @@ on disk.
   LoRA-gradient space; the image-space rendering exists at r-level
   only — `e19/fig_score_field.py`), and NOT the 20.x amplitude-
   derivation line.
+
+## Results (2026-08-08)
+
+Instrument: `e21_cells.py` (this dir; smoke-tested on a synthetic mini-store
+against the committed `ledger_depth.py`/`ledger_pi.py` before touching the
+real stores). Record: `e21_cells.json`; figures `e21_lattice_{896,768}.png`,
+`e21_rho_dist.png`.
+
+**Guards all pass, read first**: (a) 19.3 anti-relitigation — E21's code
+path, run over the 19.3 run's own `groups.json` slices, reproduces the
+committed `ledger_depth.json` **exactly** (max |Δ| = 0.0 on
+ρ/S/F/I/rel across all 430 slice rows); (b) core-cell partition resums to
+the global ledger to ≤ 2e-5; (c) cross-store σ = 0.7 bin: median |Δρ_cell|
+= 0.006 / 0.007 (896/768), 96 % of co-gated cells within |z| ≤ 2 of the
+twin-based noise → pooling across stores licensed, **no instrument flag**.
+
+### 21.2 verdict: **LOCAL** (both routes, every verdict σ)
+
+Gated-core-cell median ρ_cell = **−0.899 … −0.959** with IQR
+0.037–0.112 (≤ 0.2 everywhere); pooled ρ̄ sits inside the cell
+distribution at every verdict σ (violin figure). The cancellation is
+**pointwise in parameter space** — the global constant is locally
+enforced; the lattice figure may be captioned "the cancellation drawn".
+Sharpens 19.3, consistent with it. Gate pass counts 103–174/280 per
+panel; gated cells concentrate in deep blocks (~14–27) — shallow blocks
+mostly fail rel ≥ 0.5 (small G_ℓ), drawn hollow, count reported.
+Endpoint bins behave as expected of detached noise modes (e193 σ = 1.0
+pooled ρ̄ = −1.45, out of range) and carry no verdict weight.
+
+### π-swing localization: dual reading (pre-registration ambiguity, both recorded)
+
+The pre-registration defined the swing as Δρ_cell but gated concentration
+on "share of the total swing" without fixing the estimand. Both honest
+readings, at all four (route × 19.4-verdict-bin) rows:
+
+- **Δρ-mass (the null's literal quantity)**: uniform positive — band
+  medians Δρ_cell = 0.47–0.61 across **all** bands, band-share/count-share
+  ratios 0.83–1.18, pre-named claim set ×1.03–1.10, far below the 2×
+  gate. **The null stands: 19.4's delocalized "carried globally through
+  the chain rule" language is unchanged at the direction level.** Every
+  gated cell rotates toward 0 by roughly the same amount.
+- **Additive ledger partition** (ΔI = Ip_π − Ip, exact over the core
+  cover): claim set ×2.04–2.67 — fires the 2× gate at 4/4 rows, and is
+  entirely adaln-driven (adaln ×4.0–5.3, cross-attn ≈ 0). Caveat: the ΔI
+  totals are small and sign-flip across rows (−0.086 … +0.014), so these
+  are shares of an ill-conditioned denominator.
+- **The stable amplitude read** (descriptive, from the digest's
+  `Fp_pi`/`Fp` fields): the global ρ_π lift is denominator-driven — I
+  barely moves while F_π = 3–7× F — and the **F_π inflation is 86–87 %
+  adaln (×3.9 its dim share), cross-attn ≈ 0, at every verdict row**.
+
+Net: the *direction* rotation is ubiquitous (delocalized, per the
+pre-registered null), while the *amplitude* of the phase response is
+carried almost entirely by the adaln band. The conservative claim per the
+pre-registration is the first bullet; the adaln amplitude concentration
+is recorded as a descriptive finding — any claim-level use needs its own
+follow-up pre-registration.
+
+### Paper feed
+
+Mechanism-figure candidate: `e21_lattice_768.png` verdict panels (arrow
+pairs near-antiparallel across the gated lattice, ρ background
+near-uniform deep red). §4.5/4.6 language: the cancellation is locally
+enforced cell-by-cell; the phase-borne share is globally carried in
+direction and adaln-carried in amplitude.
 
 ## Cost ladder
 
