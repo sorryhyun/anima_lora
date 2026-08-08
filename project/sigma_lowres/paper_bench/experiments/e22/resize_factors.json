@@ -1,0 +1,295 @@
+{
+ "seed": 42,
+ "standard_list": "project/sigma_lowres/paper_bench/experiments/e13/e1b_probe_list.json",
+ "n_per_stratum": 8,
+ "boundaries": {
+  "near_native_target": 1.3,
+  "near_native_realized_max": 1.7857,
+  "near_native_fills_target": false,
+  "heavy_target": 2.0,
+  "heavy_realized_min": 8.7351,
+  "heavy_fills_target": true
+ },
+ "table": [
+  {
+   "artist": "yaegashi_nan",
+   "stem": "8228445",
+   "source": "819x1200",
+   "resized": "848x1248",
+   "factor": 0.9287
+  },
+  {
+   "artist": "haku89",
+   "stem": "13745769",
+   "source": "1178x893",
+   "resized": "1184x896",
+   "factor": 0.9916
+  },
+  {
+   "artist": "sumiyao_(amam)",
+   "stem": "7614272",
+   "source": "1064x1170",
+   "resized": "976x1072",
+   "factor": 1.1898
+  },
+  {
+   "artist": "kat_(bu-kunn)",
+   "stem": "dan_8657484",
+   "source": "1013x1367",
+   "resized": "880x1184",
+   "factor": 1.3291
+  },
+  {
+   "artist": "mignon",
+   "stem": "dan_9540972",
+   "source": "1380x1049",
+   "resized": "1184x896",
+   "factor": 1.3646
+  },
+  {
+   "artist": "ru_zhai",
+   "stem": "10778612",
+   "source": "1000x1706",
+   "resized": "784x1344",
+   "factor": 1.6191
+  },
+  {
+   "artist": "deyui",
+   "stem": "10050204",
+   "source": "1037x1800",
+   "resized": "784x1360",
+   "factor": 1.7506
+  },
+  {
+   "artist": "kat_(bu-kunn)",
+   "stem": "dan_11415046",
+   "source": "1200x1600",
+   "resized": "896x1200",
+   "factor": 1.7857
+  },
+  {
+   "artist": "sumiyao_(amam)",
+   "stem": "6408147",
+   "source": "1600x1200",
+   "resized": "1200x896",
+   "factor": 1.7857
+  },
+  {
+   "artist": "ama_mitsuki",
+   "stem": "12971566",
+   "source": "1183x1600",
+   "resized": "880x1184",
+   "factor": 1.8166
+  },
+  {
+   "artist": "ame_(uten_cancel)",
+   "stem": "dan_7035976",
+   "source": "1200x1694",
+   "resized": "864x1216",
+   "factor": 1.9349
+  },
+  {
+   "artist": "mignon",
+   "stem": "10573613",
+   "source": "1227x1723",
+   "resized": "864x1216",
+   "factor": 2.0123
+  },
+  {
+   "artist": "akipeko",
+   "stem": "7365254",
+   "source": "1228x1765",
+   "resized": "864x1232",
+   "factor": 2.0362
+  },
+  {
+   "artist": "deyui",
+   "stem": "12728668",
+   "source": "1198x1800",
+   "resized": "832x1248",
+   "factor": 2.0768
+  },
+  {
+   "artist": "hews",
+   "stem": "12672980",
+   "source": "1167x2000",
+   "resized": "784x1344",
+   "factor": 2.2151
+  },
+  {
+   "artist": "sincos",
+   "stem": "8774442",
+   "source": "2061x1257",
+   "resized": "1312x800",
+   "factor": 2.4683
+  },
+  {
+   "artist": "coro_fae",
+   "stem": "13164819",
+   "source": "1529x1947",
+   "resized": "912x1168",
+   "factor": 2.7947
+  },
+  {
+   "artist": "songchuan_li",
+   "stem": "dan_6583014",
+   "source": "1500x2122",
+   "resized": "864x1216",
+   "factor": 3.0296
+  },
+  {
+   "artist": "kawakami_rokkaku",
+   "stem": "11531058",
+   "source": "1554x2174",
+   "resized": "864x1216",
+   "factor": 3.2156
+  },
+  {
+   "artist": "dikko",
+   "stem": "10437732",
+   "source": "1687x2250",
+   "resized": "896x1200",
+   "factor": 3.5303
+  },
+  {
+   "artist": "suujiniku",
+   "stem": "dan_10315869",
+   "source": "1650x2400",
+   "resized": "848x1232",
+   "factor": 3.7904
+  },
+  {
+   "artist": "suujiniku",
+   "stem": "dan_10403110",
+   "source": "1650x2400",
+   "resized": "848x1232",
+   "factor": 3.7904
+  },
+  {
+   "artist": "ootomo_takuji",
+   "stem": "dan_9016251",
+   "source": "2000x2000",
+   "resized": "1024x1024",
+   "factor": 3.8147
+  },
+  {
+   "artist": "manglifer",
+   "stem": "13052789",
+   "source": "1800x2400",
+   "resized": "896x1200",
+   "factor": 4.0179
+  },
+  {
+   "artist": "yamamoto_souichirou",
+   "stem": "7727759",
+   "source": "1513x2976",
+   "resized": "736x1440",
+   "factor": 4.2485
+  },
+  {
+   "artist": "sincos",
+   "stem": "7082181",
+   "source": "1800x2619",
+   "resized": "848x1232",
+   "factor": 4.5123
+  },
+  {
+   "artist": "fizz_(pixiv34498626)",
+   "stem": "6539097",
+   "source": "2400x3200",
+   "resized": "896x1200",
+   "factor": 7.1429
+  },
+  {
+   "artist": "ningen_mame",
+   "stem": "dan_6789229",
+   "source": "2039x4100",
+   "resized": "720x1440",
+   "factor": 8.0632
+  },
+  {
+   "artist": "ama_mitsuki",
+   "stem": "5828775",
+   "source": "2447x3513",
+   "resized": "864x1232",
+   "factor": 8.0758
+  },
+  {
+   "artist": "moursho",
+   "stem": "12738905",
+   "source": "2506x3455",
+   "resized": "880x1216",
+   "factor": 8.0912
+  },
+  {
+   "artist": "mignon",
+   "stem": "dan_10884841",
+   "source": "2480x3509",
+   "resized": "864x1216",
+   "factor": 8.283
+  },
+  {
+   "artist": "belko",
+   "stem": "10566921",
+   "source": "2169x4000",
+   "resized": "752x1392",
+   "factor": 8.2882
+  },
+  {
+   "artist": "jumonji",
+   "stem": "8688344",
+   "source": "2269x4021",
+   "resized": "768x1360",
+   "factor": 8.7351
+  },
+  {
+   "artist": "abmayo",
+   "stem": "13109140",
+   "source": "3555x2801",
+   "resized": "1152x912",
+   "factor": 9.4778
+  },
+  {
+   "artist": "koh_(minagi_kou)",
+   "stem": "dan_9398241",
+   "source": "2999x3986",
+   "resized": "896x1184",
+   "factor": 11.2682
+  },
+  {
+   "artist": "nvl",
+   "stem": "12882239",
+   "source": "2932x4096",
+   "resized": "864x1200",
+   "factor": 11.5832
+  },
+  {
+   "artist": "jumonji",
+   "stem": "11957441",
+   "source": "2700x4800",
+   "resized": "768x1360",
+   "factor": 12.4081
+  },
+  {
+   "artist": "jumonji",
+   "stem": "10125232",
+   "source": "4500x3000",
+   "resized": "1248x832",
+   "factor": 13.0016
+  },
+  {
+   "artist": "gin00",
+   "stem": "13407704",
+   "source": "2928x5288",
+   "resized": "768x1392",
+   "factor": 14.4831
+  },
+  {
+   "artist": "hews",
+   "stem": "7655626",
+   "source": "4698x8886",
+   "resized": "752x1424",
+   "factor": 38.9845
+  }
+ ]
+}

@@ -1,0 +1,100 @@
+{
+ "images": [
+  {
+   "artist": "yaegashi_nan",
+   "stem": "8228445",
+   "stratum": "near_native",
+   "resize_factor": 0.9287
+  },
+  {
+   "artist": "haku89",
+   "stem": "13745769",
+   "stratum": "near_native",
+   "resize_factor": 0.9916
+  },
+  {
+   "artist": "sumiyao_(amam)",
+   "stem": "7614272",
+   "stratum": "near_native",
+   "resize_factor": 1.1898
+  },
+  {
+   "artist": "kat_(bu-kunn)",
+   "stem": "dan_8657484",
+   "stratum": "near_native",
+   "resize_factor": 1.3291
+  },
+  {
+   "artist": "mignon",
+   "stem": "dan_9540972",
+   "stratum": "near_native",
+   "resize_factor": 1.3646
+  },
+  {
+   "artist": "ru_zhai",
+   "stem": "10778612",
+   "stratum": "near_native",
+   "resize_factor": 1.6191
+  },
+  {
+   "artist": "deyui",
+   "stem": "10050204",
+   "stratum": "near_native",
+   "resize_factor": 1.7506
+  },
+  {
+   "artist": "kat_(bu-kunn)",
+   "stem": "dan_11415046",
+   "stratum": "near_native",
+   "resize_factor": 1.7857
+  },
+  {
+   "artist": "jumonji",
+   "stem": "8688344",
+   "stratum": "heavy",
+   "resize_factor": 8.7351
+  },
+  {
+   "artist": "abmayo",
+   "stem": "13109140",
+   "stratum": "heavy",
+   "resize_factor": 9.4778
+  },
+  {
+   "artist": "koh_(minagi_kou)",
+   "stem": "dan_9398241",
+   "stratum": "heavy",
+   "resize_factor": 11.2682
+  },
+  {
+   "artist": "nvl",
+   "stem": "12882239",
+   "stratum": "heavy",
+   "resize_factor": 11.5832
+  },
+  {
+   "artist": "jumonji",
+   "stem": "11957441",
+   "stratum": "heavy",
+   "resize_factor": 12.4081
+  },
+  {
+   "artist": "jumonji",
+   "stem": "10125232",
+   "stratum": "heavy",
+   "resize_factor": 13.0016
+  },
+  {
+   "artist": "gin00",
+   "stem": "13407704",
+   "stratum": "heavy",
+   "resize_factor": 14.4831
+  },
+  {
+   "artist": "hews",
+   "stem": "7655626",
+   "stratum": "heavy",
+   "resize_factor": 38.9845
+  }
+ ]
+}

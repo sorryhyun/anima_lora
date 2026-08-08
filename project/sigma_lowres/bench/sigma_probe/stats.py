@@ -405,6 +405,245 @@ def kappa_row(
     return kap
 
 
+# --------------------------------------------------------------------------
+# E22 per-image B/C ledger (--per_image_ledger)
+#
+# The E14/E19 interventional ledger with the IMAGE as the slice: same legs
+# (B = g_rp − g_reenc, C = g_dem − g_rp), same noise handling (second moments
+# from CROSS-SET products only, ref-noise subtracted from the reenc set-diff,
+# same-set values as bias checks), computed from ONE image's arm gradients
+# before any cross-image accumulation. Granularities mirror E21: global
+# (verdict), the four type bands (secondary), depth-block × core-type cells
+# (exploratory). Slice rows carry both the slice-local ledger (perp against
+# the slice's own native direction) and the additive global-perp partition
+# (Sp/Fp/Ip — core cells resum to the global row exactly). Conventions are
+# frozen in experiments/e22/README.md; the math mirrors
+# paper_bench/vector_ledger.bc_ledger and e21_cells.cell_row verbatim.
+
+E21_CORE_TYPES = (
+    "adaln_up_self_attn",
+    "adaln_up_cross_attn",
+    "adaln_up_mlp",
+    "self_attn_qkv_proj",
+    "self_attn_output_proj",
+    "cross_attn_q_proj",
+    "cross_attn_kv_proj",
+    "cross_attn_output_proj",
+    "mlp_layer1",
+    "mlp_layer2",
+)
+E21_BANDS = {
+    "adaln": ("adaln_up_self_attn", "adaln_up_cross_attn", "adaln_up_mlp"),
+    "cross_attn": (
+        "cross_attn_q_proj",
+        "cross_attn_kv_proj",
+        "cross_attn_output_proj",
+    ),
+    "self_attn": ("self_attn_qkv_proj", "self_attn_output_proj"),
+    "mlp": ("mlp_layer1", "mlp_layer2"),
+}
+
+
+def _intersect_ranges(a, b) -> list[tuple[int, int]]:
+    a, b = sorted(a), sorted(b)
+    out, i, j = [], 0, 0
+    while i < len(a) and j < len(b):
+        s, e = max(a[i][0], b[j][0]), min(a[i][1], b[j][1])
+        if s < e:
+            out.append((s, e))
+        if a[i][1] < b[j][1]:
+            i += 1
+        else:
+            j += 1
+    return out
+
+
+def build_ledger_slices(groups: dict) -> dict[str, list[tuple[int, int]]]:
+    """``band:<name>`` + ``cell:bXX|<type>`` → flat-vector ranges, from the
+    ``build_groups`` map (same sorted-name flatten as the gradient vectors)."""
+    slices: dict[str, list[tuple[int, int]]] = {}
+    for band, types in E21_BANDS.items():
+        slices[f"band:{band}"] = sorted(
+            tuple(r) for t in types for r in groups[f"type:{t}"]
+        )
+    for bk in sorted(k for k in groups if k.startswith("block:")):
+        bi = int(bk.split(":")[1])
+        for t in E21_CORE_TYPES:
+            rr = _intersect_ranges(groups[bk], groups[f"type:{t}"])
+            if rr:
+                slices[f"cell:b{bi:02d}|{t}"] = rr
+    return slices
+
+
+def _gather(v: np.ndarray, ranges) -> np.ndarray:
+    if len(ranges) == 1:
+        s, e = ranges[0]
+        return v[s:e]
+    return np.concatenate([v[s:e] for s, e in ranges])
+
+
+def _np_cos(a: np.ndarray, b: np.ndarray) -> float:
+    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+    if na == 0.0 or nb == 0.0:
+        return float("nan")
+    return float(a @ b) / (na * nb)
+
+
+def _ledger_global_row(g0, G, ghat, B1, B2, C1, C2, rd) -> dict:
+    """bc_ledger (reenc ref) for one image's (bin, route) + sig_rho (the
+    cross-pairing half-spread, e21's twin-based per-row noise scale)."""
+
+    def perp(v):
+        return v - float(ghat @ v) * ghat
+
+    B1p, B2p, C1p, C2p = perp(B1), perp(B2), perp(C1), perp(C2)
+    rdp = perp(rd)
+    G2 = G * G
+    ref_noise = float(rdp @ rdp) / 4.0
+    S = (float(B1p @ B2p) - ref_noise) / (2 * G2)
+    F = float(C1p @ C2p) / (2 * G2)
+    i1, i2 = float(B1p @ C2p) / G2, float(B2p @ C1p) / G2
+    I_x = 0.5 * (i1 + i2)
+    I_same = (float(B1p @ C1p) + float(B2p @ C2p)) / (2 * G2)
+    denom = 2.0 * math.sqrt(max(S * F, 0.0))
+    Bm, Cm = 0.5 * (B1 + B2), 0.5 * (C1 + C2)
+
+    def h(u):
+        return 1.0 - _np_cos(g0, g0 + u)
+
+    return {
+        "G": round(G, 5),
+        "b_perp_rawnorm": round(float(np.linalg.norm(0.5 * (B1p + B2p))) / G, 5),
+        "c_perp_rawnorm": round(float(np.linalg.norm(0.5 * (C1p + C2p))) / G, 5),
+        "kappa_par_B": round(float(ghat @ Bm) / G, 5),
+        "kappa_par_C": round(float(ghat @ Cm) / G, 5),
+        "rel_cos_B": round(_np_cos(B1p, B2p), 5),
+        "rel_cos_C": round(_np_cos(C1p, C2p), 5),
+        "ref_noise_over_2G2": round(ref_noise / (2 * G2), 6),
+        "S": round(S, 6),
+        "F": round(F, 6),
+        "I": round(I_x, 6),
+        "I_sameset_biascheck": round(I_same, 6),
+        "rho": round(I_x / denom, 5) if denom > 0.0 else float("nan"),
+        "sig_rho": round((abs(i1 - i2) / 2.0) / denom, 5)
+        if denom > 0.0
+        else float("nan"),
+        "amp_ratio": round(math.sqrt(S / F), 5) if S > 0 and F > 0 else float("nan"),
+        "quad_pred_gap": round(S + F + I_x, 6),
+        "h_B": round(h(Bm), 6),
+        "h_C": round(h(Cm), 6),
+        "h_B_plus_C": round(h(Bm + Cm), 6),
+    }
+
+
+def _ledger_slice_row(g0l, B1l, B2l, C1l, C2l, rdl, scal: dict) -> dict:
+    """e21_cells.cell_row math (no pi extension), one slice of one image:
+    slice-local ledger + the additive global-perp partition (Sp/Fp/Ip)."""
+    gh_g = g0l / scal["G"]
+    G2g = 2.0 * scal["G"] ** 2
+    B1pg, B2pg = B1l - scal["cB1"] * gh_g, B2l - scal["cB2"] * gh_g
+    C1pg, C2pg = C1l - scal["cC1"] * gh_g, C2l - scal["cC2"] * gh_g
+    rdpg = rdl - scal["cRd"] * gh_g
+    S_part = (float(B1pg @ B2pg) - float(rdpg @ rdpg) / 4.0) / G2g
+    F_part = float(C1pg @ C2pg) / G2g
+    I_part = (float(B1pg @ C2pg) + float(B2pg @ C1pg)) / G2g
+
+    Gl = float(np.linalg.norm(g0l))
+    ghl = g0l / Gl
+    B1p, B2p = B1l - float(ghl @ B1l) * ghl, B2l - float(ghl @ B2l) * ghl
+    C1p, C2p = C1l - float(ghl @ C1l) * ghl, C2l - float(ghl @ C2l) * ghl
+    rdp = rdl - float(ghl @ rdl) * ghl
+    G2 = 2.0 * Gl * Gl
+    S = (float(B1p @ B2p) - float(rdp @ rdp) / 4.0) / G2
+    F = float(C1p @ C2p) / G2
+    i1, i2 = float(B1p @ C2p) / G2 * 2.0, float(B2p @ C1p) / G2 * 2.0
+    I_x = 0.5 * (i1 + i2)
+    I_same = (float(B1p @ C1p) + float(B2p @ C2p)) / G2
+    denom = 2.0 * math.sqrt(max(S * F, 0.0))
+    return {
+        "G_l": round(Gl, 5),
+        "S": round(S, 6),
+        "F": round(F, 6),
+        "I": round(I_x, 6),
+        "I_same": round(I_same, 6),
+        "rho": round(I_x / denom, 5) if denom > 0.0 else float("nan"),
+        "sig_rho": round((abs(i1 - i2) / 2.0) / denom, 5)
+        if denom > 0.0
+        else float("nan"),
+        "relB": round(_np_cos(B1p, B2p), 5),
+        "relC": round(_np_cos(C1p, C2p), 5),
+        "amp": round(math.sqrt(S / F), 5) if S > 0 and F > 0 else float("nan"),
+        "Sp": round(S_part, 6),
+        "Fp": round(F_part, 6),
+        "Ip": round(I_part, 6),
+    }
+
+
+def image_ledger(
+    arms: dict[str, list[torch.Tensor]],
+    edges: list[str],
+    slices: dict[str, list[tuple[int, int]]],
+    draws: int,
+) -> dict:
+    """Per-image scalar B/C reductions for every (route, bin) — the E22
+    instrument. ``arms`` is one image's retained arm dict (draw-summed fp32
+    vectors); vectors are scaled to per-draw means (uniform 1/draws — all
+    arms share the grid) so h() magnitudes match the pooled ledger's
+    convention. Returns {route: [per-bin {global, bands, cells}]}."""
+    n_bins = len(arms["a"])
+    inv = 1.0 / draws
+    out: dict = {e: [] for e in edges}
+    for bi in range(n_bins):
+
+        def f64(key: str) -> np.ndarray:
+            return arms[key][bi].numpy().astype(np.float64) * inv
+
+        a, b = f64("a"), f64("b")
+        g0 = 0.5 * (a + b)
+        del a, b
+        G = float(np.linalg.norm(g0))
+        ghat = g0 / G
+        re1, re2 = f64("reenc"), f64("reenc__2")
+        ref, rd = 0.5 * (re1 + re2), re1 - re2
+        del re1, re2
+        cRd = float(ghat @ rd)
+        for e in edges:
+            rp1, rp2 = f64(f"{e}rp"), f64(f"{e}rp__2")
+            dem1, dem2 = f64(e), f64(f"{e}__2")
+            B1, B2 = rp1 - ref, rp2 - ref
+            C1, C2 = dem1 - rp1, dem2 - rp2
+            del rp1, rp2, dem1, dem2
+            entry = {
+                "global": _ledger_global_row(g0, G, ghat, B1, B2, C1, C2, rd),
+                "bands": {},
+                "cells": {},
+            }
+            scal = {
+                "G": G,
+                "cB1": float(ghat @ B1),
+                "cB2": float(ghat @ B2),
+                "cC1": float(ghat @ C1),
+                "cC2": float(ghat @ C2),
+                "cRd": cRd,
+            }
+            for name, rr in slices.items():
+                row = _ledger_slice_row(
+                    _gather(g0, rr),
+                    _gather(B1, rr),
+                    _gather(B2, rr),
+                    _gather(C1, rr),
+                    _gather(C2, rr),
+                    _gather(rd, rr),
+                    scal,
+                )
+                kind, key = name.split(":", 1)
+                entry[kind + "s"][key] = row
+            out[e].append(entry)
+            del B1, B2, C1, C2
+        del g0, ghat, ref, rd
+    return out
+
+
 def bin_stats(rows: list[dict], key: str) -> dict:
     """Per-bin mean/SEM across images + the σ-trend and split-half reliability
     of the bin-mean curve (odd/even image split). nan-aware: debiased gaps are

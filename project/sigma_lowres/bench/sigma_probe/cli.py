@@ -172,6 +172,22 @@ def parse_args(
         "the B/C ledger needs.",
     )
     p.add_argument(
+        "--per_image_ledger",
+        action="store_true",
+        help="E22 amendment: per-image debiased B/C scalar reductions inside "
+        "the per-image arm loop — B_i = g_rp - g_reenc, C_i = g_dem - g_rp, "
+        "perp against the image's own native direction, second moments from "
+        "cross-set products only, ref-noise subtracted from the image's own "
+        "reenc set-diff, rho_i = I_i / 2*sqrt(S_i*F_i) — at three "
+        "granularities (global / E21's four type bands / depth-block x "
+        "core-type cells), appended per image to per_image_ledger.jsonl. "
+        "No new forwards: the same arm gradients, reduced per image before "
+        "accumulation. Requires --repromote --self_floor + the reenc "
+        "control; forces non-streaming arm retention (every arm's per-bin "
+        "vectors stay resident for one image — ~arms x bins x 311 MB CPU "
+        "RAM, so keep the grid small).",
+    )
+    p.add_argument(
         "--keep_arm_sums",
         action="store_true",
         help="retain the cross-image SUM of every arm's per-bin flat LoRA "
@@ -446,6 +462,21 @@ def resolve_run_config(args: argparse.Namespace) -> RunConfig:
                 "--target_kappa is endpoint-only (--bins 0 --endpoint_bin): "
                 "per-image cross-alpha vector retention is sized for one bin"
             )
+
+    if args.per_image_ledger:
+        if not (args.repromote and args.self_floor and reenc_control):
+            raise SystemExit(
+                "--per_image_ledger needs --repromote, --self_floor and the "
+                "reenc control (its estimand is the cross-set debiased "
+                "B_i/C_i split with the image's own reenc reference)"
+            )
+        if args.pool or args.target_kappa or args.draw_sweep or args.x_zero:
+            raise SystemExit(
+                "--per_image_ledger is incompatible with "
+                "--pool/--target_kappa/--draw_sweep/--x_zero"
+            )
+        if args.target_alpha:
+            raise SystemExit("--per_image_ledger is incompatible with --target_alpha")
 
     probe_tags: dict[tuple[str, str], dict] | None = None
     probe_order: list[tuple[str, str]] | None = None

@@ -66,6 +66,8 @@ from project.sigma_lowres.bench.sigma_probe.stats import (  # noqa: E402
     ArmSumAccumulator,
     PoolAccumulator,
     build_headline,
+    build_ledger_slices,
+    image_ledger,
     kappa_row,
     pool_stats,
 )
@@ -219,6 +221,18 @@ def main() -> None:
         (run_dir / "arm_sums" / "groups.json").write_text(
             json.dumps(groups if groups is not None else build_groups(bundle.network))
         )
+    ledger_slices: dict | None = None
+    ledger_path = run_dir / "per_image_ledger.jsonl"
+    if args.per_image_ledger:
+        ledger_slices = build_ledger_slices(
+            groups if groups is not None else build_groups(bundle.network)
+        )
+        log.info(
+            "per-image ledger: "
+            f"{sum(k.startswith('band:') for k in ledger_slices)} bands + "
+            f"{sum(k.startswith('cell:') for k in ledger_slices)} cells "
+            f"→ {ledger_path.name}"
+        )
     pool_strata: list[dict] = []
     pool_spill = run_dir / "pool_agg_spill"
     cur_spill = run_dir / "pool_cur_spill"
@@ -335,14 +349,15 @@ def main() -> None:
             # fp32 — over this machine's RAM (the arm dict, not the GPU, is
             # what killed the first e13b smoke; holding 10 self-floor arm
             # lists killed the first E3 pooled launch the same way). Unless a
-            # consumer needs the whole set at once (--target_kappa), each
+            # consumer needs the whole set at once (--target_kappa,
+            # --per_image_ledger — both keep their grids small), each
             # arm's vectors are archived to arm_sums — and, when pooling,
             # accumulated into cur_pool — then freed by the stats worker
             # right after its stats job, keeping only a/b + in-flight arms
             # resident while the main thread never blocks on stats or store
             # I/O. Per-key accumulation order matches add_image, so pooled
             # results are bit-identical to the non-streaming path.
-            streaming = not args.target_kappa
+            streaming = not (args.target_kappa or args.per_image_ledger)
 
             stat_futs = []
             arch_futs = []
@@ -421,6 +436,27 @@ def main() -> None:
             if args.target_kappa and alpha_ == 1.0 and kap0:
                 row.update(kappa_row(arms, kap0, args.draws_per_bin))
                 kap0 = {}
+            if ledger_slices is not None:
+                # E22: per-image scalar reductions of the SAME arm vectors,
+                # before they are freed — no new forwards. Synchronous (the
+                # ledger must finish before the free below); ~10-20 s/image
+                # of CPU against the run's GPU-hours.
+                led = image_ledger(
+                    arms,
+                    [str(e) for e in cfg.edges],
+                    ledger_slices,
+                    args.draws_per_bin,
+                )
+                led_row = {"artist": r.artist, "stem": r.stem}
+                if cfg.probe_tags is not None:
+                    led_row.update(cfg.probe_tags[(r.artist, r.stem)])
+                led_row["sigma_centers"] = centers
+                led_row["ledger"] = led
+                with ledger_path.open("a") as f:
+                    f.write(json.dumps(led_row) + "\n")
+                for e in cfg.edges:
+                    rhos = " ".join(f"{v['global']['rho']:+.3f}" for v in led[str(e)])
+                    log.info(f"  [ledger] {e}: rho_i per bin = {rhos}")
             # free this image's ~8 GB of flat gradient vectors now — otherwise
             # the locals keep them resident through the next image's compute
             for vecs in arms.values():
