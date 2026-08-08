@@ -379,3 +379,28 @@ confirming whatever theory survives 19.4.
 [appendix.md](appendix.md) — the per-σ B/C geometry figure
 (`fig_bc_comb.py` → `bc_comb_768.png`): the E14 legs planted along one
 σ axis at true debiased scale, and the reads it makes visible.
+
+## Score-field visualization (post-hoc illustration, 2026-08-08)
+
+`fig_score_field.py` → `score_field_768.png`: the 19.2 store's measured
+legs rendered as spatial vector fields over one probe image's latent
+grid, in the style of the Yang–Song score panel (`image.png`) — B / C /
+B+C quivers (shared 2-PC plane + shared scale per σ row) plus a full
+16-dim per-location cos(B, C) map, at σ = 0.3 / 0.7, 1024→768, the
+ledger's exact estimand (reenc ref, area, ⊥ pooled native direction).
+Illustrative, not verdict-bearing. Two things it makes visible:
+
+1. **The mild r-level anti-alignment is spatially ubiquitous, not
+   hotspot-driven**: per-location cos(B, C) has spatial median ≈ −0.33
+   at *both* σ, and the 40-image spread of spatial medians is tight
+   (−0.54…−0.24) — every image, most locations, slightly opposed.
+   Pooled r-level ρ (−0.15…−0.20) is *weaker* than the typical local
+   cosine because pooling is amplitude-weighted.
+2. **Estimand honesty**: at r-level the legs are NOT two matched
+   opposing terms (|B|/|C| ≈ 0.3–0.4 at these bins; net ≈ C). The
+   deep ρ̄ ≈ −0.91 near-cancellation is the **E14 g-ledger** estimand,
+   whose fields were never stored (the E14 run kept digests only) — a
+   g-level field rendering would need a small GPU rerun with field
+   dumps (1 route × 2 σ × a few images), as would a C_π panel (19.4
+   kept arm sums only). Annotated on the figure to prevent the two ρ's
+   being conflated.
