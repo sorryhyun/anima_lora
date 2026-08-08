@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PLANNED — pre-registered 2026-08-08** (committed before the `e24_axis.py` instrument exists, mirroring 21/22). CPU-only; no GPU item anywhere in this experiment. |
+| **Status** | **DONE 2026-08-08 — verdict STRUCTURED** (σ-indexed axis field: one direction across route/store/corpus at fixed σ, smooth rotation across σ that tracks the native anchor's own rotation; knob read: the residual is angle-borne — see Results). Pre-registered same day before the `e24_axis.py` instrument existed. CPU-only as planned. |
 | **Question** | ρ̄ ≈ −0.91 means that per (route, σ) the pooled legs B⊥, C⊥ span a nearly 1-D subspace — a "cancellation axis" along which the data damage and the graph response slide against each other. Everything so far measures the *angle inside* each condition; nothing yet asks whether the axis itself is **one shared direction** across σ, routes, and runs ("a scale mode of the adapter-gradient space" — the geometric reading: demotion as an approximate symmetry the network absorbs, residual = failure of equivariance), or a per-condition direction that merely always cancels locally. Secondary, free from the same scalars: what actually dominates the residual gap — the incomplete **angle** (ρ > −1) or the **amplitude mismatch** (\|B\| ≠ \|C\|)? That pins which knob any population-level lever should target, *before* one is proposed. |
 | **Depends on** | [E19](../e19/) 19.3 + [E19.4] surviving `arm_sums/` stores and [E22](../e22/) 22.1's `--keep_arm_sums` store (all three verified on disk 2026-08-08, same adapter `anima_soup_sincos` — one operating point); `paper_bench/vector_ledger.py` (leg/debias conventions, `Sums` loader); [E21](../e21/) (LOCAL — the axis question is the *cross-condition* complement of E21's *within-condition* cell read); [E20](../e20/) 20.4 (closed: no ledger-derived objective term — this experiment derives nothing, it only measures geometry). |
 | **Instruments** | 24.1 `e24_axis.py` (CPU; cross-condition axis cosines + subspace rank + figure); 24.2 free re-read of 24.1's scalars (residual knob decomposition). |
@@ -103,10 +103,103 @@ consistency-checked at cell level by E21's guard (c)).
   comparison would need its own pre-registration), no lever
   implementation in this experiment.
 
-## Cost ladder
+## Results (2026-08-08)
 
-| item | cost |
-|---|---|
-| 24.1 | CPU, ~minutes (memmap reads over the three stores, ≤ ~10 GB resident fp32 condition means) |
-| 24.2 | free (re-read of 24.1 scalars) |
-| GPU | **none** |
+Instrument: `e24_axis.py` (this dir). Validation gates passed before any
+new quantity was read: synthetic mini-store agrees with the committed
+`bc_ledger` exactly (S/F/I/ρ/rel at output rounding) and recovers a
+planted cross-store axis cosine to < 0.05; e221's committed `ledger.json`
+reproduced **exactly** (all 3 bins, all six scalars). Every one of the 12
+verdict conditions passes both rel gates (relB 0.74–0.93, relC
+0.60–0.85) — no reliability caveat anywhere (pooled estimand; the
+per-image reliability wall of E22 does not apply here). Record:
+`e24_axis.json`; figures `e24_axis_cos.png`, `e24_knobs.png`. Runtime
+348 s CPU (single chunked fp64 Gram over 54 × 77.7M vectors).
+
+### 24.3 verdict: **STRUCTURED** (B table; C table agrees)
+
+| family | n | median \|cos\| | min \|cos\| |
+|---|---|---|---|
+| across-σ, same route | 14 | 0.791 | **0.442** |
+| across-route, same σ | 6 | 0.971 | 0.866 |
+| across-store, σ = 0.7 | 2 | 1.003 | 0.999 |
+
+SHARED-AXIS fails only on the across-σ min (0.442 < 0.5); LOCAL-AXIS is
+nowhere close. The pre-registered STRUCTURED clause applies — the
+alignment structure, recorded:
+
+- **At fixed σ the axis is one direction.** Across routes 0.87–0.99
+  (rising with σ), across stores at σ = 0.7 ≈ 1.00 (debiased values may
+  exceed 1; both legs, both routes). The damage direction is not a
+  route property — 896 and 768 demotion push the adapter along the same
+  line, and two independent runs agree to within noise.
+- **Across σ the axis rotates smoothly and monotonically with σ
+  separation**: adjacent bins 0.89–0.97, extreme span (0.3 ↔ 0.7)
+  0.44–0.60; all signs positive (a coherent rotating field, no flips).
+  The C table shows the same pattern (min 0.572).
+- **The rotation tracks the anchor's own rotation** (descriptive): at
+  matched spans, cos(B̂, B̂) ≈ cos(ĝ, ĝ) — 0.44 vs 0.43 (0.3↔0.7), 0.74
+  vs 0.82 (0.4333↔0.7), 0.94 vs 0.94 (0.5667↔0.7), 0.90 vs 0.91
+  (0.7↔0.8333). Relative to the σ-conditioned native-gradient frame the
+  cancellation axis is **approximately σ-stationary** — a follow-up
+  claim would need its own pre-registration (frame-relative estimand),
+  recorded here as the shape of the structure only.
+- **Gram** (12 gated verdict conditions): top-1 share 0.775 / PR 1.61
+  (B), 0.792 / 1.55 (C) — one dominant mode plus one secondary mode
+  (λ₂ ≈ 1.6–1.7), consistent with "dominant shared axis + σ-rotation
+  component". Cross-leg context rows confirm B and C stay in one plane
+  across σ (cos(B̂ₓ, Ĉᵧ) mirrors the B–B decay with the expected sign).
+- **e221 consistency row**: the stratified corpus sees the same axis —
+  e221 across-σ cosines 0.71/0.90/0.95 vs the e193/768 equivalents
+  0.74/0.91/0.94. **No selection-sensitivity flag.**
+- Honest note on the near-miss: the SHARED-AXIS gate failed on the
+  single most-distant pair (0.3 ↔ 0.7, 768). Restricted to σ ≥ 0.4333
+  the min is 0.74 and SHARED-AXIS would have passed — recorded as
+  description, not a verdict change (no post-hoc re-thresholding); σ =
+  0.3 is also where the anchor itself rotates fastest (ĝ: 0.54 to its
+  nearest verdict neighbor).
+
+### 24.2 knob decomposition: the residual is angle-borne (numeric read)
+
+Across all 12 gated verdict conditions: **R_angle/R = 0.0001–0.298**
+(closing the angle, ρ → −1, removes 70–100 % of the residual) while
+**R_amp/R = 0.55–1.04** (matching amplitudes removes ≤ 45 % and is
+sometimes slightly counterproductive). 896 conditions are the extreme
+cases (R_angle/R ≤ 0.11 at every 896 row).
+
+**Pre-registration defect, recorded**: the frozen "Knob reading" bullet
+is self-contradictory as written — its parenthetical ("⇒ the residual is
+angle-borne") inverts the inequality it names. Per the literal
+inequality the outcome would be labeled AMP-DOMINATED; semantically the
+measurement says the opposite. Mirroring E21's dual-read honesty: **no
+label is claimed**; downstream use must cite the numbers, whose reading
+is unambiguous — the residual gap lives in the incomplete angle, not in
+amplitude mismatch, at every gated verdict condition.
+
+### What this buys / licenses
+
+- §5 geometric paragraph: the cancellation axis is **global across
+  routes and runs at fixed σ and rotates smoothly with σ**, roughly
+  co-rotating with the native gradient direction — "a σ-indexed scale
+  mode of the adapter-gradient space", not one frozen direction. The
+  lattice (E21) + axis-field (E24) pair gives the mechanism figure its
+  cross-condition complement.
+- Per the STRUCTURED clause, downstream use needs a follow-up
+  pre-registration naming the surviving structure. The surviving
+  structure is strong: any projection/conditioning-style lever (the E25
+  family sketched in the pre-registration) must be **σ-local** (or
+  σ-conditioned) rather than a single fixed subspace — which composes
+  naturally with the shipped σ-gated recipe and with E21's adaln
+  amplitude concentration. The knob read adds: such a lever should
+  target the **angle** (the residual direction), not amplitude
+  rebalancing.
+- Population-level licensing only; every per-sample variant stays gated
+  on E22 → 22.4 → E23a, unchanged.
+
+## Cost ladder (planned → actual)
+
+| item | planned | actual |
+|---|---|---|
+| 24.1 | CPU, ~minutes (memmap reads, ≤ ~10 GB resident) | 348 s, ~25 GB peak (first attempt with per-pair fp64 conversion was ~6× slower and crashed at serialization — rewritten as one chunked Gram pass; no GPU used or needed) |
+| 24.2 | free (re-read of 24.1 scalars) | free |
+| GPU | none | none |
