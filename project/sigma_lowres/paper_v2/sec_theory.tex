@@ -64,8 +64,8 @@ paper is the \emph{re-encoding excess}
 \end{equation}
 The control changes no grid, so its distance $d_{\reenc}$ prices the
 VAE round trip alone; subtracting it isolates the part of $d_e$
-attributable to the grid change. $\gap_e$ can be negative, $d_e$
-cannot. Every
+attributable to the grid change, and, unlike $d_e$, the excess can
+be negative. Every
 map in the body aggregates per example, taking the cosine per image
 and then the mean; the batch-aggregate object that SGD follows in
 batched training is a distinct estimand, treated in
@@ -134,8 +134,8 @@ t_\omega \;=\;
 where $S_e(\sigma)$ is the destroyed-band contribution to the distance
 of Eq.~\ref{eq:gapdef}, and the tolerance $\delta$ is the account's
 single free parameter, instantiated in Appendix~\ref{app:spectral}.
-$S_e$ can be computed. At the residual level
-the premise is complete: the Gaussian posterior mean is the classical
+At the residual level the premise is complete enough to compute
+$S_e$: the Gaussian posterior mean is the classical
 per-band Wiener shrinkage \citep{wiener1949}, so the cross-grid
 mean-residual mismatch is confined to the destroyed band, ordered
 across routes by destroyed-band energy, and follows in closed form
@@ -348,10 +348,10 @@ count falls, so the inflation is larger on coarser grids and does not
 cancel in the excess of Eq.~\ref{eq:excess}. The resulting artifact,
 a positive offset persisting at every $\sigma$ and growing as the
 target grid shrinks, matches the signature of the graph floor.
-The same geometry dictates the remedy's form. The draw noise is
-uncorrelated with the mean and independent across arms and draw sets,
-so it cancels in every expected cross term while inflating every
-squared norm: to first order the measured cosine factorizes,
+The same geometry dictates the remedy's form: uncorrelated with the
+mean and independent across arms and draw sets, the draw noise
+cancels in every expected cross term while inflating every
+squared norm, so to first order the measured cosine factorizes,
 $\cos(g_{\src}, g_a) \approx \lambda_{\src}\,\lambda_a
 \cos(\bar g_{\src}, \bar g_a)$, one attenuation factor
 $\lambda_a = \big(1 + \mathbb{E}\|\xi_a\|^2 /

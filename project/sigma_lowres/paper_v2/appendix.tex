@@ -106,7 +106,7 @@ terms (the last two). Eq.~\ref{eq:branches} is
 Eq.~\ref{eq:appbranches} with the covariance difference abbreviated
 into its ellipsis.
 
-One remark delimits the identity's literal scope. When the two arms
+One remark delimits the identity's literal scope: when the two arms
 share a grid (as for the re-encoding control), every operation above is
 literal. Across grids, $J_{\src}$ and $J_{\dem}$ act on different
 token counts, so the differences $\Delta J$ and $\Delta \bar r$ require
@@ -413,7 +413,8 @@ round trip that demotion necessarily pays; in pre-debiasing runs its gap
 served as the validity band ($\pm 0.04$; observed $|\cdot| \le 0.054$
 across all bins of the main runs, per-module-group $\le 0.045$ in the
 split runs), a role superseded by the paired debiased read of
-\S\ref{sec:instrument}. The redraw floor prices finite-draw noise.
+\S\ref{sec:instrument}. The redraw floor plays the same pricing role
+for finite-draw noise.
 Density-weighting the uniform bins by the trainer's $\sigma$-density
 reproduces earlier $\sigma$-marginalized measurements from the same
 instrument family (consistency check).
@@ -889,7 +890,8 @@ the exact link is the best held-out predictor (mean RMSE $0.071$ vs
 $0.093$--$0.094$), with its entire margin coming from $1280{\to}1024$,
 where the quadratic systematically \emph{overshoots} the mid-$\sigma$
 peak and the exact link's saturation removes the overshoot (Appendix
-Fig.~\ref{fig:e51280}). The governors are form-invariant. Two things
+Fig.~\ref{fig:e51280}); the fitted governors themselves come out
+form-invariant. Two things
 the fit does \emph{not} establish: the prediction is not within
 the verdict resolution anywhere ($\chi^2$/bin $7.6$--$9.2$ held-out
 under the quadratic), so the licensed claim is shape, magnitude class,
@@ -1051,9 +1053,9 @@ giving $t^{*}_{\reenc} = 0.98 / 0.98 / 0.99$ for $896/768/512$.
 One might object that the right $\delta$ has simply not been chosen:
 SPD's is an inference-side value selected on a speed--quality Pareto
 ablation over generated images \citep{xiao2026spd}, and nothing ties it
-to gradients. Our setting fixes one \emph{by construction}. The
-demotion recipe pays a resize--VAE-encode round trip whose latent error
-has measurable per-band power $D(f)$, expressed in
+to gradients. Our setting, however, fixes one \emph{by construction}:
+the demotion recipe pays a resize--VAE-encode round trip whose latent
+error has measurable per-band power $D(f)$, expressed in
 Eq.~\ref{eq:spd}'s own units, so $\delta_{\reenc}(e) :=
 D(f_{\mathrm{cut}}(e))$ anchors the family with zero free parameters.
 Measured (above), that anchor is tiny and image-generic, and the
