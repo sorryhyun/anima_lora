@@ -178,7 +178,16 @@ geometry). New dead ends, recorded so they aren't re-entered:
   rotation model.
 - Still open (paper 2, not this revision): *what* the rolling plane
   and the off-plane V_phase direction are made of — that is a new
-  question, not Q7, and needs its own registration if pursued.
+  question, not Q7. **Its strongest surviving form is now registered
+  as [E28](../paper_bench/experiments/e28/)** (2026-08-09,
+  run-deferred): the σ-rotation as the σ-indexed *conditioning frame*
+  — B/C as pull-backs of a comparatively σ-fixed object through the
+  σ-conditioned (adaln) network — discriminated by a
+  frozen-conditioning probe (σ_cond pinned at 0.7 while the noising σ
+  sweeps; CONDITIONING-CARRIED / STATISTICS-CARRIED thresholds frozen
+  from the committed E24 table before the instrument flag exists).
+  NB the *analysis-frame* version of "projected onto a rotating
+  space" (ĝ-frame projection artifact) is already dead — E25.0-2.
 
 What survives for the manuscript: the E25a lookup shape is settled
 (per-σ-bin, neighbor-interpolated, quality now quantified), and the
