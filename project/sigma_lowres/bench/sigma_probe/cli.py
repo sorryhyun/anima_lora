@@ -313,6 +313,23 @@ def parse_args(
         "partitioner.",
     )
     p.add_argument(
+        "--cond_sigma",
+        type=float,
+        default=None,
+        metavar="SIGMA",
+        help="E28 frozen-conditioning probe: pin the sigma fed to the DiT "
+        "forward (timestep embedding -> adaln) at this value on EVERY draw of "
+        "every arm, while the NOISING sigma still sweeps the grid. Replaces "
+        "only the conditioning argument at the single DiT call site — the "
+        "noised input, the flow-matching target (eps - x, conditioning-"
+        "independent), the sigma-gated rope handle (keeps the noising sigma), "
+        "and every arm/seed path are untouched. Off-manifold at distant "
+        "noising sigma (a (z, sigma_cond) pair the network never trained on) "
+        "— readability is gated by E28's 28-A. Recorded in the arm_sums "
+        "manifest so a frozen-conditioning store can never be mistaken for a "
+        "native one.",
+    )
+    p.add_argument(
         "--deterministic",
         action="store_true",
         help="mirror train.py's deterministic mode (flash-attn deterministic "
@@ -422,6 +439,9 @@ def resolve_run_config(args: argparse.Namespace) -> RunConfig:
                 f"--yarn_sigma_gate needs 0<CENTER<1 and GAMMA>0, got {gc},{gg}"
             )
         yarn_gate = (gc, gg)
+
+    if args.cond_sigma is not None and not (0.0 < args.cond_sigma <= 1.0):
+        raise SystemExit(f"--cond_sigma must be in (0, 1], got {args.cond_sigma}")
 
     if args.x_zero:
         args.no_reenc_control = True

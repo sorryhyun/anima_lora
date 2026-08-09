@@ -307,6 +307,7 @@ def main() -> None:
                 prefix_draws=cfg.sweep,
                 batch_draws=bd,
                 target_alpha=alpha,
+                cond_sigma=args.cond_sigma,
             )
 
         row = {
@@ -506,6 +507,7 @@ def main() -> None:
                 "demote_edges": args.demote_edges,
                 "n_images": len(rows),
                 "seed": args.seed,
+                "cond_sigma": args.cond_sigma,
             }
         )
         log.info(f"arm sums → {run_dir / 'arm_sums'} ({len(arm_sums.maps)} vectors)")

@@ -297,6 +297,7 @@ def grad_estimate_binned(
     prefix_draws: list[int] | None = None,
     batch_draws: int = 1,
     target_alpha: float = 1.0,
+    cond_sigma: float | None = None,
 ) -> tuple[list[torch.Tensor], list[float]]:
     """Per-σ-bin accumulated-gradient estimates.
 
@@ -317,6 +318,10 @@ def grad_estimate_binned(
     gradient is unchanged up to float reduction order. Chunks are clamped at
     prefix-snapshot boundaries; a σ-gated rope arm falls back to per-draw
     stepping inside any chunk whose σ values differ.
+
+    ``cond_sigma`` (E28 frozen-conditioning probe) pins the σ handed to the
+    DiT forward — conditioning only; the noising ``sview``, the FM target,
+    and the σ-gated rope handle all keep the draw's noising σ.
     """
     device = bundle.device
     params = [
@@ -382,8 +387,15 @@ def grad_estimate_binned(
                 # drift vs. earlier runs' cached graphs
                 ca = crossattn if nb == 1 else crossattn.expand(nb, -1, -1)
                 pm = pad if nb == 1 else pad.expand(nb, -1, -1, -1)
+                # E28 seam: conditioning-only swap — noising (sview), target,
+                # and rope set_sigma above all still use the draw's σ
+                cond_b = (
+                    sigma_b
+                    if cond_sigma is None
+                    else torch.full_like(sigma_b, cond_sigma)
+                )
                 with torch.autocast("cuda", dtype=torch.bfloat16):
-                    pred = bundle.anima(noisy_5d, sigma_b, ca, padding_mask=pm)
+                    pred = bundle.anima(noisy_5d, cond_b, ca, padding_mask=pm)
                 pred = pred.squeeze(2).float()
                 loss = torch.nn.functional.mse_loss(pred, target)
                 if nb > 1:  # recover the accumulated sum of per-draw means
