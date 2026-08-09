@@ -1,0 +1,122 @@
+{
+ "doc": "E26.0 smoke record \u2014 verdicts per the 2026-08-09 pre-registration (frozen before any run)",
+ "runs": {
+  "flat": "bench/results/20260809-1323-e260-smoke-flat (job 20260809-132306-f42e53)",
+  "dirty": "bench/results/20260809-1409-e260-smoke-dirty (job 20260809-132312-55507b)"
+ },
+ "validation_gates": {
+  "e221_reproduction_max_dev": 0.0,
+  "e193_768_s07_reproduction_max_dev": 0.0,
+  "instrument": "vector_ledger.py unmodified, --data_ref reenc"
+ },
+ "condition": {
+  "sigma": 0.7,
+  "route": "1024->768",
+  "D": 40,
+  "draws_per_bin": 12
+ },
+ "bc_ledger_rows": {
+  "sincos_ref_e193": {
+   "G": 0.1084,
+   "S": 0.07024,
+   "F": 0.11948,
+   "I": -0.16307,
+   "rho": -0.89001,
+   "rel_cos_B": 0.87918,
+   "rel_cos_C": 0.8521,
+   "h_B": 0.05701,
+   "h_C": 0.17669,
+   "h_B_plus_C": 0.044
+  },
+  "flat": {
+   "G": 0.0731,
+   "b_perp_rawnorm": 0.58762,
+   "c_perp_rawnorm": 0.69365,
+   "kappa_par_B": 0.09708,
+   "kappa_par_C": -0.23827,
+   "rel_cos_B": 0.96578,
+   "rel_cos_C": 0.915,
+   "S": 0.16724,
+   "F": 0.22989,
+   "I": -0.36842,
+   "I_sameset_biascheck": -0.38091,
+   "rho": -0.93946,
+   "quad_pred_gap": 0.02871,
+   "h_B": 0.11848,
+   "h_C": 0.26062,
+   "h_B_plus_C": 0.0485,
+   "data_ref": "reenc"
+  },
+  "dirty": {
+   "G": 0.0226,
+   "b_perp_rawnorm": 1.7928,
+   "c_perp_rawnorm": 1.96874,
+   "kappa_par_B": 0.04276,
+   "kappa_par_C": -0.43614,
+   "rel_cos_B": 0.90354,
+   "rel_cos_C": 0.84175,
+   "S": 1.50185,
+   "F": 1.7697,
+   "I": -3.12746,
+   "I_sameset_biascheck": -3.46885,
+   "rho": -0.95918,
+   "quad_pred_gap": 0.14409,
+   "h_B": 0.49722,
+   "h_C": 0.72467,
+   "h_B_plus_C": 0.34654,
+   "data_ref": "reenc"
+  }
+ },
+ "verdict_26_0_1": {
+  "flat": "PASS (gates 0.966/0.915; I=-0.368<0; rho=-0.939<=-0.5; h(B+C)=0.0485<min(0.1185,0.2606))",
+  "dirty": "PASS (gates 0.904/0.842; I=-3.128<0; rho=-0.959<=-0.5; h(B+C)=0.3465<min(0.4972,0.7247))",
+  "decision": "both PASS -> full-grid freeze amendment licensed"
+ },
+ "read_26_0_2_descriptive": {
+  "rel": {
+   "sincos": {
+    "rel_cos_B": 0.8792,
+    "rel_cos_C": 0.8521,
+    "rel_cos_R": 0.7243
+   },
+   "flat": {
+    "rel_cos_B": 0.9658,
+    "rel_cos_C": 0.915,
+    "rel_cos_R": 0.6752
+   },
+   "dirty": {
+    "rel_cos_B": 0.9035,
+    "rel_cos_C": 0.8418,
+    "rel_cos_R": 0.5138
+   }
+  },
+  "cross_raw_pooled": {
+   "flat~dirty": {
+    "B": 0.2959,
+    "C": 0.3465,
+    "R": 0.3119
+   },
+   "flat~sincos": {
+    "B": 0.2925,
+    "C": 0.3374,
+    "R": 0.3226
+   },
+   "dirty~sincos": {
+    "B": 0.3038,
+    "C": 0.32,
+    "R": 0.2654
+   }
+  }
+ },
+ "ghat_cross_baseline": {
+  "flat~dirty": 0.3689,
+  "flat~sincos": 0.3947,
+  "dirty~sincos": 0.3819
+ },
+ "notes": [
+  "cancellation depth ordering rho: sincos -0.890 < flat -0.939 < dirty -0.959 \u2014 deepest where legs are largest",
+  "h(B+C) ordering flat~sincos (0.049/0.044) << dirty (0.347) mirrors E7's checkpoint-dependent floor level (flat 0.73 vs dirty 0.50 cos_floor)",
+  "dirty caveats: G=0.0226 (~5x below sincos) inflates S/F/I via the 2G^2 normalization (E13 caveat) and adds ref-direction noise to its h row",
+  "cross-adapter direction read is FRAME-CONFOUNDED: B/C/R raw cosines 0.27-0.35 ~= the ghat frame baseline 0.37-0.39; raw param-space cosines cannot separate adapter-specific axis from frame rotation. E19.6 prior does not transfer (it moved the backbone, not the adapter frame). Frame-free estimand (induced-dW / function space) is a full-grid pre-registration question."
+ ]
+}

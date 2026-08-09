@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **E26.0 SMOKE PRE-REGISTERED 2026-08-09** — this doc frozen before any run; thresholds below set from the committed sincos reference rows only. Full-grid E26 is **gated** on the smoke and gets its own freeze amendment before running. |
+| **Status** | **E26.0 SMOKE DONE 2026-08-09** (pre-registered same day, doc frozen before any run) — **26.0-1: both adapters PASS** (flat ρ −0.939, dirty ρ −0.959, all frozen criteria met under the rel gates) → **full-grid freeze amendment licensed**. 26.0-2 descriptive: rel_cos_R passes E25.0's bar on all three adapters (0.72/0.68/0.51); cross-adapter raw direction cosines are **FRAME-CONFOUNDED** (B̂/Ĉ/R̂ 0.27–0.35 ≈ the ĝ cross-adapter baseline 0.37–0.39 — see Results). Record: `e260_smoke.json`. |
 | **Question** | Does the B–C cancellation geometry (near-cancellation, deep ρ, negative I, reliable pooled residual direction) exist on LoRA adapters other than the line's operating point (`anima_soup_sincos`)? Sets the stated breadth of the paper's geometry claims (`paper_v2/revision_plan.md` §3/§5) — **no outcome removes them**; a cross-adapter failure is itself a reportable finding (adapter-specificity), not a shelving. |
 | **Licensed by** | `paper_v2/revision_plan.md` §5; the preserved E7 adapters (`output/paper/e7/` — verbatim shipped recipe, dim 32/alpha 128 ⇒ parameter space identical to sincos, designed style axis, artists disjoint from sincos); the committed instruments (`run_sigma_probe.py`, `vector_ledger.py`, E24/E25.0 read conventions). |
 | **Explicitly NOT licensed** | Any scope-sentence change from the smoke alone (full grid only); any lever work (E25 territory, unchanged); any per-sample read (E22 → E23a gate, unchanged); π arms (G11). E7's probe *runs* are not reusable (no `arm_sums/`, no repromote arm — verified 2026-08-09) and are not read here. |
@@ -123,3 +123,61 @@ cross-set debias):
   never *claiming* it.
 - Outputs: `e260_smoke.json` (+ any figures) committed in this dir;
   stores stay under the gitignored `bench/results/`.
+
+## E26.0 Results (2026-08-09)
+
+Runs: `bench/results/20260809-1323-e260-smoke-flat/` (job
+`20260809-132306-f42e53`, ~46 min GPU) ·
+`…-1409-e260-smoke-dirty/` (job `20260809-132312-55507b`).
+Validation gates passed before any new read: unmodified
+`vector_ledger.py --data_ref reenc` reproduces the committed e221 rows
+and the e193 global 768/σ = 0.7 row to **max dev 0.0**. Full record:
+`e260_smoke.json`.
+
+### 26.0-1: **both adapters PASS** → full-grid amendment licensed
+
+| adapter | G | h(B) | h(C) | h(B+C) | ρ | I | rel_B/rel_C |
+|---|---|---|---|---|---|---|---|
+| sincos (ref) | 0.108 | 0.057 | 0.177 | 0.044 | −0.890 | −0.163 | 0.88/0.85 |
+| flat | 0.073 | 0.119 | 0.261 | **0.049** | **−0.939** | −0.368 | 0.97/0.92 |
+| dirty | 0.023 | 0.497 | 0.725 | **0.347** | **−0.959** | −3.128 | 0.90/0.84 |
+
+Every frozen criterion holds on both adapters (I < 0, ρ ≤ −0.5,
+h(B+C) < min(h(B), h(C)), rel gates). Structure worth carrying to the
+full grid:
+
+1. **Cancellation depth orders with leg size**: ρ deepens
+   sincos → flat → dirty exactly as the legs grow — the enforcement
+   scales with the perturbation, it is not a fixed-depth artifact of
+   the operating point.
+2. **The residual level mirrors E7's floor-level fact**: flat's
+   h(B+C) ≈ sincos's (0.049 vs 0.044, legs 2× larger) while dirty's is
+   ~8× (0.347) — the same flat-good / dirty-bad ordering as E7's
+   checkpoint-dependent cos_floor (0.73 vs 0.50). The full grid can
+   test amplitude-vs-direction localization of that difference.
+3. **Dirty caveats** (recorded, not resolved): G = 0.0226 (~5× below
+   sincos) inflates its S/F/I via the 2G² normalization (E13 caveat)
+   and adds ref-direction noise to its h row; ρ and the h *ordering*
+   are the robust reads.
+
+### 26.0-2 (descriptive): rel_cos_R passes everywhere; cross-adapter cosines are frame-confounded
+
+- **rel_cos_R**: sincos 0.72 · flat 0.68 · dirty 0.51 — all clear
+  E25.0's ≥ 0.5 bar; the pooled residual direction exists on every
+  adapter at this condition (dirty marginal).
+- **Cross-adapter raw cosines ≈ the frame baseline**: B̂/Ĉ/R̂ pairwise
+  0.27–0.35, but the control — cos of the pooled *native* gradient
+  directions ĝ across adapters — is 0.37–0.39. Gradients w.r.t.
+  different adapters' parameters live in mostly non-overlapping
+  frames, so a raw param-space cosine cannot separate "the residual
+  axis is adapter-specific" from "the frames differ." **The stated
+  E19.6 prior (B̂ highly shared) does not transfer**: E19.6 moved the
+  backbone under a fixed probe-adapter frame; here the frame itself
+  changes. Verdict-shaped conclusion: *no evidence of a privileged
+  shared axis above frame overlap, and no evidence against structure
+  below it.*
+- Consequence for the full grid: if cross-adapter axis sharing is to
+  carry any weight there, it needs a **frame-free estimand**
+  (compare induced-ΔW / function-space perturbation directions, not
+  raw adapter-parameter vectors) — to be pre-registered in the
+  amendment or explicitly dropped.
