@@ -18,11 +18,15 @@ committed before its run.
 | `yarnsig_report.md` | the yarnsig sub-line's probe log, extracted from `report.md` 2026-07-27; its closing "open probes" were never run. Moved from `../bench/` 2026-07-31 | 2026-07-27 |
 | `review_triage_20260728.md` | R1–R5 triage of the 2026-07-28 external review — the origin document for E1–E4 and E6; each finding's discharge lives in `../paper_bench/experiments/<eN>/`. Moved from `../paper_bench/` 2026-08-09 | 2026-07-28 |
 | `paper_plan.md` | the manuscript restructure plan (theory → evidence → application) + manuscript status §9; its steps are discharged into `../paper_bench/experiments/` and `../paper/main.tex`. Moved from `../paper_bench/` 2026-08-09 | 2026-08-04 |
+| `e12/` | experiment record E12 (posterior-budget probes) — **REFUTED on both probes**; the lossy-code hypothesis and its "native-only pre-screening" payoff are void. Kept whole (README + instrument gotchas). Moved from `../paper_bench/experiments/` 2026-08-09; its status row stays in the paper_bench index | 2026-07-31 |
+| `e15/` | experiment record E15 (two-level unbiased demotion / MLMC roulette) — **priced out**, pre-registered kill at 15.0; yield = the aggregate-coherence finding. Kept whole (README + `e15_price.py`). Moved from `../paper_bench/experiments/` 2026-08-09; its status row stays in the paper_bench index | 2026-07-31 |
 
 Run IDs quoted in the two probe logs as `results/<id>/` are directories
 under `../bench/results/` — the **instruments** stay in `../bench/`
-(`run_sigma_probe.py` and friends are live, and paper_bench E1–E12 call
-them); only the write-ups froze.
+(`run_sigma_probe.py` and friends are live, and the paper_bench
+experiments call them); only the write-ups froze. The same goes for the
+`e12/`/`e15/` records above: their instruments
+(`bench/run_posterior_budget.py`, `e15/e15_price.py`) are unchanged.
 
 **Where the live equivalents are now:**
 

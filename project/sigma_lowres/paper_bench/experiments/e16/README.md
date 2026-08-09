@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | **DONE 2026-08-03** — 16.0 verdict **AMPLIFICATION** (ΔW cos vs native: late **0.906** ≫ win768 0.395 > spread 0.281 > early 0.193; placement dominates the σ-window choice for off-map bias). 16.1 (3 seeds × 2 artists, 5 arms): **combo** (768 if σ∈(0.65,0.95), elif σ>0.5→896+yarnsig, via the new stacked router `--sigma_lowres_route2`) is the new throughput frontier — **−18.3% wall, inside the seed lottery on BOTH corpora** (0.9576/0.9580 vs yardsticks 0.9547/0.9541), beating shipped sigma896 (−14.7%, hews boundary tie reproduced). **win768late** = max-margin arm (0.9678/0.9728 at −6%). sigma896late ≈ sigma896 ⇒ scheduling unnecessary on certified routes; the 16.0 amplification result governs off-map bias. Full record: [`launch_20260802_160.md`](launch_20260802_160.md) (trainer deltas: `--sigma_lowres_span`, `--sigma_lowres_threshold_max`, stacked router — all pinned in `tests/test_sigma_lowres.py`). Renumbered from **E15** 2026-08-01. PROPOSED 2026-07-31 |
 | **Question** | Is a protected span ("don't demote the first/last N% of steps") just η-weighted dilution of the demotion effect, or does *placement* matter? Equivalently: which regime does the training trajectory live in — washout, linear, or amplification? |
-| **Depends on** | [E4](../e4/) (harness, the below-yardstick `sigma768` arm = the rescue target, seed-keyed σ stream, `claim_accumulated_bias.md`), [E15](../e15/) (the currency argument: schedules spend neither FLOPs nor variance), `--deterministic` ΔW twins (no chaos floor) |
+| **Depends on** | [E4](../e4/) (harness, the below-yardstick `sigma768` arm = the rescue target, seed-keyed σ stream, `claim_accumulated_bias.md`), [E15](../../../record/e15/) (the currency argument: schedules spend neither FLOPs nor variance), `--deterministic` ΔW twins (no chaos floor) |
 | **Instrument** | trainer: a step-span gate on top of the σ-gate (few lines in `_maybe_sigma_demote`); readout: `bench/compare_ckpt_dw.py` (16.0), E4 yardstick/render harness (16.1) |
 | **In the paper** | if placement matters: a scheduling corollary to §5; if not: one sentence closing the placement DOF that `claim_accumulated_bias.md` leaves open. *(Outcome: placement matters — the scheduling-corollary branch fired.)* |
 
@@ -88,7 +88,7 @@ max-margin arm at −6 %). Full record: `launch_20260802_160.md`.
   (`claim_accumulated_bias.md`).
 - Currency argument: E15 15.0 measured why variance is the expensive
   currency; schedules spend none of it
-  (`../e15/`, `runs/20260731-2114-e14-pricing/`).
+  (`../../../record/e15/`, `runs/20260731-2114-e14-pricing/`).
 - Prior art being upgraded, not invented: progressive resizing /
   low-res pretrain + high-res finish (FixRes lineage) is the washout
   bet made by folklore.

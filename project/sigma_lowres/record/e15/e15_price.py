@@ -301,7 +301,7 @@ def main():
 
     result = {
         "schema_version": 1,
-        "script": "project/sigma_lowres/paper_bench/experiments/e15/e15_price.py",
+        "script": "project/sigma_lowres/record/e15/e15_price.py",
         "label": "e14-pricing",
         "timestamp_utc": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "sources": {"e1b": str(E1B_DIR), "e9": str(E9_DIR), "e5": str(E5_RESULT)},

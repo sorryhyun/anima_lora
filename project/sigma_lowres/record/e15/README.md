@@ -5,7 +5,7 @@
 | **Status** | **15.0 DONE 2026-07-31 — GATE FAILED, line priced out.** 15.1/15.2 not run (pre-registered kill). Run: `runs/20260731-2114-e14-pricing/`. Renumbered from **E14** 2026-08-01 (the new E14 is the low-σ vector ledger); the run dir and its envelope keep the historical `e14` label |
 | **Verdict** | The per-sample correction second moment is ~**half the intrinsic per-step variance** (E2 ≈ V_total/2 per bin, lower bound), so the 1/q roulette is unaffordable: A needs q̄ ≈ 0.45 at the 1.5× inflation cap → net **+2.6–4.1%** vs the ≥20% gate. In-window safety of static demotion is an **aggregate-coherence** phenomenon — per-sample differences are O(‖g‖) and cancel across images/steps; MLMC pays the per-sample second moment to buy back a tiny aggregate first moment. Redesign lever recorded below (anchored control variate), not pursued under this record. |
 | **Question** | The map certifies one route in one window by *measurement*. Can a randomized two-level correction make demotion unbiased **by construction** at every σ — turning the gap map from a gatekeeper into a *price list* — and buy the routes the map rejects (768; all-σ) at their measured E4 discount? |
-| **Depends on** | [E9](../e9/) (arm sums → ‖Δḡ‖ per bin; the I-switch-off mechanism), [E5](../e5/) (the X-form gap model that prices the coin), [E4](../e4/) (cost calibration, the already-measured static-768 control, the seed-noise yardstick, `claim_accumulated_bias.md`), [E1](../e1/) (paired debiased object, kernel-path rule). [E13](../e13/) (DONE 2026-08-01 — resolved the curve ends: the mid-σ peak is a real plateau, 896's σ→1 approach an instrument limit) did not block. |
+| **Depends on** | [E9](../../paper_bench/experiments/e9/) (arm sums → ‖Δḡ‖ per bin; the I-switch-off mechanism), [E5](../../paper_bench/experiments/e5/) (the X-form gap model that prices the coin), [E4](../../paper_bench/experiments/e4/) (cost calibration, the already-measured static-768 control, the seed-noise yardstick, `claim_accumulated_bias.md`), [E1](../../paper_bench/experiments/e1/) (paired debiased object, kernel-path rule). [E13](../../paper_bench/experiments/e13/) (DONE 2026-08-01 — resolved the curve ends: the mid-σ peak is a real plateau, 896's σ→1 approach an instrument limit) did not block. |
 | **Instrument** | trainer delta in `train.py::_maybe_sigma_demote` (below) + `bench/compare_ckpt_dw.py` (15.1) + the E4 harness (`e4_flops.py`, `e4_seed_yardstick.py`, `e4_render_eval.py`) (15.2) |
 | **In the paper** | §5 discussion paragraph at minimum ("the gap map doubles as the variance/price map of an unbiased estimator"); the method itself is line work beyond the current manuscript |
 
@@ -100,7 +100,7 @@ suffices" and q2 dies without an arm.
 | g2 | corrections should concentrate σ→1 | I_768 −0.31 → −0.014 window→endpoint; endpoint gaps real (896 gap_∞ +0.019, 768 +0.092±0.012 debiased) — the implied σ→1 *rise* later falsified (E13 H1: high-σ flat) | E9; E1a/E1b; E13 free reanalysis table |
 | g3 | q1's magnitude model exists and predicts held-out | X form, ‖δg⊥‖ = c·m(σ); RMSE ~0.09; floor law 2-for-2 on unseen floors | E5 `runs/20260729-1130-e5-holdout/`, `-refit/` |
 | g4 | the static candidates' costs and failures are measured | −30.8% (896only), −52.2% (unsafe768), sigma768 −26.5% gross; sigma768/896only below yardstick on ≥1 corpus; sigma896 inside | E4 FLOPs table + `runs/20260730-e4-yardstick-5arm/` |
-| g5 | the drift-risk object is already named | in-band per-step verdicts do not certify accumulated update-space drift | `../e4/claim_accumulated_bias.md` |
+| g5 | the drift-risk object is already named | in-band per-step verdicts do not certify accumulated update-space drift | `../../paper_bench/experiments/e4/claim_accumulated_bias.md` |
 | g6 | wiring is a delta, not new plumbing | per-batch σ-first gate, sibling `demoted_{H}x{W}` keys, `--sigma_lowres_route` (768 arms already ran), token-budget union, seed-keyed σ stream (identical demote set across arms) | `methods.md` Phase 1b; E4 commit `5b63ebb9`, in-vivo CRN check |
 | g7 | paired deterministic ΔW comparison has no chaos floor | twin runs bit-identical over 1200 compiled steps with `--deterministic`; nondeterministic floor 0.413 | `methods.md`; `bench/compare_ckpt_dw.py` |
 | g8 | clipping would re-bias | `max_grad_norm` defaults 1.0, applied to the *combined* grad | `library/config/cli_args.py:86`, `library/training/loop.py:481` |
@@ -267,7 +267,7 @@ would price it.
 
 ```bash
 # 15.0 — free
-uv run python project/sigma_lowres/paper_bench/experiments/e15/e15_price.py \
+uv run python project/sigma_lowres/record/e15/e15_price.py \
   --ledger bench/results/20260731-0721/ledger.json \
   --e5_fit project/sigma_lowres/paper_bench/runs/20260729-1322-e5-refit/ \
   --results_root project/sigma_lowres/paper_bench/runs

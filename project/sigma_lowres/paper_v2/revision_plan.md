@@ -9,8 +9,19 @@ successor and covers only the delta: what the E19–E25.0 vector-ledger
 results change about the manuscript, and the one new run (E26) the
 reframe owes.
 
+**Amended 2026-08-09 (same day)** after the derivation gate check
+(§9): the reframe is upgraded from "geometry as a third act appended
+after the head-to-head" to **cancellation-first** — the B/C
+near-cancellation moves into the theory section as the organizing
+fact, the two-term account is restated as an *effective* law on the
+cancellation residual, and the ledger observations sit between the
+map and the scored section. What is **not** upgraded: the additive
+account keeps the paper's predictive lane (E20.1 PARTIAL), and no
+text may claim the account is *derived* from the geometry
+(E20.4 NEGATIVE). See §9 for the record.
+
 **Status: PLAN — no tex edited yet.** Order of work in §7; nothing in
-§2–§5 is licensed to land in the tex before the §7 step that carries it.
+§2–§6 is licensed to land in the tex before the §7 step that carries it.
 
 ---
 
@@ -19,20 +30,34 @@ reframe owes.
 The current draft's centerpiece is a *scalar* account: the demoted
 gradient's deviation reduces to a ratio-governed decaying term plus a
 σ-independent floor "carried by the compute graph," and this account
-beats the spectral account head-to-head on the measured (route, σ) map.
-Everything since the freeze upgraded the floor from an amorphous residue
-to a *vector object with measured geometry*: the data and graph branches
-B and C nearly cancel, the cancellation is **locally enforced** (E21),
-the residual R = B + C is **one direction per σ, shared across routes,
-stores, and corpus** (E24 STRUCTURED; E25.0's R̂ tables), and the miss
-is **angle-borne, not amplitude-borne** (E24.2: closing ρ removes
-70–100 % of the residual, amplitude matching ≤ 45 %). The reframe makes
-this the paper's third act — question → account (scalar, beats
-spectral) → geometry (what the floor *is*) → application — and replaces
-"carried by the compute graph itself" phrasing with the measured
-object. The two-accounts spine is kept, not replaced: the geometry
-section is where the winning account's leftover term stops being a
-fitted constant and becomes a characterized direction.
+beats the spectral account head-to-head. Everything since the freeze
+showed what that deviation *is*: at every measured (route, σ) the data
+branch B and graph branch C are individually far larger than the
+realized gap and strongly anti-aligned (ρ ≈ −0.63…−0.96, E14), the
+anti-alignment is Jᵀ-born, global, and operating-point invariant with
+ρ̄ ≈ −0.91 licensed as one constant (E19), the cancellation is locally
+enforced (E21), and the residual R = B + C is a σ-indexed axis field —
+one direction per σ, shared across routes and stores, rotating
+smoothly, with the miss angle-borne (E24/E24.2/E25.0). The frozen
+draft carries this upside down: §3.4's reduction rests on assumption
+(ii) "interaction negligible," which the committed ledger violates
+maximally at every condition (S+F overshoots the realized gap 3–10×
+grid-wide, §9), and §4.5 concedes the 1024→768 window dip as "a dip
+the two-term reduction does not predict" when the crossing mechanism
+is measured (E9/E14) and reproduces it natively
+(`fig_accounts_canc.py`). The reframe puts the cancellation first:
+the theory section presents the deviation as the residual of a
+near-cancellation and *anticipates* the dip; the two-term account is
+introduced as the effective law of that residual (its fitted
+amplitudes absorb the cancellation — this is stated, not hidden); the
+ledger observations (cancellation + axis field) land between the map
+and the scored section; the scored section keeps the additive
+account's Fig.-1 lane verbatim and reports the cancellation-aware
+form's lane test honestly (E20: wins 768 with the dip, loses
+LOO-896). The two-accounts spine is kept; E5's held-out voice
+transfers verbatim; presentation order is not discovery order and the
+text must never imply the account was historically derived from the
+geometry.
 
 ## 2. Claim ladder (what the reframed paper asserts, in order)
 
@@ -41,65 +66,113 @@ claims ledger transfer verbatim (§4).
 
 1. *Metrology* (carried): debiased estimator, self-floors, draw-count
    extrapolation, ε\* certification resolution.
-2. *Scalar account* (carried): two-term reduction of the four-term
-   expansion; E5 predictive voice ("predicts routes it was not fit on
-   at ~0.09 RMSE"); head-to-head win over the spectral account.
-3. *Geometry* (NEW — the reframe's payload):
+2. *Cancellation* (NEW position — moves ahead of the scalar account):
    - B/C decomposition is exact in shared adapter-parameter space;
-     cross-set debiasing removes draw noise (`vector_ledger.py`, E9/E10
-     machinery — already partly in the appendix, promoted to main text).
-   - The branches nearly cancel and the cancellation is locally
-     enforced, with adaln carrying 86–87 % of the phase-response
-     amplitude (E21).
+     cross-set debiasing removes draw noise (`vector_ledger.py`,
+     E9/E10/E14 machinery — promoted from appendix to main text).
+   - At every measured (route, σ) the branches are individually large
+     and strongly anti-aligned; the measured gap curve is the
+     **residual of a near-cancellation** (E14). Magnitude reads via
+     the exact counterfactual angles h(·) only — the S/F/I quadratic
+     is sign/decomposition/localization outside its truncation domain
+     (E9 unit-honesty rule, carried into the manuscript).
+   - The anti-alignment is Jᵀ-born, depth/type-uniform, magnitude ∝
+     branch energy, partially RoPE-phase-mediated at noise-dominated
+     bins, and operating-point clean; ρ̄ = −0.91 cited only with its
+     license (E14 source; E19.0/19.3/19.6 uniformity).
+   - The σ ≈ 0.4–0.7 cliffs and the 768 window are the
+     |B⊥|/|C⊥| = 1 crossings (E9); the in-window excess sitting
+     *below* the route's own floor is the crossing signature, stated
+     in the theory and pointed to in the map — no longer conceded as
+     unpredicted.
+3. *Effective scalar account* (carried, re-voiced): the two-term form
+   is the effective law of the cancellation residual — a route
+   amplitude on the measured mismatch curve plus a per-route floor,
+   with the fitted amplitudes absorbing the cancellation. E5
+   predictive voice verbatim ("predicts routes it was not fit on at
+   ~0.09 RMSE"); head-to-head win over the spectral account; the
+   spectral account's miss now has a mechanism (it transports
+   amplitude without the interference structure). The
+   cancellation-aware operational form is reported next to it at lane
+   parity: E20.1 PARTIAL (wins 768 held-out with the dip, 0.075 vs
+   0.093; loses LOO-896; 1280-tier guard fails) — reported, not
+   adopted; the additive lane stands.
+4. *Geometry of the residual* (the reframe's fine structure):
+   - The cancellation is locally enforced, with adaln carrying
+     86–87 % of the phase-response amplitude (E21).
    - The residual is a σ-indexed **axis field**: one direction per σ
      across routes (median |cos| 0.95) and stores (≈ 1 debiased),
      rotating smoothly in σ (E24; E25.0 R̂ descriptive tables).
    - The residual is angle-borne (E24.2 knob read).
-   - The rotation is **matched-angle, not planar**: transporting by the
-     anchor's rotation buys nothing (E25.0-2 NO-GAIN — the "co-rotates
-     with the σ-conditioned native gradient" intuition is retired; say
-     so in the text, it is a natural reviewer guess).
+   - The rotation is **matched-angle, not planar**: transporting by
+     the anchor's rotation buys nothing (E25.0-2 NO-GAIN — the
+     "co-rotates with the σ-conditioned native gradient" intuition is
+     retired; say so in the text, it is a natural reviewer guess).
    - Reliability scope: the pooled residual direction exists at 11/12
      verdict conditions with a recorded hole at 768/σ = 0.4333 and
      softness at mid-window 768 generally (E25.0-1 PARTIAL).
-4. *Closures* (NEW, one honest subsection): re-deriving a ledger term
-   as an objective correction is closed at the estimand level (E20.4);
+5. *Closures* (one honest subsection): deriving the account's data
+   term from the geometry is closed at the estimand level (E20.4);
+   re-deriving a ledger term as an objective correction likewise;
    damping-form levers are dead at probe level (E23.0 DAMP-DEAD); a
    fixed subspace is refuted at lever level — any projector must be
    per-σ-bin (E23.0-C PER-BIN-ONLY); per-sample exploitation stays
    gated (E22 → E23a). These are results, not future work.
-5. *Application* (carried): the validated-window routing, −14.6 % wall
+6. *Application* (carried): the validated-window routing, −14.6 % wall
    at fixed steps.
-6. *Outlook* (ONE paragraph, no promise): population-level σ-local
+7. *Outlook* (ONE paragraph, no promise): population-level σ-local
    levers (E25a restricted / E25b sketch) are licensed-but-unrun; the
    paper does not depend on them.
 
-## 3. The scope sentence (non-negotiable)
+## 3. The scope sentences (non-negotiable)
 
-Every geometry claim in §2.3 is measured at **one operating point**:
-one adapter (`anima_soup_sincos`), three vector stores, standard
-corpus, the E24 debias conventions. The map claims have far broader
-coverage than the geometry claims, and the draft must say so where the
-geometry is introduced *and* in the abstract's hedge — otherwise the
-paper invites exactly the R1-style estimator-confound review the line
-already survived once. **E26 (§5) is the widening**; its verdict
-finalizes the sentence's wording (§7 step 6). Until E26 lands, the
-geometry section is written with the one-operating-point scope stated,
-not deferred.
+Breadth now has three rungs, and the draft must keep them distinct
+where each claim is introduced *and* in the abstract's hedge:
+
+- **Map claims** (broadest): the full debiased campaign, both tiers,
+  the coverage the frozen draft already states.
+- **Cancellation claims**: every (route, σ) of the operating adapter
+  (E14 grid), with leg-level operating-point invariance (E19.6), the
+  E7 map-level 2×2 null, and the E26.0 cross-adapter smoke PASS as
+  the current cross-checkpoint evidence. **E26 (§5) sets the final
+  stated breadth.**
+- **Axis-field claims** (narrowest): one adapter
+  (`anima_soup_sincos`), three vector stores, standard corpus, the
+  E24 debias conventions, 11/12 conditions.
+
+Conflating rungs invites exactly the R1-style estimator-confound
+review the line already survived once. Until E26 lands, the geometry
+material is written with the one-operating-point scope stated, not
+deferred.
 
 ## 4. Carries over verbatim (do-not-touch list)
 
 - The instrument + debiasing subsection and the "debiased units only
   from here" convention.
-- The (route, σ) map, boundary scoring, endpoint ≡ x-zero ≡ α-flat.
-- The E5 held-out + three-form refit material and its qualified voice.
-- The claims-ledger table (extended with the §2.3/§2.4 rows, existing
+- The (route, σ) map numbers, boundary scoring, endpoint ≡ x-zero ≡
+  α-flat. **One scheduled exception**: the §4.5 dip sentence ("a dip
+  the two-term reduction does not predict") flips to the crossing
+  read (§7 step 6) — the numbers around it do not move.
+- The E5 held-out + three-form refit material and its qualified
+  voice. Its *position* may move with the scored section; its words
+  do not.
+- The claims-ledger table (extended with the §2.2–§2.5 rows, existing
   rows unedited).
-- The head-to-head structure and `accounts_headtohead` figure.
+- The head-to-head structure and the `accounts_headtohead` figure —
+  the additive lane stays Fig. 1 (E20's recorded decision); the
+  cancellation-aware lane is text + appendix material, not a Fig. 1
+  replacement.
 - The application section and its numbers.
 - All appendix raw/historical tables.
 
-## 5. E26 — cross-adapter cancellation check
+Supersession note: E19/E20 records earmark the cancellation account
+as "the theoretical spine of paper 2." This plan supersedes that
+earmark for the *narrative* (the cancellation moves into this
+paper's theory and observations); the *operational canc lane as
+predictive account* remains unadopted per E20.1 — that part of the
+earmark stands.
+
+## 5. E26 — cross-adapter cancellation check (economized)
 
 **Question**: does the B–C cancellation geometry replicate on LoRA
 adapters other than the line's operating point?
@@ -113,94 +186,185 @@ this section keeps only what the *manuscript plan* needs.
   adapters = the preserved E7 pair (`output/paper/e7/`, verbatim
   shipped recipe, designed style axis, zero training cost; seed
   siblings = pre-declared extension tier). E7's probe *runs* are not
-  reusable (no `arm_sums/`, no repromote arm). No cheaper
-  h-instrument exists (the cost is the arm backward passes, not
-  storage). Cost: ~0.57 GPU-h per (σ, route) condition ⇒ e193-matched
-  full grid **~5.7 GPU-h per adapter**; the smoke was one condition
-  (σ = 0.7 / 768) per adapter.
+  reusable (no `arm_sums/`, no repromote arm). Cost of the
+  e193-matched full grid: ~5.7 GPU-h per adapter; the smoke was one
+  condition (σ = 0.7 / 768) per adapter.
+- **Economize decision (2026-08-09, this plan)** — the amendment
+  freezes a **trimmed grid**, not the full e193-matched product:
+  - σ-dense on the routes that carry the paper's claims — 768 (the
+    window/dip route) at full σ-sweep, 896 at the verdict bins —
+    dropping the remaining cells; target ≈ half the full-grid cost
+    (~2.9 GPU-h per adapter). Exact cells frozen in the amendment.
+  - The **frame-free cross-adapter axis estimand is DROPPED**, not
+    pre-registered: the smoke showed raw-parameter cross-adapter
+    axis cosines sit at the ĝ baseline (frames don't overlap), and
+    an induced-ΔW/function-space estimand is new instrument work the
+    paper does not need. The "property of the model vs of the
+    adapter" question is stated open in the limitation paragraph.
+  - **Identity-consistency column** (new, pre-registered): per
+    condition, report the ρ implied by the measured h-triple
+    (h(B), h(C), h(B+C)) next to the measured ρ. The smoke's
+    "enforcement depth scales with the perturbation" upgrade
+    candidate is claimed **only if** the measured deepening exceeds
+    what the identity already forces from the leg/residual
+    magnitudes; otherwise it is reported as the arithmetic
+    consequence it is.
+  - Per-condition columns stay the smoke's (h-triple + ρ) — already
+    the protocol.
 - **What the smoke found** (go/no-go weight only — the smoke bin is
   favorable by construction; nothing here widens the scope sentence):
-  1. *Cancellation replicates and the enforcement **scales***: ρ
-     deepens sincos −0.890 → flat −0.939 → dirty −0.959 exactly as
-     the legs grow (flat's legs 2×, dirty's ~8× in h terms). If the
-     full grid confirms across bins/routes, "the cancellation is
-     locally enforced" upgrades to "…and its depth scales with the
-     perturbation" — a stronger §2.3 claim than pre-registered.
-  2. *The residual level mirrors E7's open floor-level fact*: flat's
-     h(B+C) ≈ sincos's (0.049 vs 0.044) while dirty's is ~8×
-     (0.347), the same ordering as E7's checkpoint-dependent
-     cos_floor (0.73 vs 0.50). The full grid can localize that
-     mechanism (amplitude vs direction) — a §2.3-adjacent deliverable
-     the v1 paper couldn't touch.
-  3. *Cross-adapter axis comparison is **frame-confounded** in raw
-     parameter space*: B̂/Ĉ/R̂ cross-adapter cosines (0.27–0.35) sit
-     at the ĝ cross-adapter baseline (0.37–0.39) — gradients w.r.t.
-     different adapters' parameters live in mostly non-overlapping
-     frames, and the E19.6 "B̂ shared" prior does not transfer (it
-     moved the backbone under a fixed adapter frame). The
-     "property of the model vs of the adapter" question is therefore
-     **open, not answered**; if the full grid wants it, the amendment
-     must pre-register a frame-free estimand (induced-ΔW /
-     function-space directions) — or drop the read and say so in the
-     paper's limitation paragraph.
-- **Verdict shapes for the full grid** (unchanged; exact thresholds
-  set in the amendment): REPLICATES → the scope sentence widens to
+  ρ deepens sincos −0.890 → flat −0.939 → dirty −0.959 as the legs
+  grow; flat's h(B+C) ≈ sincos's (0.049 vs 0.044) while dirty's is
+  ~8× (0.347), mirroring E7's checkpoint-dependent cos_floor
+  ordering — the trimmed grid can localize that mechanism (amplitude
+  vs direction), a deliverable marked **secondary** to the
+  replication verdict.
+- **Verdict shapes for the trimmed grid** (exact thresholds set in
+  the amendment): REPLICATES → the cancellation-rung scope widens to
   "N adapters, one model"; PARTIAL → one-operating-point scope kept,
-  pattern reported; FAILS → geometry section scoped to the operating
-  adapter, limitation paragraph. **No outcome removes §2.3 from the
-  paper** — E26 only sets its stated breadth. The smoke's PASS means
-  the *worst* remaining outcome is already "replicates at the
-  favorable bin, pattern elsewhere reported as measured."
+  pattern reported; FAILS → cancellation rung scoped to the
+  operating adapter, limitation paragraph. **No outcome removes the
+  cancellation or geometry material from the paper** — E26 only sets
+  stated breadth. The smoke's PASS means the worst remaining outcome
+  is already "replicates at the favorable bin, pattern elsewhere
+  reported as measured."
 
 ## 6. Figure debts
 
-- **NEW — axis-field summary** (the reframe's signature figure): the
-  σ-binned R̂ cosine structure (across-route / across-store / across-σ)
-  in one panel; candidate base: extend `fig_ledger_geometry.py`.
+- **NEW — cancellation panel** (now required, no longer
+  verify-first): h(B), h(C), h(B+C) by σ per route — the gap curve
+  visibly *below both branches* is the reframe's first figure;
+  material exists in the E14/E19 ledgers
+  (`e19/appendix.md` per-σ geometry figure, `fig_ledger_geometry.py`).
+- **NEW — axis-field summary** (the fine-structure signature): the
+  σ-binned R̂ cosine structure (across-route / across-store /
+  across-σ) in one panel; candidate base: extend
+  `fig_ledger_geometry.py`.
+- `accounts_headtohead` unchanged as Fig. 1 (additive lane).
+  The cancellation-aware lane figure (`e19/accounts_canc.png`, E20
+  lane-matched numbers) goes to the appendix with the E20 PARTIAL
+  read in the caption.
 - Promote/adapt `e250_rel.png` + `e250_frame.png` (reliability + the
   matched-angle-not-planar read) — appendix at minimum.
-- Cancellation magnitude vs residual (h(B), h(C), h(B+C) by σ) —
-  likely exists in the E19/E21 material; verify before drawing new.
-- E26 replication panel (after §7 step 6).
+- E26 replication panel (after §7 step 7).
 - Carried figure debts from the v1 plan (Fig-1 enlargement, waterfall)
   remain owed and unchanged.
 
 ## 7. Order of work
 
-1. ~~Freeze E26 pre-registration and run the smoke~~ **DONE
-   2026-08-09** (both adapters PASS). Remaining: the **full-grid
-   freeze amendment** (grid/trim choice, REPLICATES thresholds,
-   frame-free axis estimand or its explicit drop) + the ~5.7 GPU-h/
+1. **E26 amendment + runs**: freeze the trimmed grid (§5 economize
+   decision: cell list, REPLICATES thresholds, identity-consistency
+   column, frame-free estimand dropped) and submit the ~2.9 GPU-h/
    adapter runs — GPU time is the long pole; everything below
    overlaps with the queue.
-2. Survey pass over `sec_theory.tex` / `sec_experiments.tex` to fix
-   the geometry section's insertion point and what moves out of the
-   appendix (B/C formalism). No edits yet — a placement note appended
-   to this file.
-3. Abstract + intro rewrite (question unchanged; the two-accounts
-   framing keeps its role; the geometry claim enters the abstract with
-   the §3 scope hedge).
-4. New geometry section (§2.3 ladder, E21 → E24 → E25.0 order) + the
-   closures subsection (§2.4).
-5. Theory section: promote the B/C vector formalism from appendix,
-   keep the four-term expansion as the bridge from the scalar account.
-6. E26 lands → scope sentence finalized, replication panel added,
-   claims ledger rows updated.
-7. Discussion/outlook trim (the one lever paragraph), full-tex
-   compile + hedge-consistency pass (reuse the "polish experiment
-   notes" discipline: no stale hedges against later verdicts).
+2. Survey pass over `sec_theory.tex` / `sec_experiments.tex` /
+   `sec_discussion.tex`: fix the insertion points (cancellation into
+   §3.3/3.4, observations section between map and scored, closures
+   subsection), and mark every sentence the assumption-(ii) rewrite
+   invalidates (the §3.4 assumption block, the §4.5 dip concession,
+   the limitations "reduction's domain" paragraph). No edits yet — a
+   placement note appended to this file.
+3. §3.3/§3.4 rewrite: B/C formalism promoted from appendix;
+   cancellation stated as the measured organizing fact (ρ̄ with its
+   E19 license); the four-term expansion kept as the bridge;
+   assumption (ii) **deleted as an assumption** and replaced by the
+   measured interference; the two-term form introduced as the
+   effective law of the residual with the crossing/dip as its
+   anticipated signature; unit-honesty rule stated (h(·) for
+   magnitudes, S/F/I for sign/decomposition/localization).
+4. Abstract + intro rewrite (question unchanged; the two-accounts
+   framing keeps its role; "carried by the compute graph itself"
+   replaced by the cancellation-residual object with the §3 rung
+   hedges).
+5. New observations section (instrument-adjacent placement per step
+   2): cancellation panels (E14, h-units) → local enforcement (E21) →
+   axis field (E24 → E25.0 order) → closures subsection (§2.5).
+   **Gated option** (`questions.md` Q7): if the rotation-law read is
+   frozen, run, and lands PASS before this step, one claim + one
+   panel may be added under Q7's own pre-registration; otherwise
+   "rotates smoothly" stays a description — no placeholder language.
+   **[Resolved 2026-08-09 before this step: E27 ran and the verdict
+   is negative (LAW-WORSE / PLANE-MIXED / anchor NULL) — the option
+   does not fire. "Rotates smoothly" stays, now as an *adjudicated*
+   description; the sentence may cite E27's SLERP numbers (held-out
+   |cos| median 0.96) if a citation is wanted.]**
+6. Scored-section edits: dip sentence flips to the crossing read;
+   one lane-parity paragraph on the cancellation-aware form with the
+   E20 numbers (wins 768 + dip, loses LOO-896, guard fail — not
+   adopted); Fig. 1 and the E5 material untouched in wording.
+7. E26 lands → cancellation-rung scope sentence finalized,
+   replication panel added, claims ledger rows updated.
+8. Discussion/limitations rework: the "reduction's domain" paragraph
+   shrinks to what §3 now states up front; frame-confound limitation
+   (model-vs-adapter open); outlook trim (the one lever paragraph).
+9. Full-tex compile + hedge-consistency pass (reuse the "polish
+   experiment notes" discipline: no stale hedges against later
+   verdicts — in particular no surviving "does not predict" language
+   about the dip, and no "derived" language about the account).
 
 ## 8. Honesty guards
 
+- **No "derived."** The two-term account is an *effective* law; E20.4
+  closed estimand-level derivation of its data term. Any sentence
+  implying the account follows from the geometry is out.
+- **The canc lane is not adopted.** E20.1 PARTIAL is reported at lane
+  parity (both RMSEs, both losses) wherever the cancellation-aware
+  form appears; the additive lane keeps Fig. 1.
+- **Chronology guard.** Presentation order ≠ discovery order: the
+  account was fitted and held-out-validated before the geometry
+  existed; E5's voice transfers verbatim and the text never implies
+  the geometry produced the account.
+- **Unit honesty.** Manuscript magnitudes via h(·)/exact link only;
+  S/F/I quadratic shares appear only as sign/decomposition/
+  localization reads with the truncation-domain caveat (in-window
+  S+F+I under-predicts h(B+C) by ~1.5–2.7×, §9).
+- **ρ̄ citation license.** ρ̄ = −0.91 appears only with its E14 source
+  and E19.0/19.3/19.6 uniformity license.
 - No lever result is claimed or implied; E25a is unfrozen/restricted,
   E25b is a sketch. One outlook paragraph, flagged as such.
 - The matched-angle result (E25.0-2) is reported even though it
-  *weakens* the tidiest version of the geometry story (no normalized
-  frame) — it is the pre-registered read and it scopes the lookup
-  claim honestly.
+  *weakens* the tidiest version of the geometry story — it is the
+  pre-registered read and it scopes the lookup claim honestly.
 - The 768/σ = 0.4333 reliability hole and mid-window 768 softness are
   reported next to the axis-field claim, not footnoted.
-- E26 thresholds are frozen before any run; no post-hoc widening of
-  the adapter list after seeing a result.
+- E26 trimmed-grid thresholds are frozen before any run; no post-hoc
+  widening of the adapter list; the depth-scaling upgrade is gated on
+  the identity-consistency column (§5).
 - Per-sample language stays out of the paper ("pooled residual
   direction at this operating point" — the E25.0 wording).
+- No rotation-*law* language unless `questions.md` Q7 is frozen, run,
+  and PASS against its SLERP baseline before §7 step 5 — the measured
+  claim is "rotates smoothly," nothing stronger. **[E27 ran and did
+  NOT pass — this guard is now permanent for this revision: any
+  rotation-law sentence that appears in review is a regression.]**
+
+## 9. Gate check record (2026-08-09)
+
+Question posed before amending this plan: can the two-term account be
+*derived* from the B/C cancellation, and should the manuscript be
+restructured cancellation-first? Checked against committed data only
+(no new runs): the E14 probe-matched ledger
+(`runs/20260801-2304-e14-ledger-probematched/ledger{,_native}.json`),
+the E19/E20 records, and `fig_accounts_canc.py`.
+
+- **Grid re-read (reenc ref, matches the paper's excess convention)**:
+  ρ ∈ [−0.96, −0.63] at every non-degenerate (route, σ) on all three
+  1024-tier routes. S+F overshoots the realized gap h(B+C) by 3–10×
+  grid-wide (768 in-window: S+F 0.10–0.20 vs h(B+C) 0.016–0.035).
+  S+F+I equals the quadratic prediction identically
+  (I ≡ 2√(SF)·ρ, so (√S−√F)² + 2√(SF)(1+ρ) is a rearrangement, not
+  a new form) and under-predicts h(B+C) in-window by ~1.5–2.7×
+  (truncation) — magnitudes must be read via h(·) (E9 rule).
+- **Already adjudicated by the line** (nothing new to run):
+  feasibility of the cancellation-aware link — `fig_accounts_canc.py`
+  (in-sample, dips below its own floor natively); its license —
+  E19.0/19.3/19.6; its lane test — E20.1 **PARTIAL** (768 held-out:
+  canc 0.0753 vs additive 0.0931, dip in-window; LOO-896: canc
+  0.0819 vs additive 0.0732; 1280-tier guard fails on 1024; "geometry
+  right, amplitude law open; no 20.3 spend"); derivation of the data
+  term — E20.4 **NEGATIVE** (estimand-level).
+- **Verdict**: cancellation-first restructure LICENSED as narrative
+  (assumption (ii) is untenable against committed data and the dip
+  concession is unnecessary); derivation claim REFUSED (E20.4);
+  account-lane swap REFUSED (E20.1). The restructure itself needs no
+  new GPU runs; E26 remains the only owed run.

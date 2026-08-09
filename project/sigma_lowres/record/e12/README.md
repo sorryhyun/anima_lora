@@ -16,7 +16,7 @@
 the error bound only through codebook distortion — error scale is a
 property of the code, not of which measurements were destroyed; and
 high-rate quantization error has concentrated magnitude with isotropic,
-input-decorrelated direction. That is [E11](../e11/)'s exact
+input-decorrelated direction. That is [E11](../../paper_bench/experiments/e11/)'s exact
 signature.*
 
 **Hypothesis.** The denoiser at σ acts as a lossy code; a demotion
@@ -46,7 +46,7 @@ Forward-only, so it rides `run_prior_distance.py` machinery.
   linearity check, σ < 1 grid — the identity degenerates at σ=1).
 - **Probe B** — ε-sweep saturation along repromote / reenc / random unit
   directions at matched norms plus each direction's natural amplitude,
-  response in [E11](../e11/)'s rel-L2 mean-residual units.
+  response in [E11](../../paper_bench/experiments/e11/)'s rel-L2 mean-residual units.
 
 **Predictions.** m(σ) ∝ √tr-Cov route-independently (shape mismatch
 kills the hypothesis); plateau at m(σ) with reenc below the knee;
@@ -70,7 +70,7 @@ without demotion arms.
 
 **Side finding (load-bearing elsewhere):** the deterministic VAE
 re-encode reproduces the cached latent **bit-exactly** for most images
-(a reenc direction exists for only 4/12) — [E11](../e11/)'s reenc ≤ 0.02
+(a reenc direction exists for only 4/12) — [E11](../../paper_bench/experiments/e11/)'s reenc ≤ 0.02
 control was carried by draw noise, not an encode-chain perturbation.
 
 ## Consequences

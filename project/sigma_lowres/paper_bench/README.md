@@ -11,7 +11,11 @@ resolving; heavy vector stores stay under the gitignored
 `required_experiments.md` were split into these per-experiment records.
 `../record/review_triage_20260728.md` holds the R1–R5 external-review
 triage that spawned E1–E4/E6; `../record/paper_plan.md` remains the
-manuscript plan (both moved to `record/` 2026-08-09).*
+manuscript plan (both moved to `record/` 2026-08-09). The records of
+the two refuted/killed lines — [E12](../record/e12/) (REFUTED on both
+probes) and [E15](../record/e15/) (priced out, pre-registered kill) —
+also live in `../record/` since 2026-08-09; their status rows stay in
+the table below so the numbering and verdicts remain visible here.*
 
 ## Status
 
@@ -28,10 +32,10 @@ manuscript plan (both moved to `record/` 2026-08-09).*
 | [E9](experiments/e9/) | interventional B/C ledger | DONE 2026-07-31 | branch (i) — negative interference, I_768 < 0, window center σ ≈ 0.69 |
 | [E10](experiments/e10/) | exact target-content vectors | DONE 2026-07-30 | parallel landing (κ∥ ≫ κ⊥); explains E2's flat α-slope |
 | [E11](experiments/e11/) | Δr̄ direction structure | DONE 2026-07-30 (`--uncond` rerun pending) | norm-only — universal amplitude law, not a universal direction |
-| [E12](experiments/e12/) | posterior-budget probes | DONE 2026-07-31 | REFUTED on both probes; native-only pre-screening is void |
+| [E12](../record/e12/) | posterior-budget probes | DONE 2026-07-31 · **moved to `../record/` 2026-08-09** | REFUTED on both probes; native-only pre-screening is void |
 | [E13](experiments/e13/) | resolving both ends of the σ curve (segmented grid) | DONE 2026-08-01 | H1 falsified (high-σ flat + a *correction-regime* step at σ=1), H2 falsified (the mid-σ peak is a plateau ≈0.09–0.43, not an artifact), H3 confirmed (896's approach is an instrument limit); E5's prediction survives the refit, its ratio-governor does not (A carries a per-run G normalization) |
 | [E14](experiments/e14/) | low-σ vector ledger: decomposing the 896 bump (B/C below σ=0.5) | **DONE 2026-08-02** | headline: the 896 bump is a **two-large-opposing-terms regime** (ρ ≈ −0.7…−0.9 at every σ), not a starved data term; H-a FAILS (no 1120 twin), H-b fired (the 768-sibling half later fell probe-matched — E19 19.0), H-c σ ≤ 0.062 only, H-d substantive; carried the e13b probe-matched rerun E13 owed (`runs/20260801-2304-e14-ledger-probematched`) |
-| [E15](experiments/e15/) | two-level unbiased demotion (MLMC roulette, model-priced coin) | DONE 2026-07-31 (15.0 only; **E14 until 2026-08-01**, run dir keeps the `e14` label) | **priced out** — per-sample correction 2nd moment ≈ V_total/2 ⇒ q̄≈0.45 at the 1.5× cap ⇒ net +2.6–4.1% vs ≥20% gate; yield = the aggregate-coherence finding (per-sample ‖Δ‖≈0.7–1.6‖g‖ vs aggregate 0.15–0.35); redesign lever = anchored control variate (own record if pursued) |
+| [E15](../record/e15/) | two-level unbiased demotion (MLMC roulette, model-priced coin) | DONE 2026-07-31 (15.0 only; **E14 until 2026-08-01**, run dir keeps the `e14` label) · **moved to `../record/` 2026-08-09** | **priced out** — per-sample correction 2nd moment ≈ V_total/2 ⇒ q̄≈0.45 at the 1.5× cap ⇒ net +2.6–4.1% vs ≥20% gate; yield = the aggregate-coherence finding (per-sample ‖Δ‖≈0.7–1.6‖g‖ vs aggregate 0.15–0.35); redesign lever = anchored control variate (own record if pursued) |
 | [E16](experiments/e16/) | placement vs dilution: demotion scheduling (trajectory-propagator probe) | **DONE 2026-08-03** (E15 until 2026-08-01) | 16.0 verdict **AMPLIFICATION** — placement dominates (ΔW cos vs native: late 0.906 ≫ early 0.193); 16.1: **combo** stacked router = throughput frontier, **−18.3 % wall inside the seed lottery on both corpora**; win768late = max-margin arm; scheduling unnecessary on certified routes |
 | [E17](experiments/e17/) | Gaussian-closure test of the posterior residual identity | DONE 2026-08-01 | all three closures FAIL the amplitude bar (low-σ ~40% over-prediction) but reproduce shape (r 0.94–0.97), route-uniformity, reenc ≈ 0, endpoint — measured ‖Δr̄(σ)‖ certified as the minimal honest closure |
 | [E19](experiments/e19/) | locating the birth of the B/C anti-alignment | **19.0+19.1 DONE 2026-08-06** | 19.0: completeness ordering confirmed (512 least complete), decoherence refuted (ρ route-uniform, amplitudes break), headline not a shared-arm artifact, 768 has no in-window crossing probe-matched; 19.1: closure predicts ρ_r < 0 everywhere but **weak** (−0.06…−0.14 at verdict bins vs measured g-level −0.7…−0.9) — prediction frozen, 19.2 scores it |
@@ -74,7 +78,7 @@ run carried both: the owed §4.7 probe-matched refit is discharged, and
 the 896 low-σ plateau decomposed as a two-large-opposing-terms regime,
 not a starved data term). [E11](experiments/e11/)'s `--uncond`
 rerun closes the caption-conditioning caveat whenever GPU is free.
-**[E15](experiments/e15/)** closed at 15.0 (priced out, pre-registered
+**[E15](../record/e15/)** closed at 15.0 (priced out, pre-registered
 kill); what remains is writing its §5 paragraph + the
 aggregate-coherence sharpening into the manuscript, and deciding
 whether the anchored-control-variate redesign gets its own record.
