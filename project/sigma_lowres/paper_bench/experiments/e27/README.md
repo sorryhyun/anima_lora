@@ -176,6 +176,23 @@ fixed-plane geodesic family — it means SLERP already realizes it,
 i.e. 27.1 (plane stability) carries the model-vs-description content
 in that branch, and the E25a lookup keeps per-bin interpolation
 regardless.
+
+Two further gate-design facts measured on synthetics while building
+the instrument (recorded pre-run; they refine the *controls*, not the
+verdict rules): (i) a **smooth** non-planar curve is not a usable
+non-planarity control — over 7 grid points any smooth one-parameter
+curve is nearly rank-2 (mean + tangent dominate; sample-correlation
+between planes absorbs the extra dimensions; a strongly twisted
+torus curve still read held-out share 0.86–0.98) — so the control
+plants per-bin out-of-plane excursions instead, and, correspondingly,
+a PLANE-STABLE outcome on real data must not be oversold: at 7 bins
+it excludes bin-idiosyncratic off-plane structure, not smooth plane
+wander. (ii) On that control the law *legitimately* out-predicts the
+junk-laden flanks (LAW-BEATS-SLERP fires while the plane share
+correctly collapses) — so the certified object is the **pair**
+(PLANE-STABLE ∧ LAW-BEATS-SLERP), which is what the control gate now
+asserts the instrument refuses; a real-data BEATS under PLANE-MIXED
+would inherit exactly this caution via 27.1's frozen reading.
 3. **V_phase**: linearity identity (perp(dem − dem_π) = C − C_pi to
    fp tolerance on the real store); planted synthetic where the phase
    component lies along a known tangent — recovered at cos > 0.9 —

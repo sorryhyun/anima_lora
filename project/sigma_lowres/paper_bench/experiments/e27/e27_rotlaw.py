@@ -462,7 +462,13 @@ _GRID = [0.3, 0.4333, 0.5667, 0.7, 0.8333, 0.9625, 1.0]
 
 def _mk_field(rng, dim, planar: bool, eps: float):
     """Synthetic axis field over the real σ grid × 2 routes: fixed-plane
-    geodesic θ(σ) = 0.3 + 1.2·ln σ, optionally lifted out of plane."""
+    geodesic θ(σ) = 0.3 + 1.2·ln σ; the non-planar control gives each σ
+    bin a large out-of-plane excursion in its own random direction
+    (shared by the bin's routes — a direction property, not draw
+    noise), which no fixed 2-plane can hold. NB a *smooth* non-planar
+    curve is NOT a usable control here: over 7 grid points any smooth
+    one-parameter curve is nearly rank-2 (mean + tangent), and the LOO
+    plane captures it — verified while building this gate."""
     basis = np.linalg.qr(rng.normal(size=(dim, 3)))[0]
     e1, e2, e3 = basis.T
     rows, pairs, trues = [], [], []
@@ -470,8 +476,10 @@ def _mk_field(rng, dim, planar: bool, eps: float):
         th = 0.3 + 1.2 * math.log(s)
         u = math.cos(th) * e1 + math.sin(th) * e2
         if not planar:
-            ph = 1.6 * (math.log(s) + 1.204) / 1.204 - 0.8
-            u = math.cos(ph) * u + math.sin(ph) * e3
+            r = rng.normal(size=dim)
+            r -= float(r @ e1) * e1 + float(r @ e2) * e2
+            r /= np.linalg.norm(r)
+            u = math.sqrt(0.6) * u + math.sqrt(0.4) * r
         for route in ("896", "768"):
             pert = rng.normal(size=dim)
             d = u + 0.02 * pert / np.linalg.norm(pert)
@@ -511,13 +519,21 @@ def validate_geodesic() -> None:
         f["theta_fit"][PRIMARY][1] for f in res["folds"] if "theta_fit" in f
     ]
     for w in omegas:
-        assert abs(w - 1.2) / 1.2 < 0.2, omegas
+        # |ω|: the eigenplane basis has a sign ambiguity that reflects θ;
+        # the law is invariant to it (fit and prediction share the basis)
+        assert abs(abs(w) - 1.2) / 1.2 < 0.2, omegas
     # non-planar control: must NOT pass, and the plane must degrade
     rows_n, pairs_n, _, _ = _mk_field(rng, dim, planar=False, eps=0.7)
     Mn = _synth_ug(pairs_n)
     _, Mon = orient(rows_n, Mn)
     res_n = loo_read(rows_n, Mon)
-    assert res_n["verdict_27_2"] != "LAW-BEATS-SLERP", res_n["verdict_27_2"]
+    # the certification is the PAIR (plane-stable AND beats): on this
+    # control the law may legitimately out-predict junk-laden flanks,
+    # but 27.1 must block certification by detecting the plane failure
+    assert not (
+        res_n["verdict_27_1"] == "PLANE-STABLE"
+        and res_n["verdict_27_2"] == "LAW-BEATS-SLERP"
+    ), (res_n["verdict_27_1"], res_n["verdict_27_2"])
     assert res_n["plane_share_median"] < 0.85, res_n["plane_share_median"]
     print(
         f"[validate] geodesic: plane+ω recovered (ω {omegas[0]:.2f}), "
