@@ -92,9 +92,7 @@ def vphase_extras(s, route: str, bi: int, c: Cond) -> dict:
     dev = float(np.max(np.abs(Vp1 - (C1p - Cpi1))))
     scale = float(np.max(np.abs(Vp1))) or 1.0
     nVp2 = float(Vp1 @ Vp2)
-    rel = float(
-        (Vp1 @ Vp2) / (np.linalg.norm(Vp1) * np.linalg.norm(Vp2))
-    )
+    rel = float((Vp1 @ Vp2) / (np.linalg.norm(Vp1) * np.linalg.norm(Vp2)))
     vc_num = 0.5 * (float(Vp1 @ C2p) + float(Vp2 @ C1p))
     return {
         "rel_cos_Vp": rel,
@@ -124,9 +122,7 @@ class Row:
 
 def sort_rows(rows: list[Row]) -> list[Row]:
     """Frozen order: ascending σ; ties 896 before 768, e193 before e194."""
-    return sorted(
-        rows, key=lambda r: (r.sigma, 0 if r.route == "896" else 1, r.store)
-    )
+    return sorted(rows, key=lambda r: (r.sigma, 0 if r.route == "896" else 1, r.store))
 
 
 def unit_gram(rows: list[Row], pairfn) -> np.ndarray:
@@ -231,9 +227,7 @@ def loo_read(rows: list[Row], Mo: np.ndarray) -> dict:
             "flanks": [s_lo, s_hi],
             "copy_from": s_near,
             "plane": pinfo,
-            "theta_fit": {
-                k: [round(float(c), 4) for c in v] for k, v in fits.items()
-            },
+            "theta_fit": {k: [round(float(c), 4) for c in v] for k, v in fits.items()},
             "targets": [],
         }
         for j in tgt:
@@ -301,8 +295,7 @@ def loo_read(rows: list[Row], Mo: np.ndarray) -> dict:
             **{k: med(f"cos_{k}") for k in VARIANTS},
         },
         "secondary_deltas": [
-            round(abs(t["cos_L-lin"]) - abs(t["cos_slerp"]), 5)
-            for t in cond_rows
+            round(abs(t["cos_L-lin"]) - abs(t["cos_slerp"]), 5) for t in cond_rows
         ],
     }
 
@@ -327,15 +320,11 @@ def tangent_coeff(
     return tvec / math.sqrt(n2)
 
 
-def pick_neighbor(
-    rows: list[Row], route: str, store: str, sigma: float
-) -> int | None:
+def pick_neighbor(rows: list[Row], route: str, store: str, sigma: float) -> int | None:
     """Gated same-route condition at σ: same store preferred, else the
     other standard store."""
     cands = [
-        i
-        for i, r in enumerate(rows)
-        if r.route == route and r.sigma == round(sigma, 4)
+        i for i, r in enumerate(rows) if r.route == route and r.sigma == round(sigma, 4)
     ]
     if not cands:
         return None
@@ -382,11 +371,7 @@ def anchor_read(
                     num = v["vc_same_num"]  # cross-half (shared dem arm)
                 else:
                     num = vp_gram_col(cid, r.cond)
-                vc[k] = (
-                    signs_C[k]
-                    * num
-                    / math.sqrt(v["nVp2"] * r.cond.nC2)
-                )
+                vc[k] = signs_C[k] * num / math.sqrt(v["nVp2"] * r.cond.nC2)
             t_hat = tangent_coeff(c_rows, Mo_C, j, lo, hi)
             row["readable"] = t_hat is not None
             if t_hat is None:
@@ -394,24 +379,16 @@ def anchor_read(
                 continue
             row["cos_tangent"] = round(float(t_hat @ vc), 5)
             row["cos_axis"] = round(float(vc[j]), 5)
-            row["plane_share_Vp"] = round(
-                float((a1 @ vc) ** 2 + (a2 @ vc) ** 2), 4
-            )
+            row["plane_share_Vp"] = round(float((a1 @ vc) ** 2 + (a2 @ vc) ** 2), 4)
             row["tangent_flanks"] = [c_rows[lo].cid, c_rows[hi].cid]
             out_rows.append(row)
 
-    readable = [
-        r for r in out_rows if r.get("readable") and r["route"] == "768"
-    ]
+    readable = [r for r in out_rows if r.get("readable") and r["route"] == "768"]
     if readable:
         mt = float(np.median([abs(r["cos_tangent"]) for r in readable]))
         ma = float(np.median([abs(r["cos_axis"]) for r in readable]))
-        t_dom = all(
-            abs(r["cos_tangent"]) > abs(r["cos_axis"]) for r in readable
-        )
-        a_dom = all(
-            abs(r["cos_axis"]) > abs(r["cos_tangent"]) for r in readable
-        )
+        t_dom = all(abs(r["cos_tangent"]) > abs(r["cos_axis"]) for r in readable)
+        a_dom = all(abs(r["cos_axis"]) > abs(r["cos_tangent"]) for r in readable)
         if mt >= 0.5 and t_dom:
             verdict = "TANGENT-ALIGNED"
         elif ma >= 0.5 and a_dom:
@@ -507,17 +484,13 @@ def validate_geodesic() -> None:
     res = loo_read(rows, Mo)
     assert res["verdict_27_1"] == "PLANE-STABLE", res["verdict_27_1"]
     assert res["plane_share_median"] > 0.9, res["plane_share_median"]
-    assert res["delta_primary_median"] > -DELTA_MARGIN, res[
-        "delta_primary_median"
-    ]
+    assert res["delta_primary_median"] > -DELTA_MARGIN, res["delta_primary_median"]
     tgts = [t for f in res["folds"] if "targets" in f for t in f["targets"]]
     d_copy = float(
         np.median([abs(t[f"cos_{PRIMARY}"]) - abs(t["cos_copy"]) for t in tgts])
     )
     assert d_copy > DELTA_MARGIN, d_copy
-    omegas = [
-        f["theta_fit"][PRIMARY][1] for f in res["folds"] if "theta_fit" in f
-    ]
+    omegas = [f["theta_fit"][PRIMARY][1] for f in res["folds"] if "theta_fit" in f]
     for w in omegas:
         # |ω|: the eigenplane basis has a sign ambiguity that reflects θ;
         # the law is invariant to it (fit and prediction share the basis)
@@ -558,15 +531,9 @@ def validate_vphase_tangent() -> None:
     Mo_s = Mo[np.ix_(order, order)]
     signs_s = signs[order]
     rows_s = [rows[i] for i in order]
-    j = next(
-        i for i, r in enumerate(rows_s) if r.sigma == 0.8333 and r.route == "768"
-    )
-    lo = next(
-        i for i, r in enumerate(rows_s) if r.sigma == 0.7 and r.route == "768"
-    )
-    hi = next(
-        i for i, r in enumerate(rows_s) if r.sigma == 0.9625 and r.route == "768"
-    )
+    j = next(i for i, r in enumerate(rows_s) if r.sigma == 0.8333 and r.route == "768")
+    lo = next(i for i, r in enumerate(rows_s) if r.sigma == 0.7 and r.route == "768")
+    hi = next(i for i, r in enumerate(rows_s) if r.sigma == 0.9625 and r.route == "768")
     th = 0.3 + 1.2 * math.log(0.8333)
     tan_true = -math.sin(th) * e1 + math.cos(th) * e2
     for planted, want_hi in ((tan_true, True), (e3, False)):
@@ -578,9 +545,7 @@ def validate_vphase_tangent() -> None:
             i0 = order[k]
             pool_k = 0.5 * (pairs[i0][0] + pairs[i0][1])
             den_k = math.sqrt(float(pairs[i0][0] @ pairs[i0][1]))
-            vc[k] = signs_s[k] * float(vp_pool @ pool_k) / (
-                math.sqrt(nvp2) * den_k
-            )
+            vc[k] = signs_s[k] * float(vp_pool @ pool_k) / (math.sqrt(nvp2) * den_k)
         t_hat = tangent_coeff(rows_s, Mo_s, j, lo, hi)
         got = abs(float(t_hat @ vc))
         if want_hi:
@@ -624,7 +589,9 @@ def figures(digest: dict) -> None:
             f"{d['verdict_27_1']}"
         )
         ax.legend(fontsize=7)
-    fig.suptitle("E27 LOO direction cosines at held-out σ (debiased, |cos| clamped in view)")
+    fig.suptitle(
+        "E27 LOO direction cosines at held-out σ (debiased, |cos| clamped in view)"
+    )
     fig.tight_layout()
     fig.savefig(HERE / "e27_loo.png", dpi=150)
     print("[fig] e27_loo.png")
@@ -634,7 +601,9 @@ def figures(digest: dict) -> None:
     if rows:
         fig2, ax = plt.subplots(figsize=(7, 4.5))
         x = np.arange(len(rows))
-        ax.bar(x - 0.2, [abs(r["cos_tangent"]) for r in rows], 0.4, label="|cos(V̂p, t̂_C)|")
+        ax.bar(
+            x - 0.2, [abs(r["cos_tangent"]) for r in rows], 0.4, label="|cos(V̂p, t̂_C)|"
+        )
         ax.bar(x + 0.2, [abs(r["cos_axis"]) for r in rows], 0.4, label="|cos(V̂p, Ĉ)|")
         ax.plot(x, [r["plane_share_Vp"] for r in rows], "kx--", label="V̂p plane share")
         ax.axhline(0.5, color="k", lw=0.8, ls="--")
@@ -681,10 +650,7 @@ def main() -> None:
                 conds.append(c)
                 if store in ("e193", "e194"):
                     rext[cond_id(c)] = residual_extras(s, route, bi, c)
-                msg = (
-                    f"[cond] {cond_id(c):22s} relB={c.rel_B:.2f} "
-                    f"relC={c.rel_C:.2f}"
-                )
+                msg = f"[cond] {cond_id(c):22s} relB={c.rel_B:.2f} relC={c.rel_C:.2f}"
                 if has_pi:
                     v = vphase_extras(s, route, bi, c)
                     assert v["identity_rel_dev"] < 1e-9, (

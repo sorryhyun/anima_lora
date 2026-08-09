@@ -1,0 +1,1107 @@
+{
+ "generated_by": "e27_rotlaw.py",
+ "rel_gate": 0.5,
+ "delta_margin": 0.02,
+ "primary_variant": "L-log",
+ "target_sigma": [
+  0.4333,
+  0.5667,
+  0.7,
+  0.8333,
+  0.9625
+ ],
+ "conditions": [
+  {
+   "cond": "e193/896/s0.3",
+   "sigma": 0.3,
+   "rel_cos_B": 0.7368,
+   "rel_cos_C": 0.6624,
+   "rel_cos_R": 0.76,
+   "pass_R": true
+  },
+  {
+   "cond": "e193/768/s0.3",
+   "sigma": 0.3,
+   "rel_cos_B": 0.805,
+   "rel_cos_C": 0.7863,
+   "rel_cos_R": 0.6402,
+   "pass_R": true
+  },
+  {
+   "cond": "e193/896/s0.4333",
+   "sigma": 0.4333,
+   "rel_cos_B": 0.8773,
+   "rel_cos_C": 0.7916,
+   "rel_cos_R": 0.697,
+   "pass_R": true
+  },
+  {
+   "cond": "e193/768/s0.4333",
+   "sigma": 0.4333,
+   "rel_cos_B": 0.7537,
+   "rel_cos_C": 0.6004,
+   "rel_cos_R": 0.3742,
+   "pass_R": false
+  },
+  {
+   "cond": "e193/896/s0.5667",
+   "sigma": 0.5667,
+   "rel_cos_B": 0.7474,
+   "rel_cos_C": 0.7069,
+   "rel_cos_R": 0.5136,
+   "pass_R": true
+  },
+  {
+   "cond": "e193/768/s0.5667",
+   "sigma": 0.5667,
+   "rel_cos_B": 0.8659,
+   "rel_cos_C": 0.8539,
+   "rel_cos_R": 0.7687,
+   "pass_R": true
+  },
+  {
+   "cond": "e193/896/s0.7",
+   "sigma": 0.7,
+   "rel_cos_B": 0.8529,
+   "rel_cos_C": 0.8067,
+   "rel_cos_R": 0.7361,
+   "pass_R": true
+  },
+  {
+   "cond": "e193/768/s0.7",
+   "sigma": 0.7,
+   "rel_cos_B": 0.8792,
+   "rel_cos_C": 0.8521,
+   "rel_cos_R": 0.7243,
+   "pass_R": true
+  },
+  {
+   "cond": "e193/896/s1",
+   "sigma": 1.0,
+   "rel_cos_B": 0.1412,
+   "rel_cos_C": -0.0446,
+   "rel_cos_R": 0.3849,
+   "pass_R": false
+  },
+  {
+   "cond": "e193/768/s1",
+   "sigma": 1.0,
+   "rel_cos_B": 0.6774,
+   "rel_cos_C": 0.7497,
+   "rel_cos_R": 0.7531,
+   "pass_R": false
+  },
+  {
+   "cond": "e194/896/s0.7",
+   "sigma": 0.7,
+   "rel_cos_B": 0.8728,
+   "rel_cos_C": 0.8013,
+   "rel_cos_R": 0.6664,
+   "pass_R": true,
+   "rel_cos_Vp": 0.8894,
+   "readable_Vp": true
+  },
+  {
+   "cond": "e194/768/s0.7",
+   "sigma": 0.7,
+   "rel_cos_B": 0.8704,
+   "rel_cos_C": 0.7914,
+   "rel_cos_R": 0.7107,
+   "pass_R": true,
+   "rel_cos_Vp": 0.9657,
+   "readable_Vp": true
+  },
+  {
+   "cond": "e194/896/s0.8333",
+   "sigma": 0.8333,
+   "rel_cos_B": 0.8903,
+   "rel_cos_C": 0.7851,
+   "rel_cos_R": 0.6299,
+   "pass_R": true,
+   "rel_cos_Vp": 0.837,
+   "readable_Vp": true
+  },
+  {
+   "cond": "e194/768/s0.8333",
+   "sigma": 0.8333,
+   "rel_cos_B": 0.9284,
+   "rel_cos_C": 0.8317,
+   "rel_cos_R": 0.5824,
+   "pass_R": true,
+   "rel_cos_Vp": 0.9386,
+   "readable_Vp": true
+  },
+  {
+   "cond": "e194/896/s0.9625",
+   "sigma": 0.9625,
+   "rel_cos_B": 0.9339,
+   "rel_cos_C": 0.8981,
+   "rel_cos_R": 0.9152,
+   "pass_R": true,
+   "rel_cos_Vp": 0.8255,
+   "readable_Vp": true
+  },
+  {
+   "cond": "e194/768/s0.9625",
+   "sigma": 0.9625,
+   "rel_cos_B": 0.9312,
+   "rel_cos_C": 0.9504,
+   "rel_cos_R": 0.9353,
+   "pass_R": true,
+   "rel_cos_Vp": 0.8721,
+   "readable_Vp": true
+  },
+  {
+   "cond": "e194/896/s1",
+   "sigma": 1.0,
+   "rel_cos_B": 0.5548,
+   "rel_cos_C": 0.4758,
+   "rel_cos_R": 0.6561,
+   "pass_R": true,
+   "rel_cos_Vp": 0.5556,
+   "readable_Vp": true
+  },
+  {
+   "cond": "e194/768/s1",
+   "sigma": 1.0,
+   "rel_cos_B": 0.7602,
+   "rel_cos_C": 0.6608,
+   "rel_cos_R": 0.9365,
+   "pass_R": true,
+   "rel_cos_Vp": 0.6819,
+   "readable_Vp": true
+  }
+ ],
+ "loo": {
+  "B": {
+   "folds": [
+    {
+     "sigma_t": 0.4333,
+     "fit_n": 15,
+     "flanks": [
+      0.3,
+      0.5667
+     ],
+     "copy_from": 0.3,
+     "plane": {
+      "lam_top2": [
+       8.3985,
+       4.6813
+      ],
+      "top2_share_fit": 0.772
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.0828,
+       -1.3434
+      ],
+      "L-lin": [
+       -1.6599,
+       -2.6134
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e193/896/s0.4333",
+       "plane_share": 0.6864,
+       "cos_slerp": 0.88705,
+       "cos_copy": 0.69767,
+       "cos_L-log": 0.82847,
+       "cos_L-lin": 0.81568,
+       "delta_primary": -0.05858
+      },
+      {
+       "cond": "e193/768/s0.4333",
+       "plane_share": 0.5868,
+       "cos_slerp": 0.89472,
+       "cos_copy": 0.76698,
+       "cos_L-log": 0.76594,
+       "cos_L-lin": 0.75317,
+       "delta_primary": -0.12878
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.5667,
+     "fit_n": 15,
+     "flanks": [
+      0.4333,
+      0.7
+     ],
+     "copy_from": 0.7,
+     "plane": {
+      "lam_top2": [
+       7.8987,
+       4.66
+      ],
+      "top2_share_fit": 0.7418
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.0842,
+       -1.3001
+      ],
+      "L-lin": [
+       -1.7968,
+       -2.4477
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e193/896/s0.5667",
+       "plane_share": 0.9432,
+       "cos_slerp": 0.98737,
+       "cos_copy": 0.9687,
+       "cos_L-log": 0.90278,
+       "cos_L-lin": 0.9487,
+       "delta_primary": -0.08459
+      },
+      {
+       "cond": "e193/768/s0.5667",
+       "plane_share": 0.9197,
+       "cos_slerp": 0.99115,
+       "cos_copy": 0.93324,
+       "cos_L-log": 0.86737,
+       "cos_L-lin": 0.92199,
+       "delta_primary": -0.12378
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.7,
+     "fit_n": 13,
+     "flanks": [
+      0.5667,
+      0.8333
+     ],
+     "copy_from": 0.5667,
+     "plane": {
+      "lam_top2": [
+       6.0905,
+       4.6983
+      ],
+      "top2_share_fit": 0.7233
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.3275,
+       -1.3993
+      ],
+      "L-lin": [
+       -1.9596,
+       -2.4877
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e193/896/s0.7",
+       "plane_share": 0.8815,
+       "cos_slerp": 0.99092,
+       "cos_copy": 0.9534,
+       "cos_L-log": 0.78714,
+       "cos_L-lin": 0.84579,
+       "delta_primary": -0.20378
+      },
+      {
+       "cond": "e194/896/s0.7",
+       "plane_share": 0.8365,
+       "cos_slerp": 0.979,
+       "cos_copy": 0.94878,
+       "cos_L-log": 0.73122,
+       "cos_L-lin": 0.7951,
+       "delta_primary": -0.24778
+      },
+      {
+       "cond": "e193/768/s0.7",
+       "plane_share": 0.8664,
+       "cos_slerp": 0.98024,
+       "cos_copy": 0.94965,
+       "cos_L-log": 0.72467,
+       "cos_L-lin": 0.79302,
+       "delta_primary": -0.25557
+      },
+      {
+       "cond": "e194/768/s0.7",
+       "plane_share": 0.8542,
+       "cos_slerp": 0.97594,
+       "cos_copy": 0.96311,
+       "cos_L-log": 0.67783,
+       "cos_L-lin": 0.75217,
+       "delta_primary": -0.29811
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.8333,
+     "fit_n": 15,
+     "flanks": [
+      0.7,
+      0.9625
+     ],
+     "copy_from": 0.9625,
+     "plane": {
+      "lam_top2": [
+       8.4379,
+       4.5255
+      ],
+      "top2_share_fit": 0.7651
+     },
+     "theta_fit": {
+      "L-log": [
+       -1.9662,
+       1.3725
+      ],
+      "L-lin": [
+       -4.3403,
+       2.5558
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e194/896/s0.8333",
+       "plane_share": 0.659,
+       "cos_slerp": 0.94603,
+       "cos_copy": 0.73643,
+       "cos_L-log": 0.73502,
+       "cos_L-lin": 0.73296,
+       "delta_primary": -0.21101
+      },
+      {
+       "cond": "e194/768/s0.8333",
+       "plane_share": 0.7009,
+       "cos_slerp": 0.90539,
+       "cos_copy": 0.59925,
+       "cos_L-log": 0.68047,
+       "cos_L-lin": 0.67756,
+       "delta_primary": -0.22492
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.9625,
+     "fit_n": 15,
+     "flanks": [
+      0.8333,
+      1.0
+     ],
+     "copy_from": 1.0,
+     "plane": {
+      "lam_top2": [
+       9.4834,
+       3.9041
+      ],
+      "top2_share_fit": 0.7933
+     },
+     "theta_fit": {
+      "L-log": [
+       -2.1658,
+       1.119
+      ],
+      "L-lin": [
+       -4.2025,
+       2.2559
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e194/896/s0.9625",
+       "plane_share": 0.3358,
+       "cos_slerp": 0.63074,
+       "cos_copy": 0.44251,
+       "cos_L-log": 0.57557,
+       "cos_L-lin": 0.57844,
+       "delta_primary": -0.05517
+      },
+      {
+       "cond": "e194/768/s0.9625",
+       "plane_share": 0.4377,
+       "cos_slerp": 0.67633,
+       "cos_copy": 0.46306,
+       "cos_L-log": 0.65705,
+       "cos_L-lin": 0.66037,
+       "delta_primary": -0.01928
+      }
+     ]
+    }
+   ],
+   "n_target_conditions": 12,
+   "verdict_27_1": "PLANE-MIXED",
+   "plane_share_median": 0.7687,
+   "plane_share_min": 0.3358,
+   "verdict_27_2": "LAW-WORSE",
+   "delta_primary_median": -0.16628,
+   "delta_primary_win_share": 0.0,
+   "median_abs_cos": {
+    "slerp": 0.96098,
+    "copy": 0.85011,
+    "L-log": 0.73312,
+    "L-lin": 0.77309
+   },
+   "secondary_deltas": [
+    -0.07137,
+    -0.14155,
+    -0.03867,
+    -0.06916,
+    -0.14513,
+    -0.1839,
+    -0.18722,
+    -0.22377,
+    -0.21307,
+    -0.22783,
+    -0.0523,
+    -0.01596
+   ]
+  },
+  "C": {
+   "folds": [
+    {
+     "sigma_t": 0.4333,
+     "fit_n": 14,
+     "flanks": [
+      0.3,
+      0.5667
+     ],
+     "copy_from": 0.3,
+     "plane": {
+      "lam_top2": [
+       8.5918,
+       2.8535
+      ],
+      "top2_share_fit": 0.8106
+     },
+     "theta_fit": {
+      "L-log": [
+       -3.9407,
+       -1.3458
+      ],
+      "L-lin": [
+       -1.5358,
+       -2.606
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e193/896/s0.4333",
+       "plane_share": 0.6977,
+       "cos_slerp": 0.87836,
+       "cos_copy": 0.70164,
+       "cos_L-log": 0.83142,
+       "cos_L-lin": 0.83406,
+       "delta_primary": -0.04694
+      },
+      {
+       "cond": "e193/768/s0.4333",
+       "plane_share": 0.7469,
+       "cos_slerp": 0.95784,
+       "cos_copy": 0.83555,
+       "cos_L-log": 0.86186,
+       "cos_L-lin": 0.86173,
+       "delta_primary": -0.09598
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.5667,
+     "fit_n": 14,
+     "flanks": [
+      0.4333,
+      0.7
+     ],
+     "copy_from": 0.7,
+     "plane": {
+      "lam_top2": [
+       8.2123,
+       2.9555
+      ],
+      "top2_share_fit": 0.7906
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.0026,
+       -1.3989
+      ],
+      "L-lin": [
+       -1.5783,
+       -2.5987
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e193/896/s0.5667",
+       "plane_share": 0.8711,
+       "cos_slerp": 0.96527,
+       "cos_copy": 0.926,
+       "cos_L-log": 0.88303,
+       "cos_L-lin": 0.91946,
+       "delta_primary": -0.08224
+      },
+      {
+       "cond": "e193/768/s0.5667",
+       "plane_share": 0.9242,
+       "cos_slerp": 0.98266,
+       "cos_copy": 0.92239,
+       "cos_L-log": 0.88634,
+       "cos_L-lin": 0.93367,
+       "delta_primary": -0.09632
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.7,
+     "fit_n": 12,
+     "flanks": [
+      0.5667,
+      0.8333
+     ],
+     "copy_from": 0.5667,
+     "plane": {
+      "lam_top2": [
+       6.1747,
+       3.0768
+      ],
+      "top2_share_fit": 0.7658
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.1979,
+       -1.4685
+      ],
+      "L-lin": [
+       -1.7258,
+       -2.6072
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e193/896/s0.7",
+       "plane_share": 0.8873,
+       "cos_slerp": 0.98484,
+       "cos_copy": 0.92889,
+       "cos_L-log": 0.83628,
+       "cos_L-lin": 0.88325,
+       "delta_primary": -0.14856
+      },
+      {
+       "cond": "e194/896/s0.7",
+       "plane_share": 0.8785,
+       "cos_slerp": 0.98538,
+       "cos_copy": 0.95012,
+       "cos_L-log": 0.809,
+       "cos_L-lin": 0.86107,
+       "delta_primary": -0.17638
+      },
+      {
+       "cond": "e193/768/s0.7",
+       "plane_share": 0.8639,
+       "cos_slerp": 0.97628,
+       "cos_copy": 0.93613,
+       "cos_L-log": 0.80502,
+       "cos_L-lin": 0.85605,
+       "delta_primary": -0.17126
+      },
+      {
+       "cond": "e194/768/s0.7",
+       "plane_share": 0.9052,
+       "cos_slerp": 0.99477,
+       "cos_copy": 0.97235,
+       "cos_L-log": 0.809,
+       "cos_L-lin": 0.86444,
+       "delta_primary": -0.18577
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.8333,
+     "fit_n": 14,
+     "flanks": [
+      0.7,
+      0.9625
+     ],
+     "copy_from": 0.9625,
+     "plane": {
+      "lam_top2": [
+       8.5153,
+       2.7834
+      ],
+      "top2_share_fit": 0.8001
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.1584,
+       -1.3654
+      ],
+      "L-lin": [
+       -1.8019,
+       -2.554
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e194/896/s0.8333",
+       "plane_share": 0.7649,
+       "cos_slerp": 0.94867,
+       "cos_copy": 0.72381,
+       "cos_L-log": 0.84126,
+       "cos_L-lin": 0.83612,
+       "delta_primary": -0.10741
+      },
+      {
+       "cond": "e194/768/s0.8333",
+       "plane_share": 0.7979,
+       "cos_slerp": 0.94306,
+       "cos_copy": 0.67159,
+       "cos_L-log": 0.8355,
+       "cos_L-lin": 0.82877,
+       "delta_primary": -0.10756
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.9625,
+     "fit_n": 14,
+     "flanks": [
+      0.8333,
+      1.0
+     ],
+     "copy_from": 1.0,
+     "plane": {
+      "lam_top2": [
+       9.612,
+       2.0409
+      ],
+      "top2_share_fit": 0.8243
+     },
+     "theta_fit": {
+      "L-log": [
+       -3.9101,
+       -1.0366
+      ],
+      "L-lin": [
+       -2.0331,
+       -2.0971
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e194/896/s0.9625",
+       "plane_share": 0.3924,
+       "cos_slerp": 0.56489,
+       "cos_copy": 0.36212,
+       "cos_L-log": 0.60771,
+       "cos_L-lin": 0.62516,
+       "delta_primary": 0.04282
+      },
+      {
+       "cond": "e194/768/s0.9625",
+       "plane_share": 0.4181,
+       "cos_slerp": 0.59272,
+       "cos_copy": 0.39013,
+       "cos_L-log": 0.62066,
+       "cos_L-lin": 0.64316,
+       "delta_primary": 0.02794
+      }
+     ]
+    }
+   ],
+   "n_target_conditions": 12,
+   "verdict_27_1": "PLANE-MIXED",
+   "plane_share_median": 0.8309,
+   "plane_share_min": 0.3924,
+   "verdict_27_2": "LAW-WORSE",
+   "delta_primary_median": -0.10187,
+   "delta_primary_win_share": 0.167,
+   "median_abs_cos": {
+    "slerp": 0.96155,
+    "copy": 0.87897,
+    "L-log": 0.83346,
+    "L-lin": 0.85856
+   },
+   "secondary_deltas": [
+    -0.0443,
+    -0.09611,
+    -0.04581,
+    -0.04899,
+    -0.10159,
+    -0.12431,
+    -0.12023,
+    -0.13033,
+    -0.11255,
+    -0.11429,
+    0.06027,
+    0.05044
+   ]
+  },
+  "R": {
+   "folds": [
+    {
+     "sigma_t": 0.4333,
+     "fit_n": 14,
+     "flanks": [
+      0.3,
+      0.5667
+     ],
+     "copy_from": 0.3,
+     "plane": {
+      "lam_top2": [
+       7.9708,
+       2.9947
+      ],
+      "top2_share_fit": 0.7698
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.0632,
+       -1.332
+      ],
+      "L-lin": [
+       -1.6287,
+       -2.6543
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e193/896/s0.4333",
+       "plane_share": 0.4635,
+       "cos_slerp": 0.85479,
+       "cos_copy": 0.80238,
+       "cos_L-log": 0.67851,
+       "cos_L-lin": 0.67812,
+       "delta_primary": -0.17628
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.5667,
+     "fit_n": 13,
+     "flanks": [
+      0.4333,
+      0.7
+     ],
+     "copy_from": 0.7,
+     "plane": {
+      "lam_top2": [
+       7.1528,
+       2.8691
+      ],
+      "top2_share_fit": 0.7586
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.0516,
+       -1.2878
+      ],
+      "L-lin": [
+       -1.7237,
+       -2.5125
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e193/896/s0.5667",
+       "plane_share": 0.6555,
+       "cos_slerp": 0.89245,
+       "cos_copy": 0.72088,
+       "cos_L-log": 0.63329,
+       "cos_L-lin": 0.71057,
+       "delta_primary": -0.25916
+      },
+      {
+       "cond": "e193/768/s0.5667",
+       "plane_share": 0.7043,
+       "cos_slerp": 0.81858,
+       "cos_copy": 0.86041,
+       "cos_L-log": 0.77849,
+       "cos_L-lin": 0.82079,
+       "delta_primary": -0.04009
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.7,
+     "fit_n": 11,
+     "flanks": [
+      0.5667,
+      0.8333
+     ],
+     "copy_from": 0.5667,
+     "plane": {
+      "lam_top2": [
+       4.7652,
+       3.0232
+      ],
+      "top2_share_fit": 0.7034
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.3119,
+       -1.3886
+      ],
+      "L-lin": [
+       -1.8982,
+       -2.5592
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e193/896/s0.7",
+       "plane_share": 0.8615,
+       "cos_slerp": 1.00698,
+       "cos_copy": 0.86288,
+       "cos_L-log": 0.73101,
+       "cos_L-lin": 0.79752,
+       "delta_primary": -0.27597
+      },
+      {
+       "cond": "e194/896/s0.7",
+       "plane_share": 0.8803,
+       "cos_slerp": 0.9933,
+       "cos_copy": 0.86217,
+       "cos_L-log": 0.78724,
+       "cos_L-lin": 0.84552,
+       "delta_primary": -0.20606
+      },
+      {
+       "cond": "e193/768/s0.7",
+       "plane_share": 0.7663,
+       "cos_slerp": 0.99107,
+       "cos_copy": 0.84023,
+       "cos_L-log": 0.71513,
+       "cos_L-lin": 0.77328,
+       "delta_primary": -0.27594
+      },
+      {
+       "cond": "e194/768/s0.7",
+       "plane_share": 0.7849,
+       "cos_slerp": 0.97423,
+       "cos_copy": 0.84872,
+       "cos_L-log": 0.74753,
+       "cos_L-lin": 0.8017,
+       "delta_primary": -0.2267
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.8333,
+     "fit_n": 13,
+     "flanks": [
+      0.7,
+      0.9625
+     ],
+     "copy_from": 0.9625,
+     "plane": {
+      "lam_top2": [
+       7.023,
+       2.8502
+      ],
+      "top2_share_fit": 0.7493
+     },
+     "theta_fit": {
+      "L-log": [
+       -4.2816,
+       -1.4014
+      ],
+      "L-lin": [
+       -1.7965,
+       -2.7061
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e194/896/s0.8333",
+       "plane_share": 0.7559,
+       "cos_slerp": 0.84979,
+       "cos_copy": 0.38516,
+       "cos_L-log": 0.78262,
+       "cos_L-lin": 0.77273,
+       "delta_primary": -0.06717
+      },
+      {
+       "cond": "e194/768/s0.8333",
+       "plane_share": 0.7249,
+       "cos_slerp": 0.74255,
+       "cos_copy": 0.17482,
+       "cos_L-log": 0.71898,
+       "cos_L-lin": 0.70715,
+       "delta_primary": -0.02357
+      }
+     ]
+    },
+    {
+     "sigma_t": 0.9625,
+     "fit_n": 13,
+     "flanks": [
+      0.8333,
+      1.0
+     ],
+     "copy_from": 1.0,
+     "plane": {
+      "lam_top2": [
+       8.4239,
+       1.8729
+      ],
+      "top2_share_fit": 0.7775
+     },
+     "theta_fit": {
+      "L-log": [
+       -3.9022,
+       -1.1162
+      ],
+      "L-lin": [
+       -1.8616,
+       -2.2749
+      ]
+     },
+     "targets": [
+      {
+       "cond": "e194/896/s0.9625",
+       "plane_share": 0.244,
+       "cos_slerp": 0.45895,
+       "cos_copy": 0.41878,
+       "cos_L-log": 0.35064,
+       "cos_L-lin": 0.41046,
+       "delta_primary": -0.10831
+      },
+      {
+       "cond": "e194/768/s0.9625",
+       "plane_share": 0.3765,
+       "cos_slerp": 0.58143,
+       "cos_copy": 0.52032,
+       "cos_L-log": 0.46539,
+       "cos_L-lin": 0.53303,
+       "delta_primary": -0.11604
+      }
+     ]
+    }
+   ],
+   "n_target_conditions": 11,
+   "verdict_27_1": "PLANE-MIXED",
+   "plane_share_median": 0.7249,
+   "plane_share_min": 0.244,
+   "verdict_27_2": "LAW-WORSE",
+   "delta_primary_median": -0.17628,
+   "delta_primary_win_share": 0.0,
+   "median_abs_cos": {
+    "slerp": 0.85479,
+    "copy": 0.80238,
+    "L-log": 0.71898,
+    "L-lin": 0.77273
+   },
+   "secondary_deltas": [
+    -0.17667,
+    -0.18188,
+    0.00221,
+    -0.20946,
+    -0.14778,
+    -0.21779,
+    -0.17253,
+    -0.07706,
+    -0.0354,
+    -0.04849,
+    -0.0484
+   ]
+  }
+ },
+ "anchor": {
+  "verdict_27_4": "NULL",
+  "median_abs_cos_tangent_768": 0.1651,
+  "median_abs_cos_axis_768": 0.1537,
+  "full_plane": {
+   "lam_top2": [
+    9.9131,
+    3.0797
+   ],
+   "top2_share_fit": 0.8038
+  },
+  "rows": [
+   {
+    "cond": "e194/768/s0.7",
+    "sigma": 0.7,
+    "route": "768",
+    "rel_cos_Vp": 0.9657,
+    "readable_Vp": true,
+    "readable": true,
+    "cos_tangent": -0.16508,
+    "cos_axis": -0.15367,
+    "plane_share_Vp": 0.0101,
+    "tangent_flanks": [
+     "e193/768/s0.5667",
+     "e194/768/s0.8333"
+    ]
+   },
+   {
+    "cond": "e194/768/s0.8333",
+    "sigma": 0.8333,
+    "route": "768",
+    "rel_cos_Vp": 0.9386,
+    "readable_Vp": true,
+    "readable": true,
+    "cos_tangent": 0.03921,
+    "cos_axis": -0.38882,
+    "plane_share_Vp": 0.0861,
+    "tangent_flanks": [
+     "e194/768/s0.7",
+     "e194/768/s0.9625"
+    ]
+   },
+   {
+    "cond": "e194/768/s0.9625",
+    "sigma": 0.9625,
+    "route": "768",
+    "rel_cos_Vp": 0.8721,
+    "readable_Vp": true,
+    "readable": true,
+    "cos_tangent": 0.33891,
+    "cos_axis": -0.03638,
+    "plane_share_Vp": 0.0639,
+    "tangent_flanks": [
+     "e194/768/s0.8333",
+     "e194/768/s1"
+    ]
+   },
+   {
+    "cond": "e194/896/s0.7",
+    "sigma": 0.7,
+    "route": "896",
+    "rel_cos_Vp": 0.8894,
+    "readable_Vp": true,
+    "readable": true,
+    "cos_tangent": -0.11798,
+    "cos_axis": 0.01082,
+    "plane_share_Vp": 0.0074,
+    "tangent_flanks": [
+     "e193/896/s0.5667",
+     "e194/896/s0.8333"
+    ]
+   },
+   {
+    "cond": "e194/896/s0.8333",
+    "sigma": 0.8333,
+    "route": "896",
+    "rel_cos_Vp": 0.837,
+    "readable_Vp": true,
+    "readable": true,
+    "cos_tangent": -0.02574,
+    "cos_axis": -0.34782,
+    "plane_share_Vp": 0.0542,
+    "tangent_flanks": [
+     "e194/896/s0.7",
+     "e194/896/s0.9625"
+    ]
+   },
+   {
+    "cond": "e194/896/s0.9625",
+    "sigma": 0.9625,
+    "route": "896",
+    "rel_cos_Vp": 0.8255,
+    "readable_Vp": true,
+    "readable": false
+   }
+  ]
+ },
+ "verdicts": {
+  "27.1": "PLANE-MIXED",
+  "27.2": "LAW-WORSE",
+  "27.3_R": "LAW-WORSE",
+  "27.4": "NULL"
+ }
+}

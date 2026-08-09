@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PRE-REGISTERED 2026-08-09** — committed before the instrument (`e27_rotlaw.py`) existed. CPU-only; no GPU spend anywhere in this experiment. This is [Q7](../../paper_v2/questions.md)'s combined read: candidate 2 (fixed-plane geodesic) carries the law test, candidate 1 (RoPE-phase-driven) enters only as the *generator anchor* — the two are complements (the plane supplies the direction family, the phase mechanism is a candidate for its rate/generator), not rivals. |
+| **Status** | **DONE 2026-08-09** (pre-registered same day before the instrument existed; CPU-only as planned, one 567 s run). Verdicts: **27.1 PLANE-MIXED** (no fixed plane: LOO share median 0.77 B / 0.83 C, collapsing to 0.24–0.44 at σ = 0.9625), **27.2 LAW-WORSE** (the 2-parameter geodesic loses to SLERP at *every* B target, median Δ = −0.166; both variants), **27.3 R LAW-WORSE** (E25a keeps measure-every-bin + neighbor interpolation, which scores well), **27.4 NULL** (V_phase is a highly reproducible direction, rel 0.83–0.97, that lives almost entirely **outside** the axis-field plane — share 0.01–0.09 — and aligns with neither the rotation generator nor the axis). Net: **Q7 answers NO at this data resolution** — "rotates smoothly" stays a description; the σ-binned lookup + SLERP interpolation is not just the engineering floor but the measured best; and the RoPE-phase mechanism is a within-bin effect whose direction is unrelated to the σ-rotation. This was [Q7](../../paper_v2/questions.md)'s combined read: candidate 2 (fixed-plane geodesic) carried the law test, candidate 1 (RoPE-phase-driven) entered only as the *generator anchor* — the two are complements (the plane supplies the direction family, the phase mechanism was a candidate for its rate/generator), not rivals. |
 | **Question** | Q7: does "the cancellation axis rotates smoothly with σ" upgrade from description to model? Estimand frozen by Q7: **direction cosines under leave-one-σ-out, never scalar map RMSE**; a law earns a claim only if it beats the flanking-bin SLERP baseline. Plus the one mechanism hint made quantitative: E19.4's phase-borne component of C, extracted as a vector from e194's stored π arms — does it align with the rotation *generator* (the in-plane tangent of the axis field), or merely with the axis itself? |
 | **Depends on** | [E24](../e24/) (axis field STRUCTURED; Gram machinery + debias conventions inherited verbatim), [E25.0](../e25/) (transport NO-GAIN — the ĝ-frame family is dead and not re-entered here; R-leg machinery + 25.0-1 pass set), [E19.4](../e19/) (phase mediation, `--pi_align` arms preserved in the e194 store — first re-read of those arms since; probe use only, G11 untouched), [E14](../e14/) (leg/debias estimand). |
 | **Instruments** | `e27_rotlaw.py` (this dir; CPU) — validation gates, LOO plane + geodesic fits, SLERP/copy baselines, V_phase anchor. |
@@ -225,3 +225,96 @@ would inherit exactly this caution via 27.1's frozen reading.
 law vs SLERP vs copy + plane shares), `e27_phase.png` (anchor read).
 Expected cost: one chunked fp64 Gram over ~70 × 77.7M vectors —
 ~10 min CPU, ≤ ~30 GB resident, no GPU.
+
+## Results (2026-08-09)
+
+Instrument: `e27_rotlaw.py` (this dir). All validation gates passed
+before any real quantity was read (E24 synthetic + e221 exact
+reproduction; planted geodesic: plane + |ω| recovered, law > copy
++0.030, law ~ SLERP +0.001; per-bin-excursion control: share 0.51 and
+certification refused via 27.1; planted V_phase tangent recovered
+0.9+, orthogonal control flat; nR² identity 4.2e−14; V_phase
+linearity identity < 1e−9). Run: daemon job `20260809-162632-a66fac`,
+567 s CPU, 44 × 77.7M Gram. Record: `e27_rotlaw.json`.
+
+### 27.1 — PLANE-MIXED: there is no fixed plane
+
+LOO in-plane share of held-out directions: **median 0.769 / min 0.336
+(B)**, 0.831 / 0.392 (C). The per-fold pattern is σ-structured, not
+noise: interior folds 0.59–0.94, the σ = 0.9625 fold collapses to
+0.24–0.44 on every leg. Read against the synthetic gate-design fact
+(a smooth one-parameter curve reads share ≈ 0.98 at 7 bins): these
+numbers are a *strong* negative — the axis field carries real
+bin-specific components outside any fixed 2-plane, concentrated
+toward the endpoint region (coherent with 19.2's σ→1 tail being
+different physics). Yet SLERP's success (below) shows each bin *is*
+nearly in the span of its two neighbors — the field is **locally
+2-D with a rolling plane**, not planar. Note the per-fold fit-Gram
+top-2 shares (0.72–0.82) sit well below E24's pooled 0.92: the
+pooled number includes the fit conditions' own overfit and excluded
+the endpoint bins; the LOO read is the honest version.
+
+### 27.2 — LAW-WORSE: SLERP wins everywhere (B: 12/12 targets)
+
+Median |cos| at held-out targets, B legs: **SLERP 0.961, copy 0.850,
+L-log 0.733, L-lin 0.773** — median Δ(primary) = **−0.166**, law win
+share 0.0 (C: −0.102, win share 2/12 — both at the σ = 0.9625 fold
+where SLERP itself degrades to 0.57–0.59). Both pre-named variants
+lose; the θ-fits are fold-unstable (the L-log coefficients flip sign
+between folds), i.e. the in-plane angle is not affine in ln σ or σ.
+Per the defect note's interpretation: for a true fixed-plane geodesic
+the expected outcome was *parity*; LAW-WORSE is therefore a positive
+refutation — the misfit is real geometry (imperfect plane + non-affine
+rate), not scoring noise. **Q7's claim gate is not met; the
+manuscript keeps "rotates smoothly" as a description** (no-placeholder
+rule executes).
+
+### 27.3 — R̂ transfer: LAW-WORSE; the E25a lookup shape is settled
+
+Same pattern on the residual direction (median: SLERP 0.855, copy
+0.802, L-log 0.719; Δ = −0.176, win share 0.0). E25a, if ever frozen,
+stays **measure-every-bin + neighbor (SLERP) interpolation** — now
+with its quality quantified: neighbor interpolation reconstructs
+held-out R̂ at |cos| ≈ 0.74–1.01 across interior verdict bins. The
+768/σ = 0.4333 reliability hole keeps only the 896 read at that fold
+(SLERP 0.855) — neighbor coverage of the hole is *plausible but
+route-crossed*; record, don't over-claim.
+
+### 27.4 — NULL: the phase component is not the rotation generator
+
+V_phase = (C − C_pi)⊥ is **the most reproducible direction in this
+experiment** (rel_cos_Vp 0.87–0.97 on 768, 0.83–0.89 on 896 — higher
+than either leg) and yet: |cos(V̂p, t̂_C)| = 0.165 / 0.039 / 0.339 and
+|cos(V̂p, Ĉ)| = 0.154 / 0.389 / 0.036 at 768 σ = 0.7 / 0.8333 /
+0.9625 (medians 0.165 / 0.154 → NULL), with **in-plane share 0.01–0.09
+in the full-data C plane**. So the phase-borne share of the
+cancellation (E19.4: cos(C, C_pi) 0.50–0.67 — a large within-bin
+rotation) points in a direction essentially orthogonal to the entire
+axis-field geometry. Q7 candidate 1 dies at its foothold: the
+σ-rotation of the axis is **not** phase-generated. For paper 2 this
+is a sharp new fact, not merely a null — the cancellation axis and
+the phase-mediated component are *separate directions*, so the
+mechanism bridge must carry them as distinct objects (896 mirrors the
+768 read where readable; 896/σ = 0.9625 unreadable — its tangent's
+σ = 1.0 flank fails the C gate, as anticipated).
+
+### Honest notes
+
+- The fit set froze endpoint conditions (σ = 1.0, gated) as
+  fit-eligible; the global θ-fits are partly dragged by the endpoint
+  region where the field departs the mid-σ plane. An
+  endpoints-excluded law was **not** computed (it would be post-hoc
+  re-thresholding); if paper 2 wants it, it needs its own
+  pre-registration.
+- σ = 0.9625 is simultaneously the most *reliable* region (rel 0.87–0.95)
+  and the least *plane-shared* — reliability and geometric regularity
+  are different axes; don't conflate them when reading `e27_loo.png`.
+- All numbers are pooled directions at this operating point
+  (`anima_soup_sincos`); nothing per-sample, nothing objective-side.
+
+## Cost ladder (planned → actual)
+
+| item | planned | actual |
+|---|---|---|
+| full read | ~10 min CPU, ≤ ~30 GB | 567 s, 44-vector Gram (validation synthetics add ~20 s) |
+| GPU | none | none |
