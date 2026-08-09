@@ -128,7 +128,17 @@ def main() -> None:
     demote_route = None
     if args.sigma_demote:
         native_s, _, demote_s = args.sigma_demote.partition(":")
-        demote_route = (int(native_s), int(demote_s))
+        try:
+            demote_route = (int(native_s), int(demote_s))
+        except ValueError:
+            # A comma list belongs to the task runner (which expands it into one
+            # pass per route) — say so instead of dying inside int().
+            raise SystemExit(
+                f"--sigma_demote expects a single NATIVE:DEMOTE route, got "
+                f"{args.sigma_demote!r}. For several routes run one pass each, "
+                f"or use `make preprocess-demote` (it expands the comma list in "
+                f"configs/preprocess.toml)."
+            ) from None
 
     # Pre-flight: a fully-cached dataset needs no VAE — skip the (slow) load.
     if demote_route is not None:

@@ -18,7 +18,7 @@ Shipped training algorithms — adapter families.
 
 | Doc | Description |
 |-----|-------------|
-| [methods/psoft-integrated-ortholora.md](methods/psoft-integrated-ortholora.md) | OrthoLoRA (Cayley) — SVD-informed init, structural orthogonality via tiny skew-symmetric seeds |
+| [methods/svd-down-lora.md](methods/svd-down-lora.md) | SVD-Down LoRA — down-projection seeded from the pretrained weight's own singular vectors instead of random init; default down-init for plain LoRA |
 | [methods/hydra-lora.md](methods/hydra-lora.md) | HydraLoRA — MoE multi-head routing (shared-A experts), one cell of the three-axis routing surface in `configs/methods/lora.toml` |
 | [methods/timestep_mask.md](methods/timestep_mask.md) | T-LoRA — timestep-dependent rank masking (rank 1 at noise, full rank at clean) |
 | [methods/turbo.md](methods/turbo.md) | Turbo (DP-DMD) — diversity-preserved few-step distillation of the CFG=4 teacher into an N-step LoRA student (`make turbo`; published 4-step student on HF) |
@@ -78,6 +78,7 @@ Compiler, kernel, hardware setup, and training-time optimizer geometry.
 |-----|-------------|
 | [optimizations/for_compile.md](optimizations/for_compile.md) | Changes from sd-scripts for torch.compile / dynamo |
 | [optimizations/channel_scaling.md](optimizations/channel_scaling.md) | Channel Scaling — SmoothQuant-style per-channel LoRA gradient rebalance (on by default, α=0.5; inert on frozen-basis ortho variants) |
+| [optimizations/sigma_lowres.md](optimizations/sigma_lowres.md) | σ-demoted training (`--sigma_lowres`) — route each step's latent grid by noise level; stacked 768 router + placement spans (opt-in, ~−14% wall) |
 | [optimizations/fa4.md](optimizations/fa4.md) | Flash Attention 4 — why it was evaluated and removed |
 | [optimizations/adamw_fused.md](optimizations/adamw_fused.md) | AdamW8bit → fused AdamW — why bitsandbytes was dropped |
 | [optimizations/hydra_analysis.md](optimizations/hydra_analysis.md) | HydraLoRA — nsys-driven optimization pass (2026-05-03) |

@@ -58,6 +58,7 @@ import re
 import subprocess
 import sys
 from collections import namedtuple
+from collections.abc import Sequence
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -188,8 +189,42 @@ def known_make_targets() -> set[str]:
     return targets
 
 
-def _check_path(tok: str, top: set[str]) -> str | None:
-    """Return the token if it's a broken repo-rooted path, else None."""
+def _doc_bases(doc: Path) -> list[Path]:
+    """The roots a doc's relative refs may legitimately be written against.
+
+    Always the doc's own directory, plus — for a doc nested inside a
+    ``project/<line>/`` tree — that line's home. A line's digests cite
+    ``bench/report.md`` / ``bench/run_*.py`` meaning the LINE's bench dir (see
+    ``project/README.md``), and those digests are not all at the top of the
+    line: an experiment write-up several levels down (e.g.
+    ``paper_bench/experiments/e1/README.md``) cites the same line-relative
+    paths, which ``doc.parent`` alone never reaches.
+    """
+    bases = [doc.parent]
+    try:
+        rel = doc.relative_to(REPO_ROOT / "project")
+    except ValueError:
+        return bases
+    if len(rel.parts) >= 2:  # project/<line>/**/<doc>
+        line_home = REPO_ROOT / "project" / rel.parts[0]
+        if line_home != doc.parent:
+            bases.append(line_home)
+    return bases
+
+
+def _check_path(
+    tok: str, top: set[str], base: Path | Sequence[Path] | None = None
+) -> str | None:
+    """Return the token if it's a broken path reference, else None.
+
+    Resolved against the repo root first, then — when ``base`` is given — each
+    of the referencing doc's own roots (see ``_doc_bases``). Self-contained doc
+    trees cite their siblings relatively: every ``project/<line>/`` digest says
+    ``bench/report.md`` / ``bench/run_*.py`` meaning *that line's* bench dir
+    (see ``project/README.md``), which is a correct reference that a
+    root-only resolver reads as broken because ``bench/`` is also a real
+    top-level dir. Root-first ordering keeps repo-rooted refs authoritative.
+    """
     tok = tok.strip().rstrip(".")
     if not tok or tok.startswith(("http", "..", "/", "~", "mailto")):
         return None
@@ -198,11 +233,19 @@ def _check_path(tok: str, top: set[str]) -> str | None:
     first = tok.split("/", 1)[0]
     if first not in top:  # not rooted in the repo (URL / data dir / bare name)
         return None
-    if (REPO_ROOT / tok).exists():
-        return None
-    # Docs often cite a module without its extension (`bench/_common`) — accept.
-    if (REPO_ROOT / f"{tok}.py").exists():
-        return None
+    if base is None:
+        bases: list[Path] = []
+    elif isinstance(base, Path):
+        bases = [base]
+    else:
+        bases = list(base)
+    roots = [REPO_ROOT, *bases]
+    for root in roots:
+        if (root / tok).exists():
+            return None
+        # Docs often cite a module without its extension (`bench/_common`).
+        if (root / f"{tok}.py").exists():
+            return None
     return tok
 
 
@@ -223,6 +266,7 @@ def collect_issues(include_bench: bool = False) -> list[Issue]:
 
     for doc in doc_files(include_bench):
         rel = str(doc.relative_to(REPO_ROOT))
+        doc_bases = _doc_bases(doc)
         in_fence = False
         try:
             text = doc.read_text(encoding="utf-8", errors="ignore")
@@ -242,16 +286,17 @@ def collect_issues(include_bench: bool = False) -> list[Issue]:
             for rx in (_MULTI_RE, _SINGLE_RE):
                 for m in rx.finditer(line):
                     tok = m.group(0)
-                    # A glob prefix (`results/20260607-*`) isn't a literal path
-                    # claim — the regex truncates at the '*'. Anchor on the parent
-                    # directory instead so the family ref still verifies its root
-                    # but the partial stem doesn't read as a broken path.
-                    if line[m.end() : m.end() + 1] == "*":
+                    # A glob prefix (`results/20260607-*`) or a brace expansion
+                    # (`results/20260801-{1226,1425}`) isn't a literal path
+                    # claim — the regex truncates at the '*' / '{'. Anchor on the
+                    # parent directory instead so the family ref still verifies
+                    # its root but the partial stem doesn't read as broken.
+                    if line[m.end() : m.end() + 1] in ("*", "{"):
                         head, sep, _ = tok.rpartition("/")
                         if not sep:
                             continue  # bare glob (`foo*`) — nothing to anchor
                         tok = head + "/"
-                    bad = _check_path(tok, top)
+                    bad = _check_path(tok, top, base=doc_bases)
                     if bad and bad not in seen:
                         seen.add(bad)
                         issues.append(

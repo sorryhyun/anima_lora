@@ -58,8 +58,8 @@ path arm 1 exposed (+4 global leak, +6…+8 verbatim patch-copy) — both
 behaviors coexist in one adapter, selected by operating point. Caveats:
 train-set pairs (upper bound), so a held-out check is owed; and the
 vinj_t6-parity target on the 1b geometry edit is still gate (b)'s to answer.
-Run dirs: `bench/results/20260725-2318-…-engaged/` and
-`…2326-…-midgate/`.
+Run dirs: `bench/results/20260725-2318-phase2-subject-probe-v2e4-engaged/`
+and `bench/results/20260725-2326-phase2-subject-probe-v2e4-midgate/`.
 
 ## Q8 — Does `b_cond` ever learn? (new, 2026-07-25)
 

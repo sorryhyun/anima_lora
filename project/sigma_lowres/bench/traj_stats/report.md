@@ -149,7 +149,8 @@ front-loaded decay. Per-family: sparse prompts commit *earlier* (0.28 by
 earlier lock); detailed and no_trigger are indistinguishable. Effective
 guidance (`guide`) is even more front-loaded: post-combine ‖v_f − v_u‖
 drops 2.14 → 0.44 → 0.26 over σ=1.0 → 0.80 → 0.33, consistent with the
-cross-attn front-loading finding (`bench/crossattn_drive`, archived).
+cross-attn front-loading finding (the `crossattn_drive` bench, since
+deleted).
 
 ### (b) Channel usage is skewed ~4× and stable across arms
 

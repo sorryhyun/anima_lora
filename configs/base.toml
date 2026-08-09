@@ -89,10 +89,29 @@ gradient_accumulation_steps=1
 train_adaln = true
 adaln_rank = 16
 
-# sigma_lowres_yarnsig must NOT get a default here: train.py rejects yarnsig
-# without sigma_lowres, so a base-level value crashes every non-sigma_lowres
-# run. The bare CLI flag already defaults to the probe operating point.
+# σ-demoted training — see docs/optimizations/sigma_lowres.md. Off by default;
+# flip THIS ONE BOOLEAN (or pass --sigma_lowres) to run the shipped **combo**
+# recipe spelled out in the keys below — the stacked router, unscheduled:
+#   768 if 0.65 < σ < 0.95;  elif σ > 0.5 → 896 (+yarnsig);  else native
+# Measured at E16 scale: −18.3% wall, inside the seed lottery on both corpora.
+# PREREQUISITE: both routes' sibling latents must exist on disk — set
+# `sigma_demote = "1024:896,1024:768"` in configs/preprocess.toml and run
+# `make preprocess` (or `make preprocess-demote`) first, else the deep route
+# silently falls through to the primary one (warn-once per rule).
+# Every key below is inert while sigma_lowres = false.
 sigma_lowres = false
+# Primary rule: 1024→896 on the σ>0.5 half-line. These two are already the
+# argparse defaults — spelled out so the whole active recipe reads in one place.
+sigma_lowres_route = "1024:896"
+sigma_lowres_threshold = 0.5
+sigma_lowres_span = "late:0.75"
+# Secondary rule, PRIORITY over the primary: 1024→768 inside its certified
+# WINDOW. Both bounds are mandatory (an unbounded rule 2 would shadow rule 1 at
+# every σ and silence yarnsig — train.py refuses that at setup, before model load).
+sigma_lowres_route2 = "1024:768"
+sigma_lowres_threshold2 = 0.65
+sigma_lowres_threshold2_max = 0.95
+sigma_lowres_span2 = "late:0.75"
 
 use_repa = false
 

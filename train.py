@@ -670,12 +670,28 @@ class AnimaTrainer:
             )
         return native, demote
 
+    # The probe's operating point, and the value `--sigma_lowres` implies.
+    YARNSIG_OPERATING_POINT = "1,4,0.35,2"
+    _YARNSIG_OFF = frozenset({"", "0", "off", "no", "none", "false"})
+
     @staticmethod
     def _yarnsig_params(args):
         """Parsed ``--sigma_lowres_yarnsig`` as ``(alpha, beta, center, gamma)``,
-        or None when off. Validates once; cached on the args namespace."""
+        or None when off. Validates once; cached on the args namespace.
+
+        **Default-on with ``--sigma_lowres``**: yarnsig is part of the shipped
+        combo recipe (docs/optimizations/sigma_lowres.md), so leaving the flag
+        unset resolves to the operating point rather than to off — a plain
+        ``--sigma_lowres`` run gets the recipe, not a silently degraded arm.
+        Opt out with ``--sigma_lowres_yarnsig off``. The effective value is
+        written back onto ``args`` so the snapshot records what actually ran
+        instead of an ambiguous empty field.
+        """
         raw = getattr(args, "sigma_lowres_yarnsig", None)
-        if not raw:
+        if raw is None and getattr(args, "sigma_lowres", False):
+            raw = AnimaTrainer.YARNSIG_OPERATING_POINT
+            args.sigma_lowres_yarnsig = raw
+        if raw is None or str(raw).strip().lower() in AnimaTrainer._YARNSIG_OFF:
             return None
         cached = getattr(args, "_yarnsig_parsed", None)
         if cached is not None:
@@ -699,6 +715,30 @@ class AnimaTrainer:
         if rule not in (1, 2):
             raise ValueError(f"sigma_lowres rule must be 1 or 2, got {rule!r}")
         return "" if rule == 1 else "2"
+
+    @staticmethod
+    def _sigma_rule_cfg(args, rule):
+        """``(threshold, threshold_max, span_spec)`` for one rule.
+
+        Written as LITERAL ``getattr(args, "…")`` calls, one branch per rule,
+        rather than a computed ``f"sigma_lowres_threshold{sfx}"``: the H2 drift
+        guard (``tests/config_closure.py``) AST-scans for literal names only, so
+        a computed name is invisible to it — which is exactly the
+        rename-and-silently-default failure the guard exists to catch.
+        """
+        if rule == 1:
+            return (
+                getattr(args, "sigma_lowres_threshold", 0.5),
+                getattr(args, "sigma_lowres_threshold_max", None),
+                getattr(args, "sigma_lowres_span", None),
+            )
+        if rule == 2:
+            return (
+                getattr(args, "sigma_lowres_threshold2", None),
+                getattr(args, "sigma_lowres_threshold2_max", None),
+                getattr(args, "sigma_lowres_span2", None),
+            )
+        raise ValueError(f"sigma_lowres rule must be 1 or 2, got {rule!r}")
 
     @staticmethod
     def _sigma_route2(args):
@@ -727,7 +767,7 @@ class AnimaTrainer:
         off. ``mode`` ∈ early|late|spread, 0 < frac < 1 (default 0.5).
         Validates once; cached on the args namespace per rule."""
         sfx = AnimaTrainer._sigma_rule_suffix(rule)
-        raw = getattr(args, f"sigma_lowres_span{sfx}", None)
+        raw = AnimaTrainer._sigma_rule_cfg(args, rule)[2]
         if not raw:
             return None
         cache_attr = f"_sigma_span{sfx}_parsed"
@@ -757,11 +797,12 @@ class AnimaTrainer:
         measured demote-safe region is a per-route σ WINDOW, not a
         half-line (e.g. 768's least-liability region is ~(0.65, 0.95),
         with the σ=1 endpoint elevated again — tab:debiasedmap)."""
-        sfx = AnimaTrainer._sigma_rule_suffix(rule)
-        threshold = float(getattr(args, f"sigma_lowres_threshold{sfx}", 0.5))
+        threshold, threshold_max, _ = AnimaTrainer._sigma_rule_cfg(args, rule)
+        # Rule 2's bounds have no defaults — _validate_sigma_rules() refuses a
+        # route2 without both, so an unset bound here can only be rule 1's.
+        threshold = 0.5 if threshold is None else float(threshold)
         if not bool((sigmas_flat > threshold).all()):
             return False
-        threshold_max = getattr(args, f"sigma_lowres_threshold{sfx}_max", None)
         if threshold_max is not None:
             return bool((sigmas_flat < float(threshold_max)).all())
         return True
@@ -796,6 +837,67 @@ class AnimaTrainer:
         return random.Random(seed * 1_000_003 + step_idx).random() < frac
 
     @staticmethod
+    def _validate_sigma_rules(args):
+        """Validate the whole sigma_lowres surface UP FRONT, at setup.
+
+        Two failures this exists to prevent, both silent before:
+
+        1. ``--sigma_lowres_route2`` without both of its σ bounds. Rule 2 has
+           PRIORITY, so an unbounded gate shadows the primary rule at every σ
+           it accepts — a lone ``--sigma_lowres_route2 1024:768`` would demote
+           the deep route across the whole σ>0.5 half-line, including the
+           (0.5, 0.65) stretch where the measured gap is +0.25…+0.38 (badly
+           off-map) and the elevated σ=1 endpoint, while silently disabling
+           yarnsig (primary-rule only). The deep route's certified region is a
+           WINDOW; requiring both bounds makes you say so.
+        2. A malformed span spec. Parsing used to happen on the first train
+           forward, i.e. after model load, adapter attach and caching — a typo
+           cost minutes before it raised.
+        """
+        route = AnimaTrainer._sigma_route(args)
+        route2 = AnimaTrainer._sigma_route2(args)
+        if route2 is not None:
+            lo, hi, _ = AnimaTrainer._sigma_rule_cfg(args, 2)
+            missing = [
+                flag
+                for flag, val in (
+                    ("--sigma_lowres_threshold2", lo),
+                    ("--sigma_lowres_threshold2_max", hi),
+                )
+                if val is None
+            ]
+            if missing:
+                raise ValueError(
+                    f"--sigma_lowres_route2 {route2[0]}:{route2[1]} needs an "
+                    f"explicit σ WINDOW — missing {', '.join(missing)}. Rule 2 "
+                    "has priority over rule 1, so an unbounded gate demotes on "
+                    "the deep route everywhere it fires (shadowing the primary "
+                    "rule and silencing yarnsig, which is primary-only) — "
+                    "including σ below the route's certified window, where the "
+                    "measured demote gap is large. The shipped 1024:768 window "
+                    "is 0.65 < σ < 0.95."
+                )
+            if not (0.0 <= float(lo) < float(hi) <= 1.0):
+                raise ValueError(
+                    f"--sigma_lowres_threshold2/_max must satisfy "
+                    f"0 <= lo < hi <= 1, got {lo} / {hi}"
+                )
+        hi1 = AnimaTrainer._sigma_rule_cfg(args, 1)[1]
+        if hi1 is not None and not (
+            0.0 <= float(getattr(args, "sigma_lowres_threshold", 0.5)) < float(hi1)
+        ):
+            raise ValueError(
+                f"--sigma_lowres_threshold_max ({hi1}) must exceed "
+                f"--sigma_lowres_threshold "
+                f"({getattr(args, 'sigma_lowres_threshold', 0.5)})"
+            )
+        # Parse both spans and yarnsig here so a typo raises at setup.
+        AnimaTrainer._sigma_span_params(args, 1)
+        AnimaTrainer._sigma_span_params(args, 2)
+        AnimaTrainer._yarnsig_params(args)
+        return route, route2
+
+    @staticmethod
     def _sigma_demote_choice(args, sigmas_flat, step_idx):
         """Which demote rule fires this step: 2, 1, or None.
 
@@ -814,6 +916,36 @@ class AnimaTrainer:
         ):
             return 1
         return None
+
+    def _sigma_rule_dead_warn(self, args, rule):
+        """Warn once per rule when its gate passed but the sibling latent for
+        that route is absent from the batch — the rule is configured but dead.
+
+        Silent before: rule 2 would fall through to rule 1 and the run would
+        train as a plain single-route arm, differing only in wall-clock.
+        """
+        warned = getattr(self, "_sigma_rule_dead_warned", None)
+        if warned is None:
+            warned = self._sigma_rule_dead_warned = set()
+        if rule in warned:
+            return
+        warned.add(rule)
+        route = (
+            self._sigma_route2(args) if rule == 2 else self._sigma_route(args)
+        ) or ("?", "?")
+        logger.warning(
+            "sigma_lowres: rule %d (%s:%s) passed its σ gate but the batch "
+            "carries no sibling latent for that route — those steps fall "
+            "through to %s. Emit it with `make preprocess-demote "
+            'ARGS="--sigma_demote %s:%s"` (or list both routes in '
+            "configs/preprocess.toml's sigma_demote). Warned once per rule.",
+            rule,
+            route[0],
+            route[1],
+            "rule 1 / native" if rule == 2 else "native",
+            route[0],
+            route[1],
+        )
 
     def _maybe_sigma_demote(
         self, ctx: TrainCtx, batch, latents, is_train, generator=None
@@ -841,6 +973,12 @@ class AnimaTrainer:
         # Train-forward index for the step-span gate — counted on EVERY
         # sigma_lowres train forward (off-route batches included) so the
         # index stays aligned to global training progress.
+        # Pre-seeded with the resume offset (see the ``_sigma_span_step``
+        # assignment before build_loop_state): with --skip_until_initial_step
+        # the skipped steps take no forward, so a plain 0-based counter would
+        # measure the span boundary from the resume point against an absolute
+        # T — a run resumed at 50% under late:0.5 would demote over the last
+        # 25% instead of the last half.
         step_idx = getattr(self, "_sigma_span_step", 0) + 1
         self._sigma_span_step = step_idx
         demoted = batch.get("demoted_latents")
@@ -883,6 +1021,10 @@ class AnimaTrainer:
         # the next (partial-emit degrade, mirroring the single-rule path).
         choice = self._sigma_demote_choice(args, sigmas_flat, step_idx)
         if choice == 2 and demoted2 is None:
+            # Un-emitted deep route: the run keeps demoting on rule 1 and looks
+            # healthy, so warn — the only other symptom is a few points of
+            # wall-clock, which nobody reads as a bug.
+            self._sigma_rule_dead_warn(args, 2)
             choice = (
                 1
                 if self._sigma_gate_allows(args, sigmas_flat)
@@ -890,6 +1032,7 @@ class AnimaTrainer:
                 else None
             )
         if choice == 1 and demoted is None:
+            self._sigma_rule_dead_warn(args, 1)
             choice = None
         if choice is not None:
             native_hw = tuple(latents.shape[-2:])
@@ -1263,6 +1406,12 @@ class AnimaTrainer:
             # Realized patch-token histogram (per-arm FLOPs accounting, E4):
             # counts examples at the grid the step ACTUALLY ran on (post
             # demote swap). Emitted with the run_end progress event.
+            # NOT gated on sigma_lowres: the E4 A/B's native control arm runs
+            # with no sigma_lowres flag at all (`extra_argv=[]` in
+            # paper_bench/experiments/e4/e4_manifest.py), and e4_flops.py hard-
+            # errors on a run_end without this field — so gating it would break
+            # the very comparison it exists to serve. It is also non-trivial on
+            # any free-fit run, whose steps span several token counts.
             tok = (latents.shape[-2] // 2) * (latents.shape[-1] // 2)
             self._token_step_hist[tok] = self._token_step_hist.get(tok, 0) + int(
                 latents.shape[0]
@@ -1999,8 +2148,10 @@ class AnimaTrainer:
         # datasets only — validation stays native so val loss is comparable
         # across the A/B arms the gate requires.
         if getattr(args, "sigma_lowres", False):
-            route = self._sigma_route(args)
-            route2 = self._sigma_route2(args)
+            # Whole-surface validation before anything is wired: bad routes,
+            # an unwindowed rule 2, and malformed spans all raise HERE rather
+            # than on the first train forward.
+            route, route2 = self._validate_sigma_rules(args)
 
             enabled_on = 0
             for ds in getattr(train_dataset_group, "datasets", []):
@@ -2023,22 +2174,23 @@ class AnimaTrainer:
                     "%s < σ < %s%s.",
                     route2[0],
                     route2[1],
-                    getattr(args, "sigma_lowres_threshold2", 0.5),
-                    getattr(args, "sigma_lowres_threshold2_max", None) or "1",
+                    *self._sigma_rule_cfg(args, 2)[:2],
                     (
-                        f", span {getattr(args, 'sigma_lowres_span2', None)}"
-                        if getattr(args, "sigma_lowres_span2", None)
+                        f", span {self._sigma_rule_cfg(args, 2)[2]}"
+                        if self._sigma_rule_cfg(args, 2)[2]
                         else ""
                     ),
                 )
-            yarn = self._yarnsig_params(args)  # validates the format up front
+            yarn = self._yarnsig_params(args)
             if yarn is not None:
                 logger.info(
                     "sigma_lowres yarnsig ENABLED: banded rope on demoted "
                     "steps, α,β=%s,%s, μ=sigmoid(%s·[logit(σ)−logit(%s)]).",
                     *(yarn[0], yarn[1], yarn[3], yarn[2]),
                 )
-        elif getattr(args, "sigma_lowres_yarnsig", None):
+        elif self._yarnsig_params(args) is not None:
+            # `off` (and friends) parse to None, so opting out in a config that
+            # never enables sigma_lowres stays inert instead of hard-failing.
             raise ValueError(
                 "--sigma_lowres_yarnsig requires --sigma_lowres (it only "
                 "changes rope on demoted steps, which need the demote sidecar)."
@@ -3025,6 +3177,14 @@ class AnimaTrainer:
         # alive: CMMD validation enumerates its image_data to pair held-out
         # references with generated samples.
         del train_dataset_group
+
+        # sigma_lowres step-span gate: seed the train-forward counter with the
+        # resume offset. `initial_step` is already in forward units here (it was
+        # multiplied by grad-accum under --skip_until_initial_step) and covers
+        # every resume path — --initial_step, --initial_epoch, and the
+        # steps-from-state auto-resume — which re-deriving it from args inside
+        # the loop would not.
+        self._sigma_span_step = initial_step
 
         loop_state = build_loop_state(
             self,

@@ -498,15 +498,17 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         const="1,4,0.35,2",
         default=None,
         metavar="ALPHA,BETA,CENTER,GAMMA",
-        help="with --sigma_lowres: on demoted steps, build RoPE with the "
-        "σ-gated YaRN banded alignment (yarnsig — the probe-validated "
-        "Phase-1b refinement candidate). Spatial frequency bands with fewer "
-        "than ALPHA·μ(σ) rotations across the demoted extent get the full PI "
+        help="on demoted steps, build RoPE with the σ-gated YaRN banded "
+        "alignment (yarnsig). Spatial frequency bands with fewer than "
+        "ALPHA·μ(σ) rotations across the demoted extent get the full PI "
         "stretch to native coordinates, bands above BETA·μ(σ) keep native "
         "spacing, linear ramp between; μ(σ) = sigmoid(GAMMA·[logit(σ) − "
         "logit(CENTER)]) is SigMa's boundary gate. No second σ-threshold — "
         "the gate lives inside the rope schedule; native steps are untouched. "
-        "Bare flag = the probe's operating point (1,4,0.35,2).",
+        "ON BY DEFAULT whenever --sigma_lowres is set, at the probe's "
+        "operating point (1,4,0.35,2) — it is part of the shipped combo "
+        "recipe. Pass ALPHA,BETA,CENTER,GAMMA to move the operating point, or "
+        "`off` to disable it. Applies to PRIMARY-rule demotes only.",
     )
     parser.add_argument(
         "--sigma_lowres_route2",
@@ -523,8 +525,11 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
     parser.add_argument(
         "--sigma_lowres_threshold2",
         type=float,
-        default=0.5,
-        help="lower σ bound for the secondary rule (--sigma_lowres_route2).",
+        default=None,
+        help="lower σ bound for the secondary rule (--sigma_lowres_route2). "
+        "REQUIRED with route2 — the secondary rule has priority, so an "
+        "unbounded gate here would shadow the primary rule at every σ (and "
+        "silence yarnsig, which is primary-only).",
     )
     parser.add_argument(
         "--sigma_lowres_threshold2_max",
@@ -532,7 +537,9 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         default=None,
         metavar="SIGMA",
         help="upper σ bound for the secondary rule — window semantics as "
-        "--sigma_lowres_threshold_max.",
+        "--sigma_lowres_threshold_max. REQUIRED with route2: the deep route's "
+        "safe region is a WINDOW, so a half-line gate here demotes below the "
+        "window where the measured gap is +0.25…+0.38 (badly off-map).",
     )
     parser.add_argument(
         "--sigma_lowres_span2",

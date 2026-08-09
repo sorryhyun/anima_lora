@@ -50,7 +50,7 @@ guarantee. Orthogonality is structural — no regularization knob.
 use_ortho = true
 ```
 
-Linear layers only (no Conv2d). See [`../methods/psoft-integrated-ortholora.md`](../methods/psoft-integrated-ortholora.md).
+Linear layers only (no Conv2d). See [`../../_archive/methods/psoft-integrated-ortholora.md`](../../_archive/methods/psoft-integrated-ortholora.md) (archived — superseded by [SVD-Down LoRA](../methods/svd-down-lora.md) in the showcased variant lineup).
 
 ### T-LoRA (timestep-dependent rank masking)
 

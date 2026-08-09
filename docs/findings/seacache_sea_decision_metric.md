@@ -152,7 +152,7 @@ Not yet settled:
   matched-compute measurement showed the tail actual-rate is governed by
   `stop_caching_step` (identical in both arms; the apparent SEA reallocation was
   a stop-mismatch artifact), and the DPCache Phase-0 bench
-  (`bench/spectrum_dp/`, `docs/findings/dpcache_dp_phase0_refuted.md`) showed a
+  (`_archive/bench/spectrum_dp/`, `docs/findings/dpcache_dp_phase0_refuted.md`) showed a
   planner *freed* from the tail forcing at matched total compute voluntarily
   re-places 3 forwards below σ=0.45 — the forced tail is where a
   budget-constrained schedule wants them anyway. Do not re-propose tail

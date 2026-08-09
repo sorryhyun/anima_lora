@@ -32,10 +32,13 @@ def test_inference_getattr_reads_are_declared_flags():
 def test_train_getattr_reads_are_declared_flags():
     """``getattr(args, …)`` in train.py ⊆ train argparse flags.
 
-    Two intentional non-flag reads are allowlisted:
+    Three intentional non-flag reads are allowlisted:
 
     * ``_network_kwargs`` — private cache set by ``resolve_network_kwargs``,
       never an argparse flag.
+    * ``_yarnsig_parsed`` — private memo of the parsed
+      ``--sigma_lowres_yarnsig`` tuple, stashed on the namespace so the format
+      is validated once. Same pattern as ``_network_kwargs``.
     * ``sampler`` — the *training-time* M1 noise-sampler registry key. There is
       deliberately no ``--sampler`` train flag (the inference ``--sampler`` is a
       different concept), so this read always resolves to ``"default"``. Pinned
@@ -49,5 +52,30 @@ def test_train_getattr_reads_are_declared_flags():
         reads,
         declared,
         what="train args (train.py)",
-        allow_unregistered=frozenset({"_network_kwargs", "sampler"}),
+        allow_unregistered=frozenset({"_network_kwargs", "_yarnsig_parsed", "sampler"}),
     )
+
+
+def test_sigma_rule2_flags_are_statically_visible():
+    """The rule-2 σ flags must be read by LITERAL name in train.py.
+
+    ``_sigma_rule_cfg`` deliberately spells each rule's flags out instead of
+    building ``f"sigma_lowres_threshold{sfx}"``: the closure guard above
+    AST-scans for literal names, so a computed name is invisible to it — the
+    flag could be renamed in cli_args.py and every read would silently fall
+    back to its default. This pins the property the guard depends on.
+    """
+    reads = getattr_keys(_REPO / "train.py", receiver="args")
+    for flag in (
+        "sigma_lowres_threshold",
+        "sigma_lowres_threshold_max",
+        "sigma_lowres_span",
+        "sigma_lowres_threshold2",
+        "sigma_lowres_threshold2_max",
+        "sigma_lowres_span2",
+        "sigma_lowres_route2",
+    ):
+        assert flag in reads, (
+            f"{flag} is not read by literal name in train.py — a computed "
+            "getattr name escapes the H2 drift guard"
+        )

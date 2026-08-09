@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -135,17 +136,24 @@ def kill_tree(pid: int, *, grace_seconds: float = 5.0) -> None:
     """Terminate ``pid`` and every descendant; SIGKILL survivors after grace.
 
     Snapshots descendants up-front — children of a dying process get reparented
-    and would slip past a re-walk. Safe to call on an already-dead PID.
+    and would slip past a re-walk. Safe to call on an already-dead PID, and on
+    one we have no rights to: every psutil call here swallows ``AccessDenied``,
+    including the reap-wait. ``psutil.wait_procs`` cannot be used for that wait
+    because it lets ``AccessDenied`` escape from its inner ``Process.wait()`` —
+    which crashed the daemon worker in issue #83 when the guard aimed at a
+    system process. We open-code the wait on a shared deadline instead, so one
+    unwaitable member can't abort the reap for the rest of the family (nor can a
+    large family multiply the grace period).
     """
     try:
         parent = psutil.Process(pid)
-    except psutil.NoSuchProcess:
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
         return
 
     family = [parent]
     try:
         family.extend(parent.children(recursive=True))
-    except psutil.NoSuchProcess:
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
         pass
 
     for p in family:
@@ -154,7 +162,15 @@ def kill_tree(pid: int, *, grace_seconds: float = 5.0) -> None:
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
 
-    _, alive = psutil.wait_procs(family, timeout=grace_seconds)
+    deadline = time.monotonic() + grace_seconds
+    alive = []
+    for p in family:
+        try:
+            p.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except psutil.TimeoutExpired:
+            alive.append(p)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass  # gone, or not ours to wait on — either way, don't escalate
     for p in alive:
         try:
             p.kill()

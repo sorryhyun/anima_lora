@@ -143,39 +143,77 @@ def _boolish(value, default: bool = False) -> bool:
     return default
 
 
-def _sigma_demote_route(extra) -> str | None:
-    """The σ-demote route (``"N:D"``) when the demote emit is enabled, else None.
+def _sigma_demote_routes(extra) -> list[str]:
+    """The σ-demote routes (``["N:D", …]``) to chain, or ``[]`` when off.
 
     Enable with ``sigma_demote = true`` in ``configs/preprocess.toml`` (the
-    measured-safe ``1024:896`` route) or a ``"N:D"`` string to pick another
-    route (probe it first). Env ``SIGMA_DEMOTE`` wins over the merged config
-    (GUI auto-chain parity — the CONFIG_FILE snapshot strips preprocess-only
-    keys). An explicit ``--sigma_demote`` in ``ARGS`` means this invocation IS
-    a demote run already — never chain a second one.
+    measured-safe ``1024:896`` route), a ``"N:D"`` string to pick another route
+    (probe it first), or a **comma list** of routes to emit several siblings in
+    one pass — the stacked router (``--sigma_lowres_route2``) needs BOTH its
+    routes' keys present, e.g. ``sigma_demote = "1024:896,1024:768"``. Each
+    route lands its own ``demoted_{H}x{W}`` key inside the same native npz, so
+    the passes are independent and idempotent. Env ``SIGMA_DEMOTE`` wins over
+    the merged config (GUI auto-chain parity — the CONFIG_FILE snapshot strips
+    preprocess-only keys). An explicit ``--sigma_demote`` in ``ARGS`` means this
+    invocation IS a demote run already — never chain a second one.
     """
     if "--sigma_demote" in extra:
-        return None
+        return []
     raw = os.environ.get("SIGMA_DEMOTE")
     if raw is None:
         from ._common import _path_overrides
 
         raw = _path_overrides().get("sigma_demote")
     if raw is None or raw is False:
-        return None
+        return []
     if raw is True:
-        return "1024:896"
+        return ["1024:896"]
     text = str(raw).strip()
     if not text or text.lower() in {"0", "false", "no", "off"}:
-        return None
+        return []
     if text.lower() in {"1", "true", "yes", "on"}:
-        return "1024:896"
-    if ":" not in text:
-        print(
-            f"  [preprocess] ignoring sigma_demote={text!r} — expected "
-            'true/false or "NATIVE:DEMOTE" (e.g. "1024:896")'
-        )
-        return None
-    return text
+        return ["1024:896"]
+    routes = []
+    for part in text.split(","):
+        route = part.strip()
+        if not route:
+            continue
+        if ":" not in route:
+            print(
+                f"  [preprocess] ignoring sigma_demote entry {route!r} — expected "
+                'true/false or "NATIVE:DEMOTE" (e.g. "1024:896", or a comma '
+                'list "1024:896,1024:768" for the stacked router)'
+            )
+            continue
+        if route not in routes:  # a repeated route would just re-scan the corpus
+            routes.append(route)
+    return routes
+
+
+def _pop_explicit_demote_routes(extra) -> tuple[list[str], list[str]]:
+    """Pull an explicit ``--sigma_demote`` out of ``extra``, splitting a comma list.
+
+    ``cache_latents.py`` parses a single ``NATIVE:DEMOTE`` (``int()`` on the
+    halves), so a comma list has to be expanded into one pass per route before
+    it reaches the script. Returns ``(routes, cleaned_extra)``.
+    """
+    routes: list[str] = []
+    cleaned: list[str] = []
+    i = 0
+    while i < len(extra):
+        tok = extra[i]
+        if tok in {"--sigma_demote", "--sigma-demote"}:
+            if i + 1 >= len(extra):
+                raise SystemExit(f"{tok} requires a value (e.g. 1024:896)")
+            for part in str(extra[i + 1]).split(","):
+                route = part.strip()
+                if route and route not in routes:
+                    routes.append(route)
+            i += 2
+            continue
+        cleaned.append(tok)
+        i += 1
+    return routes, cleaned
 
 
 def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
@@ -589,27 +627,18 @@ def cmd_preprocess_vae(extra):
             *extra,
         ]
     )
-    # sigma_demote = true in preprocess.toml chains the demote emit here, so
+    # sigma_demote in preprocess.toml chains the demote emit(s) here, so
     # `make preprocess` / `preprocess-vae` keep the sibling keys current and a
     # --sigma_lowres run never trains against a stale/missing demoted cache.
-    route = _sigma_demote_route(extra)
-    if route is not None:
+    # One pass per configured route — the stacked router needs both present.
+    for route in _sigma_demote_routes(extra):
         print(f"  [preprocess] sigma_demote={route} → emitting demoted sibling latents")
-        cmd_preprocess_demote(["--sigma_demote", route, *extra])
+        _run_demote_pass(route, extra)
 
 
-def cmd_preprocess_demote(extra):
-    """Emit σ-demote sibling latents (sigma_lowres Phase 1b, 1024→896).
-
-    Same VAE-load path as ``preprocess-vae``; appends a ``demoted_{H}x{W}``
-    key inside each 1024-tier image's existing native npz. Idempotent.
-    Requires ``preprocess-vae`` to have run first. Pass ``ARGS="--sigma_demote
-    N:D"`` to override the route (probe a new one before shipping it).
-    ``sigma_demote = true`` in ``configs/preprocess.toml`` chains this
-    automatically after every ``preprocess-vae`` / ``preprocess`` pass.
-    """
+def _run_demote_pass(route: str, extra) -> None:
+    """One ``cache_latents.py`` pass emitting a single route's demoted siblings."""
     pp_args = _preprocess_path_pattern_args(extra)
-    route_args = [] if "--sigma_demote" in extra else ["--sigma_demote", "1024:896"]
     run(
         [
             PY,
@@ -626,11 +655,38 @@ def cmd_preprocess_demote(extra):
             "0",
             "--recursive",
             "--no_half_vae",
-            *route_args,
+            "--sigma_demote",
+            route,
             *pp_args,
             *extra,
         ]
     )
+
+
+def cmd_preprocess_demote(extra):
+    """Emit σ-demote sibling latents (sigma_lowres Phase 1b, e.g. 1024→896).
+
+    Same VAE-load path as ``preprocess-vae``; appends a ``demoted_{H}x{W}``
+    key inside each native-tier image's existing npz. Idempotent. Requires
+    ``preprocess-vae`` to have run first.
+
+    Routes come from ``sigma_demote`` in ``configs/preprocess.toml`` (or the
+    ``SIGMA_DEMOTE`` env var) — the SAME source the automatic chain off
+    ``preprocess-vae`` uses, so a comma list like ``"1024:896,1024:768"``
+    emits BOTH siblings the stacked router (``--sigma_lowres_route2``) needs
+    from this target too. ``ARGS="--sigma_demote N:D[,N:D…]"`` overrides
+    (probe a new route before shipping it); with neither set we fall back to
+    the certified ``1024:896``. ``cache_latents.py`` takes one route per
+    invocation, so each route is its own pass.
+    """
+    routes, extra = _pop_explicit_demote_routes(extra)
+    if not routes:
+        # `extra` no longer carries --sigma_demote, so this reads the config/env.
+        routes = _sigma_demote_routes(extra) or ["1024:896"]
+    for route in routes:
+        if len(routes) > 1:
+            print(f"  [preprocess] sigma_demote={route} → emitting demoted siblings")
+        _run_demote_pass(route, extra)
 
 
 _QWEN3_TOKENIZER = "models/text_encoders/qwen_3_06b_base.safetensors"

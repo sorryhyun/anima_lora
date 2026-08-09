@@ -31,13 +31,17 @@ caption_tag_dropout_rate = 0.1
 # Override: make preprocess ARGS="--caption_tag_randomize_rate 0.2"
 caption_tag_randomize_rate = 0.0
 
-# σ-demote sibling latents (sigma_lowres Phase 1b). true = after every VAE pass
+# σ-demote sibling latents (sigma_lowres). true = after every VAE pass
 # (`make preprocess` / `preprocess-vae`) also emit the demoted_{H}x{W} keys the
-# `--sigma_lowres` trainer swaps to, on the measured-safe 1024:896 route — so the
+# `--sigma_lowres` trainer swaps to, on the certified 1024:896 route — so the
 # sibling cache never goes stale as images are added. A "NATIVE:DEMOTE" string
-# picks another route (probe it first — 1024:896 is the only measured-safe one).
+# picks another route; a COMMA LIST emits several in one pass, which is what the
+# stacked router (--sigma_lowres_route2) needs — both routes' keys must exist or
+# the deep route silently degrades to native. For the shipped combolate recipe:
+#   sigma_demote = "1024:896,1024:768"
 # false = emit only via the explicit `make preprocess-demote`. Env: SIGMA_DEMOTE.
-sigma_demote = false
+# See docs/optimizations/sigma_lowres.md.
+sigma_demote = "1024:896,1024:768"
 
 # Preprocess input filter. drop_lowres_images = false keeps every image; otherwise
 # images under min_pixels are skipped at resize/VAE/TE. Override per-run:

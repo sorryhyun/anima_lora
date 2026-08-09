@@ -215,6 +215,20 @@ _GROUPS = {
         "sigma_bucket_boundaries",
         "use_repa",
         "repa_target_dog",
+        # σ-demoted training: the master boolean plus the stacked-router keys it
+        # gates. Grouped with (and pinned next to) use_repa rather than left in
+        # the "Other" junk drawer — every key here is inert while sigma_lowres
+        # is off, so they read as one switch + its operating point.
+        "sigma_lowres",
+        "sigma_lowres_route",
+        "sigma_lowres_threshold",
+        "sigma_lowres_threshold_max",
+        "sigma_lowres_yarnsig",
+        "sigma_lowres_span",
+        "sigma_lowres_route2",
+        "sigma_lowres_threshold2",
+        "sigma_lowres_threshold2_max",
+        "sigma_lowres_span2",
         "train_adaln",
         "adaln_rank",
         "adaln_alpha",

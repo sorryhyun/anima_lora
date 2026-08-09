@@ -358,7 +358,7 @@ CMMD non-inferiority + rendered comparison still decide (renders:
 `output/ckpt/anima_lora_tenth4{p,s}_*.safetensors`.
 
 The rank-space ΔW comparison is now a permanent instrument:
-`bench/compare_ckpt_dw.py` (global + per-block cosines; reproduces this
+`project/sigma_lowres/bench/compare_ckpt_dw.py` (global + per-block cosines; reproduces this
 table exactly; paired runs only — unpaired arms read the 0.09 lottery floor
 regardless of intervention).
 

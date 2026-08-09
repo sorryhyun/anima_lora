@@ -41,6 +41,16 @@ claim worth testing is:
 
 ## Why this proposal exists
 
+The prior question comes from **StelLA** (Li et al., NeurIPS 2025,
+[arXiv:2510.01938](https://arxiv.org/abs/2510.01938)), read the same day. Its
+three-factor $USV^\top$ with $U,V$ on the Stiefel manifold **is** the OrthoInit
+parameterization critiqued below, and its Table 5 initialization ablation shows
+the SVD seed washes out (SVD-major ≈ SVD-minor ≈ random) once the subspace is
+trainable — which is what makes “what is the SVD seed still worth on a *free*
+LoRA?” the question this proposal answers. The chimera branch of the same
+reading is `docs/proposal/stella_chimera.md`. The probe below is what made it
+urgent, not where it came from.
+
 `bench/turbo/probe_ortho_init_step.py` was written around a “hot OrthoInit
 start” hypothesis. Its results falsify that hypothesis:
 
@@ -316,6 +326,9 @@ move to activation- or gradient-informed bases instead of tuning OrthoInit's LR.
 
 ## References
 
+- Li et al., [StelLA: Subspace Learning in Low-rank Adaptation using Stiefel
+  Manifold](https://arxiv.org/abs/2510.01938), NeurIPS 2025 (Spotlight) — the
+  paper this proposal reacts to. Code: <https://github.com/SonyResearch/stella>.
 - Hu et al., [LoRA: Low-Rank Adaptation of Large Language
   Models](https://arxiv.org/abs/2106.09685), 2021.
 - Meng et al., [PiSSA: Principal Singular Values and Singular Vectors

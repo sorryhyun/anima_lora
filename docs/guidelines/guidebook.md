@@ -559,7 +559,7 @@ make update -- --dry-run # Preview which files would change
 - [`docs/guidelines/inference.md`](inference.md) — Inference workflows, flags, Spectrum, prompt file format
 - [`docs/guidelines/difference_between_comfy.md`](difference_between_comfy.md) — Implementation differences between anima_lora and ComfyUI core
 - [`docs/methods/timestep_mask.md`](../methods/timestep_mask.md) — T-LoRA timestep mask
-- [`docs/methods/psoft-integrated-ortholora.md`](../methods/psoft-integrated-ortholora.md) — OrthoLoRA details (the orthogonal rotation part of the recommended `tlora` variant)
+- [`_archive/methods/psoft-integrated-ortholora.md`](../../_archive/methods/psoft-integrated-ortholora.md) — OrthoLoRA details (the orthogonal rotation part of the recommended `tlora` variant; archived — superseded by [SVD-Down LoRA](../methods/svd-down-lora.md) in the showcased variant lineup)
 - [`docs/inference/spectrum.md`](../inference/spectrum.md) — Spectrum acceleration: how it works and options
 - [`docs/inference/mod-guidance.md`](../inference/mod-guidance.md) — Modulation guidance
 - [`docs/methods/hydra-lora.md`](../methods/hydra-lora.md) — HydraLoRA multi-head routing

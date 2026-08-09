@@ -1,7 +1,7 @@
 # Turbo GAN generator gradient is elementwise DM-orthogonal — CLOSED
 
 Status: **CLOSED 2026-07-20.** The OPD²-style sign gate on the adversarial
-gradient (`docs/proposal/turbo_gan_dm_sign_gate.md`) died at Phase 0: the GAN
+gradient (`_archive/proposals/turbo_gan_dm_sign_gate.md`) died at Phase 0: the GAN
 generator gradient carries **no structured sign-disagreeing component against
 the DM signal** — agree-energy is indistinguishable from a permutation null in
 the aggregate and in every τ-bin. There is nothing for a sign (or PCGrad-style
@@ -75,8 +75,9 @@ relative to the noise floor.
 3. The telemetry is generic two-signal conflict tooling: `dm_gate_stats`
    (`scripts/distill_turbo/metrics.py`) + `DmGateTelemetry` work for any pair
    of gradients at `x_pred` (div vs DM, CDM vs DM, softrank vs DM), with the
-   RNG-neutrality contract (dedicated generator) already handled. Tests:
-   `tests/test_turbo_dm_gate.py`.
+   RNG-neutrality contract (dedicated generator) already handled. The
+   dedicated gate tests it would have carried were never written — the line
+   closed at Phase 0.
 
 ## Caveat
 
@@ -88,7 +89,7 @@ for free if that read is ever wanted, but the token-disc-head λ=0 ramp control
 
 ## Pointers
 
-- Proposal + full Phase-0 design/verdict: `docs/proposal/turbo_gan_dm_sign_gate.md`
+- Proposal + full Phase-0 design/verdict: `_archive/proposals/turbo_gan_dm_sign_gate.md`
 - Flag: `[gan] dm_gate_telemetry` / `--gan_dm_gate_telemetry`
   (`configs/methods/turbo.toml`); provenance `ss_turbo_gan_dm_gate_telemetry`
 - TB tags: `train/gan_dm_{agree_rate,agree_energy,agree_energy_null}_tau{0..7}`

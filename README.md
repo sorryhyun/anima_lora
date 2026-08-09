@@ -67,9 +67,9 @@ LoRA / T-LoRA training and inference engine for the [Anima](https://huggingface.
 Four things this repo aims to do well:
 
 1. **Fast LoRA training** on consumer GPUs — per-block `torch.compile` over a tiny fixed shape set (one block graph per token-count family), end to end.
-2. **Solid conventional implementations** — LoRA, OrthoLoRA, and T-LoRA stack together and bake losslessly into a standalone DiT checkpoint.
-3. **Recent methods, engineered for Anima** — Spectrum inference, the SMC-CFG sampler, OrthoHydraLoRA, and modulation guidance, each implemented end-to-end against Anima's compile contract rather than dropped in as a toy port.
-4. **A broad experimental surface** — SPD, ChimeraHydra, Soft Tokens, Turbo distillation, EasyControl, DirectEdit, embedding inversion.
+2. **Solid conventional implementations** — LoRA (SVD-Down init) and T-LoRA stack together and bake losslessly into a standalone DiT checkpoint.
+3. **Inference stacks, engineered for Anima** — Spectrum, SMC-CFG, modulation guidance, SPD, and embedding inversion: training-free, compose with any checkpoint, each implemented end-to-end against Anima's compile contract rather than dropped in as a toy port.
+4. **Training stacks beyond the conventional path** — OrthoHydraLoRA, ChimeraHydra, Soft Tokens, Turbo distillation, EasyControl, DirectEdit.
 
 > **At-a-glance diagrams** for every method (DiT internals, LoRA, OrthoLoRA, T-LoRA, HydraLoRA, Spectrum, modulation, compile optimizations) live in [`docs/structure_images/`](docs/structure_images/) — paired with prose walkthroughs in [`docs/structure/`](docs/structure/).
 
@@ -81,9 +81,10 @@ Four things this repo aims to do well:
 
 | Lever | Summary |
 |---|---|
-| Constant-token bucketing | Buckets fall into two token-count families — 4032 and 4200 patches — each resolution *exactly* filling its count, so there is zero intra-bucket padding. Forwards run at native token counts, so `torch.compile` traces one block graph per distinct count (2). The legacy pad-to-static path was removed (it leaked padding into flash self-attn and couldn't run this table — 4200 > 4096). Opt-in **free-fit** (`freefit=true`) keeps native aspect ratio and lands token counts anywhere in a tier's band instead, riding `compile_dynamic_seq` to collapse the band to one graph. |
-| Max-padded text encoder | Text outputs padded to 512 and zero-filled — the pretrained DiT uses zero keys as cross-attn sinks, so trimming breaks it. Also gives the compiler another fixed dim. |
-| Per-block `torch.compile` | Each DiT block compiled independently with Inductor (`compile_blocks()`). Combined with native-token bucketing this pins the trace to 2 block graphs and eliminates guard recompilation. |
+| Dynamic graph compilation | `compile_dynamic_seq` marks only the sequence axis dynamic and bounds it to a tier's token-count range. It's auto-enabled whenever `torch_compile` is on (`configs/base.toml` — default **true**, not opt-in): free-fit bucketing (the only resize mode) keeps each image's native aspect ratio and can land its token count anywhere inside a tier's band, which would otherwise blow up into one static graph per distinct shape. Marking the axis dynamic collapses that whole band back to a single compiled graph per token-count family — still addressing the bucket-count blowup the old constant-token-bucket design was built to solve, now without giving up native aspect ratios. |
+| Per-block `torch.compile` | Each DiT block compiled independently with Inductor (`compile_blocks()`) — one graph per token-count family, eliminating guard recompilation. |
+| QKV / KV fusion | Self- and cross-attention QKV/KV projections are fused into single wide GEMMs instead of three separate Linears — same FLOPs, but the input is read from HBM once, fewer kernel launches, and fewer nodes for Dynamo to trace. `networks/attn_fuse.py` converts fused↔split for ComfyUI-format checkpoints. |
+| Activation memory budget | `activation_memory_budget=0.99` caps Inductor's AOT min-cut partitioner's saved-for-backward set, buying back VRAM headroom without gradient checkpointing's compile-graph mismatch risk. We treat gradient checkpointing as a fallback, not a default lever — it's only forced on by the `low_vram` preset. |
 | Compile-friendly hot path | Audited every forward for patterns dynamo can't trace cleanly — `einops.rearrange` replaced with explicit `.unflatten()/.permute()` chains, `torch.autocast` context managers replaced with direct `.to(dtype)` casts, dict `.items()` loops hoisted out of compiled regions, FA4 wrapped in `@torch.compiler.disable` for clean graph breaks. |
 | Flash Attention 2 | `flash_attn` 2.x with SDPA fallback. FA4 evaluated and removed — see [fa4.md](docs/optimizations/fa4.md). |
 
@@ -93,12 +94,12 @@ Compile pipeline details in [docs/optimizations/for_compile.md](docs/optimizatio
 
 ## 2. Solid conventional implementations
 
-The default training config stacks **LoRA + OrthoLoRA + T-LoRA** together. All three fold losslessly into a standalone DiT checkpoint via thin-SVD export at save time, so you can ship ComfyUI-compatible `*_merged.safetensors` with no adapter loader dependency.
+The default training config stacks **LoRA (SVD-Down init) + T-LoRA** together. Both fold losslessly into a standalone DiT checkpoint at save time, so you can ship ComfyUI-compatible `*_merged.safetensors` with no adapter loader dependency.
 
 | Variant | Pitch | Details |
 |---|---|---|
 | **LoRA** | Classic low-rank, rank 16–32. | — |
-| **OrthoLoRA** | SVD-parameterized with orthogonality regularization; exports as plain LoRA. | [psoft-integrated-ortholora.md](docs/methods/psoft-integrated-ortholora.md) |
+| **SVD-Down LoRA** | `lora_down` seeded from the pretrained weight's own top-r right singular vectors instead of random Kaiming init (ΔW=0 at start) — same module, save format, and merge path as plain LoRA, just a better starting basis. Default down-init for the LoRA stack. | [svd-down-lora.md](docs/methods/svd-down-lora.md) |
 | **T-LoRA** | Timestep-dependent rank masking — low rank at high noise, full rank at low noise. Training-only mask, so merge is bit-equivalent. | [timestep_mask.md](docs/methods/timestep_mask.md) |
 
 **Side-by-side** — same prompt, `er_sde` 30 steps, `cfg=4.0`, 1024². Each LoRA trained at rank 16 for 2 epochs on a 20% subset with training seed 42; inference seeds `{41, 42, 43}`. Reproduce with `python _archive/bench_methods.py`.
@@ -131,32 +132,47 @@ Refuses non-linear-delta variants (HydraLoRA `_moe`) by default; `--allow-partia
 
 ---
 
-## 3. Recent methods, engineered for Anima
+## Default true path
 
-Five recent papers picked up, implemented against Anima end-to-end, and shipped with the engineering they need to be actually usable — not toy reimplementations.
+Beyond the headline methods below, a handful of things ship **on by default** and quietly do a lot of the work — worth knowing even if you never touch a flag.
 
-| Method | What it is | Engineering notes | Doc |
-|---|---|---|---|
-| **Spectrum inference** | Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., CVPR 2026) — ≈1.75× at default settings, up to ~5× on more aggressive schedules (quality tradeoff). On cached steps every transformer block is skipped — only `t_embedder` + `final_layer` + `unpatchify` run. | `register_forward_pre_hook` on `final_layer` captures block outputs without monkey-patching the model; adaptive window schedule concentrates real forwards on early high-noise steps. Stable ComfyUI node in a separate repo: [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler). | [spectrum.md](docs/inference/spectrum.md) |
-| **SMC-CFG** | Training-free sliding-mode CFG correction in velocity space (Wang et al., CFG-Ctrl) — treats the cond/uncond combine as a control problem applied to the residual `e = v_cond − v_uncond`. No extra DiT forwards. | Ships the **α-adaptive variant**: the paper's fixed gain `k` (≈14× off on Anima at CFG=4, visibly chattering) is replaced with `k_t = α·mean(\|e_t\|)` per step. `make test-smc-cfg` (λ=5, α=0.2); composes with Spectrum and mod-guidance. | [smc_cfg.md](docs/inference/smc_cfg.md) |
-| **OrthoHydraLoRA** | MoE-style multi-head LoRA with orthogonalized experts and layer-local routing — shared `lora_down`, per-expert `lora_up_i`, learned per-sample router. Targets multi-style training without the cross-style bleed a single low-rank subspace produces. Original paper: [arXiv:2605.03252](https://arxiv.org/abs/2605.03252). | Saves two side-by-side files: `anima_hydra.safetensors` (baked-down LoRA, ComfyUI drop-in) and `anima_hydra_moe.safetensors` (full multi-head). Live routing in ComfyUI via the bundled **Anima Adapter Loader** node (`https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter`), which installs per-Linear forward hooks reproducing `HydraLoRAModule.forward`. | [hydra-lora.md](docs/methods/hydra-lora.md) |
-| **Modulation guidance** | Distill a `pooled_text_proj` MLP that steers AdaLN modulation coefficients toward quality-positive directions (Starodubcev et al., ICLR 2026). Teacher sees real cross-attention; student sees zeroed cross-attention but receives pooled text through modulation. | Trained with `make distill-mod` against the frozen DiT. Inference applies the projection at AdaLN time so it composes with any LoRA variant; `make test MOD=1` runs a sample with it enabled (composes with `SPECTRUM=1`). | [mod-guidance.md](docs/inference/mod-guidance.md) |
-| **Turbo** | DP-DMD distillation (Wu et al., arXiv:2602.03139) of the CFG=4 / 28-step teacher into a few-step generator. Output is a **normal LoRA** — composes with concept LoRAs like LCM-LoRA does, fully bakeable into the DiT. | Bespoke single-GPU distill loop: `make turbo` (honors `PRESET`, `--queue`). Infer at `--infer_steps 4 --cfg 1.0` via `make test-turbo`. A ready-made 4-step student ships at [huggingface.co/sorryhyun/anima-turbo-4step](https://huggingface.co/sorryhyun/anima-turbo-4step). | [turbo.md](docs/methods/turbo.md) |
+| Feature | Default | What it does |
+|---|---|---|
+| Channel scaling | `channel_scaling_alpha = 0.5` | Per-channel LoRA gradient rebalance (SmoothQuant-style) — Adam-specific, inert on frozen-basis ortho variants. [channel_scaling.md](docs/optimizations/channel_scaling.md) |
+| SVD-Down LoRA | `down_init = "weight_svd"` | Plain LoRA's `lora_down` is seeded from the pretrained weight's own top-r singular vectors instead of random Kaiming init. [svd-down-lora.md](docs/methods/svd-down-lora.md) |
+| Free-fit scaling to target res | always on — the only resize mode | Every image keeps its native aspect ratio and lands its patch-grid token count anywhere inside its resolution tier's band, driving crop loss to ~zero. See [Fast training](#1-fast-training) above. |
+| Text area masking | `masked_loss = true` | Excludes tagged regions (e.g. text bubbles) from the training loss. [training.md](docs/guidelines/training.md) |
+| AdamW only | `optimizer_type = "AdamW"` | Other optimizers are still wired but unbenched against the current defaults — channel scaling in particular relies on Adam's near-uniform per-element step size. |
+| Fixed AdaLN rank | `train_adaln = true`, `adaln_rank = 16` | Trains a low-rank delta on the AdaLN modulation Linears too, not just attention/FFN. **Provisional** — plumbed and default-on but not yet bench-gated; pin it explicitly if you're A/B-ing anything else. [adaln.md](docs/methods/adaln.md) |
 
 ---
 
-## 4. Experimental surface
+## 3. Inference stacks
 
-Each ships with a doc — see the link for usage, flags, and caveats.
+Training-free runtime techniques — no adapter to train, and each composes with any checkpoint (LoRA, merged, or base) purely at generation time.
 
-| Feature | What it is | Doc |
+| Method | What it is | Doc |
 |---|---|---|
+| **Spectrum inference** | Training-free speedup via Chebyshev polynomial feature forecasting (Han et al., CVPR 2026) — ≈1.75× at default settings, up to ~5× on more aggressive schedules (quality tradeoff). On cached steps every transformer block is skipped — only `t_embedder` + `final_layer` + `unpatchify` run, via a `register_forward_pre_hook` on `final_layer` that captures block outputs without monkey-patching the model; an adaptive window schedule concentrates real forwards on early high-noise steps. Stable ComfyUI node in a separate repo: [ComfyUI-Spectrum-KSampler](https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler). | [spectrum.md](docs/inference/spectrum.md) |
+| **SMC-CFG** | Training-free sliding-mode CFG correction in velocity space (Wang et al., CFG-Ctrl) — treats the cond/uncond combine as a control problem on the residual `e = v_cond − v_uncond`, no extra DiT forwards. Ships the **α-adaptive variant**: the paper's fixed gain `k` (≈14× off on Anima at CFG=4, visibly chattering) is replaced with `k_t = α·mean(\|e_t\|)` per step. `make test-smc-cfg` (λ=5, α=0.2); composes with Spectrum and mod-guidance. | [smc_cfg.md](docs/inference/smc_cfg.md) |
+| **Modulation guidance** | Steers AdaLN modulation coefficients toward quality-positive directions via a distilled `pooled_text_proj` MLP (Starodubcev et al., ICLR 2026) — training-free *to run*, though the MLP itself is distilled once via `make distill-mod` against the frozen DiT. Applies at AdaLN time so it composes with any LoRA variant; `make test MOD=1` runs a sample with it enabled (composes with `SPECTRUM=1`). | [mod-guidance.md](docs/inference/mod-guidance.md) |
 | **SPD** | Spectral Progressive Diffusion (Xiao et al., 2026) — training-free multi-resolution inference (`--spd`): run early noise-dominated steps at low resolution, then inject high-frequency detail via spectral noise expansion. | [spd.md](docs/inference/spd.md) |
+| **Embedding inversion** | Optimize a text embedding to match a target image through the frozen DiT — a test-time optimization, no adapter weights trained. | [invert.md](docs/inference/invert.md) |
+
+---
+
+## 4. Training stacks
+
+Adapter families that train something — a LoRA-style delta, a routing head, or a small conditioning module — on top of the frozen DiT, beyond the conventional LoRA/T-LoRA path in section 2.
+
+| Method | What it is | Doc |
+|---|---|---|
+| **OrthoHydraLoRA** | MoE-style multi-head LoRA with orthogonalized experts and layer-local routing — shared `lora_down`, per-expert `lora_up_i`, learned per-sample router. Targets multi-style training without the cross-style bleed a single low-rank subspace produces. Original paper: [arXiv:2605.03252](https://arxiv.org/abs/2605.03252). Saves two side-by-side files: `anima_hydra.safetensors` (baked-down LoRA, ComfyUI drop-in) and `anima_hydra_moe.safetensors` (full multi-head); live routing in ComfyUI via the bundled **Anima Adapter Loader** node ([ComfyUI-Anima_lora-Adapter](https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter)). | [hydra-lora.md](docs/methods/hydra-lora.md) |
+| **Turbo** | DP-DMD distillation (Wu et al., arXiv:2602.03139) of the CFG=4 / 28-step teacher into a few-step generator. Output is a **normal LoRA** — composes with concept LoRAs like LCM-LoRA does, fully bakeable into the DiT. Bespoke single-GPU distill loop: `make turbo` (honors `PRESET`, `--queue`); infer at `--infer_steps 4 --cfg 1.0` via `make test-turbo`. A ready-made 4-step student ships at [huggingface.co/sorryhyun/anima-turbo-4step](https://huggingface.co/sorryhyun/anima-turbo-4step). | [turbo.md](docs/methods/turbo.md) |
 | **ChimeraHydra** | Dual-pool additive MoE: a content pool (layer-local router) plus a frequency pool (network router on FEI + σ features), each an asymmetric HydraLoRA off a disjoint SVD subspace. Fuses HydraLoRA + TimeStep Master + FeRA. `make exp-chimera`. | [chimera-hydra.md](docs/experimental/chimera-hydra.md) |
 | **Soft Tokens** | SoftREPA (Lee et al., NeurIPS 2025) — per-layer × per-t learnable text tokens (~1M params) spliced into `crossattn_emb`; DiT frozen. `make exp-soft-tokens`. | [soft_tokens.md](docs/experimental/soft_tokens.md) |
-| **DirectEdit** | Flow-inversion image editing (Yang & Ye, 2026) — invert to noise, swap edit conditioning, re-denoise with V-injection. Source captions come from the **Anima Tagger** (image → Anima-format tags). `make exp-test-directedit`. | [directedit_editing_v3.md](docs/experimental/directedit_editing_v3.md) |
+| **DirectEdit + Anima Tagger** | Flow-inversion image editing (Yang & Ye, 2026) — invert to noise, swap edit conditioning, re-denoise with V-injection. Source captions come from the **Anima Tagger**, a trained image → Anima-format tag model, for ψ_src. `make exp-test-directedit`. | [directedit_editing_v3.md](docs/experimental/directedit_editing_v3.md) |
 | **EasyControl** | Extended self-attention image conditioning. DiT frozen; trains per-block cond LoRA on self-attn + FFN + scalar `b_cond` gate. | [easycontrol.md](docs/experimental/easycontrol.md) |
-| **Embedding inversion** | Optimize a text embedding to match a target image through the frozen DiT. | [invert.md](docs/inference/invert.md) |
 
 > **Want to contribute?** An area where outside help would have outsized impact: **EasyControl adapters** (canny / depth / pose / … — each control type is one self-contained PR). See [CONTRIBUTING.md → Priority areas](CONTRIBUTING.md#priority-areas).
 
@@ -199,7 +215,7 @@ Config chain: `configs/base.toml → configs/presets.toml[<preset>] → configs/
 | [guidelines/training.md](docs/guidelines/training.md) | Training flags, LoRA variants, caption shuffle, masked loss, dataset config |
 | [guidelines/inference.md](docs/guidelines/inference.md) | Inference flags, P-GRAFT, prompt files, LoRA format conversion |
 | [optimizations/](docs/optimizations/) | Compile pipeline, FA4 post-mortem, CUDA 13.2 |
-| [methods/](docs/methods/) | One doc per method — HydraLoRA, Spectrum, inversion, mod guidance, T-LoRA, OrthoLoRA |
+| [methods/](docs/methods/) | One doc per method — HydraLoRA, Spectrum, inversion, mod guidance, T-LoRA, SVD-Down LoRA |
 
 ---
 

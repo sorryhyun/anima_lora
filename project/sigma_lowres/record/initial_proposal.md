@@ -1,7 +1,7 @@
 # σ-conditional low-res gradient equivalence — Phase 0 (observability)
 
 **Status: Phase 0 DONE (2026-07-24) — spectral mechanism REFUTED; verdict in
-`project/sigma_lowres/bench/report.md`.** σ-dependence is real and tier-ordered, but
+`project/sigma_lowres/record/report.md`.** σ-dependence is real and tier-ordered, but
 the collapse sits at σ ≈ 0.5 (not the RAPSD-predicted ≈ 0.14), 512 is never
 safe at any σ, and the practical residue (σ>0.5 → 896, ~14% wall-clock
 ceiling) is likely below the Phase-1 bar. Bench: `project/sigma_lowres/bench/`.

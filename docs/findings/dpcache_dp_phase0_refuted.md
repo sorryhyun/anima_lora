@@ -5,9 +5,8 @@ skip-schedule placement adds nothing over Spectrum's content-blind growing
 window at Anima's step counts — the window's realized schedule is not merely
 competitive, it is **exactly locally optimal** under the true open-loop replay
 cost. Nothing gets built; `--spectrum_schedule` stays `window` (default) +
-`sea` (opt-in). Proposal: `docs/proposal/dpcache_dp_schedule.md` (PR #74,
-never merged). Bench: `bench/spectrum_dp/run_bench.py`, results in
-`bench/spectrum_dp/results/20260724-0043-phase0/`.
+`sea` (opt-in). Proposal: `dpcache_dp_schedule.md` (PR #74, never merged — not in tree). Bench: `_archive/bench/spectrum_dp/run_bench.py`, results in
+`_archive/bench/spectrum_dp/results/20260724-0043-phase0/`.
 
 ## Setup
 
@@ -89,7 +88,7 @@ refresh count **K = 7** (16/28 total forwards).
 
 ## Reusable artifacts
 
-- `bench/spectrum_dp/run_bench.py` — trajectory capture (both CFG branches +
+- `_archive/bench/spectrum_dp/run_bench.py` — trajectory capture (both CFG branches +
   timesteps + x_t), disk-cached to `output/spectrum_dp_traj/` (~1GB/prompt;
   safe to delete, regenerates deterministically); open-loop schedule-replay
   scorer (`replay_cost`) that can score ANY future schedule mask against the

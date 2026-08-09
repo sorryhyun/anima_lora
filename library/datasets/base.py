@@ -241,12 +241,16 @@ class BaseDataset(torch.utils.data.Dataset):
         # it in when the step's σ draw clears the gate. Train-group only; the
         # validation group stays native so val loss remains arm-comparable.
         self._sigma_demote: Optional[Tuple[int, int]] = None
-        self._sigma_demote_warned: bool = False
+        # Warned-route set, NOT a single bool: each route reports its own
+        # missing emit (see ``_demote_warn_once``).
+        self._sigma_demote_warned: set = set()
         # Secondary demote route (E16 stacked router: e.g. 1024→768 on the
         # measured window, priority over the primary 1024→896 rule). Set via
         # ``enable_sigma_demote2``; batches then also carry
         # ``demoted_latents2``.
         self._sigma_demote2: Optional[Tuple[int, int]] = None
+        # One-slot (path, NpzFile) memo shared by both routes' loaders.
+        self._demote_npz_cache = None
 
         # Soft-tokens contrastive negatives. When a sampler is attached via
         # ``setup_contrastive_negatives`` each example carries
@@ -1538,6 +1542,16 @@ class BaseDataset(torch.utils.data.Dataset):
         ``demoted_{H}x{W}`` key (the two routes' buckets never collide)."""
         return self._load_demoted_sibling(info, self._sigma_demote2)
 
+    def _demote_warn_once(self, route: Tuple[int, int], msg: str, *fmt) -> None:
+        """Warn once PER ROUTE. A single shared flag would let a stale image on
+        the primary route swallow the warning for a wholly un-emitted secondary
+        route — the stacked router would then quietly degrade to the primary
+        rule, whose only symptom is a few points of wall-clock."""
+        if route in self._sigma_demote_warned:
+            return
+        self._sigma_demote_warned.add(route)
+        logger.warning(msg, *fmt)
+
     def _load_demoted_sibling(
         self, info: ImageInfo, route: Optional[Tuple[int, int]]
     ) -> Optional[torch.Tensor]:
@@ -1553,28 +1567,51 @@ class BaseDataset(torch.utils.data.Dataset):
             return None
         key = demoted_latents_key(*bucket)
         try:
-            with np.load(info.latents_npz) as npz:
-                if key not in npz:
-                    if not self._sigma_demote_warned:
-                        self._sigma_demote_warned = True
-                        logger.warning(
-                            "sigma_lowres: no '%s' key in %s — run `make "
-                            "preprocess-demote` to emit the sibling latents; "
-                            "affected batches train native (warned once).",
-                            key,
-                            info.latents_npz,
-                        )
-                    return None
-                return torch.from_numpy(npz[key].copy()).float()
-        except Exception as e:  # truncated/corrupt npz → native, not a crash
-            if not self._sigma_demote_warned:
-                self._sigma_demote_warned = True
-                logger.warning(
-                    "sigma_lowres: failed reading %s (%s) — batch trains native.",
+            npz = self._open_demote_npz(info.latents_npz)
+            if key not in npz:
+                self._demote_warn_once(
+                    route,
+                    "sigma_lowres: no '%s' key (route %d:%d) in %s — run `make "
+                    "preprocess-demote` to emit the sibling latents; affected "
+                    "batches train native (warned once per route).",
+                    key,
+                    route[0],
+                    route[1],
                     info.latents_npz,
-                    e,
                 )
+                return None
+            return torch.from_numpy(npz[key].copy()).float()
+        except Exception as e:  # truncated/corrupt npz → native, not a crash
+            self._demote_npz_cache = None
+            self._demote_warn_once(
+                route,
+                "sigma_lowres: failed reading %s (%s) — batch trains native.",
+                info.latents_npz,
+                e,
+            )
             return None
+
+    def _open_demote_npz(self, path):
+        """One-slot memo over the sample's npz. ``__getitem__`` runs every
+        sidecar loader back-to-back for the same image, so a stacked router
+        would otherwise re-open (and re-read the zip directory of) the same
+        archive once per route."""
+        cached = self._demote_npz_cache
+        if cached is not None and cached[0] == path:
+            return cached[1]
+        if cached is not None:
+            cached[1].close()
+        npz = np.load(path)
+        self._demote_npz_cache = (path, npz)
+        return npz
+
+    def __getstate__(self):
+        # An open NpzFile is not picklable, and the dataset is shipped to
+        # DataLoader workers under Windows/`spawn` — drop the memo (workers
+        # refill it on their first __getitem__).
+        state = self.__dict__.copy()
+        state["_demote_npz_cache"] = None
+        return state
 
     def _try_load_inversion_runs(self, info: ImageInfo) -> Optional[torch.Tensor]:
         """Load <stem>_inverted_run{0..N-1}.safetensors from self.inversion_dir.

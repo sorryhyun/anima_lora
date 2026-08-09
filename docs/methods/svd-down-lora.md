@@ -74,8 +74,27 @@ gradient in `lora_up` only on step 1, step-1 `‖ΔW‖_F` within 0.5×–2× pl
 
 Original proposal & full theory: `_archive/proposals/svd_down_lora_init.md`.
 
+## Where this came from
+
+The line started with **StelLA** (NeurIPS 2025), not with the internal probe —
+the archived proposal credits `bench/turbo/probe_ortho_init_step.py`, but that
+probe was the trigger, not the source. StelLA's three-factor `USVᵀ` (U, V on the
+Stiefel manifold, S carrying amplitude) **is** the repo's OrthoInit
+parameterization `ΔW = s·P·diag(λ)·Q`, so the cold-start critique SVD-Down is
+built on is a critique of StelLA's factorization. Its Table 5 initialization
+ablation — the SVD seed *washes out* (SVD-major ≈ SVD-minor ≈ random) once the
+subspace is trainable — is the question SVD-Down answers for free LoRA: keep the
+principal input basis, drop the manifold constraint and the paired-dyad cold
+start. Reading StelLA forked into two proposals in one commit (`2674b59e`,
+2026-06-22): this one for plain LoRA, and `docs/proposal/stella_chimera.md` for
+the chimera case.
+
 ## References
 
+- Li et al., [StelLA: Subspace Learning in Low-rank Adaptation using Stiefel
+  Manifold](https://arxiv.org/abs/2510.01938), NeurIPS 2025 (Spotlight) —
+  origin of this line; see above. Code:
+  <https://github.com/SonyResearch/stella>.
 - Hu et al., [LoRA](https://arxiv.org/abs/2106.09685), 2021.
 - Meng et al., [PiSSA](https://arxiv.org/abs/2404.02948), NeurIPS 2024 — also
   starts from principal components but residualizes the base weight (SVD-Down

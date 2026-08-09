@@ -1,7 +1,7 @@
 # PE towers have no patch-token outliers — test-time registers dies at Phase 0a
 
 **Verdict: NO-GO (premise absent).** The load-bearing premise of the
-test-time-registers port (`docs/proposal/test_time_registers_pe.md`, paper
+test-time-registers port (`_archive/proposals/test_time_registers_pe.md`, paper
 2506.08010) is that PE-Core / PE-Spatial, as ordinary ViTs trained without
 registers, manufacture sparse high-norm outlier patch tokens. **They don't.**
 Measured 2026-07-20; line closed at the first gate, as the proposal's own kill

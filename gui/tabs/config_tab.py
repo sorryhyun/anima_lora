@@ -102,12 +102,28 @@ _FIELD_ORDER = {
     "qwen3": 31,
     "vae": 32,
     # Keep repa_target_dog pinned directly under the use_repa switch it modifies.
-    "use_repa": 90,
-    "repa_target_dog": 91,
+    # NB every pin here must stay BELOW the unpinned default (100) or the block
+    # gets interleaved alphabetically with the rest of its group box.
+    "use_repa": 80,
+    "repa_target_dog": 81,
     # Same for the adaln rank/alpha overrides under the train_adaln switch.
-    "train_adaln": 92,
-    "adaln_rank": 93,
-    "adaln_alpha": 94,
+    "train_adaln": 82,
+    "adaln_rank": 83,
+    "adaln_alpha": 84,
+    # σ-demoted training, right next to the other training-only switches: the
+    # master boolean first, then the primary rule (route / σ gate / rope / span)
+    # and the secondary rule that takes priority over it. Alphabetical order
+    # would put route2 above threshold and bury the switch itself mid-block.
+    "sigma_lowres": 85,
+    "sigma_lowres_route": 86,
+    "sigma_lowres_threshold": 87,
+    "sigma_lowres_threshold_max": 88,
+    "sigma_lowres_yarnsig": 89,
+    "sigma_lowres_span": 90,
+    "sigma_lowres_route2": 91,
+    "sigma_lowres_threshold2": 92,
+    "sigma_lowres_threshold2_max": 93,
+    "sigma_lowres_span2": 94,
     "sample_prompts": 10,
     "sample_every_n_epochs": 11,
     "sample_at_first": 12,

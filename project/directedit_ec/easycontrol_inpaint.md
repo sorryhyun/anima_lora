@@ -104,7 +104,17 @@ generator only.
 the generator is unit-testable and the optional SAM-object path can slot in
 later.
 
-**`configs/datasets/inpaint.toml`** — mirror colorize's blueprint, minus the
+> **Shipped differently.** The two-file split below (a `configs/datasets/`
+> blueprint plus a `configs/methods/` config) was superseded by the
+> self-contained per-method layout before this landed: both halves live in
+> **`configs/easycontrol/inpaint.toml`**, a single descriptor carrying the
+> `[staging]` / `[preprocess]` / `[training]` tables *and* the inline
+> `[general]` / `[[datasets]]` blueprint, driven by
+> `make easycontrol EASYADAPTER=inpaint`. The tables below are the design
+> record — read the shipped file for what actually runs.
+
+**The dataset blueprint** (now the `[general]`/`[[datasets]]` tail of
+`configs/easycontrol/inpaint.toml`) — mirror colorize's blueprint, minus the
 text override:
 ```toml
 [general]
@@ -124,9 +134,10 @@ validation_seed = 42
   num_repeats = 1
 ```
 
-**`configs/methods/inpaint.toml`** — same network as colorize, tuned hypers:
+**The method config** (now the head of the same file) — same network as
+colorize, tuned hypers:
 ```toml
-dataset_config = "configs/datasets/inpaint.toml"
+# shipped: no dataset_config cross-reference — the blueprint is inline
 network_module = "networks.methods.easycontrol"
 
 network_dim = 32
@@ -179,9 +190,11 @@ binary mask before encoding so users needn't pre-mask in an editor.
 
 ### Optional
 
-**`configs/gui-methods/inpaint.toml`** — add a `[variant] family = "easycontrol"`
-block (mirror colorize's GUI config; rank 16/alpha 16, `b_cond_init=-4.0` per the
-GUI colorize convention) so it appears in the GUI method dropdown.
+**A gui-methods variant** (`inpaint.toml` in `configs/gui-methods/`) — add a
+`[variant] family = "easycontrol"` block (mirror colorize's GUI config; rank
+16/alpha 16, `b_cond_init=-4.0` per the GUI colorize convention) so it appears
+in the GUI method dropdown. **Still not done** — the gui-methods tree has no
+`inpaint` entry, so the variant is CLI-only.
 
 **Docs** — add an `inpaint` section to `docs/experimental/easycontrol.md` and the
 `EASYADAPTER=inpaint` rows to the root `CLAUDE.md` EasyControl one-liners once

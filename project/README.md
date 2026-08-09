@@ -6,7 +6,7 @@ into an ongoing project with open phases. Each subdir is the line's home page:
 | File | Contents |
 |---|---|
 | `methods.md` | The implementation — what code exists, where it lives, how to run it |
-| `bench.md` | Digest of measured results — omitted when the line's bench lives in-tree (`bench/report.md` serves directly) |
+| `bench.md` | Digest of measured results — omitted when the line's bench lives in-tree (its own `report.md` serves directly) |
 | `questions.md` | Open questions the line has not answered |
 | `roadmap.md` | Remaining phases, gates, and kill criteria |
 | `outcomes.md` | Shippable/practical artifacts the line produced (optional — appears once something is ship-shaped) |
@@ -33,5 +33,6 @@ Active projects:
 - [`directedit_ec/`](directedit_ec/) — EasyControl cond stream as a learned
   preservation prior for DirectEdit. Phases 0–1b passed zero-training;
   Phase 2.5 (delta-caption instruction editor) probe PASSED at the trained
-  point → EasyEdit ship proposal + paper prep
-  (`outcomes.md`, `docs/proposal/easyedit_comfy_node.md`).
+  point → EasyEdit ship proposal + paper prep are the owed write-ups
+  (neither the line's `outcomes.md` nor an `easyedit_comfy_node` proposal
+  exists yet).

@@ -394,6 +394,43 @@ class TestYarnsigRope:
             is None
         )
 
+    def test_default_on_with_sigma_lowres(self):
+        """yarnsig is part of the shipped combo recipe, so an unset flag under
+        --sigma_lowres resolves to the operating point — a plain --sigma_lowres
+        run must not silently be a degraded (no-yarnsig) arm."""
+        from train import AnimaTrainer
+
+        args = SimpleNamespace(sigma_lowres=True, sigma_lowres_yarnsig=None)
+        assert AnimaTrainer._yarnsig_params(args) == (1.0, 4.0, 0.35, 2.0)
+        # …and the effective value is written back, so the snapshot records it.
+        assert args.sigma_lowres_yarnsig == AnimaTrainer.YARNSIG_OPERATING_POINT
+
+    def test_default_off_without_sigma_lowres(self):
+        """Nothing to demote → nothing to realign; the implicit default must not
+        leak into runs that never enabled sigma_lowres (train.py errors on
+        yarnsig-without-sigma_lowres)."""
+        from train import AnimaTrainer
+
+        args = SimpleNamespace(sigma_lowres=False, sigma_lowres_yarnsig=None)
+        assert AnimaTrainer._yarnsig_params(args) is None
+        assert args.sigma_lowres_yarnsig is None
+
+    def test_explicit_off_words_disable_it(self):
+        """The escape hatch from default-on, and the reason a config may carry
+        `sigma_lowres_yarnsig = "off"` without tripping the requires-sigma_lowres
+        guard."""
+        from train import AnimaTrainer
+
+        for off in ("off", "OFF", "none", "false", "0", ""):
+            args = SimpleNamespace(sigma_lowres=True, sigma_lowres_yarnsig=off)
+            assert AnimaTrainer._yarnsig_params(args) is None, off
+
+    def test_explicit_value_still_wins(self):
+        from train import AnimaTrainer
+
+        args = SimpleNamespace(sigma_lowres=True, sigma_lowres_yarnsig="2,6,0.4,3")
+        assert AnimaTrainer._yarnsig_params(args) == (2.0, 6.0, 0.4, 3.0)
+
 
 class TestSigmaSpan:
     """--sigma_lowres_span (E16 placement probe): step-span gate on top of
@@ -599,3 +636,271 @@ class TestSigmaStackedRouter:
         sig = torch.tensor([0.7])
         assert AnimaTrainer._sigma_demote_choice(args, sig, 100) == 1
         assert AnimaTrainer._sigma_demote_choice(args, sig, 300) == 2
+
+
+class TestSigmaRuleValidation:
+    """--sigma_lowres_route2 must be given an explicit sigma WINDOW, and every
+    span spec must parse, at SETUP — not on the first train forward.
+
+    Rule 2 has priority, so an unbounded rule 2 fires wherever it passes and
+    the primary rule never runs. With threshold2 defaulting to 0.5 that made a
+    lone --sigma_lowres_route2 1024:768 demote the deep route across the whole
+    sigma>0.5 half-line (including the off-map stretch below its certified
+    window) while silently disabling yarnsig, which is primary-rule-only.
+    """
+
+    @staticmethod
+    def _args(**kw):
+        base = dict(
+            sigma_lowres=True,
+            sigma_lowres_route="1024:896",
+            sigma_lowres_threshold=0.5,
+            sigma_lowres_threshold_max=None,
+            sigma_lowres_span=None,
+            sigma_lowres_route2=None,
+            sigma_lowres_threshold2=None,
+            sigma_lowres_threshold2_max=None,
+            sigma_lowres_span2=None,
+            sigma_lowres_yarnsig=None,
+            max_train_steps=480,
+            gradient_accumulation_steps=1,
+            seed=1001,
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def test_route2_without_window_rejected(self):
+        from train import AnimaTrainer
+
+        with pytest.raises(ValueError) as e:
+            AnimaTrainer._validate_sigma_rules(
+                self._args(sigma_lowres_route2="1024:768")
+            )
+        msg = str(e.value)
+        assert "--sigma_lowres_threshold2" in msg
+        assert "--sigma_lowres_threshold2_max" in msg
+
+    @pytest.mark.parametrize(
+        "lo,hi",
+        [(0.65, None), (None, 0.95)],
+    )
+    def test_route2_with_half_a_window_rejected(self, lo, hi):
+        from train import AnimaTrainer
+
+        with pytest.raises(ValueError):
+            AnimaTrainer._validate_sigma_rules(
+                self._args(
+                    sigma_lowres_route2="1024:768",
+                    sigma_lowres_threshold2=lo,
+                    sigma_lowres_threshold2_max=hi,
+                )
+            )
+
+    @pytest.mark.parametrize("lo,hi", [(0.95, 0.65), (0.7, 0.7), (-0.1, 0.9)])
+    def test_route2_inverted_window_rejected(self, lo, hi):
+        from train import AnimaTrainer
+
+        with pytest.raises(ValueError):
+            AnimaTrainer._validate_sigma_rules(
+                self._args(
+                    sigma_lowres_route2="1024:768",
+                    sigma_lowres_threshold2=lo,
+                    sigma_lowres_threshold2_max=hi,
+                )
+            )
+
+    def test_shipped_combo_recipe_validates(self):
+        from train import AnimaTrainer
+
+        route, route2 = AnimaTrainer._validate_sigma_rules(
+            self._args(
+                sigma_lowres_route2="1024:768",
+                sigma_lowres_threshold2=0.65,
+                sigma_lowres_threshold2_max=0.95,
+                sigma_lowres_yarnsig="",
+            )
+        )
+        assert route == (1024, 896) and route2 == (1024, 768)
+
+    def test_rule1_alone_needs_no_window(self):
+        from train import AnimaTrainer
+
+        assert AnimaTrainer._validate_sigma_rules(self._args()) == ((1024, 896), None)
+
+    def test_primary_inverted_window_rejected(self):
+        from train import AnimaTrainer
+
+        with pytest.raises(ValueError):
+            AnimaTrainer._validate_sigma_rules(
+                self._args(sigma_lowres_threshold=0.8, sigma_lowres_threshold_max=0.6)
+            )
+
+    @pytest.mark.parametrize("attr", ["sigma_lowres_span", "sigma_lowres_span2"])
+    def test_bad_span_raises_at_setup_not_first_step(self, attr):
+        """A typo'd span used to raise inside _maybe_sigma_demote, i.e. after
+        model load, adapter attach and caching."""
+        from train import AnimaTrainer
+
+        kw = {attr: "latte"}
+        if attr == "sigma_lowres_span2":
+            kw.update(
+                sigma_lowres_route2="1024:768",
+                sigma_lowres_threshold2=0.65,
+                sigma_lowres_threshold2_max=0.95,
+            )
+        with pytest.raises(ValueError, match="early|late|spread"):
+            AnimaTrainer._validate_sigma_rules(self._args(**kw))
+
+    def test_rule_cfg_reads_each_rules_own_flags(self):
+        from train import AnimaTrainer
+
+        args = self._args(
+            sigma_lowres_threshold=0.5,
+            sigma_lowres_threshold_max=None,
+            sigma_lowres_span="late",
+            sigma_lowres_threshold2=0.65,
+            sigma_lowres_threshold2_max=0.95,
+            sigma_lowres_span2="early:0.3",
+        )
+        assert AnimaTrainer._sigma_rule_cfg(args, 1) == (0.5, None, "late")
+        assert AnimaTrainer._sigma_rule_cfg(args, 2) == (0.65, 0.95, "early:0.3")
+        with pytest.raises(ValueError):
+            AnimaTrainer._sigma_rule_cfg(args, 3)
+
+
+class TestSigmaSpanResumeOffset:
+    """The span gate counts train FORWARDS, so a resumed run must start the
+    counter at the resume offset — otherwise late:f is measured from the resume
+    point against an absolute T and demotes over a shrunken tail."""
+
+    def test_late_span_boundary_is_absolute_after_resume(self):
+        from train import AnimaTrainer
+
+        args = SimpleNamespace(
+            sigma_lowres_span="late:0.5",
+            max_train_steps=480,
+            gradient_accumulation_steps=1,
+            seed=0,
+        )
+        # T=480, late:0.5 -> demote for step_idx > 240, whatever the offset.
+        assert AnimaTrainer._sigma_span_allows(args, 240) is False
+        assert AnimaTrainer._sigma_span_allows(args, 241) is True
+
+    @pytest.mark.parametrize("resume_at", [0, 120, 300])
+    def test_resumed_run_demotes_the_same_absolute_tail(self, resume_at):
+        """Replay the trainer's counter for a run resumed at ``resume_at``
+        forwards and assert the demoted set is the same absolute tail a fresh
+        run would produce. With a 0-based counter, resume_at=300 under
+        late:0.5 demoted from global 540 (past the end) instead of 241.
+        """
+        from train import AnimaTrainer
+
+        args = SimpleNamespace(
+            sigma_lowres_span="late:0.5",
+            max_train_steps=480,
+            gradient_accumulation_steps=1,
+            seed=0,
+        )
+        # The loop pre-seeds the counter with the resume offset.
+        counter = resume_at
+        demoted = []
+        for _ in range(480 - resume_at):
+            counter += 1
+            if AnimaTrainer._sigma_span_allows(args, counter):
+                demoted.append(counter)
+
+        expected = [i for i in range(resume_at + 1, 481) if i > 240]
+        assert demoted == expected
+
+
+class TestPerRouteWarnAndNpzMemo:
+    """A single shared warn flag let a stale image on one route swallow the
+    warning for a wholly un-emitted second route — the stacked router would
+    then quietly degrade to the primary rule, whose only symptom is a few
+    points of wall-clock."""
+
+    def test_missing_key_warns_once_per_route(self, caplog):
+        import logging
+
+        from library.datasets.base import BaseDataset
+
+        ds = BaseDataset(network_multiplier=1.0, debug_dataset=False)
+        ds.enable_sigma_demote(1024, 896)
+        ds.enable_sigma_demote2(1024, 768)
+
+        # An npz with NEITHER route's sibling key.
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            npz_path = Path(td) / "img1_0896x1200_anima.npz"
+            np.savez(npz_path, latents_150x112=np.zeros((16, 150, 112), np.float32))
+            info = SimpleNamespace(latents_npz=str(npz_path), bucket_reso=(896, 1200))
+
+            with caplog.at_level(logging.WARNING):
+                assert ds._try_load_demoted_latent(info) is None
+                assert ds._try_load_demoted_latent2(info) is None
+                # Second visit: no new warnings.
+                assert ds._try_load_demoted_latent(info) is None
+                assert ds._try_load_demoted_latent2(info) is None
+
+        warns = [r.message for r in caplog.records if "sigma_lowres" in r.message]
+        assert len(warns) == 2, f"expected one warning per route, got {warns}"
+        assert any("896" in w for w in warns) and any("768" in w for w in warns)
+
+    def test_npz_opened_once_for_both_routes(self, monkeypatch):
+        """Both sidecar loaders run back-to-back for the same image; the memo
+        keeps that to one archive open instead of one per route."""
+        import numpy as _np
+
+        from library.datasets.base import BaseDataset
+
+        ds = BaseDataset(network_multiplier=1.0, debug_dataset=False)
+        ds.enable_sigma_demote(1024, 896)
+        ds.enable_sigma_demote2(1024, 768)
+
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as td:
+            npz_path = Path(td) / "img1_0896x1200_anima.npz"
+            b896 = demote_bucket_for(896, 1200, 1024, 896)
+            b768 = demote_bucket_for(896, 1200, 1024, 768)
+            payload = {
+                "latents_150x112": _np.zeros((16, 150, 112), _np.float32),
+                demoted_latents_key(*b896): _np.zeros(
+                    (16, b896[1] // 8, b896[0] // 8), _np.float32
+                ),
+                demoted_latents_key(*b768): _np.zeros(
+                    (16, b768[1] // 8, b768[0] // 8), _np.float32
+                ),
+            }
+            _np.savez(npz_path, **payload)
+            info = SimpleNamespace(latents_npz=str(npz_path), bucket_reso=(896, 1200))
+
+            opens = []
+            real_load = _np.load
+            monkeypatch.setattr(
+                _np,
+                "load",
+                lambda p, *a, **k: (opens.append(p), real_load(p, *a, **k))[1],
+            )
+            assert ds._try_load_demoted_latent(info) is not None
+            assert ds._try_load_demoted_latent2(info) is not None
+            assert len(opens) == 1, (
+                f"expected one npz open for both routes, got {opens}"
+            )
+
+    def test_memo_dropped_on_pickle(self):
+        """An open NpzFile is unpicklable and the dataset is shipped to
+        DataLoader workers under Windows/spawn."""
+        import pickle
+        import tempfile
+
+        from library.datasets.base import BaseDataset
+
+        ds = BaseDataset(network_multiplier=1.0, debug_dataset=False)
+        with tempfile.TemporaryDirectory() as td:
+            npz_path = Path(td) / "x.npz"
+            np.savez(npz_path, a=np.zeros(1, np.float32))
+            ds._open_demote_npz(str(npz_path))
+            assert ds._demote_npz_cache is not None
+            assert pickle.loads(pickle.dumps(ds))._demote_npz_cache is None

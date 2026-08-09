@@ -1,5 +1,12 @@
 # OrthoLoRA (Exp): Cayley Parameterization + SVD-Informed Init
 
+Status: **ARCHIVED** (2026-07-28) — deprioritized in the README's plain-LoRA
+variant lineup in favor of [SVD-Down LoRA](../../docs/methods/svd-down-lora.md),
+which keeps the useful half of this doc's SVD-informed init without the
+Cayley-constrained cold-start bottleneck. The `use_ortho = true` code path
+still exists and this doc is kept as its usage/ops reference, just moved out
+of the actively-showcased `docs/methods/` index.
+
 Experimental variant of OrthoLoRA that replaces soft orthogonality regularization with a hard Cayley constraint and initializes bases from the pretrained weight's SVD. Gated behind `use_ortho = true`.
 
 Inspired by PSOFT (Wu et al., "Efficient Orthogonal Fine-Tuning with Principal Subspace Adaptation", ICLR 2026).

@@ -262,8 +262,9 @@ COMMANDS = {
     "preprocess-vae": (preprocess.cmd_preprocess_vae, "Cache VAE latents"),
     "preprocess-demote": (
         preprocess.cmd_preprocess_demote,
-        "Emit σ-demote sibling latents (sigma_lowres: 1024→896 keys inside "
-        "the native npz) for --sigma_lowres training",
+        "Emit σ-demote sibling latents (sigma_lowres: demoted_{H}x{W} keys "
+        "inside the native npz) for --sigma_lowres training — one pass per "
+        "route in preprocess.toml's sigma_demote (default 1024:896)",
     ),
     "preprocess-te": (preprocess.cmd_preprocess_te, "Cache text encoder embeddings"),
     "preprocess-captions": (

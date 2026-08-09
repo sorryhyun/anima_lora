@@ -809,9 +809,12 @@ class JobManager:
         that is reaped by pid below regardless of the fraction; the fraction only
         guesses whether some *other* process owns the card, so a partially-loaded
         ComfyUI / browser shouldn't trip it. Process enumeration is kept only to
-        reap VRAM leaked by our *own* dead jobs, matched by pid (a stranger's pid
-        never matches a job, so the polluted holder list is harmless on that
-        path). If we can't probe memory at all we assume free rather than
+        reap VRAM leaked by our *own* dead jobs, matched by **(pid, create_time)**
+        — a bare pid match is not enough: PIDs get recycled (aggressively so on
+        Windows), and a stale job record whose number now belongs to a stranger
+        would otherwise make us kill that stranger. Issue #83: a 3-day-old job's
+        pid had been reused by ``dwm.exe``, which the guard then tried to reap.
+        If we can't probe memory at all we assume free rather than
         deadlock the queue. Tunable via ANIMA_DAEMON_GPU_{BUSY_FRAC,RETRIES,DELAY}.
         """
         # A resident inference server (scripts/inference_server.py) holds a warm
@@ -822,10 +825,17 @@ class JobManager:
 
         for attempt in range(retries):
             # Reap leftovers from our own (now-terminal/dead) jobs. Safe even
-            # when gpu_pids() is polluted: only pids that match a known job act.
+            # when gpu_pids() is polluted: a holder acts only if it matches a
+            # known job on (pid, create_time) — i.e. it really is the process we
+            # spawned, still alive. A recycled pid fails the create_time check
+            # and is left alone (issue #83).
             holders = gpu.gpu_pids() or set()
             with self._lock:
-                known = {j.pid: j for j in self._jobs.values() if j.pid in holders}
+                known = {
+                    j.pid: j
+                    for j in self._jobs.values()
+                    if j.pid in holders and proc.is_alive(j.pid, j.create_time)
+                }
             reaped = False
             for pid, owner in known.items():
                 if owner.id == job.id:

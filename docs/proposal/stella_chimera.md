@@ -200,7 +200,8 @@ shelved with a clear, falsifiable reason on record.
 ## References
 
 - Li et al., *StelLA: Subspace Learning in Low-rank Adaptation using Stiefel
-  Manifold*, NeurIPS 2025. Local copy:
+  Manifold*, NeurIPS 2025 (Spotlight),
+  [arXiv:2510.01938](https://arxiv.org/abs/2510.01938). Local copy:
   `NeurIPS-2025-stella-subspace-learning-in-low-rank-adaptation-using-stiefel-manifold-Paper-Conference.pdf`.
   Code: <https://github.com/SonyResearch/stella>.
 - ChimeraHydra deep-dive: `docs/experimental/chimera-hydra.md`;
