@@ -5,7 +5,7 @@
 | **Status** | **20.1 + 20.2 DONE 2026-08-08 — verdict PARTIAL** (better on exactly one safe lane: 768 wins with dip in-window, LOO-896 loses; 1280-tier guard fails on 1024). Per the reading rules: geometry right, amplitude law open; **no 20.3 spend**. **20.4 DONE 2026-08-08 — NEGATIVE** (derived data term fails the lanes; failure is estimand-level, not closure-level — see §20.4 Results). Results below; runs `runs/20260808-0924-e20-refit/`, `runs/20260808-0944-e20-stretch/`. Pre-registration (frozen constants, lanes, reading rules) unchanged below. |
 | **Question** | E19 located the near-cancellation's geometry (global, Jᵀ-born, ρ̄ ≈ −0.91) and the Fig.-1 demonstration (`fig_accounts_canc.py`, in `e19/accounts_canc.png`) showed the cancellation-aware link fits the measured map in-sample and lands its crossings in the E9 window. Open: does it survive the **same governor / held-out protocol** the paper's additive account runs under — same parameter count per route, same lanes, same bootstrap — and does it thereby earn the reserved full-σ-map confirmation spend? |
 | **Depends on** | [E19](../e19/) (ρ̄ license: 19.0 route-uniform, 19.3 depth/type-uniform, 19.6 operating-point invariant), [E14](../e14/) (ledger; source of ρ̄), [E5](../e5/) (`e5_refit.py` lanes: FIT_ROUTES 896/512/1120, HELD_OUT 768/1024, LOO-896; governors; bootstrap), [E9](../e9/) (window ↔ crossing), `paper_bench/fig_accounts_canc.py` (feasibility demo, NOT lane-matched) |
-| **Instruments** | 20.1 `e20_refit.py` (extends `e5_refit`; CPU); 20.2 free re-read of 20.1; 20.3 decision-gated GPU (the reserved spend); 20.4 stretch (closure-derived data term) |
+| **Instruments** | 20.1 `e20_refit.py` (extends `e5_refit`; CPU); 20.2 free re-read of 20.1; 20.3 decision-gated GPU (the reserved spend — **not taken**: 20.1 PARTIAL); 20.4 stretch (closure-derived data term) |
 | **In the paper** | If 20.1 wins: the successor of Eq. (8) in paper 2 §4.6 (the cancellation account's operational form), with `accounts_canc.png` upgraded to the lane-matched version. Paper 1's Fig. 1 lane is untouched either way. |
 
 ## Frozen constants (pre-registered — do not refit on curves)
@@ -133,7 +133,7 @@ here, **no 20.3**; Eq. (8) stands as paper 2's operational form and
 need a per-tier c account (e.g. c ≈ 0 above the 1024 tier) — that is a
 new pre-registration, not a refit of this one.
 
-## 20.3 — the reserved full-σ-map spend (GPU, decision-gated)
+## 20.3 — the reserved full-σ-map spend (GPU, decision-gated) — **NOT TAKEN** (20.1 returned PARTIAL; the reserved spend remains unspent)
 
 Only on a 20.1 **WIN**: freeze the 20.1 parameters, publish dense-grid
 predictions per route in this file **before** submitting the run, then
@@ -198,7 +198,12 @@ there); the clean read is the 768 held-out lane.
   lane level**. Any future "derive the amplitudes" attempt (the E21
   sketch in the 20.1 reading) must first build the estimand bridge
   between the ledger legs and the gap account's x — the closure is
-  not the bottleneck.
+  not the bottleneck. *(Naming note: "the E21 sketch" here is the
+  informal amplitude-derivation idea, **not** the cell-level g-ledger
+  that later ran as [E21](../e21/) — see the numbering notes in
+  e21/e22. And the bridge has since been closed from the
+  **measurement** side at σ = 0.7 by E22.4 (PER-SAMPLE HOLDS); the
+  objective-side bridge this paragraph requires remains open.)*
 
 ## Kill switches / honesty
 
@@ -221,5 +226,5 @@ there); the clean read is the 768 held-out lane.
 |---|---|
 | 20.1 | CPU, ~minutes (grid fit + B=1000 bootstrap) |
 | 20.2 | free (re-read of 20.1) |
-| 20.3 | GPU, decision-gated — the reserved verdict-grid spend |
+| 20.3 | GPU, decision-gated — the reserved verdict-grid spend (not taken — gate did not fire) |
 | 20.4 | CPU, optional |

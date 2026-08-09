@@ -41,37 +41,40 @@ Recomputed from `runs/20260729-0014-e1b-debiased-map/per_image.jsonl`
 | 1.00 | 768 | +0.114 ± 0.018 | +0.092 ± 0.012 | 3/36 |
 | 1.00 | 512 | +0.326 ± 0.031 | +0.329 ± 0.030 | 0/36 |
 
-Three things follow, none of which the current grid can settle:
+Three things followed, none of which that grid could settle — all
+three were then settled by this run's Results:
 
 1. **The σ→1 rise is real, not a debiasing artifact** — it survives in
    raw paired (arm − reenc) cosine units (768: +0.061 → +0.114; 512:
    +0.258 → +0.326). Good news for the figure; the *shape* of the
-   approach is still unmeasured.
+   approach was then measured: flat within resolution, with the σ = 1
+   step a correction-regime discontinuity (H1).
 2. **The interior high-σ bins are at the resolution limit.** At
    σ ∈ [0.44, 0.94], 28–37 of 40 images have a negative debiased gap
    (ĉ>1, the correction over-shooting past the ceiling), versus 0–10 at
    the endpoint. The bins that would define the approach carry almost no
    signal above noise.
-3. **The mid-σ peak may be manufactured by the correction.** In raw
-   paired units 512 has a local *dip* at σ=0.31 (+0.317, between +0.445
-   and +0.438); debiased it becomes the global *maximum* (+0.599). 896
-   goes +0.083 → +0.208 at the same bin. This is where the reenc control
-   itself is furthest off zero (unpaired debiased −0.11 at 0.31, −0.41 at
-   0.19 — the overshoot §4.1 already flags). The pairing subtracts most of
-   it, but a control that far out means the correction is outside its
-   linear regime exactly at the peak.
+3. **The mid-σ peak looked possibly manufactured by the correction** —
+   in raw paired units 512 has a local *dip* at σ=0.31 (+0.317, between
+   +0.445 and +0.438); debiased it becomes the global *maximum* (+0.599),
+   and the reenc control is furthest off zero exactly there (unpaired
+   debiased −0.11 at 0.31, −0.41 at 0.19). **Not borne out** (H2): at
+   D = 12 the structure survives in raw paired units as a plateau, and
+   the low-σ overshoot was a D-resolution artifact (kill switch clean).
 
-(3) is the reason this is not a cosmetic run: **E5's held-out validation
+(3) is the reason this was not a cosmetic run: **E5's held-out validation
 fits the data term against this curve's shape**, including the mid-σ peak
-and the 768 mid-σ dip that "sits outside the 95% band". If the peak's
-location or height is partly estimator-driven, those numbers move.
+and the 768 mid-σ dip that "sits outside the 95% band". The refit (below)
+showed the shape was not estimator-driven — E5's prediction transfers
+4/4; only the ratio-governor moved, for a per-run-normalization reason
+independent of the curve.
 
 Independent anchor: E1a's D→∞ endpoint extrapolation gives **+0.019 /
 +0.056 / +0.304** (896/768/512) versus this grid's D=8 endpoint **+0.042 /
 +0.092 / +0.329**. The *top* of the jump is itself ~2× inflated for the two
 mild routes, so part of the visual severity is endpoint bias at D=8.
 
-## Instrument change — segmented `--sigma_window`
+## Instrument change — segmented `--sigma_window` (landed 2026-08-01; since used by E13/E14/E19)
 
 Today `--sigma_window LO,HI` takes one interval and
 `build_sigmas(bins, draws, endpoint, lo, hi)` returns a rectangular
@@ -99,11 +102,10 @@ estimator iterates a rectangular `(bins, draws)`. Do not attempt it — vary
 bin *density* per segment instead, and set `D` globally by the hardest
 route.
 
-Also owed: `plot_debiased_map.py` must stop assuming uniform bin width
-(plot against `sigma_centers`, and draw the endpoint as a detached open
-marker rather than a connected point — the current figure connects two
-different probe modes with a line segment, which is most of why the last
-leg reads as a cliff).
+Also owed, and done in-instrument: `plot_debiased_map.py` now plots
+against `sigma_centers` and draws the endpoint as a detached open marker
+(the previous figure connected two different probe modes with a line
+segment, which was most of why the last leg read as a cliff).
 
 ## Pre-registered predictions and decision rules
 
@@ -159,7 +161,7 @@ cost** — σ is a scalar per draw. Cost is
 | **D** high end only | 6 | 24 | 16 | 112 | 3.8 h (~5.7 h) |
 | **E** low end only | 6 | 24 | 16 | 112 | 3.8 h (~5.7 h) |
 
-**Recommendation: B.** It answers both ends in **one process**, which the
+**Recommendation: B** (the run below is design B). It answers both ends in **one process**, which the
 kernel-path rule requires for a single figure — D+E as separate runs cost
 the same 7.6 h and produce two curves that may not be spliced. D=12 is the
 compromise: D=8 is the resolution that already failed (finding 2 above),
@@ -389,7 +391,7 @@ The grid is not the driver. Restricting E13 to E1b-like coarseness barely moves
 A (896: 0.0609 → 0.0737 mid+endpoint only; 512: 0.1489 → 0.1506), so the dense
 ends contribute almost nothing to the amplitude.
 
-### What would settle the curve-shape refit
+### What would settle the curve-shape refit (settled — E14)
 
 **Re-run the segmented grid on E1b's exact 40-image probe list.** Then the
 1024-tier legs are the *same images* as the published fit, G9 stays fixed, and
@@ -399,17 +401,18 @@ sets `num_images`, and `--self_floor` supports ≤50). With m, G and y all
 describing the same images, A becomes comparable and the 896 F↔A
 redistribution can be read as curve change rather than normalization.
 
-**This rerun is [E14](../e14/)** (reserved 2026-08-01; consolidated same
-day — there is no separate "e13b" submission). One process carries both the
-probe-matched refit owed here and the E9-style B/C ledger arms
-(`--repromote --keep_arm_sums`) that decompose the 896 low-σ plateau.
-Command, instrument prep, pre-registered branches, and measured cost live in
-E14's record, which supersedes the command formerly here.
+**This rerun ran as [E14](../e14/)** (consolidated 2026-08-01, DONE
+2026-08-02 — there was no separate "e13b" submission). One process carried
+both the probe-matched refit owed here and the E9-style B/C ledger arms
+(`--repromote --keep_arm_sums`) that decompose the 896 low-σ plateau;
+command, instrument prep, pre-registered branches, and results live in
+E14's record.
 
-Until then: §4.7 keeps the published fit — **it is not refuted**, the
-prediction transfers (table above). E13's H1/H2/H3 verdicts stand on their own
-as within-run shape claims and need no refit. The one thing that should be
-written down regardless of the rerun is that **A carries a per-run G
+Outcome for §4.7: the published fit is **not refuted** — the prediction
+transfers (table above), and E14's probe-matched legs make the A/F
+redistribution attributable to the probe-set correction alone. E13's
+H1/H2/H3 verdicts stand on their own as within-run shape claims and need
+no refit. The one thing written down regardless: **A carries a per-run G
 normalization**, so the ratio-governor z is a scale-dependent statistic.
 
 Artifacts: `runs/20260801-1034-e5-holdout-control2` (bit-identical control),

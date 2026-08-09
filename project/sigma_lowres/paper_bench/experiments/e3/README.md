@@ -16,7 +16,10 @@ gap outside [−0.5, 1.5] masked (non-physical ĉ > 1.5 — the 512 endpoint
 cell hit −1.15); the aggregate point borrows the stratum SEM × √(P/N).
 The σ = 0.3125 bin is anomalous across routes (aggregate floor dip to
 0.87, imgsplit 0.76) — read it with the ε\* instrument resolution, not
-at face value. Stratum-level redundancy Spearman is negative but
+at face value. (E13 later narrowed the anomaly: the mid-σ structure is
+a real plateau — H2, not a correction artifact — and the low-σ debias
+overshoot was a D-resolution artifact; what stays live is the
+0.30–0.43 shoulder's correction caveat for any σ\* claim.) Stratum-level redundancy Spearman is negative but
 n = 10 non-significant (−0.26/−0.45/−0.49) — the pool4-addendum null
 stands.
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **DONE 2026-08-08** — pre-registered same day before `e21_cells.py` existed; 21.1 ran clean (daemon job `20260808-102525-b93090`, 11.5 min CPU). Verdict **LOCAL** on both routes; π-swing dual-read (see Results). |
+| **Status** | **DONE 2026-08-08** — pre-registered same day before `e21_cells.py` existed; 21.1 ran clean (daemon job `20260808-102525-b93090`, 11.5 min CPU). Verdict **LOCAL** on both routes; π-swing dual-read (see Results). Follow-ups since: the *cross-condition* complement was measured by [E24](../e24/) (STRUCTURED — σ-indexed axis field; NB E24's refuted "LOCAL-AXIS" outcome name is a different quantity from this verdict's LOCAL), and *per-image* granularity was later obtained by [E22](../e22/) (22.4 PER-SAMPLE HOLDS at σ = 0.7). |
 | **Question** | E19 established the deep g-level anti-alignment as one global constant (route-uniform 19.0, depth/type-uniform 19.3, operating-point-invariant 19.6) at **pooled** granularity, and the r-level field figure (`e19/fig_score_field.py`) showed the r-level spatial analog is ubiquitous-but-mild, with pooling amplitude-weighted. Open, at the estimand where ρ̄ ≈ −0.91 actually lives (LoRA-gradient space): is the cancellation carried **pointwise by (depth × module-type) cells**, or by **cross-cell global modes**? And cell-wise, *where* does 19.4's phase-borne component live — uniformly (the "carried globally through the chain rule" reading) or concentrated in specific type bands? Payoff either way: the Yang–Song-style mechanism figure at the **correct estimand** — arrow pairs (B_cell, C_cell) over the network's depth×type lattice — with an honest caption dictated by the verdict. |
 | **Depends on** | [E14](../e14/) (pooled ρ̄; digests only — its arm sums were deleted); [E19](../e19/) 19.3 + 19.4 **surviving `arm_sums/` stores** (verified on disk 2026-08-08, see Sources); `paper_bench/vector_ledger.py` / `ledger_depth.py` / `ledger_pi.py` (leg + debias + gate conventions); `e19/fig_score_field.py` (r-level counterpart); G11 (PI off-manifold at mid σ — standing restriction) |
 | **Instruments** | 21.1 `e21_cells.py` (CPU; cell ledger + lattice figure); 21.2 free re-reads of 21.1. **No GPU item** — see Cost ladder. |
@@ -92,7 +92,8 @@ on disk.
   `e21_cells.json`.
 - Per-image cell spread is **not obtainable** (stores are cross-image
   sums) and is not claimed; wording in outputs must say "pooled
-  per-cell", never "per-image".
+  per-cell", never "per-image". *(Scoped to these stores: E22 later
+  built the per-image arm — 22.1/22.4 report per-image gated cells.)*
 - Endpoint bins detached; C_π restricted per G11 (above).
 - Anti-scope: this is NOT an image-space g-field (g-legs live in
   LoRA-gradient space; the image-space rendering exists at r-level

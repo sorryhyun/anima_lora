@@ -90,7 +90,9 @@ bit-exact, stats-overlap cut wall ~2-3×.
   (`runs/20260729-0014-e1b-debiased-map/`). Caveat first: at D=8/bin the
   *unpaired* debiased estimator overshoots (reenc bins to −0.4 where
   floors are small, σ≈0.19–0.44) — the readable object is the **paired
-  per-image difference (arm − reenc)**, |Δ|>1.5 dropped.
+  per-image difference (arm − reenc)**, |Δ|>1.5 dropped. (E13's D = 12
+  kill switch later confirmed the overshoot a D-resolution artifact —
+  it largely vanishes at D = 12.)
   Paired-debiased map: 512 unsafe at every σ (+0.08..+0.60). 896 unsafe
   σ<0.5, ≈0 in σ∈[0.56,0.94] (formal 0.02-UB pass only at 0.688 —
   bin-level ε\* at N=40/D=8 is ~0.03–0.08, see [E8.1](../e8/)), **small
@@ -98,7 +100,8 @@ bit-exact, stats-overlap cut wall ~2-3×.
   missed. 768 ≈ 0 in σ∈[0.69,0.94] (means −0.03..+0.015) but clearly
   gapped at the endpoint (+0.092±0.012) and everywhere σ<0.6 — "never
   safe" softens to "no certifiable window at current instrument
-  resolution; means ≈ 0 in [0.69,0.94]". Shipped 896@σ>0.5 map:
+  resolution; means ≈ 0 in [0.69,0.94]" (mechanism later measured:
+  E9's negative interference, I_768 < 0 at every bin). Shipped 896@σ>0.5 map:
   re-confirmed debiased except the σ=1.0 endpoint itself.
 - **(c) x-zero endpoint sweep, N=40, D=4..32, `--self_floor`**
   (`runs/20260729-0420-e1c-xzero-endpoint/`). Debiased graph-term
@@ -107,9 +110,12 @@ bit-exact, stats-overlap cut wall ~2-3×.
   gaps at every route. **The endpoint gap IS the graph/Jacobian floor:
   the target-content share R2 flagged (raw 768 0.127 vs x-zero 0.064)
   was estimator bias, not content.** The paper's original "any endpoint
-  gap is the floor by construction" survives in debiased units;
-  [E2](../e2/)'s α-sweep is demoted from gate-adjacent to cheap
-  confirmation (predicted α-slope ≈ 0).
+  gap is the floor by construction" survives in debiased units — with
+  E13 H1's later scope bound: the σ = 1 bin is its own estimand, not
+  the σ→1⁻ limit, so §4.4's floor identity is re-derived rather than
+  assumed (E1's *levels* stand). [E2](../e2/)'s α-sweep is demoted from
+  gate-adjacent to cheap confirmation (predicted α-slope ≈ 0 —
+  confirmed by E2; mechanism: E10's parallel landing).
 
 **Outcome: decision rule 1 fired → Branch A** (`../../paper_plan.md` §5);
 the gap-native restructure was written into `paper/main.tex` in debiased

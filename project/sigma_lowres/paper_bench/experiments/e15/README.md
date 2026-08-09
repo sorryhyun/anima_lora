@@ -5,7 +5,7 @@
 | **Status** | **15.0 DONE 2026-07-31 — GATE FAILED, line priced out.** 15.1/15.2 not run (pre-registered kill). Run: `runs/20260731-2114-e14-pricing/`. Renumbered from **E14** 2026-08-01 (the new E14 is the low-σ vector ledger); the run dir and its envelope keep the historical `e14` label |
 | **Verdict** | The per-sample correction second moment is ~**half the intrinsic per-step variance** (E2 ≈ V_total/2 per bin, lower bound), so the 1/q roulette is unaffordable: A needs q̄ ≈ 0.45 at the 1.5× inflation cap → net **+2.6–4.1%** vs the ≥20% gate. In-window safety of static demotion is an **aggregate-coherence** phenomenon — per-sample differences are O(‖g‖) and cancel across images/steps; MLMC pays the per-sample second moment to buy back a tiny aggregate first moment. Redesign lever recorded below (anchored control variate), not pursued under this record. |
 | **Question** | The map certifies one route in one window by *measurement*. Can a randomized two-level correction make demotion unbiased **by construction** at every σ — turning the gap map from a gatekeeper into a *price list* — and buy the routes the map rejects (768; all-σ) at their measured E4 discount? |
-| **Depends on** | [E9](../e9/) (arm sums → ‖Δḡ‖ per bin; the I-switch-off mechanism), [E5](../e5/) (the X-form gap model that prices the coin), [E4](../e4/) (cost calibration, the already-measured static-768 control, the seed-noise yardstick, `claim_accumulated_bias.md`), [E1](../e1/) (paired debiased object, kernel-path rule). [E13](../e13/) refines the coin at the curve ends but does not block. |
+| **Depends on** | [E9](../e9/) (arm sums → ‖Δḡ‖ per bin; the I-switch-off mechanism), [E5](../e5/) (the X-form gap model that prices the coin), [E4](../e4/) (cost calibration, the already-measured static-768 control, the seed-noise yardstick, `claim_accumulated_bias.md`), [E1](../e1/) (paired debiased object, kernel-path rule). [E13](../e13/) (DONE 2026-08-01 — resolved the curve ends: the mid-σ peak is a real plateau, 896's σ→1 approach an instrument limit) did not block. |
 | **Instrument** | trainer delta in `train.py::_maybe_sigma_demote` (below) + `bench/compare_ckpt_dw.py` (15.1) + the E4 harness (`e4_flops.py`, `e4_seed_yardstick.py`, `e4_render_eval.py`) (15.2) |
 | **In the paper** | §5 discussion paragraph at minimum ("the gap map doubles as the variance/price map of an unbiased estimator"); the method itself is line work beyond the current manuscript |
 
@@ -50,8 +50,9 @@ net FLOPs saving = (demoted mass)·(1 − c_e) − (mass)·q̄.
 | — | shipped `sigma896` | −15.1% | — | — | the bar to beat |
 
 Break-even vs shipped for A at q̄ ≈ 0.22. B and C spend corrections in
-the low-σ region priced by the mid-σ peak — whose height E13 suspects
-is partly estimator-manufactured; 15.0 scores all three, prior on A.
+the low-σ region priced by the mid-σ peak (E13 subsequently confirmed
+the peak as a real plateau in raw paired units — not
+estimator-manufactured); 15.0 scores all three, prior on A.
 
 ## The coin — three tiers
 
@@ -63,13 +64,17 @@ headline X form supplies precisely the needed quantity — its empirical
 ingredient **is** the linear mismatch loading ‖δg⊥‖ = c·m(σ) (held-out
 RMSE ~0.09) — and the *posterior* second moment √(μ̂²(σ) + s²(σ))
 replaces the point estimate, with s(σ) from the fit covariance plus a
-structural inflation where E13 flags the curve unresolved (the σ→1
-approach, the mid-σ peak flank). So "sample more where the model is
+structural inflation where the curve was then unresolved (E13 has since
+resolved both spots: the mid-σ flank is a real plateau, and 896's σ→1
+approach is certified an instrument limit — H3). So "sample more where the model is
 uncertain" is not a heuristic bolt-on; it falls out of the optimal
 allocation. Mechanism agreement worth pre-registering: E9's I_768 goes
 −0.31 → −0.014 window→endpoint, so q1 should *rise toward σ=1* — the
 corrections concentrate exactly where the interference protection
-switches off. Frozen as `q_table.json` in the manifest; deterministic
+switches off. (E13 H1 later falsified the premise: the measured curve
+is flat inside the dense-high window — the predicted monotone rise is
+absent, and the endpoint gap is a separate estimand.) Frozen as
+`q_table.json` in the manifest; deterministic
 and CRN-compatible across arms.
 
 **q2(σ, optimizer state) — drift-priced.** Gradient-space unbiasedness
@@ -92,7 +97,7 @@ suffices" and q2 dies without an arm.
 | # | design choice | grounded by | pointer |
 |---|---|---|---|
 | g1 | the correction is cheap in-window (variance ∝ realized ‖B+C‖, not additive) | I < 0 cancels 70–80% of the additive gap in-window; realized = h(B+C) exactly | E9 `ledger.json`, `bench/results/20260731-0721/` |
-| g2 | corrections should concentrate σ→1 | I_768 −0.31 → −0.014 window→endpoint; endpoint gaps real (896 gap_∞ +0.019, 768 +0.092±0.012 debiased) | E9; E1a/E1b; E13 free reanalysis table |
+| g2 | corrections should concentrate σ→1 | I_768 −0.31 → −0.014 window→endpoint; endpoint gaps real (896 gap_∞ +0.019, 768 +0.092±0.012 debiased) — the implied σ→1 *rise* later falsified (E13 H1: high-σ flat) | E9; E1a/E1b; E13 free reanalysis table |
 | g3 | q1's magnitude model exists and predicts held-out | X form, ‖δg⊥‖ = c·m(σ); RMSE ~0.09; floor law 2-for-2 on unseen floors | E5 `runs/20260729-1130-e5-holdout/`, `-refit/` |
 | g4 | the static candidates' costs and failures are measured | −30.8% (896only), −52.2% (unsafe768), sigma768 −26.5% gross; sigma768/896only below yardstick on ≥1 corpus; sigma896 inside | E4 FLOPs table + `runs/20260730-e4-yardstick-5arm/` |
 | g5 | the drift-risk object is already named | in-band per-step verdicts do not certify accumulated update-space drift | `../e4/claim_accumulated_bias.md` |
@@ -192,7 +197,9 @@ level the difference is O(‖g‖): per-image rel-diff ‖Δᵢ‖/‖gᵢ‖ �
 0.7–1.6 in-window (E1b law-of-cosines), vs aggregate ‖Δḡ‖/‖ḡ‖ ≈
 0.15–0.35 (E9 exact vectors) — a ~3× coherence gap, so per-sample
 differences mostly cancel across images and steps. Static demotion is
-safe *because training averages them* — and that is precisely why
+safe *because training averages them* (an **amplitude** statement:
+E22.4 later showed the B/C cancellation *angle* holds per-sample at
+σ = 0.7) — and that is precisely why
 roulette debiasing is priced out: the correction term carries the
 per-sample second moment (≈ V_total/2, before per-draw dispersion up
 to 8× worse) while the bias it removes is the tiny aggregate first
@@ -281,7 +288,8 @@ The kill branch fired, and it earns *more* than the planned paragraph:
 - The aggregate-coherence finding is a genuine sharpening of the
   paper's account: the certified safety is a property of the
   σ-averaged aggregate gradient, not of per-step gradients (per-sample
-  ‖Δ‖ ≈ 0.7–1.6‖g‖ in-window vs aggregate 0.15–0.35). This gives
+  ‖Δ‖ ≈ 0.7–1.6‖g‖ in-window vs aggregate 0.15–0.35; amplitude only —
+  the cancellation angle itself is per-sample, E22.4). This gives
   `claim_accumulated_bias.md` its cleanest statement of *why* the
   per-step-vs-accumulated distinction matters, and independently
   motivates why the E4 A/B — not any per-step read — was the right

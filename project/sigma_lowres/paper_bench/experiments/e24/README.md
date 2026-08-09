@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **DONE 2026-08-08 — verdict STRUCTURED** (σ-indexed axis field: one direction across route/store/corpus at fixed σ, smooth rotation across σ that tracks the native anchor's own rotation; knob read: the residual is angle-borne — see Results). Pre-registered same day before the `e24_axis.py` instrument existed. CPU-only as planned. |
+| **Status** | **DONE 2026-08-08 — verdict STRUCTURED** (σ-indexed axis field: one direction across route/store/corpus at fixed σ, smooth rotation across σ; knob read: the residual is angle-borne — see Results). Pre-registered same day before the `e24_axis.py` instrument existed. CPU-only as planned. **Update 2026-08-09**: the descriptive "rotation tracks the anchor's own rotation" reading was tested and **retired** by [E25.0-2](../e25/) — matched-angle, not planar co-rotation (ĝ-frame transport buys Δ ≈ 0); see the annotated bullet in Results. |
 | **Question** | ρ̄ ≈ −0.91 means that per (route, σ) the pooled legs B⊥, C⊥ span a nearly 1-D subspace — a "cancellation axis" along which the data damage and the graph response slide against each other. Everything so far measures the *angle inside* each condition; nothing yet asks whether the axis itself is **one shared direction** across σ, routes, and runs ("a scale mode of the adapter-gradient space" — the geometric reading: demotion as an approximate symmetry the network absorbs, residual = failure of equivariance), or a per-condition direction that merely always cancels locally. Secondary, free from the same scalars: what actually dominates the residual gap — the incomplete **angle** (ρ > −1) or the **amplitude mismatch** (\|B\| ≠ \|C\|)? That pins which knob any population-level lever should target, *before* one is proposed. |
 | **Depends on** | [E19](../e19/) 19.3 + [E19.4] surviving `arm_sums/` stores and [E22](../e22/) 22.1's `--keep_arm_sums` store (all three verified on disk 2026-08-08, same adapter `anima_soup_sincos` — one operating point); `paper_bench/vector_ledger.py` (leg/debias conventions, `Sums` loader); [E21](../e21/) (LOCAL — the axis question is the *cross-condition* complement of E21's *within-condition* cell read); [E20](../e20/) 20.4 (closed: no ledger-derived objective term — this experiment derives nothing, it only measures geometry). |
 | **Instruments** | 24.1 `e24_axis.py` (CPU; cross-condition axis cosines + subspace rank + figure); 24.2 free re-read of 24.1's scalars (residual knob decomposition); 24.4 `e24_axis_fig.py` (illustration-only figures from the committed digest — added post-verdict, no new quantities). |
@@ -137,13 +137,15 @@ alignment structure, recorded:
   separation**: adjacent bins 0.89–0.97, extreme span (0.3 ↔ 0.7)
   0.44–0.60; all signs positive (a coherent rotating field, no flips).
   The C table shows the same pattern (min 0.572).
-- **The rotation tracks the anchor's own rotation** (descriptive): at
-  matched spans, cos(B̂, B̂) ≈ cos(ĝ, ĝ) — 0.44 vs 0.43 (0.3↔0.7), 0.74
-  vs 0.82 (0.4333↔0.7), 0.94 vs 0.94 (0.5667↔0.7), 0.90 vs 0.91
-  (0.7↔0.8333). Relative to the σ-conditioned native-gradient frame the
-  cancellation axis is **approximately σ-stationary** — a follow-up
-  claim would need its own pre-registration (frame-relative estimand),
-  recorded here as the shape of the structure only.
+- **The rotation is matched-angle with the anchor's, but in its own
+  plane** (settled 2026-08-09 by [E25.0-2](../e25/)): at matched spans,
+  cos(B̂, B̂) ≈ cos(ĝ, ĝ) — 0.44 vs 0.43 (0.3↔0.7), 0.74 vs 0.82
+  (0.4333↔0.7), 0.94 vs 0.94 (0.5667↔0.7), 0.90 vs 0.91 (0.7↔0.8333).
+  The pre-registered frame-relative estimand shows these equal angles
+  are a coincidence of magnitude, not a rigid co-rotation in ĝ's motion
+  plane: transporting by the ĝ rotation buys nothing (median
+  Δ = −0.0005), so the axis is **not** σ-stationary in the ĝ frame — it
+  rotates through the same angle as ĝ in its own plane.
 - **Gram** (12 gated verdict conditions): top-1 share 0.775 / PR 1.61
   (B), 0.792 / 1.55 (C) — one dominant mode plus one secondary mode
   (λ₂ ≈ 1.6–1.7), consistent with "dominant shared axis + σ-rotation
@@ -179,11 +181,11 @@ amplitude mismatch, at every gated verdict condition.
 ### What this buys / licenses
 
 - §5 geometric paragraph: the cancellation axis is **global across
-  routes and runs at fixed σ and rotates smoothly with σ**, roughly
-  co-rotating with the native gradient direction — "a σ-indexed scale
-  mode of the adapter-gradient space", not one frozen direction. The
-  lattice (E21) + axis-field (E24) pair gives the mechanism figure its
-  cross-condition complement.
+  routes and runs at fixed σ and rotates smoothly with σ** — "a
+  σ-indexed scale mode of the adapter-gradient space", not one frozen
+  direction; the rotation lives in the axis's own plane, matched-angle
+  with ĝ but not co-rotating (E25.0-2). The lattice (E21) + axis-field
+  (E24) pair gives the mechanism figure its cross-condition complement.
 - Per the STRUCTURED clause, downstream use needs a follow-up
   pre-registration naming the surviving structure. The surviving
   structure is strong: any projection/conditioning-style lever (the E25
@@ -192,7 +194,11 @@ amplitude mismatch, at every gated verdict condition.
   naturally with the shipped σ-gated recipe and with E21's adaln
   amplitude concentration. The knob read adds: such a lever should
   target the **angle** (the residual direction), not amplitude
-  rebalancing.
+  rebalancing. **Confirmed and sharpened 2026-08-09** by E25.0: the
+  σ-local requirement is now bin-level mandatory (a single direction
+  in a ĝ-normalized frame is refuted — 25.0-2), and the lookup object
+  exists per σ bin, route-shared, except the recorded 768/σ = 0.4333
+  hole (25.0-1 PARTIAL).
 - Population-level licensing only; every per-sample variant stays gated
   on E22 → 22.4 → E23a, unchanged.
 
@@ -206,7 +212,9 @@ amplitude mismatch, at every gated verdict condition.
   `fig_bc_plane` out-of-plane honesty convention). Route pairs at each σ
   nearly coincide; the σ = 0.7 quadruple (768/896 × e193/e194) is one
   bundle. Third panel: the descriptive co-rotation curves (B̂ vs ĝ
-  rotation away from σ = 0.7) — no frame-relative claim.
+  rotation away from σ = 0.7) — no frame-relative claim (correctly so:
+  E25.0-2 later showed the frame-relative version fails — the curves
+  depict matched angles, not planar co-rotation).
 - **`e24_bc_comb_rot.png`** — E19's `bc_comb` redrawn with the
   **measured** between-bin orientation (θ_B from the shared top-2
   plane) replacing the original "C always vertical" per-bin convention.

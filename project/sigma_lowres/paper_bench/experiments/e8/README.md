@@ -7,7 +7,7 @@
 | **Runs** | `runs/20260731-1939-e83-bridge/`; figure `paper/figs/e83_overlay.png` |
 | **Scripts** | `e83_bridge.py` (CPU-only; imports [E5](../e5/)'s fit/paired-stats helpers) |
 | **Depends on** | [E1](../e1/) (self-floors + per-bin SEM), [E4](../e4/)'s `reenc_noise_floor.py` run (`bench/results/20260730-0940-reenc-floor/`) |
-| **In the paper** | §epsstar (Eq. epsstar / safe(ε)); §4.6 Fig. `fig:e83`. The **[pending]** overlay marker is the one still to strip in-manuscript. |
+| **In the paper** | §epsstar (Eq. epsstar / safe(ε)); §4.6 Fig. `fig:e83`. The **[pending]** overlay marker has been stripped — `fig:e83` ships in the appendix (`paper_suggestion/appendix.tex`). |
 
 Origin: the gap-native restructure proposal (E8, 2026-07-28).
 

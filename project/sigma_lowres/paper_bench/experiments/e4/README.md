@@ -75,6 +75,13 @@ this recipe, so its justification currently rests entirely on the
 accumulated-bias question, now with an empirical handle: the
 full-protocol quality read of sigma896 vs 896only).
 
+Status of the tension (2026-08-09): still open by this route. The two
+later shortcuts both closed — E15 priced out the roulette that would
+have dissolved it into allocation, and E20.4 returned NEGATIVE on any
+ledger-derived objective term; E15's aggregate-coherence finding
+(per-sample ‖Δ‖ ≈ 0.7–1.6‖g‖ vs aggregate 0.15–0.35) also says no
+per-step read was ever going to settle it.
+
 ## 2026-07-30 addendum — 5th arm `sigma768`
 
 σ>0.5 gate + yarnsig on 1024→768: the off-map route under the paper's

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | **DONE 2026-07-29** |
-| **Verdict** | α-flat at the well-conditioned anchors — **no resolvable target-content share**; the endpoint gap is the graph floor, reproduced along a second axis. |
+| **Verdict** | α-flat at the well-conditioned anchors — **no resolvable target-content share**; the endpoint gap is the graph floor, reproduced along a second axis. (E10 later explained the flatness: the content share is real but *parallel* — demotion shortens the target vector along ĝ_src, κ∥ ≫ κ⊥ — so an angular gap cannot resolve it.) |
 | **Runs** | `runs/20260729-0946-e2-target-alpha/` (N=12, D=16, endpoint-only, routes {768, 512} + reenc, `--self_floor`, wall 1.0 h) |
 | **Instrument** | `bench/run_sigma_probe.py --target_alpha` (landed `7e6ed556`) |
 | **Depends on** | [E1](../e1/) (c) — after which this became cheap confirmation, predicted slope ≈ 0 |
@@ -28,7 +28,8 @@ gains per-α aggregates + `alpha_slope_<arm>`.
   anchors → no resolvable target-content share; predicted slope ≈ 0
   CONFIRMED. The endpoint gap is the graph floor — E1(c)'s x-zero ≡
   endpoint equality reproduced along a second axis.** (Values also
-  consistent with E1(a)'s N=40 draw-limit floors.)
+  consistent with E1(a)'s N=40 draw-limit floors. Later scope per E13
+  H1: the σ = 1 bin is its own estimand, not the σ→1⁻ limit.)
 - **Mid-α (0.5, 0.75) is unreadable by construction** — a bonus
   mechanistic result, not hidden noise: the native residual α·x − x̂
   passes near cancellation there, `gnorm_native` dips 60→33,
@@ -36,7 +37,9 @@ gains per-α aggregates + `alpha_slope_<arm>`.
   amplification (the paper's §input-branch mechanism) surfacing along
   the α axis. Consequence: the envelope's naive `alpha_slope_*` over
   all five α (+0.034 / +0.180) is inflated by these points — the
-  verdict object is the anchor contrast above.
+  verdict object is the anchor contrast above. (E10 later routed around
+  this limitation entirely: the forward pass is α-independent, so the
+  exact target-content vector comes from α ∈ {0, 1} alone.)
 
 ## Ops gotcha
 

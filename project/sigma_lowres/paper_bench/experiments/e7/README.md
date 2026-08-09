@@ -132,7 +132,9 @@ probe lists `runs/20260729-1349-e7-probe-lists/`: flat →
 `runs/20260729-1349/`, dirty → `runs/20260729-1702/` (48 stems each,
 cell/membership/style tags in `per_image.jsonl`, endpoint debiased gaps
 ≈ 0 both arms). **Bin-mean readout** (`e7_cells.py`; A_e/F_e per-cell
-fits still owed for the formal ledger):
+fits still owed for the formal ledger — NB before running them, E13:
+raw `A` carries a per-run G normalization, so any cross-adapter
+comparison needs a stated normalization convention):
 
 1. Map shape **replicates on both adapters** — 896 reaches the ±ε\*
    band in-window, 768 stays above until the top.
@@ -166,6 +168,11 @@ Guard against re-proposing a redundancy→gap law:
   "bigger gap" flips between raw and debiased units — so the checkpoint
   effect stays "adapter-dependent floor, mechanism unresolved"
   (supervision-density confound ρ=−0.40 still rides the style axis).
+  E19.6 later narrowed the mechanism space: with the sincos adapter
+  merged, both ledger legs and the native residual field are unmoved
+  (dircos ≈ 1, amp within ~3 %) — LoRA-moves-B refuted, the map-level
+  null extends to the leg level, so the floor-*level* dependence is not
+  carried by the B leg. Mechanism otherwise still open.
 
 ## Figures
 

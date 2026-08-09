@@ -6,7 +6,7 @@
 | **Question** | Every anti-alignment number in this line so far — E14's pooled ρ̄ ≈ −0.91, E21's cell-level LOCAL verdict — is a **cross-image mean** (40 images × 12 draws summed before any cosine). A training-facing correction acts on **one sample at one step**. Is the B/C cancellation a per-sample property (each image's data damage mirrored by its own graph response), or a population property that only emerges in the mean? This is the missing link ("estimand bridge") that E20.4 crashed into from the objective side — E22 closes it from the measurement side, **before** any correction is proposed. Secondary, observational: training "at 1024" is itself training on **preprocess-resized** pixels (source → bucket downscale; free-fit drove crop bias to ~0 but the downscale low-pass remains). Per-image records let us stratify the ledger by each image's realized resize factor — a first, hypothesis-generating look at whether that preprocessing bias is visible in LoRA-gradient space. |
 | **Depends on** | [E21](../e21/) (LOCAL verdict — licenses factorized per-cell reads; adaln amplitude concentration — the candidate lever this experiment gates); [E20.4](../e20/) (derived data term fails at estimand level — the standing reason per-sample must be measured, not assumed); `run_sigma_probe.py` + `sigma_probe/` (the per-image arm loop this amends); E14/E19 ledger conventions. **The 19.3/19.4 stores cannot answer this**: they are cross-image sums, and `per_image.jsonl` carries only arm-vs-native cosines (`cos_<arm>`), never the arm×arm cross products that ρ_i needs. New GPU arm required. |
 | **Instruments** | 22.0 `e22_corpus.py` (CPU corpus prep → `resize_factors.json` + `e22_probe_list.json`); 22.1 probe amendment `--per_image_ledger` (`sigma_probe/cli.py` + `stats.py` + driver; GPU, daemon job `20260808-163340-13b303` → `runs/20260808-1633-e221-per-image-ledger`); 22.2 `e22_per_image.py` (CPU digest + figure → `e22_per_image.json`, `e22_rho_i.png`); 22.3 applied — see Results; 22.4 amendment rerun (GPU, daemon job `20260809-003128-2c105b` → `runs/20260809-0031-e224-per-image-d96`; probe instrument unchanged as frozen; digest gained σ-subset + `--fig` handling only, regression-checked bit-identical on the 22.1 run → `e224_per_image.json`, `e224_rho_i.png`). |
-| **In the paper** | The mechanism→prescription bridge for §5/discussion: PER-SAMPLE HOLDS licenses a training-facing lever (E23a); POOLED-ONLY kills the whole per-sample correction family in one pre-registered stroke and confines prescriptions to scheduler-side routing (the shipped σ-gated demotion recipe). Either outcome is a paper paragraph. |
+| **In the paper** | The mechanism→prescription bridge for §5/discussion: PER-SAMPLE HOLDS licenses a training-facing lever (E23a); POOLED-ONLY kills the whole per-sample correction family in one pre-registered stroke and confines prescriptions to scheduler-side routing (the shipped σ-gated demotion recipe). Either outcome is a paper paragraph. *(Outcome: the HOLDS branch, at σ = 0.7 only — 22.4.)* |
 
 **Numbering note**: e20's informally sketched "derive the amplitudes"
 E21-idea remains unproposed (still blocked on 20.4); E22 is not that
@@ -191,6 +191,8 @@ draw deficit. The floor did exactly what it was frozen to do.
   even near-zero ρ_i at any σ. Had the floor been met with these values,
   the reading would have been HOLDS-shaped at σ = 0.4333/0.7 and
   MIXED-shaped at 0.5667 (gated frac ≤ −0.7 = 1.0 / 0.67 / 0.8).
+  *(22.4 later met the floor at σ = 0.7 and confirmed the HOLDS shape;
+  0.4333/0.5667 remain untested at D = 96.)*
 - **Pooled same-run cross-check** (`ledger.json`, reenc ref): ρ =
   −0.909 / −0.916 / −0.891 with relB/relC 0.66–0.84 — the estimator
   reproduces the deep constant on this stratified corpus (internal
@@ -205,6 +207,9 @@ draw deficit. The floor did exactly what it was frozen to do.
   no hypothesis is generated for E23b from this run. The one suggestive
   ungated pattern (the factor-39 outlier image carries the two
   shallowest ρ_i of the corpus) is noted for completeness only.
+  *(→ 22.4 at healthy counts: the null now stands on evidence, not by
+  reliability default, and the factor-39 outlier pattern did not recur —
+  it gates in at ρ_i = −0.785.)*
 
 ### Post-hoc band diagnostic (descriptive, free re-read of the committed jsonl)
 
@@ -234,20 +239,20 @@ through adaln/self-attn/mlp. An uncond variant remains a legitimate
 *separate* mechanism question (text-independence of the cancellation,
 predicted "yes" by E21 + row (a)) and would need its own pre-registered
 amendment; it inherits the same floor at D = 24.
+**→ Diagnosis verified by 22.4**: the failing variance was draw-borne
+as argued — D 24 → 96 alone lifted gates 5/16 → 14/16 (self_attn
+0 → 11 gated), no caption change involved.
 
 ### What this buys the paper
 
-The estimand-bridge question stays open at the pre-registered bar, but
-the measurement now exists and is uniformly signed: the honest §5
-sentence is "per-image estimates are reliability-limited at D = 24; every
-per-image reading that clears (and fails) the gate is deep-negative,
-consistent with a per-sample mechanism, but the pre-registered per-sample
-verdict is instrument-limited — no per-sample lever is licensed." E23a
-remains gated (22.3 did not return PER-SAMPLE HOLDS); E20.4's
+Superseded 2026-08-09 by 22.4 (below), which met the floor at σ = 0.7
+and returned PER-SAMPLE HOLDS — the §5 sentence now comes from 22.4.
+What survives from this run: the measurement is uniformly signed (every
+reading, gated or not, deep-negative), and E20.4's
 retroactive-explanation clause is NOT triggered (that required
 POOLED-ONLY, which this is not).
 
-## 22.4 — amendment (pre-registered 2026-08-08): D = 96 single-σ rerun — PLANNED
+## 22.4 — amendment (pre-registered 2026-08-08): D = 96 single-σ rerun — **DONE 2026-08-09** (results below)
 
 This is that amendment: the follow-up is **decided** (pinned 2026-08-08)
 and frozen here before launch. Rationale from the measured reliabilities:

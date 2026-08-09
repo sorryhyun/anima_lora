@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | **DONE 2026-07-30** — one residual open: the `--uncond` rerun (first launch stopped mid-run 2026-07-30, on hold) |
-| **Verdict** | **Norm-only.** No rank-one common mismatch direction — directions are image-specific, so "universal m" downgrades to a **universal amplitude law**. The grid-conditional composition prior is refuted under full captions. |
+| **Verdict** | **Norm-only.** No rank-one common mismatch direction — directions are image-specific, so "universal m" downgrades to a **universal amplitude law**. The grid-conditional composition prior is refuted under full captions. NB this is the **r-level** estimand and stands there (E19 19.2 leans on it); at the **g-level** E24 later found a structured shared axis (one direction per σ across routes/stores) — different estimands, not a contradiction. |
 | **Runs** | `bench/results/20260730-2054-resvec/` (derived `resid_structure.json` is the copied-out artifact) |
 | **Instrument** | `bench/run_prior_distance.py --save_residuals` on the 1280 probe cache |
 | **Scripts** | `resid_structure.py` — split-half-corrected pairwise cosines + normalized stacked-SVD top-mode share across route pairs per σ |

@@ -29,15 +29,15 @@ spawned E1–E4/E6; `paper_plan.md` remains the manuscript plan.*
 | [E11](experiments/e11/) | Δr̄ direction structure | DONE 2026-07-30 (`--uncond` rerun pending) | norm-only — universal amplitude law, not a universal direction |
 | [E12](experiments/e12/) | posterior-budget probes | DONE 2026-07-31 | REFUTED on both probes; native-only pre-screening is void |
 | [E13](experiments/e13/) | resolving both ends of the σ curve (segmented grid) | DONE 2026-08-01 | H1 falsified (high-σ flat + a *correction-regime* step at σ=1), H2 falsified (the mid-σ peak is a plateau ≈0.09–0.43, not an artifact), H3 confirmed (896's approach is an instrument limit); E5's prediction survives the refit, its ratio-governor does not (A carries a per-run G normalization) |
-| [E14](experiments/e14/) | low-σ vector ledger: decomposing the 896 bump (B/C below σ=0.5) | **PROPOSED 2026-08-01** | reserved as `--repromote --keep_arm_sums` arms on the e13b probe-matched rerun (~18 h total) — separates data-term / interference / estimator / graph-share explanations of the 896 plateau the account underpredicts (`runs/20260801-1118-fig-accounts-e13`); phase 2 (conditional): the 1120 ratio-twin re-measured in vector units |
+| [E14](experiments/e14/) | low-σ vector ledger: decomposing the 896 bump (B/C below σ=0.5) | **DONE 2026-08-02** | headline: the 896 bump is a **two-large-opposing-terms regime** (ρ ≈ −0.7…−0.9 at every σ), not a starved data term; H-a FAILS (no 1120 twin), H-b fired (the 768-sibling half later fell probe-matched — E19 19.0), H-c σ ≤ 0.062 only, H-d substantive; carried the e13b probe-matched rerun E13 owed (`runs/20260801-2304-e14-ledger-probematched`) |
 | [E15](experiments/e15/) | two-level unbiased demotion (MLMC roulette, model-priced coin) | DONE 2026-07-31 (15.0 only; **E14 until 2026-08-01**, run dir keeps the `e14` label) | **priced out** — per-sample correction 2nd moment ≈ V_total/2 ⇒ q̄≈0.45 at the 1.5× cap ⇒ net +2.6–4.1% vs ≥20% gate; yield = the aggregate-coherence finding (per-sample ‖Δ‖≈0.7–1.6‖g‖ vs aggregate 0.15–0.35); redesign lever = anchored control variate (own record if pursued) |
-| [E16](experiments/e16/) | placement vs dilution: demotion scheduling (trajectory-propagator probe) | **PROPOSED** (E15 until 2026-08-01) | zero-cost successor to E15 — same-mass early/late/spread 768 twins → ΔW ordering picks washout / linear / amplification regime; washout ⇒ hybrid768 ("768 early, clean finish") targets ~−21–24% wall inside the yardstick |
+| [E16](experiments/e16/) | placement vs dilution: demotion scheduling (trajectory-propagator probe) | **DONE 2026-08-03** (E15 until 2026-08-01) | 16.0 verdict **AMPLIFICATION** — placement dominates (ΔW cos vs native: late 0.906 ≫ early 0.193); 16.1: **combo** stacked router = throughput frontier, **−18.3 % wall inside the seed lottery on both corpora**; win768late = max-margin arm; scheduling unnecessary on certified routes |
 | [E17](experiments/e17/) | Gaussian-closure test of the posterior residual identity | DONE 2026-08-01 | all three closures FAIL the amplitude bar (low-σ ~40% over-prediction) but reproduce shape (r 0.94–0.97), route-uniformity, reenc ≈ 0, endpoint — measured ‖Δr̄(σ)‖ certified as the minimal honest closure |
 | [E19](experiments/e19/) | locating the birth of the B/C anti-alignment | **19.0+19.1 DONE 2026-08-06** | 19.0: completeness ordering confirmed (512 least complete), decoherence refuted (ρ route-uniform, amplitudes break), headline not a shared-arm artifact, 768 has no in-window crossing probe-matched; 19.1: closure predicts ρ_r < 0 everywhere but **weak** (−0.06…−0.14 at verdict bins vs measured g-level −0.7…−0.9) — prediction frozen, 19.2 scores it |
 | [E20](experiments/e20/) | the cancellation-aware account under the paper's own lanes | DONE 2026-08-08 | 20.1/20.2 PARTIAL (geometry right, amplitude law open, no 20.3 spend); **20.4 NEGATIVE — derived data term fails at the estimand level** (the standing "estimand bridge" gap; no ledger-derived objective term) |
 | [E21](experiments/e21/) | cell-level g-ledger: the cancellation drawn over the network | DONE 2026-08-08 | **LOCAL** (both routes, every verdict σ — the cancellation is pointwise per (depth×type) cell); π-swing dual read: direction delocalized (19.4 language stands), amplitude 86–87 % adaln (descriptive) |
 | [E22](experiments/e22/) | per-image g-ledger: does the cancellation hold per sample? | DONE 2026-08-09 (22.4) | **PER-SAMPLE HOLDS at σ = 0.7** (22.4, D = 96: 14/16 gated ≥ 8 floor, median ρ_i −0.820, 93 % ≤ −0.7; strata null stands at healthy counts, no E23b hypothesis) — E23a drafting licensed, single-σ caveat carried. 22.1 (D = 24, three σ) remains INSTRUMENT-LIMITED on record |
-| [E24](experiments/e24/) | cancellation-axis geometry: is the cancelled direction one global mode? | DONE 2026-08-08 | **STRUCTURED** — one axis across route/store/corpus at fixed σ (0.87–1.00), smooth σ-rotation (0.44–0.97) that tracks the anchor's own rotation; knob read: residual is angle-borne (R_angle/R ≤ 0.30 vs R_amp/R ≥ 0.55 everywhere; frozen label text self-contradictory, numbers cited); E23a/b names reserved by E22's gated lever sketch |
+| [E24](experiments/e24/) | cancellation-axis geometry: is the cancelled direction one global mode? | DONE 2026-08-08 | **STRUCTURED** — one axis across route/store/corpus at fixed σ (0.87–1.00), smooth σ-rotation (0.44–0.97; the "tracks the anchor's rotation" reading retired by E25.0-2 — matched-angle, not planar); knob read: residual is angle-borne (R_angle/R ≤ 0.30 vs R_amp/R ≥ 0.55 everywhere; frozen label text self-contradictory, numbers cited); E23a/b names reserved by E22's gated lever sketch |
 | [E25](experiments/e25/) | σ-local angle lever (population-level exploitation) | SKETCH · **E25.0 DONE 2026-08-09** | prerequisite read: **25.0-1 PARTIAL** — pooled (B+C)̂ direction reliable at 11/12 verdict conditions (hole: 768/σ = 0.4333; route-shared per σ, across-route 0.95, across-store ≈ 1) so E25a alive but restricted; **25.0-2 NO-GAIN** — E24's co-rotation is matched-angle, not planar (ĝ-frame transport buys Δ ≈ 0), so E25a's lookup must interpolate per σ bin, normalized-frame single direction refuted; arms still unfrozen, freeze owes the E20.4-adjacency paragraph; per-sample variants stay E23a-gated |
 
 ## Layout
@@ -68,21 +68,20 @@ its manuscript write-in (Fig. 1a redraw off `runs/20260801-0125`, dense-end
 rows into Table 2, §4.4 re-derived rather than assumed, §4.7's shape
 claims re-scored against a plateau instead of a peak, 896 stated as an
 instrument limit, and the per-run G normalization of A written down).
-Optional and GPU-priced: the **e13b probe-matched rerun** — now reserved
-to carry **[E14](experiments/e14/)**'s B/C ledger arms in the same
-process (~18 h combined; E14's record has the command and supersedes the
-plain one in E13's) — is the only thing that would let the curve-shape
-refit move A/F, and its ledger half decomposes the 896 low-σ plateau the
-head-to-head figure underpredicts. Until then §4.7 keeps the published
-fit, which E13 does *not* refute. [E11](experiments/e11/)'s `--uncond`
+~~The **e13b probe-matched rerun** reserved to carry
+**[E14](experiments/e14/)**'s B/C ledger arms~~ (DONE 2026-08-02 — one
+run carried both: the owed §4.7 probe-matched refit is discharged, and
+the 896 low-σ plateau decomposed as a two-large-opposing-terms regime,
+not a starved data term). [E11](experiments/e11/)'s `--uncond`
 rerun closes the caption-conditioning caveat whenever GPU is free.
 **[E15](experiments/e15/)** closed at 15.0 (priced out, pre-registered
 kill); what remains is writing its §5 paragraph + the
 aggregate-coherence sharpening into the manuscript, and deciding
 whether the anchored-control-variate redesign gets its own record.
-**[E16](experiments/e16/)** is E15's zero-cost successor (scheduling
-instead of roulette); its 16.0 ΔW-ordering probe is ~1 h of
-deterministic twins and self-contained.
+~~**[E16](experiments/e16/)** is E15's zero-cost successor~~ (DONE
+2026-08-03 — 16.0 AMPLIFICATION, placement dominates; 16.1's combo
+router is the new throughput frontier at −18.3 % wall inside the seed
+lottery).
 
 ### Reproducibility deliverables [FIX]
 

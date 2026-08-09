@@ -25,7 +25,11 @@ from measured m̄(σ) (G7, route-uniform mean) and each run's own G(σ).
   A_896 0.0076±0.0053, A_1120 0.0068±0.0015 — the two ratio-0.875
   routes agree at **z = 0.14** despite 1.6× different target capacity.
   G9 showed the ratio governor at the σ\* level; this is the same
-  verdict at the fitted-amplitude level.
+  verdict at the fitted-amplitude level. (Refuted as a *test* by E13:
+  `A` carries an unstated per-run G normalization, so z is
+  scale-dependent — 0.14 → 8.17 under bin-width reweighting,
+  reproducing at 8.2–8.7 under all three forms. The governor's
+  *predictions* are unaffected.)
 - **Floor governor, interpolation-level:** fitted floors 512 +0.264,
   896 +0.039, 1120 +0.002; exp-law F(n) = 0.70·exp(−n/1041 tok) fit on
   512+896 predicts F(4825) = +0.007 (1120 fitted +0.002 ✓) and
@@ -44,7 +48,10 @@ from measured m̄(σ) (G7, route-uniform mean) and each run's own G(σ).
    window-vs-endpoint anomaly [E1](../e1/)(b) already recorded; E5
    sharpens it into the account's one visible structural failure.
    *(Later resolved by [E9](../e9/): it is the interaction term,
-   I_768 < 0.)*
+   I_768 < 0. Two further updates: E13 H2's re-flattening triggered the
+   pre-registered re-score of the "768 dip outside the 95 % band"
+   claim, and E19 found no probe-matched in-window 768 crossing — the
+   crossing↔window localization survives on 896 only.)*
 2. **1280→1024 peak overshoot** (predicted 0.37 vs measured 0.18 at
    σ=0.375): A(0.8) comes from linear-in-ratio interpolation resting on
    only two distinct ratio values; A(r) is evidently convex between
@@ -69,14 +76,22 @@ is 2-for-2 on floors it never saw** (768 +0.088/+0.092, 896
 +0.09..+0.21 vs predicted +0.02..+0.05 at σ ≤ 0.31), mid/high-σ
 tracked, and the E1b σ=1 endpoint reads +0.042±0.011 vs +0.019
 predicted — the endpoint-vs-window anomaly again, now visible on 896.
+(E13 later resolved the pieces: the low-σ under-prediction is real
+curve change — E13 puts that route's signal in the slope where E1b put
+it in the floor; 896's σ→1 approach is a certified instrument limit —
+H3; and the σ = 1 step is a correction-regime discontinuity — H1.)
 
 ### Voice decision
 
 `../../paper_plan.md` §2 resolved → Eq. 3 headlines as a *predictive*
-first-order account with stated ~0.09 RMSE resolution; "ratio sets
-amplitude / absolute size sets floor" upgrades from "consistent with" to
-measured-governor statements (ratio-twin z=0.14; floor exp-law hitting
-the held-out 768). The mid-σ 768 dip and the A(r) convexity go into the
+first-order account with stated ~0.09 RMSE resolution. Of the two
+governor statements, "absolute size sets floor" upgraded to a
+measured-governor statement (floor exp-law hitting the held-out 768)
+and stands; "ratio sets amplitude" rested on the ratio-twin z = 0.14,
+which E13 later showed is a scale-dependent statistic (per-run G
+normalization of A) — the *prediction* survives ("E5 predicts routes it
+was not fit on at ~0.09 RMSE" is intact under E13), the governor *test*
+does not. The mid-σ 768 dip and the A(r) convexity go into the
 account's stated limits.
 
 ## E5 refit — three functional forms for the data-branch term
@@ -103,7 +118,9 @@ small-perturbation quadratic `A·(m/G)²`, **X** exact angular link
   768 all three tie (0.089–0.093) — the mid-σ dip is form-independent
   (it is the interaction term I_768 < 0, not a form artifact).
 - **Form-invariant governors:** floor exp-law F(2160) = +0.087/+0.088
-  in all three; ratio-twin z = 0.14 (P) / 0.44 (Q) / 0.15 (X).
+  in all three; ratio-twin z = 0.14 (P) / 0.44 (Q) / 0.15 (X) — the
+  floor half stands; the ratio-twin z is the scale-dependent statistic
+  E13 refuted as a test (see above).
 
 ### Ledger naming (consumed by main.tex §3.3/§4.6)
 

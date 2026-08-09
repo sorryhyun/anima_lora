@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | **DONE 2026-07-31** (launched 2026-07-30; wall 3.8 h) |
 | **Verdict** | **Branch (i): negative interference.** I_768(σ) < 0 at every bin, with B and C near anti-parallel. Branch (ii) (F collapse) is dead. |
+| **Consumed by** | This run spawned the cancellation line: [E14](../e14/) (probe-matched ledger, low σ) → [E17](../e17/)/[E19](../e19/) (closure + origin) → [E21](../e21/) (LOCAL) → [E22](../e22/) (per-sample, 22.4 HOLDS) → [E24](../e24/) (axis geometry) → [E25](../e25/) (lever sketch). |
 | **Runs** | `bench/results/20260731-0721/` + its `ledger.json` (vector stores stay under the gitignored `bench/results/`) |
 | **Instrument** | `bench/run_sigma_probe.py --repromote --keep_arm_sums --self_floor`, routes 896/768/512, σ ∈ [0.5,1.0] 4 bins + endpoint, D=8, N=24, deterministic |
 | **Analysis** | `../../vector_ledger.py` (shared with [E10](../e10/)) |
@@ -23,16 +24,24 @@ center at |B⊥| ≈ |C⊥|), and closes the §4.5 reenc-proxy `[pending]`
   B, C near anti-parallel (ρ ≈ −0.93 in-window; sign robust to
   cross-set debiasing, same-set −0.37 vs cross −0.31 at bin 0).
 - **Amplitude matching localizes the 768 window center at σ ≈ 0.69**
-  (|B⊥|/|C⊥| = 0.98).
+  (|B⊥|/|C⊥| = 0.98). (Did not reproduce probe-matched: E19 19.0 on
+  E14's grid found **no in-window 768 crossing** — ratio peaking ≈ 0.99
+  at σ = 0.0875, 0.76–0.88 through this window; the crossing↔window
+  localization holds on 896 only, ≈ 0.5.)
 - **Branch (ii) dead:** F_768 falls monotonically to its endpoint
   (0.200 → 0.0036), never below it in-window — Q1's σ=1 endpoint
   reduction stands (though F(σ) is strongly σ-dependent for every
-  route, confirming the retracted σ-flat extension stays retracted).
+  route, confirming the retracted σ-flat extension stays retracted;
+  endpoint scope per E13 H1: the σ = 1 bin is its own estimand, not
+  the σ→1⁻ limit).
 - The cancellation itself is **universal** (ρ −0.62…−1.24 on all
   routes); routes differ by amplitude matching: 896 matched but small
   (net S+F+I ≤ +0.012), 768 matched mid-window (≤ +0.029), 512
   amplitude-mismatched at low σ (|C⊥|/|B⊥| ≈ 1.8 at bin 0, net up to
-  +0.197).
+  +0.197). (The line then resolved the structure of "universal": ρ is
+  route-uniform while amplitudes break — E19; the cancellation is
+  LOCAL, pointwise per depth×type cell — E21; one shared axis per σ —
+  E24; and per-sample at σ = 0.7 — E22.4.)
 - **Reenc-proxy closed:** |B⊥| against reenc is within ~4% of |B⊥|
   against native at the signal-carrying low-σ bins (worst ±23% at bins
   where B is already small) — the shared down+up+encode pipeline cost

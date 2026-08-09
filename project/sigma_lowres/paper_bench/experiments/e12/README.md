@@ -78,7 +78,10 @@ control was carried by draw noise, not an encode-chain perturbation.
 E11's route-uniform m(σ) is **not** saturation — it must come from
 route-uniform delivered perturbation × a direction/σ gain (demotion
 directions being ~1.5× softer than random at matched ε is a lead worth
-keeping). The native-only pre-screening payoff is void.
+keeping). The native-only pre-screening payoff is void. (The
+placeholder "direction/σ gain" has since been given a mechanism by
+E19: the route-uniform part is the cancellation *angle* — ρ
+route-uniform, Jᵀ-born; amplitude is what breaks on unsafe routes.)
 
 **Guard: do not re-propose the lossy-code saturation account without
 new evidence.** The Probe A posterior-trace instrument itself is sound

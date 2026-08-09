@@ -138,7 +138,7 @@ repromote arms are ~6/16 of the passes; dropping them to 896-only would
 save ~25% but forfeits the cross-route ledger H-b leans on — not
 recommended.
 
-### The one open decision — the dense-high segment
+### The one open decision — the dense-high segment (resolved: full grid)
 
 Dropping `0.9,1.0,4` (11 bins + endpoint instead of 15) saves **~27% ⇒
 ~14 h**. For: E13 settled everything that window existed for (H1
@@ -148,17 +148,16 @@ needs only the endpoint bin, which stays. Against: the grid would no
 longer exactly match E13's, adding a second difference axis to the
 "movement in A/F = probe-set correction" attribution (blunted by E13's
 own finding that the grid barely moves A), and the high-σ raw-flatness
-claim stays at N=24. Decide before submitting; the command above is the
-full-grid form.
+claim stays at N=24. Resolution: the full grid ran (disk freed to
+84 GB), keeping the exact E13 grid match.
 
 ## Storage
 
 Arm-sum store ≈ 75 GB fp32 under `<run_dir>/arm_sums/`. The run dir
 lands in the committable `paper_bench/runs/` tree, but **vector stores
-never ship** — `paper_bench/runs/*/arm_sums/` must be gitignored (add
-the rule before committing the run) or the store moved to
-`bench/results/` after analysis. Scalar deliverables
-(`result.json`, `per_image.jsonl`) commit as usual.
+never ship** — this run's `arm_sums/` was analyzed and then deleted
+(downstream users, e.g. E21, forward-depend on the digests only).
+Scalar deliverables (`result.json`, `per_image.jsonl`) commit as usual.
 
 ## Results (2026-08-02)
 
@@ -172,7 +171,7 @@ bins (|control| ≤ 0.07).
 | rule | verdict | read |
 |---|---|---|
 | **H-a** (data term, governor starved) | **FAILS** | The I ≈ 0 / C⊥-small signature is decisively violated: I = −0.10…−0.33 across the clean segment and \|B⊥\|/\|C⊥\| ≈ 1.0–1.2 (C⊥ is *not* small). Native-ref h(B) alone is ≈ 104–112 % of the plateau, but it is immediately half-cancelled by C — this is not "the route's true loading, no interference". **Phase 2 (1120 twin) is not triggered.** |
-| **H-b** (interference cliff) | **FIRES** | \|B⊥\|/\|C⊥\| crosses 1 between σ = 0.433 and 0.567 — within one bin of the measured cliff (scalar debiased sign flip between 0.30 and 0.433) — with I < 0 everywhere beyond it and ρ ≈ −0.88…−0.96 through the shoulder. The 896 shoulder is the 768 failure's sibling: §4.6's domain paragraph widens to both routes; the 896 panel gets the "reduction's domain" annotation. |
+| **H-b** (interference cliff) | **FIRES** | \|B⊥\|/\|C⊥\| crosses 1 between σ = 0.433 and 0.567 — within one bin of the measured cliff (scalar debiased sign flip between 0.30 and 0.433) — with I < 0 everywhere beyond it and ρ ≈ −0.88…−0.96 through the shoulder. The 896 panel gets the "reduction's domain" annotation. (The "768 sibling / widen §4.6 to both routes" corollary initially drawn here fell on probe-matched re-read — E19 19.0: no in-window 768 crossing on this grid; the crossing↔window localization holds on 896 only.) |
 | **H-c** (estimator inflation) | fires **σ ≤ 0.062 only** | h(B+C) < 0.6 × scalar debiased plateau at 0.013/0.037/0.062 (0.010/0.058/0.132 vs plateaus 0.057/0.149/0.238); NOT at the plateau peak (0.087, 0.167). Practical impact small — raw ≈ debiased in those bins anyway (the excess is largely mean-of-gaps vs gap-of-means estimand mismatch); per E13 protocol the affected bins publish raw-paired primary. |
 | **H-d** (graph share) | **FIRES** (substantively) | F_896 is strongly σ-dependent below 0.45: 0.02 → 0.19 (σ=0.087–0.167) → 0.86 (σ=0.30) vs F(1.0) ≈ 0. The registered >2× threshold is trivially met because the endpoint F ≈ 0 — the honest statement is that assumption (iii) fails at low σ and the "σ-independent floor" claim needs an explicit low-σ domain bound. |
 
@@ -185,13 +184,17 @@ cancellation*. The plateau exists because cancellation is incomplete where
 \|B⊥\|/\|C⊥\| > 1 (σ ≈ 0.04–0.30) and the cliff is the crossing back
 through 1. This is why the spectral-account prediction misses by ~4×: it
 transports amplitude without the interference structure. One mechanism,
-two routes (768 crossing: 0.688; 896: ≈0.5).
+measured probe-matched on 896 (crossing ≈ 0.5); E9's 768 crossing
+(0.688) did not reproduce on this grid (E19 19.0 — no in-window 768
+crossing). The anti-alignment itself was later confirmed not a
+shared-arm artifact (E19 19.0) and per-sample at σ = 0.7 (E22.4:
+median ρ_i −0.820).
 
 The probe-matched half (E13's owed §4.7 refit) reads from the same run;
 A/F redistribution vs the published E1b fit is now attributable to the
 probe-set correction alone (same images, same G, same kernel path).
 
-## Phase 2 (conditional on H-a): the twin, in vector units
+## Phase 2 (conditional on H-a): the twin, in vector units — **NOT FIRED** (H-a failed)
 
 If the plateau is a real data term, the ratio governor's defense — the
 1120 twin — must be re-measured on the same instrument: the E9-style
@@ -200,15 +203,16 @@ h(B)_1120 ≪ h(B)_896 at matched bins in one unit system, "ratio sets the
 amplitude" is falsified in debiased vector units and §4.5/§4.7 are
 rewritten; if they agree, the published governor stands and the E1b-era
 fit's failure was plumbing (weights + grid), not physics. Separate run
-(~4–6 h); not scheduled until H-a fires.
+(~4–6 h); never scheduled — H-a failed.
 
 ## What lands in the paper
 
-- H-a ⇒ governor asterisk in §4.7 + phase-2 twin run before any
-  A(ratio) reuse; the 896 panel keeps the measured curve with the
-  starved prediction explained.
-- H-b ⇒ §4.6 domain paragraph covers 896's shoulder; one mechanism, two
-  routes — coherence, not damage.
+- H-a **failed** ⇒ no governor asterisk and no phase-2 twin; the 896
+  panel keeps the measured curve, with the ~4× miss explained by the
+  cancellation mechanism above.
+- H-b fired ⇒ §4.6 domain paragraph covers 896's shoulder — coherence,
+  not damage (896 only; the two-route extension fell probe-matched,
+  E19 19.0).
 - H-c ⇒ raw-paired primary for the affected bins (E13 protocol).
 - H-d ⇒ explicit domain bound on assumption (iii).
 - Either way: the probe-matched half of the run discharges E13's owed

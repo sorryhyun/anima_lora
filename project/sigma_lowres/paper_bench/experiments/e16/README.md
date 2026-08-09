@@ -6,7 +6,7 @@
 | **Question** | Is a protected span ("don't demote the first/last N% of steps") just η-weighted dilution of the demotion effect, or does *placement* matter? Equivalently: which regime does the training trajectory live in — washout, linear, or amplification? |
 | **Depends on** | [E4](../e4/) (harness, the below-yardstick `sigma768` arm = the rescue target, seed-keyed σ stream, `claim_accumulated_bias.md`), [E15](../e15/) (the currency argument: schedules spend neither FLOPs nor variance), `--deterministic` ΔW twins (no chaos floor) |
 | **Instrument** | trainer: a step-span gate on top of the σ-gate (few lines in `_maybe_sigma_demote`); readout: `bench/compare_ckpt_dw.py` (16.0), E4 yardstick/render harness (16.1) |
-| **In the paper** | if placement matters: a scheduling corollary to §5; if not: one sentence closing the placement DOF that `claim_accumulated_bias.md` leaves open |
+| **In the paper** | if placement matters: a scheduling corollary to §5; if not: one sentence closing the placement DOF that `claim_accumulated_bias.md` leaves open. *(Outcome: placement matters — the scheduling-corollary branch fired.)* |
 
 ## The theory (why this is one experiment, not a hyperparameter sweep)
 
@@ -28,7 +28,9 @@ E15 killed the variance route to buying off-map routes; a schedule is
 the zero-cost route — same FLOPs, same variance, it only moves biased
 steps to where the propagator forgives them. Whether such a place
 exists is exactly the accumulated-composition question
-`claim_accumulated_bias.md` declares uncertified.
+`claim_accumulated_bias.md` declares uncertified. (Answered 2026-08-03:
+AMPLIFICATION — the forgiving place is *late*; 16.1's combo router
+lands inside the seed lottery on both corpora.)
 
 ## 16.0 — the ΔW ordering probe (~1 h, decides everything)
 
@@ -56,7 +58,7 @@ at zero further cost (a clean, useful closure). Discordant with all
 three rows (e.g. spread strictly worst) ⇒ the σ-coupling of b_t is
 doing work the scalar story misses — record, don't over-interpret.
 
-## 16.1 — deployable-rule A/B (conditional, E4 protocol)
+## 16.1 — deployable-rule A/B (conditional, E4 protocol; ran on the amplification winner)
 
 Only the regime winner, at full practical mass. E.g. if washout wins:
 **hybrid768** = 768 on eligible steps for the first (1−f)·T, 896 (or
@@ -67,6 +69,11 @@ yardstick + FLOPs + renders. **Gate**: hybrid768 at-or-inside the
 yardstick on both corpora (the bar uniform sigma768 failed) at
 net ≤ −20% wall. Kill: hybrid ≈ uniform ⇒ the 16.0 ordering does not
 survive full-recipe scale; close with the 16.0 result as the finding.
+
+Outcome (2026-08-03): amplification won, so the arms were late-window
+variants rather than the hybrid768 example above — winner **combo**
+(−18.3 % wall, inside the seed lottery on both corpora; win768late =
+max-margin arm at −6 %). Full record: `launch_20260802_160.md`.
 
 ## Groundings
 
@@ -89,6 +96,8 @@ survive full-recipe scale; close with the 16.0 result as the finding.
 ## Cost
 
 16.0: 4 × 480-step deterministic runs (~1.5× slower) ≈ **~1 h GPU**
-total, daemon-queued. 16.1: E4-scale, ~2–3 h + evals. No new
-instruments; trainer delta is a step-span gate + a seed-keyed p=0.5
-coin, both trivially testable in `tests/test_sigma_lowres.py`.
+total, daemon-queued. 16.1: E4-scale, ~2–3 h + evals. The realized
+trainer deltas grew beyond the planned step-span gate + seed-keyed
+coin: `--sigma_lowres_span`, `--sigma_lowres_threshold_max`, and the
+stacked router `--sigma_lowres_route2` — all pinned in
+`tests/test_sigma_lowres.py`.

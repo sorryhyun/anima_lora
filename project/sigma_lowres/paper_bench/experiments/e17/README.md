@@ -8,7 +8,7 @@
 | **Question** | Is the measured route-uniform mismatch curve ‖Δr̄(σ)‖ *derivable* from paired clean latents alone through a second-order (Gaussian) closure of the exact posterior identity r̄\*(σ;x) = σ·Q(σ)⁻¹(x−μ) — or is higher-order/non-Gaussian posterior structure (or the frozen model's approximation error q_θ) essential? |
 | **Depends on** | [E11](../e11/) (the measured curves + probe images: `bench/results/20260730-2054-resvec/`), the paper's posterior-operator proposition (`paper_suggestion/sec_theory.tex` Eq. posterior; appendix "mean residual as a posterior operator"). Distinct from [E12](../e12/): E12 tested a *scalar* posterior-uncertainty budget (√tr-Cov, refuted); E17 tests the posterior **mean operator** with paired cross-band covariance structure |
 | **Instrument** | `bench/run_posterior_closure.py` — VAE-only GPU (one-time demoted/reenc latent encode, cached under `probe1280_cache/closure_latents/`), then pure CPU. No DiT forward |
-| **In the paper** | Either way one sentence in the appendix section: pass → part of the measured curve becomes a data-only derivation; fail → the measured curve is certified as the minimal honest closure (the current manuscript stance, unchanged) |
+| **In the paper** | Either way one sentence in the appendix section: pass → part of the measured curve becomes a data-only derivation; fail → the measured curve is certified as the minimal honest closure (the current manuscript stance, unchanged). *(Outcome: fail → certified; independently reinforced by E20.4's estimand-level NEGATIVE — no ledger-derived objective term.)* |
 
 ## Design
 
@@ -92,4 +92,7 @@ Gaussian, most binding at low σ), non-Gaussian posterior structure, and/or
 the frozen model's approximation error q_θ. Per the pre-registered rule the
 measured curve stays a measured ingredient — now with a quantified statement
 of *how far* second-order data-only structure gets (shape and endpoint: all
-the way; low-σ amplitude: no).
+the way; low-σ amplitude: no). E19 19.1/19.2 later gave the same closures a
+scale-free second shot at the g-level: sign, σ-shape (U-shape), and route
+ordering are all derivable; the deficit stays localized to amplitude
+(~1.5–2× miss — the same failure axis, opposite direction).

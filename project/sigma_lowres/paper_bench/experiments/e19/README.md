@@ -346,7 +346,10 @@ every route):
 - **E11**: mismatch directions image-specific (norm-only) — fixes 19.2's
   estimand at the aggregate level.
 - **E15**: per-sample ‖Δ‖ ≈ 0.7–1.6‖g‖ vs aggregate 0.15–0.35 — the
-  cancellation is an *aggregate* phenomenon.
+  Δ-amplitude coherence gap is aggregate-borne. (The stronger reading
+  "the cancellation is an aggregate phenomenon" fell 2026-08-09: E22.4
+  measured the cancellation *angle* per-sample at σ = 0.7 — median ρ_i
+  −0.820, 93 % ≤ −0.7.)
 - **Q2/G10/G11**: depth band 3–8 ≈ 3× (the *floor's* depth profile —
   distinct from 19.3's cancellation-angle read, see appendix.md); RoPE_e
   erased by PI at the endpoint on 768; PI off-manifold at mid σ.
@@ -371,14 +374,17 @@ every route):
 | 19.5 | none | CPU: 19.2 residual store × warm 19.1 closure cache |
 | 19.6 | 5.3 h | 19.2 mirror at the sincos operating point; ledger CPU |
 
-No verdict-grid-scale spend anywhere; the full σ-map stays reserved for
-confirming whatever theory survives 19.4.
+No verdict-grid-scale spend anywhere. The full σ-map reservation passed
+to E20's 20.3 gate; 20.1 returned PARTIAL, so the spend was withheld and
+remains unspent (as of 2026-08-09).
 
 ## Appendix
 
 [appendix.md](appendix.md) — the per-σ B/C geometry figure
 (`fig_bc_comb.py` → `bc_comb_768.png`): the E14 legs planted along one
-σ axis at true debiased scale, and the reads it makes visible.
+σ axis at true debiased scale, and the reads it makes visible. (E24.4
+later shipped measured-orientation successors — `e24_bc_comb_*.png`;
+these originals made no cross-bin orientation claim and remain valid.)
 
 ## Score-field visualization (post-hoc illustration, 2026-08-08)
 
