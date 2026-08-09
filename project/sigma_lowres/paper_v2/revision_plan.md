@@ -99,77 +99,58 @@ not deferred.
 - The application section and its numbers.
 - All appendix raw/historical tables.
 
-## 5. E26 — cheap cross-adapter cancellation check (the new run)
+## 5. E26 — cross-adapter cancellation check
 
 **Question**: does the B–C cancellation geometry replicate on LoRA
 adapters other than the line's operating point?
+**Status: E26.0 smoke DONE 2026-08-09 — both adapters PASS; the
+full-grid freeze amendment is licensed.** The pre-registration,
+frozen thresholds, protocol, and full results are the authority at
+`../paper_bench/experiments/e26/README.md` (+ `e260_smoke.json`);
+this section keeps only what the *manuscript plan* needs.
 
-**Instrument — nothing new**: `run_sigma_probe.py` already takes
-`--adapter <ckpt>`; the read is `vector_ledger.py` + the E24/E25.0
-machinery on the resulting `arm_sums/`, all CPU. The only delta from
-E19.3's reference run is a slimmed grid and a different checkpoint.
-
-- **Protocol sketch** (to be frozen in
-  `../paper_bench/experiments/e26/README.md` *before* any run — line
-  convention, pre-registration first):
-  `--repromote --keep_arm_sums --self_floor --deterministic`, verdict
-  σ bins only ({0.3, 0.4333, 0.5667, 0.7, 0.8333}), routes 1024→768 +
-  1024→896, draws/D matched to e193 per-condition counts.
-- **Cost** (corrected 2026-08-09 — the earlier ~1.3 GPU-h figure
-  misattributed e193's grid): e193 was 5.7 GPU-h over 10 conditions
-  (4 in-window σ + endpoint, 2 routes, D = 40, 12 draws) ⇒
-  **~0.57 GPU-h per (σ, route) condition**; the e193-matched full
-  grid is **~5.7 GPU-h per adapter**, the E26.0 one-condition smoke
-  ~0.57 GPU-h + startup. CPU read ~minutes per store.
-  Daemon-submitted (`--queue`), like every probe run.
-- **Adapters — the E7 pair, preserved at `output/paper/e7/`**
-  (`anima_soup_e7_flat` / `anima_soup_e7_dirty` + s1001–s1003 siblings
-  + snapshots; verified on disk 2026-08-09): zero training cost,
-  verbatim shipped recipe (dim 32 / alpha 128 ⇒ identical parameter
-  space to sincos, cross-adapter cosines well-defined), and a
-  *designed* style axis (opposite redundancy clusters, artists disjoint
-  from sincos) — different training slices, not seed-twins. The seed
-  siblings are a pre-declared optional extension tier (axis: property
-  of the slice or of the checkpoint?), not a post-hoc widening.
-  Bonus read this buys: E7 left the checkpoint-dependent floor *level*
-  "mechanism unresolved" (in-window cos_floor ≈ 0.73 flat vs ≈ 0.50
-  dirty) — the geometry read on the same two adapters can localize it
-  (residual amplitude vs direction), and E19.6's LoRA-moves-B
-  refutation predicts cross-adapter B̂ is shared, making C and R̂ the
-  informative objects.
-- **E7's probe runs are NOT reusable** (checked 2026-08-09): the run
-  dirs kept only `per_image.jsonl`/`result.json` (no `arm_sums/` —
-  they predate the E19 machinery), and the E7 protocol had no
-  `--repromote` arm, so only B+C is even formable from them, never the
-  legs. Fresh probe runs are required; the adapters are the reuse.
-- **No cheaper h-instrument exists**: h(B), h(C), h(B+C) are scalars
-  off the Gram of the six per-condition arm means, so vector storage
-  could be skipped — but the cost is the GPU backward passes for the
-  three arms, identical either way. Keep `--keep_arm_sums` (sums are
-  the cheap part; dropping them forfeits the axis-field and
-  cross-adapter direction reads to save disk). One probe process per
-  adapter (E7's kernel-path rule); cross-adapter reads go through the
-  E24 cross-store debias conventions.
-- **Readouts, in verdict order**:
-  1. *Cancellation replicates* (the paper-relevant read): h(B+C) ≪
-     min(h(B), h(C)) at the verdict bins; I < 0 where the operating
-     point has it; ledger scalar signs/ordering reproduced.
-  2. *Axis field within adapter*: rel_cos_R ≥ 0.5 per condition;
-     across-route sharing at fixed σ.
-  3. *Cross-adapter axis* (descriptive bonus, no verdict weight
-     unless pre-registered otherwise at freeze time):
-     cos(R̂_a(σ), R̂_b(σ)) in the shared parameter space — decides
-     "property of the model/route" vs "property of the adapter."
-     Either answer is a finding; an adapter-universal axis would also
-     upgrade any future E25a lookup from per-adapter to global.
-- **Verdict shapes** (exact thresholds set at freeze):
-  REPLICATES → the scope sentence widens to "N adapters, one model";
-  PARTIAL → geometry claims keep the one-operating-point scope and the
-  replication pattern is reported as-is; FAILS → the geometry section
-  is explicitly scoped to the operating adapter and the cross-adapter
-  result becomes a limitation paragraph. **No outcome removes §2.3
-  from the paper** — the claims are true at the measured operating
-  point under any E26 result; E26 only sets their stated breadth.
+- **Setup facts** (verified 2026-08-09, details in the E26 record):
+  adapters = the preserved E7 pair (`output/paper/e7/`, verbatim
+  shipped recipe, designed style axis, zero training cost; seed
+  siblings = pre-declared extension tier). E7's probe *runs* are not
+  reusable (no `arm_sums/`, no repromote arm). No cheaper
+  h-instrument exists (the cost is the arm backward passes, not
+  storage). Cost: ~0.57 GPU-h per (σ, route) condition ⇒ e193-matched
+  full grid **~5.7 GPU-h per adapter**; the smoke was one condition
+  (σ = 0.7 / 768) per adapter.
+- **What the smoke found** (go/no-go weight only — the smoke bin is
+  favorable by construction; nothing here widens the scope sentence):
+  1. *Cancellation replicates and the enforcement **scales***: ρ
+     deepens sincos −0.890 → flat −0.939 → dirty −0.959 exactly as
+     the legs grow (flat's legs 2×, dirty's ~8× in h terms). If the
+     full grid confirms across bins/routes, "the cancellation is
+     locally enforced" upgrades to "…and its depth scales with the
+     perturbation" — a stronger §2.3 claim than pre-registered.
+  2. *The residual level mirrors E7's open floor-level fact*: flat's
+     h(B+C) ≈ sincos's (0.049 vs 0.044) while dirty's is ~8×
+     (0.347), the same ordering as E7's checkpoint-dependent
+     cos_floor (0.73 vs 0.50). The full grid can localize that
+     mechanism (amplitude vs direction) — a §2.3-adjacent deliverable
+     the v1 paper couldn't touch.
+  3. *Cross-adapter axis comparison is **frame-confounded** in raw
+     parameter space*: B̂/Ĉ/R̂ cross-adapter cosines (0.27–0.35) sit
+     at the ĝ cross-adapter baseline (0.37–0.39) — gradients w.r.t.
+     different adapters' parameters live in mostly non-overlapping
+     frames, and the E19.6 "B̂ shared" prior does not transfer (it
+     moved the backbone under a fixed adapter frame). The
+     "property of the model vs of the adapter" question is therefore
+     **open, not answered**; if the full grid wants it, the amendment
+     must pre-register a frame-free estimand (induced-ΔW /
+     function-space directions) — or drop the read and say so in the
+     paper's limitation paragraph.
+- **Verdict shapes for the full grid** (unchanged; exact thresholds
+  set in the amendment): REPLICATES → the scope sentence widens to
+  "N adapters, one model"; PARTIAL → one-operating-point scope kept,
+  pattern reported; FAILS → geometry section scoped to the operating
+  adapter, limitation paragraph. **No outcome removes §2.3 from the
+  paper** — E26 only sets its stated breadth. The smoke's PASS means
+  the *worst* remaining outcome is already "replicates at the
+  favorable bin, pattern elsewhere reported as measured."
 
 ## 6. Figure debts
 
@@ -186,9 +167,12 @@ E19.3's reference run is a slimmed grid and a different checkpoint.
 
 ## 7. Order of work
 
-1. **Freeze E26 pre-registration** (`e26/README.md`: thresholds,
-   adapter list, exact grid) and submit the runs — GPU time is the
-   long pole; everything below overlaps with the queue.
+1. ~~Freeze E26 pre-registration and run the smoke~~ **DONE
+   2026-08-09** (both adapters PASS). Remaining: the **full-grid
+   freeze amendment** (grid/trim choice, REPLICATES thresholds,
+   frame-free axis estimand or its explicit drop) + the ~5.7 GPU-h/
+   adapter runs — GPU time is the long pole; everything below
+   overlaps with the queue.
 2. Survey pass over `sec_theory.tex` / `sec_experiments.tex` to fix
    the geometry section's insertion point and what moves out of the
    appendix (B/C formalism). No edits yet — a placement note appended
