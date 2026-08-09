@@ -1,6 +1,9 @@
 # paper_plan — restructure direction for the sigma_lowres paper
 
-Companion to `README.md` (the experiment index) and
+*Moved from `../paper_bench/` 2026-08-09; unprefixed paths below
+(`experiments/`, `runs/`) resolve against `../paper_bench/`.*
+
+Companion to `../paper_bench/README.md` (the experiment index) and
 `experiments/<eN>/README.md` (per-experiment records): those say *what
 ran and what it showed*; this file says *what the manuscript becomes*,
 and §9 records where the manuscript currently stands. Rewritten

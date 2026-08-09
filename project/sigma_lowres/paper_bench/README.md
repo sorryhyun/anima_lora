@@ -9,8 +9,9 @@ resolving; heavy vector stores stay under the gitignored
 
 *Reorganized 2026-07-31: `completed_experiments.md` and
 `required_experiments.md` were split into these per-experiment records.
-`review_triage_20260728.md` holds the R1–R5 external-review triage that
-spawned E1–E4/E6; `paper_plan.md` remains the manuscript plan.*
+`../record/review_triage_20260728.md` holds the R1–R5 external-review
+triage that spawned E1–E4/E6; `../record/paper_plan.md` remains the
+manuscript plan (both moved to `record/` 2026-08-09).*
 
 ## Status
 
@@ -45,8 +46,6 @@ spawned E1–E4/E6; `paper_plan.md` remains the manuscript plan.*
 ```
 paper_bench/
   README.md                    this index
-  paper_plan.md                what the manuscript becomes (+ manuscript status)
-  review_triage_20260728.md    R1–R5 external-review triage (origin of E1–E4, E6)
   plot_debiased_map.py         Fig 1c / per-adapter maps (cross-experiment)
   vector_ledger.py             S/F/I ledger from arm sums (E9 + E10)
   runs/                        run artifacts, flat, gitignore-exempt

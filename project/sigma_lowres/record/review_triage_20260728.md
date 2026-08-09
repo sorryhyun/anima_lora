@@ -1,5 +1,7 @@
 # Review triage (2026-07-28) — verdict on the external review
 
+*Moved from `../paper_bench/` 2026-08-09.*
+
 Triage of the 2026-07-28 external review (ChatGPT), verified against the
 actual instrument (`bench/run_sigma_probe.py`), the report
 (`record/report.md`), and `paper/main.tex`. This is the origin document
@@ -25,25 +27,25 @@ for E1–E4 and E6; each finding's discharge lives in the corresponding
   Note the review under-claims in one spot: the x-zero probe is subject
   to the **same** confound (single demoted estimate), so x-zero is not a
   clean rescue of the graph term either — E1's debiasing had to be
-  applied to x-zero too. → **[E1](experiments/e1/)**
+  applied to x-zero too. → **[E1](../paper_bench/experiments/e1/)**
 - **R2 — σ=1 is not graph-only.** `target = noise − lat`: at σ=1 the
   input is pure ε but the target still carries x per arm. The paper's own
   Table (floor table) showed it: 768 endpoint 0.127 vs x-zero 0.064 —
   **half** the 768 endpoint gap looked like target-content, yet the text
   said "any gap *is* the floor by construction" and only highlighted the
   512 route (where endpoint ≈ x-zero and the claim holds). *Resolved by
-  [E1](experiments/e1/)(c): the apparent target-content share was
+  [E1](../paper_bench/experiments/e1/)(c): the apparent target-content share was
   estimator bias.*
 - **R3 — "never safe" is aggregation-dependent.** Confirmed in
   `record/report.md` (pool4 addendum): pooled gap_768 ≈ 0 at σ ≥ 0.875,
   pooled gap_896 ≈ 0 at σ ≥ 0.625. The per-image and batch-SGD objects
   genuinely disagree at high σ; the safety map must state which object it
   is a map *of*, and the trainer claim should be conditioned on the real
-  batch/accumulation size. → **[E3](experiments/e3/), still open.**
+  batch/accumulation size. → **[E3](../paper_bench/experiments/e3/), still open.**
 - **R4 — 14% is a projected ceiling.** main.tex derived 0.86 from token
   ratios; the CMMD A/B is explicitly pending. Abstract/conclusion stated
   it as an outcome. *(Wording fixed in the Branch A rewrite; the A/B
-  itself is [E4](experiments/e4/) — done 2026-07-30, now measured.)*
+  itself is [E4](../paper_bench/experiments/e4/) — done 2026-07-30, now measured.)*
 - **R5 — hygiene, all confirmed:** `.gitignore:35` ignores `results`
   globally (so the repro claim was false for the public repo;
   `paper_bench/runs/` is now gitignore-exempt and in-repo); pending
@@ -58,7 +60,7 @@ for E1–E4 and E6; each finding's discharge lives in the corresponding
   "ratio sets amplitude / token count sets floor" language outran the
   evidence (2 ratio-matched pairs, 1 crossed pair). Now presented as a
   first-order *account* whose terms are individually evidenced; held-out
-  prediction is [E5](experiments/e5/).
+  prediction is [E5](../paper_bench/experiments/e5/).
 - **Framing vs SPD/SwD.** The paper already conceded "the null's error is
   not its governor but its scope"; intro/related work now make explicit
   that neither SPD nor SwD *claims* naive gradient equivalence — we test
@@ -69,4 +71,4 @@ for E1–E4 and E6; each finding's discharge lives in the corresponding
 - The 2-model × 2-adapter × 2-domain generalization matrix is the right
   ask for a strong venue but is not what makes the current claims true or
   false. One extra DiT + one full-FT probe arm is the 80/20 →
-  **[E6](experiments/e6/)**.
+  **[E6](../paper_bench/experiments/e6/)**.

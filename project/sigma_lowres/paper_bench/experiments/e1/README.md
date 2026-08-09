@@ -117,6 +117,6 @@ bit-exact, stats-overlap cut wall ~2-3×.
   gate-adjacent to cheap confirmation (predicted α-slope ≈ 0 —
   confirmed by E2; mechanism: E10's parallel landing).
 
-**Outcome: decision rule 1 fired → Branch A** (`../../paper_plan.md` §5);
+**Outcome: decision rule 1 fired → Branch A** (`../../../record/paper_plan.md` §5);
 the gap-native restructure was written into `paper/main.tex` in debiased
 units.

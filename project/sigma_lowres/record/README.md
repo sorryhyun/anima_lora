@@ -16,6 +16,8 @@ committed before its run.
 | `roadmap.md` | the line's phase plan, gates and kill criteria, plus the 2026-07-27 pre-registrations for the yarnsig 768-rescue and 1280→1024 gate probes (**never run**). Frozen 2026-08-01: its Phase-1b gate resolved with E4 and the line moved to paper mode | 2026-07-27 |
 | `report.md` | the probe log — every Phase 0 / 1a / 1b verdict with its full table, in run order. Moved from `../bench/` 2026-07-31 | 2026-07-27 |
 | `yarnsig_report.md` | the yarnsig sub-line's probe log, extracted from `report.md` 2026-07-27; its closing "open probes" were never run. Moved from `../bench/` 2026-07-31 | 2026-07-27 |
+| `review_triage_20260728.md` | R1–R5 triage of the 2026-07-28 external review — the origin document for E1–E4 and E6; each finding's discharge lives in `../paper_bench/experiments/<eN>/`. Moved from `../paper_bench/` 2026-08-09 | 2026-07-28 |
+| `paper_plan.md` | the manuscript restructure plan (theory → evidence → application) + manuscript status §9; its steps are discharged into `../paper_bench/experiments/` and `../paper/main.tex`. Moved from `../paper_bench/` 2026-08-09 | 2026-08-04 |
 
 Run IDs quoted in the two probe logs as `results/<id>/` are directories
 under `../bench/results/` — the **instruments** stay in `../bench/`
@@ -27,7 +29,7 @@ them); only the write-ups froze.
 - Experiment designs, results, and verdicts → `../paper_bench/experiments/<eN>/README.md`
   (index at `../paper_bench/README.md`).
 - The account as the paper states it → `../paper/main.tex` §3, with the
-  manuscript plan in `../paper_bench/paper_plan.md`.
+  manuscript plan in `paper_plan.md` (here).
 - Open questions → `../paper/action.md` (open items) and the
   correspondence in `../paper/review/`.
 - Raw verdicts and tables for anything measured *since* the paper reorg →

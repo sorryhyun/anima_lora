@@ -83,7 +83,7 @@ H3; and the σ = 1 step is a correction-regime discontinuity — H1.)
 
 ### Voice decision
 
-`../../paper_plan.md` §2 resolved → Eq. 3 headlines as a *predictive*
+`../../../record/paper_plan.md` §2 resolved → Eq. 3 headlines as a *predictive*
 first-order account with stated ~0.09 RMSE resolution. Of the two
 governor statements, "absolute size sets floor" upgraded to a
 measured-governor statement (floor exp-law hitting the held-out 768)
@@ -96,7 +96,7 @@ account's stated limits.
 
 ## E5 refit — three functional forms for the data-branch term
 
-`../../paper_plan.md` §6 step 2 (analysis-only, no GPU): same fit →
+`../../../record/paper_plan.md` §6 step 2 (analysis-only, no GPU): same fit →
 governors → held-out pipeline as `e5_holdout.py` under three candidate
 forms for S_e (shared additive floor in each): **P** power `A·m/G^p`
 (p shared, scanned — the shipped form), **Q** derived
