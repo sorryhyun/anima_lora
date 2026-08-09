@@ -1,0 +1,178 @@
+\section{$\sigma$-conditional training on the measured-safe route}
+\label{sec:practical}
+\label{sec:trainer}
+
+As an applied example, we introduce the measured-safe corpus route
+($1024{\to}896$) into a LoRA \citep{hu2022lora} trainer as an opt-in
+path, read off the map as measured, with one stated liberty: the
+gate is one-sided ($\sigma > \sigmastar$), so demoted steps also land
+in the underpowered upper tail $\sigma \in (0.94, 1]$
+(\S\ref{sec:limitations}). The intervention is
+deliberately small: three lines inside an otherwise standard
+flow-matching step, and no change to the objective, the optimizer, or
+the noise density (pseudocode in Table~\ref{alg:sigmastep}). We
+exercise it on a fixed-step grid: gated, late-scheduled (alone and
+with the $768$ low-excess window stacked as a second route), and
+gate-removed
+arms $\times$ $3$ training seeds $\times$ two single-artist
+illustration corpora of contrasting style, one flat and graphic, one
+densely rendered (corpus A, $60$ training images; corpus B, $15$),
+$480$ optimizer steps each, run with deterministic kernels (including
+FlashAttention's deterministic backward,
+\citealp{dao2022flashattention}) and paired RNG so
+every arm sees identical draws. At fixed steps the always-gated arm
+realizes a $-14.6\%$ training-time saving over native training on our
+corpora; the late-scheduled arms demote only part of the run and save
+proportionally less.
+
+\textbf{$\sigma$-first draw.} The trainer draws each batch's $\sigma$
+\emph{before} fetching latents, from the unchanged training density.
+When every sample
+in the batch is above the gate ($\sigma > 0.5$), the native
+$1024$-tier latent is replaced with a cached demoted-grid counterpart
+produced by the probe's own measured-safe recipe (pixel-space
+downscale, VAE re-encode); everything downstream derives from the
+substituted latent. Off-route images always train native, as does
+validation.
+
+\textbf{Banded rotary alignment, $\sigma$-gated.} Motivated by
+\S\ref{sec:ourscored}, a frequency-selective alignment is applied on
+demoted forwards only. It uses YaRN-style bands: a full
+positional-interpolation stretch for rotary bands with few rotations
+across the demoted extent, native spacing for high-frequency bands, a
+ramp between, and thresholds scheduled by a sigmoid gate in $\sigma$
+following \citet{zhao2026sigma}. Unlike uniform interpolation it is
+\emph{not} off-manifold in-window: it passed both pre-registered
+legs, erasing the static variant's low-$\sigma$ liability
+($+0.064 \to +0.033 \pm 0.025$) while preserving its high-$\sigma$
+gains (paired $-0.05$ vs plain demotion at $\sigma \ge 0.59$).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/kaai_yuki_arms_grid.jpg}
+\caption{Visual counterpart to Table~\ref{tab:yardstick}: matched
+(prompt, noise-seed) renders from the arms' endpoints on a corpus-B
+display prompt, $20$ steps; columns are four of the table's arms (the
+unscheduled gated arm is omitted), rows the
+three training seeds. Moving along a row (arms, seed fixed) changes
+the render on the same visual order as moving down a column (training
+seed, arm fixed); the gate-removed arm (rightmost) drifts the most,
+matching its lowest cosine in Table~\ref{tab:yardstick}. The positive
+prompt is given in Appendix~\ref{app:armsprompt}.}
+\label{fig:kaaiyuki}
+\end{figure}
+
+\textbf{Weight-space endpoint footprint.} Table~\ref{tab:yardstick}
+compares the trained adapters directly in weight space, as the cosine
+between each arm's endpoint $\Delta W$ and its matched-seed native
+twin's. Determinism makes the read exact: an identical retrain
+reproduces its twin at $1.000$, and the same retrain with
+non-deterministic kernels reads $0.264$/$0.427$ (corpus A/B),
+run-to-run kernel nondeterminism alone. Against that reference, demoting
+at \emph{every} $\sigma$ falls below the non-deterministic retrain
+($0.183$/$0.236$), while demoting only above the gate
+($\sigma{>}0.5$) matches or exceeds it ($0.365$/$0.432$).
+Late scheduling, demotion only in the last $75\%$ of steps, brings
+the endpoint very close to the native weights ($0.753$/$0.770$),
+and, as the map's low-excess read of the $768$ window predicts,
+stacking the $1024{\to}768$ route onto the late rule leaves the
+cosine essentially unchanged ($0.753$/$0.771$). The visual
+counterpart (Fig.~\ref{fig:kaaiyuki}) confirms the read: matched
+(prompt, seed) renders from the late-scheduled arms are
+nearly identical to native.
+
+\section{Limitations}
+\label{sec:limitations}
+
+\textbf{One model family, one operating point.} All gradient probes ran
+on one DiT (Anima) with one adapter checkpoint trained at native tiers.
+A mixed-resolution-trained adapter might equalize (or widen) its own
+gradients; probing such a checkpoint is the designated bound on how far
+the map generalizes, as is re-probing $1280{\to}1024$ after fine-tuning
+at the 1280 tier. The probe pool's relationship to the adapter's own
+fine-tune set was measured rather than conceded: a controlled
+$2{\times}2$ factorial (two LoRAs trained on opposite style clusters
+under frozen membership manifests, probed on both) replicates the map's
+shape on both checkpoints with the adapter$\times$probe-style
+interaction below instrument resolution, while the absolute
+redraw-floor level is checkpoint-dependent (Appendix~\ref{app:e7}).
+
+\textbf{Gradient-level, not end-task.} The map is built from
+accumulated per-step gradients; integration over an optimizer
+trajectory is addressed by the exercise grid's weight-space read at
+$480$ steps rather than production scale.
+
+\textbf{Account resolution and domain.} The account predicts held-out
+routes at ${\sim}0.07$--$0.09$ RMSE, not within $\epsstar$ (the
+held-out protocol, its pre-registered gates, and the structural
+failures it exposes are quantified in Appendix~\ref{sec:headtohead});
+its
+$A(\mathrm{ratio})$ governor rests on two distinct ratio values; the
+reduction's domain excludes the $768$ mid-$\sigma$ window, whose
+mechanism the vector-resolved probe has measured (negative
+interference) but which the two-term reduction still does not predict; and
+the floor law's functional form is unidentified at our operating
+points. The graph-floor reading of the endpoint is
+also estimand-specific: the target-mediated perturbation is real at the
+vector level and lands parallel to the native gradient
+(Appendix~\ref{app:instrument}), so a magnitude-sensitive estimand,
+such as an un-normalized optimizer, could apportion the endpoint gap
+differently than the angular read does.
+
+\textbf{Instrument resolution and coverage.} ``Safe'' is one-sided
+non-inferiority against a fixed margin ($\varepsilon = 0.02$ strict;
+the map's windows are currently safe at $0.09$ simultaneous,
+${\approx}\,0.07$ pointwise), with the
+verdict resolution ($\epsstar = 0.02$--$0.07$ per bin;
+${\approx}\,0.01$--$0.02$ at the endpoint sweeps) setting the power
+available, not the margin. True gaps below $\epsstar$ are undetectable
+by construction, $\sigmastar$ boundaries are localized only to a bin,
+and every failure to reach a safe verdict on a window is $(N, D)$-relative: a
+larger campaign could establish (or refute) the $768$ high-$\sigma$
+window at the strict margin. The upper tail $\sigma \in (0.94, 1)$ of
+the safe route is underpowered: its two non-endpoint bins resolve only
+margins above ${\approx}\,0.05$, and the $\sigma{=}1$ endpoint
+carries a small real gap ($+0.034 \pm 0.011$); an upper-tail sweep at
+higher draw count is the designated probe to close the region, and
+until it lands the safe condition is $\sigma \in (0.5, 0.94]$. Verdict stability under the per-image trim rule of
+\S\ref{sec:instrument} has not been separately audited. The
+debiasing campaign covered the corpus verdict grid; the $1280$-tier
+iso-severity, $896$-tier transfer, depth-split, and PI-intervention
+probes remain pre-debiasing reads, and the $1280$-tier curves enter the
+held-out validation on that basis.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+When does training on downscaled images yield the same gradient
+direction? We answered by decomposing the demoted gradient's
+perturbation into a ratio-governed data term and a
+$\sigma$-independent, token-count-governed graph floor, and by
+building the debiased estimator the question requires, since naive
+finite-draw estimation manufactures the very floor signature under
+test. Measured under that instrument, the spectral answer of the
+inference-side literature (safe once noise masks the frequencies the
+coarse grid loses) models only one part of one branch of what
+demotion perturbs: the
+network function itself is grid-calibrated, partly through its rotary
+coordinate system and partly through an irreducible dependence of the
+computation on token count. The gradient-perturbation account is predictive, not
+merely descriptive, reaching held-out routes at ${\sim}0.07$--$0.09$
+RMSE against the spectral family's $0.147$--$0.355$, and its map
+licenses a selective trainer: on our model, $1024{\to}896$ at
+$\sigma \in (0.5, 0.94]$ with a stackable $1024{\to}768$ window,
+realizing $-14.6\%$ training time at fixed steps with a weight-space
+endpoint within kernel-noise reach of a native retrain, rising to
+cosine $0.75$ when demotion is late-scheduled at proportionally
+reduced saving. We offer
+the account and its instrument as the inexpensive, general test that any
+future ``train part of the time at lower resolution'' proposal should
+pass before it is believed.
+
+\subsubsection*{Acknowledgements}
+Portions of the text in this manuscript were drafted and edited with
+the assistance of large language models (LLMs). The technical
+contributions, experimental design, implementation, results, and
+conclusions are those of the author, who has reviewed all generated
+text and takes full intellectual responsibility for the content of
+the paper.

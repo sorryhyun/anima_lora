@@ -1,0 +1,88 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2026_conference}
+
+\input{math_commands.tex}
+
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+% The template's `times` package silently falls back to Latin Modern under
+% tectonic; newtx is the same Times look with matching math (subsumes amssymb).
+\usepackage{newtxtext,newtxmath}
+\usepackage{multirow}
+\usepackage{subcaption}
+
+\iclrfinalcopy
+
+\newcommand{\gap}{\mathrm{gap}}
+\newcommand{\dgap}{\widehat{\mathrm{gap}}}
+\newcommand{\bgap}{\overline{\mathrm{gap}}}
+\newcommand{\reenc}{\mathrm{reenc}}
+\newcommand{\src}{\mathrm{src}}
+\newcommand{\dem}{\mathrm{dem}}
+\newcommand{\sigmastar}{\sigma^{\!*}}
+\newcommand{\epsstar}{\varepsilon^{\!*}}
+
+% Pseudocode styling (Table \ref{alg:sigmastep}): added lines in color.
+\definecolor{codeadd}{RGB}{0,90,180}
+\newcommand{\addedline}[1]{\textcolor{codeadd}{#1}}
+
+\title{When Does Training on Downscaled Images\\
+Yield the Same Gradients?}
+
+\author{Seunghyun Ji\\
+Independent researcher\\
+\texttt{standingbehindnv@gmail.com}
+}
+
+\begin{document}
+
+\maketitle
+% Drop the running-head text set by \maketitle for this draft, but
+% keep the header rule on every page.
+\fancyhead{}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\begin{abstract}
+Diffusion transformers deliver strong image generation, but their
+training cost grows superlinearly with resolution. Recent work
+justifies training or sampling at reduced resolution on a spectral
+premise: at high noise, a downscaled latent preserves almost the full
+surviving signal. Whether a downscaled step also preserves the native
+\emph{training gradient} signal, however, has remained unresolved. We
+reduce how that signal changes under downscaling to two terms:
+a noise-dependent term governed by the downscale
+\emph{ratio}, which decays at high noise as the spectral premise
+predicts, and a $\sigma$-independent floor governed by the target
+grid's \emph{absolute token count}, carried by the compute graph
+itself and removed by no noise level. The measured
+$(\text{route},\sigma)$ map corroborates the account and uncovers
+structure the spectral picture cannot express: on the $1024{\to}768$
+route, a window ($0.65<\sigma<0.95$), predicted by no spectral
+criterion at any tolerance, where the downscaled gradient stays
+within a small margin of the native one. Training LoRA adapters with
+downscaled steps restricted to the routes and noise windows the map
+validates reduces training time by $14.6\%$ at a fixed step
+budget while remaining near-native in weight space. Code is available at
+\url{https://github.com/sorryhyun/anima_lora}.
+\end{abstract}
+
+% ---- Body ----------------------------------------------------------
+% Sections live in separate files; edit those, not this shell.
+
+\input{sec_intro}      % Introduction + Related work
+\input{sec_theory}     % Two accounts of what demotion costs
+\input{sec_experiments} % Experiments: both accounts, scored
+\input{sec_discussion} % Deployable form + Limitations + Conclusion
+
+\bibliography{references}
+\bibliographystyle{iclr2026_conference}
+
+\clearpage
+\input{appendix}
+
+\end{document}
