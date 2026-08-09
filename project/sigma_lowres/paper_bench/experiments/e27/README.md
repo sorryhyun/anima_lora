@@ -149,10 +149,33 @@ readable bin, plus V̂p's in-plane share in the full-data C plane
 2. **Planted geodesic**: a synthetic axis field rotating in one fixed
    plane with θ(σ) = θ₀ + ω ln σ plus per-condition draw noise — the
    instrument must recover the plane (held-out in-plane share ≈ 1),
-   the fitted (θ₀, ω) within tolerance, and score the law above SLERP
-   (median Δ > 0.02). A **non-planar control** (rotation through a
-   third dimension) must NOT pass: held-out in-plane share degraded
-   and no law-beats-SLERP.
+   the fitted (θ₀, ω) within tolerance, score the law above the
+   nearest-copy baseline (median gain > 0.02, a true geometry gap),
+   and hold **parity** with SLERP (median Δ > −0.02). A **non-planar
+   control** (rotation through a third dimension) must NOT pass:
+   held-out in-plane share degraded and no law-beats-SLERP.
+   *Amended pre-run — see the defect note below.*
+
+**Pre-registration defect (recorded 2026-08-09, before any real store
+was read; discovered while building the instrument's synthetic
+gates).** This gate originally required the planted planar geodesic to
+*beat* SLERP at median Δ > 0.02. That requirement is mathematically
+unsatisfiable under the frozen debiased scoring: the debiased
+estimator is unbiased for both predictions, and SLERP between flanking
+bins is an exact discretization of a fixed-plane geodesic — its only
+systematic error against the target is the t-parametrization mismatch
+(linear-in-σ vs the planted ln σ rate), which is ≪ 0.02 for any
+rotation field in this line's regime (< 90° total span, no
+orientation flips). The gate is amended to copy-gap + SLERP-parity as
+stated above. **The 27.2 verdict thresholds are untouched** — but the
+defect sharpens their interpretation, recorded here up front:
+LAW-BEATS-SLERP, if it occurs on real data, must come from
+flank-quality gaps or estimation-noise averaging, not from geodesic
+geometry per se; and a NO-GAIN outcome does **not** refute the
+fixed-plane geodesic family — it means SLERP already realizes it,
+i.e. 27.1 (plane stability) carries the model-vs-description content
+in that branch, and the E25a lookup keeps per-bin interpolation
+regardless.
 3. **V_phase**: linearity identity (perp(dem − dem_π) = C − C_pi to
    fp tolerance on the real store); planted synthetic where the phase
    component lies along a known tangent — recovered at cos > 0.9 —
