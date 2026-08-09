@@ -1,0 +1,35 @@
+{
+ "generated_by": "e28_gate2_diag.py",
+ "pairs": {
+  "diag~e193": {
+   "cos_B": 0.32504,
+   "shared_ref_num": 0.0,
+   "cos_C": 0.40615,
+   "ghat_cos": 0.47206
+  },
+  "diag~e194": {
+   "cos_B": 0.31415,
+   "shared_ref_num": 0.00126,
+   "cos_C": 0.41882,
+   "ghat_cos": 0.47243
+  },
+  "diag~e28": {
+   "cos_B": 0.97841,
+   "shared_ref_num": 0.0,
+   "cos_C": 0.99097,
+   "ghat_cos": 0.96372
+  },
+  "e28~e193": {
+   "cos_B": 0.33192,
+   "shared_ref_num": 0.000567,
+   "cos_C": 0.4311,
+   "ghat_cos": 0.42545
+  },
+  "e28~e194": {
+   "cos_B": 0.32018,
+   "shared_ref_num": 0.0,
+   "cos_C": 0.43996,
+   "ghat_cos": 0.42659
+  }
+ }
+}

@@ -1,0 +1,66 @@
+{
+ "generated_by": "e28_gate2.py",
+ "store": "project/sigma_lowres/bench/results/20260809-2216-e28-cond07-768/arm_sums",
+ "gate_sigma": 0.7,
+ "gate_cos": 0.95,
+ "preview_28A_768": [
+  {
+   "sigma": 0.3,
+   "rho": -0.6749,
+   "rel_cos_B": 0.9957,
+   "rel_cos_C": 0.9888,
+   "readable": true
+  },
+  {
+   "sigma": 0.4333,
+   "rho": -0.7795,
+   "rel_cos_B": 0.9953,
+   "rel_cos_C": 0.987,
+   "readable": true
+  },
+  {
+   "sigma": 0.5667,
+   "rho": -0.8547,
+   "rel_cos_B": 0.9763,
+   "rel_cos_C": 0.9266,
+   "readable": true
+  },
+  {
+   "sigma": 0.7,
+   "rho": -0.8109,
+   "rel_cos_B": 0.9261,
+   "rel_cos_C": 0.7475,
+   "readable": true
+  },
+  {
+   "sigma": 0.8333,
+   "rho": -0.7446,
+   "rel_cos_B": 0.9257,
+   "rel_cos_C": 0.8335,
+   "readable": true
+  }
+ ],
+ "pairs": {
+  "e193": {
+   "cos_B_raw": 0.33248,
+   "shared_ref_num": 0.000567,
+   "cos_B_corrected": 0.33192,
+   "cos_C": 0.4311,
+   "ghat_cos": 0.42545,
+   "rel_B_native": 0.8792,
+   "rel_C_native": 0.8521,
+   "pass": false
+  },
+  "e194": {
+   "cos_B_raw": 0.32018,
+   "shared_ref_num": 0.001677,
+   "cos_B_corrected": 0.3185,
+   "cos_C": 0.43996,
+   "ghat_cos": 0.42659,
+   "rel_B_native": 0.8704,
+   "rel_C_native": 0.7914,
+   "pass": false
+  }
+ },
+ "verdict": "FAIL"
+}

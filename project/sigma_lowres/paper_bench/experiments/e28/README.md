@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PRE-REGISTERED 2026-08-09 — RUN DEFERRED to paper 2.** Thresholds frozen below from committed numbers only; the instrument flag (`--cond_sigma`) does **not** exist yet and no GPU is spent by this registration. Running requires an explicit go decision (≈ 5.7 GPU-h full / ≈ 2.9 GPU-h staged) — this record exists so the strongest surviving mechanism hypothesis after [E27](../e27/) does not evaporate, and so its reading rules predate any instrument or run. **GO 2026-08-09** (explicit user decision, same day): `--cond_sigma` landed as the one-argument swap the seam note demands (validation gate 3 review in the flag commit); 768 stage submitted per the frozen staging. σ grid realized as the segmented window `0.2333…,0.7667…,4 : 0.7667…,0.9,1` — centers {0.3, 0.4333, 0.5667, 0.7, 0.8333}, the 0.8333 bin's draw values verified bit-identical to e194's construction. |
+| **Status** | **PRE-REGISTERED 2026-08-09 — RUN DEFERRED to paper 2.** Thresholds frozen below from committed numbers only; the instrument flag (`--cond_sigma`) does **not** exist yet and no GPU is spent by this registration. Running requires an explicit go decision (≈ 5.7 GPU-h full / ≈ 2.9 GPU-h staged) — this record exists so the strongest surviving mechanism hypothesis after [E27](../e27/) does not evaporate, and so its reading rules predate any instrument or run. **GO 2026-08-09** (explicit user decision, same day): `--cond_sigma` landed as the one-argument swap the seam note demands (validation gate 3 review in the flag commit); 768 stage submitted per the frozen staging. σ grid realized as the segmented window `0.2333…,0.7667…,4 : 0.7667…,0.9,1` — centers {0.3, 0.4333, 0.5667, 0.7, 0.8333}, the 0.8333 bin's draw values verified bit-identical to e194's construction. **768 stage DONE 2026-08-10 — gate 2 FAIL as frozen, diagnosed as a cross-environment instrument break (NOT the flag: a same-boot native diag matches the frozen run at 0.96–0.99); run PAUSED pending the native-twin reference amendment — see the 768-stage record below.** |
 | **Question** | E27 closed Q7's law candidates: no fixed plane, no 2-parameter rate, and the phase-borne component V_phase is a reproducible direction *orthogonal* to the whole axis-field plane. The surviving "strong version" (recorded in Q7's resolution): **B and C are pull-backs of a comparatively σ-fixed upstream object through the σ-conditioned network — the "rotating space" is the σ-indexed conditioning (adaln) frame, not anything positional.** Three committed facts point this way rather than merely permitting it: E21 (adaln carries 86–87 % of the phase-response amplitude), E19.3 (the anti-alignment is depth- and type-uniform — a global frame inherited through the chain rule), E27.4 (the rotation is not carried by RoPE/positional geometry). Discriminator: **freeze the conditioning** — pin the σ fed to the DiT forward at σ_cond while the *noising* σ sweeps the grid — and ask whether the axis field stops rotating. |
 | **Explicitly NOT this** | The ĝ-frame projection story ("the axis rotates because the anchor it is perp'd against rotates") — that is E25.0-2's estimand, adjudicated NO-GAIN; E28 intervenes on the network's conditioning input, not on the analysis frame. Also not a PI/RoPE revival (RoPE and grid geometry are untouched — G11 irrelevant here), and not a training lever: conditioning-freeze is a *probe* intervention, exactly as PI-align was for the phase mechanism in E19.4. |
 | **Depends on** | [E24](../e24/)/[E27](../e27/) machinery + committed native tables (the comparison target); e193 protocol actuals (cost/store sizing); `sigma_probe/kernel.py` (the seam); E19.6 (operating-point invariance licenses running at the same `anima_soup_sincos` operating point). |
@@ -105,11 +105,74 @@ from the native one at matched noising σ. (iii) The R̂ mirror of the
   not touch the E27 verdicts — the σ-space lookup remains the
   shipped read regardless.
 
-## Cost ladder (planned)
+## 768-stage record (2026-08-10) — gate 2 FAIL, diagnosed as instrument-environment, run PAUSED pending amendment
+
+Store: `bench/results/20260809-2216-e28-cond07-768/arm_sums` (12 GB,
+manifest records `cond_sigma: 0.7`). Instruments (this dir):
+`e28_gate2.py` → `e28_gate2.json`, `e28_gate2_diag.py` →
+`e28_gate2_diag.json`.
+
+- **Gate 1 PASS**: E24 synthetic suite clean; the store's
+  within-condition scalars reproduce through the independent
+  `bc_ledger` path on all 5 bins.
+- **Gate 2 FAIL as frozen**: vs committed e193/e194 at σ = 0.7/768,
+  cos_B ≈ 0.33 / cos_C ≈ 0.43 / ĝ ≈ 0.43 against the ≥ 0.95 band
+  (committed native↔native baseline 0.999/1.02/0.997). Both native
+  stores agree about where e28 sits. A seed-layout subtlety the
+  registration missed (e28 shares the reenc-reference noise
+  realization with e193 at exactly the gate bin — same seed, same
+  draw offsets 36–47, same arm_idx 2) is corrected for in the gate
+  read (shared-ref term +0.0006, immaterial).
+- **Diagnosis — the failure is NOT the flag.** A same-boot single-bin
+  NATIVE run (`bench/results/20260810-0214-e28-g2diag-native07`, no
+  `--cond_sigma`, draws 0–11 ⇒ seed-independent of every counterpart
+  arm) separates the causes: **diag ↔ e28 (same boot, conditioning
+  on/off): B 0.978 / C 0.991 / ĝ 0.964** — the freeze at its own
+  σ_cond bin is nearly a no-op, exactly the gate-2 premise; **diag ↔
+  e193/e194 (native ↔ native, across the 2026-08-09 reboots): B 0.32
+  / C 0.41 / ĝ 0.47** — the committed stores are not
+  vector-comparable to *any* run made in the current environment.
+  Environment forensics: adapter/DiT/VAE/latent/TE caches all predate
+  e193 unchanged; torch 2.12.0+cu132 and driver 610.43.02 unchanged
+  (apt history clean); the only break is the reboot pair
+  2026-08-09 19:14/19:32 with a fresh `/tmp` inductor re-autotune.
+  The magnitude matches the line's recorded paired-run chaos floor
+  (~0.41), and the `--deterministic` help text warned a cold cache
+  "can still shift results by ~0.3 at D = 2" — now measured at
+  **0.32–0.47 on pooled 40-image D = 12 debiased legs**, i.e. the
+  pooled axis-field directions carry a large kernel-path-dependent
+  component. Within-path readings are unaffected (e193↔e194 same-boot
+  0.999; diag↔e28 same-boot 0.96–0.99; e221/e224 cross-corpus
+  transfers in E23.0 spanned the Aug 7→8 boots and worked — that
+  cache apparently survived those reboots).
+- **Frozen-protocol consequence**: 896 NOT submitted; 28-A/28-B not
+  read (the 28-A preview rows inside `e28_gate2.json` are context
+  only). The e28 store itself is internally valid (gate 1; and the
+  boot is self-consistent by diag↔e28) — nothing needs re-running on
+  the frozen-conditioning side.
+- **Line-wide caveat (bigger than E28)**: every future cross-run
+  vector read against the committed Aug-7 arm stores (e.g. the
+  E23-named D ≥ 48 σ = 0.7 top-up for a restricted E25a) inherits
+  this wall. Cross-run estimands must bundle a same-environment
+  native reference — or use seed-twin arms in one run.
+- **Amendment required to proceed (user decision — extra GPU beyond
+  the registered ladder)**: re-measure the native comparison table in
+  the current environment as a **seed-twin** of the e28 grid (same
+  5-bin window, same seed ⇒ shared draw noise cancels in every
+  comparison — strictly stronger than the original cross-store
+  design): 768 native twin ≈ 2.9 h; then gate 2 re-evaluates against
+  it, and the 28-B STATISTICS-CARRIED branch's |Δcos| table uses the
+  twin table. 896 completion (+ its native twin) ≈ 5.8 h further if
+  the gate passes. The 28-B thresholds themselves are unchanged —
+  only the identity of the native reference is amended, forced by the
+  measured cross-environment irreproducibility.
+
+## Cost ladder (planned → actual)
 
 | item | GPU | note |
 |---|---|---|
-| flag + diff review | none | one argument swap at one call site |
-| 768 stage | ≈ 2.9 h | 5 bins × 1 route, arm sums ≈ 9 GB (e193 actuals scaled) |
-| 896 completion | ≈ 2.9 h | gated on validation gate 2 passing at the 768 stage |
-| CPU read | ~10 min | E24/E27 machinery verbatim |
+| flag + diff review | none | one argument swap at one call site (commit `7f30101f`) |
+| 768 stage | ≈ 2.9 h → **3.3 h** | 5 bins × 1 route, arm sums 12 GB fp32 |
+| gate-2 diagnosis | **+1.0 h** | same-boot native 0.7-bin run (unplanned; forced by the reboot-pair environment break) |
+| 896 completion | ≈ 2.9 h | **blocked** — pending the native-twin amendment above |
+| CPU read | ~10 min | E24/E27 machinery verbatim (unrun) |
