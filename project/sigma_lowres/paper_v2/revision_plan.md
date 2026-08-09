@@ -115,17 +115,41 @@ E19.3's reference run is a slimmed grid and a different checkpoint.
   `--repromote --keep_arm_sums --self_floor --deterministic`, verdict
   σ bins only ({0.3, 0.4333, 0.5667, 0.7, 0.8333}), routes 1024→768 +
   1024→896, draws/D matched to e193 per-condition counts.
-- **Cost**: e193 was 5.7 GPU-h at 16 draws × 15 σ × 3 routes; 5 σ ×
-  2 routes extrapolates to **~1.3 GPU-h per adapter** (measure on the
-  first and record). CPU read ~minutes per store. Daemon-submitted
-  (`--queue`), like every probe run.
-- **Adapters**: 2–4 plain-LoRA checkpoints. Cross-adapter *direction*
-  comparison requires an identical parameter space (same rank + target
-  modules — same config family as the operating adapter); adapters
-  with a different config can still carry the scalar reads. Prefer
-  spanning different training slices (different artists/pools) over
-  different seeds of the same slice — seed-twins would understate the
-  generalization claim.
+- **Cost** (corrected 2026-08-09 — the earlier ~1.3 GPU-h figure
+  misattributed e193's grid): e193 was 5.7 GPU-h over 10 conditions
+  (4 in-window σ + endpoint, 2 routes, D = 40, 12 draws) ⇒
+  **~0.57 GPU-h per (σ, route) condition**; the e193-matched full
+  grid is **~5.7 GPU-h per adapter**, the E26.0 one-condition smoke
+  ~0.57 GPU-h + startup. CPU read ~minutes per store.
+  Daemon-submitted (`--queue`), like every probe run.
+- **Adapters — the E7 pair, preserved at `output/paper/e7/`**
+  (`anima_soup_e7_flat` / `anima_soup_e7_dirty` + s1001–s1003 siblings
+  + snapshots; verified on disk 2026-08-09): zero training cost,
+  verbatim shipped recipe (dim 32 / alpha 128 ⇒ identical parameter
+  space to sincos, cross-adapter cosines well-defined), and a
+  *designed* style axis (opposite redundancy clusters, artists disjoint
+  from sincos) — different training slices, not seed-twins. The seed
+  siblings are a pre-declared optional extension tier (axis: property
+  of the slice or of the checkpoint?), not a post-hoc widening.
+  Bonus read this buys: E7 left the checkpoint-dependent floor *level*
+  "mechanism unresolved" (in-window cos_floor ≈ 0.73 flat vs ≈ 0.50
+  dirty) — the geometry read on the same two adapters can localize it
+  (residual amplitude vs direction), and E19.6's LoRA-moves-B
+  refutation predicts cross-adapter B̂ is shared, making C and R̂ the
+  informative objects.
+- **E7's probe runs are NOT reusable** (checked 2026-08-09): the run
+  dirs kept only `per_image.jsonl`/`result.json` (no `arm_sums/` —
+  they predate the E19 machinery), and the E7 protocol had no
+  `--repromote` arm, so only B+C is even formable from them, never the
+  legs. Fresh probe runs are required; the adapters are the reuse.
+- **No cheaper h-instrument exists**: h(B), h(C), h(B+C) are scalars
+  off the Gram of the six per-condition arm means, so vector storage
+  could be skipped — but the cost is the GPU backward passes for the
+  three arms, identical either way. Keep `--keep_arm_sums` (sums are
+  the cheap part; dropping them forfeits the axis-field and
+  cross-adapter direction reads to save disk). One probe process per
+  adapter (E7's kernel-path rule); cross-adapter reads go through the
+  E24 cross-store debias conventions.
 - **Readouts, in verdict order**:
   1. *Cancellation replicates* (the paper-relevant read): h(B+C) ≪
      min(h(B), h(C)) at the verdict bins; I < 0 where the operating
