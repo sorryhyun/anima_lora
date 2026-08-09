@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PLANNED — E23.0 pre-registered 2026-08-09, before the `e230_read.py` instrument existed** (CPU-only, committed stores, no GPU). E23a/E23b remain the gated sketches in [E22](../e22/)'s README — E23a's drafting is licensed by 22.4 (PER-SAMPLE HOLDS at σ = 0.7) but is **not** frozen here; this read decides whether it ever is. |
+| **Status** | **E23.0 DONE 2026-08-09** (pre-registered same day before the `e230_read.py` instrument existed; CPU-only as planned) — **23.0-A DAMP-DEAD** (λ\* = 1 almost everywhere; the whole sweep buys ≤ 0.006 closure at 13 % signal cost — E23a's damping family is closed at probe level, no GPU spent against the 22.4 license), **23.0-B PROJ-PARTIAL** (the frozen D = 12 excess filter voids every σ ≥ 0.4333 verdict target; the recorded surviving structure is strong and σ = 0.7-shaped — all six transfers there close 0.70–0.88 at SR ≈ 1, and the out-of-corpus high-draw targets close 0.76–0.81 with *resolved* excess), **23.0-C PER-BIN-ONLY** (span projector actively harmful, SR 0.75–0.82). Stage-2 map: conservative default = no gradient-surgery Stage 2; the structure clause names exactly one open door — a **restricted E25a at σ = 0.7, per-bin lookup** — see Results. E23a/E23b remain the gated sketches in [E22](../e22/)'s README; E23a's damping form is now dead, E23b stays parked. |
 | **Question** | Two implementable gradient-surgery levers are now on the table for the demoted-step training path: **adaln-branch damping** (E23a's sketch, per E21's 86–87 % amplitude concentration) and **σ-binned residual projection** (E25a's sketch, per E24 STRUCTURED + E25.0 PARTIAL/NO-GAIN). Both act on the same object — the demoted sample's LoRA gradient — and both are *exactly simulable, one-step, pooled,* from the committed `arm_sums/` stores: damping is a band mask-scale of the demoted arm, projection is a rank-1/rank-k removal, and every debiased gap they produce is algebra on per-band Gram entries. Before any training bench is frozen (Stage 2 = one of E23a / E25a / E25b), measure for free: does each lever actually move the pooled demoted gradient *toward* native, at what cost in retained signal, and does the projection lookup transfer out-of-sample (across stores / routes / σ)? |
 | **Licensed by** | E22 → 22.4 (E23a drafting licensed, single-σ caveat standing); E24 STRUCTURED + knob read (any lever must be σ-local and angle-targeted); E25.0 (25.0-1 PARTIAL — the pooled lookup object exists per σ bin, route-shared, hole at 768/σ = 0.4333; 25.0-2 NO-GAIN — per-σ-bin lookup mandatory). This experiment is measurement only — pooled, one operating point, no lever is implemented in training code and none is shipped from here. |
 | **Explicitly NOT licensed** | Any ledger-derived objective term (E20.4 closed at estimand level — nothing here is a loss term; the levers are optimizer-side filters evaluated in counterfactual only); any PI arm read (G11); any per-sample estimated quantity (E23a's per-sample *license* is about the mechanism holding sample-by-sample, not about estimating per-sample directions — no such estimate appears here or in any lever this read can license). |
@@ -204,9 +204,134 @@ unless the recorded structure names a passing subset explicitly.
   training-outcome claim.
 - Stratified-corpus stores (e221/e224) are descriptive everywhere.
 
-## Cost ladder (planned)
+## Results (2026-08-09)
 
-| item | planned |
-|---|---|
-| 23.0 | CPU only: one chunked fp64 band-Gram over ~80 condition vectors × 77.7M dims (~2.5× the E25.0 Gram work ⇒ ~10–20 min), ≤ ~28 GB resident (fp32-resident means; streaming fallback if RAM is tight); all readings are small-matrix algebra on the Grams |
-| GPU | none |
+Instrument: `e230_read.py` (this dir). All validation gates passed
+before any new quantity was read: the committed e221 **and** e224
+`ledger.json` reproduced **exactly** (4 bins, every scalar incl. the
+h/κ/rawnorm columns) through the band-Gram path; band-Gram resum vs
+direct full-vector dots max rel dev 1.3e−14; recomputed rel_cos_R
+matches the committed `e250_read.json` on all 15 shared conditions to
+≤ 4.9e−5; synthetic gates recover the analytic λ\* (0.891), the
+cos²φ transfer closure (0.25 at 60°), and the debias negative control
+(raw sweep chases noise to λ\* = 0.66, debiased stays at 0.98).
+Record: `e230_read.json`; figures `e230_damp.png`, `e230_proj.png`,
+`e230_leak.png`. Runtime 95 s CPU cold / 50 s warm, ~3 GB (streaming —
+the planned resident-fp32 path was unnecessary).
+
+### The excess filter: an instrument-resolution fact, recorded first
+
+The frozen filter (Δ ≥ max(0.005, 3σ_twin)) passes only **3/12 verdict
+conditions** — e193 σ = 0.3 (both routes) and e193/768/σ = 0.4333.
+Every σ ≥ 0.4333 excess is *positive* (768: +0.065/+0.046/+0.033;
+896: +0.023/+0.010/+0.010) but under 3σ_twin at D = 12 draws — the
+single-difference σ_twin estimator is itself one noisy sample, and at
+12 draws it cannot certify the in-window excess this estimand sees.
+That this is resolution and not absence is shown inside the same run:
+the high-draw descriptive stores pass at the same route and σ —
+e221 (D = 24) Δ = +0.0416/+0.0390 at σ = 0.5667/0.7, e224 (D = 96)
+Δ = +0.0309 with 3σ_twin = 0.008. Mirrors the E22 → 22.4 story
+(D 24 → 96 lifted per-image gates); no threshold was changed post hoc.
+
+### 23.0-A: **DAMP-DEAD** (and dead everywhere descriptively)
+
+Eligible conditions (3): λ\* = 1.0 / 1.0 / 0.85; the one non-unity λ\*
+buys closure **0.0057** at SR 0.872 — thirteen percent of the retained
+native-parallel signal spent for half a percent of the excess. At
+λ = 0 (gating the band) closure is **−2.02**: removing the adaln
+branch of a demoted gradient moves it drastically *away* from native,
+exactly as the band's large native-parallel mass predicts. Every
+descriptive row agrees: λ\* = 1.0 at all four e221/e224 rows
+(resolved-excess targets included), and the other-band sweeps
+(self_attn / mlp / cross_attn) top out at closure 0.035. This is the
+mechanistically expected outcome — damping is an amplitude lever and
+E24.2 showed the residual is angle-borne — and it is now measured, for
+free, instead of discovered after a Tier-1.5 training bench.
+**E23a's damping family is closed at probe level.** The 22.4
+per-sample license was never spent; it remains on record for a lever
+family with a live mechanism.
+
+### 23.0-B: **PROJ-PARTIAL** — and the recorded surviving structure
+
+Per the frozen table: eligible transfers (targets excess-passing) are
+only the 3 low-σ cross-route rows — closures 0.392/0.394/0.184,
+median 0.392 < 0.5 with SR = 1.0 ⇒ PARTIAL (not WEAK; the σ = 0.3
+transfers sit at ~0.39 because the residual there is the least
+axis-aligned, consistent with E24's fastest anchor rotation at 0.3).
+The surviving structure, recorded as the frozen clause requires:
+
+- **At σ = 0.7 every transfer works**: cross-store 0.857/0.880 (e193 →
+  e194, 896/768) and 0.750/0.804 (reverse), cross-route 0.704–0.849 —
+  six independent out-of-sample readings, all SR 0.999–1.002, on
+  targets whose excess the D = 12 filter cannot certify (Δ +0.026 to
+  +0.033, ~2σ_twin) but which the pooled ledger line has long measured
+  as real.
+- **The out-of-corpus rows resolve the denominator concern**: the
+  leave-self-out σ = 0.7 lookup built purely from the 40-image
+  standard-corpus stores closes **0.810** of e221's and **0.763** of
+  e224's *resolved* excess (Δ +0.039/+0.031 at 3σ_twin 0.012/0.008,
+  both PASS) at SR ≈ 1.00 — a different 16-image stratified corpus,
+  different draw counts, same direction. The pooled residual direction
+  is a *usable, portable* object at σ = 0.7.
+- Own-bin closures run 1.16–1.96 (> 1 = in-sample projector-noise
+  removal, which is why own-bin is context only); e224's D = 96 value
+  is the closest to 1 (1.157), consistent with the inflation being
+  draw-noise-borne.
+- Away from 0.7 the own-σ lookup weakens: 0.25–0.66 at σ = 0.5667,
+  0.44–0.79 at 0.8333 — the same reliability ordering as 25.0-1.
+
+### 23.0-C: **PER-BIN-ONLY** (emphatic — the span projector is harmful)
+
+The verdict fired on the SR clause (denominator-free, so untouched by
+the excess filter): the rank-3 span projector retains only
+**SR 0.75–0.82** at every window condition — projecting out other
+bins' residual directions removes real native-parallel signal, because
+R̂(σ_x) is ⊥ only to its *own* bin's ĝ: the leakage matrix runs
+|⟨ℓ̂_σx, ĝ_y⟩| = 0.17–0.41 off-diagonal (exactly 0 on-diagonal by
+construction). Cross-σ single-direction lookups are as bad (closures
+≈ 0 to −33, SR down to 0.83). **A fixed-subspace guard is not merely
+suboptimal, it is actively damaging** — the E24/E25.0 σ-local mandate
+is now confirmed at the lever level, and any E25a freeze must apply
+one direction per σ bin (per-sample σ is known at training time; the
+freeze must specify the micro-batch mechanism).
+
+### Stage-2 map applied (frozen wording)
+
+23.0-A DAMP-DEAD × 23.0-B PROJ-PARTIAL → PARTIAL takes its nearest
+weak side ⇒ **conservative default: no gradient-surgery Stage 2**, and
+the scheduler-side shipped recipe stands reconfirmed at this operating
+point. The structure clause's named exception — the only open door —
+is a **restricted E25a: σ = 0.7 only, one direction per σ bin,
+route-shared, never a span projector**. If that freeze is written, it
+must (a) anchor its closure denominator on the resolved-excess
+evidence (e224's D = 96 row; optionally a D ≥ 48 standard-corpus
+σ = 0.7 top-up priced by 22.4's validated SNR model, ~2 h, as its own
+amendment), (b) carry the standing E20.4-adjacency paragraph, and
+(c) inherit the 768/σ = 0.4333 hole and this file's leakage table as
+anti-scope. E25b (resolution conditioning) is untouched by this read —
+not simulable from stores — and remains a candidate on its own case.
+Note the convergence: σ = 0.7 is now *both* the per-sample-licensed
+bin (22.4) *and* the only bin where the population lever demonstrably
+transfers — the two evidence chains point at the same operating
+region.
+
+### What this buys the paper
+
+Three sentences, all free: (1) the branch-damping lever family —
+the naive reading of "adaln carries the amplitude" — is dead by direct
+counterfactual, closing the loop E24.2's knob read opened; (2) the
+cancellation-axis machinery produces a *portable* pooled residual
+direction at σ = 0.7 (transfers across runs, routes, and corpora at
+0.70–0.88 closure with ≈ 1.00 signal retention) — the first evidence
+the line's measured geometry is exploitable and not merely
+descriptive; (3) σ-locality is now a lever-level *requirement*, not a
+descriptive observation — a fixed-subspace correction damages the
+gradient (SR ≤ 0.82), which strengthens §5's case for σ-conditioned
+prescriptions in general and the shipped σ-gated recipe in particular.
+
+## Cost ladder (planned → actual)
+
+| item | planned | actual |
+|---|---|---|
+| 23.0 | CPU only: one chunked fp64 band-Gram over ~80 condition vectors × 77.7M dims (~2.5× the E25.0 Gram work ⇒ ~10–20 min), ≤ ~28 GB resident (fp32-resident means; streaming fallback if RAM is tight); all readings are small-matrix algebra on the Grams | **95 s cold / 50 s warm, ~3 GB** — the streaming path made residency unnecessary and the Gram is I/O-bound, not FLOP-bound; record regenerated bit-identical under the final (post-lint) instrument |
+| GPU | none | none |

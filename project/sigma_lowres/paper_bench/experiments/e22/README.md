@@ -123,7 +123,7 @@ cross-check read from `<run>/ledger.json` (`vector_ledger.py
   untested and NOT claimed — wording must say "per-image at this
   operating point".
 
-## E23 sketch (NOT pre-registered here — gated on 22.3; 22.1's gate not met, **22.4's met at σ = 0.7**: E23a drafting is licensed, single-σ caveat carried)
+## E23 sketch (NOT pre-registered here — gated on 22.3; 22.1's gate not met, **22.4's met at σ = 0.7**: E23a drafting is licensed, single-σ caveat carried. **Update 2026-08-09**: [E23.0](../e23/)'s one-step counterfactual read returned **DAMP-DEAD** — the damp/gate-the-adaln-branch form below is closed at probe level (λ\* = 1 almost everywhere, gating the band moves the gradient *away* from native); the 22.4 license was never spent and stays on record)
 
 - **E23a** (only if PER-SAMPLE HOLDS): adaln-targeted lever A/B on the
   shipped σ-gated demotion recipe — damp/gate the adaln branch for
