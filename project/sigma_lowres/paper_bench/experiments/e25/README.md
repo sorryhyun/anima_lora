@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **SKETCH 2026-08-08 — NOT pre-registered.** Constants, arms, and gates are deliberately unfrozen; freezing requires the E25.0 read below plus an explicit E20.4-adjacency justification. Nothing here licenses a run. |
+| **Status** | **SKETCH 2026-08-08 — NOT pre-registered** (arms E25a/E25b unfrozen; freezing still requires an explicit E20.4-adjacency justification). **E25.0 pre-registered 2026-08-09** (section below, committed before the `e250_read.py` instrument existed) — the prerequisite read only; it licenses no lever. |
 | **Question** | The line now knows *where* the residual gap lives: the cancellation is locally enforced (E21), its axis is one direction per σ across routes/stores (E24 STRUCTURED), and the residual is **angle-borne** — closing ρ → −1 removes 70–100 % of it while amplitude matching removes ≤ 45 % (E24.2). Can a **population-level** lever exploit this — either by filtering the residual direction out of demoted-sample gradients, or by making the implicit resolution dimension explicit — without touching anything the line has closed? |
 | **Licensed by** | E24 STRUCTURED clause (this is the named follow-up; the lever **must be σ-local** — a single fixed subspace is refuted), E24.2 knob read (target = angle/residual direction, never amplitude rebalancing), E21 (adaln carries 86–87 % of the phase-response amplitude — the natural injection/damping site), pooled evidence only. |
 | **Explicitly NOT licensed** | Anything per-sample (gated on E22 → 22.4 → E23a, unchanged); any PI-RoPE revival (G11); and — the sharpest adjacency — anything that re-derives a ledger term as an objective correction (E20.4 closed that at the estimand level). A frozen E25 must argue explicitly why its lever is an in-expectation filter / conditioning change and not the closed derived-data-term family. |
@@ -27,7 +27,8 @@ wall-clock-at-fixed-steps (autoscale lesson).
 
 ## E25.0 — prerequisite read (cheap, CPU, must precede any freeze)
 
-Two facts the sketch depends on that are **not yet measured**:
+**Pre-registered 2026-08-09, before the instrument (`e250_read.py`)
+existed.** Two facts the sketch depends on that are not yet measured:
 
 1. **Residual-direction reliability**: is the pooled (B+C)̂ direction
    reproducible across draw sets per (route, σ)? (B and C are each
@@ -39,6 +40,105 @@ Two facts the sketch depends on that are **not yet measured**:
    frame (E24's descriptive co-rotation, promoted to a pre-registered
    estimand)? Decides whether E25a's lookup can be one direction in a
    normalized frame or must interpolate per σ bin.
+
+### Sources
+
+The three E24 stores verbatim (e193 depth-ledger, e194 pi-causal, e221
+per-image-ledger — re-verified on disk 2026-08-09), same adapter ⇒ one
+operating point. Conditions, legs, debias, and gates are **inherited
+from E24 unchanged**: legs verbatim `vector_ledger.bc_ledger` with
+`data_ref = reenc`, each leg ⊥ against its condition's own ĝ; rel gate
+0.5; verdict σ ∈ {0.3, 0.4333, 0.5667, 0.7, 0.8333}; standard-corpus
+stores only in verdict statistics, e221 descriptive; π arms not read
+(G11); cross-condition numerators debiased per the E24 conventions
+(draw noise independent across bins/stores; same-store same-bin
+cross-route B pairs subtract the shared reenc ref-noise power
+|d⊥|²/4); denominators are the within-condition cross-set debiased
+norms.
+
+### Frozen quantities (no tuning on outputs)
+
+- **Residual per half-set**: R₁⊥ = B₁⊥ + C₁⊥ (= the perp'd
+  ḡ_dem − ḡ_reenc of draw set 1; rp cancels), R₂⊥ likewise.
+  - `rel_cos_R` = raw cosine(R₁⊥, R₂⊥) — the exact mirror of
+    `rel_cos_B`/`rel_cos_C` (raw, undebiased, per condition).
+  - Debiased residual power **nR² = 2G²·(S + F + I)**, from the exact
+    identity ⟨R₁⊥, R₂⊥⟩ − ref_noise = 2G²(S+F+I) (validation gate:
+    both sides agree to ≤ 1e−6 in ledger units on every condition —
+    the shared reenc ref-noise term carries over from B unchanged
+    since C has no ref dependence).
+  - A condition **passes read (1)** iff rel_cos_R ≥ 0.5 **and**
+    nR² > 0.
+- **Frame transport**: for an across-σ pair (x, y) within one (store,
+  route), the minimal rotation Rot in span(ĝₓ, ĝᵧ) taking ĝₓ → ĝᵧ,
+  applied to the pooled leg mean; **cos_fr = debiased cos(Rot·B̄⊥ₓ,
+  B̄⊥ᵧ)** (rotation preserves norms ⇒ denominators unchanged; numerator
+  computed exactly from Gram entries — ⟨Bₓ,Bᵧ⟩, ⟨ĝₓ,Bᵧ⟩, ⟨ĝᵧ,Bₓ⟩,
+  ⟨ĝₓ,ĝᵧ⟩ — with no orthogonality shortcut). Reported next to the raw
+  E24 cosine with **Δ = |cos_fr| − |cos_raw|** per pair. Pairs: E24
+  family (i) (across-σ, same route, standard corpus), gated per leg as
+  in E24. B table carries the verdict; C table reported alongside.
+  Second-order noise products inside the transport numerator are
+  accepted under the same cross-condition independence assumption as
+  E24's numerators (noted, not corrected). Debiased values may exceed
+  1; reported as computed, clamped only in figures.
+- **What the transport distinguishes** (recorded up front): literal
+  co-rotation of the axis inside ĝ's own motion plane predicts
+  cos_fr ≈ 1; matched-angle rotation in an unrelated plane predicts
+  cos_fr ≈ cos_raw. E24's descriptive readout (cos(B̂,B̂) ≈ cos(ĝ,ĝ))
+  cannot separate these; this estimand does.
+
+### Pre-registered readings
+
+**25.0-1 (residual reliability; decides E25a's life):**
+
+| outcome (12 verdict conditions) | verdict |
+|---|---|
+| every condition passes (rel_cos_R ≥ 0.5, nR² > 0) | **RELIABLE** — E25a's pooled lookup object exists at this operating point |
+| median rel_cos_R < 0.5 | **UNRELIABLE** — E25a dead (sketch kill criterion executes); E25b unaffected |
+| in between | **PARTIAL** — E25a, if ever frozen, is restricted to the passing (route, σ) set; the pattern is recorded |
+
+**25.0-2 (frame-relative stationarity; decides the lookup's shape).**
+Precedence: FRAME-STATIONARY checked first, then NO-GAIN, else PARTIAL.
+
+| outcome (B table, gated across-σ verdict pairs) | verdict |
+|---|---|
+| median \|cos_fr\| ≥ 0.7 **and** min \|cos_fr\| ≥ 0.5 (the exact E24 SHARED-AXIS across-σ criterion, which the **raw** table failed at min 0.442) | **FRAME-STATIONARY** — one direction in the ĝ-co-rotating frame suffices; the lookup is the transport map itself |
+| median Δ ≤ 0.02 | **NO-GAIN** — the E24 co-rotation was matched-angle, not planar; a lookup must interpolate per σ bin |
+| in between | **PARTIAL** — per-σ-bin interpolation is the conservative default; the surviving structure recorded |
+
+- **Descriptive rows (no verdict weight)**: transported and raw R̂
+  pairwise cosines over read-1-passing verdict conditions (all three
+  E24 families — does the residual direction share the axis-field
+  structure; this directly shapes the E25a lookup); e221 rows; the
+  C tables.
+
+### Validation gates (all must pass before any new quantity is read)
+
+1. e221 committed `ledger.json` reproduced exactly (all bins, all six
+   scalars) — the E24 gate, rerun by this instrument.
+2. Synthetic mini-store: within-condition scalars agree with
+   `bc_ledger` exactly; planted residual direction recovered by
+   rel_cos_R (and destroyed by large noise); the nR² identity holds.
+3. Synthetic transport: a planted rigid co-rotation in the ĝ-motion
+   plane yields cos_fr ≈ 1 where raw ≈ cos(ĝ,ĝ); an out-of-plane
+   control (axis motion in a plane not containing ĝ's motion) must
+   NOT inflate (cos_fr ≈ cos_raw).
+4. nR² identity on the real stores: max deviation ≤ 1e−6 (ledger
+   units) over all conditions.
+
+### Kill switches / honesty
+
+- Read-only CPU analysis of committed stores; nothing refit, no
+  constant tuned, no objective term derived (E20.4 stands closed); no
+  lever is implemented or licensed by this read — E25 freezing still
+  separately requires the E20.4-adjacency paragraph.
+- Pooled directions only; per-sample variants stay gated on
+  E22 → 22.4 → E23a, unchanged. Wording: "pooled residual direction
+  at this operating point", never per-sample.
+- Outputs (this dir): `e250_read.json` (the record), `e250_rel.png`,
+  `e250_frame.png`. Expected cost: one chunked fp64 Gram over the E24
+  vector set (54 × 77.7M) — ~6 min CPU, ≤ ~26 GB resident, no GPU.
 
 ## Kill criteria (sketch level)
 
