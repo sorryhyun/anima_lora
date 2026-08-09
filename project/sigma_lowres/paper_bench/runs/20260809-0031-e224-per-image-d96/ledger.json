@@ -1,0 +1,103 @@
+{
+  "run": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/runs/20260809-0031-e224-per-image-d96",
+  "sigma_centers": [
+    0.7
+  ],
+  "manifest": {
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "sigma_centers": [
+      0.7
+    ],
+    "bins": 1,
+    "endpoint_bin": false,
+    "draws_per_bin": 96,
+    "target_alphas": [
+      1.0
+    ],
+    "arm_keys": [
+      "reenc",
+      "768",
+      "768rp"
+    ],
+    "self_floor": true,
+    "repromote": true,
+    "demote_edges": "768",
+    "n_images": 16,
+    "seed": 42,
+    "dtype": "fp32",
+    "scale": "sum over images of per-image draw-summed gradients (divide by n_images * draws_per_bin for the mean gradient)",
+    "keys": {
+      "768": {
+        "n_images": 16,
+        "files": [
+          "768__b0.npy"
+        ]
+      },
+      "768__2": {
+        "n_images": 16,
+        "files": [
+          "768__2__b0.npy"
+        ]
+      },
+      "768rp": {
+        "n_images": 16,
+        "files": [
+          "768rp__b0.npy"
+        ]
+      },
+      "768rp__2": {
+        "n_images": 16,
+        "files": [
+          "768rp__2__b0.npy"
+        ]
+      },
+      "a": {
+        "n_images": 16,
+        "files": [
+          "a__b0.npy"
+        ]
+      },
+      "b": {
+        "n_images": 16,
+        "files": [
+          "b__b0.npy"
+        ]
+      },
+      "reenc": {
+        "n_images": 16,
+        "files": [
+          "reenc__b0.npy"
+        ]
+      },
+      "reenc__2": {
+        "n_images": 16,
+        "files": [
+          "reenc__2__b0.npy"
+        ]
+      }
+    }
+  },
+  "bc_ledger": {
+    "768": [
+      {
+        "G": 0.1147,
+        "b_perp_rawnorm": 0.36735,
+        "c_perp_rawnorm": 0.46402,
+        "kappa_par_B": 0.11006,
+        "kappa_par_C": -0.28182,
+        "rel_cos_B": 0.95267,
+        "rel_cos_C": 0.9488,
+        "S": 0.06535,
+        "F": 0.10476,
+        "I": -0.14868,
+        "I_sameset_biascheck": -0.15559,
+        "rho": -0.89846,
+        "quad_pred_gap": 0.02143,
+        "h_B": 0.05064,
+        "h_C": 0.16006,
+        "h_B_plus_C": 0.03193,
+        "data_ref": "reenc"
+      }
+    ]
+  }
+}

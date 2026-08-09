@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "script": "project/sigma_lowres/bench/run_sigma_probe.py",
+  "label": "e224-per-image-d96",
+  "timestamp_utc": "2026-08-08T17:58:24Z",
+  "git": {
+    "sha": "b7fdc72d",
+    "branch": "sigma-lowres-yarnsig",
+    "dirty": true
+  },
+  "env": {
+    "python": "3.13.14",
+    "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39",
+    "torch": "2.12.0+cu132",
+    "cuda": "13.2"
+  },
+  "args": {
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "dit": "models/diffusion_models/anima-base-v1.0.safetensors",
+    "vae": "models/vae/qwen_image_vae.safetensors",
+    "num_images": 16,
+    "bins": 1,
+    "draws_per_bin": 96,
+    "sigma_window": "0.6333333333333333,0.7666666666666667",
+    "tier": 1024,
+    "demote_edges": "768",
+    "data_root": null,
+    "artists": null,
+    "probe_list": "project/sigma_lowres/paper_bench/experiments/e22/e22_probe_list.json",
+    "max_per_artist": null,
+    "score_limit": null,
+    "no_reenc_control": false,
+    "per_group": false,
+    "endpoint_bin": false,
+    "x_zero": false,
+    "target_alpha": null,
+    "pi_align": false,
+    "yarn_align": null,
+    "yarn_sigma_gate": null,
+    "repromote": true,
+    "per_image_ledger": true,
+    "keep_arm_sums": true,
+    "arm_sums_dtype": "fp32",
+    "target_kappa": false,
+    "pool": 0,
+    "pool_spill": false,
+    "pool_no_norm": false,
+    "self_floor": true,
+    "draw_sweep": null,
+    "draw_batch_tokens": 0,
+    "grad_ckpt": false,
+    "activation_memory_budget": 0.99,
+    "partitioner_aggressive": false,
+    "deterministic": true,
+    "seed": 42,
+    "quant_k": 4,
+    "results_root": "project/sigma_lowres/paper_bench/runs",
+    "label": "e224-per-image-d96",
+    "smoke": false,
+    "gradient_checkpointing": false,
+    "compile": false
+  },
+  "metrics": {
+    "n_images": 16,
+    "bins": 1,
+    "draws_per_bin": 96,
+    "sigma_centers": [
+      0.7
+    ],
+    "adapter": "output/ckpt/anima_soup_sincos.safetensors",
+    "cos_floor": {
+      "mean": [
+        0.97232
+      ],
+      "sem": [
+        0.00371
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gnorm_native": {
+      "mean": [
+        12.12262
+      ],
+      "sem": [
+        0.50516
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "wall_time_s": 8783.1,
+    "gap_reenc": {
+      "mean": [
+        0.00185
+      ],
+      "sem": [
+        0.00226
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_reenc": {
+      "mean": [
+        0.97403
+      ],
+      "sem": [
+        0.00411
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_reenc": {
+      "mean": [
+        -0.01329
+      ],
+      "sem": [
+        0.00208
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_768": {
+      "mean": [
+        0.09466
+      ],
+      "sem": [
+        0.01504
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_768": {
+      "mean": [
+        0.92104
+      ],
+      "sem": [
+        0.01385
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_768": {
+      "mean": [
+        0.04701
+      ],
+      "sem": [
+        0.00783
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "gap_768rp": {
+      "mean": [
+        0.07745
+      ],
+      "sem": [
+        0.01209
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "cos_self_768rp": {
+      "mean": [
+        0.9451
+      ],
+      "sem": [
+        0.01616
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    },
+    "debiased_gap_768rp": {
+      "mean": [
+        0.04432
+      ],
+      "sem": [
+        0.00739
+      ],
+      "spearman_sigma": null,
+      "splithalf_pearson": null
+    }
+  },
+  "artifacts": [
+    "per_image.jsonl"
+  ],
+  "extra": {
+    "probe_set": [
+      "yaegashi_nan/8228445",
+      "haku89/13745769",
+      "sumiyao_(amam)/7614272",
+      "kat_(bu-kunn)/dan_8657484",
+      "mignon/dan_9540972",
+      "ru_zhai/10778612",
+      "deyui/10050204",
+      "kat_(bu-kunn)/dan_11415046",
+      "jumonji/8688344",
+      "abmayo/13109140",
+      "koh_(minagi_kou)/dan_9398241",
+      "nvl/12882239",
+      "jumonji/11957441",
+      "jumonji/10125232",
+      "gin00/13407704",
+      "hews/7655626"
+    ]
+  }
+}

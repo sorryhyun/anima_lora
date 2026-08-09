@@ -1,0 +1,445 @@
+{
+ "meta": {
+  "run": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/runs/20260809-0031-e224-per-image-d96",
+  "route": "768",
+  "rel_gate": 0.5,
+  "floor_n": 8,
+  "verdict_sigma": [
+   0.7
+  ],
+  "n_images": 16,
+  "note": "per-image at this operating point (the E14 adapter), probe corpus; stratified selection makes pooled values non-comparable to E14/E21. Resize-factor reads are OBSERVATIONAL (strata differ in content by construction)."
+ },
+ "per_sigma": [
+  {
+   "sigma": 0.7,
+   "n_gated": 14,
+   "n_images": 16,
+   "median_rho_i": -0.8203,
+   "q25": -0.8559,
+   "q75": -0.77,
+   "min": -0.9132,
+   "max": -0.6548,
+   "frac_le_m07": 0.9286,
+   "frac_le_m05": 1.0,
+   "median_sig_rho_gated": 0.027,
+   "class": "HOLDS",
+   "images": [
+    {
+     "artist": "yaegashi_nan",
+     "stem": "8228445",
+     "stratum": "near_native",
+     "resize_factor": 0.9287,
+     "gated": true,
+     "rho": -0.87087,
+     "sig_rho": 0.1419,
+     "S": 0.03433,
+     "F": 0.130564,
+     "I": -0.116609,
+     "rel_cos_B": 0.91078,
+     "rel_cos_C": 0.78184,
+     "amp_ratio": 0.51277,
+     "h_B_plus_C": 0.120895,
+     "h_B": 0.02974,
+     "h_C": 0.279282,
+     "G": 0.10614
+    },
+    {
+     "artist": "haku89",
+     "stem": "13745769",
+     "stratum": "near_native",
+     "resize_factor": 0.9916,
+     "gated": true,
+     "rho": -0.65477,
+     "sig_rho": 0.12598,
+     "S": 0.020024,
+     "F": 0.036053,
+     "I": -0.035185,
+     "rel_cos_B": 0.71585,
+     "rel_cos_C": 0.72089,
+     "amp_ratio": 0.74524,
+     "h_B_plus_C": 0.032984,
+     "h_B": 0.024101,
+     "h_C": 0.058663,
+     "G": 0.17171
+    },
+    {
+     "artist": "sumiyao_(amam)",
+     "stem": "7614272",
+     "stratum": "near_native",
+     "resize_factor": 1.1898,
+     "gated": true,
+     "rho": -0.81973,
+     "sig_rho": 0.02494,
+     "S": 0.129562,
+     "F": 0.235075,
+     "I": -0.286117,
+     "rel_cos_B": 0.74696,
+     "rel_cos_C": 0.66158,
+     "amp_ratio": 0.7424,
+     "h_B_plus_C": 0.130289,
+     "h_B": 0.095774,
+     "h_C": 0.333369,
+     "G": 0.11802
+    },
+    {
+     "artist": "kat_(bu-kunn)",
+     "stem": "dan_8657484",
+     "stratum": "near_native",
+     "resize_factor": 1.3291,
+     "gated": true,
+     "rho": -0.82081,
+     "sig_rho": 0.01268,
+     "S": 0.069918,
+     "F": 0.162621,
+     "I": -0.175046,
+     "rel_cos_B": 0.88295,
+     "rel_cos_C": 0.85775,
+     "amp_ratio": 0.6557,
+     "h_B_plus_C": 0.082732,
+     "h_B": 0.056358,
+     "h_C": 0.22699,
+     "G": 0.11192
+    },
+    {
+     "artist": "mignon",
+     "stem": "dan_9540972",
+     "stratum": "near_native",
+     "resize_factor": 1.3646,
+     "gated": true,
+     "rho": -0.75784,
+     "sig_rho": 0.01859,
+     "S": 0.107169,
+     "F": 0.285167,
+     "I": -0.264968,
+     "rel_cos_B": 0.86715,
+     "rel_cos_C": 0.71906,
+     "amp_ratio": 0.61304,
+     "h_B_plus_C": 0.208969,
+     "h_B": 0.089896,
+     "h_C": 0.369642,
+     "G": 0.09968
+    },
+    {
+     "artist": "ru_zhai",
+     "stem": "10778612",
+     "stratum": "near_native",
+     "resize_factor": 1.6191,
+     "gated": true,
+     "rho": -0.91319,
+     "sig_rho": 0.00954,
+     "S": 0.135318,
+     "F": 0.204655,
+     "I": -0.303933,
+     "rel_cos_B": 0.86961,
+     "rel_cos_C": 0.84569,
+     "amp_ratio": 0.81314,
+     "h_B_plus_C": 0.05299,
+     "h_B": 0.102218,
+     "h_C": 0.239745,
+     "G": 0.12111
+    },
+    {
+     "artist": "deyui",
+     "stem": "10050204",
+     "stratum": "near_native",
+     "resize_factor": 1.7506,
+     "gated": true,
+     "rho": -0.77174,
+     "sig_rho": 0.14585,
+     "S": 0.048774,
+     "F": 0.114158,
+     "I": -0.115173,
+     "rel_cos_B": 0.58083,
+     "rel_cos_C": 0.52627,
+     "amp_ratio": 0.65364,
+     "h_B_plus_C": 0.086792,
+     "h_B": 0.047831,
+     "h_C": 0.235438,
+     "G": 0.12405
+    },
+    {
+     "artist": "kat_(bu-kunn)",
+     "stem": "dan_11415046",
+     "stratum": "near_native",
+     "resize_factor": 1.7857,
+     "gated": true,
+     "rho": -0.76947,
+     "sig_rho": 0.00945,
+     "S": 0.081295,
+     "F": 0.176114,
+     "I": -0.184142,
+     "rel_cos_B": 0.80788,
+     "rel_cos_C": 0.77609,
+     "amp_ratio": 0.67942,
+     "h_B_plus_C": 0.107789,
+     "h_B": 0.072743,
+     "h_C": 0.23261,
+     "G": 0.10766
+    },
+    {
+     "artist": "jumonji",
+     "stem": "8688344",
+     "stratum": "heavy",
+     "resize_factor": 8.7351,
+     "gated": true,
+     "rho": -0.82415,
+     "sig_rho": 0.00102,
+     "S": 0.153207,
+     "F": 0.232844,
+     "I": -0.311322,
+     "rel_cos_B": 0.91218,
+     "rel_cos_C": 0.83168,
+     "amp_ratio": 0.81116,
+     "h_B_plus_C": 0.105849,
+     "h_B": 0.124819,
+     "h_C": 0.242929,
+     "G": 0.12924
+    },
+    {
+     "artist": "abmayo",
+     "stem": "13109140",
+     "stratum": "heavy",
+     "resize_factor": 9.4778,
+     "gated": false,
+     "rho": -0.77323,
+     "sig_rho": 0.09101,
+     "S": 0.124316,
+     "F": 0.161882,
+     "I": -0.219381,
+     "rel_cos_B": 0.41336,
+     "rel_cos_C": 0.43764,
+     "amp_ratio": 0.87632,
+     "h_B_plus_C": 0.10364,
+     "h_B": 0.196798,
+     "h_C": 0.203808,
+     "G": 0.14541
+    },
+    {
+     "artist": "koh_(minagi_kou)",
+     "stem": "dan_9398241",
+     "stratum": "heavy",
+     "resize_factor": 11.2682,
+     "gated": true,
+     "rho": -0.86478,
+     "sig_rho": 0.06671,
+     "S": 0.052555,
+     "F": 0.126136,
+     "I": -0.14082,
+     "rel_cos_B": 0.80569,
+     "rel_cos_C": 0.81328,
+     "amp_ratio": 0.64549,
+     "h_B_plus_C": 0.072976,
+     "h_B": 0.057635,
+     "h_C": 0.174728,
+     "G": 0.11177
+    },
+    {
+     "artist": "nvl",
+     "stem": "12882239",
+     "stratum": "heavy",
+     "resize_factor": 11.5832,
+     "gated": true,
+     "rho": -0.82934,
+     "sig_rho": 0.06478,
+     "S": 0.123017,
+     "F": 0.299153,
+     "I": -0.318195,
+     "rel_cos_B": 0.74649,
+     "rel_cos_C": 0.80506,
+     "amp_ratio": 0.64126,
+     "h_B_plus_C": 0.205412,
+     "h_B": 0.11043,
+     "h_C": 0.391992,
+     "G": 0.10213
+    },
+    {
+     "artist": "jumonji",
+     "stem": "11957441",
+     "stratum": "heavy",
+     "resize_factor": 12.4081,
+     "gated": true,
+     "rho": -0.8857,
+     "sig_rho": 0.02916,
+     "S": 0.081608,
+     "F": 0.122599,
+     "I": -0.177185,
+     "rel_cos_B": 0.84605,
+     "rel_cos_C": 0.79509,
+     "amp_ratio": 0.81587,
+     "h_B_plus_C": 0.04753,
+     "h_B": 0.073902,
+     "h_C": 0.163431,
+     "G": 0.15466
+    },
+    {
+     "artist": "jumonji",
+     "stem": "10125232",
+     "stratum": "heavy",
+     "resize_factor": 13.0016,
+     "gated": false,
+     "rho": -0.86749,
+     "sig_rho": 0.00461,
+     "S": 0.072367,
+     "F": 0.09424,
+     "I": -0.143279,
+     "rel_cos_B": 0.50365,
+     "rel_cos_C": 0.4747,
+     "amp_ratio": 0.8763,
+     "h_B_plus_C": 0.047814,
+     "h_B": 0.095366,
+     "h_C": 0.158092,
+     "G": 0.15189
+    },
+    {
+     "artist": "gin00",
+     "stem": "13407704",
+     "stratum": "heavy",
+     "resize_factor": 14.4831,
+     "gated": true,
+     "rho": -0.76801,
+     "sig_rho": 0.00624,
+     "S": 0.056388,
+     "F": 0.081608,
+     "I": -0.104198,
+     "rel_cos_B": 0.80353,
+     "rel_cos_C": 0.66691,
+     "amp_ratio": 0.83124,
+     "h_B_plus_C": 0.055458,
+     "h_B": 0.055373,
+     "h_C": 0.114685,
+     "G": 0.11778
+    },
+    {
+     "artist": "hews",
+     "stem": "7655626",
+     "stratum": "heavy",
+     "resize_factor": 38.9845,
+     "gated": true,
+     "rho": -0.785,
+     "sig_rho": 0.09908,
+     "S": 0.038008,
+     "F": 0.10017,
+     "I": -0.096875,
+     "rel_cos_B": 0.51916,
+     "rel_cos_C": 0.60885,
+     "amp_ratio": 0.61598,
+     "h_B_plus_C": 0.064802,
+     "h_B": 0.07938,
+     "h_C": 0.118311,
+     "G": 0.14034
+    }
+   ]
+  }
+ ],
+ "bands": {
+  "adaln": [
+   {
+    "sigma": 0.7,
+    "n_gated": 14,
+    "median_rho_i": -0.8459,
+    "q25": -0.8904,
+    "q75": -0.7987
+   }
+  ],
+  "cross_attn": [
+   {
+    "sigma": 0.7,
+    "n_gated": 15,
+    "median_rho_i": -0.5495,
+    "q25": -0.6312,
+    "q75": -0.4872
+   }
+  ],
+  "self_attn": [
+   {
+    "sigma": 0.7,
+    "n_gated": 11,
+    "median_rho_i": -0.6241,
+    "q25": -0.6911,
+    "q75": -0.5739
+   }
+  ],
+  "mlp": [
+   {
+    "sigma": 0.7,
+    "n_gated": 13,
+    "median_rho_i": -0.7031,
+    "q25": -0.733,
+    "q75": -0.648
+   }
+  ]
+ },
+ "cells": [
+  {
+   "sigma": 0.7,
+   "n_cells_per_image": 280,
+   "gated_cells_per_image": [
+    198,
+    191,
+    174,
+    181,
+    171,
+    188,
+    167,
+    158,
+    202,
+    154,
+    167,
+    173,
+    192,
+    146,
+    173,
+    168
+   ],
+   "median_of_per_image_cell_medians": -0.67
+  }
+ ],
+ "strata": [
+  {
+   "sigma": 0.7,
+   "quantities": {
+    "rho_i": {
+     "near_native_median": -0.7957,
+     "heavy_median": -0.8267,
+     "n": [
+      8,
+      6
+     ],
+     "mannwhitney_p": 0.4136
+    },
+    "b_amp": {
+     "near_native_median": 0.3886,
+     "heavy_median": 0.3699,
+     "n": [
+      8,
+      6
+     ],
+     "mannwhitney_p": 0.7546
+    },
+    "h_B_plus_C": {
+     "near_native_median": 0.0973,
+     "heavy_median": 0.0689,
+     "n": [
+      8,
+      6
+     ],
+     "mannwhitney_p": 0.4908
+    }
+   }
+  }
+ ],
+ "verdict": {
+  "per_sigma": [
+   "HOLDS"
+  ],
+  "run": "PER-SAMPLE HOLDS"
+ },
+ "pooled_crosscheck": {
+  "source": "vector_ledger.py (same run, reenc ref)",
+  "note": "internal consistency only \u2014 stratified corpus, NOT comparable to E14/E21 pooled values",
+  "rho": [
+   -0.89846
+  ]
+ }
+}

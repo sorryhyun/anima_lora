@@ -78,12 +78,14 @@ def main() -> None:
     ap.add_argument("--run", default=None, help="22.1 run dir (holds the jsonl)")
     ap.add_argument("--figs_only", action="store_true")
     ap.add_argument("--out", default=str(HERE / "e22_per_image.json"))
+    ap.add_argument("--fig", default=str(HERE / "e22_rho_i.png"))
     args = ap.parse_args()
     out_json = Path(args.out)
+    out_fig = Path(args.fig)
 
     if args.figs_only:
         digest = json.loads(out_json.read_text())
-        draw(digest)
+        draw(digest, out_fig)
         report(digest)
         return
     if not args.run:
@@ -96,8 +98,11 @@ def main() -> None:
         if ln.strip()
     ]
     centers = rows[0]["sigma_centers"]
-    bins = [centers.index(s) for s in VERDICT_SIGMA if s in centers]
-    assert len(bins) == len(VERDICT_SIGMA), f"run grid {centers} != {VERDICT_SIGMA}"
+    # 22.4 amendment: single-σ reruns carry a subset of the verdict grid —
+    # digest the σ the run has (verdicts are per-σ scoped in the README)
+    vsig = [s for s in VERDICT_SIGMA if s in centers]
+    assert vsig, f"run grid {centers} shares no σ with {VERDICT_SIGMA}"
+    bins = [centers.index(s) for s in vsig]
 
     digest: dict = {
         "meta": {
@@ -105,7 +110,7 @@ def main() -> None:
             "route": ROUTE,
             "rel_gate": REL_GATE,
             "floor_n": FLOOR_N,
-            "verdict_sigma": list(VERDICT_SIGMA),
+            "verdict_sigma": list(vsig),
             "n_images": len(rows),
             "note": (
                 "per-image at this operating point (the E14 adapter), probe "
@@ -123,7 +128,7 @@ def main() -> None:
 
     # ---------- global ρ_i: the verdict quantity ----------
     classes = []
-    for s, bi in zip(VERDICT_SIGMA, bins):
+    for s, bi in zip(vsig, bins):
         entries = []
         for r in rows:
             g = r["ledger"][ROUTE][bi]["global"]
@@ -205,7 +210,7 @@ def main() -> None:
     # ---------- bands (secondary) ----------
     for band in BANDS:
         digest["bands"][band] = []
-        for s, bi in zip(VERDICT_SIGMA, bins):
+        for s, bi in zip(vsig, bins):
             vals = []
             n_gated = 0
             for r in rows:
@@ -224,7 +229,7 @@ def main() -> None:
             )
 
     # ---------- cells (exploratory only, no verdict weight) ----------
-    for s, bi in zip(VERDICT_SIGMA, bins):
+    for s, bi in zip(vsig, bins):
         per_image_medians = []
         gate_counts = []
         for r in rows:
@@ -255,7 +260,7 @@ def main() -> None:
         from scipy.stats import mannwhitneyu
     except ImportError:
         mannwhitneyu = None
-    for s, bi in zip(VERDICT_SIGMA, bins):
+    for s, bi in zip(vsig, bins):
         entry = {"sigma": s, "quantities": {}}
         for qty, getter in (
             ("rho_i", lambda g: g["rho"]),
@@ -293,14 +298,14 @@ def main() -> None:
             "comparable to E14/E21 pooled values",
             "rho": [
                 pooled["bc_ledger"][ROUTE][centers.index(s)]["rho"]
-                for s in VERDICT_SIGMA
+                for s in vsig
             ],
         }
 
     out_json.write_text(json.dumps(digest, indent=1))
     print(f"digest -> {out_json}")
     report(digest)
-    draw(digest)
+    draw(digest, out_fig)
 
 
 def report(digest: dict) -> None:
@@ -330,7 +335,7 @@ def report(digest: dict) -> None:
             )
 
 
-def draw(digest: dict) -> None:
+def draw(digest: dict, out: Path = HERE / "e22_rho_i.png") -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -432,7 +437,6 @@ def draw(digest: dict) -> None:
         fontsize=10,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
-    out = HERE / "e22_rho_i.png"
     fig.savefig(out, dpi=150)
     plt.close(fig)
     print(f"figure -> {out}")
