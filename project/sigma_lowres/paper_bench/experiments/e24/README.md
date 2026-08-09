@@ -218,6 +218,35 @@ amplitude mismatch, at every gated verdict condition.
   near-antiparallel geometry persists while the whole frame rotates
   (+61° → −16°) and shrinks.
 
+- **`e24_bc_comb_3d.png`** — the rot comb lifted into 3D in the E19
+  `bc_comb` visual style (axis-off, teal σ axis, direct labels, scale
+  bar): pairs planted on the σ axis, with the shared top-2 eigenplane
+  mapped rigidly onto the cross-plane (y, z) at each σ. One ‖g‖ scale
+  for shape *and* magnitude — the B→C chord's length IS the realized
+  gap |B + C| = √2R (per-bin values annotated; dashed envelope through
+  the C⊥ tips, E19 convention). The frame is rotated so Ĉ(σ = 0.7)
+  draws vertical — that bin reproduces the E19 comb exactly, and every
+  other pair *twists about the σ axis* by its measured θ_B (+61° at
+  σ = 0.3 → −16° at σ = 0.8333), which is the E24 upgrade made visible.
+
+- **`e24_bc_comb_fan.png`** — the σ-rotation fan: every pair planted at
+  one shared origin, σ entering purely as rotation (each pair drawn at
+  its measured θ_B in the shared top-2 eigenplane, true ‖g‖ scale, light
+  rings as the ruler; arrow color = σ). B thick into the origin, C thin
+  out of it, gray chord = realized gap. The most convention-free of the
+  comb family — it is literally the measured configuration overlaid in
+  the shared plane (remaining conventions: plane projection, in-plane
+  share in parens; C's side of B).
+
+- **`e24_bc_comb_sphere.png`** — the fan made 3D, protractor-style: one
+  shared origin, each pair rigidly rotated in its own plane so its
+  **B+C chord runs along ẑ** (drawing convention, replacing E19's
+  "C vertical"), and the pair's vertical half-plane placed at
+  **azimuth = σ mapped onto 0–180°** (a σ *coordinate* — low σ left,
+  high σ right; the measured θ_B is annotated per bin, not drawn).
+  Within-bin geometry exact, one true ‖g‖ scale (unit half-shell as the
+  ruler).
+
 The E19 originals (`bc_comb*`, `fig_ledger_geometry`) are not modified —
 they made no cross-bin orientation claim and remain valid; these are the
 E24-informed successors for the paper to choose from.
