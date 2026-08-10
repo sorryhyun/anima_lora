@@ -30,6 +30,18 @@ for spending E30.1's GPU, not as a verdict.
   incongruence would have argued against spending the GPU. Instrument
   `e30_congruence.py` → `e30_congruence.json`.
 
+**30.0 result (2026-08-10) — profiles congruent; prior supports
+spending 30.1's GPU.** B̂ is the cleanest: median matched-pair |Δcos|
+0.031–0.047 across all three adapter pairs (full 10 pairs each, no
+truncation cells, max 0.17). Ĉ similar (medians 0.049–0.062). R̂:
+flat↔dirty 0.085 over all 10 pairs; the twin rows exclude 3
+truncation cells (all σ = 0.7-involving, the small-legs sincos
+denominators) — twin↔flat 0.023, twin↔dirty 0.130 on the surviving 7.
+Reading (prior-only, per the tier note): the across-σ rotation *rate
+profile* is shared across the three adapters to roughly the
+cross-boot scalar-drift band, consistent with base-carried rotation;
+no adapter pair shows a structural profile break.
+
 ## E30.1 — expression gate + sketch (one sincos run; **go required**)
 
 ### Instrument (to be built; diff reviewed against this section before submission)

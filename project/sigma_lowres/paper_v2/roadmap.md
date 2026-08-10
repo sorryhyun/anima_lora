@@ -100,6 +100,23 @@ registration should freeze its clustering read on E29's instrument
   Tier 1.5: bench + invariant test, CMMD non-regression,
   wall-clock-at-fixed-steps pitch.
 
+**(e) Base-carriage instrument line (E30 → E31)** — the frame-free
+answer to E26's 26.0-2 open question ("property of the model vs of the
+adapter"), registered 2026-08-10 as
+[E30](../paper_bench/experiments/e30/): base-weight space is the one
+shared frame across adapters. **E30.0 DONE (prior-only): rotation
+profiles congruent across all three adapters** (B̂ median matched-pair
+|Δcos| 0.03–0.05; frame-safe scalars, values were already public so no
+verdict weight). E30.1 (≈ 4–5 GPU-h, go required) = the expression
+gate: dual-frame accumulation (param + adaln-slice + full-base
+count-sketch, k = 2¹⁸ fixed hash seed) in one sincos run, all reads
+within-run. EXPRESSES ⇒ E31 (cross-adapter matched-σ axis verdict
+with ĝ ceiling + negative-control floor, same-boot same-instrument
+family) becomes registrable; NOT-EXPRESSED ⇒ the universal-lookup
+chain dies and the limitation paragraph closes. Payoff if shared:
+"cancellation axis is a property of the base" (paper-2 headline
+candidate) + E25a's lookup collapses to once-per-base.
+
 ## 2. Application shelf (paper-3 candidates; outlook only, no scope)
 
 - **A. σ-gated feature-forecast certification.** Port the line's
