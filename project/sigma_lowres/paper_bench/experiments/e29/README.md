@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PRE-REGISTERED 2026-08-10** — roadmap §1(c) (`paper_v2/roadmap.md`). Zero GPU: CPU-only, seconds, on committed JSON tables (the raw arm_sums are reclaimed — these tables are the only inputs that exist). Thresholds frozen below from committed/public numbers only; the verdict tables (`e26_grid_across_sigma.json` values) were **not read** before this freeze — only the file's key structure was inspected. |
+| **Status** | **RESOLVED 2026-08-10 — 29-1 NATIVE-SMOOTH, 29-2 consistent on both adapters** (all five gates PASS before any verdict table was opened; see Results). Pre-registered same day at `1d86f73a` (roadmap §1(c), `paper_v2/roadmap.md`) — zero GPU: CPU-only, seconds, on committed JSON tables (the raw arm_sums are reclaimed — these tables are the only inputs that exist). Thresholds were frozen from committed/public numbers only; the verdict tables (`e26_grid_across_sigma.json` values) were **not read** before the freeze — only the file's key structure was inspected. |
 | **Question** | Does the **native** axis field hide latent contiguous block structure across σ, or is it clean k = 1 (smooth rotation, as E24/E27 describe)? E28's 768-only read named a two-σ-block structure **under the pinned conditioning frame** (boundary between 0.5667 and 0.7 = at σ_cond). If the native field shows blocks too, roadmap (b)'s **intrinsic** branch (ANT/DeMe-style task blocks) gains a prior; if native is clean k = 1, the two-block object is **frozen-frame-only** and (b)'s **mismatch** branch (organizing variable = sign(σ_noise − σ_cond)) is favored. |
 | **Inputs** | `../e26/e26_grid_across_sigma.json` — across-σ B̂/Ĉ/R̂ pair-cos tables for `flat` / `dirty` / `sincos_twin` (E24 estimand verbatim, R leg per `e28_read768.r_cos`; all family-B same-boot stores, so within-family vector reads are licensed under T0). `../e28/e28_read768.json` — the committed frozen-frame and twin tables used as calibration anchors and gates (public since the 28-B read). |
 | **Explicitly NOT this** | Not (b)'s verdict: the σ_cond-relocation discriminator and the formal re-read of the frozen-frame table stay in the E28-F1 registration. Not a mechanism claim — this is a **prior-setting read** for (b); no rotation-law language (E27), no derived-account language (E20.4), nothing per-sample (E22 → 22.4 → E23a unchanged), nothing in paper 1 (revision_plan §8). |
@@ -86,6 +86,39 @@ whatever 29-1 shows.
 adapters (twin B̂ excluded from any verdict use per the calibration
 note); |cos|-variant classifications; separation margins; full
 cost(k)/partition tables for every input.
+
+## Results (2026-08-10) — **29-1 NATIVE-SMOOTH · 29-2 consistent (flat, dirty)**
+
+Instrument `e29_cluster.py` → `e29_read.json`. All five gates PASS
+before any unread table was opened (gate 1/2 exhaustive ±0.05 stable;
+gate 3 recovers k = 2 at the known boundary on frozen-frame R̂ and B̂;
+gate 4 twin B̂ k = 1; gate 5 provenance max dev 0.0).
+
+- **29-1: NATIVE-SMOOTH** — twin R̂ selects **k\* = 1** (cost(1) 0.130,
+  gap(1→2) 0.125 ≪ τ = 0.30). All 10 pairs positive, range
+  0.57–1.38 (several debiased values > 1 — the truncation-domain
+  regime; used as computed per the frozen no-clamp rule). The native
+  residual direction is *more* σ-coherent than either leg (mean pair
+  cos ≈ 0.87 vs twin B̂ cost(1) 0.345) — consistent with E25.0's
+  descriptive R̂-axis-field read on family A.
+- **29-2: consistent on both adapters** — flat R̂ k\* = 1 (gap 0.104),
+  dirty R̂ k\* = 1 (gap 0.111). No adapter shows block structure.
+- **Descriptive**: all six B̂/Ĉ tables (three adapters) are k\* = 1,
+  gaps 0.13–0.20 — every native gap lands in the smooth-anchor band
+  (≤ 0.199, the twin-B̂ calibration value) and none approaches τ; the
+  |cos| variants agree everywhere (k\* = 1 on all nine native tables).
+  No borderline case: the largest native gap is the calibration anchor
+  itself.
+
+**Consequence (per the frozen reading + roadmap §1(c))**: the native
+field is clean k = 1 — smooth rotation, as E24/E27 describe — so the
+E28 two-σ-block object is **frozen-frame-only**, and roadmap (b)'s
+**mismatch branch** (organizing variable = sign(σ_noise − σ_cond),
+intervention-induced) is favored going into the E28-F1 registration.
+Prior only: (b) still owns the σ_cond-relocation discriminator, and the
+(d) 2-anchor-lookup parameterization for E25a is now *disfavored*
+(it required the intrinsic branch). Nothing here touches E27's
+verdicts, the shipped σ-space lookup, or paper 1.
 
 ## Kill switches / honesty
 

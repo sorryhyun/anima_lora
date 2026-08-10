@@ -81,6 +81,14 @@ vs 2) and on the E26 grid tables. If the native field hides latent
 block structure, (b)'s intrinsic branch gains a prior; if native is
 clean k = 1 (smooth rotation, as E24/E27 describe), the two-block object
 is frozen-frame-only and (b)'s mismatch branch is favored.
+**DONE 2026-08-10 — [E29](../paper_bench/experiments/e29/): 29-1
+NATIVE-SMOOTH (twin R̂ k = 1, gap 0.125 ≪ τ = 0.30), 29-2 consistent
+(flat/dirty R̂ k = 1; all nine native tables k = 1, largest gap = the
+calibration anchor 0.199).** Consequence: the two-block object is
+frozen-frame-only ⇒ (b)'s **mismatch branch favored** as prior; (d)'s
+2-anchor lookup (intrinsic-branch-conditional) is disfavored. (b)'s
+registration should freeze its clustering read on E29's instrument
+(`e29_cluster.py`, τ = 0.30) rather than re-deriving one.
 
 **(d) E25 freeze decisions**, gated on (b)/(c):
 - blocks intrinsic → **2-anchor lookup** becomes the cheap E25a
