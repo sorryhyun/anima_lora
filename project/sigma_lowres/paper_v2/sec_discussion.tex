@@ -159,12 +159,13 @@ coordinate system and partly through an irreducible dependence of the
 computation on token count. The gradient-perturbation account is predictive, not
 merely descriptive, reaching held-out routes at ${\sim}0.07$--$0.09$
 RMSE against the spectral family's $0.147$--$0.355$, and its map
-licenses a selective trainer: on our model, $1024{\to}896$ at
-$\sigma \in (0.5, 0.94]$ with a stackable $1024{\to}768$ window,
+licenses a selective trainer: on our model, $1024{\to}896$ above a
+one-sided gate ($\sigma > 0.5$),
 realizing $-14.6\%$ training time at fixed steps with a weight-space
 endpoint within kernel-noise reach of a native retrain, rising to
 cosine $0.75$ when demotion is late-scheduled at proportionally
-reduced saving. We offer
+reduced saving, with the low-excess $1024{\to}768$ window stackable
+onto the late rule at no endpoint cost. We offer
 the account and its instrument as the inexpensive, general test that any
 future ``train part of the time at lower resolution'' proposal should
 pass before it is believed.

@@ -20,14 +20,20 @@ account keeps the paper's predictive lane (E20.1 PARTIAL), and no
 text may claim the account is *derived* from the geometry
 (E20.4 NEGATIVE). See §9 for the record.
 
-**Amended 2026-08-10** after the E28 gate-2 diagnosis (commits
-`2b935563`/`9d8bda69`; memory `project_crossboot_arm_store_break`): a
-same-protocol native rerun agrees with the committed e193/e194 stores
-at only **B 0.32 / C 0.41 / ĝ 0.47** across the 2026-08-09 reboot pair
-(fresh inductor autotune; adapter/models/caches/torch/driver all
-unchanged), vs 0.96–1.02 within one environment. Two consequences for
-this plan, no change to its structure:
+**Amended 2026-08-10** after the E28 gate-2 diagnosis; **rewritten
+wholesale later the same day** once the E28 768-only read landed and
+the E26 full-grid freeze was executed (commits `2b935563`/`9d8bda69`
+→ `29f7a0ce`/`fa55b2a4`; memory `project_crossboot_arm_store_break`).
+This block replaces the morning's version rather than layering on it.
+The facts, and what each does to this plan:
 
+- **The cross-environment break.** A same-protocol native rerun
+  agrees with the committed e193/e194 stores at only **B 0.32 /
+  C 0.41 / ĝ 0.47** across the 2026-08-09 reboot pair (fresh inductor
+  autotune; adapter/models/caches/torch/driver all unchanged), vs
+  0.96–1.02 within one environment. Committed cross-boot *vector*
+  reads are dead; within-boot reads and scalar rows (drift
+  Δρ ≈ 0.03–0.05, ΔG ≈ 27 %) are unaffected/tolerable.
 - **§2.4 / §3 scope**: the axis-field rung's "across stores (≈ 1
   debiased)" claim gains an explicit **same-numerical-environment
   qualifier** — e193/e194 shared a boot; the pooled directions carry a
@@ -36,22 +42,46 @@ this plan, no change to its structure:
   compiler-kernel-path sensitive, so all pairings are computed within
   one run" (`sec_experiments.tex` §4.1) extends to pooled cross-store
   reads. The qualifier lands next to the 768/σ = 0.4333 reliability
-  hole (§8 honesty-guard list, same sentence family). E28's *content*
-  stays out of this revision (§8 guard unchanged) — this qualifier is
-  about our own committed readings.
-- **§5 E26 design**: any comparison of the new adapters against
-  *committed* sincos numbers is now a cross-environment read. Scalar
-  drift measured across the break: Δρ ≈ 0.03–0.05, ΔG ≈ 27 % (same
-  protocol). The E26 amendment must therefore make the comparison
-  **in-run**: include sincos re-reference cells at every compared
-  condition in the same session (the smoke already did this — its
-  ρ ordering was measured within one run and stands). REPLICATES
-  thresholds compare in-session columns only; committed e193 numbers
-  are context, never verdict denominators.
+  hole (§8 honesty-guard list, same sentence family).
+- **§5 E26 reference**: comparisons against *committed* sincos rows
+  are now cross-environment reads. The realized fix is **stronger**
+  than the morning sketch's "in-run re-reference cells": the E28
+  native seed-twin store (`20260810-0658-e28-native-twin-768` — same
+  boot, same 5-bin grid, same seed) **is** the in-session sincos
+  reference for the E26 grid; committed e193/e221 rows are context,
+  never verdict denominators. §5 below is rewritten to match the
+  frozen amendment.
+- **E28 itself ran** (registered as deferred-to-paper-2; explicit
+  user GO same day): 768 stage + native twin + read are DONE — 28-A
+  READABLE, **28-B PARTIAL**: pinning the adaln frame neither stops
+  the rotation (SHARED-AXIS fails, median |cos| 0.483) nor preserves
+  it (matched-pair median |Δcos| 0.217 vs the twin); under the pinned
+  frame the field reorganizes into two internally-coherent σ-blocks
+  split at the conditioning value. 28-C(i): the cancellation survives
+  the pinned frame at every bin, systematically shallower
+  (ρ −0.68…−0.86 vs twin −0.84…−0.92). 896 completion undecided.
+  **None of this enters this revision's tex**: the registration's "In
+  the paper: Nothing in this revision" stands, and the §8
+  no-mechanism-language guard is now *adjudicated* (the
+  conditioning-frame "strong version" is refuted at this operating
+  point/route), not merely precautionary.
 
-**Status: PLAN — no tex edited yet.** Order of work in §7; nothing in
-§2–§6 is licensed to land in the tex before the §7 step that carries it.
-§7 step 2 (survey pass) DONE 2026-08-10 — placement note in §10.
+**Status: PLAN — no reframe tex edited yet.** Order of work in §7;
+nothing in §2–§6 is licensed to land in the tex before the §7 step
+that carries it. §7 step 2 (survey pass) DONE 2026-08-10 — placement
+note in §10. **One out-of-plan tex fix applied 2026-08-10** (external
+review comment; wording only, numbers untouched, application numbers
+stay verbatim per §4): the −14.6 %/−15.1 % savings (E4-measured on
+the `sigma896` arm — 1024→896 above the one-sided σ > 0.5 gate,
+no 768-window contribution) were attributed by "the window(s) the map
+validates" phrasing in the abstract (main.tex), intro contribution 3
+(sec_intro.tex), and the conclusion (sec_discussion.tex, which also
+juxtaposed "stackable 768 window" directly before the number). All
+three now name the 896 route + one-sided gate as the arm; the 768
+window is stated as stacking onto the *late* rule at no endpoint
+cost. The §4.3 use ("the always-gated arm realizes −14.6 %") was
+already correctly attributed and is unchanged. Step 9's
+hedge-consistency pass should re-verify these three sentences.
 
 ---
 
@@ -202,62 +232,77 @@ paper's theory and observations); the *operational canc lane as
 predictive account* remains unadopted per E20.1 — that part of the
 earmark stands.
 
-## 5. E26 — cross-adapter cancellation check (economized)
+## 5. E26 — cross-adapter cancellation check (frozen & running)
 
 **Question**: does the B–C cancellation geometry replicate on LoRA
 adapters other than the line's operating point?
-**Status: E26.0 smoke DONE 2026-08-09 — both adapters PASS; the
-full-grid freeze amendment is licensed.** The pre-registration,
-frozen thresholds, protocol, and full results are the authority at
+**Status: E26.0 smoke DONE 2026-08-09 — both adapters PASS. Full-grid
+amendment FROZEN 2026-08-10 (before any grid gradient existed); both
+grid runs daemon-submitted the same day** (`e26-grid-flat` /
+`e26-grid-dirty`). The pre-registration, frozen thresholds, protocol,
+and results are the authority at
 `../paper_bench/experiments/e26/README.md` (+ `e260_smoke.json`);
-this section keeps only what the *manuscript plan* needs.
+this section keeps only what the *manuscript plan* needs. This
+section was rewritten 2026-08-10 to match the executed freeze — the
+2026-08-09 "economize sketch" (768 σ-dense + 896 verdict bins,
+~2.9 GPU-h) it replaced is superseded and recorded only in the E26
+README's deviation note.
 
-- **Setup facts** (verified 2026-08-09, details in the E26 record):
-  adapters = the preserved E7 pair (`output/paper/e7/`, verbatim
+- **Adapters**: the preserved E7 pair (`output/paper/e7/`, verbatim
   shipped recipe, designed style axis, zero training cost; seed
-  siblings = pre-declared extension tier). E7's probe *runs* are not
-  reusable (no `arm_sums/`, no repromote arm). Cost of the
-  e193-matched full grid: ~5.7 GPU-h per adapter; the smoke was one
-  condition (σ = 0.7 / 768) per adapter.
-- **Economize decision (2026-08-09, this plan)** — the amendment
-  freezes a **trimmed grid**, not the full e193-matched product:
-  - σ-dense on the routes that carry the paper's claims — 768 (the
-    window/dip route) at full σ-sweep, 896 at the verdict bins —
-    dropping the remaining cells; target ≈ half the full-grid cost
-    (~2.9 GPU-h per adapter). Exact cells frozen in the amendment.
-  - The **frame-free cross-adapter axis estimand is DROPPED**, not
-    pre-registered: the smoke showed raw-parameter cross-adapter
-    axis cosines sit at the ĝ baseline (frames don't overlap), and
-    an induced-ΔW/function-space estimand is new instrument work the
-    paper does not need. The "property of the model vs of the
-    adapter" question is stated open in the limitation paragraph.
-  - **Identity-consistency column** (new, pre-registered): per
-    condition, report the ρ implied by the measured h-triple
-    (h(B), h(C), h(B+C)) next to the measured ρ. The smoke's
-    "enforcement depth scales with the perturbation" upgrade
-    candidate is claimed **only if** the measured deepening exceeds
-    what the identity already forces from the leg/residual
-    magnitudes; otherwise it is reported as the arithmetic
-    consequence it is.
-  - Per-condition columns stay the smoke's (h-triple + ρ) — already
-    the protocol.
-- **What the smoke found** (go/no-go weight only — the smoke bin is
-  favorable by construction; nothing here widens the scope sentence):
-  ρ deepens sincos −0.890 → flat −0.939 → dirty −0.959 as the legs
-  grow; flat's h(B+C) ≈ sincos's (0.049 vs 0.044) while dirty's is
-  ~8× (0.347), mirroring E7's checkpoint-dependent cos_floor
-  ordering — the trimmed grid can localize that mechanism (amplitude
-  vs direction), a deliverable marked **secondary** to the
-  replication verdict.
-- **Verdict shapes for the trimmed grid** (exact thresholds set in
-  the amendment): REPLICATES → the cancellation-rung scope widens to
+  siblings = pre-declared extension tier, not run without an
+  amendment). E7's probe *runs* are not reusable (no `arm_sums/`).
+- **Frozen grid = 768-only, the E28-twin window**: bins {0.3, 0.4333,
+  0.5667, 0.7, 0.8333}, no endpoint, 40 images, D = 12 — the exact
+  grid of `20260810-0658-e28-native-twin-768`; measured cost
+  3.8 GPU-h per adapter. The sketch's "896 at the verdict bins" is
+  **dropped** (deviation recorded in the freeze): one probe run
+  cannot carry per-route bin sets, a separate 896 run forfeits the
+  shared native/reenc arms (≈ full-grid cost), and after the
+  environment amendment its cells would need their own same-boot
+  sincos reference (the twin covers 768 only). 768 carries the
+  paper's window/dip claims and the larger residual; **896
+  replication stays an open cell**, stated as such in the limitation
+  paragraph next to the model-vs-adapter frame confound.
+- **In-session sincos reference = the E28 native twin store** (same
+  boot, same grid, same estimand path). Committed e193/e221 rows are
+  context, never verdict denominators. If a reboot interleaves the
+  queue: the scalar verdict stands (margins far above the measured
+  cross-environment scalar drift), but any vector read (none
+  pre-registered) is void.
+- **Frozen verdict (per adapter, over the 5 bins)**: a bin is
+  *readable* iff rel_cos_B ≥ 0.5 ∧ rel_cos_C ≥ 0.5; < 3 readable ⇒
+  INCONCLUSIVE (remedy = the smoke's single pre-declared D = 24
+  top-up, nothing else). **REPLICATES** iff ≥ 4/5 readable AND at
+  every readable bin I < 0, ρ ≤ −0.5, h(B+C) < min(h(B), h(C));
+  **PARTIAL** iff the criteria hold at ≥ 3 readable bins including
+  σ = 0.7; **FAILS** otherwise. Scope-sentence consequences
+  unchanged: REPLICATES → the cancellation-rung scope widens to
   "N adapters, one model"; PARTIAL → one-operating-point scope kept,
-  pattern reported; FAILS → cancellation rung scoped to the
-  operating adapter, limitation paragraph. **No outcome removes the
-  cancellation or geometry material from the paper** — E26 only sets
-  stated breadth. The smoke's PASS means the worst remaining outcome
-  is already "replicates at the favorable bin, pattern elsewhere
-  reported as measured."
+  pattern reported; FAILS → scoped to the operating adapter,
+  limitation paragraph. **No outcome removes the cancellation or
+  geometry material from the paper** — E26 only sets stated breadth,
+  and the smoke's PASS already bounds the worst case at "replicates
+  at the favorable bin, pattern elsewhere reported as measured."
+- **Identity-consistency column** (pre-registered, carried into the
+  freeze): per bin, ρ_implied from the measured h-triple next to
+  measured ρ. The smoke's "enforcement depth scales with the
+  perturbation" candidate (ρ deepens sincos −0.890 → flat −0.939 →
+  dirty −0.959 as the legs grow) is claimed **only if** the measured
+  deepening exceeds what the identity already forces from the
+  magnitudes; otherwise it is reported as the arithmetic consequence
+  it is.
+- **Frame-free cross-adapter axis estimand: DROPPED**, not
+  pre-registered: the smoke showed raw-parameter cross-adapter axis
+  cosines sit at the ĝ frame baseline (0.27–0.35 vs baseline
+  0.37–0.39 — frames don't overlap), and an induced-ΔW/function-space
+  estimand is new instrument work the paper does not need. The
+  "property of the model vs of the adapter" question is stated open
+  in the limitation paragraph.
+- **Secondary deliverable** (unchanged, no verdict weight): localize
+  E7's flat-good / dirty-bad floor ordering as amplitude vs direction
+  — flat's h(B+C) ≈ sincos's (0.049 vs 0.044, legs 2×) while dirty's
+  is ~8× (0.347), mirroring E7's checkpoint-dependent cos_floor.
 
 ## 6. Figure debts
 
@@ -282,11 +327,12 @@ this section keeps only what the *manuscript plan* needs.
 
 ## 7. Order of work
 
-1. **E26 amendment + runs**: freeze the trimmed grid (§5 economize
-   decision: cell list, REPLICATES thresholds, identity-consistency
-   column, frame-free estimand dropped) and submit the ~2.9 GPU-h/
-   adapter runs — GPU time is the long pole; everything below
-   overlaps with the queue.
+1. **E26 amendment + runs — DONE 2026-08-10 up to the wait**: the
+   trimmed grid is frozen (768-only E28-twin window, in-session twin
+   reference, per-bin thresholds — §5) and both grid runs are
+   daemon-queued (`e26-grid-flat` / `e26-grid-dirty`, 3.8 GPU-h
+   each). GPU time is the long pole; everything below overlaps with
+   the queue.
 2. Survey pass over `sec_theory.tex` / `sec_experiments.tex` /
    `sec_discussion.tex`: fix the insertion points (cancellation into
    §3.3/3.4, observations section between map and scored, closures
@@ -357,9 +403,10 @@ this section keeps only what the *manuscript plan* needs.
   pre-registered read and it scopes the lookup claim honestly.
 - The 768/σ = 0.4333 reliability hole and mid-window 768 softness are
   reported next to the axis-field claim, not footnoted.
-- E26 trimmed-grid thresholds are frozen before any run; no post-hoc
-  widening of the adapter list; the depth-scaling upgrade is gated on
-  the identity-consistency column (§5).
+- E26 trimmed-grid thresholds were frozen (2026-08-10) before any
+  grid gradient existed — discharged; no post-hoc widening of the
+  adapter list; the depth-scaling upgrade stays gated on the
+  identity-consistency column (§5).
 - Per-sample language stays out of the paper ("pooled residual
   direction at this operating point" — the E25.0 wording).
 - No rotation-*law* language unless `questions.md` Q7 is frozen, run,
@@ -367,6 +414,13 @@ this section keeps only what the *manuscript plan* needs.
   claim is "rotates smoothly," nothing stronger. **[E27 ran and did
   NOT pass — this guard is now permanent for this revision: any
   rotation-law sentence that appears in review is a regression.]**
+- No mechanism-bridge language either: E28 ran (768-only) and landed
+  **28-B PARTIAL** — the conditioning-frame "strong version" is
+  refuted at this operating point/route, and the surviving two-block
+  structure is a paper-2 object awaiting its own registration.
+  Nothing from E28 enters this revision's tex (per its registration's
+  "In the paper: Nothing in this revision"); a mechanism sentence
+  appearing in review is a regression, same as the rotation-law case.
 
 ## 9. Gate check record (2026-08-09)
 

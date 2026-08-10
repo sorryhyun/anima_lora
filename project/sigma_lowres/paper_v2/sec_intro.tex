@@ -73,13 +73,15 @@ RMSE, whereas ours predicts held-out routes at ${\sim}0.07$--$0.09$,
 and the token-count law correctly predicts the $\sigma$-independent
 term on both held-out routes.
 \item \textbf{Selective low-resolution training} (\S\ref{sec:practical}).
-Restricting the substitution to the window the map validates gives
+Restricting the substitution to the measured-safe $1024{\to}896$
+route above a one-sided gate ($\sigma > 0.5$) gives
 an opt-in $\sigma$-conditional trainer that reduces the forward-compute
 footprint by $15.1\%$ and training time by $14.6\%$ at a fixed step
 budget, with a weight-space endpoint within kernel-noise reach of a
 native retrain, rising to endpoint cosine $0.75$ when the
 substitution is scheduled late at proportionally reduced saving
-(Table~\ref{tab:yardstick}); a visual
+(Table~\ref{tab:yardstick}), the low-excess $1024{\to}768$ window
+stacking onto the late rule at no endpoint cost; a visual
 counterpart (Fig.~\ref{fig:kaaiyuki}) confirms the endpoint renders
 stay close to native.
 \end{enumerate}

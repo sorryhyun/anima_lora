@@ -65,9 +65,10 @@ structure the spectral picture cannot express: on the $1024{\to}768$
 route, a window ($0.65<\sigma<0.95$), predicted by no spectral
 criterion at any tolerance, where the downscaled gradient stays
 within a small margin of the native one. Training LoRA adapters with
-downscaled steps restricted to the routes and noise windows the map
-validates reduces training time by $14.6\%$ at a fixed step
-budget while remaining near-native in weight space. Code is available at
+downscaled steps on the measured-safe $1024{\to}896$ route above a
+one-sided noise gate ($\sigma > 0.5$) reduces training time by
+$14.6\%$ at a fixed step budget while remaining near-native in weight
+space. Code is available at
 \url{https://github.com/sorryhyun/anima_lora}.
 \end{abstract}
 
