@@ -108,11 +108,16 @@ intrinsic branch); E25a stays on per-bin parameterization:
 - ~~blocks intrinsic → **2-anchor lookup** becomes the cheap E25a
   parameterization candidate (one direction per block + boundary,
   replacing per-bin interpolation forced by E25.0-2 NO-GAIN)~~;
-- E25b (resolution conditioning into adaln) freezes independently but
+- ~~E25b (resolution conditioning into adaln) freezes independently but
   its rationale paragraph should cite whichever of (b)'s branches
   lands — both are "conditioning input organizes the field" facts.
   Tier 1.5: bench + invariant test, CMMD non-regression,
-  wall-clock-at-fixed-steps pitch.
+  wall-clock-at-fixed-steps pitch.~~ **FROZEN 2026-08-11 →
+  [e25b](../paper_bench/experiments/e25b/)** citing F1's
+  MISMATCH-CARRIED as the rationale fact; Stage 1 (~10 GPU-h) needs an
+  explicit go and by frozen submission order waits for E30.1's 30-B
+  (context row, not a gate); the Tier 1.5 packaging moved to its
+  Stage-2 amendment.
 
 **(e) Base-carriage instrument line (E30 → E31)** — the frame-free
 answer to E26's 26.0-2 open question ("property of the model vs of the
