@@ -1,0 +1,82 @@
+{
+ "generated_by": "e28f1_reread.py",
+ "role": "F1-i formalization (outcome public via E29 gate 3 \u2014 no discovery weight)",
+ "instrument": "e29_cluster.py frozen classifier, tau=0.30, signed cos",
+ "gates": {
+  "gate1_planted_blocks": "PASS",
+  "gate2_smooth_control": "PASS",
+  "gate3_frozen_frame_positive": "PASS",
+  "gate4_twin_B_smooth": "PASS",
+  "gate5_provenance": "PASS",
+  "gate5_max_dev": 0.0
+ },
+ "verdict_F1i": "TWO-BLOCK-FORMAL (boundary s0.5667|s0.7)",
+ "primary_R_frozen": {
+  "k_star": 2,
+  "partition": [
+   [
+    "s0.3",
+    "s0.4333",
+    "s0.5667"
+   ],
+   [
+    "s0.7",
+    "s0.8333"
+   ]
+  ],
+  "cost": {
+   "1": 0.89928,
+   "2": 0.502825,
+   "3": 0.420933
+  },
+  "gap12": 0.396455,
+  "gap23": 0.081892,
+  "separation_margin": 0.2861
+ },
+ "descriptive": {
+  "B_frozen": {
+   "k_star": 2,
+   "partition": [
+    [
+     "s0.3",
+     "s0.4333",
+     "s0.5667"
+    ],
+    [
+     "s0.7",
+     "s0.8333"
+    ]
+   ],
+   "cost": {
+    "1": 0.939678,
+    "2": 0.364085,
+    "3": 0.31244
+   },
+   "gap12": 0.575593,
+   "gap23": 0.051645,
+   "separation_margin": 0.49907
+  },
+  "C_frozen": {
+   "k_star": 2,
+   "partition": [
+    [
+     "s0.3",
+     "s0.4333",
+     "s0.5667"
+    ],
+    [
+     "s0.7",
+     "s0.8333"
+    ]
+   ],
+   "cost": {
+    "1": 0.928743,
+    "2": 0.429153,
+    "3": 0.323255
+   },
+   "gap12": 0.499591,
+   "gap23": 0.105898,
+   "separation_margin": 0.4391
+  }
+ }
+}
