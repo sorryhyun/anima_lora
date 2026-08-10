@@ -167,6 +167,46 @@ manifest records `cond_sigma: 0.7`). Instruments (this dir):
   only the identity of the native reference is amended, forced by the
   measured cross-environment irreproducibility.
 
+## 768-only read (2026-08-10, user-directed scope restriction) — 28-A READABLE, 28-B **PARTIAL**
+
+Instrument `e28_read768.py` → `e28_read768.json`. Scope: 768 route
+only (896 unrun); frozen thresholds applied unchanged; native
+reference = the same-environment seed-twin (per the environment
+amendment), committed E24 stats quoted as context.
+
+- **28-A: READABLE** — 0/4 off-σ_cond conditions fail the rel gate
+  (relB 0.93–1.00, relC 0.75–0.99). The frozen-conditioning store is
+  fully readable; the registration's off-manifold worry does not
+  express as noise.
+- **28-B: PARTIAL** — both pure hypotheses fail. The frozen family
+  FAILS SHARED-AXIS (median |cos| 0.483, min 0.001 vs the ≥ 0.7 / ≥
+  0.5 criterion) ⇒ **not CONDITIONING-CARRIED**: pinning the adaln
+  frame does not stop the rotation. And the rotation is **not
+  preserved** either: matched-pair median |Δcos| vs the native twin
+  table is 0.217 ≫ 0.05 ⇒ **not STATISTICS-CARRIED**.
+- **The surviving structure (named, per the frozen PARTIAL clause)**:
+  under a pinned frame the axis field reorganizes into **two
+  internally-coherent σ-blocks with a boundary between 0.5667 and
+  0.7** — below-block pairs +0.50…+0.73, the 0.7~0.8333 pair +0.64,
+  every cross-block pair ≈ 0 or negative (−0.24…−0.55; s0.5667~s0.7
+  = −0.001) — while the native field rotates smoothly (twin: all
+  pairs positive, median 0.70). This is NOT the registration's
+  predicted partial-carriage shape (flattening near σ_cond); it is a
+  sign-structured split at the conditioning value. Combined with the
+  28-C(ii) matched-σ replacement finding, the read is: **the
+  σ-rotation is neither purely the conditioning frame nor purely the
+  noise statistics — the two inputs interact**, and the (z, σ_cond)
+  mismatch direction itself becomes the organizing axis away from
+  σ_cond.
+- 28-C(i): the cancellation survives the pinned frame at every bin
+  (ρ −0.68…−0.86) but runs systematically shallower than native
+  (twin ρ −0.84…−0.92).
+- Paper-2 consequence: the "strong version" (rotating space = the
+  conditioning frame) is refuted at this operating point/route; any
+  follow-up needs its own registration naming the two-block structure
+  as the object under test. Per the frozen wording guard, nothing
+  here touches the E27 verdicts or the shipped σ-space lookup.
+
 ## Cost ladder (planned → actual)
 
 | item | GPU | note |
