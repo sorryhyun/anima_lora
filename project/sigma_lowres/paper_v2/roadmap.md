@@ -24,7 +24,8 @@ those registrations exist.
 - **E28 768-only**: 28-A READABLE, 28-B **PARTIAL** — two
   internally-coherent σ-blocks under the pinned frame, boundary between
   0.5667 and 0.7 (= at σ_cond); cancellation survives shallower. 896
-  undecided.
+  undecided. **E28-F1 (2026-08-11) resolved the block structure as
+  MISMATCH-CARRIED — see §1(b).**
 - **E25**: E25a frozen-restricted-only (σ = 0.7, per-bin, no span
   projector), E25b (explicit resolution conditioning) still a sketch;
   both need the E20.4-adjacency paragraph to freeze.
@@ -61,17 +62,25 @@ arithmetic branch at 9/10 adapter-bins (sole exception dirty
 adapters of this base at 768 across the window; same-base qualifier;
 896 an open cell) and waits on the tex steps before it.
 
-**(b) E28-F1 — two-block objectification** (paper-2 opener, needs its
-own registration): (i) replace the eyeballed pair-sign read with an
-interval-clustering criterion — ANT-style contiguity-constrained
-clustering (Go et al. 2023's DP formulation; trivial at 5 bins) on the
-frozen-frame R̂ |cos| table, k ∈ {1, 2, 3}, cost-gap threshold frozen
-before the read. (ii) The discriminator: **relocate σ_cond** (0.4333,
-the half-window value the E28 registration itself names as the
-amendment). Boundary follows the pin ⇒ the organizing variable is
-sign(σ_noise − σ_cond) (intervention-induced mismatch structure);
-boundary stays ⇒ intrinsic task blocks (the ANT/DeMe reading). One
-extra frozen-conditioning run + twin ≈ 7–8 GPU-h at e28 prices.
+**(b) E28-F1 — two-block objectification** — **RESOLVED 2026-08-11
+([e28f1](../paper_bench/experiments/e28f1/)): F1-i TWO-BLOCK-FORMAL,
+F1-B MISMATCH-CARRIED.** (i) The formal re-read (E29 instrument
+verbatim) confirms the e28 object: all three legs k = 2 at
+{0.3, 0.4333, 0.5667} | {0.7, 0.8333}. (ii) The discriminator
+(σ_cond relocated to 0.4333, frozen-cond run + same-boot native twin,
+7.6 GPU-h actual): **the boundary followed the pin** — R̂ k = 2 at
+{0.3, 0.4333} | {0.5667, 0.7, 0.8333}, gap 0.404 ≫ τ. The organizing
+variable is **sign(σ_noise − σ_cond)**: the two-block object is an
+intervention-induced property of the frozen-frame probe, not latent
+task blocks — E29's prior held. Matched-pair |Δcos| vs twin 0.216
+(≈ e28's 0.217): same rotation-disruption magnitude at both pins.
+Deviations recorded in the e28f1 README: gate 4 amended to
+B-leg-primary (frozen C threshold was mis-calibrated — relC ≈ 0.55
+at D = 12 ⇒ ±0.1 noise; e28's own gate C passed by overshoot), and
+gate 5 reproduced the committed twin table at max |Δ| = 0.0
+(family-B kernel path bit-stable). Paper-2 consequence: the
+frozen-frame split is a conditioning-mismatch signature; no further
+pin values without a new registration.
 
 **(c) Native-block test** (zero GPU, CPU-only on committed tables —
 `e26_grid_across_sigma.json` carries the across-σ B̂/Ĉ/R̂ tables for
@@ -90,10 +99,12 @@ frozen-frame-only ⇒ (b)'s **mismatch branch favored** as prior; (d)'s
 registration should freeze its clustering read on E29's instrument
 (`e29_cluster.py`, τ = 0.30) rather than re-deriving one.
 
-**(d) E25 freeze decisions**, gated on (b)/(c):
-- blocks intrinsic → **2-anchor lookup** becomes the cheap E25a
+**(d) E25 freeze decisions**, gated on (b)/(c) — **(b)/(c) both landed
+mismatch/smooth, so the 2-anchor lookup is DEAD** (it required the
+intrinsic branch); E25a stays on per-bin parameterization:
+- ~~blocks intrinsic → **2-anchor lookup** becomes the cheap E25a
   parameterization candidate (one direction per block + boundary,
-  replacing per-bin interpolation forced by E25.0-2 NO-GAIN);
+  replacing per-bin interpolation forced by E25.0-2 NO-GAIN)~~;
 - E25b (resolution conditioning into adaln) freezes independently but
   its rationale paragraph should cite whichever of (b)'s branches
   lands — both are "conditioning input organizes the field" facts.

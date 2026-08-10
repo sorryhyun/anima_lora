@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PRE-REGISTERED 2026-08-10 (roadmap (b), user go same day).** Thresholds frozen below before any new store exists; the clustering instrument is [E29](../e29/)'s, frozen there (τ = 0.30) and reused verbatim per roadmap §1(c)'s consequence — nothing re-derived here. Two parts: **F1-i** (zero GPU — formal clustering re-read of the committed E28 frozen-frame tables; outcome already public via E29 gate 3, so this row carries *formalization* weight only, no new information) and **F1-ii** (the discriminator — one frozen-conditioning run at the relocated pin + a same-boot native seed-twin, ≈ 7 GPU-h at e28 actuals). **F1-i RESOLVED same day: TWO-BLOCK-FORMAL** — all three legs (R̂ gap12 0.396 / B̂ 0.576 / Ĉ 0.500) select k\* = 2 at {0.3, 0.4333, 0.5667} \| {0.7, 0.8333}, E29 gates 1–5 PASS (`e28f1_reread.json`); the eyeballed read is replaced and F1-ii cleared to submit. **F1-ii SUBMITTED same day, boot family B** (same boot as the e28 pair/E26 grid — epoch 1786271541): daemon jobs `20260810-230028-9081ae` (cond0433) → `20260810-230033-e2b9f5` (native twin), back-to-back per the frozen order. NB the `--sigma_window` segmented spec is **one shell token** (spaces + `:` inside a single quoted argument) — the first submission attempt split it into three tokens and died at argparse (jobs `-225935`/`-225945`, error state, no GPU spent). |
+| **Status** | **PRE-REGISTERED 2026-08-10 (roadmap (b), user go same day).** Thresholds frozen below before any new store exists; the clustering instrument is [E29](../e29/)'s, frozen there (τ = 0.30) and reused verbatim per roadmap §1(c)'s consequence — nothing re-derived here. Two parts: **F1-i** (zero GPU — formal clustering re-read of the committed E28 frozen-frame tables; outcome already public via E29 gate 3, so this row carries *formalization* weight only, no new information) and **F1-ii** (the discriminator — one frozen-conditioning run at the relocated pin + a same-boot native seed-twin, ≈ 7 GPU-h at e28 actuals). **F1-i RESOLVED same day: TWO-BLOCK-FORMAL** — all three legs (R̂ gap12 0.396 / B̂ 0.576 / Ĉ 0.500) select k\* = 2 at {0.3, 0.4333, 0.5667} \| {0.7, 0.8333}, E29 gates 1–5 PASS (`e28f1_reread.json`); the eyeballed read is replaced and F1-ii cleared to submit. **F1-ii SUBMITTED same day, boot family B** (same boot as the e28 pair/E26 grid — epoch 1786271541): daemon jobs `20260810-230028-9081ae` (cond0433) → `20260810-230033-e2b9f5` (native twin), back-to-back per the frozen order. NB the `--sigma_window` segmented spec is **one shell token** (spaces + `:` inside a single quoted argument) — the first submission attempt split it into three tokens and died at argparse (jobs `-225935`/`-225945`, error state, no GPU spent). **RESOLVED 2026-08-11: F1-A READABLE, F1-B MISMATCH-CARRIED** — the boundary followed the pin ({0.3, 0.4333} \| {0.5667, 0.7, 0.8333}, gap12 0.404); gate 4 passed under a recorded amendment (B-leg primary — the frozen C threshold was mis-calibrated, see the run record), gate 5 exact (max \|Δ\| = 0.0). See Results. |
 | **Question** | E28's 768-read (PARTIAL) named a surviving structure by eye: under a pinned conditioning frame (σ_cond = 0.7) the axis field splits into two internally-coherent σ-blocks with the boundary between 0.5667 and 0.7 — exactly at the pin. Two hypotheses own that shape: **mismatch** — the organizing variable is sign(σ_noise − σ_cond), an intervention-induced structure that will *follow the pin* when σ_cond relocates; **intrinsic** — the blocks are task blocks in the ANT/DeMe sense (they were always there; the pin merely unmasked them) and the boundary *stays* at 0.5667 \| 0.7 regardless of pin position. [E29](../e29/) set the prior: all nine native tables are clean k = 1 (NATIVE-SMOOTH), so the two-block object is frozen-frame-only and the **mismatch branch is favored** — prior only; this registration owns the verdict, and the read below is prediction-symmetric. |
 | **Explicitly NOT this** | Not a mechanism-account claim (E20.4 wording guard unchanged; no "derived" language). Not a rotation law (E27 closed). Not a σ_cond sweep — exactly one relocation value, the one E28's own registration named as the amendment; a sweep is a further amendment with its own multiplicity accounting. Not per-sample (E22 → 22.4 → E23a unchanged), not per-block/per-type slicing, nothing in paper 1 (revision_plan §8). 896 stays out of scope (the E28 896 cell remains undecided and is not touched here). |
 | **Depends on** | [E28](../e28/) (the frozen-frame object + `--cond_sigma` seam, commit `7f30101f`, gate-3 review recorded there); [E29](../e29/) (`e29_cluster.py` — the frozen instrument: signed-cos distance, pooled-mean cost, sequential elbow τ = 0.30, lexicographic tie-break; its gates rerun here); e28 committed tables (`../e28/e28_read768.json`); E24 machinery (`build_cond`/`cross_cos`/`bc_ledger`); T0 boot-family law (`paper_v2/roadmap.md` §3). |
@@ -159,12 +159,62 @@ bit-exact at the frozen literal). Gates 1, 2a, 2b, 3 PASS
   bin directly, gate 4 then re-evaluated against that band; (c) stop.
   The F1-B thresholds and branch table are untouched by any of these
   — only the identity of gate 4's C criterion is at issue.
+- **Amendment (a) EXECUTED 2026-08-11 (user go)**: gate 4 =
+  B ≥ 0.95 (passes at +0.9873); C and ĝ reported unthresholded. The
+  F1-B branch table and every other threshold unchanged; the read
+  proceeds under this recorded deviation.
+
+## Results (2026-08-11) — F1-A READABLE · **F1-B MISMATCH-CARRIED** · gate 5 exact
+
+Instrument `e28f1_read.py` → `e28f1_read.json`. Gates: 1/2a/2b/3 PASS,
+4 PASS under the recorded amendment (B +0.9873 gated; C +0.9030,
+ĝ +0.9263 reported), 5 PASS at **max |Δ| = 0.0** — the new twin's
+across-σ B̂ table reproduces the committed twin table *exactly*
+(same-boot deterministic replication; the family-B kernel path is
+bit-stable across the intervening day).
+
+- **F1-A: READABLE** — 0/4 off-pin conditions fail the rel gate.
+- **F1-B: MISMATCH-CARRIED** — the frozen-conditioning(0.4333) R̂
+  table selects **k\* = 2 at {0.3, 0.4333} | {0.5667, 0.7, 0.8333}**
+  (gap12 0.404 ≫ τ = 0.30): the boundary moved with the pin, from
+  s0.5667 | s0.7 (pin 0.7, F1-i formal) to s0.4333 | s0.5667 (pin
+  0.4333) — a pin-adjacent cut per the frozen table. The organizing
+  variable is **sign(σ_noise − σ_cond)**: the two-block object is an
+  intervention-induced property of the frozen-frame probe, not of the
+  field. (The sharper e28-analog sub-prediction — pin joins the
+  *upper* block — did NOT realize: here the pin bin joins the lower
+  block; recorded as descriptive, both pin-adjacent cuts count under
+  the frozen rule. Separation margin −0.127 — block contrast is
+  weaker than e28's at pin 0.7; diagnostic only.)
+- **F1-C**: (ii) the matched-σ replacement structure replicates at the
+  new pin — near-no-op at the pin bin (B +0.99/C +0.90), distant bins
+  B +0.16…+0.27 with ĝ swinging sign — and (iii) matched-pair median
+  |Δcos| vs the twin table is **0.216**, essentially e28's 0.217: the
+  same magnitude of rotation-disruption at a different pin. (i) B̂
+  frozen also selects the pin-adjacent cut (k\* = 2 at
+  {0.3, 0.4333} | rest); Ĉ selects k\* = 1 (gap12 0.256 < τ) — the
+  R̂/B̂ block signature is weaker on the C leg at this pin (its noisier
+  rel band; recorded, no verdict weight).
+
+**Consequences (per the frozen table + roadmap)**: roadmap (b) is
+resolved on E29's favored branch — the E28 two-σ-block structure is a
+**conditioning-mismatch signature**, not latent task blocks; (d)'s
+2-anchor E25a parameterization stays dead (it required intrinsic);
+paper-2 wording treats the frozen-frame split as an intervention
+artifact organized by sign(σ_noise − σ_cond), and the E28 28-B PARTIAL
+interpretation ("the two inputs interact; the mismatch direction
+becomes the organizing axis") is now the *tested* reading at two pin
+values. Nothing here touches E27's verdicts, the shipped σ-space
+lookup, or paper 1.
 
 ## Cost ladder (planned)
 
 | item | GPU | note |
 |---|---|---|
 | F1-i formal re-read | none | CPU seconds on committed JSON |
-| frozen-cond run (pin 0.4333) | ≈ 3.3 h | e28 768-stage actual |
-| native seed-twin | ≈ 3.8 h | e28 twin actual |
-| CPU read | ~min | `e28f1_read.py` |
+| frozen-cond run (pin 0.4333) | ≈ 3.3 h → **3.8 h** | store 12 GB |
+| native seed-twin | ≈ 3.8 h → **3.8 h** | store 12 GB |
+| CPU read | ~min → **7 min** | `e28f1_read.py` |
+
+Stores are eligible for reclamation under the standing policy (roadmap
+§3: tables committed in `e28f1_read.json`); not yet reclaimed.

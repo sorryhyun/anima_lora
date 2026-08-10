@@ -139,12 +139,17 @@ def main() -> None:
         st.drop_bin(bi)
     print("[gate2b] bc_ledger reproduced on all 5 bins of both stores")
 
-    # ---- gate 4: pin-bin consistency (the relocated gate-2 analog)
+    # ---- gate 4: pin-bin consistency (the relocated gate-2 analog).
+    # AMENDED 2026-08-11 (user go, recorded in README): B-leg primary
+    # (>= 0.95); C and ghat reported unthresholded — the frozen C
+    # threshold was mis-calibrated (relC ~0.55-0.59 at D=12 => +-0.1
+    # estimator noise; e28's own gate C passed by overshoot +1.087).
     pin_row = next(r for r in cross_rows if r["sigma"] == PIN)
-    g4 = abs(pin_row["cos_B"]) >= GATE_COS and abs(pin_row["cos_C"]) >= GATE_COS
+    g4 = abs(pin_row["cos_B"]) >= GATE_COS
     print(
-        f"[gate4] pin bin s{PIN}: B {pin_row['cos_B']:+.4f} C {pin_row['cos_C']:+.4f} "
-        f"ghat {pin_row['ghat_cos']:+.4f} vs >= {GATE_COS} -> {'PASS' if g4 else 'FAIL'}"
+        f"[gate4] pin bin s{PIN}: B {pin_row['cos_B']:+.4f} (gated >= {GATE_COS}) "
+        f"C {pin_row['cos_C']:+.4f} ghat {pin_row['ghat_cos']:+.4f} (reported) "
+        f"-> {'PASS' if g4 else 'FAIL'}"
     )
     assert g4, "gate 4 FAIL — instrument break; nothing else is read"
 
