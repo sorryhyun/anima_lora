@@ -94,6 +94,10 @@ class Sums:
         self.draws = self.man["draws_per_bin"]
         self._cache: dict[tuple[str, int], object] = {}
 
+    @property
+    def fingerprint(self) -> dict | None:
+        return self.man.get("boot_fingerprint")
+
     def has(self, key: str) -> bool:
         return key in self.man["keys"]
 
@@ -118,6 +122,25 @@ class Sums:
     def drop_bin(self, bi: int) -> None:
         for k in [k for k in self._cache if k[1] == bi]:
             del self._cache[k]
+
+
+def _family_key(s: "Sums"):
+    fp = s.man.get("boot_fingerprint") or {}
+    return fp.get("boot_epoch") or fp.get("family")
+
+
+def assert_same_family(*stores: "Sums", allow_cross_boot: bool = False) -> None:
+    """T0 guard (paper_v2/roadmap.md §3): vector reads are licensed only
+    between arm_sums stores from the same boot family — a reboot breaks
+    cross-store vector cosines (project_crossboot_arm_store_break).
+    Call this before any cross-store vector estimand. Unfingerprinted
+    stores never match. ``allow_cross_boot=True`` is for scripts whose
+    estimand deliberately crosses boots (e.g. e28_gate2_diag's
+    kernel-path isolation); scalar reads never need this guard."""
+    keys = {str(s.root): _family_key(s) for s in stores}
+    if (len(set(keys.values())) > 1 or None in keys.values()) and not allow_cross_boot:
+        detail = ", ".join(f"{p}: {k}" for p, k in keys.items())
+        raise ValueError(f"cross-boot-family vector read blocked (T0): {detail}")
 
 
 def _norm(v) -> float:

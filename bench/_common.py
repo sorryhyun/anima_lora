@@ -83,10 +83,45 @@ def _git_info() -> dict[str, Any]:
     }
 
 
+def boot_fingerprint() -> dict[str, Any]:
+    """Environment identity for raw-gradient-vector comparability
+    (sigma_lowres roadmap §3 T0): vector reads between arm_sums stores
+    are licensed only when boot_epoch matches — a reboot re-autotunes
+    the kernel path and breaks cross-store vector cosines
+    (project_crossboot_arm_store_break). Cache-dir fields are recorded
+    for the T2 pinning experiment (a certified pinned cache would key
+    comparability on the cache dir instead of the boot)."""
+    fp: dict[str, Any] = {"boot_epoch": None, "driver": None}
+    try:
+        for line in Path("/proc/stat").read_text().splitlines():
+            if line.startswith("btime "):
+                fp["boot_epoch"] = int(line.split()[1])
+                break
+    except OSError:
+        pass
+    try:
+        fp["driver"] = Path("/sys/module/nvidia/version").read_text().strip()
+    except OSError:
+        pass
+    try:
+        import torch
+
+        fp["torch"] = torch.__version__
+        fp["cuda"] = torch.version.cuda
+    except ImportError:
+        pass
+    fp["inductor_cache_dir"] = os.environ.get("TORCHINDUCTOR_CACHE_DIR")
+    fp["triton_cache_dir"] = os.environ.get("TRITON_CACHE_DIR")
+    return fp
+
+
 def _env_info(device: Any = None) -> dict[str, Any]:
+    fp = boot_fingerprint()
     info: dict[str, Any] = {
         "python": platform.python_version(),
         "platform": platform.platform(),
+        "boot_epoch": fp["boot_epoch"],
+        "driver": fp["driver"],
     }
     try:
         import torch

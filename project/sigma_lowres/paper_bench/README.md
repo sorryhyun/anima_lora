@@ -4,8 +4,10 @@ One directory per experiment under `experiments/<eN>/`, each holding its
 own `README.md` (question, design, pre-registration, results, verdict)
 plus the scripts that only it uses. Run artifacts stay flat in `runs/`
 (gitignore-exempt, committable) so run IDs quoted in the manuscript keep
-resolving; heavy vector stores stay under the gitignored
-`bench/results/`.
+resolving; heavy vector stores live centrally under the gitignored
+`arm_sums/<run-name>/` (moved 2026-08-10 from per-run `bench/results/`
+dirs, which keep symlinks — see `arm_sums/README.md` for the lifecycle
+policy).
 
 *Reorganized 2026-07-31: `completed_experiments.md` and
 `required_experiments.md` were split into these per-experiment records.

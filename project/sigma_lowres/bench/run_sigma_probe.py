@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import sys
 import time
@@ -209,16 +210,24 @@ def main() -> None:
     rows_path = run_dir / "per_image.jsonl"
     rows: list[dict] = []
     arm_keys = build_arm_keys(args, cfg, total_draws)
-    arm_sums = (
-        ArmSumAccumulator(run_dir / "arm_sums", dtype=args.arm_sums_dtype)
-        if args.keep_arm_sums
-        else None
-    )
-    if arm_sums is not None:
+    arm_sums = None
+    if args.keep_arm_sums:
+        # stores live centrally under paper_bench/arm_sums/<run-name>/ (one
+        # root for fingerprinting/canary/reclamation policy — roadmap §3);
+        # run_dir keeps a relative symlink so per-run paths still resolve
+        store_dir = (
+            Path(__file__).resolve().parent.parent
+            / "paper_bench"
+            / "arm_sums"
+            / run_dir.name
+        )
+        store_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "arm_sums").symlink_to(os.path.relpath(store_dir, run_dir))
+        arm_sums = ArmSumAccumulator(store_dir, dtype=args.arm_sums_dtype)
         # the store's flat-vector layout (same sorted-name flatten as
         # grad_estimate_binned) — lets the depth ledger (E19.3) slice arm
         # sums per module type x block without reloading the network
-        (run_dir / "arm_sums" / "groups.json").write_text(
+        (store_dir / "groups.json").write_text(
             json.dumps(groups if groups is not None else build_groups(bundle.network))
         )
     ledger_slices: dict | None = None

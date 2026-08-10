@@ -68,8 +68,9 @@ The facts, and what each does to this plan:
 
 **Status: PLAN — no reframe tex edited yet.** Order of work in §7;
 nothing in §2–§6 is licensed to land in the tex before the §7 step
-that carries it. §7 step 2 (survey pass) DONE 2026-08-10 — placement
-note in §10. **One out-of-plan tex fix applied 2026-08-10** (external
+that carries it. §7 step 1 (E26 — flat REPLICATES, dirty REPLICATES,
+§5 resolution block) and step 2 (survey pass — placement note in §10)
+DONE 2026-08-10; next actionable step is 3 (§3.3/§3.4 rewrite). **One out-of-plan tex fix applied 2026-08-10** (external
 review comment; wording only, numbers untouched, application numbers
 stay verbatim per §4): the −14.6 %/−15.1 % savings (E4-measured on
 the `sigma896` arm — 1024→896 above the one-sided σ > 0.5 gate,
@@ -193,17 +194,22 @@ where each claim is introduced *and* in the abstract's hedge:
   the coverage the frozen draft already states.
 - **Cancellation claims**: every (route, σ) of the operating adapter
   (E14 grid), with leg-level operating-point invariance (E19.6), the
-  E7 map-level 2×2 null, and the E26.0 cross-adapter smoke PASS as
-  the current cross-checkpoint evidence. **E26 (§5) sets the final
-  stated breadth.**
+  E7 map-level 2×2 null, and the E26 full grid (flat REPLICATES,
+  dirty REPLICATES) as the cross-checkpoint evidence. **Final stated
+  breadth (E26 §5, resolved 2026-08-10): three adapters of this base
+  model at 768 across the window — same-base qualifier stays, 896 an
+  open cell.**
 - **Axis-field claims** (narrowest): one adapter
   (`anima_soup_sincos`), three vector stores, standard corpus, the
   E24 debias conventions, 11/12 conditions.
 
 Conflating rungs invites exactly the R1-style estimator-confound
-review the line already survived once. Until E26 lands, the geometry
-material is written with the one-operating-point scope stated, not
-deferred.
+review the line already survived once. E26 has landed
+(REPLICATES/REPLICATES): the cancellation rung takes the widened
+wording above at §7 step 7; the axis-field rung stays at its
+one-adapter scope regardless (the grid pre-registered no vector
+reads, and the smoke's cross-adapter direction read was
+frame-confounded).
 
 ## 4. Carries over verbatim (do-not-touch list)
 
@@ -233,6 +239,19 @@ predictive account* remains unadopted per E20.1 — that part of the
 earmark stands.
 
 ## 5. E26 — cross-adapter cancellation check (frozen & running)
+
+**RESOLVED 2026-08-10 (after the freeze below ran)**: full grid DONE —
+**flat REPLICATES, dirty REPLICATES** (5/5 bins readable and passing
+on both; read + tables in `../paper_bench/experiments/e26/`
+`e26_grid_read.{py,json}` and README "Full-grid results"). §7 step 7
+is unblocked: the scope sentence takes the REPLICATES wording (breadth
+= three adapters of this base at 768 across the window; same-base
+qualifier per the frame-confound limitation; 896 an open cell). The
+depth-scaling upgrade is NOT claimed (identity-consistency column
+lands in the arithmetic branch at 9/10 adapter-bins; sole exception
+dirty σ = 0.7, recorded). dirty's first submission crashed on a full
+disk and was resubmitted bit-identically in the same boot — recorded
+in the E26 README run record; same-environment status preserved.
 
 **Question**: does the B–C cancellation geometry replicate on LoRA
 adapters other than the line's operating point?
@@ -327,12 +346,12 @@ README's deviation note.
 
 ## 7. Order of work
 
-1. **E26 amendment + runs — DONE 2026-08-10 up to the wait**: the
-   trimmed grid is frozen (768-only E28-twin window, in-session twin
-   reference, per-bin thresholds — §5) and both grid runs are
-   daemon-queued (`e26-grid-flat` / `e26-grid-dirty`, 3.8 GPU-h
-   each). GPU time is the long pole; everything below overlaps with
-   the queue.
+1. **E26 amendment + runs + read — DONE 2026-08-10**: trimmed grid
+   frozen, both runs landed (dirty via a same-boot bit-identical
+   resubmit after a full-disk crash), read executed against the
+   frozen criteria — **flat REPLICATES, dirty REPLICATES** (§5
+   resolution block). Step 7 is unblocked and waits only on the tex
+   steps before it.
 2. Survey pass over `sec_theory.tex` / `sec_experiments.tex` /
    `sec_discussion.tex`: fix the insertion points (cancellation into
    §3.3/3.4, observations section between map and scored, closures
@@ -351,7 +370,8 @@ README's deviation note.
 4. Abstract + intro rewrite (question unchanged; the two-accounts
    framing keeps its role; "carried by the compute graph itself"
    replaced by the cancellation-residual object with the §3 rung
-   hedges).
+   hedges). Also carries the related-work citation additions from the
+   2026-08-10 paper scan (§10 last subsection: ANT / DeMe / PMA).
 5. New observations section (instrument-adjacent placement per step
    2): cancellation panels (E14, h-units) → local enforcement (E21) →
    axis field (E24 → E25.0 order) → closures subsection (§2.5).
@@ -530,3 +550,49 @@ Anchors are file:line at commit `9d8bda69`. No tex edited.
 3. sec_experiments 174–176 — the dip concession (flips to crossing).
 4. sec_discussion 110–114 — the domain-exclusion clause (shrinks).
 No other sentence in the four body files asserts (ii) or leans on it.
+
+### Related-work additions (2026-08-10 paper scan; lands with §7 step 4)
+
+Three papers read in full this date (PDFs + notes in session
+scratchpad); each gets a citation, none gets a mechanism sentence.
+
+- **ANT** (Go et al., NeurIPS 2023, arXiv:2306.00354) and **DeMe**
+  (Ma et al., CVPR 2025, arXiv:2410.06664) — the σ-indexed
+  gradient-*direction* literature: per-timestep task affinity
+  (pairwise cosine of per-timestep loss gradients) decays smoothly
+  with noise-level gap (ANT O1) and goes negative between distant
+  timesteps (DeMe Fig. 1a); interval clustering / decouple-then-merge
+  as remedies. Placement: a NEW fourth paragraph in
+  `sec_intro.tex` §Related work (after "Positional extension",
+  129–138), ~3 sentences, "noise levels as tasks" framing; the
+  observations section's "rotates smoothly" sentence (§7 step 5) MAY
+  cite them as the raw-gradient precedent for smooth σ-indexed
+  direction structure. **Delta to state**: they measure conflict
+  *between* per-timestep full gradients; our object is the
+  product-rule split of one gradient's *change* under input
+  downscaling — the near-cancellation has no counterpart there.
+  **Guard**: framing citations only. The "conditioning frame smooths
+  the intrinsic task-block structure" reading of 28-B PARTIAL that
+  these papers suggest is paper-2 material under E28's follow-up
+  registration — it does not enter this revision's tex (§8
+  no-mechanism-language guard applies verbatim).
+- **PMA** (Wu et al., arXiv:2511.19778, "Phase-Aligned RoPE for
+  Mixed-Resolution DiT") — measures the content-free RoPE attention
+  bias κ(∆) (sinusoidal phase filter, timestep-stable), shows PI-style
+  position rescaling fails because rescaled distances sample the
+  filter at wrong phases, and ranks PI worst < NTK < YaRN < native at
+  the sample level — the forward-pass twin of G11's off-manifold
+  verdict and the yarnsig probe ordering (gap_896pi > gap_896yarn,
+  gate unchanged). Placement: appended to the "Positional extension"
+  paragraph (129–138), 1–2 sentences. **Delta to state**: PMA is
+  inference-time, mixed-resolution *within one attention op*,
+  attributed at the attention-score/sample level; our substitution is
+  train-time whole-grid (no mixed-scale attention arises) and the
+  attribution is at the training-gradient level — the floor
+  decomposition (RoPE_e + Resid_e) remains ours. Their
+  timestep-stability of κ(∆) is *consistent* with the floor's
+  σ-independence but that connection is discussion-grade at most —
+  same no-mechanism guard.
+- `references.bib` keys to add with step 4: `go2023ant`,
+  `ma2025deme`, `wu2025phasealigned` (verify none already present
+  under other keys before adding).

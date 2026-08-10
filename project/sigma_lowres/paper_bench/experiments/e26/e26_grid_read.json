@@ -1,0 +1,247 @@
+{
+ "doc": "E26 full-grid read \u2014 frozen 2026-08-10 amendment criteria",
+ "instrument": "vector_ledger.py unmodified, --data_ref reenc",
+ "route": "1024->768",
+ "reference": "in-session sincos = e28 native twin (same boot family 2026-08-09 19:32)",
+ "stores": {
+  "flat": "bench/results/20260810-1114-e26-grid-flat",
+  "dirty": "bench/results/20260810-1519-e26-grid-dirty",
+  "sincos_twin": "bench/results/20260810-0658-e28-native-twin-768"
+ },
+ "adapters": {
+  "flat": {
+   "bins": [
+    {
+     "sigma": 0.3,
+     "G": 0.0246,
+     "h_B": 0.4407,
+     "h_C": 0.33699,
+     "h_B_plus_C": 0.15236,
+     "rho": -0.88969,
+     "rho_implied": -0.9581,
+     "I": -1.48497,
+     "rel_cos_B": 0.95636,
+     "rel_cos_C": 0.91667,
+     "readable": true,
+     "criteria_pass": true
+    },
+    {
+     "sigma": 0.4333,
+     "G": 0.0255,
+     "h_B": 0.30412,
+     "h_C": 0.4767,
+     "h_B_plus_C": 0.19625,
+     "rho": -0.90875,
+     "rho_implied": -0.9699,
+     "I": -1.21479,
+     "rel_cos_B": 0.94408,
+     "rel_cos_C": 0.82135,
+     "readable": true,
+     "criteria_pass": true
+    },
+    {
+     "sigma": 0.5667,
+     "G": 0.041,
+     "h_B": 0.18846,
+     "h_C": 0.35739,
+     "h_B_plus_C": 0.09763,
+     "rho": -0.91192,
+     "rho_implied": -1.1411,
+     "I": -0.65296,
+     "rel_cos_B": 0.92433,
+     "rel_cos_C": 0.89306,
+     "readable": true,
+     "criteria_pass": true
+    },
+    {
+     "sigma": 0.7,
+     "G": 0.0733,
+     "h_B": 0.11825,
+     "h_C": 0.22101,
+     "h_B_plus_C": 0.04511,
+     "rho": -0.92775,
+     "rho_implied": -1.1631,
+     "I": -0.35224,
+     "rel_cos_B": 0.95771,
+     "rel_cos_C": 0.90234,
+     "readable": true,
+     "criteria_pass": true
+    },
+    {
+     "sigma": 0.8333,
+     "G": 0.1638,
+     "h_B": 0.11345,
+     "h_C": 0.10835,
+     "h_B_plus_C": 0.02046,
+     "rho": -0.94838,
+     "rho_implied": -0.984,
+     "I": -0.22239,
+     "rel_cos_B": 0.97552,
+     "rel_cos_C": 0.92036,
+     "readable": true,
+     "criteria_pass": true
+    }
+   ],
+   "n_readable": 5,
+   "n_criteria_pass": 5,
+   "pass_includes_s07": true,
+   "verdict": "REPLICATES"
+  },
+  "dirty": {
+   "bins": [
+    {
+     "sigma": 0.3,
+     "G": 0.0164,
+     "h_B": 0.64698,
+     "h_C": 0.39228,
+     "h_B_plus_C": 0.23346,
+     "rho": -0.92347,
+     "rho_implied": -1.0204,
+     "I": -3.00651,
+     "rel_cos_B": 0.93437,
+     "rel_cos_C": 0.87133,
+     "readable": true,
+     "criteria_pass": true
+    },
+    {
+     "sigma": 0.4333,
+     "G": 0.0122,
+     "h_B": 0.45256,
+     "h_C": 0.87846,
+     "h_B_plus_C": 0.42034,
+     "rho": -0.93623,
+     "rho_implied": -1.0059,
+     "I": -4.73487,
+     "rel_cos_B": 0.94271,
+     "rel_cos_C": 0.86249,
+     "readable": true,
+     "criteria_pass": true
+    },
+    {
+     "sigma": 0.5667,
+     "G": 0.0155,
+     "h_B": 0.45058,
+     "h_C": 0.82594,
+     "h_B_plus_C": 0.39989,
+     "rho": -0.94771,
+     "rho_implied": -0.9745,
+     "I": -3.59241,
+     "rel_cos_B": 0.9676,
+     "rel_cos_C": 0.88999,
+     "readable": true,
+     "criteria_pass": true
+    },
+    {
+     "sigma": 0.7,
+     "G": 0.0224,
+     "h_B": 0.53181,
+     "h_C": 0.66395,
+     "h_B_plus_C": 0.3325,
+     "rho": -0.96392,
+     "rho_implied": -0.8682,
+     "I": -3.12071,
+     "rel_cos_B": 0.93629,
+     "rel_cos_C": 0.88044,
+     "readable": true,
+     "criteria_pass": true
+    },
+    {
+     "sigma": 0.8333,
+     "G": 0.0387,
+     "h_B": 0.82038,
+     "h_C": 0.46033,
+     "h_B_plus_C": 0.21416,
+     "rho": -0.97982,
+     "rho_implied": -1.1109,
+     "I": -4.36554,
+     "rel_cos_B": 0.9642,
+     "rel_cos_C": 0.89593,
+     "readable": true,
+     "criteria_pass": true
+    }
+   ],
+   "n_readable": 5,
+   "n_criteria_pass": 5,
+   "pass_includes_s07": true,
+   "verdict": "REPLICATES"
+  },
+  "sincos_twin": {
+   "bins": [
+    {
+     "sigma": 0.3,
+     "G": 0.0225,
+     "h_B": 0.19786,
+     "h_C": 0.69185,
+     "h_B_plus_C": 0.30218,
+     "rho": -0.86157,
+     "rho_implied": -1.5578,
+     "I": -0.90946,
+     "rel_cos_B": 0.93566,
+     "rel_cos_C": 0.7992,
+     "readable": true,
+     "criteria_pass": false
+    },
+    {
+     "sigma": 0.4333,
+     "G": 0.055,
+     "h_B": 0.04861,
+     "h_C": 0.20543,
+     "h_B_plus_C": 0.08516,
+     "rho": -0.83582,
+     "rho_implied": -1.8682,
+     "I": -0.11277,
+     "rel_cos_B": 0.82672,
+     "rel_cos_C": 0.58746,
+     "readable": true,
+     "criteria_pass": false
+    },
+    {
+     "sigma": 0.5667,
+     "G": 0.0837,
+     "h_B": 0.02947,
+     "h_C": 0.11254,
+     "h_B_plus_C": 0.03878,
+     "rho": -0.86589,
+     "rho_implied": -1.8136,
+     "I": -0.07233,
+     "rel_cos_B": 0.86298,
+     "rel_cos_C": 0.72625,
+     "readable": true,
+     "criteria_pass": false
+    },
+    {
+     "sigma": 0.7,
+     "G": 0.1361,
+     "h_B": 0.02954,
+     "h_C": 0.09005,
+     "h_B_plus_C": 0.03383,
+     "rho": -0.90301,
+     "rho_implied": -1.4731,
+     "I": -0.06838,
+     "rel_cos_B": 0.90687,
+     "rel_cos_C": 0.58521,
+     "readable": true,
+     "criteria_pass": false
+    },
+    {
+     "sigma": 0.8333,
+     "G": 0.2601,
+     "h_B": 0.0367,
+     "h_C": 0.05408,
+     "h_B_plus_C": 0.01567,
+     "rho": -0.92099,
+     "rho_implied": -1.0142,
+     "I": -0.07042,
+     "rel_cos_B": 0.94241,
+     "rel_cos_C": 0.71257,
+     "readable": true,
+     "criteria_pass": true
+    }
+   ],
+   "n_readable": 5,
+   "n_criteria_pass": 1,
+   "pass_includes_s07": false,
+   "verdict": "(reference \u2014 criteria columns reported for context only)"
+  }
+ }
+}

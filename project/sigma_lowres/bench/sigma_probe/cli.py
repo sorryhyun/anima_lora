@@ -192,7 +192,8 @@ def parse_args(
         action="store_true",
         help="retain the cross-image SUM of every arm's per-bin flat LoRA "
         "gradient (both draw sets, every target-alpha) as fp32 memmaps under "
-        "<run_dir>/arm_sums/ + manifest.json. Turns scalar-cosine runs into "
+        "paper_bench/arm_sums/<run-name>/ + manifest.json (the central store "
+        "root; <run_dir>/arm_sums is a symlink to it). Turns scalar-cosine runs into "
         "vector-ledger runs (B/C split, kappa_par/kappa_perp, exact "
         "counterfactual angles) at ~311 MB x arms x bins of disk and zero "
         "extra forwards. Vectors are sums over images of per-image "

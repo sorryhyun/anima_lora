@@ -218,11 +218,16 @@ class ArmSumAccumulator:
         self.n_images[key] = self.n_images.get(key, 0) + 1
 
     def finalize(self, meta: dict) -> None:
+        from bench._common import boot_fingerprint
+
         for mm in self.maps.values():
             mm.flush()
         keys = sorted({k for k, _ in self.maps})
         manifest = {
             **meta,
+            # T0 (roadmap §3): stamped here, not by the caller, so no
+            # entry point can produce an unfingerprinted store
+            "boot_fingerprint": boot_fingerprint(),
             "dtype": self.dtype_name,
             "scale": "sum over images of per-image draw-summed gradients "
             "(divide by n_images * draws_per_bin for the mean gradient)",
