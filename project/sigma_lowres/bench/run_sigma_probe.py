@@ -164,6 +164,12 @@ def build_demote_arms(args, cfg, bundle, extra_latents, stem: str, native) -> li
 
 def main() -> None:
     args = parse_args(__doc__)
+    if args.base_sketch:
+        # must precede CUDA context creation: the sketch path's transient
+        # hash arrays + the base-grad traffic fragment the caching
+        # allocator at the 16 GB edge (first smoke: OOM with 1.49 GiB
+        # reserved-unallocated); expandable segments defragment it
+        os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     if args.deterministic:  # must precede any CUDA/cublas init
         enable_deterministic()
     start_heartbeat()

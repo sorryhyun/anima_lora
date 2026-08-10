@@ -44,7 +44,46 @@ no adapter pair shows a structural profile break.
 
 ## E30.1 — expression gate + sketch (one sincos run; **go required**)
 
-### Instrument (to be built; diff reviewed against this section before submission)
+### Instrument amendment (2026-08-11, pre-submission — the promised resolved-list + deltas record)
+
+Instrument built as `--base_sketch` on `run_sigma_probe.py`
+(`bench/sigma_probe/base_sketch.py`; one `end_bin` seam in
+`grad_estimate_binned`, off-path byte-identical; CPU invariant tests in
+`tests/test_base_sketch.py`). Deltas vs the sketch-spec below, recorded
+before submission:
+
+- **Resolved adaln list (the frozen name-pattern rule
+  `(^|\.)adaln_`)**: **114 tensors, 177,733,632 params** — per block
+  `adaln_fused_down.1` + `adaln_up_{self_attn,cross_attn,mlp}` (×28)
+  + the final layer's `adaln_modulation` pair; full name→numel map in
+  `base_sketch/meta.json` of the store (and mirrored into the arm-sums
+  manifest). `t_embedder` is deliberately outside the slice (the slice
+  is the modulation band E21 measured, not the conditioning trunk).
+- **Fourth sketch family `param`**: the exact per-bin LoRA flat vector
+  sketched in-run through the same scatter path — gate 2 thereby
+  certifies the *streaming accumulation path*, not just the hash
+  family (smoke: cos(sketch(exact store), in-run sketch) = 1.000006).
+- **Exact adaln upgrade**: the adaln slice is additionally accumulated
+  exactly (fp16 CPU slots, ~356 MB × conditions; fp16 = the arm-store
+  rounding precedent) and reduced at finalize to an **exact fp64
+  cross-condition Gram + norms** (`base_sketch/adaln_exact.npz`), so
+  every 30-B slice read is exact rather than sketch-estimated; the
+  slice **vectors** are still discarded (the recorded forfeit stands).
+  Complement family stored as full − adaln (exact by sketch
+  linearity).
+- **Hashing**: per-tensor multiplicative hashes from
+  `blake2b(f"{seed}:{name}")`, k = 2^18, **seed = 3021** (manifest-
+  recorded; any future E31 must reuse it verbatim).
+- **VRAM record (16 GB card)**: smoke r1 OOM'd on allocator
+  fragmentation (13.07 GiB allocated + 1.49 GiB reserved-unallocated);
+  fixed by 2^22 hash chunking + `PYTORCH_CUDA_ALLOC_CONF=
+  expandable_segments:True` (set by the flag before CUDA init); smoke
+  r2 (2 images × 1 bin × 2 draws, full arm set) ran clean end-to-end —
+  8 conditions, uniform hook fires (427 grad-receiving base tensors of
+  551 per draw; the 124 no-grad tensors are paths this forward does
+  not exercise and contribute exactly zero to every family).
+
+### Instrument (as pre-registered; diff reviewed against this section before submission)
 
 One `run_sigma_probe.py` run accumulating, in the **same backward
 pass** as the standard adapter-param arm sums:

@@ -60,7 +60,9 @@ _HASH_SPEC = (
     "bucket=((idx*a1+b1) >> (64-kbits)) & (k-1); sign=1-2*((idx*a2+b2)>>62 & 1); "
     "a/b = blake2b('{seed}:{name}', 32B) LE u64 quads, a made odd; int64 wraparound"
 )
-_CHUNK = 1 << 24  # bound transient int64 arrays to ~134 MB
+# bound the transient int64 hash arrays to ~33 MB — the first smoke OOM'd
+# on fragmentation (1.49 GiB reserved-unallocated) with 134 MB transients
+_CHUNK = 1 << 22
 
 
 def _hash_constants(seed: int, name: str) -> tuple[int, int, int, int]:
