@@ -298,6 +298,7 @@ def grad_estimate_binned(
     batch_draws: int = 1,
     target_alpha: float = 1.0,
     cond_sigma: float | None = None,
+    base_acc=None,
 ) -> tuple[list[torch.Tensor], list[float]]:
     """Per-σ-bin accumulated-gradient estimates.
 
@@ -322,7 +323,16 @@ def grad_estimate_binned(
     ``cond_sigma`` (E28 frozen-conditioning probe) pins the σ handed to the
     DiT forward — conditioning only; the noising ``sview``, the FM target,
     and the σ-gated rope handle all keep the draw's noising σ.
+
+    ``base_acc`` (E30.1) — a ``BaseSketchAccumulator`` whose hooks stream
+    base-DiT gradient sketches per draw; this function's only seam is one
+    ``end_bin`` call per bin handing over the bin's exact flat LoRA vector
+    (still on GPU) for the gate-2 param-family sketch. The ``base_acc is
+    None`` path is byte-identical to the pre-E30.1 code.
     """
+    assert base_acc is None or prefix_draws is None, (
+        "--base_sketch is incompatible with draw-sweep prefix snapshots"
+    )
     device = bundle.device
     params = [
         p for _, p in sorted(bundle.network.named_parameters()) if p.requires_grad
@@ -407,7 +417,15 @@ def grad_estimate_binned(
                     vecs.append(vec)
                     norms.append(float(vec.norm()))
             if snap is None:
-                vec = flat_grad()
+                if base_acc is not None:
+                    vec_gpu = torch.cat(
+                        [p.grad.detach().float().flatten() for p in params]
+                    )
+                    base_acc.end_bin(b, vec_gpu)
+                    vec = vec_gpu.cpu()
+                    del vec_gpu
+                else:
+                    vec = flat_grad()
                 vecs.append(vec)
                 norms.append(float(vec.norm()))
     for p in params:

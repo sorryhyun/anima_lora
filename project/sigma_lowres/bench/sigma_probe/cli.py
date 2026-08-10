@@ -331,6 +331,37 @@ def parse_args(
         "native one.",
     )
     p.add_argument(
+        "--base_sketch",
+        action="store_true",
+        help="E30.1 base-frame accumulation: requires_grad on every base-DiT "
+        "tensor, per-draw sketch-and-free gradient hooks (count-sketch, "
+        "fixed hash seed) into per-(arm, bin) full/adaln/complement "
+        "families plus a sketched copy of the exact LoRA per-bin vector "
+        "(gate-2 self-calibration) and exact adaln-slice Gram/norms. "
+        "Writes <store>/base_sketch/; needs --keep_arm_sums. NB the "
+        "changed autograd graph puts this run's vectors in their own "
+        "kernel-path family — all E30.1 reads are within-run.",
+    )
+    p.add_argument(
+        "--base_sketch_k",
+        type=int,
+        default=262144,
+        help="count-sketch buckets (power of two; e30 freezes 2^18)",
+    )
+    p.add_argument(
+        "--base_sketch_seed",
+        type=int,
+        default=3021,
+        help="hash seed — defines the shared sketch frame (recorded in the "
+        "manifest; a future E31 must reuse it verbatim)",
+    )
+    p.add_argument(
+        "--adaln_pattern",
+        default=r"(^|\.)adaln_",
+        help="frozen name-pattern rule for the adaln slice (e30 §E30.1); "
+        "the resolved tensor list lands in base_sketch/meta.json",
+    )
+    p.add_argument(
         "--deterministic",
         action="store_true",
         help="mirror train.py's deterministic mode (flash-attn deterministic "
@@ -443,6 +474,23 @@ def resolve_run_config(args: argparse.Namespace) -> RunConfig:
 
     if args.cond_sigma is not None and not (0.0 < args.cond_sigma <= 1.0):
         raise SystemExit(f"--cond_sigma must be in (0, 1], got {args.cond_sigma}")
+
+    if args.base_sketch:
+        if not args.keep_arm_sums:
+            raise SystemExit(
+                "--base_sketch needs --keep_arm_sums (the sketch families "
+                "live inside the arm-sums store)"
+            )
+        if args.draw_sweep or args.target_alpha or args.pool:
+            raise SystemExit(
+                "--base_sketch is incompatible with "
+                "--draw_sweep/--target_alpha/--pool (E30.1 protocol keys "
+                "sketch slots on plain (arm, bin) conditions)"
+            )
+        if args.base_sketch_k & (args.base_sketch_k - 1):
+            raise SystemExit(
+                f"--base_sketch_k must be a power of two, got {args.base_sketch_k}"
+            )
 
     if args.x_zero:
         args.no_reenc_control = True

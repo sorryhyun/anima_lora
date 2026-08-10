@@ -192,6 +192,23 @@ def main() -> None:
 
     bundle = build_probe_bundle(args, probe, extra_latents)
 
+    base_acc = None
+    if args.base_sketch:
+        # E30.1: must attach before the first forward — requires_grad flips
+        # on base tensors are baked into the (lazy) compile trace
+        from project.sigma_lowres.bench.sigma_probe.base_sketch import (
+            BaseSketchAccumulator,
+        )
+
+        base_acc = BaseSketchAccumulator(
+            bundle.anima,
+            bundle.network,
+            device,
+            k=args.base_sketch_k,
+            seed=args.base_sketch_seed,
+            adaln_pattern=args.adaln_pattern,
+        )
+
     groups: dict[str, list[tuple[int, int]]] | None = None
     if args.per_group:
         groups = build_groups(bundle.network)
@@ -300,12 +317,15 @@ def main() -> None:
             )
             return [base + d for d in range(total_draws)]
 
-        def estimate(lat_, seed_list, rope_patch=None, alpha=1.0):
+        def estimate(lat_, seed_list, rope_patch=None, alpha=1.0, arm_key=None):
             bd = 1
             if args.draw_batch_tokens:
                 grid_tokens = (lat_.shape[-2] // 2) * (lat_.shape[-1] // 2)
                 bd = max(1, args.draw_batch_tokens // grid_tokens)
                 bd = 1 << (bd.bit_length() - 1)  # pow2 → bounded graph count
+            if base_acc is not None:
+                assert arm_key is not None
+                base_acc.begin_arm(arm_key)
             return grad_estimate_binned(
                 bundle,
                 lat_,
@@ -317,6 +337,7 @@ def main() -> None:
                 batch_draws=bd,
                 target_alpha=alpha,
                 cond_sigma=args.cond_sigma,
+                base_acc=base_acc,
             )
 
         row = {
@@ -338,8 +359,8 @@ def main() -> None:
         kap0: dict[str, list[torch.Tensor]] = {}
         for alpha_ in cfg.alphas:
             sfx = "" if alpha_ == 1.0 else f"@a{alpha_:g}"
-            g_a, n_a = estimate(native, seeds(0), alpha=alpha_)
-            g_b, n_b = estimate(native, seeds(1), alpha=alpha_)
+            g_a, n_a = estimate(native, seeds(0), alpha=alpha_, arm_key="a")
+            g_b, n_b = estimate(native, seeds(1), alpha=alpha_, arm_key="b")
             floor = [cosine(a, b) for a, b in zip(g_a, g_b)]
             row[f"cos_floor{sfx}"] = [round(c, 5) for c in floor]
             row[f"gnorm_native{sfx}"] = [
@@ -397,10 +418,17 @@ def main() -> None:
             arm_idx = 2
             if cfg.reenc_control:
                 re_lat = extra_latents[(r.stem, "reenc")]
-                g_re, _ = estimate(re_lat, seeds(arm_idx), alpha=alpha_)
+                g_re, _ = estimate(
+                    re_lat, seeds(arm_idx), alpha=alpha_, arm_key="reenc"
+                )
                 g_re2 = None
                 if args.self_floor:
-                    g_re2, _ = estimate(re_lat, seeds(arm_idx, alt=True), alpha=alpha_)
+                    g_re2, _ = estimate(
+                        re_lat,
+                        seeds(arm_idx, alt=True),
+                        alpha=alpha_,
+                        arm_key="reenc__2",
+                    )
                 track(
                     stats_pool.submit(statter.stats, "reenc" + sfx, g_re, None, g_re2),
                     "reenc",
@@ -412,11 +440,17 @@ def main() -> None:
             for key, lat, patch in build_demote_arms(
                 args, cfg, bundle, extra_latents, r.stem, native
             ):
-                g_d, n_d = estimate(lat, seeds(arm_idx), rope_patch=patch, alpha=alpha_)
+                g_d, n_d = estimate(
+                    lat, seeds(arm_idx), rope_patch=patch, alpha=alpha_, arm_key=key
+                )
                 g_d2 = None
                 if args.self_floor:
                     g_d2, _ = estimate(
-                        lat, seeds(arm_idx, alt=True), rope_patch=patch, alpha=alpha_
+                        lat,
+                        seeds(arm_idx, alt=True),
+                        rope_patch=patch,
+                        alpha=alpha_,
+                        arm_key=f"{key}__2",
                     )
                 track(
                     stats_pool.submit(statter.stats, key + sfx, g_d, n_d, g_d2),
@@ -501,6 +535,14 @@ def main() -> None:
         shutil.rmtree(pool_spill, ignore_errors=True)
         shutil.rmtree(cur_spill, ignore_errors=True)
 
+    base_meta = None
+    if base_acc is not None:
+        base_meta = base_acc.finalize(store_dir)
+        log.info(
+            f"base_sketch → {store_dir / 'base_sketch'} "
+            f"({len(base_meta['conditions'])} conditions, "
+            f"adaln {base_meta['adaln_numel'] / 1e6:.1f}M exact-Gram'd)"
+        )
     if arm_sums is not None:
         arm_sums.finalize(
             {
@@ -517,6 +559,25 @@ def main() -> None:
                 "n_images": len(rows),
                 "seed": args.seed,
                 "cond_sigma": args.cond_sigma,
+                **(
+                    {
+                        "base_sketch": {
+                            k_: base_meta[k_]
+                            for k_ in (
+                                "k",
+                                "seed",
+                                "hash",
+                                "families",
+                                "adaln_pattern",
+                                "adaln_numel",
+                                "n_base_tensors",
+                                "base_numel",
+                            )
+                        }
+                    }
+                    if base_meta is not None
+                    else {}
+                ),
             }
         )
         log.info(f"arm sums → {run_dir / 'arm_sums'} ({len(arm_sums.maps)} vectors)")
