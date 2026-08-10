@@ -124,6 +124,60 @@ cross-set debias):
 - Outputs: `e260_smoke.json` (+ any figures) committed in this dir;
   stores stay under the gitignored `bench/results/`.
 
+## Full-grid amendment (FROZEN 2026-08-10, before any grid run)
+
+Licensed by the smoke's dual PASS. Thresholds and cells below are
+frozen before either adapter's grid gradient exists on disk.
+
+**Trimmed grid = 768-only, the E28-twin window.** Per adapter one
+run: route 768, σ window
+`0.23333…,0.76667…,4 : 0.76667…,0.9,1` (bins {0.3, 0.4333, 0.5667,
+0.7, 0.8333}, no endpoint), 40 images (e1b list), D = 12,
+`--repromote --keep_arm_sums --self_floor --deterministic --seed 42`
+— the exact grid of `20260810-0658-e28-native-twin-768`. Measured
+cost 3.8 GPU-h/adapter (twin actual). **Deviation from the plan's §5
+sketch, recorded**: "896 at the verdict bins" is dropped — one probe
+run cannot carry per-route bin sets, a separate 896 run forfeits the
+shared native/reenc arms (cost ≈ full grid), and per the 2026-08-10
+environment amendment its cells would also need their own
+same-environment sincos reference (the twin covers 768 only). The
+768 route carries the paper's window/dip claims and the larger
+residual; 896 replication stays an open cell, stated as such.
+
+**In-session sincos reference = the twin store** (same environment —
+uptime `2026-08-09 19:32` — same grid, same estimand path). Committed
+e193/e221 rows are context, never verdict denominators (environment
+amendment). If a reboot interleaves the queue, record it: the verdict
+criteria below are scalar with margins far above the measured
+cross-environment scalar drift (Δρ ≈ 0.03–0.05), so the verdict
+stands, but any vector read (none pre-registered here) is void.
+
+**Frozen verdict (per adapter, over the 5 bins):**
+
+- A bin is *readable* iff rel_cos_B ≥ 0.5 ∧ rel_cos_C ≥ 0.5. Fewer
+  than 3 readable bins ⇒ **INCONCLUSIVE**, remedy = the smoke's
+  pre-declared single D = 24 top-up rerun, nothing else.
+- **REPLICATES** iff ≥ 4/5 bins readable AND at every readable bin:
+  I < 0, ρ ≤ −0.5, h(B+C) < min(h(B), h(C)) (the smoke criteria,
+  per-bin).
+- **PARTIAL** iff the three criteria hold at ≥ 3 readable bins
+  including σ = 0.7.
+- **FAILS** otherwise. Scope-sentence consequences per
+  `revision_plan.md` §5 verdict shapes; no outcome removes the
+  geometry material.
+
+**Identity-consistency column** (pre-registered per plan §5): per
+bin, ρ_implied = (h²(B+C) − h²(B) − h²(C)) / (2·h(B)·h(C)) next to
+measured ρ. The "enforcement depth scales with the perturbation"
+upgrade is claimed only where the measured cross-adapter ρ deepening
+exceeds what ρ_implied already forces from the magnitudes; otherwise
+it is reported as arithmetic.
+
+**Runs**: labels `e26-grid-flat` / `e26-grid-dirty`, daemon-queued,
+one process per adapter (kernel-path rule). Read: `vector_ledger.py`
+unmodified per store + a small comparison table script committed
+here.
+
 ## E26.0 Results (2026-08-09)
 
 Runs: `bench/results/20260809-1323-e260-smoke-flat/` (job
