@@ -255,6 +255,26 @@ amplitude mismatch, at every gated verdict condition.
   Within-bin geometry exact, one true ‖g‖ scale (unit half-shell as the
   ruler).
 
+- **`e24_bc_comb_sphere_gap.png`** (`e24_gap_fig.py`, added post-verdict
+  2026-08-10, illustration-only, committed digest only) — the sphere with
+  the **gap as the radial object**: same protractor layout (azimuth = σ
+  coordinate), but each pair is rigidly rotated in its own plane so its
+  resultant **B+C radiates from the origin** (chord-along-radial,
+  replacing chord-along-ẑ), legs drawn thin tip-to-tail around it
+  (origin → B → C → gap tip). Emphasis inverted: the gap is the thick
+  arrow — it is the object the E25a lookup consults and the field whose
+  rotation E24/E27 measured. Within-bin geometry exact, one true ‖g‖
+  scale; each bin's dotted unit ray marks the gap *direction* with the
+  values (θ_B, |B+C|) at its end. Drawing conventions for legibility,
+  all in the legend: the ruler shell is 0.5 ‖g‖ (a unit shell would
+  defeat the zoom); the σ=0.3 pair (the scale outlier — gap 0.83, legs
+  1.5–1.9 vs a 0.12–0.23 field) is faded/clipped whole, true values in
+  its label; and the legs' side of the gap **alternates per bin** (even
+  up, odd down) so the small triangles don't overlap — the frame zooms
+  to the σ ≥ 0.4333 field. The R̂-field successor that
+  also draws the *measured* between-bin geometry (no protractor
+  convention) is [`../e27/e27_rhat_sphere.png`](../e27/).
+
 The E19 originals (`bc_comb*`, `fig_ledger_geometry`) are not modified —
 they made no cross-bin orientation claim and remain valid; these are the
 E24-informed successors for the paper to choose from.

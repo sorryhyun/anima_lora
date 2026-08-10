@@ -223,6 +223,22 @@ would inherit exactly this caution via 27.1's frozen reading.
 
 `e27_rotlaw.json` (the record), `e27_loo.png` (per-fold LOO cosines:
 law vs SLERP vs copy + plane shares), `e27_phase.png` (anchor read).
+
+Post-verdict illustration (added 2026-08-10, committed digests only —
+no new quantities): **`e27_rhat_sphere.png`** (`e27_rhat_sphere_fig.py`)
+— R̂ = (B+C)̂ per σ bin as a point on the unit sphere, one panel per
+route, with **neighbor SLERP great-circle arcs** between adjacent bins:
+the figure draws exactly the settled model (27.3 measure-every-bin +
+neighbor interpolation) and nothing more — no plane anywhere;
+consecutive arcs bend (bend angle from the committed cosine triple via
+the spherical law of cosines, annotated; 0° = one great circle), the
+27.1 rolling plane made visible. Embedding honesty: the 896 chain
+{0.3…0.7} has all six committed pairwise cosines (exact top-3 embed,
+captured share annotated), 768 is an exact triangle; σ = 0.8333 rides
+its single committed cosine (dashed/hollow, drawing convention);
+768/σ = 0.4333 = the 25.0-1 hole, annotated not invented. Per-point:
+|R| = √(2·R_quad) and the held-out LOO SLERP |cos| (the certified
+interpolation quality at that bin).
 Expected cost: one chunked fp64 Gram over ~70 × 77.7M vectors —
 ~10 min CPU, ≤ ~30 GB resident, no GPU.
 
