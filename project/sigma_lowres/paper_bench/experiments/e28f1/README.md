@@ -118,6 +118,48 @@ replication record).
   store loss), the runs resubmit; the thresholds themselves are not
   renegotiable post-hoc.
 
+## F1-ii run record (2026-08-11) — gate 4 FAIL as frozen; diagnosed as C-leg estimator noise, read PAUSED pending amendment
+
+Both runs completed clean in **boot family B** (same boot as the e28
+pair — epoch 1786271541): stores
+`paper_bench/arm_sums/20260810-2301-e28f1-cond0433-768` and
+`…/20260811-0247-e28f1-native-twin-768` (manifest `cond_sigma`
+bit-exact at the frozen literal). Gates 1, 2a, 2b, 3 PASS
+(`e28f1_read.py`, asserts before any verdict table).
+
+- **Gate 4 FAIL as frozen**: pin bin s0.4333 — **B +0.9873 PASS**,
+  **C +0.9030 FAIL** (< 0.95), ĝ +0.9263 (reported). Per the frozen
+  precedence nothing verdict-bearing was read: F1-A/F1-B/F1-C
+  unread; `e28f1_read.json` not written.
+- **Diagnosis (committed + within-condition scalars only — no
+  verdict-table access)**: the failure is a mis-calibrated threshold
+  on the C leg, not an instrument break. (i) The C leg's within-run
+  set-pure reliability at this bin is **relC 0.537 (frozen) / 0.587
+  (twin)** — at D = 12 the C direction is a rel ≈ 0.55–0.6 estimate,
+  so the debiased cross-run C cosine carries ≈ ±0.1 estimator noise.
+  (ii) E28's own gate C at pin 0.7 sat at the same reliability (old
+  twin relC 0.585) and **passed only by overshooting**: +1.0872 —
+  |1 − 1.087| ≈ |1 − 0.903|; the two gate C values are symmetric
+  draws around ≈ 1.0. (iii) The leg the e28 gate was actually
+  calibrated tightly on — B, razor-thin 0.9502 there (relB 0.83–0.99)
+  — here passes comfortably at 0.9873; a broken flag (the gate's
+  target failure mode) would depress B too. (iv) The new twin's
+  pin-bin scalars reproduce the committed old-twin values essentially
+  exactly (relB 0.827 / relC 0.587 / ρ −0.836 — same boot family,
+  deterministic), so the native side is bit-stable. The 0.95
+  C-threshold was frozen from the single pin-0.7 precedent without a
+  variance analysis — a registration defect surfaced by the second
+  draw of the same estimator.
+- **Amendment required to proceed (user decision)** — options on the
+  table: (a) zero-GPU: gate 4 re-frozen as B-leg-primary (≥ 0.95,
+  already passed) with C and ĝ reported unthresholded, justified by
+  the committed reliability table; (b) +≈1 GPU-h: same-boot
+  single-bin native run at s0.4333 (the g2diag pattern relocated,
+  seed-independent draws) to measure the native↔native C band at this
+  bin directly, gate 4 then re-evaluated against that band; (c) stop.
+  The F1-B thresholds and branch table are untouched by any of these
+  — only the identity of gate 4's C criterion is at issue.
+
 ## Cost ladder (planned)
 
 | item | GPU | note |
