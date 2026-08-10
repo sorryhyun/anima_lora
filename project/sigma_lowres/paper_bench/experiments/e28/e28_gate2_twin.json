@@ -1,0 +1,51 @@
+{
+ "generated_by": "e28_gate2_twin.py",
+ "frozen_store": "project/sigma_lowres/bench/results/20260809-2216-e28-cond07-768/arm_sums",
+ "twin_store": "project/sigma_lowres/bench/results/20260810-0658-e28-native-twin-768/arm_sums",
+ "estimand": "cross-set debiased cosine, set-pure perp'd legs",
+ "gate_sigma": 0.7,
+ "gate_cos": 0.95,
+ "rows": [
+  {
+   "sigma": 0.3,
+   "cos_B": 0.02465,
+   "cos_C": 0.03405,
+   "ghat_cos": -0.02795,
+   "relB_frozen": 0.993,
+   "relB_twin": 0.8794
+  },
+  {
+   "sigma": 0.4333,
+   "cos_B": -0.0208,
+   "cos_C": -0.11432,
+   "ghat_cos": 0.34524,
+   "relB_frozen": 0.9897,
+   "relB_twin": 0.7142
+  },
+  {
+   "sigma": 0.5667,
+   "cos_B": 0.0443,
+   "cos_C": 0.02887,
+   "ghat_cos": 0.49245,
+   "relB_frozen": 0.9524,
+   "relB_twin": 0.811
+  },
+  {
+   "sigma": 0.7,
+   "cos_B": 0.9502,
+   "cos_C": 1.08721,
+   "ghat_cos": 0.96682,
+   "relB_frozen": 0.8834,
+   "relB_twin": 0.8365
+  },
+  {
+   "sigma": 0.8333,
+   "cos_B": 0.72503,
+   "cos_C": 0.67901,
+   "ghat_cos": 0.42046,
+   "relB_frozen": 0.8876,
+   "relB_twin": 0.8792
+  }
+ ],
+ "verdict": "PASS"
+}
