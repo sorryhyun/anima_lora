@@ -20,8 +20,38 @@ account keeps the paper's predictive lane (E20.1 PARTIAL), and no
 text may claim the account is *derived* from the geometry
 (E20.4 NEGATIVE). See §9 for the record.
 
+**Amended 2026-08-10** after the E28 gate-2 diagnosis (commits
+`2b935563`/`9d8bda69`; memory `project_crossboot_arm_store_break`): a
+same-protocol native rerun agrees with the committed e193/e194 stores
+at only **B 0.32 / C 0.41 / ĝ 0.47** across the 2026-08-09 reboot pair
+(fresh inductor autotune; adapter/models/caches/torch/driver all
+unchanged), vs 0.96–1.02 within one environment. Two consequences for
+this plan, no change to its structure:
+
+- **§2.4 / §3 scope**: the axis-field rung's "across stores (≈ 1
+  debiased)" claim gains an explicit **same-numerical-environment
+  qualifier** — e193/e194 shared a boot; the pooled directions carry a
+  large kernel-path-dependent component. Wording hook already in the
+  draft: the instrument sentence "finite-draw cosines are
+  compiler-kernel-path sensitive, so all pairings are computed within
+  one run" (`sec_experiments.tex` §4.1) extends to pooled cross-store
+  reads. The qualifier lands next to the 768/σ = 0.4333 reliability
+  hole (§8 honesty-guard list, same sentence family). E28's *content*
+  stays out of this revision (§8 guard unchanged) — this qualifier is
+  about our own committed readings.
+- **§5 E26 design**: any comparison of the new adapters against
+  *committed* sincos numbers is now a cross-environment read. Scalar
+  drift measured across the break: Δρ ≈ 0.03–0.05, ΔG ≈ 27 % (same
+  protocol). The E26 amendment must therefore make the comparison
+  **in-run**: include sincos re-reference cells at every compared
+  condition in the same session (the smoke already did this — its
+  ρ ordering was measured within one run and stands). REPLICATES
+  thresholds compare in-session columns only; committed e193 numbers
+  are context, never verdict denominators.
+
 **Status: PLAN — no tex edited yet.** Order of work in §7; nothing in
 §2–§6 is licensed to land in the tex before the §7 step that carries it.
+§7 step 2 (survey pass) DONE 2026-08-10 — placement note in §10.
 
 ---
 
@@ -368,3 +398,81 @@ the E19/E20 records, and `fig_accounts_canc.py`.
   concession is unnecessary); derivation claim REFUSED (E20.4);
   account-lane swap REFUSED (E20.1). The restructure itself needs no
   new GPU runs; E26 remains the only owed run.
+
+## 10. Placement note (§7 step 2 — survey pass, 2026-08-10)
+
+Anchors are file:line at commit `9d8bda69`. No tex edited.
+
+### sec_theory.tex
+
+- **§3.3 `sec:ouraccount` (161–234)**: the B/C decomposition
+  (Eq. `eq:branches`, 201–207) is already main-text — step 3's
+  "promoted from appendix" is partly discharged; what is missing is
+  the *measured* cancellation. Insertion: new paragraph after 217
+  ("…sets the rest to zero.") stating (a) both branches individually
+  large, (b) strong anti-alignment with ρ̄ = −0.91 cited under its
+  E14 + E19.0/19.3/19.6 license, (c) the |B⊥|/|C⊥| = 1 crossing as
+  the anticipated in-window signature (forward-ref to the
+  observations subsection).
+- **§3.4 assumption (ii) (284–290, item + footnote)**: DELETE as an
+  assumption. Keep the label slot — (ii) becomes the *measured
+  interference* entry (large, negative, in-window; carried as
+  measurement, not assumption) so the cross-reference
+  "assumption~(iv)" (sec_experiments 230) and the (i)/(iii)/(iv)
+  labels survive unrenumbered. "Under (i)–(iv)" (305) re-voices to
+  "under (i), (iii), (iv), with the interference as measured".
+- **Two-term reduction intro (305–336)**: re-voice as the effective
+  law of the cancellation residual (fitted amplitudes absorb the
+  cancellation — stated). The dip-anticipation sentence lands here.
+
+### sec_experiments.tex
+
+- **Observations section inserts between 187 (end of §4.2 map) and
+  189 (`\subsection{Both accounts, scored}`)**: order per §7 step 5 —
+  cancellation panels (E14, h-units) → local enforcement (E21) →
+  axis field (E24 → E25.0, with the matched-angle retirement
+  sentence) → closures (§2.5). Scope sentences per §3 rungs, with
+  the NEW same-environment qualifier (2026-08-10 amendment) attached
+  to the across-store sentence and the 768/σ = 0.4333 hole beside it.
+- **Instrument hook (121)**: "computed within one run" sentence
+  extends to pooled cross-store reads (same-environment qualifier).
+- **Dip sentence (174–176)**: "a dip the two-term reduction does not
+  predict (the vector-resolved probe traces it to negative
+  data–graph interference)" → flips to the crossing read (§7 step 6);
+  surrounding numbers untouched.
+- **Lane-parity paragraph (E20.1)**: lands at the end of §4.3 after
+  the governors paragraph (276–303), with both RMSEs and both losses.
+- "assumption~(iv)" (230–231) survives unedited under the
+  keep-labels decision above.
+
+### sec_discussion.tex
+
+- **"Account resolution and domain" (105–115)**: step 8 shrink — the
+  "reduction's domain excludes the 768 mid-σ window … still does not
+  predict" clause reduces to a pointer at §3's up-front statement.
+- **One-operating-point paragraph (87–98)**: E26 scope sentence +
+  frame-confound (model-vs-adapter open) land here after §7 step 7.
+- **"Instrument resolution and coverage" (122–142)**: add the
+  kernel-path/same-environment instrument sentence (one line, cites
+  the within-one-run discipline already stated in §4.1).
+- **Conclusion (144–170)**: step 9 hedge pass only; the two-term
+  voice stays additive-lane.
+
+### sec_intro.tex + main.tex
+
+- **Intro 43–47** ("We therefore decompose … into two terms"): step 4
+  — one added sentence presenting the decomposition as the effective
+  law of a measured near-cancellation; contribution 1 (52–74) gains
+  the geometry clause with the rung hedge.
+- **Abstract (main.tex 57–62)**: "carried by the compute graph
+  itself" → the cancellation-residual object with the §3 rung hedges
+  (step 4). Title, contributions structure, and the 14.6 % sentence
+  untouched.
+
+### Invalidated-sentence inventory (assumption-(ii) rewrite)
+
+1. sec_theory 284–290 — the (ii) item + footnote (replaced, see above).
+2. sec_theory 305 — "Under (i)–(iv)" (re-voiced).
+3. sec_experiments 174–176 — the dip concession (flips to crossing).
+4. sec_discussion 110–114 — the domain-exclusion clause (shrinks).
+No other sentence in the four body files asserts (ii) or leans on it.
