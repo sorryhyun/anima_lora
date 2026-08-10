@@ -43,7 +43,10 @@ those registrations exist.
 ## 1. Dependency spine
 
 Only item (a) touches paper 1. Everything else is paper-2/paper-3
-material in dependency order:
+material in dependency order. **Live remainder after E28-F1
+(2026-08-11)**: (a) is a tex edit only; (b)/(c) are resolved; (d) is
+E25a-per-bin + E25b freeze decisions (2-anchor dead); (e) is the E30.1
+expression gate (go required) → conditional E31.
 
 **(a) E26 grid verdict → scope sentence** (`revision_plan.md` §7 step
 7). **Verdict LANDED 2026-08-10: flat REPLICATES, dirty REPLICATES.**
@@ -137,10 +140,13 @@ candidate) + E25a's lookup collapses to once-per-base.
   family), whose gates today are tuned thresholds validated only at
   sample level. The exact B/C object does **not** port (no residual at
   inference); the seam analog is downstream-Jacobian pull-through of
-  the substituted-feature error. Inherited testable prediction from
+  the substituted-feature error. ~~Inherited testable prediction from
   (b): if blocks are intrinsic, forecast error spikes when the cache
   horizon crosses the block boundary ⇒ σ-gated cache horizons with a
-  measured gate. Cheapest probe: per-σ feature-drift profile along
+  measured gate.~~ **Dead with (b)'s resolution** (F1-B
+  MISMATCH-CARRIED — no intrinsic blocks, no boundary for a cache
+  horizon to cross). The cheapest probe stands on its own merits
+  without the inherited prediction: per-σ feature-drift profile along
   Anima sampling trajectories (block-output cos / Taylor residual vs
   step gap) — CPU-to-1-GPU-h class.
 - **B. Gradient-certified micro-conditioning.** If E25b lands, the
@@ -149,8 +155,9 @@ candidate) + E25a's lookup collapses to once-per-base.
   conditioning for mixed-resolution inference (the learnable
   counterpart of PMA's training-free phase fix), and a cache-age /
   step-gap embedding as the forecast-error absorber for A.
-- **C. 2-anchor lookup** (see 1(d)) — an efficiency consequence, only
-  if blocks are intrinsic.
+- ~~**C. 2-anchor lookup** (see 1(d)) — an efficiency consequence, only
+  if blocks are intrinsic.~~ **DEAD 2026-08-11** — F1-B landed
+  MISMATCH-CARRIED, the intrinsic branch it required does not exist.
 
 ## 3. arm_sums — durable-use plan (the environment wall, §0)
 
@@ -236,6 +243,11 @@ The plan, in tiers:
   reclamation lifecycle; per-run `bench/results/<run>/arm_sums` paths
   are now symlinks, `run_sigma_probe.py` writes there directly —
   `../paper_bench/arm_sums/README.md` is the store-root contract).
+- **e28f1 pair (2026-08-11)**: the two F1-ii stores
+  (`20260810-2301-e28f1-cond0433-768` + `20260811-0247-e28f1-native-twin-768`,
+  ~24 GB, boot family B) have their tables committed in
+  `e28f1_read.json` and are **eligible for reclamation** under the
+  standing policy — not yet reclaimed.
 
 ## 4. Not-doing list (so this file doesn't re-open closed doors)
 
