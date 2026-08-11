@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import shutil
 import sys
@@ -60,6 +61,7 @@ from project.sigma_lowres.bench.sigma_probe.kernel import (  # noqa: E402
     grad_estimate_binned,
     grouped_cosine,
     pi_rope,
+    resolve_res_cond,
     yarn_rope,
 )
 from project.sigma_lowres.bench.sigma_probe.stats import (  # noqa: E402
@@ -198,6 +200,11 @@ def main() -> None:
 
     bundle = build_probe_bundle(args, probe, extra_latents)
 
+    # E25b --res_cond: trained projection (frozen), or None. Resolved before
+    # the first forward — a control checkpoint hard-fails here, and the
+    # freeze must precede the flat-vector build either way.
+    res_cond_proj = resolve_res_cond(bundle.network, args.res_cond)
+
     base_acc = None
     if args.base_sketch:
         # E30.1: must attach before the first forward — requires_grad flips
@@ -332,19 +339,33 @@ def main() -> None:
             if base_acc is not None:
                 assert arm_key is not None
                 base_acc.begin_arm(arm_key)
-            return grad_estimate_binned(
-                bundle,
-                lat_,
-                crossattn,
-                sigmas,
-                seed_list,
-                rope_patch=rope_patch,
-                prefix_draws=cfg.sweep,
-                batch_draws=bd,
-                target_alpha=alpha,
-                cond_sigma=args.cond_sigma,
-                base_acc=base_acc,
-            )
+            if res_cond_proj is not None:
+                # s from the grid this arm ACTUALLY runs at (registration
+                # semantics): demoted grids → log2(edge ratio) via the area
+                # ratio (exact for the route grids), native/reenc/repromote
+                # grids → exactly 0.0.
+                s_arm = 0.5 * math.log2(
+                    (lat_.shape[-2] * lat_.shape[-1])
+                    / (native.shape[-2] * native.shape[-1])
+                )
+                bundle.anima._sigma_lowres_res_cond = (res_cond_proj, s_arm)
+            try:
+                return grad_estimate_binned(
+                    bundle,
+                    lat_,
+                    crossattn,
+                    sigmas,
+                    seed_list,
+                    rope_patch=rope_patch,
+                    prefix_draws=cfg.sweep,
+                    batch_draws=bd,
+                    target_alpha=alpha,
+                    cond_sigma=args.cond_sigma,
+                    base_acc=base_acc,
+                )
+            finally:
+                if res_cond_proj is not None:
+                    bundle.anima._sigma_lowres_res_cond = None
 
         row = {
             "artist": r.artist,
@@ -565,6 +586,9 @@ def main() -> None:
                 "n_images": len(rows),
                 "seed": args.seed,
                 "cond_sigma": args.cond_sigma,
+                # E25b: a res-cond store must never be mistaken for a plain
+                # one (same rationale as cond_sigma above).
+                "res_cond": bool(args.res_cond),
                 **(
                     {
                         "base_sketch": {

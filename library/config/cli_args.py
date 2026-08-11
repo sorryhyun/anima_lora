@@ -562,6 +562,18 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "the span train native; the σ draw itself is untouched.",
     )
     parser.add_argument(
+        "--sigma_lowres_res_cond",
+        action="store_true",
+        help="E25b explicit resolution conditioning: embed the step's known "
+        "grid scale s = log2(step_edge/native_edge) (0 on native steps, the "
+        "route's config value on demoted steps) via the model's sinusoidal "
+        "t-embedding function (dim 256) through a zero-init projection added "
+        "to the t-embedding output before the adaln trunk. Trains only the "
+        "projection (~0.5 MB) alongside the LoRA; zero-init ⇒ bit-exact to a "
+        "control arm at step 0. Requires --sigma_lowres. The checkpoint "
+        "carries the projection (not a ΔW — make merge refuses it).",
+    )
+    parser.add_argument(
         "--deterministic",
         action="store_true",
         help="Bit-exact reproducibility: deterministic flash-attn backward "

@@ -390,6 +390,13 @@ class LoRANetworkCfg:
     # must grow ~14–24× the median patch norm to become sinks, which a
     # LoRA-scale lr rarely reaches (proposal §metrics).
     register_lr_scale: float = 100.0
+    # E25b explicit resolution conditioning (--sigma_lowres_res_cond): one
+    # zero-init projection (t_emb_dim, 256) on the network under the dot-free
+    # key "sigma_lowres_res_cond_proj" (register_tokens precedent — LoRA
+    # key-sniffers and merge grouping skip it; merge.py refuses it as
+    # non-bakeable). Trained by ordinary backprop at unet_lr; the trainer
+    # attaches (proj, s) on the DiT per forward.
+    sigma_lowres_res_cond: bool = False
     register_init_std: float = 0.02
 
     verbose: bool = False
@@ -761,6 +768,12 @@ class LoRANetworkCfg:
         register_lr_scale = float(kwargs.get("register_lr_scale", 100.0))
         register_init_std = float(kwargs.get("register_init_std", 0.02))
 
+        # E25b explicit resolution conditioning (train.py injects this from
+        # --sigma_lowres_res_cond; string-bool via network_args also works).
+        sigma_lowres_res_cond = str(
+            kwargs.get("sigma_lowres_res_cond", "")
+        ).strip().lower() in ("true", "1", "yes")
+
         verbose = _as_bool(kwargs.get("verbose"))
 
         return cls(
@@ -827,6 +840,7 @@ class LoRANetworkCfg:
             register_insert_block=register_insert_block,
             register_lr_scale=register_lr_scale,
             register_init_std=register_init_std,
+            sigma_lowres_res_cond=sigma_lowres_res_cond,
             verbose=verbose,
         )
 
@@ -872,6 +886,9 @@ class LoRANetworkCfg:
         # insert block from the ``ss_register_insert_block`` metadata stamp.
         num_registers: int = 0,
         register_insert_block: int = 8,
+        # E25b res-cond: presence of the dot-free "sigma_lowres_res_cond_proj"
+        # key (factory sniff) — the param must exist before load_state_dict.
+        sigma_lowres_res_cond: bool = False,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -981,6 +998,7 @@ class LoRANetworkCfg:
             freq_router_tau=float(freq_router_tau),
             content_router_layer_norm=bool(content_router_layer_norm),
             step_expert_K=int(step_expert_K),
+            sigma_lowres_res_cond=bool(sigma_lowres_res_cond),
             num_registers=int(num_registers),
             register_insert_block=int(register_insert_block),
         )

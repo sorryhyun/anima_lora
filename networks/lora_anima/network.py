@@ -798,6 +798,17 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                 insert_block=cfg.register_insert_block,
                 get_scaled_tokens=lambda: self.register_tokens * self.multiplier,
             )
+
+        # E25b res-cond projection (--sigma_lowres_res_cond): zero-init
+        # (t_emb_dim, 256), dot-free key like register_tokens so every LoRA
+        # key-sniffer skips it. Zero init is the frozen identity invariant —
+        # the delta is exactly 0 until gradients move it. Not a ΔW: merge.py
+        # lists it non-bakeable. The trainer/probe attach (param, s) on the
+        # DiT per forward (models.py sigma_lowres_res_cond_delta consumer).
+        if getattr(cfg, "sigma_lowres_res_cond", False):
+            self.sigma_lowres_res_cond_proj = torch.nn.Parameter(
+                torch.zeros(int(unet.model_channels), 256)
+            )
             logger.info(
                 f"Register tokens: K={cfg.num_registers} learnable registers "
                 f"enter the self-attn seq at block {cfg.register_insert_block} "
@@ -1903,6 +1914,23 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                     f"({self.cfg.register_lr_scale:g}x of unet_lr={base_lr})"
                 )
 
+        # E25b res-cond projection: ordinary backprop at plain unet_lr (the
+        # registration's "like the timestep embedding it rides next to" — no
+        # scale knob by design; a scale would be a new amendment).
+        if getattr(self, "sigma_lowres_res_cond_proj", None) is not None:
+            base_lr = unet_lr if unet_lr is not None else default_lr
+            if base_lr is None or base_lr == 0:
+                logger.info("res-cond projection: no base LR, skipping param group")
+            else:
+                all_params.append(
+                    {"params": [self.sigma_lowres_res_cond_proj], "lr": float(base_lr)}
+                )
+                lr_descriptions.append("sigma_lowres res-cond projection")
+                logger.info(
+                    f"res-cond projection param group: lr={float(base_lr):.2e} "
+                    "(unet_lr, E25b)"
+                )
+
         # REPA v2 projection-head param group (absolute mode only). LR =
         # repa_lr_scale × unet_lr. Training-only — stripped by lora_save.
         if getattr(self, "repa_head", None) is not None:
@@ -1985,6 +2013,12 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
             metadata["ss_register_insert_block"] = str(
                 int(self.cfg.register_insert_block)
             )
+
+        # E25b res-cond: the projection's presence is recoverable from the
+        # dot-free key, but stamp the flag so provenance survives tools that
+        # read only metadata (and the loader can assert consistency).
+        if getattr(self, "sigma_lowres_res_cond_proj", None) is not None:
+            metadata["ss_sigma_lowres_res_cond"] = "true"
 
         # FEI router scalars the loader needs to size the router input (per-Linear
         # and global).

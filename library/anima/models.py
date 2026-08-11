@@ -870,6 +870,26 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
         return 0
 
 
+def sigma_lowres_res_cond_delta(
+    proj_w: torch.Tensor, s: float, timesteps_B_T: torch.Tensor
+) -> torch.Tensor:
+    """E25b explicit-resolution-conditioning delta on the t-embedding.
+
+    ``s = log2(step_edge / native_edge)`` (0 on native-grid forwards) goes
+    through the model's own sinusoidal embedding (``Timesteps``, dim =
+    ``proj_w.shape[1]``) and the zero-init projection ``proj_w``
+    ``(t_emb_dim, sinusoid_dim)``; returns ``(B, T, t_emb_dim)``. Zero-init
+    proj ⇒ exactly-zero delta (the E25b identity invariant, pinned in
+    tests/test_sigma_lowres.py)."""
+    s_B_T = torch.full(
+        timesteps_B_T.shape[:2],
+        float(s),
+        dtype=proj_w.dtype,
+        device=proj_w.device,
+    )
+    return Timesteps(proj_w.shape[1])(s_B_T) @ proj_w.t()
+
+
 class Timesteps(nn.Module):
     """Sinusoidal timestep features."""
 
@@ -2160,6 +2180,20 @@ class Anima(nn.Module):
         # applied per-block below via _mod_guidance_schedule so early tonal-DC blocks
         # and the final compensation layer can be skipped. Zero buffers ⇒ identity
         # when off. See docs/inference/mod-guidance.md.
+
+        # E25b res-cond: explicit resolution conditioning on the modulation
+        # trunk. (proj_weight, s) is attached per-forward by the trainer/probe
+        # (the _sigma_lowres_yarn idiom — try/finally scoped, absent ⇒ branch
+        # never taken; eager region, outside the compiled block graph). Like
+        # the pooled-text delta above, this modulates the trunk input only —
+        # adaln_lora_B_T_3D is computed inside t_embedder from the unmodified
+        # sinusoid.
+        res_cond = getattr(self, "_sigma_lowres_res_cond", None)
+        if res_cond is not None:
+            proj_w, s = res_cond
+            t_embedding_B_T_D = t_embedding_B_T_D + sigma_lowres_res_cond_delta(
+                proj_w, s, timesteps_B_T
+            ).to(t_embedding_B_T_D.dtype)
 
         block_kwargs = {
             "rope_cos_sin": rope_cos_sin,

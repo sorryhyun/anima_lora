@@ -11,6 +11,7 @@ Not supported (refuse by default; ``allow_partial=True`` to drop and proceed):
   - HydraLoRA moe     (layer-local router can't be baked under static weights)
   - postfix / prefix  (cross-attn KV splice, not a weight delta)
   - register tokens   (ride the self-attn sequence; kept-live inference only)
+  - res-cond proj     (E25b t-embedding conditioning input, not a ΔW)
 
 Same merge path as train.py's --base_weights warm-start. The CLI shell over
 this lives in ``scripts/toolkits/merge_to_dit.py``.
@@ -36,6 +37,7 @@ _NON_BAKEABLE_MARKERS: dict[str, str] = {
     "postfix_": "postfix (cross-attn KV splice)",
     "prefix_": "prefix (cross-attn KV splice)",
     "register_tokens": "register tokens (ride the self-attn sequence, not a weight delta)",
+    "sigma_lowres_res_cond_proj": "sigma_lowres res-cond projection (E25b conditioning input, not a weight delta)",
 }
 
 DTYPE_MAP: dict[str, torch.dtype] = {

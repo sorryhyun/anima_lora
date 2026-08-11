@@ -257,6 +257,28 @@ def yarn_rope(
         cache.clear()
 
 
+def resolve_res_cond(network, enabled: bool):
+    """E25b ``--res_cond``: the trained projection from the adapter, or None.
+
+    A control checkpoint (no ``sigma_lowres_res_cond_proj`` key) under
+    ``--res_cond`` is a setup error — hard fail, never a silent no-op.
+    Whenever the projection exists it is FROZEN here regardless of the flag:
+    the kernel's flat gradient vector is built from requires_grad params, so
+    a trainable projection would change the rescond store's vector layout vs
+    its control twin (the ledger's scalar comparison assumes one shared
+    LoRA-param space per twin pair)."""
+    proj = getattr(network, "sigma_lowres_res_cond_proj", None)
+    if proj is not None:
+        proj.requires_grad_(False)
+    if enabled and proj is None:
+        raise ValueError(
+            "--res_cond requires an adapter trained with "
+            "--sigma_lowres_res_cond; this checkpoint carries no "
+            "sigma_lowres_res_cond_proj key (control checkpoint?)"
+        )
+    return proj if enabled else None
+
+
 def build_probe_bundle(args, probe, extra_latents):
     """Load DiT + adapter and compile the block graph over exactly the token
     counts this run touches (native probe tiers + every demoted/derived grid).

@@ -612,6 +612,17 @@ def create_network_from_weights(
             "(registers cannot merge into DiT weights)."
         )
 
+    # E25b res-cond projection: dot-free key like register_tokens. The param
+    # must be constructed before load_state_dict(strict=False) — an unexpected
+    # key would be dropped SILENTLY otherwise (conditioning lost, no error).
+    sigma_lowres_res_cond = "sigma_lowres_res_cond_proj" in weights_sd
+    if sigma_lowres_res_cond:
+        logger.info(
+            "Detected sigma_lowres res-cond projection in checkpoint (E25b) — "
+            "conditioning applies only where the caller attaches (proj, s); "
+            "merge refuses this key (not a ΔW)."
+        )
+
     # σ-router names: a module has σ routing iff router.weight width > rank (the
     # excess is the σ feature slice). Empty when sigma_feature_dim_detected is None.
     sigma_router_names: List[str] = []
@@ -859,6 +870,7 @@ def create_network_from_weights(
         content_router_layer_norm=chimera_content_router_layer_norm,
         num_registers=num_registers,
         register_insert_block=register_insert_block,
+        sigma_lowres_res_cond=sigma_lowres_res_cond,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

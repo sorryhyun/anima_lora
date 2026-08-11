@@ -331,6 +331,18 @@ def parse_args(
         "native one.",
     )
     p.add_argument(
+        "--res_cond",
+        action="store_true",
+        help="E25b explicit-conditioning probe semantics: install the trained "
+        "res-cond projection from the --adapter checkpoint and apply, per "
+        "arm, the embedding of the grid that arm actually runs at (native / "
+        "redraw-floor / reenc / repromote grids -> s = 0, the demote arm at "
+        "edge e -> s = log2(e/native)). A control checkpoint (no res-cond "
+        "keys) with this flag is a setup error (hard fail, not a silent "
+        "no-op). The projection is always frozen under the probe so the flat "
+        "gradient-vector layout matches a control twin's.",
+    )
+    p.add_argument(
         "--base_sketch",
         action="store_true",
         help="E30.1 base-frame accumulation: requires_grad on every base-DiT "

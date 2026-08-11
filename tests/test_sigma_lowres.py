@@ -15,6 +15,7 @@ Pins the load-bearing contracts of the trainer wiring:
 from pathlib import Path
 from types import SimpleNamespace
 
+import math
 import random
 
 import numpy as np
@@ -904,3 +905,81 @@ class TestPerRouteWarnAndNpzMemo:
             ds._open_demote_npz(str(npz_path))
             assert ds._demote_npz_cache is not None
             assert pickle.loads(pickle.dumps(ds))._demote_npz_cache is None
+
+
+class TestResCond:
+    """E25b --sigma_lowres_res_cond Stage-0 invariants (frozen design,
+    e25b README): zero-init ⇒ exactly-zero t-embedding delta (the identity
+    invariant), non-degeneracy once trained (so the identity test can't
+    pass vacuously), the known-input route scalar, merge refusal (the
+    projection is not a ΔW), and the probe's control-checkpoint hard fail
+    + always-frozen contract (flat grad-vector layout parity with a
+    control twin)."""
+
+    _T = torch.zeros(2, 1)  # timesteps_B_T stand-in: batch 2, T=1
+
+    def test_zero_init_delta_is_exactly_zero(self):
+        from library.anima.models import sigma_lowres_res_cond_delta
+
+        proj = torch.zeros(64, 16)
+        for s in (0.0, math.log2(896 / 1024), math.log2(768 / 1024)):
+            delta = sigma_lowres_res_cond_delta(proj, s, self._T)
+            assert delta.shape == (2, 1, 64)
+            assert torch.equal(delta, torch.zeros_like(delta))
+        # bit-exact identity on the summation point itself
+        t_emb = torch.randn(2, 1, 64)
+        delta = sigma_lowres_res_cond_delta(proj, -0.415, self._T)
+        assert torch.equal(t_emb + delta, t_emb)
+
+    def test_trained_proj_is_not_degenerate(self):
+        """Companion guard (yarnsig test-suite convention): with a nonzero
+        projection the delta is nonzero — including at s = 0 (native steps
+        run the module too) — and the two shipped routes are distinguished."""
+        from library.anima.models import sigma_lowres_res_cond_delta
+
+        torch.manual_seed(0)
+        proj = torch.randn(64, 16)
+        d_native = sigma_lowres_res_cond_delta(proj, 0.0, self._T)
+        d_896 = sigma_lowres_res_cond_delta(proj, math.log2(896 / 1024), self._T)
+        d_768 = sigma_lowres_res_cond_delta(proj, math.log2(768 / 1024), self._T)
+        assert not torch.allclose(d_native, torch.zeros_like(d_native))
+        assert not torch.allclose(d_896, d_768)
+        assert not torch.allclose(d_native, d_896)
+
+    def test_route_scalar_is_the_config_fact(self):
+        from train import AnimaTrainer
+
+        args = _args(sigma_lowres_route="1024:896", sigma_lowres_route2="1024:768")
+        assert AnimaTrainer._res_cond_scalar(args, None) == 0.0
+        assert AnimaTrainer._res_cond_scalar(args, 1) == pytest.approx(
+            math.log2(896 / 1024)
+        )
+        assert AnimaTrainer._res_cond_scalar(args, 2) == pytest.approx(
+            math.log2(768 / 1024)
+        )
+
+    def test_merge_refuses_res_cond_proj(self):
+        from library.anima.merge import scan_non_bakeable_keys
+
+        found = scan_non_bakeable_keys(
+            {"sigma_lowres_res_cond_proj": torch.zeros(64, 16)}
+        )
+        assert any("res-cond" in kind for kind in found)
+
+    def test_probe_control_checkpoint_hard_fails(self):
+        from project.sigma_lowres.bench.sigma_probe.kernel import resolve_res_cond
+
+        control = SimpleNamespace()  # no sigma_lowres_res_cond_proj attribute
+        with pytest.raises(ValueError, match="control checkpoint"):
+            resolve_res_cond(control, enabled=True)
+
+    def test_probe_freezes_proj_regardless_of_flag(self):
+        from project.sigma_lowres.bench.sigma_probe.kernel import resolve_res_cond
+
+        for enabled in (False, True):
+            nw = SimpleNamespace(
+                sigma_lowres_res_cond_proj=torch.nn.Parameter(torch.zeros(64, 16))
+            )
+            out = resolve_res_cond(nw, enabled=enabled)
+            assert nw.sigma_lowres_res_cond_proj.requires_grad is False
+            assert (out is nw.sigma_lowres_res_cond_proj) if enabled else (out is None)

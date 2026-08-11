@@ -837,6 +837,20 @@ class AnimaTrainer:
         return random.Random(seed * 1_000_003 + step_idx).random() < frac
 
     @staticmethod
+    def _res_cond_scalar(args, choice):
+        """E25b conditioning input for a routed step: s = log2(demote/native)
+        of the route the step trains on — a config fact, never an estimated
+        quantity (the E20.4-adjacency contract). ``choice`` None ⇒ 0.0."""
+        if choice is None:
+            return 0.0
+        native, demote = (
+            AnimaTrainer._sigma_route2(args)
+            if choice == 2
+            else AnimaTrainer._sigma_route(args)
+        )
+        return math.log2(demote / native)
+
+    @staticmethod
     def _validate_sigma_rules(args):
         """Validate the whole sigma_lowres surface UP FRONT, at setup.
 
@@ -968,6 +982,10 @@ class AnimaTrainer:
         """
         args = ctx.args
         self._yarnsig_step = None
+        # E25b res-cond: the step's grid scalar, reset every call so a native
+        # (or val) forward always conditions on s = 0 — the module is a total
+        # function of the step, not a demoted-branch patch.
+        self._res_cond_s = 0.0
         if not is_train or not getattr(args, "sigma_lowres", False):
             return latents, None
         # Train-forward index for the step-span gate — counted on EVERY
@@ -1038,6 +1056,7 @@ class AnimaTrainer:
             native_hw = tuple(latents.shape[-2:])
             swapped = demoted2 if choice == 2 else demoted
             latents = swapped.to(device=latents.device, dtype=latents.dtype)
+            self._res_cond_s = self._res_cond_scalar(args, choice)
             # yarnsig belongs to the PRIMARY rule only — the deep route's
             # window read (win768) was measured on plain demotion.
             yarn = self._yarnsig_params(args) if choice == 1 else None
@@ -1459,6 +1478,22 @@ class AnimaTrainer:
         # later native/val/sample forward can never inherit them.
         if getattr(self, "_yarnsig_step", None) is not None:
             anima._sigma_lowres_yarn = self._yarnsig_step
+        # E25b res-cond: same idiom — (projection, s) for exactly this
+        # forward's span. Applied on EVERY train/val forward when the flag is
+        # on (native and val condition on s = 0), so the network places native
+        # as a point on the resolution axis rather than an unconditioned
+        # default.
+        if getattr(ctx.args, "sigma_lowres_res_cond", False):
+            nw = ctx.network
+            proj = getattr(nw, "sigma_lowres_res_cond_proj", None)
+            if proj is None and hasattr(nw, "module"):  # accelerate-wrapped
+                proj = getattr(nw.module, "sigma_lowres_res_cond_proj", None)
+            if proj is None:
+                raise RuntimeError(
+                    "--sigma_lowres_res_cond is set but the network carries no "
+                    "res-cond projection (warm-start from a control checkpoint?)"
+                )
+            anima._sigma_lowres_res_cond = (proj, getattr(self, "_res_cond_s", 0.0))
         try:
             with torch.set_grad_enabled(is_train), accelerator.autocast():
                 model_pred, cond = self._run_primary_forward(
@@ -1499,6 +1534,7 @@ class AnimaTrainer:
                 )
         finally:
             anima._sigma_lowres_yarn = None
+            anima._sigma_lowres_res_cond = None
         model_pred = model_pred.squeeze(2)  # 5D to 4D, [B, C, 1, H, W] -> [B, C, H, W]
 
         # Note: do NOT clear timestep mask here -- gradient checkpointing recomputes the forward
@@ -2147,6 +2183,16 @@ class AnimaTrainer:
         # sigma_lowres Phase 1b: activate the σ-demote sidecar on the TRAIN
         # datasets only — validation stays native so val loss is comparable
         # across the A/B arms the gate requires.
+        if getattr(args, "sigma_lowres_res_cond", False) and not getattr(
+            args, "sigma_lowres", False
+        ):
+            # Setup-time error (the sigma_lowres surface contract): the
+            # conditioning input is the σ-router's per-step route — without
+            # the router there is nothing to condition on.
+            raise ValueError(
+                "--sigma_lowres_res_cond requires --sigma_lowres (the "
+                "conditioning scalar is the router's per-step route)"
+            )
         if getattr(args, "sigma_lowres", False):
             # Whole-surface validation before anything is wired: bad routes,
             # an unwindowed rule 2, and malformed spans all raise HERE rather
@@ -2331,6 +2377,12 @@ class AnimaTrainer:
         # default below stays a factory-call detail, not part of the cached
         # ``args._network_kwargs`` view other consumers read.
         net_kwargs = dict(resolve_network_kwargs(args))
+
+        # E25b: --sigma_lowres_res_cond is a proper argparse flag (validated
+        # with the sigma_lowres surface at setup); tunnel it to the factory so
+        # the network constructs the zero-init projection.
+        if getattr(args, "sigma_lowres_res_cond", False):
+            net_kwargs["sigma_lowres_res_cond"] = "true"
 
         if args.dim_from_weights:
             network, _ = network_module.create_network_from_weights(
