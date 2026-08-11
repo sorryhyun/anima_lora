@@ -111,6 +111,89 @@ ledger always measured.
   app:geometry control arguments re-voiced as "graph leg vanishes
   identically"); the mean-factor reading lives only in app:branches,
   hedged as interpretation.
+- Sweep leftover found 2026-08-11 (post-amendment J-hedge audit):
+  related work's ANT/DeMe contrast still called our object "the
+  product-rule split of one gradient's change" — re-voiced to "the
+  data--graph split" (sec_intro §2, matches the operational legs).
+  Audit outcome otherwise: no stale J-hedges; remaining J mentions are
+  §3.3 motivation (g = Jᵀr), the §4.3 Jᵀ-born *finding*, the spectral
+  account's calibrated-gain sentence, and the deliberate appendix
+  interpretation/computability remarks. Repromote prior-art check: no
+  spectral-account precedent for the src/rp/dem gradient-level split
+  (SwD/SPD claims live at the data/distribution level); closest
+  relatives are blur-vs-decimate factorization (BlurPool) and
+  upsampled-LR corruption designs (relay/cascaded) — positioning
+  sentence NOT added (open option); wu2025phasealigned already cited
+  and is not a repromote precedent.
+- §3 J-notation consolidation (2026-08-11, user-directed): the
+  g = Jᵀr product + noise-mean/fluctuation split + r̄_a definition
+  moved out of §3.3 into a new §3.1 "Inside the mean" paragraph
+  (single display, flagged "interpretive — no claim computes through
+  it", pointing at app:branches); §3.3 now opens repromote-first,
+  motivating the rp arm by the SRCNN-family pre-upsampling precedent
+  (new bib entries dong2016srcnn, kim2016vdsr — the rp data state =
+  the pre-upsampled-LR input of that literature). Body voice is B/C
+  throughout; app:branches g_a-product ref repointed
+  §3.3 → §3.1. Verified: A.4 gap derivation (exact link → four-term →
+  excess → drop bounds) is J-free; A.4's only J is the "What is not
+  derived" σ_max(J̄) envelope paragraph (honesty guard for (iv),
+  kept). Compiles clean, no undefined refs.
+- fig:arms caption reduced to concept-only ("Decomposing demoted
+  training"): Eq.-5 ref, arm names/formulas, and the reenc-pricing
+  sentence dropped (arm labels remain in the image; reenc pricing +
+  re-referencing still stated in §3.1/§4.3); drawn-for-visibility
+  caveats and render-content note kept.
+- §3.3 ¶1–2 re-voiced problem-first (user-directed): ¶1 now states the
+  non-attributability of δg under demoted training (both changes
+  applied together) BEFORE introducing the SRCNN-precedent repromote
+  state as the splitter; post-Eq.-5 defensive prose slimmed — "exact
+  at every amplitude / noise-covariance couplings ride inside the
+  legs / fourth corner / no cross-grid matrix product" all moved to
+  appendix-only (app:branches unchanged, body keeps one exactness
+  sentence: "an identity rather than an expansion" + rp-path
+  uniqueness pointer, needed by §3.4's "legs being exact" reference).
+  fig:ledgergeom body ref dropped (still referenced twice in
+  appendix); "unlike any per-branch matrix product" clause trimmed.
+- Two supporting sentences added (user-directed, same pass): §3.1
+  "Inside the mean" now ends with the factor-coupling explanation
+  (J moves with the data, r moves with the graph — each factor
+  responds to both interventions; app:branches pointer), grounding
+  §3.3's non-attributability opening; §3.2 limits list closes with
+  the shared-root sentence — Eq. (7) models the data alone, so the
+  graph contribution to a measured gap is neither expressible nor
+  extractable by the spectral account (the attribution problem §3.3
+  solves). Consistent with the existing "keeps only the
+  input-mediated part of the data branch" read; no new claims.
+- Mean-factor reading of the cancellation added (user-directed): the
+  pre-amendment Jᵀr terms revived as *explanation of the
+  anti-alignment phenomenon*, NOT as claim structure — body §3.3 gets
+  a formula-free "why cancellation is natural" passage (factor
+  coupling ⇒ compensation inside the product only when data+graph
+  move together ⇒ waypoint mismatch response enters legs with
+  opposite sign; grid-co-moving part survives as floor), detail in a
+  new app:branches paragraph "The mean-factor reading of the
+  near-cancellation" (J̄ᵀΔr̄ / ΔJᵀ leading terms, matched-corner
+  product invariance ↔ tier-consistency of the base computation,
+  factor-level restatement of app:instrument's round-trip geometry,
+  consistency with the Jᵀ-born/uniform/phase-borne reads, explicit
+  interpretation-not-derivation limits: identification-only ΔJ,
+  mixed term not small, §4.3 closures bar estimand-level
+  re-derivation). "ΔJ nowhere in the body" invariant preserved (body
+  passage has no formulas). Honors No-"derived" + no-mechanism-bridge
+  guards (no conditioning-frame/E28 content).
+- §3.3 post-Eq.-5 two paragraphs compressed (user-directed): body now
+  reads conjecture-first — identity + factor coupling ⇒ the branches
+  can push in opposite directions and collide; the split's value is
+  making that observable — then one short measured paragraph
+  (qualitative near-cancellation + the ratio-through-1 collapse
+  signature). Moved out of body: ρ definition + ρ̄ = −0.91 + pooling
+  license summary (now §4.3-only — ρ inline-defined at its first
+  §4.3 use, keeping the citation-license guard satisfied), the
+  factor-coupling why-passage (app:branches has the full version),
+  "only realizable split" uniqueness (app:branches). Kept in body:
+  identity clause (needed by §3.4 "legs being exact"), Δr̄
+  definition (needed by (iv)), crossing signature (referenced by
+  §3.4 dip discussion + §4.3 "crossing geometry of §3.3").
 
 ## 2. Standing constraints on this tex (do not regress)
 

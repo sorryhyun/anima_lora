@@ -68,7 +68,7 @@ aggregate ($+0.001$).
 Fix a query (image, caption), a $\sigma$, and an arm $a$. Per draw
 $\epsilon$, the adapter gradient of the $\tfrac12$-scaled loss is the
 product $g_a(\epsilon) = J_a(\epsilon)^{\!\top} r_a(\epsilon)$ of
-\S\ref{sec:ouraccount}. The three arms of Eq.~\ref{eq:branches} ---
+\S\ref{sec:estimand}. The three arms of Eq.~\ref{eq:branches} ---
 $\src$ (native content, fine graph), $\rp$ (demoted content, fine
 graph), $\dem$ (demoted content, coarse graph) --- are values of one
 map on the data--graph lattice, and their adapter gradients all live
@@ -139,6 +139,47 @@ mean-factor forms as the legs' leading-order \emph{interpretation}
 and measures only the legs themselves, via the designated probes of
 \S\ref{sec:ourscored}; no cross-grid matrix product is ever
 computed.
+
+\paragraph{The mean-factor reading of the near-cancellation.}
+Read through Eq.~\ref{eq:appmean}, the measured anti-alignment of
+\S\ref{sec:observations} has a natural factor-level account. The two
+legs move the two factors separately: the data leg holds the graph
+fixed and shifts the residual factor (its leading term the fine
+pull-back $\bar J^{\!\top}\Delta\bar r$, plus the input dependence
+of the Jacobian at fixed grid), while the graph leg holds the data
+fixed and shifts the pull-back ($\Delta J^{\!\top}$ acting on the
+demoted-content residual). The factors are coupled through what they
+are evaluated at (\S\ref{sec:estimand}): the Jacobian moves with the
+data, the residual with the graph. Moved \emph{together} --- the
+substitution's own endpoints, native content on the fine graph and
+band-limited content on the grid whose Nyquist matches it --- the
+two factor changes compensate inside the product to the extent that
+the base computation is consistent across its resolution tiers,
+which is the property the demotion recipe banks on and whose
+gradient-level expression is the smallness of the measured excess.
+Moved \emph{separately} --- the waypoint, band-limited content on
+the fine graph --- no compensation is available: the fine graph
+responds to content that no longer fills it, and that mismatch
+response is created by the data leg and removed by the graph leg. To
+leading order the same vector therefore enters the two legs with
+opposite sign --- the factor-level restatement of the round-trip
+geometry of Appendix~\ref{app:instrument}
+(Fig.~\ref{fig:ledgergeom}) --- and what survives to the realized
+gap is the part of the pull-back change that co-moves with the grid
+rather than the content: the grid-anchored positional phase and
+token-count statistics collected by the floor. The measured reads of
+\S\ref{sec:observations} are consistent with this reading at every
+point where they can check it: the anti-alignment is a pull-back
+property (weak at the residual level, deep in gradient space), it is
+uniform wherever branch energy is, and aligning the rotary phases to
+native geometry removes part of the graph leg's ability to mirror
+the data leg (halved $\rho$, doubled $h(C)$). The reading remains an
+interpretation, not a derivation: the factor forms are cross-grid
+objects only under a fixed identification (the remark above), the
+mixed term $\Delta J^{\!\top}\Delta\bar r$ is not small at the
+measured amplitudes, and the closure results of
+\S\ref{sec:observations} bar re-deriving any ledger term at the
+estimand level.
 
 \subsection{The mean residual as a posterior operator}
 \label{app:posterior}

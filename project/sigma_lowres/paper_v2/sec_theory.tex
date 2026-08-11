@@ -71,6 +71,36 @@ and then the mean; the batch-aggregate object that SGD follows in
 batched training is a distinct estimand, treated in
 Appendix~\ref{app:notation}.
 
+\paragraph{Inside the mean.}
+Differentiating the loss gives the per-draw adapter gradient as the
+classical product $g = J^{\!\top} r$ of the prediction residual
+$r = \hat v_\theta - v$ and the network Jacobian
+$J = \partial \hat v_\theta / \partial \theta$; under the noise
+averaging that defines $\bar g_a$, splitting each factor into its
+noise mean and fluctuation ($r_a = \bar r_a + \tilde r_a$,
+$J_a = \bar J_a + \tilde J_a$) gives
+\begin{equation*}
+\bar g_a(\sigma)
+\;=\; \bar J_a^{\!\top}\,\bar r_a(\sigma)
+\;+\; \mathbb{E}_\epsilon\!\big[\tilde J_a^{\!\top}\,\tilde r_a\big],
+\qquad
+\bar r_a(\sigma) \;=\; \mathbb{E}_\epsilon\big[\hat v_\theta - v\big],
+\end{equation*}
+and the \emph{mean residual} $\bar r_a$ is a velocity-shaped field
+with a definite $\sigma$-curve for each arm. The factorization is
+interpretive --- no claim in this paper computes through it
+(Appendix~\ref{app:branches}) --- but it fixes the physical reading
+used throughout: demotion can reach $\bar g_a$ through exactly two
+channels, the data the objective consumes, through the residual, and
+the compute graph that turns a residual into an adapter gradient,
+through the Jacobian. The channels are not separable factor by
+factor: the Jacobian is evaluated at the noised input, so it moves
+when the data moves, and the residual is produced by the network, so
+it moves when the graph moves --- each factor responds to both
+interventions, and the couplings of their joint response do not
+separate by inspection (Appendix~\ref{app:branches} traces where
+each coupling lands).
+
 \subsection{The spectral account}
 \label{sec:spectral}
 
@@ -157,73 +187,48 @@ so the estimate is structurally blind to any absolute-size effect.
 \textbf{(c)~No bias term}: for every route and every $\delta$
 the predicted gap vanishes above a finite boundary, so no
 $\sigma$-independent contribution is expressible.
+The three limits share one root: Eq.~\ref{eq:spd} is a model of the
+data alone. The substitution's second intervention, the changed
+compute graph, appears nowhere in it, so whatever that change
+contributes to a measured demotion gap the account can neither
+express nor extract --- the attribution problem
+\S\ref{sec:ouraccount} constructs an arm to solve.
 
 \subsection{The gradient-perturbation account: what demotion perturbs}
 \label{sec:ouraccount}
 
-We start one level lower, from what the substitution touches
-in the gradient itself. Differentiating the loss of
-\S\ref{sec:estimand} gives, per draw and up to a constant,
-\begin{equation*}
-g \;=\; \nabla_\theta\, \tfrac12\big\|\hat v_\theta - v\big\|^2
-\;=\; J^{\!\top} r,
-\qquad
-r \;=\; \hat v_\theta - v,
-\qquad
-J \;=\; \partial \hat v_\theta / \partial \theta,
-\end{equation*}
-with $r$ the prediction residual and $J$ the Jacobian through which
-the compute graph turns a residual into an adapter gradient.
-Demotion perturbs both factors: the residual, through the data the
-objective consumes, and the Jacobian, through the compute graph. The
-estimand is built from noise means, so split each factor into its
-noise mean and fluctuation under the averaging that defines
-$\bar g_a$ in \S\ref{sec:estimand}, $r_a = \bar r_a + \tilde r_a$ and
-$J_a = \bar J_a + \tilde J_a$; the arm's mean gradient is then
-\begin{equation*}
-\bar g_a(\sigma)
-\;=\; \mathbb{E}_\epsilon\!\big[J_a^{\!\top} r_a\big]
-\;=\; \bar J_a^{\!\top}\,\bar r_a(\sigma)
-\;+\; \mathbb{E}_\epsilon\!\big[\tilde J_a^{\!\top}\,\tilde r_a\big],
-\qquad
-\bar r_a(\sigma) \;=\; \mathbb{E}_\epsilon\big[\hat v_\theta - v\big],
-\end{equation*}
-and the \emph{mean residual} $\bar r_a$ is a velocity-shaped field
-with a definite $\sigma$-curve for each arm.
-
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figs/arms_schematic.png}
-\caption{\textbf{The three arms of Eq.~\ref{eq:branches}.}
-\emph{src} runs the ordinary training step on the native latent
-$\mathcal{E}(y)$ (fine graph). The \emph{repromote} arm $\rp$ trains
-on the same image demoted and then carried back to the native
-resolution in pixel space,
-$\mathcal{E}(\mathrm{upscale}(\mathcal{R}_e(y)))$ --- demoted content
-on the native grid --- so $\src \to \rp$ changes only the data the
-objective consumes. \emph{dem} trains on the demoted latent
-$\mathcal{E}(\mathcal{R}_e(y))$ on its own coarse grid, so
-$\rp \to \dem$ changes only the compute graph. The two dashed steps
-compose exactly to demoted training itself (the solid arrow): $\rp$
-is the demotion path's hidden
-waypoint --- training never realizes it, but it is the one realizable
-intermediate that splits the path into its two interventions. The
-pipeline cost shared by the two demoted
-inputs is priced by the $\reenc$ control of \S\ref{sec:estimand},
-against which the measured data leg is re-referenced
-(\S\ref{sec:observations}). Content: the model's own render (prompt,
-Appendix~\ref{app:armsprompt}); for visibility the downscale is drawn
-at ratio $\tfrac13$ and the repromote upscale nearest-neighbor.}
+\caption{\textbf{Decomposing demoted training.} Demoted training
+replaces the native latent with one encoded from a downscaled image
+(solid arrow). The replacement makes two changes at once, and each is
+realizable alone (dashed): carrying the downscaled content back to
+the native resolution changes only the data the objective consumes,
+and moving that content onto its own coarse grid changes only the
+compute graph. The intermediate --- demoted content on the native
+grid --- is the path's hidden waypoint: training never realizes it,
+but it splits demotion into its two interventions. Content: the
+model's own render (prompt, Appendix~\ref{app:armsprompt}); for
+visibility the downscale is drawn at ratio $\tfrac13$ and the
+upscale nearest-neighbor.}
 \label{fig:arms}
 \end{figure}
 
-The two factors are perturbed by two physically distinct
-interventions --- the data the objective consumes, and the compute
-graph that pulls it back --- and the pair is realizable one
-intervention at a time: a \emph{repromote} arm $\rp$, the demoted
-input carried back to the native grid, applies the data intervention
-while holding the graph fixed (Fig.~\ref{fig:arms}). The branches are the two partial
-differences along this path,
+Demotion changes two things at once --- the data the objective
+consumes, and the compute graph that pulls it back
+(\S\ref{sec:estimand}) --- but demoted training never realizes them
+separately: every demoted step applies both changes together, so the
+measured perturbation $\delta g = \bar g_{\dem} - \bar g_{\src}$
+carries no attribution between them on its own. Splitting it
+requires an intermediate state that applies one change without the
+other, and the super-resolution literature has long trained on
+exactly that state: the pre-upsampling networks of the SRCNN family
+\citep{dong2016srcnn,kim2016vdsr} consume low-resolution content
+carried back to the full-resolution grid --- coarse content on the
+fine graph, the data change alone at fixed graph. Training on it is
+the \emph{repromote} arm $\rp$ (Fig.~\ref{fig:arms}), and it splits
+the perturbation into the two partial differences along the path,
 \begin{equation}
 \delta g \;=\; \bar g_{\dem} - \bar g_{\src}
 \;=\;
@@ -232,55 +237,41 @@ differences along this path,
 \underbrace{\big(\bar g_{\dem} - \bar g_{\rp}\big)}_{\text{graph branch }C_e},
 \label{eq:branches}
 \end{equation}
-a telescoping identity in the shared adapter-parameter space where
-all three gradients live: exact at every amplitude, with nothing
-discarded --- the terms a mean-factor product rule would collect as a
-remainder (the coupling of the two perturbations, and the cross-arm
-differences of the noise-covariance couplings
-$\mathbb{E}_\epsilon[\tilde J_a^{\!\top}\tilde r_a]$) ride
-\emph{inside} the legs, assigned to whichever intervention realizes
-them along the path (Appendix~\ref{app:branches}). The assignment is
-unique because the path is: the fourth corner of the data--graph
-lattice, native content on the coarse grid, does not exist
-(Fig.~\ref{fig:ledgergeom}), so no alternative split is realizable
---- and no cross-grid matrix product is ever computed: $J_{\src}$ and
-$J_{\dem}$ act on different grids, and only the legs themselves are
-measured. One mean-factor object does recur downstream: writing
-$\bar r_{\dem} = \bar r + \Delta\bar r(\sigma)$ (bare bars denote the
-source arm), the \emph{cross-grid mean-residual mismatch}
-$\Delta\bar r(\sigma)$ is the same data intervention the data branch
-reads in gradient space, read at the residual level --- and, unlike
-any per-branch matrix product, its norm is directly measurable
-(\S\ref{sec:ourscored}). Read
+Eq.~\ref{eq:branches} is an identity rather than an expansion ---
+all three mean gradients live in one shared adapter-parameter space
+--- and the factor coupling of \S\ref{sec:estimand} suggests what to
+expect of its terms: each leg moves one factor of a coupled product,
+so the branches need not be small or independent --- they can push
+the adapter in nearly opposite directions, leaving the measured gap
+the residual of their collision rather than a reading of either
+one's size. The split's value is that it makes this conjecture
+observable, both legs being measurable arm differences
+(Appendix~\ref{app:branches} for what each leg collects, and for the
+mean-factor reading of the collision). One residual-level object
+recurs downstream: writing
+$\bar r_{\dem} = \bar r + \Delta\bar r(\sigma)$ (bare bars denote
+the source arm), the \emph{cross-grid mean-residual mismatch}
+$\Delta\bar r(\sigma)$ is the data intervention read at the residual
+level, directly measurable in norm (\S\ref{sec:ourscored}); read
 against Eq.~\ref{eq:branches}, the spectral account of
 \S\ref{sec:spectral} keeps only the input-mediated part of the data
 branch, gated at Nyquist, and sets the rest to zero.
 
-Measured, the decomposition is not a large term plus a small
-correction. At every measured (route, $\sigma$) of the verdict
-campaign both branches are individually far larger than the realized
-gap, and their components orthogonal to $\bar g_{\src}$ are strongly
-anti-aligned: writing
-$\rho = \cos(B_e^{\perp}, C_e^{\perp})$, the vector-resolved probe of
-\S\ref{sec:observations} reads $\rho \in [-0.96, -0.63]$ at every
-non-degenerate (route, $\sigma$) cell, pooling to a single constant
-$\bar\rho = -0.91$ over the gated verdict bins --- a pooling
-\S\ref{sec:observations} licenses by measurement rather than
-assumption: the anti-alignment is route-uniform, uniform across depth
-and module type, and invariant to the adapter operating point. The
-measured gap curve is therefore the \emph{residual of a
-near-cancellation}: the data branch is what demotion does to the data
-the objective consumes, the graph branch is what the changed compute
-graph does in response, and the two slide against each other along
-nearly one line, so the estimand retains only what the cancellation
-misses. That anticipates structure the branch magnitudes alone cannot
-produce: wherever the amplitude ratio
-$|B_e^{\perp}|/|C_e^{\perp}|$ passes through $1$ while the
-anti-alignment stays deep, the residual collapses --- below either
-branch alone, and below the route's own floor. The mid-$\sigma$
-cliffs of the measured map sit at this ratio's passage through $1$,
-and the $768$ route's in-window dip where the ratio comes closest to
-balance (\S\ref{sec:map}, \S\ref{sec:observations}).
+Measured, this is what happens: at every (route, $\sigma$) of the
+verdict campaign both branches are individually far larger than the
+realized gap, with their orthogonal components deeply anti-aligned
+--- uniformly so across routes, depth, and module type
+(\S\ref{sec:observations} carries the numbers and the pooling
+license). The measured gap curve is therefore the \emph{residual of
+a near-cancellation}: what demotion does to the data the objective
+consumes, nearly undone by what the changed compute graph does in
+response. One structural signature follows and is worth carrying
+forward: wherever the two legs' amplitude ratio passes through $1$
+while the angle stays deep, the residual collapses below either
+branch alone --- below the route's own floor --- and the
+mid-$\sigma$ cliffs of the measured map, with the $768$ route's
+in-window dip, sit exactly there
+(\S\ref{sec:map}, \S\ref{sec:observations}).
 
 Two interventions follow immediately from the decomposition, rather
 than from experimental convention, and each isolates a branch. At
