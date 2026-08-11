@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PRE-REGISTERED 2026-08-10.** E30.0 (zero-GPU prior tier) may run immediately; **E30.1 spends GPU (≈ 4–5 h estimate) and requires an explicit go decision** — the accumulation instrument does not exist yet and no GPU is spent by this registration. Paper-2 material (`paper_v2/roadmap.md` — the line's forward doc; nothing here enters the paper-1 revision, per revision_plan §8). |
+| **Status** | **PRE-REGISTERED 2026-08-10; E30.1 RUN + READ 2026-08-11.** 30-A **EXPRESSES** (5/5 bins, gate-1-caveated), 30-B **INSUFFICIENT** (adaln share ~0.37–0.40 < 0.5; profile congruent) — see "30.1 result" below. Gate 1 failed as frozen (registration defect — unattainable at the sincos operating point; instrument-perturbation intent measured satisfied at max\|Δ\| = 0.00115 vs the twin). Actual cost 15.4 GPU-h vs the 4–5 h estimate (deviation recorded). Paper-2 material (`paper_v2/roadmap.md` — the line's forward doc; nothing here enters the paper-1 revision, per revision_plan §8). |
 | **Question** | E26's 26.0-2 left the base-carriage question open at the *direction* level: cross-adapter raw cosines (0.27–0.35) are indistinguishable from the frame baseline (native ĝ cross-adapter 0.37–0.39) because gradients w.r.t. different adapters' parameters live in non-overlapping frames. The frame-free instrument is **base-weight space**: ∂L/∂W_base is one shared frame for every adapter of this base. Before any cross-adapter verdict can be designed (future E31), two facts must be measured at the sincos operating point: **(L1) does the cancellation geometry (deep ρ, I < 0, h-ordering, reliable legs) express in the base frame at all**, and **(L2) does the adaln-relevant weight slice carry it** (the tractable slice a universal lookup would use). If L1 fails, the geometry is intrinsically adapter-frame-tied and the universal-lookup payoff chain dies — itself a citable limitation closure. |
 | **Licensed by** | E26 REPLICATES (the geometry exists on three adapters ⇒ the base-carriage question is well-posed); E29 NATIVE-SMOOTH (the native smooth field is the right comparison object — no hidden block confound); E21 (adaln carries 86–87 % of phase-response amplitude — the slice prior); E28 768-read PARTIAL + E29's mismatch-branch prior (conditioning pathway organizes the field). **Not gated on E28-F1**: the full-frame sketch hedges the slice choice, so this registration is robust to either F1 branch; the interpretation paragraph will cite F1 when it lands. |
 | **Explicitly NOT this** | No cross-adapter read (that is E31, which needs its own registration, same-boot-family design per T0, and this gate passed first). No lookup construction, no training lever, nothing per-sample (E22 → 22.4 → E23a), nothing objective-side (E20.4), no paper-1 content. E30.0 carries **no verdict weight** (see its tier note). |
@@ -186,5 +186,101 @@ classification of the base-frame R̂ profile.
 - Pooled directions at one operating point; per-sample and
   objective-side family exclusions unchanged.
 - Outputs (this dir): `e30_congruence.{py,json}` (30.0),
-  `e30_read.{py,json}` (30.1, after go), instrument diff in the flag
-  commit.
+  `e30_read.{py,json}` (30.1, landed 2026-08-11), instrument diff in
+  the flag commit.
+
+### 30.1 result (2026-08-11) — run, gates, verdicts
+
+Run `20260811-0821-e30-basesketch-768` (job 20260811-082111-7bde1a),
+40/40 stems; store at `paper_bench/arm_sums/20260811-0821-e30-basesketch-768/`
+with `base_sketch/` (four sketch families + exact adaln fp64
+Gram/norms + meta). Param-frame ledger via `vector_ledger.py
+--data_ref reenc` (ledger.json in the run dir); all reads in
+`e30_read.{py,json}` — every estimand Gram-based (the sketch's design
+property), via a coefficient engine over per-family 40×40 condition
+Grams.
+
+**Cost deviation recorded**: 15.4 GPU-h actual vs the 4–5 h estimate.
+22.5–24.0 min/stem, flat from stem 1, vs 5.9 min/stem on the
+un-instrumented E28 twin (~3.9×): the sketch scatter dominates the
+step (memory-bound hash + `scatter_add_` — 100 % SM at ~230 W of the
+300 W cap, no throttling). The 1-bin smoke certified VRAM and
+correctness but was not used to project wall time; **E31 must budget
+from the measured ~4× per-stem overhead**, not the registration
+estimate.
+
+**Gate 1 — FAILED AS FROZEN (1/5 bins); diagnostic intent measured
+satisfied; registration defect recorded.** Only σ = 0.8333 passes —
+the h-ordering leg fails elsewhere (param-frame h_B 0.030–0.198,
+small sincos legs). The frozen pass condition was, however, never
+attainable at this operating point: the un-instrumented sincos twin's
+own columns in `../e26/e26_grid_read.json` — published 2026-08-10,
+**before** this registration — show the identical 1/5 pattern (E26's
+REPLICATES verdicts were flat/dirty; the twin was reference-only and
+its criteria columns were never required to pass). A freeze error,
+checkable at freeze time, not checked. The gate's stated purpose
+("the geometry expresses normally in param frame despite the
+instrument") is instead measured directly: this run reproduces the
+twin's ledger to **max |Δ| = 0.00115** over all seven scalar columns
+× 5 bins — the instrument leaves the param-frame geometry untouched
+(the kernel-path caveat did not materialize at scalar level). Per the
+no-renegotiation rule the gate is recorded FAILED, not waived; the
+30-A/30-B verdicts below carry this caveat.
+
+**Gate 2 — PASS.** Pairwise sketched-vs-exact max |Δcos| = **0.00166**
+over all 140 within-bin condition pairs (tol 0.02; inside the
+expected 0.002–0.005 band). Streaming-path certification: CPU
+re-sketch of the exact arm store vs the in-run param family, min cos
+**1.000000** over all 40 conditions. Bonus calibration: sketch/exact
+adaln B-leg norm ratio 1.0000–1.0019 across bins (177.7 M-dim
+vectors).
+
+**Gate 3** — instrument diff review recorded at the 2026-08-11
+amendment above (one `end_bin` seam, off-path byte-identical, CPU
+invariant tests).
+
+**30-A — EXPRESSES (gate-1-caveated).** 5/5 bins readable, 5/5 pass
+(full-base sketch, bc_ledger machinery, data_ref reenc):
+
+| σ | S | F | I | ρ | rel_B | rel_C | h(B) | h(C) | h(B+C) |
+|---|---|---|---|---|---|---|---|---|---|
+| 0.3 | +1.271 | +1.368 | −2.470 | −0.936 | 0.947 | 0.804 | 0.412 | 0.645 | 0.278 |
+| 0.4333 | +0.237 | +0.259 | −0.457 | −0.923 | 0.850 | 0.541 | 0.184 | 0.340 | 0.169 |
+| 0.5667 | +0.130 | +0.165 | −0.270 | −0.918 | 0.890 | 0.696 | 0.116 | 0.204 | 0.077 |
+| 0.7 | +0.125 | +0.146 | −0.260 | −0.962 | 0.911 | 0.611 | 0.109 | 0.194 | 0.065 |
+| 0.8333 | +0.102 | +0.115 | −0.205 | −0.947 | 0.941 | 0.696 | 0.103 | 0.127 | 0.042 |
+
+**L1 answered: the cancellation geometry lives in the shared
+base-weight frame** — deeper there than in param frame at every bin
+(ρ −0.918…−0.962 vs −0.836…−0.921), and the h-ordering that fails on
+sincos in param frame holds at every base-frame bin: the base legs
+are not small (h_B 0.10–0.41), so the small-legs pathology is
+param-frame-specific — an artifact of what the LoRA projection
+discards, not of the geometry. Subject to the gate-1 caveat, **E31
+(cross-adapter verdict) is licensed for registration** per the frozen
+table.
+
+**30-B — INSUFFICIENT.** Median s_B = **0.367**, s_C = **0.405**
+(< 0.5 both legs; per-bin 0.36–0.42; the perp-sketch variant agrees,
+0.36–0.42). Profile congruence alone passes — slice-vs-full R̂ median
+|Δcos| 0.064 ≤ 0.1 (B̂ 0.021, Ĉ 0.017) — so the adaln slice
+**rotates with** the full field but carries only ~37–40 % of leg
+energy: E21's 86–87 % phase-response amplitude does **not** translate
+into gradient-energy share. Per the registration: an E31 uses the
+full sketch as its frame; the slice claim is dropped. Deviation
+recorded: exact FULL norms were not stored (the "streamed exact
+norms" cover the adaln slice only), so the share denominator is
+sketch-estimated (~0.3 % norm error at k = 2¹⁸ — three orders under
+the threshold margin); numerators are exact (adaln fp64 Gram).
+
+**30-C (descriptive, no verdict weight).** Base-frame ρ(σ) deeper
+than param-frame at every bin; the adaln and complement sub-frames
+both show the same deep-ρ structure (−0.914…−0.972) — the
+anti-correlation is not localized to either slice. Complement shares
+0.58–0.64 (the two slices' shares sum to ≈ 1 as they must).
+Base-vs-param R̂ profile median |Δcos| 0.127 (max 0.31);
+base-vs-committed-twin R̂ 0.126 (scalar comparison only — cross-boot
+caveat): the base-frame rotation profile is a relative of the
+param-frame one, not a copy. E29 classification of the base-frame R̂:
+**k\* = 1, single smooth family** (gap12 0.226 < τ = 0.30) —
+consistent with E29's NATIVE-SMOOTH read.
