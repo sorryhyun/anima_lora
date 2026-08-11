@@ -56,6 +56,62 @@ realizations, recorded:
   attribution sentences intact (896 route + one-sided gate named in
   abstract, intro contribution 2, and conclusion).
 
+### Post-freeze amendment (2026-08-11, later same day): Eq. (5) made operational-exact
+
+Trigger: the "small remainder" chain was indefensible as written —
+the branch-level R_e (ΔJᵀΔr̄ + covariance-coupling difference) is
+never separately measurable (the lattice's fourth corner does not
+exist), a scale estimate via the measured relative residual mismatch
+(0.89→0.36) puts the mixed term at ~half the C leg, and assumption
+(i)'s "designated probe" promise had no probe in §4. Resolution:
+define the branches operationally in the tex, matching what the E14
+ledger always measured.
+
+- `eq:branches` (5) rewritten as the telescoping identity
+  B = ḡ_rp − ḡ_src, C = ḡ_dem − ḡ_rp — exact at every amplitude, no
+  remainder; product-rule forms (J̄ᵀΔr̄, ΔJᵀr̄) demoted to the legs'
+  leading-order *interpretation*; second-order coupling + covariance
+  differences stated to ride inside the legs; fourth-corner
+  uniqueness argument added (`\rp` macro added to main.tex).
+- Assumption **(i)** re-purposed (label slot kept, so all
+  (i)/(iii)/(iv) cross-references survive): now "geometric remainder,
+  handled by domain" — R'_e carries only beyond-quadratic cosine
+  geometry, controlled by the existing h(·)/exact-link unit rule; the
+  untestable Cauchy–Schwarz footnote (ρ_e, never measured) removed.
+  List intro re-voiced: "one measured term, one domain rule, and two
+  assumptions". Reduction sentence now "Under (iii) and (iv), … and
+  magnitudes read under (i)'s rule".
+- `app:branches` re-derived (telescoping first, mean-factor expansion
+  second, computability remark re-scoped); `app:geometry` four-term
+  expansion now exact at the quadratic level (no R_e-bearing cross
+  terms); drop-bounds paragraph keeps |I| ≤ 2√(SΦ), replaces the ρ_e
+  bound with the domain statement tied to the recorded 3–4×
+  truncation underprediction.
+- §4.3 arm intro now cites the §3.3 repromote construction and the
+  reenc-vs-src referencing ~4% agreement; `app:notation` arm list and
+  the E14 ledger implementation paragraph tied to `eq:branches`.
+- Also resolves the ρ (anti-alignment) vs ρ_e (remainder share)
+  notation collision — ρ_e no longer exists.
+- New §3.3 figure `fig:arms` (`figs/arms_schematic.png`, assembly-only
+  script `../paper_bench/fig_arms_schematic.py`): the three arms as
+  one concrete image walking the lattice path — per-panel arm
+  constructions (𝓔(y) / 𝓔(upscale(𝓡_e(y))) / 𝓔(𝓡_e(y))), intervention
+  arrows, token-grid glyphs. Layout: src→dem straight dashed = the
+  demotion training actually does; rp hangs below it as the hidden
+  waypoint (visibly pixelated — nearest-neighbor upscale drawn).
+  Content is a crop of the model's own fig:kaaiyuki render (no new
+  IP); downscale drawn at ratio 1/3 for visibility; caption states
+  reenc pricing + re-referencing + the drawn-for-visibility caveats.
+- Follow-up trim (same day): the body's leading-order ≈ claims
+  (B_e ≈ J̄ᵀΔr̄, C_e ≈ ΔJᵀr̄) removed — with operational legs they
+  were a fresh attack surface (the mixed term is ~half the C leg by
+  the scale estimate above). §3.3 keeps only the physical
+  characterization + the Δr̄(σ) definition (needed by (iv) /
+  eq:twoterm); ΔJ now appears nowhere in the body (§3.4 and
+  app:geometry control arguments re-voiced as "graph leg vanishes
+  identically"); the mean-factor reading lives only in app:branches,
+  hedged as interpretation.
+
 ## 2. Standing constraints on this tex (do not regress)
 
 ### Scope rungs (keep distinct wherever a claim is introduced, and in the abstract's hedge)

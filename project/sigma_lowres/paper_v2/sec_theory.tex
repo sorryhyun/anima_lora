@@ -191,27 +191,67 @@ $J_a = \bar J_a + \tilde J_a$; the arm's mean gradient is then
 and the \emph{mean residual} $\bar r_a$ is a velocity-shaped field
 with a definite $\sigma$-curve for each arm.
 
-Writing the demoted
-arm's mean factors as source plus a perturbation,
-$\bar r_{\dem} = \bar r + \Delta\bar r(\sigma)$ and
-$\bar J_{\dem} = \bar J + \Delta J$ (bare bars denote the source arm),
-subtracting the display across arms and expanding the product
-(Appendix~\ref{app:branches}), the perturbation
-$\delta g = \bar g_{\dem} - \bar g_{\src}$ decomposes as
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/arms_schematic.png}
+\caption{\textbf{The three arms of Eq.~\ref{eq:branches}.}
+\emph{src} runs the ordinary training step on the native latent
+$\mathcal{E}(y)$ (fine graph). The \emph{repromote} arm $\rp$ trains
+on the same image demoted and then carried back to the native
+resolution in pixel space,
+$\mathcal{E}(\mathrm{upscale}(\mathcal{R}_e(y)))$ --- demoted content
+on the native grid --- so $\src \to \rp$ changes only the data the
+objective consumes. \emph{dem} trains on the demoted latent
+$\mathcal{E}(\mathcal{R}_e(y))$ on its own coarse grid, so
+$\rp \to \dem$ changes only the compute graph. The two dashed steps
+compose exactly to demoted training itself (the solid arrow): $\rp$
+is the demotion path's hidden
+waypoint --- training never realizes it, but it is the one realizable
+intermediate that splits the path into its two interventions. The
+pipeline cost shared by the two demoted
+inputs is priced by the $\reenc$ control of \S\ref{sec:estimand},
+against which the measured data leg is re-referenced
+(\S\ref{sec:observations}). Content: the model's own render (prompt,
+Appendix~\ref{app:armsprompt}); for visibility the downscale is drawn
+at ratio $\tfrac13$ and the repromote upscale nearest-neighbor.}
+\label{fig:arms}
+\end{figure}
+
+The two factors are perturbed by two physically distinct
+interventions --- the data the objective consumes, and the compute
+graph that pulls it back --- and the pair is realizable one
+intervention at a time: a \emph{repromote} arm $\rp$, the demoted
+input carried back to the native grid, applies the data intervention
+while holding the graph fixed (Fig.~\ref{fig:arms}). The branches are the two partial
+differences along this path,
 \begin{equation}
-\delta g \;=\;
-\underbrace{\bar J^{\!\top}\Delta \bar r(\sigma)}_{\text{data branch }B_e}
-\;+\; \underbrace{\Delta J^{\!\top}\, \bar r}_{\text{graph branch }C_e}
-\;+\; \underbrace{\Delta J^{\!\top}\Delta \bar r + \cdots}_{\text{remainder }R_e},
+\delta g \;=\; \bar g_{\dem} - \bar g_{\src}
+\;=\;
+\underbrace{\big(\bar g_{\rp} - \bar g_{\src}\big)}_{\text{data branch }B_e}
+\;+\;
+\underbrace{\big(\bar g_{\dem} - \bar g_{\rp}\big)}_{\text{graph branch }C_e},
 \label{eq:branches}
 \end{equation}
-where the ellipsis collects the cross-arm difference of the
-noise-covariance couplings
-$\mathbb{E}_\epsilon[\tilde J_a^{\!\top}\tilde r_a]$.
-$J_{\src}$ and $J_{\dem}$ act on different grids, so the branches are
-not literal matrix products across arms; they are defined
-\emph{operationally}, as the two independent perturbation directions in
-the shared adapter-parameter space where both gradients live. Read
+a telescoping identity in the shared adapter-parameter space where
+all three gradients live: exact at every amplitude, with nothing
+discarded --- the terms a mean-factor product rule would collect as a
+remainder (the coupling of the two perturbations, and the cross-arm
+differences of the noise-covariance couplings
+$\mathbb{E}_\epsilon[\tilde J_a^{\!\top}\tilde r_a]$) ride
+\emph{inside} the legs, assigned to whichever intervention realizes
+them along the path (Appendix~\ref{app:branches}). The assignment is
+unique because the path is: the fourth corner of the data--graph
+lattice, native content on the coarse grid, does not exist
+(Fig.~\ref{fig:ledgergeom}), so no alternative split is realizable
+--- and no cross-grid matrix product is ever computed: $J_{\src}$ and
+$J_{\dem}$ act on different grids, and only the legs themselves are
+measured. One mean-factor object does recur downstream: writing
+$\bar r_{\dem} = \bar r + \Delta\bar r(\sigma)$ (bare bars denote the
+source arm), the \emph{cross-grid mean-residual mismatch}
+$\Delta\bar r(\sigma)$ is the same data intervention the data branch
+reads in gradient space, read at the residual level --- and, unlike
+any per-branch matrix product, its norm is directly measurable
+(\S\ref{sec:ourscored}). Read
 against Eq.~\ref{eq:branches}, the spectral account of
 \S\ref{sec:spectral} keeps only the input-mediated part of the data
 branch, gated at Nyquist, and sets the rest to zero.
@@ -289,26 +329,31 @@ d_e(\sigma) \;\approx\;
 \;+\; R'_e,
 \label{eq:fourterm}
 \end{equation}
-with both shares non-negative, an interaction that can carry either
-sign, and a
-remainder $R'_e$; the derivations and the remainder's expanded form
-are discussed in Appendix~\ref{app:geometry}.
+with both shares non-negative and an interaction that can carry
+either sign. The legs being exact
+(Eq.~\ref{eq:branches}), the remainder $R'_e$ is \emph{purely
+geometric}: it contains only the cosine expansion's own
+beyond-quadratic terms, no branch-level content; the derivations and
+its expanded form are in Appendix~\ref{app:geometry}.
 
 \paragraph{From the expansion to a measurable form.}
 On the reported excess, Eq.~\ref{eq:fourterm} is exact but not yet an
 instrument: no term in it is separately measurable per bin. The
 excess itself does part of the work: the $\reenc$ arm changes no
-grid, so $\Delta J_{\reenc} = 0$, its expansion degenerates to
-$d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$, and subtracting it
+grid, so its graph leg vanishes identically, its expansion degenerates
+to $d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$, and subtracting it
 cancels only the re-encode component of the data share, passing the
 graph share and interaction through untouched. The rest is carried by
-one measured term and three assumptions, each assumption tested by a
-designated probe in \S\ref{sec:evidence}:
+one measured term, one domain rule, and two assumptions, each
+assumption tested by a designated probe in \S\ref{sec:evidence}:
 \begin{itemize}
-\item \textbf{(i)~Small remainder}: $R'_e$ negligible over the
-claimed domain.\footnote{Not unconstrained: the remainder obeys a
-Cauchy--Schwarz bound in the retained shares, entering at half power
-in its own share (Appendix~\ref{app:geometry}).}
+\item \textbf{(i)~Geometric remainder, handled by domain}: with the
+legs exact, $R'_e$ carries only the expansion's higher-order terms,
+which grow with perturbation amplitude. It enters as a reading rule
+rather than a smallness assumption: wherever the measured amplitudes
+leave the quadratic domain, magnitudes are read through the
+un-expanded exact link (Eq.~\ref{eq:exact}) --- the unit convention
+stated below, under which nothing is truncated.
 \item \textbf{(ii)~Interference as measured}: the projected
 interaction $I_e$ is \emph{not} assumed small --- it is the dominant
 structure, large and negative at every in-window condition (the
@@ -324,14 +369,15 @@ graph share is flat in $\sigma$: a per-route constant, the
 \item \textbf{(iv)~Data-branch factorization}:
 $\|B_e^{\perp}\| \approx a_e\,\|\Delta \bar r(\sigma)\|$, a
 $\sigma$-independent route amplitude times the \emph{norm} of the
-cross-grid mean-prediction-residual mismatch of Eq.~\ref{eq:branches},
+cross-grid mean-prediction-residual mismatch of \S\ref{sec:ouraccount},
 asserted to be route-independent and directly measurable as such
 (\S\ref{sec:ourscored}); the measured curve is an \emph{empirical}
 closure of the mean residual's exact posterior form
 (Appendix~\ref{app:posterior}), not an unconstrained fitted shape.
 \end{itemize}
-Under (i), (iii), and (iv), with the interference entering as
-measured, the expansion collapses to the \emph{two-term reduction},
+Under (iii) and (iv), with the interference entering as
+measured and magnitudes read under (i)'s rule, the expansion
+collapses to the \emph{two-term reduction},
 \begin{equation}
 \gap_e(\sigma)
 \;\approx\;

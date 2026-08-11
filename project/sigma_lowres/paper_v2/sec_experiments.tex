@@ -194,13 +194,15 @@ that \S\ref{sec:scored} scores).
 \label{sec:observations}
 
 Before either account is scored, we report what the branch
-decomposition of Eq.~\ref{eq:branches} measures when both branches
+decomposition of Eq.~\ref{eq:branches} measures when both legs
 are resolved as vectors. The instrument is the probe of
-\S\ref{sec:instrument} run with three additional arms: a
-\emph{repromote} arm (the demoted input carried back to the native
-grid, isolating the data intervention at fixed graph), giving
-$B = \bar g_{\mathrm{rp}} - \bar g_{\reenc}$ and
-$C = \bar g_{\dem} - \bar g_{\mathrm{rp}}$ per (route, $\sigma$-bin),
+\S\ref{sec:instrument} run with three additional arms, realizing the
+repromote construction of \S\ref{sec:ouraccount} directly:
+$B = \bar g_{\rp} - \bar g_{\reenc}$ (the data leg, re-referenced
+against the control so that the VAE round trip is netted out; the two
+referencings agree to ${\sim}4\%$ wherever the leg carries signal,
+Appendix~\ref{app:instrument}) and
+$C = \bar g_{\dem} - \bar g_{\rp}$ per (route, $\sigma$-bin),
 with second moments from cross-draw-set products only and per-leg
 reliability gates ($\mathrm{rel} \ge 0.5$); magnitudes are quoted in
 the $h(\cdot)$ units of \S\ref{sec:reduction}

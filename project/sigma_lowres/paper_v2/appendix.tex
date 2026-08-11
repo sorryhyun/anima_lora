@@ -8,8 +8,8 @@
 
 \paragraph{Arm labels versus route subscripts.}
 One notational convention holds throughout. Arm labels ($\src$,
-$\reenc$, $\dem$) mark \emph{whose} gradient, latent, or Jacobian an
-object is; the subscript on every route-level scalar is the
+$\reenc$, $\rp$, $\dem$) mark \emph{whose} gradient, latent, or
+Jacobian an object is; the subscript on every route-level scalar is the
 \emph{route}, written in full ($d_{e_0 \to e}$) where several sources
 appear, and abbreviated to the target edge alone wherever the source
 edge is fixed by context, as it is in almost every measured
@@ -68,9 +68,32 @@ aggregate ($+0.001$).
 Fix a query (image, caption), a $\sigma$, and an arm $a$. Per draw
 $\epsilon$, the adapter gradient of the $\tfrac12$-scaled loss is the
 product $g_a(\epsilon) = J_a(\epsilon)^{\!\top} r_a(\epsilon)$ of
-\S\ref{sec:ouraccount}. Split each factor into its noise mean and
-fluctuation, $J_a = \bar J_a + \tilde J_a$ and
-$r_a = \bar r_a + \tilde r_a$ with
+\S\ref{sec:ouraccount}. The three arms of Eq.~\ref{eq:branches} ---
+$\src$ (native content, fine graph), $\rp$ (demoted content, fine
+graph), $\dem$ (demoted content, coarse graph) --- are values of one
+map on the data--graph lattice, and their adapter gradients all live
+in the shared adapter-parameter space, so the differences are literal
+and the split
+\begin{equation}
+\delta g \;=\; \bar g_{\dem} - \bar g_{\src}
+\;=\;
+\underbrace{\big(\bar g_{\rp} - \bar g_{\src}\big)}_{\text{data
+branch }B_e}
+\;+\;
+\underbrace{\big(\bar g_{\dem} - \bar g_{\rp}\big)}_{\text{graph
+branch }C_e}
+\label{eq:appbranches}
+\end{equation}
+telescopes exactly: Eq.~\ref{eq:branches} is an identity at every
+amplitude, with no remainder and no linearization. The lattice's
+fourth corner, native content on the coarse graph, does not exist ---
+representing native content on a coarser grid \emph{is} demotion ---
+so the path through $\rp$ is the only realizable one and the split is
+unique (Fig.~\ref{fig:ledgergeom}).
+
+What each leg collects follows from the mean-factor expansion. Split
+each factor into its noise mean and fluctuation,
+$J_a = \bar J_a + \tilde J_a$ and $r_a = \bar r_a + \tilde r_a$ with
 $\mathbb{E}_\epsilon[\tilde J_a] = 0$ and
 $\mathbb{E}_\epsilon[\tilde r_a] = 0$; the population mean gradient of
 arm $a$ is then
@@ -80,45 +103,42 @@ arm $a$ is then
 \;+\; \mathbb{E}_\epsilon\!\big[\tilde J_a^{\!\top} \tilde r_a\big].
 \label{eq:appmean}
 \end{equation}
-Write the demoted arm's mean factors as native plus a perturbation,
-$\bar J_{\dem} = \bar J + \Delta J$ and $\bar r_{\dem} = \bar r + \Delta \bar r$
-(bars without an arm subscript denote the native arm). Subtracting
-Eq.~\ref{eq:appmean} across arms and expanding the product,
-\begin{equation}
-\delta g \;=\; \bar g_{\dem} - \bar g_{\src}
-\;=\;
-\underbrace{\bar J^{\!\top} \Delta\bar r}_{\text{data branch }B_e}
-\;+\;
-\underbrace{\Delta J^{\!\top}\, \bar r}_{\text{graph branch }C_e}
-\;+\;
-\underbrace{\Delta J^{\!\top} \Delta\bar r
-\;+\;
-\mathbb{E}_\epsilon\!\big[\tilde J_{\dem}^{\!\top}\tilde r_{\dem}\big]
-- \mathbb{E}_\epsilon\!\big[\tilde J_{\src}^{\!\top}
-\tilde r_{\src}\big]}_{\text{remainder }R_e}.
-\label{eq:appbranches}
-\end{equation}
-This is an exact identity: no linearization is involved.
-``First-order'' in the main text refers only to the content of $R_e$:
-it collects every term that is a product of two perturbations
-($\Delta J^{\!\top} \Delta\bar r$) or a difference of noise-covariance
-terms (the last two). Eq.~\ref{eq:branches} is
-Eq.~\ref{eq:appbranches} with the covariance difference abbreviated
-into its ellipsis.
+Applying Eq.~\ref{eq:appmean} to the two arms of each leg, with the
+demoted data's mean factors written as source plus a perturbation
+($\bar r_{\dem} = \bar r + \Delta\bar r$,
+$\bar J_{\dem} = \bar J + \Delta J$; bare bars denote the source
+arm): the data
+branch collects everything the data intervention does at fixed
+graph --- through the residual (its leading term is the pulled-back
+residual perturbation $\bar J^{\!\top}\Delta\bar r$), through
+the input-content dependence of the Jacobian at fixed grid, and
+through the shift of the noise-covariance coupling
+$\mathbb{E}_\epsilon[\tilde J_a^{\!\top}\tilde r_a]$. The graph
+branch collects everything the grid change does at fixed data: its
+leading term is the changed pull-back on the residual,
+$\Delta J^{\!\top}\bar r$, and because the graph difference is taken
+at the \emph{perturbed} data, the second-order coupling
+$\Delta J^{\!\top}\Delta\bar r$ rides inside it, along with the
+grid-driven covariance shift. Relative to a direct two-factor product
+rule between $\src$ and $\dem$, the terms that expansion would have
+collected as a remainder --- the second-order coupling and the
+covariance differences --- appear \emph{inside} the legs, assigned to
+whichever intervention realizes them along the path; nothing is
+discarded.
 
-One remark delimits the identity's literal scope: when the two arms
-share a grid (as for the re-encoding control), every operation above is
-literal. Across grids, $J_{\src}$ and $J_{\dem}$ act on different
-token counts, so the differences $\Delta J$ and $\Delta \bar r$ require
-a fixed identification of the two output spaces (e.g.\ spectral
-zero-padding of the coarse grid onto the fine grid's bands); any such
-identification changes the split between $B_e$, $C_e$, and $R_e$ but
-not their sum $\delta g$, which lives in the shared adapter-parameter
-space regardless. This is why the main text defines the branches
-\emph{operationally} (as the two independent perturbation directions
-in adapter-parameter space, isolated by the designated probes of
-\S\ref{sec:ourscored}) and treats Eq.~\ref{eq:branches} as fixing what
-each branch collects rather than as a computable matrix formula.
+One remark delimits what is and is not computable. When two arms
+share a grid (as for the re-encoding control, or the $\src$--$\rp$
+pair) every operation above is literal. Across grids, $J_{\src}$ and
+$J_{\dem}$ act on different token counts, so the mean-factor
+differences $\Delta J$ and $\Delta \bar r$ are matrix formulas only
+under a fixed identification of the two output spaces (e.g.\ spectral
+zero-padding of the coarse grid onto the fine grid's bands), and any
+such identification moves content between the nominal factors while
+leaving the legs untouched. This is why the paper treats the
+mean-factor forms as the legs' leading-order \emph{interpretation}
+and measures only the legs themselves, via the designated probes of
+\S\ref{sec:ourscored}; no cross-grid matrix product is ever
+computed.
 
 \subsection{The mean residual as a posterior operator}
 \label{app:posterior}
@@ -301,30 +321,29 @@ d_e \;=\; \frac{\|\delta g^{\perp}\|^2}{2 G^2}
 \end{equation}
 
 \paragraph{The four-term expansion.} Substituting
-$\delta g = B_e + C_e + R_e$ (Eq.~\ref{eq:appbranches}) into the leading
+$\delta g = B_e + C_e$ (Eq.~\ref{eq:appbranches}) into the leading
 term and expanding the square,
 \begin{equation*}
 \|\delta g^{\perp}\|^2
 = \|B_e^{\perp}\|^2 + \|C_e^{\perp}\|^2
-+ 2\,\langle B_e^{\perp},\, C_e^{\perp}\rangle
-+ \Big(2\,\langle (B_e{+}C_e)^{\perp},\, R_e^{\perp}\rangle
-+ \|R_e^{\perp}\|^2\Big),
++ 2\,\langle B_e^{\perp},\, C_e^{\perp}\rangle,
 \end{equation*}
-whose first three terms, divided by $2G^2$, are the data share $S_e$,
-the graph share $\Phi_e$, and the projected interaction $I_e$ of the
-four-term expansion, Eq.~\ref{eq:fourterm}. The remainder
-$R'_e$ has an exact expansion: the
-$R_e$-bearing terms above, the beyond-quadratic terms of
-Eq.~\ref{eq:appquad}, and the parallel-component correction, each
-suppressed by an extra power of perturbation size relative to the
-retained terms.
+exactly --- the legs telescope, so no cross term with a remainder
+branch arises. Divided by $2G^2$, the three terms are the data share
+$S_e$, the graph share $\Phi_e$, and the projected interaction $I_e$
+of the four-term expansion, Eq.~\ref{eq:fourterm}. The remainder
+$R'_e$ is therefore purely geometric, with an exact expansion: the
+beyond-quadratic terms of Eq.~\ref{eq:appquad} and the
+parallel-component correction, each suppressed by an extra power of
+perturbation size relative to the retained terms in the
+small-$\kappa$ domain.
 
 \paragraph{From the four-term form to the excess.} The reported object
 is the excess over the control. The $\reenc$ arm changes no grid, so
-$\Delta J_{\reenc} = 0$, and both control terms built from it vanish
-identically: its graph share $\Phi_{\reenc}$ and its projected
-interaction $I_{\reenc}$ each carry a factor
-$(\Delta J_{\reenc}^{\!\top}\bar r)^{\perp} = 0$. Writing
+its graph leg is identically zero, and both control terms built from
+it vanish: its graph share $\Phi_{\reenc}$ and its projected
+interaction $I_{\reenc}$ each carry a factor of the vanished
+leg. Writing
 Eq.~\ref{eq:fourterm} for each arm and subtracting term by term,
 \begin{align*}
 \gap_e(\sigma)
@@ -348,28 +367,35 @@ $\|\Delta\bar r\|$ is read net of re-encode; the graph share and the
 interaction pass through untouched, since the control has nothing to
 cancel them with.
 
-\paragraph{The drop bounds.} Both discarded terms obey exact bounds in
-the retained shares (Cauchy--Schwarz on the expansion above),
+\paragraph{The interaction bound, and the remainder's domain.} The
+retained interaction obeys an exact Cauchy--Schwarz bound in the
+retained shares, and the remainder is a pure power of the
+perturbation amplitude:
 \begin{equation}
 |I_e| \;\le\; 2\sqrt{S_e\,\Phi_e}\,,
 \qquad
-\big|R'_e\big| \;\le\; 2\sqrt{\big(S_e + \Phi_e + I_e\big)\,\rho_e}
-\;+\; \rho_e
-\;+\; O\big(\kappa_\perp^2\kappa_\parallel,\; \kappa_\perp^4\big),
+\big|R'_e\big| \;=\;
+O\big(\kappa_\perp^2\kappa_\parallel,\; \kappa_\perp^4\big).
 \label{eq:dropbounds}
 \end{equation}
-with $\rho_e = \|R_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$ the
-remainder branch's own share. The first says the interaction can never
+The first says the interaction can never
 exceed the retained sum ($2\sqrt{S_e\Phi_e} \le S_e + \Phi_e$) and
 would be automatically negligible wherever one share dominates the
 other; measured, the interference saturates this bound nearly
 everywhere (the near-cancellation of \S\ref{sec:observations}), which
 is why the main text carries it as entry (ii)'s measurement rather
-than an assumption. The second says the first-order part of the remainder
-enters at half power, one factor of $\sqrt{\rho_e}$ per retained
-share, so assumption (i) reduces to the branch-level statement that
-$R_e$ is small against $B_e$ and $C_e$, plus the small-$\kappa$
-domain for the tail. The
+than an assumption. The second restates that the remainder is pure
+expansion geometry: it carries no branch-level content to bound, and
+its size is governed by the perturbation amplitude alone. Entry (i)
+of \S\ref{sec:reduction} handles it by domain rather than by
+assumption --- at the measured in-window amplitudes
+($\kappa_\perp \approx 0.5$--$1.0$) the truncation is out of domain,
+which is exactly the regime where the unit rule of
+\S\ref{sec:reduction} forbids quadratic magnitude reads and routes
+every magnitude through the exact link, under which nothing is
+truncated (the recorded ${\sim}3$--$4\times$ underprediction of
+$h(B{+}C)$ by the truncated ledger, below, is this term made
+visible). The
 control counterpart $R'_{\reenc}$ needs no bound of its own: the
 control's degenerate expansion is itself the measured near-zero row of
 Table~\ref{tab:floor}, which pins $R'_{\reenc}$ jointly with
@@ -622,7 +648,8 @@ $1024{\to}\{896, 768, 512\}$, $\sigma \in [0.5, 1.0]$ in four bins plus
 the $\sigma{=}1$ endpoint bin, $D{=}8$ draws per bin, $N{=}24$ images,
 deterministic mode, two independent draw sets per arm. Each arm's
 draw-summed adapter gradient is stored per bin; the interventional split
-is $B = \bar g_{\mathrm{repromote}} - \bar g_{\src}$ (the data
+realizes the legs of Eq.~\ref{eq:branches}:
+$B = \bar g_{\mathrm{repromote}} - \bar g_{\src}$ (the data
 intervention at fixed native graph: the demote--re-promote arm's input
 passed through the downscale$\to$upscale$\to$encode pipeline but
 evaluated on the native grid) and
