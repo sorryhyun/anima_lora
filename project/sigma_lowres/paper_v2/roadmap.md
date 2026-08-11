@@ -4,8 +4,10 @@ Created 2026-08-10. Successor to the frozen `../record/roadmap.md`
 (record/ is provenance-only since 2026-08-01 and no longer maintained);
 this file is the line's live forward-looking doc and lives here because
 paper_v2/ is where the line actually works now. **Nothing in this file
-is licensed to enter the paper_v2 tex** — `revision_plan.md` §7/§8
-govern the revision; every runnable item below still needs its own
+is licensed to enter the paper_v2 tex** — `revision_plan.md`
+(condensed 2026-08-11 to its resolved state; its §2 standing
+constraints govern any future tex edit, verbatim plan at commit
+`c1534b00`); every runnable item below still needs its own
 pre-registration under `../paper_bench/experiments/` before GPU or
 verdict. This doc only orders candidates and records rationale *before*
 those registrations exist.
@@ -32,9 +34,10 @@ those registrations exist.
 - **Environment wall**: cross-boot vector reads dead at 0.32–0.47
   (`project_crossboot_arm_store_break`); within-boot 0.96–1.02; scalars
   drift only Δρ ≈ 0.03–0.05. §4 below is the durable-use answer.
-- Related-work additions (ANT / DeMe / PMA) are already planned into the
-  revision: `revision_plan.md` §10 last subsection; the deep-research
-  brief for the searcher is `question.md`.
+- Related-work additions (ANT / DeMe / PMA): **landed in the tex
+  2026-08-11** (new "Noise levels as tasks" paragraph + PMA delta
+  sentence, framing citations only per the no-mechanism guard); the
+  deep-research brief for the searcher is `question.md`.
 - **arm_sums reclamation executed 2026-08-10** — see §3 "Storage
   economics"; §1(c)'s inputs are now the committed
   `e26_grid_across_sigma.json` + `e28_read768.json` tables, not the
@@ -48,8 +51,9 @@ material in dependency order. **Live remainder after E28-F1
 E25a-per-bin + E25b freeze decisions (2-anchor dead); (e) is the E30.1
 expression gate (go required) → conditional E31.
 
-**(a) E26 grid verdict → scope sentence** (`revision_plan.md` §7 step
-7). **Verdict LANDED 2026-08-10: flat REPLICATES, dirty REPLICATES.**
+**(a) E26 grid verdict → scope sentence** (revision_plan §7 step 7
+of the frozen plan, commit `c1534b00`). **Verdict LANDED 2026-08-10:
+flat REPLICATES, dirty REPLICATES.**
 The stated prior (recorded here before any grid store was read:
 base-carriage ⇒ shape-similar per-bin scalar profiles, depth ordering
 with leg size; adapter-dependent σ-structure would count against it)
@@ -60,10 +64,12 @@ base-carried organization / adapter-borne amplitude, still
 descriptive (no mechanism run spent). The depth-scaling upgrade
 stays unclaimed: the identity-consistency column lands in the
 arithmetic branch at 9/10 adapter-bins (sole exception dirty
-σ = 0.7, recorded). What remains of (a) is a **tex edit only** —
-§7 step 7's scope sentence takes the REPLICATES wording (three
-adapters of this base at 768 across the window; same-base qualifier;
-896 an open cell) and waits on the tex steps before it.
+σ = 0.7, recorded). **(a) CLOSED 2026-08-11**: the scope sentence
+landed in the tex with the full reframe execution (steps 3–9 of the
+frozen plan all executed — see revision_plan §1 for the
+realization record; the E26 rows are `tab:e26` in the appendix, the
+one-operating-point limitation paragraph carries the REPLICATES
+wording with the same-base qualifier and the 896 open cell).
 
 **(b) E28-F1 — two-block objectification** — **RESOLVED 2026-08-11
 ([e28f1](../paper_bench/experiments/e28f1/)): F1-i TWO-BLOCK-FORMAL,
@@ -261,7 +267,7 @@ The plan, in tiers:
   mixed-scale attention).
 - No per-sample estimands (E22 → 22.4 → E23a gate unchanged).
 - No derived-account language (E20.4), no rotation-law language (E27),
-  no mechanism-bridge language in paper 1 (revision_plan §8 —
+  no mechanism-bridge language in paper 1 (revision_plan §2 guards —
   adjudicated).
 - Feature forecasting inside ordinary LoRA training: N/A (training
   steps have no trajectory adjacency); the only in-repo trajectory

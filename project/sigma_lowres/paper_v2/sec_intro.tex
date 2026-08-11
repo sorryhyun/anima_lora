@@ -41,8 +41,12 @@ substituting a downscaled, re-encoded latent for the native one at
 training time perturbs more than the network's input: the regression
 target carries the clean image at unit weight at every noise level,
 and the compute graph itself changes with the grid. We therefore
-decompose the gap between the downscaled and native gradients into
-two terms, a noise-dependent term set by the downscale \emph{ratio}
+decompose the perturbation at its source, into a data branch and a
+graph branch --- and, measured, the two branches are individually
+large and strongly anti-aligned, so that the gap between the
+downscaled and native gradients is the residual of a
+near-cancellation. On that residual we state an effective two-term
+law, a noise-dependent term set by the downscale \emph{ratio}
 and a $\sigma$-independent term set by the target grid's \emph{token
 count}, and measure each directly.
 
@@ -58,10 +62,15 @@ tolerance-parameterized form (SPD, \citealp{xiao2026spd}); it
 depends on the downscale \emph{ratio} alone by construction. The
 second, the \emph{gradient-perturbation} account, treats the
 substitution as a perturbation of
-both factors of $g = J^{\!\top}r$ and reduces, under mild,
-realistic assumptions, to a route amplitude on a universal mismatch
-curve \emph{plus} a $\sigma$-independent term set by the target
-grid's token count. The two differ structurally before
+both factors of $g = J^{\!\top}r$. Measured, the two perturbation
+branches nearly cancel --- strongly anti-aligned at every route and
+noise level, an anti-alignment that is uniform across depth and
+module type and invariant to the adapter operating point on the
+measured checkpoint, and that replicates on two further adapters of
+the same base model on the $768$ route --- and on the residual of
+that cancellation the account reduces to a route amplitude on a
+universal mismatch curve \emph{plus} a $\sigma$-independent term set
+by the target grid's token count. The two differ structurally before
 any measurement (\S\ref{sec:spectral}), and the resulting
 $(\text{route}, \sigma)$ map (\S\ref{sec:map}), read with each
 route's finite-sample bias estimated and subtracted and against a
@@ -135,4 +144,26 @@ exact positional interpolation as a \emph{causal intervention} that
 matches the downscaled grid's relative phase geometry to native, in
 order to decompose the resolution-sensitivity floor, and adopt the
 $\sigma$-gated band schedule of \citet{zhao2026sigma} as a
-training-time refinement.
+training-time refinement. On the inference side,
+\citet{wu2025phasealigned} measure a content-free rotary attention
+bias and show position-interpolated rescaling samples its sinusoidal
+phase filter at the wrong phases, ranking interpolation worst among
+extension schemes at the sample level; their setting is
+mixed-resolution attention within one forward pass, whereas our
+substitution is a whole-grid change at training time (no mixed-scale
+attention arises) and our attribution is at the training-gradient
+level.
+
+\paragraph{Noise levels as tasks.}
+A gradient-level literature treats the timesteps of diffusion
+training as tasks and measures their pairwise interference: task
+affinity, the cosine between per-timestep loss gradients, decays
+smoothly as the noise-level gap grows \citep{go2023ant} and turns
+negative between distant timesteps \citep{ma2025deme}, motivating
+interval clustering and decouple-then-merge training. Those studies
+compare full gradients \emph{across} noise levels; our object is
+different --- the product-rule split of one gradient's \emph{change}
+under input downscaling at a fixed noise level --- and the
+near-cancellation central here has no counterpart in that setting.
+We cite them as the precedent for smooth, $\sigma$-indexed
+gradient-direction structure in these models.

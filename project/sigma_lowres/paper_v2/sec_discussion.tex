@@ -96,6 +96,23 @@ under frozen membership manifests, probed on both) replicates the map's
 shape on both checkpoints with the adapter$\times$probe-style
 interaction below instrument resolution, while the absolute
 redraw-floor level is checkpoint-dependent (Appendix~\ref{app:e7}).
+The cancellation geometry of \S\ref{sec:observations} was
+additionally replicated on the same two controlled checkpoints under
+criteria frozen before the runs: at every bin of the $768$ window
+both adapters pass the frozen cancellation criteria (negative
+interference, $\rho \le -0.5$ --- measured $-0.89$ to $-0.98$ ---
+and a realized gap below either branch alone), so the
+cancellation-rung breadth is three adapters of this base model,
+trained on disjoint data along a designed style axis, at $768$
+across the window; $896$ replication remains the stated open cell.
+Whether the cancellation axis is a property of the base model or of
+the adapter stays open: gradients with respect to different
+adapters' parameters live in mostly non-overlapping frames, so a raw
+cross-adapter direction read cannot separate the two (it shows no
+evidence of a privileged shared axis above frame overlap, and none
+against structure below it). The axis-field claims of
+\S\ref{sec:observations} make no cross-adapter statement at all:
+their scope is one adapter, three vector stores, one probe corpus.
 
 \textbf{Gradient-level, not end-task.} The map is built from
 accumulated per-step gradients; integration over an optimizer
@@ -108,9 +125,11 @@ held-out protocol, its pre-registered gates, and the structural
 failures it exposes are quantified in Appendix~\ref{sec:headtohead});
 its
 $A(\mathrm{ratio})$ governor rests on two distinct ratio values; the
-reduction's domain excludes the $768$ mid-$\sigma$ window, whose
-mechanism the vector-resolved probe has measured (negative
-interference) but which the two-term reduction still does not predict; and
+reduction's domain excludes the $768$ mid-$\sigma$ window, the
+crossing neighborhood \S\ref{sec:reduction} states as the effective
+form's boundary up front (\S\ref{sec:observations} measures it; the
+cancellation-aware form prices it but is not adopted,
+\S\ref{sec:ourscored}); and
 the floor law's functional form is unidentified at our operating
 points. The graph-floor reading of the endpoint is
 also estimand-specific: the target-mediated perturbation is real at the
@@ -135,18 +154,38 @@ margins above ${\approx}\,0.05$, and the $\sigma{=}1$ endpoint
 carries a small real gap ($+0.034 \pm 0.011$); an upper-tail sweep at
 higher draw count is the designated probe to close the region, and
 until it lands the safe condition is $\sigma \in (0.5, 0.94]$. Verdict stability under the per-image trim rule of
-\S\ref{sec:instrument} has not been separately audited. The
+\S\ref{sec:instrument} has not been separately audited.
+Vector-resolved directions carry one further instrument bound:
+finite-draw directions are compiler-kernel-path sensitive, so every
+cross-arm and cross-store pairing in \S\ref{sec:observations} is
+computed within one run or between runs sharing one numerical
+environment (\S\ref{sec:instrument}); cross-environment vector
+comparability is not claimed. The
 debiasing campaign covered the corpus verdict grid; the $1280$-tier
 iso-severity, $896$-tier transfer, depth-split, and PI-intervention
 probes remain pre-debiasing reads, and the $1280$-tier curves enter the
 held-out validation on that basis.
 
+\textbf{Outlook.} The geometry of \S\ref{sec:observations} names,
+but does not test, a population-level lever family: the closures
+there dictate that any exploitation must be $\sigma$-local (a fixed
+subspace is refuted at lever level) and angle-targeted (the residual
+gap lives in the incomplete angle) --- for instance a per-$\sigma$-bin
+residual-direction guard restricted to the conditions where the
+pooled direction is reliable, or an explicit resolution conditioning
+of the pathway that carries the phase-response amplitude. These are
+licensed by the measurements and unrun; no lever result is claimed
+or implied, and nothing in this paper depends on them.
+
 \section{Conclusion}
 \label{sec:conclusion}
 
 When does training on downscaled images yield the same gradient
-direction? We answered by decomposing the demoted gradient's
-perturbation into a ratio-governed data term and a
+direction? We answered by resolving what demotion actually perturbs
+--- two individually large, strongly anti-aligned branches whose
+near-cancellation leaves the measured gap as its residual --- by
+stating the effective two-term account of that residual, a
+ratio-governed data term plus a
 $\sigma$-independent, token-count-governed graph floor, and by
 building the debiased estimator the question requires, since naive
 finite-draw estimation manufactures the very floor signature under

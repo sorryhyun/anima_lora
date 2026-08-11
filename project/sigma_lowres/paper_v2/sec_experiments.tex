@@ -119,7 +119,10 @@ $\gap_{e,i} = \dgap_{e,i} - \dgap_{\reenc,i}$, trimmed of non-finite
 and $|\gap_{e,i}| > 1.5$ values, which cancels the shared per-image
 draw structure and stays stable at mid-$\sigma$ where the unpaired
 estimator is not; finite-draw cosines are compiler-kernel-path
-sensitive, so all pairings are computed within one run. Every
+sensitive, so all pairings are computed within one run, and the same
+discipline governs the pooled cross-store vector reads of
+\S\ref{sec:observations}, which are licensed only between runs
+sharing one numerical environment. Every
 verdict-carrying number in the main text is debiased; the
 iso-severity, tier-transfer, and positional-interpolation probes of
 \S\ref{sec:scored} remain raw-estimator reads, flagged where cited
@@ -171,10 +174,11 @@ window at the strict margin, but $1024{\to}768$ retains a narrow
 low-excess window $\sigma \in (0.65, 0.95)$, with paired
 excess $+0.02$--$0.04$ per bin, safe at margin $0.09$
 simultaneously over its four window bins ($0.072$ pointwise). That
-excess sits \emph{below} the route's own floor, a dip the two-term
-reduction does not predict (the vector-resolved probe traces it to
-negative data--graph interference; \S\ref{sec:limitations}); it is
-the window \S\ref{sec:trainer}
+excess sits \emph{below} the route's own floor --- the anticipated
+signature of the near-cancellation (\S\ref{sec:ouraccount}): the
+window is where the route's branch amplitude ratio comes closest to
+balance while the anti-alignment stays deep
+(\S\ref{sec:observations}); it is the window \S\ref{sec:trainer}
 stacks as a second route. Any route to $512$ (floor ${\approx}\,0.30$)
 is \emph{unsafe} in all fifteen bins, the lower bound clearing the
 margin in every one. Debiasing itself moved
@@ -185,6 +189,187 @@ $896$ endpoint shows a small \emph{real} gap that single-estimate
 variance had buried ($+0.034 \pm 0.011$ in the verdict grid's
 endpoint bin; $+0.019$ $[+0.010, +0.030]$ in the draw-limit sweep
 that \S\ref{sec:scored} scores).
+
+\subsection{The measured geometry of the perturbation}
+\label{sec:observations}
+
+Before either account is scored, we report what the branch
+decomposition of Eq.~\ref{eq:branches} measures when both branches
+are resolved as vectors. The instrument is the probe of
+\S\ref{sec:instrument} run with three additional arms: a
+\emph{repromote} arm (the demoted input carried back to the native
+grid, isolating the data intervention at fixed graph), giving
+$B = \bar g_{\mathrm{rp}} - \bar g_{\reenc}$ and
+$C = \bar g_{\dem} - \bar g_{\mathrm{rp}}$ per (route, $\sigma$-bin),
+with second moments from cross-draw-set products only and per-leg
+reliability gates ($\mathrm{rel} \ge 0.5$); magnitudes are quoted in
+the $h(\cdot)$ units of \S\ref{sec:reduction}
+(Appendix~\ref{app:instrument} details the arm constructions).
+Breadth, stated up front for each claim family: the cancellation
+facts below are measured at every (route, $\sigma$) of the operating
+adapter's verdict grid and replicate, under criteria frozen before
+the runs, on two further LoRA adapters of the same base model ---
+trained on disjoint data along a designed style axis --- at every bin
+of the $768$ window (\S\ref{sec:limitations} states this scope in
+full; $896$ replication remains an open cell). The axis-field facts
+are narrower: one adapter, three vector stores, the standard probe
+corpus.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/canc_panel.png}
+\caption{\textbf{The gap is the residual of a near-cancellation.}
+Per route, the exact counterfactual angles $h(B)$ (data branch
+alone), $h(C)$ (graph branch alone), and the realized $h(B{+}C)$
+(\;= the measured demotion distance by construction), by $\sigma$
+(reenc-referenced vector probe, $N{=}40$, $D{=}12$; gate-failing
+bins hollow, $\sigma{=}1$ endpoint detached). The realized curve
+sits far below both branches at every measured condition; the lower
+strips give the debiased branch anti-alignment
+$\rho = \cos(B^{\perp}, C^{\perp})$ per bin, with the pooled
+$\bar\rho = -0.91$ dashed.}
+\label{fig:canc}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/axis_field.png}
+\caption{\textbf{The residual is a $\sigma$-indexed axis field.}
+Debiased pairwise cosines between pooled directions across
+conditions, by family: across routes at fixed $\sigma$, across two
+independent runs at $\sigma = 0.7$ (one shared numerical
+environment; \S\ref{sec:instrument}), and across $\sigma$ within one
+route, plotted against $\sigma$ separation. One direction per
+$\sigma$, shared across routes and runs, rotating smoothly with
+$\sigma$; the recorded reliability hole at $768/\sigma = 0.43$ is
+marked.}
+\label{fig:axisfield}
+\end{figure}
+
+\paragraph{The near-cancellation.}
+Fig.~\ref{fig:canc} shows $h(B)$, $h(C)$, and the realized
+$h(B{+}C)$ per $\sigma$ on each route. At every measured
+(route, $\sigma$) both branches are individually far larger than the
+realized gap --- on the $896$ route the data branch alone would
+realize $104$--$112\%$ of the measured plateau --- and the realized
+curve sits far below both: the cancellation removes
+${\sim}70$--$77\%$ of the summed branch cost on the safe routes
+($1 - h(B{+}C)/(h(B){+}h(C))$ averaged over reliable bins:
+$0.77/0.73/0.63$ for $896/768/512$), and at the $768$ window center
+the realized gap is ${\sim}25$--$30\%$ of the graph branch's own
+angular cost. The anti-alignment behind it is deep everywhere,
+$\rho \in [-0.96, -0.63]$, pooling to $\bar\rho = -0.91$ over the
+gated verdict bins. The crossing geometry of
+\S\ref{sec:ouraccount} reads directly off the amplitude columns: on
+$896$, $|B^{\perp}|/|C^{\perp}|$ passes through $1$ within one bin of
+the measured mid-$\sigma$ cliff ($\sigma \approx 0.43$--$0.57$); on
+$768$ the fine grid shows no in-window crossing --- the ratio rides
+at $0.76$--$0.88$ through the window, closest to balance exactly
+where the dip sits --- so the $768$ window is the crossing geometry
+approached from below rather than crossed. The unsafe route completes
+the picture: $512$ keeps the same deep angle
+($\mathrm{mean}\,|\rho| \approx 0.86$) while its amplitude ratio
+never reaches balance --- what fails on an unsafe route is magnitude
+matching, not the cancellation itself.
+
+\paragraph{Where the anti-alignment lives.}
+Four targeted reads locate it. \emph{It is born in the pull-back
+through $J^{\!\top}$}: the same decomposition applied at the residual
+level reads only $\rho_r = -0.12$ to $-0.22$ over the verdict bins,
+against $-0.83$ to $-0.96$ in gradient space; a Gaussian spectral
+closure derives that weak residual-level seed in sign, shape, and
+route ordering (missing its level ${\sim}1.5$--$2\times$), so the
+depth of the anti-alignment is a property of the compute graph's
+pull-back, not of the data statistics alone. \emph{It is
+depth- and type-uniform}: resolved over the network's
+$28$~blocks and $15$~module types, every gated cell reads deep
+(block-level $\rho_\ell$ median ${\approx}\,{-}0.93$; all module
+types $-0.8$ to $-0.97$ where gated, cross-attention and MLP
+included), with interaction magnitude proportional to branch energy
+at every depth --- no excess interaction anywhere, including the
+query/key rows rotary touches directly. \emph{It is locally
+enforced}: read per (depth $\times$ module-type) cell, the gated-cell
+median $\rho_{\mathrm{cell}}$ is $-0.90$ to $-0.96$ with
+interquartile range at most $0.11$ at every verdict $\sigma$ on both
+routes --- the pooled constant is not carried by a few cross-cell
+modes but holds pointwise in parameter space. \emph{And at
+noise-dominated bins it is partially phase-borne}: re-running the
+demoted graph with its rotary phases interpolated to match native
+geometry rotates the graph branch
+($\cos(C^{\perp}, C_{\pi}^{\perp}) = 0.50$--$0.67$ on $768$),
+halves the anti-alignment ($\rho \to -0.34$ to $-0.60$), and
+\emph{doubles} $h(C)$ --- with phases aligned the graph branch stops
+magnitude-matching the data branch, so the phase geometry is part of
+what lets the branches cancel. The amplitude of this phase response
+concentrates in the adaptive-norm band ($86$--$87\%$), while the
+direction rotation is carried globally. Finally, the whole structure
+is \emph{operating-point invariant}: re-running the residual-level
+probe bit-matched with the adapter merged moves neither branch
+(per-image raw $\cos \ge 0.93$ at every gated bin), extending the
+checkpoint-controlled replication of Appendix~\ref{app:e7} to the
+branch level. Together these reads license quoting $\bar\rho$ as one
+constant.
+
+\paragraph{The residual is a $\sigma$-indexed axis field.}
+The near-cancellation leaves a residual direction
+$\widehat{R} = \widehat{(B{+}C)}$ per (route, $\sigma$), and its legs
+$\widehat{B}$, $\widehat{C}$ likewise; comparing them across
+conditions (debiased cosines, Fig.~\ref{fig:axisfield}) shows the
+residual is not condition-noise. At fixed $\sigma$ the direction is
+shared: across routes, median $|\cos| = 0.97$ for the legs and
+$0.95$ for $\widehat{R}$ --- $896$ and $768$ demotion push the
+adapter along the same line --- and across two independent runs the
+debiased cosine is ${\approx}\,1$. The across-run read carries a
+scope qualifier: finite-draw directions are compiler-kernel-path
+sensitive (\S\ref{sec:instrument}), and the two stores compared
+share one numerical environment; cross-environment vector
+comparability is not claimed. Across $\sigma$ the axis rotates
+smoothly --- adjacent bins $0.89$--$0.97$, decaying monotonically
+with $\sigma$ separation to $0.44$--$0.60$ over the widest span,
+with no sign flips; a spherical-interpolation check predicts held-out
+mid-span directions at median $|\cos| = 0.96$, confirming smoothness
+as a description (a parametric rotation law was tested and is
+\emph{not} claimed: the best candidate performed worse than
+interpolation). Two honest boundaries. First, the rotation is
+matched-angle, not planar: the axis rotates through approximately the
+same angle as the native gradient direction $\hat g(\sigma)$ itself,
+but in its own plane --- transporting a bin's direction by the
+anchor's measured rotation buys nothing (median gain $-0.0005$) ---
+so the natural reading that the residual simply co-rotates with the
+$\sigma$-conditioned native gradient is retired. Second,
+reliability: the pooled residual direction passes its
+reproducibility gate at $11$ of $12$ verdict conditions; the
+exception is $768/\sigma = 0.43$, and mid-window $768$ is generally
+where the direction is least reproducible --- the axis-field claims
+carry this hole explicitly (supporting panels in
+Appendix~\ref{app:geometrypanels}). A decomposition of the residual gap into
+its two knobs says which one matters: setting $\rho \to -1$ at
+measured amplitudes would remove $70$--$100\%$ of the residual at
+every gated condition, while matching amplitudes at the measured
+angle removes at most $45\%$ --- the residual gap lives in the
+incomplete angle, not in amplitude mismatch.
+
+\paragraph{Closures.}
+Four adjacent doors are closed by measurement, and we report them as
+results. (1)~\emph{The account's data term is not derivable from the
+geometry at the estimand level}: replacing the measured mismatch
+curve $x(\sigma)$ with the ledger's own (measured \emph{or}
+closure-predicted) branch-amplitude curve fails the held-out lanes at
+$4$--$6\times$ the measured lane's RMSE --- and measured and derived
+amplitudes fail \emph{equally}, so the failure is an estimand
+mismatch between the branch legs and the account's $x(\sigma)$, not
+a modeling miss. The same read closes re-deriving any ledger term as
+an objective correction. (2)~\emph{Damping-form levers are dead at
+probe level}: an exact one-step counterfactual sweep of
+adaptive-norm-band damping on the committed stores finds the optimal
+damping $\approx$ identity almost everywhere; the entire sweep buys
+$\le 0.006$ of gap closure at $13\%$ signal cost. (3)~\emph{A fixed
+subspace is refuted at lever level}: projecting out a single shared
+residual subspace is actively harmful (signal retention
+$0.75$--$0.82$); any projection-style object must be per-$\sigma$-bin.
+(4)~Per-sample exploitation of the geometry remains gated on its own
+pre-registered chain and is not claimed: every statement above is
+about pooled directions at this operating point.
 
 \subsection{Both accounts, scored}
 \label{sec:scored}
@@ -301,6 +486,29 @@ the $1024{\to}896$ curve bin-for-bin, crossover included
 the spectral account here: ratio \emph{is} the right governor for the
 data term; its error is not its governor but its scope, mistaking one
 term for the whole gap.
+
+\paragraph{The cancellation-aware form, at lane parity.}
+Since the geometry of \S\ref{sec:observations} suggests an
+operational form of its own --- the exact link Eq.~\ref{eq:exact}
+evaluated on \emph{both} shares with the interference at the pooled
+constant $\bar\rho$ --- we scored it under the identical held-out
+protocol as Eq.~\ref{eq:twoterm} (same mismatch curve
+bit-identically, same governors, same lanes and bootstrap; only the
+link differs). It wins exactly one safe lane: held-out $768$, RMSE
+$0.078$ against the additive form's $0.099$, and from held-out
+parameters alone it reproduces the measured non-monotone shape and
+places the in-window dip at $\sigma = 0.67$ --- the one structure the
+additive form cannot express. It loses the other safe lane
+(leave-one-out $896$: $0.086$ vs.\ $0.077$) because its graph-side
+constant collapses on the $1280$ tier and the cross-tier constant law
+does not transfer, and it breaks the guard tier the additive lane
+already covers ($1024$ held-out: $0.199$ vs.\ $0.046$). We therefore
+report it at lane parity and do \emph{not} adopt it: the additive
+lane keeps Fig.~\ref{fig:accounts}, and the reading is that the
+interference geometry transfers through governors on the tier that
+licensed $\bar\rho$ while its amplitude law across tiers remains
+open (demonstration panel and full lane numbers in
+Appendix~\ref{app:geometrypanels}).
 
 % Float placed here (end of \S4) purely for pagination: encountered
 % on p.9 so it lands atop p.10, next to the \S5 text that reads it.

@@ -53,15 +53,21 @@ training cost grows superlinearly with resolution. Recent work
 justifies training or sampling at reduced resolution on a spectral
 premise: at high noise, a downscaled latent preserves almost the full
 surviving signal. Whether a downscaled step also preserves the native
-\emph{training gradient} signal, however, has remained unresolved. We
-reduce how that signal changes under downscaling to two terms:
+\emph{training gradient} signal, however, has remained unresolved. Measured
+at the gradient level, what downscaling changes turns out to be the
+residual of a near-cancellation: a data-side and a compute-graph-side
+perturbation, each far larger than the realized gap, strongly
+anti-aligned (pooled $\rho \approx -0.91$) at every measured route
+and noise level --- measured in full on one adapter, and replicated
+across the mid-noise window on two further adapters of the same base
+model. On that residual an effective two-term account holds:
 a noise-dependent term governed by the downscale
 \emph{ratio}, which decays at high noise as the spectral premise
 predicts, and a $\sigma$-independent floor governed by the target
-grid's \emph{absolute token count}, carried by the compute graph
-itself and removed by no noise level. The measured
-$(\text{route},\sigma)$ map corroborates the account and uncovers
-structure the spectral picture cannot express: on the $1024{\to}768$
+grid's \emph{absolute token count}, removed by no noise level. The
+measured $(\text{route},\sigma)$ map corroborates the account and
+uncovers structure the spectral picture cannot express but the
+cancellation geometry anticipates: on the $1024{\to}768$
 route, a window ($0.65<\sigma<0.95$), predicted by no spectral
 criterion at any tolerance, where the downscaled gradient stays
 within a small margin of the native one. Training LoRA adapters with

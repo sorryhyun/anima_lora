@@ -360,11 +360,12 @@ the retained shares (Cauchy--Schwarz on the expansion above),
 \end{equation}
 with $\rho_e = \|R_e^{\perp}\|^2 / (2\|\bar g_{\src}\|^2)$ the
 remainder branch's own share. The first says the interaction can never
-exceed the retained sum ($2\sqrt{S_e\Phi_e} \le S_e + \Phi_e$) and is
-automatically negligible wherever one share dominates the other, so
-assumption (ii) carries independent content only near share
-crossover, which is precisely where Appendix~\ref{sec:headtohead} finds
-it failing. The second says the first-order part of the remainder
+exceed the retained sum ($2\sqrt{S_e\Phi_e} \le S_e + \Phi_e$) and
+would be automatically negligible wherever one share dominates the
+other; measured, the interference saturates this bound nearly
+everywhere (the near-cancellation of \S\ref{sec:observations}), which
+is why the main text carries it as entry (ii)'s measurement rather
+than an assumption. The second says the first-order part of the remainder
 enters at half power, one factor of $\sqrt{\rho_e}$ per retained
 share, so assumption (i) reduces to the branch-level statement that
 $R_e$ is small against $B_e$ and $C_e$, plus the small-$\kappa$
@@ -913,7 +914,7 @@ is negative in the window ($I_{768} < 0$, in which case amplitude
 matching predicts the window center sits where the two perturbation
 legs have equal orthogonal magnitude, a testable localization), or the
 graph share is itself $\sigma$-dependent, rewriting assumption (iii)
-rather than (ii). The designated probe is vector-resolved: a
+rather than entry (ii). The designated probe is vector-resolved: a
 demote--re-promote arm reads the shares per (route, bin) from the
 interventional split $B = \bar g_{\mathrm{repromote}} - \bar g_{\src}$,
 $C = \bar g_{\mathrm{demote}} - \bar g_{\mathrm{repromote}}$
@@ -939,6 +940,62 @@ additively-predicted gap is erased by the interference in-window
 (Appendix~\ref{app:instrument}). The window therefore \emph{delimits
 the reduction's domain}, and the derived four-term form represents the
 failure rather than excusing it.
+
+\section{The measured geometry: supporting panels}
+\label{app:geometrypanels}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figs/accounts_canc.png}
+\caption{\textbf{The cancellation-aware operational form
+(demonstration figure; in-sample).} The exact link
+(Eq.~\ref{eq:exact}) evaluated on \emph{both} shares with the
+interference at the pooled constant $\bar\rho = -0.91$, drawn over
+the measured curves: in-sample it reproduces the map's shape
+including the $768$ in-window dip below the route's own floor, the
+structure the additive two-term form cannot express. This panel is a
+demonstration, not lane evidence; the lane-matched score
+(\S\ref{sec:ourscored}, identical protocol with only the link
+swapped) is: held-out $768$ RMSE $0.078$ vs.\ additive $0.099$ with
+the dip placed at $\sigma = 0.67$ from held-out parameters alone;
+leave-one-out $896$ \emph{lost} at $0.086$ vs.\ $0.077$; $1280$-tier
+guard broken on $1024$ held-out ($0.199$ vs.\ $0.046$). Reported at
+lane parity; not adopted --- the additive lane keeps
+Fig.~\ref{fig:accounts}.}
+\label{fig:accountscanc}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{subfigure}[t]{0.49\textwidth}
+\includegraphics[width=\linewidth]{figs/e250_rel.png}
+\caption{Reliability of the pooled residual direction
+$\widehat{R} = \widehat{(B{+}C)}$: cross-draw-set cosine per verdict
+condition against the $0.5$ gate. $11$ of $12$ conditions pass; the
+one failure is $768/\sigma = 0.43$, and mid-window $768$ is where
+the direction is least reproducible.}
+\label{fig:e250rel}
+\end{subfigure}\hfill
+\begin{subfigure}[t]{0.49\textwidth}
+\includegraphics[width=\linewidth]{figs/e250_frame.png}
+\caption{Matched-angle, not planar: transporting a bin's pooled leg
+direction by the native anchor $\hat g(\sigma)$'s own measured
+rotation before comparing across $\sigma$ changes the cosines by a
+median of $-0.0005$ --- the axis rotates through the same angle as
+the anchor but in its own plane, so a lookup in an anchor-normalized
+frame is refuted.}
+\label{fig:e250frame}
+\end{subfigure}
+\caption{Supporting panels for the axis-field reads of
+\S\ref{sec:observations} (one adapter, three vector stores, standard
+corpus; pooled directions only).}
+\label{fig:e250}
+\end{figure}
+
+The two figures above carry the supporting detail for
+\S\ref{sec:observations}: the lane test of the cancellation-aware
+form, and the reliability and frame-transport reads that scope the
+axis-field claims.
 
 \section{The spectral account: spectrum and instantiation}
 \label{app:spectral}
@@ -1139,6 +1196,58 @@ high-redundancy-cluster adapter versus ${\approx}0.50$ for the
 low-redundancy-cluster adapter, uniformly across all four membership
 cells. The floor's level is a property of the checkpoint (its gradient
 stochasticity), while the safety map built on top of it is not.
+
+\paragraph{Cancellation replication on the controlled adapters.}
+The same two checkpoints carry the cross-adapter replication of the
+cancellation geometry (\S\ref{sec:observations},
+\S\ref{sec:limitations}). The vector-resolved probe of
+\S\ref{sec:observations} was re-run per adapter on the $1024{\to}768$
+route over the five window bins ($N{=}40$, $D{=}12$, identical probe
+list; the operating adapter's reference rows from a same-environment
+twin run), with criteria frozen before any adapter gradient existed:
+a bin is \emph{readable} iff both legs pass the reliability gate
+($\mathrm{rel} \ge 0.5$), and an adapter \emph{replicates} iff at
+least $4$ of $5$ bins are readable and every readable bin has
+$I < 0$, $\rho \le -0.5$, and $h(B{+}C) < \min(h(B), h(C))$. Both
+adapters pass at $5$ of $5$ bins (Table~\ref{tab:e26}). One
+consistency read is pre-registered with the table: from the measured
+$h$-triple the law of cosines already implies a $\rho$; at $9$ of
+$10$ adapter-bins the implied value is itself $\le -0.97$, so the
+deep measured $\rho$ is there an arithmetic consequence of the
+magnitudes and is reported as such --- the depth of enforcement is
+\emph{not} claimed to scale with the perturbation. The single cell
+where measured enforcement exceeds what the magnitudes force
+(dirty, $\sigma = 0.7$: implied $-0.87$, measured $-0.96$) is
+recorded, not generalized. $896$-route replication was not run and
+remains an open cell.
+
+\begin{table}[h]
+\caption{Cross-adapter cancellation replication ($1024{\to}768$, five
+window bins, frozen criteria; reenc-referenced $h(\cdot)$ units).
+Every bin of both adapters is readable and passes
+($I < 0$, $\rho \le -0.5$, $h(B{+}C) < \min(h(B), h(C))$): the
+realized gap is the residual of the same near-cancellation on
+adapters trained on disjoint data.}
+\label{tab:e26}
+\centering
+\small
+\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{lccccccccc}
+\toprule
+ & \multicolumn{4}{c}{flat-cluster adapter} &
+ & \multicolumn{4}{c}{textured-cluster adapter} \\
+\cmidrule{2-5}\cmidrule{7-10}
+$\sigma$ & $h(B)$ & $h(C)$ & $h(B{+}C)$ & $\rho$ &
+ & $h(B)$ & $h(C)$ & $h(B{+}C)$ & $\rho$ \\
+\midrule
+$0.30$ & $.441$ & $.337$ & $.152$ & $-.890$ & & $.647$ & $.392$ & $.233$ & $-.923$ \\
+$0.43$ & $.304$ & $.477$ & $.196$ & $-.909$ & & $.453$ & $.878$ & $.420$ & $-.936$ \\
+$0.57$ & $.188$ & $.357$ & $.098$ & $-.912$ & & $.451$ & $.826$ & $.400$ & $-.948$ \\
+$0.70$ & $.118$ & $.221$ & $.045$ & $-.928$ & & $.532$ & $.664$ & $.333$ & $-.964$ \\
+$0.83$ & $.113$ & $.108$ & $.020$ & $-.948$ & & $.820$ & $.460$ & $.214$ & $-.980$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \section{Render prompt for the arms figure}
 \label{app:armsprompt}

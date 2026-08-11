@@ -216,6 +216,32 @@ against Eq.~\ref{eq:branches}, the spectral account of
 \S\ref{sec:spectral} keeps only the input-mediated part of the data
 branch, gated at Nyquist, and sets the rest to zero.
 
+Measured, the decomposition is not a large term plus a small
+correction. At every measured (route, $\sigma$) of the verdict
+campaign both branches are individually far larger than the realized
+gap, and their components orthogonal to $\bar g_{\src}$ are strongly
+anti-aligned: writing
+$\rho = \cos(B_e^{\perp}, C_e^{\perp})$, the vector-resolved probe of
+\S\ref{sec:observations} reads $\rho \in [-0.96, -0.63]$ at every
+non-degenerate (route, $\sigma$) cell, pooling to a single constant
+$\bar\rho = -0.91$ over the gated verdict bins --- a pooling
+\S\ref{sec:observations} licenses by measurement rather than
+assumption: the anti-alignment is route-uniform, uniform across depth
+and module type, and invariant to the adapter operating point. The
+measured gap curve is therefore the \emph{residual of a
+near-cancellation}: the data branch is what demotion does to the data
+the objective consumes, the graph branch is what the changed compute
+graph does in response, and the two slide against each other along
+nearly one line, so the estimand retains only what the cancellation
+misses. That anticipates structure the branch magnitudes alone cannot
+produce: wherever the amplitude ratio
+$|B_e^{\perp}|/|C_e^{\perp}|$ passes through $1$ while the
+anti-alignment stays deep, the residual collapses --- below either
+branch alone, and below the route's own floor. The mid-$\sigma$
+cliffs of the measured map sit at this ratio's passage through $1$,
+and the $768$ route's in-window dip where the ratio comes closest to
+balance (\S\ref{sec:map}, \S\ref{sec:observations}).
+
 Two interventions follow immediately from the decomposition, rather
 than from experimental convention, and each isolates a branch. At
 $\sigma = 1$ the input is pure noise in every arm, carrying no trace
@@ -276,18 +302,20 @@ grid, so $\Delta J_{\reenc} = 0$, its expansion degenerates to
 $d_{\reenc} \approx S_{\reenc} + R'_{\reenc}$, and subtracting it
 cancels only the re-encode component of the data share, passing the
 graph share and interaction through untouched. The rest is carried by
-four assumptions, each tested by a designated probe in
-\S\ref{sec:evidence}:
+one measured term and three assumptions, each assumption tested by a
+designated probe in \S\ref{sec:evidence}:
 \begin{itemize}
 \item \textbf{(i)~Small remainder}: $R'_e$ negligible over the
-claimed domain.
-\item \textbf{(ii)~Negligible projected interaction}: $|I_e|$ small
-against the retained shares.\footnote{Assumptions (i)--(ii) are not
-unconstrained: both discarded terms obey Cauchy--Schwarz bounds
-in the retained shares, the interaction by their geometric mean and
-the remainder entering at half power in its own share, so (ii)
-carries independent content only near share crossover
-(Appendix~\ref{app:geometry}).}
+claimed domain.\footnote{Not unconstrained: the remainder obeys a
+Cauchy--Schwarz bound in the retained shares, entering at half power
+in its own share (Appendix~\ref{app:geometry}).}
+\item \textbf{(ii)~Interference as measured}: the projected
+interaction $I_e$ is \emph{not} assumed small --- it is the dominant
+structure, large and negative at every in-window condition (the
+near-cancellation of \S\ref{sec:ouraccount}; numbers in
+\S\ref{sec:observations}). It enters the reduction as a measurement:
+the two-term form below is fitted on the measured excess, so its
+fitted amplitudes absorb the cancellation rather than ignore it.
 \item \textbf{(iii)~Graph-relative stationarity}:
 $\|C_e^{\perp}\| / \|\bar g_{\src}\|$ $\sigma$-constant, since
 numerator and denominator share the residual's scale, so that the
@@ -302,8 +330,8 @@ asserted to be route-independent and directly measurable as such
 closure of the mean residual's exact posterior form
 (Appendix~\ref{app:posterior}), not an unconstrained fitted shape.
 \end{itemize}
-Under (i)--(iv) the expansion collapses to the \emph{two-term
-reduction},
+Under (i), (iii), and (iv), with the interference entering as
+measured, the expansion collapses to the \emph{two-term reduction},
 \begin{equation}
 \gap_e(\sigma)
 \;\approx\;
@@ -313,7 +341,18 @@ reduction},
 \end{equation}
 a route amplitude $a_e$ on a measurable mismatch curve plus a
 per-route constant; the supporting derivations are in
-Appendix~\ref{app:geometry}. The floor is written with two parts
+Appendix~\ref{app:geometry}. The reduction is an \emph{effective} law
+of the cancellation residual, not a bare reading of the shares: its
+fitted quantities are calibrated on the measured excess, so the
+amplitude $a_e$ and the floor absorb the near-cancellation of
+\S\ref{sec:ouraccount} rather than model it term by term --- which is
+also the form's stated boundary. Near the amplitude crossing the
+residual of the cancellation falls \emph{below} the floor the
+reduction ascribes to the route, a dip no sum of a non-negative data
+term and a constant can produce; the $768$ route's in-window dip
+(\S\ref{sec:map}) is that anticipated signature, and
+\S\ref{sec:ourscored} reports the cancellation-aware form that prices
+it at lane parity with the reduction. The floor is written with two parts
 because a grid change touches two distinct things: the rotary
 coordinate system, in which every band of the position embedding
 accumulates phase at a different density across the image
@@ -331,9 +370,19 @@ amplitude $a_e\,\|\Delta \bar r(\sigma)\|/\|\bar g_{\src}(\sigma)\|$
 limit), whose data term
 \emph{saturates} instead of overshooting.
 The ledger is as follows: Eqs.~\ref{eq:exact} and~\ref{eq:fourterm}
-are unconditional; Eq.~\ref{eq:twoterm} is conditional on the four
-assumptions; and the coefficients $a_e$, $\|\Delta \bar r(\sigma)\|$,
+are unconditional; Eq.~\ref{eq:twoterm} is conditional on
+(i), (iii), (iv) and on the interference as measured; and the
+coefficients $a_e$, $\|\Delta \bar r(\sigma)\|$,
 $\|\bar g_{\src}(\sigma)\|$, and each route's floor are measured.
+One unit convention governs every branch-level magnitude in this
+paper: writing $h(X) = 1 - \cos(\bar g_{\src}, \bar g_{\src} + X)$
+for the gap that perturbation $X$ alone would realize (so the
+measured distance is exactly $h(B{+}C)$ by construction), magnitudes
+are quoted from $h(\cdot)$ or the exact link Eq.~\ref{eq:exact} only;
+the quadratic shares $S/\Phi/I$ are read for sign, decomposition, and
+localization, since at the measured in-window amplitudes the
+quadratic truncation is out of domain and underpredicts $h(B{+}C)$
+(Appendix~\ref{app:instrument}).
 
 \paragraph{The estimand forces a debiased instrument.}
 The exact angular link carries a metrological corollary. The estimand
