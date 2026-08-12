@@ -1,0 +1,310 @@
+{
+ "doc": "E25b Stage-1 read \u2014 frozen 2026-08-11 registration",
+ "route": "768",
+ "stores": {
+  "ctrl": "bench/results/20260812-0138-e25b-ctrl-768",
+  "rescond": "bench/results/20260812-0524-e25b-rescond-768"
+ },
+ "gate1_twin_start_identity": {
+  "pass": true,
+  "first_forward_loss": "0.421300232410 bit-identical across ctrl, ctrl2, rescond, ctrl_noclip, rescond_noclip (TB loss/current step 1)",
+  "determinism_control": "ctrl vs ctrl2 (identical argv): 0/1092 checkpoint keys mismatched, full run",
+  "micro_jobs": [
+   "20260812-005222-960b5d",
+   "20260812-005223-093b78",
+   "20260812-010513-b1afd3",
+   "20260812-010513-62920b",
+   "20260812-011749-3b1f7d"
+  ],
+  "note": "later checkpoint divergence (728/1092 keys) is the lever training \u2014 the projection receives nonzero gradient from step 1 (zero value, nonzero grad), so arms diverge from step 2 on; gradient-borne per the registration's premise."
+ },
+ "gate4_same_family": "pass (assert_same_family)",
+ "ledger_ctrl": [
+  {
+   "sigma": 0.3,
+   "readable": true,
+   "rel_R": 0.57754,
+   "G": 0.2351,
+   "S": 1.0796,
+   "F": 1.24956,
+   "I": -2.07995,
+   "rho": -0.89539,
+   "rel_cos_B": 0.98137,
+   "rel_cos_C": 0.84503,
+   "h_B": 0.55713,
+   "h_C": 0.38039,
+   "h_B_plus_C": 0.22982
+  },
+  {
+   "sigma": 0.4333,
+   "readable": true,
+   "rel_R": 0.67771,
+   "G": 0.2051,
+   "S": 1.30063,
+   "F": 1.7377,
+   "I": -2.80001,
+   "rho": -0.93125,
+   "rel_cos_B": 0.97723,
+   "rel_cos_C": 0.91799,
+   "h_B": 0.3946,
+   "h_C": 0.72042,
+   "h_B_plus_C": 0.29166
+  },
+  {
+   "sigma": 0.5667,
+   "readable": true,
+   "rel_R": 0.6981,
+   "G": 0.2634,
+   "S": 1.04603,
+   "F": 1.44556,
+   "I": -2.33857,
+   "rho": -0.95089,
+   "rel_cos_B": 0.97538,
+   "rel_cos_C": 0.93883,
+   "h_B": 0.31507,
+   "h_C": 0.84934,
+   "h_B_plus_C": 0.29025
+  },
+  {
+   "sigma": 0.7,
+   "readable": true,
+   "rel_R": 0.63353,
+   "G": 0.4016,
+   "S": 0.78888,
+   "F": 1.07168,
+   "I": -1.74438,
+   "rho": -0.94858,
+   "rel_cos_B": 0.97647,
+   "rel_cos_C": 0.9115,
+   "h_B": 0.27162,
+   "h_C": 0.76645,
+   "h_B_plus_C": 0.22025
+  },
+  {
+   "sigma": 0.8333,
+   "readable": true,
+   "rel_R": 0.54925,
+   "G": 0.7944,
+   "S": 0.7495,
+   "F": 0.89497,
+   "I": -1.58984,
+   "rho": -0.97059,
+   "rel_cos_B": 0.9675,
+   "rel_cos_C": 0.92481,
+   "h_B": 0.29415,
+   "h_C": 0.59294,
+   "h_B_plus_C": 0.10774
+  }
+ ],
+ "ledger_rescond": [
+  {
+   "sigma": 0.3,
+   "readable": true,
+   "rel_R": 0.67726,
+   "G": 0.488,
+   "S": 0.27081,
+   "F": 0.27372,
+   "I": -0.48463,
+   "rho": -0.89001,
+   "rel_cos_B": 0.96843,
+   "rel_cos_C": 0.87548,
+   "h_B": 0.24106,
+   "h_C": 0.17039,
+   "h_B_plus_C": 0.0702
+  },
+  {
+   "sigma": 0.4333,
+   "readable": true,
+   "rel_R": 0.47665,
+   "G": 0.3857,
+   "S": 0.40328,
+   "F": 0.43925,
+   "I": -0.77939,
+   "rho": -0.9259,
+   "rel_cos_B": 0.93087,
+   "rel_cos_C": 0.79183,
+   "h_B": 0.35326,
+   "h_C": 0.23389,
+   "h_B_plus_C": 0.09709
+  },
+  {
+   "sigma": 0.5667,
+   "readable": true,
+   "rel_R": 0.58683,
+   "G": 0.3452,
+   "S": 0.78624,
+   "F": 1.00619,
+   "I": -1.67289,
+   "rho": -0.94042,
+   "rel_cos_B": 0.91255,
+   "rel_cos_C": 0.84997,
+   "h_B": 0.44574,
+   "h_C": 0.42044,
+   "h_B_plus_C": 0.16601
+  },
+  {
+   "sigma": 0.7,
+   "readable": true,
+   "rel_R": 0.64218,
+   "G": 0.4849,
+   "S": 0.66708,
+   "F": 0.884,
+   "I": -1.46604,
+   "rho": -0.95455,
+   "rel_cos_B": 0.9302,
+   "rel_cos_C": 0.87435,
+   "h_B": 0.34876,
+   "h_C": 0.48768,
+   "h_B_plus_C": 0.14208
+  },
+  {
+   "sigma": 0.8333,
+   "readable": true,
+   "rel_R": 0.35239,
+   "G": 0.9012,
+   "S": 0.613,
+   "F": 0.62269,
+   "I": -1.20457,
+   "rho": -0.97484,
+   "rel_cos_B": 0.93762,
+   "rel_cos_C": 0.83418,
+   "h_B": 0.37978,
+   "h_C": 0.38999,
+   "h_B_plus_C": 0.10159
+  }
+ ],
+ "gate3_readability": {
+  "ctrl": 5,
+  "rescond": 5,
+  "pass": true
+ },
+ "reading_25b1": {
+  "co_readable_bins": [
+   0.3,
+   0.4333,
+   0.5667,
+   0.7,
+   0.8333
+  ],
+  "per_bin": [
+   {
+    "sigma": 0.3,
+    "r_h": 0.3055,
+    "d_rho": 0.0054,
+    "h_ctrl": 0.22982,
+    "h_rescond": 0.0702
+   },
+   {
+    "sigma": 0.4333,
+    "r_h": 0.3329,
+    "d_rho": 0.0054,
+    "h_ctrl": 0.29166,
+    "h_rescond": 0.09709
+   },
+   {
+    "sigma": 0.5667,
+    "r_h": 0.572,
+    "d_rho": 0.0105,
+    "h_ctrl": 0.29025,
+    "h_rescond": 0.16601
+   },
+   {
+    "sigma": 0.7,
+    "r_h": 0.6451,
+    "d_rho": -0.006,
+    "h_ctrl": 0.22025,
+    "h_rescond": 0.14208
+   },
+   {
+    "sigma": 0.8333,
+    "r_h": 0.9429,
+    "d_rho": -0.0043,
+    "h_ctrl": 0.10774,
+    "h_rescond": 0.10159
+   }
+  ],
+  "median_r_h": 0.572,
+  "median_d_rho": 0.0054,
+  "thresholds": {
+   "improve": "r_h <= 0.9 AND d_rho <= +0.02",
+   "worsen": "r_h >= 1.1 OR d_rho >= +0.05"
+  },
+  "verdict": "IMPROVES"
+ },
+ "descriptive": {
+  "leg_ratios": [
+   {
+    "sigma": 0.3,
+    "r_h_B": 0.4327,
+    "r_h_C": 0.4479
+   },
+   {
+    "sigma": 0.4333,
+    "r_h_B": 0.8952,
+    "r_h_C": 0.3247
+   },
+   {
+    "sigma": 0.5667,
+    "r_h_B": 1.4147,
+    "r_h_C": 0.495
+   },
+   {
+    "sigma": 0.7,
+    "r_h_B": 1.284,
+    "r_h_C": 0.6363
+   },
+   {
+    "sigma": 0.8333,
+    "r_h_B": 1.2911,
+    "r_h_C": 0.6577
+   }
+  ],
+  "rel_R_hole_context": {
+   "note": "E25.0 hole was 768/sigma=0.4333; rel_R per bin above",
+   "ctrl": [
+    0.57754,
+    0.67771,
+    0.6981,
+    0.63353,
+    0.54925
+   ],
+   "rescond": [
+    0.67726,
+    0.47665,
+    0.58683,
+    0.64218,
+    0.35239
+   ]
+  },
+  "ctrl_vs_sincos_context": {
+   "caveat": "cross-boot scalar comparison only (\u0394\u03c1 band 0.03\u20130.05); sincos = full-scale standing operating point (e30 run ledger), ctrl = tenth-scale combo \u2014 context for where tenth-scale sits",
+   "sincos": [
+    {
+     "sigma": 0.3,
+     "rho": -0.86169,
+     "h_B_plus_C": 0.30204
+    },
+    {
+     "sigma": 0.4333,
+     "rho": -0.83602,
+     "h_B_plus_C": 0.08494
+    },
+    {
+     "sigma": 0.5667,
+     "rho": -0.86578,
+     "h_B_plus_C": 0.03877
+    },
+    {
+     "sigma": 0.7,
+     "rho": -0.90255,
+     "h_B_plus_C": 0.03384
+    },
+    {
+     "sigma": 0.8333,
+     "rho": -0.92081,
+     "h_B_plus_C": 0.01569
+    }
+   ]
+  }
+ }
+}
