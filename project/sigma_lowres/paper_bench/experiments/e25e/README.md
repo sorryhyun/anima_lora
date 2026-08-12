@@ -115,6 +115,28 @@ yardstick, not ΔW, is the ship bar). Each reads as recorded.
 - CMMD recorded, no verdict at this N (E4/25b lesson). Render fig
   sheets per the E4 format.
 
+## Launch record (2026-08-12)
+
+Grid submitted via `e25e_launch.py` — 19 lora jobs, ids in
+`e25e_jobs.json`. Fail-fast cell `e25e_hews_rescond_c_s1001` (the
+never-run centered flag combination, queued first): **rc 0**,
+checkpoint carries `sigma_lowres_res_cond_proj` + the **"centered"**
+stamp (proj param norm 0.109 — nonzero, trained). Remaining 18 cells
+queued behind it.
+
+## Conceptual figure
+
+`e25e_concept_fig.py` → `e25e_concept.png` (fig_ledger_geometry
+idiom): (1) the conditioning-delta decomposition schematic
+(common-mode + label, tip-to-tail); (2) E25b measured — the two long
+nearly-parallel legs W·φ(0)/W·φ(s) from the carrier checkpoint's
+actual tensors, with the tiny closing side as the only
+resolution-discriminating part; (3) E25e by construction — the
+common-mode leg deleted, s = 0 pinned at the origin, only the closing
+side survives (same scale); (4) the endpoint consequence — 25b's
+measured in-batch ΔW angles to the native twin and the 25e-1 question
+arrow. Assembly only; envelope in `runs/<stamp>-fig-e25e-concept/`.
+
 ## Kill switches / honesty
 
 - One parameterization change, no sweep — any further variant
