@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "script": "project/sigma_lowres/paper_bench/experiments/e25e/e25e_concept_fig.py",
+  "label": "fig-e25e-concept",
+  "timestamp_utc": "2026-08-12T11:02:21Z",
+  "sources": {
+    "stage1_read": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/experiments/e25b/e25b_read.json",
+    "carrier_ckpt": "/home/sorryhyun/anima/anima_lora/output/ckpt/e25b2_hews_rescond_s1001.safetensors",
+    "ship_read": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/experiments/e25b/e25b_ship_read.json",
+    "native_offset": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/experiments/e25b/e25b_native_offset.json"
+  },
+  "metrics": {
+    "coords": {
+      "d0": [
+        0.1321830153465271,
+        1.3006501831114292e-07
+      ],
+      "d896": [
+        0.14099055528640747,
+        0.016052555292844772
+      ],
+      "d768": [
+        0.1506555676460266,
+        0.03432973846793175
+      ]
+    },
+    "inplane_fraction_d768": 1.0000001999407808
+  },
+  "caveats": [
+    "figure assembly only: comb panel draws the Stage-1 768-probe bc_ledger rows (hews tenth-scale twins, ctrl vs rescond stores); drawn interior angle = acos(rho) clamped to [-1,1] (fig_ledger_geometry convention); leg orientation beta is a drawing convention",
+    "common-mode 'cancels in the gap' is a first-order statement: it enters both arms of the demote-native pair identically and acts on the pair only through the shared operating point",
+    "delta-ledger vectors computed from the hews_rescond_s1001 carrier tensors in the exact (d0, d896) plane; annotation ranges are the 12-carrier ranges from e25b_native_offset.json",
+    "endpoint arrow angles use the two-corpus mean of medians; labels give per-corpus medians; rescond_c is a QUESTION (registered 25e-1), not a prediction of its answer"
+  ]
+}

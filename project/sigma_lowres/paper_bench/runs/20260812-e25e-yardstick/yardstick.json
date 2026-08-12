@@ -1,0 +1,66 @@
+{
+ "evals": {
+  "s1001": "project/sigma_lowres/paper_bench/runs/20260812-e25e-eval-sfw-s1001",
+  "s1002": "project/sigma_lowres/paper_bench/runs/20260812-e25e-eval-sfw-s1002",
+  "s1003": "project/sigma_lowres/paper_bench/runs/20260812-e25e-eval-sfw-s1003"
+ },
+ "arms": [
+  "native",
+  "combo",
+  "rescond_c"
+ ],
+ "cells": {
+  "hews": {
+   "n_prompts": 9,
+   "within_seed_arm_pairs": {
+    "native~combo|s1001": 0.9408125281333923,
+    "native~rescond_c|s1001": 0.955389142036438,
+    "combo~rescond_c|s1001": 0.9373303651809692,
+    "native~combo|s1002": 0.9674805402755737,
+    "native~rescond_c|s1002": 0.9608010053634644,
+    "combo~rescond_c|s1002": 0.9670557379722595,
+    "native~combo|s1003": 0.9554305672645569,
+    "native~rescond_c|s1003": 0.9599482417106628,
+    "combo~rescond_c|s1003": 0.9700348377227783
+   },
+   "cross_seed_same_arm": {
+    "native|s1001~s1002": 0.9565101265907288,
+    "native|s1001~s1003": 0.964873194694519,
+    "native|s1002~s1003": 0.9500291347503662,
+    "combo|s1001~s1002": 0.9386659264564514,
+    "combo|s1001~s1003": 0.933414876461029,
+    "combo|s1002~s1003": 0.95726078748703,
+    "rescond_c|s1001~s1002": 0.9316144585609436,
+    "rescond_c|s1001~s1003": 0.9441920518875122,
+    "rescond_c|s1002~s1003": 0.9664820432662964
+   },
+   "verdict": null
+  },
+  "channel_(caststation)": {
+   "n_prompts": 12,
+   "within_seed_arm_pairs": {
+    "native~combo|s1001": 0.9590157866477966,
+    "native~rescond_c|s1001": 0.9600100517272949,
+    "combo~rescond_c|s1001": 0.9678337574005127,
+    "native~combo|s1002": 0.9623381495475769,
+    "native~rescond_c|s1002": 0.9595363140106201,
+    "combo~rescond_c|s1002": 0.9661313891410828,
+    "native~combo|s1003": 0.9734961986541748,
+    "native~rescond_c|s1003": 0.9767135977745056,
+    "combo~rescond_c|s1003": 0.9709567427635193
+   },
+   "cross_seed_same_arm": {
+    "native|s1001~s1002": 0.9454424977302551,
+    "native|s1001~s1003": 0.963941752910614,
+    "native|s1002~s1003": 0.9530551433563232,
+    "combo|s1001~s1002": 0.9641103744506836,
+    "combo|s1001~s1003": 0.9589620232582092,
+    "combo|s1002~s1003": 0.9627125263214111,
+    "rescond_c|s1001~s1002": 0.9639026522636414,
+    "rescond_c|s1001~s1003": 0.9666512608528137,
+    "rescond_c|s1002~s1003": 0.9703871607780457
+   },
+   "verdict": null
+  }
+ }
+}

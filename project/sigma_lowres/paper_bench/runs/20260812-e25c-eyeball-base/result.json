@@ -1,0 +1,26 @@
+{
+ "what": "E25c claim-free eyeball \u2014 rescond projection on the plain base DiT (no LoRA dW), SFW paper prompts, plain vs s sweep. Descriptive only; NOT the frozen E25c sweep (rescond ckpts at s!=0 deliberately unrendered).",
+ "prompts": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/runs/20260729-1537-e4-manifest/e4_prompts_sfw.json",
+ "carriers": {
+  "hews": "e25b2_hews_rescond_s1001.safetensors",
+  "channel_(caststation)": "e25b2_channel_rescond_s1001.safetensors"
+ },
+ "s_values": [
+  -0.415,
+  -0.193,
+  0.0,
+  0.193,
+  0.415
+ ],
+ "arms": [
+  "plain",
+  "s-0.415",
+  "s-0.193",
+  "s+0.000",
+  "s+0.193",
+  "s+0.415"
+ ],
+ "steps": 20,
+ "cfg": 1.0,
+ "n_renders": 126
+}

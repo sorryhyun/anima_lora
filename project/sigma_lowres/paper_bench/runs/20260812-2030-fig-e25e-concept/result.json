@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "script": "project/sigma_lowres/paper_bench/experiments/e25e/e25e_concept_fig.py",
+  "label": "fig-e25e-concept",
+  "timestamp_utc": "2026-08-12T11:30:15Z",
+  "sources": {
+    "stage1_read": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/experiments/e25b/e25b_read.json",
+    "native_offset": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/experiments/e25b/e25b_native_offset.json"
+  },
+  "metrics": {
+    "mean_norm_phi0": 0.16115888953208923
+  },
+  "caveats": [
+    "conceptual composition: chord heights (h-units, Stage-1 768 probe) and the rail offset (delta-norm units, 12-carrier mean ||W.phi(0)||) live in heterogeneous spaces drawn into one scene",
+    "green label arrows exaggerated 3x for visibility (true 0.005-0.024); 'common-mode cancels in the pair' is first-order",
+    "the E25e side's dashed chords reuse the measured rescond values as the REGISTERED EXPECTATION \u2014 the E25e grid is running and has not been read; the ? marks are the point"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+ "hews/6135998": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ },
+ "hews/8262330": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ },
+ "hews/11975391": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ },
+ "hews/6321464": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ },
+ "hews/12672980": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ },
+ "channel_caststation/12248742": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ },
+ "channel_caststation/8593437": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ },
+ "channel_caststation/11429918": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ },
+ "channel_caststation/12248671": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ },
+ "channel_caststation/8615514": {
+  "bit_identical": true,
+  "max_abs_diff": 0.0
+ }
+}
