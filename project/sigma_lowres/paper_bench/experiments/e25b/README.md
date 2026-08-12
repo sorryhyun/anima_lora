@@ -392,6 +392,18 @@ design exists to support; band membership is context.
 - CMMD recorded, no verdict at this N (the E4 lesson). Render fig
   sheets per the E4 candidate format.
 
+### Launch record (2026-08-12)
+
+Grid submitted via `e25b_stage2_launch.py` — 31 lora jobs, ids in
+`e25b_stage2_jobs.json` (fail-fast cell = `e25b2_hews_rescond768_s1001`,
+the never-run flag/route combination: **rc 0**, checkpoint carries
+`sigma_lowres_res_cond_proj` + stamp). Stage 2.0 wiring landed the same
+day: `_attach_res_cond` in `library/inference/models.py` (loader-gated
+persistent `(proj, s=0)` attach after every adapter route's
+`lora_unet_*` filter; stamp-without-key hard fail; multi-carrier
+refusal; unscaled by `lora_multiplier` — a conditioning input, not a
+ΔW) + 4 `TestResCond` additions; full fast suite green.
+
 ### Cost (Stage 2)
 
 | item | cost |

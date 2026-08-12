@@ -983,3 +983,80 @@ class TestResCond:
             out = resolve_res_cond(nw, enabled=enabled)
             assert nw.sigma_lowres_res_cond_proj.requires_grad is False
             assert (out is nw.sigma_lowres_res_cond_proj) if enabled else (out is None)
+
+    # --- Stage 2.0: inference-side attach (every keep-live/static-merge route
+    # filters the state dict to lora_unet_*, so the loader installs the
+    # projection separately; e25b README "Stage 2.0") ---
+
+    @staticmethod
+    def _ckpt(tmp_path, name, tensors, metadata=None):
+        from safetensors.torch import save_file
+
+        p = tmp_path / name
+        save_file(tensors, str(p), metadata=metadata)
+        return str(p)
+
+    def test_inference_attach_installs_proj_at_s0(self, tmp_path):
+        from library.anima.models import sigma_lowres_res_cond_delta
+        from library.inference.models import _attach_res_cond
+
+        torch.manual_seed(0)
+        proj = torch.randn(64, 16)
+        path = self._ckpt(
+            tmp_path,
+            "rescond.safetensors",
+            {"sigma_lowres_res_cond_proj": proj, "lora_unet_x": torch.zeros(1)},
+            metadata={"ss_sigma_lowres_res_cond": "true"},
+        )
+        model = SimpleNamespace()
+        _attach_res_cond(model, [path], torch.device("cpu"))
+        got, s = model._sigma_lowres_res_cond
+        assert s == 0.0 and got.dtype == torch.float32
+        assert torch.equal(got, proj)
+        # inference delta == the trainer's native-step (s=0) delta, bit-exact
+        assert torch.equal(
+            sigma_lowres_res_cond_delta(got, s, self._T),
+            sigma_lowres_res_cond_delta(proj, 0.0, self._T),
+        )
+        # and it is a nonzero offset — dropping it would change the forward
+        assert not torch.equal(
+            sigma_lowres_res_cond_delta(got, s, self._T),
+            torch.zeros(2, 1, 64),
+        )
+
+    def test_inference_attach_noop_on_control(self, tmp_path):
+        from library.inference.models import _attach_res_cond
+
+        path = self._ckpt(
+            tmp_path, "control.safetensors", {"lora_unet_x": torch.zeros(1)}
+        )
+        model = SimpleNamespace()
+        _attach_res_cond(model, [path], torch.device("cpu"))
+        assert not hasattr(model, "_sigma_lowres_res_cond")
+
+    def test_inference_attach_stamp_without_key_hard_fails(self, tmp_path):
+        from library.inference.models import _attach_res_cond
+
+        path = self._ckpt(
+            tmp_path,
+            "stripped.safetensors",
+            {"lora_unet_x": torch.zeros(1)},
+            metadata={"ss_sigma_lowres_res_cond": "true"},
+        )
+        with pytest.raises(RuntimeError, match="stripped"):
+            _attach_res_cond(SimpleNamespace(), [path], torch.device("cpu"))
+
+    def test_inference_attach_refuses_multiple_carriers(self, tmp_path):
+        from library.inference.models import _attach_res_cond
+
+        paths = [
+            self._ckpt(
+                tmp_path,
+                f"rc{i}.safetensors",
+                {"sigma_lowres_res_cond_proj": torch.zeros(64, 16)},
+                metadata={"ss_sigma_lowres_res_cond": "true"},
+            )
+            for i in (0, 1)
+        ]
+        with pytest.raises(RuntimeError, match="untested"):
+            _attach_res_cond(SimpleNamespace(), paths, torch.device("cpu"))
