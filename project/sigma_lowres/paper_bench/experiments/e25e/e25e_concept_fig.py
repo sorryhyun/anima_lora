@@ -1,21 +1,26 @@
-"""E25b vs E25e conceptual figure — the conditioning-delta ledger.
+"""E25b vs E25e conceptual figure — per-sigma gap correction + the delta ledger.
 
-Companion to the E25e registration, in the fig_ledger_geometry idiom
-(the paper's B/C triangle figure): panel 1 is the schematic
-decomposition delta(s) = W.phi(0) + W.(phi(s) - phi(0)) (common-mode +
-label, the tip-to-tail analogue of the lattice panel); panel 2 draws
-the MEASURED E25b triangle from a carrier checkpoint's actual tensors
-(the two long nearly-parallel legs W.phi(0) / W.phi(s) and the tiny
-closing side that is the only resolution-discriminating part); panel 3
-is E25e by construction — the common-mode leg deleted, s = 0 pinned at
-the origin, only the closing side survives; panel 4 is the endpoint
-consequence (E25b's measured in-batch dW angle to the native twin) and
-the 25e-1 question mark.
+Panel 1 is an e24 bc_sphere_gap-style comb: at each verdict-bin sigma
+the realized demoted-step gap h(B+C) radiates from the sigma axis as
+a thick chord — ctrl (grey) and rescond (black) side by side, so the
+per-sigma gap correction of 25b-1 is read as chord shrinkage along
+the axis (shallow-sigma concentrated, h(C)-borne). Legs are
+deliberately not drawn — h-units do not Euclidean-compose (see
+draw_comb docstring). Panel 2 is the delta ledger from a carrier
+checkpoint's actual tensors, annotated by WHERE each component acts:
+the label W.(phi(s)-phi(0)) is the only part the demote-native pair
+comparison sees (it is what closes panel 1's chords — the common-mode
+W.phi(0) enters both arms and cancels there), while the common-mode
+part shifts every step's operating point and acts on the endpoint.
+Panel 3 is that endpoint consequence (measured in-batch dW angles to
+the native twin) with the 25e-1 question arrow: E25e deletes the
+common-mode leg by construction and keeps only the label.
 
-Figure assembly only: panel 2/3 vectors are computed from
-e25b2_hews_rescond_s1001.safetensors in the exact 2D plane spanned by
-(d0, d896) (d768 is projected into that plane; out-of-plane fraction
-in result.json); panel 4 reads e25b_ship_read.json. Nothing is refit.
+Figure assembly only: panel 1 reads e25b_read.json (Stage-1 768-probe
+bc_ledger rows, ctrl vs rescond stores; chord heights are the exact
+h_B_plus_C values, tilt is a drawing convention); panel 2 vectors are
+computed from e25b2_hews_rescond_s1001.safetensors in the exact
+(d0, d896) plane; panel 3 reads e25b_ship_read.json. Nothing is refit.
 
 Usage:
     uv run python project/sigma_lowres/paper_bench/experiments/e25e/e25e_concept_fig.py
@@ -45,20 +50,21 @@ sys.path.insert(0, str(REPO))
 from library.anima.models import sigma_lowres_res_cond_delta  # noqa: E402
 
 CKPT = REPO / "output/ckpt/e25b2_hews_rescond_s1001.safetensors"
+READ1 = HERE.parent / "e25b" / "e25b_read.json"
 SHIP = HERE.parent / "e25b" / "e25b_ship_read.json"
 OFFSET = HERE.parent / "e25b" / "e25b_native_offset.json"
 
 S896 = math.log2(896 / 1024)
 S768 = math.log2(768 / 1024)
 
-# fig_ledger_geometry palette + the two new roles
-C_NET = "0.15"
-C_CM = "C1"  # common-mode W.phi(0) — the villain
+# fig_ledger_geometry palette + the two delta-component roles
+C_B, C_C, C_NET = "C0", "C3", "0.15"
+C_CM = "C1"  # common-mode W.phi(0)
 C_DIFF = "C2"  # resolution label W.(phi(s) - phi(0))
-C_COMBO, C_RESCOND = "C0", "C3"
+C_SIGMA = "#20b2aa"  # the e24 comb's sigma-axis teal
 
 
-def arrow(ax, p, q, color, lw=1.8, ls="-", zorder=3, mut=11):
+def arrow(ax, p, q, color, lw=1.8, ls="-", zorder=3, mut=11, alpha=1.0):
     ax.add_patch(
         FancyArrowPatch(
             p,
@@ -69,6 +75,7 @@ def arrow(ax, p, q, color, lw=1.8, ls="-", zorder=3, mut=11):
             lw=lw,
             linestyle=ls,
             zorder=zorder,
+            alpha=alpha,
             shrinkA=0,
             shrinkB=0,
         )
@@ -94,68 +101,83 @@ def plane_coords():
     return {"d0": xy(d[0.0]), "d896": xy(d[S896]), "d768": xy(d[S768])}, inplane768
 
 
-def draw_schematic(ax):
-    o, cm = (0.02, 0.30), (0.72, 0.30)
-    tip = (cm[0] + 0.10, cm[1] + 0.34)
-    arrow(ax, o, cm, C_CM, lw=2.2)
-    arrow(ax, cm, tip, C_DIFF, lw=2.2)
-    arrow(ax, o, tip, C_NET, lw=1.3, ls=(0, (4, 3)), mut=9)
-    ax.plot(*o, "o", ms=5, color=C_NET, zorder=4)
+def draw_comb(ax, ledger_ctrl, ledger_rescond):
+    """e24 bc_sphere_gap convention: the gap RADIATES from the sigma axis,
+    thick — one grey (ctrl) / black (rescond) chord pair per verdict bin.
+    Legs are deliberately NOT drawn: h-units are reliability-weighted and
+    do not Euclidean-compose (at sigma=0.5667 no triangle with sides
+    h_B, h_C, h(B+C) even exists), so a drawn triangle would be
+    fabricated geometry. Chord heights are exact h(B+C)."""
+    xs = [i * 0.44 for i in range(5)]
+    dx = 0.055
+    tilt = math.radians(8)  # slight protractor tilt, the sphere-fig feel
+    for x, rc, rr in zip(xs, ledger_ctrl, ledger_rescond):
+        for xoff, row, color, lw in (
+            (-dx, rc, "0.65", 3.0),
+            (+dx, rr, C_NET, 3.4),
+        ):
+            g = row["h_B_plus_C"]
+            tip = (x + xoff - g * math.sin(tilt), g * math.cos(tilt))
+            arrow(ax, (x + xoff, 0.0), tip, color, lw=lw, mut=11)
+        ax.plot(x, 0.0, "o", ms=3.5, color=C_NET, zorder=4)
+        r_h = rr["h_B_plus_C"] / rc["h_B_plus_C"]
+        ax.annotate(
+            f"$\\sigma={rc['sigma']:g}$",
+            (x, -0.055),
+            ha="center",
+            va="top",
+            fontsize=8,
+        )
+        ax.annotate(
+            f"{rc['h_B_plus_C']:.2f}$\\to${rr['h_B_plus_C']:.2f}",
+            (x, -0.105),
+            ha="center",
+            va="top",
+            fontsize=7.5,
+        )
+        ax.annotate(
+            f"$\\times${r_h:.2f}",
+            (x, -0.152),
+            ha="center",
+            va="top",
+            fontsize=7.5,
+            color=C_DIFF if r_h < 0.9 else "0.5",
+        )
+    # sigma axis (the e24 comb convention)
+    arrow(ax, (xs[0] - 0.16, 0.0), (xs[-1] + 0.22, 0.0), C_SIGMA, lw=2.2, mut=13)
     ax.annotate(
-        r"$W\phi(0)$ — common-mode",
-        (0.37, 0.24),
-        ha="center",
-        va="top",
-        fontsize=8.5,
-        color=C_CM,
-    )
-    ax.annotate(
-        "every step,\nnative included",
-        (0.37, 0.10),
-        ha="center",
-        va="top",
-        fontsize=6.8,
-        color="0.55",
-    )
-    ax.annotate(
-        r"$W(\phi(s){-}\phi(0))$",
-        (0.88, 0.52),
+        r"$\sigma$",
+        (xs[-1] + 0.24, 0.0),
         ha="left",
         va="center",
-        fontsize=8.5,
-        color=C_DIFF,
+        fontsize=10,
+        color=C_SIGMA,
     )
     ax.annotate(
-        "the resolution label",
-        (0.88, 0.42),
-        ha="left",
-        va="center",
-        fontsize=6.8,
-        color="0.55",
-    )
-    ax.annotate(r"$\delta(s)$", (0.33, 0.52), ha="center", fontsize=8.5, color=C_NET)
-    ax.annotate(
-        "E25b trains both — E25e keeps only the label",
-        (0.62, -0.13),
+        "grey: ctrl    black: rescond — same model's demote$\\,\\leftrightarrow\\,$native step gap\n"
+        "(the shrink is $h(C)$-borne: the conditioning absorbs the graph leg; 25b-1)",
+        ((xs[0] + xs[-1]) / 2, 0.44),
         ha="center",
         va="top",
         fontsize=7.5,
         color="0.35",
+        linespacing=1.5,
     )
-    ax.set_xlim(-0.05, 1.42)
-    ax.set_ylim(-0.30, 0.90)
+    ax.set_xlim(xs[0] - 0.22, xs[-1] + 0.34)
+    ax.set_ylim(-0.22, 0.50)
     ax.set_aspect("equal")
     ax.axis("off")
-    ax.set_title("the conditioning delta (schematic)", fontsize=10)
+    ax.set_title(
+        "per-$\\sigma$ gap $h(B{+}C)$ — 25b-1 measured (768 probe)", fontsize=10
+    )
 
 
-def draw_e25b(ax, coords):
+def draw_delta_ledger(ax, coords):
     d0, d896, d768 = coords["d0"], coords["d896"], coords["d768"]
     o = (0.0, 0.0)
     arrow(ax, o, d0, C_CM, lw=2.2)
     arrow(ax, o, d896, C_CM, lw=1.4)
     arrow(ax, o, d768, C_CM, lw=1.4)
-    # the closing sides — the only resolution-discriminating part
     arrow(ax, d0, d896, C_DIFF, lw=2.0, mut=9)
     arrow(ax, d0, d768, C_DIFF, lw=2.0, mut=9)
     ax.plot(0, 0, "o", ms=4, color=C_NET, zorder=4)
@@ -177,7 +199,7 @@ def draw_e25b(ax, coords):
         rotation=math.degrees(math.atan2(d768[1], d768[0])),
     )
     ax.annotate(
-        "label",
+        "the label",
         (d896[0] + 0.012, (d0[1] + d896[1]) / 2),
         ha="left",
         va="center",
@@ -185,85 +207,35 @@ def draw_e25b(ax, coords):
         color=C_DIFF,
     )
     ax.annotate(
-        "$\\|W\\phi(0)\\| = 0.13$–$0.19$\n"
-        "label $= 0.005$–$0.024$,  $\\cos \\geq 0.994$\n"
-        "$\\Rightarrow$ ~90% common-mode",
-        (0.085, -0.062),
+        "label (0.005–0.024): the ONLY part the\n"
+        "demote–native pair sees — closes the chords",
+        (0.085, -0.055),
         ha="center",
         va="top",
-        fontsize=7.5,
-        linespacing=1.6,
+        fontsize=7.2,
+        color=C_DIFF,
+        linespacing=1.5,
+    )
+    ax.annotate(
+        "common-mode (0.13–0.19, ~90%): enters both\n"
+        "arms $\\Rightarrow$ cancels in the gap — acts on the endpoint",
+        (0.085, -0.118),
+        ha="center",
+        va="top",
+        fontsize=7.2,
+        color=C_CM,
+        linespacing=1.5,
     )
     # scale bar (0.1 in delta-norm units)
     ax.plot([-0.035, 0.065], [0.135, 0.135], color="0.6", lw=2)
     ax.annotate(
         "0.1", (0.015, 0.128), ha="center", va="top", fontsize=7.5, color="0.45"
     )
-    ax.set_xlim(-0.055, 0.215)
-    ax.set_ylim(-0.155, 0.16)
+    ax.set_xlim(-0.055, 0.225)
+    ax.set_ylim(-0.20, 0.165)
     ax.set_aspect("equal")
     ax.axis("off")
-    ax.set_title("E25b (measured)", fontsize=10)
-
-
-def draw_e25e(ax, coords):
-    d0, d896, d768 = coords["d0"], coords["d896"], coords["d768"]
-    o = (0.0, 0.0)
-    # the deleted common-mode leg (ghost)
-    arrow(ax, o, d0, "0.75", lw=1.4, ls=(0, (4, 3)), mut=9)
-    mid = (d0[0] * 0.5, d0[1] * 0.5)
-    ax.annotate(
-        "×",
-        mid,
-        ha="center",
-        va="center",
-        fontsize=13,
-        color="0.45",
-        zorder=5,
-    )
-    ax.annotate(
-        "removed by construction",
-        (mid[0] + 0.005, mid[1] - 0.016),
-        ha="center",
-        va="top",
-        fontsize=6.8,
-        color="0.55",
-    )
-    # the surviving labels, re-anchored at the (pinned) origin
-    c896 = (d896[0] - d0[0], d896[1] - d0[1])
-    c768 = (d768[0] - d0[0], d768[1] - d0[1])
-    arrow(ax, o, c896, C_DIFF, lw=2.0, mut=9)
-    arrow(ax, o, c768, C_DIFF, lw=2.0, mut=9)
-    ax.plot(0, 0, "o", ms=6, color=C_DIFF, zorder=4)
-    ax.annotate(
-        r"$W(\phi(s){-}\phi(0))$",
-        (c768[0] + 0.006, c768[1] + 0.014),
-        ha="left",
-        va="bottom",
-        fontsize=8,
-        color=C_DIFF,
-    )
-    ax.annotate(
-        r"$s{=}0$ pinned at $0$",
-        (0.085, -0.062),
-        ha="center",
-        va="top",
-        fontsize=8,
-        color=C_DIFF,
-    )
-    ax.annotate(
-        "bit-exact to control, zero grad on native steps",
-        (0.085, -0.092),
-        ha="center",
-        va="top",
-        fontsize=6.8,
-        color="0.55",
-    )
-    ax.set_xlim(-0.055, 0.215)
-    ax.set_ylim(-0.155, 0.16)
-    ax.set_aspect("equal")
-    ax.axis("off")
-    ax.set_title("E25e: only the label (same scale)", fontsize=10)
+    ax.set_title("the delta ledger — what acts where", fontsize=10)
 
 
 def draw_endpoint(ax, dw):
@@ -274,16 +246,14 @@ def draw_endpoint(ax, dw):
         ) / 2
 
     arms = {
-        "native": (1.0, C_NET, "-", "native twin"),
-        "combo": (med2("combo"), C_COMBO, "-", None),
-        "rescond": (med2("rescond"), C_RESCOND, "-", None),
+        "native": (1.0, C_NET),
+        "combo": (med2("combo"), C_B),
+        "rescond": (med2("rescond"), C_C),
     }
     o = (0.0, 0.0)
-    for name, (cos, color, ls, _label) in arms.items():
+    for _name, (cos, color) in arms.items():
         th = math.acos(max(-1.0, min(1.0, cos)))
-        tip = (math.cos(th), math.sin(th))
-        arrow(ax, o, tip, color, lw=2.0, ls=ls)
-    # the 25e question: does rescond_c land back at combo's angle?
+        arrow(ax, o, (math.cos(th), math.sin(th)), color, lw=2.0)
     th_c = math.acos(med2("combo")) + 0.10
     tip_q = (0.9 * math.cos(th_c), 0.9 * math.sin(th_c))
     arrow(ax, o, tip_q, C_DIFF, lw=1.8, ls=(0, (3, 3)))
@@ -302,29 +272,25 @@ def draw_endpoint(ax, dw):
     ax.annotate(
         "native twin", (1.02, 0.0), ha="left", va="center", fontsize=8, color=C_NET
     )
+    th = math.acos(med2("combo"))
     ax.annotate(
         f"combo  {dw['per_corpus']['hews']['combo']['median']:.2f}/"
         f"{dw['per_corpus']['channel']['combo']['median']:.2f}",
-        (
-            math.cos(math.acos(med2("combo"))) + 0.03,
-            math.sin(math.acos(med2("combo"))) + 0.02,
-        ),
+        (math.cos(th) + 0.03, math.sin(th) + 0.02),
         ha="left",
         va="bottom",
         fontsize=8,
-        color=C_COMBO,
+        color=C_B,
     )
+    th = math.acos(med2("rescond"))
     ax.annotate(
         f"rescond  {dw['per_corpus']['hews']['rescond']['median']:.2f}/"
         f"{dw['per_corpus']['channel']['rescond']['median']:.2f}",
-        (
-            math.cos(math.acos(med2("rescond"))) - 0.02,
-            math.sin(math.acos(med2("rescond"))) + 0.03,
-        ),
+        (math.cos(th) - 0.02, math.sin(th) + 0.03),
         ha="center",
         va="bottom",
         fontsize=8,
-        color=C_RESCOND,
+        color=C_C,
     )
     ax.annotate(
         "rescond_c?",
@@ -335,8 +301,9 @@ def draw_endpoint(ax, dw):
         color=C_DIFF,
     )
     ax.annotate(
-        "in-batch $\\Delta W$ cos to native twin\n"
-        "(25b measured; 25e-1 asks where\nthe green arrow lands)",
+        "in-batch $\\Delta W$ cos to native twin (25b)\n"
+        "E25e deletes $W\\phi(0)$, keeps the label —\n"
+        "25e-1 asks where the green arrow lands",
         (0.52, -0.10),
         ha="center",
         va="top",
@@ -344,7 +311,7 @@ def draw_endpoint(ax, dw):
         linespacing=1.5,
     )
     ax.set_xlim(-0.10, 1.30)
-    ax.set_ylim(-0.42, 1.05)
+    ax.set_ylim(-0.45, 1.05)
     ax.set_aspect("equal")
     ax.axis("off")
     ax.set_title("the endpoint consequence", fontsize=10)
@@ -352,14 +319,14 @@ def draw_endpoint(ax, dw):
 
 def main() -> None:
     coords, inplane768 = plane_coords()
+    read1 = json.loads(READ1.read_text())
     dw = json.loads(SHIP.read_text())["secondary_dw_toward_native"]
 
-    fig, axes = plt.subplots(1, 4, figsize=(9.8, 2.9))
-    draw_schematic(axes[0])
-    draw_e25b(axes[1], coords)
-    draw_e25e(axes[2], coords)
-    draw_endpoint(axes[3], dw)
-    fig.tight_layout(w_pad=0.4)
+    fig = plt.figure(figsize=(11.5, 3.4))
+    gs = fig.add_gridspec(1, 3, width_ratios=[2.0, 1.05, 1.0], wspace=0.12)
+    draw_comb(fig.add_subplot(gs[0]), read1["ledger_ctrl"], read1["ledger_rescond"])
+    draw_delta_ledger(fig.add_subplot(gs[1]), coords)
+    draw_endpoint(fig.add_subplot(gs[2]), dw)
 
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y%m%d-%H%M")
     out_dir = RUNS / f"{stamp}-fig-e25e-concept"
@@ -374,20 +341,27 @@ def main() -> None:
         label="fig-e25e-concept",
         timestamp_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         sources=dict(
-            carrier_ckpt=str(CKPT), ship_read=str(SHIP), native_offset=str(OFFSET)
+            stage1_read=str(READ1),
+            carrier_ckpt=str(CKPT),
+            ship_read=str(SHIP),
+            native_offset=str(OFFSET),
         ),
         metrics=dict(coords=coords, inplane_fraction_d768=inplane768),
         caveats=[
-            "figure assembly only: panel 2/3 vectors computed from the "
-            "carrier checkpoint's tensors in the exact (d0, d896) plane; "
-            "d768 projected into that plane (inplane fraction recorded)",
-            "panel 2 annotation ranges are the 12-carrier ranges from "
-            "e25b_native_offset.json; the drawn vectors are the "
-            "hews_rescond_s1001 carrier",
-            "panel 4 arrow angles use the two-corpus mean of medians; "
-            "labels give the per-corpus medians; rescond_c is a QUESTION "
+            "figure assembly only: comb panel draws the Stage-1 768-probe "
+            "bc_ledger rows (hews tenth-scale twins, ctrl vs rescond stores); "
+            "drawn interior angle = acos(rho) clamped to [-1,1] "
+            "(fig_ledger_geometry convention); leg orientation beta is a "
+            "drawing convention",
+            "common-mode 'cancels in the gap' is a first-order statement: "
+            "it enters both arms of the demote-native pair identically and "
+            "acts on the pair only through the shared operating point",
+            "delta-ledger vectors computed from the hews_rescond_s1001 "
+            "carrier tensors in the exact (d0, d896) plane; annotation "
+            "ranges are the 12-carrier ranges from e25b_native_offset.json",
+            "endpoint arrow angles use the two-corpus mean of medians; "
+            "labels give per-corpus medians; rescond_c is a QUESTION "
             "(registered 25e-1), not a prediction of its answer",
-            "panel 1 is schematic (identities, not magnitudes)",
         ],
     )
     (out_dir / "result.json").write_text(json.dumps(envelope, indent=2))

@@ -126,15 +126,18 @@ queued behind it.
 
 ## Conceptual figure
 
-`e25e_concept_fig.py` → `e25e_concept.png` (fig_ledger_geometry
-idiom): (1) the conditioning-delta decomposition schematic
-(common-mode + label, tip-to-tail); (2) E25b measured — the two long
-nearly-parallel legs W·φ(0)/W·φ(s) from the carrier checkpoint's
-actual tensors, with the tiny closing side as the only
-resolution-discriminating part; (3) E25e by construction — the
-common-mode leg deleted, s = 0 pinned at the origin, only the closing
-side survives (same scale); (4) the endpoint consequence — 25b's
-measured in-batch ΔW angles to the native twin and the 25e-1 question
+`e25e_concept_fig.py` → `e25e_concept.png` (e24 bc_sphere_gap "the
+gap radiates" convention + fig_ledger_geometry palette): (1) per-σ
+gap comb — h(B+C) chords standing on the σ axis, ctrl (grey) vs
+rescond (black) per verdict bin, exact Stage-1 values with ×r_h; legs
+deliberately not drawn (h-units are reliability-weighted and do not
+Euclidean-compose — at σ=0.5667 no triangle with sides h_B, h_C,
+h(B+C) exists); (2) the delta ledger from carrier tensors, annotated
+by where each component acts — the label is the only part the
+demote↔native pair sees (it closes the chords; common-mode enters
+both arms and cancels there, first-order), common-mode acts on the
+endpoint; (3) the endpoint consequence — measured in-batch ΔW angles
+(combo 0.74/0.77 vs rescond 0.41/0.46) with the dashed 25e-1 question
 arrow. Assembly only; envelope in `runs/<stamp>-fig-e25e-concept/`.
 
 ## Kill switches / honesty
