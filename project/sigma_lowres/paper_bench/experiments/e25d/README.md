@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **REGISTERED (FROZEN) 2026-08-12** — renders only, zero training; runnable now (Stage-2 rescond checkpoints + the 25c.0 `--res_cond_s` seam both exist). |
+| **Status** | **DONE 2026-08-12 — 25d-1 ANTI** (5/6 checkpoints median Δcos < 0; signal carried by hews, channel a prompt-level coin flip). Registered frozen earlier the same day (bcc85e69); run + read below. |
 | **Question** | E25b trained (896-grid step, s = −0.193) as a *truthful label*: the conditioning absorbs the native↔demoted compute-graph gap per step (25b-1). E25d asks whether that absorption **transfers to inference**: when the rescond model renders at an 896-grid size, does labeling the render truthfully (s = −0.193) move its output **toward the same model's own 1024-grid behavior**, versus rendering the same 896 grid with the (false) native label s = 0? This is the SDXL micro-conditioning *intended use* (truthful size labels at inference), transposed to the learned s-axis — distinct from E25c, which sweeps s at **native** resolution (labels deliberately false there). |
 | **Category** | Mod-guidance-class (needs a rescond checkpoint; loader-gated). Functional read: "does truthful labeling help at inference", NOT a claim that 896-grid inference visits the training distribution (it doesn't — see honesty). |
 | **Licensed by** | E25b 25b-1 IMPROVES (the conditioning demonstrably absorbs the per-step grid substitution — there is an absorption to transfer); Stage 2.0 `_attach_res_cond` + 25c.0 `--res_cond_s` (s-propagation pinned in TestResCond). Context only, no license weight: the 2026-08-12 base-model eyeball (`runs/20260812-e25c-eyeball-base`, claim-free) showed the projection is live at inference. |
@@ -90,3 +90,57 @@ verdict; a TRANSFER with visible artifacts is recorded as caveated.
 |---|---|
 | renders — each ckpt renders its own corpus's prompts: (3×9 + 3×12) cells × 3 arms = 189 renders, one boot | ≈ 1–1.5 GPU-h |
 | read (PE-cos + spectra + sheets) | CPU/GPU minutes, same job |
+
+## Result (2026-08-12) — 25d-1 ANTI
+
+Run `runs/20260812-e25d/` (daemon job 20260812-180631-822164, rc = 0,
+one boot, boot-id stamped); all 189 renders landed, read in the same
+job. Summary JSON committed as `e25d_result.json` (full per-prompt
+table); eyeball sheets + RAPSD descriptives in the run dir.
+
+Per checkpoint (median Δcos = cos(cond896 ~ ref1024) −
+cos(plain896 ~ ref1024), paired within seed):
+
+| ckpt | median Δcos | prompts Δcos > 0 | baseline gap (median cos plain896 ~ ref1024) |
+|---|---|---|---|
+| hews_s1001 | −0.0009 | 1/9 | 0.909 |
+| hews_s1002 | −0.0167 | 2/9 | 0.882 |
+| hews_s1003 | −0.0066 | 2/9 | 0.933 |
+| channel_s1001 | −0.0004 | 6/12 | 0.927 |
+| channel_s1002 | −0.0040 | 4/12 | 0.929 |
+| channel_s1003 | **+0.0071** | 8/12 | 0.929 |
+
+5/6 medians negative ⇒ **ANTI** as frozen. Honest characterization of
+what the sign count is made of:
+
+- **The ANTI signal is hews-borne.** hews is 3/3 negative with clearly
+  negative prompt-level mass (5/27 prompts positive across its three
+  seeds). channel is 18/36 positive at the prompt level — an exact coin
+  flip — with two tiny negative medians (−0.0004, −0.0040) and one
+  positive (+0.0071); read alone, channel would be NULL. The 6-ckpt
+  sign-count gate lands ANTI because both near-zero channel medians
+  fall on the negative side.
+- **Effect sizes are small.** Only hews_s1002 (−0.0167) exceeds 0.01;
+  the baseline gap the label was supposed to close is ~0.07–0.12 of
+  cosine (plain896 sits at 0.88–0.93 from ref1024). The truthful label
+  closes none of it and on hews consistently costs a little.
+- **No spectral compensation either** (descriptive): cond896's
+  high-band RAPSD mass is closer to ref1024's than plain896's on only
+  34/63 cells (hews 18/27, channel 16/36) — no coherent high-band move
+  toward native.
+- The corpus asymmetry echoes the same-day base-model eyeball
+  (`runs/20260812-e25c-eyeball-base`: hews projection ≈ s-inert offset,
+  channel projection the live axis) — recorded as a descriptive rhyme
+  only, no claim.
+
+**Reading (per the frozen ANTI branch):** the truthful label acts as a
+weak style perturbation at inference, not a grid compensator — the
+per-step absorption 25b-1 demonstrated during training does not
+transfer to full-trajectory 896-grid renders, consistent with 25b-2/3's
+"converges to a different model" story and with the honesty paragraph's
+warning that full renders are off the trained (grid, σ) joint for both
+arms. The intended-use knob is **closed at this operating point**; the
+recorded reopening is training-side (σ-unrestricted or denser-axis
+conditioning), an E25-family amendment first. Kill switches honored:
+one pass, no retries, nothing feeds training, `--res_cond_s` stays
+experimental opt-in, E25c's frozen sweep untouched.
