@@ -126,19 +126,22 @@ queued behind it.
 
 ## Conceptual figure
 
-`e25e_concept_fig.py` → `e25e_concept.png` (e24 bc_sphere_gap "the
-gap radiates" convention + fig_ledger_geometry palette): (1) per-σ
-gap comb — h(B+C) chords standing on the σ axis, ctrl (grey) vs
-rescond (black) per verdict bin, exact Stage-1 values with ×r_h; legs
-deliberately not drawn (h-units are reliability-weighted and do not
-Euclidean-compose — at σ=0.5667 no triangle with sides h_B, h_C,
-h(B+C) exists); (2) the delta ledger from carrier tensors, annotated
-by where each component acts — the label is the only part the
-demote↔native pair sees (it closes the chords; common-mode enters
-both arms and cancels there, first-order), common-mode acts on the
-endpoint; (3) the endpoint consequence — measured in-batch ΔW angles
-(combo 0.74/0.77 vs rescond 0.41/0.46) with the dashed 25e-1 question
-arrow. Assembly only; envelope in `runs/<stamp>-fig-e25e-concept/`.
+`e25e_concept_fig.py` → `e25e_concept.png` — two 3D scenes
+(e24_bc_comb_3d idiom: a comb planted on the σ axis), **same
+gap-closing, different rail**. Each scene: per-verdict-bin h(B+C)
+chord pairs (grey ctrl vs black conditioned, exact Stage-1 768-probe
+values) standing on the rail the model trains on, with the green
+label arrows W·(φ(s)−φ(0)) doing the closing (the demote↔native pair
+comparison cancels the common-mode, so the label is the only part the
+gap sees). **E25b (left, measured)**: the trained W·φ(0) pushes the
+whole rail off the dashed native anchor — every step trains there,
+endpoint diverges (ΔW 0.74→0.41). **E25e (right, registered)**:
+W·(φ(0)−φ(0)) = 0 exactly, the rail *is* the native anchor; chords
+drawn faded + "?" as the registered expectation (grid running).
+Honesty strip: rail offset ×2 and label arrows ×6 for visibility;
+h-units vs delta-units heterogeneous — conceptual composition; legs
+not drawn (h-units don't Euclidean-compose). Envelope in
+`runs/<stamp>-fig-e25e-concept/`.
 
 ## Kill switches / honesty
 
