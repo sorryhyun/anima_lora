@@ -2018,7 +2018,11 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         # dot-free key, but stamp the flag so provenance survives tools that
         # read only metadata (and the loader can assert consistency).
         if getattr(self, "sigma_lowres_res_cond_proj", None) is not None:
-            metadata["ss_sigma_lowres_res_cond"] = "true"
+            metadata["ss_sigma_lowres_res_cond"] = (
+                "centered"
+                if getattr(self.cfg, "sigma_lowres_res_cond_centered", False)
+                else "true"
+            )
 
         # FEI router scalars the loader needs to size the router input (per-Linear
         # and global).

@@ -348,7 +348,20 @@ def main() -> None:
                     (lat_.shape[-2] * lat_.shape[-1])
                     / (native.shape[-2] * native.shape[-1])
                 )
-                bundle.anima._sigma_lowres_res_cond = (res_cond_proj, s_arm)
+                # E25e: centered checkpoints (metadata stamp "centered") apply
+                # the re-centered delta under the probe too — the variant is a
+                # property of the trained function, not of the probe flag.
+                bundle.anima._sigma_lowres_res_cond = (
+                    res_cond_proj,
+                    s_arm,
+                    bool(
+                        getattr(
+                            getattr(bundle.network, "cfg", None),
+                            "sigma_lowres_res_cond_centered",
+                            False,
+                        )
+                    ),
+                )
             try:
                 return grad_estimate_binned(
                     bundle,

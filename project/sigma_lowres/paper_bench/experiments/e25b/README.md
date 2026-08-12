@@ -96,3 +96,27 @@ lever changes the solution; it does not recover the native one.
 Legitimate paper-2 finding; **NO** as a quality-neutral throughput
 recipe. E25c (inference-time knob on the trained axis) reads the
 rescond checkpoints independently and is unaffected by this FAIL.
+
+## Post-close descriptive (2026-08-12) — the trained lever is ~90 % common-mode
+
+The registered Stage-2 descriptive ‖W·φ(0)‖ (the trained native
+offset) was never emitted by `e25b_ship_read.py`; first measured
+post-close (`e25b_native_offset.{py,json}`, CPU, all 12 carrier
+checkpoints). Decomposition of the trained delta:
+
+| component | norm |
+|---|---|
+| ‖W·φ(0)‖ — the offset **every** step (native included) receives | 0.130–0.192 |
+| ‖W·φ(s) − W·φ(0)‖ — the part that actually distinguishes routes | 0.005–0.024 |
+| cos(W·φ(0), W·φ(s)) | 0.994–1.000 |
+
+The lever trained as ~90 % **resolution-independent global bias** on
+the adaln trunk and only ~6–13 % resolution label. SGD used the
+projection as a free bias parameter outside ΔW; the common-mode
+component shifted the native operating point, the LoRA co-adapted
+around it, and the endpoint diverged (the ΔW ANTI-direction and the
+below-yardstick renders above). This sharpens the mechanistic reading:
+the divergence channel is the **parameterization's common-mode
+freedom**, not the conditioning idea itself — measured motivation for
+**E25e** (re-centered delta W·(φ(s) − φ(0)), which removes the channel
+structurally).

@@ -851,6 +851,30 @@ class AnimaTrainer:
         return math.log2(demote / native)
 
     @staticmethod
+    def _validate_res_cond_flags(args):
+        """Setup-time errors for the res-cond flag pair (fires whether or not
+        --sigma_lowres is set — these are flag-consistency checks, not router
+        checks)."""
+        if getattr(args, "sigma_lowres_res_cond", False) and not getattr(
+            args, "sigma_lowres", False
+        ):
+            # The conditioning input is the σ-router's per-step route —
+            # without the router there is nothing to condition on.
+            raise ValueError(
+                "--sigma_lowres_res_cond requires --sigma_lowres (the "
+                "conditioning scalar is the router's per-step route)"
+            )
+        if getattr(args, "sigma_lowres_res_cond_centered", False) and not getattr(
+            args, "sigma_lowres_res_cond", False
+        ):
+            # E25e: centered is a variant of the conditioning lever, not a
+            # standalone flag — same setup-time-error contract as above.
+            raise ValueError(
+                "--sigma_lowres_res_cond_centered modifies "
+                "--sigma_lowres_res_cond; set both."
+            )
+
+    @staticmethod
     def _validate_sigma_rules(args):
         """Validate the whole sigma_lowres surface UP FRONT, at setup.
 
@@ -1493,7 +1517,11 @@ class AnimaTrainer:
                     "--sigma_lowres_res_cond is set but the network carries no "
                     "res-cond projection (warm-start from a control checkpoint?)"
                 )
-            anima._sigma_lowres_res_cond = (proj, getattr(self, "_res_cond_s", 0.0))
+            anima._sigma_lowres_res_cond = (
+                proj,
+                getattr(self, "_res_cond_s", 0.0),
+                bool(getattr(ctx.args, "sigma_lowres_res_cond_centered", False)),
+            )
         try:
             with torch.set_grad_enabled(is_train), accelerator.autocast():
                 model_pred, cond = self._run_primary_forward(
@@ -2183,16 +2211,7 @@ class AnimaTrainer:
         # sigma_lowres Phase 1b: activate the σ-demote sidecar on the TRAIN
         # datasets only — validation stays native so val loss is comparable
         # across the A/B arms the gate requires.
-        if getattr(args, "sigma_lowres_res_cond", False) and not getattr(
-            args, "sigma_lowres", False
-        ):
-            # Setup-time error (the sigma_lowres surface contract): the
-            # conditioning input is the σ-router's per-step route — without
-            # the router there is nothing to condition on.
-            raise ValueError(
-                "--sigma_lowres_res_cond requires --sigma_lowres (the "
-                "conditioning scalar is the router's per-step route)"
-            )
+        self._validate_res_cond_flags(args)
         if getattr(args, "sigma_lowres", False):
             # Whole-surface validation before anything is wired: bad routes,
             # an unwindowed rule 2, and malformed spans all raise HERE rather
@@ -2382,7 +2401,11 @@ class AnimaTrainer:
         # with the sigma_lowres surface at setup); tunnel it to the factory so
         # the network constructs the zero-init projection.
         if getattr(args, "sigma_lowres_res_cond", False):
-            net_kwargs["sigma_lowres_res_cond"] = "true"
+            net_kwargs["sigma_lowres_res_cond"] = (
+                "centered"
+                if getattr(args, "sigma_lowres_res_cond_centered", False)
+                else "true"
+            )
 
         if args.dim_from_weights:
             network, _ = network_module.create_network_from_weights(

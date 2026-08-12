@@ -397,6 +397,12 @@ class LoRANetworkCfg:
     # non-bakeable). Trained by ordinary backprop at unet_lr; the trainer
     # attaches (proj, s) on the DiT per forward.
     sigma_lowres_res_cond: bool = False
+    # E25e re-centered variant: the delta is W·(φ(s) − φ(0)) so native (s=0)
+    # forwards are bit-identical to control for ANY projection value (and the
+    # projection gets zero gradient from them). Same tensor footprint; the
+    # variants are distinguished only by the ss_sigma_lowres_res_cond
+    # metadata stamp ("centered" vs "true").
+    sigma_lowres_res_cond_centered: bool = False
     register_init_std: float = 0.02
 
     verbose: bool = False
@@ -770,9 +776,11 @@ class LoRANetworkCfg:
 
         # E25b explicit resolution conditioning (train.py injects this from
         # --sigma_lowres_res_cond; string-bool via network_args also works).
-        sigma_lowres_res_cond = str(
-            kwargs.get("sigma_lowres_res_cond", "")
-        ).strip().lower() in ("true", "1", "yes")
+        # E25e: the value "centered" selects the re-centered W·(φ(s) − φ(0))
+        # variant — one string, so the two bools can never disagree.
+        _res_cond_raw = str(kwargs.get("sigma_lowres_res_cond", "")).strip().lower()
+        sigma_lowres_res_cond = _res_cond_raw in ("true", "1", "yes", "centered")
+        sigma_lowres_res_cond_centered = _res_cond_raw == "centered"
 
         verbose = _as_bool(kwargs.get("verbose"))
 
@@ -841,6 +849,7 @@ class LoRANetworkCfg:
             register_lr_scale=register_lr_scale,
             register_init_std=register_init_std,
             sigma_lowres_res_cond=sigma_lowres_res_cond,
+            sigma_lowres_res_cond_centered=sigma_lowres_res_cond_centered,
             verbose=verbose,
         )
 
@@ -888,7 +897,10 @@ class LoRANetworkCfg:
         register_insert_block: int = 8,
         # E25b res-cond: presence of the dot-free "sigma_lowres_res_cond_proj"
         # key (factory sniff) — the param must exist before load_state_dict.
+        # E25e centered: from the ss_sigma_lowres_res_cond metadata stamp
+        # value ("centered") — no tensor footprint distinguishes the variants.
         sigma_lowres_res_cond: bool = False,
+        sigma_lowres_res_cond_centered: bool = False,
     ) -> "LoRANetworkCfg":
         """Build cfg from a checkpoint key-sniff (warm-start / inference path).
 
@@ -999,6 +1011,7 @@ class LoRANetworkCfg:
             content_router_layer_norm=bool(content_router_layer_norm),
             step_expert_K=int(step_expert_K),
             sigma_lowres_res_cond=bool(sigma_lowres_res_cond),
+            sigma_lowres_res_cond_centered=bool(sigma_lowres_res_cond_centered),
             num_registers=int(num_registers),
             register_insert_block=int(register_insert_block),
         )

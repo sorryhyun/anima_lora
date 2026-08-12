@@ -616,6 +616,11 @@ def create_network_from_weights(
     # must be constructed before load_state_dict(strict=False) — an unexpected
     # key would be dropped SILENTLY otherwise (conditioning lost, no error).
     sigma_lowres_res_cond = "sigma_lowres_res_cond_proj" in weights_sd
+    # E25e: the centered variant leaves no tensor footprint — it rides the
+    # metadata stamp value ("centered" vs "true"), like register_insert_block.
+    sigma_lowres_res_cond_centered = (
+        file_metadata.get("ss_sigma_lowres_res_cond") == "centered"
+    )
     if sigma_lowres_res_cond:
         logger.info(
             "Detected sigma_lowres res-cond projection in checkpoint (E25b) — "
@@ -871,6 +876,7 @@ def create_network_from_weights(
         num_registers=num_registers,
         register_insert_block=register_insert_block,
         sigma_lowres_res_cond=sigma_lowres_res_cond,
+        sigma_lowres_res_cond_centered=sigma_lowres_res_cond_centered,
     )
 
     network = LoRANetwork(text_encoders, unet, cfg, multiplier=multiplier)

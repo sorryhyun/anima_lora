@@ -316,19 +316,28 @@ def _attach_res_cond(
     """
     from safetensors import safe_open
 
-    carriers: list[tuple[str, torch.Tensor]] = []
+    carriers: list[tuple[str, torch.Tensor, bool]] = []
     for path in lora_weight_paths:
         with safe_open(path, framework="pt") as f:
             has_key = "sigma_lowres_res_cond_proj" in f.keys()
-            stamped = dict(f.metadata() or {}).get("ss_sigma_lowres_res_cond") == "true"
-            if stamped and not has_key:
+            stamp = dict(f.metadata() or {}).get("ss_sigma_lowres_res_cond")
+            if stamp in ("true", "centered") and not has_key:
                 raise RuntimeError(
                     f"{path}: ss_sigma_lowres_res_cond stamp without the "
                     "sigma_lowres_res_cond_proj tensor — the projection was "
                     "stripped; refusing to render off-distribution."
                 )
             if has_key:
-                carriers.append((path, f.get_tensor("sigma_lowres_res_cond_proj")))
+                # E25e "centered": delta = W·(φ(s) − φ(0)); at the default
+                # s = 0 the attach is then a mathematical no-op, kept anyway
+                # so --res_cond_s sweeps the centered axis uniformly.
+                carriers.append(
+                    (
+                        path,
+                        f.get_tensor("sigma_lowres_res_cond_proj"),
+                        stamp == "centered",
+                    )
+                )
     if not carriers:
         if s != 0.0:
             raise RuntimeError(
@@ -341,12 +350,17 @@ def _attach_res_cond(
             "Multiple --lora_weight files carry sigma_lowres_res_cond_proj — "
             "composing res-cond adapters is untested; load them separately."
         )
-    path, proj = carriers[0]
+    path, proj, centered = carriers[0]
     model._sigma_lowres_res_cond = (
         proj.to(device=device, dtype=torch.float32),
         float(s),
+        centered,
     )
-    logger.info(f"E25b res-cond: projection installed from {path} (inference s={s})")
+    logger.info(
+        f"E25b res-cond: projection installed from {path} (inference s={s}"
+        + (", centered" if centered else "")
+        + ")"
+    )
 
 
 def load_dit_model(

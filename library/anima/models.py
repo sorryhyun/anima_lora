@@ -871,7 +871,10 @@ class VideoRopePosition3DEmb(VideoPositionEmb):
 
 
 def sigma_lowres_res_cond_delta(
-    proj_w: torch.Tensor, s: float, timesteps_B_T: torch.Tensor
+    proj_w: torch.Tensor,
+    s: float,
+    timesteps_B_T: torch.Tensor,
+    centered: bool = False,
 ) -> torch.Tensor:
     """E25b explicit-resolution-conditioning delta on the t-embedding.
 
@@ -880,14 +883,24 @@ def sigma_lowres_res_cond_delta(
     ``proj_w.shape[1]``) and the zero-init projection ``proj_w``
     ``(t_emb_dim, sinusoid_dim)``; returns ``(B, T, t_emb_dim)``. Zero-init
     proj ⇒ exactly-zero delta (the E25b identity invariant, pinned in
-    tests/test_sigma_lowres.py)."""
+    tests/test_sigma_lowres.py).
+
+    ``centered`` (E25e): the sinusoid is re-centered to ``φ(s) − φ(0)``
+    before projection, so at s = 0 the delta is exactly zero — and so is
+    its gradient to ``proj_w`` — for ANY projection value. Native forwards
+    are then bit-identical to a control arm throughout training, killing
+    the common-mode-offset channel E25b measured (the trained lever was
+    ~90 % a resolution-independent W·φ(0) bias)."""
     s_B_T = torch.full(
         timesteps_B_T.shape[:2],
         float(s),
         dtype=proj_w.dtype,
         device=proj_w.device,
     )
-    return Timesteps(proj_w.shape[1])(s_B_T) @ proj_w.t()
+    phi = Timesteps(proj_w.shape[1])(s_B_T)
+    if centered:
+        phi = phi - Timesteps(proj_w.shape[1])(torch.zeros_like(s_B_T))
+    return phi @ proj_w.t()
 
 
 class Timesteps(nn.Module):
@@ -2190,9 +2203,11 @@ class Anima(nn.Module):
         # sinusoid.
         res_cond = getattr(self, "_sigma_lowres_res_cond", None)
         if res_cond is not None:
-            proj_w, s = res_cond
+            # (proj, s) legacy 2-tuple or (proj, s, centered) — E25e centered
+            # attaches carry the third element; absent ⇒ uncentered (E25b).
+            proj_w, s, *rest = res_cond
             t_embedding_B_T_D = t_embedding_B_T_D + sigma_lowres_res_cond_delta(
-                proj_w, s, timesteps_B_T
+                proj_w, s, timesteps_B_T, centered=bool(rest and rest[0])
             ).to(t_embedding_B_T_D.dtype)
 
         block_kwargs = {

@@ -1010,8 +1010,8 @@ class TestResCond:
         )
         model = SimpleNamespace()
         _attach_res_cond(model, [path], torch.device("cpu"))
-        got, s = model._sigma_lowres_res_cond
-        assert s == 0.0 and got.dtype == torch.float32
+        got, s, centered = model._sigma_lowres_res_cond
+        assert s == 0.0 and got.dtype == torch.float32 and centered is False
         assert torch.equal(got, proj)
         # inference delta == the trainer's native-step (s=0) delta, bit-exact
         assert torch.equal(
@@ -1087,3 +1087,148 @@ class TestResCond:
         ]
         with pytest.raises(RuntimeError, match="untested"):
             _attach_res_cond(SimpleNamespace(), paths, torch.device("cpu"))
+
+
+class TestResCondCentered:
+    """E25e --sigma_lowres_res_cond_centered invariants (registration,
+    e25e README): with the re-centered delta W·(φ(s) − φ(0)) the s = 0
+    forward is exactly zero — and contributes exactly zero gradient to the
+    projection — for ANY projection value (native steps are bit-identical
+    to a control arm throughout training: the common-mode-offset channel
+    the E25b post-close decomposition measured is dead at the
+    parameterization). Demoted deltas stay live and route-distinguishing;
+    the variant round-trips through the "centered" stamp / cfg string."""
+
+    _T = torch.zeros(2, 1)
+
+    def test_centered_s0_delta_exactly_zero_for_any_proj(self):
+        from library.anima.models import sigma_lowres_res_cond_delta
+
+        torch.manual_seed(0)
+        proj = torch.randn(64, 16)  # NOT zero-init — the E25b invariant's gap
+        delta = sigma_lowres_res_cond_delta(proj, 0.0, self._T, centered=True)
+        assert torch.equal(delta, torch.zeros_like(delta))
+        # bit-exact on the summation point, the same convention the E25b
+        # zero-init identity pins
+        t_emb = torch.randn(2, 1, 64)
+        assert torch.equal(t_emb + delta, t_emb)
+
+    def test_centered_s0_zero_grad_to_proj(self):
+        """Native steps train NOTHING through the centered module — the
+        sinusoid difference is exactly the zero vector, so the projection's
+        gradient is exactly zero (demoted-only training, structurally)."""
+        from library.anima.models import sigma_lowres_res_cond_delta
+
+        torch.manual_seed(0)
+        proj = torch.nn.Parameter(torch.randn(64, 16))
+        sigma_lowres_res_cond_delta(proj, 0.0, self._T, centered=True).sum().backward()
+        assert torch.equal(proj.grad, torch.zeros_like(proj))
+        # ...while a demoted step DOES move it (non-vacuity)
+        proj2 = torch.nn.Parameter(torch.randn(64, 16))
+        sigma_lowres_res_cond_delta(
+            proj2, math.log2(896 / 1024), self._T, centered=True
+        ).sum().backward()
+        assert not torch.equal(proj2.grad, torch.zeros_like(proj2))
+
+    def test_centered_demote_is_uncentered_minus_native_offset(self):
+        """delta_c(s) == delta(s) − delta(0): centering removes exactly the
+        trained native offset W·φ(0), nothing else — and the two shipped
+        routes stay distinguished."""
+        from library.anima.models import sigma_lowres_res_cond_delta
+
+        torch.manual_seed(0)
+        proj = torch.randn(64, 16)
+        d0 = sigma_lowres_res_cond_delta(proj, 0.0, self._T)
+        deltas = {}
+        for s in (math.log2(896 / 1024), math.log2(768 / 1024)):
+            dc = sigma_lowres_res_cond_delta(proj, s, self._T, centered=True)
+            du = sigma_lowres_res_cond_delta(proj, s, self._T)
+            torch.testing.assert_close(dc, du - d0)
+            assert not torch.allclose(dc, torch.zeros_like(dc))
+            deltas[s] = dc
+        assert not torch.allclose(*deltas.values())
+
+    def test_zero_init_identity_still_holds_centered(self):
+        from library.anima.models import sigma_lowres_res_cond_delta
+
+        proj = torch.zeros(64, 16)
+        for s in (0.0, math.log2(896 / 1024), math.log2(768 / 1024)):
+            delta = sigma_lowres_res_cond_delta(proj, s, self._T, centered=True)
+            assert torch.equal(delta, torch.zeros_like(delta))
+
+    @staticmethod
+    def _cfg(value):
+        from networks.lora_modules.lora import LoRAModule
+        from networks.lora_anima.config import LoRANetworkCfg
+
+        return LoRANetworkCfg.from_kwargs(
+            {"sigma_lowres_res_cond": value},
+            network_dim=8,
+            network_alpha=8.0,
+            neuron_dropout=None,
+            module_class=LoRAModule,
+        )
+
+    def test_cfg_string_centered_sets_both_bools(self):
+        cfg = self._cfg("centered")
+        assert cfg.sigma_lowres_res_cond is True
+        assert cfg.sigma_lowres_res_cond_centered is True
+        cfg = self._cfg("true")
+        assert cfg.sigma_lowres_res_cond is True
+        assert cfg.sigma_lowres_res_cond_centered is False
+
+    def test_centered_flag_requires_base_flag(self):
+        from train import AnimaTrainer
+
+        args = _args(
+            sigma_lowres=True,
+            sigma_lowres_res_cond=False,
+            sigma_lowres_res_cond_centered=True,
+        )
+        with pytest.raises(ValueError, match="res_cond_centered"):
+            AnimaTrainer._validate_res_cond_flags(args)
+        # base pair passes; res_cond without the router still fails
+        AnimaTrainer._validate_res_cond_flags(
+            _args(
+                sigma_lowres=True,
+                sigma_lowres_res_cond=True,
+                sigma_lowres_res_cond_centered=True,
+            )
+        )
+        with pytest.raises(ValueError, match="requires --sigma_lowres"):
+            AnimaTrainer._validate_res_cond_flags(
+                _args(sigma_lowres=False, sigma_lowres_res_cond=True)
+            )
+
+    def test_inference_attach_centered_stamp(self, tmp_path):
+        """A "centered"-stamped carrier attaches with centered=True, and the
+        default s = 0 attach is a mathematical no-op on the forward."""
+        from library.anima.models import sigma_lowres_res_cond_delta
+        from library.inference.models import _attach_res_cond
+
+        torch.manual_seed(0)
+        proj = torch.randn(64, 16)
+        path = TestResCond._ckpt(
+            tmp_path,
+            "rescond_c.safetensors",
+            {"sigma_lowres_res_cond_proj": proj, "lora_unet_x": torch.zeros(1)},
+            metadata={"ss_sigma_lowres_res_cond": "centered"},
+        )
+        model = SimpleNamespace()
+        _attach_res_cond(model, [path], torch.device("cpu"))
+        got, s, centered = model._sigma_lowres_res_cond
+        assert s == 0.0 and centered is True
+        delta = sigma_lowres_res_cond_delta(got, s, self._T, centered=centered)
+        assert torch.equal(delta, torch.zeros_like(delta))
+
+    def test_inference_attach_centered_stamp_without_key_hard_fails(self, tmp_path):
+        from library.inference.models import _attach_res_cond
+
+        path = TestResCond._ckpt(
+            tmp_path,
+            "stripped_c.safetensors",
+            {"lora_unet_x": torch.zeros(1)},
+            metadata={"ss_sigma_lowres_res_cond": "centered"},
+        )
+        with pytest.raises(RuntimeError, match="stripped"):
+            _attach_res_cond(SimpleNamespace(), [path], torch.device("cpu"))

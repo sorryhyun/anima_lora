@@ -574,6 +574,18 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "carries the projection (not a ΔW — make merge refuses it).",
     )
     parser.add_argument(
+        "--sigma_lowres_res_cond_centered",
+        action="store_true",
+        help="E25e re-centered variant of --sigma_lowres_res_cond (requires "
+        "it): the delta becomes W·(φ(s) − φ(0)), so native (s = 0) forwards "
+        "are bit-identical to a control arm for ANY projection value and "
+        "contribute zero gradient to it. Removes, at the parameterization, "
+        "the common-mode-offset channel the E25b post-close decomposition "
+        "measured (~90 % of the trained lever was a resolution-independent "
+        "W·φ(0) bias that shifted the native operating point). Checkpoint "
+        "stamp: ss_sigma_lowres_res_cond = 'centered'.",
+    )
+    parser.add_argument(
         "--deterministic",
         action="store_true",
         help="Bit-exact reproducibility: deterministic flash-attn backward "
