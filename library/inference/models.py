@@ -291,7 +291,10 @@ def attach_adapters(
 
 
 def _attach_res_cond(
-    model: anima_models.Anima, lora_weight_paths: list[str], device: torch.device
+    model: anima_models.Anima,
+    lora_weight_paths: list[str],
+    device: torch.device,
+    s: float = 0.0,
 ) -> None:
     """E25b res-cond: install the trained resolution-conditioning projection.
 
@@ -302,7 +305,10 @@ def _attach_res_cond(
     always on the native grid, so the attach is a persistent ``(proj, s=0)``
     on the DiT (the forward reads it per call in the eager region; the
     trainer's try/finally scoping is unnecessary because s never changes).
-    Stamp without tensor ⇒ hard fail (a stripped/re-saved file — the
+    ``s`` defaults to 0 (the trained native point); a nonzero value is the
+    E25c inference knob (``--res_cond_s``) and requires a carrier checkpoint
+    — a knob that silently does nothing is the failure mode this helper
+    exists to close. Stamp without tensor ⇒ hard fail (a stripped/re-saved file — the
     silent-drop failure mode this helper closes). The projection is kept fp32
     on device (~2 MB); the forward casts the delta to the t-embedding dtype.
     Unscaled by ``lora_multiplier`` — the projection is a conditioning input,
@@ -324,6 +330,11 @@ def _attach_res_cond(
             if has_key:
                 carriers.append((path, f.get_tensor("sigma_lowres_res_cond_proj")))
     if not carriers:
+        if s != 0.0:
+            raise RuntimeError(
+                f"--res_cond_s {s} needs a --lora_weight carrying "
+                "sigma_lowres_res_cond_proj; none of the loaded files does."
+            )
         return
     if len(carriers) > 1:
         raise RuntimeError(
@@ -331,8 +342,11 @@ def _attach_res_cond(
             "composing res-cond adapters is untested; load them separately."
         )
     path, proj = carriers[0]
-    model._sigma_lowres_res_cond = (proj.to(device=device, dtype=torch.float32), 0.0)
-    logger.info(f"E25b res-cond: projection installed from {path} (inference s=0)")
+    model._sigma_lowres_res_cond = (
+        proj.to(device=device, dtype=torch.float32),
+        float(s),
+    )
+    logger.info(f"E25b res-cond: projection installed from {path} (inference s={s})")
 
 
 def load_dit_model(
@@ -480,7 +494,14 @@ def load_dit_model(
     # dict to lora_unet_*/register_tokens, so the (non-bakeable) res-cond
     # projection never reaches the network — install it on the DiT here.
     if args.lora_weight is not None and len(args.lora_weight) > 0:
-        _attach_res_cond(model, list(args.lora_weight), device)
+        _attach_res_cond(
+            model,
+            list(args.lora_weight),
+            device,
+            s=getattr(args, "res_cond_s", 0.0),
+        )
+    elif getattr(args, "res_cond_s", 0.0) != 0.0:
+        raise RuntimeError("--res_cond_s needs a rescond --lora_weight; none given.")
 
     if getattr(args, "compile", False):
         logger.info("Compiling DiT model with torch.compile...")

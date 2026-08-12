@@ -1046,6 +1046,33 @@ class TestResCond:
         with pytest.raises(RuntimeError, match="stripped"):
             _attach_res_cond(SimpleNamespace(), [path], torch.device("cpu"))
 
+    def test_inference_knob_propagates_s_and_default_is_zero(self, tmp_path):
+        """25c.0: --res_cond_s reaches the attached tuple; the default (0.0)
+        is the trained native point, bit-identical to the Stage-2.0 attach."""
+        from library.inference.models import _attach_res_cond
+
+        path = self._ckpt(
+            tmp_path,
+            "rescond.safetensors",
+            {"sigma_lowres_res_cond_proj": torch.zeros(64, 16)},
+            metadata={"ss_sigma_lowres_res_cond": "true"},
+        )
+        default = SimpleNamespace()
+        _attach_res_cond(default, [path], torch.device("cpu"))
+        assert default._sigma_lowres_res_cond[1] == 0.0
+        knob = SimpleNamespace()
+        _attach_res_cond(knob, [path], torch.device("cpu"), s=0.193)
+        assert knob._sigma_lowres_res_cond[1] == 0.193
+
+    def test_inference_knob_hard_fails_without_carrier(self, tmp_path):
+        from library.inference.models import _attach_res_cond
+
+        path = self._ckpt(
+            tmp_path, "control.safetensors", {"lora_unet_x": torch.zeros(1)}
+        )
+        with pytest.raises(RuntimeError, match="res_cond_s"):
+            _attach_res_cond(SimpleNamespace(), [path], torch.device("cpu"), s=0.193)
+
     def test_inference_attach_refuses_multiple_carriers(self, tmp_path):
         from library.inference.models import _attach_res_cond
 

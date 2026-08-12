@@ -245,6 +245,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to trained pooled_text_proj weights (.safetensors) for modulation guidance",
     )
     parser.add_argument(
+        "--res_cond_s",
+        type=float,
+        default=0.0,
+        help="E25c: resolution-conditioning scalar for rescond checkpoints "
+        "(s = log2(edge/1024); 0.0 = the trained native point, the default). "
+        "Requires a --lora_weight carrying sigma_lowres_res_cond_proj — "
+        "setting it without one is an error, not a silent no-op.",
+    )
+    parser.add_argument(
         "--mod_w",
         type=float,
         default=3.0,
