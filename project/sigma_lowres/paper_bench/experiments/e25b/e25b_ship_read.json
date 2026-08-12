@@ -1,0 +1,320 @@
+{
+ "sources": {
+  "yardstick": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/runs/20260812-e25b2-yardstick/yardstick.json",
+  "jobs": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/experiments/e25b/e25b_stage2_jobs.json"
+ },
+ "quality": {
+  "hews": {
+   "in_batch_yardstick": 0.9578424493471781,
+   "native_lottery_pairs": [
+    0.9557993412017822,
+    0.9631543755531311,
+    0.9545736312866211
+   ],
+   "arms": {
+    "combo": {
+     "per_seed": {
+      "1001": 0.9467028379440308,
+      "1002": 0.9689434766769409,
+      "1003": 0.9568058848381042
+     },
+     "mean": 0.9574840664863586,
+     "at_or_inside": false,
+     "margin": -0.0003583828608194617
+    },
+    "rescond": {
+     "per_seed": {
+      "1001": 0.9413811564445496,
+      "1002": 0.9517664313316345,
+      "1003": 0.9418818950653076
+     },
+     "mean": 0.9450098276138306,
+     "at_or_inside": false,
+     "margin": -0.012832621733347538
+    },
+    "sigma768": {
+     "per_seed": {
+      "1001": 0.9525455832481384,
+      "1002": 0.959624171257019,
+      "1003": 0.9473751783370972
+     },
+     "mean": 0.9531816442807516,
+     "at_or_inside": false,
+     "margin": -0.004660805066426521
+    },
+    "rescond768": {
+     "per_seed": {
+      "1001": 0.9614516496658325,
+      "1002": 0.9581044316291809,
+      "1003": 0.953040361404419
+     },
+     "mean": 0.9575321475664774,
+     "at_or_inside": false,
+     "margin": -0.0003103017807006836
+    }
+   }
+  },
+  "channel": {
+   "in_batch_yardstick": 0.9541464646657308,
+   "native_lottery_pairs": [
+    0.9454424977302551,
+    0.963941752910614,
+    0.9530551433563232
+   ],
+   "arms": {
+    "combo": {
+     "per_seed": {
+      "1001": 0.9590157866477966,
+      "1002": 0.9623381495475769,
+      "1003": 0.9734961986541748
+     },
+     "mean": 0.9649500449498495,
+     "at_or_inside": true,
+     "margin": 0.010803580284118652
+    },
+    "rescond": {
+     "per_seed": {
+      "1001": 0.9513042569160461,
+      "1002": 0.9399938583374023,
+      "1003": 0.9633195996284485
+     },
+     "mean": 0.9515392382939657,
+     "at_or_inside": false,
+     "margin": -0.0026072263717651367
+    },
+    "sigma768": {
+     "per_seed": {
+      "1001": 0.9723069667816162,
+      "1002": 0.960113525390625,
+      "1003": 0.9697135090827942
+     },
+     "mean": 0.9673780004183451,
+     "at_or_inside": true,
+     "margin": 0.013231535752614265
+    },
+    "rescond768": {
+     "per_seed": {
+      "1001": 0.9517455101013184,
+      "1002": 0.9298245310783386,
+      "1003": 0.9637596011161804
+     },
+     "mean": 0.9484432140986124,
+     "at_or_inside": false,
+     "margin": -0.005703250567118401
+    }
+   }
+  }
+ },
+ "gate_yardstick_sanity": {
+  "hews": {
+   "in_batch": 0.9578424493471781,
+   "recorded": 0.9547,
+   "within_0.02": true
+  },
+  "channel": {
+   "in_batch": 0.9541464646657308,
+   "recorded": 0.9541,
+   "within_0.02": true
+  }
+ },
+ "throughput_measured_not_gated": {
+  "paired_wall_rescond_over_combo": {
+   "mean": 1.002415119516827,
+   "per_pair": [
+    1.002181464881165,
+    1.0038274834742598,
+    1.003292732142202,
+    1.0007795863642155,
+    1.0021279072196638,
+    1.0022815430194556
+   ]
+  },
+  "paired_wall_rescond768_over_sigma768": {
+   "mean": 1.0074127073968464,
+   "per_pair": [
+    1.0321702627930305,
+    1.0023639195150553,
+    1.0027755685568653,
+    1.000540908599174,
+    1.003169434224918,
+    1.0034561506920354
+   ]
+  },
+  "wall_vs_native_pct": {
+   "hews_combo": -0.1565011897109225,
+   "hews_rescond": -0.15387718018335586,
+   "hews_sigma768": -0.1943578168042961,
+   "hews_rescond768": -0.18446699656212948,
+   "channel_combo": -0.14903996435476827,
+   "channel_rescond": -0.1475657287968972,
+   "channel_sigma768": -0.1881252204471945,
+   "channel_rescond768": -0.18618133745013551
+  }
+ },
+ "gate_demote_mass_pair_identity": true,
+ "demote_mass_note": "realized sigma>0.5 mass 180/480 (37.5%) vs the E16.1-era recorded 244/480 (50.8%) at the same seeds \u2014 the sigma draw distribution shifted between 2026-08-02 and 2026-08-12; in-batch comparisons unaffected (CRN pair-identity holds), wall deltas vs native are correspondingly smaller than the recorded -18.3%.",
+ "verdict_25b2": {
+  "quality_gate_pass": false,
+  "verdict": "FAIL (quality)",
+  "note": "frozen wording: rescond mean within-seed render cos at-or-inside the in-batch yardstick on BOTH corpora; a near-miss is a miss."
+ },
+ "verdict_25b3": {
+  "paired": {
+   "hews": {
+    "paired_dcos_per_seed": {
+     "1001": 0.008906066417694092,
+     "1002": -0.0015197396278381348,
+     "1003": 0.005665183067321777
+    },
+    "median": 0.005665183067321777
+   },
+   "channel": {
+    "paired_dcos_per_seed": {
+     "1001": -0.02056145668029785,
+     "1002": -0.030288994312286377,
+     "1003": -0.0059539079666137695
+    },
+    "median": -0.02056145668029785
+   }
+  },
+  "direction": "NULL",
+  "band_claim": "not rescued",
+  "sigma768_below_band_on": [
+   "hews"
+  ]
+ },
+ "secondary_dw_toward_native": {
+  "per_corpus": {
+   "hews": {
+    "combo": {
+     "per_seed": {
+      "1001": 0.7176,
+      "1002": 0.7718,
+      "1003": 0.7435
+     },
+     "median": 0.7435
+    },
+    "rescond": {
+     "per_seed": {
+      "1001": 0.4092,
+      "1002": 0.4072,
+      "1003": 0.4004
+     },
+     "median": 0.4072
+    },
+    "sigma768": {
+     "per_seed": {
+      "1001": 0.7299,
+      "1002": 0.7734,
+      "1003": 0.7464
+     },
+     "median": 0.7464
+    },
+    "rescond768": {
+     "per_seed": {
+      "1001": 0.4015,
+      "1002": 0.4041,
+      "1003": 0.3966
+     },
+     "median": 0.4015
+    }
+   },
+   "channel": {
+    "combo": {
+     "per_seed": {
+      "1001": 0.7597,
+      "1002": 0.7696,
+      "1003": 0.7732
+     },
+     "median": 0.7696
+    },
+    "rescond": {
+     "per_seed": {
+      "1001": 0.4369,
+      "1002": 0.4743,
+      "1003": 0.4647
+     },
+     "median": 0.4647
+    },
+    "sigma768": {
+     "per_seed": {
+      "1001": 0.762,
+      "1002": 0.775,
+      "1003": 0.7674
+     },
+     "median": 0.7674
+    },
+    "rescond768": {
+     "per_seed": {
+      "1001": 0.4303,
+      "1002": 0.47,
+      "1003": 0.4555
+     },
+     "median": 0.4555
+    }
+   }
+  },
+  "registered_direction_rescond_gt_combo": false,
+  "note": "corroborate-only; blind to the projection (not a dW); cross-batch comparison forbidden (combo itself sits ~0.74-0.77 this batch vs 0.365/0.434 recorded in E16.1 \u2014 same sigma-draw shift)."
+ },
+ "cmmd_descriptive_no_verdict": {
+  "hews": {
+   "native": {
+    "1001": 0.5064010620117188,
+    "1002": 0.32520294189453125,
+    "1003": 0.4273653030395508
+   },
+   "combo": {
+    "1001": 0.6382465362548828,
+    "1002": 0.5052089691162109,
+    "1003": 0.3917217254638672
+   },
+   "rescond": {
+    "1001": 0.4131793975830078,
+    "1002": 0.659942626953125,
+    "1003": 0.5501508712768555
+   },
+   "sigma768": {
+    "1001": 0.36847591400146484,
+    "1002": 0.4723072052001953,
+    "1003": 0.4101991653442383
+   },
+   "rescond768": {
+    "1001": 0.5362033843994141,
+    "1002": 0.37157535552978516,
+    "1003": 0.5345344543457031
+   }
+  },
+  "channel_(caststation)": {
+   "native": {
+    "1001": 0.2460479736328125,
+    "1002": 0.36072731018066406,
+    "1003": 0.15747547149658203
+   },
+   "combo": {
+    "1001": 0.25331974029541016,
+    "1002": 0.22101402282714844,
+    "1003": 0.22161006927490234
+   },
+   "rescond": {
+    "1001": 0.17440319061279297,
+    "1002": 0.2924203872680664,
+    "1003": 0.2760887145996094
+   },
+   "sigma768": {
+    "1001": 0.2760887145996094,
+    "1002": 0.2512931823730469,
+    "1003": 0.35691261291503906
+   },
+   "rescond768": {
+    "1001": 0.23949146270751953,
+    "1002": 0.3453493118286133,
+    "1003": 0.30112266540527344
+   }
+  }
+ },
+ "gate_determinism_control": {
+  "keys_equal": true,
+  "differing_keys": 0
+ }
+}

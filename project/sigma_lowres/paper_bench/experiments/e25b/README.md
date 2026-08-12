@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PRE-REGISTERED (FROZEN) 2026-08-11; STAGE 0 BUILT + STAGE 1 RUN + READ 2026-08-12 — 25b-1 IMPROVES** (median r_h **0.572**, median Δρ **+0.005**; 5/5 bins readable both stores, all gates pass; the improvement concentrates at the shallow bins and in the **graph leg** h(C)) — **STAGE 2 REGISTERED (FROZEN) 2026-08-12** — full-scale ship read (E16.1 grid, 5 arms + determinism control, 25b-2 ship gates + 25b-3 rescue read; the 30-B INSUFFICIENT site-rationale citation is in the Stage-2 section). **Blocked on Stage 2.0**: the inference path drops + never applies the res-cond projection (keep-live loader filter, `library/inference/models.py:159,218`) — wiring + invariant tests ship before any GPU submission. See "Stage 0 as-built", "Stage 1 result", and "Stage 2" below. |
+| **Status** | **PRE-REGISTERED (FROZEN) 2026-08-11; STAGE 0 BUILT + STAGE 1 RUN + READ 2026-08-12 — 25b-1 IMPROVES** (median r_h **0.572**, median Δρ **+0.005**; 5/5 bins readable both stores, all gates pass; the improvement concentrates at the shallow bins and in the **graph leg** h(C)) — **STAGE 2 RUN + READ 2026-08-12 — 25b-2 FAIL (quality), 25b-3 NULL.** rescond renders below the in-batch yardstick on BOTH corpora (hews −0.013, channel −0.003; near-miss = miss as frozen); throughput was free (paired wall 1.0024 — cost was never the problem); ΔW secondary opposite-direction 12/12; rescue NULL/not-rescued. One consistent story: the conditioning absorbs the substitution per step (25b-1) but converges to a *different* model, not a closer recovery of native. Recorded per the frozen branch — no paper-method update, no ship, flag stays experimental opt-in; paper-2 gets the gradient-level positive with the render-level negative alongside. E25c (inference knob) is independent and unaffected. See "Stage 2 result" below. |
 | **Question** | The line knows the demoted-step residual is angle-borne (E24.2), locally enforced (E21), with the phase-response **amplitude carried 86–87 % by the adaln band** (E21, descriptive), and — since E28-F1 — that a **conditioning input demonstrably organizes the axis field** (MISMATCH-CARRIED: sign(σ_noise − σ_cond) is the organizing variable, tested at two pin values). E25b asks the lever form of that fact: if the resolution dimension the network currently absorbs *implicitly* is made an **explicit conditioning input** on the adaln trunk (micro-conditioning precedent: SDXL size/crop; in-architecture precedent: `enable_fps_modulation` in `library/anima/models.py`), does the demoted-step cancellation geometry improve — **h(B+C) shrinks** (primary; ρ deepening reported alongside) — at the trained arm's own operating point? |
 | **Licensed by** | E24 STRUCTURED (σ-local lever mandate); E24.2 (target = angle/residual, never amplitude rebalancing); E21 (adaln amplitude concentration — the injection-site prior); E28-F1 MISMATCH-CARRIED + E29 NATIVE-SMOOTH (conditioning input organizes the field — the roadmap-(d) rationale fact); E25.0 (pre-registered as not gating E25b: 25.0-1 PARTIAL and 25.0-2 NO-GAIN touch only E25a's lookup). |
 | **Explicitly NOT this** | **The E20.4-adjacency paragraph (the freeze requirement) is below** and is part of this table's contract. Not per-sample (E22 → 22.4 → E23a unchanged): the conditioning input is a *known per-step discrete scalar* (the route), not an estimated quantity — there is no estimand anywhere in the training path. Not E25a (no lookup, no gradient projection, no probe-built object enters training). No PI/RoPE change (G11; yarnsig is untouched). No σ_cond probe-pin interaction (E28-F1's `--cond_sigma` seam is a *probe* intervention; E25b touches the *trainer*). Not a paper-1 item (revision_plan §8); paper-2/paper-3 material per roadmap §2.B. |
@@ -403,6 +403,78 @@ persistent `(proj, s=0)` attach after every adapter route's
 `lora_unet_*` filter; stamp-without-key hard fail; multi-carrier
 refusal; unscaled by `lora_multiplier` — a conditioning input, not a
 ΔW) + 4 `TestResCond` additions; full fast suite green.
+
+## Stage 2 result (2026-08-12) — 25b-2 FAIL (quality); 25b-3 NULL
+
+Grid + evals + yardstick all in one day (31 train jobs rc=0; evals
+`20260812-e25b2-eval-sfw-s100{1,2,3}` + `20260812-e25b2-yardstick`,
+one boot). Read: `e25b_ship_read.{py,json}`.
+
+**Gates.** (1) Twin-start identity — 12/12 flag pairs first-loss
+bit-identical. (2) Determinism control — ctrl2 vs combo twin **0/1092
+keys differ**. (3) Demote-mass pair-identity — 6/6 cells, hist
+identical within both flag pairs. (4) Yardstick sanity — in-batch
+0.9578/0.9541 vs recorded 0.9547/0.9541, inside ±0.02. **Recorded
+observation**: realized σ>0.5 mass is 180/480 (37.5 %) vs the
+E16.1-era 244/480 (50.8 %) at the same seeds — the σ-draw distribution
+shifted between 2026-08-02 and 2026-08-12 (cause not chased here);
+in-batch comparisons are unaffected (CRN holds), but wall deltas vs
+native run smaller than the recorded −18.3 % (combo −13.6…−17.1 %),
+and this batch's ΔW-to-native levels sit far above E16.1's recorded
+ones (combo 0.74–0.77 vs 0.365/0.434) — cross-batch scalar comparisons
+are dead, again.
+
+**25b-2 (the ship read).** In-batch yardstick (cross-seed native
+lottery): hews **0.9578**, channel **0.9541**. Mean within-seed render
+cos vs native twin:
+
+| arm | hews | channel | vs bar |
+|---|---|---|---|
+| combo | 0.9575 | 0.9650 | boundary hews (−0.0004), inside channel |
+| **rescond** | **0.9450** | **0.9515** | **below BOTH** (−0.0128 / −0.0026) |
+| sigma768 | 0.9532 | 0.9674 | below hews, inside channel (E4 shape reproduced) |
+| rescond768 | 0.9575 | 0.9484 | boundary hews, below channel |
+
+Quality gate (rescond at-or-inside on BOTH corpora): **FAIL** — hews
+is not close (−0.013), channel is a near-miss (−0.003) and a near-miss
+is a miss as frozen. Throughput (measured, not gated): paired wall
+rescond/combo **1.0024** — the projection is free, as predicted; cost
+was never the problem. Per the frozen branch: **recorded; the Stage-1
+gradient-geometry result stands as paper-2 material with the
+render-level negative alongside.** No paper-method update (the PASS
+action), no ship; the flag stays an experimental opt-in.
+
+**25b-3 (rescue read).** Paired per-seed Δcos(rescond768 − sigma768 vs
+native twin): hews median **+0.0057** (2/3 positive), channel median
+**−0.0206** (0/3) ⇒ direction **NULL** (both corpora required). Band
+claim: sigma768 below the band on hews (testable), rescond768 at
+0.9575 hews (hair below bar) / 0.9484 channel (below) ⇒ **not
+rescued**.
+
+**Secondary (ΔW toward native, corroborate-only).** Direction NOT
+confirmed — the opposite on 12/12 pairs: rescond median 0.407/0.465 vs
+combo 0.744/0.770 (rescond768 vs sigma768 the same). The conditioning
+moves the endpoint *away* from the native twin, coherently (well above
+the 0.26 nondet-retrain floor).
+
+**CMMD (descriptive, no verdict).** Incoherent at this N exactly as E4
+recorded (rescond is the best hews arm at s1001 and the worst at
+s1002; several demote arms "beat" native) — the E4 lesson reproduces;
+numbers in the read json.
+
+**Mechanistic reading (descriptive).** The three reads tell one
+consistent story: explicit conditioning *does* absorb demoted-step
+residual per step (25b-1, gradient level), but the training then
+converges to a **different model** — ΔW far from the native twin, and
+renders outside the native seed lottery on hews — rather than a closer
+recovery of the native run. The lever changes the solution; it does
+not recover the native one. That is a legitimate paper-2 finding
+(conditioning-absorbs-the-substitution at the gradient level; the
+endpoint diverges at the model level) and a NO on shipping it as a
+quality-neutral throughput recipe. E25c (inference knob on the trained
+axis) is registered independently and its material (the rescond
+checkpoints) exists — it reads the trained axis, not the ship
+question, and is unaffected by this FAIL.
 
 ### Cost (Stage 2)
 
