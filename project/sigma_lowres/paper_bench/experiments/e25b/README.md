@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **PRE-REGISTERED (FROZEN) 2026-08-11; STAGE 0 BUILT + STAGE 1 RUN + READ 2026-08-12 — 25b-1 IMPROVES** (median r_h **0.572**, median Δρ **+0.005**; 5/5 bins readable both stores, all gates pass; the improvement concentrates at the shallow bins and in the **graph leg** h(C)) — **Stage 2 (ship read) is now registrable** per the branch table. See "Stage 0 as-built" and "Stage 1 result" below. E30's 30-B landed INSUFFICIENT (context row): the Stage-2 rationale must state the injection site is chosen by architecture, not by the base-frame slice geometry. |
+| **Status** | **PRE-REGISTERED (FROZEN) 2026-08-11; STAGE 0 BUILT + STAGE 1 RUN + READ 2026-08-12 — 25b-1 IMPROVES** (median r_h **0.572**, median Δρ **+0.005**; 5/5 bins readable both stores, all gates pass; the improvement concentrates at the shallow bins and in the **graph leg** h(C)) — **STAGE 2 REGISTERED (FROZEN) 2026-08-12** — full-scale ship read (E16.1 grid, 5 arms + determinism control, 25b-2 ship gates + 25b-3 rescue read; the 30-B INSUFFICIENT site-rationale citation is in the Stage-2 section). **Blocked on Stage 2.0**: the inference path drops + never applies the res-cond projection (keep-live loader filter, `library/inference/models.py:159,218`) — wiring + invariant tests ship before any GPU submission. See "Stage 0 as-built", "Stage 1 result", and "Stage 2" below. |
 | **Question** | The line knows the demoted-step residual is angle-borne (E24.2), locally enforced (E21), with the phase-response **amplitude carried 86–87 % by the adaln band** (E21, descriptive), and — since E28-F1 — that a **conditioning input demonstrably organizes the axis field** (MISMATCH-CARRIED: sign(σ_noise − σ_cond) is the organizing variable, tested at two pin values). E25b asks the lever form of that fact: if the resolution dimension the network currently absorbs *implicitly* is made an **explicit conditioning input** on the adaln trunk (micro-conditioning precedent: SDXL size/crop; in-architecture precedent: `enable_fps_modulation` in `library/anima/models.py`), does the demoted-step cancellation geometry improve — **h(B+C) shrinks** (primary; ρ deepening reported alongside) — at the trained arm's own operating point? |
 | **Licensed by** | E24 STRUCTURED (σ-local lever mandate); E24.2 (target = angle/residual, never amplitude rebalancing); E21 (adaln amplitude concentration — the injection-site prior); E28-F1 MISMATCH-CARRIED + E29 NATIVE-SMOOTH (conditioning input organizes the field — the roadmap-(d) rationale fact); E25.0 (pre-registered as not gating E25b: 25.0-1 PARTIAL and 25.0-2 NO-GAIN touch only E25a's lookup). |
 | **Explicitly NOT this** | **The E20.4-adjacency paragraph (the freeze requirement) is below** and is part of this table's contract. Not per-sample (E22 → 22.4 → E23a unchanged): the conditioning input is a *known per-step discrete scalar* (the route), not an estimated quantity — there is no estimand anywhere in the training path. Not E25a (no lookup, no gradient projection, no probe-built object enters training). No PI/RoPE change (G11; yarnsig is untouched). No σ_cond probe-pin interaction (E28-F1's `--cond_sigma` seam is a *probe* intervention; E25b touches the *trainer*). Not a paper-1 item (revision_plan §8); paper-2/paper-3 material per roadmap §2.B. |
@@ -223,18 +223,164 @@ context in the read json (cross-boot scalar caveat): tenth-scale combo
 legs are ~3–10× the full-scale sincos legs relative to G, with the
 same deep-ρ shape.
 
-## Stage 2 — ship read (gated on 25b-1 IMPROVES + explicit go; own amendment)
+## Stage 2 — ship read (REGISTERED (FROZEN) 2026-08-12; licensed by 25b-1 IMPROVES + explicit go)
 
-Not frozen here beyond its shape (it re-registers with constants when
-licensed): full-scale E16.1-pattern grid (3 seeds × 2 artists,
-rescond vs combo), quality gate = the E4 5-arm seed-lottery render
-yardstick (non-regression: rescond inside the per-corpus band),
-throughput gate = wall-clock at fixed steps within **+1 %** of combo
-(the lever must not spend the −18.3 % win), plus the Tier 1.5
-packaging (bench script + invariant test per CONTRIBUTING.md — the
-Stage-0 tests and the Stage-1 bench script are the basis). Output on a
-ship decision would be an ordinary LoRA + the res-cond projection keys,
-loader-gated exactly like the training flag.
+The pre-registered shape (full-scale E16.1 grid, rescond vs combo,
+yardstick quality gate + +1 % throughput gate, Tier 1.5 packaging) is
+kept verbatim and re-registered here with constants. **One recorded
+extension** beyond the frozen shape, at the user's direction: a
+**rescue pair** on the below-yardstick single-route arm (`sigma768`,
+E4's 5th arm — named "the rescue target" in E16's depends-on row),
+asking whether explicit conditioning widens the certified route
+envelope. The floated `combolate` comparator is **not** retrained:
+its E16.1 verdict (below the hews band at −14.6 %, i.e. *worse*
+throughput than combo) means a rescue there wins nothing the combo
+comparison doesn't already decide, and its ΔW-closeness question is
+answered in-batch by this grid's own ΔW column (no cross-batch
+numeric comparison to the recorded 0.753/0.771 — the chaos-floor and
+cross-boot guards forbid it).
+
+**Site rationale (required 30-B citation).** E30.1's 30-B landed
+**INSUFFICIENT** (adaln gradient share 0.36–0.42 < 0.5 on both legs):
+the base-frame adaln *slice* does not carry the cancellation geometry
+on its own. The injection site therefore stands on **architecture,
+not base-frame slice geometry** — the t-embedding → adaln trunk is
+where this architecture takes its conditioning inputs (timestep,
+pooled-text delta), and 25b-1's leg split (the graph leg h(C) shrinks
+at every bin) is the site's empirical vindication at the gradient
+level. No base-frame claim supports the site; none is needed.
+
+### Stage 2.0 — instrument (CPU/code only; blocks any GPU submission)
+
+The Stage-1 instrument stops at the trainer + probe. **The inference
+path does not apply the res-cond delta**: the delta fires only when
+`(proj, s)` is attached per forward (`models.py:2191`), which only the
+trainer does — and worse, the keep-live adapter loader **filters the
+state dict** to `lora_unet_*`/`register_tokens`
+(`library/inference/models.py:159,218`), so
+`sigma_lowres_res_cond_proj` is dropped before the factory key-sniff
+ever sees it. A rescond checkpoint rendered today would silently run
+**without** its trained s = 0 offset (native training steps trained
+W·φ(0) ≠ 0 — dropping it at inference is off-distribution), which
+would corrupt the yardstick read. Stage 2.0 therefore ships, with
+invariant tests, before any run is queued:
+
+1. **Loader pass-through**: the keep-live filter admits
+   `sigma_lowres_res_cond_proj`; hard fail (not silent no-op) if the
+   `ss_sigma_lowres_res_cond` stamp is present but the key is missing.
+2. **Inference attach**: when the loaded adapter carries the key,
+   every inference forward attaches `(proj, s = 0)` (native-grid
+   inference is the trained s = 0 point) via the same try/finally
+   idiom the trainer uses. Control checkpoints stay bit-exact
+   untouched.
+3. **Tests** (`TestResCond` additions): rescond render forward differs
+   from a delta-stripped control; control checkpoint bit-exact
+   unaffected; inference s = 0 delta bit-exact equal to the trainer's
+   native-step delta; stamp-without-key hard fail.
+4. Harness = the E4 scripts as-is (`e4_render_eval.py`,
+   `e4_seed_yardstick.py`, frozen prompt/gen_seed grid) + a Stage-2
+   read script (`e25b_ship_read.py`) emitting the tables below;
+   demote-mass accounting via `token_step_hist`.
+
+### Frozen grid (E16.1 protocol)
+
+2 corpora (hews 60-stem / 8 ep; channel\_(caststation) 15-stem /
+32 ep) × 3 seeds (1001–1003) × 480 steps bs 1, `--deterministic
+--paired_step_rng`, stock lora recipe — identical argv within a pair
+except the flag:
+
+| arm | routing | flag | role |
+|---|---|---|---|
+| native | — | — | yardstick anchor |
+| combo | 768@σ∈(0.65,0.95) / 896+yarnsig@σ>0.5 | — | ctrl (shipped recipe) |
+| **rescond** | combo | `--sigma_lowres_res_cond` | **25b-2 primary** |
+| sigma768 | 768+yarnsig@σ>0.5, no stack | — | rescue ctrl (E4 5th arm) |
+| **rescond768** | sigma768 | `--sigma_lowres_res_cond` | **25b-3 rescue** |
+
+Plus one determinism-control duplicate (combo, hews, s1001) = **31
+runs**, one daemon batch. The yardstick is **recomputed in-batch**
+(cross-seed native~native render cos per corpus) — the recorded
+0.9547/0.9541 are context, not the bar (same-env principle). Training
+runs may span boots (checkpoints are portable); the render + yardstick
+pass runs in **one boot** — if a reboot splits it, all arms re-render.
+
+### Validation gates (before the verdict rows are read)
+
+1. **Twin-start identity**: first-forward loss bit-identical within
+   both flag pairs (rescond vs combo, rescond768 vs sigma768), per the
+   Stage-1 convention.
+2. **Determinism control**: the duplicate combo run's checkpoint is
+   key-identical (0 differing keys) to its twin.
+3. **Demote-mass accounting**: `token_step_hist` per arm matches the
+   configured gate, and realized demoted step sets are identical
+   within each flag pair per seed (seed-keyed σ stream, the E4 CRN
+   property).
+4. **Yardstick sanity**: in-batch native lottery within ±0.02 of the
+   recorded 0.9547/0.9541 per corpus — outside that, record the drift
+   and proceed on the in-batch numbers (they carry regardless).
+
+### 25b-2 — the ship read (primary)
+
+- **Quality gate**: rescond mean within-seed render cos vs its native
+  twin **at-or-inside the in-batch yardstick on BOTH corpora** (the
+  bar combo passed in E16.1).
+- **Throughput gate**: paired per-seed wall ratio rescond/combo, mean
+  over the 6 pairs, **≤ 1.01** (the lever must not spend the −18.3 %
+  win).
+
+| outcome | verdict |
+|---|---|
+| both gates pass | **SHIP** — the flag is documented in `docs/optimizations/sigma_lowres.md` (arm-table row), Tier 1.5 packaging completes (bench script + invariant tests — Stage 0/2.0 tests + Stage-1/2 read scripts are the basis); output = ordinary LoRA + res-cond projection keys, loader-gated. **Default recipe stays combo-without-flag** — a default flip is its own decision, recorded separately. |
+| quality gate fails | **NO-SHIP (quality)** — recorded; the Stage-1 gradient-geometry result stands as paper-2 material with the render-level negative alongside. |
+| throughput gate fails | **NO-SHIP (throughput)** — recorded; re-entry only via an amendment that removes the overhead (no site/form changes — kill switch below). |
+
+One grid, no reruns on a miss; a near-miss is a miss (seed-lottery
+wording from Stage 1 carries).
+
+### 25b-3 — the rescue read (secondary; NOT a ship gate)
+
+Margin honesty, recorded at freeze: E4's sigma768 missed the hews band
+by **0.0055** and was already inside on channel — band membership at
+this margin is near seed noise. The verdict-bearing read is therefore
+the **paired within-seed comparison**, which the deterministic twin
+design exists to support; band membership is context.
+
+- **Primary estimand**: per-seed paired Δcos = cos(rescond768~native)
+  − cos(sigma768~native), within seed, per corpus (6 pairs).
+  **RESCUE-DIRECTION** iff median Δcos > 0 on both corpora; NULL
+  otherwise.
+- **Band claim** (context row, reads only if licensed): if the
+  in-batch sigma768 ctrl is below the band on ≥ 1 corpus AND
+  rescond768 is at-or-inside on both AND its wall is within +1 % of
+  sigma768 ⇒ **RESCUED** (recorded). If the in-batch sigma768 is
+  itself inside both bands, the band claim is
+  **NOT-TESTABLE-AT-THIS-BATCH** (the lottery moved) and only the
+  directional read reports.
+- RESCUED does **not** change any shipped default and does not touch
+  paper-1 (sigma768 remains its off-map control; the rescue is
+  paper-2/3 material per roadmap §2.B). Promoting 768@σ>0.5 to a
+  shipped recipe would be its own registration.
+
+### Descriptives (no verdict weight)
+
+- ΔW cos vs native twin per arm — does conditioning move the endpoint
+  toward native (the question `combolate`'s schedule bought with
+  throughput)? Qualitative context only vs E16.1's scheduling rows; no
+  cross-batch numeric comparison.
+- ‖W·φ(0)‖ per rescond checkpoint — the size of the trained native
+  offset (the stake of the Stage-2.0 wiring).
+- CMMD recorded, no verdict at this N (the E4 lesson). Render fig
+  sheets per the E4 candidate format.
+
+### Cost (Stage 2)
+
+| item | cost |
+|---|---|
+| Stage 2.0 — inference wiring + tests + read script | CPU/code only |
+| grid — 31 deterministic runs (≈ 5.5–6.5 min each) | ≈ 3–3.5 GPU-h |
+| renders + yardstick (one boot, E4 harness) | ≈ 1.5–2.5 GPU-h |
+| read (`e25b_ship_read.py`) | CPU minutes |
+| **total** | **≈ 5–6 GPU-h** |
 
 ## Kill switches / honesty
 
@@ -255,6 +401,14 @@ loader-gated exactly like the training flag.
   arm_sums are reclaimed (manifests retained).
 - If thresholds go stale before submission (instrument redesign,
   reboot mid-pair), re-freeze via amendment; no post-hoc renegotiation.
+- **Stage-2 additions**: the rescue read never gates the ship read
+  (a 25b-3 NULL cannot block a 25b-2 SHIP, and vice versa); the
+  in-batch yardstick is the bar even if it drifts from the recorded
+  numbers; no arm additions after freeze (`combolate` exclusion is
+  recorded in the Stage-2 preamble — re-adding it is an amendment);
+  Stage 2.0 wiring must not change training-path semantics (trainer
+  forward bit-unchanged — pinned by the existing zero-init identity
+  test).
 
 ## Cost ladder
 
