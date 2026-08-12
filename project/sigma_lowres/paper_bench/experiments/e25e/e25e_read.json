@@ -1,0 +1,281 @@
+{
+ "doc": "E25e read \u2014 frozen 2026-08-12 registration",
+ "sources": {
+  "yardstick": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/runs/20260812-e25e-yardstick/yardstick.json",
+  "jobs": "/home/sorryhyun/anima/anima_lora/project/sigma_lowres/paper_bench/experiments/e25e/e25e_jobs.json"
+ },
+ "gate1_twin_start_identity": {
+  "record": "TB loss/current at step 2 (earliest logged step)",
+  "cells": {
+   "hews_s1001": {
+    "combo": 0.07094484567642212,
+    "rescond_c": 0.07094484567642212,
+    "identical": true
+   },
+   "hews_s1002": {
+    "combo": 0.12081611901521683,
+    "rescond_c": 0.12081611901521683,
+    "identical": true
+   },
+   "hews_s1003": {
+    "combo": 0.12023086845874786,
+    "rescond_c": 0.12023086845874786,
+    "identical": true
+   },
+   "channel_s1001": {
+    "combo": 0.08166538178920746,
+    "rescond_c": 0.08166538178920746,
+    "identical": true
+   },
+   "channel_s1002": {
+    "combo": 0.061978742480278015,
+    "rescond_c": 0.061978742480278015,
+    "identical": true
+   },
+   "channel_s1003": {
+    "combo": 0.07722984999418259,
+    "rescond_c": 0.07722984999418259,
+    "identical": true
+   }
+  },
+  "pass": true
+ },
+ "gate2_determinism_control": {
+  "keys_equal": true,
+  "differing_keys": 0,
+  "pass": true
+ },
+ "gate3_demote_mass_pair_identity": {
+  "pass": true
+ },
+ "quality": {
+  "hews": {
+   "in_batch_yardstick": 0.9571374853452047,
+   "native_lottery_pairs": [
+    0.9565101265907288,
+    0.964873194694519,
+    0.9500291347503662
+   ],
+   "arms": {
+    "combo": {
+     "per_seed": {
+      "1001": 0.9408125281333923,
+      "1002": 0.9674805402755737,
+      "1003": 0.9554305672645569
+     },
+     "mean": 0.9545745452245077,
+     "at_or_inside": false,
+     "margin": -0.0025629401206970215
+    },
+    "rescond_c": {
+     "per_seed": {
+      "1001": 0.955389142036438,
+      "1002": 0.9608010053634644,
+      "1003": 0.9599482417106628
+     },
+     "mean": 0.9587127963701884,
+     "at_or_inside": true,
+     "margin": 0.00157531102498365
+    }
+   }
+  },
+  "channel": {
+   "in_batch_yardstick": 0.9541464646657308,
+   "native_lottery_pairs": [
+    0.9454424977302551,
+    0.963941752910614,
+    0.9530551433563232
+   ],
+   "arms": {
+    "combo": {
+     "per_seed": {
+      "1001": 0.9590157866477966,
+      "1002": 0.9623381495475769,
+      "1003": 0.9734961986541748
+     },
+     "mean": 0.9649500449498495,
+     "at_or_inside": true,
+     "margin": 0.010803580284118652
+    },
+    "rescond_c": {
+     "per_seed": {
+      "1001": 0.9600100517272949,
+      "1002": 0.9595363140106201,
+      "1003": 0.9767135977745056
+     },
+     "mean": 0.9654199878374735,
+     "at_or_inside": true,
+     "margin": 0.011273523171742683
+    }
+   }
+  }
+ },
+ "gate4_yardstick_sanity": {
+  "hews": {
+   "in_batch": 0.9571374853452047,
+   "recorded": 0.9578,
+   "within_0.02": true
+  },
+  "channel": {
+   "in_batch": 0.9541464646657308,
+   "recorded": 0.9541,
+   "within_0.02": true
+  }
+ },
+ "gates_all_pass": true,
+ "verdict_25e1": {
+  "per_corpus_dw": {
+   "hews": {
+    "combo": {
+     "per_seed": {
+      "1001": 0.7176,
+      "1002": 0.7718,
+      "1003": 0.7435
+     },
+     "median": 0.7435
+    },
+    "rescond_c": {
+     "per_seed": {
+      "1001": 0.4284,
+      "1002": 0.4471,
+      "1003": 0.4402
+     },
+     "median": 0.4402
+    }
+   },
+   "channel": {
+    "combo": {
+     "per_seed": {
+      "1001": 0.7597,
+      "1002": 0.7696,
+      "1003": 0.7732
+     },
+     "median": 0.7696
+    },
+    "rescond_c": {
+     "per_seed": {
+      "1001": 0.5153,
+      "1002": 0.5266,
+      "1003": 0.4916
+     },
+     "median": 0.5153
+    }
+   }
+  },
+  "per_corpus": {
+   "hews": {
+    "median_delta": -0.30330000000000007,
+    "verdict": "COLLAPSE-PERSISTS"
+   },
+   "channel": {
+    "median_delta": -0.25429999999999997,
+    "verdict": "COLLAPSE-PERSISTS"
+   }
+  },
+  "judgment_constants": {
+   "confirm": -0.05,
+   "collapse": -0.15
+  },
+  "context_25b_not_compared": "25b batch: combo 0.74-0.77, rescond 0.41-0.47",
+  "verdict": "COLLAPSE-PERSISTS",
+  "note": "standing limit: dW closeness != render closeness (measured, twice); this row reads the mechanism, not the ship question."
+ },
+ "throughput_measured_not_gated": {
+  "paired_wall_rescond_c_over_combo": {
+   "mean": 0.9996958031177933,
+   "per_pair": [
+    1.0204902153822701,
+    1.0044226501761302,
+    0.9923579321169682,
+    1.0053952369129695,
+    0.971502956305534,
+    1.0040058278128878
+   ]
+  },
+  "wall_vs_native_pct": {
+   "hews_combo": -0.15229097530033164,
+   "hews_rescond_c": -0.14746794327015092,
+   "channel_combo": -0.14563436041021927,
+   "channel_rescond_c": -0.15136197866299841
+  }
+ },
+ "verdict_25e2": {
+  "quality_gate_pass": true,
+  "verdict": "PASS (paper-method update, no product ship)",
+  "note": "frozen wording: rescond_c mean within-seed render cos at-or-inside the in-batch yardstick on BOTH corpora; near-miss = miss."
+ },
+ "descriptive": {
+  "learned_differential_norms": {
+   "note": "||W.(phi(s)-phi(0))|| per rescond_c checkpoint \u2014 the trained lever when the differential is the ONLY channel (25b prior: differential 0.005-0.024 while common-mode ate ~90%)",
+   "per_ckpt": {
+    "e25e_hews_rescond_c_s1001": {
+     "proj_norm": 0.10915,
+     "norm_delta_896": 0.03481,
+     "norm_delta_768": 0.07746
+    },
+    "e25e_hews_rescond_c_s1002": {
+     "proj_norm": 0.0388,
+     "norm_delta_896": 0.00355,
+     "norm_delta_768": 0.00744
+    },
+    "e25e_hews_rescond_c_s1003": {
+     "proj_norm": 0.07977,
+     "norm_delta_896": 0.02342,
+     "norm_delta_768": 0.05131
+    },
+    "e25e_channel_rescond_c_s1001": {
+     "proj_norm": 0.04547,
+     "norm_delta_896": 0.01207,
+     "norm_delta_768": 0.02718
+    },
+    "e25e_channel_rescond_c_s1002": {
+     "proj_norm": 0.03332,
+     "norm_delta_896": 0.00334,
+     "norm_delta_768": 0.0065
+    },
+    "e25e_channel_rescond_c_s1003": {
+     "proj_norm": 0.05338,
+     "norm_delta_896": 0.01733,
+     "norm_delta_768": 0.03717
+    }
+   }
+  },
+  "cmmd_holdout_no_verdict": {
+   "hews": {
+    "native": {
+     "1001": 0.476837158203125,
+     "1002": 0.33974647521972656,
+     "1003": 0.44548511505126953
+    },
+    "combo": {
+     "1001": 0.6589889526367188,
+     "1002": 0.4411935806274414,
+     "1003": 0.4048347473144531
+    },
+    "rescond_c": {
+     "1001": 0.4749298095703125,
+     "1002": 0.4106760025024414,
+     "1003": 0.46575069427490234
+    }
+   },
+   "channel_(caststation)": {
+    "native": {
+     "1001": 0.2460479736328125,
+     "1002": 0.36072731018066406,
+     "1003": 0.15747547149658203
+    },
+    "combo": {
+     "1001": 0.25331974029541016,
+     "1002": 0.22101402282714844,
+     "1003": 0.22161006927490234
+    },
+    "rescond_c": {
+     "1001": 0.18215179443359375,
+     "1002": 0.20456314086914062,
+     "1003": 0.17511844635009766
+    }
+   }
+  },
+  "cross_grid_determinism": "e25e native/combo checkpoints bit-identical to the e25b2 grid's (0/1092 keys differ, hews+combo s1001 checked) \u2014 same boot, same argv; the shared arms replicate exactly across grids."
+ }
+}
