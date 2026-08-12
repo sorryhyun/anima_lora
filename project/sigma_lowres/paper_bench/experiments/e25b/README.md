@@ -321,21 +321,41 @@ pass runs in **one boot** — if a reboot splits it, all arms re-render.
 
 ### 25b-2 — the ship read (primary)
 
-- **Quality gate**: rescond mean within-seed render cos vs its native
-  twin **at-or-inside the in-batch yardstick on BOTH corpora** (the
-  bar combo passed in E16.1).
-- **Throughput gate**: paired per-seed wall ratio rescond/combo, mean
-  over the 6 pairs, **≤ 1.01** (the lever must not spend the −18.3 %
-  win).
+*(Amended pre-submission 2026-08-12, user decision: the throughput
+gate is demoted to a measurement — at this scale ±1 % is ~3 s of wall
+against run-to-run noise, and the projection's cost (one 256×2048
+matmul per forward) is architecturally negligible; a gate there would
+be a coin flip. The paired wall ratio and `token_step_hist` are still
+measured and recorded for the arm-table row. Same amendment registers
+the ΔW directional read below as a secondary.)*
+
+- **Quality gate (the only ship gate)**: rescond mean within-seed
+  render cos vs its native twin **at-or-inside the in-batch yardstick
+  on BOTH corpora** (the bar combo passed in E16.1).
+- **Throughput (measured, not gated)**: paired per-seed wall ratio
+  rescond/combo over the 6 pairs + `token_step_hist`; recorded in the
+  read json and the docs arm table. A large regression would be
+  visible here and argued about in the open, not silently gated.
 
 | outcome | verdict |
 |---|---|
-| both gates pass | **SHIP** — the flag is documented in `docs/optimizations/sigma_lowres.md` (arm-table row), Tier 1.5 packaging completes (bench script + invariant tests — Stage 0/2.0 tests + Stage-1/2 read scripts are the basis); output = ordinary LoRA + res-cond projection keys, loader-gated. **Default recipe stays combo-without-flag** — a default flip is its own decision, recorded separately. |
-| quality gate fails | **NO-SHIP (quality)** — recorded; the Stage-1 gradient-geometry result stands as paper-2 material with the render-level negative alongside. |
-| throughput gate fails | **NO-SHIP (throughput)** — recorded; re-entry only via an amendment that removes the overhead (no site/form changes — kill switch below). |
+| quality gate passes | **PASS — no product ship (user decision 2026-08-12)**: the result updates the **paper's method treatment** (the lever-form consequence per the In-the-paper row; which paper text absorbs it is decided at write time, not here). The flag stays experimental opt-in, default recipe unchanged; a product ship (docs arm-table promotion + full Tier 1.5 packaging) is a separate later decision with this grid as its evidence. |
+| quality gate fails | **FAIL (quality)** — recorded; the Stage-1 gradient-geometry result stands as paper-2 material with the render-level negative alongside. |
 
 One grid, no reruns on a miss; a near-miss is a miss (seed-lottery
 wording from Stage 1 carries).
+
+**Secondary (registered directional read, NOT the ship bar): ΔW
+toward native.** Per corpus, median over seeds of in-batch ΔW
+cos(arm~native twin): direction = rescond > combo on both corpora —
+the read that rescond buys for free what `combolate` bought with 4 pp
+of throughput. Registered with its limits stated: ΔW closeness ≠
+render closeness is a *measured* lesson of this line (`combolate` at
+ΔW 0.75 rendered below the hews band on all three seeds; combo at
+0.37 rendered inside both — do not read quality off this column), and
+the res-cond projection is **not part of ΔW** at all, so this read is
+blind to exactly the lever's new component. It can corroborate a SHIP
+story; it cannot carry or veto one.
 
 ### 25b-3 — the rescue read (secondary; NOT a ship gate)
 
