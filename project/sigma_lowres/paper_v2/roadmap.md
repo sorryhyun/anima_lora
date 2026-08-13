@@ -169,6 +169,19 @@ candidate) + E25a's lookup collapses to once-per-base.
 - ~~**C. 2-anchor lookup** (see 1(d)) — an efficiency consequence, only
   if blocks are intrinsic.~~ **DEAD 2026-08-11** — F1-B landed
   MISMATCH-CARRIED, the intrinsic branch it required does not exist.
+- **D. Quant reference perturbations + learned gap certifier**
+  (proposal: [`quant_probe_gap_predictor.md`](quant_probe_gap_predictor.md),
+  DRAFT 2026-08-13). Fake-quant probes as controlled reference
+  perturbations — Q-data/Q-graph direction fingerprints (a_e
+  universality; floor decomposed into generic-fidelity vs
+  grid-specific), a bits-dial amplitude response (empirical Jacobian
+  gain), δ-from-dtype (parameter-free spectral rival) — feeding a small
+  coefficient-level predictor of h-unit gap scalars that certifies
+  routing windows for new setups without an arm campaign. Successor to
+  the E25 lever line's harness (the lever itself closed at 25e);
+  offline-certifier-only per the E20.4 guard; scalar targets only per
+  the T0 wall; generalization scope gated on (e)'s E31 outcome. Every
+  stage needs its own registration before GPU.
 
 ## 3. arm_sums — durable-use plan (the environment wall, §0)
 
