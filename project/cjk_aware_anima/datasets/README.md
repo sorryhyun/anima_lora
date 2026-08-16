@@ -90,6 +90,11 @@ inject 女スパイ for `1girl`), `natural` (`--mt`, prose rewrite with
 character/copyright terms pinned), plus D6 quoted-text templates seeded from
 the LoveHina lines.
 
+**Pass `--commentary assets/commentary_pairs_7k.jsonl` explicitly.** The flag
+defaults to `assets/commentary_pairs.jsonl`, which is not what the D2 MT pass
+wrote; a rebuild without it prints one `skipping D2` line and silently drops all
+9,068 commentary pairs (45,230 → 36,162, and ext rows visited 6,538 → 3,577).
+
 Coverage is reported in **ext rows**, encoded with the same
 `HybridT5Encoder` training will use — the histogram is what says which rows a
 run can actually move, and never-visited rows are the ones the plan says to
