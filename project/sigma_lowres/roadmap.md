@@ -13,8 +13,8 @@ cache + `--data_root` — no corpus re-preprocess, ~47 min/probe).
 
 `run_sigma_probe.py --sigma_window 0.5,1.0 --bins 5` on the same probe-local
 cache — all bins in the crossover region (centers 0.55…0.95). **Started
-2026-07-26, deprioritized at 5/24 images** (partial rows
-`bench/results/20260726-2109/`; same command re-runs) in favor of the
+2026-07-26, deprioritized at 5/24 images** (partial rows were run
+`20260726-2109`, envelope since pruned; same command re-runs) in favor of the
 prior-distance discriminator, which landed the same day (groundings.md G6:
 no 1280 discontinuity, prior ↮ Floor — the Floor is graph-side). Payoff of resuming is gate-position-sensitive: σ\* ≈ 0.65 →
 ~9% epoch saving on 1280-tier data, σ\* ≈ 0.75 → ~5%. Then the decision
@@ -43,7 +43,8 @@ material). 512 was already closed (Resid_512 ≈ 0.22). Safe set unchanged:
 
 ## YaRN-banded gate-widening probe for 1024→896 **[RUN 2026-07-27 — no gate widening; the owed retune was superseded by the SigMa gate probe below]**
 
-Outcome (`bench/results/20260727-1421/`, full read in `bench/report.md`):
+Outcome (run `20260727-1421`, envelope since pruned; full read in
+`bench/report.md`):
 between the pre-registered branches. (1)'s improvement leg passed at
 σ=0.59 (paired yarn−896 −0.050, 2.1 SEM) but the **in-band leg failed
 everywhere** (yarn−reenc +0.06–0.19, ≥3.4 SEM out at every bin σ ≤ 0.65)
@@ -79,7 +80,7 @@ regardless of mid-σ behavior.
 
 ## SigMa σ-gated YaRN boundaries **[RUN 2026-07-27 — PASS both legs; yarnsig = the Phase-1b refinement candidate]**
 
-Outcome (`bench/results/20260727-1639/`, full read in `bench/report.md`
+Outcome (run `20260727-1639`, envelope since pruned; full read in `bench/report.md`
 §"SigMa σ-gated YaRN boundaries"): liability leg PASS (+0.033 ± 0.025 at
 σ=0.21, within 2 SEM; static yarn replicated +0.079 in-pool → gate cut it
 ~58%, residual trend noted), preservation leg PASS (yarnsig ≈ yarn at
@@ -133,7 +134,7 @@ the gate params; comparator is **static yarn**, not PI):
 
 ## YaRN/yarnsig on the 1024→768 window **[RUN 2026-08-15 — all three legs FAIL ship criteria; 768 stays plain, family closed at 768]**
 
-Outcome (`bench/results/20260815-1041-yarn768/`, full read in
+Outcome (run `20260815-1041-yarn768`, envelope since pruned; full read in
 `bench/report.md` §"yarnsig on the 1024→768 window"): in-window = no harm
 but no win (both arms within 2 SEM of plain; yarnsig 2.8 SEM *worse* than
 static yarn at σ=0.875 — near-unity μ still discretely reassigns boundary
