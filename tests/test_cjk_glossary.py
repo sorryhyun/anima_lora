@@ -246,6 +246,73 @@ def test_tagpair_via_has_an_explicit_trust_weight():
         if policy == "all":
             continue  # `all` is empty by construction — every span at 1.0
         assert tag_pairs.TAGPAIR_VIA in weights, policy
+        assert tag_glossary.TAGPAIR_VERIFIED_VIA in weights, policy
     assert (
         weights["mt_unverified"] <= TRUST_POLICIES["provenance"][tag_pairs.TAGPAIR_VIA]
     )
+
+
+def test_choose_prefers_community_sense_over_mt_at_equal_f1():
+    """`bow` — お辞儀 (MT, *bowing*) and 蝶結び (community, the ribbon) both
+    back-translate to "bow", so F1 cannot separate the senses. Only provenance
+    knows which one the booru tag means; at equal evidence the community field
+    must beat the MT rendering (D1-pairs item 2)."""
+    entry = {"count": 1582, "axis": "general", "alts": []}
+    cands = [
+        {
+            "ja": "蝶結び",
+            "back": "bow",
+            "f1": 1.0,
+            "kana": True,
+            "mt": False,
+            "src": "tagpair",
+            "ja_ok": True,
+        },
+        {
+            "ja": "お辞儀",
+            "back": "bow",
+            "f1": 1.0,
+            "kana": True,
+            "mt": True,
+            "src": "mt",
+            "ja_ok": True,
+        },
+    ]
+    tag_glossary.choose(entry, cands, "お辞儀", 0.75)
+    assert entry["ja"] == "蝶結び"
+    assert entry["via"] == tag_glossary.TAGPAIR_VERIFIED_VIA
+    assert entry["candidates"][0]["src"] == "tagpair"  # provenance persisted
+
+
+def test_choose_keeps_kana_over_kanji_and_surfaces_the_rival():
+    """鎧 back-translates perfectly, but kana stays the proof of Japaneseness —
+    a Han-only rival can be Chinese (`bed` → 床 is *floor* in JA), so it never
+    wins a tie automatically. It must land in the D1-words review section
+    instead, where a human can override it in."""
+    entry = {"count": 39, "axis": "general", "alts": []}
+    cands = [
+        {
+            "ja": "アーマー",
+            "back": "armor",
+            "f1": 1.0,
+            "kana": True,
+            "mt": False,
+            "src": "wiki",
+            "ja_ok": True,
+        },
+        {
+            "ja": "鎧",
+            "back": "armor",
+            "f1": 1.0,
+            "kana": False,
+            "mt": False,
+            "src": "tagpair",
+            "ja_ok": True,
+        },
+    ]
+    tag_glossary.choose(entry, cands, "", 0.75)
+    assert entry["ja"] == "アーマー"
+    assert entry["via"] == "wiki_verified"
+
+    rows = tag_glossary.kanji_review_rows({"tags": {"armor": entry}})
+    assert [(r[1], r[3]["ja"]) for r in rows] == [("armor", "鎧")]

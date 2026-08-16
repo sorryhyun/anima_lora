@@ -84,7 +84,7 @@ the *wording* pass, and its `v=0` column is the review queue.
 | ID | Source | Status / next |
 |---|---|---|
 | D1-wide | **`~/gelcrawl/retrieved/` EN tag captions** — 16,053 vs the 3,008 `image_dataset/` captions D1 was built on | **DONE and MEASURED** ([report](report_0816_phase2.md#d1-wide--the-gelcrawl-widening-measured-2026-08-16)) — 3,008 → 16,128 captions, corpus 18,990 → 45,230 pairs, 500+ visit band **381 → 756**, 4.3× visits. But it buys **visits, not vocabulary** (rows visited flat at ~6,400), so it improves the 1–49 bands and **leaves every v=0 token at 0**. Not a further lever: more captions multiply the same glossary. |
-| D1-pairs | **`p1atdev/danbooru-ja-tag-pair-20241015`** (CC0) — the danbooru wiki's own `other_names` (Oct-2024) + `calm3-22b-chat` fill; 151,431 rows (93,393 character / 22,330 copyright / 35,708 general) | **Tail fill DONE** (`datasets/tag_pairs.py`, CPU): 5,248 previously-unresolved tags filled, unmapped segments **42,530 → 13,714**. **Item 2 is OPEN and is the strongest lever on the 2a ship blocker**: this source knows the *booru sense* that MT structurally cannot, because MT translates the English string. It agrees with only 35% of our 5,435 MT-derived wordings, and on the high-traffic disagreements it is usually right — `bow` → 蝶結び (ribbon) not our お辞儀 (*bowing*, 1,582 occ), `on back` → 仰向け (supine) not our 後ろ姿 (*from behind*, 2,032 occ), `clothes lift` → たくし上げ not 服が持ち上がる, `multiple girls` → 群像 not 複数の女の子1人. Lever: feed its names as candidates into the existing back-translation arbiter (`--mt`, GPU) so they can win on evidence, which also turns `tag_glossary_review.md` from an eyeball pass into a sourced diff. It likewise carries the native-kanji candidates D1-words is about — **626 tags / 55,821 occ (8.6% of tag mass)** where our choice is a katakana loanword and it offers a kanji (`penis`→陰茎, `short hair`→短髪, `nude`→裸). **Not** a drop-in: unfiltered by its own admission (Chinese leaks `skirt`→裙, `pleated skirt`→百褶裙; its own MT errs, `after anal`→後背位 = *doggy style*), so it is a candidate source and the arbiter stays load-bearing. |
+| D1-pairs | **`p1atdev/danbooru-ja-tag-pair-20241015`** (CC0) — the danbooru wiki's own `other_names` (Oct-2024) + `calm3-22b-chat` fill; 151,431 rows (93,393 character / 22,330 copyright / 35,708 general) | **Tail fill DONE** (`datasets/tag_pairs.py`, CPU): 5,248 previously-unresolved tags filled, unmapped segments **42,530 → 13,714**. **Item 2 DONE 2026-08-17** ([measured](report_0816_phase2.md#d1-pairs-item-2--the-arbiter-re-selection-measured-2026-08-17)): 1,538 tags re-selected to `tagpair_verified`, 4,438 wordings moved in total; the polysemy class (`bow`) is *unwinnable by F1* and lands in the review file instead — the residual lever on this source is the human sign-off, not more arbitration. Original rationale: this source knows the *booru sense* that MT structurally cannot, because MT translates the English string. It agrees with only 35% of our 5,435 MT-derived wordings, and on the high-traffic disagreements it is usually right — `bow` → 蝶結び (ribbon) not our お辞儀 (*bowing*, 1,582 occ), `on back` → 仰向け (supine) not our 後ろ姿 (*from behind*, 2,032 occ), `clothes lift` → たくし上げ not 服が持ち上がる, `multiple girls` → 群像 not 複数の女の子1人. Lever: feed its names as candidates into the existing back-translation arbiter (`--mt`, GPU) so they can win on evidence, which also turns `tag_glossary_review.md` from an eyeball pass into a sourced diff. It likewise carries the native-kanji candidates D1-words is about — **626 tags / 55,821 occ (8.6% of tag mass)** where our choice is a katakana loanword and it offers a kanji (`penis`→陰茎, `short hair`→短髪, `nude`→裸). **Not** a drop-in: unfiltered by its own admission (Chinese leaks `skirt`→裙, `pleated skirt`→百褶裙; its own MT errs, `after anal`→後背位 = *doggy style*), so it is a candidate source and the arbiter stays load-bearing. |
 | D1-words | **Glossary wording** — the real v=0 cause | **The unblocked lever now.** `armor`→`アーマー` not `鎧`, `from above`→`上から` not `俯瞰`, `close-up`→`クローズアップ` not `接写`: the kana-proves-Japanese rule picks katakana loanwords over native kanji *and* excludes the kanji from `alt_pool`, so it is reachable from neither register. 119 tags / 1,735 occ; **half are Chinese and correctly rejected** (`bed`→`床` is *floor* in JA), so it is a **human review axis**, not an automatic fix — and a new one the current review file does not surface. Lever: a second review batch → `tag_overrides.json` (CPU, free). |
 | D5-names | Wikidata lexicon → **name register** | Compose name-bearing captions directly (thousands of paired names already resolved). Risk 4 is now measured in renders — MT transliterates names, so their rows never accumulate visits through D1 alone. |
 | D2 | Danbooru artist commentary, 73,015 native-JA records, 9,068 paired | **In the mix but inert under `loss=span`** (prose carries no spans — measured, [report](report_0816_phase2.md#d2--what-the-commentary-corpus-buys-2026-08-16)). MT pass resumable at 5,721/69,668. Blocked on the sequence-term decision; do not grow it before that. |
@@ -126,15 +126,22 @@ flagged — if eval shows they poison nearby generations, demote them to the
   [report](report_0816_phase2.md#phase-2c--first-pass-2026-08-16). Remaining 2c
   work, in order:
   1. **Coverage pass**: D1-wide **DONE** (corpus is built; 45,230 pairs);
-     D1-pairs **tail fill DONE** (unmapped segments 42,530 → 13,714).
-     Remaining: the **wording** pass — now best served by D1-pairs item 2
-     (MT-arbitrated re-selection) rather than by review alone, with the
-     D1-words katakana/kanji axis batched into the same pass — plus the
-     name register, gated by `gates/coverage.py`'s `v=0` column; then retrain
-     (cheap — the loop saturates in ~20 GPU-min) and re-render the grid. The
-     glossary rebuild over the widened tag set is a **daemon `--mt` job** — a
-     CPU-only rebuild was tried and reverted, it destroys the verification
-     layer ([report](report_0816_phase2.md#the-glossary-rebuild-is-gpu-work-not-a-free-cpu-pass)).
+     D1-pairs **tail fill DONE** (unmapped segments 42,530 → 13,714);
+     D1-pairs **item 2 DONE 2026-08-17** (arbiter re-selection + the owed
+     widened `--mt` rebuild in one job: 4,438 wordings moved, unmapped
+     segments → **878**, grid moves on the coverage-bound prompts —
+     [report](report_0816_phase2.md#d1-pairs-item-2--the-arbiter-re-selection-measured-2026-08-17)).
+     Remaining, re-ordered by what the item-2 measurement showed binds:
+     **(a) human review sign-off** — the arbiter cannot win the polysemy class
+     (`bow`→蝶結び back-translates to the *sense*, not the string) nor the
+     katakana/kanji class (`bed`→床), both now sourced in
+     `tag_glossary_review.md` (400 rows) → `tag_overrides.json`;
+     **(b) name register** (D5) — n1/n2 unchanged, 博:10 麗:31;
+     **(c) targeted caption widening** for tokens under the O(100+) floor
+     (`鎧`:23, `照明`:3) — crawl caption-only by EN tag from the coverage
+     under-floor list. Then retrain (~20 GPU-min; pass
+     `--loss span --steps 8000 --batch_size 32` explicitly — the distill.py
+     defaults are a different experiment) and re-render the grid.
   2. **Sequence-term decision** for the span-less registers (prose/quotes) —
      the flat probes rule `flat` out as the extra term; `attn` is the measured
      candidate (+13% commentary in its own register, tags unharmed). Decide,

@@ -67,6 +67,14 @@ HAN = re.compile(r"[一-鿿]")
 # rating band with デリケート instead of センシティブ.
 ARBITRATED = {"wiki", "wiki_han", "unresolved"}
 
+# Candidate provenance, best first at equal evidence: the 2026 wiki dump is the
+# freshest reading of the community field; the tag-pair set is the same field at
+# Oct-2024 partly LLM-filled; MT renders the *string*, not the booru sense
+# (`bow` → お辞儀 "bowing" where the tag means 蝶結び the ribbon), so at equal
+# back-translation F1 a community-attested name outranks it.
+SRC_RANK = {"wiki": 0, "tagpair": 1, "mt": 2}
+TAGPAIR_VERIFIED_VIA = "tagpair_verified"
+
 RATING_JA = {
     "safe": "全年齢",
     "sensitive": "センシティブ",
@@ -141,7 +149,9 @@ def load_wiki(path: Path) -> dict[str, list[str]]:
     return out
 
 
-def tag_counts(caption_roots: list[tuple[Path, bool]], rules: Path) -> collections.Counter:
+def tag_counts(
+    caption_roots: list[tuple[Path, bool]], rules: Path
+) -> collections.Counter:
     """Tag occurrences over the same caption roots ``build_pairs.py`` composes.
 
     The glossary must span whatever D1 spans, or the widened captions compose
@@ -301,31 +311,40 @@ def choose(entry: dict, cands: list[dict], mt: str, accept_f1: float) -> None:
 
     Pure post-processing over stored data — no GPU. Ranking is: recovered
     meaning first (back-translation F1), then *demonstrably* Japanese, then
-    brevity. Kana is the only proof of Japaneseness; the per-character
-    inventory merely rules out characters Japanese never uses, so a Chinese
-    word built from JA-common characters (珠宝, 拉下衣服) still gets through and
-    brevity tie-breaking would hand it the win over ジュエリー at the same F1.
-    Hence kana > the JA-targeting model's own rendering > everything else.
+    source, then brevity. Kana is the only proof of Japaneseness; the
+    per-character inventory merely rules out characters Japanese never uses, so
+    a Chinese word built from JA-common characters (珠宝, 拉下衣服) still gets
+    through and brevity tie-breaking would hand it the win over ジュエリー at
+    the same F1. Hence kana > the JA-targeting model's own rendering >
+    everything else, and inside a kana tie the community field (which knows the
+    booru *sense*) beats the MT rendering (which only knows the string).
     """
     keep = [c for c in cands if c.get("ja_ok", True)]
     keep.sort(
         key=lambda c: (
             -c["f1"],
             0 if c.get("kana") else 1 if c.get("mt") else 2,
+            SRC_RANK.get(c.get("src"), 1),
             len(c["ja"]),
         )
     )
     entry["mt_ja"] = mt or None
     entry["candidates"] = [
-        {k: c[k] for k in ("ja", "back", "f1", "kana") if k in c} for c in keep
+        {k: c[k] for k in ("ja", "back", "f1", "kana", "src") if k in c} for c in keep
     ]
     entry["rejected_non_ja"] = [c["ja"] for c in cands if not c.get("ja_ok", True)]
 
     best = keep[0] if keep else None
     if best and best["f1"] >= accept_f1:
+        if best["ja"] == mt:
+            via = "mt_verified"
+        elif best.get("src") == "tagpair":
+            via = TAGPAIR_VERIFIED_VIA
+        else:
+            via = "wiki_verified"
         entry |= {
             "ja": best["ja"],
-            "via": "mt_verified" if best["ja"] == mt else "wiki_verified",
+            "via": via,
             "f1": best["f1"],
         }
     elif mt:
@@ -362,6 +381,8 @@ def reselect(tags: dict[str, dict], prior_path: Path, accept_f1: float) -> int:
                 "ja_ok": True,  # prior build already dropped the non-JA ones
                 "kana": KANA.search(c["ja"]) is not None,
                 "mt": c["ja"] == mt,
+                # pre-src builds only banked wiki candidates + the MT rendering
+                "src": c.get("src") or ("mt" if c["ja"] == mt else "wiki"),
             }
             for c in (p.get("candidates") or [])
         ]
@@ -385,6 +406,13 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
     ``--accept-f1``). Idiom that verifiably means the tag wins; the rest falls
     back to the literal MT rendering. Whatever the two sources disagree on lands
     in the review file for the user sign-off the phase gate asks for.
+
+    The tag-pair set (``tag_pairs.py``'s source) competes on the same terms
+    (D1-pairs item 2): its names enter the pool guarded exactly like the fill
+    (latin drop, ``is_japanese``, kanji inventory), get back-translated, and win
+    only on evidence — ``via: tagpair_verified``. It knows the booru sense MT
+    cannot (`bow` → 蝶結び the ribbon, not お辞儀 *bowing*), which is why the
+    tie-break in ``choose`` puts community sources ahead of the MT rendering.
     """
     sys.path.insert(0, str(ROOT))
     from mt import TAG_BACKGROUND, TAG_FEWSHOT, MTEngine, Request  # noqa: PLC0415
@@ -402,6 +430,21 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
     shots = TAG_FEWSHOT[: args.n_shots]
     inventory = ja_kanji_inventory(Path(args.wiki))
     print(f"  [glossary] JA kanji inventory: {len(inventory)} chars", flush=True)
+
+    pair_names: dict[str, list[str]] = {}
+    if not args.no_tag_pairs:
+        import tag_pairs  # noqa: PLC0415  (sibling — the shared source + guards)
+
+        print(f"  [glossary] fetching {tag_pairs.PAIR_REPO} …", flush=True)
+        raw_pairs = tag_pairs.load_pairs(args.tag_pairs_file)
+        pair_names = {
+            t: tag_pairs.japanese_names(raw_pairs.get(t, []), inventory)[
+                : args.n_pair_candidates
+            ]
+            for t in todo
+        }
+        n_with = sum(1 for v in pair_names.values() if v)
+        print(f"  [glossary] tag-pair candidates for {n_with}/{len(todo)} tags")
 
     engine = MTEngine(args.model, greedy=True, gpu_budget=args.gpu_budget)
 
@@ -423,17 +466,24 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
         )
     )
 
-    # Back-translate the wiki candidates (primary + alts) for the same tags.
+    # Back-translate the candidates: wiki (primary + alts), tag-pair names, MT.
     pairs: list[tuple[str, str]] = []
+    src_of: dict[tuple[str, str], str] = {}
     for tag in order:
         e = tags[tag]
-        cands = ([e["ja"]] if e["via"].startswith("wiki") and e["ja"] else []) + e[
+        wiki_c = ([e["ja"]] if e["via"].startswith("wiki") and e["ja"] else []) + e[
             "alts"
         ]
-        cands = cands[: args.n_candidates]
+        sourced = [(c, "wiki") for c in wiki_c[: args.n_candidates]]
+        sourced += [(c, "tagpair") for c in pair_names.get(tag, [])]
         if mt_ja.get(tag):  # the literal rendering competes on the same terms
-            cands.append(mt_ja[tag].strip().splitlines()[0].strip())
-        pairs += [(tag, c) for c in dict.fromkeys(c for c in cands if c)]
+            sourced.append((mt_ja[tag].strip().splitlines()[0].strip(), "mt"))
+        seen: dict[str, str] = {}
+        for cand, src in sourced:
+            if cand and cand not in seen:
+                seen[cand] = src
+        pairs += [(tag, c) for c in seen]
+        src_of |= {(tag, c): s for c, s in seen.items()}
     print(
         f"  [glossary] JA→EN back-translation over {len(pairs)} candidates", flush=True
     )
@@ -460,6 +510,7 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
                 "back": en.strip(),
                 "ja_ok": ja_ok,
                 "kana": KANA.search(cand) is not None,
+                "src": src_of[(tag, cand)],
                 "mt": cand == (mt_ja.get(tag) or "").strip().splitlines()[:1][0]
                 if mt_ja.get(tag)
                 else False,
@@ -471,6 +522,36 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
         choose(
             tags[tag], scored.get(tag, []), mt[0].strip() if mt else "", args.accept_f1
         )
+
+
+def kanji_review_rows(payload: dict, min_f1: float = 0.75) -> list[tuple]:
+    """The D1-words axis: a katakana-only choice with a Han-only rival at
+    tie-or-better F1.
+
+    Back-translation cannot arbitrate these and the kana-first ranking must not
+    be relaxed for them: the rival is either native Japanese wrongly rejected
+    (鎧, 俯瞰, 接写) or Chinese that survived the character guards — and
+    `bed` → 床 (*floor* in Japanese, *bed* in Chinese) shows only Japanese
+    knowledge separates the two. Human review axis; fixes go to
+    ``tag_overrides.json``.
+    """
+    rows = []
+    for tag, e in payload["tags"].items():
+        ja = e.get("ja")
+        if e["axis"] != "general" or not ja or not KANA.search(ja) or HAN.search(ja):
+            continue
+        floor = max(float(e.get("f1") or 0.0), min_f1)
+        rivals = [
+            c
+            for c in e.get("candidates") or []
+            if HAN.search(c["ja"])
+            and not KANA.search(c["ja"])
+            and c.get("f1", 0) >= floor
+        ]
+        if rivals:
+            rows.append((e["count"], tag, e, rivals[0]))
+    rows.sort(reverse=True, key=lambda r: r[0])
+    return rows
 
 
 def write_review(payload: dict, path: Path, top: int) -> int:
@@ -489,6 +570,18 @@ def write_review(payload: dict, path: Path, top: int) -> int:
         and (
             e["via"] == "mt_unverified"
             or (e.get("candidates") and e["candidates"][0]["ja"] != e.get("mt_ja"))
+            # MT round-tripped its own sense, but the community field disagrees
+            # with real recovered meaning — the polysemy class the arbiter is
+            # structurally blind to (`bow`: お辞儀 "bowing" verifies at 1.0
+            # while 蝶結び the ribbon comes back "bow tie knot" at 0.5). Only a
+            # human can pick the booru sense; surface it.
+            or (
+                e["via"] == "mt_verified"
+                and any(
+                    c.get("src") != "mt" and c["ja"] != e["ja"] and c["f1"] >= 0.3
+                    for c in e.get("candidates") or []
+                )
+            )
         )
     ]
     rows.sort(reverse=True, key=lambda r: r[0])
@@ -509,13 +602,38 @@ def write_review(payload: dict, path: Path, top: int) -> int:
     ]
     for count, tag, e in rows:
         cands = " · ".join(
-            f"{c['ja']} ({c['back']}, {c['f1']})" for c in e["candidates"][:3]
+            f"{c['ja']} ({c['back']}, {c['f1']}"
+            + (f", {c['src']}" if c.get("src") and c["src"] != "wiki" else "")
+            + ")"
+            for c in e["candidates"][:3]
         )
         lines.append(
             f"| {count} | {tag} | **{e['ja']}** | {e['via']} | {e.get('mt_ja')} | {cands} |"
         )
+
+    kanji = kanji_review_rows(payload)[:top]
+    if kanji:
+        lines += [
+            "",
+            "## Katakana primary vs native-kanji rival (D1-words)",
+            "",
+            "The chosen wording is katakana-only and a Han-only candidate ties",
+            "or beats it on back-translation. The kana-first ranking is kept on",
+            "purpose (`bed` → 床 is *floor* in Japanese, *bed* in Chinese — no",
+            "guard separates them), so a kanji wording here only ships through",
+            "an override. Judge each rival: native Japanese → override it in;",
+            "Chinese → leave it.",
+            "",
+            "| n | tag | chosen | kanji rival (back-translation, F1, src) |",
+            "|--:|---|---|---|",
+        ]
+        for count, tag, e, c in kanji:
+            lines.append(
+                f"| {count} | {tag} | **{e['ja']}** | {c['ja']} "
+                f"({c['back']}, {c['f1']}, {c.get('src', 'wiki')}) |"
+            )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return len(rows)
+    return len(rows) + len(kanji)
 
 
 def main() -> None:
@@ -541,6 +659,15 @@ def main() -> None:
     ap.add_argument("--review-top", type=int, default=200)
     ap.add_argument("--accept-f1", type=float, default=0.75)
     ap.add_argument("--n-candidates", type=int, default=3)
+    ap.add_argument(
+        "--no-tag-pairs",
+        action="store_true",
+        help="drop the tag-pair set from the --mt candidate pool (D1-pairs item 2)",
+    )
+    ap.add_argument(
+        "--tag-pairs-file", type=Path, default=None, help="local parquet override"
+    )
+    ap.add_argument("--n-pair-candidates", type=int, default=3)
     ap.add_argument("--limit", type=int, default=0, help="MT only the top-N tags")
     ap.add_argument("--mt", action="store_true", help="translate the residue (GPU)")
     ap.add_argument(

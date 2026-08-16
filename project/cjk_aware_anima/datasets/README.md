@@ -356,9 +356,13 @@ not), plus a latin drop. On the full table those reject 8,372 non-JA, 5,033
 Han-only-outside-inventory (`裙`, `百褶裙`), and 28,234 latin-bearing
 (`ウィンクX東方`) names.
 
-**What it does not do yet**: re-select *existing* wordings. That is the bigger
-prize and it is GPU work — the source knows the booru *sense* that MT cannot
-(`bow` → 蝶結び the ribbon, not our お辞儀 *bowing*; `on back` → 仰向け supine,
-not our 後ろ姿 *from behind*), agreeing with only 35% of our 5,435 MT-derived
-wordings. Feed its names as candidates to the existing back-translation arbiter
-and let them win on evidence. See `plan.md` (D1-pairs, item 2).
+**Item 2 — re-selecting existing wordings — is DONE (2026-08-17)**: the
+`--mt` arbitration takes the pair names as candidates (`src` provenance,
+winner `via: tagpair_verified`; community beats the MT rendering at equal F1 +
+kana-tier). 1,538 tags re-selected, 4,438 wordings moved in total. The class
+it *cannot* win is polysemy — `bow` → 蝶結び back-translates to "bow tie
+knot" (the sense) while MT's お辞儀 round-trips its own string at 1.0 — so
+those rows go to `tag_glossary_review.md` (which now also surfaces
+`mt_verified` rows with a community rival, plus the D1-words katakana/kanji
+section) for the override pass. Measured in
+[`../report_0816_phase2.md`](../report_0816_phase2.md#d1-pairs-item-2--the-arbiter-re-selection-measured-2026-08-17).

@@ -658,3 +658,95 @@ the coverage diagnostic and the rendered grid.
   through the back-translation arbiter (`plan.md`, D1-pairs item 2), where it
   disagrees with 65% of our MT-derived choices and is usually right on the
   high-traffic ones.
+
+## D1-pairs item 2 — the arbiter re-selection, measured (2026-08-17)
+
+The pass above, run. `tag_glossary.py --mt` now feeds the tag-pair names into
+the arbitration as candidates (same guards as the fill; per-candidate `src`
+provenance persisted; winner `via: tagpair_verified`, declared in
+`TRUST_POLICIES`), with one ranking change: at equal back-translation F1 and
+equal kana-tier, a community-attested candidate outranks the MT rendering. The
+kana-over-kanji rule is untouched — `bed` → 床 (*floor* in JA, *bed* in ZH)
+is why it must not be relaxed automatically. Because the previous glossary's
+arbitration had only ever run over the narrow 3,008-caption tag set, this job
+also cleared the **owed widened `--mt` rebuild** in the same pass (~50 min
+GPU; the MT cache covered the old tags). Old glossary preserved at
+`assets/tag_glossary_ja.pre_item2.json`.
+
+Envelopes: glossary daemon job `20260816-212444-1f89f8`; retrain
+`bench/cjk_distill/results/20260817-0111-train` (defaults probe — see the
+gotcha) and `…-0115-train` (the real arm); renders
+`bench/cjk_adapter/results/20260817-0138/` (gate + grid — same-minute dir
+collision, [[project_bench_run_dir_collision]]: the grid's `result.json`
+overwrote the gate's, gate numbers survive in the job log).
+
+### What it bought
+
+| | pre (tail-fill state) | post (item 2) |
+|---|---|---|
+| glossary, tags with a wording | 12,596 (stale narrow counts) | **14,678 / 14,753** (widened counts, coverage 99.86%) |
+| wordings changed vs backup | — | **4,438** (48,909 occ, 7.6% of tag mass) |
+| of which `tagpair_verified` | — | 1,538 types / 34,764 occ (5.4%) |
+| pinned-source regressions | — | **0** |
+| corpus untranslated segments | 13,714 | **878 (−94%)** |
+| 500+ visit band | 778 | 800 |
+
+High-traffic re-selections look exactly like the predicted class: `breasts`
+巨乳→おっぱい, `cowgirl position` カウガールポーズ→**騎乗位**,
+`collared shirt` カラーシャツ→襟付きシャツ, `solo focus`
+一人フォーカス→ソロフォーカス.
+
+**What the arbiter structurally cannot win: the polysemy class.** `bow` →
+蝶結び back-translates to *"bow tie knot"* (F1 0.5) while MT's お辞儀
+round-trips its own sense at 1.0 — so the known-right community wordings for
+`bow` / `on back` / `clothes lift` / `multiple girls` stay MT-worded. F1
+verifies *recovered string*, not *booru sense*; no threshold fixes that. These
+are now surfaced instead of silent: the review filter includes `mt_verified`
+rows carrying a community rival at F1 ≥ 0.3 (previously invisible — the top
+candidate equalled the MT rendering, which the old filter read as agreement),
+and `tag_glossary_review.md` (400 rows) gains the D1-words katakana-vs-kanji
+section. **The tag-register wording ceiling now runs through the human
+sign-off**, which was already the 2a ship blocker — the arbiter turned it from
+an eyeball pass into the sourced diff the plan asked for.
+
+### Retrain + renders (`2c-item2`, settled design)
+
+Span loss 0.650 → 0.113; readout recovery `tags` **0.915** / `tags_alt`
+**0.934** (per-register, the honest columns); flat discrimination far 0.078 /
+near 0.353. Render-gate control: flat `cos_vs_en` 0.077–0.080 (retired
+control, unchanged as G5 predicts), p1-vs-p2 discrimination **0.202** against
+the 0.2 guard (was 0.194; n=2 prompts — watch it, don't panic over it).
+
+The fixed-prompt comparisons — the only valid A/B — move for the first time:
+
+- **`t3_armor`**: was a bare caped figure on a cliff; now a **rider with a
+  horse** and red garment under a storm sky. 騎/士 landed; the armor itself is
+  still absent — `鎧` sits at **23 visits** because the arbiter *correctly*
+  kept `armor`→アーマー (kana guard), i.e. this token now waits on the
+  D1-words override, not on more corpus.
+- **`t2_maid`**: the lost background is back (real garden scenery vs the flat
+  texture wall).
+- **`t1_school`** stable; **`n1_hakurei`** unchanged — 博:10 麗:31 巫:64,
+  the name register (D5) remains the un-run lever, exactly as scoped.
+- `gates/coverage.py`: `t3` and `n1` carry **zero** zero-visit content tokens;
+  remaining v=0 is prose function words (sequence-term decision) and non-tag
+  vocabulary (`京都`, `俯瞰` — the latter now a review-file row).
+
+### Gotcha recorded
+
+`scripts/distill_cjk/distill.py`'s argparse defaults are **not** the settled
+design (`loss=attn:1.0`, 2000 steps, batch 8). A bare `--mode train` runs a
+different experiment that *looks* plausible in the logs (loss converges,
+disc healthy). `…-0111-train` is such an accident — 20 wasted GPU-minutes;
+rank arms only after checking `result.json`'s `args`. Pass
+`--loss span --steps 8000 --batch_size 32` explicitly.
+
+### Verdict
+
+The dataset axis delivered what it had left to deliver: the corpus is no
+longer wording-bound (−94% unmapped) and the grid moved where coverage moved.
+The remaining tag-register gap is **override-bound** (human review: polysemy +
+katakana/kanji rows, both now sourced in the review file) and **visit-bound**
+on rare tags (`鎧` 23, `照明` 3 — the targeted-crawl lever). Names remain
+register-bound (D5). Next levers in order: review sign-off → name register →
+targeted caption widening; the sequence-term decision still gates D2/D3/D4.

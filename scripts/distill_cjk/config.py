@@ -31,6 +31,10 @@ TRUST_POLICIES = {
         "override": 1.0,
         "wikidata": 1.0,
         "wiki_verified": 1.0,
+        # A tag-pair candidate that won the back-translation arbitration
+        # (D1-pairs item 2) — same verification layer as `wiki_verified`, same
+        # community field one snapshot older.
+        "tagpair_verified": 1.0,
         "wiki_han": 1.0,
         "rating": 1.0,
         "passthrough": 1.0,
@@ -56,6 +60,7 @@ TRUST_POLICIES = {
         "passthrough": 1.0,
         "mt_verified": 1.0,
         "wiki": 1.0,
+        "tagpair_verified": 1.0,  # back-translation-verified, unlike the fill
         "tagpair": 0.0,  # nothing back-translated it — this arm drops it
         "mt_unverified": 0.0,
         "unresolved": 0.0,

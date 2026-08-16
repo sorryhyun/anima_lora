@@ -178,6 +178,34 @@ Measured verdicts:
       our MT-derived wordings) — recorded as D1-pairs item 2 in
       [`plan.md`](plan.md#corpus--where-the-next-win-is), not yet run.
 
+## Phase 2c — D1-pairs item 2, the arbiter re-selection (2026-08-17)
+
+Measured verdicts:
+[`report_0816_phase2.md`](report_0816_phase2.md#d1-pairs-item-2--the-arbiter-re-selection-measured-2026-08-17).
+
+- [x] `tag_glossary.py --mt` takes the tag-pair names as arbitration
+      candidates (same guards as the fill; per-candidate `src` provenance;
+      winner `via: tagpair_verified`, trust 1.0 in all `TRUST_POLICIES`).
+      Ranking: at equal F1 + kana-tier, community beats the MT rendering;
+      kana-over-kanji untouched. Opt-out `--no-tag-pairs`.
+- [x] Ran it fused with the **owed widened `--mt` rebuild** (glossary counts
+      were still narrow-corpus): 14,678/14,753 tags worded, coverage 99.86%,
+      **4,438 wordings moved / 0 pinned regressions**, corpus untranslated
+      segments **13,714 → 878**. Pre-state kept at
+      `assets/tag_glossary_ja.pre_item2.json`.
+- [x] Found the arbiter's structural blind spot — the **polysemy class**
+      (`bow`→蝶結び back-translates to the sense, not the string; F1 cannot
+      verify it). Review filter extended to surface `mt_verified`-with-
+      community-rival rows + the D1-words katakana/kanji section
+      (`tag_glossary_review.md`, 400 sourced rows). The wording ceiling now
+      runs through the human sign-off.
+- [x] Retrained (`2c-item2`) + re-rendered: tags/tags_alt readout recovery
+      0.915/0.934; grid moves on the coverage-bound prompts (t3 rider+horse,
+      t2 background back), names unchanged (D5 still un-run). Renders under
+      `bench/cjk_adapter/results/20260817-0138/`.
+- [x] +2 `tests/test_cjk_glossary.py` invariants: community-beats-MT at F1
+      tie; kana-beats-kanji with the rival surfaced to `kanji_review_rows`.
+
 ## Reusable for Phase 2b onward
 
 | Piece | Where |
