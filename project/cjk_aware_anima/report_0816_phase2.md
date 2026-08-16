@@ -565,3 +565,96 @@ new candidates' back-translations are paid.
   new-tag occurrence share). These degrade to latin passthrough with
   `via: unmapped`, f1 0.0 — the trust weighting already handles them, so this
   is a coverage number to close, not a corruption.
+
+## D1-pairs — the tail fill, measured (2026-08-16)
+
+`p1atdev/danbooru-ja-tag-pair-20241015` (CC0; 151,431 rows — 93,393 character /
+22,330 copyright / 35,708 general) is the danbooru wiki's own `other_names` at
+an Oct-2024 snapshot with `calm3-22b-chat` filling tags that had no Japanese
+name. `datasets/tag_pairs.py` uses it as a **fill-only** source: tags the
+glossary leaves unresolved compose as latin passthrough at span weight 0, so
+filling them cannot regress a wording (unlike the CPU rebuild this file already
+rejects). Its own Chinese/latin noise is re-guarded here, not trusted — across
+the whole table the guards drop 8,372 non-JA, 5,033 Han-only-outside-inventory
+(`裙`, `百褶裙`) and 28,234 latin-bearing (`ウィンクX東方`) names.
+
+Envelopes: `bench/cjk_distill/results/20260816-2022-2c-tagpair/`,
+`bench/cjk_adapter/results/20260816-2043-2c-tagpair-{gate,grid}/`. Pack:
+`output/ckpt/cjk_vocab_pack_tagpair.{safetensors,json}`.
+
+### What it bought — vocabulary, which is what D1-wide could not buy
+
+| | D1-wide | + tail fill |
+|---|---|---|
+| glossary entries with a wording | 7,348 | **12,596** (5,248 filled) |
+| unmapped segments | 42,530 | **13,714** (−68%) |
+| supervised span tokens (train) | 4,337,704 | **4,470,497** |
+| ext rows visited (`tags,tags_alt`) | 2,759 | **3,309** (+20%) |
+| rows visited (whole corpus) | 6,424 | 6,538 |
+
+The row count moves far less than the tag count because 5,248 new wordings are
+largely built from kanji the corpus already visits — the gain is that those
+kanji now arrive *in the right words*. This is the axis D1-wide explicitly could
+not move: widening multiplied the same glossary and left every `v=0` token at
+zero, while the fill clears them.
+
+### The coverage diagnostic clears — and the renders still do not
+
+`gates/coverage.py` on the 20 eval prompts, against the same prompts' pre-fill
+readings: `t3_tags_armor` (`騎:0 鎧:0` — the report's canonical collapse) and
+`n1_name_hakurei` (`麗:2`) now carry **no** zero-visit content token;
+`s3_scene_train` (`誰:0 学生:0 寝:0`) and `s2_scene_kitchen` (7 zero-visit → 2)
+likewise. What remains at zero is prose function words (`っていて`, `」と`,
+`、「`) and non-tag vocabulary (`京都`, `俯瞰`, `緻`) — the untrained registers,
+exactly as scoped.
+
+**The render grid does not follow.** Same seed, same prompts, same arms: `t1`
+and `s3` are modestly closer to the teacher, `t3` and `n2` are not better, and
+nothing shows a step change. Raising the visit floor explains why — at
+`--floor 300` the newly-supervised tokens read `騎:46 士:72 鎧:24 照明:6`
+against `教室:253`, the token the first pass found *does* render its concept.
+Clearing zero is necessary and is not sufficient: these rows moved from
+unsupervised to *thinly* supervised, an order of magnitude below the working
+head's O(100+).
+
+### Numbers, and why two of them are not an A/B
+
+Per-register readout (the new `attn_by_register`, holdout n as shown):
+
+| register | student | teacher | native | R |
+|---|---|---|---|---|
+| `tags` | 0.493 | 0.553 | −0.340 | **0.933** |
+| `tags_alt` | 0.513 | 0.557 | −0.351 | **0.951** |
+| `commentary` | 0.944 | 0.962 | 0.947 | −0.19 |
+| `quote_preserved` | 0.988 | 0.993 | 0.990 | −0.68 |
+
+This is G3's "the readout floor is register-dependent" at register granularity,
+and it settles how to read the aggregate: on the prose registers the teacher
+sits 0.015 above the native floor, so their R is noise around an empty interval
+and the *only* meaningful recovery number is the trained registers' ~0.93–0.95.
+
+Final span loss 0.114; render gate `ja_ext` flat 0.085/0.070 with
+discrimination far **0.194** (under the 0.2 pathology guard, unchanged).
+
+Two comparisons that look like an A/B and are not: aggregate `recovery_attn`
+reads 0.954 pre-fill against **0.936** post-fill, and `cos_student_vs_en_attn`
+0.650 → 0.632. The fill changes the *holdout text itself* — a filled tag that
+used to sit in the reference as latin now sits there as Japanese — so the task
+moved with the student (the teacher moved too, 0.680 → 0.674). Read these as
+directional at best. The comparisons that do hold are the fixed-prompt ones:
+the coverage diagnostic and the rendered grid.
+
+### Verdict
+
+- The fill is **kept**: it is free (CPU), it regresses no wording by
+  construction, and it buys the vocabulary axis the corpus work had exhausted.
+- It is **not** the render unlock. The grid is a wash, and the reason is
+  measured: the rows it lit up sit at 24–46 visits.
+- It changes what the *next* widening is worth. D1-wide bought no vocabulary
+  because the glossary was the binding constraint; with 5,248 more tags mapped,
+  more captions now multiply *these* rows too — the two levers compose in the
+  order they were run, not the reverse.
+- The larger prize in this source is untouched: re-selecting existing wordings
+  through the back-translation arbiter (`plan.md`, D1-pairs item 2), where it
+  disagrees with 65% of our MT-derived choices and is usually right on the
+  high-traffic ones.
