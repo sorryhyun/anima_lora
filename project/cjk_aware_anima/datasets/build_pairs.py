@@ -45,6 +45,11 @@ REPO = ROOT.parents[2]
 sys.path.insert(0, str(REPO))
 
 DEFAULT_OUT = REPO / "post_image_dataset" / "cjk_distill"
+# D1-wide: the uncurated crawl pool this repo's image_dataset was selected out
+# of. Text-only corpus, so curation state is irrelevant — see load_captions.
+GELCRAWL = Path.home() / "gelcrawl"
+GELCRAWL_RETRIEVED = GELCRAWL / "retrieved"
+GELCRAWL_RULES = GELCRAWL / "tag_rules.yaml"
 EXT_PREFIX = REPO / "bench" / "cjk_adapter" / "assets" / "ext_embed"
 T5_VOCAB = 32128  # ids at or above this index are ext rows
 
@@ -79,12 +84,70 @@ QUOTE_TEMPLATES = [
 ]
 
 
-def load_captions(caption_dir: Path) -> list[tuple[str, str]]:
-    out = []
-    for p in sorted(caption_dir.rglob("*.txt")):
-        text = p.read_text(encoding="utf-8", errors="replace").strip()
-        if text:
-            out.append((str(p.relative_to(caption_dir).with_suffix("")), text))
+def load_captions(
+    caption_dirs: list[tuple[Path, bool]], rules_path: Path | None = None
+) -> list[tuple[str, str]]:
+    """Captions from one or more roots, first root winning on a stem collision.
+
+    D1's width is the lever the 2c render grid asked for (visits per ext row,
+    not new vocabulary — the glossary already covers 97% of the widened
+    corpus's occurrence mass), and the width lives in the *uncurated* crawl
+    pool: ``~/gelcrawl/retrieved`` holds 16k captions against
+    ``image_dataset``'s 3k, of which 13k are not in ``image_dataset`` at all.
+    Curation state is irrelevant here because this corpus is text-only — a
+    caption whose image was rejected still says what a JA user would type.
+
+    The two roots are not in the same format, though: ``image_dataset`` is
+    post-processed and ``retrieved/`` is raw crawler output (HTML-entitied
+    apostrophes, booru rating words instead of Anima's band, ``highres`` /
+    ``absurdres`` meta, undeduped clothing bases). ``rules_path`` runs the raw
+    side through gelcrawl's own rule set via
+    :mod:`library.captioning.tag_rules`, which is the same normalization that
+    produced ``image_dataset`` — without it the two roots would disagree on
+    ``questionable`` vs ``nsfw`` and split the rating rows.
+
+    Each root is ``(path, raw)``; ``raw`` roots get the rules pass. Stems
+    collide across the roots by construction (``image_dataset`` was curated
+    *out of* ``retrieved``, 2,933 of 3,008 overlap), so the first root wins —
+    the curated, already-normalized copy. Note the stem convention: plain
+    digits are gelbooru ids, ``dan_``-prefixed are danbooru
+    ([[project_booru_id_space_collision]]), and both boorus share each artist
+    directory, so the stem is only unique *with* that prefix — hence the
+    artist-relative path, not the bare stem, is the dedup key.
+    """
+    rules = parse_caption = None
+    if rules_path is not None and rules_path.exists():
+        from library.captioning.tag_rules import load_rules, parse_caption  # noqa: PLC0415
+
+        rules = load_rules(rules_path)
+
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for root, raw in caption_dirs:
+        if not root.exists():
+            print(f"  [pairs] no {root} — skipping caption root")
+            continue
+        n_before = len(out)
+        normalize = raw and rules is not None
+        if raw and rules is None:
+            print(f"  [pairs] WARNING: {root} is raw but no tag rules loaded")
+        for p in sorted(root.rglob("*.txt")):
+            image_id = str(p.relative_to(root).with_suffix(""))
+            if image_id in seen:
+                continue
+            text = p.read_text(encoding="utf-8", errors="replace").strip()
+            if not text:
+                continue
+            if normalize:
+                text = ", ".join(parse_caption(text, rules))
+                if not text:
+                    continue
+            seen.add(image_id)
+            out.append((image_id, text))
+        print(
+            f"  [pairs] {root}: +{len(out) - n_before} captions"
+            f"{' (normalized)' if normalize else ''}"
+        )
     return out
 
 
@@ -454,7 +517,24 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--glossary", type=Path, default=ASSETS / "tag_glossary_ja.json")
-    ap.add_argument("--captions", type=Path, default=REPO / "image_dataset")
+    ap.add_argument(
+        "--captions",
+        type=Path,
+        nargs="+",
+        default=[REPO / "image_dataset"],
+        help="curated caption roots, already in Anima's caption convention",
+    )
+    ap.add_argument(
+        "--raw-captions",
+        type=Path,
+        nargs="*",
+        default=[GELCRAWL_RETRIEVED],
+        help=(
+            "raw crawler caption roots — normalized through --tag-rules before "
+            "use (D1-wide; pass with no values to disable)"
+        ),
+    )
+    ap.add_argument("--tag-rules", type=Path, default=GELCRAWL_RULES)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--alt-register", action="store_true", default=True)
     ap.add_argument(
@@ -496,7 +576,9 @@ def main() -> None:
 
     rng = random.Random(args.seed)
     glossary = json.loads(args.glossary.read_text())["tags"]
-    captions = load_captions(args.captions)
+    roots = [(p, False) for p in args.captions]
+    roots += [(p, True) for p in (args.raw_captions or [])]
+    captions = load_captions(roots, args.tag_rules)
 
     pairs = (
         build_d1(captions, glossary, args, rng)
@@ -515,6 +597,8 @@ def main() -> None:
         "by_source": dict(collections.Counter(p["source"] for p in pairs)),
         "by_register": dict(collections.Counter(p["register"] for p in pairs)),
         "untranslated_segments": sum(p["n_missing"] for p in pairs),
+        "n_captions": len(captions),
+        "caption_roots": [str(p) for p, _ in roots],
         "glossary": str(args.glossary),
     }
     if not args.no_coverage:

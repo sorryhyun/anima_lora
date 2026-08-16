@@ -161,6 +161,19 @@ def discrimination(
     }
 
 
+def _register_triangle(d: dict[str, list[float]]) -> dict:
+    """One register's readout-space triangle: student / teacher / native + R."""
+    mean = {k: sum(v) / len(v) for k, v in d.items()}
+    span = mean["t"] - mean["n"]
+    return {
+        "n": len(d["s"]),
+        "student": mean["s"],
+        "teacher": mean["t"],
+        "native": mean["n"],
+        "recovery": (mean["s"] - mean["n"]) / span if abs(span) > 1e-6 else 0.0,
+    }
+
+
 @torch.no_grad()
 def evaluate(
     adapter, cached, cfg, device, dtype, limit=None, batch_size=32, probes=None
@@ -203,6 +216,11 @@ def evaluate(
     }
     held: dict[str, list[float]] = {}
     per_register: dict[str, list[float]] = {}
+    # …and the same decomposition in the readout space. `recovery_attn` is a
+    # *mix* statistic (G3), so the aggregate is only comparable between runs
+    # that hold out the same register proportions — which a corpus change
+    # breaks. The per-register triangle is what survives a re-mix.
+    per_register_a: dict[str, dict[str, list[float]]] = {}
     outs: list[torch.Tensor] = []
     outs_a: list[torch.Tensor] = []
     for start in range(0, n, batch_size):
@@ -248,9 +266,19 @@ def evaluate(
                 )
             )
             outs_a.extend(rs[j] for j in range(rs.shape[0]))
-            acc["s_ref_a"] += flat_cos(rs, rr).tolist()
-            acc["t_ref_a"] += flat_cos(rt, rr).tolist()
-            acc["n_ref_a"] += flat_cos(rn, rr).tolist()
+            s_ref_a = flat_cos(rs, rr)
+            t_ref_a = flat_cos(rt, rr)
+            n_ref_a = flat_cos(rn, rr)
+            acc["s_ref_a"] += s_ref_a.tolist()
+            acc["t_ref_a"] += t_ref_a.tolist()
+            acc["n_ref_a"] += n_ref_a.tolist()
+            for reg, sv, tv, nv in zip(
+                b["registers"], s_ref_a.tolist(), t_ref_a.tolist(), n_ref_a.tolist()
+            ):
+                d = per_register_a.setdefault(reg, {"s": [], "t": [], "n": []})
+                d["s"].append(sv)
+                d["t"].append(tv)
+                d["n"].append(nv)
 
     mean = {k: (sum(v) / len(v) if v else float("nan")) for k, v in acc.items()}
     span = mean["t_ref"] - mean["n_ref"]
@@ -280,6 +308,9 @@ def evaluate(
         "cos_native_vs_en_attn": mean["n_ref_a"],
         "cos_student_vs_en_by_register": {
             k: sum(v) / len(v) for k, v in sorted(per_register.items())
+        },
+        "attn_by_register": {
+            k: _register_triangle(v) for k, v in sorted(per_register_a.items())
         },
         "held_out_loss": {k: sum(v) / len(v) for k, v in sorted(held.items())},
     }

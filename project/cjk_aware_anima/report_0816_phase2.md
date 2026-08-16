@@ -224,7 +224,7 @@ register. Distillation cannot pass its own teacher, so the gate is only
 meaningful as a fraction of a ceiling, and the ceiling had never been measured
 on the corpus. Measured now on all **900** held-out pairs (no training; the
 teacher/reference/native arms are all cached, so this is a readout, not a run).
-Envelope: `bench/cjk_distill/results/20260816-1428-g34/`.
+Envelope: `bench/cjk_distill/results/20260816-1442-g34-g3-g4a/`.
 
 | register | n | teacher (ceiling) | native (floor) | addressable | zero-shot student | ceiling attn | floor attn | addressable attn |
 |---|---|---|---|---|---|---|---|---|
@@ -358,7 +358,8 @@ Two packs trained at the settled design (`loss=span`, `--trust provenance`,
 `--train_registers tags,tags_alt`, 8,000 steps × batch 32, lr 1e-3):
 `output/ckpt/cjk_vocab_pack_global{,_row}.{safetensors,json}`. Envelopes:
 `bench/cjk_distill/results/20260816-1450-2c-global/` and `…-1511-2c-global-row/`;
-rendered eval under `bench/cjk_adapter/results/20260816-16{18,19,34,50}-2c-*`.
+rendered eval under `bench/cjk_adapter/results/20260816-1618-2c-gate-global/`,
+`…-1619-2c-grid-global/`, `…-1634-2c-gate-globalrow/`, `…-1634-2c-grid-globalrow/`.
 
 | pack | final span loss | cos(s,en) flat | tags flat | cos(s,en) attn | recovery_attn | disc far | disc near |
 |---|---|---|---|---|---|---|---|
@@ -452,3 +453,115 @@ target than a generic concept).
    already-known span-less-register hole. Both have named levers (Next 1–3).
 3. The 2c acceptance surface is re-based (Next 4); the 0.6 flat gate is
    retired as a gate and kept as a control alongside flat discrimination.
+
+## D1-wide — the gelcrawl widening, measured (2026-08-16)
+
+The Corpus table named D1-wide "the unblocked lever": `~/gelcrawl/retrieved/`
+holds 16,053 EN tag captions against `image_dataset`'s 3,008, and the corpus
+is text-only so curation state is irrelevant. Built and measured. It delivers
+the visit multiplication it promised, and it **does not fix the render grid's
+zero-visit failures** — those turn out to have a different cause.
+
+### What was built
+
+`build_pairs.py` / `tag_glossary.py` now take multiple caption roots, each
+flagged curated or raw (`--captions` / `--raw-captions` / `--tag-rules`). The
+two roots are not in the same format: `image_dataset` is post-processed and
+`retrieved/` is raw crawler output (`&#039;` entities, booru rating words
+instead of Anima's band, `highres`/`absurdres` meta, undeduped clothing
+bases). Raw roots go through gelcrawl's own `tag_rules.yaml` via
+`library.captioning.tag_rules` — **the same normalization that produced
+`image_dataset`**, so the two roots agree on `questionable`→`nsfw` instead of
+splitting the rating rows. Verified segment-for-segment against a curated
+caption. Roots dedup on the artist-relative path (the bare stem is not unique:
+`dan_` prefix = danbooru id space, [[project_booru_id_space_collision]]),
+first root winning, so the curated copy beats its own crawl source on the
+2,933 of 3,008 that overlap.
+
+Result: **3,008 → 16,128 captions** (+13,120 gelcrawl-only), D1 6,016 →
+32,256 pairs, corpus 18,990 → 45,230 pairs.
+
+### What it bought — visits, exactly as predicted
+
+Span-visit bands over `tags,tags_alt` (`coverage.json`), same glossary:
+
+| band | before (3,008 caps) | after (16,128 caps) |
+|---|---|---|
+| 1–4 | 2,463 | 2,339 |
+| 5–49 | 2,411 | 2,119 |
+| 50–499 | 1,139 | 1,210 |
+| **500+** | **381** | **756** |
+| rows visited | 6,394 | 6,424 |
+| visits total | 1,314,156 | 5,649,001 (4.3×) |
+
+The 500+ band **doubles** and the low bands drain into it — rows migrating
+up, which is the stated goal (identity-carrying tokens want O(100+) visits).
+Rows *visited* is flat (6,394 → 6,424): the widening buys **visits, not
+vocabulary**, because the JA side is composed from a glossary that did not
+grow. That was measurable in advance and is the correct reading of it — the
+current glossary already covers **97.3% of the widened corpus's occurrence
+mass**; the 7,242 tags gelcrawl adds carry only **3.2%** of its occurrences,
+and the top of that tail is `@artist` handles, which pass through latin by
+design.
+
+### What it did not buy — the v=0 tokens are a *wording* defect
+
+`gates/coverage.py` before vs after: the `v<5` column improves on six prompts
+(`照明` 1→4, `気が` 2→4, `女子` 3→ok, `二人`/`カフェ`/`店` clear, `博` 2→ok),
+but the **`v=0` column is essentially unchanged** — `騎`:0 `鎧`:0 `京都`:0
+`俯`:0 `瞰`:0 `畑`:0 `肖`:0 `接`:0 survive a 5.4× corpus. Diagnosed, and it
+splits in two:
+
+1. **Wording mismatch — the tag is present and now well-visited, but the
+   glossary bound it to a different JA surface than the one users type.**
+   `armor` occurs 39× in the widened corpus and its candidate list is
+   `アーマー` (f1 1.0, kana) and `鎧` (f1 1.0, Han-only) — **both back-translate
+   perfectly**; the kana-proves-Japanese rule picked the katakana loanword, so
+   `鎧` sits at 0. Same shape for `from above`→`上から` (not `俯瞰`, which is in
+   `alts`), `close-up`→`クローズアップ` (not `接写`), `portrait`→`ポートレート`
+   (not `肖像`). And the rule filters twice: `alt_pool` also requires kana for
+   general-axis tags, so the kanji wording is excluded from `tags_alt` as well
+   — it is reachable from **neither** register.
+2. **Genuinely absent vocabulary** — `kyoto`, `noren`, `knight`, `field` are
+   not booru tags at any pool size, so `京都`/`暖簾`/`騎士`/`畑` cannot be
+   reached from a tag caption at all. This is the span-less-register hole
+   (D2/D3) and the name register, not a D1 lever.
+
+Sizing (1): **119 general tags / 1,735 occurrences** have a pure-katakana
+primary tied-or-beaten by a Han-only candidate. It is **not** automatically
+fixable, and the kana guard earns its keep — the list is roughly half native
+Japanese wrongly rejected (`上着 翼 靴下 腕輪 眼鏡 砂浜 刺青 逆光 直毛 漫画
+扉 果物 指輪 化粧 提灯 水筒`) and half Chinese correctly rejected (`指甲油
+智能手机 杯子 牛仔布 毛巾 背包 手提包 特写 影子 睡衣`), with at least one
+false friend that would be a real bug: **`bed` → `床`**, which is *bed* in
+Chinese and *floor* in Japanese. Han-only-plus-JA-valid-kanji does not
+separate them; only Japanese knowledge does. So this is a **human review
+axis**, and a new one — the existing `tag_glossary_review.md` is ordered by
+`mt_unverified` disagreement and does not surface this class at all.
+
+### The glossary rebuild is GPU work, not a free CPU pass
+
+Re-running `tag_glossary.py` over the union **without `--mt`** was tried and
+**reverted**: the back-translation scoring is what selects among candidates,
+so a CPU-only rebuild drops every `mt_verified`/`wiki_verified` verdict and
+the `candidates` field with it (5,920 → 0 entries), re-picking straight from
+the wiki head. It reproduces exactly the failures `datasets/README.md` warns
+about — `underwear`→**下着コート**, `1girl`→女の子, `black hair`→黒髪ボブ,
+`large breasts`→デカ乳, `censored`→**遮盖** (Chinese) — regressing 1,991
+wordings and unresolving 2,948 previously-resolved tags. **Do not rebuild the
+glossary without `--mt`.** The widened glossary is a daemon job whose MT cache
+makes the 7,514 existing tags nearly free; only the ~6,600-tag residue and the
+new candidates' back-translations are paid.
+
+### Verdict
+
+- The widened corpus is **built and is the current
+  `post_image_dataset/cjk_distill/`** (45,230 pairs). It is strictly better on
+  the stated lever and costs nothing at train time.
+- D1-wide is **not** sufficient for the 2c grid. The plan's "the tag register
+  is coverage-bound" is half right: it is coverage-bound in the 1–49 bands,
+  which this fixes, and **wording-bound** at v=0, which it cannot.
+- Unmapped segments rise 586 → 42,530 (0.10% → 3.2% of segments, matching the
+  new-tag occurrence share). These degrade to latin passthrough with
+  `via: unmapped`, f1 0.0 — the trust weighting already handles them, so this
+  is a coverage number to close, not a corruption.

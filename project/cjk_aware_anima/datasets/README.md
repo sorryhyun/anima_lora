@@ -251,3 +251,109 @@ inside `やがったなこのやろ` and two-mora katakana given names (`カイ`
 (pokemon), `アイ` = hoshino ai) inside plain dialogue — hence `_substring_safe`,
 which trusts kanji at length 2 and demands 4 characters of everything else.
 `--recount` re-cuts every bucket from `pilot.jsonl` without a second GPU pass.
+
+## Caption roots — D1's width, and why the raw pool needs a rules pass
+
+`build_pairs.py` and `tag_glossary.py` both read **multiple caption roots**:
+`--captions` for roots already in Anima's caption convention, `--raw-captions`
+for raw crawler output, `--tag-rules` for the rule file. The default pair is
+`image_dataset` (curated, 3,008) + `~/gelcrawl/retrieved` (raw, 16,053), which
+is what D1-wide means: this corpus is **text-only**, so an image that failed
+curation still has a caption saying what a JA user would type, and the crawl
+pool is 5.4× the curated set.
+
+The two roots are not interchangeable strings. `retrieved/` is raw crawler
+output — `&#039;` HTML entities, booru rating words (`general`/`questionable`)
+instead of Anima's band (`safe`/`nsfw`), `highres`/`absurdres` meta tags, and
+undeduped clothing bases (`breasts` alongside `large breasts`). Left alone it
+would split the rating rows and train `questionable`'s ext rows separately
+from `nsfw`'s. So raw roots go through gelcrawl's own `tag_rules.yaml` via
+`library.captioning.tag_rules` — deliberately the *same* rule set that
+produced `image_dataset`, not a reimplementation. Verified segment-for-segment
+against a curated caption.
+
+Dedup is on the **artist-relative path**, not the bare stem: `image_dataset`
+was curated out of `retrieved/` so 2,933 of 3,008 overlap, and the stem alone
+is not unique because both boorus share each artist directory (`dan_` prefix =
+danbooru id space). First root wins, so the curated copy beats its own source.
+
+**What widening does and does not buy** — measured in
+[`../report_0816_phase2.md`](../report_0816_phase2.md#d1-wide--the-gelcrawl-widening-measured-2026-08-16).
+It buys **visits** (500+ band 381 → 756, 4.3× total) and **not vocabulary**
+(ext rows visited flat at ~6,400), because the JA side is composed from a
+glossary that did not grow. Corollary worth keeping: the render grid's
+zero-visit tokens are **not** a corpus-size problem. `armor` occurs 39× in the
+widened corpus and `鎧` still has 0 visits — the glossary bound the tag to
+`アーマー`. Do not answer a `v=0` token by crawling more captions.
+
+## Do not rebuild the glossary without `--mt`
+
+Tried and reverted. The back-translation scoring is what *selects* among
+candidates, so a CPU-only rebuild drops every `mt_verified`/`wiki_verified`
+verdict and the `candidates` field with it (5,920 entries → 0), re-picking
+straight from the wiki head — which is exactly the failure this file warns
+about above. It reproduced `underwear` → 下着コート, `censored` → 遮盖
+(Chinese), `large breasts` → デカ乳, regressing 1,991 wordings and unresolving
+2,948 tags. The widened rebuild is a daemon job; the prompt-keyed MT cache
+makes the 7,514 existing tags nearly free.
+
+### The kana guard cuts both ways (the D1-words review axis)
+
+Kana proves Japaneseness, which is why `alt_pool` and the candidate selector
+require it for general-axis tags — it is what keeps 汗液 and 短袖 out. But it
+also **excludes native kanji words**, from the primary *and* from the alt
+pool, so the kanji wording is reachable from neither register:
+
+| tag | chosen | native candidate, same f1 |
+|---|---|---|
+| `armor` | アーマー | 鎧 |
+| `from above` | 上から | 俯瞰 |
+| `close-up` | クローズアップ | 接写 |
+| `portrait` | ポートレート | 肖像 |
+
+119 general tags / 1,735 occurrences sit in this class. It is **not**
+automatically fixable: roughly half the Han-only rivals are native Japanese
+wrongly rejected (上着 翼 靴下 腕輪 眼鏡 砂浜 刺青 逆光 直毛 漫画 扉 果物
+指輪 化粧 提灯 水筒) and half are Chinese correctly rejected (指甲油 智能手机
+杯子 牛仔布 毛巾 背包 手提包 特写 影子 睡衣) — and `bed` → 床 is the case
+that settles it, a Han-only string of perfectly ordinary JA kanji that means
+*bed* in Chinese and **floor** in Japanese. No codepoint inventory separates
+those; only Japanese knowledge does. It is a **human review axis**, and a
+different one from `tag_glossary_review.md`'s `mt_unverified` ordering.
+
+Measured against `tag_pairs.py`'s source (below), the class is **5× larger than
+this estimate**: 626 tags / 55,821 occurrences (8.6% of all tag mass) where our
+choice is katakana-only and the community field offers a kanji reading.
+
+## `tag_pairs.py` — filling the tail from the community's own pairs
+
+[`p1atdev/danbooru-ja-tag-pair-20241015`](https://huggingface.co/datasets/p1atdev/danbooru-ja-tag-pair-20241015)
+(CC0) is the danbooru wiki `other_names` field at an Oct-2024 snapshot with
+`calm3-22b-chat` filling tags that had no Japanese name: 151,431 rows —
+93,393 **character**, 22,330 **copyright**, 35,708 general.
+
+It resolves **74.8%** of the tags our glossary leaves unresolved (71.3% of that
+occurrence mass); the residue is almost all artist handles, which are latin by
+design. Applied: **5,248 tags filled, unmapped segments 42,530 → 13,714**.
+
+**The module only fills.** Every wording the glossary already carries is pinned
+or back-translation-chosen, and a CPU pass cannot re-verify what it overwrites
+(the section above). An *unresolved* tag has nothing to lose — it composes as
+latin passthrough at span weight 0 — so filling regresses nothing. Filled spans
+carry `via: tagpair`, weighted 0.6 in `TRUST_POLICIES` (above `mt_unverified`,
+below `wiki`); note `apply_trust` defaults an *unknown* `via` to 1.0, so a new
+source must be declared there or it silently inherits full trust.
+
+The source is unfiltered by its own admission, so the fill re-runs our guards
+rather than trusting the field — `is_japanese`, plus the kanji-inventory check
+for Han-only names (Shift-JIS accepts traditional Chinese; the inventory does
+not), plus a latin drop. On the full table those reject 8,372 non-JA, 5,033
+Han-only-outside-inventory (`裙`, `百褶裙`), and 28,234 latin-bearing
+(`ウィンクX東方`) names.
+
+**What it does not do yet**: re-select *existing* wordings. That is the bigger
+prize and it is GPU work — the source knows the booru *sense* that MT cannot
+(`bow` → 蝶結び the ribbon, not our お辞儀 *bowing*; `on back` → 仰向け supine,
+not our 後ろ姿 *from behind*), agreeing with only 35% of our 5,435 MT-derived
+wordings. Feed its names as candidates to the existing back-translation arbiter
+and let them win on evidence. See `plan.md` (D1-pairs, item 2).

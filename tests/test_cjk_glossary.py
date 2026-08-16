@@ -179,3 +179,73 @@ def test_compose_passes_unmapped_segments_through_and_counts_them():
     assert [s["en"] for s in spans] == ["1girl", "@aak", "unmapped tag"]
     assert [s["ja"] for s in spans] == ja
     assert spans[-1]["via"] == "unmapped"
+
+
+tag_pairs = _load("tag_pairs")
+
+
+def test_tag_pairs_fills_only_what_the_glossary_left_unresolved():
+    """The fill contract: a resolved wording is never re-opened on a CPU pass.
+
+    Every wording the glossary already carries is either pinned or chosen by
+    back-translation, and this source has neither behind it — overwriting one
+    would reproduce the CPU-rebuild regression `datasets/README.md` records. An
+    *unresolved* tag has nothing to lose: it composes as latin passthrough at
+    span weight 0.
+    """
+    tags = {
+        "1girl": {"count": 9, "axis": "general", "ja": "女の子", "via": "mt_verified"},
+        "kizuato": {"count": 5, "axis": "general", "ja": None, "via": "unresolved"},
+    }
+    counts = {"1girl": 9, "kizuato": 5, "socks": 3, "@aak": 7}
+    pairs = {
+        "1girl": ["女子"],  # a competing wording — must be ignored
+        "kizuato": ["痕"],
+        "socks": ["靴下"],
+        "@aak": ["アーク"],  # artist handles stay latin identity
+    }
+    inventory = set("痕靴下")
+    stats = tag_pairs.fill(
+        tags,
+        __import__("collections").Counter(counts),
+        pairs,
+        inventory,
+        {"@aak": "artist"},
+    )
+
+    assert tags["1girl"]["ja"] == "女の子"  # untouched
+    assert tags["1girl"]["via"] == "mt_verified"
+    assert tags["kizuato"]["ja"] == "痕"  # unresolved → filled
+    assert tags["kizuato"]["via"] == tag_pairs.TAGPAIR_VIA
+    assert tags["socks"]["ja"] == "靴下"  # absent → added
+    assert "@aak" not in tags
+    assert stats["filled"] == 3 - 1  # kizuato + socks
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "单色调",  # simplified Chinese — Shift-JIS rejects it
+        "百褶裙",  # traditional Chinese — Shift-JIS accepts, the inventory does not
+        "ウィンクX東方",  # latin contamination in the field
+    ],
+)
+def test_tag_pairs_guards_reject_non_japanese(name):
+    """The source is unfiltered by its own admission, so the guards re-run here."""
+    inventory = set("東方髪目")
+    assert tag_pairs.japanese_names([name], inventory) == []
+
+
+def test_tagpair_via_has_an_explicit_trust_weight():
+    """`apply_trust` defaults an unknown `via` to 1.0 — a new source must not
+    inherit full trust by omission."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from scripts.distill_cjk.config import TRUST_POLICIES
+
+    for policy, weights in TRUST_POLICIES.items():
+        if policy == "all":
+            continue  # `all` is empty by construction — every span at 1.0
+        assert tag_pairs.TAGPAIR_VIA in weights, policy
+    assert (
+        weights["mt_unverified"] <= TRUST_POLICIES["provenance"][tag_pairs.TAGPAIR_VIA]
+    )

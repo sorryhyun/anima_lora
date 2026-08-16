@@ -47,6 +47,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 ASSETS = ROOT / "assets"
 REPO = ROOT.parents[2]
+sys.path.insert(0, str(ROOT))
+
+import build_pairs  # noqa: E402  (sibling module — caption roots + loader)
 
 WIKI_REPO = "kierarkia/danbooru-wiki-2026"
 WIKI_FILE = "danbooru_wiki_dataset_2026-04-28.jsonl"
@@ -138,10 +141,19 @@ def load_wiki(path: Path) -> dict[str, list[str]]:
     return out
 
 
-def tag_counts(caption_dir: Path) -> collections.Counter:
+def tag_counts(caption_roots: list[tuple[Path, bool]], rules: Path) -> collections.Counter:
+    """Tag occurrences over the same caption roots ``build_pairs.py`` composes.
+
+    The glossary must span whatever D1 spans, or the widened captions compose
+    with latin passthrough on every tag the narrow build never saw — so this
+    shares ``build_pairs.load_captions`` (multi-root, raw roots normalized
+    through gelcrawl's rules) rather than re-globbing one directory.
+    """
+    from build_pairs import load_captions  # noqa: PLC0415
+
     counts: collections.Counter = collections.Counter()
-    for p in caption_dir.rglob("*.txt"):
-        for seg in p.read_text(encoding="utf-8", errors="replace").split(","):
+    for _, text in load_captions(caption_roots, rules):
+        for seg in text.split(","):
             seg = seg.strip()
             if seg:
                 counts[seg] += 1
@@ -157,7 +169,9 @@ def build(args: argparse.Namespace) -> dict:
     )
     lexicon = json.loads(Path(args.lexicon).read_text())["characters"]
     wiki = load_wiki(Path(args.wiki))
-    counts = tag_counts(Path(args.captions))
+    roots = [(Path(p), False) for p in args.captions]
+    roots += [(Path(p), True) for p in (args.raw_captions or [])]
+    counts = tag_counts(roots, Path(args.tag_rules))
 
     axis_of: dict[str, str] = {}
     for axis in ("character", "copyright", "artist"):
@@ -509,7 +523,15 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--caption-index", type=Path, default=DEFAULT_INDEX)
-    ap.add_argument("--captions", type=Path, default=DEFAULT_CAPTIONS)
+    ap.add_argument("--captions", type=Path, nargs="+", default=[DEFAULT_CAPTIONS])
+    ap.add_argument(
+        "--raw-captions",
+        type=Path,
+        nargs="*",
+        default=[build_pairs.GELCRAWL_RETRIEVED],
+        help="raw crawler roots, normalized before counting (pass empty to disable)",
+    )
+    ap.add_argument("--tag-rules", type=Path, default=build_pairs.GELCRAWL_RULES)
     ap.add_argument("--lexicon", type=Path, default=ASSETS / "wikidata_lexicon.json")
     ap.add_argument("--wiki", type=Path, default=ASSETS / ".wiki" / WIKI_FILE)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)

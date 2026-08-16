@@ -36,6 +36,12 @@ TRUST_POLICIES = {
         "passthrough": 1.0,
         "mt_verified": 0.8,
         "wiki": 0.7,
+        # `tagpair` fills tags the glossary left unresolved (p1atdev, CC0): the
+        # community's own other_names, but an older snapshot, partly LLM-filled,
+        # and with no back-translation behind the choice. Above `mt_unverified`,
+        # below `wiki` — and note these rows have *no* supervision otherwise, so
+        # the comparison is against 0, not against a better wording.
+        "tagpair": 0.6,
         "mt_unverified": 0.3,
         "unresolved": 0.0,
         "unmapped": 0.0,
@@ -50,6 +56,7 @@ TRUST_POLICIES = {
         "passthrough": 1.0,
         "mt_verified": 1.0,
         "wiki": 1.0,
+        "tagpair": 0.0,  # nothing back-translated it — this arm drops it
         "mt_unverified": 0.0,
         "unresolved": 0.0,
         "unmapped": 0.0,

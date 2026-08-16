@@ -104,7 +104,9 @@ Measured verdicts:
       no flat term ships; buying flat points costs readout-space alignment.
 - [x] Rendered eval — `assets/ja_eval_prompts.json` (20 prompts, five
       registers) through `run_bench.py --ext --prompts`; gate + grid per pack
-      under `bench/cjk_adapter/results/20260816-16{18,19,34,50}-2c-*`.
+      under `bench/cjk_adapter/results/20260816-1618-2c-gate-global/`,
+      `…-1619-2c-grid-global/`, `…-1634-2c-gate-globalrow/`,
+      `…-1634-2c-grid-globalrow/`.
 - [x] `gates/coverage.py` — CPU-only per-prompt span-visit diagnostic; ties
       each render failure to its 0–40-visit content tokens and sizes the D1
       widening (the next work item — see [`plan.md`](plan.md#corpus--where-the-next-win-is)).
@@ -132,6 +134,49 @@ Measured verdicts:
       **rejected as corpus material** (register duplicates D4; OCR noise arrives
       MT-laundered and undetectable). Kept for geometry: mask validation and
       Phase 4. See [`datasets/README.md`](datasets/README.md).
+
+## Phase 2c — D1-wide (2026-08-16)
+
+Measured verdicts:
+[`report_0816_phase2.md`](report_0816_phase2.md#d1-wide--the-gelcrawl-widening-measured-2026-08-16).
+
+- [x] `build_pairs.py` / `tag_glossary.py` take **multiple caption roots**
+      (`--captions` curated / `--raw-captions` raw / `--tag-rules`). Raw
+      crawler roots are normalized through gelcrawl's `tag_rules.yaml` via
+      `library.captioning.tag_rules` — the same rules that produced
+      `image_dataset`, so the roots agree on the rating band. Dedup key is the
+      artist-relative path, not the bare stem
+      ([[project_booru_id_space_collision]]); first root wins.
+- [x] Corpus rebuilt at width — **3,008 → 16,128 captions**, 18,990 → **45,230
+      pairs**, 500+ visit band **381 → 756**, 4.3× total visits. This is the
+      current `post_image_dataset/cjk_distill/`.
+- [x] Measured that widening buys **visits, not vocabulary** (rows visited flat
+      at ~6,400) and therefore does **not** move any `v=0` token — the render
+      grid's zero-visit failures are a glossary **wording** defect (119 tags
+      where a native-kanji candidate lost to a katakana loanword), which is a
+      human review axis, not an automatic fix.
+- [x] Established that a glossary rebuild **requires `--mt`** — the CPU-only
+      path was tried and reverted (drops the back-translation verification
+      layer, regresses 1,991 wordings).
+
+## Phase 2c — D1-pairs tail fill (2026-08-16)
+
+- [x] `datasets/tag_pairs.py` — `p1atdev/danbooru-ja-tag-pair-20241015` (CC0,
+      151,431 rows) as a **fill-only** source for tags the glossary leaves
+      unresolved. **5,248 tags filled; unmapped segments 42,530 → 13,714**
+      (−68%), ext rows visited 6,424 → 6,538, 500+ band 756 → 778. Fills only —
+      a resolved wording is never re-opened on a CPU pass (the rebuild failure
+      in [`datasets/README.md`](datasets/README.md#do-not-rebuild-the-glossary-without---mt));
+      the source's own Chinese/latin noise is re-guarded here, not trusted.
+      New provenance `via: tagpair` at trust 0.6 — declared in all
+      `TRUST_POLICIES`, because `apply_trust` defaults an unknown `via` to
+      **1.0**.
+- [x] `tests/test_cjk_glossary.py` +3 invariants — fill-only contract, the
+      script guards, and the explicit-trust-weight rule.
+- [x] Measured that the same source is the **strongest open lever on the 2a
+      ship blocker** (booru sense vs MT's string translation; 35% agreement on
+      our MT-derived wordings) — recorded as D1-pairs item 2 in
+      [`plan.md`](plan.md#corpus--where-the-next-win-is), not yet run.
 
 ## Reusable for Phase 2b onward
 

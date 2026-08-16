@@ -64,17 +64,28 @@ rows, not compute.
 
 ## Corpus — where the next win is
 
-Visit distribution is the whole game for the tag register: 2,672 of 58,968 ext
-rows are span-visited at all, and the render grid fails precisely on the
-prompts whose content tokens sit in the 0–40 visit band (`騎`/`鎧` = 0,
-`博麗` = 2). Working head heuristic from the grid: identity-carrying tokens
-want **O(100+) visits** (`教室`:39 renders a classroom; `霊夢`:37 does not
-render Reimu). `gates/coverage.py` prints the per-prompt gap; drive it to zero
-over the user-facing vocabulary (caption_index.json + the D5 lexicon).
+Visit distribution was assumed to be the whole game for the tag register, and
+D1-wide has now tested that: 5.4× the captions moved the 500+ band 381 → 756
+and cleared most of the 1–4 band, **and moved no `v=0` token off zero**
+([report](report_0816_phase2.md#d1-wide--the-gelcrawl-widening-measured-2026-08-16)).
+So the diagnosis splits, and only the second half is still open:
+
+- **1–49 bands = coverage-bound.** Closed by D1-wide. More captions here have
+  diminishing value; they multiply the same glossary.
+- **`v=0` = wording-bound**, not coverage-bound. `armor` occurs 39× and `鎧`
+  still has 0 visits, because the glossary bound the tag to `アーマー`. That is
+  the D1-words row above and it is a review task, not a corpus task.
+- **`v=0` on non-tag vocabulary** (`京都` `暖簾` `騎士` `畑`) is unreachable
+  from tag captions at any pool size — D2/D3 register work or D5 names.
+
+`gates/coverage.py` prints the per-prompt gap; it is now the instrument for
+the *wording* pass, and its `v=0` column is the review queue.
 
 | ID | Source | Status / next |
 |---|---|---|
-| D1-wide | **`~/gelcrawl/retrieved/` EN tag captions** — 16,053 vs the 3,008 `image_dataset/` captions D1 is built on (5.3×) | **The unblocked lever.** Text-only, so curation state is irrelevant; the gelcrawl crawlers can fetch more caption-only (no image download needed) if 16k still leaves floor gaps. Compose with `build_pairs.py` + the same glossary; CPU-only. Watch the [[project_booru_id_space_collision]] stem convention (`dan_` prefix = danbooru id space) when joining. |
+| D1-wide | **`~/gelcrawl/retrieved/` EN tag captions** — 16,053 vs the 3,008 `image_dataset/` captions D1 was built on | **DONE and MEASURED** ([report](report_0816_phase2.md#d1-wide--the-gelcrawl-widening-measured-2026-08-16)) — 3,008 → 16,128 captions, corpus 18,990 → 45,230 pairs, 500+ visit band **381 → 756**, 4.3× visits. But it buys **visits, not vocabulary** (rows visited flat at ~6,400), so it improves the 1–49 bands and **leaves every v=0 token at 0**. Not a further lever: more captions multiply the same glossary. |
+| D1-pairs | **`p1atdev/danbooru-ja-tag-pair-20241015`** (CC0) — the danbooru wiki's own `other_names` (Oct-2024) + `calm3-22b-chat` fill; 151,431 rows (93,393 character / 22,330 copyright / 35,708 general) | **Tail fill DONE** (`datasets/tag_pairs.py`, CPU): 5,248 previously-unresolved tags filled, unmapped segments **42,530 → 13,714**. **Item 2 is OPEN and is the strongest lever on the 2a ship blocker**: this source knows the *booru sense* that MT structurally cannot, because MT translates the English string. It agrees with only 35% of our 5,435 MT-derived wordings, and on the high-traffic disagreements it is usually right — `bow` → 蝶結び (ribbon) not our お辞儀 (*bowing*, 1,582 occ), `on back` → 仰向け (supine) not our 後ろ姿 (*from behind*, 2,032 occ), `clothes lift` → たくし上げ not 服が持ち上がる, `multiple girls` → 群像 not 複数の女の子1人. Lever: feed its names as candidates into the existing back-translation arbiter (`--mt`, GPU) so they can win on evidence, which also turns `tag_glossary_review.md` from an eyeball pass into a sourced diff. It likewise carries the native-kanji candidates D1-words is about — **626 tags / 55,821 occ (8.6% of tag mass)** where our choice is a katakana loanword and it offers a kanji (`penis`→陰茎, `short hair`→短髪, `nude`→裸). **Not** a drop-in: unfiltered by its own admission (Chinese leaks `skirt`→裙, `pleated skirt`→百褶裙; its own MT errs, `after anal`→後背位 = *doggy style*), so it is a candidate source and the arbiter stays load-bearing. |
+| D1-words | **Glossary wording** — the real v=0 cause | **The unblocked lever now.** `armor`→`アーマー` not `鎧`, `from above`→`上から` not `俯瞰`, `close-up`→`クローズアップ` not `接写`: the kana-proves-Japanese rule picks katakana loanwords over native kanji *and* excludes the kanji from `alt_pool`, so it is reachable from neither register. 119 tags / 1,735 occ; **half are Chinese and correctly rejected** (`bed`→`床` is *floor* in JA), so it is a **human review axis**, not an automatic fix — and a new one the current review file does not surface. Lever: a second review batch → `tag_overrides.json` (CPU, free). |
 | D5-names | Wikidata lexicon → **name register** | Compose name-bearing captions directly (thousands of paired names already resolved). Risk 4 is now measured in renders — MT transliterates names, so their rows never accumulate visits through D1 alone. |
 | D2 | Danbooru artist commentary, 73,015 native-JA records, 9,068 paired | **In the mix but inert under `loss=span`** (prose carries no spans — measured, [report](report_0816_phase2.md#d2--what-the-commentary-corpus-buys-2026-08-16)). MT pass resumable at 5,721/69,668. Blocked on the sequence-term decision; do not grow it before that. |
 | D3 | STAIR Captions (~820k JA on COCO) + YJ Captions | Pre-aligned sentence register, zero MT. Same block as D2. Verify license (CC BY 4.0 last checked). |
@@ -97,9 +108,12 @@ flagged — if eval shows they poison nearby generations, demote them to the
     the trust-policy hedge as a non-lever (dropping unverified spans is
     *worse*), which makes the human review the only instrument.
     `assets/tag_glossary_review.md` (200 rows ⇒ ~64% of occurrences) +
-    `spotcheck.md`; fixes → `datasets/tag_overrides.json`. **Widening D1 will
-    grow this review surface — batch the new high-occurrence tags into the
-    same review file rather than re-opening it per drop.**
+    `spotcheck.md`; fixes → `datasets/tag_overrides.json`. **Measured: D1-wide
+    grows this surface far less than feared** — the widened corpus's 7,242 new
+    tags carry only 3.2% of its occurrence mass, and the current glossary
+    already covers 97.3% of it. Batch them into the same file. The **second**
+    review axis (D1-words: katakana primary vs native-kanji candidate, 119
+    tags) is new and must be batched in alongside.
   - **D6 stays eval-only**; the owed instrument (same template, different
     quoted strings) is still owed, and it will not be a cosine in this space
     (G3: ~0.02 readout headroom). Glyph identity is Phase 4's job.
@@ -111,9 +125,16 @@ flagged — if eval shows they poison nearby generations, demote them to the
   flat probes, the render grid, and the coverage diagnosis are in the
   [report](report_0816_phase2.md#phase-2c--first-pass-2026-08-16). Remaining 2c
   work, in order:
-  1. **Coverage pass**: widen D1 from gelcrawl + mint the name register, gated
-     by `gates/coverage.py` floors over the user-facing vocabulary; retrain
-     (cheap — the loop saturates in ~20 GPU-min) and re-render the grid.
+  1. **Coverage pass**: D1-wide **DONE** (corpus is built; 45,230 pairs);
+     D1-pairs **tail fill DONE** (unmapped segments 42,530 → 13,714).
+     Remaining: the **wording** pass — now best served by D1-pairs item 2
+     (MT-arbitrated re-selection) rather than by review alone, with the
+     D1-words katakana/kanji axis batched into the same pass — plus the
+     name register, gated by `gates/coverage.py`'s `v=0` column; then retrain
+     (cheap — the loop saturates in ~20 GPU-min) and re-render the grid. The
+     glossary rebuild over the widened tag set is a **daemon `--mt` job** — a
+     CPU-only rebuild was tried and reverted, it destroys the verification
+     layer ([report](report_0816_phase2.md#the-glossary-rebuild-is-gpu-work-not-a-free-cpu-pass)).
   2. **Sequence-term decision** for the span-less registers (prose/quotes) —
      the flat probes rule `flat` out as the extra term; `attn` is the measured
      candidate (+13% commentary in its own register, tags unharmed). Decide,
