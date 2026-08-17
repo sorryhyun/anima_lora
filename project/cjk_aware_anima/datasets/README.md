@@ -86,9 +86,27 @@ Captions are tag strings, so the JA side is **composed from the glossary**
 rather than translated wholesale: idiom and pinned proper nouns are then true
 by construction instead of by hope. Registers: `tags` (primary wording),
 `tags_alt` (verified synonyms swapped in — unverified wiki alternates would
-inject 女スパイ for `1girl`), `natural` (`--mt`, prose rewrite with
-character/copyright terms pinned), plus D6 quoted-text templates seeded from
-the LoveHina lines.
+inject 女スパイ for `1girl`), `names` (below), plus D6 quoted-text templates
+seeded from the LoveHina lines.
+
+**`names` (added 2026-08-17)** — the EN caption with *only* character/copyright
+segments swapped to their pinned JA names; captions with no resolvable name are
+skipped. Names are entity identities, not wording choices — 黄泉 and
+`acheron (honkai: star rail)` are the same thing by construction — so the
+teacher context matches the student's everywhere except the name span: the
+tightest supervision in the corpus, aimed at the name rows the 2c render grid
+measured at 0–37 visits (D5). The EN-kept segments emit spans too
+(`via: en_pinned`, declared in `TRUST_POLICIES`): both sides agree on their
+ids, so those spans isolate the swapped name's *contextual* influence, and the
+trust weight is the knob on that signal (re-weightable at load, no cache
+rebuild). Trained by default (`--train_registers tags,tags_alt,names`).
+
+**The `natural` MT-prose register was retired the same day** (never run at
+scale): it carried no spans, so it was inert under the settled `loss=span`; its
+teacher was a double-MT back-translation; and its one distinctive job —
+pinning names through a prose rewrite — is superseded by `names` at zero GPU
+cost. `build_pairs.py` is now CPU-only. Prose supervision remains D2/D3/D4's
+job, blocked on the sequence-term decision in [`../plan.md`](../plan.md).
 
 **Pass `--commentary assets/commentary_pairs_7k.jsonl` explicitly.** The flag
 defaults to `assets/commentary_pairs.jsonl`, which is not what the D2 MT pass

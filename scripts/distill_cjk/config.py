@@ -38,6 +38,10 @@ TRUST_POLICIES = {
         "wiki_han": 1.0,
         "rating": 1.0,
         "passthrough": 1.0,
+        # `names`-register segments deliberately kept EN: teacher and student
+        # agree on their ids, so the span isolates the swapped name's
+        # contextual influence — exact signal, weight is the mixing knob.
+        "en_pinned": 1.0,
         "mt_verified": 0.8,
         "wiki": 0.7,
         # `tagpair` fills tags the glossary left unresolved (p1atdev, CC0): the
@@ -58,6 +62,7 @@ TRUST_POLICIES = {
         "wiki_han": 1.0,
         "rating": 1.0,
         "passthrough": 1.0,
+        "en_pinned": 1.0,
         "mt_verified": 1.0,
         "wiki": 1.0,
         "tagpair_verified": 1.0,  # back-translation-verified, unlike the fill
@@ -106,7 +111,7 @@ def build_argparser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--train_registers",
-        default="tags,tags_alt",
+        default="tags,tags_alt,names",
         help="registers the loss actually trains on. D6's quote registers are "
         "excluded by default because their teacher is degraded by construction "
         "— `quote_preserved` puts the raw JA string into the teacher's stock-"

@@ -50,8 +50,10 @@ Builders and their measured results: [`datasets/README.md`](datasets/README.md).
       coverage (`coverage.json`).
 
 Still open in 2a — see [`plan.md`](plan.md#phases--gates): user sign-off on
-`tag_glossary_review.md`, and the `natural` prose register (implemented, not
-run).
+`tag_glossary_review.md`. (The `natural` prose register — implemented, never
+run at scale — was **retired 2026-08-17**: span-less, so inert under the
+settled `loss=span`, and its name-pinning job is superseded by the `names`
+register added the same day; see `datasets/README.md`.)
 
 ## Phase 2b — loop + gates (2026-08-15/16)
 

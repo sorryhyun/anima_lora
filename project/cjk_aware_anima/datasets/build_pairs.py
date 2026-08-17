@@ -15,7 +15,16 @@ an MT pass reproduces them. Registers, because users prompt in all three:
 * ``tags``    — JA tag string, glossary primary wording
 * ``tags_alt``— same caption through the alternate wordings (ツインテ vs
   ツインテール): real variation users type, and it visits more ext rows
-* ``natural`` — the caption rewritten as JA prose (``--mt``, GPU)
+* ``names``   — the EN caption with *only* character/copyright segments swapped
+  to their pinned JA names. Names are entity identities, not wording choices,
+  so the teacher context is identical to the student's everywhere except the
+  name span — the tightest supervision in the corpus, aimed at the name rows
+  the render grid measured at 0–37 visits (D5).
+
+(The ``natural`` MT-prose register was retired 2026-08-17: span-less — inert
+under ``loss=span`` — its teacher was a double-MT back-translation, and its
+name-pinning job is superseded by ``names``. Prose supervision is D2/D3/D4's
+job, blocked on the sequence-term decision in ``../plan.md``.)
 
 D6 quoted-text templates ride along, carrying the verbatim-string construction
 the OCR/text-render line will need (``「X」と書かれた看板``), with the teacher
@@ -26,7 +35,6 @@ with the very ``HybridT5Encoder`` training will use, and the histogram over row
 ids is what says which rows the run can actually move.
 
     python project/cjk_aware_anima/datasets/build_pairs.py          # CPU
-    make daemon-run ARGS="project/cjk_aware_anima/datasets/build_pairs.py --mt"
 """
 
 from __future__ import annotations
@@ -247,6 +255,62 @@ def build_d1(captions, glossary, args, rng) -> list[dict]:
     return pairs
 
 
+NAME_AXES = {"character", "copyright"}
+
+
+def build_names(captions, glossary) -> list[dict]:
+    """Name-swap register: only character/copyright segments go JA.
+
+    A name is an entity identity, not a wording choice — 黄泉 and
+    ``acheron (honkai: star rail)`` are the same thing by construction, with no
+    polysemy or katakana-vs-kanji review question behind the pairing. Keeping
+    every other segment EN makes the teacher's context identical to the
+    student's outside the name span, so the supervision on the name rows is
+    exact rather than filtered through the rest of the glossary.
+
+    The EN-kept segments still emit spans (``via: en_pinned``): teacher and
+    student agree on their ids, so any output difference there is purely the
+    swapped name's contextual influence — matching it teaches the name rows to
+    *behave* like the EN name in context, and the trust policy keeps a knob on
+    that signal without a cache rebuild. Captions with no resolvable name are
+    skipped outright: an all-EN pair visits no ext rows.
+
+    The student side joins with 、 like every span-carrying register — the
+    distill side's ``_ja_span_chars`` derives span offsets from that joiner.
+    """
+    pairs = []
+    for image_id, en in captions:
+        out, spans = [], []
+        n_swapped = n_unresolved = 0
+        for seg in split_caption(en):
+            e = glossary.get(seg)
+            is_name = bool(e) and e.get("axis") in NAME_AXES
+            if is_name and e.get("ja"):
+                ja = e["ja"]
+                via, f1 = seg_provenance(e, ja)
+                spans.append({"en": seg, "ja": ja, "via": via, "f1": f1})
+                n_swapped += 1
+            else:
+                ja = seg
+                spans.append({"en": seg, "ja": seg, "via": "en_pinned", "f1": 1.0})
+                n_unresolved += is_name  # a name we could not swap
+            out.append(ja)
+        if not n_swapped:
+            continue
+        pairs.append(
+            {
+                "id": f"D1/{image_id}/names",
+                "source": "D1",
+                "register": "names",
+                "en": en,
+                "ja": "、".join(out),
+                "n_missing": n_unresolved,
+                "spans": spans,
+            }
+        )
+    return pairs
+
+
 def build_d6(glossary, args, rng) -> list[dict]:
     """Quoted-text constructions, X drawn from native manga lines (D7)."""
     lovehina = json.loads((ASSETS / "lovehina_ja.json").read_text())
@@ -324,106 +388,6 @@ def build_d2(args, rng) -> list[dict]:
     n_human = sum(1 for p in pairs if p["via"] == "human")
     print(f"  [pairs] D2: {len(pairs)} commentary pairs ({n_human} human-translated)")
     return pairs
-
-
-def build_natural(captions, glossary, args) -> list[dict]:  # noqa: C901
-    """Prose register: MT rewrites the caption, with our wording pinned (GPU).
-
-    This is the one register MT is actually the right tool for — turning a tag
-    list into a sentence is generation, not lookup. The glossary still governs
-    the vocabulary: every character/copyright tag in the caption is passed as a
-    terminology constraint, so 黄泉 survives the rewrite instead of coming back
-    as アケロン.
-    """
-    sys.path.insert(0, str(ROOT))
-    from mt import MTEngine, Request  # noqa: PLC0415
-
-    # Prose costs hours of GPU and does not depend on the tag glossary, so it is
-    # cached: a glossary fix should not re-buy it.
-    cache_path = Path(args.natural_cache)
-    if cache_path.exists():
-        cached = [
-            json.loads(line)
-            for line in cache_path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        print(f"  [pairs] reusing {len(cached)} cached prose rows from {cache_path}")
-        return cached
-
-    rows = captions[: args.mt_limit] if args.mt_limit else captions
-    reqs = []
-    for _image_id, en in rows:
-        terms = []
-        for seg in split_caption(en):
-            e = glossary.get(seg)
-            if e and e.get("ja") and e.get("axis") in {"character", "copyright"}:
-                terms.append((seg.split(" (")[0], e["ja"]))
-        reqs.append(
-            Request(
-                text=en,
-                terms=terms[: args.max_terms],
-                style=(
-                    "a natural Japanese sentence describing the illustration, "
-                    "as a Japanese user would write a prompt — not a list of "
-                    "comma-separated keywords"
-                ),
-            )
-        )
-
-    engine = MTEngine(args.model, greedy=True, gpu_budget=args.gpu_budget)
-    got = engine.translate(
-        reqs,
-        batch_size=args.batch_size,
-        progress_every=20,
-        max_new_tokens=args.max_new_tokens,
-        cache=args.mt_cache / "natural_en2ja.jsonl",
-    )
-
-    # The teacher side must *say the same thing* as the student side, and prose
-    # compresses: a rewrite covers maybe 70% of a 30-tag caption. Pairing the
-    # full EN caption against it would hand the teacher content the student's
-    # text does not contain, which the ext rows could only match by inventing
-    # it. So the teacher text for this register is the back-translation of the
-    # JA — which is exactly the construction the objective calls for ("teacher
-    # = EN translation of the JA text"). The original caption is kept for
-    # provenance only.
-    keep = [
-        (image_id, en, ja.strip())
-        for (image_id, en), ja in zip(rows, got)
-        if ja.strip()
-    ]
-    print(
-        f"  [pairs] back-translating {len(keep)} prose rows for the teacher side",
-        flush=True,
-    )
-    back = engine.translate(
-        [Request(text=ja) for _, _, ja in keep],
-        target_lang="en",
-        batch_size=args.batch_size,
-        progress_every=20,
-        max_new_tokens=args.max_new_tokens,
-        cache=args.mt_cache / "natural_ja2en.jsonl",
-    )
-    out = [
-        {
-            "id": f"D1/{image_id}/natural",
-            "source": "D1",
-            "register": "natural",
-            "en": teacher.strip(),
-            "ja": ja,
-            "source_en": src_en,
-            "n_missing": 0,
-        }
-        for (image_id, src_en, ja), teacher in zip(keep, back)
-        if teacher.strip()
-    ]
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(
-        "\n".join(json.dumps(r, ensure_ascii=False) for r in out) + "\n",
-        encoding="utf-8",
-    )
-    print(f"  [pairs] cached {len(out)} prose rows to {cache_path}")
-    return out
 
 
 def ext_coverage(pairs: list[dict], args) -> dict:
@@ -561,17 +525,6 @@ def main() -> None:
     ap.add_argument("--max-length", type=int, default=512)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-coverage", action="store_true", help="skip the ext histogram")
-    ap.add_argument("--mt", action="store_true", help="add the prose register (GPU)")
-    ap.add_argument("--model", default="tencent/Hy-MT2-7B")
-    ap.add_argument("--gpu-budget", default="13GiB")
-    ap.add_argument("--batch-size", type=int, default=16)
-    ap.add_argument(
-        "--mt-limit", type=int, default=0, help="prose for the first N only"
-    )
-    ap.add_argument("--max-terms", type=int, default=8)
-    ap.add_argument("--max-new-tokens", type=int, default=256)
-    ap.add_argument("--natural-cache", type=Path, default=ASSETS / "natural_ja.jsonl")
-    ap.add_argument("--mt-cache", type=Path, default=ASSETS / ".mtcache")
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
@@ -582,11 +535,10 @@ def main() -> None:
 
     pairs = (
         build_d1(captions, glossary, args, rng)
+        + build_names(captions, glossary)
         + build_d6(glossary, args, rng)
         + build_d2(args, rng)
     )
-    if args.mt:
-        pairs += build_natural(captions, glossary, args)
     args.out.mkdir(parents=True, exist_ok=True)
     with (args.out / "pairs.jsonl").open("w", encoding="utf-8") as f:
         for p in pairs:

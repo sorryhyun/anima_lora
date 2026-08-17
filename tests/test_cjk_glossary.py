@@ -181,6 +181,41 @@ def test_compose_passes_unmapped_segments_through_and_counts_them():
     assert spans[-1]["via"] == "unmapped"
 
 
+def test_names_register_swaps_only_names_and_skips_nameless_captions():
+    """The name-swap contract: character/copyright go JA, everything else — the
+    general tags *and* an unswappable name — stays EN with `via: en_pinned`,
+    and a caption with no resolvable name emits no pair (it would visit no ext
+    rows). The student joins with 、 like every span-carrying register, because
+    the distill side's `_ja_span_chars` hardcodes that joiner.
+    """
+    glossary = {
+        "acheron (honkai: star rail)": {"axis": "character", "ja": "黄泉"},
+        "honkai: star rail": {"axis": "copyright", "ja": "崩壊：スターレイル"},
+        "1girl": {"axis": "general", "ja": "女の子1人"},
+        "no-ja name": {"axis": "character", "ja": None},
+    }
+    caption = "1girl, acheron (honkai: star rail), honkai: star rail, no-ja name"
+    pairs = build_pairs.build_names([("img", caption)], glossary)
+    assert len(pairs) == 1
+    p = pairs[0]
+    assert p["register"] == "names"
+    assert p["en"] == caption
+    assert p["ja"] == "1girl、黄泉、崩壊：スターレイル、no-ja name"
+    assert p["n_missing"] == 1  # the name the glossary could not swap
+    assert [s["via"] for s in p["spans"]] == [
+        "en_pinned",
+        "unknown",  # glossary entry carries no `via` in this fixture
+        "unknown",
+        "en_pinned",
+    ]
+    # `en_pinned` must never inherit default trust silently.
+    from scripts.distill_cjk.config import TRUST_POLICIES
+
+    assert all("en_pinned" in pol for name, pol in TRUST_POLICIES.items() if pol)
+
+    assert build_pairs.build_names([("img2", "1girl, solo")], glossary) == []
+
+
 tag_pairs = _load("tag_pairs")
 
 
