@@ -172,8 +172,9 @@ flagged — if eval shows they poison nearby generations, demote them to the
   TE-cache regeneration note applies (padding-invariant §: any tokenizer change
   invalidates cached `.npz`/TE sidecars for JA captions — EN caches unaffected
   by construction).
-- **Phase 4 (deferred, separate proposal when reached) — OCR captions + glyph
-  rendering.** OCR in-image JA via manga-image-translator (the `make mask` MIT
+- **Phase 4 — OCR captions + glyph rendering. PROMOTED to its own line:
+  [`plan2.md`](plan2.md)** (2026-08-17 — the separate proposal this entry
+  promised). OCR in-image JA via manga-image-translator (the `make mask` MIT
   backend), append verbatim strings to captions, train image-level so the DiT
   binds ext-token ids to glyphs. **Explicitly ordered**: keep text-masking ON
   until this phase — unmasking makes the loss pay for glyph pixels the model

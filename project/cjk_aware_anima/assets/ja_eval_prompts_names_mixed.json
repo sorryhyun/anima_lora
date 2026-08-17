@@ -1,0 +1,31 @@
+{
+  "_comment": "Name-register decomposition grid (2c follow-up). The full-JA n1/n2 prompts confound two failure axes: name-token rows (thin visits) and the general-tag rest of the prompt. Each character here gets up to three splits: *_mixed = JA character+copyright names, EN general tags (the realistic JP-user pattern — only the name spans route through ext rows); *_inverse = EN names, JA general tags (identity should survive via stock T5; measures what the non-name tokens cost); *_full = the original all-JA phrasing. miku is the positive control: `hatsune miku` is the corpus's best-supervised character, so if identity still fails on m1_full the visit-floor story for names is wrong. Consumed by bench/cjk_adapter/run_bench.py --prompts with --arms en,ja_t5en,ja_ext.",
+  "r1_reimu_mixed": {
+    "en": "hakurei reimu, touhou, red and white miko outfit, detached sleeves, shrine, standing, anime style",
+    "ja": "博麗霊夢, 東方Project, red and white miko outfit, detached sleeves, shrine, standing, anime style"
+  },
+  "r2_reimu_inverse": {
+    "en": "hakurei reimu, touhou, red and white miko outfit, detached sleeves, shrine, standing, anime style",
+    "ja": "hakurei reimu, touhou, 紅白の巫女服、袖なし、神社、立つ、アニメ風"
+  },
+  "r3_reimu_full": {
+    "en": "hakurei reimu, touhou, red and white miko outfit, detached sleeves, shrine, standing, anime style",
+    "ja": "博麗霊夢、東方Project、紅白の巫女服、袖なし、神社、立つ、アニメ風"
+  },
+  "a1_asuka_mixed": {
+    "en": "souryuu asuka langley, neon genesis evangelion, red plugsuit, interface headset, serious expression",
+    "ja": "惣流・アスカ・ラングレー, 新世紀エヴァンゲリオン, red plugsuit, interface headset, serious expression"
+  },
+  "a2_asuka_inverse": {
+    "en": "souryuu asuka langley, neon genesis evangelion, red plugsuit, interface headset, serious expression",
+    "ja": "souryuu asuka langley, neon genesis evangelion, 赤いプラグスーツ、インターフェースヘッドセット、真剣な表情"
+  },
+  "m1_miku_full": {
+    "en": "hatsune miku, vocaloid, aqua twintails, aqua necktie, bare shoulders, singing, holding microphone, anime style",
+    "ja": "初音ミク、ボーカロイド、水色のツインテール、水色のネクタイ、露出した肩、歌う、マイクを持つ、アニメ風"
+  },
+  "m2_miku_mixed": {
+    "en": "hatsune miku, vocaloid, aqua twintails, aqua necktie, bare shoulders, singing, holding microphone, anime style",
+    "ja": "初音ミク, vocaloid, aqua twintails, aqua necktie, bare shoulders, singing, holding microphone, anime style"
+  }
+}

@@ -10,7 +10,11 @@ stream segment CJK spans identically (token-aligned cross-attention).
 
 Byte-fragment fallback: Qwen is byte-BPE, so some chars tokenize as UTF-8
 fragments. Those get per-character supplementary rows, initialised from the
-mapped mean of their fragment embeddings.
+mapped mean of their fragment embeddings. Plain mean is order-invariant, so
+two chars whose UTF-8 bytes are permutations of each other would collide
+bit-identically (527 such pairs, e.g. 鯰/鰯 — the Phase 0.2 separability
+finding); exactly those colliding rows use a position-weighted mean instead,
+which breaks the tie while leaving every non-colliding row at the plain mean.
 
 Pure-CPU module — no model load; consumers pass embedding tensors in.
 """
@@ -149,7 +153,9 @@ def build_ext_table(
 
     Rows = every clean Qwen CJK token, plus per-character supplementary rows
     for standard-range chars whose Qwen tokenization is byte-fragments only
-    (init = mapped mean of fragment embeddings).
+    (init = mapped mean of fragment embeddings; chars sharing a fragment-id
+    multiset with another char get a position-weighted mean so permuted byte
+    orders cannot land on bit-identical rows).
     """
     qwen_map: dict[int, int] = {}
     vecs: list[torch.Tensor] = []
@@ -158,7 +164,7 @@ def build_ext_table(
         vecs.append(qwen_embed[qid].float() @ W)
 
     single_clean = {s: qid for qid, s in clean.items() if len(s) == 1}
-    char_map: dict[str, int] = {}
+    char_ids: dict[str, list[int]] = {}
     for lo, hi in _CJK_RANGES:
         for o in range(lo, hi + 1):
             ch = chr(o)
@@ -167,8 +173,25 @@ def build_ext_table(
             ids = qwen_tok(ch, add_special_tokens=False)["input_ids"]
             if not ids or qwen_tok.decode(ids) != ch:
                 continue
-            char_map[ch] = len(vecs)
-            vecs.append(qwen_embed[ids].float().mean(dim=0) @ W)
+            char_ids[ch] = ids
+
+    by_multiset: dict[tuple[int, ...], int] = {}
+    for ids in char_ids.values():
+        key = tuple(sorted(ids))
+        by_multiset[key] = by_multiset.get(key, 0) + 1
+
+    char_map: dict[str, int] = {}
+    for ch, ids in char_ids.items():
+        emb = qwen_embed[ids].float()
+        if by_multiset[tuple(sorted(ids))] > 1:
+            # Same byte multiset as another char — order is the only
+            # distinguishing signal, so pool with position weights 1..n.
+            w = torch.arange(1, len(ids) + 1, dtype=torch.float32)
+            pooled = (emb * w.unsqueeze(1)).sum(dim=0) / w.sum()
+        else:
+            pooled = emb.mean(dim=0)
+        char_map[ch] = len(vecs)
+        vecs.append(pooled @ W)
 
     table = torch.stack(vecs) if vecs else torch.zeros(0, W.shape[1])
     mapping = {

@@ -1,0 +1,2797 @@
+{
+ "init": {
+  "n_chars": 39632,
+  "pairs": 785327896,
+  "pair_cos_hist_bins": 200,
+  "pair_cos_hist": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   2.0,
+   3.0,
+   15.0,
+   29.0,
+   75.0,
+   184.0,
+   526.0,
+   1285.0,
+   2762.0,
+   6241.0,
+   12918.0,
+   25416.0,
+   47609.0,
+   84773.0,
+   146785.0,
+   242221.0,
+   386297.0,
+   597690.0,
+   900989.0,
+   1330444.0,
+   1924622.0,
+   2742258.0,
+   3837980.0,
+   5278946.0,
+   7057136.0,
+   9190855.0,
+   11578047.0,
+   14096020.0,
+   16591307.0,
+   18882495.0,
+   20827362.0,
+   22273486.0,
+   23117909.0,
+   23318188.0,
+   22825262.0,
+   21696201.0,
+   20068504.0,
+   18147034.0,
+   16260490.0,
+   14801101.0,
+   14229810.0,
+   15017692.0,
+   17495473.0,
+   21730164.0,
+   27235752.0,
+   33074012.0,
+   37891153.0,
+   40505781.0,
+   40270921.0,
+   37237788.0,
+   32334940.0,
+   26920410.0,
+   22293565.0,
+   19200877.0,
+   17558277.0,
+   16563756.0,
+   15150181.0,
+   12848274.0,
+   9943530.0,
+   7057990.0,
+   4762831.0,
+   3214227.0,
+   2367144.0,
+   1894787.0,
+   1534936.0,
+   1302514.0,
+   1138781.0,
+   995043.0,
+   895176.0,
+   828608.0,
+   726813.0,
+   573251.0,
+   378324.0,
+   243338.0,
+   203044.0,
+   209114.0,
+   205246.0,
+   178308.0,
+   158385.0,
+   133764.0,
+   107061.0,
+   95548.0,
+   85533.0,
+   66444.0,
+   51445.0,
+   55793.0,
+   60625.0
+  ],
+  "pair_cos_mean": 0.560400605504813,
+  "nn_cos_quantiles": {
+   "p1": 0.5736805200576782,
+   "p5": 0.6245719790458679,
+   "p25": 0.8342089653015137,
+   "p50": 0.8623278141021729,
+   "p75": 0.937885046005249,
+   "p95": 0.9760143756866455,
+   "p99": 0.9911965131759644
+  },
+  "nn_by_script": {
+   "kanji": {
+    "n": 27584,
+    "nn_cos_median": 0.8525062799453735
+   },
+   "kana": {
+    "n": 208,
+    "nn_cos_median": 0.6732103824615479
+   },
+   "hangul": {
+    "n": 11536,
+    "nn_cos_median": 0.9425182938575745
+   },
+   "other": {
+    "n": 304,
+    "nn_cos_median": 0.817850649356842
+   }
+  },
+  "chars_with_nn_over": {
+   "0.8": 31113,
+   "0.9": 14839,
+   "0.95": 7007,
+   "0.99": 425
+  },
+  "pairs_over": {
+   "0.8": 6250839,
+   "0.9": 992904,
+   "0.95": 319840,
+   "0.99": 60624
+  },
+  "pairs_over_by_class": {
+   "hangul-hangul": {
+    "0.9": 629615,
+    "0.95": 284087,
+    "0.99": 53417
+   },
+   "hangul-kanji": {
+    "0.9": 274811,
+    "0.95": 32512,
+    "0.99": 6934
+   },
+   "kanji-kanji": {
+    "0.9": 79701,
+    "0.95": 2919,
+    "0.99": 273
+   },
+   "hangul-kana": {
+    "0.9": 4693,
+    "0.95": 297,
+    "0.99": 0
+   },
+   "kana-kanji": {
+    "0.9": 503,
+    "0.95": 21,
+    "0.99": 0
+   },
+   "other-other": {
+    "0.9": 41,
+    "0.95": 3,
+    "0.99": 0
+   },
+   "kana-kana": {
+    "0.9": 22,
+    "0.95": 1,
+    "0.99": 0
+   },
+   "hangul-other": {
+    "0.9": 3201,
+    "0.95": 0,
+    "0.99": 0
+   },
+   "kanji-other": {
+    "0.9": 306,
+    "0.95": 0,
+    "0.99": 0
+   },
+   "kana-other": {
+    "0.9": 11,
+    "0.95": 0,
+    "0.99": 0
+   }
+  },
+  "top_pairs": [
+   {
+    "cos": 0.9997,
+    "a": "낔",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9997,
+    "a": "싨",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9997,
+    "a": "낔",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9996,
+    "a": "쩼",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9996,
+    "a": "툩",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9996,
+    "a": "싨",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9996,
+    "a": "뙝",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9996,
+    "a": "뢉",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "낔",
+    "b": "뙝",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "툩",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "칕",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "낔",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "칕",
+    "b": "낔",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "쪗",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "쩼",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "툩",
+    "b": "낔",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "켚",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "툩",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "둁",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "낔",
+    "b": "뢉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "쩼",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "툩",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "싨",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "켚",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "싨",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "칕",
+    "b": "툩",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "싨",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "쪗",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "뙝",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "낔",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "뙝",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "땧",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "싨",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "툩",
+    "b": "뙝",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "둁",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9995,
+    "a": "쪗",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "둁",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "낔",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "쪗",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "쩼",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "싨",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "툩",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "땧",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "툩",
+    "b": "뢉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뉍",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "칕",
+    "b": "뙝",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "쩼",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "칕",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "툩",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "숕",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뢉",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뢉",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "숕",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뙝",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "촢",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "칕",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "쪗",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "둁",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뙝",
+    "b": "뢉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "툩",
+    "b": "땧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "낔",
+    "b": "땧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "숕",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "낔",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "낔",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뙝",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뙝",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "낔",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "툩",
+    "b": "켚",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "켚",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뢉",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뉍",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "툩",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "헠",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "톢",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "낔",
+    "b": "뉍",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "뙝",
+    "b": "숕",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9994,
+    "a": "켚",
+    "b": "낔",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "냵",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "낔",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "칕",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "뙝",
+    "b": "뉍",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "뙝",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "냵",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "숕",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "첧",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "켚",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "짾",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "툩",
+    "b": "숕",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "땧",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "뉍",
+    "b": "쩻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "쩼",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "켚",
+    "b": "쩻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "헠",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "뙝",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "둁",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "뙝",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "쩻",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "칕",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "툩",
+    "b": "냵",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "둁",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "뙝",
+    "b": "땧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "낔",
+    "b": "숕",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "첧",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "칕",
+    "b": "뢉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "숕",
+    "b": "냵",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "칕",
+    "b": "땧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "땧",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "숕",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "뢉",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "켚",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "켚",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "툩",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "쑻",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "헠",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "냵",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "톢",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "쪗",
+    "b": "뻅",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "촢",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "뢉",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "첧",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "둁",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "뉍",
+    "b": "싨",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "툩",
+    "b": "뉍",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "퓷",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "낔",
+    "b": "냵",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "냵",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "헠",
+    "b": "뙝",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "켚",
+    "b": "숕",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "칕",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "싨",
+    "b": "쑻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9993,
+    "a": "칕",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "쩻",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뙝",
+    "b": "냵",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "땧",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "숕",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "뢉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뢉",
+    "b": "냵",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뢉",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "냵",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "짾",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "헠",
+    "b": "뉍",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "칕",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "뻅",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "헠",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "뙝",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "냵",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "툩",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "헠",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뢉",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "뉍",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "숕",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "숕",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "쩼",
+    "b": "뻅",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "톢",
+    "b": "뙝",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뢉",
+    "b": "숕",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "헠",
+    "b": "낔",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "칊",
+    "b": "툩",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "냵",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "쪗",
+    "b": "켇",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "촋",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "톢",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "첧",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "쒯",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "땧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "톢",
+    "b": "뢉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "퓷",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "쩼",
+    "b": "햍",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "톢",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "짾",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "칊",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "쑻",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "헠",
+    "b": "숕",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뢉",
+    "b": "뉍",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "톢",
+    "b": "숕",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "냵",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "톢",
+    "b": "낔",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "툩",
+    "b": "웢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "쥉",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "싨",
+    "b": "켇",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "칊",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "낔",
+    "b": "쑻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "떘",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뉍",
+    "b": "큻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "낔",
+    "b": "켇",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "툩",
+    "b": "뻅",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뢉",
+    "b": "쥉",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "칊",
+    "b": "쪗",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "헠",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "툩",
+    "b": "쑻",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "톢",
+    "b": "쩼",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "숕",
+    "b": "짾",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "쪗",
+    "b": "햍",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "숕",
+    "b": "뉍",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뉍",
+    "b": "촢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뉍",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "낔",
+    "b": "웢",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "숕",
+    "b": "땧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "뉍",
+    "b": "첧",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "켚",
+    "b": "둁",
+    "class": "hangul-hangul"
+   },
+   {
+    "cos": 0.9992,
+    "a": "싨",
+    "b": "뻅",
+    "class": "hangul-hangul"
+   }
+  ],
+  "top_kanji_pairs": [
+   {
+    "cos": 0.9982,
+    "a": "鿍",
+    "b": "鿎",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.998,
+    "a": "鿍",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9979,
+    "a": "鿎",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9978,
+    "a": "䋌",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9977,
+    "a": "㨳",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9977,
+    "a": "㭕",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9976,
+    "a": "鿍",
+    "b": "䣘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9976,
+    "a": "䓫",
+    "b": "鿎",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9976,
+    "a": "㭕",
+    "b": "鿎",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9976,
+    "a": "㨳",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9976,
+    "a": "鿎",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9975,
+    "a": "鿎",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9975,
+    "a": "㫪",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9975,
+    "a": "鿍",
+    "b": "㭕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9975,
+    "a": "鿎",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9975,
+    "a": "鿎",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9974,
+    "a": "䣘",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9974,
+    "a": "鿎",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9974,
+    "a": "㭕",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9974,
+    "a": "㫴",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9974,
+    "a": "䓫",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9974,
+    "a": "㨳",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9973,
+    "a": "鿍",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9973,
+    "a": "㫴",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9973,
+    "a": "鿍",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9972,
+    "a": "鿍",
+    "b": "䓫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9972,
+    "a": "䓫",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9972,
+    "a": "鿎",
+    "b": "䣘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9971,
+    "a": "䓫",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9971,
+    "a": "鿍",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9971,
+    "a": "䣘",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9971,
+    "a": "㨳",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9971,
+    "a": "㭕",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9971,
+    "a": "䣘",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.997,
+    "a": "鿍",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.997,
+    "a": "㭕",
+    "b": "䣘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.997,
+    "a": "㭕",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.997,
+    "a": "㭕",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.997,
+    "a": "㫪",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.997,
+    "a": "㺾",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.997,
+    "a": "㹦",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.997,
+    "a": "㹦",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9969,
+    "a": "㭕",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9969,
+    "a": "䓫",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9969,
+    "a": "䣘",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9969,
+    "a": "䓫",
+    "b": "䣘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9969,
+    "a": "鿍",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9969,
+    "a": "䓫",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9969,
+    "a": "䣘",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9969,
+    "a": "㫪",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9969,
+    "a": "㨳",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9968,
+    "a": "㫪",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9968,
+    "a": "䣘",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9968,
+    "a": "㹦",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9967,
+    "a": "㭕",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9966,
+    "a": "㹦",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9966,
+    "a": "㧬",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9966,
+    "a": "㫴",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9965,
+    "a": "䓫",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9965,
+    "a": "㭕",
+    "b": "䓫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9964,
+    "a": "鿍",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9964,
+    "a": "鿎",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9964,
+    "a": "㺾",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9964,
+    "a": "㧬",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9963,
+    "a": "㹦",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9963,
+    "a": "䣘",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9962,
+    "a": "㧬",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9961,
+    "a": "䋌",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9961,
+    "a": "㫴",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.996,
+    "a": "㭕",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.996,
+    "a": "㨳",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9958,
+    "a": "㹦",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9958,
+    "a": "䓫",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9958,
+    "a": "㧬",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9957,
+    "a": "㭕",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9957,
+    "a": "㹦",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9957,
+    "a": "㧬",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9956,
+    "a": "䣘",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9956,
+    "a": "䓫",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9954,
+    "a": "鿍",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9954,
+    "a": "㹦",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9953,
+    "a": "鿎",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9953,
+    "a": "㢨",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9953,
+    "a": "鿎",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9953,
+    "a": "㫪",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9952,
+    "a": "㢨",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9951,
+    "a": "鿍",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9951,
+    "a": "㧬",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9951,
+    "a": "䠼",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9951,
+    "a": "䣘",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.995,
+    "a": "䓫",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.995,
+    "a": "䋌",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9948,
+    "a": "䓫",
+    "b": "㢨",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9948,
+    "a": "㟃",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9948,
+    "a": "㢨",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9948,
+    "a": "㫴",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9948,
+    "a": "㢨",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9947,
+    "a": "鿎",
+    "b": "㢨",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9947,
+    "a": "㨳",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9947,
+    "a": "鿍",
+    "b": "㢨",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9946,
+    "a": "㹦",
+    "b": "㢨",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9946,
+    "a": "鿎",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9945,
+    "a": "㟃",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9945,
+    "a": "㭕",
+    "b": "㢨",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9945,
+    "a": "㭕",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9945,
+    "a": "㫪",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9944,
+    "a": "㢨",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9944,
+    "a": "㺾",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9944,
+    "a": "㧬",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9944,
+    "a": "䏲",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9943,
+    "a": "㺾",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9943,
+    "a": "㟃",
+    "b": "㭕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9943,
+    "a": "鿍",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9942,
+    "a": "䣘",
+    "b": "㢨",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9942,
+    "a": "㟃",
+    "b": "䣘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9941,
+    "a": "㟃",
+    "b": "鿎",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9941,
+    "a": "䓫",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9941,
+    "a": "㠇",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9941,
+    "a": "㹦",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.994,
+    "a": "㟃",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.994,
+    "a": "䏲",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.994,
+    "a": "䠼",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.994,
+    "a": "䧞",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9938,
+    "a": "䏲",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9938,
+    "a": "䣘",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9938,
+    "a": "㫴",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9938,
+    "a": "㟃",
+    "b": "鿍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9938,
+    "a": "㙘",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9938,
+    "a": "㢨",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9938,
+    "a": "㢨",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9937,
+    "a": "㟃",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9937,
+    "a": "䋌",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9936,
+    "a": "㠇",
+    "b": "㫴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9936,
+    "a": "㧬",
+    "b": "㢨",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9935,
+    "a": "㨳",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9935,
+    "a": "㠇",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9935,
+    "a": "䏲",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9935,
+    "a": "㟃",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9934,
+    "a": "鿎",
+    "b": "䏲",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9934,
+    "a": "䣘",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9934,
+    "a": "䓫",
+    "b": "㠇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9933,
+    "a": "㟃",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9933,
+    "a": "䏲",
+    "b": "䣘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9933,
+    "a": "㟃",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9933,
+    "a": "㠇",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9932,
+    "a": "㢨",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9932,
+    "a": "䏲",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9932,
+    "a": "㫪",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9932,
+    "a": "鿍",
+    "b": "䏲",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9931,
+    "a": "㟃",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9931,
+    "a": "㹦",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9931,
+    "a": "䣘",
+    "b": "㠇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9931,
+    "a": "鿎",
+    "b": "㙘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9931,
+    "a": "㟃",
+    "b": "䓫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.993,
+    "a": "㟃",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.993,
+    "a": "鿎",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.993,
+    "a": "㳚",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.993,
+    "a": "㠇",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9929,
+    "a": "㙘",
+    "b": "㨳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9929,
+    "a": "䓫",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9929,
+    "a": "㙘",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9929,
+    "a": "㧬",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9928,
+    "a": "䓫",
+    "b": "䏲",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9928,
+    "a": "䧞",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9927,
+    "a": "䦃",
+    "b": "㭕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9927,
+    "a": "鿍",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9927,
+    "a": "䠼",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9927,
+    "a": "㠇",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9927,
+    "a": "䏲",
+    "b": "䧞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9927,
+    "a": "㠇",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9926,
+    "a": "㢨",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9925,
+    "a": "䏲",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9925,
+    "a": "㺾",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9925,
+    "a": "鿍",
+    "b": "㙘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9925,
+    "a": "鿎",
+    "b": "㠇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9925,
+    "a": "㳚",
+    "b": "䓫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9924,
+    "a": "㭕",
+    "b": "㠇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9924,
+    "a": "㭕",
+    "b": "㙘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9924,
+    "a": "㙘",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9924,
+    "a": "㙘",
+    "b": "䣘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9924,
+    "a": "㭕",
+    "b": "䏲",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9923,
+    "a": "㟃",
+    "b": "㠇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9923,
+    "a": "㭕",
+    "b": "㳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9923,
+    "a": "㠇",
+    "b": "䠼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9922,
+    "a": "䏲",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9922,
+    "a": "㙘",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9922,
+    "a": "㙘",
+    "b": "㺾",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9922,
+    "a": "㙘",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9921,
+    "a": "涄",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.992,
+    "a": "鿍",
+    "b": "㠇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.992,
+    "a": "㟃",
+    "b": "㙘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.992,
+    "a": "㠇",
+    "b": "䨰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.992,
+    "a": "䏲",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.992,
+    "a": "䦃",
+    "b": "鿎",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9919,
+    "a": "㳚",
+    "b": "䣘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9919,
+    "a": "㙘",
+    "b": "㧬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9919,
+    "a": "䦃",
+    "b": "䋌",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9919,
+    "a": "㳚",
+    "b": "鿎",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9918,
+    "a": "涄",
+    "b": "㹦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 0.9918,
+    "a": "䦃",
+    "b": "㫪",
+    "class": "kanji-kanji"
+   }
+  ]
+ },
+ "confusable_pairs": [
+  {
+   "a": "鎧",
+   "b": "錯",
+   "rows": "char/qwen",
+   "cos_init": 0.4449
+  },
+  {
+   "a": "未",
+   "b": "末",
+   "rows": "qwen/qwen",
+   "cos_init": 0.474
+  },
+  {
+   "a": "士",
+   "b": "土",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4745
+  },
+  {
+   "a": "日",
+   "b": "曰",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4863
+  },
+  {
+   "a": "人",
+   "b": "入",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4445
+  },
+  {
+   "a": "力",
+   "b": "刀",
+   "rows": "qwen/qwen",
+   "cos_init": 0.3938
+  },
+  {
+   "a": "己",
+   "b": "已",
+   "rows": "qwen/qwen",
+   "cos_init": 0.6676
+  },
+  {
+   "a": "千",
+   "b": "干",
+   "rows": "qwen/qwen",
+   "cos_init": 0.3941
+  },
+  {
+   "a": "王",
+   "b": "玉",
+   "rows": "qwen/qwen",
+   "cos_init": 0.5129
+  },
+  {
+   "a": "大",
+   "b": "犬",
+   "rows": "qwen/qwen",
+   "cos_init": 0.381
+  },
+  {
+   "a": "体",
+   "b": "休",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4276
+  },
+  {
+   "a": "水",
+   "b": "氷",
+   "rows": "qwen/char",
+   "cos_init": 0.4917
+  },
+  {
+   "a": "右",
+   "b": "石",
+   "rows": "qwen/qwen",
+   "cos_init": 0.3879
+  },
+  {
+   "a": "名",
+   "b": "各",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4225
+  },
+  {
+   "a": "会",
+   "b": "合",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4091
+  }
+ ]
+}

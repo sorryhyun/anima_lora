@@ -1,0 +1,5517 @@
+{
+ "init": {
+  "n_chars": 39632,
+  "pairs": 785327896,
+  "pair_cos_hist_bins": 200,
+  "pair_cos_hist": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   0.0,
+   3.0,
+   17.0,
+   31.0,
+   72.0,
+   176.0,
+   468.0,
+   1191.0,
+   2684.0,
+   5714.0,
+   12130.0,
+   23810.0,
+   44622.0,
+   79934.0,
+   137846.0,
+   227870.0,
+   361798.0,
+   558285.0,
+   836806.0,
+   1224768.0,
+   1761371.0,
+   2497888.0,
+   3483852.0,
+   4795691.0,
+   6448021.0,
+   8462928.0,
+   10778996.0,
+   13292317.0,
+   15827133.0,
+   18241240.0,
+   20327974.0,
+   21977555.0,
+   23015502.0,
+   23443631.0,
+   23162797.0,
+   22223426.0,
+   20723025.0,
+   18848178.0,
+   16891872.0,
+   15263337.0,
+   14413144.0,
+   14827915.0,
+   16810341.0,
+   20492960.0,
+   25491324.0,
+   31007918.0,
+   35897269.0,
+   39028876.0,
+   39660709.0,
+   37559543.0,
+   33262290.0,
+   27983474.0,
+   23196661.0,
+   20030398.0,
+   18600180.0,
+   17935563.0,
+   16679040.0,
+   14182642.0,
+   10879865.0,
+   7667888.0,
+   5168688.0,
+   3471062.0,
+   2534956.0,
+   2097989.0,
+   1875666.0,
+   1695655.0,
+   1411504.0,
+   1075488.0,
+   881654.0,
+   824838.0,
+   782183.0,
+   656836.0,
+   422515.0,
+   225060.0,
+   163554.0,
+   208247.0,
+   235849.0,
+   188070.0,
+   159177.0,
+   133205.0,
+   106210.0,
+   95870.0,
+   85500.0,
+   66621.0,
+   51252.0,
+   55798.0,
+   61313.0
+  ],
+  "pair_cos_mean": 0.56350551808077,
+  "nn_cos_quantiles": {
+   "p1": 0.5743190050125122,
+   "p5": 0.6251367330551147,
+   "p25": 0.8348468542098999,
+   "p50": 0.8627286553382874,
+   "p75": 0.9375345706939697,
+   "p95": 0.9810736775398254,
+   "p99": 1.0
+  },
+  "nn_by_script": {
+   "kanji": {
+    "n": 27584,
+    "nn_cos_median": 0.8529989719390869
+   },
+   "kana": {
+    "n": 208,
+    "nn_cos_median": 0.6749650835990906
+   },
+   "hangul": {
+    "n": 11536,
+    "nn_cos_median": 0.9427171349525452
+   },
+   "other": {
+    "n": 304,
+    "nn_cos_median": 0.8184326887130737
+   }
+  },
+  "chars_with_nn_over": {
+   "0.8": 31116,
+   "0.9": 14849,
+   "0.95": 7005,
+   "0.99": 1479
+  },
+  "pairs_over": {
+   "0.8": 6479391,
+   "0.9": 1003191,
+   "0.95": 320659,
+   "0.99": 61488
+  },
+  "pairs_over_by_class": {
+   "kanji-kanji": {
+    "0.9": 93786,
+    "0.95": 2833,
+    "0.99": 801
+   },
+   "hangul-hangul": {
+    "0.9": 630411,
+    "0.95": 284788,
+    "0.99": 53706
+   },
+   "hangul-kanji": {
+    "0.9": 270255,
+    "0.95": 32705,
+    "0.99": 6981
+   },
+   "hangul-kana": {
+    "0.9": 4651,
+    "0.95": 308,
+    "0.99": 0
+   },
+   "kana-kanji": {
+    "0.9": 496,
+    "0.95": 22,
+    "0.99": 0
+   },
+   "other-other": {
+    "0.9": 41,
+    "0.95": 2,
+    "0.99": 0
+   },
+   "kana-kana": {
+    "0.9": 22,
+    "0.95": 1,
+    "0.99": 0
+   },
+   "hangul-other": {
+    "0.9": 3210,
+    "0.95": 0,
+    "0.99": 0
+   },
+   "kanji-other": {
+    "0.9": 308,
+    "0.95": 0,
+    "0.99": 0
+   },
+   "kana-other": {
+    "0.9": 11,
+    "0.95": 0,
+    "0.99": 0
+   }
+  },
+  "top_pairs": [
+   {
+    "cos": 1.0,
+    "a": "䛮",
+    "b": "䮛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚡",
+    "b": "䡚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑫",
+    "b": "䫑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊟",
+    "b": "䟊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓱",
+    "b": "㱓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓜",
+    "b": "㜓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮳",
+    "b": "䳮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭱",
+    "b": "䱭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩪",
+    "b": "䪩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡩",
+    "b": "䩡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟬",
+    "b": "䬟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟫",
+    "b": "䫟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞯",
+    "b": "䯞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞪",
+    "b": "䪞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛩",
+    "b": "䩛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚪",
+    "b": "䪚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚛",
+    "b": "䛚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘯",
+    "b": "䯘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘮",
+    "b": "䮘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘪",
+    "b": "䪘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖘",
+    "b": "䘖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕵",
+    "b": "䵕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒘",
+    "b": "䘒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑮",
+    "b": "䮑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑟",
+    "b": "䟑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑚",
+    "b": "䚑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍮",
+    "b": "䮍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊕",
+    "b": "䕊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉬",
+    "b": "䬉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉡",
+    "b": "䡉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉚",
+    "b": "䚉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇑",
+    "b": "䑇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆡",
+    "b": "䡆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆛",
+    "b": "䛆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆖",
+    "b": "䖆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪲",
+    "b": "㲪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩱",
+    "b": "㱩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦼",
+    "b": "㼦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡩",
+    "b": "㩡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞾",
+    "b": "㾞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞼",
+    "b": "㼞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝦",
+    "b": "㦝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜾",
+    "b": "㾜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜩",
+    "b": "㩜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜝",
+    "b": "㝜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚞",
+    "b": "㞚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗝",
+    "b": "㝗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓼",
+    "b": "㼓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓯",
+    "b": "㯓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓣",
+    "b": "㣓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒯",
+    "b": "㯒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鶷",
+    "b": "鷶",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䳵",
+    "b": "䵳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䱵",
+    "b": "䵱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭯",
+    "b": "䯭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫮",
+    "b": "䮫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪮",
+    "b": "䮪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩱",
+    "b": "䱩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩬",
+    "b": "䬩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡵",
+    "b": "䵡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡳",
+    "b": "䳡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡱",
+    "b": "䱡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡬",
+    "b": "䬡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞵",
+    "b": "䵞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞭",
+    "b": "䭞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞫",
+    "b": "䫞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞩",
+    "b": "䩞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞡",
+    "b": "䡞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛳",
+    "b": "䳛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛱",
+    "b": "䱛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛟",
+    "b": "䟛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚱",
+    "b": "䱚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚬",
+    "b": "䬚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙵",
+    "b": "䵙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙪",
+    "b": "䪙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘭",
+    "b": "䭘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘚",
+    "b": "䚘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖵",
+    "b": "䵖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖳",
+    "b": "䳖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖫",
+    "b": "䫖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕯",
+    "b": "䯕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕪",
+    "b": "䪕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕟",
+    "b": "䟕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕖",
+    "b": "䖕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒱",
+    "b": "䱒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒮",
+    "b": "䮒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒖",
+    "b": "䖒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒕",
+    "b": "䕒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑵",
+    "b": "䵑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑪",
+    "b": "䪑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑩",
+    "b": "䩑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑞",
+    "b": "䞑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑘",
+    "b": "䘑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍵",
+    "b": "䵍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍩",
+    "b": "䩍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍟",
+    "b": "䟍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊮",
+    "b": "䮊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊞",
+    "b": "䞊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊑",
+    "b": "䑊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉵",
+    "b": "䵉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉳",
+    "b": "䳉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉫",
+    "b": "䫉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉛",
+    "b": "䛉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉙",
+    "b": "䙉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉊",
+    "b": "䊉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇵",
+    "b": "䵇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇭",
+    "b": "䭇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇫",
+    "b": "䫇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇟",
+    "b": "䟇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇛",
+    "b": "䛇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇕",
+    "b": "䕇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆯",
+    "b": "䯆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆮",
+    "b": "䮆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆫",
+    "b": "䫆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆒",
+    "b": "䒆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆊",
+    "b": "䊆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆇",
+    "b": "䇆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㷾",
+    "b": "㾷",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㲾",
+    "b": "㾲",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㲷",
+    "b": "㷲",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㱾",
+    "b": "㾱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㱷",
+    "b": "㷱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯾",
+    "b": "㾯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯼",
+    "b": "㼯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪾",
+    "b": "㾪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪷",
+    "b": "㷪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩲",
+    "b": "㲩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩯",
+    "b": "㯩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦷",
+    "b": "㷦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦪",
+    "b": "㪦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦩",
+    "b": "㩦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣱",
+    "b": "㱣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣯",
+    "b": "㯣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣦",
+    "b": "㦣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡪",
+    "b": "㪡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡦",
+    "b": "㦡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞪",
+    "b": "㪞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞩",
+    "b": "㩞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞣",
+    "b": "㣞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝾",
+    "b": "㾝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝷",
+    "b": "㷝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝡",
+    "b": "㡝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝞",
+    "b": "㞝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜱",
+    "b": "㱜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜪",
+    "b": "㪜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜦",
+    "b": "㦜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜣",
+    "b": "㣜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚼",
+    "b": "㼚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚪",
+    "b": "㪚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚡",
+    "b": "㡚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗪",
+    "b": "㪗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗦",
+    "b": "㦗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗚",
+    "b": "㚗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖾",
+    "b": "㾖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖷",
+    "b": "㷖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖦",
+    "b": "㦖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖝",
+    "b": "㝖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔼",
+    "b": "㼔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔷",
+    "b": "㷔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔲",
+    "b": "㲔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔦",
+    "b": "㦔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔡",
+    "b": "㡔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔞",
+    "b": "㞔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔜",
+    "b": "㜔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔗",
+    "b": "㗔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓷",
+    "b": "㷓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓦",
+    "b": "㦓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓚",
+    "b": "㚓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓗",
+    "b": "㗓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓖",
+    "b": "㖓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒼",
+    "b": "㼒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒲",
+    "b": "㲒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒞",
+    "b": "㞒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒓",
+    "b": "㓒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鴷",
+    "b": "鷴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鰵",
+    "b": "鵰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䱳",
+    "b": "䳱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䯳",
+    "b": "䳯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮯",
+    "b": "䯮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䬳",
+    "b": "䳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫳",
+    "b": "䳫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫱",
+    "b": "䱫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫯",
+    "b": "䯫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫬",
+    "b": "䬫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪵",
+    "b": "䵪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪳",
+    "b": "䳪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩵",
+    "b": "䵩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩯",
+    "b": "䯩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩫",
+    "b": "䫩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡭",
+    "b": "䭡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡪",
+    "b": "䪡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟱",
+    "b": "䱟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟪",
+    "b": "䪟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞳",
+    "b": "䳞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛵",
+    "b": "䵛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛭",
+    "b": "䭛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛞",
+    "b": "䞛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚵",
+    "b": "䵚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚳",
+    "b": "䳚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚭",
+    "b": "䭚",
+    "class": "kanji-kanji"
+   }
+  ],
+  "top_kanji_pairs": [
+   {
+    "cos": 1.0,
+    "a": "䛮",
+    "b": "䮛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚡",
+    "b": "䡚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑫",
+    "b": "䫑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊟",
+    "b": "䟊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓱",
+    "b": "㱓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓜",
+    "b": "㜓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮳",
+    "b": "䳮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭱",
+    "b": "䱭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩪",
+    "b": "䪩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡩",
+    "b": "䩡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟬",
+    "b": "䬟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟫",
+    "b": "䫟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞯",
+    "b": "䯞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞪",
+    "b": "䪞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛩",
+    "b": "䩛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚪",
+    "b": "䪚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚛",
+    "b": "䛚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘯",
+    "b": "䯘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘮",
+    "b": "䮘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘪",
+    "b": "䪘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖘",
+    "b": "䘖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕵",
+    "b": "䵕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒘",
+    "b": "䘒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑮",
+    "b": "䮑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑟",
+    "b": "䟑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑚",
+    "b": "䚑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍮",
+    "b": "䮍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊕",
+    "b": "䕊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉬",
+    "b": "䬉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉡",
+    "b": "䡉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉚",
+    "b": "䚉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇑",
+    "b": "䑇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆡",
+    "b": "䡆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆛",
+    "b": "䛆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆖",
+    "b": "䖆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪲",
+    "b": "㲪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩱",
+    "b": "㱩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦼",
+    "b": "㼦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡩",
+    "b": "㩡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞾",
+    "b": "㾞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞼",
+    "b": "㼞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝦",
+    "b": "㦝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜾",
+    "b": "㾜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜩",
+    "b": "㩜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜝",
+    "b": "㝜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚞",
+    "b": "㞚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗝",
+    "b": "㝗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓼",
+    "b": "㼓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓯",
+    "b": "㯓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓣",
+    "b": "㣓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒯",
+    "b": "㯒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鶷",
+    "b": "鷶",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䳵",
+    "b": "䵳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䱵",
+    "b": "䵱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭯",
+    "b": "䯭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫮",
+    "b": "䮫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪮",
+    "b": "䮪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩱",
+    "b": "䱩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩬",
+    "b": "䬩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡵",
+    "b": "䵡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡳",
+    "b": "䳡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡱",
+    "b": "䱡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡬",
+    "b": "䬡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞵",
+    "b": "䵞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞭",
+    "b": "䭞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞫",
+    "b": "䫞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞩",
+    "b": "䩞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞡",
+    "b": "䡞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛳",
+    "b": "䳛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛱",
+    "b": "䱛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛟",
+    "b": "䟛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚱",
+    "b": "䱚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚬",
+    "b": "䬚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙵",
+    "b": "䵙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙪",
+    "b": "䪙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘭",
+    "b": "䭘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘚",
+    "b": "䚘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖵",
+    "b": "䵖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖳",
+    "b": "䳖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖫",
+    "b": "䫖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕯",
+    "b": "䯕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕪",
+    "b": "䪕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕟",
+    "b": "䟕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕖",
+    "b": "䖕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒱",
+    "b": "䱒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒮",
+    "b": "䮒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒖",
+    "b": "䖒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒕",
+    "b": "䕒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑵",
+    "b": "䵑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑪",
+    "b": "䪑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑩",
+    "b": "䩑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑞",
+    "b": "䞑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑘",
+    "b": "䘑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍵",
+    "b": "䵍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍩",
+    "b": "䩍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍟",
+    "b": "䟍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊮",
+    "b": "䮊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊞",
+    "b": "䞊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊑",
+    "b": "䑊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉵",
+    "b": "䵉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉳",
+    "b": "䳉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉫",
+    "b": "䫉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉛",
+    "b": "䛉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉙",
+    "b": "䙉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉊",
+    "b": "䊉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇵",
+    "b": "䵇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇭",
+    "b": "䭇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇫",
+    "b": "䫇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇟",
+    "b": "䟇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇛",
+    "b": "䛇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇕",
+    "b": "䕇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆯",
+    "b": "䯆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆮",
+    "b": "䮆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆫",
+    "b": "䫆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆒",
+    "b": "䒆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆊",
+    "b": "䊆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆇",
+    "b": "䇆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㷾",
+    "b": "㾷",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㲾",
+    "b": "㾲",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㲷",
+    "b": "㷲",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㱾",
+    "b": "㾱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㱷",
+    "b": "㷱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯾",
+    "b": "㾯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯼",
+    "b": "㼯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪾",
+    "b": "㾪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪷",
+    "b": "㷪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩲",
+    "b": "㲩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩯",
+    "b": "㯩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦷",
+    "b": "㷦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦪",
+    "b": "㪦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦩",
+    "b": "㩦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣱",
+    "b": "㱣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣯",
+    "b": "㯣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣦",
+    "b": "㦣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡪",
+    "b": "㪡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡦",
+    "b": "㦡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞪",
+    "b": "㪞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞩",
+    "b": "㩞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞣",
+    "b": "㣞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝾",
+    "b": "㾝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝷",
+    "b": "㷝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝡",
+    "b": "㡝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝞",
+    "b": "㞝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜱",
+    "b": "㱜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜪",
+    "b": "㪜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜦",
+    "b": "㦜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜣",
+    "b": "㣜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚼",
+    "b": "㼚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚪",
+    "b": "㪚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚡",
+    "b": "㡚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗪",
+    "b": "㪗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗦",
+    "b": "㦗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗚",
+    "b": "㚗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖾",
+    "b": "㾖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖷",
+    "b": "㷖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖦",
+    "b": "㦖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖝",
+    "b": "㝖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔼",
+    "b": "㼔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔷",
+    "b": "㷔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔲",
+    "b": "㲔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔦",
+    "b": "㦔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔡",
+    "b": "㡔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔞",
+    "b": "㞔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔜",
+    "b": "㜔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔗",
+    "b": "㗔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓷",
+    "b": "㷓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓦",
+    "b": "㦓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓚",
+    "b": "㚓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓗",
+    "b": "㗓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓖",
+    "b": "㖓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒼",
+    "b": "㼒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒲",
+    "b": "㲒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒞",
+    "b": "㞒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒓",
+    "b": "㓒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鴷",
+    "b": "鷴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鰵",
+    "b": "鵰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䱳",
+    "b": "䳱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䯳",
+    "b": "䳯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮯",
+    "b": "䯮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䬳",
+    "b": "䳬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫳",
+    "b": "䳫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫱",
+    "b": "䱫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫯",
+    "b": "䯫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫬",
+    "b": "䬫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪵",
+    "b": "䵪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪳",
+    "b": "䳪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩵",
+    "b": "䵩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩯",
+    "b": "䯩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩫",
+    "b": "䫩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡭",
+    "b": "䭡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡪",
+    "b": "䪡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟱",
+    "b": "䱟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟪",
+    "b": "䪟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞳",
+    "b": "䳞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛵",
+    "b": "䵛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛭",
+    "b": "䭛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛞",
+    "b": "䞛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚵",
+    "b": "䵚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚳",
+    "b": "䳚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚭",
+    "b": "䭚",
+    "class": "kanji-kanji"
+   }
+  ]
+ },
+ "pack": {
+  "n_chars": 39632,
+  "pairs": 785327896,
+  "pair_cos_hist_bins": 200,
+  "pair_cos_hist": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   2.0,
+   0.0,
+   0.0,
+   0.0,
+   1.0,
+   2.0,
+   5.0,
+   12.0,
+   10.0,
+   19.0,
+   30.0,
+   61.0,
+   83.0,
+   112.0,
+   202.0,
+   265.0,
+   408.0,
+   597.0,
+   816.0,
+   1262.0,
+   1704.0,
+   2352.0,
+   3396.0,
+   4738.0,
+   6290.0,
+   8693.0,
+   11913.0,
+   16155.0,
+   21363.0,
+   28353.0,
+   37422.0,
+   49219.0,
+   64570.0,
+   84272.0,
+   109391.0,
+   140410.0,
+   180142.0,
+   229299.0,
+   287651.0,
+   362146.0,
+   451580.0,
+   557178.0,
+   686063.0,
+   838336.0,
+   1017769.0,
+   1226587.0,
+   1469011.0,
+   1744997.0,
+   2064464.0,
+   2422143.0,
+   2825652.0,
+   3270402.0,
+   3766733.0,
+   4302211.0,
+   4883499.0,
+   5504209.0,
+   6163602.0,
+   6848972.0,
+   7570586.0,
+   8309636.0,
+   9061330.0,
+   9828159.0,
+   10588252.0,
+   11342827.0,
+   12072802.0,
+   12780051.0,
+   13469277.0,
+   14110504.0,
+   14722473.0,
+   15295419.0,
+   15815742.0,
+   16298057.0,
+   16739394.0,
+   17150228.0,
+   17525778.0,
+   17880742.0,
+   18204537.0,
+   18520391.0,
+   18812319.0,
+   19091001.0,
+   19361726.0,
+   19591050.0,
+   19785421.0,
+   19956014.0,
+   20083952.0,
+   20148401.0,
+   20140105.0,
+   20032435.0,
+   19848590.0,
+   19549082.0,
+   19146576.0,
+   18633755.0,
+   18000706.0,
+   17254726.0,
+   16392561.0,
+   15461240.0,
+   14436607.0,
+   13340155.0,
+   12195636.0,
+   11027768.0,
+   9840535.0,
+   8682255.0,
+   7552110.0,
+   6489111.0,
+   5516043.0,
+   4623491.0,
+   3822320.0,
+   3112774.0,
+   2505227.0,
+   1988646.0,
+   1570827.0,
+   1250173.0,
+   1018598.0,
+   843098.0,
+   713874.0,
+   621306.0,
+   551640.0,
+   494730.0,
+   437402.0,
+   381757.0,
+   329714.0,
+   275139.0,
+   228057.0,
+   187675.0,
+   158156.0,
+   138422.0,
+   126109.0,
+   111932.0,
+   99009.0,
+   88189.0,
+   76044.0,
+   61998.0,
+   45247.0,
+   38948.0,
+   43084.0,
+   31296.0
+  ],
+  "pair_cos_mean": 0.44608449892167384,
+  "nn_cos_quantiles": {
+   "p1": 0.5535550117492676,
+   "p5": 0.6030462980270386,
+   "p25": 0.8084296584129333,
+   "p50": 0.8683936595916748,
+   "p75": 0.9352904558181763,
+   "p95": 0.9803915023803711,
+   "p99": 1.0
+  },
+  "nn_by_script": {
+   "kanji": {
+    "n": 27584,
+    "nn_cos_median": 0.8548040390014648
+   },
+   "kana": {
+    "n": 208,
+    "nn_cos_median": 0.6246944665908813
+   },
+   "hangul": {
+    "n": 11536,
+    "nn_cos_median": 0.9400463700294495
+   },
+   "other": {
+    "n": 304,
+    "nn_cos_median": 0.7483741641044617
+   }
+  },
+  "chars_with_nn_over": {
+   "0.8": 30187,
+   "0.9": 14583,
+   "0.95": 7021,
+   "0.99": 1384
+  },
+  "pairs_over": {
+   "0.8": 3904712,
+   "0.9": 722030,
+   "0.95": 220744,
+   "0.99": 31470
+  },
+  "pairs_over_by_class": {
+   "kanji-kanji": {
+    "0.9": 51588,
+    "0.95": 2283,
+    "0.99": 658
+   },
+   "hangul-hangul": {
+    "0.9": 489535,
+    "0.95": 196955,
+    "0.99": 27268
+   },
+   "hangul-kanji": {
+    "0.9": 178933,
+    "0.95": 21506,
+    "0.99": 3544
+   },
+   "hangul-kana": {
+    "0.9": 1402,
+    "0.95": 0,
+    "0.99": 0
+   },
+   "kana-kanji": {
+    "0.9": 237,
+    "0.95": 0,
+    "0.99": 0
+   },
+   "kana-kana": {
+    "0.9": 8,
+    "0.95": 0,
+    "0.99": 0
+   },
+   "other-other": {
+    "0.9": 6,
+    "0.95": 0,
+    "0.99": 0
+   },
+   "hangul-other": {
+    "0.9": 294,
+    "0.95": 0,
+    "0.99": 0
+   },
+   "kanji-other": {
+    "0.9": 27,
+    "0.95": 0,
+    "0.99": 0
+   }
+  },
+  "top_pairs": [
+   {
+    "cos": 1.0,
+    "a": "䞯",
+    "b": "䯞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛯",
+    "b": "䯛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙟",
+    "b": "䟙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪱",
+    "b": "㱪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜱",
+    "b": "㱜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鈰",
+    "b": "鰈",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭵",
+    "b": "䵭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩫",
+    "b": "䫩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡱",
+    "b": "䱡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡪",
+    "b": "䪡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟯",
+    "b": "䯟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟪",
+    "b": "䪟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙮",
+    "b": "䮙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘚",
+    "b": "䚘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖱",
+    "b": "䱖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖬",
+    "b": "䬖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖘",
+    "b": "䘖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕵",
+    "b": "䵕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕭",
+    "b": "䭕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕘",
+    "b": "䘕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒭",
+    "b": "䭒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒡",
+    "b": "䡒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒞",
+    "b": "䞒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒛",
+    "b": "䛒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒙",
+    "b": "䙒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍱",
+    "b": "䱍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍮",
+    "b": "䮍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍖",
+    "b": "䖍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉮",
+    "b": "䮉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉚",
+    "b": "䚉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇘",
+    "b": "䘇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇉",
+    "b": "䉇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆟",
+    "b": "䟆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯾",
+    "b": "㾯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪼",
+    "b": "㼪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩼",
+    "b": "㼩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞯",
+    "b": "㯞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞣",
+    "b": "㣞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝪",
+    "b": "㪝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝣",
+    "b": "㣝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜯",
+    "b": "㯜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗱",
+    "b": "㱗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗦",
+    "b": "㦗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗜",
+    "b": "㜗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔝",
+    "b": "㝔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓞",
+    "b": "㞓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓝",
+    "b": "㝓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鴶",
+    "b": "鶴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鴵",
+    "b": "鵴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鰵",
+    "b": "鵰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䳵",
+    "b": "䵳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䱳",
+    "b": "䳱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䯵",
+    "b": "䵯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮯",
+    "b": "䯮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭳",
+    "b": "䳭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭮",
+    "b": "䮭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䬯",
+    "b": "䯬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫯",
+    "b": "䯫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫭",
+    "b": "䭫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪳",
+    "b": "䳪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪫",
+    "b": "䫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩯",
+    "b": "䯩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩮",
+    "b": "䮩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩬",
+    "b": "䬩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡮",
+    "b": "䮡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡬",
+    "b": "䬡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟭",
+    "b": "䭟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟡",
+    "b": "䡟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞳",
+    "b": "䳞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞟",
+    "b": "䟞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛞",
+    "b": "䞛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚵",
+    "b": "䵚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚳",
+    "b": "䳚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚫",
+    "b": "䫚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚪",
+    "b": "䪚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚩",
+    "b": "䩚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙱",
+    "b": "䱙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙬",
+    "b": "䬙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙩",
+    "b": "䩙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘵",
+    "b": "䵘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘯",
+    "b": "䯘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘬",
+    "b": "䬘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘪",
+    "b": "䪘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘟",
+    "b": "䟘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘛",
+    "b": "䛘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖳",
+    "b": "䳖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖪",
+    "b": "䪖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖞",
+    "b": "䞖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖙",
+    "b": "䙖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕪",
+    "b": "䪕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒵",
+    "b": "䵒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒳",
+    "b": "䳒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒫",
+    "b": "䫒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒪",
+    "b": "䪒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒘",
+    "b": "䘒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑱",
+    "b": "䱑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑡",
+    "b": "䡑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑚",
+    "b": "䚑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑘",
+    "b": "䘑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍯",
+    "b": "䯍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍞",
+    "b": "䞍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍚",
+    "b": "䚍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍑",
+    "b": "䑍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊭",
+    "b": "䭊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊪",
+    "b": "䪊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊡",
+    "b": "䡊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊟",
+    "b": "䟊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊙",
+    "b": "䙊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉵",
+    "b": "䵉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉭",
+    "b": "䭉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉬",
+    "b": "䬉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉪",
+    "b": "䪉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉡",
+    "b": "䡉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉛",
+    "b": "䛉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉘",
+    "b": "䘉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉕",
+    "b": "䕉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉒",
+    "b": "䒉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇵",
+    "b": "䵇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇱",
+    "b": "䱇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇫",
+    "b": "䫇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇩",
+    "b": "䩇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇞",
+    "b": "䞇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇙",
+    "b": "䙇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇕",
+    "b": "䕇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆳",
+    "b": "䳆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆭",
+    "b": "䭆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆡",
+    "b": "䡆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆞",
+    "b": "䞆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆚",
+    "b": "䚆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆘",
+    "b": "䘆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆊",
+    "b": "䊆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㼾",
+    "b": "㾼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㱲",
+    "b": "㲱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯷",
+    "b": "㷯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯱",
+    "b": "㱯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪲",
+    "b": "㲪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪯",
+    "b": "㯪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩪",
+    "b": "㪩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦾",
+    "b": "㾦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣩",
+    "b": "㩣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣦",
+    "b": "㦣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡾",
+    "b": "㾡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡼",
+    "b": "㼡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡷",
+    "b": "㷡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡣",
+    "b": "㣡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞼",
+    "b": "㼞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞷",
+    "b": "㷞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞲",
+    "b": "㲞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞩",
+    "b": "㩞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝯",
+    "b": "㯝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝦",
+    "b": "㦝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝡",
+    "b": "㡝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜪",
+    "b": "㪜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜦",
+    "b": "㦜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚦",
+    "b": "㦚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖯",
+    "b": "㯖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖩",
+    "b": "㩖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖡",
+    "b": "㡖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖞",
+    "b": "㞖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔾",
+    "b": "㾔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔷",
+    "b": "㷔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔪",
+    "b": "㪔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔦",
+    "b": "㦔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔡",
+    "b": "㡔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓱",
+    "b": "㱓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓯",
+    "b": "㯓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓪",
+    "b": "㪓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓩",
+    "b": "㩓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓚",
+    "b": "㚓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒼",
+    "b": "㼒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒪",
+    "b": "㪒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒩",
+    "b": "㩒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒚",
+    "b": "㚒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鰶",
+    "b": "鶰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮵",
+    "b": "䵮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮱",
+    "b": "䱮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䬱",
+    "b": "䱬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫵",
+    "b": "䵫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫳",
+    "b": "䳫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪬",
+    "b": "䬪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩵",
+    "b": "䵩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩳",
+    "b": "䳩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡵",
+    "b": "䵡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡳",
+    "b": "䳡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡯",
+    "b": "䯡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡭",
+    "b": "䭡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡫",
+    "b": "䫡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡩",
+    "b": "䩡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟵",
+    "b": "䵟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟱",
+    "b": "䱟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟮",
+    "b": "䮟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞭",
+    "b": "䭞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞡",
+    "b": "䡞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛪",
+    "b": "䪛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛡",
+    "b": "䡛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚱",
+    "b": "䱚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚭",
+    "b": "䭚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚟",
+    "b": "䟚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚛",
+    "b": "䛚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙵",
+    "b": "䵙",
+    "class": "kanji-kanji"
+   }
+  ],
+  "top_kanji_pairs": [
+   {
+    "cos": 1.0,
+    "a": "䞯",
+    "b": "䯞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛯",
+    "b": "䯛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙟",
+    "b": "䟙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪱",
+    "b": "㱪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜱",
+    "b": "㱜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鈰",
+    "b": "鰈",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭵",
+    "b": "䵭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩫",
+    "b": "䫩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡱",
+    "b": "䱡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡪",
+    "b": "䪡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟯",
+    "b": "䯟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟪",
+    "b": "䪟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙮",
+    "b": "䮙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘚",
+    "b": "䚘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖱",
+    "b": "䱖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖬",
+    "b": "䬖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖘",
+    "b": "䘖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕵",
+    "b": "䵕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕭",
+    "b": "䭕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕘",
+    "b": "䘕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒭",
+    "b": "䭒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒡",
+    "b": "䡒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒞",
+    "b": "䞒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒛",
+    "b": "䛒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒙",
+    "b": "䙒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍱",
+    "b": "䱍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍮",
+    "b": "䮍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍖",
+    "b": "䖍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉮",
+    "b": "䮉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉚",
+    "b": "䚉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇘",
+    "b": "䘇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇉",
+    "b": "䉇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆟",
+    "b": "䟆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯾",
+    "b": "㾯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪼",
+    "b": "㼪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩼",
+    "b": "㼩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞯",
+    "b": "㯞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞣",
+    "b": "㣞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝪",
+    "b": "㪝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝣",
+    "b": "㣝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜯",
+    "b": "㯜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗱",
+    "b": "㱗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗦",
+    "b": "㦗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㗜",
+    "b": "㜗",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔝",
+    "b": "㝔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓞",
+    "b": "㞓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓝",
+    "b": "㝓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鴶",
+    "b": "鶴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鴵",
+    "b": "鵴",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鰵",
+    "b": "鵰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䳵",
+    "b": "䵳",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䱳",
+    "b": "䳱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䯵",
+    "b": "䵯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮯",
+    "b": "䯮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭳",
+    "b": "䳭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䭮",
+    "b": "䮭",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䬯",
+    "b": "䯬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫯",
+    "b": "䯫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫭",
+    "b": "䭫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪳",
+    "b": "䳪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪫",
+    "b": "䫪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩯",
+    "b": "䯩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩮",
+    "b": "䮩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩬",
+    "b": "䬩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡮",
+    "b": "䮡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡬",
+    "b": "䬡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟭",
+    "b": "䭟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟡",
+    "b": "䡟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞳",
+    "b": "䳞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞟",
+    "b": "䟞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛞",
+    "b": "䞛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚵",
+    "b": "䵚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚳",
+    "b": "䳚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚫",
+    "b": "䫚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚪",
+    "b": "䪚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚩",
+    "b": "䩚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙱",
+    "b": "䱙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙬",
+    "b": "䬙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙩",
+    "b": "䩙",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘵",
+    "b": "䵘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘯",
+    "b": "䯘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘬",
+    "b": "䬘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘪",
+    "b": "䪘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘟",
+    "b": "䟘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䘛",
+    "b": "䛘",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖳",
+    "b": "䳖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖪",
+    "b": "䪖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖞",
+    "b": "䞖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䖙",
+    "b": "䙖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䕪",
+    "b": "䪕",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒵",
+    "b": "䵒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒳",
+    "b": "䳒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒫",
+    "b": "䫒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒪",
+    "b": "䪒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䒘",
+    "b": "䘒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑱",
+    "b": "䱑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑡",
+    "b": "䡑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑚",
+    "b": "䚑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䑘",
+    "b": "䘑",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍯",
+    "b": "䯍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍞",
+    "b": "䞍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍚",
+    "b": "䚍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䍑",
+    "b": "䑍",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊭",
+    "b": "䭊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊪",
+    "b": "䪊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊡",
+    "b": "䡊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊟",
+    "b": "䟊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䊙",
+    "b": "䙊",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉵",
+    "b": "䵉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉭",
+    "b": "䭉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉬",
+    "b": "䬉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉪",
+    "b": "䪉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉡",
+    "b": "䡉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉛",
+    "b": "䛉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉘",
+    "b": "䘉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉕",
+    "b": "䕉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䉒",
+    "b": "䒉",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇵",
+    "b": "䵇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇱",
+    "b": "䱇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇫",
+    "b": "䫇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇩",
+    "b": "䩇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇞",
+    "b": "䞇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇙",
+    "b": "䙇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䇕",
+    "b": "䕇",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆳",
+    "b": "䳆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆭",
+    "b": "䭆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆡",
+    "b": "䡆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆞",
+    "b": "䞆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆚",
+    "b": "䚆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆘",
+    "b": "䘆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䆊",
+    "b": "䊆",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㼾",
+    "b": "㾼",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㱲",
+    "b": "㲱",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯷",
+    "b": "㷯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㯱",
+    "b": "㱯",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪲",
+    "b": "㲪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㪯",
+    "b": "㯪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㩪",
+    "b": "㪩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㦾",
+    "b": "㾦",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣩",
+    "b": "㩣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㣦",
+    "b": "㦣",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡾",
+    "b": "㾡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡼",
+    "b": "㼡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡷",
+    "b": "㷡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㡣",
+    "b": "㣡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞼",
+    "b": "㼞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞷",
+    "b": "㷞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞲",
+    "b": "㲞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㞩",
+    "b": "㩞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝯",
+    "b": "㯝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝦",
+    "b": "㦝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㝡",
+    "b": "㡝",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜪",
+    "b": "㪜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㜦",
+    "b": "㦜",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㚦",
+    "b": "㦚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖯",
+    "b": "㯖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖩",
+    "b": "㩖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖡",
+    "b": "㡖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㖞",
+    "b": "㞖",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔾",
+    "b": "㾔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔷",
+    "b": "㷔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔪",
+    "b": "㪔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔦",
+    "b": "㦔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㔡",
+    "b": "㡔",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓱",
+    "b": "㱓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓯",
+    "b": "㯓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓪",
+    "b": "㪓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓩",
+    "b": "㩓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㓚",
+    "b": "㚓",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒼",
+    "b": "㼒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒪",
+    "b": "㪒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒩",
+    "b": "㩒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "㒚",
+    "b": "㚒",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "鰶",
+    "b": "鶰",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮵",
+    "b": "䵮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䮱",
+    "b": "䱮",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䬱",
+    "b": "䱬",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫵",
+    "b": "䵫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䫳",
+    "b": "䳫",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䪬",
+    "b": "䬪",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩵",
+    "b": "䵩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䩳",
+    "b": "䳩",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡵",
+    "b": "䵡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡳",
+    "b": "䳡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡯",
+    "b": "䯡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡭",
+    "b": "䭡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡫",
+    "b": "䫡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䡩",
+    "b": "䩡",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟵",
+    "b": "䵟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟱",
+    "b": "䱟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䟮",
+    "b": "䮟",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞭",
+    "b": "䭞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䞡",
+    "b": "䡞",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛪",
+    "b": "䪛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䛡",
+    "b": "䡛",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚱",
+    "b": "䱚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚭",
+    "b": "䭚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚟",
+    "b": "䟚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䚛",
+    "b": "䛚",
+    "class": "kanji-kanji"
+   },
+   {
+    "cos": 1.0,
+    "a": "䙵",
+    "b": "䵙",
+    "class": "kanji-kanji"
+   }
+  ]
+ },
+ "init_vs_pack": {
+  "row_cos_init_pack_min": 0.23734793066978455,
+  "row_cos_init_pack_p1": 0.3669811487197876,
+  "row_cos_init_pack_median": 0.462985634803772,
+  "nn_identity_churn": 30854,
+  "nn_identity_churn_frac": 0.7785123132821962
+ },
+ "confusable_pairs": [
+  {
+   "a": "鎧",
+   "b": "錯",
+   "rows": "char/qwen",
+   "cos_init": 0.4453,
+   "cos_pack": 0.3034
+  },
+  {
+   "a": "未",
+   "b": "末",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4712,
+   "cos_pack": 0.4803
+  },
+  {
+   "a": "士",
+   "b": "土",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4758,
+   "cos_pack": 0.3932
+  },
+  {
+   "a": "日",
+   "b": "曰",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4819,
+   "cos_pack": 0.3767
+  },
+  {
+   "a": "人",
+   "b": "入",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4377,
+   "cos_pack": 0.387
+  },
+  {
+   "a": "力",
+   "b": "刀",
+   "rows": "qwen/qwen",
+   "cos_init": 0.394,
+   "cos_pack": 0.3582
+  },
+  {
+   "a": "己",
+   "b": "已",
+   "rows": "qwen/qwen",
+   "cos_init": 0.67,
+   "cos_pack": 0.5431
+  },
+  {
+   "a": "千",
+   "b": "干",
+   "rows": "qwen/qwen",
+   "cos_init": 0.3978,
+   "cos_pack": 0.4043
+  },
+  {
+   "a": "王",
+   "b": "玉",
+   "rows": "qwen/qwen",
+   "cos_init": 0.5137,
+   "cos_pack": 0.4759
+  },
+  {
+   "a": "大",
+   "b": "犬",
+   "rows": "qwen/qwen",
+   "cos_init": 0.3791,
+   "cos_pack": 0.3498
+  },
+  {
+   "a": "体",
+   "b": "休",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4277,
+   "cos_pack": 0.4537
+  },
+  {
+   "a": "水",
+   "b": "氷",
+   "rows": "qwen/char",
+   "cos_init": 0.4962,
+   "cos_pack": 0.4607
+  },
+  {
+   "a": "右",
+   "b": "石",
+   "rows": "qwen/qwen",
+   "cos_init": 0.3841,
+   "cos_pack": 0.2566
+  },
+  {
+   "a": "名",
+   "b": "各",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4255,
+   "cos_pack": 0.3348
+  },
+  {
+   "a": "会",
+   "b": "合",
+   "rows": "qwen/qwen",
+   "cos_init": 0.4133,
+   "cos_pack": 0.2948
+  }
+ ]
+}
