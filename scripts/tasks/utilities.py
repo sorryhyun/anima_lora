@@ -1,11 +1,11 @@
-"""Misc utility entry-points: merge, comfy-batch, distill-prep, distill-mod,
-test-unit, update, export-logs, print-config."""
+"""Misc utility entry-points: merge, comfy-batch, test-unit, update,
+export-logs, print-config."""
 
 from __future__ import annotations
 
 import os
 
-from ._common import PY, _preset, bespoke_preset_flags, run
+from ._common import PY, _preset, run
 
 
 def cmd_merge(extra):
@@ -69,56 +69,6 @@ def cmd_comfy_batch(extra):
         remaining = ["--images_dir", images_dir, *remaining]
 
     run([PY, "scripts/toolkits/comfy_batch.py", workflow, *remaining])
-
-
-def cmd_distill_prep(extra):
-    """Pre-stage artifacts for ``make distill-mod``.
-
-    Phase 1: emits ``post_image_dataset/_anima_uncond_te.safetensors`` (T5("")
-    cross-attn baseline), the student's unconditional text input. Useful with
-    ``--overwrite`` after a model swap (``make preprocess-te`` already
-    produces it for free otherwise).
-
-    Phase 2: emits teacher-synthesized clean latents under
-    ``post_image_dataset/distill_mod_synth/``. Train with
-    ``make distill-mod ARGS='--synth_data_dir post_image_dataset/distill_mod_synth'``
-    to fit on the teacher's manifold instead of the real-image gap.
-
-    Skip flags forwarded via ``extra``: ``--skip_uncond``, ``--skip_synth``,
-    ``--max_samples N``, etc.
-    """
-    run([PY, "-m", "scripts.distill_mod.prep", *extra])
-
-
-def cmd_distill_mod(extra):
-    """Distill the pooled_text_proj MLP for modulation guidance.
-
-    Honors ``PRESET`` (default ``default``) — translates ``blocks_to_swap`` and
-    ``gradient_checkpointing`` from ``configs/presets.toml`` into CLI flags so
-    ``make distill-mod PRESET=low_vram`` enables grad ckpt + unsloth offload.
-    Trailing ``extra`` args are appended last, so user CLI overrides win.
-
-    Saves to ``output/ckpt/pooled_text_proj.safetensors`` so ``make test MOD=1``
-    picks it up automatically.
-    """
-    preset_flags = bespoke_preset_flags(_preset())
-    run(
-        [
-            PY,
-            "-m",
-            "scripts.distill_mod.distill",
-            "--data_dir",
-            "post_image_dataset/lora",
-            "--dit_path",
-            "models/diffusion_models/anima-base-v1.0.safetensors",
-            "--output_path",
-            "output/ckpt/pooled_text_proj.safetensors",
-            "--attn_mode",
-            "flash",
-            *preset_flags,
-            *extra,
-        ]
-    )
 
 
 def cmd_test_unit(extra):

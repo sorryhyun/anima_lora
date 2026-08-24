@@ -75,7 +75,7 @@ def cmd_register(extra):
 def cmd_turbo(extra):
     """Turbo Anima — DP-DMD distillation (docs: docs/methods/turbo.md).
 
-    Bypasses train.py / accelerate (single-GPU bespoke loop, like distill-mod).
+    Bypasses train.py / accelerate (single-GPU bespoke loop).
     Reads ``configs/methods/turbo.toml``; trailing args are forwarded so user
     CLI flags override TOML values, e.g.::
 
@@ -727,6 +727,46 @@ def _inpaint_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     )
 
 
+def _region_stage(adapter: str, cfg: dict, base: str, extra) -> None:
+    """Region staging: solo-1girl targets → SAM3 character masks → paint cond tree.
+
+    Runs prep.py's select + sam + cond stages (GPU: SAM3) into ``{base}``.
+    Knobs come from the descriptor's ``[staging]`` table. The cond-latent
+    caching is the separate preprocess pass."""
+    knobs = _toml_table_to_argv(cfg.get("staging") or {})
+    run(
+        [
+            PY,
+            "easycontrol_adapters/region/prep.py",
+            "--skip_encode",
+            "--base",
+            base,
+            *knobs,
+            *list(extra or []),
+        ]
+    )
+
+
+def _region_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
+    """Region preprocess: VAE-cache the painted cond tree into ``{base}/cond``.
+
+    Target latents/TE are reused from the shared LoRA cache (no re-encode)."""
+    knobs = _toml_table_to_argv(cfg.get("preprocess") or {})
+    run(
+        [
+            PY,
+            "easycontrol_adapters/region/prep.py",
+            "--skip_select",
+            "--skip_sam",
+            "--skip_cond",
+            "--base",
+            base,
+            *knobs,
+            *list(extra or []),
+        ]
+    )
+
+
 def _subject_stage(adapter: str, cfg: dict, base: str, extra) -> None:
     """Subject staging: mine cross-image same-character pairs (directedit_ec Phase 2).
 
@@ -1221,6 +1261,9 @@ _EASY_ADAPTERS = {
     "sanitize": {"stage": _near_twins_stage, "preprocess": _near_twins_preprocess},
     "colorize": {"stage": _colorize_stage, "preprocess": _colorize_preprocess},
     "inpaint": {"stage": _inpaint_stage, "preprocess": _inpaint_preprocess},
+    # Paint-to-character: solo-1girl targets, SAM3 character masks gated +
+    # blob-augmented into a white-canvas paint cond tree.
+    "region": {"stage": _region_stage, "preprocess": _region_preprocess},
     "subject": {"stage": _subject_stage, "preprocess": _subject_preprocess},
     "subject_edit": {
         "stage": _subject_edit_stage,

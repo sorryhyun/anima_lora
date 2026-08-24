@@ -1,0 +1,77 @@
+name = "region"
+
+# Staged by easycontrol_adapters/region/prep.py: solo-1girl selection → SAM3
+# character masks (focus girl @ low threshold) → gated + blob-augmented paint
+# cond tree. Keys here become prep.py CLI flags (lists spread as-is).
+[staging]
+threshold = 0.4
+min_coverage = 0.03
+max_coverage = 0.85
+min_dominance = 0.75
+max_hole_frac = 0.05
+max_raggedness = 20.0
+# v3: paint over the REAL image (character-inpaint framing — fill the paint
+# with the character, reproduce the scene). Mid-gray 128 follows the inpaint
+# adapter's convention (~0 in [-1,1]); black collides with legitimately-dark
+# art now that the background is real. (v1/v2 white-canvas era used black.)
+cond_background = "image"
+paint_color = [128, 128, 128]
+aug_weights = [0.25, 0.35, 0.30, 0.10]
+sam_batch_size = 4
+
+[preprocess]
+batch_size = 4
+chunk_size = 64
+
+[training]
+network_dim = 32
+network_alpha = 128
+# b_cond_init back to the family's -4: with the real-image background the cond
+# is pixel-dense (the -2 bootstrap was a white-canvas-era fix for the sparse
+# position-only signal — see bench 20260823-1156-v1 for the -4 failure there).
+network_args = [
+    "b_cond_init=-4.0",
+    "cond_scale=1.0",
+    "apply_ffn_lora=1",
+    "cond_res_scale=1.0",
+]
+masked_loss = false
+# Keep the white-canvas v2ep6 checkpoint around for comparison.
+output_name = "anima_easycontrol_region_bg2"
+cond_diff_loss = true
+
+learning_rate = 5e-5
+max_train_epochs = 8
+save_every_n_epochs = 4
+checkpointing_epochs = 4
+
+# Cond dropout doubles as unconditional capability — the paint cue is the whole
+# task, but a 5% blind slice keeps the text pathway honest.
+easycontrol_drop_p = 0.05
+easycontrol_cond_noise_max = 0.05
+
+caption_dropout_rate = 0.3
+use_shuffled_caption_variants = true
+blocks_to_swap = 0
+
+[general]
+caption_extension = '.txt'
+
+[[datasets]]
+batch_size = 1
+validation_split_num = 0
+validation_seed = 42
+
+  [[datasets.subsets]]
+  image_dir = 'post_image_dataset/easycontrol/{name}/staging'
+  cache_dir = 'post_image_dataset/lora'
+  cond_cache_dir = 'post_image_dataset/easycontrol/{name}/cond'
+  recursive = true
+  flip_aug = false
+  num_repeats = 1
+
+[variant]
+family = "easycontrol"
+label = "Region (paint-to-character)"
+description = "Generate the character inside a painted region of a real scene. Cond = the background image with a solid gray paint blob marking where the character goes (position/size, and — when painted precisely — pose via silhouette); the caption steers identity, the cond owns the scene. Trained on solo-1girl images with SAM3 character masks painted over (character-inpaint framing), blob-augmented so rough hand-painted blobs work at inference. Configured in configs/easycontrol/region.toml (edit the file directly)."
+order = 35

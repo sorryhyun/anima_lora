@@ -3,7 +3,7 @@
 ``model.forward_mini_train_dit`` is the lightweight DiT forward the distillation
 loops drive (teacher pred, student pred, validation, teacher-cache prefill). Each
 call is wrapped in the same four-step ritual, copy-pasted across
-``scripts/distill_mod`` (×4 sites) and the SPD / mod-guidance probes:
+``project/finished/mod_guidance`` (×4 sites) and the SPD / mod-guidance probes:
 
   1. stage block-swap if enabled (``prepare_block_swap_before_forward``),
   2. open a fresh CUDA-graph epoch (``cudagraph_mark_step_begin``) so a prior

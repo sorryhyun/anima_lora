@@ -1,6 +1,6 @@
 """Shared run-shell for the bespoke distillation loops.
 
-``scripts/distill_turbo`` / ``scripts/distill_mod`` keep their method math (DMD
+``scripts/distill_turbo`` / ``project/finished/mod_guidance`` keep their method math (DMD
 student/fake/critic, GAD pooled-text objective) local and legitimately
 divergent — but they repeat the same
 orchestration *shell*: pick device/dtype, slice to a single overfit prompt, stand

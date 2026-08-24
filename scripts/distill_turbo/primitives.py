@@ -2,7 +2,7 @@
 
 These were the first copy of the distillation per-step primitives; they have
 since been promoted to ``library/training`` and ``library/datasets`` so the
-other distillation loops (``scripts/distill_mod``)
+other distillation loops (``project/finished/mod_guidance``)
 share one implementation. This module is now a thin compatibility shim — the
 turbo loop imports the same names from here as before.
 """

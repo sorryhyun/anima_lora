@@ -298,6 +298,15 @@ def cmd_test_easycontrol(extra):
             "ref_dir": ROOT / "post_image_dataset" / "resized",
             "empty_prompt": False,
         },
+        # region: ref is a white canvas + paint blob marking where the character
+        # goes; the prompt owns identity/scene. Staged conds under
+        # post_image_dataset/easycontrol/region/cond_images/ make ready refs.
+        "region": {
+            "weight": "anima_easycontrol_region",
+            "out": "region",
+            "ref_dir": ROOT / "post_image_dataset" / "easycontrol" / "region" / "cond_images",
+            "empty_prompt": False,
+        },
         # subject: ref is a DIFFERENT image of the character to retrieve; the
         # prompt owns layout/pose, so never force an empty prompt.
         "subject": {

@@ -135,7 +135,7 @@ To recover pre-0413 uniform behavior (not recommended — prone to pink-collapse
 
 ### Distillation training
 
-The projection MLP must be trained via distillation before modulation guidance can be used. This trains only `pooled_text_proj` (~8M params) with the rest of the model frozen.
+The projection MLP must be trained via distillation before modulation guidance can be used. This trains only `pooled_text_proj` (~8M params) with the rest of the model frozen. **You normally never run this** — the distilled head ships as a release asset and the head is a one-shot artifact, re-distilled only when the base DiT changes. The loop lives in [`project/finished/mod_guidance/`](../../project/finished/mod_guidance/) (a finished line — the `distill-prep` / `distill-mod` targets were removed with the move; ops in its [`README.md`](../../project/finished/mod_guidance/README.md), verdicts in [`STATUS.md`](../../project/finished/mod_guidance/STATUS.md)).
 
 **How distillation works** (paper-faithful, Starodubcev et al. §5 — *"we propagate the textual prompt solely through the pooled text embedding, using an unconditional prompt for T5"*):
 
@@ -143,35 +143,30 @@ The projection MLP must be trained via distillation before modulation guidance c
 2. **Student** forward — `crossattn_emb` swapped for a cached `T5("")` unconditional baseline (same input Anima's own CFG-uncond branch uses), with the real pooled text injected via `pooled_text_proj`. This forces the projection to carry every bit of text information through the modulation path.
 3. **Loss** — MSE between student and teacher noise predictions.
 
-#### Step 1 — pre-stage with `make distill-prep`
+#### Step 1 — pre-stage
 
-`make distill-prep` runs two phases:
+`prep.py` runs two phases:
 
-- **Phase 1 (mandatory)** — encodes `T5("")` once into `post_image_dataset/lora/_anima_uncond_te.safetensors`. The training loop loads this as the student's unconditional crossattn input; without it `make distill-mod` won't start.
+- **Phase 1 (mandatory)** — encodes `T5("")` once into `post_image_dataset/lora/_anima_uncond_te.safetensors`. The training loop loads this as the student's unconditional crossattn input; without it the distill won't start. `make preprocess-te` already produces this sidecar for free — Phase 1 is the explicit re-stager after a model swap.
 - **Phase 2 (optional, recommended)** — runs the frozen teacher (full CFG denoise from fresh noise, conditioned on each cached prompt) and writes clean latents under `post_image_dataset/distill_mod_synth/`. Training against these instead of real-image latents removes the real-vs-teacher distribution gap that floored the original val loss.
 
 ```bash
-make distill-prep                       # both phases (default)
-python -m scripts.distill_mod.prep --skip_synth   # Phase 1 only (uncond sidecar)
-python -m scripts.distill_mod.prep --skip_uncond  # Phase 2 only (assumes sidecar exists)
-python -m scripts.distill_mod.prep --max_samples 16   # smoke-test the synth pass
+python -m project.finished.mod_guidance.prep                     # both phases (default)
+python -m project.finished.mod_guidance.prep --skip_synth        # Phase 1 only (uncond sidecar)
+python -m project.finished.mod_guidance.prep --skip_uncond       # Phase 2 only (assumes sidecar exists)
+python -m project.finished.mod_guidance.prep --max_samples 16    # smoke-test the synth pass
 ```
 
 Phase 2 defaults are tuned to Anima's production environment (`num_steps=20`, `cfg_scale=2.5`, `flow_shift=1.0`, top portrait bucket). Override `--buckets`, `--n_per_bucket`, `--num_steps`, `--cfg_scale` to taste.
 
-#### Step 2 — run `make distill-mod`
+#### Step 2 — distill
+
+There is no preset merge chain here (bespoke single-GPU loop) — pass the two hardware knobs by hand: `--grad_ckpt` (+ unsloth CPU offload) and `--blocks_to_swap N`, the `low_vram` equivalents. See the [line README](../../project/finished/mod_guidance/README.md) for the full preset translation.
+
+Invocation (current defaults shown):
 
 ```bash
-make distill-mod                                                 # train on real-image latents
-make distill-mod ARGS='--synth_data_dir post_image_dataset/distill_mod_synth'   # paper-faithful (recommended)
-```
-
-`make distill-mod` honors `PRESET` — `PRESET=low_vram make distill-mod` adds grad ckpt + unsloth CPU offload from `configs/presets.toml`.
-
-Direct invocation (current defaults shown):
-
-```bash
-python -m scripts.distill_mod.distill \
+python -m project.finished.mod_guidance.distill \
     --data_dir post_image_dataset/lora \
     --dit_path models/diffusion_models/anima-base-v1.0.safetensors \
     --output_path output/ckpt/pooled_text_proj.safetensors \
@@ -186,7 +181,7 @@ python -m scripts.distill_mod.distill \
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--data_dir` | `post_image_dataset/lora` | Directory with cached latents + TE sidecars. Also where the Phase 1 `_anima_uncond_te.safetensors` sidecar is looked up. |
-| `--uncond_te_path` | `<data_dir>/_anima_uncond_te.safetensors` | Override path to the T5("") sidecar from `make distill-prep` Phase 1. |
+| `--uncond_te_path` | `<data_dir>/_anima_uncond_te.safetensors` | Override path to the T5("") sidecar from `prep.py` Phase 1. |
 | `--synth_data_dir` | `None` | Phase 2 synthetic-latent dir. When set, latents come from here (matched by stem + resolution); TE caches still come from `--data_dir`. |
 | `--dit_path` | `models/diffusion_models/anima-base-v1.0.safetensors` | Base model. |
 | `--output_path` | `output/ckpt/pooled_text_proj.safetensors` | Where to save the trained projection (`make test MOD=1` picks this path up automatically). |

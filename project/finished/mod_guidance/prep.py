@@ -1,7 +1,7 @@
 """Distillation prep — Phase 1 (uncond sidecar) + Phase 2 (synthetic latents).
 
 Pre-generates auxiliary artifacts consumed by
-``scripts/distill_mod/distill.py``.
+``project/finished/mod_guidance/distill.py``.
 
 Phase 1 — uncond TE sidecar:
     Emits ``<uncond_dir>/_anima_uncond_te.safetensors`` (default
@@ -30,16 +30,16 @@ Phase 2 — teacher-driven synthetic clean latents:
 
 Usage:
     # both phases (default — runs Phase 1 first if sidecar missing, then Phase 2)
-    python -m scripts.distill_mod.prep
+    python -m project.finished.mod_guidance.prep
 
     # Phase 1 only (fast — staging only the uncond sidecar)
-    python -m scripts.distill_mod.prep --skip_synth
+    python -m project.finished.mod_guidance.prep --skip_synth
 
     # Phase 2 only (assumes uncond sidecar exists)
-    python -m scripts.distill_mod.prep --skip_uncond
+    python -m project.finished.mod_guidance.prep --skip_uncond
 
     # cap synthesis for a smoke test
-    python -m scripts.distill_mod.prep --max_samples 16
+    python -m project.finished.mod_guidance.prep --max_samples 16
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ from library.preprocess.uncond import (  # noqa: E402
     UNCOND_TE_FILENAME,
     stage_uncond_sidecar,
 )
-from scripts.distill_mod.synth import generate_synthetic_latents  # noqa: E402
+from .synth import generate_synthetic_latents  # noqa: E402
 
 # Phase 2 synthesis allowlist: the measured top-5 buckets (DCW_ASPECT_NAMES) +
 # the next 3 most-frequent in post_image_dataset/lora/, adding the

@@ -12,7 +12,7 @@ Distillation setup (Starodubcev et al., ICLR 2026, Section 5):
   - Loss: MSE(student_pred, teacher_pred).
 
 The unconditional sidecar is normally produced by ``make preprocess-te`` (and
-also re-stageable via ``make distill-prep``) at
+also re-stageable via ``prep.py`` Phase 1) at
 ``post_image_dataset/_anima_uncond_te.safetensors``.
 
 This forces pooled_text_proj to encode text information through modulation,
@@ -20,14 +20,14 @@ complementing the cross-attention path.
 
 GAD (geometry-aware distillation; ``--gad_weight > 0``, off by default) adds a
 first-order term that also matches the teacher's *response to a text change* —
-see ``scripts/distill_mod/plan.md`` and
+see ``project/finished/mod_guidance/plan.md`` and
 ``docs/findings/mod_guidance_quality_tag_axis.md`` §3 (text-derivative orthogonal).
 
-Config lives in ``scripts/distill_mod/config.py`` (argparser + resolved
+Config lives in ``project/finished/mod_guidance/config.py`` (argparser + resolved
 ``ModConfig`` dataclass), mirroring the ``distill_turbo/`` precedent.
 
 Usage:
-    python -m scripts.distill_mod.distill [--iterations 4000] [--lr 1e-4] [--batch_size 1]
+    python -m project.finished.mod_guidance.distill [--iterations 4000] [--lr 1e-4] [--batch_size 1]
 """
 
 from __future__ import annotations
@@ -82,13 +82,13 @@ from library.anima.uncond import (  # noqa: E402
     load_uncond_crossattn,
     uncond_for_batch,
 )
-from scripts.distill_mod.config import build_argparser, resolve_config  # noqa: E402
-from scripts.distill_mod.teacher_cache import (  # noqa: E402
+from .config import build_argparser, resolve_config  # noqa: E402
+from .teacher_cache import (  # noqa: E402
     TeacherCache,
     ValTeacherCache,
     prefill_teacher_cache,
 )
-from scripts.distill_mod.validation import run_validation  # noqa: E402
+from .validation import run_validation  # noqa: E402
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -201,7 +201,7 @@ def main():
 
     device, dtype = resolve_device_dtype()
 
-    # Load the T5("") uncond sidecar (staged by `make distill-prep`).
+    # Load the T5("") uncond sidecar (staged by `make preprocess-te` / `prep.py`).
     uncond_te_path = cfg.uncond_te_path or str(default_uncond_path())
     uncond_te_1 = load_uncond_crossattn(uncond_te_path, device, dtype)
     logger.info(

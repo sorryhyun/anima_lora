@@ -2,7 +2,7 @@
 
 Mirrors the ``distill_turbo/config.py`` precedent (frozen dataclass consumed by
 the loop) but stays **CLI-first** — there is no TOML layer here, since
-``make distill-mod`` and every documented invocation drive the script purely
+every documented invocation drives the script purely
 through flags. ``resolve_config`` is a pure CLI→dataclass map plus the GAD
 sanity checks; the door is left open for an optional ``[gad]`` TOML block later
 without forcing one now.
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 # Argparser — same flag names/defaults as the old distill.py inline parser, so
-# every documented invocation and `make distill-mod` are unchanged.
+# every documented invocation is unchanged.
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Modulation guidance distillation")
     parser.add_argument(
@@ -35,7 +35,7 @@ def build_argparser() -> argparse.ArgumentParser:
             'Path to the T5("") sidecar used as the student\'s unconditional '
             "cross-attention input. Defaults to "
             "``post_image_dataset/_anima_uncond_te.safetensors`` (staged by "
-            "``make distill-prep``)."
+            "``prep.py`` Phase 1, or ``make preprocess-te``)."
         ),
     )
     parser.add_argument(
@@ -44,7 +44,7 @@ def build_argparser() -> argparse.ArgumentParser:
         default="post_image_dataset/distill_mod_synth",
         help=(
             "Optional dir of teacher-generated synthetic clean latents from "
-            "``make distill-prep`` (Phase 2). When set, training reads latents "
+            "``prep.py`` Phase 2. When set, training reads latents "
             "from here (matched by stem + resolution) and TE caches from "
             "``--data_dir`` — paper-faithful setup that removes the real-vs-"
             "teacher distribution gap. Default: real-image latents only."

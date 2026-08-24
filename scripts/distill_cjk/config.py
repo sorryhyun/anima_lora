@@ -1,6 +1,6 @@
 """CJK distillation config: argparser + resolved frozen dataclass.
 
-Mirrors ``scripts/distill_mod/config.py`` — CLI-first, no TOML layer, since
+Mirrors ``project/finished/mod_guidance/config.py`` — CLI-first, no TOML layer, since
 every documented invocation drives the scripts purely through flags.
 """
 

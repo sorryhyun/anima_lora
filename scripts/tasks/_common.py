@@ -92,7 +92,7 @@ def _path(key: str, default: str) -> str:
 
 def bespoke_preset_flags(preset: str) -> list[str]:
     """Translate ``configs/presets.toml[<preset>]`` into CLI flags for the
-    bespoke distillation loops (``scripts/distill_mod``/``scripts/distill_turbo``)
+    bespoke distillation loops (``scripts/distill_turbo``/``scripts/distill_cjk``)
     that bypass ``train.py``'s config merge chain.
 
     Honored keys: ``blocks_to_swap`` → ``--blocks_to_swap N``;
@@ -158,7 +158,8 @@ def latest_output(prefix: str = "", exclude: str | None = None) -> Path:
 
 def latest_lora() -> Path:
     # Exclude pooled_text_proj heads: not LoRAs (resolved separately by MOD=1),
-    # but a blind newest-`.safetensors` pick would grab them after `make distill-mod`.
+    # but a blind newest-`.safetensors` pick would grab them after a mod-guidance
+    # distill (`project/finished/mod_guidance/`).
     return latest_output(exclude="pooled_text_proj")
 
 
@@ -671,7 +672,7 @@ def _attach_and_wait(cl, job_id: str) -> int:
 def queue_command(label: str, argv: list[str]) -> None:
     """Enqueue a bespoke-loop distillation command on the local daemon.
 
-    The bespoke loops (``scripts/distill_turbo``/``scripts/distill_mod``)
+    The bespoke loops (``scripts/distill_turbo``/``scripts/distill_cjk``)
     bypass ``train.py``, so they submit a plain ``kind="command"`` job
     (detach semantics) instead of riding the train ``--queue`` path. ``argv``
     is run as ``[venv_python, *argv]`` from the repo root (module form:

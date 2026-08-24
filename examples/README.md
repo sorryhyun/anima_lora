@@ -47,7 +47,7 @@ is to show the raw primitives. Either way there's no `sys.path` bootstrap:
 |---|---|---|
 | [`04_load_models.py`](04_load_models.py) | Load DiT / VAE / text encoder directly; encode a prompt to the DiT-ready cross-attn embedding | DiT + VAE + text encoder |
 | [`05_vae_and_dataset.py`](05_vae_and_dataset.py) | VAE pixel↔latent round-trip; iterate the on-disk training cache (`CachedDataset`) | VAE (+ cache for part B) |
-| [`06_frozen_dit_training_build.py`](06_frozen_dit_training_build.py) | Frozen DiT + fresh adapter build for *training* via the `harness` helpers (`place_dit_for_training` / `compile_dit_blocks` / `enable_training_grad_ckpt`) — the `scripts/distill_mod` / `scripts/distill_turbo` model-build sequence | DiT |
+| [`06_frozen_dit_training_build.py`](06_frozen_dit_training_build.py) | Frozen DiT + fresh adapter build for *training* via the `harness` helpers (`place_dit_for_training` / `compile_dit_blocks` / `enable_training_grad_ckpt`) — the `project/finished/mod_guidance` / `scripts/distill_turbo` model-build sequence | DiT |
 | [`07_stack_ortho_init_tlora.py`](07_stack_ortho_init_tlora.py) | Stacking LoRA-family **variants** from Python — `create_network(use_ortho_init=True, use_timestep_mask=True, …)` (kwargs → `resolve_network_spec`, no TOML) + the one per-step `apply_router_conditioning` hook; prints the live T-LoRA mask rank per step | DiT |
 
 ## Setup

@@ -4,7 +4,7 @@ Every distillation / probe loop that re-noises a clean latent and feeds it to
 the DiT repeats the same handful of mechanical steps: build ``x_t = (1-t)·x +
 t·ε``, sample the noise level ``t``/``σ``, insert the singleton temporal axis to
 reach the DiT's 5D layout, and hand the model a zero padding mask. They lived
-copy-pasted across ``scripts/distill_mod``, ``scripts/distill_turbo``
+copy-pasted across ``project/finished/mod_guidance``, ``scripts/distill_turbo``
 and a dozen ``bench/`` probes (the second copy,
 ``distill_turbo/primitives.py``, is what motivated promoting them here). This is
 the model-agnostic half — no DiT call, just tensor math — so it sits in

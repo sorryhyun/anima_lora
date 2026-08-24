@@ -41,7 +41,7 @@ self.pooled_text_proj = nn.Sequential(
 )
 ```
 
-Zero-initialized output layer (`library/anima/models.py:1411-1413`) so it's a no-op at init, trained via `scripts/distill_mod/distill.py`.
+Zero-initialized output layer (`library/anima/models.py:1411-1413`) so it's a no-op at init, trained via `project/finished/mod_guidance/distill.py`.
 
 Used in `forward_mini_train_dit` at `library/anima/models.py:1791-1801`:
 
@@ -220,7 +220,7 @@ Both paths ultimately expect the same thing: a `(B, 512, 1024)` post-llm-adapter
 
 ## 6. Timestep / noise schedule
 
-Both run through `comfy/comfy/ldm/cosmos/predict2.py`-style `Timesteps` → SiLU → Linear. anima_lora samples timesteps via sigmoid-scaled gaussian for training (`sigmas = torch.sigmoid(args.sigmoid_scale * torch.randn(B, ...))` in `scripts/distill_mod/distill.py`) and uses `(1-σ)x + σ·noise` flow-matching noising. ComfyUI uses its own `comfy/model_sampling.py` schedule for sampling.
+Both run through `comfy/comfy/ldm/cosmos/predict2.py`-style `Timesteps` → SiLU → Linear. anima_lora samples timesteps via sigmoid-scaled gaussian for training (`sigmas = torch.sigmoid(args.sigmoid_scale * torch.randn(B, ...))` in `project/finished/mod_guidance/distill.py`) and uses `(1-σ)x + σ·noise` flow-matching noising. ComfyUI uses its own `comfy/model_sampling.py` schedule for sampling.
 
 This doesn't affect per-step forward behavior — both implementations accept `timesteps` as a `[0, 1]` scalar tensor and produce equivalent noise predictions. The schedule choice lives above `forward`, in the sampler.
 

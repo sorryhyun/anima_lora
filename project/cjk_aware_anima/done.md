@@ -139,7 +139,7 @@ Measured verdicts:
 |---|---|
 | Teacher-side encoding | `run_bench.py::SplitTokenizeStrategy` |
 | Adapter tensors without a DiT load | `build_ext.py::read_tensor` pattern — extend to `net.llm_adapter.*` |
-| Bespoke distill-loop template | `scripts/distill_mod/` → `scripts/distill_cjk/` |
+| Bespoke distill-loop template | `project/finished/mod_guidance/` (the old `distill_mod` loop) → `scripts/distill_cjk/` |
 | Adapter injection point | `library/anima/models.py::LLMAdapter` (~:2599) |
 | Tag vocabulary / entity list | `caption_index.json` (`make caption-index`) |
 | OCR + text detection (Phase 4) | MIT backend of `make mask` (`scripts/tasks/masking.py`) |

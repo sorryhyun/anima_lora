@@ -6,8 +6,8 @@ orchestration. Builds on the Anima-domain encode / load primitives in
 
 The sidecar is a model-scoped, run-invariant artifact, so it ships as a bundled
 package asset (``library/anima/assets/_anima_uncond_te.safetensors``) and is read
-directly by ``make distill-prep``, ``make distill-mod``, ``make distill-turbo``,
-and training-time caption dropout. The staging here is now only the
+directly by ``make turbo``, the mod-guidance distiller
+(``project/finished/mod_guidance/``), and training-time caption dropout. The staging here is now only the
 *regeneration* path — it overwrites that same asset in place after a base-model
 swap (or if the bundled copy is ever missing).
 """

@@ -20,7 +20,7 @@ baked into the student during distillation).
 > is archived at `_archive/proposals/dpdmd.md`.
 
 - **Training:** `scripts/distill_turbo/distill.py` — bespoke single-GPU loop
-  (bypasses `train.py`/accelerate, like `distill-mod`).
+  (bypasses `train.py`/accelerate).
 - **Harness:** `networks/methods/turbo_dmd.py::TurboDMDNetwork` — two `LoRANetwork`
   stacks (student + fake) view-toggled on one frozen DiT.
 - **Config:** `configs/methods/turbo.toml` — **bespoke sectioned schema** read only
@@ -113,7 +113,7 @@ Per training step:
 The teacher uncond is the **T5("") sidecar** (`library/anima/uncond.py`), *not*
 a zero tensor — a zero crossattn is fed-out-of-distribution and the resulting
 `v_real_uncond` amplified at (α−1)=3× drives the student off-manifold (saturated
-white output). Staged by `make distill-prep` / `make preprocess-te`; shared with the
+white output). Staged by `make preprocess-te`; shared with the
 mod-guidance distill.
 
 A **fake (critic) head-start** runs `fake_warmup_steps` fake-only updates before the

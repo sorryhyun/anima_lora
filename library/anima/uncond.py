@@ -146,7 +146,7 @@ def encode_uncond_crossattn(
 
 
 def load_uncond_crossattn(path: str, device, dtype) -> torch.Tensor:
-    """Load the ``T5("")`` sidecar staged by ``make distill-prep`` and return a
+    """Load the ``T5("")`` sidecar staged by ``make preprocess-te`` and return a
     ``(1, seq, 1024)`` tensor on ``device`` in ``dtype``. Used as the student's
     unconditional cross-attention input; replaces ``torch.zeros_like(...)``,
     which is neither paper-faithful nor what Anima uses at CFG-uncond inference.
@@ -154,7 +154,7 @@ def load_uncond_crossattn(path: str, device, dtype) -> torch.Tensor:
     if not os.path.exists(path):
         raise FileNotFoundError(
             f"Unconditional TE sidecar not found at {path!r}. "
-            f"Run `make distill-prep` (or `python tasks.py distill-prep`) first."
+            f"Run `make preprocess-te` (or `python tasks.py preprocess-te`) first."
         )
     sd = _load_safetensors(path)
     uncond = sd.get("crossattn_emb")

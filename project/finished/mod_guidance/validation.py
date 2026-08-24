@@ -1,7 +1,7 @@
 """Validation pass: teacher↔student MSE on the val set at fixed sigmas.
 
 Noise is drawn from a fixed-seed generator so val loss is comparable across
-runs. If a :class:`~scripts.distill_mod.teacher_cache.ValTeacherCache` is
+runs. If a :class:`~project.finished.mod_guidance.teacher_cache.ValTeacherCache` is
 provided, teacher predictions are memoized by ``(batch_idx, sigma_idx)`` —
 the first pass fills the cache, every subsequent pass skips the teacher
 forward.

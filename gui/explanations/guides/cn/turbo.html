@@ -2,5 +2,5 @@
 <p>通过 Diversity-Preserved DMD 进行少步蒸馏（Wu et al., arXiv:2602.03139）。将 28 步 CFG=4 的 Anima 教师蒸馏为<b>4 步学生</b>，学生 / 伪分数 / 教师三个角色共享同一个冻结的 DiT。CFG 在蒸馏过程中烘焙进学生。</p>
 <p>输出是<b>普通的标准 LoRA</b>。没有推理端的 turbo 代码：通过普通 LoRA 适配器路径加载，并以 <code>--infer_steps 4 --cfg 1.0</code> 运行（<code>make test-turbo</code>）。它与概念 LoRA 的组合方式如同 LCM-LoRA 与风格 LoRA 的组合（线性组合，秩相加），并且完全可烘焙进 DiT。</p>
 <p>已训练好的 4 步学生已发布于 <a href='https://huggingface.co/sorryhyun/anima-turbo-4step'>huggingface.co/sorryhyun/anima-turbo-4step</a> &mdash; 下载后用 <code>--lora_weight</code> 指定路径，无需自行蒸馏即可体验少步推理。</p>
-<p><b>训练</b>通过 <code>scripts/distill_turbo.py</code> 运行 &mdash; 这是一个专用的单 GPU 循环（类似 <code>distill-mod</code> / <code>distill-spd</code>），而非 <code>train.py</code>。用 <code>make turbo</code> 启动（遵循 <code>PRESET</code>，通过 <code>ARGS=&hellip;</code> 追加覆盖项）。</p>
+<p><b>训练</b>通过 <code>scripts/distill_turbo.py</code> 运行 &mdash; 这是一个专用的单 GPU 循环，而非 <code>train.py</code>。用 <code>make turbo</code> 启动（遵循 <code>PRESET</code>，通过 <code>ARGS=&hellip;</code> 追加覆盖项）。</p>
 <p><b>配置是个例外。</b> <code>configs/methods/turbo.toml</code> 是仅由脚本读取的专用分节模式 &mdash; 扁平的 method+preset 合并不适用于此，因此<b>不要</b> <code>print-config METHOD=turbo</code>。CLI 标志会覆盖 TOML 值。参见 <code>docs/methods/turbo.md</code>（运维）和 <code>docs/structure/turbo.md</code>（数学）。</p>

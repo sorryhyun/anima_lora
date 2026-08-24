@@ -97,7 +97,7 @@ COMMANDS = {
         training.cmd_turbo,
         "Turbo (DP-DMD) distillation — bakes CFG=4 / 28-step Anima into a 4-step "
         "LoRA student (configs/methods/turbo.toml). Single-GPU bespoke loop "
-        "(bypasses train.py/accelerate, like distill-mod). Output is a normal LoRA "
+        "(bypasses train.py/accelerate). Output is a normal LoRA "
         "(https://huggingface.co/sorryhyun/anima-turbo-4step).",
     ),
     "easycontrol": (
@@ -344,16 +344,6 @@ COMMANDS = {
         "Bake latest LoRA (ADAPTER_DIR=..., default 'output/ckpt') into base DiT",
     ),
     "comfy-batch": (utilities.cmd_comfy_batch, "Run ComfyUI batch workflow"),
-    "distill-prep": (
-        utilities.cmd_distill_prep,
-        'Pre-stage artifacts for distill-mod: T5("") uncond sidecar + '
-        "teacher-synthetic clean latents pool (--skip_synth / --skip_uncond to "
-        "stage only one).",
-    ),
-    "distill-mod": (
-        utilities.cmd_distill_mod,
-        "Distill pooled_text_proj MLP for modulation guidance",
-    ),
     "test-unit": (utilities.cmd_test_unit, "Run smoke/unit tests (pytest tests/)"),
     "export-logs": (
         utilities.cmd_export_logs,

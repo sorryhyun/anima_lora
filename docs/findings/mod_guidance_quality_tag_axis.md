@@ -21,7 +21,7 @@ a frozen mechanism map.
 > **Bench ARCHIVED 2026-07-12** — every question this bench asked got a terminal
 > answer, so `_archive/bench/mod_guidance/` moved to `_archive/bench/mod_guidance/` (scripts +
 > all `results/`). The shipped *feature* is unaffected (`docs/inference/mod-guidance.md`,
-> `scripts/distill_mod/`). If the pooled head is ever re-distilled (base-DiT change),
+> `project/finished/mod_guidance/`). If the pooled head is ever re-distilled (base-DiT change),
 > resurrect `text_jacobian.py` + `channel_attribution.py` from the archive as the
 > acceptance probes. A last one-shot geometry probe (`pool_decouple_probe.py`, run
 > 2026-07-12, `_archive/bench/mod_guidance/results/20260712-1206-pool-decouple/`)

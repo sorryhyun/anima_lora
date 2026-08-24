@@ -2,7 +2,7 @@
 
 Loads pre-cached VAE latents + text encoder outputs from disk, grouped by
 latent resolution so each batch has uniform spatial dims. Despite the name
-it is not distill-specific — used by ``scripts/distill_mod/distill.py`` and
+it is not distill-specific — used by ``project/finished/mod_guidance/distill.py`` and
 ``scripts/distill_turbo/distill.py``.
 """
 

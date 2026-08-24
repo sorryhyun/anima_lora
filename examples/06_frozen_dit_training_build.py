@@ -107,7 +107,7 @@ def main() -> None:
         f"({trainable / total * 100:.3f}% of the {total / 1e9:.2f}B-param DiT)"
     )
     print(
-        "plug in your dataset + optimizer from here (see scripts/distill_mod/distill.py)."
+        "plug in your dataset + optimizer from here (see scripts/distill_turbo/setup.py)."
     )
 
 

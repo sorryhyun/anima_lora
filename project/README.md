@@ -40,7 +40,7 @@ Retired lines so far:
   write-ups if the line reopens.
 
 Finished lines are listed in [`finished/README.md`](finished/README.md)
-(first entry: the ResShift SR sidecar, 2026-08-22).
+(the ResShift SR sidecar, 2026-08-22; mod guidance, 2026-08-24).
 
 Active projects:
 

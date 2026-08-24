@@ -21,6 +21,16 @@ for digest-only homes) records the verdicts.
 
 Finished lines:
 
+- [`mod_guidance/`](mod_guidance/) — text-conditioned AdaLN steering via a
+  distilled `pooled_text_proj` MLP (2026-08-24). Shipped (release asset + the
+  Spectrum KSampler node); the bench was archived 2026-07-12 with every axis
+  terminal — it's a global-tone/finishing lever, the σ and layer schedule axes
+  are falsified, and the content-direction ceiling is architectural. The
+  one-shot distillation loop moved here from its old `distill_mod` home under
+  `scripts/`, and its two
+  make targets were removed. Verdicts:
+  [`mod_guidance/STATUS.md`](mod_guidance/STATUS.md); ops:
+  [`mod_guidance/README.md`](mod_guidance/README.md).
 - [`sr/`](sr/) — ResShift ×4/×2 super-resolution sidecar (full tree moved
   from repo-root `sr/`; `make sr-*` targets removed). ×2 and ×4 both at their
   measured ceilings (teacher-bound; distillation faithful). Open remainder:
