@@ -51,12 +51,27 @@ Ordered; nothing here needs a new experiment.
    `bench/cjk_adapter/` into `library/anima/`, sidecar auto-discovery (flag to
    disable), `load_dit_model` row append, TE-cache path through the shim.
    Unit test: EN bit-exact with and without the sidecar.
+   *2026-09-01: module promotion DONE — `library/anima/ext_vocab.py` is the
+   canonical home, `bench/cjk_adapter/ext_vocab.py` is a re-export shim, all
+   56 cjk tests green. The strategy shim / `load_dit_model` row append /
+   TE-cache path remain open (not needed for the external test deploy).*
 4. **Release asset + docs** — pack files on the release tag, a
    `docs/methods/cjk_vocab_pack.md` (user-facing: what works, what doesn't,
    the JA TE-cache regeneration note), i18n of the GUI/guidebook line if a
    field is exposed.
+   *2026-09-01: test release live at
+   https://huggingface.co/sorryhyun/anima-vocab-pack-ja — `synthja_v4`
+   metadata-stamped as `anima_ja_vocab_pack.{safetensors,json}` + the Qwen3
+   tokenizer files (self-contained). Repo docs still owed for the full ship.*
 5. **ComfyUI node** in `ComfyUI-Anima_lora-Adapter` (tokenize wrap + embed
    object patch). Ship after the in-repo path is verified, not before.
+   *2026-09-01: `AnimaVocabPackLoader` landed (node v3.9.0): CLIP-clone
+   tokenizer wrap (EN bit-exact verified against comfy's native
+   `AnimaTokenizer`; comfy's bundled qwen25 fast tokenizer is vocab-identical
+   to qwen3_06b, encoder output verified id-for-id vs the repo-side encoder)
+   + clamp-pre-hook/embed-forward-hook pair for the 32128 hardcode.
+   `ext_vocab.py` added to the node's `_vendor` surface. Owed before public
+   node publish: a rendered same-seed grid through the ComfyUI path.*
 
 Kill/rollback: if the retrained pack regresses any tag prompt vs the current
 `synthja` grid, ship the current pack and treat the offending override as a

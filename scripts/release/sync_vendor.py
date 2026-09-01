@@ -24,7 +24,11 @@ Four targets (the tagger node no longer vendors anything — it depends on the
   ``library/runtime/fei.py`` and ``networks/lora_modules/router_state.py``
   transitively, so we vendor all three verbatim. Trained router weights are
   bit-sensitive to these kernels, so any drift between the live tree and
-  vendored copy produces silently corrupted gates at inference. Skipped (with a
+  vendored copy produces silently corrupted gates at inference. Also vendors
+  ``library/anima/ext_vocab.py`` — the CJK vocab-pack runtime (tokenizer
+  segmentation + ``HybridT5Encoder``) the ``AnimaVocabPackLoader`` node uses;
+  the trained ext rows are keyed to its exact segmentation, so drift here
+  silently mis-routes prompts to wrong rows. Skipped (with a
   warning) when the standalone repo isn't checked out beside anima_lora.
 * ``custom_nodes/comfyui-anima-trainer/_vendor/`` — the stdlib daemon *client*
   the trainer node submits jobs through. Lets the node be installed outside
@@ -250,10 +254,14 @@ HYDRALORA_VERBATIM: list[tuple[str, str]] = [
     ("library/inference/router_compute.py", "library/inference/router_compute.py"),
     ("library/runtime/fei.py", "library/runtime/fei.py"),
     ("networks/lora_modules/router_state.py", "networks/lora_modules/router_state.py"),
+    # CJK vocab-pack runtime (segment_runs / HybridT5Encoder / load_ext_assets)
+    # for the AnimaVocabPackLoader node — pure CPU, torch + safetensors only.
+    ("library/anima/ext_vocab.py", "library/anima/ext_vocab.py"),
 ]
 
 HYDRALORA_PACKAGE_DIRS: list[str] = [
     "library",
+    "library/anima",
     "library/inference",
     "library/runtime",
     "networks",

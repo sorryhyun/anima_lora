@@ -10,7 +10,7 @@ here duplicates measured tables — those stay with the reports and
 | Piece | Where | State |
 |---|---|---|
 | Ext table build (Qwen CJK tokens → T5 space, anchor init, byte-permutation tie-break) | `bench/cjk_adapter/build_ext.py`, `ext_vocab.build_ext_table` → `bench/cjk_adapter/assets/ext_embed.{safetensors,json}` | done; rebuild only after an init change |
-| Hybrid encoder (CJK spans → ext ids; bit-identical on pure EN) | `bench/cjk_adapter/ext_vocab.py::HybridT5Encoder` | done; **to promote into `library/anima/`** at ship |
+| Hybrid encoder (CJK spans → ext ids; bit-identical on pure EN) | `library/anima/ext_vocab.py::HybridT5Encoder` (canonical since 2026-09-01; `bench/cjk_adapter/ext_vocab.py` is a re-export shim) | promoted; also on the Adapter node's `_vendor` surface |
 | Probe / acceptance harness (arm sweep, `--ext`, `--prompts` render grid, `--adapter_lora`) | `bench/cjk_adapter/run_bench.py` | done |
 | Residual name probe (adapter-space floor gate) | `bench/cjk_adapter/residual_probe.py` | done; diagnostic only |
 | Distill loop: corpus cache (process-pool stager, 67 pairs/s), ext-table ladder, objectives (`span`/`attn`/`flat`), register sampling / span scaling, warm start | `scripts/distill_cjk/{cache,config,data,distill,ext_table,losses,attn_bank}.py` (`make exp-cjk-cache` / `exp-distill-cjk`) | done |
@@ -44,7 +44,8 @@ Caches on disk: `post_image_dataset/cjk_distill/cache_synth2` (~155–170 G,
 
 | pack | recipe | role |
 |---|---|---|
-| **`synthja_v3`** | v2 corpus + §5a `tags_synth_ja` (2,249 under-floor tag pairs; report 0831 §6) | **the ship candidate** — keeps every v2 gain, adds c1/c2/c3/t2/t6; t3 armor still open |
+| **`synthja_v4`** | v3 + the 2b allowed-kanji filter (jōyō+jinmeiyō whitelist; report 0831_kanji_filter) | **the shipped test pack** — published 2026-09-01 as `anima_ja_vocab_pack.{safetensors,json}` at https://huggingface.co/sorryhyun/anima-vocab-pack-ja (metadata-stamped, + Qwen3 tokenizer files) |
+| `synthja_v3` | v2 corpus + §5a `tags_synth_ja` (2,249 under-floor tag pairs; report 0831 §6) | superseded by `synthja_v4` — keeps every v2 gain, adds c1/c2/c3/t2/t6; t3 armor still open |
 | `synthja_v2` | first pack on the rebuilt corpus (name-axis fix + `, ` joiner) | superseded by `synthja_v3` same day |
 | `synthja` | `param=global`, `loss=span`, registers `tags,tags_alt,names,names_synth,names_synth_ja`, 12k steps, `、`-joined corpus | superseded by `synthja_v2`; keep as the pre-rebuild reference |
 | `synthja_lora16{,_reg}` (+ `.adapter_lora.safetensors`) | plan3 arms | kept as reference for a future DiT-side-target line; nothing ships |
@@ -70,7 +71,8 @@ Rare kanji character names are **out of scope for v1** (users type
 present but untrained (never-visited rows stay at zero-shot init and are
 flagged; demote to `<unk>` in the JSON if they poison neighbours).
 
-Surfaces (none built yet — [`plan.md`](plan.md) Phase 3):
+Surfaces (status notes inline in [`plan.md`](plan.md) Phase 3 — as of
+2026-09-01 the ComfyUI node + HF test release exist; the in-repo shim does not):
 
 - **In-repo**: strategy shim routes CJK spans through `HybridT5Encoder` when
   the sidecar is present (flag to disable); `load_dit_model` appends rows to
