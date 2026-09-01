@@ -1804,3 +1804,106 @@ def test_kill_tree_survives_access_denied(monkeypatch):
         child.wait()
     # The denied member is skipped, but the reachable one still gets escalated.
     assert reaped == [child.pid]
+
+
+# --- issues.md fixes: job labelling / status legibility / bounded wait --------
+
+
+def test_label_for_borrows_the_child_label():
+    """A bench script's own ``--label`` names the daemon job too (issues.md §2).
+
+    ``daemon-run``'s ``--label`` must precede the script path, but bench scripts
+    define one themselves and muscle memory puts it after — labelling the bench
+    run dir while the job record stayed generic, so a grid of N runs rendered as
+    N identical rows. Display only: the child argv is never rewritten.
+    """
+    from anima_daemon.cli import _label_for
+
+    assert _label_for(["bench/x/run_bench.py", "--label", "ko3_a"]) == "run_bench:ko3_a"
+    assert _label_for(["bench/x/run_bench.py", "--label=ko3_b"]) == "run_bench:ko3_b"
+    assert _label_for(["bench/x/run_bench.py", "--limit", "5"]) == "run_bench"
+    assert _label_for(["-m", "pkg.mod.distill", "--label", "x"]) == "distill:x"
+    assert _label_for(["-m", "pkg.mod.distill"]) == "distill"
+    # an inline snippet still has no name to take, and neither does an empty argv
+    assert _label_for(["-c", "print(1)"]) == "command"
+    assert _label_for([]) == "command"
+
+
+def test_job_target_prefers_semantic_flags_over_label():
+    from scripts.tasks.daemon import _job_target
+
+    cmd = lambda argv: {"kind": "command", "argv": argv}  # noqa: E731
+    # --label is the LAST resort among flags, so soup/preprocess keep their names
+    assert _job_target(cmd(["run.py", "--name", "soupA", "--label", "ignored"])) == (
+        "soupA"
+    )
+    assert _job_target(cmd(["bench/x/run_bench.py", "--label", "ko3_a"])) == "ko3_a"
+    assert _job_target(cmd(["bench/x/run_bench.py", "--label=ko3_b"])) == "ko3_b"
+    # …and without one it still falls back to the script path, as before
+    assert _job_target(cmd(["bench/x/run_bench.py"])) == "bench/x/run_bench.py"
+    assert _job_target({"kind": "train", "overrides": {"output_name": "a"}}) == "a"
+
+
+def test_status_rows_carry_the_exit_code(daemon, monkeypatch, capsys):
+    """A `done` row and a "done but rc=1" row must not look identical (§3)."""
+    import anima_daemon.client as daemon_client
+    from scripts.tasks import daemon as daemon_tasks
+
+    cl, _ = daemon
+    monkeypatch.setattr(daemon_client, "DaemonClient", lambda port=None: cl)
+    cl.submit(method="lora", overrides={"duration": 0.3})
+    daemon_tasks.cmd_daemon_status([])
+    out = json.loads(capsys.readouterr().out)
+    assert "returncode" in out["jobs"][0]
+
+
+def test_print_queued_prints_hints_once_per_process(capsys, monkeypatch):
+    """Queueing a grid must not bury the `queued job` lines in cheat-sheets (§4)."""
+    from scripts.tasks import _common
+
+    monkeypatch.setattr(_common, "_QUEUED_HINTS_SHOWN", False)
+
+    class _Cl:
+        base = "http://127.0.0.1:8765"
+
+    _common._print_queued(_Cl(), "job-1", "command=a")
+    first = capsys.readouterr().out
+    _common._print_queued(_Cl(), "job-2", "command=b")
+    second = capsys.readouterr().out
+
+    assert "queued job job-1" in first and "daemon-attach" in first
+    # the repeat keeps its own identifying line and drops the four hint lines
+    assert second.strip() == "queued job job-2 (command=b). daemon: " + _Cl.base
+
+
+def test_wait_timeout_reports_where_the_job_stands(tmp_path, capsys):
+    """`--timeout` must hand back the in-flight status, not an empty buffer (§5)."""
+    from anima_daemon import cli as daemon_cli
+
+    stream = tmp_path / "progress.jsonl"
+    stream.write_text(
+        '{"ev":"run_start","run":"r","total_steps":100}\n'
+        '{"ev":"step","global_step":7,"loss":0.5}\n',
+        encoding="utf-8",
+    )
+
+    class _Cl:
+        def wait(self, job_id, timeout=None):
+            raise TimeoutError(f"timed out after {timeout}s")
+
+        def job_record(self, job_id):
+            return {
+                "id": job_id,
+                "state": "running",
+                "progress_path": str(stream),
+                "stdout_path": str(tmp_path / "stdout.log"),
+            }
+
+    rc = daemon_cli._wait_and_report(_Cl(), "job-1", timeout=1.0)
+    captured = capsys.readouterr()
+    assert rc == 124  # timeout(1)'s convention, unchanged
+    assert "timed out" in captured.err
+    snap = json.loads(captured.out)
+    assert snap["timed_out"] is True and snap["state"] == "running"
+    # the last progress event is the point: healthy-but-slow vs wedged
+    assert snap["latest"]["global_step"] == 7

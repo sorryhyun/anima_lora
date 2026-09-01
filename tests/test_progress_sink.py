@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import logging
 import os
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +18,19 @@ from library.training.progress import (
     _flatten_logs,
     read_status,
 )
+
+
+def _load_run_status():
+    """``scripts/`` is not an installed package — load the CLI by path."""
+    path = Path(__file__).resolve().parent.parent / "scripts" / "run_status.py"
+    spec = importlib.util.spec_from_file_location("run_status", path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["run_status"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+rs = _load_run_status()
 
 
 def _read_events(path: str) -> list[dict]:
@@ -262,3 +278,61 @@ def _unused_pid() -> int:
         except Exception:
             continue
     raise RuntimeError("no free pid found")
+
+
+# --- run_status.py stream discovery (issues.md §1: the default launch path is
+# the daemon, whose per-job stream lives outside output/logs) ---
+
+
+def _daemon_stream(jobs_dir, job_id: str, run: str) -> None:
+    """Write what a daemon train job produces: <jobs>/<id>/progress.jsonl.
+
+    The daemon overrides --progress_jsonl with a per-job path (manager._build_cmd),
+    so the filename is bare — the run name exists only inside `run_start`.
+    """
+    d = jobs_dir / job_id
+    d.mkdir(parents=True)
+    (d / "progress.jsonl").write_text(
+        json.dumps(_run_start(run=run))
+        + "\n"
+        + json.dumps({"ev": "step", "ts": 1.0, "global_step": 5, "epoch": 0})
+        + "\n"
+    )
+
+
+def test_run_status_finds_daemon_job_streams(tmp_path):
+    """`make run-status RUN=<name>` used to exit 1 on a healthy daemon run: it
+    scanned only output/logs, where a daemon run leaves the snapshot + TB events
+    but no progress.jsonl."""
+    logs, jobs = tmp_path / "logs", tmp_path / "jobs"
+    logs.mkdir()
+    (logs / "inline_run.progress.jsonl").write_text(
+        json.dumps(_run_start(run="x")) + "\n"
+    )
+    _daemon_stream(jobs, "20260901-180249-1334d2", "cjk_unmask_a")
+
+    found = rs._find_streams(logs, jobs)
+    assert len(found) == 2  # both launch paths, one list
+
+    # a daemon run resolves by its run name (matched inside the stream)…
+    hit = rs._resolve("cjk_unmask_a", logs, jobs)
+    assert hit.parent.name == "20260901-180249-1334d2"
+    assert rs._stream_run_name(hit) == "cjk_unmask_a"
+    # …and by the job id, which is all a daemon-status listing gives you
+    assert rs._resolve("20260901-180249-1334d2", logs, jobs) == hit
+    # the flat logs/ name still resolves from its filename, no file read needed
+    assert rs._resolve("inline_run", logs, jobs).name == "inline_run.progress.jsonl"
+
+    # a genuine miss still fails loudly, naming both places it looked
+    with pytest.raises(SystemExit) as ei:
+        rs._resolve("nope", logs, jobs)
+    assert "logs" in str(ei.value) and "jobs" in str(ei.value)
+
+
+def test_run_status_skips_command_jobs_and_survives_empty_dirs(tmp_path):
+    """A command job's dir exists but never materializes a progress.jsonl."""
+    logs, jobs = tmp_path / "logs", tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "20260901-1200-abcdef").mkdir()  # command job: no stream
+    assert rs._find_streams(logs, jobs) == []  # missing logs dir is not an error
+    assert rs._find_streams(logs, None) == []

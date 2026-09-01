@@ -582,9 +582,22 @@ def _attach_hints(job_id: str) -> str:
     )
 
 
+# Whether this process has already printed the queued-job cheat-sheet. Queueing
+# a grid in one `for` loop repeated five lines of hints per job and buried the
+# one line the reader wanted ("what did the queue just get?"), so the hints go
+# out once and every later submit prints only its own `queued job` line.
+_QUEUED_HINTS_SHOWN = False
+
+
 def _print_queued(cl, job_id: str, desc: str) -> None:
+    global _QUEUED_HINTS_SHOWN
+    line = f"queued job {job_id} ({desc}). daemon: {cl.base}"
+    if _QUEUED_HINTS_SHOWN:
+        print(line)
+        return
+    _QUEUED_HINTS_SHOWN = True
     print(
-        f"queued job {job_id} ({desc}). daemon: {cl.base}\n"
+        f"{line}\n"
         f"  make daemon-attach JOB={job_id}   # follow this job's output\n"
         f"  make daemon-attach                # follow queue/lifecycle events\n"
         f"  make daemon-kill JOB={job_id}     # cancel it\n"

@@ -37,6 +37,8 @@ The daemon-routed batch-generation front door — same argv + env levers as `mak
 
 ## Run status: `make run-status`
 
-"Where is this run at?" — `step N/total`, it/s, ETA, last losses, last ckpt, and `RUNNING`/`OK`/`ERROR`/`DEAD` (no `run_end` + dead pid), digested from the run's `progress.jsonl` (`library/training/progress.py::read_status` — importable; `scripts/run_status.py` is the CLI). Defaults to the newest stream under `output/logs`; `RUN=<output_name|path>` selects, `ARGS="--list"` for all, `ARGS="--json"` for the dict. Covers train.py methods **and** `make turbo`.
+"Where is this run at?" — `step N/total`, it/s, ETA, last losses, last ckpt, and `RUNNING`/`OK`/`ERROR`/`DEAD` (no `run_end` + dead pid), digested from the run's `progress.jsonl` (`library/training/progress.py::read_status` — importable; `scripts/run_status.py` is the CLI). Covers train.py methods **and** `make turbo`.
+
+**Both launch paths are scanned**: an inline run's `output/logs/<name>.progress.jsonl` *and* a daemon job's `output/daemon/jobs/<id>/progress.jsonl` (the daemon overrides `--progress_jsonl` with a per-job path, so the run dir under `output/logs/` holds the snapshot + TB events but no stream). Defaults to the newest stream from either; `RUN=<output_name|job id|path>` selects — a daemon stream's filename is bare, so a run name there is matched against the `run_start` event inside it, and the header prints `(job <id>)` so the follow-up needs no lookup. `ARGS="--list"` for all, `ARGS="--json"` for the dict, `ARGS="--jobs-dir ''"` to skip the daemon dirs.
 
 Don't export the TB events file to answer this; if you do need every scalar, `make export-logs RUN=output/logs/<run> SUMMARY=1` prints max-step + last value per tag (the raw payload is `{"run", "tags": {tag: [[step, wall_time, value], …]}}` — value is `row[2]`).

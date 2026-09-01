@@ -12,11 +12,20 @@ step N/total, rate, ETA, last losses, last checkpoint, and whether the run is
 still alive (``running``), finished (``ok``), or died (``error`` / ``stopped`` /
 ``dead``). Works for any run that emits the sink — ``train.py`` methods and the
 bespoke ``make turbo`` loop alike.
+
+Both launch paths are covered: an inline run writes
+``output/logs/<output_name>.progress.jsonl``, while a **daemon** job (the default
+launch mode) is handed an explicit per-job path,
+``output/daemon/jobs/<id>/progress.jsonl`` — same stream, different home and a
+bare filename that carries no run name. So daemon job dirs are scanned too, and
+a run name there is matched against the ``run_start`` event inside the stream
+(a job id works as a target as well).
 """
 
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import sys
 from pathlib import Path
@@ -27,18 +36,61 @@ from library.env import resolve_under_home  # noqa: E402
 from library.training.progress import read_status  # noqa: E402
 
 _SUFFIX = ".progress.jsonl"
+# The daemon points every train job's sink here (manager._build_cmd), one dir
+# per job id, so the filename is bare — no `<run>` prefix to match on.
+_DAEMON_NAME = "progress.jsonl"
 
 
-def _find_streams(logs_dir: Path) -> list[Path]:
-    """Every progress stream under ``logs_dir``, newest-modified first."""
-    if not logs_dir.is_dir():
-        return []
-    streams = [p for p in logs_dir.rglob(f"*{_SUFFIX}") if p.is_file()]
-    return sorted(streams, key=lambda p: p.stat().st_mtime, reverse=True)
+def _find_streams(logs_dir: Path, jobs_dir: Path | None = None) -> list[Path]:
+    """Every progress stream under ``logs_dir`` + the daemon job dirs, newest first."""
+    streams: list[Path] = []
+    if logs_dir.is_dir():
+        streams += [p for p in logs_dir.rglob(f"*{_SUFFIX}") if p.is_file()]
+    if jobs_dir is not None and jobs_dir.is_dir():
+        # Only train jobs get a sink; a command job's progress.jsonl never
+        # materializes, so is_file() is the filter.
+        streams += [p for p in jobs_dir.glob(f"*/{_DAEMON_NAME}") if p.is_file()]
+
+    def _mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:  # pruned between the glob and the stat
+            return 0.0
+
+    return sorted(streams, key=_mtime, reverse=True)
 
 
-def _resolve(target: str | None, logs_dir: Path) -> Path:
-    """Resolve a path / run name / nothing-at-all to one stream file."""
+def _stream_run_name(path: Path) -> str | None:
+    """The run (``output_name``) a stream belongs to, or ``None``.
+
+    A flat ``logs/`` stream carries it in the filename; a daemon job's stream is
+    always ``<job dir>/progress.jsonl``, so the only copy of the name is the
+    ``run`` field of the ``run_start`` event — the first line of the file.
+    """
+    if path.name.endswith(_SUFFIX):
+        return path.name[: -len(_SUFFIX)]
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in itertools.islice(fh, 20):
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if rec.get("ev") == "run_start":
+                    return rec.get("run")
+    except OSError:
+        return None
+    return None
+
+
+def _job_id_for(path: Path) -> str | None:
+    """The daemon job id owning this stream (its dir name), for flat-named files."""
+    return path.parent.name if path.name == _DAEMON_NAME else None
+
+
+def _resolve(target: str | None, logs_dir: Path, jobs_dir: Path | None) -> Path:
+    """Resolve a path / run name / job id / nothing-at-all to one stream file."""
+    streams = _find_streams(logs_dir, jobs_dir)
     if target:
         direct = resolve_under_home(target)
         if direct.is_file():
@@ -46,16 +98,28 @@ def _resolve(target: str | None, logs_dir: Path) -> Path:
         named = logs_dir / f"{target}{_SUFFIX}"
         if named.is_file():
             return named
-        # a run name that doesn't sit flat in logs_dir (per-job daemon dirs)
-        matches = [p for p in _find_streams(logs_dir) if p.name == f"{target}{_SUFFIX}"]
-        if matches:
-            return matches[0]
-        raise SystemExit(f"no progress stream for {target!r} (looked under {logs_dir})")
-    streams = _find_streams(logs_dir)
+        # A run name that doesn't sit flat in logs_dir: a nested logs/<run>/ dir,
+        # or a daemon job dir (matched on the in-stream run name, or the job id).
+        # Streams are newest-first, so the first hit is the latest run of a name
+        # that has been trained more than once.
+        hit = next(
+            (
+                p
+                for p in streams
+                if _job_id_for(p) == target or _stream_run_name(p) == target
+            ),
+            None,
+        )
+        if hit is not None:
+            return hit
+        where = f"{logs_dir}" + (f" and {jobs_dir}" if jobs_dir else "")
+        raise SystemExit(f"no progress stream for {target!r} (looked under {where})")
     if not streams:
         raise SystemExit(
-            f"no *{_SUFFIX} under {logs_dir} — no run has started, or the sink is "
-            "disabled (--no_log / --progress_jsonl off)."
+            f"no progress stream under {logs_dir}"
+            + (f" or {jobs_dir}" if jobs_dir else "")
+            + " — no run has started, or the sink is disabled "
+            "(--no_log / --progress_jsonl off)."
         )
     return streams[0]
 
@@ -81,9 +145,13 @@ def format_status(st: dict, *, metric_limit: int = 6) -> str:
     total = st["total_steps"] or "?"
     pct = f" ({st['pct']:.1f}%)" if st["pct"] is not None else ""
     rate = f"{st['rate']:.2f} it/s" if st["rate"] else "? it/s"
+    # A daemon-launched run: name the job so the follow-up (`make daemon-status
+    # ARGS="--job <id>"`, `make daemon-attach JOB=<id>`) needs no lookup step.
+    job = _job_id_for(Path(st["path"]))
+    where = f" (job {job})" if job else ""
     head = (
-        f"{st['run'] or st['path']} [{st['method'] or '?'}] {st['status'].upper()}  "
-        f"step {step}/{total}{pct}  {rate}  "
+        f"{st['run'] or st['path']}{where} [{st['method'] or '?'}] "
+        f"{st['status'].upper()}  step {step}/{total}{pct}  {rate}  "
         f"elapsed {_fmt_dur(st['elapsed'])}  ETA {_fmt_dur(st['eta'])}"
     )
     lines = [head]
@@ -123,18 +191,28 @@ def main(argv: list[str] | None = None) -> int:
         help="where to look up run names (default: output/logs).",
     )
     p.add_argument(
+        "--jobs-dir",
+        default="output/daemon/jobs",
+        help="daemon job dirs, each holding a per-job progress.jsonl "
+        "(default: output/daemon/jobs). Pass '' to skip them.",
+    )
+    p.add_argument(
         "--list", action="store_true", help="report every run found, newest first."
     )
     p.add_argument("--json", action="store_true", help="emit the status dict as JSON.")
     args = p.parse_args(argv)
 
     logs_dir = resolve_under_home(args.logs_dir)
+    jobs_dir = resolve_under_home(args.jobs_dir) if args.jobs_dir else None
     if args.list:
-        streams = _find_streams(logs_dir)
+        streams = _find_streams(logs_dir, jobs_dir)
         if not streams:
-            raise SystemExit(f"no *{_SUFFIX} under {logs_dir}")
+            raise SystemExit(
+                f"no progress stream under {logs_dir}"
+                + (f" or {jobs_dir}" if jobs_dir else "")
+            )
     else:
-        streams = [_resolve(args.target, logs_dir)]
+        streams = [_resolve(args.target, logs_dir, jobs_dir)]
 
     statuses = []
     for path in streams:

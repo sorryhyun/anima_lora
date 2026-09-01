@@ -97,6 +97,10 @@ _STATUS_JOB_FIELDS = (
     "submitted_at",
     "started_at",
     "ended_at",
+    # Exit code. Without it a clean `done` and a "done but rc=1" row read
+    # identically, so a queue-N-and-check-later batch had to open every job
+    # record to find the failures. Negative = signal death (-9 = SIGKILL).
+    "returncode",
     "error",
     "ckpt_path",
     # Where a finished bench/gen job landed its envelope — "where did my run
@@ -179,15 +183,21 @@ def _parse_status_flags(extra):
 def _job_target(job: dict) -> str | None:
     """Best-effort label for *what* a job operates on — the missing piece when
     skimming the queue. Command jobs (soup/preprocess/distill) carry it in
-    ``argv`` (``--name`` / ``--path_pattern``, else the ``-m`` module); train jobs
-    carry it as the ``output_name`` override, else fall back to ``method``."""
+    ``argv`` (``--name`` / ``--path_pattern`` / the bench script's own
+    ``--label``, else the ``-m`` module); train jobs carry it as the
+    ``output_name`` override, else fall back to ``method``.
+
+    ``--label`` is scanned last and is what separates a grid of N bench runs of
+    the same script — otherwise they render as N identical ``argv[0]`` rows.
+    It is derived at read time, so it also rescues jobs already on disk."""
     argv = job.get("argv") or []
     if job.get("kind") == "command":
-        for flag in ("--name", "--path_pattern", "--output_name"):
-            if flag in argv:
-                i = argv.index(flag)
-                if i + 1 < len(argv):
+        for flag in ("--name", "--path_pattern", "--output_name", "--label"):
+            for i, tok in enumerate(argv):
+                if tok == flag and i + 1 < len(argv):
                     return argv[i + 1]
+                if tok.startswith(f"{flag}="):
+                    return tok.split("=", 1)[1]
         if "-m" in argv:
             i = argv.index("-m")
             if i + 1 < len(argv):
@@ -364,7 +374,10 @@ def cmd_daemon_wait(extra):
     The non-streaming half of "submit → wait → read the result": no log volume,
     and it reads the persisted ``job.json`` if the daemon restarts mid-wait. Ctrl-C
     detaches (exit 130) — the job keeps running. ``ARGS="--timeout 600"`` bounds the
-    wait (exit 124, like ``timeout(1)``).
+    wait (exit 124, like ``timeout(1)``) and prints a JSON snapshot — state plus
+    the last progress event and its staleness — so a scripted caller that gives up
+    still learns whether the job is healthy-but-slow or wedged, rather than
+    wrapping this in its own ``timeout`` and losing the status entirely.
     """
     extra = list(extra or [])
     timeout = None

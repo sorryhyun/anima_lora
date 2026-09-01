@@ -46,7 +46,11 @@ detaches, and `--label NAME` overrides the auto-derived label. `daemon-run`'s
 own flags (`--label`, `--stall-timeout`) are recognized only **before** the
 script path — after it every token belongs to the child (bench scripts define
 `--label` themselves), and a literal `--` makes everything after it child argv
-verbatim, run-mode flags included. The same three
+verbatim, run-mode flags included. When the daemon side wasn't given a label,
+the child's own `--label` is folded into the display one
+(`run_bench --label ko3_a` → job `run_bench:ko3_a`), so a grid of N runs of the
+same script doesn't render as N identical rows; the child argv is passed through
+untouched either way. The same three
 verbs exist inside the package for callers that can't import `tasks.py` (a
 vendored node tree, a bare checkout):
 
@@ -56,10 +60,19 @@ python -m anima_daemon wait <job_id> [--timeout S]      # exit = job's exit code
 python -m anima_daemon status [job_id]
 ```
 
+`wait --timeout S` exits `124` (like `timeout(1)`) **and** prints a JSON
+snapshot of where the job stands — `state`, the last `progress.jsonl` event and
+its staleness — so a scripted caller that gives up still learns whether the run
+is healthy-but-slow or wedged, instead of wrapping this in its own `timeout` and
+losing the status to the attach buffer.
+
 `daemon-status` is the one-shot answer to "is anything running and where do I
 talk to it" — scripts and agents should start there instead of assuming a port.
 Each compact job carries a derived `target` (what it operates on — the soup
-name, the train `output_name`), and `jobs_total`/`jobs_shown` report truncation.
+name, the train `output_name`, a bench script's own `--label`) plus its
+`returncode`, so a clean `done` and a "terminal but nonzero / signal-killed" row
+are distinguishable in the listing rather than one `--job <id>` open per job.
+`jobs_total`/`jobs_shown` report truncation.
 The job list is **newest first** and capped to the most-recent 15 by default;
 filter it with `ARGS="…"` (or pass the flags directly to the CLI):
 

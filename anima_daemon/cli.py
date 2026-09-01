@@ -36,22 +36,46 @@ VERBS = ("submit", "wait", "status", "prune")
 
 
 def _label_for(argv: list[str]) -> str:
-    """Derive a display label from the child argv: the script/module basename.
+    """Derive a display label from the child argv: the script/module basename,
+    plus the child's own ``--label`` when it has one.
 
     ``["project/x/bench/run_pair_census.py", "--limit", "5"]`` → ``run_pair_census``;
     ``["-m", "scripts.distill_turbo.distill"]`` → ``distill``. An inline
     ``python -c <src>`` has no name to take, so it stays ``command`` rather than
     becoming a slice of source code.
+
+    ``daemon-run``'s own ``--label`` must precede the script path, but bench
+    scripts take a ``--label`` of their own and muscle memory puts it after —
+    labelling the bench *run dir* while the job record stayed generic, so a grid
+    of N runs showed as N identical rows. When the daemon side wasn't given a
+    label, borrow the child's: ``run_bench --label ko3_a`` → ``run_bench:ko3_a``.
+    Display only — the child argv is passed through untouched either way.
     """
+    name = None
     for i, tok in enumerate(argv):
         if tok == "-m" and i + 1 < len(argv):
-            return argv[i + 1].rsplit(".", 1)[-1]
+            name = argv[i + 1].rsplit(".", 1)[-1]
+            break
         if tok == "-c":
             return "command"
         if tok.startswith("-"):
             continue
-        return Path(tok).stem or tok
-    return "command"
+        name = Path(tok).stem or tok
+        break
+    if name is None:
+        return "command"
+    child = _child_label(argv)
+    return f"{name}:{child}" if child else name
+
+
+def _child_label(argv: list[str]) -> Optional[str]:
+    """The value of a ``--label`` (or ``--label=``) in the child's own argv."""
+    for i, tok in enumerate(argv):
+        if tok == "--label" and i + 1 < len(argv):
+            return argv[i + 1] or None
+        if tok.startswith("--label="):
+            return tok.split("=", 1)[1] or None
+    return None
 
 
 def _print_json(obj) -> None:
@@ -115,9 +139,40 @@ def cmd_wait(args: argparse.Namespace) -> int:
     return _wait_and_report(cl, args.job_id, timeout=args.timeout)
 
 
+def _timeout_snapshot(cl, job_id: str) -> dict:
+    """Where the job stands when the wait gave up — state + last progress event.
+
+    A bare ``timed out`` told a scripted caller nothing about whether the run was
+    healthy-but-slow or wedged, so the snapshot goes to stdout as JSON (the
+    timeout message itself stays on stderr).
+    """
+    out: dict = {"job_id": job_id, "timed_out": True}
+    try:
+        record = cl.job_record(job_id) or {}
+    except Exception:  # noqa: BLE001 — the daemon may be the thing that's wedged
+        record = {}
+    for key in ("state", "started_at", "stdout_path", "progress_path"):
+        if record.get(key) is not None:
+            out[key] = record[key]
+    # `latest` is the live field GET /jobs/{id} derives; fall back to reading the
+    # stream directly so a snapshot still works with the daemon down.
+    latest = record.get("latest")
+    if latest is None:
+        from . import tail
+
+        latest = tail.last_event(record.get("progress_path"))
+    if latest is not None:
+        out["latest"] = latest
+    if record.get("stale_for") is not None:
+        out["stale_for"] = record["stale_for"]
+    return out
+
+
 def _wait_and_report(cl, job_id: str, *, timeout: Optional[float]) -> int:
     """Block on the job, print its final record (+ lifted result envelope), and
-    return its exit code — ``124`` on wait timeout (matching ``timeout(1)``)."""
+    return its exit code — ``124`` on wait timeout (matching ``timeout(1)``),
+    with a snapshot of where the job stands so the caller keeps the in-flight
+    status instead of an empty buffer."""
     try:
         record = cl.wait(job_id, timeout=timeout)
     except LookupError as e:
@@ -125,6 +180,7 @@ def _wait_and_report(cl, job_id: str, *, timeout: Optional[float]) -> int:
         return 2
     except TimeoutError as e:
         print(str(e), file=sys.stderr)
+        _print_json(_timeout_snapshot(cl, job_id))
         return 124
     except KeyboardInterrupt:
         print(f"\ndetached (job {job_id} continues).", file=sys.stderr)

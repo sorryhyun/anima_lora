@@ -1,7 +1,12 @@
-# Unmask A/B — text masks off + OCR-quoted captions (2026-09-01, PROVISIONAL)
+# Unmask A/B — text masks off + OCR-quoted captions (2026-09-01)
 
-**Status: provisional — s42 readouts only; s7/s1234 renders still in the
-daemon queue. Verdict to be confirmed or revised on the full grid (K3).**
+**Status: CLOSED same-day, hypothesis confirmed with attribution.** Full
+3-seed grid: arm C (unmask + OCR-quoted captions) is no-worse and
+spam-cleaner than masked arm A on every seed. Decomposition arm B (unmask
+alone) then **reproduced the spam** — giant decorative gibberish on the cafe
+row, a large pseudo-JA-filled speech bubble on the comic row, cat ears +
+signature scribbles on the portrait row — so the health is attributable to
+**the captions explaining the text, not to unmasking**. See §Attribution.
 
 ## Goal (the line's final reframe, set this day)
 
@@ -69,31 +74,75 @@ difference is weights-only.
   hallucinate **cat ears** not in the prompt; **arm C does not** — the
   adherence win at this seed is C's.
 
-## Provisional verdict
+## Full-grid readout (s7 + s1234, model eyeball of A vs C pairs)
 
-At s42, the unmasked + OCR-captioned arm shows **no quality degradation and
-no text-spam increase** — the two failure modes the settled coarse-tag
-experiment produced — and on both inspected rows it *beats* A on spurious
-content (decorative gibberish, hallucinated cat ears). This despite the
-enablers being individually mediocre: OCR lines are gappy fragments of the
-real pages (60→73/133 imgs pass gates), and the synthjako2 pack's semantic
-performance on names is known-weak. The bar was "not worse than masking";
-s42 reads "possibly better".
+Text-spam events on text-free prompts, 8 rows × 3 seeds:
+
+- **Arm A, 3 clear spam events**: s42 row 6 (giant decorative gibberish
+  letters), **s7 row 3 (two spawned speech bubbles with pseudo-JA scribbles
+  on a plain hug prompt — the masked arm inventing bubbles)**, s7 row 8
+  (caption box + pseudo-JA text block beyond the asked comic layout).
+- **Arm C, zero bubble/decorative events**: worst cases are diegetic or
+  marginal — chalkboard menu scribbles (s42 row 6), a small signature
+  scribble (s1234 row 6), small kana SFX in the comic row (s7 row 8).
+- **Shared habits (not C regressions)**: `@handle`-style watermark scribbles
+  appear in BOTH arms at s1234 row 7, and punctuation SFX in both comic
+  rows — sincos signature/SFX marks apparently survive arm A's masks too.
+- Quality/adherence: C ≈ A everywhere else; several rows near-identical
+  (rows 1, 3@s1234, 5, 7@s7). Cat-ears hallucination: base+A only at s42
+  row 7; both arms at s1234 row 6.
+
+Mechanistic note on the s7 bubble spawn: masking removes the text pixels
+from the loss but the *bubble shapes* and their co-occurrence context still
+train, with the contents never supervised — the masked arm can learn
+"bubble with mush inside" as a compositional element. The captioned unmasked
+arm gets the contents supervised *and* explained, and did not spawn bubbles
+anywhere in the grid.
+
+## Verdict after the grid
+
+Consistent across all three seeds: the unmasked + OCR-captioned arm shows
+**no quality degradation and fewer text artifacts than the masked
+baseline** — the masked arm is the one that spawns bubbles and gibberish
+blocks. This despite the enablers being individually mediocre: OCR lines
+are gappy fragments of the real pages (73/133 imgs pass gates), and the
+synthjako2 pack's semantic performance on names is known-weak. The bar was
+"not worse than masking"; the grid reads "better".
+
+## Attribution (arm B readout, same day)
+
+Arm B (unmask + production captions, stock TE, no OCR;
+`configs/gui-methods/custom/cjk_unmask_b.toml`, renders
+`output/tests/cjk_unmask_eval/armB_s*`) **spams**:
+
+- s42 row 6: the giant decorative gibberish returns ("CDRGO MA / LH MAL"),
+  plus a signature scribble — the row where C stayed clean.
+- s7 row 8: a large spiky speech bubble **filled** with pseudo-JA text plus
+  scattered scribbles — heavier than A's caption box, no comparison to C's
+  small SFX.
+- s42 row 7: cat-ears hallucination (like base/A; C had none) + signature.
+- s7 row 3 stayed clean (A's bubble spawn did not reproduce here — single
+  instance variance both ways).
+
+Net: **B ≥ A in text artifacts; C is the clean arm.** Unmasking alone does
+not explain C — the OCR-quoted captions (through the ext encode) are the
+load-bearing element, which re-confirms the settled coarse-tag verdict
+("unexplained text unmasked = worse than masking") on this exact
+shard/recipe. The line's hypothesis — captioned text pixels become
+attributable and stop being poison — survives its decomposition test.
 
 ## Caveats / owed before a real verdict
 
-1. Single seed, 2/8 rows read closely — K3 says multi-seed before believing
-   any render claim. s7/s1234 pending in the queue.
-2. No quantitative spam count yet (tagger-judge pass deferred by user call —
-   eyeball first).
-3. Positive control unrun: does C render *asked-for* text
+1. ~~Single seed~~ Full 3-seed grid read (§above); eyeball only — no
+   quantitative tagger-judge count yet (deferred by user call).
+2. Positive control unrun: does C render *asked-for* text
    (`japanese text, 「…」` prompt through the ext encoder — needs merge or
    run_bench-style encode)? Not required for the unmask-health gate, but it
    is the attribution mechanism's direct signature.
-4. Confound to keep honest: C differs from A in TWO ways (mask off AND
-   captions/encoding). If the full grid confirms health, the decomposition
-   arm (mask off + production captions) is what the settled coarse-tag
-   experiment already approximates — but on *this* shard/recipe it was not
-   re-run. Any surprise should re-check against that.
-5. sincos has Chinese-typeset pages; OCR wrote them as kanji strings. Fine
+3. ~~Confound~~ → arm B queued (see verdict section). Note the settled
+   coarse-tag experiment was a different shard/recipe; B is the same-setup
+   re-measurement.
+4. sincos has Chinese-typeset pages; OCR wrote them as kanji strings. Fine
    for attribution, wrong as transcription.
+5. One shard, one recipe, 8 epochs — scale/duration effects (spam often
+   grows with training length) unmeasured.
