@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import collections.abc
 import json
 import re
 import subprocess
@@ -51,6 +52,8 @@ sys.path.insert(0, str(ROOT))
 
 import build_pairs  # noqa: E402  (sibling module — caption roots + loader)
 import kanji_allow  # noqa: E402  (sibling — the allowed-kanji set)
+from anime_tools.captions.position_clauses import parse_caption  # noqa: E402
+from mt import TAG_FEWSHOT, TAG_FEWSHOT_KO  # noqa: E402  (sibling — MT exemplars)
 
 WIKI_REPO = "kierarkia/danbooru-wiki-2026"
 WIKI_FILE = "danbooru_wiki_dataset_2026-04-28.jsonl"
@@ -285,6 +288,115 @@ def resolve_axis(
     return ("artist" if tag.startswith("@") else "general"), "default"
 
 
+# ---------------------------------------------------------------------------
+# Candidate contamination (2026-09-02). Two leak paths were found in the live
+# glossary: Hy-MT2 echoing its own few-shot list at tags it finds meaningless
+# (`:t` → `:女の子1人の全身写真、シンプルな背景、肩出し、制服、ニーハイ、金�`,
+# `\m/` → the whole list) or substituting an exemplar word the tag never
+# licensed (`pantyhose only` → ニーハイのみ, `chick` → 女の子1人); and the wiki
+# `other_names` field carrying fujoshi-community titles (`fire emblem` →
+# FE腐向け). All of these are vetoes: a rejected candidate falls to the next
+# one or to `unresolved` — nothing here invents a translation.
+
+FEWSHOT_NATIVE = {
+    "ja": [ja for _, ja in TAG_FEWSHOT],
+    "ko": [ko for _, ko in TAG_FEWSHOT_KO],
+}
+
+# JA exemplar word → EN stems that license it in the source tag. An MT
+# rendering carrying the word for a tag with none of the stems copied it from
+# the prompt, not from the tag. Substring match on the lowercased tag, so
+# `full-length mirror` keeps 全身鏡 and `2girls` keeps 女の子.
+EXEMPLAR_LICENCE: dict[str, tuple[str, ...]] = {
+    "ニーハイ": ("thigh", "knee", "legwear", "stocking", "sock"),
+    "肩出し": ("shoulder",),
+    "制服": ("uniform", "school", "serafuku", "seifuku", "sailor", "gakuran", "blazer"),
+    "ショートヘア": ("hair", "bob"),
+    "女の子1人": ("1girl", "girl", "female"),
+    "金髪": ("blonde", "gold", "yellow"),
+    "巨乳": ("breast", "bust", "busty", "oppai"),
+    "シンプルな背景": ("background",),
+    "全身": ("body", "full-length"),
+    "修正あり": ("censor",),
+}
+
+# Community-register markers that are only right when the tag is about them.
+# The wiki `other_names` of mainstream titles carry BL-community puns
+# (`fire emblem` → FE腐向け / ガチホモエムブレム, `granblue fantasy` → グラ腐ル,
+# `genshin impact` → 原神BL), and a name-axis alt is exactly what
+# ``build_pairs.alt_pool`` samples into captions. Marker regex → licensing EN
+# regex over the lowercased tag (word-bounded: `bl` must not match `black`).
+_BL = r"yaoi|fujoshi|boys'? love|shounen[- ]ai|\bbl\b"
+REGISTER_LICENCE: list[tuple[re.Pattern, re.Pattern]] = [
+    (re.compile("腐"), re.compile(_BL + r"|tofu|\brot|decay|zombie|corrupt")),
+    (re.compile("ホモ"), re.compile(_BL + r"|gay|homo|bara")),
+    (re.compile("やおい|ヤオイ"), re.compile(r"yaoi")),
+    (re.compile(r"(?<![A-Za-z])BL(?![A-Za-z])"), re.compile(_BL)),
+]
+
+
+def contaminated(cand: str, tag: str, src: str | None, lang: str = "ja") -> bool:
+    """Veto a candidate wording that is prompt/community contamination.
+
+    Classes (all veto-only — never require nativeness of a candidate):
+
+    a. broken or list-shaped text, any source: U+FFFD, or 2+ *distinct*
+       few-shot exemplar words (the echoed prompt); MT source only: the JA
+       enumeration/sentence punctuation ``、`` / ``。`` — real wiki titles carry
+       it legitimately (探偵はもう、死んでいる).
+    b. exemplar leak, MT source only (wiki/tag-pair names are real community
+       terms): an ``EXEMPLAR_LICENCE`` word whose stems are all absent from
+       the tag.
+    c. community-register markers, any source (``REGISTER_LICENCE``): 腐 /
+       ホモ / やおい / standalone ``BL`` — unless the tag itself is about BL
+       (or tofu, rot, …).
+    """
+    if "\ufffd" in cand:
+        return True
+    shots = FEWSHOT_NATIVE[lang]
+    if sum(1 for w in shots if w in cand) >= 2:
+        return True
+    if src == "mt" and ("、" in cand or "。" in cand):
+        return True
+    low = tag.lower()
+    if src == "mt" and lang == "ja":
+        for word, stems in EXEMPLAR_LICENCE.items():
+            if word in cand and not any(stem in low for stem in stems):
+                return True
+    for marker, licence in REGISTER_LICENCE:
+        if marker.search(cand) and not licence.search(low):
+            return True
+    return False
+
+
+# Danbooru emoticon / symbol tags. `:d`, `^^^`, `\m/` are typed latin in every
+# language ([[feedback_emoticon_tags_stay_latin]]): MT fullwidth-converts them
+# (`!` → `！`) or echoes the exemplar list at them, and the community field
+# offers *descriptions* (びっくりマーク), not the tag. The rules are shape-based
+# so a new emoticon needs no override.
+_EMOTICON_RES = (
+    re.compile(r"^[:;]\S{1,3}$"),  # :d :t ;) :<=
+    re.compile(r"^\S{1,3}[:;]$"),  # c: d: 3:
+    re.compile(r"^\S_\S$"),  # >_< o_o ^_^
+)
+_ALNUM = re.compile(r"[a-z0-9]", re.I)
+_FACE_CHARS = re.compile(r"[:;^<>|/\\_]")
+
+
+def is_symbol_tag(tag: str) -> bool:
+    """True for a tag whose surface is its own wording in every language."""
+    if not _ALNUM.search(tag):
+        return True  # ^^^  \||/  ...  !?  ??  + +
+    if any(r.match(tag) for r in _EMOTICON_RES):
+        return True
+    return (  # \m/  ^o^  \o/  3:<  m/
+        len(tag) <= 4
+        and " " not in tag
+        and len(_ALNUM.findall(tag)) <= 1
+        and _FACE_CHARS.search(tag) is not None
+    )
+
+
 def load_wiki(path: Path, lang: str = "ja") -> dict[str, list[str]]:
     if not path.exists():
         print(f"  [glossary] fetching {WIKI_REPO} …", flush=True)
@@ -314,7 +426,9 @@ def load_wiki(path: Path, lang: str = "ja") -> dict[str, list[str]]:
 
 
 def tag_counts(
-    caption_roots: list[tuple[Path, bool]], rules: Path
+    caption_roots: list[tuple[Path, bool]],
+    rules: Path,
+    known: collections.abc.Container[str] = frozenset(),
 ) -> collections.Counter:
     """Tag occurrences over the same caption roots ``build_pairs.py`` composes.
 
@@ -322,15 +436,27 @@ def tag_counts(
     with latin passthrough on every tag the narrow build never saw — so this
     shares ``build_pairs.load_captions`` (multi-root, raw roots normalized
     through gelcrawl's rules) rather than re-globbing one directory.
+
+    ``known`` (lowercased tag names — wiki titles, overrides, lexicon) repairs
+    the one ambiguity the clause grammar cannot resolve: a caption-final ``.``
+    is the terminator (``unworn panties.``) unless the tag itself ends in one
+    (``c.c.``, ``nanashi inc.``, ``takt op.``), so a stripped form that is not
+    a known tag while its dotted form is gets the dot back.
     """
     from build_pairs import load_captions  # noqa: PLC0415
 
     counts: collections.Counter = collections.Counter()
     for _, text in load_captions(caption_roots, rules):
-        for seg in text.split(","):
-            seg = seg.strip()
-            if seg:
-                counts[seg] += 1
+        # Position clauses (`<bag>. On the left, akita neru, yellow eyes.`)
+        # are period-delimited, so a comma split minted `weight. On the left`
+        # and bare `On the left` as tags; the grammar yields the bag plus each
+        # clause's own tags, header excluded.
+        parsed = parse_caption(text)
+        for seg in (*parsed.flat_tags, *(t for c in parsed.clauses for t in c.tags)):
+            counts[seg] += 1
+    for tag in list(counts):
+        if tag.lower() not in known and f"{tag.lower()}." in known:
+            counts[f"{tag}."] += counts.pop(tag)
     return counts
 
 
@@ -347,7 +473,8 @@ def build(args: argparse.Namespace) -> dict:
     kr_kb = load_kr_kb(Path(args.kr_kb)) if args.lang == "ko" else {}
     roots = [(Path(p), False) for p in args.captions]
     roots += [(Path(p), True) for p in (args.raw_captions or [])]
-    counts = tag_counts(roots, Path(args.tag_rules))
+    known = {t.lower() for t in (*wiki, *overrides, *lexicon)}
+    counts = tag_counts(roots, Path(args.tag_rules), known)
 
     axis_of: dict[str, str] = {}
     for axis in ("character", "copyright", "artist"):
@@ -360,7 +487,11 @@ def build(args: argparse.Namespace) -> dict:
         axis, axis_src = resolve_axis(tag, axis_of, wiki_axes, artists)
         entry = {"count": count, "axis": axis, "axis_src": axis_src, "alts": []}
 
-        wiki_names = wiki.get(tag.lower(), [])
+        wiki_names = [
+            n
+            for n in wiki.get(tag.lower(), [])
+            if not contaminated(n, tag, "wiki", args.lang)
+        ]
         lex = lexicon.get(tag)
 
         if tag in overrides:
@@ -368,6 +499,9 @@ def build(args: argparse.Namespace) -> dict:
             entry["alts"] = [n for n in wiki_names if n != overrides[tag]][
                 : args.max_alts
             ]
+        elif is_symbol_tag(tag):
+            # emoticons stay latin (`:d`, `^^^`) — pinned like artist handles
+            entry |= {"ja": tag, "via": "passthrough"}
         elif axis == "artist":
             # pixiv/danbooru handles are latin identity — users type them latin,
             # and translating them would train rows nobody prompts with.
@@ -387,10 +521,12 @@ def build(args: argparse.Namespace) -> dict:
                 else "wiki_han",
             }
             entry["alts"] = wiki_names[1 : 1 + args.max_alts]
-        elif kr_kb.get(tag):
+        elif any(not contaminated(n, tag, "kb", args.lang) for n in kr_kb.get(tag, [])):
             # general entries stay ARBITRATED (the --mt pass re-opens them);
             # name axes keep the KB wording directly, like the wiki tier
-            kb_names = kr_kb[tag]
+            kb_names = [
+                n for n in kr_kb[tag] if not contaminated(n, tag, "kb", args.lang)
+            ]
             entry |= {"ja": kb_names[0], "via": "kb"}
             entry["alts"] = kb_names[1 : 1 + args.max_alts]
         else:
@@ -485,7 +621,12 @@ def _f1(a: str, b: str) -> float:
 
 
 def choose(
-    entry: dict, cands: list[dict], mt: str, accept_f1: float, lang: str = "ja"
+    tag: str,
+    entry: dict,
+    cands: list[dict],
+    mt: str,
+    accept_f1: float,
+    lang: str = "ja",
 ) -> None:
     """Pick the wording for one tag from its scored candidates.
 
@@ -498,8 +639,14 @@ def choose(
     the same F1. Hence kana > the JA-targeting model's own rendering >
     everything else, and inside a kana tie the community field (which knows the
     booru *sense*) beats the MT rendering (which only knows the string).
+
+    ``contaminated`` runs first on every candidate and on the MT fallback
+    string (both the fresh ``--mt`` pass and ``--reselect`` land here), so a
+    prompt echo can neither win nor be kept as ``mt_unverified``. The raw
+    rendering still goes to ``mt_ja`` for the record.
     """
-    keep = [c for c in cands if c.get("ja_ok", True)]
+    bad = {c["ja"] for c in cands if contaminated(c["ja"], tag, c.get("src"), lang)}
+    keep = [c for c in cands if c.get("ja_ok", True) and c["ja"] not in bad]
     keep.sort(
         key=lambda c: (
             -c["f1"],
@@ -512,7 +659,12 @@ def choose(
     entry["candidates"] = [
         {k: c[k] for k in ("ja", "back", "f1", "kana", "src") if k in c} for c in keep
     ]
-    entry["rejected_non_ja"] = [c["ja"] for c in cands if not c.get("ja_ok", True)]
+    entry["rejected_non_ja"] = [
+        c["ja"] for c in cands if not c.get("ja_ok", True) and c["ja"] not in bad
+    ]
+    if bad:
+        entry["rejected_contaminated"] = [c["ja"] for c in cands if c["ja"] in bad]
+    mt_use = mt if mt and not contaminated(mt, tag, "mt", lang) else ""
 
     best = keep[0] if keep else None
     if best and best["f1"] >= accept_f1:
@@ -536,12 +688,12 @@ def choose(
         # (see KB_UNVERIFIED_FLOOR). Marked kb_unverified so the review file
         # and the trust policy see the class.
         entry |= {"ja": kb["ja"], "via": "kb_unverified", "f1": kb["f1"]}
-    elif mt and wording_ok(mt, lang):
+    elif mt_use and wording_ok(mt_use, lang):
         # No candidate recovers the tag — `closed mouth` came back as 目を閉じる
         # (closed *eyes*). Keep it, but mark it so the review file surfaces the
         # class instead of shipping it silently. (A rendering that fails the
         # kanji guard — 僵尸 — is not kept: better unresolved than Chinese.)
-        entry |= {"ja": mt, "via": "mt_unverified"}
+        entry |= {"ja": mt_use, "via": "mt_unverified"}
     elif best:
         entry |= {"ja": best["ja"], "via": "wiki_unverified", "f1": best["f1"]}
     else:
@@ -583,7 +735,7 @@ def reselect(
             }
             for c in (p.get("candidates") or [])
         ]
-        choose(e, cands, mt, accept_f1, lang)
+        choose(tag, e, cands, mt, accept_f1, lang)
         n += 1
     return n
 
@@ -676,10 +828,7 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
         zip(
             order,
             engine.translate(
-                [
-                    Request(text=t, background=background, terms=shots)
-                    for t in order
-                ],
+                [Request(text=t, background=background, terms=shots) for t in order],
                 target_lang=args.lang,
                 batch_size=args.batch_size,
                 progress_every=20,
@@ -750,6 +899,7 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
     for tag in order:
         mt = (mt_ja.get(tag) or "").strip().splitlines()
         choose(
+            tag,
             tags[tag],
             scored.get(tag, []),
             mt[0].strip() if mt else "",

@@ -369,7 +369,7 @@ def test_choose_prefers_community_sense_over_mt_at_equal_f1():
             "ja_ok": True,
         },
     ]
-    tag_glossary.choose(entry, cands, "お辞儀", 0.75)
+    tag_glossary.choose("bow", entry, cands, "お辞儀", 0.75)
     assert entry["ja"] == "蝶結び"
     assert entry["via"] == tag_glossary.TAGPAIR_VERIFIED_VIA
     assert entry["candidates"][0]["src"] == "tagpair"  # provenance persisted
@@ -401,9 +401,171 @@ def test_choose_keeps_kana_over_kanji_and_surfaces_the_rival():
             "ja_ok": True,
         },
     ]
-    tag_glossary.choose(entry, cands, "", 0.75)
+    tag_glossary.choose("armor", entry, cands, "", 0.75)
     assert entry["ja"] == "アーマー"
     assert entry["via"] == "wiki_verified"
 
     rows = tag_glossary.kanji_review_rows({"tags": {"armor": entry}})
     assert [(r[1], r[3]["ja"]) for r in rows] == [("armor", "鎧")]
+
+
+def _cand(ja, src, f1=0.0, back=""):
+    return {"ja": ja, "back": back, "f1": f1, "kana": True, "src": src, "ja_ok": True}
+
+
+@pytest.mark.parametrize(
+    "tag, cand, src",
+    [
+        # (a) the echoed few-shot prompt, with the truncation glyph
+        (
+            ":t",
+            ":女の子1人の全身写真、シンプルな背景、肩出し、制服、ニーハイ、金\ufffd",
+            "mt",
+        ),
+        (
+            "\\m/",
+            "女の子1人の全身写真、シンプルな背景、肩出し、制服、ニーハイ、金髪",
+            "mt",
+        ),
+        # (b) an exemplar word the tag never licensed
+        ("pantyhose only", "ニーハイのみ", "mt"),
+        ("backless panties", "肩出しパンティー", "mt"),
+        ("holding shorts", "ショートヘアを持つ", "mt"),
+        ("chick", "女の子1人", "mt"),
+        ("jojifuku", "制服", "mt"),
+        # (c) fujoshi-community titles from the wiki field
+        ("re:zero kara hajimeru isekai seikatsu", "腐ゼロ", "wiki"),
+        ("fire emblem", "FE腐向け", "wiki"),
+        ("bungou stray dogs", "文スト【腐】", "wiki"),
+        ("fire emblem", "ガチホモエムブレム", "wiki"),
+        ("granblue fantasy", "グラ腐ル", "wiki"),
+        ("genshin impact", "原神BL", "wiki"),
+    ],
+)
+def test_contaminated_rejects_prompt_echo_exemplar_leak_and_fujoshi(tag, cand, src):
+    assert tag_glossary.contaminated(cand, tag, src)
+
+
+@pytest.mark.parametrize(
+    "tag, cand, src",
+    [
+        ("full-length mirror", "全身鏡", "tagpair"),  # 全身 licensed by full-length
+        ("full-length mirror", "全身鏡", "mt"),
+        ("1girl", "女の子1人", "mt"),
+        ("2girls", "女の子2人", "mt"),
+        ("school uniform", "制服", "mt"),
+        ("tantei wa mou shindeiru", "探偵はもう、死んでいる", "wiki"),  # real title
+        ("yaoi", "腐向け", "wiki"),  # BL tag may keep its own register
+        ("yaoi", "ゲイ向け", "wiki"),
+        ("tofu", "豆腐", "mt"),
+        ("black hair", "黒髪", "mt"),  # `bl` is word-bounded
+        ("bleach", "BLEACH", "wiki"),
+        ("bow", "お辞儀", "mt"),
+    ],
+)
+def test_contaminated_keeps_licensed_and_community_wordings(tag, cand, src):
+    assert not tag_glossary.contaminated(cand, tag, src)
+
+
+def test_choose_never_keeps_a_contaminated_mt_rendering():
+    """`chick`: MT echoed 女の子1人 and it used to ship as `mt_unverified`
+    because the wiki rivals (ひよこ) scored F1 0. The veto must fall through to
+    the next candidate — and record what it dropped — not invent anything."""
+    entry = {"count": 3, "axis": "general", "alts": []}
+    cands = [_cand("ひよこ", "wiki", back="chick"), _cand("女の子1人", "mt")]
+    tag_glossary.choose("chick", entry, cands, "女の子1人", 0.75)
+    assert entry["ja"] == "ひよこ"
+    assert entry["via"] == "wiki_unverified"
+    assert entry["mt_ja"] == "女の子1人"  # the record survives
+    assert entry["rejected_contaminated"] == ["女の子1人"]
+    assert all(c["ja"] != "女の子1人" for c in entry["candidates"])
+
+    only = {"count": 2, "axis": "general", "alts": []}
+    tag_glossary.choose(
+        "\\m/",
+        only,
+        [_cand("女の子1人の全身写真、肩出し", "mt")],
+        "女の子1人の全身写真、肩出し",
+        0.75,
+    )
+    assert only["ja"] is None and only["via"] == "unresolved"
+
+
+@pytest.mark.parametrize(
+    "tag",
+    [
+        ":d",
+        ":t",
+        ";)",
+        ":<=",
+        "^^^",
+        "\\m/",
+        ">_<",
+        "\\||/",
+        "...",
+        "!?",
+        "??",
+        "!",
+        "...!",
+        "c:",
+        "3:",
+        "^o^",
+        "@ @",
+        "+ +",
+    ],
+)
+def test_symbol_tags_detected(tag):
+    assert tag_glossary.is_symbol_tag(tag)
+
+
+@pytest.mark.parametrize(
+    "tag", ["1girl", "3d", "c.c.", "em-2", "smile", "blue eyes", "@aak", "xd", "e.t."]
+)
+def test_word_tags_are_not_symbols(tag):
+    assert not tag_glossary.is_symbol_tag(tag)
+
+
+def test_tag_counts_follow_the_clause_grammar(tmp_path):
+    """A comma split minted `white socks. On the left` and bare `On the left`
+    as tags (60 of them in the live glossary); the grammar counts the bag plus
+    each clause's own tags, header excluded, and a clause-free caption is
+    unchanged."""
+    root = tmp_path / "artist"
+    root.mkdir()
+    (root / "a.txt").write_text(
+        "safe, 2girls, white socks. On the left, akita neru, yellow eyes. "
+        "On the right, kasane teto.",
+        encoding="utf-8",
+    )
+    (root / "b.txt").write_text("safe, 1girl, :d, smile, white socks", encoding="utf-8")
+    counts = tag_glossary.tag_counts([(tmp_path, False)], tmp_path / "no_rules.yaml")
+    assert counts == collections.Counter(
+        {
+            "safe": 2,
+            "2girls": 1,
+            "white socks": 2,
+            "akita neru": 1,
+            "yellow eyes": 1,
+            "kasane teto": 1,
+            "1girl": 1,
+            ":d": 1,
+            "smile": 1,
+        }
+    )
+    assert not any("On the" in t or t.endswith(".") for t in counts)
+
+
+def test_tag_counts_restores_the_dot_of_period_final_tag_names(tmp_path):
+    """`c.c.` / `nanashi inc.` end in a period by name; caption-final they look
+    like a terminated `unworn panties.` to the grammar. Known titles disambiguate."""
+    root = tmp_path / "artist"
+    root.mkdir()
+    (root / "a.txt").write_text("safe, code geass, c.c.", encoding="utf-8")
+    (root / "b.txt").write_text(
+        "safe, c.c., code geass, unworn panties.", encoding="utf-8"
+    )
+    counts = tag_glossary.tag_counts(
+        [(tmp_path, False)], tmp_path / "no_rules.yaml", known={"c.c.", "code geass"}
+    )
+    assert counts["c.c."] == 2 and "c.c" not in counts
+    assert counts["unworn panties"] == 1 and "unworn panties." not in counts
