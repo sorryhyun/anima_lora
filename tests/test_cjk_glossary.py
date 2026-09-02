@@ -569,3 +569,118 @@ def test_tag_counts_restores_the_dot_of_period_final_tag_names(tmp_path):
     )
     assert counts["c.c."] == 2 and "c.c" not in counts
     assert counts["unworn panties"] == 1 and "unworn panties." not in counts
+
+
+# ---- zh (plan_zh.md Z1) ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text, cls",
+    [
+        ("发", "hans"),  # canonical simplified: t2s(s2t) round-trips
+        ("国", "hans"),  # shinjitai == simplified: still hans
+        ("髮", "variant"),  # OpenCC-touched but no round trip
+        ("國", "hant"),
+        ("対", "shared"),  # JA shinjitai OpenCC never touches
+        ("双马尾", "hans"),
+        ("雙馬尾", "hant"),
+        ("制服", "shared"),
+        ("ツインテール", ""),
+    ],
+)
+def test_han_class_round_trip_rule(text, cls):
+    assert tag_glossary.han_class(text) == cls
+
+
+def test_is_chinese_uses_the_inventory_for_shared_wordings():
+    inv = set("制服巨乳棕毛")
+    assert tag_glossary.is_chinese("双马尾", inv)  # script-marked: no inventory needed
+    assert tag_glossary.is_chinese("藍眼睛", inv)  # hant is Chinese too
+    assert tag_glossary.is_chinese("制服", inv)  # shared, every char attested
+    assert not tag_glossary.is_chinese("泥酔", inv)  # shared, 酔 never seen in zh
+    assert not tag_glossary.is_chinese("髪飾り", inv)  # kana veto
+    assert not tag_glossary.is_chinese("트윈테일", inv)  # hangul veto
+    assert not tag_glossary.is_chinese(":d", inv)  # no Han at all
+    assert tag_glossary.zh_wording_ok(":d")  # …but the veto-only guard passes it
+
+
+def test_rank_names_zh_prefers_hans_and_simplifies_hant():
+    ranked = tag_glossary.rank_names(
+        ["ツインテール", "雙馬尾", "双马尾", "트윈테일", "二つ結い"], "zh"
+    )
+    assert ranked == ["双马尾"]  # kana/hangul out; 雙馬尾 folds into 双马尾
+
+
+def test_zh_han_inventory_comes_from_the_packs_not_mixed_wiki_entries(tmp_path):
+    pack = tmp_path / "pack.csv"
+    pack.write_text("twintails,0,双马尾|双尾,\nschool uniform,校服\n", encoding="utf-8")
+    dump = tmp_path / "wiki.jsonl"
+    dump.write_text('{"other_names": ["左右対称"]}\n', encoding="utf-8")
+    inv = tag_glossary.zh_han_inventory(dump, [pack])
+    assert {"双", "马", "尾", "校", "服"} <= inv
+    assert "対" not in inv  # a single mixed wiki entry cannot seed the census
+
+
+def test_load_zh_kb_reads_every_pack_layout_and_ranks_curated_first(tmp_path):
+    nga = tmp_path / "HalfMAI_nga.csv"
+    nga.write_text(
+        "39,0,初音未来,\nlooking_at_viewer,0,看向阅图者|看着你,\n", encoding="utf-8"
+    )
+    byzod = tmp_path / "byzod.csv"
+    byzod.write_text("looking_at_viewer,看着观众\nbed,床\n", encoding="utf-8")
+    tenw = tmp_path / "danbooru-10w-zh_cn.csv"
+    tenw.write_text(
+        "looking_at_viewer,pov 目光接触\nshort_hair,短毛短毛猫\n", encoding="utf-8"
+    )
+    kb = tag_glossary.load_zh_kb([nga, byzod, tenw])
+    assert kb["39"] == [("初音未来", "kb")]
+    assert kb["looking at viewer"] == [
+        ("看向阅图者", "kb"),
+        ("看着你", "kb"),
+        ("看着观众", "kb"),
+        ("目光接触", "kbmt"),
+    ]
+    assert kb["short hair"] == [("短毛短毛猫", "kbmt")]  # pool only, ranked with MT
+    assert kb["bed"] == [("床", "kb")]
+
+
+def test_choose_zh_lets_a_verified_pack_wording_beat_a_higher_f1_mt_rendering():
+    entry = {"count": 500, "axis": "general", "alts": []}
+    cands = [
+        {
+            "ja": "看着观众",
+            "back": "looking at the viewer",
+            "f1": 1.0,
+            "src": "mt",
+            "mt": True,
+            "ja_ok": True,
+        },
+        {
+            "ja": "看向阅图者",
+            "back": "looking at viewer",
+            "f1": 1.0,
+            "src": "kb",
+            "ja_ok": True,
+        },
+    ]
+    tag_glossary.choose("looking at viewer", entry, cands, "看着观众", 0.75, "zh")
+    assert entry["ja"] == "看向阅图者" and entry["via"] == "kb_verified"
+
+
+def test_build_pairs_adds_a_hant_sibling_register_for_zh():
+    pairs = [
+        {
+            "id": "D1/x/tags_zh",
+            "register": "tags_zh",
+            "ja": "1个女性, 双马尾, 校服",
+            "spans": [{"en": "twintails", "ja": "双马尾", "via": "kb"}],
+        },
+        {"id": "D1/x/tags_alt_zh", "register": "tags_alt_zh", "ja": "…", "spans": []},
+    ]
+    hant = build_pairs.add_hant_register(pairs)
+    assert len(hant) == 1
+    assert hant[0]["register"] == "tags_zh_hant"
+    assert hant[0]["id"] == "D1/x/tags_zh_hant"
+    assert hant[0]["ja"] == "1個女性, 雙馬尾, 校服"
+    assert hant[0]["spans"][0]["ja"] == "雙馬尾"
+    assert pairs[0]["ja"] == "1个女性, 双马尾, 校服"  # source untouched

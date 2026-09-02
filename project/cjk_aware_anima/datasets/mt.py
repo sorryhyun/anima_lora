@@ -340,6 +340,39 @@ TAG_FEWSHOT_KO: list[tuple[str, str]] = [
     ("censored", "검열"),
 ]
 
+TAG_BACKGROUND_ZH = (
+    "These are Danbooru-style annotation tags for an anime/illustration image "
+    "dataset. Each tag names a visual attribute, pose, clothing item, body "
+    "feature, camera framing, or scene element. Translate into Simplified "
+    "Chinese as a short noun phrase a Chinese user would type as an "
+    "image-generation prompt keyword, not as a sentence. Use the wording "
+    "actually used by Chinese illustration communities (NGA / Bilibili / "
+    "Chinese-speaking Danbooru users, e.g. 双马尾, 呆毛, 兽耳), rather than a "
+    "literal word-by-word rendering. Simplified characters only."
+)
+
+# zh few-shot exemplars (plan_zh.md Z1): hand-checked against the NGA
+# community translation, never drawn from the unverified wiki head. Kept
+# disjoint from IDIOM_PROBE so a future zh probe port stays held-out.
+TAG_FEWSHOT_ZH: list[tuple[str, str]] = [
+    ("1girl", "1个女性"),
+    ("solo", "单人"),
+    ("blonde hair", "金发"),
+    ("short hair", "短发"),
+    ("hair ornament", "发饰"),
+    ("open mouth", "张嘴"),
+    ("bare shoulders", "露肩"),
+    ("thighhighs", "过膝袜"),
+    ("school uniform", "校服"),
+    ("simple background", "简单背景"),
+    ("from behind", "背影"),
+    ("full body", "全身"),
+    ("sitting", "坐着"),
+    ("closed eyes", "闭眼"),
+    ("large breasts", "巨乳"),
+    ("censored", "打码"),
+]
+
 # Held-out idiom probe: tags whose Japanese form is an established community
 # idiom a literal translation gets wrong. `expect` is the accepted rendering
 # (substring match — inflection/particles around it are fine); `literal_trap`

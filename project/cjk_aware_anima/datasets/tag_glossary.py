@@ -53,7 +53,11 @@ sys.path.insert(0, str(ROOT))
 import build_pairs  # noqa: E402  (sibling module — caption roots + loader)
 import kanji_allow  # noqa: E402  (sibling — the allowed-kanji set)
 from anime_tools.captions.position_clauses import parse_caption  # noqa: E402
-from mt import TAG_FEWSHOT, TAG_FEWSHOT_KO  # noqa: E402  (sibling — MT exemplars)
+from mt import (  # noqa: E402  (sibling — MT exemplars)
+    TAG_FEWSHOT,
+    TAG_FEWSHOT_KO,
+    TAG_FEWSHOT_ZH,
+)
 
 WIKI_REPO = "kierarkia/danbooru-wiki-2026"
 WIKI_FILE = "danbooru_wiki_dataset_2026-04-28.jsonl"
@@ -78,7 +82,7 @@ ARBITRATED = {"wiki", "wiki_han", "kb", "unresolved"}
 # Oct-2024 partly LLM-filled; MT renders the *string*, not the booru sense
 # (`bow` → お辞儀 "bowing" where the tag means 蝶結び the ribbon), so at equal
 # back-translation F1 a community-attested name outranks it.
-SRC_RANK = {"wiki": 0, "tagpair": 1, "kb": 1, "mt": 2}
+SRC_RANK = {"wiki": 0, "tagpair": 1, "kb": 1, "kbmt": 2, "mt": 2}
 TAGPAIR_VERIFIED_VIA = "tagpair_verified"
 
 # r5 (2026-09-01): below this occurrence count, an unverified KB keyword
@@ -108,7 +112,157 @@ RATING_KO = {
     "explicit": "성인용",
 }
 
-RATING = {"ja": RATING_JA, "ko": RATING_KO}
+# zh (plan_zh.md Z1): mainland community register, simplified. 全年龄 is the
+# Danbooru-zh wiki's own word for the safe band; the three graded bands are
+# the fandom's (微涩 = "slightly spicy", 成人向 mirrors 成人向け). Review item.
+RATING_ZH = {
+    "safe": "全年龄",
+    "sensitive": "微涩",
+    "nsfw": "成人向",
+    "explicit": "露骨性描写",
+}
+
+RATING = {"ja": RATING_JA, "ko": RATING_KO, "zh": RATING_ZH}
+
+# ---- Chinese script routing (plan_zh.md "Script reality") -------------------
+# Three Han inventories overlap only partly: JA shinjitai, zh-Hans, zh-Hant.
+# OpenCC gives a per-character answer for two of the three: a char that s2t
+# changes is simplified-only (发 → 髮), one that t2s changes is traditional-only
+# (髮 → 发); everything else is *shared* between at least two inventories —
+# and that "shared" class is where JA-only words hide (髪 / 顔 / 獣 are
+# untouched by both converters and still not Chinese). The learned zh
+# inventory (``zh_han_inventory``: chars seen inside hans-class wiki names)
+# is the tie-breaker for shared wordings, mirroring ``ja_kanji_inventory``.
+_OPENCC: dict[str, object] = {}
+_HAN_CLASS_CACHE: dict[str, str] = {}
+
+
+def _opencc(direction: str):
+    if direction not in _OPENCC:
+        from opencc import OpenCC  # noqa: PLC0415  (pure-python reimplementation)
+
+        _OPENCC[direction] = OpenCC(direction)
+    return _OPENCC[direction]
+
+
+def han_char_class(ch: str) -> str:
+    """'hans' | 'hant' | 'variant' | 'shared' | '' (non-Han).
+
+    Round-trip rule: OpenCC's s2t table also knows Japanese shinjitai (対 →
+    對, 広 → 廣, 観 → 觀) — a plain "s2t changes it" test called those
+    simplified Chinese and let 左右対称 / 国広一 seed the zh inventory
+    (measured 2026-09-02). A char is *hans* only if it is the canonical
+    simplified form of what it converts to (``t2s(s2t(ch)) == ch``: 发 ✓,
+    国 ✓, 対 ✗ since 對 → 对), *hant* only if it is the canonical traditional
+    form (``s2t(t2s(ch)) == ch``: 髮 ✓), *variant* if a converter touches it
+    but the round trip lands elsewhere (JA shinjitai, rare variants —
+    never Chinese), *shared* if neither converter touches it.
+    """
+    if not HAN_WIDE.match(ch):
+        return ""
+    c = _HAN_CLASS_CACHE.get(ch)
+    if c is None:
+        s2t, t2s = _opencc("s2t"), _opencc("t2s")
+        up, down = s2t.convert(ch), t2s.convert(ch)
+        if up != ch and t2s.convert(up) == ch:
+            c = "hans"
+        elif down != ch and s2t.convert(down) == ch:
+            c = "hant"
+        elif up != ch or down != ch:
+            c = "variant"
+        else:
+            c = "shared"
+        _HAN_CLASS_CACHE[ch] = c
+    return c
+
+
+def han_class(s: str) -> str:
+    """Wording-level class: any variant char ⇒ variant (not Chinese); else any
+    simplified-only char ⇒ hans; else any traditional-only ⇒ hant; else
+    shared (or '' with no Han at all)."""
+    classes = {han_char_class(c) for c in HAN_WIDE.findall(s)}
+    if "variant" in classes:
+        return "variant"
+    if "hans" in classes:
+        return "hans"
+    if "hant" in classes:
+        return "hant"
+    return "shared" if classes else ""
+
+
+def to_hant(s: str) -> str:
+    return _opencc("s2t").convert(s)
+
+
+def to_hans(s: str) -> str:
+    return _opencc("t2s").convert(s)
+
+
+# Set by ``build`` for --lang zh (``zh_han_inventory``); None = accept every
+# shared-class wording (tests / callers without the dump).
+ZH_INVENTORY: set[str] | None = None
+
+
+def zh_wording_ok(s: str) -> bool:
+    """Veto-only zh analog of ``han_allowed``: kana or hangul means the
+    candidate is Japanese/Korean; latin/digit wordings pass."""
+    return not KANA.search(s) and not HANGUL.search(s)
+
+
+def is_chinese(s: str, inventory: set[str] | None = None) -> bool:
+    """Han-bearing, no kana/hangul, and either script-marked (hans/hant) or —
+    for a shared-class wording — built only from chars the zh inventory has
+    seen (棕毛 passes on 棕; 髪飾り fails on kana; 巨乳 passes shared)."""
+    if not zh_wording_ok(s) or not HAN_WIDE.search(s):
+        return False
+    cls = han_class(s)
+    if cls in ("hans", "hant"):
+        return True
+    inv = ZH_INVENTORY if inventory is None else inventory
+    if inv is None:
+        return True
+    return all(c in inv for c in HAN_WIDE.findall(s))
+
+
+def zh_han_inventory(
+    wiki_path: Path, pack_paths: list[Path] | None = None, wiki_min_count: int = 5
+) -> set[str]:
+    """Han chars that really occur in Chinese, for the shared-class check.
+
+    Primary census: the community tag packs (human-written zh_CN wordings —
+    Chinese by construction, every char counts once). The wiki's hans-class
+    entries were tried first and leak: a JA word whose shinjitai coincides
+    with a simplified form (左右対称 on 称, 国広一 on 国) is classed hans and
+    seeds 対 / 広 into the inventory (2026-09-02). They are kept only as a
+    high-count supplement (``wiki_min_count``) for rare name chars the packs
+    never spell. Traditional entries are folded through t2s so the inventory
+    is simplified-normalized.
+    """
+    import csv  # noqa: PLC0415
+
+    inv: set[str] = set()
+    for path in pack_paths if pack_paths is not None else ZH_KB_DEFAULT:
+        if not path.exists():
+            continue
+        with path.open("r", encoding="utf-8-sig", newline="") as f:
+            for row in csv.reader(f):
+                for cell in row[1:]:
+                    if KANA.search(cell) or HANGUL.search(cell):
+                        continue
+                    inv.update(c for c in cell if HAN_WIDE.match(c))
+    freq: collections.Counter = collections.Counter()
+    if wiki_path.exists():
+        for line in wiki_path.open(encoding="utf-8"):
+            for name in json.loads(line).get("other_names") or []:
+                if KANA.search(name) or HANGUL.search(name):
+                    continue
+                cls = han_class(name)
+                if cls == "hans":
+                    freq.update(c for c in name if HAN_WIDE.match(c))
+                elif cls == "hant":
+                    freq.update(c for c in to_hans(name) if HAN_WIDE.match(c))
+    inv |= {c for c, n in freq.items() if n >= wiki_min_count}
+    return inv
 
 
 def han_allowed(s: str) -> bool:
@@ -163,19 +317,47 @@ def is_korean(s: str) -> bool:
 
 def wording_ok(s: str, lang: str = "ja") -> bool:
     """Lang-dispatched veto (never *requires* nativeness — see the JA note)."""
-    return han_allowed(s) if lang == "ja" else ko_wording_ok(s)
+    if lang == "ja":
+        return han_allowed(s)
+    if lang == "zh":
+        return zh_wording_ok(s)
+    return ko_wording_ok(s)
 
 
 def is_native(s: str, lang: str = "ja") -> bool:
-    return is_japanese(s) if lang == "ja" else is_korean(s)
+    if lang == "ja":
+        return is_japanese(s)
+    if lang == "zh":
+        return is_chinese(s)
+    return is_korean(s)
 
 
-# proof-of-nativeness script per language (kana for JA, hangul for KO)
-NATIVE_RE = {"ja": KANA, "ko": HANGUL}
+# proof-of-nativeness script per language (kana for JA, hangul for KO, Han for
+# ZH — where the inventory, not the script, carries the evidence)
+NATIVE_RE = {"ja": KANA, "ko": HANGUL, "zh": HAN_WIDE}
 
 
 def rank_names(names: list[str], lang: str = "ja") -> list[str]:
-    """Native candidates; for JA, kana-bearing first (least ambiguous evidence)."""
+    """Native candidates; for JA, kana-bearing first (least ambiguous evidence).
+
+    For ZH: hans-marked first (unambiguous), then shared, then hant (kept —
+    the ``tags_zh_hant`` register and the alt pool want them), each by length.
+    """
+    if lang == "zh":
+        # hans and inventory-passed shared tie (妃咲 over 妃咲会长); hant last
+        order = {"hans": 0, "shared": 0, "hant": 1, "variant": 2}
+        ranked = sorted(
+            (n for n in names if is_chinese(n)),
+            key=lambda n: (order[han_class(n)], len(n)),
+        )
+        # simplified-normalized (the Hant register is derived from the composed
+        # caption by OpenCC in build_pairs, not carried per wording)
+        keep: list[str] = []
+        for n in ranked:
+            n = to_hans(n)
+            if n not in keep:
+                keep.append(n)
+        return keep
     if lang != "ja":
         keep = [n for n in names if is_native(n, lang)]
         keep.sort(key=len)
@@ -219,6 +401,73 @@ def load_kr_kb(path: Path, lang: str = "ko") -> dict[str, list[str]]:
             kws = [k for k in kws if k and is_native(k, lang)]
             if kws:
                 out[name] = kws
+    return out
+
+
+# zh community tag packs (plan_zh.md §Sources 1): the tagcomplete ecosystem's
+# EN→zh_CN tables, i.e. the wording Chinese users actually type (双马尾, 傲娇).
+# Priority order (user call 2026-09-02: centre on the NGA translation):
+#   HalfMAI  danbooru-0-zh-nga.csv   5.4k tags, human-translated NGA-community
+#            register (39 → 初音未来), `|`-separated alternates; gist with NO
+#            stated licence (source thread ngabbs.com/read.php?tid=33869519)
+#            — provenance recorded per entry (``src: kb``), review the
+#            licence before a public release of the glossary itself.
+#   byzod    Tags-zh-full-pack.csv   10.6k tags, one curated wording each (MIT)
+#   ChinaGPT danbooru-10w-zh_cn.csv  100k tags, space-separated machine
+#            renderings (短毛短毛猫 for `short hair`, MIT) — a candidate pool
+#            only, ranked with the MT tier (``src: kbmt``), never a sub-floor
+#            default.
+# Yellow-Rush/zh_CN-Tags carries no licence and is not read.
+NAME_AXES_ZH = {"character", "copyright"}
+_ZH_QUALIFIER = re.compile(r"\s*[（(][^（）()]*[）)]\s*$")
+ZH_KB_DEFAULT = [
+    ASSETS / ".zh" / "HalfMAI_danbooru-0-zh-nga.csv",
+    ASSETS / ".zh" / "byzod_Tags-zh-full-pack.csv",
+    ASSETS / ".zh" / "ChinaGPT_danbooru-10w-zh_cn.csv",
+]
+
+
+def load_zh_kb(
+    paths: list[Path], max_per_tag: int = 3
+) -> dict[str, list[tuple[str, str]]]:
+    """EN tag -> [(zh wording, src)] from the community packs, curated first.
+
+    Row shapes: ``tag,zh`` (byzod), ``tag,zh1 zh2 …`` (10w, space-packed
+    alternates), ``tag,category,zh|alt,`` (tagcomplete extra-file layout,
+    the NGA gist). The wording column is the first Han-bearing cell after
+    the tag; ``|`` splits alternates in every layout.
+    """
+    import csv  # noqa: PLC0415
+
+    out: dict[str, list[tuple[str, str]]] = {}
+    for path in paths:
+        if not path.exists():
+            print(f"  [glossary] zh pack missing at {path} — skipped")
+            continue
+        src = "kbmt" if "10w" in path.name else "kb"
+        with path.open("r", encoding="utf-8-sig", newline="") as f:
+            for row in csv.reader(f):
+                if len(row) < 2 or not row[0].strip():
+                    continue
+                name = row[0].strip().replace("_", " ").lower()
+                cell = next((c for c in row[1:] if HAN_WIDE.search(c)), "")
+                raw = cell.replace("\t", " ").replace("\n", " ")
+                # the 10w file packs alternates space-separated; the curated
+                # files use `|` (a curated wording may itself contain a space)
+                cands = raw.split() if src == "kbmt" else raw.split("|")
+                seen = {w for w, _ in out.get(name, [])}
+                n_src = sum(1 for _, s_ in out.get(name, []) if s_ == src)
+                for w in cands:
+                    w = w.strip(" ,;")
+                    if not w or w in seen or w.lower() == name or not is_chinese(w):
+                        continue
+                    if src == "kb" and han_class(w) == "hant":
+                        w = to_hans(w)  # the packs are nominally zh_CN
+                    out.setdefault(name, []).append((w, src))
+                    seen.add(w)
+                    n_src += 1
+                    if n_src >= max_per_tag:
+                        break
     return out
 
 
@@ -301,6 +550,7 @@ def resolve_axis(
 FEWSHOT_NATIVE = {
     "ja": [ja for _, ja in TAG_FEWSHOT],
     "ko": [ko for _, ko in TAG_FEWSHOT_KO],
+    "zh": [zh for _, zh in TAG_FEWSHOT_ZH],
 }
 
 # JA exemplar word → EN stems that license it in the source tag. An MT
@@ -358,6 +608,8 @@ def contaminated(cand: str, tag: str, src: str | None, lang: str = "ja") -> bool
         return True
     if src == "mt" and ("、" in cand or "。" in cand):
         return True
+    if src == "mt" and lang == "zh" and any(p in cand for p in "，；："):
+        return True  # list/sentence-shaped rendering (zh enumeration comma etc.)
     low = tag.lower()
     if src == "mt" and lang == "ja":
         for word, stems in EXEMPLAR_LICENCE.items():
@@ -470,7 +722,22 @@ def build(args: argparse.Namespace) -> dict:
     lexicon = json.loads(Path(args.lexicon).read_text())["characters"]
     wiki = load_wiki(Path(args.wiki), args.lang)
     wiki_axes = load_wiki_axes(Path(args.wiki))
-    kr_kb = load_kr_kb(Path(args.kr_kb)) if args.lang == "ko" else {}
+    global ZH_INVENTORY
+    if args.lang == "zh":
+        ZH_INVENTORY = zh_han_inventory(Path(args.wiki), args.zh_kb)
+        print(f"  [glossary] zh Han inventory: {len(ZH_INVENTORY)} chars", flush=True)
+        wiki = load_wiki(Path(args.wiki), args.lang)  # re-rank with the inventory live
+    kr_kb = (
+        load_kr_kb(Path(args.kr_kb))
+        if args.lang == "ko"
+        else {
+            t: [w for w, s_ in ws if s_ == "kb"]
+            for t, ws in load_zh_kb(args.zh_kb).items()
+            if any(s_ == "kb" for _, s_ in ws)
+        }
+        if args.lang == "zh"
+        else {}
+    )
     roots = [(Path(p), False) for p in args.captions]
     roots += [(Path(p), True) for p in (args.raw_captions or [])]
     known = {t.lower() for t in (*wiki, *overrides, *lexicon)}
@@ -509,10 +776,30 @@ def build(args: argparse.Namespace) -> dict:
         elif tag in RATING[args.lang]:
             entry |= {"ja": RATING[args.lang][tag], "via": "rating"}
         elif lex and lex.get(args.lang) and wording_ok(lex[args.lang], args.lang):
-            entry |= {"ja": lex[args.lang], "via": "wikidata", "qid": lex.get("qid")}
-            entry["alts"] = [n for n in wiki_names if n != lex[args.lang]][
-                : args.max_alts
+            # Wikidata's `zh` label is frequently traditional (初音未來) — the
+            # zh corpus is simplified-primary, the Hant register is derived.
+            lex_name = to_hans(lex[args.lang]) if args.lang == "zh" else lex[args.lang]
+            entry |= {"ja": lex_name, "via": "wikidata", "qid": lex.get("qid")}
+            entry["alts"] = [n for n in wiki_names if n != lex_name][: args.max_alts]
+        elif args.lang == "zh" and any(
+            not contaminated(n, tag, "kb", args.lang) for n in kr_kb.get(tag, [])
+        ):
+            # zh: the curated community packs (NGA first) outrank the wiki —
+            # user call 2026-09-02 — and the wiki's own names become the alts.
+            # The wiki field for zh is where JA leaks in (尻 / 歯 / 半袖 pass
+            # the shared-class inventory) and where bogus alts sit first
+            # (1girl → 武装少女); the packs are the register users type.
+            kb_names = [
+                n for n in kr_kb[tag] if not contaminated(n, tag, "kb", args.lang)
             ]
+            if axis in NAME_AXES_ZH and "(" in tag:
+                # the packs mirror danbooru's qualifier (甘雨（原神）); users
+                # type the bare name, like the JA/KO lexicon tiers carry it
+                kb_names = [_ZH_QUALIFIER.sub("", n).strip() or n for n in kb_names]
+            entry |= {"ja": kb_names[0], "via": "kb"}
+            entry["alts"] = [
+                n for n in (*kb_names[1:], *wiki_names) if n != kb_names[0]
+            ][: args.max_alts]
         elif wiki_names:
             entry |= {
                 "ja": wiki_names[0],
@@ -667,11 +954,20 @@ def choose(
     mt_use = mt if mt and not contaminated(mt, tag, "mt", lang) else ""
 
     best = keep[0] if keep else None
+    if lang == "zh":
+        # gist-centred (user call 2026-09-02): a curated community wording
+        # that back-translates to the tag wins outright, even when a literal
+        # MT rendering scores higher — the pack is the register users type.
+        kb_best = next((c for c in keep if c.get("src") == "kb"), None)
+        if kb_best and kb_best["f1"] >= accept_f1:
+            best = kb_best
     if best and best["f1"] >= accept_f1:
         if best["ja"] == mt:
             via = "mt_verified"
         elif best.get("src") == "tagpair":
             via = TAGPAIR_VERIFIED_VIA
+        elif best.get("src") == "kb":
+            via = "kb_verified"
         else:
             via = "wiki_verified"
         entry |= {
@@ -680,7 +976,7 @@ def choose(
             "f1": best["f1"],
         }
     elif (
-        lang == "ko"
+        lang in ("ko", "zh")
         and entry.get("count", 0) < KB_UNVERIFIED_FLOOR
         and (kb := next((c for c in keep if c.get("src") == "kb"), None))
     ):
@@ -767,14 +1063,20 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
     from mt import (  # noqa: PLC0415
         TAG_BACKGROUND,
         TAG_BACKGROUND_KO,
+        TAG_BACKGROUND_ZH,
         TAG_FEWSHOT,
         TAG_FEWSHOT_KO,
+        TAG_FEWSHOT_ZH,
         MTEngine,
         Request,
     )
 
-    background = TAG_BACKGROUND if args.lang == "ja" else TAG_BACKGROUND_KO
-    fewshot = TAG_FEWSHOT if args.lang == "ja" else TAG_FEWSHOT_KO
+    background = {
+        "ja": TAG_BACKGROUND,
+        "ko": TAG_BACKGROUND_KO,
+        "zh": TAG_BACKGROUND_ZH,
+    }[args.lang]
+    fewshot = {"ja": TAG_FEWSHOT, "ko": TAG_FEWSHOT_KO, "zh": TAG_FEWSHOT_ZH}[args.lang]
 
     general = [
         t for t, e in tags.items() if e["axis"] == "general" and e["via"] in ARBITRATED
@@ -794,7 +1096,7 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
         inventory = set()  # hangul is unambiguous; the veto is ko_wording_ok
 
     pair_names: dict[str, list[str]] = {}
-    pair_src = "tagpair"
+    pair_src: str | dict[tuple[str, str], str] = "tagpair"
     if args.lang == "ko" and not args.no_tag_pairs:
         # the KO analog of the tag-pair set: the KR KB's keyword field
         kr_kb = load_kr_kb(Path(args.kr_kb))
@@ -802,6 +1104,15 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
         pair_src = "kb"
         n_with = sum(1 for v in pair_names.values() if v)
         print(f"  [glossary] KR-KB candidates for {n_with}/{len(todo)} tags")
+    if args.lang == "zh" and not args.no_tag_pairs:
+        # the zh analog: the community tag packs, curated (kb) + 10w (kbmt)
+        zh_kb = load_zh_kb(args.zh_kb)
+        pair_names = {
+            t: [w for w, _ in zh_kb.get(t, [])][: args.n_pair_candidates] for t in todo
+        }
+        pair_src = {(t, w): s_ for t, ws in zh_kb.items() for w, s_ in ws}
+        n_with = sum(1 for v in pair_names.values() if v)
+        print(f"  [glossary] zh-pack candidates for {n_with}/{len(todo)} tags")
     # the HF tag-pair set is JA-only (no KO analog on HF, verified 2026-08-31)
     if args.lang == "ja" and not args.no_tag_pairs:
         import tag_pairs  # noqa: PLC0415  (sibling — the shared source + guards)
@@ -850,7 +1161,10 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
             else []
         ) + e["alts"]
         sourced = [(c, primary_src) for c in wiki_c[: args.n_candidates]]
-        sourced += [(c, pair_src) for c in pair_names.get(tag, [])]
+        sourced += [
+            (c, pair_src if isinstance(pair_src, str) else pair_src.get((tag, c), "kb"))
+            for c in pair_names.get(tag, [])
+        ]
         if mt_ja.get(tag):  # the literal rendering competes on the same terms
             sourced.append((mt_ja[tag].strip().splitlines()[0].strip(), "mt"))
         seen: dict[str, str] = {}
@@ -879,6 +1193,12 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
             ja_ok = han_allowed(cand) and (
                 KANA.search(cand) is not None
                 or all(c in inventory for c in cand if HAN.match(c))
+            )
+        elif args.lang == "zh":
+            # veto-only: latin candidates stay eligible; Han-bearing ones must
+            # be Chinese by script mark or inventory (髪飾り / 棕毛 both settle)
+            ja_ok = zh_wording_ok(cand) and (
+                not HAN_WIDE.search(cand) or is_chinese(cand)
             )
         else:
             ja_ok = ko_wording_ok(cand)
@@ -1031,9 +1351,10 @@ def main() -> None:
     ap.add_argument(
         "--lang",
         default="ja",
-        choices=["ja", "ko"],
+        choices=["ja", "ko", "zh"],
         help="student-side language; entry keys stay `ja` ('student text' — "
-        "plan_ko.md K1) so every consumer works unchanged",
+        "plan_ko.md K1) so every consumer works unchanged; zh = plan_zh.md Z1 "
+        "(simplified primary, OpenCC-routed wiki names, community packs)",
     )
     ap.add_argument("--caption-index", type=Path, default=DEFAULT_INDEX)
     ap.add_argument("--captions", type=Path, nargs="+", default=[DEFAULT_CAPTIONS])
@@ -1052,6 +1373,13 @@ def main() -> None:
         type=Path,
         default=REPO / "models" / "danbooru_tags_classified.csv",
         help="KR community KB (--lang ko candidate source; make download-danbooru-tags)",
+    )
+    ap.add_argument(
+        "--zh-kb",
+        type=Path,
+        nargs="*",
+        default=ZH_KB_DEFAULT,
+        help="zh community tag packs (--lang zh candidate source; assets/.zh/)",
     )
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--max-alts", type=int, default=4)

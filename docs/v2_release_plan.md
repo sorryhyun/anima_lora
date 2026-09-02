@@ -50,9 +50,13 @@ package rev pinned in `[tool.uv.sources]`; the dev loop
 (`uv sync --no-group anime-tools-git --group anime-tools-dev`) works.
 
 - [ ] **A1. Pin the release rev.** Bump `[tool.uv.sources]` to the anime_tools
-  rev that will ship (package `0.2.0` + the OCR improvements pushed
-  2026-09-02), `uv lock`, commit the lock. The rev must be pushed before
-  `uv lock` resolves.
+  rev that will ship (package `0.3.1` as of 2026-09-02, 94 commits past the
+  current pin `971e229`), `uv lock`, commit the lock. The rev must be pushed
+  before `uv lock` resolves. **Blocked on Track D0**: at anime_tools HEAD
+  `make mask` fails (`generate_masks --config` was replaced by
+  `--prompts/--focus-prompts/--threshold/--dilate`) and batch autotag now
+  writes the revised caption, which our correction pass overwrites from the
+  master.
 - [ ] **A2. Offline / Windows tarball.** Open since Phase 3: a release install
   with no GitHub access must still satisfy the git dep. Decide between
   (a) vendoring the pinned rev into the release tarball and pointing the
@@ -68,9 +72,10 @@ package rev pinned in `[tool.uv.sources]`; the dev loop
 - [ ] **A4. Drop the stub extras** and the `--extra` plumbing in the
   installers once A3 confirms no shipped updater passes `--extra`.
 - [ ] **A5. Docs.** `CLAUDE.md` already describes the split; user-facing:
-  Setup section of `README.md` (what `anime_tools` is, that curation CLIs are
-  `python -m anime_tools.<pkg>.cli.<name>`), guidebook line + the three
-  translations (use the translator agent, diff-driven).
+  Setup section of `README.md` (what `anime_tools` is; the typed request API
+  is the front door and `python -m anime_tools.<pkg>.cli.<name>` is its shell
+  — wording depends on how far Track D lands before GA), guidebook line + the
+  three translations (use the translator agent, diff-driven).
 - [ ] **A6. Hygiene gates before tagging.** `tests/test_repo_hygiene.py`
   (no tracked symlinks — the recurring v1.16.2 breaker), tarball extracts
   under `tarfile filter="data"`, `tests/test_curation_boundary.py`,
@@ -173,8 +178,44 @@ To ship, in dependency order:
   unmask recipe with the HF link; breaking-changes list from above; Anima-2.9B
   and caformer tagger already shipped in 1.17.x so not repeated.
 
+## Track D — API-first curation boundary
+
+Plans: `docs/proposal/anime_tools_api_first.md` (trainer side) and
+`../anime_tools/docs/api_first_plan.md` (package side). The trainer drives
+`anime_tools` by hand-written argv today and nothing checks it; the 2026-09-02
+audit found the pin 94 commits stale with `make mask` already broken at HEAD.
+`anime_tools` grows one typed request dataclass per stage (`SamMaskRequest`,
+`AutotagRequest`, …) with `run()` in-process and `.to_argv()` for the daemon;
+the trainer builds requests instead of flag strings.
+
+Not all of it gates v2.0.0. The split:
+
+- [ ] **D0. Pin-bump prerequisites** (gates beta; = proposal T0). Translate
+  `sam_mask.yaml` into the new mask flags, fix the caption write-target clash
+  (correction pass reads revised-first via `resolve_caption`, package-side
+  one-liner), record the revised-caption owner in `anime_tools/docs/contract.md`,
+  then A1.
+- [ ] **D1. Contract test** (gates beta; = T1). A trainer test dumps the
+  package's stage schemas in a child and asserts every flag we emit exists.
+  This is the drift alarm for the whole beta period.
+- [ ] **D2. `anime_tools.contract` + `CONTRACT_VERSION`** (gates GA; package
+  P0 + T2). Ends the three hand-copied constants and gives the trainer a
+  version to assert at import.
+- [ ] **D3. Masking through requests** (gates GA if package P1 lands in
+  time, else v2.1; = T3). Also the first measurable win: one SAM3 load for
+  `make mask` under the daemon instead of two, one interpreter instead of
+  three.
+- [ ] **D4. Caption stages + grouping through requests** (v2.1; = T4).
+- [ ] **D5. Free-fit geometry owned by `anime_tools`** (v2.1; = T5). Ends
+  the `buckets.py` double copy the contract doc already warns about.
+
+Beta gate addition: D0 + D1 green, and `make preprocess` on the JA shard
+followed by `make caption-autotag ARGS=--apply` + `make preprocess-te` keeps
+the autotag tags in the TE-cached caption (the clash D0 fixes).
+
 ## Beta → GA gates
 
+- Track D0 + D1 green (see above).
 - One full user flow on a fresh install from the beta tag (installer →
   `make download-models` → pack download → `make preprocess` on a JA-caption
   shard → `make lora` → `make test` with a JA prompt) on Linux **and**

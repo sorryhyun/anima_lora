@@ -104,6 +104,30 @@ Disagreements between the two sources land in `assets/tag_glossary_review.md`,
 ordered by occurrence count, for the sign-off the phase gate asks for. Fixes go
 in `tag_overrides.json` and beat every automatic source on the next build.
 
+### `--lang zh` (plan_zh.md Z1, 2026-09-02)
+
+Same entry point, different source order — the community packs outrank the
+wiki (user call: centre on the NGA translation), and the script guard is
+OpenCC-based instead of Shift-JIS:
+
+| tier | source | note |
+|---|---|---|
+| packs (`kb`) | `assets/.zh/HalfMAI_danbooru-0-zh-nga.csv` (5.4k, NGA-community human translation, **no stated licence**), `byzod_Tags-zh-full-pack.csv` (10.6k, MIT) | primary wording; `\|` alternates kept as alts; name-axis qualifiers stripped (甘雨（原神）→ 甘雨) |
+| pool only (`kbmt`) | `ChinaGPT_danbooru-10w-zh_cn.csv` (100k, MIT, machine renderings) | candidates in `--mt` arbitration, ranked with MT; never a default |
+| wiki `other_names` | OpenCC-routed: `han_char_class` round-trip rule (hans / hant / variant / shared) + the pack-derived zh inventory for shared-class wordings | hans-normalized; hant surfaces feed `tags_zh_hant`, not the primary |
+| Wikidata | `--langs ja ko zh` labels, hans-normalized | 313 characters |
+
+`choose()` for zh lets a curated pack wording that back-translates to the tag
+win outright (`kb_verified`) — a literal MT rendering never outranks the
+community register on F1 alone. Measured CPU-tier coverage 95.9 % of
+occurrences (packs 86.4 %). Gotchas found on the way: OpenCC's s2t table
+converts JA shinjitai too (対 → 對), so "s2t changes it" is not "simplified";
+the wiki's hans-class entries are a contaminated char census (左右対称 seeds
+対 on the strength of 称) — the inventory comes from the packs. Both are
+pinned by tests. `build_pairs.py --lang zh` adds the `tags_zh_hant` sibling
+register (s2t of every `tags_zh` record). Dependency:
+`opencc-python-reimplemented` (pure Python).
+
 ## `build_pairs.py` — the corpus
 
 Captions are tag strings, so the JA side is **composed from the glossary**

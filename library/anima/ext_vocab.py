@@ -129,6 +129,9 @@ def build_anchor_pairs(t5_tok, qwen_tok) -> tuple[list[int], list[int]]:
     return t5_ids, qwen_ids
 
 
+MAP_METHODS = ("ridge", "procrustes-mix")
+
+
 def fit_anchor_map(
     qwen_embed: torch.Tensor,
     t5_embed: torch.Tensor,
@@ -136,11 +139,27 @@ def fit_anchor_map(
     qwen_ids: list[int],
     ridge: float = 1e-2,
     holdout: int = 1000,
+    method: str = "ridge",
+    mix: float = 0.6,
 ) -> tuple[torch.Tensor, float]:
-    """Ridge least-squares W (d_qwen × d_t5) with a held-out cosine sanity.
+    """Anchor map W (d_qwen × d_t5) with a held-out cosine sanity.
+
+    ``method="ridge"`` — plain ridge least squares (the v1 asset). Ridge
+    shrinks toward the directions the anchors share, so the mapped ext keys
+    collapse onto a thin subspace (PR 236 of 1024, 16 % of random row pairs
+    above cos 0.5; ``probes/map_probe.py``, 2026-09-02).
+
+    ``method="procrustes-mix"`` — ridge plus ``mix`` × the scaled orthogonal
+    Procrustes rotation fitted on the same anchors (centered fit, applied as
+    a plain linear map like the ridge term). The rotation carries the
+    Qwen spectrum through untouched, so the mix keeps the ext keys spread
+    (PR 373, 1 % collisions) for a small held-out cost (cos 0.75 → 0.70).
+    ``mix=0.6`` is the probe's measured point; the v2 asset default.
 
     Returns (W, mean held-out cosine of ``qwen_embed @ W`` vs the true T5 row).
     """
+    if method not in MAP_METHODS:
+        raise ValueError(f"unknown anchor-map method {method!r} (want {MAP_METHODS})")
     A = qwen_embed[qwen_ids].float()
     B = t5_embed[t5_ids].float()
     g = torch.Generator().manual_seed(0)
@@ -150,30 +169,24 @@ def fit_anchor_map(
     d = At.shape[1]
     lam = ridge * At.pow(2).mean() * len(train)
     W = torch.linalg.solve(At.T @ At + lam * torch.eye(d), At.T @ Bt)
+    if method == "procrustes-mix":
+        ma, mb = At.mean(0), Bt.mean(0)
+        U, _, Vt = torch.linalg.svd((At - ma).T @ (Bt - mb))
+        R = U @ Vt
+        scale = float((Bt - mb).norm() / ((At - ma) @ R).norm())
+        W = W + mix * (R * scale)
     cos = torch.nn.functional.cosine_similarity(A[hold] @ W, B[hold], dim=-1)
     return W, float(cos.mean())
 
 
-def build_ext_table(
-    qwen_tok,
-    qwen_embed: torch.Tensor,
-    W: torch.Tensor,
-    clean: dict[int, str],
-) -> tuple[torch.Tensor, dict]:
-    """Extended rows + id mapping.
+def char_row_surfaces(qwen_tok, clean: dict[int, str]) -> dict[str, list[int]]:
+    """Chars that get a supplementary row → their Qwen byte-fragment ids.
 
-    Rows = every clean Qwen CJK token, plus per-character supplementary rows
-    for standard-range chars whose Qwen tokenization is byte-fragments only
-    (init = mapped mean of fragment embeddings; chars sharing a fragment-id
-    multiset with another char get a position-weighted mean so permuted byte
-    orders cannot land on bit-identical rows).
+    Every standard-range char that is not itself a clean single Qwen token
+    and round-trips through the tokenizer. Shared by the table builder and
+    the contextual-init path (``build_ext.py --char-init contextual``), so
+    both see the identical char inventory and row order.
     """
-    qwen_map: dict[int, int] = {}
-    vecs: list[torch.Tensor] = []
-    for qid in sorted(clean):
-        qwen_map[qid] = len(vecs)
-        vecs.append(qwen_embed[qid].float() @ W)
-
     single_clean = {s: qid for qid, s in clean.items() if len(s) == 1}
     char_ids: dict[str, list[int]] = {}
     for lo, hi in _CJK_RANGES:
@@ -185,6 +198,38 @@ def build_ext_table(
             if not ids or qwen_tok.decode(ids) != ch:
                 continue
             char_ids[ch] = ids
+    return char_ids
+
+
+def build_ext_table(
+    qwen_tok,
+    qwen_embed: torch.Tensor,
+    W: torch.Tensor,
+    clean: dict[int, str],
+    char_init: dict[str, torch.Tensor] | None = None,
+) -> tuple[torch.Tensor, dict]:
+    """Extended rows + id mapping.
+
+    Rows = every clean Qwen CJK token, plus per-character supplementary rows
+    for standard-range chars whose Qwen tokenization is byte-fragments only
+    (init = mapped mean of fragment embeddings; chars sharing a fragment-id
+    multiset with another char get a position-weighted mean so permuted byte
+    orders cannot land on bit-identical rows).
+
+    ``char_init`` — optional per-char vectors *already in T5 space* that
+    replace the fragment-mean init for the chars they cover (the v2 asset's
+    contextual init: the fragment mean is near-degenerate because the lead
+    byte is shared by thousands of chars — 60 % of random char-row pairs
+    above cos 0.5, ``probes/char_probe.py``). Chars not covered keep the
+    fragment mean. The id mapping is identical either way.
+    """
+    qwen_map: dict[int, int] = {}
+    vecs: list[torch.Tensor] = []
+    for qid in sorted(clean):
+        qwen_map[qid] = len(vecs)
+        vecs.append(qwen_embed[qid].float() @ W)
+
+    char_ids = char_row_surfaces(qwen_tok, clean)
 
     by_multiset: dict[tuple[int, ...], int] = {}
     for ids in char_ids.values():
@@ -192,7 +237,13 @@ def build_ext_table(
         by_multiset[key] = by_multiset.get(key, 0) + 1
 
     char_map: dict[str, int] = {}
+    n_contextual = 0
     for ch, ids in char_ids.items():
+        if char_init is not None and ch in char_init:
+            char_map[ch] = len(vecs)
+            vecs.append(char_init[ch].float().reshape(-1))
+            n_contextual += 1
+            continue
         emb = qwen_embed[ids].float()
         if by_multiset[tuple(sorted(ids))] > 1:
             # Same byte multiset as another char — order is the only
@@ -209,6 +260,7 @@ def build_ext_table(
         "qwen": {str(k): v for k, v in qwen_map.items()},
         "char": char_map,
         "rows": table.shape[0],
+        "char_rows_contextual": n_contextual,
     }
     return table, mapping
 

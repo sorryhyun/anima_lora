@@ -66,6 +66,16 @@ KO_PROMPTS = REPO / "project" / "cjk_aware_anima" / "assets" / "ko_eval_prompts.
 KO_PAIRS = REPO / "post_image_dataset" / "cjk_distill" / "pairs_synth_ko.jsonl"
 KO_REGISTER = "tags_synth_ko"
 KO_SEED_REGISTERS = ("tags_ko", "tags_alt_ko", "names_ko", "names_synth_ko")
+# --lang zh (plan_zh.md Z1): same machinery, zh surfaces.
+ZH_PROMPTS = REPO / "project" / "cjk_aware_anima" / "assets" / "zh_eval_prompts.json"
+ZH_PAIRS = REPO / "post_image_dataset" / "cjk_distill" / "pairs_zh.jsonl"
+ZH_REGISTER = "tags_synth_zh"
+ZH_SEED_REGISTERS = ("tags_zh", "tags_alt_zh", "tags_zh_hant", "names_zh")
+LANG_CFG = {
+    "ja": (DEFAULT_PROMPTS, DEFAULT_PAIRS, REGISTER, SEED_REGISTERS),
+    "ko": (KO_PROMPTS, KO_PAIRS, KO_REGISTER, KO_SEED_REGISTERS),
+    "zh": (ZH_PROMPTS, ZH_PAIRS, ZH_REGISTER, ZH_SEED_REGISTERS),
+}
 
 
 def load_encoder(pack: Path):
@@ -140,7 +150,7 @@ def main() -> None:
     ap.add_argument(
         "--lang",
         default="ja",
-        choices=["ja", "ko"],
+        choices=["ja", "ko", "zh"],
         help="student-side language: ko reads ko_eval_prompts / the _ko "
         "registers, mints register tags_synth_ko, joins rng-free with ', '",
     )
@@ -152,19 +162,25 @@ def main() -> None:
         "index (plan_ko3 M1: scope allocation to minted word rows — under "
         "--span_focus_from, pairs for any other target are dead weight)",
     )
+    ap.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="merged output (default pairs_synth_tags<suffix>.jsonl next to --pairs); "
+        "the no-synth-names JA corpus is `--pairs pairs.jsonl --out pairs_tags.jsonl`",
+    )
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     rng = random.Random(args.seed)
-    if args.lang == "ko":
+    prompts_default, pairs_default, register, seed_registers = LANG_CFG[args.lang]
+    if args.lang != "ja":
         if args.prompts == DEFAULT_PROMPTS:
-            args.prompts = KO_PROMPTS
+            args.prompts = prompts_default
         if args.pairs == DEFAULT_PAIRS:
-            args.pairs = KO_PAIRS
+            args.pairs = pairs_default
         if args.glossary == tag_glossary.DEFAULT_OUT:
-            args.glossary = tag_glossary.ASSETS / "tag_glossary_ko.json"
-    register = REGISTER if args.lang == "ja" else KO_REGISTER
-    seed_registers = SEED_REGISTERS if args.lang == "ja" else KO_SEED_REGISTERS
+            args.glossary = tag_glossary.ASSETS / f"tag_glossary_{args.lang}.json"
 
     rows = load_encoder(args.pack)
 
@@ -259,7 +275,7 @@ def main() -> None:
     suffix = "" if args.lang == "ja" else f"_{args.lang}"
     out_dir = args.pairs.parent
     only = out_dir / f"tags_synth{suffix}.jsonl"
-    merged = out_dir / f"pairs_synth_tags{suffix}.jsonl"
+    merged = args.out or out_dir / f"pairs_synth_tags{suffix}.jsonl"
     with only.open("w", encoding="utf-8") as f:
         for rec in minted:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")

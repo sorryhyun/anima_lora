@@ -246,3 +246,82 @@ implemented, unit-tested, and one render pair was queued — **parked by user
 call before any verdict**. Its premise (the EN arm renders identity
 perfectly at every tested seed) is observed fact; whether substitution
 inherits it is unmeasured.
+
+## 9. What an ext row *is* — adapter probes + the glossary-r2 arms (2026-09-02)
+
+CPU probes on the pretrained LLMAdapter (`probes/*.py`, no daemon), plus the
+arm-C re-cuts on the glossary-r2 packs. All numbers same-day.
+
+**The query slot is a lookup, not a reading.** Ablating the pretrained
+adapter on real EN captions (`probes/query_probe*.py`): with the **Qwen side
+emptied** each output slot keeps cos 0.67–0.75 to stock (content words
+0.83–0.90, name fragments 0.61–0.83, punctuation 0.2–0.7); with the **T5
+rows replaced by `<unk>` and Qwen intact** it collapses to 0.09–0.12; random
+rows 0.08–0.11; shuffled rows follow their row to the new position (0.62–
+0.74). A row yields the same vector in any prompt (▁cat 0.97, ku 0.99);
+different rows are near-orthogonal (0.12). The output is *not* the embedding
+row (cos 0.06, norm ratio 0.03) — the row is a key, the six blocks store the
+value. Qwen + query self-attn add a 10–30% contextual correction. **The DiT
+reads near-context-free per-token codes; composition (Miku = hat/s/une/mi/
+ku) lives in the DiT, not the adapter.** Ext slots behave identically
+(0.68–0.70 with Qwen emptied) — so a JA row's usefulness is exactly *which
+code it maps to*.
+
+**Two jobs, opposite targets.** (1) Frozen-DiT prompting: the code must land
+*on* the EN code for the same meaning (the DiT knows only the EN address
+space); dispersion is irrelevant. (2) Captions during LoRA training (arm C,
+OCR quotes): the code must be *stable and separable* — an address for the
+text pixels; meaning is irrelevant. The current single objective (EN-MT
+teacher) serves (1) and only incidentally (2). Arm-C eval prompts carry no
+CJK, so the pack acts on that line only through job (2).
+
+**Init lands where a row can go** (`probes/init_probe.py`,
+`invert_probe.py`; cos of one row's code to the EN tag's mean code, Qwen
+reading the JA caption): EN ids on T5 (= `word_sub`) 0.95–0.99; mean of EN
+*rows* as init 0.23–0.78 (key→code is nonlinear, averaging keys ≠ averaging
+codes); current mint init (mean of ext char rows) 0.23–0.73; trained per-
+char rows, no mint: tags 0.67–0.96, names 0.41–0.49. Optimising a single row
+in *code space* (150 Adam steps, CPU) reaches tags 0.93–0.96, names 0.81–
+0.87 — but per EN piece only 0.3–0.77: one slot carries the *average* of a
+name's fragment codes, never the sequence. → names: substitution; tags: a
+row can do it, and code-space inversion should replace the mean init in
+`mint_words.py`; free text: per-char trained rows, the only tier where pack
+training matters.
+
+**Geometry** (`probes/spread_probe.py`, `map_probe.py`, `char_probe.py`):
+native T5 codes are anisotropic (random-pair cos 0.21, common direction 0.46,
+PR 164 of 1024) but fully separable (0% pairs > 0.5). Ext keys: ridge init
+PR 236 with 16% collisions; **training (`param=global`, zero per-row
+freedom) collapses to PR 55 (JA-only) / 84 (JA+KO) while improving
+separability (5–7% / 2%)** — the diagonal discards directions the teacher
+does not reward. OCR-visited ext rows reach 0.6% collisions in code space
+(near native). The **char-fallback layer is near-degenerate** (random pairs
+60% > 0.5; init = mean of shared byte-fragment rows) and carries 4.9% of JA
+*tag* tokens incl. 髪 (11.8k), 黒, 顔, 獣, 緑; its frequent members end at
+2% collisions after training, the tail stays clumped — no shared map can
+split identical keys. A Procrustes-mixed anchor map keeps PR 373 at 1%
+collisions for held-out cos 0.70 (vs ridge 0.75) — the cheap init lever.
+Ridge λ is inert (1e-2 … 1e-6 identical).
+
+**Glossary-r2 arms (C3/C4) vs C2.** Same mirror, same PP-OCR records,
+same latents, same seed; only the ext encode differs (`cjk_unmask_c3/c4.toml`,
+`run_unmask_r2.py`). Non-diegetic text events over 8 rows × 3 seeds: **C2
+(synthjako2) 0 · C3 (synthja_v5, r2 corpus, cold) 3 · C4 (synthjako3, r2 +
+KO, warm, attn bank) 3**, and C3/C4 share the *same* artifacts (s42 r7 cat
+ears + flat blue bg, s42 r6 banner text, comic-row text fill) where C2 has
+none. The jako3 distill also fit worse (span 0.111 vs jako2 0.089; recovery
+0.008 vs v5 0.028). → the KO/warm-start/attn bundle is not the separator;
+the r2 corpus is the common factor. **Unresolved**: whether that is the
+corpus (a plain-v4 arm-C would settle it) or C2 being the lucky run (seed
+control). Hypothesis on the mechanism: better tier-1 alignment attributes
+text pixels to *content* codes → content leakage at inference. User
+eyeball: the r2 arms may look *better* on quality; not reconciled.
+Aggregate pack geometry (dispersion / EN-span) is identical across v4, jako2,
+v5, jako3 — per-row directions differ (ext-slot cos 0.50 between jako2 and
+v5 on one OCR line) — so bulk geometry does not predict the arm-C readout.
+
+**OCR side facts (C2/C3/C4 captions):** 228 PP-OCR lines over 97 images;
+133 images carry text masks → **44 masked images have no OCR line** and
+train as arm B for those images (a floor on any arm-C variant). UI chrome
+(完了にする / ★お気に入り / ツイート) from pixiv-request screenshots is
+captioned as `japanese text`; ~15 low-score SFX misreads.

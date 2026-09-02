@@ -1,0 +1,23 @@
+{
+ "_comment": "Phase-Z1 ZH eval set (plan_zh.md Z3 readout 3). Same 20 ids as ja_eval_prompts.json / ko_eval_prompts.json; `en` is copied verbatim (teacher side identical). `zh` is the wording a mainland Chinese user would type (NGA / Bilibili prompt register, simplified), not textbook translation. Per-row register decisions: 1girl -> '1个女性' (the NGA pack's own wording, chosen over latin '1girl' so the row exercises ext rows), looking at viewer -> '看向观众', twintails -> '双马尾', armor -> '盔甲', cape -> '披风', maid -> '女仆', hoodie -> '连帽衫', depth of field -> '景深', from above -> '俯视', wide shot -> '远景', monochrome -> '单色'. Tag rows join with ', '; prose rows use Chinese full-width commas '，' (an ext row, like JA 、) and Chinese double quotes “ ”. Drafted by the agent 2026-09-02 — needs the r1 native review before any number read on it is quoted.",
+ "t1_tags_school": {"en": "1girl, black hair, long hair, school uniform, classroom, sitting, looking at viewer, smile, anime style", "zh": "1个女性, 黑发, 长发, 校服, 教室, 坐着, 看向观众, 微笑, 动漫风格"},
+ "t2_tags_maid": {"en": "1girl, maid, white apron, blonde hair, twintails, blue eyes, holding a tray, indoors, detailed background", "zh": "1个女性, 女仆, 白色围裙, 金发, 双马尾, 蓝眼睛, 手持托盘, 室内, 精细背景"},
+ "t3_tags_armor": {"en": "1girl, knight, silver armor, red cape, sword, standing, castle, cloudy sky, dramatic lighting", "zh": "1个女性, 骑士, 银色盔甲, 红色披风, 剑, 站立, 城堡, 多云的天空, 戏剧性光照"},
+ "t4_tags_cat": {"en": "1girl, cat ears, animal ear fluff, hoodie, sitting on bed, night, room, soft lighting, looking away", "zh": "1个女性, 猫耳, 兽耳绒毛, 连帽衫, 坐在床上, 夜晚, 房间, 柔和光照, 看向别处"},
+ "t5_tags_two": {"en": "2girls, twins, matching outfits, holding hands, cherry blossoms, spring, outdoors, full body", "zh": "2个女性, 双胞胎, 情侣装, 牵手, 樱花, 春天, 室外, 全身"},
+ "t6_tags_boy": {"en": "1boy, short hair, glasses, white shirt, library, reading a book, from side, depth of field", "zh": "1个男性, 短发, 眼镜, 白衬衫, 图书馆, 看书, 侧面, 景深"},
+ "s1_scene_rain": {"en": "a girl with an umbrella standing at a crosswalk in the rain at night, neon signs reflected on the wet road", "zh": "雨夜，一个撑着伞的女孩站在人行横道上，霓虹灯招牌倒映在湿漉漉的路面上"},
+ "s2_scene_kitchen": {"en": "a young woman cooking breakfast in a sunlit kitchen, steam rising from the pan, warm morning light", "zh": "阳光照进的厨房里，一位年轻女子正在做早餐，平底锅冒着热气，温暖的晨光"},
+ "s3_scene_train": {"en": "a schoolgirl dozing off by the window of an empty train, late afternoon sunlight across the seats", "zh": "空荡荡的电车里，一个女学生靠着车窗打瞌睡，傍晚的阳光洒过座椅"},
+ "s4_scene_festival": {"en": "two friends in yukata eating shaved ice at a summer festival, paper lanterns glowing behind them", "zh": "夏日祭上，两个穿着浴衣的朋友在吃刨冰，身后的纸灯笼亮着"},
+ "s5_scene_studio": {"en": "an illustrator drawing on a tablet in a cluttered room at midnight, only the monitor lighting her face", "zh": "午夜凌乱的房间里，一位画师正在数位板上作画，只有显示器照亮她的脸"},
+ "q1_quote_sign": {"en": "1girl, school uniform, classroom, holding a wooden sign with \"GOOD MORNING\" written on it, anime style", "zh": "1个女性, 校服, 教室, 举着写有“早上好”的木牌, 动漫风格"},
+ "q2_quote_shop": {"en": "a small cafe storefront with a hanging cloth curtain reading \"OPEN\", potted plants beside the door", "zh": "挂着写有“营业中”布帘的小咖啡店门面，门边摆着盆栽"},
+ "q3_quote_book": {"en": "1girl, holding an open notebook toward the viewer with \"THANK YOU\" written on the page, smiling", "zh": "1个女性, 朝观众举着一本翻开的笔记本, 页面上写着“谢谢”, 微笑"},
+ "n1_name_hakurei": {"en": "hakurei reimu, touhou, red and white miko outfit, detached sleeves, shrine, standing, anime style", "zh": "博丽灵梦, 东方Project, 红白巫女服, 分离袖, 神社, 站立, 动漫风格"},
+ "n2_name_asuka": {"en": "souryuu asuka langley, neon genesis evangelion, red plugsuit, interface headset, serious expression", "zh": "惣流·明日香·兰格雷, 新世纪福音战士, 红色驾驶服, 接口头戴装置, 严肃的表情"},
+ "n3_name_place": {"en": "a shrine on a mountain in kyoto in autumn, red maple leaves, stone stairs, no humans", "zh": "秋天的京都, 山上的神社, 红枫, 石阶, 无人"},
+ "c1_comp_closeup": {"en": "close-up portrait, 1girl, freckles, green eyes, wind-blown hair, shallow depth of field, backlighting", "zh": "特写肖像, 1个女性, 雀斑, 绿眼睛, 被风吹起的头发, 浅景深, 逆光"},
+ "c2_comp_wide": {"en": "wide shot, 1girl, tiny figure in a vast field of sunflowers, blue sky, from above, summer", "zh": "远景, 1个女性, 广阔向日葵田里的小小身影, 蓝天, 俯视, 夏天"},
+ "c3_comp_mono": {"en": "monochrome, greyscale, 1girl, sitting on a windowsill, cigarette smoke, film grain, 1990s anime style", "zh": "单色, 灰度, 1个女性, 坐在窗台上, 香烟的烟雾, 胶片颗粒, 1990年代动漫风格"}
+}

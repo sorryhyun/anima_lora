@@ -262,6 +262,35 @@ def build_d1(captions, glossary, args, rng, joiner_rng=None) -> list[dict]:
 
 NAME_AXES = {"character", "copyright"}
 
+
+def add_hant_register(pairs: list[dict], suffix: str = "_zh") -> list[dict]:
+    """Traditional-Chinese sibling register (plan_zh.md "Script reality").
+
+    A copy of every ``tags<suffix>`` record with the student side (and each
+    span's ``ja``) run through OpenCC s2t, register ``tags<suffix>_hant``.
+    The EN side, spans' provenance and joiner are untouched. This is what
+    visits the 開/間/後/閉 class of rows JA and zh-Hant share and zh-Hans
+    never touches; it is not an alternate wording (register drift, risk 2).
+    """
+    import tag_glossary  # noqa: PLC0415  (sibling — OpenCC helpers)
+
+    src_reg = "tags" + suffix
+    out = []
+    for p in pairs:
+        if p.get("register") != src_reg:
+            continue
+        ja = tag_glossary.to_hant(p["ja"])
+        if ja == p["ja"]:
+            continue  # nothing traditional to add — no row would differ
+        q = dict(p)
+        q["id"] = p["id"].replace(f"/{src_reg}", f"/{src_reg}_hant")
+        q["register"] = src_reg + "_hant"
+        q["ja"] = ja
+        q["spans"] = [{**sp, "ja": tag_glossary.to_hant(sp["ja"])} for sp in p["spans"]]
+        out.append(q)
+    return out
+
+
 # Student-side tag joiner. ``", "`` is what users type (Civitai / Arca / pixiv
 # prompt boxes take ASCII commas in every language) *and* it is a native T5
 # piece, so teacher and student share the identical delimiter token and differ
@@ -464,6 +493,13 @@ def ext_coverage(pairs: list[dict], args) -> dict:
         "rows_by_visit_band": bands,
         "top_rows": visits.most_common(20),
     }
+    if getattr(args, "lang", "ja") == "zh":
+        han_seen = {c for c in seen if "一" <= c <= "鿿"}
+        out |= {
+            "han_codepoints_seen": len(han_seen),
+            "han_seen_once_only": sum(1 for c in han_seen if seen[c] == 1),
+        }
+        return out
     if getattr(args, "lang", "ja") == "ko":
         # KO analog of the script-class readout: hangul syllables seen
         hangul_seen = {c for c in seen if "가" <= c <= "힣"}
@@ -523,12 +559,13 @@ def main() -> None:
     ap.add_argument(
         "--lang",
         default="ja",
-        choices=["ja", "ko"],
+        choices=["ja", "ko", "zh"],
         help="student-side language (plan_ko.md K1: KO renames registers to "
         "tags_ko/tags_alt_ko/names_ko, stamps lang on every record, joins "
         "rng-free with ', ' — nobody types 、 in Korean — and skips D2/D6, "
         "which have no native KO source; the record field stays `ja` = "
-        "'student text')",
+        "'student text'). zh (plan_zh.md Z1) is the KO layout plus a "
+        "`tags_zh_hant` sibling register (OpenCC s2t of every tags_zh record).",
     )
     ap.add_argument("--glossary", type=Path, default=ASSETS / "tag_glossary_ja.json")
     ap.add_argument(
@@ -595,6 +632,8 @@ def main() -> None:
         pairs += build_d6(glossary, args, rng) + build_d2(args, rng)
     else:
         print(f"  [pairs] D6/D2 skipped for lang={args.lang} (no native source)")
+    if args.lang == "zh":
+        pairs += add_hant_register(pairs, suffix)
     args.out.mkdir(parents=True, exist_ok=True)
     with (args.out / f"pairs{suffix}.jsonl").open("w", encoding="utf-8") as f:
         for p in pairs:
