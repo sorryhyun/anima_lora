@@ -6,6 +6,11 @@
 #     pattern matches an image COMPOSES (ignore-regions union, focus-regions
 #     union). A `rules:` key, when present, replaces the flat fields.
 #
+# `make mask` (scripts/tasks/masking.py) translates this file into
+# anime_tools' SamMaskRequest flags: the flat form is one SAM pass, the rules
+# form is one SAM pass per rule, and the merge step's pixel-min union composes
+# them. A rule with its own path_pattern runs on that pattern alone.
+#
 # Within either schema:
 #   prompts        subjects to mask OUT (ignored in the loss; train on the rest)
 #   focus_prompts  reversed polarity — keep ONLY these, ignore everything else

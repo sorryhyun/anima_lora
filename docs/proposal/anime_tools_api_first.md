@@ -1,6 +1,6 @@
 # anime_tools API-first boundary — trainer side (2026-09-02)
 
-Status: **approved direction; package half landed, trainer half open**
+Status: **approved direction; package half landed, T0–T1 landed 2026-09-02, T2–T6 open**
 (re-audited 2026-09-02 against `anime_tools` HEAD `6a225f8`; the package-side
 requests below landed the same day on top of it, as `0.4.0`). The package-side
 plan (`docs/api_first_plan.md`, deleted in `9ccc655`) is now folded into
@@ -138,7 +138,7 @@ here reopens the design.
 Ordered. T0–T2 are the pin bump and can land in one PR once the requests
 above are pinned; T3–T5 are the migration proper.
 
-- [ ] **T0. Pin bump** (blocks v2 Track A1).
+- [x] **T0. Pin bump** (blocks v2 Track A1). *Landed 2026-09-02*, pin `94e6d92` — see "What T0 found" below.
   - `scripts/tasks/masking.py::_run_sam`: translate `sam_mask.yaml`
     (`prompts`, `focus_prompts`, `threshold`, `dilate`, `path_pattern`) into
     the new flags; drop the tempfile yaml round-trip (`_sam_config_path`).
@@ -164,7 +164,7 @@ above are pinned; T3–T5 are the migration proper.
     the revised caption wins, `clauses_preserved == 1`, "On the left" stays).
     The `preprocess-captions` docs / `captions` skill lose the "edit the
     master, re-run" phrasing for already-mirrored images.
-- [ ] **T1. Contract test.** `tests/test_anime_tools_cli_contract.py`: import
+- [x] **T1. Contract test.** *Landed 2026-09-02.* `tests/test_anime_tools_cli_contract.py`: import
   `anime_tools.stages.registry` **in-process** (it and the request modules are
   torch-free by the package's own test — no child interpreter needed), map
   each wrapper's `-m` module to its `Stage`, and assert the argv parses and
@@ -210,6 +210,63 @@ above are pinned; T3–T5 are the migration proper.
   `docs/v2_release_plan.md` Track D: drop the `--device` item from D0, point
   at `../anime_tools/CLAUDE.md` instead of the deleted plan file, and fix A5
   wording.
+
+## What T0 found (2026-09-02)
+
+Landed as one change (trainer + two package commits); the deviations from the
+plan above, in the order they bit:
+
+1. **The trainer could not lock at all** — not the pin, the sibling checkout.
+   `anime_tools` had grown a `[tool.uv.sources]` torch → cu130 index for win32
+   (package commit `ad93fdb`), and uv carries a path dependency's sources into
+   the consumer's resolve, so the `anime-tools-dev` editable group made every
+   trainer `uv lock` fail with "conflicting indexes for torch (cu130 vs
+   ROCm)" — the [[project_uv_run_resolve_broken]] symptom, root-caused. The
+   package dropped the block (`d9bbaa3`): the trainer owns the Windows backend
+   via its `cuda-windows` / `rocm-windows` groups; a standalone Windows install
+   passes `--index` at sync time. `uv lock` / `uv sync` work again.
+2. **`rules:` is gone from the package but the GUI still sends one.**
+   `sam_section.collect_rules()` → `SAM_MASK_CONFIG_JSON = {"rules": […],
+   "path_pattern": …}`. `scripts/tasks/masking.py` now normalizes both schemas
+   itself (`_sam_rules`) and builds one `SamMaskRequest` per rule (`to_argv()`,
+   the T3 shape) into its own temp dir; the merge step's pixel-min union is the
+   old compose (ignore regions unioned). A rule with its own `path_pattern`
+   runs on that pattern alone (the package takes one glob per run — the old
+   "global scope ∩ rule pattern" is not expressible; global scope still applies
+   to every rule without one). An empty `focus_prompts` is spelled
+   `--focus-prompts none` (the request defaults it to the subject prompt).
+   Per-rule `threshold`/`dilate` fall back to the top-level values, then to the
+   package defaults — the trainer no longer carries `0.5`/`5`. Pinned in
+   `tests/test_masking_task.py`; the argv round-trips in the T1 test.
+3. **One import broke**: `library/anima/training.py` re-exported the private
+   `_is_artist_tag`, which became `anime_tools.captions.taxonomy.is_artist_tag`.
+   Nothing in the trainer called it beyond the re-export (one GUI comment, one
+   test); dropped. The other 42 import names resolve (T1 sweeps them).
+4. **`captions.index` crashed at its final write** at 0.4.0 — the CLI resolves
+   `--vocab` to a `Path` and stored it in `meta` (`TypeError: PosixPath is not
+   JSON serializable`). Fixed in the package (`94e6d92`, with a test) — hence
+   the second pin. Its default `--out` also moved to the package's
+   `workspace/captions/`; the trainer now passes `--out
+   post_image_dataset/captions/caption_index.json` (`CAPTION_INDEX_PATH`) so
+   `train.py` / `configs/easycontrol/*.toml` keep reading where they always did.
+5. **Five tests inverted, not four**: the listed four plus
+   `test_mirror_picks_up_a_master_edit_around_the_clauses` (now
+   `test_a_master_edit_does_not_reach_a_revised_caption`, which also pins the
+   "delete the revised caption to re-mirror" path via `from_master`).
+6. The package folded its `stages` / `grouping` / `masking` extras into the
+   base requirements; the trainer's group specs are plain `anime-tools` now.
+   The pin drags `transformers` 5.10.1 → 5.16.1 (`anime_tools` requires
+   ≥ 5.16); the scratch preprocess + TE encode below ran on it.
+7. Validation ran **inline, not through the daemon**: the queue was serial
+   behind a running CJK cache job and a queued cold-joint train. On a 5-image
+   scratch copy of real images (two without captions) via a `CONFIG_FILE`
+   snapshot: `make preprocess` (resize → VAE → captions → TE → index) passed.
+   **Still owed**: the beta-gate chain (`caption-autotag --apply` →
+   `preprocess-te` keeps the autotag tags in the TE-cached caption) — the
+   `caption-autotag` target submits to the daemon itself, and the job queued
+   behind the CJK cold-joint runs, so it was cancelled; rerun once the queue is free
+   (scratch set + `CONFIG_FILE` snapshot are the recipe; the config lives only
+   in the session scratchpad, so rebuild it: five images, two without captions).
 
 ## Guards
 

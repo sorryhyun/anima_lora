@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 # Caption shuffle grammar lives in anime_tools.captions.shuffle (curation side). Re-exported here so trainer callers keep their import path.
 from anime_tools.captions.shuffle import (  # noqa: E402,F401
     NO_ARTIST_SENTINEL,
-    _is_artist_tag,
     anima_smart_shuffle_caption,
     find_anima_prefix_end,
     strip_no_artist_sentinel,

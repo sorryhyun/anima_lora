@@ -217,6 +217,7 @@ def _pop_explicit_demote_routes(extra) -> tuple[list[str], list[str]]:
 # Mirrors ``anime_tools.stages.autotag.MODES``; duplicated rather than imported
 # so this module stays free of the PIL/torch import chain.
 _AUTOTAG_MODES = ("missing", "merge", "overwrite")
+CAPTION_INDEX_PATH = "post_image_dataset/captions/caption_index.json"
 
 
 def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
@@ -1027,6 +1028,11 @@ def cmd_caption_index(extra):
             "anime_tools.captions.index",
             "--src",
             _path("source_image_dir", "image_dataset"),
+            # The package's default moved to its own workspace/ tree (0.4.0);
+            # the trainer's readers (train.py, configs/easycontrol/*.toml) keep
+            # the post_image_dataset/ home.
+            "--out",
+            CAPTION_INDEX_PATH,
             *pp_args,
             *extra,
         ]

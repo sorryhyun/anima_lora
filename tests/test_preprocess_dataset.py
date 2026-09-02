@@ -233,9 +233,11 @@ def test_write_corrected_preprocess_captions_preserves_source(tmp_path: Path) ->
     )
 
 
-def test_write_corrected_preprocess_captions_removes_stale_missing_source(
+def test_write_corrected_preprocess_captions_keeps_a_revised_caption_without_master(
     tmp_path: Path,
 ) -> None:
+    """A revised caption is *the* caption (anime_tools >= 0.4.0, revised-first):
+    with no master beside it, it is corrected in place, not treated as stale."""
     from anime_tools.captions.correction import CaptionCorrectionOptions
     from anime_tools.captions.correction import load_tag_knowledge_base
     from anime_tools.stages.captions import write_corrected_preprocess_captions
@@ -244,8 +246,8 @@ def test_write_corrected_preprocess_captions_removes_stale_missing_source(
     resized = tmp_path / "post_image_dataset" / "resized"
     source.mkdir()
     _write_image(resized / "charA" / "cover.png", (64, 64))
-    stale = resized / "charA" / "cover.txt"
-    stale.write_text("stale", encoding="utf-8")
+    revised = resized / "charA" / "cover.txt"
+    revised.write_text("smile, 1girl", encoding="utf-8")
 
     stats = write_corrected_preprocess_captions(
         source,
@@ -255,9 +257,9 @@ def test_write_corrected_preprocess_captions_removes_stale_missing_source(
         recursive=True,
     )
 
-    assert stats.missing_source == 1
-    assert stats.removed_stale == 1
-    assert not stale.exists()
+    assert stats.no_caption == 0
+    assert stats.from_master == 0
+    assert revised.exists()
 
 
 def test_confirm_train_using_cache_requires_pe_when_repa_on(tmp_path: Path) -> None:

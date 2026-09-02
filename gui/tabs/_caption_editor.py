@@ -138,7 +138,7 @@ def _tag_ranges(text: str):
 
 
 def _tag_border_color(tag: str) -> QColor:
-    # Mirror library.anima.training._is_artist_tag: `@<non-space>` is an artist
+    # Mirror anime_tools.captions.taxonomy.is_artist_tag: `@<non-space>` is an artist
     # handle, but `@ @` (space-form booru eye-shape) is a general tag and must
     # not steal the artist tint. Inline to keep this module free of library/*.
     if len(tag) >= 2 and tag[0] == "@" and not tag[1].isspace():

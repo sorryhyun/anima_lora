@@ -133,7 +133,7 @@ override-dependencies = [
 # (the `anime-tools-dev` group swaps in ../anime_tools as an editable path
 # source; it conflicts with the default `anime-tools-git` group by design).
 anime-tools = [
-    { git = "https://github.com/sorryhyun/anime_tools", rev = "971e229da78cbfacdaa9c0e26490ee5390c3874f", group = "anime-tools-git" },
+    { git = "https://github.com/sorryhyun/anime_tools", rev = "94e6d92985095216fbbdde903df864ade68e5ad4", group = "anime-tools-git" },
     { path = "../anime_tools", editable = true, group = "anime-tools-dev" },
 ]
 torch = [
@@ -204,8 +204,8 @@ dev = [
 # anime_tools source selector (see [tool.uv.sources]): `anime-tools-git` is
 # default-on (pinned rev); `--no-group anime-tools-git --group anime-tools-dev`
 # swaps in the sibling checkout for development.
-anime-tools-git = ["anime-tools[stages,grouping,masking]"]
-anime-tools-dev = ["anime-tools[stages,grouping,masking]"]
+anime-tools-git = ["anime-tools"]
+anime-tools-dev = ["anime-tools"]
 # Windows accelerator backends. `cuda-windows` is in default-groups (see
 # [tool.uv]) so it composes into every plain `uv sync`; every dep is
 # win32-marked, so both groups are inert on Linux/macOS.

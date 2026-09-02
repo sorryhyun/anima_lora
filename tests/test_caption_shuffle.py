@@ -25,11 +25,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from library.anima.training import (  # noqa: E402
     NO_ARTIST_SENTINEL,
-    _is_artist_tag,
     anima_smart_shuffle_caption,
     find_anima_prefix_end,
     strip_no_artist_sentinel,
 )
+from anime_tools.captions.taxonomy import is_artist_tag as _is_artist_tag  # noqa: E402
 
 
 # ----- predicate ----------------------------------------------------------
@@ -165,9 +165,12 @@ def test_variants_v0_byte_identical_when_no_sentinel():
 def test_direct_te_caption_strips_sentinel_without_normalizing_clean_caption():
     from library.preprocess.text import _strip_no_artist_sentinel_from_caption
 
-    assert _strip_no_artist_sentinel_from_caption(
-        f"{NO_ARTIST_SENTINEL}, blue hair, 1girl"
-    ) == "blue hair, 1girl"
+    assert (
+        _strip_no_artist_sentinel_from_caption(
+            f"{NO_ARTIST_SENTINEL}, blue hair, 1girl"
+        )
+        == "blue hair, 1girl"
+    )
     raw = "@sincos,blue hair  ,1girl"
     assert _strip_no_artist_sentinel_from_caption(raw) == raw
 
