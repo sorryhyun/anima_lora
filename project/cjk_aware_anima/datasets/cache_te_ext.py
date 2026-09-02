@@ -87,7 +87,9 @@ def append_tags(caption: str, tags: list[str]) -> str:
     )
 
 
-def build_mirror(resized: Path, mirror: Path, tags: dict[str, list[str]]) -> tuple[int, int]:
+def build_mirror(
+    resized: Path, mirror: Path, tags: dict[str, list[str]]
+) -> tuple[int, int]:
     from anime_tools.captions.variants import read_variants_sidecar
 
     mirror.mkdir(parents=True, exist_ok=True)
@@ -98,7 +100,9 @@ def build_mirror(resized: Path, mirror: Path, tags: dict[str, list[str]]) -> tup
             link.symlink_to(img.resolve())
         stem_tags = tags.get(img.stem, [])
         cap_src = resized / f"{img.stem}.txt"
-        caption = cap_src.read_text(encoding="utf-8").strip() if cap_src.exists() else ""
+        caption = (
+            cap_src.read_text(encoding="utf-8").strip() if cap_src.exists() else ""
+        )
         var_src = resized / f"{img.stem}.variants.txt"
         rows = read_variants_sidecar(var_src) if var_src.exists() else []
         if stem_tags:
@@ -123,10 +127,18 @@ def main() -> None:
     ap.add_argument("--shard", default="sincos")
     ap.add_argument("--records", type=Path, default=None)
     ap.add_argument(
-        "--ext_prefix", type=Path,
+        "--ext_prefix",
+        type=Path,
         default=REPO / "output" / "ckpt" / "cjk_vocab_pack_synthjako2",
     )
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument(
+        "--mirror",
+        type=Path,
+        default=None,
+        help="Mirror dir (default mirror_<shard>); pass a fresh one when re-caching "
+        "with a different OCR engine so the arm-C mirror stays as trained.",
+    )
     ap.add_argument("--dit", default=ckpt.dit)
     ap.add_argument("--qwen3", default=ckpt.text_encoder)
     ap.add_argument("--max_lines", type=int, default=8)
@@ -137,7 +149,7 @@ def main() -> None:
     base_dir = REPO / "post_image_dataset" / "cjk_unmask"
     records = opts.records or base_dir / f"ocr_records_{opts.shard}.jsonl"
     out = opts.out or base_dir / "te" / opts.shard
-    mirror = base_dir / f"mirror_{opts.shard}"
+    mirror = opts.mirror or base_dir / f"mirror_{opts.shard}"
     resized = REPO / "post_image_dataset" / "resized" / opts.shard
 
     tags = ocr_tags_by_stem(records, opts.max_lines)

@@ -1,0 +1,10 @@
+# User-picked JA morpheme rows for minting (2026-09-02). Shared sub-word units,
+# not whole tags: each fires inside many glossary surfaces.
+女の子
+赤面
+ヘア
+ノー
+ビキニ
+ハート
+セックス
+ブラ

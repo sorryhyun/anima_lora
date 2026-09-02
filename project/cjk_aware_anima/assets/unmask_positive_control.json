@@ -1,0 +1,15 @@
+{
+  "_comment": "Unmask positive control (0901 report caveat 2): does the ext-trained arm-C LoRA render asked-for JA text? `en` = the user's literal EN description; `ja` = the training-form OCR quote tag (`japanese text, 「…」`) so the ja_ext arm mirrors what arm C actually saw. `no_text` is the negative control for the text-area contrast.",
+  "hello_bubble": {
+    "en": "1girl, solo, smile, looking at viewer, simple background, speech bubble, \"こんにちは\" is written on the speech bubble",
+    "ja": "1girl, solo, smile, looking at viewer, simple background, speech bubble, japanese text, 「こんにちは」"
+  },
+  "hello_sign": {
+    "en": "1girl, solo, holding sign, upper body, simple background, \"こんにちは\" is written on the sign",
+    "ja": "1girl, solo, holding sign, upper body, simple background, japanese text, 「こんにちは」"
+  },
+  "no_text": {
+    "en": "1girl, solo, smile, looking at viewer, simple background",
+    "ja": "1girl, solo, smile, looking at viewer, simple background"
+  }
+}

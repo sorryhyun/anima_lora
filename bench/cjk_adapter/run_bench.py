@@ -247,6 +247,15 @@ def main() -> None:
         "paid once across all arms).",
     )
     parser.add_argument(
+        "--lora",
+        nargs="*",
+        default=None,
+        help="DiT LoRA checkpoint(s) to load (merge-or-live per checkpoint "
+        "metadata, applied inside load_dit_model before any block compile). "
+        "Use it to render an ext-trained LoRA through the ext encoder.",
+    )
+    parser.add_argument("--lora_multiplier", type=float, default=1.0)
+    parser.add_argument(
         "--ext",
         action="store_true",
         help="Add {lang}_ext arms: native CJK on both sides, T5 side through "
@@ -297,6 +306,8 @@ def main() -> None:
         guidance_scale=opts.cfg,
         image_size=(opts.size[0], opts.size[1]),
         seed=opts.seed,
+        lora_weight=opts.lora or None,
+        lora_multiplier=opts.lora_multiplier if opts.lora else None,
     ).to_args()
     args.device = device
     # Block compile (repo-preferred over whole-model torch.compile): applied
@@ -383,12 +394,14 @@ def main() -> None:
     # ---- adapter-output diagnostics ----------------------------------------
     diagnostics = {}
     for content, table in arms.items():
-        base = contexts[(content, "en")][0]["embed"][0]
+        # `--arms` may drop `en` (ext-only grids); cos_vs_en is then undefined.
+        base_ctx = contexts.get((content, "en"))
+        base = base_ctx[0]["embed"][0] if base_ctx is not None else None
         rows = {}
         for arm in table:
             emb = contexts[(content, arm)][0]["embed"]
             row = t5_side_stats(emb)
-            row["cos_vs_en"] = flat_cos(emb[0], base)
+            row["cos_vs_en"] = flat_cos(emb[0], base) if base is not None else None
             rows[arm] = row
         diagnostics[content] = rows
 
@@ -426,6 +439,8 @@ def main() -> None:
                 f"  {arm:14s} t5_nonpad={row['t5_tokens_nonpad']:3d} "
                 f"unk={row['t5_unk']:2d} ext={row['t5_ext']:2d} "
                 f"cos_vs_en={row['cos_vs_en']:+.4f}"
+                if row["cos_vs_en"] is not None
+                else "cos_vs_en=n/a"
             )
     print("[p1-vs-p2 discrimination]")
     for arm, cos in discrimination.items():
@@ -487,6 +502,8 @@ def main() -> None:
                 else {}
             ),
             "ext_prefix": str(opts.ext_prefix) if opts.ext else None,
+            "lora": list(opts.lora or []),
+            "lora_multiplier": opts.lora_multiplier if opts.lora else None,
             "adapter_lora": (
                 {
                     "r": adapter_lora.rank,
