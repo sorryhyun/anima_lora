@@ -225,6 +225,16 @@ def load_safetensors_with_lora(
             normalized = {}
             for k, v in lora_sd.items():
                 normalized[k.replace("__orig_mod_", "_")] = v
+            # Shipped checkpoints carry adaln LoRA keys in the ComfyUI layout
+            # (``adaln_modulation_{br}_2`` — lora_save relays them at write
+            # time), but this hook sees the DiT's *runtime* key names
+            # (``adaln_up_{br}``, post ``_dit_rename_hook``). Without the
+            # rename the adaln rows of every ``train_adaln`` LoRA silently
+            # fell into the "not all LoRA keys are used" warning on the
+            # static-merge path (create_network_from_weights already did
+            # this for the live-hook path). Presence-gated: no-op otherwise.
+            if has_comfy_adaln_keys(normalized):
+                normalized = relayout_adaln_comfy_to_runtime(normalized)
             lora_weights_list[i] = normalized
             lora_weight_keys = set(normalized.keys())
             list_of_lora_weight_keys.append(lora_weight_keys)
