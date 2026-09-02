@@ -1,0 +1,805 @@
+count	tag	chosen	via	mt_rendering	candidates (wording|back-translation|f1|src)	flag
+14754	1girl	1个女性	kb	1个女性	1个女性|1 female|0.0|kb ; 1个女孩|1 girl|0.0|kb ; 武装少女|Armed Girl|0.0|wiki ; 1女孩|1 girl|0.0|kbmt	
+10634	blush	脸红	kb_verified	脸红	脸红|Blushing|1.0|kb ; 脸红的|blushing|1.0|kb ; 赤面|Blush|1.0|wiki	
+10429	explicit	露骨性描写	rating			NO_PACK
+9536	long hair	长发	kb_verified	长发	长发|long hair|1.0|kb ; 长髪|Long hair|1.0|wiki ; 长髪化|Long hair transformation|0.8|wiki	
+7670	looking at viewer	看向阅图者	kb_verified	注视着观看者	看向阅图者|Looking at the viewer|1.0|kb ; 看着你|Looking at you|0.5|kb ; 看向观众|Look at the audience|0.5|wiki ; 注视着观看者|Staring at the viewer|0.5|mt ; 目光接触|Eye contact|0.0|kbmt	
+7264	nipples	乳头	kb	乳头	乳头|nipple|0.0|kb ; 乳首|nipple|0.0|wiki	
+7085	1boy	1个男性	kb	1个男性	1个男性|1 male|0.0|kb ; 1个男孩|1 boy|0.0|kb ; 男|Man|0.0|wiki ; 1男单男|1 Men's Singles Men|0.0|kbmt	
+6442	censored	打码的	kb	打码	打码的|Redacted|0.0|kb ; 审核过的/有码|Reviewed/with code|0.0|kb ; 打码|Redacted|0.0|mt ; 审查审查|Review review|0.0|kbmt	
+6407	hetero	异性恋	kb	异性恋	异性恋|heterosexual|0.0|kb ; 男女|Men and women|0.0|wiki ; 男女CP|Male and female couple|0.0|wiki ; 异类|Outcast|0.0|kbmt	
+6358	open mouth	张嘴的	kb_verified	张嘴	张嘴的|Open-mouthed|1.0|kb ; 张嘴|Open your mouth|0.8|mt ; 张开嘴|Open your mouth|0.8|kbmt ; 开口|opening|0.667|wiki	
+6258	solo	单人	kb_verified	单人	单人|Solo|1.0|kb ; 单独人物|Single figure|0.0|kb	
+6111	large breasts	巨乳	kb_verified	巨乳	巨乳|Big breasts|0.5|kb ; 豊乳|Big breasts|0.5|wiki ; 大乳房|Big breasts|0.5|kbmt ; 大胸部|Big breasts|0.5|kbmt ; 美巨乳|American giant boobs|0.0|wiki	
+6041	navel	肚脐	kb_verified	肚脐	肚脐|navel|1.0|kb ; 脐|navel|1.0|wiki	
+5460	penis	阴茎	kb_verified	阴茎	阴茎|penis|1.0|kb ; 男根|penis|1.0|wiki ; 鸡巴|penis|1.0|kbmt ; 公鸡|rooster|0.0|kbmt	
+4919	pussy	小穴	kb	私处	小穴|Small hole|0.0|kb ; 女阴|vulva|0.0|wiki ; 外阴|vulva|0.0|kbmt ; 阴道|vagina|0.0|kbmt ; 私处|private parts|0.0|mt	
+4430	sex	性交	kb	性别	性爱|Sex|1.0|wiki ; 性交|sexual intercourse|0.0|kb ; 性行为|Sexual activity|0.0|wiki ; 性别|Gender|0.0|mt ; 他妈的他妈的|Damn fucking|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+4220	sweat	汗水	kb_verified	汗水	汗水|Sweat|1.0|kb ; 汗|sweat|1.0|wiki ; 汗液|Sweat|1.0|wiki ; 出汗|Sweating|1.0|kbmt	
+4211	black hair	黑发	kb_verified	黑发	黑发|Black hair|1.0|kb ; 黑色头发|Black hair|1.0|wiki ; 黑发赤眼|Black hair, red eyes|0.667|wiki	
+4126	smile	微笑	kb_verified	微笑	微笑|Smile|1.0|kb ; 笑容|Smile|1.0|kb ; 笑|Laugh|0.0|wiki	
+4070	ass	屁股	kb	臀部	屁股|butt|0.0|kb ; 尻|buttock|0.0|wiki ; 尻神|Buttock God|0.0|wiki ; 脸颊|cheek|0.0|kbmt ; 臀部|buttocks|0.0|kbmt	
+3651	underwear	内衣	kb_verified	内衣	内衣|underwear|1.0|kb ; 下着|Underwear|1.0|wiki ; 肌着|Underwear|1.0|wiki	
+3571	simple background	朴素的背景	kb_verified	简单背景	朴素的背景|Simple background|1.0|kb ; 简单背景|Simple background|1.0|mt ; 简单的背景|Simple background|1.0|kbmt	
+3556	breasts	乳房	kb_verified	乳房	乳房|Breast|1.0|kb ; 胸|chest|0.0|wiki ; 乳|milk|0.0|wiki ; 胸部|Chest|0.0|kbmt ; 呼吸|Breathing|0.0|kbmt	
+3544	thighs	大腿	kb_verified	大腿	大腿|thigh|1.0|kb ; 太股|thigh|1.0|wiki ; 腿|leg|0.0|wiki	
+3523	small breasts	贫乳	kb_verified	小乳	贫乳|Small breasts|1.0|kb ; 娇小的乳房|Small breasts|1.0|kb ; 小乳|small breast|1.0|mt ; 娇小的乳房(B)|Small breasts (B)|0.8|kb	
+3404	blue eyes	蓝眼	kb_verified	蓝眼睛	蓝眼|Blue eyes|1.0|kb ; 蓝眼睛|Blue eyes|1.0|kb ; 蓝眼睛浅蓝色的眼睛|Blue eyes, light blue eyes|0.8|kbmt ; 金发碧眼|Blonde and blue-eyed|0.4|wiki	
+3351	hair ornament	发饰	kb_verified	发饰	发饰|Hair accessory|0.5|kb ; 头饰|Headdress|0.0|wiki	
+3320	short hair	短发	kb_verified	短发	短发|Short hair|1.0|kb ; 短髪|Short hair|1.0|wiki ; 短毛短毛猫|Short-haired cat|0.8|kbmt	
+3137	sensitive	微涩	rating			NO_PACK
+3127	nsfw	成人向	rating			NO_PACK
+3057	white background	白色背景	kb_verified	纯白背景	白色背景|White background|1.0|kb ; 白背景|White background|1.0|wiki ; 纯白背景|Pure white background|0.8|mt	
+3023	bar censor	黑条打码	kb	打码栏	审查员酒吧审查员酒吧|Censor Bar Censor Bar|1.0|kbmt ; 条形打码|Bar coding|0.5|wiki ; 打码栏|Masking bar|0.5|mt ; 黑条(打码)|Black bar (redacted)|0.4|wiki ; 黑条打码|Black strip masking|0.0|kb	PACK_UNVERIFIED_RIVAL
+3010	lying	躺着的	kb_verified	躺着	躺着的|Lying down|0.667|kb ; 横卧|Lying horizontally|0.667|wiki ; 躺着|Lying down|0.667|kbmt ; 卧|lie down|0.0|wiki	
+2944	solo focus	单人特写	mt_unverified	单人特写	单焦点|Single focus|0.5|kbmt ; 以单独人物为焦点|Focusing on a single individual|0.0|kb ; 单人特写|Single-person close-up|0.0|mt	DEVIATES_FROM_PACK
+2899	brown hair	棕发	kb_verified	棕发	棕发|brown hair|1.0|kb ; 棕色头发|Brown hair|1.0|kb ; 布鲁内特|Brunette|0.0|kbmt	
+2896	vaginal	阴道	kb	私处	阴道的|vaginal|1.0|wiki ; 阴道插入|Vaginal insertion|0.667|wiki ; 阴道插入阴道性交|Vaginal insertion vaginal intercourse|0.5|kbmt ; 阴道|vagina|0.0|kb ; 私处|private parts|0.0|mt	PACK_UNVERIFIED_RIVAL
+2836	medium breasts	普通罩杯的胸	kb	中等胸围	中等乳房|Medium breasts|1.0|kbmt ; 普乳|General breast|0.5|wiki ; 普通罩杯的胸|Cup B breasts|0.4|kb ; 中等胸部(C)|Medium chest (C)|0.4|kb ; 中等胸围|Medium bust size|0.4|mt	PACK_UNVERIFIED_RIVAL
+2780	loli	萝莉	kb	萝莉	萝莉|Lolita|0.0|kb ; 幼女|young girl|0.0|wiki ; 萝莉控萝莉|Lolicon lolita|0.0|kbmt	
+2765	cum	精液	kb	精液	精液|semen|0.0|kb ; 射液|Ejaculation|0.0|kbmt ; 精子|sperm|0.0|kbmt	
+2742	nude	裸体	kb	裸体	全裸群像|Nude group portrait|0.5|wiki ; 裸体|Naked|0.0|kb ; 裸体的|Naked|0.0|kb ; 裸|Naked|0.0|kbmt	
+2716	spread legs	张开腿	kb_verified	分开双腿	张开腿|Spread your legs|0.8|kb ; 分开双腿|Spread your legs apart|0.667|mt ; M字张腿|M-shaped leg spread|0.333|kb ; 桃色蹲姿|Pink Squat Pose|0.0|kb	
+2603	mosaic censoring	打了马赛克	kb_verified	马赛克打码	马赛克审查员|Mosaic censor|1.0|kbmt ; 马赛克|Mosaic|0.667|wiki ; 打了马赛克|Blurred with mosaic|0.5|kb ; 像素审查员|Pixel Censor|0.5|kbmt ; 马赛克打码|Mosaic masking|0.5|mt	
+2547	collarbone	锁骨	kb	锁骨	锁骨|clavicle|0.0|kb	
+2509	twintails	双马尾	kb_verified	双马尾	双马尾|Twintails|1.0|kb	
+2505	blonde hair	金发	kb_verified	金发	金发|Blonde|0.667|kb ; 金色头发|Golden hair|0.5|wiki ; 黄色的头发|Yellow hair|0.5|kbmt ; 金发碧眼|Blonde and blue-eyed|0.4|wiki	
+2501	completely nude	完全裸露	kb_verified	全裸	完全裸露|Completely naked|0.5|kb ; 完全赤裸|Completely naked|0.5|kbmt ; 裸帽子|Bare hat|0.0|wiki ; 全裸|Naked|0.0|mt	
+2465	heart	心	kb_verified	心形	心|heart|1.0|kb ; 心形|Heart shape|0.667|kb ; 爱心|Love|0.0|kb	
+2436	swimsuit	泳装	kb	泳装	泳装|Swimwear|0.0|kb ; 水着|Bikini|0.0|wiki ; 泳衣|Swimwear|0.0|kbmt ; 泳衣泳衣|Swimwear Swimwear|0.0|kbmt	
+2318	indoors	室内	kb_verified	室内	室内|Indoors|1.0|kb ; 屋内|Indoors|1.0|wiki ; 在室内|Indoors|1.0|kbmt ; 部屋|Room|0.0|wiki	
+2287	bare shoulders	露肩	kb_verified	露肩	露肩|Off-the-shoulder|0.5|kb ; 露肩露肩|Off-the-shoulder Off-the-shoulder|0.5|kbmt ; 露肩装|Off-shoulder dress|0.4|wiki	
+2217	closed mouth	闭着的嘴	kb_verified	闭眼	闭着的嘴|Closed mouth|1.0|kb ; 闭上的嘴巴|Closed mouth|1.0|wiki ; 闭嘴|Shut up|0.0|kbmt ; 闭眼|Close your eyes|0.0|mt	
+2194	red eyes	红眼	kb_verified	红眼	红眼|Red eyes|1.0|kb ; 红眼睛|Red eyes|1.0|kb ; 红眼红眼|Red eyes Red eyes|1.0|kbmt	
+2160	animal ears	兽耳	kb_verified	兽耳	兽耳|Animal ears|1.0|kb ; 獣耳|Animal ears|1.0|wiki ; 獣娘|Beast Girl|0.0|wiki	
+2138	on back	仰躺	kb_verified	背部	背部|Back|1.0|mt ; 仰躺|Lie on your back|0.5|kb ; 仰卧|Lie on your back|0.5|kbmt ; 躺着|Lying down|0.0|wiki	
+2110	hair between eyes	延伸到两眼之间的刘海	kb_verified	额前碎发	眼睛之间的刘海|Bangs between the eyes|0.667|kbmt ; 延伸到两眼之间的刘海|Bangs extending between the eyes|0.571|kb ; 额前碎发|fringe hair on the forehead|0.333|mt	
+1991	sitting	坐着	kb_verified	坐着	坐着|Sitting|1.0|kb ; 坐|Sit|0.0|kb ; 椅子尻|Chair seat|0.0|wiki ; 坐下来|Sit down|0.0|kbmt	
+1969	tongue	舌头	kb_verified	舌头	舌头|Tongue|1.0|kb ; 舌|tongue|1.0|wiki ; 说方言|Speak in tongues|0.0|kbmt	
+1959	stomach	小腹	kb	腹部	胃|stomach|1.0|kbmt ; 小腹|lower abdomen|0.0|kb ; 下腹|Lower abdomen|0.0|wiki ; 腹部|Abdomen|0.0|mt	PACK_UNVERIFIED_RIVAL
+1907	multiple girls	多个女孩	kb_verified	多个女性	多个女孩|Multiple girls|1.0|kb ; 多女性|Multiple females|0.5|wiki ; 多个女性|Multiple women|0.5|mt ; 群像|Group Portrait|0.0|wiki	
+1901	purple eyes	紫色的眼睛	kb_verified	紫色眼睛	紫色的眼睛|Purple eyes|1.0|kb ; 紫目|Purple eyes|1.0|wiki ; 紫色眼睛|Purple eyes|1.0|mt ; 淡紫色的眼睛|Pale purple eyes|0.8|kbmt ; 紫发|Purple hair|0.5|kb	
+1900	standing	站立的	kb_verified	站立	站立的|Standing|1.0|kb ; 站立|Stand|1.0|mt ; 常设|Permanent|0.0|kbmt	
+1897	long sleeves	长袖	kb_verified	长袖	长袖|Long sleeves|1.0|kb	
+1860	clothes lift	掀起衣物	kb_verified	衣服上移	掀起衣物|Lift up the clothes|0.8|kb ; 掀衣服|Lift up the clothes|0.8|wiki ; 掀起衣服|Lift up the clothes|0.8|wiki ; 衣服电梯|Clothes elevator|0.5|kbmt ; 衣服上移|Clothes move upward|0.4|mt	
+1860	brown eyes	棕眼	kb_verified	棕色眼睛	棕眼|Brown eyes|1.0|kb ; 棕色的眼睛|Brown eyes|1.0|kb ; 棕色眼睛|Brown eyes|1.0|mt ; 浅棕色的眼睛|Light brown eyes|0.8|kbmt ; 茶目|Tea tricks|0.0|wiki	
+1772	anus	肛门	kb_verified	肛门	肛门|anus|1.0|kb ; 尻穴|Anal hole|0.0|wiki ; 屁眼|buttock|0.0|kbmt	
+1736	tongue out	吐舌头	kb_verified	吐舌头	吐舌头|Stick out tongue|0.8|kb ; 吐舌|Stick out tongue|0.8|wiki ; 伸出舌头|Stick out your tongue|0.667|kbmt	
+1686	jewelry	珠宝	kb_verified	首饰	珠宝|Jewelry|1.0|kb ; 宝饰品|Jewelry|1.0|wiki ; 首饰|Jewelry|1.0|mt ; 珠宝首饰|Jewelry|1.0|kbmt	
+1675	cleavage	乳沟	kb	乳沟	乳沟过胸|Deep cleavage over the chest|0.4|kbmt ; 乳沟|decolletage|0.0|kb ; 谷间|valley|0.0|wiki	
+1650	sex from behind	背影性爱	mt_verified	背影性爱	背影性爱|Sex from behind|1.0|mt ; 从后面从后面采取的位置|The position taken from behind, from the back|0.5|kbmt ; 泛指从身后插入的体位|Refers generally to positions where penetration occurs from behind|0.364|kb ; 后入|Late entry|0.0|wiki ; 后背位|Back position|0.0|wiki	DEVIATES_FROM_PACK
+1632	bow	蝴蝶结	kb_verified	鞠躬	蝴蝶结|bow|1.0|kb ; 鞠躬|Bow|1.0|kbmt	
+1619	white shirt	白衬衫	kb_verified	白衬衫	白衬衫|White shirt|1.0|kb ; 白色衬衫|White shirt|1.0|wiki	
+1612	very long hair	很长的头发	kb_verified	超长头发	很长的头发|Long hair|0.8|kb ; 超长发|Extra long hair|0.667|wiki ; 超长头发|Extremely long hair|0.667|mt ; 过腰的头发|Hair past the waist|0.333|kbmt	
+1590	multicolored hair	多色的头发	kb_verified	多彩头发	多色的头发|Multicolored hair|1.0|kb ; 多色发|Multicolor hair|1.0|wiki ; 多色头发|Multicolored hair|1.0|kbmt ; 三色发|tricolor hair|0.5|wiki ; 多彩头发|Colorful hair|0.5|mt	
+1567	blue hair	蓝发	kb_verified	蓝发	蓝发|Blue hair|1.0|kb ; 蓝色头发|Blue hair|1.0|kb ; 蓝头发|Blue hair|1.0|kbmt	
+1564	speech bubble	会话气泡	kb_verified	对话框	会话气泡|Conversation bubble|0.5|kb ; 对话气泡|Dialogue bubble|0.5|wiki ; 语音气球文本泡沫字泡沫|Voice balloon text bubble letters bubble|0.286|kbmt ; 对话框|Dialog box|0.0|kb	
+1508	pov	第一人称视角	kb	视角	第一人称视角|First-person perspective|0.0|kb ; 主観视点|Subjective perspective|0.0|wiki ; 自分视点|My own perspective|0.0|wiki ; 视角|Perspective|0.0|mt ; 男性观点|Male perspective|0.0|kbmt	
+1464	2girls	2个女性	kb	2个女性	2个女性|2 females|0.0|kb ; 两个女孩|Two girls|0.0|wiki ; 2个女孩2个女孩|2 girls 2 girls|0.0|kbmt	
+1429	pink hair	粉红色的头发	kb_verified	粉发	粉红色的头发|Pink hair|1.0|kb ; 粉色头发|Pink hair|1.0|wiki ; 粉发|Pink hair|1.0|mt ; 洋红色的头发粉红色的头发|Magenta hair, pink hair|0.8|kbmt	
+1404	barefoot	裸足	kb_verified	赤脚	裸足|Barefoot|1.0|kb ; 光脚|Barefoot|1.0|wiki ; 赤脚|Barefoot|1.0|kbmt	
+1400	erection	勃起	kb_verified	勃起	勃起|Erection|1.0|kb ; 勃起的阴茎|Erect penis|0.0|kbmt	
+1395	cum in pussy	内射	kb	阴道内射精	内射|injective|0.0|kb ; 中出|ejaculation inside|0.0|kb ; 膣内射精|Vaginal ejaculation|0.0|wiki ; 暨里面|and inside|0.0|kbmt ; 阴道内射精|Vaginal ejaculation|0.0|mt	
+1374	holding	拿着	kb_verified	握着	握着|holding|1.0|mt ; 拿着|Hold it|0.667|kb ; 拿着某物|holding something|0.667|kb ; 握住物体|Hold an object|0.667|kbmt ; 手持|Handheld|0.0|wiki	
+1371	on bed	在床上	kb_verified	在床上	在床上|In bed|1.0|kb	
+1332	green eyes	绿眼	kb_verified	绿眼睛	绿眼|Green eyes|1.0|kb ; 绿眼睛|Green eyes|1.0|mt ; 绿眼绿眼|Green eyes Green eyes|1.0|kbmt ; 绿色的眼镜|Green glasses|0.5|kb	
+1325	closed eyes	闭上的眼睛	kb_verified	闭眼	闭上的眼睛|Closed eyes|1.0|kb ; 闭着眼睛|With eyes closed|1.0|kbmt ; 闭上双眼|Close your eyes|0.4|wiki ; 闭眼|Close your eyes|0.4|mt	
+1304	sidelocks	双马尾	mt_unverified	双马尾	披在耳前的发绺|Strands of hair falling in front of the ears|0.0|kb ; 鬓发|sideburns|0.0|wiki ; 横髪|Side-swept hair|0.0|wiki ; 额发|forehead hair|0.0|kbmt ; 双马尾|Twintails|0.0|mt	DEVIATES_FROM_PACK
+1279	grey hair	白发	kb_verified	灰发	白发|White hair|0.5|kb ; 银发|Silver hair|0.5|kb ; 灰发|Gray hair|0.5|kb ; 灰色的头发|Gray hair|0.5|kb	
+1277	halo	天使光环	kb_verified	光环	光环|Halo|1.0|kbmt ; 天使光环|Angel halo|0.667|kb ; 头顶光环|Halo above the head|0.5|kb	
+1271	ponytail	马尾	kb_verified	双马尾	马尾|Ponytail|1.0|kb ; 马尾辫|Ponytail|1.0|wiki ; 长马尾马尾辫|Long ponytail|0.667|kbmt ; 双马尾|Twintails|0.0|mt	
+1269	uncensored	无修正	kb	未打码	未打码|Uncensored|1.0|mt ; 无码版|Uncensored version|0.667|wiki ; 无修正|Unedited|0.0|kb ; 未审核的/无码|Unreviewed/No code|0.0|kb ; 未经审查的|Unreviewed|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+1238	teeth	牙齿	kb_verified	牙齿	牙齿|Teeth|1.0|kb ; 歯|teeth|1.0|wiki ; 露出牙齿|Show teeth|0.667|kbmt	
+1231	school uniform	校服	kb_verified	校服	校服|School uniform|1.0|kb ; 学校制服|School uniform|1.0|kb ; 学生服|school uniform|1.0|wiki ; 女学生校服女学生|Female student uniform, female student|0.4|kbmt	
+1193	pussy juice	爱液	kb	阴液	爱液|semen|0.0|kb ; 淫水|leakage|0.0|kb ; 阴液|Yin fluid|0.0|mt ; 阴部汁滴|Vaginal discharge|0.0|kbmt	
+1187	armpits	腋下	kb_verified	腋下	腋下|armpit|1.0|kb ; 腋|armpit|1.0|wiki ; 腋窝|armpit|1.0|kbmt ; 显示|Display|0.0|kbmt	
+1178	yellow eyes	黄色的眼睛	kb_verified	黄色眼睛	黄色的眼睛|Yellow eyes|1.0|kb ; 黄眼|Yellow eyes|1.0|wiki ; 黄色眼睛|Yellow eyes|1.0|mt ; 琥珀色的眼睛|Amber eyes|0.5|kbmt ; 金眼|Golden Eye|0.0|kb	
+1178	white hair	白发	kb_verified	白发	白发|White hair|1.0|kb ; 白毛|White hair|1.0|wiki ; 白色头发|White hair|1.0|wiki ; 白色的头发|White hair|1.0|kbmt	
+1161	black thighhighs	黑色过膝袜	kb	黑色过膝袜	黑丝|Black stockings|0.5|wiki ; 黑色过膝袜|Black knee-high socks|0.333|kb ; 黑色长筒袜|Black thigh-high stockings|0.333|kbmt	
+1153	parted lips	张开的嘴唇	kb_verified	微张的嘴唇	张开的嘴唇|Parted lips|1.0|kb ; 分开的嘴唇|Parted lips|1.0|kbmt ; 微张的嘴唇|Slightly parted lips|0.8|mt ; 嘴巴微张|Mouth slightly open|0.0|wiki	
+1136	oral	口交	kb_verified	口交	口服|Oral|1.0|kbmt ; 口交|Oral sex|0.667|kb ; 用嘴|with the mouth|0.0|kb	
+1118	female focus	女性焦点（画面中为女性）	kb_verified	以女性为主角	女性焦点（画面中为女性）|Female Focus (female in the image)|0.8|kb ; 以女性为主角|With a female protagonist|0.5|mt	
+1115	braid	辫子	kb_verified	辫子	辫子|braids|1.0|kb ; 辫子的头发|braided hair|0.667|kbmt ; 三股辫|three-strand braid|0.5|kb	
+1112	from behind	背影	kb	背影	从后面看|Viewed from behind|0.8|kbmt ; 从背面|From the back|0.5|wiki ; 背影|Back view|0.0|kb	PACK_UNVERIFIED_RIVAL
+1103	medium hair	中等长发	kb_verified	短发	中等长发|medium-length hair|0.8|kb ; 短发|Short hair|0.5|mt ; 齐肩发|Shoulder-length hair|0.4|kbmt ; 中发|Zhongfa|0.0|wiki	
+1085	choker	项圈	kb	颈饰	项圈|collar|0.0|kb ; 颈圈|collar|0.0|wiki ; 颈饰|Necklace|0.0|mt	
+1083	ahoge	呆毛	kb	呆毛	呆毛|Sweaty hair|0.0|kb ; 阿赫格|Aheg|0.0|kbmt	
+1074	panties	内裤	kb	内裤	内裤|underwear|0.0|kb ; 短裤|shorts|0.0|kb ; 裤袜|stockings|0.0|kb	
+1072	hat	帽子	kb_verified	帽子	帽子|Hat|1.0|kb ; 裸帽子|Bare hat|0.667|wiki ; 头饰|Headdress|0.0|wiki	
+1070	feet	脚	kb	脚部	脚部|Feet|1.0|mt ; 脚|foot|0.0|kb ; 足|foot|0.0|wiki	PACK_UNVERIFIED_RIVAL
+1066	thighhighs	过膝袜	kb	过膝袜	过膝袜|Knee-high socks|0.0|kb ; 含过膝袜和裤袜|Includes knee-high socks and pantyhose|0.0|kb ; 长筒袜|stockings|0.0|kbmt ; 裸体长筒袜|Naked thigh-high stockings|0.0|kbmt	
+1064	female pubic hair	女性阴毛	kb_verified	女性阴毛	女性阴毛|Female pubic hair|1.0|kb ; 阴毛（女）|Vulvar hair (female)|0.667|kbmt	
+1046	open clothes	敞开的衣服	kb_verified	暴露装束	敞开的衣服|Open clothing|1.0|kb ; 打开衣服|Open the clothes|1.0|kbmt ; 敞开衣服|Unbutton one's clothes|0.5|kb ; 暴露装束|Exposing attire|0.0|mt	
+1040	looking back	回眸	kb_verified	回头看	回眸|Looking Back|1.0|kb ; 向后看|Look back|1.0|kb ; 回头看|Looking back|1.0|mt ; 回头看转身|Looking back and turning around|0.667|kbmt	
+1039	purple hair	紫发	kb_verified	紫发	紫发|Purple hair|1.0|kb ; 紫色头发|Purple hair|1.0|kb ; 薰衣草的头发|Lavender hair|0.5|kbmt	
+1027	bottomless	裸下半身	kb	无底洞	无底|Bottomless|1.0|kbmt ; 无底洞|Bottomless pit|0.667|mt ; 裸下半身|Naked lower body|0.0|kb ; 下身裸体|Naked from the waist down|0.0|wiki ; 侧面全裸|Completely naked on the side|0.0|wiki	PACK_UNVERIFIED_RIVAL
+1018	hair ribbon	发绳	kb_verified	发带	头发|Hair|0.667|kbmt ; 发绳|Hair tie|0.5|kb ; 发带|headband|0.0|kb	
+1008	testicles	睾丸	kb_verified	睾丸	睾丸|testicles|1.0|kb ; 金玉|Jinyu|0.0|wiki ; 金玉妊娠|Golden Jade Pregnancy|0.0|wiki ; 球|ball|0.0|kbmt	
+1004	cum on body	射在身上	kb_verified	身体上的精液	射在身上|Shot at the body|0.5|kb ; 射在腋下|Shooting under the armpit|0.0|kbmt ; 射在胳膊上|Shot on the arm|0.0|kbmt ; 身体上的精液|Physical semen|0.0|mt	
+1003	multiple views	多角度	kb_verified	多角度视角	多个视图|Multiple views|1.0|kbmt ; 多角度|Multiple angles|0.5|kb ; 多姿势|Multiple poses|0.5|kb ; 多角度视角|Multiple perspectives|0.5|mt ; 三视图|Three-view drawing|0.4|wiki	
+996	flat chest	平胸	kb_verified	平胸	平胸|Flat chest|1.0|kb ; 贫乳|Small breasts|0.0|kb ; 贫乳(A)|Small breasts (A)|0.0|kb	
+993	pillow	枕头	kb_verified	枕头	枕头|pillow|1.0|kb ; 枕|pillow|1.0|wiki ; 黑色抱枕|Black pillow|0.667|kbmt ; 蓝色抱枕|Blue pillow|0.667|kbmt	
+993	fellatio	口交	kb	口交	口交|Oral sex|0.0|kb ; 桌下口交|Oral sex under the table|0.0|wiki	
+977	full body	全身	kb_verified	全身	全身|entire body|0.5|kb ; 画出了全身|The whole body is shown.|0.4|kb ; 全景镜头|Panoramic shot|0.0|wiki	
+974	groping	猥亵	kb	触碰	猥亵|Indecent behavior|0.0|kb ; 爱抚|caress|0.0|wiki ; 抚摸|touch|0.0|kbmt ; 摸索|fumble around|0.0|kbmt ; 触碰|Touch|0.0|mt	
+969	clothed female nude male	穿衣服的女性 裸体男性	mt_unverified	穿衣服的女性 裸体男性	裸体男性|Nude man|0.333|kbmt ; 穿着衣服的女性|A woman wearing clothes|0.286|kbmt ; 穿着衣服的女性和裸男|Clothed woman and naked man|0.25|kb ; 穿衣服的女性 裸体男性|Clothed woman, naked man|0.25|mt	DEVIATES_FROM_PACK
+963	pointy ears	尖耳	kb_verified	兽耳	尖耳|Pointed ears|0.5|kb ; 妖精耳|Fairy ears|0.5|kb ; 兽耳|Animal ears|0.5|mt ; 尖耳朵|Pointed ears|0.5|kbmt ; 长耳朵|Long ears|0.5|kbmt	
+954	cowboy shot	七分身镜头	kb	牛仔照	中景镜头|Medium shot|0.5|wiki ; 牛仔照|Cowboy photo|0.5|mt ; 牛仔射击|Cowboy Shooting|0.5|kbmt ; 七分身镜头|Seven-clone shot|0.4|kb	
+953	toes	脚趾	kb_verified	脚趾	脚趾|toes|1.0|kb ; 足指|toes|1.0|wiki	
+948	earrings	耳环	kb_verified	耳环	耳环|Earrings|1.0|kb ; 耳坠|Earrings|1.0|wiki ; 黑色耳环|Black earrings|0.667|kbmt ; 水蓝色耳环|Aqua blue earrings|0.5|kbmt ; 耳饰|Earring|0.0|wiki	
+942	skirt	短裙	kb_verified	裙子	裙|skirt|1.0|wiki ; 裙子|skirt|1.0|kbmt ; 短裙|Short skirt|0.667|kb	
+938	saliva	唾液	kb_verified	唾液	唾液|Saliva|1.0|kb ; 口水|Saliva|1.0|wiki ; 口水吐|Spit out saliva|0.5|kbmt	
+932	bed sheet	床单	kb_verified	床单	床单|Bed sheets|1.0|kb	
+910	mole	痣	kb	痣	痣|moles|0.0|kb ; 美容标记|Beauty marks|0.0|kbmt	
+887	straddling	跨坐	kb_verified	跨坐	跨坐|straddling|1.0|kb ; 跨骑|Mounting|0.0|kbmt	
+887	age difference	年龄差	kb_verified	年龄差	年龄差|Age difference|1.0|kb ; 青年少女|young girl|0.0|wiki ; 大人×子供|Adult × Child|0.0|wiki ; 年长的年轻|Older young|0.0|kbmt	
+882	red hair	红发	kb_verified	红发	红发|Red hair|1.0|kb ; 赤发|Red hair|1.0|wiki ; 红头发|Red hair|1.0|kbmt ; 红毛|Redhead|0.0|wiki	
+878	symbol-shaped pupils	符号形瞳孔	kb	符号状瞳孔	符号形瞳孔|Symbolic Pupil|0.4|kb ; 瞳孔形状|Pupil shape|0.4|wiki ; 符号状瞳孔|Pupils with a symbolic shape|0.333|mt ; 柄目|Handle category|0.0|wiki	
+872	white panties	白色内裤	kb_verified	白色内裤	白色内裤|White underwear|0.5|kb ; 白下着|White undergarments|0.5|wiki	
+870	horns	兽角	kb_verified	角	兽角|Animal horns|0.667|kb ; 角|corner|0.0|kb ; 有角的|Angulated|0.0|kb	
+868	virtual youtuber	虚拟Youtuber	kb_verified	虚拟油管主播	虚拟Youtuber|Virtual Youtuber|1.0|kb ; 虚拟主播|Virtual streamer|0.5|wiki ; 虚拟UP主|Virtual UP主|0.5|wiki ; 虚拟油管主播|Virtual oil tube streamer|0.333|mt ; 微博|Weibo|0.0|kbmt	
+850	blunt bangs	齐刘海	kb_verified	钝形刘海	钝刘海|Blunt bangs|1.0|kbmt ; 钝形刘海|Blunt bangs|1.0|mt ; 齐刘海|Bangs|0.667|kb ; 直刘海|Straight bangs|0.5|kb	
+848	tail	尾巴	kb_verified	尾巴	尾巴|tail|1.0|kb ; 尻尾|tail|1.0|wiki ; 动物尾巴|Animal tails|0.667|kbmt ; 七宝尾巴|Seven Treasures Tail|0.5|kbmt	
+843	collar	项圈	kb_verified	领口	项圈|collar|1.0|kb ; 衣领|collar|1.0|kbmt ; 首轮|First round|0.0|wiki ; 领口|neckline|0.0|mt	
+837	bed	床	kb_verified	床	床|bed|1.0|kb	
+833	cleft of venus	蜜缝	kb	维纳斯之沟	金星裂|Venus Split|0.5|kbmt ; 维纳斯之沟|Venus’ Gully|0.5|mt ; 蜜缝|Honey stitch|0.0|kb ; 阴裂|Vaginal fissure|0.0|wiki ; 一线天|The Narrow Pass|0.0|wiki	
+828	white thighhighs	白色过膝袜	kb	白色过膝袜	白丝袜|white stockings|0.5|wiki ; 白色过膝袜|White knee-high socks|0.333|kb ; 白色长筒袜|White thigh-high socks|0.333|kbmt	
+828	multiple boys	多个男孩	kb_verified	多个男孩	多个男孩|Multiple boys|1.0|kb	
+825	short sleeves	短袖	kb_verified	短袖	短袖|Short-sleeved|1.0|kb ; 半袖|short-sleeved|1.0|wiki	
+825	girl on top	女上位	kb_verified	女上位	女孩在上面|The girl is on top|1.0|kbmt ; 女上位|Woman on top|0.5|kb ; 女上体位|Woman on top position|0.4|kb ; 逆正常位|Reverse normal position|0.0|wiki	
+825	artist name	作者署名	kb	艺术家名称	艺术家名称|Artist Name|1.0|mt ; 艺术家姓名|Artist Name|1.0|kbmt ; 作者署名|Author attribution|0.0|kb	PACK_UNVERIFIED_RIVAL
+820	hairclip	发夹	kb	发夹	发夹|hairpin|0.0|kb ; 发片|hairpiece|0.0|wiki ; 发夹发夹发夹发夹|hair clip hair clip hair clip hair clip|0.0|kbmt	
+794	wet	沾湿的	kb_verified	湿透	沾湿的|Wet|1.0|kb ; 湿身|Wet body|0.667|kb ; 湿透的|Drenched|0.0|kb ; 湿透|Drenched|0.0|mt	
+789	no panties	下半身真空	kb	没有内裤	没有内裤|No underwear|0.5|mt ; 下半身真空|Lower body vacuum|0.0|kb ; 没穿内裤|Not wearing underwear|0.0|wiki ; 诺潘|Nopan|0.0|kbmt	
+779	motion lines	体现运动的线	kb_verified	动作线	体现运动的线|Lines representing motion|0.8|kb ; 运动线|Motion line|0.5|kbmt ; 动作线|Action line|0.0|mt	
+774	monochrome	单色画	kb_verified	黑白风格	单色调|Monochrome|1.0|wiki ; 单色的|Monochrome|1.0|kbmt ; 单色画|Monochrome painting|0.667|kb ; 单色图片|Monochrome image|0.667|kb ; 黑白风格|Black and white style|0.0|mt	
+765	pleated skirt	百褶裙	kb_verified	百褶裙	百褶裙|plaid skirt|0.5|kb	
+765	nail polish	指甲油	kb_verified	指甲油	指甲油|Nail polish|1.0|kb ; 涂指甲|Apply nail polish|0.8|kbmt ; 彩色指甲|Colored nails|0.5|kbmt	
+759	outdoors	户外	kb_verified	户外	户外|Outdoor|1.0|kb ; 户外户外|Outdoor Outdoor|1.0|kbmt ; 野战|field|0.0|kb ; 野外|in the wild|0.0|wiki	
+759	group sex	群交	kb_verified	群交	群交|Group sex|1.0|kb ; 群P|Group P|0.5|kb ; 五人组|Five-member group|0.4|kbmt	
+739	trembling	颤抖	kb	颤抖	颤抖|Tremble|0.0|kb ; 颤抖颤抖|Tremble, tremble|0.0|kbmt	
+719	male pubic hair	男性的阴毛	kb_verified	男性阴毛	男性的阴毛|Male pubic hair|1.0|kb ; 男性阴毛|Male pubic hair|1.0|mt ; 阴毛（男）|pubic hair (male)|1.0|kbmt	
+716	bikini	比基尼	kb_verified	比基尼装	比基尼|Bikini|1.0|kb ; 比基尼泳装|Bikini swimsuit|0.667|wiki ; 比基尼装|Bikini set|0.667|mt	
+714	one eye closed	闭着一只眼	kb_verified	一只眼睛闭着	闭着一只眼|With one eye closed|1.0|kb ; 一只眼睛闭着|One eye is closed|1.0|mt ; 单眼闭合|Monocular closure|0.0|wiki ; 眨眼|blink|0.0|kbmt	
+708	fake animal ears	仿制的动物耳朵	kb_verified	假兽耳	假兽耳|Fake animal ears|1.0|mt ; 假动物耳朵|Fake animal ears|1.0|kbmt ; 仿制的动物耳朵|Replicated animal ears|0.667|kb	
+701	greyscale	纯黑白色	kb	灰度图	纯黑白色|Pure black and white|0.0|kb ; 黑白照片化|Convert to black and white photo|0.0|kb ; 灰度图|Grayscale image|0.0|mt ; 黑白黑白灰度|Black and white, black and white, grayscale|0.0|kbmt	
+694	skirt lift	掀起裙子	kb_verified	裙子上扬	掀起裙子|Lift the skirt|1.0|kb ; 提起裙子|Lift the skirt|1.0|kbmt ; 将裙子掀上去|Lift the skirt up|0.8|kb ; 裙子上扬|The skirt lifted up|0.8|mt	
+689	black panties	黑色内裤	kb_verified	黑色内裤	黑色内裤|Black underwear|0.5|kb ; 黒下着|Black underwear|0.5|wiki	
+686	clothes pull	拉开衣物	kb_verified	衣服被拉扯	衣服拉|Clothes pull|1.0|kbmt ; 拉开衣物|Pull apart the clothes|0.8|kb ; 拉下衣服|Pull down the clothes|0.8|wiki ; 衣服下拉|Pull down clothes|0.8|wiki ; 衣服被拉扯|The clothes were pulled.|0.8|mt	
+675	hair bun	发髻	kb	发髻	发髻|updo|0.0|kb ; 团子头|Dumpling head|0.0|kb ; 丸子头|Ponytail|0.0|wiki	
+674	fingernails	指甲	kb	指甲	手指甲|Fingernails|1.0|wiki ; 手指甲指甲|Fingernail|1.0|kbmt ; 指甲|nails|0.0|kb ; 爪|claw|0.0|wiki	PACK_UNVERIFIED_RIVAL
+674	clothed sex	着衣性交	kb_verified	穿衣性爱	着衣性交|Clothed sex|1.0|kb ; 穿衣性爱|Clothed sex|1.0|mt ; 着衣交尾|Clothed intercourse|0.5|wiki ; 穿衣服的性|Dressed sex|0.5|kbmt	
+667	ejaculation	射精	kb_verified	射精	射精|Ejaculation|1.0|kb ; 乳内射精|Coital ejaculation|0.667|wiki ; 挟射|Flank fire|0.0|wiki ; 乳房之间射精|Ejaculating between breasts|0.0|kbmt	
+665	arms up	抬手	kb	举臂	举臂|Raise arms|0.5|mt ; 双臂上抬|Raise both arms upward|0.333|wiki ; 双臂举过头顶|Raise both arms above your head|0.25|kbmt ; 抬手|Raise hand|0.0|kb ; 举起手|Raise your hand|0.0|kb	
+664	black skirt	黑色短裙	kb_verified	黑色裙子	黑色短裙|Black short skirt|0.8|kb ; 黑色裙子|Black dress|0.5|kbmt	
+659	gloves	手套	kb_verified	手套	手套|Gloves|1.0|kb ; 手袋|Gloves|1.0|wiki ; 裸手袋|Gloveless handbag|0.0|wiki	
+657	grabbing another's breast	抓取他人的乳房	mt_unverified	抓取他人的乳房	抓取他人的乳房|Grabbing someone else’s breasts|0.571|mt ; 从背后揉奶|Knead the breasts from behind|0.286|wiki ; 揉奶|Milk expression|0.0|wiki ; 抓住别人胸部|Grab someone's chest|0.0|wiki	NO_PACK
+653	detached sleeves	分离袖子	kb_verified	分离式袖子	分离袖子|Separate sleeves|0.5|kb ; 分离袖|Separate sleeves|0.5|wiki ; 分离式袖子|Separate sleeves|0.5|mt ; 拆袖|Unroll sleeve|0.0|kbmt ; 裸袖|Sleeveless|0.0|kbmt	
+651	breasts out	胸部露出	kb	露出巨乳	双乳露出|Both breasts exposed|0.4|wiki ; 露出巨乳|Revealing huge breasts|0.4|mt ; 衣服外面的乳房|Breasts outside the clothes|0.4|kbmt ; 胸部露出|Exposed chest|0.0|kb	
+649	flower	花	kb_verified	花朵	花|Flower|1.0|kb ; 花朵|Flowers|1.0|kbmt ; 以花咏画|Sing of Paintings with Flowers|0.5|wiki	
+645	dark-skinned male	褐皮男性	kb	深色皮肤男性	褐皮男性|Brown-skinned man|0.333|kb ; 深色皮肤男性|Men with dark skin|0.333|mt ; 深色皮肤的男性|Men with dark skin|0.333|kbmt ; 黒人|Black people|0.0|wiki ; 黑人|Black people|0.0|wiki	
+644	skindentation	皮肤的凹陷	kb	缩进错误	皮肤的凹陷|Depression of the skin|0.0|kb ; 勒肉|Shred meat|0.0|wiki ; 皮肤凹陷|Skin indentation|0.0|kbmt ; 缩进错误|Indentation error|0.0|mt	
+644	heart-shaped pupils	心形瞳孔	kb_verified	心形瞳孔	心形瞳孔|Heart-shaped pupils|1.0|kb ; 心形眼|Heart-shaped eyes|0.667|kb ; 爱心眼|Love eyes|0.0|wiki	
+641	soles	脚底	kb	脚底	脚底|sole of the foot|0.0|kb ; 足里|Sole of foot|0.0|wiki ; 裸足里|Barefoot Inside|0.0|wiki ; 唯一|Only|0.0|kbmt	
+639	shirt lift	拉起掀起卷起衬衫	kb_verified	上衣上提	掀起衬衫|Lift up the shirt|0.8|wiki ; 衬衫|Shirt|0.667|kbmt ; 拉起掀起卷起衬衫|Pull up and lift the rolled-up shirt|0.571|kb ; 提起衬衫|Pull up the shirt|0.4|kbmt ; 上衣上提|Pull up the top|0.0|mt	
+634	black gloves	黑色手套	kb_verified	黑色手套	黑色手套|Black gloves|1.0|kb ; 黒手袋|Black gloves|1.0|wiki ; 黑手套|Black Gloves|1.0|kbmt	
+628	doggystyle	后入式	kb	狗爬式	后入式|Back entry|0.0|kb ; 后背位|Back position|0.0|wiki ; 背后位|Back view|0.0|wiki ; 狗爬式|Crawling style|0.0|mt	
+628	cat ears	猫耳	kb_verified	兽耳	猫耳|Cat ears|1.0|kb ; 猫耳猫耳|Cat ears, cat ears|1.0|kbmt ; 兽耳|Animal ears|0.5|mt	
+623	missionary	正常位	kb_verified	跪姿	正常位|Missionary position|0.667|kb ; 传教士体位|Missionary position|0.667|kb ; 传教士位|Missionary position|0.667|wiki ; 传教士职位|Missionary position|0.667|kbmt ; 跪姿|Kneeling position|0.0|mt	
+621	huge breasts	爆乳	kb_verified	巨乳	爆乳|Big breasts|0.5|kb ; 爆乳化|Bursty Breasts|0.5|wiki ; 巨乳|Big breasts|0.5|mt ; 巨大的胸部|Enormous breasts|0.5|kbmt ; 巨乳(E)|Big breasts (E)|0.4|kb	
+621	fang	虎牙	kb	獠牙	虎牙|Huya|0.0|kb ; 犬齿|canine teeth|0.0|wiki ; 八重歯|Overbite|0.0|wiki ; 方|square|0.0|kbmt ; 獠牙|Tusks|0.0|mt	
+619	hair bow	蝴蝶结发圈	kb_verified	发夹	头发蝴蝶结|Hair bow|1.0|kbmt ; 蝴蝶结发圈|Bow hairband|0.5|kb ; 发夹|hairpin|0.0|mt	
+614	clothing aside	衣服放在一边	wiki_verified	暂不考虑服装	衣服放在一边|Put the clothes aside|0.8|kbmt ; 衣服侧拉|Side pull of clothing|0.4|wiki ; 衣服侧开|Sides of clothing open|0.4|wiki ; 衣物拉一边（露出小穴）|Pull clothing to one side (to reveal the hole)|0.286|kb ; 暂不考虑服装|Clothing is not considered for now|0.286|mt	DEVIATES_FROM_PACK
+614	black choker	黑色项链	kb_verified	黑色项圈	黑色项链|Black necklace|0.5|kb ; 黑色项圈|Black collar|0.5|kbmt	
+609	elbow gloves	长手套	kb_verified	护肘手套	护肘手套|Elbow guard gloves|0.8|mt ; 长手套|Long gloves|0.5|kb ; 长筒手套|Long gloves|0.5|wiki ; 长手套歌剧手套|Long glove opera glove|0.0|kbmt	
+607	green hair	绿发	kb_verified	绿发	绿发|Green hair|1.0|kb ; 绿毛|Green hair|1.0|wiki ; 绿色头发|Green hair|1.0|wiki	
+606	shiny skin	有光泽的皮肤	kb_verified	光滑肌肤	闪亮的皮肤|Shiny skin|1.0|wiki ; 有光泽的皮肤|Glossy skin|0.5|kb ; 光滑肌肤|Smooth skin|0.5|mt ; 闪闪发光的皮肤|Shining skin|0.5|kbmt	
+604	from side	角色的侧面	kb	侧面视角	从侧面|From the side|1.0|wiki ; 从侧面看的侧视图|Side view from the side|0.8|kbmt ; 侧面视角|Side view|0.5|mt ; 角色的侧面|Side view of the character|0.4|kb ; 侧身|turn sideways|0.0|wiki	PACK_UNVERIFIED_RIVAL
+604	:d	:d	passthrough			NO_PACK
+597	english text	英语	kb_verified	英文文本	英文文本|English text|1.0|mt ; 英语|English|0.667|kb ; 英文|English|0.667|wiki	
+597	bowtie	领结	kb	领结	领结|tie|0.0|kb ; 领结领结|Tie Tie|0.0|kbmt	
+586	ribbon	丝带	kb_verified	丝带	丝带|Ribbon|1.0|kb ; 缎带|Ribbon|1.0|kb	
+585	streaked hair	挑染发型	mt_unverified	挑染发型	有其他颜色条纹的头发|Hair with stripes in other colors|0.333|kb ; 挑染|Ombre|0.0|wiki ; 强调|Emphasize|0.0|kbmt ; 挑染发型|Ombre hairstyle|0.0|mt	DEVIATES_FROM_PACK
+585	all fours	四肢趴地	kb_verified	四肢着地	四肢着地|On all fours|1.0|mt ; 四肢趴地|Crawl on all fours|0.8|kb ; 四肢着地的手和膝盖|Hands and knees on all fours|0.667|kbmt ; 母豹pose|Mother leopard pose|0.0|kb	
+584	half-closed eyes	半闭的双眼	kb_verified	半闭的双眼	眼睛半闭|Eyes half closed|1.0|kbmt ; 半闭的双眼|Semi-closed eyes|0.667|kb ; 半闭着眼|Semi-closed eyes|0.667|wiki ; 半眼|Squinting eyes|0.4|wiki	
+581	striped clothes	条纹服饰	wiki_verified	条纹装	条纹服饰|Striped clothing|1.0|wiki ; 条纹衣服|Striped clothes|1.0|kbmt ; 条纹装|Striped outfit|0.5|mt	NO_PACK
+581	shoes	鞋子	kb_verified	鞋子	鞋子|Shoes|1.0|kb ; 靴|Shoes|1.0|wiki ; 鞋|shoes|1.0|kbmt	
+580	cowgirl position	女上位	kb	牛仔式姿势	骑乘位|Sitting position|0.5|wiki ; 女牛仔（职位）|Female cowboy (position)|0.4|kbmt ; 女上位|Woman on top|0.0|kb ; 女上正骑|The woman is riding upright|0.0|kb ; 牛仔式姿势|Cowboy pose|0.0|mt	
+573	shirt	衬衫	kb_verified	衬衫	衬衫|Shirt|1.0|kb ; 只有衬衫衬衫|Only shirt shirt|0.667|kbmt ; 上衣|Top|0.0|wiki	
+565	mole under eye	眼角有痣	kb_verified	眼下的痣	眼下的痣|The mole under the eye|1.0|mt ; 眼睛下面的痣|The mole under the eye|1.0|kbmt ; 眼角有痣|A mole at the corner of the eye|0.667|kb ; 泪痣|tear mole|0.4|wiki ; 眼下痣|Nose mole|0.4|wiki	
+563	tears	眼泪	kb_verified	泪水	眼泪|Tears|1.0|kb ; 涙|Tears|1.0|wiki ; 泪水|Tears|1.0|mt	
+562	no bra	无胸罩	kb_verified	未穿胸罩	无胸罩|No bra|1.0|kb ; 不戴胸罩|Wearing no bra|0.8|kbmt ; 没穿胸罩|Not wearing a bra|0.4|kb ; 没戴胸罩|Not wearing a bra|0.4|wiki ; 未穿胸罩|Not wearing a bra|0.4|mt	
+561	pink eyes	粉红色的眼睛	kb_verified	粉红眼睛	粉红色的眼睛|Pink eyes|1.0|kb ; 粉红眼睛|Pink eyes|1.0|mt ; 桃眼|Peach eyes|0.5|wiki ; 粉眼|Pink eye|0.5|wiki	
+558	large penis	大阴茎	kb_verified	巨型阴茎	大阴茎|Large penis|1.0|kb ; 巨根|huge penis|0.5|wiki ; 巨型阴茎|Giant penis|0.5|mt	
+549	cumdrip	精液滴落	mt_unverified	精液滴落	溢出的精液(已拔出)|Spilled semen (withdrawn)|0.0|kb ; 精液溢出(事后)|Semen leakage (after intercourse)|0.0|wiki ; 暨滴|And drip|0.0|kbmt ; 精液滴落|Semen droplets|0.0|mt	DEVIATES_FROM_PACK
+545	bent over	弯腰	kb_verified	弯腰	弯腰|Bend over|0.5|kb ; 翘臀姿势|Butt lift pose|0.0|kb ; 前屈|Forward bend|0.0|wiki	
+542	bare legs	裸腿	kb_verified	露腿	裸腿|Bare legs|1.0|kb ; 光腿|Bare legs|1.0|kbmt ; 生脚|Raw feet|0.0|wiki ; 露腿|露出腿部|0.0|mt	
+541	groin	腹股沟	kb_verified	腹股沟	腹股沟|groin|1.0|kb ; 耻丘|mons pubis|0.0|kb ; 鼠径部|Inguinal region|0.0|wiki ; 阿多尼斯腰带臀线维纳斯丘|Adonis Belt, Hip Line, Venus Hill|0.0|kbmt	
+540	aftersex	过气美型	mt_unverified	过气美型	过气美型|Outdated good-looking guy|0.0|mt	NO_PACK
+535	collared shirt	翻领衬衫	kb_verified	有领衬衫	有领衬衫|Collared shirt|1.0|kbmt ; 翻领衬衫|Turnup shirt|0.5|kb	
+533	twitter username	推特用户名	kb_verified	推特用户名	推特用户名|Twitter username|1.0|kb ; 艺术家推特|Artist Twitter|0.5|kbmt	
+532	two-tone hair	双色头发	kb_verified	双色头发	双色头发|Two-colored hair|0.667|kb ; 双色发|Two-color hair|0.667|wiki ; 二色髪|Two-colored hair|0.667|wiki	
+527	official alternate costume	官方替换服装	mt_unverified	官方替换服装	官方换装|Official costume change|0.667|wiki ; 新衣装公开|New costume unveiled|0.333|wiki ; 官方替换服装|Official replacement outfit|0.333|mt ; 与原设不同衣服|Clothes different from the original design|0.0|kb	DEVIATES_FROM_PACK
+527	comic	漫画	kb_verified	漫画风格	漫画|Comics|1.0|kb ; 漫画漫画|Comics Comics|1.0|kbmt ; 漫画风格|Comic style|0.667|mt	
+522	sleeveless	无袖	kb_verified	无袖	无袖|Sleeveless|1.0|kb ; 没有袖子|No sleeves|0.0|kbmt	
+520	alternate costume	角色换装	kb	变装服装	换装|Costume change|0.5|wiki ; 变装服装|Costume outfit|0.5|mt ; 角色换装|Role Switch|0.0|kb ; 替代装|Alternative kit|0.0|kbmt	
+518	kneeling	跪着	kb_verified	跪着	跪着|Kneeling|1.0|kb ; 下跪|Kneel|1.0|kb ; 跪|Kneel|1.0|wiki ; 跪在地上|Kneeling on the ground|0.667|kbmt	
+516	blurry	模糊的	kb_verified	模糊的	模糊的|blurry|1.0|kb ; 模糊|blurry|1.0|kbmt	
+515	off shoulder	露肩式	kb_verified	露肩装	露肩式|Off-the-shoulder|1.0|kb ; 露肩露肩|Off-the-shoulder Off-the-shoulder|1.0|kbmt ; 露肩装|Off-shoulder dress|0.8|mt ; 外套半脱|Jacket half-off|0.4|wiki	
+501	animal ear fluff	耳绒毛	kb_verified	兽耳绒毛	动物耳朵绒毛|Animal ear fluff|1.0|wiki ; 动物耳毛|Animal ear fluff|1.0|kbmt ; 耳绒毛|ear fluff|0.8|kb ; 兽耳绒毛|Fur ears|0.0|mt	
+499	white gloves	白手套	kb_verified	白色手套	白手套|White gloves|1.0|kb ; 白手袋|White gloves|1.0|wiki ; 白色手套|White gloves|1.0|mt	
+498	necktie	领带	kb	领带	领带领带|Necktie|1.0|kbmt ; 领带|tie|0.0|kb	PACK_UNVERIFIED_RIVAL
+497	veins	静脉	kb_verified	青筋	静脉|vein|1.0|kb ; 青筋|veins|1.0|mt ; 静脉静脉|Vein vein|1.0|kbmt ; 血管凸起|Blood vessel bulge|0.0|kb ; 脉|pulse|0.0|wiki	
+493	legs	双腿	kb_verified	双腿	双腿|legs|1.0|kb ; 脚|foot|0.0|wiki ; 足|foot|0.0|wiki ; 腿|leg|0.0|kbmt	
+489	v	比V	kb_verified	视频	比V|Better than V|0.5|kb ; 剪刀手|Scissor hands|0.0|kb ; 胜利手势|Victory gesture|0.0|kb ; 视频|Video|0.0|mt	
+487	bdsm	BDSM	mt_verified	BDSM	BDSM|BDSM|1.0|mt ; 拘束具|Restraints|0.0|wiki ; 性虐待|Sexual abuse|0.0|kbmt	NO_PACK
+486	upper teeth only	仅上齿	mt_verified	仅上齿	仅上齿|Only upper teeth|1.0|mt	NO_PACK
+486	black bikini	黑色比基尼	kb_verified	黑色比基尼	黑色比基尼|Black bikini|1.0|kb ; 黑色比基尼泳裤|Black bikini bottoms|0.8|kbmt ; 黑色比基尼上衣|Black bikini top|0.8|kbmt	
+484	cameltoe	骆驼趾	kb	阴蒂肥大	骆驼趾|Camel toe|0.0|kb ; 阴蒂肥大|Clitoral hypertrophy|0.0|mt	
+482	torn clothes	破烂衣服	kb_verified	破烂的衣服	破烂衣服|Torn clothes|1.0|kb ; 破烂的衣服|Torn clothes|1.0|mt ; 破损的衣服|Damaged clothes|0.5|kb ; 撕破衣服|Rip clothes|0.5|kbmt ; 中破|Moderately damaged|0.0|wiki	
+480	thigh strap	大腿缠着带子	kb_verified	过膝袜带子	大腿带|Thigh strap|1.0|kbmt ; 大腿缠着带子|Thighs wrapped with straps|0.8|kb ; 腿带|Leg straps|0.5|kbmt ; 过膝袜带子|Knee-high sock straps|0.333|mt ; 腿环|Leg ring|0.0|wiki	
+475	frills	花边	kb	花边	花边|Lace|0.0|kb ; 荷叶边|lace trim|0.0|wiki ; 褶边|ruffle|0.0|kbmt	
+473	nose blush	鼻子发红	kb_verified	鼻头泛红	赤面|Blush|0.667|wiki ; 鼻子发红|Nose is red|0.5|kb ; 鼻红|Red nose|0.5|kbmt ; 鼻头泛红|The tip of the nose is red.|0.4|mt	
+472	one-piece swimsuit	一体式泳衣	kb_verified	连体泳装	一体式泳衣|One-piece swimsuit|1.0|kb ; 连体泳衣|One-piece swimsuit|1.0|kbmt ; 连体泳装|One-piece swimsuit|1.0|mt	
+468	open shirt	敞开的衬衫	kb_verified	敞开的上衣	敞开的衬衫|Open shirt|1.0|kb ; 打开衬衫|Open the shirt|1.0|kbmt ; 衬衫打开|Shirt open|1.0|kbmt ; 敞开的上衣|Open-fronted shirt|0.8|mt	
+466	hair flower	头发上别着花	kb_verified	发花	头发上别着花|A flower in her hair|1.0|kb ; 发花|Flowering|0.667|mt ; 花发饰花在头发头发花hairflower|Hair flower accessory flower on hair hair flower hairflower|0.667|kbmt ; 头花|Cap flower|0.5|wiki	
+465	veiny penis	带静脉的阴茎	mt_unverified	带静脉的阴茎	静脉阴茎|Veinous penis|0.5|kbmt ; 带静脉的阴茎|Penis with veins|0.5|mt ; 静脉凸起的阴茎|Pene with prominent veins|0.0|kb	DEVIATES_FROM_PACK
+464	back	后背	kb_verified	背部	后背|back|1.0|kb ; 背|back|1.0|wiki ; 背部|Back|1.0|mt ; 背影像|Back view image|0.5|kb ; 后退|Backward|0.0|kbmt	
+459	heavy breathing	喘粗气	kb	急促的呼吸声	呼吸沉重|Heavy breathing|1.0|wiki ; 气喘吁吁|Out of breath|0.5|kbmt ; 喘粗气|Gasping for breath|0.4|kb ; 急促的呼吸声|Rapid breathing sounds|0.4|mt	PACK_UNVERIFIED_RIVAL
+458	day	白天	kb	白天	昼间|During the day|0.667|wiki ; 白天|daytime|0.0|kb ; 昼|daytime|0.0|wiki ; 天|sky|0.0|kbmt	
+457	phone	电话	kb_verified	手机	电话|Phone|1.0|kb ; 手机|Mobile phone|0.667|kb ; 电话机|Telephone|0.0|wiki	
+455	rabbit ears	兔子耳朵	kb_verified	兔耳	兔子耳朵|Rabbit ears|1.0|kb ; 兎耳|Rabbit ears|1.0|wiki ; 兔耳|Rabbit ears|1.0|mt	
+454	upper body	上半身	kb_verified	上半身	上半身|Upper body|1.0|kb ; 中近景镜头|Medium close-up shot|0.0|wiki ; 摔碎|Shatter|0.0|kbmt	
+454	sweatdrop	汗珠	kb	汗珠	汗珠|Sweat beads|0.0|kb ; 汗滴|Sweat drops|0.0|wiki ; 汗水滴|Sweat drops|0.0|kbmt	
+454	socks	袜子	kb_verified	袜子	袜子|Socks|1.0|kb ; 短袜|Socks|1.0|kb ; 靴下|Socks|1.0|wiki ; 裸袜|Stockings|0.0|kbmt	
+454	lifting own clothes	掀起自己衣服	wiki_verified	提起自己的衣服	掀起自己衣服|Lift up one's own clothes|0.857|wiki ; 提起自己的衣服|Pick up one's own clothes|0.571|mt	NO_PACK
+453	handjob	手淫	kb	手淫	手淫|Masturbation|0.0|kb ; 用手做|Make by hand|0.0|kb ; 手交|Deliver in person|0.0|wiki ; 手工作tekoki|Handmade tekoki|0.0|kbmt	
+450	looking at another	看着另一个	kb_verified	注视着另一个人	看着另一个|Looking at the other one|0.5|kb ; 注视着另一个人|Staring at another person|0.4|mt	
+450	hairband	发箍	kb	发带	发箍|hair band|0.0|kb ; 发卡|Card issuer|0.0|kb ; 头箍|headband|0.0|wiki ; 发带|headband|0.0|kbmt	
+448	highleg	高开衩的衣物	kb	高筒裤	高开衩的衣物|Clothing with high slits|0.0|kb ; 高叉|High fork|0.0|wiki ; 高腰|High waist|0.0|wiki ; 高腿|High legs|0.0|kbmt ; 高筒裤|Tall-leg pants|0.0|mt	
+443	facial	颜射	kb	面部特征	面部特征|Facial features|0.667|mt ; 颜射|Face ejaculation|0.0|kb ; 暨在脸上|and on the face|0.0|kbmt	
+441	siblings	兄弟姐妹	kb_verified	兄弟姐妹	兄弟姐妹|siblings|1.0|kb	
+440	hand up	抬起手	kb	举手	抬手|Raise hand|0.5|wiki ; 抬起手|Raise your hand|0.4|kb ; 举手|Raise your hand|0.4|kbmt	
+438	see-through clothes	透视服装	wiki_verified	透明衣物	透视服装|See-through clothing|1.0|wiki ; 半透明衣服|Translucent clothing|0.4|wiki ; 透明衣物|Transparent clothing|0.4|mt	NO_PACK
+437	sky	天空	kb_verified	天空	天空|sky|1.0|kb	
+432	topless female	露胸女性	mt_unverified	露胸女性	露胸女性|Topless woman|0.5|mt ; 上半身裸|Upper body naked|0.0|wiki ; 侧面全裸|Completely naked on the side|0.0|wiki ; 上身裸体女性|Nude woman from the upper body|0.0|wiki	NO_PACK
+429	covered navel	被遮盖的肚脐	wiki_verified	遮盖的肚脐	被遮盖的肚脐|Covered navel|1.0|wiki ; 遮盖的肚脐|Covered navel|1.0|mt ; 衣肚脐|Cloth navel|0.5|kbmt ; 隐约入目的肚脐|The faintly visible navel|0.4|kb ; 透视肚脐|View through the navel|0.4|wiki	DEVIATES_FROM_PACK
+428	water	水	kb_verified	水	水|Water|1.0|kb	
+428	condom	避孕套	kb_verified	避孕套	避孕套|Condom|1.0|kb	
+426	grin	露齿笑	kb	咧嘴笑	咧嘴笑|Grin|1.0|mt ; 咧嘴一笑|Grin|1.0|kbmt ; 露齿笑|Smile showing teeth|0.0|kb ; 露齿而笑|Smile, showing teeth|0.0|kb	PACK_UNVERIFIED_RIVAL
+424	black pantyhose	黑色连裤袜(覆盖臀部)	kb_verified	黑色连裤袜	黑色连裤袜|Black pantyhose|1.0|kbmt ; 黑色连裤袜(覆盖臀部)|Black pantyhose (covering hips)|0.667|kb ; 黑丝|Black stockings|0.5|wiki	
+423	bag	包	kb_verified	包	包|bag|1.0|kb ; 袋|bag|1.0|wiki	
+422	paizuri	乳交	kb	摆姿势	乳交|Breastfeeding|0.0|kb ; 挟射|Flank fire|0.0|wiki ; 乳内射精|Coital ejaculation|0.0|wiki ; 摆姿势|Pose|0.0|mt ; 山雀他妈的|Fuck the chickadee|0.0|kbmt	
+420	miniskirt	迷你裙	kb_verified	迷你裙	迷你裙|miniskirt|1.0|kb ; 迷你裙短裙|Miniskirt, short skirt|0.5|kbmt ; 超短裙|Microskirt|0.0|wiki	
+417	blurry background	模糊的背景	kb_verified	模糊背景	模糊的背景|Blurred background|0.5|kb ; 虚化背景|Blurred background|0.5|wiki ; 模糊背景|Blurred background|0.5|mt	
+412	white bikini	白色比基尼	kb_verified	白色比基尼	白色比基尼|White bikini|1.0|kb ; 白色比基尼泳裤|White bikini bottoms|0.8|kbmt ; 白色比基尼上衣|White bikini top|0.8|kbmt	
+412	looking at penis	看着阴茎	kb_verified	注视阴茎	看着阴茎|Looking at the penis|1.0|kb ; 注视阴茎|Staring at the penis|0.5|mt	
+411	spread pussy	掰穴	kb	张开阴部	掰穴|Pinch acupoints|0.0|kb ; 掰开阴部|Separate the genitals|0.0|kb ; 掰开的阴部|Split vulva|0.0|kb ; 张开阴部|Open the genitals|0.0|mt	
+408	cum on breasts	射在胸上	kb	精液溅在乳房上	射在乳房上|Shooting at the breast|0.5|kbmt ; 射在乳房之间|Shooting between the breasts|0.4|kbmt ; 精液溅在乳房上|Semen splashed on the breast|0.4|mt ; 射在胸上|Shot in the chest|0.0|kb ; 胸部上的精液|Semen on the chest|0.0|wiki	
+408	after vaginal	事后阴道特写	kb	阴道后部	阴道性交之后|After vaginal intercourse|0.8|wiki ; 事后阴道特写|Close-up of vagina afterwards|0.0|kb ; 阴道后|postvaginally|0.0|kbmt ; 阴道后部|Posterior vagina|0.0|mt	PACK_UNVERIFIED_RIVAL
+408	2boys	2个男性	kb	2个男性	2个男性|2 males|0.0|kb ; 2男孩|2 boys|0.0|kbmt	
+406	arm up	举着手	kb	抬臂	手臂上抬|Raise arm|0.5|wiki ; 抬臂|Raise arm|0.5|mt ; 手臂举起|Arm raised|0.5|kbmt ; 一只手臂举起|One arm raised|0.5|kbmt ; 举着手|With hands raised|0.0|kb	
+405	jacket	夹克	kb_verified	夹克	夹克|jacket|1.0|kb ; 上着|Jacket|1.0|wiki	
+402	black dress	黑色连衣裙	kb_verified	黑色连衣裙	黑色连衣裙|Black dress|1.0|kb ; 黑裙子|Black dress|1.0|kbmt	
+400	licking	舔	kb_verified	舔舐	舔|lick|1.0|kb ; 舔舐|lick|1.0|mt ; 舔舔|Lick it|0.667|kbmt	
+399	drooling	流口水	kb	流口水	流口水|Salivating|0.0|kb	
+398	cum on upper body	射在上半身	kb_verified	上半身射精	射在上半身|Shot on the upper body|0.667|kb ; 上半身射精|Ejaculation on the upper body|0.667|mt	
+396	parted bangs	分开的刘海	kb_verified	分缝刘海	中分刘海|center parting bangs|0.8|wiki ; 分开的刘海|Separate bangs|0.5|kb ; 分缝刘海|Split bangs|0.5|mt	
+395	threesome	三人行	mt_unverified	三人行	三人行|A Walk in the Woods|0.0|mt	NO_PACK
+394	panty pull	内裤拉下来	kb	内裤提绳	内裤拉下来|Pull down the underwear|0.4|kb ; 拉下来的内裤|Pulled-down underwear|0.4|kb ; 内裤下拉|Pull down underwear|0.4|wiki ; 内裤向下|Pants down|0.0|kbmt ; 内裤提绳|Underwear drawstring|0.0|mt	
+393	serafuku	水手服	kb	校服	水手服|School uniform|0.0|kb ; 校服|School uniform|0.0|mt ; 水手福|Sailor's Fortune|0.0|kbmt	
+393	dark skin	褐色皮肤	kb_verified	深色皮肤	深色皮肤|Dark skin|1.0|kbmt ; 黑褐色皮肤|Dark brown skin|0.8|wiki ; 深色皮肤女性|Women with dark skin|0.8|kbmt ; 褐色皮肤|Brown skin|0.5|kb ; 棕色皮肤|Brown skin|0.5|kbmt	
+392	fat man	胖子	kb_verified	胖男人	胖男人|Fat man|1.0|mt ; 胖子|Fat guy|0.5|kb	
+390	from above	俯视镜头	kb	从上方拍摄	从上方|From above|1.0|wiki ; 从上方拍摄|Shot from above|0.8|mt ; 从上面看的鸟瞰图|Aerial view from above|0.667|kbmt ; 俯视镜头|Top-down shot|0.0|kb ; 俯视|Top view|0.0|wiki	PACK_UNVERIFIED_RIVAL
+389	squatting	蹲	kb	蹲着	蹲|crouch|0.0|kb ; 工口蹲|Work mouth squat|0.0|kb ; 蹲着|crouching|0.0|mt ; 蹲下|Crouch down|0.0|kbmt	
+389	covered erect nipples	被遮住的挺立乳头	mt_unverified	被遮住的挺立乳头	被遮住的挺立乳头|Covered erect nipple|0.667|mt	NO_PACK
+388	necklace	项链	kb_verified	项链	项链|necklace|1.0|kb	
+387	orange hair	橙色头发	kb_verified	橙色头发	橙色头发|Orange hair|1.0|kb ; 橙发|Orange hair|1.0|wiki ; 橙毛|Orange hair|1.0|wiki ; 橙色的头发|Orange hair|1.0|kbmt	
+386	sex toy	性爱玩具	kb_verified	情趣玩具	性爱玩具|Sex toys|0.5|kb ; 性玩具|Sex toys|0.5|kbmt ; 情趣玩具|Sex toys|0.5|mt ; 成人玩具|Adult toys|0.0|wiki	
+385	standing sex	站立后入	kb	站立式性爱	站立式性爱|Standing sex|1.0|mt ; 站着做爱|Having sex while standing|0.667|kbmt ; 対面立位|Face-to-face standing|0.5|wiki ; 站立后入|Enter after standing up|0.333|kb ; 立位|Upright position|0.0|wiki	PACK_UNVERIFIED_RIVAL
+383	window	窗	kb_verified	窗户	窗|window|1.0|kb ; 窗户|Window|1.0|kbmt	
+381	side-tie bikini bottom	侧系带比基尼泳裤	kb_verified	侧系式比基尼下装	侧系带比基尼泳裤|Side Straps Bikini Bottoms|0.75|kb ; 侧边系带比基尼下装|Side strap bikini bottom|0.75|wiki ; 侧系式比基尼下装|Side-tying bikini bottom|0.75|mt ; 侧系带比基尼|Side Straps Bikini|0.571|kbmt	
+381	bell	铃	kb_verified	铃铛	铃|Bell|1.0|kb ; 铃铛|Bell|1.0|kb ; 钟|clock|0.0|kb	
+380	incest	乱伦	kb_verified	近亲相奸	乱伦|Incest|1.0|kb ; 近亲相奸|Incest|1.0|mt ; 姉妹百合|Sister百合|0.0|wiki	
+379	bare arms	裸臂	kb_verified	露臂	裸臂|Bare arms|1.0|kb ; 光着胳膊|Bare arms|1.0|kbmt ; 露臂|Sleeveless|0.0|mt	
+377	dress	连衣裙	kb_verified	连衣裙	连衣裙|Dress|1.0|kb ; 洋装|Western dress|0.667|wiki ; 裙子|skirt|0.0|kbmt	
+375	side ponytail	侧马尾	kb_verified	侧马尾	侧马尾|Side ponytail|1.0|kb ; 侧马尾辫|Side ponytail|1.0|kbmt	
+375	on side	侧卧	kb_verified	侧身	侧卧|Side lying|0.667|kb ; 侧躺|Lie on your side|0.5|wiki ; 横卧|Lying horizontally|0.0|wiki ; 侧身|turn sideways|0.0|mt	
+375	hair intakes	进气口发型	kb	发髻造型	头发通风口|Hair vent|0.5|kbmt ; 进气口发型|Intake port hairstyle|0.0|kb ; 排气孔|Vent hole|0.0|wiki ; 发髻造型|Updo style|0.0|mt	
+374	shota	正太	kb_verified	少年	正太|Shota|1.0|kb ; 翔太|Shota|1.0|kbmt ; 裸足男子|Barefoot man|0.0|wiki ; 少年|boy|0.0|mt	
+373	feet out of frame	双脚不在图内	kb	脚部不在画面内	脚部出框|Feet out of frame|1.0|wiki ; 脚在框架外|Feet outside the frame|0.667|kbmt ; 脚部不在画面内|The feet are not in frame.|0.667|mt ; 双脚不在图内|Both feet are not in the image.|0.286|kb ; 小全景镜头|Small panoramic lens|0.0|wiki	PACK_UNVERIFIED_RIVAL
+373	cellphone	手机	kb	手机	手机|Mobile phone|0.0|kb ; 电话|Phone|0.0|wiki ; 携帯电话|Cell phone|0.0|wiki	
+372	sideboob	侧乳	kb	侧乳	侧乳|accessory breast|0.0|kb ; 横乳|Horizontal breast|0.0|wiki ; 横乳神様|God of Horizontal Breasts|0.0|wiki ; 侧胸|lateral thorax|0.0|kbmt	
+372	sailor collar	水手领	kb_verified	水手领	水手领|Sailor collar|1.0|kb	
+372	black eyes	黑色眼睛	kb_verified	黑眼睛	黑色眼睛|Black eyes|1.0|kb ; 黑眼睛|Black eyes|1.0|kbmt ; 黑眼|Black eye|0.5|kb ; 黒目|Pupil|0.0|wiki	
+369	pov crotch	从裆部视角	mt_unverified	从裆部视角	从裆部视角|From the crotch perspective|0.4|mt ; 看向裤裆的视角|View looking at the crotch area|0.333|kb ; 胯部|hips|0.0|kbmt	DEVIATES_FROM_PACK
+368	embarrassed	害羞	kb	尴尬	尴尬|Embarrassing|1.0|mt ; 尴尬尴尬尴尬尴尬|Embarrassing embarrassing embarrassing embarrassing|1.0|kbmt ; 害羞|Shy|0.0|kb ; 赤面|Blush|0.0|wiki	PACK_UNVERIFIED_RIVAL
+367	cum overflow	精液溢出	mt_unverified	精液溢出	精液溢出(插入)|Semen spillage (insertion)|0.0|wiki ; 精液溢出|Semen spillage|0.0|mt	NO_PACK
+366	steam	蒸汽	kb_verified	蒸汽	蒸汽|Steam|1.0|kb ; 水汽|Water vapor|0.0|wiki ; 水蒸气|Water vapor|0.0|wiki	
+366	bra	胸罩	kb_verified	胸罩	胸罩|bra|1.0|kb ; 文胸|Bra|1.0|wiki	
+365	two side up	小型双股辫	kb	两个正面朝上	两个正面朝上|Two faces up|0.667|mt ; 两侧向上|Up on both sides|0.333|kbmt ; 小型双股辫|Small double braid|0.0|kb ; 不完全双马尾|Incomplete twin tails|0.0|wiki	
+364	imminent penetration	即将插入	kb	即将发生插入	迫在眉睫的性爱|Imminent sex|0.5|kbmt ; 即将插入|About to be inserted|0.0|kb ; 事前|In advance|0.0|wiki ; 即将发生插入|Insertion is about to occur|0.0|mt	
+363	anal	肛交	kb_verified	肛门	肛交|Anal sex|0.667|kb ; 着衣肛交|Clothed anal sex|0.5|kb ; 肛门|anus|0.0|kb	
+361	high heels	高跟鞋	kb_verified	高跟鞋	高跟鞋|Heels|0.667|kb ; 高跟|Heels|0.667|wiki	
+354	from below	仰视镜头	kb	从下方视角	从下面|From below|1.0|wiki ; 从下面看|Viewed from below|0.8|kbmt ; 从下面看的低角度视图|Low-angle view from below|0.571|kbmt ; 从下方视角|From a low-angle view|0.333|mt ; 仰视镜头|Upward-looking camera|0.0|kb	PACK_UNVERIFIED_RIVAL
+354	arm support	手臂支撑动作	kb_verified	扶臂	手臂支撑|Arm support|1.0|kbmt ; 手臂支撑动作|Arm support movement|0.8|kb ; 用手支撑住|Support with your hands|0.4|kb ; 扶臂|armrest|0.0|mt	
+352	blue skirt	蓝色短裙	kb_verified	蓝色裙子	蓝色短裙|Blue skirt|1.0|kb ; 蓝色裙子|Blue dress|0.5|kbmt	
+351	black shirt	黑色衬衫	kb_verified	黑色衬衫	黑色衬衫|Black shirt|1.0|kb ; 黑衬衫|Black shirt|1.0|kbmt	
+349	wings	翅膀	kb_verified	翅膀	翅膀|wings|1.0|kb ; 翼|wing|1.0|wiki ; 羽|feather|0.0|wiki	
+349	korean text	韩文	kb_verified	韩文文本	韩语文本|Korean text|1.0|wiki ; 韩文文本|Korean text|1.0|mt ; 韩文|Korean|0.667|kb ; 韩国语|Korean|0.667|wiki ; 韩国人|Koreans|0.667|kbmt	
+348	midriff	腹部	kb	腰部	腹部|Abdomen|0.0|kb ; 露腰上衣|Crop top|0.0|kb ; 肚子|stomach|0.0|wiki ; 膈|diaphragm|0.0|kbmt ; 腰部|Waist|0.0|mt	
+344	detached collar	假领	kb_verified	分离式领口	假领|Fake collar|0.5|kb ; 分离领|Separate collar|0.5|kbmt ; 分离式领口|Separate neckline|0.0|mt	
+343	rape	强奸	kb_verified	强奸	强奸|Rape|1.0|kb ; 轮奸|gang rape|0.667|kb ; 凌辱|humiliation|0.0|kb	
+343	no shoes	没穿鞋	kb_verified	没穿鞋	没穿鞋|No shoes on|1.0|kb ; 没有鞋子|No shoes|1.0|kbmt ; 生靴下|Raw socks|0.0|wiki	
+343	gluteal fold	臀沟	mt_verified	臀沟	臀沟|gluteal fold|1.0|mt ; 正面可见的屁股|Buttocks visible on the front|0.0|kb	DEVIATES_FROM_PACK
+341	on stomach	趴着	kb	趴着	趴在肚子上|Lie on your stomach|0.5|kbmt ; 趴着|lying down|0.0|kb ; 俯卧|prone|0.0|wiki ; 伏卧|Lie down|0.0|wiki ; 俯卧在前|Prone in front|0.0|kbmt	
+341	grey eyes	灰色的眼睛	kb_verified	灰色眼睛	灰色的眼睛|Gray eyes|0.5|kb ; 灰色眼睛|Gray eyes|0.5|mt ; 银色的眼睛|Silver eyes|0.5|kbmt	
+340	dark-skinned female	褐皮女性	kb	深色皮肤的女性	褐皮女性|Brown-skinned woman|0.333|kb ; 黑褐色女性|Dark brown woman|0.333|wiki ; 深色皮肤的女性|Women with dark skin|0.333|kbmt ; 褐色娘|Brown Girl|0.0|wiki	
+339	maid headdress	女仆头饰	kb_verified	女仆头饰	女仆|maid|0.667|kbmt ; 女仆头饰|Maidservant headdress|0.5|kb ; 女仆头带|Maidservant headband|0.0|kbmt	
+337	bound	绑住的	kb_verified	束缚	绑住的|bound|1.0|kb ; 捆绑|Bundle|0.0|wiki ; 拘束|Restraint|0.0|wiki ; 边界|boundary|0.0|kbmt ; 束缚|Restriction|0.0|mt	
+336	micro bikini	迷你比基尼	kb_verified	迷你比基尼	微型比基尼|Micro bikini|1.0|wiki ; 微比基尼|Micro bikini|1.0|kbmt ; 迷你比基尼|Mini bikini|0.5|kb	
+336	hair over one eye	头发遮住了一只眼睛	kb_verified	遮住一只眼睛的头发	头发遮住了一只眼睛|Hair covered one eye|0.667|kb ; 遮住一只眼睛的头发|Hair covering one eye|0.667|mt ; 眼睛上方的头发|Hair above the eyes|0.333|kbmt	
+330	cat tail	猫尾巴	kb_verified	猫尾	猫尾巴|Cat tail|1.0|kb ; 猫尻尾|Cat tail|1.0|wiki ; 猫尾|cat tail|1.0|mt	
+329	pantyhose	裤袜	kb	连裤袜	裤袜|stockings|0.0|kb ; 连裤袜|stockings|0.0|kb ; 连裤袜紧身裤|Tights leggings|0.0|kbmt	
+329	cum in mouth	口内射精	kb	口交	射液在嘴里|Semen in the mouth|0.5|kbmt ; 口内射精|Oral ejaculation|0.0|kb ; 饮精|Drink essence|0.0|wiki ; 咥内射精|Intraoral ejaculation|0.0|wiki ; 口交|Oral sex|0.0|mt	
+328	open jacket	敞开的夹克	kb_verified	敞开的夹克	敞开的夹克|Open jacket|1.0|kb ; 开襟运动夹克|Open-front sport jacket|0.667|kbmt ; 开襟西装外套|Blazer|0.0|kbmt	
+327	tattoo	纹身	kb_verified	纹身	纹身|Tattoo|1.0|kb ; 刺青|Tattoo|1.0|wiki ; 纹身图案|Tattoo design|0.667|kbmt	
+327	pink panties	粉色内裤	kb_verified	粉色内裤	粉色内裤|Pink panties|1.0|kb	
+326	faceless	无脸	wiki_verified	无面容	无脸|Faceless|1.0|wiki ; 没有脸部细节的|Without facial details|0.0|kb ; 无面部|No face|0.0|wiki ; 没有脸|No face|0.0|kbmt ; 无面容|No face|0.0|mt	DEVIATES_FROM_PACK
+323	couch	沙发	kb	沙发	沙发|Sofa|0.0|kb ; 长沙发|Sofa|0.0|kbmt	
+323	black bra	黑色内衣	kb_verified	黑色胸罩	黑色胸罩|Black bra|1.0|mt ; 黑色文胸|Black bra|1.0|kbmt ; 黑色内衣|Black underwear|0.5|kb ; 黒下着|Black underwear|0.5|wiki	
+320	size difference	体格差	kb_verified	尺寸差异	体型差|Size difference|1.0|wiki ; 尺寸差异|Size difference|1.0|kbmt ; 体格差|Physical difference|0.5|kb	
+320	border	边框	kb_verified	边框	边框|Border|1.0|kb ; 带边框的窗框|Window frame with borders|0.5|kbmt	
+319	double bun	团子头	kb	双马尾	双发髻|Double buns|0.5|wiki ; 双包子|Double Dumplings|0.5|kbmt ; 团子头|Dumpling head|0.0|kb ; 包子|Baozi|0.0|kbmt ; 双马尾|Twintails|0.0|mt	
+316	faceless male	无脸男	kb_verified	无面男性	无脸男|Faceless Man|0.5|kb ; 无面男性|Faceless Man|0.5|mt ; 无脸部男性|Male without face|0.4|kb ; x先生|Mr. X|0.0|kbmt	
+316	arms behind back	手放在身后	kb_verified	双手背在身后	手放在身后|Hands behind back|0.667|kb ; 双手背在身后|Hands behind back|0.667|mt ; 双手背到身后|Put both hands behind your back|0.444|kb ; 双手放在背后|Place both hands behind your back|0.444|kbmt	
+315	underboob	下乳	kb	乳下区域	下乳|Underbreast|0.0|kb ; 南半球|Southern Hemisphere|0.0|kb ; 下胸部|Lower chest|0.0|kbmt ; 乳下区域|Underbreast area|0.0|mt	
+313	shorts	短裤	kb_verified	短裤	短裤|shorts|1.0|kb	
+311	breath	呼吸	kb_verified	呼吸	呼吸|Breathing|1.0|kb ; 息|breath|1.0|wiki ; 吐息|Sigh|0.0|wiki	
+311	:o	:o	passthrough			NO_PACK
+310	black socks	黑短袜	kb_verified	黑色袜子	黒靴下|Black socks|1.0|wiki ; 黑色袜子|Black socks|1.0|mt ; 黑短袜|Black short socks|0.8|kb ; 黑色及膝|Black knee-length|0.4|kbmt ; 黒生|Kuroue|0.0|wiki	
+308	food	食物	kb_verified	食物	食物|Food|1.0|kb ; 食品|Food|1.0|wiki	
+306	panties aside	内裤挪到一边	kb	忽略内裤部分	内裤放在一边|Put the underwear aside|0.4|kbmt ; 内裤挪到一边|Move the underwear to the side|0.0|kb ; 内裤侧拉|Side pull of underwear|0.0|wiki ; 忽略内裤部分|Ignore the underwear part|0.0|mt	
+306	grey background	灰色背景	kb_verified	灰色背景	灰色背景|Gray background|0.5|kb	
+306	ass focus	屁股为焦点	kb_verified	臀部特写	屁股为焦点|Buttocks in focus|0.5|kb ; 屁股|butt|0.0|kbmt ; 臀部特写|Close-up of the buttocks|0.0|mt	
+302	fingerless gloves	无指手套	kb_verified	无指手套	无指手套|Fingerless gloves|1.0|kb ; 露指手套|Fingerless gloves|1.0|kb ; 半指手套|Half-finger gloves|0.4|wiki	
+301	white border	白色边框	kb_verified	白色边框	白色边框|White border|1.0|kb	
+301	demon girl	魅魔	kb	恶魔女孩	恶魔娘|Demon Girl|1.0|wiki ; 恶魔女孩|Demon Girl|1.0|kbmt ; 悪魔|Demon|0.667|wiki ; 魅魔|Succubus|0.0|kb	PACK_UNVERIFIED_RIVAL
+300	wrist cuffs	和袖子分开的手腕的袖口	kb_verified	手铐	和袖子分开的手腕的袖口|Cuff of the wrist separated from the sleeve|0.571|kb ; 腕饰|Wrist ornament|0.5|kb ; 分离式袖口|Separate cuffs|0.5|kbmt ; 护腕|Armband|0.0|wiki ; 手铐|Handcuffs|0.0|mt	
+300	heart censor	心形马赛克	kb	心脏打码	爱心打码|Hearts blurred|0.5|wiki ; 心脏打码|Heart blurred|0.5|mt ; 审查员的心|The Reviewer’s Heart|0.5|kbmt ; 心形马赛克|Heart-shaped mosaic|0.4|kb	
+300	clenched teeth	牙齿紧咬	kb_verified	紧咬的牙齿	牙齿紧咬|Teeth clenched|1.0|kb ; 紧咬的牙齿|Clenched teeth|1.0|mt ; 咬牙|Grit my teeth|0.4|wiki ; 咬牙切齿咬牙切齿|Gritting my teeth Gritting my teeth|0.4|kbmt	
+296	aqua eyes	水蓝色眼睛	kb_verified	水蓝色眼睛	水蓝色眼睛|Aqua eyes|1.0|kb ; 水色瞳|Azure eyes|0.5|wiki ; 水色眼|Aquamarine eyes|0.5|wiki ; 青色的眼睛|Blue eyes|0.5|kbmt ; 绿松石色的眼睛|Turquoise eyes|0.5|kbmt	
+295	hood	兜帽	kb_verified	兜帽	兜帽|Hood|1.0|kb ; 帽兜|Cape pocket|0.0|wiki ; 头巾|Headscarf|0.0|wiki	
+294	colored inner hair	内层挑染	kb	彩色阴毛	有色内毛|Colored inner hair|1.0|kbmt ; 彩色阴毛|Colored pubic hair|0.667|mt ; 内挑染|Inner ombre|0.4|wiki ; 内层挑染|Inner layer ombre|0.333|kb ; 挂耳染|Ear-loop dyeing|0.0|wiki	PACK_UNVERIFIED_RIVAL
+292	demon tail	恶魔尾巴	kb_verified	恶魔之尾	恶魔尾巴|Demon Tail|1.0|kb ; 恶魔之尾|Tail of the Demon|1.0|mt	
+291	low twintails	低扎双尾	kb	低马尾	低马尾|Low ponytail|0.5|mt ; 低双马尾|Low twin tails|0.4|kbmt ; 低扎双尾|Low ponytail with twin tails|0.333|kb ; 下双马尾|Lower twin tails|0.0|wiki	
+290	gradient hair	渐变色的头发	kb	渐变发色	渐变色头发|Gradient hair|1.0|wiki ; 渐变头发|Gradient hair|1.0|kbmt ; 渐变发色|Gradient hair color|0.8|mt ; 渐变色的头发|Gradually changing hair color|0.333|kb	PACK_UNVERIFIED_RIVAL
+289	blue sky	蓝天	kb_verified	蓝天	蓝天|Blue sky|1.0|kb ; 青空|Blue sky|1.0|wiki ; 碧空|Blue sky|1.0|wiki	
+288	thick thighs	肉腿	kb	粗壮的大腿	粗壮的大腿|Thick thighs|1.0|mt ; 大腿|thigh|0.667|kbmt ; 肥大腿|Fat thighs|0.5|kbmt ; 肉腿|Meaty legs|0.0|kb ; 大根足|Radish feet|0.0|wiki	PACK_UNVERIFIED_RIVAL
+288	panties around leg	腿上的内裤	mt_unverified	腿上的内裤	腿上的内裤|Underwear on the leg|0.4|mt ; 一只脚上挂着内裤|Panties hanging from one foot|0.286|kb	DEVIATES_FROM_PACK
+287	glasses	眼镜	kb_verified	眼镜	眼镜|Glasses|1.0|kb ; 眼镜娘|Glasses Girl|0.667|kb ; 伊达眼镜|Ida Glasses|0.667|wiki ; 梅甘娜|Meghana|0.0|kbmt	
+286	twin braids	双辫子	kb_verified	双马尾	双辫子|Two braids|0.5|kb ; 两条辫子|Two braids|0.5|kb ; 双发辫|double braid|0.5|wiki ; 双马尾|Twintails|0.0|mt	
+285	white dress	白色连衣裙	kb_verified	白色连衣裙	白色连衣裙|White dress|1.0|kb ; 白色礼服|White dress|1.0|kbmt	
+283	breasts apart	双乳分开	mt_unverified	双乳分开	分开乳房|Separate breasts|0.5|kbmt ; 双乳分开|Breasts separated|0.5|mt ; 向两侧摊开的乳房|Breasts spread to the sides|0.4|kb	DEVIATES_FROM_PACK
+281	leash	皮带	kb	牵引绳	皮带|belt|0.0|kb ; 宠物链|Pet Chain|0.0|kb ; 手纲|Hand outline|0.0|wiki ; 牵引绳|Towing rope|0.0|mt	
+280	slave	奴隶	kb_verified	奴隶	奴隶|slave|1.0|kb	
+279	short shorts	热裤	kb	短裤	短裤|shorts|1.0|kbmt ; 热裤|Hot pants|0.0|kb ; 战利品|Trophies|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+278	red ribbon	红色丝带	kb_verified	红色丝带	红色丝带|Red ribbon|1.0|kb ; 红带|Red Belt|0.5|kbmt	
+278	bondage	捆绑/奴役	kb_verified	束缚装	捆绑/奴役|Bondage/Slavery|0.667|kb ; 束缚装|Bondage outfit|0.667|mt ; 捆绑play|Bundled play|0.0|kb ; 捆绑|Bundle|0.0|wiki ; 绑起来（性）|Tie up (sexually)|0.0|kbmt	
+277	onee-shota	大姐姐×正太	kb	姐弟恋	大姐姐×正太|Senior Sister × Shota|0.4|kb ; 小孩开大车|A child driving a big car|0.0|kb ; 姉弟|brother and sister|0.0|wiki ; 姐弟恋|Sibling romance|0.0|mt ; 奥尼绍塔|Onishota|0.0|kbmt	
+277	leaning forward	身体前倾	kb_verified	前倾	身体前倾|Lean forward|1.0|kb ; 前倾|Lean forward|1.0|mt	
+276	head out of frame	头部出框	mt_verified	头部出框	头部出框|Head out of frame|1.0|mt ; 一部分头部没画进框里|Part of the head isn’t inside the frame.|0.444|kb ; 剪裁过的头部眼睛超出框架|The cropped head eyes extend beyond the frame|0.444|kbmt	DEVIATES_FROM_PACK
+275	kneehighs	及膝袜	kb	及膝长袜	及膝袜|knee-high socks|0.0|kb ; 中筒袜|mid-calf socks|0.0|wiki ; 小腿袜|Anklet socks|0.0|wiki ; 过膝袜|Knee-high socks|0.0|kbmt ; 及膝长袜|knee-high socks|0.0|mt	
+275	cum on hair	射在头发上	kb_verified	精液溅到头发上	射在头发上|Shooting at the hair|0.5|kb ; 髪射|Hair shoot|0.5|wiki ; 头发上的精液|Semen on hair|0.5|wiki ; 精液射在头发上|Semen sprayed on hair|0.4|kbmt ; 精液溅到头发上|Semen splashed on hair|0.4|mt	
+275	bracelet	手镯	kb_verified	手镯	手镯|bracelet|1.0|kb ; 手环|Bracelet|1.0|wiki ; 腕轮|Wristwatch|0.0|wiki	
+274	spoken heart	口语心	wiki_verified	说出的心声	口语心|Spoken Heart|1.0|kbmt ; 会话气泡里带爱心|Heart in the chat bubble|0.4|kb ; 说出的心声|Voiced Thoughts|0.0|mt	DEVIATES_FROM_PACK
+274	sound effects	拟声词	kb	音效	声效|Sound effects|1.0|wiki ; 音效|Sound effects|1.0|mt ; 拟声词|Onomatopoeia|0.0|kb ; 拟声语|Onomatopoeia|0.0|wiki ; 象声词|Onomatopoeia|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+274	plaid clothes	格子衣服	wiki_verified	格子装	格子衣服|Plaid clothes|1.0|wiki ; 格子装|Lattice pack|0.0|mt	NO_PACK
+273	fingering	指交	kb_verified	抚摸手指	指交|Fingering|1.0|kb ; 指法|Fingering|1.0|kbmt ; 抚摸手指|Touch fingers|0.667|mt ; 手淫|Masturbation|0.0|wiki	
+273	areola slip	乳晕走光	kb_verified	乳晕滑落	乳晕走光|Areola exposure|0.5|kb ; 露出乳晕|Revealing the areola|0.5|wiki ; 乳晕滑动|Areola sliding|0.5|kbmt ; 乳晕滑落|Areola slippage|0.5|mt	
+272	smartphone	智能手机	kb_verified	智能手机	智能手机|Smartphone|1.0|kb ; 手机|Mobile phone|0.0|kbmt	
+272	japanese clothes	日式服装	kb_verified	日本服饰	日本服装|Japanese clothing|1.0|kbmt ; 日本服饰|Japanese clothing|1.0|mt ; 日式服装|Japanese-style clothing|0.8|kb ; 日本传统服装|Traditional Japanese clothing|0.8|kbmt ; 和装|Kimono|0.0|wiki	
+270	cross-section	截面图	kb_verified	横截面	断面|Cross-section|1.0|wiki ; 横截面|Cross-section|1.0|kbmt ; 截面图|Cross-section view|0.8|kb ; 透视人体内部|Seeing inside the human body|0.0|kb	
+269	underwear only	只穿着内衣	kb_verified	仅内裤装	仅内衣|Only underwear|1.0|wiki ; 只有内衣|Only underwear|1.0|kbmt ; 只穿着内衣|Wearing only underwear|0.8|kb ; 只穿内衣|Wearing only underwear|0.8|wiki ; 仅内裤装|Just underwear set|0.4|mt	
+269	legs up	双腿抬起	kb	抬腿	双腿抬起|Lift both legs.|0.4|kb ; 抬腿|Lift your leg|0.0|mt	
+269	kiss	吻	kb_verified	接吻	吻|kiss|1.0|kb ; 亲吻|Kiss|1.0|kb ; 接吻|Kissing|1.0|kb	
+269	hair spread out	散开的头发	kb	散开的头发	散开的头发|Scattered hair|0.4|kb ; 头发散开|Hair loose|0.4|kbmt	
+269	grabbing another's ass	抓着对方屁股	kb	抓别人的屁股	抓着对方屁股|Grabbing the other person’s buttocks|0.286|kb ; 抓住他人的臀部|Grab someone's buttocks|0.0|wiki ; 抓别人的屁股|Grab someone’s butt|0.0|kbmt	
+268	licking penis	舔阴茎	kb_verified	舔阴茎	舔阴茎|Lick penis|1.0|kb ; 舔舐阴茎|Licking penis|1.0|wiki ; 阴茎舔|Penis licking|1.0|kbmt	
+267	petite	娇小的	kb_verified	娇小身材	娇小的|petite|1.0|kb ; 娇小|petite|1.0|wiki ; 娇小身材|Petite build|0.667|mt	
+266	black jacket	黑色夹克	kb_verified	黑色夹克	黑色夹克|Black jacket|1.0|kb ; 黑色西装外套|Black suit jacket|0.8|kbmt	
+264	hands up	双手朝上	kb_verified	举起双手	双手朝上|Hands up|1.0|kb ; 双手抬起|Raise both hands|0.4|kb ; 双手举起|Raise both hands|0.4|kb ; 举起双手|Raise your hands|0.4|mt	
+262	toenails	脚趾甲	kb_verified	脚趾甲	脚趾甲|toenails|1.0|kb ; 脚指甲|toenails|1.0|wiki ; 趾甲|toenails|1.0|kbmt	
+261	nipple stimulation	乳头刺激	mt_verified	乳头刺激	乳头刺激|Nipple stimulation|1.0|mt ; 刺激乳头|Stimulate the nipple|0.5|wiki	NO_PACK
+260	orange eyes	橙色的眼镜	kb_verified	橙色眼睛	橙色眼睛|Orange eyes|1.0|mt ; 橙色的眼睛|Orange eyes|1.0|kbmt ; 橙色的眼镜|Orange glasses|0.5|kb	
+259	maid	女仆	kb_verified	女仆装	女仆|maid|1.0|kb ; 女仆装|maid outfit|0.667|mt ; 女仆装女仆装女仆装女仆制服女仆|Maid outfit, maid outfit, maid outfit, maid uniform, maid|0.5|kbmt ; 妹抖|Sister trembles|0.0|wiki	
+259	looking to the side	看向侧面	kb_verified	侧目凝视	看向侧面|Look to the side|1.0|kb ; 看向侧边|Look to the side|1.0|wiki ; 一边看|Watching while doing something else|0.0|kbmt ; 侧目凝视|Glance sideways|0.0|mt	
+259	3boys	3个男性	kb	3个男性	3个男性|3 males|0.0|kb	
+258	leg up	抬起腿	kb	抬腿	一只腿抬起|One leg lifted|0.5|kbmt ; 抬起腿|Raise your leg|0.4|kb ; 抬腿|Lift your leg|0.4|mt	
+257	sweater	毛衣	kb_verified	毛衣	毛衣|Sweater|1.0|kb	
+257	piercing	穿洞	kb_verified	穿刺饰品	穿洞|Pierced|1.0|kb ; 穿刺饰品|Pierced jewelry|0.667|mt ; 穿孔|Perforation|0.0|wiki ; 穿孔穿孔|Perforation Perforation|0.0|kbmt	
+256	black ribbon	黑色丝带	kb_verified	黑色丝带	黑色丝带|Black ribbon|1.0|kb ; 黑丝带|Black ribbon|1.0|kbmt	
+255	thigh gap	大腿缝隙	wiki_verified	大腿间隙	大腿缝隙|Thigh gap|1.0|wiki ; 大腿之间(绝对领域)|Between the thighs (Absolute Domain)|0.333|kb ; 股沟|groin|0.0|kb ; 大腿间隙|femoral space|0.0|kbmt	DEVIATES_FROM_PACK
+253	holding phone	拿着手机	kb_verified	拿着手机	拿着手机|Holding a phone|1.0|kb	
+252	playboy bunny	playboy兔女郎	kb_verified	花花公子兔娘	playboy兔女郎|Playboy Bunny Girl|0.8|kb ; 花花公子兔娘|Playboy Bunny Girl|0.8|mt ; 兔女郎|Bunny girl|0.5|wiki ; 花花公子兔子紧身连衣裤|Playboy Rabbit Bodysuit|0.4|kbmt ; 兔子套装|Rabbit set|0.0|kbmt	
+251	breast press	挤压胸部	kb	胸部挤压	胸部压住|Press on the chest|0.5|wiki ; 乳房按压|Breast compression|0.5|kbmt ; 挤压胸部|Squeeze the chest|0.0|kb ; 胸部挤压|Chest compression|0.0|mt	
+250	white socks	白色短袜	kb_verified	白色袜子	白靴下|White socks|1.0|wiki ; 白色袜子|White socks|1.0|mt ; 白色短袜|White short socks|0.8|kb ; 白色及膝|White knee-length|0.4|kbmt	
+249	female masturbation	女性自慰	kb_verified	女性自慰	女性自慰|Female masturbation|1.0|kb ; 自慰（女）|Masturbation (female)|1.0|kbmt	
+248	mask	面具	kb_verified	面具	面具|Mask|1.0|kb ; 假面|Mask|1.0|wiki ; 仮面|Mask|1.0|wiki	
+248	fake tail	仿造的尾巴	kb_verified	假尾巴	仿造的尾巴|Fake tail|1.0|kb ; 假尾巴|Fake tail|1.0|mt ; 假动物尾巴|Fake animal tail|0.8|kbmt	
+247	steaming body	发情	kb	汗湿的身体	热气腾腾的身体|Steaming body|1.0|kbmt ; 汗湿的身体|Sweaty body|0.5|mt ; 发情|estrus|0.0|kb ; 発情|Heat|0.0|wiki	PACK_UNVERIFIED_RIVAL
+247	looking down	俯视	kb	低头看	低头|Look down|1.0|wiki ; 往下看|Look down|1.0|wiki ; 向下看|Look down|1.0|kbmt ; 低头看|Look down|1.0|mt ; 俯视|Top view|0.0|kb	PACK_UNVERIFIED_RIVAL
+247	apron	围裙	kb_verified	围裙	围裙|apron|1.0|kb	
+246	pov hands	第一人称视角的手部	mt_unverified	第一人称视角的手部	手视角|Hand view|0.5|kbmt ; 第一人称视角的手部|First-person perspective of a hand|0.333|mt ; 手伸来方向的视角|View from the direction the hand is reaching|0.286|kb	DEVIATES_FROM_PACK
+245	strapless	无肩带款式	kb_verified	无肩带	无肩带|Strapless|1.0|kbmt ; 无肩带款式|Strapless style|0.667|kb	
+244	scrunchie	发束	kb	发箍	发束|hair tie|0.0|kb ; 大肠发圈|Large intestine hair tie|0.0|wiki ; 大肠圈发圈|Large intestine loop hair clip|0.0|wiki ; 发箍|hair band|0.0|mt ; 松紧的|Loose|0.0|kbmt	
+243	red bow	红色蝴蝶结	kb_verified	红色蝴蝶结	红色蝴蝶结|Red bow|1.0|kb ; 红色领结|Red tie|0.5|kbmt	
+243	3girls	3个女性	kb	3个女性	3个女性|3 women|0.0|kb ; 三个女孩|Three girls|0.0|wiki	
+242	cloud	云	kb_verified	云朵	云|cloud|1.0|kb ; 云朵|Clouds|1.0|mt	
+240	belt	皮带	kb_verified	腰带	皮带|belt|1.0|kb ; 腰带|belt|1.0|kb	
+239	plaid skirt	格子呢短裙	kb_verified	格子裙	格子呢短裙|Plaid Skirt|1.0|kb ; 格子裙|Plaid skirt|1.0|kbmt	
+239	aqua hair	水蓝色头发	kb_verified	水蓝色头发	水蓝色头发|Aqua blue hair|0.8|kb ; 青发|Blue Hair|0.5|wiki ; 水蓝发|Aquamarine hair|0.5|wiki ; 青色的头发|Blue hair|0.5|kbmt ; 蓝绿色的头发|Blue-green hair|0.4|kbmt	
+238	dress lift	掀起裙子	kb_verified	裙摆上扬	掀起裙子|Lift the skirt|0.5|kb ; 掀裙|Lift the skirt|0.5|wiki ; 礼服电梯|Ballroom elevator|0.0|kbmt ; 裙摆上扬|Sleeve hem rises|0.0|mt	
+238	chair	椅子	kb_verified	椅子	椅子|Chair|1.0|kb	
+237	clothing cutout	衣服漏洞	kb_verified	服装镂空设计	衣服漏洞|Holes in clothes|0.5|kb ; 衣服开口|Clothing opening|0.5|wiki ; 衣服剪裁|Clothing cut|0.5|kbmt ; 服装镂空设计|Hole-pattern design on clothing|0.333|mt	
+236	top-down bottom-up	脸朝下屁股朝上	kb_verified	自上而下 自下而上	自上而下 自下而上|Top-down Bottom-up|1.0|mt ; 脸朝下屁股朝上|Face down, butt up|0.5|kb ; 头在下臀在上|Head down, hips up|0.5|wiki ; 屁股朝上|Butt up|0.333|kbmt ; 趴着翘臀|Lying down, lifting the buttocks|0.25|kb	
+236	neck bell	颈铃	kb_verified	颈铃	脖子上戴着铃铛|Bell around the neck|0.8|wiki ; 颈铃|Neck weight|0.5|kb ; 铃铛项圈|Bell collar|0.5|wiki ; 铃领|Bell collar|0.5|kbmt ; 领口|neckline|0.0|kbmt	
+236	crop top	露腹短上衣	kb_verified	露肩上装	露腹短上衣|Crop top|1.0|kb ; 露脐上衣|Crop top|1.0|wiki ; 作物顶部|Top of crop|1.0|kbmt ; 短款上衣|Short top|0.5|wiki ; 露肩上装|Off-shoulder top|0.4|mt	
+236	black bow	黑蝴蝶结	kb_verified	黑色蝴蝶结	黑蝴蝶结|Black bow|1.0|kb ; 黑弓|Black Bow|1.0|kbmt ; 黑色蝴蝶结|Black bow|1.0|mt	
+234	one side up	只扎了一边的头发	kb_verified	正面朝上	只扎了一边的头发|Only one side of the hair is tied up|0.571|kb ; 一面朝上|Face up|0.5|kbmt ; 正面朝上|Face up|0.5|mt ; 不完全单马尾|Incomplete single ponytail|0.0|wiki	
+231	pubic hair	阴毛	kb_verified	阴毛	阴毛|pubic hair|1.0|kb ; 毛茸茸的猫阴毛pubichair|Furry cat pubic hair|0.667|kbmt	
+231	curtains	窗帘	kb_verified	窗帘	窗帘|Curtains|1.0|kb ; 窗帘窗帘|Curtains Curtains|1.0|kbmt	
+230	stomach bulge	鼓起的小腹	kb	凸出的腹部	腹部隆起|Abdominal bulge|0.5|wiki ; 胃胀|Bloating in the stomach|0.5|kbmt ; 鼓起的小腹|Puffed up belly|0.0|kb ; 凸出的腹部|Protruding abdomen|0.0|mt	
+230	black nails	黑色指甲	kb_verified	黑色指甲	黑色指甲|Black nails|1.0|kb ; 黑指甲|Black nails|1.0|kbmt	
+230	black hairband	黑色发带	kb_verified	黑色发带	黑色发带|Black hairband|1.0|kb	
+229	undressing	脱衣服中	kb_verified	脱衣	脱衣服中|Undressing|1.0|kb ; 脱衣|Undress|0.0|kb ; 半脱|Semi-detached|0.0|wiki ; 条|strip|0.0|kbmt	
+229	arched back	拱背	kb_verified	弓背	拱背|arch back|1.0|kb ; 弓背|Hunched back|0.5|kbmt ; 伸腰|Stretch|0.0|wiki ; 伸懒腰|Stretch|0.0|wiki	
+225	elf	精灵	kb_verified	精灵族	精灵|elf|1.0|kb ; 精灵之耳|Elf Ear|0.667|kbmt ; 精灵族|Elves|0.0|mt	
+224	puffy sleeves	蓬蓬的袖子	kb_verified	蓬松袖子	蓬蓬的袖子|Puffy sleeves|1.0|kb ; 蓬松袖|Puffy sleeves|1.0|wiki ; 蓬松袖子|Puffy sleeves|1.0|mt ; 泡泡袖|bubble sleeves|0.5|wiki ; 浮肿的肩膀|Swollen shoulders|0.0|kbmt	
+222	dot nose	小圆点鼻	kb_verified	圆鼻子	小圆点鼻|Little dot nose|0.8|kb ; 圆鼻子|Round nose|0.5|mt ; 点鼻|Nasal spray|0.0|kbmt	
+222	bow panties	带蝴蝶结的内裤	kb_verified	蝴蝶结内裤	带蝴蝶结的内裤|Bra with bow|0.5|kb ; 蝴蝶结内裤|Bowknot panties|0.5|mt ; 内裤蝴蝶结|Bra strap bow|0.4|kbmt	
+221	used condom	用过的避孕套	kb_verified	使用过避孕套	用过的避孕套|Used condoms|1.0|kb ; 使用过避孕套|Used a condom|1.0|mt	
+221	brother and sister	兄妹	kb_verified	兄妹	兄妹|brother and sister|1.0|kb ; 姐弟|sibling|0.0|kb ; 兄弟姐妹|siblings|0.0|kbmt	
+220	restrained	拘束	kb	克制	拘束|Restraint|0.0|kb ; 束缚|Restriction|0.0|wiki ; 四肢拘束|Limb restraint|0.0|wiki ; 克制|Restraint|0.0|mt ; 克制的|moderate|0.0|kbmt	
+218	wet clothes	湿衣服	kb_verified	湿衣服	湿衣服|Wet clothes|1.0|kb ; 浸湿衣物|Wet the clothes|1.0|wiki ; 湿身(着衣)|Wet (clothed)|1.0|wiki ; 湿衣服湿衣服|Wet clothes Wet clothes|1.0|kbmt	
+218	beach	海滩	kb_verified	海滩	海滩|Beach|1.0|kb ; 沙滩|Beach|1.0|wiki ; 砂浜|beach|1.0|wiki	
+217	moaning	呻吟	kb	呻吟声	呻吟声|Moans|1.0|mt ; 呻吟|groan|0.0|kb ; 娇喘|gasping softly|0.0|wiki	PACK_UNVERIFIED_RIVAL
+217	cat girl	猫娘	kb	猫娘	猫耳娘|Cat Ear Girl|0.8|wiki ; 猫娘|Catgirl|0.0|kb ; 猫人|Feline|0.0|wiki ; 猫女|Catgirl|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+216	interracial	跨人种的	kb	混血	跨种族|Interracial|1.0|kbmt ; 跨人种的|Interethnic|0.0|kb ; 异人种间|interethnic|0.0|wiki ; 混血|Mixed race|0.0|mt	PACK_UNVERIFIED_RIVAL
+216	animal print	动物印花	kb_verified	动物纹图案	动物印花|Animal print|1.0|kb ; 动物纹图案|Animal print pattern|0.8|mt	
+214	tan	小麦色(皮肤)	kb_verified	古铜色肌肤	小麦色|Tan|1.0|wiki ; 小麦色(皮肤)|Tan (skin)|0.667|kb ; 小麦肌|Wheaty skin|0.0|wiki ; 古铜色肌肤|Tanned skin|0.0|mt ; 晒黑晒黑的皮肤|Tanned, tanned skin|0.0|kbmt	
+214	mature female	熟女	kb	成熟女性	母性的女体|Maternal female form|0.4|wiki ; 成熟成熟的女人摩洛伊斯兰解放阵线|Mature mature woman Moro Islamic Liberation Front|0.25|kbmt ; 熟女|cougar|0.0|kb ; 人妻|married woman|0.0|wiki ; 成熟女性|Adult woman|0.0|mt	
+214	ffm threesome	女女男3P	kb	女女男三人行	女女男3P|Female Female Male 3P|0.0|kb ; 三人行|A Walk in the Woods|0.0|kbmt ; 女女男三人行|Three-way sex with two women and one man|0.0|mt	
+213	halterneck	绕颈系带	kb	露肩装	绕颈系带|Neck strap|0.0|kb ; 颈挂式|Neck挂式|0.0|wiki ; 露肩装|Off-shoulder dress|0.0|mt ; 吊带背心吊带背心|Tank top Tank top|0.0|kbmt	
+213	demon horns	恶魔的角	kb_verified	恶魔角	恶魔的角|The Devil’s Horns|0.5|kb ; 恶魔角|Devil’s Horn|0.5|mt ; 魔鬼角|Devil’s Corner|0.0|kbmt	
+212	neckerchief	领巾	kb	领巾	领巾|Scarf|0.0|kb ; 围巾|Scarf|0.0|kbmt	
+212	eyelashes	睫毛	kb_verified	睫毛	睫毛|eyelashes|1.0|kb	
+209	x-ray	透视	kb	X光透视	X光透视|X-ray fluoroscopy|0.8|mt ; 射线|ray|0.667|kbmt ; 透视|Perspective|0.0|kb ; 截面|Cross-section|0.0|wiki	PACK_UNVERIFIED_RIVAL
+207	huge ass	大屁股	kb	巨臀	巨尻|Big ass|0.5|wiki ; 巨臀|Big ass|0.5|mt ; 大屁股|Big butt|0.0|kb ; 爆尻|Bursting Butt|0.0|wiki ; 大屁股大屁股|Big butt, big butt|0.0|kbmt	
+206	leg grab	抓着腿	kb	抓腿	抓腿|Grab legs|0.5|kbmt ; 抓着腿|Grabbing the legs|0.0|kb	
+206	^^^	^^^	passthrough			NO_PACK
+203	gangbang	轮奸	kb	群交	轮奸|gang rape|0.0|kb ; 群交|Group sex|0.0|kbmt	
+203	deep penetration	捅到子宫	kb	深度插入	深度插入|Deep Insertion|0.5|mt ; 捅到子宫|Pierced the uterus|0.0|kb ; 完全插入|Fully inserted|0.0|wiki ; 球深|Ball depth|0.0|kbmt	
+201	star (symbol)	星形	kb_verified	星星符号	星星符号|Star symbol|1.0|mt ; 星号（符号）|Star (symbol)|1.0|kbmt ; 星形|Star-shaped|0.5|kb ; 星星(形状)|Star (shape)|0.5|wiki	
+201	pants	裤子	kb_verified	裤子	裤子|Pants|1.0|kb ; 长裤|Trousers|0.0|wiki ; 长裤长裤|Trousers Trousers|0.0|kbmt	
+201	lace	蕾丝	kb_verified	蕾丝	蕾丝|Lace|1.0|kb	
+201	hand on another's head	手放在他人头上	mt_unverified	手放在他人头上	手放在对方的头上|Place your hand on the other person's head|0.444|kb ; 手放在他人头上|Place your hand on someone else's head|0.444|mt ; 把手放在别人的头上|Put your hand on someone else's head|0.444|kbmt	DEVIATES_FROM_PACK
+200	torso grab	抓着躯干	kb_verified	抓住躯干	抓住躯干|Grab the torso|1.0|mt ; 抓着躯干|Grasping the torso|0.5|kb ; 臀部抓腰抓|Grabbing the hips and waist|0.0|kbmt	
+200	profile	侧颜	kb_verified	侧脸	侧颜|Side profile|0.667|kb ; 侧脸|Side profile|0.667|mt ; 侧面绘|Side view|0.0|kb ; 在简介中|In the introduction|0.0|kbmt	
+200	leotard	芭蕾服	kb	连体紧身衣	芭蕾服|Ballet costume|0.0|kb ; 紧身连身衣裤|Form-fitting one-piece suit|0.0|kb ; 紧身衣|Lycra suit|0.0|kbmt ; 连体紧身衣|One-piece bodysuit|0.0|mt	
+199	standing on one leg	单腿站立	kb_verified	单脚站立	一只腿|One leg|0.667|kbmt ; 单腿站立|One-legged stand|0.5|kb ; 单脚站立|Stand on one foot|0.5|mt ; 一只脚|One foot|0.0|kbmt	
+199	sleeping	睡觉	kb_verified	睡觉	睡眠|Sleep|1.0|wiki ; 睡觉|Go to sleep|0.667|kb ; 睡着了|Fall asleep|0.0|kbmt	
+199	object insertion	异物插入	kb_verified	物品插入	异物插入|Foreign object insertion|0.8|kb ; 异物挿入|Foreign object insertion|0.8|wiki ; 物品插入|Item insertion|0.5|mt ; 插入|Insert|0.0|kbmt	
+199	internal cumshot	内射断面图	kb	体内射精	体内射精截面图|Cross-section of internal ejaculation|0.333|wiki ; 内射断面图|Endoscopic cross-section|0.0|kb ; 子宫内射精|intrauterine ejaculation|0.0|wiki ; 体内射精|Intrauterine ejaculation|0.0|mt ; 射在子宫内|Shooting into the uterus|0.0|kbmt	
+198	thong	丁字裤	kb_verified	丁字裤	丁字裤|Thong|1.0|kb ; 丁字内裤|Thong underwear|0.667|kb	
+197	sleeveless shirt	无袖衬衫	kb_verified	无袖衬衫	无袖衬衫|Sleeveless shirt|1.0|kb ; 无袖上衣|Sleeveless top|0.5|kbmt	
+197	head tilt	歪着头	kb_verified	歪头	歪着头|Tilting head|1.0|kb ; 歪头|Tilt head|1.0|mt ; 头部倾斜|Head tilted|1.0|kbmt	
+195	partially visible vulva	部分可见的外阴	wiki_verified	部分可见的外阴部	部分可见的外阴|Partially visible vulva|1.0|kbmt ; 部分可见的外阴部|Partially visible vulva|1.0|mt ; 可以看见一部分外阴|A part of the vulva can be seen.|0.25|kb ; 大阴唇|labia majora|0.0|wiki	DEVIATES_FROM_PACK
+194	white bra	白色胸罩	kb_verified	白色胸罩	白色胸罩|White bra|1.0|kb ; 白色文胸|White bra|1.0|kbmt ; 白下着|White undergarments|0.5|wiki	
+194	string bikini	系绳比基尼	kb_verified	串珠比基尼	系绳比基尼|Ribbon bikini|0.5|kb ; 系带比基尼|Strap bikini|0.5|kbmt ; 串珠比基尼|Beaded bikini|0.5|mt ; 细绳比基尼|Thin Rope Bikini|0.4|wiki ; 纽水着|New swimsuit|0.0|wiki	
+194	cup	杯子	kb_verified	杯状物	杯子|cup|1.0|kb ; 杯状物|cup-shaped object|0.5|mt ; 杯子喝水杯|Mug Drinking Cup|0.5|kbmt ; 水杯|Water bottle|0.0|wiki	
+193	garter straps	吊带袜的吊带	kb	过膝袜吊带	吊袜带|Garter belt|0.5|kbmt ; 吊带袜的吊带|Strap of thigh-high socks|0.333|kb ; 过膝袜吊带|Knee-high sock strap|0.333|mt	
+193	bright pupils	明亮的瞳孔	kb_verified	明亮的眼瞳	明亮的瞳孔|Bright pupils|1.0|kb ; 明亮的眼瞳|Bright eyes|0.5|mt	
+193	ahegao	阿嘿颜	kb	萌系脸蛋	阿合高|Ahegao|1.0|kbmt ; 阿嘿颜|Aheyan|0.0|kb ; 阿黑颜|Aheiyan|0.0|wiki ; 高潮脸|Orgasm face|0.0|wiki ; 萌系脸蛋|Cute face|0.0|mt	PACK_UNVERIFIED_RIVAL
+192	x hair ornament	X形发饰	kb_verified	X型发饰	x发饰|x hair accessory|0.667|kbmt ; X形发饰|X-shaped hair accessory|0.571|kb ; X型发饰|X-shaped hair accessory|0.571|mt	
+192	grabbing from behind	从背后揉胸	kb_verified	从背后抓住	从后面抓住|Grab from behind|0.667|kbmt ; 从背后抓住|Grab from behind|0.667|mt ; 从背后揉胸|Rubbing the chest from behind|0.571|kb ; 从背后抓住胸部|Grab the chest from behind|0.571|kb	
+191	yuri	百合	kb	百合向	百合向|Yuri-oriented|0.667|mt ; 百合|Lily|0.0|kb ; 女同性恋|Lesbian|0.0|wiki ; 社会人百合|Adult百合|0.0|wiki ; 女孩的爱女孩爱女孩爱女同性恋少女爱|Girl’s love Girl loves girl Girl loves lesbian girls Love|0.0|kbmt	
+191	aroused	性兴奋	kb	兴奋	性兴奋|Sexual arousal|0.0|kb ; 性唤起|Sexual arousal|0.0|wiki ; 被挑逗|Taunted|0.0|wiki ; 引起|cause|0.0|kbmt ; 兴奋|Excited|0.0|mt	
+190	watermark	水印	kb_verified	水印	水印|Watermark|1.0|kb ; 版权声明加水印|Copyright notice with watermark|0.5|kbmt	
+190	safe	全年龄	rating			NO_PACK
+189	saliva trail	唾液拉丝	kb_verified	唾液痕迹	唾液拉丝|Saliva stretch|0.5|kb ; 唾液串|Saliva strings|0.5|kbmt ; 唾液痕迹|Saliva traces|0.5|mt ; 唾液线|Salivary glands|0.0|wiki	
+189	fox ears	狐耳	kb_verified	狐耳	狐耳|Fox ears|1.0|kb ; 狐狸咪咪|Fox Mimi|0.5|kbmt	
+189	crossed bangs	交叉的刘海	kb_verified	交叉刘海	交叉的刘海|Crossed bangs|1.0|kb ; 交叉刘海|Crossed bangs|1.0|kbmt	
+189	camisole	无袖紧身背心	kb	背心	无袖紧身背心|Sleeveless tight tank top|0.0|kb ; 吊带衫|Tank top|0.0|wiki ; 无袖紧身背心(细肩带)|Sleeveless Tank Top (Thin Straps)|0.0|wiki ; 背心|Vest|0.0|mt ; 吊带背心|Strap top|0.0|kbmt	
+189	bouncing breasts	乳摇	kb_verified	晃动的巨乳	弹跳的乳房|Bouncing breasts|1.0|kbmt ; 乳摇|Breast shake|0.5|kb ; 晃动的巨乳|Swaying giant breasts|0.4|mt ; 乳分身|Milk Clone|0.0|wiki	
+188	grey shirt	灰色上衣	kb	灰色衬衫	灰色衬衫|Gray shirt|0.5|kbmt ; 灰色上衣|Gray jacket|0.0|kb	
+188	chinese clothes	中国风	kb_verified	汉服	中国衣服|Chinese clothes|1.0|kbmt ; 中国风|Chinese style|0.5|kb ; 华服|Elegant clothing|0.5|wiki ; 唐装|Hanfu|0.0|kb ; 汉服|Hanfu|0.0|mt	
+188	black shorts	黑色短裤	kb_verified	黑色短裤	黑色短裤|Black shorts|1.0|kb	
+185	desk	书桌	kb_verified	书桌	书桌|desk|1.0|kb ; 办公桌|Desk|1.0|kbmt ; 机|machine|0.0|wiki ; 桌子|table|0.0|wiki	
+184	swept bangs	扫把状刘海	kb	飘逸的刘海	偏分刘海|Sloped bangs|0.5|wiki ; 扫刘海|Sweep bangs|0.5|kbmt ; 飘逸的刘海|Elegant bangs|0.5|mt ; 扫把状刘海|Broom-shaped bangs|0.4|kb	
+183	rolling eyes	翻白眼	kb_verified	翻白眼	翻白眼|Roll eyes|1.0|kb ; 眼球上翻|Eyes rolling upward|0.8|wiki ; 白目|white eyes|0.5|wiki ; 眼珠|eyeball|0.0|kbmt	
+183	breasts squeezed together	巨乳紧贴在一起	mt_unverified	巨乳紧贴在一起	巨乳紧贴在一起|Big breasts pressed together|0.571|mt ; 胸部挤在一起|Chests pressed together|0.333|wiki	NO_PACK
+183	armpit crease	腋窝皱褶	kb	腋下皱褶	腋窝皱褶|Axillary fold|0.0|kb ; 腋下皱纹|Underarm wrinkles|0.0|kbmt ; 腋下皱褶|Axillary fold|0.0|mt	
+182	sleeves past wrists	袖子长过手腕	kb_verified	袖子及过手腕处	袖子过腕|Sleeves past the wrist|1.0|kbmt ; 袖子及过手腕处|Sleeves and above wrists|0.667|mt ; 袖子长过手腕|The sleeves are longer than the wrists.|0.571|kb ; 萌袖|Cute Sleeves|0.4|wiki	
+182	mole on breast	乳房上有痣	kb_verified	乳房上的痣	乳房上有痣|There is a mole on the breast|0.8|kb ; 胸部痣|Mole on chest|0.5|wiki ; 乳房上的痣|Moles on the breast|0.5|kbmt	
+181	hanging breasts	垂坠的巨乳	mt_unverified	垂坠的巨乳	下垂的乳房|Sagging breasts|0.5|wiki ; 挂布布|Hang the cloth|0.5|kbmt ; (俯身)双乳下垂|(Bending over) Sagging breasts|0.333|kb ; 垂坠的巨乳|Plump breasts that drape downward|0.286|mt	DEVIATES_FROM_PACK
+181	fishnets	渔网装(袜)	kb_verified	网袜	鱼网|Fishnet|1.0|kbmt ; 渔网服饰|Fishnet Clothing|0.667|wiki ; 渔网装(袜)|Fishnet set (socks)|0.5|kb ; 渔网|fishing net|0.0|kb ; 网袜|stockings|0.0|mt	
+180	m legs	M字摆腿	kb	修长双腿	M字开腿|M-splits|0.5|wiki ; 米腿|Rice legs|0.5|kbmt ; 修长双腿|Slender legs|0.5|mt ; M字摆腿|M-shaped leg swing|0.333|kb ; M字开脚|M-shaped feet separation|0.333|wiki	
+180	lingerie	女式内衣	kb	内衣	女式内衣|Women's underwear|0.0|kb ; 内衣|underwear|0.0|kbmt	
+180	holding another's hair	握着别人的头发	kb_verified	握住他人的头发	握着别人的头发|Holding someone else’s hair|0.571|kb ; 握别人头发|Grabbing someone's hair|0.333|wiki ; 抓着别人的头发|Grabbing someone’s hair|0.333|kbmt ; 握住他人的头发|Grabbing someone else's hair|0.286|mt	
+180	gradient background	渐变的背景	kb_verified	渐变背景	渐变的背景|Gradient background|1.0|kb ; 渐变色背景|Gradient background|1.0|wiki ; 渐变背景|Gradient background|1.0|kbmt ; 渐变色(效果)的背景|Gradient (effect) background|0.8|kb	
+180	boots	长靴	kb_verified	靴子	长靴|boots|1.0|kb ; 引导裸靴|Guided Barefoot Boots|0.5|kbmt ; 靴子|Shoes|0.0|mt	
+179	wide hips	宽盆骨	kb_verified	宽臀	宽臀|Wide hips|1.0|mt ; 宽盆骨|Wide pelvis|0.5|kb ; 安产型|Easy delivery type|0.0|kb ; 沙漏型身材|Hourglass figure|0.0|kb	
+179	blue bow	蓝色蝴蝶结	kb_verified	蓝色蝴蝶结	蓝色蝴蝶结|Blue bow|1.0|kb ; 蓝弓|Blue Bow|1.0|kbmt	
+178	sisters	姐妹	kb_verified	姐妹们	姐妹|Sisters|1.0|kb ; 姉妹|sisters|1.0|wiki ; 姉妹百合|Sister百合|1.0|wiki ; 姐妹们|Sisters|1.0|mt	
+178	single thighhigh	只有一条腿有穿着	wiki_unverified	单人过膝袜	只有一条腿有穿着|Only one leg is wearing something.|0.0|kb ; 大腿一大腿|Thigh thigh|0.0|kbmt	
+178	clitoris	阴核	kb_verified	阴蒂	阴核|clitoris|1.0|kb ; 阴蒂|clitoris|1.0|kb	
+177	sleeveless dress	无袖连衣裙	kb_verified	无袖连衣裙	无袖连衣裙|Sleeveless dress|1.0|kb	
+177	sketch	素描	kb_verified	素描	素描|Sketch|1.0|kb ; 粗糙的草图|Rough sketch|0.667|kbmt	
+177	mind control	洗脑	kb	精神控制	精神控制|Mind control|1.0|mt ; 洗脑|Brainwashing|0.0|kb ; 洗脳|Brainwashing|0.0|wiki ; 洗脳装置|Brainwashing device|0.0|wiki	PACK_UNVERIFIED_RIVAL
+177	grabbing another's hair	抓着对方的头发	kb_verified	抓别人的头发	抓着对方的头发|Grabbing the other person’s hair|0.571|kb ; 抓别人头发|Pulling someone's hair|0.333|wiki ; 拉别人的头发|Pulling someone's hair|0.333|kbmt ; 抓别人的头发|Pulling someone's hair|0.333|mt	
+176	tank top	无袖紧身背心	kb_verified	背心	无袖紧身背心|Sleeveless tight tank top|0.667|kb ; 背心|Vest|0.0|kbmt	
+176	orgasm	高潮	kb	高潮	性高潮|orgasm|1.0|kbmt ; 高潮|climax|0.0|kb ; 绝顶|Peak|0.0|kb	PACK_UNVERIFIED_RIVAL
+175	?	?	passthrough			NO_PACK
+174	straight hair	直发	kb_verified	直发	直发|Straight hair|1.0|kb ; 直毛|straight hair|1.0|wiki	
+174	dutch angle	德式倾斜镜头	kb	斜角构图	倾斜角度|Tilt angle|0.5|wiki ; 德式倾斜镜头|German tilt lens|0.0|kb ; 荷兰角|Cape Holland|0.0|kbmt ; 斜角构图|Diagonal composition|0.0|mt	
+173	wavy mouth	薯片嘴型	kb	波浪形嘴巴	波浪嘴|Wavy mouth|1.0|kbmt ; 波浪形嘴巴|Wavy mouth|1.0|mt ; 薯片嘴型|Chip mouth shape|0.4|kb	PACK_UNVERIFIED_RIVAL
+173	nipple tweak	玩弄乳头	kb	乳头微调	乳头捏|Nipple pinch|0.5|kbmt ; 乳头微调|Nipple fine-tuning|0.4|mt ; 玩弄乳头|Playing with nipples|0.0|kb ; 捏乳头|Pinch nipples|0.0|wiki	
+172	highleg one-piece swimsuit	高筒连体泳装	mt_unverified	高筒连体泳装	高叉连体泳衣|High-waisted one-piece swimsuit|0.571|wiki ; 高筒连体泳装|High-waisted one-piece swimsuit|0.571|mt	NO_PACK
+172	black hat	黑色帽子	mt_verified	黑色帽子	黑色帽子|Black hat|1.0|mt	NO_PACK
+172	arms behind head	双手抱头	kb	双手抱头	双手放在脑后|Place both hands behind your head|0.444|kbmt ; 双手抱头|Hold head in hands|0.333|kb	
+170	wariza	鸭子坐	kb	歪头	鸭子坐|Duck sits|0.0|kb ; 割座|Give up one's seat|0.0|wiki ; 歪头|Tilt head|0.0|mt ; w-腿|W-legs|0.0|kbmt ; w-坐着|w-sitting|0.0|kbmt	
+170	ear piercing	穿耳洞	kb	穿耳洞	耳洞|Piercing|0.667|wiki ; 穿耳洞|Get ear piercings|0.4|kb ; 耳洞耳洞|Piercings Piercings|0.0|kbmt	
+170	cardigan	开襟衫	kb_verified	开襟毛衣	开襟衫|Cardigan|1.0|kb ; 开衫|Cardigan|1.0|wiki ; 开襟毛衣|Open-neck sweater|0.0|mt	
+170	blue shirt	蓝色衬衫	kb_verified	蓝色衬衫	蓝色衬衫|Blue shirt|1.0|kb	
+170	black leotard	黑色连身衣	kb	黑色连身紧身衣	黑色紧身衣|Black bodysuit|0.5|kbmt ; 黑色连身衣|Black one-piece suit|0.4|kb ; 黑色连身紧身衣|Black one-piece bodysuit|0.4|mt	
+169	torn pantyhose	破损的裤袜	kb_verified	破损的过膝袜	破损的裤袜|Torn pantyhose|1.0|kb ; 撕裂的连裤袜|Torn pantyhose|1.0|kbmt ; 破洞连裤袜|Holey leggings|0.0|wiki ; 破损的过膝袜|Damaged knee-high socks|0.0|mt	
+169	tearing up	要哭的表情	kb	流泪	撕毁|tear up|1.0|kbmt ; 要哭的表情|Face expressing sadness|0.0|kb ; 泪目|Teary eyes|0.0|wiki ; 流泪|Crying|0.0|mt	PACK_UNVERIFIED_RIVAL
+169	lace trim	蕾丝镶边	kb_verified	蕾丝边饰	蕾丝镶边|Lace trim|1.0|kb ; 蕾丝边|lace trim|1.0|wiki ; 花边饰边|Lace trim|1.0|kbmt ; 蕾丝边饰|Lace trim|1.0|mt	
+167	towel	毛巾	kb_verified	毛巾	毛巾|Towel|1.0|kb	
+165	parent and child	母子	mt_unverified	母子	母子|Mother and child|0.5|mt ; 父母和孩子|Parents and children|0.5|kbmt	NO_PACK
+165	eyewear on head	眼镜别在头上	kb	头戴眼镜	眼镜别在头上|Hang the glasses on your head|0.333|kb ; 头戴眼镜|Wearing glasses|0.0|kbmt ; 头戴墨镜|Wearing sunglasses|0.0|kbmt	
+165	curvy	曲线优美	mt_unverified	曲线优美	展现魅力的姿势|Poses that showcase charm|0.0|kb ; 魔鬼身材|Devilish figure|0.0|wiki ; 女神的女体|The goddess's nude body|0.0|wiki ; 曲线优美|The curve is beautiful|0.0|mt ; 曲线美的性感的|Sensual curves beauty|0.0|kbmt	DEVIATES_FROM_PACK
+164	white pantyhose	白色连裤袜	kb_verified	白色连裤袜	白色连裤袜|White pantyhose|1.0|kb ; 白丝|white stockings|0.5|wiki	
+164	naughty face	下流的表情	kb	调皮脸庞	调皮脸|Naughty face|1.0|wiki ; 调皮脸庞|Naughty face|1.0|mt ; 调皮的微笑|Naughty smile|0.5|kbmt ; 下流的表情|Vile expression|0.0|kb	PACK_UNVERIFIED_RIVAL
+164	happy sex	幸福的做爱	kb_verified	愉快的性爱	幸福的做爱|Happy sex|1.0|kb ; 快乐的性爱|Happy sex|1.0|kbmt ; 愉快的性爱|Happy sex|1.0|mt ; 快乐做爱|Have fun having sex|0.333|kb	
+163	table	桌子	kb_verified	桌子	桌子|table|1.0|kb	
+163	heterochromia	异色瞳	kb_verified	异色瞳	异色瞳|Heterochromia|1.0|kb ; 异瞳|Heterochromia|1.0|wiki ; 虹膜异色|Heterochromia iridis|0.667|kb ; 奇怪的眼睛|Strange eyes|0.0|kbmt	
+162	ocean	大海	kb_verified	海洋	大海|the ocean|1.0|kb ; 海洋|Ocean|1.0|mt ; 海|sea|0.0|kb ; 海水浴|Sea bathing|0.0|wiki	
+162	blue nails	蓝色指甲	kb_verified	蓝色指甲	蓝色指甲|Blue nails|1.0|kb	
+162	black sleeves	黑色袖子	kb_verified	黑色袖子	黑色袖子|Black sleeves|1.0|kb	
+161	sunglasses	墨镜	kb_verified	太阳镜	墨镜|Sunglasses|1.0|kb ; 太阳镜|Sunglasses|1.0|kb ; 色调|Tone|0.0|kbmt	
+161	beret	贝雷帽	kb_verified	贝雷帽	贝雷帽|Beret|1.0|kb	
+160	foursome	群P	kb	四人组	群P|Group P|0.0|kb ; 四人组|Quartet|0.0|mt	
+160	butt crack	股沟	kb	肛门缝	屁股裂缝|Butt crack|1.0|kbmt ; 股沟|groin|0.0|kb ; 后乳沟|Retrogluteal groove|0.0|kbmt ; 肛门缝|Anal suture|0.0|mt	PACK_UNVERIFIED_RIVAL
+160	black footwear	黑色的鞋	kb_verified	黑色鞋履	黑色的鞋|Black shoes|0.5|kb ; 黑色鞋履|Black shoes|0.5|mt ; 黑色靴子黑色鞋子|Black boots Black shoes|0.4|kbmt	
+159	french kiss	舌吻	kb_verified	法式接吻	法式接吻|French kiss|1.0|mt ; 舌吻|tongue kiss|0.5|kb	
+159	folded	抬腿露阴	kb	折叠状	折叠|Fold|1.0|kbmt ; 折叠状|folded shape|0.667|mt ; 抬腿露阴|Lift the leg to reveal the genitals|0.0|kb ; 屈曲位|Flexed position|0.0|wiki	PACK_UNVERIFIED_RIVAL
+159	expressionless	无表情的	kb_verified	面无表情	无表情的|Expressionless|1.0|kb ; 无表情|Expressionless|1.0|wiki ; 面无表情|Expressionless|1.0|mt ; 无口|Speechless|0.0|kb ; 无感情的中性表达|Emotionless neutral expression|0.0|kbmt	
+157	presenting	展示	mt_unverified	展示	(性诱惑)展示|(Sexual temptation) display|0.0|kb ; 身体展示|Body display|0.0|wiki ; 展示|Display|0.0|mt ; 性邀请|Sexual invitation|0.0|kbmt	DEVIATES_FROM_PACK
+157	depth of field	景深(画法)	kb_verified	景深	景深|Depth of field|1.0|mt ; 景深(画法)|Depth of field (painting technique)|0.667|kb ; 虚化背景|Blurred background|0.0|wiki ; 虚化前景|Blur the foreground|0.0|wiki ; 焦点模糊|Blurry focus|0.0|kbmt	
+156	unworn panties	没穿的胖次	wiki_verified	未穿过的内裤	没穿的胖次|Unworn panties|1.0|wiki ; 脱下的胖次|The removed panties|0.5|wiki ; 未穿过的内裤|Unworn underwear|0.5|mt	NO_PACK
+156	rabbit tail	兔尾	kb_verified	兔尾	兔尾|Rabbit tail|1.0|kb ; 兎尾|Rabbit Tail|1.0|wiki ; 兔子尾巴|Rabbit tail|1.0|kbmt	
+156	o-ring	带O型环的衣物	kb_verified	O型圈	O型圈|O-ring|1.0|kbmt ; 带O型环的衣物|Clothing with O-rings|0.8|kb	
+154	teamwork (sexual)	团队性行为	mt_unverified	团队性行为	团队性行为|Group sex|0.0|mt	NO_PACK
+153	light brown hair	茶色头发	kb_verified	浅棕色头发	浅棕色头发|light brown hair|1.0|mt ; 浅棕色的头发|Light brown hair|1.0|kbmt ; 茶色头发|Brown hair|0.8|kb ; 茶色髪|brown hair|0.8|wiki ; 小麦色髪|Blonde hair|0.4|wiki	
+153	china dress	中国服饰	kb	旗袍	中国服饰|Chinese clothing|0.0|kb ; 长衫|long robe|0.0|wiki ; 旗袍|Qipao|0.0|kbmt ; 中国礼服|Chinese formal wear|0.0|kbmt	
+153	bandaid	创可贴	kb	创可贴	创可贴|Band-aid|0.0|kb ; 创口贴|Band-aid|0.0|wiki ; 绊创膏|Band-aid|0.0|wiki	
+152	v-shaped eyebrows	V字眉	wiki_verified	V形眉毛	V字眉|V-shaped eyebrows|1.0|wiki ; v型眉|V-shaped eyebrows|1.0|kbmt ; V形眉毛|V-shaped eyebrows|1.0|mt ; 眉毛皱成V形(表高傲或愤怒)|Eyebrows furrowed in a V shape (indicating arrogance or anger)|0.364|kb	DEVIATES_FROM_PACK
+152	tanline	晒痕	mt_unverified	晒痕	晒痕|Sunburn marks|0.0|mt	NO_PACK
+152	sheet grab	抓着床单	kb_verified	抓床单	抓住床单|Grab the sheets|1.0|wiki ; 抓着床单|Clutching the sheets|0.5|kb ; 抓床单|Grab the bedsheet|0.5|mt ; 抓板|Grabber|0.0|kbmt	
+152	panties under pantyhose	过膝袜内的内裤	mt_unverified	过膝袜内的内裤	连裤袜下面的内裤|Panties under leggings|0.667|kbmt ; 连裤袜后面的内裤|Panty liner under pantyhose|0.571|kbmt ; 连裤袜里的内裤|Thong in pantyhose|0.4|wiki ; 穿在裤袜里的内裤|Underwear worn inside pantyhose|0.286|kb ; 过膝袜内的内裤|Thong inside knee-high socks|0.0|mt	DEVIATES_FROM_PACK
+151	denim	牛仔布	kb_verified	牛仔布	牛仔布|Denim|1.0|kb	
+151	boy on top	男上体位	kb	男生居上位	男人在上面|The man is on top|0.5|kbmt ; 男上体位|Man on top position|0.4|kb ; 男生居上位|The man is in the upper position|0.0|mt	
+151	blue ribbon	蓝色丝带	kb_verified	蓝色丝带	蓝色丝带|Blue ribbon|1.0|kb ; 蓝丝带|Blue ribbon|1.0|kbmt	
+151	bedroom	卧室	kb_verified	卧室	卧室|Bedroom|1.0|kb ; 寝室|bedroom|1.0|wiki	
+150	no pants	没有裤子	wiki_verified	没穿裤子	没有裤子|No pants|1.0|kbmt ; 没有裙子|No skirt|0.5|kbmt ; 没穿裤子|Not wearing pants|0.4|mt ; 没穿着裤子和裙子|Not wearing pants or skirts|0.286|kb ; 没穿下衣|Not wearing underwear|0.0|wiki	DEVIATES_FROM_PACK
+150	chain	锁链	kb_verified	链条	锁链|Chains|1.0|kb ; 链子|chain|1.0|wiki ; 链条|chain|1.0|mt ; 连锁店|Chain store|0.667|kbmt	
+149	dildo	假屌	kb	假阳具	假阳具|Dildo|1.0|kbmt ; 假屌|fake dick|0.0|kb ; 假阴茎|penis prosthesis|0.0|kb	PACK_UNVERIFIED_RIVAL
+148	t-shirt	T恤	kb_verified	T恤	T恤|T-shirt|1.0|kb ; T恤衫|T-shirt|1.0|wiki ; T恤T恤|T-shirt T-shirt|1.0|kbmt	
+148	sleep molestation	睡奸	kb_verified	睡眠侵扰	睡奸|Sleep rape|0.5|kb ; 睡眠骚扰|Sleep disturbance|0.5|kbmt ; 睡眠侵扰|Sleep disruption|0.5|mt	
+148	red bikini	红色比基尼	kb_verified	红色比基尼	红色比基尼|Red bikini|1.0|kb ; 红色比基尼下装|Red bikini bottom|0.8|kbmt ; 红色比基尼上装|Red bikini top|0.8|kbmt	
+148	penis awe	亮“枪”	kb	阴茎惊悚图	阴茎敬畏|Penis awe|1.0|wiki ; 阴茎惊悚图|Penis horror images|0.4|mt ; 亮“枪”|Draw the gun|0.0|kb ; 公鸡休克|Rooster shock|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+148	holding hands	牵手	kb_verified	手牵手	牵手|Hold hands|1.0|kb ; 手牵手|Hand in hand|0.667|mt ; 手牵着手牵着别人的手|Holding hands, holding someone else's hand|0.667|kbmt	
+147	knees up	顶起双膝	kb	膝盖上抬	膝盖上抬|Lift knees up|0.8|mt ; 膝盖抬起|Lift the knees|0.5|wiki ; 顶起双膝|Lift both knees|0.4|kb ; 跪下|Kneel down|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+147	hand on own hip	单手叉腰	wiki_verified	手搭在腰上	单手叉腰|One hand on hip|0.8|wiki ; 手搭在腰上|Hands on hips|0.4|mt ; 叉腰|Cross one's arms on the hips|0.0|wiki	NO_PACK
+146	white pupils	白色瞳孔	kb_verified	白色瞳孔	白色瞳孔|White pupils|1.0|kb	
+146	tree	树	kb_verified	树木	树|tree|1.0|kb ; 木|Wood|0.0|wiki ; 树木|Trees|0.0|kbmt	
+146	precum	先走汁	kb	精液前体液	先走汁|Sauce first|0.0|kb ; 我慢汁|Endurance Juice|0.0|wiki ; 先走液|Pre-flow liquid|0.0|wiki ; 前液|Pre-fluid|0.0|kbmt ; 精液前体液|Pre-seminal fluid|0.0|mt	
+146	highleg leotard	高筒紧身衣	mt_unverified	高筒紧身衣	高开衩的连身衣|High-slit one-piece dress|0.0|kb ; 高叉紧身衣|High Split Lycra Top|0.0|wiki ; 紧身连衣裤|Bodycon jumpsuit|0.0|kbmt ; 高筒紧身衣|High-waisted bodysuit|0.0|mt	DEVIATES_FROM_PACK
+145	striped panties	条纹内裤	kb_verified	条纹内裤	条纹内裤|Striped underwear|0.5|kb ; 缟下着|Plain undergarments|0.0|wiki ; 脱内裤|Take off underwear|0.0|kbmt	
+145	strap slip	衣物吊带滑落(导致走光)	kb_verified	肩带滑落	衣物吊带滑落(导致走光)|Clothing strap slips off (causing exposure)|0.5|kb ; 带子打滑|The strap is slipping|0.5|kbmt ; 肩带滑落|Strap slipped off|0.4|mt	
+145	fur trim	毛皮镶边	kb_verified	毛边装饰	毛皮镶边|Fur trim|1.0|kb ; 皮草款式|Fur style|0.5|kb ; 毛皮衬里|Fur lining|0.5|kbmt ; 毛边|frayed edge|0.0|wiki ; 毛边装饰|Ripped edge decoration|0.0|mt	
+145	facing viewer	面向镜头	kb_verified	面朝观众	面向镜头|Facing the camera|0.5|kb ; 面朝观众|Facing the audience|0.5|mt ; 面对观众|Facing the audience|0.5|kbmt	
+145	blue bikini	蓝色比基尼	kb_verified	蓝色比基尼	蓝色比基尼|Blue bikini|1.0|kb ; 蓝色比基尼下装|Blue bikini bottom|0.8|kbmt ; 蓝色比基尼上装|Blue bikini top|0.8|kbmt	
+144	skin fang	皮齿	mt_unverified	皮齿	肉牙|Fang teeth|0.5|kbmt ; 把嘴的一部分画成虎牙状|Draw part of the mouth in the shape of canines.|0.0|kb ; 皮齿|pelt dent|0.0|mt	DEVIATES_FROM_PACK
+144	scarf	围巾	kb_verified	围巾	围巾|Scarf|1.0|kb ; 围脖|Scarf|1.0|wiki	
+144	one breast out	露出一只乳房	kb_verified	露出一侧乳房	露出一只乳房|Revealing one breast|0.5|kb ; 乳房外面|Outside the breast|0.5|kbmt ; 露出一侧乳房|Revealing one breast|0.5|mt ; 单乳露出|Single breast exposure|0.4|wiki ; 片乳|Single milk|0.0|wiki	
+144	frown	皱眉	kb_verified	皱眉	皱眉|frown|1.0|kb ; 皱眉/蹙额|Frown/Scrunch one's brow|0.5|kb	
+144	colored skin	有色皮肤	kb_verified	彩色皮肤	有色皮肤|Colored skin|1.0|kb ; 彩色皮肤|Colored skin|1.0|mt ; 异色肌|Heterochromic skin|0.5|wiki	
+143	vibrator	跳蛋	kb	振动器	震动器|Vibrator|1.0|wiki ; 振动器|Vibrator|1.0|kbmt ; 跳蛋|Jumping Egg|0.0|kb ; 带振动的自慰器|Vibrating masturbator|0.0|kb	PACK_UNVERIFIED_RIVAL
+143	mmf threesome	二男加一女	kb	三人兽交	三人兽交|Threesome sex|0.5|mt ; 调情三人行|Flirty threesome|0.5|kbmt ; 二男加一女|Two sons and one daughter|0.0|kb	
+143	lactation	母乳	kb	哺乳	母乳|Breast milk|0.0|kb ; 搾乳|Milking|0.0|kb ; 喷乳|Milk spraying|0.0|kb ; 哺乳|Breastfeed|0.0|mt	
+143	forehead	额头	kb_verified	额头	额头|forehead|1.0|kb ; 前额|forehead|1.0|kbmt ; 露额|Exposed forehead|0.667|wiki ; 凸|convex|0.0|wiki	
+143	bottle	瓶子	kb_verified	瓶子	瓶子|bottle|1.0|kb ; 瓶|bottle|1.0|wiki	
+142	wide sleeves	宽大的袖子	kb_verified	宽袖	宽袖|Wide sleeves|1.0|kbmt ; 宽大的袖子|Loose sleeves|0.5|kb ; 宽袖口|Wide cuffs|0.5|wiki	
+142	single hair bun	团子头	kb	单人发髻	单发髻|Single bun|0.8|wiki ; 单人发髻|Single-person bun|0.667|mt ; 团子头|Dumpling head|0.0|kb ; 发髻发髻发髻|updo updo updo|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+142	grey skirt	灰色短裙	kb	灰色裙子	灰色短裙|Gray short skirt|0.4|kb ; 灰色裙子|Gray dress|0.0|kbmt	
+142	furrowed brow	下眉毛	kb	紧锁的眉头	紧锁的眉头|Furrowed brows|1.0|mt ; 下眉毛|Lower eyebrow|0.0|kb ; 皱眉|frown|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+142	black shoes	黑鞋子	wiki_verified	黑色鞋子	黑鞋子|Black shoes|1.0|wiki ; 黑色鞋子|Black shoes|1.0|mt	NO_PACK
+142	backpack	背包	kb_verified	双肩包	背包|backpack|1.0|kb ; 双肩包|Backpack|1.0|mt ; 背包旅行|Backpacking|1.0|kbmt	
+141	pulling own clothes	拉扯自己的衣服	mt_verified	拉扯自己的衣服	拉扯自己的衣服|Pulling at one's own clothes|1.0|mt ; 拉下自己衣服|Pull down one's own clothes|0.857|wiki	NO_PACK
+141	female ejaculation	潮吹	kb_verified	女性射精	女性射精|Female ejaculation|1.0|mt ; 潮吹|orgasmic ejaculation|0.5|kb ; 潮喷|Tidal spout|0.0|wiki ; 喷出（性）|Ejaculate (sexually)|0.0|kbmt	
+140	public indecency	公开猥亵	kb_verified	公开裸露	公开猥亵|Public indecency|1.0|kb ; 公开裸露|Public nudity|0.5|mt ; 露出症|Exhibitionism|0.0|wiki ; 公共性|Publicity|0.0|kbmt	
+140	pointless censoring	敷衍的打码	kb	无意义的打码	敷衍的打码|Perfunctory censorship|0.0|kb ; 无意义打码|Meaningless obfuscation|0.0|wiki ; 无意义的打码|Meaningless redaction|0.0|mt ; 毫无意义的审查|Meaningless censorship|0.0|kbmt	
+140	drill hair	钻头发型	kb	扎头发	钻毛|drill hair|1.0|kbmt ; 扎头发|Hair tie|0.5|mt ; 钻头发型|Ponytail hairstyle|0.0|kb ; 钻头卷/公主卷|Bun/Princess bun|0.0|kb ; 螺旋卷发|Spiral curls|0.0|wiki	PACK_UNVERIFIED_RIVAL
+140	cow print	奶牛系印花	kb_verified	奶牛图案	奶牛系印花|Cow print|1.0|kb ; 牛印|Cow print|1.0|kbmt ; 奶牛图案|Cow pattern|0.5|mt ; 牛柄|Ushigari|0.0|wiki ; 牛柄衣装|Ochikiri costume|0.0|wiki	
+139	uterus	子宫	kb_verified	子宫	子宫|Uterus|1.0|kb	
+139	pasties	乳贴	kb	贴纸	乳贴|Breast pad|0.0|kb ; 胸贴|chest pad|0.0|wiki ; 馅饼|pie|0.0|kbmt ; 贴纸|Sticker|0.0|mt	
+139	hypnosis	催眠	kb_verified	催眠状态	催眠|Hypnosis|1.0|kb ; 催眠术|Hypnosis|1.0|kb ; 逆催眠|Reverse hypnosis|0.667|wiki ; 催眠状态|Hypnotic state|0.0|mt	
+139	fox girl	狐娘	kb_verified	狐女	狐娘|Fox Girl|1.0|kb ; 狐女郎|Fox Girl|1.0|kbmt ; 狐|fox|0.667|wiki ; 狐女|Fox Woman|0.5|mt	
+137	red bowtie	红领结	kb_verified	红色领结	红领结|Red bowtie|1.0|kb ; 红色领结|Red tie|0.5|kbmt	
+137	covering privates	遮盖私处	mt_unverified	遮盖私处	遮挡隐私部位|Cover private parts|0.4|wiki ; 遮盖私处|Cover private parts|0.4|mt ; 隐私遮挡|Privacy shield|0.0|wiki	NO_PACK
+136	sandals	凉鞋	kb_verified	凉鞋	凉鞋|Sandal|1.0|kb	
+136	pelvic curtain	阴唇	mt_unverified	阴唇	旗袍类衣物的前摆|The front panel of qipao-style garments|0.0|kb ; 开衩|slit|0.0|wiki ; 前摆|Front swing|0.0|wiki ; 阴唇|labia|0.0|mt ; 胯部面纱阴部面纱腰部面纱|Thigh veil, genital veil, waist veil|0.0|kbmt	DEVIATES_FROM_PACK
+135	wooden floor	木地板	kb_verified	木制地板	木地板|Wooden floor|1.0|kb ; 木质地板|Wooden floor|1.0|wiki ; 木制地板|Wooden floor|1.0|mt	
+135	mouth hold	用嘴叼着	kb_verified	捂住嘴巴	用嘴叼着|Hold in the mouth|1.0|kb ; 衔着|holding in the mouth|1.0|wiki ; 嘴含住|Hold in mouth|1.0|kbmt ; 嘴里叼着|with something in the mouth|0.5|wiki ; 捂住嘴巴|Cover your mouth|0.4|mt	
+135	motion blur	运动导致的模糊	kb_verified	动态模糊	运动模糊|Motion blur|1.0|kbmt ; 运动导致的模糊|Blur caused by motion|0.667|kb ; 动态模糊|Dynamic blur|0.5|mt	
+135	japanese text	日文文本	mt_verified	日文文本	日文文本|Japanese text|1.0|mt	NO_PACK
+134	reverse cowgirl position	背面骑乘位	kb	反向女牛仔姿势	反向女牛仔姿势|Reverse cowgirl position|1.0|mt ; 反向女牛仔|Reverse cowgirl|0.8|kbmt ; 背面骑乘位|Rear riding position|0.333|kb ; 背面骑乗位|Back riding position|0.333|wiki	PACK_UNVERIFIED_RIVAL
+134	on couch	在沙发上	kb	坐在沙发上	在沙发上|On the sofa|0.0|kb ; 坐在沙发上|Sitting on the sofa|0.0|mt	
+134	black pants	黑色长裤	kb_verified	黑色裤子	黑色长裤|Black pants|1.0|kb ; 黑裤子|Black pants|1.0|kbmt ; 黑色裤子|Black pants|1.0|mt	
+133	cum string	拉丝的精液	kb	带绳精液	带绳精液|Semen with string|0.5|mt ; 拉丝的精液|Threaded semen|0.0|kb ; 精液拉丝|Semen stringiness|0.0|wiki ; 暨线索cumstring|And clue cumstring|0.0|kbmt	
+133	butterfly hair ornament	蝴蝶发饰	kb_verified	蝴蝶发饰	蝴蝶发饰|Butterfly hair accessory|0.667|kb	
+133	between breasts	乳沟里	kb	胸间	乳房之间|between the breasts|1.0|kbmt ; 乳沟里|in the cleavage|0.0|kb ; 胸部夹住|Chest clamped|0.0|wiki ; 胸间|on the chest|0.0|mt	PACK_UNVERIFIED_RIVAL
+132	turtleneck	高领服饰	kb	高领衫	高领服饰|High-necked clothing|0.0|kb ; 高领毛衣|High-neck sweater|0.0|wiki ; 高领|High neck|0.0|kbmt ; 高领衫|Sweater|0.0|mt	
+132	side-tie panties	侧边系带内裤	kb_verified	侧系式内裤	侧边系带内裤|Side tie panties|1.0|kb ; 侧带内裤|Side strip panties|0.667|wiki ; 侧系带内裤|Side gusseted panties|0.667|kbmt ; 侧系式内裤|Side-bonded panties|0.667|mt	
+132	revealing clothes	暴露的穿着	kb_verified	暴露装	暴露的穿着|Exposed clothing|0.5|kb ; 情色服装|Erotic clothing|0.5|wiki ; 暴露衣服|Exposed clothing|0.5|kbmt ; 情趣服|Lingerie|0.0|wiki ; 暴露装|Exposing outfit|0.0|mt	
+132	pink bra	粉色胸罩	kb_verified	粉色胸罩	粉色胸罩|Pink bra|1.0|kb ; 粉色文胸|Pink bra|1.0|kbmt	
+132	older male and younger female	年长男性与年轻女性	mt_unverified	年长男性与年轻女性	年长男性与年轻女性|Older men and younger women|0.5|mt	NO_PACK
+132	imminent vaginal	即将发生的阴道插入	mt_verified	即将发生的阴道插入	即将发生的阴道插入|Imminent vaginal insertion|0.8|mt ; 迫在眉睫的阴道|Imminent vagina|0.5|kbmt ; 正要被插入的小穴|The hole about to be inserted|0.0|kb	DEVIATES_FROM_PACK
+132	condom wrapper	避孕套包装	kb_verified	避孕套包装纸	避孕套包装纸|Condom wrapper|1.0|kbmt ; 避孕套包装|Condom packaging|0.5|kb	
+131	white one-piece swimsuit	白色连体泳装	kb_verified	白色连体泳装	白色连体泳装|White one-piece swimsuit|1.0|kb ; 白水着|White swimsuit|0.8|wiki ; 白色泳装|White swimsuit|0.8|kbmt	
+131	surrounded by penises	被阴茎包围	mt_unverified	被阴茎包围	被阴茎包围|Surrounded by the penis|0.667|mt ; 阴茎包围|Penis encircles|0.0|wiki ; 丁丁包围网|Tintin's Net|0.0|wiki	NO_PACK
+131	sitting on person	坐在人身上	kb_verified	坐在人身上	坐在人身上|Sitting on someone|0.5|kb ; 坐在别人身上|Sitting on someone else|0.4|wiki ; 坐在上面|Sit on it|0.0|kbmt	
+131	pink nails	粉色指甲	kb_verified	粉色指甲	粉色指甲|Pink nails|1.0|kb ; 粉红色的指甲|Pink nails|1.0|kbmt	
+131	mouth mask	口罩	kb_verified	口罩	口罩|Mask|0.667|kb	
+131	kimono	和服	kb_verified	和服	和服|Kimono|1.0|kb ; 着物|Kimono|1.0|wiki	
+131	jingle bell	铃铛	kb_verified	铃铛声	铃儿响叮当|Jingle bells|1.0|kbmt ; 铃铛|Bell|0.667|kb ; 猫铃铛|Cat bell|0.5|wiki ; 响铃铛|Ring the bell|0.5|wiki ; 猫铃|Cat bell|0.5|kbmt	
+131	dress shirt	西服衬衫	kb_verified	衬衫	衬衫|Shirt|0.667|mt ; 西服衬衫|Suit shirt|0.5|kb ; 正装衬衫|Formal shirt|0.5|kbmt	
+131	bulge	裆部隆起	kb_verified	凸起物	裆部隆起|Bulge in the crotch area|0.5|kb ; 凸|convex|0.0|kbmt ; 凸起物|protrusion|0.0|mt	
+131	bandages	绷带	kb	绷带	绷带|Bandage|0.0|kb ; 包帯|Bandage|0.0|wiki ; 眼帯|Eye patch|0.0|wiki	
+130	spreading own pussy	展示自己的私处	mt_unverified	展示自己的私处	掰开自己小穴|Separate one's own anus|0.333|wiki ; 扩张自己阴道|Expand my vagina|0.0|wiki ; 展示自己的私处|Show one's private parts|0.0|mt	NO_PACK
+130	puffy short sleeves	蓬蓬的短袖	kb_verified	蓬松短袖	短袖|Short-sleeved|0.8|kbmt ; 蓬蓬的短袖|Puffy short-sleeve|0.667|kb ; 蓬松短袖|Puffy short-sleeve|0.667|mt	
+130	fins	鱼鳍	kb	鱼鳍	鱼鳍|Fish fin|0.0|kb ; 鳍|fin|0.0|kbmt	
+130	extra ears	四只耳朵	kb_verified	兽耳	四只耳朵|Four ears|0.5|kb ; 双耳|Both ears|0.5|kbmt ; 兽耳|Animal ears|0.5|mt ; 四声道|4-channel|0.0|wiki	
+130	buruma	女式灯笼裤	kb	轮舞	女式灯笼裤|Women's lantern pants|0.0|kb ; 布鲁玛|Bruma|0.0|wiki ; 日式体操短裤|Japanese gymnastics shorts|0.0|wiki ; 轮舞|Wheel dance|0.0|mt ; 跑步三角裤|Running briefs|0.0|kbmt	
+129	striped bikini	条纹比基尼	kb_verified	条纹比基尼	条纹比基尼|Striped bikini|1.0|kb	
+129	short hair with long locks	长发短发	wiki_verified	短发长流苏	长发短发|Long hair, short hair|0.857|kbmt ; 短发长流苏|Short hair with long tassels|0.75|mt ; 扎起或卷起一部分长发|Tie or roll up a part of the long hair|0.364|kb	DEVIATES_FROM_PACK
+129	large areolae	大乳晕	kb_verified	巨大的乳晕	大乳晕|Large areola|0.5|kb ; 巨大的乳晕|Enormous areolae|0.5|mt ; 巨乳轮|Enormous nipple ring|0.0|wiki ; 爆乳轮|Big Breasts Wheel|0.0|wiki	
+129	cum in ass	肛门内射	kb	肛门射精	肛门内射|Anal ejaculation|0.0|kb ; 肛门|anus|0.0|kbmt ; 肛门射精|Anal ejaculation|0.0|mt ; 精液在肛门|Semen in the anus|0.0|kbmt	
+128	prone bone	俯卧后入	kb	俯卧骨骼	俯卧骨|Supine bone|0.5|kbmt ; 俯卧后入|Lie face down and enter|0.0|kb ; 俯卧骨骼|Supine skeleton|0.0|mt	
+128	high ponytail	高马尾	kb_verified	高马尾	高马尾|High ponytail|1.0|kb ; 高马尾辫|High ponytail|1.0|kbmt	
+128	bodysuit	连体紧身衣	kb_verified	连体衣	连体紧身衣|One-piece bodysuit|0.667|kb ; 紧身衣|Lycra suit|0.0|kbmt ; 连体衣|one-piece dress|0.0|mt	
+128	blue halo	蓝色光环	mt_verified	蓝色光环	蓝色光环|Blue Halo|1.0|mt ; 蓝色光晕|Blue halo|1.0|kbmt	NO_PACK
+126	hug	拥抱	kb_verified	拥抱	拥抱|hug|1.0|kb ; 抱拥|Hug|1.0|wiki ; 拥抱拥抱|Hug hug|1.0|kbmt	
+126	flying sweatdrops	飞扬的汗珠	kb	飞落的汗珠	飞扬的汗珠|Flying sweat drops|0.4|kb ; 飞行的汗珠|Flying sweat drops|0.4|kbmt ; 飞汗|Sweating profusely|0.0|wiki ; 飞落的汗珠|Drops of sweat falling|0.0|mt	
+126	facial mark	脸部有图案	kb	面部特征	面部标记|Facial markers|0.5|kbmt ; 面部特征|Facial features|0.5|mt ; 脸部有图案|Patterns on the face|0.0|kb	
+125	red collar	红色颈圈	kb_verified	红色领子	红色颈圈|Red collar|1.0|kb ; 红色领子|Red collar|1.0|mt ; 红领|Red Scarf|0.5|kbmt	
+125	print bikini	印花比基尼	kb_verified	印花比基尼	印花比基尼|Printed bikini|1.0|kb	
+125	bikini bottom aside	比基尼泳裤放在一边	wiki_verified	忽略比基尼下装部分	比基尼泳裤放在一边|Put the bikini bottoms aside|0.857|kbmt ; 忽略比基尼下装部分|Ignore the bikini bottom part|0.571|mt ; 比基尼下装侧拉|Side pull for bikini bottom|0.5|wiki	NO_PACK
+125	assertive female	自信的女性	kb	强势女性	断言的|assertive|0.667|kbmt ; 女性优位|Female superiority|0.5|wiki ; 自信的女性|Confident women|0.0|kb ; 女性上位|Woman on top|0.0|wiki ; 强势女性|Strong-willed woman|0.0|mt	
+124	silver hair	银发	kb_verified	银发	银发|Silver hair|1.0|kb	
+124	penis on face	阴茎贴着脸	kb_verified	阴茎贴脸	阴茎放脸上|Penis on face|1.0|wiki ; 阴茎在脸上|Penis on face|1.0|kbmt ; 阴茎贴脸|Penis against face|0.8|mt ; 阴茎贴着脸|The penis is pressed against the face|0.667|kb	
+123	pantyhose pull	褪下的裤袜	kb	拉扯连裤袜	拉扯连裤袜|Pulling up pantyhose|0.8|mt ; 褪下的裤袜|Removed stockings|0.0|kb ; 裤袜半脱|Socks half-off|0.0|wiki ; 连裤袜|stockings|0.0|kbmt ; 连裤袜拉|Stocking puller|0.0|kbmt	PACK_UNVERIFIED_RIVAL
+123	against wall	压在墙上	kb_verified	靠墙站立	靠墙|Against the wall|1.0|kbmt ; 压在墙上|Pressed against the wall|0.8|kb ; 靠在墙上|Leaning against the wall|0.8|wiki ; 靠墙站立|Stand against the wall|0.8|mt	
+122	fish tail	鱼尾巴	kb_verified	鱼尾	鱼尾巴|Fish tail|1.0|kb ; 鱼尾|fish tail|1.0|kbmt	
+122	arm grab	抓住手臂	kb_verified	抓手臂	抓住手臂|Grab the arm|1.0|kb ; 抓手臂|Grab the arm|1.0|mt ; 手臂抓住手臂|Arm grabs arm|1.0|kbmt	
+122	:q	:q	passthrough			NO_PACK
+122	:3	:3	passthrough			NO_PACK
+121	bob cut	波波头	kb_verified	波波头	波波头|Bob haircut|0.5|kb ; 短发欧加帕|Short-haired Ougapa|0.0|kbmt	
+121	blue one-piece swimsuit	蓝色连体泳装	kb_verified	蓝色连体泳装	蓝色连体泳装|Blue one-piece swimsuit|1.0|kb ; 蓝色泳衣|Blue swimsuit|0.8|kbmt	
+121	anal beads	肛珠	kb_verified	肛门珠子	肛珠|anal bead|1.0|kb ; 肛门珠子|Anal bead|1.0|mt ; 肛塞串珠|Anal Bead String|0.8|wiki	
+120	shrug (clothing)	露肩装	mt_unverified	露肩装	赤裸裸的耸肩|A blatant shrug|0.5|kbmt ; 只包肩的女式上衣|Women's top with only shoulder coverage|0.0|kb ; 无胸领衫|Tunic top|0.0|wiki ; 露胸领衫|Off-the-shoulder shirt|0.0|wiki ; 露肩装|Off-shoulder dress|0.0|mt	DEVIATES_FROM_PACK
+120	mother and child	母子	mt_verified	母子	母子|Mother and child|1.0|mt ; 母亲和孩子|Mother and child|1.0|kbmt ; 亲子|Parent and child|0.5|wiki	NO_PACK
+120	dated	付上日期的	kb	过时的	付上日期的|With date attached|0.0|kb ; 日付|Date|0.0|wiki ; 完成时间|Completion time|0.0|wiki ; 过时的|Outdated|0.0|kbmt	
+120	convenient censoring	便捷打码	mt_unverified	便捷打码	便捷遮挡|Convenient shielding|0.5|wiki ; 便捷打码|Convenient watermarking|0.5|mt ; 方便的审查|Convenient review|0.5|kbmt ; 简单巧妙的打码|Simple and clever obfuscation|0.0|kb ; 刚好挡住|Just blocks it off|0.0|wiki	DEVIATES_FROM_PACK
+120	blue panties	蓝色内裤	kb_verified	蓝色内裤	蓝色内裤|Blue underwear|0.5|kb	
+119	ring	戒指	kb_verified	戒指	戒指|Ring|1.0|kb ; 指轮|Ring|1.0|wiki	
+119	looking up	仰视	kb_verified	抬头看	仰视|Look up|1.0|kb ; 抬头|Look up|1.0|wiki ; 仰望|Look up|1.0|kbmt ; 抬头看|Look up|1.0|mt	
+119	crying	哭	kb_verified	哭泣	哭|Cry|1.0|kb ; 哭泣|Crying|1.0|mt	
+119	black horns	黑色的角	kb_verified	黑色角	黑色的角|Black horns|1.0|kb ; 黑角|Black Horn|1.0|kbmt ; 黑色角|Black Horn|1.0|mt	
+119	2koma	双分镜漫画	kb	双马尾	双分镜漫画|Two-panel comic|0.0|kb ; 二格漫画|Second-person comic|0.0|wiki ; 2格漫画|2-panel comic|0.0|wiki ; 2科马|2 Komma|0.0|kbmt ; 双马尾|Twintails|0.0|mt	
+118	foreshortening	正前缩距透视法	kb_verified	透视缩略	正前缩距透视法|Frontal foreshortening perspective|0.5|kb ; 透视收缩|Perspective shrinkage|0.0|wiki ; 缩短|Shorten|0.0|kbmt ; 透视缩略|Perspective thumbnail|0.0|mt	
+118	cunnilingus	舔阴	kb	口交	舔阴|Lick pussy|0.0|kb ; 猫舔|Cat licks|0.0|kbmt ; 口交|Oral sex|0.0|mt	
+118	blue jacket	蓝色夹克	kb_verified	蓝色夹克	蓝色夹克|Blue jacket|1.0|kb ; 蓝色西装外套|Blue suit jacket|0.8|kbmt	
+118	bikini top only	仅比基尼上衣	kb_verified	仅比基尼上装	仅比基尼上衣|Only bikini top|1.0|kb ; 仅比基尼上装|Only bikini top|1.0|mt ; 比基尼上衣|Bikini top|0.8|kbmt	
+117	wavy hair	卷发	kb_verified	波浪发	波浪发|Wavy hair|1.0|mt ; 卷发|curly hair|0.5|kb ; 波浪发型|Wavy hairstyle|0.5|kb ; 波浪卷发|Wavy curls|0.5|wiki	
+117	nipple slip	乳头走光	kb_verified	乳头露出	乳头走光|Nipple exposure|0.5|kb ; 乳头滑|Nipple slippage|0.5|kbmt ; 乳头露出|Nipples exposed|0.0|mt	
+117	black pubic hair	黑色阴毛	mt_verified	黑色阴毛	黑色阴毛|Black pubic hair|1.0|kbmt	NO_PACK
+116	witch hat	女巫帽	kb_verified	女巫帽	女巫帽|Witch hat|1.0|kb ; 魔女帽子|Witch hat|1.0|wiki ; 女巫的帽子|Witch’s Hat|1.0|kbmt ; 巫女帽|Shaman hat|0.5|wiki	
+116	night	夜	kb_verified	夜晚	夜|Night|1.0|kb ; 夜晚|Night|1.0|kbmt ; 夜景|Night view|0.667|wiki	
+116	neck ribbon	颈部系着缎带	kb_verified	领带饰	颈部系着缎带|A ribbon tied around the neck|0.667|kb ; 颈带|Neck strap|0.5|kbmt ; 缎带领结|Satin bow tie|0.0|wiki ; 领带饰|Tie ornament|0.0|mt	
+116	garter belt	吊带袜的腰带	kb_verified	吊袜带	吊袜带|Garter belt|1.0|mt ; 吊袜腰带|Garter belt|1.0|kbmt ; 吊带袜的腰带|Garter belt for garter socks|0.667|kb	
+116	condom on penis	戴避孕套	kb_verified	阴茎上的避孕套	阴茎上的避孕套|Condom on penis|1.0|kbmt ; 戴避孕套|Use a condom|0.5|kb	
+116	clothed male nude female	穿衣服的男性 裸体女性	mt_unverified	穿衣服的男性 裸体女性	裸体女性|Nude woman|0.333|kbmt ; 穿衣服的男性|Clothed man|0.333|kbmt ; 穿着衣服的男性和裸女|Clothed men and naked women|0.25|kb ; 穿衣服的男性 裸体女性|Clothed man, naked woman|0.25|mt	DEVIATES_FROM_PACK
+116	butt plug	肛塞	kb_verified	肛门塞	肛塞|Anal plug|0.5|kb ; 肛门塞|Anal plug|0.5|mt	
+116	anal object insertion	肛门物体插入	kb_verified	肛交插入物	肛门物体插入|Anal object insertion|1.0|kb ; 肛交插入物|Anal plug|0.4|mt ; 肛门插入肛门物体推|Inserting an object into the anus and pushing|0.25|kbmt	
+115	cuffs	手铐	kb	袖口	袖口|cuff|1.0|kbmt ; 手铐|Handcuffs|0.0|kb ; 手链/手铐|Bracelet/Handcuffs|0.0|kb ; 脚镣|shackles|0.0|wiki	PACK_UNVERIFIED_RIVAL
+114	legs together	双腿并拢	kb_verified	双腿并拢	双腿并拢|Keep legs together|0.8|kb ; 膝盖并拢|Keep knees together|0.4|kbmt ; 双脚并拢|Keep feet together|0.4|kbmt	
+114	leg lift	单腿抬高	kb_verified	抬腿	单腿抬高|Lift one leg high|0.8|kb ; 抬腿|Lift your leg|0.8|kbmt	
+114	double v	啊嘿颜比V	kb	双V字型	双v手势|Double V gesture|0.8|wiki ; 双V字型|Double V shape|0.8|mt ; 双重和平|Double Peace|0.5|kbmt ; 啊嘿颜比V|Ahe Yanbi V|0.4|kb ; 双剪刀手|Double scissor hands|0.4|wiki	PACK_UNVERIFIED_RIVAL
+114	ass grab	抓着屁股	kb	抓屁股	抓着屁股|Grabbing the butt|0.0|kb ; 抓屁股|Pat the butt|0.0|kbmt ; 挤屁股|Squish one's buttocks|0.0|kbmt	
+113	toenail polish	指甲油	kb_verified	指甲油	脚趾甲油|Toenail polish|1.0|kbmt ; 指甲油|Nail polish|0.5|kb	
+113	split	分开	kb	分身	分裂|Split|1.0|kbmt ; 一字马|Split squat|0.667|wiki ; 分开|Separate|0.0|kb ; 开脚|Spread your legs|0.0|wiki ; 分身|Doppelgänger|0.0|mt	PACK_UNVERIFIED_RIVAL
+113	grabbing another's penis	抓取他人的阴茎	mt_unverified	抓取他人的阴茎	抓取他人的阴茎|Grabbing someone else’s penis|0.571|mt ; 抓住阴茎|Grab the penis|0.4|wiki	NO_PACK
+113	anal tail	肛尾	kb_verified	兽尾	肛尾|anal tail|1.0|kb ; 肛塞尾巴|Anal plug tail|0.8|wiki ; 兽尾|Beast Tail|0.5|mt ; 屁股塞尾巴|Butt stuffed with tail|0.4|kbmt ; 插进肛门里的尾巴|Tail inserted into the anus|0.333|kb	
+112	sneakers	运动鞋	kb_verified	运动鞋	运动鞋|Sneakers|1.0|kb ; 网球鞋|Tennis shoes|0.0|kbmt	
+112	shadow	阴影	kb_verified	背影	阴影|Shadow|1.0|kb ; 影|shadow|1.0|wiki ; 影子|Shadow|1.0|wiki ; 背影|Back view|0.0|mt	
+112	school swimsuit	校内泳衣	kb_verified	校泳装	校内泳衣|School swimsuit|1.0|kb ; 校泳装|School swimsuit|1.0|mt ; 学校泳装|School swimsuit|1.0|kbmt ; 死库水|Dead reservoir water|0.0|kb	
+112	hair scrunchie	发圈	kb_verified	发束带	发圈|hair tie|0.5|kb ; 发束|hair tie|0.5|kb ; 发束带|Hair tie|0.5|mt	
+112	grabbing own breast	抓住自己的乳房	kb_verified	抚摸自己的巨乳	抓住自己的乳房|Grab one's own breasts|0.667|kb ; 抚摸自己的巨乳|Touching one's own huge breasts|0.571|mt ; 抓住自己胸部|Grab your own chest|0.286|wiki ; 自我抚摸|Self-touching|0.0|kbmt	
+112	floral print	花卉图案花卉印花	wiki_verified	花卉图案	花卉图案花卉印花|Floral pattern, floral print|0.8|kbmt ; 花柄|floral pattern|0.5|wiki ; 花卉图案|Floral pattern|0.5|mt ; 花朵图案(印花)|Flower pattern (print)|0.4|kb	DEVIATES_FROM_PACK
+112	close-up	特写镜头	kb_verified	特写	特写|Close-up|1.0|mt ; 特写镜头|Close-up shot|0.8|kb ; 关闭特写|Turn off close-up|0.667|kbmt	
+111	puffy nipples	勃起的乳头	kb_verified	胀大的乳头	勃起的乳头|Erect nipples|0.5|kb ; 巨乳首|Enormous nipples|0.5|wiki ; 浮肿的乳头|Swollen nipples|0.5|kbmt ; 胀大的乳头|Enlarged nipples|0.5|mt ; 大乳晕乳头|Large areolar nipple|0.0|wiki	
+111	pink halo	粉色光环	mt_verified	粉色光环	粉色光环|Pink halo|1.0|mt	NO_PACK
+111	light blush	淡淡的腮红	kb_verified	淡淡红晕	淡淡的腮红|Light blush|1.0|kb ; 淡淡红晕|Faint blush|0.5|mt	
+111	character name	含角色名	kb	角色名	角色名|Character Name|1.0|mt ; 角色名字|Character Name|1.0|kbmt ; 含角色名|Contains character names|0.4|kb	PACK_UNVERIFIED_RIVAL
+110	wolf ears	狼耳朵	kb_verified	兽耳	狼耳朵|Wolf ears|1.0|kb ; 狼耳|Wolf ears|1.0|wiki ; 土狼耳朵|Wolf ears|1.0|kbmt ; 兽耳|Animal ears|0.5|mt	
+110	veil	面纱	kb_verified	面纱	面纱|veil|1.0|kb ; 头纱|veil|1.0|wiki	
+110	torogao	淫荡的表情	kb	托罗高	淫荡的表情|Leering expression|0.0|kb ; 平淡高潮|Bland Climax|0.0|wiki ; 托罗高|Torogo|0.0|kbmt	
+110	shark tail	鲨鱼尾巴	kb_verified	鲨鱼尾	鲨鱼尾巴|Shark tail|1.0|kb ; 鲨鱼尾|Shark tail|1.0|mt	
+110	red nails	红色指甲	kb_verified	红色指甲	红色指甲|Red nails|1.0|kb ; 红指甲|Red nails|1.0|kbmt	
+110	on floor	在地板上	kb_verified	躺在地上	在地板上|On the floor|1.0|kb ; 坐在地板上|Sitting on the floor|0.667|kbmt ; 躺在地上|Lying on the ground|0.0|mt	
+110	holding another's wrist	握住别人手腕	kb_verified	握住他人的手腕	握住别人手腕|Hold someone's wrist|0.667|kb ; 握住他人的手腕|Hold someone's wrist|0.667|mt ; 抓住另一个人的手腕|Grab another person's wrist|0.571|kbmt ; 手腕抓住|Wrist grabbed|0.4|kbmt	
+110	classroom	教室	kb_verified	教室	教室|Classroom|1.0|kb	
+110	book	书	kb_verified	书籍	书|Book|1.0|kb ; 本|book|1.0|wiki ; 图书|Books|1.0|kbmt ; 书籍|Books|1.0|mt	
+109	weapon	武器	kb_verified	武器	武器|Weapons|1.0|kb ; 兵器|Weapons|1.0|kb ; 武装|armed|0.0|wiki	
+109	kneepits	膝窝	kb	膝盖处	膝窝|popliteal fossa|0.0|kb ; 膝盖内侧|Inner side of knee|0.0|kb ; 腘|popliteal|0.0|wiki ; 膝盖处|Knee area|0.0|mt	
+109	hair rings	飞仙髻	kb	发圈	发圈|hair tie|0.5|kbmt ; 飞仙髻|Feixian hairstyle|0.0|kb ; 鬟|updo|0.0|wiki ; 稚児髷|Childhood topknot|0.0|wiki	
+109	breast sucking	吸奶	kb_verified	吸奶	乳房吮吸乳头|Breast sucking nipple|0.8|kbmt ; 吸奶|Breast pumping|0.5|kb ; 吸乳（中）|Sucking (medium)|0.5|kb ; 乳头吸吮|Nipple sucking|0.5|wiki	
+109	blue shorts	蓝色短裤	kb_verified	蓝色短裤	蓝色短裤|Blue shorts|1.0|kb	
+109	black legwear	黑丝袜	kb_verified	黑色过膝袜	黑丝袜|Black stockings|0.5|kb ; 黑色紧身裤|Black leggings|0.5|kbmt ; 黑色及膝裤|Black knee-length pants|0.333|kbmt ; 黑色过膝袜|Black knee-high socks|0.333|mt	
+109	backboob	背乳	mt_unverified	背乳	从背后可看到的胸部|Chest visible from behind|0.0|kb ; 后乳|Postmammary area|0.0|wiki ; 里乳|Inner breast|0.0|wiki ; 后胸|metathorax|0.0|kbmt ; 背乳|Back breast massage|0.0|mt	DEVIATES_FROM_PACK
+109	animal collar	动物用项圈	kb_verified	动物项圈	动物用项圈|Animal collars|1.0|kb ; 动物项圈|Animal collar|1.0|mt ; 宠物项圈|Pet collar|0.5|kb ; 狗项圈|Dog collar|0.5|wiki ; 狗项圈宠物项圈|Dog collar Pet collar|0.4|kbmt	
+108	sharp teeth	锯齿牙	kb_verified	锋利的牙齿	锋利的牙齿|Sharp teeth|1.0|mt ; 齿牙|teeth|0.667|wiki ; 锯齿牙|Sawtooth teeth|0.5|kb ; 鲨鱼牙|Shark tooth|0.0|kb ; 尖牙|fangs|0.0|kbmt	
+108	school bag	书包	kb	书包	书包|backpack|0.0|kb ; 学生鞄|Student backpack|0.0|wiki	
+108	foot focus	足部焦点	kb_verified	聚焦脚部	足部焦点|Foot focus|1.0|kb ; 脚|foot|0.667|kbmt ; 焦点|Focus|0.667|kbmt ; 足控|Foot control|0.5|wiki ; 聚焦脚部|Focus on the feet|0.5|mt	
+108	disembodied hand	无实体的手	mt_unverified	无实体的手	浮空手|Floating Hand|0.5|wiki ; 无实体的手|Entityless hand|0.5|mt ; 离体手|Ex vivo hand|0.4|wiki	NO_PACK
+108	cosplay	角色扮演	kb	角色扮演	角色扮演|Role-playing|0.0|kb	
+108	alternate breast size (larger)	不同尺寸的巨乳（较大的那款）	mt_unverified	不同尺寸的巨乳（较大的那款）	不同尺寸的巨乳（较大的那款）|Breasts of different sizes (the larger one)|0.5|mt ; 爆乳化|Bursty Breasts|0.333|wiki ; 巨乳化|Megamastiation|0.0|wiki ; 超乳化|Ultra-emulsification|0.0|wiki	NO_PACK
+107	yellow halo	黄色光环	mt_verified	黄色光环	黄色光环|Yellow halo|1.0|mt ; 黄色光晕|Yellow halo|1.0|kbmt	NO_PACK
+107	wedgie	夹臀	mt_unverified	夹臀	嵌入(拉裆部衣物所致)|Embedding (caused by pulling clothing at the crotch)|0.0|kb ; 内裤陷入|Pants got stuck|0.0|wiki ; 婚纱|Wedding dress|0.0|kbmt ; 夹臀|Garter belt|0.0|mt	DEVIATES_FROM_PACK
+107	red dress	红色连衣裙	kb_verified	红色连衣裙	红色连衣裙|Red dress|1.0|kb ; 红色礼服|Red dress|1.0|kbmt	
+107	licking lips	舔嘴唇	kb_verified	舔嘴唇	舔嘴唇|Lick lips|1.0|kb ; 舔舐嘴唇|Lick lips|1.0|wiki	
+107	cum on tongue	射在舌头上	kb_verified	舌尖上的精液	暨在舌头上|and on the tongue|0.667|kbmt ; 射在舌头上|Shot on the tongue|0.5|kb ; 舌射|Tongue sex|0.5|wiki ; 舌尖上的精液|Semen on the tip of the tongue|0.4|mt	
+107	blue dress	蓝色洋装	kb_verified	蓝色连衣裙	蓝色洋装|Blue dress|1.0|kb ; 蓝连衣裙|Blue dress|1.0|wiki ; 蓝色连衣裙|Blue dress|1.0|kbmt	
+106	striped thighhighs	条纹过膝袜	kb	条纹过膝袜	条纹过膝袜|Striped knee-high socks|0.333|kb ; 条纹长筒袜|Striped thigh-high socks|0.333|kbmt	
+106	pink bow	粉色蝴蝶结	kb_verified	粉色蝴蝶结	粉色蝴蝶结|Pink bow|1.0|kb	
+106	mating press	授精体位	kb	交配挤压	交配挤压|Mating squeeze|0.5|mt ; 配套压力机|Matching press|0.5|kbmt ; 授精体位|Fertilization position|0.0|kb ; 种付位|Seed placement position|0.0|wiki	
+106	cooperative fellatio	合作口交	kb	配合性口交	合作口交|Cooperative oral sex|0.4|kb ; 多次口交|Multiple oral sex acts|0.0|kbmt ; 配合性口交|Oral sex|0.0|mt	
+106	animal hands	动物手/爪	kb_verified	兽手	动物手/爪|Animal hand/claw|0.8|kb ; 兽手|Beast Hand|0.5|mt ; 动物爪子爪子爪子|Animal paws paws paws|0.5|kbmt ; 人的动物手掌|Human animal palm|0.4|wiki ; 肉球|paw|0.0|wiki	
+105	white ribbon	白色丝带	kb_verified	白色丝带	白色丝带|White ribbon|1.0|kb ; 白丝带|White ribbon|1.0|kbmt	
+105	page number	页码	kb_verified	页码	页码|Page number|1.0|kb	
+105	cow ears	牛耳朵	kb	牛耳	牛耳朵|Ox ear|0.0|kb ; 牛耳|dominate|0.0|mt ; 寿司米米|Sushi rice|0.0|kbmt	
+105	bra lift	掀上去的胸罩	kb_verified	提胸装	掀上去的胸罩|Bra with lift|1.0|kb ; 胸罩提起|Bra lift|1.0|wiki ; 掀起胸罩|Lift up the bra|0.8|wiki ; 提胸装|Push-up bra|0.4|mt ; 布拉利夫特|Bralift|0.0|kbmt	
+105	4girls	4个女性	kb	4个女性	4个女性|4 women|0.0|kb ; 四个女孩|Four girls|0.0|wiki	
+105	1other	1个非人类	kb	1个其他角色	1个非人类|1 non-human|0.0|kb ; 中性|Neutral|0.0|wiki ; 性别不明|Gender unknown|0.0|wiki ; 单独其他|Separately others|0.0|kbmt ; 1个其他角色|1 other character|0.0|mt	
+104	white skirt	白色短裙	kb_verified	白色裙子	白色短裙|White short skirt|0.8|kb ; 白裙子|White dress|0.5|kbmt ; 白色裙子|White dress|0.5|mt	
+104	white hat	白色帽子	mt_verified	白色帽子	白色帽子|White hat|1.0|mt	NO_PACK
+104	spread ass	摊开屁股	kb	翘臀	传播屁股|Spread buttocks|0.5|kbmt ; 摊开屁股|Spread your cheeks|0.4|kb ; 分开臀部|Separate the buttocks|0.0|wiki ; 翘臀|Curvy buttocks|0.0|mt	
+104	single braid	单股辫	kb_verified	单根辫子	单股辫|Single braid|1.0|kb ; 单发辫|Single braid|1.0|wiki ; 单辫子|Single braid|1.0|kbmt ; 单根辫子|Single braid|1.0|mt	
+104	pussy juice trail	拉丝的爱液	kb	阴液痕迹	拉丝的爱液|Lacy love juice|0.333|kb ; 爱液拉丝|Semen stringing|0.0|wiki ; 猫汁串|Cat Sperm Skewers|0.0|kbmt ; 阴液痕迹|Traces of yin fluid|0.0|mt	
+104	pants pull	拉着裤子	kb_verified	拉裤子	拉着裤子|Pull up pants|0.8|kb ; 裤子下拉|Pull down pants|0.8|wiki ; 拉裤子|Pull down pants|0.8|mt ; 裤子掉了|The pants fell off.|0.4|kbmt	
+104	instant loss	即堕	kb	瞬间丢失	瞬间损失2koma|Instant loss of 2 koma|0.667|kbmt ; 瞬间丢失|Lost in an instant|0.5|mt ; 即堕|Immediate downfall|0.0|kb	
+104	demon wings	恶魔翅膀	kb_verified	恶魔之翼	恶魔翅膀|Demon Wings|1.0|kb ; 悪魔羽|Demon Wings|1.0|wiki ; 恶魔之翼|Wings of the Demon|1.0|kbmt	
+104	blue sailor collar	蓝色水手领	kb_verified	蓝色水手领	蓝色水手领|Blue sailor collar|1.0|kb	
+103	tiles	瓷砖	kb	瓷砖图案	瓷砖|tile|0.0|kb ; 瓦|tile|0.0|kbmt ; 瓷砖图案|Tile pattern|0.0|mt	
+103	dog ears	狗耳	kb_verified	兽耳	狗耳|Dog ears|1.0|kb ; 狗耳朵|Dog ears|1.0|kb ; 犬耳|Dog ears|1.0|wiki ; 非洲野狗的耳朵|African wild dog ears|0.667|kbmt ; 兽耳|Animal ears|0.5|mt	
+103	cowbell	奶牛铃铛	kb	牛铃	牛铃|Cowbell|1.0|kbmt ; 奶牛铃铛|Cow bells|0.0|kb ; 牛铃铛|Cow bells|0.0|wiki ; 铃铛(牛铃)|Bell (cow bell)|0.0|wiki	PACK_UNVERIFIED_RIVAL
+102	female orgasm	女性高潮	kb_verified	女性高潮	女性高潮|Female orgasm|1.0|kb ; 高潮(女性)|Orgasm (female)|1.0|wiki	
+101	water drop	水滴	kb_verified	水滴	水滴|Water droplet|0.5|kb ; 雫|Shizuku|0.0|wiki ; 雨滴|Raindrops|0.0|kbmt	
+101	pom pom (clothes)	绒球装饰（服饰）	mt_unverified	绒球装饰（服饰）	（衣服）|(Clothing)|0.667|kbmt ; 小绒球(衣物挂件)|Little Fluff Ball (clothing hanger)|0.286|kb ; 绒球|fluff ball|0.0|wiki ; 毛团|Fluffy ball|0.0|wiki ; 绒球装饰（服饰）|Flock decoration (apparel)|0.0|mt	DEVIATES_FROM_PACK
+100	white flower	白色的花	kb_verified	白色花朵	白色的花|White flowers|1.0|kb ; 白色花朵|White flowers|1.0|mt	
+100	sash	饰带	kb	腰带	窗扇|Window sash|0.667|kbmt ; 饰带|Braid|0.0|kb ; 日式束腰|Japanese corset|0.0|kb ; 条带|strip|0.0|wiki ; 腰带|belt|0.0|mt	
+100	loafers	乐福鞋	kb_verified	乐福鞋	乐福鞋|Loafers|1.0|kb	

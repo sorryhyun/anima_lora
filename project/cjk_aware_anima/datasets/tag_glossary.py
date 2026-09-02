@@ -83,6 +83,19 @@ ARBITRATED = {"wiki", "wiki_han", "kb", "unresolved"}
 # (`bow` → お辞儀 "bowing" where the tag means 蝶結び the ribbon), so at equal
 # back-translation F1 a community-attested name outranks it.
 SRC_RANK = {"wiki": 0, "tagpair": 1, "kb": 1, "kbmt": 2, "mt": 2}
+# zh: the curated packs are the community register (user call 2026-09-02);
+# the wiki field is where machine renderings (审查员酒吧 for `bar censor`) and
+# JA leaks sit, so it ranks below the packs at equal evidence.
+SRC_RANK_ZH = {"kb": 0, "wiki": 1, "tagpair": 1, "kbmt": 2, "mt": 2}
+# zh: booru jargon back-translates loosely (巨乳 → "big breasts" 0.5, 仰躺 →
+# "lie on your back" 0.5, 普乳 → "general breast" 0.5) — the curated pack's
+# outright-win bar is lower than the generic accept bar.
+ZH_KB_ACCEPT_F1 = 0.5
+# zh: a curated pack wording of tag shape wins outright, verified or not
+# (the gist is the register; 小穴 / 内射 / 七分身镜头 back-translate to F1 0).
+# Longer entries are explanations the NGA file carries for some tags
+# (泛指从身后插入的体位 for `sex from behind`) and compete on evidence.
+ZH_KB_TAG_MAXLEN = 6
 TAGPAIR_VERIFIED_VIA = "tagpair_verified"
 
 # r5 (2026-09-01): below this occurrence count, an unverified KB keyword
@@ -792,6 +805,16 @@ def build(args: argparse.Namespace) -> dict:
             kb_names = [
                 n for n in kr_kb[tag] if not contaminated(n, tag, "kb", args.lang)
             ]
+            if axis == "general":
+                # the NGA pack leaves explainers in ~10 wordings (小麦色(皮肤),
+                # 景深(画法)); strip when a Han-bearing tag remains (69(体位)
+                # stays — "69" alone carries no Han)
+                kb_names = [
+                    _ZH_QUALIFIER.sub("", n).strip()
+                    if HAN_WIDE.search(_ZH_QUALIFIER.sub("", n))
+                    else n
+                    for n in kb_names
+                ]
             if axis in NAME_AXES_ZH and "(" in tag:
                 # the packs mirror danbooru's qualifier (甘雨（原神）); users
                 # type the bare name, like the JA/KO lexicon tiers carry it
@@ -821,7 +844,13 @@ def build(args: argparse.Namespace) -> dict:
         tags[tag] = entry
 
     if args.reselect:
-        n = reselect(tags, Path(args.reselect), args.accept_f1, args.lang)
+        n = reselect(
+            tags,
+            Path(args.reselect),
+            args.accept_f1,
+            args.lang,
+            kb=load_zh_kb(args.zh_kb) if args.lang == "zh" else None,
+        )
         print(f"  [glossary] re-selected {n} tags from {args.reselect} (no GPU)")
     elif args.mt:
         _mt_pass(tags, args)
@@ -938,7 +967,7 @@ def choose(
         key=lambda c: (
             -c["f1"],
             0 if c.get("kana") else 1 if c.get("mt") else 2,
-            SRC_RANK.get(c.get("src"), 1),
+            (SRC_RANK_ZH if lang == "zh" else SRC_RANK).get(c.get("src"), 1),
             len(c["ja"]),
         )
     )
@@ -955,13 +984,23 @@ def choose(
 
     best = keep[0] if keep else None
     if lang == "zh":
-        # gist-centred (user call 2026-09-02): a curated community wording
-        # that back-translates to the tag wins outright, even when a literal
-        # MT rendering scores higher — the pack is the register users type.
+        # gist-centred (user call 2026-09-02): the first curated community
+        # wording wins outright when it is tag-shaped, and on evidence
+        # (F1 ≥ ZH_KB_ACCEPT_F1) otherwise — a literal MT rendering never
+        # outranks the register users type on F1 alone.
         kb_best = next((c for c in keep if c.get("src") == "kb"), None)
-        if kb_best and kb_best["f1"] >= accept_f1:
-            best = kb_best
-    if best and best["f1"] >= accept_f1:
+        if kb_best and (
+            len(kb_best["ja"]) <= ZH_KB_TAG_MAXLEN or kb_best["f1"] >= ZH_KB_ACCEPT_F1
+        ):
+            entry |= {
+                "ja": kb_best["ja"],
+                "via": "kb_verified" if kb_best["f1"] >= ZH_KB_ACCEPT_F1 else "kb",
+                "f1": kb_best["f1"],
+            }
+            return
+    if best and best["f1"] >= (
+        ZH_KB_ACCEPT_F1 if lang == "zh" and best.get("src") == "kb" else accept_f1
+    ):
         if best["ja"] == mt:
             via = "mt_verified"
         elif best.get("src") == "tagpair":
@@ -997,7 +1036,11 @@ def choose(
 
 
 def reselect(
-    tags: dict[str, dict], prior_path: Path, accept_f1: float, lang: str = "ja"
+    tags: dict[str, dict],
+    prior_path: Path,
+    accept_f1: float,
+    lang: str = "ja",
+    kb: dict[str, list[tuple[str, str]]] | None = None,
 ) -> int:
     """Re-derive every choice from a previous build's stored candidates.
 
@@ -1026,8 +1069,16 @@ def reselect(
                 "ja_ok": wording_ok(c["ja"], lang),
                 "kana": NATIVE_RE[lang].search(c["ja"]) is not None,
                 "mt": c["ja"] == mt,
-                # pre-src builds only banked wiki candidates + the MT rendering
-                "src": c.get("src") or ("mt" if c["ja"] == mt else "wiki"),
+                # pre-src builds only banked wiki candidates + the MT rendering;
+                # zh re-derives by pack membership (the first zh MT run
+                # labelled the primary's wiki alts as `kb`)
+                "src": (
+                    dict((w, s_) for w, s_ in kb.get(tag, [])).get(
+                        c["ja"], "mt" if c["ja"] == mt else "wiki"
+                    )
+                    if kb is not None
+                    else c.get("src") or ("mt" if c["ja"] == mt else "wiki")
+                ),
             }
             for c in (p.get("candidates") or [])
         ]
@@ -1160,7 +1211,14 @@ def _mt_pass(tags: dict[str, dict], args: argparse.Namespace) -> None:
             if (e["via"].startswith("wiki") or e["via"] == "kb") and e["ja"]
             else []
         ) + e["alts"]
-        sourced = [(c, primary_src) for c in wiki_c[: args.n_candidates]]
+        if isinstance(pair_src, dict):
+            # zh: the primary's alts mix pack alternates and wiki names —
+            # label each by pack membership, never by the primary's tier
+            sourced = [
+                (c, pair_src.get((tag, c), "wiki")) for c in wiki_c[: args.n_candidates]
+            ]
+        else:
+            sourced = [(c, primary_src) for c in wiki_c[: args.n_candidates]]
         sourced += [
             (c, pair_src if isinstance(pair_src, str) else pair_src.get((tag, c), "kb"))
             for c in pair_names.get(tag, [])
@@ -1266,13 +1324,35 @@ def write_review(payload: dict, path: Path, top: int) -> int:
     Corrections go into ``tag_overrides.json`` (committed) and win over every
     automatic source on the next build.
     """
+    lang = payload["meta"].get("lang", "ja")
     rows = [
         (e["count"], t, e)
         for t, e in payload["tags"].items()
         if e["axis"] == "general"
         and e.get("mt_ja")
         and (
-            e["via"] == "mt_unverified"
+            # zh: anything that is not the first curated pack wording is a
+            # review row — the packs are the register, deviations need eyes
+            (
+                lang == "zh"
+                and any(c.get("src") == "kb" for c in e.get("candidates") or [])
+                and (
+                    e["ja"]
+                    != next(c["ja"] for c in e["candidates"] if c.get("src") == "kb")
+                    # …or the pack won unverified while another source
+                    # verified a different wording — a human call
+                    or (
+                        e["via"] == "kb"
+                        and any(
+                            c.get("src") != "kb"
+                            and c["ja"] != e["ja"]
+                            and c["f1"] >= 0.75
+                            for c in e["candidates"]
+                        )
+                    )
+                )
+            )
+            or e["via"] == "mt_unverified"
             or (e.get("candidates") and e["candidates"][0]["ja"] != e.get("mt_ja"))
             # MT round-tripped its own sense, but the community field disagrees
             # with real recovered meaning — the polysemy class the arbiter is

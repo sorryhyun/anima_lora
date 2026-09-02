@@ -55,6 +55,13 @@ TRUST_POLICIES = {
         # `tagpair`. Replaces `mt_unverified` wording for 97% of the KO tail
         # (reports/0901_ko_phase_k3.md).
         "kb_unverified": 0.6,
+        # zh (plan_zh.md Z1): a curated community-pack wording (NGA / byzod)
+        # that back-translated to the tag — same class as `wiki_verified`.
+        "kb_verified": 1.0,
+        # zh: curated pack wording chosen without back-translation support
+        # (`kb` primary tier, above the floor, no candidate cleared F1) —
+        # human community translation, unverified: `tagpair` class.
+        "kb": 0.6,
         # desc_ko full-width spans (EN wiki sentence ↔ KB KO description):
         # human community translation, but loosely aligned (the KO side is a
         # summary, sometimes a sentence longer) — mt_verified class.

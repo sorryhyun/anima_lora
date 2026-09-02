@@ -207,18 +207,71 @@ text.
   (synth names are out of the recipe; the name tier is substitution).
   Tests: `tests/test_cjk_glossary.py` zh block (han class round trip,
   inventory, pack loader, arbitration rule, hant register).
-- **Jobs queued (daemon, FIFO):** `zh-glossary-mt` 20260902-183801-172ea4
-  (EN→ZH over 10,568 general tags + back-translation; ~2–3 h) →
-  `z1-cache-ja-tags` 20260902-184212-622c9c (`cache_tags`) →
-  `2c-synthja-v6-tags-extv1` 20260902-184212-64ec0b and
-  `2c-synthja-v6-tags-extv2` 20260902-184212-316a90 (same recipe as v5 minus
-  the synth registers; the pair isolates Z0, and extv2 vs v5 reads the synth
-  removal). After the MT job: `--reselect` (the job started before the
-  wikidata/qualifier/rank patches landed), r1 review on the occ>100 head,
-  `build_pairs.py --lang zh`, zh cache, then the **cold joint** JA+KO+ZH
-  distill (no warm start — every jako pack so far was warm-started from a
-  JA pack; a cold JA+KO control isolates that) with `synthjako3` as the
-  warm-chain control.
+- **zh glossary, MT tier + r1 (evening).** `zh-glossary-mt`
+  20260902-183801-172ea4 ran EN→ZH over 10,568 general tags and
+  back-translated 23,157 candidates (~1 h, not the 2–3 h estimated). The
+  back-translation is *source-blind* ("translate into English", Hy-MT2
+  auto-detects) — fine for hans/hant-marked wordings, but a shared-class JA
+  leak (泥酔, 畳) reads as Japanese and verifies. Proposed, not built: a
+  two-source read (explicit "Chinese text" vs "Japanese text") on
+  shared-class candidates as a JA veto (`--ja-veto`), user undecided.
+  Arbitration was re-cut three times on the cached translations
+  (`--reselect`, CPU): (1) the first run mislabelled the primary's wiki
+  alts as `kb` → reselect now re-derives `src` by pack membership; (2) for
+  zh the packs rank above the wiki at equal F1 (`SRC_RANK_ZH`) — the wiki
+  field verified machine garbage (审查员酒吧审查员酒吧 for `bar censor`,
+  F1 1.0); (3) **a tag-shaped (≤ 6 chars) curated pack wording wins
+  outright**, verified (`kb_verified`, trust 1.0) or not (`kb`, trust 0.6),
+  because booru jargon back-translates to F1 0 (小穴, 内射, 七分身镜头,
+  下半身真空) and the literal MT rendering was winning 29 % of occurrences;
+  longer pack entries are explanations the NGA file carries for some tags
+  (泛指从身后插入的体位) and compete on evidence (bar 0.5 for the pack).
+  Result: packs 78.5 % of occurrences (kb_verified 53.3 / kb 25.2), override
+  6.8, MT 4.4, coverage **98.8 %**. **r1 review by a reviewer agent** over
+  the 804 occ>100 rows (`assets/zh_glossary_gt100_for_review.tsv` →
+  `datasets/assets/tag_glossary_review_zh_r1.md`): 131 confident fixes
+  applied as `datasets/tag_overrides_zh.json` (+3 from the collision audit:
+  pussyjob → 素股, horse tail → 马尾巴, short dress → 短连衣裙; 134 total),
+  47 uncertain rows left for a native skim (whole `skirt` → 短裙 family,
+  `1girl` → 1个女性, `looking at viewer` → 看向阅图者, `presenting`,
+  `torogao`). Systematic findings worth carrying: wrong-neighbour pack
+  entries merge two tags (sidelocks → 双马尾, grey hair → 白发, cowgirl
+  position → 女上位, double bun → 团子头); the NGA file glosses instead of
+  naming in ~45 rows and leaves `(…)` explainers in ~10 (now stripped
+  mechanically for general-axis pack wordings when a Han tag remains);
+  kbmt repeated-substring garbage scores F1 1.0 (尴尬尴尬尴尬尴尬) — a
+  repeat filter is cheap and not yet written. One-wording-on-several-tags
+  audit appended to the review file (40 collisions at count ≥ 20; most are
+  true synonyms — thighs/thighlet, phone/cellphone, aftersex/after sex).
+- **Jobs (daemon):** `zh-glossary-mt` done · `z1-cache-ja-tags`
+  20260902-184212-622c9c done (`cache_tags`, 40 G, 67,555 train / 500
+  holdout) · the two JA-only gate distills (`2c-synthja-v6-tags-extv1/2`)
+  were **killed before finishing by user call** — the line goes straight to
+  the joint run, so Z0 and the synth removal are read on the joint pack vs
+  `synthjako3`, not on JA-only pairs. Next: `build_pairs.py --lang zh` (raw
+  roots) → `synth_tags.py --lang zh` → zh cache → **cold joint JA+KO+ZH**
+  distill (`synthjakozh1`; no warm start — every jako pack so far was
+  warm-started from a JA pack) with `synthjako3` as the warm-chain control.
+- **zh corpus built (20:50)** — `build_pairs.py --lang zh` over the curated +
+  raw roots: 66,351 pairs (`tags_zh` / `tags_alt_zh` / `tags_zh_hant` 16,883
+  each, `names_zh` 15,702), 6,323 ext rows visited (10.7 %; 1,086 rows in
+  the 500+ band), 30,487 untranslated segments (latin passthrough — artist
+  handles and the unresolved tail); `synth_tags.py --lang zh` added
+  `tags_synth_zh` 6,809 pairs over 30 under-floor eval targets →
+  `pairs_synth_tags_zh.jsonl` **73,160 pairs**. Queued: `z2-cache-zh`
+  20260902-205145-52b61d (`cache_zh`, ~45 G) → `2c-synthjakozh1-cold`
+  20260902-205145-567753 (caches `cache_tags,cache_ko,cache_desc_ko,cache_zh`;
+  registers JA `tags,tags_alt,names,tags_synth_ja` + KO
+  `tags_ko,tags_alt_ko,names_ko,names_synth_ko,desc_ko` + ZH
+  `tags_zh,tags_alt_zh,names_zh,tags_zh_hant,tags_synth_zh`; uniform
+  sampling — the three corpora are ~68k / ~75k / ~73k, so the KO 0.55
+  down-weight of the jako recipe is dropped; 12k steps, ext v2, no
+  `--init_pack`) → `2c-synthjako4-cold` 20260902-205145-82b901 (same minus
+  ZH; isolates the warm start against `synthjako3` and ZH against the
+  joint pack). Read per Z3, in order: JA no-regression vs `synthjako3`
+  (holdout by register + the JA grid), row geometry (`probes/spread_probe.py`
+  on the new pack — also the first read of ext v2 after training), then the
+  zh grid (`assets/zh_eval_prompts.json`, arms `en / zh_t5en / zh_ext`).
 
 ## Risks
 
