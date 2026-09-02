@@ -56,7 +56,7 @@ Ordered; nothing here needs a new experiment.
    56 cjk tests green. The strategy shim / `load_dit_model` row append /
    TE-cache path remain open (not needed for the external test deploy).*
 4. **Release asset + docs** — pack files on the release tag, a
-   `docs/methods/cjk_vocab_pack.md` (user-facing: what works, what doesn't,
+   a `cjk_vocab_pack.md` under `docs/methods/` (user-facing: what works, what doesn't,
    the JA TE-cache regeneration note), i18n of the GUI/guidebook line if a
    field is exposed.
    *2026-09-01: test release live at

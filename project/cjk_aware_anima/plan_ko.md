@@ -261,7 +261,7 @@ Ordered; the first two are kill criteria for the *joint* pack.
 ## Phase K4 — ship
 
 Rides `plan.md` Phase 3 steps 3–5 unchanged: same sidecar, same auto-discovery,
-same `docs/methods/cjk_vocab_pack.md` (add a KO section + the KO TE-cache
+the same `cjk_vocab_pack.md` under `docs/methods/` (add a KO section + the KO TE-cache
 regeneration note), same ComfyUI node — the pack file just grows its trained
 rows. Guidebook line goes through the `translator` agent for `가이드북.md`.
 

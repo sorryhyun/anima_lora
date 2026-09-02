@@ -82,7 +82,7 @@ lazily to isolate the cause (Arm A demoted to failure-contingency).
 
 Safety rails for "remove the old one":
 
-- The pre-r5 corpus state is recoverable: docs/plan committed (`2ca6bc91`),
+- The pre-r5 corpus state is recoverable: docs and plan committed (`2ca6bc91`),
   glossary backed up on disk as `assets/tag_glossary_ko.pre_r5.json`
   (assets/ is gitignored — the on-disk copy is the real snapshot, same
   convention as r3's `pre_round3`).
@@ -141,7 +141,7 @@ seeds).
 Rides plan_ko K4 / plan.md Phase 3 unchanged: winner pack renamed to the
 shipped `cjk_vocab_pack_synthjako` slot (with the losing arm and v2 kept
 on disk under their labels), sidecar + auto-discovery untouched,
-`docs/methods/cjk_vocab_pack.md` gains the KO-베타 note + KB attribution
+the `cjk_vocab_pack.md` under `docs/methods/` gains the KO-베타 note + KB attribution
 (Localsmile danbooru_KR_wiki), guidebook line via the `translator` agent.
 
 ## Risks
