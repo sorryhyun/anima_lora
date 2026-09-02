@@ -1,6 +1,9 @@
 # networks/
 
-Pluggable adapter implementations selected at runtime via the `network_module` config key (plus, for the LoRA family, the three-axis routing cfg). Each subdirectory is a self-contained adapter family; `attention_dispatch.py` is the shared backend router used by both training and inference.
+Pluggable adapter implementations selected at runtime via the `network_module` config
+key (plus, for the LoRA family, the three-axis routing cfg). Each subdirectory is a
+self-contained adapter family; `attention_dispatch.py` is the shared backend router used
+by both training and inference.
 
 ## Layout
 
@@ -25,7 +28,9 @@ Pluggable adapter implementations selected at runtime via the `network_module` c
 
 ## Three-axis routing surface (plan2)
 
-As of commit `1dca212`, the LoRA-family routing flags collapsed into three orthogonal cfg axes consumed by `lora_anima/config.py::LoRANetworkCfg.from_kwargs` and dispatched by `__init__.py::resolve_network_spec`:
+As of commit `1dca212`, the LoRA-family routing flags collapsed into three orthogonal
+cfg axes consumed by `lora_anima/config.py::LoRANetworkCfg.from_kwargs` and dispatched
+by `__init__.py::resolve_network_spec`:
 
 | Knob | Values | Meaning |
 |---|---|---|
@@ -33,29 +38,67 @@ As of commit `1dca212`, the LoRA-family routing flags collapsed into three ortho
 | `route_per_layer` | `True` / `False` | Router location — per-Linear (Hydra default) or one network-level router. |
 | `router_source` | `"none"` / `"input"` / `"sigma"` / `"fei"` / `"crossattn_emb"` | What signal the router reads — Linear input, σ-features, FEI on `z_t`, pooled cross-attention text features (the DiT's K/V), or no router. `"input"` requires `route_per_layer=True`; `"crossattn_emb"` requires `route_per_layer=False`. |
 
-The matrix cells map to concrete variants: plain LoRA / OrthoLoRA / T-LoRA (`use_moe_style=False`), HydraLoRA and its σ/FEI-routed forms (`"shared_A"` + per-layer router — FEI-on-Hydra is the lora.toml default), FeRA (`"independent_A"` + `GlobalRouter`), and the text-routed `"crossattn_emb"` cell. Pre-plan2 metadata stamps (`ss_use_hydra`, `ss_use_fei_router`, `ss_network_module = "networks.methods.fera"`) **no longer load**; the new stamps are `ss_use_moe_style` / `ss_route_per_layer` / `ss_router_source`. `use_ortho` (Cayley/PSOFT) and `use_ortho_init` (trainable SVD-seeded bases) are per-module bools, mutually exclusive.
+The matrix cells map to concrete variants: plain LoRA / OrthoLoRA / T-LoRA
+(`use_moe_style=False`), HydraLoRA and its σ/FEI-routed forms (`"shared_A"` + per-layer
+router — FEI-on-Hydra is the lora.toml default), FeRA (`"independent_A"` +
+`GlobalRouter`), and the text-routed `"crossattn_emb"` cell. Pre-plan2 metadata stamps
+(`ss_use_hydra`, `ss_use_fei_router`, `ss_network_module = "networks.methods.fera"`)
+**no longer load**; the new stamps are `ss_use_moe_style` / `ss_route_per_layer` /
+`ss_router_source`. `use_ortho` (Cayley/PSOFT) and `use_ortho_init` (trainable
+SVD-seeded bases) are per-module bools, mutually exclusive.
 
-**Load the `lora-routing` skill before adding/changing a variant or touching routing code** — it holds the full variant matrix, per-variant module details (LoRA/Ortho/OrthoInit/T-LoRA/Hydra/FeRA, ReFT's removal), ortho/ortho_init composition rules, and the `GlobalRouter` mechanics (zero-init gates, `set_fei` reference-write into every module's `_routing_weights` buffer, and the router-collapse failure mode).
+**Load the `lora-routing` skill before adding/changing a variant or touching routing
+code** — it holds the full variant matrix, per-variant module details
+(LoRA/Ortho/OrthoInit/T-LoRA/Hydra/FeRA, ReFT's removal), ortho/ortho_init composition
+rules, and the `GlobalRouter` mechanics (zero-init gates, `set_fei` reference-write into
+every module's `_routing_weights` buffer, and the router-collapse failure mode).
 
 ## Attn fuse spec (qkv/kv fuse↔split)
 
-`attn_fuse.py::AttnFuseSpec` + `iter_split_groups` + `match_fused_spec` is the single source of truth for the runtime-fused `qkv_proj` (self-attn) / `kv_proj` (cross-attn) ↔ on-disk split `q/k/v_proj` layout. ComfyUI's cosmos backbone uses the split layout while Anima's training-side DiT uses the fused projections; save always writes split, load always re-fuses. Both `lora_save.py` and `loading.py` walk the same specs, so adding a new fused projection only needs one entry here.
+`attn_fuse.py::AttnFuseSpec` + `iter_split_groups` + `match_fused_spec` is the single
+source of truth for the runtime-fused `qkv_proj` (self-attn) / `kv_proj` (cross-attn) ↔
+on-disk split `q/k/v_proj` layout. ComfyUI's cosmos backbone uses the split layout while
+Anima's training-side DiT uses the fused projections; save always writes split, load
+always re-fuses. Both `lora_save.py` and `loading.py` walk the same specs, so adding a
+new fused projection only needs one entry here.
 
 ## Attention dispatch
 
-`attention_dispatch.py::dispatch_attention()` routes to the active backend (torch SDPA, flash-attn v2/v3, sageattn, flex attention). **Tensor layout differs by backend** — BHLD for SDPA/sageattn, BLHD for flash-attn — so callers must hand tensors to the dispatcher in a known layout and the dispatcher transposes as needed. Check the backend branches before adding new attention call sites.
+`attention_dispatch.py::dispatch_attention()` routes to the active backend (torch SDPA,
+flash-attn v2/v3, sageattn, flex attention). **Tensor layout differs by backend** — BHLD
+for SDPA/sageattn, BLHD for flash-attn — so callers must hand tensors to the dispatcher
+in a known layout and the dispatcher transposes as needed. Check the backend branches
+before adding new attention call sites.
 
-FA4 (flash-attention-sm120) was evaluated and is currently disabled — see `docs/optimizations/fa4.md`. The KV-trim + LSE-correction path that depended on FA4 was removed (the `crossattn_full_len` field and `trim_crossattn_kv` flag are gone as of 2026-05-20); only the `flash4` branch stub remains in the dispatcher. See fa4.md for what re-enabling FA4 would entail.
+FA4 (flash-attention-sm120) was evaluated and is currently disabled — see
+`docs/optimizations/fa4.md`. The KV-trim + LSE-correction path that depended on FA4 was
+removed (the `crossattn_full_len` field and `trim_crossattn_kv` flag are gone as of
+2026-05-20); only the `flash4` branch stub remains in the dispatcher. See fa4.md for
+what re-enabling FA4 would entail.
 
 ## compile_blocks() and forward hooks
 
-`compile_blocks()` compiles `block._forward`, **not** `block.__call__` (`library/anima/models.py::compile_blocks`). Consequences for hook-based feature capture (REPA, functional loss, probe tooling):
+`compile_blocks()` compiles `block._forward`, **not** `block.__call__`
+(`library/anima/models.py::compile_blocks`). Consequences for hook-based feature capture
+(REPA, functional loss, probe tooling):
 
-- `register_forward_hook` on a **block** survives compilation — `__call__`'s hook machinery runs eagerly around the compiled inner.
-- Hooks on submodules *invoked inside* `_forward` are traced over under compile — don't rely on them firing.
-- Under compile, captured block outputs arrive in **native-flatten layout `(B, 1, seq, 1, D)`**; eager runs keep the 5D `(B, 1, H, W, D)` patch grid. Capture consumers must handle both.
-- A hook that never fires silently turns the feature into a no-op — warn once at first consume if nothing was captured (pattern: `_warned_no_capture` in `library/training/repa.py`).
+- `register_forward_hook` on a **block** survives compilation — `__call__`'s hook
+  machinery runs eagerly around the compiled inner.
+- Hooks on submodules *invoked inside* `_forward` are traced over under compile — don't
+  rely on them firing.
+- Under compile, captured block outputs arrive in **native-flatten layout `(B, 1, seq,
+  1, D)`**; eager runs keep the 5D `(B, 1, H, W, D)` patch grid. Capture consumers must
+  handle both.
+- A hook that never fires silently turns the feature into a no-op — warn once at first
+  consume if nothing was captured (pattern: `_warned_no_capture` in
+  `library/training/repa.py`).
 
 ## Timestep masking — when to update what
 
-T-LoRA's mask is a single CPU/GPU buffer shared across all adapted Linears, updated once per denoising step from `lora_anima/network.py`. Anything that calls into LoRA modules during a forward must have the mask set for the current `t` already — `factory.py` and `network.py` are the only places that should be poking `set_timestep_mask` / `clear_timestep_mask`. New adapter variants that want timestep awareness should reuse the same buffer pattern (register as a buffer in `base.py`, read it inside `forward`) rather than threading `t` through every call site.
+T-LoRA's mask is a single CPU/GPU buffer shared across all adapted Linears, updated once
+per denoising step from `lora_anima/network.py`. Anything that calls into LoRA modules
+during a forward must have the mask set for the current `t` already — `factory.py` and
+`network.py` are the only places that should be poking `set_timestep_mask` /
+`clear_timestep_mask`. New adapter variants that want timestep awareness should reuse
+the same buffer pattern (register as a buffer in `base.py`, read it inside `forward`)
+rather than threading `t` through every call site.
