@@ -897,3 +897,62 @@ def override_arg(argv: list[str], flag: str, value: str) -> list[str]:
         return argv + [flag, value]
     i = argv.index(flag)
     return argv[:i] + [flag, value] + argv[i + 2 :]
+
+
+# ---------------------------------------------------------------------------
+# anime_tools stages: build a request, run it in-process or as a child
+# ---------------------------------------------------------------------------
+
+DAEMON_JOB_DIR_ENV = "ANIMA_DAEMON_JOB_DIR"
+
+
+def in_daemon_job() -> bool:
+    """Is this process a daemon job's child (the GUI path, ``--queue``,
+    ``make daemon-run ARGS="tasks.py …"``)?"""
+    return bool(os.environ.get(DAEMON_JOB_DIR_ENV))
+
+
+def stage_by_id(stage_id: str):
+    """The ``anime_tools`` registry entry for a stage id (``"autotag"``,
+    ``"masks_sam"``, …) — request class and runner resolved lazily by it."""
+    from anime_tools.stages.registry import BY_ID
+
+    return BY_ID[stage_id]
+
+
+def execute_stage(stage, req) -> None:
+    """Run one curation stage as its request object.
+
+    Under a daemon job the stage's runner is called **in this interpreter**
+    (``Stage.runner()``): one process for a whole chain, and the package's
+    per-process model caches (``load_anima_tagger`` / ``load_sam3``) carry
+    across consecutive stages. The package anchors bare relative defaults on
+    ``ANIMA_HOME``, which ``run()`` exports for a child; pin it the same way
+    here so an in-process run resolves identically. From a plain shell each
+    stage is a ``python -m <stage.module>`` child with ``req.to_argv()``, so
+    the model is released between stages and on exit.
+    """
+    if not in_daemon_job():
+        run([PY, "-m", stage.module, *req.to_argv()])
+        return
+    os.environ.setdefault("ANIMA_HOME", str(ROOT))
+    print(f"  > [in-process] {stage.module} {' '.join(req.to_argv())}")
+    try:
+        stage.runner()(req)
+    except FileNotFoundError as exc:
+        # What the CLI shell turns into SystemExit — keep the same message.
+        sys.exit(str(exc))
+
+
+def request_with_args(req, extra, *, prog: str | None = None):
+    """``req`` with the user's ``ARGS`` applied through the request's own
+    generated parser — so ``make caption-autotag ARGS="--mode merge"`` still
+    reaches every flag the stage has, and an unknown one fails the way the
+    child would have (usage + exit 2). The trainer's own fields are the
+    parser defaults here (``req.to_argv()``), so ``extra`` overrides them.
+    """
+    extra = list(extra or ())
+    if not extra:
+        return req
+    cls = type(req)
+    return cls.from_argv(cls.parser(prog=prog), [*req.to_argv(), *extra])

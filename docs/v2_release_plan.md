@@ -50,13 +50,10 @@ package rev pinned in `[tool.uv.sources]`; the dev loop
 (`uv sync --no-group anime-tools-git --group anime-tools-dev`) works.
 
 - [ ] **A1. Pin the release rev.** Bump `[tool.uv.sources]` to the anime_tools
-  rev that will ship (package `0.3.1` as of 2026-09-02, 94 commits past the
-  current pin `971e229`), `uv lock`, commit the lock. The rev must be pushed
-  before `uv lock` resolves. **Blocked on Track D0**: at anime_tools HEAD
-  `make mask` fails (`generate_masks --config` was replaced by
-  `--prompts/--focus-prompts/--threshold/--dilate`) and batch autotag now
-  writes the revised caption, which our correction pass overwrites from the
-  master.
+  rev that will ship, `uv lock`, commit the lock. The rev must be pushed
+  before `uv lock` resolves. The D0 blocker is gone: the pin moved to
+  `94e6d92` (0.4.0) on 2026-09-02 and to `8708224` (0.4.1) on 2026-09-03 with
+  Track D complete; A1 is now just "pin whatever rev ships".
 - [ ] **A2. Offline / Windows tarball.** Open since Phase 3: a release install
   with no GitHub access must still satisfy the git dep. Decide between
   (a) vendoring the pinned rev into the release tarball and pointing the
@@ -71,11 +68,12 @@ package rev pinned in `[tool.uv.sources]`; the dev loop
   sync behaviour must not change under it).
 - [ ] **A4. Drop the stub extras** and the `--extra` plumbing in the
   installers once A3 confirms no shipped updater passes `--extra`.
-- [ ] **A5. Docs.** `CLAUDE.md` already describes the split; user-facing:
-  Setup section of `README.md` (what `anime_tools` is; the typed request API
-  is the front door and `python -m anime_tools.<pkg>.cli.<name>` is its shell
-  — wording depends on how far Track D lands before GA), guidebook line + the
-  three translations (use the translator agent, diff-driven).
+- [ ] **A5. Docs.** `CLAUDE.md` describes the split and (since 2026-09-03)
+  the request API as the front door; user-facing: Setup section of
+  `README.md` (what `anime_tools` is; the typed request API is the front door
+  and `python -m anime_tools.<pkg>.cli.<name>` is its shell — Track D landed,
+  so state it plainly), guidebook line + the three translations (use the
+  translator agent, diff-driven).
 - [ ] **A6. Hygiene gates before tagging.** `tests/test_repo_hygiene.py`
   (no tracked symlinks — the recurring v1.16.2 breaker), tarball extracts
   under `tarfile filter="data"`, `tests/test_curation_boundary.py`,
@@ -180,38 +178,28 @@ To ship, in dependency order:
 
 ## Track D — API-first curation boundary
 
-Plans: `docs/proposal/anime_tools_api_first.md` (trainer side) and
-`../anime_tools/docs/api_first_plan.md` (package side). The trainer drives
-`anime_tools` by hand-written argv today and nothing checks it; the 2026-09-02
-audit found the pin 94 commits stale with `make mask` already broken at HEAD.
-`anime_tools` grows one typed request dataclass per stage (`SamMaskRequest`,
-`AutotagRequest`, …) with `run()` in-process and `.to_argv()` for the daemon;
-the trainer builds requests instead of flag strings.
+Plans: `docs/proposal/anime_tools_api_first.md` (trainer side; the package
+side's plan was folded into `../anime_tools/CLAUDE.md`). **Landed in full
+2026-09-02/03** — the trainer builds one typed request dataclass per stage
+(`SamMaskRequest`, `AutotagRequest`, `ResizeRequest`, …) and runs it
+in-process under the daemon or as a `python -m` child; nothing spells a flag.
 
-Not all of it gates v2.0.0. The split:
+- [x] **D0. Pin-bump prerequisites** (= T0, 2026-09-02). `sam_mask.yaml` →
+  the new mask flags, correction pass reads revised-first, revised-caption
+  owner recorded in `anime_tools/docs/contract.md`; pin `94e6d92` (0.4.0).
+- [x] **D1. Contract test** (= T1, 2026-09-02).
+  `tests/test_anime_tools_cli_contract.py` re-parses every emitted argv through
+  the stage's generated parser in-process — the drift alarm.
+- [x] **D2. `anime_tools.contract` + `CONTRACT_VERSION`** (= T2, 2026-09-03).
+- [x] **D3. Masking through requests** (= T3, 2026-09-03).
+- [x] **D4. Caption stages + grouping through requests** (= T4, 2026-09-03).
+- [x] **D5. Free-fit geometry owned by `anime_tools`** (= T5, 2026-09-03;
+  pin `8708224`, 0.4.1). `library/datasets/buckets.py` re-exports;
+  `make preprocess-resize` is a `ResizeRequest`.
 
-- [ ] **D0. Pin-bump prerequisites** (gates beta; = proposal T0). Translate
-  `sam_mask.yaml` into the new mask flags, fix the caption write-target clash
-  (correction pass reads revised-first via `resolve_caption`, package-side
-  one-liner), record the revised-caption owner in `anime_tools/docs/contract.md`,
-  then A1.
-- [ ] **D1. Contract test** (gates beta; = T1). A trainer test dumps the
-  package's stage schemas in a child and asserts every flag we emit exists.
-  This is the drift alarm for the whole beta period.
-- [ ] **D2. `anime_tools.contract` + `CONTRACT_VERSION`** (gates GA; package
-  P0 + T2). Ends the three hand-copied constants and gives the trainer a
-  version to assert at import.
-- [ ] **D3. Masking through requests** (gates GA if package P1 lands in
-  time, else v2.1; = T3). Also the first measurable win: one SAM3 load for
-  `make mask` under the daemon instead of two, one interpreter instead of
-  three.
-- [ ] **D4. Caption stages + grouping through requests** (v2.1; = T4).
-- [ ] **D5. Free-fit geometry owned by `anime_tools`** (v2.1; = T5). Ends
-  the `buckets.py` double copy the contract doc already warns about.
-
-Beta gate addition: D0 + D1 green, and `make preprocess` on the JA shard
-followed by `make caption-autotag ARGS=--apply` + `make preprocess-te` keeps
-the autotag tags in the TE-cached caption (the clash D0 fixes).
+Beta gate addition (still owed as a live run): `make preprocess` on the JA
+shard followed by `make caption-autotag ARGS=--apply` + `make preprocess-te`
+keeps the autotag tags in the TE-cached caption (the clash D0 fixes).
 
 ## Beta → GA gates
 

@@ -67,3 +67,6 @@ project/cjk_aware_anima/datasets/assets/
 
 project/sigma_lowres/bench/probe1024_closure
 project/sigma_lowres/bench/probe1280_cache
+
+# anime_tools stage reports (report_dir defaults anchor on ANIMA_HOME = this checkout)
+workspace/

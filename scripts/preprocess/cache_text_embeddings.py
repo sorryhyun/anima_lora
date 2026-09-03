@@ -98,7 +98,7 @@ def main() -> None:
         default=500_000,
         help=(
             "Skip images with fewer than this many pixels (default: 500_000 "
-            "= 0.5MP). Mirrors the same filter in scripts/preprocess/resize_images.py "
+            "= 0.5MP). Mirrors the same filter in the resize stage (make preprocess-resize) "
             "so TE caches don't accumulate for images that get dropped at "
             "resize time. Set to 0 to disable."
         ),

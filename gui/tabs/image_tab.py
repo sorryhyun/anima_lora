@@ -191,7 +191,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         # filter/sort/view rebuilds. Cleared on dir change.
         self._marked: set[Path] = set()
         # GUI curation decisions for the preprocess resize step — never move/edit
-        # source files, only write a JSON sidecar resize_images.py reads.
+        # source files, only write a JSON sidecar the resize step reads (ResizeRequest.skip).
         self._preprocess_decisions: dict[Path, str] = {}
         # Lazily composed + cached so flipping the checkbox doesn't re-run QPainter.
         self._source_pm: QPixmap | None = None

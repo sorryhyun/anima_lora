@@ -22,21 +22,32 @@ editing caption code.** What stays trainer-side is below.
 is the single grammar; `anime_tools.captions.shuffle` is the training-time
 shuffle / `@no-artist` grammar (`library.anima.training` re-exports it).
 
-## Trainer targets (all forward to `anime_tools` CLIs)
+## Trainer targets (each builds an `anime_tools` request object)
 
-| Target | Package entry (`python -m …`; `run()` exports `ANIMA_HOME`) | Notes |
+The wrappers in `scripts/tasks/preprocess.py` never spell a flag: each target builds the
+stage's frozen request (`anime_tools.stages.requests`) from the config chain + GUI env
+and runs it through `_common.execute_stage` — in-process under a daemon job (autotag →
+position share one tagger load; `release_models()` frees it before the TE child), as a
+`python -m <stage.module> *req.to_argv()` child from a shell. `ARGS` are applied through
+the request's own generated parser (`request_with_args`), so every flag the stage has
+still works from `make`; an unknown one fails with the stage's usage.
+
+| Target | Request (stage id) | Notes |
 |---|---|---|
-| `make caption-autotag` | `anime_tools.stages.cli.autotag_captions` | dry-run default; `--mode missing\|merge\|overwrite`; `ARGS="--apply"` then **`make preprocess-te`** |
-| `make caption-position` | `anime_tools.stages.cli.position_captions` | SAM3 → tagger → v2 rewrite; dry-run default, GPU — route through the daemon |
-| `make preprocess-captions` | `anime_tools.stages.cli.correct_captions` | corrected mirror + `.variants.txt` under `post_image_dataset/resized/`; `--caption_drop_groups` |
-| `make caption-index` | `anime_tools.captions.index` | `post_image_dataset/captions/caption_index.json` |
-| `make autotag` / `make tagger*` | `anime_tools.tagger.cli.*` | single-image / vocab build / dbv4 ckpt |
+| `make caption-autotag` | `AutotagRequest` (`autotag`) | dry-run default; `ARGS="--mode missing\|merge\|overwrite"`; `ARGS="--apply"` then **`make preprocess-te`**. Writes the **revised** caption (`resized/`), master read-only |
+| `make caption-position` | `PositionRequest` (`position`) | SAM3 → tagger → v2 rewrite; dry-run default, GPU — route through the daemon |
+| `make preprocess-captions` | `CorrectRequest` (`correct`) | corrects the revised caption in place (mirrors the master only for an image with none) + `.variants.txt` under `post_image_dataset/resized/`; `--caption_drop_groups` |
+| `make caption-index` | plain CLI `anime_tools.captions.index` | `post_image_dataset/captions/caption_index.json` (`--out` spelled by the trainer) |
+| `make autotag` / `make tagger*` | plain CLIs `anime_tools.tagger.cli.*` | single-image / vocab build / dbv4 ckpt |
 
 Stage wiring (`scripts/tasks/preprocess.py`): autotag runs **first** (right after
-resize, `--apply`), then position clauses, then correction/variants, then TE —
-chain order pinned by `tests/test_preprocess_tasks.py`. Caption edits do **not**
+resize, `apply=True`), then position clauses, then correction/variants, then TE —
+chain order pinned by `tests/test_preprocess_tasks.py`; the request fields the trainer
+sets are pinned by `tests/test_anime_tools_cli_contract.py`. Caption edits do **not**
 invalidate TE caches (existence-only skip) — always re-run `make preprocess-te`
-after an `--apply`; a stale `.variants.txt` keeps training the old caption.
+after an `--apply`; a stale `.variants.txt` keeps training the old caption. Once an
+image has a revised caption, a hand-edit of its master no longer reaches it — edit the
+revised caption, or delete it to re-mirror.
 
 `configs/clause_vocabulary.yaml` is the user-editable clause policy; the package
 ships an identical default used when the file is absent from the curation home.

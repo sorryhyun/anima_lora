@@ -398,6 +398,37 @@ def cmd_easycontrol(extra):
     train("easycontrol", extra)
 
 
+def _resize_tree(
+    src: str,
+    dst: str,
+    *,
+    min_pixels: int,
+    target_res: tuple[int, ...],
+    recursive: bool = True,
+    freefit_max_ratio=None,
+) -> None:
+    """Resize a staged tree into buckets — the ``anime_tools`` resize stage as
+    a ``ResizeRequest`` (the same one ``make preprocess-resize`` runs), for the
+    EasyControl pair trees whose knobs come from a descriptor TOML rather than
+    the config chain. Captions are never copied: TE reads the source tree."""
+    from anime_tools.stages.requests import ResizeRequest
+
+    from ._common import execute_stage, stage_by_id
+
+    fields: dict = {
+        "src": src,
+        "dst": dst,
+        "min_pixels": int(min_pixels),
+        "recursive": bool(recursive),
+        "copy_captions": False,
+    }
+    if target_res and tuple(target_res) != (1024,):
+        fields["target_res"] = tuple(target_res)
+    if freefit_max_ratio is not None:
+        fields["freefit_max_ratio"] = float(freefit_max_ratio)
+    execute_stage(stage_by_id("resize"), ResizeRequest(**fields))
+
+
 def _near_twins_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     """Resize + VAE/TE caching for the mined near-twin pair tree.
 
@@ -416,7 +447,9 @@ def _near_twins_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     cache = pp.get("cache_dir", f"{base}/cache")
     recursive = ["--recursive"] if pp.get("recursive", True) else []
     # Bucket tiers: descriptor's [preprocess].target_res wins, else base.toml's
-    # target_res; final fallback [1024].
+    # target_res; final fallback [1024]. CAVEAT (free-fit): a pair whose
+    # members free-fit to different shapes is cross-shape-paired (or dropped if
+    # truly unpaired) — see _near_twins_build_cond.
     target_res = pp.get("target_res")
     if target_res is None:
         from ._common import _path_overrides
@@ -424,39 +457,16 @@ def _near_twins_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
         target_res = _path_overrides().get("target_res", [1024])
     if not isinstance(target_res, (list, tuple)):
         target_res = [target_res]
-    target_res_flag = (
-        ["--target_res", *[str(e) for e in target_res]] if target_res else []
-    )
-    # Free-fit: [preprocess].freefit wins, else base.toml's freefit. CAVEAT: a
-    # pair whose members free-fit to different shapes is cross-shape-paired
-    # (or dropped if truly unpaired) — see _near_twins_build_cond.
-    freefit = pp.get("freefit")
-    if freefit is None:
-        from ._common import _path_overrides
-
-        freefit = bool(_path_overrides().get("freefit", False))
-    freefit_flag: list[str] = []
-    if freefit:
-        freefit_flag = ["--freefit"]
-        if pp.get("freefit_max_ratio") is not None:
-            freefit_flag += ["--freefit_max_ratio", str(pp["freefit_max_ratio"])]
 
     # Resize staging tree into buckets. min_pixels defaults to 0 (not 0.5MP) so a
     # small member can't be dropped and orphan its pair partner.
-    run(
-        [
-            PY,
-            "scripts/preprocess/resize_images.py",
-            "--src",
-            staging,
-            "--dst",
-            resized,
-            "--min_pixels",
-            str(pp.get("min_pixels", 0)),
-            *target_res_flag,
-            *freefit_flag,
-            *recursive,
-        ]
+    _resize_tree(
+        staging,
+        resized,
+        min_pixels=int(pp.get("min_pixels", 0)),
+        target_res=tuple(int(e) for e in target_res),
+        recursive=bool(recursive),
+        freefit_max_ratio=pp.get("freefit_max_ratio"),
     )
     run(
         [
@@ -921,24 +931,14 @@ def _phash_edit_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
         target_res = _path_overrides().get("target_res", [1024])
     if not isinstance(target_res, (list, tuple)):
         target_res = [target_res]
-    target_res_flag = (
-        ["--target_res", *[str(e) for e in target_res]] if target_res else []
-    )
 
     _phash_edit_purge_links(resized, cond, mono_src, mono, mono_cache)
-    run(
-        [
-            PY,
-            "scripts/preprocess/resize_images.py",
-            "--src",
-            pool,
-            "--dst",
-            resized,
-            "--min_pixels",
-            str(pp.get("min_pixels", 0)),
-            *target_res_flag,
-            *recursive,
-        ]
+    _resize_tree(
+        pool,
+        resized,
+        min_pixels=int(pp.get("min_pixels", 0)),
+        target_res=tuple(int(e) for e in target_res),
+        recursive=bool(recursive),
     )
     run(
         [

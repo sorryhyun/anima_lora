@@ -142,7 +142,7 @@ python easycontrol_adapters/colorization/pool_from_tags.py \
 # 2. Resize — same free-fit tiers as the corpus ([training].target_res).
 #    --recursive is required: the pool mirrors the crawl's artist subdirs.
 #    Captions are mirrored into $KO/resized, so it doubles as --caption_src.
-python scripts/preprocess/resize_images.py --src $KO/src --dst $KO/resized \
+python -m anime_tools.stages.cli.resize_images --src $KO/src --dst $KO/resized \
     --target_res 1024 896 --recursive
 
 # 3. Masks (recommended for a text slice — this is what keeps the glyphs

@@ -2,37 +2,35 @@ import math
 import random
 from typing import NamedTuple, Tuple
 
-# NB: numpy is imported lazily inside BucketManager so the free-fit helpers
-# below (used by the GUI via library.preprocess.resize_preview) stay numpy-free.
+# The free-fit tier / band / solver geometry is OWNED by ``anime_tools.buckets``
+# (curation split, API-first T5 — 2026-09-03) and re-exported here, the way
+# ``library/models/pe.py`` re-exports the PE tower: the package's resize stage
+# and ``make preprocess-resize`` (a ``ResizeRequest`` itself now) land an image
+# on the same ``(W, H)`` by construction. Trainer-only helpers — token-family
+# budgets for compile, per-band clustering, σ-demote siblings, the frozen DCW
+# aspect set, ``BucketManager`` — stay below. Torch-free and numpy-free on the
+# import path (numpy is imported lazily inside BucketManager) so the GUI can
+# read the tier table on the UI thread.
+from anime_tools.buckets import (  # noqa: F401 — re-exports
+    ALLOWED_TARGET_RES,
+    DEFAULT_FREEFIT_MAX_RATIO,
+    DEFAULT_TARGET_RES,
+    EDGE_TOKEN_BANDS,
+    FREEFIT_BAND_TOLERANCE,
+    FREEFIT_FROZEN_EDGES,
+    band_for_tier,
+    choose_edge,
+    freefit_band_for_edge,
+    freefit_bucket,
+)
 
-# Per-tier token-count bands — the free-fit search range for each tier edge.
-# Free-fit (the only resize mode; see freefit_bucket / freefit_band_for_edge,
-# _archive/proposals/free_aspect_token_band_resize.md) preserves native aspect ratio
-# and lands the patch-grid token count anywhere inside its tier's band, so every
-# forward runs at its true token count with zero padding under compile_dynamic_seq
-# (one block graph per band). Token count = (W//16)*(H//16), capped at 256/axis
-# (rope). ``--target_res`` selects active tiers; ``choose_edge`` picks the one
-# that resizes an image least.
-EDGE_TOKEN_BANDS: dict = {
-    512: (1008, 1024),
-    768: (2160, 2160),
-    896: (3000, 3024),
-    1024: (4032, 4200),
-    1280: (6300, 6300),
-    1536: (8640, 8640),
-}
-ALLOWED_TARGET_RES = tuple(sorted(EDGE_TOKEN_BANDS))
-DEFAULT_TARGET_RES = (1024,)
+# ``EDGE_TOKEN_BANDS`` — per-tier token-count bands, the free-fit search range
+# for each tier edge (token count = (W//16)*(H//16), capped at 256/axis by
+# rope). ``--target_res`` selects active tiers; ``choose_edge`` picks the one
+# that resizes an image least; ``freefit_bucket`` lands the native-aspect
+# (W, H) inside the band. Design: _archive/proposals/free_aspect_token_band_resize.md.
 
-
-def _band(edge: int) -> tuple[int, int]:
-    """The (lo, hi) token-count band for a tier edge, or a clear error."""
-    try:
-        return EDGE_TOKEN_BANDS[edge]
-    except KeyError:
-        raise ValueError(
-            f"target_res {edge} not in allowed tiers {ALLOWED_TARGET_RES}"
-        ) from None
+_band = band_for_tier
 
 
 def token_count_families(target_res) -> int:
@@ -177,108 +175,6 @@ def demoted_token_counts(resos, native_edge: int, demote_edge: int) -> set:
         if bucket is not None:
             counts.add((bucket[0] // 16) * (bucket[1] // 16))
     return counts
-
-
-def choose_edge(width: int, height: int, target_res) -> int:
-    """Assign an image to the tier that resizes it the *least*.
-
-    Minimizes ``|log(nominal_tokens / native_tokens)|`` (nominal = each tier's
-    band midpoint) — scale-symmetric, so a 0.95MP image stays at 1024 (small
-    upscale) rather than being downscaled to 768. Single-element ``target_res``
-    is a no-op.
-    """
-    if len(target_res) == 1:
-        return target_res[0]
-    native_tokens = (width / 16.0) * (height / 16.0)
-    best_edge: int | None = None
-    best_cost = float("inf")
-    for edge in target_res:
-        lo, hi = _band(edge)
-        nominal = (lo + hi) / 2.0
-        cost = abs(math.log(nominal / native_tokens))
-        if cost < best_cost:
-            best_cost, best_edge = cost, edge
-    return best_edge
-
-
-# Free-fit ("free-aspect token-band") solver — see
-# _archive/proposals/free_aspect_token_band_resize.md. Pure, deterministic, no I/O.
-
-DEFAULT_FREEFIT_MAX_RATIO = 4.0
-
-# Single-family tiers (lo == hi, e.g. 768/1280/1536) and near-degenerate 512
-# leave the solver no aspect freedom without widening — without this a tier's
-# one exact token count forces a coarse divisor grid and crops like the old
-# snap (#53 Phase 0: 0.866-aspect image on 768 tier → 0.9375, ~7.7% crop).
-# Widening is free at compile time (whole [lo, hi] stays one compile_dynamic_seq
-# graph).
-FREEFIT_BAND_TOLERANCE = 0.025  # +/-2.5% -> ~5% interval around the tier's nominal
-
-# 1024 stays frozen at its natural (4032, 4200): DCW_ASPECT_BUCKETS (CNS
-# calibration + mod-distill) is drawn from this tier's band.
-FREEFIT_FROZEN_EDGES: Tuple[int, ...] = (1024,)
-
-# Bumped whenever the band derivation changes, so free-fit resized PNGs cached
-# under an older band re-resize (folded into the resize metadata signature).
-FREEFIT_BAND_VERSION = 2
-
-
-def freefit_band_for_edge(
-    edge: int, tol: float = FREEFIT_BAND_TOLERANCE
-) -> tuple[int, int]:
-    """Token-count band ``(lo, hi)`` for a single tier — the free-fit search range.
-
-    Widens the tier's natural band (``EDGE_TOKEN_BANDS``) symmetrically by ``tol``
-    (a wider band gives the solver more aspect freedom, less crop), except for
-    ``FREEFIT_FROZEN_EDGES`` (1024, kept at its natural (4032, 4200)).
-    """
-    lo, hi = token_count_range((edge,))
-    if edge in FREEFIT_FROZEN_EDGES:
-        return lo, hi
-    return round(lo * (1.0 - tol)), round(hi * (1.0 + tol))
-
-
-def freefit_bucket(
-    width: int,
-    height: int,
-    band: tuple[int, int],
-    max_ratio: float = DEFAULT_FREEFIT_MAX_RATIO,
-    patch: int = 16,
-    rope_cap: int = 256,
-) -> tuple[int, int]:
-    """Native-aspect resize target whose patch grid fills the token ``band``.
-
-    Returns pixel ``(W, H)`` (multiples of ``patch``) whose patch grid
-    ``(W//patch)*(H//patch)`` lies in ``[lo, hi]`` and whose aspect is as close
-    as possible to the image's — clamped to ``[1/max_ratio, max_ratio]`` —
-    subject to ``max(W//patch, H//patch) <= rope_cap``. Crop is zero unless the
-    ratio clamp fired. Exhaustive search over the (narrow, rope-capped) band, so
-    the result is the global aspect-error minimum, tie-broken toward least resize.
-    """
-    lo, hi = int(band[0]), int(band[1])
-    if lo <= 0 or hi < lo:
-        raise ValueError(f"invalid free-fit band {band}")
-    a = width / height
-    a_clamped = min(max(a, 1.0 / max_ratio), float(max_ratio))
-
-    best: tuple | None = None
-    hp_max = min(rope_cap, hi)
-    for hp in range(1, hp_max + 1):
-        wp_lo = max(1, -(-lo // hp))  # ceil(lo / hp)
-        wp_hi = min(rope_cap, hi // hp)  # floor(hi / hp)
-        for wp in range(wp_lo, wp_hi + 1):
-            aspect_err = abs(wp / hp - a_clamped)
-            cover_scale = max(wp * patch / width, hp * patch / height)
-            # (aspect first, then least rescale, then a deterministic shape key).
-            key = (aspect_err, abs(math.log(cover_scale)), hp, wp)
-            if best is None or key < best:
-                best = key
-    if best is None:
-        raise ValueError(
-            f"free-fit band {band} admits no grid under rope_cap={rope_cap}"
-        )
-    _, _, hp, wp = best
-    return wp * patch, hp * patch
 
 
 # Frozen literal: dataset's top-5 (H, W) resolutions by frequency from the old

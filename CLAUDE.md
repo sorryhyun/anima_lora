@@ -239,8 +239,11 @@ Free-fit is the sole resize mode (the discrete **constant-token bucket pool** �
 `CONSTANT_TOKEN_BUCKETS` and the per-tier tables — was **removed 2026-06-19**; the
 migration kept only each tier's numeric token band in `EDGE_TOKEN_BANDS`). Free-fit
 keeps each image's **native aspect ratio** and lands its patch-grid token count
-*anywhere* inside its tier's band (`freefit_bucket` / `freefit_band_for_edge` in
-`buckets.py`; design in `_archive/proposals/free_aspect_token_band_resize.md`), driving
+*anywhere* inside its tier's band (`freefit_bucket` / `freefit_band_for_edge` — **owned
+by `anime_tools.buckets` since 2026-09-03**, re-exported by `library/datasets/buckets.py`
+the way `library/models/pe.py` re-exports the PE tower; the resize pass itself is the
+package's `anime_tools.stages.resize`, which `make preprocess-resize` runs as a
+`ResizeRequest`; design in `_archive/proposals/free_aspect_token_band_resize.md`), driving
 crop loss to ~zero (sub-patch <16px residual). There is no `freefit` flag any more —
 it's implicit. Each forward runs at its real token count; `compile_blocks()` sets
 `_native_flatten` (flattens each patch grid to a fake-5D `(B, 1, seq_len, 1, D)` shape,
@@ -403,13 +406,24 @@ the forwarding shells** — `library.captioning.*`,
 `library.datasets.grouping`, the `scripts.anima_tagger` / `scripts.curate` script dirs
 and the
 `scripts.preprocess.{autotag_captions,position_captions,correct_captions,generate_masks*,merge_masks,probe_*,build_caption_index,audit_*,…}`
-shells no longer exist. Import `anime_tools` directly; run CLIs as `python -m
-anime_tools.<pkg>.cli.<name>` (`make daemon-run ARGS="-m
-anime_tools.tagger.cli.train_sidecar …"`). The `make` targets (`mask`, `curate-group`,
-`caption-*`, `tagger*`, `autotag`) keep their names and `--queue` routing — the wrappers
-in `scripts/tasks/` invoke the modules, and `run()` exports `ANIMA_HOME` so the
-package's bare relative defaults anchor on this checkout (`ANIME_TOOLS_HOME` →
-`ANIMA_HOME` → CWD). `configs/clause_vocabulary.yaml` stays here as the user-editable
+shells no longer exist. Import `anime_tools` directly. **The typed request API is the front door**
+(API-first migration, `docs/proposal/anime_tools_api_first.md`, T0–T6 landed 2026-09-03):
+one frozen request dataclass per stage (`ResizeRequest`, `AutotagRequest`,
+`PositionRequest`, `CorrectRequest`, `GroupRequest`, `SamMaskRequest`, …), registered in
+`anime_tools.stages.registry` with a lazy `Stage.runner()`; `python -m
+anime_tools.<pkg>.cli.<name>` is its shell (`make daemon-run ARGS="-m
+anime_tools.tagger.cli.train_sidecar …"` for the tagger CLIs that have no request yet).
+The `make` targets (`preprocess-resize`, `mask`, `curate-group`, `caption-*`, `tagger*`,
+`autotag`) keep their names and `--queue` routing — the wrappers in `scripts/tasks/`
+**build a request and never spell a flag**, and `_common.execute_stage` runs it
+in-process under a daemon job (one interpreter, one tagger/SAM3 load shared across
+consecutive stages, released before a trainer child via `release_models()`) or as a
+`python -m <stage.module> *req.to_argv()` child from a shell; a user's `ARGS` reach a
+stage through the request's own generated parser (`request_with_args`). `run()` and the
+in-process path both export `ANIMA_HOME` so the package's bare relative defaults anchor
+on this checkout (`ANIME_TOOLS_HOME` → `ANIMA_HOME` → CWD).
+`tests/test_anime_tools_cli_contract.py` re-parses every emitted argv through the
+stage's parser and is the drift alarm; `_common.py` asserts `CONTRACT_VERSION` at import. `configs/clause_vocabulary.yaml` stays here as the user-editable
 override of the package default. Trainer-side deps: `sam3` stays direct
 (`bench/position_captions/`), `segmentation-models-pytorch` now rides only on
 `anime-tools[masking]`. **Phase 3b (2026-08-30)** also moved the tagger-only benches

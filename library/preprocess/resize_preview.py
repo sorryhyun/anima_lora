@@ -1,8 +1,10 @@
 """Resize-preview helpers shared by preprocess GUI surfaces.
 
-The resize step scales images to cover the selected constant-token bucket and
-then center-crops to that bucket. This module exposes the same geometry without
-touching files, so GUI previews can show what preprocessing will keep.
+The resize step cover-scales an image to its free-fit bucket and anchor-crops
+to it. The geometry is ``anime_tools.stages.resize`` (the owner since the
+API-first migration, 2026-09-03); this module re-exports it under the names the
+GUI grew up with and adds the preview rectangle math, so a preview shows
+exactly what the stage will keep without touching files.
 """
 
 from __future__ import annotations
@@ -10,31 +12,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from library.datasets.buckets import (
-    DEFAULT_FREEFIT_MAX_RATIO,
-    DEFAULT_TARGET_RES,
-    choose_edge,
-    freefit_band_for_edge,
-    freefit_bucket,
+from anime_tools.stages.resize import (  # noqa: F401 — re-exports
+    CROP_ANCHORS as RESIZE_CROP_ANCHORS,
 )
+from anime_tools.stages.resize import (  # noqa: F401 — re-exports
+    DEFAULT_CROP_ANCHOR as DEFAULT_RESIZE_CROP_ANCHOR,
+)
+from anime_tools.stages.resize import (  # noqa: F401 — re-exports
+    MARGIN_SIDES,
+    normalize_crop_anchor,
+    normalize_target_res,
+    select_bucket,
+)
+from anime_tools.stages.resize import (
+    normalize_crop_margins as _normalize_crop_margins_tuple,
+)
+from library.datasets.buckets import DEFAULT_FREEFIT_MAX_RATIO
 
-DEFAULT_RESIZE_CROP_ANCHOR = "center"
 # Free-fit is the only resize mode; "snap" (the old discrete constant-token bucket
-# pool) was removed. FIT_MODES / DEFAULT_FIT_MODE are kept so the resize-metadata
-# signature and existing call sites stay stable.
+# pool) was removed. FIT_MODES / DEFAULT_FIT_MODE are kept so existing call
+# sites (GUI preview config tuples) stay stable.
 FIT_MODES = ("freefit",)
 DEFAULT_FIT_MODE = "freefit"
-RESIZE_CROP_ANCHORS = {
-    "top_left": (0.0, 0.0),
-    "top": (0.5, 0.0),
-    "top_right": (1.0, 0.0),
-    "left": (0.0, 0.5),
-    "center": (0.5, 0.5),
-    "right": (1.0, 0.5),
-    "bottom_left": (0.0, 1.0),
-    "bottom": (0.5, 1.0),
-    "bottom_right": (1.0, 1.0),
-}
 
 
 @dataclass(frozen=True)
@@ -56,57 +55,11 @@ class ResizePreview:
     crop_margins: dict[str, float]
 
 
-def normalize_target_res(target_res: Iterable[int] | int | str | None) -> list[int]:
-    """Normalize config-style ``target_res`` values into a non-empty int list."""
-    if target_res is None:
-        return list(DEFAULT_TARGET_RES)
-    if isinstance(target_res, int):
-        return [target_res]
-    if isinstance(target_res, str):
-        raw = target_res.strip()
-        if not raw:
-            return list(DEFAULT_TARGET_RES)
-        return [int(part.strip()) for part in raw.split(",") if part.strip()]
-    values = [int(value) for value in target_res]
-    return values or list(DEFAULT_TARGET_RES)
-
-
-def normalize_crop_anchor(crop_anchor: str | None) -> str:
-    value = str(crop_anchor or DEFAULT_RESIZE_CROP_ANCHOR).strip().lower()
-    return value if value in RESIZE_CROP_ANCHORS else DEFAULT_RESIZE_CROP_ANCHOR
-
-
 def normalize_crop_margins(raw) -> dict[str, float]:
-    if raw is None:
-        margins = {}
-    elif isinstance(raw, dict):
-        margins = raw
-    elif isinstance(raw, str):
-        parts = [part.strip() for part in raw.split(",") if part.strip()]
-        margins = dict(zip(("top", "right", "bottom", "left"), parts, strict=False))
-    elif isinstance(raw, (list, tuple)):
-        margins = dict(zip(("top", "right", "bottom", "left"), raw, strict=False))
-    else:
-        margins = {}
-
-    out = {}
-    for key in ("top", "right", "bottom", "left"):
-        try:
-            out[key] = max(0.0, float(margins.get(key, 0.0)))
-        except (TypeError, ValueError):
-            out[key] = 0.0
-
-    h_sum = out["left"] + out["right"]
-    if h_sum >= 95.0:
-        scale = 95.0 / h_sum
-        out["left"] *= scale
-        out["right"] *= scale
-    v_sum = out["top"] + out["bottom"]
-    if v_sum >= 95.0:
-        scale = 95.0 / v_sum
-        out["top"] *= scale
-        out["bottom"] *= scale
-    return out
+    """Percent margins as a ``{top, right, bottom, left}`` dict (the GUI's
+    shape) — the package's tuple normalizer, keyed."""
+    values = _normalize_crop_margins_tuple(raw)
+    return dict(zip(MARGIN_SIDES, values, strict=True))
 
 
 def margin_crop_rect(width: int, height: int, crop_margins=None) -> CropRect:
@@ -167,14 +120,10 @@ def select_resize_bucket(
     fit_mode: str = DEFAULT_FIT_MODE,
     max_ratio: float = DEFAULT_FREEFIT_MAX_RATIO,
 ) -> tuple[int, tuple[int, int]]:
-    # Free-fit is the only mode: choose_edge assigns the tier, then free-fit lands
-    # the (W, H) anywhere in that tier's token band, preserving native aspect (no
-    # AR-snap). ``fit_mode`` / ``bucket_resos`` are accepted for signature
-    # compatibility but no longer branch (the snap allow-list never applied here).
-    tiers = normalize_target_res(target_res)
-    edge = choose_edge(width, height, tiers)
-    band = freefit_band_for_edge(edge)
-    return edge, freefit_bucket(width, height, band, max_ratio=max_ratio)
+    """``(tier_edge, (W, H))`` for a source size — ``anime_tools.stages.resize.
+    select_bucket``. ``fit_mode`` / ``bucket_resos`` are accepted for signature
+    compatibility but no longer branch (free-fit is the only mode)."""
+    return select_bucket(width, height, target_res, max_ratio=max_ratio)
 
 
 def compute_resize_preview(

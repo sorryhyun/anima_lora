@@ -1,4 +1,15 @@
-"""Default-dataset preprocessing: resize → VAE latents → text-embedding caches."""
+"""Default-dataset preprocessing: resize → VAE latents → text-embedding caches.
+
+The curation stages in this chain — resize, autotag, position clauses, the
+caption correction/mirror — are ``anime_tools`` **request objects**
+(``ResizeRequest`` / ``AutotagRequest`` / ``PositionRequest`` /
+``CorrectRequest``); the trainer never spells a flag. Each runs through
+``_common.execute_stage``: in-process under a daemon job (every GUI run), as a
+``python -m`` child from a shell (see ``masking.py`` for the rationale). A
+user's ``ARGS`` reach a stage through the request's own generated parser
+(``request_with_args``), so every flag the stage has still works from ``make``.
+The VAE / TE / PE caches stay trainer-side scripts.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +18,16 @@ from pathlib import Path
 
 from anime_tools.contract import AUTOTAG_MODES
 
-from ._common import PY, ROOT, _path, run
+from ._common import (
+    PY,
+    ROOT,
+    _path,
+    execute_stage,
+    in_daemon_job,
+    request_with_args,
+    run,
+    stage_by_id,
+)
 
 
 # Subfolders are walked by default. Stems must stay unique across the tree —
@@ -57,20 +77,16 @@ def _config_min_pixels() -> int:
         return 500_000
 
 
-def _target_res_args(extra) -> list[str]:
-    """``--target_res E1 E2 …`` derived from the merged TOML's ``target_res`` key.
+def _config_target_res() -> tuple[int, ...] | None:
+    """The configured free-fit tiers, or ``None`` for the package default
+    (a single 1024 tier — a bare ``[1024]`` collapses to it too).
 
-    Returns ``[]`` when ``--target_res`` is already in ``extra`` (CLI wins), or
-    when the config value is absent / a bare ``[1024]`` (legacy default — resize
-    script's own default path runs). Unknown edges are dropped rather than
-    aborting on a config typo.
+    GUI auto-chain env (``TARGET_RES``, space/comma separated) wins over the
+    merged config. Unknown edges are dropped rather than aborting on a config
+    typo.
     """
-    if "--target_res" in extra:
-        return []
-
     from library.datasets.buckets import ALLOWED_TARGET_RES
 
-    # GUI auto-chain env wins over the merged config. Space/comma separated edges.
     env_tr = os.environ.get("TARGET_RES")
     if env_tr is not None:
         raw = env_tr.replace(",", " ").split()
@@ -79,16 +95,26 @@ def _target_res_args(extra) -> list[str]:
 
         raw = _path_overrides().get("target_res")
     if not raw:
-        return []
+        return None
     edges = raw if isinstance(raw, (list, tuple)) else [raw]
     try:
         edges = [int(e) for e in edges]
     except (TypeError, ValueError):
-        return []
+        return None
     edges = [e for e in edges if e in ALLOWED_TARGET_RES]
     if not edges or edges == [1024]:
+        return None
+    return tuple(edges)
+
+
+def _target_res_args(extra) -> list[str]:
+    """``--target_res E1 E2 …`` for the trainer-side scripts that take it
+    (``reconcile_caches.py``). ``[]`` when ``--target_res`` is already in
+    ``extra`` (CLI wins) or the config is the default single tier."""
+    if "--target_res" in extra:
         return []
-    return ["--target_res", *(str(e) for e in edges)]
+    edges = _config_target_res()
+    return ["--target_res", *(str(e) for e in edges)] if edges else []
 
 
 def _preprocess_path_pattern_args(extra) -> list[str]:
@@ -112,13 +138,21 @@ def _preprocess_path_pattern_args(extra) -> list[str]:
     return ["--path_pattern", pattern]
 
 
-def _resolved_path_pattern_args(extra) -> list[str]:
+def _preprocess_path_pattern() -> str:
+    """The GUI/config subset scope as a request field (``"*"`` = everything)."""
+    args = _preprocess_path_pattern_args([])
+    return args[1] if args else "*"
+
+
+def _resolved_path_pattern(extra) -> str:
+    """The subset scope a curation stage runs under: an explicit
+    ``--path_pattern`` in ``extra`` wins, else the env/config one, else ``*``."""
     for i, tok in enumerate(extra):
         if tok in {"--path_pattern", "--path-pattern"}:
             if i + 1 >= len(extra):
                 raise SystemExit(f"{tok} requires a value")
-            return ["--path_pattern", str(extra[i + 1])]
-    return _preprocess_path_pattern_args(extra)
+            return str(extra[i + 1])
+    return _preprocess_path_pattern()
 
 
 def _boolish(value, default: bool = False) -> bool:
@@ -283,7 +317,7 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
         # caller's `extra` never reaches them), so the subset scope must ride
         # along or a --path_pattern-scoped preprocess would rewrite captions
         # across the WHOLE master (destructive with autotag merge/overwrite).
-        "path_pattern_args": _resolved_path_pattern_args(extra),
+        "path_pattern": _resolved_path_pattern(extra),
     }
 
     cleaned: list[str] = []
@@ -367,15 +401,34 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
     return config, cleaned
 
 
-def _caption_autotag_args(config: dict[str, object]) -> list[str]:
-    """Child flags for the in-pipeline autotag stage. Always ``--apply`` — the
-    user already opted in via the checkbox / env; a dry run here would produce
-    a report nobody reads while TE encodes the un-tagged captions."""
-    args = ["--mode", str(config.get("autotag_mode") or "missing")]
-    confidence = float(config.get("autotag_min_confidence") or 0.0)
-    if confidence > 0.0:
-        args += ["--min_confidence", f"{confidence:g}"]
-    return [*args, "--apply"]
+def _autotag_request(config: dict[str, object]):
+    """The ``AutotagRequest`` the in-pipeline autotag stage runs as. Always
+    ``apply`` — the user already opted in via the checkbox / env; a dry run
+    here would produce a report nobody reads while TE encodes the un-tagged
+    captions."""
+    from anime_tools.stages.requests import AutotagRequest
+
+    return AutotagRequest(
+        src=_path("source_image_dir", "image_dataset"),
+        dst=_path("resized_image_dir", "post_image_dataset/resized"),
+        path_pattern=_stage_path_pattern(config),
+        mode=str(config.get("autotag_mode") or "missing"),
+        min_confidence=float(config.get("autotag_min_confidence") or 0.0),
+        apply=True,
+    )
+
+
+def _position_request(config: dict[str, object]):
+    """The ``PositionRequest`` the in-pipeline position-clause stage runs as
+    (``apply``, every detection / clause knob at the package default)."""
+    from anime_tools.stages.requests import PositionRequest
+
+    return PositionRequest(
+        src=_path("source_image_dir", "image_dataset"),
+        dst=_path("resized_image_dir", "post_image_dataset/resized"),
+        path_pattern=_stage_path_pattern(config),
+        apply=True,
+    )
 
 
 def _caption_correction_enabled(config: dict[str, object]) -> bool:
@@ -403,105 +456,192 @@ def _drop_groups_override(value) -> str:
     return str(value)
 
 
-def _caption_correction_args(config: dict[str, object]) -> list[str]:
-    args: list[str] = []
+def _caption_correction_fields(config: dict[str, object]) -> dict[str, object]:
+    """The ``CorrectRequest`` fields the correction knobs set — only the ones
+    that differ from the request default, so ``{}`` means "nothing to
+    correct" (the passthrough mirror)."""
+    fields: dict[str, object] = {}
     if config.get("insert_no_artist"):
-        args.append("--caption_insert_no_artist")
+        fields["caption_insert_no_artist"] = True
     trigger = str(config.get("trigger_word") or "").strip()
     if trigger:
-        args += ["--caption_trigger_word", trigger]
+        fields["caption_trigger_word"] = trigger
     if config.get("trigger_at_front"):
-        args.append("--caption_trigger_at_front")
+        fields["caption_trigger_at_front"] = True
     drop = str(config.get("drop_groups") or "").strip()
     if drop:
-        args += ["--caption_drop_groups", drop]
-    return args
+        fields["caption_drop_groups"] = drop
+    return fields
 
 
-def _resize_crop_args(extra) -> list[str]:
-    """Preprocess-only resize crop controls from the merged config chain."""
-    if "--resize_crop_anchor" in extra or "--resize-crop-anchor" in extra:
-        anchor_args: list[str] = []
-    else:
-        from library.preprocess.resize_preview import (
-            DEFAULT_RESIZE_CROP_ANCHOR,
-            RESIZE_CROP_ANCHORS,
-        )
-
-        from ._common import _path_overrides
-
-        anchor = str(
-            _path_overrides().get("resize_crop_anchor") or DEFAULT_RESIZE_CROP_ANCHOR
-        ).strip()
-        anchor_args = (
-            ["--resize_crop_anchor", anchor]
-            if anchor in RESIZE_CROP_ANCHORS and anchor != DEFAULT_RESIZE_CROP_ANCHOR
-            else []
-        )
-
-    if "--resize_bucket_resos" in extra or "--resize-bucket-resos" in extra:
-        bucket_args: list[str] = []
-    else:
-        from ._common import _path_overrides
-
-        raw = _path_overrides().get("resize_bucket_resos")
-        if isinstance(raw, str):
-            buckets = [part.strip() for part in raw.split(",") if part.strip()]
-        elif isinstance(raw, (list, tuple)):
-            buckets = [str(item).strip() for item in raw if str(item).strip()]
-        else:
-            buckets = []
-        bucket_args = ["--resize_bucket_resos", *buckets] if buckets else []
-
-    if "--resize_crop_margins" in extra or "--resize-crop-margins" in extra:
-        margin_args: list[str] = []
-    else:
-        from library.preprocess.resize_preview import normalize_crop_margins
-
-        from ._common import _path_overrides
-
-        margins = normalize_crop_margins(_path_overrides().get("resize_crop_margins"))
-        values = [margins[key] for key in ("top", "right", "bottom", "left")]
-        margin_args = (
-            ["--resize_crop_margins", *(f"{value:g}" for value in values)]
-            if any(value > 0 for value in values)
-            else []
-        )
-    return [*anchor_args, *bucket_args, *margin_args]
-
-
-def _freefit_args(extra) -> list[str]:
-    """``--freefit_max_ratio R`` from the merged config chain. CLI ``ARGS``
-    wins (no duplicate flag emitted). A stale ``--freefit`` in ``ARGS`` is
-    silently dropped by ``_strip_resize_only_args``.
-    """
+def _config_freefit_max_ratio() -> float | None:
+    """``freefit_max_ratio`` from env (GUI auto-chain) or the merged config;
+    ``None`` leaves the package default."""
     from ._common import _path_overrides
 
-    out: list[str] = []
-    if "--freefit_max_ratio" not in extra and "--freefit-max-ratio" not in extra:
-        # Env (GUI auto-chain) wins over the merged config.
-        raw = os.environ.get("FREEFIT_MAX_RATIO")
-        if raw is None:
-            raw = _path_overrides().get("freefit_max_ratio")
-        if raw is not None:
-            try:
-                out += ["--freefit_max_ratio", f"{float(raw):g}"]
-            except (TypeError, ValueError):
-                pass
-    return out
+    raw = os.environ.get("FREEFIT_MAX_RATIO")
+    if raw is None:
+        raw = _path_overrides().get("freefit_max_ratio")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
 
 
-def _curation_decisions_args() -> list[str]:
-    """Optional GUI curation decisions consumed by resize only."""
+def _resize_crop_fields() -> dict[str, object]:
+    """``ResizeRequest`` crop fields from the merged config chain, only when
+    they differ from the package default."""
+    from library.preprocess.resize_preview import (
+        DEFAULT_RESIZE_CROP_ANCHOR,
+        RESIZE_CROP_ANCHORS,
+        normalize_crop_margins,
+    )
 
+    from ._common import _path_overrides
+
+    overrides = _path_overrides()
+    fields: dict[str, object] = {}
+    anchor = str(overrides.get("resize_crop_anchor") or DEFAULT_RESIZE_CROP_ANCHOR)
+    anchor = anchor.strip()
+    if anchor in RESIZE_CROP_ANCHORS and anchor != DEFAULT_RESIZE_CROP_ANCHOR:
+        fields["resize_crop_anchor"] = anchor
+    margins = normalize_crop_margins(overrides.get("resize_crop_margins"))
+    values = tuple(margins[key] for key in ("top", "right", "bottom", "left"))
+    if any(value > 0 for value in values):
+        fields["resize_crop_margins"] = values
+    return fields
+
+
+# Flags the old trainer resize script took that the package's ``ResizeRequest``
+# has no field for: ``--resize_bucket_resos`` (the snap-era allow-list, inert
+# since free-fit became the only mode), ``--freefit`` (free-fit is implicit)
+# and the legacy bucket-manager knobs. Dropped from ``ARGS`` with a note rather
+# than failing the parse.
+_RESIZE_STALE_FLAGS_WITH_VALUES = {
+    "--resize_bucket_resos": None,  # nargs="*": consume until the next flag
+    "--resize-bucket-resos": None,
+    "--bucket_reso_steps": 1,
+    "--min_bucket_reso": 1,
+    "--max_bucket_reso": 1,
+    "--resolution": 1,
+    "--curation_decisions": 1,
+    "--curation-decisions": 1,
+}
+_RESIZE_STALE_SWITCHES = {"--freefit", "--no_copy_captions", "--recursive"}
+
+
+def _pop_stale_resize_args(extra) -> tuple[list[str], str | None]:
+    """Split the old resize-script-only flags out of ``ARGS``.
+
+    Returns ``(cleaned, curation_decisions_path)``: an explicit
+    ``--curation_decisions <path>`` is honoured (it becomes ``skip``); the
+    rest are dropped with a note. ``--recursive`` / ``--no_copy_captions``
+    are the request defaults already.
+    """
+    cleaned: list[str] = []
+    decisions: str | None = None
+    i = 0
+    while i < len(extra):
+        tok = extra[i]
+        if tok in _RESIZE_STALE_SWITCHES:
+            if tok == "--freefit":
+                print("  [preprocess] --freefit is implicit now (dropped)")
+            i += 1
+            continue
+        if tok in _RESIZE_STALE_FLAGS_WITH_VALUES:
+            n = _RESIZE_STALE_FLAGS_WITH_VALUES[tok]
+            if tok.startswith("--curation"):
+                if i + 1 >= len(extra):
+                    raise SystemExit(f"{tok} requires a path")
+                decisions = str(extra[i + 1])
+                i += 2
+                continue
+            print(f"  [preprocess] {tok} has no effect under free-fit (dropped)")
+            i += 1
+            if n is None:
+                while i < len(extra) and not str(extra[i]).startswith("--"):
+                    i += 1
+            else:
+                i += n
+            continue
+        cleaned.append(tok)
+        i += 1
+    return cleaned, decisions
+
+
+def _resize_request(
+    src: str,
+    dst: str,
+    extra,
+    *,
+    min_pixels: int | None,
+    path_pattern: str | None = None,
+    target_res: tuple[int, ...] | None = None,
+    prog: str = "make preprocess-resize ARGS=",
+):
+    """The ``ResizeRequest`` for ``src`` → ``dst``: trainer paths/config as the
+    base, the user's ``ARGS`` applied through the request's own parser, the
+    GUI's curation decisions as ``skip``."""
+    from anime_tools.stages.requests import ResizeRequest
+
+    cleaned, decisions = _pop_stale_resize_args(extra)
+    fields: dict[str, object] = {
+        "src": src,
+        "dst": dst,
+        "recursive": True,
+        "copy_captions": False,
+        "path_pattern": path_pattern or "*",
+        **_resize_crop_fields(),
+    }
+    if min_pixels is not None:
+        fields["min_pixels"] = int(min_pixels)
+    if target_res:
+        fields["target_res"] = tuple(target_res)
+    ratio = _config_freefit_max_ratio()
+    if ratio is not None:
+        fields["freefit_max_ratio"] = ratio
+    skips = _curation_skips(src, Path(decisions) if decisions else None)
+    if skips:
+        fields["skip"] = skips
+    try:
+        req = ResizeRequest(**fields)
+    except ValueError as exc:
+        raise SystemExit(f"resize config: {exc}") from exc
+    return request_with_args(req, cleaned, prog=prog)
+
+
+def _min_pixels_value(mp_args: list[str]) -> int | None:
+    """The ``--min_pixels N`` an argv helper produced, as the request field
+    (``None`` = package default)."""
+    return int(mp_args[1]) if mp_args else None
+
+
+def _curation_decisions_path() -> Path:
     path = Path(
         _path("curation_decisions", "post_image_dataset/curation_decisions.json")
     )
-    if not path.is_absolute():
-        path = ROOT / path
+    return path if path.is_absolute() else ROOT / path
+
+
+def _curation_skips(src: str, decisions_path: Path | None = None) -> tuple[str, ...]:
+    """The images the GUI's curation decisions leave out of preprocessing, as
+    ``ResizeRequest.skip`` entries (paths relative to ``src``). Empty when no
+    decision file exists — a plain CLI preprocess is unchanged."""
+    from library.datasets.curation_actions import load_curation_decisions
+
+    path = decisions_path or _curation_decisions_path()
     if not path.is_file():
-        return []
-    return ["--curation_decisions", str(path)]
+        return ()
+    decisions = load_curation_decisions(path, source_dir=src)
+    return tuple(
+        sorted(
+            rel
+            for rel, decision in decisions.items()
+            if decision.get("action") in {"skip", "move"}
+        )
+    )
 
 
 def _repa_pe_encoder() -> str | None:
@@ -631,31 +771,19 @@ def _drop_option_with_value(extra, names: set[str]) -> list[str]:
 
 
 def cmd_preprocess_resize(extra):
+    """Resize the caption master into the bucket tree — the ``anime_tools``
+    resize stage as a ``ResizeRequest`` (config chain + GUI env as the base,
+    ``ARGS`` on top, the GUI's curation decisions as ``skip``)."""
     mp_args, extra = _resolve_lowres_filter(extra)
-    tr_args = _target_res_args(extra)
-    pp_args = _preprocess_path_pattern_args(extra)
-    cd_args = _curation_decisions_args()
-    rc_args = _resize_crop_args(extra)
-    ff_args = _freefit_args(extra)
-    run(
-        [
-            PY,
-            "scripts/preprocess/resize_images.py",
-            "--src",
-            _path("source_image_dir", "image_dataset"),
-            "--dst",
-            _path("resized_image_dir", "post_image_dataset/resized"),
-            "--no_copy_captions",
-            "--recursive",
-            *mp_args,
-            *tr_args,
-            *rc_args,
-            *ff_args,
-            *pp_args,
-            *cd_args,
-            *extra,
-        ]
+    req = _resize_request(
+        _path("source_image_dir", "image_dataset"),
+        _path("resized_image_dir", "post_image_dataset/resized"),
+        extra,
+        min_pixels=_min_pixels_value(mp_args),
+        path_pattern=_preprocess_path_pattern(),
+        target_res=_config_target_res(),
     )
+    _execute("resize", req)
 
 
 def cmd_preprocess_reconcile(extra):
@@ -852,45 +980,36 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
     # correct_captions loads the Danbooru tag KB unconditionally — fetch it
     # on demand so a GUI preprocess that skipped the download doesn't abort.
     _ensure_danbooru_tags()
-    pp_args = _resolved_path_pattern_args(extra)
-    cmd = [
-        PY,
-        "-m",
-        "anime_tools.stages.cli.correct_captions",
-        "--src",
-        _path("source_image_dir", "image_dataset"),
-        "--dst",
-        _path("resized_image_dir", "post_image_dataset/resized"),
-        "--recursive",
-        *pp_args,
-    ]
+    from anime_tools.stages.requests import CorrectRequest
+
+    fields: dict[str, object] = {
+        "src": _path("source_image_dir", "image_dataset"),
+        "dst": _path("resized_image_dir", "post_image_dataset/resized"),
+        "recursive": True,
+        "path_pattern": _resolved_path_pattern(extra),
+    }
     if correct:
-        cmd += _caption_correction_args(caption_config)
+        fields.update(_caption_correction_fields(caption_config))
     else:
-        cmd.append("--no_correct")
+        fields["no_correct"] = True
     if n_variants > 0:
-        cmd += [
-            "--caption_shuffle_variants",
-            shuffle,
-            "--caption_tag_dropout_rate",
-            dropout,
-            "--caption_tag_randomize_rate",
-            randomize,
-        ]
+        fields["caption_shuffle_variants"] = n_variants
+        fields["caption_tag_dropout_rate"] = _float_or_zero(dropout)
+        fields["caption_tag_randomize_rate"] = _float_or_zero(randomize)
         # Identity-randomize needs the tokenizers to build the erasure pool.
-        # The curation-side script loads tokenizers from *directories* only
+        # The curation-side stage loads tokenizers from *directories* only
         # (it must not know the safetensors→bundled-config mapping), so
         # resolve them here on the trainer side.
         if _float_or_zero(randomize) > 0.0 and n_variants >= 2:
             from library.anima.weights import qwen3_tokenizer_dir, t5_tokenizer_dir
 
-            cmd += [
-                "--qwen3",
-                qwen3_tokenizer_dir(_QWEN3_TOKENIZER),
-                "--t5_tokenizer_path",
-                t5_tokenizer_dir(),
-            ]
-    run(cmd)
+            fields["qwen3"] = qwen3_tokenizer_dir(_QWEN3_TOKENIZER)
+            fields["t5_tokenizer_path"] = t5_tokenizer_dir()
+    try:
+        req = CorrectRequest(**fields)
+    except ValueError as exc:
+        raise SystemExit(f"caption correction: {exc}") from exc
+    _execute("correct", req)
 
 
 def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
@@ -930,6 +1049,7 @@ def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
             _path("resized_image_dir", "post_image_dataset/resized"),
         ]
         mp_args, extra = _resolve_lowres_filter(extra)
+    _release_stage_models()
     run(
         [
             PY,
@@ -1038,39 +1158,62 @@ def cmd_caption_index(extra):
     )
 
 
-def _caption_master_argv(module: str, extra) -> list[str]:
-    """Child argv (no interpreter) for a caption-rewrite pass, as a ``-m``
-    module invocation into ``anime_tools``.
-
-    Both passes take the same ``--src``/``--dst`` pair; they differ in which
-    side they *write* (autotag the master, position clauses the derived
-    caption under ``--dst``). Resolves the subset scope once and drops it
-    from the tail so an explicit ``--path_pattern`` isn't emitted twice.
-    """
-    return [
-        "-m",
-        module,
-        "--src",
-        _path("source_image_dir", "image_dataset"),
-        "--dst",
-        _path("resized_image_dir", "post_image_dataset/resized"),
-        *_resolved_path_pattern_args(extra),
-        *_drop_option_with_value(extra, {"--path_pattern", "--path-pattern"}),
-    ]
+def _stage(stage_id: str):
+    return stage_by_id(stage_id)
 
 
-def _caption_position_argv(extra) -> list[str]:
-    """Child argv for the position-clause pass — shared by the standalone
-    ``caption-position`` target and the in-pipeline stage so the two can't
-    drift on paths/scoping."""
-    return _caption_master_argv("anime_tools.stages.cli.position_captions", extra)
+def _execute(stage_id: str, req) -> None:
+    """Run one curation stage: in-process under a daemon job, else a child.
+    A GPU stage run in-process leaves its model cached in this interpreter
+    (that is the point — autotag → position share one tagger), so the chain
+    releases it before handing the GPU to a trainer-side child
+    (``_release_stage_models``)."""
+    execute_stage(_stage(stage_id), req)
+    if stage_id in _GPU_STAGES and in_daemon_job():
+        _MODELS_RESIDENT.add(stage_id)
 
 
-def _caption_autotag_argv(extra) -> list[str]:
-    """Child argv for the batch autotag pass — shared by the standalone
-    ``caption-autotag`` target and the in-pipeline stage so the two can't
-    drift on paths/scoping."""
-    return _caption_master_argv("anime_tools.stages.cli.autotag_captions", extra)
+_GPU_STAGES = {"autotag", "position"}
+_MODELS_RESIDENT: set[str] = set()
+
+
+def _release_stage_models() -> None:
+    """Drop the tagger / SAM3 an in-process caption stage left resident so
+    the VAE / TE child that follows gets the VRAM. No-op from a shell (each
+    stage was its own child) and when nothing ran."""
+    if not _MODELS_RESIDENT:
+        return
+    from anime_tools.stages import release_models
+
+    release_models()
+    _MODELS_RESIDENT.clear()
+
+
+def _caption_request(cls, extra, *, prog: str):
+    """A standalone caption target's request: trainer paths + the env/config
+    subset scope as the base, the user's ``ARGS`` on top (an explicit
+    ``--path_pattern`` there overrides the scope, once)."""
+    req = cls(
+        src=_path("source_image_dir", "image_dataset"),
+        dst=_path("resized_image_dir", "post_image_dataset/resized"),
+        path_pattern=_preprocess_path_pattern(),
+    )
+    return request_with_args(req, extra, prog=prog)
+
+
+def _caption_autotag_request(extra):
+    """The ``AutotagRequest`` for ``make caption-autotag ARGS=…`` — shared
+    with the in-pipeline stage's paths/scoping so the two can't drift."""
+    from anime_tools.stages.requests import AutotagRequest
+
+    return _caption_request(AutotagRequest, extra, prog="make caption-autotag ARGS=")
+
+
+def _caption_position_request(extra):
+    """The ``PositionRequest`` for ``make caption-position ARGS=…``."""
+    from anime_tools.stages.requests import PositionRequest
+
+    return _caption_request(PositionRequest, extra, prog="make caption-position ARGS=")
 
 
 # Caption-rewrite stages (autotag -> image_dataset/*.txt, position clauses ->
@@ -1095,12 +1238,12 @@ def _stage_already_ran(config: dict[str, object], stage: str) -> bool:
     return False
 
 
-def _stage_path_pattern_args(config: dict[str, object]) -> list[str]:
-    """Subset scope stashed by :func:`_caption_correction_config`. Empty for a
-    hand-rolled dict — the argv builder falls back to the env/config pattern
-    exactly as the standalone targets do."""
-    args = config.get("path_pattern_args")
-    return list(args) if isinstance(args, (list, tuple)) else []
+def _stage_path_pattern(config: dict[str, object]) -> str:
+    """Subset scope stashed by :func:`_caption_correction_config`. A
+    hand-rolled dict without one falls back to the env/config pattern exactly
+    as the standalone targets do."""
+    pattern = config.get("path_pattern")
+    return str(pattern) if pattern else _preprocess_path_pattern()
 
 
 def _run_caption_autotag_stage(config: dict[str, object]) -> None:
@@ -1108,9 +1251,8 @@ def _run_caption_autotag_stage(config: dict[str, object]) -> None:
     if not config.get("autotag") or _stage_already_ran(config, "autotag"):
         return
     mode = str(config.get("autotag_mode") or "missing")
-    print(f"  [preprocess] autotag ({mode}): Anima Tagger → caption master")
-    argv = [*_stage_path_pattern_args(config), *_caption_autotag_args(config)]
-    run([PY, *_caption_autotag_argv(argv)])
+    print(f"  [preprocess] autotag ({mode}): Anima Tagger → revised captions")
+    _execute("autotag", _autotag_request(config))
 
 
 def _run_caption_position_stage(config: dict[str, object]) -> None:
@@ -1123,7 +1265,7 @@ def _run_caption_position_stage(config: dict[str, object]) -> None:
     if not config.get("position_clauses") or _stage_already_ran(config, "position"):
         return
     print("  [preprocess] position clauses: SAM3 + tagger → resized captions")
-    run([PY, *_caption_position_argv([*_stage_path_pattern_args(config), "--apply"])])
+    _execute("position", _position_request(config))
 
 
 def cmd_caption_autotag(extra):
@@ -1139,7 +1281,10 @@ def cmd_caption_autotag(extra):
     from ._common import _resolve_run_mode, run_command
 
     mode, extra = _resolve_run_mode(extra)
-    run_command("caption-autotag", _caption_autotag_argv(extra), mode=mode)
+    req = _caption_autotag_request(extra)
+    run_command(
+        "caption-autotag", ["-m", _stage("autotag").module, *req.to_argv()], mode=mode
+    )
 
 
 def cmd_caption_position(extra):
@@ -1155,7 +1300,12 @@ def cmd_caption_position(extra):
     from ._common import _resolve_run_mode, run_command
 
     mode, extra = _resolve_run_mode(extra)
-    run_command("caption-position", _caption_position_argv(extra), mode=mode)
+    req = _caption_position_request(extra)
+    run_command(
+        "caption-position",
+        ["-m", _stage("position").module, *req.to_argv()],
+        mode=mode,
+    )
 
 
 # `cmd_preprocess` auto-fetches this (~0.7 MB) vocab on demand: the caption index
@@ -1190,6 +1340,7 @@ def cmd_preprocess(extra):
     # the resize-only --target_res so their argparse never sees an undefined arg.
     downstream = _pop_resize_only_args(extra)
     _, vae_extra = _resolve_lowres_filter(downstream)
+    _release_stage_models()
     cmd_preprocess_vae(vae_extra)
     _run_caption_position_stage(caption_config)
     cmd_preprocess_te(downstream, caption_config=caption_config)
@@ -1315,22 +1466,16 @@ def cmd_preprocess_config(extra):
         cache_dir = sub.get("cache_dir") or image_dir
         # bucket-resize originals -> image_dir; cache_latents.py keys caches by
         # on-disk size, so the resized size must match what the trainer expects.
-        run(
-            [
-                PY,
-                "scripts/preprocess/resize_images.py",
-                "--src",
+        # min_pixels=0: an ad-hoc job keeps every image the config names.
+        _execute(
+            "resize",
+            _resize_request(
                 src_dir,
-                "--dst",
                 image_dir,
-                "--no_copy_captions",
-                "--min_pixels",
-                "0",
-                "--bucket_reso_steps",
-                "64",
-                "--recursive",
-                *rest,
-            ]
+                rest,
+                min_pixels=0,
+                prog="make preprocess-config ARGS=",
+            ),
         )
         run(
             [

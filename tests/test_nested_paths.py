@@ -10,7 +10,7 @@ Covers:
   across the new + legacy candidates.
 - ``anime_tools.masking.cli.merge_masks`` end-to-end through ``main()`` — `(rel_dir,
   name)` keying, flat-to-flat passthrough, mixed nested+flat inputs.
-- ``scripts.preprocess.resize_images.process_image`` — writes under
+- ``library.preprocess.images.process_image`` (the anime_tools resize worker) — writes under
   ``out_dir/<rel>/`` and mirrors the caption sidecar.
 """
 
@@ -285,7 +285,7 @@ def test_merge_masks_mixed_rel_does_not_collide(
 
 
 # ---------------------------------------------------------------------------
-# resize_images.process_image
+# resize stage process_image
 # ---------------------------------------------------------------------------
 
 
@@ -296,12 +296,7 @@ def _write_test_image(path: Path, size: tuple[int, int] = (1024, 1024)) -> None:
 
 def test_resize_images_nested_output(tmp_path: Path) -> None:
     """process_image writes under out_dir/<rel>/ when rel_dir is set."""
-    repo_root = Path(__file__).resolve().parent.parent
-    sys.path.insert(0, str(repo_root / "scripts" / "preprocess"))
-    try:
-        from resize_images import process_image
-    finally:
-        sys.path.pop(0)
+    from library.preprocess.images import ResizeOptions, process_image
 
     src = tmp_path / "image_dataset" / "charA"
     img_path = src / "cover.png"
@@ -310,16 +305,9 @@ def test_resize_images_nested_output(tmp_path: Path) -> None:
     img_path.with_suffix(".txt").write_text("a test caption", encoding="utf-8")
 
     dst = tmp_path / "post_image_dataset" / "resized"
-    bucket_args = (
-        (1024, 1024),  # max_reso (vestigial under free-fit)
-        512,  # min_size
-        2048,  # max_size
-        64,  # reso_steps
-        # no target_res → defaults to the canonical 1024 tier; free-fit resize
-    )
-
+    # Default options → the canonical 1024 tier; free-fit resize.
     name, _reso, _skipped = process_image(
-        img_path, dst, bucket_args, copy_captions=True, rel_dir="charA"
+        img_path, dst, ResizeOptions(), rel_dir="charA", copy_captions=True
     )
 
     assert name == "cover.png"
@@ -333,21 +321,13 @@ def test_resize_images_nested_output(tmp_path: Path) -> None:
 
 def test_resize_images_flat_output(tmp_path: Path) -> None:
     """Empty rel_dir collapses back to the legacy flat layout (no breakage)."""
-    repo_root = Path(__file__).resolve().parent.parent
-    sys.path.insert(0, str(repo_root / "scripts" / "preprocess"))
-    try:
-        from resize_images import process_image
-    finally:
-        sys.path.pop(0)
+    from library.preprocess.images import ResizeOptions, process_image
 
     img_path = tmp_path / "image_dataset" / "cover.png"
     _write_test_image(img_path)
 
     dst = tmp_path / "post_image_dataset" / "resized"
-    # 4 elements → target_res defaults to the canonical 1024 tier (free-fit).
-    bucket_args = ((1024, 1024), 512, 2048, 64)
-
-    process_image(img_path, dst, bucket_args, copy_captions=False, rel_dir="")
+    process_image(img_path, dst, ResizeOptions(), rel_dir="", copy_captions=False)
     assert (dst / "cover.png").exists()
     # No phantom subdir was created.
     assert not any(p.is_dir() for p in dst.iterdir())

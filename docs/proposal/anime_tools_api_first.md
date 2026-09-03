@@ -1,6 +1,6 @@
 # anime_tools API-first boundary — trainer side (2026-09-02)
 
-Status: **approved direction; package half landed, T0–T3 landed (T0–T1 2026-09-02, T2–T3 2026-09-03), T4–T6 open**
+Status: **DONE — T0–T6 landed (T0–T1 2026-09-02, T2–T6 2026-09-03); pin `8708224` (0.4.1)**
 (re-audited 2026-09-02 against `anime_tools` HEAD `6a225f8`; the package-side
 requests below landed the same day on top of it, as `0.4.0`). The package-side
 plan (`docs/api_first_plan.md`, deleted in `9ccc655`) is now folded into
@@ -190,13 +190,13 @@ above are pinned; T3–T5 are the migration proper.
   fills. Stop passing `--batch-size 4` / `--checkpoint` / `--model-path`
   literals: the request defaults come from the package's `downloads.py`
   catalog, which is where the weights actually land.
-- [ ] **T4. Caption stages + grouping through requests.**
+- [x] **T4. Caption stages + grouping through requests.** *Landed 2026-09-03* — see "What T4–T6 found" below.
   `_caption_master_argv` → `AutotagRequest.to_argv()` /
   `PositionRequest.to_argv()`; `cmd_preprocess_captions` →
   `CorrectRequest`; `curate.py` → `GroupRequest`. Scope resolution
   (`_resolved_path_pattern_args`) becomes one `path_pattern=` field. Under a
   daemon job, autotag → position in one process shares `load_anima_tagger`.
-- [ ] **T5. Free-fit geometry has one owner.** Move `EDGE_TOKEN_BANDS`,
+- [x] **T5. Free-fit geometry has one owner.** *Landed 2026-09-03* (package `8708224`, 0.4.1). Move `EDGE_TOKEN_BANDS`,
   `freefit_bucket`, `choose_edge` and the resize solver into
   `anime_tools.buckets` / `anime_tools.stages.resize`; `library/datasets/
   buckets.py` re-exports them the way `library/models/pe.py` re-exports the
@@ -204,7 +204,7 @@ above are pinned; T3–T5 are the migration proper.
   helpers (`token_count_families`, `cluster_token_bands`, σ-demote helpers)
   stay here. `make preprocess-resize` then calls `ResizeRequest`. This is the
   one step with real package-side work still open.
-- [ ] **T6. Docs.** `CLAUDE.md` "Curation lives in anime_tools" paragraph:
+- [x] **T6. Docs.** *Landed 2026-09-03.* `CLAUDE.md` "Curation lives in anime_tools" paragraph:
   the request API is the front door, `python -m` is the shell; the `captions`
   and `daemon` skills lose their hand-written argv examples.
   `docs/v2_release_plan.md` Track D: drop the `--device` item from D0, point
@@ -326,19 +326,97 @@ Landed as one trainer-side change (no package commit needed; pin unchanged at
    failed once under `pytest tests/ -x`, then passed alone and in the full
    run (1575 passed) — a flake outside this change, not chased here.
 
+## What T4–T6 found (2026-09-03)
+
+Landed as one trainer-side change plus one package commit (`8708224`, 0.4.1 —
+on top of `a6f6464`, the dbv4 onnxruntime backend, which the sibling checkout
+had not pulled yet; it fast-forwarded cleanly, the only working-tree overlap
+being an unrelated, still-uncommitted OCR edit).
+
+1. **One execution chokepoint.** `scripts/tasks/_common.py::execute_stage`
+   is now what masking (T3), the caption stages, resize and grouping all run
+   through — in-process via `Stage.runner()` under `ANIMA_DAEMON_JOB_DIR`,
+   `python -m <stage.module> *req.to_argv()` from a shell — with
+   `request_with_args(req, ARGS)` applying a user's `ARGS` through the
+   request's own generated parser (trainer fields are the parser defaults,
+   so `ARGS` override; an unknown flag fails with the stage's usage, exit 2,
+   the way the child would). `masking.py` lost its private copy.
+2. **In-process caption stages need a release valve.** The plan's "autotag →
+   position in one process shares `load_anima_tagger`" is true, but in the
+   full chain the VAE child sits between them and the TE child follows, so a
+   resident tagger + SAM3 (~2–4 GB) would have shared VRAM with a trainer
+   child for the whole encode — an 8 GB regression waiting to happen. The
+   package grew `anime_tools.stages.release_models()` (empties both
+   per-process caches, `torch.cuda.empty_cache()`), and `preprocess.py`
+   calls it before the VAE and TE children whenever an in-process GPU stage
+   ran (`_release_stage_models`; a no-op from a shell). Net: the shared load
+   happens where the stages are adjacent (`preprocess-captions`,
+   `preprocess-te`, the standalone targets); `make preprocess` still loads
+   the tagger twice, as before.
+3. **The scope rides as a field.** `_caption_correction_config` stashes
+   `path_pattern` (a string) instead of `path_pattern_args`; the standalone
+   targets seed it from `PREPROCESS_PATH_PATTERN` / config and an explicit
+   `--path_pattern` in `ARGS` overrides it through the parser, so it is
+   emitted once by construction.
+4. **`ResizeRequest` lacked one input the trainer needs: the GUI's curation
+   decisions.** `resize_images.py` took `--curation_decisions <json>` and
+   filtered skip/move images itself. The package gained
+   `ResizeRequest.skip` (paths relative to `--src`, `nargs="+"`) and
+   `run_resize_images(skip=…)` (`skipped_excluded` in the stats/report);
+   the trainer translates the decision file (`_curation_skips`, honouring an
+   explicit `--curation_decisions` in `ARGS`). Not a glob: image names with
+   `[`/`*` are common and `fnmatch` would misread them.
+5. **`scripts/preprocess/resize_images.py` is gone.** Every caller —
+   `preprocess-resize`, `preprocess-config` (the ComfyUI trainer node's
+   path), the two EasyControl pair-tree resizes in `training.py` — builds a
+   `ResizeRequest`. The snap-era flags it still accepted
+   (`--resize_bucket_resos`, `--bucket_reso_steps`, `--freefit`, …) are
+   dropped from `ARGS` with a note rather than reaching a parser that has no
+   such field. The near-twins path used to emit a `--freefit` the script no
+   longer parsed (a latent crash whenever `freefit=true` was set) — moot now.
+   `library/preprocess/images.py::resize_to_buckets` stays as the
+   programmatic wrapper (embedders / tests), over the package's
+   `run_resize_images`; `process_image` / `ResizeOptions` /
+   `resize_to_bucket` are re-exports.
+6. **`FREEFIT_BAND_VERSION` was already dead on both sides**: the trainer
+   folded it into the PNG signature only for a non-freefit `fit_mode`, which
+   no longer exists; nothing else read it. Deleted in both repos.
+   `library/datasets/buckets.py` re-exports the geometry from
+   `anime_tools.buckets` (`_band` is `band_for_tier`);
+   `library/preprocess/resize_preview.py` re-exports the stage's normalizers
+   (its `normalize_crop_margins` keeps the GUI's dict shape over the
+   package's tuple). `scripts/release/sync_vendor.py` used to scrape the
+   `EDGE_TOKEN_BANDS` literal out of `buckets.py` *source text*; it now
+   renders the live value, so the DirectEdit vendor tree keeps regenerating.
+7. **Tests.** `test_anime_tools_cli_contract.py` builds every request the
+   wrappers build (autotag / position / correct / resize incl. `skip` /
+   groups), re-parses the emitted argv, pins the in-process caption chain
+   with a stub registry (autotag → position → correct → release → TE child)
+   and names the stage ids the trainer uses; `test_preprocess_tasks.py` /
+   `test_nested_paths.py` moved off the hand-spelled argv. Live smoke on a
+   3-image scratch set (`CONFIG_FILE` snapshot): `preprocess-resize` as a
+   child (`--target_res 768 1024 --skip skipme.png` emitted) and in-process
+   under a fake job dir (two `step` lines in `progress.jsonl`), and
+   `preprocess-captions` in-process. The tagger/SAM3 stages were not run
+   live (GPU + models); the beta-gate chain from T0 is still owed.
+8. **T6 no-ops**: the `daemon` skill had no hand-written `anime_tools` argv,
+   and the v2 plan's D0 had already lost its `--device` item. `A1` / `A5` /
+   Track D in `docs/v2_release_plan.md` now state that Track D landed.
+
 ## Guards
 
 - `tests/test_curation_boundary.py` is unchanged: dependency direction stays
   trainer → `anime_tools`.
-- T1's contract test is the drift alarm until T4 removes the last hand-spelled
-  argv; for masking (T3) it now guards `to_argv()` ↔ parser agreement from our
-  side, and the in-process path is pinned with a stub registry
-  (`test_mask_under_a_daemon_job_runs_the_stages_in_process`).
+- T1's contract test is the drift alarm: no wrapper spells a flag any more, so
+  it guards `to_argv()` ↔ parser agreement from our side for every stage and
+  pins both in-process paths with a stub registry
+  (`test_mask_under_a_daemon_job_runs_the_stages_in_process`,
+  `test_caption_chain_under_a_daemon_job_runs_in_process_and_releases`).
 - `make daemon-run`, `--queue`, and `make gen` are unaffected: the daemon
   still receives argv, produced by `to_argv()` instead of by hand.
 - The `device` field is in the package GUI's `AUTO_FIELDS`: `to_argv()` omits
   it at its default and the child resolves the device itself, matching what
-  the wrappers do today. T3/T4 must not start passing it.
+  the wrappers do. Nothing passes it.
 
 ## Out of scope
 

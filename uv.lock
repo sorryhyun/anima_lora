@@ -315,10 +315,10 @@ gui = [
 
 [package.dev-dependencies]
 anime-tools-dev = [
-    { name = "anime-tools", version = "0.4.0", source = { editable = "../anime_tools" } },
+    { name = "anime-tools", version = "0.4.1", source = { editable = "../anime_tools" } },
 ]
 anime-tools-git = [
-    { name = "anime-tools", version = "0.4.0", source = { git = "https://github.com/sorryhyun/anime_tools?rev=94e6d92985095216fbbdde903df864ade68e5ad4#94e6d92985095216fbbdde903df864ade68e5ad4" } },
+    { name = "anime-tools", version = "0.4.1", source = { git = "https://github.com/sorryhyun/anime_tools?rev=8708224#8708224e9c0e8a949b95af786b6f9c14d0467c86" } },
 ]
 cuda-windows = [
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl" }, marker = "sys_platform == 'win32' or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git')" },
@@ -423,7 +423,7 @@ provides-extras = ["gui", "cuda-windows", "rocm-windows", "dev"]
 
 [package.metadata.requires-dev]
 anime-tools-dev = [{ name = "anime-tools", editable = "../anime_tools" }]
-anime-tools-git = [{ name = "anime-tools", git = "https://github.com/sorryhyun/anime_tools?rev=94e6d92985095216fbbdde903df864ade68e5ad4" }]
+anime-tools-git = [{ name = "anime-tools", git = "https://github.com/sorryhyun/anime_tools?rev=8708224" }]
 cuda-windows = [
     { name = "flash-attn", marker = "sys_platform == 'win32'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl" },
     { name = "torch", marker = "sys_platform == 'win32'", specifier = "==2.12.0+cu132", index = "https://download.pytorch.org/whl/cu132", conflict = { package = "anima-lora", group = "cuda-windows" } },
@@ -458,8 +458,8 @@ sr = [
 
 [[package]]
 name = "anime-tools"
-version = "0.4.0"
-source = { git = "https://github.com/sorryhyun/anime_tools?rev=94e6d92985095216fbbdde903df864ade68e5ad4#94e6d92985095216fbbdde903df864ade68e5ad4" }
+version = "0.4.1"
+source = { git = "https://github.com/sorryhyun/anime_tools?rev=8708224#8708224e9c0e8a949b95af786b6f9c14d0467c86" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
     "platform_machine == 'aarch64' and sys_platform == 'linux'",
@@ -506,7 +506,7 @@ dependencies = [
 
 [[package]]
 name = "anime-tools"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "../anime_tools" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
@@ -590,6 +590,10 @@ dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-xdist" },
     { name = "ruff" },
+]
+export = [
+    { name = "onnx", specifier = ">=1.17" },
+    { name = "onnxscript", specifier = ">=0.5" },
 ]
 
 [[package]]

@@ -1,15 +1,16 @@
-"""The trainer → ``anime_tools`` CLI seam, checked against the pinned package.
+"""The trainer → ``anime_tools`` seam, checked against the pinned package.
 
-Every argv a task wrapper hands to ``python -m anime_tools.<stage>`` must parse
-and build that stage's request object at the pinned rev, and every
-``from anime_tools … import`` in the trainer must resolve. The registry and the
-request modules are torch-free (the package pins that), so the argv is checked
-in-process: no child interpreter, no model load.
-
-The argv comes from the wrapper functions themselves with ``run()`` stubbed,
-so a flag the trainer stops or starts emitting is caught here, not minutes
-into a GPU job. ``captions.index`` is a plain CLI, not a registered stage; it
-is checked by module presence only.
+Every curation stage the task wrappers run is a request object
+(``ResizeRequest`` / ``AutotagRequest`` / … / ``GroupRequest``) executed
+through ``_common.execute_stage``: from a shell as ``python -m <stage.module>
+*req.to_argv()``, under a daemon job in-process via ``Stage.runner()``. These
+tests build the requests the wrappers build (with ``run()`` stubbed on the
+shell path) and re-parse the emitted argv through the stage's generated
+parser, so ``to_argv()`` ↔ parser agreement and every field the trainer sets
+are pinned at the pinned rev — no child interpreter, no model load. Every
+``from anime_tools … import`` in the trainer must resolve too.
+``captions.index`` is a plain CLI, not a registered stage; it is checked by
+module presence only.
 """
 
 from __future__ import annotations
@@ -39,9 +40,18 @@ def _fake_path(key: str, default: str) -> str:
 
 
 def _capture(monkeypatch, module) -> list[list[str]]:
+    """Stub the child launch (``_common.run`` — what ``execute_stage`` and the
+    trainer-side cache scripts go through) and the config paths."""
+    from scripts.tasks import _common
+
     calls: list[list[str]] = []
-    monkeypatch.setattr(module, "run", lambda cmd, **kw: calls.append(list(cmd)))
+    monkeypatch.setattr(_common, "run", lambda cmd, **kw: calls.append(list(cmd)))
+    if hasattr(module, "run"):
+        monkeypatch.setattr(module, "run", lambda cmd, **kw: calls.append(list(cmd)))
     monkeypatch.setattr(module, "_path", _fake_path)
+    # A test suite itself running as a daemon job would otherwise take the
+    # in-process path and load a model.
+    monkeypatch.delenv("ANIMA_DAEMON_JOB_DIR", raising=False)
     return calls
 
 
@@ -212,44 +222,82 @@ def test_mask_stage_ids_the_trainer_names_are_registered():
 # ----- caption stages ------------------------------------------------------------
 
 
-def test_caption_autotag_argv_builds_autotag_request(monkeypatch):
+def _argv(module: str, req) -> list[str]:
+    return ["python", "-m", module, *req.to_argv()]
+
+
+def test_caption_autotag_target_builds_autotag_request(monkeypatch):
+    """``make caption-autotag ARGS=…``: trainer paths + scope as the base, the
+    user's flags applied through the request's own parser."""
     from scripts.tasks import preprocess
 
     monkeypatch.setattr(preprocess, "_path", _fake_path)
-    argv = preprocess._caption_autotag_argv(
-        [
-            "--mode",
-            "merge",
-            "--min_confidence",
-            "0.3",
-            "--apply",
-            "--path_pattern",
-            "g/*",
-        ]
+    monkeypatch.setenv("PREPROCESS_PATH_PATTERN", "scope/*")
+    req = preprocess._caption_autotag_request(
+        ["--mode", "merge", "--min_confidence", "0.3", "--apply"]
     )
 
-    req = _build([preprocess.PY, *argv])
     assert req.src == "image_dataset"
     assert req.dst == "post_image_dataset/resized"
-    assert req.path_pattern == "g/*"
+    assert req.path_pattern == "scope/*"
     assert req.mode == "merge"
     assert req.min_confidence == 0.3
     assert req.apply
+    # The argv the daemon receives reads back as the same request.
+    assert _build(_argv("anime_tools.stages.cli.autotag_captions", req)) == req
 
 
-def test_caption_position_argv_builds_position_request(monkeypatch):
+def test_caption_position_target_builds_position_request(monkeypatch):
     from scripts.tasks import preprocess
 
     monkeypatch.setattr(preprocess, "_path", _fake_path)
-    argv = preprocess._caption_position_argv(["--path_pattern", "g/*", "--apply"])
+    monkeypatch.delenv("PREPROCESS_PATH_PATTERN", raising=False)
+    req = preprocess._caption_position_request(["--path_pattern", "g/*", "--apply"])
 
-    req = _build([preprocess.PY, *argv])
     assert req.src == "image_dataset"
     assert req.path_pattern == "g/*"
     assert req.apply
+    assert req.to_argv().count("--path_pattern") == 1
+    assert _build(_argv("anime_tools.stages.cli.position_captions", req)) == req
 
 
-def test_preprocess_captions_argv_builds_correct_request(monkeypatch):
+def test_caption_target_rejects_an_unknown_flag_like_the_child_would(monkeypatch):
+    import pytest
+
+    from scripts.tasks import preprocess
+
+    monkeypatch.setattr(preprocess, "_path", _fake_path)
+    with pytest.raises(SystemExit) as exc:
+        preprocess._caption_autotag_request(["--no_such_flag"])
+    assert exc.value.code == 2
+
+
+def test_in_pipeline_stages_build_apply_requests(monkeypatch):
+    """The chain's autotag / position requests: always ``apply``, scoped by
+    the caption-config dict, every other knob at the package default."""
+    from scripts.tasks import preprocess
+
+    monkeypatch.setattr(preprocess, "_path", _fake_path)
+    config = {
+        "autotag_mode": "merge",
+        "autotag_min_confidence": 0.35,
+        "path_pattern": "a/*",
+    }
+    autotag = preprocess._autotag_request(config)
+    assert (autotag.mode, autotag.min_confidence, autotag.apply) == (
+        "merge",
+        0.35,
+        True,
+    )
+    assert autotag.path_pattern == "a/*"
+    position = preprocess._position_request(config)
+    assert position.apply and position.path_pattern == "a/*"
+    from anime_tools.stages.requests import PositionRequest
+
+    assert position.detection == PositionRequest().detection
+
+
+def test_preprocess_captions_builds_correct_request(monkeypatch):
     from scripts.tasks import preprocess
 
     calls = _capture(monkeypatch, preprocess)
@@ -316,16 +364,144 @@ def test_preprocess_captions_passthrough_builds_no_correct_request(monkeypatch):
     assert req.caption_shuffle_variants == 2
 
 
+class _StubStage:
+    """A registry entry whose runner records the request instead of running."""
+
+    def __init__(self, stage_id, ran):
+        self.module = f"stub.{stage_id}"
+        self._id = stage_id
+        self._ran = ran
+
+    def runner(self):
+        return lambda req: self._ran.append((self._id, req))
+
+
+def test_caption_chain_under_a_daemon_job_runs_in_process_and_releases(
+    monkeypatch, tmp_path
+):
+    """With ``ANIMA_DAEMON_JOB_DIR`` set the caption stages go through
+    ``Stage.runner()`` in this interpreter (autotag → position share one
+    tagger), and the resident models are released before the TE child."""
+    from anime_tools.stages import run as pkg_run
+
+    from scripts.tasks import _common, preprocess
+
+    events: list = []
+    monkeypatch.setattr(preprocess, "_path", _fake_path)
+    monkeypatch.setattr(preprocess, "_ensure_danbooru_tags", lambda: None)
+    monkeypatch.setattr(preprocess, "_variant_settings", lambda: ("0", "0.0", "0.0"))
+    monkeypatch.setattr(preprocess, "_stage", lambda sid: _StubStage(sid, events))
+    monkeypatch.setattr(pkg_run, "release_models", lambda: events.append("release"))
+    monkeypatch.setattr(
+        preprocess, "run", lambda cmd, **kw: events.append(("child", cmd))
+    )
+    monkeypatch.setattr(_common, "run", lambda cmd, **kw: events.append(("child", cmd)))
+    monkeypatch.setattr(preprocess, "_MODELS_RESIDENT", set())
+    monkeypatch.setenv("ANIMA_DAEMON_JOB_DIR", str(tmp_path))
+    monkeypatch.setenv("CAPTION_AUTOTAG", "1")
+    monkeypatch.setenv("CAPTION_POSITION_CLAUSES", "1")
+    monkeypatch.delenv("ANIMA_HOME", raising=False)
+
+    preprocess.cmd_preprocess_te([])
+
+    kinds = [e if isinstance(e, str) else e[0] for e in events]
+    assert kinds == ["autotag", "position", "correct", "release", "child"]
+    from anime_tools.stages.requests import (
+        AutotagRequest,
+        CorrectRequest,
+        PositionRequest,
+    )
+
+    assert isinstance(events[0][1], AutotagRequest) and events[0][1].apply
+    assert isinstance(events[1][1], PositionRequest) and events[1][1].apply
+    assert isinstance(events[2][1], CorrectRequest) and events[2][1].no_correct
+    assert events[4][1][1] == "scripts/preprocess/cache_text_embeddings.py"
+    assert Path(os.environ["ANIMA_HOME"]) == ROOT
+
+
+# ----- resize --------------------------------------------------------------------
+
+
+def test_preprocess_resize_builds_resize_request_from_config_and_args(
+    monkeypatch, tmp_path
+):
+    from scripts.tasks import _common, preprocess
+
+    calls = _capture(monkeypatch, preprocess)
+    monkeypatch.setattr(_common, "_path_overrides", lambda: {"target_res": [768, 1024]})
+    monkeypatch.setattr(
+        preprocess, "_curation_decisions_path", lambda: tmp_path / "none"
+    )
+    for name in ("TARGET_RES", "PREPROCESS_PATH_PATTERN", "FREEFIT_MAX_RATIO"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("DROP_LOWRES_IMAGES", "1")
+    monkeypatch.setenv("MIN_PIXELS", "250000")
+
+    preprocess.cmd_preprocess_resize(
+        ["--overwrite", "--resize_bucket_resos", "1024x1008"]
+    )
+
+    assert len(calls) == 1
+    assert calls[0][2] == "anime_tools.stages.cli.resize_images"
+    req = _build(calls[0])
+    assert req.src == "image_dataset"
+    assert req.dst == "post_image_dataset/resized"
+    assert req.target_res == (768, 1024)
+    assert req.min_pixels == 250000
+    assert req.recursive and not req.copy_captions
+    assert req.overwrite  # ARGS applied through the request's parser
+    assert req.skip == ()
+    # The snap-era allow-list flag is dropped, not forwarded to a parser that
+    # has no such field.
+    assert "--resize_bucket_resos" not in calls[0]
+
+
+def test_preprocess_resize_turns_curation_decisions_into_skip(monkeypatch, tmp_path):
+    """The GUI's curation decisions (skip / move) reach the resize stage as
+    ``ResizeRequest.skip`` — no trainer-side walk."""
+    from library.datasets.curation_actions import save_curation_decisions
+
+    from scripts.tasks import _common, preprocess
+
+    calls = _capture(monkeypatch, preprocess)
+    monkeypatch.setattr(_common, "_path_overrides", lambda: {})
+    for name in (
+        "TARGET_RES",
+        "PREPROCESS_PATH_PATTERN",
+        "DROP_LOWRES_IMAGES",
+        "MIN_PIXELS",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    decisions = tmp_path / "curation_decisions.json"
+    save_curation_decisions(
+        decisions,
+        source_dir="image_dataset",
+        images={
+            "keep.png": {"action": "use"},
+            "a/skip.png": {"action": "skip"},
+            "b/move.png": {"action": "move"},
+        },
+    )
+    monkeypatch.setattr(preprocess, "_curation_decisions_path", lambda: decisions)
+
+    preprocess.cmd_preprocess_resize([])
+
+    req = _build(calls[0])
+    assert req.skip == ("a/skip.png", "b/move.png")
+    assert req.min_pixels == 500_000  # the package default, no trainer literal
+
+
 # ----- grouping ------------------------------------------------------------------
 
 
-def test_curate_group_argv_builds_group_request(monkeypatch):
+def test_curate_group_builds_group_request(monkeypatch):
     from scripts.tasks import curate
 
     calls = _capture(monkeypatch, curate)
     curate.cmd_curate_group(["--match-frac-min", "0.4", "--cell-match-min", "0.9"])
 
     assert len(calls) == 1
+    assert calls[0][2] == "anime_tools.grouping.cli.build_groups"
     req = _build(calls[0])
     assert req.source_dir == "image_dataset"
     assert req.match_frac_min == 0.4
@@ -408,17 +584,23 @@ def test_every_module_string_the_trainer_spells_exists():
     assert not missing, missing
 
 
-def test_stage_modules_the_trainer_uses_are_registered():
-    used = {
-        "anime_tools.masking.cli.generate_masks",
-        "anime_tools.masking.cli.generate_masks_mit",
-        "anime_tools.masking.cli.merge_masks",
-        "anime_tools.stages.cli.autotag_captions",
-        "anime_tools.stages.cli.position_captions",
-        "anime_tools.stages.cli.correct_captions",
-        "anime_tools.grouping.cli.build_groups",
-    }
-    assert used <= set(BY_MODULE), used - set(BY_MODULE)
+def test_stage_ids_the_trainer_names_are_registered():
+    """The wrappers go from a stage id to the registry entry (module for the
+    child path, runner for the in-process one); every id they spell exists."""
+    from anime_tools.stages.registry import BY_ID
+
+    for stage_id in (
+        "resize",
+        "autotag",
+        "position",
+        "correct",
+        "groups",
+        "masks_sam",
+        "masks_mit",
+        "masks_merge",
+    ):
+        stage = BY_ID[stage_id]
+        assert callable(stage.runner()), stage_id
 
 
 def test_caption_index_argv_keeps_the_trainer_output_path(monkeypatch):

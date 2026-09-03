@@ -209,7 +209,7 @@ def _walk_te_candidates(
     if skipped_small and verbose:
         print(
             f"Skipping {skipped_small} images below {min_pixels:,} pixels "
-            f"({min_pixels / 1e6:.2f}MP) -- same filter as resize_images.py."
+            f"({min_pixels / 1e6:.2f}MP) -- same filter as the resize stage."
         )
     return kept
 

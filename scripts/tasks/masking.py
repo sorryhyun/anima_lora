@@ -23,6 +23,9 @@ Every stage runs as an ``anime_tools`` **request object**
   with ``req.to_argv()``, so ``make mask`` still releases the model between
   stages and on exit.
 
+The switch is ``_common.execute_stage`` — the same one the caption stages
+(``preprocess.py``) and grouping (``curate.py``) run through.
+
 The mask config (``configs/sam_mask.yaml`` or the GUI's ``MASK_CONFIG_JSON``
 env snapshot) carries the SAM prompt set(s) — a flat ``prompts`` /
 ``focus_prompts`` pair or a ``rules:`` list routed by ``path_pattern`` — plus
@@ -43,7 +46,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from ._common import PY, ROOT, _path, run
+from ._common import ROOT, _path, execute_stage, stage_by_id
 
 MASK_OUTPUT_DIR = ROOT / "post_image_dataset" / "masks"
 RESIZED_IMAGE_DIR = ROOT / "post_image_dataset" / "resized"
@@ -54,7 +57,6 @@ SAM_CONFIG = ROOT / "configs" / "sam_mask.yaml"
 # a checkout that fetched it the trainer's way, no stale literal otherwise.
 MIT_MODEL_PATH = ROOT / "models" / "mit" / "model.pth"
 MASK_CONFIG_ENV = "MASK_CONFIG_JSON"
-DAEMON_JOB_DIR_ENV = "ANIMA_DAEMON_JOB_DIR"
 _UNSET = object()
 
 
@@ -267,35 +269,13 @@ def _merge_request(sources: list[str], output_dir: Path):
 # ----- execution -----------------------------------------------------------------
 
 
-def _in_daemon_job() -> bool:
-    return bool(os.environ.get(DAEMON_JOB_DIR_ENV))
-
-
 def _stage(stage_id: str):
-    from anime_tools.stages.registry import BY_ID
-
-    return BY_ID[stage_id]
-
-
-def _run_in_process(stage_id: str, req) -> None:
-    """``Stage.runner()(req)`` in this interpreter (the daemon-job path).
-
-    The package anchors bare relative defaults (the SAM3 checkpoint, the CTD
-    net) on ``ANIMA_HOME``, which ``run()`` exports for a child; pin it the
-    same way here so an in-process run resolves identically.
-    """
-    os.environ.setdefault("ANIMA_HOME", str(ROOT))
-    stage = _stage(stage_id)
-    print(f"  > [in-process] {stage.module} {' '.join(req.to_argv())}")
-    stage.runner()(req)
+    return stage_by_id(stage_id)
 
 
 def _execute(stage_id: str, req) -> None:
     """Run one mask stage: in-process under a daemon job, else as a child."""
-    if _in_daemon_job():
-        _run_in_process(stage_id, req)
-        return
-    run([PY, "-m", _stage(stage_id).module, *req.to_argv()])
+    execute_stage(_stage(stage_id), req)
 
 
 def cmd_mask(extra):

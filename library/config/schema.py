@@ -155,12 +155,12 @@ def populate_schema(
         (
             "source_image_dir",
             "image_dataset",
-            "Where raw images and .txt captions live. Read by scripts/preprocess/resize_images.py and scripts/preprocess/cache_text_embeddings.py.",
+            "Where raw images and .txt captions live. Read by the resize stage (make preprocess-resize) and scripts/preprocess/cache_text_embeddings.py.",
         ),
         (
             "resized_image_dir",
             "post_image_dataset/resized",
-            "Where scripts/preprocess/resize_images.py writes VAE-aligned PNGs. Also resolved into the dataset subset's image_dir at training time.",
+            "Where the resize stage (make preprocess-resize) writes VAE-aligned PNGs. Also resolved into the dataset subset's image_dir at training time.",
         ),
         (
             "lora_cache_dir",
@@ -180,7 +180,7 @@ def populate_schema(
         )
 
     # Preprocess input filter — consumed by scripts/tasks/preprocess.py (forwarded
-    # to scripts/preprocess/resize_images.py and scripts/preprocess/cache_text_embeddings.py as
+    # to the resize stage (make preprocess-resize) and scripts/preprocess/cache_text_embeddings.py as
     # ``--min_pixels``). Not an argparse arg on train.py — preprocess reads it
     # straight from the merged config chain via load_path_overrides().
     CONFIG_SCHEMA.setdefault(
@@ -206,7 +206,7 @@ def populate_schema(
             help=(
                 "Pixel-count threshold for ``drop_lowres_images`` "
                 "(default 500_000 = 0.5MP). Forwarded to "
-                "scripts/preprocess/resize_images.py + cache_text_embeddings.py as "
+                "the resize stage + cache_text_embeddings.py as "
                 "``--min_pixels``. Ignored when ``drop_lowres_images=false``."
             ),
             source="manual",

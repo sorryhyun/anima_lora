@@ -165,7 +165,7 @@ def _count_masks(mask_dir: Path, path_pattern: str | None = None) -> int:
 
 
 def _count_resized(resized_dir: Path, path_pattern: str | None = None) -> int:
-    # rglob picks up nested `<rel>/` subtrees from resize_images.py; flat trees still count correctly.
+    # rglob picks up nested `<rel>/` subtrees from the resize stage; flat trees still count correctly.
     return len(
         _filtered_files(
             resized_dir, path_pattern, lambda p: p.suffix.lower() in IMAGE_EXTS
