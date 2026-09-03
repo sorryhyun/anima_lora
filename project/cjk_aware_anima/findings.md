@@ -439,3 +439,30 @@ captions), and **``♡`` is T5 ``<unk>``** (the pack maps CJK only) — the
 sincos captions carry it often; unresolved. C2–C6 all used v1 records +
 ``tags``; the first arm on v2 + ``order`` is still to run.
 
+## 11. Coverage audit + symbol block (2026-09-03)
+
+**Which rows are never looked up, and why** — full numbers in
+[`docs/experimental/cjk_ext_vocab_coverage.md`](../../docs/experimental/cjk_ext_vocab_coverage.md)
+(`probes/visit_stats.py`). The `synthjakozh1` pool visits 9,831 / 58,968
+rows; 1,455 of those fewer than five times. Structurally unreachable rows:
+2 (fullwidth `１０` `２０`). The `char` block is 97.6 % unvisited by
+construction (it enumerates whole Unicode ranges), the `qwen` block 70 %
+because Qwen's CJK vocabulary is general-web Chinese. Under `param=global`
+none of that gates anything: every row rides the same map, and the trained
+pack's `global_gain 0.30 / diag rms 0.75` scales unvisited rows along with
+the rest — nothing in the eval sees them. Refinements (row-disjoint holdout,
+span visit floor, visit-gated α, symbol register) are
+[`plan_zh2.md`](plan_zh2.md).
+
+**Every `<unk>` left in the caches is a symbol, not a CJK gap** (`^^^` `<`
+`·` `~` `×` `☆`; zh: 10,775 tokens, mostly the name separator `·` and title
+`~`). T5 folds `^^^` / `^` / `☆` / `\` into one shared `<unk>`, on the
+teacher side too. Fixed the way CJK is: **symbol rows** (`sym` 6,118 tokens
++ `sym_char` 4,472 chars for the 6,960 chars T5 cannot spell, kaomoji
+alphabets included) appended after the CJK blocks — row ids, caches and
+trained packs untouched — and **the routing rule now ships in the pack json
+(`route`)**; the Adapter node reads it (3.9.1, `encoder.routes`), older
+packs/nodes are unchanged. Residual `<unk>` on a 1/20 corpus sample: 0.
+Open: the caches predate the block (0 symbol rows visited) and the EN
+teacher is `<unk>` for these tags — plan_zh2 U5.
+

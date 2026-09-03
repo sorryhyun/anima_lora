@@ -143,6 +143,7 @@ def contextual_char_init(
     ridge: float,
     mix: float,
     holdout: int = 1500,
+    n_stats: int | None = None,
 ) -> tuple[dict[str, torch.Tensor], dict]:
     """Map the byte-fragment chars' contextual states into key space.
 
@@ -153,8 +154,14 @@ def contextual_char_init(
     mapped raw, every char row inherits it and the layer collapses (PR 10,
     57 % random-pair collisions on the first v2 attempt). Rows are returned
     unit-norm; the caller rescales the layer to the T5 mean norm.
+
+    ``n_stats`` — how many leading rows of ``C_ctx`` enter the per-dim
+    standardization (default all). The symbol block is appended after the
+    CJK chars and must not perturb their rows, so the builder passes the
+    CJK char count: the map and the stats are then exactly what a symbol-free
+    build computes, and symbol chars are merely *applied* through them.
     """
-    allc = torch.cat([S_ctx, C_ctx])
+    allc = torch.cat([S_ctx, C_ctx if n_stats is None else C_ctx[:n_stats]])
     mu, sd = allc.mean(0), allc.std(0).clamp(min=1e-6)
     Xs, Xc = (S_ctx - mu) / sd, (C_ctx - mu) / sd
     W_ctx, ctx_holdout = ext_vocab.fit_anchor_map(
@@ -215,6 +222,13 @@ def main() -> None:
         "--ctx-mix", type=float, default=0.6, help="contextual map Procrustes weight"
     )
     parser.add_argument("--device", default="auto", help="auto | cuda | cpu")
+    parser.add_argument(
+        "--no-symbols",
+        action="store_true",
+        help="skip the symbol block (chars T5 spiece cannot encode — ^ < ~ · × ☆, "
+        "emoji — routed to Qwen-side rows appended after the CJK blocks; the "
+        "routing rule is written into the pack json as `route`)",
+    )
     parser.add_argument("--out", type=Path, default=ASSET_PREFIX, help="path prefix")
     opts = parser.parse_args()
 
@@ -229,6 +243,20 @@ def main() -> None:
     clean = ext_vocab.collect_clean_qwen_tokens(qwen_tok)
     t5_ids, qwen_ids = ext_vocab.build_anchor_pairs(t5_tok, qwen_tok)
     print(f"clean CJK tokens: {len(clean)}, anchors: {len(t5_ids)}")
+
+    symbols: str | None = None
+    sym_clean: dict[int, str] = {}
+    sym_chars: list[str] = []
+    if not opts.no_symbols:
+        symbols = ext_vocab.symbol_route_chars(t5_tok, qwen_tok)
+        sym_clean = ext_vocab.collect_clean_qwen_tokens(qwen_tok, chars=symbols)
+        sym_chars = list(
+            ext_vocab.char_row_surfaces(qwen_tok, sym_clean, chars=symbols)
+        )
+        print(
+            f"symbol route: {len(symbols)} chars T5 cannot encode → "
+            f"{len(sym_clean)} clean Qwen tokens + {len(sym_chars)} per-char rows"
+        )
 
     W, holdout_cos = ext_vocab.fit_anchor_map(
         qwen_embed,
@@ -249,7 +277,11 @@ def main() -> None:
             if opts.device == "auto"
             else opts.device
         )
-        chars = list(ext_vocab.char_row_surfaces(qwen_tok, clean))
+        # Symbol char rows ride the same contextual map as the CJK char rows
+        # (one code path, one fit set); they are appended after the CJK chars
+        # so the cached state tensor stays index-aligned with the row order.
+        cjk_chars = list(ext_vocab.char_row_surfaces(qwen_tok, clean))
+        chars = cjk_chars + sym_chars
         single = [
             (qid, surf)
             for qid, surf in sorted(clean.items())
@@ -304,7 +336,13 @@ def main() -> None:
             print(f"  loaded contextual states from {opts.ctx_cache}")
         single_keys = qwen_embed[single_qids].float() @ W
         char_init, ctx_stats = contextual_char_init(
-            S_ctx, single_keys, C_ctx, chars, ridge=opts.ctx_ridge, mix=opts.ctx_mix
+            S_ctx,
+            single_keys,
+            C_ctx,
+            chars,
+            ridge=opts.ctx_ridge,
+            mix=opts.ctx_mix,
+            n_stats=len(cjk_chars),
         )
         print(
             f"  contextual map (single-char fit): held-out cos→key {ctx_stats['ctx_holdout_cos']:.4f}"
@@ -312,10 +350,20 @@ def main() -> None:
 
     print("building extended table (incl. per-char fallback rows) …")
     table, mapping = ext_vocab.build_ext_table(
-        qwen_tok, qwen_embed, W, clean, char_init=char_init
+        qwen_tok,
+        qwen_embed,
+        W,
+        clean,
+        char_init=char_init,
+        symbols=symbols,
+        sym_clean=sym_clean,
     )
     n_qwen, n_char = len(mapping["qwen"]), len(mapping["char"])
-    print(f"ext rows: {table.shape[0]} ({n_qwen} qwen tokens + {n_char} chars)")
+    n_sym, n_sym_char = len(mapping.get("sym", {})), len(mapping.get("sym_char", {}))
+    print(
+        f"ext rows: {table.shape[0]} ({n_qwen} qwen tokens + {n_char} chars"
+        f" + {n_sym} symbol tokens + {n_sym_char} symbol chars)"
+    )
 
     # Least-squares maps shrink toward the mean — rescale so new rows live at
     # the T5 table's typical row norm (the adapter downstream is scale-aware).
@@ -323,14 +371,31 @@ def main() -> None:
     # maps under the contextual recipe, so each layer is brought to the T5
     # mean norm on its own (identical to the old global scale when both layers
     # share one map up to their own mean).
+    # The scale is measured on the CJK rows only and *applied* to the symbol
+    # rows of the same layer (symbol tokens ride the qwen map, symbol chars
+    # the char map) — so the CJK rows come out identical to a symbol-free
+    # build and the symbol block is a strict append.
     t5_norm = float(t5_embed.float().norm(dim=-1).mean())
+    layers = {
+        "qwen": (
+            sorted(mapping["qwen"].values()),
+            sorted(mapping.get("sym", {}).values()),
+        ),
+        "char": (
+            sorted(mapping["char"].values()),
+            sorted(mapping.get("sym_char", {}).values()),
+        ),
+    }
     scales = {}
-    for name, sl in (("qwen", slice(0, n_qwen)), ("char", slice(n_qwen, None))):
-        layer_norm = float(table[sl].norm(dim=-1).mean())
+    for name, (cjk_rows, sym_rows) in layers.items():
+        idx = torch.tensor(cjk_rows, dtype=torch.long)
+        layer_norm = float(table[idx].norm(dim=-1).mean())
         scales[name] = t5_norm / layer_norm
-        table[sl] = table[sl] * scales[name]
+        idx_all = torch.tensor(cjk_rows + sym_rows, dtype=torch.long)
+        table[idx_all] = table[idx_all] * scales[name]
         print(
-            f"row-norm {name}: pre-scale {layer_norm:.3f} → t5 {t5_norm:.3f} (×{scales[name]:.3f})"
+            f"row-norm {name}: pre-scale {layer_norm:.3f} → t5 {t5_norm:.3f} "
+            f"(×{scales[name]:.3f}; applied to {len(cjk_rows)} cjk + {len(sym_rows)} symbol rows)"
         )
 
     opts.out.parent.mkdir(parents=True, exist_ok=True)

@@ -11,7 +11,9 @@ from library.anima.ext_vocab import (  # noqa: F401
     T5_TABLE_SIZE,
     T5_UNK_ID,
     MAP_METHODS,
+    SYMBOL_CANDIDATE_RANGES,
     HybridT5Encoder,
+    Route,
     build_anchor_pairs,
     build_ext_table,
     char_row_surfaces,
@@ -21,4 +23,5 @@ from library.anima.ext_vocab import (  # noqa: F401
     is_hangul_char,
     load_ext_assets,
     segment_runs,
+    symbol_route_chars,
 )

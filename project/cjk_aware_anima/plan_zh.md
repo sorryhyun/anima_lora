@@ -309,3 +309,5 @@ text.
 - HalfMAI tagcomplete zh gist — https://gist.github.com/HalfMAI/e20a974a8b87bbb63d8da8051442b6b2
 - Danbooru wiki dump — `kierarkia/danbooru-wiki-2026` (local HF cache)
 - Probes — `project/cjk_aware_anima/probes/` (CPU, no daemon needed)
+
+*Continued in [`plan_zh2.md`](plan_zh2.md) (2026-09-03): coverage-aware distillation — row-disjoint holdout, span visit floor, visit-gated correction, symbol register.*
