@@ -346,7 +346,11 @@ def build_table(cfg, cached_train, pool, ext_init, device, visits=None) -> tuple
         cfg.tunable_rows_from,
     )
     table = ext_table.ExtTable(
-        ext_init, mode=cfg.param, rank=cfg.rank, tunable_rows=tunable
+        ext_init,
+        mode=cfg.param,
+        rank=cfg.rank,
+        tunable_rows=tunable,
+        freeze_diag=cfg.freeze_diag,
     ).to(device)
     n_params = sum(p.numel() for p in table.parameters())
     logger.info("trainable parameters: %.2f M (%s)", n_params / 1e6, cfg.param)
@@ -714,6 +718,7 @@ def train_arm(cfg, ctx, device, dtype) -> tuple[dict, object, torch.Tensor]:
         metrics["init_pack"] = str(cfg.init_pack)
     if table.has_global:
         metrics["global_gain"] = float(torch.exp(table.log_gain))
+        metrics["freeze_diag"] = bool(table.freeze_diag)
         metrics["global_diag_rms"] = float(
             torch.exp(table.log_diag).pow(2).mean().sqrt()
         )
@@ -737,6 +742,8 @@ def save_vocab_pack(cfg, ctx, table, visits, metrics, device) -> None:
     }
     if "init_pack" in metrics:
         out_map["training"]["init_pack"] = metrics["init_pack"]
+    if metrics.get("freeze_diag"):
+        out_map["training"]["freeze_diag"] = True
     lora = ctx.get("adapter_lora")
     if lora is not None:
         sidecar = cfg.out.with_name(cfg.out.name + ".adapter_lora.safetensors")

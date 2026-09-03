@@ -68,27 +68,63 @@ class ExtTokenizeStrategy:
         ]
 
 
-def ocr_tags_by_stem(records: Path, max_lines: int) -> dict[str, list[str]]:
+OCR_FORMATS = ("order", "tags")
+"""``order`` — one phrase, ``Japanese text in following order: "…", "…"``, the
+lines in the records' (reading) order; ``tags`` — the C2–C6 form, a ``japanese
+text`` presence tag plus one ``「…」`` flat tag per line."""
+
+ORDER_PREFIX = "Japanese text in following order: "
+
+
+def ocr_lines_by_stem(records: Path, max_lines: int) -> dict[str, list[str]]:
+    """Raw OCR lines per stem, in file order (the records are already sorted
+    into reading order by the OCR pass)."""
     by_stem: dict[str, list[str]] = {}
     with records.open(encoding="utf-8") as f:
         for line in f:
             r = json.loads(line)
-            by_stem.setdefault(r["stem"], []).append(f"「{r['text']}」")
+            by_stem.setdefault(r["stem"], []).append(r["text"])
     return {k: v[:max_lines] for k, v in by_stem.items()}
 
 
-def append_tags(caption: str, tags: list[str]) -> str:
+def _quote_safe(text: str) -> str:
+    """A line as it may sit inside the phrase: the caption grammar splits
+    flat tags on ASCII commas and clauses on ``. On/In the``, so an ASCII comma
+    becomes ``、`` and an ASCII double quote its fullwidth form."""
+    return text.replace(",", "、").replace('"', "”")
+
+
+def ocr_tags(lines: list[str], fmt: str) -> list[str]:
+    """The tag(s) that carry ``lines`` under ``fmt`` (see ``OCR_FORMATS``)."""
+    if fmt == "tags":
+        return [f"「{ln}」" for ln in lines]
+    if fmt == "order":
+        quoted = ", ".join(f'"{_quote_safe(ln)}"' for ln in lines)
+        return [ORDER_PREFIX + quoted]
+    raise ValueError(f"unknown OCR format {fmt!r}")
+
+
+def append_tags(caption: str, lines: list[str], fmt: str = "order") -> str:
+    """Append the OCR lines to the caption's flat bag, grammar-safe.
+
+    ``tags`` adds a ``japanese text`` presence tag first unless the caption
+    already carries a ``* text`` tag; ``order`` needs none — the phrase opens
+    with it.
+    """
     from anime_tools.captions.position_clauses import compose_caption, parse_caption
 
     parsed = parse_caption(caption)
-    extra = [] if TEXT_TAG_RE.search(caption) else ["japanese text"]
+    extra = []
+    if fmt == "tags" and not TEXT_TAG_RE.search(caption):
+        extra = ["japanese text"]
     return compose_caption(
-        tuple(parsed.flat_tags) + tuple(extra) + tuple(tags), parsed.clauses
+        tuple(parsed.flat_tags) + tuple(extra) + tuple(ocr_tags(lines, fmt)),
+        parsed.clauses,
     )
 
 
 def build_mirror(
-    resized: Path, mirror: Path, tags: dict[str, list[str]]
+    resized: Path, mirror: Path, tags: dict[str, list[str]], fmt: str = "order"
 ) -> tuple[int, int]:
     from anime_tools.captions.variants import read_variants_sidecar
 
@@ -106,8 +142,8 @@ def build_mirror(
         var_src = resized / f"{img.stem}.variants.txt"
         rows = read_variants_sidecar(var_src) if var_src.exists() else []
         if stem_tags:
-            caption = append_tags(caption, stem_tags)
-            rows = [(label, append_tags(text, stem_tags)) for label, text in rows]
+            caption = append_tags(caption, stem_tags, fmt)
+            rows = [(label, append_tags(text, stem_tags, fmt)) for label, text in rows]
             n_text += 1
         else:
             n_plain += 1
@@ -142,6 +178,14 @@ def main() -> None:
     ap.add_argument("--dit", default=ckpt.dit)
     ap.add_argument("--qwen3", default=ckpt.text_encoder)
     ap.add_argument("--max_lines", type=int, default=8)
+    ap.add_argument(
+        "--ocr_format",
+        choices=OCR_FORMATS,
+        default="order",
+        help="how OCR lines enter the caption: 'order' = one 'Japanese text in "
+        "following order: ...' phrase (reading order); 'tags' = the C2–C6 "
+        "japanese text + 「…」 flat tags.",
+    )
     ap.add_argument("--batch_size", type=int, default=8)
     ap.add_argument("--overwrite", action="store_true")
     opts = ap.parse_args()
@@ -152,9 +196,12 @@ def main() -> None:
     mirror = opts.mirror or base_dir / f"mirror_{opts.shard}"
     resized = REPO / "post_image_dataset" / "resized" / opts.shard
 
-    tags = ocr_tags_by_stem(records, opts.max_lines)
-    n_text, n_plain = build_mirror(resized, mirror, tags)
-    print(f"mirror: {n_text} captions carry OCR tags, {n_plain} plain -> {mirror}")
+    tags = ocr_lines_by_stem(records, opts.max_lines)
+    n_text, n_plain = build_mirror(resized, mirror, tags, opts.ocr_format)
+    print(
+        f"mirror ({opts.ocr_format}): {n_text} captions carry OCR lines, "
+        f"{n_plain} plain -> {mirror}"
+    )
 
     from library.anima import weights as anima_utils
     from library.anima.strategy import AnimaTextEncodingStrategy, AnimaTokenizeStrategy

@@ -294,8 +294,10 @@ PR 164 of 1024) but fully separable (0% pairs > 0.5). Ext keys: ridge init
 PR 236 with 16% collisions; **training (`param=global`, zero per-row
 freedom) collapses to PR 55 (JA-only) / 84 (JA+KO) while improving
 separability (5–7% / 2%)** — the diagonal discards directions the teacher
-does not reward. OCR-visited ext rows reach 0.6% collisions in code space
-(near native). The **char-fallback layer is near-degenerate** (random pairs
+does not reward *(corrected 2026-09-03, §10: the collapse is the rank-64
+low-rank term dominating the row, not the diagonal — freezing the diagonal
+leaves PR unchanged)*. OCR-visited ext rows reach 0.6% collisions in code
+space (near native). The **char-fallback layer is near-degenerate** (random pairs
 60% > 0.5; init = mean of shared byte-fragment rows) and carries 4.9% of JA
 *tag* tokens incl. 髪 (11.8k), 黒, 顔, 獣, 緑; its frequent members end at
 2% collisions after training, the tail stays clumped — no shared map can
@@ -320,8 +322,120 @@ Aggregate pack geometry (dispersion / EN-span) is identical across v4, jako2,
 v5, jako3 — per-row directions differ (ext-slot cos 0.50 between jako2 and
 v5 on one OCR line) — so bulk geometry does not predict the arm-C readout.
 
+**Arm C5 — cold joint JA+KO+ZH pack (`synthjakozh1`, ext v2) on the C2
+recipe (2026-09-03; `cjk_unmask_c5.toml`, job `20260902-232228-25807d`,
+grid `output/tests/cjk_unmask_eval2/armC5_s*`).** Same mirror / PP-OCR
+records / latents / seeds as C2–C4; only the ext encode differs. Non-diegetic
+text events over 8 rows × 3 seeds: **C5 1 (marginal)** — s42 r6 floating
+decorative "Cafe / Mai" letters, smaller than C3's cursive banner and C4's
+poster text; comic rows carry only small SFX (`!?`, `オ…`, `—○○○`) where
+C3/C4 fill bubbles and columns with pseudo-JA. No bubble spawn anywhere
+(A's s7 r3 bubbles absent). Cat ears: C5 clean at s42 r7 and s7 r4, the two
+cells where C3 *and* C4 both grew ears; C5 does grow them at s1234 r6 (the
+cell where A/C3 also do). New axis, not seen as strongly before: C5 drops
+into **uncolored lineart backgrounds on colored prompts** (r1 s1234 classroom,
+r2 s42 fully lineart where C2 was greyscale-shaded, r6 s1234 cafe) — the
+sincos manga style leaking harder than C2/C4. Tally: C2 0 · C5 ~1 · C3 3 ·
+C4 3. Reading against §9's open question: `synthjakozh1` is trained on the
+**same r2 JA corpus** as C3/C4 (plus KO + ZH, cold, uniform sampling) and
+lands next to C2, so "the r2 corpus is the common factor" is weakened; run/
+seed lottery (or the warm-start/attn bundle specifically) is back on the
+table. Still one training seed per arm — a seed-control rerun of C2 remains
+the cheapest settle. Distill side: final span 0.106, holdout recovery 0.019
+/ cos(s,t) 0.139 / disc_far 0.060 at 12k (jako3 0.008 / v5 0.028 recovery).
+
 **OCR side facts (C2/C3/C4 captions):** 228 PP-OCR lines over 97 images;
 133 images carry text masks → **44 masked images have no OCR line** and
 train as arm B for those images (a floor on any arm-C variant). UI chrome
 (完了にする / ★お気に入り / ツイート) from pixiv-request screenshots is
 captioned as `japanese text`; ~15 low-score SFX misreads.
+
+## 10. Pack geometry is the rank, arm C is noise, OCR post-processing (2026-09-03)
+
+**Z3 partial read on `synthjakozh1`** (cold joint JA+KO+ZH, ext v2; the
+`synthjako4-cold` warm-start control was dropped by user call). Spread probe on
+the 864 OCR-visited ext rows, same sample for every pack:
+
+| set | ext v2 init | synthjakozh1 | synthjakozh1_fdiag | synthjako3 (warm, v1) |
+|---|---|---|---|---|
+| key PR | 234 | 54.0 | 53.4 | 79 |
+| key collisions > 0.5 | 0.1% | 2.6% | 2.5% | 0.4% |
+| code PR | 186 | 99 | 93 | 107 |
+| code collisions | 0.0% | 0.6% | 0.6% | 0.4% |
+
+"ZH widens the JA subspace" (plan_zh Z3 read 2) is **dropped**: the JA-visited
+rows keep fewer dims than the warm JA+KO chain (54 vs 79), at more
+collisions. Random-2000 rows read PR ~10 under ext v2 *at init* (the unvisited
+"unknown" tail is clustered by construction) — not a training effect; compare
+packs on the visited set only. Three-prompt JA grid (t1 school / t3 armor /
+n1 hakurei, seed 42, `ja_ext`): jakozh1 keeps the seated classroom where jako3
+drifts to a close-up; armor and Reimu fail identically in both (the known
+zero-visit / name-tier failures). One seed — no verdict.
+
+**`--freeze_diag` (new distill flag; `ExtTable(freeze_diag=True)` keeps the
+per-dim diagonal at identity, low-rank + gain only).** Same recipe as
+jakozh1 → `synthjakozh1_fdiag`: geometry identical (table above), distill
+metrics identical to three decimals (recovery 0.0187 vs 0.0185, cos(s,t)
+0.140 vs 0.139, disc_far 0.060 vs 0.060), final span 0.1064 vs 0.1061, gain
+0.216 vs 0.286. So §9's "the diagonal discards directions the teacher does not
+reward" is **wrong**: what collapses PR 234 → 54 is the shared **rank-64**
+low-rank term (`row = (init + init·down·up)·diag·gain`, `--rank 64` in every
+recipe so far) coming to dominate the row — the trained table is effectively a
+rank-64 object plus a shrunk init. The lever, if one is wanted, is the rank
+or a norm bound on `down·up`, not the diagonal. §9's other reading stands: for
+tier-1 prompting dispersion is irrelevant, so this only matters through arm
+C. **`synthjakozh1_r128`** (rank 128, otherwise identical; job
+`20260903-093812-9b6190`): OCR-visited keys PR **90.6** / collisions **0.4%**
+(64: 54.0 / 2.6%; jako3 79 / 0.4%), codes PR 112 / 0.3% (64: 99 / 0.6%);
+final span **0.088** (64: 0.106) — more capacity fits the teacher tighter;
+holdout unchanged (recovery 0.018, cos(s,t) 0.139, disc_far 0.058). Geometry
+is back past the warm chain at no holdout cost; whether it renders differently
+is readable only on a multi-seed arm C (next paragraph).
+
+**Arm C6 = the fdiag pack on the C2 recipe** (`cjk_unmask_c6.toml`, job
+`20260903-082912-f7baf9`, grid `armC6_s*`): a pack indistinguishable from C5's
+landed at **~2–3 non-diegetic text events** (s42 r1 pseudo-JA band across the
+top, s42 r6 "SHIRICS MAR" poster of the C4 kind, s7 r8 bubbles filled with
+pseudo-JA) plus the C4-style ribbon ears at s42 r7, against C5's ~1 and C2's
+0. It also keeps r2 coloured at s42/s1234 where C2/C5 fall to lineart, and
+loses the figure at s1234 r5. → **arm-C run-to-run noise is the size of the
+whole C2 (0) … C4 (3) spread.** Neither "the r2 corpus is the common factor"
+(§9) nor "C5 is clean" survives; C2 is plausibly the lucky run. Rule from
+here: an arm-C readout on a pack needs ≥3 training seeds of the *same*
+recipe before any pack-vs-pack claim; one run per arm ranks nothing.
+
+**Arm C7 = the r128 pack, same recipe** (`cjk_unmask_c7.toml`, job
+`20260903-105304-1dde80`, grid `armC7_s*`): **~3 events** — s42 r1 pseudo-JA
+band, s42 r6 poster text, s7 r8 pseudo-JA spam over a chibi (the worst comic
+cell of any arm) — plus cat ears at s42 r7 and s1234 r6, and a broken s7 r7
+portrait; r2 stays coloured at s42 and the s1234 r5 figure survives. C7 fails
+in the **same cells C6 does** (s42 r1 / r6 / r7) while C5 is clean there —
+two packs that differ from C5's in opposite ways agreeing on cells is either
+lottery or a same-day pipeline effect, and one run each cannot tell. Rank is
+not a lever at this readout: geometry moved (54 → 91), renders did not
+improve. Tally so far: C2 0 · C5 ~1 · C6 ~2–3 · C7 ~3 · C3 3 · C4 3.
+
+**OCR post-processing v2** (`anime_tools.ocr._text`, sibling checkout,
+uncommitted; tests in the package's own `test_ocr.py`): (1) `reading_order` is now
+page-aware — a page set mostly in columns reads **right to left** by right
+edge, top to bottom within a column band (was top-to-bottom, left-to-right
+for everything); (2) `normalize_ja` restores the ``ー`` PP-OCRv6 has no
+Japanese for — after kana, vertical ``1 | l I １ ｜ 丨`` and horizontal
+``- — – ｰ`` → ``ー``, horizontal ``一`` between katakana → ``ー``, ``=``/``＝``
+between katakana → ``ニ``; a digit that counts something (``もう1回``,
+``１か月``, ``あと1つ``, ``あと10``) stays a digit; (3) `is_tally` drops
+``正``-stroke tally lines (``正T正正``). Applied inside `OcrEngine.read` after
+`join_cjk`, before the floors. Re-derived over the sincos sidecars
+(gate 0.70 unchanged) → `ocr_records_sincos_ppocr_v2.jsonl`: 227 lines
+(228), 4 ``ー`` fixes, 1 tally dropped, 32/96 images re-ordered. Trainer side
+`cache_te_ext.py` gained `--ocr_format order` (default): one phrase
+``Japanese text in following order: "…", "…"`` in record order, ASCII ``,``
+/ ``"`` inside a line escaped to ``、`` / ``”`` so the flat-tag grammar
+round-trips; ``tags`` keeps the C2–C6 shape (``japanese text`` + ``「…」``
+per line). `run_unmask_r2.py` passes `--records / --mirror / --ocr_format`.
+Tokenizer facts worth keeping: the phrase and the quote marks are stock T5
+pieces, the lines inside are Qwen-token ext rows (no char rows on the sincos
+captions), and **``♡`` is T5 ``<unk>``** (the pack maps CJK only) — the
+sincos captions carry it often; unresolved. C2–C6 all used v1 records +
+``tags``; the first arm on v2 + ``order`` is still to run.
+

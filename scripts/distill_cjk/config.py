@@ -175,6 +175,13 @@ def build_argparser() -> argparse.ArgumentParser:
     )
     p.add_argument("--rank", type=int, default=64, help="rank of the global map")
     p.add_argument(
+        "--freeze_diag",
+        action="store_true",
+        help="global/global_row: keep the per-dim diagonal at identity (not "
+        "trained) — low-rank + scalar gain only. Preserves the init key "
+        "geometry the learned diagonal otherwise collapses.",
+    )
+    p.add_argument(
         "--min_visits",
         type=int,
         default=5,
@@ -331,6 +338,7 @@ class CJKDistillConfig:
     param: str
     rank: int
     min_visits: int
+    freeze_diag: bool = False
     tunable_rows_from: int = 0
     span_focus_from: int = 0
     span_focus_bg: float = 0.0
@@ -432,6 +440,7 @@ def resolve_config(args: argparse.Namespace) -> CJKDistillConfig:
         param=args.param,
         rank=int(args.rank),
         min_visits=int(args.min_visits),
+        freeze_diag=bool(args.freeze_diag),
         tunable_rows_from=int(args.tunable_rows_from),
         span_focus_from=int(args.span_focus_from),
         span_focus_bg=float(args.span_focus_bg),

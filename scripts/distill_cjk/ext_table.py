@@ -43,11 +43,13 @@ class ExtTable(nn.Module):
         mode: str = "global",
         rank: int = 64,
         tunable_rows: torch.Tensor | None = None,
+        freeze_diag: bool = False,
     ) -> None:
         super().__init__()
         if mode not in ("global", "row", "global_row"):
             raise ValueError(f"unknown param mode {mode!r}")
         self.mode = mode
+        self.freeze_diag = bool(freeze_diag)
         self.register_buffer("init", init.float(), persistent=False)
         n_rows, dim = init.shape
 
@@ -55,7 +57,14 @@ class ExtTable(nn.Module):
             # LoRA-style init: down random, up zero ⇒ exactly `init` at step 0.
             self.down = nn.Parameter(torch.randn(dim, rank) * (dim**-0.5))
             self.up = nn.Parameter(torch.zeros(rank, dim))
-            self.log_diag = nn.Parameter(torch.zeros(dim))
+            # ``freeze_diag``: keep the per-dim diagonal at identity (a
+            # buffer, never trained) so the shared map is low-rank + gain
+            # only. The learned diagonal is what discards key directions the
+            # teacher does not reward (spread_probe: init PR 234 -> 54).
+            if freeze_diag:
+                self.register_buffer("log_diag", torch.zeros(dim))
+            else:
+                self.log_diag = nn.Parameter(torch.zeros(dim))
             self.log_gain = nn.Parameter(torch.zeros(()))
 
         if mode in ("row", "global_row"):
