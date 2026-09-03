@@ -21,6 +21,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from anime_tools.contract import DBV4_REQUIRED_FILES
 from anime_tools.tagger.dbv4_meta import (
     DBV4_BACKBONE_FILES,
     DEFAULT_DBV4_REPO,
@@ -43,10 +44,9 @@ DANBOORU_TAGS_URLS = (
 TAGGER_CKPT_REPO = "sorryhyun/anima-tagger"
 TAGGER_CKPT_SUBFOLDER = "dbv4"
 TAGGER_CKPT_REL = "models/captioners/anima-tagger-dbv4"
-# Required-file set of a dbv4 checkpoint dir; mirrors
-# anime_tools.tagger.tagger.DBV4_REQUIRED_FILES (duplicated rather
-# than imported — that module pulls torch, and the task runner stays import-light).
-TAGGER_CKPT_REQUIRED = ("config.json", "vocab.json", "rules.yaml")
+# Required-file set of a dbv4 checkpoint dir — the package's own answer, from
+# its stdlib-only contract module (the task runner stays import-light).
+TAGGER_CKPT_REQUIRED = DBV4_REQUIRED_FILES
 # Backbone facts come from the torch-free anime_tools.tagger.dbv4_meta so the
 # loader, this task and the GUI can never disagree on repo / file set.
 TAGGER_BACKBONE_REPO = DEFAULT_DBV4_REPO

@@ -6,18 +6,33 @@
 ``post_image_dataset/masks/<rel>/{stem}_mask.png``. Per-tool intermediates
 are never persisted under the project root.
 
-Either backend can be turned off via the ``RUN_SAM_MASK`` /
-``RUN_MIT_MASK`` env vars (set by the GUI's Preprocessing tab) — values
-``"0"`` / ``"false"`` / ``"no"`` (case-insensitive) skip that backend.
-When only one runs, the merge step still fires; ``merge_masks.py`` is a
-no-op for single-source inputs.
+Every stage runs as an ``anime_tools`` **request object**
+(``anime_tools.masking.requests.{SamMaskRequest,MitMaskRequest,MergeMasksRequest}``)
+— the trainer never spells a flag. How a request is executed depends on where
+``make mask`` runs (``_execute``):
 
-The SAM config (``configs/sam_mask.yaml`` or the GUI's ``SAM_MASK_CONFIG_JSON``
-snapshot) is translated here into ``anime_tools.masking.requests.SamMaskRequest``
-fields — the package's CLI no longer reads a yaml. Its ``rules:`` form
-(several prompt sets routed by ``path_pattern``) becomes one SAM pass per
-rule into its own temp dir; the merge step's pixel-min union then composes
-them exactly as the old single-pass ``rules`` did (ignore regions unioned).
+- **Under a daemon job** (``ANIMA_DAEMON_JOB_DIR`` set — every GUI run, and
+  ``make daemon-run ARGS="tasks.py mask"``) the stage runners are called
+  **in-process** through the package registry (``Stage.runner()``): one
+  interpreter for the whole chain, one SAM3 load shared by every ``rules:``
+  pass (``load_sam3`` is cached per process), and the package's
+  ``_progress`` heartbeat keeps a quiet model load from reading as a stall to
+  the daemon's watchdog. The job process exits at the end, so VRAM is
+  released as before.
+- **From a plain shell** each stage is a ``python -m <stage.module>`` child
+  with ``req.to_argv()``, so ``make mask`` still releases the model between
+  stages and on exit.
+
+The mask config (``configs/sam_mask.yaml`` or the GUI's ``MASK_CONFIG_JSON``
+env snapshot) carries the SAM prompt set(s) — a flat ``prompts`` /
+``focus_prompts`` pair or a ``rules:`` list routed by ``path_pattern`` — plus
+the optional ``run_sam`` / ``run_mit`` switches and a ``mit:`` block
+(``text_threshold`` / ``dilate`` / ``ctd_gate``) for the text masker. Every
+knob absent from the config falls back to the package's request default; the
+trainer carries no literal of its own. A ``rules:`` form becomes one SAM pass
+per rule into its own temp dir; the merge step's pixel-min union then
+composes them exactly as the old single-pass ``rules`` did (ignore regions
+unioned).
 """
 
 from __future__ import annotations
@@ -33,6 +48,13 @@ from ._common import PY, ROOT, _path, run
 MASK_OUTPUT_DIR = ROOT / "post_image_dataset" / "masks"
 RESIZED_IMAGE_DIR = ROOT / "post_image_dataset" / "resized"
 SAM_CONFIG = ROOT / "configs" / "sam_mask.yaml"
+# Where ``make download-mit`` lands the UNet++ weights. The package's own
+# default (``model_path=None``) reads the same file out of the HF hub cache, so
+# this is passed only when the trainer's copy exists — no second download for
+# a checkout that fetched it the trainer's way, no stale literal otherwise.
+MIT_MODEL_PATH = ROOT / "models" / "mit" / "model.pth"
+MASK_CONFIG_ENV = "MASK_CONFIG_JSON"
+DAEMON_JOB_DIR_ENV = "ANIMA_DAEMON_JOB_DIR"
 _UNSET = object()
 
 
@@ -71,27 +93,31 @@ def _scoped_mask_output_dir(resized_dir: Path) -> Path:
     return MASK_OUTPUT_DIR / scope
 
 
-def _runtime_sam_config() -> dict | None:
-    """GUI queue jobs can pass an immutable SAM config snapshot via env.
+# ----- config ------------------------------------------------------------------
 
-    Direct CLI usage leaves this unset and continues to read
-    ``configs/sam_mask.yaml``.
+
+def _runtime_mask_config() -> dict | None:
+    """GUI queue jobs pass an immutable mask config snapshot via env.
+
+    Same keys as ``configs/sam_mask.yaml`` (the GUI's rule cards → ``rules``,
+    its two "run" checkboxes → ``run_sam`` / ``run_mit``, its MIT knobs → the
+    ``mit:`` block). Direct CLI usage leaves this unset and reads the yaml.
     """
-    raw = os.environ.get("SAM_MASK_CONFIG_JSON")
+    raw = os.environ.get(MASK_CONFIG_ENV)
     if not raw:
         return None
     try:
         cfg = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"Invalid SAM_MASK_CONFIG_JSON: {exc}") from exc
+        raise SystemExit(f"Invalid {MASK_CONFIG_ENV}: {exc}") from exc
     if not isinstance(cfg, dict):
-        raise SystemExit("Invalid SAM_MASK_CONFIG_JSON: expected an object")
+        raise SystemExit(f"Invalid {MASK_CONFIG_ENV}: expected an object")
     return cfg
 
 
-def _load_sam_config(runtime: dict | None | object = _UNSET) -> dict:
+def _load_mask_config(runtime: dict | None | object = _UNSET) -> dict:
     if runtime is _UNSET:
-        runtime = _runtime_sam_config()
+        runtime = _runtime_mask_config()
     if runtime is not None:
         return runtime
     try:
@@ -114,9 +140,18 @@ def _config_path_pattern(cfg: dict) -> str | None:
     return pattern if pattern and pattern != "*" else None
 
 
-SAM3_CHECKPOINT = "models/sam3/sam3.pt"
-SAM_BATCH_SIZE = 4
-_SAM_MODULE = "anime_tools.masking.cli.generate_masks"
+def _config_flag(cfg: dict, key: str, default: bool = True) -> bool:
+    """A ``run_sam`` / ``run_mit`` switch: absent → on; a string spelled the
+    env-var way (``"0"`` / ``"false"`` / ``"no"`` / ``"off"``) → off."""
+    raw = cfg.get(key)
+    if raw is None:
+        return default
+    if isinstance(raw, str):
+        return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+    return bool(raw)
+
+
+# ----- requests ------------------------------------------------------------------
 
 
 def _sam_rules(cfg: dict) -> list[dict]:
@@ -162,11 +197,10 @@ def _sam_request(image_dir: Path, out_dir: Path, rule: dict, path_pattern: str |
     A rule's own ``path_pattern`` routes *within* the global scope in the old
     single-pass CLI; the package takes one glob per run, so a rule that names
     a pattern runs on that pattern alone (the global scope still applies to
-    every rule without one). Building the request rather than spelling flags
-    is what keeps ``make mask`` and the package's parser from drifting (the
-    contract test round-trips this argv), and its validation fires here — a
-    rule with neither prompt list would otherwise fail minutes in, after the
-    SAM3 load.
+    every rule without one). The SAM3 checkpoint and batch size are the
+    request defaults — the package's download catalog is where the weights
+    land. Validation fires here: a rule with neither prompt list would
+    otherwise fail minutes in, after the SAM3 load.
     """
     from anime_tools.masking.requests import SamMaskRequest
 
@@ -177,8 +211,6 @@ def _sam_request(image_dir: Path, out_dir: Path, rule: dict, path_pattern: str |
             mask_dir=str(out_dir),
             prompts=rule["prompts"],
             focus_prompts=rule["focus_prompts"],
-            checkpoint=SAM3_CHECKPOINT,
-            batch_size=SAM_BATCH_SIZE,
             recursive=True,
             path_pattern=rule["path_pattern"] or path_pattern,
             **kwargs,
@@ -187,88 +219,129 @@ def _sam_request(image_dir: Path, out_dir: Path, rule: dict, path_pattern: str |
         raise SystemExit(f"SAM mask rule {rule!r}: {exc}") from exc
 
 
-def _run_sam(
-    image_dir: Path, out_dir: Path, rule: dict, path_pattern: str | None
-) -> None:
-    req = _sam_request(image_dir, out_dir, rule, path_pattern)
-    run([PY, "-m", _SAM_MODULE, *req.to_argv()])
+def _mit_model_path() -> str | None:
+    return str(MIT_MODEL_PATH) if MIT_MODEL_PATH.exists() else None
 
 
-def _run_mit(image_dir: Path, out_dir: Path, extra: list[str]) -> None:
-    # MIT_TEXT_THRESHOLD / MIT_DILATE let the GUI tune the MIT masker; defaults
-    # match the script's argparse so direct CLI use is unchanged.
-    cmd = [
-        PY,
-        "-m",
-        "anime_tools.masking.cli.generate_masks_mit",
-        "--image-dir",
-        str(image_dir),
-        "--mask-dir",
-        str(out_dir),
-        "--model-path",
-        "models/mit/model.pth",
-        "--recursive",
-    ]
-    text_threshold = os.environ.get("MIT_TEXT_THRESHOLD")
-    if text_threshold:
-        cmd += ["--text-threshold", text_threshold]
-    dilate = os.environ.get("MIT_DILATE")
-    if dilate:
-        cmd += ["--dilate", dilate]
-    if os.environ.get("MIT_CTD_GATE") is not None:
-        cmd += ["--ctd-gate" if _env_flag("MIT_CTD_GATE") else "--no-ctd-gate"]
-    cmd += list(extra)
-    run(cmd)
+def _mit_request(image_dir: Path, out_dir: Path, cfg: dict, path_pattern: str | None):
+    """The ``MitMaskRequest`` the text masker runs as.
+
+    Knobs come from the config's ``mit:`` block (``text_threshold`` /
+    ``dilate`` / ``ctd_gate``); an absent one is the package default. MIT
+    always stays ignore-mode (there is no focus form), and ``use_sam`` is left
+    at the package default — the balloon pass is the SAM stage's job here.
+    """
+    from anime_tools.masking.requests import MitMaskRequest
+
+    block = cfg.get("mit") or {}
+    if not isinstance(block, dict):
+        raise SystemExit(f"mask config: `mit` must be a mapping, got {block!r}")
+    kwargs: dict = {}
+    for key, cast in (("text_threshold", float), ("dilate", int), ("ctd_gate", bool)):
+        value = block.get(key)
+        if value is None:
+            continue
+        if key == "ctd_gate":
+            kwargs[key] = _config_flag(block, key)
+        else:
+            kwargs[key] = cast(value)
+    try:
+        return MitMaskRequest(
+            image_dir=str(image_dir),
+            mask_dir=str(out_dir),
+            recursive=True,
+            path_pattern=path_pattern,
+            model_path=_mit_model_path(),
+            **kwargs,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"MIT mask config {block!r}: {exc}") from exc
 
 
-def _env_flag(name: str, default: bool = True) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+def _merge_request(sources: list[str], output_dir: Path):
+    from anime_tools.masking.requests import MergeMasksRequest
+
+    return MergeMasksRequest(mask_dirs=tuple(sources), output_dir=str(output_dir))
+
+
+# ----- execution -----------------------------------------------------------------
+
+
+def _in_daemon_job() -> bool:
+    return bool(os.environ.get(DAEMON_JOB_DIR_ENV))
+
+
+def _stage(stage_id: str):
+    from anime_tools.stages.registry import BY_ID
+
+    return BY_ID[stage_id]
+
+
+def _run_in_process(stage_id: str, req) -> None:
+    """``Stage.runner()(req)`` in this interpreter (the daemon-job path).
+
+    The package anchors bare relative defaults (the SAM3 checkpoint, the CTD
+    net) on ``ANIMA_HOME``, which ``run()`` exports for a child; pin it the
+    same way here so an in-process run resolves identically.
+    """
+    os.environ.setdefault("ANIMA_HOME", str(ROOT))
+    stage = _stage(stage_id)
+    print(f"  > [in-process] {stage.module} {' '.join(req.to_argv())}")
+    stage.runner()(req)
+
+
+def _execute(stage_id: str, req) -> None:
+    """Run one mask stage: in-process under a daemon job, else as a child."""
+    if _in_daemon_job():
+        _run_in_process(stage_id, req)
+        return
+    run([PY, "-m", _stage(stage_id).module, *req.to_argv()])
 
 
 def cmd_mask(extra):
     """Run SAM + MIT into a tempdir, merge, write to post_image_dataset/masks/.
 
-    ``RUN_SAM_MASK`` / ``RUN_MIT_MASK`` env vars gate each backend
-    independently (default on). If both are disabled the command is a no-op.
+    ``run_sam`` / ``run_mit`` in the mask config gate each backend
+    independently (default on). If both are off the command is a no-op.
     """
-    run_sam = _env_flag("RUN_SAM_MASK")
-    run_mit = _env_flag("RUN_MIT_MASK")
+    if extra:
+        raise SystemExit(
+            f"make mask takes no ARGS ({' '.join(extra)!r}); the knobs live in "
+            f"{SAM_CONFIG.relative_to(ROOT)} (or the GUI's Preprocessing tab)."
+        )
+    cfg = _load_mask_config()
+    run_sam = _config_flag(cfg, "run_sam")
+    run_mit = _config_flag(cfg, "run_mit")
     if not (run_sam or run_mit):
         print("Both SAM and MIT masking are disabled — nothing to do.")
         return
-    sam_cfg = _load_sam_config()
-    pattern = _config_path_pattern(sam_cfg)
-    pattern_args = ["--path-pattern", pattern] if pattern else []
+    pattern = _config_path_pattern(cfg)
     resized_dir = _resized_image_dir()
     mask_output_dir = _scoped_mask_output_dir(resized_dir)
     with tempfile.TemporaryDirectory(prefix="anima-masks-") as tmp_root:
         merge_sources: list[str] = []
+        # Build every request up front: validation (a rule with no prompts, a
+        # bad MIT threshold) fires before the first model load.
+        sam_requests = []
         if run_sam:
-            # One SAM pass per rule, each into its own dir; the merge below
-            # unions them (pixel-min), which is the old rules compose.
-            for i, rule in enumerate(_sam_rules(sam_cfg)):
+            for i, rule in enumerate(_sam_rules(cfg)):
                 tmp_sam = Path(tmp_root) / f"sam{i}"
-                _run_sam(resized_dir, tmp_sam, rule, pattern)
-                merge_sources.append(str(tmp_sam))
+                sam_requests.append(_sam_request(resized_dir, tmp_sam, rule, pattern))
+        mit_request = None
         if run_mit:
-            tmp_mit = Path(tmp_root) / "mit"
-            _run_mit(resized_dir, tmp_mit, [*pattern_args])
-            merge_sources.append(str(tmp_mit))
+            mit_request = _mit_request(
+                resized_dir, Path(tmp_root) / "mit", cfg, pattern
+            )
+        # One SAM pass per rule, each into its own dir; the merge below unions
+        # them (pixel-min), which is the old rules compose.
+        for req in sam_requests:
+            _execute("masks_sam", req)
+            merge_sources.append(req.mask_dir)
+        if mit_request is not None:
+            _execute("masks_mit", mit_request)
+            merge_sources.append(mit_request.mask_dir)
         mask_output_dir.mkdir(parents=True, exist_ok=True)
-        run(
-            [
-                PY,
-                "-m",
-                "anime_tools.masking.cli.merge_masks",
-                *merge_sources,
-                "--output-dir",
-                str(mask_output_dir),
-                *extra,
-            ]
-        )
+        _execute("masks_merge", _merge_request(merge_sources, mask_output_dir))
 
 
 def cmd_mask_clean(_extra):

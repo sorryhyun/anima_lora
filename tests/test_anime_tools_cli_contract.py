@@ -18,6 +18,7 @@ import ast
 import importlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 
@@ -56,32 +57,35 @@ def _build(cmd: list[str]):
 # ----- masking -----------------------------------------------------------------
 
 
+def _mask_env(monkeypatch, cfg: dict) -> None:
+    monkeypatch.setenv("MASK_CONFIG_JSON", json.dumps(cfg))
+    # A test suite itself running as a daemon job would otherwise take the
+    # in-process path and load SAM3.
+    monkeypatch.delenv("ANIMA_DAEMON_JOB_DIR", raising=False)
+
+
 def test_mask_rules_form_builds_sam_mit_and_merge_requests(monkeypatch):
     from scripts.tasks import masking
 
     calls = _capture(monkeypatch, masking)
-    monkeypatch.setenv(
-        "SAM_MASK_CONFIG_JSON",
-        json.dumps(
-            {
-                "path_pattern": "manga/*",
-                "rules": [
-                    {"prompts": ["bubble"], "threshold": 0.7},
-                    {
-                        "path_pattern": "character_a/*",
-                        "focus_prompts": ["girl"],
-                        "threshold": 0.5,
-                        "dilate": 8,
-                    },
-                ],
-            }
-        ),
+    _mask_env(
+        monkeypatch,
+        {
+            "path_pattern": "manga/*",
+            "rules": [
+                {"prompts": ["bubble"], "threshold": 0.7},
+                {
+                    "path_pattern": "character_a/*",
+                    "focus_prompts": ["girl"],
+                    "threshold": 0.5,
+                    "dilate": 8,
+                },
+            ],
+            "run_sam": True,
+            "run_mit": True,
+            "mit": {"text_threshold": 0.9, "dilate": 2, "ctd_gate": False},
+        },
     )
-    monkeypatch.setenv("RUN_SAM_MASK", "1")
-    monkeypatch.setenv("RUN_MIT_MASK", "1")
-    monkeypatch.setenv("MIT_TEXT_THRESHOLD", "0.9")
-    monkeypatch.setenv("MIT_DILATE", "2")
-    monkeypatch.setenv("MIT_CTD_GATE", "0")
 
     masking.cmd_mask([])
 
@@ -99,6 +103,11 @@ def test_mask_rules_form_builds_sam_mit_and_merge_requests(monkeypatch):
     assert sam_a.path_pattern == "manga/*"
     assert Path(sam_a.image_dir) == masking.RESIZED_IMAGE_DIR
     assert sam_a.recursive
+    # No trainer literals: the checkpoint and batch size are the package's.
+    from anime_tools.masking.requests import SamMaskRequest
+
+    assert sam_a.checkpoint == SamMaskRequest.checkpoint
+    assert sam_a.batch_size == SamMaskRequest.batch_size
 
     assert sam_b.focus_prompts == ("girl",)
     assert sam_b.prompts == ()
@@ -109,6 +118,7 @@ def test_mask_rules_form_builds_sam_mit_and_merge_requests(monkeypatch):
     assert mit.dilate == 2
     assert mit.ctd_gate is False
     assert mit.use_mit
+    assert not mit.use_sam
     assert mit.path_pattern == "manga/*"
 
     assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir, mit.mask_dir)
@@ -120,9 +130,12 @@ def test_mask_flat_yaml_config_builds_one_sam_request(monkeypatch):
     from scripts.tasks import masking
 
     calls = _capture(monkeypatch, masking)
-    monkeypatch.delenv("SAM_MASK_CONFIG_JSON", raising=False)
-    monkeypatch.setenv("RUN_SAM_MASK", "1")
-    monkeypatch.setenv("RUN_MIT_MASK", "0")
+    monkeypatch.delenv("MASK_CONFIG_JSON", raising=False)
+    monkeypatch.delenv("ANIMA_DAEMON_JOB_DIR", raising=False)
+    yaml_cfg = masking._load_mask_config()
+    monkeypatch.setattr(
+        masking, "_load_mask_config", lambda: {**yaml_cfg, "run_mit": False}
+    )
 
     masking.cmd_mask([])
 
@@ -134,6 +147,66 @@ def test_mask_flat_yaml_config_builds_one_sam_request(monkeypatch):
     assert sam.prompts == ("speech bubble", "text bubble")
     assert sam.focus_prompts == ()
     assert sam.path_pattern is None
+
+
+def test_mask_under_a_daemon_job_runs_the_stages_in_process(monkeypatch, tmp_path):
+    """With ``ANIMA_DAEMON_JOB_DIR`` set every stage goes through the registry's
+    ``Stage.runner()`` in this interpreter — no child, so one SAM3 load is
+    shared across the rules — and the requests are the same objects the argv
+    path would have spelled."""
+    from scripts.tasks import masking
+
+    calls = _capture(monkeypatch, masking)
+    monkeypatch.setenv(
+        "MASK_CONFIG_JSON",
+        json.dumps({"rules": [{"prompts": ["a"]}, {"prompts": ["b"]}]}),
+    )
+    monkeypatch.setenv("ANIMA_DAEMON_JOB_DIR", str(tmp_path))
+    monkeypatch.delenv("ANIMA_HOME", raising=False)
+
+    ran: list[tuple[str, object]] = []
+
+    class _Stage:
+        def __init__(self, stage_id):
+            self.module = f"stub.{stage_id}"
+            self._id = stage_id
+
+        def runner(self):
+            return lambda req: ran.append((self._id, req))
+
+    monkeypatch.setattr(masking, "_stage", _Stage)
+
+    masking.cmd_mask([])
+
+    assert calls == []
+    assert [stage_id for stage_id, _ in ran] == [
+        "masks_sam",
+        "masks_sam",
+        "masks_mit",
+        "masks_merge",
+    ]
+    from anime_tools.masking.requests import (
+        MergeMasksRequest,
+        MitMaskRequest,
+        SamMaskRequest,
+    )
+
+    sam_a, sam_b, mit, merge = (req for _, req in ran)
+    assert isinstance(sam_a, SamMaskRequest) and sam_b.prompts == ("b",)
+    assert isinstance(mit, MitMaskRequest)
+    assert isinstance(merge, MergeMasksRequest)
+    assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir, mit.mask_dir)
+    # The package anchors its bare defaults on ANIMA_HOME, which run() exports
+    # for a child; the in-process path must pin it the same way.
+    assert Path(os.environ["ANIMA_HOME"]) == ROOT
+
+
+def test_mask_stage_ids_the_trainer_names_are_registered():
+    from anime_tools.stages.registry import BY_ID
+
+    for stage_id in ("masks_sam", "masks_mit", "masks_merge"):
+        stage = BY_ID[stage_id]
+        assert callable(stage.runner())
 
 
 # ----- caption stages ------------------------------------------------------------
@@ -363,3 +436,28 @@ def test_caption_index_argv_keeps_the_trainer_output_path(monkeypatch):
     assert cmd[2] == "anime_tools.captions.index"
     assert cmd[cmd.index("--out") + 1] == preprocess.CAPTION_INDEX_PATH
     assert preprocess.CAPTION_INDEX_PATH.startswith("post_image_dataset/captions/")
+
+
+# ----- the contract version the task runner was written for ---------------------
+
+
+def test_task_runner_pins_the_installed_contract_version():
+    from anime_tools.contract import CONTRACT_VERSION
+
+    from scripts.tasks import _common
+
+    assert _common.ANIME_TOOLS_CONTRACT_VERSION == CONTRACT_VERSION
+
+
+def test_no_hand_copied_contract_constants():
+    """The three copies the API-first audit found are now the package's own."""
+    from anime_tools import contract
+
+    from gui.tabs import _autotag
+    from scripts.tasks import downloads, preprocess
+
+    assert _autotag._AUTOTAG_READY is contract.AUTOTAG_READY
+    assert _autotag._AUTOTAG_RESULT_PREFIX is contract.AUTOTAG_RESULT_PREFIX
+    assert _autotag._AUTOTAG_ERROR_PREFIX is contract.AUTOTAG_ERROR_PREFIX
+    assert preprocess.AUTOTAG_MODES is contract.AUTOTAG_MODES
+    assert downloads.TAGGER_CKPT_REQUIRED is contract.DBV4_REQUIRED_FILES

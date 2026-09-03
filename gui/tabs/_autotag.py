@@ -12,6 +12,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from anime_tools.contract import (
+    AUTOTAG_ERROR_PREFIX,
+    AUTOTAG_READY,
+    AUTOTAG_RESULT_PREFIX,
+)
 from PySide6.QtCore import (
     QElapsedTimer,
     QObject,
@@ -24,12 +29,12 @@ from PySide6.QtCore import (
 from gui import DEFAULT_AUTOTAG_CONFIDENCE, ROOT, get_setting
 from gui import daemon as gui_daemon
 
-# Stdio protocol sentinels of the resident autotag worker (kept in sync with
-# ``anime_tools.tagger.cli.autotag_server``). Hardcoded rather than imported
-# because that module pulls in torch, which the GUI must stay free of.
-_AUTOTAG_READY = "ANIMA_AUTOTAG_READY"
-_AUTOTAG_RESULT_PREFIX = "ANIMA_AUTOTAG_RESULT\t"
-_AUTOTAG_ERROR_PREFIX = "ANIMA_AUTOTAG_ERROR\t"
+# Stdio protocol sentinels of the resident autotag worker
+# (``anime_tools.tagger.cli.autotag_server``), from the package's stdlib-only
+# contract module — the GUI stays torch-free by construction.
+_AUTOTAG_READY = AUTOTAG_READY
+_AUTOTAG_RESULT_PREFIX = AUTOTAG_RESULT_PREFIX
+_AUTOTAG_ERROR_PREFIX = AUTOTAG_ERROR_PREFIX
 
 # Free the resident tagger (VRAM) after this many ms with no autotag request.
 _AUTOTAG_IDLE_MS = 10 * 60 * 1000

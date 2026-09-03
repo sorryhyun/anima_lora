@@ -1,6 +1,6 @@
 # anime_tools API-first boundary — trainer side (2026-09-02)
 
-Status: **approved direction; package half landed, T0–T1 landed 2026-09-02, T2–T6 open**
+Status: **approved direction; package half landed, T0–T3 landed (T0–T1 2026-09-02, T2–T3 2026-09-03), T4–T6 open**
 (re-audited 2026-09-02 against `anime_tools` HEAD `6a225f8`; the package-side
 requests below landed the same day on top of it, as `0.4.0`). The package-side
 plan (`docs/api_first_plan.md`, deleted in `9ccc655`) is now folded into
@@ -175,12 +175,12 @@ above are pinned; T3–T5 are the migration proper.
   with `run()` stubbed, so the test reads the real argv. `captions.index` is
   checked by `--help` text or skipped. Also assert every trainer
   `from anime_tools … import` name resolves (a module-import sweep).
-- [ ] **T2. Constants from `anime_tools.contract`.** Replace the three hand
+- [x] **T2. Constants from `anime_tools.contract`.** *Landed 2026-09-03.* Replace the three hand
   copies with imports (values are identical today, so this is mechanical);
   the trainer GUI stays torch-free by construction since the module is.
   Assert `anime_tools.contract.CONTRACT_VERSION == 1` at import in
   `scripts/tasks/_common.py` with a clear "bump the pin" message.
-- [ ] **T3. Masking through requests.** `scripts/tasks/masking.py::cmd_mask`
+- [x] **T3. Masking through requests.** *Landed 2026-09-03* — see "What T2–T3 found" below. `scripts/tasks/masking.py::cmd_mask`
   builds `SamMaskRequest` / `MitMaskRequest` / `MergeMasksRequest`. Under a
   daemon job (`ANIMA_DAEMON_JOB_DIR` set) call the runners in-process
   (`Stage.run` after request 3, else `anime_tools.masking.run_*`) so the
@@ -268,12 +268,72 @@ plan above, in the order they bit:
    (scratch set + `CONFIG_FILE` snapshot are the recipe; the config lives only
    in the session scratchpad, so rebuild it: five images, two without captions).
 
+## What T2–T3 found (2026-09-03)
+
+Landed as one trainer-side change (no package commit needed; pin unchanged at
+`94e6d92`).
+
+1. **T2 is exactly mechanical.** The three copies now read
+   `anime_tools.contract` (`gui/tabs/_autotag.py` sentinels,
+   `scripts/tasks/preprocess.py::AUTOTAG_MODES`,
+   `scripts/tasks/downloads.py::TAGGER_CKPT_REQUIRED = DBV4_REQUIRED_FILES`);
+   `tests/test_anime_tools_cli_contract.py::test_no_hand_copied_contract_constants`
+   pins identity (`is`), not equality. `scripts/tasks/_common.py` asserts
+   `CONTRACT_VERSION == ANIME_TOOLS_CONTRACT_VERSION` (= 1) at import with the
+   bump-the-pin message; a missing package is tolerated there (each `-m`
+   target fails with the clearer error on its own). The GUI launch-speed
+   guard still passes — `anime_tools/__init__.py` is `importlib.metadata`
+   only.
+2. **The MIT step never loaded SAM3 twice.** At 0.4.0 `MitMaskRequest.use_sam`
+   defaults off and the trainer never passed `--use-sam`, so the "one SAM3
+   for all three stages" saving above was overstated: the real in-process
+   win is one interpreter for the chain and **one SAM3 load across every
+   `rules:` pass** (the rules form used to reload it per rule). Confirmed on
+   a 3-image daemon smoke (two rules + MIT + merge): a single
+   `phase: load sam3` in the job's `progress.jsonl`, 13 s, nine `step`
+   lines. The heartbeat thread only fires past 30 s of quiet, so none
+   appeared — the `--stall-timeout 0` workaround is now moot for `make mask`
+   under the daemon.
+3. **Execution is decided by `ANIMA_DAEMON_JOB_DIR` alone**
+   (`scripts/tasks/masking.py::_execute`): set → `Stage.runner()(req)`
+   in-process via `anime_tools.stages.registry.BY_ID`; unset → `python -m
+   <stage.module> *req.to_argv()` as before, so a shell `make mask` still
+   releases VRAM between stages. Every request is built before the first
+   model load, so a rule with no prompts or a bad MIT knob fails up front.
+   The in-process path pins `ANIMA_HOME` the way `run()` exports it, or the
+   package's bare defaults (`models/sam3/sam3.pt`, the CTD net) would anchor
+   on the CWD. Peak VRAM under the daemon is now SAM3 + UNet++ resident
+   together (the child-per-stage path freed SAM3 first); on the 16 GB box the
+   smoke was unremarkable, an 8 GB report would be the reason to add a
+   between-stage release.
+4. **Env plumbing replaced by one snapshot.** `RUN_SAM_MASK` / `RUN_MIT_MASK`
+   / `MIT_TEXT_THRESHOLD` / `MIT_DILATE` / `MIT_CTD_GATE` /
+   `SAM_MASK_CONFIG_JSON` are gone; the GUI (`PreprocessTab.mask_config()`)
+   sends **`MASK_CONFIG_JSON`** with the `sam_mask.yaml` shape plus
+   `run_sam` / `run_mit` and a `mit: {text_threshold, dilate, ctd_gate}`
+   block, and the yaml accepts the same keys for a shell run (so MIT knobs
+   are tunable there for the first time). Absent keys are the package
+   defaults — the trainer no longer carries `--checkpoint` / `--batch-size 4`
+   (`batch_size` only groups the prefetch; `set_image` is per image either
+   way). One deliberate keep: `--model-path` is passed **when
+   `models/mit/model.pth` exists** (where `make download-mit` lands it);
+   otherwise the request default lets the package read its own hub-cache
+   copy. Dropping it outright would have re-downloaded the weights for every
+   checkout that fetched them the trainer's way.
+5. `make mask ARGS=…` now refuses stray args (they used to reach the merge
+   step, which takes nothing the trainer does not already set).
+6. `tests/test_caption_shuffle.py::test_loader_randomized_falls_back_to_v_family_without_r`
+   failed once under `pytest tests/ -x`, then passed alone and in the full
+   run (1575 passed) — a flake outside this change, not chased here.
+
 ## Guards
 
 - `tests/test_curation_boundary.py` is unchanged: dependency direction stays
   trainer → `anime_tools`.
-- T1's contract test is the drift alarm until T3/T4 remove the argv entirely;
-  after that it still guards `to_argv()` ↔ parser agreement from our side.
+- T1's contract test is the drift alarm until T4 removes the last hand-spelled
+  argv; for masking (T3) it now guards `to_argv()` ↔ parser agreement from our
+  side, and the in-process path is pinned with a stub registry
+  (`test_mask_under_a_daemon_job_runs_the_stages_in_process`).
 - `make daemon-run`, `--queue`, and `make gen` are unaffected: the daemon
   still receives argv, produced by `to_argv()` instead of by hand.
 - The `device` field is in the package GUI's `AUTO_FIELDS`: `to_argv()` omits

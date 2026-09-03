@@ -896,18 +896,30 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             label="mask",
             argv=["tasks.py", "mask"],
             extra_env={
-                "MIT_TEXT_THRESHOLD": self.mit_threshold_edit.text().strip(),
-                "MIT_DILATE": str(int(self.mit_dilate_spin.value())),
-                "RUN_SAM_MASK": "1" if run_sam else "0",
-                "RUN_MIT_MASK": "1" if run_mit else "0",
-                "SAM_MASK_CONFIG_JSON": json.dumps(
-                    {"rules": rules, "path_pattern": mask_path_pattern},
-                    ensure_ascii=False,
-                ),
+                "MASK_CONFIG_JSON": json.dumps(self.mask_config(), ensure_ascii=False)
             },
             config_snapshot=snapshot,
             attach=not queue,
         )
+
+    def mask_config(self) -> dict:
+        """The ``configs/sam_mask.yaml``-shaped snapshot ``make mask`` reads
+        (``MASK_CONFIG_JSON``): the SAM rule cards, the shared mask path
+        pattern, the two run switches and the MIT knobs. Every value is one
+        ``anime_tools`` request field, so the task never carries a literal of
+        its own. Call after ``_save_all()`` (the MIT threshold is validated
+        there)."""
+        rules = self.sam_section.collect_rules() or []
+        return {
+            "rules": rules,
+            "path_pattern": self.sam_section.mask_path_pattern(),
+            "run_sam": self.run_sam_mask_chk.isChecked(),
+            "run_mit": self.run_mit_mask_chk.isChecked(),
+            "mit": {
+                "text_threshold": float(self.mit_threshold_edit.text().strip()),
+                "dilate": int(self.mit_dilate_spin.value()),
+            },
+        }
 
     def _submit(
         self,

@@ -73,6 +73,52 @@ def test_empty_focus_list_is_spelled_explicitly():
     assert argv[argv.index("--focus-prompts") + 1] == "none"
 
 
+def test_mit_block_fills_the_request_and_absent_keys_are_package_defaults(
+    monkeypatch, tmp_path
+):
+    from anime_tools.masking.requests import MitMaskRequest
+
+    monkeypatch.setattr(masking, "MIT_MODEL_PATH", tmp_path / "missing.pth")
+    bare = masking._mit_request(Path("r"), Path("o"), {}, None)
+    assert bare.text_threshold == MitMaskRequest.text_threshold
+    assert bare.dilate == MitMaskRequest.dilate
+    assert bare.ctd_gate is MitMaskRequest.ctd_gate
+    assert bare.model_path is None  # the package fetches its own copy
+    assert bare.use_mit and not bare.use_sam
+
+    tuned = masking._mit_request(
+        Path("r"),
+        Path("o"),
+        {"mit": {"text_threshold": "0.9", "dilate": 2, "ctd_gate": "0"}},
+        "manga/*",
+    )
+    assert tuned.text_threshold == 0.9
+    assert tuned.dilate == 2
+    assert tuned.ctd_gate is False
+    assert tuned.path_pattern == "manga/*"
+
+
+def test_mit_uses_the_trainer_downloaded_weights_when_present(monkeypatch, tmp_path):
+    weights = tmp_path / "model.pth"
+    weights.write_bytes(b"")
+    monkeypatch.setattr(masking, "MIT_MODEL_PATH", weights)
+    req = masking._mit_request(Path("r"), Path("o"), {}, None)
+    assert req.model_path == str(weights)
+
+
+def test_run_switches_accept_bools_and_env_style_strings():
+    assert masking._config_flag({}, "run_sam") is True
+    assert masking._config_flag({"run_sam": False}, "run_sam") is False
+    assert masking._config_flag({"run_mit": "0"}, "run_mit") is False
+    assert masking._config_flag({"run_mit": "no"}, "run_mit") is False
+    assert masking._config_flag({"run_mit": "1"}, "run_mit") is True
+
+
+def test_make_mask_refuses_stray_args():
+    with pytest.raises(SystemExit, match="takes no ARGS"):
+        masking.cmd_mask(["--force"])
+
+
 def test_rule_without_prompts_fails_before_the_sam3_load():
     rule = masking._sam_rules({"rules": [{"path_pattern": "a/*"}]})[0]
     with pytest.raises(SystemExit, match="nothing to mask"):

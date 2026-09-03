@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from anime_tools.contract import AUTOTAG_MODES
+
 from ._common import PY, ROOT, _path, run
 
 
@@ -214,9 +216,6 @@ def _pop_explicit_demote_routes(extra) -> tuple[list[str], list[str]]:
     return routes, cleaned
 
 
-# Mirrors ``anime_tools.stages.autotag.MODES``; duplicated rather than imported
-# so this module stays free of the PIL/torch import chain.
-_AUTOTAG_MODES = ("missing", "merge", "overwrite")
 CAPTION_INDEX_PATH = "post_image_dataset/captions/caption_index.json"
 
 
@@ -337,7 +336,7 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
             i += 1
         elif tok in {"--caption_autotag_mode", "--caption-autotag-mode"}:
             if i + 1 >= len(extra):
-                raise SystemExit(f"{tok} requires a value ({'|'.join(_AUTOTAG_MODES)})")
+                raise SystemExit(f"{tok} requires a value ({'|'.join(AUTOTAG_MODES)})")
             config["autotag_mode"] = str(extra[i + 1]).strip()
             i += 2
         elif tok in {
@@ -360,9 +359,9 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
     # Fail fast: stage runs after resize, so a typo would otherwise surface
     # minutes into a GPU job.
     mode = str(config.get("autotag_mode") or "missing")
-    if mode not in _AUTOTAG_MODES:
+    if mode not in AUTOTAG_MODES:
         raise SystemExit(
-            f"caption autotag mode {mode!r} is not one of {'|'.join(_AUTOTAG_MODES)}"
+            f"caption autotag mode {mode!r} is not one of {'|'.join(AUTOTAG_MODES)}"
         )
     config["autotag_mode"] = mode
     return config, cleaned

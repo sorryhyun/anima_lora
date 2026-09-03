@@ -328,15 +328,19 @@ def test_caption_master_stages_default_from_preprocess_toml(monkeypatch):
             tab.deleteLater()
 
 
-def test_masking_task_reads_gui_sam_config_snapshot(monkeypatch):
+def test_masking_task_reads_gui_mask_config_snapshot(monkeypatch):
     from scripts.tasks import masking
 
     monkeypatch.setenv(
-        "SAM_MASK_CONFIG_JSON",
-        '{"path_pattern":"character_a/*","rules":[{"prompts":["bubble"]}]}',
+        "MASK_CONFIG_JSON",
+        '{"path_pattern":"character_a/*","rules":[{"prompts":["bubble"]}],'
+        '"run_sam":true,"run_mit":false,"mit":{"text_threshold":0.9,"dilate":2}}',
     )
 
-    cfg = masking._load_sam_config()
+    cfg = masking._load_mask_config()
 
     assert cfg["rules"] == [{"prompts": ["bubble"]}]
     assert masking._config_path_pattern(cfg) == "character_a/*"
+    assert masking._config_flag(cfg, "run_sam") and not masking._config_flag(
+        cfg, "run_mit"
+    )
