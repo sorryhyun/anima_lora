@@ -34,56 +34,12 @@ sys.path.insert(0, str(REPO))
 
 from library.anima.ext_vocab import T5_TABLE_SIZE, T5_UNK_ID, Route  # noqa: E402
 
-BANDS = ("0", "1-4", "5-49", "50-499", "500+")
-
-
-def band(v: int) -> str:
-    if v == 0:
-        return "0"
-    if v < 5:
-        return "1-4"
-    if v < 50:
-        return "5-49"
-    if v < 500:
-        return "50-499"
-    return "500+"
-
-
-def script_of(s: str) -> str:
-    kinds = set()
-    for ch in s.strip():
-        o = ord(ch)
-        if 0xAC00 <= o <= 0xD7AF or 0x1100 <= o <= 0x11FF or 0x3130 <= o <= 0x318F:
-            kinds.add("hangul")
-        elif 0x3040 <= o <= 0x30FF or 0x31F0 <= o <= 0x31FF:
-            kinds.add("kana")
-        elif 0x4E00 <= o <= 0x9FFF:
-            kinds.add("han")
-        elif 0x3400 <= o <= 0x4DBF:
-            kinds.add("han_extA")
-        elif 0x3000 <= o <= 0x303F or 0xFF00 <= o <= 0xFFEF:
-            kinds.add("punct_fw")
-        elif ch == " ":
-            pass
-        else:
-            kinds.add("symbol")
-    if not kinds:
-        return "empty"
-    return "+".join(sorted(kinds)) if len(kinds) > 1 else next(iter(kinds))
-
-
-def row_surfaces(mapping: dict, qwen_tok) -> dict[int, tuple[str, str]]:
-    """row → (block, surface). Blocks: qwen / char / sym / sym_char."""
-    out: dict[int, tuple[str, str]] = {}
-    for block in ("qwen", "sym"):
-        qmap = {int(k): v for k, v in (mapping.get(block) or {}).items()}
-        ids = sorted(qmap)
-        for qid, s in zip(ids, qwen_tok.batch_decode([[i] for i in ids])):
-            out[qmap[qid]] = (block, s)
-    for block in ("char", "sym_char"):
-        for ch, r in (mapping.get(block) or {}).items():
-            out[r] = (block, ch)
-    return out
+from scripts.distill_cjk.rows import (  # noqa: E402
+    BANDS,
+    band,
+    row_surfaces,
+    script_of,
+)
 
 
 def main() -> None:

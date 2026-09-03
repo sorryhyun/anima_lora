@@ -223,6 +223,58 @@ def build_argparser() -> argparse.ArgumentParser:
         "renders left the manifold while span loss improved).",
     )
 
+    # ---- coverage (plan_zh2 U4 / U1) -----------------------------------------
+    p.add_argument(
+        "--holdout_rows",
+        type=float,
+        default=0.0,
+        help="U4 row-disjoint holdout: hold out this fraction of the *visited* "
+        "rows (seeded, stratified by script) — every span touching one leaves "
+        "the training pool (spans, not pairs) and is scored at eval as "
+        "`eval.row_holdout.*`, the first direct read of how the map does on a "
+        "row it never trained. 0 = off.",
+    )
+    p.add_argument(
+        "--holdout_rows_min_visits",
+        type=int,
+        default=5,
+        help="rows eligible for --holdout_rows need at least this many visits "
+        "(a row seen once has one occurrence to score).",
+    )
+    p.add_argument(
+        "--holdout_rows_max_visits",
+        type=int,
+        default=500,
+        help="rows at or above this visit count are never held out — the "
+        "500+ band (~140 rows) carries a third of all visits, so holding it "
+        "out strips ~5%% of the pool's span tokens for a question it does "
+        "not answer. 0 = no cap.",
+    )
+    p.add_argument(
+        "--holdout_rows_eval",
+        type=int,
+        default=2048,
+        help="held-out spans scored per eval (the same count of trained spans "
+        "is scored alongside as the in-distribution control).",
+    )
+    p.add_argument(
+        "--span_min_visits",
+        type=int,
+        default=0,
+        help="U1 visit floor: a span whose student tokens contain any ext row "
+        "visited fewer than this many times (over the training pool) gets "
+        "weight 0 — a row seen once is not a teacher; it rides the map like "
+        "an unvisited one and is tagged `mapped-unseen` in the pack. 2 drops "
+        "singletons, 5 matches --min_visits. 0 = off.",
+    )
+    p.add_argument(
+        "--span_min_visits_bg",
+        type=float,
+        default=0.0,
+        help="with --span_min_visits: weight kept by below-floor spans instead "
+        "of 0 (mirrors --span_focus_bg).",
+    )
+
     # ---- adapter capacity (plan3: ext-gated LoRA on the LLM Adapter) --------
     p.add_argument(
         "--adapter_lora",
@@ -343,6 +395,12 @@ class CJKDistillConfig:
     span_focus_from: int = 0
     span_focus_bg: float = 0.0
     row_anchor: float = 0.0
+    holdout_rows: float = 0.0
+    holdout_rows_min_visits: int = 5
+    holdout_rows_max_visits: int = 500
+    holdout_rows_eval: int = 2048
+    span_min_visits: int = 0
+    span_min_visits_bg: float = 0.0
 
     adapter_lora: int = 0
     adapter_lora_targets: str = "self_qkvo,cross_q"
@@ -420,6 +478,14 @@ def resolve_config(args: argparse.Namespace) -> CJKDistillConfig:
     ):
         raise FileNotFoundError(f"--init_pack {args.init_pack}.safetensors not found")
 
+    if not 0.0 <= args.holdout_rows < 1.0:
+        raise ValueError("--holdout_rows must be in [0, 1)")
+    if args.holdout_rows and "span" not in losses:
+        logger.warning(
+            "--holdout_rows without the span loss: rows are held out of a loss "
+            "that is not being trained; the row-holdout metric is still reported"
+        )
+
     blocks = tuple(int(b) for b in str(args.attn_blocks).split(",") if b.strip() != "")
     if "attn" in losses and not blocks:
         raise ValueError("--loss attn needs at least one --attn_blocks entry")
@@ -445,6 +511,12 @@ def resolve_config(args: argparse.Namespace) -> CJKDistillConfig:
         span_focus_from=int(args.span_focus_from),
         span_focus_bg=float(args.span_focus_bg),
         row_anchor=float(args.row_anchor),
+        holdout_rows=float(args.holdout_rows),
+        holdout_rows_min_visits=int(args.holdout_rows_min_visits),
+        holdout_rows_max_visits=int(args.holdout_rows_max_visits),
+        holdout_rows_eval=int(args.holdout_rows_eval),
+        span_min_visits=int(args.span_min_visits),
+        span_min_visits_bg=float(args.span_min_visits_bg),
         adapter_lora=int(args.adapter_lora),
         adapter_lora_targets=str(args.adapter_lora_targets),
         adapter_lora_lr=float(args.adapter_lora_lr),

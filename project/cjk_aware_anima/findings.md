@@ -415,6 +415,69 @@ lottery or a same-day pipeline effect, and one run each cannot tell. Rank is
 not a lever at this readout: geometry moved (54 → 91), renders did not
 improve. Tally so far: C2 0 · C5 ~1 · C6 ~2–3 · C7 ~3 · C3 3 · C4 3.
 
+**Arm C8 = the r256 pack, same recipe** (`cjk_unmask_c8.toml`, job
+`20260903-132944-dfd00e`, grid `armC8_s*`; read 2026-09-03 evening, one run):
+**~2 events** — s42 r6 "CIBBO MIC" poster text, s7 r8 bubbles filled with
+pseudo-JA — plus cat ears at s1234 r6 and the s1234 r2 lineart fall-back;
+s42 r1 is clean (the C6/C7 band cell), r7 portraits fine at all seeds,
+s1234 r5 figure survives. Tally: C2 0 · C5 ~1 · C8 ~2 · C6 ~2–3 · C7 ~3 ·
+C3 3 · C4 3 — inside the run-to-run noise band, rank still not a lever.
+
+**Symbol-block pack + arm C9** (2026-09-03). The four distill caches were
+restaged on the 69,558-row `ext_embed` (symbol block appended; jobs
+`20260903-162103-*`, ~1 h) and `synthjakozh1sym_r256` distilled with the
+r256 recipe verbatim (job `20260903-173932-6db847`, 45 min). **Holdout is
+the r256 pack to the third decimal**: recovery 0.015 (r256 0.018),
+cos(s,t) 0.137 (0.139), disc_far 0.056 (0.056), final span 0.077 (0.073),
+global_gain 0.297 (0.299), diag rms 0.752 (0.749); rows visited 9,863 /
+69,558 (r256: 9,831 / 58,968) — the pool touches **33 of 6,118 `sym`
+rows and 0 of 4,472 `sym_char` rows**, the `<unk>` count in the student
+stream went 0 → 21, and 75 of the 77 structurally unreachable rows are the
+Arabic-diacritic `sym` rows (`visit_stats.py`). As predicted in plan_zh2:
+without a symbol register (U5) the block is carried, not trained.
+
+**Arm C9 = that pack on the C8 recipe** — first run (`cjk_unmask_c9.toml`, job
+`20260903-173932-e215f1`) was **confounded** by the caption pollution below;
+its artifacts are kept as `cjk_unmask_c9_trigpol*` / grid `armC9trigpol_s*`
+(read: ~3 events — s42 r1 band, s42 r6 poster, s7 r8 bubbles — plus a broken
+s7 r7). **Clean rerun** after the restore (job `20260903-200456-186b8a`, grid
+`armC9_s*`; 322 of the 351 TE caches token-count-identical to their C8 twins; 28 of
+the 29 that differ are the captions carrying symbol-route chars (`^` `♡`
+`★` …), ±1–6 tokens, which the sym pack now encodes as per-char rows instead
+of T5 `<unk>` — the symbol block doing its one job; the 29th is `14447684`,
+which had **no revised caption in C2–C8** (master written 09-02 18:12 after
+the 08-17 mirror; every earlier sincos TE cache holds a 1-token empty
+encode for it) and gained its 55-tag caption via the 15:01 pass + restore): **~2 events, in exactly C8's two cells** — s42 r6 "CIRES MKI"
+poster text, s7 r8 bubbles of pseudo-JA — plus cat ears at s42 r7 *and* s42
+r8 (C8 had them at s1234 r6 instead); s42 r1 clean, r2 coloured at s42/s7 and
+lineart at s1234 like every arm, s1234 r5 figure survives, no broken
+portrait. Tally: C2 0 · C5 ~1 · C8 ~2 · **C9 ~2** · C6 ~2–3 · C7 ~3 · C3 3 ·
+C4 3. The sincos captions carry only **7 distinct symbol-route chars** (`^`
+160, `♡` 150, `★` 15, `~` 10, `Λ` 5, `♥` 5, `<` 4 over 60 of 351 captions), so
+the symbol block is inert on the render side too — **C9 ≡ C8 within noise,
+as expected without a symbol register (U5).**
+
+**Caption pollution 2026-09-03 15:01 (resolved same day).** Every one of
+the 351 first-run C9 TE caches is exactly **+7 T5 tokens** over its C8 twin (58,696 →
+61,341 tokens total): the caption source `post_image_dataset/resized/sincos/`
+was rewritten at **15:01** on 2026-09-03 by an anime_tools caption-*correct*
+pass with `trigger_word="@dataset-trigger"` (the fixture string from the
+package's `test_caption_correction.py`) — every caption gained
+`@dataset-trigger, ` before the `@sincos` tag (7 spiece tokens), ~20% also
+got count-tag corrections, and `.history.txt` / rewritten `.variants.txt`
+sidecars appeared. **It hit all 3,008 captions in every artist dir under
+`resized/`, not just sincos**; the master `image_dataset/` captions are
+untouched, no `post_image_dataset/lora/*_anima_te.safetensors` was rebuilt
+after 15:01 (main LoRA caches still clean), and the mirror + C9 cache
+(18:24) inherited the tag. C8 (13:29) trained without it. Cause: a pytest run
+mid-migration — `test_preprocess_captions_builds_correct_request` builds a real
+request and its `_capture` hook then stubbed only `preprocess.run` while the
+migrated command went through `_common.execute_stage` → `_common.run`; commit
+a13ba5b8 (15:16) fixed the hook. **Restored 20:04** from the history sidecars
+(3,008 captions byte-identical to their pre-state), variants regenerated with
+`make preprocess-captions` (passthrough), the no-op history sidecars it
+leaves dropped, the polluted TE cache deleted and C9 rerun clean (above).
+
 **OCR post-processing v2** (`anime_tools.ocr._text`, sibling checkout,
 uncommitted; tests in the package's own `test_ocr.py`): (1) `reading_order` is now
 page-aware — a page set mostly in columns reads **right to left** by right
@@ -465,4 +528,46 @@ trained packs untouched — and **the routing rule now ships in the pack json
 packs/nodes are unchanged. Residual `<unk>` on a 1/20 corpus sample: 0.
 Open: the caches predate the block (0 symbol rows visited) and the EN
 teacher is `<unk>` for these tags — plan_zh2 U5.
+
+## 12. Coverage arms: the map generalizes to unseen rows, the visit floor is a no-op (2026-09-03 → 09-04)
+
+plan_zh2 U4 / U0 / U1, one evening, `synthjakozh1_r256` recipe throughout —
+full tables in [`reports/0903_coverage_arms.md`](reports/0903_coverage_arms.md).
+
+**U4 — the first row-level generalization number.** `--holdout_rows 0.05`
+(297 rows, 5 ≤ visits < 500, script-stratified; every span touching one
+leaves the pool, pairs stay) scores the stripped spans next to trained
+spans from the same pairs. A row the loss never supervised goes from
+**cos 0.405 (init) → 0.587**, rank-1 retrieval of its teacher 0.22 → 0.46,
+most of it in the first 250 steps; the trained control reaches 0.876 /
+0.92. So the shared map is worth **+0.18 cos to a row with no direct
+evidence** — plan_zh2's principle 1 ("an unseen row should stay near its
+init") is the wrong prior for that band, and U2's `α0 = 0` / `0.25` arms
+are predicted to lose before they run. The **gap (0.29)** is where the
+capacity goes: held saturates at ~0.59 by step 1k and drifts *down* 0.004
+over the next 11k while control keeps climbing — §10's "rank tightens the
+fit, holdout unchanged" with the row-level number attached. Standard
+holdout unchanged by the 5 % strip (0.17 % of visits; `--holdout_rows_max_visits
+500` is what keeps it that small — a capless draw takes 4.8 %).
+
+**U0 — the map is a uniform large rotation.** Every visit band lands at
+cos ≈ 0.31–0.34 to its init with norm ≈ 1.0 (not the 0.3× the plan
+feared: the gain rescales a vector the rank-256 term already tripled);
+unvisited rows keep 46 % of their k=10 neighbourhood vs 30–35 % for
+visited ones, and 17 → 22 % of them end with a visited nearest neighbour.
+Not gentle, not selectively harsh; U4 decides whether the rotation helps
+(it does, on the 5–499 band). `probes/map_bands_probe.py`.
+
+**U1 — CLOSED, inert.** `--span_min_visits 2` (362 rows, 0.0015 % of span
+weight) and `5` (1,470 rows, 0.030 %) match the base arm to three decimals
+on every metric. Rows seen 1–4× do not steer the map. Keep the flag for
+its `mapped-unseen` provenance tier, not as a lever; the same argument
+pre-empts U6's `--span_weight_pow`.
+
+**Open.** (i) Held rows are still *looked up* (context leak into the map),
+and (ii) they are 5–499-band rows, not the 49k truly unvisited `char`
+rows the v2 init clusters at PR ≈ 10 — `--holdout_rows_max_visits 50` is
+the cheap next probe. U2 reduces to the identity-anchor arm
+(`--unseen_anchor`, α ≡ 1) plus that probe; the render read of an
+unvisited-han prompt is comfy-path only and still owed.
 

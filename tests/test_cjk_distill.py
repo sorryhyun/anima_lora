@@ -25,6 +25,7 @@ import pytest
 import torch
 
 from scripts.distill_cjk import attn_bank, data, ext_table
+from scripts.distill_cjk import rows as rows_mod
 
 REPO = Path(__file__).resolve().parents[1]
 EXT_PREFIX = REPO / "bench" / "cjk_adapter" / "assets" / "ext_embed"
@@ -226,6 +227,88 @@ def test_visit_counts_ignore_base_vocab_ids():
         4, [torch.tensor([5, T5_TABLE_SIZE + 1, T5_TABLE_SIZE + 1, T5_TABLE_SIZE + 3])]
     )
     assert counts.tolist() == [0, 2, 0, 1]
+
+
+def test_provenance_tags_rows_below_the_span_floor_as_mapped_unseen():
+    """U1: with a floor, 'carried along' and 'trained on' are told apart."""
+    init = torch.randn(5, 4)
+    visits = torch.tensor([0, 1, 4, 5, 60])
+    glob = ext_table.ExtTable(init, mode="global", rank=2)
+    assert glob.provenance(visits) == ["mapped"] * 5
+    assert glob.provenance(visits, span_floor=5) == [
+        "mapped-unseen",
+        "mapped-unseen",
+        "mapped-unseen",
+        "mapped",
+        "mapped",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# plan_zh2 U4 / U1 — row holdout and span visit floor
+# ---------------------------------------------------------------------------
+
+
+def test_choose_holdout_rows_is_stratified_seeded_and_floor_gated():
+    visits = torch.tensor([0, 1, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9])
+    scripts = ["han", "han"] + ["han"] * 6 + ["hangul"] * 4
+    a = rows_mod.choose_holdout_rows(visits, scripts, 0.5, min_visits=5, seed=0)
+    b = rows_mod.choose_holdout_rows(visits, scripts, 0.5, min_visits=5, seed=0)
+    assert a.tolist() == b.tolist()
+    assert not ({0, 1} & set(a.tolist()))  # below the visit floor: never held
+    han = [r for r in a.tolist() if scripts[r] == "han"]
+    hangul = [r for r in a.tolist() if scripts[r] == "hangul"]
+    assert len(han) == 3 and len(hangul) == 2  # half of each stratum
+    assert rows_mod.choose_holdout_rows(visits, scripts, 0.0).numel() == 0
+    capped = rows_mod.choose_holdout_rows(
+        visits, scripts, 1.0, min_visits=5, max_visits=9, seed=0
+    )
+    assert capped.numel() == 0  # every eligible row sits at the cap
+
+
+def test_span_row_hits_counts_only_flagged_ext_rows():
+    E = T5_TABLE_SIZE
+    s_ids = torch.tensor([7, E + 1, E + 2, E + 3, 8])  # one pair, flattened
+    s_flat = torch.tensor([0, 1, 2, 3, 4])
+    s_seg = torch.tensor([0, 0, 1, 1, 2])  # span0 = {7, E+1}, span1 = {E+2, E+3}
+    low = torch.tensor([False, False, True, False])  # only row 2 is below floor
+    hits = rows_mod.span_row_hits(s_ids, s_flat, s_seg, 3, low)
+    assert hits.tolist() == [0.0, 1.0, 0.0]
+
+
+class _FakeCache:
+    """Enough of CachedPairs for apply_row_holdout: records + get(i).s_ids."""
+
+    def __init__(self, s_ids: dict[int, list[int]], spans: dict[int, list[list]]):
+        self.records = [{"spans": spans.get(i, [])} for i in range(len(s_ids))]
+        self._ids = s_ids
+        self._span_cache = {0: "stale"}
+
+    def get(self, i):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(s_ids=torch.tensor(self._ids[i]))
+
+
+def test_apply_row_holdout_strips_spans_not_pairs():
+    E = T5_TABLE_SIZE
+    cache = _FakeCache(
+        {0: [5, E + 1, E + 2, E + 9], 1: [E + 9, 6]},
+        {
+            0: [
+                [[0], [0], 1.0, "x", 0.0],
+                [[1], [1, 2], 1.0, "x", 0.0],
+                [[2], [3], 1.0, "x", 0.0],
+            ],
+            1: [[[0], [0], 1.0, "x", 0.0]],
+        },
+    )
+    held = rows_mod.apply_row_holdout(cache, [0, 1], torch.tensor([2]))
+    assert list(held) == [0]
+    assert held[0] == [[[1], [1, 2], 1.0, "x", 0.0]]  # the span touching row 2
+    assert len(cache.records[0]["spans"]) == 2  # the pair keeps its other spans
+    assert len(cache.records[1]["spans"]) == 1  # untouched pair
+    assert cache._span_cache == {}  # memoized packs invalidated
 
 
 # ---------------------------------------------------------------------------

@@ -57,6 +57,11 @@ fold them onto the visited manifold?). Same for `_fdiag`. Cheap: one
 `ExtTable.materialize()` per pack, `probes/spread_probe.py` already has the
 PR/kNN code.
 
+*Landed 2026-09-03* as `probes/map_bands_probe.py` (bands + unvisited-by-
+script + "nearest neighbour is a visited row" before/after; JSON to
+`reports/u0_map_bands.json`). The render read is comfy-path only (no
+in-tree inference loads a pack) and is still owed.
+
 *Gate:* if unvisited rows move ≤ visited rows (cos to init higher, kNN
 overlap ≥ 0.5) the map is already gentle and U2 shrinks to a regularizer
 check. If unvisited rows are scaled to ~0.3 norm and lose neighbourhood
@@ -83,7 +88,29 @@ not move — the floor removes < 1 % of span weight) + U4's row-holdout
 metric (the actual target) + the JA/ZH grids on the same prompts as
 `reports/0903_rank_armC.md`.
 
+*Landed 2026-09-03* (`--span_min_visits k`, `--span_min_visits_bg b`;
+`result.json` carries `span_floor.weight_dropped_frac` measured on a 4k-pair
+sample, and the pack's `provenance` gains the `mapped-unseen` tier for every
+row with `visits < k`, unvisited rows included). Arms queued the same
+evening, all on the U4 holdout (5 %, cap 500) so they share one pool:
+`u4-base-r256` (floor off), `u1-k2-r256`, `u1-k5-r256` — r256 recipe
+otherwise verbatim.
+
+*Verdict 2026-09-04: **inert, CLOSED.*** k=2 drops 0.0015 % of span weight,
+k=5 0.030 %; both match the base arm to three decimals on every metric
+(`reports/0903_coverage_arms.md`, findings §12). Keep the flag for its
+`mapped-unseen` provenance, not as a lever.
+
 ### U2 — visit-gated correction (2 days)
+
+*Revised by U4 (2026-09-04):* the base arm's held rows gain **+0.18 cos**
+from the shared map with no direct supervision (0.405 → 0.587, findings
+§12), so `α0 = 0` freezes rows at a *worse* point and `α0 = 0.25` forfeits
+most of the gain — both arms are predicted to lose on U4 and should not be
+run first. What survives is the identity-anchor arm (`--unseen_anchor`,
+α ≡ 1) and the question of whether the gain transfers below the 5–49
+band (`--holdout_rows_max_visits 50` probe) and to the 49k truly unvisited
+`char` rows.
 
 Make the correction strength a function of evidence, per row, inside
 `ExtTable.rows()`:
@@ -138,6 +165,21 @@ trained". Report it in `result.json` as `eval.row_holdout.*` and in the
 Rows the corpus shows only once cannot be held out meaningfully (one
 occurrence); sample the holdout from rows with ≥ 5 visits and stratify by
 script (han / hangul / kana) so KO does not dominate by row count.
+
+*Landed 2026-09-03* (`--holdout_rows`, `--holdout_rows_{min,max}_visits`,
+`--holdout_rows_eval`; `scripts/distill_cjk/rows.py`). One amendment
+measured on the way in: the 500+ band is ~140 rows carrying a third of all
+visits, and a 5 % stratified draw picks 139 of them — that strips **4.8 %
+of all visits** (≈ every span containing 髪/目/の…) out of the pool, for a
+question those rows do not pose (the map fits them regardless). With
+`--holdout_rows_max_visits 500` (default) the draw is 297 rows from the
+5–499 band at **0.17 %** of visits. The metric is `eval.row_holdout.held`
+(cos / disc / top1 over up to 2,048 stripped spans) next to
+`eval.row_holdout.control` (the same on trained spans from the same pairs);
+`gap_cos` is the generalization number. Known leak: a held-out row is still
+*looked up* (its pair stays in the pool), so its embedding reaches the map
+through the neighbours' context — the holdout removes direct supervision,
+not presence.
 
 ### U5 — symbol register `tags_sym` (2 days, data first)
 
@@ -198,10 +240,23 @@ language so KO's 6.5 M visits on 1,609 rows do not out-vote ZH's 5.8 M on
 
 ## Order and budget
 
-U4 (½ d) → U0 (½ d) → U1 (1 d) → U2 (2 d) → U5 data (1 d) + restage (GPU,
-overnight) → U5 distill (½ d) → U3 (1 d) → U6 if U4 says the map is still
-frequency-bound. Roughly 7 working days; every arm is a distill (~40 min at
-12k steps, rank 256) plus grids.
+*Original:* U4 (½ d) → U0 (½ d) → U1 (1 d) → U2 (2 d) → U5 data (1 d) +
+restage (GPU, overnight) → U5 distill (½ d) → U3 (1 d) → U6 if U4 says the
+map is still frequency-bound. Roughly 7 working days; every arm is a
+distill (~40 min at 12k steps, rank 256) plus grids.
+
+*Revised 2026-09-04 (U4/U0/U1 done in one evening, findings §12):*
+**next is U5**, the symbol register — the only phase that adds a teacher
+where none exists. U1 is closed (inert), U6 is pre-empted by the same
+number, and U2 is deferred: its α-gate arms are predicted to lose on U4
+and the surviving identity-anchor arm is a regularizer question, not a
+coverage one. U2 (`--unseen_anchor` + the `--holdout_rows_max_visits 50`
+probe) and U3 come back after U5 lands, if the symbol grid says the map
+side is what limits it. The restage U5 needs has already happened (the
+four caches sit on the 69,558-row asset; 0 symbol rows visited only
+because no pair carries a symbol teacher yet), so U5 is data → distill →
+grid, no GPU overnight. Every U5 arm carries `--holdout_rows 0.05` so
+`eval.row_holdout.gap_cos` stays comparable with the base arm.
 
 ## Deliverables
 
