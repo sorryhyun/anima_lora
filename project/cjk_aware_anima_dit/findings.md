@@ -78,11 +78,26 @@ the hybrid pass is built at all.
 
 ## D1 — deterministic table + route partition + LoRA stamp (2026-09-05)
 
-Code landed; the gate render is queued (daemon job `20260905-210248-114990`,
-arm `C9ISOQ` = the C9 recipe re-cached through the partitioned pack, 8-row
-grid at seeds 42/7/1234 into `output/tests/cjk_unmask_eval2/armC9ISOQ_s*`,
-to be read against `armC9_s*`; the prompts are CJK-free, so anything outside
-the s02 floor is a bug, not a result).
+**Gate: PASSED (sanity)** — daemon job `20260905-210248-114990` (rc 0):
+arm `C9ISOQ` = the C9 recipe re-cached through the partitioned pack, trained
+2,808 steps, 8-row grid at seeds 42/7/1234 into
+`output/tests/cjk_unmask_eval2/armC9ISOQ_s*`, read against `armC9_s*` with
+the same-recipe seed twin `armC9s2_s*` as the floor (prompts are CJK-free).
+
+| check | result |
+|---|---|
+| stamp on the LoRA | `ss_ext_pack_sha` = `2cf81cbc…` = the pack's digest; `ss_ext_pack` = pack stem |
+| restaged TE caches (702 captions, 194 with 「」) | 7,656 tokens on the mirror, 1,843 on trained rows (delimiters + bare CJK), 0 `<unk>` |
+| render distance, 64-px L1 to C9, 24 rows | C9ISOQ 0.075 ± 0.042 vs seed-twin 0.087 ± 0.042; ISOQ the closer one in 14/24 |
+| colour saturation (mean; images < 0.12) | C9 0.255 (6/24) · C9s2 0.275 (6/24) · **C9ISOQ 0.208 (9/24)** · C9trigpol 0.209 (7/24) |
+
+Inside the floor on the pixel metric; a mild grayscale/sketch tilt (3 more
+low-saturation images than either C9 seed) that matches another C9 variant
+(trigpol) and is not separable at n = 24 — rows are near-identical at seed
+1234, and the rows that diverge at seed 42 (2, 7, 8) diverge between the
+two C9 seeds too. Not a blind set; if the partition ever needs a ranking
+claim, run one (s14 C9ISOQ vs C9), but D1's gate only asked for "inside the
+floor" and it is. D2 proceeds through this pack.
 
 What exists now (pointers, not repeats — contract in
 `docs/experimental/cjk_ext_vocab_coverage.md` §"Quote partition"):
