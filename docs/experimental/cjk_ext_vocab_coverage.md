@@ -161,6 +161,58 @@ visits 0 symbol rows (see the table: `sym` 6,118 / 0 visited). Both are plan
 items (`plan_zh2.md` U5: `tags_sym` register with a wiki-description
 teacher; re-stage the caches).
 
+## Quote partition: an isotropic mirror for quoted spans (2026-09-05, DiT line D1)
+
+The DiT-side line (`project/cjk_aware_anima_dit/plan.md`, principle 1–2, 8)
+treats ext rows as content-free *addresses*. A pack may now carry a second
+block that is exactly that:
+
+- **`mapping["iso"]`** = `{recipe: gauss_rows_v1, seed, dim, norm, rows: [start, end)}`.
+  `ext_vocab.iso_block(seed, n_rows, dim, norm)` regenerates it byte-equal on
+  any machine (NumPy legacy `RandomState` stream, float64 row-major draw,
+  per-row normalise, one float32 cast — no BLAS, no torch RNG). The block is a
+  **row-for-row mirror** of the trained blocks at offset `start` (= the trained
+  row count), so the same `qwen`/`char`/`sym` lookups serve it. A pack may
+  ship the rows or only the record (`make_random_pack.py --mode iso-partition
+  [--no-iso-rows]`); `load_ext_assets` / the node's `load_vocab_pack` call
+  `materialize_iso` either way.
+- **`route.quotes`** = `[["「","」"],["『","』"],["\"","\""]]`. `Route.quote_spans`
+  is one non-greedy, non-nesting regex over the caption (a stray opener
+  matches nothing). The span rule runs *before* `segment_runs`: the spiece
+  side is tokenised exactly as without the partition (EN bit-identical by
+  construction), and only routed runs are cut at the delimiters
+  (`HybridT5Encoder.encode_cjk_run`). Quoted content → `T5_TABLE_SIZE +
+  start + row`, no minted-word / C-fallback substitutions; bare CJK → the
+  trained row as before; delimiters keep their old path (`「」` → trained
+  row, `"` → spiece). Both halves must be present (`encoder.quote_routing`);
+  a pack with neither, or only one, encodes bit-identically to before.
+- **`ext_vocab.pack_digest(table, mapping)`** = sha256 over the materialised
+  float32 table bytes + the id/route keys (`qwen char sym sym_char word
+  word_sub route iso`; `training`/`stats` excluded). `train.py --ext_pack
+  <prefix>` stamps it as `ss_ext_pack_sha` (+ `ss_ext_pack` name) on the
+  LoRA (`run_unmask_r2.py` passes it); `load_dit_model` warns when a stamped
+  LoRA is loaded with no pack; the ComfyUI Adapter node (3.10.0) compares it
+  with the loaded pack's digest in either node order and warns on mismatch.
+- The caption grammar is quote-aware since anime_tools `efb235c`
+  (`position_clauses.quoted_spans`): a comma or `. On the` inside an open
+  pair is content, `compose_caption` round-trips. `cache_te_ext._quote_safe`
+  therefore no longer rewrites commas (only an inner `"`).
+
+Compatibility matrix (extends the one above):
+
+| node / trainer code | pack | behaviour |
+|---|---|---|
+| new (`iso`-aware) | partitioned (`iso` + `route.quotes`) | quoted spans → mirror, bare CJK → trained rows |
+| new | seed-only partitioned (no iso rows in the safetensors) | block regenerated at load; same digest |
+| new | old (no `iso`) | identical to before |
+| old (≤ 3.9.1 vendor tree) | partitioned with rows | row-count check passes; quoted spans hit *trained* rows (no quote rule) — the digest check does not exist there either |
+| old | seed-only partitioned | refused (row-count mismatch) |
+
+First built pack: `output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq`
+(C9's 69,558 rows + mirror at rows 69,558–139,116, seed 0, norm 212.165 =
+the native T5 mean row norm; mirror PR 1009, pair cos 0.0002; sha256
+`2cf81cbc…`). Tests: `tests/test_ext_vocab_iso.py`.
+
 ## Build caveat: the anchor fit is not bit-reproducible across runs
 
 Three builds of identical inputs on the same GPU gave anchor-map held-out

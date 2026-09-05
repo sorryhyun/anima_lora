@@ -75,3 +75,48 @@ preferred where PP's score is low or the two disagree on symbols — and as a
 the one thing that could shrink sincos' 44-of-133, which caps every unmask
 arm. Measure that floor with both detectors in D2 before deciding whether
 the hybrid pass is built at all.
+
+## D1 — deterministic table + route partition + LoRA stamp (2026-09-05)
+
+Code landed; the gate render is queued (daemon job `20260905-210248-114990`,
+arm `C9ISOQ` = the C9 recipe re-cached through the partitioned pack, 8-row
+grid at seeds 42/7/1234 into `output/tests/cjk_unmask_eval2/armC9ISOQ_s*`,
+to be read against `armC9_s*`; the prompts are CJK-free, so anything outside
+the s02 floor is a bug, not a result).
+
+What exists now (pointers, not repeats — contract in
+`docs/experimental/cjk_ext_vocab_coverage.md` §"Quote partition"):
+
+- `library/anima/ext_vocab.py`: `iso_block` / `IsoSpec` / `materialize_iso`
+  (seed-regenerated isotropic mirror, NumPy legacy stream, byte-equal
+  across machines), `Route.quotes` + `quote_spans` (one regex, non-nesting),
+  `HybridT5Encoder.encode_cjk_run` (span rule before `segment_runs`; EN
+  bit-identical by construction), `pack_digest`.
+- `make_random_pack.py --mode iso | iso-partition [--no-iso-rows] [--norm]`
+  (norm default = native T5 mean row norm 212.165, measured off the DiT's
+  `llm_adapter.embed`; ISO1 had used the trained mean 203.9).
+  Built: `output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq` (sha
+  `2cf81cbc…`; mirror rows 69,558–139,116, PR 1009).
+- Stamp: `train.py --ext_pack` → `ss_ext_pack_sha` / `ss_ext_pack`
+  (`run_unmask_r2.py` passes it); `load_dit_model` warns on a stamped LoRA
+  with no pack; Adapter node 3.10.0 compares digests in either node order
+  (`vocab_pack.check_pack_vs_adapter`, `adapter._record_ext_pack_stamp`),
+  regenerates seed-only blocks, cuts routed runs at quote boundaries in
+  `VocabPackTokenizer`. Vendor tree re-synced; node committed locally, not
+  yet pushed / registry-published (publish with the first partitioned pack).
+- Grammar: anime_tools `efb235c` (`quoted_spans`; comma / `. On the` inside
+  `「」『』""` is content; `compose_caption` round-trips) — pin bumped,
+  `uv lock` + `uv sync` done. `cache_te_ext._quote_safe` keeps commas now.
+- Tests: `tests/test_ext_vocab_iso.py` (determinism, EN bit-exact, quoted
+  content only on the mirror with `「」`/`黒髪` staying on trained rows, three
+  spellings → same ids, `"…"` order phrase routes, ASCII inside quotes stays
+  spiece, digest invariance under regeneration, grammar, inference warn) +
+  the earlier route tests: 58 passed.
+
+Design choices worth knowing: the mirror is a full row-for-row copy (so
+one id map serves both blocks; 285 MB fp32 shipped, or 0 bytes seed-only),
+quoted content bypasses minted-word rows and the C fallback (those are
+trained content), and the rule is inert unless *both* `iso` and
+`route.quotes` are present — every existing pack, cache and blind set is
+untouched.
+

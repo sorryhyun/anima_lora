@@ -111,6 +111,10 @@ def main() -> None:
                 "default",
                 "--methods_subdir",
                 "gui-methods/custom",
+                # stamps ss_ext_pack_sha (D1): the LoRA is coupled to the pack
+                # its TE caches were encoded through.
+                "--ext_pack",
+                opts.ext_prefix,
             ],
         )
 

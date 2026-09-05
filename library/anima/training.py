@@ -41,6 +41,15 @@ from anime_tools.captions.shuffle import (  # noqa: E402,F401
 def add_anima_training_arguments(parser: argparse.ArgumentParser):
     """Add Anima-specific training arguments to the parser."""
     parser.add_argument(
+        "--ext_pack",
+        type=str,
+        default=None,
+        help="CJK vocab pack prefix (path without .safetensors/.json) the text-encoder "
+        "caches were encoded through. Stamps its digest as ss_ext_pack_sha so a LoRA "
+        "meeting a different pack at inference is detectable (library.anima.ext_vocab"
+        ".pack_digest). Training itself reads only the cached embeddings.",
+    )
+    parser.add_argument(
         "--qwen3",
         type=str,
         default=None,

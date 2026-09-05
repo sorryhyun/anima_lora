@@ -290,6 +290,30 @@ def attach_adapters(
             model._step_expert_networks = step_nets
 
 
+def _warn_ext_pack_stamp(path: str) -> None:
+    """A LoRA trained through a CJK vocab pack (``ss_ext_pack_sha``) expects
+    that pack's rows behind ids ≥ 32128. This inference path loads no pack,
+    so say so once per file — the ComfyUI Adapter node does the real
+    digest comparison against its loaded pack."""
+    try:
+        from safetensors import safe_open
+
+        with safe_open(path, framework="pt") as f:
+            md = f.metadata() or {}
+    except Exception:
+        return
+    sha = md.get("ss_ext_pack_sha")
+    if sha:
+        logger.warning(
+            "%s was trained through vocab pack %s (sha %s…); this run loads no "
+            "vocab pack, so CJK / quoted prompt spans will not reach the rows "
+            "it was trained on (EN prompts are unaffected).",
+            path,
+            md.get("ss_ext_pack", "?"),
+            sha[:12],
+        )
+
+
 def load_dit_model(
     args: argparse.Namespace,
     device: torch.device,
@@ -317,6 +341,8 @@ def load_dit_model(
     # router-free and head-selected by step counter, so the metadata stamp wins.
     step_expert_mode = False
     if args.lora_weight is not None and len(args.lora_weight) > 0:
+        for p in args.lora_weight:
+            _warn_ext_pack_stamp(p)
         se_flags = [_is_step_expert_turbo(p) for p in args.lora_weight]
         if any(se_flags):
             if not all(se_flags) or len(args.lora_weight) > 1:

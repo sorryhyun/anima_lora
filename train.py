@@ -1772,6 +1772,21 @@ class AnimaTrainer:
         metadata["ss_sigmoid_scale"] = args.sigmoid_scale
         metadata["ss_sigmoid_bias"] = getattr(args, "sigmoid_bias", 0.0)
         metadata["ss_discrete_flow_shift"] = args.discrete_flow_shift
+        # A LoRA trained through a CJK vocab pack is coupled to that pack's
+        # rows + routing (ids ≥ 32128 in every cached caption). Stamp the
+        # digest so a mismatch at load time is detectable, never silent.
+        ext_pack = getattr(args, "ext_pack", None)
+        if ext_pack:
+            from pathlib import Path
+
+            from library.anima import ext_vocab
+            from library.env import resolve_under_home
+
+            prefix = Path(resolve_under_home(ext_pack))
+            table, mapping = ext_vocab.load_ext_assets(prefix)
+            metadata["ss_ext_pack"] = Path(ext_pack).name
+            metadata["ss_ext_pack_sha"] = ext_vocab.pack_digest(table, mapping)
+            del table
 
     def is_text_encoder_not_needed_for_training(self, args):
         return args.cache_text_encoder_outputs and not self.is_train_text_encoder(args)

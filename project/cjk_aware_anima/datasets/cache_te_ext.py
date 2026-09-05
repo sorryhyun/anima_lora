@@ -90,10 +90,12 @@ def ocr_lines_by_stem(records: Path, max_lines: int) -> dict[str, list[str]]:
 
 
 def _quote_safe(text: str) -> str:
-    """A line as it may sit inside the phrase: the caption grammar splits
-    flat tags on ASCII commas and clauses on ``. On/In the``, so an ASCII comma
-    becomes ``、`` and an ASCII double quote its fullwidth form."""
-    return text.replace(",", "、").replace('"', "”")
+    """A line as it may sit inside ``"…"``: only an inner ASCII double quote
+    is rewritten (fullwidth), since it would close the pair early. Commas
+    stay — the caption grammar is quote-aware (anime_tools ≥ the D1 rev:
+    a comma inside an open ``「『"`` is not a tag separator), and rewriting
+    them leaked into OCR CER."""
+    return text.replace('"', "”")
 
 
 def ocr_tags(lines: list[str], fmt: str) -> list[str]:

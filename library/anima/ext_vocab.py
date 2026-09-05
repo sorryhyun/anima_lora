@@ -32,12 +32,24 @@ distill cache and trained pack stays valid. The routing rule ships **inside
 the pack json** (``mapping["route"]``); a pack without it routes the legacy
 CJK ranges only, bit-identical to before.
 
+Quote partition (2026-09-05, DiT line D1): a pack may carry a second,
+**content-free isotropic block** (``mapping["iso"]``: i.i.d. Gaussian rows
+regenerated from ``(seed, n_rows, dim, norm)`` — :func:`iso_block`) that
+mirrors the trained blocks row-for-row at an offset. Routed spans *inside a
+quote pair* (``route.quotes``: ``「…」`` / ``『…』`` / ``"…"``) resolve to the
+isotropic block; bare CJK keeps the trained rows; the delimiters themselves
+stay on their usual path (``「」`` → trained row, ``"`` → spiece). A pack
+without ``iso`` encodes bit-identically to before. :func:`pack_digest` is
+the hash a LoRA trained through the pack stamps (``ss_ext_pack_sha``).
+
 Pure-CPU module — no model load; consumers pass embedding tensors in.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -87,6 +99,9 @@ class Route:
 
     ranges: tuple[tuple[int, int], ...] = _CJK_RANGES
     chars: frozenset[str] = frozenset()
+    # Delimiter pairs whose *content* routes to the isotropic block (only
+    # meaningful when the pack also carries ``iso``; see ``quote_spans``).
+    quotes: tuple[tuple[str, str], ...] = ()
 
     def __call__(self, ch: str) -> bool:
         if ch in self.chars:
@@ -107,13 +122,166 @@ class Route:
         if not spec:
             return cls.default()
         ranges = tuple((int(lo), int(hi)) for lo, hi in spec.get("ranges", _CJK_RANGES))
-        return cls(ranges=ranges, chars=frozenset(spec.get("chars", "")))
+        quotes = tuple((str(o), str(c)) for o, c in spec.get("quotes", ()))
+        return cls(ranges=ranges, chars=frozenset(spec.get("chars", "")), quotes=quotes)
 
     def to_json(self) -> dict:
-        return {
+        out = {
             "ranges": [list(r) for r in self.ranges],
             "chars": "".join(sorted(self.chars)),
         }
+        if self.quotes:
+            out["quotes"] = [list(q) for q in self.quotes]
+        return out
+
+    def quote_spans(self, text: str) -> list[tuple[int, int]]:
+        """``[start, end)`` of the *content* of every closed quote pair.
+
+        One non-greedy regex over the whole caption, alternation over the
+        pack's pairs, no nesting: an opener without its closer matches
+        nothing (so a stray ``"`` never swallows the rest of the prompt),
+        and pairs are consumed left to right. Delimiters fall outside the
+        returned spans.
+        """
+        if not self.quotes:
+            return []
+        pat = "|".join(
+            f"{re.escape(o)}([^{re.escape(o)}{re.escape(c)}]*?){re.escape(c)}"
+            for o, c in self.quotes
+        )
+        spans: list[tuple[int, int]] = []
+        for m in re.finditer(pat, text):
+            g = next(i for i in range(1, len(m.groups()) + 1) if m.group(i) is not None)
+            if m.end(g) > m.start(g):
+                spans.append((m.start(g), m.end(g)))
+        return spans
+
+
+# The quote pairs the D1 span rule recognises (principle 8 of the DiT plan):
+# CJK corner brackets (both weights) and the ASCII double quote new caption
+# builders emit. Script-neutral by design.
+DEFAULT_QUOTES: tuple[tuple[str, str], ...] = (("「", "」"), ("『", "』"), ('"', '"'))
+
+
+# ---------------------------------------------------------------------------
+# Isotropic block — content-free rows regenerated from a seed
+# ---------------------------------------------------------------------------
+
+ISO_RECIPE = "gauss_rows_v1"
+
+
+def iso_block(
+    seed: int, n_rows: int, dim: int, norm: float, chunk: int = 4096
+) -> torch.Tensor:
+    """``(n_rows, dim)`` float32 rows, i.i.d. Gaussian directions at ``norm``.
+
+    Byte-reproducible across machines: NumPy's legacy ``RandomState`` stream
+    (its bit-stability is a NumPy compatibility guarantee — NEP 19, unlike
+    ``Generator``/torch RNGs), drawn in float64 row-major so chunking never
+    changes the values, each row normalised in float64 and cast once. No
+    BLAS, no threads, no device — the pack json only needs
+    ``(seed, n_rows, dim, norm)`` to get the identical table back.
+    """
+    import numpy as np
+
+    rs = np.random.RandomState(int(seed))
+    out = torch.empty(int(n_rows), int(dim), dtype=torch.float32)
+    done = 0
+    while done < n_rows:
+        n = min(chunk, n_rows - done)
+        z = rs.standard_normal((n, int(dim)))  # float64, sequential stream
+        z *= float(norm) / np.sqrt((z * z).sum(axis=1, keepdims=True))
+        out[done : done + n] = torch.from_numpy(z.astype(np.float32))
+        done += n
+    return out
+
+
+@dataclass(frozen=True)
+class IsoSpec:
+    """The ``mapping["iso"]`` record: how to regenerate the isotropic block
+    and where it sits in the table (``rows = [start, end)``)."""
+
+    seed: int
+    n_rows: int
+    dim: int
+    norm: float
+    start: int
+    recipe: str = ISO_RECIPE
+
+    @property
+    def end(self) -> int:
+        return self.start + self.n_rows
+
+    @classmethod
+    def from_mapping(cls, mapping: dict | None) -> "IsoSpec | None":
+        spec = (mapping or {}).get("iso")
+        if not spec:
+            return None
+        start, end = spec["rows"]
+        return cls(
+            seed=int(spec["seed"]),
+            n_rows=int(end) - int(start),
+            dim=int(spec["dim"]),
+            norm=float(spec["norm"]),
+            start=int(start),
+            recipe=str(spec.get("recipe", ISO_RECIPE)),
+        )
+
+    def to_json(self) -> dict:
+        return {
+            "recipe": self.recipe,
+            "seed": self.seed,
+            "dim": self.dim,
+            "norm": self.norm,
+            "rows": [self.start, self.end],
+        }
+
+    def build(self) -> torch.Tensor:
+        if self.recipe != ISO_RECIPE:
+            raise ValueError(f"unknown iso recipe {self.recipe!r} (have {ISO_RECIPE})")
+        return iso_block(self.seed, self.n_rows, self.dim, self.norm)
+
+
+def materialize_iso(table: torch.Tensor, mapping: dict) -> torch.Tensor:
+    """Append the isotropic block when the pack shipped without its rows.
+
+    A pack may carry only the ``iso`` record (seed-only, ~0 bytes) or the
+    rows themselves; either way the table handed to the model is the same.
+    Raises when the table is neither ``[0, start)`` nor ``[0, end)`` rows —
+    the json is from a different pack.
+    """
+    spec = IsoSpec.from_mapping(mapping)
+    if spec is None:
+        return table
+    if table.shape[0] == spec.end:
+        return table
+    if table.shape[0] != spec.start:
+        raise ValueError(
+            f"vocab pack mismatch: iso block starts at row {spec.start} but the "
+            f"table has {table.shape[0]} rows"
+        )
+    return torch.cat([table, spec.build().to(table.dtype)])
+
+
+# Mapping keys that describe the *rows and routing* — what a LoRA trained
+# through the pack is coupled to. Provenance (``training`` / ``stats``) is
+# excluded so a re-annotated json keeps its digest.
+_DIGEST_KEYS = ("qwen", "char", "sym", "sym_char", "word", "word_sub", "route", "iso")
+
+
+def pack_digest(table: torch.Tensor, mapping: dict) -> str:
+    """sha256 over the (materialised, float32) table bytes + the id/route maps.
+
+    Stamped by ``save_weights`` as ``ss_ext_pack_sha``; the trainer and the
+    ComfyUI node compute it the same way so a LoRA meeting a different pack
+    (rows, ids or quote rule) is detectable, never silent.
+    """
+    table = materialize_iso(table, mapping)
+    h = hashlib.sha256()
+    h.update(table.detach().to("cpu", torch.float32).contiguous().numpy().tobytes())
+    sub = {k: mapping[k] for k in _DIGEST_KEYS if mapping.get(k)}
+    h.update(json.dumps(sub, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+    return h.hexdigest()
 
 
 # Candidate blocks scanned by ``symbol_route_chars`` — ASCII/Latin-1 symbols,
@@ -441,6 +609,10 @@ class HybridT5Encoder:
     # CJK surface with the EN tag's stock spiece tokens at encode time — the
     # pretrained rows carry the identity no minted row learns; zero training).
     word_sub: dict[str, list[int]] | None = None
+    # Row offset of the isotropic block (``mapping["iso"]["rows"][0]``).
+    # With ``route.quotes`` set, routed spans inside a quote pair land on
+    # ``T5_TABLE_SIZE + iso_offset + row`` instead of the trained row.
+    iso_offset: int | None = None
 
     @classmethod
     def from_mapping(cls, t5_tok, qwen_tok, mapping: dict) -> "HybridT5Encoder":
@@ -467,14 +639,28 @@ class HybridT5Encoder:
             word_map=mapping.get("word") or None,
             word_sub=mapping.get("word_sub") or None,
             route=Route.from_mapping(mapping),
+            iso_offset=(iso.start if (iso := IsoSpec.from_mapping(mapping)) else None),
         )
+
+    @property
+    def quote_routing(self) -> bool:
+        """Both halves of the partition present: a quote rule and a block."""
+        return bool(self.iso_offset is not None and self.route and self.route.quotes)
 
     def routes(self, text: str) -> bool:
         """Does any char of ``text`` leave the spiece path under this pack?"""
         return (self.route or Route.default()).any(text)
 
-    def _encode_cjk(self, span: str) -> tuple[list[int], list[tuple[int, int]]]:
-        """(ids, char offsets into ``span``) for one CJK run."""
+    def _encode_cjk(
+        self, span: str, offset: int = 0
+    ) -> tuple[list[int], list[tuple[int, int]]]:
+        """(ids, char offsets into ``span``) for one CJK run.
+
+        ``offset`` shifts every ext row id (never ``<unk>``) — the isotropic
+        block is a row-for-row mirror of the trained blocks, so quoted
+        content uses the same lookups at ``iso_offset``.
+        """
+        base = T5_TABLE_SIZE + int(offset)
         out: list[int] = []
         offs: list[tuple[int, int]] = []
         frag: list[int] = []
@@ -489,7 +675,7 @@ class HybridT5Encoder:
             group = (frag_off[0][0], frag_off[-1][1])
             for ch in decoded:
                 if ch in self.char_map:
-                    out.append(T5_TABLE_SIZE + self.char_map[ch])
+                    out.append(base + self.char_map[ch])
                 elif not ch.isspace():
                     out.append(T5_UNK_ID)
                 else:
@@ -505,7 +691,7 @@ class HybridT5Encoder:
                 # A clean token can never complete a byte sequence — any
                 # pending fragments are unresolvable, degrade them now.
                 flush_frag()
-                out.append(T5_TABLE_SIZE + self.qwen_map[qid])
+                out.append(base + self.qwen_map[qid])
                 offs.append(off)
                 continue
             frag.append(qid)
@@ -589,9 +775,10 @@ class HybridT5Encoder:
         ids: list[int] = []
         offs: list[tuple[int, int]] = []
         base = 0
+        quotes = self.quote_spans(text)
         for kind, span in segment_runs(text, self.route):
             if kind == "cjk":
-                s_ids, s_offs = self._encode_cjk_words(span)
+                s_ids, s_offs = self.encode_cjk_run(span, base, quotes)
             else:
                 enc = self.t5_tok(
                     span, add_special_tokens=False, return_offsets_mapping=True
@@ -610,6 +797,58 @@ class HybridT5Encoder:
         pad = max_length - len(ids)
         return ids + [T5_PAD_ID] * pad, mask + [0] * pad, offs
 
+    def quote_spans(self, text: str) -> list[tuple[int, int]]:
+        """Quote-content intervals of ``text`` under this pack (``[]`` unless
+        both halves of the partition — rule and block — are present)."""
+        return self.route.quote_spans(text) if self.quote_routing else []
+
+    @staticmethod
+    def _cut_run(
+        span: str, start: int, quotes: list[tuple[int, int]]
+    ) -> list[tuple[str, bool, int]]:
+        """Cut one routed run ``text[start:start+len(span)]`` at the quote
+        boundaries → ``(piece, inside_quote, offset_in_span)``."""
+        end = start + len(span)
+        pieces: list[tuple[str, bool, int]] = []
+        pos = start
+        for a, b in quotes:
+            a, b = max(a, start), min(b, end)
+            if b <= a:
+                continue
+            if a > pos:
+                pieces.append((span[pos - start : a - start], False, pos - start))
+            pieces.append((span[a - start : b - start], True, a - start))
+            pos = b
+        if pos < end:
+            pieces.append((span[pos - start :], False, pos - start))
+        return pieces
+
+    def encode_cjk_run(
+        self, span: str, start: int, quotes: list[tuple[int, int]]
+    ) -> tuple[list[int], list[tuple[int, int]]]:
+        """Ids + offsets (into ``span``) for one routed run of a text whose
+        quote intervals are ``quotes`` (absolute; from :meth:`quote_spans`).
+
+        The span rule: the regex ran once over the whole text *before*
+        ``segment_runs``, so the spiece side is tokenised exactly as without
+        the partition (EN stays bit-identical) and only routed runs are cut at
+        the delimiters. Quoted pieces go to the isotropic mirror with no
+        minted-word / C-fallback substitutions (those are trained content);
+        unquoted pieces take the ordinary path.
+        """
+        if not quotes:
+            return self._encode_cjk_words(span)
+        ids: list[int] = []
+        offs: list[tuple[int, int]] = []
+        for piece, quoted, rel in self._cut_run(span, start, quotes):
+            if quoted:
+                p_ids, p_offs = self._encode_cjk(piece, self.iso_offset)
+            else:
+                p_ids, p_offs = self._encode_cjk_words(piece)
+            ids.extend(p_ids)
+            offs.extend((rel + a, rel + b) for a, b in p_offs)
+        return ids, offs
+
     def encode(self, text: str, max_length: int = 512) -> tuple[list[int], list[int]]:
         """Return (ids, attention_mask), eos-terminated and padded to max_length."""
         ids, mask, _ = self.encode_aligned(text, max_length)
@@ -617,9 +856,15 @@ class HybridT5Encoder:
 
 
 def load_ext_assets(prefix: Path) -> tuple[torch.Tensor, dict]:
-    """Load (table, mapping) written by build_ext.py from a path prefix."""
+    """Load (table, mapping) written by build_ext.py from a path prefix.
+
+    A pack that ships its ``iso`` record without the rows gets the block
+    regenerated here (:func:`materialize_iso`), so every consumer sees the
+    full table.
+    """
     from safetensors.torch import load_file
 
+    prefix = Path(prefix)
     table = load_file(str(prefix.with_suffix(".safetensors")))["ext_embed"]
     mapping = json.loads(prefix.with_suffix(".json").read_text(encoding="utf-8"))
-    return table, mapping
+    return materialize_iso(table, mapping), mapping

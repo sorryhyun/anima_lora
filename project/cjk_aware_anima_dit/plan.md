@@ -107,7 +107,14 @@ the OCR route too, and G-B runs on *both* tables (the s11 HOT result would
 then be scale-specific after all and `0905_isotropic_ext_hypothesis.md` is
 amended). Either way D2–D3 proceed; only the table changes.
 
-### D1 — deterministic table + route partition + LoRA stamp (1 day, CPU)
+### D1 — deterministic table + route partition + LoRA stamp — CODE DONE 2026-09-05, gate queued
+
+*Shipped 2026-09-05 (see [`findings.md`](findings.md) D1 for pointers): all six
+bullets below are in the tree; the gate render (`C9ISOQ` arm, daemon job
+`20260905-210248-114990`) is pending. Runtime contract:
+[`docs/experimental/cjk_ext_vocab_coverage.md`](../../docs/experimental/cjk_ext_vocab_coverage.md)
+§"Quote partition"; tests `tests/test_ext_vocab_iso.py`.*
+
 
 - `make_random_pack.py --mode iso` from a seed: rows i.i.d. Gaussian at the
   native T5 row norm (ISO1's recipe), no source pack read; bytes

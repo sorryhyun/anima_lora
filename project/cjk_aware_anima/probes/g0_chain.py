@@ -78,6 +78,14 @@ ARMS = {
         "post_image_dataset/cjk_unmask/te/sincos_init_v2",
         False,
     ),
+    # DiT line D1 gate: C9's trained rows + a seed-0 isotropic mirror block
+    # for quoted spans (make_random_pack.py --mode iso-partition).
+    "C9ISOQ": (
+        "cjk_unmask_c9_isoq",
+        "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
+        "post_image_dataset/cjk_unmask/te/sincos_jakozh1sym_r256_isoq",
+        False,
+    ),
 }
 
 # blind sets to compose once the grids exist: set name -> arms
