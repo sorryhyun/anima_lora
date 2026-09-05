@@ -12,6 +12,10 @@ the distill job that writes the pack::
 Stage 1 re-uses the PP-OCR records + mirror from arm C2 (captions identical);
 stage 3 renders ``assets/unmask_eval_prompts.txt`` at seeds 42/7/1234 into
 ``output/tests/cjk_unmask_eval2/armC3_s*`` next to the C2 grid.
+
+Multi-training-seed arms (C10, plan_base1 B3) are one job per seed: the first
+builds the mirror + TE cache, the rest pass ``--skip_cache`` and their own
+``--method`` / ``--arm`` (``seed`` lives in the method toml).
 """
 
 from __future__ import annotations
@@ -60,8 +64,9 @@ def main() -> None:
     ap.add_argument(
         "--ocr_format",
         default="order",
-        choices=("order", "tags", "presence"),
-        help="cache_te_ext --ocr_format; C2–C6 were 'tags'.",
+        choices=("order", "tags", "presence", "sentence"),
+        help="cache_te_ext --ocr_format; C2–C9 were 'tags', C10 (plan_base1 B3) "
+        "'sentence' on the hybrid records.",
     )
     ap.add_argument("--skip_cache", action="store_true")
     ap.add_argument("--skip_train", action="store_true")

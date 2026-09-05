@@ -144,7 +144,16 @@ captions; the SFX prefix stays registered in the grammar for when a reader
 can read them). `tests/test_cjk_ocr_captions.py` pins the byte-identical
 round-trip and the whole tail under `clause_dropout_rate=1.0`.*
 
-### B3 — arm C10 (one evening on the daemon; 3 seeds)
+### B3 — arm C10 (one evening on the daemon; 3 seeds) — **LAUNCHED 2026-09-05 23:40**
+
+*Daemon jobs `20260905-234025-83503f` (seed 42, builds
+`mirror_sincos_hybrid_sentence` + `te/sincos_hybrid_sentence_isoq`),
+`-fa1a24` (seed 7), `-ba0ac2` (seed 1234); configs
+`cjk_unmask_c10{,_s7,_s1234}.toml` (gitignored dir); grids
+`armC10{,s7,s1234}_s{42,7,1234}`. CPU dry run before launch: 105 / 351
+captions carry a speech sentence (hybrid records: 259 speech · 71 sfx · 8
+chrome lines; sfx + chrome dropped), 13 of them after a position clause, 0
+round-trip or variant-tail failures.*
 
 C9ISOQ's recipe verbatim (quote-partitioned pack
 `cjk_vocab_pack_synthjakozh1sym_r256_isoq`, `"…"` spans on the isotropic
