@@ -159,9 +159,20 @@ def test_windows_backend_dependencies_are_isolated():
 
     assert "+cu132" in cuda
     assert "flash_attn" in cuda
-    assert "+rocm7.14.0" in rocm
+    assert "torch[device-gfx1200,device-gfx1201]==2.13.0+rocm10.0.0" in rocm
+    assert "torchvision[device-gfx1200,device-gfx1201]==0.28.0+rocm10.0.0" in rocm
+    assert "+rocm7.14.0" not in rocm
     assert "device-gfx1200" in rocm and "device-gfx1201" in rocm
     assert "flash" not in rocm
+
+    sources = project["tool"]["uv"]["sources"]
+    assert any(
+        source.get("index") == "amd-rocm-100" and source.get("group") == "rocm-windows"
+        for source in sources["torch"]
+    )
+    indices = project["tool"]["uv"]["index"]
+    rocm_index = next(index for index in indices if index["name"] == "amd-rocm-100")
+    assert rocm_index["url"] == "https://stable.repo.amd.com/rocm/whl-next/"
 
     # GH #92: a flagless `uv sync` (old updaters) must install the CUDA stack
     # on Windows, and the legacy --extra flags must keep resolving as stubs.
@@ -186,10 +197,61 @@ def test_flagless_sync_resolves_cuda_torch_on_windows():
     ]
     assert torch_lines, "no torch pin in the default export"
     non_darwin = [line for line in torch_lines if "== 'darwin'" not in line]
-    assert non_darwin and all("+cu132" in line for line in non_darwin), torch_lines
+    assert non_darwin and all("torch==2.12.0+cu132" in line for line in non_darwin), (
+        torch_lines
+    )
+    torchvision_lines = [
+        line for line in result.stdout.splitlines() if line.startswith("torchvision==")
+    ]
+    non_darwin_vision = [
+        line for line in torchvision_lines if "== 'darwin'" not in line
+    ]
+    assert non_darwin_vision and all(
+        "torchvision==0.27.0+cu132" in line for line in non_darwin_vision
+    ), torchvision_lines
+    assert "+rocm" not in result.stdout
+    assert "rocm-sdk" not in result.stdout
     flash_win = [
         line
         for line in result.stdout.splitlines()
         if line.startswith("flash-attn") and "win_amd64" in line
     ]
     assert flash_win, "the default export must ship the Windows flash-attn wheel"
+
+
+def test_rocm_group_resolves_pytorch_213_rocm10():
+    """The ROCm group must resolve the stable Windows ROCm 10 / torch 2.13 stack."""
+    result = subprocess.run(
+        [
+            "uv",
+            "export",
+            "--frozen",
+            "--no-hashes",
+            "--no-emit-project",
+            "--no-group",
+            "cuda-windows",
+            "--group",
+            "rocm-windows",
+        ],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    lines = result.stdout.splitlines()
+    torch_lines = [line for line in lines if line.startswith("torch==")]
+    torchvision_lines = [line for line in lines if line.startswith("torchvision==")]
+
+    assert any("torch==2.13.0+rocm10.0.0" in line for line in torch_lines), torch_lines
+    assert any(
+        "torchvision==0.28.0+rocm10.0.0" in line for line in torchvision_lines
+    ), torchvision_lines
+    assert not any("+rocm7.14.0" in line for line in torch_lines), torch_lines
+    assert not any("+rocm7.14.0" in line for line in torchvision_lines), (
+        torchvision_lines
+    )
+    assert any("amd-torch-device-gfx1200" in line for line in lines)
+    assert any("amd-torch-device-gfx1201" in line for line in lines)
+    assert not any(
+        line.startswith("flash-attn") and "win_amd64" in line for line in lines
+    )

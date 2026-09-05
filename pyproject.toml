@@ -139,12 +139,12 @@ anime-tools = [
 torch = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
-    { index = "amd-rocm-714", group = "rocm-windows" },
+    { index = "amd-rocm-100", group = "rocm-windows" },
 ]
 torchvision = [
     { index = "pytorch-cu132", marker = "sys_platform != 'darwin' and sys_platform != 'win32'" },
     { index = "pytorch-cu132", group = "cuda-windows" },
-    { index = "amd-rocm-714", group = "rocm-windows" },
+    { index = "amd-rocm-100", group = "rocm-windows" },
 ]
 
 [[tool.uv.index]]
@@ -155,8 +155,8 @@ explicit = true
 # This index also hosts the ROCm runtime/device packages pulled by the device
 # extras, so it cannot be explicit-only.
 [[tool.uv.index]]
-name = "amd-rocm-714"
-url = "https://repo.amd.com/rocm/whl-multi-arch/"
+name = "amd-rocm-100"
+url = "https://stable.repo.amd.com/rocm/whl-next/"
 
 [tool.ruff.lint.per-file-ignores]
 # `train.py` / `inference.py` call `install_no_window_default()` at module scope
@@ -218,8 +218,8 @@ cuda-windows = [
 rocm-windows = [
     # Initial RDNA 4 path. AMD's device-all extra currently includes Linux-only
     # Instinct packages and cannot resolve on Windows, so select gfx120X only.
-    "torch[device-gfx1200,device-gfx1201]==2.12.0+rocm7.14.0 ; sys_platform == 'win32'",
-    "torchvision[device-gfx1200,device-gfx1201]==0.27.0+rocm7.14.0 ; sys_platform == 'win32'",
+    "torch[device-gfx1200,device-gfx1201]==2.13.0+rocm10.0.0 ; sys_platform == 'win32'",
+    "torchvision[device-gfx1200,device-gfx1201]==0.28.0+rocm10.0.0 ; sys_platform == 'win32'",
     # AMD's Windows wheel metadata currently points at a Linux-only `triton`
     # distribution. The Windows package provides the same import/runtime used
     # by torch.compile in the working ROCm environment.

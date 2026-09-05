@@ -44,14 +44,14 @@ RDNA 4 only:
 | `gfx1200` | Radeon RX 9060 XT | Verified |
 | `gfx1201` | Radeon RX 9070 XT | Verified |
 
-Both devices were tested with the exact ROCm 7.14 Windows environment using
+Both devices were tested with the exact ROCm 10.0 Windows environment using
 tensor allocation, `torch.compile`, bf16 PyTorch SDPA, backward, finite-value
 checks, and device synchronization.
 
-AMD's ROCm 7.14 PyTorch package repository also publishes device packages for
-RDNA 3 (`gfx1100`, `gfx1101`, `gfx1102`, and `gfx1103`). The same packaging
-approach is expected to extend to those architectures, but they are not part of
-the declared support set here until they receive the same hardware smoke test.
+AMD's ROCm 10.0 compatibility matrix includes RDNA 3 targets (`gfx1100`,
+`gfx1101`, and `gfx1102`) on Windows. The same packaging approach is expected
+to extend to those architectures, but they are not part of the declared support
+set here until they receive the same hardware smoke test.
 
 > The installer currently detects the GPU vendor, not the exact AMD GPU
 > architecture. The committed ROCm dependency set contains only `gfx1200` and
@@ -63,14 +63,15 @@ the declared support set here until they receive the same hardware smoke test.
 The supported Windows ROCm environment for this integration is pinned to:
 
 - Python 3.13
-- PyTorch `2.12.0+rocm7.14.0`
-- torchvision `0.27.0+rocm7.14.0`
-- ROCm / HIP 7.14 device packages for `gfx1200` and `gfx1201`
+- PyTorch `2.13.0+rocm10.0.0`
+- torchvision `0.28.0+rocm10.0.0`
+- ROCm 10.0 device packages for `gfx1200` and `gfx1201`
 - `triton-windows` for the Windows `torch.compile` runtime
 
-The runtime/backend code is not fundamentally tied to PyTorch 2.12. The exact
-2.12 pin exists because it is the ROCm 7.14 Windows package combination used by
-this release and matches Anima LoRA's current CUDA PyTorch baseline.
+The runtime/backend code is not fundamentally tied to one PyTorch minor version.
+The Windows ROCm path intentionally uses PyTorch 2.13 because ROCm 10.0 validates
+that combination on Windows; the CUDA path remains on its independently tested
+PyTorch 2.12 + CUDA 13.2 stack.
 
 For development-only compatibility checking, the same core Anima / ROCm path
 has also been exercised locally with:
@@ -80,7 +81,7 @@ has also been exercised locally with:
 
 Those development stacks are **not** the locked or advertised supported
 configuration. They only indicate that the backend integration itself is not
-intrinsically coupled to PyTorch 2.12.
+intrinsically coupled to one PyTorch minor version.
 
 ## Attention behavior on ROCm
 
