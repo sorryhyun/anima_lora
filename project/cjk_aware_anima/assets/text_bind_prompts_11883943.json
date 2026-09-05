@@ -1,0 +1,42 @@
+{
+  "same": {
+    "en": "sensitive, 1girl, original, @sincos, ^^^, bikini, gold bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, pink shirt, short sleeves, simple background, solo, speech bubble, swimsuit, t-shirt, twintails, white background, 「着けるんですか！？」",
+    "ja": "sensitive, 1girl, original, @sincos, ^^^, bikini, gold bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, pink shirt, short sleeves, simple background, solo, speech bubble, swimsuit, t-shirt, twintails, white background, 「着けるんですか！？」"
+  },
+  "swap": {
+    "en": "sensitive, 1girl, original, @sincos, ^^^, bikini, red bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, blue shirt, short sleeves, indoors, solo, speech bubble, swimsuit, t-shirt, ponytail, classroom, 「着けるんですか！？」",
+    "ja": "sensitive, 1girl, original, @sincos, ^^^, bikini, red bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, blue shirt, short sleeves, indoors, solo, speech bubble, swimsuit, t-shirt, ponytail, classroom, 「着けるんですか！？」"
+  },
+  "drop_quote": {
+    "en": "sensitive, 1girl, original, @sincos, ^^^, bikini, gold bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, pink shirt, short sleeves, simple background, solo, speech bubble, swimsuit, t-shirt, twintails, white background",
+    "ja": "sensitive, 1girl, original, @sincos, ^^^, bikini, gold bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, pink shirt, short sleeves, simple background, solo, speech bubble, swimsuit, t-shirt, twintails, white background"
+  },
+  "drop_all": {
+    "en": "sensitive, 1girl, original, @sincos, ^^^, bikini, gold bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, pink shirt, short sleeves, simple background, solo, speech bubble, swimsuit, t-shirt, twintails, white background",
+    "ja": "sensitive, 1girl, original, @sincos, ^^^, bikini, gold bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, pink shirt, short sleeves, simple background, solo, speech bubble, swimsuit, t-shirt, twintails, white background"
+  },
+  "other_text": {
+    "en": "sensitive, 1girl, original, @sincos, ^^^, bikini, gold bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, pink shirt, short sleeves, simple background, solo, speech bubble, swimsuit, t-shirt, twintails, white background, 「本当にいいんですか！？」",
+    "ja": "sensitive, 1girl, original, @sincos, ^^^, bikini, gold bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, pink shirt, short sleeves, simple background, solo, speech bubble, swimsuit, t-shirt, twintails, white background, 「本当にいいんですか！？」"
+  },
+  "swap_drop": {
+    "en": "sensitive, 1girl, original, @sincos, ^^^, bikini, red bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, blue shirt, short sleeves, indoors, solo, speech bubble, swimsuit, t-shirt, ponytail, classroom",
+    "ja": "sensitive, 1girl, original, @sincos, ^^^, bikini, red bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, blue shirt, short sleeves, indoors, solo, speech bubble, swimsuit, t-shirt, ponytail, classroom"
+  },
+  "_gt": "着けるんですか！？",
+  "_gt_lines": [
+    "着けるんですか！？"
+  ],
+  "_other": "本当にいいんですか！？",
+  "_stem": "11883943",
+  "_expect": {
+    "same": "gt",
+    "swap": "gt",
+    "drop_quote": "none",
+    "drop_all": "none",
+    "other_text": "other",
+    "swap_drop": "none"
+  },
+  "_arm": "presence1200",
+  "_train_caption": "sensitive, 1girl, original, @sincos, ^^^, bikini, gold bikini, hair ornament, hairclip, large breasts, looking at viewer, open mouth, pink shirt, short sleeves, simple background, solo, speech bubble, swimsuit, t-shirt, twintails, white background"
+}

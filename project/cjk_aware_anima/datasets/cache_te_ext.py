@@ -68,10 +68,12 @@ class ExtTokenizeStrategy:
         ]
 
 
-OCR_FORMATS = ("order", "tags")
+OCR_FORMATS = ("order", "tags", "presence")
 """``order`` — one phrase, ``Japanese text in following order: "…", "…"``, the
 lines in the records' (reading) order; ``tags`` — the C2–C6 form, a ``japanese
-text`` presence tag plus one ``「…」`` flat tag per line."""
+text`` presence tag plus one ``「…」`` flat tag per line; ``presence`` — the
+``japanese text`` tag alone (text presence with no ext-row address: the
+text-binding probe's control arm)."""
 
 ORDER_PREFIX = "Japanese text in following order: "
 
@@ -98,6 +100,8 @@ def ocr_tags(lines: list[str], fmt: str) -> list[str]:
     """The tag(s) that carry ``lines`` under ``fmt`` (see ``OCR_FORMATS``)."""
     if fmt == "tags":
         return [f"「{ln}」" for ln in lines]
+    if fmt == "presence":
+        return []
     if fmt == "order":
         quoted = ", ".join(f'"{_quote_safe(ln)}"' for ln in lines)
         return [ORDER_PREFIX + quoted]
@@ -107,15 +111,15 @@ def ocr_tags(lines: list[str], fmt: str) -> list[str]:
 def append_tags(caption: str, lines: list[str], fmt: str = "order") -> str:
     """Append the OCR lines to the caption's flat bag, grammar-safe.
 
-    ``tags`` adds a ``japanese text`` presence tag first unless the caption
-    already carries a ``* text`` tag; ``order`` needs none — the phrase opens
-    with it.
+    ``tags`` / ``presence`` add a ``japanese text`` presence tag first unless
+    the caption already carries a ``* text`` tag; ``order`` needs none — the
+    phrase opens with it.
     """
     from anime_tools.captions.position_clauses import compose_caption, parse_caption
 
     parsed = parse_caption(caption)
     extra = []
-    if fmt == "tags" and not TEXT_TAG_RE.search(caption):
+    if fmt in ("tags", "presence") and not TEXT_TAG_RE.search(caption):
         extra = ["japanese text"]
     return compose_caption(
         tuple(parsed.flat_tags) + tuple(extra) + tuple(ocr_tags(lines, fmt)),
@@ -124,13 +128,21 @@ def append_tags(caption: str, lines: list[str], fmt: str = "order") -> str:
 
 
 def build_mirror(
-    resized: Path, mirror: Path, tags: dict[str, list[str]], fmt: str = "order"
+    resized: Path,
+    mirror: Path,
+    tags: dict[str, list[str]],
+    fmt: str = "order",
+    stems: set[str] | None = None,
 ) -> tuple[int, int]:
+    """``stems`` restricts the mirror to those images (the single-image
+    text-binding probe); ``None`` mirrors the whole shard."""
     from anime_tools.captions.variants import read_variants_sidecar
 
     mirror.mkdir(parents=True, exist_ok=True)
     n_text = n_plain = 0
     for img in sorted(resized.glob("*.png")):
+        if stems is not None and img.stem not in stems:
+            continue
         link = mirror / img.name
         if not link.exists():
             link.symlink_to(img.resolve())
@@ -188,7 +200,16 @@ def main() -> None:
     )
     ap.add_argument("--batch_size", type=int, default=8)
     ap.add_argument("--overwrite", action="store_true")
+    ap.add_argument(
+        "--stems",
+        default=None,
+        help="comma-separated image stems; restricts the mirror + cache to "
+        "those images (default: the whole shard).",
+    )
     opts = ap.parse_args()
+    stems = (
+        {s.strip() for s in opts.stems.split(",") if s.strip()} if opts.stems else None
+    )
 
     base_dir = REPO / "post_image_dataset" / "cjk_unmask"
     records = opts.records or base_dir / f"ocr_records_{opts.shard}.jsonl"
@@ -197,7 +218,12 @@ def main() -> None:
     resized = REPO / "post_image_dataset" / "resized" / opts.shard
 
     tags = ocr_lines_by_stem(records, opts.max_lines)
-    n_text, n_plain = build_mirror(resized, mirror, tags, opts.ocr_format)
+    if stems is not None:
+        missing = stems - set(tags)
+        if missing:
+            sys.exit(f"no OCR lines in {records} for stems: {sorted(missing)}")
+        tags = {k: v for k, v in tags.items() if k in stems}
+    n_text, n_plain = build_mirror(resized, mirror, tags, opts.ocr_format, stems)
     print(
         f"mirror ({opts.ocr_format}): {n_text} captions carry OCR lines, "
         f"{n_plain} plain -> {mirror}"
@@ -237,7 +263,8 @@ def main() -> None:
         ids, mask = hybrid.encode(cap, 512)
         n_ext = sum(1 for i in ids[: sum(mask)] if i >= ext_vocab.T5_TABLE_SIZE)
         print(f"sanity {stem}: {sum(mask)} t5 tokens, {n_ext} ext — {stem_tags[:2]}")
-        assert n_ext > 0, "OCR caption produced no ext rows — pack/encoder mismatch"
+        if opts.ocr_format != "presence":
+            assert n_ext > 0, "OCR caption produced no ext rows — pack/encoder mismatch"
 
     out.mkdir(parents=True, exist_ok=True)
     stats = cache_text_embeddings(

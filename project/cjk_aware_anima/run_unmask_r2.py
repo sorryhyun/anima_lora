@@ -45,6 +45,11 @@ def main() -> None:
         "the trained arms' mirrors stay as trained.",
     )
     ap.add_argument("--eval_dir", default="output/tests/cjk_unmask_eval2")
+    ap.add_argument(
+        "--prompts",
+        default=str(HERE / "assets" / "unmask_eval_prompts.txt"),
+        help="eval prompt file, one row per line (v2: assets/unmask_eval_prompts_v2.txt)",
+    )
     ap.add_argument("--arm", default="armC3")
     ap.add_argument(
         "--records",
@@ -55,15 +60,22 @@ def main() -> None:
     ap.add_argument(
         "--ocr_format",
         default="order",
-        choices=("order", "tags"),
+        choices=("order", "tags", "presence"),
         help="cache_te_ext --ocr_format; C2–C6 were 'tags'.",
     )
     ap.add_argument("--skip_cache", action="store_true")
     ap.add_argument("--skip_train", action="store_true")
+    ap.add_argument(
+        "--seeds",
+        nargs="+",
+        type=int,
+        default=list(SEEDS),
+        help="grid seeds (default 42 7 1234); use fresh ones for a re-blind",
+    )
     opts = ap.parse_args()
 
     pack = REPO / f"{opts.ext_prefix}.safetensors"
-    if not pack.exists():
+    if not opts.skip_cache and not pack.exists():
         sys.exit(f"ext pack missing: {pack} (distill job not finished?)")
 
     if not opts.skip_cache:
@@ -135,9 +147,9 @@ def main() -> None:
         "--lora_weight",
         lora,
         "--from_file",
-        str(HERE / "assets" / "unmask_eval_prompts.txt"),
+        opts.prompts,
     ]
-    for seed in SEEDS:
+    for seed in opts.seeds:
         run(
             f"gen s{seed}",
             base

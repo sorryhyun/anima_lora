@@ -4,7 +4,7 @@ Running list of daemon bugs and UX friction, collected from real sessions.
 Each entry: symptom → repro → suggestion. Severity: **bug** (wrong/broken),
 **friction** (works but fights the user), **idea** (missing capability).
 
-Last updated: 2026-09-01 (§1–§5 fixed; §6 still open).
+Last updated: 2026-09-05 (§1–§5 fixed; §6 open; §7–§11 added from the blind-pairs session, all open).
 
 ---
 
@@ -111,3 +111,84 @@ Both need a root-cause pass, not a patch; neither was touched on 2026-09-01.
   fetch models. Suggestion: treat growing files under `~/.cache/huggingface`
   (or child net I/O) as liveness, or default the watchdog off for `download`
   targets.
+
+---
+
+## 7. Multi-stage command jobs die at the last stage and the whole chain re-runs — **friction** · OPEN
+
+A command job is one script; the daemon has no notion of stages. The
+2026-09-05 chain `regrid_set.py` = train COLLAPSE (35 min) → render 3 arms
+(3 × 7 min) → compose blind set → `git push`. It failed **twice at the
+compose step** (a script bug each time, see §8), and each retry had to
+re-run the script from the top. The workaround was to hand-write
+skip-if-output-exists checks into the script (`already rendered … skip`),
+which every chain script now has to reinvent.
+
+- Repro: `make daemon-run ARGS="<chain.py> … --queue"` where the last stage
+  raises → `state: error`; resubmit → all earlier stages rerun unless the
+  script guards them.
+- Suggestion: a tiny stage contract for command jobs — e.g. the script calls
+  `anima_daemon.stage("render:HOT")` / or the daemon honours a
+  `ANIMA_DAEMON_STAGES` file of `name<TAB>done` lines in the job dir — and
+  `daemon-run --resume <job id>` re-launches the same argv with
+  `ANIMA_DAEMON_SKIP_STAGES=…` exported so the script can skip. Even without
+  daemon support, a documented helper (`_common.stage_done(job_dir, name)`)
+  would stop each script rolling its own.
+
+## 8. A failed command job's record says nothing about *why* — **friction** · OPEN
+
+`daemon-status --job <id>` / `daemon-wait` on an errored **command** job
+return `result_path: null`, `result_summary: null`, `returncode: 1`. The
+cause (a `Traceback`) lives only in `stdout_path`, several thousand lines
+down, after the child's rich-formatted model-loading logs. Every failure on
+2026-09-05 (three of them) needed `grep -n Traceback stdout.log | tail` +
+`tail -c 1500` by hand; the compact `--failed` listing gives no hint at all.
+
+- Repro: any command job whose script raises; then `make daemon-status
+  ARGS="--failed"`.
+- Suggestion: on nonzero exit the manager captures an `error_tail` into the
+  record — the last `Traceback` block if one is found in stdout (regex from
+  the last `Traceback (most recent call last):` to EOF, capped ~40 lines),
+  else the last 20 lines — and `daemon-status` compact rows print its final
+  line (`AssertionError: ('HOT', 'C9', 1)`). `daemon-wait`'s error path
+  should print the same block instead of the bare record.
+
+## 9. `daemon-kill` reports the pre-kill state — **friction** · OPEN
+
+`make daemon-kill JOB=<id>` printed `job <id> → running (daemon still up).`
+on 2026-09-05; the job was in fact stopping and showed `stopped` in the next
+`daemon-status`. The line reads as "kill did nothing" and the caller has to
+re-query to know.
+
+- Repro: kill a running command job; read the one-line output.
+- Suggestion: have the endpoint (or the CLI) wait up to ~2 s for the state to
+  flip and print the post-kill state — `job <id>: running → stopped` — or, if
+  it has not flipped, say so explicitly (`kill sent, still running after 2s`).
+
+## 10. Submission output is a cheat-sheet, not a job id — **friction** · OPEN
+
+Scripting a submit (`--queue`) means parsing the id out of the hint block
+(`grep -o "JOB=[0-9a-z-]*" | head -1` was the incantation all day). §4
+trimmed the repetition but the *first* submit of every process still prints
+five lines with the id embedded in a `make daemon-kill JOB=…` example.
+
+- Suggestion: `daemon-run --queue --json` (or `--print-id`) that prints only
+  `{"job_id": …, "state": "queued"}` / the bare id; keep the cheat-sheet as
+  the human default. Same for a `make daemon-state JOB=<id>` that prints
+  just the state word — polling loops (the agent's `Monitor` here) currently
+  parse the full `--job` record for one field.
+
+## 11. Agent waits are capped at 10 min by the harness; the daemon can't push a completion — **idea** · OPEN
+
+`daemon-wait` from an agent's background shell is killed at the harness's
+600 s cap (§5's `--timeout` covers the *summary*, not the cap), so anything
+longer than ten minutes becomes a 60 s poll loop against `daemon-status`.
+Observed 2026-09-05: the wait on a 1 h chain was killed at 10 min; the poll
+loop worked but is exactly the pattern the daemon skill tells agents not to
+write.
+
+- Suggestion: a job-side completion hook — `daemon-run --on-exit "<cmd>"`
+  (run by the manager after the child exits, with `ANIMA_DAEMON_JOB_ID` /
+  `_STATE` / `_RETURNCODE` exported) or a `--touch <path>` that writes the
+  final state to a file the caller can `inotifywait`. Either lets a caller
+  register once and be woken, instead of polling or holding a connection.

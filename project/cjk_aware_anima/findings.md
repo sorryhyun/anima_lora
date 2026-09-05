@@ -571,3 +571,78 @@ the cheap next probe. U2 reduces to the identity-anchor arm
 (`--unseen_anchor`, α ≡ 1) plus that probe; the render read of an
 unvisited-han prompt is comfy-path only and still owed.
 
+## 13. U5 symbol register: the wiki clause is a weaker teacher than the symbol itself (2026-09-04)
+
+plan_zh2 U5 built `tags_sym` — 21 symbol surfaces / 15 Danbooru tags, teacher =
+wiki-definition clause, student = symbol verbatim, 300 minted captions each
+(the corpus holds ~0 real symbol tags: `^^^` 13, `^ ^` 4 over 11,869 images,
+so the plan's "~40 tags > 20 occurrences" premise was false) — and distilled it
+into `u5sym_r256` beside `u4base_r256`. Full tables in
+[`reports/0904_u5_symbol_register.md`](reports/0904_u5_symbol_register.md).
+
+**The gate was already met by the base pack, and inverted.** On the 20-prompt
+symbol grid (dbv4 judge, 3 base seeds) the JA/ZH prompt carrying `^^^` renders
+the mark at 0.6–1.0 hit rate while the EN prompt carrying the wiki clause
+manages 0.0–0.4: Qwen reads `^^^` in a tag context better than it reads
+"crown-shaped realization mark beside the head". The student's content is the
+Qwen hidden state; the ext row (findings §11) only keeps the T5-side query from
+collapsing into `<unk>`, and that alone was the fix for `^^^` and mostly `:<`.
+**Distilling toward the clause pulled those symbols down** (U5 seed 42: `:<`
+0.4/0.6 → 0/0 hit rate, `^^^` zh 1.0 → 0.6; cells still frown, but as a generic
+frown, not the beak-shaped `:<` mouth — the paraphrase is semantically right
+and iconically wrong). Where the symbol genuinely fails under base (`^_^` ≈ 0,
+`☆` 1–2/5) U5 did not move it. Standard distill metrics unchanged (≤ 0.01);
+`row_holdout.held.cos` −0.016 on one seed, noted.
+
+Interim on 1 U5 seed (seeds 7/1234 + the two `tags_sym`-holdout evals were
+still on the daemon at write-up; report §"To finish the table"). Lesson for the
+line: **a paraphrase teacher is not a teacher for tokens Qwen already
+understands** — the symbol block is the deliverable for expression symbols;
+`^_^`/`☆`-class failures want real captions carrying them (or a self-distilled
+anchor to the student's own reading), not a wiki clause. Six of the drafted
+clauses were wrong before the agent-side wiki check (`^^^` ≠ notice lines,
+`\||/`/`\m/` are finger gestures) — verify tag semantics against the wiki dump
+before minting any register from definitions.
+
+## 14. Text-binding probe: OCR quote rows are inert for manga training; the presence tag is the address (2026-09-04)
+
+Dreambooth-style instrument for §9 job (2) — `probes/text_bind_probe.py` +
+`text_bind_judge.py`, full write-up
+[`reports/0904_text_bind_probe.md`](reports/0904_text_bind_probe.md). Train a
+plain LoRA on 1–3 sincos images whose captions carry the OCR line as 「…」
+through the C9 pack, render six caption edits (same / tags swapped / quote
+dropped / all text tags dropped / other line / swap+drop) at three seeds
+through `ja_ext` and `ja_native`, PP-OCR the cells.
+
+- **One image**: at 100 steps the text is a style blob addressed by the
+  `japanese text` tag (drop it → no text 6/6; keep it → text 100 %, even on
+  the beach swap); at 400 steps glyphs of the line appear (hit 12/36) **in
+  every condition including no text tag** and the other-line prompt. The LoRA
+  body is the address; `ja_ext` ≡ `ja_native` pixel-for-pixel.
+- **Three images, 400 steps each**: each image's renders write its *own*
+  line in every condition (11883943 reproduces the source's `えっ!?` that was
+  never in the caption); the asked-for other line is never rendered.
+  Training with the quotes vs with the presence tag only: same pattern,
+  same hit band. → A line that occurs once binds to the image identity, not
+  to its row sequence (the tag-visit rule of §3 applied to text), and
+  prompting that identity spawns it — arm B's spam in miniature.
+- **351 images (arm P = C9 with `presence` captions)**: P ≈ C9 cell for
+  cell on the 8-row grid, leakage and quality alike (comic row slightly
+  cleaner in P).
+- **351 images, geometry-matched random pack (arm R)**: rows = Gaussian
+  draws with the trained pack's spectrum (PR 18.2), row norms and mean norm
+  in a random basis, content cos to the trained rows −0.000 ± 0.030
+  (`probes/make_random_pack.py`, `cjk_vocab_pack_random_r256`); C9 recipe
+  otherwise verbatim. R ≈ C9 ≈ P on the grid (text cells 2 · 2 · 2 of 21;
+  comic lines 4 · 0 · 4). The learned representation gives the LoRA no
+  training benefit over random addresses with the same geometry. `configs/gui-methods/custom/cjk_unmask_presence.toml`,
+  `reports/unmask_armP_vs_C9.png`, `probes/unmask_grid_ocr.py` (automated
+  count — a floor, weaker than the eyeball tally).
+
+**Verdict:** for the reframed goal (unmasked manga training stays healthy) the
+「…」 ext encoding buys nothing over the `japanese text` tag; arm C's win over B
+(`0901_unmask_ab.md`) is re-attributed to the presence tag. Ext-vs-no-ext is
+undecidable at 1–3 images and indistinguishable at 351 on both text and
+quality, and learned-vs-random-content is indistinguishable at 351 too. The pack's remaining job is (1), JA prompting. Do not re-propose
+OCR-quote captions, row-separability objectives, or random-orthogonal char
+keys for the manga line — none of them is exercised by unique text.

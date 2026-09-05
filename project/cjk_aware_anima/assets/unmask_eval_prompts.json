@@ -1,0 +1,21 @@
+{
+  "_comment": "Per-row dbv4 tag lists for the 8 rows of unmask_eval_prompts.txt (probes/unmask_grid_judge.py). Names are dbv4-card names; tags the card lacks are dropped with a warning.",
+  "rows": [
+    {"row": 1, "prompt": "1girl, solo, blonde hair, school uniform, classroom, sitting at desk, smile, looking at viewer",
+     "tags": ["1girl", "solo", "blonde_hair", "school_uniform", "classroom", "sitting", "desk", "smile", "looking_at_viewer"]},
+    {"row": 2, "prompt": "1girl, solo, long hair, blush, bedroom, on bed, looking at viewer",
+     "tags": ["1girl", "solo", "long_hair", "blush", "bedroom", "on_bed", "bed", "looking_at_viewer"]},
+    {"row": 3, "prompt": "1boy, 1girl, hetero, hug, indoors, curtains",
+     "tags": ["1boy", "1girl", "hetero", "hug", "indoors", "curtains"]},
+    {"row": 4, "prompt": "2girls, outdoors, park bench, eating ice cream, summer",
+     "tags": ["2girls", "outdoors", "park_bench", "bench", "eating", "ice_cream", "food", "summer"]},
+    {"row": 5, "prompt": "1girl, solo, monochrome, greyscale, sitting on a windowsill, film grain",
+     "tags": ["1girl", "solo", "monochrome", "greyscale", "windowsill", "window", "sitting", "film_grain"]},
+    {"row": 6, "prompt": "1girl, solo, maid, holding a tray, cafe interior",
+     "tags": ["1girl", "solo", "maid", "holding_tray", "tray", "cafe"]},
+    {"row": 7, "prompt": "1girl, solo, upper body, portrait, simple background",
+     "tags": ["1girl", "solo", "upper_body", "portrait", "simple_background"]},
+    {"row": 8, "prompt": "comic, 2koma, 1girl, surprised expression",
+     "tags": ["comic", "2koma", "1girl", "surprised"]}
+  ]
+}

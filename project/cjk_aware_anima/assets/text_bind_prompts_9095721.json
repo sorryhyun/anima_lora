@@ -1,0 +1,42 @@
+{
+  "same": {
+    "en": "sensitive, 1girl, original, @sincos, black jacket, black ribbon, blue skirt, blush, brown hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, purple eyes, simple background, solo, standing, suspenders, twintails, white background, white shirt, japanese text, 「ちょっとだけだから」",
+    "ja": "sensitive, 1girl, original, @sincos, black jacket, black ribbon, blue skirt, blush, brown hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, purple eyes, simple background, solo, standing, suspenders, twintails, white background, white shirt, japanese text, 「ちょっとだけだから」"
+  },
+  "swap": {
+    "en": "sensitive, 1girl, original, @sincos, red jacket, black ribbon, black skirt, blush, blue hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, green eyes, outdoors, solo, standing, suspenders, twintails, beach, white shirt, japanese text, 「ちょっとだけだから」",
+    "ja": "sensitive, 1girl, original, @sincos, red jacket, black ribbon, black skirt, blush, blue hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, green eyes, outdoors, solo, standing, suspenders, twintails, beach, white shirt, japanese text, 「ちょっとだけだから」"
+  },
+  "drop_quote": {
+    "en": "sensitive, 1girl, original, @sincos, black jacket, black ribbon, blue skirt, blush, brown hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, purple eyes, simple background, solo, standing, suspenders, twintails, white background, white shirt, japanese text",
+    "ja": "sensitive, 1girl, original, @sincos, black jacket, black ribbon, blue skirt, blush, brown hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, purple eyes, simple background, solo, standing, suspenders, twintails, white background, white shirt, japanese text"
+  },
+  "drop_all": {
+    "en": "sensitive, 1girl, original, @sincos, black jacket, black ribbon, blue skirt, blush, brown hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, purple eyes, simple background, solo, standing, suspenders, twintails, white background, white shirt",
+    "ja": "sensitive, 1girl, original, @sincos, black jacket, black ribbon, blue skirt, blush, brown hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, purple eyes, simple background, solo, standing, suspenders, twintails, white background, white shirt"
+  },
+  "other_text": {
+    "en": "sensitive, 1girl, original, @sincos, black jacket, black ribbon, blue skirt, blush, brown hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, purple eyes, simple background, solo, standing, suspenders, twintails, white background, white shirt, japanese text, 「明日も晴れるかな」",
+    "ja": "sensitive, 1girl, original, @sincos, black jacket, black ribbon, blue skirt, blush, brown hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, purple eyes, simple background, solo, standing, suspenders, twintails, white background, white shirt, japanese text, 「明日も晴れるかな」"
+  },
+  "swap_drop": {
+    "en": "sensitive, 1girl, original, @sincos, red jacket, black ribbon, black skirt, blush, blue hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, green eyes, outdoors, solo, standing, suspenders, twintails, beach, white shirt, japanese text",
+    "ja": "sensitive, 1girl, original, @sincos, red jacket, black ribbon, black skirt, blush, blue hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, green eyes, outdoors, solo, standing, suspenders, twintails, beach, white shirt, japanese text"
+  },
+  "_gt": "ちょっとだけだから",
+  "_gt_lines": [
+    "ちょっとだけだから"
+  ],
+  "_other": "明日も晴れるかな",
+  "_stem": "9095721",
+  "_expect": {
+    "same": "gt",
+    "swap": "gt",
+    "drop_quote": "none",
+    "drop_all": "none",
+    "other_text": "other",
+    "swap_drop": "none"
+  },
+  "_arm": "presence1200",
+  "_train_caption": "sensitive, 1girl, original, @sincos, black jacket, black ribbon, blue skirt, blush, brown hair, collared shirt, cowboy shot, dot nose, dress shirt, hair ribbon, large breasts, looking at viewer, medium hair, mole, mole under eye, off shoulder, open mouth, partially unbuttoned, pleated skirt, purple eyes, simple background, solo, standing, suspenders, twintails, white background, white shirt, japanese text"
+}

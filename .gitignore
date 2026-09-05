@@ -70,3 +70,9 @@ project/sigma_lowres/bench/probe1280_cache
 
 # anime_tools stage reports (report_dir defaults anchor on ANIMA_HOME = this checkout)
 workspace/
+
+# cjk lines — rendered contact sheets / montages and judge|OCR machine outputs
+# next to the reports (the .md reports stay tracked; u0_map_bands.json was
+# tracked before this rule and stays)
+project/cjk_aware_anima*/reports/*.png
+project/cjk_aware_anima*/reports/*.json

@@ -1,0 +1,284 @@
+{
+ "_comment": "v2 eval rows (probes/make_eval_prompts.py). dbv4 card names; tags the card lacks are dropped by the judge with a warning. @trigger tags are not judge tags.",
+ "rows": [
+  {
+   "row": 1,
+   "prompt": "siesta (tantei wa mou shindeiru), tantei wa mou shindeiru, 1girl, solo, white hair, blue eyes, black dress, holding magnifying glass, night, city street, rain, umbrella, looking at viewer",
+   "tags": [
+    "siesta_(tantei_wa_mou_shindeiru)",
+    "tantei_wa_mou_shindeiru",
+    "1girl",
+    "solo",
+    "white_hair",
+    "blue_eyes",
+    "black_dress",
+    "holding_magnifying_glass",
+    "night",
+    "city_street",
+    "rain",
+    "umbrella",
+    "looking_at_viewer"
+   ]
+  },
+  {
+   "row": 2,
+   "prompt": "fern (sousou no frieren), sousou no frieren, 1girl, solo, purple hair, long hair, holding staff, forest, dappled sunlight, from side, expressionless",
+   "tags": [
+    "fern_(sousou_no_frieren)",
+    "sousou_no_frieren",
+    "1girl",
+    "solo",
+    "purple_hair",
+    "long_hair",
+    "holding_staff",
+    "forest",
+    "dappled_sunlight",
+    "from_side",
+    "expressionless"
+   ]
+  },
+  {
+   "row": 3,
+   "prompt": "mayano top gun (umamusume), umamusume, 1girl, solo, horse ears, horse tail, orange hair, twintails, gym uniform, red buruma, running, track, motion lines",
+   "tags": [
+    "mayano_top_gun_(umamusume)",
+    "umamusume",
+    "1girl",
+    "solo",
+    "horse_ears",
+    "horse_tail",
+    "orange_hair",
+    "twintails",
+    "gym_uniform",
+    "red_buruma",
+    "running",
+    "track",
+    "motion_lines"
+   ]
+  },
+  {
+   "row": 4,
+   "prompt": "nilou (genshin impact), genshin impact, 1girl, solo, red hair, very long hair, dancing, veil, jewelry, desert, sunset, full body",
+   "tags": [
+    "nilou_(genshin_impact)",
+    "genshin_impact",
+    "1girl",
+    "solo",
+    "red_hair",
+    "very_long_hair",
+    "dancing",
+    "veil",
+    "jewelry",
+    "desert",
+    "sunset",
+    "full_body"
+   ]
+  },
+  {
+   "row": 5,
+   "prompt": "@sincos, 1girl, solo, brown hair, short hair, school uniform, serafuku, classroom, sitting, desk, looking at viewer, smile",
+   "tags": [
+    "1girl",
+    "solo",
+    "brown_hair",
+    "short_hair",
+    "school_uniform",
+    "serafuku",
+    "classroom",
+    "sitting",
+    "desk",
+    "looking_at_viewer",
+    "smile"
+   ]
+  },
+  {
+   "row": 6,
+   "prompt": "@sincos, shiina mahiru (otonari no tenshi-sama), 1girl, solo, blonde hair, long hair, apron, kitchen, cooking, from behind, looking back",
+   "tags": [
+    "shiina_mahiru_(otonari_no_tenshi-sama)",
+    "1girl",
+    "solo",
+    "blonde_hair",
+    "long_hair",
+    "apron",
+    "kitchen",
+    "cooking",
+    "from_behind",
+    "looking_back"
+   ]
+  },
+  {
+   "row": 7,
+   "prompt": "@sincos, 2girls, rem (re:zero), elaina (majo no tabitabi), blue hair, grey hair, witch hat, maid headdress, side by side, standing, white background, simple background",
+   "tags": [
+    "2girls",
+    "rem_(re:zero)",
+    "elaina_(majo_no_tabitabi)",
+    "blue_hair",
+    "grey_hair",
+    "witch_hat",
+    "maid_headdress",
+    "side_by_side",
+    "standing",
+    "white_background",
+    "simple_background"
+   ]
+  },
+  {
+   "row": 8,
+   "prompt": "1girl, solo, demon girl, demon tail, fake horns, pointy ears, purple eyes, grey hair, hair intakes, sitting, bedroom, night, lamp",
+   "tags": [
+    "1girl",
+    "solo",
+    "demon_girl",
+    "demon_tail",
+    "fake_horns",
+    "pointy_ears",
+    "purple_eyes",
+    "grey_hair",
+    "hair_intakes",
+    "sitting",
+    "bedroom",
+    "night",
+    "lamp"
+   ]
+  },
+  {
+   "row": 9,
+   "prompt": "reze (chainsaw man), chainsaw man, 1girl, solo, black hair, medium hair, hair bun, white shirt, t-shirt, cafe, holding cup, window, rain",
+   "tags": [
+    "reze_(chainsaw_man)",
+    "chainsaw_man",
+    "1girl",
+    "solo",
+    "black_hair",
+    "medium_hair",
+    "hair_bun",
+    "white_shirt",
+    "t-shirt",
+    "cafe",
+    "holding_cup",
+    "window",
+    "rain"
+   ]
+  },
+  {
+   "row": 10,
+   "prompt": "comic, 4koma, 1girl, japanese text, speech bubble, monochrome, greyscale, screentone, surprised, kitchen",
+   "tags": [
+    "comic",
+    "4koma",
+    "1girl",
+    "japanese_text",
+    "speech_bubble",
+    "monochrome",
+    "greyscale",
+    "screentone",
+    "surprised",
+    "kitchen"
+   ]
+  },
+  {
+   "row": 11,
+   "prompt": "1girl, solo, japanese text, holding sign, sign, street, outdoors, shop, sunset, looking at viewer, smile",
+   "tags": [
+    "1girl",
+    "solo",
+    "japanese_text",
+    "holding_sign",
+    "sign",
+    "street",
+    "outdoors",
+    "shop",
+    "sunset",
+    "looking_at_viewer",
+    "smile"
+   ]
+  },
+  {
+   "row": 12,
+   "prompt": "sonoda chiyoko, idolmaster shiny colors, idolmaster, 1girl, solo, brown hair, medium hair, hair ribbon, stage, spotlight, microphone, singing",
+   "tags": [
+    "sonoda_chiyoko",
+    "idolmaster_shiny_colors",
+    "idolmaster",
+    "1girl",
+    "solo",
+    "brown_hair",
+    "medium_hair",
+    "hair_ribbon",
+    "stage",
+    "spotlight",
+    "microphone",
+    "singing"
+   ]
+  },
+  {
+   "row": 13,
+   "prompt": "2girls, hanami ume, sarashina ruka (kanojo okarishimasu), cheek-to-cheek, selfie, v, holding phone, amusement park, ferris wheel, day",
+   "tags": [
+    "2girls",
+    "hanami_ume",
+    "sarashina_ruka_(kanojo_okarishimasu)",
+    "cheek-to-cheek",
+    "selfie",
+    "v",
+    "holding_phone",
+    "amusement_park",
+    "ferris_wheel",
+    "day"
+   ]
+  },
+  {
+   "row": 14,
+   "prompt": "1girl, solo, faceless, open mouth, animal ears, idolmaster shiny colors, straight hair, lamp, pink nails, print bikini, hair flower",
+   "tags": [
+    "1girl",
+    "solo",
+    "faceless",
+    "open_mouth",
+    "animal_ears",
+    "idolmaster_shiny_colors",
+    "straight_hair",
+    "lamp",
+    "pink_nails",
+    "print_bikini",
+    "hair_flower"
+   ]
+  },
+  {
+   "row": 15,
+   "prompt": "1girl, solo, blue eyes, sonoda chiyoko, school uniform, fake animal ears, one-piece swimsuit, cowboy shot, grey hair, white hairband, own hands together",
+   "tags": [
+    "1girl",
+    "solo",
+    "blue_eyes",
+    "sonoda_chiyoko",
+    "school_uniform",
+    "fake_animal_ears",
+    "one-piece_swimsuit",
+    "cowboy_shot",
+    "grey_hair",
+    "white_hairband",
+    "own_hands_together"
+   ]
+  },
+  {
+   "row": 16,
+   "prompt": "1girl, solo, hair between eyes, short hair, barefoot, black hair, nintendo, red hair, cow tail, pink thighhighs, cow print gloves",
+   "tags": [
+    "1girl",
+    "solo",
+    "hair_between_eyes",
+    "short_hair",
+    "barefoot",
+    "black_hair",
+    "nintendo",
+    "red_hair",
+    "cow_tail",
+    "pink_thighhighs",
+    "cow_print_gloves"
+   ]
+  }
+ ]
+}

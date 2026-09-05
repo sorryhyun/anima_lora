@@ -1,0 +1,108 @@
+{
+  "_comment": "plan_zh2 U5 symbol gate (20 prompts, 4 blocks x 5). `en` is the TEACHER form: the symbol's Danbooru-wiki clause in the symbol's slot (this is the reference arm — 'the EN prompt with the description'). `ja` / `zh` carry the symbol VERBATIM in the same slot, the way a JA / ZH user types it, so the `ja_ext` / `zh_ext` arms read the symbol rows. Block prefix = judge key in `_judge` (dbv4 tag scored by probes/sym_grid_judge.py; null = judged by eye). s3 mixes `^ ^` and `^_^`: both are surfaces of the same Danbooru tag, encode to different ext rows, and both must land on `^_^`.",
+  "_judge": {"s1": "^^^", "s2": ":<", "s3": "^_^", "s4": null},
+
+  "s1_surprise_school": {
+    "en": "1girl, solo, school uniform, surprised, crown-shaped realization mark beside the head, wide-eyed, open mouth, upper body, classroom",
+    "ja": "1girl, ソロ, 学生服, 驚き, ^^^, 目を見開く, 開いた口, 上半身, 教室",
+    "zh": "1个女性, 单人, 校服, 惊讶, ^^^, 睁大眼睛, 张嘴, 上半身, 教室"
+  },
+  "s1_surprise_cat": {
+    "en": "1girl, cat ears, blush, crown-shaped realization mark beside the head, looking at viewer, hands up, simple background, white background",
+    "ja": "1girl, 猫耳, 赤面, ^^^, 見る側を見る, 手を上げる, シンプルな背景, 白背景",
+    "zh": "1个女性, 猫耳, 脸红, ^^^, 看向观众, 举手, 简单背景, 白色背景"
+  },
+  "s1_surprise_boy": {
+    "en": "1boy, solo, short hair, crown-shaped realization mark beside the head, sweatdrop, turning head, from side, outdoors",
+    "ja": "1boy, ソロ, 短い髪, ^^^, 冷や汗, 振り向く, 横から, 屋外",
+    "zh": "1个男性, 单人, 短发, ^^^, 冷汗, 回头, 侧面, 户外"
+  },
+  "s1_surprise_maid": {
+    "en": "1girl, maid, maid headdress, crown-shaped realization mark beside the head, holding tray, surprised, cowboy shot, indoors",
+    "ja": "1girl, メイド, メイドヘッドドレス, ^^^, トレイを持つ, 驚き, カウボーイショット, 屋内",
+    "zh": "1个女性, 女仆, 女仆头饰, ^^^, 拿着托盘, 惊讶, 七分身, 室内"
+  },
+  "s1_surprise_two": {
+    "en": "2girls, twintails, long hair, crown-shaped realization mark beside the head, looking at another, chibi, night, city",
+    "ja": "2girls, ツインテール, 長い髪, ^^^, 相手を見る, ちび, 夜, 都市",
+    "zh": "2个女性, 双马尾, 长发, ^^^, 看着对方, Q版, 夜晚, 城市"
+  },
+
+  "s2_frown_school": {
+    "en": "1girl, solo, school uniform, small v-shaped closed-mouth frown, pout, looking at viewer, upper body, simple background",
+    "ja": "1girl, ソロ, 学生服, :<, 頬を膨らませる, 見る側を見る, 上半身, シンプルな背景",
+    "zh": "1个女性, 单人, 校服, :<, 鼓脸, 看向观众, 上半身, 简单背景"
+  },
+  "s2_frown_hoodie": {
+    "en": "1girl, hoodie, small v-shaped closed-mouth frown, tearing up, hands in pockets, rain, from above, street",
+    "ja": "1girl, パーカー, :<, 涙目, ポケットに手, 雨, 俯瞰, 通り",
+    "zh": "1个女性, 连帽衫, :<, 含泪, 手插口袋, 雨, 俯视, 街道"
+  },
+  "s2_frown_cat": {
+    "en": "1girl, cat ears, cat tail, small v-shaped closed-mouth frown, crossed arms, blush, sitting, bed, indoors",
+    "ja": "1girl, 猫耳, 猫の尻尾, :<, 腕を組む, 赤面, 座る, ベッド, 屋内",
+    "zh": "1个女性, 猫耳, 猫尾, :<, 抱臂, 脸红, 坐着, 床, 室内"
+  },
+  "s2_frown_boy": {
+    "en": "1boy, solo, black hair, small v-shaped closed-mouth frown, sweatdrop, holding phone, upper body, night",
+    "ja": "1boy, ソロ, 黒髪, :<, 冷や汗, 携帯電話を持つ, 上半身, 夜",
+    "zh": "1个男性, 单人, 黑发, :<, 冷汗, 拿着手机, 上半身, 夜晚"
+  },
+  "s2_frown_armor": {
+    "en": "1girl, armor, cape, small v-shaped closed-mouth frown, holding sword, wind, wide shot, battlefield",
+    "ja": "1girl, 鎧, マント, :<, 剣を持つ, 風, 広角ショット, 戦場",
+    "zh": "1个女性, 盔甲, 披风, :<, 拿着剑, 风, 远景, 战场"
+  },
+
+  "s3_happy_school": {
+    "en": "1girl, solo, school uniform, closed eyes arched up in a smile, waving, upper body, cherry blossoms, outdoors",
+    "ja": "1girl, ソロ, 学生服, ^ ^, 手を振る, 上半身, 桜, 屋外",
+    "zh": "1个女性, 单人, 校服, ^_^, 挥手, 上半身, 樱花, 户外"
+  },
+  "s3_happy_maid": {
+    "en": "1girl, maid, closed eyes arched up in a smile, holding tray, cowboy shot, cafe, indoors",
+    "ja": "1girl, メイド, ^_^, トレイを持つ, カウボーイショット, カフェ, 屋内",
+    "zh": "1个女性, 女仆, ^ ^, 拿着托盘, 七分身, 咖啡厅, 室内"
+  },
+  "s3_happy_cat": {
+    "en": "1girl, cat ears, closed eyes arched up in a smile, paw pose, blush, simple background, white background",
+    "ja": "1girl, 猫耳, ^_^, 猫のポーズ, 赤面, シンプルな背景, 白背景",
+    "zh": "1个女性, 猫耳, ^_^, 猫爪姿势, 脸红, 简单背景, 白色背景"
+  },
+  "s3_happy_two": {
+    "en": "2girls, twintails, ponytail, closed eyes arched up in a smile, holding hands, walking, beach, day",
+    "ja": "2girls, ツインテール, ポニーテール, ^ ^, 手をつなぐ, 歩く, 浜辺, 昼",
+    "zh": "2个女性, 双马尾, 马尾, ^_^, 牵手, 走路, 海滩, 白天"
+  },
+  "s3_happy_boy": {
+    "en": "1boy, solo, hoodie, closed eyes arched up in a smile, thumbs up, upper body, monochrome",
+    "ja": "1boy, ソロ, パーカー, ^_^, サムズアップ, 上半身, 単色",
+    "zh": "1个男性, 单人, 连帽衫, ^ ^, 竖起大拇指, 上半身, 单色"
+  },
+
+  "s4_star_idol": {
+    "en": "1girl, solo, idol, star (symbol), sparkle, microphone, stage, spotlight",
+    "ja": "1girl, ソロ, アイドル, ☆, キラキラ, マイク, ステージ, スポットライト",
+    "zh": "1个女性, 单人, 偶像, ☆, 闪亮, 麦克风, 舞台, 聚光灯"
+  },
+  "s4_star_magical": {
+    "en": "1girl, magical girl, wand, star (symbol), night sky, floating, wide shot",
+    "ja": "1girl, 魔法少女, 杖, ☆, 夜空, 浮遊, 広角ショット",
+    "zh": "1个女性, 魔法少女, 魔杖, ☆, 夜空, 漂浮, 远景"
+  },
+  "s4_star_cat": {
+    "en": "1girl, cat ears, star (symbol), wink, one eye closed, peace sign, simple background",
+    "ja": "1girl, 猫耳, ☆, ウィンク, 片目を閉じる, ピースサイン, シンプルな背景",
+    "zh": "1个女性, 猫耳, ☆, 眨眼, 单眼闭合, 比耶, 简单背景"
+  },
+  "s4_star_chibi": {
+    "en": "2girls, chibi, star (symbol), heart, jumping, confetti, white background",
+    "ja": "2girls, ちび, ☆, ハート, ジャンプ, 紙吹雪, 白背景",
+    "zh": "2个女性, Q版, ☆, 爱心, 跳跃, 彩纸, 白色背景"
+  },
+  "s4_star_boy": {
+    "en": "1boy, solo, school uniform, star (symbol), grin, pointing at viewer, upper body, blue background",
+    "ja": "1boy, ソロ, 学生服, ☆, にやり, 見る側を指さす, 上半身, 青背景",
+    "zh": "1个男性, 单人, 校服, ☆, 咧嘴笑, 指向观众, 上半身, 蓝色背景"
+  }
+}
