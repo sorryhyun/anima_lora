@@ -34,6 +34,15 @@ recognizer of record; VL-1.6 is complementary, never the replacement).*
 2. **SFX handling is a records field, not a caption-time guess.** Every
    record carries `kind ∈ {speech, sfx, chrome}`; the mirror builder reads
    it and never looks at pixels. `chrome` is dropped from both sentences.
+   **Amended 2026-09-05 (user):** `sfx` is dropped from captions too, for
+   now — neither reader can read hand-lettered onomatopoeia, so an SFX
+   sentence would teach garbage; the records keep the lines for B1's labels
+   and for a later reader (a light OCR fine-tune on SFX crops — future work,
+   not this plan). C10's sentence caption is speech-only.
+5. **A joined block keeps its boundaries.** `anime_tools` `JOIN_SEP = " "`
+   (rev cd75591): the columns / rows PP-OCRv6 joins into one record are
+   separated by a space, so a profile card's fields (9410777) stay distinct;
+   VL crop rows and Spotting blocks get the same treatment.
 3. **Sentence-shaped captions are the C10 arm, not yet the D2 default.**
    The shape is decided by C10's gate, not by taste.
 4. **SAM3 is out of the speech/SFX path.** It is not the lever at this
@@ -44,9 +53,11 @@ recognizer of record; VL-1.6 is complementary, never the replacement).*
 
 ### B0 — hybrid records on sincos (½ day; one daemon GPU job) — **DONE 2026-09-05, gate PASS**
 
-*Result (`findings.md` "B0"): floor **44 → 27** on 133 masked pages, manga-ocr
-similarity 0.752 → 0.772 on the 40 A/B pages, VL-only lines on the sheet are
-real balloons / SFX. Deviations from the text below, all measured: matching
+*Result (`findings.md` "B0" + addendum): on the v3 space-join PP pass, floor
+**38 → 23** on 133 masked pages (first pass on the v2 file: 44 → 27),
+manga-ocr similarity 0.751 → 0.786 on the 40 A/B pages, VL-only lines on the
+sheet are real balloons / SFX; `kind: sfx` is kept in the records but dropped
+from captions (decision 2, amended). Deviations from the text below, all measured: matching
 is IoU ≥ 0.3 / containment ≥ 0.5 / text-sim fallback after `join_cjk` on the
 VL lines (IoU 0.5 fails on offset thin columns); rule 1b carries three extra
 guards (never lose a heart PP had, weak re-reads need Spotting corroboration,

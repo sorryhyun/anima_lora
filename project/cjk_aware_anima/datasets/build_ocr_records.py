@@ -199,10 +199,15 @@ class Rec:
 HEARTS = frozenset("♡♥❤")
 
 
+_LATEX_RE = re.compile(r"\\[(),]|\\\s")
+
+
 def _normalize_read(text: str) -> str:
     """``❤️`` (emoji + variation selector) → ``♥``: the symbol block has rows for
-    ``♡`` / ``♥``, not for the emoji sequence."""
-    return text.replace("\ufe0f", "").replace("❤", "♥")
+    ``♡`` / ``♥``, not for the emoji sequence. VL also wraps a measurement in
+    LaTeX (``身長: \\( 156 \\, cm \\)``) — the markup goes, the glyphs stay."""
+    text = _LATEX_RE.sub("", text.replace("\ufe0f", "").replace("❤", "♥"))
+    return " ".join(text.split())
 
 
 _LETTERS_RE = re.compile(r"[\s。、．，,.・…‥「」『』!！?？~～〜❤♥♡♪☆★()（）]")
@@ -232,7 +237,8 @@ def accept_second_read(
     may only move symbols: a read that changes a letter (``ご主人様`` →
     ``ごー主人様``, ``一発`` → ``ー発``) is rejected.
     """
-    read = _normalize_read("".join(vl_read.split()))  # columns come ``\\n``-split
+    # rows come ``\\n``-split; a space keeps the boundary (anime_tools JOIN_SEP)
+    read = _normalize_read(" ".join(vl_read.split()))
     if not read or is_runaway(read):
         return None
     if len(read) > 2 * max(1, len(pp_text)):
@@ -334,7 +340,7 @@ def merge_page(
     for bi, blk in enumerate(blocks):
         if bi in matched_vl:
             continue
-        text = _normalize_read("".join(blk.text.split()))
+        text = _normalize_read(blk.text)
         if any(norm(text) == t and overlap(blk.box, b)[1] >= 0.7 for t, b in seen_vl):
             stats["vl_only_dup"] += 1  # the same quad emitted twice
             continue
@@ -504,6 +510,34 @@ def run_spot_stage(
 
 
 # --------------------------------------------------------------------------- merge stage
+def records_from_sidecars(
+    ocr_dir: Path, *, min_score: float, post: str
+) -> dict[str, list[dict]]:
+    """PP-OCRv6 records straight from the ``{stem}.ocr.txt`` sidecars the
+    ``ocr`` stage writes (already joined, normalized, floored and in reading
+    order), gated at ``min_score`` — the same shape as the ``_ppocr_v2`` file
+    (which was re-derived from the sidecars with gate 0.70)."""
+    from anime_tools.captions.ocr_sidecar import read_ocr
+
+    by: dict[str, list[dict]] = {}
+    for sc in sorted(ocr_dir.glob("*.ocr.txt")):
+        stem = sc.name[: -len(".ocr.txt")]
+        for ln in read_ocr(sc):
+            if ln.score < min_score:
+                continue
+            by.setdefault(stem, []).append(
+                {
+                    "stem": stem,
+                    "text": ln.text,
+                    "score": round(ln.score, 3),
+                    "box": list(ln.box),
+                    "engine": "ppocr_v6",
+                    "post": post,
+                }
+            )
+    return by
+
+
 def load_records(path: Path) -> dict[str, list[dict]]:
     by = defaultdict(list)
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -538,7 +572,32 @@ def best_match_sim(
     return sum(sims) / len(sims), sum(1 for v in sims if v >= 0.9), len(sims)
 
 
-def run_merge_stage(opts, pages, pp_by_stem, raw_path, out_path, report_path):
+def align_crop_reads(
+    pp: list[dict], ref: list[dict], reads: list[str] | None
+) -> list[str] | None:
+    """The raw ``crop_ocr`` list is index-aligned with the PP records the spot
+    stage saw (``ref``). When the merge runs on re-derived PP records (a new
+    sidecar pass, e.g. the v3 space-join), hand each record the read of the
+    ``ref`` record with the same box (IoU ≥ 0.9); a record with no such box
+    gets ``""`` (no second read). Identity when ``ref`` is ``pp``."""
+    if reads is None or len(reads) != len(ref):
+        return None
+    if [r["box"] for r in pp] == [r["box"] for r in ref]:
+        return reads
+    out = []
+    for r in pp:
+        best, best_iou = "", 0.0
+        for q, rd in zip(ref, reads):
+            iou, _ = overlap(tuple(r["box"]), tuple(q["box"]))
+            if iou > best_iou:
+                best, best_iou = rd, iou
+        out.append(best if best_iou >= 0.9 else "")
+    return out
+
+
+def run_merge_stage(
+    opts, pages, pp_by_stem, raw_path, out_path, report_path, ref_by_stem=None
+):
     raw = {}
     for line in raw_path.read_text(encoding="utf-8").splitlines():
         if line.strip():
@@ -562,12 +621,10 @@ def run_merge_stage(opts, pages, pp_by_stem, raw_path, out_path, report_path):
             else:
                 W, H = row["size"]
                 spotting = parse_spotting(row["spotting"], W, H)
-                crop_reads = row.get("crop_ocr")
-                if crop_reads is not None and len(crop_reads) != len(pp):
-                    print(
-                        f"WARN {stem}: {len(crop_reads)} crop reads for {len(pp)} PP lines"
-                    )
-                    crop_reads = None
+                ref = (ref_by_stem or pp_by_stem).get(stem, [])
+                crop_reads = align_crop_reads(pp, ref, row.get("crop_ocr"))
+                if crop_reads is None and pp:
+                    print(f"WARN {stem}: crop reads do not align with the PP records")
             recs, stats = merge_page(
                 stem,
                 pp,
@@ -625,11 +682,12 @@ def run_merge_stage(opts, pages, pp_by_stem, raw_path, out_path, report_path):
             )
 
     n_pp = sum(len(v) for v in pp_by_stem.values())
+    pp_post = next((r.get("post", "") for v in pp_by_stem.values() for r in v), "")
     n_hy = sum(len(v) for v in hybrid.values())
     md = [
         f"# Hybrid OCR records — {opts.shard} (B0, {time.strftime('%Y-%m-%d %H:%M')})\n",
         f"records: `{out_path.relative_to(REPO)}`; raw VL outputs: `{raw_path.relative_to(REPO)}`\n",
-        "| | PP-OCRv6 v2 | hybrid |",
+        f"| | PP-OCRv6 {pp_post} | hybrid |",
         "|---|---|---|",
         f"| pages ({len(pages)} in shard) with any line | {len(pp_by_stem)} | {len(hybrid)} |",
         f"| lines | {n_pp} | {n_hy} |",
@@ -688,6 +746,20 @@ def main() -> None:
         help="PP-OCRv6 records (default: …_ppocr_v2.jsonl)",
     )
     ap.add_argument(
+        "--sidecars",
+        type=Path,
+        default=None,
+        help="build the PP records from this dir of {stem}.ocr.txt sidecars instead "
+        "of --records (written to --records_out, default …_ppocr_v3.jsonl)",
+    )
+    ap.add_argument("--records_out", type=Path, default=None)
+    ap.add_argument(
+        "--min_score",
+        type=float,
+        default=0.70,
+        help="score gate for --sidecars records",
+    )
+    ap.add_argument(
         "--raw",
         type=Path,
         default=None,
@@ -716,7 +788,18 @@ def main() -> None:
     pages = sorted((REPO / "post_image_dataset/resized" / opts.shard).glob("*.png"))
     if opts.limit:
         pages = pages[: opts.limit]
-    pp_by_stem = load_records(records)
+    if opts.sidecars is not None:
+        pp_by_stem = records_from_sidecars(
+            opts.sidecars, min_score=opts.min_score, post="v3"
+        )
+        records = opts.records_out or base / f"ocr_records_{opts.shard}_ppocr_v3.jsonl"
+        with records.open("w", encoding="utf-8") as f:
+            for stem in sorted(pp_by_stem):
+                for r in pp_by_stem[stem]:
+                    f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        print(f"PP records from {opts.sidecars} -> {records}")
+    else:
+        pp_by_stem = load_records(records)
     print(
         f"{len(pages)} pages, {sum(len(v) for v in pp_by_stem.values())} PP lines on {len(pp_by_stem)} stems"
     )
@@ -731,7 +814,17 @@ def main() -> None:
             model_dir=opts.model,
         )
     if opts.stage in ("merge", "all"):
-        run_merge_stage(opts, pages, pp_by_stem, raw_path, out_path, report_path)
+        # the raw crop reads follow the records the spot stage saw (--records)
+        ref_by_stem = (
+            load_records(
+                opts.records or base / f"ocr_records_{opts.shard}_ppocr_v2.jsonl"
+            )
+            if opts.sidecars is not None
+            else None
+        )
+        run_merge_stage(
+            opts, pages, pp_by_stem, raw_path, out_path, report_path, ref_by_stem
+        )
 
 
 if __name__ == "__main__":

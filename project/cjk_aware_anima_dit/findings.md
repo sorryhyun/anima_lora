@@ -247,3 +247,45 @@ What the merge had to do differently from the plan text:
   until B1 wires `kind` through.
 - Chore: `build_mirror` retries the symlink once, then hard-links, and says
   which happened (`_link_image`).
+
+**Addendum (same evening) — two user decisions, both landed.**
+
+1. **SFX lines are out of the captions for now.** The VL logic stays, the
+   `kind: sfx` records stay in the file (B1 still labels them), but
+   `cache_te_ext.ocr_lines_by_stem` drops `{chrome, sfx}` (`DROP_KINDS`) before
+   any format sees them — no `Japanese SFX reads as` sentence, no `「ぱんぱん」`
+   tag, until a reader can actually read hand-lettered onomatopoeia (both
+   PP-OCRv6 and VL-1.6 garble it; a light OCR fine-tune on SFX crops is the
+   likely route, not this plan's work). C10 therefore trains on speech only.
+2. **Joined blocks keep their boundaries as a space.** 9410777 (a profile
+   card: `椎名真昼ちゃん / 身長：156cm / おぱい：成長中 / すきなもの：…`) came
+   out of PP as one glued string. `anime_tools.ocr._text._merge` now joins a
+   block's columns / rows with `JOIN_SEP = " "` (package rev **cd75591**,
+   pinned + `uv sync`; a space inside a vertical sentence costs a reader
+   nothing, a lost list boundary is gone for good). Sidecars are post-join, so
+   PP-OCRv6 was re-run on sincos (`-m anime_tools.stages.cli.ocr_captions
+   --ocr_dir post_image_dataset/cjk_unmask/ocr_v3/sincos --apply`, daemon,
+   ~1 min) and the builder grew `--sidecars` (records straight from
+   `{stem}.ocr.txt`, gate 0.70 → `ocr_records_sincos_ppocr_v3.jsonl`) plus a
+   box-matched alignment of the cached VL crop reads onto the re-derived
+   records, so the GPU stage did not rerun. VL crop rows and VL-only blocks
+   get the same space; VL's LaTeX wrapping of measurements
+   (`身長: \( 156 \, cm \)`) is stripped.
+
+Re-merged on v3 (`reports/0905_b0_hybrid_records.md` is this version):
+
+| | PP-OCRv6 v3 | hybrid |
+|---|---|---|
+| pages with any line (351) | 103 | 123 |
+| lines | 237 | 338 (138 carry a space) |
+| **masked-but-no-line floor** (133 masked) | **38** | **23** |
+| best-match sim to manga-ocr, 84 ref lines / 40 A/B pages | 0.751 (35 ≥ 0.9) | 0.786 (38 ≥ 0.9) |
+| replaced lines only (13) | 0.485 | 0.512 |
+
+The fresh PP pass alone already lands 7 more pages than the v2 file (sidecar
+floor 0.6 vs whatever the old pass used; the 0.70 record gate is the same),
+so the PP-alone floor is 38 not 44; hybrid takes it to 23. With row
+boundaries kept, the replaced lines now move *toward* manga-ocr (0.485 →
+0.512) instead of a wash — the second reader was being penalised for glued
+rows, not for its letters. Rule 1b: 67 weak + 9 symbol + 6 sfx → 28 replaced,
+51 rejected. Gate still PASS; C10 runs on these records with SFX dropped.

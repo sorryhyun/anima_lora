@@ -85,16 +85,25 @@ SENTENCE_TEXT_PREFIX = "Japanese text reads as "
 SENTENCE_SFX_PREFIX = "Japanese SFX reads as "
 
 
-def ocr_lines_by_stem(records: Path, max_lines: int) -> dict[str, list[str]]:
+DROP_KINDS: frozenset[str] = frozenset({"chrome", "sfx"})
+"""Record ``kind`` values no caption format sees (hybrid records, plan_base1
+B0). ``chrome`` is UI text on a screenshot page — neither speech nor SFX.
+``sfx`` is excluded for now by decision (2026-09-05): the readers garble
+hand-lettered onomatopoeia (``でくv`` for びくっ) and the kind rule is v1;
+SFX come back once a reader can read them (a light OCR fine-tune) and B1's
+labels stand. Records without ``kind`` (pre-hybrid files) are untouched."""
+
+
+def ocr_lines_by_stem(
+    records: Path, max_lines: int, drop_kinds: frozenset[str] = DROP_KINDS
+) -> dict[str, list[str]]:
     """Raw OCR lines per stem, in file order (the records are already sorted
-    into reading order by the OCR pass). A record carrying ``kind: chrome``
-    (UI text on a screenshot page — hybrid records, plan_base1 B0) is neither
-    speech nor SFX and is dropped here, so no caption format ever sees it."""
+    into reading order by the OCR pass), minus the ``drop_kinds``."""
     by_stem: dict[str, list[str]] = {}
     with records.open(encoding="utf-8") as f:
         for line in f:
             r = json.loads(line)
-            if r.get("kind") == "chrome":
+            if r.get("kind") in drop_kinds:
                 continue
             by_stem.setdefault(r["stem"], []).append(r["text"])
     return {k: v[:max_lines] for k, v in by_stem.items()}

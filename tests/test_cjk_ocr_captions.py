@@ -214,7 +214,7 @@ def test_second_read_guard_rejects_runaway_and_overlong():
     assert m.accept_second_read("でくv", "びくっ", 3) == "びくっ"
     assert m.accept_second_read("でくv", "ぉ" * 50, 3) is None
     assert m.accept_second_read("でくv", "とても長い読みになってしまった", 3) is None
-    assert m.accept_second_read("あっ…うっ…", "あっ…\nうっ…", 3) == "あっ…うっ…"
+    assert m.accept_second_read("あっ…うっ…", "あっ…\nうっ…", 3) == "あっ… うっ…"
 
 
 def test_chrome_is_a_kind_and_the_mirror_builder_drops_it(tmp_path):
@@ -229,7 +229,22 @@ def test_chrome_is_a_kind_and_the_mirror_builder_drops_it(tmp_path):
         '{"stem": "a", "text": "おはよう"}\n',
         encoding="utf-8",
     )
-    assert _mod().ocr_lines_by_stem(recs, 8) == {"a": ["ぱんぱん", "おはよう"]}
+    # sfx is excluded from captions for now (decision 2026-09-05); chrome always
+    assert _mod().ocr_lines_by_stem(recs, 8) == {"a": ["おはよう"]}
+    assert _mod().ocr_lines_by_stem(recs, 8, drop_kinds=frozenset({"chrome"})) == {
+        "a": ["ぱんぱん", "おはよう"]
+    }
+
+
+def test_vl_reads_drop_latex_and_keep_row_boundaries_as_spaces():
+    m = _hybrid()
+    assert m._normalize_read("身長: \\( 156 \\, cm \\)") == "身長: 156 cm"
+    assert (
+        m.accept_second_read(
+            "椎名真昼ち人身長：156cm", "椎名真昼ちゃん\n身長：156cm", 3
+        )
+        == "椎名真昼ちゃん 身長：156cm"
+    )
 
 
 def test_second_read_never_loses_a_heart_and_weak_needs_corroboration():
