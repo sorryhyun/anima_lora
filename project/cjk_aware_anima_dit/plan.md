@@ -37,8 +37,12 @@ content.
 | one-image / three-image text binding | text binds to image identity at 400 steps regardless of key; `ja_ext` ≡ `ja_native` (`0904_text_bind_probe.md`) |
 | text-masked images corpus-wide | 873 / 3,008 (`post_image_dataset/masks/`, 70 dirs; sincos 133, suujiniku 51, greatodoggo 36, …) |
 | sincos OCR glyph size at the ~1024 tier | column width p10 25 / p50 58 / p90 124 px (227 PP-OCR v2 lines) |
+| OCR reader | PP-OCRv6 (kept); PaddleOCR-VL-1.6 ties on crops, keeps ♡/ー, rewrites words, 2× the detections (`reports/0905_paddleocr_vl16_vs_ppocrv6.md`) |
 | glyphs lost by downscale | at 0.5× (512 tier) 18 % of lines fall under 16 px (≈2 latent px), 34 % under 24 px; at 0.75× (768) 5 % / 18 % — measured 2026-09-05 on sincos, the *large-text* case |
 | shipped surfaces | `synthja_v4` (HF `anima-vocab-pack-ja`), `AnimaVocabPackLoader` 3.9.1 with `route`; both untouched by this line |
+| paired-edition manga corpus (added 2026-09-05) | 240 works / 10 artists, **5,339 JA pages with 5,280 EN twins** of the same page (relettered, artwork identical), KO edition for 136 works (3,334 pages); 3 of the artists are already in `image_dataset/`; JA page width p10/p50/p90 1003/1361/2400 px (glyphs larger than sincos at the 1024 tier); page alignment run on 2 of 240 works so far. External private checkout — never named or pathed in this repo (principle 9); its own `docs/anima_cjk_dit.md` carries the crawl / alignment / registration detail |
+| quote-span delimiter in captions so far | 「…」 only — 0 of 3,008 `image_dataset/` captions contain `"`, no probe or eval prompt has used it; 「」 themselves are CJK-punctuation range chars and route to ext rows like any kanji (no span rule exists yet) |
+| position-clause grammar vs quotes | quote-blind: `"Are you okay? I'm fine, really."` parses as two flat tags (split on the inner comma; measured 2026-09-05). JA lines rarely carry ASCII commas; EN twins always do |
 
 ## Principles
 
@@ -69,6 +73,22 @@ content.
    dataset dir with their own `cache_dir`; `configs/preprocess.toml`'s
    `target_res` is never flipped (a retier orphans the main 1024 caches under
    `preprocess-reconcile`).
+8. **The quote span is delimiter-agnostic on input, `"` on output** (decided
+   2026-09-05). The D1 span rule accepts `「…」`, `『…』` and `"…"`, so every
+   existing cache, blind-set prompt and probe keeps routing unchanged. New
+   caption builders emit ASCII `"…"`: it is a native spiece token with a
+   pretrained "literal string" meaning (an isotropic 「 row carries none),
+   and it is script-neutral, so the paired corpus gets symmetric captions —
+   `japanese text, "大丈夫？"` / `english text, "Are you okay?"` /
+   `korean text, "…"` — under one rule. Consequence: the v3 eval prompt set
+   (D3) uses `"` too; an arm trained on `"` captions is never graded on 「」
+   prompts (one delimiter per comparison, or the delimiter becomes an arm).
+9. **The paired corpus stays outside this repo.** It is adult doujinshi
+   scraped for research; this tree refers to it only as "the paired-edition
+   corpus", carries no path, artist list or sample, and its blind sets and
+   grids are never pushed. The corpus checkout owns its own tooling and
+   documentation (alignment, registration, the region-diff gate, manifest
+   schema); this repo's builders consume an accepted-pairs manifest.
 
 ## Phases
 
@@ -102,6 +122,17 @@ amended). Either way D2–D3 proceed; only the table changes.
   isotropic block.
 - Node: `AnimaVocabPackLoader` reads the seed and regenerates the block if
   the pack ships without rows (optional — shipping 73 MB of rows is fine).
+- **Span rule** (principle 8): one regex over the caption before
+  `segment_runs` — `「…」`, `『…』`, `"…"` (non-greedy, per tag) mark the
+  isotropic route; the delimiter chars themselves stay on their current
+  path (「」 → ext row, `"` → spiece). Unit test: the three spellings of the
+  same line produce the same ext ids for the content.
+- **Quote-aware caption grammar.** `parse_caption` splits a quoted line on
+  its inner comma (premise table). Fix at the source in `anime_tools`
+  (`position_clauses`: a comma inside an open `「『"` is not a tag separator;
+  `compose_caption` round-trips) and bump the pinned rev — the alternative,
+  substituting commas inside lines in every builder, leaks into OCR CER.
+  Test: the EN-twin caption above parses to one tag.
 
 *Gate:* tests green; the C9 recipe re-cached through the partitioned pack
 renders the 8-row grid inside the s02 floor against ISO1 (the partition
@@ -112,15 +143,45 @@ sanity check, not an experiment).
 
 Build once, at native resolution, then derive the tier variants.
 
-- **Source**: every text-masked image corpus-wide (873) plus the text-free
-  images of the same artist dirs as the negative class. OCR via
+- **Sources**, two. (a) Every text-masked image corpus-wide (873) plus the
+  text-free images of the same artist dirs as the negative class. (b) **The
+  paired-edition corpus** (premise table; principle 9): the same page of the
+  same work lettered in JA and EN, KO for about half — artwork identical,
+  only the glyphs differ. It enters through an accepted-pairs manifest
+  produced in its own checkout: phash + Needleman–Wunsch page alignment
+  (exists there; run on 2 of 240 works — run it on all), then per-pair
+  **registration** (the editions are different scans at different sizes,
+  sometimes with borders — grayscale ECC / feature homography, EN and KO
+  warped onto the JA page), then a **non-text region-diff gate**: a pair
+  whose registered twins differ outside the OCR boxes (decensoring, SFX
+  redraws, credit stamps) is rejected, because a "text-only" pair that also
+  differs elsewhere teaches the tag the wrong thing. Parent tags for these
+  pages come from a Tagger pass (the source tags are not danbooru). What
+  the pairs buy, and why they are worth the plumbing: **a contrastive
+  address** — on identical art, `japanese text` vs `english text` can only
+  mean the script, where on the 873 alone the tag can be satisfied by
+  looking like manga; and **recurrence volume** — ~5,300 dialogue pages
+  where 873 pages were unlikely to give the census 50 rows at 100 images.
+  OCR via
   `anime_tools.ocr` (PP-OCRv6, v2 post-processing, gate 0.70, mask-complement
   regions as in `datasets/ocr_text_captions.py`); records per image with
-  boxes.
+  boxes. PP-OCRv6 stays the reader: PaddleOCR-VL-1.6 is a wash on the same
+  crops and rewrites words (`findings.md`, OCR-reader entry;
+  `reports/0905_paddleocr_vl16_vs_ppocrv6.md`). Its one job here is the
+  **floor measurement** below — run page `Spotting:` (batched, bs 8,
+  `use_cache=True`) beside the PP-OCRv6 pass and count the masked images
+  that get a line from either detector. The optional hybrid pass (VL `OCR:`
+  on PP-OCRv6's quads, repetition-guarded, preferred on low PP score or
+  symbol disagreement) is built only if that count moves.
 - **Captions**: production caption + `japanese text` + lines in the `tags`
-  format (the trained shape; `order` is one arm, not the default). The
+  format (the trained shape; `order` is one arm, not the default), quoted
+  with `"` (principle 8); twins get `english text` / `korean text` + their
+  own lines the same way (EN via PP-OCR's Latin model, or the scanlation's
+  text where the checkout has it). The
   44-of-133 "masked but no OCR line" floor from sincos will recur —
-  measure it; those images train as arm B and cap every unmask arm.
+  measure it with both detectors (PP-OCRv6 DB; VL-1.6 Spotting found 260
+  lines where PP found 132 on 40 sincos pages, mostly SFX / chrome); those
+  images train as arm B and cap every unmask arm.
 - **Census (the number this phase exists for)**: per Qwen token in the OCR
   lines, how many *distinct images* carry it. Findings §3's rule is
   O(100+) visits for identity; report the count of rows at ≥ 20 / ≥ 100 /
@@ -131,8 +192,14 @@ Build once, at native resolution, then derive the tier variants.
 - **Variants**: (i) full pages at the 768 tier (default for G-A; 512 only if
   the census says < 10 % glyph loss corpus-wide), (ii) native-resolution
   crops around merged OCR boxes with ≥ 128 px margin, captioned with the
-  in-crop lines + parent tags (for D5b). Both in dedicated dirs with their
-  own `cache_dir`; VAE + TE cached through the D1 pack.
+  in-crop lines + parent tags (for D5b). For a paired page the crop box is
+  cut from the JA edition and the **same registered box** from each twin,
+  so a JA crop and its EN twin differ only in glyphs — a minimal pair for
+  the stroke prior, with the twin as a built-in negative. Both variants in
+  dedicated dirs with their own `cache_dir`; VAE + TE cached through the D1
+  pack. Crops teach strokes (self/MLP), pages teach the plan (where text
+  goes, that a bubble exists) — neither variant trains alone; D4/D5b mix
+  them as two subsets of one dataset (free-fit handles the mixed tiers).
 
 *Gate:* census tables in `reports/09xx_ocr_corpus.md`; the recurrence count
 decides whether D5b exists.
@@ -150,10 +217,20 @@ decides whether D5b exists.
   adherence should be near the no-prompt floor); that gap is what a G-B
   LoRA has to close.
 - **Non-diegetic text count** (exists, `unmask_grid_ocr.py`): floor only.
+- **Script swap** for the contrastive arm: the same prompt and seed with
+  `japanese text` ↔ `english text` (↔ `korean text`) swapped; PP-OCR's
+  script classification of whatever text renders, paired per (prompt,
+  seed). Calibration on the base model and on arm A: the swap should move
+  nothing (the tag is a style proxy there); on arm T it must move the
+  script. Cheap, no grader.
 - **Render→OCR CER on recurring lines** for D5b: prompt a recurring line
   through the isotropic block, PP-OCR the render, CER vs the line; held-out
   lines (present in ≥ 100 training images but not in the prompt's other
-  content) vs never-seen lines. Floor readout until D5b exists.
+  content) vs never-seen lines. Floor readout until D5b exists. The judge
+  is **PP-OCRv6, not a VLM reader**: PaddleOCR-VL rewrites toward the
+  likelier word (`狠狠地`→`狼狽地`, `おい`→`あい`), which on a half-rendered
+  line means repairing it toward the prompt and inflating exactly the gap
+  this instrument measures.
 
 *Gate:* masked A vs unmasked B at corpus scale (D4's first two arms, 1 seed
 each) are separated by the count and by a 16-row blind set. If no readout
@@ -170,13 +247,22 @@ Arms, plain LoRA dim 32 / lr 2e-5 / 8 epochs (the C9 recipe), 768 tier,
 | A | on (production) | production | stock |
 | B | off | production (no text tag) | stock — the spam control |
 | P | off | + `japanese text` | none looked up |
-| U | off | + tag + 「…」 lines | isotropic block (D1) |
+| U | off | + tag + `"…"` lines | isotropic block (D1) |
+| T | off | U + the EN/KO twins as extra images with `english text` / `korean text` + their lines | isotropic for JA/KO lines; EN lines native spiece |
+
+A/B/P/U train on both sources' JA pages (873 + the paired corpus's JA
+editions); T adds the twins. T is the contrastive arm: identical artwork
+under two tags forces the presence tag to mean the script.
 
 *Gate:* U ≥ A on the 32-row blind set (row sign test) and U's non-diegetic
 count ≤ A's, on the pooled 3 seeds; B must lose to U (else the readout is
 broken, not the arm). U vs P is the corpus-scale replication of s01 — if
 it comes out flat here, "rows must exist" was a sincos artifact and the
-shipped recommendation is the presence tag alone.
+shipped recommendation is the presence tag alone. T's own gate is D3's
+script swap: T moves the script where A/U do not, and T ≥ U on the blind
+set. T > U → the shipped manga recipe trains twins whenever a work has
+them; T ≈ U → the contrast is free but not needed, pairs stay a D5b
+substrate only.
 
 *Kill:* U < A at corpus scale → manga stays masked in production; G-A closes
 at "sincos only", and D5b is not run (text pixels that hurt training are not
@@ -204,8 +290,11 @@ as the only JA surface, and D5b is not run.
 ### D5b — G-B on text (2 days; native crops, 3 seeds) — only if D2's census and D5a pass
 
 Train the C9 recipe on D2's crop variant (every glyph at native size), 3
-seeds. Readout = D3's CER on recurring lines, held-out vs never-seen; plus
-the D4 grid to check the crops did not teach spam.
+seeds — JA crops with their EN/KO twins, mixed with D4's winning page arm
+so the plan is not forgotten. Readout = D3's CER on recurring lines,
+held-out vs never-seen; plus the D4 grid to check the crops did not teach
+spam; plus the script swap on crop-shaped prompts (a twin-trained crop
+model that cannot swap the script has learned the bubble, not the rows).
 
 *Gate:* held-out recurring lines render at CER below never-seen lines beyond
 the seed floor → rows carry text content when a line recurs. That is the
@@ -292,25 +381,48 @@ applies.
 - **No text rendering before D5b's gate**, and no 512-tier arm whose
   readout is text content (principle 4).
 - **No `target_res` flip** in `configs/preprocess.toml` (principle 7).
+- **No OCR-reader swap and no prompt engineering of PaddleOCR-VL.** The
+  A/B is done (`reports/0905_paddleocr_vl16_vs_ppocrv6.md`): character
+  accuracy ties, hints are noise, batching is the only lever. A manga
+  fine-tune of VL is the one thing that could move it and is not this
+  line's work.
+- **No edit / conditioning line on the pairs.** JA→EN twins look like
+  DirectEdit or EasyControl training data (translate the lettering in
+  place); that is a different deliverable (a conditioned re-letterer, not a
+  LoRA that knows CJK) and the in-place edit line is archived. The pairs are
+  a contrastive *training* substrate here, nothing else, until D5b's gate
+  reopens the glyph line — which names EasyControl as its fallback.
 - Sigma-demoted training (`--sigma_lowres`) is a wall-clock lever, not a
   resolution arm; it may be enabled on any arm but is not what "512" means
   here.
 
 ## Order and budget
 
-D0 (render, running) → D1 (1 d) → D2 (2 d incl. the OCR job) → D3 (1 d) →
-D4 (4 arms × 3 seeds ≈ 12 GPU-h at 768, two evenings on the daemon) → D5a
-(2 tables × 3 seeds ≈ 3 GPU-h at 512) → D5b only on both gates → D6.
-About two working weeks; every GPU step is a daemon job.
+D0 (done) → D1 (1 d; + ½ d for the quote-aware grammar in `anime_tools`)
+→ D2 (3 d: align + register + gate the paired corpus in its own checkout,
+then the OCR job and census here) → D3 (1 d) → D4 (5 arms × 3 seeds ≈ 15
+GPU-h at 768, T is the largest — three evenings on the daemon) → D5a (2
+tables × 3 seeds ≈ 3 GPU-h at 512) → D5b only on both gates → D6. About
+two and a half working weeks; every GPU step is a daemon job.
 
 ## Deliverables
 
 - `make_random_pack.py --mode iso`; pack json `route` quote block;
   `ss_ext_pack_sha` stamp + loader warning; tests.
-- `datasets/build_ocr_corpus.py` (records, captions, census, crop variant);
-  `reports/09xx_ocr_corpus.md`.
-- `assets/unmask_eval_prompts_v3.txt` (32 rows), `assets/ja_tag_adherence_prompts.json`,
-  `probes/ja_tag_judge.py`, `probes/text_cer_judge.py`.
+- `datasets/build_ocr_corpus.py` (records, captions, census, crop variant,
+  two-detector floor count) — consumes the accepted-pairs manifest of the
+  paired corpus beside the 873; `reports/09xx_ocr_corpus.md` (numbers
+  only, no samples from the paired corpus — principle 9).
+- In the paired corpus's own checkout: all-works alignment, registration,
+  the non-text region-diff gate, the manifest schema — documented there in
+  `docs/anima_cjk_dit.md`, not here.
+- `anime_tools`: quote-aware `parse_caption` / `compose_caption` + pinned
+  rev bump.
+- Done: `reports/0905_paddleocr_vl16_vs_ppocrv6.md`,
+  `probes/ocr_vl16_ab.py`, `probes/ocr_vl16_prompt_batch.py`.
+- `assets/unmask_eval_prompts_v3.txt` (32 rows, `"` delimiter),
+  `assets/ja_tag_adherence_prompts.json`, `probes/ja_tag_judge.py`,
+  `probes/text_cer_judge.py`, `probes/script_swap_judge.py`.
 - `reports/09xx_ga_corpus_scale.md` (D4), `reports/09xx_gb_tags.md` (D5a),
   `reports/09xx_gb_text.md` (D5b if run), blind set reports per set.
 - `findings.md` here, started at D0's verdict; the old line's `findings.md`
