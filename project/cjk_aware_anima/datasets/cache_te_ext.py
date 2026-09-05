@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -28,6 +29,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(HERE))  # ocr_sfx (sibling, torch-free)
 
 import torch  # noqa: E402
 
@@ -68,23 +70,32 @@ class ExtTokenizeStrategy:
         ]
 
 
-OCR_FORMATS = ("order", "tags", "presence")
-"""``order`` — one phrase, ``Japanese text in following order: "…", "…"``, the
-lines in the records' (reading) order; ``tags`` — the C2–C6 form, a ``japanese
-text`` presence tag plus one ``「…」`` flat tag per line; ``presence`` — the
-``japanese text`` tag alone (text presence with no ext-row address: the
-text-binding probe's control arm)."""
+OCR_FORMATS = ("sentence", "order", "tags", "presence")
+"""``sentence`` — two trailing sentences after the tag bag, ``Japanese text
+reads as "…", "…". Japanese SFX reads as "…".``, each reader line routed to
+speech or SFX by :mod:`ocr_sfx` (``line_kind``), lines in reading order, a
+sentence omitted when it has no lines; ``order`` — one phrase, ``Japanese text
+in following order: "…", "…"``, the lines in the records' (reading) order;
+``tags`` — the C2–C6 form, a ``japanese text`` presence tag plus one ``「…」``
+flat tag per line; ``presence`` — the ``japanese text`` tag alone (text
+presence with no ext-row address: the text-binding probe's control arm)."""
 
 ORDER_PREFIX = "Japanese text in following order: "
+SENTENCE_TEXT_PREFIX = "Japanese text reads as "
+SENTENCE_SFX_PREFIX = "Japanese SFX reads as "
 
 
 def ocr_lines_by_stem(records: Path, max_lines: int) -> dict[str, list[str]]:
     """Raw OCR lines per stem, in file order (the records are already sorted
-    into reading order by the OCR pass)."""
+    into reading order by the OCR pass). A record carrying ``kind: chrome``
+    (UI text on a screenshot page — hybrid records, plan_base1 B0) is neither
+    speech nor SFX and is dropped here, so no caption format ever sees it."""
     by_stem: dict[str, list[str]] = {}
     with records.open(encoding="utf-8") as f:
         for line in f:
             r = json.loads(line)
+            if r.get("kind") == "chrome":
+                continue
             by_stem.setdefault(r["stem"], []).append(r["text"])
     return {k: v[:max_lines] for k, v in by_stem.items()}
 
@@ -98,8 +109,42 @@ def _quote_safe(text: str) -> str:
     return text.replace('"', "”")
 
 
+def ocr_sentences(lines: list[str]) -> list[str]:
+    """The ``sentence`` format's sentences (no trailing period), speech first,
+    SFX second, either dropped when empty. Sentences, not tags: they sit
+    after the flat bag as a period-delimited tail (``append_sentences``)."""
+    from ocr_sfx import split_lines
+
+    speech, sfx = split_lines(lines)
+    out = []
+    for prefix, group in ((SENTENCE_TEXT_PREFIX, speech), (SENTENCE_SFX_PREFIX, sfx)):
+        if group:
+            out.append(prefix + ", ".join(f'"{_quote_safe(ln)}"' for ln in group))
+    return out
+
+
+def append_sentences(caption: str, sentences: list[str]) -> str:
+    """``caption`` with ``sentences`` appended as a ``. ``-delimited tail.
+
+    GOTCHA: the anime_tools grammar knows only ``On the`` / ``In the`` clause
+    headers, so a re-parse of the result glues the first sentence onto the
+    last tag (or the last position clause). The string is what the TE cache
+    encodes, and nothing tag-level runs on a mirror caption after this, so
+    the append is done on the string rather than through ``compose_caption``.
+    """
+    if not sentences:
+        return caption
+    cap = caption.rstrip()
+    if cap.endswith(".") and any(c.isalnum() for c in cap[:-1]):
+        cap = cap[:-1].rstrip()
+    tail = ". ".join(sentences) + "."
+    return f"{cap}. {tail}" if cap else tail
+
+
 def ocr_tags(lines: list[str], fmt: str) -> list[str]:
     """The tag(s) that carry ``lines`` under ``fmt`` (see ``OCR_FORMATS``)."""
+    if fmt == "sentence":
+        raise ValueError("'sentence' is not tag-shaped; use ocr_sentences()")
     if fmt == "tags":
         return [f"「{ln}」" for ln in lines]
     if fmt == "presence":
@@ -119,6 +164,8 @@ def append_tags(caption: str, lines: list[str], fmt: str = "order") -> str:
     """
     from anime_tools.captions.position_clauses import compose_caption, parse_caption
 
+    if fmt == "sentence":
+        return append_sentences(caption, ocr_sentences(lines))
     parsed = parse_caption(caption)
     extra = []
     if fmt in ("tags", "presence") and not TEXT_TAG_RE.search(caption):
@@ -127,6 +174,30 @@ def append_tags(caption: str, lines: list[str], fmt: str = "order") -> str:
         tuple(parsed.flat_tags) + tuple(extra) + tuple(ocr_tags(lines, fmt)),
         parsed.clauses,
     )
+
+
+def _link_image(link: Path, target: Path) -> None:
+    """Symlink ``target`` at ``link``; on the ntfs3-mounted dataset volume
+    ``os.symlink`` fails sporadically (``FileNotFoundError`` on a path that
+    exists — `ln -s` by hand works), so retry once and then fall back to a
+    hard link (same filesystem), saying which happened."""
+    try:
+        link.symlink_to(target)
+        return
+    except OSError as first:
+        try:
+            link.symlink_to(target)
+            print(f"symlink {link.name}: succeeded on retry ({first!r})")
+            return
+        except OSError:
+            pass
+        try:
+            os.link(target, link)
+            print(f"symlink {link.name} failed twice ({first!r}); hard-linked instead")
+        except OSError as hard:
+            raise OSError(
+                f"could not link {link} -> {target}: symlink {first!r}, hardlink {hard!r}"
+            ) from hard
 
 
 def build_mirror(
@@ -145,9 +216,12 @@ def build_mirror(
     for img in sorted(resized.glob("*.png")):
         if stems is not None and img.stem not in stems:
             continue
+        if not img.resolve().exists():
+            print(f"skip {img.name}: dangling resized link")
+            continue
         link = mirror / img.name
         if not link.exists():
-            link.symlink_to(img.resolve())
+            _link_image(link, img.resolve())
         stem_tags = tags.get(img.stem, [])
         cap_src = resized / f"{img.stem}.txt"
         caption = (
@@ -196,9 +270,11 @@ def main() -> None:
         "--ocr_format",
         choices=OCR_FORMATS,
         default="order",
-        help="how OCR lines enter the caption: 'order' = one 'Japanese text in "
-        "following order: ...' phrase (reading order); 'tags' = the C2–C6 "
-        "japanese text + 「…」 flat tags.",
+        help="how OCR lines enter the caption: 'sentence' = trailing "
+        '\'Japanese text reads as "…". Japanese SFX reads as "…".\' '
+        "sentences (speech/SFX split by ocr_sfx); 'order' = one 'Japanese "
+        "text in following order: ...' phrase (reading order); 'tags' = the "
+        "C2–C6 japanese text + 「…」 flat tags.",
     )
     ap.add_argument("--batch_size", type=int, default=8)
     ap.add_argument("--overwrite", action="store_true")

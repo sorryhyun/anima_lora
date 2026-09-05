@@ -135,3 +135,115 @@ trained content), and the rule is inert unless *both* `iso` and
 `route.quotes` are present — every existing pack, cache and blind set is
 untouched.
 
+
+## OCR eyeball + SFX handling (2026-09-05)
+
+Contact sheets in `output/tests/ocr_contact_sheet/` (scratch, not tracked):
+`sincos_ppocr_v2_sentence.pdf` (140 tiles = 133 masked ∪ 96 with PP-OCRv6 v2
+lines; mask / SAM3-bubble tints, v2 boxes in reading order, the proposed
+sentence caption, the tags actually trained), `bubble_kind.pdf` (one crop per
+line, speech vs SFX with the balloon containment).
+
+- **What trained (C2–C9)**: `mirror_sincos_ppocr` was built from the **v1**
+  records (97 stems, `tags` format); v2's reading-order rewrite never reached
+  a trained arm — 58 / 96 stems match v2 in order, 91 / 97 match v1 exactly.
+- **PaddleOCR-VL-1.6, two masked-no-line pages** (`output/tests/vl16_single*/`):
+  `12440144` — VL reads exactly one SFX (`ばるん`, the one column with solid
+  fill) on the resized ×2 page and on the 3048×4080 original alike, and
+  misses the six hand-lettered pink SFX (`ぱんぱん` ×2, `びくっ` ×2, `おっ`,
+  `お`); resolution is not the limit. `6067089` — VL finds the right-hand
+  balloon PP-OCRv6 dropped (`もしかして興奮してるー？`; Spotting rewrites
+  興→無 on the original, page `OCR:` reads it right) and PP's `かわいいなー♡`,
+  not PP's `ちらっ`. Same verdict as the A/B: VL is an extra detector, not a
+  manga-SFX reader.
+- **SFX handling** — `datasets/ocr_sfx.py` (torch-free, text-only rules:
+  kanji / >6 kana / vowel-or-h-row initial → speech; repeated unit, voiced
+  initial, lexicon onset, sokuon → SFX; optional `in_bubble` veto) and a
+  `--ocr_format sentence` in `cache_te_ext.py`: the caption tail becomes
+  `Japanese text reads as "…", "…". Japanese SFX reads as "…".` (speech
+  first, SFX second, reading order inside each, ASCII quotes so the D1 span
+  rule keys on them, native glyphs — the ext rows are the address). On the
+  v2 records: 19 SFX / 209 speech lines, 15 of 96 captions get an SFX
+  sentence. PP-OCRv6's SFX reads are the weak link (`でくv` for びくっ,
+  `Kッ4vv`, `ゴmvvv`), and UI chrome (`ツイート`, `ポスト`, `完了にする`) is
+  neither class. GOTCHA: the anime_tools grammar has no header for these
+  sentences — a re-parse glues the first onto the last tag — so the append
+  is string-level; a `TEXT_PREFIXES` clause kind in the package would make
+  it grammar-native. Tests: `tests/test_cjk_ocr_captions.py`.
+- **SAM3 `speech bubble` as the speech/SFX signal** (user's suggestion; run
+  `-m anime_tools.masking.cli.generate_masks --prompts 'speech bubble'
+  --focus-prompts none --dilate 0` → `output/tests/sam_bubbles/sincos/`):
+  balloons found on **34 / 97** pages (median 5 % of the page), 69 of 228
+  lines sit inside one; the veto changed **one** line vs the text rules
+  (`バスト91`, a profile card). The rules already agree with the balloons
+  where SAM3 finds them; where it misses (`カリカリ` in a plain rounded
+  balloon, 6813398) the text rule is what's left. Outside-a-balloon is *not*
+  SFX (narration, floating dialogue, chrome) — tried, added more errors than
+  it fixed. The veto is in `line_kind(text, in_bubble=…)` but not wired into
+  the mirror builder (records carry no balloon field yet).
+- Side gotcha: `build_mirror` symlink creation fails sporadically on the
+  ntfs3-mounted dataset volume (`FileNotFoundError` from `os.symlink` on a
+  path that exists; `ln -s` by hand works) — the preview mirror was built
+  under the session scratchpad; a dangling-link guard was added.
+
+## B0 — hybrid OCR records on sincos: floor 44 → 27 (2026-09-05)
+
+`plan_base1.md` B0. `datasets/build_ocr_records.py` (old tree, beside
+`ocr_sfx.py`): PP-OCRv6 v2 records + PaddleOCR-VL-1.6 `Spotting:` on all 351
+pages (×2 upscale, bs 8, `use_cache=True`, 3.5 min on the daemon, 4.5 GB
+peak) + VL `OCR:` on every PP box (227 crops, bs 32). Raw VL outputs cached
+in `post_image_dataset/cjk_unmask/ocr_raw_vl16_sincos.jsonl` so the merge is a
+CPU re-run (`--stage merge`). Output `ocr_records_sincos_hybrid.jsonl` (326
+lines / 118 pages; every record carries `kind`, `engine`, and `pp_text` /
+`vl_text` / `rule1b` where a second read happened). Report with the two
+tables (VL-only lines, rule 1b replacements) →
+`reports/0905_b0_hybrid_records.md`; sheets
+`output/tests/ocr_contact_sheet/sincos_hybrid{,_vl,_floor}.pdf`
+(`probes/ocr_contact_sheet.py`, promoted; magenta = VL-only, orange = re-read).
+
+| | PP-OCRv6 v2 | hybrid |
+|---|---|---|
+| pages with any line (351) | 96 | 118 |
+| lines | 227 | 326 |
+| **masked-but-no-line floor** (133 masked) | **44** | **27** |
+| best-match sim to manga-ocr, 84 ref lines / 40 A/B pages | 0.752 (35 ≥ 0.9) | 0.772 (36 ≥ 0.9) |
+| replaced lines only (14) | 0.456 | 0.451 |
+
+**Gate: PASS** — floor down 17 pages, similarity ≥ PP (no regression from the
+second reader), and the VL-only lines on the sheet are real balloons / SFX
+(`ばるん`, `ぱんッぱんッ`, `ぶちゃぶちゃ`, `もじもじ`, `禁止ですよぶ？`,
+`えっ…`), not chrome. 99 VL-only lines kept (60 dropped by the PP floors,
+2 full-page quads, 1 duplicate quad). C10 runs on the hybrid records.
+
+What the merge had to do differently from the plan text:
+
+- **IoU 0.5 is too strict for columns.** A 30 px vertical column that VL and
+  PP box 12 px apart is IoU 0.42 with byte-identical text; VL quads are per
+  column while PP records are `join_cjk`-joined blocks. Fix: `join_cjk` the
+  VL lines first, then match at IoU ≥ 0.3 **or** containment ≥ 0.5 **or**
+  touching boxes with text sim ≥ 0.75. 198 / 227 PP lines matched a VL block.
+- **Spotting hallucinates a page caption**: two quads covering the whole page
+  (`だなんか` on [0,0,704,1487]) — dropped by an area gate (> 40 % of the
+  page). Those two pages return to the floor, correctly.
+- **Rule 1b needed three more guards** beyond the runaway / 2× length one:
+  (a) never accept a read that loses a heart PP had (PP drops ♡, never
+  invents it — 3 / 9 symbol disputes went the wrong way without this);
+  (b) a *weak*-score re-read must agree (sim ≥ 0.5) with the matched Spotting
+  read — two independent VL readings — else PP's text stays (`おいしそう` →
+  `おぃ～う`, `ブルン` → `ぐにソ`, `先輩？` → `先非事？` were all rejected
+  by this; `借てきたよ` → `借りてきたよ`, `特别` → `特別`, `おじーまっ` →
+  `おじさまっ` pass); (c) a *symbol* dispute may move symbols only — a read
+  that changes a letter (`ご主人様` → `ごー主人様`, `一発` → `ー発`) is
+  rejected. Net: 56 weak + 9 symbol + 5 sfx re-reads → **37 replaced, 25
+  rejected; 0 of the 9 symbol disputes survived** — the second reader's
+  symbol job delivered nothing on sincos (the crop read either dropped the
+  heart too or rewrote a letter). The replaced-lines similarity is a wash
+  (0.456 → 0.451): mostly SFX garbage for SFX garbage, as the A/B predicted.
+- `kind` is the **v1 text rule + a chrome word list** (251 speech · 67 sfx ·
+  8 chrome); the rule's h-row miss is visible on the sheet (`はんv`, `はちゃ`,
+  `ふくっ` land as speech) — B1's labels. The mirror builder
+  (`cache_te_ext.ocr_lines_by_stem`) now drops `kind: chrome` records before
+  any format sees them; the speech/SFX split still comes from the text rule
+  until B1 wires `kind` through.
+- Chore: `build_mirror` retries the symlink once, then hard-links, and says
+  which happened (`_link_image`).
