@@ -71,18 +71,19 @@ class ExtTokenizeStrategy:
 
 
 OCR_FORMATS = ("sentence", "order", "tags", "presence")
-"""``sentence`` — two trailing sentences after the tag bag, ``Japanese text
-reads as "…", "…". Japanese SFX reads as "…".``, each reader line routed to
-speech or SFX by :mod:`ocr_sfx` (``line_kind``), lines in reading order, a
-sentence omitted when it has no lines; ``order`` — one phrase, ``Japanese text
-in following order: "…", "…"``, the lines in the records' (reading) order;
-``tags`` — the C2–C6 form, a ``japanese text`` presence tag plus one ``「…」``
-flat tag per line; ``presence`` — the ``japanese text`` tag alone (text
-presence with no ext-row address: the text-binding probe's control arm)."""
+"""``sentence`` — a trailing text clause after the tag bag and any position
+clauses, ``Japanese text reads as "…", "…".`` (the anime_tools grammar's
+``TEXT_PREFIXES`` clause kind, plan_base1 B2), lines in reading order; a line
+the :mod:`ocr_sfx` rule reads as SFX is **skipped** (decision 2, amended
+2026-09-05: neither reader can read hand-lettered onomatopoeia, so no SFX
+sentence for now — the grammar already knows ``Japanese SFX reads as`` for
+when it returns); ``order`` — one phrase, ``Japanese text in following order:
+"…", "…"``, the lines in the records' (reading) order; ``tags`` — the C2–C6
+form, a ``japanese text`` presence tag plus one ``「…」`` flat tag per line;
+``presence`` — the ``japanese text`` tag alone (text presence with no ext-row
+address: the text-binding probe's control arm)."""
 
 ORDER_PREFIX = "Japanese text in following order: "
-SENTENCE_TEXT_PREFIX = "Japanese text reads as "
-SENTENCE_SFX_PREFIX = "Japanese SFX reads as "
 
 
 DROP_KINDS: frozenset[str] = frozenset({"chrome", "sfx"})
@@ -118,42 +119,23 @@ def _quote_safe(text: str) -> str:
     return text.replace('"', "”")
 
 
-def ocr_sentences(lines: list[str]) -> list[str]:
-    """The ``sentence`` format's sentences (no trailing period), speech first,
-    SFX second, either dropped when empty. Sentences, not tags: they sit
-    after the flat bag as a period-delimited tail (``append_sentences``)."""
+def ocr_text_clauses(lines: list[str]) -> list:
+    """The ``sentence`` format's clauses: one ``Japanese text reads as`` text
+    clause with the speech lines in reading order, none when there are no
+    speech lines. SFX-classified lines (:func:`ocr_sfx.split_lines`) are
+    skipped for now (see ``OCR_FORMATS``); ``text_clause`` quotes each line
+    and defuses an inner ASCII quote."""
+    from anime_tools.captions.position_clauses import text_clause
     from ocr_sfx import split_lines
 
-    speech, sfx = split_lines(lines)
-    out = []
-    for prefix, group in ((SENTENCE_TEXT_PREFIX, speech), (SENTENCE_SFX_PREFIX, sfx)):
-        if group:
-            out.append(prefix + ", ".join(f'"{_quote_safe(ln)}"' for ln in group))
-    return out
-
-
-def append_sentences(caption: str, sentences: list[str]) -> str:
-    """``caption`` with ``sentences`` appended as a ``. ``-delimited tail.
-
-    GOTCHA: the anime_tools grammar knows only ``On the`` / ``In the`` clause
-    headers, so a re-parse of the result glues the first sentence onto the
-    last tag (or the last position clause). The string is what the TE cache
-    encodes, and nothing tag-level runs on a mirror caption after this, so
-    the append is done on the string rather than through ``compose_caption``.
-    """
-    if not sentences:
-        return caption
-    cap = caption.rstrip()
-    if cap.endswith(".") and any(c.isalnum() for c in cap[:-1]):
-        cap = cap[:-1].rstrip()
-    tail = ". ".join(sentences) + "."
-    return f"{cap}. {tail}" if cap else tail
+    speech, _sfx = split_lines(lines)
+    return [text_clause(speech)] if speech else []
 
 
 def ocr_tags(lines: list[str], fmt: str) -> list[str]:
     """The tag(s) that carry ``lines`` under ``fmt`` (see ``OCR_FORMATS``)."""
     if fmt == "sentence":
-        raise ValueError("'sentence' is not tag-shaped; use ocr_sentences()")
+        raise ValueError("'sentence' is not tag-shaped; use ocr_text_clauses()")
     if fmt == "tags":
         return [f"「{ln}」" for ln in lines]
     if fmt == "presence":
@@ -173,9 +155,14 @@ def append_tags(caption: str, lines: list[str], fmt: str = "order") -> str:
     """
     from anime_tools.captions.position_clauses import compose_caption, parse_caption
 
-    if fmt == "sentence":
-        return append_sentences(caption, ocr_sentences(lines))
     parsed = parse_caption(caption)
+    if fmt == "sentence":
+        # Grammar-native (anime_tools ≥ b453cc2): the text clause composes
+        # last, after the position clauses, and re-parses to the same string.
+        clauses = ocr_text_clauses(lines)
+        if not clauses:
+            return caption
+        return compose_caption(parsed.flat_tags, (*parsed.clauses, *clauses))
     extra = []
     if fmt in ("tags", "presence") and not TEXT_TAG_RE.search(caption):
         extra = ["japanese text"]
@@ -279,9 +266,9 @@ def main() -> None:
         "--ocr_format",
         choices=OCR_FORMATS,
         default="order",
-        help="how OCR lines enter the caption: 'sentence' = trailing "
-        '\'Japanese text reads as "…". Japanese SFX reads as "…".\' '
-        "sentences (speech/SFX split by ocr_sfx); 'order' = one 'Japanese "
+        help="how OCR lines enter the caption: 'sentence' = a trailing "
+        '\'Japanese text reads as "…", "…".\' text clause (speech only; '
+        "SFX by the ocr_sfx rule skipped); 'order' = one 'Japanese "
         "text in following order: ...' phrase (reading order); 'tags' = the "
         "C2–C6 japanese text + 「…」 flat tags.",
     )

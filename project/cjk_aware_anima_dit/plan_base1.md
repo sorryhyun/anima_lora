@@ -119,7 +119,7 @@ only, C10 runs on v2 records.
 *Gate:* ≥ 95 % agreement with the labels on sincos, chrome dropped from
 captions, the mirror builder reading `kind` only.
 
-### B2 — grammar-native sentences (½ day; `anime_tools`)
+### B2 — grammar-native sentences (½ day; `anime_tools`) — **DONE 2026-09-05**
 
 `TEXT_PREFIXES = ("Japanese text reads as ", "Japanese SFX reads as ")` as a
 clause kind beside `On the` / `In the` in
@@ -129,6 +129,20 @@ clauses; `"` pairs already opaque (D1 rev). Test the C10 caption round-trips
 byte-identical and the shuffled-variants pass leaves the tail whole. Pinned
 rev bump. Until this lands the string-level append in `cache_te_ext.py`
 holds (nothing tag-level runs on a mirror caption after it).
+
+*Landed (anime_tools b453cc2, pinned): a text clause is a `PositionClause`
+with an empty `position`, the quoted lines as tags and `is_text` set
+(`text_clause(lines)` builds one); `compose_caption` always renders text
+clauses last; `has_clauses` stays position-only (`has_text_clauses` is the
+other question); variants, `correct_caption`'s clause drop and
+`flatten_caption` pass a text clause through verbatim; a quoted
+punctuation-only line at the caption's end sheds the period. Trainer side:
+`cache_te_ext.py`'s `sentence` format now composes through the grammar
+(`ocr_text_clauses`), and — per the amended decision 2 — a line the
+`ocr_sfx` rule reads as SFX is **skipped**, not sentenced (speech-only C10
+captions; the SFX prefix stays registered in the grammar for when a reader
+can read them). `tests/test_cjk_ocr_captions.py` pins the byte-identical
+round-trip and the whole tail under `clause_dropout_rate=1.0`.*
 
 ### B3 — arm C10 (one evening on the daemon; 3 seeds)
 

@@ -95,34 +95,48 @@ def test_line_kind_splits_speech_from_sfx():
         assert k(sp) == "speech", sp
 
 
-def test_sentence_format_is_two_trailing_sentences():
+def test_sentence_format_is_one_speech_only_text_clause():
     m = _mod()
     out = m.append_tags(
         "1girl, smile",
         ["温水くん、私と", "ぱんぱん", "あっ…うっ…", "ばるん"],
         "sentence",
     )
-    assert out == (
-        '1girl, smile. Japanese text reads as "温水くん、私と", "あっ…うっ…". '
-        'Japanese SFX reads as "ぱんぱん", "ばるん".'
-    )
-    # Reading order survives inside each sentence; a group with no lines is dropped.
-    assert m.append_tags("1girl", ["ぱんぱん"], "sentence") == (
-        '1girl. Japanese SFX reads as "ぱんぱん".'
-    )
+    # SFX-classified lines are skipped for now (decision 2 amended); reading
+    # order survives among the speech lines.
+    assert out == '1girl, smile. Japanese text reads as "温水くん、私と", "あっ…うっ…".'
+    assert m.append_tags("1girl", ["ぱんぱん"], "sentence") == "1girl"
     assert m.append_tags("1girl", [], "sentence") == "1girl"
 
 
-def test_sentence_format_follows_position_clauses_and_escapes_inner_quotes():
+def test_sentence_format_is_grammar_native_and_round_trips():
+    from anime_tools.captions.position_clauses import (
+        compose_caption,
+        parse_caption,
+    )
+
     m = _mod()
     cap = "1girl, smile. On the left, akita neru, yellow eyes."
-    out = m.append_tags(cap, ['say "hi"'], "sentence")
+    out = m.append_tags(cap, ['say "hi"', "温水くん、私と"], "sentence")
     assert out == (
         "1girl, smile. On the left, akita neru, yellow eyes. "
-        'Japanese text reads as "say ”hi”".'
+        'Japanese text reads as "say ”hi”", "温水くん、私と".'
     )
-    # No caption-terminating period is doubled.
     assert ".." not in out
+    # B2: the C10 caption re-parses to the same string, the position clause
+    # intact and the text clause its own kind, last.
+    p = parse_caption(out)
+    assert compose_caption(p.flat_tags, p.clauses) == out
+    assert p.clauses[0].tags == ("akita neru", "yellow eyes")
+    assert p.clauses[1].is_text and p.clauses[1].tags == (
+        '"say ”hi”"',
+        '"温水くん、私と"',
+    )
+    # The shuffled-variants pass leaves the tail whole.
+    from anime_tools.captions.variants import generate_caption_variants
+
+    for v in generate_caption_variants(out, 6, 0.5, clause_dropout_rate=1.0)[1:]:
+        assert v.endswith(' Japanese text reads as "say ”hi”", "温水くん、私と".')
 
 
 def test_line_kind_balloon_veto():
