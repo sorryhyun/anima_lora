@@ -86,6 +86,15 @@ ARMS = {
         "post_image_dataset/cjk_unmask/te/sincos_jakozh1sym_r256_isoq",
         False,
     ),
+    # DiT line plan_base1 B3: C9ISOQ's recipe on the hybrid records with
+    # speech-only sentence captions (mirror_sincos_hybrid_sentence). Trained
+    # by run_unmask_r2.py (3 seeds: c10 / c10_s7 / c10_s1234); render-only here.
+    "C10": (
+        "cjk_unmask_c10",
+        "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
+        "post_image_dataset/cjk_unmask/te/sincos_hybrid_sentence_isoq",
+        True,
+    ),
 }
 
 # blind sets to compose once the grids exist: set name -> arms
