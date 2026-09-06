@@ -1076,3 +1076,24 @@ Eyeball: `probes/ocr_eval_sheet.py --a vl16_tower_lr1e-5 --b vl16_tower_col100`
 `はあ♡`-class hearts, the losses are `むにゅ`→`むにゃ`, `♡`→`♥` swaps and the
 doubled-SFX rows); the all-kinds diff sheet (`…_sfx-speech-chrome_diff.pdf`,
 160 rows) shows speech drifting more than it gains (35 better / 46 worse).
+
+**Label audit after the sheet (2026-09-06, user: "col100이 훨씬 정확한데?? dataset
+다시 봐봐").** The sincos label file is two different things by kind.
+*Speech (213) and chrome (26):* `text_hand` is the PP-OCRv6 record text on
+211 / 213 and 21 / 26 rows (`status=checked` certified the *kind*, not the
+text) — PP-OCRv6 reads no hearts, so every ♡ a reader reads inside a balloon
+scores as a miss. col100 differs from the label **only by hearts** on 28
+speech rows (B′ on 23); 16 of those crops eyeballed, every heart is on the
+page. So "speech exact 59 → 54" is agreement with PP-OCRv6, not accuracy, and
+col100 is the more faithful reader on speech — the memory rule ("never judge a
+speech re-read on the hand labels") holds and the table above should not be
+read for speech. *SFX (99, hand-typed):* two label errors found, both rows
+col100 read right — #173 `はあ♡` → `はぁ♡` (small ぁ), #325 `ばるん♡` → `ぱるん♡`
+(handakuten); fixed in the tsv with a note. #86 `ウズ♡` (both readers `うズ♡`)
+left as is, uncertain. The other 26 rows where both readers agree against
+the label are **shared misses**, mostly the small heart at the end of a burst
+(`ぱん♡` → `ぱん`) and `…` vs `・・・`, not label errors. Re-scored on the fixed
+labels: SFX strict **B′ 44 / col100 43**, punctuation-folded 47 / 47,
+heart-blind 60 / 59 — parity, with col100's residual losses being hearts read
+as `ト` / `ッ` / `レ` on ~5 crops. Verdict unchanged for SFX (flat); for
+speech the metric is invalid and col100 reads hearts PP-OCRv6 never had.

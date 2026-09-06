@@ -172,7 +172,7 @@ row	stem	box	engine	kind_rec	text_rec	kind_hand	text_hand	status	note
 170	13558963	[945, 411, 984, 495]	vl16_spotting	speech	はちゃ	sfx	ぱちゅ♡	checked	
 171	13558963	[861, 374, 908, 500]	vl16_spotting	speech	はちゃ	sfx	ぱちゅ♡	checked	
 172	13790133	[1210, 312, 1255, 421]	ppocr_v6	speech	はぁっ	speech	はぁっ	checked	
-173	13790133	[1060, 441, 1107, 531]	vl16_spotting	speech	はんv	sfx	はあ♡	checked	
+173	13790133	[1060, 441, 1107, 531]	vl16_spotting	speech	はんv	sfx	はぁ♡	checked	small ぁ (was はあ♡; col100 A/B sheet 2026-09-06)
 174	13790133	[657, 2, 817, 353]	vl16_spotting	speech	カトの提… 早くっいい あっとあっ	speech	カトの提… 早くっいい あっとあっ	checked	
 175	13790133	[200, 367, 352, 442]	vl16_spotting	speech	はんv	sfx	ぱん♡	checked	
 176	13790133	[57, 524, 214, 675]	vl16_spotting	speech	はんv	sfx	ぱん♡	checked	
@@ -324,7 +324,7 @@ row	stem	box	engine	kind_rec	text_rec	kind_hand	text_hand	status	note
 322	9540284	[449, 925, 856, 954]	ppocr_v6	speech	おじさん①「全くけしからんおっぱいだ♡」	chrome	おじさん①「全くけしからんおっぱいだ♡」	checked	overlay caption
 323	9540284	[555, 976, 941, 1004]	ppocr_v6	speech	「実に役満ボディといったところだな♡」	chrome	「実に役満ボディといったところだな♡」	checked	overlay caption
 324	9540284	[450, 1029, 833, 1054]	ppocr_v6	speech	ぱい「もー♡オヤジギャグですかー？♡」	chrome	ぱい「もー♡オヤジギャグですかー？♡」	checked	overlay caption
-325	9750417	[141, 694, 264, 777]	ppocr_v6	sfx	ばるん」	sfx	ばるん♡	checked	ぱ vs ば uncertain
+325	9750417	[141, 694, 264, 777]	ppocr_v6	sfx	ばるん」	sfx	ぱるん♡	checked	ぱ vs ば uncertain; handakuten (was ばるん♡; col100 A/B sheet 2026-09-06)
 326	9750417	[365, 709, 466, 761]	vl16_spotting	sfx	ばるん	sfx	ばるん♡	checked	ぱ vs ば uncertain
 327	9750417	[869, 737, 999, 908]	vl16_spotting	sfx	ばん ばん	sfx	ぱん♡ ぱん♡	checked	
 328	9796490	[256, 538, 483, 597]	ppocr_v6	sfx	ゴmmvvv	sfx	ぎゅ〜〜♡♡♡	checked	tilde count uncertain
