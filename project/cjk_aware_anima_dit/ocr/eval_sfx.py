@@ -84,6 +84,13 @@ def main():
     )
     ap.add_argument("--reader", choices=sorted(ev.READERS) + ["record"], required=True)
     ap.add_argument("--ckpt")
+    ap.add_argument(
+        "--records",
+        type=Path,
+        help="--reader record: score this records file (matched to the labels by "
+        "stem + box; a row without a record scores as empty) instead of the "
+        "labels' own text_rec column",
+    )
     ap.add_argument("--name")
     ap.add_argument("--kind", action="append", help="default sfx + speech")
     ap.add_argument("--include_unchecked", action="store_true")
@@ -100,7 +107,17 @@ def main():
     crops, orients = crops_for(df, a.pad)
     df["orient"] = orients
     t0 = time.time()
-    if a.reader == "record":
+    if a.reader == "record" and a.records:
+        by = {}
+        for line in a.records.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                r = json.loads(line)
+                by[(r["stem"], tuple(r["box"]))] = r["text"]
+        preds = [by.get((r.stem, tuple(r.box)), "") for _, r in df.iterrows()]
+        print(
+            f"{sum(1 for p in preds if p)} / {len(preds)} label rows matched a record"
+        )
+    elif a.reader == "record":
         preds = list(df.text_rec)
     else:
         reader = ev.READERS[a.reader](a.ckpt, a.device)

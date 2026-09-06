@@ -301,6 +301,18 @@ each lever's contribution reported separately (colorized-only, +synth,
 C10 on 3 seeds and blind ≥ C10 inside the seed-twin floor. *Kill:* C11
 spams → SFX stays out of captions, the reader still ships for masks/Tagger.
 
+**O4 — IN PROGRESS 2026-09-06 evening (`findings.md` § O4).** The reader
+ships as `anime_tools.ocr.sfx` (rev 46ebbb5, rows `vl16_base` /
+`sfx_reader`, decode guard = repetition + **area**-tied cap — an aspect cap
+threw away 60 % of speech reads). `ocr/reread_records.py` (the `--sfx_reader`
+wiring, as its own script) re-reads every `kind: sfx` record and reads the
+MIT-mask components on every masked page: floor **23 → 8**, sincos gate rows
+4 → 37 / 71 in the pipeline, `kind` from the hand labels. The user's
+"all lines through VL" arm measured too: best on the manga-ocr reference
+(0.810 vs 0.786), kept as the D2 records recommendation; C11 runs
+single-variable on the SFX-only re-read. Arm C11 (**one seed, s42 — user's
+call**) + O5 training queued; verdicts owed.
+
 ### O5 — text-kind segmentation (stretch; 2–3 days; after O2 passes)
 
 - **Task:** per-page polygons with `kind ∈ {speech, sfx, other}` (other =

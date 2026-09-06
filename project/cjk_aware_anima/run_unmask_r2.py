@@ -68,6 +68,12 @@ def main() -> None:
         help="cache_te_ext --ocr_format; C2–C9 were 'tags', C10 (plan_base1 B3) "
         "'sentence' on the hybrid records.",
     )
+    ap.add_argument(
+        "--keep_sfx",
+        action="store_true",
+        help="cache_te_ext --keep_sfx: C11 (plan_ocr O4) keeps the SFX records "
+        "and adds the 'Japanese SFX reads as' sentence.",
+    )
     ap.add_argument("--skip_cache", action="store_true")
     ap.add_argument("--skip_train", action="store_true")
     ap.add_argument(
@@ -101,6 +107,7 @@ def main() -> None:
                 opts.te_out,
                 "--ocr_format",
                 opts.ocr_format,
+                *(["--keep_sfx"] if opts.keep_sfx else []),
             ],
         )
 

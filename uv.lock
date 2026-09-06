@@ -313,10 +313,10 @@ gui = [
 
 [package.dev-dependencies]
 anime-tools-dev = [
-    { name = "anime-tools", version = "0.4.1", source = { editable = "../anime_tools" } },
+    { name = "anime-tools", version = "0.4.2", source = { editable = "../anime_tools" } },
 ]
 anime-tools-git = [
-    { name = "anime-tools", version = "0.4.1", source = { git = "https://github.com/sorryhyun/anime_tools?rev=b453cc2#b453cc27e5ebe2c915d71893c3372e3ee62c36a2" } },
+    { name = "anime-tools", version = "0.4.2", source = { git = "https://github.com/sorryhyun/anime_tools?rev=46ebbb5#46ebbb5f09d44967eca16a5fa448ed750854f979" } },
 ]
 cuda-windows = [
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl" }, marker = "sys_platform == 'win32' or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git')" },
@@ -424,7 +424,7 @@ provides-extras = ["gui", "cuda-windows", "rocm-windows", "dev"]
 
 [package.metadata.requires-dev]
 anime-tools-dev = [{ name = "anime-tools", editable = "../anime_tools" }]
-anime-tools-git = [{ name = "anime-tools", git = "https://github.com/sorryhyun/anime_tools?rev=b453cc2" }]
+anime-tools-git = [{ name = "anime-tools", git = "https://github.com/sorryhyun/anime_tools?rev=46ebbb5" }]
 cuda-windows = [
     { name = "flash-attn", marker = "sys_platform == 'win32'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl" },
     { name = "torch", marker = "sys_platform == 'win32'", specifier = "==2.12.0+cu132", index = "https://download.pytorch.org/whl/cu132", conflict = { package = "anima-lora", group = "cuda-windows" } },
@@ -459,8 +459,8 @@ sr = [
 
 [[package]]
 name = "anime-tools"
-version = "0.4.1"
-source = { git = "https://github.com/sorryhyun/anime_tools?rev=b453cc2#b453cc27e5ebe2c915d71893c3372e3ee62c36a2" }
+version = "0.4.2"
+source = { git = "https://github.com/sorryhyun/anime_tools?rev=46ebbb5#46ebbb5f09d44967eca16a5fa448ed750854f979" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
     "platform_machine == 'aarch64' and sys_platform == 'linux'",
@@ -475,10 +475,13 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "matplotlib" },
     { name = "numpy" },
+    { name = "onnx" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin' or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
     { name = "onnxruntime-gpu", version = "1.26.0", source = { url = "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-13/pypi/download/onnxruntime-gpu/1.26.0/onnxruntime_gpu-1.26.0-cp313-cp313-manylinux_2_34_aarch64.whl" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
     { name = "onnxruntime-gpu", version = "1.27.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "onnxscript" },
     { name = "opencv-python" },
+    { name = "peft" },
     { name = "pillow" },
     { name = "psutil" },
     { name = "pyarrow" },
@@ -505,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "anime-tools"
-version = "0.4.1"
+version = "0.4.2"
 source = { editable = "../anime_tools" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
@@ -527,6 +530,7 @@ dependencies = [
     { name = "onnxruntime-gpu", version = "1.27.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
     { name = "onnxscript" },
     { name = "opencv-python" },
+    { name = "peft" },
     { name = "pillow" },
     { name = "psutil" },
     { name = "pyarrow" },
@@ -564,6 +568,7 @@ requires-dist = [
     { name = "onnxruntime-gpu", marker = "sys_platform != 'darwin'", specifier = ">=1.21" },
     { name = "onnxscript", specifier = ">=0.5" },
     { name = "opencv-python", specifier = ">=4.11" },
+    { name = "peft", specifier = ">=0.20" },
     { name = "pillow" },
     { name = "psutil" },
     { name = "pyarrow", specifier = ">=17" },

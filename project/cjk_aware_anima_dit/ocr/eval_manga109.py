@@ -163,7 +163,38 @@ class Vl16Reader:
         return out
 
 
-READERS = {"manga_ocr": MangaOcrReader, "ppocr": PpocrReader, "vl16": Vl16Reader}
+class SfxPkgReader:
+    """O4: the shipped reader — ``anime_tools.ocr.sfx.SfxReader`` (B′ weights
+    from the catalog rows, decode guard built in). ``--ckpt`` overrides the
+    adapter dir; a guarded-out read scores as an empty string."""
+
+    name = "sfx"
+
+    def __init__(self, ckpt: str | None, device: str):
+        try:
+            from anime_tools.ocr import sfx
+        except ImportError:  # dev loop before the pinned rev carries ocr/sfx.py
+            sys.path.insert(0, str(m109.REPO.parent / "anime_tools"))
+            for k in [k for k in sys.modules if k.startswith("anime_tools")]:
+                del sys.modules[k]
+            from anime_tools.ocr import sfx
+        self.r = sfx.SfxReader.load(
+            device=device,
+            base_dir=m109.REPO / "models/paddleocr_vl_1.6",
+            adapter_dir=Path(ckpt) if ckpt else None,
+        )
+
+    def read(self, crops, orients, bs):
+        self.r.batch_size = bs
+        return [t or "" for t in self.r.read(crops)]
+
+
+READERS = {
+    "manga_ocr": MangaOcrReader,
+    "ppocr": PpocrReader,
+    "vl16": Vl16Reader,
+    "sfx": SfxPkgReader,
+}
 
 
 # --------------------------------------------------------------------------- scoring

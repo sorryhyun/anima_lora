@@ -95,19 +95,31 @@ SFX come back once a reader can read them (a light OCR fine-tune) and B1's
 labels stand. Records without ``kind`` (pre-hybrid files) are untouched."""
 
 
-def ocr_lines_by_stem(
+def ocr_records_by_stem(
     records: Path, max_lines: int, drop_kinds: frozenset[str] = DROP_KINDS
-) -> dict[str, list[str]]:
-    """Raw OCR lines per stem, in file order (the records are already sorted
-    into reading order by the OCR pass), minus the ``drop_kinds``."""
-    by_stem: dict[str, list[str]] = {}
+) -> dict[str, list[tuple[str, str]]]:
+    """``(text, kind)`` per stem, in file order (the records are already
+    sorted into reading order by the OCR pass), minus the ``drop_kinds``.
+    A record without ``kind`` (pre-hybrid file) is ``speech``."""
+    by_stem: dict[str, list[tuple[str, str]]] = {}
     with records.open(encoding="utf-8") as f:
         for line in f:
             r = json.loads(line)
-            if r.get("kind") in drop_kinds:
+            kind = r.get("kind", "speech")
+            if kind in drop_kinds:
                 continue
-            by_stem.setdefault(r["stem"], []).append(r["text"])
+            by_stem.setdefault(r["stem"], []).append((r["text"], kind))
     return {k: v[:max_lines] for k, v in by_stem.items()}
+
+
+def ocr_lines_by_stem(
+    records: Path, max_lines: int, drop_kinds: frozenset[str] = DROP_KINDS
+) -> dict[str, list[str]]:
+    """Raw OCR lines per stem (:func:`ocr_records_by_stem` without the kind)."""
+    return {
+        k: [t for t, _ in v]
+        for k, v in ocr_records_by_stem(records, max_lines, drop_kinds).items()
+    }
 
 
 def _quote_safe(text: str) -> str:
@@ -119,17 +131,31 @@ def _quote_safe(text: str) -> str:
     return text.replace('"', "”")
 
 
-def ocr_text_clauses(lines: list[str]) -> list:
+def ocr_text_clauses(
+    lines: list[str], kinds: list[str] | None = None, sfx_sentence: bool = False
+) -> list:
     """The ``sentence`` format's clauses: one ``Japanese text reads as`` text
-    clause with the speech lines in reading order, none when there are no
-    speech lines. SFX-classified lines (:func:`ocr_sfx.split_lines`) are
-    skipped for now (see ``OCR_FORMATS``); ``text_clause`` quotes each line
-    and defuses an inner ASCII quote."""
+    clause with the speech lines in reading order, then — with
+    ``sfx_sentence`` (arm C11, plan_ocr O4) — one ``Japanese SFX reads as``
+    clause with the SFX lines; neither when its lines are empty.
+
+    ``kinds`` (the records' ``kind``, hand labels + rule, plan_ocr O4) decides
+    which is which; without it the :mod:`ocr_sfx` text rule does
+    (:func:`ocr_sfx.split_lines`), as C10 trained. Without ``sfx_sentence``
+    the SFX lines are skipped (decision 2 amended, see ``OCR_FORMATS``).
+    ``text_clause`` quotes each line and defuses an inner ASCII quote."""
     from anime_tools.captions.position_clauses import text_clause
     from ocr_sfx import split_lines
 
-    speech, _sfx = split_lines(lines)
-    return [text_clause(speech)] if speech else []
+    if kinds is None:
+        speech, sfx = split_lines(lines)
+    else:
+        speech = [ln for ln, k in zip(lines, kinds, strict=True) if k == "speech"]
+        sfx = [ln for ln, k in zip(lines, kinds, strict=True) if k == "sfx"]
+    out = [text_clause(speech)] if speech else []
+    if sfx_sentence and sfx:
+        out.append(text_clause(sfx, sfx=True))
+    return out
 
 
 def ocr_tags(lines: list[str], fmt: str) -> list[str]:
@@ -146,20 +172,28 @@ def ocr_tags(lines: list[str], fmt: str) -> list[str]:
     raise ValueError(f"unknown OCR format {fmt!r}")
 
 
-def append_tags(caption: str, lines: list[str], fmt: str = "order") -> str:
+def append_tags(
+    caption: str,
+    lines: list[str],
+    fmt: str = "order",
+    *,
+    kinds: list[str] | None = None,
+    sfx_sentence: bool = False,
+) -> str:
     """Append the OCR lines to the caption's flat bag, grammar-safe.
 
     ``tags`` / ``presence`` add a ``japanese text`` presence tag first unless
     the caption already carries a ``* text`` tag; ``order`` needs none — the
-    phrase opens with it.
+    phrase opens with it. ``kinds`` / ``sfx_sentence`` are the ``sentence``
+    format's (:func:`ocr_text_clauses`).
     """
     from anime_tools.captions.position_clauses import compose_caption, parse_caption
 
     parsed = parse_caption(caption)
     if fmt == "sentence":
-        # Grammar-native (anime_tools ≥ b453cc2): the text clause composes
-        # last, after the position clauses, and re-parses to the same string.
-        clauses = ocr_text_clauses(lines)
+        # Grammar-native (anime_tools ≥ b453cc2): the text clauses compose
+        # last, after the position clauses, and re-parse to the same string.
+        clauses = ocr_text_clauses(lines, kinds, sfx_sentence)
         if not clauses:
             return caption
         return compose_caption(parsed.flat_tags, (*parsed.clauses, *clauses))
@@ -199,12 +233,15 @@ def _link_image(link: Path, target: Path) -> None:
 def build_mirror(
     resized: Path,
     mirror: Path,
-    tags: dict[str, list[str]],
+    tags: dict[str, list[str]] | dict[str, list[tuple[str, str]]],
     fmt: str = "order",
     stems: set[str] | None = None,
+    sfx_sentence: bool = False,
 ) -> tuple[int, int]:
     """``stems`` restricts the mirror to those images (the single-image
-    text-binding probe); ``None`` mirrors the whole shard."""
+    text-binding probe); ``None`` mirrors the whole shard. ``tags`` values are
+    lines, or ``(line, kind)`` pairs (:func:`ocr_records_by_stem`) when the
+    records' kind should drive the sentence split."""
     from anime_tools.captions.variants import read_variants_sidecar
 
     mirror.mkdir(parents=True, exist_ok=True)
@@ -218,7 +255,11 @@ def build_mirror(
         link = mirror / img.name
         if not link.exists():
             _link_image(link, img.resolve())
-        stem_tags = tags.get(img.stem, [])
+        stem_tags = list(tags.get(img.stem, []))
+        kinds = None
+        if stem_tags and isinstance(stem_tags[0], tuple):
+            kinds = [k for _, k in stem_tags]
+            stem_tags = [t for t, _ in stem_tags]
         cap_src = resized / f"{img.stem}.txt"
         caption = (
             cap_src.read_text(encoding="utf-8").strip() if cap_src.exists() else ""
@@ -226,8 +267,11 @@ def build_mirror(
         var_src = resized / f"{img.stem}.variants.txt"
         rows = read_variants_sidecar(var_src) if var_src.exists() else []
         if stem_tags:
-            caption = append_tags(caption, stem_tags, fmt)
-            rows = [(label, append_tags(text, stem_tags, fmt)) for label, text in rows]
+            kw = dict(kinds=kinds, sfx_sentence=sfx_sentence)
+            caption = append_tags(caption, stem_tags, fmt, **kw)
+            rows = [
+                (label, append_tags(text, stem_tags, fmt, **kw)) for label, text in rows
+            ]
             n_text += 1
         else:
             n_plain += 1
@@ -272,6 +316,13 @@ def main() -> None:
         "text in following order: ...' phrase (reading order); 'tags' = the "
         "C2–C6 japanese text + 「…」 flat tags.",
     )
+    ap.add_argument(
+        "--keep_sfx",
+        action="store_true",
+        help="arm C11 (plan_ocr O4): keep kind=sfx records and, with "
+        "--ocr_format sentence, add the 'Japanese SFX reads as \"…\"' clause "
+        "from the records' kind (hand labels + rule) after the speech clause.",
+    )
     ap.add_argument("--batch_size", type=int, default=8)
     ap.add_argument("--overwrite", action="store_true")
     ap.add_argument(
@@ -291,13 +342,18 @@ def main() -> None:
     mirror = opts.mirror or base_dir / f"mirror_{opts.shard}"
     resized = REPO / "post_image_dataset" / "resized" / opts.shard
 
-    tags = ocr_lines_by_stem(records, opts.max_lines)
+    if opts.keep_sfx:
+        tags = ocr_records_by_stem(records, opts.max_lines, DROP_KINDS - {"sfx"})
+    else:
+        tags = ocr_lines_by_stem(records, opts.max_lines)
     if stems is not None:
         missing = stems - set(tags)
         if missing:
             sys.exit(f"no OCR lines in {records} for stems: {sorted(missing)}")
         tags = {k: v for k, v in tags.items() if k in stems}
-    n_text, n_plain = build_mirror(resized, mirror, tags, opts.ocr_format, stems)
+    n_text, n_plain = build_mirror(
+        resized, mirror, tags, opts.ocr_format, stems, sfx_sentence=opts.keep_sfx
+    )
     print(
         f"mirror ({opts.ocr_format}): {n_text} captions carry OCR lines, "
         f"{n_plain} plain -> {mirror}"

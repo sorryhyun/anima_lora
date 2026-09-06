@@ -36,7 +36,15 @@ ENGINE_COLOUR = {
     "ppocr_v6": (0, 200, 0),
     "ppocr_v6+vl16_crop": (255, 140, 0),
     "vl16_spotting": (220, 0, 200),
+    "sfx_reader": (0, 120, 255),  # O4: a MIT-mask component the SFX reader read
 }
+
+
+def engine_colour(engine: str):
+    """``<engine>+sfx_reader`` (O4 re-read) keeps its base engine's colour."""
+    return ENGINE_COLOUR.get(engine) or ENGINE_COLOUR.get(
+        engine.removesuffix("+sfx_reader"), (128, 128, 128)
+    )
 KIND_COLOUR = {"speech": "black", "sfx": (200, 0, 0), "chrome": (120, 120, 120)}
 
 
@@ -161,7 +169,7 @@ def main() -> None:
             tag = {"sfx": "SFX", "chrome": "CHR", "speech": "   "}[kind]
             col = KIND_COLOUR[kind]
             if r["engine"] != "ppocr_v6":
-                col = ENGINE_COLOUR[r["engine"]] if kind == "speech" else col
+                col = engine_colour(r["engine"]) if kind == "speech" else col
             for j, ln in enumerate(
                 wrap(f"{i:>2} {eng} {sc} {tag} {r['text']}", F, TXT_W)
             ):

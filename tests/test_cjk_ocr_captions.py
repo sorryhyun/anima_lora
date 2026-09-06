@@ -139,6 +139,63 @@ def test_sentence_format_is_grammar_native_and_round_trips():
         assert v.endswith(' Japanese text reads as "say ”hi”", "温水くん、私と".')
 
 
+def test_sentence_format_adds_the_sfx_clause_from_the_records_kind():
+    """plan_ocr O4 / arm C11: with the records' ``kind`` and ``sfx_sentence``
+    the SFX lines come back as their own clause after the speech clause; the
+    text rule is not consulted (``はんぱん`` is SFX by hand label)."""
+    from anime_tools.captions.position_clauses import compose_caption, parse_caption
+
+    m = _mod()
+    lines = ["温水くん、私と", "ぱん♡ ぱん♡", "あっ…うっ…", "はんぱん"]
+    kinds = ["speech", "sfx", "speech", "sfx"]
+    out = m.append_tags(
+        "1girl, smile", lines, "sentence", kinds=kinds, sfx_sentence=True
+    )
+    assert out == (
+        '1girl, smile. Japanese text reads as "温水くん、私と", "あっ…うっ…". '
+        'Japanese SFX reads as "ぱん♡ ぱん♡", "はんぱん".'
+    )
+    p = parse_caption(out)
+    assert compose_caption(p.flat_tags, p.clauses) == out
+    assert [c.prefix for c in p.clauses] == [
+        "Japanese text reads as ",
+        "Japanese SFX reads as ",
+    ]
+    # Without sfx_sentence the records' SFX are skipped, as C10 trained.
+    assert (
+        m.append_tags("1girl", lines, "sentence", kinds=kinds)
+        == '1girl. Japanese text reads as "温水くん、私と", "あっ…うっ…".'
+    )
+    # SFX only: no speech clause, one SFX clause.
+    assert (
+        m.append_tags("1girl", ["びくっ"], "sentence", kinds=["sfx"], sfx_sentence=True)
+        == '1girl. Japanese SFX reads as "びくっ".'
+    )
+
+
+def test_ocr_records_by_stem_keeps_kind_and_drops_by_kind(tmp_path):
+    import json
+
+    m = _mod()
+    rec = tmp_path / "r.jsonl"
+    rows = [
+        {"stem": "a", "text": "x", "kind": "speech"},
+        {"stem": "a", "text": "y", "kind": "sfx"},
+        {"stem": "a", "text": "z", "kind": "chrome"},
+        {"stem": "b", "text": "w"},
+    ]
+    rec.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    assert m.ocr_records_by_stem(rec, 8) == {
+        "a": [("x", "speech")],
+        "b": [("w", "speech")],
+    }
+    assert m.ocr_records_by_stem(rec, 8, m.DROP_KINDS - {"sfx"}) == {
+        "a": [("x", "speech"), ("y", "sfx")],
+        "b": [("w", "speech")],
+    }
+    assert m.ocr_lines_by_stem(rec, 8) == {"a": ["x"], "b": ["w"]}
+
+
 def test_line_kind_balloon_veto():
     k = _sfx().line_kind
     assert k("カリカリ", in_bubble=True) == "speech"
