@@ -11,6 +11,8 @@ mask` a kind-aware mask. G-O1 unblocks the SFX sentence in captions
 (`DROP_KINDS`); G-O2 unblocks the floor pages and the mask policy. Both are
 also plain product wins for `anime_tools.ocr` (Tagger, masks, captions).*
 
+*Rev. 3 (2026-09-06, evening): O2 arm B′ — the VL-1.6 LoRA with the **vision tower unfrozen** — passes the doujin gate (38 / 71) without O3; VL is the pick per decision 1, O3 is demoted to an optional lift, O4 starts. `findings.md` § O2b.*
+
 *Rev. 2 (2026-09-06): the first eval is **in-domain** — the official COO
 book split restricted to Manga109-s, fully automatic, no hand labels on the
 critical path; the sincos hand labels move to the O2 gate. O2 trains **two
@@ -212,7 +214,20 @@ for arm A (< 25 while COO ≥ 70) → O3 mandatory; O3 runs on manga-ocr first
 if that falls short. lr 2e-4 / 8-epoch arms cancelled (curves still rising,
 not the bottleneck).
 
-### O3 — crossing the doujin gap (1 day)
+**O2 amended the same day — arm B′ PASSES (`findings.md` § O2b).** Same
+recipe as B with `--train_tower --tower_lr 1e-5` (NaViT tower + projector
+full FT, 439 M, fp32 master), 1 epoch, ~90 min: COO test **81.7 %** (at the
+published 81.2 %), speech 0.986, sincos gate **38 / 71** (♡-blind 41), sincos
+speech 0.910. All four gate clauses hold → **decision 1 resolves to VL**
+(passes + reads `♡` natively, so decision 6's heart rule is dropped). The
+frozen tower, not the decoder prior, was the doujin gap. O3 is no longer
+mandatory for any surviving base; it is an optional lift for the residual
+(8+-char lines, square blocks, `ぱん♡` confusions). Weights public at
+`sorryhyun/paddleocr-vl-1.6-manga-lora` (adapter + `tower.safetensors`).
+
+### O3 — crossing the doujin gap (1 day) — **optional lift since rev. 3**
+
+*Not on the path any more: arm B′ passed the gate without it. Run a lever here only if O4 wants more margin on the residual; the +10 gate below then reads against B′'s 38 / 71.*
 
 Only what O2's residual asks for, in this order, on the surviving base(s):
 
@@ -264,12 +279,17 @@ each lever's contribution reported separately (colorized-only, +synth,
   (masked, no line) the MIT mask's connected components ≥ 32 px become
   crop quads and are read too — a read that passes the O0 gate becomes a
   record with `engine: sfx_reader`. Hearts patched from VL per decision 6
-  (skipped if the VL arm ships). Re-measure the floor (23 → ?) and the SFX
+  (skipped — the VL arm ships). **A decode guard (repetition / aspect-tied
+  length cap) is part of the reader wiring**, not optional: B′ still runs away
+  on ~4 % of crops. Re-measure the floor (23 → ?) and the SFX
   read accuracy on sincos.
 - `anime_tools`: the reader lands as `anime_tools.ocr.sfx` (same
   `OcrLine` sidecar, weights fetched via `anime_tools.downloads`), so `make
   preprocess`'s OCR stage and the Tagger node can use it. **Deployment
-  shape is decided at O2 pick time**, not after: manga-ocr = a torch
+  shape is decided at O2 pick time**, not after — **decided rev. 3: VL**
+  (torch + remote modeling files + peft adapter 24 MB + `tower.safetensors`
+  878 MB from `sorryhyun/paddleocr-vl-1.6-manga-lora`, batching rules from
+  the A/B, decode guard): manga-ocr = a torch
   `VisionEncoderDecoder` (or its ONNX export) behind the existing session
   layer; VL = torch + the remote modeling files + the batching rules — the
   heavier of the two, which is why a tie goes to manga-ocr. Pinned-rev bump.
@@ -348,9 +368,10 @@ shipped SFX reader and the C11 verdict; a week with segmentation. GPU via
   `ocr/finetune_vl16_lora.py`, `ocr/colorize_manga109.py` + its 20-page
   pilot table in `findings.md`, `ocr/synth_sfx.py` (O3), the manifest +
   stats in `findings.md`.
-- Weights: `sorryhyun/manga-ocr-sfx` (or `sorryhyun/paddleocr-vl-sfx-lora`
-  if the VL arm ships) on HF (ship build; model card carries the Manga109-s
-  attribution and citations), `-nc` build kept local.
+- Weights: **`sorryhyun/paddleocr-vl-1.6-manga-lora`** (public 2026-09-06;
+  adapter + fine-tuned tower, model card carries the Manga109-s attribution
+  and citations). `sorryhyun/manga-ocr-sfx` not published — arm A lost the
+  pick. Any `-nc` build stays local.
 - `build_ocr_records.py --sfx_reader`; `anime_tools.ocr.sfx` + pinned rev;
   arm C11 (`configs/gui-methods/custom/cjk_unmask_c11.toml`, grids, blind
   set, `reports/09xx_c11_sfx_sentence.md`).

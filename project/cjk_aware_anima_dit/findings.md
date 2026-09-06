@@ -455,6 +455,8 @@ heart-blind exact.
 
 ## O2 — SFX reader fine-tunes, both bases (2026-09-06): in-domain PASS, doujin gate MISS on both → O3
 
+*Superseded the same day by § O2b below: unfreezing VL's vision tower passes the doujin gate outright, so O3 is no longer on arm B's path.*
+
 `plan_ocr.md` O2 on the **corrected** O1 crops (§ O1 correction). Scorers:
 `ocr/eval_manga109.py` (COO test + speech control) and `ocr/eval_sfx.py`
 (sincos hand labels, `assets/sfx_labels_sincos.tsv` — 338 rows drafted off
@@ -531,6 +533,60 @@ O2 gate: **in-domain PASS, doujin gate MISS on both bases** (`findings` rows
 above are the O3 reference). Artifacts: `output/ocr/{mocr_lr2e-5,mocr_lr5e-5,vl16_lr1e-4}/best`,
 `reports/ocr_eval_{manga_ocr,ppocr,vl16,mocr_lr2e-5,mocr_lr5e-5,vl16_lr1e-4}.md`,
 `reports/ocr_eval_sfx_*.md`. The VL adapter is on the Hub as a **private**
-research checkpoint: `sorryhyun/paddleocr-vl-1.6-manga-sfx-lora` (model card
+research checkpoint: `sorryhyun/paddleocr-vl-1.6-manga-sfx-lora` (renamed `…-manga-lora` and made public with the O2b weights, see § O2b; model card
 carries the recipe, both eval tables, the runaway caveat and the Manga109-s /
-COO citations; adapter weights only). Next: O3 synth (`ocr/synth_sfx.py`) on arm A.
+COO citations; adapter weights only). Next *as written then*: O3 synth on arm A — overtaken by § O2b.
+
+## O2b — arm B′: VL-1.6 LoRA + vision-tower full FT (2026-09-06): doujin gate PASS, VL is the pick
+
+The frozen tower was the bottleneck. Same crops, mix, LoRA and lr as arm B,
+plus the NaViT tower + projector trained in full (fp32 master copy, lr 1e-5,
+439 M params in 443 tensors; `finetune_vl16_lora.py --train_tower --tower_lr
+1e-5`, bs 8 × grad-accum 2 = the same effective 16, **1 epoch** = 4,822 steps,
+~90 min, 12.1 GB peak). Val SFX exact 86.2 % after the single epoch (arm B
+reached 66.2 % after two). Eval jobs `20260906-161652-{b5ba49,c41369}`,
+reports `reports/ocr_eval_{sfx_,}vl16_tower_lr1e-5.md`.
+
+| arm | COO test SFX exact | COO SFX sim | COO speech sim | COO runaway | sincos gate / 71 (♡-blind) | sincos SFX exact / sim (99) | sincos speech sim (213) |
+|---|---|---|---|---|---|---|---|
+| VL-1.6 stock | 30.2 % | 0.545 | 0.976 | 331 | 2 (6) | — / 0.464 | 0.856 |
+| A · manga-ocr lr 5e-5 | 73.5 % | 0.884 | 0.975 | 0 | 10 (12) | — / 0.664 | 0.721 |
+| B · VL LoRA, tower frozen, 2 ep | 64.7 % | 0.816 | 0.981 | 194 | 13 (19) | 13.1 % / 0.698 | 0.889 |
+| **B′ · VL LoRA + tower FT, 1 ep** | **81.7 %** | **0.927** | **0.986** | 189 (25 sfx + 164 speech) | **38 (41)** | **45.5 % / 0.868** | **0.910** |
+
+**O2 gate, arm B′:** COO test reported ✓ (81.7 %, at the published 81.2 % on
+our 6-book subset); sincos SFX exact ≥ 35 / 71 ✓ (**38**); sincos speech sim ≥
+stock − 0.01 ✓ (0.910 vs 0.856); COO speech sim ≥ O0 stock − 0.01 ✓ (0.986 vs
+0.976). **PASS** — the first arm to pass the doujin gate, without O3.
+
+Reading it:
+
+- **The domain gap was a tower problem, not a decoder-prior problem.** Arm B
+  moved the in-domain number and barely the doujin one; letting the tower see
+  the crops does both in one epoch (13 → 38 / 71, sim 0.75 → 0.90). The
+  decoder-side lever the plan queued for O3 (synth outlined kana, colorized
+  COO) is not needed to pass; it stays available as a *lift*, not a rescue.
+- **Hearts are read natively.** Strict vs ♡-blind gap is 3 lines (38 / 41);
+  misses are mostly `♥` for `♡`, which `exact` already folds. Decision 6's
+  heart-patching rule is moot for this pick.
+- **Decision 1 resolves to VL.** It passes and removes the heart rule, so it
+  wins outright (the tie-break to manga-ocr never engages). Cost accepted:
+  ~10× manga-ocr's wall per crop, deployment = torch + remote modeling files +
+  adapter 24 MB **+ tower 878 MB**, and a runaway guard is mandatory before
+  wiring (189 on COO test, `びく♡` → `ぐくーーー…` on sincos; the count is left
+  unguarded in every table on purpose).
+- **Residual** for a later lift: 8+-char lines 0 / 5, square multi-line SFX
+  blocks (17 rows, 0.59 → weakest orientation), `ぱん♡` family
+  (`ぱィ♥` / `ぱ人♡` / `ぱく`). The curve was still rising at epoch 1; a 2–3
+  epoch run and a tower-lr sweep (3e-6 / 3e-5) are the cheap next arms if O4
+  wants more margin, but neither gates O4.
+
+Published: **`sorryhyun/paddleocr-vl-1.6-manga-lora`** (public, 2026-09-06;
+the `…-manga-sfx-lora` repo renamed in place, old URL redirects) — adapter +
+`tower.safetensors` + card with both eval tables, the two-step load (peft
+merge, then `load_state_dict(strict=False)` of the tower), runaway caveat,
+Manga109-s / COO citations. Weights only; no crops.
+
+Next: O4 — `build_ocr_records.py --sfx_reader` with the VL reader + a decode
+guard, `anime_tools.ocr.sfx` in the VL deployment shape, re-measure the sincos
+floor, then arm C11. O3 levers are demoted to optional lift.
