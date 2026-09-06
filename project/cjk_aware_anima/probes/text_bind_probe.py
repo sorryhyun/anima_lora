@@ -285,9 +285,10 @@ def main() -> None:
     # for the presence arm (whose training caption has none).
 
     sys.path.insert(0, str(PROJ / "datasets"))
-    from cache_te_ext import append_tags, ocr_lines_by_stem  # noqa: E402
+    from cache_te_ext import SFX_DROPPED, append_tags, ocr_lines_by_stem  # noqa: E402
 
-    all_lines = ocr_lines_by_stem(REPO / opts.records, 8)
+    # the probe ran (and closed) on the pre-O4 caption: SFX records stay out
+    all_lines = ocr_lines_by_stem(REPO / opts.records, 8, SFX_DROPPED)
     assets = PROJ / "assets"
     prompt_paths: dict[str, Path] = {}
     for stem in stems:

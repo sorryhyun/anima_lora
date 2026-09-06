@@ -71,8 +71,14 @@ def main() -> None:
     ap.add_argument(
         "--keep_sfx",
         action="store_true",
-        help="cache_te_ext --keep_sfx: C11 (plan_ocr O4) keeps the SFX records "
-        "and adds the 'Japanese SFX reads as' sentence.",
+        help="no-op since 2026-09-06 (cache_te_ext keeps SFX records + the "
+        "'Japanese SFX reads as' sentence by default; was arm C11, plan_ocr O4).",
+    )
+    ap.add_argument(
+        "--drop_sfx",
+        action="store_true",
+        help="cache_te_ext --drop_sfx: the C2–C10 caption (no SFX records, no "
+        "SFX sentence) for reproductions.",
     )
     ap.add_argument("--skip_cache", action="store_true")
     ap.add_argument("--skip_train", action="store_true")
@@ -107,7 +113,7 @@ def main() -> None:
                 opts.te_out,
                 "--ocr_format",
                 opts.ocr_format,
-                *(["--keep_sfx"] if opts.keep_sfx else []),
+                *(["--drop_sfx"] if opts.drop_sfx else []),
             ],
         )
 

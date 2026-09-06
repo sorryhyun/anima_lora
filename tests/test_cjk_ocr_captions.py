@@ -185,15 +185,19 @@ def test_ocr_records_by_stem_keeps_kind_and_drops_by_kind(tmp_path):
         {"stem": "b", "text": "w"},
     ]
     rec.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    # default since the C11 gate passed (2026-09-06): SFX kept, chrome dropped
+    assert "sfx" not in m.DROP_KINDS and "chrome" in m.DROP_KINDS
     assert m.ocr_records_by_stem(rec, 8) == {
-        "a": [("x", "speech")],
-        "b": [("w", "speech")],
-    }
-    assert m.ocr_records_by_stem(rec, 8, m.DROP_KINDS - {"sfx"}) == {
         "a": [("x", "speech"), ("y", "sfx")],
         "b": [("w", "speech")],
     }
-    assert m.ocr_lines_by_stem(rec, 8) == {"a": ["x"], "b": ["w"]}
+    assert m.ocr_lines_by_stem(rec, 8) == {"a": ["x", "y"], "b": ["w"]}
+    # --drop_sfx = the C2–C10 caption
+    assert m.ocr_records_by_stem(rec, 8, m.SFX_DROPPED) == {
+        "a": [("x", "speech")],
+        "b": [("w", "speech")],
+    }
+    assert m.ocr_lines_by_stem(rec, 8, m.SFX_DROPPED) == {"a": ["x"], "b": ["w"]}
 
 
 def test_line_kind_balloon_veto():
@@ -300,10 +304,11 @@ def test_chrome_is_a_kind_and_the_mirror_builder_drops_it(tmp_path):
         '{"stem": "a", "text": "おはよう"}\n',
         encoding="utf-8",
     )
-    # sfx is excluded from captions for now (decision 2026-09-05); chrome always
-    assert _mod().ocr_lines_by_stem(recs, 8) == {"a": ["おはよう"]}
-    assert _mod().ocr_lines_by_stem(recs, 8, drop_kinds=frozenset({"chrome"})) == {
-        "a": ["ぱんぱん", "おはよう"]
+    # chrome always; sfx kept since the C11 gate passed (2026-09-06) and
+    # dropped only for the C2–C10 reproduction set (--drop_sfx)
+    assert _mod().ocr_lines_by_stem(recs, 8) == {"a": ["ぱんぱん", "おはよう"]}
+    assert _mod().ocr_lines_by_stem(recs, 8, drop_kinds=_mod().SFX_DROPPED) == {
+        "a": ["おはよう"]
     }
 
 

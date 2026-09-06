@@ -86,13 +86,18 @@ address: the text-binding probe's control arm)."""
 ORDER_PREFIX = "Japanese text in following order: "
 
 
-DROP_KINDS: frozenset[str] = frozenset({"chrome", "sfx"})
+DROP_KINDS: frozenset[str] = frozenset({"chrome"})
 """Record ``kind`` values no caption format sees (hybrid records, plan_base1
 B0). ``chrome`` is UI text on a screenshot page — neither speech nor SFX.
-``sfx`` is excluded for now by decision (2026-09-05): the readers garble
-hand-lettered onomatopoeia (``でくv`` for びくっ) and the kind rule is v1;
-SFX come back once a reader can read them (a light OCR fine-tune) and B1's
-labels stand. Records without ``kind`` (pre-hybrid files) are untouched."""
+``sfx`` was in this set 2026-09-05 → 2026-09-06 (the stock readers garbled
+hand-lettered onomatopoeia, ``でくv`` for びくっ); it left once the SFX reader
+(``anime_tools.ocr.sfx``, plan_ocr O4) could read them and arm C11 passed
+its gate (spam = C10, blind s15 11–9 flat inside the floor). ``--drop_sfx``
+restores the C10 caption for reproductions. Records without ``kind``
+(pre-hybrid files) are untouched."""
+
+SFX_DROPPED: frozenset[str] = DROP_KINDS | {"sfx"}
+"""``DROP_KINDS`` as it stood for arms C2–C10 (``--drop_sfx``)."""
 
 
 def ocr_records_by_stem(
@@ -319,9 +324,16 @@ def main() -> None:
     ap.add_argument(
         "--keep_sfx",
         action="store_true",
-        help="arm C11 (plan_ocr O4): keep kind=sfx records and, with "
-        "--ocr_format sentence, add the 'Japanese SFX reads as \"…\"' clause "
-        "from the records' kind (hand labels + rule) after the speech clause.",
+        help="no-op since 2026-09-06 (the default): keep kind=sfx records and, "
+        "with --ocr_format sentence, add the 'Japanese SFX reads as \"…\"' "
+        "clause from the records' kind (hand labels + rule) after the speech "
+        "clause. Was arm C11 (plan_ocr O4); kept so old argv still parse.",
+    )
+    ap.add_argument(
+        "--drop_sfx",
+        action="store_true",
+        help="arms C2–C10 (pre-O4): drop kind=sfx records and emit no SFX "
+        "clause — the caption default before the C11 gate passed.",
     )
     ap.add_argument("--batch_size", type=int, default=8)
     ap.add_argument("--overwrite", action="store_true")
@@ -342,17 +354,18 @@ def main() -> None:
     mirror = opts.mirror or base_dir / f"mirror_{opts.shard}"
     resized = REPO / "post_image_dataset" / "resized" / opts.shard
 
-    if opts.keep_sfx:
-        tags = ocr_records_by_stem(records, opts.max_lines, DROP_KINDS - {"sfx"})
+    keep_sfx = not opts.drop_sfx
+    if keep_sfx:
+        tags = ocr_records_by_stem(records, opts.max_lines, DROP_KINDS)
     else:
-        tags = ocr_lines_by_stem(records, opts.max_lines)
+        tags = ocr_lines_by_stem(records, opts.max_lines, SFX_DROPPED)
     if stems is not None:
         missing = stems - set(tags)
         if missing:
             sys.exit(f"no OCR lines in {records} for stems: {sorted(missing)}")
         tags = {k: v for k, v in tags.items() if k in stems}
     n_text, n_plain = build_mirror(
-        resized, mirror, tags, opts.ocr_format, stems, sfx_sentence=opts.keep_sfx
+        resized, mirror, tags, opts.ocr_format, stems, sfx_sentence=keep_sfx
     )
     print(
         f"mirror ({opts.ocr_format}): {n_text} captions carry OCR lines, "

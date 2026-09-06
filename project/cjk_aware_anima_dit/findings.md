@@ -726,5 +726,9 @@ edges r4 / r6 / r8; r2 / r3 mixed with ties). Grader sides balanced (A 11 / B
 neither helps nor hurts on 24 pairs — **blind half of the gate PASSES as
 written** (blind ≥ C10 inside the floor), with the caveat that the spam half
 was measured on one training seed (s42, the user's call), not the three the
-plan asked for. `DROP_KINDS` may now lose `sfx` per the plan; the flip is a
-D2-default decision and a `anime_tools` change, not made here.
+plan asked for. **`DROP_KINDS` flipped** (user's call, same evening):
+`cache_te_ext.DROP_KINDS = {chrome}`, the SFX sentence is the default
+(`--keep_sfx` stays as a parsing no-op), `--drop_sfx` (also on
+`run_unmask_r2.py`) reproduces the C2–C10 caption via `SFX_DROPPED`; the
+closed text-binding probe pins `SFX_DROPPED` so its caption is unchanged.
+C11's caption is D2's default from here.
