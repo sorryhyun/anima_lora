@@ -391,8 +391,9 @@ applies.
 - **No OCR-reader swap and no prompt engineering of PaddleOCR-VL.** The
   A/B is done (`reports/0905_paddleocr_vl16_vs_ppocrv6.md`): character
   accuracy ties, hints are noise, batching is the only lever. A manga
-  fine-tune of VL is the one thing that could move it and is not this
-  line's work.
+  fine-tune of VL is the one thing that could move it — that is
+  [`plan_ocr.md`](plan_ocr.md)'s O2 second arm (crop `OCR:` LoRA vs
+  manga-ocr on COO / Manga109-s), not D2's work; D2 stays on PP-OCRv6.
 - **No edit / conditioning line on the pairs.** JA→EN twins look like
   DirectEdit or EasyControl training data (translate the lettering in
   place); that is a different deliverable (a conditioned re-letterer, not a

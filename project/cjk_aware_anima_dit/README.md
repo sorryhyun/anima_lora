@@ -9,6 +9,10 @@ learns what CJK means from image data.
 - [`plan_base1.md`](plan_base1.md) — sub-plan before D2: hybrid PP-OCRv6 +
   VL-1.6 records, SFX handling v2 with hand labels, sentence captions, arm C10
   vs C9ISOQ; SAM3 balloon geometry dropped.
+- [`plan_ocr.md`](plan_ocr.md) — side line: an SFX reader (manga-ocr vs a
+  PaddleOCR-VL-1.6 crop LoRA, both fine-tuned on COO / Manga109-s on the official
+  COO book split; doujin-gap levers; arm C11) and, as a stretch, text-kind
+  segmentation (speech / SFX / other) replacing the rule `kind` and the MIT mask.
 - `findings.md` — starts with D0's verdict (ISO1 vs C9 direct blind set);
   then the OCR-reader verdict (PaddleOCR-VL-1.6 vs PP-OCRv6) that fixes D2/D3.
 - `reports/`, `probes/` — this line's own; older material stays in the old tree.

@@ -306,3 +306,65 @@ base habit shared by every arm since C8. Tagger adherence recall C10
 C9ISOQ 50 % (n = 12). **Gate PASS at the floor → sentence shape is D2's
 default caption shape; no blind-visible gain claimed.** Instrument added:
 `probes/grid_spam_tally.py` (CPU PP-OCRv6 flag pass over a grid dir set).
+
+## O0 — SFX reader line: in-domain split + stock baselines (2026-09-06)
+
+`plan_ocr.md` O0. Split = official COO `books_{train,val,test}` ∩ Manga109-s
+`books.txt` → **74 / 7 / 6 books** (`assets/coo_split_manga109s.json`; the
+COO lists are CRLF, `unsplit` = 0). Test crops built by
+`ocr/build_manga109_crops.py --split test` (pilot `deskew_crop`, pad 12 %,
+min side 16, orientation preserved): **2,558 COO lines** after truncation-link
+joining (98 joined; the earlier "2,759 polygons" counted the `<onomatopoeia_link*>`
+elements too) + **2,559 speech** `<text>` boxes, a per-book count-matched
+draw (seed 0). SFX len p50 / p90 / max = 3 / 5 / 17, min side p10 / p50 =
+33 / 76 px, 30 % vertical; speech 11 / 25 / 90, 44 / 88 px (bubble boxes are
+multi-column, 6 % "vertical" by aspect). One crop dropped (< 16 px).
+
+Scorer `ocr/eval_manga109.py` (daemon jobs `20260906-113412-{e51d7b,5a3a59,7d8758}`;
+reports `reports/ocr_eval_{manga_ocr,ppocr,vl16}.md`, predictions
+`output/ocr/eval/<reader>_test.jsonl`). **exact** = NFKC + whitespace-stripped
+equality; **sim** = `build_ocr_records.sim` after `normalize_ja`.
+
+| reader (stock) | SFX exact | SFX sim | SFX runaway | speech exact | speech sim | crops/s |
+|---|---|---|---|---|---|---|
+| manga-ocr-base | **16.4 %** (419 / 2,558) | 0.336 | 0 | 31.9 % | **0.824** | 270 |
+| PP-OCRv6 rec (ONNX, upstream rotate rule) | 3.0 % | 0.093 | 0 | 0.9 %† | 0.082† | 355 |
+| PaddleOCR-VL-1.6 crop `OCR:` (no guard) | **20.1 %** (515) | 0.449 | **105** (4.1 %) | 34.3 % | 0.845 | 40 |
+
+† not a valid speech control: the speech crops are whole bubble boxes
+(multi-column), which PP's single-line CTC head cannot read without its own
+detector in front; it stays in the table as the "rec on the same crops" row
+only. On the single-line SFX crops PP is what `plan_base1.md` observed — garble.
+
+Reading the SFX rows:
+
+- The published COO TRBA+2D baseline is 81.2 % on the full 10-book test; both
+  stock readers are at 16–20 % on 6 of those books. That is the gap O2's
+  fine-tune has to close, and it is not a punctuation artefact: punctuation-
+  blind exact (also stripping `!?…・ー～`) is 486 / 2,558 (19.0 %) for manga-ocr,
+  583 (22.8 %) for VL.
+- manga-ocr degrades with length (24 % exact at 2 chars → 0 % at ≥ 7) and does
+  worst on **horizontal** SFX (11.5 % vs 28.8 % square, 16.8 % vertical) — the
+  speech-prior story from the sincos peek holds here: the worst lines are
+  fluent speech (`パタパタ` → `「おめのお兄さん`, `カチーン!!` → `それは、それでも、`)
+  or `...`.
+- VL is 3.7 pts better on SFX exact and +0.11 sim, orientation-flat, but
+  4.1 % of SFX crops and 6.8 % of speech crops run away (`ひと`×20,
+  `えーーー…`) with plain greedy decoding — far above the A/B's 2 / 132 on
+  sincos crops; a decode-time guard is a wiring knob, not a baseline
+  correction, so the stock row stays unguarded.
+- **Joined truncation lines are near-unreadable stock** (98 lines: manga-ocr
+  1 exact, sim 0.11) — two glyph runs under one `minAreaRect`; the O1 builder
+  keeps them (they are real COO test items) but the fine-tune may want them
+  weighted down or cropped as parts.
+- Speech control for O2: manga-ocr sim 0.824 / VL 0.845 are the "≥ stock −
+  0.01" reference rows. The speech *exact* rate (32–34 %) is low because the
+  boxes are multi-line bubbles and Manga109's transcriptions carry `‼`/`…`
+  variants; 1,170 / 2,559 match punctuation-blind. sim is the control metric.
+
+O0 gate: **PASS** (split written + asserted, three stock rows on the COO test
+crops + speech control). Gotcha for every script on this line: the daemon
+forwards only `ANIMA_`-prefixed env to its jobs, so the roots are
+`ANIMA_MANGA109S_ROOT` / `ANIMA_ANIMETEXT_ROOT`. Still owed from O0, off the
+critical path: the sincos hand-label draft (`assets/sfx_labels_sincos.tsv`)
++ `ocr/eval_sfx.py`, needed by the O2 gate.
