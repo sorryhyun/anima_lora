@@ -715,6 +715,16 @@ C9ISOQ also lost, at n = 3 renders. cos→base 0.979 vs 0.984, cos→sincos
 (`regrid_set.py`, job `20260906-173543-4855a4`, pushed to the private
 pairs repo) — **the user grades**; gate half 2 (blind ≥ C10 inside the
 seed-twin floor, s02 15–9 on 24) reads off `probes/blind_pairs.py score
---set s15_C11_vs_C10`. Until then: the SFX sentence does no visible harm on
-the instruments that decide the kill clause, so `DROP_KINDS` keeps `sfx`
-(C10 stays D2's caption default) and flips only on a blind PASS.
+--set s15_C11_vs_C10`.
+
+**s15 GRADED 2026-09-06** (user pasted one 24-char a/b string, `-` = tie;
+private repo commit d604a27; `reports/blind_s15_C11_vs_C10.md` in the old
+project dir): **C11 11 – C10 9, tie 4** — flat, inside the seed-twin floor
+(s02 15–9 on 24). Rows split 3–3 (C11 sweeps r1 3–0 and edges r5 / r7; C10
+edges r4 / r6 / r8; r2 / r3 mixed with ties). Grader sides balanced (A 11 / B
+9), so the s14 side-bias flag does not apply here. Reading: the SFX sentence
+neither helps nor hurts on 24 pairs — **blind half of the gate PASSES as
+written** (blind ≥ C10 inside the floor), with the caveat that the spam half
+was measured on one training seed (s42, the user's call), not the three the
+plan asked for. `DROP_KINDS` may now lose `sfx` per the plan; the flip is a
+D2-default decision and a `anime_tools` change, not made here.
