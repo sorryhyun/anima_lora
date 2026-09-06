@@ -95,6 +95,15 @@ ARMS = {
         "post_image_dataset/cjk_unmask/te/sincos_hybrid_sentence_isoq",
         True,
     ),
+    # DiT line plan_ocr O4: C10 on the SFX-reader records
+    # (ocr_records_sincos_hybrid_sfx.jsonl) with the SFX sentence (--keep_sfx,
+    # mirror_sincos_hybrid_sfx_sentence). One training seed (s42); render-only here.
+    "C11": (
+        "cjk_unmask_c11",
+        "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
+        "post_image_dataset/cjk_unmask/te/sincos_hybrid_sfx_sentence_isoq",
+        True,
+    ),
 }
 
 # blind sets to compose once the grids exist: set name -> arms

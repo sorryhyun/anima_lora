@@ -675,10 +675,13 @@ clause from the records' `kind` (`cache_te_ext.ocr_records_by_stem` /
 `tests/test_cjk_ocr_captions.py`); 87 of 132 captioned stems carry an SFX
 clause. Config `configs/gui-methods/custom/cjk_unmask_c11.toml` (the `_s7` / `_s1234` twins exist, unused).
 
-**O5 started** behind C11 in the queue: `ocr/kind_seg.py` — a
+**O5 parked (user's call, 17:15 — "O5는 일단 냅두자").** The segmenter is
+written and CPU-smoked, not trained: `ocr/kind_seg.py` — a
 `segmentation_models_pytorch` U-Net (`resnet34`) over Manga109-s spreads,
 classes bg / speech (`<text>` fill) / sfx (COO polygon fill, wins on
-overlap), 768-px crops at native resolution, weighted CE + dice, 6 epochs
-(`kind_r34`, job `20260906-170305-a4f339`), then box-level evals on the val
-and test books and on the sincos hand labels + masked pages
-(`…-f36d70`, `…-20cf03`, `…-900b7c`) and an ONNX export (`…-8ebc7c`).
+overlap), 768-px crops at native resolution, weighted CE + dice, with
+box-level evals (`eval-val` / `eval-sincos`: kind accuracy and SFX recall
+against the hand labels beside the v1 rule, SFX components on the 133
+masked pages beside the O4 reader) and an ONNX export. The five queued jobs
+(`20260906-170305-*`) were killed unstarted. Resume = the four commands in
+its module doc, ~1–2 GPU-h.
