@@ -431,3 +431,24 @@ O1 gate: **PASS** (43,535 ≥ 40k COO crops; test 2,558 ≥ 2k). Next: O2 on
 the daemon — `finetune_manga_ocr.py` first (the default base), the VL-1.6
 crop LoRA second; the sincos label draft + `eval_sfx.py` remain owed before
 either gate is read.
+
+## O1 correction — `deskew_crop` transposed every axis-aligned box (2026-09-06)
+
+Found while standing up the sincos gate (`ocr/eval_sfx.py`): stock manga-ocr
+read the hand-labelled SFX crops at 0 / 99 and the speech control at sim
+0.34, and the dumped crops were strips through one glyph. Cause: OpenCV ≥ 4.5
+`minAreaRect` reports an axis-aligned 30×120 box as size **(120, 30) at 90°**;
+the pilot's `deskew_crop` (`../cjk_aware_anima/datasets/manga_text.py`) took
+`angle − 90` without swapping the extents, so every polygon whose reported
+angle was > 45° — all Manga109 `<text>` boxes, all sincos record boxes, and a
+large share of COO polygons — was cropped as a **transposed rectangle** around
+the right centre. In the O1 manifest 88 % of speech boxes were taller than wide
+but only 17 % of the crops were. Fixed (swap `w, h` with the angle), all
+87,124 crops rebuilt with `--overwrite` (9 min; vertical share now 0.57–0.71
+instead of 0.06–0.34; 56 min-side drops), and **every O0 stock row, the smoke
+runs and the first O2 launches were discarded** — the O0 numbers above are on
+the transposed crops and are superseded by the re-run rows in § O2. The
+pilot-era sincos "~12 / 71" (`plan_base1.md`, by-eye against the records)
+was produced through the same function and is not a clean reference either;
+the gate now reads `eval_sfx.py`'s strict exact (hearts count) beside a
+heart-blind exact.

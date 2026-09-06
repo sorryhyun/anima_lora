@@ -139,7 +139,13 @@ def deskew_crop(img, poly: list[float], pad_frac: float, min_side: int):
     pts = np.asarray(poly, dtype=np.float32).reshape(-1, 2)
     (cx, cy), (w, h), angle = cv2.minAreaRect(pts)
     if angle > 45:
+        # OpenCV >= 4.5 reports angle in (0, 90] with (w, h) measured along the
+        # rotated axes: an axis-aligned 30x120 box comes back as (120, 30) @ 90°.
+        # Taking angle-90 without swapping the extents cropped a transposed
+        # rectangle (found 2026-09-06 on the plan_ocr sincos gate; every
+        # axis-aligned box was hit) — swap so the extents follow the rotation.
         angle -= 90
+        w, h = h, w
     w = max(w, 1.0)
     h = max(h, 1.0)
     pad = pad_frac * max(w, h)

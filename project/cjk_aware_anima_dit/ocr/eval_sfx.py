@@ -106,6 +106,12 @@ def main():
         preds = reader.read(crops, orients, a.bs)
     wall = time.time() - t0
     scored = ev.score(df, preds)
+    # hearts are the one glyph the gate lets a rule patch (decision 6): report
+    # a heart-blind exact beside the strict one so the ~12/71 pilot count reads
+    strip = lambda t: ev.exact_key(t).replace("♡", "").replace("♥", "")  # noqa: E731
+    scored["exact_noheart"] = [
+        strip(pn) == strip(t) for pn, t in zip(scored.pred_norm, scored.text)
+    ]
 
     ev.OUT.mkdir(parents=True, exist_ok=True)
     scored.drop(columns=["box"]).to_json(
@@ -118,15 +124,18 @@ def main():
     gate = scored[scored.kind_rec == "sfx"]  # the 71 records the O2 gate counts
     md += (
         f"\n## Gate set: the {len(gate)} `kind: sfx` records (scored against the hand text)\n\n"
-        f"exact **{int(gate.exact.sum())} / {len(gate)}**, sim {gate.sim.mean():.3f}; "
+        f"exact **{int(gate.exact.sum())} / {len(gate)}** (heart-blind "
+        f"{int(gate.exact_noheart.sum())}), sim {gate.sim.mean():.3f}; "
         f"hand-relabelled: {(gate.kind != 'sfx').sum()} rows are not SFX by eye "
         f"({', '.join(sorted(set(gate[gate.kind != 'sfx'].kind)))}).\n"
     )
     sfx = scored[scored.kind == "sfx"]
+    for k, g in scored.groupby("kind"):
+        md += f"heart-blind exact, {k}: {int(g.exact_noheart.sum())} / {len(g)}\n"
     md += (
-        "\n## Every SFX line\n\n| row | gt | pred | exact | sim |\n|---|---|---|---|---|\n"
+        "\n## Every SFX line\n\n| row | gt | pred | exact | ♡-blind | sim |\n|---|---|---|---|---|---|\n"
         + "\n".join(
-            f"| {r.row} | {r.text} | {r.pred.replace('|', '\\|')[:30]} | {'✓' if r.exact else ''} | {r.sim:.2f} |"
+            f"| {r.row} | {r.text} | {r.pred.replace('|', '\\|')[:30]} | {'✓' if r.exact else ''} | {'✓' if r.exact_noheart else ''} | {r.sim:.2f} |"
             for _, r in sfx.iterrows()
         )
         + "\n"
