@@ -289,3 +289,20 @@ boundaries kept, the replaced lines now move *toward* manga-ocr (0.485 →
 0.512) instead of a wash — the second reader was being penalised for glued
 rows, not for its letters. Rule 1b: 67 weak + 9 symbol + 6 sfx → 28 replaced,
 51 rejected. Gate still PASS; C10 runs on these records with SFX dropped.
+
+## B3 — arm C10: sentence captions on hybrid records pass the gate at the floor (2026-09-06)
+
+Full write-up `reports/0906_c10_sentence_captions.md`. Blind
+`s14_C10_vs_C9ISOQ` (48 pairs, fresh seeds 9/10/11): **C10 21 – C9ISOQ 15,
+tie 12, rows 8-6** — flat inside the s02 seed-twin floor (pair p 0.41);
+the grader picked side B in 31/36 decisive pairs (first set with a side
+bias; sides balanced 24/24 so the arm total is unaffected in expectation,
+and the flipped-convention reading 15–21 is also flat). Spam tally on the
+8-row grids (lenient OCR flag + eyeball, ledger convention): **C10 ~2 / ~2
+/ ~2 vs C9ISOQ ~2** — equality on all three seeds, the r6 s42 banner is a
+base habit shared by every arm since C8. Tagger adherence recall C10
+0.912 / 0.896 / 0.886 vs C9ISOQ 0.844 (back to C9's 0.912), driven by the
+`comic` row. Plain-prompt spam probe: C10 25 % images with text vs
+C9ISOQ 50 % (n = 12). **Gate PASS at the floor → sentence shape is D2's
+default caption shape; no blind-visible gain claimed.** Instrument added:
+`probes/grid_spam_tally.py` (CPU PP-OCRv6 flag pass over a grid dir set).

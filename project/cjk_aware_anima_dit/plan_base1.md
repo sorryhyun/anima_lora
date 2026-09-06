@@ -146,6 +146,11 @@ round-trip and the whole tail under `clause_dropout_rate=1.0`.*
 
 ### B3 — arm C10 (one evening on the daemon; 3 seeds) — **LAUNCHED 2026-09-05 23:40**
 
+**DONE 2026-09-06 — gate PASS at the floor** (blind s14 21–15, tie 12, flat inside the
+seed-twin floor; spam ~2 / ~2 / ~2 vs ~2; adherence recall back to C9's level):
+`reports/0906_c10_sentence_captions.md`, `findings.md` B3 entry. Sentence shape =
+D2's default caption shape. B4 is next.
+
 *Daemon jobs `20260905-234025-83503f` (seed 42, builds
 `mirror_sincos_hybrid_sentence` + `te/sincos_hybrid_sentence_isoq`),
 `-fa1a24` (seed 7), `-ba0ac2` (seed 1234); configs
