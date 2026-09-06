@@ -1035,3 +1035,44 @@ target, so nothing else changes here.
 spammier than C11 is unknown — the D2 arm is the only instrument and it was
 stopped. Any future DiT arm on the sincos shard trains on the animetext
 captions by default; compare against C11 with that caveat, or re-run D2.
+
+## O3 — arm B′+col100: colorized COO crops at a 1.6 % share, in-domain +1.5, sincos flat (2026-09-06, 23:23)
+
+The stopped arm re-run to completion (job `20260906-214925-ac6100`, 1 h 31,
+12.1 GB peak; the first launch `…-204429-75abea` had been killed at step 50
+for the detector line and its chained eval crashed on the missing `best`).
+Exact B′ recipe (`args.json` differs only in `extra_manifest`), train 78,274
+= 77,165 grey + **1,109 colorized** crops (`colorized_1024_half_comic`, IoU
+d1 ≥ 0.8 filtered off the 100 colorized spreads), one epoch, same seed. Val
+SFX exact 85.6 % (B′ 86.2 %). Evals on `best` = ep1:
+
+| eval | model | SFX exact | SFX sim | sim ≥ 0.8 | runaway | speech exact | speech sim |
+|---|---|---|---|---|---|---|---|
+| Manga109-s test (2,558 / 2,559) | B′ `vl16_tower_lr1e-5` | 81.7 % | 0.927 | 87.6 % | 25 | 82.8 % | 0.986 |
+| | **B′+col100** | **83.2 %** | **0.936** | 88.9 % | 29 | 82.6 % | 0.986 |
+| sincos hand labels (99 SFX / 213 speech / 26 chrome) | B′ | 45 / 99 | 0.868 | 74.7 % | 2 | 59 / 213 (0.910) | chrome 13 / 26 |
+| | **B′+col100** | 41 / 99 | **0.883** | **77.8 %** | **0** | 54 / 213 (0.904) | chrome 10 / 26 |
+
+In-domain every orientation moves up (+0.3 / +2.1 / +1.8 pts horizontal /
+square / vertical, +39 crops) with speech held — the colorized crops are a
+clean augmentation for COO itself. **On the target it is flat**: sincos SFX
+exact −4 lines (vertical 48.3 → 41.4 %, square 23.5 → 29.4 %) while mean sim,
+the ≥ 0.8 share and runaways all improve (the `ぱん♡` family that B′ read as
+`ぱィ♥` / `ぱ人♡` / `ぱく` is now read right; what it loses is `はあ♡`-class
+near-misses at sim 0.5 and the 6-char rows). That is inside the n = 99
+seed-twin band either way; the +10 gate (read against B′'s 38 / 71) is not
+approached, and speech drops 5 lines — the control is not cleanly held.
+
+*Verdict:* the lever at a 1.6 % share does not move the sincos number; the
+2k-page colorize (11.5 h) stays withdrawn, as the plan's condition says.
+*Pre-registered follow-up NOT run:* the `--extra_repeat 8` arm
+(`vl16_tower_col100x8`, ≈ 10 % share) was queued and **withdrawn by the user**
+("we don't have to run repeat") — jobs `20260906-232505-*` killed at step 0.
+The colorized-COO lever stops here at the +100 read; synth SFX is the
+remaining NC-free O3 lever if the reader ever needs more sincos margin.
+Eyeball: `probes/ocr_eval_sheet.py --a vl16_tower_lr1e-5 --b vl16_tower_col100`
+→ `output/tests/ocr_contact_sheet/ab_vl16_tower_lr1e-5_vs_vl16_tower_col100.pdf`
+(99 SFX rows, B better 13 / worse 11: the gains are the `ぱん♡` family and
+`はあ♡`-class hearts, the losses are `むにゅ`→`むにゃ`, `♡`→`♥` swaps and the
+doubled-SFX rows); the all-kinds diff sheet (`…_sfx-speech-chrome_diff.pdf`,
+160 rows) shows speech drifting more than it gains (35 better / 46 worse).

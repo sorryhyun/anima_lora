@@ -41,10 +41,24 @@ def load_split(
     speech_ratio: float = 1.0,
     limit: int | None = None,
     seed: int = 0,
+    extra: list[str] | None = None,
+    extra_repeat: int = 1,
 ) -> pd.DataFrame:
-    """Manifest rows of one split; speech drawn at ``speech_ratio`` × the SFX count."""
+    """Manifest rows of one split; speech drawn at ``speech_ratio`` × the SFX count.
+
+    ``extra`` = names of sibling manifests (``manifest_<name>.parquet`` — O3's
+    colorized crops) whose rows of the same split are **appended** before the
+    speech draw / ``limit``, tagged by their ``source`` column, each row
+    ``extra_repeat`` times (oversampling a small colorized set).
+    """
     df = pd.read_parquet(m109.derived_root() / "manifest.parquet")
+    if "source" not in df.columns:
+        df["source"] = "grey"
     df = df[df.split == split]
+    for name in extra or []:
+        ex = pd.read_parquet(m109.derived_root() / f"manifest_{name}.parquet")
+        ex = ex[ex.split == split]
+        df = pd.concat([df] + [ex] * max(1, extra_repeat), ignore_index=True)
     sfx = df[df.kind == "sfx"]
     sp = df[df.kind == "speech"]
     n_sp = min(len(sp), int(round(len(sfx) * speech_ratio)))
@@ -60,7 +74,9 @@ def load_split(
     out = out.copy()
     out["target"] = out.text.map(normalize_target).str.slice(0, MAX_TARGET_CHARS)
     out = out[out.target.str.len() > 0]
-    return out.sort_values(["kind", "book", "page", "id"]).reset_index(drop=True)
+    return out.sort_values(["source", "kind", "book", "page", "id"]).reset_index(
+        drop=True
+    )
 
 
 class CropDataset(Dataset):

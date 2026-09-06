@@ -5,6 +5,7 @@
         project/cjk_aware_anima_dit/ocr/finetune_vl16_lora.py --lr 1e-4 --epochs 2 --run vl16_lr1e-4"
     … --smoke                       # 30 steps + a 64-crop val, throughput check
     … --train_tower --tower_lr 1e-5 # O2b: unfreeze the NaViT tower + projector (full FT)
+    … --extra_manifest colorized_1024_half_comic   # O3: + the colorized crops (manifest_<name>.parquet)
 
 Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 (q/k/v/o) + MLP (gate/up/down) projections, selected by module path so the
@@ -239,6 +240,14 @@ def main():
     ap.add_argument("--dropout", type=float, default=0.05)
     ap.add_argument("--warmup", type=float, default=0.03)
     ap.add_argument("--speech_ratio", type=float, default=1.0)
+    ap.add_argument(
+        "--extra_manifest",
+        action="append",
+        help="append derived/manifest_<name>.parquet rows to train (O3 colorized crops)",
+    )
+    ap.add_argument(
+        "--extra_repeat", type=int, default=1, help="oversample the extra rows ×N"
+    )
     ap.add_argument("--max_train", type=int, help="rows per kind (subsample)")
     ap.add_argument("--val_limit", type=int)
     ap.add_argument("--val_bs", type=int, default=16)
@@ -316,13 +325,19 @@ def main():
     print(f"prompt {prompt!r}", flush=True)
 
     tr_df = cd.load_split(
-        "train", speech_ratio=a.speech_ratio, limit=a.max_train, seed=a.seed
+        "train",
+        speech_ratio=a.speech_ratio,
+        limit=a.max_train,
+        seed=a.seed,
+        extra=a.extra_manifest,
+        extra_repeat=a.extra_repeat,
     )
     va_df = cd.load_split("val", limit=a.val_limit, seed=a.seed)
     tr = cd.CropDataset(tr_df, augment=not a.no_augment, seed=a.seed)
     va = cd.CropDataset(va_df, augment=False)
     print(
-        f"train {len(tr)} ({tr_df.kind.value_counts().to_dict()}) val {len(va)} lr {a.lr} bs {a.bs}x{a.grad_accum} r {a.rank} epochs {a.epochs}",
+        f"train {len(tr)} ({tr_df.kind.value_counts().to_dict()}; "
+        f"source {tr_df.source.value_counts().to_dict()}) val {len(va)} lr {a.lr} bs {a.bs}x{a.grad_accum} r {a.rank} epochs {a.epochs}",
         flush=True,
     )
 
