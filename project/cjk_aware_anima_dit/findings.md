@@ -685,3 +685,36 @@ against the hand labels beside the v1 rule, SFX components on the 133
 masked pages beside the O4 reader) and an ONNX export. The five queued jobs
 (`20260906-170305-*`) were killed unstarted. Resume = the four commands in
 its module doc, ~1–2 GPU-h.
+
+## O4b — arm C11 (SFX sentence on the SFX-reader records) vs C10: spam equal, blind set owed (2026-09-06)
+
+One training seed (s42, user's call), grids `output/tests/cjk_unmask_eval2/armC11_s{42,7,1234}`,
+final avr_loss 0.074 (C10's band). Control = C10 s42 (same pack, latents,
+recipe; speech-only sentence).
+
+**Spam tally, 8-row grids × 3 render seeds** (`probes/grid_spam_tally.py
+reports/grid_spam_tally_c11.json`, lenient PP-OCRv6 flag pass + eyeball with
+the ledger convention):
+
+| arm | events | cells |
+|---|---|---|
+| C11 (s42) | ~2 | s42 r6 maid-café banner (`Maife` + menu board); s7 r3 hug with three JA speech bubbles + hearts. s7 r6 chalkboard menu is diegetic and **identical in C10's s7 r6**; s7 r8 comic row (bubble `きすてー` + scribbled SFX) excluded by convention; s42 r7 "59 % glyph" flag is one false box on a clean portrait |
+| C10 (s42) | ~2 | s42 r6 banner; s7 r3 hug with two JA bubbles |
+
+Same two base-habit cells, **C11 ≤ C10 → spam gate half PASS**. The extra
+bubble on s7 r3 (three vs two) is the one place the SFX sentence might be
+visible; a single cell at one seed is not a signal. s1234 clean for both.
+
+**Tagger adherence** (`reports/unmask_grid_judge_c11.md`): C11 prob 0.736 /
+recall 0.869 vs C10 0.734 / 0.912 (C10's three seeds: 0.912 / 0.896 /
+0.886); the recall gap is the `comic, 2koma` row (0.58 vs 0.83), the row
+C9ISOQ also lost, at n = 3 renders. cos→base 0.979 vs 0.984, cos→sincos
+0.903 vs 0.905: neither arm moved.
+
+**Blind set `s15_C11_vs_C10`**: 24 pairs (8 rows × render seeds 12 / 13 / 14)
+(`regrid_set.py`, job `20260906-173543-4855a4`, pushed to the private
+pairs repo) — **the user grades**; gate half 2 (blind ≥ C10 inside the
+seed-twin floor, s02 15–9 on 24) reads off `probes/blind_pairs.py score
+--set s15_C11_vs_C10`. Until then: the SFX sentence does no visible harm on
+the instruments that decide the kill clause, so `DROP_KINDS` keeps `sfx`
+(C10 stays D2's caption default) and flips only on a blind PASS.

@@ -311,7 +311,8 @@ MIT-mask components on every masked page: floor **23 → 8**, sincos gate rows
 "all lines through VL" arm measured too: best on the manga-ocr reference
 (0.810 vs 0.786), kept as the D2 records recommendation; C11 runs
 single-variable on the SFX-only re-read. Arm C11 (**one seed, s42 — user's
-call**) running; verdict owed. **O5 parked** (user's call, same evening):
+call**) done: spam ~2 = C10, adherence flat; blind set `s15_C11_vs_C10`
+(24 pairs, seeds 12/13/14) pushed — **grading owed** (`findings.md` § O4b). **O5 parked** (user's call, same evening):
 `ocr/kind_seg.py` is written and CPU-smoked, never trained.
 
 ### O5 — text-kind segmentation (stretch; 2–3 days; after O2 passes)
