@@ -10,7 +10,7 @@ Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 vision tower's same-named projections are untouched. Prompt = the chat
 template's ``User: <image>OCR:\\nAssistant:\\n`` (exactly the eval's), target =
 normalised text + ``</s>``; loss on the target tokens only. Batches are grouped
-by crop area (the A/B's batching rule) and right-padded for training; the
+by crop area (the A/B's batching rule) and left-padded (loss on the last K logits); the
 per-epoch val generation is left-padded, greedy, ``use_cache=True``, no
 repetition guard — the runaway count is reported like the stock row.
 
@@ -23,11 +23,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import shutil
 import sys
 import time
 from pathlib import Path
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import numpy as np
 import pandas as pd
@@ -91,34 +94,55 @@ class Collate:
         imgs, targets, idx = cd.collate_raw(items)
         images = [Image.fromarray(i[:, :, ::-1]) for i in imgs]
         texts = [self.prompt + t + self.eos for t in targets]
+        # LEFT padding for training too: every row's target then sits at the end,
+        # so the loss can be taken on the last K logits only (``logits_to_keep``)
+        # instead of materialising fp32 logits over the 103k vocab for every
+        # image token — the OOM of the first launch (findings § O2).
         enc = self.proc(
             text=texts,
             images=images,
             padding=True,
-            padding_side="right",
+            padding_side="left",
             return_tensors="pt",
             images_kwargs=self.images_kwargs(),
         )
         labels = torch.full_like(enc["input_ids"], -100)
-        lens = enc["attention_mask"].sum(1)
+        n_bad = 0
         for r, t in enumerate(targets):
             tid = self.tok(t + self.eos, add_special_tokens=False).input_ids
-            L, n = len(tid), int(lens[r])
-            row = enc["input_ids"][r, n - L : n]
-            if (
-                row.tolist() != tid
-            ):  # boundary merge — label from the prompt length instead
+            L = len(tid)
+            row = enc["input_ids"][r, -L:]
+            if row.tolist() == tid:
+                labels[r, -L:] = row
+            else:  # boundary merge (rare): label from the prompt length instead
                 p = self.proc(
                     text=[self.prompt],
                     images=[images[r]],
                     return_tensors="pt",
                     images_kwargs=self.images_kwargs(),
                 )["input_ids"].shape[-1]
-                labels[r, p:n] = enc["input_ids"][r, p:n]
-            else:
-                labels[r, n - L : n] = row
+                n = int(enc["attention_mask"][r].sum())
+                labels[r, -(n - p) :] = enc["input_ids"][r, -(n - p) :]
+                n_bad += 1
         enc["labels"] = labels
+        enc["n_boundary_fallback"] = n_bad
         return enc, idx
+
+
+def target_loss(model, enc) -> torch.Tensor:
+    """CE on the target suffix only: keep the last K logits (K = longest label
+    run + 1), shift, ignore -100."""
+    labels = enc.pop("labels")
+    enc.pop("n_boundary_fallback", None)
+    K = int((labels != -100).sum(1).max()) + 1
+    out = model(**enc, logits_to_keep=K)
+    logits = out.logits[
+        :, :-1
+    ].float()  # positions seq-K .. seq-2 predict seq-K+1 .. seq-1
+    tgt = labels[:, -(K - 1) :]
+    return torch.nn.functional.cross_entropy(
+        logits.reshape(-1, logits.shape[-1]), tgt.reshape(-1), ignore_index=-100
+    )
 
 
 @torch.no_grad()
@@ -180,7 +204,7 @@ def main():
     ap.add_argument("--speech_ratio", type=float, default=1.0)
     ap.add_argument("--max_train", type=int, help="rows per kind (subsample)")
     ap.add_argument("--val_limit", type=int)
-    ap.add_argument("--val_bs", type=int, default=32)
+    ap.add_argument("--val_bs", type=int, default=16)
     ap.add_argument("--no_augment", action="store_true")
     ap.add_argument("--no_grad_ckpt", action="store_true")
     ap.add_argument("--workers", type=int, default=6)
@@ -311,7 +335,7 @@ def main():
         losses = []
         for enc, _ in dl:
             enc = enc.to("cuda")
-            loss = model(**enc).loss / a.grad_accum
+            loss = target_loss(model, enc) / a.grad_accum
             loss.backward()
             micro += 1
             seen += enc["input_ids"].shape[0]
