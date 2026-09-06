@@ -5,7 +5,8 @@ ext v2, `--param global`). Reproduce with
 `project/cjk_aware_anima/probes/visit_stats.py`; the run is
 `bench/cjk_distill/results/20260903-1239-2c-synthjakozh1-r256`. Training
 refinements that follow from these numbers live in
-`project/cjk_aware_anima/plan_zh2.md`.*
+`_archive/cjk_aware_anima/plans/plan_zh2.md` (the encoder line is frozen —
+`project/cjk_aware_anima/plan.md`).*
 
 ## What the table is
 

@@ -20,6 +20,11 @@ network_train_unet_only = true
 
 resized_image_dir = "post_image_dataset/resized"
 lora_cache_dir = "post_image_dataset/lora"
+# The third dir of the set, `mask_dir` (where `make mask` writes and training
+# looks masks up), lives in configs/preprocess.toml instead — THIS file is
+# overwritten on `make update` and preprocess.toml is not, so a relocated mask
+# root survives there. Setting `mask_dir` here still works and wins over
+# preprocess.toml (normal chain order), but an update will drop it.
 
 sample_ratio = 1.0
 artists_shard = ""

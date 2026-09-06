@@ -194,6 +194,59 @@ def test_resolve_default_mask_dir_priority(
     assert _resolve_default_mask_dir() == "post_image_dataset/masks"
 
 
+def test_resolve_configured_mask_dir_gates_on_existence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A config-level mask_dir only reaches the subsets when the dir exists.
+
+    ``configs/preprocess.toml`` ships ``mask_dir`` active, so a maskless
+    checkout would otherwise hand every subset a nonexistent root (flipping
+    ``alpha_mask`` on and suppressing the legacy auto-resolution).
+    """
+    from library.datasets.subsets import resolve_configured_mask_dir
+
+    monkeypatch.chdir(tmp_path)
+    assert resolve_configured_mask_dir(None) is None
+    assert resolve_configured_mask_dir("post_image_dataset/masks") is None
+    (tmp_path / "post_image_dataset" / "masks").mkdir(parents=True)
+    assert (
+        resolve_configured_mask_dir("post_image_dataset/masks")
+        == "post_image_dataset/masks"
+    )
+
+
+def test_config_mask_dir_reaches_subsets_via_blueprint_fallback() -> None:
+    """`mask_dir` rides preprocess.toml → args → the BlueprintGenerator
+    fallback, and a subset's own `mask_dir` still wins over it."""
+    import argparse
+
+    from library.config.loader import BlueprintGenerator, ConfigSanitizer
+
+    gen = BlueprintGenerator(ConfigSanitizer(support_dropout=True))
+    user_config = {
+        "general": {},
+        "datasets": [
+            {
+                "subsets": [
+                    {"image_dir": "a"},
+                    {"image_dir": "b", "mask_dir": "own/masks"},
+                ]
+            }
+        ],
+    }
+    namespace = argparse.Namespace(
+        mask_dir="cfg/masks", debug_dataset=False, prior_loss_weight=1.0
+    )
+    subsets = gen.generate(user_config, namespace).dataset_group.datasets[0].subsets
+    assert subsets[0].params.mask_dir == "cfg/masks"
+    assert subsets[1].params.mask_dir == "own/masks"
+
+    namespace.mask_dir = None
+    subsets = gen.generate(user_config, namespace).dataset_group.datasets[0].subsets
+    assert subsets[0].params.mask_dir is None
+    assert subsets[1].params.mask_dir == "own/masks"
+
+
 # ---------------------------------------------------------------------------
 # merge_masks.py (driver-level)
 # ---------------------------------------------------------------------------

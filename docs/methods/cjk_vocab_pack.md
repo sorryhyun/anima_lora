@@ -28,7 +28,7 @@ make preprocess-te ARGS=--overwrite   # only if any caption carries CJK (see bel
 | `train.py` | `--vocab_pack` (config chain fills it; `--ext_pack` is the pre-v2 alias) | Routes inline TE caching + sample prompts, hooks the rows for sampling, stamps `ss_ext_pack` / `ss_ext_pack_sha` on the LoRA. Training steps read only the caches. |
 | `make preprocess-te` | forwarded automatically when the key is set | Caches are encoded through the pack (T5 ids **and** `crossattn_emb`) and stamped with its digest. |
 | `inference.py` / `make test` / `make gen` | `--vocab_pack PREFIX` overrides, `--no_vocab_pack` forces off, default = the key | Tokenizer + `llm_adapter.embed` hook, same table as the caches. |
-| `GenerationRequest` | `vocab_pack=…` / `no_vocab_pack=True` | `examples/09_cjk_vocab_pack.py`; the diffusers variant is `examples/10_…`. |
+| `GenerationRequest` | `vocab_pack=…` / `no_vocab_pack=True` | `examples/09_cjk_vocab_pack.py`; the diffusers variant is `examples/10_cjk_vocab_pack_diffusers.py`. |
 | ComfyUI | `AnimaVocabPackLoader` (Adapter node ≥ 3.9) | Same hook design; compares the LoRA's `ss_ext_pack_sha` against its loaded pack. |
 | Python | `anima_lora.load_vocab_pack` / `attach_vocab_pack` / `VocabPack` | Primitives in `library/anima/vocab_pack.py`; `ext_vocab.py` owns the encoder + digest. |
 

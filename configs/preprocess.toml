@@ -2,6 +2,15 @@ source_image_dir = "image_dataset"
 
 target_res = [1024, 896]
 
+# Where `make mask` writes merged masks, and where training looks them up
+# ({stem}_mask.png, mirroring the resized/ subdir layout). Relative to the repo
+# root (absolute paths work too). Consumed by `make mask` / `make mask-clean`,
+# `make preprocess-reconcile`, the GUI mask counter/overlay, and — as the
+# lowest-priority fallback under a subset's own `mask_dir` — training. Training
+# ignores it when the directory doesn't exist, so a maskless checkout is
+# unaffected.
+mask_dir = "post_image_dataset/masks"
+
 caption_shuffle_variants = 4
 
 caption_tag_dropout_rate = 0.1

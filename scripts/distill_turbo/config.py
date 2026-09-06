@@ -19,6 +19,23 @@ from library.config.resolved import (
 )
 from library.config.resolved import pick as _pick
 
+
+def _default_mask_dir() -> str:
+    """Shared ``mask_dir`` default (configs/preprocess.toml → base → preset).
+
+    The bespoke DP-DMD loop bypasses ``train.py``'s merge chain, so read the
+    same key here rather than re-hardcoding the path — otherwise moving the
+    mask root silently leaves turbo pointed at the old one.
+    """
+    try:
+        from library.config.io import load_path_overrides
+
+        value = load_path_overrides().get("mask_dir")
+    except Exception:  # noqa: BLE001 — config is optional; fall back to the default
+        value = None
+    return str(value) if value else "post_image_dataset/masks"
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -126,7 +143,8 @@ def build_argparser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Mask root for --use_masked_loss (default: TOML mask_dir, else "
-        "post_image_dataset/masks). Mirrors data_dir's subdir layout.",
+        "`mask_dir` from configs/preprocess.toml). Mirrors data_dir's subdir "
+        "layout.",
     )
     parser.add_argument("--student_lr", type=float, default=-1.0)
     parser.add_argument("--fake_lr", type=float, default=-1.0)
@@ -776,7 +794,7 @@ def resolve_config(args: argparse.Namespace, cfg: dict) -> TurboConfig:
         use_masked_loss = bool(_flatten(cfg, "use_masked_loss", False))
     else:
         use_masked_loss = bool(args.use_masked_loss)
-    mask_dir = _pick(args.mask_dir, cfg, "mask_dir", "post_image_dataset/masks")
+    mask_dir = _pick(args.mask_dir, cfg, "mask_dir", _default_mask_dir())
 
     # DMD core
     student_steps = int(_pick(args.student_steps, cfg, "dmd.student_steps", 4))

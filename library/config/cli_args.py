@@ -722,6 +722,17 @@ def add_masked_loss_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--masked_loss", action="store_true", help="apply mask for calculating loss."
     )
+    parser.add_argument(
+        "--mask_dir",
+        type=str,
+        default=None,
+        help="Root of the `{stem}_mask.png` tree written by `make mask`, "
+        "mirroring the resized/ subdir layout. Defaults to `mask_dir` in "
+        "configs/preprocess.toml; a subset's own `mask_dir` in the dataset "
+        "blueprint still wins. Ignored when the directory does not exist, so "
+        "the legacy masks/{merged,sam,mit} auto-resolution still applies to a "
+        "checkout that never re-ran masking.",
+    )
 
 
 def add_dit_training_arguments(parser: argparse.ArgumentParser):

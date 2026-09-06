@@ -1921,8 +1921,18 @@ class AnimaTrainer:
 
     def _prepare_dataset(self, args) -> DatasetBundle:
         """Build train/val dataset groups and the collator shared by both loaders."""
+        from library.datasets.subsets import resolve_configured_mask_dir
+
         use_dreambooth_method = args.in_json is None
         use_user_config = args.dataset_config is not None
+
+        # `mask_dir` rides the config chain (configs/preprocess.toml → preset →
+        # method → --mask_dir) and reaches every subset that doesn't name one
+        # of its own via the BlueprintGenerator's argparse fallback. Gate it on
+        # the directory existing first — the config value names where `make
+        # mask` *would* write, and a maskless checkout must keep falling back
+        # to the legacy auto-resolution instead of flipping alpha_mask on.
+        args.mask_dir = resolve_configured_mask_dir(getattr(args, "mask_dir", None))
 
         if args.dataset_class is None:
             blueprint_generator = BlueprintGenerator(

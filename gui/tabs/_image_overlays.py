@@ -13,7 +13,7 @@ import toml
 from PySide6.QtCore import QObject, QRect, QRunnable, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 
-from gui import ROOT
+from gui import ROOT, default_mask_dir
 from library.preprocess.resize_preview import (
     DEFAULT_FIT_MODE,
     DEFAULT_FREEFIT_MAX_RATIO,
@@ -65,8 +65,9 @@ def _format_file_size(size: int) -> str:
 def _resolve_mask_path(image_path: Path, current_dir: Path | None) -> Path | None:
     """Locate the merged mask PNG for ``image_path``.
 
-    Mirrors the trainer's mask layout: ``post_image_dataset/masks/<rel>/<stem>_mask.png``
-    where ``rel`` is the image's parent relative to ``current_dir``. Falls back
+    Mirrors the trainer's mask layout: ``<mask_dir>/<rel>/<stem>_mask.png``
+    where ``mask_dir`` is the configured mask root (configs/preprocess.toml)
+    and ``rel`` is the image's parent relative to ``current_dir``. Falls back
     to the legacy ``masks/merged/...`` tree before giving up.
     """
     if current_dir is None:
@@ -77,7 +78,7 @@ def _resolve_mask_path(image_path: Path, current_dir: Path | None) -> Path | Non
         return None
     rel_parent = rel.parent
     name = f"{image_path.stem}_mask.png"
-    for root in (ROOT / "post_image_dataset" / "masks", ROOT / "masks" / "merged"):
+    for root in (default_mask_dir(), ROOT / "masks" / "merged"):
         candidate = root / rel_parent / name
         if candidate.is_file():
             return candidate

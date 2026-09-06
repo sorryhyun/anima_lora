@@ -142,17 +142,24 @@ forcing `blocks_to_swap=0`).
   per-method layout, see next bullet). Full-vs-shallow is decided by
   `load_dataset_config_from_base` on whether the method's `[[datasets]]` has a subset.
 - `configs/preprocess.toml` — preprocess knobs split out of base.toml
-  (`source_image_dir`, `drop_lowres_images`, `min_pixels`, **`target_res`**). Read by
-  the preprocess pipeline via `load_path_overrides`, layered **`preprocess.toml →
-  base.toml → preset → method`** (preprocess.toml read first, so a legacy copy of any of
-  these keys still in base.toml keeps winning — backward compatible). It lives here (not
-  base.toml) because **base.toml is overwritten on `make update`** — preprocess.toml is
-  user-owned and preserved. `train.py` never reads the others, **but `target_res` is
-  dual-use**: `load_method_preset` seeds it from preprocess.toml (lowest priority,
-  preset/method/CLI still override) so the training side matches preprocess. The rest of
-  the **shared** path/tier contract (`resized_image_dir`, `lora_cache_dir`, model paths)
-  stays in base.toml because the dataset blueprint interpolates
-  `{resized_image_dir}`/`{lora_cache_dir}`.
+  (`source_image_dir`, `drop_lowres_images`, `min_pixels`, **`target_res`**,
+  **`mask_dir`**). Read by the preprocess pipeline via `load_path_overrides`, layered
+  **`preprocess.toml → base.toml → preset → method`** (preprocess.toml read first, so a
+  legacy copy of any of these keys still in base.toml keeps winning — backward
+  compatible). It lives here (not base.toml) because **base.toml is overwritten on `make
+  update`** — preprocess.toml is user-owned and preserved. `train.py` never reads the
+  filter knobs, **but `target_res` and `mask_dir` are dual-use**: `load_method_preset`
+  seeds both from preprocess.toml (lowest priority, preset/method/CLI still override).
+  `target_res` is inert at train time (seeded for the snapshot only); **`mask_dir` is
+  load-bearing** — it's the single mask-root knob for `make mask` / `mask-clean`,
+  `preprocess-reconcile`, the GUI mask counter/overlay, the turbo loop, and training,
+  where it reaches every subset that doesn't name its own `mask_dir` via the
+  BlueprintGenerator argparse fallback (`--mask_dir` overrides). Training **gates it on
+  the dir existing** (`resolve_configured_mask_dir`) so a maskless checkout still falls
+  back to the legacy `masks/{merged,sam,mit}` auto-resolution instead of enabling masked
+  loss over an empty tree. The rest of the **shared** path contract
+  (`resized_image_dir`, `lora_cache_dir`, model paths) stays in base.toml because the
+  dataset blueprint interpolates `{resized_image_dir}`/`{lora_cache_dir}`.
 - `configs/presets.toml` — hardware profiles as sections: `[default]`, `[fast_16gb]`,
   `[low_vram]` (also Windows 8GB), `[half]`. Holds `blocks_to_swap`, gradient/offload
   checkpointing, etc.

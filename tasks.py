@@ -339,11 +339,12 @@ COMMANDS = {
     # ── Masking ───────────────────────────────────────────────────────
     "mask": (
         masking.cmd_mask,
-        "Run SAM + MIT (via tempdir) and write merged masks under post_image_dataset/masks/",
+        "Run SAM + MIT (via tempdir) and write merged masks under mask_dir "
+        "(configs/preprocess.toml; default post_image_dataset/masks/)",
     ),
     "mask-clean": (
         masking.cmd_mask_clean,
-        "Remove post_image_dataset/masks/",
+        "Remove mask_dir/ (configs/preprocess.toml; default post_image_dataset/masks/)",
     ),
     # ── GUI ───────────────────────────────────────────────────────────
     "gui": (gui.cmd_gui, "Launch PySide6 GUI"),

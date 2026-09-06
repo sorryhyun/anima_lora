@@ -132,7 +132,7 @@ def test_mask_rules_form_builds_sam_mit_and_merge_requests(monkeypatch):
     assert mit.path_pattern == "manga/*"
 
     assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir, mit.mask_dir)
-    assert Path(merge.output_dir) == masking.MASK_OUTPUT_DIR
+    assert Path(merge.output_dir) == masking._mask_output_dir()
 
 
 def test_mask_flat_yaml_config_builds_one_sam_request(monkeypatch):

@@ -174,7 +174,7 @@ five lines with the id embedded in a `make daemon-kill JOB=…` example.
 
 - Suggestion: `daemon-run --queue --json` (or `--print-id`) that prints only
   `{"job_id": …, "state": "queued"}` / the bare id; keep the cheat-sheet as
-  the human default. Same for a `make daemon-state JOB=<id>` that prints
+  the human default. Same for a `daemon-state JOB=<id>` target that prints
   just the state word — polling loops (the agent's `Monitor` here) currently
   parse the full `--job` record for one field.
 

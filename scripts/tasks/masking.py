@@ -3,8 +3,10 @@
 ``make mask`` is a one-shot orchestrator: it runs SAM and MIT into a
 ``tempfile.TemporaryDirectory()`` (cross-platform — honors ``TMPDIR`` /
 ``TEMP``) and writes only the merged result to
-``post_image_dataset/masks/<rel>/{stem}_mask.png``. Per-tool intermediates
-are never persisted under the project root.
+``<mask_dir>/<rel>/{stem}_mask.png``, where ``mask_dir`` comes from the
+merged config chain (``configs/preprocess.toml``, default
+``post_image_dataset/masks``). Per-tool intermediates are never persisted
+under the project root.
 
 Every stage runs as an ``anime_tools`` **request object**
 (``anime_tools.masking.requests.{SamMaskRequest,MitMaskRequest,MergeMasksRequest}``)
@@ -48,7 +50,7 @@ from pathlib import Path
 
 from ._common import ROOT, _path, execute_stage, stage_by_id
 
-MASK_OUTPUT_DIR = ROOT / "post_image_dataset" / "masks"
+DEFAULT_MASK_DIR = "post_image_dataset/masks"
 RESIZED_IMAGE_DIR = ROOT / "post_image_dataset" / "resized"
 SAM_CONFIG = ROOT / "configs" / "sam_mask.yaml"
 # Where ``make download-mit`` lands the UNet++ weights. The package's own
@@ -58,6 +60,16 @@ SAM_CONFIG = ROOT / "configs" / "sam_mask.yaml"
 MIT_MODEL_PATH = ROOT / "models" / "mit" / "model.pth"
 MASK_CONFIG_ENV = "MASK_CONFIG_JSON"
 _UNSET = object()
+
+
+def _mask_output_dir() -> Path:
+    """Unscoped mask root — ``mask_dir`` from the merged config chain.
+
+    Owned by ``configs/preprocess.toml`` (preserved across ``make update``);
+    a preset/method/GUI snapshot may override it. Kept a function rather than
+    a module constant so a ``CONFIG_FILE`` snapshot is read at call time.
+    """
+    return ROOT / _path("mask_dir", DEFAULT_MASK_DIR)
 
 
 def _resized_image_dir() -> Path:
@@ -86,13 +98,14 @@ def _scoped_mask_output_dir(resized_dir: Path) -> Path:
     ``post_image_dataset/resized`` default. Unscoped (direct ``make mask``)
     returns the bare output dir, so CLI behavior is unchanged.
     """
+    mask_root = _mask_output_dir()
     try:
         scope = resized_dir.resolve().relative_to(RESIZED_IMAGE_DIR.resolve())
     except ValueError:
-        return MASK_OUTPUT_DIR
+        return mask_root
     if str(scope) == ".":
-        return MASK_OUTPUT_DIR
-    return MASK_OUTPUT_DIR / scope
+        return mask_root
+    return mask_root / scope
 
 
 # ----- config ------------------------------------------------------------------
@@ -325,6 +338,11 @@ def cmd_mask(extra):
 
 
 def cmd_mask_clean(_extra):
-    if MASK_OUTPUT_DIR.exists():
-        shutil.rmtree(MASK_OUTPUT_DIR)
-        print(f"  Removed {MASK_OUTPUT_DIR.relative_to(ROOT)}/")
+    mask_dir = _mask_output_dir()
+    if mask_dir.exists():
+        shutil.rmtree(mask_dir)
+        try:
+            shown = mask_dir.relative_to(ROOT)
+        except ValueError:  # mask_dir configured outside the repo
+            shown = mask_dir
+        print(f"  Removed {shown}/")

@@ -40,7 +40,7 @@ content.
 | OCR reader | PP-OCRv6 (kept); PaddleOCR-VL-1.6 ties on crops, keeps ♡/ー, rewrites words, 2× the detections (`reports/0905_paddleocr_vl16_vs_ppocrv6.md`) |
 | glyphs lost by downscale | at 0.5× (512 tier) 18 % of lines fall under 16 px (≈2 latent px), 34 % under 24 px; at 0.75× (768) 5 % / 18 % — measured 2026-09-05 on sincos, the *large-text* case |
 | shipped surfaces | `synthja_v4` (HF `anima-vocab-pack-ja`), `AnimaVocabPackLoader` 3.9.1 with `route`; both untouched by this line |
-| paired-edition manga corpus (added 2026-09-05) | 240 works / 10 artists, **5,339 JA pages with 5,280 EN twins** of the same page (relettered, artwork identical), KO edition for 136 works (3,334 pages); 3 of the artists are already in `image_dataset/`; JA page width p10/p50/p90 1003/1361/2400 px (glyphs larger than sincos at the 1024 tier); page alignment run on 2 of 240 works so far. External private checkout — never named or pathed in this repo (principle 9); its own `docs/anima_cjk_dit.md` carries the crawl / alignment / registration detail |
+| paired-edition manga corpus (added 2026-09-05) | 240 works / 10 artists, **5,339 JA pages with 5,280 EN twins** of the same page (relettered, artwork identical), KO edition for 136 works (3,334 pages); 3 of the artists are already in `image_dataset/`; JA page width p10/p50/p90 1003/1361/2400 px (glyphs larger than sincos at the 1024 tier); page alignment run on 2 of 240 works so far. External private checkout — never named or pathed in this repo (principle 9); its own `anima_cjk_dit.md` (under that checkout's docs dir, not this repo's) carries the crawl / alignment / registration detail |
 | quote-span delimiter in captions so far | 「…」 only — 0 of 3,008 `image_dataset/` captions contain `"`, no probe or eval prompt has used it; 「」 themselves are CJK-punctuation range chars and route to ext rows like any kanji (no span rule exists yet) |
 | position-clause grammar vs quotes | quote-blind: `"Are you okay? I'm fine, really."` parses as two flat tags (split on the inner comma; measured 2026-09-05). JA lines rarely carry ASCII commas; EN twins always do |
 
@@ -315,8 +315,8 @@ glyph-strip route or nowhere.
 Whatever D4 selects (U or P) becomes the documented manga recipe: the
 `japanese text` tag + optional 「…」 lines, `masked_loss=false`, the
 partitioned pack as a release asset, `ss_ext_pack_sha` in every LoRA, one
-`docs/methods/cjk_manga_training.md`, i18n of the guidebook line. The tag
-tier ships as it does today unless D5a replaces it.
+new `docs/methods/` deep-dive (`cjk_manga_training.md`), i18n of the guidebook
+line. The tag tier ships as it does today unless D5a replaces it.
 
 ## What `bench/frontload_text_boost` + `docs/findings/crossattn_self_attn_dominance.md` already tell this line (read 2026-09-05)
 
@@ -423,7 +423,7 @@ two and a half working weeks; every GPU step is a daemon job.
   only, no samples from the paired corpus — principle 9).
 - In the paired corpus's own checkout: all-works alignment, registration,
   the non-text region-diff gate, the manifest schema — documented there in
-  `docs/anima_cjk_dit.md`, not here.
+  its own `anima_cjk_dit.md`, not here.
 - `anime_tools`: quote-aware `parse_caption` / `compose_caption` + pinned
   rev bump.
 - Done: `reports/0905_paddleocr_vl16_vs_ppocrv6.md`,

@@ -534,16 +534,20 @@ def load_method_preset(
     merged: dict = {}
     provenance: dict[str, str] = {}
 
-    # target_res is a preprocess-only knob and inert at train time (training is
-    # self-describing from the cached latents); seeded here at lowest priority
-    # only so it shows up in the snapshot/provenance for the record
+    # preprocess.toml owns two keys the training side also reads. `target_res`
+    # is inert at train time (training is self-describing from the cached
+    # latents) and seeded only so it shows up in the snapshot/provenance for
+    # the record; `mask_dir` is load-bearing — it is the lowest-priority
+    # fallback under a subset's own `mask_dir`. Both are seeded here below
+    # base/preset/method, which still override.
     preprocess_path = os.path.join(configs_dir, "preprocess.toml")
     if os.path.exists(preprocess_path):
         with open(preprocess_path, "r", encoding="utf-8") as f:
             pp_raw = toml.load(f)
-        if "target_res" in pp_raw:
-            merged["target_res"] = pp_raw["target_res"]
-            provenance["target_res"] = _display_path(preprocess_path)
+        for _pp_key in ("target_res", "mask_dir"):
+            if _pp_key in pp_raw:
+                merged[_pp_key] = pp_raw[_pp_key]
+                provenance[_pp_key] = _display_path(preprocess_path)
 
     # a stale target_res copy in base.toml must not clobber the seed above
     pp_has_target_res = "target_res" in merged

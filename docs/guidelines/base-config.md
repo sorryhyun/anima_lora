@@ -186,20 +186,37 @@ override — it shrinks **train only**; validation count stays exact.
 
 ## `configs/preprocess.toml` (preprocess-only)
 
-Split out of base.toml so the trainer never reads it. Layered
-`preprocess.toml → base.toml → preset → method` (preprocess.toml read first, so
-a legacy copy of any key still in base.toml keeps winning — backward
-compatible).
+Split out of base.toml because **base.toml is overwritten on `make update`** —
+preprocess.toml is user-owned and preserved. Layered `preprocess.toml →
+base.toml → preset → method` (preprocess.toml read first, so a legacy copy of
+any key still in base.toml keeps winning — backward compatible).
 
 | Key | What it controls |
 |---|---|
 | `source_image_dir` | The raw input dir `make preprocess` resizes from (`image_dataset/`). |
 | `drop_lowres_images` | Skip images below the resolution floor instead of upscaling. |
 | `min_pixels` | The low-res floor used by `drop_lowres_images`. |
+| `target_res` | Which `EDGE_TOKEN_BANDS` tiers preprocess is allowed to use. |
+| `mask_dir` | Where `make mask` writes merged masks, and where training looks them up. |
 
-The **shared** path/tier contract (`resized_image_dir`, `lora_cache_dir`,
-`target_res`, model paths) stays in base.toml because the dataset blueprint
-interpolates the dirs and the compile cache is sized from `target_res`.
+Two of these are **dual-use** — `load_method_preset` seeds them from
+preprocess.toml at lowest priority (preset / method / CLI still override):
+
+- `target_res` is inert at train time (training is self-describing from the
+  cached latents); it is seeded only so it lands in the run's
+  `.snapshot.toml`.
+- `mask_dir` is load-bearing. It reaches every dataset subset that doesn't name
+  a `mask_dir` of its own, via the BlueprintGenerator's argparse fallback, and
+  `--mask_dir` overrides it. It is **gated on the directory existing** — the
+  key names where `make mask` *would* write, so a checkout that never masked
+  keeps falling back to the legacy `masks/{merged,sam,mit}` auto-resolution
+  instead of silently enabling the masked-loss path over an empty tree. Same
+  key drives `make mask` / `make mask-clean`, `make preprocess-reconcile`, the
+  GUI mask counter and image overlay, and the turbo distill loop.
+
+The rest of the **shared** path contract (`resized_image_dir`,
+`lora_cache_dir`, model paths) stays in base.toml because the dataset blueprint
+interpolates the dirs.
 
 ---
 

@@ -187,16 +187,29 @@ Or accept the finding: the symbol block alone (findings §11) is the
 deliverable for `^^^`/`:<`, and `^_^`/`☆` want more *data* (real captions
 carrying them), not a paraphrase teacher.
 
-### To finish the table
+### What was judged, and what was left
+
+Two judge passes ran (jobs 8da0c2 / 9bb421) and are the source of the two
+tables above — the three base seeds, then base vs U5 at seed 42:
 
 ```
-# after jobs 8da0c2 / 9bb421 (grids) and 0199f1 / 252916 (evals) are done:
 R=bench/cjk_adapter/results
-.venv/bin/python project/cjk_aware_anima/probes/sym_grid_judge.py --device cpu \
-  --prompts project/cjk_aware_anima/assets/sym_eval_prompts.json \
+J=project/cjk_aware_anima/probes/sym_grid_judge.py
+P=project/cjk_aware_anima/assets/sym_eval_prompts.json
+.venv/bin/python $J --device cpu --prompts $P \
   --runs $R/*u5-grid-u4base-s42 $R/*u5-grid-u4base-s7 $R/*u5-grid-u4base-s1234 \
-         $R/*u5-grid-u5sym-s42 $R/*u5-grid-u5sym-s7 $R/*u5-grid-u5sym-s1234 \
-  --labels b42 b7 b1234 u42 u7 u1234 --out project/cjk_aware_anima/reports/u5_sym_grid_judge.json
-# sym-holdout cos per pack: bench/cjk_distill/results/*u5-symeval-*/result.json
-#   → metrics.eval.cos_student_vs_en_by_register.tags_sym, attn_by_register.tags_sym
+  --labels b42 b7 b1234 \
+  --out project/cjk_aware_anima/reports/u5_sym_grid_judge_base3.json
+.venv/bin/python $J --device cpu --prompts $P \
+  --runs $R/*u5-grid-u4base-s42 $R/*u5-grid-u5sym-s42 --labels b42 u5_42 \
+  --out project/cjk_aware_anima/reports/u5_sym_grid_judge_s42.json
 ```
+
+The U5 seeds 7 / 1234 (`$R/*u5-grid-u5sym-s7`, `…-s1234`) and the sym-holdout
+evals were left on the daemon and never judged — the encoder line froze first
+(`project/cjk_aware_anima/plan.md`), and the verdict above does not depend on
+them. To pick them up: the same command with those run dirs and a `_s7` /
+`_s1234` sibling json; sym-holdout cos per pack lives in
+`bench/cjk_distill/results/*u5-symeval-*/result.json` under
+`metrics.eval.cos_student_vs_en_by_register.tags_sym` and
+`attn_by_register.tags_sym`.

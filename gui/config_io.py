@@ -392,7 +392,12 @@ def dataset_cache_root() -> Path:
 
 
 def default_mask_dir() -> Path:
-    """Absolute mask cache dir (no base.toml key — derived under the cache root)."""
+    """Absolute mask dir — ``mask_dir`` from configs/preprocess.toml (or a
+    base.toml override), the same key ``make mask`` and training read. Falls
+    back to ``masks/`` under the cache root when the key is absent."""
+    configured = _load_base().get("mask_dir")
+    if configured:
+        return _abs_under_root(configured)
     return dataset_cache_root() / "masks"
 
 
