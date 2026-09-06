@@ -44,7 +44,8 @@ Caches on disk: `post_image_dataset/cjk_distill/cache_synth2` (~155–170 G,
 
 | pack | recipe | role |
 |---|---|---|
-| **`synthja_v4`** | v3 + the 2b allowed-kanji filter (jōyō+jinmeiyō whitelist; report 0831_kanji_filter) | **the shipped test pack** — published 2026-09-01 as `anima_ja_vocab_pack.{safetensors,json}` at https://huggingface.co/sorryhyun/anima-vocab-pack-ja (metadata-stamped, + Qwen3 tokenizer files) |
+| **`synthjakozh1sym_r256`** | cold joint JA+KO+ZH on the r256 recipe, 69,558-row table with the symbol block + `route` rule (findings §10–§11) | **the shipped test pack** — published 2026-09-06 as `anima_cjk_vocab_pack.{safetensors,json}` at https://huggingface.co/sorryhyun/anima-vocab-pack-cjk (metadata-stamped, + Qwen3 tokenizer files; the node needs ≥ 3.9.1 for symbol routing). KO/ZH rows trained but never render-grid validated — the README says so |
+| `synthja_v4` | v3 + the 2b allowed-kanji filter (jōyō+jinmeiyō whitelist; report 0831_kanji_filter) | the first test release (2026-09-01, `anima_ja_vocab_pack.*`; the `-ja` repo was renamed to `-cjk` and the JA files were removed from the Hub 2026-09-06 — local copy is the record) |
 | `synthja_v3` | v2 corpus + §5a `tags_synth_ja` (2,249 under-floor tag pairs; report 0831 §6) | superseded by `synthja_v4` — keeps every v2 gain, adds c1/c2/c3/t2/t6; t3 armor still open |
 | `synthja_v2` | first pack on the rebuilt corpus (name-axis fix + `, ` joiner) | superseded by `synthja_v3` same day |
 | `synthja` | `param=global`, `loss=span`, registers `tags,tags_alt,names,names_synth,names_synth_ja`, 12k steps, `、`-joined corpus | superseded by `synthja_v2`; keep as the pre-rebuild reference |

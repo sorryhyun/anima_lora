@@ -27,7 +27,7 @@ in-process training toolkit (`AnimaTrainer`, `setup_parser`,
 from any CWD. Repo-relative model/config paths
 resolve against the repo home, not the CWD — so `import anima_lora` works from
 any directory; set `ANIMA_HOME` to point at a relocated checkout. The high-level flows
-(`01`–`03`, `08`) import the curated entry points from `anima_lora`; the building-block
+(`01`–`03`, `08`, `09`) import the curated entry points from `anima_lora`; `10` drives diffusers instead; the building-block
 scripts (`04`–`07`) reach into the `library.*` homes directly, since their point
 is to show the raw primitives. Either way there's no `sys.path` bootstrap:
 `uv sync` installs the repo editable, so the scripts run from any directory.
@@ -40,6 +40,8 @@ is to show the raw primitives. Either way there's no `sys.path` bootstrap:
 | [`02_config_and_train.py`](02_config_and_train.py) | `load_method_preset` merge chain + `create_network` (three-axis routing) + in-process training via `AnimaTrainer().train(args)` | config part: nothing; `--build-network`: DiT; `--train`: preprocessed cache |
 | [`03_generate_with_correction.py`](03_generate_with_correction.py) | Training-free sampler correction (SMC-CFG / Spectrum) via the `GenerationRequest.extra_argv` escape hatch for long-tail method flags | DiT + VAE + text encoder |
 | [`08_easycontrol_train_and_infer.py`](08_easycontrol_train_and_infer.py) | **Image-conditioned** end-to-end: `--method easycontrol` training (same merge-chain + `AnimaTrainer().train()` as `02`) and image-conditioned inference via the typed `easycontrol_weight` / `easycontrol_image` request fields | config: nothing; `--train`: paired cache in `easycontrol-dataset/`; `--infer`: adapter + ref image |
+| [`09_cjk_vocab_pack.py`](09_cjk_vocab_pack.py) | **Prompt in JA / KO / ZH** through the [CJK vocab pack](https://huggingface.co/sorryhyun/anima-vocab-pack-cjk) (not a LoRA): a `TokenizeStrategy` subclass routes the T5-side stream through `HybridT5Encoder`, the pack rows are appended to `llm_adapter.embed`, then the ordinary `generate()` with the pre-loaded DiT via `shared_models`. `--dry_run` reports the routed id stream with no weights | DiT + VAE + text encoder (pack auto-fetched, ~285 MB); `--dry_run`: text-encoder tokenizer only |
+| [`10_cjk_vocab_pack_diffusers.py`](10_cjk_vocab_pack_diffusers.py) | The same pack on the **diffusers** Anima `ModularPipeline` (≥ 0.39, `circlestone-labs/Anima-Base-v1.0-Diffusers`): swap the `text_encoder` block for a subclass whose T5 ids come from `HybridT5Encoder`, widen `pipe.text_conditioner.embed` once — nothing else from this repo's engine. `--dry_run` checks both patch points on CPU | diffusers pipeline weights (auto-fetched, ~5.6 GB); `--dry_run`: text side only |
 
 **Building blocks** — the raw primitives for writing your own `scripts/` tool:
 

@@ -4,6 +4,7 @@
     ANIMA_MANGA109S_ROOT=… make daemon-run ARGS="--stall-timeout 600 \\
         project/cjk_aware_anima_dit/ocr/finetune_vl16_lora.py --lr 1e-4 --epochs 2 --run vl16_lr1e-4"
     … --smoke                       # 30 steps + a 64-crop val, throughput check
+    … --train_tower --tower_lr 1e-5 # O2b: unfreeze the NaViT tower + projector (full FT)
 
 Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 (q/k/v/o) + MLP (gate/up/down) projections, selected by module path so the
@@ -13,6 +14,13 @@ normalised text + ``</s>``; loss on the target tokens only. Batches are grouped
 by crop area (the A/B's batching rule) and left-padded (loss on the last K logits); the
 per-epoch val generation is left-padded, greedy, ``use_cache=True``, no
 repetition guard — the runaway count is reported like the stock row.
+
+``--train_tower`` (O2b) additionally trains the vision tower (466 M) + the
+projector (26 M) in full: the bf16 weights stay in place for the
+forward, an fp32 master copy takes the AdamW update at ``--tower_lr`` and is
+copied back each step (a 1e-5 update is below bf16 resolution otherwise).
+The trained tower is saved beside the adapter as ``tower.safetensors`` (bf16,
+base-model key names) and ``Vl16Reader`` loads it after the merge.
 
 Per epoch: val scoring (``eval_manga109`` metrics), ``ep<N>/`` = adapter dir
 (``eval_manga109.py --reader vl16 --ckpt`` merges it onto the base), ``best`` →
@@ -77,6 +85,29 @@ def lm_lora_targets(model) -> list[str]:
             continue
         names.append(n)
     return names
+
+
+PEFT_PREFIX = "base_model.model."
+TOWER_FILE = "tower.safetensors"
+
+
+def is_tower_param(name: str) -> bool:
+    """Vision tower + projector, by the transformers-side module path (the
+    checkpoint's ``visual.`` / ``mlp_AR.`` land at ``model.visual.`` /
+    ``model.projector.`` after loading)."""
+    n = name.removeprefix(PEFT_PREFIX)
+    return n.startswith("model.visual.") or n.startswith("model.projector.")
+
+
+def save_tower(ep_dir: Path, tower_params) -> None:
+    """bf16 state dict of the trained tower under base-model key names."""
+    from safetensors.torch import save_file
+
+    sd = {
+        n.removeprefix(PEFT_PREFIX): p.detach().to(torch.bfloat16).contiguous().cpu()
+        for n, p in tower_params
+    }
+    save_file(sd, str(ep_dir / TOWER_FILE))
 
 
 class Collate:
@@ -199,6 +230,12 @@ def main():
     ap.add_argument("--bs", type=int, default=16)
     ap.add_argument("--grad_accum", type=int, default=1)
     ap.add_argument("--rank", type=int, default=16)
+    ap.add_argument(
+        "--train_tower",
+        action="store_true",
+        help="also full-finetune the vision tower + projector (fp32 master copy)",
+    )
+    ap.add_argument("--tower_lr", type=float, default=1e-5)
     ap.add_argument("--dropout", type=float, default=0.05)
     ap.add_argument("--warmup", type=float, default=0.03)
     ap.add_argument("--speech_ratio", type=float, default=1.0)
@@ -252,6 +289,15 @@ def main():
         bias="none",
     )
     model = get_peft_model(base, cfg)
+    tower_params: list[tuple[str, torch.nn.Parameter]] = []
+    if a.train_tower:
+        for n, p in model.named_parameters():
+            if is_tower_param(n):
+                p.requires_grad_(True)
+                tower_params.append((n, p))
+    tower_masters = [
+        p.detach().float().clone().requires_grad_(True) for _, p in tower_params
+    ]
     if not a.no_grad_ckpt:
         try:
             base.gradient_checkpointing_enable(
@@ -261,8 +307,10 @@ def main():
         except Exception as e:  # custom modeling file without the hook
             print(f"(gradient checkpointing unavailable: {e})", flush=True)
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    n_tower = sum(p.numel() for _, p in tower_params)
     print(
-        f"lora targets {len(targets)} modules (e.g. {targets[0]} … {targets[-1]}); trainable {n_train / 1e6:.1f}M",
+        f"lora targets {len(targets)} modules (e.g. {targets[0]} … {targets[-1]}); "
+        f"trainable {n_train / 1e6:.1f}M (tower {n_tower / 1e6:.1f}M in {len(tower_params)} tensors)",
         flush=True,
     )
     print(f"prompt {prompt!r}", flush=True)
@@ -285,9 +333,15 @@ def main():
     if a.smoke:
         total = min(total, 30)
     warm = max(1, int(total * a.warmup))
-    opt = torch.optim.AdamW(
-        [p for p in model.parameters() if p.requires_grad], lr=a.lr, weight_decay=0.0
-    )
+    tower_ids = {id(p) for _, p in tower_params}
+    lora_params = [
+        p for p in model.parameters() if p.requires_grad and id(p) not in tower_ids
+    ]
+    groups = [{"params": lora_params, "lr": a.lr}]
+    if tower_masters:
+        groups.append({"params": tower_masters, "lr": a.tower_lr})
+    opt = torch.optim.AdamW(groups, lr=a.lr, weight_decay=0.0)
+    clip_params = lora_params + tower_masters
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt,
         lambda s: (
@@ -342,12 +396,16 @@ def main():
             losses.append(loss.item() * a.grad_accum)
             if micro % a.grad_accum:
                 continue
-            torch.nn.utils.clip_grad_norm_(
-                [p for p in model.parameters() if p.requires_grad], 1.0
-            )
+            for (_, p), m in zip(tower_params, tower_masters):
+                m.grad = p.grad.float()
+                p.grad = None
+            torch.nn.utils.clip_grad_norm_(clip_params, 1.0)
             opt.step()
             sched.step()
             opt.zero_grad(set_to_none=True)
+            with torch.no_grad():
+                for (_, p), m in zip(tower_params, tower_masters):
+                    p.copy_(m)
             step += 1
             if step % 25 == 0 or step == total:
                 el = time.time() - t0
@@ -363,6 +421,8 @@ def main():
         m["train_loss"] = float(np.mean(losses))
         ep_dir = out / f"ep{ep}"
         model.save_pretrained(ep_dir)
+        if tower_params:
+            save_tower(ep_dir, tower_params)
         if m["sfx_exact"] > best[0]:
             best = (m["sfx_exact"], ep)
             b = out / "best"
@@ -375,7 +435,8 @@ def main():
     rows = [json.loads(ln) for ln in hist.read_text().splitlines()]
     md = [
         f"# {a.run} — PaddleOCR-VL-1.6 crop LoRA (r {a.rank}, lr {a.lr}, bs {a.bs}x{a.grad_accum}, "
-        f"speech_ratio {a.speech_ratio}, train {len(tr)}, val {len(va)})\n",
+        + (f"tower full FT lr {a.tower_lr}, " if a.train_tower else "")
+        + f"speech_ratio {a.speech_ratio}, train {len(tr)}, val {len(va)})\n",
         "| tag | sfx exact | sfx sim | sfx runaway | speech exact | speech sim | speech runaway |",
         "|---|---|---|---|---|---|---|",
     ]
