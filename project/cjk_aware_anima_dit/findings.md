@@ -368,3 +368,66 @@ forwards only `ANIMA_`-prefixed env to its jobs, so the roots are
 `ANIMA_MANGA109S_ROOT` / `ANIMA_ANIMETEXT_ROOT`. Still owed from O0, off the
 critical path: the sincos hand-label draft (`assets/sfx_labels_sincos.tsv`)
 + `ocr/eval_sfx.py`, needed by the O2 gate.
+
+## O1 — SFX reader line: COO + speech crops, all splits (2026-09-06)
+
+`plan_ocr.md` O1. `ocr/build_manga109_crops.py --split train --split val
+--workers 10` (books in parallel; 8 min wall, 97 CPU-min) on top of O0's test
+cut. Same recipe throughout: pilot `deskew_crop`, pad 12 %, min side 16,
+orientation preserved, speech = per-book count-matched `<text>` draw (seed 0).
+Output `~/manga109s/derived/crops/<split>/<kind>/` (3.7 GB, 87,124 PNGs) +
+`manifest.parquet` (one row per crop: split / kind / id / book / page / text /
+joined / orient / w / h / poly / path). Never in-tree.
+
+| split | kind | crops | joined | len p50 / p90 / max | min side p10 / p50 | vertical |
+|---|---|---|---|---|---|---|
+| train | sfx | 38,582 | 1,562 | 3 / 5 / 28 | 33 / 76 | 0.32 |
+| train | speech | 38,634 | 0 | 11 / 25 / 243 | 44 / 89 | 0.08 |
+| val | sfx | 2,395 | 64 | 3 / 5 / 16 | 30 / 64 | 0.34 |
+| val | speech | 2,396 | 0 | 9 / 24 / 89 | 44 / 85 | 0.07 |
+| test | sfx | 2,558 | 98 | 3 / 5 / 17 | 33 / 76 | 0.30 |
+| test | speech | 2,559 | 0 | 11 / 25 / 90 | 44 / 88 | 0.06 |
+
+**43,535 COO lines** kept (45,422 polygons − 1,724 truncation joins − 55
+min-side drops, all in train/val) over 74 / 7 / 6 books; SFX orientation by
+crop aspect: 49 % horizontal, 32 % vertical, 19 % square.
+
+| text len | 1 | 2 | 3 | 4 | 5 | 6–8 | 9–12 | 13+ |
+|---|---|---|---|---|---|---|---|---|
+| sfx | 6.6 % | 41.5 % | 27.3 % | 11.5 % | 6.2 % | 6.1 % | 0.6 % | 0.1 % |
+| speech | 1.5 % | 4.9 % | 5.2 % | 6.1 % | 5.4 % | 16.1 % | 18.3 % | 42.5 % |
+
+Char coverage against manga-ocr's WordPiece vocab (`vocab.txt`, `##` stripped):
+
+- **SFX: 175 / 181 chars, 99.90 % of occurrences** (128,798); missing
+  `゛ ゔ ♫ ♬ ゜ ♩` — the O0 table's number reproduced on the built crops.
+  Inventory 67.8 % katakana / 29.2 % hiragana / 3.0 % symbol; 99 heart lines.
+- **Speech: 2,571 / 2,689 chars but only 93.8 % of occurrences** — the misses
+  are *not* glyphs: full-width `！ ？ ～ ･ ‼ １２３ ＡＮ（）`, `…`/`‥`,
+  the ideographic space (930 rows) and **newlines (1,989 rows — Manga109's
+  `<text>` transcriptions keep line breaks)**. → **O2 target rule:** NFKC-fold
+  + strip all whitespace before tokenising (the same fold the scorer's `exact`
+  already applies), so the replay set trains the vocab it has instead of
+  emitting `[UNK]` on a twentieth of the speech characters. `…` → `...` under
+  NFKC is in vocab.
+- 1 : 1 by *count* is 5.4 : 1 by *characters* against SFX (speech p50 11 vs 3)
+  — decision 2's caveat quantified; the 1 : 2 count arm would be ~11 : 1 by
+  tokens, so if the speech control slips, weight by tokens rather than
+  re-drawing.
+
+**Augmentation (decided here, applied at train time)** — `ocr/augment.py`,
+`Augment(seed)` on the BGR crop, independent Bernoulli draws: pad jitter
+5–25 % (p .8; inward cut / outward border-colour fill around the fixed 12 %
+crop), ±8° rotation (p .5), colour tint (p .35: darkness → alpha, strokes in
+pink / red / plum / black over skin / pastel / pink backgrounds, 15 % of tints
+white-on-dark), gamma 0.6–1.5 ± 30 levels (p .6), invert (p .1), scale
+0.5–1.0 down-up (p .4), JPEG q 30–95 (p .5). `--demo` contact sheet at
+`~/manga109s/derived/aug_demo.png` checked by eye: the tint pass yields the
+pink-on-skin surface sincos has; outward pad shows as a flat frame (border
+median), acceptable. The tint is the cheap half of decision 4 — the colorized
+COO lever (O3) still owns backgrounds with real art.
+
+O1 gate: **PASS** (43,535 ≥ 40k COO crops; test 2,558 ≥ 2k). Next: O2 on
+the daemon — `finetune_manga_ocr.py` first (the default base), the VL-1.6
+crop LoRA second; the sincos label draft + `eval_sfx.py` remain owed before
+either gate is read.

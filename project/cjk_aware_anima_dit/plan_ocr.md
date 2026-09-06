@@ -165,8 +165,15 @@ owed before the O2 gate.
   ±8° rotation, JPEG, contrast / invert (white-on-dark lettering), a
   colour-tint pass (sincos SFX are pink on skin tones — COO is grey).
 
-*Gate:* ≥ 40k COO crops kept; test books contain ≥ 2k (**2,558 built 2026-09-06**,
-one min-side drop).
+*Gate:* ≥ 40k COO crops kept; test books contain ≥ 2k.
+
+**O1 — DONE 2026-09-06 (gate PASS; `findings.md` § O1).** 43,535 COO lines
+(train 38,582 / val 2,395 / test 2,558; 1,724 joined, 55 min-side drops) +
+a count-matched 43,589 speech crops, 3.7 GB under `~/manga109s/derived/`,
+`manifest.parquet`. Augmentation spec = `ocr/augment.py` (`Augment`).
+Two O2 inputs from the stats: speech targets need NFKC + whitespace strip
+(newlines / full-width punctuation are 6 % of speech chars and outside
+manga-ocr's vocab); 1 : 1 by count is 5.4 : 1 by characters.
 
 ### O2 — fine-tune, two bases (2 × 1–2 GPU-h on the daemon)
 
@@ -326,7 +333,7 @@ shipped SFX reader and the C11 verdict; a week with segmentation. GPU via
   `reports/ocr_eval_*.md` with the stock rows (manga-ocr, PP-OCRv6, VL-1.6)
   on the COO test + speech control.
 - `assets/sfx_labels_sincos.tsv` (kind + text, human), `ocr/eval_sfx.py`.
-- `ocr/build_manga109_crops.py`, `ocr/finetune_manga_ocr.py`,
+- `ocr/build_manga109_crops.py`, `ocr/augment.py`, `ocr/finetune_manga_ocr.py`,
   `ocr/finetune_vl16_lora.py`, `ocr/colorize_manga109.py` + its 20-page
   pilot table in `findings.md`, `ocr/synth_sfx.py` (O3), the manifest +
   stats in `findings.md`.
