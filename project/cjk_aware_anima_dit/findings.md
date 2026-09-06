@@ -991,3 +991,11 @@ on 130 captions (38 gain a speech clause, 5 lose theirs); SFX lines 142 →
 says — twice the SFX per page, not a reader swap; the arm is one seed (s42)
 vs C11 with grids + a blind set, gate spam ≤ C11 and blind ≥ C11 inside the
 seed-twin floor.
+
+**Hand pass graded + D2 launched (2026-09-06, 21:32).** User: "those are all
+real text. though item 57 is just heart censorship" → **59 / 60 real**
+(`real_text` filled; #57 = pink hearts drawn as censorship, not lettering).
+D1 precision gate ≥ 50 / 60 **PASS**; the D1 kill (raise `--det_conf` to
+0.426) is not triggered. D2 arm launched as daemon job
+`20260906-213229-e7feb8` (`run_unmask_r2.py --skip_cache --method
+cjk_unmask_d2 --arm armD2`, s42 vs C11); grids + blind set follow.

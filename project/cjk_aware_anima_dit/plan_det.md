@@ -55,8 +55,8 @@ records pipeline — replacing the three layers that grew over O4 (PP-OCRv6 DB
   Side row done once: PP-OCRv6 rec on the boxes = floor 26, hand-SFX 4 / 99.
   **Hand pass**: `assets/animetext_new_lines_sincos.tsv` (60 of 491 new
   lines, `real_text` blank) + `output/tests/ocr_animetext/hand_pass/`;
-  provisional `claude` column says 60 / 60 real lettering.
-- **D2 PREPARED, arm not launched (user's call)** — mirror
+  graded by the user: **59 / 60 real** (#57 = heart censorship) → precision gate PASS.
+- **D2 RUNNING** (daemon job `20260906-213229-e7feb8`, s42 vs C11) — mirror
   `mirror_sincos_animetext_sentence` + `te/sincos_animetext_sentence_isoq`
   built (351 / 351); caption diff `output/tests/ocr_animetext/d2_caption_diff.md`;
   config `configs/gui-methods/custom/cjk_unmask_d2.toml` (C11 verbatim but the
