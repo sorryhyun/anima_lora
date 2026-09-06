@@ -530,4 +530,7 @@ batching rules + a runaway guard — the tie-break decision 1 already makes.
 O2 gate: **in-domain PASS, doujin gate MISS on both bases** (`findings` rows
 above are the O3 reference). Artifacts: `output/ocr/{mocr_lr2e-5,mocr_lr5e-5,vl16_lr1e-4}/best`,
 `reports/ocr_eval_{manga_ocr,ppocr,vl16,mocr_lr2e-5,mocr_lr5e-5,vl16_lr1e-4}.md`,
-`reports/ocr_eval_sfx_*.md`. Next: O3 synth (`ocr/synth_sfx.py`) on arm A.
+`reports/ocr_eval_sfx_*.md`. The VL adapter is on the Hub as a **private**
+research checkpoint: `sorryhyun/paddleocr-vl-1.6-manga-sfx-lora` (model card
+carries the recipe, both eval tables, the runaway caveat and the Manga109-s /
+COO citations; adapter weights only). Next: O3 synth (`ocr/synth_sfx.py`) on arm A.
