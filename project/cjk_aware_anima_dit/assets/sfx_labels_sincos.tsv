@@ -1,0 +1,339 @@
+row	stem	box	engine	kind_rec	text_rec	kind_hand	text_hand	status	note
+0	10382939	[396, 40, 443, 294]	vl16_spotting	speech	請隨心所欲狼狽地玩弄我吧 前驚	speech	請隨心所欲狼狽地玩弄我吧 前驚	checked	
+1	10504719	[316, 0, 416, 340]	vl16_spotting	speech	バ茶見す人っ！水着っ！	speech	バ茶見す人っ！水着っ！	checked	
+2	10504719	[363, 1022, 393, 1148]	vl16_spotting	sfx	ごめんっ	sfx	ごめんっ	draft	hand-lettered spoken word, no bubble
+3	10504719	[43, 264, 77, 350]	vl16_spotting	speech	へっフ・	speech	へっフ・	checked	
+4	10506513	[1089, 27, 1118, 577]	ppocr_v6	speech	温水くん、私と一緒にいるとやっぱりムうムうしちゃうんだ～♡	speech	温水くん、私と一緒にいるとやっぱりムうムうしちゃうんだ～♡	checked	
+5	10506513	[952, 26, 1001, 352]	ppocr_v6	speech	いや、ちがっ…… 八奈見さんここじゃまずいっで・う	speech	いや、ちがっ…… 八奈見さんここじゃまずいっで・う	checked	
+6	10506513	[579, 26, 604, 520]	ppocr_v6	speech	嘘だ～、おちんちんは我慢できない～って言ってるよ？	speech	嘘だ～、おちんちんは我慢できない～って言ってるよ？	checked	
+7	10506513	[162, 28, 187, 168]	ppocr_v6	speech	あっ…うっ…	speech	あっ…うっ…	checked	
+8	10520554	[776, 45, 810, 413]	ppocr_v6	speech	これ食べたらもう1回ヤろ？	speech	これ食べたらもう1回ヤろ？	checked	
+9	10520554	[710, 42, 744, 203]	ppocr_v6+vl16_crop	speech	・・・えっ・・・！？	speech	・・・えっ・・・！？	checked	
+10	10520554	[135, 153, 175, 428]	ppocr_v6	speech	ほいこれ、温水くんの	speech	ほいこれ、温水くんの	checked	
+11	10520554	[68, 239, 108, 651]	ppocr_v6	speech	ありがと…って食えるかっ！	speech	ありがと…って食えるかっ！	checked	
+12	10625654	[637, 77, 738, 358]	ppocr_v6+vl16_crop	speech	もー 特別だよー？	speech	もー 特別だよー？	checked	
+13	10657487	[1026, 91, 1077, 370]	ppocr_v6+vl16_crop	speech	ん～？今すぐ？	speech	ん～？今すぐ？	checked	
+14	10657487	[974, 353, 1018, 559]	ppocr_v6	speech	あとでいっぱい	speech	あとでいっぱい	checked	
+15	10657487	[941, 494, 976, 779]	ppocr_v6	speech	もませてあがるのにー	speech	もませてあがるのにー	checked	
+16	10657487	[587, 426, 619, 608]	vl16_spotting	speech	おぎゅお	sfx	ぬぎ♡ ぬぎ♡	draft	uncertain
+17	10657487	[149, 513, 184, 597]	vl16_spotting	sfx	むにゃ	sfx	むにゃ	draft	
+18	10657487	[41, 147, 123, 492]	ppocr_v6	sfx	ってそっち!?	speech	ってそっち!?	draft	hand-lettered dialogue
+19	10792115	[683, 198, 780, 331]	ppocr_v6+vl16_crop	speech	なァがくてなァが	speech	なァがくてなァが	checked	
+20	10829778	[764, 52, 841, 101]	ppocr_v6	speech	バ人ッ	sfx	グイッ	draft	black hand lettering; uncertain
+21	10836172	[655, 58, 776, 400]	ppocr_v6+vl16_crop	speech	かほー♡ おちんぽの時間だぞー♡	speech	かほー♡ おちんぽの時間だぞー♡	checked	
+22	10836172	[38, 499, 159, 833]	ppocr_v6+vl16_crop	speech	侍々ン待てだからなー♡	speech	侍々ン待てだからなー♡	checked	
+23	10843780	[195, 823, 283, 1053]	ppocr_v6	speech	ますたあの おち人ぽお	speech	ますたあの おち人ぽお	checked	
+24	10843780	[53, 765, 109, 917]	ppocr_v6+vl16_crop	speech	ますたぁ	speech	ますたぁ	checked	
+25	10992018	[595, 646, 681, 801]	vl16_spotting	sfx	クアム クアム	sfx	クァム クァム♡	draft	uncertain: small ァ; hearts
+26	10992018	[95, 126, 241, 466]	ppocr_v6	speech	おじさLちLぽで 気持ちよくなるわけ ないです！	speech	おじさLちLぽで 気持ちよくなるわけ ないです！	checked	
+27	10996697	[525, 119, 672, 292]	vl16_spotting	sfx	ざりひ ぶくく	sfx	びく♡ ガク♡	draft	two words in one box
+28	10996697	[202, 537, 311, 707]	vl16_spotting	speech	おっ おっ？	speech	おっ おっ？	checked	
+29	10996697	[103, 733, 253, 1067]	ppocr_v6	speech	おっっ おおが	speech	おっっ おおが	checked	
+30	10996697	[51, 717, 132, 915]	vl16_spotting	sfx	ぶぶぶ	sfx	グッ♡	draft	neighbour glyph clipped
+31	11241175	[825, 28, 854, 454]	ppocr_v6	speech	センパイおなほの準備ができました	speech	センパイおなほの準備ができました	checked	
+32	11241175	[768, 217, 797, 573]	ppocr_v6	speech	今日もいっぱい使ってください	speech	今日もいっぱい使ってください	checked	
+33	11241175	[168, 75, 228, 698]	ppocr_v6	speech	だいぶらしくなってきたじゃねえか おら、はやくこっちこい、たっぷり可愛がってやる	speech	だいぶらしくなってきたじゃねえか おら、はやくこっちこい、たっぷり可愛がってやる	checked	
+34	11241175	[83, 144, 114, 596]	ppocr_v6	speech	早くセンパイのおちんちんが欲しいです	speech	早くセンパイのおちんちんが欲しいです	checked	
+35	11255282	[731, 135, 781, 563]	ppocr_v6	speech	おいこんなに汁垂らしてイきまくりやがって 何お前だけ気持ち良くなってんだ！	speech	おいこんなに汁垂らしてイきまくりやがって 何お前だけ気持ち良くなってんだ！	checked	
+36	11255282	[657, 755, 743, 802]	ppocr_v6+vl16_crop	sfx	ごぐら	sfx	びく♡	draft	
+37	11255282	[652, 132, 710, 640]	ppocr_v6	speech	はひいごめんなしゃいセンパイッ おうおおおっいいっ	speech	はひいごめんなしゃいセンパイッ おうおおおっいいっ	checked	
+38	11255282	[110, 134, 162, 563]	ppocr_v6	speech	このドマゾの雌猫オナホがっ！ 俺を気持ちよくさせることだけ考えろ！	speech	このドマゾの雌猫オナホがっ！ 俺を気持ちよくさせることだけ考えろ！	checked	
+39	11255282	[40, 230, 91, 678]	ppocr_v6	speech	はぁああんしぇんぱいっ： 乱暴にしないでくだしゃああい・♡♡	speech	はぁああんしぇんぱいっ： 乱暴にしないでくだしゃああい・♡♡	checked	
+40	11453476	[830, 80, 913, 385]	ppocr_v6	speech	「花奈・！花奈……！」 彼が名前を呼ぶたびに 私の身体も興奮して熱くなる。	speech	「花奈・！花奈……！」 彼が名前を呼ぶたびに 私の身体も興奮して熱くなる。	checked	
+41	11453476	[830, 473, 913, 931]	ppocr_v6	speech	「花奈…・！出る、出るよっ！」 彼のピストンが早くなり、何度もイってしまう 「あんっああっああん中に・出してぇ！！」	speech	「花奈…・！出る、出るよっ！」 彼のピストンが早くなり、何度もイってしまう 「あんっああっああん中に・出してぇ！！」	checked	
+42	11453476	[382, 1028, 456, 1061]	vl16_spotting	speech	くちゃ	sfx	くちゅ♡	draft	
+43	11453476	[91, 79, 200, 461]	ppocr_v6	speech	私の頭の中は快楽でいっぱいになった お腹がじんわりと熱くなるのを感じる 「花奈、愛してるよ。」 彼がつぶやいた。	speech	私の頭の中は快楽でいっぱいになった お腹がじんわりと熱くなるのを感じる 「花奈、愛してるよ。」 彼がつぶやいた。	checked	
+44	11453476	[39, 609, 124, 903]	ppocr_v6	speech	王人公を自分に 置ォ換んるタイプ	speech	王人公を自分に 置ォ換んるタイプ	checked	
+45	11458307	[817, 57, 884, 366]	ppocr_v6	speech	來吧花奈醬 跟著大叔我複誦一遍～	speech	來吧花奈醬 跟著大叔我複誦一遍～	checked	
+46	11458307	[753, 57, 791, 403]	ppocr_v6	speech	大肉棒好好吃、阿伊嗚欸喔	speech	大肉棒好好吃、阿伊嗚欸喔	checked	
+47	11458307	[690, 58, 726, 229]	ppocr_v6	speech	來、說說看	speech	來、說說看	checked	
+48	11458307	[640, 281, 711, 516]	ppocr_v6	speech	大露棒、豪豪吃 啊咿呼嘿厚	speech	大露棒、豪豪吃 啊咿呼嘿厚	checked	
+49	11458307	[40, 390, 142, 897]	ppocr_v6	speech	嗯～完全聽不懂呢 但是很可愛所以過關 獎勵就是等下會好好疼愛你喲	speech	嗯～完全聽不懂呢 但是很可愛所以過關 獎勵就是等下會好好疼愛你喲	checked	
+50	11467791	[798, 54, 892, 300]	ppocr_v6	speech	春山花奈ちゃんへき 田舎の島から此方の すももが丘高校へ通学中	speech	春山花奈ちゃんへき 田舎の島から此方の すももが丘高校へ通学中	checked	
+51	11467791	[726, 54, 781, 312]	ppocr_v6	speech	朗読が大好きで放送部に 所属している。	speech	朗読が大好きで放送部に 所属している。	checked	
+52	11467791	[233, 384, 311, 718]	ppocr_v6	speech	中学2年のころに初オナニー 特に官能小説を朗読しながら あそこをいじるのが大好きらしい	speech	中学2年のころに初オナニー 特に官能小説を朗読しながら あそこをいじるのが大好きらしい	checked	
+53	11467791	[111, 491, 216, 846]	ppocr_v6	speech	大人しいように見えても中身は ドスケべな花奈ちゃん かなり緊張しているようだがそれも 初々しくて可愛い	speech	大人しいように見えても中身は ドスケべな花奈ちゃん かなり緊張しているようだがそれも 初々しくて可愛い	checked	
+54	11467791	[49, 639, 101, 990]	ppocr_v6	speech	今日は初体験 どんな声で喘いでくれるか楽しみ	speech	今日は初体験 どんな声で喘いでくれるか楽しみ	checked	
+55	11561455	[576, 914, 770, 1151]	vl16_spotting	sfx	ドチュ	sfx	ドチュ♡ ドチュ♡	draft	
+56	11561455	[243, 44, 305, 228]	ppocr_v6+vl16_crop	speech	はちんっ	speech	はちんっ	checked	
+57	11664854	[1048, 480, 1093, 848]	ppocr_v6	speech	ああ、ほんとだとも アリナ君はいつも頑張ってくれてるからねぇ	speech	ああ、ほんとだとも アリナ君はいつも頑張ってくれてるからねぇ	checked	
+58	11664854	[1034, 93, 1077, 405]	ppocr_v6	speech	こんなことまでやらせといて それ本当でしょうね！カウンター長！	speech	こんなことまでやらせといて それ本当でしょうね！カウンター長！	checked	
+59	11664854	[178, 429, 222, 777]	ppocr_v6	speech	それ絶対よ！ あと残業も減らすように上に掛け合って!!	speech	それ絶対よ！ あと残業も減らすように上に掛け合って!!	checked	
+60	11664854	[175, 32, 219, 310]	ppocr_v6	speech	毎週１回私とエッチ してくれるだけでいいんだ	speech	毎週１回私とエッチ してくれるだけでいいんだ	checked	
+61	11664854	[86, 86, 154, 428]	ppocr_v6	speech	それだけで君には 毎月5回の特別休暇 それと賞与もアップさせよう。	speech	それだけで君には 毎月5回の特別休暇 それと賞与もアップさせよう。	checked	
+62	11664854	[52, 495, 120, 846]	ppocr_v6	speech	しょうがないねぇ じゃあ私を気持ちよくしてくれたら 考えてあげよう	speech	しょうがないねぇ じゃあ私を気持ちよくしてくれたら 考えてあげよう	checked	
+63	11668203	[1187, 38, 1269, 387]	ppocr_v6	speech	アリナくん いやアリナちゃん～きもちいよぉ あーすっごいねぇ…・	speech	アリナくん いやアリナちゃん～きもちいよぉ あーすっごいねぇ…・	checked	
+64	11668203	[1024, 49, 1076, 404]	ppocr_v6	speech	でっかいお乳ブルンブルン揺らして 興奮しちゃうよ	speech	でっかいお乳ブルンブルン揺らして 興奮しちゃうよ	checked	
+65	11668203	[689, 517, 781, 765]	ppocr_v6	speech	はぁはぁアリナちゃん 射精そうだよ 中に出していいかな？	speech	はぁはぁアリナちゃん 射精そうだよ 中に出していいかな？	checked	
+66	11668203	[439, 27, 493, 227]	ppocr_v6	speech	あーもううっさい 早く終わりなさいよ	speech	あーもううっさい 早く終わりなさいよ	checked	
+67	11668203	[385, 598, 456, 772]	ppocr_v6	speech	返事がないね Kってことかな	speech	返事がないね Kってことかな	checked	
+68	11668203	[135, 434, 188, 699]	ppocr_v6	speech	こんなおっさんのちんぽで イっちゃいそうなんて…	speech	こんなおっさんのちんぽで イっちゃいそうなんて…	checked	
+69	11668203	[53, 28, 131, 307]	ppocr_v6	speech	あっそこ… ・…・最悪なんでこんな セックス上手いわけ…?	speech	あっそこ… ・…・最悪なんでこんな セックス上手いわけ…?	checked	
+70	11668203	[24, 587, 58, 728]	ppocr_v6+vl16_crop	speech	あ～、イく♡	speech	あ～、イく♡	checked	
+71	11684439	[841, 15, 898, 282]	ppocr_v6	speech	カウンター長（おじさん） とエッチしたその夜	speech	カウンター長（おじさん） とエッチしたその夜	checked	
+72	11684439	[755, 312, 806, 646]	ppocr_v6	speech	あーもうオナニー止まんない… 明日仕事なのに	speech	あーもうオナニー止まんない… 明日仕事なのに	checked	
+73	11684439	[719, 798, 777, 1037]	ppocr_v6	speech	全部あいつのせい： うう、思い出しちゃう…	speech	全部あいつのせい： うう、思い出しちゃう…	checked	
+74	11684439	[116, 76, 193, 377]	ppocr_v6	speech	あぁでっかいちんぽほしい また挿れてほしい こんなんじゃ満足できない・	speech	あぁでっかいちんぽほしい また挿れてほしい こんなんじゃ満足できない・	checked	
+75	11684439	[98, 524, 151, 744]	ppocr_v6	speech	おちんぽほしい： おちんぽ・・おちんぽ・	speech	おちんぽほしい： おちんぽ・・おちんぽ・	checked	
+76	11822164	[930, 345, 1110, 588]	vl16_spotting	speech	はん はんマ	sfx	ぱん♡ ぱん♡	draft	
+77	11828617	[75, 11, 129, 452]	ppocr_v6	speech	おじさんちんぽおいしいかい？ 今度サークルの子たちも紹介してね	speech	おじさんちんぽおいしいかい？ 今度サークルの子たちも紹介してね	checked	
+78	11828617	[25, 199, 53, 556]	ppocr_v6	speech	全員おじさんが「試食」しちゃうよん	speech	全員おじさんが「試食」しちゃうよん	checked	
+79	11828617	[218, 197, 311, 256]	vl16_spotting	sfx	じゃた	sfx	じゅぽ	draft	
+80	11828617	[278, 234, 367, 293]	vl16_spotting	sfx	じゃた	sfx	じゅぽ	draft	
+81	11828617	[117, 394, 267, 493]	ppocr_v6	sfx	じゃぽ じゃぽ	sfx	じゅぽ じゅぽ	draft	
+82	11867202	[604, 93, 725, 394]	ppocr_v6	speech	喫茶リコリコ 新メニーでーす	speech	喫茶リコリコ 新メニーでーす	checked	
+83	11883943	[67, 280, 179, 669]	ppocr_v6	speech	えっ!? 着けるんですか！！？	speech	えっ!? 着けるんですか！！？	checked	
+84	11887527	[723, 132, 829, 342]	vl16_spotting	speech	はんぐぐくくく	sfx	びく♡	draft	uncertain, clipped
+85	11887527	[722, 293, 750, 346]	vl16_spotting	speech	はっふ	speech	はっふ	checked	
+86	11893130	[435, 174, 517, 209]	ppocr_v6	speech	ウズマ	sfx	ウズ♡	draft	uncertain, clipped
+87	11893132	[55, 179, 108, 306]	ppocr_v6	sfx	ぐくv	sfx	びく♡	draft	
+88	11893133	[625, 170, 744, 302]	ppocr_v6	speech	あっ あ	speech	あっ あ	checked	
+89	11893133	[265, 17, 383, 66]	vl16_spotting	sfx	くくくく	sfx	びく♡	draft	
+90	11893133	[90, 508, 178, 663]	vl16_spotting	speech	おじこまっ イッちゃう	speech	おじこまっ イッちゃう	checked	
+91	11893133	[51, 337, 95, 492]	vl16_spotting	speech	イくつ。…	speech	イくつ。…	checked	
+92	11893135	[662, 235, 761, 294]	ppocr_v6	speech	妹属性	speech	妹属性	checked	
+93	11893135	[16, 523, 124, 572]	ppocr_v6	sfx	バスト91	speech	バスト91!	draft	hand-drawn bubble
+94	11893135	[620, 916, 728, 1005]	ppocr_v6	speech	最高 肉体	speech	最高 肉体	checked	
+95	12048743	[921, 93, 987, 506]	ppocr_v6	speech	ほほうサークルの取材撮影ですか しょうがないですね。	speech	ほほうサークルの取材撮影ですか しょうがないですね。	checked	
+96	12048743	[382, 96, 448, 338]	ppocr_v6	speech	エナドリ１か月分で 手を打ちましょう。	speech	エナドリ１か月分で 手を打ちましょう。	checked	
+97	12048743	[108, 688, 147, 826]	vl16_spotting	sfx	がクがク	sfx	ガクガク…	draft	
+98	12063058	[104, 68, 339, 102]	ppocr_v6	speech	めちゃくちゃ気持ちよかったので おじさんの入部を認めます!!	speech	めちゃくちゃ気持ちよかったので おじさんの入部を認めます!!	checked	
+99	12063058	[209, 169, 336, 206]	ppocr_v6	speech	ありがとう おじさん嬉しい	speech	ありがとう おじさん嬉しい	checked	
+100	12063058	[111, 275, 371, 309]	ppocr_v6	speech	他の子に手出すのは禁止だよ!! 私だけね!!これはおすそ分けです	speech	他の子に手出すのは禁止だよ!! 私だけね!!これはおすそ分けです	checked	
+101	12083865	[1029, 28, 1077, 260]	ppocr_v6	speech	１回エッチしたら 急に距離が近いななちゃん	speech	１回エッチしたら 急に距離が近いななちゃん	checked	
+102	12083865	[1012, 406, 1062, 744]	ppocr_v6	speech	おじさまー 今日は2回戦までヤっちゃおうよ～	speech	おじさまー 今日は2回戦までヤっちゃおうよ～	checked	
+103	12083865	[60, 685, 96, 875]	ppocr_v6	speech	5回戦目突入	speech	5回戦目突入	checked	
+104	12206129	[184, 318, 232, 448]	ppocr_v6	speech	あっー	speech	あっー	checked	
+105	12424040	[773, 377, 848, 517]	vl16_spotting	sfx	ぐくん	sfx	びく♡	draft	
+106	12424040	[736, 740, 808, 885]	vl16_spotting	sfx	がクロ	sfx	ガク♡	draft	
+107	12424040	[88, 337, 214, 461]	vl16_spotting	sfx	ぐくん	sfx	びく♡	draft	second heart belongs to a neighbour?
+108	12432642	[637, 351, 667, 440]	vl16_spotting	speech	はーレ	speech	はーレ	checked	
+109	12440144	[13, 638, 104, 850]	vl16_spotting	sfx	ばるん	sfx	ばるん♡	draft	
+110	12451286	[994, 33, 1027, 174]	ppocr_v6+vl16_crop	sfx	み、みんなー♡	speech	み、みんなー♡	draft	hand-lettered dialogue
+111	12451286	[873, 33, 952, 187]	ppocr_v6	speech	るーの種付け： “おっ！	speech	るーの種付け： “おっ！	checked	
+112	12451286	[822, 36, 853, 277]	ppocr_v6	speech	は、配信楽しんでるー？	speech	は、配信楽しんでるー？	checked	
+113	12451286	[630, 39, 759, 295]	ppocr_v6	speech	ちんちん握ってぇ… あっ〜イぐウ・…っ♡ 世界一可愛いるーでえっ：	speech	ちんちん握ってぇ… あっ〜イぐウ・…っ♡ 世界一可愛いるーでえっ：	checked	
+114	12451286	[583, 48, 609, 351]	vl16_spotting	speech	…い、いっぱいショコシコして～	speech	…い、いっぱいショコシコして～	checked	
+115	12469135	[13, 398, 254, 486]	ppocr_v6	speech	おしさんちんぽの味を 知る前の 無垢なこころちゃん～	speech	おしさんちんぽの味を 知る前の 無垢なこころちゃん～	checked	
+116	12469135	[734, 556, 935, 727]	vl16_spotting	sfx	じゃほ。じゃほ。	sfx	じゅぽ じゅぽ♡	draft	
+117	12485232	[111, 28, 281, 292]	ppocr_v6	speech	るーは あなただけの オナホメイド ですよ	speech	るーは あなただけの オナホメイド ですよ	checked	
+118	12485232	[166, 545, 196, 623]	vl16_spotting	speech	ヒクゥ	sfx	ビクッ♡	draft	uncertain
+119	12485232	[20, 302, 153, 523]	ppocr_v6	speech	また 使ってくださいね ご主人様♡	speech	また 使ってくださいね ご主人様♡	checked	
+120	12485232	[39, 601, 121, 768]	ppocr_v6	speech	団体様 2名でーす	speech	団体様 2名でーす	checked	
+121	12485232	[25, 898, 100, 1093]	ppocr_v6+vl16_crop	speech	次のご主人様 どうぞー♡	speech	次のご主人様 どうぞー♡	checked	
+122	12540050	[1172, 35, 1217, 198]	ppocr_v6	speech	ほ、本物のるーらん！？	speech	ほ、本物のるーらん！？	checked	
+123	12540050	[1192, 244, 1223, 361]	ppocr_v6	speech	そうですよぉ	speech	そうですよぉ	checked	
+124	12540050	[1178, 507, 1209, 582]	ppocr_v6	speech	うおお	speech	うおお	checked	
+125	12540050	[766, 16, 878, 253]	ppocr_v6	speech	リスナーとデート企画 今週はいつも 高額スパチャしてくれてる あなたをるーが選びましたぁ	speech	リスナーとデート企画 今週はいつも 高額スパチャしてくれてる あなたをるーが選びましたぁ	checked	
+126	12540050	[652, 518, 825, 774]	ppocr_v6	speech	ラブホッ ラブホ行きたいっす よーしラブホねっ！ って…え？	speech	ラブホッ ラブホ行きたいっす よーしラブホねっ！ って…え？	checked	
+127	12540050	[732, 313, 784, 486]	ppocr_v6	speech	じゃは 最初はどこ行こっか	speech	じゃは 最初はどこ行こっか	checked	
+128	12540050	[265, 700, 569, 725]	ppocr_v6	speech	いいなー、俺もるーらんとオプパコしてー	speech	いいなー、俺もるーらんとオプパコしてー	checked	
+129	12540050	[330, 782, 486, 801]	ppocr_v6	speech	次はもっと金積も…	speech	次はもっと金積も…	checked	
+130	12540050	[277, 25, 401, 222]	ppocr_v6	speech	るーらん可愛い！ るーらんのおっぱいと 尻と顔と…… 体が全部好きっす	speech	るーらん可愛い！ るーらんのおっぱいと 尻と顔と…… 体が全部好きっす	checked	
+131	12540050	[388, 32, 427, 169]	vl16_spotting	speech	はぁ…はぁ… るーらん可愛い！	speech	はぁ…はぁ… るーらん可愛い！	checked	
+132	12540050	[50, 641, 191, 664]	ppocr_v6	speech	やべえ、超しこれる	speech	やべえ、超しこれる	checked	
+133	12540050	[33, 748, 232, 770]	ppocr_v6	speech	正直体目当てで見てるわw	speech	正直体目当てで見てるわw	checked	
+134	12557736	[728, 14, 837, 289]	ppocr_v6	speech	エロ配信中に リスナーに凸られた ドスケベ女配信者	speech	エロ配信中に リスナーに凸られた ドスケベ女配信者	checked	
+135	12557736	[370, 321, 426, 357]	ppocr_v6	speech	nイッ	speech	nイッ	checked	
+136	12557736	[210, 779, 378, 799]	ppocr_v6	speech	このおっさん、誰だ？	speech	このおっさん、誰だ？	checked	
+137	12557736	[106, 897, 228, 915]	ppocr_v6	speech	ちんこでけえ…	speech	ちんこでけえ…	checked	
+138	12557736	[79, 997, 201, 1016]	ppocr_v6	speech	おい、やばくね？	speech	おい、やばくね？	checked	
+139	12557736	[101, 1103, 202, 1123]	ppocr_v6	speech	仕込みだろw	speech	仕込みだろw	checked	
+140	12569446	[370, 39, 461, 280]	ppocr_v6	speech	凸りスナーのおっさんに ハメられる姿をお届け中の ドスケベ女配信者	speech	凸りスナーのおっさんに ハメられる姿をお届け中の ドスケベ女配信者	checked	
+141	12569446	[119, 204, 223, 257]	ppocr_v6	speech	同接すげえ 伸びてるw	speech	同接すげえ 伸びてるw	checked	
+142	12569446	[71, 281, 243, 330]	ppocr_v6	speech	やべえ、聞いたことない 声出してる…	speech	やべえ、聞いたことない 声出してる…	checked	
+143	12569446	[111, 357, 238, 386]	ppocr_v6	speech	俺のるーらんが	speech	俺のるーらんが	checked	
+144	12569446	[104, 422, 214, 464]	ppocr_v6	speech	変わってくれ、 おっさん	speech	変わってくれ、 おっさん	checked	
+145	12569446	[766, 580, 873, 778]	ppocr_v6	sfx	かクかク	sfx	ガクガク…♡	draft	heart at the bottom uncertain
+146	12651281	[876, 52, 1009, 376]	ppocr_v6+vl16_crop	speech	推しを目の前にこんなになってつらいですかぉ～？	speech	推しを目の前にこんなになってつらいですかぉ～？	checked	
+147	12651281	[269, 63, 365, 381]	ppocr_v6+vl16_crop	speech	でも、手は出せないですよね～♡	speech	でも、手は出せないですよね～♡	checked	
+148	12651282	[661, 264, 721, 521]	ppocr_v6	speech	推しに手を	speech	推しに手を	checked	
+149	12651282	[46, 254, 124, 531]	ppocr_v6	speech	林禁止ですよぶ	speech	林禁止ですよぶ	checked	
+150	12833556	[1054, 232, 1111, 412]	ppocr_v6	speech	クライさん以外の 男性に裸を見られるなんて 迂闊でした……	speech	クライさん以外の 男性に裸を見られるなんて 迂闊でした……	checked	
+151	12833556	[652, 297, 709, 484]	ppocr_v6	speech	ちょうど研究素材が 不足してたところなので 眠ってもらいましょうか…	speech	ちょうど研究素材が 不足してたところなので 眠ってもらいましょうか…	checked	
+152	12849273	[1096, 203, 1168, 457]	ppocr_v6	speech	ちょっとおじさん！ さっきからじろじろ見てるの わかってますよー	speech	ちょっとおじさん！ さっきからじろじろ見てるの わかってますよー	checked	
+153	12996775	[29, 60, 633, 84]	ppocr_v6	speech	床に足がつかないくらい腰持ち上げられてバックでハメられてるフェルンお願	speech	床に足がつかないくらい腰持ち上げられてバックでハメられてるフェルンお願	checked	
+154	12996775	[57, 138, 138, 160]	ppocr_v6	chrome	完了にする	chrome	完了にする	checked	
+155	12996775	[210, 138, 291, 160]	ppocr_v6	chrome	お気に入り	chrome	お気に入り	checked	
+156	12996775	[332, 138, 416, 160]	ppocr_v6	chrome	ポスト	chrome	ポスト	checked	
+157	13038938	[121, 65, 435, 99]	ppocr_v6	speech	フルネルソンセックス体位をすたつ	speech	フルネルソンセックス体位をすたつ	checked	
+158	13038938	[138, 152, 211, 174]	ppocr_v6	chrome	完了にする	chrome	完了にする	checked	
+159	13175897	[663, 825, 707, 942]	ppocr_v6	speech	さわって	speech	さわって	checked	
+160	13175897	[621, 997, 650, 1090]	vl16_spotting	speech	えっ…	speech	えっ…	checked	
+161	13175897	[409, 336, 586, 489]	ppocr_v6	speech	そそれは 段階ってのが あって… 最初は 健全な 付き合いから…	speech	そそれは 段階ってのが あって… 最初は 健全な 付き合いから…	checked	
+162	13175897	[396, 31, 530, 322]	ppocr_v6	speech	温水く人！！ 彼女が家に 来てるのに 何もしないな人て ありえるのかな！	speech	温水く人！！ 彼女が家に 来てるのに 何もしないな人て ありえるのかな！	checked	
+163	13175897	[171, 826, 223, 955]	ppocr_v6	speech	いいから	speech	いいから	checked	
+164	13175897	[123, 599, 175, 698]	ppocr_v6	speech	八奈見	speech	八奈見	checked	
+165	13204500	[771, 72, 811, 189]	ppocr_v6	speech	來吧、	speech	來吧、	checked	
+166	13204500	[736, 191, 812, 769]	ppocr_v6	speech	跟畫面前的觀眾們報告一下 你被大叔的精液灌滿的地方吧	speech	跟畫面前的觀眾們報告一下 你被大叔的精液灌滿的地方吧	checked	
+167	13204500	[679, 158, 718, 470]	ppocr_v6	speech	討厭…太羞恥了啦…	speech	討厭…太羞恥了啦…	checked	
+168	13204500	[102, 81, 199, 554]	ppocr_v6	speech	腿再開一點讓大家看得更清楚些 嗚嗚…大叔好H…	speech	腿再開一點讓大家看得更清楚些 嗚嗚…大叔好H…	checked	
+169	13379685	[367, 645, 527, 749]	ppocr_v6+vl16_crop	speech	ドンナリーニック	chrome	ドンナリーニック	draft	clothing print
+170	13558963	[945, 411, 984, 495]	vl16_spotting	speech	はちゃ	sfx	ぱちゅ♡	draft	
+171	13558963	[861, 374, 908, 500]	vl16_spotting	speech	はちゃ	sfx	ぱちゅ♡	draft	
+172	13790133	[1210, 312, 1255, 421]	ppocr_v6	speech	はぁっ	speech	はぁっ	checked	
+173	13790133	[1060, 441, 1107, 531]	vl16_spotting	speech	はんv	sfx	ぱん♡	draft	
+174	13790133	[657, 2, 817, 353]	vl16_spotting	speech	カトの提… 早くっいい あっとあっ	speech	カトの提… 早くっいい あっとあっ	checked	
+175	13790133	[200, 367, 352, 442]	vl16_spotting	speech	はんv	sfx	ぱん♡	draft	
+176	13790133	[57, 524, 214, 675]	vl16_spotting	speech	はんv	sfx	ぱん♡	draft	
+177	13791113	[695, 231, 812, 446]	ppocr_v6	speech	N° 一一十	sfx	パンッ♡	draft	uncertain
+178	13798912	[55, 365, 124, 632]	ppocr_v6	sfx	ににゃあ	sfx	にゃ、にゃあ♡	draft	vocalisation
+179	13798937	[510, 926, 573, 1215]	vl16_spotting	sfx	マアママアマ	sfx	くにくに♡	draft	
+180	13801768	[1159, 205, 1247, 421]	vl16_spotting	speech	はんイ	sfx	ぱん♡	draft	
+181	13801768	[1078, 373, 1233, 710]	ppocr_v6	speech	ぱ人y	sfx	ぱん♡	draft	
+182	13801768	[874, 0, 980, 213]	vl16_spotting	speech	はんイ	sfx	ぱん♡	draft	
+183	13801768	[707, 0, 799, 213]	vl16_spotting	speech	はんイ	sfx	ぱん♡	draft	
+184	13801768	[630, 697, 767, 754]	vl16_spotting	sfx	ブルン	sfx	ブルン♡	draft	
+185	13801768	[457, 640, 576, 710]	ppocr_v6	sfx	ブルン	sfx	ブルン♡	draft	
+186	13801768	[287, 251, 342, 360]	vl16_spotting	speech	はあッ	speech	はあッ	checked	
+187	13801768	[0, 387, 145, 674]	ppocr_v6	speech	しゃぁ 书師匠林	speech	しゃぁ 书師匠林	checked	
+188	13834320	[63, 143, 120, 434]	ppocr_v6	speech	またイってしまいますっ 探偵様あ（（～）	speech	またイってしまいますっ 探偵様あ（（～）	checked	
+189	13834320	[694, 585, 828, 683]	vl16_spotting	speech	はんん	sfx	ぱん♡	draft	
+190	13834320	[708, 973, 848, 1037]	vl16_spotting	sfx	ぱんく	sfx	ぱん♡	draft	
+191	14027268	[718, 244, 794, 279]	vl16_spotting	sfx	スリスリ	sfx	スリ♡ スリ♡	draft	
+192	14027268	[522, 45, 616, 302]	ppocr_v6+vl16_crop	speech	プロデューサー早くう♡ 早くう♡ おちんちんくなさい♡♡	speech	プロデューサー早くう♡ 早くう♡ おちんちんくなさい♡♡	checked	
+193	14155438	[64, 54, 215, 280]	ppocr_v6	speech	上京、初出勤 客のおっさんに 生中出しされる 芽衣子ちゃん	speech	上京、初出勤 客のおっさんに 生中出しされる 芽衣子ちゃん	checked	
+194	14155438	[96, 423, 138, 559]	ppocr_v6	speech	おおお	speech	おおお	checked	
+195	14168416	[619, 608, 644, 676]	vl16_spotting	sfx	だっシン	sfx	ボフッ♡	draft	
+196	14168416	[524, 993, 557, 1091]	vl16_spotting	sfx	ガりがっ	sfx	ガクガク…	draft	tail glyph uncertain
+197	14168416	[58, 842, 211, 1071]	ppocr_v6	speech	猫カフェに来た 客のおっさんに 生中出しされる バイトの女の子	speech	猫カフェに来た 客のおっさんに 生中出しされる バイトの女の子	checked	
+198	14256298	[1002, 539, 1100, 811]	ppocr_v6	speech	常連客のおっさんに 生中出しのオナホ扱い される音緒ちゃん	speech	常連客のおっさんに 生中出しのオナホ扱い される音緒ちゃん	checked	
+199	14261561	[910, 458, 1031, 624]	vl16_spotting	speech	ふぐと	sfx	ぶっ♡	draft	uncertain, clipped
+200	14261561	[709, 239, 828, 414]	vl16_spotting	speech	ふぐと ふぐと いい はあっ	sfx	ぶっ♡ ぶっ♡	draft	uncertain, clipped
+201	14261561	[415, 209, 447, 583]	ppocr_v6	speech	おっぱい触るくらいならいいですよ…	speech	おっぱい触るくらいならいいですよ…	checked	
+202	14261561	[367, 546, 405, 702]	vl16_spotting	speech	ふぐと	sfx	ぶっ♡	draft	uncertain, clipped
+203	14261561	[37, 233, 62, 483]	ppocr_v6	speech	はぁ、あたしの負けです…	speech	はぁ、あたしの負けです…	checked	
+204	14272931	[367, 220, 409, 579]	ppocr_v6	speech	さわるのは禁止だから！	speech	さわるのは禁止だから！	checked	
+205	14290426	[605, 64, 705, 188]	vl16_spotting	sfx	ぱんい ぱんい	sfx	ぱん♡ ぱん♡	draft	
+206	14290426	[78, 133, 179, 265]	vl16_spotting	sfx	ぱんい ぱんい	sfx	ぱん♡ ぱん♡	draft	a third ぱん clipped?
+207	14290426	[242, 461, 412, 649]	ppocr_v6	speech	撮らない おっ	speech	撮らない おっ	checked	
+208	14354914	[73, 294, 111, 477]	vl16_spotting	speech	お、みとこ…	speech	お、みとこ…	checked	
+209	5602467	[1321, 110, 1394, 389]	ppocr_v6	sfx	グリTリix	sfx	グリグリ…♡	draft	
+210	5699421	[0, 33, 138, 186]	ppocr_v6	speech	マウトドア 100起	speech	マウトドア 100起	checked	
+211	6067089	[834, 493, 872, 692]	ppocr_v6	speech	かわいいなー♡	speech	かわいいなー♡	checked	
+212	6253746	[411, 54, 512, 139]	ppocr_v6	sfx	ぐい ぐ	sfx	ぐいぐい	draft	
+213	6256817	[1226, 68, 1352, 247]	ppocr_v6	speech	ぱ 人卜	sfx	ぱん♡	draft	
+214	6256817	[1127, 368, 1284, 584]	ppocr_v6	speech	ぱ人ト	sfx	ぱん♡	draft	
+215	6285167	[568, 16, 688, 335]	ppocr_v6	speech	今日も おっかれさまレ	speech	今日も おっかれさまレ	checked	
+216	6285167	[100, 746, 154, 914]	vl16_spotting	sfx	プルン	sfx	プルン♡	draft	
+217	6329227	[543, 695, 831, 993]	ppocr_v6	speech	ぱいい は人い	sfx	ぱん♡ ぱん♡	draft	
+218	6413209	[724, 107, 917, 240]	ppocr_v6	sfx	トップ	speech	トップが	draft	bubble, clipped
+219	6491875	[395, 61, 631, 123]	vl16_spotting	sfx	ぐくぐく…	sfx	びくびく…♡♡	draft	
+220	6491875	[281, 651, 434, 735]	ppocr_v6+vl16_crop	sfx	でレンッ	sfx	ブルン♡	draft	
+221	6491875	[530, 660, 652, 715]	ppocr_v6	sfx	ブルンと	sfx	ブルン♡	draft	
+222	6495537	[206, 304, 281, 412]	vl16_spotting	sfx	ぱんッ ぱんッ	sfx	びく♡	draft	
+223	6495537	[104, 374, 207, 534]	vl16_spotting	sfx	ぱんッ	sfx	ぱん♡	draft	
+224	6495537	[147, 628, 218, 773]	vl16_spotting	sfx	ぱんッ	sfx	ぱん♡	draft	
+225	6495537	[12, 702, 87, 863]	vl16_spotting	sfx	ぱんッ	sfx	ぱん♡	draft	
+226	6575532	[541, 139, 782, 240]	ppocr_v6+vl16_crop	speech	ぐぐぐぐぐぐぐ	sfx	びくびく…♡	draft	
+227	6575532	[1189, 184, 1311, 363]	vl16_spotting	sfx	ごちゃく	sfx	ぐちゅ♡	draft	
+228	6593835	[1153, 72, 1191, 413]	ppocr_v6	speech	私、櫻木真乃って言います。	speech	私、櫻木真乃って言います。	checked	
+229	6593835	[640, 68, 716, 561]	ppocr_v6	speech	ファンの人たちみんなを笑顔にできる アイドル目指して頑張ってます。	speech	ファンの人たちみんなを笑顔にできる アイドル目指して頑張ってます。	checked	
+230	6593835	[432, 68, 544, 587]	ppocr_v6	speech	実は私、内緒にしてることがあるんです。 今日もか人ばりU'うね！	speech	実は私、内緒にしてることがあるんです。 今日もか人ばりU'うね！	checked	
+231	6593835	[29, 68, 66, 204]	ppocr_v6+vl16_crop	speech	それは・・・	speech	それは・・・	checked	
+232	6593835	[16, 273, 81, 421]	ppocr_v6	speech	心ん心	sfx	むん…!	draft	uncertain
+233	6769828	[675, 949, 740, 1113]	vl16_spotting	sfx	ペニー	sfx	パンッ♡	draft	small ッ uncertain
+234	6769828	[556, 394, 622, 561]	vl16_spotting	sfx	ペンー	sfx	パンッ♡	draft	small ッ uncertain
+235	6769828	[299, 436, 353, 566]	vl16_spotting	speech	おんっ	speech	おんっ	checked	
+236	6769828	[148, 816, 266, 925]	vl16_spotting	sfx	ピーロン	sfx	ブルン♡	draft	
+237	6769828	[23, 191, 96, 430]	vl16_spotting	speech	おじオ人ちんは	speech	おじオ人ちんは	checked	
+238	6769828	[0, 210, 43, 444]	ppocr_v6+vl16_crop	speech	すじ チーもちいわぁ…	speech	すじ チーもちいわぁ…	checked	
+239	6771124	[509, 11, 566, 173]	vl16_spotting	sfx	プハン	sfx	ブルン♡	draft	
+240	6771124	[30, 2, 143, 263]	ppocr_v6	speech	そ人な 突かんていて	speech	そ人な 突かんていて	checked	
+241	6771124	[119, 411, 166, 558]	vl16_spotting	speech	イクラ	speech	イクラ	checked	
+242	6784924	[694, 61, 820, 566]	ppocr_v6+vl16_crop	speech	サラシャンるくしてみましたッどうでしょうか…？	speech	サラシャンるくしてみましたッどうでしょうか…？	checked	
+243	6813398	[656, 475, 689, 680]	vl16_spotting	sfx	カリカリ	sfx	カリカリ…	draft	
+244	6835725	[555, 9, 765, 332]	ppocr_v6	speech	トしーナーちん みてみて 借て	speech	トしーナーちん みてみて 借て	checked	
+245	6835725	[488, 55, 598, 243]	vl16_spotting	speech	借りて さたよ	speech	借りて さたよ	checked	
+246	6933259	[499, 1025, 710, 1258]	vl16_spotting	speech	はちゅんい はちゅんい	sfx	ぱちゅん♡ ぱちゅん♡	draft	uncertain
+247	6951370	[299, 154, 490, 310]	vl16_spotting	sfx	ぶちゃぶちゃ	sfx	ぶちゅ♡ ぶちゅ♡	draft	
+248	7077634	[287, 285, 350, 518]	ppocr_v6	sfx	もじもじ…	sfx	もじもじ…	draft	
+249	7121397	[533, 1041, 571, 1181]	vl16_spotting	sfx	ぐるり	sfx	ぐるり♡	draft	
+250	7253857	[687, 336, 739, 459]	vl16_spotting	speech	はるしょ	sfx	ぱるん♡	draft	uncertain
+251	7253857	[275, 754, 341, 951]	vl16_spotting	speech	くちゃり	sfx	くちゅ♡	draft	
+252	7584577	[891, 380, 1170, 527]	vl16_spotting	speech	M歡迎	chrome	M歡迎	draft	banner sign
+253	7999122	[600, 297, 666, 549]	ppocr_v6	speech	おにーちゃん	speech	おにーちゃん	checked	
+254	7999122	[517, 1052, 557, 1162]	vl16_spotting	sfx	ブチュト	sfx	ブチュッ♡	draft	
+255	7999122	[157, 299, 237, 479]	ppocr_v6	speech	おにーち	speech	おにーち	checked	
+256	8002565	[691, 857, 786, 1035]	vl16_spotting	speech	あっくにく	speech	あっくにく	checked	
+257	8002565	[125, 460, 199, 625]	vl16_spotting	sfx	ここ… まもちい…	speech	ここ…♡ きもちぃ…♡	draft	hand-lettered whisper, two columns right-to-left
+258	8002565	[36, 557, 136, 736]	ppocr_v6+vl16_crop	speech	あっぐあっ止まらないよお	speech	あっぐあっ止まらないよお	checked	
+259	8008684	[117, 1135, 772, 1175]	ppocr_v6	speech	今更ながらエンゲージキスのキサラのイラストとてもえっちで助かりました…ちなみ夕桐アヤノを描 く予定はありますでしょうか?	chrome	今更ながらエンゲージキスのキサラのイラストとてもえっちで助かりました…ちなみ夕桐アヤノを描 く予定はありますでしょうか?	draft	overlay caption
+260	8008684	[139, 1226, 208, 1244]	ppocr_v6	chrome	完了にする	chrome	完了にする	checked	
+261	8008684	[247, 1225, 340, 1246]	ppocr_v6	speech	★お気に入り	speech	★お気に入り	checked	
+262	8008684	[406, 1227, 469, 1245]	ppocr_v6	chrome	ツイート	chrome	ツイート	checked	
+263	8073666	[604, 255, 680, 611]	ppocr_v6	speech	ライグしまーす	speech	ライグしまーす	checked	
+264	8073666	[106, 276, 152, 737]	vl16_spotting	speech	4ト余、まーす！	speech	4ト余、まーす！	checked	
+265	8074348	[8, 701, 357, 726]	ppocr_v6	speech	【光は光へ】のセーラー服芹沢あさひお願いします！	chrome	【光は光へ】のセーラー服芹沢あさひお願いします！	draft	overlay caption
+266	8074348	[1, 772, 94, 794]	ppocr_v6	chrome	完了にする	chrome	完了にする	checked	
+267	8074348	[92, 771, 228, 796]	ppocr_v6	speech	★お気に入り	speech	★お気に入り	checked	
+268	8074348	[224, 776, 360, 796]	ppocr_v6	sfx	ッイート	chrome	ツイート	draft	UI
+269	8222101	[510, 239, 540, 345]	vl16_spotting	speech	はーゅ	speech	はーゅ	checked	
+270	8282894	[802, 19, 857, 515]	ppocr_v6	speech	んっ♡マネージャーさん♡ 今日は…あっ♡うちのことじか考えさせへんよ♡	speech	んっ♡マネージャーさん♡ 今日は…あっ♡うちのことじか考えさせへんよ♡	checked	
+271	8282894	[425, 1024, 488, 1153]	vl16_spotting	sfx	ぼちゃ	sfx	ぱちゅ♡	draft	
+272	8282894	[347, 852, 421, 1003]	vl16_spotting	sfx	ぼちゃ	sfx	ぱちゅ♡	draft	
+273	8282894	[273, 324, 312, 460]	vl16_spotting	speech	はーー	speech	はーー	checked	
+274	8317214	[801, 96, 899, 780]	ppocr_v6	speech	おじさんだってね ほんとはこんなことしたくないんだよ でも君を一目見てから体が言うことを聞かないんだ	speech	おじさんだってね ほんとはこんなことしたくないんだよ でも君を一目見てから体が言うことを聞かないんだ	checked	
+275	8317214	[640, 386, 672, 570]	vl16_spotting	speech	い…いやっ…	speech	い…いやっ…	checked	
+276	8317214	[22, 280, 87, 906]	ppocr_v6	speech	ああ・その怯え顔ぞくぞくするなあ… もう我慢できないよ	speech	ああ・その怯え顔ぞくぞくするなあ… もう我慢できないよ	checked	
+277	8335897	[563, 270, 639, 574]	ppocr_v6+vl16_crop	speech	見る専ださん	speech	見る専ださん	checked	
+278	8362202	[732, 239, 894, 310]	ppocr_v6	sfx	ゴピッV	sfx	ブピッ♡	draft	
+279	8362202	[588, 426, 852, 580]	vl16_spotting	sfx	どュルルル…V	sfx	ビュルルル…♡	draft	
+280	8570601	[945, 394, 1106, 466]	ppocr_v6	speech	ひゃるっ	sfx	びゅるっ	draft	burst bubble
+281	8570601	[628, 17, 729, 237]	ppocr_v6	speech	あっ もう射精ちゃった かわいい♡	speech	あっ もう射精ちゃった かわいい♡	checked	
+282	8570601	[90, 237, 169, 426]	vl16_spotting	speech	ついる	sfx	ツンツン	draft	uncertain
+283	8570605	[991, 6, 1105, 249]	ppocr_v6	speech	…やばいっ… お姉さんに触られる だけでイきそう… これがサキュバスの…	speech	…やばいっ… お姉さんに触られる だけでイきそう… これがサキュバスの…	checked	
+284	8570605	[879, 453, 902, 555]	vl16_spotting	sfx	スリスー	sfx	スリスリ	draft	
+285	8570605	[422, 27, 488, 250]	ppocr_v6	speech	おちんちんすごく びくびくしてる…	speech	おちんちんすごく びくびくしてる…	checked	
+286	8570605	[271, 26, 334, 265]	ppocr_v6	speech	お姉さんのお口で 気持ちよくなってね	speech	お姉さんのお口で 気持ちよくなってね	checked	
+287	8585657	[456, 420, 741, 438]	ppocr_v6	speech	せつ菜ちゃんの裸ワイシャツ姿見たいです。	chrome	せつ菜ちゃんの裸ワイシャツ姿見たいです。	draft	overlay caption
+288	8585657	[479, 488, 548, 506]	ppocr_v6	chrome	完了にする	chrome	完了にする	checked	
+289	8585657	[587, 487, 678, 505]	ppocr_v6	speech	★お気に入り	speech	★お気に入り	checked	
+290	8850272	[1185, 0, 1337, 292]	ppocr_v6	speech	会社のお偉いさんに 目を付けられ、 専属オナペットに 昇進したデカパイ先輩	speech	会社のお偉いさんに 目を付けられ、 専属オナペットに 昇進したデカパイ先輩	checked	
+291	8850272	[56, 63, 142, 294]	ppocr_v6	speech	イワイクイク イッイクイク･	speech	イワイクイク イッイクイク･	checked	
+292	8856177	[662, 66, 787, 297]	vl16_spotting	speech	はぁ～レ おいしそう	speech	はぁ～レ おいしそう	checked	
+293	8856177	[684, 635, 722, 726]	vl16_spotting	sfx	コリッ	sfx	コリッ♡	draft	
+294	8856177	[687, 781, 721, 868]	vl16_spotting	speech	アリッ	speech	アリッ	checked	
+295	8856177	[106, 28, 213, 330]	ppocr_v6	speech	先輩？	speech	先輩？	checked	
+296	9053496	[480, 334, 517, 430]	ppocr_v6+vl16_crop	sfx	ぐくん	sfx	びくん♡	draft	
+297	9053497	[859, 95, 893, 167]	vl16_spotting	sfx	ちゃっ	sfx	ちゅっ♡	draft	
+298	9053497	[496, 65, 527, 267]	ppocr_v6	speech	すたこの格好かい？	speech	すたこの格好かい？	checked	
+299	9053497	[242, 34, 284, 271]	ppocr_v6+vl16_crop	speech	君は本当に変態だね	speech	君は本当に変態だね	checked	
+300	9095721	[607, 145, 667, 440]	ppocr_v6+vl16_crop	speech	ちょっとだけだから、	speech	ちょっとだけだから、	checked	
+301	9134130	[714, 65, 766, 403]	ppocr_v6	speech	おい、ジェス しっかり準備はできてるだろうな？	speech	おい、ジェス しっかり準備はできてるだろうな？	checked	
+302	9134130	[611, 64, 688, 621]	ppocr_v6	speech	はいご主人様 ジェスのおまんこはご主人様専用オナホールです、ぶひっ♡ いつでも愛液でトロトロにしておりますぶひっ♡	speech	はいご主人様 ジェスのおまんこはご主人様専用オナホールです、ぶひっ♡ いつでも愛液でトロトロにしておりますぶひっ♡	checked	
+303	9134130	[473, 827, 559, 1020]	ppocr_v6	speech	リvv√ 二	sfx	ブルッ♡	draft	uncertain
+304	9134130	[363, 1090, 387, 1215]	vl16_spotting	sfx	トロ～V	sfx	トロ〜♡	draft	
+305	9134130	[129, 572, 180, 1035]	ppocr_v6	speech	そうかいい心がけだ それじゃあこれからお前がどうなるか言ってみろ	speech	そうかいい心がけだ それじゃあこれからお前がどうなるか言ってみろ	checked	
+306	9134130	[53, 572, 106, 1212]	ppocr_v6	speech	はい、私はこれからご主人様のおちんぼでおまんこたくさん突かれて 生中だしされまくりの性処理便所にされます、ぶひっ♡	speech	はい、私はこれからご主人様のおちんぼでおまんこたくさん突かれて 生中だしされまくりの性処理便所にされます、ぶひっ♡	checked	
+307	9155714	[581, 155, 656, 268]	vl16_spotting	speech	んくく	sfx	びく♡	draft	
+308	9179826	[744, 72, 861, 326]	ppocr_v6+vl16_crop	speech	コーいちゃん、いつもありがとねー今考ったなるよー	speech	コーいちゃん、いつもありがとねー今考ったなるよー	checked	
+309	9179826	[674, 418, 823, 696]	ppocr_v6	speech	あっそのまま 中かししちゃって！ コノnちサん 気持ちょさそうだし	speech	あっそのまま 中かししちゃって！ コノnちサん 気持ちょさそうだし	checked	
+310	9179826	[190, 988, 269, 1146]	ppocr_v6	sfx	ぱんい	sfx	ぱん♡	draft	
+311	9275263	[192, 522, 253, 605]	ppocr_v6	speech	以用 お事	chrome	以用 お事	draft	sign
+312	9283654	[284, 412, 331, 589]	vl16_spotting	sfx	ぱわるん	sfx	ぱわ〜ん	draft	uncertain middle glyph
+313	9410777	[605, 367, 647, 406]	vl16_spotting	speech	お寿用	chrome	お寿用	draft	sign
+314	9410777	[51, 613, 100, 778]	vl16_spotting	speech	おりっぽく	sfx	ぢゅっぽ♡	draft	uncertain
+315	9410777	[508, 890, 827, 1110]	ppocr_v6+vl16_crop	speech	椎名真昼ちゃん 身長：156cm おばい：成長中 すまんの：おいまちん	speech	椎名真昼ちゃん 身長：156cm おばい：成長中 すまんの：おいまちん	checked	
+316	9410777	[216, 993, 261, 1065]	vl16_spotting	speech	お専用	chrome	お専用	draft	sign
+317	9410777	[218, 993, 265, 1039]	vl16_spotting	speech	おじさ	chrome	おじさ	draft	sign
+318	9415709	[354, 659, 465, 747]	ppocr_v6	speech	おじさ 專用	chrome	おじさ 專用	draft	sign
+319	9540282	[78, 707, 512, 761]	ppocr_v6	speech	おじさん①「あ〜～～～、でるッ♥♥♥ リーチ！一発！中出し！射精！」	chrome	おじさん①「あ〜～～～、でるッ♥♥♥ リーチ！一発！中出し！射精！」	draft	overlay caption
+320	9540282	[77, 784, 563, 811]	ppocr_v6	speech	おじさん②「おじさんの精子いっぱい飲んでっ！♥」	chrome	おじさん②「おじさんの精子いっぱい飲んでっ！♥」	draft	overlay caption
+321	9540284	[450, 874, 877, 903]	ppocr_v6	speech	ぱい「やーん♡おっぱい吸いすぎですよ〜♡」	chrome	ぱい「やーん♡おっぱい吸いすぎですよ〜♡」	draft	overlay caption
+322	9540284	[449, 925, 856, 954]	ppocr_v6	speech	おじさん①「全くけしからんおっぱいだ♡」	chrome	おじさん①「全くけしからんおっぱいだ♡」	draft	overlay caption
+323	9540284	[555, 976, 941, 1004]	ppocr_v6	speech	「実に役満ボディといったところだな♡」	chrome	「実に役満ボディといったところだな♡」	draft	overlay caption
+324	9540284	[450, 1029, 833, 1054]	ppocr_v6	speech	ぱい「もー♡オヤジギャグですかー？♡」	chrome	ぱい「もー♡オヤジギャグですかー？♡」	draft	overlay caption
+325	9750417	[141, 694, 264, 777]	ppocr_v6	sfx	ばるん」	sfx	ぱるん♡	draft	ぱ vs ば uncertain
+326	9750417	[365, 709, 466, 761]	vl16_spotting	sfx	ばるん	sfx	ぱるん♡	draft	ぱ vs ば uncertain
+327	9750417	[869, 737, 999, 908]	vl16_spotting	sfx	ばん ばん	sfx	ぱん♡ ぱん♡	draft	
+328	9796490	[256, 538, 483, 597]	ppocr_v6	sfx	ゴmmvvv	sfx	ぎゅ〜〜♡♡♡	draft	tilde count uncertain
+329	9796490	[98, 232, 172, 582]	ppocr_v6	speech	まだ終わっちダメエ…	speech	まだ終わっちダメエ…	checked	
+330	9824299	[421, 557, 527, 633]	ppocr_v6	speech	おじさま 専用	chrome	おじさま 専用	draft	sign
+331	9947598	[859, 45, 932, 604]	ppocr_v6	speech	いいよ～とわちゃん♡ 奥までしっかりおちんぽ舐めるんだよ～♡	speech	いいよ～とわちゃん♡ 奥までしっかりおちんぽ舐めるんだよ～♡	checked	
+332	9947598	[18, 44, 126, 810]	ppocr_v6	speech	おじさんの家でのとわちゃんは 性欲処理のオナホとして毎日ご奉仕してもらうからね～♡ これも運命の出会いってやつだね～♡	speech	おじさんの家でのとわちゃんは 性欲処理のオナホとして毎日ご奉仕してもらうからね～♡ これも運命の出会いってやつだね～♡	checked	
+333	9975061	[735, 71, 767, 331]	ppocr_v6	speech	あー、射精る射精る	speech	あー、射精る射精る	checked	
+334	9975061	[638, 73, 703, 470]	ppocr_v6	speech	かわいいお顔におちんぽミルク ぬりぬりマーキングしちゃうね	speech	かわいいお顔におちんぽミルク ぬりぬりマーキングしちゃうね	checked	
+335	9975062	[340, 331, 397, 364]	ppocr_v6	sfx	レov	sfx	レロ♡	draft	
+336	9975062	[49, 45, 113, 595]	ppocr_v6	speech	いいよーのえるちゃん 雪女でもおロマンコはトロトロであったかいね～	speech	いいよーのえるちゃん 雪女でもおロマンコはトロトロであったかいね～	checked	
+337	9975062	[47, 772, 105, 1057]	ppocr_v6	speech	下のお口も準備万端かな おじさんちんぼ楽しみ～	speech	下のお口も準備万端かな おじさんちんぼ楽しみ～	checked	

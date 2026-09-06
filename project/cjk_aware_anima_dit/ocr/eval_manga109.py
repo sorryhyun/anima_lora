@@ -84,15 +84,20 @@ class Vl16Reader:
         import torch
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
-        path = ckpt or str(m109.REPO / "models/paddleocr_vl_1.6")
-        self.torch = torch
-        self.model = (
-            AutoModelForImageTextToText.from_pretrained(
-                path, dtype=torch.bfloat16, attn_implementation="sdpa"
-            )
-            .to(device)
-            .eval()
+        base = str(m109.REPO / "models/paddleocr_vl_1.6")
+        adapter = (
+            ckpt if ckpt and (Path(ckpt) / "adapter_config.json").is_file() else None
         )
+        path = base if adapter else (ckpt or base)
+        self.torch = torch
+        model = AutoModelForImageTextToText.from_pretrained(
+            path, dtype=torch.bfloat16, attn_implementation="sdpa"
+        )
+        if adapter:  # O2 arm B: a peft LoRA on the LM, merged for the read
+            from peft import PeftModel
+
+            model = PeftModel.from_pretrained(model, adapter).merge_and_unload()
+        self.model = model.to(device).eval()
         self.proc = AutoProcessor.from_pretrained(path)
         self.device = device
         self.min_edge = self.proc.image_processor.size["shortest_edge"]

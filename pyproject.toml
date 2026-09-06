@@ -74,6 +74,9 @@ dependencies = [
     "onnxruntime-gpu>=1.27.0; (platform_machine == 'x86_64' and sys_platform == 'linux') or sys_platform == 'win32'",
     # PyPI onnxruntime-gpu has no aarch64 wheels; Microsoft ships CUDA-13 builds for ARM64.
     "onnxruntime-gpu @ https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-13/pypi/download/onnxruntime-gpu/1.26.0/onnxruntime_gpu-1.26.0-cp313-cp313-manylinux_2_34_aarch64.whl ; platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "peft>=0.20.0",
+    "fugashi>=1.5.2",
+    "unidic-lite>=1.0.8",
 ]
 # NB: the ``anime-tools`` curation package (caption grammar, Anima Tagger,
 # caption stages — split out 2026-08-30) is a dependency-GROUP below, not a

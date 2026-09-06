@@ -253,6 +253,7 @@ dependencies = [
     { name = "einops" },
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-linux_x86_64.whl" }, marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.22/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-linux_aarch64.whl" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "fugashi" },
     { name = "huggingface-hub" },
     { name = "imagesize" },
     { name = "kornia" },
@@ -263,6 +264,7 @@ dependencies = [
     { name = "opencc-python-reimplemented" },
     { name = "opencv-python" },
     { name = "packaging" },
+    { name = "peft" },
     { name = "pillow" },
     { name = "prodigyopt" },
     { name = "psutil" },
@@ -293,6 +295,7 @@ dependencies = [
     { name = "torchvision", version = "0.27.0+cu132", source = { registry = "https://download.pytorch.org/whl/cu132" }, marker = "(sys_platform != 'darwin' and sys_platform != 'win32') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'win32' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'win32' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
     { name = "tqdm" },
     { name = "transformers" },
+    { name = "unidic-lite" },
     { name = "uv" },
     { name = "voluptuous" },
     { name = "yarl" },
@@ -366,6 +369,7 @@ requires-dist = [
     { name = "einops", specifier = ">=0.7.0" },
     { name = "flash-attn", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.22/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-linux_aarch64.whl" },
     { name = "flash-attn", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.17/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-linux_x86_64.whl" },
+    { name = "fugashi", specifier = ">=1.5.2" },
     { name = "huggingface-hub", specifier = ">=1.9.0" },
     { name = "imagesize", specifier = ">=1.4.1" },
     { name = "kornia", specifier = ">=0.8.2" },
@@ -376,6 +380,7 @@ requires-dist = [
     { name = "opencc-python-reimplemented", specifier = ">=0.1.7" },
     { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "packaging" },
+    { name = "peft", specifier = ">=0.20.0" },
     { name = "pillow" },
     { name = "prodigyopt", specifier = ">=1.1.2" },
     { name = "psutil" },
@@ -410,6 +415,7 @@ requires-dist = [
     { name = "torchvision", marker = "sys_platform == 'darwin'", specifier = ">=0.27.0,<0.28" },
     { name = "tqdm" },
     { name = "transformers", specifier = ">=5.10.1" },
+    { name = "unidic-lite", specifier = ">=1.0.8" },
     { name = "uv", specifier = ">=0.11.7" },
     { name = "voluptuous", specifier = ">=0.15.2" },
     { name = "yarl", specifier = ">=1.23.0" },
@@ -515,9 +521,11 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "matplotlib" },
     { name = "numpy" },
+    { name = "onnx" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin' or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
     { name = "onnxruntime-gpu", version = "1.26.0", source = { url = "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-13/pypi/download/onnxruntime-gpu/1.26.0/onnxruntime_gpu-1.26.0-cp313-cp313-manylinux_2_34_aarch64.whl" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
     { name = "onnxruntime-gpu", version = "1.27.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "onnxscript" },
     { name = "opencv-python" },
     { name = "pillow" },
     { name = "psutil" },
@@ -551,8 +559,10 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.30" },
     { name = "matplotlib" },
     { name = "numpy", specifier = ">=2.0" },
+    { name = "onnx", specifier = ">=1.17" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin'", specifier = ">=1.21" },
     { name = "onnxruntime-gpu", marker = "sys_platform != 'darwin'", specifier = ">=1.21" },
+    { name = "onnxscript", specifier = ">=0.5" },
     { name = "opencv-python", specifier = ">=4.11" },
     { name = "pillow" },
     { name = "psutil" },
@@ -581,10 +591,6 @@ dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-xdist" },
     { name = "ruff" },
-]
-export = [
-    { name = "onnx", specifier = ">=1.17" },
-    { name = "onnxscript", specifier = ">=0.5" },
 ]
 
 [[package]]
@@ -1326,6 +1332,20 @@ wheels = [
 ]
 
 [[package]]
+name = "fugashi"
+version = "1.5.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ee/ec/b2e5aeba9438551ee4ae5275e95da506a279f53432e618daa1d4bd14c7d5/fugashi-1.5.2.tar.gz", hash = "sha256:a7959eab95bb37a6a934fc2314d3ff888664d11b88d0e1c596260a5785d5880e", size = 339768, upload-time = "2025-10-24T07:24:27.581Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/8d/bfe6958e1afa874c8a2e3016728fb0d69d33c08fd96f27327d8eab8bff6e/fugashi-1.5.2-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:5cd0a399aad72d00a3b6b2d8c45e43a8c1e3aefd86ba153c826426b8e133e533", size = 511673, upload-time = "2025-10-24T07:27:11.132Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/c7/4de35c314c1e8d169ce2f630ba2d7bc538e990a338287ed3fd945639263e/fugashi-1.5.2-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:52c79cddbdcf4bbd0490212d2b2d78b6011d4cf733ff4ef9455274da9a8d54f0", size = 456259, upload-time = "2025-10-24T07:27:12.272Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/31/a6a79ae7d2eec7e052069ae697e361b15702707977cded3a9f6332a6c26e/fugashi-1.5.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:2ee7b102fef6ec554bdeba51a969ce894a519cc71bade5d05a27935de4426745", size = 454408, upload-time = "2025-10-24T07:27:13.613Z" },
+    { url = "https://files.pythonhosted.org/packages/58/6c/827a698ab08b98d221995a44ebec382e5ee4e1bfd4f123ade612ba3b6b04/fugashi-1.5.2-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:32e01a394011270078efb6c71ef188c327255544d953692cd82f7f726d59ecc4", size = 674106, upload-time = "2025-10-24T07:48:56.407Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/b4/07c38f81d69e02d3edce0fa1de545e12aed3f518e0d9304a7a061dc0b79f/fugashi-1.5.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:0e79d3f09d847d07eddf8e62ad9840b11331102bc31ecd66455c62581af11638", size = 691438, upload-time = "2025-10-24T07:25:40.719Z" },
+    { url = "https://files.pythonhosted.org/packages/62/8a/180961057af06edac8001de3b32367a07d6af096ed0d1f2b57753a9a9b0a/fugashi-1.5.2-cp313-cp313-win_amd64.whl", hash = "sha256:cc5e5ece1f6ba1ce00f2a0a9465d2b91fe01e904888aa0c7089a20e471646c47", size = 508286, upload-time = "2025-10-24T07:24:04.348Z" },
+]
+
+[[package]]
 name = "future"
 version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1857,6 +1877,22 @@ wheels = [
 ]
 
 [[package]]
+name = "ml-dtypes"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/12/72/307d7c4bd0600601c7133fba5cb78af7db968152951c1cd473abb1cda782/ml_dtypes-0.6.0.tar.gz", hash = "sha256:5e60251d32ced5598972e4d5e06a2f044341f9291402551a3f6f0ec44f9299b0", size = 3032327, upload-time = "2026-08-13T14:14:40.215Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/50/51/fd1582b8f5ed8a9e7be0e161a6ea0dff70cb280479a12178df0b3a72700e/ml_dtypes-0.6.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:084dfe51a7ad58b171f05115f8226ed4233a454a1611371947e806e76f0c638d", size = 565468, upload-time = "2026-08-13T14:14:08.5Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/22/20fd70ca6ed12446cb92d5b2a7745bd185f9d8b8cdeeadad976574398e6b/ml_dtypes-0.6.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:28d676428b104bb9717b0928bc5c5129f2d6b51b6727587cc4289e7bf8713cb5", size = 360232, upload-time = "2026-08-13T14:14:09.873Z" },
+    { url = "https://files.pythonhosted.org/packages/89/a5/da8ae6c6f1babe4b68e3e55d43d39b529e29774f10e0910671a6b8c86eb8/ml_dtypes-0.6.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:26b1f1fa4f0435a2946859823f6e2bf06796f1e9f10f5a05b08a5e3c8f46ff69", size = 410169, upload-time = "2026-08-13T14:14:11.036Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/55/4561acefa00fa4bcbfb82ca6a48578b41f372cd7dd7cdd6eb4720abc2e5f/ml_dtypes-0.6.0-cp313-cp313-win_amd64.whl", hash = "sha256:fb87f46b4f7ad7b5d3ad8f4b452b024bd4229d44c8ff934798c1fe656210387a", size = 439357, upload-time = "2026-08-13T14:14:12.172Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/5d/6a01538e507ef0ed5e879985b13a92467bf8960696fb1131f8b8cadc60ff/ml_dtypes-0.6.0-cp313-cp313-win_arm64.whl", hash = "sha256:57ed0d6b4ac5e7868361303a9c57fbcf63b768236ee14456f585dfcf260d0292", size = 552278, upload-time = "2026-08-13T14:14:13.539Z" },
+]
+
+[[package]]
 name = "mpmath"
 version = "1.3.0"
 source = { registry = "https://stable.repo.amd.com/rocm/whl-next/" }
@@ -2173,6 +2209,43 @@ wheels = [
 ]
 
 [[package]]
+name = "onnx"
+version = "1.23.0rc1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ml-dtypes" },
+    { name = "numpy" },
+    { name = "protobuf" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/33/54/c511bf8ee73f38448054e36e4394f96883ec194362f8014c2eca406a9adb/onnx-1.23.0rc1.tar.gz", hash = "sha256:ead023304a5e72c509e9a17998f429e69c53958b2b67b5fa00350b6984d56739", size = 6023814, upload-time = "2026-09-02T03:23:50.088Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e7/d0/a095d7645a6d3ae567ce6ad5a3f0cec53d282366bece8369f6b42e95dff5/onnx-1.23.0rc1-cp312-abi3-macosx_13_0_universal2.whl", hash = "sha256:a9cacad3877f859a8df21001526b98e6d6940e1495b72c8e1f53de73bb31a593", size = 9725397, upload-time = "2026-09-02T03:23:27.547Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/6e/281d35bdd40e7505fa653993d991eb9aa3d13ea6239f90520482c46428c5/onnx-1.23.0rc1-cp312-abi3-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d9d3923243e13b2ffc184bf8492d85da8105b8d7968824f8a364e755e4673242", size = 8640296, upload-time = "2026-09-02T03:23:29.737Z" },
+    { url = "https://files.pythonhosted.org/packages/20/1c/3af404648aa294ad5925ac5d9b431690bc7301e14f347735f3972859640d/onnx-1.23.0rc1-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8ba0b389020289927ece8b0307007daf461062c4d2ad74527dd068af85d5cc1e", size = 8881410, upload-time = "2026-09-02T03:23:31.509Z" },
+    { url = "https://files.pythonhosted.org/packages/09/a8/f8ed1b0329100dbcf7e26715ae986947b569e14894152ef304e604e8ce04/onnx-1.23.0rc1-cp312-abi3-pyemscripten_2026_0_wasm32.whl", hash = "sha256:791619259830a1aa7af3d51fa6abd8c73204c2805fded105d97d674670c6bc42", size = 7314605, upload-time = "2026-09-02T03:23:33.608Z" },
+    { url = "https://files.pythonhosted.org/packages/74/c9/e7d59f3e195b0eb4ea98fccae195723a0931ba383ca88cef4ae81377c49a/onnx-1.23.0rc1-cp312-abi3-win32.whl", hash = "sha256:bf97e280fa49640901846a6f69215eb5d22a85efaaf950a94566307d76b8deb3", size = 7736183, upload-time = "2026-09-02T03:23:35.363Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/20/4cbbb0cafca1d785ef0199b0accee122d412e17963589e6e4d5530625cf5/onnx-1.23.0rc1-cp312-abi3-win_amd64.whl", hash = "sha256:1645a8f39e7487db5be0f554461801dbe9ca5815e3cccc53abc33d3b4bbea547", size = 7872265, upload-time = "2026-09-02T03:23:37.594Z" },
+    { url = "https://files.pythonhosted.org/packages/98/43/5c1423dc291b644ea99723409e5f4c6d3d8b898c8320e483bb09771e524b/onnx-1.23.0rc1-cp312-abi3-win_arm64.whl", hash = "sha256:ac3ac67f69be76a33443e5f0dfff706f46ecc02a0d70454a5fe0808b928ffe0b", size = 8041039, upload-time = "2026-09-02T03:23:39.22Z" },
+]
+
+[[package]]
+name = "onnx-ir"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ml-dtypes" },
+    { name = "numpy" },
+    { name = "onnx" },
+    { name = "sympy" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d6/c2/61194cec0dbc5622273c0ebd592d37cc1dca0d7f1a744f02edd45ac905a3/onnx_ir-1.0.0.tar.gz", hash = "sha256:9e261f25fde8da9612ae5cb43b3b374d5ff469c04af0363cad588b2bb000b812", size = 163121, upload-time = "2026-08-11T14:49:46.895Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/cd/6d1637172eb59c7b18ac90ed089d1f599a11fe0e63b4db2d017f3bb38a32/onnx_ir-1.0.0-py3-none-any.whl", hash = "sha256:e578f0d608d3062866b48223616eb2d10a6d6d01f8b8faac596129034f483cc7", size = 185849, upload-time = "2026-08-11T14:49:45.524Z" },
+]
+
+[[package]]
 name = "onnxruntime"
 version = "1.29.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2244,6 +2317,23 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/8d/6509743801131f1d3791f638ae31edef7701e93c7a4523d74115247dd7d1/onnxruntime_gpu-1.27.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7e6eb554d35706ee154b583dd32e4167a93aa55d3670f59754f43860fd649b92", size = 220304092, upload-time = "2026-06-18T18:27:31.18Z" },
     { url = "https://files.pythonhosted.org/packages/ac/86/8865182eba89cde187163daacfa7f1eb64958616cd080dfb3482be4c8a36/onnxruntime_gpu-1.27.0-cp313-cp313-win_amd64.whl", hash = "sha256:ac352199fb6ac3e366b45a690bb47c9b1c92b1be0e3958149dd1a30285832b9f", size = 213623636, upload-time = "2026-06-15T22:43:10.548Z" },
     { url = "https://files.pythonhosted.org/packages/cf/e6/16f5ba0f91bd8db5b2881ef1ec57d532c8f297b31b6a95ceab606f471c0a/onnxruntime_gpu-1.27.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3b5652761f14bc74729ffbc8fdc01767e541e163459f2e10aa65af61d5db64c8", size = 220331411, upload-time = "2026-06-18T18:27:39.738Z" },
+]
+
+[[package]]
+name = "onnxscript"
+version = "0.7.2.dev20260905"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ml-dtypes" },
+    { name = "numpy" },
+    { name = "onnx" },
+    { name = "onnx-ir" },
+    { name = "packaging" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1a/de/7b7353576a75e8a851702c9863989c583ec983d9e56f0202f18cd83bc68e/onnxscript-0.7.2.dev20260905.tar.gz", hash = "sha256:53bedc298477294d8fbac0a05d876c246b1abf00df7cc444c29e3faeea00da68", size = 646951, upload-time = "2026-09-05T07:17:58.942Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/2d/c2c918f12d36fb1d47e22b113714f3c768a8d188437f6e3b3a741e8c9498/onnxscript-0.7.2.dev20260905-py3-none-any.whl", hash = "sha256:a719b2589390cd88abd0a5467f2d377c7ba74e97a95e84c9466cba5a0105b4f1", size = 754138, upload-time = "2026-09-05T07:18:00.644Z" },
 ]
 
 [[package]]
@@ -2380,6 +2470,29 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5a/82/42f767fc1c1143d6fd36efb827202a2d997a375e160a71eb2888a925aac1/pathspec-1.1.1.tar.gz", hash = "sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a", size = 135180, upload-time = "2026-04-27T01:46:08.907Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl", hash = "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189", size = 57328, upload-time = "2026-04-27T01:46:07.06Z" },
+]
+
+[[package]]
+name = "peft"
+version = "0.20.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "accelerate" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "psutil" },
+    { name = "pyyaml" },
+    { name = "safetensors" },
+    { name = "torch", version = "2.12.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin' or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "torch", version = "2.12.0+cu132", source = { registry = "https://download.pytorch.org/whl/cu132" }, marker = "(sys_platform != 'darwin' and sys_platform != 'win32') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'win32' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'win32' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "torch", version = "2.13.0+rocm10.0.0", source = { registry = "https://stable.repo.amd.com/rocm/whl-next/" }, marker = "(sys_platform == 'win32' and extra != 'group-10-anima-lora-anime-tools-git' and extra != 'group-10-anima-lora-cuda-windows') or (sys_platform == 'win32' and extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-cuda-windows') or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "tqdm" },
+    { name = "transformers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b4/08/02541a2c29be7c78698f73d438bc0e733b214f3f35ec5db79fca8da8fc61/peft-0.20.0.tar.gz", hash = "sha256:4769c8093a4ca145fd6fb3fd4dd50449675f5fe46434ad1e98b285a132d4b1d0", size = 880503, upload-time = "2026-07-28T13:46:01.85Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/28/79/13bcabb8048126422d5c4b880575d40886c726f354db88cfeed4325525bb/peft-0.20.0-py3-none-any.whl", hash = "sha256:0fbba16ffebfad3de96e06f2da6860fd860292324b85b6141909fa1e26ea9233", size = 775777, upload-time = "2026-07-28T13:45:59.809Z" },
 ]
 
 [[package]]
@@ -3962,6 +4075,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/ba/19/1b9b0e29f30c6d35c
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ce/e4/dccd7f47c4b64213ac01ef921a1337ee6e30e8c6466046018326977efd95/tzdata-2026.2-py2.py3-none-any.whl", hash = "sha256:bbe9af844f658da81a5f95019480da3a89415801f6cc966806612cc7169bffe7", size = 349321, upload-time = "2026-04-24T15:22:05.876Z" },
 ]
+
+[[package]]
+name = "unidic-lite"
+version = "1.0.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/55/2b/8cf7514cb57d028abcef625afa847d60ff1ffbf0049c36b78faa7c35046f/unidic-lite-1.0.8.tar.gz", hash = "sha256:db9d4572d9fdd4d00a97949d4b0741ec480ee05a7e7e2e32f547500dae27b245", size = 47356746, upload-time = "2021-01-25T06:07:54.719Z" }
 
 [[package]]
 name = "urllib3"

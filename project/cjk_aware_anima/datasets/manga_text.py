@@ -192,7 +192,9 @@ class MangaOCR:
         self.model = VisionEncoderDecoderModel.from_pretrained(model_id)
         self.model.to(device).eval()
 
-        vocab = Path(hf_hub_download(model_id, "vocab.txt")).read_text(encoding="utf-8")
+        local = Path(model_id) / "vocab.txt"  # a fine-tuned dir (plan_ocr O2)
+        vp = local if local.is_file() else Path(hf_hub_download(model_id, "vocab.txt"))
+        vocab = vp.read_text(encoding="utf-8")
         self.vocab = vocab.splitlines()
         self.specials = {
             i for i, t in enumerate(self.vocab) if t.startswith("[") and t.endswith("]")
