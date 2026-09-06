@@ -1,59 +1,59 @@
 # OCR eval — `manga_ocr` on Manga109-s `test` (official COO split ∩ Manga109-s)
 
-Reader wall 19 s for 5117 crops (270.3 crops/s).
+Reader wall 23 s for 5117 crops (224.7 crops/s).
 
 | kind | n | exact | exact % | sim (mean) | sim ≥ 0.8 | runaway |
 |---|---|---|---|---|---|---|
-| sfx | 2558 | 419 | 16.4 | 0.336 | 21.7 % | 0 |
-| speech | 2559 | 817 | 31.9 | 0.824 | 70.6 % | 0 |
+| sfx | 2558 | 670 | 26.2 | 0.478 | 34.6 % | 0 |
+| speech | 2559 | 1588 | 62.1 | 0.975 | 97.1 % | 0 |
 
 ## SFX by orientation
 
 | orient | n | exact % | sim |
 |---|---|---|---|
-| horizontal | 1292 | 11.5 | 0.296 |
-| square | 486 | 28.8 | 0.415 |
-| vertical | 780 | 16.8 | 0.354 |
+| horizontal | 624 | 10.7 | 0.332 |
+| square | 486 | 30.0 | 0.423 |
+| vertical | 1448 | 31.6 | 0.560 |
 
 ## SFX by length
 
 | len | n | exact % | sim |
 |---|---|---|---|
-| 1 | 88 | 40.9 | 0.438 |
-| 2 | 1017 | 24.4 | 0.369 |
-| 3 | 730 | 14.2 | 0.328 |
-| 4 | 315 | 6.7 | 0.296 |
-| 5 | 167 | 3.6 | 0.302 |
-| 6 | 135 | 3.0 | 0.302 |
-| 7 | 48 | 0.0 | 0.270 |
-| 8+ | 58 | 0.0 | 0.177 |
+| 1 | 88 | 39.8 | 0.430 |
+| 2 | 1017 | 35.0 | 0.480 |
+| 3 | 730 | 29.7 | 0.508 |
+| 4 | 315 | 13.0 | 0.467 |
+| 5 | 167 | 6.0 | 0.449 |
+| 6 | 135 | 5.9 | 0.488 |
+| 7 | 48 | 6.2 | 0.469 |
+| 8+ | 58 | 0.0 | 0.280 |
 
 ## Worst 25 SFX (by sim)
 
 | book / page / id | gt | pred | sim |
 |---|---|---|---|
-| ParaisoRoad 103 1000a35f | パタパタ | 「おめのお兄さん | 0.00 |
-| MukoukizuNoChonbo 020 10008fd8 | コチョ | ? | 0.00 |
-| MukoukizuNoChonbo 021 10008fdb | ぬう~っ | なら... | 0.00 |
-| MukoukizuNoChonbo 021 10008fdc | わーっ | ... | 0.00 |
-| MukoukizuNoChonbo 021 10008fdd | カチーン!! | それは、それでも、 | 0.00 |
-| MukoukizuNoChonbo 021 10008fde | コロ | ... | 0.00 |
-| MukoukizuNoChonbo 021 10008fdf | ざ~っ | ... | 0.00 |
-| MukoukizuNoChonbo 021 10008fe2 | コロ | ... | 0.00 |
-| MukoukizuNoChonbo 021 10008fe4 | コロ | ... | 0.00 |
-| ParaisoRoad 103 1000a35d | わー | ねっ | 0.00 |
-| ParaisoRoad 103 1000a35e | パチパ | ... | 0.00 |
-| MukoukizuNoChonbo 024 10008ffa | バターン!! | ... | 0.00 |
-| ParaisoRoad 103 1000a360 | チン | そ | 0.00 |
-| ParaisoRoad 103 1000a361 | パ | ... | 0.00 |
-| ParaisoRoad 103 1000a364 | げーっ | ! | 0.00 |
-| ParaisoRoad 103 1000a366 | チン! | ん | 0.00 |
-| SaladDays_vol18 003 1000b68a | ケ | 6 | 0.00 |
-| SaladDays_vol18 003 1000b68b | ガラッ | どう!! | 0.00 |
-| MukoukizuNoChonbo 018 10008fc7 | ピシーッ | えー、えーーーっ | 0.00 |
-| MukoukizuNoChonbo 018 10008fc8 | うひゃーっ | えええいやー | 0.00 |
-| MukoukizuNoChonbo 018 10008fcd | ピシーッ | はっはぁ...うん.. | 0.00 |
-| MukoukizuNoChonbo 018 10008fce | ピシーッ | フフーフー | 0.00 |
-| MukoukizuNoChonbo 021 10008fea | コロ | っ? | 0.00 |
-| ParaisoRoad 103 1000a351 | パタ | ... | 0.00 |
-| ParaisoRoad 103 1000a354 | わー | ん | 0.00 |
+| MAD_STONE 039 10007035 | シュー | うんっ、うん | 0.00 |
+| MAD_STONE 034 10007028 | カッ | ジェ | 0.00 |
+| MAD_STONE 032 10007025 | ガシッ | それは、 | 0.00 |
+| MAD_STONE 032 10007022+10007023+10007024 | バァン | それは、 | 0.00 |
+| MAD_STONE 031 10007021 | ジャキ | いやっ、 | 0.00 |
+| ParaisoRoad 015 1000a179 | しん. | くくっ | 0.00 |
+| ParaisoRoad 015 1000a178 | あ | メ | 0.00 |
+| MAD_STONE 047 10007048+10007049 | グッ | ... | 0.00 |
+| MAD_STONE 045 10007047 | グッ | 11/ | 0.00 |
+| MAD_STONE 028 1000701c | ボン | それでも | 0.00 |
+| MAD_STONE 027 1000701a | ヒュ | ... | 0.00 |
+| MAD_STONE 026 10007019 | パァン | フリーソー | 0.00 |
+| MAD_STONE 040 1000703c | ガシッ | わあっ | 0.00 |
+| MAD_STONE 039 1000703a | ゴッ | ... | 0.00 |
+| MAD_STONE 039 10007037 | カッ | が | 0.00 |
+| MAD_STONE 036 1000702a+1000702b | バン | それは、 | 0.00 |
+| MAD_STONE 038 10007032 | ビィン | それ | 0.00 |
+| MAD_STONE 038 10007031 | ゴン | それは | 0.00 |
+| ParaisoRoad 103 1000a36a | わー | ゃー | 0.00 |
+| ParaisoRoad 103 1000a369 | チン | えっ | 0.00 |
+| ParaisoRoad 014 1000a16b | ドッ | そして、 | 0.00 |
+| ParaisoRoad 013 1000a168 | ズン | それは、 | 0.00 |
+| MAD_STONE 008 10006ff6 | ポッ | それは... | 0.00 |
+| SaladDays_vol18 037 1000b728 | ザワ | ボク | 0.00 |
+| SaladDays_vol18 032 1000b721 | ズドドド | あ、あああっ | 0.00 |

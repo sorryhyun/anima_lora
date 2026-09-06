@@ -40,8 +40,13 @@ REPORTS = m109.LINE / "reports"
 OUT = m109.REPO / "output/ocr/eval"
 
 
+HEART_FOLD = str.maketrans({"♥": "♡", "❤": "♡", "〜": "~"})
+
+
 def exact_key(s: str) -> str:
-    return "".join(unicodedata.normalize("NFKC", s).split())
+    """NFKC + whitespace-blind; heart / wave variants folded (the hand labels
+    write ``♡`` and ``〜``, readers emit ``♥`` / ``~`` for the same glyph)."""
+    return "".join(unicodedata.normalize("NFKC", s).split()).translate(HEART_FOLD)
 
 
 # --------------------------------------------------------------------------- readers
