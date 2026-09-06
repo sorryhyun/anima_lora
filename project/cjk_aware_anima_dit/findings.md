@@ -1097,3 +1097,48 @@ labels: SFX strict **B′ 44 / col100 43**, punctuation-folded 47 / 47,
 heart-blind 60 / 59 — parity, with col100's residual losses being hearts read
 as `ト` / `ッ` / `レ` on ~5 crops. Verdict unchanged for SFX (flat); for
 speech the metric is invalid and col100 reads hearts PP-OCRv6 never had.
+
+## O2 follow-up — arm B′ × 3 epochs (`vl16_tower_ep3`): in-domain +4.0, sincos flat (2026-09-07)
+
+The 8-epoch / lr-2e-4 arms were cancelled in O2 ("curves still rising, not
+the bottleneck"); this is the epoch question re-asked on the surviving
+recipe. Job `20260907-003508-442767`, 4 h 19, 12.1 GB peak, 15.1 crops/s.
+**Exact B′ recipe** (`args.json` differs only in `epochs`: LoRA r 16 lr 1e-4
++ tower/projector full FT lr 1e-5, bs 8×2, seed 0, grey train 77,164) with a
+fresh 3-epoch warmup + linear-decay schedule (14,466 steps) — not a warm
+restart of B′'s ep1 weights (the script has no resume; a fresh schedule is
+the clean "longer" comparison). Val SFX exact by epoch **80.8 → 85.7 →
+88.3 %** (B′'s one-epoch schedule reached 86.2 % — its ep1 is a *finished*
+decay, this run's ep1 is mid-schedule, so only the last row compares); `best`
+= ep3. Evals on `best`, sincos rows = the AnimeText-box labels
+(`assets/sfx_labels_sincos.tsv`, 619 SFX / 70 user-checked):
+
+| eval | model | SFX exact | SFX sim | sim ≥ 0.8 | runaway | speech exact | speech sim |
+|---|---|---|---|---|---|---|---|
+| Manga109-s test (2,558 / 2,559) | B′ `vl16_tower_lr1e-5` | 81.7 % | 0.927 | 87.6 % | 25 | 82.8 % | 0.986 |
+| | B′+col100 | 83.2 % | 0.936 | 88.9 % | 29 | 82.6 % | 0.986 |
+| | **B′ × 3 ep** | **85.7 %** | **0.948** | **91.1 %** | 25 | **83.3 %** | **0.987** |
+| sincos hand labels (619 SFX; checked 70) | B′ | 307 (49.6 %); checked 38 / 70 | 0.855 | 75.8 % | 2 | *(PP-record text — invalid, see O3 audit)* | |
+| | B′+col100 | 317 (51.2 %); checked 39 / 70 | 0.852 | 74.5 % | 3 | | |
+| | **B′ × 3 ep** | 298 (48.1 %); checked 36 / 70 | 0.857 | 75.9 % | 4 | | |
+
+In-domain it is the largest single lift since the tower unfroze: every
+orientation (+5.1 / +3.3 / +3.7 pts horizontal / square / vertical) and every
+length bin ≥ 2 moves up, the 8+-char bin most (25.9 → 41.4 %), speech held
+(+0.5). **On the target it is flat**: sincos SFX −9 lines all-rows / −2 on
+the checked 70, heart-blind 363 → 349, mean sim and the ≥ 0.8 share
+unchanged. Row-level vs B′ (SFX): 53 better / 62 worse; the losses are the
+same shape as col100's — `♡` read as `☆`/`ッ`/dropped, and `びくっ`→`ぐくっ`,
+`ミーン`→`えーっー` class consonant swaps on the outlined kana — the gains are
+`ちゅ`/`へこ♡`/`びく♡`/`パンッ` reads B′ near-missed. Contact sheet
+`output/tests/ocr_contact_sheet/ab_vl16_tower_lr1e-5_vs_vl16_tower_ep3_diff.pdf`
+(309 diff rows across all kinds, 103 / 103).
+
+*Verdict:* more epochs buy COO, not the doujin gap — the third arm in a row
+(col100, col100×8 withdrawn, ×3 ep) where in-domain and sincos decouple. The
+residual on sincos is a **domain** residual (outlined / heart-terminated
+bursts the grey COO crops never show), and neither more data-passes nor a
+1.6 % colorized share reaches it. Ship decision unchanged (B′ stays the
+published reader; ep3 is a strictly better *COO* reader if that ever
+matters); the remaining sincos lever is still synth SFX / in-domain labels,
+not the schedule. Weights local only: `output/ocr/vl16_tower_ep3/ep{1,2,3}`.
