@@ -201,6 +201,17 @@ any wiring. *Kill for the line's bases:* both miss after O3 → PP-OCRv6 rec
 retrain (Paddle stack, crop convention fixed first) is the only remaining
 route.
 
+**O2 — DONE 2026-09-06 (in-domain PASS, doujin gate MISS on both bases;
+`findings.md` § O2).** Corrected crops (§ O1 correction — the pilot's
+`deskew_crop` transposed axis-aligned boxes; O0 rows re-run). manga-ocr
+lr 5e-5 × 4 ep: COO test **73.5 %** (stock 26.2, published 81.2), speech
+0.975 = stock, sincos gate **10 / 71** (♡-blind 12). VL-1.6 LoRA lr 1e-4 ×
+2 ep: COO 64.7 %, 194 runaways, sincos **13 / 71** (19). Kill clause fires
+for arm A (< 25 while COO ≥ 70) → O3 mandatory; O3 runs on manga-ocr first
+(synth before colorized — the residual is hearts + outlined kana), VL only
+if that falls short. lr 2e-4 / 8-epoch arms cancelled (curves still rising,
+not the bottleneck).
+
 ### O3 — crossing the doujin gap (1 day)
 
 Only what O2's residual asks for, in this order, on the surviving base(s):

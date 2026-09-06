@@ -453,64 +453,81 @@ was produced through the same function and is not a clean reference either;
 the gate now reads `eval_sfx.py`'s strict exact (hearts count) beside a
 heart-blind exact.
 
-## O2 — SFX reader fine-tunes, both bases (2026-09-06, in progress)
+## O2 — SFX reader fine-tunes, both bases (2026-09-06): in-domain PASS, doujin gate MISS on both → O3
 
 `plan_ocr.md` O2 on the **corrected** O1 crops (§ O1 correction). Scorers:
 `ocr/eval_manga109.py` (COO test + speech control) and `ocr/eval_sfx.py`
 (sincos hand labels, `assets/sfx_labels_sincos.tsv` — 338 rows drafted off
-the contact sheets: 99 `sfx` / 213 `speech` / 26 `chrome`; 34 records the
-v1 rule called speech are hand-lettered SFX by eye (`ぱん♡` read as `はんv`
-etc.), 17 are overlay captions / signs / clothing print → `chrome`; 122 rows
-still `draft`, awaiting the user's correction). `exact` folds `♥→♡`, `〜→~`;
-a **heart-blind exact** rides beside it because manga-ocr almost never emits
-`♡` and the pilot's "~12 / 71" was counted without hearts.
+the contact sheets, **corrected by the user 2026-09-06** (323 checked, 15
+draft): 99 `sfx` / 213 `speech` / 26 `chrome`; 34 records the v1 rule
+called speech are hand-lettered SFX by eye (`ぱん♡` read as `はんv` etc.), 17
+are overlay captions / signs / clothing print → `chrome`; 6 of the 71
+`kind: sfx` records are speech / chrome by eye). `exact` folds `♥→♡`,
+`〜→~`; a **heart-blind exact** rides beside it because manga-ocr almost never
+emits `♡` and the pilot's "~12 / 71" was counted without hearts (and through
+the transposing crop).
 
 **Corrected O0 stock rows** (COO test, 2,558 SFX + 2,559 speech; replaces the
 transposed-crop table in § O0):
 
-| reader (stock) | SFX exact | SFX sim | runaway | speech exact | speech sim | sincos gate 71 (♡-blind) | sincos speech sim |
-|---|---|---|---|---|---|---|---|
-| manga-ocr-base | 26.2 % | 0.478 | 0 | 62.1 % | **0.975** | **3** (5) | 0.646 |
-| PP-OCRv6 rec | 7.2 % | 0.194 | 0 | 13.0 %† | 0.297† | — | — |
-| PaddleOCR-VL-1.6 crop `OCR:` | **30.2 %** | 0.545 | 91 | 63.4 % | 0.976 | (daemon) | — |
+| reader (stock) | SFX exact | SFX sim | runaway | speech exact | speech sim | sincos gate / 71 (♡-blind) | sincos SFX sim | sincos speech sim |
+|---|---|---|---|---|---|---|---|---|
+| manga-ocr-base | 26.2 % | 0.478 | 0 | 62.1 % | **0.975** | 2 (4) | 0.315 | 0.646 |
+| PP-OCRv6 rec | 7.2 % | 0.194 | 0 | 13.0 %† | 0.297† | — | — | — |
+| PaddleOCR-VL-1.6 crop `OCR:` | **30.2 %** | 0.545 | 331 | 63.4 % | 0.976 | 2 (6) | 0.464 | 0.856 |
 
 † single-line CTC head on multi-line bubble crops — not a valid speech row.
 With real crops the speech control is 0.975 (was 0.824 on transposed crops)
 and stock manga-ocr is at 26 % on COO (was 16 %).
 
-**Arm A — manga-ocr full fine-tune** (`ocr/finetune_manga_ocr.py`; 77,164
-train crops 1 : 1, bs 64, 4 epochs = 4,820 steps, ~420 crops/s, 7 GB, ≈ 20
-min a run; val = 2,395 + 2,396 crops each epoch):
+**The two arms** (train 77,164 crops 1 : 1, val 4,791 each epoch):
 
-| run | val SFX exact stock → ep1 / ep2 / ep3 / ep4 | val speech sim | COO test SFX exact | COO speech sim | sincos gate 71 (♡-blind) | sincos SFX sim | sincos speech sim |
-|---|---|---|---|---|---|---|---|
-| lr 2e-5 | 32.8 → 65.5 / 70.1 / 71.1 / **73.3** | 0.965 → 0.974 | **71.2 %** | 0.975 (= stock) | **10** (17) | 0.667 | 0.747 |
-| lr 5e-5 | 32.8 → 63.8 / 69.7 / 72.4 / **74.9** | 0.965 → 0.973 | (daemon) | | **11** (15) | 0.672 | 0.721 |
+| arm | recipe | wall | val SFX exact stock → best | COO test SFX exact | COO speech sim | COO runaway | sincos gate / 71 (♡-blind) | sincos SFX sim (99) | sincos speech sim |
+|---|---|---|---|---|---|---|---|---|---|
+| A · manga-ocr lr 2e-5 | full FT, bs 64, 4 ep | 20 min | 32.8 → 73.3 | 71.2 % | 0.975 (= stock) | 0 | 9 (13) | 0.667 | 0.747 |
+| A · manga-ocr lr 5e-5 | same | 20 min | 32.8 → **74.9** | **73.5 %** | 0.975 (= stock) | 0 | 10 (12) | 0.664 | 0.721 |
+| B · VL-1.6 LoRA lr 1e-4 | r 16 on 126 LM proj (6.0 M), bs 16, 2 ep | 85 min | 33.9 → 66.2 | 64.7 % | **0.981** | **194** (24 sfx + 170 speech) | **13 (19)** | **0.698** | **0.889** |
+
+Gate (per base): COO test reported ✓; sincos SFX exact ≥ 35 / 71 ✗ (9–13);
+sincos speech ≥ stock − 0.01 ✓ (both up); COO speech ≥ stock − 0.01 ✓.
 
 Reading it:
 
-- **In-domain: the fine-tune works.** 26 → 71 % COO test exact in 20 GPU-min,
-  10 pts under the published TRBA+2D (81.2 % on the 10-book test) with no
-  architecture change, and the speech control does not move (0.975 = stock;
-  sincos speech sim *up*, 0.646 → 0.75). Both lrs are still climbing at
-  epoch 4 (+2 pts/epoch) → an 8-epoch lr 5e-5 run is queued.
-- **Out-of-domain: the doujin gap is real — the kill clause fires.** sincos
-  gate 3 → 10–11 / 71 strict, 5 → 15–17 heart-blind, against a gate of ≥ 35
-  and a kill of < 25 while COO test ≥ 70 %. Per `plan_ocr.md` O2, **O3 is
-  mandatory for arm A before any wiring**. The residual on the 99 hand-SFX
-  rows is *not* mostly garbage any more (sim 0.30 → 0.66; 54 % of rows at sim
-  ≥ 0.8): the reads are `びくん` for `びく♡`, `ぱんッ` for `ぱん♡`, `ガクン` for
-  `ガク♡` — the heart glyph is decoded as the katakana ending COO taught
-  (`ン`/`ッ`), plus a handful of pink-outline confusions (`ぱ/は/ば`, `ぶっ`,
-  `くにくに`). That is exactly the surface decision 4 predicted: the
-  lettering style + hearts, i.e. synth's job first (hearts at sincos' rate,
-  outlined kana), colorized COO second.
-- 1 : 1 by count held the speech control, so the 1 : 2 arm is not needed.
+- **In-domain: fine-tuning works, manga-ocr wins it.** 26 → 73.5 % COO test
+  exact in 20 GPU-min, 8 pts under the published TRBA+2D (81.2 % on the
+  10-book test), speech control untouched, no runaways. VL's LoRA reaches
+  64.7 % in 4× the wall and keeps its runaway class (194 on the test crops,
+  168 on val speech even after tuning) — a decode guard would be mandatory
+  before any wiring. Both arm-A curves were still climbing +2 pts/epoch at
+  epoch 4; the 8-epoch run was cancelled to keep the day on the gate.
+- **Out-of-domain: the doujin gap is real; both bases miss the gate.**
+  sincos gate 2 → 9–13 / 71 strict, 4 → 12–19 heart-blind, against ≥ 35.
+  Arm A trips the kill clause literally (< 25 while COO ≥ 70 %) → **O3 is
+  mandatory before wiring**; arm B is under both thresholds. The residual is
+  no longer garbage (99-row SFX sim 0.31 → 0.67–0.70; half the rows at sim
+  ≥ 0.8): manga-ocr reads `びくん` for `びく♡`, `ぱんッ` for `ぱん♡`, `ガクン` for
+  `ガク♡` — the heart decoded as the katakana ending COO taught (`ン`/`ッ`) —
+  plus pink-outline confusions (`ぱ/は/ば`, `ぶっ`, `くにくに`). VL keeps more
+  hearts (its strict/♡-blind gap is 6 rows vs manga-ocr's 2–4 but from a
+  higher base) and reads the sincos *speech* far better (0.889 vs 0.75),
+  which is the pink hand-lettered bubbles. This is the surface decision 4
+  predicted: lettering style + hearts → **synth doujin SFX first** (hearts
+  at sincos' rate, outlined kana over doujin backgrounds), colorized COO
+  second.
+- **Pick for O3:** run O3 on **manga-ocr** first (10× cheaper per crop, no
+  runaways, higher COO, gate within noise of VL's); VL rides along only if
+  synth + colorized lift manga-ocr short of the gate, since its native heart
+  handling is the one thing it does that rules would otherwise have to.
+- 1 : 1 by count held both speech controls, so the 1 : 2 arm is not needed.
 
-**Arm B — PaddleOCR-VL-1.6 crop LoRA** (`ocr/finetune_vl16_lora.py`, r 16 on
-the 126 LM projections = 6.0 M trainable, tower frozen): the first launch
-OOMed in the loss — the native forward materialises fp32 logits over the
-103k vocab for every image token, 4.7 GB on a large-crop batch — fixed by
-left-padding and `logits_to_keep` = target length (CE on the suffix only;
-peak 13 → 3 GB). ~33 crops/s, ≈ 40 min/epoch; lr 1e-4 and 2e-4 × 2 epochs
-queued. Results below when they land.
+Arm B engineering note: the first launch OOMed in the loss — the native
+forward materialises fp32 logits over the 103k vocab for every image token,
+4.7 GB on a large-crop batch — fixed by left-padding and `logits_to_keep` =
+target length (CE on the suffix only; peak 13 → 3 GB, ~35 crops/s).
+Deployment shape for a VL pick would be torch + remote modeling files + the
+batching rules + a runaway guard — the tie-break decision 1 already makes.
+
+O2 gate: **in-domain PASS, doujin gate MISS on both bases** (`findings` rows
+above are the O3 reference). Artifacts: `output/ocr/{mocr_lr2e-5,mocr_lr5e-5,vl16_lr1e-4}/best`,
+`reports/ocr_eval_{manga_ocr,ppocr,vl16,mocr_lr2e-5,mocr_lr5e-5,vl16_lr1e-4}.md`,
+`reports/ocr_eval_sfx_*.md`. Next: O3 synth (`ocr/synth_sfx.py`) on arm A.
