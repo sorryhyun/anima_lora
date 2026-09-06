@@ -173,6 +173,36 @@ def test_sentence_format_adds_the_sfx_clause_from_the_records_kind():
     )
 
 
+def test_sfx_clause_is_deduplicated_per_sound_unit():
+    """A page's SFX lines collapse to one per sound unit (kana core minus
+    sokuon / long vowel, minimal repeating unit), first in reading order kept;
+    speech repeats stay (2026-09-06, user's call)."""
+    sfx = _sfx()
+    assert sfx.sfx_key("ぱん♡ぱん♡") == "ぱん"
+    assert sfx.sfx_key("びくッ") == sfx.sfx_key("びく♡") == "びく"
+    assert sfx.sfx_key("じゅぽじゅぽ") == "じゅぽ"
+    assert sfx.sfx_key("ぱんぱんぱん") == "ぱん"
+    assert sfx.sfx_key("♡") == ""
+    assert sfx.dedupe_sfx(["じゅぽ", "じゅぽ", "じゅぽじゅぽ"]) == ["じゅぽ"]
+    assert sfx.dedupe_sfx(["ぱん♡ぱん♡", "ぱん♡", "ばるん♡", "ばるん♥", "ぱんッ"]) == [
+        "ぱん♡ぱん♡",
+        "ばるん♡",
+    ]
+    assert sfx.sfx_groups(["ぱん", "びく", "ぱん♡", "♡", "♡"]) == [0, 1, 0, 3, 3]
+    # not a repeat: a different unit, or a doubled unit that is itself the whole
+    assert sfx.dedupe_sfx(["ぱん", "ぱく", "びく♥"]) == ["ぱん", "ぱく", "びく♥"]
+
+    m = _mod()
+    lines = ["あっ", "じゅぽ", "あっ", "じゅぽじゅぽ", "ぱん♡"]
+    kinds = ["speech", "sfx", "speech", "sfx", "sfx"]
+    assert m.append_tags(
+        "1girl", lines, "sentence", kinds=kinds, sfx_sentence=True
+    ) == (
+        '1girl. Japanese text reads as "あっ", "あっ". '
+        'Japanese SFX reads as "じゅぽ", "ぱん♡".'
+    )
+
+
 def test_ocr_records_by_stem_keeps_kind_and_drops_by_kind(tmp_path):
     import json
 

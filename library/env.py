@@ -95,16 +95,20 @@ _CKPT_ENV = {
     "dit": "ANIMA_DIT",
     "vae": "ANIMA_VAE",
     "text_encoder": "ANIMA_TEXT_ENCODER",
+    "vocab_pack": "ANIMA_VOCAB_PACK",
 }
 _CKPT_BASE_TOML_KEY = {
     "dit": "pretrained_model_name_or_path",
     "vae": "vae",
     "text_encoder": "qwen3",
+    "vocab_pack": "vocab_pack",
 }
 _CKPT_FALLBACK = {
     "dit": "models/diffusion_models/anima-base-v1.0.safetensors",
     "vae": "models/vae/qwen_image_vae.safetensors",
     "text_encoder": "models/text_encoders/qwen_3_06b_base.safetensors",
+    # The CJK vocab pack is opt-in: "" = off (stock T5 tokenizer, bit-exact).
+    "vocab_pack": "",
 }
 
 
@@ -119,6 +123,8 @@ class DefaultCheckpoints:
     dit: str
     vae: str
     text_encoder: str
+    # CJK vocab pack path prefix (``library.anima.vocab_pack``); ``""`` = off.
+    vocab_pack: str = ""
 
 
 def default_checkpoints() -> DefaultCheckpoints:
@@ -151,5 +157,8 @@ def default_checkpoints() -> DefaultCheckpoints:
         return os.environ.get(_CKPT_ENV[kind]) or base.get(kind) or _CKPT_FALLBACK[kind]
 
     return DefaultCheckpoints(
-        dit=pick("dit"), vae=pick("vae"), text_encoder=pick("text_encoder")
+        dit=pick("dit"),
+        vae=pick("vae"),
+        text_encoder=pick("text_encoder"),
+        vocab_pack=pick("vocab_pack"),
     )

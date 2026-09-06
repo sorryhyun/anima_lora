@@ -488,7 +488,12 @@ def main():
             save_output(args, vae, latent, device, original_base_names[i])
 
     else:
-        tokenize_strategy = strategy_anima.AnimaTokenizeStrategy(
+        from library.anima.vocab_pack import make_tokenize_strategy, resolve_active_pack
+
+        # --no_vocab_pack > --vocab_pack > base.toml `vocab_pack` ("" = off).
+        # load_dit_model hooks the same (memoised) pack onto llm_adapter.embed.
+        tokenize_strategy = make_tokenize_strategy(
+            resolve_active_pack(args),
             qwen3_path=args.text_encoder,
             t5_tokenizer_path=None,
             qwen3_max_length=MAX_CROSSATTN_TOKENS,

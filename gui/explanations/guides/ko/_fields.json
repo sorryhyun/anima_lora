@@ -68,6 +68,7 @@
   "repeat_by_folder_name": "Kohya 방식 폴더 반복. 켜면 {n}_... 형식 이름의 하위 폴더(예: image_dataset/5_mychar/) 안의 이미지가 num_repeats 대신 에포크당 n회 반복됨; 0_... 폴더는 학습에서 제외됨. 폴더 이름은 전처리 후에도 유지되므로(리사이즈/캐시가 원본 트리 구조를 미러링) 리사이즈된 트리에서도 동작함. 학습 풀에만 적용 — 검증은 항상 1회 반복. 변환 파일의 [[datasets]] 블록에 repeat_by_folder_name 오버라이드를 쓰거나 제거함; base.toml은 건드리지 않음.",
   "pretrained_model_name_or_path": "기본 DiT 모델 가중치 경로 (.safetensors).",
   "qwen3": "텍스트-투-이미지 컨디셔닝용 Qwen3 텍스트 인코더 가중치 경로.",
+  "vocab_pack": "CJK 어휘 팩 경로 접두사(.safetensors/.json 쌍, 확장자 없음). 일본어·한국어·중국어 캡션과 프롬프트 구간을 T5 측 추가 행으로 라우팅합니다. 영어는 비트 단위로 동일. 비우면 꺼짐. `make download-vocab-pack`으로 배포 팩을 받고, 켜거나 바꾼 뒤에는 CJK가 포함된 캡션의 텍스트 임베딩 전처리를 overwrite로 다시 실행하세요.",
   "vae": "이미지 인코딩/디코딩용 VAE 모델 경로.",
   "output_dir": "학습된 LoRA 체크포인트를 저장할 기본 디렉토리입니다. path_scope가 있으면 GUI가 실행 시 같은 스코프를 붙입니다. 예: output/ckpt + data_group1 → output/ckpt/data_group1.",
   "output_name": "output_dir 안에 저장되는 체크포인트의 기본 파일명입니다. 에폭/버전 접미사는 자동으로 붙습니다.",

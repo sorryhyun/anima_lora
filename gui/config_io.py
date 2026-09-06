@@ -238,6 +238,7 @@ _GROUPS = {
         "pretrained_model_name_or_path",
         "qwen3",
         "vae",
+        "vocab_pack",
         "path_scope",
         "output_dir",
         "output_name",

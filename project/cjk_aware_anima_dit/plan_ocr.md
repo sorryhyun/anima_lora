@@ -315,6 +315,23 @@ call**) done: spam ~2 = C10, adherence flat; blind set `s15_C11_vs_C10`
 (24 pairs, seeds 12/13/14) graded 2026-09-06: **C11 11 – 9 C10, tie 4 = flat inside the floor → blind half PASS** (spam half on one seed); `DROP_KINDS` **flipped** the same evening (`cache_te_ext.DROP_KINDS = {chrome}`, SFX sentence default, `--drop_sfx` = the C10 caption; `findings.md` § O4b). **O5 parked** (user's call, same evening):
 `ocr/kind_seg.py` is written and CPU-smoked, never trained.
 
+**O4c — DONE 2026-09-06 night (`findings.md` § O4c), two user calls without
+an arm:** (1) the SFX clause is **deduplicated** per sound unit
+(`ocr_sfx.dedupe_sfx`: `じゅぽ, じゅぽ, じゅぽじゅぽ` → `じゅぽ`; 20 of 168
+sincos SFX lines, 17 captions); (2) the **all-VL records are the default**
+— `reread_records.py --reread all` → `ocr_records_<shard>_hybrid_vl.jsonl`,
+`cache_te_ext.py` / `run_unmask_r2.py` default to it and to
+`mirror_sincos_hybrid_vl_sentence` + `te/sincos_hybrid_vl_sentence_isoq`
+(both built). 82 captions / 184 lines differ from C11's; half are
+spacing / halfwidth punctuation / hearts, half real repairs with a tail of
+digit and short-line regressions (`バスト91` → `バスト9`). C11's config and
+mirror stay as trained; no C12. The package stage has it too: `anime_tools`
+`OcrRequest --reader vl [--mask_dir …]` (`anime_tools.ocr.reread`, uncommitted
+in the sibling checkout as of this note; pin bump owed) re-reads every
+PP-OCRv6 line with the VL reader and reads the text mask's uncovered
+components as `0.000`-score lines — smoked on six sincos pages through the
+daemon (hearts, `びくっ` / `ムラッ` mask lines, `じゅぽ` ×3 as the records).
+
 ### O5 — text-kind segmentation (stretch; 2–3 days; after O2 passes)
 
 - **Task:** per-page polygons with `kind ∈ {speech, sfx, other}` (other =

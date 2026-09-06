@@ -39,12 +39,17 @@ def run(stage: str, argv: list[str]) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--ext_prefix", default="output/ckpt/cjk_vocab_pack_synthja_v5")
+    ap.add_argument(
+        "--ext_prefix", default="output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq"
+    )
     ap.add_argument("--method", default="cjk_unmask_c3")
-    ap.add_argument("--te_out", default="post_image_dataset/cjk_unmask/te/sincos_r2")
+    ap.add_argument(
+        "--te_out",
+        default="post_image_dataset/cjk_unmask/te/sincos_hybrid_vl_sentence_isoq",
+    )
     ap.add_argument(
         "--mirror",
-        default="post_image_dataset/cjk_unmask/mirror_sincos_ppocr",
+        default="post_image_dataset/cjk_unmask/mirror_sincos_hybrid_vl_sentence",
         help="caption mirror dir; use a fresh one for a new records/format so "
         "the trained arms' mirrors stay as trained.",
     )
@@ -57,7 +62,7 @@ def main() -> None:
     ap.add_argument("--arm", default="armC3")
     ap.add_argument(
         "--records",
-        default="post_image_dataset/cjk_unmask/ocr_records_sincos_ppocr.jsonl",
+        default="post_image_dataset/cjk_unmask/ocr_records_sincos_hybrid_vl.jsonl",
         help="OCR records; the _v2 file carries reading order + the ー/ニ/tally "
         "post-processing (anime_tools.ocr._text).",
     )

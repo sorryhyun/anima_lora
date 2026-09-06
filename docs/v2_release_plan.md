@@ -1,4 +1,4 @@
-# v2.0.0 release plan (working draft, 2026-09-02)
+# v2.0.0 release plan (working draft, 2026-09-02; Track A/B state re-checked 2026-09-06)
 
 Scratch plan for the next release. Two pillars make it a major bump:
 
@@ -37,8 +37,9 @@ Breaking for existing installs (each already true on `main` or lands here):
   estimate).
 - Text-encoder caches for captions containing CJK are **not** what the stock
   encoder produced once a pack is active (EN-only captions stay bit-exact).
-  Users with JA/KO captions must re-run `make preprocess-te` after enabling a
-  pack; existence-only skip means this is a manual overwrite, see B2.
+  Users with JA/KO captions must re-run `make preprocess-te ARGS=--overwrite`
+  after enabling a pack; existence-only skip means this is a manual overwrite,
+  now flagged by the cache stamp warning (B2).
 - `pyproject.toml` still says `version = "0.1.0"` (never bumped alongside the
   git tags). Bump to `2.0.0` at the tag so `importlib.metadata` agrees with the
   release for the first time.
@@ -52,8 +53,10 @@ package rev pinned in `[tool.uv.sources]`; the dev loop
 - [ ] **A1. Pin the release rev.** Bump `[tool.uv.sources]` to the anime_tools
   rev that will ship, `uv lock`, commit the lock. The rev must be pushed
   before `uv lock` resolves. The D0 blocker is gone: the pin moved to
-  `94e6d92` (0.4.0) on 2026-09-02 and to `8708224` (0.4.1) on 2026-09-03 with
-  Track D complete; A1 is now just "pin whatever rev ships".
+  `94e6d92` (0.4.0) on 2026-09-02, `8708224` (0.4.1) on 2026-09-03 and
+  `46ebbb5` (0.4.2) on 2026-09-06; A1 is now just "pin whatever rev ships"
+  (as of 2026-09-06 the package is 2 commits ahead — the PP-OCR VL LoRA
+  support — so one more bump is owed at tag time).
 - [ ] **A2. Offline / Windows tarball.** Open since Phase 3: a release install
   with no GitHub access must still satisfy the git dep. Decide between
   (a) vendoring the pinned rev into the release tarball and pointing the
@@ -61,20 +64,23 @@ package rev pinned in `[tool.uv.sources]`; the dev loop
   (b) documenting that `uv sync` needs network for the git dep (it already
   needs it for PyPI). (b) is the honest default; pick (a) only if a user
   reports an offline install. Record the decision in `README.md` Setup.
-- [ ] **A3. Installer + updater compatibility.** `install.sh` / `install.ps1`
-  / `scripts/update.py` run `uv sync` with the default groups — confirm the
-  `anime-tools-git` group resolves on a fresh clone without the dev group
-  present (the v1.17.1 updater is what beta testers run to get to v2, so the
-  sync behaviour must not change under it).
-- [ ] **A4. Drop the stub extras** and the `--extra` plumbing in the
-  installers once A3 confirms no shipped updater passes `--extra`.
+- [x] **A3. Installer + updater compatibility** (by inspection 2026-09-06).
+  `install.sh` / `install.ps1` / `scripts/update.py` run a plain `uv sync`
+  with no `--extra`, and `anime-tools-git` is in `default-groups`, so the git
+  dep resolves under the v1.17.1 updater unchanged. The fresh-clone run is the
+  beta gate below.
+- [ ] **A4. Drop the stub extras.** The `--extra` plumbing is already gone
+  from the installers (A3); `cuda-windows = [] / rocm-windows = []` are still
+  in `pyproject.toml` — delete at the v2 tag.
 - [ ] **A5. Docs.** `CLAUDE.md` describes the split and (since 2026-09-03)
   the request API as the front door; user-facing: Setup section of
   `README.md` (what `anime_tools` is; the typed request API is the front door
   and `python -m anime_tools.<pkg>.cli.<name>` is its shell — Track D landed,
   so state it plainly), guidebook line + the three translations (use the
   translator agent, diff-driven).
-- [ ] **A6. Hygiene gates before tagging.** `tests/test_repo_hygiene.py`
+- [ ] **A6. Hygiene gates before tagging** (tests exist; run at tag time —
+  `test_doc_refs` currently fails on 6 pre-existing stale references in
+  `anima_daemon/issues.md` + `project/cjk_aware_anima*/`). `tests/test_repo_hygiene.py`
   (no tracked symlinks — the recurring v1.16.2 breaker), tarball extracts
   under `tarfile filter="data"`, `tests/test_curation_boundary.py`,
   `tests/test_doc_refs.py`, `make test-unit`.
@@ -87,42 +93,44 @@ What exists today (all research-grade, under `project/cjk_aware_anima/` and
 | Piece | State |
 |---|---|
 | `library/anima/ext_vocab.py` (`HybridT5Encoder`, `segment_runs`, `load_ext_assets`) | promoted, canonical, EN bit-exact tests green |
-| Vocab pack `synthja_v4` | public test release `huggingface.co/sorryhyun/anima-vocab-pack-ja` (self-contained: table + mapping + Qwen3 tokenizer files) |
-| Pack-aware TE caching | `project/cjk_aware_anima/datasets/cache_te_ext.py` — bench script, temp caption mirror, sidecar cache dir |
+| `library/anima/vocab_pack.py` (`VocabPack`, `VocabPackTokenizeStrategy`, `attach_vocab_pack`, stamps) | **shipped 2026-09-06** — the one home for both patch points; `tests/test_vocab_pack.py` |
+| Vocab pack `synthjakozh1sym_r256` | published as `anima_cjk_vocab_pack.*` at `huggingface.co/sorryhyun/anima-vocab-pack-cjk` (repo renamed from `-ja` 2026-09-06; JA-only files deleted; self-contained: table + mapping + Qwen3 tokenizer files). The quote-partitioned `_isoq` build is research-only. |
+| Pack-aware TE caching | `make preprocess-te` forwards base.toml `vocab_pack` (shipped); `project/cjk_aware_anima/datasets/cache_te_ext.py` stays as the research mirror/OCR-caption driver |
 | OCR caption stage | `project/cjk_aware_anima/datasets/ocr_text_captions.py` — mask-complement crops → manga-ocr → quote tags appended via `parse_caption`/`compose_caption` |
 | Unmask recipe | `configs/gui-methods/custom/cjk_unmask_c.toml` (`masked_loss=false` + redirected `text_cache_dir`) |
-| ComfyUI | `AnimaVocabPackLoader` in the Adapter node v3.9.0 (committed + pushed; comfy-path render grid still owed) |
-| Glossary r2 pack (`synthja_v5` / `synthjako3`) | chain re-queued 2026-09-02 after the r2 override merge + reselect guards; gates in `project/cjk_aware_anima/temp_plan.md` step 5 |
+| ComfyUI | `AnimaVocabPackLoader` in the Adapter node, 3.10.0 pushed (quote partition + LoRA↔pack digest check); comfy-path render grid still owed |
+| Glossary r2 pack (`synthja_v5` / `synthjako3`) | superseded — the JA+KO+ZH joint pack above is what ships (B8) |
 
 To ship, in dependency order:
 
-- [ ] **B1. Pack as a model asset.** A `vocab_pack` path key in
-  `configs/base.toml` (empty = off; resolved via `resolve_under_home()` like
-  the other model paths), a download target in `scripts/tasks/downloads.py`
-  pulling the HF pack into the models dir, and pack identity stamped from the
-  pack's JSON (`rows`, `stats`, training label) so caches and checkpoints can
-  name which pack they saw.
-- [ ] **B2. Strategy shim in the trainer.** `AnimaTokenizeStrategy`
-  (`library/anima/strategy.py`) routes the T5-side stream through
-  `HybridT5Encoder` when `vocab_pack` is set; `AnimaTextEncoderOutputsCachingStrategy`
-  follows automatically. This is the promotion of `cache_te_ext.py`'s
-  `ExtTokenizeStrategy` — delete the bench copy once landed. Cache
-  invalidation: TE caches skip on existence only (no content hash), so
-  document "re-run `make preprocess-te` with overwrite after enabling a
-  pack"; a cheap improvement is stamping the pack id into the `.safetensors`
-  metadata and warning at load when it differs from the active pack.
-  Test: EN-only caption bit-exact with and without the pack (extend
-  `tests/test_cjk_distill.py`'s G1 set to the strategy level).
-- [ ] **B3. Row append at DiT load.** `load_anima_model` /
-  `load_dit_model` appends the pack rows to the adapter's T5 embedding
-  (the 32128 hardcode; the node's clamp-pre-hook / embed-forward-hook pair is
-  the reference) so sample-during-training and inference see the same table
-  the caches were built with.
-- [ ] **B4. Inference surface.** `inference.py` + `GenerationRequest` accept
-  the pack (default = the config key, flag to disable), so `make test` /
-  `make gen` with a JA prompt exercise the same encoder. Adapter family stays
-  in checkpoint metadata; the pack is a *text-encoder* asset, not part of the
-  LoRA.
+- [x] **B1. Pack as a model asset** (2026-09-06). `vocab_pack` key in
+  `configs/base.toml` (empty = off; `ANIMA_VOCAB_PACK` env override;
+  `default_checkpoints().vocab_pack`), `make download-vocab-pack` →
+  `models/vocab_packs/anima_cjk_vocab_pack.*` (opt-in, not part of
+  `download-models`), identity = `pack_digest` + name + rows
+  (`VocabPack.identity()` / `cache_metadata()` / `checkpoint_metadata()`).
+- [x] **B2. Strategy shim in the trainer** (2026-09-06).
+  `VocabPackTokenizeStrategy(AnimaTokenizeStrategy)` is installed by
+  `setup_training_strategies` / `ensure_text_strategies` / `inference.py` /
+  `cache_text_embeddings.py` whenever a pack is active (stock class otherwise
+  — off is inert). TE caches written through a pack carry `vocab_pack` /
+  `vocab_pack_sha` metadata (both writers) and the cache-completeness check
+  warns once per mismatch kind. G1 lifted to the strategy level in
+  `tests/test_vocab_pack.py` (EN bit-exact, JA lands on ext rows). The bench
+  `ExtTokenizeStrategy` in `cache_te_ext.py` is not deleted yet — that file
+  is the live OCR-caption driver of the DiT line and is mid-edit.
+- [x] **B3. Rows at DiT load** (2026-09-06). `load_anima_model(…,
+  vocab_pack=)` / `load_llm_adapter(…, vocab_pack=)` install the node's
+  clamp-pre-hook / embed-forward-hook pair (`attach_vocab_pack`) — the state
+  dict stays at 32128 rows, so merge / save are unaffected. `train.py`'s lazy
+  DiT load and `load_dit_model` pass the same memoised pack the strategy uses;
+  the LoRA `ss_ext_pack_sha` stamp is checked against the active pack at load.
+- [x] **B4. Inference surface** (2026-09-06). `--vocab_pack` /
+  `--no_vocab_pack` on `inference.py` (default = the config key), the same two
+  fields on `GenerationRequest`; `examples/09_cjk_vocab_pack.py` rides the front door. Verified
+  end-to-end on a daemon job (JA prompt, every tag composed). Not covered: the
+  resident inference server keeps one warm DiT, so a per-request pack change
+  after the first load is not honoured (restart the server).
 - [ ] **B5. OCR caption stage → anime_tools.** `ocr_text_captions.py` is
   curation (needs the masks anime_tools owns, edits the caption master), so it
   moves into the package as a `caption-ocr` stage with the same contract as
@@ -138,19 +146,19 @@ To ship, in dependency order:
   + pack. Keep `masked_loss=true` as the default — unmasking without the
   captions reproduces the spam (arm B), so the recipe must be presented as a
   bundle, not a toggle.
-- [ ] **B7. Docs.** A user-facing `cjk_vocab_pack.md` under `docs/methods/`
-  (what works: tags / quotes / mixed names; what does not: rare full-JA
-  kanji names; the TE-cache regeneration note; KO status), a line in the
-  guidebook + translations, and `docs/inference/README.md` cross-link for the
-  inference flag.
-- [ ] **B8. Which pack ships.** v5 if the temp_plan step-5 gates pass
-  (distill readouts vs v4, same-seed 2c grid ≥3 seeds, EN bit-exact);
-  otherwise v4 ships and the regressing override is treated as a review bug.
-  Either way the pack is a **HF asset, not a release-tag asset** (241 MB) —
-  the release notes link the HF repo and the download target fetches it.
-- [ ] **B9. ComfyUI parity.** Rendered same-seed grid through the
-  `AnimaVocabPackLoader` path before the node's public publish
-  (`make vendor-sync` first — never hand-copy into `_vendor/`).
+- [ ] **B7. Docs.** `docs/methods/cjk_vocab_pack.md` + the
+  `docs/inference/README.md` cross-link + CLAUDE.md row + GUI field tooltips
+  (4 languages) landed 2026-09-06; still owed: the guidebook line + its three
+  translations and the README Setup mention.
+- [x] **B8. Which pack ships** (settled 2026-09-06). The joint JA+KO+ZH
+  `synthjakozh1sym_r256` (symbol block, no iso partition) ships as
+  `anima_cjk_vocab_pack.*` from `sorryhyun/anima-vocab-pack-cjk`; the
+  v4-vs-v5 question is superseded. It is a **HF asset, not a release-tag
+  asset** (~285 MB) — the release notes link the HF repo and
+  `make download-vocab-pack` fetches it.
+- [ ] **B9. ComfyUI parity.** Node 3.10.0 is pushed; the rendered same-seed
+  grid through the `AnimaVocabPackLoader` path is still owed before the
+  registry publish (`make vendor-sync` first — never hand-copy into `_vendor/`).
 
 ## Track C — release mechanics
 

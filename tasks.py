@@ -331,6 +331,11 @@ COMMANDS = {
         downloads.cmd_download_danbooru_tags,
         "Download danbooru tag tables (KR base + EN sibling) for caption correction",
     ),
+    "download-vocab-pack": (
+        downloads.cmd_download_vocab_pack,
+        "Download the CJK vocab pack (JA/KO/ZH prompt + caption rows) to "
+        "models/vocab_packs/; enable with `vocab_pack` in configs/base.toml",
+    ),
     # ── Masking ───────────────────────────────────────────────────────
     "mask": (
         masking.cmd_mask,

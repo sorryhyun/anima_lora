@@ -500,6 +500,9 @@ class AnimaTrainer:
             lora_weights_list=lora_weights_list,
             lora_multipliers=lora_multipliers,
             attn_softmax_scale=attn_softmax_scale,
+            # Sample prompts tokenized through the pack need its rows behind
+            # the ext ids (same table the TE caches were built with).
+            vocab_pack=getattr(args, "vocab_pack", None),
         )
 
         # Mod-aware training: install the distilled pooled_text_proj so an
@@ -1775,18 +1778,11 @@ class AnimaTrainer:
         # A LoRA trained through a CJK vocab pack is coupled to that pack's
         # rows + routing (ids ≥ 32128 in every cached caption). Stamp the
         # digest so a mismatch at load time is detectable, never silent.
-        ext_pack = getattr(args, "ext_pack", None)
-        if ext_pack:
-            from pathlib import Path
+        from library.anima.vocab_pack import load_vocab_pack
 
-            from library.anima import ext_vocab
-            from library.env import resolve_under_home
-
-            prefix = Path(resolve_under_home(ext_pack))
-            table, mapping = ext_vocab.load_ext_assets(prefix)
-            metadata["ss_ext_pack"] = Path(ext_pack).name
-            metadata["ss_ext_pack_sha"] = ext_vocab.pack_digest(table, mapping)
-            del table
+        pack = load_vocab_pack(getattr(args, "vocab_pack", None))
+        if pack is not None:
+            metadata.update(pack.checkpoint_metadata())
 
     def is_text_encoder_not_needed_for_training(self, args):
         return args.cache_text_encoder_outputs and not self.is_train_text_encoder(args)

@@ -1050,10 +1050,15 @@ def cmd_preprocess_te(extra, caption_config: dict[str, object] | None = None):
         ]
         mp_args, extra = _resolve_lowres_filter(extra)
     _release_stage_models()
+    # CJK vocab pack from the config chain ("" = off): the caches must be
+    # encoded through the same pack train.py / inference.py will route with.
+    vocab_pack = _path("vocab_pack", "")
+    pack_args = ["--vocab_pack", vocab_pack] if vocab_pack else []
     run(
         [
             PY,
             "scripts/preprocess/cache_text_embeddings.py",
+            *pack_args,
             "--dir",
             text_dir,
             "--cache_dir",

@@ -68,6 +68,7 @@
   "repeat_by_folder_name": "Kohya风格的文件夹重复。开启后，名为{n}_...的子文件夹（例如image_dataset/5_mychar/）中的图像每个epoch重复n次而不是num_repeats；0_...文件夹将被排除出训练。文件夹名在预处理后仍保留（缩放/缓存镜像源目录树），因此对缩放后的目录树同样有效。仅影响训练池 — 验证始终为1次重复。在变体的[[datasets]]块上写入/删除repeat_by_folder_name覆盖；不修改base.toml。",
   "pretrained_model_name_or_path": "基础DiT模型权重路径（.safetensors）。",
   "qwen3": "用于文本到图像条件的Qwen3文本编码器权重路径。",
+  "vocab_pack": "CJK 词表包路径前缀（.safetensors/.json 一对，不含后缀）。将日文/韩文/中文的标注和提示词片段路由到 T5 侧的附加行；英文保持逐位一致。留空 = 关闭。用 `make download-vocab-pack` 获取发布的词表包；启用或更换后，对含 CJK 的标注需以 overwrite 重新运行文本嵌入预处理。",
   "vae": "用于图像编码/解码的VAE模型路径。",
   "output_dir": "保存训练后LoRA检查点的目录。",
   "output_name": "保存检查点的基础文件名（自动追加轮次编号）。",

@@ -402,7 +402,7 @@ def cmd_eval_sincos(a):
 
     # masked pages: SFX components of the prediction inside the MIT text pixels
     sfx_records = defaultdict(int)
-    reread = REPO / "post_image_dataset/cjk_unmask/ocr_records_sincos_hybrid_sfx.jsonl"
+    reread = REPO / "post_image_dataset/cjk_unmask/ocr_records_sincos_hybrid_vl.jsonl"
     if reread.exists():
         for line in reread.read_text(encoding="utf-8").splitlines():
             if line.strip():

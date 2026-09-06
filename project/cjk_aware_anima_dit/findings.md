@@ -732,3 +732,50 @@ plan asked for. **`DROP_KINDS` flipped** (user's call, same evening):
 `run_unmask_r2.py`) reproduces the C2–C10 caption via `SFX_DROPPED`; the
 closed text-binding probe pins `SFX_DROPPED` so its caption is unchanged.
 C11's caption is D2's default from here.
+
+## O4c — SFX dedupe + all-VL records as the default, no arm (2026-09-06, night)
+
+Two user calls after eyeballing the SFX caption sheet
+(`probes/sfx_caption_sheet.py`: crop as the reader saw it → read / raw /
+previous text → caption clause, `output/tests/ocr_contact_sheet/sfx_caption*.pdf`).
+
+**1. "쥬포 쥬포쥬포 는 빼도 될듯" — the SFX clause is deduplicated.**
+`ocr_sfx.dedupe_sfx` (torch-free, `sfx_key` = kana core minus sokuon /
+long-vowel marks folded to its minimal repeating unit; first in reading
+order kept; speech never deduplicated) runs inside
+`cache_te_ext.ocr_text_clauses`. On sincos: 168 SFX lines → 148, 17 of the
+87 SFX captions change (`じゅぽ, じゅぽ, じゅぽじゅぽ` → `じゅぽ`; `パン♥, パン♥`
+→ `パン♥`; `ぱちゅ, ぱちゅ♡` → `ぱちゅ` — the key folds hearts, so the first
+read's decoration wins). Tests in `tests/test_cjk_ocr_captions.py`.
+
+**2. "let's make vl be default … we don't really have to do another c arm
+test" — the all-VL re-read is the records default.** Every line through the
+fine-tuned VL reader (`--reread all`, detection still PP-OCRv6 + VL
+Spotting boxes; 11 of 338 reads guard-rejected keep the old text). Against
+the SFX-only file (both deduped): 82 of 132 captions and 184 lines differ —
+90 only spacing / halfwidth `?!~` / `・・・` / hearts, 94 real character
+changes, mostly repairs (`ムうムう` → `ムラムラ`, `オプパコ` → `オフパコ`,
+`温水く人！！` → `温水くん!!`, `トしーナーちん` → `トレーナーちゃん`, `狼狽地…前驚`
+→ `狠狠地…前輩♥`) with a regression tail (`バスト91` → `バスト9`, `団体様 2名`
+→ `団体様20名`, `アリッ` → `フリ♥`, `ピストン` → `ビストン`, `おまんこ` →
+`おまんご`). Sheet `output/tests/ocr_contact_sheet/vl_vs_sfx.pdf` (119
+tiles, changed crops + the SFX-only caption struck under the all-VL one),
+list `vl_vs_sfx_lines.txt`. Defaults flipped: `reread_records.py --reread
+all` → `ocr_records_<shard>_hybrid_vl.jsonl`; `cache_te_ext.py --records`
+default = that file; `run_unmask_r2.py` defaults = hybrid_vl records +
+`mirror_sincos_hybrid_vl_sentence` + `te/sincos_hybrid_vl_sentence_isoq` +
+the isoq pack + `sentence`. Both caches built (351 / 0 failed; the deduped
+SFX-only pair `mirror_…_sfx_sentence_dd` / `te/…_sfx_sentence_dd_isoq` exists
+too). C11's config + mirror stay as trained. **Package side (same night):** `anime_tools`'s OCR stage gained
+`--reader {ppocr,vl}` + `--mask_dir` / `--comp_min_side` / `--comp_max` /
+`--vl_batch_size` (`anime_tools/ocr/reread.py`: `reread_lines` +
+`RereadEngine`, the dit tree's `reread_records.py` logic minus the hand
+labels and `kind` — the sidecar has no kind column; a VL-only mask line
+carries score `0.000`). Torch stays out of `run_ocr` (`_vl_engine` helper,
+the ONNX-device pin holds); 953 package tests pass; smoke on six sincos
+pages through the daemon reproduced the records' lines (`ドチュ♥`, `びくっ`,
+`ムラッ` ×2, `じゅぽ` ×3, `ブルン♥`). One artefact to know: a PP box of
+screentone (`10985746`, 0.62) that VL reads as `s v .l √2` passes the floors
+— the dit pipeline's rule-1b / symbol filters are not in the stage.
+Uncommitted in `../anime_tools`; pin bump + `uv sync` owed before the
+trainer's `make` wrappers can reach it.

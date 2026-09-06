@@ -346,6 +346,12 @@ def cache_text_embeddings(
     # Dual-single erasure pool, built once: words that are exactly one token in
     # *both* Qwen3 and T5, minus this dataset's real tags (so a filler is never a
     # genuine tag). Built from the loaded strategy's two tokenizers.
+    # Vocab-pack stamp (None with the stock tokenizer): lets a later run with a
+    # different pack state warn instead of silently training on stale ids.
+    from library.anima.vocab_pack import strategy_pack
+
+    _pack = strategy_pack(tokenize_strategy)
+    pack_metadata = _pack.cache_metadata() if _pack is not None else None
     erasure_pool = None
     if want_randomized:
         real_tags = {
@@ -510,7 +516,7 @@ def cache_text_embeddings(
                         save_dict[f"t5_input_ids_{label}"] = t5_input_ids[k]
                 detail = f"{img_path.name} ({n_v}v" + (f"+{n_r}r)" if n_r else ")")
 
-            save_file(save_dict, str(cache_path))
+            save_file(save_dict, str(cache_path), metadata=pack_metadata)
             stats.written += 1
             if progress is not None:
                 progress(1, detail=detail)

@@ -245,6 +245,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to trained pooled_text_proj weights (.safetensors) for modulation guidance",
     )
     parser.add_argument(
+        "--vocab_pack",
+        type=str,
+        default=None,
+        help="CJK vocab pack path prefix (the .safetensors/.json pair, no suffix). "
+        "Routes JA / KO / ZH prompt spans onto the pack's T5-side rows and hooks "
+        "them onto llm_adapter.embed (EN prompts stay bit-exact). Default: the "
+        "`vocab_pack` key in configs/base.toml (or ANIMA_VOCAB_PACK); '' = off.",
+    )
+    parser.add_argument(
+        "--no_vocab_pack",
+        action="store_true",
+        help="Ignore the configured vocab pack for this run (stock T5 tokenizer).",
+    )
+    parser.add_argument(
         "--mod_w",
         type=float,
         default=3.0,

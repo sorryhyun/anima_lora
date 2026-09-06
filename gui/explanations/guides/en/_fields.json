@@ -68,6 +68,7 @@
   "repeat_by_folder_name": "Kohya-style folder repeats. When on, images inside a subfolder named {n}_... (e.g. image_dataset/5_mychar/) are repeated n times per epoch instead of num_repeats; a 0_... folder is excluded from training. Folder names survive preprocessing (resize/caches mirror the source tree), so this works on the resized tree too. Affects only the training pool — validation always uses 1 repeat. Writes/strips a repeat_by_folder_name override on the variant's [[datasets]] block; base.toml is not touched.",
   "pretrained_model_name_or_path": "Path to the base DiT model weights (.safetensors).",
   "qwen3": "Path to the Qwen3 text encoder weights for text-to-image conditioning.",
+  "vocab_pack": "CJK vocab pack path prefix (the .safetensors/.json pair, no suffix). Routes Japanese / Korean / Chinese caption and prompt spans onto extra T5-side rows; English stays bit-exact. Empty = off. `make download-vocab-pack` fetches the shipped pack; after enabling or changing it, re-run text-embedding preprocessing with overwrite for any CJK captions.",
   "vae": "Path to the VAE model for image encoding/decoding.",
   "output_dir": "Base directory for trained LoRA checkpoints. With path_scope set, the GUI appends the scope at submit time, e.g. output/ckpt + data_group1 becomes output/ckpt/data_group1.",
   "output_name": "Base filename for saved checkpoints inside output_dir. Epoch/version suffixes are appended automatically.",

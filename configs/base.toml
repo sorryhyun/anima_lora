@@ -1,6 +1,13 @@
 pretrained_model_name_or_path = "models/diffusion_models/anima-base-v1.0.safetensors"
 qwen3 = "models/text_encoders/qwen_3_06b_base.safetensors"
 vae = "models/vae/qwen_image_vae.safetensors"
+# CJK vocab pack (JA / KO / ZH tag rows on the T5 side of the LLM adapter; see
+# docs/methods/cjk_vocab_pack.md). Path prefix of the .safetensors/.json pair;
+# "" = off (stock tokenizer, bit-exact). `make download-vocab-pack` fetches the
+# shipped pack to models/vocab_packs/anima_cjk_vocab_pack. Enabling or changing
+# it changes every TE cache with CJK captions: re-run `make preprocess-te
+# ARGS=--overwrite` afterwards (EN-only caches are unaffected).
+vocab_pack = ""
 
 output_dir = "output/ckpt"
 output_name = "anima_lora"

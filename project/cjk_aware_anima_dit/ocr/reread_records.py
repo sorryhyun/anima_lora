@@ -8,8 +8,8 @@ records and reads what the MIT text mask boxed that no detector did.
     # GPU (daemon): read every crop once, cache the raw + guarded reads
     make daemon-run ARGS="--stall-timeout 0 project/cjk_aware_anima_dit/ocr/reread_records.py --stage read"
     # CPU: apply the reads, re-derive kind / reading order, the floor numbers
-    python project/cjk_aware_anima_dit/ocr/reread_records.py --stage apply --reread sfx
-    python project/cjk_aware_anima_dit/ocr/reread_records.py --stage apply --reread all --out …_hybrid_vl.jsonl
+    python project/cjk_aware_anima_dit/ocr/reread_records.py --stage apply              # --reread all → …_hybrid_vl.jsonl (default)
+    python project/cjk_aware_anima_dit/ocr/reread_records.py --stage apply --reread sfx  # arm C11's SFX-only file → …_hybrid_sfx.jsonl
 
 What the read stage crops (all of it goes through the reader once; ``apply``
 picks):
@@ -17,7 +17,9 @@ picks):
 * **every record** of the input file (``--reread`` decides at apply time
   whether only ``kind: sfx`` records or all of them take the new read — the
   user's "just run all of OCR through VL" is the ``all`` arm, measured against
-  ``sfx`` on the hand labels);
+  ``sfx`` on the hand labels and **the default since 2026-09-06**: manga-ocr
+  best-match 0.810 vs 0.786, hearts restored, and the user's eyeball of the
+  184 changed lines — no C arm, the user's call);
 * **mask components**: on every masked page (``--mask_pages all``; ``floor`` =
   only the masked-but-no-line pages the plan names) the MIT text-pixel mask's
   connected components after a closing pass — bbox min side ≥
@@ -32,8 +34,8 @@ rule + chrome list for everything else (mask-component records included).
 Records keep the audit trail: ``prev_text`` (what the record said before),
 ``sfx_raw`` (the unguarded decode), ``sfx_guard`` = ``ok | rejected``; a
 rejected read leaves the text alone. Output default
-``ocr_records_<shard>_hybrid_sfx.jsonl`` + a report under
-``output/tests/ocr_hybrid/``.
+``ocr_records_<shard>_hybrid_vl.jsonl`` (``_hybrid_sfx`` under ``--reread
+sfx``) + a report under ``output/tests/ocr_hybrid/``.
 """
 
 from __future__ import annotations
@@ -428,7 +430,13 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--report", type=Path, default=None)
     ap.add_argument("--sfx_reader", default=None, help="adapter dir (default: catalog)")
-    ap.add_argument("--reread", choices=["sfx", "all", "none"], default="sfx")
+    ap.add_argument(
+        "--reread",
+        choices=["sfx", "all", "none"],
+        default="all",
+        help="all (default since 2026-09-06, user's call): every record takes the VL read; "
+        "sfx: only kind=sfx records (arm C11's file); none: mask components only",
+    )
     ap.add_argument("--mask_pages", choices=["all", "floor", "none"], default="all")
     ap.add_argument("--comp_min_side", type=int, default=32)
     ap.add_argument("--comp_max", type=int, default=16)
@@ -455,7 +463,11 @@ def main() -> None:
     base = REPO / "post_image_dataset/cjk_unmask"
     opts.records_in = opts.records_in or base / f"ocr_records_{opts.shard}_hybrid.jsonl"
     raw_path = opts.raw or base / f"ocr_raw_sfx_{opts.shard}.jsonl"
-    out_path = opts.out or base / f"ocr_records_{opts.shard}_hybrid_sfx.jsonl"
+    out_path = opts.out or base / (
+        f"ocr_records_{opts.shard}_hybrid_vl.jsonl"
+        if opts.reread == "all"
+        else f"ocr_records_{opts.shard}_hybrid_sfx.jsonl"
+    )
     report = (
         opts.report
         or REPO

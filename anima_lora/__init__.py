@@ -82,6 +82,9 @@ _ATTR_TO_MODULE: dict[str, str] = {
     # default checkpoint paths (anima_lora.models)
     "default_checkpoints": "library.env",
     "DefaultCheckpoints": "library.env",
+    "VocabPack": "library.anima.vocab_pack",
+    "load_vocab_pack": "library.anima.vocab_pack",
+    "attach_vocab_pack": "library.anima.vocab_pack",
 }
 
 _SUBMODULES = ["captioning", "config", "inference", "models", "training"]

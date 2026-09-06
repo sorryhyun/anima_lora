@@ -41,13 +41,18 @@ from anime_tools.captions.shuffle import (  # noqa: E402,F401
 def add_anima_training_arguments(parser: argparse.ArgumentParser):
     """Add Anima-specific training arguments to the parser."""
     parser.add_argument(
-        "--ext_pack",
+        "--vocab_pack",
+        "--ext_pack",  # pre-v2 research spelling (run_unmask_r2.py); same dest
+        dest="vocab_pack",
         type=str,
         default=None,
-        help="CJK vocab pack prefix (path without .safetensors/.json) the text-encoder "
-        "caches were encoded through. Stamps its digest as ss_ext_pack_sha so a LoRA "
-        "meeting a different pack at inference is detectable (library.anima.ext_vocab"
-        ".pack_digest). Training itself reads only the cached embeddings.",
+        help="CJK vocab pack prefix (path without .safetensors/.json; '' = off). "
+        "Same key as configs/base.toml `vocab_pack`. Routes the T5 stream of "
+        "inline TE caching + sample prompts through the pack, hooks its rows onto "
+        "the DiT's llm_adapter for sampling, and stamps ss_ext_pack / "
+        "ss_ext_pack_sha on the saved LoRA so a different pack at inference is "
+        "detectable (library.anima.vocab_pack). Training steps read only the "
+        "cached embeddings, which must have been encoded through the same pack.",
     )
     parser.add_argument(
         "--qwen3",

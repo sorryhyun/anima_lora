@@ -72,6 +72,10 @@ class GenerationRequest:
     easycontrol_weight: Optional[str] = None
     easycontrol_image: Optional[str] = None
     pooled_text_proj: Optional[str] = None
+    # CJK vocab pack path prefix (``library.anima.vocab_pack``). ``None`` =
+    # the `vocab_pack` key in configs/base.toml; ``no_vocab_pack`` forces off.
+    vocab_pack: Optional[str] = None
+    no_vocab_pack: bool = False
 
     dit: Optional[str] = None
     vae: Optional[str] = None
@@ -135,6 +139,8 @@ class GenerationRequest:
             argv += ["--easycontrol_image", self.easycontrol_image]
         if self.pooled_text_proj is not None:
             argv += ["--pooled_text_proj", self.pooled_text_proj]
+        if self.vocab_pack is not None:
+            argv += ["--vocab_pack", self.vocab_pack]
 
         if self.lora_weight is not None:
             argv += ["--lora_weight", *self.lora_weight]
@@ -154,6 +160,8 @@ class GenerationRequest:
             argv += ["--no_vae_2d"]
         if self.text_encoder_cpu:
             argv += ["--text_encoder_cpu"]
+        if self.no_vocab_pack:
+            argv += ["--no_vocab_pack"]
 
         argv += list(self.extra_argv)
         return argv

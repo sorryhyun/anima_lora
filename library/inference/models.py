@@ -290,28 +290,13 @@ def attach_adapters(
             model._step_expert_networks = step_nets
 
 
-def _warn_ext_pack_stamp(path: str) -> None:
+def _warn_ext_pack_stamp(path: str, active=None) -> None:
     """A LoRA trained through a CJK vocab pack (``ss_ext_pack_sha``) expects
-    that pack's rows behind ids ≥ 32128. This inference path loads no pack,
-    so say so once per file — the ComfyUI Adapter node does the real
-    digest comparison against its loaded pack."""
-    try:
-        from safetensors import safe_open
+    that pack's rows behind ids ≥ 32128 — warn when the active pack (or no
+    pack) disagrees. Thin alias kept for callers of the pre-v2 name."""
+    from library.anima.vocab_pack import warn_checkpoint_pack_mismatch
 
-        with safe_open(path, framework="pt") as f:
-            md = f.metadata() or {}
-    except Exception:
-        return
-    sha = md.get("ss_ext_pack_sha")
-    if sha:
-        logger.warning(
-            "%s was trained through vocab pack %s (sha %s…); this run loads no "
-            "vocab pack, so CJK / quoted prompt spans will not reach the rows "
-            "it was trained on (EN prompts are unaffected).",
-            path,
-            md.get("ss_ext_pack", "?"),
-            sha[:12],
-        )
+    warn_checkpoint_pack_mismatch(path, active)
 
 
 def load_dit_model(
@@ -339,10 +324,18 @@ def load_dit_model(
     # Per-step-expert turbo is detected FIRST: its files also match
     # ``_is_hydra_moe`` (shared ``.lora_ups.{k}.weight`` key shape) but are
     # router-free and head-selected by step counter, so the metadata stamp wins.
+    # CJK vocab pack: --no_vocab_pack > --vocab_pack > base.toml `vocab_pack`.
+    # Resolved once here (memoised) and hooked onto llm_adapter.embed below;
+    # the prompt side is routed by the tokenize strategy prepare_text_inputs
+    # installs from the same selection.
+    from library.anima.vocab_pack import resolve_active_pack
+
+    vocab_pack = resolve_active_pack(args)
+
     step_expert_mode = False
     if args.lora_weight is not None and len(args.lora_weight) > 0:
         for p in args.lora_weight:
-            _warn_ext_pack_stamp(p)
+            _warn_ext_pack_stamp(p, vocab_pack)
         se_flags = [_is_step_expert_turbo(p) for p in args.lora_weight]
         if any(se_flags):
             if not all(se_flags) or len(args.lora_weight) > 1:
@@ -438,6 +431,7 @@ def load_dit_model(
         dit_weight_dtype,
         lora_weights_list=lora_weights_list,
         lora_multipliers=args.lora_multiplier,
+        vocab_pack=vocab_pack,
     )
 
     # Modulation guidance: load trained pooled_text_proj weights before .to()

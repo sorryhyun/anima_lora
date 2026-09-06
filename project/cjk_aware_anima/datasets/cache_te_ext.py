@@ -73,11 +73,11 @@ class ExtTokenizeStrategy:
 OCR_FORMATS = ("sentence", "order", "tags", "presence")
 """``sentence`` — a trailing text clause after the tag bag and any position
 clauses, ``Japanese text reads as "…", "…".`` (the anime_tools grammar's
-``TEXT_PREFIXES`` clause kind, plan_base1 B2), lines in reading order; a line
-the :mod:`ocr_sfx` rule reads as SFX is **skipped** (decision 2, amended
-2026-09-05: neither reader can read hand-lettered onomatopoeia, so no SFX
-sentence for now — the grammar already knows ``Japanese SFX reads as`` for
-when it returns); ``order`` — one phrase, ``Japanese text in following order:
+``TEXT_PREFIXES`` clause kind, plan_base1 B2), speech lines in reading order,
+then ``Japanese SFX reads as "…".`` with the ``kind: sfx`` lines, deduplicated
+per sound unit (plan_ocr O4 / O4c — the SFX reader reads hand-lettered
+onomatopoeia; before 2026-09-06 the SFX lines were skipped, ``--drop_sfx``
+reproduces that); ``order`` — one phrase, ``Japanese text in following order:
 "…", "…"``, the lines in the records' (reading) order; ``tags`` — the C2–C6
 form, a ``japanese text`` presence tag plus one ``「…」`` flat tag per line;
 ``presence`` — the ``japanese text`` tag alone (text presence with no ext-row
@@ -148,9 +148,11 @@ def ocr_text_clauses(
     which is which; without it the :mod:`ocr_sfx` text rule does
     (:func:`ocr_sfx.split_lines`), as C10 trained. Without ``sfx_sentence``
     the SFX lines are skipped (decision 2 amended, see ``OCR_FORMATS``).
-    ``text_clause`` quotes each line and defuses an inner ASCII quote."""
+    ``text_clause`` quotes each line and defuses an inner ASCII quote. The SFX
+    lines are deduplicated by :func:`ocr_sfx.dedupe_sfx` (one per sound unit,
+    first in reading order kept; C11 trained without this)."""
     from anime_tools.captions.position_clauses import text_clause
-    from ocr_sfx import split_lines
+    from ocr_sfx import dedupe_sfx, split_lines
 
     if kinds is None:
         speech, sfx = split_lines(lines)
@@ -158,6 +160,9 @@ def ocr_text_clauses(
         speech = [ln for ln, k in zip(lines, kinds, strict=True) if k == "speech"]
         sfx = [ln for ln, k in zip(lines, kinds, strict=True) if k == "sfx"]
     out = [text_clause(speech)] if speech else []
+    # a repeated SFX (じゅぽ, じゅぽ, じゅぽじゅぽ) is one sound, not three lines
+    # (2026-09-06, user's call); speech repeats are content and stay
+    sfx = dedupe_sfx(sfx)
     if sfx_sentence and sfx:
         out.append(text_clause(sfx, sfx=True))
     return out
@@ -316,8 +321,8 @@ def main() -> None:
         choices=OCR_FORMATS,
         default="order",
         help="how OCR lines enter the caption: 'sentence' = a trailing "
-        '\'Japanese text reads as "…", "…".\' text clause (speech only; '
-        "SFX by the ocr_sfx rule skipped); 'order' = one 'Japanese "
+        '\'Japanese text reads as "…", "…".\' speech clause + a '
+        "'Japanese SFX reads as' clause (the default caption); 'order' = one 'Japanese "
         "text in following order: ...' phrase (reading order); 'tags' = the "
         "C2–C6 japanese text + 「…」 flat tags.",
     )
@@ -349,7 +354,9 @@ def main() -> None:
     )
 
     base_dir = REPO / "post_image_dataset" / "cjk_unmask"
-    records = opts.records or base_dir / f"ocr_records_{opts.shard}.jsonl"
+    # default = the all-VL re-read (plan_ocr O4c, 2026-09-06): every line read by
+    # the fine-tuned VL reader, kind from the hand labels + rule
+    records = opts.records or base_dir / f"ocr_records_{opts.shard}_hybrid_vl.jsonl"
     out = opts.out or base_dir / "te" / opts.shard
     mirror = opts.mirror or base_dir / f"mirror_{opts.shard}"
     resized = REPO / "post_image_dataset" / "resized" / opts.shard

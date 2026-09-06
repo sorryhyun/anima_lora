@@ -263,6 +263,34 @@ def cmd_download_danbooru_tags(_extra):
     )
 
 
+# CJK vocab pack (library.anima.vocab_pack): a ~285 MB text-encoder asset, not
+# a release-tag asset. Opt-in — `make download-models` does not fetch it.
+VOCAB_PACK_REPO = "sorryhyun/anima-vocab-pack-cjk"
+VOCAB_PACK_STEM = "anima_cjk_vocab_pack"
+VOCAB_PACK_REL = "models/vocab_packs"
+
+
+def cmd_download_vocab_pack(_extra):
+    """Fetch the shipped CJK vocab pack (.safetensors + .json pair).
+
+    Lands at ``models/vocab_packs/anima_cjk_vocab_pack.{safetensors,json}``;
+    point ``vocab_pack`` in ``configs/base.toml`` at the prefix
+    ``models/vocab_packs/anima_cjk_vocab_pack`` to enable it, then re-run
+    ``make preprocess-te ARGS=--overwrite`` for any CJK captions. The repo's
+    ``tokenizer_qwen3/`` is for pipelines without a Qwen3 tokenizer of their
+    own — this repo reuses the text encoder's, so it is not fetched.
+    """
+    dst = ROOT / VOCAB_PACK_REL
+    files = [f"{VOCAB_PACK_STEM}.safetensors", f"{VOCAB_PACK_STEM}.json"]
+    if _skip("CJK vocab pack", [dst / f for f in files], _extra):
+        return
+    dst.mkdir(parents=True, exist_ok=True)
+    run(["hf", "download", VOCAB_PACK_REPO, *files, "--local-dir", VOCAB_PACK_REL])
+    print(
+        f'  → enable with vocab_pack = "{VOCAB_PACK_REL}/{VOCAB_PACK_STEM}" in configs/base.toml'
+    )
+
+
 def cmd_download_mit(_extra):
     dst = ROOT / "models" / "mit"
     if _skip("MIT", [dst / "model.pth"], _extra):

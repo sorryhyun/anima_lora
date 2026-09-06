@@ -20,6 +20,14 @@ stripped):
 4. katakana-only up to 4 kana (``ウズ``), or a sokuon-final up to 4 kana
    (``きゅっ``) → SFX; everything else → speech.
 
+The SFX clause is also **deduplicated** (:func:`dedupe_sfx`, 2026-09-06 —
+"쥬포 쥬포쥬포 는 빼도 될듯"): a page's SFX lines collapse to one per
+:func:`sfx_key` — the kana core minus sokuon / long-vowel marks, folded to
+its minimal repeating unit — keeping the first in reading order, so
+``じゅぽ, じゅぽ, じゅぽじゅぽ`` and ``ぱん♡, ぱん♡, ぱんッ`` each become one
+line. Speech lines are never deduplicated (a repeated line of dialogue is
+content).
+
 Known misses (sincos, 2026-09-05): a reader that turns ``ぱ`` into ``は``
 (``はんぱん``) lands on rule 2; a voiced-initial 6-kana garble
 (``がんばんがば``) lands on rule 3. Both are the reader's, not the rule's.
@@ -106,6 +114,42 @@ SFX_LEXICON: tuple[str, ...] = (
 def kana_core(text: str) -> str:
     """The kana of ``text`` in order, everything else dropped."""
     return "".join(_KANA_RE.findall(text))
+
+
+_KEY_DROP = frozenset("っッー")
+
+
+def sfx_key(text: str) -> str:
+    """The identity of an SFX line for :func:`dedupe_sfx`: kana core, sokuon
+    and long-vowel marks dropped, folded to its minimal repeating unit
+    (``ぱん♡ぱん♡`` → ``ぱん``, ``びくッ`` → ``びく``). Empty when the line has
+    no kana — such a line is then only ever its own duplicate."""
+    core = "".join(ch for ch in kana_core(text) if ch not in _KEY_DROP)
+    for n in range(1, len(core) // 2 + 1):
+        if len(core) % n == 0 and core[:n] * (len(core) // n) == core:
+            return core[:n]
+    return core
+
+
+def sfx_groups(lines: list[str]) -> list[int]:
+    """For each line, the index of the first line sharing its :func:`sfx_key`
+    (itself when it is the first). Keyless lines group by exact text."""
+    first: dict[str, int] = {}
+    out = []
+    for i, ln in enumerate(lines):
+        key = sfx_key(ln) or f"\0{ln}"
+        out.append(first.setdefault(key, i))
+    return out
+
+
+def dedupe_sfx(lines: list[str]) -> list[str]:
+    """``lines`` minus the later members of each :func:`sfx_groups` group,
+    order kept."""
+    return [
+        ln
+        for i, (ln, g) in enumerate(zip(lines, sfx_groups(lines), strict=True))
+        if g == i
+    ]
 
 
 def _repeated(core: str) -> bool:
