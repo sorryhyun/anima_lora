@@ -43,6 +43,7 @@ def load_labels(kinds: list[str] | None, include_unchecked: bool) -> pd.DataFram
     df["box"] = df.box.map(json.loads)
     if not include_unchecked:
         df = df[df.status != "unchecked"]
+    df = df[df.text_hand.str.strip() != ""]  # unreadable / clipped rows are left blank
     if kinds:
         df = df[df.kind_hand.isin(kinds)]
     # eval_manga109.score reads .text / .orient / .kind

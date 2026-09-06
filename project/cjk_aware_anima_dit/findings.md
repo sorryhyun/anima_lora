@@ -452,3 +452,65 @@ pilot-era sincos "~12 / 71" (`plan_base1.md`, by-eye against the records)
 was produced through the same function and is not a clean reference either;
 the gate now reads `eval_sfx.py`'s strict exact (hearts count) beside a
 heart-blind exact.
+
+## O2 — SFX reader fine-tunes, both bases (2026-09-06, in progress)
+
+`plan_ocr.md` O2 on the **corrected** O1 crops (§ O1 correction). Scorers:
+`ocr/eval_manga109.py` (COO test + speech control) and `ocr/eval_sfx.py`
+(sincos hand labels, `assets/sfx_labels_sincos.tsv` — 338 rows drafted off
+the contact sheets: 99 `sfx` / 213 `speech` / 26 `chrome`; 34 records the
+v1 rule called speech are hand-lettered SFX by eye (`ぱん♡` read as `はんv`
+etc.), 17 are overlay captions / signs / clothing print → `chrome`; 122 rows
+still `draft`, awaiting the user's correction). `exact` folds `♥→♡`, `〜→~`;
+a **heart-blind exact** rides beside it because manga-ocr almost never emits
+`♡` and the pilot's "~12 / 71" was counted without hearts.
+
+**Corrected O0 stock rows** (COO test, 2,558 SFX + 2,559 speech; replaces the
+transposed-crop table in § O0):
+
+| reader (stock) | SFX exact | SFX sim | runaway | speech exact | speech sim | sincos gate 71 (♡-blind) | sincos speech sim |
+|---|---|---|---|---|---|---|---|
+| manga-ocr-base | 26.2 % | 0.478 | 0 | 62.1 % | **0.975** | **3** (5) | 0.646 |
+| PP-OCRv6 rec | 7.2 % | 0.194 | 0 | 13.0 %† | 0.297† | — | — |
+| PaddleOCR-VL-1.6 crop `OCR:` | **30.2 %** | 0.545 | 91 | 63.4 % | 0.976 | (daemon) | — |
+
+† single-line CTC head on multi-line bubble crops — not a valid speech row.
+With real crops the speech control is 0.975 (was 0.824 on transposed crops)
+and stock manga-ocr is at 26 % on COO (was 16 %).
+
+**Arm A — manga-ocr full fine-tune** (`ocr/finetune_manga_ocr.py`; 77,164
+train crops 1 : 1, bs 64, 4 epochs = 4,820 steps, ~420 crops/s, 7 GB, ≈ 20
+min a run; val = 2,395 + 2,396 crops each epoch):
+
+| run | val SFX exact stock → ep1 / ep2 / ep3 / ep4 | val speech sim | COO test SFX exact | COO speech sim | sincos gate 71 (♡-blind) | sincos SFX sim | sincos speech sim |
+|---|---|---|---|---|---|---|---|
+| lr 2e-5 | 32.8 → 65.5 / 70.1 / 71.1 / **73.3** | 0.965 → 0.974 | **71.2 %** | 0.975 (= stock) | **10** (17) | 0.667 | 0.747 |
+| lr 5e-5 | 32.8 → 63.8 / 69.7 / 72.4 / **74.9** | 0.965 → 0.973 | (daemon) | | **11** (15) | 0.672 | 0.721 |
+
+Reading it:
+
+- **In-domain: the fine-tune works.** 26 → 71 % COO test exact in 20 GPU-min,
+  10 pts under the published TRBA+2D (81.2 % on the 10-book test) with no
+  architecture change, and the speech control does not move (0.975 = stock;
+  sincos speech sim *up*, 0.646 → 0.75). Both lrs are still climbing at
+  epoch 4 (+2 pts/epoch) → an 8-epoch lr 5e-5 run is queued.
+- **Out-of-domain: the doujin gap is real — the kill clause fires.** sincos
+  gate 3 → 10–11 / 71 strict, 5 → 15–17 heart-blind, against a gate of ≥ 35
+  and a kill of < 25 while COO test ≥ 70 %. Per `plan_ocr.md` O2, **O3 is
+  mandatory for arm A before any wiring**. The residual on the 99 hand-SFX
+  rows is *not* mostly garbage any more (sim 0.30 → 0.66; 54 % of rows at sim
+  ≥ 0.8): the reads are `びくん` for `びく♡`, `ぱんッ` for `ぱん♡`, `ガクン` for
+  `ガク♡` — the heart glyph is decoded as the katakana ending COO taught
+  (`ン`/`ッ`), plus a handful of pink-outline confusions (`ぱ/は/ば`, `ぶっ`,
+  `くにくに`). That is exactly the surface decision 4 predicted: the
+  lettering style + hearts, i.e. synth's job first (hearts at sincos' rate,
+  outlined kana), colorized COO second.
+- 1 : 1 by count held the speech control, so the 1 : 2 arm is not needed.
+
+**Arm B — PaddleOCR-VL-1.6 crop LoRA** (`ocr/finetune_vl16_lora.py`, r 16 on
+the 126 LM projections = 6.0 M trainable, tower frozen): the first launch
+OOMed in the loss — the native forward materialises fp32 logits over the
+103k vocab for every image token, 4.7 GB on a large-crop batch — fixed by
+left-padding and `logits_to_keep` = target length (CE on the suffix only;
+peak 13 → 3 GB). ~33 crops/s, ≈ 40 min/epoch; lr 1e-4 and 2e-4 × 2 epochs
+queued. Results below when they land.
