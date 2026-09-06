@@ -999,3 +999,39 @@ D1 precision gate ≥ 50 / 60 **PASS**; the D1 kill (raise `--det_conf` to
 0.426) is not triggered. D2 arm launched as daemon job
 `20260906-213229-e7feb8` (`run_unmask_r2.py --skip_cache --method
 cjk_unmask_d2 --arm armD2`, s42 vs C11); grids + blind set follow.
+
+## D2 killed, D3 — the flip: AnimeText + VL are the OCR defaults, PP-OCRv6 retired (2026-09-06, late night)
+
+**D2 killed.** The user stopped daemon job `20260906-213229-e7feb8` at step
+715 / 2808 (epoch 3 / 8, avr_loss 0.072) — "kill current daemon run and just
+proceed d3 … retiring ppocr" — so the D2 gate (spam ≤ C11, blind ≥ C11 on
+the animetext captions) was **never measured**. The mirror, the isoq TE
+cache, the caption diff and `configs/gui-methods/custom/cjk_unmask_d2.toml`
+stay on disk; the arm is re-launchable from the config header if the
+caption-count question reopens. The records default flipped without the
+verdict (decision the user made, not the plan's).
+
+**D3 — package (`anime_tools` ae6f33e, pushed; trainer pin 46ebbb5 →
+ae6f33e, `uv lock` + `uv sync`).** `OcrRequest` defaults `detector="animetext"`,
+`reader="vl"` — every build, not only under `--reader vl` as the plan wrote:
+the user's licence call on decision 3 is that a default fetching GPL-3.0
+weights (NC data) at runtime is fine; nothing is bundled. `OcrRequest()` is
+therefore detect-only (no PP-OCRv6 recognizer loaded); `--detector ppocr
+--reader ppocr` remains the explicit torch-free pair, and `--mask_dir` (the
+mask-component layer) still requires `--detector ppocr`. Docstrings
+(`stages/ocr.py`, `ocr/animetext.py`, `stages/CLAUDE.md`, `docs/contract.md`,
+`examples/ocr.py`) and the three request tests follow; the registry fixture
+gained `detector="ppocr"` for its `mask_dir` row. Package suite 983 / 983.
+
+**D3 — trainer.** `run_unmask_r2.py` defaults → `ocr_records_sincos_animetext.jsonl`
+/ `mirror_sincos_animetext_sentence` / `te/sincos_animetext_sentence_isoq`;
+`cache_te_ext.py` default records → the animetext file; `reread_records.py`
+(the 3-layer stack's re-read) carries a superseded banner and stays for the
+C10/C11 `_hybrid_vl` reproducibility. The trainer never wired a `make ocr`
+target, so nothing else changes here.
+
+**What the line leaves open.** Whether the doubled SFX-per-page captions
+(151 / 351 differ from `hybrid_vl`, SFX lines 142 → 353) train cleaner or
+spammier than C11 is unknown — the D2 arm is the only instrument and it was
+stopped. Any future DiT arm on the sincos shard trains on the animetext
+captions by default; compare against C11 with that caveat, or re-run D2.

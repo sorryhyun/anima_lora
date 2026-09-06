@@ -354,9 +354,12 @@ def main() -> None:
     )
 
     base_dir = REPO / "post_image_dataset" / "cjk_unmask"
-    # default = the all-VL re-read (plan_ocr O4c, 2026-09-06): every line read by
-    # the fine-tuned VL reader, kind from the hand labels + rule
-    records = opts.records or base_dir / f"ocr_records_{opts.shard}_hybrid_vl.jsonl"
+    # default = plan_det D1/D3 (2026-09-06): the AnimeText detector's boxes read
+    # by the fine-tuned VL reader (`ocr/animetext_records.py`), kind from the
+    # hand labels + rule. The O4c `_hybrid_vl` file (PP-OCRv6 DB → Spotting →
+    # mask components, all-VL re-read) is what C10/C11 trained on — pass
+    # --records to reproduce those.
+    records = opts.records or base_dir / f"ocr_records_{opts.shard}_animetext.jsonl"
     out = opts.out or base_dir / "te" / opts.shard
     mirror = opts.mirror or base_dir / f"mirror_{opts.shard}"
     resized = REPO / "post_image_dataset" / "resized" / opts.shard

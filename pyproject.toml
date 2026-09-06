@@ -136,7 +136,7 @@ override-dependencies = [
 # (the `anime-tools-dev` group swaps in ../anime_tools as an editable path
 # source; it conflicts with the default `anime-tools-git` group by design).
 anime-tools = [
-    { git = "https://github.com/sorryhyun/anime_tools", rev = "46ebbb5", group = "anime-tools-git" },
+    { git = "https://github.com/sorryhyun/anime_tools", rev = "ae6f33e", group = "anime-tools-git" },
     { path = "../anime_tools", editable = true, group = "anime-tools-dev" },
 ]
 torch = [

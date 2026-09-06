@@ -1,4 +1,4 @@
-# plan_det — AnimeText_yolo as the text detector (2026-09-06, rev. 1)
+# plan_det — AnimeText_yolo as the text detector (2026-09-06, rev. 2 — DONE)
 
 *Side line of [`plan_ocr.md`](plan_ocr.md), spun out of its O5 after the O6
 probe (`findings.md` § O6). One goal — **G-D: one detector in front of the
@@ -30,14 +30,17 @@ records pipeline — replacing the three layers that grew over O4 (PP-OCRv6 DB
    first use; GPL weights do not enter the MIT package, the trainer, or a
    node. Whether a *shipped* build may default to a detector trained on NC
    data is a licence call the user makes at D3 — the research path is
-   unaffected.
+   unaffected. **Made at D3 (2026-09-06): PP-OCRv6 is retired as the stage
+   default** — `animetext` + `vl` are `OcrRequest`'s defaults for every
+   build, `--detector ppocr --reader ppocr` stays as the explicit torch-free
+   pair. Weights are still runtime-fetched, never bundled.
 4. **When the detector is `animetext`, the other two layers are off**: no
    VL Spotting pass, no mask-component crops. The MIT mask stays what it is
    for `make mask`; the floor is measured against it, not filled from it.
 5. **Kind stays as it is** (hand labels + the text rule + chrome list). O5's
    segmentation half stays parked; only its detector half is retired here.
 
-## Status (2026-09-06, night)
+## Status (2026-09-06, late night — line DONE)
 
 - **D0 DONE** — `anime_tools` b015ba2 + 2cbe201 (sibling checkout, pin bump
   owed at D3): `anime_tools.ocr.animetext`, the engine's detector protocol
@@ -56,13 +59,22 @@ records pipeline — replacing the three layers that grew over O4 (PP-OCRv6 DB
   **Hand pass**: `assets/animetext_new_lines_sincos.tsv` (60 of 491 new
   lines, `real_text` blank) + `output/tests/ocr_animetext/hand_pass/`;
   graded by the user: **59 / 60 real** (#57 = heart censorship) → precision gate PASS.
-- **D2 RUNNING** (daemon job `20260906-213229-e7feb8`, s42 vs C11) — mirror
-  `mirror_sincos_animetext_sentence` + `te/sincos_animetext_sentence_isoq`
-  built (351 / 351); caption diff `output/tests/ocr_animetext/d2_caption_diff.md`;
-  config `configs/gui-methods/custom/cjk_unmask_d2.toml` (C11 verbatim but the
-  mirror / cache / name). Launch = the `run_unmask_r2.py --skip_cache` line in
-  its header; then grids + blind set vs C11.
-- **D3 pending D2.**
+- **D2 KILLED by the user at step 715 / 2808** (daemon job
+  `20260906-213229-e7feb8`, s42 vs C11; "kill current daemon run and just
+  proceed d3") — no spam / blind verdict on the animetext captions. The
+  mirror `mirror_sincos_animetext_sentence` + `te/sincos_animetext_sentence_isoq`
+  (351 / 351), the caption diff `output/tests/ocr_animetext/d2_caption_diff.md`
+  and `configs/gui-methods/custom/cjk_unmask_d2.toml` stay on disk; the arm is
+  re-launchable from the config's header line if the caption question is ever
+  reopened. **The records default flipped without it** (the user's call).
+- **D3 DONE** — package `ae6f33e` (pushed, pinned in `pyproject.toml`, `uv
+  lock` + `uv sync`): `OcrRequest` defaults `--detector animetext --reader
+  vl` (detect-only engine; `--mask_dir` still rides `--detector ppocr`);
+  `stages/ocr.py`, `stages/CLAUDE.md`, `docs/contract.md`, `examples/ocr.py`
+  + the request tests follow. Trainer: `run_unmask_r2.py` / `cache_te_ext.py`
+  default to `ocr_records_sincos_animetext.jsonl` + the animetext mirror /
+  cache; `reread_records.py` carries a superseded banner (kept for the
+  C10/C11 `_hybrid_vl` files). `plan_ocr.md` O5 note updated.
 
 `findings.md` § D0–D1 carries the numbers.
 
@@ -127,7 +139,7 @@ records stay `hybrid_vl`.
 *Kill:* spam up → D2 records keep `hybrid_vl`; the detector still ships
 (D3 minus the records default).
 
-### D3 — flip (½ day)
+### D3 — flip (½ day) — DONE 2026-09-06, PP-OCRv6 retired outright (not only under `--reader vl`)
 
 - `OcrRequest --detector` default → `animetext` **when `--reader vl`**
   (`ppocr` + DB stays the torch-free default); `make ocr` docs, the

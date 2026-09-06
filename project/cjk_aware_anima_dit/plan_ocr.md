@@ -255,6 +255,16 @@ Only what O2's residual asks for, in this order, on the surviving base(s):
   with the grey COO crops; the full 8.5k spreads only if the 2k mix moves
   the sincos number. Fail on (b) → glyphs are being redrawn; the lever is
   out and synth moves up.
+  **Pilot — DONE 2026-09-06 night (`findings.md` § O3): PASS in the halves
+  form.** The whole-spread form failed clause (b) (speech exact 67 → 42 %:
+  the 1216×864 round-trip blurs small kanji); splitting each spread into its
+  two pages (864×1216 ≈ native) with the `comic` prompt passes both clauses
+  (IoU d1 0.90 / 0.92, stock reads 31 vs 35 % SFX and 61 vs 67 % speech; B′
+  reads 84.9 vs 89.7 % SFX at equal sim) and 16 steps ≡ 28. The user withdrew
+  the 2k-page subset (≈ 11.5 h) for a **+100-page A/B first**: colorize 100
+  spreads (~30 min), crops IoU-filtered at d1 0.8, arm `vl16_tower_col100`
+  = the B′ recipe + `--extra_manifest colorized_1024_half_comic` vs B′ on
+  both evals; 2k only if that moves the sincos number.
 - **Synthetic doujin SFX** (`ocr/synth_sfx.py`): COO's text distribution
   (plus a hiragana re-weight to sincos' mix and `♡` appended at sincos'
   rate) rendered in handwriting-leaning JA fonts, outlined (white / pink
@@ -334,6 +344,8 @@ daemon (hearts, `びくっ` / `ムラッ` mask lines, `じゅぽ` ×3 as the rec
 
 ### O5 — text-kind segmentation (stretch; 2–3 days; after O2 passes)
 
+*Rev. 4 (2026-09-06, night): the **detector half of O5 is retired** — the stock `deepghs/AnimeText_yolo` passes its gate with no training (`findings.md` § O6); the flip is its own small line, [`plan_det.md`](plan_det.md), **DONE the same night: `--detector animetext --reader vl` are the stage defaults and PP-OCRv6 is retired to the explicit torch-free pair** (the D2 caption arm was killed unmeasured — the user's call). The segmentation half stays parked.*
+
 - **Task:** per-page polygons with `kind ∈ {speech, sfx, other}` (other =
   chrome, signs, titles, credits). Consumers: `kind` in the records
   (replacing `ocr_sfx.line_kind` + hand rules), `make mask` (kind-aware
@@ -396,8 +408,9 @@ shipped SFX reader and the C11 verdict; a week with segmentation. GPU via
   on the COO test + speech control.
 - `assets/sfx_labels_sincos.tsv` (kind + text, human), `ocr/eval_sfx.py`.
 - `ocr/build_manga109_crops.py`, `ocr/augment.py`, `ocr/finetune_manga_ocr.py`,
-  `ocr/finetune_vl16_lora.py`, `ocr/colorize_manga109.py` + its 20-page
-  pilot table in `findings.md`, `ocr/synth_sfx.py` (O3), the manifest +
+  `ocr/finetune_vl16_lora.py`, `ocr/colorize_manga109.py` +
+  `ocr/colorize_pilot.py` (its 20-page pilot table in `findings.md`,
+  `reports/ocr_colorize_pilot_*.md`), `ocr/synth_sfx.py` (O3), the manifest +
   stats in `findings.md`.
 - Weights: **`sorryhyun/paddleocr-vl-1.6-manga-lora`** (public 2026-09-06;
   adapter + fine-tuned tower, model card carries the Manga109-s attribution

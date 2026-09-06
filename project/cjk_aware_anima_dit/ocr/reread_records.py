@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """O4 (``plan_ocr.md``): the SFX reader wired into the hybrid OCR records.
 
+**Superseded 2026-09-06 (plan_det D3).** The three-layer stack this re-reads
+(PP-OCRv6 DB → VL Spotting boxes → MIT-mask components) is retired; the
+records default is now ``ocr_records_<shard>_animetext.jsonl`` from
+``animetext_records.py`` (one detector, every box read by the SFX reader).
+Kept as-is so the C10/C11 ``_hybrid_vl`` files stay reproducible.
+
 The third reader — ``anime_tools.ocr.sfx.SfxReader``, the B′ weights (VL-1.6
 LoRA + fine-tuned tower) with the decode guard built in — re-reads the hybrid
 records and reads what the MIT text mask boxed that no detector did.

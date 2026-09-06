@@ -9,7 +9,10 @@ the distill job that writes the pack::
     make daemon-run ARGS="--label unmask-c3-r2 --stall-timeout 0 \
         project/cjk_aware_anima/run_unmask_r2.py --queue"
 
-Stage 1 re-uses the PP-OCR records + mirror from arm C2 (captions identical);
+Stage 1 builds the mirror + TE cache from the OCR records (default since
+plan_det D3, 2026-09-06: the AnimeText-detector records; earlier arms up to
+C11 trained on the PP-OCRv6 3-layer stack's ``_hybrid_vl`` file — pass
+``--records/--mirror/--te_out`` explicitly to reproduce one);
 stage 3 renders ``assets/unmask_eval_prompts.txt`` at seeds 42/7/1234 into
 ``output/tests/cjk_unmask_eval2/armC3_s*`` next to the C2 grid.
 
@@ -45,11 +48,13 @@ def main() -> None:
     ap.add_argument("--method", default="cjk_unmask_c3")
     ap.add_argument(
         "--te_out",
-        default="post_image_dataset/cjk_unmask/te/sincos_hybrid_vl_sentence_isoq",
+        default="post_image_dataset/cjk_unmask/te/sincos_animetext_sentence_isoq",
+        help="plan_det D3 (2026-09-06): the AnimeText-detector records are the "
+        "default; the hybrid_vl (3-layer stack) caches stay on disk for C10/C11.",
     )
     ap.add_argument(
         "--mirror",
-        default="post_image_dataset/cjk_unmask/mirror_sincos_hybrid_vl_sentence",
+        default="post_image_dataset/cjk_unmask/mirror_sincos_animetext_sentence",
         help="caption mirror dir; use a fresh one for a new records/format so "
         "the trained arms' mirrors stay as trained.",
     )
@@ -62,9 +67,11 @@ def main() -> None:
     ap.add_argument("--arm", default="armC3")
     ap.add_argument(
         "--records",
-        default="post_image_dataset/cjk_unmask/ocr_records_sincos_hybrid_vl.jsonl",
-        help="OCR records; the _v2 file carries reading order + the ー/ニ/tally "
-        "post-processing (anime_tools.ocr._text).",
+        default="post_image_dataset/cjk_unmask/ocr_records_sincos_animetext.jsonl",
+        help="OCR records (plan_det D1: AnimeText detector + SFX reader, "
+        "`ocr/animetext_records.py`). `…_hybrid_vl.jsonl` is the retired 3-layer "
+        "stack the C10/C11 arms trained on; the _v2 file carries reading order "
+        "+ the ー/ニ/tally post-processing (anime_tools.ocr._text).",
     )
     ap.add_argument(
         "--ocr_format",
