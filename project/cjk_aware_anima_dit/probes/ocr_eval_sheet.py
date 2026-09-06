@@ -66,11 +66,11 @@ def load_eval(name: str) -> dict[str, dict]:
     return by
 
 
-def load_boxes() -> dict[str, tuple[str, list[int]]]:
+def load_boxes(path: Path = LABELS) -> dict[str, tuple[str, list[int]]]:
     import csv
 
     out = {}
-    with LABELS.open(encoding="utf-8", newline="") as f:
+    with path.open(encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f, delimiter="\t"):
             out[str(r["row"])] = (r["stem"], json.loads(r["box"]))
     return out
@@ -179,11 +179,12 @@ def main() -> None:
     ap.add_argument("--only", choices=["diff", "all"], default="all")
     ap.add_argument("--name")
     ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--labels", type=Path, default=LABELS, help="label TSV the two evals were scored on")
     args = ap.parse_args()
     kinds = args.kind or ["sfx"]
 
     A, B = load_eval(args.a), load_eval(args.b)
-    boxes = load_boxes()
+    boxes = load_boxes(args.labels)
     rows = []
     for key, ra in A.items():
         rb = B.get(key)

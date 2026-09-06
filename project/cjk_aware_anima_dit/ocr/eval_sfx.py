@@ -6,9 +6,11 @@
     … --reader vl16 [--ckpt output/ocr/<run>/best]       # a peft adapter dir merges onto the base
     … --reader record                                    # the pipeline's current read (no model)
 
-Labels: ``assets/sfx_labels_sincos.tsv`` (one row per hybrid record; ``kind_hand``
-/ ``text_hand`` are human — drafted off the contact sheet, corrected by the
-user; ``status`` = draft | checked | unchecked). Crops are cut from the
+Labels: ``assets/sfx_labels_sincos.tsv`` (one row per AnimeText record since
+2026-09-06 — ``relabel_animetext.py`` re-based the PP-box labels; ``kind_hand``
+/ ``text_hand`` are human — drafted off the crop sheets, corrected by the
+user; ``status`` = draft | drafted | checked | unchecked, only ``unchecked``
+is skipped). Crops are cut from the
 resized sincos pages with the pilot's ``deskew_crop`` at 12 % pad (the box is
 axis-aligned, so this is a padded rectangle crop; orientation preserved).
 
@@ -38,8 +40,8 @@ LABELS = m109.ASSETS / "sfx_labels_sincos.tsv"
 PAGES = m109.REPO / "post_image_dataset/resized/sincos"
 
 
-def load_labels(kinds: list[str] | None, include_unchecked: bool) -> pd.DataFrame:
-    df = pd.read_csv(LABELS, sep="\t", dtype=str, keep_default_na=False)
+def load_labels(kinds: list[str] | None, include_unchecked: bool, path: Path = LABELS) -> pd.DataFrame:
+    df = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False)
     df["box"] = df.box.map(json.loads)
     if not include_unchecked:
         df = df[df.status != "unchecked"]
@@ -94,6 +96,7 @@ def main():
     ap.add_argument("--name")
     ap.add_argument("--kind", action="append", help="default sfx + speech")
     ap.add_argument("--include_unchecked", action="store_true")
+    ap.add_argument("--labels", type=Path, default=LABELS, help="label TSV (default: assets/sfx_labels_sincos.tsv)")
     ap.add_argument("--pad", type=float, default=0.12)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--bs", type=int, default=32)
@@ -103,7 +106,7 @@ def main():
         if a.ckpt
         else a.reader
     )
-    df = load_labels(a.kind or ["sfx", "speech", "chrome"], a.include_unchecked)
+    df = load_labels(a.kind or ["sfx", "speech", "chrome"], a.include_unchecked, a.labels)
     crops, orients = crops_for(df, a.pad)
     df["orient"] = orients
     t0 = time.time()
