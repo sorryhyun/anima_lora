@@ -43,7 +43,6 @@ from gui.system_dialog import (
     GITHUB_ISSUES_URL,
     GITHUB_REPO_URL,
     check_for_update_async,
-    open_curation_models_dialog,
     open_models_dialog,
     open_update_dialog,
 )
@@ -103,18 +102,6 @@ class MainWindow(QMainWindow):
             )
         )
         lang_bar.addWidget(self.models_btn)
-
-        # Second panel, not more rows in the first: these come from the
-        # anime_tools catalog, are curation-only, and several are multi-GB
-        # opt-ins a trainer-only user never wants.
-        self.curation_models_btn = QPushButton(t("curation_models_btn"))
-        self.curation_models_btn.setToolTip(t("curation_models_btn_tooltip"))
-        self.curation_models_btn.clicked.connect(
-            lambda: open_curation_models_dialog(
-                self, on_models_changed=self._reload_image_tab_kb
-            )
-        )
-        lang_bar.addWidget(self.curation_models_btn)
 
         self.update_btn = QPushButton(t("update_btn"))
         self.update_btn.setToolTip(t("update_btn_tooltip"))

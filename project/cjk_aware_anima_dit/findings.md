@@ -1103,15 +1103,16 @@ weights (NC data) at runtime is fine; nothing is bundled. `OcrRequest()` is
 therefore detect-only (no PP-OCRv6 recognizer loaded); `--detector ppocr
 --reader ppocr` remains the explicit torch-free pair, and `--mask_dir` (the
 mask-component layer) still requires `--detector ppocr`. Docstrings
-(`stages/ocr.py`, `ocr/animetext.py`, `stages/CLAUDE.md`, `docs/contract.md`,
-`examples/ocr.py`) and the three request tests follow; the registry fixture
+(`stages/ocr.py`, `ocr/animetext.py`, `stages/CLAUDE.md`,
+`../anime_tools/docs/contract.md`, `../anime_tools/examples/ocr.py`) and the
+three request tests follow; the registry fixture
 gained `detector="ppocr"` for its `mask_dir` row. Package suite 983 / 983.
 
 **D3 — trainer.** `run_unmask_r2.py` defaults → `ocr_records_sincos_animetext.jsonl`
 / `mirror_sincos_animetext_sentence` / `te/sincos_animetext_sentence_isoq`;
 `cache_te_ext.py` default records → the animetext file; `reread_records.py`
 (the 3-layer stack's re-read) carries a superseded banner and stays for the
-C10/C11 `_hybrid_vl` reproducibility. The trainer never wired a `make ocr`
+C10/C11 `_hybrid_vl` reproducibility. The trainer never wired an `ocr` make
 target, so nothing else changes here.
 
 **What the line leaves open.** Whether the doubled SFX-per-page captions

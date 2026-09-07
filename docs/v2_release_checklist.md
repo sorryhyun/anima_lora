@@ -92,9 +92,12 @@ offline installed-probe); `library/downloads.py` now adds the Anima-only rows
 and concatenates it, and every `make download-*` plus both GUI Models panels
 read that one list. Follow-ups this leaves:
 
-- [ ] GUI: the new **Curation models** panel renders every package row,
-      including the OCR stack and `tagger_onnx`. Decide whether the trainer
-      filters any of them out (see §2 — MIT is the live question).
+- [x] GUI: one Models modal, two tabs (**Anima** / **Curation
+      (anime_tools)**), rows scrolling inside each tab so the log pane stays
+      visible. Shared token field, shared log, one QProcess.
+- [ ] The Curation tab renders every package row, including the OCR stack and
+      `tagger_onnx`. Decide whether the trainer filters any of them out (see
+      §2 — MIT is the live question).
 - [ ] `docs/guidelines/가이드북.md` / `ガイドブック.md` / `指南书.md`: the
       English `guidebook.md` model-download block changed (first-run set no
       longer includes SAM3/MIT; `download-list` / `download-model` are new).
@@ -118,13 +121,13 @@ read that one list. Follow-ups this leaves:
       either annotate or move to `_archive/`.
 - [ ] `docs/v2_release_plan.md`: add a banner pointing here as the live
       checklist.
-- [ ] `make test-unit` includes `tests/test_doc_refs.py`, which currently fails
-      on **11** stale refs (measured 2026-09-07): 8 in the CJK research tree
-      pointing at sibling-repo paths (`docs/contract.md`, `examples/ocr.py`,
-      `docs/position_captions.md`, `make ocr` in
-      `project/cjk_aware_anima_dit/{findings,plan_det}.md`) and 3 more from
-      this file quoting them on line 98. Fix or allowlist before the tag — it
-      is a merge gate.
+- [x] `make test-unit` includes `tests/test_doc_refs.py`, which failed on 11
+      stale refs in the CJK research tree — sibling-repo paths written as if
+      they were this repo's, plus a make target that never existed. Fixed at
+      the source rather than allowlisted: the package's files now carry their
+      real `../anime_tools/` prefix (which the linter skips, correctly — they
+      are not this repo's to verify) and the two prose mentions of an `ocr`
+      make target are reworded. `test_doc_refs` is green.
 
 ## 4. Scripts / preprocess cleanup
 
@@ -168,7 +171,8 @@ Detail and rationale in that doc; listed here so nothing gets lost.
 
 ## 6. Merge gates
 
-- [ ] `make test-unit` green (including `test_doc_refs`).
+- [ ] `make test-unit` green (including `test_doc_refs`). *Green as of
+      `2026-09-07`: 1647 passed, 1 skipped — re-check before the tag.*
 - [ ] `make preprocess` on a small shard from a **fresh** clone with SAM3 never
       downloaded — must complete with no mask-related error.
 - [ ] `make lora` on that shard trains unmasked by default.

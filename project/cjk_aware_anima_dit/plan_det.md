@@ -76,8 +76,8 @@ gate is **619 SFX rows** and no `/ 99` figure converts to it; see
 - **D3 DONE** — package `ae6f33e` (pushed, pinned in `pyproject.toml`, `uv
   lock` + `uv sync`): `OcrRequest` defaults `--detector animetext --reader
   vl` (detect-only engine; `--mask_dir` still rides `--detector ppocr`);
-  `stages/ocr.py`, `stages/CLAUDE.md`, `docs/contract.md`, `examples/ocr.py`
-  + the request tests follow. Trainer: `run_unmask_r2.py` / `cache_te_ext.py`
+  `stages/ocr.py`, `stages/CLAUDE.md`, `../anime_tools/docs/contract.md`,
+  `../anime_tools/examples/ocr.py` + the request tests follow. Trainer: `run_unmask_r2.py` / `cache_te_ext.py`
   default to `ocr_records_sincos_animetext.jsonl` + the animetext mirror /
   cache; `reread_records.py` carries a superseded banner (kept for the
   C10/C11 `_hybrid_vl` files). `plan_ocr.md` O5 note updated.
@@ -148,8 +148,8 @@ records stay `hybrid_vl`.
 ### D3 — flip (½ day) — DONE 2026-09-06, PP-OCRv6 retired outright (not only under `--reader vl`)
 
 - `OcrRequest --detector` default → `animetext` **when `--reader vl`**
-  (`ppocr` + DB stays the torch-free default); `make ocr` docs, the
-  `captions` skill's OCR note, `docs/position_captions.md`.
+  (`ppocr` + DB stays the torch-free default); the package's OCR stage docs,
+  the `captions` skill's OCR note, `../anime_tools/docs/position_captions.md`.
 - Trainer: pin bump + `uv lock`; `reread_records.py` / `cache_te_ext.py` /
   `run_unmask_r2.py` defaults → the animetext records if D2 passed.
 - `plan_ocr.md` O5: detector half retired, segmentation half stays parked.

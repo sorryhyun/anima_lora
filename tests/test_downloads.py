@@ -158,16 +158,42 @@ def test_every_download_target_resolves(monkeypatch):
 
 
 def test_models_dialog_rows_come_from_the_catalog():
-    """Both GUI panels render Assets and run ``download-model <id>``; the id has
-    to be one the task can resolve."""
+    """Both tabs render Assets and run ``download-model <id>``; the id has to be
+    one the task can resolve, and every labelled row has to be a real one."""
     pytest.importorskip("PySide6")
     import tasks
-    from gui.system_dialog import _TITLE_KEYS, CurationModelsDialog, ModelsDialog
+    from gui.system_dialog import _TITLE_KEYS
 
     assert "download-model" in tasks.COMMANDS
-    assert ModelsDialog.assets is not CurationModelsDialog.assets
-    known = set(DL.by_id())
-    assert set(_TITLE_KEYS) <= known
+    assert set(_TITLE_KEYS) <= set(DL.by_id())
+
+
+def test_the_two_tabs_show_the_two_catalog_halves():
+    """One modal, one QProcess, one log — the split is a tab, so neither list
+    grows long enough to push the log pane off the dialog."""
+    import os
+
+    pytest.importorskip("PySide6")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from gui.system_dialog import ModelsDialog
+
+    QApplication.instance() or QApplication([])
+    dlg = ModelsDialog()
+    try:
+        assert dlg.tabs.count() == 2
+        anima, curation = dlg._panels
+        assert [a.id for a in anima.assets()] == [a.id for a in DL.catalog()]
+        assert [a.id for a in curation.assets()] == [
+            a.id for a in DL.curation_catalog()
+        ]
+        # Busy disables every button on *both* tabs: the dialog runs one job.
+        dlg._set_busy(True)
+        assert not any(b.isEnabled() for p in dlg._panels for _a, _s, b in p._rows)
+        assert not any(p.all_btn.isEnabled() for p in dlg._panels)
+    finally:
+        dlg.close()
 
 
 def test_every_title_key_exists_in_every_language():
@@ -178,9 +204,9 @@ def test_every_title_key_exists_in_every_language():
     from gui.system_dialog import _TITLE_KEYS
 
     extra = (
-        "curation_models_title",
         "curation_models_intro",
-        "curation_models_btn",
+        "models_tab_anima",
+        "models_tab_curation",
         "models_download_missing",
         "models_all_installed",
         "models_used_by",

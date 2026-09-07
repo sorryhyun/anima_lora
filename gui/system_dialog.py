@@ -18,12 +18,15 @@ from PySide6.QtGui import QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
+    QTabWidget,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -191,67 +194,56 @@ class _HFLoginThread(QThread):
         self.done.emit(result)
 
 
-class _CatalogDialog(_StreamingDialog):
-    """One row per catalog Asset: label · status · download button.
+class _CatalogPanel(QWidget):
+    """One tab: a "fetch everything" button over one catalog half's rows.
 
-    Subclasses supply the rows and the "download everything" behaviour; the row
-    renderer, the offline re-probe after a run and the busy plumbing are shared,
-    so the two panels cannot drift apart the way the old hand-kept table did.
+    Rows scroll inside the tab, so a catalog that grows (the package's is at 15
+    and counting) never pushes the log pane off the dialog. Downloads run on the
+    owning dialog's single QProcess — one job at a time across both tabs.
     """
 
-    #: i18n keys for the window title and the paragraph above the rows.
-    title_key = "models_title"
-    intro_key = "models_intro"
-    #: Show the HuggingFace token field (gated repos need it).
-    wants_auth = False
-
-    # Emitted after any successful (exit_code 0) download run so live tabs can
-    # pick up freshly-installed assets — e.g. ImageViewerTab reloading the
-    # danbooru tag KB — without an app restart.
-    models_changed = Signal()
-
-    def __init__(self, parent=None):
-        # (asset, status_label, button) — _after_finished re-probes every row,
-        # because one run can install several.
+    def __init__(self, dialog: "ModelsDialog", intro_key: str, rows_fn, all_fn):
+        super().__init__(dialog)
+        self._dialog = dialog
+        self._assets_fn = rows_fn
+        self._all_fn = all_fn
+        # (asset, status_label, button) — refreshed together after any run,
+        # because one target installs several rows.
         self._rows: list[tuple[object, QLabel, QPushButton]] = []
-        self._login_thread: _HFLoginThread | None = None
-        super().__init__(t(self.title_key), parent)
 
-    # -- subclass hooks ----------------------------------------------------
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
 
-    def assets(self) -> tuple:
-        """The catalog rows this panel shows, in catalog order."""
-        raise NotImplementedError
-
-    def _all_args(self) -> list[str] | None:
-        """argv for the top button, or None when there is nothing to do."""
-        raise NotImplementedError
-
-    def _all_label(self) -> str:
-        raise NotImplementedError
-
-    # -- build -------------------------------------------------------------
-
-    def _build_actions(self, layout: QVBoxLayout) -> None:
-        if self.wants_auth:
-            self._build_auth(layout)
-
-        intro = QLabel(t(self.intro_key))
+        intro = QLabel(t(intro_key))
         intro.setWordWrap(True)
         intro.setStyleSheet(f"color:{tok('text_dim')};")
-        layout.addWidget(intro)
+        outer.addWidget(intro)
 
         all_row = QHBoxLayout()
-        self.all_btn = QPushButton(self._all_label())
+        self.all_btn = QPushButton()
         apply_variant(self.all_btn, "success")
         self.all_btn.clicked.connect(self._download_all)
         all_row.addWidget(self.all_btn)
         all_row.addStretch()
-        layout.addLayout(all_row)
+        outer.addLayout(all_row)
 
+        body = QWidget()
+        rows_lay = QVBoxLayout(body)
+        rows_lay.setContentsMargins(0, 0, 0, 0)
         for asset in self.assets():
-            layout.addLayout(self._build_row(asset))
-        self._refresh_all_btn()
+            rows_lay.addLayout(self._build_row(asset))
+        rows_lay.addStretch()
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setWidget(body)
+        outer.addWidget(scroll, 1)
+
+        self.refresh()
+
+    def assets(self) -> tuple:
+        return self._assets_fn()
 
     def _build_row(self, asset) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -268,30 +260,98 @@ class _CatalogDialog(_StreamingDialog):
 
         btn = QPushButton()
         btn.clicked.connect(
-            lambda _checked=False, a=asset: self._run(["download-model", a.id])
+            lambda _checked=False, a=asset: self._dialog.run_download(
+                ["download-model", a.id]
+            )
         )
         row.addWidget(btn)
 
         self._rows.append((asset, status, btn))
-        self._paint_row(asset, status, btn)
         return row
 
-    def _paint_row(self, asset, status: QLabel, btn: QPushButton) -> None:
-        installed = asset.installed
-        status.setText(t("models_installed") if installed else t("models_missing"))
-        status.setStyleSheet(
-            f"color:{tok('ok')};" if installed else f"color:{tok('err')};"
-        )
-        btn.setText(t("models_redownload") if installed else t("models_download"))
-
-    def _refresh_all_btn(self) -> None:
-        self.all_btn.setText(self._all_label())
-        self.all_btn.setEnabled(self._all_args() is not None)
+    def refresh(self) -> None:
+        """Re-probe every row. Offline (a path stat or a hub-cache lookup), so
+        this is cheap enough to run after every job."""
+        for asset, status, btn in self._rows:
+            installed = asset.installed
+            status.setText(t("models_installed") if installed else t("models_missing"))
+            status.setStyleSheet(
+                f"color:{tok('ok')};" if installed else f"color:{tok('err')};"
+            )
+            btn.setText(t("models_redownload") if installed else t("models_download"))
+        label, args = self._all_fn(self.assets())
+        self.all_btn.setText(label)
+        self.all_btn.setEnabled(args is not None)
 
     def _download_all(self) -> None:
-        args = self._all_args()
+        _label_text, args = self._all_fn(self.assets())
         if args is not None:
-            self._run(args)
+            self._dialog.run_download(args)
+
+    def set_busy(self, busy: bool) -> None:
+        _label_text, args = self._all_fn(self.assets())
+        self.all_btn.setEnabled(not busy and args is not None)
+        for _asset, _status, btn in self._rows:
+            btn.setEnabled(not busy)
+
+
+def _anima_all(_assets) -> tuple[str, list[str] | None]:
+    """The Anima tab's top button is the first-run set, not "every row": it
+    deliberately also pulls the two curation rows a default preprocess needs
+    (tagger checkpoint, tag KB) while SAM3, OCR and the vocab pack stay opt-in."""
+    return t("models_download_all"), ["download-models"]
+
+
+def _missing_all(assets) -> tuple[str, list[str] | None]:
+    """The curation tab's: only what is missing. The full catalog is several GB
+    and most of it is opt-in per stage."""
+    missing = [a.id for a in assets if not a.installed]
+    if not missing:
+        return t("models_all_installed"), None
+    return t("models_download_missing", n=len(missing)), ["download-model", *missing]
+
+
+class ModelsDialog(_StreamingDialog):
+    """Model downloads: a HuggingFace token field, two catalog tabs, one log.
+
+    The tabs are the two halves of the catalog — ``library/downloads.py``'s
+    Anima rows and ``anime_tools.downloads``' curation rows. Splitting them
+    inside one modal keeps each list short and keeps the token field, the log
+    and the single QProcess shared, which two dialogs could not do.
+    """
+
+    # Emitted after any successful (exit_code 0) download run so live tabs can
+    # pick up freshly-installed assets — e.g. ImageViewerTab reloading the
+    # danbooru tag KB — without an app restart.
+    models_changed = Signal()
+
+    def __init__(self, parent=None):
+        self._panels: list[_CatalogPanel] = []
+        self._login_thread: _HFLoginThread | None = None
+        super().__init__(t("models_title"), parent)
+        self.resize(780, 620)
+
+    def run_download(self, args: list[str]) -> None:
+        """Panels call this; the dialog owns the one QProcess."""
+        self._run(args)
+
+    def _build_actions(self, layout: QVBoxLayout) -> None:
+        self._build_auth(layout)
+
+        self.tabs = QTabWidget()
+        for label_key, intro_key, rows_fn, all_fn in (
+            ("models_tab_anima", "models_intro", DL.catalog, _anima_all),
+            (
+                "models_tab_curation",
+                "curation_models_intro",
+                DL.curation_catalog,
+                _missing_all,
+            ),
+        ):
+            panel = _CatalogPanel(self, intro_key, rows_fn, all_fn)
+            self._panels.append(panel)
+            self.tabs.addTab(panel, t(label_key))
+        layout.addWidget(self.tabs, 1)
 
     # -- auth --------------------------------------------------------------
 
@@ -368,16 +428,14 @@ class _CatalogDialog(_StreamingDialog):
 
     def _set_busy(self, busy: bool) -> None:
         super()._set_busy(busy)
-        self.all_btn.setEnabled(not busy and self._all_args() is not None)
-        for _asset, _status, btn in self._rows:
-            btn.setEnabled(not busy)
+        for panel in self._panels:
+            panel.set_busy(busy)
 
     def _after_finished(self, exit_code: int) -> None:
-        # Re-probe every row: a group target installs several at once, and the
-        # probe is offline, so this costs nothing.
-        for asset, status, btn in self._rows:
-            self._paint_row(asset, status, btn)
-        self._refresh_all_btn()
+        # Both tabs: `download-models` spans them, and the Anima tab's button
+        # installs curation rows.
+        for panel in self._panels:
+            panel.refresh()
 
         if exit_code != 0:
             QMessageBox.warning(
@@ -398,56 +456,6 @@ class _CatalogDialog(_StreamingDialog):
         if self._login_thread is not None and self._login_thread.isRunning():
             self._login_thread.wait(2000)
         super().closeEvent(ev)
-
-
-class ModelsDialog(_CatalogDialog):
-    """The Anima weights — base DiT / text encoder / VAE, PE-Core, vocab pack.
-
-    The top button runs ``download-models``, which is the first-run set and not
-    "every row": it deliberately also pulls the curation rows a default
-    preprocess needs (the tagger checkpoint and the tag KB), while SAM3, the
-    OCR stack and the vocab pack stay opt-in with their own buttons.
-    """
-
-    title_key = "models_title"
-    intro_key = "models_intro"
-    wants_auth = True
-
-    def assets(self) -> tuple:
-        return DL.catalog()
-
-    def _all_args(self) -> list[str]:
-        return ["download-models"]
-
-    def _all_label(self) -> str:
-        return t("models_download_all")
-
-
-class CurationModelsDialog(_CatalogDialog):
-    """The ``anime_tools`` catalog — tagger, SAM3, PE-Spatial, tag KB, OCR.
-
-    Read straight out of the package, so a weight added there shows up here with
-    no change on this side. The top button fetches only what is missing: the
-    full catalog is several GB and most of it (the OCR stack, the ONNX export)
-    is opt-in per stage.
-    """
-
-    title_key = "curation_models_title"
-    intro_key = "curation_models_intro"
-    wants_auth = True
-
-    def assets(self) -> tuple:
-        return DL.curation_catalog()
-
-    def _all_args(self) -> list[str] | None:
-        missing = [a.id for a in self.assets() if not a.installed]
-        return ["download-model", *missing] if missing else None
-
-    def _all_label(self) -> str:
-        missing = sum(1 for a in self.assets() if not a.installed)
-        if not missing:
-            return t("models_all_installed")
-        return t("models_download_missing", n=missing)
 
 
 GITHUB_REPO = "sorryhyun/anima_lora"
@@ -750,13 +758,6 @@ def open_models_dialog(parent=None, on_models_changed=None):
     dlg.exec()
 
 
-def open_curation_models_dialog(parent=None, on_models_changed=None):
-    dlg = CurationModelsDialog(parent)
-    if on_models_changed is not None:
-        dlg.models_changed.connect(on_models_changed)
-    dlg.exec()
-
-
 def open_update_dialog(parent=None):
     UpdateDialog(parent).exec()
 
@@ -801,8 +802,6 @@ __all__ = [
     "GITHUB_ISSUES_URL",
     "GITHUB_REPO_URL",
     "ModelsDialog",
-    "CurationModelsDialog",
-    "open_curation_models_dialog",
     "UpdateDialog",
     "check_for_update_async",
     "open_models_dialog",
