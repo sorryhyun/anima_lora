@@ -277,6 +277,24 @@ def denest(boxes: list[Box], policy: str, th: float = 0.85) -> list[Box]:
         elif policy == "inner":
             if sum(area(o) < area(b) and _contain(o, b) >= th for o in others) >= 2:
                 continue
+        elif policy == "inner1":
+            # inner, plus: a box that is the ONLY one nested in a larger box is
+            # the detector doubling that line, not a column — drop the child
+            inside = sum(area(o) < area(b) and _contain(o, b) >= th for o in others)
+            if inside >= 2:
+                continue
+            if any(
+                area(o) > area(b)
+                and _contain(b, o) >= th
+                and sum(
+                    area(p) < area(o) and _contain(p, o) >= th
+                    for p in boxes
+                    if p is not o
+                )
+                == 1
+                for o in others
+            ):
+                continue
         keep.append(b)
     return keep
 
@@ -704,7 +722,7 @@ def main() -> None:
     ap.add_argument(
         "--nest",
         nargs="*",
-        choices=["raw", "outer", "inner"],
+        choices=["raw", "outer", "inner", "inner1"],
         default=["raw", "outer", "inner"],
     )
     ap.add_argument("--device", default="cuda")
