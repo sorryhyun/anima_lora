@@ -73,9 +73,9 @@ class ExtTokenizeStrategy:
 OCR_FORMATS = ("sentence", "order", "tags", "presence")
 """``sentence`` — a trailing text clause after the tag bag and any position
 clauses, ``Japanese text reads as "…", "…".`` (the anime_tools grammar's
-``TEXT_PREFIXES`` clause kind, plan_base1 B2), speech lines in reading order,
-then ``Japanese SFX reads as "…".`` with the ``kind: sfx`` lines, deduplicated
-per sound unit (plan_ocr O4 / O4c — the SFX reader reads hand-lettered
+``TEXT_PREFIXES`` clause kind, plan_base1 B2), the speech lines in reading
+order deduplicated per line said (2026-09-07), then ``Japanese SFX reads as
+"…".`` with the ``kind: sfx`` lines, deduplicated per sound unit (plan_ocr O4 / O4c — the SFX reader reads hand-lettered
 onomatopoeia; before 2026-09-06 the SFX lines were skipped, ``--drop_sfx``
 reproduces that); ``order`` — one phrase, ``Japanese text in following order:
 "…", "…"``, the lines in the records' (reading) order; ``tags`` — the C2–C6
@@ -148,20 +148,24 @@ def ocr_text_clauses(
     which is which; without it the :mod:`ocr_sfx` text rule does
     (:func:`ocr_sfx.split_lines`), as C10 trained. Without ``sfx_sentence``
     the SFX lines are skipped (decision 2 amended, see ``OCR_FORMATS``).
-    ``text_clause`` quotes each line and defuses an inner ASCII quote. The SFX
-    lines are deduplicated by :func:`ocr_sfx.dedupe_sfx` (one per sound unit,
-    first in reading order kept; C11 trained without this)."""
+    ``text_clause`` quotes each line and defuses an inner ASCII quote. Each
+    kind is deduplicated on its own key, first in reading order kept: SFX by
+    :func:`ocr_sfx.dedupe_sfx` (one per sound unit; C11 trained without this)
+    and speech by :func:`ocr_sfx.dedupe_speech` (one per line said verbatim —
+    2026-09-07, the user's call on the merge sheet; every arm through C11
+    trained without this, so a rebuilt cache is not the corpus they saw)."""
     from anime_tools.captions.position_clauses import text_clause
-    from ocr_sfx import dedupe_sfx, split_lines
+    from ocr_sfx import dedupe_sfx, dedupe_speech, split_lines
 
     if kinds is None:
         speech, sfx = split_lines(lines)
     else:
         speech = [ln for ln, k in zip(lines, kinds, strict=True) if k == "speech"]
         sfx = [ln for ln, k in zip(lines, kinds, strict=True) if k == "sfx"]
-    out = [text_clause(speech)] if speech else []
-    # a repeated SFX (じゅぽ, じゅぽ, じゅぽじゅぽ) is one sound, not three lines
-    # (2026-09-06, user's call); speech repeats are content and stay
+    # a page read as はあ seven times is not seven lines of dialogue
+    # (2026-09-07, user's call), and a repeated SFX (じゅぽ, じゅぽ, じゅぽじゅぽ)
+    # is one sound, not three lines (2026-09-06)
+    out = [text_clause(dedupe_speech(speech))] if speech else []
     sfx = dedupe_sfx(sfx)
     if sfx_sentence and sfx:
         out.append(text_clause(sfx, sfx=True))

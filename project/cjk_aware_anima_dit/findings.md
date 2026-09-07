@@ -1393,3 +1393,51 @@ here**: the sincos labels are boxes + transcriptions only
 pages, which are the user's own dataset and not ours to distribute; the COO
 half needs Manga109-s, which may not be redistributed at all. Whether to
 publish a page-free crop pack is the user's call, not this entry's.
+
+## O4d — a caption says each line once, and a box too small for what was read never gets there (2026-09-07)
+
+Two user calls off the merge sheet
+(`probes/ocr_merge_sheet.py`, 100 of 859 sincos sidecars), no arm — the same
+shape as O4c. Both land in the package (`anime_tools` 95e1a22, pin bumped),
+and the research builder mirrors the first
+(`cache_te_ext.ocr_text_clauses`; every arm through C11 trained without it, so
+a rebuilt cache is **not** the corpus they saw).
+
+**1. "speech ocr should be dedupped too."** The SFX clause has been one per
+sound since O4c; the speech clause said every line. A page of panting is read
+as `はあ` seven times and the caption said it seven times (12971620) —
+**141 of the 2,167 det-passing speech lines (6.5 %) on 90 of the 616 pages
+that have speech** repeat a neighbour verbatim, which teaches a count nobody
+meant. `ocr_sfx.dedupe_speech` / `speech_groups` collapse them on **exact
+text** (whitespace stripped), first in reading order kept. Deliberately *not*
+`sfx_key`: that key folds `はっ` with `はー` and `んっ♡` into `ん` (it would
+take 266 lines, 12.3 %), and two different words of dialogue are two lines
+however alike they sound. Only the same string twice is one line.
+
+**2. "if bbox is too small like 13442495 it can be excluded."** That page's
+single line is a 39×22 box over a `HAKU` shop sign, read as four kana —
+**14.6 px a glyph**. `OcrLine.glyph_px` = `sqrt(w·h / len(text.strip()))` is
+the em of the line whichever way it runs (a 19×38 vertical `ん♡` and a 38×19
+horizontal one both answer 19), and `usable_lines` now holds every line to
+`DEFAULT_MIN_GLYPH` **16 px**. Unlike the det floor it exempts nothing — the
+box is always real, scored or not.
+
+Why area-per-glyph and not the box: plain box area does not separate. `ドキ`
+at 17×42 (714 px², a good read) is *smaller* than the 858 px² sign, absolutely
+and relative to its page; what differs is how much box each glyph got. The
+em also catches the other failure the sheet shows — a correct read of a 13–15
+px watermark, credit line or narration strip (`気さくな妹の友達` at 102×16),
+which nothing trained at this resolution can render.
+
+Cost, measured over the 4,218 lines of the 859 sincos sidecars (3,648 clear
+the det floor): the glyph floor takes **173 more (4.7 %)** and empties **31 of
+the 727** sidecars that had a det-passing line. Crops were inspected by hand
+across the boundary (bands 13–16 and 16–19 px): the low band is watermarks,
+credit lines, UI chrome and misreads; the high band is legible balloon text.
+Floors of 14 (2.4 %) and 18 (9.6 %) were the alternatives; 16 is where the
+reads visibly stop being text.
+
+Export carries it as `--ocr_min_glyph` beside `--ocr_min_det`, recorded on
+each row so a report replays what its plan showed. The merge sheet now prints
+`g<px>` per line, greys out and strikes through a line dropped as a repeat,
+and its no-floor contrast drops both floors.

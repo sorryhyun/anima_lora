@@ -352,6 +352,15 @@ call**) done: spam ~2 = C10, adherence flat; blind set `s15_C11_vs_C10`
 (24 pairs, seeds 12/13/14) graded 2026-09-06: **C11 11 – 9 C10, tie 4 = flat inside the floor → blind half PASS** (spam half on one seed); `DROP_KINDS` **flipped** the same evening (`cache_te_ext.DROP_KINDS = {chrome}`, SFX sentence default, `--drop_sfx` = the C10 caption; `findings.md` § O4b). **O5 parked** (user's call, same evening):
 `ocr/kind_seg.py` is written and CPU-smoked, never trained.
 
+**O4d — DONE 2026-09-07 (`findings.md` § O4d), two more user calls without an
+arm:** (1) the **speech** clause is deduplicated too, on exact text rather than
+the SFX key (`ocr_sfx.dedupe_speech`; 141 of 2,167 sincos speech lines, 90
+pages); (2) a **glyph floor** — `OcrLine.glyph_px` = `sqrt(w·h/len)`, the em of
+the line — keeps a box too small for what was read out of the caption
+(`DEFAULT_MIN_GLYPH` 16 px, `--ocr_min_glyph`; 173 more lines, 4.7 %). Package
+95e1a22, pin bumped; `cache_te_ext` mirrors the speech dedupe only (it has no
+boxes).
+
 **O4c — DONE 2026-09-06 night (`findings.md` § O4c), two user calls without
 an arm:** (1) the SFX clause is **deduplicated** per sound unit
 (`ocr_sfx.dedupe_sfx`: `じゅぽ, じゅぽ, じゅぽじゅぽ` → `じゅぽ`; 20 of 168

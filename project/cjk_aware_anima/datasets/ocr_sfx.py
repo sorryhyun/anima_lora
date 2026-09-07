@@ -1,7 +1,8 @@
 """Speech vs SFX for an OCR line — now :mod:`anime_tools.captions.ocr_sfx`.
 
-The rule (``line_kind`` / ``split_lines``) and the per-sound dedupe
-(``sfx_key`` / ``sfx_groups`` / ``dedupe_sfx``) were promoted into the package
+The rule (``line_kind`` / ``split_lines``), the per-sound dedupe (``sfx_key`` /
+``sfx_groups`` / ``dedupe_sfx``) and the per-line speech dedupe
+(``speech_groups`` / ``dedupe_speech``) were promoted into the package
 on 2026-09-07 — Export's ``--combine_ocr`` builds the ``Japanese text reads as
 "…". Japanese SFX reads as "…".`` clauses from them — and this module is the
 research tree's alias so ``from ocr_sfx import …`` keeps working in
@@ -24,10 +25,12 @@ from anime_tools.captions.ocr_sfx import (  # noqa: F401
     _KEY_DROP,
     _repeated,
     dedupe_sfx,
+    dedupe_speech,
     kana_core,
     line_kind,
     sfx_groups,
     sfx_key,
+    speech_groups,
     split_lines,
 )
 
@@ -38,9 +41,11 @@ __all__ = [
     "VOCAL_INITIAL",
     "VOICED_INITIAL",
     "dedupe_sfx",
+    "dedupe_speech",
     "kana_core",
     "line_kind",
     "sfx_groups",
     "sfx_key",
+    "speech_groups",
     "split_lines",
 ]

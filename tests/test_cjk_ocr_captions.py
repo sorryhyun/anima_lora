@@ -175,8 +175,9 @@ def test_sentence_format_adds_the_sfx_clause_from_the_records_kind():
 
 def test_sfx_clause_is_deduplicated_per_sound_unit():
     """A page's SFX lines collapse to one per sound unit (kana core minus
-    sokuon / long vowel, minimal repeating unit), first in reading order kept;
-    speech repeats stay (2026-09-06, user's call)."""
+    sokuon / long vowel, minimal repeating unit), first in reading order kept
+    (2026-09-06, user's call); the speech lines collapse too, but on their own
+    key — the same string twice, folding nothing (2026-09-07)."""
     sfx = _sfx()
     assert sfx.sfx_key("ぱん♡ぱん♡") == "ぱん"
     assert sfx.sfx_key("びくッ") == sfx.sfx_key("びく♡") == "びく"
@@ -198,9 +199,13 @@ def test_sfx_clause_is_deduplicated_per_sound_unit():
     assert m.append_tags(
         "1girl", lines, "sentence", kinds=kinds, sfx_sentence=True
     ) == (
-        '1girl. Japanese text reads as "あっ", "あっ". '
+        '1girl. Japanese text reads as "あっ". '
         'Japanese SFX reads as "じゅぽ", "ぱん♡".'
     )
+    # speech takes the exact string, not the SFX key: はっ and はー sound alike
+    # and fold to one sound, but they are two different lines of dialogue.
+    assert sfx.dedupe_speech(["はっ", "はー", "はっ"]) == ["はっ", "はー"]
+    assert sfx.speech_groups(["はあ", "はぁ", "はあ "]) == [0, 1, 0]
 
 
 def test_ocr_records_by_stem_keeps_kind_and_drops_by_kind(tmp_path):
