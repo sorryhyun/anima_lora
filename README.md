@@ -56,8 +56,8 @@ On Windows the GUI opens automatically when the installer finishes. **Sign in to
 
 ```bash
 cd anima_lora
-make download-models      # first-run set: DiT + Qwen3 TE + QwenImage VAE + PE + tagger + tag DB, into models/
-make download-list        # what is installed and what is missing (offline); SAM3, OCR and the vocab pack are opt-in
+make download-models      # first-run set: DiT + Qwen3 TE + QwenImage VAE + PE + CJK vocab pack + tagger + tag DB, into models/
+make download-list        # what is installed and what is missing (offline), by pack; SAM3 (masking) and OCR are opt-in
 make gui                  # config editor + dataset browser + training monitor
 ```
 
@@ -195,8 +195,8 @@ uv sync
 uv sync --no-group cuda-windows --group rocm-windows
 
 hf auth login             # or just sign in from the GUI — auth is built in now
-make download-models      # first-run set: DiT + Qwen3 TE + QwenImage VAE + PE + tagger + tag DB, into models/
-make download-list        # what is installed and what is missing (offline); SAM3, OCR and the vocab pack are opt-in
+make download-models      # first-run set: DiT + Qwen3 TE + QwenImage VAE + PE + CJK vocab pack + tagger + tag DB, into models/
+make download-list        # what is installed and what is missing (offline), by pack; SAM3 (masking) and OCR are opt-in
 # place training images in image_dataset/ with .txt caption sidecars
 make gui                  # recommended — config editor + dataset browser + training monitor
 ```

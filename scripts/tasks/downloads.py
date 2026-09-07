@@ -13,9 +13,13 @@ This matters because several rows move files out of ``hf``'s ``--local-dir``
 layout after download — once moved, the hub no longer sees them at the path it
 checks and would otherwise re-pull the whole repo. Pass ``--force`` (e.g.
 ``make download-anima ARGS=--force``) to re-fetch regardless.
-``download-models`` continues past a failed component (a gated SAM3 without
-granted access shouldn't abort the Anima download) and reports the failures at
-the end.
+``download-models`` continues past a failed component (one repo timing out
+shouldn't abort the Anima download beside it) and reports the failures at the
+end.
+
+Rows group into **packs** (``DL.PACKS`` — Anima base / PE-Core / CJK vocab pack
+on the trainer side, tagger / tags / masking / OCR / grouping from the package);
+``make download-model`` takes a pack id, a legacy target alias or a row id.
 
 The one target that is not a catalog row is ``download-anima-variant``: it is a
 picker over alternate base DiTs, not a checklist of things a run needs.
@@ -72,23 +76,24 @@ def _fetch(*names: str, extra=None) -> None:
 
 
 def cmd_download_list(_extra):
-    """Print every catalog row with its install state — the offline probe."""
-    for label, rows in (
-        ("anima", DL.catalog()),
-        ("curation (anime_tools)", DL.curation_catalog()),
-    ):
-        print(f"\n{label}")
+    """Print every catalog row with its install state, grouped by pack — the
+    offline probe, no network."""
+    for pack_id, rows in DL.by_pack().items():
+        pack = DL.PACK_BY_ID[pack_id]
+        print(f"\n{pack.title}  [{pack.id}]")
         for a in rows:
             mark = "✓ installed" if a.installed else "✗ MISSING  "
             print(f"  {mark}  {a.id:<17} {a.repo:<46} → {a.location}")
-    print(f"\nGroups: {', '.join(DL.GROUPS)}")
-    print("Fetch by id or group: make download-model ARGS='sam3 pe'")
+    print(f"\nPacks: {', '.join(DL.by_pack())}")
+    print(f"Legacy aliases: {', '.join(DL.GROUP_ALIASES)}")
+    print("Fetch by pack, alias or row id: make download-model ARGS='ocr sam3 pe_core'")
 
 
 def cmd_download_model(extra):
-    """``make download-model ARGS='<id|group>...'`` — the generic front door.
+    """``make download-model ARGS='<pack|alias|id>...'`` — the generic front door.
 
-    This is what the GUI's per-row Download buttons run, for both panels.
+    This is what the GUI's per-row and per-pack Download buttons run, for both
+    panels (``DL.resolve`` does the expansion).
     """
     names = [a for a in (extra or []) if not a.startswith("-")]
     if not names:
@@ -149,17 +154,16 @@ def cmd_download_danbooru_tags(extra):
 
 
 def cmd_download_vocab_pack(extra):
-    """The shipped CJK vocab pack (.safetensors + .json pair)."""
+    """The shipped CJK vocab pack (.safetensors + .json pair).
+
+    Part of ``download-models`` since v2 (``configs/base.toml`` enables it by
+    default); kept as its own target for a re-fetch.
+    """
     _fetch("vocab-pack", extra=extra)
     print(
-        f'  → enable with vocab_pack = "{VOCAB_PACK_REL}/{VOCAB_PACK_STEM}" '
-        "in configs/base.toml"
+        f'  → configs/base.toml selects it with vocab_pack = "{VOCAB_PACK_REL}/'
+        f'{VOCAB_PACK_STEM}" (the v2 default; "" turns it off)'
     )
-
-
-def cmd_download_mit(extra):
-    """MIT text-segmentation net + the ComicTextDetector gate it reads."""
-    _fetch("mit", extra=extra)
 
 
 def cmd_download_anima(extra):
@@ -254,12 +258,12 @@ def cmd_download_anima_variant(_extra):
 
 
 def cmd_download_models(extra):
-    """The first-run set: Anima base, PE, the tagger checkpoint, the tag KB.
+    """The first-run set: Anima base, PE, the CJK vocab pack, the tagger
+    checkpoint, the tag KB.
 
     Deliberately not "everything in the catalog". SAM3 is gated and masking is
-    opt-in since v2, the vocab pack is opt-in, and the OCR stack is a curation
-    concern — each has its own target. See ``DEFAULT_SET`` in
-    ``library/downloads.py``.
+    opt-in since v2 (``download-sam3``), and the OCR stack is opt-in
+    (``download-model ocr``). See ``DEFAULT_SET`` in ``library/downloads.py``.
     """
     failed = DL.fetch_all(DL.resolve(DL.DEFAULT_SET), force=_force(extra))
     if not failed:

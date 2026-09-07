@@ -12,6 +12,11 @@ because ``anime_tools._env.curation_home()`` falls back to ``ANIMA_HOME``, which
 ``scripts/tasks/_common.py`` pins to this checkout. So ``models_dir()`` is
 ``<repo>/models`` and a catalog row writes exactly where a loader here looks.
 
+Rows group into **packs** (:class:`~anime_tools.downloads.Pack`): the
+trainer's ``anima`` / ``pe`` / ``cjk`` plus the package's, minus
+:data:`HIDDEN_PACKS`. ``make download-model`` and the GUI's pack buttons
+address packs, legacy make-target aliases or row ids through :func:`resolve`.
+
 Same rule as the package's: **this is the single source of truth for weight
 locations.** ``library/vision/encoders.py`` and ``library/anima/vocab_pack.py``
 import their defaults from here; a path spelled in a loader is a Download button
@@ -35,7 +40,12 @@ from library.env import anima_home
 if not os.environ.get("ANIMA_HOME"):
     os.environ["ANIMA_HOME"] = str(anima_home())
 
-from anime_tools.downloads import Asset, catalog as _curation_catalog  # noqa: E402
+from anime_tools.downloads import (  # noqa: E402
+    PACKS as _CURATION_PACKS,
+    Asset,
+    Pack,
+    catalog as _package_catalog,
+)
 
 
 def models_dir() -> Path:
@@ -78,6 +88,55 @@ def default_vocab_pack_dir() -> Path:
     return models_dir() / VOCAB_PACK_DIR
 
 
+def default_vocab_pack_prefix() -> Path:
+    """``<models_dir>/vocab_packs/anima_cjk_vocab_pack`` — the path prefix
+    (no suffix) ``configs/base.toml`` ships as ``vocab_pack`` and the loader's
+    auto-fetch recognises as the shipped pack."""
+    return default_vocab_pack_dir() / VOCAB_PACK_STEM
+
+
+# The trainer's packs — what a "Download pack" button on the Anima tab is a
+# button *for*. The package's own (tagger / tags / masking / ocr / grouping)
+# follow them in ``PACKS``; a row's ``pack`` is one of these ids.
+TRAINER_PACKS: tuple[Pack, ...] = (
+    Pack(
+        "anima",
+        "Anima base",
+        "The DiT, the Qwen3-0.6B text encoder and the Qwen-Image VAE — every "
+        "training and inference run needs all three.",
+    ),
+    Pack(
+        "pe",
+        "PE-Core",
+        "PE-Core-L14-336: CMMD validation and IP-Adapter conditioning. "
+        "PE-Spatial, the grouping tower, is the Grouping pack.",
+    ),
+    Pack(
+        "cjk",
+        "CJK vocab pack",
+        "Extra text-encoder rows for Japanese / Korean / Chinese caption and "
+        "prompt spans. On by default since v2; English text is bit-exact "
+        "either way.",
+    ),
+)
+
+# Package packs the trainer does not offer. ``text_mask`` (the MIT UNet++ text
+# segmenter + its ComicTextDetector gate) went with v2's in-image text masking:
+# the rows stay in the package catalog for its own users, but they are not
+# listed, resolved or downloaded from here.
+HIDDEN_PACKS: tuple[str, ...] = ("text_mask",)
+
+PACKS: tuple[Pack, ...] = (
+    *TRAINER_PACKS,
+    *(p for p in _CURATION_PACKS if p.id not in HIDDEN_PACKS),
+)
+"""Display order: the trainer's packs, then the package's that survive
+:data:`HIDDEN_PACKS`. ``make download-model`` and the GUI accept a pack id
+wherever they accept a row id."""
+
+PACK_BY_ID: dict[str, Pack] = {p.id: p for p in PACKS}
+
+
 def _anima_row(kind: str, filename: str, title: str, used_by: str) -> Asset:
     """One of the three Anima base weights.
 
@@ -86,6 +145,7 @@ def _anima_row(kind: str, filename: str, title: str, used_by: str) -> Asset:
     """
     return Asset(
         id=f"anima_{kind}",
+        pack="anima",
         title=title,
         repo=ANIMA_REPO,
         files=(f"split_files/{kind_dir(kind)}/{filename}",),
@@ -128,6 +188,7 @@ def catalog() -> tuple[Asset, ...]:
         ),
         Asset(
             id="pe_core",
+            pack="pe",
             title="PE-Core-L14-336",
             repo=PE_CORE_REPO,
             files=(PE_CORE_FILENAME,),
@@ -138,22 +199,26 @@ def catalog() -> tuple[Asset, ...]:
         ),
         Asset(
             id="vocab_pack",
+            pack="cjk",
             title="CJK vocab pack",
             repo=VOCAB_PACK_REPO,
             files=(f"{VOCAB_PACK_STEM}.safetensors", f"{VOCAB_PACK_STEM}.json"),
             dest=default_vocab_pack_dir(),
-            used_by="Japanese / Korean / Chinese caption spans (opt-in)",
-            notes="~285 MB. Inert until `vocab_pack = "
-            f'"models/{VOCAB_PACK_DIR}/{VOCAB_PACK_STEM}"` is set in '
-            "configs/base.toml; changing it needs "
-            "`make preprocess-te ARGS=--overwrite` for CJK captions.",
+            used_by="Japanese / Korean / Chinese caption and prompt spans "
+            "(on by default since v2)",
+            notes="~285 MB. `vocab_pack` in configs/base.toml points here by "
+            'default (`""` turns it off); the loader fetches this row itself '
+            "when the default is missing. Changing the pack needs "
+            "`make preprocess-te ARGS=--overwrite` for CJK captions; EN-only "
+            "captions are bit-exact either way.",
         ),
     )
 
 
 def curation_catalog() -> tuple[Asset, ...]:
-    """The ``anime_tools`` rows, verbatim — tagger, SAM3, OCR, the tag KB."""
-    return _curation_catalog()
+    """The ``anime_tools`` rows — tagger, SAM3, OCR, the tag KB — minus the
+    packs in :data:`HIDDEN_PACKS`."""
+    return tuple(a for a in _package_catalog() if a.pack not in HIDDEN_PACKS)
 
 
 def full_catalog() -> tuple[Asset, ...]:
@@ -165,29 +230,59 @@ def by_id() -> dict[str, Asset]:
     return {a.id: a for a in full_catalog()}
 
 
-# ``make download-<target>`` → the rows it fetches. Every legacy target name is
-# kept: they are in `make help`, in the guidebook and in three translations.
-GROUPS: dict[str, tuple[str, ...]] = {
+def by_pack(rows: tuple[Asset, ...] | None = None) -> dict[str, tuple[Asset, ...]]:
+    """Rows bucketed by pack — :data:`PACKS` order, catalog order inside each,
+    packs with no rows left out. ``rows`` defaults to :func:`full_catalog`."""
+    rows = full_catalog() if rows is None else rows
+    out: dict[str, tuple[Asset, ...]] = {}
+    for pack in PACKS:
+        picked = tuple(a for a in rows if a.pack == pack.id)
+        if picked:
+            out[pack.id] = picked
+    return out
+
+
+# Legacy ``make download-<target>`` names that are not pack ids, or that mean
+# something narrower than the pack of the same name. Kept because they are in
+# `make help`, the guidebook and its three translations:
+#
+# * ``pe`` — the make target has always fetched PE-Core *and* PE-Spatial,
+#   while the ``pe`` pack is PE-Core alone (PE-Spatial belongs to ``grouping``).
+# * ``tagger`` — ``make download-tagger`` (and the ``make preprocess``
+#   auto-fetch) means the small checkpoint row only, never the gated backbone;
+#   the ``tagger`` *pack* (checkpoint + backbone + ONNX trace) is reached by
+#   spelling its rows, which is what the GUI's pack button does.
+GROUP_ALIASES: dict[str, tuple[str, ...]] = {
     "anima": ("anima_dit", "anima_te", "anima_vae"),
     "pe": ("pe_core", "pe_spatial"),
     "pe-spatial": ("pe_spatial",),
     "sam3": ("sam3",),
-    "mit": ("mit_text", "ctd_onnx"),
     "tagger": ("tagger",),
     "tagger-model": ("tagger", "tagger_backbone"),
     "danbooru-tags": ("danbooru_tags", "danbooru_tags_en"),
     "vocab-pack": ("vocab_pack",),
 }
 
-# What a first-run `make download-models` fetches. Deliberately not "everything
-# missing": SAM3 is gated (masking is opt-in), the vocab pack is opt-in, and the
-# OCR stack is a curation concern the trainer does not need to install.
+# Every multi-row token ``resolve`` accepts: the packs (pack id → its rows),
+# overlaid with the aliases above where the names collide. Ids only — the
+# rows themselves are rebuilt per call so they follow the home.
+GROUPS: dict[str, tuple[str, ...]] = {
+    **{pid: tuple(a.id for a in rows) for pid, rows in by_pack().items()},
+    **GROUP_ALIASES,
+}
+
+# What a first-run `make download-models` fetches — the mandatory set: the
+# Anima base, both PE towers, the tagger checkpoint, the tag KB, and (since v2)
+# the CJK vocab pack, because ``configs/base.toml`` now enables it. Not
+# "everything missing": SAM3 is gated and masking is opt-in (``make
+# download-sam3``), and the OCR stack is opt-in (``make download-model ocr``).
 DEFAULT_SET: tuple[str, ...] = (
     "anima_dit",
     "anima_te",
     "anima_vae",
     "pe_core",
     "pe_spatial",
+    "vocab_pack",
     "tagger",
     "danbooru_tags",
     "danbooru_tags_en",
@@ -195,20 +290,33 @@ DEFAULT_SET: tuple[str, ...] = (
 
 
 def resolve(names: list[str] | tuple[str, ...]) -> list[Asset]:
-    """Asset ids and/or ``GROUPS`` keys → rows, in catalog order, deduped.
+    """Tokens → rows, in catalog order, deduped.
 
-    Raises ``KeyError`` naming the unknown token, so a typo in a make target
-    fails loudly rather than downloading nothing.
+    A token is looked up as a legacy alias (:data:`GROUP_ALIASES`) first, then
+    as a pack id (:data:`PACKS`), then as a row id — so ``pe`` keeps its
+    two-tower make-target meaning and ``ocr`` expands to the pack. Raises
+    ``KeyError`` naming the unknown token, so a typo in a make target fails
+    loudly rather than downloading nothing.
     """
     assets = by_id()
+    packed = by_pack()
     picked: list[str] = []
     for name in names:
-        ids = GROUPS.get(name, (name,))
+        if name in GROUP_ALIASES:
+            ids = GROUP_ALIASES[name]
+        elif name in packed:
+            ids = tuple(a.id for a in packed[name])
+        elif name in assets:
+            ids = (name,)
+        else:
+            raise KeyError(
+                f"unknown model id {name!r} — known ids: {', '.join(assets)}; "
+                f"packs: {', '.join(packed)}; aliases: {', '.join(GROUP_ALIASES)}"
+            )
         unknown = [i for i in ids if i not in assets]
         if unknown:
             raise KeyError(
-                f"unknown model id {', '.join(unknown)!r} — known ids: "
-                f"{', '.join(assets)}; groups: {', '.join(GROUPS)}"
+                f"{name!r} names rows the catalog does not have: {', '.join(unknown)}"
             )
         picked.extend(i for i in ids if i not in picked)
     order = list(assets)

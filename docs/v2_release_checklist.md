@@ -65,12 +65,19 @@ surfaces below.
       `gui/tabs/preprocess/masking.py`, the knob in `knobs.py`, and the 13
       `preprocess_run_mit_mask*` / MIT strings in each of
       `gui/i18n/{en,ko,ja,cn}.py`. `gui/system_dialog.py` lists the MIT weights.
-- [ ] Downloads: drop `mit_text` / `ctd_onnx` from `DL.GROUPS` in
+- [x] Downloads: drop `mit_text` / `ctd_onnx` from `DL.GROUPS` in
       `library/downloads.py` and the `download-mit` target in `tasks.py`
       (`cmd_download_mit` is now a two-line lookup). The rows stay in the
       *package* catalog, so they also disappear from the GUI's Curation
       Models panel only if the panel filters them — decide which.
       Note in the release notes that `models/mit/` can be deleted.
+      (Done: the `mit` group and `download-mit` are gone; the package's
+      `text_mask` pack is hidden on the trainer side via
+      `DL.HIDDEN_PACKS` — `curation_catalog()` / `by_id()` / `resolve()` /
+      the Curation tab never see its rows; the rows themselves stay in the
+      package catalog for its own users. `scripts/tasks/masking.py` still
+      reads a leftover `models/mit/model.pth` if present — that goes with
+      the MIT masking bullet above.)
 - [ ] Tests: `tests/test_masking_task.py`, `tests/test_nested_paths.py` (7
       refs), `tests/test_anime_tools_cli_contract.py` (12 refs — the
       `MitMaskRequest` argv round-trip goes with it).
@@ -95,9 +102,23 @@ read that one list. Follow-ups this leaves:
 - [x] GUI: one Models modal, two tabs (**Anima** / **Curation
       (anime_tools)**), rows scrolling inside each tab so the log pane stays
       visible. Shared token field, shared log, one QProcess.
-- [ ] The Curation tab renders every package row, including the OCR stack and
+- [x] The Curation tab renders every package row, including the OCR stack and
       `tagger_onnx`. Decide whether the trainer filters any of them out (see
-      §2 — MIT is the live question).
+      §2 — MIT is the live question). **Decision: filter by pack id**, not
+      by row — `DL.HIDDEN_PACKS = ("text_mask",)`; the OCR stack and
+      `tagger_onnx` stay visible as opt-in rows.
+- [x] Packs + CJK mandatory. The package grew a `Pack` table
+      (`anime_tools.downloads.PACKS`, `Asset.pack`); the trainer adds
+      `anima` / `pe` / `cjk` and exposes `DL.PACKS` / `by_pack()` /
+      `GROUP_ALIASES` (`resolve` = alias → pack → row, so `make download-model
+      ocr` expands and `make download-pe` keeps both towers). Both Models
+      tabs render one `QGroupBox` per pack with a "Download pack" button;
+      `make download-list` prints by pack. `configs/base.toml` now ships
+      `vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack"`, `vocab_pack`
+      is in `DEFAULT_SET`, and `resolve_pack_prefix` auto-fetches the
+      shipped default when missing (custom paths still raise) so a `make
+      update` over a pre-v2 checkout does not hard-fail. Cache-stamp
+      mismatch already warns once per kind per run, not per file.
 - [ ] `docs/guidelines/가이드북.md` / `ガイドブック.md` / `指南书.md`: the
       English `guidebook.md` model-download block changed (first-run set no
       longer includes SAM3/MIT; `download-list` / `download-model` are new).

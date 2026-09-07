@@ -4,8 +4,11 @@ Prompt and caption in Japanese / Korean / Chinese through a **text-encoder
 asset**, not a LoRA. The pack is a table of extra T5-side embedding rows
 (`ext_embed [rows, 1024]`, ids ≥ 32128) plus a JSON sidecar with the
 segmentation / row maps. English text is untouched: a prompt or caption with no
-routed character tokenizes bit-identically with or without the pack, and the
-whole path is inert while the key is empty (the shipped default).
+routed character tokenizes bit-identically with or without the pack. **On by
+default since v2**: `configs/base.toml` ships `vocab_pack` pointing at the
+shipped pack, `make download-models` installs it, and the loader fetches it
+itself if the default is missing. Setting the key to `""` turns the whole path
+off (stock tokenizer).
 
 Public pack: <https://huggingface.co/sorryhyun/anima-vocab-pack-cjk>
 (`anima_cjk_vocab_pack.{safetensors,json}`, ~285 MB; the model card carries the
@@ -13,18 +16,27 @@ training label). Research history and the pack builder live under
 `project/cjk_aware_anima/` and `bench/cjk_adapter/`; this page is the shipped
 surface only.
 
-## Enable
+## Default on, how to turn off
 
 ```bash
-make download-vocab-pack          # → models/vocab_packs/anima_cjk_vocab_pack.{safetensors,json}
-# configs/base.toml
+make download-models              # first-run set — includes the pack (→ models/vocab_packs/anima_cjk_vocab_pack.{safetensors,json})
+make download-vocab-pack          # re-fetch just the pack
+# configs/base.toml (the shipped default)
 vocab_pack = "models/vocab_packs/anima_cjk_vocab_pack"
-make preprocess-te ARGS=--overwrite   # only if any caption carries CJK (see below)
+# off: stock tokenizer, bit-exact
+vocab_pack = ""
+make preprocess-te ARGS=--overwrite   # after any change, only if a caption carries CJK (see below)
 ```
+
+If the configured prefix is the shipped default and the pair is not on disk, the
+loader (`resolve_pack_prefix`) fetches the catalog row itself with one printed
+line — so a pre-v2 checkout whose `base.toml` was overwritten by `make update`
+does not hard-fail. A custom `vocab_pack` path is never auto-fetched: a missing
+pair there is still a `FileNotFoundError` with the download hint.
 
 | Surface | Selection | Notes |
 |---|---|---|
-| `configs/base.toml` `vocab_pack` | path prefix of the pair; `""` = off | The one key every surface below defaults to. `ANIMA_VOCAB_PACK` env overrides it (like `ANIMA_DIT`). |
+| `configs/base.toml` `vocab_pack` | path prefix of the pair (shipped default: the CJK pack); `""` = off | The one key every surface below defaults to. `ANIMA_VOCAB_PACK` env overrides it (like `ANIMA_DIT`). |
 | `train.py` | `--vocab_pack` (config chain fills it; `--ext_pack` is the pre-v2 alias) | Routes inline TE caching + sample prompts, hooks the rows for sampling, stamps `ss_ext_pack` / `ss_ext_pack_sha` on the LoRA. Training steps read only the caches. |
 | `make preprocess-te` | forwarded automatically when the key is set | Caches are encoded through the pack (T5 ids **and** `crossattn_emb`) and stamped with its digest. |
 | `inference.py` / `make test` / `make gen` | `--vocab_pack PREFIX` overrides, `--no_vocab_pack` forces off, default = the key | Tokenizer + `llm_adapter.embed` hook, same table as the caches. |
@@ -58,9 +70,11 @@ them. Two guards:
 
 - Every cache written through a pack carries `vocab_pack` / `vocab_pack_sha`
   in its safetensors metadata. At train start the cache check compares the
-  stamp with the active pack and **warns once per mismatch kind** (pack → none,
-  none → pack, pack A → pack B). The fix is always `make preprocess-te
-  ARGS=--overwrite`.
+  stamp with the active pack and **warns once per mismatch kind per run** (pack
+  → none, none → pack, pack A → pack B) — one line, not one per file, so a
+  pre-v2 dataset whose caches carry no stamp logs a single `none → pack` line
+  under the v2 default. The fix is always `make preprocess-te
+  ARGS=--overwrite`; for EN-only captions the line is informational.
 - A LoRA trained through a pack carries `ss_ext_pack` / `ss_ext_pack_sha`.
   Loading it with no pack, or a different one, logs a warning naming both.
 

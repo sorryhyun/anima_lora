@@ -53,10 +53,11 @@ from ._common import ROOT, _path, execute_stage, stage_by_id
 DEFAULT_MASK_DIR = "post_image_dataset/masks"
 RESIZED_IMAGE_DIR = ROOT / "post_image_dataset" / "resized"
 SAM_CONFIG = ROOT / "configs" / "sam_mask.yaml"
-# Where ``make download-mit`` lands the UNet++ weights. The package's own
-# default (``model_path=None``) reads the same file out of the HF hub cache, so
-# this is passed only when the trainer's copy exists — no second download for
-# a checkout that fetched it the trainer's way, no stale literal otherwise.
+# Where the retired ``make download-mit`` (pre-v2) landed the UNet++ weights.
+# The package's own default (``model_path=None``) reads the same file out of
+# the HF hub cache, so this is passed only when a trainer-side copy still
+# exists — no second download for a checkout that fetched it that way, no
+# stale literal otherwise.
 MIT_MODEL_PATH = ROOT / "models" / "mit" / "model.pth"
 MASK_CONFIG_ENV = "MASK_CONFIG_JSON"
 _UNSET = object()

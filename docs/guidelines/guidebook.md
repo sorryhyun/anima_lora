@@ -67,17 +67,20 @@ The token is stored in the standard Hugging Face cache, so the GUI and the CLI s
 
 ### 3.2 Download models
 
-The **Models** dialog in the GUI downloads all three with one button.
+The **Models** dialog in the GUI lists every weight grouped into packs; **Download the first-run set** fetches everything a first training run needs with one button.
 
 | File | Path |
 |---|---|
 | Anima DiT (the diffusion model itself) | `models/diffusion_models/anima-base-v1.0.safetensors` |
 | Qwen3 0.6B text encoder | `models/text_encoders/qwen_3_06b_base.safetensors` |
 | QwenImage VAE | `models/vae/qwen_image_vae.safetensors` |
+| CJK vocab pack (Japanese / Korean / Chinese captions and prompts; on by default) | `models/vocab_packs/anima_cjk_vocab_pack.{safetensors,json}` |
 
-The **SAM3** and **MIT** checkpoints are fetched as well. Both are used only by the optional masked-loss feature ([§7.4](#74-masked-loss-excluding-text-bubbles)).
+The set also pulls the PE vision encoders, the Anima Tagger checkpoint and the Danbooru tag DB, which preprocessing uses. The vocab pack is enabled by default since v2 (`vocab_pack` in `configs/base.toml`; set it to `""` to turn it off — English captions are identical either way).
 
-> **SAM3 is a gated model.** Go to <https://huggingface.co/facebook/sam3>, click **Request access**, and wait for approval (minutes to days); until then the SAM3 download fails with a 403. The three core models are *not* gated and the download continues regardless, so you can start training while waiting for SAM3 approval.
+**SAM3** (masking) and the **OCR** models are opt-in packs on the **Curation** tab — each has its own **Download pack** button. Masking is off by default; SAM3 is only needed for the optional masked-loss feature ([§7.4](#74-masked-loss-excluding-text-bubbles)).
+
+> **SAM3 is a gated model.** Go to <https://huggingface.co/facebook/sam3>, click **Request access**, and wait for approval (minutes to days); until then the SAM3 download fails with a 403. Nothing in the first-run set is gated, so you can train while waiting for SAM3 approval.
 >
 > If downloads keep breaking, fetch them individually with the targets in [Appendix A](#appendix-a-cli-reference).
 
@@ -307,11 +310,11 @@ Everything the GUI does is also available from the CLI. `make <target>` and `pyt
 
 ```bash
 hf auth login                # Same token cache as the GUI sign-in
-make download-models         # First-run set: DiT + text encoder + VAE + PE + tagger + tag DB
-make download-list           # What is installed and what is missing (offline, no network)
+make download-models         # First-run set: DiT + text encoder + VAE + PE + CJK vocab pack + tagger + tag DB
+make download-list           # What is installed and what is missing, grouped by pack (offline, no network)
 make download-anima          # Retry pieces individually if a download breaks
 make download-sam3           # Masking is opt-in — run this once SAM3 access is approved
-make download-model ppocr_det ppocr_rec   # Anything else, by catalog id or group
+make download-model ocr      # Anything else, by pack (anima pe cjk tagger tags masking ocr grouping) or catalog id
 ```
 
 **Preprocessing**

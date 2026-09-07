@@ -90,6 +90,54 @@ def test_half_installed_pack_is_an_error_with_the_download_hint(tmp_path: Path):
         vp.resolve_pack_prefix(tmp_path / "does_not_exist")
 
 
+def test_the_shipped_default_is_fetched_when_missing(tmp_path: Path, monkeypatch):
+    """base.toml enables the pack and `make update` overwrites base.toml, so a
+    pre-v2 checkout must not hard-fail at first load: the shipped default (and
+    only it) is fetched through the catalog row, then resolved as usual."""
+    from library import downloads as DL
+
+    monkeypatch.setenv("ANIMA_HOME", str(tmp_path))
+    prefix = DL.default_vocab_pack_prefix()
+    assert not prefix.with_suffix(".json").exists()
+    fetched: list[str] = []
+
+    def _fake_fetch(asset, log=print, force=False):
+        fetched.append(asset.id)
+        asset.dest.mkdir(parents=True, exist_ok=True)
+        for name in asset.files:
+            (asset.dest / name).write_bytes(b"x")
+        return True
+
+    monkeypatch.setattr(DL, "fetch", _fake_fetch)
+    assert vp.resolve_pack_prefix(vp.DEFAULT_PACK_PREFIX) == prefix
+    assert fetched == ["vocab_pack"]
+    # Present now: no second fetch.
+    assert vp.resolve_pack_prefix(vp.DEFAULT_PACK_PREFIX) == prefix
+    assert fetched == ["vocab_pack"]
+
+    # A custom path is never auto-fetched — the old error, with the hint.
+    with pytest.raises(FileNotFoundError, match="download-vocab-pack"):
+        vp.resolve_pack_prefix(tmp_path / "custom" / "pack")
+    assert fetched == ["vocab_pack"]
+
+
+def test_a_failed_auto_fetch_reads_as_the_missing_pack_error(
+    tmp_path: Path, monkeypatch
+):
+    from library import downloads as DL
+
+    monkeypatch.setenv("ANIMA_HOME", str(tmp_path))
+
+    def _boom(asset, log=print, force=False):
+        raise OSError("offline")
+
+    monkeypatch.setattr(DL, "fetch", _boom)
+    with pytest.raises(FileNotFoundError, match="download-vocab-pack") as exc:
+        vp.resolve_pack_prefix(vp.DEFAULT_PACK_PREFIX)
+    assert "offline" in str(exc.value)
+    assert isinstance(exc.value.__cause__, OSError)
+
+
 def test_load_is_memoised_and_carries_identity(synthetic_pack: Path):
     a = vp.load_vocab_pack(synthetic_pack)
     b = vp.load_vocab_pack(str(synthetic_pack.with_suffix(".json")))
@@ -114,8 +162,15 @@ def test_default_pack_reads_env_then_base_toml(monkeypatch):
     assert default_checkpoints().vocab_pack == "some/pack"
     assert vp.default_vocab_pack() == "some/pack"
     monkeypatch.delenv("ANIMA_VOCAB_PACK")
-    # base.toml ships the key empty (opt-in): the shipped default is OFF.
-    assert default_checkpoints().vocab_pack == ""
+    # v2: base.toml ships the CJK pack enabled — the value is the catalog's
+    # default prefix, so `make download-models` and the loader agree on it.
+    from library import downloads as DL
+
+    assert (
+        default_checkpoints().vocab_pack
+        == f"models/{DL.VOCAB_PACK_DIR}/{DL.VOCAB_PACK_STEM}"
+    )
+    assert vp.default_vocab_pack() == vp.DEFAULT_PACK_PREFIX
 
 
 def test_resolve_active_pack_precedence(synthetic_pack: Path, monkeypatch):

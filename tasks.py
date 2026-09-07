@@ -303,7 +303,8 @@ COMMANDS = {
     # ── Downloads ─────────────────────────────────────────────────────
     "download-models": (
         downloads.cmd_download_models,
-        "Download the first-run model set (Anima base + PE + tagger + tag KB)",
+        "Download the first-run model set (Anima base + PE + CJK vocab pack + "
+        "tagger + tag KB)",
     ),
     "download-list": (
         downloads.cmd_download_list,
@@ -311,7 +312,8 @@ COMMANDS = {
     ),
     "download-model": (
         downloads.cmd_download_model,
-        "Download models by catalog id or group; ARGS='sam3 pe', no args lists them",
+        "Download models by pack, legacy alias or catalog id; ARGS='ocr sam3 pe', "
+        "no args lists them",
     ),
     "download-anima": (downloads.cmd_download_anima, "Download Anima model"),
     "download-anima-variant": (
@@ -320,7 +322,6 @@ COMMANDS = {
         "2.9B); ARGS=<name>, no args lists them",
     ),
     "download-sam3": (downloads.cmd_download_sam3, "Download SAM3 model"),
-    "download-mit": (downloads.cmd_download_mit, "Download MIT model"),
     "download-pe": (
         downloads.cmd_download_pe,
         "Download PE-Core-L14-336 (img2emb encoder)",
@@ -345,8 +346,9 @@ COMMANDS = {
     ),
     "download-vocab-pack": (
         downloads.cmd_download_vocab_pack,
-        "Download the CJK vocab pack (JA/KO/ZH prompt + caption rows) to "
-        "models/vocab_packs/; enable with `vocab_pack` in configs/base.toml",
+        "Re-fetch the CJK vocab pack (JA/KO/ZH prompt + caption rows) to "
+        "models/vocab_packs/; part of download-models, on by default via "
+        "`vocab_pack` in configs/base.toml",
     ),
     # ── Masking ───────────────────────────────────────────────────────
     "mask": (

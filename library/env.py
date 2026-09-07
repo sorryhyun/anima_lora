@@ -107,7 +107,9 @@ _CKPT_FALLBACK = {
     "dit": "models/diffusion_models/anima-base-v1.0.safetensors",
     "vae": "models/vae/qwen_image_vae.safetensors",
     "text_encoder": "models/text_encoders/qwen_3_06b_base.safetensors",
-    # The CJK vocab pack is opt-in: "" = off (stock T5 tokenizer, bit-exact).
+    # base.toml ships the CJK pack on (v2); with no base.toml to read there is
+    # nothing to auto-fetch against, so the literal stays "" = off (stock T5
+    # tokenizer, bit-exact).
     "vocab_pack": "",
 }
 

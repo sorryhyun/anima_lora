@@ -16,9 +16,9 @@ preset. The LoRA family is routed via a three-axis surface — `use_moe_style` /
 ```bash
 uv sync                    # Install dependencies (Python 3.13)
 hf auth login              # Authenticate for model downloads
-make download-models       # first-run set: DiT, TE, VAE, PE, tagger, tag DB
-make download-list         # every catalog row: installed / MISSING, repo, destination
-make download-model sam3   # by catalog id or group — SAM3 / OCR / vocab pack are opt-in
+make download-models       # first-run set: DiT, TE, VAE, PE, CJK vocab pack, tagger, tag DB
+make download-list         # every catalog row grouped by pack: installed / MISSING, repo, destination
+make download-model ocr    # by pack (anima pe cjk tagger tags masking ocr grouping), legacy alias or row id — SAM3 (masking) / OCR are opt-in
 # Training images go in image_dataset/ with .txt caption sidecars
 make preprocess            # Resize → post_image_dataset/resized/, cache → post_image_dataset/lora/
 ```
@@ -97,7 +97,7 @@ knobs and gotchas worth knowing up front:
 | `networks/spectrum.py` | Spectrum inference acceleration |
 | `gui/` | PySide6 GUI package |
 | `tasks.py` | Cross-platform task runner — source of truth for every `make` target |
-| `library/downloads.py` | **Model catalog** — one `Asset` per weight (repo · files · destination · offline installed-probe) for the Anima half, concatenated with `anime_tools.downloads` for the curation half. `make download-*`, `make download-list` and both GUI Models panels read it; loaders import their default paths from it rather than spelling them. Add a weight by adding a row, not a command. |
+| `library/downloads.py` | **Model catalog** — one `Asset` per weight (repo · files · destination · offline installed-probe) for the Anima half, concatenated with `anime_tools.downloads` for the curation half; rows group into **packs** (`PACKS` = trainer `anima`/`pe`/`cjk` + the package's, minus `HIDDEN_PACKS` = `text_mask`). `make download-*`, `make download-list` and both GUI Models panels read it; `resolve()` takes legacy alias → pack id → row id; loaders import their default paths from it rather than spelling them. Add a weight by adding a row, not a command. |
 | `scripts/tasks/` + `scripts/experimental_tasks/` | Where command bodies actually live (`_common.py` = shared helpers) |
 
 Docs: shipped method deep-dives in `docs/methods/`, experimental in
@@ -364,7 +364,7 @@ it's exactly inert on frozen-basis ortho variants.
 | **Soft Tokens** | SoftREPA per-layer × per-t soft text tokens (~1M params); frozen DiT, per-block `Block.forward` splice into `crossattn_emb`. | InfoNCE objective intentionally skipped. `configs/methods/soft_tokens.toml` |
 | **ChimeraHydra** | Dual-pool additive MoE: content pool (network ContentRouter on pooled `crossattn_emb`) + freq pool (network FreqRouter on FEI+σ), two A's per Linear off disjoint SVD subspaces. Both pools always centered-gate; the per-Linear `lx_c` content router + non-centered path were removed. | T-LoRA mask hits content branch only. `docs/experimental/chimera-hydra.md`, `networks/lora_modules/chimera.py` |
 | **Turbo** | DP-DMD (diversity-preserved DMD) distillation; output is a normal LoRA. | Bespoke schema read by `scripts/distill_turbo/` — don't `print-config`. Bespoke two-optimizer loop (student + fake/critic) kept out of `train.py`; converges only the leaves — honors `--queue` (daemon command-job) + writes a canonical `output/ckpt/<name>.snapshot.toml`. Shipped (promoted from `exp-turbo` → `make turbo` / `make test-turbo`); a published 4-step student lives at `huggingface.co/sorryhyun/anima-turbo-4step`. `docs/methods/turbo.md` (ops), `docs/structure/turbo.md` (structure); CA-era history in `_archive/proposals/dmd2_decoupled_improvements.md`. |
-| **CJK vocab pack** | Text-encoder asset (not a LoRA): extra T5-side rows for JA / KO / ZH spans. One key — `vocab_pack` in `configs/base.toml` (`""` = off, `make download-vocab-pack`) — drives `train.py`, `make preprocess-te`, `inference.py` (`--vocab_pack` / `--no_vocab_pack`) and `GenerationRequest`; `library/anima/vocab_pack.py` owns the strategy subclass + the `llm_adapter.embed` hook pair (state dict stays 32128 rows). | TE caches skip on existence only — enabling/changing a pack needs `make preprocess-te ARGS=--overwrite` for CJK captions; caches and LoRAs carry the pack digest and warn on mismatch. EN is bit-exact either way. `docs/methods/cjk_vocab_pack.md` |
+| **CJK vocab pack** | Text-encoder asset (not a LoRA): extra T5-side rows for JA / KO / ZH spans. One key — `vocab_pack` in `configs/base.toml` (**on by default since v2**, installed by `make download-models` and auto-fetched by the loader when the shipped default is missing; `""` = off) — drives `train.py`, `make preprocess-te`, `inference.py` (`--vocab_pack` / `--no_vocab_pack`) and `GenerationRequest`; `library/anima/vocab_pack.py` owns the strategy subclass + the `llm_adapter.embed` hook pair (state dict stays 32128 rows). | TE caches skip on existence only — enabling/changing a pack needs `make preprocess-te ARGS=--overwrite` for CJK captions; caches and LoRAs carry the pack digest and warn on mismatch. EN is bit-exact either way. `docs/methods/cjk_vocab_pack.md` |
 
 ## Preprocessing & scripts
 

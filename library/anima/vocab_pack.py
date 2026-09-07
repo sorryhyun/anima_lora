@@ -20,8 +20,11 @@ and the embedder front door all see the same table:
    metadata are unaffected and the pack composes with any DiT or LoRA.
 
 The active pack is selected by the ``vocab_pack`` config key (``configs/
-base.toml``; empty = off), ``--vocab_pack`` on ``train.py`` /
-``inference.py`` / ``cache_text_embeddings.py``, or ``ANIMA_VOCAB_PACK``.
+base.toml`` ships the CJK pack enabled since v2; empty = off), ``--vocab_pack``
+on ``train.py`` / ``inference.py`` / ``cache_text_embeddings.py``, or
+``ANIMA_VOCAB_PACK``. When the configured prefix is the shipped default and the
+pair is not on disk, :func:`resolve_pack_prefix` fetches it through the catalog
+row before loading (a custom path still raises).
 Packs are loaded once per process (:func:`load_vocab_pack` memoises by
 resolved prefix) because the strategy and the DiT loader both need it.
 """
@@ -49,7 +52,8 @@ logger = logging.getLogger(__name__)
 #: the ``vocab_pack`` row's Download button and this loader cannot disagree.
 PACK_REPO = _DL.VOCAB_PACK_REPO
 PACK_STEM = _DL.VOCAB_PACK_STEM
-#: Where ``make download-vocab-pack`` lands the pack (path prefix, no suffix).
+#: Where ``make download-models`` lands the pack (path prefix, no suffix) — the
+#: ``vocab_pack`` value ``configs/base.toml`` ships.
 DEFAULT_PACK_DIR = f"models/{_DL.VOCAB_PACK_DIR}"
 DEFAULT_PACK_PREFIX = f"{DEFAULT_PACK_DIR}/{PACK_STEM}"
 
@@ -89,14 +93,58 @@ def resolve_pack_prefix(path: Union[str, Path, None]) -> Optional[Path]:
         p = candidates[0]
     if p.suffix in _PACK_SUFFIXES:
         p = p.with_suffix("")
-    missing = [s for s in _PACK_SUFFIXES if not p.with_suffix(s).exists()]
+    missing = _missing_halves(p)
+    if missing and _is_shipped_default(p):
+        _fetch_shipped_pack(p, missing)
+        missing = _missing_halves(p)
     if missing:
-        raise FileNotFoundError(
-            f"vocab pack {p} is missing {', '.join(missing)}. Fetch the shipped "
-            f"pack with `make download-vocab-pack` (→ {DEFAULT_PACK_PREFIX}) or "
-            "point vocab_pack at a local build's path prefix."
-        )
+        raise FileNotFoundError(_missing_message(p, missing))
     return p
+
+
+def _missing_halves(prefix: Path) -> list[str]:
+    return [s for s in _PACK_SUFFIXES if not prefix.with_suffix(s).exists()]
+
+
+def _missing_message(prefix: Path, missing: list[str]) -> str:
+    return (
+        f"vocab pack {prefix} is missing {', '.join(missing)}. Fetch the shipped "
+        f"pack with `make download-vocab-pack` (→ {DEFAULT_PACK_PREFIX}) or "
+        "point vocab_pack at a local build's path prefix."
+    )
+
+
+def _is_shipped_default(prefix: Path) -> bool:
+    """Is ``prefix`` the pack ``configs/base.toml`` ships enabled?"""
+    try:
+        return prefix.resolve() == _DL.default_vocab_pack_prefix().resolve()
+    except OSError:
+        return False
+
+
+def _fetch_shipped_pack(prefix: Path, missing: list[str]) -> None:
+    """Install the shipped pack through the catalog row, once, on first use.
+
+    ``configs/base.toml`` enables the pack by default since v2, and ``make
+    update`` overwrites base.toml — so a pre-v2 checkout (or a fresh embedder
+    install that skipped ``make download-models``) would otherwise hit a hard
+    ``FileNotFoundError`` at the first train / inference / node load. Only the
+    *shipped default* is fetched: a custom ``vocab_pack`` path still raises.
+    Any failure re-raises the original missing-pack error with the download
+    hint, so a network problem reads the same as before.
+    """
+    print(
+        f"vocab pack {prefix.name}: {', '.join(missing)} not installed — fetching "
+        f"the shipped pack ({_DL.VOCAB_PACK_REPO}) into {prefix.parent}",
+        flush=True,
+    )
+    try:
+        _DL.fetch(_DL.by_id()["vocab_pack"])
+    except Exception as exc:  # noqa: BLE001 — surfaced as the original error
+        raise FileNotFoundError(
+            f"{_missing_message(prefix, missing)} (auto-fetch failed: "
+            f"{type(exc).__name__}: {exc})"
+        ) from exc
 
 
 @dataclass

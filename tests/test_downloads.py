@@ -27,21 +27,78 @@ def test_every_group_and_the_default_set_name_real_rows():
     for group, ids in DL.GROUPS.items():
         assert set(ids) <= known, group
     assert set(DL.DEFAULT_SET) <= known
+    assert "mit" not in DL.GROUPS
 
 
-def test_the_first_run_set_leaves_the_gated_and_opt_in_rows_out():
+def test_every_alias_and_pack_resolves():
+    """``resolve`` precedence is alias → pack → row; every token of the first
+    two kinds must land on rows, and the two ``pe`` meanings must differ."""
+    for name in (*DL.GROUP_ALIASES, *DL.by_pack()):
+        assert DL.resolve([name]), name
+    # The make target `pe` is both towers; the pack `pe` is PE-Core alone.
+    assert [a.id for a in DL.resolve(["pe"])] == ["pe_core", "pe_spatial"]
+    assert [a.id for a in DL.by_pack()["pe"]] == ["pe_core"]
+    # `tagger` the alias (checkpoint only) shadows `tagger` the pack.
+    assert [a.id for a in DL.resolve(["tagger"])] == ["tagger"]
+    assert len(DL.by_pack()["tagger"]) > 1
+
+
+def test_every_visible_row_belongs_to_a_listed_pack():
+    """The GUI renders by pack: a row with a pack id that is not in ``PACKS``
+    would silently vanish from both tabs."""
+    pack_ids = {p.id for p in DL.PACKS}
+    for a in DL.full_catalog():
+        assert a.pack in pack_ids, a.id
+    assert DL.PACKS[:3] == DL.TRAINER_PACKS
+    assert [p.id for p in DL.TRAINER_PACKS] == ["anima", "pe", "cjk"]
+    assert not (set(DL.HIDDEN_PACKS) & pack_ids)
+
+
+def test_hidden_pack_rows_are_not_on_the_trainer_side():
+    """``text_mask`` (the MIT text segmenter) stays in the package catalog but
+    is neither listed, resolved nor downloadable from here."""
+    from anime_tools.downloads import catalog as package_catalog
+
+    hidden = {a.id for a in package_catalog() if a.pack in DL.HIDDEN_PACKS}
+    assert "mit_text" in hidden
+    assert not (hidden & {a.id for a in DL.curation_catalog()})
+    assert not (hidden & set(DL.by_id()))
+    with pytest.raises(KeyError):
+        DL.resolve(["mit_text"])
+    with pytest.raises(KeyError):
+        DL.resolve(["text_mask"])
+
+
+def test_the_first_run_set_is_the_mandatory_set():
     """v2 default: masking is opt-in, so SAM3 must not be in a fresh install's
-    path — its gated repo was the first-run failure this removes."""
+    path — its gated repo was the first-run failure this removes. The CJK vocab
+    pack is the opposite: base.toml enables it, so the set must install it."""
     assert "sam3" not in DL.DEFAULT_SET
-    assert "vocab_pack" not in DL.DEFAULT_SET
+    assert "vocab_pack" in DL.DEFAULT_SET
     assert "mit_text" not in DL.DEFAULT_SET
-    # …but the rows a default preprocess actually needs are.
+    assert "mit_text" not in DL.by_id()
+    # …and the rows a default preprocess actually needs are.
     assert {"anima_dit", "anima_te", "anima_vae", "tagger"} <= set(DL.DEFAULT_SET)
 
 
 def test_resolve_expands_groups_and_dedupes_in_catalog_order():
     ids = [a.id for a in DL.resolve(["pe", "pe_core", "anima"])]
     assert ids == ["anima_dit", "anima_te", "anima_vae", "pe_core", "pe_spatial"]
+
+
+def test_resolve_expands_a_pack_id():
+    """``make download-model ocr`` is the pack, in catalog order."""
+    ids = [a.id for a in DL.resolve(["ocr"])]
+    assert ids == [a.id for a in DL.by_pack()["ocr"]]
+    assert ids and all(DL.by_id()[i].pack == "ocr" for i in ids)
+
+
+def test_by_pack_keeps_pack_order_and_drops_empty_packs():
+    grouped = DL.by_pack()
+    assert list(grouped) == [p.id for p in DL.PACKS if p.id in grouped]
+    assert all(rows for rows in grouped.values())
+    trainer_only = DL.by_pack(DL.catalog())
+    assert list(trainer_only) == ["anima", "pe", "cjk"]
 
 
 def test_resolve_raises_naming_the_unknown_token():
@@ -63,6 +120,13 @@ def test_rows_land_where_the_loaders_look():
     assert vocab_pack.PACK_REPO == rows["vocab_pack"].repo
     assert vocab_pack.DEFAULT_PACK_PREFIX.startswith(f"models/{DL.VOCAB_PACK_DIR}/")
     assert rows["vocab_pack"].dest == DL.default_vocab_pack_dir()
+    from library.env import anima_home, resolve_under_home
+
+    assert (
+        resolve_under_home(vocab_pack.DEFAULT_PACK_PREFIX)
+        == DL.default_vocab_pack_prefix()
+        == anima_home() / "models" / DL.VOCAB_PACK_DIR / DL.VOCAB_PACK_STEM
+    )
 
 
 def test_anima_rows_land_on_the_base_config_defaults():
@@ -81,6 +145,14 @@ def test_anima_rows_land_on_the_base_config_defaults():
         row = rows[row_id]
         landed = row.dest / row.files[0].rsplit("/", 1)[-1]
         assert landed == anima_home() / rel, row_id
+    # v2: the CJK pack ships enabled, so its default prefix must be exactly
+    # where the ``vocab_pack`` row lands (and where the loader auto-fetches).
+    assert cfg["vocab_pack"] == f"models/{DL.VOCAB_PACK_DIR}/{DL.VOCAB_PACK_STEM}"
+    assert anima_home() / cfg["vocab_pack"] == DL.default_vocab_pack_prefix()
+    for name in rows["vocab_pack"].files:
+        assert (rows["vocab_pack"].dest / name).with_suffix("") == (
+            DL.default_vocab_pack_prefix()
+        )
 
 
 def test_prune_empty_drops_the_split_files_scaffolding(tmp_path):
@@ -152,9 +224,25 @@ def test_every_download_target_resolves(monkeypatch):
         and n not in ("download-anima-variant", "download-list", "download-model")
     ]
     assert len(targets) >= 8
+    assert "download-mit" not in tasks.COMMANDS
     for name in targets:
         tasks.COMMANDS[name][0]([])
     assert all(ids for ids in picked)
+
+
+def test_download_model_accepts_pack_ids(monkeypatch):
+    """The GUI's pack buttons and ``make download-model ocr`` go through the
+    same front door; a pack id must expand there, not only in ``resolve``."""
+    import tasks
+
+    picked: list[list[str]] = []
+    monkeypatch.setattr(
+        DL,
+        "fetch_all",
+        lambda assets, **_kw: picked.append([a.id for a in assets]) or [],
+    )
+    tasks.COMMANDS["download-model"][0](["ocr", "anima"])
+    assert picked == [[a.id for a in DL.resolve(["anima", "ocr"])]]
 
 
 def test_models_dialog_rows_come_from_the_catalog():
@@ -175,9 +263,9 @@ def test_the_two_tabs_show_the_two_catalog_halves():
 
     pytest.importorskip("PySide6")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QGroupBox
 
-    from gui.system_dialog import ModelsDialog
+    from gui.system_dialog import ModelsDialog, _pack_title
 
     QApplication.instance() or QApplication([])
     dlg = ModelsDialog()
@@ -188,10 +276,27 @@ def test_the_two_tabs_show_the_two_catalog_halves():
         assert [a.id for a in curation.assets()] == [
             a.id for a in DL.curation_catalog()
         ]
+        assert "mit_text" not in {a.id for a in curation.assets()}
+        # Rows are grouped by pack: one QGroupBox per pack the tab's rows
+        # populate, in PACKS order, each with a pack-level button that names
+        # exactly that pack's rows.
+        for panel in dlg._panels:
+            expected = DL.by_pack(panel.assets())
+            assert [pid for pid, _ids, _b in panel._packs] == list(expected)
+            for pid, ids, _btn in panel._packs:
+                assert ids == tuple(a.id for a in expected[pid])
+            boxes = panel.findChildren(QGroupBox)
+            assert [b.title() for b in boxes] == [
+                _pack_title(DL.PACK_BY_ID[pid]) for pid in expected
+            ]
+        assert [pid for pid, _i, _b in anima._packs] == ["anima", "pe", "cjk"]
         # Busy disables every button on *both* tabs: the dialog runs one job.
         dlg._set_busy(True)
         assert not any(b.isEnabled() for p in dlg._panels for _a, _s, b in p._rows)
+        assert not any(b.isEnabled() for p in dlg._panels for _p, _i, b in p._packs)
         assert not any(p.all_btn.isEnabled() for p in dlg._panels)
+        dlg._set_busy(False)
+        assert all(b.isEnabled() for p in dlg._panels for _p, _i, b in p._packs)
     finally:
         dlg.close()
 
@@ -201,7 +306,7 @@ def test_every_title_key_exists_in_every_language():
     users who are most of the base."""
     pytest.importorskip("PySide6")
     from gui.i18n import TRANSLATIONS
-    from gui.system_dialog import _TITLE_KEYS
+    from gui.system_dialog import _PACK_KEYS, _TITLE_KEYS
 
     extra = (
         "curation_models_intro",
@@ -210,7 +315,14 @@ def test_every_title_key_exists_in_every_language():
         "models_download_missing",
         "models_all_installed",
         "models_used_by",
+        "models_download_pack",
+        "models_redownload_pack",
     )
+    pack_keys = [k for key in _PACK_KEYS.values() for k in (key, f"{key}_desc")]
     for lang, table in TRANSLATIONS.items():
-        for key in (*_TITLE_KEYS.values(), *extra):
+        for key in (*_TITLE_KEYS.values(), *pack_keys, *extra):
             assert key in table, f"{lang}: {key}"
+        assert "model_mit" not in table, lang
+    # Every pack the trainer shows has a translated title (the fallback is the
+    # catalog's English title, which the KR/JA/ZH users should not see).
+    assert set(_PACK_KEYS) == {p.id for p in DL.PACKS}

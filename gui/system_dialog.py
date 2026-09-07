@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -56,16 +57,39 @@ _TITLE_KEYS: dict[str, str] = {
     "pe_core": "model_pe",
     "vocab_pack": "model_vocab_pack",
     "sam3": "model_sam3",
-    "mit_text": "model_mit",
     "pe_spatial": "model_pe_spatial",
     "danbooru_tags": "model_danbooru_tags",
     "tagger_backbone": "model_tagger",
+}
+
+# Rows render grouped by pack (``DL.PACKS``); every visible pack has a title key
+# here and a ``<key>_desc`` sibling, in all four languages (pinned by test). A
+# pack the package adds later falls back to its catalog title until translated.
+_PACK_KEYS: dict[str, str] = {
+    "anima": "models_pack_anima",
+    "pe": "models_pack_pe",
+    "cjk": "models_pack_cjk",
+    "tagger": "models_pack_tagger",
+    "tags": "models_pack_tags",
+    "masking": "models_pack_masking",
+    "ocr": "models_pack_ocr",
+    "grouping": "models_pack_grouping",
 }
 
 
 def _label(asset) -> str:
     key = _TITLE_KEYS.get(asset.id)
     return t(key) if key else asset.title
+
+
+def _pack_title(pack) -> str:
+    key = _PACK_KEYS.get(pack.id)
+    return t(key) if key else pack.title
+
+
+def _pack_description(pack) -> str:
+    key = _PACK_KEYS.get(pack.id)
+    return t(f"{key}_desc") if key else pack.description
 
 
 def _tooltip(asset) -> str:
@@ -195,8 +219,11 @@ class _HFLoginThread(QThread):
 
 
 class _CatalogPanel(QWidget):
-    """One tab: a "fetch everything" button over one catalog half's rows.
+    """One tab: a "fetch everything" button over one catalog half's rows,
+    grouped by pack.
 
+    Each pack (``DL.PACKS``) is a ``QGroupBox`` — title, a dim description,
+    a "Download pack" button that fetches its rows together, then the rows.
     Rows scroll inside the tab, so a catalog that grows (the package's is at 15
     and counting) never pushes the log pane off the dialog. Downloads run on the
     owning dialog's single QProcess — one job at a time across both tabs.
@@ -210,6 +237,9 @@ class _CatalogPanel(QWidget):
         # (asset, status_label, button) — refreshed together after any run,
         # because one target installs several rows.
         self._rows: list[tuple[object, QLabel, QPushButton]] = []
+        # (pack_id, row ids, button) — one per rendered pack; the label flips
+        # between Download / Re-download with the rows' install state.
+        self._packs: list[tuple[str, tuple[str, ...], QPushButton]] = []
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -230,8 +260,8 @@ class _CatalogPanel(QWidget):
         body = QWidget()
         rows_lay = QVBoxLayout(body)
         rows_lay.setContentsMargins(0, 0, 0, 0)
-        for asset in self.assets():
-            rows_lay.addLayout(self._build_row(asset))
+        for pack_id, rows in DL.by_pack(self.assets()).items():
+            rows_lay.addWidget(self._build_pack(DL.PACK_BY_ID[pack_id], rows))
         rows_lay.addStretch()
 
         scroll = QScrollArea()
@@ -244,6 +274,34 @@ class _CatalogPanel(QWidget):
 
     def assets(self) -> tuple:
         return self._assets_fn()
+
+    def _build_pack(self, pack, rows) -> QGroupBox:
+        box = QGroupBox(_pack_title(pack))
+        lay = QVBoxLayout(box)
+
+        head = QHBoxLayout()
+        desc = QLabel(_pack_description(pack))
+        desc.setWordWrap(True)
+        desc.setStyleSheet(f"color:{tok('text_dim')};")
+        head.addWidget(desc, 1)
+
+        # The button spells the pack's row ids rather than the pack id: the
+        # ``tagger`` pack shares its name with the legacy ``make download-tagger``
+        # alias (checkpoint only), and ``DL.resolve`` lets the alias win.
+        ids = tuple(a.id for a in rows)
+        btn = QPushButton()
+        btn.clicked.connect(
+            lambda _checked=False, ids=ids: self._dialog.run_download(
+                ["download-model", *ids]
+            )
+        )
+        head.addWidget(btn, 0)
+        lay.addLayout(head)
+
+        for asset in rows:
+            lay.addLayout(self._build_row(asset))
+        self._packs.append((pack.id, ids, btn))
+        return box
 
     def _build_row(self, asset) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -279,6 +337,12 @@ class _CatalogPanel(QWidget):
                 f"color:{tok('ok')};" if installed else f"color:{tok('err')};"
             )
             btn.setText(t("models_redownload") if installed else t("models_download"))
+        state = {asset.id: asset.installed for asset, _s, _b in self._rows}
+        for _pack_id, ids, btn in self._packs:
+            complete = all(state.get(i, False) for i in ids)
+            btn.setText(
+                t("models_redownload_pack") if complete else t("models_download_pack")
+            )
         label, args = self._all_fn(self.assets())
         self.all_btn.setText(label)
         self.all_btn.setEnabled(args is not None)
@@ -293,12 +357,15 @@ class _CatalogPanel(QWidget):
         self.all_btn.setEnabled(not busy and args is not None)
         for _asset, _status, btn in self._rows:
             btn.setEnabled(not busy)
+        for _pack_id, _ids, btn in self._packs:
+            btn.setEnabled(not busy)
 
 
 def _anima_all(_assets) -> tuple[str, list[str] | None]:
     """The Anima tab's top button is the first-run set, not "every row": it
     deliberately also pulls the two curation rows a default preprocess needs
-    (tagger checkpoint, tag KB) while SAM3, OCR and the vocab pack stay opt-in."""
+    (tagger checkpoint, tag KB) while SAM3 and OCR stay opt-in on the Curation
+    tab. Since v2 the set includes the CJK vocab pack, which base.toml enables."""
     return t("models_download_all"), ["download-models"]
 
 
@@ -315,7 +382,8 @@ class ModelsDialog(_StreamingDialog):
     """Model downloads: a HuggingFace token field, two catalog tabs, one log.
 
     The tabs are the two halves of the catalog — ``library/downloads.py``'s
-    Anima rows and ``anime_tools.downloads``' curation rows. Splitting them
+    Anima rows (packs anima / pe / cjk) and ``anime_tools.downloads``' curation
+    rows minus the trainer's ``HIDDEN_PACKS`` (text_mask). Splitting them
     inside one modal keeps each list short and keeps the token field, the log
     and the single QProcess shared, which two dialogs could not do.
     """
