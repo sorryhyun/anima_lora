@@ -23,7 +23,9 @@ from ._common import (
     ROOT,
     _path,
     execute_stage,
+    gui_stage_values,
     in_daemon_job,
+    request_from_form,
     request_with_args,
     run,
     stage_by_id,
@@ -37,19 +39,24 @@ def _min_pixels_args() -> list[str]:
     / ``min_pixels`` keys. Returns ``[]`` when both are absent (each script's own
     argparse default applies). ``drop_lowres_images = false`` forces
     ``--min_pixels 0`` even when ``min_pixels`` is set. GUI auto-chain env
-    (``DROP_LOWRES_IMAGES`` / ``MIN_PIXELS``) wins over the merged config.
+    (``DROP_LOWRES_IMAGES``, the threshold from the GUI's resize form or the
+    ``MIN_PIXELS`` env) wins over the merged config.
     """
     from ._common import _path_overrides  # local import: avoids unused circular
 
     env_drop = os.environ.get("DROP_LOWRES_IMAGES")
     env_min = os.environ.get("MIN_PIXELS")
-    if env_drop is not None or env_min is not None:
+    form_min = (_resize_form() or {}).get("min_pixels")
+    if form_min in ("", None):
+        form_min = None
+    if env_drop is not None or env_min is not None or form_min is not None:
         if env_drop is not None and not _boolish(env_drop, True):
             return ["--min_pixels", "0"]
-        if env_min is None:
+        raw = env_min if env_min is not None else form_min
+        if raw is None:
             return []
         try:
-            return ["--min_pixels", str(max(0, int(env_min)))]
+            return ["--min_pixels", str(max(0, int(raw)))]
         except (TypeError, ValueError):
             return []
 
@@ -77,19 +84,29 @@ def _config_min_pixels() -> int:
         return 500_000
 
 
+def _resize_form() -> dict | None:
+    """The GUI's resize stage form (``PREPROCESS_STAGES_JSON``), or ``None``
+    from a plain shell."""
+    form = gui_stage_values().get("resize")
+    return form if isinstance(form, dict) else None
+
+
 def _config_target_res() -> tuple[int, ...] | None:
     """The configured free-fit tiers, or ``None`` for the package default
     (a single 1024 tier — a bare ``[1024]`` collapses to it too).
 
     GUI auto-chain env (``TARGET_RES``, space/comma separated) wins over the
-    merged config. Unknown edges are dropped rather than aborting on a config
-    typo.
+    GUI's resize form, which wins over the merged config. Unknown edges are
+    dropped rather than aborting on a config typo.
     """
     from library.datasets.buckets import ALLOWED_TARGET_RES
 
     env_tr = os.environ.get("TARGET_RES")
+    form = _resize_form()
     if env_tr is not None:
         raw = env_tr.replace(",", " ").split()
+    elif form is not None and form.get("target_res"):
+        raw = form["target_res"]
     else:
         from ._common import _path_overrides
 
@@ -263,26 +280,12 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
     from ._common import _path_overrides
 
     overrides = _path_overrides()
-    env_trigger = os.environ.get("CAPTION_TRIGGER_WORD")
     env_drop_groups = os.environ.get("CAPTION_DROP_GROUPS")
     config: dict[str, object] = {
-        "correct_order": _boolish(
-            os.environ.get("CAPTION_CORRECT_ORDER"),
-            _boolish(overrides.get("caption_correct_order"), False),
-        ),
-        "insert_no_artist": _boolish(
-            os.environ.get("CAPTION_INSERT_NO_ARTIST"),
-            _boolish(overrides.get("caption_insert_no_artist"), False),
-        ),
-        "trigger_word": str(
-            env_trigger
-            if env_trigger is not None
-            else overrides.get("caption_trigger_word", "")
-        ).strip(),
-        "trigger_at_front": _boolish(
-            os.environ.get("CAPTION_TRIGGER_AT_FRONT"),
-            _boolish(overrides.get("caption_trigger_at_front"), False),
-        ),
+        "correct_order": _boolish(overrides.get("caption_correct_order"), False),
+        "insert_no_artist": _boolish(overrides.get("caption_insert_no_artist"), False),
+        "trigger_word": str(overrides.get("caption_trigger_word", "")).strip(),
+        "trigger_at_front": _boolish(overrides.get("caption_trigger_at_front"), False),
         # Tag groups stripped at mirror time (GH #95) — comma-separated slugs
         # / taxonomy-path prefixes, see anime_tools.captions.tag_drop_groups.
         "drop_groups": str(
@@ -303,15 +306,9 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
             os.environ.get("CAPTION_AUTOTAG"),
             _boolish(overrides.get("caption_autotag"), False),
         ),
-        "autotag_mode": str(
-            os.environ.get("CAPTION_AUTOTAG_MODE")
-            or overrides.get("caption_autotag_mode")
-            or "missing"
-        ).strip(),
+        "autotag_mode": str(overrides.get("caption_autotag_mode") or "missing").strip(),
         "autotag_min_confidence": _floatish(
-            os.environ.get("CAPTION_AUTOTAG_MIN_CONFIDENCE"),
-            overrides.get("caption_autotag_min_confidence"),
-            default=0.0,
+            overrides.get("caption_autotag_min_confidence"), default=0.0
         ),
         # The caption-MASTER stages are driven from this dict alone (the
         # caller's `extra` never reaches them), so the subset scope must ride
@@ -319,6 +316,35 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
         # across the WHOLE master (destructive with autotag merge/overwrite).
         "path_pattern": _resolved_path_pattern(extra),
     }
+    # The GUI's stage forms (``PREPROCESS_STAGES_JSON``): the `autotag` /
+    # `correct` requests are built from them (`_autotag_request`,
+    # `cmd_preprocess_captions`); the knobs the chain reasons about are
+    # mirrored here so the run-or-skip logic below sees one dict.
+    forms = gui_stage_values()
+    autotag_form = forms.get("autotag")
+    if isinstance(autotag_form, dict):
+        config["autotag_form"] = autotag_form
+        if autotag_form.get("mode"):
+            config["autotag_mode"] = str(autotag_form["mode"]).strip()
+        config["autotag_min_confidence"] = _floatish(
+            autotag_form.get("min_confidence"), default=0.0
+        )
+    correct_form = forms.get("correct")
+    if isinstance(correct_form, dict):
+        config["correct_form"] = correct_form
+        config["correct_order"] = not _boolish(correct_form.get("no_correct"), False)
+        config["insert_no_artist"] = _boolish(
+            correct_form.get("caption_insert_no_artist"), False
+        )
+        config["trigger_word"] = str(
+            correct_form.get("caption_trigger_word") or ""
+        ).strip()
+        config["trigger_at_front"] = _boolish(
+            correct_form.get("caption_trigger_at_front"), False
+        )
+        config["drop_groups"] = str(
+            correct_form.get("caption_drop_groups") or ""
+        ).strip()
 
     cleaned: list[str] = []
     i = 0
@@ -406,16 +432,38 @@ def _autotag_request(config: dict[str, object]):
     ``apply`` — the user already opted in via the checkbox / env; a dry run
     here would produce a report nobody reads while TE encodes the un-tagged
     captions."""
+    mode = str(config.get("autotag_mode") or "missing")
+    min_confidence = float(config.get("autotag_min_confidence") or 0.0)
+    form = config.get("autotag_form")
+    if isinstance(form, dict):
+        # The GUI's form: every other knob the stage has rides along, the
+        # roots and the scope are the trainer's.
+        return request_from_form(
+            "autotag",
+            form,
+            roots=_stage_roots(),
+            settings={"path_pattern": _stage_path_pattern(config)},
+            apply=True,
+            mode=mode,
+            min_confidence=min_confidence,
+        )
     from anime_tools.stages.requests import AutotagRequest
 
     return AutotagRequest(
-        src=_path("source_image_dir", "image_dataset"),
-        dst=_path("resized_image_dir", "post_image_dataset/resized"),
+        **_stage_roots(),
         path_pattern=_stage_path_pattern(config),
-        mode=str(config.get("autotag_mode") or "missing"),
-        min_confidence=float(config.get("autotag_min_confidence") or 0.0),
+        mode=mode,
+        min_confidence=min_confidence,
         apply=True,
     )
+
+
+def _stage_roots() -> dict[str, str]:
+    """The ``src`` / ``dst`` roots every caption stage binds."""
+    return {
+        "src": _path("source_image_dir", "image_dataset"),
+        "dst": _path("resized_image_dir", "post_image_dataset/resized"),
+    }
 
 
 def _position_request(config: dict[str, object]):
@@ -587,6 +635,25 @@ def _resize_request(
     from anime_tools.stages.requests import ResizeRequest
 
     cleaned, decisions = _pop_stale_resize_args(extra)
+    skips = _curation_skips(src, Path(decisions) if decisions else None)
+    form = _resize_form()
+    if form is not None:
+        # The GUI's resize form carries the geometry (tiers, crop, clamp,
+        # overwrite, workers); the trainer fills the roots, the scope, the
+        # walk and the curation skips, and the low-res sugar's answer.
+        overrides: dict[str, object] = {"recursive": True, "copy_captions": False}
+        if min_pixels is not None:
+            overrides["min_pixels"] = int(min_pixels)
+        if skips:
+            overrides["skip"] = skips
+        req = request_from_form(
+            "resize",
+            form,
+            roots={"src": src, "dst": dst},
+            settings={"path_pattern": path_pattern or "*"},
+            **overrides,
+        )
+        return request_with_args(req, cleaned, prog=prog)
     fields: dict[str, object] = {
         "src": src,
         "dst": dst,
@@ -602,7 +669,6 @@ def _resize_request(
     ratio = _config_freefit_max_ratio()
     if ratio is not None:
         fields["freefit_max_ratio"] = ratio
-    skips = _curation_skips(src, Path(decisions) if decisions else None)
     if skips:
         fields["skip"] = skips
     try:
@@ -982,20 +1048,13 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
     _ensure_danbooru_tags()
     from anime_tools.stages.requests import CorrectRequest
 
-    fields: dict[str, object] = {
-        "src": _path("source_image_dir", "image_dataset"),
-        "dst": _path("resized_image_dir", "post_image_dataset/resized"),
-        "recursive": True,
-        "path_pattern": _resolved_path_pattern(extra),
-    }
-    if correct:
-        fields.update(_caption_correction_fields(caption_config))
-    else:
-        fields["no_correct"] = True
+    # The trainer's own fields: the walk and the variant sidecars (the
+    # TextCachingSection's knobs), plus the tokenizers identity-randomize needs.
+    trainer_fields: dict[str, object] = {"recursive": True}
     if n_variants > 0:
-        fields["caption_shuffle_variants"] = n_variants
-        fields["caption_tag_dropout_rate"] = _float_or_zero(dropout)
-        fields["caption_tag_randomize_rate"] = _float_or_zero(randomize)
+        trainer_fields["caption_shuffle_variants"] = n_variants
+        trainer_fields["caption_tag_dropout_rate"] = _float_or_zero(dropout)
+        trainer_fields["caption_tag_randomize_rate"] = _float_or_zero(randomize)
         # Identity-randomize needs the tokenizers to build the erasure pool.
         # The curation-side stage loads tokenizers from *directories* only
         # (it must not know the safetensors→bundled-config mapping), so
@@ -1003,12 +1062,41 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
         if _float_or_zero(randomize) > 0.0 and n_variants >= 2:
             from library.anima.weights import qwen3_tokenizer_dir, t5_tokenizer_dir
 
-            fields["qwen3"] = qwen3_tokenizer_dir(_QWEN3_TOKENIZER)
-            fields["t5_tokenizer_path"] = t5_tokenizer_dir()
-    try:
-        req = CorrectRequest(**fields)
-    except ValueError as exc:
-        raise SystemExit(f"caption correction: {exc}") from exc
+            trainer_fields["qwen3"] = qwen3_tokenizer_dir(_QWEN3_TOKENIZER)
+            trainer_fields["t5_tokenizer_path"] = t5_tokenizer_dir()
+    path_pattern = _resolved_path_pattern(extra)
+    form = caption_config.get("correct_form")
+    if isinstance(form, dict):
+        # The GUI's form supplies the stage's long tail (tag_csv, …); the
+        # five rewrite knobs are set from the config dict, which the form was
+        # folded into (so an explicit CLI flag still wins), and the trainer's
+        # own fields on top.
+        req = request_from_form(
+            "correct",
+            form,
+            roots=_stage_roots(),
+            settings={"path_pattern": path_pattern},
+            no_correct=not correct,
+            caption_insert_no_artist=bool(caption_config.get("insert_no_artist")),
+            caption_trigger_word=str(caption_config.get("trigger_word") or ""),
+            caption_trigger_at_front=bool(caption_config.get("trigger_at_front")),
+            caption_drop_groups=str(caption_config.get("drop_groups") or ""),
+            **trainer_fields,
+        )
+    else:
+        fields: dict[str, object] = {
+            **_stage_roots(),
+            "path_pattern": path_pattern,
+            **trainer_fields,
+        }
+        if correct:
+            fields.update(_caption_correction_fields(caption_config))
+        else:
+            fields["no_correct"] = True
+        try:
+            req = CorrectRequest(**fields)
+        except ValueError as exc:
+            raise SystemExit(f"caption correction: {exc}") from exc
     _execute("correct", req)
 
 

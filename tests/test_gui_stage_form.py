@@ -1,10 +1,12 @@
-"""P0 pilot for drawing the Preprocess panel off ``anime_tools`` stage schemas
-(``docs/proposal/gui_preprocess_from_anime_tools.md``).
+"""The Preprocess panel drawn off ``anime_tools`` stage schemas
+(``docs/proposal/gui_preprocess_from_anime_tools.md``, P0–P3).
 
-Qt-free half: the schemas load in the trainer venv, bound roots are hidden,
-and ``argv_for`` round-trips through each stage's own generated parser. Qt
-half (offscreen): ``StageFormSection`` renders a schema, values written are
-values read, and the read-back builds a parseable argv.
+Qt-free half: the schemas load in the trainer venv, bound / trainer-owned
+dests are hidden, ``argv_for`` round-trips through each stage's own generated
+parser, the ``preprocess.toml`` seeds land, and the ``[variant.stages.*]``
+persistence elides against them. Qt half (offscreen): ``StageFormSection``
+renders a schema, values written are values read, the read-back builds a
+parseable argv, and the chain gate disables the stage rows.
 
 Dests asserted here are ones the requests have carried since the API-first
 migration (``min_chars`` / ``det_conf`` / ``skip_en`` on OCR, ``threshold`` /
@@ -64,14 +66,48 @@ def test_visible_fields_hide_bound_and_auto(schemas):
     # root / mask-tail / setting / auto are all filled by build_argv, not typed.
     assert "image_dir" not in sam  # ROOT_FIELDS → dst
     assert "mask_dir" not in sam  # MASK_FIELDS → mask_root/<tail>
-    assert "path_pattern" not in sam  # SETTING_FIELDS
     assert "device" not in sam  # AUTO_FIELDS
+    assert "recursive" not in sam  # TRAINER_FIELDS — the chain walks
+    # A SAM rule card shows its own scope (SHOWN_BOUND) even though the
+    # package binds it as a setting; ``make mask`` threads it per card.
+    assert "path_pattern" in sam
     assert {"threshold", "dilate", "prompts", "focus_prompts", "force"} <= set(sam)
     assert all("advanced" in f and "gate" in f for f in sam.values())
+    # FIELD_ORDER puts the card's rows first.
+    assert [f["dest"] for f in SF.visible_fields(schemas["masks_sam"])][:5] == [
+        "path_pattern",
+        "prompts",
+        "focus_prompts",
+        "threshold",
+        "dilate",
+    ]
 
     correct = {f["dest"] for f in SF.visible_fields(schemas["correct"])}
     assert not {"src", "dst", "path_pattern"} & correct
     assert {"caption_trigger_word", "caption_drop_groups", "no_correct"} <= correct
+    # The variant sidecar knobs are the TextCachingSection's; the tokenizers
+    # are resolved trainer-side.
+    assert (
+        not {
+            "recursive",
+            "caption_shuffle_variants",
+            "caption_tag_dropout_rate",
+            "caption_tag_randomize_rate",
+            "qwen3",
+            "t5_tokenizer_path",
+        }
+        & correct
+    )
+
+    resize = {f["dest"] for f in SF.visible_fields(schemas["resize"])}
+    assert (
+        not {"src", "dst", "path_pattern", "recursive", "copy_captions", "skip"}
+        & resize
+    )
+    assert {"target_res", "min_pixels", "overwrite", "workers"} <= resize
+    assert "from_report" not in {
+        f["dest"] for f in SF.visible_fields(schemas["autotag"])
+    }
 
     # --apply is the run bar's, never a form row.
     assert "apply" not in {f["dest"] for f in SF.visible_fields(schemas["autotag"])}
@@ -84,7 +120,7 @@ def test_knob_for_maps_schema_kinds_onto_the_knob_table(schemas):
     assert SF.knob_for(sam["force"]).kind == "bool"
     mode = next(f for f in schemas["autotag"]["fields"] if f["dest"] == "mode")
     knob = SF.knob_for(mode)
-    assert knob.kind == "choice" and knob.choices and knob.default == "missing"
+    assert knob.kind == "str" and knob.default == "missing"
     # A None-default numeric is free text; a gate becomes enabled_by.
     export = {f["dest"]: f for f in schemas["export"]["fields"]}
     assert SF.knob_for(export["ocr_dir"]).enabled_by == "combine_ocr"
@@ -144,6 +180,118 @@ def test_argv_runs_the_requests_own_validation(schemas):
         )
 
 
+def test_seeded_defaults_layer_preprocess_toml_over_the_schema(schemas):
+    """The user-owned TOML is the lowest-priority default for the dests it
+    names — the form opens on what the CLI would run — and ``no_correct``
+    is ``caption_correct_order`` inverted (default: no reordering)."""
+    bare = SF.seeded_defaults(schemas["resize"], {})
+    assert bare["target_res"] is None and bare["min_pixels"] == 500000
+    pp = {
+        "target_res": [1024, 896],
+        "min_pixels": 250000,
+        "resize_crop_margins": {"top": 5.0, "right": 0, "bottom": 0, "left": 0},
+        "caption_autotag_mode": "merge",
+        "caption_autotag_min_confidence": 0.35,
+        "caption_trigger_word": "@t",
+    }
+    resize = SF.seeded_defaults(schemas["resize"], pp)
+    assert resize["target_res"] == [1024, 896]
+    assert resize["min_pixels"] == 250000
+    assert resize["resize_crop_margins"] == [5.0, 0.0, 0.0, 0.0]
+    autotag = SF.seeded_defaults(schemas["autotag"], pp)
+    assert (autotag["mode"], autotag["min_confidence"]) == ("merge", 0.35)
+    correct = SF.seeded_defaults(schemas["correct"], pp)
+    assert correct["caption_trigger_word"] == "@t"
+    assert correct["no_correct"] is True
+    assert (
+        SF.seeded_defaults(schemas["correct"], {"caption_correct_order": True})[
+            "no_correct"
+        ]
+        is False
+    )
+
+
+def test_persistable_values_elide_against_the_seeded_defaults(schemas):
+    defaults = SF.seeded_defaults(schemas["correct"], {})
+    values = {**defaults, "caption_trigger_word": "@x", "tag_csv": ""}
+    assert SF.persistable_values("correct", values, defaults) == {
+        "caption_trigger_word": "@x"
+    }
+    # target_res is always written (the tiers are what a profile shows).
+    rd = SF.seeded_defaults(schemas["resize"], {"target_res": [1024]})
+    assert SF.persistable_values("resize", dict(rd), rd) == {"target_res": [1024]}
+
+
+def test_stage_meta_round_trips(schemas):
+    defaults = {sid: SF.seeded_defaults(schemas[sid], {}) for sid in SF.STAGE_IDS}
+    forms = {
+        "resize": {**defaults["resize"], "target_res": [768], "overwrite": True},
+        "autotag": {**defaults["autotag"], "mode": "merge"},
+        "correct": {**defaults["correct"], "caption_drop_groups": "artist"},
+        "masks_sam": [
+            {**defaults["masks_sam"], "prompts": "bubble", "focus_prompts": "none"}
+        ],
+    }
+    meta = SF.merge_stages_into_meta(
+        {"family": "lora"}, forms, defaults, include_mask=True
+    )
+    assert meta["stages"]["resize"] == {"target_res": [768], "overwrite": True}
+    assert meta["stages"]["autotag"] == {"mode": "merge"}
+    assert meta["stages"]["correct"] == {"caption_drop_groups": "artist"}
+    assert meta["stages"]["masks_sam"] == [
+        {"prompts": "bubble", "focus_prompts": "none"}
+    ]
+    for sid in ("resize", "autotag", "correct"):
+        assert SF.load_stage_values(meta, sid, defaults[sid]) == forms[sid]
+    cards = SF.load_stage_values(meta, "masks_sam", defaults["masks_sam"])
+    assert cards == forms["masks_sam"]
+    # A variant without cards reports None so the tab seeds from sam_mask.yaml.
+    assert SF.load_stage_values({}, "masks_sam", defaults["masks_sam"]) is None
+    # Mask cards move only with the mask section; an all-default stage vanishes.
+    meta2 = SF.merge_stages_into_meta(
+        {},
+        {"correct": dict(defaults["correct"]), "masks_sam": forms["masks_sam"]},
+        defaults,
+        include_mask=False,
+    )
+    assert meta2 == {}
+
+
+def test_saved_correct_form_builds_the_env_ladders_request(schemas, monkeypatch):
+    """P1 gate: a saved ``[variant.stages.correct]`` reaches ``tasks.py`` as
+    the same ``CorrectRequest`` the retired ``CAPTION_*`` env ladder built
+    for the default variant (trigger word + @no-artist → correction on)."""
+    import json
+
+    from scripts.tasks import preprocess
+
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+    monkeypatch.setattr(preprocess, "_ensure_danbooru_tags", lambda: None)
+    monkeypatch.setattr(preprocess, "_variant_settings", lambda: ("4", "0.1", "0.0"))
+    monkeypatch.delenv("ANIMA_DAEMON_JOB_DIR", raising=False)
+    for name in ("PREPROCESS_PATH_PATTERN", "CAPTION_DROP_GROUPS"):
+        monkeypatch.delenv(name, raising=False)
+    defaults = SF.seeded_defaults(schemas["correct"], {})
+    form = {**defaults, "caption_trigger_word": "@t", "caption_insert_no_artist": True}
+    monkeypatch.setenv(SF.STAGE_VALUES_ENV, json.dumps({"correct": form}))
+    built = []
+    monkeypatch.setattr(
+        preprocess, "_execute", lambda sid, req: built.append((sid, req))
+    )
+
+    preprocess.cmd_preprocess_captions([])
+
+    ((sid, req),) = built
+    assert sid == "correct"
+    assert req.caption_trigger_word == "@t" and req.caption_insert_no_artist
+    assert not req.no_correct  # a trigger word needs the correction pass
+    assert req.recursive and req.caption_shuffle_variants == 4
+    assert req.src == "image_dataset" and req.path_pattern == "*"
+    # And the argv the daemon would receive reads back as the same request.
+    parser = _stage("correct").request_class().parser()
+    assert _stage("correct").request_class().from_argv(parser, req.to_argv()) == req
+
+
 # -- Qt (offscreen) ---------------------------------------------------------
 
 
@@ -182,6 +330,10 @@ def test_masks_sam_form_renders_reads_back_and_builds_argv(schemas):
         assert v["threshold"] == 0.7 and v["dilate"] == 8
         assert v["prompts"] == "speech bubble,text"
         assert seen  # editing marks the section changed (dirty wiring)
+        # The card's own scope is a plain glob editor — no file chooser.
+        assert (
+            "path_pattern" in sec.widgets and "path_pattern" not in sec.browse_buttons
+        )
 
         argv = sec.argv(
             roots=ROOTS, settings={"path_pattern": "*"}, mask_root="post_image_dataset"
@@ -238,5 +390,28 @@ def test_gate_disables_its_drawer(schemas):
         assert drawer.isEnabled()
         sec.set_values({"combine_ocr": False})
         assert not drawer.isEnabled()
+    finally:
+        sec.deleteLater()
+
+
+def test_chain_gate_disables_the_stage_rows(schemas):
+    """A trainer knob passed as ``gate`` renders first and switches every
+    stage row (and the Advanced fold) off with it; ``knob_values`` carries it."""
+    _app()
+    from gui.tabs.preprocess.stage_form import StageFormSection
+
+    sec = StageFormSection(schemas["autotag"], lambda *_: None, gate="caption_autotag")
+    try:
+        gate = sec.knob_widgets["caption_autotag"]
+        assert set(sec.keys()) == {"mode", "min_confidence"}
+        assert sec.knob_values() == {"caption_autotag": False}
+        assert not sec.widgets["mode"].isEnabled()
+        gate.setChecked(True)
+        assert (
+            sec.widgets["mode"].isEnabled()
+            and sec.widgets["min_confidence"].isEnabled()
+        )
+        sec.set_knob_values({"caption_autotag": False})
+        assert not sec.widgets["mode"].isEnabled()
     finally:
         sec.deleteLater()

@@ -1,7 +1,11 @@
 """Unit tests for the Qt-free knob table (``gui/tabs/preprocess/knobs.py``).
 
+Since the stage-schema migration (``gui_preprocess_from_anime_tools.md``
+P1–P3) the table holds only the trainer-native rows — dataset roots / scope,
+the low-res sugar, the TE-cache variant knobs and the three chain gates; the
+stage forms are ``stage_form``'s and tested in ``test_gui_stage_form.py``.
 Feeds the pure functions hand-built value dicts and checks them against the
-Phase 0 characterization fixture — so the table reproduces the tab's contract
+characterization fixture — so the table reproduces the tab's contract
 without constructing a single widget.
 """
 
@@ -17,66 +21,36 @@ from tests.test_gui_preprocess_characterization import FIXTURE, SCENARIOS
 
 EXPECTED = json.loads(Path(FIXTURE).read_text(encoding="utf-8"))
 
-# Widget-side normalisations the pure layer never sees: the tier row returns
-# its tiers sorted, and the bucket-reso row drops entries outside the active
-# tiers (so the populated scenario's "1024x1024" comes back empty).
-_WIDGET_NORMALISED = {"target_res": sorted, "resize_bucket_resos": lambda _v: []}
-
-# The widget values `_flip_every_knob` in the characterization test produces.
+# The widget values `_flip_every_knob` in the characterization test produces
+# (trainer knobs only; the stage forms are flipped there too but live under
+# ``meta["stages"]`` and the ``PREPROCESS_STAGES_JSON`` env, not here).
 FLIPPED_VALUES = {
     "source_image_dir": "flipped_images",
     "path_scope": "artist_a",
     "preprocess_path_pattern": "artist_a/**",
-    "min_pixels": 123456,
-    "target_res": [768, 1280],
-    "resize_bucket_resos": [],
-    "resize_crop_anchor": "bottom_right",
-    "resize_crop_margins": {"top": 1.5, "right": 2.5, "bottom": 3.5, "left": 4.5},
-    "freefit_max_ratio": 2.25,
     "caption_shuffle_variants": 11,
     "caption_tag_dropout_rate": "0.45",
-    "caption_correct_order": True,
-    "caption_insert_no_artist": True,
-    "caption_trigger_word": "@flipped",
-    "caption_trigger_at_front": True,
-    "caption_autotag_mode": "overwrite",
-    "caption_autotag_min_confidence": 0.55,
-    "mask_path_pattern": "artist_b/*",
-    "mask_rules": [
-        {
-            "path_pattern": "artist_b/*",
-            "prompts": ["bubble", "sfx"],
-            "focus_prompts": ["face"],
-            "threshold": 0.35,
-            "dilate": 7,
-        },
-        {"prompts": ["watermark"], "threshold": 0.6, "dilate": 2},
-    ],
-    "mit_text_threshold": "0.65",
-    "mit_dilate": 13,
 }
 _TOGGLED = (
     "drop_lowres_images",
     "caption_position_clauses",
     "caption_autotag",
     "run_sam_mask",
-    "run_mit_mask",
 )
 
 
 def _defaults(scenario: str) -> dict:
     s = SCENARIOS[scenario]
-    return K.resolved_defaults(s["preprocess_toml"], s["gui_settings"], s["sam_yaml"])
+    return K.resolved_defaults(s["preprocess_toml"], s["gui_settings"])
 
 
 def _default_widget_values(scenario: str) -> dict:
     """What the widgets hold right after ``set_variant`` on an empty variant."""
     values = K.load_values({}, _defaults(scenario))
-    for key, fn in _WIDGET_NORMALISED.items():
-        values[key] = fn(values[key])
     # Free-text numerics are shown with :g and read back as text.
-    for key in ("caption_tag_dropout_rate", "mit_text_threshold"):
-        values[key] = f"{float(values[key]):g}"
+    values["caption_tag_dropout_rate"] = (
+        f"{float(values['caption_tag_dropout_rate']):g}"
+    )
     return values
 
 
@@ -92,6 +66,10 @@ def _roundtrip(data):
     return json.loads(json.dumps(data, sort_keys=True))
 
 
+def _env_without_stages(env: dict) -> dict:
+    return {k: v for k, v in env.items() if k != "PREPROCESS_STAGES_JSON"}
+
+
 @pytest.mark.parametrize("scenario", list(SCENARIOS))
 @pytest.mark.parametrize("state", ["defaults", "flipped"])
 def test_env_and_overrides_match_fixture(scenario, state):
@@ -101,33 +79,20 @@ def test_env_and_overrides_match_fixture(scenario, state):
         else _flipped_widget_values(scenario)
     )
     expected = EXPECTED[scenario][state]
-    assert K.to_env(values, _defaults(scenario)) == expected["env"]
+    assert K.to_env(values, _defaults(scenario)) == _env_without_stages(expected["env"])
     assert _roundtrip(K.to_overrides(values)) == expected["overrides"]
 
 
-def _card_roundtrip(rule: dict) -> dict:
-    """What `_RuleCard.to_dict` hands back for a rule it was built from:
-    empty / "*" path_pattern and empty focus_prompts are dropped."""
-    out = {}
-    if rule.get("path_pattern") and rule["path_pattern"] != "*":
-        out["path_pattern"] = rule["path_pattern"]
-    if rule.get("prompts"):
-        out["prompts"] = list(rule["prompts"])
-    if rule.get("focus_prompts"):
-        out["focus_prompts"] = list(rule["focus_prompts"])
-    out["threshold"] = float(rule["threshold"])
-    out["dilate"] = int(rule["dilate"])
-    return out
-
-
 def _persistable(values: dict) -> dict:
-    """The tab validates the free-text numerics and reads the rule cards
-    before persisting."""
+    """The tab validates the free-text numerics before persisting."""
     values = dict(values)
     values["caption_tag_dropout_rate"] = float(values["caption_tag_dropout_rate"])
-    values["mit_text_threshold"] = float(values["mit_text_threshold"])
-    values["mask_rules"] = [_card_roundtrip(r) for r in values["mask_rules"]]
     return values
+
+
+def _flat(meta: dict) -> dict:
+    """The fixture's meta minus the stage tables (``stage_form``'s)."""
+    return {k: v for k, v in meta.items() if k != K.STAGES_KEY}
 
 
 @pytest.mark.parametrize("scenario", list(SCENARIOS))
@@ -143,9 +108,9 @@ def test_merge_into_meta_matches_fixture(scenario):
         ("flipped", _persistable(_flipped_widget_values(scenario))),
     ):
         K.merge_into_meta(meta, values, defaults, include_mask=False)
-        assert _roundtrip(meta) == expected[state]["meta_inputs_only"], state
+        assert _roundtrip(meta) == _flat(expected[state]["meta_inputs_only"]), state
         K.merge_into_meta(meta, values, defaults, include_mask=True)
-        assert _roundtrip(meta) == expected[state]["meta_full"], state
+        assert _roundtrip(meta) == _flat(expected[state]["meta_full"]), state
 
 
 def test_load_values_is_a_fixed_point_of_merge_on_bare_checkout():
@@ -176,19 +141,20 @@ def test_const_elision_under_populated_toml_is_the_recorded_quirk():
 
 
 def test_elision_keeps_a_plain_checkout_empty():
-    """All-defaults on a bare checkout writes only the always-persisted tiers."""
+    """All-defaults on a bare checkout writes nothing (the tiers, always
+    written, live in the resize stage's table now)."""
     defaults = _defaults("bare")
     meta = K.merge_into_meta(
         {}, _default_widget_values("bare"), defaults, include_mask=False
     )
-    assert meta == {"target_res": K.DEFAULT_TARGET_RES}
+    assert meta == {}
 
 
 def test_preprocess_toml_default_sticks_when_unchecked():
     """The `_pp_default` trap, now declared: a caption-master stage set true
     in preprocess.toml must persist an explicit false when unchecked."""
     pp = {"caption_position_clauses": True, "caption_autotag": True}
-    defaults = K.resolved_defaults(pp, {}, {})
+    defaults = K.resolved_defaults(pp, {})
     values = K.load_values({}, defaults)
     assert values["caption_position_clauses"] is True
     values["caption_position_clauses"] = False
@@ -201,12 +167,21 @@ def test_preprocess_toml_default_sticks_when_unchecked():
 def test_table_invariants():
     keys = [k.key for k in K.KNOBS]
     assert len(keys) == len(set(keys))
-    assert K.PREPROCESS_ONLY_KEYS == set(keys)
+    assert K.PREPROCESS_ONLY_KEYS == set(keys) | {K.STAGES_KEY}
     for knob in K.KNOBS:
         assert knob.enabled_by is None or knob.enabled_by in K.KNOBS_BY_KEY, knob.key
-        if knob.kind == "choice":
-            assert knob.default in knob.choices, knob.key
         if knob.persist == "mask":
             assert knob.section == "mask" and not knob.snapshot and not knob.env
     env_names = [k.env for k in K.ENV_KNOBS]
     assert len(env_names) == len(set(env_names))
+    # Nothing a stage form shows is a knob row any more (the trainer-owned
+    # dests it hides — the variant sidecar knobs — are exactly the overlap).
+    from gui.tabs.preprocess.stage_form import (
+        STAGE_IDS,
+        load_stage_schemas,
+        visible_fields,
+    )
+
+    schemas = load_stage_schemas()
+    shown = {f["dest"] for sid in STAGE_IDS for f in visible_fields(schemas[sid])}
+    assert not shown & set(keys)

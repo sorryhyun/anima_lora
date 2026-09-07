@@ -7,10 +7,13 @@ Layout mirrors ConfigTab: top action bar, form+explain split, log panel.
 Surfaces the knobs the bare ``make preprocess`` / ``make mask`` paths hardcode.
 
 Settings persist to the selected ``configs/gui-methods/<variant>.toml``
-``[variant]`` table. SAM prompts/threshold/dilate persist there too;
-``configs/sam_mask.yaml`` is only the CLI fallback — GUI Save no longer
-writes it, so a terminal ``make mask`` won't see GUI mask settings unless
-the YAML is edited by hand.
+``[variant]`` table: the trainer-native knobs as flat keys, each
+``anime_tools`` stage form under ``[variant.stages.<stage_id>]`` (SAM rule
+cards as ``[[variant.stages.masks_sam]]``). ``configs/sam_mask.yaml`` is
+only the CLI fallback — GUI Save never writes it, so a terminal ``make mask``
+won't see GUI mask settings unless the YAML is edited by hand. At submit the
+stage forms travel as ``PREPROCESS_STAGES_JSON`` (``stage_form.STAGE_VALUES_ENV``)
+and ``tasks.py`` builds each request through the package's ``build_argv``.
 """
 
 from __future__ import annotations
@@ -67,8 +70,6 @@ from gui.tabs.config_tab import ConfigTab, SplitButtonStyle
 from gui.tabs.preprocess.captions import AutotagSection, CaptionEditingSection
 from gui.tabs.preprocess.image_prep import ImagePrepSection
 from gui.tabs.preprocess.knobs import (
-    DEFAULT_MASK_PATH_PATTERN,
-    DEFAULT_MIT_TEXT_THRESHOLD,
     DEFAULT_PREPROCESS_PATH_PATTERN,
     DEFAULT_TE_TAG_DROPOUT,
     PREPROCESS_ONLY_KEYS,
@@ -79,7 +80,16 @@ from gui.tabs.preprocess.knobs import (
     to_env,
     to_overrides,
 )
-from gui.tabs.preprocess.masking import MitMaskSection, SamMaskSection
+from gui.tabs.preprocess.masking import SamMaskSection
+from gui.tabs.preprocess.stage_form import (
+    STAGE_IDS,
+    STAGE_VALUES_ENV,
+    argv_for,
+    load_stage_schemas,
+    load_stage_values,
+    merge_stages_into_meta,
+    seeded_defaults,
+)
 from gui.tabs.preprocess.text_caching import TextCachingSection
 from gui.theme import action_button_qss, rich_text_pt as _explain_pt, tok
 from gui.widgets import DirtyTrackingMixin, action_button, apply_variant
@@ -96,34 +106,42 @@ RESIZED_DIR = default_resized_dir()
 LORA_CACHE_DIR = default_lora_cache_dir()
 MASK_DIR = default_mask_dir()
 
-# Pre-Phase-3 widget attribute names → knob key. Kept for one release so
-# tests and ``image_tab`` that reach into ``tab.<widget>`` stay valid; new
-# code should go through ``tab.values()`` / the owning section instead.
-_WIDGET_ALIASES: dict[str, str] = {
-    "source_dir_edit": "source_image_dir",
-    "path_scope_edit": "path_scope",
-    "preprocess_path_pattern_edit": "preprocess_path_pattern",
-    "drop_lowres_chk": "drop_lowres_images",
-    "min_pixels_spin": "min_pixels",
-    "target_res_widget": "target_res",
-    "resize_crop_anchor_widget": "resize_crop_anchor",
-    "resize_crop_margins_widget": "resize_crop_margins",
-    "freefit_max_ratio_spin": "freefit_max_ratio",
-    "shuffle_spin": "caption_shuffle_variants",
-    "dropout_edit": "caption_tag_dropout_rate",
-    "caption_correct_order_chk": "caption_correct_order",
-    "caption_insert_no_artist_chk": "caption_insert_no_artist",
-    "caption_trigger_word_edit": "caption_trigger_word",
-    "caption_trigger_at_front_chk": "caption_trigger_at_front",
-    "caption_position_clauses_chk": "caption_position_clauses",
-    "caption_autotag_chk": "caption_autotag",
-    "caption_autotag_mode_combo": "caption_autotag_mode",
-    "caption_autotag_confidence_spin": "caption_autotag_min_confidence",
-    "run_sam_mask_chk": "run_sam_mask",
-    "mask_path_pattern_edit": "mask_path_pattern",
-    "run_mit_mask_chk": "run_mit_mask",
-    "mit_threshold_edit": "mit_text_threshold",
-    "mit_dilate_spin": "mit_dilate",
+# Pre-Phase-3 widget attribute names → (section attribute, key). Kept for
+# one release so tests and ``image_tab`` that reach into ``tab.<widget>`` stay
+# valid; new code should go through ``tab.values()`` / ``tab.stage_values()``
+# or the owning section instead. A key is a knob-table key for a trainer row
+# (``knob_widgets``) or a stage dest (``widgets``).
+_WIDGET_ALIASES: dict[str, tuple[str, str]] = {
+    "source_dir_edit": ("image_section", "source_image_dir"),
+    "path_scope_edit": ("image_section", "path_scope"),
+    "preprocess_path_pattern_edit": ("image_section", "preprocess_path_pattern"),
+    "drop_lowres_chk": ("image_section", "drop_lowres_images"),
+    "min_pixels_spin": ("image_section", "min_pixels"),
+    "target_res_widget": ("image_section", "target_res"),
+    "resize_crop_anchor_widget": ("image_section", "resize_crop_anchor"),
+    "resize_crop_margins_widget": ("image_section", "resize_crop_margins"),
+    "freefit_max_ratio_spin": ("image_section", "freefit_max_ratio"),
+    "shuffle_spin": ("text_section", "caption_shuffle_variants"),
+    "dropout_edit": ("text_section", "caption_tag_dropout_rate"),
+    "caption_no_correct_chk": ("caption_section", "no_correct"),
+    "caption_insert_no_artist_chk": ("caption_section", "caption_insert_no_artist"),
+    "caption_trigger_word_edit": ("caption_section", "caption_trigger_word"),
+    "caption_trigger_at_front_chk": ("caption_section", "caption_trigger_at_front"),
+    "caption_drop_groups_edit": ("caption_section", "caption_drop_groups"),
+    "caption_position_clauses_chk": ("caption_section", "caption_position_clauses"),
+    "caption_autotag_chk": ("autotag_section", "caption_autotag"),
+    "caption_autotag_mode_combo": ("autotag_section", "mode"),
+    "caption_autotag_confidence_spin": ("autotag_section", "min_confidence"),
+    "run_sam_mask_chk": ("sam_section", "run_sam_mask"),
+}
+
+# Placeholder roots for validating a stage form at Save / Run (the real
+# roots are filled by ``tasks.py`` at submit); ``src`` / ``dst`` are required
+# by the ``correct`` request, so they must be non-empty here.
+_VALIDATION_ROOTS = {
+    "src": "image_dataset",
+    "dst": "post_image_dataset/resized",
+    "masks": "post_image_dataset/masks",
 }
 
 
@@ -307,34 +325,57 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
 
     def _build_form(self) -> QScrollArea:
         """The section stack. Each section seeds its widgets from the same
-        three default sources ``_resolved_defaults`` reads, so a fresh tab
-        (no variant loaded yet) already shows the effective defaults."""
+        default sources ``_resolved_defaults`` / ``_stage_defaults`` read, so
+        a fresh tab (no variant loaded yet) already shows the effective
+        defaults."""
         settings = read_gui_settings()
         pp_cfg = _load_preprocess_toml()
-        sam_yaml = _load_sam_yaml()
         help_cb = self._show_field_help
+        self._schemas = load_stage_schemas()
+        stage_defaults = self._stage_defaults(pp_cfg)
 
-        self.image_section = ImagePrepSection(help_cb, pp_cfg=pp_cfg)
+        self.image_section = ImagePrepSection(
+            self._schemas["resize"],
+            help_cb,
+            pp_cfg=pp_cfg,
+            defaults=stage_defaults["resize"],
+        )
         self.text_section = TextCachingSection(help_cb, settings=settings)
         # Auto-tagging runs first and is the only stage that can create a caption
         # from nothing; the caption-editing box below edits text that already exists.
-        self.autotag_section = AutotagSection(help_cb, pp_cfg=pp_cfg)
-        self.caption_section = CaptionEditingSection(help_cb, pp_cfg=pp_cfg)
+        self.autotag_section = AutotagSection(
+            self._schemas["autotag"],
+            help_cb,
+            defaults=stage_defaults["autotag"],
+            gate_on=bool(pp_cfg.get("caption_autotag", False)),
+        )
+        self.caption_section = CaptionEditingSection(
+            self._schemas["correct"],
+            help_cb,
+            defaults=stage_defaults["correct"],
+            position_on=bool(pp_cfg.get("caption_position_clauses", False)),
+        )
         self.sam_section = SamMaskSection(
+            self._schemas["masks_sam"],
             help_cb,
             settings=settings,
-            sam_yaml_rules=load_rules(sam_yaml),
-            mask_path_pattern=sam_yaml.get("path_pattern") or DEFAULT_MASK_PATH_PATTERN,
+            defaults=stage_defaults["masks_sam"],
+            initial_rules=self._seed_sam_cards(),
         )
-        self.mit_section = MitMaskSection(help_cb, settings=settings)
         self.sections = (
             self.image_section,
             self.text_section,
             self.autotag_section,
             self.caption_section,
             self.sam_section,
-            self.mit_section,
         )
+        # stage id → the section holding its form (a list of cards for SAM).
+        self.stage_sections = {
+            "resize": self.image_section,
+            "autotag": self.autotag_section,
+            "correct": self.caption_section,
+            "masks_sam": self.sam_section,
+        }
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -347,16 +388,44 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         scroll.setWidget(host)
         return scroll
 
+    def _stage_defaults(self, pp_cfg: dict) -> dict[str, dict]:
+        """``{stage_id: {dest: default}}`` — the schema defaults with
+        ``preprocess.toml`` seeded on top (``stage_form.seeded_defaults``)."""
+        return {sid: seeded_defaults(self._schemas[sid], pp_cfg) for sid in STAGE_IDS}
+
+    def _seed_sam_cards(self) -> list[dict]:
+        """The SAM cards a variant with no ``[[variant.stages.masks_sam]]``
+        opens on: ``configs/sam_mask.yaml``'s rules (the CLI's), spelled as
+        ``masks_sam`` form values (a prompt list is its csv text, an empty
+        one the request's ``none``)."""
+        cards = []
+        for rule in load_rules(_load_sam_yaml()):
+            cards.append(
+                {
+                    "path_pattern": rule.get("path_pattern") or "",
+                    "prompts": ", ".join(rule.get("prompts") or []) or "none",
+                    "focus_prompts": ", ".join(rule.get("focus_prompts") or [])
+                    or "none",
+                    "threshold": float(rule["threshold"]),
+                    "dilate": int(rule["dilate"]),
+                }
+            )
+        return cards
+
     def __getattr__(self, name: str):
         # Legacy ``tab.<widget>`` access → the owning section's widget (see
         # _WIDGET_ALIASES). Only reached when normal lookup fails, and never
         # before the sections exist.
-        key = _WIDGET_ALIASES.get(name)
-        sections = self.__dict__.get("sections")
-        if key is not None and sections:
-            for section in sections:
+        alias = _WIDGET_ALIASES.get(name)
+        if alias is not None and self.__dict__.get("sections"):
+            section = self.__dict__.get(alias[0])
+            if section is not None:
+                key = alias[1]
                 if key in section.widgets:
                     return section.widgets[key]
+                knobs = getattr(section, "knob_widgets", {})
+                if key in knobs:
+                    return knobs[key]
         raise AttributeError(name)
 
     def _lazy_init(self) -> None:
@@ -404,10 +473,10 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             finally:
                 self._loading_variant = False
         self._variant = variant
-        values = load_values(
-            self._variant_preprocess_meta(variant), self._resolved_defaults()
-        )
+        meta = self._variant_preprocess_meta(variant)
+        values = load_values(meta, self._resolved_defaults())
         self.set_values(values)
+        self.set_stage_values(self._load_stage_values(meta))
         if hasattr(self, "status_lbl"):
             self._refresh_status()
         self._clear_dirty()
@@ -423,27 +492,60 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
             return {}
         return {k: meta[k] for k in PREPROCESS_ONLY_KEYS if k in meta}
 
+    def _load_stage_values(self, meta: dict) -> dict[str, object]:
+        """``{stage_id: values}`` for a variant: its ``[variant.stages.*]``
+        over the seeded defaults; SAM cards fall back to the yaml seed."""
+        defaults = self._stage_defaults(_load_preprocess_toml())
+        out: dict[str, object] = {}
+        for sid in STAGE_IDS:
+            loaded = load_stage_values(meta, sid, defaults[sid])
+            if sid == "masks_sam" and loaded is None:
+                loaded = self._seed_sam_cards()
+            out[sid] = loaded
+        return out
+
     # -- values (the section surface) ---------------------------------------
 
     def values(self) -> dict[str, object]:
-        """Raw widget state keyed by knob, merged across sections. Free-text
-        numerics (``caption_tag_dropout_rate`` / ``mit_text_threshold``) stay
-        as the line-edit text — validated where they're persisted;
-        ``mask_rules`` is ``None`` here and collected separately
-        (``SamMaskSection.collect_rules``) because it validates."""
+        """Raw widget state of the trainer-native knobs (``knobs.KNOBS``),
+        merged across sections. Free-text numerics (``caption_tag_dropout_rate``)
+        stay as the line-edit text — validated where they're persisted."""
         out: dict[str, object] = {}
         for section in self.sections:
-            out.update(section.values())
+            reader = getattr(section, "knob_values", None)
+            out.update(reader() if reader is not None else section.values())
         return out
 
     _widget_values = values  # pre-Phase-3 name
 
+    def stage_values(self) -> dict[str, object]:
+        """``{stage_id: {dest: value}}`` for every stage form (``masks_sam``:
+        one dict per rule card) — what the job receives and the variant keeps."""
+        out: dict[str, object] = {}
+        for sid, section in self.stage_sections.items():
+            reader = getattr(section, "stage_values", None)
+            out[sid] = reader() if reader is not None else section.values()
+        return out
+
     def set_values(self, values: dict) -> None:
-        """Push knob values into every section without tripping the dirty flag."""
+        """Push trainer-knob values into every section without tripping the
+        dirty flag."""
         self._loading_variant = True
         try:
             for section in self.sections:
-                section.set_values(values)
+                setter = getattr(section, "set_knob_values", None)
+                (setter or section.set_values)(values)
+        finally:
+            self._loading_variant = False
+
+    def set_stage_values(self, stage_values: dict) -> None:
+        self._loading_variant = True
+        try:
+            for sid, section in self.stage_sections.items():
+                if sid not in stage_values:
+                    continue
+                setter = getattr(section, "set_stage_values", None)
+                (setter or section.set_values)(stage_values[sid])
         finally:
             self._loading_variant = False
 
@@ -458,10 +560,10 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         self.resize_crop_margins_widget.set_value(value)
 
     def _resize_crop_margins(self) -> dict[str, float]:
-        return self.resize_crop_margins_widget.value()
+        return self.resize_crop_margins_widget.margins()
 
     def _set_autotag_mode(self, mode: str) -> None:
-        self.autotag_section.set_values({"caption_autotag_mode": mode})
+        self.autotag_section.set_values({"mode": mode})
 
     def _autotag_mode(self) -> str:
         return self.autotag_section.mode()
@@ -472,9 +574,6 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
 
     def _set_rule_cards(self, rules: list[dict]) -> None:
         self.sam_section.set_rule_cards(rules)
-
-    def _collect_rules(self) -> list[dict] | None:
-        return self.sam_section.collect_rules()
 
     # -- dirty / help / status ----------------------------------------------
 
@@ -663,16 +762,18 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
 
     @staticmethod
     def _resolved_defaults() -> dict:
-        """Effective per-knob defaults from the three sources the tab consults
-        (``preprocess.toml`` / ``gui_settings.json`` / ``sam_mask.yaml``)."""
-        return resolved_defaults(
-            _load_preprocess_toml(), read_gui_settings(), _load_sam_yaml()
-        )
+        """Effective per-knob defaults from the two sources the trainer knobs
+        consult (``preprocess.toml`` / ``gui_settings.json``)."""
+        return resolved_defaults(_load_preprocess_toml(), read_gui_settings())
 
     def preprocess_env(self) -> dict[str, str]:
-        """Environment values consumed by ``tasks.py preprocess`` (see
-        ``knobs.to_env`` for why geometry/filter knobs ride as env)."""
-        return to_env(self.values(), self._resolved_defaults())
+        """Environment values consumed by ``tasks.py preprocess`` / ``mask``:
+        the trainer knobs (``knobs.to_env``) plus every stage form as JSON
+        (``PREPROCESS_STAGES_JSON``), from which ``tasks.py`` builds the
+        ``anime_tools`` requests through ``build_argv``."""
+        env = to_env(self.values(), self._resolved_defaults())
+        env[STAGE_VALUES_ENV] = json.dumps(self.stage_values(), ensure_ascii=False)
+        return env
 
     def preprocess_overrides(self) -> dict[str, object]:
         """Flat config overrides that should be captured in preprocess snapshots."""
@@ -734,13 +835,41 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
 
     # -- save ---------------------------------------------------------------
 
+    def _validate_stages(self, *, include_mask: bool) -> bool:
+        """Run every stage form through the package's ``build_argv`` (the
+        request's own ``__post_init__``): a bad value surfaces as a dialog
+        here, not minutes into a SAM3 / tagger load."""
+        stage_values = self.stage_values()
+        for sid, values in stage_values.items():
+            if sid == "masks_sam":
+                if not include_mask:
+                    continue
+                cards = values or []
+            else:
+                cards = [values]
+            for i, card in enumerate(cards):
+                try:
+                    argv_for(
+                        self._schemas[sid],
+                        card,
+                        roots=_VALIDATION_ROOTS,
+                        settings={"path_pattern": "*"},
+                        mask_root="post_image_dataset",
+                    )
+                except ValueError as exc:
+                    label = self._schemas[sid].get("title") or sid
+                    if sid == "masks_sam":
+                        label = f"{t('preprocess_sam_rule')} {i + 1}"
+                    QMessageBox.warning(
+                        self,
+                        t("error"),
+                        t("preprocess_invalid_stage", stage=label, err=str(exc)),
+                    )
+                    return False
+        return True
+
     def _save_variant_preprocess_meta(
-        self,
-        *,
-        validate_dropout: bool,
-        include_mask: bool = False,
-        rules: list[dict] | None = None,
-        mit_threshold: float | None = None,
+        self, *, validate_dropout: bool, include_mask: bool = False
     ) -> bool:
         if not self._variant:
             return True
@@ -756,6 +885,8 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
                 dropout = float(dropout_text)
             except ValueError:
                 dropout = DEFAULT_TE_TAG_DROPOUT
+        if not self._validate_stages(include_mask=include_mask):
+            return False
 
         path = variant_path(self._variant)
         data = _load(path)
@@ -770,15 +901,17 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         values = self.values()
         values["path_scope"] = scope
         values["caption_tag_dropout_rate"] = float(dropout)
-        if include_mask:
-            values["mask_rules"] = rules
-            values["mit_text_threshold"] = (
-                DEFAULT_MIT_TEXT_THRESHOLD if mit_threshold is None else mit_threshold
-            )
         # Elision (pop-if-default, with the preprocess.toml-resolved comparison
-        # for the caption-master stages) is the knob table's job.
+        # for the caption-master stages) is the knob table's job; the stage
+        # forms are elided against their seeded defaults by stage_form.
         merge_into_meta(
             meta, values, self._resolved_defaults(), include_mask=include_mask
+        )
+        merge_stages_into_meta(
+            meta,
+            self.stage_values(),
+            self._stage_defaults(_load_preprocess_toml()),
+            include_mask=include_mask,
         )
 
         if meta:
@@ -795,19 +928,8 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         )
         if dropout is None:
             return False
-        mit_threshold = self._parse_float(
-            self.mit_threshold_edit.text().strip(), t("preprocess_mit_threshold")
-        )
-        if mit_threshold is None:
-            return False
-        rules = self.sam_section.collect_rules()
-        if rules is None:
-            return False
         if not self._save_variant_preprocess_meta(
-            validate_dropout=False,
-            include_mask=True,
-            rules=rules,
-            mit_threshold=mit_threshold,
+            validate_dropout=False, include_mask=True
         ):
             return False
         self._clear_dirty()
@@ -875,13 +997,7 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
     def _run_mask(self, *, queue: bool = False) -> None:
         if not self._save_all():
             return
-        rules = self.sam_section.collect_rules()
-        if rules is None:
-            return
-        mask_path_pattern = self.sam_section.mask_path_pattern()
-        run_sam = self.run_sam_mask_chk.isChecked()
-        run_mit = self.run_mit_mask_chk.isChecked()
-        if not (run_sam or run_mit):
+        if not self.run_sam_mask_chk.isChecked():
             QMessageBox.warning(self, t("error"), t("preprocess_mask_nothing_enabled"))
             return
         # Without the snapshot, masking falls back to the unscoped resized/ and re-masks every group each run.
@@ -889,37 +1005,16 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
         # Masking reads the resized images; with none on disk the task exits
         # with an opaque "no images to mask". Surface the real cause first.
         resized_dir = self._snapshot_path(snapshot, "resized_image_dir", RESIZED_DIR)
-        if _count_resized(resized_dir, mask_path_pattern) == 0:
+        if _count_resized(resized_dir) == 0:
             QMessageBox.warning(self, t("error"), t("preprocess_no_resized_to_process"))
             return
         self._submit(
             label="mask",
             argv=["tasks.py", "mask"],
-            extra_env={
-                "MASK_CONFIG_JSON": json.dumps(self.mask_config(), ensure_ascii=False)
-            },
+            extra_env=self.preprocess_env(),
             config_snapshot=snapshot,
             attach=not queue,
         )
-
-    def mask_config(self) -> dict:
-        """The ``configs/sam_mask.yaml``-shaped snapshot ``make mask`` reads
-        (``MASK_CONFIG_JSON``): the SAM rule cards, the shared mask path
-        pattern, the two run switches and the MIT knobs. Every value is one
-        ``anime_tools`` request field, so the task never carries a literal of
-        its own. Call after ``_save_all()`` (the MIT threshold is validated
-        there)."""
-        rules = self.sam_section.collect_rules() or []
-        return {
-            "rules": rules,
-            "path_pattern": self.sam_section.mask_path_pattern(),
-            "run_sam": self.run_sam_mask_chk.isChecked(),
-            "run_mit": self.run_mit_mask_chk.isChecked(),
-            "mit": {
-                "text_threshold": float(self.mit_threshold_edit.text().strip()),
-                "dilate": int(self.mit_dilate_spin.value()),
-            },
-        }
 
     def _submit(
         self,

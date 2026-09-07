@@ -1,10 +1,19 @@
 # Preprocess panel drawn from `anime_tools` stage schemas
 
-Status: **P0 pilot landed 2026-09-07** — `gui/tabs/preprocess/stage_form.py` +
-`tests/test_gui_stage_form.py` (9 tests), not wired into the live tab. Phases
-P1–P3 below are open and each has a test gate. Question this answers (repo
-owner): *"how can we set the trainer's Preprocess panel to be anime_tools'? I
-guess we can make anime_tools emit a config list or something."*
+Status: **P0–P3 landed 2026-09-07** — the live Preprocessing tab draws the
+image-prep, auto-tag, caption-rewriting and SAM-mask sections from the
+`resize` / `autotag` / `correct` / `masks_sam` schemas (`stage_form.py`,
+`tests/test_gui_stage_form.py` 14 tests + the regenerated characterization
+fixture); the `CAPTION_*` env ladder for the migrated knobs and
+`MASK_CONFIG_JSON` are gone, replaced by one `PREPROCESS_STAGES_JSON` form
+payload that `scripts/tasks/_common.request_from_form` turns into requests
+through the package's `build_argv`; the MIT masker is removed trainer-side
+(v2 checklist §2); the i18n overlay (option 2 in §4) is
+`gui/explanations/guides/<lang>/_stage_fields.json`. See **§7 Landed** for
+the deltas from the plan. P4 (`ocr` / `groups` / `audit` panels) stays
+open. Question this answers (repo owner): *"how can we set the trainer's
+Preprocess panel to be anime_tools'? I guess we can make anime_tools emit a
+config list or something."*
 
 Short answer: the config list already exists and is torch-free; the trainer
 needs a renderer over it, a binding table for its roots, and a decision on
@@ -231,6 +240,60 @@ Not in scope: moving `anime_tools.gui.stages` (§1 — unnecessary), Export on
 the trainer panel (§3 — the trainer is the export target), the TE/VAE/PE cache
 stages (no request exists; a `TextCacheRequest` in the trainer would be the
 first *trainer-side* request, a separate proposal).
+
+## 7. Landed (2026-09-07) — deltas from the plan
+
+- **Transport is form values, not argv.** The tab sends every stage form as
+  `PREPROCESS_STAGES_JSON = {stage_id: {dest: value}}` (`masks_sam`: a list,
+  one per card) inside `preprocess_env()`, so the Train auto-chain gets it
+  for free. `scripts/tasks/_common.request_from_form(stage_id, values, *,
+  roots, settings, mask_root, apply, **overrides)` runs `build_argv` with the
+  **trainer's** roots (`_path(...)`, path_scope-scoped) and then
+  `dataclasses.replace` for the dests the chain owns — so a saved form can
+  never carry a stale path, and validation runs twice (form → request →
+  replace). The GUI validates at Save/Run with placeholder roots
+  (`_VALIDATION_ROOTS`) and shows the `ValueError` in a dialog
+  (`preprocess_invalid_stage`).
+- **Trainer-owned dests are hidden** (`stage_form.TRAINER_FIELDS`):
+  `resize.{recursive,copy_captions,skip}`, `autotag.from_report`,
+  `correct.{recursive, caption_shuffle_variants, caption_tag_dropout_rate,
+  caption_tag_randomize_rate, qwen3, t5_tokenizer_path}`,
+  `masks_sam.recursive`. `masks_sam.path_pattern` is a *shown* bound field
+  (`SHOWN_BOUND`): each card carries its own scope and `make mask` threads it
+  as the run's setting, so the global `mask_path_pattern` knob is gone.
+- **`no_correct` is shown as the package's switch**, seeded from
+  `preprocess.toml`'s `caption_correct_order` inverted (default: no
+  reordering, as before). The trainer keeps its rule that a trigger word /
+  `@no-artist` / drop-groups force the correction pass (the package injects
+  nothing under `correct=False`); the overlay help says so.
+- **Seeds and elision.** `stage_form.seeded_defaults` layers
+  `configs/preprocess.toml` over the schema defaults for the dests it names
+  (`_PP_SEEDS`); `[variant.stages.<id>]` keeps only values ≠ the seeded
+  default (`target_res` always — `ALWAYS_PERSIST`). SAM cards seed from
+  `configs/sam_mask.yaml` (`knobs.load_rules`) when the variant has no
+  `[[variant.stages.masks_sam]]`; an empty prompt list is the package's
+  `none` spelling, shown as-is.
+- **Removed**: knob rows `min_pixels target_res resize_bucket_resos
+  resize_crop_anchor resize_crop_margins freefit_max_ratio
+  caption_correct_order caption_insert_no_artist caption_trigger_word
+  caption_trigger_at_front caption_autotag_mode
+  caption_autotag_min_confidence run_mit_mask mask_path_pattern mask_rules
+  mit_text_threshold mit_dilate`; env `MIN_PIXELS TARGET_RES
+  FREEFIT_MAX_RATIO CAPTION_CORRECT_ORDER CAPTION_INSERT_NO_ARTIST
+  CAPTION_TRIGGER_WORD CAPTION_TRIGGER_AT_FRONT CAPTION_AUTOTAG_MODE
+  CAPTION_AUTOTAG_MIN_CONFIDENCE MASK_CONFIG_JSON`; `MitMaskSection`,
+  `_mit_request` / `MIT_MODEL_PATH` / `run_mit` in `scripts/tasks/masking.py`,
+  the MIT i18n strings, the `_TargetResWidget` bucket popup. `DROP_LOWRES_IMAGES`
+  stays (sugar → `min_pixels=0`); `scripts/tasks/preprocess.py::_min_pixels_args`
+  and `_config_target_res` read the resize form when no env is set.
+- **Kept flat in `[variant]`**: `source_image_dir path_scope
+  preprocess_path_pattern drop_lowres_images caption_shuffle_variants
+  caption_tag_dropout_rate caption_position_clauses caption_autotag
+  run_sam_mask` (+ the `stages` sub-table, in `PREPROCESS_ONLY_KEYS`).
+- **Not done**: the P2 GPU gate (GUI vs shell `make mask` on the test
+  dataset) was not run; the argv/request equivalence is pinned by
+  `tests/test_anime_tools_cli_contract.py` and `tests/test_masking_task.py`
+  instead. P4 untouched.
 
 ## Pilot notes
 

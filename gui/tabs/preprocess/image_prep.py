@@ -1,5 +1,10 @@
-"""Image-prep section: source dir / scope / pattern / low-res filter /
-target-res tiers / crop anchor + margins / free-fit clamp."""
+"""Image-prep section: the trainer's dataset roots / scope / pattern / low-res
+switch on top of the ``anime_tools`` **resize** stage form (min_pixels,
+tiers, crop anchor + margins, free-fit clamp, overwrite, workers).
+
+The three domain widgets (tier row, 3×3 anchor picker, four margin spins)
+are kept and mapped onto the stage's dests — the schema's ``list`` kind is
+too weak to draw them."""
 
 from __future__ import annotations
 
@@ -14,27 +19,20 @@ from PySide6.QtWidgets import (
 )
 
 from gui.i18n import t
-from gui.tabs.preprocess._section import (
-    KnobSection,
-    checkbox,
-    dspin,
-    line,
-    no_wheel,
-    spin,
-)
+from gui.tabs.preprocess._section import checkbox, line, no_wheel, spin
 from gui.tabs.preprocess.knobs import (
-    DEFAULT_MIN_PIXELS,
     DEFAULT_PREPROCESS_PATH_PATTERN,
     DEFAULT_SOURCE_IMAGE_DIR,
-    DEFAULT_TARGET_RES,
 )
+from gui.tabs.preprocess.stage_form import StageFormSection
 from gui.theme import tok
 from gui.widgets import _TargetResWidget
 from library.preprocess.resize_preview import (
-    DEFAULT_FREEFIT_MAX_RATIO,
     DEFAULT_RESIZE_CROP_ANCHOR,
     normalize_crop_margins,
 )
+
+_MARGIN_SIDES = ("top", "right", "bottom", "left")
 
 
 class _ResizeCropAnchorWidget(QWidget):
@@ -96,10 +94,13 @@ class _ResizeCropAnchorWidget(QWidget):
 
 
 class _CropMarginsWidget(QWidget):
-    """Four percent spins (top/right/bottom/left) — the crop-exclusion margins."""
+    """Four percent spins (top/right/bottom/left) — the crop-exclusion margins.
+
+    ``value()`` is the stage's spelling: a ``[top, right, bottom, left]`` list,
+    or ``None`` when every side is zero (the request default, so nothing is
+    spelled on the argv)."""
 
     changed = Signal()
-    _SIDES = ("top", "right", "bottom", "left")
 
     def __init__(self) -> None:
         super().__init__()
@@ -107,7 +108,7 @@ class _CropMarginsWidget(QWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(6)
         self.spins: dict[str, QDoubleSpinBox] = {}
-        for side in self._SIDES:
+        for side in _MARGIN_SIDES:
             lbl = QLabel(t(f"resize_crop_margin_{side}"))
             lbl.setMinimumWidth(24)
             lbl.setStyleSheet(f"QLabel {{ color:{tok('text')}; }}")
@@ -135,25 +136,42 @@ class _CropMarginsWidget(QWidget):
         s.valueChanged.connect(lambda _v: self.changed.emit())
         return s
 
-    def value(self) -> dict[str, float]:
+    def margins(self) -> dict[str, float]:
         return {side: float(s.value()) for side, s in self.spins.items()}
 
+    def value(self) -> list[float] | None:
+        m = self.margins()
+        values = [m[side] for side in _MARGIN_SIDES]
+        return values if any(v > 0 for v in values) else None
+
     def set_value(self, value) -> None:
-        margins = normalize_crop_margins(value)
+        if isinstance(value, (list, tuple)) and len(value) == 4:
+            value = dict(zip(_MARGIN_SIDES, value))
+        elif isinstance(value, str) and value.strip():
+            value = dict(zip(_MARGIN_SIDES, value.split(",")))
+        margins = normalize_crop_margins(value if isinstance(value, dict) else None)
         for side, s in self.spins.items():
             s.blockSignals(True)
             s.setValue(float(margins[side]))
             s.blockSignals(False)
 
 
-class ImagePrepSection(KnobSection):
-    def __init__(self, help_cb, *, pp_cfg: dict):
-        self._pp = pp_cfg
-        super().__init__(t("preprocess_image_prep"), help_cb)
+class ImagePrepSection(StageFormSection):
+    """The ``resize`` stage form under the trainer's dataset rows."""
 
-    def _build(self) -> None:
+    def __init__(self, schema: dict, help_cb, *, pp_cfg: dict, defaults: dict):
+        self._pp = pp_cfg
+        super().__init__(
+            schema,
+            help_cb,
+            title=t("preprocess_image_prep"),
+            defaults=defaults,
+            gated_by={"min_pixels": "drop_lowres_images"},
+        )
+
+    def _build_prefix(self) -> None:
         pp = self._pp
-        self.add_knob(
+        self.add_trainer_knob(
             "source_image_dir",
             line(
                 str(pp.get("source_image_dir", DEFAULT_SOURCE_IMAGE_DIR)),
@@ -162,8 +180,10 @@ class ImagePrepSection(KnobSection):
             t("preprocess_source_image_dir"),
             tooltip=t("preprocess_source_image_dir_tip"),
         )
-        self.add_knob("path_scope", line(placeholder="data_group1"), t("path_scope"))
-        self.add_knob(
+        self.add_trainer_knob(
+            "path_scope", line(placeholder="data_group1"), t("path_scope")
+        )
+        self.add_trainer_knob(
             "preprocess_path_pattern",
             line(
                 str(pp.get("preprocess_path_pattern", DEFAULT_PREPROCESS_PATH_PATTERN)),
@@ -174,63 +194,53 @@ class ImagePrepSection(KnobSection):
         )
         drop = checkbox(t("preprocess_drop_lowres"))
         drop.setChecked(bool(pp.get("drop_lowres_images", True)))
-        self.add_knob(
+        # min_pixels (a stage field) only applies when the filter is on — the
+        # CLI's drop_lowres=false → --min_pixels 0; wired via ``gated_by``.
+        self.add_trainer_knob(
             "drop_lowres_images",
             drop,
             t("preprocess_drop_lowres"),
             tooltip=t("preprocess_drop_lowres_tip"),
         )
-        # min_pixels only applies when the filter is on (mirrors the CLI:
-        # drop_lowres=false → --min_pixels 0) — gated via Knob.enabled_by.
-        min_px = spin(
-            0, 100_000_000, int(pp.get("min_pixels", DEFAULT_MIN_PIXELS)), step=50_000
-        )
-        min_px.setGroupSeparatorShown(True)
-        self.add_knob("min_pixels", min_px, t("preprocess_min_pixels"))
 
-        # Dual-use: preprocess resizes to these tiers, and train.py reads the same
-        # value back to size the compile cache — this widget is the source of truth.
-        self.target_res = _TargetResWidget(pp.get("target_res", DEFAULT_TARGET_RES))
-        self.add_knob("target_res", self.target_res, t("preprocess_target_res"))
-        self.add_knob(
-            "resize_crop_anchor",
-            _ResizeCropAnchorWidget(),
-            t("resize_crop_anchor"),
-            tooltip=t("resize_crop_anchor_tip"),
-        )
-        self.add_knob(
-            "resize_crop_margins", _CropMarginsWidget(), t("resize_crop_margins")
-        )
-        # Free-fit is the only resize mode; only the max-ratio clamp is user-tunable.
-        self.add_knob(
-            "freefit_max_ratio",
-            dspin(
-                1.0,
-                4.0,
-                float(pp.get("freefit_max_ratio", DEFAULT_FREEFIT_MAX_RATIO)),
-                step=0.25,
-                decimals=2,
-            ),
-            t("preprocess_freefit_max_ratio"),
-            tooltip=t("preprocess_freefit_max_ratio_tip"),
-        )
-
-    # ``resize_bucket_resos`` is a second value carried by the target-res
-    # widget (its explicit WxH list), so it's read/written alongside the tiers
-    # rather than through its own editor.
-
-    def values(self) -> dict[str, object]:
-        out = super().values()
-        out["resize_bucket_resos"] = self.target_res.bucket_resos()
-        return out
+    def _make_widget(self, fd: dict) -> QWidget:
+        dest = fd["dest"]
+        if dest == "min_pixels":
+            min_px = spin(0, 100_000_000, int(fd.get("default") or 0), step=50_000)
+            min_px.setGroupSeparatorShown(True)
+            return min_px
+        if dest == "target_res":
+            # Dual-use: preprocess resizes to these tiers, and the tab's status
+            # / the Dataset tab's resize preview read the same widget.
+            self.target_res = _TargetResWidget(fd.get("default") or [1024])
+            return self.target_res
+        if dest == "resize_crop_anchor":
+            return _ResizeCropAnchorWidget()
+        if dest == "resize_crop_margins":
+            return _CropMarginsWidget()
+        if dest == "freefit_max_ratio":
+            w = super()._make_widget(fd)
+            w.setRange(1.0, 4.0)
+            w.setDecimals(2)
+            w.setSingleStep(0.25)
+            return w
+        return super()._make_widget(fd)
 
     def set_values(self, values: dict) -> None:
-        if "target_res" in values:
-            self.set_target_res(values["target_res"])
-        rest = {k: v for k, v in values.items() if k != "target_res"}
+        # The tier row and the domain widgets take their own shapes, not the
+        # csv text the base would hand a ``list`` field.
+        rest = dict(values)
+        if "target_res" in rest:
+            self.set_target_res(rest.pop("target_res"))
+        if "resize_crop_margins" in rest:
+            self.widgets["resize_crop_margins"].set_value(
+                rest.pop("resize_crop_margins")
+            )
+        if "resize_crop_anchor" in rest:
+            self.widgets["resize_crop_anchor"].set_value(
+                rest.pop("resize_crop_anchor"), emit=False
+            )
         super().set_values(rest)
-        if "resize_bucket_resos" in values:
-            self.target_res.set_bucket_resos(values["resize_bucket_resos"])
 
     def set_target_res(self, values) -> None:
         """Set the tier checkboxes without emitting per-box change signals."""
@@ -244,4 +254,3 @@ class ImagePrepSection(KnobSection):
             box.blockSignals(True)
             box.setChecked(edge in selected)
             box.blockSignals(False)
-        self.target_res.refresh_bucket_enabled()

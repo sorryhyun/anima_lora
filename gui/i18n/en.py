@@ -148,7 +148,6 @@ STRINGS: dict[str, str] = {
     "preprocess_add_to_queue": "Add to queue",
     "preprocess_queued": "Queued {label} (job {job_id}) — watch it in the Queue tab.",
     "preprocess_masking_sam": "SAM3 masking (text bubbles)",
-    "preprocess_masking_mit": "MIT masking (manga text)",
     "preprocess_sam_prompts": "SAM prompts (one per line):",
     "preprocess_sam_prompts_tip": (
         "Text prompts SAM3 looks for. One per line. Defaults to 'speech bubble' "
@@ -185,33 +184,11 @@ STRINGS: dict[str, str] = {
         "Pixels of dilation applied to the binary mask. Larger values blur "
         "mask edges outward. Default 5. Set to 0 to disable."
     ),
-    "preprocess_mit_threshold": "MIT text threshold (0.0–1.0):",
-    "preprocess_mit_threshold_tip": (
-        "Confidence threshold for the MIT/ComicTextDetector text segmenter. "
-        "Default 0.8."
-    ),
-    "preprocess_mask_path_pattern": "Mask path filter:",
-    "preprocess_mask_path_pattern_tip": (
-        "fnmatch glob restricting which resized images get masked, matched on "
-        "each path relative to post_image_dataset/resized. Scopes BOTH SAM and "
-        "MIT. Same syntax as the training path_pattern: '*' (or blank) masks "
-        "everything; 'char_a/*' one subfolder; 'char_a/*|char_b/*' to OR-combine."
-    ),
     "preprocess_run_mask": "Run masking",
     "preprocess_run_sam_mask": "Run SAM masking",
-    "preprocess_run_sam_mask_tip": (
-        "Run SAM3 bubble segmentation as part of mask generation. "
-        "Uncheck to skip SAM and use only MIT (or whichever other "
-        "backends are enabled)."
-    ),
-    "preprocess_run_mit_mask": "Run MIT masking",
-    "preprocess_run_mit_mask_tip": (
-        "Run MIT/ComicTextDetector text segmentation as part of mask "
-        "generation. Uncheck to skip MIT and use only SAM."
-    ),
-    "preprocess_mask_nothing_enabled": (
-        "At least one of SAM or MIT masking must be enabled."
-    ),
+    "preprocess_run_sam_mask_tip": "Run SAM3 segmentation as part of mask generation. Unchecked, the Run masking button does nothing.",
+    "preprocess_mask_nothing_enabled": "SAM masking must be enabled to run masking.",
+    "preprocess_invalid_stage": "{stage}: {err}",
     "preprocess_status_resized": "Resized images: {n}",
     "preprocess_status_caches": "Caches — latents: {lat}, text: {te}, PE: {pe}",
     "preprocess_status_masks": "Masks: {masks}",

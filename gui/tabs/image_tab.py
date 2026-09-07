@@ -1422,14 +1422,13 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 )
             pm = self._overlay_pm
         if self.resize_preview_cb.isChecked():
-            target_res, crop_anchor, bucket_resos, crop_margins, fit_mode, max_ratio = (
+            target_res, crop_anchor, crop_margins, fit_mode, max_ratio = (
                 self._resize_preview_config()
             )
             pm = _compose_resize_preview_overlay(
                 pm,
                 target_res,
                 crop_anchor=crop_anchor,
-                bucket_resos=bucket_resos,
                 crop_margins=crop_margins,
                 fit_mode=fit_mode,
                 max_ratio=max_ratio,
@@ -1453,22 +1452,15 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
     def _resize_preview_config(self):
         target_res = self._resize_preview_target_res()
         crop_anchor = None
-        bucket_resos = None
         crop_margins = None
         tab = self._preprocess_tab
         anchor_widget = getattr(tab, "resize_crop_anchor_widget", None)
         if anchor_widget is not None:
             crop_anchor = anchor_widget.value()
-        widget = getattr(tab, "target_res_widget", None)
-        if widget is not None:
-            try:
-                bucket_resos = widget.bucket_resos()
-            except (AttributeError, TypeError, ValueError):
-                bucket_resos = None
         if tab is not None and hasattr(tab, "_resize_crop_margins"):
             crop_margins = tab._resize_crop_margins()
         fit_mode, max_ratio = self._resize_preview_fit_mode()
-        return target_res, crop_anchor, bucket_resos, crop_margins, fit_mode, max_ratio
+        return target_res, crop_anchor, crop_margins, fit_mode, max_ratio
 
     def _resize_preview_fit_mode(self):
         """(fit_mode, max_ratio) from the live preprocess-tab widgets, falling
@@ -1530,7 +1522,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         if not self.resize_preview_cb.isChecked():
             return ""
         try:
-            target_res, crop_anchor, bucket_resos, crop_margins, fit_mode, max_ratio = (
+            target_res, crop_anchor, crop_margins, fit_mode, max_ratio = (
                 self._resize_preview_config()
             )
             preview = compute_resize_preview(
@@ -1538,7 +1530,6 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 height,
                 target_res,
                 crop_anchor=crop_anchor,
-                bucket_resos=bucket_resos,
                 crop_margins=crop_margins,
                 fit_mode=fit_mode,
                 max_ratio=max_ratio,

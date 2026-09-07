@@ -944,6 +944,74 @@ def execute_stage(stage, req) -> None:
         sys.exit(str(exc))
 
 
+STAGE_VALUES_ENV = "PREPROCESS_STAGES_JSON"
+"""The GUI's stage forms, one ``{dest: value}`` dict per stage id
+(``masks_sam``: a list, one per rule card), as JSON. Written by
+``gui/tabs/preprocess/tab.py::preprocess_env`` (``stage_form.STAGE_VALUES_ENV``
+is the same name); ``request_from_form`` turns one into a request."""
+
+
+def gui_stage_values() -> dict:
+    """The stage forms a GUI-submitted job carries (``{}`` from a plain shell)."""
+    raw = os.environ.get(STAGE_VALUES_ENV)
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Invalid {STAGE_VALUES_ENV}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"Invalid {STAGE_VALUES_ENV}: expected an object")
+    return data
+
+
+def request_from_form(
+    stage_id: str,
+    values: dict,
+    *,
+    roots: dict | None = None,
+    settings: dict | None = None,
+    report_root: str | None = None,
+    mask_root: str | None = None,
+    apply: bool = False,
+    **overrides,
+):
+    """A stage form (``{dest: value}``) as the stage's request.
+
+    Goes through the package's ``anime_tools.gui.stages.build_argv`` — the
+    same path its own web GUI takes: each value coerced by the field's kind,
+    the bound roots / settings / report and mask tails filled from the
+    keyword arguments (never from the form, so a stale saved path cannot win
+    over the trainer's directories), the request's own ``__post_init__``
+    validation run, and the argv spelled back and re-parsed by the stage's
+    generated parser. ``overrides`` are the dests the trainer's chain owns
+    (``recursive``, the variant sidecar knobs, …), applied with
+    ``dataclasses.replace`` so validation runs again. A bad value is a
+    ``SystemExit`` naming the stage, before any model loads.
+    """
+    import dataclasses
+
+    from anime_tools.gui.stages import BY_ID, build_argv, load_parser, schema
+
+    stage = BY_ID[stage_id]
+    try:
+        argv = build_argv(
+            schema(stage),
+            values,
+            apply=apply,
+            roots=roots,
+            settings=settings,
+            report_root=report_root,
+            mask_root=mask_root,
+        )
+        req = stage.request_class().from_namespace(load_parser(stage).parse_args(argv))
+        if overrides:
+            req = dataclasses.replace(req, **overrides)
+    except ValueError as exc:
+        raise SystemExit(f"{stage_id} form: {exc}") from exc
+    return req
+
+
 def request_with_args(req, extra, *, prog: str | None = None):
     """``req`` with the user's ``ARGS`` applied through the request's own
     generated parser — so ``make caption-autotag ARGS="--mode merge"`` still

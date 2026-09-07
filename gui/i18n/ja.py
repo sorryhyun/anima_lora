@@ -145,7 +145,6 @@ STRINGS: dict[str, str] = {
     "preprocess_add_to_queue": "キューに追加",
     "preprocess_queued": "{label} をキューに追加しました (ジョブ {job_id}) — キュータブで確認できます。",
     "preprocess_masking_sam": "SAM3 マスキング (テキストバブル)",
-    "preprocess_masking_mit": "MIT マスキング (漫画テキスト)",
     "preprocess_sam_prompts": "SAM プロンプト (1行1件):",
     "preprocess_sam_prompts_tip": (
         "SAM3 が検索するテキストプロンプト。1行1件。"
@@ -184,32 +183,11 @@ STRINGS: dict[str, str] = {
         "大きい値ほどマスクのエッジが外側に広がります。"
         "デフォルト 5。0 で無効化。"
     ),
-    "preprocess_mit_threshold": "MIT テキストしきい値 (0.0–1.0):",
-    "preprocess_mit_threshold_tip": (
-        "MIT/ComicTextDetector テキストセグメンタの信頼度しきい値。デフォルト 0.8。"
-    ),
-    "preprocess_mask_path_pattern": "マスクパスフィルター:",
-    "preprocess_mask_path_pattern_tip": (
-        "マスク対象のリサイズ済み画像を絞り込む fnmatch glob パターン。"
-        "post_image_dataset/resized を基準とした各パスに対してマッチングされます。"
-        "SAM と MIT の両方に適用されます。学習用 path_pattern と同じ文法: "
-        "'*'(または空欄) で全件マスク; 'char_a/*' で 1 サブフォルダー; "
-        "'char_a/*|char_b/*' で OR 結合。"
-    ),
     "preprocess_run_mask": "マスキング実行",
     "preprocess_run_sam_mask": "SAM マスキング実行",
-    "preprocess_run_sam_mask_tip": (
-        "マスク生成時に SAM3 バブルセグメンテーションを実行します。"
-        "チェックを外すと SAM をスキップし、MIT のみ (または有効な他のバックエンド) を使用します。"
-    ),
-    "preprocess_run_mit_mask": "MIT マスキング実行",
-    "preprocess_run_mit_mask_tip": (
-        "マスク生成時に MIT/ComicTextDetector テキストセグメンテーションを実行します。"
-        "チェックを外すと MIT をスキップし、SAM のみを使用します。"
-    ),
-    "preprocess_mask_nothing_enabled": (
-        "SAM または MIT のどちらか一方を有効にしてください。"
-    ),
+    "preprocess_run_sam_mask_tip": "マスク生成の一部として SAM3 セグメンテーションを実行します。オフにするとマスキング実行ボタンは何もしません。",
+    "preprocess_mask_nothing_enabled": "マスキングを実行するには SAM マスキングを有効にしてください。",
+    "preprocess_invalid_stage": "{stage}: {err}",
     "preprocess_status_resized": "リサイズ済み画像: {n}",
     "preprocess_status_caches": "キャッシュ — 潜在変数: {lat}, テキスト: {te}, PE: {pe}",
     "preprocess_status_masks": "マスク: {masks}",

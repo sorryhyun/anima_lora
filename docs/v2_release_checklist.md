@@ -55,16 +55,19 @@ Text is no longer masked automatically, so the UNet++ / ComicTextDetector
 backend goes. Roughly 17 references in `scripts/tasks/masking.py` plus the
 surfaces below.
 
-- [ ] `scripts/tasks/masking.py`: drop `_mit_request`, `_mit_model_path`,
+- [x] `scripts/tasks/masking.py`: drop `_mit_request`, `_mit_model_path`,
       `MIT_MODEL_PATH`, the `run_mit` switch and the MIT half of the merge
       sources. `make mask` becomes SAM-only (the merge step stays — rules still
-      compose).
-- [ ] `configs/sam_mask.yaml`: delete the `mit:` block and `run_mit` from the
+      compose). (Done 2026-09-07 with the stage-form migration — `MASK_CONFIG_JSON`
+      went with it; the GUI sends `masks_sam` forms, see
+      `docs/proposal/gui_preprocess_from_anime_tools.md` §7.)
+- [x] `configs/sam_mask.yaml`: delete the `mit:` block and `run_mit` from the
       header comment.
-- [ ] GUI: `DEFAULT_RUN_MIT_MASK` + the MIT card in
-      `gui/tabs/preprocess/masking.py`, the knob in `knobs.py`, and the 13
+- [x] GUI: `DEFAULT_RUN_MIT_MASK` + the MIT card in
+      `gui/tabs/preprocess/masking.py`, the knob in `knobs.py`, and the
       `preprocess_run_mit_mask*` / MIT strings in each of
-      `gui/i18n/{en,ko,ja,cn}.py`. `gui/system_dialog.py` lists the MIT weights.
+      `gui/i18n/{en,ko,ja,cn}.py`. (`gui/system_dialog.py` only mentions the MIT
+      weights in a comment.)
 - [x] Downloads: drop `mit_text` / `ctd_onnx` from `DL.GROUPS` in
       `library/downloads.py` and the `download-mit` target in `tasks.py`
       (`cmd_download_mit` is now a two-line lookup). The rows stay in the
@@ -78,9 +81,10 @@ surfaces below.
       package catalog for its own users. `scripts/tasks/masking.py` still
       reads a leftover `models/mit/model.pth` if present — that goes with
       the MIT masking bullet above.)
-- [ ] Tests: `tests/test_masking_task.py`, `tests/test_nested_paths.py` (7
-      refs), `tests/test_anime_tools_cli_contract.py` (12 refs — the
-      `MitMaskRequest` argv round-trip goes with it).
+- [x] Tests: `tests/test_masking_task.py`, `tests/test_anime_tools_cli_contract.py`
+      (the `MitMaskRequest` argv round-trip went with it).
+      `tests/test_nested_paths.py` only uses `mit` as a directory name for the
+      merge — left alone.
 - [ ] Legacy path triple `masks/{merged,sam,mit}` in
       `library/datasets/subsets.py::_resolve_default_mask_dir` and its mention
       in `library/config/cli_args.py` — keep or trim? Keeping costs nothing and

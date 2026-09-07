@@ -1,10 +1,12 @@
-"""``make mask``'s SAM config → ``SamMaskRequest`` translation (scripts/tasks/masking.py).
+"""``make mask``'s rules → ``SamMaskRequest`` translation (scripts/tasks/masking.py).
 
-The package's CLI stopped reading ``sam_mask.yaml`` at anime_tools 0.4.0; the
-trainer now normalizes the flat / ``rules:`` schemas itself and builds one
-request per rule. The argv those requests produce is round-tripped through the
+Two sources: the CLI's ``sam_mask.yaml`` (the package's CLI stopped reading
+it at anime_tools 0.4.0; the trainer normalizes the flat / ``rules:`` schemas
+itself and builds one request per rule) and the GUI's ``masks_sam`` stage
+forms (``PREPROCESS_STAGES_JSON``, one card per request through the package's
+``build_argv``). The argv those requests produce is round-tripped through the
 package parser in ``test_anime_tools_cli_contract.py``; this file pins the
-normalization.
+normalization. MIT (the text masker) was removed in v2.
 """
 
 from __future__ import annotations
@@ -73,45 +75,76 @@ def test_empty_focus_list_is_spelled_explicitly():
     assert argv[argv.index("--focus-prompts") + 1] == "none"
 
 
-def test_mit_block_fills_the_request_and_absent_keys_are_package_defaults(
+def test_gui_rule_cards_build_one_request_each(monkeypatch, tmp_path):
+    """The GUI's ``masks_sam`` forms: each card is its own pass with its own
+    scope and tempdir; the trainer fills the resized tree and the walk."""
+    import json
+
+    monkeypatch.setenv(
+        "PREPROCESS_STAGES_JSON",
+        json.dumps(
+            {
+                "masks_sam": [
+                    {
+                        "path_pattern": "",
+                        "prompts": "bubble, sfx",
+                        "focus_prompts": "none",
+                        "threshold": 0.35,
+                        "dilate": 7,
+                        "force": True,
+                    },
+                    {
+                        "path_pattern": "character_a/*",
+                        "prompts": "none",
+                        "focus_prompts": "girl",
+                        "threshold": 0.6,
+                        "dilate": 2,
+                    },
+                ]
+            }
+        ),
+    )
+    a, b = masking._sam_requests(Path("resized"), tmp_path)
+    assert a.prompts == ("bubble", "sfx") and a.focus_prompts == ()
+    assert a.threshold == 0.35 and a.dilate == 7 and a.force
+    assert a.path_pattern is None and a.recursive
+    assert a.image_dir == "resized"
+    assert Path(a.mask_dir) == tmp_path / "sam0" / "masks_sam"
+    assert b.prompts == () and b.focus_prompts == ("girl",)
+    assert b.path_pattern == "character_a/*"
+    assert Path(b.mask_dir) == tmp_path / "sam1" / "masks_sam"
+    # No trainer literals: the checkpoint and batch size are the package's.
+    from anime_tools.masking.requests import SamMaskRequest
+
+    assert a.checkpoint == SamMaskRequest.checkpoint
+    assert a.batch_size == SamMaskRequest.batch_size
+
+
+def test_gui_rule_card_with_nothing_to_mask_fails_before_the_sam3_load(
     monkeypatch, tmp_path
 ):
-    from anime_tools.masking.requests import MitMaskRequest
+    import json
 
-    monkeypatch.setattr(masking, "MIT_MODEL_PATH", tmp_path / "missing.pth")
-    bare = masking._mit_request(Path("r"), Path("o"), {}, None)
-    assert bare.text_threshold == MitMaskRequest.text_threshold
-    assert bare.dilate == MitMaskRequest.dilate
-    assert bare.ctd_gate is MitMaskRequest.ctd_gate
-    assert bare.model_path is None  # the package fetches its own copy
-    assert bare.use_mit and not bare.use_sam
-
-    tuned = masking._mit_request(
-        Path("r"),
-        Path("o"),
-        {"mit": {"text_threshold": "0.9", "dilate": 2, "ctd_gate": "0"}},
-        "manga/*",
+    monkeypatch.setenv(
+        "PREPROCESS_STAGES_JSON",
+        json.dumps({"masks_sam": [{"prompts": "none", "focus_prompts": "none"}]}),
     )
-    assert tuned.text_threshold == 0.9
-    assert tuned.dilate == 2
-    assert tuned.ctd_gate is False
-    assert tuned.path_pattern == "manga/*"
+    with pytest.raises(SystemExit, match="nothing to mask"):
+        masking._sam_requests(Path("resized"), tmp_path)
 
 
-def test_mit_uses_the_trainer_downloaded_weights_when_present(monkeypatch, tmp_path):
-    weights = tmp_path / "model.pth"
-    weights.write_bytes(b"")
-    monkeypatch.setattr(masking, "MIT_MODEL_PATH", weights)
-    req = masking._mit_request(Path("r"), Path("o"), {}, None)
-    assert req.model_path == str(weights)
+def test_yaml_run_sam_off_means_no_requests(monkeypatch, tmp_path):
+    monkeypatch.delenv("PREPROCESS_STAGES_JSON", raising=False)
+    monkeypatch.setattr(masking, "_load_mask_config", lambda: {"run_sam": False})
+    assert masking._sam_requests(Path("resized"), tmp_path) == []
 
 
 def test_run_switches_accept_bools_and_env_style_strings():
     assert masking._config_flag({}, "run_sam") is True
     assert masking._config_flag({"run_sam": False}, "run_sam") is False
-    assert masking._config_flag({"run_mit": "0"}, "run_mit") is False
-    assert masking._config_flag({"run_mit": "no"}, "run_mit") is False
-    assert masking._config_flag({"run_mit": "1"}, "run_mit") is True
+    assert masking._config_flag({"run_sam": "0"}, "run_sam") is False
+    assert masking._config_flag({"run_sam": "no"}, "run_sam") is False
+    assert masking._config_flag({"run_sam": "1"}, "run_sam") is True
 
 
 def test_make_mask_refuses_stray_args():

@@ -137,7 +137,6 @@ STRINGS: dict[str, str] = {
     "preprocess_add_to_queue": "加入队列",
     "preprocess_queued": "已将 {label} 加入队列 (任务 {job_id}) — 可在队列标签页查看。",
     "preprocess_masking_sam": "SAM3 蒙版 (对话气泡)",
-    "preprocess_masking_mit": "MIT 蒙版 (漫画文字)",
     "preprocess_sam_prompts": "SAM 提示词 (每行一个):",
     "preprocess_sam_prompts_tip": (
         "SAM3 要查找的文本提示词,每行一个。默认值: 'speech bubble' 和 'text bubble'。"
@@ -171,30 +170,11 @@ STRINGS: dict[str, str] = {
     "preprocess_dilate_tip": (
         "对二值蒙版应用的膨胀像素数。值越大蒙版边缘越往外扩。默认 5。设为 0 表示禁用。"
     ),
-    "preprocess_mit_threshold": "MIT 文字阈值 (0.0–1.0):",
-    "preprocess_mit_threshold_tip": (
-        "MIT/ComicTextDetector 文字分割器的置信度阈值。默认 0.8。"
-    ),
-    "preprocess_mask_path_pattern": "蒙版路径过滤器:",
-    "preprocess_mask_path_pattern_tip": (
-        "限制哪些已缩放图像参与蒙版生成的 fnmatch glob 模式，"
-        "以 post_image_dataset/resized 为基准对每个路径进行匹配。"
-        "同时作用于 SAM 和 MIT。与训练用 path_pattern 语法相同："
-        "'*'（或空白）遮罩全部；'char_a/*' 限定单个子文件夹；"
-        "'char_a/*|char_b/*' 进行 OR 组合。"
-    ),
     "preprocess_run_mask": "运行蒙版生成",
     "preprocess_run_sam_mask": "运行 SAM 蒙版",
-    "preprocess_run_sam_mask_tip": (
-        "在蒙版生成阶段运行 SAM3 气泡分割。"
-        "取消勾选则跳过 SAM,仅使用 MIT (或其他已启用的后端)。"
-    ),
-    "preprocess_run_mit_mask": "运行 MIT 蒙版",
-    "preprocess_run_mit_mask_tip": (
-        "在蒙版生成阶段运行 MIT/ComicTextDetector 文字分割。"
-        "取消勾选则跳过 MIT,仅使用 SAM。"
-    ),
-    "preprocess_mask_nothing_enabled": ("SAM 和 MIT 蒙版至少需启用一项。"),
+    "preprocess_run_sam_mask_tip": "在蒙版生成中运行 SAM3 分割。取消勾选后，运行蒙版按钮不会执行任何操作。",
+    "preprocess_mask_nothing_enabled": "必须启用 SAM 蒙版才能运行蒙版生成。",
+    "preprocess_invalid_stage": "{stage}: {err}",
     "preprocess_status_resized": "已调整大小的图像: {n}",
     "preprocess_status_caches": "缓存 — latents: {lat}, text: {te}, PE: {pe}",
     "preprocess_status_masks": "蒙版: {masks}",

@@ -1,6 +1,6 @@
 # Preprocessing tab refactor — declarative knobs + section panels
 
-Status: **Phases 0, 1 and 3 landed 2026-08-28** (`gui/tabs/preprocess/` package; the tab is 2043 → 1019 lines + ~930 lines of section modules); Phases 2 and 4 open. Motivating change: GH #95 caption-group removal
+Status: **Phases 0, 1 and 3 landed 2026-08-28** (`gui/tabs/preprocess/` package; the tab is 2043 → 1019 lines + ~930 lines of section modules). **Phase 2 superseded 2026-09-07**: `caption_drop_groups` (and every other `correct` / `autotag` / `resize` / `masks_sam` knob) now arrives from the stage schema — see `gui_preprocess_from_anime_tools.md` §7; the `tag_groups` chip widget below was not built (a plain text row over the schema's `str` field). Phase 4 open. Motivating change: GH #95 caption-group removal
 (`--caption_drop_groups`, landed in the pipeline 2026-08-28, **not yet in the GUI**).
 
 ## Why now

@@ -67,18 +67,25 @@ def _build(cmd: list[str]):
 # ----- masking -----------------------------------------------------------------
 
 
-def _mask_env(monkeypatch, cfg: dict) -> None:
-    monkeypatch.setenv("MASK_CONFIG_JSON", json.dumps(cfg))
-    # A test suite itself running as a daemon job would otherwise take the
-    # in-process path and load SAM3.
+def _mask_yaml(monkeypatch, cfg: dict) -> None:
+    """Pin the CLI path: no GUI forms, this yaml, no daemon job (which would
+    otherwise take the in-process path and load SAM3)."""
+    monkeypatch.delenv("PREPROCESS_STAGES_JSON", raising=False)
+    monkeypatch.setattr("scripts.tasks.masking._load_mask_config", lambda: cfg)
     monkeypatch.delenv("ANIMA_DAEMON_JOB_DIR", raising=False)
 
 
-def test_mask_rules_form_builds_sam_mit_and_merge_requests(monkeypatch):
+def _mask_forms(monkeypatch, cards: list[dict]) -> None:
+    """The GUI path: one ``masks_sam`` form per rule card."""
+    monkeypatch.setenv("PREPROCESS_STAGES_JSON", json.dumps({"masks_sam": cards}))
+    monkeypatch.delenv("ANIMA_DAEMON_JOB_DIR", raising=False)
+
+
+def test_mask_rules_yaml_builds_sam_and_merge_requests(monkeypatch):
     from scripts.tasks import masking
 
     calls = _capture(monkeypatch, masking)
-    _mask_env(
+    _mask_yaml(
         monkeypatch,
         {
             "path_pattern": "manga/*",
@@ -92,8 +99,6 @@ def test_mask_rules_form_builds_sam_mit_and_merge_requests(monkeypatch):
                 },
             ],
             "run_sam": True,
-            "run_mit": True,
-            "mit": {"text_threshold": 0.9, "dilate": 2, "ctd_gate": False},
         },
     )
 
@@ -102,10 +107,9 @@ def test_mask_rules_form_builds_sam_mit_and_merge_requests(monkeypatch):
     assert [c[2] for c in calls] == [
         "anime_tools.masking.cli.generate_masks",
         "anime_tools.masking.cli.generate_masks",
-        "anime_tools.masking.cli.generate_masks_mit",
         "anime_tools.masking.cli.merge_masks",
     ]
-    sam_a, sam_b, mit, merge = (_build(c) for c in calls)
+    sam_a, sam_b, merge = (_build(c) for c in calls)
 
     assert sam_a.prompts == ("bubble",)
     assert sam_a.focus_prompts == ()
@@ -124,15 +128,48 @@ def test_mask_rules_form_builds_sam_mit_and_merge_requests(monkeypatch):
     assert sam_b.dilate == 8
     assert sam_b.path_pattern == "character_a/*"
 
-    assert mit.text_threshold == 0.9
-    assert mit.dilate == 2
-    assert mit.ctd_gate is False
-    assert mit.use_mit
-    assert not mit.use_sam
-    assert mit.path_pattern == "manga/*"
-
-    assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir, mit.mask_dir)
+    assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir)
     assert Path(merge.output_dir) == masking._mask_output_dir()
+
+
+def test_mask_gui_cards_build_sam_and_merge_requests(monkeypatch):
+    """The GUI's rule cards go through the package's ``build_argv``: the
+    card's own ``path_pattern`` is the run's scope, the resized tree the root,
+    and the argv the child gets reads back as the same request."""
+    from scripts.tasks import masking
+
+    calls = _capture(monkeypatch, masking)
+    _mask_forms(
+        monkeypatch,
+        [
+            {"prompts": "bubble", "focus_prompts": "none", "threshold": 0.7},
+            {
+                "path_pattern": "character_a/*",
+                "prompts": "none",
+                "focus_prompts": "girl",
+                "dilate": 8,
+                "batch_size": 4,
+            },
+        ],
+    )
+
+    masking.cmd_mask([])
+
+    assert [c[2] for c in calls] == [
+        "anime_tools.masking.cli.generate_masks",
+        "anime_tools.masking.cli.generate_masks",
+        "anime_tools.masking.cli.merge_masks",
+    ]
+    sam_a, sam_b, merge = (_build(c) for c in calls)
+    assert sam_a.prompts == ("bubble",) and sam_a.focus_prompts == ()
+    assert sam_a.threshold == 0.7 and sam_a.path_pattern is None
+    assert Path(sam_a.image_dir) == masking.RESIZED_IMAGE_DIR
+    assert sam_a.recursive
+    assert sam_b.focus_prompts == ("girl",) and sam_b.prompts == ()
+    assert sam_b.dilate == 8 and sam_b.batch_size == 4
+    assert sam_b.path_pattern == "character_a/*"
+    assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir)
+    assert sam_a.mask_dir != sam_b.mask_dir
 
 
 def test_mask_flat_yaml_config_builds_one_sam_request(monkeypatch):
@@ -140,12 +177,8 @@ def test_mask_flat_yaml_config_builds_one_sam_request(monkeypatch):
     from scripts.tasks import masking
 
     calls = _capture(monkeypatch, masking)
-    monkeypatch.delenv("MASK_CONFIG_JSON", raising=False)
+    monkeypatch.delenv("PREPROCESS_STAGES_JSON", raising=False)
     monkeypatch.delenv("ANIMA_DAEMON_JOB_DIR", raising=False)
-    yaml_cfg = masking._load_mask_config()
-    monkeypatch.setattr(
-        masking, "_load_mask_config", lambda: {**yaml_cfg, "run_mit": False}
-    )
 
     masking.cmd_mask([])
 
@@ -167,9 +200,12 @@ def test_mask_under_a_daemon_job_runs_the_stages_in_process(monkeypatch, tmp_pat
     from scripts.tasks import masking
 
     calls = _capture(monkeypatch, masking)
-    monkeypatch.setenv(
-        "MASK_CONFIG_JSON",
-        json.dumps({"rules": [{"prompts": ["a"]}, {"prompts": ["b"]}]}),
+    _mask_forms(
+        monkeypatch,
+        [
+            {"prompts": "a", "focus_prompts": "none"},
+            {"prompts": "b", "focus_prompts": "none"},
+        ],
     )
     monkeypatch.setenv("ANIMA_DAEMON_JOB_DIR", str(tmp_path))
     monkeypatch.delenv("ANIMA_HOME", raising=False)
@@ -192,20 +228,14 @@ def test_mask_under_a_daemon_job_runs_the_stages_in_process(monkeypatch, tmp_pat
     assert [stage_id for stage_id, _ in ran] == [
         "masks_sam",
         "masks_sam",
-        "masks_mit",
         "masks_merge",
     ]
-    from anime_tools.masking.requests import (
-        MergeMasksRequest,
-        MitMaskRequest,
-        SamMaskRequest,
-    )
+    from anime_tools.masking.requests import MergeMasksRequest, SamMaskRequest
 
-    sam_a, sam_b, mit, merge = (req for _, req in ran)
+    sam_a, sam_b, merge = (req for _, req in ran)
     assert isinstance(sam_a, SamMaskRequest) and sam_b.prompts == ("b",)
-    assert isinstance(mit, MitMaskRequest)
     assert isinstance(merge, MergeMasksRequest)
-    assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir, mit.mask_dir)
+    assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir)
     # The package anchors its bare defaults on ANIMA_HOME, which run() exports
     # for a child; the in-process path must pin it the same way.
     assert Path(os.environ["ANIMA_HOME"]) == ROOT
@@ -214,7 +244,7 @@ def test_mask_under_a_daemon_job_runs_the_stages_in_process(monkeypatch, tmp_pat
 def test_mask_stage_ids_the_trainer_names_are_registered():
     from anime_tools.stages.registry import BY_ID
 
-    for stage_id in ("masks_sam", "masks_mit", "masks_merge"):
+    for stage_id in ("masks_sam", "masks_merge"):
         stage = BY_ID[stage_id]
         assert callable(stage.runner())
 
@@ -596,7 +626,6 @@ def test_stage_ids_the_trainer_names_are_registered():
         "correct",
         "groups",
         "masks_sam",
-        "masks_mit",
         "masks_merge",
     ):
         stage = BY_ID[stage_id]

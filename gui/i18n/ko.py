@@ -143,7 +143,6 @@ STRINGS: dict[str, str] = {
     "preprocess_add_to_queue": "큐에 추가",
     "preprocess_queued": "{label} 큐에 추가됨 (작업 {job_id}) — 큐 탭에서 확인하세요.",
     "preprocess_masking_sam": "SAM3 마스킹 (말풍선)",
-    "preprocess_masking_mit": "MIT 마스킹 (만화 텍스트)",
     "preprocess_sam_prompts": "SAM 프롬프트 (한 줄에 하나):",
     "preprocess_sam_prompts_tip": (
         "SAM3이 찾을 텍스트 프롬프트. 한 줄에 하나씩. "
@@ -180,32 +179,11 @@ STRINGS: dict[str, str] = {
         "이진 마스크에 적용할 팽창 픽셀 수. 값이 클수록 마스크 가장자리가 "
         "바깥으로 번집니다. 기본값 5. 0으로 비활성화."
     ),
-    "preprocess_mit_threshold": "MIT 텍스트 임계값 (0.0–1.0):",
-    "preprocess_mit_threshold_tip": (
-        "MIT/ComicTextDetector 텍스트 세그멘터의 신뢰도 임계값. 기본값 0.8."
-    ),
-    "preprocess_mask_path_pattern": "마스크 경로 필터:",
-    "preprocess_mask_path_pattern_tip": (
-        "마스킹할 리사이즈 이미지를 제한하는 fnmatch glob 패턴. "
-        "post_image_dataset/resized 기준 각 경로에 대해 매칭됩니다. "
-        "SAM과 MIT 모두에 적용됩니다. 학습용 path_pattern과 동일한 문법: "
-        "'*'(또는 빈 값)이면 전체 마스킹; 'char_a/*'이면 한 하위 폴더; "
-        "'char_a/*|char_b/*'으로 OR 조합."
-    ),
     "preprocess_run_mask": "마스킹 실행",
     "preprocess_run_sam_mask": "SAM 마스킹 실행",
-    "preprocess_run_sam_mask_tip": (
-        "마스크 생성 단계에서 SAM3 말풍선 분할을 실행합니다. "
-        "체크 해제하면 SAM을 건너뛰고 MIT(또는 활성화된 다른 백엔드)만 사용합니다."
-    ),
-    "preprocess_run_mit_mask": "MIT 마스킹 실행",
-    "preprocess_run_mit_mask_tip": (
-        "마스크 생성 단계에서 MIT/ComicTextDetector 텍스트 분할을 "
-        "실행합니다. 체크 해제하면 MIT를 건너뛰고 SAM만 사용합니다."
-    ),
-    "preprocess_mask_nothing_enabled": (
-        "SAM 또는 MIT 마스킹 중 최소 하나는 활성화되어야 합니다."
-    ),
+    "preprocess_run_sam_mask_tip": "마스크 생성 시 SAM3 분할을 실행합니다. 끄면 마스킹 실행 버튼은 아무것도 하지 않습니다.",
+    "preprocess_mask_nothing_enabled": "마스킹을 실행하려면 SAM 마스킹을 켜야 합니다.",
+    "preprocess_invalid_stage": "{stage}: {err}",
     "preprocess_status_resized": "리사이즈된 이미지: {n}장",
     "preprocess_status_caches": "캐시 — latents: {lat}, text: {te}, PE: {pe}",
     "preprocess_status_masks": "마스크: {masks}장",

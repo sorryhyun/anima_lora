@@ -3,457 +3,521 @@
     "defaults": {
       "env": {
         "CAPTION_AUTOTAG": "0",
-        "CAPTION_AUTOTAG_MIN_CONFIDENCE": "0",
-        "CAPTION_AUTOTAG_MODE": "missing",
-        "CAPTION_CORRECT_ORDER": "0",
-        "CAPTION_INSERT_NO_ARTIST": "0",
         "CAPTION_POSITION_CLAUSES": "0",
         "CAPTION_SHUFFLE_VARIANTS": "4",
         "CAPTION_TAG_DROPOUT_RATE": "0.1",
-        "CAPTION_TRIGGER_AT_FRONT": "0",
-        "CAPTION_TRIGGER_WORD": "",
         "DROP_LOWRES_IMAGES": "1",
-        "FREEFIT_MAX_RATIO": "4",
-        "MIN_PIXELS": "500000",
         "PREPROCESS_PATH_PATTERN": "*",
-        "TARGET_RES": "1024"
+        "PREPROCESS_STAGES_JSON": {
+          "autotag": {
+            "min_confidence": 0.0,
+            "mode": "missing"
+          },
+          "correct": {
+            "caption_drop_groups": "",
+            "caption_insert_no_artist": false,
+            "caption_trigger_at_front": false,
+            "caption_trigger_word": "",
+            "no_correct": true,
+            "tag_csv": ""
+          },
+          "masks_sam": [
+            {
+              "batch_size": 1,
+              "dilate": 5,
+              "focus_prompts": "none",
+              "force": false,
+              "path_pattern": "",
+              "prompts": "speech bubble, text bubble",
+              "threshold": 0.5,
+              "workers": 4
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 4.0,
+            "min_pixels": 500000,
+            "overwrite": false,
+            "resize_crop_anchor": "center",
+            "resize_crop_margins": null,
+            "target_res": [
+              1024
+            ],
+            "workers": 4
+          }
+        }
       },
       "meta_full": {
         "family": "lora",
-        "mask_path_pattern": "*",
-        "mask_rules": [
-          {
-            "dilate": 5,
-            "prompts": [
-              "speech bubble",
-              "text bubble"
-            ],
-            "threshold": 0.5
-          }
-        ],
-        "mit_dilate": 5,
-        "mit_text_threshold": 0.8,
-        "run_mit_mask": true,
         "run_sam_mask": true,
-        "target_res": [
-          1024
-        ]
+        "stages": {
+          "masks_sam": [
+            {
+              "focus_prompts": "none",
+              "prompts": "speech bubble, text bubble"
+            }
+          ],
+          "resize": {
+            "target_res": [
+              1024
+            ]
+          }
+        }
       },
       "meta_inputs_only": {
         "family": "lora",
-        "target_res": [
-          1024
-        ]
+        "stages": {
+          "resize": {
+            "target_res": [
+              1024
+            ]
+          }
+        }
       },
       "overrides": {
         "caption_autotag": false,
-        "caption_autotag_min_confidence": 0.0,
-        "caption_autotag_mode": "missing",
-        "caption_correct_order": false,
-        "caption_insert_no_artist": false,
         "caption_position_clauses": false,
-        "caption_trigger_at_front": false,
-        "caption_trigger_word": "",
-        "drop_lowres_images": true,
-        "freefit_max_ratio": 4.0,
-        "min_pixels": 500000,
-        "resize_bucket_resos": [],
-        "resize_crop_anchor": "center",
-        "resize_crop_margins": {
-          "bottom": 0.0,
-          "left": 0.0,
-          "right": 0.0,
-          "top": 0.0
-        },
-        "target_res": [
-          1024
-        ]
+        "drop_lowres_images": true
       }
     },
     "defaults_reloaded": {
       "env": {
         "CAPTION_AUTOTAG": "0",
-        "CAPTION_AUTOTAG_MIN_CONFIDENCE": "0",
-        "CAPTION_AUTOTAG_MODE": "missing",
-        "CAPTION_CORRECT_ORDER": "0",
-        "CAPTION_INSERT_NO_ARTIST": "0",
         "CAPTION_POSITION_CLAUSES": "0",
         "CAPTION_SHUFFLE_VARIANTS": "4",
         "CAPTION_TAG_DROPOUT_RATE": "0.1",
-        "CAPTION_TRIGGER_AT_FRONT": "0",
-        "CAPTION_TRIGGER_WORD": "",
         "DROP_LOWRES_IMAGES": "1",
-        "FREEFIT_MAX_RATIO": "4",
-        "MIN_PIXELS": "500000",
         "PREPROCESS_PATH_PATTERN": "*",
-        "TARGET_RES": "1024"
+        "PREPROCESS_STAGES_JSON": {
+          "autotag": {
+            "min_confidence": 0.0,
+            "mode": "missing"
+          },
+          "correct": {
+            "caption_drop_groups": "",
+            "caption_insert_no_artist": false,
+            "caption_trigger_at_front": false,
+            "caption_trigger_word": "",
+            "no_correct": true,
+            "tag_csv": ""
+          },
+          "masks_sam": [
+            {
+              "batch_size": 1,
+              "dilate": 5,
+              "focus_prompts": "none",
+              "force": false,
+              "path_pattern": "",
+              "prompts": "speech bubble, text bubble",
+              "threshold": 0.5,
+              "workers": 4
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 4.0,
+            "min_pixels": 500000,
+            "overwrite": false,
+            "resize_crop_anchor": "center",
+            "resize_crop_margins": null,
+            "target_res": [
+              1024
+            ],
+            "workers": 4
+          }
+        }
       },
       "meta_full": {
         "family": "lora",
-        "mask_path_pattern": "*",
-        "mask_rules": [
-          {
-            "dilate": 5,
-            "prompts": [
-              "speech bubble",
-              "text bubble"
-            ],
-            "threshold": 0.5
-          }
-        ],
-        "mit_dilate": 5,
-        "mit_text_threshold": 0.8,
-        "run_mit_mask": true,
         "run_sam_mask": true,
-        "target_res": [
-          1024
-        ]
+        "stages": {
+          "masks_sam": [
+            {
+              "focus_prompts": "none",
+              "prompts": "speech bubble, text bubble"
+            }
+          ],
+          "resize": {
+            "target_res": [
+              1024
+            ]
+          }
+        }
       },
       "meta_inputs_only": {
         "family": "lora",
-        "mask_path_pattern": "*",
-        "mask_rules": [
-          {
-            "dilate": 5,
-            "prompts": [
-              "speech bubble",
-              "text bubble"
-            ],
-            "threshold": 0.5
-          }
-        ],
-        "mit_dilate": 5,
-        "mit_text_threshold": 0.8,
-        "run_mit_mask": true,
         "run_sam_mask": true,
-        "target_res": [
-          1024
-        ]
+        "stages": {
+          "masks_sam": [
+            {
+              "focus_prompts": "none",
+              "prompts": "speech bubble, text bubble"
+            }
+          ],
+          "resize": {
+            "target_res": [
+              1024
+            ]
+          }
+        }
       },
       "overrides": {
         "caption_autotag": false,
-        "caption_autotag_min_confidence": 0.0,
-        "caption_autotag_mode": "missing",
-        "caption_correct_order": false,
-        "caption_insert_no_artist": false,
         "caption_position_clauses": false,
-        "caption_trigger_at_front": false,
-        "caption_trigger_word": "",
-        "drop_lowres_images": true,
-        "freefit_max_ratio": 4.0,
-        "min_pixels": 500000,
-        "resize_bucket_resos": [],
-        "resize_crop_anchor": "center",
-        "resize_crop_margins": {
-          "bottom": 0.0,
-          "left": 0.0,
-          "right": 0.0,
-          "top": 0.0
-        },
-        "target_res": [
-          1024
-        ]
+        "drop_lowres_images": true
       }
     },
     "flipped": {
       "env": {
         "CAPTION_AUTOTAG": "1",
-        "CAPTION_AUTOTAG_MIN_CONFIDENCE": "0.55",
-        "CAPTION_AUTOTAG_MODE": "overwrite",
-        "CAPTION_CORRECT_ORDER": "1",
-        "CAPTION_INSERT_NO_ARTIST": "1",
         "CAPTION_POSITION_CLAUSES": "1",
         "CAPTION_SHUFFLE_VARIANTS": "11",
         "CAPTION_TAG_DROPOUT_RATE": "0.45",
-        "CAPTION_TRIGGER_AT_FRONT": "1",
-        "CAPTION_TRIGGER_WORD": "@flipped",
         "DROP_LOWRES_IMAGES": "0",
-        "FREEFIT_MAX_RATIO": "2.25",
-        "MIN_PIXELS": "123456",
         "PREPROCESS_PATH_PATTERN": "artist_a/**",
-        "TARGET_RES": "768 1280"
+        "PREPROCESS_STAGES_JSON": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false,
+            "tag_csv": ""
+          },
+          "masks_sam": [
+            {
+              "batch_size": 1,
+              "dilate": 7,
+              "focus_prompts": "face",
+              "force": false,
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35,
+              "workers": 4
+            },
+            {
+              "batch_size": 1,
+              "dilate": 2,
+              "focus_prompts": "none",
+              "force": false,
+              "path_pattern": "",
+              "prompts": "watermark",
+              "threshold": 0.6,
+              "workers": 4
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "meta_full": {
         "caption_autotag": true,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": true,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 2.25,
-        "mask_path_pattern": "artist_b/*",
-        "mask_rules": [
-          {
-            "dilate": 7,
-            "focus_prompts": [
-              "face"
-            ],
-            "path_pattern": "artist_b/*",
-            "prompts": [
-              "bubble",
-              "sfx"
-            ],
-            "threshold": 0.35
-          },
-          {
-            "dilate": 2,
-            "prompts": [
-              "watermark"
-            ],
-            "threshold": 0.6
-          }
-        ],
-        "min_pixels": 123456,
-        "mit_dilate": 13,
-        "mit_text_threshold": 0.65,
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "run_mit_mask": false,
         "run_sam_mask": false,
         "source_image_dir": "flipped_images",
-        "target_res": [
-          768,
-          1280
-        ]
+        "stages": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false
+          },
+          "masks_sam": [
+            {
+              "dilate": 7,
+              "focus_prompts": "face",
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35
+            },
+            {
+              "dilate": 2,
+              "focus_prompts": "none",
+              "prompts": "watermark",
+              "threshold": 0.6
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "meta_inputs_only": {
         "caption_autotag": true,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": true,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 2.25,
-        "mask_path_pattern": "*",
-        "mask_rules": [
-          {
-            "dilate": 5,
-            "prompts": [
-              "speech bubble",
-              "text bubble"
-            ],
-            "threshold": 0.5
-          }
-        ],
-        "min_pixels": 123456,
-        "mit_dilate": 5,
-        "mit_text_threshold": 0.8,
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "run_mit_mask": true,
         "run_sam_mask": true,
         "source_image_dir": "flipped_images",
-        "target_res": [
-          768,
-          1280
-        ]
+        "stages": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false
+          },
+          "masks_sam": [
+            {
+              "focus_prompts": "none",
+              "prompts": "speech bubble, text bubble"
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "overrides": {
         "caption_autotag": true,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": true,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
-        "drop_lowres_images": false,
-        "freefit_max_ratio": 2.25,
-        "min_pixels": 123456,
-        "resize_bucket_resos": [],
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "target_res": [
-          768,
-          1280
-        ]
+        "drop_lowres_images": false
       }
     },
     "flipped_reloaded": {
       "env": {
         "CAPTION_AUTOTAG": "1",
-        "CAPTION_AUTOTAG_MIN_CONFIDENCE": "0.55",
-        "CAPTION_AUTOTAG_MODE": "overwrite",
-        "CAPTION_CORRECT_ORDER": "1",
-        "CAPTION_INSERT_NO_ARTIST": "1",
         "CAPTION_POSITION_CLAUSES": "1",
         "CAPTION_SHUFFLE_VARIANTS": "11",
         "CAPTION_TAG_DROPOUT_RATE": "0.45",
-        "CAPTION_TRIGGER_AT_FRONT": "1",
-        "CAPTION_TRIGGER_WORD": "@flipped",
         "DROP_LOWRES_IMAGES": "0",
-        "FREEFIT_MAX_RATIO": "2.25",
-        "MIN_PIXELS": "123456",
         "PREPROCESS_PATH_PATTERN": "artist_a/**",
-        "TARGET_RES": "768 1280"
+        "PREPROCESS_STAGES_JSON": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false,
+            "tag_csv": ""
+          },
+          "masks_sam": [
+            {
+              "batch_size": 1,
+              "dilate": 7,
+              "focus_prompts": "face",
+              "force": false,
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35,
+              "workers": 4
+            },
+            {
+              "batch_size": 1,
+              "dilate": 2,
+              "focus_prompts": "none",
+              "force": false,
+              "path_pattern": "",
+              "prompts": "watermark",
+              "threshold": 0.6,
+              "workers": 4
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "meta_full": {
         "caption_autotag": true,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": true,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 2.25,
-        "mask_path_pattern": "artist_b/*",
-        "mask_rules": [
-          {
-            "dilate": 7,
-            "focus_prompts": [
-              "face"
-            ],
-            "path_pattern": "artist_b/*",
-            "prompts": [
-              "bubble",
-              "sfx"
-            ],
-            "threshold": 0.35
-          },
-          {
-            "dilate": 2,
-            "prompts": [
-              "watermark"
-            ],
-            "threshold": 0.6
-          }
-        ],
-        "min_pixels": 123456,
-        "mit_dilate": 13,
-        "mit_text_threshold": 0.65,
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "run_mit_mask": false,
         "run_sam_mask": false,
         "source_image_dir": "flipped_images",
-        "target_res": [
-          768,
-          1280
-        ]
+        "stages": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false
+          },
+          "masks_sam": [
+            {
+              "dilate": 7,
+              "focus_prompts": "face",
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35
+            },
+            {
+              "dilate": 2,
+              "focus_prompts": "none",
+              "prompts": "watermark",
+              "threshold": 0.6
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "meta_inputs_only": {
         "caption_autotag": true,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": true,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 2.25,
-        "mask_path_pattern": "artist_b/*",
-        "mask_rules": [
-          {
-            "dilate": 7,
-            "focus_prompts": [
-              "face"
-            ],
-            "path_pattern": "artist_b/*",
-            "prompts": [
-              "bubble",
-              "sfx"
-            ],
-            "threshold": 0.35
-          },
-          {
-            "dilate": 2,
-            "prompts": [
-              "watermark"
-            ],
-            "threshold": 0.6
-          }
-        ],
-        "min_pixels": 123456,
-        "mit_dilate": 13,
-        "mit_text_threshold": 0.65,
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "run_mit_mask": false,
         "run_sam_mask": false,
         "source_image_dir": "flipped_images",
-        "target_res": [
-          768,
-          1280
-        ]
+        "stages": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false
+          },
+          "masks_sam": [
+            {
+              "dilate": 7,
+              "focus_prompts": "face",
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35
+            },
+            {
+              "dilate": 2,
+              "focus_prompts": "none",
+              "prompts": "watermark",
+              "threshold": 0.6
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "overrides": {
         "caption_autotag": true,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": true,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
-        "drop_lowres_images": false,
-        "freefit_max_ratio": 2.25,
-        "min_pixels": 123456,
-        "resize_bucket_resos": [],
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "target_res": [
-          768,
-          1280
-        ]
+        "drop_lowres_images": false
       }
     }
   },
@@ -461,517 +525,555 @@
     "defaults": {
       "env": {
         "CAPTION_AUTOTAG": "1",
-        "CAPTION_AUTOTAG_MIN_CONFIDENCE": "0.35",
-        "CAPTION_AUTOTAG_MODE": "merge",
-        "CAPTION_CORRECT_ORDER": "0",
-        "CAPTION_INSERT_NO_ARTIST": "0",
         "CAPTION_POSITION_CLAUSES": "1",
         "CAPTION_SHUFFLE_VARIANTS": "7",
         "CAPTION_TAG_DROPOUT_RATE": "0.3",
-        "CAPTION_TRIGGER_AT_FRONT": "0",
-        "CAPTION_TRIGGER_WORD": "",
         "DROP_LOWRES_IMAGES": "0",
-        "FREEFIT_MAX_RATIO": "3",
-        "MIN_PIXELS": "250000",
         "PREPROCESS_PATH_PATTERN": "*",
-        "TARGET_RES": "896 1024"
+        "PREPROCESS_STAGES_JSON": {
+          "autotag": {
+            "min_confidence": 0.35,
+            "mode": "merge"
+          },
+          "correct": {
+            "caption_drop_groups": "",
+            "caption_insert_no_artist": false,
+            "caption_trigger_at_front": false,
+            "caption_trigger_word": "",
+            "no_correct": true,
+            "tag_csv": ""
+          },
+          "masks_sam": [
+            {
+              "batch_size": 1,
+              "dilate": 3,
+              "focus_prompts": "face",
+              "force": false,
+              "path_pattern": "",
+              "prompts": "sign",
+              "threshold": 0.4,
+              "workers": 4
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 3.0,
+            "min_pixels": 250000,
+            "overwrite": false,
+            "resize_crop_anchor": "top",
+            "resize_crop_margins": [
+              5.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "target_res": [
+              896,
+              1024
+            ],
+            "workers": 4
+          }
+        }
       },
       "meta_full": {
         "caption_shuffle_variants": 7,
         "caption_tag_dropout_rate": 0.3,
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 3.0,
-        "mask_path_pattern": "artist_x/*",
-        "mask_rules": [
-          {
-            "dilate": 3,
-            "focus_prompts": [
-              "face"
-            ],
-            "prompts": [
-              "sign"
-            ],
-            "threshold": 0.4
-          }
-        ],
-        "min_pixels": 250000,
-        "mit_dilate": 9,
-        "mit_text_threshold": 0.6,
-        "resize_crop_anchor": "top",
-        "resize_crop_margins": {
-          "bottom": 0.0,
-          "left": 0.0,
-          "right": 0.0,
-          "top": 5.0
-        },
-        "run_mit_mask": false,
         "run_sam_mask": false,
-        "target_res": [
-          896,
-          1024
-        ]
+        "stages": {
+          "masks_sam": [
+            {
+              "dilate": 3,
+              "focus_prompts": "face",
+              "prompts": "sign",
+              "threshold": 0.4
+            }
+          ],
+          "resize": {
+            "target_res": [
+              896,
+              1024
+            ]
+          }
+        }
       },
       "meta_inputs_only": {
         "caption_shuffle_variants": 7,
         "caption_tag_dropout_rate": 0.3,
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 3.0,
-        "min_pixels": 250000,
-        "resize_crop_anchor": "top",
-        "resize_crop_margins": {
-          "bottom": 0.0,
-          "left": 0.0,
-          "right": 0.0,
-          "top": 5.0
-        },
-        "target_res": [
-          896,
-          1024
-        ]
+        "stages": {
+          "resize": {
+            "target_res": [
+              896,
+              1024
+            ]
+          }
+        }
       },
       "overrides": {
         "caption_autotag": true,
-        "caption_autotag_min_confidence": 0.35,
-        "caption_autotag_mode": "merge",
-        "caption_correct_order": false,
-        "caption_insert_no_artist": false,
         "caption_position_clauses": true,
-        "caption_trigger_at_front": false,
-        "caption_trigger_word": "",
-        "drop_lowres_images": false,
-        "freefit_max_ratio": 3.0,
-        "min_pixels": 250000,
-        "resize_bucket_resos": [],
-        "resize_crop_anchor": "top",
-        "resize_crop_margins": {
-          "bottom": 0.0,
-          "left": 0.0,
-          "right": 0.0,
-          "top": 5.0
-        },
-        "target_res": [
-          896,
-          1024
-        ]
+        "drop_lowres_images": false
       }
     },
     "defaults_reloaded": {
       "env": {
         "CAPTION_AUTOTAG": "1",
-        "CAPTION_AUTOTAG_MIN_CONFIDENCE": "0.35",
-        "CAPTION_AUTOTAG_MODE": "merge",
-        "CAPTION_CORRECT_ORDER": "0",
-        "CAPTION_INSERT_NO_ARTIST": "0",
         "CAPTION_POSITION_CLAUSES": "1",
         "CAPTION_SHUFFLE_VARIANTS": "7",
         "CAPTION_TAG_DROPOUT_RATE": "0.3",
-        "CAPTION_TRIGGER_AT_FRONT": "0",
-        "CAPTION_TRIGGER_WORD": "",
         "DROP_LOWRES_IMAGES": "0",
-        "FREEFIT_MAX_RATIO": "3",
-        "MIN_PIXELS": "250000",
         "PREPROCESS_PATH_PATTERN": "*",
-        "TARGET_RES": "896 1024"
+        "PREPROCESS_STAGES_JSON": {
+          "autotag": {
+            "min_confidence": 0.35,
+            "mode": "merge"
+          },
+          "correct": {
+            "caption_drop_groups": "",
+            "caption_insert_no_artist": false,
+            "caption_trigger_at_front": false,
+            "caption_trigger_word": "",
+            "no_correct": true,
+            "tag_csv": ""
+          },
+          "masks_sam": [
+            {
+              "batch_size": 1,
+              "dilate": 3,
+              "focus_prompts": "face",
+              "force": false,
+              "path_pattern": "",
+              "prompts": "sign",
+              "threshold": 0.4,
+              "workers": 4
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 3.0,
+            "min_pixels": 250000,
+            "overwrite": false,
+            "resize_crop_anchor": "top",
+            "resize_crop_margins": [
+              5.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "target_res": [
+              896,
+              1024
+            ],
+            "workers": 4
+          }
+        }
       },
       "meta_full": {
         "caption_shuffle_variants": 7,
         "caption_tag_dropout_rate": 0.3,
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 3.0,
-        "mask_path_pattern": "artist_x/*",
-        "mask_rules": [
-          {
-            "dilate": 3,
-            "focus_prompts": [
-              "face"
-            ],
-            "prompts": [
-              "sign"
-            ],
-            "threshold": 0.4
-          }
-        ],
-        "min_pixels": 250000,
-        "mit_dilate": 9,
-        "mit_text_threshold": 0.6,
-        "resize_crop_anchor": "top",
-        "resize_crop_margins": {
-          "bottom": 0.0,
-          "left": 0.0,
-          "right": 0.0,
-          "top": 5.0
-        },
-        "run_mit_mask": false,
         "run_sam_mask": false,
-        "target_res": [
-          896,
-          1024
-        ]
+        "stages": {
+          "masks_sam": [
+            {
+              "dilate": 3,
+              "focus_prompts": "face",
+              "prompts": "sign",
+              "threshold": 0.4
+            }
+          ],
+          "resize": {
+            "target_res": [
+              896,
+              1024
+            ]
+          }
+        }
       },
       "meta_inputs_only": {
         "caption_shuffle_variants": 7,
         "caption_tag_dropout_rate": 0.3,
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 3.0,
-        "mask_path_pattern": "artist_x/*",
-        "mask_rules": [
-          {
-            "dilate": 3,
-            "focus_prompts": [
-              "face"
-            ],
-            "prompts": [
-              "sign"
-            ],
-            "threshold": 0.4
-          }
-        ],
-        "min_pixels": 250000,
-        "mit_dilate": 9,
-        "mit_text_threshold": 0.6,
-        "resize_crop_anchor": "top",
-        "resize_crop_margins": {
-          "bottom": 0.0,
-          "left": 0.0,
-          "right": 0.0,
-          "top": 5.0
-        },
-        "run_mit_mask": false,
         "run_sam_mask": false,
-        "target_res": [
-          896,
-          1024
-        ]
+        "stages": {
+          "masks_sam": [
+            {
+              "dilate": 3,
+              "focus_prompts": "face",
+              "prompts": "sign",
+              "threshold": 0.4
+            }
+          ],
+          "resize": {
+            "target_res": [
+              896,
+              1024
+            ]
+          }
+        }
       },
       "overrides": {
         "caption_autotag": true,
-        "caption_autotag_min_confidence": 0.35,
-        "caption_autotag_mode": "merge",
-        "caption_correct_order": false,
-        "caption_insert_no_artist": false,
         "caption_position_clauses": true,
-        "caption_trigger_at_front": false,
-        "caption_trigger_word": "",
-        "drop_lowres_images": false,
-        "freefit_max_ratio": 3.0,
-        "min_pixels": 250000,
-        "resize_bucket_resos": [],
-        "resize_crop_anchor": "top",
-        "resize_crop_margins": {
-          "bottom": 0.0,
-          "left": 0.0,
-          "right": 0.0,
-          "top": 5.0
-        },
-        "target_res": [
-          896,
-          1024
-        ]
+        "drop_lowres_images": false
       }
     },
     "flipped": {
       "env": {
         "CAPTION_AUTOTAG": "0",
-        "CAPTION_AUTOTAG_MIN_CONFIDENCE": "0.55",
-        "CAPTION_AUTOTAG_MODE": "overwrite",
-        "CAPTION_CORRECT_ORDER": "1",
-        "CAPTION_INSERT_NO_ARTIST": "1",
         "CAPTION_POSITION_CLAUSES": "0",
         "CAPTION_SHUFFLE_VARIANTS": "11",
         "CAPTION_TAG_DROPOUT_RATE": "0.45",
-        "CAPTION_TRIGGER_AT_FRONT": "1",
-        "CAPTION_TRIGGER_WORD": "@flipped",
         "DROP_LOWRES_IMAGES": "1",
-        "FREEFIT_MAX_RATIO": "2.25",
-        "MIN_PIXELS": "123456",
         "PREPROCESS_PATH_PATTERN": "artist_a/**",
-        "TARGET_RES": "768 1280"
+        "PREPROCESS_STAGES_JSON": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false,
+            "tag_csv": ""
+          },
+          "masks_sam": [
+            {
+              "batch_size": 1,
+              "dilate": 7,
+              "focus_prompts": "face",
+              "force": false,
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35,
+              "workers": 4
+            },
+            {
+              "batch_size": 1,
+              "dilate": 2,
+              "focus_prompts": "none",
+              "force": false,
+              "path_pattern": "",
+              "prompts": "watermark",
+              "threshold": 0.6,
+              "workers": 4
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "meta_full": {
         "caption_autotag": false,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": false,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
         "family": "lora",
-        "freefit_max_ratio": 2.25,
-        "mask_path_pattern": "artist_b/*",
-        "mask_rules": [
-          {
-            "dilate": 7,
-            "focus_prompts": [
-              "face"
-            ],
-            "path_pattern": "artist_b/*",
-            "prompts": [
-              "bubble",
-              "sfx"
-            ],
-            "threshold": 0.35
-          },
-          {
-            "dilate": 2,
-            "prompts": [
-              "watermark"
-            ],
-            "threshold": 0.6
-          }
-        ],
-        "min_pixels": 123456,
-        "mit_dilate": 13,
-        "mit_text_threshold": 0.65,
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "run_mit_mask": true,
         "run_sam_mask": true,
         "source_image_dir": "flipped_images",
-        "target_res": [
-          768,
-          1280
-        ]
+        "stages": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false
+          },
+          "masks_sam": [
+            {
+              "dilate": 7,
+              "focus_prompts": "face",
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35
+            },
+            {
+              "dilate": 2,
+              "focus_prompts": "none",
+              "prompts": "watermark",
+              "threshold": 0.6
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "meta_inputs_only": {
         "caption_autotag": false,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": false,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
         "family": "lora",
-        "freefit_max_ratio": 2.25,
-        "mask_path_pattern": "artist_x/*",
-        "mask_rules": [
-          {
-            "dilate": 3,
-            "focus_prompts": [
-              "face"
-            ],
-            "prompts": [
-              "sign"
-            ],
-            "threshold": 0.4
-          }
-        ],
-        "min_pixels": 123456,
-        "mit_dilate": 9,
-        "mit_text_threshold": 0.6,
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "run_mit_mask": false,
         "run_sam_mask": false,
         "source_image_dir": "flipped_images",
-        "target_res": [
-          768,
-          1280
-        ]
+        "stages": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false
+          },
+          "masks_sam": [
+            {
+              "dilate": 3,
+              "focus_prompts": "face",
+              "prompts": "sign",
+              "threshold": 0.4
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "overrides": {
         "caption_autotag": false,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": false,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
-        "drop_lowres_images": true,
-        "freefit_max_ratio": 2.25,
-        "min_pixels": 123456,
-        "resize_bucket_resos": [],
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "target_res": [
-          768,
-          1280
-        ]
+        "drop_lowres_images": true
       }
     },
     "flipped_reloaded": {
       "env": {
         "CAPTION_AUTOTAG": "0",
-        "CAPTION_AUTOTAG_MIN_CONFIDENCE": "0.55",
-        "CAPTION_AUTOTAG_MODE": "overwrite",
-        "CAPTION_CORRECT_ORDER": "1",
-        "CAPTION_INSERT_NO_ARTIST": "1",
         "CAPTION_POSITION_CLAUSES": "0",
         "CAPTION_SHUFFLE_VARIANTS": "11",
         "CAPTION_TAG_DROPOUT_RATE": "0.45",
-        "CAPTION_TRIGGER_AT_FRONT": "1",
-        "CAPTION_TRIGGER_WORD": "@flipped",
         "DROP_LOWRES_IMAGES": "0",
-        "FREEFIT_MAX_RATIO": "2.25",
-        "MIN_PIXELS": "123456",
         "PREPROCESS_PATH_PATTERN": "artist_a/**",
-        "TARGET_RES": "768 1280"
+        "PREPROCESS_STAGES_JSON": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false,
+            "tag_csv": ""
+          },
+          "masks_sam": [
+            {
+              "batch_size": 1,
+              "dilate": 7,
+              "focus_prompts": "face",
+              "force": false,
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35,
+              "workers": 4
+            },
+            {
+              "batch_size": 1,
+              "dilate": 2,
+              "focus_prompts": "none",
+              "force": false,
+              "path_pattern": "",
+              "prompts": "watermark",
+              "threshold": 0.6,
+              "workers": 4
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "meta_full": {
         "caption_autotag": false,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": false,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 2.25,
-        "mask_path_pattern": "artist_b/*",
-        "mask_rules": [
-          {
-            "dilate": 7,
-            "focus_prompts": [
-              "face"
-            ],
-            "path_pattern": "artist_b/*",
-            "prompts": [
-              "bubble",
-              "sfx"
-            ],
-            "threshold": 0.35
-          },
-          {
-            "dilate": 2,
-            "prompts": [
-              "watermark"
-            ],
-            "threshold": 0.6
-          }
-        ],
-        "min_pixels": 123456,
-        "mit_dilate": 13,
-        "mit_text_threshold": 0.65,
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "run_mit_mask": true,
         "run_sam_mask": true,
         "source_image_dir": "flipped_images",
-        "target_res": [
-          768,
-          1280
-        ]
+        "stages": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false
+          },
+          "masks_sam": [
+            {
+              "dilate": 7,
+              "focus_prompts": "face",
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35
+            },
+            {
+              "dilate": 2,
+              "focus_prompts": "none",
+              "prompts": "watermark",
+              "threshold": 0.6
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "meta_inputs_only": {
         "caption_autotag": false,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": false,
         "caption_shuffle_variants": 11,
         "caption_tag_dropout_rate": 0.45,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
         "drop_lowres_images": false,
         "family": "lora",
-        "freefit_max_ratio": 2.25,
-        "mask_path_pattern": "artist_b/*",
-        "mask_rules": [
-          {
-            "dilate": 7,
-            "focus_prompts": [
-              "face"
-            ],
-            "path_pattern": "artist_b/*",
-            "prompts": [
-              "bubble",
-              "sfx"
-            ],
-            "threshold": 0.35
-          },
-          {
-            "dilate": 2,
-            "prompts": [
-              "watermark"
-            ],
-            "threshold": 0.6
-          }
-        ],
-        "min_pixels": 123456,
-        "mit_dilate": 13,
-        "mit_text_threshold": 0.65,
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "run_mit_mask": true,
         "run_sam_mask": true,
         "source_image_dir": "flipped_images",
-        "target_res": [
-          768,
-          1280
-        ]
+        "stages": {
+          "autotag": {
+            "min_confidence": 0.55,
+            "mode": "overwrite"
+          },
+          "correct": {
+            "caption_drop_groups": "artist,lighting",
+            "caption_insert_no_artist": true,
+            "caption_trigger_at_front": true,
+            "caption_trigger_word": "@flipped",
+            "no_correct": false
+          },
+          "masks_sam": [
+            {
+              "dilate": 7,
+              "focus_prompts": "face",
+              "path_pattern": "artist_b/*",
+              "prompts": "bubble, sfx",
+              "threshold": 0.35
+            },
+            {
+              "dilate": 2,
+              "focus_prompts": "none",
+              "prompts": "watermark",
+              "threshold": 0.6
+            }
+          ],
+          "resize": {
+            "freefit_max_ratio": 2.25,
+            "min_pixels": 123456,
+            "overwrite": true,
+            "resize_crop_anchor": "bottom_right",
+            "resize_crop_margins": [
+              1.5,
+              2.5,
+              3.5,
+              4.5
+            ],
+            "target_res": [
+              768,
+              1280
+            ],
+            "workers": 2
+          }
+        }
       },
       "overrides": {
         "caption_autotag": false,
-        "caption_autotag_min_confidence": 0.55,
-        "caption_autotag_mode": "overwrite",
-        "caption_correct_order": true,
-        "caption_insert_no_artist": true,
         "caption_position_clauses": false,
-        "caption_trigger_at_front": true,
-        "caption_trigger_word": "@flipped",
-        "drop_lowres_images": false,
-        "freefit_max_ratio": 2.25,
-        "min_pixels": 123456,
-        "resize_bucket_resos": [],
-        "resize_crop_anchor": "bottom_right",
-        "resize_crop_margins": {
-          "bottom": 3.5,
-          "left": 4.5,
-          "right": 2.5,
-          "top": 1.5
-        },
-        "target_res": [
-          768,
-          1280
-        ]
+        "drop_lowres_images": false
       }
     }
   }
