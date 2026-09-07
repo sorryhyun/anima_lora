@@ -200,7 +200,9 @@ def predict(model, proc, prompt, min_edge, ds: cd.CropDataset, bs, workers):
             },
         ).to(model.device)
         n = inputs["input_ids"].shape[-1]
-        o = model.generate(**inputs, max_new_tokens=48, do_sample=False, use_cache=True)
+        o = model.generate(
+            **inputs, max_new_tokens=ev.MAX_NEW_TOKENS, do_sample=False, use_cache=True
+        )
         for i, row in zip(idx, o):
             ids = [
                 t

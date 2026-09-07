@@ -1,12 +1,12 @@
 # OCR eval — `vl16_lr1e-4` on sincos hand labels (`assets/sfx_labels_sincos.tsv`)
 
-Reader wall 28 s for 948 crops (34.5 crops/s).
+Reader wall 28 s for 948 crops (34.4 crops/s).
 
 | kind | n | exact | exact % | sim (mean) | sim ≥ 0.8 | runaway |
 |---|---|---|---|---|---|---|
-| chrome | 35 | 19 | 54.3 | 0.832 | 68.6 % | 0 |
-| sfx | 619 | 105 | 17.0 | 0.633 | 48.6 % | 2 |
-| speech | 294 | 85 | 28.9 | 0.839 | 73.5 % | 1 |
+| chrome | 35 | 20 | 57.1 | 0.833 | 68.6 % | 0 |
+| sfx | 619 | 105 | 17.0 | 0.630 | 48.5 % | 2 |
+| speech | 294 | 86 | 29.3 | 0.842 | 74.1 % | 1 |
 
 ## SFX by orientation
 
@@ -14,17 +14,17 @@ Reader wall 28 s for 948 crops (34.5 crops/s).
 |---|---|---|---|
 | horizontal | 91 | 15.4 | 0.773 |
 | square | 78 | 16.7 | 0.574 |
-| vertical | 450 | 17.3 | 0.614 |
+| vertical | 450 | 17.3 | 0.611 |
 
 ## SFX by length
 
 | len | n | exact % | sim |
 |---|---|---|---|
 | 1 | 2 | 0.0 | 0.000 |
-| 2 | 36 | 52.8 | 0.675 |
-| 3 | 355 | 17.2 | 0.643 |
-| 4 | 125 | 12.8 | 0.636 |
-| 5 | 36 | 2.8 | 0.515 |
+| 2 | 38 | 50.0 | 0.663 |
+| 3 | 354 | 17.2 | 0.640 |
+| 4 | 126 | 12.7 | 0.631 |
+| 5 | 34 | 2.9 | 0.529 |
 | 6 | 19 | 10.5 | 0.627 |
 | 7 | 31 | 12.9 | 0.692 |
 | 8+ | 15 | 13.3 | 0.505 |
@@ -38,40 +38,42 @@ Reader wall 28 s for 948 crops (34.5 crops/s).
 | sincos 000 968 | ガク♡ | たっ♡ | 0.00 |
 | sincos 000 9 | ごめん | シャアア | 0.00 |
 | sincos 000 42 | ブハンッ♡ | えくいっ | 0.00 |
+| sincos 000 56 | お～♡ | ぶ~っ | 0.00 |
+| sincos 000 47 | へこ♡ | フンッ | 0.00 |
+| sincos 000 46 | ブルン♡ | ぐごっくん | 0.00 |
 | sincos 000 65 | おじ | わし | 0.00 |
-| sincos 000 929 | ちゅぱ | キャば | 0.00 |
-| sincos 000 47 | へこん | フンッ | 0.00 |
 | sincos 000 61 | びくびく・・・・♡♡ | ふっふっふっっっ | 0.00 |
-| sincos 000 76 | へこ♡ | くり♡ | 0.00 |
-| sincos 000 884 | ペろ♡ ペろ♡ | すぴるん | 0.00 |
 | sincos 000 897 | ビュー | じー | 0.00 |
-| sincos 000 864 | ガク♡ | かう♥ | 0.00 |
+| sincos 000 884 | ペろ♡ ペろ♡ | すぴるん | 0.00 |
 | sincos 000 77 | へこ♡ | くい♡ | 0.00 |
-| sincos 000 917 | ガク♡ | がっ♥ | 0.00 |
 | sincos 000 921 | ガク♡ | がっ♥ | 0.00 |
-| sincos 000 834 | ぐふー~♡ | ブルル~ | 0.00 |
+| sincos 000 917 | ガク♡ | がっ♥ | 0.00 |
+| sincos 000 929 | ちゅぱ | キャば | 0.00 |
+| sincos 000 76 | へこ♡ | くり♡ | 0.00 |
 | sincos 000 159 | あ゙っ | ず♡ | 0.00 |
 | sincos 000 803 | フリフリ | コツン | 0.00 |
 | sincos 000 802 | ビクン♡ | ぐっ | 0.00 |
-| sincos 000 751 | くに くに♡ | ヒュヒュ | 0.00 |
 | sincos 000 763 | ビュルルル | ぐっへへへ~ッ | 0.00 |
 | sincos 000 762 | ビュー | じょー | 0.00 |
 | sincos 000 760 | くー♡ | えーっ | 0.00 |
-| sincos 000 774 | ブルン♡ | ぐ~っ | 0.00 |
+| sincos 000 751 | くに くに♡ | ヒュヒュ | 0.00 |
+| sincos 000 772 | ん | トン | 0.00 |
 
-## Gate set: the 518 `kind: sfx` records (scored against the hand text)
+## Gate: the 619 `kind_hand: sfx` rows (scored against the hand text)
 
-exact **91 / 518** (heart-blind 126), sim 0.653; hand-relabelled: 6 rows are not SFX by eye (chrome, speech).
-heart-blind exact, chrome: 20 / 35
-heart-blind exact, sfx: 146 / 619
-heart-blind exact, speech: 117 / 294
+exact **105 / 619** (heart-blind 145), sim 0.630; on the **76 user-checked** rows exact **11 / 76** (heart-blind 19), sim 0.730. This is the headline number; anything measured before 2026-09-06 was on the retired PP-box labels (71-line gate / 99 SFX) and does not compare.
+
+Side view — the 518 `kind_rec: sfx` records: exact **91 / 518** (heart-blind 125), sim 0.650; 6 of them are not SFX by eye (chrome, speech).
+heart-blind exact, chrome: 21 / 35
+heart-blind exact, sfx: 145 / 619
+heart-blind exact, speech: 119 / 294
 
 ## Every SFX line
 
 | row | gt | pred | exact | ♡-blind | sim |
 |---|---|---|---|---|---|
-| 0 | ずっ♡ | ずっ |  | ✓ | 1.00 |
-| 1 | ミーフリ♡ | バリン |  |  | 0.33 |
+| 0 | おっ | ずっ |  |  | 0.50 |
+| 1 | フリ | バリン |  |  | 0.40 |
 | 2 | フリ♡ | フリ |  | ✓ | 1.00 |
 | 4 | ぢゅぽ | ぢゅぱ |  |  | 0.67 |
 | 5 | ぐちゃ | ぐわ |  |  | 0.40 |
@@ -97,13 +99,13 @@ heart-blind exact, speech: 117 / 294
 | 43 | びくっん | ふっ |  |  | 0.33 |
 | 44 | へこ♡ へこ♡ | へい♡へい♡ |  |  | 0.50 |
 | 45 | へこ♡ | へい♡ |  |  | 0.50 |
-| 46 | ブハン♡ん | ぐごっくん |  |  | 0.22 |
-| 47 | へこん | フンッ |  |  | 0.00 |
+| 46 | ブルン♡ | ぐごっくん |  |  | 0.00 |
+| 47 | へこ♡ | フンッ |  |  | 0.00 |
 | 48 | グイッ | グイッ | ✓ | ✓ | 1.00 |
 | 50 | へっ♡ | へっ♡ | ✓ | ✓ | 1.00 |
 | 53 | フリ♡ | フリ♥ | ✓ | ✓ | 1.00 |
 | 54 | フリ♡ | フリ♡ | ✓ | ✓ | 1.00 |
-| 56 | ぶー♡ | ぶ~っ |  |  | 0.67 |
+| 56 | お～♡ | ぶ~っ |  |  | 0.00 |
 | 59 | びく♡ | ごくっ |  |  | 0.40 |
 | 61 | びくびく・・・・♡♡ | ふっふっふっっっ |  |  | 0.00 |
 | 62 | パンッ♡ パンッ♡ | パシャア |  |  | 0.20 |
@@ -148,7 +150,7 @@ heart-blind exact, speech: 117 / 294
 | 149 | びく♡ | ふく |  |  | 0.50 |
 | 153 | くちゅ♡ | くちゅ |  | ✓ | 1.00 |
 | 154 | くちゅ♡ | くちゃ |  |  | 0.67 |
-| 155 | ずっ | あっ♥ |  |  | 0.50 |
+| 155 | おっ | あっ♥ |  |  | 0.50 |
 | 156 | あ゙っ | あっ♥ |  |  | 0.80 |
 | 157 | びく♡ | ぐく |  |  | 0.50 |
 | 158 | ぱん♡ | ぱく♥ |  |  | 0.50 |

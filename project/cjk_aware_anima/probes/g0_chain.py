@@ -104,6 +104,15 @@ ARMS = {
         "post_image_dataset/cjk_unmask/te/sincos_hybrid_sfx_sentence_isoq",
         True,
     ),
+    # DiT line plan_det D2: C11's recipe on the AnimeText-detector records
+    # (ocr_records_sincos_animetext.jsonl, mirror_sincos_animetext_sentence).
+    # One training seed (s42, job 20260906-213229-e7feb8); render-only here.
+    "D2": (
+        "cjk_unmask_d2",
+        "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
+        "post_image_dataset/cjk_unmask/te/sincos_animetext_sentence_isoq",
+        True,
+    ),
 }
 
 # blind sets to compose once the grids exist: set name -> arms

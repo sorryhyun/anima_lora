@@ -12,7 +12,7 @@ A (exact gained, or sim up by ≥ 0.05), **red** where it lost, plain where the
 two agree. Disagreements come first, worst B-vs-A first.
 
     python project/cjk_aware_anima_dit/probes/ocr_eval_sheet.py \\
-        --a vl16_tower_lr1e-5 --b vl16_tower_col100            # 99 SFX rows
+        --a vl16_tower_lr1e-5 --b vl16_tower_col100           # 619 SFX rows
     … --kind sfx --kind speech --kind chrome                    # every label
     … --only diff                                              # rows where the reads differ
 

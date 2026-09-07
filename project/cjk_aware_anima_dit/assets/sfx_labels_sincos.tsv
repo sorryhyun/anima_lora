@@ -1,13 +1,13 @@
 row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_row	note
-0	10029747	[583, 255, 609, 307]	0.8621	animetext+sfx_reader	sfx	ずっ♡	sfx	ずっ♡	drafted		D1 hand pass #0 real_text=y
-1	10029747	[171, 431, 215, 585]	0.4674	animetext+sfx_reader	sfx	ミー~フリ	sfx	ミーフリ♡	draft		opus: top two glyphs uncertain (ミー vs ~)
+0	10029747	[583, 255, 609, 307]	0.8621	animetext+sfx_reader	sfx	ずっ♡	sfx	おっ	checked		D1 hand pass #0 real_text=y | user label pass 20260907
+1	10029747	[171, 431, 215, 585]	0.4674	animetext+sfx_reader	sfx	ミー~フリ	sfx	フリ	checked		opus: top two glyphs uncertain (ミー vs ~) | user label pass 20260907
 2	10029747	[573, 532, 610, 616]	0.6308	animetext+sfx_reader	speech	フリ♥	sfx	フリ♡	drafted		D1 hand pass #1 real_text=y; opus: kind changed: no bubble
 3	10029747	[568, 680, 636, 761]	0.917	animetext+sfx_reader	speech	正ト正ト	chrome	正正正丅	draft		opus: tally marks written on skin; read left-to-right, last is a 2-stroke partial 正; kind changed
 4	10029747	[558, 885, 592, 941]	0.6631	animetext+sfx_reader	sfx	ぢゅぽ	sfx	ぢゅぽ	drafted		D1 hand pass #2 real_text=y
 5	10029747	[299, 904, 336, 971]	0.3035	animetext+sfx_reader	sfx	ぐちゃ	sfx	ぐちゃ	drafted		opus: partly occluded by a highlight
 6	10382939	[396, 36, 445, 289]	0.9432	animetext+sfx_reader	speech	請隨心所欲狼狼地玩弄我吧前輩♥	speech	請隨心所欲狼狽地玩弄我吧 前驚	checked	0	
-7	10504719	[325, 14, 398, 325]	0.9462	animetext+sfx_reader	speech	ハ奈見さんっ・・水着っっ!!	speech	バ茶見す人っ！水着っ！	checked	1	
-8	10504719	[42, 251, 73, 353]	0.9084	animetext+sfx_reader	speech	へっへ。	speech	へっフ・	checked	3	
+7	10504719	[325, 14, 398, 325]	0.9462	animetext+sfx_reader	speech	ハ奈見さんっ・・水着っっ!!	speech	八奈見さんっ　水着っ！	checked	1	user label pass 20260907
+8	10504719	[42, 251, 73, 353]	0.9084	animetext+sfx_reader	speech	へっへ。	speech	へっ？	checked	3	user label pass 20260907
 9	10504719	[360, 1018, 397, 1166]	0.8975	animetext+sfx_reader	sfx	ごめんっっ	sfx	ごめん	checked	2	hand-lettered spoken word, no bubble
 10	10506513	[576, 25, 605, 521]	0.8735	animetext+sfx_reader	speech	嘘だ~、おちんちんは我慢できない~って言ってるよ?	speech	嘘だ～、おちんちんは我慢できない～って言ってるよ？	checked	6	
 11	10506513	[1086, 25, 1117, 579]	0.8499	animetext+sfx_reader	speech	温水くん、私と一緒にいるとやっぱりムラムラしちゃうんだ~♡	speech	温水くん、私と一緒にいるとやっぱりムうムうしちゃうんだ～♡	checked	4	
@@ -39,14 +39,14 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 37	10786750	[0, 382, 47, 487]	0.7777	animetext+sfx_reader	sfx	ミくっ♡	sfx	びくっ♡	drafted		opus: first glyph is び (dakuten), not ミ
 38	10792115	[666, 47, 728, 172]	0.8754	animetext+sfx_reader	sfx	びくっ♡	sfx	びくっ♡	draft		opus: a と-like glyph at lower-left may belong to it (びくっと)
 39	10792115	[40, 171, 79, 280]	0.9186	animetext+sfx_reader	sfx	びくっ♡	sfx	びくっ♡	drafted		D1 hand pass #7 real_text=y
-40	10792115	[687, 205, 766, 354]	0.931	animetext+sfx_reader	speech	がんばえ♥がんばえ♥	speech	なァがくてなァが	checked	19	
+40	10792115	[687, 205, 766, 354]	0.931	animetext+sfx_reader	speech	がんばえ♥がんばえ♥	speech	がんばれ♡　がんばれ♡	checked	19	user label pass 20260907
 41	10793990	[84, 197, 125, 305]	0.9011	animetext+sfx_reader	sfx	びくっ☆	sfx	びくっ♡	drafted		opus: final mark is a heart, not ☆
-42	10793990	[102, 416, 141, 573]	0.6438	animetext+sfx_reader	sfx	ブハンッ♥	sfx	ブハンッ♡	drafted		
-43	10793990	[761, 586, 851, 697]	0.4357	animetext+sfx_reader	speech	ふくっん	sfx	びくっん	draft		opus: kind changed: no bubble; trailing ん uncertain
+42	10793990	[102, 416, 141, 573]	0.6438	animetext+sfx_reader	sfx	ブハンッ♥	sfx	ブルン♡	checked		user label pass #2 20260907
+43	10793990	[761, 586, 851, 697]	0.4357	animetext+sfx_reader	speech	ふくっん	sfx	びくっ♡	checked		opus: kind changed: no bubble; trailing ん uncertain | user label pass #2 20260907
 44	10793990	[150, 623, 215, 710]	0.6008	animetext+sfx_reader	speech	ヘン☆	sfx	へこ♡ へこ♡	draft		opus: kind changed: no bubble; two blocks, #45 is the lower one
 45	10793990	[154, 677, 206, 705]	0.2623	animetext+sfx_reader	speech	へい♡	sfx	へこ♡	draft		opus: kind changed: no bubble; box nested inside #44 (lower block)
-46	10793990	[623, 712, 691, 870]	0.7298	animetext+sfx_reader	sfx	ブハン♡ん	sfx	ブハン♡ん	draft		opus: final glyph uncertain
-47	10793990	[542, 805, 597, 888]	0.6491	animetext+sfx_reader	speech	へこん	sfx	へこん	draft		opus: kind changed: no bubble; two strokes at left read as motion lines
+46	10793990	[623, 712, 691, 870]	0.7298	animetext+sfx_reader	sfx	ブハン♡ん	sfx	ブルン♡	checked		opus: final glyph uncertain | user label pass 20260907
+47	10793990	[542, 805, 597, 888]	0.6491	animetext+sfx_reader	speech	へこん	sfx	へこ♡	checked		opus: kind changed: no bubble; two strokes at left read as motion lines | user label pass 20260907
 48	10829778	[766, 54, 837, 97]	0.8999	animetext+sfx_reader	sfx	グイッ	sfx	グイッ	checked	20	black hand lettering; uncertain
 49	10836172	[654, 55, 768, 393]	0.9438	animetext+sfx_reader	speech	かほー♡おちんぽの時間だぞー♡	speech	かほー♡ おちんぽの時間だぞー♡	checked	21	
 50	10836172	[553, 310, 589, 390]	0.5561	animetext+sfx_reader	speech	へっ♡	sfx	へっ♡	drafted		opus: kind changed: outline halo, not a bubble
@@ -55,7 +55,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 53	10836172	[847, 617, 872, 705]	0.8763	animetext+sfx_reader	speech	フリ♡	sfx	フリ♡	drafted		opus: kind changed: no bubble
 54	10836172	[806, 728, 835, 791]	0.7549	animetext+sfx_reader	speech	フリ♡	sfx	フリ♡	drafted		opus: kind changed: no bubble
 55	10836172	[55, 896, 195, 947]	0.307	animetext+sfx_reader	speech	KAH	chrome	KAHO	drafted		opus: kind changed: name lettered on a pet bowl
-56	10843780	[369, 106, 415, 223]	0.461	animetext+sfx_reader	sfx	ぶっーーー	sfx	ぶー♡	draft		opus: long stroke plus several floating hearts; exact sequence unclear
+56	10843780	[369, 106, 415, 223]	0.461	animetext+sfx_reader	sfx	ぶっーーー	sfx	お～♡	checked		opus: long stroke plus several floating hearts; exact sequence unclear | user label pass 20260907
 57	10843780	[53, 765, 109, 917]		hand_only	speech	ますたぁ	speech	ますたぁ	unchecked	24	no AnimeText record covers this old box
 58	10843780	[198, 824, 280, 1137]	0.9345	animetext+sfx_reader	speech	ますたぁのおちんぽぉ~	speech	ますたあの おち人ぽお	checked	23	
 59	10843780	[310, 835, 356, 904]	0.676	animetext+sfx_reader	sfx	びく♥	sfx	びく♡	drafted		
@@ -72,7 +72,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 70	10989351	[690, 193, 784, 260]	0.495	animetext+sfx_reader	sfx	びく♡	sfx	びく♡	drafted		D1 hand pass #9 real_text=y
 71	10989351	[1084, 222, 1319, 488]	0.9097	animetext+sfx_reader	sfx	パンッ♥	sfx	パンッ♡ パンッ♡	drafted		opus: two blocks
 72	10989351	[186, 356, 230, 426]	0.8336	animetext+sfx_reader	speech	はぁ♡	sfx	はぁ♡	drafted		opus: kind changed: no bubble
-73	10992018	[102, 129, 233, 460]	0.9645	animetext+sfx_reader	speech	おじさんちんぽで気持ちよくなるわけないです!	speech	おじさLちLぽで 気持ちよくなるわけ ないです！	checked	26	
+73	10992018	[102, 129, 233, 460]	0.9645	animetext+sfx_reader	speech	おじさんちんぽで気持ちよくなるわけないです!	speech	おじさんちんぽで気持ちよくなるわけないです！	checked	26	user label pass 20260907
 74	10992018	[762, 393, 810, 503]	0.786	animetext+sfx_reader	sfx	ぺく♡	sfx	びく♡	drafted		
 75	10992018	[279, 427, 334, 543]	0.7062	animetext+sfx_reader	sfx	ぴくく♡	sfx	びくく♡	drafted		
 76	10992018	[154, 547, 202, 664]	0.5915	animetext+sfx_reader	speech	へこ♡	sfx	へこ♡	drafted		D1 hand pass #10 real_text=y; opus: kind changed: no bubble
@@ -92,7 +92,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 90	10996697	[53, 728, 120, 911]	0.821	animetext+sfx_reader	sfx	ぐかッ♥	sfx	イグッ♡	drafted	30	split 2 ways from old #30 (hand: イグッ♡); neighbour glyph clipped
 91	10996697	[69, 746, 112, 863]	0.3897	animetext+sfx_reader	sfx	ドクッ	sfx	イグッ	drafted	30	split 2 ways from old #30 (hand: イグッ♡); neighbour glyph clipped; opus: box nested inside #90; heart outside the box
 92	10996697	[802, 803, 911, 1135]	0.5834	animetext+sfx_reader	sfx	パンッ	sfx	パンッ♡	drafted		
-93	10996697	[178, 805, 237, 979]	0.8499	animetext+sfx_reader	speech	おっ~♡	speech	おっ~♡	drafted	29	split 2 ways from old #29 (hand: おっっ おおが); opus: kind changed: no bubble; opus kind sfx reverted to user speech
+93	10996697	[178, 805, 237, 979]	0.8499	animetext+sfx_reader	speech	おっ~♡	speech	おっ？♡	checked	29	split 2 ways from old #29 (hand: おっっ おおが); opus: kind changed: no bubble; opus kind sfx reverted to user speech | user label pass 20260907 | user label pass #2 20260907
 94	10996697	[114, 911, 165, 1056]	0.7579	animetext+sfx_reader	speech	おおお	speech	おおお	drafted	29	split 2 ways from old #29 (hand: おっっ おおが); opus: kind changed: no bubble; a heart may be clipped at the right edge; opus kind sfx reverted to user speech
 95	11241175	[825, 25, 854, 457]	0.8952	animetext+sfx_reader	speech	センパイ♡おなほの準備ができました♡	speech	センパイおなほの準備ができました	checked	31	
 96	11241175	[169, 72, 227, 702]	0.8925	animetext+sfx_reader	speech	だいぶらしくなってきたじゃねえかおら、はやくこっちこい、たっぷり可愛がってやる	speech	だいぶらしくなってきたじゃねえか おら、はやくこっちこい、たっぷり可愛がってやる	checked	33	
@@ -154,7 +154,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 152	11684439	[725, 797, 775, 1049]	0.9439	animetext+sfx_reader	speech	全部あいつのせい...うぅ、思い出しちゃう...♥	speech	全部あいつのせい： うう、思い出しちゃう…	checked	73	
 153	11684439	[349, 953, 382, 1046]	0.6682	animetext+sfx_reader	sfx	くちゅ♡	sfx	くちゅ♡	drafted		
 154	11684439	[596, 962, 628, 1054]	0.7701	animetext+sfx_reader	sfx	くちゅ♡	sfx	くちゅ♡	drafted		
-155	11822164	[503, 85, 555, 175]	0.8672	animetext+sfx_reader	sfx	ずっ♥	sfx	ずっ	drafted		opus: decorative hearts around the blob not transcribed
+155	11822164	[503, 85, 555, 175]	0.8672	animetext+sfx_reader	sfx	ずっ♥	sfx	おっ	checked		opus: decorative hearts around the blob not transcribed | user label pass 20260907
 156	11822164	[45, 148, 93, 240]	0.4747	animetext+sfx_reader	speech	あ゙っ	sfx	あ゙っ	drafted		opus: kind changed: halo blob, not a bubble; decorative hearts not transcribed
 157	11822164	[558, 178, 612, 266]	0.6643	animetext+sfx_reader	speech	ふく♡	sfx	びく♡	drafted		D1 hand pass #11 real_text=y; opus: kind changed: no bubble; first glyph び not ふ
 158	11822164	[1043, 361, 1114, 503]	0.8568	animetext+sfx_reader	sfx	ぱん♡	sfx	ぱん♡	drafted	76	split 2 ways from old #76 (hand: ぱん♡ ぱん♡)
@@ -193,7 +193,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 191	11887527	[627, 579, 668, 687]	0.8079	animetext+sfx_reader	sfx	ブヶン♡	sfx	ブルン♡	draft		opus: same word as #190; final ン faint
 192	11887527	[124, 633, 202, 759]	0.4283	animetext+sfx_reader	sfx	ぱん♥	sfx	ぱん♡	drafted		
 193	11887527	[560, 765, 595, 990]	0.8642	animetext+sfx_reader	sfx	プルプル・・・・♥	sfx	プルプル・・・・♡	drafted		
-194	11887527	[333, 936, 353, 1041]	0.3579	animetext+sfx_reader	sfx	ミーン	sfx	ミーン	draft		opus: white squiggle; may be a motion scribble rather than text
+194	11887527	[333, 936, 353, 1041]	0.3579	animetext+sfx_reader	sfx	ミーン	sfx		checked		opus: white squiggle; may be a motion scribble rather than text | user 20260907: not text, ＾＾＾ scribble | user label pass #2 20260907
 195	11893130	[435, 174, 515, 208]	0.8424	animetext+sfx_reader	sfx	うズア	sfx	ウズ♡	checked	86	uncertain, clipped
 196	11893130	[1153, 386, 1197, 476]	0.7816	animetext+sfx_reader	sfx	だっ	sfx	ぱんっ	draft		opus: inside a burst circle; first glyph ぱ vs だ uncertain; heart outside the box
 197	11893130	[847, 526, 900, 652]	0.7927	animetext+sfx_reader	sfx	ぐぷっ	sfx	ぐぷっ	drafted		opus: inside a burst circle
@@ -203,12 +203,12 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 201	11893132	[114, 360, 150, 441]	0.6757	animetext+sfx_reader	speech	へっ	sfx	へっ♡	drafted		opus: kind changed: burst circle, not a bubble
 202	11893132	[375, 378, 413, 457]	0.555	animetext+sfx_reader	speech	へっ	sfx	へっ♡	drafted		opus: kind changed: burst circle, not a bubble
 203	11893132	[634, 636, 707, 814]	0.8341	animetext+sfx_reader	sfx	くにくに♡	sfx	くにくに♡	drafted		
-204	11893132	[130, 687, 155, 735]	0.6358	animetext+sfx_reader	speech	くた	sfx	くた	drafted		opus: kind changed: no bubble
+204	11893132	[130, 687, 155, 735]	0.6358	animetext+sfx_reader	speech	くた	sfx	くに	checked		opus: kind changed: no bubble | user label pass #2 20260907
 205	11893132	[94, 741, 127, 822]	0.4001	animetext+sfx_reader	speech	くに	sfx	くた♡	drafted		opus: kind changed: no bubble; same word as #204
 206	11893132	[505, 933, 533, 997]	0.7125	animetext+sfx_reader	sfx	くちゅ	sfx	くちゅ	drafted		opus: inside a burst circle
 207	11893133	[261, 13, 380, 65]	0.8318	animetext+sfx_reader	sfx	びくと	sfx	びく♡	checked	89	
 208	11893133	[631, 186, 714, 327]	0.9277	animetext+sfx_reader	speech	あっあっ	speech	あっ あ	checked	88	
-209	11893133	[44, 334, 130, 488]	0.9159	animetext+sfx_reader	speech	イッ・・・トイくっ・・・ト	speech	イッ・・・♡ くっ・・・♡	draft	91	box moved iou=0.50 from old #91; opus: kind changed: burst circle; two blocks, the second block's leading イ falls just outside the box; opus kind sfx reverted to user speech
+209	11893133	[44, 334, 130, 488]	0.9159	animetext+sfx_reader	speech	イッ・・・トイくっ・・・ト	speech	イッ…♡ イくっ…♡	checked	91	box moved iou=0.50 from old #91; opus: kind changed: burst circle; two blocks, the second block's leading イ falls just outside the box; opus kind sfx reverted to user speech | user label pass #2 20260907
 210	11893133	[80, 509, 166, 659]	0.9481	animetext+sfx_reader	speech	おじさまっイッちゃう・・	speech	おじこまっ イッちゃう	checked	90	
 211	11893134	[631, 258, 697, 377]	0.8955	animetext+sfx_reader	sfx	ちゅっ♥	sfx	ちゅっ♡	drafted		
 212	11893134	[152, 514, 214, 647]	0.716	animetext+sfx_reader	speech	ちゃぱ♥	sfx	ちゃぱ♡	drafted		opus: kind changed: burst circle, not a bubble
@@ -250,10 +250,10 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 248	12083865	[1010, 405, 1061, 751]	0.9379	animetext+sfx_reader	speech	おじさまー♡今日は2回戦までやっちゃおうよ~♡	speech	おじさまー 今日は2回戦までヤっちゃおうよ～	checked	102	
 249	12083865	[142, 437, 171, 494]	0.8382	animetext+sfx_reader	sfx	びくと	sfx	びく♡	drafted		opus: final mark read as a heart (machine read と)
 250	12083865	[45, 676, 118, 880]	0.9425	animetext+sfx_reader	speech	5回戦目突入♥	speech	5回戦目突入♡	drafted	103	box moved iou=0.46 from old #103; opus: black title/narration box
-251	12083865	[211, 730, 270, 811]	0.4856	animetext+sfx_reader	speech	ぬぱー♡	sfx	ぬぱー♡	draft		opus: kind changed: no bubble; several decorative hearts inside the box
+251	12083865	[211, 730, 270, 811]	0.4856	animetext+sfx_reader	speech	ぬぱー♡	sfx	ぬぽ	checked		opus: kind changed: no bubble; several decorative hearts inside the box | user label pass #2 20260907
 252	12083865	[422, 749, 461, 815]	0.3731	animetext+sfx_reader	speech	ぬぽ	sfx	ぬぽ♡	draft		opus: kind changed: no bubble; several decorative hearts inside the box
 253	12206129	[195, 321, 223, 445]	0.9082	animetext+sfx_reader	speech	あっー	speech	あっー	checked	104	
-254	12351682	[515, 873, 572, 939]	0.8181	animetext+sfx_reader	sfx	ドド	sfx		draft		D1 hand pass #14 real_text=y; read 'ドド' vs black hand-lettered glyphs; opus: two thick slanted marker glyphs (tally-like 王 / 下); D1 read ドド, could not confirm
+254	12351682	[515, 873, 572, 939]	0.8181	animetext+sfx_reader	sfx	ドド	chrome	正下	checked		D1 hand pass #14 real_text=y; read 'ドド' vs black hand-lettered glyphs; opus: two thick slanted marker glyphs (tally-like 王 / 下); D1 read ドド, could not confirm | user 20260907: kind sfx→chrome | user label pass #2 20260907
 255	12424040	[191, 264, 251, 360]	0.4374	animetext+sfx_reader	speech	Oh~	speech	Oh~	drafted		opus: in a bubble; the ~ is drawn as a squiggle on the second line
 256	12424040	[81, 352, 187, 446]	0.7247	animetext+sfx_reader	sfx	びくん	sfx	びく♡	checked	107	second heart belongs to a neighbour?
 257	12424040	[785, 376, 849, 514]	0.9075	animetext+sfx_reader	sfx	びく♡	sfx	びく♡	checked	105	
@@ -269,8 +269,8 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 267	12426261	[467, 969, 521, 1218]	0.8261	animetext+sfx_reader	sfx	ぴくぴく・・・・	sfx	ぴくぴく・・・・♡	drafted		opus: dot count 3 or 4
 268	12432642	[130, 136, 180, 255]	0.8972	animetext+sfx_reader	sfx	びく♡	sfx	びく♡	drafted		
 269	12432642	[792, 169, 854, 294]	0.9021	animetext+sfx_reader	sfx	びく♡	sfx	びく♡	drafted		
-270	12432642	[637, 351, 667, 440]		hand_only	speech	はーレ	speech	はーレ	unchecked	108	no AnimeText record covers this old box
-271	12440144	[37, 90, 96, 235]	0.2923	animetext+sfx_reader	speech	ふふふー	sfx	ふふふー	draft		opus: kind changed: no bubble; very thin handwriting, low confidence
+270	12432642	[637, 351, 667, 440]		hand_only	speech	はーレ	speech	はー♡	checked	108	no AnimeText record covers this old box | user label pass #2 20260907
+271	12440144	[37, 90, 96, 235]	0.2923	animetext+sfx_reader	speech	ふふふー	sfx		checked		opus: kind changed: no bubble; very thin handwriting, low confidence | user 20260907: not text, ＾＾＾ scribble | user label pass #2 20260907
 272	12440144	[38, 446, 82, 538]	0.8501	animetext+sfx_reader	sfx	でく♡	sfx	びく♡	drafted		opus: first glyph び not で
 273	12440144	[624, 551, 693, 638]	0.4566	animetext+sfx_reader	speech	ひく♡	sfx	びく♡	drafted		opus: kind changed: no bubble
 274	12440144	[767, 566, 843, 701]	0.2882	animetext+sfx_reader	sfx	ぱん	sfx	ぱん	drafted		
@@ -307,7 +307,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 305	12485232	[101, 782, 144, 854]	0.9065	animetext+sfx_reader	speech	えっっ!	speech	え゙っ！？	drafted		opus: dakuten on え; jagged shout balloon in dialogue ink
 306	12485232	[190, 851, 219, 937]	0.9028	animetext+sfx_reader	sfx	ガク	sfx	ガク♡	drafted		opus: tail is the thin-pen ♡ (cf. checked #303)
 307	12485232	[31, 902, 130, 1104]	0.9581	animetext+sfx_reader	speech	はーはーい・・・♩次のご主人様どうぞー♦	speech	次のご主人様 どうぞー♡	checked	121	
-308	12485232	[553, 985, 586, 1109]	0.6646	animetext+sfx_reader	speech	とーっー	sfx	とーっ	draft		opus: kind changed: hand-lettered on artwork, no bubble; tail glyph uncertain
+308	12485232	[553, 985, 586, 1109]	0.6646	animetext+sfx_reader	speech	とーっー	sfx		checked		opus: kind changed: hand-lettered on artwork, no bubble; tail glyph uncertain | user 20260907: not text, ＾＾＾ scribble | user label pass #2 20260907
 309	12540050	[770, 21, 872, 255]	0.9466	animetext+sfx_reader	speech	リスナーとデート企画!今週はいつも高額スパチャしてくれてるあなたをるーが選びましたぁ♥	speech	リスナーとデート企画 今週はいつも 高額スパチャしてくれてる あなたをるーが選びましたぁ	checked	125	
 310	12540050	[274, 27, 305, 221]	0.9254	animetext+sfx_reader	speech	体が全部好きっす!!	speech	体が全部好きっす！！	drafted	130	split 2 ways from old #130 (hand: るーらん可愛い！ るーらんのおっぱいと 尻と顔と…… 体が全部好きっす)
 311	12540050	[320, 27, 363, 197]	0.7295	animetext+sfx_reader	speech	るーらんのおっぱいと尻と顔と・・・・	speech	るーらんのおっぱいと 尻と顔と……	drafted	130	split 2 ways from old #130 (hand: るーらん可愛い！ るーらんのおっぱいと 尻と顔と…… 体が全部好きっす)
@@ -589,7 +589,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 587	6067089	[270, 196, 364, 249]	0.8509	animetext+sfx_reader	sfx	ちらっ	sfx	ちらっ	drafted		
 588	6067089	[832, 393, 982, 737]	0.9556	animetext+sfx_reader	speech	もしかして興奮してるー?かわいいなー♡	speech	もしかして興奮してるー？ かわいいなー♡	drafted		old #211 fragment inside: かわいいなー♡; opus: two columns
 589	6067089	[834, 493, 872, 692]		hand_only	speech	かわいいなー♡	speech	かわいいなー♡	unchecked	211	no AnimeText record covers this old box
-590	6144410	[64, 823, 93, 989]	0.9055	animetext+sfx_reader	sfx	ガクガク・・・	sfx	がりガク…	draft		D1 hand pass #33 real_text=y; opus: reads がり + ガク; unusual word, chars 1-2 clear り not ク
+590	6144410	[64, 823, 93, 989]	0.9055	animetext+sfx_reader	sfx	ガクガク・・・	sfx	ガクガク…	checked		D1 hand pass #33 real_text=y; opus: reads がり + ガク; unusual word, chars 1-2 clear り not ク | user label pass #2 20260907
 591	6154700	[140, 288, 191, 403]	0.9324	animetext+sfx_reader	speech	ほわっ	speech	ほわっ	drafted		
 592	6253746	[416, 58, 503, 131]	0.5793	animetext+sfx_reader	sfx	ぐいぐい	sfx	ぐいぐい	checked	212	
 593	6253746	[487, 217, 559, 342]	0.8614	animetext+sfx_reader	sfx	ぢゅぽ♡	sfx	ぢゃぽ♡	drafted		opus: small kana is ゃ not ゅ
@@ -648,10 +648,10 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 646	6575532	[75, 197, 127, 314]	0.7329	animetext+sfx_reader	sfx	どっ	sfx	どっ♡	drafted		D1 hand pass #37 real_text=y; opus: extra heart above ど
 647	6575532	[121, 421, 251, 487]	0.5505	animetext+sfx_reader	sfx	びくと	sfx	びく♡	drafted		opus: draft びくと wrong
 648	6575532	[1102, 515, 1191, 668]	0.5341	animetext+sfx_reader	sfx	ぷちゅ♥	sfx	ぷちゅ♡	drafted		
-649	6575532	[416, 521, 505, 657]	0.6378	animetext+sfx_reader	speech	えぶ	chrome		draft		opus: kind changed: name tag on a swimsuit; handwriting illegible
+649	6575532	[416, 521, 505, 657]	0.6378	animetext+sfx_reader	speech	えぶ	chrome	そのだ	checked		opus: kind changed: name tag on a swimsuit; handwriting illegible | user label pass #2 20260907
 650	6575532	[187, 594, 286, 721]	0.3376	animetext+sfx_reader	sfx	スーッ	sfx	スーッ	drafted		
-651	6575532	[677, 642, 737, 742]	0.6788	animetext+sfx_reader	sfx	ガワ	sfx	ガリ♡	draft		opus: draft ガワ wrong; リ vs ク uncertain
-652	6575532	[681, 646, 720, 709]	0.3502	animetext+sfx_reader	sfx	ガク	sfx	ガリ	draft		opus: sub-box of #651
+651	6575532	[677, 642, 737, 742]	0.6788	animetext+sfx_reader	sfx	ガワ	sfx	ガク♡	checked		opus: draft ガワ wrong; リ vs ク uncertain | user label pass #2 20260907
+652	6575532	[681, 646, 720, 709]	0.3502	animetext+sfx_reader	sfx	ガク	sfx	ガク♡	checked		opus: sub-box of #651 | user label pass #2 20260907
 653	6593835	[504, 69, 543, 577]	0.6306	animetext+sfx_reader	speech	実は私、内緒にしてることがあるんです。	speech	実は私、内緒にしてることがあるんです。	drafted	230	split 2 ways from old #230 (hand: 実は私、内緒にしてることがあるんです。 今日もか人ばりU'うね！)
 654	6593835	[639, 69, 713, 560]	0.8085	animetext+sfx_reader	speech	ファンの人たちみんなを笑顔にできるアイドル目指して頑張ってます。	speech	ファンの人たちみんなを笑顔にできる アイドル目指して頑張ってます。	checked	229	
 655	6593835	[1152, 70, 1189, 413]	0.8962	animetext+sfx_reader	speech	私、櫻木真乃って言います。	speech	私、櫻木真乃って言います。	checked	228	
@@ -683,7 +683,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 681	6771124	[965, 398, 1043, 566]	0.3854	animetext+sfx_reader	sfx	ブハン♡	sfx	ブルン♡	drafted		opus: draft ブハン wrong
 682	6771124	[94, 419, 150, 578]	0.7701	animetext+sfx_reader	speech	イクぅヒヶ	speech	イクゥ♡	drafted	241	box moved iou=0.37 from old #241; opus: draft イクラ wrong
 683	6771124	[1097, 466, 1256, 586]	0.7911	animetext+sfx_reader	sfx	ぱん゙	sfx	ぱん♡	drafted		
-684	6771124	[969, 495, 1006, 561]	0.6931	animetext+sfx_reader	sfx	シャ	sfx		draft		opus: tiny box; only a partial glyph + ♡ visible
+684	6771124	[969, 495, 1006, 561]	0.6931	animetext+sfx_reader	sfx	シャ	sfx	ン♡	checked		opus: tiny box; only a partial glyph + ♡ visible | user label pass #2 20260907
 685	6771124	[508, 527, 562, 633]	0.8583	animetext+sfx_reader	speech	あっ♡	speech	あっ♡	drafted		D1 hand pass #39 real_text=y
 686	6771124	[949, 665, 1088, 741]	0.5156	animetext+sfx_reader	sfx	びくん	sfx	びく♡	drafted		opus: draft びくん: last glyph is a heart
 687	6784924	[698, 57, 812, 567]	0.9511	animetext+sfx_reader	speech	サラシゆるくしてみましたどうでしょうか・・・?	speech	サラシャンるくしてみましたッどうでしょうか…？	checked	242	
@@ -692,8 +692,8 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 690	6813398	[621, 132, 663, 263]	0.9096	animetext+sfx_reader	sfx	びく♡	sfx	びく♡	drafted		
 691	6813398	[665, 469, 715, 682]	0.9274	animetext+sfx_reader	sfx	カリカリ・・・	sfx	カリカリ…	drafted	243	box moved iou=0.39 from old #243
 692	6813398	[545, 550, 581, 734]	0.9245	animetext+sfx_reader	sfx	カリカリ・・・	sfx	カリカリ…	drafted		
-693	6835725	[648, 4, 759, 345]	0.9116	animetext+sfx_reader	speech	トレーナーちゃんみてみてー♡	speech	トしーナーちん みてみて 借て	checked	244	
-694	6835725	[493, 53, 601, 347]	0.9246	animetext+sfx_reader	speech	借りてきたよー♡	speech	借りて さたよ	checked	245	
+693	6835725	[648, 4, 759, 345]	0.9116	animetext+sfx_reader	speech	トレーナーちゃんみてみてー♡	speech	トレーナーちゃんみてみてー♡	checked	244	user label pass #2 20260907
+694	6835725	[493, 53, 601, 347]	0.9246	animetext+sfx_reader	speech	借りてきたよー♡	speech	借りてきたよー♡	checked	245	user label pass #2 20260907
 695	6835725	[702, 984, 816, 1068]	0.6943	animetext+sfx_reader	speech	フリフリッ	sfx	フリ フリ♡	drafted		opus: kind changed: onomatopoeia; two blocks
 696	6933259	[186, 93, 280, 228]	0.663	animetext+sfx_reader	speech	へおっ!	speech	お゙っ♡	draft		opus: flanking ＼／ strokes; first glyph お vs ほ uncertain
 697	6933259	[538, 115, 640, 309]	0.3789	animetext+sfx_reader	sfx	くばっ	sfx	くんばっ♡	draft		opus: dakuten on く/ば uncertain
@@ -715,9 +715,9 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 713	6951370	[1269, 0, 1440, 413]	0.839	animetext+sfx_reader	speech	ぐちゅぃぃちゅぃ	sfx	ぐちゅ♡ ぐちゅ♡	drafted		opus: kind changed: onomatopoeia (cf. checked #715); two columns
 714	6951370	[909, 92, 982, 227]	0.2551	animetext+sfx_reader	speech	ふく☆	sfx	びく♡	drafted		opus: kind changed: onomatopoeia; draft ふく☆ wrong
 715	6951370	[290, 152, 478, 333]	0.509	animetext+sfx_reader	sfx	ぶちゅ♡	sfx	ぶちゅ♡ ぶちゅ♡	checked	247	
-716	6951370	[46, 248, 134, 286]	0.7195	animetext+sfx_reader	sfx	ガク♥	sfx	ガリ♡	draft		opus: リ vs ク uncertain
+716	6951370	[46, 248, 134, 286]	0.7195	animetext+sfx_reader	sfx	ガク♥	sfx	ガク♡	checked		opus: リ vs ク uncertain | user label pass #2 20260907
 717	6951370	[385, 547, 479, 593]	0.5507	animetext+sfx_reader	sfx	ぴくン	sfx	ぴく♡	drafted		
-718	6951370	[34, 629, 111, 668]	0.6986	animetext+sfx_reader	sfx	ガク♡	sfx	ガリ♡	draft		opus: リ vs ク uncertain
+718	6951370	[34, 629, 111, 668]	0.6986	animetext+sfx_reader	sfx	ガク♡	sfx	ガク♡	checked		opus: リ vs ク uncertain | user label pass #2 20260907
 719	7077634	[304, 289, 337, 508]	0.918	animetext+sfx_reader	sfx	もじもじ・・・	sfx	もじもじ…	drafted	248	box moved iou=0.49 from old #248
 720	7121397	[205, 656, 258, 774]	0.841	animetext+sfx_reader	sfx	びく♡	sfx	びく♡	drafted		
 721	7121397	[675, 713, 777, 826]	0.2557	animetext+sfx_reader	speech	ひく	sfx	びく♡	drafted		D1 hand pass #42 real_text=y; opus: kind changed: onomatopoeia; dakuten present (draft ひく)
@@ -756,7 +756,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 754	8002565	[422, 1000, 460, 1088]	0.8304	animetext+sfx_reader	sfx	くちゅ♡	speech	くちゅ♡	drafted		opus: kind changed: inside a hand-drawn oval bubble (cf. checked #748/#750/#752)
 755	8008684	[111, 1130, 777, 1178]	0.7322	animetext+sfx_reader	chrome	今更ながらエンゲージキスのキサラのイラストとてもえっちで助かりました...ちなみ夕桐アヤノを描く予定はありますでしょうか?	chrome	今更ながらエンゲージキスのキサラのイラストとてもえっちで助かりました…ちなみ夕桐アヤノを描 く予定はありますでしょうか?	checked	259	overlay caption
 756	8008684	[139, 1222, 208, 1246]	0.8097	animetext+sfx_reader	chrome	完了にする	chrome	完了にする	checked	260	
-757	8008684	[271, 1223, 338, 1246]	0.46	animetext+sfx_reader	speech	お気に入り	speech	★お気に入り	checked	261	
+757	8008684	[271, 1223, 338, 1246]	0.46	animetext+sfx_reader	speech	お気に入り	chrome	お気に入り	checked	261	user 20260907: kind speech→chrome | user label pass #2 20260907
 758	8008684	[413, 1223, 469, 1246]	0.7089	animetext+sfx_reader	chrome	ツイート	chrome	ツイート	checked	262	
 759	8062124	[485, 197, 559, 287]	0.2814	animetext+sfx_reader	sfx	びく	sfx	びく♡	drafted		opus: machine read dropped the heart
 760	8062124	[119, 328, 147, 439]	0.4367	animetext+sfx_reader	sfx	くーっ	sfx	くー♡	drafted		opus: last glyph is a heart, not っ
@@ -767,7 +767,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 765	8073666	[100, 266, 152, 738]	0.9096	animetext+sfx_reader	speech	チケット余っつまーす!	speech	4ト余、まーす！	checked	264	
 766	8074348	[5, 700, 359, 726]	0.823	animetext+sfx_reader	chrome	【光は光へ】のセーラー服芹沢あさひお願いします!	chrome	【光は光へ】のセーラー服芹沢あさひお願いします！	checked	265	overlay caption
 767	8074348	[24, 771, 93, 793]	0.8071	animetext+sfx_reader	chrome	完了にする	chrome	完了にする	checked	266	
-768	8074348	[159, 772, 226, 795]	0.5634	animetext+sfx_reader	speech	お気に入り	speech	★お気に入り	drafted	267	box moved iou=0.45 from old #267; opus: kind changed: phone UI string; opus kind chrome reverted to user speech
+768	8074348	[159, 772, 226, 795]	0.5634	animetext+sfx_reader	speech	お気に入り	chrome	お気に入り	checked	267	box moved iou=0.45 from old #267; opus: kind changed: phone UI string; opus kind chrome reverted to user speech | user 20260907: kind speech→chrome | user label pass #2 20260907
 769	8074348	[304, 774, 360, 797]	0.7496	animetext+sfx_reader	chrome	ツイート	chrome	ツイート	drafted	268	box moved iou=0.39 from old #268; UI
 770	8222101	[532, 145, 571, 184]	0.3924	animetext+sfx_reader	speech	あっ	sfx	あっ	drafted		opus: kind changed: page has no bubbles
 771	8222101	[510, 239, 540, 345]		hand_only	speech	はーゅ	speech	はーゅ	unchecked	269	no AnimeText record covers this old box

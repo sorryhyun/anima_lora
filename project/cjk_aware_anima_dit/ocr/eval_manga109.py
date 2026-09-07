@@ -5,6 +5,7 @@
     … --reader ppocr        # PP-OCRv6 rec ONNX (anime_tools), crop rotated per its own rule
     … --reader vl16         # PaddleOCR-VL-1.6 crop ``OCR:`` (batched, left-padded, use_cache)
     … --reader manga_ocr --ckpt output/ocr/<run>/best    # a tuned model, same report
+    … --reader hayai        # the community hayai-ocr VLM (--ckpt <repo>[@<rev>])
 
 Metrics per ``kind`` (``sfx`` = COO test crops, ``speech`` = the matched
 ``<text>`` control) on ``--split`` (default ``test``):
@@ -42,6 +43,13 @@ OUT = m109.REPO / "output/ocr/eval"
 
 HEART_FOLD = str.maketrans({"♥": "♡", "❤": "♡", "〜": "~"})
 
+# Decode cap, ``--max_new_tokens``. manga-ocr's WordPiece is ~1 token / kana, so
+# the old 48 truncated every speech line past 47 chars — the sincos labels reach
+# 60 (``label_sheet.py``, user pass 2026-09-07). 96 = the training-side
+# ``crop_dataset.MAX_TARGET_CHARS``; greedy stops at EOS, so the headroom is free
+# except on a runaway, which ``is_runaway`` already counts.
+MAX_NEW_TOKENS = 96
+
 
 def exact_key(s: str) -> str:
     """NFKC + whitespace-blind; heart / wave variants folded (the hand labels
@@ -54,17 +62,19 @@ def exact_key(s: str) -> str:
 
 class MangaOcrReader:
     name = "manga_ocr"
+    max_tokens = MAX_NEW_TOKENS
 
     def __init__(self, ckpt: str | None, device: str):
         mt = m109.pilot_manga_text()
         self.m = mt.MangaOCR(ckpt or mt.OCR_MODEL, device=device)
 
     def read(self, crops, orients, bs):
-        return [t for t, _ in self.m.read(crops, batch_size=bs)]
+        return [t for t, _ in self.m.read(crops, bs, max_new_tokens=self.max_tokens)]
 
 
 class PpocrReader:
     name = "ppocr"
+    max_tokens = MAX_NEW_TOKENS  # CTC — no decode budget, kept for the uniform surface
 
     def __init__(self, ckpt: str | None, device: str):
         from anime_tools.ocr._onnx import TextRecognizer
@@ -84,6 +94,7 @@ class PpocrReader:
 
 class Vl16Reader:
     name = "vl16"
+    max_tokens = MAX_NEW_TOKENS
 
     def __init__(self, ckpt: str | None, device: str):
         import torch
@@ -151,7 +162,10 @@ class Vl16Reader:
             n = inputs["input_ids"].shape[-1]
             with self.torch.inference_mode():
                 o = self.model.generate(
-                    **inputs, max_new_tokens=48, do_sample=False, use_cache=True
+                    **inputs,
+                    max_new_tokens=self.max_tokens,
+                    do_sample=False,
+                    use_cache=True,
                 )
             for i, row in zip(idx, o):
                 ids = [
@@ -169,6 +183,7 @@ class SfxPkgReader:
     adapter dir; a guarded-out read scores as an empty string."""
 
     name = "sfx"
+    max_tokens = MAX_NEW_TOKENS
 
     def __init__(self, ckpt: str | None, device: str):
         try:
@@ -178,6 +193,7 @@ class SfxPkgReader:
             for k in [k for k in sys.modules if k.startswith("anime_tools")]:
                 del sys.modules[k]
             from anime_tools.ocr import sfx
+        self.sfx = sfx
         self.r = sfx.SfxReader.load(
             device=device,
             base_dir=m109.REPO / "models/paddleocr_vl_1.6",
@@ -186,7 +202,66 @@ class SfxPkgReader:
 
     def read(self, crops, orients, bs):
         self.r.batch_size = bs
+        self.sfx.MAX_NEW_TOKENS = self.max_tokens  # module global, read per call
         return [t or "" for t in self.r.read(crops)]
+
+
+class HayaiReader:
+    """The community `hayai-ocr` VLM (SigLIP2-NaFlex tower + a 12-layer causal
+    decoder, ~150 M, `trust_remote_code`) — scored on request from its author
+    (`sorryhyun/paddleocr-vl-1.6-manga-lora` discussion #1). ``--ckpt`` is
+    ``<repo_id>[@<revision>]`` or a local dir; the default is the **v2.1**
+    branch (the revision the request names — `main` is v2.0). Decode follows
+    the card's own recipe (`num_beams=4`, `repetition_penalty=1.0`,
+    `max_num_patches=256` for single lines; `ANIMA_HAYAI_PATCHES` overrides)
+    and the crop goes in unrotated, as for `manga_ocr` — both read vertical
+    Japanese natively."""
+
+    name = "hayai"
+    max_tokens = MAX_NEW_TOKENS
+    DEFAULT = "JustANormalTinkerer/hayai-ocr-v2@v2.1"
+
+    def __init__(self, ckpt: str | None, device: str):
+        import os
+
+        import torch
+        from transformers import AutoModel, AutoProcessor, PreTrainedTokenizerFast
+
+        repo, _, rev = (ckpt or self.DEFAULT).partition("@")
+        kw = {"revision": rev} if rev else {}
+        self.torch = torch
+        self.model = (
+            AutoModel.from_pretrained(repo, trust_remote_code=True, **kw)
+            .to(device)
+            .eval()
+        )
+        self.tok = PreTrainedTokenizerFast.from_pretrained(repo, **kw)
+        # the card's processor: the stock SigLIP2 NaFlex one, not a repo file
+        self.proc = AutoProcessor.from_pretrained("google/siglip2-base-patch16-naflex")
+        self.patches = int(os.environ.get("ANIMA_HAYAI_PATCHES", 256))
+        self.device = device
+
+    def read(self, crops, orients, bs):
+        from PIL import Image
+
+        out = []
+        for s in range(0, len(crops), bs):
+            images = [Image.fromarray(c[:, :, ::-1]) for c in crops[s : s + bs]]
+            inputs = self.proc(
+                images=images, max_num_patches=self.patches, return_tensors="pt"
+            ).to(self.device)
+            with self.torch.no_grad():
+                texts = self.model.generate(
+                    pixel_values=inputs["pixel_values"],
+                    pixel_attention_mask=inputs["pixel_attention_mask"],
+                    spatial_shapes=inputs["spatial_shapes"],
+                    tokenizer=self.tok,
+                    max_new_tokens=self.max_tokens,
+                    num_beams=4,
+                    repetition_penalty=1.0,
+                )
+            out.extend((t or "").strip() for t in texts)
+        return out
 
 
 READERS = {
@@ -194,6 +269,7 @@ READERS = {
     "ppocr": PpocrReader,
     "vl16": Vl16Reader,
     "sfx": SfxPkgReader,
+    "hayai": HayaiReader,
 }
 
 
@@ -275,6 +351,13 @@ def main():
     ap.add_argument("--limit", type=int, help="first N crops per kind (smoke)")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--bs", type=int, default=32)
+    ap.add_argument(
+        "--max_new_tokens",
+        type=int,
+        default=MAX_NEW_TOKENS,
+        help=f"decode cap per crop (default {MAX_NEW_TOKENS}); a long speech bubble "
+        "needs one token per kana on manga-ocr",
+    )
     a = ap.parse_args()
     name = a.name or (f"{a.reader}-{Path(a.ckpt).stem}" if a.ckpt else a.reader)
 
@@ -292,6 +375,7 @@ def main():
     )
 
     reader = READERS[a.reader](a.ckpt, a.device)
+    reader.max_tokens = a.max_new_tokens
     t0 = time.time()
     preds = reader.read(crops, list(df.orient), a.bs)
     wall = time.time() - t0

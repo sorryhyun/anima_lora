@@ -8,6 +8,12 @@ records pipeline — replacing the three layers that grew over O4 (PP-OCRv6 DB
 
 ## What is measured today (2026-09-06, `findings.md` § O6)
 
+*Every `/ 99` and `/ 71` in this file is on the **PP-box** hand labels — the
+very set this line's own D1 retired, since `ocr/relabel_animetext.py` re-based
+`assets/sfx_labels_sincos.tsv` onto these boxes the same night. The current
+gate is **619 SFX rows** and no `/ 99` figure converts to it; see
+`findings.md` § Label basis.*
+
 | fact | number / pointer |
 |---|---|
 | stock `deepghs/AnimeText_yolo` yolo12l @ 640, conf 0.426, sincos 351 pages | covers **237 / 237** PP-OCRv6 v3 lines, 98 % hybrid speech / 96 % sfx / 96 % chrome, 100 % hand speech / 98 % hand sfx, 92 % MIT mask components; masked-but-no-box floor **3** (PP DB 38, 3-layer stack 8) |

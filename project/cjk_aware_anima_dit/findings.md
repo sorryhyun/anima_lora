@@ -4,6 +4,81 @@ Settled verdicts of this line, one entry per phase, evidence pointer beside
 each. The encoder-side verdicts it builds on are in
 [`../cjk_aware_anima/findings.md`](../cjk_aware_anima/findings.md) (read-only).
 
+## Label basis — the sincos gate changed units on 2026-09-06 (read this before comparing any two numbers below)
+
+`assets/sfx_labels_sincos.tsv` was **re-based onto the AnimeText detector's
+boxes** (`plan_det.md` D1, `ocr/relabel_animetext.py`) the night of
+2026-09-06. Two incompatible bases therefore appear in this file:
+
+| | rows scored | SFX gate rows | speech / chrome | where it appears |
+|---|---|---|---|---|
+| **PP-box (retired)** | 338 | 99 hand-typed SFX, of which a **71**-row `kind_rec: sfx` subset was *the* gate number | 213 / 26 | every § dated 2026-09-05 → 2026-09-06 evening: O0, O1, O2, O2b, O4, O3-col100, D0–D1 |
+| **AnimeText (current)** | 948 of 975 (`unchecked` skipped) | **619** SFX, 76 of them user-`checked` | 294 / 35 | § O2 follow-up (2026-09-07) and everything after |
+
+**There is no conversion between them.** The detector finds far more lines on
+the same 351 pages, so the row *set* differs — `n / 71` is not `n × 619/71`.
+Anything with a runnable reader was re-scored on the new basis in one job
+(`ocr/reeval_sfx_all.py`, `20260907-002638`); those are the only numbers that
+compare to each other:
+
+| reader | SFX exact / 619 | ♡-blind | sim |
+|---|---|---|---|
+| stock manga-ocr | 6 (1.0 %) | 13 | 0.312 |
+| stock VL-1.6 | 15 (2.4 %) | 46 | 0.365 |
+| manga-ocr FT lr 2e-5 / 5e-5 | 103 / **122** (19.7 %) | 128 / 144 | 0.674 / 0.679 |
+| VL-1.6 LoRA lr 1e-4 (tower frozen) | 105 (17.0 %) | 145 | 0.630 |
+| **B′ `vl16_tower_lr1e-5` — the published reader** | **306 (49.4 %)**; checked 39 / 76 | 361 | 0.853 |
+| B′ + col100 | 315 (50.9 %); checked 39 / 76 | 362 | 0.850 |
+| B′ × 3 ep | 298 (48.1 %); checked 37 / 76 | 349 | 0.855 |
+| shipped `anime_tools.ocr.sfx` (B′ + decode guard) | 305 (49.3 %); checked 39 / 76 | 360 | 0.850 |
+| the pipeline's own records (`--reader record`) | 314 (50.7 %); checked 38 / 76 | 372 | 0.873 |
+| *outside:* hayai-ocr v2.1 / v2.1.5 (§ Outside reader) | 177 / **309** | 312 / 343 | 0.763 / 0.790 |
+
+**Revision 2026-09-07 (job `20260907-085136`) — the table above is the current
+one.** Two things moved under it at once, and they are separable:
+
+* **11 labels corrected by the user** off `probes/label_sheet.py` (the plain
+  crop → label sheet; rows 0 1 7 8 40 46 47 56 73 93 155, now `checked` — SFX
+  `checked` 70 → 76). Several were badly wrong, not near-misses: #40 read
+  `なァがくてなァが` for `がんばれ♡　がんばれ♡`, #0 `ずっ♡` for `おっ`.
+* **the decode cap went 48 → 96 tokens** (`eval_manga109.MAX_NEW_TOKENS`, now
+  `--max_new_tokens`, threaded through all five reader classes + both
+  fine-tunes' in-loop val). The old 48 was a **hard truncation**: manga-ocr's
+  WordPiece is ~1 token per kana, so every manga-ocr-family read stopped at
+  exactly 47 characters while the labels reach 60.
+
+Attribution, per reader: the cap alone buys the VL family **3–4 exact rows**
+(the long speech / chrome lines #110 #755 #853 #956 — all >47 chars, so
+unreachable before); the manga-ocr family gains **zero** from it, its long-line
+reads being far too wrong for the tail to matter. The rest of the movement is
+the 11 relabels. Net on the SFX gate this is noise (B′ 307 → 306, col100
+317 → 315, `record` 317 → 314 — inside the ±1-line batching jitter below, plus
+the two SFX relabels #46 #47 #56 that no reader gets); the real gain is on
+**speech** (col100 118 → 122, ep3 114 → 119 exact) and **chrome** (ep3 22 → 23,
+col100 17 → 18), which is where the long lines live.
+
+**Revision 2026-09-07 #2 (22 labels, not yet re-scored).** A second user pass
+off `probes/label_sheet.py` corrected rows 42 43 93 194 204 209 251 254 270 271
+308 590 649 651 652 684 693 694 716 718 757 768 (all now `checked`). The scored
+sets move: **SFX 619 → 617** (three squiggles the drafter read as text — #194
+#271 #308 — are `＾＾＾` scribbles, so their `text_hand` is now blank and they
+drop out; #684 `ン♡` was blank and joins), speech 294 → 293 and chrome 35 → 39
+(#254 `正下` sfx→chrome, #757 #768 `お気に入り` speech→chrome, #649 `そのだ`
+newly readable); SFX `checked` 76 → 86. **Every `/ 619` number above is
+pre-revision.** They will not merely jitter: five of the corrections
+(#590 `ガクガク…`, #651 #652 #716 #718 `ガク♡` — the drafter's `リ` vs `ク` calls,
+flagged uncertain in the notes) move the *label* onto what the readers already
+emit, so the whole reader family gains those rows at once. That is a label fix,
+not a reader gain — re-score with `ocr/reeval_sfx_all.py` before quoting any of
+it, and don't compare a 617-row number to a 619-row one.
+
+The PP-era `record_hybrid*` rows are **not** re-scorable — their boxes no
+longer exist. The VL readers carry a **±1-line batching jitter** (ep3 read
+298 in its own eval and 299 in the sweep, at a different `--bs`); don't read
+a 1-line move as a result. And on **either** basis the speech / chrome rows are *not* an
+accuracy metric: their `text_hand` is PP-OCRv6 record text on almost every
+row, so reading `♡` correctly scores as a miss (§ O3 label audit below).
+
 ## D0 — ISO1 vs C9 direct blind set: flat (2026-09-05)
 
 `reports/blind_s13_ISO1_vs_C9.md` (in the old line's `reports/`): 48 pairs,
@@ -472,7 +547,7 @@ the transposing crop).
 **Corrected O0 stock rows** (COO test, 2,558 SFX + 2,559 speech; replaces the
 transposed-crop table in § O0):
 
-| reader (stock) | SFX exact | SFX sim | runaway | speech exact | speech sim | sincos gate / 71 (♡-blind) | sincos SFX sim | sincos speech sim |
+| reader (stock) | SFX exact | SFX sim | runaway | speech exact | speech sim | sincos gate / 71 · **PP-box basis** (♡-blind) | sincos SFX sim | sincos speech sim |
 |---|---|---|---|---|---|---|---|---|
 | manga-ocr-base | 26.2 % | 0.478 | 0 | 62.1 % | **0.975** | 2 (4) | 0.315 | 0.646 |
 | PP-OCRv6 rec | 7.2 % | 0.194 | 0 | 13.0 %† | 0.297† | — | — | — |
@@ -484,7 +559,7 @@ and stock manga-ocr is at 26 % on COO (was 16 %).
 
 **The two arms** (train 77,164 crops 1 : 1, val 4,791 each epoch):
 
-| arm | recipe | wall | val SFX exact stock → best | COO test SFX exact | COO speech sim | COO runaway | sincos gate / 71 (♡-blind) | sincos SFX sim (99) | sincos speech sim |
+| arm | recipe | wall | val SFX exact stock → best | COO test SFX exact | COO speech sim | COO runaway | sincos gate / 71 · **PP-box basis** (♡-blind) | sincos SFX sim (99) | sincos speech sim |
 |---|---|---|---|---|---|---|---|---|---|
 | A · manga-ocr lr 2e-5 | full FT, bs 64, 4 ep | 20 min | 32.8 → 73.3 | 71.2 % | 0.975 (= stock) | 0 | 9 (13) | 0.667 | 0.747 |
 | A · manga-ocr lr 5e-5 | same | 20 min | 32.8 → **74.9** | **73.5 %** | 0.975 (= stock) | 0 | 10 (12) | 0.664 | 0.721 |
@@ -547,7 +622,7 @@ plus the NaViT tower + projector trained in full (fp32 master copy, lr 1e-5,
 reached 66.2 % after two). Eval jobs `20260906-161652-{b5ba49,c41369}`,
 reports `reports/ocr_eval_{sfx_,}vl16_tower_lr1e-5.md`.
 
-| arm | COO test SFX exact | COO SFX sim | COO speech sim | COO runaway | sincos gate / 71 (♡-blind) | sincos SFX exact / sim (99) | sincos speech sim (213) |
+| arm | COO test SFX exact | COO SFX sim | COO speech sim | COO runaway | sincos gate / 71 · **PP-box basis** (♡-blind) | sincos SFX exact / sim (99) | sincos speech sim (213) |
 |---|---|---|---|---|---|---|---|
 | VL-1.6 stock | 30.2 % | 0.545 | 0.976 | 331 | 2 (6) | — / 0.464 | 0.856 |
 | A · manga-ocr lr 5e-5 | 73.5 % | 0.884 | 0.975 | 0 | 10 (12) | — / 0.664 | 0.721 |
@@ -558,6 +633,9 @@ reports `reports/ocr_eval_{sfx_,}vl16_tower_lr1e-5.md`.
 our 6-book subset); sincos SFX exact ≥ 35 / 71 ✓ (**38**); sincos speech sim ≥
 stock − 0.01 ✓ (0.910 vs 0.856); COO speech sim ≥ O0 stock − 0.01 ✓ (0.986 vs
 0.976). **PASS** — the first arm to pass the doujin gate, without O3.
+*(All four clauses are on the PP-box labels — § Label basis. Re-scored on the
+AnimeText ones the same weights read **307 / 619**, checked 38 / 70; the
+speech clause is not a valid accuracy test on either basis.)*
 
 Reading it:
 
@@ -592,6 +670,8 @@ guard, `anime_tools.ocr.sfx` in the VL deployment shape, re-measure the sincos
 floor, then arm C11. O3 levers are demoted to optional lift.
 
 ## O4 — the SFX reader wired in: `anime_tools.ocr.sfx`, records re-read, floor 23 → 8 (2026-09-06)
+
+*Sincos numbers here are `/ 71` on the **PP-box** labels — § Label basis.*
 
 `plan_ocr.md` O4, first half (the records + the package); arm C11 is
 running (§ O4b when its grids land).
@@ -635,7 +715,7 @@ CPU). `kind` now comes from the **hand labels** for the 338 matched records
 | lines | 237 | 338 | **448** | 448 |
 | **masked-but-no-line floor** (133) | 38 | 23 | **8** | 8 |
 | best-match sim to manga-ocr, 84 ref lines / 40 A/B pages | 0.751 (35 ≥ 0.9) | 0.786 (38) | 0.800 (39) | **0.810 (42)** |
-| sincos gate, 71 `kind: sfx` records, exact (♡-blind) | — | 4 (10) | **37 (40)** | 37 (40) |
+| sincos gate, 71 `kind: sfx` records, exact (♡-blind) · **PP-box basis** | — | 4 (10) | **37 (40)** | 37 (40) |
 | hand-SFX rows (99) exact / sim | — | 1 / 0.479 | **44 / 0.873** | 44 / 0.873 |
 
 `--reread sfx`: 99 SFX records re-read → 97 replaced, 1 guard-rejected
@@ -840,7 +920,7 @@ Reading it:
   `--extra_repeat N` oversamples the colorized rows if the 1.6 % share reads
   flat; the 2k subset stays the next step only if +100 moves the sincos number.
 
-Gate for the lever itself (unchanged from the plan, read against B′'s 38 / 71):
+Gate for the lever itself (unchanged from the plan, read against B′'s 38 / 71 — PP-box basis; B′ is 307 / 619 on the current labels, so a re-opened lever re-derives "+10" there — see § Label basis):
 +10 sincos SFX exact with both speech controls held. Not doing: the full
 6,034 spreads unless the 2k mix moves the sincos number; no colorized page
 or crop enters the repo, HF, or a node.
@@ -912,6 +992,10 @@ the OCR stage, sincos records regenerated (→ a new mirror / D2 arm is the
 user's call), and the record-level dedupe of nested reads.
 
 ## D0–D1 — `plan_det.md`: the AnimeText detector shipped in the package, the sincos records rebuilt on it (2026-09-06, night)
+
+*Every `hand-SFX n / 99` below is scored on the **PP-box** labels, which this
+same night's re-base retired — the D1 records are what the new 619-row basis
+was then built on. § Label basis.*
 
 **D0 — package (`anime_tools` b015ba2 + 2cbe201, uncommitted pin bump).**
 `anime_tools.ocr.animetext.AnimeTextDetector` — yolo12l @ 640, conf 0.25,
@@ -1050,7 +1134,7 @@ SFX exact 85.6 % (B′ 86.2 %). Evals on `best` = ep1:
 |---|---|---|---|---|---|---|---|
 | Manga109-s test (2,558 / 2,559) | B′ `vl16_tower_lr1e-5` | 81.7 % | 0.927 | 87.6 % | 25 | 82.8 % | 0.986 |
 | | **B′+col100** | **83.2 %** | **0.936** | 88.9 % | 29 | 82.6 % | 0.986 |
-| sincos hand labels (99 SFX / 213 speech / 26 chrome) | B′ | 45 / 99 | 0.868 | 74.7 % | 2 | 59 / 213 (0.910) | chrome 13 / 26 |
+| sincos hand labels, **PP-box basis** (99 SFX / 213 speech / 26 chrome) | B′ | 45 / 99 | 0.868 | 74.7 % | 2 | 59 / 213 (0.910) | chrome 13 / 26 |
 | | **B′+col100** | 41 / 99 | **0.883** | **77.8 %** | **0** | 54 / 213 (0.904) | chrome 10 / 26 |
 
 In-domain every orientation moves up (+0.3 / +2.1 / +1.8 pts horizontal /
@@ -1060,7 +1144,8 @@ exact −4 lines (vertical 48.3 → 41.4 %, square 23.5 → 29.4 %) while mean s
 the ≥ 0.8 share and runaways all improve (the `ぱん♡` family that B′ read as
 `ぱィ♥` / `ぱ人♡` / `ぱく` is now read right; what it loses is `はあ♡`-class
 near-misses at sim 0.5 and the 6-char rows). That is inside the n = 99
-seed-twin band either way; the +10 gate (read against B′'s 38 / 71) is not
+seed-twin band either way; the +10 gate (read against B′'s 38 / 71, PP-box
+basis — § Label basis) is not
 approached, and speech drops 5 lines — the control is not cleanly held.
 
 *Verdict:* the lever at a 1.6 % share does not move the sincos number; the
@@ -1142,3 +1227,84 @@ bursts the grey COO crops never show), and neither more data-passes nor a
 published reader; ep3 is a strictly better *COO* reader if that ever
 matters); the remaining sincos lever is still synth SFX / in-domain labels,
 not the schedule. Weights local only: `output/ocr/vl16_tower_ep3/ep{1,2,3}`.
+
+## Outside reader — `hayai-ocr` scored on both evals on its author's request (2026-09-07)
+
+`JustANormalTinkerer` opened discussion #1 on `sorryhyun/paddleocr-vl-1.6-manga-lora`
+("would you mind testing hayai-ocr-v2.1 on that test set … or make the test
+public"). Both evals run, on both live branches, so the answer is a full row
+rather than one number. The model: **~150 M** params — a
+`google/siglip2-base-patch16-naflex` tower + a 12-layer causal decoder,
+`trust_remote_code`, JA/ZH/KO/EN — against B′'s 0.9 B PaddleOCR-VL-1.6.
+Wired as `eval_manga109.READERS["hayai"]` (`--ckpt <repo>[@<branch>]`;
+**v2.1 and v2.1.5 are git *branches*, `main` is v2.0**), decoded by its own
+card's recipe (`num_beams=4`, `repetition_penalty=1.0`, `max_num_patches=256`)
+and fed the same unrotated crop `manga_ocr` gets. Jobs `20260907-0756{36,40}`,
+`…-075944`, `…-075945` (the re-eval sweep).
+
+**In-domain — Manga109-s ∩ official COO test split** (2,558 SFX / 2,559 speech):
+
+| reader | SFX exact | SFX sim | sim ≥ 0.8 | runaway | speech exact | speech sim |
+|---|---|---|---|---|---|---|
+| stock manga-ocr | 26.2 % | 0.478 | 34.6 % | 0 | 62.1 % | 0.975 |
+| stock VL-1.6 | 30.2 % | 0.545 | 39.5 % | 91 | 63.4 % | 0.976 |
+| our manga-ocr FT (lr 5e-5, 4 ep) | 73.5 % | 0.884 | 82.1 % | 0 | 62.4 % | 0.975 |
+| **hayai v2.1, zero-shot** | **74.2 %** | 0.917 | 86.5 % | 28 | 78.4 % | 0.987 |
+| hayai v2.1.5, zero-shot | 54.7 % | 0.826 | 71.8 % | 25 | 70.1 % | 0.982 |
+| B′ `vl16_tower_lr1e-5` | 81.7 % | 0.927 | 87.6 % | 25 | 82.8 % | 0.986 |
+| B′ × 3 ep | 85.7 % | 0.948 | 91.1 % | 25 | 83.3 % | 0.987 |
+
+**Out-of-domain — the sincos hand labels** (619 SFX; § Label basis):
+
+| reader | SFX exact / 619 | ♡-blind | sim | sim ≥ 0.8 | runaway | checked 70 |
+|---|---|---|---|---|---|---|
+| stock manga-ocr | 6 (1.0 %) | 13 | 0.311 | 17.0 % | 0 | 0 |
+| stock VL-1.6 | 14 (2.3 %) | 45 | 0.366 | 14.9 % | 10 | 2 |
+| hayai v2.1 | 177 (28.6 %) | **310** | 0.760 | 65.6 % | 1 | 33 |
+| **hayai v2.1.5** | **309 (49.9 %)** | 342 | 0.789 | 67.7 % | 4 | **43** |
+| B′ `vl16_tower_lr1e-5` | 307 (49.6 %) | **363** | **0.855** | **75.8 %** | 2 | 38 |
+
+Four readings:
+
+1. **v2.1 is the best zero-shot reader we have measured in-domain** — 74.2 %
+   SFX exact on COO test without ever seeing COO from us, against 26.2 /
+   30.2 % for the two stock bases and 73.5 % for our own 4-epoch manga-ocr
+   fine-tune; its speech row beats every arm but B′. Caveat we cannot
+   settle: its base training mix (`hayai-dataset-merged`, now private) is not
+   auditable, so Manga109 overlap is unknown. The sincos set carries no such
+   risk — those are our own pages.
+2. **v2.1.5 matches B′ on the doujin set — 309 vs 307 strict, 43 vs 38 on the
+   user-checked 70 — at ~1/6 the parameters.** It is *not* a worse checkpoint,
+   it is a differently aimed one: its fine-tune set
+   (`hayai-finetuning-dataset-with-korean`, 38.9 k crops) is **modern
+   scanlation manga**, JA + KO, pseudo-labelled with a confidence column —
+   i.e. exactly our surface, and not Manga109's 80s–00s printed B&W, which is
+   where it drops 19.5 pts. In-domain and out-of-domain move opposite ways
+   across the two branches, which is the same decoupling B′'s own col100 /
+   ×3-ep arms showed from the other side.
+3. **v2.1's strict number is a heart bug, not a kana gap.** 496 of the 619
+   labels end in `♡`; v2.1 reads the kana right and **drops the heart on 130
+   lines** (heart-only-wrong 133: 130 dropped, 3 added), so 177 strict
+   becomes 310 ♡-blind. B′'s gap is 56 (52 dropped), v2.1.5's is 33. Ranked
+   ♡-blind the order is B′ 363 > v2.1.5 342 > v2.1 310. Where all three still
+   lose is length: v2.1 collapses past 6 chars (7-char bin 3.2 %, 8+ 0.0 %),
+   v2.1.5 holds 16.1 / 6.7 %.
+4. **B′ keeps the quality margin even where it ties on exact** — sim 0.855 vs
+   0.789 and 75.8 % vs 67.7 % of lines at sim ≥ 0.8, so v2.1.5's misses are
+   further off. Whether that matters depends on the consumer: for the caption
+   pipeline (SFX clause, deduped) a near-miss and a miss cost the same, so a
+   150 M reader at 30 crops/s is a real alternative worth a follow-up if the
+   reader ever needs to get cheaper. Not a ship decision today — B′ stays.
+
+*Reproduce:* `ocr/eval_sfx.py --reader hayai [--ckpt …@v2.1.5]` (sincos) and
+`ocr/eval_manga109.py --reader hayai` (COO test); both rows are in
+`ocr/reeval_sfx_all.py`. Reports `reports/ocr_eval{,_sfx}_hayai_v2_1{,_5}.md`.
+Their card's "PaddleOCR-VL for Manga, 900 M, 24.66 % CER" row is a different
+model on a different set from anything here.
+
+The discussion's second ask — publishing the test set — is **not answered
+here**: the sincos labels are boxes + transcriptions only
+(`assets/sfx_labels_sincos.tsv`), but they are useless without the doujin
+pages, which are the user's own dataset and not ours to distribute; the COO
+half needs Manga109-s, which may not be redistributed at all. Whether to
+publish a page-free crop pack is the user's call, not this entry's.

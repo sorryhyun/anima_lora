@@ -1,4 +1,4 @@
-# plan_ocr — a reader that reads SFX, then text-kind segmentation (2026-09-06, rev. 2)
+# plan_ocr — a reader that reads SFX, then text-kind segmentation (2026-09-06, rev. 4)
 
 *Side line of [`plan.md`](plan.md). It runs beside D2, never in front of it:
 D2 proceeds speech-only on the C10 recipe ([`plan_base1.md`](plan_base1.md),
@@ -11,7 +11,24 @@ mask` a kind-aware mask. G-O1 unblocks the SFX sentence in captions
 (`DROP_KINDS`); G-O2 unblocks the floor pages and the mask policy. Both are
 also plain product wins for `anime_tools.ocr` (Tagger, masks, captions).*
 
-*Rev. 3 (2026-09-06, evening): O2 arm B′ — the VL-1.6 LoRA with the **vision tower unfrozen** — passes the doujin gate (38 / 71) without O3; VL is the pick per decision 1, O3 is demoted to an optional lift, O4 starts. `findings.md` § O2b.*
+*Rev. 4 (2026-09-06, night) — **the sincos gate changed basis; every number
+below dated before this is on the retired one.** `plan_det.md` D1/D3 swapped
+the detector to `deepghs/AnimeText_yolo`, which finds far more lines on the
+same 351 pages, and `ocr/relabel_animetext.py` re-based the hand labels onto
+its boxes: `assets/sfx_labels_sincos.tsv` is now **975 rows → 619 SFX
+scored** (70 of them user-`checked`) + 294 speech + 35 chrome, where the PP-box
+file was 99 SFX / 213 speech / 26 chrome with a **71-line** gate subset. So
+"n / 71" and "n / 99" are dead units: **a `/ 71` figure has no conversion to a
+`/ 619` one** — the row set is different, not just larger. Re-scored rows on
+the new basis (`ocr/reeval_sfx_all.py`, job `20260907-002638`) — stock
+manga-ocr **6 / 619**, stock VL-1.6 14, manga-ocr FT 123, VL LoRA 105, **B′
+`vl16_tower_lr1e-5` 307 (49.6 %, checked 38 / 70)**, +col100 317, ×3 ep 299,
+shipped `anime_tools.ocr.sfx` 306, the pipeline's own records 317. The PP-era
+`record_hybrid*` rows are **not** re-scorable (their boxes are gone).
+Speech / chrome rows are **not** an accuracy metric on either basis —
+`findings.md` § O3 label audit.*
+
+*Rev. 3 (2026-09-06, evening): O2 arm B′ — the VL-1.6 LoRA with the **vision tower unfrozen** — passes the doujin gate (38 / 71 on the PP-box labels of the day; the same weights re-score to 307 / 619 on the AnimeText basis — rev. 4) without O3; VL is the pick per decision 1, O3 is demoted to an optional lift, O4 starts. `findings.md` § O2b.*
 
 *Rev. 2 (2026-09-06): the first eval is **in-domain** — the official COO
 book split restricted to Manga109-s, fully automatic, no hand labels on the
@@ -23,7 +40,7 @@ the gate picks. PP-OCRv6 rec retrain stays the kill fallback.*
 
 | fact | number / pointer |
 |---|---|
-| stock manga-ocr on the 71 sincos `kind: sfx` crops (CPU, 12 % pad) | **~12 / 71** right (`ごめんっ`, `ぱんッ` ×2, `もじもじ`, `スリスリ`, `がくん`, `ぐちゃ`, `ブルン`); the rest are *fluent speech* — `ばるん` → `どうしているんじゃ`, `ばん ばん` → `というわけじゃない`. The glyphs are legible; the decoder's speech prior is the failure |
+| stock manga-ocr on the sincos `kind: sfx` crops (CPU, 12 % pad) | **6 / 619** right on the current labels (heart-blind 13, sim 0.311; the pilot's by-eye "~12 / 71" was the same failure on the retired PP-box set — `ごめんっ`, `ぱんッ` ×2, `もじもじ`, `スリスリ`, `がくん`, `ぐちゃ`, `ブルン`). The rest are *fluent speech* — `ばるん` → `どうしているんじゃ`, `ばん ばん` → `というわけじゃない`. The glyphs are legible; the decoder's speech prior is the failure |
 | PP-OCRv6 / VL-1.6 on the same lines | garble (`でくv`, `ゴmvvv`, `はんぱん`) or miss (six pink SFX on 12440144 at any resolution) — `plan_base1.md` table. VL keeps hearts (30 lines vs 4), `ー` and small kana, finds 2× the lines (260 vs 132 incl. SFX), but rewrites toward likelier words and runs away on short SFX crops (2 / 132) — `reports/0905_paddleocr_vl16_vs_ppocrv6.md`; prompt hints are not a lever (settled) |
 | COO (`annotations_COO/` inside the Manga109-s v2026 zip) | **45,422** transcribed onomatopoeia polygons on 8,519 spreads of 87 books; 4–16-point polygons; 1,576 `onomatopoeia_link1` + 148 `link2` truncation links; text len p50 2 / p90 5 / max 28; 181-char set = 70 % katakana, 30 % hiragana, 3 % symbols; **99 hearts** in all; box min side p10/p50/p90 = 25 / 60 / 174 px |
 | official COO split ∩ Manga109-s | the COO repo's `COO-data/books_{train,val,test}.txt` (109 books: 89 / 10 / 10) restricted to the 87 Manga109-s books = **74 / 7 / 6 books**. Test books: LoveHina_vol14, MAD_STONE, MukoukizuNoChonbo, ParaisoRoad, SaladDays_vol18, SyabondamaKieta = **2,558 COO lines** after truncation-link joining (98 joined; 2,759 counting the link elements); val: HinagikuKenzan, HisokaReturns, YasasiiAkuma, YoumaKourin, YukiNoFuruMachi, YumeiroCooking, YumeNoKayoiji. The published TRBA+2D 81.2 % is on the full 10-book test, so ours is *near*-comparable (6 of those 10 books), not identical |
@@ -41,7 +58,7 @@ the gate picks. PP-OCRv6 rec retrain stays the kill fallback.*
 | Manga109-s v2026 | `~/manga109s/Manga109s_released_2026_05_21/` (`images/<Book>/NNN.jpg`, `annotations/`, `annotations_COO/`, `books.txt`) | no redistribution; results **and pretrained models** may be published, commercial use allowed, with attribution + the three citations (readme cond. 2, 5–7); ≤ 20 % of any volume's pages in any publication |
 | COO split lists | `assets/coo_split_manga109s.json` (in-tree — book *names* only, derived from the COO repo's `books_{train,val,test}.txt` ∩ `books.txt`, generated once by `ocr/build_manga109_crops.py --write_split`) | book names carry no licensed content |
 | AnimeText test split | `/media/sorryhyun/새 볼륨/dataset/{test-00000-of-00001.parquet, polys_test.json}` | CC-BY-NC-SA-4.0 — anything trained on it is research-only; a shipped reader must have a build without it |
-| sincos records | `post_image_dataset/cjk_unmask/ocr_records_sincos_hybrid.jsonl` (71 `sfx`, 259 `speech`, 8 `chrome`), pages `post_image_dataset/resized/sincos/` | in-tree |
+| sincos records | **default since D3**: `post_image_dataset/cjk_unmask/ocr_records_sincos_animetext.jsonl` (955 records / 163 pages — `sfx` 523, `speech` 406, `chrome` 26; AnimeText boxes + the VL reader). The 3-layer-stack files it replaced — `…_hybrid.jsonl` (71 `sfx` / 259 `speech` / 8 `chrome`) and `…_hybrid_vl.jsonl` — stay on disk for C10/C11 reproducibility only. Pages `post_image_dataset/resized/sincos/` | in-tree |
 | readers | `kha-white/manga-ocr-base` (ViT + BERT-ja WordPiece decoder; wrapped as `MangaOCR` in `../cjk_aware_anima/datasets/manga_text.py`, decode-only, no MeCab); PP-OCRv6 ONNX (`anime_tools.ocr._onnx`: `TextDetector` / `TextRecognizer` / `OcrEngine`); VL-1.6 (`models/paddleocr_vl_1.6`, `probes/ocr_vl16_*.py`) | — |
 
 Code reads the two roots from env — `ANIMA_MANGA109S_ROOT`, `ANIMA_ANIMETEXT_ROOT`
@@ -80,7 +97,8 @@ tracked file (principle 9 of `plan.md` applied to licensed data).
    a matched draw of `<text>` speech crops from the same six books) — no
    hand labelling on the critical path, and a number near-comparable to the
    published TRBA+2D 81.2 %. Speech crops use the *same* book split so no
-   test book leaks through the replay set. The 71 sincos SFX crops + a
+   test book leaks through the replay set. The sincos SFX crops (71 when
+   this was written, **619** since the rev. 4 re-base) + a
    speech control measure what this line is *for* (the doujin gap) and gate
    O2 second; their ground truth is human (drafted by the assistant off the
    contact sheet, corrected by the user), stored as
@@ -134,7 +152,7 @@ tracked file (principle 9 of `plan.md` applied to licensed data).
   the COO test crops + the speech control. These are the O2 reference rows.
 - Started in parallel, not on the path: the sincos label draft
   (`assets/sfx_labels_sincos.tsv`, `stem, box, kind_hand, text_hand` — the
-  71 `sfx` rows get a transcription, the 259 `speech` rows get a `kind_hand`
+  71 `sfx` rows get a transcription — 619 since the rev. 4 re-base — the 259 `speech` rows get a `kind_hand`
   check and keep the record text unless obviously wrong; conventions:
   glyphs as printed, small kana, `ッ`, `ー`, hearts as `♡`, repeated blocks
   joined with a space per the `JOIN_SEP` rule, no romaji) and
@@ -144,7 +162,8 @@ tracked file (principle 9 of `plan.md` applied to licensed data).
 
 *Gate:* split file written and asserted; stock manga-ocr, PP-OCRv6 and
 VL-1.6 numbers on the COO test crops + speech control in the report. (The
-sincos ≈ 12 / 71 reproduction is O2's precondition, not O0's gate.)
+sincos ≈ 12 / 71 reproduction — 6 / 619 on today's labels — is O2's
+precondition, not O0's gate.)
 
 **O0 — DONE 2026-09-06 (gate PASS; `findings.md` § O0).** Stock rows on the
 2,558 COO test lines: manga-ocr **16.4 %** exact / 0.336 sim (speech sim
@@ -193,7 +212,11 @@ manga-ocr's vocab); 1 : 1 by count is 5.4 : 1 by characters.
   `output/ocr/<run>/`.
 - Third arm only if the speech control slips: 1 : 2 COO : speech (decision 2).
 
-*Gate (G-O1 first pass), per base:* COO test exact **reported** (the
+*Gate (G-O1 first pass), per base — **written and decided on the PP-box
+labels; the thresholds are dead units since rev. 4** (no `/ 71` figure
+converts to `/ 619`). Anything re-opened here re-derives its threshold on the
+619-row set, where the passing recipe B′ sits at 307 (49.6 %) and stock is
+6:* COO test exact **reported** (the
 published baseline is 81.2 % on the 10-book test); sincos SFX **exact ≥ 35 /
 71** (from ~12) **and** sincos speech control char similarity ≥ stock − 0.01
 **and** COO speech control ≥ its O0 stock row − 0.01. Pick per decision 1.
@@ -207,8 +230,10 @@ route.
 `findings.md` § O2).** Corrected crops (§ O1 correction — the pilot's
 `deskew_crop` transposed axis-aligned boxes; O0 rows re-run). manga-ocr
 lr 5e-5 × 4 ep: COO test **73.5 %** (stock 26.2, published 81.2), speech
-0.975 = stock, sincos gate **10 / 71** (♡-blind 12). VL-1.6 LoRA lr 1e-4 ×
-2 ep: COO 64.7 %, 194 runaways, sincos **13 / 71** (19). Kill clause fires
+0.975 = stock, sincos gate **10 / 71** (♡-blind 12; re-scores to **123 / 619**
+on the AnimeText labels). VL-1.6 LoRA lr 1e-4 ×
+2 ep: COO 64.7 %, 194 runaways, sincos **13 / 71** (19; re-scores to
+**105 / 619**). Kill clause fires
 for arm A (< 25 while COO ≥ 70) → O3 mandatory; O3 runs on manga-ocr first
 (synth before colorized — the residual is hearts + outlined kana), VL only
 if that falls short. lr 2e-4 / 8-epoch arms cancelled (curves still rising,
@@ -217,8 +242,9 @@ not the bottleneck).
 **O2 amended the same day — arm B′ PASSES (`findings.md` § O2b).** Same
 recipe as B with `--train_tower --tower_lr 1e-5` (NaViT tower + projector
 full FT, 439 M, fp32 master), 1 epoch, ~90 min: COO test **81.7 %** (at the
-published 81.2 %), speech 0.986, sincos gate **38 / 71** (♡-blind 41), sincos
-speech 0.910. All four gate clauses hold → **decision 1 resolves to VL**
+published 81.2 %), speech 0.986, sincos gate **38 / 71** (♡-blind 41; re-scores
+to **307 / 619**, 49.6 %, on the AnimeText labels — checked subset 38 / 70),
+sincos speech 0.910 (agreement with PP-OCRv6, not accuracy — § O3 audit). All four gate clauses hold → **decision 1 resolves to VL**
 (passes + reads `♡` natively, so decision 6's heart rule is dropped). The
 frozen tower, not the decoder prior, was the doujin gap. O3 is no longer
 mandatory for any surviving base; it is an optional lift for the residual
@@ -227,7 +253,7 @@ mandatory for any surviving base; it is an optional lift for the residual
 
 ### O3 — crossing the doujin gap (1 day) — **optional lift since rev. 3**
 
-*Not on the path any more: arm B′ passed the gate without it. Run a lever here only if O4 wants more margin on the residual; the +10 gate below then reads against B′'s 38 / 71.*
+*Not on the path any more: arm B′ passed the gate without it. Run a lever here only if O4 wants more margin on the residual; the +10 gate below then reads against B′ — which on today's labels is **307 / 619** (49.6 %, user-checked subset 38 / 70), not the `38 / 71` this was written against, so "+10" needs re-deriving on the 619-row set before it means anything.*
 
 Only what O2's residual asks for, in this order, on the surviving base(s):
 
@@ -317,7 +343,8 @@ ships as `anime_tools.ocr.sfx` (rev 46ebbb5, rows `vl16_base` /
 threw away 60 % of speech reads). `ocr/reread_records.py` (the `--sfx_reader`
 wiring, as its own script) re-reads every `kind: sfx` record and reads the
 MIT-mask components on every masked page: floor **23 → 8**, sincos gate rows
-4 → 37 / 71 in the pipeline, `kind` from the hand labels. The user's
+4 → 37 / 71 in the pipeline (PP-box basis; the records the pipeline carries
+today score 317 / 619), `kind` from the hand labels. The user's
 "all lines through VL" arm measured too: best on the manga-ocr reference
 (0.810 vs 0.786), kept as the D2 records recommendation; C11 runs
 single-variable on the SFX-only re-read. Arm C11 (**one seed, s42 — user's

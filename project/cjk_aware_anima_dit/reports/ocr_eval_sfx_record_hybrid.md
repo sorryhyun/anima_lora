@@ -1,5 +1,11 @@
 # OCR eval — `record_hybrid` on sincos hand labels (`assets/sfx_labels_sincos.tsv`)
 
+> **Retired basis.** This report is scored on the PP-OCRv6-box hand labels
+> (99 SFX, 71-line gate) that `relabel_animetext.py` replaced on 2026-09-06.
+> Its boxes no longer exist, so the row is **not** re-scorable on the current
+> 619-row set and does **not** compare to any report dated after that —
+> `findings.md` § Label basis.
+
 Reader wall 0 s for 338 crops (32304.3 crops/s).
 
 | kind | n | exact | exact % | sim (mean) | sim ≥ 0.8 | runaway |

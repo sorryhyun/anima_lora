@@ -14,8 +14,24 @@ is skipped). Crops are cut from the
 resized sincos pages with the pilot's ``deskew_crop`` at 12 % pad (the box is
 axis-aligned, so this is a padded rectangle crop; orientation preserved).
 
-Rows: **SFX** = ``kind_hand == sfx`` (the 71-ish doujin lines the line is for),
-**speech control** = ``kind_hand == speech``. Metrics as ``eval_manga109``:
+Rows scored (the AnimeText basis, 2026-09-06 →; counts after the user's second
+label pass 2026-09-07): **617 SFX** (``kind_hand == sfx``; 86 of them
+``status: checked`` by the user) + **293 speech** + **39 chrome**, 949 of the
+file's 975 rows — the PP-box basis this replaced was 99
+SFX / 213 speech / 26 chrome and its gate subset was 71 lines, so **no number
+measured before 2026-09-06 is comparable to one measured after** (see
+``findings.md`` § "Label basis").
+
+**The speech / chrome rows are not an accuracy metric.** Their ``text_hand``
+is the PP-OCRv6 record text on almost every row (``status: checked``
+certified the *kind*, not the text) and PP-OCRv6 reads no hearts, so a reader
+that reads ``♡`` correctly scores as a miss — read them as *agreement with
+PP-OCRv6*, nothing more (``findings.md`` § O3 label audit). The SFX rows are
+hand-typed and are the real gate. The user's 2026-09-07 pass off
+``probes/label_sheet.py`` began hand-typing speech rows too (9 so far); when
+that set grows the caveat weakens, but it holds today.
+
+Metrics as ``eval_manga109``:
 exact (NFKC + whitespace-blind; the ``JOIN_SEP`` space between repeated blocks
 is therefore free), sim, runaway. Writes ``reports/ocr_eval_sfx_<name>.md`` +
 ``output/ocr/eval/sfx_<name>.jsonl``.
@@ -40,7 +56,9 @@ LABELS = m109.ASSETS / "sfx_labels_sincos.tsv"
 PAGES = m109.REPO / "post_image_dataset/resized/sincos"
 
 
-def load_labels(kinds: list[str] | None, include_unchecked: bool, path: Path = LABELS) -> pd.DataFrame:
+def load_labels(
+    kinds: list[str] | None, include_unchecked: bool, path: Path = LABELS
+) -> pd.DataFrame:
     df = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False)
     df["box"] = df.box.map(json.loads)
     if not include_unchecked:
@@ -96,17 +114,25 @@ def main():
     ap.add_argument("--name")
     ap.add_argument("--kind", action="append", help="default sfx + speech")
     ap.add_argument("--include_unchecked", action="store_true")
-    ap.add_argument("--labels", type=Path, default=LABELS, help="label TSV (default: assets/sfx_labels_sincos.tsv)")
+    ap.add_argument(
+        "--labels",
+        type=Path,
+        default=LABELS,
+        help="label TSV (default: assets/sfx_labels_sincos.tsv)",
+    )
     ap.add_argument("--pad", type=float, default=0.12)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--bs", type=int, default=32)
+    ap.add_argument("--max_new_tokens", type=int, default=ev.MAX_NEW_TOKENS)
     a = ap.parse_args()
     name = a.name or (
         f"{a.reader}-{Path(a.ckpt).parent.name}-{Path(a.ckpt).name}"
         if a.ckpt
         else a.reader
     )
-    df = load_labels(a.kind or ["sfx", "speech", "chrome"], a.include_unchecked, a.labels)
+    df = load_labels(
+        a.kind or ["sfx", "speech", "chrome"], a.include_unchecked, a.labels
+    )
     crops, orients = crops_for(df, a.pad)
     df["orient"] = orients
     t0 = time.time()
@@ -124,11 +150,13 @@ def main():
         preds = list(df.text_rec)
     else:
         reader = ev.READERS[a.reader](a.ckpt, a.device)
+        reader.max_tokens = a.max_new_tokens
         preds = reader.read(crops, orients, a.bs)
     wall = time.time() - t0
     scored = ev.score(df, preds)
     # hearts are the one glyph the gate lets a rule patch (decision 6): report
-    # a heart-blind exact beside the strict one so the ~12/71 pilot count reads
+    # a heart-blind exact beside the strict one (the pilot's by-eye count was
+    # heart-blind, and a reader that emits ♥ where the label has ♡ is not wrong)
     strip = lambda t: ev.exact_key(t).replace("♡", "").replace("♥", "")  # noqa: E731
     scored["exact_noheart"] = [
         strip(pn) == strip(t) for pn, t in zip(scored.pred_norm, scored.text)
@@ -142,15 +170,27 @@ def main():
         "Manga109-s `sincos` (official COO split ∩ Manga109-s)",
         "sincos hand labels (`assets/sfx_labels_sincos.tsv`)",
     )
-    gate = scored[scored.kind_rec == "sfx"]  # the 71 records the O2 gate counts
+    sfx = scored[scored.kind == "sfx"]
+    chk = sfx[sfx.status == "checked"]
     md += (
-        f"\n## Gate set: the {len(gate)} `kind: sfx` records (scored against the hand text)\n\n"
-        f"exact **{int(gate.exact.sum())} / {len(gate)}** (heart-blind "
+        f"\n## Gate: the {len(sfx)} `kind_hand: sfx` rows (scored against the hand text)\n\n"
+        f"exact **{int(sfx.exact.sum())} / {len(sfx)}** (heart-blind "
+        f"{int(sfx.exact_noheart.sum())}), sim {sfx.sim.mean():.3f}; on the "
+        f"**{len(chk)} user-checked** rows exact **{int(chk.exact.sum())} / {len(chk)}** "
+        f"(heart-blind {int(chk.exact_noheart.sum())}), sim {chk.sim.mean():.3f}. "
+        "This is the headline number; anything measured before 2026-09-06 was on "
+        "the retired PP-box labels (71-line gate / 99 SFX) and does not compare.\n"
+    )
+    # side view: the rows the *records* call sfx (kind_rec), which is what the
+    # pipeline's own kind rule sees — a subset of the hand-labelled 619
+    gate = scored[scored.kind_rec == "sfx"]
+    md += (
+        f"\nSide view — the {len(gate)} `kind_rec: sfx` records: exact "
+        f"**{int(gate.exact.sum())} / {len(gate)}** (heart-blind "
         f"{int(gate.exact_noheart.sum())}), sim {gate.sim.mean():.3f}; "
-        f"hand-relabelled: {(gate.kind != 'sfx').sum()} rows are not SFX by eye "
+        f"{(gate.kind != 'sfx').sum()} of them are not SFX by eye "
         f"({', '.join(sorted(set(gate[gate.kind != 'sfx'].kind)))}).\n"
     )
-    sfx = scored[scored.kind == "sfx"]
     for k, g in scored.groupby("kind"):
         md += f"heart-blind exact, {k}: {int(g.exact_noheart.sum())} / {len(g)}\n"
     md += (

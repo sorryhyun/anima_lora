@@ -73,7 +73,9 @@ def predict(model, processor, decode, ds: cd.CropDataset, device, bs=64, workers
             [Image.fromarray(i[:, :, ::-1]) for i in imgs], return_tensors="pt"
         ).pixel_values.to(device)
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            out = model.generate(pv, max_new_tokens=48, num_beams=1, do_sample=False)
+            out = model.generate(
+                pv, max_new_tokens=ev.MAX_NEW_TOKENS, num_beams=1, do_sample=False
+            )
         for i, row in zip(idx, out):
             preds[i] = decode(row.tolist())
     model.train()
