@@ -325,7 +325,7 @@ make preprocess-pe           # (Optional) PE vision features — CMMD validation
 make mask                    # Generate masks for masked loss (SAM3 + MIT)
 make mask-clean              # Delete post_image_dataset/masks/
 make autotag --image <path>  # Print the predicted caption for one image
-make curate-group            # Group similar images → post_image_dataset/groups/groups.json
+make curate-group            # Group similar images → workspace/groups/groups.json
 ```
 
 **Training**

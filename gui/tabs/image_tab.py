@@ -80,7 +80,6 @@ from gui.tabs._caption_editor import (
     BoxedCaptionEdit,
     CaptionVersionsDialog,
     _add_format,
-    _append_history,
     _diff_spans,
 )
 from gui.tabs._image_overlays import (
@@ -95,6 +94,8 @@ from gui.tabs._image_overlays import (
 )
 from gui.theme import tok
 from gui.widgets import apply_variant
+from anime_tools.captions.history import push_history
+from anime_tools.grouping.groups import MANIFEST_VERSION
 from anime_tools.captions.correction import (
     CaptionCorrectionOptions,
     TagKnowledgeBase,
@@ -103,6 +104,7 @@ from anime_tools.captions.correction import (
     find_tag_csv,
     load_tag_knowledge_base,
 )
+from library.env import resolve_under_home
 from library.datasets.curation_actions import (
     load_curation_decisions,
     move_linked_files,
@@ -187,6 +189,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         # folders. Off = per-folder tree. See _rebuild_tree_group_first.
         self._group_first: bool = False
         self._groups: list[dict] = []  # similarity-group manifest (make curate-group)
+        self._groups_stale = False  # manifest predates the current MANIFEST_VERSION
         # Images marked for moving; keyed by full path so a mark survives
         # filter/sort/view rebuilds. Cleared on dir change.
         self._marked: set[Path] = set()
@@ -499,12 +502,33 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._current_dir)))
 
     def _groups_manifest_path(self) -> Path:
-        return ROOT / "post_image_dataset" / "groups" / "groups.json"
+        """Where ``make curate-group`` actually wrote the manifest.
+
+        Read off ``GroupRequest.out`` rather than spelled here: the stage owns
+        its destination (it moved to the workspace tree), and a second copy of
+        the path in the viewer is how the Group button comes to write a manifest
+        this tab never reads. The pre-workspace
+        ``post_image_dataset/groups/groups.json`` is the fallback, so a manifest
+        grouped before the move keeps showing until the next rebuild.
+        """
+        from anime_tools.grouping.requests import GroupRequest
+
+        current = resolve_under_home(GroupRequest().out)
+        if current.is_file():
+            return current
+        legacy = ROOT / "post_image_dataset" / "groups" / "groups.json"
+        return legacy if legacy.is_file() else current
 
     def _load_groups(self) -> None:
         """Read groups.json (if present) into ``self._groups``; pure JSON, keeps
-        the GUI torch-free. A missing/unreadable manifest leaves a plain tree."""
+        the GUI torch-free. A missing/unreadable manifest leaves a plain tree.
+
+        A manifest from an older ``MANIFEST_VERSION`` still lists usable
+        components, so it is kept and only flagged ``_groups_stale`` — the same
+        "rebuild me" reading the package's own sidebar takes.
+        """
         self._groups = []
+        self._groups_stale = False
         path = self._groups_manifest_path()
         if path.is_file():
             try:
@@ -512,6 +536,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 groups = data.get("groups", [])
                 if isinstance(groups, list):
                     self._groups = groups
+                self._groups_stale = data.get("version") != MANIFEST_VERSION
             except (json.JSONDecodeError, OSError):
                 self._groups = []
 
@@ -833,7 +858,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 result = correct_caption(old_text, kb, options=options)
                 if not result.changed:
                     continue
-                _append_history(caption_path, old_text)
+                push_history(caption_path, old_text, by="correct")
                 caption_path.write_text(result.text, encoding="utf-8")
                 changed += 1
             except OSError as exc:
@@ -1932,7 +1957,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         new_text = self._editable_text()
         try:
             if cp.exists():  # snapshot the prior version into history first
-                _append_history(cp, self._disk_text)
+                push_history(cp, self._disk_text, by="edit")
             cp.write_text(new_text, encoding="utf-8")
         except OSError as e:
             QMessageBox.warning(self, t("error"), t("caption_save_failed", err=str(e)))

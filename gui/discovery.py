@@ -9,11 +9,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from gui._paths import IMAGE_EXTS, ROOT
+from anime_tools._walk import glob_images_pathlib
+
+from gui._paths import ROOT
 
 
 def _imgs(d: Path) -> list[Path]:
     """Return every image file under ``d`` (recursively).
+
+    ``anime_tools._walk.glob_images_pathlib`` is the shared walker, so the
+    browser sees exactly the files the curation stages and the trainer do —
+    including the optional-plugin formats (avif / jxl) that a bare extension
+    set here would miss.
 
     Walks subfolders so users who organize ``image_dataset/`` by character /
     series see the full pool in the browser. Cache filenames are stem-keyed
@@ -22,9 +29,7 @@ def _imgs(d: Path) -> list[Path]:
     """
     if not d.exists():
         return []
-    return sorted(
-        p for p in d.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTS
-    )
+    return glob_images_pathlib(d, True)
 
 
 def _safetensors_in(d: Path) -> list[Path]:

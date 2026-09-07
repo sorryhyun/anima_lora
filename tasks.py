@@ -271,7 +271,7 @@ COMMANDS = {
     "curate-group": (
         curate.cmd_curate_group,
         "Group dataset images by PE-Spatial visual similarity (per-artist "
-        "connected-components) → post_image_dataset/groups/groups.json. The GUI "
+        "connected-components) → workspace/groups/groups.json. The GUI "
         'Dataset tab reads it to filter by group. ARGS="--threshold 0.95".',
     ),
     # ── Anima Tagger ──────────────────────────────────────────────────
