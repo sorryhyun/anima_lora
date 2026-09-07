@@ -40,13 +40,17 @@ from library.anima.ext_vocab import T5_TABLE_SIZE, HybridT5Encoder
 from library.anima.strategy import AnimaTokenizeStrategy
 from library.env import resolve_under_home
 
+from library import downloads as _DL
+
 logger = logging.getLogger(__name__)
 
 #: Public test release of the CJK pack (JA / KO / ZH tag rows + symbol block).
-PACK_REPO = "sorryhyun/anima-vocab-pack-cjk"
-PACK_STEM = "anima_cjk_vocab_pack"
+#: Repo, stem and destination are the catalog's (``library/downloads.py``) so
+#: the ``vocab_pack`` row's Download button and this loader cannot disagree.
+PACK_REPO = _DL.VOCAB_PACK_REPO
+PACK_STEM = _DL.VOCAB_PACK_STEM
 #: Where ``make download-vocab-pack`` lands the pack (path prefix, no suffix).
-DEFAULT_PACK_DIR = "models/vocab_packs"
+DEFAULT_PACK_DIR = f"models/{_DL.VOCAB_PACK_DIR}"
 DEFAULT_PACK_PREFIX = f"{DEFAULT_PACK_DIR}/{PACK_STEM}"
 
 _PACK_SUFFIXES = (".safetensors", ".json")

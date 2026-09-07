@@ -12,7 +12,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Callable
 
 from PySide6.QtCore import QProcess, QThread, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QTextCursor
@@ -31,78 +30,48 @@ from PySide6.QtWidgets import (
 )
 
 from gui import ROOT
+from library import downloads as DL
 from gui._paths import get_setting, set_setting
 from gui.i18n import t
 from gui.process import kill_process_tree, setup_kill_safe
 from gui.theme import tok
 from gui.widgets import apply_variant
 
-# The Anima Tagger's backbone is an external gated model fetched straight into
-# the HF hub cache (never under models/), so its row needs a cache probe rather
-# than a path check. Repo + file set come from anime_tools.tagger.dbv4_meta —
-# the same source the loader and ``make download-tagger-model`` read — and the
-# repo follows the installed checkpoint's config.json, not a hardcoded default.
-_TAGGER_CKPT_REL = "models/captioners/anima-tagger-dbv4"
+# Rows come from the catalog, never from a table here: ``library/downloads.py``
+# (Anima weights) and ``anime_tools.downloads`` (curation weights) each carry an
+# Asset's repo, files, destination and an offline installed-probe. A duplicate
+# path list in the GUI is a Download button that reports the wrong state the
+# moment a row moves — which is exactly how ``models/mit/model.pth`` came to
+# read as MISSING while sitting on disk.
+#
+# Only the rows that already had translations keep an i18n key; anything newer
+# shows the catalog's own English title, which is mostly a proper noun anyway.
+_TITLE_KEYS: dict[str, str] = {
+    "anima_dit": "model_anima_dit",
+    "anima_te": "model_anima_te",
+    "anima_vae": "model_anima_vae",
+    "pe_core": "model_pe",
+    "vocab_pack": "model_vocab_pack",
+    "sam3": "model_sam3",
+    "mit_text": "model_mit",
+    "pe_spatial": "model_pe_spatial",
+    "danbooru_tags": "model_danbooru_tags",
+    "tagger_backbone": "model_tagger",
+}
 
 
-def _tagger_backbone_installed() -> bool:
-    try:
-        from anime_tools.tagger.dbv4_meta import backbone_cached, backbone_repo_for
-    except Exception:  # noqa: BLE001 — probe only; a failed import is "missing"
-        return False
-    return backbone_cached(backbone_repo_for(ROOT / _TAGGER_CKPT_REL))
+def _label(asset) -> str:
+    key = _TITLE_KEYS.get(asset.id)
+    return t(key) if key else asset.title
 
 
-# (task-key, display-label-i18n-key, [paths-relative-to-ROOT-that-must-all-exist],
-#  extra-check | None)
-# Status is "installed" iff every path resolves and the extra check passes.
-_MODEL_GROUPS: list[tuple[str, str, list[str], Callable[[], bool] | None]] = [
-    (
-        "anima",
-        "model_anima",
-        [
-            "models/diffusion_models/anima-base-v1.0.safetensors",
-            "models/text_encoders/qwen_3_06b_base.safetensors",
-            "models/vae/qwen_image_vae.safetensors",
-        ],
-        None,
-    ),
-    ("sam3", "model_sam3", ["models/sam3/sam3.pt"], None),
-    ("mit", "model_mit", ["models/mit/model.pth"], None),
-    (
-        "pe",
-        "model_pe",
-        [
-            "models/pe/PE-Core-L14-336.pt",
-            "models/pe/PE-Spatial-B16-512.pt",
-        ],
-        None,
-    ),
-    (
-        "danbooru-tags",
-        "model_danbooru_tags",
-        ["models/danbooru_tags_classified.csv"],
-        None,
-    ),
-    (
-        "tagger-model",
-        "model_tagger",
-        [
-            "models/captioners/anima-tagger-dbv4/config.json",
-            "models/captioners/anima-tagger-dbv4/vocab.json",
-            "models/captioners/anima-tagger-dbv4/rules.yaml",
-        ],
-        _tagger_backbone_installed,
-    ),
-]
-
-
-def _all_exist(paths: list[str]) -> bool:
-    return all((ROOT / p).exists() for p in paths)
-
-
-def _installed(paths: list[str], extra: Callable[[], bool] | None) -> bool:
-    return _all_exist(paths) and (extra is None or extra())
+def _tooltip(asset) -> str:
+    lines = [f"{asset.repo} → {asset.location}"]
+    if asset.used_by:
+        lines.append(t("models_used_by", what=asset.used_by))
+    if asset.notes:
+        lines.append(asset.notes)
+    return "\n\n".join(lines)
 
 
 class _StreamingDialog(QDialog):
@@ -222,14 +191,19 @@ class _HFLoginThread(QThread):
         self.done.emit(result)
 
 
-class ModelsDialog(_StreamingDialog):
-    """One row per model group: label · status · download button.
+class _CatalogDialog(_StreamingDialog):
+    """One row per catalog Asset: label · status · download button.
 
-    Download-all button at the top runs ``download-models`` (Anima + SAM3 +
-    MIT + PE). Per-group buttons let users pick just one (re)download. A token
-    field at the very top lets users authenticate to HuggingFace without
-    dropping to a terminal — required for the gated SAM3 repo.
+    Subclasses supply the rows and the "download everything" behaviour; the row
+    renderer, the offline re-probe after a run and the busy plumbing are shared,
+    so the two panels cannot drift apart the way the old hand-kept table did.
     """
+
+    #: i18n keys for the window title and the paragraph above the rows.
+    title_key = "models_title"
+    intro_key = "models_intro"
+    #: Show the HuggingFace token field (gated repos need it).
+    wants_auth = False
 
     # Emitted after any successful (exit_code 0) download run so live tabs can
     # pick up freshly-installed assets — e.g. ImageViewerTab reloading the
@@ -237,16 +211,93 @@ class ModelsDialog(_StreamingDialog):
     models_changed = Signal()
 
     def __init__(self, parent=None):
-        # (status_label, paths, extra_check, button) — _after_finished refreshes
-        # every row after download-all.
-        self._rows: list[
-            tuple[QLabel, list[str], Callable[[], bool] | None, QPushButton]
-        ] = []
+        # (asset, status_label, button) — _after_finished re-probes every row,
+        # because one run can install several.
+        self._rows: list[tuple[object, QLabel, QPushButton]] = []
         self._login_thread: _HFLoginThread | None = None
-        super().__init__(t("models_title"), parent)
+        super().__init__(t(self.title_key), parent)
+
+    # -- subclass hooks ----------------------------------------------------
+
+    def assets(self) -> tuple:
+        """The catalog rows this panel shows, in catalog order."""
+        raise NotImplementedError
+
+    def _all_args(self) -> list[str] | None:
+        """argv for the top button, or None when there is nothing to do."""
+        raise NotImplementedError
+
+    def _all_label(self) -> str:
+        raise NotImplementedError
+
+    # -- build -------------------------------------------------------------
 
     def _build_actions(self, layout: QVBoxLayout) -> None:
-        # Token persisted via huggingface_hub (same cache `hf auth login` writes); the gated SAM3 repo needs it.
+        if self.wants_auth:
+            self._build_auth(layout)
+
+        intro = QLabel(t(self.intro_key))
+        intro.setWordWrap(True)
+        intro.setStyleSheet(f"color:{tok('text_dim')};")
+        layout.addWidget(intro)
+
+        all_row = QHBoxLayout()
+        self.all_btn = QPushButton(self._all_label())
+        apply_variant(self.all_btn, "success")
+        self.all_btn.clicked.connect(self._download_all)
+        all_row.addWidget(self.all_btn)
+        all_row.addStretch()
+        layout.addLayout(all_row)
+
+        for asset in self.assets():
+            layout.addLayout(self._build_row(asset))
+        self._refresh_all_btn()
+
+    def _build_row(self, asset) -> QHBoxLayout:
+        row = QHBoxLayout()
+
+        name = QLabel(("🔒 " if asset.gated else "") + _label(asset))
+        name.setMinimumWidth(280)
+        name.setToolTip(_tooltip(asset))
+        row.addWidget(name)
+
+        status = QLabel()
+        status.setMinimumWidth(110)
+        row.addWidget(status)
+        row.addStretch()
+
+        btn = QPushButton()
+        btn.clicked.connect(
+            lambda _checked=False, a=asset: self._run(["download-model", a.id])
+        )
+        row.addWidget(btn)
+
+        self._rows.append((asset, status, btn))
+        self._paint_row(asset, status, btn)
+        return row
+
+    def _paint_row(self, asset, status: QLabel, btn: QPushButton) -> None:
+        installed = asset.installed
+        status.setText(t("models_installed") if installed else t("models_missing"))
+        status.setStyleSheet(
+            f"color:{tok('ok')};" if installed else f"color:{tok('err')};"
+        )
+        btn.setText(t("models_redownload") if installed else t("models_download"))
+
+    def _refresh_all_btn(self) -> None:
+        self.all_btn.setText(self._all_label())
+        self.all_btn.setEnabled(self._all_args() is not None)
+
+    def _download_all(self) -> None:
+        args = self._all_args()
+        if args is not None:
+            self._run(args)
+
+    # -- auth --------------------------------------------------------------
+
+    def _build_auth(self, layout: QVBoxLayout) -> None:
+        # Token persisted via huggingface_hub (same cache `hf auth login`
+        # writes); the gated SAM3 and tagger-backbone repos need it.
         auth_row = QHBoxLayout()
         self.token_edit = QLineEdit()
         self.token_edit.setEchoMode(QLineEdit.Password)
@@ -268,59 +319,6 @@ class ModelsDialog(_StreamingDialog):
         hint.setStyleSheet(f"color:{tok('text_dim')};font-size:11px;margin-bottom:6px;")
         layout.addWidget(hint)
         self._refresh_auth_status()
-
-        intro = QLabel(t("models_intro"))
-        intro.setWordWrap(True)
-        intro.setStyleSheet(f"color:{tok('text_dim')};")
-        layout.addWidget(intro)
-
-        all_row = QHBoxLayout()
-        self.all_btn = QPushButton(t("models_download_all"))
-        apply_variant(self.all_btn, "success")
-        self.all_btn.clicked.connect(lambda: self._run(["download-models"]))
-        all_row.addWidget(self.all_btn)
-        all_row.addStretch()
-        layout.addLayout(all_row)
-
-        for key, label_key, paths, extra_check in _MODEL_GROUPS:
-            row = QHBoxLayout()
-
-            name = QLabel(t(label_key))
-            name.setMinimumWidth(280)
-            row.addWidget(name)
-
-            installed = _installed(paths, extra_check)
-            status = QLabel(t("models_installed") if installed else t("models_missing"))
-            status.setStyleSheet(
-                f"color:{tok('ok')};" if installed else f"color:{tok('err')};"
-            )
-            status.setMinimumWidth(110)
-            row.addWidget(status)
-
-            row.addStretch()
-
-            btn = QPushButton(
-                t("models_redownload") if installed else t("models_download")
-            )
-            btn.clicked.connect(
-                lambda _checked=False, k=key, s=status, p=paths, b=btn: self._download(
-                    k, s, p, b
-                )
-            )
-            self._rows.append((status, paths, extra_check, btn))
-            row.addWidget(btn)
-
-            layout.addLayout(row)
-
-    def _download(
-        self,
-        key: str,
-        _status_lbl: QLabel,
-        _paths: list[str],
-        _btn: QPushButton,
-    ) -> None:
-        # _after_finished refreshes every row, so no need to track which row was clicked.
-        self._run([f"download-{key}"])
 
     def _refresh_auth_status(self) -> None:
         """Show whether a token is already cached (no network call)."""
@@ -366,23 +364,20 @@ class ModelsDialog(_StreamingDialog):
             )
             self.auth_status.setStyleSheet(f"color:{tok('err')};")
 
+    # -- run lifecycle -----------------------------------------------------
+
     def _set_busy(self, busy: bool) -> None:
         super()._set_busy(busy)
-        self.all_btn.setEnabled(not busy)
-        for *_row, b in self._rows:
-            b.setEnabled(not busy)
+        self.all_btn.setEnabled(not busy and self._all_args() is not None)
+        for _asset, _status, btn in self._rows:
+            btn.setEnabled(not busy)
 
     def _after_finished(self, exit_code: int) -> None:
-        # Refresh every row — download-models touches several groups in one run.
-        for status_lbl, paths, extra_check, btn in self._rows:
-            installed = _installed(paths, extra_check)
-            status_lbl.setText(
-                t("models_installed") if installed else t("models_missing")
-            )
-            status_lbl.setStyleSheet(
-                f"color:{tok('ok')};" if installed else f"color:{tok('err')};"
-            )
-            btn.setText(t("models_redownload") if installed else t("models_download"))
+        # Re-probe every row: a group target installs several at once, and the
+        # probe is offline, so this costs nothing.
+        for asset, status, btn in self._rows:
+            self._paint_row(asset, status, btn)
+        self._refresh_all_btn()
 
         if exit_code != 0:
             QMessageBox.warning(
@@ -403,6 +398,56 @@ class ModelsDialog(_StreamingDialog):
         if self._login_thread is not None and self._login_thread.isRunning():
             self._login_thread.wait(2000)
         super().closeEvent(ev)
+
+
+class ModelsDialog(_CatalogDialog):
+    """The Anima weights — base DiT / text encoder / VAE, PE-Core, vocab pack.
+
+    The top button runs ``download-models``, which is the first-run set and not
+    "every row": it deliberately also pulls the curation rows a default
+    preprocess needs (the tagger checkpoint and the tag KB), while SAM3, the
+    OCR stack and the vocab pack stay opt-in with their own buttons.
+    """
+
+    title_key = "models_title"
+    intro_key = "models_intro"
+    wants_auth = True
+
+    def assets(self) -> tuple:
+        return DL.catalog()
+
+    def _all_args(self) -> list[str]:
+        return ["download-models"]
+
+    def _all_label(self) -> str:
+        return t("models_download_all")
+
+
+class CurationModelsDialog(_CatalogDialog):
+    """The ``anime_tools`` catalog — tagger, SAM3, PE-Spatial, tag KB, OCR.
+
+    Read straight out of the package, so a weight added there shows up here with
+    no change on this side. The top button fetches only what is missing: the
+    full catalog is several GB and most of it (the OCR stack, the ONNX export)
+    is opt-in per stage.
+    """
+
+    title_key = "curation_models_title"
+    intro_key = "curation_models_intro"
+    wants_auth = True
+
+    def assets(self) -> tuple:
+        return DL.curation_catalog()
+
+    def _all_args(self) -> list[str] | None:
+        missing = [a.id for a in self.assets() if not a.installed]
+        return ["download-model", *missing] if missing else None
+
+    def _all_label(self) -> str:
+        missing = sum(1 for a in self.assets() if not a.installed)
+        if not missing:
+            return t("models_all_installed")
+        return t("models_download_missing", n=missing)
 
 
 GITHUB_REPO = "sorryhyun/anima_lora"
@@ -705,6 +750,13 @@ def open_models_dialog(parent=None, on_models_changed=None):
     dlg.exec()
 
 
+def open_curation_models_dialog(parent=None, on_models_changed=None):
+    dlg = CurationModelsDialog(parent)
+    if on_models_changed is not None:
+        dlg.models_changed.connect(on_models_changed)
+    dlg.exec()
+
+
 def open_update_dialog(parent=None):
     UpdateDialog(parent).exec()
 
@@ -749,6 +801,8 @@ __all__ = [
     "GITHUB_ISSUES_URL",
     "GITHUB_REPO_URL",
     "ModelsDialog",
+    "CurationModelsDialog",
+    "open_curation_models_dialog",
     "UpdateDialog",
     "check_for_update_async",
     "open_models_dialog",

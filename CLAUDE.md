@@ -16,7 +16,9 @@ preset. The LoRA family is routed via a three-axis surface — `use_moe_style` /
 ```bash
 uv sync                    # Install dependencies (Python 3.13)
 hf auth login              # Authenticate for model downloads
-make download-models       # Download DiT, text encoder, VAE, SAM3, MIT, PE-Core, PE-Spatial
+make download-models       # first-run set: DiT, TE, VAE, PE, tagger, tag DB
+make download-list         # every catalog row: installed / MISSING, repo, destination
+make download-model sam3   # by catalog id or group — SAM3 / OCR / vocab pack are opt-in
 # Training images go in image_dataset/ with .txt caption sidecars
 make preprocess            # Resize → post_image_dataset/resized/, cache → post_image_dataset/lora/
 ```
@@ -95,6 +97,7 @@ knobs and gotchas worth knowing up front:
 | `networks/spectrum.py` | Spectrum inference acceleration |
 | `gui/` | PySide6 GUI package |
 | `tasks.py` | Cross-platform task runner — source of truth for every `make` target |
+| `library/downloads.py` | **Model catalog** — one `Asset` per weight (repo · files · destination · offline installed-probe) for the Anima half, concatenated with `anime_tools.downloads` for the curation half. `make download-*`, `make download-list` and both GUI Models panels read it; loaders import their default paths from it rather than spelling them. Add a weight by adding a row, not a command. |
 | `scripts/tasks/` + `scripts/experimental_tasks/` | Where command bodies actually live (`_common.py` = shared helpers) |
 
 Docs: shipped method deep-dives in `docs/methods/`, experimental in

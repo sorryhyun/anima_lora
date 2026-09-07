@@ -1,173 +1,190 @@
-from __future__ import annotations
+"""The model catalog and the ``make download-*`` targets that drive it.
 
-import json
-import urllib.error
-from io import BytesIO
+The behaviour worth pinning is the *wiring*: rows land where loaders look, every
+target resolves to real ids, the GUI's buttons run registered tasks, and a
+present file is not re-fetched. Downloading itself is ``anime_tools``' tested
+code — mock at the ``Asset.fetch`` boundary rather than at the hub.
+"""
+
+from __future__ import annotations
 
 import pytest
 
-from scripts.tasks import downloads
+from library import downloads as DL
 
 
-def test_danbooru_tags_download_url_points_to_source_repo():
-    assert downloads.DANBOORU_TAGS_URLS == (
-        "https://raw.githubusercontent.com/Localsmile/danbooru_KR_wiki_tag_search/main/danbooru_tags_classified.csv",
-    )
+def test_the_two_catalog_halves_have_disjoint_ids():
+    """``by_id`` merges them; a collision would silently shadow a row."""
+    trainer = {a.id for a in DL.catalog()}
+    curation = {a.id for a in DL.curation_catalog()}
+    assert not (trainer & curation)
+    assert len(DL.by_id()) == len(trainer) + len(curation)
 
 
-class _FakeResponse:
-    def __init__(self, payload: bytes):
-        self._payload = payload
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_exc):
-        return False
-
-    def read(self) -> bytes:
-        return self._payload
+def test_every_group_and_the_default_set_name_real_rows():
+    """A typo in ``GROUPS`` is a make target that downloads nothing."""
+    known = set(DL.by_id())
+    for group, ids in DL.GROUPS.items():
+        assert set(ids) <= known, group
+    assert set(DL.DEFAULT_SET) <= known
 
 
-def test_download_danbooru_tags_writes_models_file(tmp_path, monkeypatch):
-    dest = tmp_path / "models" / "danbooru_tags_classified.csv"
-    monkeypatch.setattr(downloads, "DANBOORU_TAGS_PATH", dest)
+def test_the_first_run_set_leaves_the_gated_and_opt_in_rows_out():
+    """v2 default: masking is opt-in, so SAM3 must not be in a fresh install's
+    path — its gated repo was the first-run failure this removes."""
+    assert "sam3" not in DL.DEFAULT_SET
+    assert "vocab_pack" not in DL.DEFAULT_SET
+    assert "mit_text" not in DL.DEFAULT_SET
+    # …but the rows a default preprocess actually needs are.
+    assert {"anima_dit", "anima_te", "anima_vae", "tagger"} <= set(DL.DEFAULT_SET)
+
+
+def test_resolve_expands_groups_and_dedupes_in_catalog_order():
+    ids = [a.id for a in DL.resolve(["pe", "pe_core", "anima"])]
+    assert ids == ["anima_dit", "anima_te", "anima_vae", "pe_core", "pe_spatial"]
+
+
+def test_resolve_raises_naming_the_unknown_token():
+    with pytest.raises(KeyError) as exc:
+        DL.resolve(["sam3", "nope"])
+    assert "nope" in str(exc.value)
+
+
+def test_rows_land_where_the_loaders_look():
+    """The catalog's one rule: a path a loader owns separately is a Download
+    button that writes where the loader will not look."""
+    from library.anima import vocab_pack
+    from library.vision import encoders
+
+    rows = DL.by_id()
+    assert encoders._default_pe_model_id() == str(DL.default_pe_core_path())
+    assert rows["pe_core"].dest / DL.PE_CORE_FILENAME == DL.default_pe_core_path()
+
+    assert vocab_pack.PACK_REPO == rows["vocab_pack"].repo
+    assert vocab_pack.DEFAULT_PACK_PREFIX.startswith(f"models/{DL.VOCAB_PACK_DIR}/")
+    assert rows["vocab_pack"].dest == DL.default_vocab_pack_dir()
+
+
+def test_anima_rows_land_on_the_base_config_defaults():
+    """``configs/base.toml`` points training at these three exact paths."""
+    import tomllib
+    from library.env import anima_home
+
+    cfg = tomllib.loads((anima_home() / "configs" / "base.toml").read_text("utf-8"))
+    rows = DL.by_id()
+    configured = {
+        "anima_dit": cfg["pretrained_model_name_or_path"],
+        "anima_te": cfg["qwen3"],
+        "anima_vae": cfg["vae"],
+    }
+    for row_id, rel in configured.items():
+        row = rows[row_id]
+        landed = row.dest / row.files[0].rsplit("/", 1)[-1]
+        assert landed == anima_home() / rel, row_id
+
+
+def test_prune_empty_drops_the_split_files_scaffolding(tmp_path):
+    """``hf`` mirrors the repo layout under ``--local-dir``; after the flatten
+    the empty tree must go, but a real file must not."""
+    (tmp_path / "split_files" / "diffusion_models").mkdir(parents=True)
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "f.bin").write_bytes(b"x")
+
+    DL._prune_empty(tmp_path)
+
+    assert not (tmp_path / "split_files").exists()
+    assert (tmp_path / "keep" / "f.bin").exists()
+
+
+def test_fetch_skips_an_installed_row(monkeypatch):
+    """Idempotency contract (GH #21): a re-run verifies, it does not re-fetch.
+
+    Rows that move files out of ``hf``'s ``--local-dir`` layout would otherwise
+    re-pull the whole repo, because the hub no longer sees them where it looks.
+    """
+    asset = DL.by_id()["sam3"]
+    monkeypatch.setattr(type(asset), "installed", property(lambda _self: True))
     monkeypatch.setattr(
-        downloads, "DANBOORU_TAGS_URLS", ("https://example.test/tags.csv",)
+        type(asset), "fetch", lambda *_a, **_k: pytest.fail("re-fetched")
     )
+
+    assert DL.fetch(asset, log=lambda _m: None) is False
+
+
+def test_fetch_all_continues_past_a_failure_and_reports_it():
+    """One gated repo without granted access must not abort the row beside it."""
+    fetched: list[str] = []
+
+    class _Row:
+        def __init__(self, title, ok):
+            self.title, self._ok, self.installed = title, ok, False
+            self.repo = self.location = "-"
+            self.dest = None
+
+        def fetch(self, _log):
+            if not self._ok:
+                raise FileNotFoundError("gated")
+            fetched.append(self.title)
+
+    failed = DL.fetch_all(
+        [_Row("a", True), _Row("b", False), _Row("c", True)], log=lambda _m: None
+    )
+
+    assert fetched == ["a", "c"]
+    assert failed == ["b"]
+
+
+def test_every_download_target_resolves(monkeypatch):
+    """Each ``make download-<x>`` must name rows that exist — the failure mode
+    is a target that prints nothing and exits 0."""
+    import tasks
+
+    picked: list[list[str]] = []
     monkeypatch.setattr(
-        downloads.urllib.request,
-        "urlopen",
-        lambda _req, timeout=60: _FakeResponse(
-            b"name,category,post_count,description\n1girl,0,1,test\n"
-        ),
+        DL,
+        "fetch_all",
+        lambda assets, **_kw: picked.append([a.id for a in assets]) or [],
     )
-
-    downloads.cmd_download_danbooru_tags([])
-
-    assert dest.read_text(encoding="utf-8").startswith("name,category")
-
-
-def test_download_danbooru_tags_skips_existing_without_force(tmp_path, monkeypatch):
-    dest = tmp_path / "models" / "danbooru_tags_classified.csv"
-    dest.parent.mkdir(parents=True)
-    dest.write_text("existing", encoding="utf-8")
-    monkeypatch.setattr(downloads, "DANBOORU_TAGS_PATH", dest)
-    called = False
-
-    def _fail_if_called(*_args, **_kwargs):
-        nonlocal called
-        called = True
-        return _FakeResponse(BytesIO().read())
-
-    monkeypatch.setattr(downloads.urllib.request, "urlopen", _fail_if_called)
-
-    downloads.cmd_download_danbooru_tags([])
-
-    assert not called
-    assert dest.read_text(encoding="utf-8") == "existing"
+    targets = [
+        n
+        for n in tasks.COMMANDS
+        if n.startswith("download-")
+        and n not in ("download-anima-variant", "download-list", "download-model")
+    ]
+    assert len(targets) >= 8
+    for name in targets:
+        tasks.COMMANDS[name][0]([])
+    assert all(ids for ids in picked)
 
 
-def test_download_danbooru_tags_failure_names_source_repo(tmp_path, monkeypatch):
-    dest = tmp_path / "models" / "danbooru_tags_classified.csv"
-    monkeypatch.setattr(downloads, "DANBOORU_TAGS_PATH", dest)
-    monkeypatch.setattr(
-        downloads, "DANBOORU_TAGS_URLS", ("https://example.test/tags.csv",)
-    )
-    monkeypatch.setattr(
-        downloads.urllib.request,
-        "urlopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(urllib.error.URLError("nope")),
-    )
-
-    with pytest.raises(SystemExit) as exc:
-        downloads.cmd_download_danbooru_tags([])
-
-    assert "Localsmile/danbooru_KR_wiki_tag_search" in str(exc.value)
-
-
-# --------------------------------------------------------------------------- #
-# Anima Tagger: our checkpoint dir + the gated external backbone
-# --------------------------------------------------------------------------- #
-
-
-def _install_tagger_ckpt(tmp_path, monkeypatch, repo: str | None = None) -> None:
-    """Point the tagger target at a tmp checkpoint dir holding every required file."""
-    ckpt = tmp_path / "anima-tagger-dbv4"
-    ckpt.mkdir(parents=True)
-    for name in downloads.TAGGER_CKPT_REQUIRED:
-        (ckpt / name).write_text("{}", encoding="utf-8")
-    if repo is not None:
-        (ckpt / "config.json").write_text(
-            json.dumps({"backend": "dbv4", "dbv4": {"repo": repo}}), encoding="utf-8"
-        )
-    monkeypatch.setattr(downloads, "ROOT", tmp_path)
-    monkeypatch.setattr(downloads, "TAGGER_CKPT_REL", "anima-tagger-dbv4")
-
-
-def test_download_tagger_model_skips_both_halves_when_present(tmp_path, monkeypatch):
-    """Idempotency contract (GH #21): a re-run verifies, it doesn't re-fetch 500MB."""
-    _install_tagger_ckpt(tmp_path, monkeypatch)
-    monkeypatch.setattr("anime_tools._hf.hf_file_cached", lambda *_a, **_k: True)
-    calls = []
-    monkeypatch.setattr(downloads, "run", lambda cmd, **kw: calls.append(cmd))
-
-    downloads.cmd_download_tagger_model([])
-
-    assert calls == []
-
-
-def test_download_tagger_model_fetches_backbone_when_uncached(tmp_path, monkeypatch):
-    """Checkpoint on disk but backbone missing from the HF cache -> fetch only it."""
-    _install_tagger_ckpt(tmp_path, monkeypatch)
-    monkeypatch.setattr("anime_tools._hf.hf_file_cached", lambda *_a, **_k: False)
-    calls = []
-    monkeypatch.setattr(downloads, "run", lambda cmd, **kw: calls.append(cmd))
-
-    downloads.cmd_download_tagger_model([])
-
-    assert len(calls) == 1
-    cmd = calls[0]
-    assert cmd[:3] == ["hf", "download", downloads.TAGGER_BACKBONE_REPO]
-    # No --local-dir: the loader reads the backbone straight out of the hub cache.
-    assert "--local-dir" not in cmd
-    assert set(downloads.TAGGER_BACKBONE_FILES) <= set(cmd)
-
-
-def test_tagger_backbone_repo_follows_the_installed_checkpoint(tmp_path, monkeypatch):
-    """config.json's dbv4.repo wins — a checkpoint built against another
-    animetimm variant must download *that* backbone, not the default."""
-    _install_tagger_ckpt(tmp_path, monkeypatch, repo="animetimm/caformer_s36.dbv4-full")
-    assert downloads._tagger_backbone_repo() == "animetimm/caformer_s36.dbv4-full"
-
-
-def test_tagger_backbone_repo_falls_back_without_a_checkpoint(tmp_path, monkeypatch):
-    monkeypatch.setattr(downloads, "ROOT", tmp_path)
-    monkeypatch.setattr(downloads, "TAGGER_CKPT_REL", "missing")
-    assert downloads._tagger_backbone_repo() == downloads.TAGGER_BACKBONE_REPO
-
-
-def test_flatten_subfolder_overwrites_existing(tmp_path):
-    """``--force`` re-download lands the file again; the flatten must overwrite
-    rather than raise (``shutil.move`` onto an existing path fails on Windows)."""
-    dst = tmp_path / "ckpt"
-    (dst / "dbv4").mkdir(parents=True)
-    (dst / "vocab.json").write_text("stale", encoding="utf-8")
-    (dst / "dbv4" / "vocab.json").write_text("fresh", encoding="utf-8")
-
-    downloads._flatten_subfolder(dst, "dbv4")
-
-    assert (dst / "vocab.json").read_text(encoding="utf-8") == "fresh"
-    assert not (dst / "dbv4").exists()
-
-
-def test_models_dialog_rows_map_to_registered_tasks():
-    """The GUI runs ``download-<key>`` for every row — keep the keys in sync with
-    the task registry so a button can't silently point at a missing target."""
+def test_models_dialog_rows_come_from_the_catalog():
+    """Both GUI panels render Assets and run ``download-model <id>``; the id has
+    to be one the task can resolve."""
     pytest.importorskip("PySide6")
     import tasks
-    from gui.system_dialog import _MODEL_GROUPS
+    from gui.system_dialog import _TITLE_KEYS, CurationModelsDialog, ModelsDialog
 
-    for key, _label, _paths, _extra in _MODEL_GROUPS:
-        assert f"download-{key}" in tasks.COMMANDS, key
-    assert "tagger-model" in {g[0] for g in _MODEL_GROUPS}
+    assert "download-model" in tasks.COMMANDS
+    assert ModelsDialog.assets is not CurationModelsDialog.assets
+    known = set(DL.by_id())
+    assert set(_TITLE_KEYS) <= known
+
+
+def test_every_title_key_exists_in_every_language():
+    """A missing key silently falls back to English — worst for the KR/JA/ZH
+    users who are most of the base."""
+    pytest.importorskip("PySide6")
+    from gui.i18n import TRANSLATIONS
+    from gui.system_dialog import _TITLE_KEYS
+
+    extra = (
+        "curation_models_title",
+        "curation_models_intro",
+        "curation_models_btn",
+        "models_download_missing",
+        "models_all_installed",
+        "models_used_by",
+    )
+    for lang, table in TRANSLATIONS.items():
+        for key in (*_TITLE_KEYS.values(), *extra):
+            assert key in table, f"{lang}: {key}"

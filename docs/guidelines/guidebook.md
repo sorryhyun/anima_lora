@@ -307,10 +307,11 @@ Everything the GUI does is also available from the CLI. `make <target>` and `pyt
 
 ```bash
 hf auth login                # Same token cache as the GUI sign-in
-make download-models         # DiT + text encoder + VAE + SAM3 + MIT
+make download-models         # First-run set: DiT + text encoder + VAE + PE + tagger + tag DB
+make download-list           # What is installed and what is missing (offline, no network)
 make download-anima          # Retry pieces individually if a download breaks
-make download-sam3           # Run separately once SAM3 access is approved
-make download-mit
+make download-sam3           # Masking is opt-in — run this once SAM3 access is approved
+make download-model ppocr_det ppocr_rec   # Anything else, by catalog id or group
 ```
 
 **Preprocessing**

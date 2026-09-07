@@ -636,10 +636,12 @@ def test_no_hand_copied_contract_constants():
     from anime_tools import contract
 
     from gui.tabs import _autotag
-    from scripts.tasks import downloads, preprocess
+    from scripts.tasks import preprocess
 
     assert _autotag._AUTOTAG_READY is contract.AUTOTAG_READY
     assert _autotag._AUTOTAG_RESULT_PREFIX is contract.AUTOTAG_RESULT_PREFIX
     assert _autotag._AUTOTAG_ERROR_PREFIX is contract.AUTOTAG_ERROR_PREFIX
     assert preprocess.AUTOTAG_MODES is contract.AUTOTAG_MODES
-    assert downloads.TAGGER_CKPT_REQUIRED is contract.DBV4_REQUIRED_FILES
+    # The tagger's file set is no longer copied at all: the download surface is
+    # the package's own catalog row (see tests/test_downloads.py).
+    assert contract.DBV4_REQUIRED_FILES

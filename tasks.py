@@ -301,7 +301,18 @@ COMMANDS = {
         "one-shot — the GUI Dataset tab uses a resident worker instead.",
     ),
     # ── Downloads ─────────────────────────────────────────────────────
-    "download-models": (downloads.cmd_download_models, "Download all models"),
+    "download-models": (
+        downloads.cmd_download_models,
+        "Download the first-run model set (Anima base + PE + tagger + tag KB)",
+    ),
+    "download-list": (
+        downloads.cmd_download_list,
+        "List every model catalog row: installed / MISSING, repo, destination",
+    ),
+    "download-model": (
+        downloads.cmd_download_model,
+        "Download models by catalog id or group; ARGS='sam3 pe', no args lists them",
+    ),
     "download-anima": (downloads.cmd_download_anima, "Download Anima model"),
     "download-anima-variant": (
         downloads.cmd_download_anima_variant,
@@ -320,7 +331,8 @@ COMMANDS = {
     ),
     "download-tagger": (
         downloads.cmd_download_tagger,
-        "Download Anima Tagger v2 vocab.json (caption-index dependency; not the full model)",
+        "Download the Anima Tagger checkpoint (vocab/rules/thresholds/sidecar; "
+        "not the gated backbone — see download-tagger-model)",
     ),
     "download-tagger-model": (
         downloads.cmd_download_tagger_model,
