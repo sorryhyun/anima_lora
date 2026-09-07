@@ -33,10 +33,13 @@ supported, just opt-in.
 - [ ] `configs/base.toml`: `masked_loss = true` → `false`, with a comment
       saying `make mask` + this key is the pair that turns it on.
 - [ ] `gui/tabs/preprocess/knobs.py`: `DEFAULT_RUN_SAM_MASK = True` → `False`.
-- [ ] SAM3 out of `make download-models`' component list
+- [x] SAM3 out of `make download-models`' component list
       (`scripts/tasks/downloads.py::cmd_download_models`) — keep
       `make download-sam3` as the opt-in target, the way the vocab pack works.
       Removes the gated-repo failure from every first-run install.
+      (`af98813e` — the component list is now `DEFAULT_SET` in
+      `library/downloads.py`; SAM3, MIT, the OCR stack and the vocab pack are
+      all out of it, pinned by a test.)
 - [ ] Check nothing silently re-enables it: `resolve_configured_mask_dir`
       already gates on the dir existing, so a maskless checkout is inert — but
       a user who ran `make mask` once before upgrading now has a mask dir *and*
@@ -62,8 +65,11 @@ surfaces below.
       `gui/tabs/preprocess/masking.py`, the knob in `knobs.py`, and the 13
       `preprocess_run_mit_mask*` / MIT strings in each of
       `gui/i18n/{en,ko,ja,cn}.py`. `gui/system_dialog.py` lists the MIT weights.
-- [ ] Downloads: `cmd_download_mit`, the `make download-mit` target in
-      `tasks.py`, and the `("MIT", …)` entry in `cmd_download_models`.
+- [ ] Downloads: drop `mit_text` / `ctd_onnx` from `DL.GROUPS` in
+      `library/downloads.py` and the `download-mit` target in `tasks.py`
+      (`cmd_download_mit` is now a two-line lookup). The rows stay in the
+      *package* catalog, so they also disappear from the GUI's Curation
+      Models panel only if the panel filters them — decide which.
       Note in the release notes that `models/mit/` can be deleted.
 - [ ] Tests: `tests/test_masking_task.py`, `tests/test_nested_paths.py` (7
       refs), `tests/test_anime_tools_cli_contract.py` (12 refs — the
@@ -77,6 +83,25 @@ surfaces below.
       of `anime_tools.masking.mit` survives; the `anime-tools[masking]` extra
       still carries `segmentation-models-pytorch`, decide whether the trainer
       still requests that extra.
+
+## 2b. Model catalog (landed early — `af98813e`)
+
+Not in the original plan; it fell out of §1 and makes §2 smaller.
+`anime_tools.downloads` is the curation weights' catalog (`Asset` rows with an
+offline installed-probe); `library/downloads.py` now adds the Anima-only rows
+and concatenates it, and every `make download-*` plus both GUI Models panels
+read that one list. Follow-ups this leaves:
+
+- [ ] GUI: the new **Curation models** panel renders every package row,
+      including the OCR stack and `tagger_onnx`. Decide whether the trainer
+      filters any of them out (see §2 — MIT is the live question).
+- [ ] `docs/guidelines/가이드북.md` / `ガイドブック.md` / `指南书.md`: the
+      English `guidebook.md` model-download block changed (first-run set no
+      longer includes SAM3/MIT; `download-list` / `download-model` are new).
+      **Translator agent**, with the rest of §3.
+- [ ] `anime_tools`' `model-catalog` skill says the trainer addresses rows by
+      id — now true. Consider a trainer-side skill or a `CLAUDE.md` pointer
+      when the surface settles.
 
 ## 3. Docs cleanup
 
@@ -94,10 +119,12 @@ surfaces below.
 - [ ] `docs/v2_release_plan.md`: add a banner pointing here as the live
       checklist.
 - [ ] `make test-unit` includes `tests/test_doc_refs.py`, which currently fails
-      on **7** stale refs, all in the CJK research tree pointing at sibling-repo
-      paths (`docs/contract.md`, `examples/ocr.py`, `make ocr` in
-      `project/cjk_aware_anima_dit/{findings,plan_det}.md`). Fix or allowlist
-      before the tag — it is a merge gate.
+      on **11** stale refs (measured 2026-09-07): 8 in the CJK research tree
+      pointing at sibling-repo paths (`docs/contract.md`, `examples/ocr.py`,
+      `docs/position_captions.md`, `make ocr` in
+      `project/cjk_aware_anima_dit/{findings,plan_det}.md`) and 3 more from
+      this file quoting them on line 98. Fix or allowlist before the tag — it
+      is a merge gate.
 
 ## 4. Scripts / preprocess cleanup
 
