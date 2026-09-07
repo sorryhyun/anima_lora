@@ -15,14 +15,15 @@ is gone.**
 
 ## 0. Branch setup
 
-- [ ] Cut `v2.0.0.beta` from `main` (`19f83d2d` or later).
-- [ ] Open the PR early as a draft so the checklist is visible while the work
-      lands.
-- [ ] `.github/workflows/release.yml` publishes with `gh release create
+- [x] Cut `v2.0.0.beta` from `main` (at `e3c2e2e9`).
+- [x] Open the PR early as a draft so the checklist is visible while the work
+      lands — [#99](https://github.com/sorryhyun/anima_lora/pull/99).
+- [x] `.github/workflows/release.yml` publishes with `gh release create
       --generate-notes` and **no `--prerelease`** — a `-beta` tag would become
       "latest" and reach every `make update`. Fix the workflow to pass
       `--prerelease` when the tag contains `-`. **Do this first**, before any
-      tag exists.
+      tag exists. (`1a412dab` — `case "$TAG" in *-*)`; `scripts/update.py`
+      resolves `releases/latest`, which excludes prereleases.)
 
 ## 1. Masking off by default
 
