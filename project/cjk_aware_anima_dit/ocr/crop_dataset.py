@@ -43,6 +43,7 @@ def load_split(
     seed: int = 0,
     extra: list[str] | None = None,
     extra_repeat: int = 1,
+    extra_replace: bool = False,
 ) -> pd.DataFrame:
     """Manifest rows of one split; speech drawn at ``speech_ratio`` × the SFX count.
 
@@ -50,14 +51,21 @@ def load_split(
     colorized crops) whose rows of the same split are **appended** before the
     speech draw / ``limit``, tagged by their ``source`` column, each row
     ``extra_repeat`` times (oversampling a small colorized set).
+    ``extra_replace`` instead **swaps** them in: every grey row whose polygon
+    (``kind, book, page, id``) an extra row re-cuts is dropped first, so the
+    colorized copy stands in for its original and the total stays put.
     """
     df = pd.read_parquet(m109.derived_root() / "manifest.parquet")
     if "source" not in df.columns:
         df["source"] = "grey"
     df = df[df.split == split]
+    key = ["kind", "book", "page", "id"]
     for name in extra or []:
         ex = pd.read_parquet(m109.derived_root() / f"manifest_{name}.parquet")
         ex = ex[ex.split == split]
+        if extra_replace:
+            drop = set(map(tuple, ex[key].values))
+            df = df[[t not in drop for t in map(tuple, df[key].values)]]
         df = pd.concat([df] + [ex] * max(1, extra_repeat), ignore_index=True)
     sfx = df[df.kind == "sfx"]
     sp = df[df.kind == "speech"]

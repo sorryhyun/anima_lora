@@ -6,6 +6,7 @@
     … --smoke                       # 30 steps + a 64-crop val, throughput check
     … --train_tower --tower_lr 1e-5 # O2b: unfreeze the NaViT tower + projector (full FT)
     … --extra_manifest colorized_1024_half_comic   # O3: + the colorized crops (manifest_<name>.parquet)
+    … --extra_replace                # …swapped in for their grey originals instead of appended
 
 Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 (q/k/v/o) + MLP (gate/up/down) projections, selected by module path so the
@@ -250,6 +251,11 @@ def main():
     ap.add_argument(
         "--extra_repeat", type=int, default=1, help="oversample the extra rows ×N"
     )
+    ap.add_argument(
+        "--extra_replace",
+        action="store_true",
+        help="drop each grey row the extra manifest re-cuts (swap, not append)",
+    )
     ap.add_argument("--max_train", type=int, help="rows per kind (subsample)")
     ap.add_argument("--val_limit", type=int)
     ap.add_argument("--val_bs", type=int, default=16)
@@ -333,6 +339,7 @@ def main():
         seed=a.seed,
         extra=a.extra_manifest,
         extra_repeat=a.extra_repeat,
+        extra_replace=a.extra_replace,
     )
     va_df = cd.load_split("val", limit=a.val_limit, seed=a.seed)
     tr = cd.CropDataset(tr_df, augment=not a.no_augment, seed=a.seed)

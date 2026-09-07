@@ -34,6 +34,10 @@ ROWS = [
         "vl16_tower_ep3",
         ["--reader", "vl16", "--ckpt", "output/ocr/vl16_tower_ep3/best"],
     ),
+    (
+        "vl16_tower_col1500sw",
+        ["--reader", "vl16", "--ckpt", "output/ocr/vl16_tower_col1500sw/best"],
+    ),
     ("sfx_pkg", ["--reader", "sfx"]),
     # outside readers scored on request (HF discussion #1 on the published LoRA)
     ("hayai_v2_1", ["--reader", "hayai"]),

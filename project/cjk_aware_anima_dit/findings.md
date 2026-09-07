@@ -1229,6 +1229,90 @@ published reader; ep3 is a strictly better *COO* reader if that ever
 matters); the remaining sincos lever is still synth SFX / in-domain labels,
 not the schedule. Weights local only: `output/ocr/vl16_tower_ep3/ep{1,2,3}`.
 
+## O3b — arm B′+col1500 **swap**: replacing the grey originals costs the doujin gate (2026-09-07)
+
+O3's colorize at scale, run the way the user asked for it after the 1,500-page
+render landed ("can we drop corresponding black/white ones? limiting the total
+number of data") — the colorized crop **stands in for** its grey original
+instead of being appended, so the training set stays the size of B′'s and only
+its *appearance* changes.
+
+Pipeline: `colorize_manga109.py --pages 1500 --steps 16` (job
+`20260907-091649-5f8f7a`, 1,400 new pages in 469 min ≈ 20.1 s/page, 7.2 GB;
+100 were already there from the pilot, the subsets nest) →
+`build_manga109_crops.py --image_root … --name colorized_1024_half_comic`
+(job `20260907-172207-e9ecaf`) → **17,189 crops** (8,779 SFX + 8,410 speech,
+74 books, mean stroke IoU 0.920; dropped 715 under `--min_iou` 0.8, 8 under
+`min_side`), 15.5× the pilot manifest's 1,111.
+
+New code, both needed for the arm: `crop_dataset.load_split(...,
+extra_replace=True)` drops every grey row whose polygon key
+(`kind, book, page, id`) an extra manifest re-cuts, before the extras are
+concatenated; `finetune_vl16_lora.py --extra_replace` exposes it. The keys are
+a clean subset (all 17,189 colorized keys exist in the grey train manifest, no
+duplicates either side), so the swap is exact: **77,164 rows = 59,984 grey +
+17,180 colorized** (nine rows lose their target to the empty-string filter),
+with the *same* 38,582 SFX / 38,582 speech balance as B′. Colorized share
+**22.3 %** vs col100's 1.6 %.
+
+Run `vl16_tower_col1500sw`, job `20260907-172902-353d45`, 86.7 min, 4,822
+steps, 15.5 crops/s, 12.1 GB — B′'s recipe otherwise unchanged (LoRA r 16
+lr 1e-4 + tower/projector full FT lr 1e-5, bs 8×2, 1 epoch, seed 0). Val ep1
+SFX exact 86.1 % / sim 0.948 (B′ 86.2 %). Evals `20260907-180525-{80216e,321178}`.
+
+**Label-basis note.** The sincos label file moved between the 08:56 re-eval and
+this one — **617 SFX / 293 speech / 39 chrome = 949 rows** (was 619 / 294 / 35
+= 948; four rows re-kinded into `chrome`, one added). Every arm was re-scored
+on the new basis in one job (`20260907-191524-c0b57b`, `reeval_sfx_all.py`,
+`vl16_tower_col1500sw` row added to `ROWS`). **The shift is not the story**:
+B′ 306 → 304, col100 315 → 314, ep3 298 → 297 — all ≤ 0.2 pts, so the table
+below is a like-for-like comparison.
+
+| eval | model | SFX exact | SFX sim | sim ≥ 0.8 | runaway | speech exact | speech sim |
+|---|---|---|---|---|---|---|---|
+| Manga109-s test (2,558 / 2,559) | B′ `vl16_tower_lr1e-5` | 81.7 % | 0.927 | 87.6 % | 25 | 82.8 % | 0.986 |
+| | B′+col100 (1.6 % append) | 83.2 % | 0.936 | 88.9 % | 29 | 82.6 % | 0.986 |
+| | **B′+col1500 swap (22.3 %)** | **84.1 %** | **0.939** | **89.4 %** | 26 | 82.5 % | 0.986 |
+| | B′ × 3 ep | 85.7 % | 0.948 | 91.1 % | 25 | 83.3 % | 0.987 |
+| sincos (617 SFX, new basis) | B′+col100 | **314 (50.9 %)** | 0.852 | 74.5 % | 3 | *(PP-record text — invalid, see O3 audit)* | |
+| | B′ `vl16_tower_lr1e-5` | 304 (49.3 %) | 0.852 | 75.1 % | 2 | | |
+| | B′ × 3 ep | 297 (48.1 %) | 0.858 | 75.9 % | 4 | | |
+| | **B′+col1500 swap** | **273 (44.2 %)** | **0.837** | 74.7 % | 5 | | |
+
+*(same-basis reference rows: the package reader `sfx_pkg` 303 (49.1 %), the
+pipeline's own AnimeText read `record` 311 (50.4 %), `hayai_v2_1_5` 308.)*
+
+**Verdict: the swap is a loss — the grey originals are load-bearing.** Against
+B′ this is a single-variable comparison (same 77,164 rows, same 4,822 steps,
+same seed; only 22 % of rows swapped grey → colorized) and it goes
+**in-domain +2.4 pts, sincos −5.1 pts**. At n = 617 the binomial SE is 2.0 pts,
+so −5.1 (31 lines) is ≈ 2.5 σ and mean sim moves the same way (0.852 → 0.837) —
+this one is real, unlike col100's +1.6 which sits inside 1 σ. By orientation the
+damage is concentrated in **square SFX blocks: 53.8 → 33.3 %** (horizontal
+48.4 → 41.8, vertical 50.9 → 46.7).
+
+Reading it: colorized COO helps as **augmentation** and hurts as
+**replacement**. Repainting is not a relabelling of the target domain — it
+deletes the real screentone/grey appearance for a fifth of the training set and
+substitutes a synthetic recolour, and the doujin residual (§ O2 follow-up:
+outlined, heart-terminated bursts) is not what the recolour supplies. The
+in-domain gain is the tell that it *did* learn something: colorized pages are
+repaints of Manga109 books, so the arm moved toward the COO test set and away
+from the target.
+
+*Withdrawn:* the **append**-at-17k arm (94,405 rows, 18.2 % share) was launched
+first (`20260907-172627-4f6186`) and killed at step ~250 when the user asked for
+the swap instead. It is now the only untested point on this axis — whether
+col100's +1.6 grows or saturates at 12× the share — and the one to run if the
+colorized lever is revisited. Weights local only:
+`output/ocr/vl16_tower_col1500sw/ep1`.
+
+*Deployment unchanged and re-verified against the Hub* (2026-09-07):
+`sorryhyun/paddleocr-vl-1.6-manga-lora` (sha `3b5fe022`, `adapter_model.safetensors`
++ `tower.safetensors`) carries B′'s card numbers — 81.7 % / 0.927 / 189
+runaways — i.e. **`vl16_tower_lr1e-5`**. Neither `ep3` (better COO) nor
+`col100` (better on both, within noise on sincos) was ever pushed.
+
 ## Outside reader — `hayai-ocr` scored on both evals on its author's request (2026-09-07)
 
 `JustANormalTinkerer` opened discussion #1 on `sorryhyun/paddleocr-vl-1.6-manga-lora`
