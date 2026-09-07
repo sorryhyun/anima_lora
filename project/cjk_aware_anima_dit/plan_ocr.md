@@ -352,6 +352,18 @@ call**) done: spam ~2 = C10, adherence flat; blind set `s15_C11_vs_C10`
 (24 pairs, seeds 12/13/14) graded 2026-09-06: **C11 11 – 9 C10, tie 4 = flat inside the floor → blind half PASS** (spam half on one seed); `DROP_KINDS` **flipped** the same evening (`cache_te_ext.DROP_KINDS = {chrome}`, SFX sentence default, `--drop_sfx` = the C10 caption; `findings.md` § O4b). **O5 parked** (user's call, same evening):
 `ocr/kind_seg.py` is written and CPU-smoked, never trained.
 
+**O4e — DONE 2026-09-08 (`findings.md` § O4e), a guard bug off three user
+picks on the merge sheet:** the decode guard's repetition test counted a
+`......` / `・・・・・・` pause as the trigram `...` × 4, so every ≥ 9-char
+dialogue line that paused twice was a "runaway" — **94 det-passing lines on 64
+of 859 pages, median 17 chars, the longest speech on each page**; detector and
+reader were both right. `normalize_read` now folds every dot run to one `…`
+and every heart to `♡` before the guard, `has_script` stops counting `ー っ ッ`
+alone as a letter, the eval key folds the same way. Package 8ebaf58, pin
+bumped, sidecars regenerated (3,475 → 3,633 passing lines, +3.2 % characters).
+Latin text hallucinated as kana (`Zzz...` → `ててて…`) is the other mechanism
+on the picks and stays a known miss.
+
 **O4d — DONE 2026-09-07 (`findings.md` § O4d), two more user calls without an
 arm:** (1) the **speech** clause is deduplicated too, on exact text rather than
 the SFX key (`ocr_sfx.dedupe_speech`; 141 of 2,167 sincos speech lines, 90

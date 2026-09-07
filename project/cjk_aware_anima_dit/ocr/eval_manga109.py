@@ -27,6 +27,7 @@ import argparse
 import json
 import sys
 import time
+import re
 import unicodedata
 from pathlib import Path
 
@@ -42,6 +43,11 @@ OUT = m109.REPO / "output/ocr/eval"
 
 
 HEART_FOLD = str.maketrans({"♥": "♡", "❤": "♡", "〜": "~"})
+ELLIPSIS_RE = re.compile(r"[.．・…‥]{2,}")
+"""Every dot run is one ``…`` on both sides of a comparison — the hand labels
+spell a pause three ways (sincos: ``・・・`` 57 rows, ``...`` 23, ``…`` 73) and
+so did the reader until ``anime_tools.ocr.sfx.normalize_read`` folded it
+(8ebaf58, 2026-09-08)."""
 
 # Decode cap, ``--max_new_tokens``. manga-ocr's WordPiece is ~1 token / kana, so
 # the old 48 truncated every speech line past 47 chars — the sincos labels reach
@@ -53,8 +59,10 @@ MAX_NEW_TOKENS = 96
 
 def exact_key(s: str) -> str:
     """NFKC + whitespace-blind; heart / wave variants folded (the hand labels
-    write ``♡`` and ``〜``, readers emit ``♥`` / ``~`` for the same glyph)."""
-    return "".join(unicodedata.normalize("NFKC", s).split()).translate(HEART_FOLD)
+    write ``♡`` and ``〜``, readers emit ``♥`` / ``~`` for the same glyph) and
+    every dot run one ``…`` (:data:`ELLIPSIS_RE`)."""
+    key = "".join(unicodedata.normalize("NFKC", s).split()).translate(HEART_FOLD)
+    return ELLIPSIS_RE.sub("…", key)
 
 
 # --------------------------------------------------------------------------- readers

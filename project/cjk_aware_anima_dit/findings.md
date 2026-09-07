@@ -1441,3 +1441,86 @@ Export carries it as `--ocr_min_glyph` beside `--ocr_min_det`, recorded on
 each row so a report replays what its plan showed. The merge sheet now prints
 `g<px>` per line, greys out and strikes through a line dropped as a repeat,
 and its no-floor contrast drops both floors.
+
+## O4e — the guard was eating the longest line on the page: dots are not a runaway, and a read spells `…` / `♡` one way (2026-09-08)
+
+Three user picks off the merge sheet (`manglifer/7274301`,
+`suujiniku/dan_10662698`, `b-ginga/7316096` — "아예 빠지는 텍스트가 있는데
+뭘까?"), no arm. Two mechanisms, one of them a bug in the shipped guard.
+
+**The bug.** On suujiniku and b-ginga the largest text on the page — a
+three-column balloon (`結ばれた二人は甘いロゾけを交わすんです……♡`) and a
+three-column narration over grass (`ふ…ぉ…フゥ……♡これから孕むまで毎日使って
+やるからな♡`) — was in neither sidecar. The detector has both (det 0.89 /
+0.96; `denest` keeps them, the columns were not emitted separately) and the
+VL reader reads both (score 0.92 / 0.98, `probes` job `20260907-235131`).
+`sfx.is_runaway` threw them away: the reader spells an ellipsis as `......`
+or `・・・・・・` (never `…`), six dots hold the trigram `...` **four** times
+over, and the test fires on any 3-gram ≥ 3 times from nine characters on. So
+every dialogue line of ≥ 9 chars that paused twice was a "runaway". The
+corpus fingerprint matched exactly: of the 4,218 sidecar lines, **zero**
+were ≥ 9 chars with a 5+-dot run, and every survivor holding `・・・・・・`
+was exactly 8 chars (`はひ・・・・・・`).
+
+Measured over all 859 pages (job `20260907-235238`: re-detect, raw-read every
+det box absent from its sidecar, classify), det ≥ 0.5:
+
+| why the box never reached the sidecar | lines |
+|---|---|
+| runaway — **only because of the dots** (passes once dots fold) | **94, on 64 pages** |
+| runaway — real (`くりくりくりくり`, `SummerMorning×n`, `億円×n`) | 28 |
+| length cap | 17 |
+| ASCII-only / one glyph (`skip_en` / `min_chars`, as designed) | 194 |
+| no letter (`♡`, `…` alone) | 60 |
+
+The dot-runaways have median length 17 chars (p90 40) — the longest speech
+on each page, concentrated on the wordy artists (`ie_(raarami)` alone ~20).
+Full list: `output/tests/ocr_merge_sheet/guard_loss_probe.jsonl`.
+
+**manglifer is the other mechanism, not fixed.** Its two boxes are Latin —
+`Zzz...` and `Hi-!!` — which the VL reader turns into `ててて・・・` / `ウー!!`
+(the `@hikimori45` watermark is read correctly and dropped by `skip_en`).
+Since `skip_en` drops every correct Latin read, the only Latin that ever
+reaches a caption is a kana hallucination of it. No text rule separates
+these; the reader score (0.59 on `ウー!!`, 0.90 on `ててて`) is the one lever
+and it is not clean. Left as a known miss.
+
+**What shipped (`anime_tools` 8ebaf58, pin bumped):**
+
+1. `sfx.normalize_read` folds every dot run (`[.．・…‥]{2,}`) to one `…` and
+   every heart (`♥`, `❤️`) to `♡`; `is_runaway` tests the folded text. The
+   user's call ("`・・・` 같은건 일괄적으로 `...` 으로") — but it has to sit
+   *before* the guard, not at export. A hundred dots alone fold to `…` and
+   then fail `has_script`, so the real runaway of that shape still drops.
+2. `reread.has_script` no longer counts `ー っ ッ ゝ ゞ ヽ ヾ` as a letter:
+   `ー・・・ッ`, `ーーー`, `っっっ` (8 lines) are motion lines read as kana.
+3. The eval key folds the same way (`eval_manga109.exact_key`, `ELLIPSIS_RE`)
+   — the sincos labels themselves spell a pause three ways (`・・・` 57,
+   `...` 23, `…` 73 rows), so an eval re-run after this is *more* exact,
+   never less; rows already scored are on the old key.
+
+Sidecars regenerated over the whole tree (job `20260908-000523`; the stage
+by module needs `--dst post_image_dataset/resized --ocr_dir
+post_image_dataset/ocr`, its bare defaults are `workspace/…`):
+
+| | before | after |
+|---|---|---|
+| sidecars | 859 | 862 |
+| lines | 4,218 | 4,330 |
+| det + glyph passing lines | 3,475 | 3,633 |
+| characters in passing lines | 25,235 | 26,041 (+3.2 %) |
+| lines with `・・・` / `...` / `…` | 442 / 304 / 0 | 0 / 0 / 920 |
+| lines with `♥` / `♡` | 332 / 889 | 0 / 1,226 |
+| marks-only lines | 8 | 0 |
+
+81 pages have more lines than before (125 net new). The three picks:
+suujiniku 9 → 10 lines with the balloon first in the speech clause; b-ginga
+14 → 14 (the block in, `ー・・・ッ` out) and its `あ…っ♥` / `あ…っ♡` pair now
+dedupes to one; manglifer unchanged (`ててて…`, `ウー!!`). Merge sheet
+re-rendered on the new tree (`output/tests/ocr_merge_sheet/`). Package tests:
+`test_a_pause_is_not_a_runaway` carries both blocks; trainer pin alarm
+`test_package_guard_is_ellipsis_blind_and_folds_glyphs`.
+
+The research copies (`project/cjk_aware_anima/datasets/build_ocr_records.py`
+`is_runaway` / `_normalize_read`) are **not** changed — they are the keys of
+the recorded PP-vs-VL A/B and would re-score it.

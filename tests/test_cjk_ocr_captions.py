@@ -199,8 +199,7 @@ def test_sfx_clause_is_deduplicated_per_sound_unit():
     assert m.append_tags(
         "1girl", lines, "sentence", kinds=kinds, sfx_sentence=True
     ) == (
-        '1girl. Japanese text reads as "あっ". '
-        'Japanese SFX reads as "じゅぽ", "ぱん♡".'
+        '1girl. Japanese text reads as "あっ". Japanese SFX reads as "じゅぽ", "ぱん♡".'
     )
     # speech takes the exact string, not the SFX key: はっ and はー sound alike
     # and fold to one sound, but they are two different lines of dialogue.
@@ -406,3 +405,22 @@ def test_symbol_dispute_may_not_change_letters():
     assert m.accept_second_read("ご主人様♡", "ごー主人様♡", 3, reason="symbol") is None
     assert m.accept_second_read("かほ1♡", "かほー♡", 3, reason="symbol") is None
     assert m.accept_second_read("イく", "イく♡", 3, reason="symbol") == "イく♡"
+
+
+def test_package_guard_is_ellipsis_blind_and_folds_glyphs():
+    # Pin alarm for anime_tools 8ebaf58 (findings § O4e): the guard once took
+    # every ≥ 9-char line with a six-dot pause as a runaway — 94 lines on 64 of
+    # the 859 sincos pages, the longest speech on each — and a caption said
+    # ♥ / ♡ and ... / ・・・ several ways for one glyph.
+    from anime_tools.ocr import reread, sfx
+
+    block = "ふ...ぉ...フゥ......♡これから孕むまで毎日使ってやるからな♡"
+    assert not sfx.is_runaway(block)
+    assert (
+        sfx.guard(block, 89, 257) == "ふ…ぉ…フゥ…♡これから孕むまで毎日使ってやるからな♡"
+    )
+    assert (
+        sfx.normalize_read("あ・・・っ♥") == sfx.normalize_read("あ...っ♡") == "あ…っ♡"
+    )
+    assert sfx.is_runaway("ふくっ" * 10)  # a real runaway still is one
+    assert not reread.has_script("ー・・・ッ") and reread.has_script("ぐっ")
