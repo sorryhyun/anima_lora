@@ -1,5 +1,11 @@
 # v2.0.0 release plan (working draft, 2026-09-02; Track A/B state re-checked 2026-09-06)
 
+> **Superseded as the working list by [`v2_release_checklist.md`](v2_release_checklist.md)** (2026-09-07) — the
+> `v2.0.0.beta` branch checklist, which also carries the two decisions made
+> after this draft: **masking is off by default** and the **MIT in-image
+> text masker is removed**. This file stays as the reference for *why*
+> each track exists and what state it was in; tick boxes over there.
+
 Scratch plan for the next release. Two pillars make it a major bump:
 
 1. **Curation is a separate package** — `anime_tools` (tagger, masking,
