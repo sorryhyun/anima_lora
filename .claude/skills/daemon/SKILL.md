@@ -28,7 +28,7 @@ Job dirs are retention-bounded: at boot, before `load_all()`, the daemon prunes 
 ## Discovery & agent surface
 
 - Discovery is pidfile-based: `output/daemon/daemon.json` / `~/.anima/daemon.json` → `{port, root}`. **Never hardcode 8765** — the port falls back to ephemeral on collision.
-- `make daemon-status` prints one JSON object (health + resolved `base_url` + compact job summaries, newest-first and capped, each with a derived `target` + `jobs_total`/`jobs_shown`). Filter via `ARGS="--running|--failed|--done|--state s|--limit N|--all"`; `--full` for raw records; `--job <id>`/`JOB=<id>` for one full record with its bench `result.json` inlined. Passive; exit 1 when down.
+- `make daemon-status` prints one JSON object (health + resolved `base_url` + compact job summaries, newest-first and capped, each with a derived `target` + `jobs_total`/`jobs_shown`/`jobs_pinned`; unfinished jobs — `queued`/`running`/`paused` — are pinned in even when they fall below the cap, so a pending queue never reads as empty). Filter via `ARGS="--running|--failed|--done|--state s|--limit N|--all"`; `--full` for raw records; `--job <id>`/`JOB=<id>` for one full record with its bench `result.json` inlined. Passive; exit 1 when down.
 - The daemon self-describes at `GET /` (README) and `GET /tools` (JSON-Schema manifest). `anima_daemon/mcp.py` is a stdio MCP bridge over the same surface — register the script path as the MCP command; it discovers the daemon itself.
 
 ## Batch generation: `make gen`

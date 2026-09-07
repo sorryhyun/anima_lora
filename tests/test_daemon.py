@@ -1452,6 +1452,57 @@ def test_daemon_status_json(daemon, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)["error"] == "no such job"
 
 
+def test_status_pins_unfinished_jobs_below_the_cap(daemon, monkeypatch, capsys):
+    """A queued job below the newest-N cap still shows up.
+
+    The daemon does not always start jobs in submit order (a chained job waits on
+    its parent, so a later submit can run and finish first), so a still-pending
+    job can sit under a pile of newer finished rows. Truncating it away makes the
+    compact view read as "nothing is queued" exactly when the queue matters.
+    """
+    import anima_daemon.client as daemon_client
+    from scripts.tasks import daemon as daemon_tasks
+
+    cl, _ = daemon
+    monkeypatch.setattr(daemon_client, "DaemonClient", lambda port=None: cl)
+
+    pending = {
+        "id": "20260101-000000-pending",
+        "state": "queued",
+        "method": "lora",
+        "submitted_at": 1.0,
+    }
+    newer = [
+        {
+            "id": f"20260101-0000{i:02d}-done",
+            "state": "done",
+            "method": "lora",
+            "submitted_at": 100.0 + i,
+        }
+        for i in range(20)
+    ]
+    monkeypatch.setattr(cl, "list_jobs", lambda: [pending, *newer])
+
+    daemon_tasks.cmd_daemon_status([])
+    out = json.loads(capsys.readouterr().out)
+    ids = [j["id"] for j in out["jobs"]]
+    assert pending["id"] in ids, "queued job truncated out of the compact view"
+    assert ids[-1] == pending["id"]  # pinned rows keep the newest-first order
+    assert out["jobs_pinned"] == 1
+    assert out["jobs_shown"] == daemon_tasks._STATUS_DEFAULT_LIMIT + 1
+    assert out["jobs_total"] == 21
+
+    # An explicit --state filter is still honoured verbatim — no pinning.
+    daemon_tasks.cmd_daemon_status(["--state", "done"])
+    filtered = json.loads(capsys.readouterr().out)
+    assert all(j["state"] == "done" for j in filtered["jobs"])
+    assert filtered["jobs_pinned"] == 0
+
+    # --limit 0 stays a hard "no rows" escape hatch.
+    daemon_tasks.cmd_daemon_status(["--limit", "0"])
+    assert json.loads(capsys.readouterr().out)["jobs"] == []
+
+
 def test_daemon_status_down_exits_1(monkeypatch, capsys):
     import anima_daemon.client as daemon_client
     from scripts.tasks import daemon as daemon_tasks

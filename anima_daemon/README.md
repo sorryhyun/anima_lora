@@ -73,8 +73,13 @@ name, the train `output_name`, a bench script's own `--label`) plus its
 `returncode`, so a clean `done` and a "terminal but nonzero / signal-killed" row
 are distinguishable in the listing rather than one `--job <id>` open per job.
 `jobs_total`/`jobs_shown` report truncation.
-The job list is **newest first** and capped to the most-recent 15 by default;
-filter it with `ARGS="…"` (or pass the flags directly to the CLI):
+The job list is **newest first** and capped to the most-recent 15 by default —
+except that every unfinished job (`queued`/`running`/`paused`) is pinned into the
+view even when it falls below the cap (`jobs_pinned` counts those extra rows).
+The daemon does not always start jobs in submit order — a chained job waits on its
+parent, so a later submit can run and finish first — so without pinning a pending
+job can sit under 15 newer finished rows and the queue reads as empty.
+Filter the list with `ARGS="…"` (or pass the flags directly to the CLI):
 
 ```bash
 python tasks.py daemon-status --running        # only running/paused jobs

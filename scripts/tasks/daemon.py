@@ -113,14 +113,22 @@ _STATUS_JOB_FIELDS = (
 )
 
 # Default job cap for the compact view — the full history grows unboundedly, so
-# a bare `daemon-status` shows only the most-recent slice (newest first). `--all`
-# lifts the cap; `--limit N` sets it. `jobs_total`/`jobs_shown` in the output
+# a bare `daemon-status` shows only the most-recent slice (newest first) plus any
+# unfinished job the slice missed (see `_STATUS_PINNED_STATES`). `--all` lifts the
+# cap; `--limit N` sets it. `jobs_total`/`jobs_shown`/`jobs_pinned` in the output
 # report the truncation so a capped view never reads as "that's everything".
 _STATUS_DEFAULT_LIMIT = 15
 
 # Shorthand state groups for `--running` / `--failed` / `--done`.
 _STATUS_ACTIVE_STATES = frozenset({"running", "paused"})
 _STATUS_FAILED_STATES = frozenset({"error", "stopped"})
+# States that survive the newest-N truncation. The daemon does *not* always start
+# jobs in submit order (a chained job waits on its parent, so a later submit can
+# run and finish first), so a still-pending job can sit below 15 newer finished
+# rows and drop out of the compact view entirely — which reads as "nothing is
+# queued" at the exact moment the queue matters. Unfinished work is always the
+# point of the view, so it is pinned in on top of the slice.
+_STATUS_PINNED_STATES = _STATUS_ACTIVE_STATES | {"queued"}
 # Every legal job state — `--state` is validated against this. A typo (or a job
 # id passed where a state belongs) used to filter everything out and print
 # `jobs_shown: 0`, which reads exactly like "the job vanished".
@@ -211,7 +219,7 @@ def cmd_daemon_status(extra):
     """Daemon status as one JSON object on stdout — the agent/script surface.
 
     ``{"up", "base_url", "pid", "port", "root", "stale_code", "paused",
-    "active_job", "jobs_total", "jobs_shown", "jobs"}``. Passive: never starts a
+    "active_job", "jobs_total", "jobs_shown", "jobs_pinned", "jobs"}``. Passive: never starts a
     daemon (safe to poll); ``up: false`` + exit 1 when nothing answers
     ``/health``. ``base_url`` is resolved from the pidfile each call, so it
     follows a fallback-to-ephemeral port — read it from here rather than assuming
@@ -221,8 +229,11 @@ def cmd_daemon_status(extra):
 
     Jobs are compact summaries (id/state/error/ckpt_path/result_path/… plus a
     derived ``target`` = what the job operates on), **newest first** and capped to
-    the most-recent ``_STATUS_DEFAULT_LIMIT``; ``jobs_total`` vs ``jobs_shown``
-    report any truncation. Filter flags: ``--full`` (raw records) · ``--all`` (no
+    the most-recent ``_STATUS_DEFAULT_LIMIT`` — except that every unfinished job
+    (``queued``/``running``/``paused``) is pinned into the view even when it falls
+    below the cap, so a pending queue can never read as empty; ``jobs_pinned``
+    counts those extra rows and ``jobs_total`` vs ``jobs_shown`` report any
+    truncation. Filter flags: ``--full`` (raw records) · ``--all`` (no
     cap) · ``--limit N`` · ``--state s[,s]`` · ``--running`` · ``--failed`` ·
     ``--done`` · ``--job <id>`` / ``JOB=<id>`` (that one record, full, with the
     bench ``result.json`` it lifted inlined under ``result`` — no
@@ -271,8 +282,23 @@ def cmd_daemon_status(extra):
     jobs_total = len(jobs)
     if opts["states"] is not None:
         jobs = [j for j in jobs if j.get("state") in opts["states"]]
+    jobs_pinned = 0
     if not opts["all"] and opts["limit"] is not None and opts["limit"] >= 0:
-        jobs = jobs[: opts["limit"]]
+        head, tail = jobs[: opts["limit"]], jobs[opts["limit"] :]
+        # `--limit 0` stays a hard "show me no rows" escape hatch.
+        if opts["limit"]:
+            head_ids = {j.get("id") for j in head}
+            straggler = [
+                j
+                for j in tail
+                if j.get("state") in _STATUS_PINNED_STATES
+                and j.get("id") not in head_ids
+            ]
+            jobs_pinned = len(straggler)
+            # `tail` is already newest-first, so appending keeps the whole list
+            # newest-first without a re-sort.
+            head += straggler
+        jobs = head
     if opts["full"]:
         out_jobs = [{**j, "target": _job_target(j)} for j in jobs]
     else:
@@ -293,6 +319,7 @@ def cmd_daemon_status(extra):
                 "active_job": health.get("active_job"),
                 "jobs_total": jobs_total,
                 "jobs_shown": len(out_jobs),
+                "jobs_pinned": jobs_pinned,
                 "jobs": out_jobs,
             },
             indent=2,
