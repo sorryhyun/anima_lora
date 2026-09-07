@@ -45,8 +45,8 @@ from gui.widgets import apply_variant
 # (Anima weights) and ``anime_tools.downloads`` (curation weights) each carry an
 # Asset's repo, files, destination and an offline installed-probe. A duplicate
 # path list in the GUI is a Download button that reports the wrong state the
-# moment a row moves — which is exactly how ``models/mit/model.pth`` came to
-# read as MISSING while sitting on disk.
+# moment a row moves — which is exactly how the old MIT text net came to read
+# as MISSING while sitting on disk.
 #
 # Only the rows that already had translations keep an i18n key; anything newer
 # shows the catalog's own English title, which is mostly a proper noun anyway.
@@ -383,7 +383,7 @@ class ModelsDialog(_StreamingDialog):
 
     The tabs are the two halves of the catalog — ``library/downloads.py``'s
     Anima rows (packs anima / pe / cjk) and ``anime_tools.downloads``' curation
-    rows minus the trainer's ``HIDDEN_PACKS`` (text_mask). Splitting them
+    rows minus the trainer's ``HIDDEN_PACKS`` (empty today). Splitting them
     inside one modal keeps each list short and keeps the token field, the log
     and the single QProcess shared, which two dialogs could not do.
     """

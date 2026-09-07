@@ -175,14 +175,15 @@ def test_load_mask_from_dir_legacy_no_image_dir(tmp_path: Path) -> None:
 def test_resolve_default_mask_dir_priority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """post_image_dataset/masks > masks/merged > masks/sam > masks/mit > None."""
+    """post_image_dataset/masks > masks/merged > masks/sam > None (masks/mit
+    went with the v2 MIT removal)."""
     from library.datasets.subsets import _resolve_default_mask_dir
 
     monkeypatch.chdir(tmp_path)
     assert _resolve_default_mask_dir() is None
 
     (tmp_path / "masks" / "mit").mkdir(parents=True)
-    assert _resolve_default_mask_dir() == "masks/mit"
+    assert _resolve_default_mask_dir() is None
 
     (tmp_path / "masks" / "sam").mkdir(parents=True)
     assert _resolve_default_mask_dir() == "masks/sam"

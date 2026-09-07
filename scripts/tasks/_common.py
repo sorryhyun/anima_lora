@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # means the pinned rev in ``pyproject.toml`` moved past what this code was
 # audited against (or the trainer moved and the pin did not), so fail every
 # target up front instead of minutes into a GPU job.
-ANIME_TOOLS_CONTRACT_VERSION = 1
+ANIME_TOOLS_CONTRACT_VERSION = 2
 
 
 def _check_anime_tools_contract() -> None:

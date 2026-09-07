@@ -99,7 +99,7 @@ torch must not appear).
   `path_pattern`; `[[variant.stages.masks_sam]]`), `text_caching.py` (trainer-native).
   `tab.values()` = the trainer knobs, `tab.stage_values()` = `{stage_id: form}`; at
   submit the forms ride as `PREPROCESS_STAGES_JSON` inside `preprocess_env()` and
-  `scripts/tasks/_common.request_from_form` builds each request through the package's
+  `request_from_form` (`scripts/tasks/_common.py`) builds each request through the package's
   `build_argv` with the trainer's roots (the tab validates the same way at Save/Run,
   `_validate_stages`). Field labels/help come from the i18n overlay
   `explanations/guides/<lang>/_stage_fields.json` keyed `<stage_id>.<dest>` (English

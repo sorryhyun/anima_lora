@@ -18,9 +18,11 @@ def _resolve_default_mask_dir() -> Optional[str]:
     """Resolve the default mask directory.
 
     Prefers the new ``post_image_dataset/masks/`` layout produced by
-    ``make mask``; falls back to the legacy ``masks/{merged,sam,mit}/``
-    triple so users who haven't re-run masking after the consolidation
-    keep training without manual intervention.
+    ``make mask``; falls back to the legacy ``masks/{merged,sam}/`` pair so
+    users who haven't re-run masking after the consolidation keep training
+    without manual intervention (``masks/mit`` went with the v2 MIT removal).
+    Whether the result is *used* is ``--masked_loss``'s call — ``train.py``
+    strips it from every subset when that is off.
 
     Returned path is relative, matching how other paths are resolved from the
     training CWD (anima_lora/).
@@ -29,7 +31,6 @@ def _resolve_default_mask_dir() -> Optional[str]:
         "post_image_dataset/masks",
         "masks/merged",
         "masks/sam",
-        "masks/mit",
     )
     for candidate in candidates:
         if os.path.isdir(candidate):
@@ -44,7 +45,7 @@ def resolve_configured_mask_dir(mask_dir: Optional[str]) -> Optional[str]:
     The config default names where ``make mask`` *would* write, which is not
     the same as masks being present. Handing a nonexistent root to every
     subset would flip ``alpha_mask`` on for maskless checkouts and suppress
-    the legacy ``masks/{merged,sam,mit}`` auto-resolution, so drop it here and
+    the legacy ``masks/{merged,sam}`` auto-resolution, so drop it here and
     let ``_resolve_default_mask_dir`` run. A subset that names its own
     ``mask_dir`` in the dataset blueprint bypasses this and keeps the loud
     "resolved 0 masks" warning from the dataset build.

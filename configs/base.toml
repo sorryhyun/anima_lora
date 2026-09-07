@@ -46,7 +46,9 @@ use_text_cache = true
 skip_cache_check = true
 vae_chunk_size = 64
 vae_disable_cache = true
-masked_loss = true
+# v2: masks are opt-in. `make mask` writes the tree, this key makes training
+# read it — the pair turns masking on; a mask dir left on disk alone does not.
+masked_loss = false
 torch_compile = true
 attn_mode = "flash"
 compile_dynamic_seq = true

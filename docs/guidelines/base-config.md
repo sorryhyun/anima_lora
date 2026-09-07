@@ -112,7 +112,7 @@ during `make preprocess`, then training reads only the caches.
 
 | Key | Default | What it controls |
 |---|---|---|
-| `masked_loss` | `true` | Zero the loss outside mask regions (e.g. exclude speech bubbles). Needs masks under `post_image_dataset/masks/` (run `make mask`); **missing masks are simply ignored**, so leaving this on is harmless. Turn off in a method TOML to force unmasked even when masks exist. |
+| `masked_loss` | `false` | Zero the loss outside mask regions (e.g. exclude speech bubbles). **Off by default since v2** — `make mask` + this key is the pair that turns masking on; a mask tree left on disk is ignored (one log line) until it is set. Missing masks under an enabled tree are simply all-ones. |
 | `use_cmmd` | `false` | Validation signal selector. **Validation is OFF in base.toml** (`validation_split_num = 0`). When you turn validation on (see blueprint below), `use_cmmd = true` uses paired CMMD² (PE-Core MMD), which tracks sample quality better than the legacy per-σ FM-MSE fallback on Anima. |
 
 ## Compile, attention, precision
@@ -209,7 +209,7 @@ preprocess.toml at lowest priority (preset / method / CLI still override):
   a `mask_dir` of its own, via the BlueprintGenerator's argparse fallback, and
   `--mask_dir` overrides it. It is **gated on the directory existing** — the
   key names where `make mask` *would* write, so a checkout that never masked
-  keeps falling back to the legacy `masks/{merged,sam,mit}` auto-resolution
+  keeps falling back to the legacy `masks/{merged,sam}` auto-resolution
   instead of silently enabling the masked-loss path over an empty tree. Same
   key drives `make mask` / `make mask-clean`, `make preprocess-reconcile`, the
   GUI mask counter and image overlay, and the turbo distill loop.

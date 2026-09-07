@@ -30,9 +30,10 @@ is gone.**
 The default becomes: no masks, train on the whole image. Masking stays fully
 supported, just opt-in.
 
-- [ ] `configs/base.toml`: `masked_loss = true` → `false`, with a comment
+- [x] `configs/base.toml`: `masked_loss = true` → `false`, with a comment
       saying `make mask` + this key is the pair that turns it on.
-- [ ] `gui/tabs/preprocess/knobs.py`: `DEFAULT_RUN_SAM_MASK = True` → `False`.
+- [x] `gui/tabs/preprocess/knobs.py`: `DEFAULT_RUN_SAM_MASK = True` → `False`
+      (`tests/fixtures/gui_preprocess_knobs.json` regenerated with `--write`).
 - [x] SAM3 out of `make download-models`' component list
       (`scripts/tasks/downloads.py::cmd_download_models`) — keep
       `make download-sam3` as the opt-in target, the way the vocab pack works.
@@ -40,14 +41,20 @@ supported, just opt-in.
       (`af98813e` — the component list is now `DEFAULT_SET` in
       `library/downloads.py`; SAM3, MIT, the OCR stack and the vocab pack are
       all out of it, pinned by a test.)
-- [ ] Check nothing silently re-enables it: `resolve_configured_mask_dir`
-      already gates on the dir existing, so a maskless checkout is inert — but
-      a user who ran `make mask` once before upgrading now has a mask dir *and*
-      `masked_loss = false`. Confirm that combination trains unmasked with no
-      warning spam (or one clear line).
-- [ ] Method configs that pin `masked_loss = true` (`configs/methods/turbo.toml`
-      uses `use_masked_loss`) — decide per file whether the pin is intentional.
-      Method wins over preset, so a stale pin defeats the new default.
+- [x] Check nothing silently re-enables it. **It did**: the loss applied a mask
+      whenever the batch carried `alpha_masks` (`library/training/losses.py`),
+      and a subset picks a mask dir up from the config chain or the legacy
+      auto-resolution regardless of `masked_loss` — so a leftover `make mask`
+      tree kept masking with the key off (`docs/guidelines/training.md` had
+      claimed otherwise). Fixed in `train.py::_prepare_dataset`: with
+      `masked_loss` off every subset's `mask_dir` / `alpha_mask` is stripped
+      after the blueprint build and **one** info line names the ignored tree.
+      `masked_loss` is now the single switch.
+- [x] Method configs that pin `masked_loss = true`: only
+      `configs/methods/turbo.toml` (`use_masked_loss`) — flipped to `false`,
+      the turbo loop reads the same tree. The `easycontrol/*.toml` pins are all
+      `false` already. The gitignored `configs/gui-methods/custom/{turbo,
+      superturbo*}.toml` copies still say `true` — user-local, left alone.
 
 ## 2. Remove the manga text detector (MIT)
 
@@ -85,15 +92,24 @@ surfaces below.
       (the `MitMaskRequest` argv round-trip went with it).
       `tests/test_nested_paths.py` only uses `mit` as a directory name for the
       merge — left alone.
-- [ ] Legacy path triple `masks/{merged,sam,mit}` in
-      `library/datasets/subsets.py::_resolve_default_mask_dir` and its mention
-      in `library/config/cli_args.py` — keep or trim? Keeping costs nothing and
-      preserves old checkouts; if trimmed, do it in the same commit as the docs.
-- [ ] Package side: `anime_tools` keeps `MitMaskRequest` (its own users may
-      want it) — this is a *trainer* removal only. Confirm no trainer import
-      of `anime_tools.masking.mit` survives; the `anime-tools[masking]` extra
-      still carries `segmentation-models-pytorch`, decide whether the trainer
-      still requests that extra.
+- [x] Legacy path triple `masks/{merged,sam,mit}` → **trimmed to the pair**
+      `masks/{merged,sam}` (`_resolve_default_mask_dir`, the `--mask_dir` help,
+      `CLAUDE.md`, `base-config.md`, `training.md`, `tests/test_nested_paths.py`).
+      `scripts/update.py::PRESERVE_DIRS` keeps `masks_mit` — that list protects
+      user data on `make update`, it is not a feature.
+- [x] Package side — **decision reversed: removed from the package too**
+      (nobody wants it). `anime_tools` 0.5.0 @ `9413178` drops `masking/mit.py`,
+      `generate_masks_mit`, `MitMaskRequest`, the `masks_mit` stage,
+      `WS.MASKS_MIT`, the `text_mask` pack (`mit_text` / `ctd_onnx`) and the
+      `segmentation-models-pytorch` / `albumentations` deps; the GUI's Masks
+      panel is Subject / Merge and `MergeMasksRequest` defaults to the SAM3
+      tree alone. `CONTRACT_VERSION` 1 → 2 (a stage and a request name went),
+      mirrored in `scripts/tasks/_common.py`. Trainer side: pin bumped, `uv
+      lock` + `uv sync --frozen` clean (A1 below is done for this rev),
+      `DL.HIDDEN_PACKS` is `()` (seam kept, test pins the rows are really
+      gone), the near-twins miner lost its dead `--signal mit_text` mode, and
+      `easycontrol_adapters/colorization/README.md`'s recipe is SAM3-only. No
+      trainer import of `anime_tools.masking.mit` existed.
 
 ## 2b. Model catalog (landed early — `af98813e`)
 
@@ -170,10 +186,9 @@ read that one list. Follow-ups this leaves:
 
 Detail and rationale in that doc; listed here so nothing gets lost.
 
-- [ ] **A1** Pin the shipping `anime_tools` rev in `[tool.uv.sources]`, `uv lock`,
-      commit the lock. Package is currently ahead of the pin (the `OcrRequest
-      --reader vl` work is uncommitted in `../anime_tools` — commit and push it
-      first).
+- [x] **A1** Pin the shipping `anime_tools` rev in `[tool.uv.sources]`, `uv lock`,
+      commit the lock. Done at `9413178` (0.5.0, contract 2) with the MIT
+      removal; re-pin if the package moves again before the tag.
 - [ ] **A2** Offline/Windows install decision — document that `uv sync` needs
       network for the git dep (the honest default) in `README.md` Setup.
 - [ ] **A4** Delete the stub extras `cuda-windows = [] / rocm-windows = []`.
@@ -197,7 +212,8 @@ Detail and rationale in that doc; listed here so nothing gets lost.
 ## 6. Merge gates
 
 - [ ] `make test-unit` green (including `test_doc_refs`). *Green as of
-      `2026-09-07`: 1647 passed, 1 skipped — re-check before the tag.*
+      `2026-09-07` after §1/§2: 1674 passed, 1 skipped — re-check before the
+      tag.*
 - [ ] `make preprocess` on a small shard from a **fresh** clone with SAM3 never
       downloaded — must complete with no mask-related error.
 - [ ] `make lora` on that shard trains unmasked by default.

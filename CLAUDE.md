@@ -159,8 +159,10 @@ forcing `blocks_to_swap=0`).
   where it reaches every subset that doesn't name its own `mask_dir` via the
   BlueprintGenerator argparse fallback (`--mask_dir` overrides). Training **gates it on
   the dir existing** (`resolve_configured_mask_dir`) so a maskless checkout still falls
-  back to the legacy `masks/{merged,sam,mit}` auto-resolution instead of enabling masked
-  loss over an empty tree. The rest of the **shared** path contract
+  back to the legacy `masks/{merged,sam}` auto-resolution instead of enabling masked
+  loss over an empty tree — and **`masked_loss` (off by default since v2) is the one
+  switch**: when it is off `train.py` strips `mask_dir` from every subset and logs one
+  line, so a mask tree left on disk never re-enables masking by itself. The rest of the **shared** path contract
   (`resized_image_dir`, `lora_cache_dir`, model paths) stays in base.toml because the
   dataset blueprint interpolates `{resized_image_dir}`/`{lora_cache_dir}`.
 - `configs/presets.toml` — hardware profiles as sections: `[default]`, `[fast_16gb]`,
@@ -395,7 +397,7 @@ reads only cached embeddings.
 
 The caption grammar, tag taxonomy/correction, variants sidecars, caption index, the
 **Anima Tagger**, the caption-master stages (autotag / position clauses / multiview
-audit), **masking** (SAM3 / MIT / merge) and **grouping** (PE-Spatial near-twin features
+audit), **masking** (SAM3 / merge) and **grouping** (PE-Spatial near-twin features
 → `groups.json`) live in the sibling repo **https://github.com/sorryhyun/anime_tools**
 (package `anime_tools`; contract at `../anime_tools/docs/contract.md`). Dependency
 direction is **trainer → `anime_tools`, never the reverse**

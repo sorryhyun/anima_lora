@@ -48,7 +48,7 @@
       },
       "meta_full": {
         "family": "lora",
-        "run_sam_mask": true,
+        "run_sam_mask": false,
         "stages": {
           "masks_sam": [
             {
@@ -127,7 +127,7 @@
       },
       "meta_full": {
         "family": "lora",
-        "run_sam_mask": true,
+        "run_sam_mask": false,
         "stages": {
           "masks_sam": [
             {
@@ -144,7 +144,7 @@
       },
       "meta_inputs_only": {
         "family": "lora",
-        "run_sam_mask": true,
+        "run_sam_mask": false,
         "stages": {
           "masks_sam": [
             {
@@ -236,7 +236,7 @@
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "run_sam_mask": false,
+        "run_sam_mask": true,
         "source_image_dir": "flipped_images",
         "stages": {
           "autotag": {
@@ -293,7 +293,7 @@
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "run_sam_mask": true,
+        "run_sam_mask": false,
         "source_image_dir": "flipped_images",
         "stages": {
           "autotag": {
@@ -409,7 +409,7 @@
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "run_sam_mask": false,
+        "run_sam_mask": true,
         "source_image_dir": "flipped_images",
         "stages": {
           "autotag": {
@@ -466,7 +466,7 @@
         "family": "lora",
         "path_scope": "artist_a",
         "preprocess_path_pattern": "artist_a/**",
-        "run_sam_mask": false,
+        "run_sam_mask": true,
         "source_image_dir": "flipped_images",
         "stages": {
           "autotag": {

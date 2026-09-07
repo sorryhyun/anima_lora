@@ -54,19 +54,24 @@ def test_every_visible_row_belongs_to_a_listed_pack():
     assert not (set(DL.HIDDEN_PACKS) & pack_ids)
 
 
-def test_hidden_pack_rows_are_not_on_the_trainer_side():
-    """``text_mask`` (the MIT text segmenter) stays in the package catalog but
-    is neither listed, resolved nor downloadable from here."""
+def test_hidden_pack_rows_are_not_on_the_trainer_side(monkeypatch):
+    """A pack in ``HIDDEN_PACKS`` is neither listed, resolved nor downloadable
+    from here. The set is empty since the package dropped the MIT text
+    segmenter (``text_mask``) itself — pin that the rows are really gone and
+    that the seam still filters when a pack is named."""
     from anime_tools.downloads import catalog as package_catalog
 
-    hidden = {a.id for a in package_catalog() if a.pack in DL.HIDDEN_PACKS}
-    assert "mit_text" in hidden
-    assert not (hidden & {a.id for a in DL.curation_catalog()})
-    assert not (hidden & set(DL.by_id()))
+    assert DL.HIDDEN_PACKS == ()
+    assert not {"mit_text", "ctd_onnx"} & {a.id for a in package_catalog()}
     with pytest.raises(KeyError):
         DL.resolve(["mit_text"])
     with pytest.raises(KeyError):
         DL.resolve(["text_mask"])
+
+    monkeypatch.setattr(DL, "HIDDEN_PACKS", ("grouping",))
+    hidden = {a.id for a in package_catalog() if a.pack == "grouping"}
+    assert hidden == {"pe_spatial"}
+    assert not (hidden & {a.id for a in DL.curation_catalog()})
 
 
 def test_the_first_run_set_is_the_mandatory_set():

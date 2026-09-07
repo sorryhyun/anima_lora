@@ -720,7 +720,10 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
 
 def add_masked_loss_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--masked_loss", action="store_true", help="apply mask for calculating loss."
+        "--masked_loss",
+        action="store_true",
+        help="apply mask for calculating loss. Off by default since v2: a mask "
+        "tree on disk is ignored (one log line) until this is set.",
     )
     parser.add_argument(
         "--mask_dir",
@@ -730,7 +733,7 @@ def add_masked_loss_arguments(parser: argparse.ArgumentParser):
         "mirroring the resized/ subdir layout. Defaults to `mask_dir` in "
         "configs/preprocess.toml; a subset's own `mask_dir` in the dataset "
         "blueprint still wins. Ignored when the directory does not exist, so "
-        "the legacy masks/{merged,sam,mit} auto-resolution still applies to a "
+        "the legacy masks/{merged,sam} auto-resolution still applies to a "
         "checkout that never re-ran masking.",
     )
 

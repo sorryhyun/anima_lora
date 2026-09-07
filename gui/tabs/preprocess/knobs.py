@@ -45,7 +45,7 @@ DEFAULT_TE_SHUFFLE_VARIANTS = 4
 DEFAULT_TE_TAG_DROPOUT = 0.1
 DEFAULT_CAPTION_POSITION_CLAUSES = False
 DEFAULT_CAPTION_AUTOTAG = False
-DEFAULT_RUN_SAM_MASK = True
+DEFAULT_RUN_SAM_MASK = False  # v2: masking is opt-in
 # The SAM rule the first card seeds from when neither the variant nor
 # ``configs/sam_mask.yaml`` names one (the CLI's historical prompt set).
 DEFAULT_SAM_PROMPTS = ("speech bubble", "text bubble")

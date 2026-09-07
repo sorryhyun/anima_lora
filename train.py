@@ -2061,6 +2061,27 @@ class AnimaTrainer:
                 None  # placeholder until validation dataset supported for arbitrary
             )
 
+        # v2: `masked_loss` is the one switch. A mask tree left on disk from an
+        # earlier `make mask` (config `mask_dir`, or the legacy `masks/{merged,
+        # sam}` auto-resolution) must not re-enable masking on its own — the
+        # loss applies whatever `alpha_masks` the batch carries, so strip the
+        # subsets' mask_dir here and say so once.
+        if not getattr(args, "masked_loss", False):
+            ignored: set[str] = set()
+            for group in (train_dataset_group, val_dataset_group):
+                for ds in getattr(group, "datasets", None) or []:
+                    for subset in getattr(ds, "subsets", None) or []:
+                        if getattr(subset, "mask_dir", None):
+                            ignored.add(str(subset.mask_dir))
+                            subset.mask_dir = None
+                            subset.alpha_mask = False
+            if ignored:
+                logger.info(
+                    "masked_loss = false: masks under %s are ignored "
+                    "(set masked_loss = true to train with them)",
+                    ", ".join(sorted(ignored)),
+                )
+
         # sigma_lowres: activate the σ-demote sidecar on TRAIN datasets only
         # — validation stays native so val loss is comparable across arms.
         if getattr(args, "sigma_lowres", False):

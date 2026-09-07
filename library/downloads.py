@@ -120,11 +120,11 @@ TRAINER_PACKS: tuple[Pack, ...] = (
     ),
 )
 
-# Package packs the trainer does not offer. ``text_mask`` (the MIT UNet++ text
-# segmenter + its ComicTextDetector gate) went with v2's in-image text masking:
-# the rows stay in the package catalog for its own users, but they are not
-# listed, resolved or downloaded from here.
-HIDDEN_PACKS: tuple[str, ...] = ("text_mask",)
+# Package packs the trainer does not offer: not listed, resolved or downloaded
+# from here. Empty since the package dropped ``text_mask`` (the MIT UNet++ text
+# segmenter + its ComicTextDetector gate) outright in 0.5 — the seam stays so
+# the next package-only pack is one id here, not a row filter.
+HIDDEN_PACKS: tuple[str, ...] = ()
 
 PACKS: tuple[Pack, ...] = (
     *TRAINER_PACKS,
