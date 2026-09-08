@@ -292,7 +292,9 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "partitioner recompute view ops in backward instead of saving them "
         "(views are free to recompute but saving one pins its base tensor "
         "alive). Lowers the saved-for-backward set without engaging the "
-        "activation_memory_budget knapsack. Ignored (with a log line) under "
+        "activation_memory_budget knapsack. Measured **exactly inert** on "
+        "Anima (_archive/bench/freefit_vram) — prefer "
+        "--partitioner_aggressive_recomputation. Ignored (with a log line) under "
         "gradient_checkpointing — same repartitioning hazard as the budget.",
     )
     parser.add_argument(
@@ -301,7 +303,8 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         help="torch._functorch.config.aggressive_recomputation: drop the "
         "min-cut partitioner's ban-recompute heuristics so more op classes "
         "may be recomputed in backward when the cut is cheap. Can trade "
-        "backward time for VRAM — see bench/freefit_vram before adopting. "
+        "backward time for VRAM: −2.25 GB for +12.6% s/it at budget=0.99 "
+        "(_archive/bench/freefit_vram). "
         "Ignored (with a log line) under gradient_checkpointing.",
     )
     parser.add_argument(
