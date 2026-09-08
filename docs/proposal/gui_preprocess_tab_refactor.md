@@ -1,12 +1,12 @@
 # Preprocessing tab refactor — declarative knobs + section panels
 
-Status: **Phases 0, 1 and 3 landed 2026-08-28** (`gui/tabs/preprocess/` package; the tab is 2043 → 1019 lines + ~930 lines of section modules). **Phase 2 superseded 2026-09-07**: `caption_drop_groups` (and every other `correct` / `autotag` / `resize` / `masks_sam` knob) now arrives from the stage schema — see `gui_preprocess_from_anime_tools.md` §7; the `tag_groups` chip widget below was not built (a plain text row over the schema's `str` field). Phase 4 open. Motivating change: GH #95 caption-group removal
-(`--caption_drop_groups`, landed in the pipeline 2026-08-28, **not yet in the GUI**).
+Status: Phases 0, 1 and 3 landed 2026-08-28 (`gui/tabs/preprocess/` package; the tab is 2043 → 1019 lines + ~930 lines of section modules). Phase 2 superseded 2026-09-07: `caption_drop_groups` (and every other `correct` / `autotag` / `resize` / `masks_sam` knob) now arrives from the stage schema — see `gui_preprocess_from_anime_tools.md` §7; the `tag_groups` chip widget below was not built (a plain text row over the schema's `str` field). Phase 4 open. Motivating change: GH #95 caption-group removal
+(`--caption_drop_groups`, landed in the pipeline 2026-08-28, not yet in the GUI).
 
 ## Why now
 
 `gui/tabs/preprocess_tab.py` is 2043 lines and still growing linearly with every
-knob. The cost isn't the widget code — it's that **one knob touches 7–9 sites**,
+knob. The cost isn't the widget code — it's that one knob touches 7–9 sites,
 none of which is checked against the others:
 
 | # | Site | Example (`caption_autotag_mode`) |
@@ -115,13 +115,13 @@ one-liner over `knobs.py`. Target ≲ 500 lines.
 | `anime_tools.stages.cli.correct_captions --caption_drop_groups` | done | — |
 | `tasks.py preprocess`: env `CAPTION_DROP_GROUPS` / `caption_drop_groups` toml / CLI | done | — |
 | `configs/preprocess.toml` commented key | done | — |
-| GUI | **pending** | Phase 2 below: one `Knob` row + a `tag_groups` widget |
+| GUI | pending | Phase 2 below: one `Knob` row + a `tag_groups` widget |
 
 The `tag_groups` widget: a flow of toggle chips over `drop_group_names()`
 (slug label, tooltip = KB path + example tags) plus a free-text line for
 literal path prefixes (`효과/연출 > 조명`). Value = tuple of selectors;
 serialized comma-joined into `CAPTION_DROP_GROUPS`. Placed in the
-**caption-editing** box next to `insert_no_artist` (the two compose: drop
+caption-editing box next to `insert_no_artist` (the two compose: drop
 `artist` + insert `@no-artist` is the style-LoRA recipe from #95). It should
 carry a one-line hint that the master caption is never edited and that
 unknown tags are kept — the two questions the issue author will ask.
@@ -148,7 +148,7 @@ Pin current behavior before moving anything:
 
 ### Phase 1 — extract `knobs.py`, keep the UI as is (1 day) — DONE 2026-08-28
 
-Landed as designed with two deviations: `elide_for_meta` became `merge_into_meta(meta, values, defaults, include_mask=)` (mutates the loaded `[variant]` table in place, matching the old pop-or-set semantics — a mask-less save leaves earlier mask keys untouched), and `default_from` grew a `sam_yaml` policy for the mask knobs. The fixture surfaced a real policy split the table now declares rather than hides: `drop_lowres_images` / `min_pixels` / `freefit_max_ratio` / crop knobs **load** from `preprocess.toml` but are **elided** against the hardcoded default (`persist="if_changed"`), so under a populated TOML they get written to the variant untouched, and flipping one back to the hardcoded default is popped and reloads as the TOML value — see `test_const_elision_under_populated_toml_is_the_recorded_quirk`. Collapsing that onto `if_changed_resolved` is a one-word change per row, deliberately not made here (Non-goals).
+Landed as designed with two deviations: `elide_for_meta` became `merge_into_meta(meta, values, defaults, include_mask=)` (mutates the loaded `[variant]` table in place, matching the old pop-or-set semantics — a mask-less save leaves earlier mask keys untouched), and `default_from` grew a `sam_yaml` policy for the mask knobs. The fixture surfaced a real policy split the table now declares rather than hides: `drop_lowres_images` / `min_pixels` / `freefit_max_ratio` / crop knobs load from `preprocess.toml` but are elided against the hardcoded default (`persist="if_changed"`), so under a populated TOML they get written to the variant untouched, and flipping one back to the hardcoded default is popped and reloads as the TOML value — see `test_const_elision_under_populated_toml_is_the_recorded_quirk`. Collapsing that onto `if_changed_resolved` is a one-word change per row, deliberately not made here (Non-goals).
 
 - Write the `KNOBS` table + the five pure functions; unit-test them against
   the Phase 0 fixture.
@@ -175,7 +175,7 @@ Landed as designed with two deviations: `elide_for_meta` became `merge_into_meta
 
 ### Phase 3 — section panels (1–2 days) — DONE 2026-08-28 (before Phase 2)
 
-Landed as designed: `_section.py` (`KnobSection` — `add_knob(key, widget, label)` registers the editor, wires change→`changed`, the `enabled_by` gate, and the generic `values()`/`set_values()` dispatched on **widget type**, so two `float` knobs may use different editors), `image_prep.py` (+ `_ResizeCropAnchorWidget`, new `_CropMarginsWidget`), `text_caching.py`, `captions.py` (`AutotagSection` + `CaptionEditingSection`), `masking.py` (`_RuleCard`, `SamMaskSection` with `collect_rules()`/`set_rule_cards()`, `MitMaskSection`), `tab.py`. `gui/tabs/preprocess_tab.py` is the shim; `gui/tabs/preprocess/__init__.py` exports `PreprocessingTab` lazily (PEP 562) so `knobs` stays importable without PySide6.
+Landed as designed: `_section.py` (`KnobSection` — `add_knob(key, widget, label)` registers the editor, wires change→`changed`, the `enabled_by` gate, and the generic `values()`/`set_values()` dispatched on widget type, so two `float` knobs may use different editors), `image_prep.py` (+ `_ResizeCropAnchorWidget`, new `_CropMarginsWidget`), `text_caching.py`, `captions.py` (`AutotagSection` + `CaptionEditingSection`), `masking.py` (`_RuleCard`, `SamMaskSection` with `collect_rules()`/`set_rule_cards()`, `MitMaskSection`), `tab.py`. `gui/tabs/preprocess_tab.py` is the shim; `gui/tabs/preprocess/__init__.py` exports `PreprocessingTab` lazily (PEP 562) so `knobs` stays importable without PySide6.
 
 Deviations / notes:
 
@@ -189,7 +189,7 @@ Deviations / notes:
 - Collapsible sections (`QToolButton` header, like ConfigTab's Advanced fold)
   with a per-section "enabled" summary in the header ("Captions: drop
   artist,lighting · autotag merge") so the tab reads as a pipeline.
-- Order sections in **pipeline order** — resize → autotag → position clauses →
+- Order sections in pipeline order — resize → autotag → position clauses →
   correction/drop → TE → masking — matching `cmd_preprocess`'s chain
   (currently autotag sits *after* text caching in the UI, which is the reverse
   of when it runs).
@@ -209,8 +209,8 @@ Deviations / notes:
 - **Silent default drift** in Phase 1: the elision rule is subtle (three
   sources, `_pp_default` for four keys). The Phase 0 fixture is the only guard
   — don't skip it.
-- **Tests reaching into widgets**: 10 tests touch `tab.<widget>` directly.
+- Tests reaching into widgets: 10 tests touch `tab.<widget>` directly.
   Phase 3's `__getattr__` shim keeps them green; migrate them gradually
   (then delete `_WIDGET_ALIASES`).
-- **i18n parity is manual** (gui/CLAUDE.md) — Phase 2 adds ~6 strings; run
+- i18n parity is manual (gui/CLAUDE.md) — Phase 2 adds ~6 strings; run
   the `translator` agent, don't hand-copy English.

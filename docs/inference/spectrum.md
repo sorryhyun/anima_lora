@@ -1,6 +1,6 @@
 # Spectrum — Inference Acceleration
 
-Training-free diffusion sampling acceleration via **Chebyshev polynomial feature forecasting**.
+Training-free diffusion sampling acceleration via Chebyshev polynomial feature forecasting.
 
 Paper: [Adaptive Spectral Feature Forecasting for Diffusion Sampling Acceleration](https://arxiv.org/abs/2603.01623) (Han et al., CVPR 2026, Stanford/ByteDance)
 
@@ -23,7 +23,7 @@ python inference.py --spectrum \
 
 ## How it works
 
-Standard diffusion runs the full DiT (28 transformer blocks) at every denoising step. Spectrum observes that block outputs are smooth functions of the timestep, so most steps can be **predicted** instead of computed.
+Standard diffusion runs the full DiT (28 transformer blocks) at every denoising step. Spectrum observes that block outputs are smooth functions of the timestep, so most steps can be predicted instead of computed.
 
 ### Per-step decision
 
@@ -38,14 +38,14 @@ step i
 
 The window size N starts at `window_size` and grows by `flex_window` after each actual forward:
 
-1. **Warmup** (steps `0 .. warmup-1`): always run full forward to seed the forecaster.
-2. **Adaptive**: actual forward every `floor(N)` cached steps; N += α after each forward.
+1. Warmup (steps `0 .. warmup-1`): always run full forward to seed the forecaster.
+2. Adaptive: actual forward every `floor(N)` cached steps; N += α after each forward.
 
 With 30 steps and defaults (N=2, α=0.25, warmup=6): more actual forwards for quality, moderate speedup.
 
 ### SEA schedule (content-adaptive when-to-skip)
 
-The growing window is content-blind — it skips on a fixed cadence regardless of what the prompt is doing at each step. The optional **SEA schedule** (`--spectrum_schedule sea`) replaces *only the when-to-skip decision* with [SeaCache](https://arxiv.org/abs/2602.18993)'s Spectral-Evolution-Aware metric, while keeping everything else (Chebyshev forecasting, head reconstruction, warmup/stop forcing) identical:
+The growing window is content-blind — it skips on a fixed cadence regardless of what the prompt is doing at each step. The optional SEA schedule (`--spectrum_schedule sea`) replaces *only the when-to-skip decision* with [SeaCache](https://arxiv.org/abs/2602.18993)'s Spectral-Evolution-Aware metric, while keeping everything else (Chebyshev forecasting, head reconstruction, warmup/stop forcing) identical:
 
 ```
 once per step, before deciding (x_t is available pre-forward):
@@ -55,11 +55,11 @@ once per step, before deciding (x_t is available pre-forward):
   else:          cached step (forecast as usual)
 ```
 
-`SEA_σ` is a σ-dependent Wiener-like low-pass (`networks/spectrum_sea.py`) that downweights the high-frequency noise component, so the accumulated distance tracks the **content** the trajectory is moving rather than stochastic detail. On Anima, this filtered input distance predicts the true skip-cost (ρ +0.51) whereas raw latent distance *anti*-predicts it (−0.36) — see `docs/findings/seacache_sea_decision_metric.md`.
+`SEA_σ` is a σ-dependent Wiener-like low-pass (`networks/spectrum_sea.py`) that downweights the high-frequency noise component, so the accumulated distance tracks the content the trajectory is moving rather than stochastic detail. On Anima, this filtered input distance predicts the true skip-cost (ρ +0.51) whereas raw latent distance *anti*-predicts it (−0.36) — see `docs/findings/seacache_sea_decision_metric.md`.
 
-Because only the decision changes — the per-step `noise_pred` reconstruction (forecast + head) still runs every step — the sampler-boundary plug-ins (**SMC-CFG / mod-guidance**) compose unchanged. CFG is irrelevant to the decision: `x_t` is shared across cond/uncond, so one accumulator drives both branches at the cost of a single FFT/iFFT per step (negligible, **zero** extra DiT forwards).
+Because only the decision changes — the per-step `noise_pred` reconstruction (forecast + head) still runs every step — the sampler-boundary plug-ins (SMC-CFG / mod-guidance) compose unchanged. CFG is irrelevant to the decision: `x_t` is shared across cond/uncond, so one accumulator drives both branches at the cost of a single FFT/iFFT per step (negligible, zero extra DiT forwards).
 
-**The δ knob.** δ is the latency/quality dial. By default (`--spectrum_delta auto`) it self-calibrates on the first generate: the runner dry-runs the growing-window schedule while recording the SEA-distance trace, then binary-searches δ so the SEA arm's post-warmup refresh fraction *matches the window's own* — a like-for-like swap at matched compute, not a free speed re-pick. The calibrated δ is cached in-process and mirrored to `output/spectrum_sea_delta.json`, keyed on the schedule geometry (steps / warmup / stop / refresh_ratio / cfg / sampler / H×W — **not** the prompt). Pin it explicitly with `--spectrum_delta <float>` for sweeps, or retarget the auto fraction with `--spectrum_refresh_ratio`.
+**The δ knob.** δ is the latency/quality dial. By default (`--spectrum_delta auto`) it self-calibrates on the first generate: the runner dry-runs the growing-window schedule while recording the SEA-distance trace, then binary-searches δ so the SEA arm's post-warmup refresh fraction *matches the window's own* — a like-for-like swap at matched compute, not a free speed re-pick. The calibrated δ is cached in-process and mirrored to `output/spectrum_sea_delta.json`, keyed on the schedule geometry (steps / warmup / stop / refresh_ratio / cfg / sampler / H×W — not the prompt). Pin it explicitly with `--spectrum_delta <float>` for sweeps, or retarget the auto fraction with `--spectrum_refresh_ratio`.
 
 The SEA filter's power-law exponent β is fixed at 2 (the natural-image prior, untuned). The window schedule remains the default; `sea` is opt-in.
 
@@ -131,7 +131,7 @@ The integration uses `register_forward_pre_hook` on `Anima.final_layer` to captu
 
 The `SpectrumKSampler` node (`KSampler (Spectrum)`) is a drop-in KSampler replacement. It works with any ComfyUI sampler (er_sde, euler, dpm, etc.) because the caching logic is transparent to the sampling loop.
 
-**Wiring:** The node installs a `model_function_wrapper` on a cloned model. ComfyUI's sampling pipeline calls this wrapper once per step with both cond and uncond batched together (via `calc_cond_batch`). The wrapper decides actual vs cached per step by tracking sigma changes:
+Wiring: The node installs a `model_function_wrapper` on a cloned model. ComfyUI's sampling pipeline calls this wrapper once per step with both cond and uncond batched together (via `calc_cond_batch`). The wrapper decides actual vs cached per step by tracking sigma changes:
 
 ```
 ComfyUI sampling loop (any sampler)

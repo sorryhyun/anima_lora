@@ -20,7 +20,7 @@ The installer will:
 3. install the locked Python / PyTorch environment;
 4. save the selected backend for later updates;
 5. verify the ROCm runtime when AMD is selected;
-6. create the **Anima LoRA GUI** desktop shortcut; and
+6. create the Anima LoRA GUI desktop shortcut; and
 7. launch the GUI.
 
 For normal use, there is no separate AMD installation procedure after this.
@@ -28,7 +28,7 @@ Use the GUI for model download, preprocessing, training, and updates.
 
 ### Updating
 
-Use the **Update** button in the GUI.
+Use the Update button in the GUI.
 
 The installer stores the selected Windows backend in `.anima_backend`, and the
 updater reuses it. An existing ROCm installation therefore stays on the ROCm
@@ -98,7 +98,7 @@ Flash Attention, and dependency workflow.
 ## Manual clone / advanced setup
 
 The one-line installer above is recommended. If you intentionally install from
-a git clone on Windows: CUDA is the **default** backend (the `cuda-windows`
+a git clone on Windows: CUDA is the default backend (the `cuda-windows`
 dependency group is default-on, so a plain `uv sync` installs it — GH #92);
 ROCm swaps that group out explicitly.
 

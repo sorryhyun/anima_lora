@@ -1,19 +1,19 @@
 # Mod guidance — `pooled_text_proj` distillation loop
 
-**Finished line** (2026-08-24) — verdicts and the open remainder are digested in
+Finished line (2026-08-24) — verdicts and the open remainder are digested in
 [`STATUS.md`](STATUS.md). This README is the ops surface.
 
 The tree moved here from its old `distill_mod` home under `scripts/` when the
 line finished, and the
 `distill-prep` / `distill-mod` targets were removed with it: the head
-is a **one-shot artifact** (re-distilled only when the base DiT changes), and
+is a one-shot artifact (re-distilled only when the base DiT changes), and
 the shipped `pooled_text_proj_0413.safetensors` is a release asset, so the
 everyday surface is inference-side (`make test MOD=1`, the ComfyUI node), not
 training-side. The loop still runs, as module invocations from the repo root.
 
 Feature docs stay where they were — [`docs/inference/mod-guidance.md`](../../../docs/inference/mod-guidance.md)
-is canonical for the architecture, the inference profiles, and the **full flag
-tables** for both commands below.
+is canonical for the architecture, the inference profiles, and the full flag
+tables for both commands below.
 
 ## Layout
 
@@ -67,15 +67,15 @@ them by hand now — only three keys were ever honored:
 | presets.toml key | flag |
 |---|---|
 | `blocks_to_swap` | `--blocks_to_swap N` |
-| `gradient_checkpointing` | `--grad_ckpt` / `--no_grad_ckpt` (**default `--no_grad_ckpt`** — this footprint is tiny, so ckpt is a pure perf loss unless VRAM is tight) |
+| `gradient_checkpointing` | `--grad_ckpt` / `--no_grad_ckpt` (default `--no_grad_ckpt` — this footprint is tiny, so ckpt is a pure perf loss unless VRAM is tight) |
 | `sample_ratio` | `--sample_ratio R` |
 
 So `PRESET=low_vram` ≈ `--grad_ckpt` (+ that preset's `blocks_to_swap`); the
 default preset ≈ `--no_grad_ckpt`.
 
-**VRAM**: the teacher runs under `no_grad` and holds almost nothing — the
+VRAM: the teacher runs under `no_grad` and holds almost nothing — the
 student forward dominates (~12 GB on the default config). Leave `--no_grad_ckpt`
 on if that fits; it's faster.
 
-**Teacher cache RAM** scales as `dataset_size × K × latent_bytes` (K =
+Teacher cache RAM scales as `dataset_size × K × latent_bytes` (K =
 `--teacher_cache_K`, default 6); shrink K if RAM is tight.

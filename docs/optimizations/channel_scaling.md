@@ -1,12 +1,12 @@
 # Channel Scaling — SmoothQuant-style LoRA pre-scaling
 
-Per-channel input magnitude rebalancing for LoRA-family adapters — a **training-time optimizer-geometry feature**, not an inference plugin (it lived under `docs/inference/` until 2026-06-10; after `bake_inv_scale` at save time it is invisible to inference entirely). Absorbs a calibrated per-channel scale `s[c] = (mean|x[c]|)^α` into `lora_down` columns and applies `x / s` at forward, so the adapter output is unchanged at init but Adam's effective per-channel step no longer favors the DiT's DC-bias outlier channels.
+Per-channel input magnitude rebalancing for LoRA-family adapters — a training-time optimizer-geometry feature, not an inference plugin (it lived under `docs/inference/` until 2026-06-10; after `bake_inv_scale` at save time it is invisible to inference entirely). Absorbs a calibrated per-channel scale `s[c] = (mean|x[c]|)^α` into `lora_down` columns and applies `x / s` at forward, so the adapter output is unchanged at init but Adam's effective per-channel step no longer favors the DiT's DC-bias outlier channels.
 
-> **For the motivation** (DC-bias outlier channels in the frozen Anima DiT, decomposition into "register-token sinks" vs "stable outlier features", and the GraLoRA alternative weighed against), see **`_archive/bench/channel_stats/channel_dominance_analysis.md`**. This doc is the usage reference.
+> For the motivation (DC-bias outlier channels in the frozen Anima DiT, decomposition into "register-token sinks" vs "stable outlier features", and the GraLoRA alternative weighed against), see `_archive/bench/channel_stats/channel_dominance_analysis.md`. This doc is the usage reference.
 
 ## Quick start
 
-Nothing to do — it ships **on by default**:
+Nothing to do — it ships on by default:
 
 ```toml
 # configs/base.toml
@@ -42,11 +42,11 @@ x_lora = self._rebalance(x)   # x * inv_scale, in the activation dtype
 lx = F.linear(x_lora, self.lora_down.weight.to(x_lora.dtype))
 ```
 
-The forward is bit-equivalent at init (`(x · s⁻¹) @ (down · s)ᵀ == x @ downᵀ`); the *only* effect is on optimization geometry, and that effect is **Adam-specific**. The per-column gradient is divided by `s[c]` (verified numerically: per-column grad-norm ratio matches `1/s` with corr 1.0000), and since Adam takes ~uniform per-element steps regardless of gradient scale, each channel's per-step **output leverage** changes from `mean|x[c]|` to `mean|x[c]|^(1-α)`. At α=0.5, dominance (max/mean leverage) on the shipped calibration drops from ~13–80× to ~3.8–9.3× (`mlp.layer1` worst); `cross_attn.kv` (T5-sourced) is already clean at 1.8× so the rebalance is a near no-op there. AdamW's decoupled weight decay is a uniform per-coordinate shrink, so the reparameterization doesn't interact with it.
+The forward is bit-equivalent at init (`(x · s⁻¹) @ (down · s)ᵀ == x @ downᵀ`); the *only* effect is on optimization geometry, and that effect is Adam-specific. The per-column gradient is divided by `s[c]` (verified numerically: per-column grad-norm ratio matches `1/s` with corr 1.0000), and since Adam takes ~uniform per-element steps regardless of gradient scale, each channel's per-step output leverage changes from `mean|x[c]|` to `mean|x[c]|^(1-α)`. At α=0.5, dominance (max/mean leverage) on the shipped calibration drops from ~13–80× to ~3.8–9.3× (`mlp.layer1` worst); `cross_attn.kv` (T5-sourced) is already clean at 1.8× so the rebalance is a near no-op there. AdamW's decoupled weight decay is a uniform per-coordinate shrink, so the reparameterization doesn't interact with it.
 
 `inv_scale` is calibration data — it carries no gradient and never updates during training. It rides through `state_dict` as a persistent buffer.
 
-**Dead-channel caveat** (standard SmoothQuant wart): channels with near-zero `mean|x|` get a gradient boost of up to `1/s ≈ 325` (main `mlp.layer2`) / 648 (cond stream). Bounded by the `clamp_min(1e-6)` and their leverage still scales as `mean|x|^(1-α)`, so it is not a hazard — just don't be surprised by large `inv_scale` entries on post-GELU inputs.
+Dead-channel caveat (standard SmoothQuant wart): channels with near-zero `mean|x|` get a gradient boost of up to `1/s ≈ 325` (main `mlp.layer2`) / 648 (cond stream). Bounded by the `clamp_min(1e-6)` and their leverage still scales as `mean|x|^(1-α)`, so it is not a hazard — just don't be surprised by large `inv_scale` entries on post-GELU inputs.
 
 ## Liveness: which variants this actually affects
 
@@ -54,21 +54,21 @@ The scale is absorbed into different tensors per variant, and **whether that ten
 
 | Variant | Absorbed into | Effect |
 |---|---|---|
-| LoRA | trainable `lora_down` | **Live** |
-| HydraLoRA (shared-A) | trainable shared `lora_down` | **Live** |
-| OrthoInit (`use_ortho_init`) | trainable `Q_init` | **Live** |
-| ChimeraHydra + `use_ortho_init` | trainable `Q_basis_{c,f}` | **Live** |
-| StackedExperts free branch / step_expert | trainable per-expert downs | **Live** |
-| EasyControl cond LoRA (`_LoRAProj`) | trainable `lora_down` | **Live** |
-| OrthoLoRA (`use_ortho`) | **frozen** `Q_basis` buffer | **Inert** |
-| OrthoHydra | frozen `Q_basis` / `P_bases` | **Inert** |
-| ChimeraHydra (frozen-basis path) | frozen `Q_basis_{c,f}` | **Inert** |
-| StackedExperts ortho branch | frozen `Q_basis` | **Inert** |
+| LoRA | trainable `lora_down` | Live |
+| HydraLoRA (shared-A) | trainable shared `lora_down` | Live |
+| OrthoInit (`use_ortho_init`) | trainable `Q_init` | Live |
+| ChimeraHydra + `use_ortho_init` | trainable `Q_basis_{c,f}` | Live |
+| StackedExperts free branch / step_expert | trainable per-expert downs | Live |
+| EasyControl cond LoRA (`_LoRAProj`) | trainable `lora_down` | Live |
+| OrthoLoRA (`use_ortho`) | frozen `Q_basis` buffer | Inert |
+| OrthoHydra | frozen `Q_basis` / `P_bases` | Inert |
+| ChimeraHydra (frozen-basis path) | frozen `Q_basis_{c,f}` | Inert |
+| StackedExperts ortho branch | frozen `Q_basis` | Inert |
 | T-LoRA mask | — (rank axis) | Orthogonal; composes with any row above |
 
 "Inert" is exact, not just "helps less": `(x · s⁻¹) @ (s · Q)ᵀ = x @ Qᵀ` cancels before anything trainable, and the frozen-basis variants' trainables (`S_p`, `S_q`, `λ` — all `r×r` or `1×r`) have no input-channel axis to rebalance. Gradients are identical with/without the scale up to bf16 rounding (~5e-3 measured). It is harmless there (one extra multiply + rounding noise) but pure overhead — if you flip a config from `use_ortho_init` back to `use_ortho`, channel scaling silently stops doing anything.
 
-The current shipped defaults (`lora.toml` `use_ortho_init = true`, `chimera.toml` `use_ortho_init = true`, EasyControl) are all in the **Live** column.
+The current shipped defaults (`lora.toml` `use_ortho_init = true`, `chimera.toml` `use_ortho_init = true`, EasyControl) are all in the Live column.
 
 ## EasyControl cond stream (`cond_channel_stats.safetensors`)
 
@@ -104,18 +104,18 @@ See `scripts/calibration/README.md` for the script flags and the output JSON lay
 
 ## When this helps more
 
-The bench analysis confirms the precondition (20–100× per-channel dominance, DC-bias not attention sinks) holds on the current Anima DiT, and the 2026-06-10 audit confirms the gradient geometry changes exactly as designed on every Live variant. **For standard flow-matching LoRA training the sample-quality delta has not been A/B-measured.** The one A/B that exists is on **turbo (DP-DMD) distillation, where α=0.5 was clearly net-negative** (melted faces, washed/oversaturated color vs a clean α=0 twin, 2026-06-16) — turbo therefore defaults to α=0.0. Recalibrating the scale on the turbo rollout does not rescue it (turbo's per-channel input profile matches the shipped calibration at cosine 0.996), and α=0.01 is a numerical no-op (dominance 6.14→6.01); the surviving explanation is that the Adam-geometry reparam is only safe under a stationary MSE target, not a co-training critic. For the standard path the regime that should see the largest payoff is:
+The bench analysis confirms the precondition (20–100× per-channel dominance, DC-bias not attention sinks) holds on the current Anima DiT, and the 2026-06-10 audit confirms the gradient geometry changes exactly as designed on every Live variant. For standard flow-matching LoRA training the sample-quality delta has not been A/B-measured. The one A/B that exists is on turbo (DP-DMD) distillation, where α=0.5 was clearly net-negative (melted faces, washed/oversaturated color vs a clean α=0 twin, 2026-06-16) — turbo therefore defaults to α=0.0. Recalibrating the scale on the turbo rollout does not rescue it (turbo's per-channel input profile matches the shipped calibration at cosine 0.996), and α=0.01 is a numerical no-op (dominance 6.14→6.01); the surviving explanation is that the Adam-geometry reparam is only safe under a stationary MSE target, not a co-training critic. For the standard path the regime that should see the largest payoff is:
 
-- **Higher rank** (≥64, where GraLoRA's argument bites hardest).
-- **Trainable-down variants** — see the liveness table; on frozen-basis ortho variants the effect is exactly zero.
-- **Shared-A across experts** (HydraLoRA, ChimeraHydra content pool) — the shared `lora_down` amplifies the bias K-fold.
-- **Long single-domain runs** — the column-imbalanced gradient compounds over more steps.
+- Higher rank (≥64, where GraLoRA's argument bites hardest).
+- Trainable-down variants — see the liveness table; on frozen-basis ortho variants the effect is exactly zero.
+- Shared-A across experts (HydraLoRA, ChimeraHydra content pool) — the shared `lora_down` amplifies the bias K-fold.
+- Long single-domain runs — the column-imbalanced gradient compounds over more steps.
 
 ## References
 
-- Xiao et al., **SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models**, ICML 2023 — the original `s = mean|x|^α` absorption trick (this implementation borrows the parameterization, not the quantization goal).
-- Dettmers et al., **LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale**, NeurIPS 2022 — the "outlier features" phenomenon the bench observes in the Anima DiT.
-- Jung et al., **GraLoRA: Granular Low-Rank Adaptation for Parameter-Efficient Fine-Tuning**, NeurIPS 2025, arXiv:2505.20355 — the more invasive `k×k`-block alternative; weighed against and rejected for now (same mechanism targeted, far higher integration cost).
+- Xiao et al., SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models, ICML 2023 — the original `s = mean|x|^α` absorption trick (this implementation borrows the parameterization, not the quantization goal).
+- Dettmers et al., LLM.int8(): 8-bit Matrix Multiplication for Transformers at Scale, NeurIPS 2022 — the "outlier features" phenomenon the bench observes in the Anima DiT.
+- Jung et al., GraLoRA: Granular Low-Rank Adaptation for Parameter-Efficient Fine-Tuning, NeurIPS 2025, arXiv:2505.20355 — the more invasive `k×k`-block alternative; weighed against and rejected for now (same mechanism targeted, far higher integration cost).
 
 ## Code
 

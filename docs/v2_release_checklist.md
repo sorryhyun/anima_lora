@@ -2,7 +2,7 @@
 
 Working checklist for the `v2.0.0.beta` branch: cut from `main`, PR-merged, a
 release draft published on merge. One checkbox = one commit-sized job. The
-**why** and the long-form state live in
+why and the long-form state live in
 [`v2_release_plan.md`](v2_release_plan.md) — that doc stays as the reference
 for Tracks A/B/C; this file is what actually gets ticked.
 
@@ -19,9 +19,9 @@ is gone.**
 - [x] Open the PR early as a draft so the checklist is visible while the work
       lands — [#99](https://github.com/sorryhyun/anima_lora/pull/99).
 - [x] `.github/workflows/release.yml` publishes with `gh release create
-      --generate-notes` and **no `--prerelease`** — a `-beta` tag would become
+      --generate-notes` and no `--prerelease` — a `-beta` tag would become
       "latest" and reach every `make update`. Fix the workflow to pass
-      `--prerelease` when the tag contains `-`. **Do this first**, before any
+      `--prerelease` when the tag contains `-`. Do this first, before any
       tag exists. (`1a412dab` — `case "$TAG" in *-*)`; `scripts/update.py`
       resolves `releases/latest`, which excludes prereleases.)
 
@@ -41,14 +41,14 @@ supported, just opt-in.
       (`af98813e` — the component list is now `DEFAULT_SET` in
       `library/downloads.py`; SAM3, MIT, the OCR stack and the vocab pack are
       all out of it, pinned by a test.)
-- [x] Check nothing silently re-enables it. **It did**: the loss applied a mask
+- [x] Check nothing silently re-enables it. It did: the loss applied a mask
       whenever the batch carried `alpha_masks` (`library/training/losses.py`),
       and a subset picks a mask dir up from the config chain or the legacy
       auto-resolution regardless of `masked_loss` — so a leftover `make mask`
       tree kept masking with the key off (`docs/guidelines/training.md` had
       claimed otherwise). Fixed in `train.py::_prepare_dataset`: with
       `masked_loss` off every subset's `mask_dir` / `alpha_mask` is stripped
-      after the blueprint build and **one** info line names the ignored tree.
+      after the blueprint build and one info line names the ignored tree.
       `masked_loss` is now the single switch.
 - [x] Method configs that pin `masked_loss = true`: only
       `configs/methods/turbo.toml` (`use_masked_loss`) — flipped to `false`,
@@ -92,12 +92,12 @@ surfaces below.
       (the `MitMaskRequest` argv round-trip went with it).
       `tests/test_nested_paths.py` only uses `mit` as a directory name for the
       merge — left alone.
-- [x] Legacy path triple `masks/{merged,sam,mit}` → **trimmed to the pair**
+- [x] Legacy path triple `masks/{merged,sam,mit}` → trimmed to the pair
       `masks/{merged,sam}` (`_resolve_default_mask_dir`, the `--mask_dir` help,
       `CLAUDE.md`, `base-config.md`, `training.md`, `tests/test_nested_paths.py`).
       `scripts/update.py::PRESERVE_DIRS` keeps `masks_mit` — that list protects
       user data on `make update`, it is not a feature.
-- [x] Package side — **decision reversed: removed from the package too**
+- [x] Package side — decision reversed: removed from the package too
       (nobody wants it). `anime_tools` 0.5.0 @ `9413178` drops `masking/mit.py`,
       `generate_masks_mit`, `MitMaskRequest`, the `masks_mit` stage,
       `WS.MASKS_MIT`, the `text_mask` pack (`mit_text` / `ctd_onnx`) and the
@@ -119,12 +119,12 @@ offline installed-probe); `library/downloads.py` now adds the Anima-only rows
 and concatenates it, and every `make download-*` plus both GUI Models panels
 read that one list. Follow-ups this leaves:
 
-- [x] GUI: one Models modal, two tabs (**Anima** / **Curation
-      (anime_tools)**), rows scrolling inside each tab so the log pane stays
+- [x] GUI: one Models modal, two tabs (Anima / Curation
+      (anime_tools)), rows scrolling inside each tab so the log pane stays
       visible. Shared token field, shared log, one QProcess.
 - [x] The Curation tab renders every package row, including the OCR stack and
       `tagger_onnx`. Decide whether the trainer filters any of them out (see
-      §2 — MIT is the live question). **Decision: filter by pack id**, not
+      §2 — MIT is the live question). Decision: filter by pack id, not
       by row — `DL.HIDDEN_PACKS = ("text_mask",)`; the OCR stack and
       `tagger_onnx` stay visible as opt-in rows.
 - [x] Packs + CJK mandatory. The package grew a `Pack` table
@@ -142,20 +142,20 @@ read that one list. Follow-ups this leaves:
 - [ ] `docs/guidelines/가이드북.md` / `ガイドブック.md` / `指南书.md`: the
       English `guidebook.md` model-download block changed (first-run set no
       longer includes SAM3/MIT; `download-list` / `download-model` are new).
-      **Translator agent**, with the rest of §3.
+      Translator agent, with the rest of §3.
 - [x] `anime_tools`' `model-catalog` skill says the trainer addresses rows by
       id — now true. Trainer-side `model-catalog` skill added (2026-09-08);
       `CLAUDE.md` Setup + the entry-point table point at it.
 
 ## 3. Docs cleanup
 
-- [ ] `CLAUDE.md`: the masking sentences in **Config flow** (mask_dir is
-      "load-bearing") and **Preprocessing & scripts**, plus the 4 MIT
+- [ ] `CLAUDE.md`: the masking sentences in Config flow (mask_dir is
+      "load-bearing") and Preprocessing & scripts, plus the 4 MIT
       references. State the new default in one line.
 - [ ] `README.md` (3 MIT refs) — Setup section: SAM3 is now an opt-in download.
 - [ ] `docs/guidelines/guidebook.md` + `가이드북.md` / `ガイドブック.md` /
       `指南书.md` (6 refs each) and `docs/guidelines/training.md`,
-      `base-config.md`. **Use the translator agent** — diff-driven, after the
+      `base-config.md`. Use the translator agent — diff-driven, after the
       English is final.
 - [ ] `docs/proposal/gui_preprocess_tab_refactor.md` and
       `anime_tools_api_first.md` mention MIT — these are landed proposals;
@@ -186,35 +186,35 @@ read that one list. Follow-ups this leaves:
 
 Detail and rationale in that doc; listed here so nothing gets lost.
 
-- [x] **A1** Pin the shipping `anime_tools` rev in `[tool.uv.sources]`, `uv lock`,
+- [x] A1 Pin the shipping `anime_tools` rev in `[tool.uv.sources]`, `uv lock`,
       commit the lock. Done at `9413178` (0.5.0, contract 2) with the MIT
       removal; re-pin if the package moves again before the tag.
-- [ ] **A2** Offline/Windows install decision — document that `uv sync` needs
+- [ ] A2 Offline/Windows install decision — document that `uv sync` needs
       network for the git dep (the honest default) in `README.md` Setup.
-- [ ] **A4** Delete the stub extras `cuda-windows = [] / rocm-windows = []`.
-- [ ] **A6** Hygiene gates: `tests/test_repo_hygiene.py` (no tracked symlinks),
+- [ ] A4 Delete the stub extras `cuda-windows = [] / rocm-windows = []`.
+- [ ] A6 Hygiene gates: `tests/test_repo_hygiene.py` (no tracked symlinks),
       tarball extracts under `tarfile filter="data"`,
       `tests/test_curation_boundary.py`, `tests/test_doc_refs.py`,
       `make test-unit`.
-- [ ] **B5** OCR caption stage → `anime_tools` as `caption-ocr` (dry-run by
+- [ ] B5 OCR caption stage → `anime_tools` as `caption-ocr` (dry-run by
       default; an `--apply` must be followed by `make preprocess-te`).
-      **This is now load-bearing**: with text masking gone, OCR'd captions are
+      This is now load-bearing: with text masking gone, OCR'd captions are
       the only thing making in-image text attributable.
-- [ ] **B6** Ship the unmask recipe (masks off + OCR captions + vocab pack) as a
+- [ ] B6 Ship the unmask recipe (masks off + OCR captions + vocab pack) as a
       documented bundle, not a toggle — unmasking *without* the captions
       reproduces the spam (arm B).
-- [ ] **B7** Guidebook line + 3 translations, README Setup mention.
-- [ ] **B9** ComfyUI parity: `make vendor-sync` (never hand-`cp`), rendered
+- [ ] B7 Guidebook line + 3 translations, README Setup mention.
+- [ ] B9 ComfyUI parity: `make vendor-sync` (never hand-`cp`), rendered
       same-seed grid through `AnimaVocabPackLoader`, then registry publish.
-- [ ] **C3** `pyproject.toml` `version` → `2.0.0b1` (PEP 440) at the beta tag.
-- [ ] **C4** Release notes skeleton (v1.17.1 format).
+- [ ] C3 `pyproject.toml` `version` → `2.0.0b1` (PEP 440) at the beta tag.
+- [ ] C4 Release notes skeleton (v1.17.1 format).
 
 ## 6. Merge gates
 
 - [ ] `make test-unit` green (including `test_doc_refs`). *Green as of
       `2026-09-07` after §1/§2: 1674 passed, 1 skipped — re-check before the
       tag.*
-- [ ] `make preprocess` on a small shard from a **fresh** clone with SAM3 never
+- [ ] `make preprocess` on a small shard from a fresh clone with SAM3 never
       downloaded — must complete with no mask-related error.
 - [ ] `make lora` on that shard trains unmasked by default.
 - [ ] `make mask` still works after opting in (`make download-sam3` first) and
@@ -227,10 +227,10 @@ Detail and rationale in that doc; listed here so nothing gets lost.
 
 - [ ] Squash-or-merge the PR (repo convention: commit directly on `main`, so a
       merge commit is fine).
-- [ ] Tag `v2.0.0-beta.1`; CI creates the release **as a prerelease** (§0).
+- [ ] Tag `v2.0.0-beta.1`; CI creates the release as a prerelease (§0).
 - [ ] `gh release edit v2.0.0-beta.1` to attach the notes — `gh release create`
       after CI hits "already exists".
-- [ ] Verify `make update` on a v1.17.x checkout does **not** pick the beta up
+- [ ] Verify `make update` on a v1.17.x checkout does not pick the beta up
       (prereleases are excluded from `releases/latest` — that is the intent).
 
 ---

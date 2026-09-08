@@ -42,10 +42,10 @@ python archive/inversion/invert_embedding.py \
 
 ## How it works
 
-1. **Load target** — either encode a raw image via VAE, or load cached latents from `post_image_dataset/`.
-2. **Initialize embedding** — from cached text encoder output, a text prompt, a saved embedding, or zeros.
-3. **Optimize** — for each step, sample random noise levels (sigmas), run the frozen DiT forward, compute MSE between predicted and target noise, and backpropagate through the DiT to update only the embedding.
-4. **Save** — the best embedding (lowest loss) is saved as a `.safetensors` file with metadata.
+1. Load target — either encode a raw image via VAE, or load cached latents from `post_image_dataset/`.
+2. Initialize embedding — from cached text encoder output, a text prompt, a saved embedding, or zeros.
+3. Optimize — for each step, sample random noise levels (sigmas), run the frozen DiT forward, compute MSE between predicted and target noise, and backpropagate through the DiT to update only the embedding.
+4. Save — the best embedding (lowest loss) is saved as a `.safetensors` file with metadata.
 
 ### Optimization details
 
@@ -153,9 +153,9 @@ inversions/
 
 # Reference Inversion (K-slot prefix)
 
-A "referencer" variant of embedding inversion: instead of optimizing all 512 token positions of the crossattn embedding, freeze a user-supplied text template and optimize **only K consecutive token vectors** against a single reference image. The resulting K vectors capture the image's subject/style in T5-compatible space; at inference they're spliced into a fresh user prompt, letting the subject travel into new scenes.
+A "referencer" variant of embedding inversion: instead of optimizing all 512 token positions of the crossattn embedding, freeze a user-supplied text template and optimize only K consecutive token vectors against a single reference image. The resulting K vectors capture the image's subject/style in T5-compatible space; at inference they're spliced into a fresh user prompt, letting the subject travel into new scenes.
 
-This is the original Textual Inversion recipe (Gal et al. 2022) ported to Anima. Because Anima already has a `prefix` tuning network (the now-removed `prefix` tuning network, whose inference-side probe lived on as `postfix_inversion.py` until 2026-07-04, now `_archive/postfix/inversion_probe/`) with splicing via `inference.py --prefix_weight`, reference inversion reused that entire runtime — **no inference changes required**. It's training-free in the meaningful sense: no dataset, just a single reference image, single-GPU optim, seconds-to-minutes per image.
+This is the original Textual Inversion recipe (Gal et al. 2022) ported to Anima. Because Anima already has a `prefix` tuning network (the now-removed `prefix` tuning network, whose inference-side probe lived on as `postfix_inversion.py` until 2026-07-04, now `_archive/postfix/inversion_probe/`) with splicing via `inference.py --prefix_weight`, reference inversion reused that entire runtime — no inference changes required. It's training-free in the meaningful sense: no dataset, just a single reference image, single-GPU optim, seconds-to-minutes per image.
 
 ## Quick start
 
@@ -180,11 +180,11 @@ python archive/inversion/invert_reference.py --image path/to/ref.png \
 
 ## How it works
 
-1. **VAE encode** the reference image to latents, free VAE.
-2. **Encode the template** (e.g. `"a photo"`) through Qwen3 + LLM adapter to produce a fixed `template_emb` of shape `[1, 512, D]`.
-3. **Create K trainable slot vectors** `slots: [K, D]` (init: small random, zeros, or first-K-of-template).
-4. **Optimize**: at each step, assemble `emb = [slots ; template[:512-K]]` and run the flow-matching loss against the reference image. Only `slots` is trainable.
-5. **Save** the K slots as `prefix_embeds` + metadata (template, placeholder offset, stats).
+1. VAE encode the reference image to latents, free VAE.
+2. Encode the template (e.g. `"a photo"`) through Qwen3 + LLM adapter to produce a fixed `template_emb` of shape `[1, 512, D]`.
+3. Create K trainable slot vectors `slots: [K, D]` (init: small random, zeros, or first-K-of-template).
+4. Optimize: at each step, assemble `emb = [slots ; template[:512-K]]` and run the flow-matching loss against the reference image. Only `slots` is trainable.
+5. Save the K slots as `prefix_embeds` + metadata (template, placeholder offset, stats).
 
 The assembly in step 4 byte-for-byte matches what `PostfixNetwork.prepend_prefix` does at inference — trains exactly what runtime splices.
 
@@ -204,7 +204,7 @@ The assembly in step 4 byte-for-byte matches what `PostfixNetwork.prepend_prefix
 | `REF_SAVE_PATH` | — | Overrides `REF_NAME` with an explicit path |
 | `REF_SWAP` | `0` | `blocks_to_swap` (same semantics as `invert`) |
 
-When `REF_IMAGE` is unset, a random image is picked from `REF_IMAGE_DIR` and **frozen for the whole target run** (one image, not a different pick per shell expansion). Re-running it picks a new random image. Explicit `REF_IMAGE=...` always wins.
+When `REF_IMAGE` is unset, a random image is picked from `REF_IMAGE_DIR` and frozen for the whole target run (one image, not a different pick per shell expansion). Re-running it picks a new random image. Explicit `REF_IMAGE=...` always wins.
 
 ### Rendering with an inverted prefix (retired `exp-test-ref` target)
 
@@ -264,6 +264,6 @@ This makes the file interchangeable with any prefix-mode checkpoint: the existin
 
 ## Caveats and future work
 
-- **Prefix applied to positive AND negative conditioning.** `library/inference/generation.py` calls `prepend_prefix` on both `embed` and `negative_embed`. For pure prefix tuning (quality prior) that's fine; for a *reference* you may want the subject only on the positive path. Splitting the two is a small inference-side patch, not done yet.
-- **Placement mode is metadata-only.** A `<REF>` marker in `--template` today just gets stripped — the K slots always front-prepend. The character offset is recorded so a future loader can splice the K vectors into the middle of a user's prompt where they write `<REF>`, instead of at position 0.
-- **Text-space ceiling.** Like all textual inversion, this can't encode detail that T5 space wasn't trained to represent (exact pose, micro-geometry, pixel-precise composition). For stronger fidelity, a KV-cache reference-attention approach (concat ref K/V into self-attn) is the next rung up — trades extra compute per step for direct access to the DiT's visual representation space.
+- Prefix applied to positive AND negative conditioning. `library/inference/generation.py` calls `prepend_prefix` on both `embed` and `negative_embed`. For pure prefix tuning (quality prior) that's fine; for a *reference* you may want the subject only on the positive path. Splitting the two is a small inference-side patch, not done yet.
+- Placement mode is metadata-only. A `<REF>` marker in `--template` today just gets stripped — the K slots always front-prepend. The character offset is recorded so a future loader can splice the K vectors into the middle of a user's prompt where they write `<REF>`, instead of at position 0.
+- Text-space ceiling. Like all textual inversion, this can't encode detail that T5 space wasn't trained to represent (exact pose, micro-geometry, pixel-precise composition). For stronger fidelity, a KV-cache reference-attention approach (concat ref K/V into self-attn) is the next rung up — trades extra compute per step for direct access to the DiT's visual representation space.

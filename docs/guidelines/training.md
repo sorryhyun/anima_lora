@@ -18,8 +18,8 @@ Run `ls configs/gui-methods/` for the live variant list.
 
 For a key-by-key reference of the bottom layer — model paths, the noise
 schedule, caching, compile, and every memory knob — see
-[`base-config.md`](base-config.md). This doc focuses on **method/variant
-selection** and the training-specific options on top of that base.
+[`base-config.md`](base-config.md). This doc focuses on method/variant
+selection and the training-specific options on top of that base.
 
 ## LoRA family — the three-axis surface
 
@@ -178,12 +178,12 @@ merges top-level scalars (e.g. `batch_size`). Subset-level keys must go
 through `--dataset_config <path>`.
 
 The `[half]` preset (and similar) sets `sample_ratio = 0.5` for every
-subset via the global `--sample_ratio` override — it shrinks **train only**;
+subset via the global `--sample_ratio` override — it shrinks train only;
 validation count stays exact.
 
 ## Validation
 
-Default val signal is **paired CMMD²** (PE-Core MMD between paired
+Default val signal is paired CMMD² (PE-Core MMD between paired
 samples) — set by `use_cmmd = true` and sized by `validation_split_num`
 (integer count) or `validation_split` (fraction). With CMMD off, val falls
 back to the legacy per-σ FM-MSE pass; that signal hasn't correlated with
@@ -199,7 +199,7 @@ sync are all gone. Accelerate's collectives still work harmlessly at
 1 process.
 
 If you re-add multi-GPU later, the non-obvious design choice to preserve is
-**don't `accelerator.prepare(network)` and rely on the default DDP wrap.**
+don't `accelerator.prepare(network)` and rely on the default DDP wrap.
 With the DiT frozen and only the adapter trainable, wrapping the LoRA
 `nn.Module` directly is awkward (the buckets don't match the frozen base)
 and wrapping the DiT wastes bandwidth on params that never get gradients.

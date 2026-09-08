@@ -18,7 +18,7 @@ comparing any two numbers in it: the sincos gate changed units twice.
 - `ocr/`, `probes/`, `assets/` — this line's code, still runnable. The hand
   labels (`assets/sfx_labels_sincos.tsv`, 975 rows / 617 SFX scored) are the
   gate's ground truth and the one asset a reopening would start from.
-- **Archived** (gitignored, private mirror): the five plan files →
+- Archived (gitignored, private mirror): the five plan files →
   `_archive/cjk_aware_anima_dit/plans/`, the dated reports →
   `_archive/cjk_aware_anima_dit/reports/`. Every `reports/…` link below or in
   `findings.md` resolves there.

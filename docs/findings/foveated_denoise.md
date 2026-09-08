@@ -20,23 +20,23 @@ Findings that outlive the line:
   attention probes). Pipeline: normalize → threshold → morphological open → close
   → dilate-1 → re-solve threshold to a target fraction (compactness is
   load-bearing — scattered cells lose their attention neighborhood, +47 % error).
-- **Calibrate on hard prompts before believing any composed-stack result.** The
+- Calibrate on hard prompts before believing any composed-stack result. The
   aggressive-Spectrum operating point collapses on multi-subject prompts *with no
   foveation involved*; four phases of default-prompt eyeballing read partial
   rescue of a broken baseline as a win. RMSE certifies change, not improvement.
-- **Blur is a fixed point of the flow at low σ.** Once the periphery's LF/mid
+- Blur is a fixed point of the flow at low σ. Once the periphery's LF/mid
   support is pooled away, late full-grid steps cannot re-synthesise detail: a
   blurred-clean state reads as intended bokeh (no-op), σ-scale fresh HF noise gets
   resolved back to smooth (the x̂₀-LF dictates the completion), and the frozen
   σ_c-scale within-group HF renders as confetti speckle (mixed-σ off-manifold).
   Detail comes from HF that was being denoised all along, not from late injection.
-- **Never rewrite the latent's noise with structured/group-constant ε** —
+- Never rewrite the latent's noise with structured/group-constant ε —
   variance-correct is not distribution-correct; the DiT reads the LF-power excess
   as content. Fresh white noise is on-manifold; group-constant ε is not.
-- **Merged-rope exactness**: the renormalized elementwise mean of member (cos, sin)
+- Merged-rope exactness: the renormalized elementwise mean of member (cos, sin)
   rows is the exact mean-position rope for any symmetric m×m token group — the
   trick carries to any future token-merge scheme (`FoveatedTokenMerge`, in-tree).
-- **Deferred σ-gating works**: foveating only below σ≈0.75 preserves image
+- Deferred σ-gating works: foveating only below σ≈0.75 preserves image
   identity exactly (composition locks above it) — the inversion of the paper's
   all-steps merging, and the reason no post-training was needed. The gate concept
   is reusable for any spatially-degraded compute scheme.

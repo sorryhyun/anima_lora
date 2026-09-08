@@ -3,7 +3,7 @@
 **Verdict: NO-GO (premise absent).** The load-bearing premise of the
 test-time-registers port (`_archive/proposals/test_time_registers_pe.md`, paper
 2506.08010) is that PE-Core / PE-Spatial, as ordinary ViTs trained without
-registers, manufacture sparse high-norm outlier patch tokens. **They don't.**
+registers, manufacture sparse high-norm outlier patch tokens. They don't.
 Measured 2026-07-20; line closed at the first gate, as the proposal's own kill
 criterion required.
 
@@ -17,14 +17,14 @@ envelope: `_archive/bench/pe_registers/results/20260720-2014-phase0a/`.
 ## What the data showed
 
 Across 256 images × every layer (24 in PE-Core-L14-336, 12 in
-PE-Spatial-B16-512), **not one patch token ever reached even 5× the per-image
-median norm** — the paper's outlier populations sit at 10×+. The patch-norm
+PE-Spatial-B16-512), not one patch token ever reached even 5× the per-image
+median norm — the paper's outlier populations sit at 10×+. The patch-norm
 distribution is tight everywhere:
 
 | Tower | max/median ratio, mean (worst layer) | ratio p90 (worst layer) | patches ≥5× median, any layer, 256 imgs |
 |---|---|---|---|
-| PE-Core-L14-336 | 1.89 (layer 0) | 2.22 | **0** |
-| PE-Spatial-B16-512 | 1.64 (layer 0) | 1.83 | **0** |
+| PE-Core-L14-336 | 1.89 (layer 0) | 2.22 | 0 |
+| PE-Spatial-B16-512 | 1.64 (layer 0) | 1.83 | 0 |
 
 The ratio *decreases* with depth on both towers (mid-stack ~1.3) — the
 opposite of outlier formation, which grows through the stack.
@@ -41,16 +41,16 @@ claim the measurement, not the mechanism.)
 
 ## What this settles
 
-- **The cached PE features are not contaminated by register-style outliers.**
+- The cached PE features are not contaminated by register-style outliers.
   The proposal's one surviving argument against the tagger-ceiling probe —
   common-mode token damage invisible to head-vs-head comparison — is now
   directly measured and absent. The ceiling result
   ("tower fine, head/label-space is the headroom") stands *stronger*.
-- **Phases 0b–2 are dead**: no outlier positions ⇒ no register neurons to
+- Phases 0b–2 are dead: no outlier positions ⇒ no register neurons to
   find, nothing to relocate, no cache rebuild, no head retrain. Do not
   re-propose MLP register-neuron editing on these towers.
 - The paper's mechanism was never tested against a tower like PE; this is a
-  clean negative about **PE's regime**, not evidence against the paper (whose
+  clean negative about PE's regime, not evidence against the paper (whose
   OpenCLIP/DINOv2 results we have no reason to doubt).
 
 ## Reusable

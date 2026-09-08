@@ -13,20 +13,20 @@ Source artifacts: `output/nsys/`
 `PROFILE_STEPS=...`, captured 31 training steps. Config in effect:
 `network_dim=48`, `num_experts=12`.
 
-Total GPU kernel time across the capture: **33.7 s** (~1.09 s/step).
+Total GPU kernel time across the capture: 33.7 s (~1.09 s/step).
 
 ## Where the time goes (baseline)
 
 | Bucket | GPU time | % | Source |
 |---|---|---|---|
-| Small bf16 GEMMs (`64×64×32` cutlass `_relu_bf16`, nn/tn/nt) | 16.5 s | **49 %** | LoRA / Ortho / Hydra projections |
+| Small bf16 GEMMs (`64×64×32` cutlass `_relu_bf16`, nn/tn/nt) | 16.5 s | 49 % | LoRA / Ortho / Hydra projections |
 | Flash-attn fwd+bwd (incl. `dot_do_o`, `convert_dq`) | 10.0 s | 30 % | base DiT — expected |
 | Triton fused layer-norm + GELU | 2.7 s | 8 % | base DiT epilogues |
 | LU + TRSM (Cayley `solve`) | 1.0 s | 3 % | also breaks the bf16 path |
 | Other (router, einsum, copies) | 3.5 s | 10 % | |
 
 API-side: `cudaStreamSynchronize` accounts for 17 s in 489 calls — median
-3.4 µs (incidental), but **max 632 ms / stddev 136 ms**, so a small number
+3.4 µs (incidental), but max 632 ms / stddev 136 ms, so a small number
 of huge syncs dominate. Likely the warm-up `torch.cuda.synchronize()` in
 `_profiler_step_begin` plus a dataloader stall; confirm in the GUI by
 looking for GPU-idle gaps inside `:step=N` ranges.
@@ -146,8 +146,8 @@ save-time SVD distillation.
 
 Cayley is the [1, 1] Padé approximant of `exp(-2A)` for skew-symmetric
 A; expansions agree to second order and diverge at A³. Both are valid
-skew → orthogonal maps but **`S_p` / `S_q` parameterise a different
-rotation under each**. Replacing the solve with `matrix_exp` is a
+skew → orthogonal maps but `S_p` / `S_q` parameterise a different
+rotation under each. Replacing the solve with `matrix_exp` is a
 parameterisation change, not a numerical equivalence — existing
 checkpoints would need re-mapping or re-training.
 `torch.linalg.matrix_exp` does run in bf16 (verified empirically), and
@@ -175,8 +175,8 @@ arithmetic intensity. Two avenues:
 
 - For HydraLoRA's per-expert P (`ortho.py:408-413`), `P_bases @ R_p`
   is `E=12` separate `(out, r) × (r, r)` GEMMs per fwd. Folding into
-  a precomputed `P_eff` is straightforward at inference; **not free
-  under autograd during training** because `R_p` depends on `S_p`, and
+  a precomputed `P_eff` is straightforward at inference; not free
+  under autograd during training because `R_p` depends on `S_p`, and
   a cached `R_p` across microbatches breaks the backward graph. A
   correct training variant would need a manual gradient path through
   cached `R_p`.

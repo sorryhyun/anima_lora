@@ -2,15 +2,15 @@
 
 Index of the `docs/` tree. Each row is a one-line orientation; read the linked doc before working on the thing it describes.
 
-- **Methods** — shipped training algorithms (adapter families).
-- **Inference** — training-free runtime stacks: acceleration + sampler-boundary corrections.
-- **Experimental** — wired and runnable, but not part of the default stack.
-- **Structure** — architecture walkthroughs (how a thing is built, not how to use it).
-- **Findings** — empirical results and analyses on the Anima model; premises tested, behavior measured, decisions settled.
-- **Optimizations** — compiler, kernel, and hardware setup.
-- **Guidelines** — user-facing guides and references (multi-language).
-- **Proposals** — active design docs for unbuilt work.
-- **Architecture notes** — repo-wide planning docs at the top of `docs/`.
+- Methods — shipped training algorithms (adapter families).
+- Inference — training-free runtime stacks: acceleration + sampler-boundary corrections.
+- Experimental — wired and runnable, but not part of the default stack.
+- Structure — architecture walkthroughs (how a thing is built, not how to use it).
+- Findings — empirical results and analyses on the Anima model; premises tested, behavior measured, decisions settled.
+- Optimizations — compiler, kernel, and hardware setup.
+- Guidelines — user-facing guides and references (multi-language).
+- Proposals — active design docs for unbuilt work.
+- Architecture notes — repo-wide planning docs at the top of `docs/`.
 
 ## Methods
 
@@ -73,7 +73,7 @@ Architecture walkthroughs — how a component is built.
 
 ## Findings
 
-Empirical results and analyses on the Anima model — premises tested against the real model, measurements of how it behaves, and the decisions the evidence settled (ship, don't-build, or pure characterization). The full set (20 docs, keyed by outcome: MEASUREMENT / NO-GO / FALSIFIED / CLOSED / DEMOTED / LANDED / TRAP) lives in its own index → **[findings/README.md](findings/README.md)**.
+Empirical results and analyses on the Anima model — premises tested against the real model, measurements of how it behaves, and the decisions the evidence settled (ship, don't-build, or pure characterization). The full set (20 docs, keyed by outcome: MEASUREMENT / NO-GO / FALSIFIED / CLOSED / DEMOTED / LANDED / TRAP) lives in its own index → [findings/README.md](findings/README.md).
 
 ## Optimizations
 

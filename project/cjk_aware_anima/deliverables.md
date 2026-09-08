@@ -15,7 +15,7 @@ here duplicates measured tables — those stay with the reports and
 | Residual name probe (adapter-space floor gate) | `bench/cjk_adapter/residual_probe.py` | done; diagnostic only |
 | Distill loop: corpus cache (process-pool stager, 67 pairs/s), ext-table ladder, objectives (`span`/`attn`/`flat`), register sampling / span scaling, warm start | `scripts/distill_cjk/{cache,config,data,distill,ext_table,losses,attn_bank}.py` (`make exp-cjk-cache` / `exp-distill-cjk`) | done |
 | Real-query bank for the attention readout | `scripts/distill_cjk/build_query_bank.py` → `bench/cjk_distill/assets/query_bank.safetensors` | done |
-| Ext-gated adapter LoRA (`g = any(id ≥ 32128)`, forward-hook delta, standard `lora_A/lora_B` keys) | `scripts/distill_cjk/adapter_lora.py`, `--adapter_lora r=…` | done, inert without the flag; **does not ship** (plan3 closed) |
+| Ext-gated adapter LoRA (`g = any(id ≥ 32128)`, forward-hook delta, standard `lora_A/lora_B` keys) | `scripts/distill_cjk/adapter_lora.py`, `--adapter_lora r=…` | done, inert without the flag; does not ship (plan3 closed) |
 | One-off gate drivers (G2, G3/G4, G5, coverage, separability) | [`gates/`](gates/) (`make exp-cjk-gates`) | done |
 | Tests | `tests/test_cjk_distill.py` (G1 EN bit-exactness, 23 cases), `tests/test_cjk_glossary.py` (24 invariants), `tests/test_cjk_adapter_lora.py` | green |
 | `process_escape` mojibake fix | `c8cf3ce2` | shipped |
@@ -44,7 +44,7 @@ Caches on disk: `post_image_dataset/cjk_distill/cache_synth2` (~155–170 G,
 
 | pack | recipe | role |
 |---|---|---|
-| **`synthjakozh1sym_r256`** | cold joint JA+KO+ZH on the r256 recipe, 69,558-row table with the symbol block + `route` rule (findings §10–§11) | **the shipped test pack** — published 2026-09-06 as `anima_cjk_vocab_pack.{safetensors,json}` at https://huggingface.co/sorryhyun/anima-vocab-pack-cjk (metadata-stamped, + Qwen3 tokenizer files; the node needs ≥ 3.9.1 for symbol routing). KO/ZH rows trained but never render-grid validated — the README says so |
+| `synthjakozh1sym_r256` | cold joint JA+KO+ZH on the r256 recipe, 69,558-row table with the symbol block + `route` rule (findings §10–§11) | the shipped test pack — published 2026-09-06 as `anima_cjk_vocab_pack.{safetensors,json}` at https://huggingface.co/sorryhyun/anima-vocab-pack-cjk (metadata-stamped, + Qwen3 tokenizer files; the node needs ≥ 3.9.1 for symbol routing). KO/ZH rows trained but never render-grid validated — the README says so |
 | `synthja_v4` | v3 + the 2b allowed-kanji filter (jōyō+jinmeiyō whitelist; report 0831_kanji_filter) | the first test release (2026-09-01, `anima_ja_vocab_pack.*`; the `-ja` repo was renamed to `-cjk` and the JA files were removed from the Hub 2026-09-06 — local copy is the record) |
 | `synthja_v3` | v2 corpus + §5a `tags_synth_ja` (2,249 under-floor tag pairs; report 0831 §6) | superseded by `synthja_v4` — keeps every v2 gain, adds c1/c2/c3/t2/t6; t3 armor still open |
 | `synthja_v2` | first pack on the rebuilt corpus (name-axis fix + `, ` joiner) | superseded by `synthja_v3` same day |
@@ -64,10 +64,10 @@ Envelopes: `bench/cjk_distill/results/<stamp>-<label>/`; render grids:
 
 ## Ship contract
 
-The v1 artifact is a **vocab pack**, not a LoRA: `cjk_vocab_pack_synthja_v3.safetensors`
+The v1 artifact is a vocab pack, not a LoRA: `cjk_vocab_pack_synthja_v3.safetensors`
 (rows + global correction baked) + `.json` (segmentation rules, char/token →
 row-id map, per-row provenance `trained` / `zero-shot`, training metadata).
-Rare kanji character names are **out of scope for v1** (users type
+Rare kanji character names are out of scope for v1 (users type
 `hakurei reimu` latin — the mixed register works); zh/ko rows are physically
 present but untrained (never-visited rows stay at zero-shot init and are
 flagged; demote to `<unk>` in the JSON if they poison neighbours).
@@ -75,13 +75,13 @@ flagged; demote to `<unk>` in the JSON if they poison neighbours).
 Surfaces (status notes inline in [`plan.md`](plan.md) Phase 3 — as of
 2026-09-01 the ComfyUI node + HF test release exist; the in-repo shim does not):
 
-- **In-repo**: strategy shim routes CJK spans through `HybridT5Encoder` when
+- In-repo: strategy shim routes CJK spans through `HybridT5Encoder` when
   the sidecar is present (flag to disable); `load_dit_model` appends rows to
   `llm_adapter.embed`. Composes with every checkpoint / DiT LoRA (disjoint
   parameters). TE caching uses the same strategy, so JA captions cache with
-  ext ids; **JA TE caches must be regenerated** after the shim lands (EN caches
+  ext ids; JA TE caches must be regenerated after the shim lands (EN caches
   untouched by construction).
-- **ComfyUI**: one node `(MODEL, CLIP, vocab_pack) → (MODEL, CLIP)` in
+- ComfyUI: one node `(MODEL, CLIP, vocab_pack) → (MODEL, CLIP)` in
   `ComfyUI-Anima_lora-Adapter` — wraps the CLIP's t5xxl tokenize path, object-
   patches the adapter embed (forward-hook-not-override). Endgame: upstream.
 - Release asset pattern: the CNS γ npz (must be attached to the release tag).

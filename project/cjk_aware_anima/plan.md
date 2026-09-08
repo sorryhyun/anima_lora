@@ -1,6 +1,6 @@
 # CJK-aware Anima — plan (archived 2026-09-05)
 
-The encoder-side line is **frozen**. Every plan file this directory carried
+The encoder-side line is frozen. Every plan file this directory carried
 (`plan.md`, `plan_ko.md`, `plan_ko2.md`, `plan_ko3.md`, `plan_zh.md`,
 `plan_zh2.md`, `plan_zh3.md`, `temp_plan.md`) moved verbatim to
 `_archive/cjk_aware_anima/plans/` (gitignored tree, preserved in the private
@@ -8,7 +8,7 @@ mirror; the pre-move versions are in git history except `plan_zh3.md`, which
 was never committed). Links to them from [`findings.md`](findings.md) and the
 dated reports resolve against that archive.
 
-**Update 2026-09-08: the dated `reports/` moved too**, to
+Update 2026-09-08: the dated `reports/` moved too, to
 `_archive/cjk_aware_anima/reports/` — same gitignored tree, same rule for
 links. Nothing in them changed; they are simply no longer tracked, the line
 having been frozen for three days by then with every verdict digested into

@@ -1,6 +1,6 @@
 # CJK-aware Anima, DiT side — plan (archived 2026-09-08)
 
-The DiT-side line is **frozen**. Every plan file this directory carried —
+The DiT-side line is frozen. Every plan file this directory carried —
 `plan.md`, `plan_base1.md`, `plan_ocr.md`, `plan_det.md`, `plan_ssl_tower.md` —
 moved verbatim to `_archive/cjk_aware_anima_dit/plans/` (gitignored tree,
 preserved in the private mirror; the pre-move versions are in git history).
@@ -20,8 +20,8 @@ AnimeText detector defaults, and the D1 quote-partitioned pack.
 
 The line was two goals and a side line; the side line is what delivered.
 
-**Shipped (the OCR stack).** A reader that reads hand-lettered onomatopoeia —
-arm B′, a PaddleOCR-VL-1.6 LoRA with the **vision tower unfrozen**, which took
+Shipped (the OCR stack). A reader that reads hand-lettered onomatopoeia —
+arm B′, a PaddleOCR-VL-1.6 LoRA with the vision tower unfrozen, which took
 the sincos SFX gate from stock 6 to ~50 % and COO test to 81.7 % against the
 published 81.2 %. Plus `deepghs/AnimeText_yolo` as the detector (floor 38 → 4
 on sincos' masked pages), the O4c–O4e caption rules (SFX/speech dedupe, glyph
@@ -30,16 +30,16 @@ on the page), and PP-OCRv6 retired to the explicit torch-free pair. D1 shipped
 too: the deterministic isotropic table, the pack's quote-route partition, and
 `ss_ext_pack_sha` on every LoRA.
 
-**Not answered (the DiT goals).** D2–D6 never ran. **G-A** — manga trains
+Not answered (the DiT goals). D2–D6 never ran. G-A — manga trains
 healthily unmasked at *corpus scale* — was measured only on `sincos` (351 of
 the 873 text-masked images), where the shipped caption clauses cost nothing and
 win nothing: three blind reads, three ties, pooled 35–36 on 71 decisive pairs.
-**G-B** — a LoRA learns CJK semantics for isotropic addresses — is
-**unmeasured**; D5a, the decisive experiment of the hypothesis, was never
+G-B — a LoRA learns CJK semantics for isotropic addresses — is
+unmeasured; D5a, the decisive experiment of the hypothesis, was never
 executed. The paired-edition corpus never entered: alignment stopped at 2 of
 240 works, so arm T and the contrastive address are designs, not results.
 
-**Where the remaining headroom is, measured.** On the reader: the label side,
+Where the remaining headroom is, measured. On the reader: the label side,
 not the representation side. Five arms in a row moved in-domain COO and left
 the doujin gate flat — colorized-COO at 1.6 %, the col1500 swap, ×3 epochs,
 LP-FT, and label-free tower SSL — while B′'s misses are 55/313 ♡-only against

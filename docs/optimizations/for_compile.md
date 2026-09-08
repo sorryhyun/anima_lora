@@ -23,7 +23,7 @@ def flash_attn_4_varlen_func(*args, **kwargs):
     return out
 ```
 
-**sd-scripts**: No FA4 support at all.
+sd-scripts: No FA4 support at all.
 
 > Note: FA4 is currently not the default attention backend — see [`fa4.md`](fa4.md) for why. The code paths remain in place for re-enabling.
 
@@ -36,7 +36,7 @@ When blocks are individually compiled (`compile_blocks` / native-flatten mode), 
 compiled_flex_attention = _flex_attention  # raw, not torch.compile(...)
 ```
 
-**sd-scripts**: No flex attention support.
+sd-scripts: No flex attention support.
 
 ### 1.3 Flex attention early-return path
 
@@ -80,8 +80,8 @@ x = out * correction.transpose(1, 2).unsqueeze(-1)
 
 Context managers introduce overhead and are difficult for dynamo to trace through. Removed from:
 
-- **RMSNorm.forward**: replaced `with torch.autocast(...)` with direct `.float()` / `.to(x.dtype)` casts.
-- **FinalLayer.forward**: removed `use_fp32` parameter and autocast wrapping entirely.
+- RMSNorm.forward: replaced `with torch.autocast(...)` with direct `.float()` / `.to(x.dtype)` casts.
+- FinalLayer.forward: removed `use_fp32` parameter and autocast wrapping entirely.
 
 ### 2.3 `.repeat()` → `.expand()`
 
@@ -102,9 +102,9 @@ padding_mask.unsqueeze(2).expand(-1, -1, n_heads)
 
 `compile_blocks` is the one call that turns on `torch.compile`. It does two coupled things and raises the dynamo cache-size budget itself:
 
-1. **Native-shape flattening (`self._native_flatten = True`).** The forward flattens each bucket's patch grid `(B, T, H, W, D)` to a fake-5D `(B, 1, seq_len, 1, D)` shape (`unflatten`-restored after the block loop). This keys the block graph on **token count alone** — the shipped `CONSTANT_TOKEN_BUCKETS` collapses to **two** token-count families (4032 and 4200) — instead of guarding `H` and `W` separately (one graph per resolution, 24 buckets). No padding, so flash self-attention sees no padded tokens. Bit-exact to the eager 5D path; eager (uncompiled) forwards leave the flag `False` and skip the reshape.
+1. Native-shape flattening (`self._native_flatten = True`). The forward flattens each bucket's patch grid `(B, T, H, W, D)` to a fake-5D `(B, 1, seq_len, 1, D)` shape (`unflatten`-restored after the block loop). This keys the block graph on token count alone — the shipped `CONSTANT_TOKEN_BUCKETS` collapses to two token-count families (4032 and 4200) — instead of guarding `H` and `W` separately (one graph per resolution, 24 buckets). No padding, so flash self-attention sees no padded tokens. Bit-exact to the eager 5D path; eager (uncompiled) forwards leave the flag `False` and skip the reshape.
 
-2. **Per-block compile.** Compiles each block's `_forward` method:
+2. Per-block compile. Compiles each block's `_forward` method:
    ```python
    for block in self.blocks:
        block._forward = torch.compile(block._forward, backend=backend, dynamic=False)
@@ -128,23 +128,23 @@ inductor fusion pass:
 pin_inductor_flag("triton.mix_order_reduction", False)  # library/runtime/dynamo.py
 ```
 
-**Why.** `mix_order_reduction` (torch 2.12, default-on) guards its profitability
-check at the 4096 boundary **at the compile hint** — recording `Ge(seq, 4096)`
+Why. `mix_order_reduction` (torch 2.12, default-on) guards its profitability
+check at the 4096 boundary at the compile hint — recording `Ge(seq, 4096)`
 or its negation `seq <= 4095` depending on which batch traced first — and that
 guard contradicts any strict `mark_dynamic` range straddling 4096, raising
 `ConstraintViolationError` at guard build (live, or replayed from the
 FxGraphCache artifact on a later lookup). The failure only surfaces once a
-**backward gains a seq-axis reduction** — e.g. an adaln LoRA makes
+backward gains a seq-axis reduction — e.g. an adaln LoRA makes
 shift/scale/gate require grad, so the modulation grads reduce over the seq axis
 (broadcast-backward). It therefore hits *any* LoRA on a broadcast-consumed
 Linear, not just adaln, and only under dynamic-seq.
 
-**Why `pin_inductor_flag` and not plain assignment.** Inductor config
-`user_override`s are **thread-local ContextVars** (torch 2.12). A plain
+Why `pin_inductor_flag` and not plain assignment. Inductor config
+`user_override`s are thread-local ContextVars (torch 2.12). A plain
 `config.triton.mix_order_reduction = False` only exists in the thread that ran
 it; the grad-enabled step-0 compile (grad-ckpt recompute / AOT backward path)
 schedules in a different context where the override is absent and the read falls
-back to the entry's **default** — env-derived True — so the kill silently
+back to the entry's default — env-derived True — so the kill silently
 reverted and the fusion still recorded the guard. This shipped broken in
 v1.14.0 (same commit as adaln default-on) and crashed community `make lora`
 runs at step 0 under the grad-ckpt presets. The pin sets the entry's
@@ -155,7 +155,7 @@ See also the caveat on `isolate_compile_cache` (stale-guard poisoning across
 cache reuse). Discovered fixing the adaln training path (2026-07-15); ContextVar
 regression root-caused 2026-07-17 — `docs/methods/adaln.md` §Path 2.
 
-> **sd-scripts**: no dynamic-seq path, no free-fit, no per-block compile — none
+> sd-scripts: no dynamic-seq path, no free-fit, no per-block compile — none
 > of this machinery exists upstream. The legacy `set_static_token_count(count, pad=True)` path zero-padded every bucket up to a single shape, but it leaked padded tokens into flash self-attention (AdaLN shift + Q/K/V bias make zero-input padded rows emit non-trivial K/V; up to ~6.5% rel-L2 on the 4032 buckets) and couldn't even run the shipped table (4200 > the legacy 4096 target → truncation). It was removed 2026-05-24 along with `compile_core` / `--compile_mode full`, `static_token_count`, `static_pad`, and the flex self-attn pad-mask.
 
 ---
@@ -164,9 +164,9 @@ regression root-caused 2026-07-17 — `docs/methods/adaln.md` §Path 2.
 
 ### 3.1 Constant-token buckets (`buckets.py`)
 
-`CONSTANT_TOKEN_BUCKETS` — 24 predefined `(W, H)` resolutions grouped into **two token-count families**, 4032 (= 63·64) and 4200 (= 60·70). Each resolution *exactly* fills its family's count, so there is **zero intra-bucket padding** by construction. Native shapes are the default mode: every forward runs at its real token count, so `compile_blocks`' flatten makes `torch.compile` trace one block graph per distinct count — just **two** for this table.
+`CONSTANT_TOKEN_BUCKETS` — 24 predefined `(W, H)` resolutions grouped into two token-count families, 4032 (= 63·64) and 4200 (= 60·70). Each resolution *exactly* fills its family's count, so there is zero intra-bucket padding by construction. Native shapes are the default mode: every forward runs at its real token count, so `compile_blocks`' flatten makes `torch.compile` trace one block graph per distinct count — just two for this table.
 
-> **Free-fit (opt-in `freefit=true`)** is the alternative: keep native aspect ratio and land the token count *anywhere* inside a tier's band rather than snapping to these discrete buckets (`freefit_bucket`; `_archive/proposals/free_aspect_token_band_resize.md`). The off-table counts would explode the static graph count, so free-fit **requires `compile_dynamic_seq`** (auto-enabled when `freefit` + `torch_compile`), which marks only the seq axis dynamic and bounds it to the tier's `seq_range` — collapsing the whole band to **one graph**. Constant-token bucketing stays the default and stays frozen (the frozen top-5 aspect set `DCW_ASPECT_BUCKETS`, consumed by CNS calibration + mod-distill, is drawn from it); the two modes coexist per-dataset via the `freefit` flag.
+> Free-fit (opt-in `freefit=true`) is the alternative: keep native aspect ratio and land the token count *anywhere* inside a tier's band rather than snapping to these discrete buckets (`freefit_bucket`; `_archive/proposals/free_aspect_token_band_resize.md`). The off-table counts would explode the static graph count, so free-fit requires `compile_dynamic_seq` (auto-enabled when `freefit` + `torch_compile`), which marks only the seq axis dynamic and bounds it to the tier's `seq_range` — collapsing the whole band to one graph. Constant-token bucketing stays the default and stays frozen (the frozen top-5 aspect set `DCW_ASPECT_BUCKETS`, consumed by CNS calibration + mod-distill, is drawn from it); the two modes coexist per-dataset via the `freefit` flag.
 
 ```python
 CONSTANT_TOKEN_BUCKETS = [
@@ -219,7 +219,7 @@ if args.torch_compile:
 dynamo_backend = "NO"
 ```
 
-**sd-scripts**: Always passes `dynamo_backend` to Accelerator when `torch_compile` is set.
+sd-scripts: Always passes `dynamo_backend` to Accelerator when `torch_compile` is set.
 
 ### 4.3 Padding mask caching
 
@@ -247,9 +247,9 @@ Passed through `library/config/` to `BucketManager.make_buckets()`. When `freefi
 
 `torch.compile` wraps modules in `_orig_mod` containers, inserting `_orig_mod.` or `_orig_mod_` into state-dict keys. Three locations handle this:
 
-1. **`create_network_from_weights()`** — strips keys when loading external checkpoints.
-2. **Module discovery loop** — strips `_orig_mod.` from module paths during LoRA target matching.
-3. **`_strip_orig_mod_keys()` static method + `load_state_dict()` override** — ensures any state-dict loaded into the network is normalized.
+1. `create_network_from_weights()` — strips keys when loading external checkpoints.
+2. Module discovery loop — strips `_orig_mod.` from module paths during LoRA target matching.
+3. `_strip_orig_mod_keys()` static method + `load_state_dict()` override — ensures any state-dict loaded into the network is normalized.
 
 ```python
 @staticmethod
@@ -265,7 +265,7 @@ def load_state_dict(self, state_dict, strict=True, **kwargs):
     return super().load_state_dict(state_dict, strict=strict, **kwargs)
 ```
 
-**sd-scripts**: Zero `_orig_mod_` awareness — loading a checkpoint trained with `torch.compile` would fail.
+sd-scripts: Zero `_orig_mod_` awareness — loading a checkpoint trained with `torch.compile` would fail.
 
 ### 5.2 ~~Memory-saving down-projection autograd~~ (REMOVED 2026-06-10)
 
@@ -279,7 +279,7 @@ dead weight plus cast traffic (`x.float()` materialized a fp32 copy of every
 adapted Linear's input that autocast immediately re-rounded — up to ~24%
 module overhead on wide-input Linears). Measured in the `lora_fp32_bottleneck` bench (since removed):
 
-* live-autocast path vs explicit bf16 GEMMs: **bit-identical forward** (max abs diff 0.0);
+* live-autocast path vs explicit bf16 GEMMs: bit-identical forward (max abs diff 0.0);
 * cuBLAS bf16 GEMMs accumulate in fp32 internally, so the bf16 output sits at
   the rounding floor (one caveat: `allow_bf16_reduced_precision_reduction`,
   default True, costs ~1.4× error at k=8192);
@@ -294,11 +294,11 @@ prefill) kept their historical fp32 compute since the inference engine runs
 without autocast. Regression tests: `tests/test_lora_dtype_policy.py`
 (bitwise legacy parity under autocast + dtype honesty).
 
-`use_custom_down_autograd` is still **accepted** everywhere it used to be (TOML
+`use_custom_down_autograd` is still accepted everywhere it used to be (TOML
 allowlist, factory, EasyControl, turbo CLI) but is a logged no-op, so old
 snapshot TOMLs replay cleanly.
 
-**Post-removal addendum (2026-06-10, same day):** the Function was numerically
+Post-removal addendum (2026-06-10, same day): the Function was numerically
 dead weight but NOT memory-dead. Under `torch.compile` an `autograd.Function`
 is traced as a HOP that pins the saved-for-backward set to its
 `ctx.save_for_backward` choice ({x, weight}, casts recomputed in backward).
@@ -350,9 +350,9 @@ for k, v in lora_sd.items():
 
 The key insight is that a DiT training loop has three sources of shape dynamism that trigger `torch.compile` recompilation:
 
-1. **Spatial resolution** — different bucket sizes produce different `(T, H, W)` token counts.
-2. **Caption length** — variable text encoder output lengths for cross-attention KV.
-3. **Batch size** — trailing incomplete batches at epoch boundaries.
+1. Spatial resolution — different bucket sizes produce different `(T, H, W)` token counts.
+2. Caption length — variable text encoder output lengths for cross-attention KV.
+3. Batch size — trailing incomplete batches at epoch boundaries.
 
 The fork eliminates all three:
 

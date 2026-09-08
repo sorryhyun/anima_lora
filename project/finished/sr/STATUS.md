@@ -1,19 +1,19 @@
 # SR sidecar — finished (2026-08-22)
 
 Standalone ResShift super-resolution for our art (×4 and ×2), deliberately
-outside the Anima adapter system. **Status: finished — both scale lines sit at
-their measured ceilings.** The whole working tree was moved here from repo-root
+outside the Anima adapter system. Status: finished — both scale lines sit at
+their measured ceilings. The whole working tree was moved here from repo-root
 `sr/` when the line finished; the `make sr-*` targets were removed at the same
 time (training-only surface, essentially unused — scripts run directly, see
 [`README.md`](README.md), the ops surface).
 
 ## Why it's finished
 
-- **×4**: the released ResShift ×4 transferred to our art with no domain gap
+- ×4: the released ResShift ×4 transferred to our art with no domain gap
   (Phase 0, 2026-06-29 — wins every metric vs bicubic, no hallucination/color
   shift), the art finetune (`x4ft`) feeds the RSD distiller, and the shipped
   1-step student is faithful to its teacher.
-- **×2**: exhaustively closed 2026-07. The 1-step student plateaus by ~10–12k
+- ×2: exhaustively closed 2026-07. The 1-step student plateaus by ~10–12k
   steps (24k ≈ 2k, dead tie); a three-way teacher|2k|24k comparison shows the
   **ceiling lives in the teacher + the shared VQ-f4 recon floor**, not
   distillation. The teacher-side recipe levers (text crops, scale jitter,
@@ -36,7 +36,7 @@ time (training-only surface, essentially unused — scripts run directly, see
 
 ## Open remainder
 
-- **Korean text**: the text-fidelity work ran on the existing (JP-heavy)
+- Korean text: the text-fidelity work ran on the existing (JP-heavy)
   pool; a Korean-text training pass is the one data axis not yet trained.
   This is a *data* lever, so it does not contradict the "recipe levers
   exhausted" closure above.

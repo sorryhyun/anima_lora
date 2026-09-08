@@ -7,7 +7,7 @@
 > ship plan: `_archive/proposals/foveated_denoise.md`; reusable findings:
 > `docs/findings/foveated_denoise.md`.
 
-Training-free inference acceleration, **image-identity preserving**: same image
+Training-free inference acceleration, image-identity preserving: same image
 where it matters, periphery rendered as an intentional soft blur. ×1.37 e2e at
 1024²/28-step/CFG 4 (fwd ×2.15 on merged steps), fovea visually
 baseline-identical. Runner in `networks/foveated.py`.
@@ -19,25 +19,25 @@ python inference.py ... --fovea_sigma_c 0.75 --fovea_frac 0.25   # faster, knee 
 
 ## Mechanism
 
-1. **Above σ_c** (default 0.75): baseline full-grid sampling — composition and
+1. Above σ_c (default 0.75): baseline full-grid sampling — composition and
    identity are decided identically to no-foveation. This "deferred" gating is
    load-bearing: text drive is front-loaded and low frequency bands lock by
    σ≈0.75, so foveating inside the authority window makes a *different image*.
-2. During the pre-crossing steps, two free signals accumulate: **cfgdelta**
+2. During the pre-crossing steps, two free signals accumulate: cfgdelta
    (per-cell |v_cond − v_uncond|, prompt-aware — marks where the prompt is
-   steering) and **x0var** (x̂₀ Laplacian energy — marks detail-critical
+   steering) and x0var (x̂₀ Laplacian energy — marks detail-critical
    cells). Zero extra models, zero extra forwards.
-3. **At the crossing**, the `combo` mask is built: normalized signal sum →
+3. At the crossing, the `combo` mask is built: normalized signal sum →
    threshold → morphological open → close → dilate-1 → threshold re-solved so
    the final fraction hits `--fovea_frac`. Compact and subject-following, per
    (prompt, seed).
-4. **Below σ_c**: the DiT block stack runs on a reduced sequence — fovea tokens
+4. Below σ_c: the DiT block stack runs on a reduced sequence — fovea tokens
    1:1, each 2×2-token periphery group averaged to one token (4096 → ~2100 at
    frac 0.35). Merged rope = renormalized elementwise mean of the members'
    (cos, sin) rows — the exact mean-position rope for symmetric groups. The
    reduced output is broadcast back to the full grid before `final_layer`. The
-   **latent stays full-res end-to-end** — merging is what the compute sees.
-5. **Final readout**: periphery read from the merged representation (avg-pool →
+   latent stays full-res end-to-end — merging is what the compute sees.
+5. Final readout: periphery read from the merged representation (avg-pool →
    bicubic up), fovea untouched. Part of the quality contract — skipping it
    leaves never-denoised HF detail in the periphery at decode.
 
@@ -51,18 +51,18 @@ python inference.py ... --fovea_sigma_c 0.75 --fovea_frac 0.25   # faster, knee 
 
 ## Composition / scope (v1)
 
-- **Euler only** — a stochastic sampler request (`er_sde`/`lcm`) falls back to
+- Euler only — a stochastic sampler request (`er_sde`/`lcm`) falls back to
   Euler with a warning (noise injection into group-shared periphery states is
   unvalidated).
-- **Mutually exclusive with `--spectrum` / `--spd`** (all replace the denoise
+- Mutually exclusive with `--spectrum` / `--spd` (all replace the denoise
   loop). The foveated-Spectrum compose was closed by bench P3: no headroom at
   sane schedules, baseline collapse at aggressive ones — don't re-propose.
-- **SMC-CFG / FSG / CFG++ are warn-and-ignored** — sampler-boundary
+- SMC-CFG / FSG / CFG++ are warn-and-ignored — sampler-boundary
   plug-ins unvalidated against group-shared periphery velocities.
-- **Composes with LoRA / Hydra / soft-tokens / P-GRAFT** — per-step adapter
+- Composes with LoRA / Hydra / soft-tokens / P-GRAFT — per-step adapter
   setters mirror the standard loop; the per-Linear LoRA delta is
   token-count-agnostic.
-- **Compile**: unvalidated. The merged stack introduces one extra token count
+- Compile: unvalidated. The merged stack introduces one extra token count
   per mask (outside the tier's `dynamic_seq` band) — a compiled model logs a
   warning and will recompile once per generation. Prefer eager for v1.
 - Latent grids not divisible by the 4-px merge cell disable foveation for that

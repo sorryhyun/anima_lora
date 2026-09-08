@@ -8,15 +8,15 @@ Anima's AdaLN modulation path is originally text-blind — the shift/scale/gate 
 
 Modulation guidance adds a second text-conditioning channel by:
 
-1. **Injecting a pooled text embedding into the modulation path** — a small learned MLP projects `max_pool(crossattn_emb)` into the timestep embedding space, making AdaLN coefficients text-aware.
-2. **Applying guidance in modulation space at inference** — steering the AdaLN coefficients toward quality-positive and away from quality-negative directions, orthogonal to classifier-free guidance in noise space.
+1. Injecting a pooled text embedding into the modulation path — a small learned MLP projects `max_pool(crossattn_emb)` into the timestep embedding space, making AdaLN coefficients text-aware.
+2. Applying guidance in modulation space at inference — steering the AdaLN coefficients toward quality-positive and away from quality-negative directions, orthogonal to classifier-free guidance in noise space.
 
 | Component | Text-dependent? | Notes |
 |-----------|:-:|-------|
 | Cross-attention KV | Yes | Qwen3 → LLMAdapter → 28 blocks |
-| AdaLN shift/scale/gate | **Yes** (after training) | `t_embedder` + `pooled_text_proj` |
+| AdaLN shift/scale/gate | Yes (after training) | `t_embedder` + `pooled_text_proj` |
 | CFG | Yes | Noise-space guidance (cond − uncond) |
-| **Modulation guidance** | **Yes** | AdaLN-space guidance (pos − neg) |
+| Modulation guidance | Yes | AdaLN-space guidance (pos − neg) |
 
 ## Architecture
 
@@ -38,11 +38,11 @@ pooled = crossattn_emb.max(dim=1).values   # (B, 1024)
 t_embedding_B_T_D = t_embedding_B_T_D + self.pooled_text_proj(pooled).unsqueeze(1)
 ```
 
-**Pooled text source** — max-pool from `crossattn_emb` (post-LLMAdapter), not raw Qwen3 outputs. The HydraLoRA routing analysis ([hydra-lora.md](../methods/hydra-lora.md)) empirically evaluated pooling strategies on this encoder with 1416 images across 37 artists:
+Pooled text source — max-pool from `crossattn_emb` (post-LLMAdapter), not raw Qwen3 outputs. The HydraLoRA routing analysis ([hydra-lora.md](../methods/hydra-lora.md)) empirically evaluated pooling strategies on this encoder with 1416 images across 37 artists:
 
 | Strategy | Source | KMeans NMI |
 |----------|--------|:---:|
-| **Max pool** | **crossattn_emb** | **0.926** |
+| Max pool | crossattn_emb | 0.926 |
 | Mean pool | crossattn_emb | 0.551 |
 | Mean pool | prompt_embeds | 0.400 |
 | EOS token | prompt_embeds | 0.170 |
@@ -52,19 +52,19 @@ Max pool captures per-dimension peak activations from positions 16–50 (visual 
 
 ### Injection point: after `t_embedding_norm`
 
-The projection output is added to `t_embedding_B_T_D` **after** `t_embedding_norm`. Benchmarked against two alternatives:
+The projection output is added to `t_embedding_B_T_D` after `t_embedding_norm`. Benchmarked against two alternatives:
 
 | Injection point | MSE @ α=2.0 | MSE @ α=8.0 | Growth α=4→8 |
 |-----------------|-------------|-------------|---------------|
 | before_norm | 4.77e-4 | 1.08e-2 | 6.1x |
-| **after_norm** | **4.76e-3** | **1.89e-1** | **7.2x** |
+| after_norm | 4.76e-3 | 1.89e-1 | 7.2x |
 | adaln_lora | 4.29e-3 | 4.06e-2 | 2.6x |
 
 `after_norm` has ~10x more sensitivity than `before_norm` (the norm re-centers perturbations) and ~4.7x the saturation headroom of `adaln_lora`.
 
 ### Inference guidance
 
-At inference time, modulation guidance steers AdaLN coefficients using quality-axis prompts. The base projection is applied uniformly (training-consistent), but the steering delta is scheduled **per DiT block**:
+At inference time, modulation guidance steers AdaLN coefficients using quality-axis prompts. The base projection is applied uniformly (training-consistent), but the steering delta is scheduled per DiT block:
 
 ```
 base_emb     = t_embedding + proj(pool(main))                    # uniform, training-consistent
@@ -75,7 +75,7 @@ emb_at_final    = base_emb + w_final · delta_unit                # final_layer 
 
 `delta_unit` and `w(ℓ)` are computed once at setup and reused across all denoising steps. They live on `anima._mod_guidance_delta` (unit direction, no `w` baked in), `anima._mod_guidance_schedule` (list of `w(ℓ)` of length `num_blocks`), and `anima._mod_guidance_final_w` (scalar).
 
-**Why schedule instead of uniform?** Applying one global `w` to every block plus `final_layer` caused a drift failure mode on some LoRAs ("channel" collapsing to uniform pink at `w=3` while "sweetonedollar" stayed clean at the same `w`). Per-block functional-gap analysis on Anima's 28-block DiT showed early blocks 0–7 set coarse layout / tonal DC and are sensitive to DC blowout, while block 27 is a compensation/fix-up layer. Matches the Starodubcev et al. App. B–C analysis on FLUX (Strategy 4 — per-block `w`, not per-timestep).
+Why schedule instead of uniform? Applying one global `w` to every block plus `final_layer` caused a drift failure mode on some LoRAs ("channel" collapsing to uniform pink at `w=3` while "sweetonedollar" stayed clean at the same `w`). Per-block functional-gap analysis on Anima's 28-block DiT showed early blocks 0–7 set coarse layout / tonal DC and are sensitive to DC blowout, while block 27 is a compensation/fix-up layer. Matches the Starodubcev et al. App. B–C analysis on FLUX (Strategy 4 — per-block `w`, not per-timestep).
 
 ### Profiles
 
@@ -83,8 +83,8 @@ Two named profiles cover the useful operating points — pick the safe one if a 
 
 | Profile | `start_layer` | `end_layer` | `final_w` | Use when |
 |---|:-:|:-:|:-:|---|
-| **`step_i8_skip27`** (default) | 8 | 27 | 0.0 | Best overall quality. Protects blocks 0–7 + 27. May occasionally show minor anatomy drift on drift-prone LoRAs. |
-| **`step_i14`** (safe) | 14 | — | 0.0 | Reliably stays inside the trained manifold. Slightly less expressive — use when `step_i8_skip27` shows drift on the prompt at hand. |
+| `step_i8_skip27` (default) | 8 | 27 | 0.0 | Best overall quality. Protects blocks 0–7 + 27. May occasionally show minor anatomy drift on drift-prone LoRAs. |
+| `step_i14` (safe) | 14 | — | 0.0 | Reliably stays inside the trained manifold. Slightly less expressive — use when `step_i8_skip27` shows drift on the prompt at hand. |
 
 Default guidance prompts use booru-style quality/score tags (in-distribution for Anima's text encoder):
 
@@ -137,18 +137,18 @@ To recover pre-0413 uniform behavior (not recommended — prone to pink-collapse
 
 The projection MLP must be trained via distillation before modulation guidance can be used. This trains only `pooled_text_proj` (~8M params) with the rest of the model frozen. **You normally never run this** — the distilled head ships as a release asset and the head is a one-shot artifact, re-distilled only when the base DiT changes. The loop lives in [`project/finished/mod_guidance/`](../../project/finished/mod_guidance/) (a finished line — the `distill-prep` / `distill-mod` targets were removed with the move; ops in its [`README.md`](../../project/finished/mod_guidance/README.md), verdicts in [`STATUS.md`](../../project/finished/mod_guidance/STATUS.md)).
 
-**How distillation works** (paper-faithful, Starodubcev et al. §5 — *"we propagate the textual prompt solely through the pooled text embedding, using an unconditional prompt for T5"*):
+How distillation works (paper-faithful, Starodubcev et al. §5 — *"we propagate the textual prompt solely through the pooled text embedding, using an unconditional prompt for T5"*):
 
-1. **Teacher** forward — full model with the real `crossattn_emb` and `pooled_text_proj` disabled (original Anima behavior).
-2. **Student** forward — `crossattn_emb` swapped for a cached `T5("")` unconditional baseline (same input Anima's own CFG-uncond branch uses), with the real pooled text injected via `pooled_text_proj`. This forces the projection to carry every bit of text information through the modulation path.
-3. **Loss** — MSE between student and teacher noise predictions.
+1. Teacher forward — full model with the real `crossattn_emb` and `pooled_text_proj` disabled (original Anima behavior).
+2. Student forward — `crossattn_emb` swapped for a cached `T5("")` unconditional baseline (same input Anima's own CFG-uncond branch uses), with the real pooled text injected via `pooled_text_proj`. This forces the projection to carry every bit of text information through the modulation path.
+3. Loss — MSE between student and teacher noise predictions.
 
 #### Step 1 — pre-stage
 
 `prep.py` runs two phases:
 
-- **Phase 1 (mandatory)** — encodes `T5("")` once into `post_image_dataset/lora/_anima_uncond_te.safetensors`. The training loop loads this as the student's unconditional crossattn input; without it the distill won't start. `make preprocess-te` already produces this sidecar for free — Phase 1 is the explicit re-stager after a model swap.
-- **Phase 2 (optional, recommended)** — runs the frozen teacher (full CFG denoise from fresh noise, conditioned on each cached prompt) and writes clean latents under `post_image_dataset/distill_mod_synth/`. Training against these instead of real-image latents removes the real-vs-teacher distribution gap that floored the original val loss.
+- Phase 1 (mandatory) — encodes `T5("")` once into `post_image_dataset/lora/_anima_uncond_te.safetensors`. The training loop loads this as the student's unconditional crossattn input; without it the distill won't start. `make preprocess-te` already produces this sidecar for free — Phase 1 is the explicit re-stager after a model swap.
+- Phase 2 (optional, recommended) — runs the frozen teacher (full CFG denoise from fresh noise, conditioned on each cached prompt) and writes clean latents under `post_image_dataset/distill_mod_synth/`. Training against these instead of real-image latents removes the real-vs-teacher distribution gap that floored the original val loss.
 
 ```bash
 python -m project.finished.mod_guidance.prep                     # both phases (default)
@@ -200,9 +200,9 @@ python -m project.finished.mod_guidance.distill \
 | `--prefill_teacher_cache` | off | Eagerly run every (sample, σ_idx) up front (~K·N teacher forwards) so training is teacher-free. |
 | `--sample_ratio` | 1.0 | Fraction of (post-split) samples to keep per bucket; mirrors LoRA's per-subset `sample_ratio`. |
 
-**VRAM notes.** The teacher forward runs under `torch.no_grad()` so it holds almost nothing; the student forward is what dominates peak VRAM (~12 GB on the default config). With `--no_grad_ckpt` you'll see VRAM swing between the weights-only baseline and that student peak — this is normal. Leave `--grad_ckpt` on (the default) only if the peak doesn't fit; if it does, `--no_grad_ckpt --blocks_to_swap 0` is faster.
+VRAM notes. The teacher forward runs under `torch.no_grad()` so it holds almost nothing; the student forward is what dominates peak VRAM (~12 GB on the default config). With `--no_grad_ckpt` you'll see VRAM swing between the weights-only baseline and that student peak — this is normal. Leave `--grad_ckpt` on (the default) only if the peak doesn't fit; if it does, `--no_grad_ckpt --blocks_to_swap 0` is faster.
 
-**Teacher cache.** Because the K-grid pre-samples both σ and per-(sample, σ_idx) noise, every cache miss commits one deterministic teacher prediction that every later visit hits directly — no recomputation, identical (latents, noise, σ) inputs to the student whether the cache hit or missed. RAM footprint scales as `dataset_size × K × latent_bytes` (≈ few GB at default K=6 + Anima's 16×H×W bf16 latents); shrink K if RAM is tight.
+Teacher cache. Because the K-grid pre-samples both σ and per-(sample, σ_idx) noise, every cache miss commits one deterministic teacher prediction that every later visit hits directly — no recomputation, identical (latents, noise, σ) inputs to the student whether the cache hit or missed. RAM footprint scales as `dataset_size × K × latent_bytes` (≈ few GB at default K=6 + Anima's 16×H×W bf16 latents); shrink K if RAM is tight.
 
 Output: `output/ckpt/pooled_text_proj.safetensors`. Use it at inference via `--pooled_text_proj <path>` (or `make test MOD=1`, which auto-discovers it).
 
@@ -210,12 +210,12 @@ Output: `output/ckpt/pooled_text_proj.safetensors`. Use it at inference via `--p
 
 | Feature | Interaction |
 |---------|-------------|
-| **T-LoRA** | Orthogonal — T-LoRA masks LoRA rank by timestep; modulation guidance steers AdaLN coefficients. Different parameter spaces. |
-| **CFG** | Complementary — CFG in noise space, modulation guidance in AdaLN space. They stack. |
-| **P-GRAFT** | Compatible — modulation guidance runs independently of LoRA presence. |
-| **Spectrum** | Compatible — Spectrum skips blocks but still runs `t_embedder` + `final_layer`. Guidance delta applies to `emb_B_T_D` before blocks, carried through on cached steps. |
-| **HydraLoRA** | Both have consumed pooled crossattn in the past, but HydraLoRA's current router reads the post-`lora_down` rank-R signal — so no shared pool any more. Orthogonal paths. |
-| **LoRA training** | No conflict — LoRA explicitly excludes `pooled_text_proj` via the exclude pattern in `networks/lora_anima/factory.py`. |
+| T-LoRA | Orthogonal — T-LoRA masks LoRA rank by timestep; modulation guidance steers AdaLN coefficients. Different parameter spaces. |
+| CFG | Complementary — CFG in noise space, modulation guidance in AdaLN space. They stack. |
+| P-GRAFT | Compatible — modulation guidance runs independently of LoRA presence. |
+| Spectrum | Compatible — Spectrum skips blocks but still runs `t_embedder` + `final_layer`. Guidance delta applies to `emb_B_T_D` before blocks, carried through on cached steps. |
+| HydraLoRA | Both have consumed pooled crossattn in the past, but HydraLoRA's current router reads the post-`lora_down` rank-R signal — so no shared pool any more. Orthogonal paths. |
+| LoRA training | No conflict — LoRA explicitly excludes `pooled_text_proj` via the exclude pattern in `networks/lora_anima/factory.py`. |
 
 ## ComfyUI
 
@@ -223,13 +223,13 @@ Mod guidance ships inside the [ComfyUI-Spectrum-KSampler](https://github.com/sor
 
 | Node | Inputs | When to use |
 |---|---|---|
-| **KSampler (Spectrum)** | `quality_tags`, `quality_neg`, `mod_w_profile` dropdown (+ SEA `refresh_ratio`, SMC) | Everyday use. Mod guidance folded into the unified sampler — pick a profile preset, `off` to disable. |
-| **KSampler (Spectrum + Mod Guidance Advanced)** | full `start_layer` / `end_layer` / `taper` / `final_w` sliders + Spectrum knobs | Workflow tuning or per-LoRA experimentation. |
-| **Anima Mod Guidance (model patch)** | `quality_tags`, `quality_neg`, `mod_w_profile` | Standalone `MODEL → MODEL` patcher; composes with any sampler. |
+| KSampler (Spectrum) | `quality_tags`, `quality_neg`, `mod_w_profile` dropdown (+ SEA `refresh_ratio`, SMC) | Everyday use. Mod guidance folded into the unified sampler — pick a profile preset, `off` to disable. |
+| KSampler (Spectrum + Mod Guidance Advanced) | full `start_layer` / `end_layer` / `taper` / `final_w` sliders + Spectrum knobs | Workflow tuning or per-LoRA experimentation. |
+| Anima Mod Guidance (model patch) | `quality_tags`, `quality_neg`, `mod_w_profile` | Standalone `MODEL → MODEL` patcher; composes with any sampler. |
 
 The `mod_w_profile` dropdown exposes the same two profiles documented above plus `uniform_w3` for reproducing pre-0413 behavior. Default is `step_i8_skip27`; switch to `step_i14` when a LoRA shows anatomy drift.
 
-**`quality_neg` — decoupled steering negative.** The mod delta is `proj(quality_tags) − proj(quality_neg)`. Historically the node reused the **CFG** negative here, which is anti-correlated (cos ≈ −0.38) with the intended quality axis and weaker — the broad CFG negative is a velocity-space repulsion target, not a clean quality counter-pole. `quality_neg` gives the steering axis its own baseline (e.g. `worst quality, score_1`), matching the CLI's long-standing `--mod_pos_prompt` / `--mod_neg_prompt` split. **Empty = reuse the CFG negative** (legacy behavior, bit-for-bit). The CFG negative is unchanged either way.
+`quality_neg` — decoupled steering negative. The mod delta is `proj(quality_tags) − proj(quality_neg)`. Historically the node reused the CFG negative here, which is anti-correlated (cos ≈ −0.38) with the intended quality axis and weaker — the broad CFG negative is a velocity-space repulsion target, not a clean quality counter-pole. `quality_neg` gives the steering axis its own baseline (e.g. `worst quality, score_1`), matching the CLI's long-standing `--mod_pos_prompt` / `--mod_neg_prompt` split. Empty = reuse the CFG negative (legacy behavior, bit-for-bit). The CFG negative is unchanged either way.
 
 ## Design rationale
 

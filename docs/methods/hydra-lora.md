@@ -4,7 +4,7 @@ MoE-style multi-head LoRA with per-module routing. Targets multi-artist training
 
 > We published paper about this! read [paper](https://arxiv.org/abs/2605.03252) if interested.
 
-> **For the structural walkthrough** (architecture, forward pass, why RMS-over-rank-R, load-balancing formula, orthogonalized experts and the cold-start deadlock, composition matrix), see **`docs/structure/hydralora.md`**. This doc is the usage / ops / decision-log reference.
+> For the structural walkthrough (architecture, forward pass, why RMS-over-rank-R, load-balancing formula, orthogonalized experts and the cold-start deadlock, composition matrix), see `docs/structure/hydralora.md`. This doc is the usage / ops / decision-log reference.
 
 ## File format
 
@@ -21,8 +21,8 @@ Training state dict (runtime form, used inside the trainer):
 
 `save_weights` produces two files side by side:
 
-1. **`anima_hydra.safetensors`** — standard LoRA (baked-down): expert ups are averaged to a single `lora_up.weight`, routers stripped. ComfyUI drop-in, but routing is lost so it's effectively a uniform-prior approximation.
-2. **`anima_hydra_moe.safetensors`** — full multi-head format: per-expert `lora_ups.N.weight`, routers preserved, attention modules split into separate `q_proj`/`k_proj`/`v_proj` so the ComfyUI custom node can map them to the ComfyUI model's attention key names. Shared tensors (`lora_down`, `alpha`, `router.*`, `inv_scale`) are cloned into each split component.
+1. `anima_hydra.safetensors` — standard LoRA (baked-down): expert ups are averaged to a single `lora_up.weight`, routers stripped. ComfyUI drop-in, but routing is lost so it's effectively a uniform-prior approximation.
+2. `anima_hydra_moe.safetensors` — full multi-head format: per-expert `lora_ups.N.weight`, routers preserved, attention modules split into separate `q_proj`/`k_proj`/`v_proj` so the ComfyUI custom node can map them to the ComfyUI model's attention key names. Shared tensors (`lora_down`, `alpha`, `router.*`, `inv_scale`) are cloned into each split component.
 
 ## Inference
 
@@ -36,27 +36,27 @@ Use `make test-hydra` (or `python tasks.py test-hydra`) to run inference against
 
 ### ComfyUI (live routing)
 
-Use the **Anima Adapter Loader** node (`https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter`), which installs per-Linear forward hooks that reproduce `HydraLoRAModule.forward` exactly — including σ-conditional routing when the checkpoint's router input is wider than `rank`. See `https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter` for installation, hook mechanics, and changelog.
+Use the Anima Adapter Loader node (`https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter`), which installs per-Linear forward hooks that reproduce `HydraLoRAModule.forward` exactly — including σ-conditional routing when the checkpoint's router input is wider than `rank`. See `https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter` for installation, hook mechanics, and changelog.
 
 ## Orthogonalized experts — fallback behavior
 
 The `OrthoHydraLoRAModule` default (both `use_ortho = true` and `use_hydra = true`) is the structural deadlock fix described in `docs/structure/hydralora.md` §5. One operational detail worth knowing:
 
-**Fallback.** If `min(out_dim, in_dim) < num_experts · lora_dim` the disjoint SVD-slice partition can't fit, so `P_bases` degenerates to the legacy shared `P_basis` replicated `E` times (with a warning in the log). In that case all experts start identical (shared basis + zero `S_p` + zero `lambda_layer`) and must diverge through training-time updates to `S_p` — if the router collapses they never will. Prefer to size `num_experts` so the partition fits. Implementation: `networks/lora_modules/ortho.py:OrthoHydraLoRAModule`.
+Fallback. If `min(out_dim, in_dim) < num_experts · lora_dim` the disjoint SVD-slice partition can't fit, so `P_bases` degenerates to the legacy shared `P_basis` replicated `E` times (with a warning in the log). In that case all experts start identical (shared basis + zero `S_p` + zero `lambda_layer`) and must diverge through training-time updates to `S_p` — if the router collapses they never will. Prefer to size `num_experts` so the partition fits. Implementation: `networks/lora_modules/ortho.py:OrthoHydraLoRAModule`.
 
 ## Composition with other variants
 
-- **T-LoRA** — timestep rank masking applies to `lora_down` (shared across experts), so it composes directly. HydraLoRA + T-LoRA is the configured default.
-- **OrthoLoRA** — supported via `OrthoHydraLoRAModule` (`networks/lora_modules/ortho.py`). Cayley-parameterized orthogonal `S_p` becomes per-expert (`(num_experts, r, r)`), `S_q` stays shared (matching the shared `lora_down` story). Activated by setting both `use_ortho = true` and `use_hydra = true` — this is the configured default.
-- **Spectrum** — composes cleanly. Cached steps skip all transformer blocks entirely (router included), so hydra just runs fewer times.
-- **Modulation guidance** — orthogonal. Touches AdaLN only, outside the hydra-adapted Linears.
+- T-LoRA — timestep rank masking applies to `lora_down` (shared across experts), so it composes directly. HydraLoRA + T-LoRA is the configured default.
+- OrthoLoRA — supported via `OrthoHydraLoRAModule` (`networks/lora_modules/ortho.py`). Cayley-parameterized orthogonal `S_p` becomes per-expert (`(num_experts, r, r)`), `S_q` stays shared (matching the shared `lora_down` story). Activated by setting both `use_ortho = true` and `use_hydra = true` — this is the configured default.
+- Spectrum — composes cleanly. Cached steps skip all transformer blocks entirely (router included), so hydra just runs fewer times.
+- Modulation guidance — orthogonal. Touches AdaLN only, outside the hydra-adapted Linears.
 
 ## Evolution: global → layer-local
 
 The first HydraLoRA implementation used a single global router that read max-pooled `crossattn_emb` (the text conditioning, post-T5 projection) and broadcast one gate distribution to every adapted layer for every timestep. That design was motivated by a k-means / NMI analysis showing that max-pooled `crossattn_emb` clusters cleanly by artist (NMI ≈ 0.93). It worked enough to train, but had two problems:
 
-1. **One-layer-wide routing.** The same gate was applied everywhere, so experts couldn't specialize per layer (e.g. an expert that's strong in early blocks but irrelevant in late blocks had no way to express that).
-2. **Router decoupled from DiT input distribution.** The training signal for the router came from a fixed, pre-computed text embedding — not from what the adapted module actually sees at denoising time — so the routing decision was blind to noise level and image content.
+1. One-layer-wide routing. The same gate was applied everywhere, so experts couldn't specialize per layer (e.g. an expert that's strong in early blocks but irrelevant in late blocks had no way to express that).
+2. Router decoupled from DiT input distribution. The training signal for the router came from a fixed, pre-computed text embedding — not from what the adapted module actually sees at denoising time — so the routing decision was blind to noise level and image content.
 
 The current layer-local design drops the text-space clustering path and reads each adapted layer's actual input. Old checkpoints with `_hydra_router.*` keys are refused at load time (see `networks/lora_anima/`) with an error message pointing at retraining.
 
@@ -74,8 +74,8 @@ HydraLoRA requires `cache_llm_adapter_outputs = true` (same as standard LoRA in 
 
 `specialize_experts_by_sigma_buckets = true` (with `num_sigma_buckets > 1` and `num_experts % num_sigma_buckets == 0`) partitions the E experts into B σ-bands. For a sample at σ in band b, only the in-band experts can win the gate (out-of-band logits masked to `-inf` before softmax). Soft routing still operates within a band.
 
-- **Layout: interleaved.** Expert e belongs to band `e mod B`. With OrthoHydra's sequential SVD slicing, interleaving gives every band a representative spread of singular slices instead of binding band 0 to the top slice and band B-1 to the bottom — see `networks/lora_modules/hydra.py::_register_sigma_band_partition`.
-- **Edges: optional.** `sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]` (length B+1, strictly increasing, 0.0 → 1.0) overrides the default uniform `linspace(0, 1, B+1)`. Lets you concentrate capacity in a chosen σ regime — e.g. wide low-σ band, narrow high-σ band — while keeping equal experts per band. With variable bucket widths under uniform σ sampling, narrow buckets see fewer training samples per band; consider oversampling those σ ranges if you want their experts to converge as fast.
+- Layout: interleaved. Expert e belongs to band `e mod B`. With OrthoHydra's sequential SVD slicing, interleaving gives every band a representative spread of singular slices instead of binding band 0 to the top slice and band B-1 to the bottom — see `networks/lora_modules/hydra.py::_register_sigma_band_partition`.
+- Edges: optional. `sigma_bucket_boundaries = [0.0, 0.5, 0.8, 1.0]` (length B+1, strictly increasing, 0.0 → 1.0) overrides the default uniform `linspace(0, 1, B+1)`. Lets you concentrate capacity in a chosen σ regime — e.g. wide low-σ band, narrow high-σ band — while keeping equal experts per band. With variable bucket widths under uniform σ sampling, narrow buckets see fewer training samples per band; consider oversampling those σ ranges if you want their experts to converge as fast.
 
 Both fields are stamped into safetensors metadata (`ss_specialize_experts_by_sigma_buckets`, `ss_num_sigma_buckets`, `ss_sigma_bucket_boundaries`) so inference (CLI + ComfyUI) reconstructs the partition exactly.
 
@@ -89,11 +89,11 @@ Root cause: `_compute_gate` mean-pooled the raw `in_dim`-wide layer input over t
 
 Applied:
 
-1. **Pool after `lora_down`.** `_compute_gate` now takes the rank-R `lx` (post `lora_down`) and RMS-pools it across the sequence dim. Content survives aggregation; no DC-bias outliers; router parameter count drops ~64× (e.g. `2048 × 4 → 32 × 4`).
-2. **Gate computed before T-LoRA mask / dropout** so the gate is identical at train and inference time.
-3. **Balance-loss weight pre-cut** from 0.01 → 0.001 in `lora.toml`, `gui-methods/hydralora.toml`, `gui-methods/hydralora_sigma.toml`, since with real router gradient restored the old weight would dominate.
+1. Pool after `lora_down`. `_compute_gate` now takes the rank-R `lx` (post `lora_down`) and RMS-pools it across the sequence dim. Content survives aggregation; no DC-bias outliers; router parameter count drops ~64× (e.g. `2048 × 4 → 32 × 4`).
+2. Gate computed before T-LoRA mask / dropout so the gate is identical at train and inference time.
+3. Balance-loss weight pre-cut from 0.01 → 0.001 in `lora.toml`, `gui-methods/hydralora.toml`, `gui-methods/hydralora_sigma.toml`, since with real router gradient restored the old weight would dominate.
 4. **Old-shape router refused at load.** `create_network_from_weights` raises when `router.weight.shape[1] != rank`, with a retrain message — pre-fix routers never learned anything, so there's no salvage path.
-5. **OrthoHydraLoRAModule mirrored** with the same change. Pool runs on the post-`Q_eff` `lx` but *before* λ scaling — λ is zero-init, so pooling post-λ would zero the router input at step 0 and freeze gradient.
-6. **ComfyUI live-routing hook updated** to mirror the training-time forward exactly (rank-R RMS pool). See `https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter` for node-side details.
+5. OrthoHydraLoRAModule mirrored with the same change. Pool runs on the post-`Q_eff` `lx` but *before* λ scaling — λ is zero-init, so pooling post-λ would zero the router input at step 0 and freeze gradient.
+6. ComfyUI live-routing hook updated to mirror the training-time forward exactly (rank-R RMS pool). See `https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter` for node-side details.
 
 Exit criteria for the first retrain: `‖router.weight‖` at final step > 1.5× init (init for `(E=4, rank=32)` @ std=0.01 ≈ 0.113); median normalized entropy ∈ [0.6, 0.95]; mean dominant-top1 > 0.2; zero dead experts; `make test-hydra` quality ≥ non-hydra LoRA baseline; ComfyUI `Anima Adapter Loader` visually matches CLI at `strength_lora=1.0`.

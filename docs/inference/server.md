@@ -1,6 +1,6 @@
 # Resident inference server
 
-`scripts/inference_server.py` — load the DiT / VAE / text-encoder **once** and
+`scripts/inference_server.py` — load the DiT / VAE / text-encoder once and
 serve many generations over a localhost HTTP port, instead of paying the
 model-load cost per image. It's the inference counterpart of the training
 `anima_daemon/`: same discoverability skin (a localhost port + a pidfile at a
@@ -15,11 +15,11 @@ and never frees it; the server just keeps that dict alive across requests.
 
 ## Why a separate process (and not a daemon job kind)
 
-The training daemon's whole contract is to **free** the GPU between serial,
+The training daemon's whole contract is to free the GPU between serial,
 mutually-exclusive jobs — `manager._gpu_guard` actively reaps VRAM before each
 launch. A resident inference model is the opposite workload, so it can't live
 *inside* the daemon. Instead it runs as its own "polite tenant" process that
-**yields** the card when training needs it (see *Coexistence* below).
+yields the card when training needs it (see *Coexistence* below).
 
 | | Resident inference server | Training daemon |
 |---|---|---|
@@ -66,7 +66,7 @@ the path is returned.
 ## Discovery
 
 Mirrors `anima_daemon/config.py`. The server writes its `{pid, create_time,
-port}` to **two** places so any client finds it without hardcoding:
+port}` to two places so any client finds it without hardcoding:
 
 1. in-repo — `output/inference/server.json`
 2. per-user mirror — `~/.anima/inference.json` (override `$ANIMA_INFERENCE_PIDFILE`)
@@ -85,7 +85,7 @@ starve a training launch of VRAM:
    (`manager._evict_resident_inference`) — it frees VRAM but stays alive and
    reloads lazily on its next `/generate`. Best-effort: if no server is running
    it's a couple of cheap `stat()`s; all failures are swallowed.
-2. **Idle TTL.** A background reaper auto-unloads after
+2. Idle TTL. A background reaper auto-unloads after
    `$ANIMA_INFERENCE_IDLE_TTL` seconds idle (default 600; `0` disables, also
    `--idle-ttl`), so a forgotten server doesn't camp on the card. The reaper
    skips an in-flight generation (non-blocking lock acquire).
