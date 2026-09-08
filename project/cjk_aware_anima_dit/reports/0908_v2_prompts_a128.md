@@ -1,7 +1,8 @@
 # The α128 pair re-rendered on the hard (v2) prompt set (2026-09-08)
 
-**Status: RENDERED, grading open.** Blind set `s18_OCR128_vs_PLAIN128_v2`
-pushed, **32 pairs**, unfilled.
+**Status: GRADED, third tie.** Blind set `s18_OCR128_vs_PLAIN128_v2`,
+**32 pairs** — **OCR128 11 / PLAIN128 15 / 6 ties** (26 decisive, one-sided
+p = 0.28). Scored to `reports/blind_s18_OCR128_vs_PLAIN128_v2.md`.
 
 ## Why
 
@@ -103,14 +104,40 @@ This is noise; **two text-requesting rows at two seeds cannot measure the
 text-rendering axis.** If that axis is the question, it needs its own grid of
 text-requesting prompts, not two rows borrowed from a general set.
 
+## Verdict
+
+**Three independent blind reads on this pair, three ties.**
+
+| set | prompts | α | OCR | PLAIN | tie |
+|---|---|---:|---:|---:|---:|
+| `s16_OCR_vs_PLAIN` | v1 (8 rows, text-free) | 32 | 14 | 9 | 1 |
+| `s17_OCR128_vs_PLAIN128` | v1 (8 rows, text-free) | 128 | 10 | 12 | 2 |
+| `s18_OCR128_vs_PLAIN128_v2` | v2 (16 rows, hard) | 128 | 11 | 15 | 6 |
+| **pooled** | | | **35** | **36** | 9 |
+
+Pooled across all three the count is 35–36 on 71 decisive pairs — a coin flip
+(one-sided p = 0.50). The s16 lean toward OCR does not survive either
+manipulation that was supposed to *amplify* it: raising α/r to 4 flipped the
+direction, and the harder prompt set flipped it again while raising the tie
+rate from 4 % to 19 %. That tie rate is itself the cleanest statement of the
+result — on v2 rows nearly one pair in five was called indistinguishable.
+
+So: **the shipped speech + SFX clauses are neutral for image quality on this
+shard.** That is a shippable result — they cost nothing, and the automated
+readouts (adherence, PE cos to base, spam tally) were flat in every one of the
+three comparisons. But it closes the "captions are load-bearing" question in
+the negative *for the render axis*. The remaining case for the clauses rests
+entirely on the 2026-09-01 unmask A/B/C, where arm C was measured against
+**spam**, not against quality — a different claim that this line has never
+contradicted.
+
 ## Next
 
-Grade `s18_OCR128_vs_PLAIN128_v2` (32 pairs, `sets/s18_OCR128_vs_PLAIN128_v2/verdicts.tsv`).
-The prior is now weak: two graded sets on this pair have tied, the automated
-readouts are flat again, and the PE ruler says the harder prompts made the
-arms *more* alike, not less. If s18 also ties, the line has three independent
-reads saying the shipped OCR clauses are **neutral for image quality on this
-shard** — which is still a shippable result (they cost nothing) but closes the
-"captions are load-bearing" question in the negative for the render axis, and
-the remaining case for them rests on the 0901 unmask A/B/C, where they were
-measured against *spam*, not against quality.
+Do **not** spend another render-only re-eval on this pair; the instrument is
+exhausted. Two things would still move it:
+
+- A grid of **text-requesting prompts** (not two rows borrowed from a general
+  set) if the text-rendering axis is the question — see the n = 4 tally above.
+- A **second training seed per arm** (the s11 pattern) if the goal is to
+  confirm a quality lean rather than to rule one out. Worth spending only if
+  something downstream needs OCR captions to be better rather than harmless.

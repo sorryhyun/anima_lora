@@ -1644,7 +1644,7 @@ arm contrast past LoRA-vs-base (PE cos 0.9862 → 0.9794). The blind read still
 tied: **OCR128 10 / PLAIN128 12 / 2 ties**, direction flipped from s16.
 
 **The hard prompt set** (`reports/0908_v2_prompts_a128.md`, blind `s18`, 32
-pairs, open). All 8 rows of `unmask_eval_prompts.txt` are deliberately
+pairs, **graded: OCR128 11 / PLAIN128 15 / 6 ties**). All 8 rows of `unmask_eval_prompts.txt` are deliberately
 text-free — none of them asks for what the two arms disagree about. Re-rendered
 the α128 pair on `unmask_eval_prompts_v2.txt` (16 rows: named characters +
 series, `@sincos` on/off, a crossover, rare tags, and two rows that *request*
@@ -1668,3 +1668,181 @@ Two things to carry forward:
   reproduce the α128 finding that **adapter magnitude is not what produced
   arm B's spam**. Measuring text rendering needs its own grid of
   text-requesting prompts.
+
+*Verdict (closes the pair):* **three blind reads, three ties** — s16 14–9 (α32,
+v1), s17 10–12 (α128, v1), s18 11–15 (α128, v2). Pooled **35–36 on 71 decisive
+pairs**, one-sided p = 0.50, and the v2 tie rate rose to 19 % (4 % on v1). The
+s16 lean survives neither manipulation meant to amplify it. So the shipped
+speech + SFX clauses are **neutral for image quality on this shard** — still
+shippable (they cost nothing, every automated readout flat in all three), but
+the "captions are load-bearing" claim is **closed in the negative for the
+render axis**; it rests only on the 2026-09-01 unmask A/B/C, where arm C beat
+**spam**, not quality. Do not spend another render-only re-eval here — moving
+it needs a text-requesting prompt grid, or a second *training* seed per arm.
+
+## Outside reader — HunyuanOCR-1.5 vs PaddleOCR-VL-1.6, stock on both evals (2026-09-08)
+
+`tencent/HunyuanOCR` (HunyuanOCR-1.5, **1 B**, 24 × 1024 LM + a 16-px-patch
+tower, Tencent Hunyuan Community licence, native
+`HunYuanVLForConditionalGeneration` in transformers ≥ 5.13 — no remote code,
+2.2 GB, `models/hunyuan_ocr`) against the 0.9 B PaddleOCR-VL-1.6 this line
+picked at O2b. Both evals, both readers stock, same crops and scorer. Wired as
+`eval_manga109.READERS["hunyuan"]`, greedy / bf16 / sdpa, the card's locked
+`repetition_penalty=1.08`, and upstream's **fixed** crop prompt
+(`structured_parse` = `提取图中的文字。`; the shipped client exposes
+`--task-type`, never a free-form prompt, because hand-edited instructions were
+observed to degrade it). Full write-up + tables:
+[`reports/0908_hunyuan_vs_vl16.md`](reports/0908_hunyuan_vs_vl16.md).
+
+| stock reader | COO SFX exact | COO speech exact | sincos SFX / 617 |
+|---|---|---|---|
+| Hunyuan-1.5, official zh prompt | 9.5 % | 37.7 % | 12 (1.9 %) |
+| Hunyuan-1.5, Japanese prompt | 13.0 % | 43.3 % | 21 (3.4 %) |
+| manga-ocr | 28.9 % | 81.0 % | 6 (1.0 %) |
+| **VL-1.6** | **31.6 %** | **82.8 %** | 19 (3.1 %) |
+| B′ `vl16_tower_lr1e-5` (reader of record) | 83.2 % | 88.3 % | 312 (50.6 %) |
+
+Four readings:
+
+1. **It is not a Japanese manga reader.** In-domain it is below *stock
+   manga-ocr* on every column and at a third of VL-1.6's SFX exact. On the
+   doujin gate it ties VL-1.6 (21 vs 19), but both sit on the ~3 % floor this
+   line exists to lift, so that tie carries no information. **VL-1.6 stays the
+   base; nothing here reopens decision 1.**
+2. **Half the miss is the prompt naming no language.** Under the official
+   Chinese instruction **51 % of its COO SFX reads contain no kana at all**
+   (840 of 2,558 pure Han — `ドドド` → `咚咚`, `ビッ` → `砰！！`) vs 4 % for
+   VL-1.6. A Japanese instruction drops that to 18 % and buys +3.5 SFX /
+   +5.6 speech points; an English one is worse than the Chinese
+   (0.8 % on the gate). Language prior, not legibility — and the lever is one
+   upstream's own client will not let a user pull.
+3. **What the prompt fix does not repair is small kana.** Folding
+   `っゃゅょぁぃぅぇぉ` to full size on both sides rescues **+6.8 points of its
+   COO speech** vs **+0.8 for VL-1.6**: `言っちゃった` → `言っちやった`,
+   `起床ーーッ` → `起床——ツ`. It also emits furigana as its own interleaved
+   line (`全員起床ーーッ` → `ぜん いん き しょう / 全員 起床——ツ`) and spaces
+   kana runs. Small kana + `ー` + `♡` are precisely what VL-1.6 was picked for.
+4. **A fine-tune arm is available but has a weak prior.** O2b's lesson (the
+   frozen tower was the doujin gap) makes a tower-unfrozen Hunyuan LoRA
+   plausible in principle, but it would start 18 SFX / 39 speech points behind
+   B′'s starting point with *systematic* kana errors, ~90 GPU-min on an
+   untried architecture, while B′ and hayai v2.1.5 already bracket the gate at
+   ~50 %. Not run. Complementarity is real but one-sided: 108 COO SFX lines
+   Hunyuan-ja reads and VL-1.6 misses, against 547 the other way.
+
+**Wall** (batch-matched, same 600 crops, bs 32): Hunyuan 20.2 crops/s vs
+VL-1.6 26.6 — ~1.3×. Its `min_pixels` is 262144, so a 40×60 SFX crop is
+upscaled to ≥ 256 visual tokens; cost per crop is near-flat in crop size.
+
+### The eval key was re-based on 2026-09-08 and every earlier row is on the old one
+
+Not a model finding — a comparability one, surfaced while building the tables
+above. `exact_key` gained the ellipsis fold (each dot run → one `…`) in
+`acd41d72`, 2026-09-08 00:12, the eval half of the O4e guard fix. **Every eval
+row measured before that scores `・・・`, `...` and `…` as three different
+reads.** On COO speech — where a manga line pauses and label and reader spell
+the pause differently — it is worth up to +495 lines:
+
+| row (COO speech exact) | as the report file prints it | current key |
+|---|---|---|
+| stock manga-ocr | 1588 (62.1 %) | 2072 (81.0 %) |
+| stock VL-1.6 | 1623 (63.4 %) | 2118 (82.8 %) |
+| hayai v2.1 | 2006 (78.4 %) | 2252 (88.0 %) |
+| B′ `vl16_tower_lr1e-5` | 2120 (82.8 %) | 2259 (88.3 %) |
+
+SFX columns move +37…+154, the sincos gate +4…+9, and **no ranking flips** —
+which is why this is a footnote, not a retraction of § O0 / § O2 / § O2b /
+§ hayai. But comparing a row measured today against one from 09-06 would have
+credited the new reader ~19 speech points it never earned, so the tables above
+re-score every stored prediction first. `ocr/rescore_eval.py` does that from
+the stored `pred_norm` + `text` columns (CPU, no model re-run) and prints the
+delta; `--write` regenerates the reports. **Not run with `--write`** —
+re-issuing twenty historical reports, and editing the findings tables that
+quote them, is a call for the user.
+
+## Context is not the lever — margin / marker / page-text sweep on three readers (2026-09-08)
+
+*Question: the 12 %-pad crop looks too tight to infer a hard SFX from; would a
+page-level context channel (PE-Core / PE-Spatial as a prefix) help? Before
+building a modality bridge, measure whether context carries signal through the
+reader's own tower.* `ocr/context_margin_sweep.py`, job `20260908-161827`,
+report `reports/0908_context_margin_sweep.md`. Arms: `pad` 0.12 (today) / 0.35 /
+0.7 / 1.5 (≈ 4× the box) × a red box drawn around the 12 % crop (+ a
+read-inside-the-box instruction on Hunyuan, the only reader with a free
+prompt) + an **oracle page-text** arm (the page's Manga109 `<text>` lines
+quoted in the prompt). Surfaces: sincos 617 SFX (exact / *contains* = label ⊂
+prediction, the fair metric for a reader that reads the whole frame) and a
+400-per-kind COO test subset.
+
+| reader | pad 0.12 | 0.35 | 0.35+box | 0.7+box | 1.5+box | page-text |
+|---|---|---|---|---|---|---|
+| stock VL-1.6, sincos exact / contains | **21** / 23 | 16 / 17 | 14 / 15 | 5 / 14 | 4 / 11 | — |
+| B′, sincos exact / contains | **316** / 330 | 294 / 307 | 294 / 306 | 218 / 243 | 45 / 93 | — |
+| Hunyuan-1.5 (ja prompt), sincos | **21** / 21 | 18 / 22 | 13 / 14 | 14 / 14 | 16 / 17 | — |
+| Hunyuan, COO sfx exact | 15.2 % | 14.0 | 17.5 | 20.2 | 21.0 | **13.8 %** (runaway 9 → 75) |
+
+Monotone on every reader: more frame never beats the tight crop, and
+`contains` says the target is found *less* often with more context (stock VL
+COO sfx 32.5 → 18.5 %), so the surrounding pixels distract rather than
+disambiguate. The marker works on Hunyuan (runaways 28 → 0 at pad 1.5, COO
+sfx 15 → 21 %) but still loses to pad 0.12 on the gate. Oracle dialogue in
+the prompt is *below* baseline. **Verdict: a learned page-context channel —
+strictly weaker than oracle text and the reader's own encoder on the same
+pixels — is closed as a direction.** B′ (trained on 12 % crops) degrades
+fastest, as expected for an off-distribution frame.
+
+## Tower — where B′'s misses are, pixel-SimMIM collapses the tower, the feature target does not (2026-09-08)
+
+*Motivation (`plan_ssl_tower.md`): B → B′ (tower unfrozen) took sincos 106 →
+304 and garbage misses 185 → 43 on the same COO labels — perception was the
+bottleneck. Can the tower be adapted with **no labels** on in-domain crops?*
+
+**B′ miss profile** (`sfx_vl16_tower_lr1e-5.jsonl`, 313 misses / 617): 160
+near (sim ≥ 0.8), 110 mid, 43 garbage, 0 empty; **55 are ♡-only**
+(`びく♡` → `びく`), 61 ♡/〜/ー-only. ♡ is in 497 / 617 gate rows and 337 / 77k
+COO train rows — an LM-side label gap no vision-only method moves.
+
+**Official recipe** (`ERNIE/docs/paddleocr_vl_sft.md` @ release/v1.4,
+`run_ocr_vl_sft_16k.yaml`): `fine_tuning: Full`, lr 5e-6 cosine → 5e-7,
+warmup 1 %, wd 0.1, β (0.9, 0.95), packing 8 × accum 8 = 64/update, 2 epochs
+on a 29.6k-line Bengali set. Confirms the tower is meant to be trained for
+font-style shifts; says nothing about the no-label case. A `--full_ft` arm was
+written and dropped the same day: fp32 AdamW states for 800 M params do not
+fit on 16 GB beside activations, and `bitsandbytes` 0.49.2 ships no
+`libbitsandbytes_cuda132.so` for this torch (2.12+cu132) — `AdamW8bit` fails
+at the first `step()` with "Native code method attempted to call
+cadam_8bit_blockwise_grad_fp32". bnb removed from the deps.
+
+**Corpus**: `deepghs/AnimeText` test split (73,725 images, 8.4 GB parquet +
+`polys_test.json`) already on the volume (`ANIMA_ANIMETEXT_ROOT`);
+`ocr/animetext_crops.py` cuts text boxes at 12 % pad — 7.6 boxes / image
+(block + line hierarchy), 140,132 crops from the first 19,514 images
+(`manifest_test_draw20k.parquet`, 30 s). The sample is mostly manga bubbles +
+hand-lettered SFX, closer to doujin than the "anime scene text" framing
+suggested. CC-BY-NC-SA → research build.
+
+**S0, pixel target** (`ocr/ssl_tower_simmim.py --target pixel --smoke`: mask
+60 % of 2×2 blocks after the patch conv via a forward hook, linear head → 588
+pixels, L1, whole tower under fp32-master AdamW at 2e-5, 30 steps): 22.5
+crops/s, 8.6 GB; masked L1 2.15 → 0.37. **The tower collapsed**: median
+relative ΔW 4e-4 (max 9e-3), yet cosine to the stock features 0.38, feature
+norm ×0.22, the untouched LM reads `""` on every crop, and a 30-step SFT from
+it scores **0 %** where the stock-tower SFT smoke scores 48 %. Bisect (swap
+subsets of the SSL weights into the stock model): embeddings / post-LN
+innocent (cos 0.998 / 1.000, reads intact); layers 0–8 → cos 0.93, reads
+`A / 2 / of`; layers 9–17 → norm ×0.33, `""`; layers 18–26 → norm ×0.27. A
+pixel target on the *final* features drags the representation out of the
+space the projector reads in one coordinated direction per Adam step — small
+weights, large features; lowering the lr slows it, it does not change the
+destination.
+
+**S0, feature target** (`--target feat`: masked-token features regressed to
+the **frozen stock tower's** `last_hidden_state` on the unmasked crop, smooth
+L1, identity-initialised head, + 0.1 × the same loss on the unmasked tokens):
+18 crops/s (teacher forward ≈ +20 %), 9.3 GB; held-out loss 0.232 → 0.137 in
+30 steps; **read-through PASS** (`ocr/tower_readthrough.py`: cosine 0.967,
+norm ×1.09, 6 / 6 non-empty reads); SFT smoke from it **39.1 % SFX / 85.9 %
+speech** vs 48.4 / 82.8 for the stock-tower smoke — same ballpark at 30 steps.
+S1 (1 epoch on the 140k crops, lr 1e-5, bs 16×2) → read-through → S2 (B′'s
+SFT, 1 epoch) → evals queued as `20260908-174422-*`; gate = ≥ +15 exact over
+B′'s same-day 316 / 617 (`sfx_ctx_vl16_bprime_pad0.12.jsonl`).
