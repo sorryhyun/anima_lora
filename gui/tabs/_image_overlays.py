@@ -17,7 +17,6 @@ from anime_tools.masking._masks import mask_path_for
 
 from gui import ROOT, default_mask_dir
 from library.preprocess.resize_preview import (
-    DEFAULT_FIT_MODE,
     DEFAULT_FREEFIT_MAX_RATIO,
     compute_resize_preview,
 )
@@ -179,7 +178,6 @@ def _compose_resize_preview_overlay(
     target_res,
     crop_anchor=None,
     crop_margins=None,
-    fit_mode=DEFAULT_FIT_MODE,
     max_ratio=DEFAULT_FREEFIT_MAX_RATIO,
 ) -> QPixmap:
     try:
@@ -189,7 +187,6 @@ def _compose_resize_preview_overlay(
             target_res,
             crop_anchor=crop_anchor,
             crop_margins=crop_margins,
-            fit_mode=fit_mode,
             max_ratio=max_ratio,
         )
     except (KeyError, TypeError, ValueError):

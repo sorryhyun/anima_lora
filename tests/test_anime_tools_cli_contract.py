@@ -467,9 +467,7 @@ def test_preprocess_resize_builds_resize_request_from_config_and_args(
     monkeypatch.setenv("DROP_LOWRES_IMAGES", "1")
     monkeypatch.setenv("MIN_PIXELS", "250000")
 
-    preprocess.cmd_preprocess_resize(
-        ["--overwrite", "--resize_bucket_resos", "1024x1008"]
-    )
+    preprocess.cmd_preprocess_resize(["--overwrite"])
 
     assert len(calls) == 1
     assert calls[0][2] == "anime_tools.stages.cli.resize_images"
@@ -481,9 +479,22 @@ def test_preprocess_resize_builds_resize_request_from_config_and_args(
     assert req.recursive and not req.copy_captions
     assert req.overwrite  # ARGS applied through the request's parser
     assert req.skip == ()
-    # The snap-era allow-list flag is dropped, not forwarded to a parser that
-    # has no such field.
-    assert "--resize_bucket_resos" not in calls[0]
+
+
+def test_preprocess_resize_rejects_removed_snap_era_flags(monkeypatch, tmp_path):
+    """v2 dropped the swallow-with-a-note shim: a snap-era flag now fails the
+    stage's own parse instead of being silently ignored."""
+    import pytest
+
+    from scripts.tasks import _common, preprocess
+
+    _capture(monkeypatch, preprocess)
+    monkeypatch.setattr(_common, "_path_overrides", lambda: {"target_res": [1024]})
+    monkeypatch.setattr(
+        preprocess, "_curation_decisions_path", lambda: tmp_path / "none"
+    )
+    with pytest.raises(SystemExit):
+        preprocess.cmd_preprocess_resize(["--resize_bucket_resos", "1024x1008"])
 
 
 def test_preprocess_resize_turns_curation_decisions_into_skip(monkeypatch, tmp_path):

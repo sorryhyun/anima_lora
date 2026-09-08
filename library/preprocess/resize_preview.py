@@ -29,12 +29,6 @@ from anime_tools.stages.resize import (
 )
 from library.datasets.buckets import DEFAULT_FREEFIT_MAX_RATIO
 
-# Free-fit is the only resize mode; "snap" (the old discrete constant-token bucket
-# pool) was removed. FIT_MODES / DEFAULT_FIT_MODE are kept so existing call
-# sites (GUI preview config tuples) stay stable.
-FIT_MODES = ("freefit",)
-DEFAULT_FIT_MODE = "freefit"
-
 
 @dataclass(frozen=True)
 class CropRect:
@@ -73,56 +67,15 @@ def margin_crop_rect(width: int, height: int, crop_margins=None) -> CropRect:
     )
 
 
-def parse_bucket_resos(raw) -> list[tuple[int, int]]:
-    """Normalize bucket filters from TOML/CLI values.
-
-    Accepts ``["1008x1024"]``, ``["1008,1024"]``, ``[(1008, 1024)]``, or a
-    comma-separated string. Empty input means "all supported buckets".
-    """
-    if raw is None:
-        return []
-    values = raw
-    if isinstance(raw, str):
-        values = [part.strip() for part in raw.split(",") if part.strip()]
-    out: list[tuple[int, int]] = []
-    for item in values:
-        if isinstance(item, (list, tuple)) and len(item) == 2:
-            width, height = int(item[0]), int(item[1])
-        else:
-            text = str(item).strip().lower().replace("×", "x")
-            if "x" in text:
-                left, right = text.split("x", 1)
-            elif ":" in text:
-                left, right = text.split(":", 1)
-            else:
-                continue
-            width, height = int(left.strip()), int(right.strip())
-        if width > 0 and height > 0:
-            out.append((width, height))
-    return sorted(set(out))
-
-
-def format_bucket_resos(bucket_resos: Iterable[tuple[int, int]]) -> list[str]:
-    return [f"{width}x{height}" for width, height in bucket_resos]
-
-
-def normalize_fit_mode(fit_mode: str | None) -> str:
-    value = str(fit_mode or DEFAULT_FIT_MODE).strip().lower()
-    return value if value in FIT_MODES else DEFAULT_FIT_MODE
-
-
 def select_resize_bucket(
     width: int,
     height: int,
     target_res: Iterable[int] | int | str | None = None,
-    bucket_resos=None,
     *,
-    fit_mode: str = DEFAULT_FIT_MODE,
     max_ratio: float = DEFAULT_FREEFIT_MAX_RATIO,
 ) -> tuple[int, tuple[int, int]]:
     """``(tier_edge, (W, H))`` for a source size — ``anime_tools.stages.resize.
-    select_bucket``. ``fit_mode`` / ``bucket_resos`` are accepted for signature
-    compatibility but no longer branch (free-fit is the only mode)."""
+    select_bucket`` under the name the GUI grew up with."""
     return select_bucket(width, height, target_res, max_ratio=max_ratio)
 
 
@@ -132,16 +85,13 @@ def compute_resize_preview(
     target_res: Iterable[int] | int | str | None = None,
     *,
     crop_anchor: str | None = None,
-    bucket_resos=None,
     crop_margins=None,
-    fit_mode: str = DEFAULT_FIT_MODE,
     max_ratio: float = DEFAULT_FREEFIT_MAX_RATIO,
 ) -> ResizePreview:
     """Return the bucket and source-space crop rect used by preprocessing.
 
-    ``fit_mode="freefit"`` runs the free-aspect token-band solver instead of
-    snapping to a discrete bucket; the same ``select_resize_bucket`` feeds both
-    this preview and ``process_image``, so the GUI/CLI preview is exact.
+    The same ``select_resize_bucket`` feeds both this preview and
+    ``process_image``, so the GUI/CLI preview is exact.
     """
     if width <= 0 or height <= 0:
         raise ValueError("image dimensions must be positive")
@@ -153,7 +103,7 @@ def compute_resize_preview(
     work_w = max(1, round(margin_rect.width))
     work_h = max(1, round(margin_rect.height))
     edge, (bucket_w, bucket_h) = select_resize_bucket(
-        work_w, work_h, target_res, bucket_resos, fit_mode=fit_mode, max_ratio=max_ratio
+        work_w, work_h, target_res, max_ratio=max_ratio
     )
 
     source_ar = work_w / work_h

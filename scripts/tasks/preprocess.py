@@ -562,57 +562,31 @@ def _resize_crop_fields() -> dict[str, object]:
     return fields
 
 
-# Flags the old trainer resize script took that the package's ``ResizeRequest``
-# has no field for: ``--resize_bucket_resos`` (the snap-era allow-list, inert
-# since free-fit became the only mode), ``--freefit`` (free-fit is implicit)
-# and the legacy bucket-manager knobs. Dropped from ``ARGS`` with a note rather
-# than failing the parse.
-_RESIZE_STALE_FLAGS_WITH_VALUES = {
-    "--resize_bucket_resos": None,  # nargs="*": consume until the next flag
-    "--resize-bucket-resos": None,
-    "--bucket_reso_steps": 1,
-    "--min_bucket_reso": 1,
-    "--max_bucket_reso": 1,
-    "--resolution": 1,
-    "--curation_decisions": 1,
-    "--curation-decisions": 1,
-}
-_RESIZE_STALE_SWITCHES = {"--freefit", "--no_copy_captions", "--recursive"}
+# ``--curation_decisions <path>`` is the one resize flag the package's
+# ``ResizeRequest`` has no field for that the trainer still honours (it becomes
+# the request's ``skip`` set). The snap-era flags this used to swallow with a
+# note (``--resize_bucket_resos`` / ``--bucket_reso_steps`` / ``--min_bucket_reso``
+# / ``--max_bucket_reso`` / ``--resolution`` / ``--freefit``) were dropped in v2:
+# they now fail the stage's own parse, which names the flags that do exist.
+_CURATION_DECISIONS_FLAGS = ("--curation_decisions", "--curation-decisions")
 
 
-def _pop_stale_resize_args(extra) -> tuple[list[str], str | None]:
-    """Split the old resize-script-only flags out of ``ARGS``.
+def _pop_curation_decisions_arg(extra) -> tuple[list[str], str | None]:
+    """Split ``--curation_decisions <path>`` out of ``ARGS``.
 
-    Returns ``(cleaned, curation_decisions_path)``: an explicit
-    ``--curation_decisions <path>`` is honoured (it becomes ``skip``); the
-    rest are dropped with a note. ``--recursive`` / ``--no_copy_captions``
-    are the request defaults already.
+    Returns ``(cleaned, curation_decisions_path)``; everything else is left
+    for the request's own parser.
     """
     cleaned: list[str] = []
     decisions: str | None = None
     i = 0
     while i < len(extra):
         tok = extra[i]
-        if tok in _RESIZE_STALE_SWITCHES:
-            if tok == "--freefit":
-                print("  [preprocess] --freefit is implicit now (dropped)")
-            i += 1
-            continue
-        if tok in _RESIZE_STALE_FLAGS_WITH_VALUES:
-            n = _RESIZE_STALE_FLAGS_WITH_VALUES[tok]
-            if tok.startswith("--curation"):
-                if i + 1 >= len(extra):
-                    raise SystemExit(f"{tok} requires a path")
-                decisions = str(extra[i + 1])
-                i += 2
-                continue
-            print(f"  [preprocess] {tok} has no effect under free-fit (dropped)")
-            i += 1
-            if n is None:
-                while i < len(extra) and not str(extra[i]).startswith("--"):
-                    i += 1
-            else:
-                i += n
+        if tok in _CURATION_DECISIONS_FLAGS:
+            if i + 1 >= len(extra):
+                raise SystemExit(f"{tok} requires a path")
+            decisions = str(extra[i + 1])
+            i += 2
             continue
         cleaned.append(tok)
         i += 1
@@ -634,7 +608,7 @@ def _resize_request(
     GUI's curation decisions as ``skip``."""
     from anime_tools.stages.requests import ResizeRequest
 
-    cleaned, decisions = _pop_stale_resize_args(extra)
+    cleaned, decisions = _pop_curation_decisions_arg(extra)
     skips = _curation_skips(src, Path(decisions) if decisions else None)
     form = _resize_form()
     if form is not None:
@@ -778,8 +752,6 @@ def _pop_resize_only_args(extra) -> list[str]:
     for tok in it:
         if tok in {
             "--target_res",
-            "--resize_bucket_resos",
-            "--resize-bucket-resos",
             "--resize_crop_margins",
             "--resize-crop-margins",
         }:
@@ -793,8 +765,6 @@ def _pop_resize_only_args(extra) -> list[str]:
             continue
         if tok in {"--freefit_max_ratio", "--freefit-max-ratio"}:
             next(it, None)
-            continue
-        if tok == "--freefit":  # store_true — no value to consume
             continue
         cleaned.append(tok)
     return cleaned
@@ -836,10 +806,15 @@ def _drop_option_with_value(extra, names: set[str]) -> list[str]:
     return cleaned
 
 
-def cmd_preprocess_resize(extra):
+def cmd_preprocess_resize(extra, *, chained: bool = False):
     """Resize the caption master into the bucket tree — the ``anime_tools``
     resize stage as a ``ResizeRequest`` (config chain + GUI env as the base,
-    ``ARGS`` on top, the GUI's curation decisions as ``skip``)."""
+    ``ARGS`` on top, the GUI's curation decisions as ``skip``).
+
+    ``chained`` marks the call from :func:`cmd_preprocess`, where the cache
+    stages that follow already receive the same ``ARGS`` — only a standalone
+    ``make preprocess-resize`` needs the re-crop warning below.
+    """
     mp_args, extra = _resolve_lowres_filter(extra)
     req = _resize_request(
         _path("source_image_dir", "image_dataset"),
@@ -850,6 +825,18 @@ def cmd_preprocess_resize(extra):
         target_res=_config_target_res(),
     )
     _execute("resize", req)
+    if req.overwrite and not chained:
+        # A re-crop (crop anchor / margins / freefit_max_ratio) rewrites the PNG
+        # at the SAME bucket, and the downstream skips are keyed on the bucket
+        # (latents: `latents_{H}x{W}` present) / on sidecar existence (PE), not
+        # on the pixels — so they would keep caches of the old crop.
+        # `preprocess-reconcile` doesn't catch it either: nothing moved bucket.
+        print(
+            "  [preprocess] --overwrite re-wrote resized images: re-run "
+            "`make preprocess-vae ARGS=--overwrite` (and preprocess-pe, if you "
+            "cache PE features) or the latent/PE caches keep the old crop. "
+            "`make preprocess ARGS=--overwrite` forwards it to every stage."
+        )
 
 
 def cmd_preprocess_reconcile(extra):
@@ -1427,7 +1414,7 @@ def cmd_preprocess(extra):
     encoder = _repa_pe_encoder()
     if encoder is not None:
         _require_repa_encoder_model(encoder)
-    cmd_preprocess_resize(extra)
+    cmd_preprocess_resize(extra, chained=True)
     _run_caption_autotag_stage(caption_config)
     # VAE/TE steps read on-disk shapes — strip the low-res convenience flags AND
     # the resize-only --target_res so their argparse never sees an undefined arg.

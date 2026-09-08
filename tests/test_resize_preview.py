@@ -5,7 +5,6 @@ from library.preprocess.resize_preview import (
     compute_resize_preview,
     normalize_target_res,
     normalize_crop_margins,
-    parse_bucket_resos,
 )
 
 
@@ -48,17 +47,6 @@ def test_resize_preview_applies_crop_anchor_on_clamped_aspect():
     assert center.kept_rect.left > 0
     assert right.kept_rect.left > center.kept_rect.left
     assert right.crop_anchor == "right"
-
-
-def test_parse_bucket_resos_accepts_gui_and_cli_shapes():
-    assert parse_bucket_resos(["1024x1008", "896:1344"]) == [
-        (896, 1344),
-        (1024, 1008),
-    ]
-    assert parse_bucket_resos("1024x1008, 896x1344") == [
-        (896, 1344),
-        (1024, 1008),
-    ]
 
 
 def test_resize_preview_applies_crop_margins_before_bucket_crop():

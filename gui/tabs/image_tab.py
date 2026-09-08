@@ -1422,7 +1422,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 )
             pm = self._overlay_pm
         if self.resize_preview_cb.isChecked():
-            target_res, crop_anchor, crop_margins, fit_mode, max_ratio = (
+            target_res, crop_anchor, crop_margins, max_ratio = (
                 self._resize_preview_config()
             )
             pm = _compose_resize_preview_overlay(
@@ -1430,7 +1430,6 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 target_res,
                 crop_anchor=crop_anchor,
                 crop_margins=crop_margins,
-                fit_mode=fit_mode,
                 max_ratio=max_ratio,
             )
         self.img.set_source(pm)
@@ -1459,18 +1458,16 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
             crop_anchor = anchor_widget.value()
         if tab is not None and hasattr(tab, "_resize_crop_margins"):
             crop_margins = tab._resize_crop_margins()
-        fit_mode, max_ratio = self._resize_preview_fit_mode()
-        return target_res, crop_anchor, crop_margins, fit_mode, max_ratio
+        return target_res, crop_anchor, crop_margins, self._resize_preview_max_ratio()
 
-    def _resize_preview_fit_mode(self):
-        """(fit_mode, max_ratio) from the live preprocess-tab widgets, falling
-        back to configs/preprocess.toml. Free-fit is the only resize mode."""
+    def _resize_preview_max_ratio(self) -> float:
+        """The free-fit aspect clamp from the live preprocess-tab widget,
+        falling back to configs/preprocess.toml."""
         spin = getattr(self._preprocess_tab, "freefit_max_ratio_spin", None)
         if spin is not None:
-            return "freefit", float(spin.value())
+            return float(spin.value())
         data = _load_preprocess_toml_data()
-        max_ratio = float(data.get("freefit_max_ratio", DEFAULT_FREEFIT_MAX_RATIO))
-        return "freefit", max_ratio
+        return float(data.get("freefit_max_ratio", DEFAULT_FREEFIT_MAX_RATIO))
 
     def _current_index(self) -> int:
         """Index into ``self._images`` of the currently selected image; -1 if
@@ -1522,7 +1519,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         if not self.resize_preview_cb.isChecked():
             return ""
         try:
-            target_res, crop_anchor, crop_margins, fit_mode, max_ratio = (
+            target_res, crop_anchor, crop_margins, max_ratio = (
                 self._resize_preview_config()
             )
             preview = compute_resize_preview(
@@ -1531,7 +1528,6 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 target_res,
                 crop_anchor=crop_anchor,
                 crop_margins=crop_margins,
-                fit_mode=fit_mode,
                 max_ratio=max_ratio,
             )
         except (KeyError, TypeError, ValueError):
