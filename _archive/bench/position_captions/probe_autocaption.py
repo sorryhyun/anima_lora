@@ -15,7 +15,7 @@ instances, not the girls-count tag — so multiple-views images of a single
 character are handled by the same machinery.
 
 Run through the daemon:
-    make daemon-run ARGS="bench/position_captions/probe_autocaption.py --label autocaption"
+    make daemon-run ARGS="_archive/bench/position_captions/probe_autocaption.py --label autocaption"
 """
 
 import argparse
@@ -30,7 +30,7 @@ import numpy as np
 if not hasattr(np, "bool"):
     np.bool = np.bool_
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 import torch  # noqa: E402
@@ -199,7 +199,11 @@ def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
     label = args.label or "autocaption"
-    run_dir = make_run_dir("position_captions", label=label)
+    run_dir = make_run_dir(
+        "position_captions",
+        label=label,
+        root="_archive/bench/position_captions/results",
+    )
     crops_dir = run_dir / "crops"
     crops_dir.mkdir(exist_ok=True)
 

@@ -29,8 +29,9 @@ What stays trainer-side:
   PE-Spatial-B16-512 the trainer uses. The `library/vision/` encoder/bucket registry
   stays here.
 - `configs/clause_vocabulary.yaml` — the user-editable override of the package default.
-- `sam3` as a direct dep (`bench/position_captions/`); `segmentation-models-pytorch` now
-  rides only on `anime-tools[masking]`.
+- `sam3` as a direct dep — now redundant (its last consumer moved to
+  `_archive/bench/position_captions/`; `anime-tools` declares sam3 itself).
+  `segmentation-models-pytorch` rides only on `anime-tools[masking]`.
 - Benches that use the tagger as a *judge of DiT output*.
 
 **Phase 3 deleted the `library._moved` shims and every forwarding shell** —

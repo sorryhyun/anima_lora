@@ -1,11 +1,25 @@
 # position_captions — probes for position-aware auto-captioning
 
-> **Both probes came back green and the feature shipped** as
-> `make caption-position` (v2: the caption is rewritten, each bound tag moved
-> out of the flat bag). These are the Phase-0 feasibility probes, kept for the
-> record — the live doc is
-> [`docs/experimental/position_captions.md`](../../docs/experimental/position_captions.md)
-> and the retired design proposal is `_archive/proposals/position_captions.md`.
+> **ARCHIVED 2026-09-08 — CLOSED, feature shipped. Do not re-propose.**
+> Both probes came back green and the feature shipped as `make caption-position`
+> (v2: the caption is rewritten, each bound tag moved out of the flat bag), then
+> the whole pipeline moved out of this repo in the curation split (Phase 1,
+> 2026-08-30). These are the Phase-0 feasibility probes plus the 2026-08-27
+> tagger-backend comparison, kept for the record only — nothing here is on a live
+> path any more.
+>
+> Live doc: `anime_tools/docs/position_captions.md` (pointer stub at
+> [`docs/experimental/position_captions.md`](../../../docs/experimental/position_captions.md));
+> grammar `anime_tools.captions.position_clauses`, stage
+> `anime_tools.stages.position_captions`. The retired design proposal is
+> `_archive/proposals/position_captions.md`; verdict index
+> [`_archive/shelved_benches.md`](../../shelved_benches.md).
+>
+> Paths moved with the archive: both probes now bootstrap `REPO_ROOT` from
+> `parents[3]` and write run dirs into `_archive/bench/position_captions/results/`.
+> They still import the **live** `bench._common` / `bench._anima`, and
+> `probe_autocaption.py` still needs `sam3` + `anime_tools.tagger`, so a revival
+> run works from the repo root as-is.
 
 Feasibility probes for expanding the auto-caption system with per-instance
 positional clauses in the dataset's existing hand-written convention
@@ -33,7 +47,7 @@ and asks the tagger which hair color wins on each side.
   → captions reinforce an existing capability.
 
 ```
-make daemon-run ARGS="bench/position_captions/probe_binding.py --label binding"
+make daemon-run ARGS="_archive/bench/position_captions/probe_binding.py --label binding"
 ```
 
 ## Probe B — `probe_autocaption.py`
@@ -68,8 +82,12 @@ Default input = the 12 ground-truth images + the 8090164 showcase. Metrics:
 - `proposed` clause strings + saved crops in the run dir for eyeballing.
 
 ```
-make daemon-run ARGS="bench/position_captions/probe_autocaption.py --label autocaption"
+make daemon-run ARGS="_archive/bench/position_captions/probe_autocaption.py --label autocaption"
 ```
 
-Results land in `results/<YYYYMMDD-HHMM>-<label>/` (gitignored) with the
-standard `result.json` envelope.
+Results land in `results/<YYYYMMDD-HHMM>-<label>/` (untracked) with the
+standard `result.json` envelope. Runs kept: `20260817-112{2,3}` (the Phase-0
+pair), `20260827-08{13,15,19}` (v5 vs dbv4-sidecar vs dbv4-sidecar+ocfix on the
+poisoned 338-image default set — comparable only to each other),
+`20260827-0852-gt12-{v5,dbv4}` (the honest 12-image hand-GT A/B) and
+`20260827-0854-binding-dbv4`.

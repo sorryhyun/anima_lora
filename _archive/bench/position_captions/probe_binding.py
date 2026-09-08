@@ -13,7 +13,7 @@ anti-correlated (both colors usually render; only the assignment varies), so
 side accuracy is the honest headline number.
 
 Run through the daemon:
-    make daemon-run ARGS="bench/position_captions/probe_binding.py --label binding"
+    make daemon-run ARGS="_archive/bench/position_captions/probe_binding.py --label binding"
 """
 
 import argparse
@@ -22,7 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 import torch  # noqa: E402
@@ -79,7 +79,11 @@ def main() -> None:
     args = parse_args()
     device = torch.device(args.device)
     label = args.label or "binding"
-    run_dir = make_run_dir("position_captions", label=label)
+    run_dir = make_run_dir(
+        "position_captions",
+        label=label,
+        root="_archive/bench/position_captions/results",
+    )
     renders = run_dir / "renders"
     renders.mkdir(exist_ok=True)
 

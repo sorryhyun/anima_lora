@@ -36,9 +36,11 @@ dependencies = [
     "Pillow",
     "psutil",
     "opencv-python>=4.11.0.86",
-    # Masking moved to anime-tools (curation split); sam3 stays a direct dep
-    # for bench/position_captions/probe_autocaption.py and albumentations for
-    # project/finished/sr. segmentation-models-pytorch is gone from both sides
+    # Masking moved to anime-tools (curation split). The direct sam3 row is now
+    # redundant -- its last trainer-side consumer, probe_autocaption.py, moved to
+    # _archive/bench/position_captions/ (2026-09-08), and anime-tools declares sam3
+    # itself -- kept only so that archived probe still resolves. albumentations is
+    # for project/finished/sr. segmentation-models-pytorch is gone from both sides
     # with the MIT text masker (anime_tools 0.5).
     "pyyaml",
     "sam3 @ git+https://github.com/facebookresearch/sam3.git",
