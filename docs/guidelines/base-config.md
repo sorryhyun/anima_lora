@@ -70,7 +70,7 @@ can override them, and the dataset blueprint interpolates them via
 | `resized_image_dir` | `post_image_dataset/resized` | Where `make preprocess` writes bucket-resized PNGs; what training reads images from. |
 | `lora_cache_dir` | `post_image_dataset/lora` | Flat, stem-keyed cache dir for VAE/TE/PE sidecars. |
 | `path_pattern` | `"*"` | `fnmatch` glob applied to each image's path **relative to its subset's `image_dir`**. `*` (or unset) = everything. OR-combine with `\|`: `char_a/*\|char_b/*`, or `*portrait*` for a substring. Applies to both training and validation enumeration. |
-| `target_res` | `[1024]` | Multi-scale constant-token tiers (allowed edges `512 768 896 1024 1280 1536`). Each image is assigned to the tier that **resizes it the least**. **You MUST pass the same `--target_res …` at training time as at preprocess** — it builds the bucket table and sizes the compile cache. Omit a tier and its caches get snapped into a 1024 bucket and silently never loaded. See `library/datasets/buckets.py` and the bucketing invariant in `CLAUDE.md`. |
+| `target_res` | `[1024]` | Multi-scale free-fit tiers (allowed edges `512 768 896 1024 1280 1536`). Each image is assigned to the tier that **resizes it the least**. **Preprocess-only — do NOT pass `--target_res` at training time**: training is self-describing, reading its bucket set straight off the cached latents, and the key is seeded at train time only so it lands in the run's `.snapshot.toml`. After changing a tier, run `make preprocess-reconcile` to drop the caches whose bucket moved. Its home is `configs/preprocess.toml` (see below); mechanics in `library/datasets/buckets.py` and the bucketing invariant in `CLAUDE.md`. |
 
 ## Optimizer & schedule
 
@@ -119,7 +119,7 @@ during `make preprocess`, then training reads only the caches.
 
 | Key | Default | What it controls |
 |---|---|---|
-| `torch_compile` | `true` | Enable `torch.compile` via `compile_blocks()` — the blessed path (bit-exact, lowers memory). It flips on native-shape bucketing and keys the dynamo graph on token-count families derived from `target_res`. **Enable this first on OOM**, before gradient checkpointing. |
+| `torch_compile` | `true` | Enable `torch.compile` via `compile_blocks()` — the blessed path (bit-exact, lowers memory). It flips on native-shape bucketing and keys the dynamo graph on the token-count families the training images actually populate. **Enable this first on OOM**, before gradient checkpointing. |
 | `attn_mode` | `flash` | Attention backend for training: `flash` (FA2), `torch` (SDPA), `sageattn`, `flex`. Falls back to `torch` (SDPA) if unavailable. |
 | `save_precision` | `bf16` | Dtype for saved adapter weights. Stored params stay bf16 even though LoRA/Hydra bottleneck matmuls always accumulate in fp32. |
 
@@ -225,4 +225,6 @@ interpolates the dirs.
 - [`training.md`](training.md) — method/variant selection and the three-axis LoRA surface.
 - [`inference.md`](inference.md) — generation flags and workflows.
 - [`guidebook.md`](guidebook.md) — end-to-end setup → preprocess → train → infer walkthrough.
-- `CLAUDE.md` → **Config flow** and **Critical invariants** for the authoritative merge-order and bucketing rules.
+- `CLAUDE.md` → **Config flow** and **Critical invariants** for the authoritative
+  merge-order and bucketing rules; `configs/CLAUDE.md` for the full merge mechanics
+  (blueprint overrides, preprocess.toml layering, the gui-methods hardware rule).

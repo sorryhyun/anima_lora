@@ -143,9 +143,9 @@ read that one list. Follow-ups this leaves:
       English `guidebook.md` model-download block changed (first-run set no
       longer includes SAM3/MIT; `download-list` / `download-model` are new).
       **Translator agent**, with the rest of §3.
-- [ ] `anime_tools`' `model-catalog` skill says the trainer addresses rows by
-      id — now true. Consider a trainer-side skill or a `CLAUDE.md` pointer
-      when the surface settles.
+- [x] `anime_tools`' `model-catalog` skill says the trainer addresses rows by
+      id — now true. Trainer-side `model-catalog` skill added (2026-09-08);
+      `CLAUDE.md` Setup + the entry-point table point at it.
 
 ## 3. Docs cleanup
 
