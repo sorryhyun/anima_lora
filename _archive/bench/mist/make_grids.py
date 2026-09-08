@@ -6,7 +6,7 @@ This reassembles the already-saved ``p{pi}_s{sj}_{arm}.png`` files into one
 downscaled ``grid_p{pi}_s{sj}.png`` per (prompt, seed) — no re-inference. Labels
 (sat / contrast / Δ-drift) come from the run's result.json rows.
 
-    uv run python bench/mist/make_grids.py bench/mist/results/<run-dir> [--rm-sheet]
+    uv run python _archive/bench/mist/make_grids.py _archive/bench/mist/results/<run-dir> [--rm-sheet]
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]  # _archive/bench/mist/ -> repo root
 sys.path.insert(0, str(REPO_ROOT))
 
 from PIL import Image  # noqa: E402
 
-from bench.mist.render_compare import _grid  # noqa: E402
+from _archive.bench.mist.render_compare import _grid  # noqa: E402
 
 
 def _safe(lab: str) -> str:

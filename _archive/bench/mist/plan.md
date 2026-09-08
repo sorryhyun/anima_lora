@@ -1,8 +1,28 @@
 # MIST bench — Phase-0/1 plan
 
+> **ARCHIVED 2026-09-08 — CLOSED, net-negative. Do not re-propose.**
+> The GO gate below was not met at w = 4 / 6 / 10: **ST is fully inert** (Anima's
+> guidance delta already decays front-loaded, so the monotone-norm clamp never
+> fires — `mist-ST` lands within ±0.5% of baseline tone) and **IA is a tone
+> normalizer, not a stabilizer** — it renorms toward the *uncond* moments, always
+> at large drift (0.8–1.0), never gently: pale prompts gain enriched backgrounds,
+> vivid ones collapse toward grayscale (−17.8% sat at w=4; the DC arm swings
+> +40% sat / +42% contrast at w=10). SMC-CFG fixes the same high-w artifacts more
+> cheaply and safely, so **SMC-CFG + FSG stay in the Spectrum node** and the
+> "Next (if GO)" section below was never executed — `mist_core.py` was never
+> wired into `generation.py`.
+> Only legitimate use = an optional creative "background enrichment" knob, never a
+> stability default. Verdict index: `_archive/shelved_benches.md`, memory
+> `project_shelved_explorations`.
+>
+> Paths moved with the archive: `mist_core.py` now sits **beside this file**
+> (was `library/inference/corrections/`), and the bench's `bench.fsg` imports now
+> point at `_archive/bench/fsg/` (archived earlier).
+
 **Paper:** Peng et al., *MIST: Moment-Aligned Invariant Stability Transform for
 Robust Flow Matching* (ICML 2026; repo-root `18927_MIST_*.pdf`).
-**Core:** `library/inference/corrections/mist_core.py` (`MISTState.combine`, a pure-
+**Core:** `mist_core.py` (archived beside this file; was
+`library/inference/corrections/mist_core.py`) (`MISTState.combine`, a pure-
 compute sibling of `smc_cfg.py` — drop-in at the velocity-combine slot,
 `generation.py:984`). **Not wired into `generation.py` until this bench clears.**
 

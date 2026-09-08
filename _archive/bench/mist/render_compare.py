@@ -52,7 +52,7 @@ import logging
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]  # _archive/bench/mist/ -> repo root
 sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np  # noqa: E402
@@ -62,14 +62,14 @@ from PIL import Image, ImageDraw  # noqa: E402
 from anima_lora import decode_to_pil, load_vae  # noqa: E402
 from bench._anima import add_common_args, add_model_args, build_anima  # noqa: E402
 from bench._common import make_run_dir, write_result  # noqa: E402
-from bench.fsg.render_compare import (  # noqa: E402
+from _archive.bench.fsg.render_compare import (  # noqa: E402
     _fsg_calibrate,
     _norm,
     _sat_contrast,
 )
-from bench.fsg.probe_golden_path import _sample_captions, _velocity  # noqa: E402
+from _archive.bench.fsg.probe_golden_path import _sample_captions, _velocity  # noqa: E402
 from library.anima import models as anima_models  # noqa: E402
-from library.inference.corrections.mist_core import MISTState  # noqa: E402
+from _archive.bench.mist.mist_core import MISTState  # noqa: E402  (archived alongside this bench)
 from library.inference.corrections.smc_cfg import SMCCFGState  # noqa: E402
 from library.inference.sampling import (  # noqa: E402
     ERSDESampler,
