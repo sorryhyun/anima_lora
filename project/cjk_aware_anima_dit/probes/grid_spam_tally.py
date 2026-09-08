@@ -1,4 +1,4 @@
-"""OCR spam tally over the 8-row unmask grids: images with any lenient PP-OCRv6 box.
+"""OCR spam tally over the 8-row unmask grids: images with any AnimeText box.
 
     .venv/bin/python probes/grid_spam_tally.py <out.json> [grid_dir ...]
 
@@ -18,7 +18,10 @@ EVAL = Path("output/tests/cjk_unmask_eval2")
 DIRS = sys.argv[2:] or [
     f"armC10{t}_s{s}" for t in ("", "s7", "s1234") for s in (42, 7, 1234)
 ] + [f"armC9ISOQ_s{s}" for s in (42, 7, 1234)]
-engine = load_ocr(device="cpu", min_score=0.3, min_chars=1, skip_en=False)
+# Detect-only since plan_det D3 (AnimeText replaced the PP-OCRv6 stack): boxes
+# carry no text, so n_lines / glyph_frac are the tally and `chars` is always 0.
+# Counts are NOT comparable to tallies taken before that flip.
+engine = load_ocr(device="cpu", det_conf=0.15)
 out = {}
 for d in DIRS:
     pngs = sorted((EVAL / d).glob("*.png"))
@@ -35,8 +38,6 @@ for d in DIRS:
                 "row": f"r{i}",
                 "n_lines": len(lines),
                 "glyph_frac": area / (w * h),
-                "chars": sum(len(ln.text) for ln in lines),
-                "texts": [ln.text for ln in lines],
             }
         )
     out[d] = cells
