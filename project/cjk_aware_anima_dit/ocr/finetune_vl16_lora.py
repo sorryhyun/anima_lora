@@ -7,6 +7,8 @@
     … --train_tower --tower_lr 1e-5 # O2b: unfreeze the NaViT tower + projector (full FT)
     … --extra_manifest colorized_1024_half_comic   # O3: + the colorized crops (manifest_<name>.parquet)
     … --extra_replace                # …swapped in for their grey originals instead of appended
+    … --init_adapter output/ocr/vl16_lr1e-4/ep2 --train_tower   # LP-FT stage 2: start from arm B's LoRA
+    … --train_tower --init_tower output/ocr/simmim_at/ep5/tower.safetensors   # SSL-adapted tower (ssl_tower_simmim.py)
 
 Tower + projector frozen; LoRA (``--rank``, α = 2r) on the ERNIE LM's attention
 (q/k/v/o) + MLP (gate/up/down) projections, selected by module path so the
@@ -23,6 +25,13 @@ forward, an fp32 master copy takes the AdamW update at ``--tower_lr`` and is
 copied back each step (a 1e-5 update is below bf16 resolution otherwise).
 The trained tower is saved beside the adapter as ``tower.safetensors`` (bf16,
 base-model key names) and ``Vl16Reader`` loads it after the merge.
+
+``--init_adapter <dir>`` (LP-FT, Kumar et al. 2022) loads an already-trained
+adapter dir as the starting point instead of a zero-init LoRA — its
+``adapter_config.json`` wins over ``--rank`` / ``--dropout``. With
+``--train_tower`` this is the linear-probe-then-fine-tune order: arm B (LoRA
+only, tower frozen) is stage 1, this run is stage 2. A ``tower.safetensors``
+beside the adapter is loaded too when present.
 
 Per epoch: val scoring (``eval_manga109`` metrics), ``ep<N>/`` = adapter dir
 (``eval_manga109.py --reader vl16 --ckpt`` merges it onto the base), ``best`` →
@@ -240,6 +249,16 @@ def main():
         help="also full-finetune the vision tower + projector (fp32 master copy)",
     )
     ap.add_argument("--tower_lr", type=float, default=1e-5)
+    ap.add_argument(
+        "--init_adapter",
+        help="start from this trained adapter dir (LP-FT stage 2); "
+        "its adapter_config.json overrides --rank/--dropout",
+    )
+    ap.add_argument(
+        "--init_tower",
+        help="tower.safetensors (model.visual.* keys) to load into the base before "
+        "training — ssl_tower_simmim.py's output; pair with --train_tower",
+    )
     ap.add_argument("--dropout", type=float, default=0.05)
     ap.add_argument("--warmup", type=float, default=0.03)
     ap.add_argument("--speech_ratio", type=float, default=1.0)
@@ -276,7 +295,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     (out / "args.json").write_text(json.dumps(vars(a), indent=1))
 
-    from peft import LoraConfig, get_peft_model
+    from peft import LoraConfig, PeftModel, get_peft_model
     from transformers import AutoModelForImageTextToText, AutoProcessor
 
     proc = AutoProcessor.from_pretrained(str(BASE))
@@ -295,17 +314,45 @@ def main():
         str(BASE), dtype=torch.bfloat16, attn_implementation="sdpa"
     ).to("cuda")
     base.config.use_cache = False
+    if a.init_tower:  # SSL-adapted tower (ssl_tower_simmim.py) as the starting point
+        from safetensors.torch import load_file
+
+        sd = load_file(a.init_tower)
+        missing, unexpected = base.load_state_dict(sd, strict=False)
+        assert not unexpected, unexpected[:5]
+        print(f"init tower {a.init_tower} ({len(sd)} tensors)", flush=True)
     for p in base.parameters():
         p.requires_grad_(False)
     targets = lm_lora_targets(base)
-    cfg = LoraConfig(
-        r=a.rank,
-        lora_alpha=2 * a.rank,
-        lora_dropout=a.dropout,
-        target_modules=targets,
-        bias="none",
-    )
-    model = get_peft_model(base, cfg)
+    if a.init_adapter:
+        init_dir = Path(a.init_adapter)
+        model = PeftModel.from_pretrained(base, str(init_dir), is_trainable=True)
+        pc = model.peft_config["default"]
+        a.rank, a.dropout = pc.r, pc.lora_dropout
+        print(
+            f"init adapter {init_dir} (r {pc.r}, alpha {pc.lora_alpha}, "
+            f"dropout {pc.lora_dropout}, {len(pc.target_modules)} targets)",
+            flush=True,
+        )
+        if (init_dir / TOWER_FILE).exists():
+            from safetensors.torch import load_file
+
+            missing, unexpected = base.load_state_dict(
+                load_file(str(init_dir / TOWER_FILE)), strict=False
+            )
+            print(
+                f"init tower {init_dir / TOWER_FILE} (unexpected {len(unexpected)})",
+                flush=True,
+            )
+    else:
+        cfg = LoraConfig(
+            r=a.rank,
+            lora_alpha=2 * a.rank,
+            lora_dropout=a.dropout,
+            target_modules=targets,
+            bias="none",
+        )
+        model = get_peft_model(base, cfg)
     tower_params: list[tuple[str, torch.nn.Parameter]] = []
     if a.train_tower:
         for n, p in model.named_parameters():
@@ -441,12 +488,14 @@ def main():
                 )
             if step >= total:
                 break
-        m = evaluate(f"ep{ep}", step)
-        m["train_loss"] = float(np.mean(losses))
+        # Save BEFORE scoring: a scorer crash (an import moved under the
+        # anime_tools pin, 2026-09-08) must not cost the epoch's weights.
         ep_dir = out / f"ep{ep}"
         model.save_pretrained(ep_dir)
         if tower_params:
             save_tower(ep_dir, tower_params)
+        m = evaluate(f"ep{ep}", step)
+        m["train_loss"] = float(np.mean(losses))
         if m["sfx_exact"] > best[0]:
             best = (m["sfx_exact"], ep)
             b = out / "best"
@@ -460,6 +509,7 @@ def main():
     md = [
         f"# {a.run} — PaddleOCR-VL-1.6 crop LoRA (r {a.rank}, lr {a.lr}, bs {a.bs}x{a.grad_accum}, "
         + (f"tower full FT lr {a.tower_lr}, " if a.train_tower else "")
+        + (f"init {a.init_adapter}, " if a.init_adapter else "")
         + f"speech_ratio {a.speech_ratio}, train {len(tr)}, val {len(va)})\n",
         "| tag | sfx exact | sfx sim | sfx runaway | speech exact | speech sim | speech runaway |",
         "|---|---|---|---|---|---|---|",
