@@ -17,7 +17,7 @@ Scratch plan for the next release. Two pillars make it a major bump:
    first-class trainer/inference path so manga data trains **with text masks
    off**: in-image text is OCR'd into the caption, the caption is encoded
    through the vocab pack, and the text pixels become attributable instead
-   of spam. The unmask A/B (`project/cjk_aware_anima/reports/0901_unmask_ab.md`)
+   of spam. The unmask A/B (`_archive/cjk_aware_anima/reports/0901_unmask_ab.md`, archived with the frozen line)
    settled that the *captions* carry the effect and that even the legacy
    `synthjako2` pack is enough — so this does not wait on the glossary-r2
    pack; v5 is a quality upgrade, not a gate.

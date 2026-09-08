@@ -40,6 +40,84 @@ _AUTOTAG_ERROR_PREFIX = AUTOTAG_ERROR_PREFIX
 _AUTOTAG_IDLE_MS = 10 * 60 * 1000
 # Poll cadence (ms) for "did some other GPU job start?" while resident.
 _AUTOTAG_GPU_WATCH_MS = 700
+# How much of the worker's stderr to keep. A startup failure (missing or gated
+# tagger weights) never reaches the stdout sentinel protocol — the process just
+# dies — so without this tail the tab could only report a bare "exit".
+_STDERR_TAIL_CHARS = 8000
+
+# The catalog rows the resident worker needs on disk before it can serve
+# anything: our small checkpoint plus the gated upstream backbone.
+TAGGER_ASSET_GROUP = "tagger-model"
+
+# Substrings that mark a worker crash as "the weights aren't there / aren't
+# reachable" rather than a genuine tagging failure. Matched case-insensitively
+# against the worker's last stderr line, which for the gated case is the
+# ``FileNotFoundError`` anime_tools raises with the accept-terms recovery.
+_MISSING_MODEL_MARKERS = (
+    "gated",
+    "hf auth login",
+    "animetimm/",
+    "repositorynotfounderror",
+    "entrynotfounderror",
+    "backbone",
+    "tagger checkpoint",
+    "anima-tagger",
+    "401 client error",
+    "403 client error",
+)
+
+
+def _tagger_assets() -> list:
+    """The tagger's catalog rows, or ``[]`` if the catalog can't be read.
+
+    Import is local so this module stays cheap for callers that never autotag,
+    and the rows come from ``library.downloads`` rather than a path list here —
+    see the catalog rule in ``gui/system_dialog.py``.
+    """
+    try:
+        from library import downloads as DL
+
+        return list(DL.resolve([TAGGER_ASSET_GROUP]))
+    except Exception:  # noqa: BLE001 — a broken catalog must not block autotag
+        return []
+
+
+def missing_tagger_assets() -> list:
+    """Tagger rows that are not installed yet (offline probe).
+
+    Empty means the resident worker has everything it needs.
+    """
+    return [a for a in _tagger_assets() if not a.installed]
+
+
+def gated_urls(assets) -> list[str]:
+    """The accept-terms pages among ``assets`` (``Asset.gated`` is the URL)."""
+    return [a.gated for a in assets if getattr(a, "gated", None)]
+
+
+def tagger_gated_urls() -> list[str]:
+    """Every accept-terms page the tagger needs, installed or not.
+
+    The fallback when the rows probe as installed but the worker still failed
+    on access — a revoked token reads as "present" to an offline cache probe,
+    and the terms page is exactly what the user needs in that case.
+    """
+    return gated_urls(_tagger_assets())
+
+
+def is_missing_model_error(message: str) -> bool:
+    """True when ``message`` reads like a missing / gated-weights failure."""
+    low = message.lower()
+    return any(m in low for m in _MISSING_MODEL_MARKERS)
+
+
+def _last_line(text: str) -> str:
+    """Last non-empty line of ``text`` — the exception line of a traceback."""
+    for line in reversed(text.splitlines()):
+        if line.strip():
+            return line.strip()
+    return ""
+
 
 # Status phases emitted on `status` — the tab maps these to translated text
 # (kept plain-string here so this module never imports gui.i18n).
@@ -63,8 +141,10 @@ class _AutotagWorker(QObject):
       loading; the tab disables the autotag button on True.
     - ``result(Path, str)`` — (image_path, predicted caption) once a reply
       lands; the tab applies it only if that image is still on screen.
-    - ``error(str)`` — a raw error string (subprocess stderr sentinel, or
-      ``"exit"`` on an unexpected crash); the tab formats + shows it.
+    - ``error(str)`` — a raw error string: the worker's stderr sentinel, or,
+      when it died before the protocol started, the last line of its stderr
+      (``"exit"`` only if it printed nothing). The tab formats + shows it, and
+      routes a missing/gated-weights message to the download prompt.
     """
 
     status = Signal(str)
@@ -77,6 +157,7 @@ class _AutotagWorker(QObject):
         self._proc: QProcess | None = None
         self._ready = False
         self._buf = ""  # partial-line buffer for the worker's stdout
+        self._err = ""  # tail of the worker's stderr (crash diagnosis)
         self._inflight_image: Path | None = None
         self._idle = QElapsedTimer()
         # Polls "did another GPU job start?" only while the worker is resident.
@@ -108,6 +189,7 @@ class _AutotagWorker(QObject):
         self._proc = None
         self._ready = False
         self._buf = ""
+        self._err = ""
         self._inflight_image = None
         self.busy.emit(False)
         self.status.emit(STATUS_IDLE)
@@ -115,6 +197,7 @@ class _AutotagWorker(QObject):
             return
         try:
             proc.readyReadStandardOutput.disconnect()
+            proc.readyReadStandardError.disconnect()
             proc.finished.disconnect()
             proc.errorOccurred.disconnect()
         except (RuntimeError, TypeError):
@@ -137,11 +220,13 @@ class _AutotagWorker(QObject):
         env.insert("ANIMA_HOME", str(ROOT))
         proc.setProcessEnvironment(env)
         proc.readyReadStandardOutput.connect(self._on_stdout)
+        proc.readyReadStandardError.connect(self._on_stderr)
         proc.finished.connect(self._on_finished)
         proc.errorOccurred.connect(lambda _e: self._on_finished(-1, None))
         self._proc = proc
         self._ready = False
         self._buf = ""
+        self._err = ""
         self._gpu_watch_timer.start()
         proc.start()
 
@@ -180,6 +265,19 @@ class _AutotagWorker(QObject):
             elif line.startswith(_AUTOTAG_ERROR_PREFIX):
                 self._finish_error(line[len(_AUTOTAG_ERROR_PREFIX) :])
 
+    def _on_stderr(self) -> None:
+        """Keep the tail of the worker's stderr (logs + any traceback).
+
+        Never parsed for the protocol — stdout owns that. This exists purely so
+        a crash before ``READY`` (missing / gated weights being the common one)
+        can be reported with its real reason instead of a bare exit code.
+        """
+        if self._proc is None:
+            return
+        self._err += bytes(self._proc.readAllStandardError()).decode("utf-8", "replace")
+        if len(self._err) > _STDERR_TAIL_CHARS:
+            self._err = self._err[-_STDERR_TAIL_CHARS:]
+
     def _finish_result(self, caption: str) -> None:
         image = self._inflight_image
         self._clear_inflight()
@@ -215,12 +313,15 @@ class _AutotagWorker(QObject):
     def _on_finished(self, _code, _status) -> None:
         """Worker exited (crash, kill, or EOF) — reset to the no-worker state."""
         was_inflight = self._inflight_image is not None
+        self._on_stderr()  # drain whatever the crash wrote just before exiting
+        reason = _last_line(self._err)
         self._gpu_watch_timer.stop()
         self._proc = None
         self._ready = False
         self._buf = ""
+        self._err = ""
         self._inflight_image = None
         self.busy.emit(False)
         self.status.emit(STATUS_IDLE)
         if was_inflight:
-            self.error.emit("exit")
+            self.error.emit(reason or "exit")

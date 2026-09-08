@@ -502,6 +502,17 @@ STRINGS: dict[str, str] = {
     ),
     "caption_autotag_error": "Autotag failed: {err}",
     "caption_autotag_empty": "The tagger returned no tags for this image.",
+    "caption_autotag_model_missing": (
+        "The Anima Tagger model is not downloaded yet. Open Models and fetch the "
+        "Tagger pack (or run `make download-tagger-model` in a terminal), then try "
+        "Autotag again."
+    ),
+    "caption_autotag_model_gated": (
+        "Its caformer_b36 backbone lives in a gated repository — sign in to "
+        "HuggingFace and accept the terms on this page first:\n{url}"
+    ),
+    "caption_autotag_open_models": "Open Models…",
+    "caption_autotag_open_gated": "Open the model page",
     "caption_correct": "Correct order",
     "caption_correct_tooltip": (
         "Use danbooru_tags_classified.csv to reorder this caption into the "

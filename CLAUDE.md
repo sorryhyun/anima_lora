@@ -85,6 +85,12 @@ Non-obvious knobs and gotchas worth knowing up front:
   `student_steps` rollout (currently 4) and `--cfg 1.0`. `make print-config METHOD=…
   PRESET=…` dumps the merged chain; `make test-unit` runs pytest; `ruff check . --fix &&
   ruff format .` (touched files only — see [[feedback_ruff_scope_collateral]]).
+- **Run the test suite at most twice per task** (here or in `../anime_tools`): once
+  after the change, once after fixing what it caught. Re-running it as a progress
+  check is noise — read the failure and fix it. Needing a third run means the change
+  wants rethinking, not another loop; if a run is genuinely required beyond that, say
+  why. Scope a re-run to the affected file (`pytest tests/test_x.py`) rather than
+  sweeping the whole suite again.
 
 ## Key entry points
 

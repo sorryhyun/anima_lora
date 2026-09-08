@@ -488,6 +488,16 @@ STRINGS: dict[str, str] = {
     ),
     "caption_autotag_error": "자동 태깅 실패: {err}",
     "caption_autotag_empty": "태거가 이 이미지에서 태그를 찾지 못했습니다.",
+    "caption_autotag_model_missing": (
+        "Anima Tagger 모델이 아직 다운로드되지 않았습니다. 모델 창에서 Tagger 팩을 "
+        "받거나 터미널에서 `make download-tagger-model` 을 실행한 뒤 다시 시도하세요."
+    ),
+    "caption_autotag_model_gated": (
+        "caformer_b36 백본은 접근 승인이 필요한 저장소입니다. HuggingFace 에 "
+        "로그인한 뒤 아래 페이지에서 약관에 먼저 동의해야 합니다:\n{url}"
+    ),
+    "caption_autotag_open_models": "모델 창 열기",
+    "caption_autotag_open_gated": "모델 페이지 열기",
     "caption_correct": "순서 교정",
     "caption_correct_tooltip": (
         "danbooru_tags_classified.csv를 사용해 캡션을 ANIMA 권장 순서로 "

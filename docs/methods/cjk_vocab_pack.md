@@ -103,6 +103,6 @@ The reason the pack is a trainer path: manga pages train with text masks
 the pack (`masked_loss=false` + OCR captions + `vocab_pack`). Unmasking
 without the captions reproduces the text spam, so it is a bundle, not a
 toggle. The recipe and its evidence live in
-`project/cjk_aware_anima/reports/0901_unmask_ab.md` and the `cjk_unmask_*`
+`_archive/cjk_aware_anima/reports/0901_unmask_ab.md` (archived with the frozen line) and the `cjk_unmask_*`
 configs under `configs/gui-methods/custom/`; the OCR caption stage is still
 research-side (`docs/v2_release_plan.md` B5/B6).

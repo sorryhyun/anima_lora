@@ -75,6 +75,10 @@ from gui.tabs._autotag import (
     STATUS_READY,
     STATUS_RUNNING,
     _AutotagWorker,
+    gated_urls,
+    is_missing_model_error,
+    missing_tagger_assets,
+    tagger_gated_urls,
 )
 from gui.tabs._caption_editor import (
     BoxedCaptionEdit,
@@ -623,6 +627,13 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         if gui_daemon.active_job_id():
             QMessageBox.information(self, "", t("caption_autotag_busy"))
             return
+        # Offline catalog probe first: the worker would otherwise spend ~10s
+        # importing torch only to die on the download, and its traceback goes
+        # to a stderr nobody reads.
+        missing = missing_tagger_assets()
+        if missing:
+            self._warn_tagger_missing(missing)
+            return
         self._tagger.request(self._images[idx])
 
     def _on_autotag_status(self, phase: str) -> None:
@@ -655,7 +666,49 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self._refresh_inline_diff()
 
     def _on_autotag_error(self, err: str) -> None:
+        # A worker that died fetching / loading the weights reports the hub's
+        # own message; route that to the download prompt rather than showing a
+        # raw traceback line the user can do nothing with.
+        if is_missing_model_error(err):
+            self._warn_tagger_missing(missing_tagger_assets(), detail=err)
+            return
         QMessageBox.warning(self, t("error"), t("caption_autotag_error", err=err))
+
+    def _warn_tagger_missing(self, assets, detail: str = "") -> None:
+        """Tell the user the tagger weights aren't there and how to get them.
+
+        The backbone is gated, so "download it" alone is not actionable — the
+        accept-terms page has to be reachable from here. URLs come from the
+        catalog rows (``Asset.gated``), never from a literal in the GUI.
+        """
+        urls = gated_urls(assets) or tagger_gated_urls()
+        body = [t("caption_autotag_model_missing")]
+        if urls:
+            body.append(t("caption_autotag_model_gated", url="\n".join(urls)))
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(t("error"))
+        box.setText("\n\n".join(body))
+        if detail:
+            box.setDetailedText(detail)
+        open_btn = box.addButton(
+            t("caption_autotag_open_models"), QMessageBox.AcceptRole
+        )
+        page_btn = (
+            box.addButton(t("caption_autotag_open_gated"), QMessageBox.ActionRole)
+            if urls
+            else None
+        )
+        box.addButton(QMessageBox.Close)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is open_btn:
+            from gui.system_dialog import open_models_dialog
+
+            open_models_dialog(self)
+        elif page_btn is not None and clicked is page_btn:
+            for url in urls:
+                QDesktopServices.openUrl(QUrl(url))
 
     def _caption_correction_options(self) -> CaptionCorrectionOptions:
         return CaptionCorrectionOptions(

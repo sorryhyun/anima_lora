@@ -235,6 +235,7 @@ def cmd_score(o) -> None:
         "|---|---|---|---|---|---|---|---|",
     ] + lines
     out = PROJ / "reports" / f"blind_{o.set}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)  # line frozen: reports/ archived
     out.write_text("\n".join(md) + "\n", encoding="utf-8")
     print("\n".join(md[: 8 + len(key["arms"])]))
     print(f"-> {out}")

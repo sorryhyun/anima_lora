@@ -3,12 +3,14 @@
 Every settled verdict of the line in one place, with the evidence pointer.
 Read this before proposing anything: most of the obvious levers are measured
 and closed. Companion files: [`deliverables.md`](deliverables.md) (what exists
-and where) · [`plan.md`](plan.md) (what remains). The dated reports carry the
-full tables: [`reports/0816_phase2.md`](reports/0816_phase2.md) (Phase 2b gates +
-2c first pass + corpus work), [`reports/0827_names_synth.md`](reports/0827_names_synth.md)
-(name register, §8 JA-context, §9 attn term),
-[`reports/0830_adapter_lora.md`](reports/0830_adapter_lora.md) (plan3 adapter
-LoRA, closed). Dataset-side numbers: [`datasets/README.md`](datasets/README.md).
+and where) · [`plan.md`](plan.md) (the freeze note). The dated reports carry
+the full tables and were **archived 2026-09-08** to
+`_archive/cjk_aware_anima/reports/` (gitignored, private mirror) — every
+`reports/…` link in this file resolves there, including
+`reports/0816_phase2.md` (Phase 2b gates + 2c first pass + corpus work),
+`reports/0827_names_synth.md` (name register, §8 JA-context, §9 attn term) and
+`reports/0830_adapter_lora.md` (plan3 adapter LoRA, closed). Dataset-side
+numbers stay live: [`datasets/README.md`](datasets/README.md).
 
 ## 1. The problem and the opening (Phase 0 probe, 2026-08-15)
 

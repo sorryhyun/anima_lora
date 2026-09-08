@@ -429,6 +429,16 @@ STRINGS: dict[str, str] = {
     ),
     "caption_autotag_error": "自动标注失败：{err}",
     "caption_autotag_empty": "标注器未为该图像返回任何标签。",
+    "caption_autotag_model_missing": (
+        "Anima Tagger 模型尚未下载。请在「模型」窗口中获取 Tagger 包，或在终端运行 "
+        "`make download-tagger-model`，然后重新点击自动标注。"
+    ),
+    "caption_autotag_model_gated": (
+        "其 caformer_b36 主干位于受限仓库 — 请先登录 HuggingFace 并在以下页面"
+        "同意其条款：\n{url}"
+    ),
+    "caption_autotag_open_models": "打开模型窗口",
+    "caption_autotag_open_gated": "打开模型页面",
     "caption_correct": "校正顺序",
     "caption_correct_tooltip": (
         "使用 danbooru_tags_classified.csv 将标注按 ANIMA 推荐顺序重排，"

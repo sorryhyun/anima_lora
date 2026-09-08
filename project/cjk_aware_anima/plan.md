@@ -8,10 +8,15 @@ mirror; the pre-move versions are in git history except `plan_zh3.md`, which
 was never committed). Links to them from [`findings.md`](findings.md) and the
 dated reports resolve against that archive.
 
+**Update 2026-09-08: the dated `reports/` moved too**, to
+`_archive/cjk_aware_anima/reports/` — same gitignored tree, same rule for
+links. Nothing in them changed; they are simply no longer tracked, the line
+having been frozen for three days by then with every verdict digested into
+`findings.md`.
+
 What stays live here: [`findings.md`](findings.md) (every settled verdict,
 §1–§14), [`deliverables.md`](deliverables.md) (code, data builders, packs,
-ship contract), the dated `reports/`, `datasets/`, `probes/`, `gates/`,
-`assets/`. The shipped tag-tier pack (`synthja_v4` at
+ship contract), `datasets/`, `probes/`, `gates/`, `assets/`. The shipped tag-tier pack (`synthja_v4` at
 `sorryhyun/anima-vocab-pack-ja`, `AnimaVocabPackLoader`) and the JA+KO+ZH
 `synthjakozh1sym_r256` pack are kept as they are — no further distill arms.
 

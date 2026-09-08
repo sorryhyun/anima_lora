@@ -449,6 +449,17 @@ STRINGS: dict[str, str] = {
     ),
     "caption_autotag_error": "自動タグ付けに失敗しました: {err}",
     "caption_autotag_empty": "タガーはこの画像のタグを返しませんでした。",
+    "caption_autotag_model_missing": (
+        "Anima Tagger のモデルがまだダウンロードされていません。モデル画面から "
+        "Tagger パックを取得するか、ターミナルで `make download-tagger-model` を"
+        "実行してから、もう一度お試しください。"
+    ),
+    "caption_autotag_model_gated": (
+        "caformer_b36 バックボーンはゲート付きリポジトリです。HuggingFace に"
+        "ログインし、次のページで先に利用規約へ同意してください:\n{url}"
+    ),
+    "caption_autotag_open_models": "モデル画面を開く",
+    "caption_autotag_open_gated": "モデルページを開く",
     "caption_correct": "順序補正",
     "caption_correct_tooltip": (
         "danbooru_tags_classified.csv を使ってキャプションを ANIMA 推奨順に並べ替え、"
