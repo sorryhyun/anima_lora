@@ -10,11 +10,13 @@ boxes no longer match the AnimeText labels); ``record`` = the pipeline's own
 AnimeText read, scored on CPU by ``eval_sfx.py --reader record``.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
+JA_PROMPT = "画像中の日本語のテキストを抽出してください。"
 EVAL = REPO / "project/cjk_aware_anima_dit/ocr/eval_sfx.py"
 ROWS = [
     ("manga_ocr_stock", ["--reader", "manga_ocr"]),
@@ -45,18 +47,24 @@ ROWS = [
         "hayai_v2_1_5",
         ["--reader", "hayai", "--ckpt", "JustANormalTinkerer/hayai-ocr-v2@v2.1.5"],
     ),
+    ("hunyuan_stock", ["--reader", "hunyuan"]),
+    # the same weights under a Japanese instruction — the official prompt is
+    # Chinese and never names a language, which is half of Hunyuan's miss
+    ("hunyuan_ja_prompt", ["--reader", "hunyuan"], {"ANIMA_HUNYUAN_PROMPT": JA_PROMPT}),
     ("record", ["--reader", "record"]),
 ]
 
 if __name__ == "__main__":
     only = set(sys.argv[1:])
     failed = []
-    for name, args in ROWS:
+    for name, args, *rest in ROWS:
         if only and name not in only:
             continue
         print(f"\n===== {name} =====", flush=True)
         rc = subprocess.call(
-            [sys.executable, str(EVAL), *args, "--name", name], cwd=REPO
+            [sys.executable, str(EVAL), *args, "--name", name],
+            cwd=REPO,
+            env={**os.environ, **(rest[0] if rest else {})},
         )
         if rc:
             failed.append(name)
