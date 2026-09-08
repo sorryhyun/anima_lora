@@ -46,9 +46,13 @@ Wired and runnable, but not part of the default stack — may break or change.
 | [experimental/easycontrol.md](experimental/easycontrol.md) | EasyControl — extended self-attn image conditioning; frozen DiT, per-block cond LoRA + scalar gate |
 | [experimental/soft_tokens.md](experimental/soft_tokens.md) | Soft Tokens — SoftREPA per-layer × per-t soft text tokens (~1M params); frozen DiT, optional B=1 contrastive |
 | [experimental/directedit_editing_v3.md](experimental/directedit_editing_v3.md) | DirectEdit (v3) — flow-inversion image editing; what's actually wired and runnable |
-| [experimental/anima_tagger.md](experimental/anima_tagger.md) | Anima Tagger — multi-label tagger emitting Anima-format tag strings (DirectEdit ψ_src source) |
 | [experimental/vr_loss.md](experimental/vr_loss.md) | Variance-reduced FM loss — AsymFlow §5.2 control-variate correction at the loss level |
-| [experimental/position_captions.md](experimental/position_captions.md) | Position-aware captions — SAM3 + tagger rewrite multi-subject captions into `On the left, …` clauses, moving each bound tag out of the flat bag |
+
+Curation docs — Anima Tagger, position captions, multiview audit, grouping,
+masking — live with their code in the sibling
+[`anime_tools`](https://github.com/sorryhyun/anime_tools) repo, under
+[`docs/`](https://github.com/sorryhyun/anime_tools/tree/main/docs)
+(`../anime_tools/docs/`).
 
 ## Structure
 

@@ -3,7 +3,8 @@
 Successor to [`_archive/proposals/directedit_editing_v2.md`](../proposal/directedit_editing_v2.md).
 v2 was the proposal; this doc covers what's actually wired and runnable
 in the tree. The Anima Tagger arm of v2 ("phase v3.0") is documented
-separately in [`anima_tagger.md`](./anima_tagger.md).
+separately in [`anime_tools/docs/anima_tagger.md`](https://github.com/sorryhyun/anime_tools/blob/main/docs/anima_tagger.md)
+(sibling checkout: `../anime_tools/docs/anima_tagger.md`).
 
 ## Status
 
@@ -334,5 +335,5 @@ result is on the editor, not the encoder.
 * **Reference implementation.** [Tr1stesse/DirectEdit](https://github.com/Tr1stesse/DirectEdit) — original PyTorch
   reference; source for the inversion / edit-forward step rules and the
   V-injection scheme.
-* **Tagger arm.** [`anima_tagger.md`](./anima_tagger.md).
+* **Tagger arm.** [`anime_tools/docs/anima_tagger.md`](https://github.com/sorryhyun/anime_tools/blob/main/docs/anima_tagger.md).
 * **v2 design doc.** [`_archive/proposals/directedit_editing_v2.md`](../proposal/directedit_editing_v2.md).

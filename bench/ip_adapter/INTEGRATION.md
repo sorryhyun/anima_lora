@@ -109,7 +109,7 @@ rewrite. Restoring is mechanical.
 - Restore `docs/experimental/ip-adapter.md` from `impl/`.
 - Re-thread the mentions in `CLAUDE.md` (methods table row + §Methods), `networks/CLAUDE.md`
   (layout table), `docs/guidelines/{inference,training}.md`, `docs/multi_model_support.md`,
-  `docs/experimental/anima_tagger.md` cross-ref.
+  `../anime_tools/docs/anima_tagger.md` cross-ref.
 
 ## Key facts the bench must honor (from removal-time state)
 
