@@ -353,8 +353,9 @@ COMMANDS = {
     # ── Masking ───────────────────────────────────────────────────────
     "mask": (
         masking.cmd_mask,
-        "Run SAM + MIT (via tempdir) and write merged masks under mask_dir "
-        "(configs/preprocess.toml; default post_image_dataset/masks/)",
+        "Run the SAM3 mask rules (via tempdir) and write merged masks under "
+        "mask_dir (configs/preprocess.toml; default post_image_dataset/masks/). "
+        "Training reads them only with masked_loss = true",
     ),
     "mask-clean": (
         masking.cmd_mask_clean,

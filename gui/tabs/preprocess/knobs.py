@@ -10,7 +10,7 @@ low-res filter sugar (``drop_lowres_images`` → ``min_pixels=0``) and the three
 **chain gates** — whether the Run chain runs the autotag / position-clause /
 SAM stages at all (``caption_autotag`` / ``caption_position_clauses`` /
 ``run_sam_mask``). Every other row the tab used to carry (resize geometry,
-caption rewriting, autotag mode, SAM rule cards, the MIT masker) is drawn
+caption rewriting, autotag mode, SAM rule cards) is drawn
 from the stage schemas by ``stage_form.py`` and persisted under
 ``[variant.stages.<stage_id>]``.
 

@@ -10,7 +10,7 @@ This is the byte-for-byte contract the ``knobs.py`` extraction
 (``docs/proposal/gui_preprocess_tab_refactor.md`` Phase 1) and the stage-form
 migration (``gui_preprocess_from_anime_tools.md`` P1–P3, regenerated
 2026-09-07 with the migrated keys — resize geometry, caption rewriting,
-autotag mode, SAM rules, MIT — moved out of the flat keys / env) must
+autotag mode, SAM rules — moved out of the flat keys / env) must
 reproduce. Regenerate deliberately, never to make a red run green::
 
     uv run python tests/test_gui_preprocess_characterization.py --write
@@ -34,7 +34,6 @@ SCENARIOS: dict[str, dict[str, dict]] = {
         "preprocess_toml": {
             "source_image_dir": "my_images",
             "target_res": [1024, 896],
-            "resize_bucket_resos": ["1024x1024"],
             "resize_crop_anchor": "top",
             "resize_crop_margins": {
                 "top": 5.0,
@@ -56,9 +55,6 @@ SCENARIOS: dict[str, dict[str, dict]] = {
             "caption_shuffle_variants": 7,
             "caption_tag_dropout_rate": 0.3,
             "run_sam_mask": False,
-            "run_mit_mask": False,
-            "mit_text_threshold": 0.6,
-            "mit_dilate": 9,
         },
         "sam_yaml": {
             "path_pattern": "artist_x/*",
