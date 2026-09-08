@@ -1524,3 +1524,147 @@ re-rendered on the new tree (`output/tests/ocr_merge_sheet/`). Package tests:
 The research copies (`project/cjk_aware_anima/datasets/build_ocr_records.py`
 `is_runaway` / `_normalize_read`) are **not** changed — they are the keys of
 the recorded PP-vs-VL A/B and would re-score it.
+
+## O2 follow-up — LP-FT (arm B → B′ order): in-domain speech +4.8, sincos −40 (2026-09-08)
+
+The user's question: does *linear-probe-then-fine-tune* (Kumar et al., ICLR
+2022 — fit the head with the backbone frozen, then unfreeze) buy anything on
+the VL reader, given ep3 (§ above) showed the schedule is not the lever. The
+paper's failure mode is a random-init head distorting pretrained features;
+here there is no random head (LoRA is zero-init, the LM head is pretrained)
+and the tower lr is already 10× below the LoRA lr, so the prior was "weak
+motivation, near-zero cost": stage 1 already exists as **arm B**
+(`vl16_lr1e-4/ep2`, LoRA only, tower frozen, 2 ep, val 66.2 %).
+
+**Recipe.** `finetune_vl16_lora.py --init_adapter output/ocr/vl16_lr1e-4/ep2
+--train_tower` (new flag: load a trained adapter dir as the starting point,
+its `adapter_config.json` winning over `--rank`/`--dropout`; a
+`tower.safetensors` beside it is loaded too) with B′'s exact stage-2 recipe
+(LoRA lr 1e-4 + tower/projector lr 1e-5, bs 8×2, 1 ep, seed 0). Job
+`20260908-015228-62c6a3`, 90 min, 12.1 GB. The head start is real: step-25
+loss 0.206 vs B′'s 0.914 from scratch. Val ep1 SFX 86.8 % / speech 91.5 %
+(B′ 86.2 / 88.2). Evals `20260908-015258-{886deb,531117}`, reports
+`reports/ocr_eval{,_sfx}_vl16_lpft.md`. *(The first launch,
+`20260908-001842-7ed11e`, trained the full epoch and crashed in val scoring:
+anime-tools 62f6fc3 retired `anime_tools.ocr._text.normalize_ja` with the
+CTC recognizer, and the script saved weights only after scoring. Fixed both
+ways — `eval_manga109.py` now vendors that normaliser verbatim so every row
+in this file stays on one scorer, and the epoch dir is saved before val.)*
+
+| eval | model | SFX exact | SFX sim | sim ≥ 0.8 | runaway | speech exact | speech sim |
+|---|---|---|---|---|---|---|---|
+| Manga109-s test (2,558 / 2,559) | B′ `vl16_tower_lr1e-5` | 81.7 % | 0.927 | 87.6 % | 25 | 82.8 % | 0.986 |
+| | B′ × 3 ep | 85.7 % | 0.948 | 91.1 % | 25 | 83.3 % | 0.987 |
+| | **LP-FT** | 84.3 % | 0.932 | 88.7 % | 26 | **87.6 %** | 0.987 |
+| sincos hand labels (617 SFX; checked 86) | B′ | **304** (49.3 %); checked 40 / 86; heart-blind 359 | 0.852 | 75.2 % | 2 |
+| | B′ × 3 ep | 297; 39 / 86; 348 | 0.858 | 76.3 % | 4 |
+| | LP-FT | 264 (42.8 %); 38 / 86; 345 | 0.846 | 76.0 % | 3 |
+
+Reading it:
+
+- **In-domain it is the best speech reader so far** (+4.8 over B′, +4.3 over
+  ep3) and a middling SFX one (between B′ and ep3 at one epoch's cost). The
+  head start converts into COO accuracy, as the paper predicts for ID.
+- **On the target it is the worst of the three arms**: −40 lines vs B′ all
+  rows, −2 on the checked subset, heart-blind −14. Row-level vs B′ (SFX): 38
+  better / 78 worse; heart-blind 63 / 77 — so it is not only hearts, but
+  hearts are the largest single bucket: of the 497 sincos SFX rows whose
+  label carries `♡`, B′ emits a heart on 313 and LP-FT on 247 (`びく♡` →
+  `びく` ×6, `びくっ` → `ぐくっ`, `くに♡くに♡` → `くに゙くに゙`).
+- **Why, in the paper's own terms.** LP-FT works by *preserving* pretrained
+  features — the head is already near its optimum when the backbone unfreezes,
+  so the backbone moves less. § O2b established the doujin gap is a *tower*
+  problem: the target needs the tower to *change* (outlined / heart-terminated
+  bursts COO never shows). Starting the tower's update from a decoder that has
+  already spent two epochs fitting grey COO does exactly the opposite — it
+  locks in the COO prior (no hearts, speech-shaped SFX) before the tower has
+  seen a gradient, and the tower then has less to correct. The mechanism that
+  makes LP-FT good ID is the one that costs it here.
+
+*Verdict:* **LP-FT is closed for this reader.** Fourth arm in a row where
+in-domain and sincos decouple (col100, col100×8, ×3 ep, LP-FT); the one
+in-domain number it moves (speech) is the clause the doujin eval cannot
+measure. Ship decision unchanged (B′). If a warm start is ever wanted again,
+it should be from a stage-1 that saw the *target* distribution (synth SFX /
+in-domain labels), not from arm B. Weights local only:
+`output/ocr/vl16_lpft/ep1`.
+
+## Plain vs OCR captions on sincos — the shipped clauses cost nothing (2026-09-08)
+
+The plain control the line has owed since 2026-09-01, re-run against what the
+package publishes **today**: AnimeText detector + VL reader (D3), the O4c–O4e
+caption rules, clauses composed by `with_ocr_clause` off the
+`post_image_dataset/ocr/sincos` sidecar tree — i.e. what any user of the
+package gets, not a research records file. Two arms, one training seed each,
+masks off in both (v2 default), latents shared bit-identically, one variable:
+what the caption says about the text in the picture. Treatment 162/351 pages.
+Full design + tables in `reports/0908_plain_vs_ocr.md`.
+
+| readout | OCR | PLAIN |
+|---|---:|---:|
+| blind pairs (24, `s16_OCR_vs_PLAIN`) | **14** | 9 (+1 tie) |
+| dbv4 adherence prob / recall | 0.7421 / 0.8861 | 0.7361 / 0.8809 |
+| PE cos→base / →sincos | 0.9837 / 0.9079 | 0.9837 / 0.9065 |
+| spam: cells with a box / boxes | 10 / 24 · 15 | 11 / 24 · 26 |
+
+Reading it:
+
+- **Every automated readout is flat.** `cos→base` matches to four decimals —
+  both arms moved the base model the same distance — and adherence differs by
+  less than the row-to-row spread.
+- **14–9 is p = 0.20 one-sided.** A lean, not a result. Direction replicates
+  2026-09-01's arm C > arm B; magnitude does not, and **B's text spam does not
+  reappear in this PLAIN arm** — so on the shipped stack the two caption
+  policies are much closer than that set suggested.
+- **The spam tally changed units.** `probes/grid_spam_tally.py` was ported to
+  the AnimeText detect-only engine (`load_ocr` lost `min_score` / `min_chars` /
+  `skip_en` at D3; boxes carry no text, so `chars`/`texts` are gone and
+  `n_lines` / `glyph_frac` are the tally). **Never compare these counts to a
+  pre-D3 tally**, C10's "~2 on 3 seeds" included. Within this set: box counts
+  are a wash, and OCR's higher mean glyph % is one 21.7 % box on r6/s42, a
+  false positive at the lenient 0.15 floor.
+
+*Verdict:* **the shipped speech + SFX clauses stay the default** — the claim
+is *no cost*, not *a win*. Confirming the lean needs a second **training** seed
+per arm (the s11 pattern), worth spending only if something downstream needs
+OCR captions to be better rather than harmless.
+
+### α128 re-run and the hard prompt set: two more ties (2026-09-08)
+
+Two follow-ups on the same pair, both render-only re-evals of the s16 arms.
+
+**α=128** (`reports/0908_alpha128.md`, blind `s17`). At α/r = 1 the adapter
+barely moves the base, so no caption policy has room to express — the spread
+between two *training seeds of the same arm* (C10: 0.9840/0.9865/0.9793) was
+larger than any between-arm gap this line ever measured. Re-running the pair
+with `network_alpha` 32 → 128 scaled ‖ΔW‖ 3.7× with the learned factors
+unchanged (‖A,B‖ +1.8 %) — **α is a pure output-scale knob here, not an LR
+proxy: Adam normalises the ~16× effective-step argument away.** It widened the
+arm contrast past LoRA-vs-base (PE cos 0.9862 → 0.9794). The blind read still
+tied: **OCR128 10 / PLAIN128 12 / 2 ties**, direction flipped from s16.
+
+**The hard prompt set** (`reports/0908_v2_prompts_a128.md`, blind `s18`, 32
+pairs, open). All 8 rows of `unmask_eval_prompts.txt` are deliberately
+text-free — none of them asks for what the two arms disagree about. Re-rendered
+the α128 pair on `unmask_eval_prompts_v2.txt` (16 rows: named characters +
+series, `@sincos` on/off, a crossover, rare tags, and two rows that *request*
+`japanese text`), 2 seeds, 64 images. Adherence flat again (0.7055 / 0.7158;
+the rows are genuinely harder — 0.75 → 0.71 vs v1). New driver
+`project/cjk_aware_anima/run_grid.py` (render-only, multi-arm).
+
+Two things to carry forward:
+
+- **Harder prompts shrink the arm contrast, they do not open it.** PE cos
+  arm-vs-arm went 0.9794 (v1) → **0.9884** (v2), while the same-arm
+  different-seed floor rose 0.9347 → 0.9738. v2 rows carry 12–15 tags and
+  named characters, so they pin the composition and leave the seed *and* the
+  adapter less room. **A more specified prompt is a less sensitive
+  instrument** — the opposite of the intuition that sent us there.
+- **Two text-requesting rows cannot measure the text axis.** The apparent
+  "OCR writes 47 lines vs PLAIN's 35 where text was asked for" is one cell
+  (OCR s7 r11 = 29 lines); by glyph *area* the sign flips (PLAIN 12.7 % vs OCR
+  7.5 %, driven by PLAIN s7 r10 = 25.6 %). n = 4 per arm. Spam on the 14
+  text-free rows is a wash (11 vs 13 cells of 28, 33 vs 34 lines), which does
+  reproduce the α128 finding that **adapter magnitude is not what produced
+  arm B's spam**. Measuring text rendering needs its own grid of
+  text-requesting prompts.
