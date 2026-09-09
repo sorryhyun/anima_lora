@@ -113,11 +113,20 @@ draw stays at its full count instead of inflating with N.
 `--extra_manifest pseudo_<name>`. Append shares, smallest first (col100's lesson:
 a 1.6 % append was +2, a 22 % swap was −34 — never swap):
 
-| arm | pseudo rows | share of train | wall (B′ = 210 min / 77k rows) |
+| arm | pseudo rows | share of train | wall |
 |---|---|---|---|
-| `vl16_pl_4k` | 4,000 | ~5 % | ~3.7 h |
-| `vl16_pl_20k` | 20,000 | ~21 % | ~4.4 h |
-| `vl16_pl_40k` | 40,000 | ~34 % | ~5.3 h |
+| `vl16_pl_4k` | 4,000 | ~5 % | ~94 min |
+| `vl16_pl_20k` | 20,000 | ~21 % | **105 min (measured)** |
+| `vl16_pl_40k` | 40,000 | ~34 % | ~127 min |
+
+**The "B′ = 210 min / 77k rows" this table used to carry was a misread.**
+`history.jsonl`'s `wall` is set inside `evaluate()` (`finetune_vl16_lora.py`
+:430), so 210.5 is **seconds of the validation pass**, not training minutes.
+B′'s own daemon job took **89.6 min** end to end (77,164 crops at the 15.0
+crops/s its log reports = 85.7 min, plus that 3.5 min val). Both runs sit at
+the same throughput — 15.0 vs 15.7 crops/s — so the whole ladder is ~5.4 h,
+not the 13.4 h the old figure implied. Take run walls from the daemon job
+record, never from `wall`.
 
 Then `eval_sfx.py` + `eval_manga109.py`, and `eval_table.py --write` so the
 row lands on the one basis.
@@ -134,7 +143,7 @@ becomes teacher, re-sweep the full pool) only after a round-1 lift.
 ### Result — `vl16_pl_20k` PASSES the gate (2026-09-09)
 
 Ladder collapsed to the single 20k arm: each rung retrains the whole 77k
-recipe, so the append is marginal (4k = +11 min on a 3.5 h base) and a ~5 %
+recipe, so the append is marginal (4k = +5 min on an ~89 min base) and a ~5 %
 append was underpowered against a 374–380 band. Run: 6072 steps, 105 min,
 final loss 0.083.
 
@@ -160,7 +169,7 @@ half, so a good share of the rows entering the manifest tagged `sfx` are
 really speech.
 
 **Open, in this order.** (1) `vl16_pl_40k` — 47,939 kept rows are already on
-disk, so it is one 2 h run and no new sweep; the ladder's shape is unmeasured
+disk, so it is one ~127 min run and no new sweep; the ladder's shape is unmeasured
 with one point. (2) Round 2 (student re-teaches the pool) is now unlocked by
 the round-1 lift. (3) P2's 1k hand labels would still calibrate the filter's
 precision, which is inferred here, never measured.
