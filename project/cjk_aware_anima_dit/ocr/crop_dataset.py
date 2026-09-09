@@ -132,6 +132,74 @@ def area_batches(
     return batches
 
 
+def vl_tokens(
+    w: np.ndarray, h: np.ndarray, min_pixels: int, max_pixels: int, factor: int = 28
+) -> np.ndarray:
+    """Exact patch-token count each crop will cost the VL tower, from its (w, h) alone.
+
+    Mirrors ``transformers…paddleocr_vl.smart_resize``: the processor rounds each
+    edge to a multiple of ``factor`` (= patch 14 × merge 2) and then rescales so the
+    pixel budget lands inside ``[min_pixels, max_pixels]``. Tokens = pixels / 14².
+
+    The **min_pixels floor is why crop area is a bad batching key** — every crop
+    below it is upscaled to the same cost, so sorting by area does not sort by cost.
+    """
+    w = np.asarray(w, dtype=np.float64).copy()
+    h = np.asarray(h, dtype=np.float64).copy()
+    small_h = h < factor
+    w[small_h] = np.round(w[small_h] * factor / h[small_h])
+    h[small_h] = factor
+    small_w = w < factor
+    h[small_w] = np.round(h[small_w] * factor / w[small_w])
+    w[small_w] = factor
+    hb = np.round(h / factor) * factor
+    wb = np.round(w / factor) * factor
+    px = hb * wb
+    over = px > max_pixels
+    if over.any():
+        beta = np.sqrt(h[over] * w[over] / max_pixels)
+        hb[over] = np.maximum(factor, np.floor(h[over] / beta / factor) * factor)
+        wb[over] = np.maximum(factor, np.floor(w[over] / beta / factor) * factor)
+    under = px < min_pixels
+    if under.any():
+        beta = np.sqrt(min_pixels / (h[under] * w[under]))
+        hb[under] = np.ceil(h[under] * beta / factor) * factor
+        wb[under] = np.ceil(w[under] * beta / factor) * factor
+    return ((hb * wb) / 196).astype(np.int64)
+
+
+def token_batches(
+    tokens: np.ndarray, budget: int, batch_size: int, rng: random.Random
+) -> list[list[int]]:
+    """Batches capped by **total packed tokens**, not crop count.
+
+    ``area_batches`` fixes the crop count, so a batch drawn from the large-crop tail
+    can cost several times the median and OOM the tower on a spike (measured on
+    ``manifest_all``: median 20.1k tokens, max 122.6k, 34 batches over 60k). Sorting
+    by token cost and cutting on a budget bounds the peak; because ~99 % of crops sit
+    at the processor's min_pixels floor, a 24k budget costs only +0.6 % more steps.
+
+    ``batch_size`` stays the upper bound on crops per batch, so a budget wider than
+    ``batch_size`` × median simply reproduces the old behaviour.
+    """
+    key = tokens * np.exp(np.array([rng.gauss(0, 0.15) for _ in range(len(tokens))]))
+    order = np.argsort(key)
+    batches: list[list[int]] = []
+    cur: list[int] = []
+    run = 0
+    for i in order:
+        t = int(tokens[i])
+        if cur and (run + t > budget or len(cur) >= batch_size):
+            batches.append(cur)
+            cur, run = [], 0
+        cur.append(int(i))
+        run += t
+    if cur:
+        batches.append(cur)
+    rng.shuffle(batches)
+    return batches
+
+
 def collate_raw(items):
     imgs, targets, idx = zip(*items)
     return list(imgs), list(targets), list(idx)
