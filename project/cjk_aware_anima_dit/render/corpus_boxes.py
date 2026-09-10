@@ -12,7 +12,7 @@ Stages, each idempotent and resumable per page::
     make daemon-run ARGS="--stall-timeout 0 project/cjk_aware_anima_dit/render/corpus_boxes.py det --corpus <root> --editions en ja --per_work 4"
     make daemon-run ARGS="--stall-timeout 0 project/cjk_aware_anima_dit/render/corpus_boxes.py read --corpus <root> --editions en ja"
     # CPU: bubbles (box clusters + script guard), panels (XY-cut + bubble assignment), the hand-check sheet
-    python project/cjk_aware_anima_dit/render/corpus_boxes.py bubbles --editions en ja
+    python project/cjk_aware_anima_dit/render/corpus_boxes.py bubbles --corpus <root> --editions en ja
     python project/cjk_aware_anima_dit/render/corpus_boxes.py panels --editions en ja
     python project/cjk_aware_anima_dit/render/corpus_boxes.py sheet --corpus <root> --editions ja --n 40
 
@@ -26,22 +26,45 @@ Stages, each idempotent and resumable per page::
   ``Vl16Sweeper``; PaddleOCR-VL-1.6, spacing-preserving) → ``reads_<ed>.jsonl``.
 * ``bubbles`` — union-find over the page's boxes: two boxes share a bubble when
   they stack (rows: horizontal overlap ≥ 0.3 and vertical gap ≤ 0.8 × the
-  thinner one's height; columns: the transpose). Guards: every line non-empty
-  and script-consistent with the edition (EN ASCII with a letter, JA
-  kana/kanji, KO hangul-dominant); a JA bubble whose every line is SFX by
-  ``anime_tools.captions.ocr_sfx.line_kind`` is rejected as ``sfx`` (speech
-  only in v0) → ``bubbles_<ed>.jsonl`` with ``ok`` + ``reason`` + ``kind`` on
-  every bubble. Multi-line reads are flattened (EN with a space, JA/KO joined).
+  thinner one's height; columns: the transpose). Guards, in order (the first
+  hit is the ``reason``): every line non-empty (``empty_line``);
+  script-consistent with the edition — EN ASCII with a letter, JA kana/kanji,
+  KO hangul-dominant (``script``); ≥ ``--min_chars`` (``short``); a JA bubble
+  whose every line is SFX by ``anime_tools.captions.ocr_sfx.line_kind``
+  (``sfx``, speech only in v0); the S0b guards — a read that is mostly one
+  unit repeated over ≥ 20 characters (``repeat``: ``ウウウ…`` / ``O O O O``
+  reader loops, ``びゅる`` ×20 bursts; a typeset ``AH! AH! AH!`` stays), a JA kana-only read with ≤ ``--min_kana`` content kana
+  (``short_kana``: ``あっ`` / ``くー〜〜`` moans, the hand-lettered majority),
+  no balloon around the box (``no_balloon``: the band just outside each member
+  box — the middle half of each side, corners excluded — is neither mostly
+  white nor mostly flat, *and* the box interior is not mostly white either
+  (text that fills its balloon to the outline); hand-lettered SFX sit on
+  artwork; needs ``--corpus``), and finally ``overlap`` — a bubble whose
+  member box overlaps another bubble's (IoU > 0.1 or one inside the other)
+  is rejected whatever the neighbour's verdict, because the padded read crop
+  saw both (merged-neighbour reads). → ``bubbles_<ed>.jsonl`` with ``ok`` +
+  ``reason`` + ``kind`` + ``ring`` on every bubble. Multi-line reads are
+  flattened (EN with a space, JA/KO joined). S0b changes no box, so S0's reads
+  (one per box) stay valid — no GPU pass.
 * ``panels`` — the ``frame`` boxes the det stage also wrote (``deepghs/
   manga109_yolo``, the Manga109 YOLO11-l ONNX export at its F1 threshold; a page
   with no frame is one whole-page panel — white-gutter XY-cut was tried first
-  and does not survive this corpus's full-bleed colour pages); each accepted
-  bubble is assigned to the panel holding its centre, bubbles ordered right→left then top→bottom inside a panel (manga
-  reading order, which EN scanlations keep) → ``samples_<ed>.jsonl``: one row
-  per panel with ≥ 1 accepted bubble (``lines`` in order, ``n_rejected``).
+  and does not survive this corpus's full-bleed colour pages). Frame fixes:
+  a frame under ``--min_area`` of the page is dropped; a frame that contains
+  ≥ 2 other frames (a whole-page box over real panels) is dropped; a bubble
+  goes to the *smallest* frame holding its centre (nested frames no longer
+  double-assign); the panel then grows to contain every accepted bubble it
+  holds (never a holed box half outside the crop). Bubbles are ordered in
+  manga reading order — rows by a band one median bubble tall, right→left
+  inside a row (EN scanlations keep it) → ``samples_<ed>.jsonl``: one row per
+  panel with ≥ 1 accepted bubble (``lines`` in order, ``intact`` = the
+  rejected bubbles inside it, copied through un-holed, ``slant`` = the panel
+  overlaps a sibling frame by > 10 % of its area — the slanted-gutter
+  cut-through proxy, counted, not fixed).
 * ``sheet`` — ``sheet_<ed>.png`` + ``sheet_<ed>.tsv``: panel crops with the
-  accepted bubbles outlined and their reads underneath — the hand pass before
-  anything is cut.
+  accepted bubbles outlined red (index = caption order) and the intact
+  rejects outlined blue with their reason, reads wrapped underneath — the
+  hand pass before anything is cut.
 
 The cut stage (panel crops → ``post_image_dataset/render/<ed>/``) is a separate
 script; nothing here writes outside ``output/``.
@@ -84,6 +107,24 @@ FRAME_CONF = 0.373
 
 HANGUL = re.compile(r"[가-힣]")
 KANA_KANJI = re.compile(r"[぀-ヿ一-鿿]")
+KANA = re.compile(r"[぀-ヿ]")
+KANJI = re.compile(r"[一-鿿]")
+FILLER = re.compile(r"[\s\W_ーｰ〜～っッ]", re.UNICODE)
+"""Stripped before a read is measured for repetition / kana content: spaces,
+punctuation and symbols (・…！？♡), long-vowel marks and the small tsu — the
+characters a moan is padded with."""
+RING_FRAC, RING_MIN, RING_MAX = 0.15, 5, 24
+"""Balloon probe: the ring outside a text box is this fraction of the box's
+short side wide, clamped to [RING_MIN, RING_MAX] px."""
+RING_WHITE, RING_FLAT_TOL, RING_OK = 200, 15, 0.6
+"""A ring passes when ≥ RING_OK of its pixels are ≥ RING_WHITE (a white
+balloon) or within ± RING_FLAT_TOL of its median (a tinted / screentoned
+balloon on a colour page — cells 2 and 13 of the S0 JA sheet)."""
+FILL_OK = 0.7
+"""Second chance for a box whose text fills its balloon to the outline (tall
+narration bubbles, boxed narration): the box interior itself is ≥ FILL_OK
+white. Balloon text sits on white at 0.75–0.9 (typeset EN a little lower);
+hand-lettered SFX on art at 0.4–0.6."""
 
 
 # --------------------------------------------------------------------------- corpus
@@ -445,8 +486,94 @@ def _flatten(ed: str, text: str) -> str:
     return (" " if ed == "en" else "").join(parts)
 
 
+def content(text: str) -> str:
+    return FILLER.sub("", text)
+
+
+def repetitive(
+    text: str, min_span: int = 20, min_frac: float = 0.6, max_unique: float = 0.34
+) -> bool:
+    """A reader loop, not a typeset moan: one 1–3-character unit repeated back
+    to back over ≥ ``min_span`` stripped characters that are ≥ ``min_frac`` of
+    the read (``ウウウ…`` × 60, ``びゅる`` × 20, ``O O O O`` × 95); a read
+    without Latin letters that long additionally fails on fewer than
+    ``max_unique`` distinct characters per character. ``AH! AH! AH!`` inside
+    a balloon (16 chars) is speech and stays."""
+    s = content(text)
+    if len(s) < min_span:
+        return False
+    span = max((len(m.group(0)) for m in re.finditer(r"(.{1,3}?)\1{2,}", s)), default=0)
+    if span >= min_span and span >= min_frac * len(s):
+        return True
+    latin = any(c.isascii() and c.isalpha() for c in s)
+    return not latin and len(set(s)) / len(s) < max_unique
+
+
+def kana_only(text: str) -> bool:
+    return (
+        bool(KANA.search(text))
+        and not KANJI.search(text)
+        and not any(c.isascii() and c.isalnum() for c in text)
+    )
+
+
+def ring_score(gray, box) -> tuple[float, float]:
+    """``(white, flat)`` fractions of the band just outside ``box`` — the
+    middle half of each of the four sides, corners excluded (a typeset block
+    hugs its balloon on the sides, so the corners of a full ring fall on the
+    outline and the art beyond it; the middle of each side is still inside
+    the balloon's curve)."""
+    import numpy as np
+
+    H, W = gray.shape
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    m = int(min(RING_MAX, max(RING_MIN, RING_FRAC * min(w, h))))
+    qx, qy = w // 4, h // 4
+    strips = [
+        gray[max(0, y0 - m) : y0, x0 + qx : x1 - qx],  # top
+        gray[y1 : min(H, y1 + m), x0 + qx : x1 - qx],  # bottom
+        gray[y0 + qy : y1 - qy, max(0, x0 - m) : x0],  # left
+        gray[y0 + qy : y1 - qy, x1 : min(W, x1 + m)],  # right
+    ]
+    r = np.concatenate([st.ravel() for st in strips if st.size])
+    if r.size == 0:
+        return 1.0, 1.0
+    med = np.median(r)
+    return (
+        float((r >= RING_WHITE).mean()),
+        float((np.abs(r.astype(np.int16) - med) <= RING_FLAT_TOL).mean()),
+    )
+
+
+def fill_white(gray, box) -> float:
+    x0, y0, x1, y1 = box
+    r = gray[y0:y1, x0:x1]
+    return float((r >= RING_WHITE).mean()) if r.size else 1.0
+
+
+def _iou_cont(a, b) -> tuple[float, float]:
+    ix = max(0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    if not inter:
+        return 0.0, 0.0
+    aa = (a[2] - a[0]) * (a[3] - a[1])
+    bb = (b[2] - b[0]) * (b[3] - b[1])
+    return inter / (aa + bb - inter), inter / max(1, min(aa, bb))
+
+
+def boxes_collide(a, b, iou: float = 0.1, cont: float = 0.9) -> bool:
+    u, c = _iou_cont(a, b)
+    return u > iou or c >= cont
+
+
 def run_bubbles(a) -> None:
+    import cv2
+
     from anime_tools.captions.ocr_sfx import line_kind
+
+    root = corpus_root(a.corpus)
 
     for ed in a.editions:
         boxes = load_jsonl(out_dir(a.name) / f"boxes_{ed}.jsonl")
@@ -460,6 +587,8 @@ def run_bubbles(a) -> None:
                     continue
                 n_pages += 1
                 texts = reads[rel]["texts"]
+                gray = cv2.imread(str(root / rel), cv2.IMREAD_GRAYSCALE)
+                page: list[dict] = []
                 for k, idx in enumerate(group_bubbles(row["boxes"])):
                     lines = [_flatten(ed, texts[i]) for i in idx]
                     bx = [row["boxes"][i] for i in idx]
@@ -470,6 +599,10 @@ def run_bubbles(a) -> None:
                         (b[2] - b[0]) if _is_column(b) else (b[3] - b[1]) for b in bx
                     ]
                     thick.sort()
+                    ring = fill = 1.0
+                    if gray is not None:
+                        ring = min(max(ring_score(gray, b)) for b in bx)
+                        fill = min(fill_white(gray, b) for b in bx)
                     reason = ""
                     if any(not ln for ln in lines):
                         reason = "empty_line"
@@ -479,18 +612,23 @@ def run_bubbles(a) -> None:
                         reason = "short"
                     elif kind == "sfx":
                         reason = "sfx"
-                    n_bub += 1
-                    n_ok += not reason
-                    if reason:
-                        reasons[reason] = reasons.get(reason, 0) + 1
+                    elif any(repetitive(ln) for ln in lines):
+                        reason = "repeat"
+                    elif (
+                        ed == "ja"
+                        and all(kana_only(ln) for ln in lines)
+                        and sum(len(content(ln)) for ln in lines) <= a.min_kana
+                    ):
+                        reason = "short_kana"
+                    elif ring < RING_OK and fill < FILL_OK:
+                        reason = "no_balloon"
                     union = [
                         min(b[0] for b in bx),
                         min(b[1] for b in bx),
                         max(b[2] for b in bx),
                         max(b[3] for b in bx),
                     ]
-                    append_jsonl(
-                        fh,
+                    page.append(
                         {
                             "rel": rel,
                             "k": k,
@@ -501,11 +639,31 @@ def run_bubbles(a) -> None:
                             "lines": lines,
                             "column": _is_column(bx[0]),
                             "line_h": thick[len(thick) // 2],
+                            "ring": round(ring, 3),
+                            "fill": round(fill, 3),
                             "ok": not reason,
                             "reason": reason,
                             "kind": kind,
-                        },
+                        }
                     )
+                # overlap: an accepted bubble touching any other bubble's box
+                for i, bi in enumerate(page):
+                    if not bi["ok"]:
+                        continue
+                    for j, bj in enumerate(page):
+                        if i != j and any(
+                            boxes_collide(p, q)
+                            for p in bi["boxes"]
+                            for q in bj["boxes"]
+                        ):
+                            bi["ok"], bi["reason"] = False, "overlap"
+                            break
+                for b in page:
+                    n_bub += 1
+                    n_ok += b["ok"]
+                    if b["reason"]:
+                        reasons[b["reason"]] = reasons.get(b["reason"], 0) + 1
+                    append_jsonl(fh, b)
         print(
             f"[{ed}] bubbles: {n_pages} pages, {n_bub} bubbles, {n_ok} ok "
             f"({100 * n_ok / max(n_bub, 1):.1f} %), rejects {reasons} → {path}",
@@ -517,20 +675,80 @@ def run_bubbles(a) -> None:
 
 
 def _reading_order(bubbles: list[dict]) -> list[dict]:
-    """Manga order inside a panel: right → left, bands of similar top edge
-    read as one row (top → bottom within a band)."""
+    """Manga order inside a panel: rows first, right → left inside a row. A
+    row is a greedy band: sorted by top edge, a bubble starts a new row when
+    its top is more than one median bubble height below the row's first top
+    (S0 used half a height and a fixed grid, which sorted y-first)."""
     if not bubbles:
         return []
     med_h = sorted(b["box"][3] - b["box"][1] for b in bubbles)[len(bubbles) // 2]
-    band = max(1, med_h // 2)
-    return sorted(
-        bubbles, key=lambda b: (b["box"][1] // band, -b["box"][2], b["box"][1])
-    )
+    band = max(1, med_h)
+    rows: list[list[dict]] = []
+    for b in sorted(bubbles, key=lambda b: b["box"][1]):
+        if rows and b["box"][1] - rows[-1][0]["box"][1] <= band:
+            rows[-1].append(b)
+        else:
+            rows.append([b])
+    out: list[dict] = []
+    for row in rows:
+        out += sorted(row, key=lambda b: (-b["box"][2], b["box"][1]))
+    return out
 
 
 def _centre_in(box, panel) -> bool:
     cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
     return panel[0] <= cx < panel[2] and panel[1] <= cy < panel[3]
+
+
+def _area(b) -> int:
+    return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
+
+
+def _clip(a, b):
+    return [max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])]
+
+
+def clean_frames(frames: list, size, min_area: float) -> tuple[list, dict]:
+    """Drop frames under ``min_area`` of the page and frames containing ≥ 2
+    other frames (a whole-page box over the real panels). Returns the kept
+    frames and the drop counts."""
+    W, H = size
+    drops = {"small": 0, "container": 0}
+    keep = []
+    for f in frames:
+        if _area(f) < min_area * W * H:
+            drops["small"] += 1
+            continue
+        keep.append(f)
+    out = []
+    for f in keep:
+        inside = sum(
+            1
+            for g in keep
+            if g is not f and _iou_cont(f, g)[1] >= 0.8 and _area(g) < _area(f)
+        )
+        if inside >= 2:
+            drops["container"] += 1
+            continue
+        out.append(f)
+    return out, drops
+
+
+def _grow(panel, boxes, size, margin: float = 0.02):
+    W, H = size
+    x0, y0, x1, y1 = panel
+    for b in boxes:
+        x0, y0, x1, y1 = min(x0, b[0]), min(y0, b[1]), max(x1, b[2]), max(y1, b[3])
+    grown = [x0, y0, x1, y1] != list(panel)
+    if grown:
+        mx, my = int(margin * (x1 - x0)), int(margin * (y1 - y0))
+        x0, y0, x1, y1 = (
+            max(0, x0 - mx),
+            max(0, y0 - my),
+            min(W, x1 + mx),
+            min(H, y1 + my),
+        )
+    return [x0, y0, x1, y1], grown
 
 
 def run_panels(a) -> None:
@@ -542,49 +760,79 @@ def run_panels(a) -> None:
             by_page.setdefault(b["rel"], []).append(b)
         path = out_dir(a.name) / f"samples_{ed}.jsonl"
         n_pages = n_panels = n_samples = n_orphan = n_whole = 0
-        multi = 0
+        multi = grown = slant = 0
+        drops = {"small": 0, "container": 0}
         t0 = time.time()
         with path.open("w", encoding="utf-8") as fh:
             for i, (rel, bl) in enumerate(sorted(by_page.items()), 1):
                 size = boxes[rel]["size"]
-                panels = boxes[rel].get("frames") or [[0, 0, size[0], size[1]]]
+                frames, d = clean_frames(
+                    boxes[rel].get("frames") or [], size, a.min_area
+                )
+                for key in drops:
+                    drops[key] += d[key]
+                panels = frames or [[0, 0, size[0], size[1]]]
                 n_pages += 1
-                n_whole += not boxes[rel].get("frames")
+                n_whole += not frames
                 n_panels += len(panels)
+                # each bubble → the smallest panel holding its centre
+                assign: dict[int, list[dict]] = {k: [] for k in range(len(panels))}
+                for b in bl:
+                    hits = [
+                        k for k, pn in enumerate(panels) if _centre_in(b["box"], pn)
+                    ]
+                    if hits:
+                        assign[min(hits, key=lambda k: _area(panels[k]))].append(b)
+                    elif b["ok"]:
+                        n_orphan += 1
                 for k, pn in enumerate(panels):
-                    inside = [b for b in bl if _centre_in(b["box"], pn)]
+                    inside = assign[k]
                     ok = _reading_order([b for b in inside if b["ok"]])
                     if not ok:
                         continue
+                    crop, g = _grow(pn, [b["box"] for b in ok], size)
+                    grown += g
+                    sl = any(
+                        _iou_cont(crop, q)[0] > 0
+                        and _area(_clip(crop, q)) > 0.1 * _area(crop)
+                        for j, q in enumerate(panels)
+                        if j != k
+                    )
+                    slant += sl
                     n_samples += 1
                     multi += len(ok) > 1
+                    intact = [b for b in inside if not b["ok"]]
                     append_jsonl(
                         fh,
                         {
                             "rel": rel,
                             "k": k,
                             "size": size,
-                            "panel": pn,
+                            "panel": crop,
+                            "frame": pn,
+                            "grown": g,
+                            "slant": sl,
                             "n_panels": len(panels),
                             "bubbles": [b["k"] for b in ok],
                             "boxes": [b["box"] for b in ok],
                             "lines": [" ".join(b["lines"]) for b in ok],
                             "line_h": [b["line_h"] for b in ok],
-                            "n_rejected": len(inside) - len(ok),
+                            "n_rejected": len(intact),
+                            "intact": [
+                                {"k": b["k"], "box": b["box"], "reason": b["reason"]}
+                                for b in intact
+                            ],
                         },
                     )
-                assigned = {
-                    b["k"] for pn in panels for b in bl if _centre_in(b["box"], pn)
-                }
-                n_orphan += sum(1 for b in bl if b["ok"] and b["k"] not in assigned)
                 if i % 200 == 0:
                     print(f"  [{ed}] {i}/{len(by_page)} pages", flush=True)
         print(
             f"[{ed}] panels: {n_pages} pages, {n_panels} panels "
             f"({n_panels / max(n_pages, 1):.1f}/page, {n_whole} pages without a frame "
-            f"= whole page), {n_samples} samples with text "
-            f"({multi} multi-bubble), {n_orphan} ok bubbles outside every panel, "
-            f"{time.time() - t0:.0f}s → {path}",
+            f"= whole page; dropped {drops}), {n_samples} samples with text "
+            f"({multi} multi-bubble, {grown} grown to hold a bubble, {slant} "
+            f"overlap a sibling frame > 10 %), {n_orphan} ok bubbles outside every "
+            f"panel, {time.time() - t0:.0f}s → {path}",
             flush=True,
         )
 
@@ -611,6 +859,21 @@ def _font(size: int):
     return ImageFont.load_default()
 
 
+def _wrap(draw, text: str, font, width: int) -> list[str]:
+    """Greedy wrap by rendered width (a CJK glyph is ~2 Latin columns; S0
+    wrapped by character count and the JA captions overprinted)."""
+    lines, cur = [], ""
+    for ch in text:
+        if draw.textlength(cur + ch, font=font) > width and cur:
+            lines.append(cur)
+            cur = ch
+        else:
+            cur += ch
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 def run_sheet(a) -> None:
     from PIL import Image, ImageDraw
 
@@ -633,11 +896,22 @@ def run_sheet(a) -> None:
                 with Image.open(root / r["rel"]) as im:
                     crop = im.convert("RGB").crop((x0, y0, x1, y1))
                 d = ImageDraw.Draw(crop)
+                lw = max(2, (x1 - x0) // 300)
+                for it in r.get("intact", []):
+                    b = it["box"]
+                    d.rectangle(
+                        (b[0] - x0, b[1] - y0, b[2] - x0, b[3] - y0),
+                        outline="blue",
+                        width=lw,
+                    )
+                    d.text(
+                        (b[0] - x0 + 4, b[1] - y0 + 2), it["reason"], "blue", _font(22)
+                    )
                 for j, b in enumerate(r["boxes"]):
                     d.rectangle(
                         (b[0] - x0, b[1] - y0, b[2] - x0, b[3] - y0),
                         outline="red",
-                        width=max(2, (x1 - x0) // 300),
+                        width=lw,
                     )
                     d.text((b[0] - x0 + 4, b[1] - y0 + 2), str(j), "red", _font(28))
                 crop.thumbnail((cell_w - 8, cell_h - 8))
@@ -646,10 +920,7 @@ def run_sheet(a) -> None:
                 label = f"{i}: " + " | ".join(
                     f"[{j}] {ln}" for j, ln in enumerate(r["lines"])
                 )
-                for li in range(4):
-                    seg = label[li * 46 : (li + 1) * 46]
-                    if not seg:
-                        break
+                for li, seg in enumerate(_wrap(draw, label, font, cell_w - 8)[:4]):
                     draw.text((cx + 4, cy + cell_h + 2 + 20 * li), seg, "black", font)
                 fh.write(
                     f"{i}\t{r['rel']}\t{r['k']}\t{len(r['lines'])}\t{r['n_rejected']}\t"
@@ -684,6 +955,18 @@ def main() -> None:
     ap.add_argument("--det_conf", type=float, default=0.25)
     ap.add_argument("--bs", type=int, default=16, help="reader batch")
     ap.add_argument("--min_chars", type=int, default=2)
+    ap.add_argument(
+        "--min_kana",
+        type=int,
+        default=2,
+        help="bubbles: JA kana-only reads with ≤ this many content kana are moans → short_kana",
+    )
+    ap.add_argument(
+        "--min_area",
+        type=float,
+        default=0.03,
+        help="panels: drop frames under this fraction of the page area",
+    )
     ap.add_argument("--n", type=int, default=40, help="sheet: samples")
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()

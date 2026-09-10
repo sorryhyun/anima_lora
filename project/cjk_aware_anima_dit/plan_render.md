@@ -36,7 +36,7 @@ a window around one bubble.
 | text clause grammar | `anime_tools.captions.position_clauses.text_clause` | **JA-hardcoded**: `TEXT_PREFIXES = ("Japanese text reads as ", "Japanese SFX reads as ")` — left as is for now (research run; post-process the exported captions trainer-side) |
 | pack-aware tokenizer | `library.anima.vocab_pack.make_tokenize_strategy` | production path; **inpaint prep's `stage_text` is pack-aware since 2026-09-10** (`--vocab_pack`, config default when omitted; CPU-verified: KO clause routes to ext ids, EN bit-exact). `colorization/` and `region/` preps still build the stock strategy |
 | panel (frame) detector | `models/manga109_yolo/` = `deepghs/manga109_yolo` v2023.12.07_l_yv11 ONNX (`frame` class, F1 0.92) | fetched ad hoc for the probe, not a catalog row; white-gutter XY-cut was tried and fails on this corpus's full-bleed colour pages |
-| S0 script | `render/corpus_boxes.py` — `det` / `read` / `bubbles` / `panels` / `sheet` | outputs under `output/render/<name>/`, keyed by corpus-relative path |
+| S0 / S0b script | `render/corpus_boxes.py` — `det` / `read` / `bubbles` / `panels` / `sheet` | outputs under `output/render/<name>/`, keyed by corpus-relative path; `bubbles` needs `--corpus` since S0b (balloon probe) |
 | published pack | `output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256` | KO/ZH rows trained, never render-validated |
 | geometry-matched random pack | `output/ckpt/cjk_vocab_pack_random_r256` | the s21 control; same json/rows/geometry, random content |
 | CER judge | `../cjk_aware_anima/probes/text_bind_judge.py` | PP-OCRv6, JA only; the CER/NFKC/montage scaffolding is reusable |
@@ -146,36 +146,94 @@ sheet per edition, reviewed cell by cell by a general-purpose agent.
 
 Verdict: EN usable for a rough run as is; **JA needs a fix first** (a third of
 reads wrong, a quarter of boxes on SFX, `stock` hallucinates on SFX bursts —
-"ウウウ…" ×200 on one box). The four systematic faults and their fixes are S0b.
+"ウウウ…" ×200 on one box). The four systematic faults and their fixes are S0b (below).
 
-**S0b — det post-processing + re-read (NEXT STEP).** All in
-`corpus_boxes.py`; the det pass need not re-run (boxes and frames are on
-disk), only `read` after the box filter, then bubbles → panels → sheet → the
-same agent review.
+**S0b — det post-processing — RAN 2026-09-10** (`corpus_boxes.py`, `output/
+render/s0b/`, S0's boxes and reads symlinked in; CPU only — S0b changes no
+box, so S0's one-read-per-box stays valid and the "re-read the survivors"
+pass was not needed). The bubble stage grew four guards and the panel stage
+three fixes; every threshold was calibrated on the S0 JA sheet cells already
+eyeballed, then two 40-cell draws per edition were reviewed by a
+general-purpose agent (one draw before, one after the last rule change).
 
-1. **SFX / hallucination guard, before reading** (JA first): drop a text box
-   that (a) is short and kana-only by `line_kind` *after* the read, (b) has a
-   repetition ratio above a threshold (`ウウウ…` loops; cap read length), or
-   (c) has no balloon outline — probe the box's dilated ring for a mostly
-   white/uniform band, the cheapest "is this a bubble" test on a colour page.
-   Re-read only the survivors so the OCR pass is smaller, not larger.
-2. **Overlap rule**: two accepted boxes that overlap (IoU > 0.1 or one
-   contains the other) reject both — merged-neighbour reads ("S DAY FTER AY
-   OF SEX") and 6-bubbles-in-one-box came from these.
-3. **Frame fixes**: a bubble whose box crosses the panel edge grows the panel
-   to contain it (never a sample whose target text is half outside the crop);
-   panels below a minimum area are dropped; slanted-panel cut-throughs
-   (en 16/18/26/32/39, ja 38 on the sheet) are the remaining case — measure
-   how many samples they are before building anything for them. Frameless
-   pages (214 EN / 98 JA) as whole-page samples are fine at 768.
-4. **Reading order**: widen the row band in `_reading_order` (a bubble
-   height, not half of it) — the current band is so narrow it sorts y-first.
-5. Sheet render: long JA captions overprint — wrap by glyph count, not chars.
+Guards (`bubbles`, in order — the first hit is the `reason`):
 
-Gate for S0b: the agent's re-review reads JA wrong ≤ 15 % and boxes on
-non-speech ≤ 10 %, EN unchanged or better. Then cut.
+| guard | rule | EN rejects | JA rejects |
+|---|---|---|---|
+| `repeat` | one 1–3-char unit repeated back to back over ≥ 20 stripped chars and ≥ 60 % of the read; non-Latin reads ≥ 20 chars also fail on < 0.34 distinct chars / char | 0 | 142 |
+| `short_kana` | JA, kana-only, ≤ 2 content kana after stripping ー〜っ and punctuation | — | 3,196 |
+| `no_balloon` | the band just outside each member box — middle half of each side, corners excluded — is < 60 % white *and* < 60 % flat (± 15 of its median), *and* the box interior is < 70 % white | 1,435 | 1,356 |
+| `overlap` | a member box overlaps another bubble's (IoU > 0.1 or one inside the other), whatever that bubble's verdict — the padded read crop saw both | 86 | 63 |
 
-**S0c — cut**: panel crops → `post_image_dataset/render/<ed>/resized/` +
+Accepted: EN 6,836 / 14,031, JA 5,973 / 15,529 (S0: 8,357 / 10,730).
+
+Three rules were wrong on the first try and the reviews caught each: a
+distinct-char ratio flags every long EN sentence (26-letter alphabet), so it
+applies to non-Latin reads only; a run-length rule flags typeset `AH! AH!
+AH!` / `NO NO NO` inside balloons, so the loop signature is absolute length
+(≥ 20 chars); a full ring around the box fails every wide typeset EN block
+(corners land past the balloon) and every tinted colour-page balloon (white
+≠ flat), hence the side-strip band with the flatness alternative, plus the
+interior-white second chance for text that fills its balloon to the outline.
+A `fill < 0.4 → reject` rule was measured and **not** added: it removes
+7.7 % of accepted JA bubbles, mostly real inverted (white-on-black) and
+tinted balloons, for a third of the residual non-speech. Detector confidence
+does not separate brush lettering from balloons (0.66–0.94 either way).
+
+Panel fixes (`panels`): frames < 3 % of the page dropped (77 EN / 88 JA), a
+frame containing ≥ 2 other frames dropped (39 / 29 — the whole-page box over
+real panels), a bubble goes to the *smallest* frame holding its centre (S0
+double-assigned nested frames), the crop grows to hold every accepted bubble
+(419 / 404 samples), and reading order is a greedy row band one median
+bubble tall, right→left inside a row. Slant proxy (panel overlaps a sibling
+frame by > 10 % of its area): **617 EN / 677 JA of ~2.5k samples** — a
+quarter; not built for, see below. Samples: **2,507 EN / 2,503 JA** (1,646 /
+1,517 multi-bubble); 314 / 151 accepted bubbles fall in no frame (orphans,
+dropped).
+
+Review (40 cells per draw; the S0 row is the plan's S0 table):
+
+| | EN S0 | EN draw 1 | EN draw 2 | JA S0 | JA draw 1 | JA draw 2 |
+|---|---|---|---|---|---|---|
+| crop OK / flawed | 30 / 10 | 35 / 5 | 36 / 4 | 34 / 6 | 38 / 2 | 36 / 4 |
+| red boxes | — | 78 | 96 | — | 98 | 83 |
+| boxes on non-speech | 13 % | 5.1 % | 10.4 % | **25 %** | 12.2 % | 10.8 % |
+| OCR wrong | 11 / 124 | 11.5 % | 9.4 % | **52 / 159** | 12.2 % | 16.9 % |
+| order violations | 4 | 3 | 8 | 7 | 4 | 2 |
+| false rejects (blue) | — | 13 | 9 | — | 9 | 7 |
+
+Draw 1 predates the interior-white second chance (10 of its 13 EN false
+rejects were `no_balloon` on plain bubbles). Two draws of 40 put the
+sampling noise at ± 5 points, so the gate reads as follows.
+
+**Gate verdict: JA marginal, EN clear.** JA wrong 12–17 % against ≤ 15 %,
+non-speech 11–12 % against ≤ 10 %, EN non-speech 5–10 % / wrong 9–12 %,
+crops 36–38 / 40 both. The two JA residues are one residue: **every
+accepted brush-lettered box OCRs to garbage** (9 of the 14 wrong reads in
+draw 2 are its 9 non-speech boxes; on true balloon text JA wrong is ≈ 6 %).
+The balloon probe passes brush lettering on white or flat backgrounds and
+nothing image-side cheaply separates it. The lever left is **reader
+disagreement**: a second read (hayai, the plan2 voter) of the accepted
+boxes only (~6k per edition, a short daemon job), rejecting a box whose two
+reads disagree past a CER threshold — garbage reads are unstable, typeset
+reads are not. It is the one S0b item that needs the GPU and is not built;
+the alternative is to cut now and carry ~11 % of holed boxes with a garbage
+clause into the EN/JA smoke.
+
+Known residuals, recorded not fixed: reading order is row-major, so a
+spread or illustration page with two columns of balloons interleaves them
+(EN cells 3 / 18 / 32, JA 36 / 38 / 39 of the draws); `short_kana` also
+drops はい / うん (37 + 33 of 1,487 two-kana rejects, the rest moans); `sfx`
+(`line_kind`, anime_tools) mislabels stuttered speech (ご ご ごめん) and
+かわっ — pinned, not ours to fix here; the detector silently misses large
+plain bubbles on several cells (no box at all — a detector limit, not a
+filter one); duplicated reads inside one box (a line emitted twice) are
+cosmetic and the cut stage can de-dup adjacent repeats; ♥ / small-kana drops
+are cosmetic. Slanted-gutter cut-throughs are ~25 % of samples by the AABB
+proxy but only 2–4 of 40 crops per draw were judged flawed by them — the
+proxy over-counts; nothing is built for them.
+
+**S0c — cut (NEXT, pending the S0b gate call)**: panel crops → `post_image_dataset/render/<ed>/resized/` +
 `.txt` captions (`<bag>. <clause>` with the holed boxes' lines in order) +
 `boxes.jsonl`; long edge sized for the 768 tier; drop a sample whose smallest
 holed box is under 20 px tall after resize (the block height over the read's
