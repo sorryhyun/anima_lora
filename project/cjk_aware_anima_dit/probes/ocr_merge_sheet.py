@@ -6,14 +6,20 @@ clauses (det floor, glyph floor, speech / SFX split, each kind deduped) and the
 no-floor contrast. Then
 ``google-chrome --headless=new --print-to-pdf=<pdf> --no-pdf-header-footer <html>``.
 
-    .venv/bin/python project/cjk_aware_anima_dit/probes/ocr_merge_sheet.py
+    .venv/bin/python project/cjk_aware_anima_dit/probes/ocr_merge_sheet.py \
+        [--ocr_dir <tree> --out <html> --baseline_dir <older tree>]
+
+With ``--baseline_dir`` each page also lists the lines that appear or vanish
+against an older sidecar tree (same relative path), matched on text.
 """
 
 from __future__ import annotations
+import argparse
 import base64
 import html
 import io
 import random
+from collections import Counter
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -34,8 +40,22 @@ from anime_tools.captions.position_clauses import parse_caption
 
 REPO = Path("/home/sorryhyun/anima/anima_lora")
 
-RESIZED, OCRDIR = REPO / "post_image_dataset/resized", REPO / "post_image_dataset/ocr"
-OUT = REPO / "output/tests/ocr_merge_sheet/ocr_merge_sheet.html"
+ap = argparse.ArgumentParser()
+ap.add_argument("--ocr_dir", type=Path, default=REPO / "post_image_dataset/ocr")
+ap.add_argument(
+    "--out",
+    type=Path,
+    default=REPO / "output/tests/ocr_merge_sheet/ocr_merge_sheet.html",
+)
+ap.add_argument("--baseline_dir", type=Path, default=None)
+args = ap.parse_args()
+RESIZED, OCRDIR, OUT, BASE = (
+    REPO / "post_image_dataset/resized",
+    args.ocr_dir,
+    args.out,
+    args.baseline_dir,
+)
+OUT.parent.mkdir(parents=True, exist_ok=True)
 TTC = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 N, SEED, PX = 100, 0, 1500
 LOW_DET, LOW_GLYPH, LOW_SCORE = (
@@ -66,6 +86,7 @@ def e(t):
 
 
 pages, nsfx = [], 0
+nadd = ngone = nsame = 0
 for i, (key, imgp, sc) in enumerate(rows, 1):
     lines = read_ocr(sc)
     texts = [ln.text for ln in lines]
@@ -85,6 +106,27 @@ for i, (key, imgp, sc) in enumerate(rows, 1):
         for k, first in enumerate(groups([ln.text for ln in sel])):
             fate[at[id(sel[k])]] = "kept" if first == k else "dup"
     ndup = fate.count("dup")
+
+    diff_html = ""
+    if BASE is not None:
+        bsc = BASE / sc.relative_to(OCRDIR)
+        old = [ln.text for ln in read_ocr(bsc)] if bsc.is_file() else []
+        new_c, old_c = Counter(texts), Counter(old)
+        added = list((new_c - old_c).elements())
+        gone = list((old_c - new_c).elements())
+        nadd += len(added)
+        ngone += len(gone)
+        nsame += not added and not gone
+        diff_html = (
+            f"<h2>vs baseline sidecar ({len(old)} line{'s' if len(old) != 1 else ''}"
+            f"{'' if bsc.is_file() else ', none on disk'}), matched on text</h2>"
+            + (
+                "<p class=grey>same lines</p>"
+                if not added and not gone
+                else f"<p><span class=add>+ {e(' | '.join(added)) or '—'}</span><br>"
+                f"<span class=gone>− {e(' | '.join(gone)) or '—'}</span></p>"
+            )
+        )
 
     im = Image.open(imgp).convert("RGB")
     s = min(PX / im.width, PX / im.height, 1.0)
@@ -150,6 +192,7 @@ for i, (key, imgp, sc) in enumerate(rows, 1):
 <p class=exp>{e(exp) if exp else "(nothing — every line is under the floor)"}</p>
 <h2>without either floor (<code>min_det=0, min_glyph=0</code>) it would append</h2>
 <p class=split>{e(spl)}</p>
+{diff_html}
 </div>
 <footer>red = SFX by rule · black = speech · grey = dropped as a repeat · orange = under a floor (det&lt;{LOW_DET} or glyph&lt;{LOW_GLYPH:.0f}px) or score&lt;{LOW_SCORE} &nbsp;·&nbsp; min_chars 2 · nested lines dropped &nbsp;·&nbsp; sample {len(rows)} of {total} sidecars, seed {SEED}</footer>
 </section>""")
@@ -174,6 +217,7 @@ code { font-family:ui-monospace,monospace; font-size:9.5px; background:#eef3fb; 
 .grey{color:#666} .exp{color:#111} .split{color:#c40000}
 .sfx{color:#c40000} .sp{color:#333} .sep{color:#bbb}
 .dup{color:#8c8c8c; text-decoration:line-through}
+.add{color:#007a3d} .gone{color:#9a4dcc; text-decoration:line-through}
 .conf{color:#999; font-size:8.5px; font-family:ui-monospace,monospace}
 .low{color:#e07000; font-size:8.5px; font-family:ui-monospace,monospace; font-weight:600}
 footer { position:absolute; left:0; bottom:2mm; width:100%; text-align:center;
@@ -187,3 +231,5 @@ OUT.write_text(
 print(
     f"{len(rows)} pages, {nsfx} with >=1 rule-SFX line -> {OUT} ({OUT.stat().st_size / 1e6:.1f} MB)"
 )
+if BASE is not None:
+    print(f"vs {BASE}: {nsame}/{len(rows)} pages same, +{nadd} lines / -{ngone} lines")
