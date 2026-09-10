@@ -215,6 +215,130 @@ def _job_target(job: dict) -> str | None:
     return overrides.get("output_name") or job.get("method")
 
 
+def _jobs_from_disk() -> list[dict]:
+    """Every persisted ``jobs/<id>/job.json``, for a daemon that is down.
+
+    The daemon writes the record on each state change, so the history outlives
+    it. Without this a post-mortem after ``daemon-terminate`` — the moment you
+    most want to read what ran — had nothing to show.
+    """
+    out = []
+    try:
+        dirs = sorted(_cfg.JOBS_DIR.iterdir())
+    except OSError:
+        return out
+    for d in dirs:
+        try:
+            rec = json.loads((d / "job.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(rec, dict) and rec.get("id"):
+            out.append(rec)
+    return out
+
+
+def _job_line(job: dict) -> str:
+    """One job as one line: when · id · state · rc · target · error."""
+    ts = job.get("started_at") or job.get("submitted_at") or 0
+    when = time.strftime("%m-%d %H:%M", time.localtime(ts)) if ts else "  -  "
+    rc = job.get("returncode")
+    end = job.get("ended_at") or (
+        time.time() if job.get("state") == "running" else None
+    )
+    started = job.get("started_at")
+    dur = f"{(end - started) / 60:5.1f}m" if started and end else "     -"
+    err = (job.get("error") or "").splitlines()
+    tail = f"  {err[0][:60]}" if err else ""
+    return (
+        f"{when}  {job.get('id', '?'):<22} {str(job.get('state')):<8} "
+        f"rc={'-' if rc is None else rc:<4} {dur}  {_job_target(job) or '-'}{tail}"
+    )
+
+
+def cmd_daemon_jobs(extra):
+    """The job history as **lines, oldest first** — the newest row is the last
+    one printed.
+
+    ``daemon-status`` emits one pretty-printed JSON object with the jobs
+    newest-first, so the natural ``| tail`` gesture showed the *oldest* rows of
+    the slice, cut mid-record — "my job isn't there" when it was simply at the
+    top. This view is log-ordered instead, so ``| tail -5`` means the five most
+    recent, and each job is one greppable line.
+
+    Takes ``daemon-status``'s filters (``--limit N`` · ``--all`` · ``--running``
+    · ``--failed`` · ``--done`` · ``--state s[,s]``). Falls back to the on-disk
+    records when the daemon is down, so history survives ``daemon-terminate``.
+    """
+    opts = _parse_status_flags(extra)
+    if opts["bad_states"]:
+        print(
+            f"unknown job state(s): {', '.join(opts['bad_states'])}\n"
+            f"  valid: {', '.join(sorted(_STATUS_ALL_STATES))}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    cl = _client.DaemonClient()
+    up = cl.health() is not None
+    jobs = cl.list_jobs() if up else _jobs_from_disk()
+    jobs.sort(key=lambda j: j.get("submitted_at") or 0)  # oldest first: tail = newest
+    total = len(jobs)
+    if opts["states"] is not None:
+        jobs = [j for j in jobs if j.get("state") in opts["states"]]
+    if not opts["all"] and opts["limit"]:
+        jobs = jobs[-opts["limit"] :]  # the newest N, still oldest-first
+    for job in jobs:
+        print(_job_line(job))
+    shown = len(jobs)
+    note = "" if up else "  (daemon down — read from disk)"
+    print(
+        f"\n{shown} of {total} jobs{note}"
+        + ("" if opts["all"] or shown == total else "  — --all for the rest"),
+        flush=True,
+    )
+    if not up:
+        sys.exit(1)
+
+
+def cmd_daemon_log(extra):
+    """Dump a job's captured stdout — ``JOB=<id>``, else the most recent job.
+
+    ``daemon-attach`` *follows* a live stream over SSE; this reads the log file
+    off disk, so it works on a finished job and with the daemon down, which is
+    when you actually go looking for what a run printed. ``ARGS="-n 200"``
+    bounds the tail (default 100; ``-n 0`` = the whole file).
+    """
+    extra = list(extra or [])
+    n = 100
+    if "-n" in extra:
+        i = extra.index("-n")
+        if i + 1 < len(extra):
+            try:
+                n = int(extra[i + 1])
+            except ValueError:
+                pass
+            del extra[i : i + 2]
+    job_id = _job_arg(extra)
+    cl = _client.DaemonClient()
+    if not job_id:
+        jobs = cl.list_jobs() if cl.health() is not None else _jobs_from_disk()
+        jobs.sort(key=lambda j: j.get("submitted_at") or 0)
+        if not jobs:
+            print("no jobs on record.", file=sys.stderr)
+            sys.exit(1)
+        job_id = jobs[-1].get("id")
+    record = cl.job_record(job_id) or {}
+    path = Path(record.get("stdout_path") or (_cfg.job_dir(job_id) / "stdout.log"))
+    if not path.is_file():
+        print(f"no stdout log for job {job_id} ({path})", file=sys.stderr)
+        sys.exit(1)
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    head = _job_line(record) if record else job_id
+    shown = lines if n <= 0 else lines[-n:]
+    print(f"# {head}\n# {path}  ({len(lines)} lines, showing {len(shown)})\n")
+    for ln in shown:
+        print(ln)
+
+
 def cmd_daemon_status(extra):
     """Daemon status as one JSON object on stdout — the agent/script surface.
 
