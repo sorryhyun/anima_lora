@@ -34,29 +34,51 @@ def _write_image(path: Path, size: tuple[int, int]) -> None:
     Image.fromarray(arr).save(path)
 
 
-def test_move_linked_files_preserves_layout_and_sidecars(tmp_path: Path) -> None:
-    from library.datasets.curation_actions import move_linked_files
+def test_exclude_images_moves_workspace_artifacts_and_keeps_the_source(
+    tmp_path: Path,
+) -> None:
+    """The Image tab's Exclude gesture is ``anime_tools.exclude`` on the
+    trainer's trees: the resized PNG, caption and mask leave the live trees for
+    ``post_image_dataset/_excluded/``, the source stays, the ledger keys the
+    source rel (extension kept — what ``resize --skip`` matches), and restore
+    puts everything back."""
+    from library.datasets.curation_actions import (
+        exclude_images,
+        excluded_rels,
+        restore_rels,
+        source_rel,
+    )
 
-    source = tmp_path / "image_dataset"
-    target = tmp_path / "post_image_dataset" / "moved"
-    image = source / "charA" / "cover.png"
-    _write_image(image, (8, 8))
-    for suffix in (".txt", ".caption", ".json", ".txt.history.jsonl"):
-        image.with_suffix(suffix).write_text(suffix, encoding="utf-8")
+    source = tmp_path / "image_dataset" / "charA" / "cover.jpg"
+    _write_image(source, (8, 8))
+    resized = tmp_path / "post_image_dataset" / "resized" / "charA" / "cover.png"
+    _write_image(resized, (8, 8))
+    resized.with_suffix(".txt").write_text("a caption", encoding="utf-8")
+    mask = tmp_path / "post_image_dataset" / "masks" / "charA" / "cover_mask.png"
+    _write_image(mask, (8, 8))
+    other = tmp_path / "post_image_dataset" / "resized" / "charA" / "keep.png"
+    _write_image(other, (8, 8))
 
-    moved = move_linked_files(image, source_root=source, target_root=target)
+    # Either spelling of the image — source or resized — names the same rel.
+    assert source_rel(source, home=tmp_path) == "charA/cover.jpg"
+    assert source_rel(resized, home=tmp_path) == "charA/cover.jpg"
 
-    expected = [
-        target / "charA" / "cover.png",
-        target / "charA" / "cover.txt",
-        target / "charA" / "cover.caption",
-        target / "charA" / "cover.json",
-        target / "charA" / "cover.txt.history.jsonl",
-    ]
-    assert moved == expected
-    assert all(path.exists() for path in expected)
-    assert not image.exists()
-    assert not image.with_suffix(".txt").exists()
+    (result,) = exclude_images([resized], home=tmp_path, note="dupe")
+    assert result.action == "excluded"
+    excluded = tmp_path / "post_image_dataset" / "_excluded"
+    assert source.exists()  # the source tree is read-only for curation
+    assert not resized.exists() and not resized.with_suffix(".txt").exists()
+    assert not mask.exists()
+    assert other.exists()  # a neighbour with another stem is untouched
+    assert (excluded / "resized" / "charA" / "cover.png").exists()
+    assert (excluded / "resized" / "charA" / "cover.txt").exists()
+    assert (excluded / "masks" / "charA" / "cover_mask.png").exists()
+    assert excluded_rels(home=tmp_path) == ("charA/cover.jpg",)
+
+    (back,) = restore_rels(["charA/cover.jpg"], home=tmp_path)
+    assert back.action == "restored" and not back.skipped
+    assert resized.exists() and resized.with_suffix(".txt").exists() and mask.exists()
+    assert excluded_rels(home=tmp_path) == ()
 
 
 def test_load_curation_decisions_rebases_to_source_subdir(tmp_path: Path) -> None:

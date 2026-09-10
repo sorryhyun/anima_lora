@@ -615,7 +615,10 @@ def _resize_request(
         # The GUI's resize form carries the geometry (tiers, crop, clamp,
         # overwrite, workers); the trainer fills the roots, the scope, the
         # walk and the curation skips, and the low-res sugar's answer.
-        overrides: dict[str, object] = {"recursive": True}
+        overrides: dict[str, object] = {
+            "recursive": True,
+            "excluded_dir": EXCLUDED_DIR,
+        }
         if min_pixels is not None:
             overrides["min_pixels"] = int(min_pixels)
         if skips:
@@ -632,6 +635,7 @@ def _resize_request(
         "src": src,
         "dst": dst,
         "recursive": True,
+        "excluded_dir": EXCLUDED_DIR,
         "path_pattern": path_pattern or "*",
         **_resize_crop_fields(),
     }
@@ -657,6 +661,9 @@ def _min_pixels_value(mp_args: list[str]) -> int | None:
     return int(mp_args[1]) if mp_args else None
 
 
+from library.datasets.curation_actions import EXCLUDED_DIR  # noqa: E402
+
+
 def _curation_decisions_path() -> Path:
     path = Path(
         _path("curation_decisions", "post_image_dataset/curation_decisions.json")
@@ -665,22 +672,27 @@ def _curation_decisions_path() -> Path:
 
 
 def _curation_skips(src: str, decisions_path: Path | None = None) -> tuple[str, ...]:
-    """The images the GUI's curation decisions leave out of preprocessing, as
-    ``ResizeRequest.skip`` entries (paths relative to ``src``). Empty when no
-    decision file exists — a plain CLI preprocess is unchanged."""
-    from library.datasets.curation_actions import load_curation_decisions
+    """The images curation leaves out of preprocessing, as ``ResizeRequest.skip``
+    entries (paths relative to ``src``): the GUI's decision file (``skip`` /
+    ``move``) plus whatever the anime_tools GUI excluded in its own workspace
+    ledger. The trainer's own exclusion ledger is not listed here — the stage
+    reads it itself through ``excluded_dir``. Empty when neither exists, so a
+    plain CLI preprocess is unchanged."""
+    from library.datasets.curation_actions import (
+        load_curation_decisions,
+        workspace_excluded_rels,
+    )
 
+    skips: set[str] = set(workspace_excluded_rels())
     path = decisions_path or _curation_decisions_path()
-    if not path.is_file():
-        return ()
-    decisions = load_curation_decisions(path, source_dir=src)
-    return tuple(
-        sorted(
+    if path.is_file():
+        decisions = load_curation_decisions(path, source_dir=src)
+        skips.update(
             rel
             for rel, decision in decisions.items()
             if decision.get("action") in {"skip", "move"}
         )
-    )
+    return tuple(sorted(skips))
 
 
 def _repa_pe_encoder() -> str | None:

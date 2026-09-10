@@ -296,6 +296,15 @@ fallback and always writes the revised caption (autotag included, even when it a
 nothing), so a hand-edit of the master reaches training only through a caption stage
 run. A dataset that skips every caption stage caches empty prompts.
 
+Curation **exclusion** (Image tab **Exclude (D)** / **Restore…**) is `anime_tools.exclude`
+on the trainer's trees (`library/datasets/curation_actions.py`): an image's workspace files
+(resized copy, caption sidecars, mask, OCR) move under `post_image_dataset/_excluded/`,
+the source under `image_dataset/` stays, and the ledger there is what the resize stage
+reads (`excluded_dir`) — plus the package GUI's own `workspace/_excluded` ledger and the
+`skip` / `move` marks in `curation_decisions.json`, all unioned into `ResizeRequest.skip`.
+`post_image_dataset/moved/` is the pre-0.6 Delete mechanism (it moved the *source* and
+left the resized copy trainable) and is inert.
+
 ### Curation lives in `anime_tools`
 
 The caption grammar, tag taxonomy, the **Anima Tagger**, the caption-master stages,

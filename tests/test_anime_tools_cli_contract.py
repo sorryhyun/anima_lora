@@ -524,11 +524,21 @@ def test_preprocess_resize_turns_curation_decisions_into_skip(monkeypatch, tmp_p
         },
     )
     monkeypatch.setattr(preprocess, "_curation_decisions_path", lambda: decisions)
+    # The anime_tools GUI's own ledger (workspace/_excluded) is unioned in.
+    from anime_tools.exclude import Entry, write_entries
+
+    write_entries(
+        tmp_path / "workspace" / "_excluded",
+        {"c/gone.png": Entry(rel="c/gone.png", at=1.0)},
+    )
+    monkeypatch.setenv("ANIMA_HOME", str(tmp_path))
 
     preprocess.cmd_preprocess_resize([])
 
     req = _build(calls[0])
-    assert req.skip == ("a/skip.png", "b/move.png")
+    assert req.skip == ("a/skip.png", "b/move.png", "c/gone.png")
+    # The trainer's own ledger is the stage's to read, under the trainer's tree.
+    assert req.excluded_dir == "post_image_dataset/_excluded"
     assert req.min_pixels == 500_000  # the package default, no trainer literal
 
 

@@ -34,7 +34,6 @@
             }
           ],
           "resize": {
-            "excluded_dir": "workspace/_excluded",
             "freefit_max_ratio": 4.0,
             "min_pixels": 500000,
             "overwrite": false,
@@ -114,7 +113,6 @@
             }
           ],
           "resize": {
-            "excluded_dir": "workspace/_excluded",
             "freefit_max_ratio": 4.0,
             "min_pixels": 500000,
             "overwrite": false,
@@ -211,7 +209,6 @@
             }
           ],
           "resize": {
-            "excluded_dir": "workspace/_excluded",
             "freefit_max_ratio": 2.25,
             "min_pixels": 123456,
             "overwrite": true,
@@ -385,7 +382,6 @@
             }
           ],
           "resize": {
-            "excluded_dir": "workspace/_excluded",
             "freefit_max_ratio": 2.25,
             "min_pixels": 123456,
             "overwrite": true,
@@ -560,7 +556,6 @@
             }
           ],
           "resize": {
-            "excluded_dir": "workspace/_excluded",
             "freefit_max_ratio": 3.0,
             "min_pixels": 250000,
             "overwrite": false,
@@ -656,7 +651,6 @@
             }
           ],
           "resize": {
-            "excluded_dir": "workspace/_excluded",
             "freefit_max_ratio": 3.0,
             "min_pixels": 250000,
             "overwrite": false,
@@ -771,7 +765,6 @@
             }
           ],
           "resize": {
-            "excluded_dir": "workspace/_excluded",
             "freefit_max_ratio": 2.25,
             "min_pixels": 123456,
             "overwrite": true,
@@ -945,7 +938,6 @@
             }
           ],
           "resize": {
-            "excluded_dir": "workspace/_excluded",
             "freefit_max_ratio": 2.25,
             "min_pixels": 123456,
             "overwrite": true,

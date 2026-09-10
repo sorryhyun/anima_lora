@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-import shutil
 import threading
+import time
 from html import escape
 from pathlib import Path
 
@@ -27,15 +27,19 @@ from PySide6.QtGui import (
     QTextCursor,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -110,10 +114,13 @@ from anime_tools.captions.correction import (
 )
 from library.env import resolve_under_home
 from library.datasets.curation_actions import (
+    exclude_images,
+    excluded_entries,
     load_curation_decisions,
-    move_linked_files,
     rel_key,
+    restore_rels,
     save_curation_decisions,
+    source_rel,
 )
 from anime_tools.captions.variants import (
     read_variants_sidecar,
@@ -318,12 +325,19 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self.preprocess_save_btn.setToolTip(t("dataset_preprocess_save_tooltip"))
         self.preprocess_save_btn.clicked.connect(self._save_preprocess_decisions)
         img_head.addWidget(self.preprocess_save_btn)
-        # Moves images marked by the Delete key into post_image_dataset/moved/.
+        # Excludes the images marked by the Delete key: their workspace files
+        # (resized copy, caption sidecars, mask, OCR) move under
+        # post_image_dataset/_excluded/ and the ledger there keeps them out of
+        # resize; the source image stays. Restore… puts them back.
         self.delete_btn = QPushButton(t("dataset_delete"))
         self.delete_btn.setToolTip(t("dataset_delete_tooltip"))
         apply_variant(self.delete_btn, "info")
         self.delete_btn.clicked.connect(self._delete_marked)
         img_head.addWidget(self.delete_btn)
+        self.restore_btn = QPushButton(t("dataset_restore"))
+        self.restore_btn.setToolTip(t("dataset_restore_tooltip"))
+        self.restore_btn.clicked.connect(self._restore_excluded)
+        img_head.addWidget(self.restore_btn)
         img_head.addStretch()
         rl.addLayout(img_head)
 
@@ -965,7 +979,8 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self._image_size_cache.clear()
         self._pm_cache.clear()  # keyed by path; stale after a rescan
         self._decode_inflight.clear()
-        self._all_images = _imgs(d)
+        self._all_images = self._without_excluded(_imgs(d))
+        self._refresh_restore_button()
         had_match = self._apply_filter_and_sort(prev_stem=prev_stem)
         if not self._images:
             self._current_caption_path = None
@@ -1731,7 +1746,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self._nav(1)
 
     def _refresh_mark_styles(self) -> None:
-        """Repaint tree leaves by pending source-delete/preprocess state. Text
+        """Repaint tree leaves by pending exclusion/preprocess state. Text
         prefixes instead of icons/backgrounds so filenames stay aligned."""
         for leaf, idx in self._tree_item_to_index.items():
             path = self._images[idx] if idx < len(self._images) else None
@@ -1768,8 +1783,111 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
 
     def _refresh_delete_button(self) -> None:
         n = len(self._marked)
-        self.delete_btn.setEnabled(n > 0)
+        self.delete_btn.setEnabled(n > 0 and self._exclusion_supported())
         self.delete_btn.setText(t("dataset_delete") + (f" ({n})" if n else ""))
+
+    # ---- exclusion (anime_tools.exclude on the trainer's trees) ----------
+
+    def _exclusion_supported(self) -> bool:
+        """Exclusion is defined for the source tree and the resized tree — the
+        two spellings of one dataset image; the other browsable dirs (sample
+        outputs, adapter datasets) have no workspace to exclude from."""
+        d = self._current_dir
+        if d is None:
+            return False
+        return d.is_relative_to(ROOT / "image_dataset") or d.is_relative_to(
+            ROOT / "post_image_dataset" / "resized"
+        )
+
+    def _ledger(self, *, warn: bool = True) -> dict:
+        """The exclusion ledger, or an empty one with the error shown — a
+        ledger that will not parse must never read as "nothing excluded"
+        silently, but it must not hide the dataset either. The button refresh
+        reads quietly (``warn=False``) so one bad file warns once per load."""
+        try:
+            return excluded_entries()
+        except ValueError as e:
+            if warn:
+                QMessageBox.warning(self, t("error"), str(e))
+            return {}
+
+    def _without_excluded(self, images: list[Path]) -> list[Path]:
+        """Drop the source images the ledger excludes. The resized tree needs
+        no filter: an excluded image's resized copy has physically left it."""
+        if not self._exclusion_supported():
+            return images
+        excluded = set(self._ledger())
+        if not excluded:
+            return images
+        kept: list[Path] = []
+        for p in images:
+            try:
+                if source_rel(p) in excluded:
+                    continue
+            except ValueError:
+                pass
+            kept.append(p)
+        return kept
+
+    def _refresh_restore_button(self) -> None:
+        n = len(self._ledger(warn=False)) if self._exclusion_supported() else 0
+        self.restore_btn.setEnabled(n > 0)
+        self.restore_btn.setText(t("dataset_restore") + (f" ({n})" if n else ""))
+
+    def _rescan_after_curation(self) -> None:
+        if self._current_dir is not None:
+            self._image_size_cache.clear()
+            self._all_images = self._without_excluded(_imgs(self._current_dir))
+        self._refresh_restore_button()
+        self._apply_filter_and_sort()
+
+    def _restore_excluded(self) -> None:
+        entries = self._ledger()
+        if not entries:
+            self._refresh_restore_button()
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle(t("dataset_restore_title"))
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel(t("dataset_restore_body")))
+        lst = QListWidget()
+        lst.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        for rel in sorted(entries):
+            e = entries[rel]
+            when = (
+                time.strftime("%Y-%m-%d %H:%M", time.localtime(e.at)) if e.at else "?"
+            )
+            item = QListWidgetItem(
+                f"{rel}  [{when}]" + (f"  — {e.note}" if e.note else "")
+            )
+            item.setData(Qt.UserRole, rel)
+            lst.addItem(item)
+        lst.selectAll()
+        lay.addWidget(lst)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        rels = [item.data(Qt.UserRole) for item in lst.selectedItems()]
+        if not rels:
+            return
+        try:
+            results = restore_rels(rels)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(
+                self, t("error"), t("dataset_restore_failed", err=str(e))
+            )
+            return
+        kept = [f"{r.rel}: {', '.join(r.skipped)}" for r in results if r.skipped]
+        if kept:
+            QMessageBox.information(
+                self,
+                t("dataset_restore_title"),
+                t("dataset_restore_kept", items="\n".join(kept)),
+            )
+        self._rescan_after_curation()
 
     def _delete_marked(self) -> None:
         targets = sorted(self._marked)
@@ -1794,16 +1912,11 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         anchor_row = self._current_index()
         targets_set = set(targets)
 
-        target_root = self._moved_images_dir()
         errors: list[str] = []
         for p in targets:
             try:
-                move_linked_files(
-                    p,
-                    source_root=self._current_dir or p.parent,
-                    target_root=target_root,
-                )
-            except (OSError, shutil.Error) as e:
+                exclude_images([p])
+            except (OSError, ValueError) as e:  # ExclusionError is a ValueError
                 errors.append(f"{p.name}: {e}")
         self._marked.clear()
         self._mark_preprocess_dirty()
@@ -1812,10 +1925,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self._current_caption_path = None
         self._disk_text = ""
         self._set_caption_text("")
-        if self._current_dir is not None:
-            self._image_size_cache.clear()
-            self._all_images = _imgs(self._current_dir)
-        self._apply_filter_and_sort()
+        self._rescan_after_curation()
         if self._images:
             self._select_tree_index(
                 self._post_delete_row(open_stem, old_images, anchor_row, targets_set)
@@ -1849,9 +1959,6 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 if old_images[j] not in deleted and old_images[j].stem in new_row:
                     return new_row[old_images[j].stem]
         return 0
-
-    def _moved_images_dir(self) -> Path:
-        return ROOT / "post_image_dataset" / "moved"
 
     def _set_image_none(self) -> None:
         self._source_pm = None
