@@ -89,8 +89,8 @@ Non-obvious knobs and gotchas worth knowing up front:
   after the change, once after fixing what it caught. Re-running it as a progress
   check is noise — read the failure and fix it. Needing a third run means the change
   wants rethinking, not another loop; if a run is genuinely required beyond that, say
-  why. Scope a re-run to the affected file (`pytest tests/test_x.py`) rather than
-  sweeping the whole suite again.
+  why. Scope a re-run to the one affected test file rather than sweeping the whole suite
+  again.
 
 ## Key entry points
 
@@ -289,21 +289,22 @@ Caches live under `post_image_dataset/lora/`: `{stem}_{WxH}_anima.npz` (VAE),
 siblings are **keys inside** the native VAE npz (`demoted_{H}x{W}`, one per route,
 outside the latents namespace) — not separate files; `make preprocess-demote` emits
 them. TE caching reads the **revised** caption beside the resized image
-(`post_image_dataset/resized/**/{stem}.txt`, written by every caption stage and mirrored
-from the `image_dataset/` master only while no revised caption exists — anime_tools ≥
-0.4.0 is revised-first, so once an image has a revised caption a hand-edit of its master
-no longer reaches it: edit the revised caption, or delete it to re-mirror); training
-reads only cached embeddings.
+(`post_image_dataset/resized/**/{stem}.txt`) and nothing else — there is no fallback to
+the `image_dataset/` master. Since anime_tools 0.6 resize moves **images only** and the
+caption stages own that file: every stage reads revised-first with the master as a
+fallback and always writes the revised caption (autotag included, even when it adds
+nothing), so a hand-edit of the master reaches training only through a caption stage
+run. A dataset that skips every caption stage caches empty prompts.
 
 ### Curation lives in `anime_tools`
 
 The caption grammar, tag taxonomy, the **Anima Tagger**, the caption-master stages,
 **masking** (SAM3 / merge) and **grouping** live in the sibling repo
 **https://github.com/sorryhyun/anime_tools** (package `anime_tools`, checkout
-`../anime_tools`; contract at `../anime_tools/docs/contract.md`). Dependency direction is
+`../anime_tools`; per-feature contracts under `../anime_tools/docs/`). Dependency direction is
 **trainer → `anime_tools`, never the reverse** (`tests/test_curation_boundary.py`). The
-package is a **git dependency pinned by rev** — an edit in `../anime_tools` is invisible
-to `make` targets and daemon jobs until the pin is bumped.
+package is a **git dependency pinned by release tag** — an edit in `../anime_tools` is
+invisible to `make` targets and daemon jobs until a tag is cut and the pin moves.
 
 The typed **request API is the front door**: one frozen request dataclass per stage,
 registered in `anime_tools.stages.registry`; the `make` targets keep their names and the

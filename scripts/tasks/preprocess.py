@@ -615,7 +615,7 @@ def _resize_request(
         # The GUI's resize form carries the geometry (tiers, crop, clamp,
         # overwrite, workers); the trainer fills the roots, the scope, the
         # walk and the curation skips, and the low-res sugar's answer.
-        overrides: dict[str, object] = {"recursive": True, "copy_captions": False}
+        overrides: dict[str, object] = {"recursive": True}
         if min_pixels is not None:
             overrides["min_pixels"] = int(min_pixels)
         if skips:
@@ -632,7 +632,6 @@ def _resize_request(
         "src": src,
         "dst": dst,
         "recursive": True,
-        "copy_captions": False,
         "path_pattern": path_pattern or "*",
         **_resize_crop_fields(),
     }

@@ -111,10 +111,13 @@ def render(opts, prompts_path: Path) -> None:
 def count(opts) -> None:
     from PIL import Image
 
-    from anime_tools.ocr._onnx import load_ocr
+    from anime_tools.ocr import load_ocr
 
-    # Lenient: every detected box counts, ASCII too — spam is spam.
-    engine = load_ocr(device="cpu", min_score=0.3, min_chars=1, skip_en=False)
+    # Lenient: every detected box counts, ASCII too — spam is spam. anime_tools
+    # 0.6 ships a detect-only engine (PP-OCRv6 recognizer retired), so the
+    # recognizer-side filters are gone and ``text`` is always empty here:
+    # ``n_lines`` / ``glyph_frac`` are the live columns, ``chars`` reads 0.
+    engine = load_ocr(device="cpu")
     cells: list[dict] = []
     for arm in opts.arms:
         for seed in opts.seeds:

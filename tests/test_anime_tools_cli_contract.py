@@ -476,7 +476,7 @@ def test_preprocess_resize_builds_resize_request_from_config_and_args(
     assert req.dst == "post_image_dataset/resized"
     assert req.target_res == (768, 1024)
     assert req.min_pixels == 250000
-    assert req.recursive and not req.copy_captions
+    assert req.recursive
     assert req.overwrite  # ARGS applied through the request's parser
     assert req.skip == ()
 
@@ -658,17 +658,6 @@ def test_caption_index_argv_keeps_the_trainer_output_path(monkeypatch):
     assert cmd[2] == "anime_tools.captions.index"
     assert cmd[cmd.index("--out") + 1] == preprocess.CAPTION_INDEX_PATH
     assert preprocess.CAPTION_INDEX_PATH.startswith("post_image_dataset/captions/")
-
-
-# ----- the contract version the task runner was written for ---------------------
-
-
-def test_task_runner_pins_the_installed_contract_version():
-    from anime_tools.contract import CONTRACT_VERSION
-
-    from scripts.tasks import _common
-
-    assert _common.ANIME_TOOLS_CONTRACT_VERSION == CONTRACT_VERSION
 
 
 def test_no_hand_copied_contract_constants():

@@ -14,7 +14,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from anime_tools.stages.resize import (  # noqa: F401 — re-exports
-    CAPTION_EXTENSIONS,
     ResizeOptions,
     ResizeStats,
     process_image,
@@ -48,7 +47,6 @@ def resize_to_buckets(
     target_res: list[int] | None = None,
     workers: int = 4,
     min_pixels: int = 500_000,
-    copy_captions: bool = True,
     recursive: bool = False,
     path_pattern: str | None = None,
     verbose: bool = True,
@@ -110,7 +108,6 @@ def resize_to_buckets(
         path_pattern=path_pattern,
         recursive=recursive,
         min_pixels=min_pixels,
-        copy_captions=copy_captions,
         overwrite=overwrite,
         workers=workers,
         skip=skip,

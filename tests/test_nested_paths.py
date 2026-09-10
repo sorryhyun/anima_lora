@@ -355,20 +355,16 @@ def test_resize_images_nested_output(tmp_path: Path) -> None:
     src = tmp_path / "image_dataset" / "charA"
     img_path = src / "cover.png"
     _write_test_image(img_path)
-    # Caption sidecar should follow the same nested layout.
-    img_path.with_suffix(".txt").write_text("a test caption", encoding="utf-8")
 
     dst = tmp_path / "post_image_dataset" / "resized"
     # Default options → the canonical 1024 tier; free-fit resize.
     name, _reso, _skipped = process_image(
-        img_path, dst, ResizeOptions(), rel_dir="charA", copy_captions=True
+        img_path, dst, ResizeOptions(), rel_dir="charA"
     )
 
     assert name == "cover.png"
     out_png = dst / "charA" / "cover.png"
-    out_txt = dst / "charA" / "cover.txt"
     assert out_png.exists(), "resized PNG not written under nested layout"
-    assert out_txt.exists(), "caption sidecar not mirrored into nested layout"
     # Flat layout must NOT be populated when rel_dir is set.
     assert not (dst / "cover.png").exists()
 
@@ -381,7 +377,7 @@ def test_resize_images_flat_output(tmp_path: Path) -> None:
     _write_test_image(img_path)
 
     dst = tmp_path / "post_image_dataset" / "resized"
-    process_image(img_path, dst, ResizeOptions(), rel_dir="", copy_captions=False)
+    process_image(img_path, dst, ResizeOptions(), rel_dir="")
     assert (dst / "cover.png").exists()
     # No phantom subdir was created.
     assert not any(p.is_dir() for p in dst.iterdir())

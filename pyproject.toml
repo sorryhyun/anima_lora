@@ -132,13 +132,13 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
-# anime_tools: the pinned git rev is what releases install. For a live dev
+# anime_tools: the pinned release tag is what releases install. For a live dev
 # loop against a sibling checkout run
 #     uv sync --group anime-tools-dev
 # (the `anime-tools-dev` group swaps in ../anime_tools as an editable path
 # source; it conflicts with the default `anime-tools-git` group by design).
 anime-tools = [
-    { git = "https://github.com/sorryhyun/anime_tools", rev = "8ebaf58", group = "anime-tools-git" },
+    { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.6.2", group = "anime-tools-git" },
     { path = "../anime_tools", editable = true, group = "anime-tools-dev" },
 ]
 torch = [
@@ -207,7 +207,7 @@ dev = [
     "markdownify",
 ]
 # anime_tools source selector (see [tool.uv.sources]): `anime-tools-git` is
-# default-on (pinned rev); `--no-group anime-tools-git --group anime-tools-dev`
+# default-on (pinned tag); `--no-group anime-tools-git --group anime-tools-dev`
 # swaps in the sibling checkout for development.
 anime-tools-git = ["anime-tools"]
 anime-tools-dev = ["anime-tools"]

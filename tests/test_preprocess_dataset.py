@@ -464,7 +464,9 @@ def test_resize_to_buckets_writes_and_mirrors_layout(tmp_path: Path) -> None:
     out_a = dst / "a.png"
     out_b = dst / "charB" / "b.png"
     assert out_a.exists() and out_b.exists()  # nested layout mirrored
-    assert (dst / "a.txt").read_text() == "caption a"  # caption copied
+    # anime_tools >= 0.6: resize moves images only; captions are the caption
+    # stages' file, so the master sidecar must NOT be mirrored here.
+    assert not (dst / "a.txt").exists()
     # Output matches a real bucket resolution.
     with Image.open(out_a) as im:
         assert (im.width, im.height) in bucket_counts

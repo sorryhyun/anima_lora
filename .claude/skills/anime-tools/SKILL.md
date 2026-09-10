@@ -1,12 +1,12 @@
 ---
 name: anime-tools
-description: The trainer ↔ anime_tools boundary — what the curation split moved out, the typed request/stage API the make targets build, the git-pin dev loop and its stale-venv trap, and the tests that guard the contract. Load before importing anime_tools, editing scripts/tasks/, adding or changing a stage, bumping the pinned rev, or debugging a stage's argv.
+description: The trainer ↔ anime_tools boundary — what the curation split moved out, the typed request/stage API the make targets build, the git-pin dev loop and its stale-venv trap, and the tests that guard the contract. Load before importing anime_tools, editing scripts/tasks/, adding or changing a stage, bumping the pinned tag, or debugging a stage's argv.
 ---
 
 # Curation lives in `anime_tools`
 
 Sibling repo **https://github.com/sorryhyun/anime_tools** (package `anime_tools`,
-checkout `../anime_tools`). Contract: `../anime_tools/docs/contract.md`. The package
+checkout `../anime_tools`). Per-feature contracts: `../anime_tools/docs/`. The package
 carries its own skills — read them before editing package code:
 `../anime_tools/.claude/skills/{captions,add-stage,model-catalog,release}/SKILL.md`.
 
@@ -64,25 +64,31 @@ one fails with the stage's usage. `run()` and the in-process path both export
 `ANIMA_HOME` so the package's bare relative defaults anchor on this checkout
 (`ANIME_TOOLS_HOME` → `ANIMA_HOME` → CWD).
 
-Guards: `tests/test_anime_tools_cli_contract.py` re-parses every emitted argv through the
-stage's parser and is the drift alarm; `scripts/tasks/_common.py` asserts the package's
-`CONTRACT_VERSION` at import (bump `ANIME_TOOLS_CONTRACT_VERSION` there together with it).
+Guard: `tests/test_anime_tools_cli_contract.py` re-parses every emitted argv through the
+stage's parser and is the drift alarm. There is no contract-version handshake any more —
+the release tag is the version, and a surface change shows up as a failing contract row
+(or a `TypeError` on a request field) when the pin moves.
 
 Adding a stage or a flag? Follow `../anime_tools/.claude/skills/add-stage/SKILL.md`, then
 add the trainer-side wrapper + a contract-test row here.
 
 ## The pin, and the trap it sets
 
-It is a **git dependency, not PyPI**. `pyproject.toml` pins a rev under
-`[tool.uv.sources]` via the default-on `anime-tools-git` group.
+It is a **git dependency, not PyPI**. `pyproject.toml` pins a **release tag** (`tag =
+"vX.Y.Z"`) under `[tool.uv.sources]` via the default-on `anime-tools-git` group — cut with
+the package's `release` skill (version bump → annotated tag → `release.yml`).
 
 **The trainer `.venv` holds the pinned copy, not `../anime_tools`.** An edit in the
-sibling checkout is invisible to `make` targets, daemon jobs and the GUI until you bump
-the rev — this has silently run stale package code on the GPU before. `python -c "import
+sibling checkout is invisible to `make` targets, daemon jobs and the GUI until a tag is
+cut and the pin moves — this has silently run stale package code on the GPU before. `python -c "import
 anime_tools"` with cwd=`../anime_tools` lies (sys.path[0]); check from the trainer root.
 
-- **Ship a package change**: push it, bump the rev in `pyproject.toml`, then `uv lock
-  --upgrade-package anime-tools && uv sync`. `uv lock` needs the rev pushed first.
+- **Ship a package change**: release it upstream (tag pushed), move the `tag` in
+  `pyproject.toml`, then `uv lock --upgrade-package anime-tools && uv sync`.
+- **The package's `[tool.uv.sources]` leak into this lock.** uv honors a git dependency's
+  own sources, so a torch index pinned upstream (v0.6.1's win32 cu132 source) collides with
+  the trainer's `rocm-windows` group at `uv lock`. Any upstream torch source must be
+  extra/group-conditioned so a consumer never sees it.
 - **Live dev loop** against the checkout: `uv sync --no-group anime-tools-git --group
   anime-tools-dev` (the two groups conflict by design, like `cuda-windows` /
   `rocm-windows`).

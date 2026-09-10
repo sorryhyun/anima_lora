@@ -78,9 +78,7 @@ TRAINER_FIELDS: dict[str, frozenset[str]] = {
     # stage id → dests the trainer's chain fills itself (hidden from the form,
     # like a bound root). ``scripts/tasks/preprocess.py`` / ``masking.py`` set
     # them on the request after ``build_argv``.
-    "resize": frozenset({"recursive", "copy_captions", "skip"}),
-    # The in-pipeline autotag always applies; a replay is a CLI affair.
-    "autotag": frozenset({"from_report"}),
+    "resize": frozenset({"recursive", "skip"}),
     # The variant sidecar knobs are the TextCachingSection's (trainer-side TE
     # cache), the tokenizer dirs are resolved on the trainer side.
     "correct": frozenset(

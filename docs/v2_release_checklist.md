@@ -186,9 +186,12 @@ read that one list. Follow-ups this leaves:
 
 Detail and rationale in that doc; listed here so nothing gets lost.
 
-- [x] A1 Pin the shipping `anime_tools` rev in `[tool.uv.sources]`, `uv lock`,
+- [x] A1 Pin the shipping `anime_tools` release in `[tool.uv.sources]`, `uv lock`,
       commit the lock. Done at `9413178` (0.5.0, contract 2) with the MIT
-      removal; re-pin if the package moves again before the tag.
+      removal; re-pinned 2026-09-10 to the release **tag** `v0.6.2` (the
+      `CONTRACT_VERSION` handshake is gone — the tag is the version; the
+      trainer adopted 0.6's resize/autotag caption semantics and the
+      `MultiviewRequest` split). Re-pin if the package moves again before the tag.
 - [ ] A2 Offline/Windows install decision — document that `uv sync` needs
       network for the git dep (the honest default) in `README.md` Setup.
 - [ ] A4 Delete the stub extras `cuda-windows = [] / rocm-windows = []`.
@@ -211,9 +214,9 @@ Detail and rationale in that doc; listed here so nothing gets lost.
 
 ## 6. Merge gates
 
-- [ ] `make test-unit` green (including `test_doc_refs`). *Green as of
-      `2026-09-07` after §1/§2: 1674 passed, 1 skipped — re-check before the
-      tag.*
+- [x] `make test-unit` green (including `test_doc_refs`). *Green as of
+      `2026-09-10` on the `anime_tools` v0.6.2 pin: 1677 passed, 1 skipped —
+      re-check before the tag.*
 - [ ] `make preprocess` on a small shard from a fresh clone with SAM3 never
       downloaded — must complete with no mask-related error.
 - [ ] `make lora` on that shard trains unmasked by default.

@@ -100,14 +100,8 @@ def test_visible_fields_hide_bound_and_auto(schemas):
     )
 
     resize = {f["dest"] for f in SF.visible_fields(schemas["resize"])}
-    assert (
-        not {"src", "dst", "path_pattern", "recursive", "copy_captions", "skip"}
-        & resize
-    )
+    assert not {"src", "dst", "path_pattern", "recursive", "skip"} & resize
     assert {"target_res", "min_pixels", "overwrite", "workers"} <= resize
-    assert "from_report" not in {
-        f["dest"] for f in SF.visible_fields(schemas["autotag"])
-    }
 
     # --apply is the run bar's, never a form row.
     assert "apply" not in {f["dest"] for f in SF.visible_fields(schemas["autotag"])}

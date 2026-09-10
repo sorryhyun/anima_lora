@@ -661,7 +661,7 @@ def test_resize_form_drives_the_resize_request(monkeypatch, tmp_path):
     assert req.resize_crop_margins == (5.0, 0.0, 0.0, 0.0)
     assert req.freefit_max_ratio == 3.0
     assert req.overwrite and req.workers == 2
-    assert req.recursive and not req.copy_captions
+    assert req.recursive
     assert req.src == "image_dataset" and req.path_pattern == "*"
 
     # The low-res sugar: unchecked → --min_pixels 0 regardless of the form.

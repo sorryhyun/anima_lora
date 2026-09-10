@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from anime_tools.ocr._onnx import load_ocr
+from anime_tools.ocr import load_ocr
 
 EVAL = Path("output/tests/cjk_unmask_eval2")
 DIRS = sys.argv[2:] or [

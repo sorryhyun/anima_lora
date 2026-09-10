@@ -59,7 +59,7 @@ def _adjacent(a: OcrLine, b: OcrLine) -> bool:
 def _clusters(lines: Sequence[OcrLine]) -> list[list[int]]:
     """Indices grouped by adjacency — a plain union-find over every pair.
 
-    At most :attr:`~anime_tools.ocr._onnx.OcrEngine.max_boxes` boxes reach here,
+    At most :attr:`~anime_tools.ocr.engine.OcrEngine.max_boxes` boxes reach here,
     so the quadratic pass costs nothing worth avoiding.
     """
     parent = list(range(len(lines)))
