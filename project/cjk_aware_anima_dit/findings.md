@@ -4,1307 +4,934 @@ Settled verdicts of this line, one entry per phase, evidence pointer beside
 each. The encoder-side verdicts it builds on are in
 [`../cjk_aware_anima/findings.md`](../cjk_aware_anima/findings.md) (read-only).
 
-## Label basis — the sincos gate changed units on 2026-09-06 (read this before comparing any two numbers below)
+Line frozen 2026-09-08. The plans and the dated reports moved to
+`_archive/cjk_aware_anima_dit/{plans,reports}/` (gitignored, private mirror);
+every `reports/…` and `plan*.md` link in this file resolves there.
+[`plan.md`](plan.md) is the freeze note — what shipped, what never ran, and
+where the measured headroom is.
 
-`assets/sfx_labels_sincos.tsv` was **re-based onto the AnimeText detector's
-boxes** (`plan_det.md` D1, `ocr/relabel_animetext.py`) the night of
-2026-09-06. Two incompatible bases therefore appear in this file:
+This file is a digest, deduped 2026-09-08. Full tables, per-orientation and
+per-length breakdowns, worst-N rows and the raw predictions live in the
+archived reports and in `output/ocr/eval/*.jsonl`; what stays here is the
+verdict, the numbers a later decision turns on, and the mechanism notes that
+exist nowhere else.
 
-| | rows scored | SFX gate rows | speech / chrome | where it appears |
-|---|---|---|---|---|
-| **PP-box (retired)** | 338 | 99 hand-typed SFX, of which a **71**-row `kind_rec: sfx` subset was *the* gate number | 213 / 26 | every § dated 2026-09-05 → 2026-09-06 evening: O0, O1, O2, O2b, O4, O3-col100, D0–D1 |
-| **AnimeText (current)** | 948 of 975 (`unchecked` skipped) | **619** SFX, 76 of them user-`checked` | 294 / 35 | § O2 follow-up (2026-09-07) and everything after |
+---
 
-**There is no conversion between them.** The detector finds far more lines on
-the same 351 pages, so the row *set* differs — `n / 71` is not `n × 619/71`.
-Anything with a runnable reader was re-scored on the new basis in one job
-(`ocr/reeval_sfx_all.py`, `20260907-002638`); those are the only numbers that
-compare to each other:
+## Comparability — read this before comparing any two numbers
 
-| reader | SFX exact / 619 | ♡-blind | sim |
+Three things moved under this line's numbers. Two of them make older figures
+non-convertible, not merely shifted.
+
+### 1. The sincos label basis changed (2026-09-06) — no conversion exists
+
+`assets/sfx_labels_sincos.tsv` was re-based onto the AnimeText detector's boxes
+(`plan_det.md` D1, `ocr/relabel_animetext.py`).
+
+| basis | rows scored | SFX gate rows | speech / chrome |
 |---|---|---|---|
-| stock manga-ocr | 6 (1.0 %) | 13 | 0.312 |
-| stock VL-1.6 | 15 (2.4 %) | 46 | 0.365 |
-| manga-ocr FT lr 2e-5 / 5e-5 | 103 / **122** (19.7 %) | 128 / 144 | 0.674 / 0.679 |
-| VL-1.6 LoRA lr 1e-4 (tower frozen) | 105 (17.0 %) | 145 | 0.630 |
-| **B′ `vl16_tower_lr1e-5` — the published reader** | **306 (49.4 %)**; checked 39 / 76 | 361 | 0.853 |
-| B′ + col100 | 315 (50.9 %); checked 39 / 76 | 362 | 0.850 |
-| B′ × 3 ep | 298 (48.1 %); checked 37 / 76 | 349 | 0.855 |
-| shipped `anime_tools.ocr.sfx` (B′ + decode guard) | 305 (49.3 %); checked 39 / 76 | 360 | 0.850 |
-| the pipeline's own records (`--reader record`) | 314 (50.7 %); checked 38 / 76 | 372 | 0.873 |
-| *outside:* hayai-ocr v2.1 / v2.1.5 (§ Outside reader) | 177 / **309** | 312 / 343 | 0.763 / 0.790 |
+| PP-box (retired) | 338 | 99 hand-typed, of which a 71-row subset was the gate number | 213 / 26 |
+| AnimeText (current) | 949 | 617 | 293 / 39 |
 
-**Revision 2026-09-07 (job `20260907-085136`) — the table above is the current
-one.** Two things moved under it at once, and they are separable:
+The detector finds far more lines on the same 351 pages, so the row set
+differs: **`n / 71` is not `n × 617/71`.** Any section below dated 2026-09-05 →
+09-06 evening quotes the PP-box basis; it is marked where it appears.
 
-* **11 labels corrected by the user** off `probes/label_sheet.py` (the plain
-  crop → label sheet; rows 0 1 7 8 40 46 47 56 73 93 155, now `checked` — SFX
-  `checked` 70 → 76). Several were badly wrong, not near-misses: #40 read
-  `なァがくてなァが` for `がんばれ♡　がんばれ♡`, #0 `ずっ♡` for `おっ`.
-* **the decode cap went 48 → 96 tokens** (`eval_manga109.MAX_NEW_TOKENS`, now
-  `--max_new_tokens`, threaded through all five reader classes + both
-  fine-tunes' in-loop val). The old 48 was a **hard truncation**: manga-ocr's
-  WordPiece is ~1 token per kana, so every manga-ocr-family read stopped at
-  exactly 47 characters while the labels reach 60.
+The AnimeText basis itself moved twice under user label passes — 619 → 617 SFX
+(three `＾＾＾` scribbles dropped, one blank row joined), speech 294 → 293,
+chrome 35 → 39, `checked` 70 → 86. Every `/ 619` figure in the archived
+reports and plans is pre-revision. The ledger below is on 617.
 
-Attribution, per reader: the cap alone buys the VL family **3–4 exact rows**
-(the long speech / chrome lines #110 #755 #853 #956 — all >47 chars, so
-unreachable before); the manga-ocr family gains **zero** from it, its long-line
-reads being far too wrong for the tail to matter. The rest of the movement is
-the 11 relabels. Net on the SFX gate this is noise (B′ 307 → 306, col100
-317 → 315, `record` 317 → 314 — inside the ±1-line batching jitter below, plus
-the two SFX relabels #46 #47 #56 that no reader gets); the real gain is on
-**speech** (col100 118 → 122, ep3 114 → 119 exact) and **chrome** (ep3 22 → 23,
-col100 17 → 18), which is where the long lines live.
+### 2. The eval key was re-based (2026-09-08 00:12, `acd41d72`)
 
-**Revision 2026-09-07 #2 (22 labels, not yet re-scored).** A second user pass
-off `probes/label_sheet.py` corrected rows 42 43 93 194 204 209 251 254 270 271
-308 590 649 651 652 684 693 694 716 718 757 768 (all now `checked`). The scored
-sets move: **SFX 619 → 617** (three squiggles the drafter read as text — #194
-#271 #308 — are `＾＾＾` scribbles, so their `text_hand` is now blank and they
-drop out; #684 `ン♡` was blank and joins), speech 294 → 293 and chrome 35 → 39
-(#254 `正下` sfx→chrome, #757 #768 `お気に入り` speech→chrome, #649 `そのだ`
-newly readable); SFX `checked` 76 → 86. **Every `/ 619` number above is
-pre-revision.** They will not merely jitter: five of the corrections
-(#590 `ガクガク…`, #651 #652 #716 #718 `ガク♡` — the drafter's `リ` vs `ク` calls,
-flagged uncertain in the notes) move the *label* onto what the readers already
-emit, so the whole reader family gains those rows at once. That is a label fix,
-not a reader gain — re-score with `ocr/reeval_sfx_all.py` before quoting any of
-it, and don't compare a 617-row number to a 619-row one.
+`exact_key` gained the ellipsis fold (each dot run → one `…`), the eval half of
+the O4e guard fix. Every row measured before that scores `・・・`, `...` and
+`…` as three different reads — worth up to +495 lines on COO speech,
++37…+154 on COO SFX, +4…+9 on the sincos gate.
 
-The PP-era `record_hybrid*` rows are **not** re-scorable — their boxes no
-longer exist. The VL readers carry a **±1-line batching jitter** (ep3 read
-298 in its own eval and 299 in the sweep, at a different `--bs`); don't read
-a 1-line move as a result. And on **either** basis the speech / chrome rows are *not* an
-accuracy metric: their `text_hand` is PP-OCRv6 record text on almost every
-row, so reading `♡` correctly scores as a miss (§ O3 label audit below).
+`ocr/rescore_eval.py` re-derives `exact` for every stored `output/ocr/eval/*.jsonl`
+from its own `pred_norm` + `text` columns (CPU, no model re-run). The ledger
+below is the output of that script — every row on one key and one basis. The
+archived `reports/ocr_eval*.md` files were never regenerated (`--write` not
+run), so a report file and this ledger will disagree by exactly the fold.
+
+### 3. Harness and jitter floors
+
+- The VL readers carry a ±1-line batching jitter at different `--bs`; a
+  1-line move is not a result.
+- The same weights read 312 (`eval_sfx.py`) and 316
+  (`context_margin_sweep.py`, pad 0.12) on the same 617 rows with the same key.
+  Compare rows produced by one harness.
+- On either basis the sincos speech / chrome rows are not an accuracy
+  metric: their `text_hand` is PP-OCRv6 record text on almost every row, so
+  reading `♡` correctly scores as a miss (§ O3 label audit).
+
+---
+
+## The reader ledger (all rows on the current key, `ocr/rescore_eval.py`)
+
+COO = Manga109-s test ∩ the official COO book split (2,558 SFX / 2,559 speech).
+sincos = the doujin gate, 617 hand-labelled SFX rows. Published COO baseline:
+TRBA+2D 81.2 % on the full 10-book test (ours is 6 of those 10 books).
+
+| reader | COO SFX | COO speech | sincos SFX / 617 |
+|---|---|---|---|
+| stock manga-ocr | 28.9 % | 81.0 % | 6 (1.0 %) |
+| stock PP-OCRv6 rec | 7.7 % | 16.1 %† | — |
+| stock PaddleOCR-VL-1.6 | 31.6 % | 82.8 % | 19 (3.1 %) |
+| stock HunyuanOCR-1.5, official zh prompt | 9.5 % | 37.7 % | 12 (1.9 %) |
+| stock HunyuanOCR-1.5, ja prompt | 13.0 % | 43.3 % | 21 (3.4 %) |
+| manga-ocr FT lr 2e-5 (arm A) | 73.6 % | 80.7 % | 108 (17.5 %) |
+| manga-ocr FT lr 5e-5 (arm A, best) | 76.0 % | 80.1 % | 127 (20.6 %) |
+| VL-1.6 LoRA, tower frozen (arm B) | 66.6 % | 86.2 % | 110 (17.8 %) |
+| B′ `vl16_tower_lr1e-5` — the published reader | 83.2 % | 88.3 % | 312 (50.6 %) |
+| B′ + col100 (1.6 % colorized append) | 84.9 % | 87.8 % | 323 (52.4 %) |
+| B′ + col1500 swap (22.3 % colorized) | 85.5 % | 88.4 % | 281 (45.5 %) |
+| B′ × 3 epochs | 87.3 % | 89.2 % | 306 (49.6 %) |
+| B′ from LP-FT (arm B → B′ order) | 84.3 % | 87.6 % | 264 (42.8 %) |
+| B′ from an SSL-adapted tower | 84.6 % | 88.2 % | 307 (49.8 %) |
+| shipped `anime_tools.ocr.sfx` (B′ + decode guard) | — | — | 311 (50.4 %) |
+| the pipeline's own records (`--reader record`) | — | — | 317 (51.4 %) |
+| outside: hayai-ocr v2.1 | 78.2 % | 88.0 % | 180 (29.2 %) |
+| outside: hayai-ocr v2.1.5 | 60.7 % | 85.5 % | 316 (51.2 %) |
+
+† not a valid speech control — the speech crops are whole bubble boxes
+(multi-column) and PP's single-line CTC head cannot read them without its own
+detector in front.
+
+What the ledger says as a whole:
+
+1. The tower was the doujin gap. Every row under 130 on sincos has either a
+   frozen tower or no fine-tune. Unfreezing it (B → B′) is the single largest
+   move this line made: 110 → 312.
+2. In-domain and the doujin gate decouple, in five arms running. col100,
+   col1500-swap, ×3 epochs, LP-FT, tower SSL: each moved COO by +1…+4 points
+   and left sincos flat or worse. The remaining headroom is on the label
+   side, not the representation side — see § Tower for the ♡ evidence.
+3. The gate's top is a ~10-line band at ~50 %, shared by B′ (312), the
+   shipped guarded reader (311), the pipeline records (317), col100 (323) and
+   an outside 150 M model (hayai v2.1.5, 316). Nothing in this line separated
+   them; the binomial SE at n = 617 is 2.0 points ≈ 12 lines.
+4. One unresolved inconsistency: stock VL-1.6's COO runaway count is
+   recorded as 331 (§ O2's corrected table) and 91 (§ Outside readers · hayai's table) for
+   what should be the same row. `runaway` is untouched by the rescore, so the
+   fold does not explain it; the decode cap went 48 → 96 between the two, which
+   is the only known difference. Neither number was ever re-derived. Do not
+   quote a stock-VL runaway count without re-running it.
+
+---
 
 ## D0 — ISO1 vs C9 direct blind set: flat (2026-09-05)
 
-`reports/blind_s13_ISO1_vs_C9.md` (in the old line's `reports/`): 48 pairs,
-16 v2 rows × seeds 6/7/8, both arms fresh to the grader. **ISO1 23 – C9 20,
-tie 5; rows 6-6 (tie 4); p 0.76.** The isotropic table and the trained
-r256 pack are indistinguishable for unmask training on this grid.
+`reports/blind_s13_ISO1_vs_C9.md`: 48 pairs, 16 v2 rows × seeds 6/7/8, both
+arms fresh to the grader. ISO1 23 – C9 20, tie 5; rows 6-6; p 0.76. The
+isotropic table and the trained r256 pack are indistinguishable for unmask
+training on this grid.
 
-- The transitivity claim ISO1 ≈ HOT > C9 (s12 + s11) does **not** survive
-  the direct test; transitivity has now failed twice in this protocol
-  (s03/s04, s12/s13). Do not chain blind sets — pair the arms you want to
-  compare.
-- Pooled s01–s13: a content-free table is never worse than the trained pack
-  for the OCR route, and rows must exist (C9 > P). The isotropic block is
-  therefore the OCR-route default on **cost** grounds (seed-generated,
-  deterministic, no distill), not on quality grounds. The hypothesis doc's
-  "structured low-rank spread hurts" mechanism is weakened, not confirmed.
-- Mechanism note carried from `bench/frontload_text_boost`: `k_norm`
-  strips row scale on the K path, which is why HOT (norm ×5) ≈ ISO1 (s12).
+- The transitivity claim ISO1 ≈ HOT > C9 (s12 + s11) does not survive the
+  direct test. Transitivity has now failed twice in this protocol (s03/s04,
+  s12/s13). Do not chain blind sets — pair the arms you want to compare.
+- Pooled s01–s13: a content-free table is never worse than the trained pack for
+  the OCR route, and rows must exist (C9 > P). The isotropic block is the
+  OCR-route default on cost grounds (seed-generated, deterministic, no
+  distill), not on quality grounds.
+- `k_norm` strips row scale on the K path, which is why HOT (norm ×5) ≈ ISO1
+  (s12). Do not run norm / gain arms on the table.
 
-Gate outcome: **proceed to D1** with the isotropic block for 「…」 spans;
-bare CJK tags keep the trained rows (plan principle 2).
+Gate outcome: proceed to D1 with the isotropic block for 「…」 spans; bare
+CJK tags keep the trained rows.
 
-## OCR reader for D2/D3 — PaddleOCR-VL-1.6 is not an upgrade over PP-OCRv6 (2026-09-05)
+## OCR reader A/B — VL-1.6 is not a stock upgrade over PP-OCRv6 (2026-09-05)
 
 `reports/0905_paddleocr_vl16_vs_ppocrv6.md`; probes `probes/ocr_vl16_ab.py`,
-`probes/ocr_vl16_prompt_batch.py`; raw outputs `output/tests/vl16_{ab,prompt}/`.
-40 sincos pages with PP-OCRv6 sidecars, VL-1.6 read three ways (page
-`Spotting:`, page `OCR:`, `OCR:` on PP-OCRv6's own quads); disputed lines
-checked against the pixels.
+`probes/ocr_vl16_prompt_batch.py`. 40 sincos pages, VL read three ways (page
+`Spotting:`, page `OCR:`, `OCR:` on PP's own quads), disputed lines checked
+against the pixels.
 
-- **Character accuracy is a wash on the same crops** (69/132 identical after
-  punctuation normalization; each reader wins about half the disputed
-  lines; vs manga-ocr 0.767 PP / 0.774 VL). VL is not a drop-in accuracy
-  upgrade — consistent with the public manga fine-tune figure (stock model
-  27 % sentence accuracy on Manga109 crops).
-- **VL wins symbols and recall.** Hearts survive (30 lines vs 4), `ー` and
-  small kana come back as themselves (what `anime_tools.ocr._text`'s
-  `normalize_ja` patches by hand), and page `Spotting:` finds 260 lines vs
-  PP-OCRv6's 132 — SFX, chat chrome — with per-column boxes and silence on
-  the tally-mark / screentone pages.
-- **VL loses by rewriting.** Page-level modes swap the printed word for a
-  likelier one (`狠狠地`→`狼狽地`, `おい`→`あい`, `喘いで`→`噛いで`) and
-  greedy decoding runs away on short SFX crops (2/132 crops, 1/40 pages).
-  PP-OCRv6 garbles but never rewrites. **This decides the D3 CER judge**:
-  a reader with an LM prior would "repair" a half-rendered line toward the
-  prompted word and inflate the held-out-vs-never-seen gap. The render→OCR
-  CER instrument uses PP-OCRv6.
-- **Prompt hints are not a lever.** The chat template concatenates text
-  after the fixed task token; "vertical / right-to-left / Japanese manga"
-  hints churn 40–60 % of crop outputs in random directions (sim vs PP
-  0.845 → 0.844 / 0.848 / 0.858) and make hinted `Spotting:` 2× slower,
-  lower (0.69 → 0.63), and degenerate on 2–3 of 12 pages. Native Spotting
-  order is not R→L either (39 vs 69 adjacent pairs) — `reading_order`
-  stays geometric.
-- **Batching is the throughput lever.** Left-padded, area-sorted crops:
-  4.0 → 18.5 crops/s at bs 32 (2.6 GB); pages 0.56 → 1.40 pages/s at bs 8
-  (4.5 GB). Outputs churn at the byte level (`♥`↔`❤️`, ellipsis lengths,
-  column-break placement) with unchanged line counts and similarity.
-  Two shipped gotchas: `generation_config.json` has `use_cache: false`
-  (vision tower re-run per token; `use_cache=True` is byte-identical at
-  11×), and transformers 5.16's image processor exposes `size`, not the
-  card's `min_pixels`.
+Verdict as of that date: character accuracy ties; VL keeps ♡ / `ー` / small
+kana (30 lines vs 4), finds ~2× the lines (260 vs 132), and rewrites toward the
+likelier word (`狠狠地`→`狼狽地`, `おい`→`あい`). Prompt hints are noise —
+settled, never reopen. Batching is the only wall lever.
 
-Decision for the plan: **D2's records stay PP-OCRv6** (detector +
-confidence + v2 post-processing, unchanged); VL-1.6 enters only as an
-optional hybrid pass — `OCR:` on PP-OCRv6's quads with a repetition guard,
-preferred where PP's score is low or the two disagree on symbols — and as a
-**detector for the "masked but no OCR line" floor**: its Spotting recall is
-the one thing that could shrink sincos' 44-of-133, which caps every unmask
-arm. Measure that floor with both detectors in D2 before deciding whether
-the hybrid pass is built at all.
+This verdict was later superseded on the model axis, not the prompt axis: a
+VL fine-tune with the tower unfrozen (§ O2b) beat PP-OCRv6 outright, and the
+detector was replaced too (§ O6, § D0–D1). The prompt-engineering half stands.
 
 ## D1 — deterministic table + route partition + LoRA stamp (2026-09-05)
 
-**Gate: PASSED (sanity)** — daemon job `20260905-210248-114990` (rc 0):
-arm `C9ISOQ` = the C9 recipe re-cached through the partitioned pack, trained
-2,808 steps, 8-row grid at seeds 42/7/1234 into
-`output/tests/cjk_unmask_eval2/armC9ISOQ_s*`, read against `armC9_s*` with
-the same-recipe seed twin `armC9s2_s*` as the floor (prompts are CJK-free).
+Gate: PASSED (sanity) — arm `C9ISOQ` (the C9 recipe re-cached through the
+partitioned pack) renders inside the same-recipe seed-twin floor: 64-px L1 to
+C9 0.075 ± 0.042 vs the twin's 0.087 ± 0.042. A mild grayscale tilt (mean
+saturation 0.208 vs C9's 0.255, 9 vs 6 low-saturation images of 24) matches
+another C9 variant and is not separable at n = 24. Not a blind set; the gate
+only asked for "inside the floor".
 
-| check | result |
-|---|---|
-| stamp on the LoRA | `ss_ext_pack_sha` = `2cf81cbc…` = the pack's digest; `ss_ext_pack` = pack stem |
-| restaged TE caches (702 captions, 194 with 「」) | 7,656 tokens on the mirror, 1,843 on trained rows (delimiters + bare CJK), 0 `<unk>` |
-| render distance, 64-px L1 to C9, 24 rows | C9ISOQ 0.075 ± 0.042 vs seed-twin 0.087 ± 0.042; ISOQ the closer one in 14/24 |
-| colour saturation (mean; images < 0.12) | C9 0.255 (6/24) · C9s2 0.275 (6/24) · **C9ISOQ 0.208 (9/24)** · C9trigpol 0.209 (7/24) |
+Shipped (contract: `docs/experimental/cjk_ext_vocab_coverage.md` § "Quote
+partition"; tests `tests/test_ext_vocab_iso.py`, 58 passing):
 
-Inside the floor on the pixel metric; a mild grayscale/sketch tilt (3 more
-low-saturation images than either C9 seed) that matches another C9 variant
-(trigpol) and is not separable at n = 24 — rows are near-identical at seed
-1234, and the rows that diverge at seed 42 (2, 7, 8) diverge between the
-two C9 seeds too. Not a blind set; if the partition ever needs a ranking
-claim, run one (s14 C9ISOQ vs C9), but D1's gate only asked for "inside the
-floor" and it is. D2 proceeds through this pack.
+- `library/anima/ext_vocab.py` — `iso_block` / `IsoSpec` / `materialize_iso`
+  (seed-regenerated, byte-equal across machines), `Route.quotes` +
+  `quote_spans`, the span rule before `segment_runs`, `pack_digest`.
+- `make_random_pack.py --mode iso | iso-partition`. Norm default = the native
+  T5 mean row norm 212.165 (measured off `llm_adapter.embed`); ISO1 had used
+  the trained mean 203.9. Pack built:
+  `cjk_vocab_pack_synthjakozh1sym_r256_isoq` (sha `2cf81cbc…`).
+- `ss_ext_pack_sha` / `ss_ext_pack` stamped by `train.py --ext_pack`;
+  `load_dit_model` warns on a stamped LoRA with no pack; Adapter node 3.10.0
+  compares digests in either node order and regenerates seed-only blocks.
+  Node committed locally, never pushed / registry-published.
+- Grammar: anime_tools `efb235c` — a comma or `. On the` inside `「」『』""` is
+  content, `compose_caption` round-trips.
 
-What exists now (pointers, not repeats — contract in
-`docs/experimental/cjk_ext_vocab_coverage.md` §"Quote partition"):
-
-- `library/anima/ext_vocab.py`: `iso_block` / `IsoSpec` / `materialize_iso`
-  (seed-regenerated isotropic mirror, NumPy legacy stream, byte-equal
-  across machines), `Route.quotes` + `quote_spans` (one regex, non-nesting),
-  `HybridT5Encoder.encode_cjk_run` (span rule before `segment_runs`; EN
-  bit-identical by construction), `pack_digest`.
-- `make_random_pack.py --mode iso | iso-partition [--no-iso-rows] [--norm]`
-  (norm default = native T5 mean row norm 212.165, measured off the DiT's
-  `llm_adapter.embed`; ISO1 had used the trained mean 203.9).
-  Built: `output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq` (sha
-  `2cf81cbc…`; mirror rows 69,558–139,116, PR 1009).
-- Stamp: `train.py --ext_pack` → `ss_ext_pack_sha` / `ss_ext_pack`
-  (`run_unmask_r2.py` passes it); `load_dit_model` warns on a stamped LoRA
-  with no pack; Adapter node 3.10.0 compares digests in either node order
-  (`vocab_pack.check_pack_vs_adapter`, `adapter._record_ext_pack_stamp`),
-  regenerates seed-only blocks, cuts routed runs at quote boundaries in
-  `VocabPackTokenizer`. Vendor tree re-synced; node committed locally, not
-  yet pushed / registry-published (publish with the first partitioned pack).
-- Grammar: anime_tools `efb235c` (`quoted_spans`; comma / `. On the` inside
-  `「」『』""` is content; `compose_caption` round-trips) — pin bumped,
-  `uv lock` + `uv sync` done. `cache_te_ext._quote_safe` keeps commas now.
-- Tests: `tests/test_ext_vocab_iso.py` (determinism, EN bit-exact, quoted
-  content only on the mirror with `「」`/`黒髪` staying on trained rows, three
-  spellings → same ids, `"…"` order phrase routes, ASCII inside quotes stays
-  spiece, digest invariance under regeneration, grammar, inference warn) +
-  the earlier route tests: 58 passed.
-
-Design choices worth knowing: the mirror is a full row-for-row copy (so
-one id map serves both blocks; 285 MB fp32 shipped, or 0 bytes seed-only),
-quoted content bypasses minted-word rows and the C fallback (those are
-trained content), and the rule is inert unless *both* `iso` and
-`route.quotes` are present — every existing pack, cache and blind set is
-untouched.
-
+Design facts worth keeping: the mirror is a full row-for-row copy (one id map
+serves both blocks; 285 MB fp32 shipped, or 0 bytes seed-only), quoted content
+bypasses minted-word rows and the C fallback, and the rule is inert unless
+both `iso` and `route.quotes` are present — every pre-existing pack, cache and
+blind set is untouched.
 
 ## OCR eyeball + SFX handling (2026-09-05)
 
-Contact sheets in `output/tests/ocr_contact_sheet/` (scratch, not tracked):
-`sincos_ppocr_v2_sentence.pdf` (140 tiles = 133 masked ∪ 96 with PP-OCRv6 v2
-lines; mask / SAM3-bubble tints, v2 boxes in reading order, the proposed
-sentence caption, the tags actually trained), `bubble_kind.pdf` (one crop per
-line, speech vs SFX with the balloon containment).
+The eyeball that produced `plan_base1.md`. Four things it established:
 
-- **What trained (C2–C9)**: `mirror_sincos_ppocr` was built from the **v1**
-  records (97 stems, `tags` format); v2's reading-order rewrite never reached
-  a trained arm — 58 / 96 stems match v2 in order, 91 / 97 match v1 exactly.
-- **PaddleOCR-VL-1.6, two masked-no-line pages** (`output/tests/vl16_single*/`):
-  `12440144` — VL reads exactly one SFX (`ばるん`, the one column with solid
-  fill) on the resized ×2 page and on the 3048×4080 original alike, and
-  misses the six hand-lettered pink SFX (`ぱんぱん` ×2, `びくっ` ×2, `おっ`,
-  `お`); resolution is not the limit. `6067089` — VL finds the right-hand
-  balloon PP-OCRv6 dropped (`もしかして興奮してるー？`; Spotting rewrites
-  興→無 on the original, page `OCR:` reads it right) and PP's `かわいいなー♡`,
-  not PP's `ちらっ`. Same verdict as the A/B: VL is an extra detector, not a
-  manga-SFX reader.
-- **SFX handling** — `datasets/ocr_sfx.py` (torch-free, text-only rules:
-  kanji / >6 kana / vowel-or-h-row initial → speech; repeated unit, voiced
-  initial, lexicon onset, sokuon → SFX; optional `in_bubble` veto) and a
-  `--ocr_format sentence` in `cache_te_ext.py`: the caption tail becomes
-  `Japanese text reads as "…", "…". Japanese SFX reads as "…".` (speech
-  first, SFX second, reading order inside each, ASCII quotes so the D1 span
-  rule keys on them, native glyphs — the ext rows are the address). On the
-  v2 records: 19 SFX / 209 speech lines, 15 of 96 captions get an SFX
-  sentence. PP-OCRv6's SFX reads are the weak link (`でくv` for びくっ,
-  `Kッ4vv`, `ゴmvvv`), and UI chrome (`ツイート`, `ポスト`, `完了にする`) is
-  neither class. GOTCHA: the anime_tools grammar has no header for these
-  sentences — a re-parse glues the first onto the last tag — so the append
-  is string-level; a `TEXT_PREFIXES` clause kind in the package would make
-  it grammar-native. Tests: `tests/test_cjk_ocr_captions.py`.
-- **SAM3 `speech bubble` as the speech/SFX signal** (user's suggestion; run
-  `-m anime_tools.masking.cli.generate_masks --prompts 'speech bubble'
-  --focus-prompts none --dilate 0` → `output/tests/sam_bubbles/sincos/`):
-  balloons found on **34 / 97** pages (median 5 % of the page), 69 of 228
-  lines sit inside one; the veto changed **one** line vs the text rules
-  (`バスト91`, a profile card). The rules already agree with the balloons
-  where SAM3 finds them; where it misses (`カリカリ` in a plain rounded
-  balloon, 6813398) the text rule is what's left. Outside-a-balloon is *not*
-  SFX (narration, floating dialogue, chrome) — tried, added more errors than
-  it fixed. The veto is in `line_kind(text, in_bubble=…)` but not wired into
-  the mirror builder (records carry no balloon field yet).
-- Side gotcha: `build_mirror` symlink creation fails sporadically on the
-  ntfs3-mounted dataset volume (`FileNotFoundError` from `os.symlink` on a
-  path that exists; `ln -s` by hand works) — the preview mirror was built
-  under the session scratchpad; a dangling-link guard was added.
+- What C2–C9 actually trained on: `mirror_sincos_ppocr` was built from the
+  v1 records; v2's reading-order rewrite never reached a trained arm.
+- VL is an extra detector, not a manga-SFX reader. On a masked-no-line page
+  it reads the one solid-fill SFX and misses six hand-lettered pink ones —
+  identically at 896 px and at 3048 px, so resolution is not the limit.
+- `datasets/ocr_sfx.py` (torch-free text rules: kanji / >6 kana /
+  vowel-or-h-row initial → speech; repeated unit, voiced initial, lexicon onset,
+  sokuon → SFX) and `--ocr_format sentence` in `cache_te_ext.py`. GOTCHA that
+  drove B2: the anime_tools grammar had no header for these sentences, so a
+  re-parse glued the first onto the last tag — the append had to be
+  string-level until `TEXT_PREFIXES` landed.
+- SAM3 `speech bubble` is not the speech/SFX signal (user's suggestion,
+  measured): balloons on 34 / 97 pages, 69 of 228 lines inside one, and as a
+  veto it moved one line. Outside-a-balloon is not SFX (narration,
+  floating dialogue, chrome) — tried, added more errors than it fixed. SAM3 is
+  out of this path unless a balloon soft prompt is trained (`--prompt_embed`).
 
-## B0 — hybrid OCR records on sincos: floor 44 → 27 (2026-09-05)
+Side gotcha, recurring: `build_mirror`'s symlink creation fails sporadically on
+the ntfs3-mounted dataset volume — fall back to `os.link`, or retry once.
 
-`plan_base1.md` B0. `datasets/build_ocr_records.py` (old tree, beside
-`ocr_sfx.py`): PP-OCRv6 v2 records + PaddleOCR-VL-1.6 `Spotting:` on all 351
-pages (×2 upscale, bs 8, `use_cache=True`, 3.5 min on the daemon, 4.5 GB
-peak) + VL `OCR:` on every PP box (227 crops, bs 32). Raw VL outputs cached
-in `post_image_dataset/cjk_unmask/ocr_raw_vl16_sincos.jsonl` so the merge is a
-CPU re-run (`--stage merge`). Output `ocr_records_sincos_hybrid.jsonl` (326
-lines / 118 pages; every record carries `kind`, `engine`, and `pp_text` /
-`vl_text` / `rule1b` where a second read happened). Report with the two
-tables (VL-only lines, rule 1b replacements) →
-`reports/0905_b0_hybrid_records.md`; sheets
-`output/tests/ocr_contact_sheet/sincos_hybrid{,_vl,_floor}.pdf`
-(`probes/ocr_contact_sheet.py`, promoted; magenta = VL-only, orange = re-read).
+## B0 — hybrid OCR records on sincos: floor 38 → 23 (2026-09-05)
 
-| | PP-OCRv6 v2 | hybrid |
-|---|---|---|
-| pages with any line (351) | 96 | 118 |
-| lines | 227 | 326 |
-| **masked-but-no-line floor** (133 masked) | **44** | **27** |
-| best-match sim to manga-ocr, 84 ref lines / 40 A/B pages | 0.752 (35 ≥ 0.9) | 0.772 (36 ≥ 0.9) |
-| replaced lines only (14) | 0.456 | 0.451 |
+Full tables `reports/0905_b0_hybrid_records.md`. PP-OCRv6 v3 records + VL
+`Spotting:` on all 351 pages + VL `OCR:` on every PP box, merged.
 
-**Gate: PASS** — floor down 17 pages, similarity ≥ PP (no regression from the
-second reader), and the VL-only lines on the sheet are real balloons / SFX
-(`ばるん`, `ぱんッぱんッ`, `ぶちゃぶちゃ`, `もじもじ`, `禁止ですよぶ？`,
-`えっ…`), not chrome. 99 VL-only lines kept (60 dropped by the PP floors,
-2 full-page quads, 1 duplicate quad). C10 runs on the hybrid records.
-
-What the merge had to do differently from the plan text:
-
-- **IoU 0.5 is too strict for columns.** A 30 px vertical column that VL and
-  PP box 12 px apart is IoU 0.42 with byte-identical text; VL quads are per
-  column while PP records are `join_cjk`-joined blocks. Fix: `join_cjk` the
-  VL lines first, then match at IoU ≥ 0.3 **or** containment ≥ 0.5 **or**
-  touching boxes with text sim ≥ 0.75. 198 / 227 PP lines matched a VL block.
-- **Spotting hallucinates a page caption**: two quads covering the whole page
-  (`だなんか` on [0,0,704,1487]) — dropped by an area gate (> 40 % of the
-  page). Those two pages return to the floor, correctly.
-- **Rule 1b needed three more guards** beyond the runaway / 2× length one:
-  (a) never accept a read that loses a heart PP had (PP drops ♡, never
-  invents it — 3 / 9 symbol disputes went the wrong way without this);
-  (b) a *weak*-score re-read must agree (sim ≥ 0.5) with the matched Spotting
-  read — two independent VL readings — else PP's text stays (`おいしそう` →
-  `おぃ～う`, `ブルン` → `ぐにソ`, `先輩？` → `先非事？` were all rejected
-  by this; `借てきたよ` → `借りてきたよ`, `特别` → `特別`, `おじーまっ` →
-  `おじさまっ` pass); (c) a *symbol* dispute may move symbols only — a read
-  that changes a letter (`ご主人様` → `ごー主人様`, `一発` → `ー発`) is
-  rejected. Net: 56 weak + 9 symbol + 5 sfx re-reads → **37 replaced, 25
-  rejected; 0 of the 9 symbol disputes survived** — the second reader's
-  symbol job delivered nothing on sincos (the crop read either dropped the
-  heart too or rewrote a letter). The replaced-lines similarity is a wash
-  (0.456 → 0.451): mostly SFX garbage for SFX garbage, as the A/B predicted.
-- `kind` is the **v1 text rule + a chrome word list** (251 speech · 67 sfx ·
-  8 chrome); the rule's h-row miss is visible on the sheet (`はんv`, `はちゃ`,
-  `ふくっ` land as speech) — B1's labels. The mirror builder
-  (`cache_te_ext.ocr_lines_by_stem`) now drops `kind: chrome` records before
-  any format sees them; the speech/SFX split still comes from the text rule
-  until B1 wires `kind` through.
-- Chore: `build_mirror` retries the symlink once, then hard-links, and says
-  which happened (`_link_image`).
-
-**Addendum (same evening) — two user decisions, both landed.**
-
-1. **SFX lines are out of the captions for now.** The VL logic stays, the
-   `kind: sfx` records stay in the file (B1 still labels them), but
-   `cache_te_ext.ocr_lines_by_stem` drops `{chrome, sfx}` (`DROP_KINDS`) before
-   any format sees them — no `Japanese SFX reads as` sentence, no `「ぱんぱん」`
-   tag, until a reader can actually read hand-lettered onomatopoeia (both
-   PP-OCRv6 and VL-1.6 garble it; a light OCR fine-tune on SFX crops is the
-   likely route, not this plan's work). C10 therefore trains on speech only.
-2. **Joined blocks keep their boundaries as a space.** 9410777 (a profile
-   card: `椎名真昼ちゃん / 身長：156cm / おぱい：成長中 / すきなもの：…`) came
-   out of PP as one glued string. `anime_tools.ocr._text._merge` now joins a
-   block's columns / rows with `JOIN_SEP = " "` (package rev **cd75591**,
-   pinned + `uv sync`; a space inside a vertical sentence costs a reader
-   nothing, a lost list boundary is gone for good). Sidecars are post-join, so
-   PP-OCRv6 was re-run on sincos (`-m anime_tools.stages.cli.ocr_captions
-   --ocr_dir post_image_dataset/cjk_unmask/ocr_v3/sincos --apply`, daemon,
-   ~1 min) and the builder grew `--sidecars` (records straight from
-   `{stem}.ocr.txt`, gate 0.70 → `ocr_records_sincos_ppocr_v3.jsonl`) plus a
-   box-matched alignment of the cached VL crop reads onto the re-derived
-   records, so the GPU stage did not rerun. VL crop rows and VL-only blocks
-   get the same space; VL's LaTeX wrapping of measurements
-   (`身長: \( 156 \, cm \)`) is stripped.
-
-Re-merged on v3 (`reports/0905_b0_hybrid_records.md` is this version):
+Heading corrected 2026-09-08: `44 → 27` was the first merge, on the v2 PP
+file. The v3 space-join re-merge is what stands. The full floor chain for
+sincos' 133 masked pages: PP v2 44 → PP v3 38 → hybrid 23 → 8
+with the SFX reader + MIT-mask components (§ O4) → 4 with the AnimeText
+detector (§ D0–D1).*
 
 | | PP-OCRv6 v3 | hybrid |
 |---|---|---|
 | pages with any line (351) | 103 | 123 |
-| lines | 237 | 338 (138 carry a space) |
-| **masked-but-no-line floor** (133 masked) | **38** | **23** |
-| best-match sim to manga-ocr, 84 ref lines / 40 A/B pages | 0.751 (35 ≥ 0.9) | 0.786 (38 ≥ 0.9) |
-| replaced lines only (13) | 0.485 | 0.512 |
+| lines | 237 | 338 |
+| masked-but-no-line floor (133 masked) | 38 | 23 |
+| best-match sim to manga-ocr (84 ref lines) | 0.751 (35 ≥ 0.9) | 0.786 (38) |
 
-The fresh PP pass alone already lands 7 more pages than the v2 file (sidecar
-floor 0.6 vs whatever the old pass used; the 0.70 record gate is the same),
-so the PP-alone floor is 38 not 44; hybrid takes it to 23. With row
-boundaries kept, the replaced lines now move *toward* manga-ocr (0.485 →
-0.512) instead of a wash — the second reader was being penalised for glued
-rows, not for its letters. Rule 1b: 67 weak + 9 symbol + 6 sfx → 28 replaced,
-51 rejected. Gate still PASS; C10 runs on these records with SFX dropped.
+Gate PASS. What the merge had to do differently from the plan, all still
+true of any two-detector merge:
 
-## B3 — arm C10: sentence captions on hybrid records pass the gate at the floor (2026-09-06)
+- IoU 0.5 is too strict for columns — a 30 px vertical column boxed 12 px
+  apart is IoU 0.42 with byte-identical text, because VL quads are per column
+  while PP records are `join_cjk`-joined blocks. Match at IoU ≥ 0.3 or
+  containment ≥ 0.5 or touching + text sim ≥ 0.75, after `join_cjk`-ing the
+  VL side.
+- Spotting hallucinates a page caption — two quads covering the whole page;
+  gate on area (> 40 %).
+- A second reader needs three guards, not one. Beyond the runaway / 2×-length
+  test: never accept a read that loses a heart PP had (PP drops ♡, never invents
+  it); a weak-score re-read must agree with the matched Spotting read; a
+  symbol dispute may move symbols only. Under them 0 of 9 symbol disputes
+  survived — the second reader's symbol job delivered nothing on sincos.
+- Joined blocks keep their boundaries as a space (`JOIN_SEP = " "`,
+  anime_tools `cd75591`): a space inside a vertical sentence costs a reader
+  nothing, a lost list boundary is gone for good. With boundaries kept, the
+  replaced lines move toward manga-ocr (0.485 → 0.512) instead of a wash —
+  the second reader had been penalised for glued rows, not for its letters.
+- SFX lines out of captions (user's call): the records keep `kind: sfx`, the
+  mirror builder drops it, until a reader can read hand-lettered onomatopoeia.
+  Reversed at § O4b once one could.
 
-Full write-up `reports/0906_c10_sentence_captions.md`. Blind
-`s14_C10_vs_C9ISOQ` (48 pairs, fresh seeds 9/10/11): **C10 21 – C9ISOQ 15,
-tie 12, rows 8-6** — flat inside the s02 seed-twin floor (pair p 0.41);
-the grader picked side B in 31/36 decisive pairs (first set with a side
-bias; sides balanced 24/24 so the arm total is unaffected in expectation,
-and the flipped-convention reading 15–21 is also flat). Spam tally on the
-8-row grids (lenient OCR flag + eyeball, ledger convention): **C10 ~2 / ~2
-/ ~2 vs C9ISOQ ~2** — equality on all three seeds, the r6 s42 banner is a
-base habit shared by every arm since C8. Tagger adherence recall C10
-0.912 / 0.896 / 0.886 vs C9ISOQ 0.844 (back to C9's 0.912), driven by the
-`comic` row. Plain-prompt spam probe: C10 25 % images with text vs
-C9ISOQ 50 % (n = 12). **Gate PASS at the floor → sentence shape is D2's
-default caption shape; no blind-visible gain claimed.** Instrument added:
-`probes/grid_spam_tally.py` (CPU PP-OCRv6 flag pass over a grid dir set).
+## B3 — arm C10: sentence captions pass the gate at the floor (2026-09-06)
 
-## O0 — SFX reader line: in-domain split + stock baselines (2026-09-06)
+`reports/0906_c10_sentence_captions.md`. Blind `s14_C10_vs_C9ISOQ`, 48 pairs,
+fresh seeds: C10 21 – C9ISOQ 15, tie 12 — flat inside the s02 seed-twin
+floor (p 0.41). Spam ~2 events on each of 3 training seeds; adherence recall
+back to C9's level.
 
-`plan_ocr.md` O0. Split = official COO `books_{train,val,test}` ∩ Manga109-s
-`books.txt` → **74 / 7 / 6 books** (`assets/coo_split_manga109s.json`; the
-COO lists are CRLF, `unsplit` = 0). Test crops built by
-`ocr/build_manga109_crops.py --split test` (pilot `deskew_crop`, pad 12 %,
-min side 16, orientation preserved): **2,558 COO lines** after truncation-link
-joining (98 joined; the earlier "2,759 polygons" counted the `<onomatopoeia_link*>`
-elements too) + **2,559 speech** `<text>` boxes, a per-book count-matched
-draw (seed 0). SFX len p50 / p90 / max = 3 / 5 / 17, min side p10 / p50 =
-33 / 76 px, 30 % vertical; speech 11 / 25 / 90, 44 / 88 px (bubble boxes are
-multi-column, 6 % "vertical" by aspect). One crop dropped (< 16 px).
+Gate PASS at the floor → the sentence shape is the default caption shape; no
+blind-visible gain claimed. Grader caveat: the grader picked side B in 31/36
+decisive pairs, a side habit shared by every arm since C8.
 
-Scorer `ocr/eval_manga109.py` (daemon jobs `20260906-113412-{e51d7b,5a3a59,7d8758}`;
-reports `reports/ocr_eval_{manga_ocr,ppocr,vl16}.md`, predictions
-`output/ocr/eval/<reader>_test.jsonl`). **exact** = NFKC + whitespace-stripped
-equality; **sim** = `build_ocr_records.sim` after `normalize_ja`.
+Instrument added here: `probes/grid_spam_tally.py`.
 
-| reader (stock) | SFX exact | SFX sim | SFX runaway | speech exact | speech sim | crops/s |
-|---|---|---|---|---|---|---|
-| manga-ocr-base | **16.4 %** (419 / 2,558) | 0.336 | 0 | 31.9 % | **0.824** | 270 |
-| PP-OCRv6 rec (ONNX, upstream rotate rule) | 3.0 % | 0.093 | 0 | 0.9 %† | 0.082† | 355 |
-| PaddleOCR-VL-1.6 crop `OCR:` (no guard) | **20.1 %** (515) | 0.449 | **105** (4.1 %) | 34.3 % | 0.845 | 40 |
+## O0 / O1 — the SFX reader line: split, crops, stock baselines (2026-09-06)
 
-† not a valid speech control: the speech crops are whole bubble boxes
-(multi-column), which PP's single-line CTC head cannot read without its own
-detector in front; it stays in the table as the "rec on the same crops" row
-only. On the single-line SFX crops PP is what `plan_base1.md` observed — garble.
+Split = the official COO `books_{train,val,test}` ∩ Manga109-s `books.txt` →
+74 / 7 / 6 books (`assets/coo_split_manga109s.json`). No private split: a
+by-name cut would make the held-out number incomparable to the COO leaderboard.
+Crops: `ocr/build_manga109_crops.py`, pad 12 %, min side 16, orientation
+preserved → 43,535 COO lines (train 38,582 / val 2,395 / test 2,558; 1,724
+truncation joins) + a count-matched 43,589 speech crops, 3.7 GB under
+`~/manga109s/derived/`. Never in-tree. Stock rows are in the ledger.
 
-Reading the SFX rows:
+Facts that shaped everything after:
 
-- The published COO TRBA+2D baseline is 81.2 % on the full 10-book test; both
-  stock readers are at 16–20 % on 6 of those books. That is the gap O2's
-  fine-tune has to close, and it is not a punctuation artefact: punctuation-
-  blind exact (also stripping `!?…・ー～`) is 486 / 2,558 (19.0 %) for manga-ocr,
-  583 (22.8 %) for VL.
-- manga-ocr degrades with length (24 % exact at 2 chars → 0 % at ≥ 7) and does
-  worst on **horizontal** SFX (11.5 % vs 28.8 % square, 16.8 % vertical) — the
-  speech-prior story from the sincos peek holds here: the worst lines are
-  fluent speech (`パタパタ` → `「おめのお兄さん`, `カチーン!!` → `それは、それでも、`)
-  or `...`.
-- VL is 3.7 pts better on SFX exact and +0.11 sim, orientation-flat, but
-  4.1 % of SFX crops and 6.8 % of speech crops run away (`ひと`×20,
-  `えーーー…`) with plain greedy decoding — far above the A/B's 2 / 132 on
-  sincos crops; a decode-time guard is a wiring knob, not a baseline
-  correction, so the stock row stays unguarded.
-- **Joined truncation lines are near-unreadable stock** (98 lines: manga-ocr
-  1 exact, sim 0.11) — two glyph runs under one `minAreaRect`; the O1 builder
-  keeps them (they are real COO test items) but the fine-tune may want them
-  weighted down or cropped as parts.
-- Speech control for O2: manga-ocr sim 0.824 / VL 0.845 are the "≥ stock −
-  0.01" reference rows. The speech *exact* rate (32–34 %) is low because the
-  boxes are multi-line bubbles and Manga109's transcriptions carry `‼`/`…`
-  variants; 1,170 / 2,559 match punctuation-blind. sim is the control metric.
+- Char coverage. SFX: 175 / 181 chars, 99.90 % of occurrences in
+  manga-ocr's WordPiece vocab — no tokenizer surgery needed. Speech: 2,571 /
+  2,689 chars but only 93.8 % of occurrences, and the misses are not
+  glyphs — full-width punctuation, the ideographic space, and newlines (1,989
+  rows; Manga109 `<text>` keeps line breaks). → NFKC-fold + strip all
+  whitespace before tokenising, or a twentieth of the speech characters
+  becomes `[UNK]`.
+- 1 : 1 by count is 5.4 : 1 by characters (speech p50 11 vs SFX 3). If a
+  speech control ever slips, weight by tokens, do not redraw.
+- Joined truncation lines are near-unreadable stock (98 lines, manga-ocr 1
+  exact). They are real COO test items; a fine-tune may want them weighted down.
+- Augmentation (`ocr/augment.py`): pad jitter 5–25 %, ±8°, colour tint
+  (pink/red/plum strokes over skin/pastel), gamma, invert, scale, JPEG. The tint
+  pass is the cheap half of the domain lever — the colorized-COO lever (§ O3)
+  owns backgrounds with real art.
+- Daemon gotcha for every script on this line: only `ANIMA_`-prefixed env
+  reaches a job, hence `ANIMA_MANGA109S_ROOT` / `ANIMA_ANIMETEXT_ROOT`.
 
-O0 gate: **PASS** (split written + asserted, three stock rows on the COO test
-crops + speech control). Gotcha for every script on this line: the daemon
-forwards only `ANIMA_`-prefixed env to its jobs, so the roots are
-`ANIMA_MANGA109S_ROOT` / `ANIMA_ANIMETEXT_ROOT`. Still owed from O0, off the
-critical path: the sincos hand-label draft (`assets/sfx_labels_sincos.tsv`)
-+ `ocr/eval_sfx.py`, needed by the O2 gate.
+### O1 correction — `deskew_crop` transposed every axis-aligned box
 
-## O1 — SFX reader line: COO + speech crops, all splits (2026-09-06)
+Found while standing up the sincos gate: stock manga-ocr read the hand-labelled
+crops at 0 / 99, and the dumped crops were strips through one glyph. Cause:
+OpenCV ≥ 4.5 `minAreaRect` reports an axis-aligned 30×120 box as size
+(120, 30) at 90°; the pilot's `deskew_crop` took `angle − 90` without
+swapping the extents, so every polygon whose reported angle was > 45° — all
+Manga109 `<text>` boxes, all sincos record boxes, a large share of COO polygons
+— was cropped as a transposed rectangle around the right centre. In the O1
+manifest 88 % of speech boxes were taller than wide but only 17 % of the crops
+were.
 
-`plan_ocr.md` O1. `ocr/build_manga109_crops.py --split train --split val
---workers 10` (books in parallel; 8 min wall, 97 CPU-min) on top of O0's test
-cut. Same recipe throughout: pilot `deskew_crop`, pad 12 %, min side 16,
-orientation preserved, speech = per-book count-matched `<text>` draw (seed 0).
-Output `~/manga109s/derived/crops/<split>/<kind>/` (3.7 GB, 87,124 PNGs) +
-`manifest.parquet` (one row per crop: split / kind / id / book / page / text /
-joined / orient / w / h / poly / path). Never in-tree.
+Fixed (swap `w, h` with the angle); all 87,124 crops rebuilt; every pre-fix
+stock row, smoke run and first O2 launch was discarded. The pilot-era sincos
+"~12 / 71" came through the same function and is not a clean reference either.
 
-| split | kind | crops | joined | len p50 / p90 / max | min side p10 / p50 | vertical |
-|---|---|---|---|---|---|---|
-| train | sfx | 38,582 | 1,562 | 3 / 5 / 28 | 33 / 76 | 0.32 |
-| train | speech | 38,634 | 0 | 11 / 25 / 243 | 44 / 89 | 0.08 |
-| val | sfx | 2,395 | 64 | 3 / 5 / 16 | 30 / 64 | 0.34 |
-| val | speech | 2,396 | 0 | 9 / 24 / 89 | 44 / 85 | 0.07 |
-| test | sfx | 2,558 | 98 | 3 / 5 / 17 | 33 / 76 | 0.30 |
-| test | speech | 2,559 | 0 | 11 / 25 / 90 | 44 / 88 | 0.06 |
+## O2 — the two fine-tune bases: in-domain PASS, doujin gate MISS on both
 
-**43,535 COO lines** kept (45,422 polygons − 1,724 truncation joins − 55
-min-side drops, all in train/val) over 74 / 7 / 6 books; SFX orientation by
-crop aspect: 49 % horizontal, 32 % vertical, 19 % square.
+*Superseded the same day by § O2b. Sincos figures here are `/ 71`, PP-box basis.*
 
-| text len | 1 | 2 | 3 | 4 | 5 | 6–8 | 9–12 | 13+ |
-|---|---|---|---|---|---|---|---|---|
-| sfx | 6.6 % | 41.5 % | 27.3 % | 11.5 % | 6.2 % | 6.1 % | 0.6 % | 0.1 % |
-| speech | 1.5 % | 4.9 % | 5.2 % | 6.1 % | 5.4 % | 16.1 % | 18.3 % | 42.5 % |
+| arm | recipe | wall | COO test SFX (as measured then) | sincos / 71 (♡-blind) |
+|---|---|---|---|---|
+| A · manga-ocr lr 5e-5 | full FT, bs 64, 4 ep | 20 min | 73.5 % | 10 (12) |
+| B · VL-1.6 LoRA lr 1e-4 | r 16 on 126 LM proj (6.0 M), tower frozen, 2 ep | 85 min | 64.7 % | 13 (19) |
 
-Char coverage against manga-ocr's WordPiece vocab (`vocab.txt`, `##` stripped):
+Gate: COO reported ✓; sincos ≥ 35 / 71 ✗; both speech controls ✓.
 
-- **SFX: 175 / 181 chars, 99.90 % of occurrences** (128,798); missing
-  `゛ ゔ ♫ ♬ ゜ ♩` — the O0 table's number reproduced on the built crops.
-  Inventory 67.8 % katakana / 29.2 % hiragana / 3.0 % symbol; 99 heart lines.
-- **Speech: 2,571 / 2,689 chars but only 93.8 % of occurrences** — the misses
-  are *not* glyphs: full-width `！ ？ ～ ･ ‼ １２３ ＡＮ（）`, `…`/`‥`,
-  the ideographic space (930 rows) and **newlines (1,989 rows — Manga109's
-  `<text>` transcriptions keep line breaks)**. → **O2 target rule:** NFKC-fold
-  + strip all whitespace before tokenising (the same fold the scorer's `exact`
-  already applies), so the replay set trains the vocab it has instead of
-  emitting `[UNK]` on a twentieth of the speech characters. `…` → `...` under
-  NFKC is in vocab.
-- 1 : 1 by *count* is 5.4 : 1 by *characters* against SFX (speech p50 11 vs 3)
-  — decision 2's caveat quantified; the 1 : 2 count arm would be ~11 : 1 by
-  tokens, so if the speech control slips, weight by tokens rather than
-  re-drawing.
-
-**Augmentation (decided here, applied at train time)** — `ocr/augment.py`,
-`Augment(seed)` on the BGR crop, independent Bernoulli draws: pad jitter
-5–25 % (p .8; inward cut / outward border-colour fill around the fixed 12 %
-crop), ±8° rotation (p .5), colour tint (p .35: darkness → alpha, strokes in
-pink / red / plum / black over skin / pastel / pink backgrounds, 15 % of tints
-white-on-dark), gamma 0.6–1.5 ± 30 levels (p .6), invert (p .1), scale
-0.5–1.0 down-up (p .4), JPEG q 30–95 (p .5). `--demo` contact sheet at
-`~/manga109s/derived/aug_demo.png` checked by eye: the tint pass yields the
-pink-on-skin surface sincos has; outward pad shows as a flat frame (border
-median), acceptable. The tint is the cheap half of decision 4 — the colorized
-COO lever (O3) still owns backgrounds with real art.
-
-O1 gate: **PASS** (43,535 ≥ 40k COO crops; test 2,558 ≥ 2k). Next: O2 on
-the daemon — `finetune_manga_ocr.py` first (the default base), the VL-1.6
-crop LoRA second; the sincos label draft + `eval_sfx.py` remain owed before
-either gate is read.
-
-## O1 correction — `deskew_crop` transposed every axis-aligned box (2026-09-06)
-
-Found while standing up the sincos gate (`ocr/eval_sfx.py`): stock manga-ocr
-read the hand-labelled SFX crops at 0 / 99 and the speech control at sim
-0.34, and the dumped crops were strips through one glyph. Cause: OpenCV ≥ 4.5
-`minAreaRect` reports an axis-aligned 30×120 box as size **(120, 30) at 90°**;
-the pilot's `deskew_crop` (`../cjk_aware_anima/datasets/manga_text.py`) took
-`angle − 90` without swapping the extents, so every polygon whose reported
-angle was > 45° — all Manga109 `<text>` boxes, all sincos record boxes, and a
-large share of COO polygons — was cropped as a **transposed rectangle** around
-the right centre. In the O1 manifest 88 % of speech boxes were taller than wide
-but only 17 % of the crops were. Fixed (swap `w, h` with the angle), all
-87,124 crops rebuilt with `--overwrite` (9 min; vertical share now 0.57–0.71
-instead of 0.06–0.34; 56 min-side drops), and **every O0 stock row, the smoke
-runs and the first O2 launches were discarded** — the O0 numbers above are on
-the transposed crops and are superseded by the re-run rows in § O2. The
-pilot-era sincos "~12 / 71" (`plan_base1.md`, by-eye against the records)
-was produced through the same function and is not a clean reference either;
-the gate now reads `eval_sfx.py`'s strict exact (hearts count) beside a
-heart-blind exact.
-
-## O2 — SFX reader fine-tunes, both bases (2026-09-06): in-domain PASS, doujin gate MISS on both → O3
-
-*Superseded the same day by § O2b below: unfreezing VL's vision tower passes the doujin gate outright, so O3 is no longer on arm B's path.*
-
-`plan_ocr.md` O2 on the **corrected** O1 crops (§ O1 correction). Scorers:
-`ocr/eval_manga109.py` (COO test + speech control) and `ocr/eval_sfx.py`
-(sincos hand labels, `assets/sfx_labels_sincos.tsv` — 338 rows drafted off
-the contact sheets, **corrected by the user 2026-09-06** (323 checked, 15
-draft): 99 `sfx` / 213 `speech` / 26 `chrome`; 34 records the v1 rule
-called speech are hand-lettered SFX by eye (`ぱん♡` read as `はんv` etc.), 17
-are overlay captions / signs / clothing print → `chrome`; 6 of the 71
-`kind: sfx` records are speech / chrome by eye). `exact` folds `♥→♡`,
-`〜→~`; a **heart-blind exact** rides beside it because manga-ocr almost never
-emits `♡` and the pilot's "~12 / 71" was counted without hearts (and through
-the transposing crop).
-
-**Corrected O0 stock rows** (COO test, 2,558 SFX + 2,559 speech; replaces the
-transposed-crop table in § O0):
-
-| reader (stock) | SFX exact | SFX sim | runaway | speech exact | speech sim | sincos gate / 71 · **PP-box basis** (♡-blind) | sincos SFX sim | sincos speech sim |
-|---|---|---|---|---|---|---|---|---|
-| manga-ocr-base | 26.2 % | 0.478 | 0 | 62.1 % | **0.975** | 2 (4) | 0.315 | 0.646 |
-| PP-OCRv6 rec | 7.2 % | 0.194 | 0 | 13.0 %† | 0.297† | — | — | — |
-| PaddleOCR-VL-1.6 crop `OCR:` | **30.2 %** | 0.545 | 331 | 63.4 % | 0.976 | 2 (6) | 0.464 | 0.856 |
-
-† single-line CTC head on multi-line bubble crops — not a valid speech row.
-With real crops the speech control is 0.975 (was 0.824 on transposed crops)
-and stock manga-ocr is at 26 % on COO (was 16 %).
-
-**The two arms** (train 77,164 crops 1 : 1, val 4,791 each epoch):
-
-| arm | recipe | wall | val SFX exact stock → best | COO test SFX exact | COO speech sim | COO runaway | sincos gate / 71 · **PP-box basis** (♡-blind) | sincos SFX sim (99) | sincos speech sim |
-|---|---|---|---|---|---|---|---|---|---|
-| A · manga-ocr lr 2e-5 | full FT, bs 64, 4 ep | 20 min | 32.8 → 73.3 | 71.2 % | 0.975 (= stock) | 0 | 9 (13) | 0.667 | 0.747 |
-| A · manga-ocr lr 5e-5 | same | 20 min | 32.8 → **74.9** | **73.5 %** | 0.975 (= stock) | 0 | 10 (12) | 0.664 | 0.721 |
-| B · VL-1.6 LoRA lr 1e-4 | r 16 on 126 LM proj (6.0 M), bs 16, 2 ep | 85 min | 33.9 → 66.2 | 64.7 % | **0.981** | **194** (24 sfx + 170 speech) | **13 (19)** | **0.698** | **0.889** |
-
-Gate (per base): COO test reported ✓; sincos SFX exact ≥ 35 / 71 ✗ (9–13);
-sincos speech ≥ stock − 0.01 ✓ (both up); COO speech ≥ stock − 0.01 ✓.
-
-Reading it:
-
-- **In-domain: fine-tuning works, manga-ocr wins it.** 26 → 73.5 % COO test
-  exact in 20 GPU-min, 8 pts under the published TRBA+2D (81.2 % on the
-  10-book test), speech control untouched, no runaways. VL's LoRA reaches
-  64.7 % in 4× the wall and keeps its runaway class (194 on the test crops,
-  168 on val speech even after tuning) — a decode guard would be mandatory
-  before any wiring. Both arm-A curves were still climbing +2 pts/epoch at
-  epoch 4; the 8-epoch run was cancelled to keep the day on the gate.
-- **Out-of-domain: the doujin gap is real; both bases miss the gate.**
-  sincos gate 2 → 9–13 / 71 strict, 4 → 12–19 heart-blind, against ≥ 35.
-  Arm A trips the kill clause literally (< 25 while COO ≥ 70 %) → **O3 is
-  mandatory before wiring**; arm B is under both thresholds. The residual is
-  no longer garbage (99-row SFX sim 0.31 → 0.67–0.70; half the rows at sim
-  ≥ 0.8): manga-ocr reads `びくん` for `びく♡`, `ぱんッ` for `ぱん♡`, `ガクン` for
-  `ガク♡` — the heart decoded as the katakana ending COO taught (`ン`/`ッ`) —
-  plus pink-outline confusions (`ぱ/は/ば`, `ぶっ`, `くにくに`). VL keeps more
-  hearts (its strict/♡-blind gap is 6 rows vs manga-ocr's 2–4 but from a
-  higher base) and reads the sincos *speech* far better (0.889 vs 0.75),
-  which is the pink hand-lettered bubbles. This is the surface decision 4
-  predicted: lettering style + hearts → **synth doujin SFX first** (hearts
-  at sincos' rate, outlined kana over doujin backgrounds), colorized COO
-  second.
-- **Pick for O3:** run O3 on **manga-ocr** first (10× cheaper per crop, no
-  runaways, higher COO, gate within noise of VL's); VL rides along only if
-  synth + colorized lift manga-ocr short of the gate, since its native heart
-  handling is the one thing it does that rules would otherwise have to.
+- In-domain, fine-tuning works and manga-ocr wins it — 26 → 73.5 % in 20
+  GPU-min, speech control untouched, no runaways, at 1/10 VL's wall.
+- Out-of-domain, both bases miss. Arm A trips the kill clause literally
+  (< 25 while COO ≥ 70 %). The residual is no longer garbage (99-row SFX sim
+  0.31 → 0.67–0.70) but it is the doujin surface: `びくん` for `びく♡`, `ぱんッ`
+  for `ぱん♡` — the heart decoded as the katakana ending COO taught — plus
+  pink-outline confusions (`ぱ/は/ば`).
 - 1 : 1 by count held both speech controls, so the 1 : 2 arm is not needed.
 
-Arm B engineering note: the first launch OOMed in the loss — the native
-forward materialises fp32 logits over the 103k vocab for every image token,
-4.7 GB on a large-crop batch — fixed by left-padding and `logits_to_keep` =
-target length (CE on the suffix only; peak 13 → 3 GB, ~35 crops/s).
-Deployment shape for a VL pick would be torch + remote modeling files + the
-batching rules + a runaway guard — the tie-break decision 1 already makes.
+Engineering note that generalises: VL's first launch OOMed in the loss — the
+native forward materialises fp32 logits over the 103k vocab for every image
+token, 4.7 GB on a large-crop batch. Fixed with left-padding +
+`logits_to_keep` = target length (CE on the suffix only; peak 13 → 3 GB).
 
-O2 gate: **in-domain PASS, doujin gate MISS on both bases** (`findings` rows
-above are the O3 reference). Artifacts: `output/ocr/{mocr_lr2e-5,mocr_lr5e-5,vl16_lr1e-4}/best`,
-`reports/ocr_eval_{manga_ocr,ppocr,vl16,mocr_lr2e-5,mocr_lr5e-5,vl16_lr1e-4}.md`,
-`reports/ocr_eval_sfx_*.md`. The VL adapter is on the Hub as a **private**
-research checkpoint: `sorryhyun/paddleocr-vl-1.6-manga-sfx-lora` (renamed `…-manga-lora` and made public with the O2b weights, see § O2b; model card
-carries the recipe, both eval tables, the runaway caveat and the Manga109-s /
-COO citations; adapter weights only). Next *as written then*: O3 synth on arm A — overtaken by § O2b.
+## O2b — arm B′: the vision tower was the doujin gap (2026-09-06) — the pick
 
-## O2b — arm B′: VL-1.6 LoRA + vision-tower full FT (2026-09-06): doujin gate PASS, VL is the pick
+Same crops, mix, LoRA and lr as arm B, plus the NaViT tower + projector trained
+in full (fp32 master, lr 1e-5, 439 M params), 1 epoch, ~90 min, 12.1 GB.
+Reports `reports/ocr_eval{,_sfx}_vl16_tower_lr1e-5.md`; ledger row above.
 
-The frozen tower was the bottleneck. Same crops, mix, LoRA and lr as arm B,
-plus the NaViT tower + projector trained in full (fp32 master copy, lr 1e-5,
-439 M params in 443 tensors; `finetune_vl16_lora.py --train_tower --tower_lr
-1e-5`, bs 8 × grad-accum 2 = the same effective 16, **1 epoch** = 4,822 steps,
-~90 min, 12.1 GB peak). Val SFX exact 86.2 % after the single epoch (arm B
-reached 66.2 % after two). Eval jobs `20260906-161652-{b5ba49,c41369}`,
-reports `reports/ocr_eval_{sfx_,}vl16_tower_lr1e-5.md`.
+All four O2 gate clauses hold → PASS, the first arm to pass the doujin gate,
+without O3. (Clauses were read on the PP-box basis: sincos 38 / 71.)
 
-| arm | COO test SFX exact | COO SFX sim | COO speech sim | COO runaway | sincos gate / 71 · **PP-box basis** (♡-blind) | sincos SFX exact / sim (99) | sincos speech sim (213) |
-|---|---|---|---|---|---|---|---|
-| VL-1.6 stock | 30.2 % | 0.545 | 0.976 | 331 | 2 (6) | — / 0.464 | 0.856 |
-| A · manga-ocr lr 5e-5 | 73.5 % | 0.884 | 0.975 | 0 | 10 (12) | — / 0.664 | 0.721 |
-| B · VL LoRA, tower frozen, 2 ep | 64.7 % | 0.816 | 0.981 | 194 | 13 (19) | 13.1 % / 0.698 | 0.889 |
-| **B′ · VL LoRA + tower FT, 1 ep** | **81.7 %** | **0.927** | **0.986** | 189 (25 sfx + 164 speech) | **38 (41)** | **45.5 % / 0.868** | **0.910** |
-
-**O2 gate, arm B′:** COO test reported ✓ (81.7 %, at the published 81.2 % on
-our 6-book subset); sincos SFX exact ≥ 35 / 71 ✓ (**38**); sincos speech sim ≥
-stock − 0.01 ✓ (0.910 vs 0.856); COO speech sim ≥ O0 stock − 0.01 ✓ (0.986 vs
-0.976). **PASS** — the first arm to pass the doujin gate, without O3.
-*(All four clauses are on the PP-box labels — § Label basis. Re-scored on the
-AnimeText ones the same weights read **307 / 619**, checked 38 / 70; the
-speech clause is not a valid accuracy test on either basis.)*
-
-Reading it:
-
-- **The domain gap was a tower problem, not a decoder-prior problem.** Arm B
+- The domain gap was a tower problem, not a decoder-prior problem. Arm B
   moved the in-domain number and barely the doujin one; letting the tower see
-  the crops does both in one epoch (13 → 38 / 71, sim 0.75 → 0.90). The
-  decoder-side lever the plan queued for O3 (synth outlined kana, colorized
-  COO) is not needed to pass; it stays available as a *lift*, not a rescue.
-- **Hearts are read natively.** Strict vs ♡-blind gap is 3 lines (38 / 41);
-  misses are mostly `♥` for `♡`, which `exact` already folds. Decision 6's
-  heart-patching rule is moot for this pick.
-- **Decision 1 resolves to VL.** It passes and removes the heart rule, so it
-  wins outright (the tie-break to manga-ocr never engages). Cost accepted:
-  ~10× manga-ocr's wall per crop, deployment = torch + remote modeling files +
-  adapter 24 MB **+ tower 878 MB**, and a runaway guard is mandatory before
-  wiring (189 on COO test, `びく♡` → `ぐくーーー…` on sincos; the count is left
-  unguarded in every table on purpose).
-- **Residual** for a later lift: 8+-char lines 0 / 5, square multi-line SFX
-  blocks (17 rows, 0.59 → weakest orientation), `ぱん♡` family
-  (`ぱィ♥` / `ぱ人♡` / `ぱく`). The curve was still rising at epoch 1; a 2–3
-  epoch run and a tower-lr sweep (3e-6 / 3e-5) are the cheap next arms if O4
-  wants more margin, but neither gates O4.
+  the crops does both in one epoch.
+- Hearts are read natively — strict vs ♡-blind gap 3 lines. The planned
+  heart-patching rule is moot, so decision 1 resolves to VL outright (it
+  passes and removes the rule; the tie-break to manga-ocr never engages).
+- Cost accepted: ~10× manga-ocr's wall per crop; deployment = torch + remote
+  modeling files + adapter 24 MB + tower 878 MB; a runaway guard is
+  mandatory before wiring (189 on COO test; the count is left unguarded in
+  every table on purpose).
+- Residual for a later lift: 8+-char lines, square multi-line SFX blocks, the
+  `ぱん♡` family.
 
-Published: **`sorryhyun/paddleocr-vl-1.6-manga-lora`** (public, 2026-09-06;
-the `…-manga-sfx-lora` repo renamed in place, old URL redirects) — adapter +
-`tower.safetensors` + card with both eval tables, the two-step load (peft
-merge, then `load_state_dict(strict=False)` of the tower), runaway caveat,
-Manga109-s / COO citations. Weights only; no crops.
+Published: `sorryhyun/paddleocr-vl-1.6-manga-lora` (adapter +
+`tower.safetensors` + card with the two-step load — peft merge, then
+`load_state_dict(strict=False)` of the tower — the runaway caveat, and the
+Manga109-s / COO citations). Weights only, no crops. Re-verified against the
+Hub 2026-09-07 (sha `3b5fe022`): it carries B′'s numbers, i.e.
+`vl16_tower_lr1e-5`. Neither `ep3` nor `col100` was ever pushed.
 
-Next: O4 — `build_ocr_records.py --sfx_reader` with the VL reader + a decode
-guard, `anime_tools.ocr.sfx` in the VL deployment shape, re-measure the sincos
-floor, then arm C11. O3 levers are demoted to optional lift.
+## O4 — the reader wired in: `anime_tools.ocr.sfx`, floor 23 → 8 (2026-09-06)
 
-## O4 — the SFX reader wired in: `anime_tools.ocr.sfx`, records re-read, floor 23 → 8 (2026-09-06)
+*Sincos figures `/ 71`, PP-box basis.*
 
-*Sincos numbers here are `/ 71` on the **PP-box** labels — § Label basis.*
+The package. `anime_tools.ocr.sfx.SfxReader` (rev 46ebbb5; `peft` became a
+package dependency), B′'s weights from two catalog rows — `vl16_base` and
+`sfx_reader` — fetched on first load. A crop reader only.
 
-`plan_ocr.md` O4, first half (the records + the package); arm C11 is
-running (§ O4b when its grids land).
+The decode guard is area-tied, not aspect-tied. The first guard capped a
+read at `4 × longer/shorter + 6` characters: it held the SFX gate and silently
+threw away 60 % of the speech reads (a multi-column balloon block is square
+and holds 20 characters; sincos speech sim 0.910 → 0.454), and
+`max_new_tokens = 32` truncated long lines (~1 token per CJK character; speech
+runs to 57). Shipped: cap = crop area / (16 px)², floor 12; 80 new tokens; the
+repetition test owns the runaways. `guard` runs at apply time on the cached
+raw decode, so a guard change never costs a GPU pass.
 
-**The package.** The reader ships as `anime_tools.ocr.sfx.SfxReader`
-(anime_tools **46ebbb5**, pinned + `uv sync`; `peft` is a package dependency
-now): B′'s weights from two catalog rows — `vl16_base`
-(`PaddlePaddle/PaddleOCR-VL-1.6`, 1.9 GB, `models/paddleocr_vl_1.6`) and
-`sfx_reader` (`sorryhyun/paddleocr-vl-1.6-manga-lora`, adapter 24 MB + tower
-878 MB, `models/paddleocr_vl_1.6_manga_lora`) — fetched on first load (the
-Hub path verified: `eval_sfx.py --reader sfx` with no `--ckpt` downloaded,
-merged and reproduced **38 / 71**, 15.9 crops/s at bs 16). A crop reader
-only (`read` / `read_boxes`); no stage uses it yet, so the rows carry no
-`stages`. The rest of O4's wiring lives in the dit tree as
-`ocr/reread_records.py` (a new script rather than a flag on the 900-line
-`build_ocr_records.py`; it imports that file's `overlap` / `record_kind` /
-`floor_count`).
+Records. One GPU pass over 486 crops (338 hybrid records + 148 MIT-mask
+components). `kind` now comes from the hand labels where one exists
+(`kind_src: hand`), the v1 rule elsewhere.
 
-**The decode guard is area-tied, not aspect-tied.** The first guard capped a
-read at `4 × longer/shorter + 6` characters: it held the SFX gate (38 / 71)
-and silently threw away 60 % of the *speech* reads (a multi-column balloon
-block is square and holds 20 characters; sincos speech sim 0.910 → 0.454),
-and `max_new_tokens = 32` truncated the long lines (the tokenizer spends ~1
-token per CJK character; speech runs to 57). Shipped: cap = crop area / (16
-px)², floor 12; 80 new tokens; the repetition test (`is_runaway`, unchanged
-from B0) owns the runaways. On the 338 hand labels the guarded reader is
-speech exact 60 / sim 0.865 / **0 runaways** vs 59 / 0.910 / 11 unguarded —
-the 0.045 is the eleven runaways scoring empty instead of half-right, and in
-the pipeline a rejected read keeps the previous text, so nothing is lost
-there. `guard` runs at apply time on the cached raw decode, so a guard
-change never costs a GPU pass.
-
-**Records** (`ocr_raw_sfx_sincos.jsonl`, one GPU pass: 486 crops = the 338
-hybrid records + 148 MIT-mask components, 14 crops/s; `--stage apply` on
-CPU). `kind` now comes from the **hand labels** for the 338 matched records
-(B1's file wired through: `kind_src: hand`) and the v1 rule elsewhere.
-
-| | PP-OCRv6 v3 | hybrid (B0) | **+ SFX reader, `--reread sfx`** | `--reread all` |
+| | PP v3 | hybrid (B0) | + SFX reader | `--reread all` |
 |---|---|---|---|---|
-| pages with any line (351) | 103 | 123 | **138** | 138 |
-| lines | 237 | 338 | **448** | 448 |
-| **masked-but-no-line floor** (133) | 38 | 23 | **8** | 8 |
-| best-match sim to manga-ocr, 84 ref lines / 40 A/B pages | 0.751 (35 ≥ 0.9) | 0.786 (38) | 0.800 (39) | **0.810 (42)** |
-| sincos gate, 71 `kind: sfx` records, exact (♡-blind) · **PP-box basis** | — | 4 (10) | **37 (40)** | 37 (40) |
-| hand-SFX rows (99) exact / sim | — | 1 / 0.479 | **44 / 0.873** | 44 / 0.873 |
+| lines / pages | 237 / 103 | 338 / 123 | 448 / 138 | 448 / 138 |
+| floor (133 masked) | 38 | 23 | 8 | 8 |
+| best-match to manga-ocr (84 ref) | 0.751 (35) | 0.786 (38) | 0.800 (39) | 0.810 (42) |
+| hand-SFX (99) exact / sim | — | 1 / 0.479 | 44 / 0.873 | 44 / 0.873 |
 
-`--reread sfx`: 99 SFX records re-read → 97 replaced, 1 guard-rejected
-(`びくひく・・・・・♡` for `ぐくぐく…`, area cap). Mask components: 148 cropped
-→ **110 added** (7 guard, 25 under the 2-char floor, 6 symbol-only); the
-sheet (`output/tests/ocr_contact_sheet/sincos_hybrid_sfx.pdf`, blue = mask
-component) shows real lettering — `びくっ`, `ドチュ♥ドチュ♥`, `パシッ♡`,
-`くにくに♡`, `ぬぽっ♡ / ぬぱっ♡`, `ムラッ ×2` — plus a tail of 2-glyph reads
-(`ハハ`, `ハン`, `あ♥`) the rule calls speech. 15 floor pages recovered; the
-8 still empty (10542078 10732203 11883907 14068612 14216300 6437445 9410775
-9830919) have mask components under 32 px or reads under the floor. Kind
-over the file: speech 254 · sfx 168 · chrome 26.
+Mask components: 148 cropped → 110 added, real lettering on the sheet; 15
+floor pages recovered. The 8 still empty have components under 32 px or reads
+under the floor.
 
-**"Just run all of OCR through VL" (user, mid-session) — measured, and it
-wins modestly.** `--reread all` replaces 298 of 338 records (11 rejected):
-the speech rows *cannot* be judged on the hand labels (their `text_hand` is
-the record text unless obviously wrong, so the incumbent scores 0.998 by
-construction), but on the independent manga-ocr reference the all-VL file
-is the best of the four (0.810 / 42 ≥ 0.9 vs hybrid 0.786 / 38), and the
-replacements read as fixes — hearts restored (`センパイ♥おなほの…♥`, `も~♡特別
-だよ~?♡`), `ムうムう` → `ムラムラ`, `おち人ぽ` → `おちんぽ`, `おじさLちLぽ` →
-`おじさんちんぽ` — with a few regressions (`我慢できない` → `でさない`, one
-garble for another on 10792115) and the B0 space between joined columns
-dropped (VL reads a block as one string). Decision: **C11 stays
-single-variable** (SFX-only re-read + the SFX sentence, so the blind set
-isolates the caption shape); the all-VL records are the **D2 records
-recommendation** on B0's own metric (floor equal, reference sim up), and a
-C11-on-all-VL seed is the cheap follow-up if C11 passes.
+"Just run all of OCR through VL" (user) — measured, wins modestly.
+`--reread all` replaces 298 of 338 records. The speech rows cannot be judged
+on the hand labels (the incumbent scores 0.998 by construction), but on the
+independent manga-ocr reference the all-VL file is the best of the four, and
+the replacements read as fixes — hearts restored, `ムうムう` → `ムラムラ` — with
+a regression tail (`バスト91` → `バスト9`) and the B0 space between joined
+columns dropped (VL reads a block as one string). Kept single-variable for
+C11; adopted as the records default at § O4c.
 
-**C11 launched — one training seed by the user's call** (job
-`20260906-165905-d6eb86`, s42; the s7 / s1234 jobs were queued and killed
-unstarted, 2026-09-06 17:05 — "시드 하나만 하자"; ~1 h): C10's recipe on
-`ocr_records_sincos_hybrid_sfx.jsonl` with `--keep_sfx` — `DROP_KINDS`
-loses `sfx`, the caption gains `Japanese SFX reads as "…"` after the speech
-clause from the records' `kind` (`cache_te_ext.ocr_records_by_stem` /
-`ocr_text_clauses(kinds, sfx_sentence)`, tests in
-`tests/test_cjk_ocr_captions.py`); 87 of 132 captioned stems carry an SFX
-clause. Config `configs/gui-methods/custom/cjk_unmask_c11.toml` (the `_s7` / `_s1234` twins exist, unused).
+O5 parked (user's call). `ocr/kind_seg.py` — a `segmentation_models_pytorch`
+U-Net over Manga109-s spreads, classes bg / speech / sfx, with box-level evals
+and an ONNX export — is written and CPU-smoked, never trained. Resume = the
+four commands in its module doc, ~1–2 GPU-h.
 
-**O5 parked (user's call, 17:15 — "O5는 일단 냅두자").** The segmenter is
-written and CPU-smoked, not trained: `ocr/kind_seg.py` — a
-`segmentation_models_pytorch` U-Net (`resnet34`) over Manga109-s spreads,
-classes bg / speech (`<text>` fill) / sfx (COO polygon fill, wins on
-overlap), 768-px crops at native resolution, weighted CE + dice, with
-box-level evals (`eval-val` / `eval-sincos`: kind accuracy and SFX recall
-against the hand labels beside the v1 rule, SFX components on the 133
-masked pages beside the O4 reader) and an ONNX export. The five queued jobs
-(`20260906-170305-*`) were killed unstarted. Resume = the four commands in
-its module doc, ~1–2 GPU-h.
+## O4b — arm C11 (SFX sentence) vs C10: flat both halves (2026-09-06)
 
-## O4b — arm C11 (SFX sentence on the SFX-reader records) vs C10: spam equal, blind set owed (2026-09-06)
+One training seed (s42, user's call, not the three the plan asked for).
+`reports/unmask_grid_judge_c11.md`.
 
-One training seed (s42, user's call), grids `output/tests/cjk_unmask_eval2/armC11_s{42,7,1234}`,
-final avr_loss 0.074 (C10's band). Control = C10 s42 (same pack, latents,
-recipe; speech-only sentence).
+- Spam ~2 = C10's ~2 — the same two base-habit cells. Gate half PASS.
+- Adherence flat; the one recall gap is the `comic, 2koma` row that C9ISOQ
+  also lost, at n = 3 renders.
+- Blind `s15_C11_vs_C10`, 24 pairs: C11 11 – C10 9, tie 4 — inside the
+  seed-twin floor (s02 15–9). Grader sides balanced, so the s14 side-bias flag
+  does not apply. Gate half PASS as written.
 
-**Spam tally, 8-row grids × 3 render seeds** (`probes/grid_spam_tally.py
-reports/grid_spam_tally_c11.json`, lenient PP-OCRv6 flag pass + eyeball with
-the ledger convention):
+`DROP_KINDS` flipped the same evening: `{chrome}` only, the SFX sentence is
+the default, `--drop_sfx` reproduces the C2–C10 caption.
 
-| arm | events | cells |
-|---|---|---|
-| C11 (s42) | ~2 | s42 r6 maid-café banner (`Maife` + menu board); s7 r3 hug with three JA speech bubbles + hearts. s7 r6 chalkboard menu is diegetic and **identical in C10's s7 r6**; s7 r8 comic row (bubble `きすてー` + scribbled SFX) excluded by convention; s42 r7 "59 % glyph" flag is one false box on a clean portrait |
-| C10 (s42) | ~2 | s42 r6 banner; s7 r3 hug with two JA bubbles |
+## O4c — SFX dedupe + all-VL records as the default (2026-09-06, night)
 
-Same two base-habit cells, **C11 ≤ C10 → spam gate half PASS**. The extra
-bubble on s7 r3 (three vs two) is the one place the SFX sentence might be
-visible; a single cell at one seed is not a signal. s1234 clean for both.
+Two user calls off the caption sheet, no arm.
 
-**Tagger adherence** (`reports/unmask_grid_judge_c11.md`): C11 prob 0.736 /
-recall 0.869 vs C10 0.734 / 0.912 (C10's three seeds: 0.912 / 0.896 /
-0.886); the recall gap is the `comic, 2koma` row (0.58 vs 0.83), the row
-C9ISOQ also lost, at n = 3 renders. cos→base 0.979 vs 0.984, cos→sincos
-0.903 vs 0.905: neither arm moved.
+1. The SFX clause is deduplicated per sound unit. `ocr_sfx.dedupe_sfx` —
+   `sfx_key` = the kana core minus sokuon / long-vowel marks, folded to its
+   minimal repeating unit; first in reading order kept; speech never
+   deduplicated here. `じゅぽ, じゅぽ, じゅぽじゅぽ` → `じゅぽ`. The key folds
+   hearts, so the first read's decoration wins.
+2. The all-VL re-read is the records default. 82 of 132 captions and 184
+   lines differ from the SFX-only file: about half spacing / halfwidth
+   punctuation / hearts, half real repairs, with a regression tail on digits and
+   short lines. C11's config and mirror stay as trained; no C12 arm was run.
 
-**Blind set `s15_C11_vs_C10`**: 24 pairs (8 rows × render seeds 12 / 13 / 14)
-(`regrid_set.py`, job `20260906-173543-4855a4`, pushed to the private
-pairs repo) — **the user grades**; gate half 2 (blind ≥ C10 inside the
-seed-twin floor, s02 15–9 on 24) reads off `probes/blind_pairs.py score
---set s15_C11_vs_C10`.
+Package side the same night: the OCR stage gained `--reader {ppocr,vl}` +
+`--mask_dir` / `--comp_min_side` / `--comp_max` / `--vl_batch_size`. Torch stays
+out of `run_ocr` (the ONNX-device pin holds). Artefact to know: a PP box of
+screentone that VL reads as `s v .l √2` passes the floors — the dit pipeline's
+rule-1b / symbol filters are not in the stage.
 
-**s15 GRADED 2026-09-06** (user pasted one 24-char a/b string, `-` = tie;
-private repo commit d604a27; `reports/blind_s15_C11_vs_C10.md` in the old
-project dir): **C11 11 – C10 9, tie 4** — flat, inside the seed-twin floor
-(s02 15–9 on 24). Rows split 3–3 (C11 sweeps r1 3–0 and edges r5 / r7; C10
-edges r4 / r6 / r8; r2 / r3 mixed with ties). Grader sides balanced (A 11 / B
-9), so the s14 side-bias flag does not apply here. Reading: the SFX sentence
-neither helps nor hurts on 24 pairs — **blind half of the gate PASSES as
-written** (blind ≥ C10 inside the floor), with the caveat that the spam half
-was measured on one training seed (s42, the user's call), not the three the
-plan asked for. **`DROP_KINDS` flipped** (user's call, same evening):
-`cache_te_ext.DROP_KINDS = {chrome}`, the SFX sentence is the default
-(`--keep_sfx` stays as a parsing no-op), `--drop_sfx` (also on
-`run_unmask_r2.py`) reproduces the C2–C10 caption via `SFX_DROPPED`; the
-closed text-binding probe pins `SFX_DROPPED` so its caption is unchanged.
-C11's caption is D2's default from here.
+## O4d — a caption says each line once; a box too small never gets there (2026-09-07)
 
-## O4c — SFX dedupe + all-VL records as the default, no arm (2026-09-06, night)
+Two user calls off `probes/ocr_merge_sheet.py`, no arm. Both in the package
+(anime_tools `95e1a22`); the research builder mirrors only the first, so every
+arm through C11 trained without these — a rebuilt cache is not the corpus they
+saw.
 
-Two user calls after eyeballing the SFX caption sheet
-(`probes/sfx_caption_sheet.py`: crop as the reader saw it → read / raw /
-previous text → caption clause, `output/tests/ocr_contact_sheet/sfx_caption*.pdf`).
+1. Speech is deduplicated on exact text. A page of panting read as `はあ`
+   seven times said it seven times. 141 of 2,167 det-passing speech lines
+   (6.5 %) on 90 of 616 pages repeat a neighbour verbatim. Deliberately not
+   `sfx_key`: that folds `はっ` with `はー` and `んっ♡` into `ん` (266 lines,
+   12.3 %) — two different words of dialogue are two lines however alike they
+   sound.
+2. A glyph floor, not a box floor. `OcrLine.glyph_px` = `sqrt(w·h / len)` is
+   the em of the line whichever way it runs; `DEFAULT_MIN_GLYPH` 16 px. Plain
+   box area does not separate — `ドキ` at 17×42 (714 px², a good read) is
+   smaller than an 858 px² shop sign read as four kana at 14.6 px a glyph.
+   The em also catches correct reads of 13–15 px watermarks, credit lines and
+   narration strips, which nothing trained at this resolution can render.
+   Cost: 173 more lines dropped (4.7 %), 31 of 727 sidecars emptied. Floors
+   of 14 (2.4 %) and 18 (9.6 %) were the alternatives; 16 is where the reads
+   visibly stop being text (hand-checked across the 13–19 px bands).
 
-**1. "쥬포 쥬포쥬포 는 빼도 될듯" — the SFX clause is deduplicated.**
-`ocr_sfx.dedupe_sfx` (torch-free, `sfx_key` = kana core minus sokuon /
-long-vowel marks folded to its minimal repeating unit; first in reading
-order kept; speech never deduplicated) runs inside
-`cache_te_ext.ocr_text_clauses`. On sincos: 168 SFX lines → 148, 17 of the
-87 SFX captions change (`じゅぽ, じゅぽ, じゅぽじゅぽ` → `じゅぽ`; `パン♥, パン♥`
-→ `パン♥`; `ぱちゅ, ぱちゅ♡` → `ぱちゅ` — the key folds hearts, so the first
-read's decoration wins). Tests in `tests/test_cjk_ocr_captions.py`.
+## O4e — the guard was eating the longest line on the page (2026-09-08)
 
-**2. "let's make vl be default … we don't really have to do another c arm
-test" — the all-VL re-read is the records default.** Every line through the
-fine-tuned VL reader (`--reread all`, detection still PP-OCRv6 + VL
-Spotting boxes; 11 of 338 reads guard-rejected keep the old text). Against
-the SFX-only file (both deduped): 82 of 132 captions and 184 lines differ —
-90 only spacing / halfwidth `?!~` / `・・・` / hearts, 94 real character
-changes, mostly repairs (`ムうムう` → `ムラムラ`, `オプパコ` → `オフパコ`,
-`温水く人！！` → `温水くん!!`, `トしーナーちん` → `トレーナーちゃん`, `狼狽地…前驚`
-→ `狠狠地…前輩♥`) with a regression tail (`バスト91` → `バスト9`, `団体様 2名`
-→ `団体様20名`, `アリッ` → `フリ♥`, `ピストン` → `ビストン`, `おまんこ` →
-`おまんご`). Sheet `output/tests/ocr_contact_sheet/vl_vs_sfx.pdf` (119
-tiles, changed crops + the SFX-only caption struck under the all-VL one),
-list `vl_vs_sfx_lines.txt`. Defaults flipped: `reread_records.py --reread
-all` → `ocr_records_<shard>_hybrid_vl.jsonl`; `cache_te_ext.py --records`
-default = that file; `run_unmask_r2.py` defaults = hybrid_vl records +
-`mirror_sincos_hybrid_vl_sentence` + `te/sincos_hybrid_vl_sentence_isoq` +
-the isoq pack + `sentence`. Both caches built (351 / 0 failed; the deduped
-SFX-only pair `mirror_…_sfx_sentence_dd` / `te/…_sfx_sentence_dd_isoq` exists
-too). C11's config + mirror stay as trained. **Package side (same night):** `anime_tools`'s OCR stage gained
-`--reader {ppocr,vl}` + `--mask_dir` / `--comp_min_side` / `--comp_max` /
-`--vl_batch_size` (`anime_tools/ocr/reread.py`: `reread_lines` +
-`RereadEngine`, the dit tree's `reread_records.py` logic minus the hand
-labels and `kind` — the sidecar has no kind column; a VL-only mask line
-carries score `0.000`). Torch stays out of `run_ocr` (`_vl_engine` helper,
-the ONNX-device pin holds); 953 package tests pass; smoke on six sincos
-pages through the daemon reproduced the records' lines (`ドチュ♥`, `びくっ`,
-`ムラッ` ×2, `じゅぽ` ×3, `ブルン♥`). One artefact to know: a PP box of
-screentone (`10985746`, 0.62) that VL reads as `s v .l √2` passes the floors
-— the dit pipeline's rule-1b / symbol filters are not in the stage.
-Uncommitted in `../anime_tools`; pin bump + `uv sync` owed before the
-trainer's `make` wrappers can reach it.
+Three user picks off the merge sheet, no arm. Two mechanisms, one a bug in the
+shipped guard.
 
-## O3 — colorized COO, pilot gate (2026-09-06, night): PASS with halves + `comic`; +100-page A/B arm launched
+The bug. The largest text on a page — a three-column balloon, a three-column
+narration — was in neither sidecar although the detector had it (0.89 / 0.96)
+and the reader read it (0.92 / 0.98). `sfx.is_runaway` threw them away: the
+reader spells an ellipsis as `......` or `・・・・・・`, never `…`; six dots hold
+the trigram `...` four times over, and the test fires on any 3-gram ≥ 3 times.
+So every dialogue line of ≥ 9 characters that paused twice was a "runaway".
 
-`plan_ocr.md` O3, first lever (decision 4), run as the optional lift rev. 3
-demoted it to. `ocr/colorize_manga109.py` (resident DiT / VAE / text context /
-EasyControl adapter, per-page `set_cond` + `precompute_cond_kv`, the
-`test-easycontrol` colorize recipe otherwise; `anima_colorize_v3`, cfg 4, seed
-42, output resized back to native 1654×1170) over the first 20 pages of one
-seeded permutation of the **6,034 train-split spreads that carry a COO
-polygon**; `ocr/colorize_pilot.py` re-cuts the same 126 COO + 340 speech
-polygons from source and colorized page and scores the plan's two clauses.
-Pages, crops and sheets under `~/manga109s/derived/colorized/<name>/`,
-numbers in `reports/ocr_colorize_pilot_<name>.md`.
+Measured over all 859 pages: 94 lines on 64 pages were runaway only
+because of the dots (median 17 chars, p90 40 — the longest speech on each page,
+concentrated on the wordy artists) against 28 real runaways, 17 length-capped,
+194 correctly dropped as ASCII-only / one glyph, 60 with no letter.
 
-| pilot | form | s / spread | SFX IoU d1 (≥ 0.8) | speech IoU d1 (≥ 0.8) | manga-ocr SFX exact src → col | speech exact src → col | speech sim src → col |
-|---|---|---|---|---|---|---|---|
-| 1 `1024` | whole spread → 1216×864, empty prompt, 28 steps | 17.6 | 0.868 (87 %) | 0.886 (99 %) | 34.9 → 31.7 % | 67.1 → **41.8 %** | 0.950 → 0.870 |
-| 2 `1024_half_comic` | **left / right half each → 864×1216**, prompt `comic`, 28 steps | 35.3 | **0.898 (90 %)** | **0.919 (99 %)** | 34.9 → 31.0 % | 67.1 → 60.9 % | 0.950 → 0.939 |
-| 2 read by B′ (`vl16_tower_lr1e-5`) | same pages | — | — | — | 89.7 → 84.9 % (sim 0.959 → 0.957) | 84.7 → 75.6 % | 0.985 → 0.973 |
-| 3 `1024_half_comic_s16` (first 5 pages) | halves, `comic`, **16 steps** | **20.7** | 0.895 (88 %) | 0.919 (99 %) | 35.7 → 31.0 % | 53.4 → 53.4 % | 0.978 → 0.977 |
-| 2 on the same 5 pages | 28 steps | 35.3 | 0.892 (88 %) | 0.917 (99 %) | 35.7 → 31.0 % | 53.4 → 53.4 % | 0.978 → 0.963 |
+The other mechanism, not fixed: Latin text hallucinated as kana (`Zzz...` →
+`ててて…`, `Hi-!!` → `ウー!!`). Since `skip_en` drops every correct Latin read,
+the only Latin that ever reaches a caption is a kana hallucination of it. No
+text rule separates these; the reader score is not clean. Known miss.
 
-Reading it:
+Shipped (anime_tools `8ebaf58`): `sfx.normalize_read` folds every dot run to
+one `…` and every heart to `♡`, before the guard, not at export (a hundred
+dots alone fold to `…` and then correctly fail `has_script`); `has_script` no
+longer counts `ー っ ッ ゝ ゞ ヽ ヾ` as a letter (motion lines read as kana); the
+eval key folds the same way — which is the re-basing § Comparability describes.
 
-- **Pilot 1 failed clause (b) for the reason the plan predicted.** A Manga109
-  "page" is a two-page spread; free-fit into the 1024 band shrinks it to
-  1216×864 (0.74×) and the LANCZOS trip back blurs the small kanji: stock
-  manga-ocr's speech exact fell 67 → 42 % on the same polygons (尊敬 → 鬱殺,
-  悪魔 → 義親). The user's call — **split the spread at the middle and
-  colorize each half as a portrait page** (864×1216 ≈ native), with the
-  `comic` tag the adapter's captions kept (`text_keep_comic`) — recovers it:
-  speech exact 61 %, sim 0.939, and at 1:1 the bubble text and the `ゴ`/`オ`
-  SFX are pixel-identical to the source while screentone becomes flat tints.
-  1280 / 1536 whole-spread tiers were queued and cancelled (1536 would OOM on
-  16 GB; halves make both moot).
-- **The plan's clause reads PASS on pilot 2**: the two reads agree (SFX 52 %,
-  speech 78 %) at more than the rate the source read agrees with the label
-  (35 % / 67 %); stroke IoU after 1-px dilation 0.90 / 0.92 with 90 % / 99 %
-  of crops ≥ 0.8. The stricter form — colorized read as right as the source
-  read — holds within 4–6 pts (SFX 31 vs 35 %, speech 61 vs 67 %), and with
-  the B′ reader (trained with the tint augment, so a fairer judge than the
-  grey-only stock model) SFX is 84.9 vs 89.7 % at equal sim. The residual
-  is small-kanji speech (a colorized `尊`→`嫌`) and the lowest-IoU tenth of
-  SFX crops (thin outlined katakana on busy art: `ゴ`/`ガ`, `オ`/`え`) —
-  **the crop builder drops colorized crops below IoU d1 0.8** when the mix
-  is built (the threshold clause (a) asked for; ~10 % of SFX, ~1 % of speech).
-- **16 steps ≡ 28 steps on every gate number** (the reference image carries
-  the layout; the sampler only fills tint) at 0.59× the wall, so the subset
-  runs at 16.
-- Cost: 20.7 s / spread. The 2k-page subset (≈ 11.5 h) was queued and
-  **withdrawn by the user after three pages** in favour of a cheaper first
-  read: **100 pages** (the 20 pilot spreads at 28 steps + 80 at 16, ≈ 30
-  min, job `colorize_100`) → `build_manga109_crops.py --image_root … --name
-  colorized_1024_half_comic` (IoU-filtered; ≈ 630 COO + 630 speech crops
-  expected, 1.6 % of the grey train set) → **arm B′+col100**
-  (`finetune_vl16_lora.py`, the exact B′ recipe + `--extra_manifest
-  colorized_1024_half_comic`, run `vl16_tower_col100`) vs B′ as trained
-  (`vl16_tower_lr1e-5`), same seed, `eval_manga109` + `eval_sfx` on `best`.
-  `--extra_repeat N` oversamples the colorized rows if the 1.6 % share reads
-  flat; the 2k subset stays the next step only if +100 moves the sincos number.
+Sidecars over the whole tree: 4,218 → 4,330 lines, det+glyph passing 3,475 →
+3,633, characters +3.2 %; `・・・`/`...`/`…` 442/304/0 → 0/0/920; `♥`/`♡`
+332/889 → 0/1,226.
 
-Gate for the lever itself (unchanged from the plan, read against B′'s 38 / 71 — PP-box basis; B′ is 307 / 619 on the current labels, so a re-opened lever re-derives "+10" there — see § Label basis):
-+10 sincos SFX exact with both speech controls held. Not doing: the full
-6,034 spreads unless the 2k mix moves the sincos number; no colorized page
-or crop enters the repo, HF, or a node.
+The research copies (`../cjk_aware_anima/datasets/build_ocr_records.py`
+`is_runaway` / `_normalize_read`) are deliberately not changed — they are the
+keys of the recorded PP-vs-VL A/B and would re-score it.
 
-## O6 — `deepghs/AnimeText_yolo` as the detector (2026-09-06, night): replaces PP DB *and* the two layers behind it
+## O3 — colorized COO: PASS as augmentation, LOSS as replacement
 
-User's ask ("det만 이런거 써보면", then "pp db까지 대체 가능한지 확인"): the
-stock YOLO12 `text_block` detector (AnimeText, 735k pages; weights GPL-3.0,
-dataset CC-BY-NC-SA — the memory note said NC for the weights, corrected) in
-front of the SFX reader, no training. Probe `ocr/animetext_det_probe.py`
-(det → SfxReader on every box → coverage / floor / manga-ocr best-match);
-report `output/tests/ocr_animetext/report.md`, sheets under
-`output/tests/ocr_animetext/sheets/`. The O3 `+100` fine-tune job was
-killed for it (step 50 / 4892 — nothing lost).
+### The pilot (2026-09-06 night) — `reports/ocr_colorize_pilot_*.md`
 
-**Box-level, yolo12l @ 640, conf 0.426 (the card's F1 threshold), sincos 351 pages**
-(covered = IoU ≥ 0.3 or containment ≥ 0.5, `reread.py`):
+`ocr/colorize_manga109.py`: the EasyControl colorize LoRA repaints Manga109-s
+spreads as flat-tint doujin pages, leaving the lettering alone.
 
-| known lines | covered |
+- The whole-spread form fails the gate. A Manga109 "page" is a two-page
+  spread; free-fit into the 1024 band shrinks it to 1216×864 and the trip back
+  blurs small kanji — stock speech exact fell 67 → 42 % on the same polygons.
+- Splitting the spread into halves (864×1216 ≈ native) with the `comic` prompt
+  passes both clauses: stroke IoU 0.90 / 0.92, ≥ 0.8 on 90 % / 99 % of crops;
+  reads agree at better than the rate the source read agrees with the label; B′
+  reads colorized at 84.9 vs 89.7 % SFX at equal sim.
+- 16 steps ≡ 28 steps on every gate number at 0.59× the wall — the reference
+  image carries the layout, the sampler only fills tint.
+- The crop builder drops colorized crops below IoU d1 0.8 (~10 % of SFX).
+
+### col100 — a 1.6 % append (2026-09-06)
+
+In-domain +1.7, sincos +11 lines (312 → 323) — inside 1 σ (SE 12 lines) either
+way, and the +10 lever gate was never approached on the basis it was written
+for. Verdict: does not move the target at this share. The pre-registered
+`--extra_repeat 8` arm (≈ 10 % share) was withdrawn by the user and is still
+untested.
+
+Label audit after the diff sheet (user: "col100이 훨씬 정확한데??") — the more
+important finding. The sincos label file is two different things by kind:
+
+- Speech (213) and chrome (26): `text_hand` is PP-OCRv6 record text on 211/213
+  and 21/26 rows — `status=checked` certified the kind, not the text. PP
+  reads no hearts, so every ♡ a reader reads inside a balloon scores as a
+  miss. col100 differs from the label only by hearts on 28 speech rows; 16
+  crops eyeballed, every heart is on the page. "Speech exact 59 → 54" is
+  agreement with PP-OCRv6, not accuracy. Never judge a speech re-read on these
+  labels.
+- SFX (99, hand-typed): two genuine label errors found and fixed, both rows
+  col100 read right. The other 26 rows where both readers agree against the
+  label are shared misses — the small heart at the end of a burst, `…` vs
+  `・・・` — not label errors.
+
+### col1500sw — replacing the grey originals costs the gate (2026-09-07)
+
+The user's framing ("can we drop corresponding black/white ones?"): each
+colorized crop stands in for its grey original, so the training set stays
+B′'s size (77,164 rows) and only 22.3 % of its appearance changes. New code:
+`crop_dataset.load_split(..., extra_replace=True)` + `--extra_replace`. The keys
+are an exact subset, so the swap is clean and the SFX/speech balance is
+identical — a genuine single-variable comparison against B′.
+
+In-domain +2.3 points, sincos −31 lines (312 → 281, −5.1 points). At n = 617
+the binomial SE is 2.0 points, so this is ≈ 2.5 σ and mean sim moves with it
+(0.852 → 0.837) — real, unlike col100's +1.6 inside 1 σ. Damage
+concentrated in square SFX blocks: 53.8 → 33.3 %.
+
+Verdict: the grey originals are load-bearing. Colorized COO helps as
+augmentation and hurts as replacement. Repainting is not a relabelling of the
+target domain — it deletes the real screentone appearance for a fifth of the set
+and substitutes a synthetic recolour, and the doujin residual (outlined,
+heart-terminated bursts) is not what the recolour supplies. The in-domain gain
+is the tell that it did learn something: it moved toward the COO test set and
+away from the target.
+
+Untested point on this axis: the append-at-17k arm (18.2 % share) — whether
+col100's +1.6 grows or saturates at 12× the share. Launched, then killed when
+the user asked for the swap instead.
+
+## O2 follow-up — B′ × 3 epochs: in-domain +4.1, sincos flat (2026-09-07)
+
+Fresh 3-epoch schedule (not a warm restart), B′'s recipe otherwise unchanged.
+Val SFX 80.8 → 85.7 → 88.3 %; `best` = ep3.
+
+In-domain it is the largest single lift since the tower unfroze — every
+orientation and every length bin ≥ 2 moves up, the 8+-char bin most (25.9 →
+41.4 %), and it is the best COO reader in the ledger on both columns.
+On the target it is flat: 312 → 306, heart-blind 363 → 349, mean sim and the
+≥ 0.8 share unchanged. Row-level 53 better / 62 worse, the losses the same shape
+as col100's (`♡` read as `☆`/`ッ`/dropped, consonant swaps on outlined kana).
+
+Verdict: more epochs buy COO, not the doujin gap. The residual on sincos is a
+domain residual. Ship decision unchanged; ep3 is a strictly better COO
+reader if that ever matters. Weights local only.
+
+## O2 follow-up — LP-FT (arm B → B′ order): closed (2026-09-08)
+
+The user's question: does linear-probe-then-fine-tune (Kumar et al., ICLR
+2022) buy anything here, given ep3 showed the schedule is not the lever. Stage 1
+already existed as arm B, so the cost was near zero. Recipe:
+`--init_adapter output/ocr/vl16_lr1e-4/ep2 --train_tower` with B′'s exact
+stage-2 flags (new flag: load a trained adapter dir as the starting point). The
+head start is real — step-25 loss 0.206 vs B′'s 0.914 from scratch.
+
+Corrected 2026-09-08 (deduplication pass). This entry originally read
+"in-domain speech +4.8 … the best speech reader so far", comparing LP-FT's
+new-key row against B′'s old-key row. On one key (§ Comparability) the
+comparison is:
+
+| | COO SFX | COO speech | sincos / 617 |
+|---|---|---|---|
+| B′ | 83.2 % | 88.3 % | 312 |
+| LP-FT | 84.3 % | 87.6 % | 264 |
+
+So LP-FT is +1.1 SFX, −0.7 speech in-domain — not a speech win at all, and
+not the best speech reader (that is ep3 at 89.2 %) — and −48 lines on the
+target. The verdict is unchanged and now rests on cleaner ground: LP-FT is
+closed for this reader.
+
+Row-level vs B′ on sincos: 38 better / 78 worse; heart-blind 63 / 77 — so it is
+not only hearts, but hearts are the largest single bucket (of the 497 rows whose
+label carries `♡`, B′ emits a heart on 313 and LP-FT on 247).
+
+Why, in the paper's own terms. LP-FT works by preserving pretrained
+features — the head is near its optimum when the backbone unfreezes, so the
+backbone moves less. § O2b established the doujin gap is a tower problem: the
+target needs the tower to change. Starting from a decoder that has already
+spent two epochs fitting grey COO locks in the COO prior before the tower sees a
+gradient. The mechanism that makes LP-FT good in-domain is the one that costs
+it here. If a warm start is ever wanted again, stage 1 must have seen the
+target distribution.
+
+(Launch gotcha: the first run trained a full epoch and crashed in val scoring —
+anime_tools `62f6fc3` retired `ocr._text.normalize_ja` with the CTC recognizer,
+and the script saved weights only after scoring. Fixed both ways —
+`eval_manga109.py` now vendors that normaliser verbatim so every row stays on
+one scorer, and the epoch dir is saved before val.)*
+
+## Outside readers
+
+### hayai-ocr, scored on both evals at its author's request (2026-09-07)
+
+`JustANormalTinkerer` opened discussion #1 on the Hub repo. ~150 M params
+(a `siglip2-base-patch16-naflex` tower + a 12-layer causal decoder) against B′'s
+0.9 B. v2.1 and v2.1.5 are git branches; `main` is v2.0. Decoded by its own
+card's recipe. Ledger rows above.
+
+1. v2.1 is the best zero-shot reader measured in-domain — 78.2 % COO SFX
+   without ever seeing COO from us, against 28.9 / 31.6 % for the two stock
+   bases and 76.0 % for our own 4-epoch manga-ocr fine-tune. Caveat we cannot
+   settle: its base mix (`hayai-dataset-merged`, now private) is not auditable,
+   so Manga109 overlap is unknown. The sincos set carries no such risk.
+2. v2.1.5 matches B′ on the doujin set at ~1/6 the parameters (316 vs 312).
+   It is not a worse checkpoint, it is a differently aimed one — its fine-tune
+   set is modern scanlation manga, JA + KO, i.e. exactly our surface, and not
+   Manga109's 80s–00s printed B&W, where it drops 20 points. The two branches
+   move in opposite directions across the two evals: the same decoupling B′'s
+   own arms show, from the other side.
+3. v2.1's low strict number is a heart bug, not a kana gap. 496 of the 617
+   labels end in `♡`; v2.1 reads the kana right and drops the heart on 130
+   lines. Ranked ♡-blind the order is B′ > v2.1.5 > v2.1. Where all three lose
+   is length: v2.1 collapses past 6 characters.
+4. B′ keeps the quality margin even where it ties on exact (sim 0.855 vs
+   0.789). Whether that matters depends on the consumer: for a deduped SFX
+   caption clause a near-miss and a miss cost the same, so a 150 M reader at
+   30 crops/s is a real alternative if the reader ever needs to get cheaper.
+   Not a ship decision — B′ stays.
+
+The discussion's second ask, publishing the test set, is not answered: the
+sincos labels are useless without the doujin pages (the user's own dataset), and
+the COO half needs Manga109-s, which may not be redistributed at all.
+
+### HunyuanOCR-1.5 — measured stock, out (2026-09-08)
+
+`tencent/HunyuanOCR` (1 B, Tencent Hunyuan Community licence, native in
+transformers ≥ 5.13 — no remote code). Full write-up
+`reports/0908_hunyuan_vs_vl16.md`; prompt sweep `reports/0908_hunyuan_prompt_sweep.md`.
+
+1. It is not a Japanese manga reader. In-domain it is below stock
+   manga-ocr on every column. On the doujin gate it ties stock VL-1.6 (21 vs
+   19) but both sit on the ~3 % floor this line exists to lift, so the tie
+   carries no information. Nothing here reopens the base decision.
+2. Half the miss is the prompt naming no language. Under the official
+   Chinese instruction 51 % of its COO SFX reads contain no kana at all (840
+   of 2,558 pure Han: `ドドド` → `咚咚`) vs 4 % for VL-1.6. A Japanese
+   instruction drops that to 18 %; an English one is worse than the Chinese.
+   Language prior, not legibility — and the lever is one upstream's own client
+   will not let a user pull (it exposes `--task-type`, never a free prompt).
+3. What the prompt does not repair is small kana. Folding
+   `っゃゅょぁぃぅぇぉ` on both sides rescues +6.8 points of its COO speech
+   vs +0.8 for VL-1.6. It also emits furigana as its own interleaved line.
+   Small kana + `ー` + `♡` are precisely what VL-1.6 was picked for.
+4. A fine-tune arm has a weak prior. It would start 18 SFX / 39 speech
+   points behind B′'s starting point with systematic kana errors, on an untried
+   architecture, while B′ and hayai v2.1.5 already bracket the gate at ~50 %.
+   Not run. Complementarity is real but one-sided: 108 COO SFX lines Hunyuan-ja
+   reads and VL-1.6 misses, against 547 the other way.
+
+Wall (batch-matched, 600 crops, bs 32): Hunyuan 20.2 crops/s vs VL-1.6 26.6.
+Its `min_pixels` is 262144, so a 40×60 SFX crop is upscaled to ≥ 256 visual
+tokens — cost per crop is near-flat in crop size.
+
+## O6 → D0–D1 — `deepghs/AnimeText_yolo` replaces the whole detection stack
+
+*Sincos figures in this section are `/ 99` on the PP-box labels, which this same
+night's re-base retired.*
+
+O6, the probe (2026-09-06 night). The stock YOLO12 `text_block` detector, no
+training, in front of the SFX reader.
+
+| known lines | covered by stock yolo12l @ 640, conf 0.426 |
 |---|---|
-| PP-OCRv6 v3 records (237: 187 speech / 28 sfx) | **237 / 237** |
-| hybrid_vl speech / sfx / chrome (254 / 168 / 26) | 98 % / 96 % / 96 % |
-| … by source: PP / Spotting / mask-component reads | 100 % / 97 % / 92 % |
-| hand rows speech / sfx (213 / 99) | 100 % / 98 % |
-| MIT mask components, min side 32 (358) | 329 (92 %) |
-| masked-but-no-box floor (133 masked) | **3** (PP DB 38, full 3-layer stack 8) |
+| PP-OCRv6 v3 records (237) | 237 / 237 |
+| hybrid_vl speech / sfx / chrome | 98 % / 96 % / 96 % |
+| hand rows speech / sfx | 100 % / 98 % |
+| MIT mask components, min side 32 | 92 % |
+| masked-but-no-box floor (133 masked) | 3 (PP DB 38, the full 3-layer stack 8) |
 
-1,078 boxes vs the stack's 448 lines: ~520 boxes match nothing known, and
-**438 of them yield a valid SFX-reader read** (guard + ≥ 2 chars + letters).
-The sheets say what they are — 12440144's six pink SFX all boxed (the stack
-had one), and two pages the stack held at *zero* lines (no PP line, no
-mask) carry seven real SFX each, all boxed. The misses are decorations
-(a lone ♡ in a bubble) the reader would drop anyway.
+Read-level, boxes → SfxReader → records: floor 8 → 4, best-match to
+manga-ocr 0.810 → 0.844, hand-SFX exact 44 → 63–66. Of ~520 boxes
+matching nothing known, 438 yield a valid read, and the sheets show real SFX
+on pages the stack held at zero lines.
 
-**Read-level (YOLO boxes → SfxReader → records, same floors as O4):**
+Verdict: PP DB, VL Spotting and the mask-component crops are all replaceable
+by this one detector — which also retires the detector half of O5.
 
-| | hybrid_vl (3-layer stack) | yolo12l 640 raw c0.426 | raw c0.25 | inner c0.25 |
-|---|---|---|---|---|
-| records / pages with a line | 448 / 138 | 953 / 162 | 1,086 / 163 | 1,001 / 163 |
-| floor | 8 | **4** | 4 | 4 |
-| best-match to manga-ocr (84 ref) / ≥ 0.9 | 0.810 / 42 | 0.834 / 45 | **0.844** / 45 | 0.844 / 45 |
-| hand-SFX exact / mean sim (99, best-IoU box) | 44 / 0.873 | 64 / 0.853 | **66 / 0.872** | 63 / 0.860 |
+Facts to carry:
 
-Model size and input size are a wash (l 640 ≈ l 1024 ≈ l native ≈ x 1024
-on every column; 640 is 26 ms/page on the CUDA EP vs 310 ms native).
-conf 0.25 adds ~170 boxes, most of them real (+84 valid reads, hand-SFX
-99/99 boxed) at +8 guard rejections. YOLO emits a balloon **block and its
-columns** (nested boxes): `outer` (keep the block) tanks best-match to
-0.694 — block reads don't match balloon lines — while `inner` (drop a box
-holding ≥ 2 others) loses ~60 boxes for nothing measurable; either `raw` or
-`inner`, and a record-level text dedupe is owed before captions.
+- Model and input size are a wash (l 640 ≈ l 1024 ≈ l native ≈ x 1024 on
+  every column); 640 is 26 ms/page on the CUDA EP vs 310 ms native.
+- Nested boxes: YOLO emits a balloon block and its columns. `outer`
+  (keep the block) tanks best-match to 0.694 — block reads don't match balloon
+  lines; `inner` (drop a box holding ≥ 2 others) costs nothing measurable.
+- `join_cjk` over YOLO boxes loses (−0.041 best-match: SFX beside a balloon
+  gets pulled into it). The stage never joins under `animetext`.
+- PP-OCRv6 recognition on block boxes is unusable (floor 26, hand-SFX 4/99),
+  measured once — a YOLO block box is multi-column and dies on the score floor
+  before the reader sees it. Hence the detect-only engine: `animetext` + `vl`
+  loads no recognizer at all. This was not foreseen in the plan.
+- ORT gotcha, applies to every ONNX session: the CUDA EP's default BFC arena
+  + EXHAUSTIVE cuDNN search grew to 15 GB over per-page shapes and killed the
+  next session's `cublasCreate`. Bound it (`kSameAsRequested`, `HEURISTIC`,
+  `gpu_mem_limit`).
+- Licence: model card GPL-3.0, dataset CC-BY-NC-SA-4.0. Runtime download,
+  never bundled into the MIT package, the trainer, or a node.
 
-**Verdict: PP DB, VL Spotting and the mask-component crops are all
-replaceable by this one detector** — the O5 gate (SFX recall ≥ 0.8 of the
-hand count, speech recall ≥ PP DB) is passed by a stock model with no
-training, which also retires O5's detector half. Caveats: "valid read" is
-the reader's word, not a label (the sheets back it, a hand pass over the
-~440 new lines does not exist yet); the manga-ocr reference is the 40 A/B
-pages; the eval measured detection only — the reader is unchanged. Gotcha:
-onnxruntime's CUDA EP with the default BFC arena + EXHAUSTIVE cuDNN search
-grew to 15 GB over the native config's per-page shapes and killed the next
-session's `cublasCreate` — bound it (`kSameAsRequested`, `HEURISTIC`,
-`gpu_mem_limit`), as the probe now does.
+D0 — package (anime_tools `b015ba2` + `2cbe201`): `ocr.animetext.AnimeTextDetector`,
+a three-call `Detector` protocol (`prepare` / `forward_batch` / `boxes`) so DB
+and YOLO share the crop and the size filters, the catalog row `animetext_det`
+(`stages=()`, so the stage bar never demands GPL weights), `--detector` /
+`--det_conf`, the bounded arena in `make_session`, 29 weights-free tests. Gate:
+six pages reproduce the probe's boxes 15/15. PASS.
 
-Owed if adopted: `anime_tools` download row + ONNX session for the weights
-(GPL — fetched at runtime, never bundled into the MIT package; the NC
-dataset makes a shipped build a licence call), `--detector animetext` on
-the OCR stage, sincos records regenerated (→ a new mirror / D2 arm is the
-user's call), and the record-level dedupe of nested reads.
+D1 — records (`ocr/animetext_records.py`): 1,146 boxes = the probe's count;
+reads → records with a record-level dedupe (a record whose normalized text
+sits inside another's with box containment ≥ 0.85 — the column read repeated by
+its block read; 46 drops) → `ocr_records_sincos_animetext.jsonl`, 955 records
+on 163 pages, floor 4, best-match 0.844.
 
-## D0–D1 — `plan_det.md`: the AnimeText detector shipped in the package, the sincos records rebuilt on it (2026-09-06, night)
+Gate: floor ✓, best-match ✓, hand-SFX exact ≥ 64 → 63. The 64 was `raw`'s
+number; under `inner` (the chosen config) the reference is 63 and the file
+reproduces it exactly. The three rows `raw` gets are one shape — a hand label
+spanning a doubled SFX whose block `inner` drops for its two repeats, which the
+SFX-clause dedupe collapses anyway. Reading the gate against the `inner`
+reference: PASS; as written: −1, explained.
 
-*Every `hand-SFX n / 99` below is scored on the **PP-box** labels, which this
-same night's re-base retired — the D1 records are what the new 619-row basis
-was then built on. § Label basis.*
+Hand pass, the precision number O6 lacked. 491 records sit on boxes no older
+record covers; 60 drawn and graded by the user: 59 / 60 real lettering (the
+one exception is pink hearts drawn as censorship). Precision gate PASS; the
+kill (raise `--det_conf` to 0.426) is not triggered.
 
-**D0 — package (`anime_tools` b015ba2 + 2cbe201, uncommitted pin bump).**
-`anime_tools.ocr.animetext.AnimeTextDetector` — yolo12l @ 640, conf 0.25,
-NMS 0.5, `inner` nesting, the probe's letterbox / decode / `denest` moved
-over; catalog row `animetext_det` (`deepghs/AnimeText_yolo` →
-`models/animetext/{model.onnx,threshold.json}`, subfolder fetch, `stages=()`
-so the stage bar never demands GPL weights; **runtime download, never
-bundled**). `OcrEngine` now runs *a* detector through a three-call protocol
-(`prepare` / `forward_batch` / `boxes` → `(4, 2)` quads) so DB and YOLO share
-the crop, the size filters and the pool split; **the engine is detect-only
-under `animetext` + `vl`** (`recognizer=None`, empty-text lines in reading
-order, no PP-OCRv6 recognizer loaded) — the plan did not foresee this, but a
-YOLO block box through PP-OCRv6's recognizer garbles and dies on the
-`min_score` floor before the VL reader ever sees it. `reread_lines`: a line
-with no text lives by its read (guard-rejected → dropped, component floors
-apply). `OcrRequest --detector {ppocr,animetext} --det_conf`; `--mask_dir`
-refused under `animetext` (decision 4). `make_session` bounds the CUDA arena
-for **every** ONNX session (`kSameAsRequested`, `HEURISTIC`, 4 GiB /
-`ANIME_TOOLS_ORT_GPU_MEM_GB`). 29 new tests, weights-free.
+## D2 killed, D3 — the flip: AnimeText + VL are the defaults (2026-09-06, late night)
 
-*Gate:* six sincos pages through the stage (`--detector animetext --reader
-vl`, daemon job `20260906-211450-d10f9a`) reproduce the probe's boxes
-**exactly (15 / 15)** and read 13 lines (12440144: `ぱん ぱん ひく♡ お~♡ お~
-ふふふー でく♡ ばるん♡` — the six pink SFX the stack had one of). PASS.
+D2 killed. The user stopped the arm at step 715 / 2808 ("kill current daemon
+run and just proceed d3 … retiring ppocr"), so the D2 gate was never
+measured and the records default flipped without a verdict. The mirror, the
+isoq TE cache, the caption diff and `cjk_unmask_d2.toml` stay on disk; the arm
+is re-launchable from the config header.
 
-**D1 — records (`ocr/animetext_records.py`, CPU except a 12-box read).**
-The package detector over all 351 pages: **1,146 boxes = the probe's count**;
-12 boxes differ from the probe by 1 px (float rounding), read once on the
-GPU (job `20260906-212146-fed7ac`). Reads → records (guard 24 rejected, 121
-under the 2-char / has-letter floor), `kind` by overlap with the hand labels
-(363 rows) else the rule (592), the **record-level dedupe** (a record whose
-`norm` text sits inside another's with box containment ≥ 0.85 — the column
-read repeated by its block read: `ぱん` inside `ぱん♡`, `考えてあげよう` inside
-the full balloon; 46 drops, every one of that shape on the report's table)
-→ `post_image_dataset/cjk_unmask/ocr_records_sincos_animetext.jsonl`
-(**955 records on 163 pages**; kind speech 406 / sfx 523 / chrome 26).
+What D2 would have tested, and is therefore open: the animetext captions are
+a caption-count change, not a reader swap — 151 of 351 captions differ
+from `hybrid_vl`, SFX lines 142 → 353, speech 250 → 356, 27 pages newly carry
+text. Whether roughly twice the SFX per page trains cleaner or spammier than C11
+is unknown. Any future DiT arm on this shard trains on the animetext captions
+by default; compare against C11 with that caveat, or re-run D2.
 
-| records | lines / pages | floor | best-match / ≥ 0.9 | hand-SFX exact / mean sim |
-|---|---|---|---|---|
-| hybrid_vl (3-layer stack, O4) | 448 / 138 | 8 | 0.810 / 42 | 64 / 0.873 |
-| O6 probe, inner c0.25 | 1,001 / 163 | 4 | 0.844 / 45 | 63 / 0.860 |
-| **animetext, dedupe (the file)** | 955 / 163 | **4** | **0.844 / 45** | 63 / 0.860 |
-| animetext + `join_cjk` (97 joins) | 858 / 163 | 4 | 0.803 / 39 | 62 / 0.857 |
-| animetext + PP-OCRv6 rec (side row, decision 2) | 352 / 135 | 26 | 0.562 / 18 | 4 / 0.193 |
+D3 — the flip (anime_tools `ae6f33e`, pushed and pinned). `OcrRequest`
+defaults to `detector="animetext"`, `reader="vl"` — every build, not only
+under `--reader vl` as the plan wrote: the user's licence call is that a default
+fetching GPL-3.0 weights (NC data) at runtime is fine, since nothing is bundled.
+`OcrRequest()` is therefore detect-only; `--detector ppocr --reader ppocr`
+remains the explicit torch-free pair, and `--mask_dir` still requires
+`--detector ppocr`. Trainer defaults follow; `reread_records.py` carries a
+superseded banner and stays for C10/C11 reproducibility.
 
-*Gate:* floor ≤ 4 PASS, best-match ≥ 0.84 PASS, **hand-SFX exact ≥ 64 → 63**.
-The 64 was `raw`'s number (66) rounded down; under `inner` (decision 1) the
-O6 reference is 63 and the file reproduces it exactly. The three rows `raw`
-gets and `inner` does not are one shape — a hand label spanning a doubled
-SFX (`じゅぽ じゅぽ`, `ドチュ♡ ドチュ♡`) whose block `inner` drops for its two
-repeats, which the SFX-clause dedupe (O4c) collapses to one anyway. Reading
-the gate against the `inner` reference: PASS; as written: −1, explained.
-Two side verdicts: **`join_cjk` over YOLO boxes loses** (−0.041 best-match,
-SFX beside a balloon pulled into it) — the stage never joins under
-`animetext` now (2cbe201) — and **PP-OCRv6 recognition on the block boxes is
-unusable** (floor 26, hand-SFX 4 / 99): decision 2 confirmed, measured once.
+Stage gotcha: the OCR stage by module needs explicit `--dst
+post_image_dataset/resized --ocr_dir post_image_dataset/ocr`; its bare defaults
+are `workspace/…`.
 
-**Hand pass (owed to the user).** 491 records sit on boxes no `hybrid_vl` /
-PP v3 record covers; 60 drawn (seed 0) →
-`assets/animetext_new_lines_sincos.tsv` (`real_text` blank) + crop sheets
-`output/tests/ocr_animetext/hand_pass/sheet_0{0,1,2}.png`. A provisional
-column `claude` says **60 / 60 real lettering** (SFX 44 / speech 16 by the
-rule; four reads visibly off — `#52` a kanji column read as `綾能`, `#14`,
-`#57`, `#24` — but the glyphs are there). The D1 precision gate (≥ 50 / 60)
-is the user's `real_text` column, not this one.
+## Plain vs OCR captions on sincos — the clauses are neutral (2026-09-08)
 
-**D2 prep (same night; the arm itself is the user's call).** Mirror
-`mirror_sincos_animetext_sentence` + `te/sincos_animetext_sentence_isoq`
-built on the records (351 / 351, isoq pack, SFX sentence default, clause
-dedupe on); config `configs/gui-methods/custom/cjk_unmask_d2.toml` = C11
-verbatim but the mirror / cache / name (launch line in its header). Against
-the `hybrid_vl` captions (`output/tests/ocr_animetext/d2_caption_diff.md`):
-**151 of 351 captions differ**; 159 carry text (was 132), 27 pages newly do;
-39 gain an SFX clause, 1 loses one, 76 SFX clauses change; speech changes
-on 130 captions (38 gain a speech clause, 5 lose theirs); SFX lines 142 →
-353, speech lines 250 → 356. So D2 is a caption-count change, as the plan
-says — twice the SFX per page, not a reader swap; the arm is one seed (s42)
-vs C11 with grids + a blind set, gate spam ≤ C11 and blind ≥ C11 inside the
-seed-twin floor.
+The plain control the line had owed since 2026-09-01, re-run against what the
+package publishes today (AnimeText + VL, the O4c–O4e caption rules, clauses
+composed by `with_ocr_clause` off the sidecar tree — what any user of the package
+gets, not a research records file). Two arms, one training seed each, masks
+off in both, latents shared bit-identically, one variable. Full design + tables
+`reports/0908_plain_vs_ocr.md`, `reports/0908_alpha128.md`,
+`reports/0908_v2_prompts_a128.md`.
 
-**Hand pass graded + D2 launched (2026-09-06, 21:32).** User: "those are all
-real text. though item 57 is just heart censorship" → **59 / 60 real**
-(`real_text` filled; #57 = pink hearts drawn as censorship, not lettering).
-D1 precision gate ≥ 50 / 60 **PASS**; the D1 kill (raise `--det_conf` to
-0.426) is not triggered. D2 arm launched as daemon job
-`20260906-213229-e7feb8` (`run_unmask_r2.py --skip_cache --method
-cjk_unmask_d2 --arm armD2`, s42 vs C11); grids + blind set follow.
+| blind set | arms | result |
+|---|---|---|
+| `s16` (α32, v1 prompts, 24 pairs) | OCR vs PLAIN | 14 – 9, 1 tie |
+| `s17` (α128, v1 prompts, 24 pairs) | OCR128 vs PLAIN128 | 10 – 12, 2 ties |
+| `s18` (α128, v2 hard prompts, 32 pairs) | OCR128 vs PLAIN128 | 11 – 15, 6 ties |
 
-## D2 killed, D3 — the flip: AnimeText + VL are the OCR defaults, PP-OCRv6 retired (2026-09-06, late night)
+Verdict: three blind reads, three ties. Pooled 35–36 on 71 decisive
+pairs, one-sided p = 0.50. Every automated readout is flat in all three
+(`cos→base` matches to four decimals; adherence differs by less than the
+row-to-row spread). So the shipped speech + SFX clauses are neutral for image
+quality on this shard — still shippable (they cost nothing), but the "captions
+are load-bearing" claim is closed in the negative for the render axis. It
+rests only on the 2026-09-01 unmask A/B/C, where arm C beat spam, not
+quality. Do not spend another render-only re-eval here; moving it needs a
+text-requesting prompt grid, or a second training seed per arm.
 
-**D2 killed.** The user stopped daemon job `20260906-213229-e7feb8` at step
-715 / 2808 (epoch 3 / 8, avr_loss 0.072) — "kill current daemon run and just
-proceed d3 … retiring ppocr" — so the D2 gate (spam ≤ C11, blind ≥ C11 on
-the animetext captions) was **never measured**. The mirror, the isoq TE
-cache, the caption diff and `configs/gui-methods/custom/cjk_unmask_d2.toml`
-stay on disk; the arm is re-launchable from the config header if the
-caption-count question reopens. The records default flipped without the
-verdict (decision the user made, not the plan's).
+Four instrument findings that outlive the pair:
 
-**D3 — package (`anime_tools` ae6f33e, pushed; trainer pin 46ebbb5 →
-ae6f33e, `uv lock` + `uv sync`).** `OcrRequest` defaults `detector="animetext"`,
-`reader="vl"` — every build, not only under `--reader vl` as the plan wrote:
-the user's licence call on decision 3 is that a default fetching GPL-3.0
-weights (NC data) at runtime is fine; nothing is bundled. `OcrRequest()` is
-therefore detect-only (no PP-OCRv6 recognizer loaded); `--detector ppocr
---reader ppocr` remains the explicit torch-free pair, and `--mask_dir` (the
-mask-component layer) still requires `--detector ppocr`. Docstrings
-(`stages/ocr.py`, `ocr/animetext.py`, `stages/CLAUDE.md`, `docs/contract.md`,
-`examples/ocr.py`) and the three request tests follow; the registry fixture
-gained `detector="ppocr"` for its `mask_dir` row. Package suite 983 / 983.
+- α is a pure output-scale knob here, not an LR proxy. `network_alpha`
+  32 → 128 scaled ‖ΔW‖ 3.7× with the learned factors unchanged (‖A,B‖ +1.8 %) —
+  Adam normalises the ~16× effective-step argument away. At α/r = 1 the
+  adapter barely moves the base, and the spread between two training seeds of
+  the same arm was larger than any between-arm gap this line ever measured.
+- A more specified prompt is a less sensitive instrument — the opposite of
+  the intuition that sent us there. Arm-vs-arm PE cos went 0.9794 (v1) → 0.9884
+  (v2) while the same-arm different-seed floor rose 0.9347 → 0.9738: v2 rows
+  carry 12–15 tags and named characters, so they pin the composition and leave
+  the seed and the adapter less room.
+- Two text-requesting rows cannot measure the text axis. "OCR writes 47
+  lines vs PLAIN's 35" is one cell; by glyph area the sign flips. n = 4 per arm.
+- The spam tally changed units at D3 — `grid_spam_tally.py` was ported to
+  the detect-only engine, so boxes carry no text and `n_lines` / `glyph_frac`
+  are the tally. Never compare these counts to a pre-D3 tally, C10's "~2 on
+  3 seeds" included. Within this set, box counts are a wash, and adapter
+  magnitude is not what produced arm B's spam (α128 reproduces the wash).
 
-**D3 — trainer.** `run_unmask_r2.py` defaults → `ocr_records_sincos_animetext.jsonl`
-/ `mirror_sincos_animetext_sentence` / `te/sincos_animetext_sentence_isoq`;
-`cache_te_ext.py` default records → the animetext file; `reread_records.py`
-(the 3-layer stack's re-read) carries a superseded banner and stays for the
-C10/C11 `_hybrid_vl` reproducibility. The trainer never wired a `make ocr`
-target, so nothing else changes here.
+## Context is not the lever — margin / marker / page-text sweep (2026-09-08)
 
-**What the line leaves open.** Whether the doubled SFX-per-page captions
-(151 / 351 differ from `hybrid_vl`, SFX lines 142 → 353) train cleaner or
-spammier than C11 is unknown — the D2 arm is the only instrument and it was
-stopped. Any future DiT arm on the sincos shard trains on the animetext
-captions by default; compare against C11 with that caveat, or re-run D2.
+Question: the 12 %-pad crop looks too tight to infer a hard SFX from; would a
+page-level context channel (PE-Core / PE-Spatial as a prefix) help? Measure
+whether context carries signal through the reader's own tower before building a
+modality bridge. `reports/0908_context_margin_sweep.md`.
 
-## O3 — arm B′+col100: colorized COO crops at a 1.6 % share, in-domain +1.5, sincos flat (2026-09-06, 23:23)
+Arms: pad 0.12 / 0.35 / 0.7 / 1.5 × a red box drawn around the 12 % crop × an
+oracle page-text arm (the page's Manga109 `<text>` lines quoted in the
+prompt), on three readers.
 
-The stopped arm re-run to completion (job `20260906-214925-ac6100`, 1 h 31,
-12.1 GB peak; the first launch `…-204429-75abea` had been killed at step 50
-for the detector line and its chained eval crashed on the missing `best`).
-Exact B′ recipe (`args.json` differs only in `extra_manifest`), train 78,274
-= 77,165 grey + **1,109 colorized** crops (`colorized_1024_half_comic`, IoU
-d1 ≥ 0.8 filtered off the 100 colorized spreads), one epoch, same seed. Val
-SFX exact 85.6 % (B′ 86.2 %). Evals on `best` = ep1:
+Monotone on every reader: more frame never beats the tight crop. B′ 316 →
+294 (pad 0.35) → 45 (pad 1.5); stock VL 21 → 4; Hunyuan 21 → 16. `contains`
+(label ⊂ prediction) says the target is found less often with more context, so
+the surrounding pixels distract rather than disambiguate. The marker works
+on Hunyuan (runaways 28 → 0 at pad 1.5) but still loses to pad 0.12. Oracle
+dialogue in the prompt is below baseline.
 
-| eval | model | SFX exact | SFX sim | sim ≥ 0.8 | runaway | speech exact | speech sim |
-|---|---|---|---|---|---|---|---|
-| Manga109-s test (2,558 / 2,559) | B′ `vl16_tower_lr1e-5` | 81.7 % | 0.927 | 87.6 % | 25 | 82.8 % | 0.986 |
-| | **B′+col100** | **83.2 %** | **0.936** | 88.9 % | 29 | 82.6 % | 0.986 |
-| sincos hand labels, **PP-box basis** (99 SFX / 213 speech / 26 chrome) | B′ | 45 / 99 | 0.868 | 74.7 % | 2 | 59 / 213 (0.910) | chrome 13 / 26 |
-| | **B′+col100** | 41 / 99 | **0.883** | **77.8 %** | **0** | 54 / 213 (0.904) | chrome 10 / 26 |
+Verdict: a learned page-context channel — strictly weaker than oracle text and
+than the reader's own encoder on the same pixels — is closed as a direction.
+B′ degrades fastest, as expected for a reader trained on 12 % crops.
 
-In-domain every orientation moves up (+0.3 / +2.1 / +1.8 pts horizontal /
-square / vertical, +39 crops) with speech held — the colorized crops are a
-clean augmentation for COO itself. **On the target it is flat**: sincos SFX
-exact −4 lines (vertical 48.3 → 41.4 %, square 23.5 → 29.4 %) while mean sim,
-the ≥ 0.8 share and runaways all improve (the `ぱん♡` family that B′ read as
-`ぱィ♥` / `ぱ人♡` / `ぱく` is now read right; what it loses is `はあ♡`-class
-near-misses at sim 0.5 and the 6-char rows). That is inside the n = 99
-seed-twin band either way; the +10 gate (read against B′'s 38 / 71, PP-box
-basis — § Label basis) is not
-approached, and speech drops 5 lines — the control is not cleanly held.
+## Tower — where B′'s misses are, and what label-free adaptation does (2026-09-08)
 
-*Verdict:* the lever at a 1.6 % share does not move the sincos number; the
-2k-page colorize (11.5 h) stays withdrawn, as the plan's condition says.
-*Pre-registered follow-up NOT run:* the `--extra_repeat 8` arm
-(`vl16_tower_col100x8`, ≈ 10 % share) was queued and **withdrawn by the user**
-("we don't have to run repeat") — jobs `20260906-232505-*` killed at step 0.
-The colorized-COO lever stops here at the +100 read; synth SFX is the
-remaining NC-free O3 lever if the reader ever needs more sincos margin.
-Eyeball: `probes/ocr_eval_sheet.py --a vl16_tower_lr1e-5 --b vl16_tower_col100`
-→ `output/tests/ocr_contact_sheet/ab_vl16_tower_lr1e-5_vs_vl16_tower_col100.pdf`
-(99 SFX rows, B better 13 / worse 11: the gains are the `ぱん♡` family and
-`はあ♡`-class hearts, the losses are `むにゅ`→`むにゃ`, `♡`→`♥` swaps and the
-doubled-SFX rows); the all-kinds diff sheet (`…_sfx-speech-chrome_diff.pdf`,
-160 rows) shows speech drifting more than it gains (35 better / 46 worse).
+Motivation: B → B′ (tower unfrozen) took sincos 110 → 312 on the same
+labels, and its garbage misses (sim < 0.5) 185 → 43 — perception was the
+bottleneck. Can the tower be adapted with no labels on in-domain crops?
+`plan_ssl_tower.md`.
 
-**Label audit after the sheet (2026-09-06, user: "col100이 훨씬 정확한데?? dataset
-다시 봐봐").** The sincos label file is two different things by kind.
-*Speech (213) and chrome (26):* `text_hand` is the PP-OCRv6 record text on
-211 / 213 and 21 / 26 rows (`status=checked` certified the *kind*, not the
-text) — PP-OCRv6 reads no hearts, so every ♡ a reader reads inside a balloon
-scores as a miss. col100 differs from the label **only by hearts** on 28
-speech rows (B′ on 23); 16 of those crops eyeballed, every heart is on the
-page. So "speech exact 59 → 54" is agreement with PP-OCRv6, not accuracy, and
-col100 is the more faithful reader on speech — the memory rule ("never judge a
-speech re-read on the hand labels") holds and the table above should not be
-read for speech. *SFX (99, hand-typed):* two label errors found, both rows
-col100 read right — #173 `はあ♡` → `はぁ♡` (small ぁ), #325 `ばるん♡` → `ぱるん♡`
-(handakuten); fixed in the tsv with a note. #86 `ウズ♡` (both readers `うズ♡`)
-left as is, uncertain. The other 26 rows where both readers agree against
-the label are **shared misses**, mostly the small heart at the end of a burst
-(`ぱん♡` → `ぱん`) and `…` vs `・・・`, not label errors. Re-scored on the fixed
-labels: SFX strict **B′ 44 / col100 43**, punctuation-folded 47 / 47,
-heart-blind 60 / 59 — parity, with col100's residual losses being hearts read
-as `ト` / `ッ` / `レ` on ~5 crops. Verdict unchanged for SFX (flat); for
-speech the metric is invalid and col100 reads hearts PP-OCRv6 never had.
+B′'s miss profile (computed on the pre-rekey 313-miss set; the fold moves
+the count to 305 and none of the classes): 160 near (sim ≥ 0.8), 110 mid, 43
+garbage, 0 empty; 55 are ♡-only (`びく♡` → `びく`), 61 ♡/〜/ー-only. ♡ is in
+497 / 617 gate rows and 337 / 77k COO train rows — an LM-side label gap no
+vision-only method moves. This is the single most useful number in the section:
+it is why the remaining headroom is on the label side.
 
-## O2 follow-up — arm B′ × 3 epochs (`vl16_tower_ep3`): in-domain +4.0, sincos flat (2026-09-07)
+Full FT is out on this hardware. The official recipe (ERNIEKit
+`paddleocr_vl_sft.md`) is Full FT at lr 5e-6 on ~30k labelled samples — it
+confirms the tower is meant to be trained for font-style shifts and says
+nothing about the no-label case. fp32 AdamW states for 800 M params do not fit
+on 16 GB beside activations, and `bitsandbytes` 0.49.2 ships no
+`libbitsandbytes_cuda132.so` for torch 2.12+cu132 (`AdamW8bit` fails at the
+first `step()`). bnb removed from the deps.
 
-The 8-epoch / lr-2e-4 arms were cancelled in O2 ("curves still rising, not
-the bottleneck"); this is the epoch question re-asked on the surviving
-recipe. Job `20260907-003508-442767`, 4 h 19, 12.1 GB peak, 15.1 crops/s.
-**Exact B′ recipe** (`args.json` differs only in `epochs`: LoRA r 16 lr 1e-4
-+ tower/projector full FT lr 1e-5, bs 8×2, seed 0, grey train 77,164) with a
-fresh 3-epoch warmup + linear-decay schedule (14,466 steps) — not a warm
-restart of B′'s ep1 weights (the script has no resume; a fresh schedule is
-the clean "longer" comparison). Val SFX exact by epoch **80.8 → 85.7 →
-88.3 %** (B′'s one-epoch schedule reached 86.2 % — its ep1 is a *finished*
-decay, this run's ep1 is mid-schedule, so only the last row compares); `best`
-= ep3. Evals on `best`, sincos rows = the AnimeText-box labels
-(`assets/sfx_labels_sincos.tsv`, 619 SFX / 70 user-checked):
+Corpus: `deepghs/AnimeText` test split (73,725 images) already on the volume;
+`ocr/animetext_crops.py` cuts text boxes at 12 % pad — 7.6 boxes / image,
+140,132 crops from the first 19,514 images. Mostly manga bubbles + hand-lettered
+SFX, closer to doujin than the "anime scene text" framing suggested.
+CC-BY-NC-SA → research build only.
 
-| eval | model | SFX exact | SFX sim | sim ≥ 0.8 | runaway | speech exact | speech sim |
-|---|---|---|---|---|---|---|---|
-| Manga109-s test (2,558 / 2,559) | B′ `vl16_tower_lr1e-5` | 81.7 % | 0.927 | 87.6 % | 25 | 82.8 % | 0.986 |
-| | B′+col100 | 83.2 % | 0.936 | 88.9 % | 29 | 82.6 % | 0.986 |
-| | **B′ × 3 ep** | **85.7 %** | **0.948** | **91.1 %** | 25 | **83.3 %** | **0.987** |
-| sincos hand labels (619 SFX; checked 70) | B′ | 307 (49.6 %); checked 38 / 70 | 0.855 | 75.8 % | 2 | *(PP-record text — invalid, see O3 audit)* | |
-| | B′+col100 | 317 (51.2 %); checked 39 / 70 | 0.852 | 74.5 % | 3 | | |
-| | **B′ × 3 ep** | 298 (48.1 %); checked 36 / 70 | 0.857 | 75.9 % | 4 | | |
+### S0 — a pixel target collapses the tower; a feature target does not
 
-In-domain it is the largest single lift since the tower unfroze: every
-orientation (+5.1 / +3.3 / +3.7 pts horizontal / square / vertical) and every
-length bin ≥ 2 moves up, the 8+-char bin most (25.9 → 41.4 %), speech held
-(+0.5). **On the target it is flat**: sincos SFX −9 lines all-rows / −2 on
-the checked 70, heart-blind 363 → 349, mean sim and the ≥ 0.8 share
-unchanged. Row-level vs B′ (SFX): 53 better / 62 worse; the losses are the
-same shape as col100's — `♡` read as `☆`/`ッ`/dropped, and `びくっ`→`ぐくっ`,
-`ミーン`→`えーっー` class consonant swaps on the outlined kana — the gains are
-`ちゅ`/`へこ♡`/`びく♡`/`パンッ` reads B′ near-missed. Contact sheet
-`output/tests/ocr_contact_sheet/ab_vl16_tower_lr1e-5_vs_vl16_tower_ep3_diff.pdf`
-(309 diff rows across all kinds, 103 / 103).
+Pixel SimMIM (mask 60 % of 2×2 blocks after the patch conv, linear head →
+588 pixels, L1): masked L1 2.15 → 0.37 in 30 steps and the tower collapsed —
+median relative ΔW 4e-4, yet cosine to stock features 0.38, feature norm
+×0.22, the untouched LM reads `""` on every crop, and a 30-step SFT from it
+scores 0 % where the stock-tower SFT smoke scores 48 %. Bisect: embeddings /
+post-LN innocent; any 9-layer block of encoder weights alone does it.
 
-*Verdict:* more epochs buy COO, not the doujin gap — the third arm in a row
-(col100, col100×8 withdrawn, ×3 ep) where in-domain and sincos decouple. The
-residual on sincos is a **domain** residual (outlined / heart-terminated
-bursts the grey COO crops never show), and neither more data-passes nor a
-1.6 % colorized share reaches it. Ship decision unchanged (B′ stays the
-published reader; ep3 is a strictly better *COO* reader if that ever
-matters); the remaining sincos lever is still synth SFX / in-domain labels,
-not the schedule. Weights local only: `output/ocr/vl16_tower_ep3/ep{1,2,3}`.
+Mechanism: a pixel target on the final features drags the representation out
+of the space the projector reads, in one coordinated direction per Adam step —
+small weights, large features. Lowering the lr slows it; it does not change the
+destination. The objective has to live in the space the projector reads.
 
-## Outside reader — `hayai-ocr` scored on both evals on its author's request (2026-09-07)
+Feature target (masked-token features regressed to the frozen stock
+tower's `last_hidden_state` on the unmasked crop — data2vec / BEiT-v2 with the
+base model as its own tokenizer, + 0.1× the same loss on unmasked tokens):
+read-through PASS (cosine 0.967, norm ×1.09, 6/6 reads), SFT smoke 39.1 %
+SFX vs 48.4 % for the stock-tower smoke — same ballpark at 30 steps.
 
-`JustANormalTinkerer` opened discussion #1 on `sorryhyun/paddleocr-vl-1.6-manga-lora`
-("would you mind testing hayai-ocr-v2.1 on that test set … or make the test
-public"). Both evals run, on both live branches, so the answer is a full row
-rather than one number. The model: **~150 M** params — a
-`google/siglip2-base-patch16-naflex` tower + a 12-layer causal decoder,
-`trust_remote_code`, JA/ZH/KO/EN — against B′'s 0.9 B PaddleOCR-VL-1.6.
-Wired as `eval_manga109.READERS["hayai"]` (`--ckpt <repo>[@<branch>]`;
-**v2.1 and v2.1.5 are git *branches*, `main` is v2.0**), decoded by its own
-card's recipe (`num_beams=4`, `repetition_penalty=1.0`, `max_num_patches=256`)
-and fed the same unrotated crop `manga_ocr` gets. Jobs `20260907-0756{36,40}`,
-`…-075944`, `…-075945` (the re-eval sweep).
+### S1/S2 — the lift is not there; the line closes
 
-**In-domain — Manga109-s ∩ official COO test split** (2,558 SFX / 2,559 speech):
+Reports `reports/ocr_eval{,_sfx}_vl16_tower_ssl.md`.
 
-| reader | SFX exact | SFX sim | sim ≥ 0.8 | runaway | speech exact | speech sim |
-|---|---|---|---|---|---|---|
-| stock manga-ocr | 26.2 % | 0.478 | 34.6 % | 0 | 62.1 % | 0.975 |
-| stock VL-1.6 | 30.2 % | 0.545 | 39.5 % | 91 | 63.4 % | 0.976 |
-| our manga-ocr FT (lr 5e-5, 4 ep) | 73.5 % | 0.884 | 82.1 % | 0 | 62.4 % | 0.975 |
-| **hayai v2.1, zero-shot** | **74.2 %** | 0.917 | 86.5 % | 28 | 78.4 % | 0.987 |
-| hayai v2.1.5, zero-shot | 54.7 % | 0.826 | 71.8 % | 25 | 70.1 % | 0.982 |
-| B′ `vl16_tower_lr1e-5` | 81.7 % | 0.927 | 87.6 % | 25 | 82.8 % | 0.986 |
-| B′ × 3 ep | 85.7 % | 0.948 | 91.1 % | 25 | 83.3 % | 0.987 |
+S1 read-through gate PASS: 1 epoch over the 140k crops, held-out masked L1
+0.235 → 0.084, cosine to stock 0.981, norm ×1.035, 6/6 non-empty reads.
+One epoch of in-domain SSL leaves the tower inside the space the projector reads.
 
-**Out-of-domain — the sincos hand labels** (619 SFX; § Label basis):
+S2, the same SFT from that init (both rows on one key and one harness):
+sincos 312 → 307, heart-blind 375 → 380, sim 0.852 → 0.855; COO SFX
+83.2 → 84.6 %, speech 88.3 → 88.2 %.
 
-| reader | SFX exact / 619 | ♡-blind | sim | sim ≥ 0.8 | runaway | checked 70 |
-|---|---|---|---|---|---|---|
-| stock manga-ocr | 6 (1.0 %) | 13 | 0.311 | 17.0 % | 0 | 0 |
-| stock VL-1.6 | 14 (2.3 %) | 45 | 0.366 | 14.9 % | 10 | 2 |
-| hayai v2.1 | 177 (28.6 %) | **310** | 0.760 | 65.6 % | 1 | 33 |
-| **hayai v2.1.5** | **309 (49.9 %)** | 342 | 0.789 | 67.7 % | 4 | **43** |
-| B′ `vl16_tower_lr1e-5` | 307 (49.6 %) | **363** | **0.855** | **75.8 %** | 2 | 38 |
+Verdict: −5 on the gate, +38 lines in-domain. The plan's `≥ +15` bar is not
+met and its kill rule (`S2 ≤ B′ + 10` with the Phase-0 gate passed) fires:
+label-free tower adaptation is closed as a lever for this reader. S3 (the full
+560k crops, ep2, an in-domain doujin corpus) is not run — the kill rule was
+written to stop exactly that follow-up — and no lr / mask-ratio sweep follows.
 
-Four readings:
+This is the fifth arm running where in-domain and the doujin gate decouple. The
+open lever is ♡-bearing and small-kana labels (synthetic or pseudo), which
+O3's synth-SFX bullet describes and which was never built.
 
-1. **v2.1 is the best zero-shot reader we have measured in-domain** — 74.2 %
-   SFX exact on COO test without ever seeing COO from us, against 26.2 /
-   30.2 % for the two stock bases and 73.5 % for our own 4-epoch manga-ocr
-   fine-tune; its speech row beats every arm but B′. Caveat we cannot
-   settle: its base training mix (`hayai-dataset-merged`, now private) is not
-   auditable, so Manga109 overlap is unknown. The sincos set carries no such
-   risk — those are our own pages.
-2. **v2.1.5 matches B′ on the doujin set — 309 vs 307 strict, 43 vs 38 on the
-   user-checked 70 — at ~1/6 the parameters.** It is *not* a worse checkpoint,
-   it is a differently aimed one: its fine-tune set
-   (`hayai-finetuning-dataset-with-korean`, 38.9 k crops) is **modern
-   scanlation manga**, JA + KO, pseudo-labelled with a confidence column —
-   i.e. exactly our surface, and not Manga109's 80s–00s printed B&W, which is
-   where it drops 19.5 pts. In-domain and out-of-domain move opposite ways
-   across the two branches, which is the same decoupling B′'s own col100 /
-   ×3-ep arms showed from the other side.
-3. **v2.1's strict number is a heart bug, not a kana gap.** 496 of the 619
-   labels end in `♡`; v2.1 reads the kana right and **drops the heart on 130
-   lines** (heart-only-wrong 133: 130 dropped, 3 added), so 177 strict
-   becomes 310 ♡-blind. B′'s gap is 56 (52 dropped), v2.1.5's is 33. Ranked
-   ♡-blind the order is B′ 363 > v2.1.5 342 > v2.1 310. Where all three still
-   lose is length: v2.1 collapses past 6 chars (7-char bin 3.2 %, 8+ 0.0 %),
-   v2.1.5 holds 16.1 / 6.7 %.
-4. **B′ keeps the quality margin even where it ties on exact** — sim 0.855 vs
-   0.789 and 75.8 % vs 67.7 % of lines at sim ≥ 0.8, so v2.1.5's misses are
-   further off. Whether that matters depends on the consumer: for the caption
-   pipeline (SFX clause, deduped) a near-miss and a miss cost the same, so a
-   150 M reader at 30 crops/s is a real alternative worth a follow-up if the
-   reader ever needs to get cheaper. Not a ship decision today — B′ stays.
-
-*Reproduce:* `ocr/eval_sfx.py --reader hayai [--ckpt …@v2.1.5]` (sincos) and
-`ocr/eval_manga109.py --reader hayai` (COO test); both rows are in
-`ocr/reeval_sfx_all.py`. Reports `reports/ocr_eval{,_sfx}_hayai_v2_1{,_5}.md`.
-Their card's "PaddleOCR-VL for Manga, 900 M, 24.66 % CER" row is a different
-model on a different set from anything here.
-
-The discussion's second ask — publishing the test set — is **not answered
-here**: the sincos labels are boxes + transcriptions only
-(`assets/sfx_labels_sincos.tsv`), but they are useless without the doujin
-pages, which are the user's own dataset and not ours to distribute; the COO
-half needs Manga109-s, which may not be redistributed at all. Whether to
-publish a page-free crop pack is the user's call, not this entry's.
+Weights local only; the shipped reader stays B′. An AnimeText-derived tower would
+have been research-only (NC) regardless.

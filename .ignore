@@ -1,0 +1,3 @@
+# Search-scope exclusions (ripgrep/fd honor this; git does NOT).
+# These trees stay tracked and committable — they are just noise in code search.
+assets/

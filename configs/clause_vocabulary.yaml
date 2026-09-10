@@ -5,7 +5,7 @@
 # because a typo here would silently disable a gate rather than fail).
 #
 # Everything here is a *rule*, not a preference: per-rule evidence and the knob
-# table live in docs/experimental/position_captions.md, and the load-bearing
+# table live in ../anime_tools/docs/position_captions.md, and the load-bearing
 # rationale is inlined below. Read it before deleting a line.
 
 # Groups that bind to a position; everything else (lighting, background, medium,

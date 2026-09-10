@@ -313,10 +313,10 @@ gui = [
 
 [package.dev-dependencies]
 anime-tools-dev = [
-    { name = "anime-tools", version = "0.4.2", source = { editable = "../anime_tools" } },
+    { name = "anime-tools", version = "0.6.2", source = { editable = "../anime_tools" } },
 ]
 anime-tools-git = [
-    { name = "anime-tools", version = "0.4.2", source = { git = "https://github.com/sorryhyun/anime_tools?rev=ae6f33e#ae6f33e48bf224849b6d37e298165287cee7ca85" } },
+    { name = "anime-tools", version = "0.6.2", source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.6.2#66f1f981c81208ee5587a3ac8ef7df292331b41b" } },
 ]
 cuda-windows = [
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl" }, marker = "sys_platform == 'win32' or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git')" },
@@ -424,7 +424,7 @@ provides-extras = ["gui", "cuda-windows", "rocm-windows", "dev"]
 
 [package.metadata.requires-dev]
 anime-tools-dev = [{ name = "anime-tools", editable = "../anime_tools" }]
-anime-tools-git = [{ name = "anime-tools", git = "https://github.com/sorryhyun/anime_tools?rev=ae6f33e" }]
+anime-tools-git = [{ name = "anime-tools", git = "https://github.com/sorryhyun/anime_tools?tag=v0.6.2" }]
 cuda-windows = [
     { name = "flash-attn", marker = "sys_platform == 'win32'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl" },
     { name = "torch", marker = "sys_platform == 'win32'", specifier = "==2.12.0+cu132", index = "https://download.pytorch.org/whl/cu132", conflict = { package = "anima-lora", group = "cuda-windows" } },
@@ -459,8 +459,8 @@ sr = [
 
 [[package]]
 name = "anime-tools"
-version = "0.4.2"
-source = { git = "https://github.com/sorryhyun/anime_tools?rev=ae6f33e#ae6f33e48bf224849b6d37e298165287cee7ca85" }
+version = "0.6.2"
+source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.6.2#66f1f981c81208ee5587a3ac8ef7df292331b41b" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
     "platform_machine == 'aarch64' and sys_platform == 'linux'",
@@ -469,17 +469,11 @@ resolution-markers = [
     "sys_platform == 'win32'",
 ]
 dependencies = [
-    { name = "albumentations" },
     { name = "einops" },
     { name = "fastapi" },
     { name = "huggingface-hub" },
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "onnx" },
-    { name = "onnxruntime", marker = "sys_platform == 'darwin' or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "onnxruntime-gpu", version = "1.26.0", source = { url = "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-13/pypi/download/onnxruntime-gpu/1.26.0/onnxruntime_gpu-1.26.0-cp313-cp313-manylinux_2_34_aarch64.whl" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "onnxruntime-gpu", version = "1.27.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "onnxscript" },
     { name = "opencv-python" },
     { name = "peft" },
     { name = "pillow" },
@@ -490,7 +484,6 @@ dependencies = [
     { name = "rich" },
     { name = "safetensors" },
     { name = "sam3" },
-    { name = "segmentation-models-pytorch" },
     { name = "sentencepiece" },
     { name = "setuptools", version = "80.10.2", source = { registry = "https://pypi.org/simple" } },
     { name = "timm" },
@@ -508,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "anime-tools"
-version = "0.4.2"
+version = "0.6.2"
 source = { editable = "../anime_tools" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
@@ -518,17 +511,11 @@ resolution-markers = [
     "sys_platform == 'win32'",
 ]
 dependencies = [
-    { name = "albumentations" },
     { name = "einops" },
     { name = "fastapi" },
     { name = "huggingface-hub" },
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "onnx" },
-    { name = "onnxruntime", marker = "sys_platform == 'darwin' or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "onnxruntime-gpu", version = "1.26.0", source = { url = "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-13/pypi/download/onnxruntime-gpu/1.26.0/onnxruntime_gpu-1.26.0-cp313-cp313-manylinux_2_34_aarch64.whl" }, marker = "(platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'aarch64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "onnxruntime-gpu", version = "1.27.0", source = { registry = "https://pypi.org/simple" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "onnxscript" },
     { name = "opencv-python" },
     { name = "peft" },
     { name = "pillow" },
@@ -539,7 +526,6 @@ dependencies = [
     { name = "rich" },
     { name = "safetensors" },
     { name = "sam3" },
-    { name = "segmentation-models-pytorch" },
     { name = "sentencepiece" },
     { name = "setuptools", version = "80.10.2", source = { registry = "https://pypi.org/simple" } },
     { name = "timm" },
@@ -557,16 +543,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "albumentations", specifier = ">=1.4.0" },
     { name = "einops" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "huggingface-hub", specifier = ">=0.30" },
     { name = "matplotlib" },
     { name = "numpy", specifier = ">=2.0" },
-    { name = "onnx", specifier = ">=1.17" },
-    { name = "onnxruntime", marker = "sys_platform == 'darwin'", specifier = ">=1.21" },
-    { name = "onnxruntime-gpu", marker = "sys_platform != 'darwin'", specifier = ">=1.21" },
-    { name = "onnxscript", specifier = ">=0.5" },
     { name = "opencv-python", specifier = ">=4.11" },
     { name = "peft", specifier = ">=0.20" },
     { name = "pillow" },
@@ -577,7 +558,6 @@ requires-dist = [
     { name = "rich", specifier = ">=13" },
     { name = "safetensors", specifier = ">=0.5" },
     { name = "sam3", git = "https://github.com/facebookresearch/sam3.git" },
-    { name = "segmentation-models-pytorch", specifier = ">=0.3.4" },
     { name = "sentencepiece" },
     { name = "setuptools", specifier = "<81" },
     { name = "timm", specifier = ">=1.0" },
@@ -591,6 +571,10 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 bench = [{ name = "scipy", specifier = ">=1.12" }]
+cuda-windows = [
+    { name = "torch", marker = "sys_platform == 'win32'", index = "https://download.pytorch.org/whl/cu132", conflict = { package = "anime-tools", group = "cuda-windows" } },
+    { name = "torchvision", marker = "sys_platform == 'win32'", index = "https://download.pytorch.org/whl/cu132", conflict = { package = "anime-tools", group = "cuda-windows" } },
+]
 dev = [
     { name = "httpx" },
     { name = "pytest", specifier = ">=8" },
@@ -1882,22 +1866,6 @@ wheels = [
 ]
 
 [[package]]
-name = "ml-dtypes"
-version = "0.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/12/72/307d7c4bd0600601c7133fba5cb78af7db968152951c1cd473abb1cda782/ml_dtypes-0.6.0.tar.gz", hash = "sha256:5e60251d32ced5598972e4d5e06a2f044341f9291402551a3f6f0ec44f9299b0", size = 3032327, upload-time = "2026-08-13T14:14:40.215Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/51/fd1582b8f5ed8a9e7be0e161a6ea0dff70cb280479a12178df0b3a72700e/ml_dtypes-0.6.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:084dfe51a7ad58b171f05115f8226ed4233a454a1611371947e806e76f0c638d", size = 565468, upload-time = "2026-08-13T14:14:08.5Z" },
-    { url = "https://files.pythonhosted.org/packages/d2/22/20fd70ca6ed12446cb92d5b2a7745bd185f9d8b8cdeeadad976574398e6b/ml_dtypes-0.6.0-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:28d676428b104bb9717b0928bc5c5129f2d6b51b6727587cc4289e7bf8713cb5", size = 360232, upload-time = "2026-08-13T14:14:09.873Z" },
-    { url = "https://files.pythonhosted.org/packages/89/a5/da8ae6c6f1babe4b68e3e55d43d39b529e29774f10e0910671a6b8c86eb8/ml_dtypes-0.6.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:26b1f1fa4f0435a2946859823f6e2bf06796f1e9f10f5a05b08a5e3c8f46ff69", size = 410169, upload-time = "2026-08-13T14:14:11.036Z" },
-    { url = "https://files.pythonhosted.org/packages/e2/55/4561acefa00fa4bcbfb82ca6a48578b41f372cd7dd7cdd6eb4720abc2e5f/ml_dtypes-0.6.0-cp313-cp313-win_amd64.whl", hash = "sha256:fb87f46b4f7ad7b5d3ad8f4b452b024bd4229d44c8ff934798c1fe656210387a", size = 439357, upload-time = "2026-08-13T14:14:12.172Z" },
-    { url = "https://files.pythonhosted.org/packages/b1/5d/6a01538e507ef0ed5e879985b13a92467bf8960696fb1131f8b8cadc60ff/ml_dtypes-0.6.0-cp313-cp313-win_arm64.whl", hash = "sha256:57ed0d6b4ac5e7868361303a9c57fbcf63b768236ee14456f585dfcf260d0292", size = 552278, upload-time = "2026-08-13T14:14:13.539Z" },
-]
-
-[[package]]
 name = "mpmath"
 version = "1.3.0"
 source = { registry = "https://stable.repo.amd.com/rocm/whl-next/" }
@@ -2214,63 +2182,6 @@ wheels = [
 ]
 
 [[package]]
-name = "onnx"
-version = "1.23.0rc1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "ml-dtypes" },
-    { name = "numpy" },
-    { name = "protobuf" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/33/54/c511bf8ee73f38448054e36e4394f96883ec194362f8014c2eca406a9adb/onnx-1.23.0rc1.tar.gz", hash = "sha256:ead023304a5e72c509e9a17998f429e69c53958b2b67b5fa00350b6984d56739", size = 6023814, upload-time = "2026-09-02T03:23:50.088Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/d0/a095d7645a6d3ae567ce6ad5a3f0cec53d282366bece8369f6b42e95dff5/onnx-1.23.0rc1-cp312-abi3-macosx_13_0_universal2.whl", hash = "sha256:a9cacad3877f859a8df21001526b98e6d6940e1495b72c8e1f53de73bb31a593", size = 9725397, upload-time = "2026-09-02T03:23:27.547Z" },
-    { url = "https://files.pythonhosted.org/packages/f4/6e/281d35bdd40e7505fa653993d991eb9aa3d13ea6239f90520482c46428c5/onnx-1.23.0rc1-cp312-abi3-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d9d3923243e13b2ffc184bf8492d85da8105b8d7968824f8a364e755e4673242", size = 8640296, upload-time = "2026-09-02T03:23:29.737Z" },
-    { url = "https://files.pythonhosted.org/packages/20/1c/3af404648aa294ad5925ac5d9b431690bc7301e14f347735f3972859640d/onnx-1.23.0rc1-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8ba0b389020289927ece8b0307007daf461062c4d2ad74527dd068af85d5cc1e", size = 8881410, upload-time = "2026-09-02T03:23:31.509Z" },
-    { url = "https://files.pythonhosted.org/packages/09/a8/f8ed1b0329100dbcf7e26715ae986947b569e14894152ef304e604e8ce04/onnx-1.23.0rc1-cp312-abi3-pyemscripten_2026_0_wasm32.whl", hash = "sha256:791619259830a1aa7af3d51fa6abd8c73204c2805fded105d97d674670c6bc42", size = 7314605, upload-time = "2026-09-02T03:23:33.608Z" },
-    { url = "https://files.pythonhosted.org/packages/74/c9/e7d59f3e195b0eb4ea98fccae195723a0931ba383ca88cef4ae81377c49a/onnx-1.23.0rc1-cp312-abi3-win32.whl", hash = "sha256:bf97e280fa49640901846a6f69215eb5d22a85efaaf950a94566307d76b8deb3", size = 7736183, upload-time = "2026-09-02T03:23:35.363Z" },
-    { url = "https://files.pythonhosted.org/packages/9d/20/4cbbb0cafca1d785ef0199b0accee122d412e17963589e6e4d5530625cf5/onnx-1.23.0rc1-cp312-abi3-win_amd64.whl", hash = "sha256:1645a8f39e7487db5be0f554461801dbe9ca5815e3cccc53abc33d3b4bbea547", size = 7872265, upload-time = "2026-09-02T03:23:37.594Z" },
-    { url = "https://files.pythonhosted.org/packages/98/43/5c1423dc291b644ea99723409e5f4c6d3d8b898c8320e483bb09771e524b/onnx-1.23.0rc1-cp312-abi3-win_arm64.whl", hash = "sha256:ac3ac67f69be76a33443e5f0dfff706f46ecc02a0d70454a5fe0808b928ffe0b", size = 8041039, upload-time = "2026-09-02T03:23:39.22Z" },
-]
-
-[[package]]
-name = "onnx-ir"
-version = "1.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "ml-dtypes" },
-    { name = "numpy" },
-    { name = "onnx" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d6/c2/61194cec0dbc5622273c0ebd592d37cc1dca0d7f1a744f02edd45ac905a3/onnx_ir-1.0.0.tar.gz", hash = "sha256:9e261f25fde8da9612ae5cb43b3b374d5ff469c04af0363cad588b2bb000b812", size = 163121, upload-time = "2026-08-11T14:49:46.895Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/cd/6d1637172eb59c7b18ac90ed089d1f599a11fe0e63b4db2d017f3bb38a32/onnx_ir-1.0.0-py3-none-any.whl", hash = "sha256:e578f0d608d3062866b48223616eb2d10a6d6d01f8b8faac596129034f483cc7", size = 185849, upload-time = "2026-08-11T14:49:45.524Z" },
-]
-
-[[package]]
-name = "onnxruntime"
-version = "1.29.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "flatbuffers", marker = "sys_platform == 'darwin' or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "protobuf", marker = "sys_platform == 'darwin' or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/41/f8/d375facf60edaf41f5732f9f689c98a800fcc52df5cf6ddfb406703eb5a1/onnxruntime-1.29.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:be0f8ed688cfb1d4d5765a137193b7bfab0c8ea214eed99260b380bb525a3a7f", size = 21429708, upload-time = "2026-08-17T22:54:01.44Z" },
-    { url = "https://files.pythonhosted.org/packages/c9/17/b9ad04051a8c4f504852ce0e8e10f9a6b2f1a331eedcdcc503df776dd0ea/onnxruntime-1.29.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:d67673c5367727860922c5262d724472f1b5539fb7ccf4c81a638f9b71719803", size = 20816263, upload-time = "2026-08-17T22:54:04.088Z" },
-    { url = "https://files.pythonhosted.org/packages/83/2c/d8eb945d2a372149df9705a8d5c8d7c6c46c987c5446dbcea9e1ea7f6556/onnxruntime-1.29.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:e2128f31f449e922c62dbe5d8b6b7b079f0bcaf2d56a102fa203cb6e5bb5ab19", size = 23136817, upload-time = "2026-08-17T22:54:06.714Z" },
-    { url = "https://files.pythonhosted.org/packages/e1/3b/66b424c63fa92dfaa48d1719efaae66fc8c256b9426a832eda51d8dfe1e9/onnxruntime-1.29.0-cp313-cp313-win_amd64.whl", hash = "sha256:2945e1f82f81f27e88decea88c7861f45baea23818950d467bf3909aa303119e", size = 14001310, upload-time = "2026-08-17T22:54:09.13Z" },
-    { url = "https://files.pythonhosted.org/packages/83/22/d6a700e3a6322fa3d56fbe7cee9ffc53f35e77ffcd6b7e97f4b7722a27ab/onnxruntime-1.29.0-cp313-cp313-win_arm64.whl", hash = "sha256:4b940b0d777590c7e20bf298f5c16af1ea6ad1b400a1c822a6be192f64f4d954", size = 13747112, upload-time = "2026-08-17T22:54:11.608Z" },
-    { url = "https://files.pythonhosted.org/packages/4a/89/c4af146de3d60a32c89fea48d5d34bfd044faaf8957270043a03bd1b462b/onnxruntime-1.29.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:533f8370ce124304e5cb08ab961836cf755631e3dd77adc5f3bbdab70c2b7d99", size = 20826136, upload-time = "2026-08-17T22:54:14.315Z" },
-    { url = "https://files.pythonhosted.org/packages/9d/f2/e6bbacd11dfe8d070613261a758795ea128b9fc9bea391a2a7da2e4c7a08/onnxruntime-1.29.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:c1ad3f437153fe77f9d01a08fbaac0beb030e09b8a80ace1603bcf69b6c95481", size = 23138951, upload-time = "2026-08-17T22:54:17.154Z" },
-]
-
-[[package]]
 name = "onnxruntime-gpu"
 version = "1.26.0"
 source = { url = "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-13/pypi/download/onnxruntime-gpu/1.26.0/onnxruntime_gpu-1.26.0-cp313-cp313-manylinux_2_34_aarch64.whl" }
@@ -2309,36 +2220,18 @@ version = "1.27.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
-    "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
     "sys_platform == 'win32'",
 ]
 dependencies = [
-    { name = "flatbuffers", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or sys_platform == 'win32' or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "numpy", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or sys_platform == 'win32' or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "packaging", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or sys_platform == 'win32' or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "protobuf", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (platform_machine != 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or sys_platform == 'win32' or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform != 'linux' and extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "flatbuffers", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or sys_platform == 'win32' or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "numpy", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or sys_platform == 'win32' or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "packaging", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or sys_platform == 'win32' or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
+    { name = "protobuf", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (platform_machine != 'x86_64' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or sys_platform == 'win32' or (sys_platform != 'linux' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'linux' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/8d/6509743801131f1d3791f638ae31edef7701e93c7a4523d74115247dd7d1/onnxruntime_gpu-1.27.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7e6eb554d35706ee154b583dd32e4167a93aa55d3670f59754f43860fd649b92", size = 220304092, upload-time = "2026-06-18T18:27:31.18Z" },
     { url = "https://files.pythonhosted.org/packages/ac/86/8865182eba89cde187163daacfa7f1eb64958616cd080dfb3482be4c8a36/onnxruntime_gpu-1.27.0-cp313-cp313-win_amd64.whl", hash = "sha256:ac352199fb6ac3e366b45a690bb47c9b1c92b1be0e3958149dd1a30285832b9f", size = 213623636, upload-time = "2026-06-15T22:43:10.548Z" },
     { url = "https://files.pythonhosted.org/packages/cf/e6/16f5ba0f91bd8db5b2881ef1ec57d532c8f297b31b6a95ceab606f471c0a/onnxruntime_gpu-1.27.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3b5652761f14bc74729ffbc8fdc01767e541e163459f2e10aa65af61d5db64c8", size = 220331411, upload-time = "2026-06-18T18:27:39.738Z" },
-]
-
-[[package]]
-name = "onnxscript"
-version = "0.7.2.dev20260905"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "ml-dtypes" },
-    { name = "numpy" },
-    { name = "onnx" },
-    { name = "onnx-ir" },
-    { name = "packaging" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/de/7b7353576a75e8a851702c9863989c583ec983d9e56f0202f18cd83bc68e/onnxscript-0.7.2.dev20260905.tar.gz", hash = "sha256:53bedc298477294d8fbac0a05d876c246b1abf00df7cc444c29e3faeea00da68", size = 646951, upload-time = "2026-09-05T07:17:58.942Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/2d/c2c918f12d36fb1d47e22b113714f3c768a8d188437f6e3b3a741e8c9498/onnxscript-0.7.2.dev20260905-py3-none-any.whl", hash = "sha256:a719b2589390cd88abd0a5467f2d377c7ba74e97a95e84c9466cba5a0105b4f1", size = 754138, upload-time = "2026-09-05T07:18:00.644Z" },
 ]
 
 [[package]]
@@ -3342,29 +3235,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bd/12/d19da97efde68ca1ee5538bb261d5d2c062f0c055575128f11a2730e3ac1/scipy-1.17.1-cp313-cp313t-musllinux_1_2_x86_64.whl", hash = "sha256:94055a11dfebe37c656e70317e1996dc197e1a15bbcc351bcdd4610e128fe1ca", size = 37665910, upload-time = "2026-02-23T00:20:34.743Z" },
     { url = "https://files.pythonhosted.org/packages/06/1c/1172a88d507a4baaf72c5a09bb6c018fe2ae0ab622e5830b703a46cc9e44/scipy-1.17.1-cp313-cp313t-win_amd64.whl", hash = "sha256:e30bdeaa5deed6bc27b4cc490823cd0347d7dae09119b8803ae576ea0ce52e4c", size = 36562980, upload-time = "2026-02-23T00:20:40.575Z" },
     { url = "https://files.pythonhosted.org/packages/70/b0/eb757336e5a76dfa7911f63252e3b7d1de00935d7705cf772db5b45ec238/scipy-1.17.1-cp313-cp313t-win_arm64.whl", hash = "sha256:a720477885a9d2411f94a93d16f9d89bad0f28ca23c3f8daa521e2dcc3f44d49", size = 24856543, upload-time = "2026-02-23T00:20:45.313Z" },
-]
-
-[[package]]
-name = "segmentation-models-pytorch"
-version = "0.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "huggingface-hub" },
-    { name = "numpy" },
-    { name = "pillow" },
-    { name = "safetensors" },
-    { name = "timm" },
-    { name = "torch", version = "2.12.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'darwin' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "torch", version = "2.12.0+cu132", source = { registry = "https://download.pytorch.org/whl/cu132" }, marker = "(sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "torch", version = "2.13.0+rocm10.0.0", source = { registry = "https://stable.repo.amd.com/rocm/whl-next/" }, marker = "(sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-cuda-windows') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-git' and extra != 'group-10-anima-lora-cuda-windows') or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "torchvision", version = "0.27.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform != 'darwin' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "torchvision", version = "0.27.0+cu132", source = { registry = "https://download.pytorch.org/whl/cu132" }, marker = "(sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'group-10-anima-lora-anime-tools-dev') or (sys_platform != 'darwin' and sys_platform != 'win32' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'darwin' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (sys_platform == 'darwin' and extra != 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows') or (extra != 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-anime-tools-git' and extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "torchvision", version = "0.28.0+rocm10.0.0", source = { registry = "https://stable.repo.amd.com/rocm/whl-next/" }, marker = "(sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-dev' and extra != 'group-10-anima-lora-cuda-windows') or (sys_platform == 'win32' and extra == 'group-10-anima-lora-anime-tools-git' and extra != 'group-10-anima-lora-cuda-windows') or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git') or (extra == 'group-10-anima-lora-cuda-windows' and extra == 'group-10-anima-lora-rocm-windows')" },
-    { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/15/fa/d5a29d49240fb10bdead608b4d0c6805684a8f63b1f65863502be65b1ca4/segmentation_models_pytorch-0.5.0.tar.gz", hash = "sha256:cabba8aced6ef7bdcd6288dd9e1dc2840848aa819d539c455bd07aeceb2fdf96", size = 105150, upload-time = "2025-04-17T10:43:45.755Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/62/a50e5ac6191a498ad631e54df13d7e2d7eeb1325b15ee9ea1ee3ec065aaa/segmentation_models_pytorch-0.5.0-py3-none-any.whl", hash = "sha256:c34e09047771aa4dd8878b4f899e8125700cd1f8f7db16e58c37204154151a05", size = 154789, upload-time = "2025-04-17T10:43:43.668Z" },
 ]
 
 [[package]]

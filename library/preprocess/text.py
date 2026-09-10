@@ -428,10 +428,10 @@ def cache_text_embeddings(
         to_encode: list[tuple[Path, str, Path]] = []
         for img_path, caption in batch:
             cache_path = _te_cache_path(img_path, cache_dir, data_dir)
-            # Re-encode an existing cache only to add a newly-requested r-family
-            # (in-place upgrade); otherwise the existence check skips it.
-            # ``overwrite`` forces a full re-encode (e.g. after changing the
-            # randomize rate / variant count, which the existence check can't see).
+            # Re-encode an existing cache only when it is older than the caption
+            # / variant sidecar, or to add a newly-requested r-family (in-place
+            # upgrade). ``overwrite`` forces a full re-encode for the changes
+            # mtime cannot see — randomize rate, variant count, vocab pack.
             if (
                 not overwrite
                 and _cache_is_current(img_path, cache_path)

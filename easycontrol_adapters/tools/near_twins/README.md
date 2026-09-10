@@ -59,8 +59,8 @@ hatch for an oversized one). A **prefilter → rerank** pipeline keeps the
 expensive dense match off the obvious non-pairs.
 
 1. **Gather + size gate.** Discover `<artist>/<id>` members across `--image-dirs`;
-   keep only members that *cohabit a size* with a candidate twin (region/signal
-   modes need an exact `W×H` match; tag mode also needs a tagged↔untagged pivot).
+   keep only members that *cohabit a size* with a candidate twin (region
+   mode needs an exact `W×H` match; tag mode also needs a tagged↔untagged pivot).
    The GPU encoder is skipped entirely if nothing survives the gate.
 2. **Embed (PE-Spatial-B16-512).** The spatial Perception Encoder shipped with
    the repo (`load_pe_encoder(name="pe_spatial")`, no extra HF gate) gives both
@@ -82,9 +82,6 @@ expensive dense match off the obvious non-pairs.
    - `--region` — use Stage B's unmatched-cell region directly (no caption tag
      needed; recommended for bubbles / any untagged visual attribute). Shaped by
      `--region-min-frac` / `--region-max-frac` / `--region-scatter-max`.
-   - `--signal mit_text` — a per-image scalar (MIT text-area fraction, the
-     detector behind `post_image_dataset/masks/`) differs by `≥ --signal-delta`
-     with the low side ≈ 0.
 6. **Rank by edit-cleanliness.** Primary sort = number of *other* differences
    ascending (so pairs differing **only** by the target float to the top), capped
    by `--max-extra-diff`; secondary = CLS cosine descending. `--rest-jaccard-min`
@@ -119,7 +116,7 @@ The blueprint write preserves everything above its sentinel, so your edited
 |---|---|---|
 | `--config` | `configs/easycontrol/near_twins.toml` | `[staging]` table of run knobs (CLI overrides; `''` disables) |
 | `--name` | config `name` / `near_twins` | output slug; reroutes the whole export/cache tree |
-| `--tag` / `--tag-any` / `--region` / `--signal` | — | discriminator (exactly one) |
+| `--tag` / `--tag-any` / `--region` | — | discriminator (exactly one) |
 | `--image-dirs` | `$CAPTION_CORPUS_DIR/{retrieved,selected}` | source trees (`{VAR}`/`$VAR`/`~` expansion) |
 | `--sim-min` | `0.85` | Stage-A CLS-cosine prefilter threshold |
 | `--grid` | `7` | Stage-B pooled grid edge (G×G cells) |
@@ -139,7 +136,7 @@ need ≥1 mined pair to size against; `--identity-seed` (default `0`) fixes the
 random draw for idempotent re-runs.
 
 Run `python -m easycontrol_adapters.tools.near_twins --help` for the full list
-(`--signal-delta`, `--region-*`, `--id-window`, `--per-artist-topk`,
+(`--region-*`, `--id-window`, `--per-artist-topk`,
 `--rest-jaccard-min`, `--batch-size`, `--num-workers`, `--device`).
 
 ## Layout

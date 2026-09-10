@@ -18,7 +18,7 @@ Two stages, so the GPU pass runs once and the merge is re-runnable on CPU::
 Merge rules (``merge_page``):
 
 * VL Spotting quads → axis bounds on the page; VL columns are joined into
-  blocks with ``anime_tools.ocr._text.join_cjk`` first, because the PP records
+  blocks with ``_ocr_join.join_cjk`` (the retired PP joiner, kept beside this file) first, because the PP records
   are already column-joined and a per-column quad never reaches IoU 0.5 with a
   three-column balloon box.
 * A VL block is the *same line* as a PP record when IoU ≥ ``--iou`` (0.3) or
@@ -64,7 +64,8 @@ sys.path.insert(0, str(HERE))  # ocr_sfx (sibling, torch-free)
 
 from anime_tools.captions.ocr_sidecar import OcrLine  # noqa: E402
 from anime_tools.ocr import reading_order  # noqa: E402
-from anime_tools.ocr._text import join_cjk, keep_line  # noqa: E402
+from anime_tools.ocr._text import keep_line  # noqa: E402
+from _ocr_join import join_cjk  # noqa: E402  (sibling; retired from the package 2026-09-07)
 from ocr_sfx import line_kind  # noqa: E402
 
 VL_MODEL = REPO / "models/paddleocr_vl_1.6"

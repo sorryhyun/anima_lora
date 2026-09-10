@@ -58,8 +58,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          # A tag carrying a pre-release suffix (v2.0.0-beta.1, v1.18.0-rc1)
+          # must NOT become releases/latest — that is what `make update` and the
+          # bootstrap installers resolve.
+          case "$TAG" in
+            *-*) prerelease="--prerelease" ;;
+            *)   prerelease="" ;;
+          esac
           # Create the release on a bare tag push; no-op if one already exists
           # (e.g. published manually with notes first).
           gh release view "$TAG" >/dev/null 2>&1 \
-            || gh release create "$TAG" --title "$TAG" --generate-notes
+            || gh release create "$TAG" --title "$TAG" --generate-notes $prerelease
           gh release upload "$TAG" install.ps1 install.sh checksums.txt --clobber

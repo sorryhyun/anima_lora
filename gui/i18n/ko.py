@@ -143,7 +143,6 @@ STRINGS: dict[str, str] = {
     "preprocess_add_to_queue": "큐에 추가",
     "preprocess_queued": "{label} 큐에 추가됨 (작업 {job_id}) — 큐 탭에서 확인하세요.",
     "preprocess_masking_sam": "SAM3 마스킹 (말풍선)",
-    "preprocess_masking_mit": "MIT 마스킹 (만화 텍스트)",
     "preprocess_sam_prompts": "SAM 프롬프트 (한 줄에 하나):",
     "preprocess_sam_prompts_tip": (
         "SAM3이 찾을 텍스트 프롬프트. 한 줄에 하나씩. "
@@ -180,32 +179,11 @@ STRINGS: dict[str, str] = {
         "이진 마스크에 적용할 팽창 픽셀 수. 값이 클수록 마스크 가장자리가 "
         "바깥으로 번집니다. 기본값 5. 0으로 비활성화."
     ),
-    "preprocess_mit_threshold": "MIT 텍스트 임계값 (0.0–1.0):",
-    "preprocess_mit_threshold_tip": (
-        "MIT/ComicTextDetector 텍스트 세그멘터의 신뢰도 임계값. 기본값 0.8."
-    ),
-    "preprocess_mask_path_pattern": "마스크 경로 필터:",
-    "preprocess_mask_path_pattern_tip": (
-        "마스킹할 리사이즈 이미지를 제한하는 fnmatch glob 패턴. "
-        "post_image_dataset/resized 기준 각 경로에 대해 매칭됩니다. "
-        "SAM과 MIT 모두에 적용됩니다. 학습용 path_pattern과 동일한 문법: "
-        "'*'(또는 빈 값)이면 전체 마스킹; 'char_a/*'이면 한 하위 폴더; "
-        "'char_a/*|char_b/*'으로 OR 조합."
-    ),
     "preprocess_run_mask": "마스킹 실행",
     "preprocess_run_sam_mask": "SAM 마스킹 실행",
-    "preprocess_run_sam_mask_tip": (
-        "마스크 생성 단계에서 SAM3 말풍선 분할을 실행합니다. "
-        "체크 해제하면 SAM을 건너뛰고 MIT(또는 활성화된 다른 백엔드)만 사용합니다."
-    ),
-    "preprocess_run_mit_mask": "MIT 마스킹 실행",
-    "preprocess_run_mit_mask_tip": (
-        "마스크 생성 단계에서 MIT/ComicTextDetector 텍스트 분할을 "
-        "실행합니다. 체크 해제하면 MIT를 건너뛰고 SAM만 사용합니다."
-    ),
-    "preprocess_mask_nothing_enabled": (
-        "SAM 또는 MIT 마스킹 중 최소 하나는 활성화되어야 합니다."
-    ),
+    "preprocess_run_sam_mask_tip": "마스크 생성 시 SAM3 분할을 실행합니다. 끄면 마스킹 실행 버튼은 아무것도 하지 않습니다.",
+    "preprocess_mask_nothing_enabled": "마스킹을 실행하려면 SAM 마스킹을 켜야 합니다.",
+    "preprocess_invalid_stage": "{stage}: {err}",
     "preprocess_status_resized": "리사이즈된 이미지: {n}장",
     "preprocess_status_caches": "캐시 — latents: {lat}, text: {te}, PE: {pe}",
     "preprocess_status_masks": "마스크: {masks}장",
@@ -481,11 +459,17 @@ STRINGS: dict[str, str] = {
     "dataset_image_meta_empty": "이미지 없음",
     "dataset_image_meta": "{width}x{height} · {size} · {fmt}",
     "dataset_image_meta_resize": "리사이즈 {width}x{height} @ {edge}",
-    "dataset_delete": "이동 (D)",
-    "dataset_delete_tooltip": "Delete 또는 D 키로 표시한 이미지를 사이드카와 함께 post_image_dataset/moved/로 이동합니다.",
-    "dataset_delete_confirm_title": "이미지 이동",
-    "dataset_delete_confirm_body": "이미지 {n}개와 사이드카를 post_image_dataset/moved/로 이동할까요?",
-    "dataset_delete_failed": "일부 이미지를 이동하지 못했습니다:\n{err}",
+    "dataset_delete": "제외 (D)",
+    "dataset_delete_tooltip": "Delete 또는 D 키로 표시한 이미지를 제외합니다: 리사이즈 사본, 캡션 사이드카, 마스크, OCR이 post_image_dataset/_excluded/로 이동하고 해당 원장이 리사이즈 대상에서 제외 상태를 유지합니다. 원본 이미지는 image_dataset/에 그대로 남습니다. 복원…으로 되돌릴 수 있습니다.",
+    "dataset_delete_confirm_title": "이미지 제외",
+    "dataset_delete_confirm_body": "이미지 {n}개를 제외할까요? 작업용 파일은 post_image_dataset/_excluded/로 이동하며 원본 이미지는 그대로 남습니다.",
+    "dataset_delete_failed": "일부 이미지를 제외하지 못했습니다:\n{err}",
+    "dataset_restore": "복원…",
+    "dataset_restore_tooltip": "제외된 이미지를 되돌립니다: post_image_dataset/_excluded/ 원장에서 항목을 선택하면 해당 파일이 리사이즈/마스크/OCR 트리로 돌아갑니다.",
+    "dataset_restore_title": "제외된 이미지 복원",
+    "dataset_restore_body": "파이프라인으로 되돌릴 이미지를 선택하세요.",
+    "dataset_restore_failed": "복원하지 못했습니다:\n{err}",
+    "dataset_restore_kept": "일부 파일은 실제 경로가 다시 사용 중이라 _excluded/에 그대로 남았습니다:\n{items}",
     "dataset_group_label": "그룹 {n} — {size}장",
     "dataset_group_rebuild": "그룹화",
     "dataset_group_rebuild_tooltip": "PE-Spatial 시각적 유사도로 이미지 그룹화 (작가별). 작업 큐에서 실행됩니다.",
@@ -510,6 +494,16 @@ STRINGS: dict[str, str] = {
     ),
     "caption_autotag_error": "자동 태깅 실패: {err}",
     "caption_autotag_empty": "태거가 이 이미지에서 태그를 찾지 못했습니다.",
+    "caption_autotag_model_missing": (
+        "Anima Tagger 모델이 아직 다운로드되지 않았습니다. 모델 창에서 Tagger 팩을 "
+        "받거나 터미널에서 `make download-tagger-model` 을 실행한 뒤 다시 시도하세요."
+    ),
+    "caption_autotag_model_gated": (
+        "caformer_b36 백본은 접근 승인이 필요한 저장소입니다. HuggingFace 에 "
+        "로그인한 뒤 아래 페이지에서 약관에 먼저 동의해야 합니다:\n{url}"
+    ),
+    "caption_autotag_open_models": "모델 창 열기",
+    "caption_autotag_open_gated": "모델 페이지 열기",
     "caption_correct": "순서 교정",
     "caption_correct_tooltip": (
         "danbooru_tags_classified.csv를 사용해 캡션을 ANIMA 권장 순서로 "
@@ -640,7 +634,7 @@ STRINGS: dict[str, str] = {
     "ec_desc_group_top": "디스크립터",
     # Top-bar buttons (models / update / report issue)
     "models_btn": "모델",
-    "models_btn_tooltip": "모델 체크포인트 다운로드 / 재다운로드 (Anima 베이스, SAM3, MIT, PE 비전 인코더)",
+    "models_btn_tooltip": "모델 체크포인트 다운로드 / 재다운로드 — Anima 가중치(CJK 어휘 팩 포함)와 anime_tools 큐레이션 팩을 한곳에서",
     "update_btn": "업데이트",
     "update_btn_tooltip": "GitHub에서 최신 anima_lora 릴리스를 가져오고 uv sync를 실행합니다",
     "update_btn_available": "업데이트 ●",
@@ -651,17 +645,44 @@ STRINGS: dict[str, str] = {
     "open_in_system_viewer": "시스템 뷰어로 열기",
     # Models dialog
     "models_title": "모델 다운로드",
-    "models_intro": "아래에서 모델 그룹을 선택하거나 '전체 다운로드'로 표준 세트 "
-    "(Anima + SAM3 + MIT + PE + 태그 DB)를 받으세요. 파일은 models/ 아래에 저장됩니다.",
-    "models_download_all": "전체 다운로드 (Anima + SAM3 + MIT + PE + 태그 DB)",
+    "models_intro": "학습 / 추론 실행에 필요한 가중치를 팩 단위로 묶어 보여줍니다. '첫 실행 세트 다운로드'는 Anima 가중치 3종, PE, CJK 어휘 팩(v2부터 기본 활성), 태거 체크포인트, 태그 DB를 받습니다. SAM3(마스킹)와 OCR은 '큐레이션' 탭의 선택 팩입니다. 파일은 models/ 아래에 저장됩니다.",
+    "models_download_all": "첫 실행 세트 다운로드",
     "models_download": "다운로드",
     "models_redownload": "재다운로드",
     "models_installed": "✓ 설치됨",
     "models_missing": "✗ 없음",
     "model_anima": "Anima — DiT + 텍스트 인코더 + VAE",
     "model_sam3": "SAM3 — 말풍선 마스킹",
-    "model_mit": "MIT — 만화 텍스트 마스킹",
     "model_pe": "PE-Core-L14-336 — 비전 인코더 (CMMD 검증)",
+    "model_anima_dit": "Anima 베이스 DiT — 학습 대상 모델",
+    "model_anima_te": "Qwen3-0.6B 텍스트 인코더 — 프롬프트 임베딩",
+    "model_anima_vae": "Qwen-Image VAE — 잠재 인코딩 / 디코딩",
+    "model_vocab_pack": "CJK 어휘 팩 — 일본어 / 한국어 / 중국어 캡션 행 (기본 활성)",
+    "model_pe_spatial": "PE-Spatial-B16-512 — REPA + 유사 이미지 그룹화",
+    "models_used_by": "사용처: {what}",
+    "models_tab_anima": "Anima",
+    "models_tab_curation": "큐레이션 (anime_tools)",
+    "curation_models_intro": "큐레이션 단계용 가중치를 팩 단위로 보여줍니다 — 태거, 태그 DB, 마스킹(SAM3, 선택), OCR(선택), 그룹화. anime_tools 카탈로그를 그대로 읽습니다. 각 단계는 첫 실행 시 직접 받기도 하므로, 여기서는 대기 시간을 옮길 뿐입니다.",
+    "models_download_missing": "누락된 항목 전체 다운로드 ({n}개)",
+    "models_all_installed": "✓ 모두 설치됨",
+    "models_download_pack": "팩 다운로드",
+    "models_redownload_pack": "팩 재다운로드",
+    "models_pack_anima": "Anima 베이스",
+    "models_pack_anima_desc": "DiT, Qwen3-0.6B 텍스트 인코더, Qwen-Image VAE — 모든 학습 / 추론 실행에 세 가지가 모두 필요합니다.",
+    "models_pack_pe": "PE-Core",
+    "models_pack_pe_desc": "PE-Core-L14-336: CMMD 검증과 IP-Adapter 조건화. 그룹화 타워인 PE-Spatial은 '그룹화' 팩에 있습니다.",
+    "models_pack_cjk": "CJK 어휘 팩",
+    "models_pack_cjk_desc": "일본어 / 한국어 / 중국어 캡션·프롬프트 구간용 추가 텍스트 인코더 행. v2부터 기본 활성이며, 영어 텍스트는 어느 쪽이든 비트 단위로 동일합니다.",
+    "models_pack_tagger": "태거",
+    "models_pack_tagger_desc": "Anima Tagger: 체크포인트, 접근 승인이 필요한 dbv4 백본, 그리고 그로부터 추출한 ONNX 그래프.",
+    "models_pack_tags": "Danbooru 태그 DB",
+    "models_pack_tags_desc": "캡션 교정이 참조하는 약 114k행 태그 테이블과 그 영어 설명.",
+    "models_pack_masking": "마스킹",
+    "models_pack_masking_desc": "SAM3 피사체 마스크(접근 승인 필요; v2부터 마스킹은 선택)와 위치 단계가 감지에 쓰는 피사체 소프트 프롬프트.",
+    "models_pack_ocr": "OCR",
+    "models_pack_ocr_desc": "AnimeText 텍스트 블록 검출기와 만화 VL 리더(PaddleOCR-VL-1.6 베이스 + SFX 파인튠). 선택 사항.",
+    "models_pack_grouping": "그룹화",
+    "models_pack_grouping_desc": "PE-Spatial-B16-512, 유사 이미지 그룹화 타워.",
     "model_danbooru_tags": "Danbooru 태그 DB — 캡션 순서 교정",
     "model_tagger": "Anima Tagger — caformer_b36 백본 (접근 승인 필요)",
     # HuggingFace 인증 (모델 다이얼로그)

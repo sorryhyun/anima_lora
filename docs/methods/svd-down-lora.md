@@ -2,7 +2,7 @@
 
 Seed plain LoRA's `lora_down` (input basis) from the top-r right singular
 vectors of the pretrained weight `W₀`, instead of a random Kaiming basis. It is
-**ordinary LoRA after init** — same module, same saved weights, same merge and
+ordinary LoRA after init — same module, same saved weights, same merge and
 inference path — only the down projection's starting directions change.
 
 ## Quick start
@@ -27,7 +27,7 @@ B₀ = 0               (lora_up)
 so `ΔW = sB₀A₀ = 0` at init — the pretrained `W₀` is untouched and the first
 forward is unchanged. The `1/√3` matches the expected row-norm of the Kaiming
 default (a row of `V_rᵀ` has norm 1; a Kaiming row has `E[‖·‖²] ≈ 1/3`), so this
-is a **better direction, not a larger step**.
+is a better direction, not a larger step.
 
 Why bother: it reads the input directions the pretrained Linear is most
 responsive to, while keeping plain LoRA's full first-step tangent — the whole
@@ -39,7 +39,7 @@ trainable, so the adapter can rotate away from the SVD basis immediately.
 
 ## Scope
 
-- **Plain LoRA only**, **Linear layers only** (v0). Conv2d keeps Kaiming. The
+- **Plain LoRA only**, Linear layers only (v0). Conv2d keeps Kaiming. The
   config resolver rejects `down_init="weight_svd"` combined with ortho / Hydra /
   Chimera / MoE paths — those carry their own basis parameterization.
 - Composes with T-LoRA (the `_timestep_mask` acts on the bottleneck after
@@ -65,7 +65,7 @@ numerical machinery. Startup cost is paid once per adapted Linear at init.
 
 ## Status
 
-Phase 0 parameterization probe **passed** all gates
+Phase 0 parameterization probe passed all gates
 (`bench/turbo/probe_ortho_init_step.py`,
 `bench/turbo/results/20260621-2149-svd-down-phase0-clean/`): zero-output at init,
 gradient in `lora_up` only on step 1, step-1 `‖ΔW‖_F` within 0.5×–2× plain LoRA
@@ -76,10 +76,10 @@ Original proposal & full theory: `_archive/proposals/svd_down_lora_init.md`.
 
 ## Where this came from
 
-The line started with **StelLA** (NeurIPS 2025), not with the internal probe —
+The line started with StelLA (NeurIPS 2025), not with the internal probe —
 the archived proposal credits `bench/turbo/probe_ortho_init_step.py`, but that
 probe was the trigger, not the source. StelLA's three-factor `USVᵀ` (U, V on the
-Stiefel manifold, S carrying amplitude) **is** the repo's OrthoInit
+Stiefel manifold, S carrying amplitude) is the repo's OrthoInit
 parameterization `ΔW = s·P·diag(λ)·Q`, so the cold-start critique SVD-Down is
 built on is a critique of StelLA's factorization. Its Table 5 initialization
 ablation — the SVD seed *washes out* (SVD-major ≈ SVD-minor ≈ random) once the

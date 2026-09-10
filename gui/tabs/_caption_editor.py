@@ -1,15 +1,20 @@
 """Caption-editing widgets split out of ``image_tab.py``.
 
 A self-contained cluster (none of it references the owning ``ImageViewerTab``):
-the boxed tag editor with autocomplete, char-level diff helpers, the on-disk
-caption history sidecar, and the version-browser dialog.
+the boxed tag editor with autocomplete, char-level diff helpers, and the
+version-browser dialog.
+
+The caption grammar and the history sidecar both come from ``anime_tools``:
+``tag_spans`` decides where a tag starts and ends (never a ``split(",")`` here —
+that would cut position clauses and quoted text in half), and
+``captions.history`` owns the ``{stem}.history.txt`` ladder the package's own
+stages write, so a GUI edit and a stage run supersede each other's versions
+instead of keeping two private logs.
 """
 
 from __future__ import annotations
 
 import difflib
-import json
-from datetime import datetime
 from html import escape
 from pathlib import Path
 
@@ -35,6 +40,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from anime_tools.captions.history import history_sidecar_path, read_history
+from anime_tools.captions.position_clauses import tag_spans
 
 from gui.i18n import t
 from gui.theme import tok
@@ -75,37 +83,6 @@ def _diff_spans(old: str, new: str) -> tuple[list[tuple[int, int]], int, int]:
     return spans, add_total, rem_total
 
 
-def _history_path(caption_path: Path) -> Path:
-    return caption_path.with_suffix(caption_path.suffix + ".history.jsonl")
-
-
-def _read_history(caption_path: Path) -> list[dict]:
-    """Return history entries (oldest first). Skips malformed lines."""
-    hp = _history_path(caption_path)
-    if not hp.exists():
-        return []
-    out: list[dict] = []
-    for line in hp.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(entry, dict) and "ts" in entry and "text" in entry:
-            out.append(entry)
-    return out
-
-
-def _append_history(caption_path: Path, prev_text: str) -> None:
-    """Append the previous on-disk text as a history entry."""
-    hp = _history_path(caption_path)
-    entry = {"ts": datetime.now().isoformat(timespec="seconds"), "text": prev_text}
-    with hp.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-
 # Border colors for inline tag boxes. @artist and "On the …" / "In the …"
 # section headers keep warm/cool tints so the trainer's split rules
 # (anima_smart_shuffle in library/anima/training.py) stay visible.
@@ -114,43 +91,18 @@ _BOX_BORDER_ARTIST = QColor("#c9a227")
 _BOX_BORDER_SECTION = QColor("#5e8eb0")
 
 
-def _tag_ranges(text: str):
-    """Yield ``(start, end, tag_text)`` for each comma-separated, trimmed tag.
-
-    Whitespace around each tag is excluded from the range so the painted box
-    hugs the visible characters, not the surrounding spaces.
-    """
-    i = 0
-    n = len(text)
-    while i < n:
-        while i < n and text[i] in " \t\n":
-            i += 1
-        start = i
-        while i < n and text[i] != ",":
-            i += 1
-        end = i
-        while end > start and text[end - 1] in " \t\n":
-            end -= 1
-        if end > start:
-            yield (start, end, text[start:end])
-        if i < n and text[i] == ",":
-            i += 1
+_BOX_BORDER_BY_KIND = {
+    "artist": _BOX_BORDER_ARTIST,
+    "header": _BOX_BORDER_SECTION,
+}
 
 
-def _tag_border_color(tag: str) -> QColor:
-    # Mirror anime_tools.captions.taxonomy.is_artist_tag: `@<non-space>` is an artist
-    # handle, but `@ @` (space-form booru eye-shape) is a general tag and must
-    # not steal the artist tint. Inline to keep this module free of library/*.
-    if len(tag) >= 2 and tag[0] == "@" and not tag[1].isspace():
-        return _BOX_BORDER_ARTIST
-    if (
-        tag.startswith("On the ")
-        or tag.startswith("In the ")
-        or ". On the " in tag
-        or ". In the " in tag
-    ):
-        return _BOX_BORDER_SECTION
-    return _BOX_BORDER_PLAIN
+def _tag_border_color(kind: str) -> QColor:
+    """Border tint for a :class:`~anime_tools.captions.position_clauses.TagSpan`
+    kind. The package's parse already tells artist handles (``@name``, but not
+    the space-form booru ``@ @``) and clause headers (``On the left``) apart, so
+    the tints follow ``kind`` rather than re-sniffing the text here."""
+    return _BOX_BORDER_BY_KIND.get(kind, _BOX_BORDER_PLAIN)
 
 
 class _TagCompletionDelegate(QStyledItemDelegate):
@@ -259,11 +211,13 @@ class BoxedCaptionEdit(QTextEdit):
         painter = QPainter(self.viewport())
         try:
             painter.setBrush(Qt.NoBrush)
-            for start, end, tag in _tag_ranges(text):
-                pen = QPen(_tag_border_color(tag))
+            for span in tag_spans(text):
+                pen = QPen(_tag_border_color(span.kind))
                 pen.setWidth(1)
                 painter.setPen(pen)
-                rects = [r for r in self._tag_rects(start, end) if r.width() > 0]
+                rects = [
+                    r for r in self._tag_rects(span.start, span.end) if r.width() > 0
+                ]
                 for i, r in enumerate(rects):
                     # A tag split across a soft wrap draws "open" boxes: omit the
                     # right edge of every segment but the last and the left edge
@@ -342,9 +296,9 @@ class BoxedCaptionEdit(QTextEdit):
         if event.button() != Qt.LeftButton or self.textCursor().hasSelection():
             return
         pos = self.cursorForPosition(event.position().toPoint()).position()
-        for start, end, tag in _tag_ranges(self.toPlainText()):
-            if start <= pos <= end:
-                self.tag_clicked.emit(tag)
+        for span in tag_spans(self.toPlainText()):
+            if span.start <= pos <= span.end:
+                self.tag_clicked.emit(span.text)
                 return
 
     # --- Tag autocomplete ---------------------------------------------------
@@ -507,7 +461,7 @@ class CaptionVersionsDialog(QDialog):
         self._current = current_disk_text
         self._restored: str | None = None  # set on Restore
 
-        history = _read_history(caption_path)
+        history = read_history(history_sidecar_path(caption_path))
         # Newest first — that's what users want to see at the top.
         self._history = list(reversed(history))
 
@@ -520,7 +474,7 @@ class CaptionVersionsDialog(QDialog):
             self.list.setEnabled(False)
         else:
             for entry in self._history:
-                self.list.addItem(entry["ts"])
+                self.list.addItem(f"@{entry.seq}  {entry.at}")
         self.list.currentRowChanged.connect(self._show_diff)
         sp.addWidget(self.list)
 
@@ -557,7 +511,7 @@ class CaptionVersionsDialog(QDialog):
             self.restore_btn.setEnabled(False)
             self.diff.setHtml("")
             return
-        prev = self._history[row]["text"]
+        prev = self._history[row].text
         html = _unified_diff_html(prev, self._current)
         if not html:
             self.diff.setHtml(
@@ -571,7 +525,7 @@ class CaptionVersionsDialog(QDialog):
         row = self.list.currentRow()
         if not (0 <= row < len(self._history)):
             return
-        self._restored = self._history[row]["text"]
+        self._restored = self._history[row].text
         self.accept()
 
     def restored_text(self) -> str | None:

@@ -1,6 +1,6 @@
 # anime_tools API-first boundary — trainer side (2026-09-02)
 
-Status: **DONE — T0–T6 landed (T0–T1 2026-09-02, T2–T6 2026-09-03); pin `8708224` (0.4.1)**
+Status: DONE — T0–T6 landed (T0–T1 2026-09-02, T2–T6 2026-09-03); pin `8708224` (0.4.1)
 (re-audited 2026-09-02 against `anime_tools` HEAD `6a225f8`; the package-side
 requests below landed the same day on top of it, as `0.4.0`). The package-side
 plan (`docs/api_first_plan.md`, deleted in `9ccc655`) is now folded into
@@ -43,7 +43,7 @@ trainer also still resolve at HEAD.
 
 | Call site | At `6a225f8` |
 |---|---|
-| `make mask` SAM step: `--config configs/sam_mask.yaml` | **breaks** — replaced by `--prompts` / `--focus-prompts` / `--threshold` / `--dilate` (the yaml keys map 1:1 onto `SamMaskRequest` fields) |
+| `make mask` SAM step: `--config configs/sam_mask.yaml` | breaks — replaced by `--prompts` / `--focus-prompts` / `--threshold` / `--dilate` (the yaml keys map 1:1 onto `SamMaskRequest` fields) |
 | `make mask` MIT step (`--model-path`, `--text-threshold`, `--dilate`, `--ctd-gate`) and merge step | OK (`use_mit` defaults on, so no `--use-mit` needed) |
 | `caption-autotag`, `caption-position` (`--src/--dst/--path_pattern/--apply/--mode`) | OK |
 | `correct_captions` incl. all four `--caption_*` correction flags and the variant flags | OK |
@@ -62,8 +62,8 @@ copy (`anime_tools/buckets.py` vs `library/datasets/buckets.py`).
 
 `anime_tools` exposes one frozen request dataclass per stage in torch-free
 modules, with `run_<stage>(req)` in-process and `req.to_argv()` for the
-daemon. The trainer builds requests and never spells a flag. **This exists
-now**; what is left is moving the trainer onto it.
+daemon. The trainer builds requests and never spells a flag. This exists
+now; what is left is moving the trainer onto it.
 
 What the trainer gains beyond drift safety: `make mask` today spawns three
 interpreters and loads SAM3 twice (subject masks, then the MIT text masker's
@@ -80,7 +80,7 @@ version `0.4.0` (868 tests, ruff clean). Pin the commit that carries them
 (tag `v0.4.0`). Recorded here as what was asked and what was decided; nothing
 here reopens the design.
 
-1. **Correction pass reads the revised caption first.** *Landed.*
+1. Correction pass reads the revised caption first. *Landed.*
    `stages/captions.py::write_corrected_preprocess_captions` resolves each
    image's caption through `_walk_captions.resolve_caption` — revised first,
    master as read-only fallback — like every other caption stage, and corrects
@@ -115,7 +115,7 @@ here reopens the design.
      compared the raw caption), i.e. a needless TE re-encode per
      `make preprocess-captions`. `_sidecar_is_current` now compares against the
      `v0` the generator would write.
-2. **Revised-caption owner in `docs/contract.md`.** *Landed.* New row for
+2. Revised-caption owner in `docs/contract.md`. Landed. New row for
    `post_image_dataset/resized/**/{stem}.txt`: written by every caption stage
    (`correct` in place, autotag / position / audit rewrite, Export publishes
    `workspace/resized/` there), read by `preprocess-te` beside the resized
@@ -123,12 +123,12 @@ here reopens the design.
    onto `{stem}.history.txt`. The master row's consumer is now the mirror
    (read only for an image with no revised caption) and the caption index —
    the TE step never read the master.
-3. **`Stage.run` in the registry.** *Landed.* `Stage(…, run="module:function")`
+3. `Stage.run` in the registry. Landed. `Stage(…, run="module:function")`
    for all eleven stages, resolved by `Stage.runner()` with the same lazy
    `ImportError` contract as `request_class()`; the runners' model imports are
    inside their bodies, so resolving one loads no weights. T3/T4 can go from
    `BY_ID[id]` to `runner()(request)` without naming a runner.
-4. **Version bump.** *Landed* in `pyproject.toml` + `uv.lock` as `0.4.0`;
+4. Version bump. Landed in `pyproject.toml` + `uv.lock` as `0.4.0`;
    the `v0.4.0` tag is the release step (tag-driven `release.yml`).
    `CONTRACT_VERSION` stays `1`.
 5. `captions.index` stays a plain CLI, as allowed; T1 special-cases it.
@@ -138,7 +138,7 @@ here reopens the design.
 Ordered. T0–T2 are the pin bump and can land in one PR once the requests
 above are pinned; T3–T5 are the migration proper.
 
-- [x] **T0. Pin bump** (blocks v2 Track A1). *Landed 2026-09-02*, pin `94e6d92` — see "What T0 found" below.
+- [x] T0. Pin bump (blocks v2 Track A1). Landed 2026-09-02, pin `94e6d92` — see "What T0 found" below.
   - `scripts/tasks/masking.py::_run_sam`: translate `sam_mask.yaml`
     (`prompts`, `focus_prompts`, `threshold`, `dilate`, `path_pattern`) into
     the new flags; drop the tempfile yaml round-trip (`_sam_config_path`).
@@ -153,7 +153,7 @@ above are pinned; T3–T5 are the migration proper.
   - Four trainer tests call `write_corrected_preprocess_captions` directly and
     pin the old master-first behaviour; they change with the pin:
     `tests/test_preprocess_dataset.py::test_write_corrected_preprocess_captions_removes_stale_missing_source`
-    (a revised caption with no master is now *the* caption — `no_caption == 0`,
+    (a revised caption with no master is now the caption — `no_caption == 0`,
     the file stays; the package's own test covers the no-caption orphan
     sidecar), `tests/test_caption_variant_sidecars.py::test_caption_step_missing_source_removes_sidecar`
     (same: the sidecar is regenerated from the revised caption, not removed —
@@ -164,8 +164,8 @@ above are pinned; T3–T5 are the migration proper.
     the revised caption wins, `clauses_preserved == 1`, "On the left" stays).
     The `preprocess-captions` docs / `captions` skill lose the "edit the
     master, re-run" phrasing for already-mirrored images.
-- [x] **T1. Contract test.** *Landed 2026-09-02.* `tests/test_anime_tools_cli_contract.py`: import
-  `anime_tools.stages.registry` **in-process** (it and the request modules are
+- [x] T1. Contract test. Landed 2026-09-02. `tests/test_anime_tools_cli_contract.py`: import
+  `anime_tools.stages.registry` in-process (it and the request modules are
   torch-free by the package's own test — no child interpreter needed), map
   each wrapper's `-m` module to its `Stage`, and assert the argv parses and
   builds via `request_class().from_namespace(parser().parse_args(argv))`.
@@ -175,12 +175,12 @@ above are pinned; T3–T5 are the migration proper.
   with `run()` stubbed, so the test reads the real argv. `captions.index` is
   checked by `--help` text or skipped. Also assert every trainer
   `from anime_tools … import` name resolves (a module-import sweep).
-- [x] **T2. Constants from `anime_tools.contract`.** *Landed 2026-09-03.* Replace the three hand
+- [x] T2. Constants from `anime_tools.contract`. Landed 2026-09-03. Replace the three hand
   copies with imports (values are identical today, so this is mechanical);
   the trainer GUI stays torch-free by construction since the module is.
   Assert `anime_tools.contract.CONTRACT_VERSION == 1` at import in
   `scripts/tasks/_common.py` with a clear "bump the pin" message.
-- [x] **T3. Masking through requests.** *Landed 2026-09-03* — see "What T2–T3 found" below. `scripts/tasks/masking.py::cmd_mask`
+- [x] T3. Masking through requests. Landed 2026-09-03 — see "What T2–T3 found" below. `scripts/tasks/masking.py::cmd_mask`
   builds `SamMaskRequest` / `MitMaskRequest` / `MergeMasksRequest`. Under a
   daemon job (`ANIMA_DAEMON_JOB_DIR` set) call the runners in-process
   (`Stage.run` after request 3, else `anime_tools.masking.run_*`) so the
@@ -190,13 +190,13 @@ above are pinned; T3–T5 are the migration proper.
   fills. Stop passing `--batch-size 4` / `--checkpoint` / `--model-path`
   literals: the request defaults come from the package's `downloads.py`
   catalog, which is where the weights actually land.
-- [x] **T4. Caption stages + grouping through requests.** *Landed 2026-09-03* — see "What T4–T6 found" below.
+- [x] T4. Caption stages + grouping through requests. Landed 2026-09-03 — see "What T4–T6 found" below.
   `_caption_master_argv` → `AutotagRequest.to_argv()` /
   `PositionRequest.to_argv()`; `cmd_preprocess_captions` →
   `CorrectRequest`; `curate.py` → `GroupRequest`. Scope resolution
   (`_resolved_path_pattern_args`) becomes one `path_pattern=` field. Under a
   daemon job, autotag → position in one process shares `load_anima_tagger`.
-- [x] **T5. Free-fit geometry has one owner.** *Landed 2026-09-03* (package `8708224`, 0.4.1). Move `EDGE_TOKEN_BANDS`,
+- [x] T5. Free-fit geometry has one owner. Landed 2026-09-03 (package `8708224`, 0.4.1). Move `EDGE_TOKEN_BANDS`,
   `freefit_bucket`, `choose_edge` and the resize solver into
   `anime_tools.buckets` / `anime_tools.stages.resize`; `library/datasets/
   buckets.py` re-exports them the way `library/models/pe.py` re-exports the
@@ -204,7 +204,7 @@ above are pinned; T3–T5 are the migration proper.
   helpers (`token_count_families`, `cluster_token_bands`, σ-demote helpers)
   stay here. `make preprocess-resize` then calls `ResizeRequest`. This is the
   one step with real package-side work still open.
-- [x] **T6. Docs.** *Landed 2026-09-03.* `CLAUDE.md` "Curation lives in anime_tools" paragraph:
+- [x] T6. Docs. Landed 2026-09-03. `CLAUDE.md` "Curation lives in anime_tools" paragraph:
   the request API is the front door, `python -m` is the shell; the `captions`
   and `daemon` skills lose their hand-written argv examples.
   `docs/v2_release_plan.md` Track D: drop the `--device` item from D0, point
@@ -216,7 +216,7 @@ above are pinned; T3–T5 are the migration proper.
 Landed as one change (trainer + two package commits); the deviations from the
 plan above, in the order they bit:
 
-1. **The trainer could not lock at all** — not the pin, the sibling checkout.
+1. The trainer could not lock at all — not the pin, the sibling checkout.
    `anime_tools` had grown a `[tool.uv.sources]` torch → cu130 index for win32
    (package commit `ad93fdb`), and uv carries a path dependency's sources into
    the consumer's resolve, so the `anime-tools-dev` editable group made every
@@ -225,7 +225,7 @@ plan above, in the order they bit:
    package dropped the block (`d9bbaa3`): the trainer owns the Windows backend
    via its `cuda-windows` / `rocm-windows` groups; a standalone Windows install
    passes `--index` at sync time. `uv lock` / `uv sync` work again.
-2. **`rules:` is gone from the package but the GUI still sends one.**
+2. `rules:` is gone from the package but the GUI still sends one.
    `sam_section.collect_rules()` → `SAM_MASK_CONFIG_JSON = {"rules": […],
    "path_pattern": …}`. `scripts/tasks/masking.py` now normalizes both schemas
    itself (`_sam_rules`) and builds one `SamMaskRequest` per rule (`to_argv()`,
@@ -238,18 +238,18 @@ plan above, in the order they bit:
    Per-rule `threshold`/`dilate` fall back to the top-level values, then to the
    package defaults — the trainer no longer carries `0.5`/`5`. Pinned in
    `tests/test_masking_task.py`; the argv round-trips in the T1 test.
-3. **One import broke**: `library/anima/training.py` re-exported the private
+3. One import broke: `library/anima/training.py` re-exported the private
    `_is_artist_tag`, which became `anime_tools.captions.taxonomy.is_artist_tag`.
    Nothing in the trainer called it beyond the re-export (one GUI comment, one
    test); dropped. The other 42 import names resolve (T1 sweeps them).
-4. **`captions.index` crashed at its final write** at 0.4.0 — the CLI resolves
+4. `captions.index` crashed at its final write at 0.4.0 — the CLI resolves
    `--vocab` to a `Path` and stored it in `meta` (`TypeError: PosixPath is not
    JSON serializable`). Fixed in the package (`94e6d92`, with a test) — hence
    the second pin. Its default `--out` also moved to the package's
    `workspace/captions/`; the trainer now passes `--out
    post_image_dataset/captions/caption_index.json` (`CAPTION_INDEX_PATH`) so
    `train.py` / `configs/easycontrol/*.toml` keep reading where they always did.
-5. **Five tests inverted, not four**: the listed four plus
+5. Five tests inverted, not four: the listed four plus
    `test_mirror_picks_up_a_master_edit_around_the_clauses` (now
    `test_a_master_edit_does_not_reach_a_revised_caption`, which also pins the
    "delete the revised caption to re-mirror" path via `from_master`).
@@ -257,11 +257,11 @@ plan above, in the order they bit:
    base requirements; the trainer's group specs are plain `anime-tools` now.
    The pin drags `transformers` 5.10.1 → 5.16.1 (`anime_tools` requires
    ≥ 5.16); the scratch preprocess + TE encode below ran on it.
-7. Validation ran **inline, not through the daemon**: the queue was serial
+7. Validation ran inline, not through the daemon: the queue was serial
    behind a running CJK cache job and a queued cold-joint train. On a 5-image
    scratch copy of real images (two without captions) via a `CONFIG_FILE`
    snapshot: `make preprocess` (resize → VAE → captions → TE → index) passed.
-   **Still owed**: the beta-gate chain (`caption-autotag --apply` →
+   Still owed: the beta-gate chain (`caption-autotag --apply` →
    `preprocess-te` keeps the autotag tags in the TE-cached caption) — the
    `caption-autotag` target submits to the daemon itself, and the job queued
    behind the CJK cold-joint runs, so it was cancelled; rerun once the queue is free
@@ -273,7 +273,7 @@ plan above, in the order they bit:
 Landed as one trainer-side change (no package commit needed; pin unchanged at
 `94e6d92`).
 
-1. **T2 is exactly mechanical.** The three copies now read
+1. T2 is exactly mechanical. The three copies now read
    `anime_tools.contract` (`gui/tabs/_autotag.py` sentinels,
    `scripts/tasks/preprocess.py::AUTOTAG_MODES`,
    `scripts/tasks/downloads.py::TAGGER_CKPT_REQUIRED = DBV4_REQUIRED_FILES`);
@@ -284,17 +284,17 @@ Landed as one trainer-side change (no package commit needed; pin unchanged at
    target fails with the clearer error on its own). The GUI launch-speed
    guard still passes — `anime_tools/__init__.py` is `importlib.metadata`
    only.
-2. **The MIT step never loaded SAM3 twice.** At 0.4.0 `MitMaskRequest.use_sam`
+2. The MIT step never loaded SAM3 twice. At 0.4.0 `MitMaskRequest.use_sam`
    defaults off and the trainer never passed `--use-sam`, so the "one SAM3
    for all three stages" saving above was overstated: the real in-process
-   win is one interpreter for the chain and **one SAM3 load across every
-   `rules:` pass** (the rules form used to reload it per rule). Confirmed on
+   win is one interpreter for the chain and one SAM3 load across every
+   `rules:` pass (the rules form used to reload it per rule). Confirmed on
    a 3-image daemon smoke (two rules + MIT + merge): a single
    `phase: load sam3` in the job's `progress.jsonl`, 13 s, nine `step`
    lines. The heartbeat thread only fires past 30 s of quiet, so none
    appeared — the `--stall-timeout 0` workaround is now moot for `make mask`
    under the daemon.
-3. **Execution is decided by `ANIMA_DAEMON_JOB_DIR` alone**
+3. Execution is decided by `ANIMA_DAEMON_JOB_DIR` alone
    (`scripts/tasks/masking.py::_execute`): set → `Stage.runner()(req)`
    in-process via `anime_tools.stages.registry.BY_ID`; unset → `python -m
    <stage.module> *req.to_argv()` as before, so a shell `make mask` still
@@ -306,17 +306,17 @@ Landed as one trainer-side change (no package commit needed; pin unchanged at
    together (the child-per-stage path freed SAM3 first); on the 16 GB box the
    smoke was unremarkable, an 8 GB report would be the reason to add a
    between-stage release.
-4. **Env plumbing replaced by one snapshot.** `RUN_SAM_MASK` / `RUN_MIT_MASK`
+4. Env plumbing replaced by one snapshot. `RUN_SAM_MASK` / `RUN_MIT_MASK`
    / `MIT_TEXT_THRESHOLD` / `MIT_DILATE` / `MIT_CTD_GATE` /
    `SAM_MASK_CONFIG_JSON` are gone; the GUI (`PreprocessTab.mask_config()`)
-   sends **`MASK_CONFIG_JSON`** with the `sam_mask.yaml` shape plus
+   sends `MASK_CONFIG_JSON` with the `sam_mask.yaml` shape plus
    `run_sam` / `run_mit` and a `mit: {text_threshold, dilate, ctd_gate}`
    block, and the yaml accepts the same keys for a shell run (so MIT knobs
    are tunable there for the first time). Absent keys are the package
    defaults — the trainer no longer carries `--checkpoint` / `--batch-size 4`
    (`batch_size` only groups the prefetch; `set_image` is per image either
-   way). One deliberate keep: `--model-path` is passed **when
-   `models/mit/model.pth` exists** (where `make download-mit` lands it);
+   way). One deliberate keep: `--model-path` is passed when
+   `models/mit/model.pth` exists (where `make download-mit` lands it);
    otherwise the request default lets the package read its own hub-cache
    copy. Dropping it outright would have re-downloaded the weights for every
    checkout that fetched them the trainer's way.
@@ -333,7 +333,7 @@ on top of `a6f6464`, the dbv4 onnxruntime backend, which the sibling checkout
 had not pulled yet; it fast-forwarded cleanly, the only working-tree overlap
 being an unrelated, still-uncommitted OCR edit).
 
-1. **One execution chokepoint.** `scripts/tasks/_common.py::execute_stage`
+1. One execution chokepoint. `scripts/tasks/_common.py::execute_stage`
    is now what masking (T3), the caption stages, resize and grouping all run
    through — in-process via `Stage.runner()` under `ANIMA_DAEMON_JOB_DIR`,
    `python -m <stage.module> *req.to_argv()` from a shell — with
@@ -341,7 +341,7 @@ being an unrelated, still-uncommitted OCR edit).
    request's own generated parser (trainer fields are the parser defaults,
    so `ARGS` override; an unknown flag fails with the stage's usage, exit 2,
    the way the child would). `masking.py` lost its private copy.
-2. **In-process caption stages need a release valve.** The plan's "autotag →
+2. In-process caption stages need a release valve. The plan's "autotag →
    position in one process shares `load_anima_tagger`" is true, but in the
    full chain the VAE child sits between them and the TE child follows, so a
    resident tagger + SAM3 (~2–4 GB) would have shared VRAM with a trainer
@@ -353,20 +353,20 @@ being an unrelated, still-uncommitted OCR edit).
    happens where the stages are adjacent (`preprocess-captions`,
    `preprocess-te`, the standalone targets); `make preprocess` still loads
    the tagger twice, as before.
-3. **The scope rides as a field.** `_caption_correction_config` stashes
+3. The scope rides as a field. `_caption_correction_config` stashes
    `path_pattern` (a string) instead of `path_pattern_args`; the standalone
    targets seed it from `PREPROCESS_PATH_PATTERN` / config and an explicit
    `--path_pattern` in `ARGS` overrides it through the parser, so it is
    emitted once by construction.
-4. **`ResizeRequest` lacked one input the trainer needs: the GUI's curation
-   decisions.** `resize_images.py` took `--curation_decisions <json>` and
+4. `ResizeRequest` lacked one input the trainer needs: the GUI's curation
+   decisions. `resize_images.py` took `--curation_decisions <json>` and
    filtered skip/move images itself. The package gained
    `ResizeRequest.skip` (paths relative to `--src`, `nargs="+"`) and
    `run_resize_images(skip=…)` (`skipped_excluded` in the stats/report);
    the trainer translates the decision file (`_curation_skips`, honouring an
    explicit `--curation_decisions` in `ARGS`). Not a glob: image names with
    `[`/`*` are common and `fnmatch` would misread them.
-5. **`scripts/preprocess/resize_images.py` is gone.** Every caller —
+5. `scripts/preprocess/resize_images.py` is gone. Every caller —
    `preprocess-resize`, `preprocess-config` (the ComfyUI trainer node's
    path), the two EasyControl pair-tree resizes in `training.py` — builds a
    `ResizeRequest`. The snap-era flags it still accepted
@@ -378,7 +378,7 @@ being an unrelated, still-uncommitted OCR edit).
    programmatic wrapper (embedders / tests), over the package's
    `run_resize_images`; `process_image` / `ResizeOptions` /
    `resize_to_bucket` are re-exports.
-6. **`FREEFIT_BAND_VERSION` was already dead on both sides**: the trainer
+6. `FREEFIT_BAND_VERSION` was already dead on both sides: the trainer
    folded it into the PNG signature only for a non-freefit `fit_mode`, which
    no longer exists; nothing else read it. Deleted in both repos.
    `library/datasets/buckets.py` re-exports the geometry from
@@ -386,9 +386,9 @@ being an unrelated, still-uncommitted OCR edit).
    `library/preprocess/resize_preview.py` re-exports the stage's normalizers
    (its `normalize_crop_margins` keeps the GUI's dict shape over the
    package's tuple). `scripts/release/sync_vendor.py` used to scrape the
-   `EDGE_TOKEN_BANDS` literal out of `buckets.py` *source text*; it now
+   `EDGE_TOKEN_BANDS` literal out of `buckets.py` source text; it now
    renders the live value, so the DirectEdit vendor tree keeps regenerating.
-7. **Tests.** `test_anime_tools_cli_contract.py` builds every request the
+7. Tests. `test_anime_tools_cli_contract.py` builds every request the
    wrappers build (autotag / position / correct / resize incl. `skip` /
    groups), re-parses the emitted argv, pins the in-process caption chain
    with a stub registry (autotag → position → correct → release → TE child)
@@ -399,7 +399,7 @@ being an unrelated, still-uncommitted OCR edit).
    under a fake job dir (two `step` lines in `progress.jsonl`), and
    `preprocess-captions` in-process. The tagger/SAM3 stages were not run
    live (GPU + models); the beta-gate chain from T0 is still owed.
-8. **T6 no-ops**: the `daemon` skill had no hand-written `anime_tools` argv,
+8. T6 no-ops: the `daemon` skill had no hand-written `anime_tools` argv,
    and the v2 plan's D0 had already lost its `--device` item. `A1` / `A5` /
    Track D in `docs/v2_release_plan.md` now state that Track D landed.
 

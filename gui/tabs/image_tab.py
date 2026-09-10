@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-import shutil
 import threading
+import time
 from html import escape
 from pathlib import Path
 
@@ -27,15 +27,19 @@ from PySide6.QtGui import (
     QTextCursor,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -75,12 +79,15 @@ from gui.tabs._autotag import (
     STATUS_READY,
     STATUS_RUNNING,
     _AutotagWorker,
+    gated_urls,
+    is_missing_model_error,
+    missing_tagger_assets,
+    tagger_gated_urls,
 )
 from gui.tabs._caption_editor import (
     BoxedCaptionEdit,
     CaptionVersionsDialog,
     _add_format,
-    _append_history,
     _diff_spans,
 )
 from gui.tabs._image_overlays import (
@@ -95,6 +102,8 @@ from gui.tabs._image_overlays import (
 )
 from gui.theme import tok
 from gui.widgets import apply_variant
+from anime_tools.captions.history import push_history
+from anime_tools.grouping.groups import MANIFEST_VERSION
 from anime_tools.captions.correction import (
     CaptionCorrectionOptions,
     TagKnowledgeBase,
@@ -103,11 +112,15 @@ from anime_tools.captions.correction import (
     find_tag_csv,
     load_tag_knowledge_base,
 )
+from library.env import resolve_under_home
 from library.datasets.curation_actions import (
+    exclude_images,
+    excluded_entries,
     load_curation_decisions,
-    move_linked_files,
     rel_key,
+    restore_rels,
     save_curation_decisions,
+    source_rel,
 )
 from anime_tools.captions.variants import (
     read_variants_sidecar,
@@ -187,6 +200,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         # folders. Off = per-folder tree. See _rebuild_tree_group_first.
         self._group_first: bool = False
         self._groups: list[dict] = []  # similarity-group manifest (make curate-group)
+        self._groups_stale = False  # manifest predates the current MANIFEST_VERSION
         # Images marked for moving; keyed by full path so a mark survives
         # filter/sort/view rebuilds. Cleared on dir change.
         self._marked: set[Path] = set()
@@ -311,12 +325,19 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self.preprocess_save_btn.setToolTip(t("dataset_preprocess_save_tooltip"))
         self.preprocess_save_btn.clicked.connect(self._save_preprocess_decisions)
         img_head.addWidget(self.preprocess_save_btn)
-        # Moves images marked by the Delete key into post_image_dataset/moved/.
+        # Excludes the images marked by the Delete key: their workspace files
+        # (resized copy, caption sidecars, mask, OCR) move under
+        # post_image_dataset/_excluded/ and the ledger there keeps them out of
+        # resize; the source image stays. Restore… puts them back.
         self.delete_btn = QPushButton(t("dataset_delete"))
         self.delete_btn.setToolTip(t("dataset_delete_tooltip"))
         apply_variant(self.delete_btn, "info")
         self.delete_btn.clicked.connect(self._delete_marked)
         img_head.addWidget(self.delete_btn)
+        self.restore_btn = QPushButton(t("dataset_restore"))
+        self.restore_btn.setToolTip(t("dataset_restore_tooltip"))
+        self.restore_btn.clicked.connect(self._restore_excluded)
+        img_head.addWidget(self.restore_btn)
         img_head.addStretch()
         rl.addLayout(img_head)
 
@@ -499,12 +520,33 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._current_dir)))
 
     def _groups_manifest_path(self) -> Path:
-        return ROOT / "post_image_dataset" / "groups" / "groups.json"
+        """Where ``make curate-group`` actually wrote the manifest.
+
+        Read off ``GroupRequest.out`` rather than spelled here: the stage owns
+        its destination (it moved to the workspace tree), and a second copy of
+        the path in the viewer is how the Group button comes to write a manifest
+        this tab never reads. The pre-workspace
+        ``post_image_dataset/groups/groups.json`` is the fallback, so a manifest
+        grouped before the move keeps showing until the next rebuild.
+        """
+        from anime_tools.grouping.requests import GroupRequest
+
+        current = resolve_under_home(GroupRequest().out)
+        if current.is_file():
+            return current
+        legacy = ROOT / "post_image_dataset" / "groups" / "groups.json"
+        return legacy if legacy.is_file() else current
 
     def _load_groups(self) -> None:
         """Read groups.json (if present) into ``self._groups``; pure JSON, keeps
-        the GUI torch-free. A missing/unreadable manifest leaves a plain tree."""
+        the GUI torch-free. A missing/unreadable manifest leaves a plain tree.
+
+        A manifest from an older ``MANIFEST_VERSION`` still lists usable
+        components, so it is kept and only flagged ``_groups_stale`` — the same
+        "rebuild me" reading the package's own sidebar takes.
+        """
         self._groups = []
+        self._groups_stale = False
         path = self._groups_manifest_path()
         if path.is_file():
             try:
@@ -512,6 +554,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 groups = data.get("groups", [])
                 if isinstance(groups, list):
                     self._groups = groups
+                self._groups_stale = data.get("version") != MANIFEST_VERSION
             except (json.JSONDecodeError, OSError):
                 self._groups = []
 
@@ -598,6 +641,13 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         if gui_daemon.active_job_id():
             QMessageBox.information(self, "", t("caption_autotag_busy"))
             return
+        # Offline catalog probe first: the worker would otherwise spend ~10s
+        # importing torch only to die on the download, and its traceback goes
+        # to a stderr nobody reads.
+        missing = missing_tagger_assets()
+        if missing:
+            self._warn_tagger_missing(missing)
+            return
         self._tagger.request(self._images[idx])
 
     def _on_autotag_status(self, phase: str) -> None:
@@ -630,7 +680,49 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self._refresh_inline_diff()
 
     def _on_autotag_error(self, err: str) -> None:
+        # A worker that died fetching / loading the weights reports the hub's
+        # own message; route that to the download prompt rather than showing a
+        # raw traceback line the user can do nothing with.
+        if is_missing_model_error(err):
+            self._warn_tagger_missing(missing_tagger_assets(), detail=err)
+            return
         QMessageBox.warning(self, t("error"), t("caption_autotag_error", err=err))
+
+    def _warn_tagger_missing(self, assets, detail: str = "") -> None:
+        """Tell the user the tagger weights aren't there and how to get them.
+
+        The backbone is gated, so "download it" alone is not actionable — the
+        accept-terms page has to be reachable from here. URLs come from the
+        catalog rows (``Asset.gated``), never from a literal in the GUI.
+        """
+        urls = gated_urls(assets) or tagger_gated_urls()
+        body = [t("caption_autotag_model_missing")]
+        if urls:
+            body.append(t("caption_autotag_model_gated", url="\n".join(urls)))
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(t("error"))
+        box.setText("\n\n".join(body))
+        if detail:
+            box.setDetailedText(detail)
+        open_btn = box.addButton(
+            t("caption_autotag_open_models"), QMessageBox.AcceptRole
+        )
+        page_btn = (
+            box.addButton(t("caption_autotag_open_gated"), QMessageBox.ActionRole)
+            if urls
+            else None
+        )
+        box.addButton(QMessageBox.Close)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is open_btn:
+            from gui.system_dialog import open_models_dialog
+
+            open_models_dialog(self)
+        elif page_btn is not None and clicked is page_btn:
+            for url in urls:
+                QDesktopServices.openUrl(QUrl(url))
 
     def _caption_correction_options(self) -> CaptionCorrectionOptions:
         return CaptionCorrectionOptions(
@@ -833,7 +925,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 result = correct_caption(old_text, kb, options=options)
                 if not result.changed:
                     continue
-                _append_history(caption_path, old_text)
+                push_history(caption_path, old_text, by="correct")
                 caption_path.write_text(result.text, encoding="utf-8")
                 changed += 1
             except OSError as exc:
@@ -887,7 +979,8 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self._image_size_cache.clear()
         self._pm_cache.clear()  # keyed by path; stale after a rescan
         self._decode_inflight.clear()
-        self._all_images = _imgs(d)
+        self._all_images = self._without_excluded(_imgs(d))
+        self._refresh_restore_button()
         had_match = self._apply_filter_and_sort(prev_stem=prev_stem)
         if not self._images:
             self._current_caption_path = None
@@ -1397,16 +1490,14 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 )
             pm = self._overlay_pm
         if self.resize_preview_cb.isChecked():
-            target_res, crop_anchor, bucket_resos, crop_margins, fit_mode, max_ratio = (
+            target_res, crop_anchor, crop_margins, max_ratio = (
                 self._resize_preview_config()
             )
             pm = _compose_resize_preview_overlay(
                 pm,
                 target_res,
                 crop_anchor=crop_anchor,
-                bucket_resos=bucket_resos,
                 crop_margins=crop_margins,
-                fit_mode=fit_mode,
                 max_ratio=max_ratio,
             )
         self.img.set_source(pm)
@@ -1428,32 +1519,23 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
     def _resize_preview_config(self):
         target_res = self._resize_preview_target_res()
         crop_anchor = None
-        bucket_resos = None
         crop_margins = None
         tab = self._preprocess_tab
         anchor_widget = getattr(tab, "resize_crop_anchor_widget", None)
         if anchor_widget is not None:
             crop_anchor = anchor_widget.value()
-        widget = getattr(tab, "target_res_widget", None)
-        if widget is not None:
-            try:
-                bucket_resos = widget.bucket_resos()
-            except (AttributeError, TypeError, ValueError):
-                bucket_resos = None
         if tab is not None and hasattr(tab, "_resize_crop_margins"):
             crop_margins = tab._resize_crop_margins()
-        fit_mode, max_ratio = self._resize_preview_fit_mode()
-        return target_res, crop_anchor, bucket_resos, crop_margins, fit_mode, max_ratio
+        return target_res, crop_anchor, crop_margins, self._resize_preview_max_ratio()
 
-    def _resize_preview_fit_mode(self):
-        """(fit_mode, max_ratio) from the live preprocess-tab widgets, falling
-        back to configs/preprocess.toml. Free-fit is the only resize mode."""
+    def _resize_preview_max_ratio(self) -> float:
+        """The free-fit aspect clamp from the live preprocess-tab widget,
+        falling back to configs/preprocess.toml."""
         spin = getattr(self._preprocess_tab, "freefit_max_ratio_spin", None)
         if spin is not None:
-            return "freefit", float(spin.value())
+            return float(spin.value())
         data = _load_preprocess_toml_data()
-        max_ratio = float(data.get("freefit_max_ratio", DEFAULT_FREEFIT_MAX_RATIO))
-        return "freefit", max_ratio
+        return float(data.get("freefit_max_ratio", DEFAULT_FREEFIT_MAX_RATIO))
 
     def _current_index(self) -> int:
         """Index into ``self._images`` of the currently selected image; -1 if
@@ -1505,7 +1587,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         if not self.resize_preview_cb.isChecked():
             return ""
         try:
-            target_res, crop_anchor, bucket_resos, crop_margins, fit_mode, max_ratio = (
+            target_res, crop_anchor, crop_margins, max_ratio = (
                 self._resize_preview_config()
             )
             preview = compute_resize_preview(
@@ -1513,9 +1595,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 height,
                 target_res,
                 crop_anchor=crop_anchor,
-                bucket_resos=bucket_resos,
                 crop_margins=crop_margins,
-                fit_mode=fit_mode,
                 max_ratio=max_ratio,
             )
         except (KeyError, TypeError, ValueError):
@@ -1666,7 +1746,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self._nav(1)
 
     def _refresh_mark_styles(self) -> None:
-        """Repaint tree leaves by pending source-delete/preprocess state. Text
+        """Repaint tree leaves by pending exclusion/preprocess state. Text
         prefixes instead of icons/backgrounds so filenames stay aligned."""
         for leaf, idx in self._tree_item_to_index.items():
             path = self._images[idx] if idx < len(self._images) else None
@@ -1703,8 +1783,111 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
 
     def _refresh_delete_button(self) -> None:
         n = len(self._marked)
-        self.delete_btn.setEnabled(n > 0)
+        self.delete_btn.setEnabled(n > 0 and self._exclusion_supported())
         self.delete_btn.setText(t("dataset_delete") + (f" ({n})" if n else ""))
+
+    # ---- exclusion (anime_tools.exclude on the trainer's trees) ----------
+
+    def _exclusion_supported(self) -> bool:
+        """Exclusion is defined for the source tree and the resized tree — the
+        two spellings of one dataset image; the other browsable dirs (sample
+        outputs, adapter datasets) have no workspace to exclude from."""
+        d = self._current_dir
+        if d is None:
+            return False
+        return d.is_relative_to(ROOT / "image_dataset") or d.is_relative_to(
+            ROOT / "post_image_dataset" / "resized"
+        )
+
+    def _ledger(self, *, warn: bool = True) -> dict:
+        """The exclusion ledger, or an empty one with the error shown — a
+        ledger that will not parse must never read as "nothing excluded"
+        silently, but it must not hide the dataset either. The button refresh
+        reads quietly (``warn=False``) so one bad file warns once per load."""
+        try:
+            return excluded_entries()
+        except ValueError as e:
+            if warn:
+                QMessageBox.warning(self, t("error"), str(e))
+            return {}
+
+    def _without_excluded(self, images: list[Path]) -> list[Path]:
+        """Drop the source images the ledger excludes. The resized tree needs
+        no filter: an excluded image's resized copy has physically left it."""
+        if not self._exclusion_supported():
+            return images
+        excluded = set(self._ledger())
+        if not excluded:
+            return images
+        kept: list[Path] = []
+        for p in images:
+            try:
+                if source_rel(p) in excluded:
+                    continue
+            except ValueError:
+                pass
+            kept.append(p)
+        return kept
+
+    def _refresh_restore_button(self) -> None:
+        n = len(self._ledger(warn=False)) if self._exclusion_supported() else 0
+        self.restore_btn.setEnabled(n > 0)
+        self.restore_btn.setText(t("dataset_restore") + (f" ({n})" if n else ""))
+
+    def _rescan_after_curation(self) -> None:
+        if self._current_dir is not None:
+            self._image_size_cache.clear()
+            self._all_images = self._without_excluded(_imgs(self._current_dir))
+        self._refresh_restore_button()
+        self._apply_filter_and_sort()
+
+    def _restore_excluded(self) -> None:
+        entries = self._ledger()
+        if not entries:
+            self._refresh_restore_button()
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle(t("dataset_restore_title"))
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel(t("dataset_restore_body")))
+        lst = QListWidget()
+        lst.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        for rel in sorted(entries):
+            e = entries[rel]
+            when = (
+                time.strftime("%Y-%m-%d %H:%M", time.localtime(e.at)) if e.at else "?"
+            )
+            item = QListWidgetItem(
+                f"{rel}  [{when}]" + (f"  — {e.note}" if e.note else "")
+            )
+            item.setData(Qt.UserRole, rel)
+            lst.addItem(item)
+        lst.selectAll()
+        lay.addWidget(lst)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        lay.addWidget(buttons)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        rels = [item.data(Qt.UserRole) for item in lst.selectedItems()]
+        if not rels:
+            return
+        try:
+            results = restore_rels(rels)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(
+                self, t("error"), t("dataset_restore_failed", err=str(e))
+            )
+            return
+        kept = [f"{r.rel}: {', '.join(r.skipped)}" for r in results if r.skipped]
+        if kept:
+            QMessageBox.information(
+                self,
+                t("dataset_restore_title"),
+                t("dataset_restore_kept", items="\n".join(kept)),
+            )
+        self._rescan_after_curation()
 
     def _delete_marked(self) -> None:
         targets = sorted(self._marked)
@@ -1729,16 +1912,11 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         anchor_row = self._current_index()
         targets_set = set(targets)
 
-        target_root = self._moved_images_dir()
         errors: list[str] = []
         for p in targets:
             try:
-                move_linked_files(
-                    p,
-                    source_root=self._current_dir or p.parent,
-                    target_root=target_root,
-                )
-            except (OSError, shutil.Error) as e:
+                exclude_images([p])
+            except (OSError, ValueError) as e:  # ExclusionError is a ValueError
                 errors.append(f"{p.name}: {e}")
         self._marked.clear()
         self._mark_preprocess_dirty()
@@ -1747,10 +1925,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         self._current_caption_path = None
         self._disk_text = ""
         self._set_caption_text("")
-        if self._current_dir is not None:
-            self._image_size_cache.clear()
-            self._all_images = _imgs(self._current_dir)
-        self._apply_filter_and_sort()
+        self._rescan_after_curation()
         if self._images:
             self._select_tree_index(
                 self._post_delete_row(open_stem, old_images, anchor_row, targets_set)
@@ -1784,9 +1959,6 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
                 if old_images[j] not in deleted and old_images[j].stem in new_row:
                     return new_row[old_images[j].stem]
         return 0
-
-    def _moved_images_dir(self) -> Path:
-        return ROOT / "post_image_dataset" / "moved"
 
     def _set_image_none(self) -> None:
         self._source_pm = None
@@ -1932,7 +2104,7 @@ class ImageViewerTab(DaemonJobMixin, LazyTabMixin, QWidget):
         new_text = self._editable_text()
         try:
             if cp.exists():  # snapshot the prior version into history first
-                _append_history(cp, self._disk_text)
+                push_history(cp, self._disk_text, by="edit")
             cp.write_text(new_text, encoding="utf-8")
         except OSError as e:
             QMessageBox.warning(self, t("error"), t("caption_save_failed", err=str(e)))

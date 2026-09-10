@@ -6,7 +6,7 @@ output_dir = "output/ckpt"
 iterations = 10000
 batch_size = 1
 seed = 42
-use_masked_loss = true
+use_masked_loss = false  # v2: masks are opt-in (`make mask` + this key)
 
 channel_scaling_alpha = 0.0
 compile_dynamic_seq = true

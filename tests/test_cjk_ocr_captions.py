@@ -175,8 +175,9 @@ def test_sentence_format_adds_the_sfx_clause_from_the_records_kind():
 
 def test_sfx_clause_is_deduplicated_per_sound_unit():
     """A page's SFX lines collapse to one per sound unit (kana core minus
-    sokuon / long vowel, minimal repeating unit), first in reading order kept;
-    speech repeats stay (2026-09-06, user's call)."""
+    sokuon / long vowel, minimal repeating unit), first in reading order kept
+    (2026-09-06, user's call); the speech lines collapse too, but on their own
+    key — the same string twice, folding nothing (2026-09-07)."""
     sfx = _sfx()
     assert sfx.sfx_key("ぱん♡ぱん♡") == "ぱん"
     assert sfx.sfx_key("びくッ") == sfx.sfx_key("びく♡") == "びく"
@@ -198,9 +199,12 @@ def test_sfx_clause_is_deduplicated_per_sound_unit():
     assert m.append_tags(
         "1girl", lines, "sentence", kinds=kinds, sfx_sentence=True
     ) == (
-        '1girl. Japanese text reads as "あっ", "あっ". '
-        'Japanese SFX reads as "じゅぽ", "ぱん♡".'
+        '1girl. Japanese text reads as "あっ". Japanese SFX reads as "じゅぽ", "ぱん♡".'
     )
+    # speech takes the exact string, not the SFX key: はっ and はー sound alike
+    # and fold to one sound, but they are two different lines of dialogue.
+    assert sfx.dedupe_speech(["はっ", "はー", "はっ"]) == ["はっ", "はー"]
+    assert sfx.speech_groups(["はあ", "はぁ", "はあ "]) == [0, 1, 0]
 
 
 def test_ocr_records_by_stem_keeps_kind_and_drops_by_kind(tmp_path):
@@ -401,3 +405,22 @@ def test_symbol_dispute_may_not_change_letters():
     assert m.accept_second_read("ご主人様♡", "ごー主人様♡", 3, reason="symbol") is None
     assert m.accept_second_read("かほ1♡", "かほー♡", 3, reason="symbol") is None
     assert m.accept_second_read("イく", "イく♡", 3, reason="symbol") == "イく♡"
+
+
+def test_package_guard_is_ellipsis_blind_and_folds_glyphs():
+    # Pin alarm for anime_tools 8ebaf58 (findings § O4e): the guard once took
+    # every ≥ 9-char line with a six-dot pause as a runaway — 94 lines on 64 of
+    # the 859 sincos pages, the longest speech on each — and a caption said
+    # ♥ / ♡ and ... / ・・・ several ways for one glyph.
+    from anime_tools.ocr import reread, sfx
+
+    block = "ふ...ぉ...フゥ......♡これから孕むまで毎日使ってやるからな♡"
+    assert not sfx.is_runaway(block)
+    assert (
+        sfx.guard(block, 89, 257) == "ふ…ぉ…フゥ…♡これから孕むまで毎日使ってやるからな♡"
+    )
+    assert (
+        sfx.normalize_read("あ・・・っ♥") == sfx.normalize_read("あ...っ♡") == "あ…っ♡"
+    )
+    assert sfx.is_runaway("ふくっ" * 10)  # a real runaway still is one
+    assert not reread.has_script("ー・・・ッ") and reread.has_script("ぐっ")

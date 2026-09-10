@@ -1,13 +1,13 @@
 # ChimeraHydra: dual-pool additive MoE on the OrthoHydra basis
 
-Two independent HydraLoRAs glued together at the residual — that's the chimera. Each adapted `Linear` carries **two complete low-rank adapters** off disjoint SVD subspaces of $W_0$:
+Two independent HydraLoRAs glued together at the residual — that's the chimera. Each adapted `Linear` carries two complete low-rank adapters off disjoint SVD subspaces of $W_0$:
 
 | Pool          | Size  | Routed by                          | Specializes along        |
 | ------------- | ----- | ---------------------------------- | ------------------------ |
-| **Content**   | $K_c$ | network-level **ContentRouter** on pooled `crossattn_emb` | prompt / style / subject |
-| **Frequency** | $K_f$ | network-level **FreqRouter** on FEI of $z_t$ | noise level / denoising stage |
+| Content       | $K_c$ | network-level ContentRouter on pooled `crossattn_emb` | prompt / style / subject |
+| Frequency     | $K_f$ | network-level FreqRouter on FEI of $z_t$ | noise level / denoising stage |
 
-The two pools' outputs are **added** — no multiplicative gate, no σ-band mask, no curriculum. Specialization is enforced by **router-input separation**: the content router only ever sees text features, the freq router only ever sees the frequency profile of the noisy latent, so each pool's experts can only differentiate along its own axis.
+The two pools' outputs are added — no multiplicative gate, no σ-band mask, no curriculum. Specialization is enforced by router-input separation: the content router only ever sees text features, the freq router only ever sees the frequency profile of the noisy latent, so each pool's experts can only differentiate along its own axis.
 
 > Experimental — entry points are `make exp-chimera` and `make lora-gui GUI_PRESETS=chimera_hydra`; the user-facing doc is `docs/experimental/chimera-hydra.md`.
 
@@ -15,18 +15,18 @@ The two pools' outputs are **added** — no multiplicative gate, no σ-band mask
 
 ## 1. Why two pools
 
-Anima's denoising flow has two roughly orthogonal sources of variance: **content** (which style/artist/subject the sample is from) and **noise level** (whether the model is doing coarse layout at high σ or texture refinement at low σ). A single HydraLoRA router has one input tensor, so it can condition on one axis or the other — the plain-Hydra cells of the three-axis surface (`router_source = "input" | "sigma" | "fei"`) each pick one and pay the symmetric price of losing the other. One $E$-way softmax cannot learn both axes; that would need 2D-indexed experts, which is exactly the staged multiplicative-gate design chimera superseded.
+Anima's denoising flow has two roughly orthogonal sources of variance: content (which style/artist/subject the sample is from) and noise level (whether the model is doing coarse layout at high σ or texture refinement at low σ). A single HydraLoRA router has one input tensor, so it can condition on one axis or the other — the plain-Hydra cells of the three-axis surface (`router_source = "input" | "sigma" | "fei"`) each pick one and pay the symmetric price of losing the other. One $E$-way softmax cannot learn both axes; that would need 2D-indexed experts, which is exactly the staged multiplicative-gate design chimera superseded.
 
-ChimeraHydra's structural answer: **two routers, one pool each, additive composition**. The content router specializes $K_c$ experts along the sample axis; the freq router specializes $K_f$ experts along the noise axis; a single forward sums both contributions, so the effective delta carries both kinds of conditioning at once. T-LoRA then masks **only the content branch** (§5) — an asymmetric "frequency expert always on / content expert rank-throttled" split.
+ChimeraHydra's structural answer: two routers, one pool each, additive composition. The content router specializes $K_c$ experts along the sample axis; the freq router specializes $K_f$ experts along the noise axis; a single forward sums both contributions, so the effective delta carries both kinds of conditioning at once. T-LoRA then masks only the content branch (§5) — an asymmetric "frequency expert always on / content expert rank-throttled" split.
 
 ---
 
 ## 2. The math
 
-Per adapted Linear (`networks/lora_modules/chimera.py`), each pool is a full shared-A HydraLoRA on the frozen-SVD Cayley parameterization, and the two pools' subspaces are disjoint **on both sides**:
+Per adapted Linear (`networks/lora_modules/chimera.py`), each pool is a full shared-A HydraLoRA on the frozen-SVD Cayley parameterization, and the two pools' subspaces are disjoint on both sides:
 
-- **Down side:** the top-$2r$ right singular vectors of $W_0$ split as first $r$ → `Q_basis_c`, next $r$ → `Q_basis_f`. The two A's read orthogonal row spaces.
-- **Up side:** the top-$(K_c{+}K_f)\cdot M$ left singular vectors split into per-expert slices `P_bases_c` / `P_bases_f`. Every content expert's column space is orthogonal to every freq expert's.
+- Down side: the top-$2r$ right singular vectors of $W_0$ split as first $r$ → `Q_basis_c`, next $r$ → `Q_basis_f`. The two A's read orthogonal row spaces.
+- Up side: the top-$(K_c{+}K_f)\cdot M$ left singular vectors split into per-expert slices `P_bases_c` / `P_bases_f`. Every content expert's column space is orthogonal to every freq expert's.
 
 $$
 \begin{aligned}
@@ -52,43 +52,43 @@ The two branches are concatenated along the rank axis before the up-projection �
 
 ## 3. The two routers (both network-level)
 
-There is **no per-Linear router** in chimera — an earlier variant routed the content pool per-Linear off the pooled rank-$r$ activation, and it was removed. Both routers live once on the `LoRANetwork` and broadcast their gate to every chimera module by reference; one Python-level write per step reaches every adapted Linear.
+There is no per-Linear router in chimera — an earlier variant routed the content pool per-Linear off the pooled rank-$r$ activation, and it was removed. Both routers live once on the `LoRANetwork` and broadcast their gate to every chimera module by reference; one Python-level write per step reaches every adapted Linear.
 
 ### 3.1 ContentRouter — pooled `crossattn_emb`
 
-Fired once per step on the pooled post-LLMAdapter text features (the same tensor the DiT cross-attends to), with a parameterless LayerNorm on the pooled input (`content_router_layer_norm = true`). This routes by **prompt content**: samples whose captions describe different styles/subjects land on different content experts, uniformly across all layers. The router gets an LR boost (`network_content_router_lr_scale`, 5.0 in the bench config) since its few parameters gate the whole pool.
+Fired once per step on the pooled post-LLMAdapter text features (the same tensor the DiT cross-attends to), with a parameterless LayerNorm on the pooled input (`content_router_layer_norm = true`). This routes by prompt content: samples whose captions describe different styles/subjects land on different content experts, uniformly across all layers. The router gets an LR boost (`network_content_router_lr_scale`, 5.0 in the bench config) since its few parameters gate the whole pool.
 
 Why pooled text rather than something the layer sees locally? Max-pooled `crossattn_emb` clusters cleanly by artist (NMI ≈ 0.93 in the original analysis) — it is the most directly content-bearing signal in the pipeline, and being caption-derived it is exactly orthogonal to noise level, which is the separation §1 requires.
 
 ### 3.2 FreqRouter — FEI of $z_t$, and the `fei` shortcut
 
-The freq pool is conditioned on the **Frequency Energy Index**: a 2-band DoG simplex $(e_\text{low}, e_\text{high})$ computed from the noisy latent each step (`library/runtime/fei.py`), which varies strongly and monotonically with σ.
+The freq pool is conditioned on the Frequency Energy Index: a 2-band DoG simplex $(e_\text{low}, e_\text{high})$ computed from the noisy latent each step (`library/runtime/fei.py`), which varies strongly and monotonically with σ.
 
 Two modes (`freq_router_mode`):
 
-- **`"fei"` (the shipped default)** — no learned router at all. The FEI simplex *is* the gate: $\pi_f = \text{normalize}(\text{FEI}^{1/\tau})$, broadcast directly ($K_f$ must equal `fei_feature_dim = 2`). Motivation: archived FEI traces showed FEI already carries the load-bearing routing signal, the learned MLP only reshaped it, and the σ-feature half was non-discriminating. No router → no freq balance loss, no cold-start risk on that side.
-- **`"learned"`** — the paper-faithful `FreqRouter` MLP over `concat(FEI, sinusoidal-σ)`. Its output Linear init is `N(0, 0.1)` — **non-zero is load-bearing**: a zero-init network-level router would start exactly uniform with no per-layer noise to break the tie, and under centered gates a uniform freq gate contributes zero forever.
+- `"fei"` (the shipped default) — no learned router at all. The FEI simplex is the gate: $\pi_f = \text{normalize}(\text{FEI}^{1/\tau})$, broadcast directly ($K_f$ must equal `fei_feature_dim = 2`). Motivation: archived FEI traces showed FEI already carries the load-bearing routing signal, the learned MLP only reshaped it, and the σ-feature half was non-discriminating. No router → no freq balance loss, no cold-start risk on that side.
+- `"learned"` — the paper-faithful `FreqRouter` MLP over `concat(FEI, sinusoidal-σ)`. Its output Linear init is `N(0, 0.1)` — non-zero is load-bearing: a zero-init network-level router would start exactly uniform with no per-layer noise to break the tie, and under centered gates a uniform freq gate contributes zero forever.
 
-### 3.3 Routing scope — most Linears are *not* chimera
+### 3.3 Routing scope — most Linears are not chimera
 
-`router_targets` (default regex `.*(output_proj|mlp\.layer[12])$`) decides which Linears become chimera leaves. Everything else falls back to **plain OrthoLoRA** (single-pool Cayley, no router). So a "chimera checkpoint" is really OrthoLoRA everywhere + dual-pool MoE on the attention outputs and MLPs — the layers where per-sample steering pays.
+`router_targets` (default regex `.*(output_proj|mlp\.layer[12])$`) decides which Linears become chimera leaves. Everything else falls back to plain OrthoLoRA (single-pool Cayley, no router). So a "chimera checkpoint" is really OrthoLoRA everywhere + dual-pool MoE on the attention outputs and MLPs — the layers where per-sample steering pays.
 
 ---
 
 ## 4. Per-expert capacity levers
 
-Frozen disjoint slices guarantee experts can't collapse into each other, but a frozen $r$-slice is also a tight box. Two levers deepen each expert **without** giving up disjointness (both in the bench config; both require the Cayley form):
+Frozen disjoint slices guarantee experts can't collapse into each other, but a frozen $r$-slice is also a tight box. Two levers deepen each expert without giving up disjointness (both in the bench config; both require the Cayley form):
 
-- **`chimera_expert_basis_mult = m`** — each expert gets an *over-complete* $(d_\text{out}, m\cdot r)$ frozen pool from a disjoint U-slice plus an $m r \times m r$ Cayley rotation; the forward selects an $r$-dim Stiefel subspace *within* the pool. The expert's column space becomes trainable while staying disjoint across experts. Benched as the big lever (~×700 reach onto an off-slice target at $m=2$); the bench config ships $m=4$.
-- **`chimera_expert_diag`** — a per-expert trainable $(K, r)$ singular spectrum, the piece the orthogonal-only parameterization lacks. Minor on its own (~×1.15).
+- `chimera_expert_basis_mult = m` — each expert gets an *over-complete* $(d_\text{out}, m\cdot r)$ frozen pool from a disjoint U-slice plus an $m r \times m r$ Cayley rotation; the forward selects an $r$-dim Stiefel subspace within the pool. The expert's column space becomes trainable while staying disjoint across experts. Benched as the big lever (~×700 reach onto an off-slice target at $m=2$); the bench config ships $m=4$.
+- `chimera_expert_diag` — a per-expert trainable $(K, r)$ singular spectrum, the piece the orthogonal-only parameterization lacks. Minor on its own (~×1.15).
 
-The alternative is `use_ortho_init = true`, which swaps every frozen-basis+Cayley for **trainable** SVD-seeded bases (`ortholora.md` §2) — maximum expressivity, but the experts' subspaces are then free to drift toward each other (collapse observed ~4k steps in benching), which is exactly what the levers above avoid.
+The alternative is `use_ortho_init = true`, which swaps every frozen-basis+Cayley for trainable SVD-seeded bases (`ortholora.md` §2) — maximum expressivity, but the experts' subspaces are then free to drift toward each other (collapse observed ~4k steps in benching), which is exactly what the levers above avoid.
 
 ---
 
 ## 5. T-LoRA per-branch composition
 
-When `use_timestep_mask = true`, the rank mask from `timestep-mask.md` applies **to the content branch only** — folded into $\lambda_c$; the freq branch keeps full rank at every $t$.
+When `use_timestep_mask = true`, the rank mask from `timestep-mask.md` applies to the content branch only — folded into $\lambda_c$; the freq branch keeps full rank at every $t$.
 
 The argument: T-LoRA exists to throttle high-σ memorization of layout/identity, which is precisely the content branch's risk surface. The freq branch *wants* capacity at high σ — learning coarse-stage behavior is its whole job. Because the pools are physically separate, this asymmetric composition costs nothing: the mask is a broadcast multiply on one branch's bottleneck.
 
@@ -96,7 +96,7 @@ The argument: T-LoRA exists to throttle high-σ memorization of layout/identity,
 
 ## 6. Balance loss
 
-Only the content pool needs balance pressure (the shipped `fei` freq mode has no router to collapse). The content pool uses an **EMA-usage load balance** rather than the Switch loss: a running estimate of per-expert usage whose penalty is $O(1)$ at uniform usage and grows toward $K_c$ at full collapse. Weight `balance_w_content` (1e-3 in the bench config, 2e-6 in the GUI variant; the outer `balance_loss_weight` stays 1.0 so the per-pool weight is the only effective scalar).
+Only the content pool needs balance pressure (the shipped `fei` freq mode has no router to collapse). The content pool uses an EMA-usage load balance rather than the Switch loss: a running estimate of per-expert usage whose penalty is $O(1)$ at uniform usage and grows toward $K_c$ at full collapse. Weight `balance_w_content` (1e-3 in the bench config, 2e-6 in the GUI variant; the outer `balance_loss_weight` stays 1.0 so the per-pool weight is the only effective scalar).
 
 Diagnostics run through the chimera-aware `get_chimera_router_stats` (per-pool gate entropy normalizes by $\log K_\text{pool}$, not $\log E$). The failure mode to watch in the first 1k steps: content gate entropy pinned at ~1.0 means the ContentRouter found no prompt-side signal to differentiate on.
 
@@ -104,9 +104,9 @@ Diagnostics run through the chimera-aware `get_chimera_router_stats` (per-pool g
 
 ## 7. File format — save distills, load re-hydrates
 
-Save (`ChimeraHydraLoRAModule.distill_save_state_dict` → `networks/lora_save.py`) folds the Cayley/OrthoInit state into a free-form dual-pool layout — per-pool `lora_down_c` / `lora_down_f` plus `lora_ups_c.{k}` / `lora_ups_f.{j}` — and writes it as a **sibling `*_chimera.safetensors`** with fused attention projections defused to `q/k/v_proj`. Metadata stamps `ss_use_chimera_hydra = "true"` plus the pool sizes and router config.
+Save (`ChimeraHydraLoRAModule.distill_save_state_dict` → `networks/lora_save.py`) folds the Cayley/OrthoInit state into a free-form dual-pool layout — per-pool `lora_down_c` / `lora_down_f` plus `lora_ups_c.{k}` / `lora_ups_f.{j}` — and writes it as a sibling `*_chimera.safetensors` with fused attention projections defused to `q/k/v_proj`. Metadata stamps `ss_use_chimera_hydra = "true"` plus the pool sizes and router config.
 
-Load: the metadata sniff routes stamped files to **`ChimeraHydraInferenceModule`** (`networks/lora_anima/factory.py`) — a distilled dual-A runtime form; the loader *requires* the dual-A keys and raises otherwise (the old collapse-to-HydraLoRA fallback was removed). The Cayley classes are training-only; checkpoint metadata carries everything needed to re-instantiate routing (the three-axis fields are auto-pinned to `("shared_A", true, "input")` whenever `use_chimera_hydra = true`, so no parallel discrimination path exists). The ComfyUI `comfyui-hydralora` node uses the same sniff.
+Load: the metadata sniff routes stamped files to `ChimeraHydraInferenceModule` (`networks/lora_anima/factory.py`) — a distilled dual-A runtime form; the loader requires the dual-A keys and raises otherwise (the old collapse-to-HydraLoRA fallback was removed). The Cayley classes are training-only; checkpoint metadata carries everything needed to re-instantiate routing (the three-axis fields are auto-pinned to `("shared_A", true, "input")` whenever `use_chimera_hydra = true`, so no parallel discrimination path exists). The ComfyUI `comfyui-hydralora` node uses the same sniff.
 
 ---
 
@@ -114,11 +114,11 @@ Load: the metadata sniff routes stamped files to **`ChimeraHydraInferenceModule`
 
 | Stacks with             | How it composes                                                                                     |
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
-| **T-LoRA**              | Per-branch — mask on content λ, freq always full rank. Built-in (§5).                                |
-| **OrthoLoRA**           | It *is* the substrate — chimera leaves are dual-pool Cayley; non-matched Linears are plain OrthoLoRA. |
-| **OrthoInit**           | `use_ortho_init=true` swaps frozen bases for trainable ones in both pools (§4).                      |
-| **Spectrum**            | Cached steps skip the blocks — routers simply don't fire on those steps.                             |
-| **Static merge to DiT** | ❌ Sample-dependent gates can't fold into a Linear weight.                                           |
+| T-LoRA                  | Per-branch — mask on content λ, freq always full rank. Built-in (§5).                                |
+| OrthoLoRA               | It is the substrate — chimera leaves are dual-pool Cayley; non-matched Linears are plain OrthoLoRA. |
+| OrthoInit               | `use_ortho_init=true` swaps frozen bases for trainable ones in both pools (§4).                      |
+| Spectrum                | Cached steps skip the blocks — routers simply don't fire on those steps.                             |
+| Static merge to DiT     | ❌ Sample-dependent gates can't fold into a Linear weight.                                           |
 
 ---
 
@@ -153,9 +153,9 @@ router_targets = ".*(output_proj|mlp\\.layer[12])$"   # chimera leaves; rest = O
 
 ## 10. Minimal mental model
 
-1. Two complete HydraLoRAs per Linear, on disjoint SVD subspaces of $W_0$ — disjoint on **both** the down (row-space) and up (column-space) sides. Outputs add.
-2. Both routers are **network-level**: content = ContentRouter on pooled `crossattn_emb` (prompt axis), freq = raw FEI passthrough on $z_t$ (noise axis). Router-input separation is the specialization guarantee.
-3. Gates are **centered** ($\pi - 1/K$): uniform gate ⇒ zero contribution ⇒ ΔW = 0 at init with λ alive — routers get gradient from step 0 without an expert-symmetry deadlock.
+1. Two complete HydraLoRAs per Linear, on disjoint SVD subspaces of $W_0$ — disjoint on both the down (row-space) and up (column-space) sides. Outputs add.
+2. Both routers are network-level: content = ContentRouter on pooled `crossattn_emb` (prompt axis), freq = raw FEI passthrough on $z_t$ (noise axis). Router-input separation is the specialization guarantee.
+3. Gates are centered ($\pi - 1/K$): uniform gate ⇒ zero contribution ⇒ ΔW = 0 at init with λ alive — routers get gradient from step 0 without an expert-symmetry deadlock.
 4. T-LoRA masks the content branch only; the freq branch is always full rank.
 5. Only attention-output and MLP Linears are chimera leaves (`router_targets`); everything else is plain OrthoLoRA.
 6. Saves as a distilled dual-A `*_chimera.safetensors` sibling; loads as `ChimeraHydraInferenceModule` keyed off the `ss_use_chimera_hydra` metadata stamp.

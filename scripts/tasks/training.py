@@ -420,7 +420,6 @@ def _resize_tree(
         "dst": dst,
         "min_pixels": int(min_pixels),
         "recursive": bool(recursive),
-        "copy_captions": False,
     }
     if target_res and tuple(target_res) != (1024,):
         fields["target_res"] = tuple(target_res)

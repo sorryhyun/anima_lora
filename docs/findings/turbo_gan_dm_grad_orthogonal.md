@@ -1,9 +1,9 @@
 # Turbo GAN generator gradient is elementwise DM-orthogonal — CLOSED
 
-Status: **CLOSED 2026-07-20.** The OPD²-style sign gate on the adversarial
+Status: CLOSED 2026-07-20. The OPD²-style sign gate on the adversarial
 gradient (`_archive/proposals/turbo_gan_dm_sign_gate.md`) died at Phase 0: the GAN
-generator gradient carries **no structured sign-disagreeing component against
-the DM signal** — agree-energy is indistinguishable from a permutation null in
+generator gradient carries no structured sign-disagreeing component against
+the DM signal — agree-energy is indistinguishable from a permutation null in
 the aggregate and in every τ-bin. There is nothing for a sign (or PCGrad-style
 projection) gate to veto. **Do not re-propose gradient surgery between the GAN
 and DM terms on the DP-DMD loop.**
@@ -49,11 +49,11 @@ relative to the noise floor.
 
 ## What it means
 
-- **The GAN is not fighting DM** — it pushes along elementwise-orthogonal
+- The GAN is not fighting DM — it pushes along elementwise-orthogonal
   directions. A sign gate would randomly delete ~half the GAN's energy, which
   is exactly "a weaker GAN overall" (the confound the proposal's
   matched-magnitude control existed to expose), not selectivity.
-- **The GAN push is NOT negligible**: ~6× the applied DM per-element magnitude
+- The GAN push is NOT negligible: ~6× the applied DM per-element magnitude
   (heavy-tailed). Substantial pressure, zero DM-alignment — mechanistically
   consistent with the `anima_turbo_R` "GAN spent" plateau verdict: realism
   pressure orthogonal to distribution matching buys texture, not diversity.
@@ -63,11 +63,11 @@ relative to the noise floor.
 
 ## Reusable traps (methodology)
 
-1. **~0.5 agree-rate is the orthogonal baseline, not conflict.** Elementwise
+1. ~0.5 agree-rate is the orthogonal baseline, not conflict. Elementwise
    sign agreement between two high-dimensional latent fields sits at ~50% for
-   *independent* signals. Judge on agree-**energy vs a permutation null**
+   *independent* signals. Judge on agree-energy vs a permutation null
    computed on the same tensors — never on the rate.
-2. **Compare applied gradients, not raw tensors.** `loss_dmd` is a `.mean()`,
+2. Compare applied gradients, not raw tensors. `loss_dmd` is a `.mean()`,
    so the DM push at `x_pred` is `grad_signal/numel`, while the GAN backward
    injects `gan_w·g_gan` unscaled — a raw-tensor magnitude ratio under-reports
    the GAN by ~numel (≈10⁵) and would have mis-closed this line as "GAN

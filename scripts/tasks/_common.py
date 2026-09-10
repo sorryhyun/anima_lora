@@ -22,36 +22,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# The ``anime_tools`` seam: every wrapper here was written against one version
-# of the package's CLI/stdio surface (``anime_tools.contract``, stdlib-only —
-# the sentinels, modes, file sets and request flags the trainer spells). The
-# package bumps ``CONTRACT_VERSION`` on an incompatible change; a mismatch
-# means the pinned rev in ``pyproject.toml`` moved past what this code was
-# audited against (or the trainer moved and the pin did not), so fail every
-# target up front instead of minutes into a GPU job.
-ANIME_TOOLS_CONTRACT_VERSION = 1
-
-
-def _check_anime_tools_contract() -> None:
-    try:
-        from anime_tools.contract import CONTRACT_VERSION
-    except ImportError:
-        # Not installed: each curation target fails on its own ``-m`` with the
-        # package's name in the error, which is the clearer message.
-        return
-    if CONTRACT_VERSION != ANIME_TOOLS_CONTRACT_VERSION:
-        raise SystemExit(
-            f"anime_tools contract version {CONTRACT_VERSION} != "
-            f"{ANIME_TOOLS_CONTRACT_VERSION} the task runner was written for. "
-            "Bump the anime_tools pin in pyproject.toml ([tool.uv.sources]) and "
-            "ANIME_TOOLS_CONTRACT_VERSION in scripts/tasks/_common.py together, "
-            "re-auditing scripts/tasks/{masking,preprocess,curate,tagger}.py "
-            "against the package's contract (docs/proposal/anime_tools_api_first.md)."
-        )
-
-
-_check_anime_tools_contract()
-
 # Shared so the shipped and experimental inference modules agree on what counts
 # as a REF_IMAGE for the test-* commands.
 _REF_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp")
@@ -942,6 +912,74 @@ def execute_stage(stage, req) -> None:
     except FileNotFoundError as exc:
         # What the CLI shell turns into SystemExit — keep the same message.
         sys.exit(str(exc))
+
+
+STAGE_VALUES_ENV = "PREPROCESS_STAGES_JSON"
+"""The GUI's stage forms, one ``{dest: value}`` dict per stage id
+(``masks_sam``: a list, one per rule card), as JSON. Written by
+``gui/tabs/preprocess/tab.py::preprocess_env`` (``stage_form.STAGE_VALUES_ENV``
+is the same name); ``request_from_form`` turns one into a request."""
+
+
+def gui_stage_values() -> dict:
+    """The stage forms a GUI-submitted job carries (``{}`` from a plain shell)."""
+    raw = os.environ.get(STAGE_VALUES_ENV)
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Invalid {STAGE_VALUES_ENV}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"Invalid {STAGE_VALUES_ENV}: expected an object")
+    return data
+
+
+def request_from_form(
+    stage_id: str,
+    values: dict,
+    *,
+    roots: dict | None = None,
+    settings: dict | None = None,
+    report_root: str | None = None,
+    mask_root: str | None = None,
+    apply: bool = False,
+    **overrides,
+):
+    """A stage form (``{dest: value}``) as the stage's request.
+
+    Goes through the package's ``anime_tools.gui.stages.build_argv`` — the
+    same path its own web GUI takes: each value coerced by the field's kind,
+    the bound roots / settings / report and mask tails filled from the
+    keyword arguments (never from the form, so a stale saved path cannot win
+    over the trainer's directories), the request's own ``__post_init__``
+    validation run, and the argv spelled back and re-parsed by the stage's
+    generated parser. ``overrides`` are the dests the trainer's chain owns
+    (``recursive``, the variant sidecar knobs, …), applied with
+    ``dataclasses.replace`` so validation runs again. A bad value is a
+    ``SystemExit`` naming the stage, before any model loads.
+    """
+    import dataclasses
+
+    from anime_tools.gui.stages import BY_ID, build_argv, load_parser, schema
+
+    stage = BY_ID[stage_id]
+    try:
+        argv = build_argv(
+            schema(stage),
+            values,
+            apply=apply,
+            roots=roots,
+            settings=settings,
+            report_root=report_root,
+            mask_root=mask_root,
+        )
+        req = stage.request_class().from_namespace(load_parser(stage).parse_args(argv))
+        if overrides:
+            req = dataclasses.replace(req, **overrides)
+    except ValueError as exc:
+        raise SystemExit(f"{stage_id} form: {exc}") from exc
+    return req
 
 
 def request_with_args(req, extra, *, prog: str | None = None):

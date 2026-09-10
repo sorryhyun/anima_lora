@@ -1,62 +1,52 @@
-"""Dataset curation helpers shared by GUI and preprocess."""
+"""Dataset curation helpers shared by GUI and preprocess.
+
+Two decisions live here. **Preprocess decisions** (``use`` / ``skip`` /
+``move``) are the GUI's per-image marks, saved to
+``post_image_dataset/curation_decisions.json`` and turned into the resize
+stage's ``skip`` list. **Exclusion** is ``anime_tools.exclude`` (torch-free)
+pointed at the trainer's trees: an image's *workspace* artifacts — the resized
+PNG, its caption sidecars, mask and OCR — move under
+:data:`EXCLUDED_DIR` and its source rel goes into the ledger there; the source
+image under ``image_dataset/`` stays where it is. The resize stage reads that
+ledger as extra ``--skip`` (``ResizeRequest.excluded_dir``), which is the one
+place an excluded image could come back, and every later stage walks the
+resized tree — so the image never trains. :func:`restore_rels` reverses it.
+
+Before anime_tools 0.6 the GUI's Delete gesture moved the *source* image to
+``post_image_dataset/moved/`` and left the resized copy and its caches behind,
+so a "moved" image could still be cached and trained. A ``moved/`` tree on
+disk is inert and can be deleted or restored by hand.
+"""
 
 from __future__ import annotations
 
 import json
-import shutil
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-SIDECAR_EXTENSIONS = (".txt", ".caption", ".json", ".txt.history.jsonl")
+from anime_tools.exclude import Entry, Result, Trees, exclude_one, restore_one
+from anime_tools.exclude import excluded_rels as _excluded_rels
+from anime_tools.exclude import read_entries as _read_entries
+from anime_tools.exclude import rel_key as exclusion_rel_key
 
+from library.env import resolve_under_home
 
-def linked_paths(image_path: Path) -> list[Path]:
-    """Return an image and existing caption/metadata sidecars."""
+SOURCE_DIR = "image_dataset"
+RESIZED_DIR = "post_image_dataset/resized"
+DEFAULT_MASK_DIR = "post_image_dataset/masks"
+OCR_DIR = "post_image_dataset/ocr"
+EXCLUDED_DIR = "post_image_dataset/_excluded"
+"""The trainer's exclusion tree and ledger. ``post_image_dataset/`` is the
+trainer's workspace (the package's own default is ``workspace/_excluded``,
+which the anime_tools GUI uses; Export mirrors that tree's files under this
+path too, so a curation done there also ends up beside — never inside — the
+resized tree the trainer reads)."""
 
-    paths = [image_path]
-    for ext in SIDECAR_EXTENSIONS:
-        sidecar = image_path.with_suffix(ext)
-        if sidecar.exists():
-            paths.append(sidecar)
-    return paths
-
-
-def move_linked_files(
-    image_path: Path,
-    *,
-    source_root: Path,
-    target_root: Path,
-) -> list[Path]:
-    """Move an image and sidecars to ``target_root`` preserving layout."""
-
-    moved: list[Path] = []
-    for source in linked_paths(image_path):
-        if not source.exists():
-            continue
-        try:
-            rel = source.relative_to(source_root)
-        except ValueError:
-            rel = Path(source.name)
-        target = _unique_path(target_root / rel)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(source), str(target))
-        moved.append(target)
-    return moved
-
-
-def _unique_path(path: Path) -> Path:
-    """Return a non-existing sibling path without overwriting prior moves."""
-
-    if not path.exists():
-        return path
-    stem = path.stem
-    suffix = path.suffix
-    parent = path.parent
-    for index in range(1, 10_000):
-        candidate = parent / f"{stem}_{index}{suffix}"
-        if not candidate.exists():
-            return candidate
-    raise FileExistsError(f"could not find a free target path for {path}")
+PACKAGE_WORKSPACE_EXCLUDED_DIR = "workspace/_excluded"
+"""Where the anime_tools GUI keeps its ledger. Its rels are unioned into the
+resize skip list so a trainer-side ``make preprocess-resize`` never re-creates
+an image that was excluded in the package's own workspace."""
 
 
 def rel_key(path: Path, root: Path) -> str:
@@ -66,6 +56,117 @@ def rel_key(path: Path, root: Path) -> str:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.name
+
+
+# ---- exclusion ----------------------------------------------------------
+
+
+def exclusion_trees(
+    *,
+    home: Path | str | None = None,
+    mask_dir: Path | str | None = None,
+) -> Trees:
+    """The trainer's trees for ``anime_tools.exclude``, anchored on the repo
+    home (or ``home``) so the GUI and a shell agree wherever they run from."""
+
+    def under(p: Path | str) -> Path:
+        return Path(home) / p if home is not None else resolve_under_home(p)
+
+    return Trees(
+        resized=under(RESIZED_DIR),
+        masks=under(mask_dir or DEFAULT_MASK_DIR),
+        ocr=under(OCR_DIR),
+        excluded=under(EXCLUDED_DIR),
+    )
+
+
+def excluded_entries(*, home: Path | str | None = None) -> dict[str, Entry]:
+    """The trainer ledger, keyed by source rel (empty when there is none)."""
+
+    return _read_entries(exclusion_trees(home=home).excluded)
+
+
+def excluded_rels(*, home: Path | str | None = None) -> tuple[str, ...]:
+    return _excluded_rels(exclusion_trees(home=home).excluded)
+
+
+def workspace_excluded_rels(*, home: Path | str | None = None) -> tuple[str, ...]:
+    """Rels excluded in the anime_tools GUI's own workspace (its ledger lives
+    under :data:`PACKAGE_WORKSPACE_EXCLUDED_DIR`); empty when it has none."""
+
+    excluded = (
+        Path(home) / PACKAGE_WORKSPACE_EXCLUDED_DIR
+        if home is not None
+        else resolve_under_home(PACKAGE_WORKSPACE_EXCLUDED_DIR)
+    )
+    return _excluded_rels(excluded)
+
+
+def source_rel(path: Path, *, home: Path | str | None = None) -> str:
+    """The ledger key for an image the GUI shows — its path relative to the
+    source tree, extension kept, which is what ``resize --skip`` matches.
+
+    A path under the resized tree maps back to the source image by directory
+    + stem (resize re-encodes ``a.jpg`` → ``a.png``); when no source image is
+    there any more the resized spelling is used as it is — resize cannot
+    re-create what has no source, so the ledger only has to move the files.
+    """
+
+    from anime_tools._walk import IMAGE_EXTENSIONS
+
+    src = (
+        Path(home) / SOURCE_DIR if home is not None else resolve_under_home(SOURCE_DIR)
+    )
+    resized = (
+        Path(home) / RESIZED_DIR
+        if home is not None
+        else resolve_under_home(RESIZED_DIR)
+    )
+    path = Path(path)
+    if path.is_relative_to(src):
+        return exclusion_rel_key(path.relative_to(src))
+    if path.is_relative_to(resized):
+        rel = path.relative_to(resized)
+        for ext in IMAGE_EXTENSIONS:
+            if (src / rel.parent / f"{rel.stem}{ext}").is_file():
+                return exclusion_rel_key(rel.parent / f"{rel.stem}{ext}")
+        return exclusion_rel_key(rel)
+    raise ValueError(f"not under {SOURCE_DIR}/ or {RESIZED_DIR}/: {path}")
+
+
+def exclude_images(
+    paths: Iterable[Path],
+    *,
+    note: str = "",
+    home: Path | str | None = None,
+    mask_dir: Path | str | None = None,
+) -> list[Result]:
+    """Take these images out of the pipeline (see the module docstring).
+
+    Each path is resolved to its source rel first; a path outside both trees
+    raises ``ValueError`` before anything moves.
+    """
+
+    trees = exclusion_trees(home=home, mask_dir=mask_dir)
+    rels = [source_rel(p, home=home) for p in paths]
+    return [exclude_one(trees, rel, note=note) for rel in rels]
+
+
+def restore_rels(
+    rels: Iterable[str],
+    *,
+    home: Path | str | None = None,
+    mask_dir: Path | str | None = None,
+) -> list[Result]:
+    """Put excluded images back and drop them from the ledger. A slot whose
+    live path is occupied again stays under ``_excluded`` and is reported in
+    ``Result.skipped`` — the package never overwrites a live file."""
+
+    trees = exclusion_trees(home=home, mask_dir=mask_dir)
+    return [restore_one(trees, rel) for rel in rels]
+
+
+# ---- preprocess decisions ------------------------------------------------
 
 
 def load_curation_decisions(

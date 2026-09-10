@@ -26,7 +26,7 @@ def _group_request(extra):
 def cmd_curate_group(extra):
     """Group dataset images by PE-Spatial visual similarity.
 
-    Writes ``post_image_dataset/groups/groups.json`` (per-artist
+    Writes ``workspace/groups/groups.json`` (``GroupRequest.out``; per-artist
     connected-components over the same near-twin grid gate the miner uses — two
     images group when ``match_frac >= --match-frac-min`` at per-cell floor
     ``--cell-match-min``). The GUI Dataset tab reads the manifest to filter the

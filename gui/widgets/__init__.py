@@ -36,20 +36,13 @@ from gui.widgets.sample_prompts import (
     _SamplePromptsLauncher,
     _SamplePromptsWidget,
 )
-from gui.widgets.target_res import (
-    _BucketMenuPanel,
-    _target_res_buckets,
-    _target_res_tiers,
-    _TargetResWidget,
-)
+from gui.widgets.target_res import _target_res_tiers, _TargetResWidget
 
 __all__ = [
     "_ATTN_MODES",
     "LazyTabHolder",
     "LazyTabMixin",
     "_target_res_tiers",
-    "_target_res_buckets",
-    "_BucketMenuPanel",
     "_TargetResWidget",
     "_SamplePromptRow",
     "_SamplePromptsWidget",

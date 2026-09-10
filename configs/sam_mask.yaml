@@ -11,21 +11,20 @@
 # form is one SAM pass per rule, and the merge step's pixel-min union composes
 # them. A rule with its own path_pattern runs on that pattern alone.
 #
-# The same file also carries the run switches and the MIT text masker's knobs
-# (the GUI's Preprocessing tab sends the identical shape as MASK_CONFIG_JSON).
-# Any key left out is the package's own request default:
-#   run_sam: true / run_mit: true   # turn a backend off
-#   mit:
-#     text_threshold: 0.8           # UNet++ segmentation threshold
-#     dilate: 3                     # applied once to the union
-#     ctd_gate: true                # keep only components in a CTD text block
+# This file is the CLI's config only: the GUI's Preprocessing tab keeps its
+# rule cards on the selected variant ([[variant.stages.masks_sam]]) and sends
+# them with the job. Any key left out is the package's own request default:
+#   run_sam: true                   # false turns masking off
+#
+# Since v2 the masks this writes are inert at train time unless
+# `masked_loss = true` (configs/base.toml) — that key is the switch, a
+# mask tree on disk alone never re-enables masked loss.
 #
 # Within either schema:
 #   prompts        subjects to mask OUT (ignored in the loss; train on the rest)
 #   focus_prompts  reversed polarity — keep ONLY these, ignore everything else
 #                  (e.g. `girl` masks all background). Composes with `prompts`:
 #                  trainable = focus subject MINUS the ignore regions.
-# focus_prompts is SAM-only; MIT text masking always stays ignore-mode.
 
 prompts:
   - speech bubble
@@ -34,7 +33,7 @@ focus_prompts: []
 
 threshold: 0.7
 dilate: 3
-# Global scope: which images get masked at all (also forwarded to MIT).
+# Global scope: which images get masked at all.
 path_pattern: '*'
 
 # ── Rules form (uncomment to route different mask types per image) ───────────

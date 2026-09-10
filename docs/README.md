@@ -2,15 +2,15 @@
 
 Index of the `docs/` tree. Each row is a one-line orientation; read the linked doc before working on the thing it describes.
 
-- **Methods** — shipped training algorithms (adapter families).
-- **Inference** — training-free runtime stacks: acceleration + sampler-boundary corrections.
-- **Experimental** — wired and runnable, but not part of the default stack.
-- **Structure** — architecture walkthroughs (how a thing is built, not how to use it).
-- **Findings** — empirical results and analyses on the Anima model; premises tested, behavior measured, decisions settled.
-- **Optimizations** — compiler, kernel, and hardware setup.
-- **Guidelines** — user-facing guides and references (multi-language).
-- **Proposals** — active design docs for unbuilt work.
-- **Architecture notes** — repo-wide planning docs at the top of `docs/`.
+- Methods — shipped training algorithms (adapter families).
+- Inference — training-free runtime stacks: acceleration + sampler-boundary corrections.
+- Experimental — wired and runnable, but not part of the default stack.
+- Structure — architecture walkthroughs (how a thing is built, not how to use it).
+- Findings — empirical results and analyses on the Anima model; premises tested, behavior measured, decisions settled.
+- Optimizations — compiler, kernel, and hardware setup.
+- Guidelines — user-facing guides and references (multi-language).
+- Proposals — active design docs for unbuilt work.
+- Architecture notes — repo-wide planning docs at the top of `docs/`.
 
 ## Methods
 
@@ -46,9 +46,13 @@ Wired and runnable, but not part of the default stack — may break or change.
 | [experimental/easycontrol.md](experimental/easycontrol.md) | EasyControl — extended self-attn image conditioning; frozen DiT, per-block cond LoRA + scalar gate |
 | [experimental/soft_tokens.md](experimental/soft_tokens.md) | Soft Tokens — SoftREPA per-layer × per-t soft text tokens (~1M params); frozen DiT, optional B=1 contrastive |
 | [experimental/directedit_editing_v3.md](experimental/directedit_editing_v3.md) | DirectEdit (v3) — flow-inversion image editing; what's actually wired and runnable |
-| [experimental/anima_tagger.md](experimental/anima_tagger.md) | Anima Tagger — multi-label tagger emitting Anima-format tag strings (DirectEdit ψ_src source) |
 | [experimental/vr_loss.md](experimental/vr_loss.md) | Variance-reduced FM loss — AsymFlow §5.2 control-variate correction at the loss level |
-| [experimental/position_captions.md](experimental/position_captions.md) | Position-aware captions — SAM3 + tagger rewrite multi-subject captions into `On the left, …` clauses, moving each bound tag out of the flat bag |
+
+Curation docs — Anima Tagger, position captions, multiview audit, grouping,
+masking — live with their code in the sibling
+[`anime_tools`](https://github.com/sorryhyun/anime_tools) repo, under
+[`docs/`](https://github.com/sorryhyun/anime_tools/tree/main/docs)
+(`../anime_tools/docs/`).
 
 ## Structure
 
@@ -69,7 +73,7 @@ Architecture walkthroughs — how a component is built.
 
 ## Findings
 
-Empirical results and analyses on the Anima model — premises tested against the real model, measurements of how it behaves, and the decisions the evidence settled (ship, don't-build, or pure characterization). The full set (20 docs, keyed by outcome: MEASUREMENT / NO-GO / FALSIFIED / CLOSED / DEMOTED / LANDED / TRAP) lives in its own index → **[findings/README.md](findings/README.md)**.
+Empirical results and analyses on the Anima model — premises tested against the real model, measurements of how it behaves, and the decisions the evidence settled (ship, don't-build, or pure characterization). The full set (20 docs, keyed by outcome: MEASUREMENT / NO-GO / FALSIFIED / CLOSED / DEMOTED / LANDED / TRAP) lives in its own index → [findings/README.md](findings/README.md).
 
 ## Optimizations
 

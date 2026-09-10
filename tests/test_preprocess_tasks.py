@@ -7,6 +7,13 @@ def _entry(cmd: list[str]) -> str:
     return cmd[2] if cmd[1] == "-m" else cmd[1]
 
 
+def _stages_env(monkeypatch, **forms) -> None:
+    """The GUI's stage forms (``PREPROCESS_STAGES_JSON``) for a run."""
+    import json
+
+    monkeypatch.setenv("PREPROCESS_STAGES_JSON", json.dumps(forms))
+
+
 def _patch_run(monkeypatch, fn) -> None:
     """Stub both child launches: ``preprocess.run`` (the trainer-side cache
     scripts) and ``_common.run`` (what ``execute_stage`` uses for a curation
@@ -339,9 +346,9 @@ def test_master_stages_inherit_an_explicit_path_pattern(monkeypatch):
     calls: list[list[str]] = []
     _patch_run(monkeypatch, lambda cmd, **_k: calls.append(cmd))
     monkeypatch.setenv("CAPTION_AUTOTAG", "1")
-    monkeypatch.setenv("CAPTION_AUTOTAG_MODE", "merge")
     monkeypatch.setenv("CAPTION_POSITION_CLAUSES", "1")
     monkeypatch.delenv("PREPROCESS_PATH_PATTERN", raising=False)
+    _stages_env(monkeypatch, autotag={"mode": "merge", "min_confidence": 0.0})
 
     preprocess.cmd_preprocess_captions(["--path_pattern", "artistA/*"])
 
@@ -559,8 +566,9 @@ def test_preprocess_chains_autotag_first(monkeypatch):
 
     _patch_run(monkeypatch, fake_run)
     monkeypatch.setenv("CAPTION_AUTOTAG", "1")
-    monkeypatch.setenv("CAPTION_AUTOTAG_MODE", "merge")
     monkeypatch.setenv("CAPTION_POSITION_CLAUSES", "1")
+    # The GUI's autotag form (the retired CAPTION_AUTOTAG_MODE env's successor).
+    _stages_env(monkeypatch, autotag={"mode": "merge", "min_confidence": 0.0})
 
     preprocess.cmd_preprocess([])
 
@@ -575,15 +583,95 @@ def test_preprocess_chains_autotag_first(monkeypatch):
     assert autotag_cmd[autotag_cmd.index("--mode") + 1] == "merge"
 
 
-def test_preprocess_autotag_blank_env_confidence_is_zero(monkeypatch):
+def test_preprocess_autotag_blank_form_confidence_is_zero(monkeypatch):
     """The GUI writes ``""`` for an empty field — that must not raise."""
     from scripts.tasks.preprocess import _caption_correction_config
 
     monkeypatch.setenv("CAPTION_AUTOTAG", "1")
-    monkeypatch.setenv("CAPTION_AUTOTAG_MIN_CONFIDENCE", "")
+    _stages_env(monkeypatch, autotag={"mode": "merge", "min_confidence": ""})
 
     config, _ = _caption_correction_config([])
     assert config["autotag_min_confidence"] == 0.0
+    assert config["autotag_mode"] == "merge"
+
+
+def test_gui_forms_fold_into_the_caption_config(monkeypatch):
+    """A ``correct`` form sets the rewrite knobs the chain reasons about
+    (``no_correct`` inverted into ``correct_order``); a CLI flag still wins."""
+    from scripts.tasks.preprocess import (
+        _caption_correction_config,
+        _caption_correction_enabled,
+    )
+
+    monkeypatch.delenv("CAPTION_DROP_GROUPS", raising=False)
+    _stages_env(
+        monkeypatch,
+        correct={
+            "no_correct": True,
+            "caption_trigger_word": "@form",
+            "caption_insert_no_artist": False,
+            "caption_drop_groups": "",
+        },
+    )
+    config, _ = _caption_correction_config([])
+    assert config["correct_order"] is False
+    assert config["trigger_word"] == "@form"
+    assert config["correct_form"]["caption_trigger_word"] == "@form"
+    # A trigger word still needs the correction pass.
+    assert _caption_correction_enabled(config)
+
+    config, _ = _caption_correction_config(["--caption_trigger_word", "@cli"])
+    assert config["trigger_word"] == "@cli"
+
+
+def test_resize_form_drives_the_resize_request(monkeypatch, tmp_path):
+    """The GUI's resize form carries the geometry; the trainer fills the
+    roots / walk / skips and the low-res sugar's answer."""
+    from scripts.tasks import _common, preprocess
+
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+    monkeypatch.setattr(_common, "_path_overrides", lambda: {"target_res": [512]})
+    monkeypatch.setattr(
+        preprocess, "_curation_decisions_path", lambda: tmp_path / "none"
+    )
+    for name in ("TARGET_RES", "MIN_PIXELS", "PREPROCESS_PATH_PATTERN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("DROP_LOWRES_IMAGES", "1")
+    _stages_env(
+        monkeypatch,
+        resize={
+            "target_res": [1024, 896],
+            "min_pixels": 250000,
+            "resize_crop_anchor": "top",
+            "resize_crop_margins": [5.0, 0.0, 0.0, 0.0],
+            "freefit_max_ratio": 3.0,
+            "overwrite": True,
+            "workers": 2,
+        },
+    )
+    built = []
+    monkeypatch.setattr(preprocess, "_execute", lambda sid, req: built.append(req))
+
+    preprocess.cmd_preprocess_resize([])
+
+    (req,) = built
+    assert req.target_res == (1024, 896)  # the form, not the config's [512]
+    assert req.min_pixels == 250000
+    assert req.resize_crop_anchor == "top"
+    assert req.resize_crop_margins == (5.0, 0.0, 0.0, 0.0)
+    assert req.freefit_max_ratio == 3.0
+    assert req.overwrite and req.workers == 2
+    assert req.recursive
+    assert req.src == "image_dataset" and req.path_pattern == "*"
+
+    # The low-res sugar: unchecked → --min_pixels 0 regardless of the form.
+    monkeypatch.setenv("DROP_LOWRES_IMAGES", "0")
+    built.clear()
+    preprocess.cmd_preprocess_resize([])
+    assert built[0].min_pixels == 0
+    # Its threshold also reaches the TE script when no caption step runs.
+    monkeypatch.setenv("DROP_LOWRES_IMAGES", "1")
+    assert preprocess._min_pixels_args() == ["--min_pixels", "250000"]
 
 
 def test_sigma_demote_routes_true_is_the_certified_route(monkeypatch):

@@ -36,10 +36,12 @@ dependencies = [
     "Pillow",
     "psutil",
     "opencv-python>=4.11.0.86",
-    # Masking moved to anime-tools[masking] (curation split); sam3 stays a
-    # direct dep for bench/position_captions/probe_autocaption.py and
-    # albumentations for project/finished/sr. segmentation-models-pytorch has
-    # no trainer-side user any more and rides only on the package extra.
+    # Masking moved to anime-tools (curation split). The direct sam3 row is now
+    # redundant -- its last trainer-side consumer, probe_autocaption.py, moved to
+    # _archive/bench/position_captions/ (2026-09-08), and anime-tools declares sam3
+    # itself -- kept only so that archived probe still resolves. albumentations is
+    # for project/finished/sr. segmentation-models-pytorch is gone from both sides
+    # with the MIT text masker (anime_tools 0.5).
     "pyyaml",
     "sam3 @ git+https://github.com/facebookresearch/sam3.git",
     "albumentations>=1.4.0",
@@ -130,13 +132,13 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
-# anime_tools: the pinned git rev is what releases install. For a live dev
+# anime_tools: the pinned release tag is what releases install. For a live dev
 # loop against a sibling checkout run
 #     uv sync --group anime-tools-dev
 # (the `anime-tools-dev` group swaps in ../anime_tools as an editable path
 # source; it conflicts with the default `anime-tools-git` group by design).
 anime-tools = [
-    { git = "https://github.com/sorryhyun/anime_tools", rev = "ae6f33e", group = "anime-tools-git" },
+    { git = "https://github.com/sorryhyun/anime_tools", tag = "v0.6.2", group = "anime-tools-git" },
     { path = "../anime_tools", editable = true, group = "anime-tools-dev" },
 ]
 torch = [
@@ -205,7 +207,7 @@ dev = [
     "markdownify",
 ]
 # anime_tools source selector (see [tool.uv.sources]): `anime-tools-git` is
-# default-on (pinned rev); `--no-group anime-tools-git --group anime-tools-dev`
+# default-on (pinned tag); `--no-group anime-tools-git --group anime-tools-dev`
 # swaps in the sibling checkout for development.
 anime-tools-git = ["anime-tools"]
 anime-tools-dev = ["anime-tools"]

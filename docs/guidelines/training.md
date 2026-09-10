@@ -18,8 +18,8 @@ Run `ls configs/gui-methods/` for the live variant list.
 
 For a key-by-key reference of the bottom layer — model paths, the noise
 schedule, caching, compile, and every memory knob — see
-[`base-config.md`](base-config.md). This doc focuses on **method/variant
-selection** and the training-specific options on top of that base.
+[`base-config.md`](base-config.md). This doc focuses on method/variant
+selection and the training-specific options on top of that base.
 
 ## LoRA family — the three-axis surface
 
@@ -115,21 +115,25 @@ The shuffle preserves `@artist` tags and section markers (`On the ...`,
 `In the ...`); only intra-section tags rotate. Regenerate the cache after
 changing tokenizer or padding.
 
-## Masked loss (SAM / MIT)
+## Masked loss (SAM3)
 
-Exclude regions like text bubbles from the training loss. `masked_loss = true`
-is on by default in `base.toml`; turn it off in the method TOML if a run
-shouldn't use masks even when the mask dir exists.
+Exclude regions like text bubbles from the training loss. **Opt-in since v2**:
+`masked_loss = false` in `base.toml`, and a mask tree on disk is ignored (one
+log line) until you set `masked_loss = true` in the method TOML or pass
+`--masked_loss`. `make download-sam3` first — SAM3 is no longer in the
+first-run set.
 
 ```bash
-make mask        # SAM3 + MIT (via tempdir) → post_image_dataset/masks/
+make mask        # SAM3 (via tempdir) → post_image_dataset/masks/
 make mask-clean  # rm -rf post_image_dataset/masks/
 ```
 
 These read `post_image_dataset/resized/` (the resized output of
-`make preprocess`). Subsets auto-pick `post_image_dataset/masks/` if
-present, falling back to legacy `masks/{merged,sam,mit}/` so users who
-haven't re-run `make mask` after the consolidation keep training.
+`make preprocess`). With `masked_loss = true`, subsets auto-pick
+`post_image_dataset/masks/` if present, falling back to legacy
+`masks/{merged,sam}/` so users who haven't re-run `make mask` after the
+consolidation keep training. The in-image text masker (MIT) is gone; lettering
+and balloons are ordinary SAM3 ignore prompts (`configs/sam_mask.yaml`).
 
 ## Dataset configuration
 
@@ -174,12 +178,12 @@ merges top-level scalars (e.g. `batch_size`). Subset-level keys must go
 through `--dataset_config <path>`.
 
 The `[half]` preset (and similar) sets `sample_ratio = 0.5` for every
-subset via the global `--sample_ratio` override — it shrinks **train only**;
+subset via the global `--sample_ratio` override — it shrinks train only;
 validation count stays exact.
 
 ## Validation
 
-Default val signal is **paired CMMD²** (PE-Core MMD between paired
+Default val signal is paired CMMD² (PE-Core MMD between paired
 samples) — set by `use_cmmd = true` and sized by `validation_split_num`
 (integer count) or `validation_split` (fraction). With CMMD off, val falls
 back to the legacy per-σ FM-MSE pass; that signal hasn't correlated with
@@ -195,7 +199,7 @@ sync are all gone. Accelerate's collectives still work harmlessly at
 1 process.
 
 If you re-add multi-GPU later, the non-obvious design choice to preserve is
-**don't `accelerator.prepare(network)` and rely on the default DDP wrap.**
+don't `accelerator.prepare(network)` and rely on the default DDP wrap.
 With the DiT frozen and only the adapter trainable, wrapping the LoRA
 `nn.Module` directly is awkward (the buckets don't match the frozen base)
 and wrapping the DiT wastes bandwidth on params that never get gradients.

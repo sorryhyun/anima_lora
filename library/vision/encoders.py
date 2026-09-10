@@ -29,6 +29,7 @@ from typing import Callable
 
 import torch
 
+from library import downloads as DL
 from library.vision.buckets import BucketSpec, get_bucket_spec
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,11 @@ class _EncoderOutput:
 
 
 def _default_pe_model_id() -> str:
-    return str(REPO_ROOT / "models" / "pe" / "PE-Core-L14-336.pt")
+    # From the catalog, not spelled here: a path a loader owns separately is a
+    # Download button that writes where the loader will not look.
+    from library.downloads import default_pe_core_path
+
+    return str(default_pe_core_path())
 
 
 def _default_pe_spatial_model_id() -> str:
@@ -178,8 +183,8 @@ def _load_pe_encoder(
         device,
         model_id,
         config_name="PE-Core-L14-336",
-        repo_id="facebook/PE-Core-L14-336",
-        filename="PE-Core-L14-336.pt",
+        repo_id=DL.PE_CORE_REPO,
+        filename=DL.PE_CORE_FILENAME,
         download_make_target="download-pe",
         dtype=dtype,
     )

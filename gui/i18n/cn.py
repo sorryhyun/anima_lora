@@ -137,7 +137,6 @@ STRINGS: dict[str, str] = {
     "preprocess_add_to_queue": "加入队列",
     "preprocess_queued": "已将 {label} 加入队列 (任务 {job_id}) — 可在队列标签页查看。",
     "preprocess_masking_sam": "SAM3 蒙版 (对话气泡)",
-    "preprocess_masking_mit": "MIT 蒙版 (漫画文字)",
     "preprocess_sam_prompts": "SAM 提示词 (每行一个):",
     "preprocess_sam_prompts_tip": (
         "SAM3 要查找的文本提示词,每行一个。默认值: 'speech bubble' 和 'text bubble'。"
@@ -171,30 +170,11 @@ STRINGS: dict[str, str] = {
     "preprocess_dilate_tip": (
         "对二值蒙版应用的膨胀像素数。值越大蒙版边缘越往外扩。默认 5。设为 0 表示禁用。"
     ),
-    "preprocess_mit_threshold": "MIT 文字阈值 (0.0–1.0):",
-    "preprocess_mit_threshold_tip": (
-        "MIT/ComicTextDetector 文字分割器的置信度阈值。默认 0.8。"
-    ),
-    "preprocess_mask_path_pattern": "蒙版路径过滤器:",
-    "preprocess_mask_path_pattern_tip": (
-        "限制哪些已缩放图像参与蒙版生成的 fnmatch glob 模式，"
-        "以 post_image_dataset/resized 为基准对每个路径进行匹配。"
-        "同时作用于 SAM 和 MIT。与训练用 path_pattern 语法相同："
-        "'*'（或空白）遮罩全部；'char_a/*' 限定单个子文件夹；"
-        "'char_a/*|char_b/*' 进行 OR 组合。"
-    ),
     "preprocess_run_mask": "运行蒙版生成",
     "preprocess_run_sam_mask": "运行 SAM 蒙版",
-    "preprocess_run_sam_mask_tip": (
-        "在蒙版生成阶段运行 SAM3 气泡分割。"
-        "取消勾选则跳过 SAM,仅使用 MIT (或其他已启用的后端)。"
-    ),
-    "preprocess_run_mit_mask": "运行 MIT 蒙版",
-    "preprocess_run_mit_mask_tip": (
-        "在蒙版生成阶段运行 MIT/ComicTextDetector 文字分割。"
-        "取消勾选则跳过 MIT,仅使用 SAM。"
-    ),
-    "preprocess_mask_nothing_enabled": ("SAM 和 MIT 蒙版至少需启用一项。"),
+    "preprocess_run_sam_mask_tip": "在蒙版生成中运行 SAM3 分割。取消勾选后，运行蒙版按钮不会执行任何操作。",
+    "preprocess_mask_nothing_enabled": "必须启用 SAM 蒙版才能运行蒙版生成。",
+    "preprocess_invalid_stage": "{stage}: {err}",
     "preprocess_status_resized": "已调整大小的图像: {n}",
     "preprocess_status_caches": "缓存 — latents: {lat}, text: {te}, PE: {pe}",
     "preprocess_status_masks": "蒙版: {masks}",
@@ -422,11 +402,17 @@ STRINGS: dict[str, str] = {
     "dataset_image_meta_empty": "无图像",
     "dataset_image_meta": "{width}x{height} · {size} · {fmt}",
     "dataset_image_meta_resize": "调整大小 {width}x{height} @ {edge}",
-    "dataset_delete": "移动 (D)",
-    "dataset_delete_tooltip": "将用 Delete 或 D 键标记的图像和 sidecar 移动到 post_image_dataset/moved/。",
-    "dataset_delete_confirm_title": "移动图像",
-    "dataset_delete_confirm_body": "将 {n} 张图像及 sidecar 移动到 post_image_dataset/moved/ 吗？",
-    "dataset_delete_failed": "部分图像无法移动:\n{err}",
+    "dataset_delete": "排除 (D)",
+    "dataset_delete_tooltip": "排除用 Delete 或 D 键标记的图像：其缩放副本、说明文字 sidecar、蒙版和 OCR 会移动到 post_image_dataset/_excluded/，该处的台账会让它们保持在缩放范围之外。源图像仍留在 image_dataset/ 中。可用“恢复…”还原。",
+    "dataset_delete_confirm_title": "排除图像",
+    "dataset_delete_confirm_body": "要排除 {n} 张图像吗？其工作区文件将移动到 post_image_dataset/_excluded/，源图像保持不变。",
+    "dataset_delete_failed": "部分图像无法排除:\n{err}",
+    "dataset_restore": "恢复…",
+    "dataset_restore_tooltip": "将已排除的图像恢复：从 post_image_dataset/_excluded/ 台账中选择条目，其文件将返回缩放、蒙版和 OCR 目录树。",
+    "dataset_restore_title": "恢复已排除的图像",
+    "dataset_restore_body": "选择要放回流程的图像。",
+    "dataset_restore_failed": "无法恢复:\n{err}",
+    "dataset_restore_kept": "部分文件因当前路径已被占用而仍留在 _excluded/ 中:\n{items}",
     "dataset_group_label": "分组 {n} — {size} 张",
     "dataset_group_rebuild": "分组",
     "dataset_group_rebuild_tooltip": "按 PE-Spatial 视觉相似度对图像分组 (按作者). 在任务队列中运行.",
@@ -449,6 +435,16 @@ STRINGS: dict[str, str] = {
     ),
     "caption_autotag_error": "自动标注失败：{err}",
     "caption_autotag_empty": "标注器未为该图像返回任何标签。",
+    "caption_autotag_model_missing": (
+        "Anima Tagger 模型尚未下载。请在「模型」窗口中获取 Tagger 包，或在终端运行 "
+        "`make download-tagger-model`，然后重新点击自动标注。"
+    ),
+    "caption_autotag_model_gated": (
+        "其 caformer_b36 主干位于受限仓库 — 请先登录 HuggingFace 并在以下页面"
+        "同意其条款：\n{url}"
+    ),
+    "caption_autotag_open_models": "打开模型窗口",
+    "caption_autotag_open_gated": "打开模型页面",
     "caption_correct": "校正顺序",
     "caption_correct_tooltip": (
         "使用 danbooru_tags_classified.csv 将标注按 ANIMA 推荐顺序重排，"
@@ -574,7 +570,7 @@ STRINGS: dict[str, str] = {
     "ec_desc_group_top": "描述符",
     # Top-bar buttons (models / update / report issue)
     "models_btn": "模型",
-    "models_btn_tooltip": "下载或重新下载模型检查点 (Anima 基础、SAM3、MIT、PE 视觉编码器)",
+    "models_btn_tooltip": "下载或重新下载模型检查点 — Anima 权重(含 CJK 词表包)与 anime_tools 策展包, 集中于一处",
     "update_btn": "更新",
     "update_btn_tooltip": "从 GitHub 拉取最新 anima_lora 版本并运行 uv sync",
     "update_btn_available": "更新 ●",
@@ -585,17 +581,44 @@ STRINGS: dict[str, str] = {
     "open_in_system_viewer": "在系统查看器中打开",
     # Models dialog
     "models_title": "下载模型",
-    "models_intro": "在下方选择模型组,或使用「全部下载」获取标准套件 "
-    "(Anima + SAM3 + MIT + PE + 标签 DB)。文件保存于 models/ 下。",
-    "models_download_all": "全部下载 (Anima + SAM3 + MIT + PE + 标签 DB)",
+    "models_intro": "训练 / 推理运行所需的权重, 按包分组显示。「下载首次运行套件」会获取 3 个 Anima 权重、PE、CJK 词表包(v2 起默认启用)、标注器检查点与标签 DB。SAM3(遮罩)与 OCR 是「策展」标签页中的可选包。文件保存于 models/ 下。",
+    "models_download_all": "下载首次运行套件",
     "models_download": "下载",
     "models_redownload": "重新下载",
     "models_installed": "✓ 已安装",
     "models_missing": "✗ 缺失",
     "model_anima": "Anima — DiT + 文本编码器 + VAE",
     "model_sam3": "SAM3 — 对话气泡蒙版",
-    "model_mit": "MIT — 漫画文字蒙版",
     "model_pe": "PE-Core-L14-336 — 视觉编码器 (CMMD 验证)",
+    "model_anima_dit": "Anima 基础 DiT — 训练对象模型",
+    "model_anima_te": "Qwen3-0.6B 文本编码器 — 提示词嵌入",
+    "model_anima_vae": "Qwen-Image VAE — 潜变量编码 / 解码",
+    "model_vocab_pack": "CJK 词表包 — 日文 / 韩文 / 中文标注行 (默认启用)",
+    "model_pe_spatial": "PE-Spatial-B16-512 — REPA + 近似图像分组",
+    "models_used_by": "用于: {what}",
+    "models_tab_anima": "Anima",
+    "models_tab_curation": "策展 (anime_tools)",
+    "curation_models_intro": "策展各阶段所需权重, 按包分组显示 — 标注器、标签 DB、遮罩(SAM3, 可选)、OCR(可选)、分组。直接读取 anime_tools 目录。各阶段首次运行时也会自行获取, 这里只是把等待时间挪前。",
+    "models_download_missing": "下载全部缺失项 ({n})",
+    "models_all_installed": "✓ 全部已安装",
+    "models_download_pack": "下载整包",
+    "models_redownload_pack": "重新下载整包",
+    "models_pack_anima": "Anima 基础",
+    "models_pack_anima_desc": "DiT、Qwen3-0.6B 文本编码器与 Qwen-Image VAE — 每次训练 / 推理运行都需要这三者。",
+    "models_pack_pe": "PE-Core",
+    "models_pack_pe_desc": "PE-Core-L14-336: CMMD 验证与 IP-Adapter 条件化。分组塔 PE-Spatial 位于「分组」包。",
+    "models_pack_cjk": "CJK 词表包",
+    "models_pack_cjk_desc": "面向日文 / 韩文 / 中文标注与提示词片段的额外文本编码器行。v2 起默认启用; 英文文本无论启用与否都逐位一致。",
+    "models_pack_tagger": "标注器",
+    "models_pack_tagger_desc": "Anima Tagger: 其检查点、受限的 dbv4 主干, 以及由其追踪导出的 ONNX 图。",
+    "models_pack_tags": "Danbooru 标签 DB",
+    "models_pack_tags_desc": "标注修正所参照的约 114k 行标签表及其英文说明。",
+    "models_pack_masking": "遮罩",
+    "models_pack_masking_desc": "SAM3 主体遮罩(受限; v2 起遮罩为可选)以及位置阶段用于检测的主体软提示。",
+    "models_pack_ocr": "OCR",
+    "models_pack_ocr_desc": "AnimeText 文本块检测器与漫画 VL 阅读器(PaddleOCR-VL-1.6 基础 + SFX 微调)。可选。",
+    "models_pack_grouping": "分组",
+    "models_pack_grouping_desc": "PE-Spatial-B16-512, 近似图像分组塔。",
     "model_danbooru_tags": "Danbooru 标签 DB — 标注顺序校正",
     "model_tagger": "Anima Tagger — caformer_b36 主干 (受限)",
     # HuggingFace 认证（模型对话框）

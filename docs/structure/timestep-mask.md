@@ -10,7 +10,7 @@ For the scaffolding this builds on, see `lora.md`: every target `Linear` is wrap
 
 ## 1. Why throttle rank by noise level
 
-The intuition comes from what each noise band *decides*. High-noise steps fix coarse structure — layout, pose, silhouette, identity. That is exactly where a fine-tune **memorizes** its training images: give the adapter full capacity there and it learns to reproduce specific compositions rather than a style. Low-noise steps refine texture, edges, rendering — where the style you actually want to learn lives.
+The intuition comes from what each noise band *decides*. High-noise steps fix coarse structure — layout, pose, silhouette, identity. That is exactly where a fine-tune memorizes its training images: give the adapter full capacity there and it learns to reproduce specific compositions rather than a style. Low-noise steps refine texture, edges, rendering — where the style you actually want to learn lives.
 
 T-LoRA's schedule encodes that asymmetry: near pure noise the adapter is squeezed to `min_rank` (coarse structure stays with the base model); as the trajectory approaches clean data the full rank opens up for detail learning. This is the anti-overfitting scheme from the T-LoRA paper, and it composes as the anti-memorization arm of the default stack.
 
@@ -48,7 +48,7 @@ $$
 \text{mask}\ =\ [\,\underbrace{1,1,\dots,1}_{r},\ \underbrace{0,0,\dots,0}_{R_\text{max}-r}\,]
 $$
 
-One mask per step, **shared by reference** across all ~280 adapted LoRA modules (`networks/lora_anima/network.py`). The network builds it once on device and rebinds every module's `_timestep_mask` buffer to the same tensor — 280 module lookups cost one GPU-resident tensor, no per-module allocations.
+One mask per step, shared by reference across all ~280 adapted LoRA modules (`networks/lora_anima/network.py`). The network builds it once on device and rebinds every module's `_timestep_mask` buffer to the same tensor — 280 module lookups cost one GPU-resident tensor, no per-module allocations.
 
 The build itself never leaves the device:
 
@@ -65,7 +65,7 @@ No host sync, static shape, single compile graph — the same rule as everywhere
 
 ## 4. Where it plugs into the forward
 
-The mask sits in the bottleneck, **first** — after `lora_down`, before dropout and `lora_up`:
+The mask sits in the bottleneck, first — after `lora_down`, before dropout and `lora_up`:
 
 ```python
 lx = lora_down(x)                 # (..., R_max)
@@ -97,10 +97,10 @@ T-LoRA touches only the `r`-dim bottleneck, and every adapter in the family has 
 
 | Adapter                | Where the mask lands                                          |
 | ---------------------- | ------------------------------------------------------------- |
-| **LoRA**               | After `lora_down`, before dropout / `lora_up`                 |
-| **OrthoLoRA / OrthoInit** | Multiplied into the diagonal scale $\lambda$ (gates the singular values) |
-| **HydraLoRA**          | After shared `lora_down`; router gates unaffected (routing must never see the mask) |
-| **ChimeraHydra**       | Content branch only — the freq branch stays full-rank at every $t$ (`chimera-hydra.md` §4) |
+| LoRA                   | After `lora_down`, before dropout / `lora_up`                 |
+| OrthoLoRA / OrthoInit  | Multiplied into the diagonal scale $\lambda$ (gates the singular values) |
+| HydraLoRA              | After shared `lora_down`; router gates unaffected (routing must never see the mask) |
+| ChimeraHydra           | Content branch only — the freq branch stays full-rank at every $t$ (`chimera-hydra.md` §4) |
 
 ---
 

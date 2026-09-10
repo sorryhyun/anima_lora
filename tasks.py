@@ -271,7 +271,7 @@ COMMANDS = {
     "curate-group": (
         curate.cmd_curate_group,
         "Group dataset images by PE-Spatial visual similarity (per-artist "
-        "connected-components) → post_image_dataset/groups/groups.json. The GUI "
+        "connected-components) → workspace/groups/groups.json. The GUI "
         'Dataset tab reads it to filter by group. ARGS="--threshold 0.95".',
     ),
     # ── Anima Tagger ──────────────────────────────────────────────────
@@ -301,7 +301,20 @@ COMMANDS = {
         "one-shot — the GUI Dataset tab uses a resident worker instead.",
     ),
     # ── Downloads ─────────────────────────────────────────────────────
-    "download-models": (downloads.cmd_download_models, "Download all models"),
+    "download-models": (
+        downloads.cmd_download_models,
+        "Download the first-run model set (Anima base + PE + CJK vocab pack + "
+        "tagger + tag KB)",
+    ),
+    "download-list": (
+        downloads.cmd_download_list,
+        "List every model catalog row: installed / MISSING, repo, destination",
+    ),
+    "download-model": (
+        downloads.cmd_download_model,
+        "Download models by pack, legacy alias or catalog id; ARGS='ocr sam3 pe', "
+        "no args lists them",
+    ),
     "download-anima": (downloads.cmd_download_anima, "Download Anima model"),
     "download-anima-variant": (
         downloads.cmd_download_anima_variant,
@@ -309,7 +322,6 @@ COMMANDS = {
         "2.9B); ARGS=<name>, no args lists them",
     ),
     "download-sam3": (downloads.cmd_download_sam3, "Download SAM3 model"),
-    "download-mit": (downloads.cmd_download_mit, "Download MIT model"),
     "download-pe": (
         downloads.cmd_download_pe,
         "Download PE-Core-L14-336 (img2emb encoder)",
@@ -320,7 +332,8 @@ COMMANDS = {
     ),
     "download-tagger": (
         downloads.cmd_download_tagger,
-        "Download Anima Tagger v2 vocab.json (caption-index dependency; not the full model)",
+        "Download the Anima Tagger checkpoint (vocab/rules/thresholds/sidecar; "
+        "not the gated backbone — see download-tagger-model)",
     ),
     "download-tagger-model": (
         downloads.cmd_download_tagger_model,
@@ -333,14 +346,16 @@ COMMANDS = {
     ),
     "download-vocab-pack": (
         downloads.cmd_download_vocab_pack,
-        "Download the CJK vocab pack (JA/KO/ZH prompt + caption rows) to "
-        "models/vocab_packs/; enable with `vocab_pack` in configs/base.toml",
+        "Re-fetch the CJK vocab pack (JA/KO/ZH prompt + caption rows) to "
+        "models/vocab_packs/; part of download-models, on by default via "
+        "`vocab_pack` in configs/base.toml",
     ),
     # ── Masking ───────────────────────────────────────────────────────
     "mask": (
         masking.cmd_mask,
-        "Run SAM + MIT (via tempdir) and write merged masks under mask_dir "
-        "(configs/preprocess.toml; default post_image_dataset/masks/)",
+        "Run the SAM3 mask rules (via tempdir) and write merged masks under "
+        "mask_dir (configs/preprocess.toml; default post_image_dataset/masks/). "
+        "Training reads them only with masked_loss = true",
     ),
     "mask-clean": (
         masking.cmd_mask_clean,

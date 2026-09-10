@@ -1,0 +1,98 @@
+{
+  "resize.min_pixels": {
+    "label": "Min pixels (filter threshold):",
+    "help": "Pixel-count threshold for the low-res filter (width × height). 500000 = 0.5MP, the default — matches the resize/caching scripts' own argparse defaults. Only applies when 'Drop low-resolution images' is on; otherwise it's ignored (the filter is disabled). Override per-run on the CLI with make preprocess ARGS=\"--min_pixels N\". Saved to configs/preprocess.toml."
+  },
+  "resize.target_res": {
+    "label": "Resolution tiers (target_res):",
+    "help": "Multi-scale constant-token resolution tiers, as a JSON list of edge sizes (allowed: 512, 768, 896, 1024, 1280, 1536). [1024] is the default — a single ~1MP tier, i.e. legacy single-resolution behavior. List more than one (e.g. [1024, 1536]) to train across resolutions like the v1.0 base model: during preprocessing each image is resized into the tier that resizes it the LEAST (nearest bucket by scale; one output per image), so a near-1MP image stays at 1024 rather than being downscaled to 768 and a mixed dataset spreads naturally across tiers. Token counts per tier: 512→1024(square)+1008, 768→2160, 896→3024+3000, 1024→4032+4200, 1280→6300, 1536→8640 — each forward runs at its real token count (no padding). Cost is compiled torch.compile block graphs: 768/1280/1536 add 1 each, 512/896 add 2 (they carry a near-square pair / square plus a diversity family), so keep the list short. The same value is read at train time only to size the torch.compile cache budget; training otherwise consumes whatever latent shapes are already cached on disk."
+  },
+  "resize.resize_crop_anchor": {
+    "label": "Resize crop position:",
+    "help": "Choose which side/corner is preserved when preprocessing crops the cover-resized image to the target bucket."
+  },
+  "resize.resize_crop_margins": {
+    "label": "Resize margins:"
+  },
+  "resize.freefit_max_ratio": {
+    "label": "Max aspect ratio:",
+    "help": "Maximum aspect ratio allowed under free-fit (only used when Free-fit is on). An image whose width/height ratio exceeds 1:R / R:1 is cover-cropped to the limit, honoring the crop position selected above — this is the ONLY place crop survives in free-fit, and only for ratios you explicitly allow. Default 4.0 matches the old bucket table's most-elongated reach (≈2016×512), so it crops nothing the old snap path didn't, while blocking degenerate 1:5 / 1:6 inputs that are both low-quality and hard to fit into the token band. Lower it (e.g. 3.0) to be stricter. This is a preprocess-only knob (training reads the on-disk cached shapes, not the clamp)."
+  },
+  "autotag.mode": {
+    "label": "Mode",
+    "help": "What the tagger is allowed to do to an existing caption.\n\n'Uncaptioned images only' (default) tags only images with no .txt sidecar and never touches a caption that exists — the only mode that cannot lose hand-written text. Use it to fill gaps in a partly-captioned corpus, or to caption a fresh dump from scratch.\n\n'Merge into existing captions' tags every image but appends only the tags the caption does not already carry. Position clauses are preserved verbatim and the tags bound inside them count as present, so merging after position-clause generation cannot re-flatten a bound tag back into the tag bag. The tagger's rating is dropped when the caption already has one. Use it to top up thin captions.\n\n'Overwrite all captions' replaces every caption with the tagger's output. Destructive — hand-written captions, trigger words and clauses are all discarded. Use it only when the existing captions are known to be worse than the tagger.",
+    "choices": {
+      "missing": "Uncaptioned images only",
+      "merge": "Merge into existing captions",
+      "overwrite": "Overwrite all captions"
+    }
+  },
+  "autotag.min_confidence": {
+    "label": "Confidence threshold",
+    "help": "An extra probability floor applied on top of the thresholds the tagger was calibrated with. The model already decides per tag using its own F1-optimal threshold (some of which are very low); this floor drops any kept tag whose probability falls below it. 0 (the default) leaves those calibrated decisions untouched. Raising it trades recall for precision: fewer tags, but the ones that survive are ones the model is confident about — useful when the corpus is stylised or off-distribution and the tail of the prediction is noisy. The rating slot is always emitted regardless of this value."
+  },
+  "correct.caption_insert_no_artist": {
+    "label": "Insert @no-artist",
+    "help": "When caption correction is enabled, insert @no-artist in the artist slot only if no artist marker exists. If a trigger word is placed in the artist slot, it takes priority and @no-artist is not inserted."
+  },
+  "correct.caption_trigger_word": {
+    "label": "Trigger word:",
+    "help": "Optional trigger tag to place during caption correction. With 'Keep trigger first' off, it is placed in the artist slot before existing artist tags. Include @ if you want the shuffle/dropout boundary to treat it as an artist marker. Underscores in trigger words are preserved."
+  },
+  "correct.caption_trigger_at_front": {
+    "label": "Keep trigger first",
+    "help": "Move the trigger word to the very front of the corrected caption. In this mode the artist slot is handled normally, so @no-artist may still be inserted when that option is enabled and no artist marker exists."
+  },
+  "masks_sam.threshold": {
+    "label": "SAM threshold (0.0–1.0):",
+    "help": "Minimum confidence required for a SAM3 detection to be kept. Range 0.0–1.0. Lower values produce more masks (with more false positives); higher values are stricter. Default 0.5. If SAM is missing real bubbles, lower this; if it's masking unrelated regions, raise it."
+  },
+  "masks_sam.dilate": {
+    "label": "Dilate (px):",
+    "help": "Pixels of binary dilation applied to each SAM mask after thresholding. Larger values blur mask edges outward — useful when the underlying segmentation undershoots the actual text bubble border. Default 5. Set to 0 to disable dilation."
+  },
+  "resize.overwrite": {
+    "label": "Re-resize existing images",
+    "help": "Re-resize every image even when one already sits at its target bucket. Off by default: the resize stage is idempotent and size-aware, so a second run only touches images whose bucket moved. Turn it on after changing the crop anchor / margins or the free-fit clamp — those change the pixels without changing the bucket, so the skip check would otherwise leave the old crop in place."
+  },
+  "resize.workers": {
+    "label": "Resize workers:",
+    "help": "Parallel worker processes for the resize pass (default 4; 1 runs everything inline in this process). Resize is CPU/IO-bound, so more workers help on a big corpus; lower it on a machine that swaps or when the dataset sits on a slow network share."
+  },
+  "correct.no_correct": {
+    "label": "Skip caption order correction (mirror verbatim)",
+    "help": "When on, the caption pass copies each source caption into post_image_dataset/resized/ verbatim (v0) and only writes the shuffle/dropout variant sidecars around it — no bucket re-ordering into Anima order. When off, captions are corrected into Anima order first and the corrected text is what the text encoder caches. The default follows caption_correct_order in configs/preprocess.toml. NOTE: a trigger word, @no-artist or a tag group to drop all need the correction pass, so setting any of them runs correction regardless of this box (it is reported in the job log)."
+  },
+  "correct.caption_drop_groups": {
+    "label": "Drop tag groups:",
+    "help": "Comma-separated tag groups stripped from every mirrored caption before text-encoder caching (GH #95); the master caption in image_dataset/ is never edited. Use a group slug — artist, character, copyright, meta, clothing, accessory, action, pose, expression, face, hair, body, background, effect, object, animal, color, person, lighting, weather, text, style_parody, framing, sexual, weapon, food, species, fashion_style — or a literal taxonomy-path prefix from models/danbooru_tags_classified.csv (e.g. '효과/연출 > 조명'). Tags the knowledge base does not know are always kept. `artist` plus 'Insert @no-artist' is the style-LoRA recipe."
+  },
+  "correct.tag_csv": {
+    "label": "Tag knowledge base (csv):",
+    "help": "Path to danbooru_tags_classified.csv, the tag taxonomy caption correction classifies against. Leave blank to use the models/ lookup (auto-downloaded on first use)."
+  },
+  "masks_sam.path_pattern": {
+    "label": "Path pattern (this rule):",
+    "help": "Which images THIS rule applies to — an fnmatch glob (matched against each image's path relative to post_image_dataset/resized), so different folders can get different mask types. 'character_a/*' targets one character; 'char_a/*|char_b/*' OR-combines several; '*portrait*' matches any path containing 'portrait'; empty or '*' is a catch-all that matches every image. Every rule whose pattern matches a given image COMPOSES on it (ignore-regions union together, focus-regions union together), so an ordered list of narrow rules plus one catch-all is a common layout. Each rule is its own SAM pass over the images its pattern selects."
+  },
+  "masks_sam.prompts": {
+    "label": "SAM prompts to mask OUT (comma-separated):",
+    "help": "Comma-separated SAM3 text prompts naming what to mask OUT — the detected regions are ignored in the loss and you train on everything else. The default rule uses 'speech bubble, text bubble' (manga-style balloons). Add prompts for other regions you want excluded, e.g. 'sound effect, caption box'. Type `none` for no ignore prompts (a rule must name something in this field or in the focus prompts)."
+  },
+  "masks_sam.focus_prompts": {
+    "label": "SAM focus prompts — keep ONLY (comma-separated):",
+    "help": "The REVERSE of the prompts above. Focus prompts name the subject to KEEP: the mask trains ONLY on what SAM3 detects here and ignores everything else — so 'girl' masks the entire background and the LoRA learns only the character. Composes with the ignore prompts in the same rule: the final trainable region is (focus subject) minus (those ignore regions). If SAM3 finds none of the focus subjects in an image, that image is left fully trainable rather than blanked out. `none` (the trainer's default rule) means no focus — ignore-only behaviour; note the package's own bare default is the subject prompt 'girl'."
+  },
+  "masks_sam.force": {
+    "label": "Regenerate existing masks",
+    "help": "Re-run SAM3 on images that already have a mask in this rule's pass. Off by default so a re-run only fills in masks that are missing; turn it on after changing the prompts, threshold or dilation."
+  },
+  "masks_sam.workers": {
+    "label": "I/O workers:",
+    "help": "Threads that load images and save masks around the SAM3 forward pass (default 4). The model itself runs on one GPU regardless."
+  },
+  "masks_sam.batch_size": {
+    "label": "Batch size:",
+    "help": "Images SAM3 processes per forward pass (default 1). Raise it on a GPU with headroom for a faster pass; lower it if masking runs out of VRAM."
+  }
+}

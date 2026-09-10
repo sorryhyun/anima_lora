@@ -23,7 +23,9 @@ from ._common import (
     ROOT,
     _path,
     execute_stage,
+    gui_stage_values,
     in_daemon_job,
+    request_from_form,
     request_with_args,
     run,
     stage_by_id,
@@ -37,19 +39,24 @@ def _min_pixels_args() -> list[str]:
     / ``min_pixels`` keys. Returns ``[]`` when both are absent (each script's own
     argparse default applies). ``drop_lowres_images = false`` forces
     ``--min_pixels 0`` even when ``min_pixels`` is set. GUI auto-chain env
-    (``DROP_LOWRES_IMAGES`` / ``MIN_PIXELS``) wins over the merged config.
+    (``DROP_LOWRES_IMAGES``, the threshold from the GUI's resize form or the
+    ``MIN_PIXELS`` env) wins over the merged config.
     """
     from ._common import _path_overrides  # local import: avoids unused circular
 
     env_drop = os.environ.get("DROP_LOWRES_IMAGES")
     env_min = os.environ.get("MIN_PIXELS")
-    if env_drop is not None or env_min is not None:
+    form_min = (_resize_form() or {}).get("min_pixels")
+    if form_min in ("", None):
+        form_min = None
+    if env_drop is not None or env_min is not None or form_min is not None:
         if env_drop is not None and not _boolish(env_drop, True):
             return ["--min_pixels", "0"]
-        if env_min is None:
+        raw = env_min if env_min is not None else form_min
+        if raw is None:
             return []
         try:
-            return ["--min_pixels", str(max(0, int(env_min)))]
+            return ["--min_pixels", str(max(0, int(raw)))]
         except (TypeError, ValueError):
             return []
 
@@ -77,19 +84,29 @@ def _config_min_pixels() -> int:
         return 500_000
 
 
+def _resize_form() -> dict | None:
+    """The GUI's resize stage form (``PREPROCESS_STAGES_JSON``), or ``None``
+    from a plain shell."""
+    form = gui_stage_values().get("resize")
+    return form if isinstance(form, dict) else None
+
+
 def _config_target_res() -> tuple[int, ...] | None:
     """The configured free-fit tiers, or ``None`` for the package default
     (a single 1024 tier — a bare ``[1024]`` collapses to it too).
 
     GUI auto-chain env (``TARGET_RES``, space/comma separated) wins over the
-    merged config. Unknown edges are dropped rather than aborting on a config
-    typo.
+    GUI's resize form, which wins over the merged config. Unknown edges are
+    dropped rather than aborting on a config typo.
     """
     from library.datasets.buckets import ALLOWED_TARGET_RES
 
     env_tr = os.environ.get("TARGET_RES")
+    form = _resize_form()
     if env_tr is not None:
         raw = env_tr.replace(",", " ").split()
+    elif form is not None and form.get("target_res"):
+        raw = form["target_res"]
     else:
         from ._common import _path_overrides
 
@@ -263,26 +280,12 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
     from ._common import _path_overrides
 
     overrides = _path_overrides()
-    env_trigger = os.environ.get("CAPTION_TRIGGER_WORD")
     env_drop_groups = os.environ.get("CAPTION_DROP_GROUPS")
     config: dict[str, object] = {
-        "correct_order": _boolish(
-            os.environ.get("CAPTION_CORRECT_ORDER"),
-            _boolish(overrides.get("caption_correct_order"), False),
-        ),
-        "insert_no_artist": _boolish(
-            os.environ.get("CAPTION_INSERT_NO_ARTIST"),
-            _boolish(overrides.get("caption_insert_no_artist"), False),
-        ),
-        "trigger_word": str(
-            env_trigger
-            if env_trigger is not None
-            else overrides.get("caption_trigger_word", "")
-        ).strip(),
-        "trigger_at_front": _boolish(
-            os.environ.get("CAPTION_TRIGGER_AT_FRONT"),
-            _boolish(overrides.get("caption_trigger_at_front"), False),
-        ),
+        "correct_order": _boolish(overrides.get("caption_correct_order"), False),
+        "insert_no_artist": _boolish(overrides.get("caption_insert_no_artist"), False),
+        "trigger_word": str(overrides.get("caption_trigger_word", "")).strip(),
+        "trigger_at_front": _boolish(overrides.get("caption_trigger_at_front"), False),
         # Tag groups stripped at mirror time (GH #95) — comma-separated slugs
         # / taxonomy-path prefixes, see anime_tools.captions.tag_drop_groups.
         "drop_groups": str(
@@ -303,15 +306,9 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
             os.environ.get("CAPTION_AUTOTAG"),
             _boolish(overrides.get("caption_autotag"), False),
         ),
-        "autotag_mode": str(
-            os.environ.get("CAPTION_AUTOTAG_MODE")
-            or overrides.get("caption_autotag_mode")
-            or "missing"
-        ).strip(),
+        "autotag_mode": str(overrides.get("caption_autotag_mode") or "missing").strip(),
         "autotag_min_confidence": _floatish(
-            os.environ.get("CAPTION_AUTOTAG_MIN_CONFIDENCE"),
-            overrides.get("caption_autotag_min_confidence"),
-            default=0.0,
+            overrides.get("caption_autotag_min_confidence"), default=0.0
         ),
         # The caption-MASTER stages are driven from this dict alone (the
         # caller's `extra` never reaches them), so the subset scope must ride
@@ -319,6 +316,35 @@ def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
         # across the WHOLE master (destructive with autotag merge/overwrite).
         "path_pattern": _resolved_path_pattern(extra),
     }
+    # The GUI's stage forms (``PREPROCESS_STAGES_JSON``): the `autotag` /
+    # `correct` requests are built from them (`_autotag_request`,
+    # `cmd_preprocess_captions`); the knobs the chain reasons about are
+    # mirrored here so the run-or-skip logic below sees one dict.
+    forms = gui_stage_values()
+    autotag_form = forms.get("autotag")
+    if isinstance(autotag_form, dict):
+        config["autotag_form"] = autotag_form
+        if autotag_form.get("mode"):
+            config["autotag_mode"] = str(autotag_form["mode"]).strip()
+        config["autotag_min_confidence"] = _floatish(
+            autotag_form.get("min_confidence"), default=0.0
+        )
+    correct_form = forms.get("correct")
+    if isinstance(correct_form, dict):
+        config["correct_form"] = correct_form
+        config["correct_order"] = not _boolish(correct_form.get("no_correct"), False)
+        config["insert_no_artist"] = _boolish(
+            correct_form.get("caption_insert_no_artist"), False
+        )
+        config["trigger_word"] = str(
+            correct_form.get("caption_trigger_word") or ""
+        ).strip()
+        config["trigger_at_front"] = _boolish(
+            correct_form.get("caption_trigger_at_front"), False
+        )
+        config["drop_groups"] = str(
+            correct_form.get("caption_drop_groups") or ""
+        ).strip()
 
     cleaned: list[str] = []
     i = 0
@@ -406,16 +432,38 @@ def _autotag_request(config: dict[str, object]):
     ``apply`` — the user already opted in via the checkbox / env; a dry run
     here would produce a report nobody reads while TE encodes the un-tagged
     captions."""
+    mode = str(config.get("autotag_mode") or "missing")
+    min_confidence = float(config.get("autotag_min_confidence") or 0.0)
+    form = config.get("autotag_form")
+    if isinstance(form, dict):
+        # The GUI's form: every other knob the stage has rides along, the
+        # roots and the scope are the trainer's.
+        return request_from_form(
+            "autotag",
+            form,
+            roots=_stage_roots(),
+            settings={"path_pattern": _stage_path_pattern(config)},
+            apply=True,
+            mode=mode,
+            min_confidence=min_confidence,
+        )
     from anime_tools.stages.requests import AutotagRequest
 
     return AutotagRequest(
-        src=_path("source_image_dir", "image_dataset"),
-        dst=_path("resized_image_dir", "post_image_dataset/resized"),
+        **_stage_roots(),
         path_pattern=_stage_path_pattern(config),
-        mode=str(config.get("autotag_mode") or "missing"),
-        min_confidence=float(config.get("autotag_min_confidence") or 0.0),
+        mode=mode,
+        min_confidence=min_confidence,
         apply=True,
     )
+
+
+def _stage_roots() -> dict[str, str]:
+    """The ``src`` / ``dst`` roots every caption stage binds."""
+    return {
+        "src": _path("source_image_dir", "image_dataset"),
+        "dst": _path("resized_image_dir", "post_image_dataset/resized"),
+    }
 
 
 def _position_request(config: dict[str, object]):
@@ -514,57 +562,31 @@ def _resize_crop_fields() -> dict[str, object]:
     return fields
 
 
-# Flags the old trainer resize script took that the package's ``ResizeRequest``
-# has no field for: ``--resize_bucket_resos`` (the snap-era allow-list, inert
-# since free-fit became the only mode), ``--freefit`` (free-fit is implicit)
-# and the legacy bucket-manager knobs. Dropped from ``ARGS`` with a note rather
-# than failing the parse.
-_RESIZE_STALE_FLAGS_WITH_VALUES = {
-    "--resize_bucket_resos": None,  # nargs="*": consume until the next flag
-    "--resize-bucket-resos": None,
-    "--bucket_reso_steps": 1,
-    "--min_bucket_reso": 1,
-    "--max_bucket_reso": 1,
-    "--resolution": 1,
-    "--curation_decisions": 1,
-    "--curation-decisions": 1,
-}
-_RESIZE_STALE_SWITCHES = {"--freefit", "--no_copy_captions", "--recursive"}
+# ``--curation_decisions <path>`` is the one resize flag the package's
+# ``ResizeRequest`` has no field for that the trainer still honours (it becomes
+# the request's ``skip`` set). The snap-era flags this used to swallow with a
+# note (``--resize_bucket_resos`` / ``--bucket_reso_steps`` / ``--min_bucket_reso``
+# / ``--max_bucket_reso`` / ``--resolution`` / ``--freefit``) were dropped in v2:
+# they now fail the stage's own parse, which names the flags that do exist.
+_CURATION_DECISIONS_FLAGS = ("--curation_decisions", "--curation-decisions")
 
 
-def _pop_stale_resize_args(extra) -> tuple[list[str], str | None]:
-    """Split the old resize-script-only flags out of ``ARGS``.
+def _pop_curation_decisions_arg(extra) -> tuple[list[str], str | None]:
+    """Split ``--curation_decisions <path>`` out of ``ARGS``.
 
-    Returns ``(cleaned, curation_decisions_path)``: an explicit
-    ``--curation_decisions <path>`` is honoured (it becomes ``skip``); the
-    rest are dropped with a note. ``--recursive`` / ``--no_copy_captions``
-    are the request defaults already.
+    Returns ``(cleaned, curation_decisions_path)``; everything else is left
+    for the request's own parser.
     """
     cleaned: list[str] = []
     decisions: str | None = None
     i = 0
     while i < len(extra):
         tok = extra[i]
-        if tok in _RESIZE_STALE_SWITCHES:
-            if tok == "--freefit":
-                print("  [preprocess] --freefit is implicit now (dropped)")
-            i += 1
-            continue
-        if tok in _RESIZE_STALE_FLAGS_WITH_VALUES:
-            n = _RESIZE_STALE_FLAGS_WITH_VALUES[tok]
-            if tok.startswith("--curation"):
-                if i + 1 >= len(extra):
-                    raise SystemExit(f"{tok} requires a path")
-                decisions = str(extra[i + 1])
-                i += 2
-                continue
-            print(f"  [preprocess] {tok} has no effect under free-fit (dropped)")
-            i += 1
-            if n is None:
-                while i < len(extra) and not str(extra[i]).startswith("--"):
-                    i += 1
-            else:
-                i += n
+        if tok in _CURATION_DECISIONS_FLAGS:
+            if i + 1 >= len(extra):
+                raise SystemExit(f"{tok} requires a path")
+            decisions = str(extra[i + 1])
+            i += 2
             continue
         cleaned.append(tok)
         i += 1
@@ -586,12 +608,34 @@ def _resize_request(
     GUI's curation decisions as ``skip``."""
     from anime_tools.stages.requests import ResizeRequest
 
-    cleaned, decisions = _pop_stale_resize_args(extra)
+    cleaned, decisions = _pop_curation_decisions_arg(extra)
+    skips = _curation_skips(src, Path(decisions) if decisions else None)
+    form = _resize_form()
+    if form is not None:
+        # The GUI's resize form carries the geometry (tiers, crop, clamp,
+        # overwrite, workers); the trainer fills the roots, the scope, the
+        # walk and the curation skips, and the low-res sugar's answer.
+        overrides: dict[str, object] = {
+            "recursive": True,
+            "excluded_dir": EXCLUDED_DIR,
+        }
+        if min_pixels is not None:
+            overrides["min_pixels"] = int(min_pixels)
+        if skips:
+            overrides["skip"] = skips
+        req = request_from_form(
+            "resize",
+            form,
+            roots={"src": src, "dst": dst},
+            settings={"path_pattern": path_pattern or "*"},
+            **overrides,
+        )
+        return request_with_args(req, cleaned, prog=prog)
     fields: dict[str, object] = {
         "src": src,
         "dst": dst,
         "recursive": True,
-        "copy_captions": False,
+        "excluded_dir": EXCLUDED_DIR,
         "path_pattern": path_pattern or "*",
         **_resize_crop_fields(),
     }
@@ -602,7 +646,6 @@ def _resize_request(
     ratio = _config_freefit_max_ratio()
     if ratio is not None:
         fields["freefit_max_ratio"] = ratio
-    skips = _curation_skips(src, Path(decisions) if decisions else None)
     if skips:
         fields["skip"] = skips
     try:
@@ -618,6 +661,9 @@ def _min_pixels_value(mp_args: list[str]) -> int | None:
     return int(mp_args[1]) if mp_args else None
 
 
+from library.datasets.curation_actions import EXCLUDED_DIR  # noqa: E402
+
+
 def _curation_decisions_path() -> Path:
     path = Path(
         _path("curation_decisions", "post_image_dataset/curation_decisions.json")
@@ -626,22 +672,27 @@ def _curation_decisions_path() -> Path:
 
 
 def _curation_skips(src: str, decisions_path: Path | None = None) -> tuple[str, ...]:
-    """The images the GUI's curation decisions leave out of preprocessing, as
-    ``ResizeRequest.skip`` entries (paths relative to ``src``). Empty when no
-    decision file exists — a plain CLI preprocess is unchanged."""
-    from library.datasets.curation_actions import load_curation_decisions
+    """The images curation leaves out of preprocessing, as ``ResizeRequest.skip``
+    entries (paths relative to ``src``): the GUI's decision file (``skip`` /
+    ``move``) plus whatever the anime_tools GUI excluded in its own workspace
+    ledger. The trainer's own exclusion ledger is not listed here — the stage
+    reads it itself through ``excluded_dir``. Empty when neither exists, so a
+    plain CLI preprocess is unchanged."""
+    from library.datasets.curation_actions import (
+        load_curation_decisions,
+        workspace_excluded_rels,
+    )
 
+    skips: set[str] = set(workspace_excluded_rels())
     path = decisions_path or _curation_decisions_path()
-    if not path.is_file():
-        return ()
-    decisions = load_curation_decisions(path, source_dir=src)
-    return tuple(
-        sorted(
+    if path.is_file():
+        decisions = load_curation_decisions(path, source_dir=src)
+        skips.update(
             rel
             for rel, decision in decisions.items()
             if decision.get("action") in {"skip", "move"}
         )
-    )
+    return tuple(sorted(skips))
 
 
 def _repa_pe_encoder() -> str | None:
@@ -712,8 +763,6 @@ def _pop_resize_only_args(extra) -> list[str]:
     for tok in it:
         if tok in {
             "--target_res",
-            "--resize_bucket_resos",
-            "--resize-bucket-resos",
             "--resize_crop_margins",
             "--resize-crop-margins",
         }:
@@ -727,8 +776,6 @@ def _pop_resize_only_args(extra) -> list[str]:
             continue
         if tok in {"--freefit_max_ratio", "--freefit-max-ratio"}:
             next(it, None)
-            continue
-        if tok == "--freefit":  # store_true — no value to consume
             continue
         cleaned.append(tok)
     return cleaned
@@ -770,10 +817,15 @@ def _drop_option_with_value(extra, names: set[str]) -> list[str]:
     return cleaned
 
 
-def cmd_preprocess_resize(extra):
+def cmd_preprocess_resize(extra, *, chained: bool = False):
     """Resize the caption master into the bucket tree — the ``anime_tools``
     resize stage as a ``ResizeRequest`` (config chain + GUI env as the base,
-    ``ARGS`` on top, the GUI's curation decisions as ``skip``)."""
+    ``ARGS`` on top, the GUI's curation decisions as ``skip``).
+
+    ``chained`` marks the call from :func:`cmd_preprocess`, where the cache
+    stages that follow already receive the same ``ARGS`` — only a standalone
+    ``make preprocess-resize`` needs the re-crop warning below.
+    """
     mp_args, extra = _resolve_lowres_filter(extra)
     req = _resize_request(
         _path("source_image_dir", "image_dataset"),
@@ -784,6 +836,18 @@ def cmd_preprocess_resize(extra):
         target_res=_config_target_res(),
     )
     _execute("resize", req)
+    if req.overwrite and not chained:
+        # A re-crop (crop anchor / margins / freefit_max_ratio) rewrites the PNG
+        # at the SAME bucket, and the downstream skips are keyed on the bucket
+        # (latents: `latents_{H}x{W}` present) / on sidecar existence (PE), not
+        # on the pixels — so they would keep caches of the old crop.
+        # `preprocess-reconcile` doesn't catch it either: nothing moved bucket.
+        print(
+            "  [preprocess] --overwrite re-wrote resized images: re-run "
+            "`make preprocess-vae ARGS=--overwrite` (and preprocess-pe, if you "
+            "cache PE features) or the latent/PE caches keep the old crop. "
+            "`make preprocess ARGS=--overwrite` forwards it to every stage."
+        )
 
 
 def cmd_preprocess_reconcile(extra):
@@ -982,20 +1046,13 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
     _ensure_danbooru_tags()
     from anime_tools.stages.requests import CorrectRequest
 
-    fields: dict[str, object] = {
-        "src": _path("source_image_dir", "image_dataset"),
-        "dst": _path("resized_image_dir", "post_image_dataset/resized"),
-        "recursive": True,
-        "path_pattern": _resolved_path_pattern(extra),
-    }
-    if correct:
-        fields.update(_caption_correction_fields(caption_config))
-    else:
-        fields["no_correct"] = True
+    # The trainer's own fields: the walk and the variant sidecars (the
+    # TextCachingSection's knobs), plus the tokenizers identity-randomize needs.
+    trainer_fields: dict[str, object] = {"recursive": True}
     if n_variants > 0:
-        fields["caption_shuffle_variants"] = n_variants
-        fields["caption_tag_dropout_rate"] = _float_or_zero(dropout)
-        fields["caption_tag_randomize_rate"] = _float_or_zero(randomize)
+        trainer_fields["caption_shuffle_variants"] = n_variants
+        trainer_fields["caption_tag_dropout_rate"] = _float_or_zero(dropout)
+        trainer_fields["caption_tag_randomize_rate"] = _float_or_zero(randomize)
         # Identity-randomize needs the tokenizers to build the erasure pool.
         # The curation-side stage loads tokenizers from *directories* only
         # (it must not know the safetensors→bundled-config mapping), so
@@ -1003,12 +1060,41 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
         if _float_or_zero(randomize) > 0.0 and n_variants >= 2:
             from library.anima.weights import qwen3_tokenizer_dir, t5_tokenizer_dir
 
-            fields["qwen3"] = qwen3_tokenizer_dir(_QWEN3_TOKENIZER)
-            fields["t5_tokenizer_path"] = t5_tokenizer_dir()
-    try:
-        req = CorrectRequest(**fields)
-    except ValueError as exc:
-        raise SystemExit(f"caption correction: {exc}") from exc
+            trainer_fields["qwen3"] = qwen3_tokenizer_dir(_QWEN3_TOKENIZER)
+            trainer_fields["t5_tokenizer_path"] = t5_tokenizer_dir()
+    path_pattern = _resolved_path_pattern(extra)
+    form = caption_config.get("correct_form")
+    if isinstance(form, dict):
+        # The GUI's form supplies the stage's long tail (tag_csv, …); the
+        # five rewrite knobs are set from the config dict, which the form was
+        # folded into (so an explicit CLI flag still wins), and the trainer's
+        # own fields on top.
+        req = request_from_form(
+            "correct",
+            form,
+            roots=_stage_roots(),
+            settings={"path_pattern": path_pattern},
+            no_correct=not correct,
+            caption_insert_no_artist=bool(caption_config.get("insert_no_artist")),
+            caption_trigger_word=str(caption_config.get("trigger_word") or ""),
+            caption_trigger_at_front=bool(caption_config.get("trigger_at_front")),
+            caption_drop_groups=str(caption_config.get("drop_groups") or ""),
+            **trainer_fields,
+        )
+    else:
+        fields: dict[str, object] = {
+            **_stage_roots(),
+            "path_pattern": path_pattern,
+            **trainer_fields,
+        }
+        if correct:
+            fields.update(_caption_correction_fields(caption_config))
+        else:
+            fields["no_correct"] = True
+        try:
+            req = CorrectRequest(**fields)
+        except ValueError as exc:
+            raise SystemExit(f"caption correction: {exc}") from exc
     _execute("correct", req)
 
 
@@ -1339,7 +1425,7 @@ def cmd_preprocess(extra):
     encoder = _repa_pe_encoder()
     if encoder is not None:
         _require_repa_encoder_model(encoder)
-    cmd_preprocess_resize(extra)
+    cmd_preprocess_resize(extra, chained=True)
     _run_caption_autotag_stage(caption_config)
     # VAE/TE steps read on-disk shapes — strip the low-res convenience flags AND
     # the resize-only --target_res so their argparse never sees an undefined arg.

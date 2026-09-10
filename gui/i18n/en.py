@@ -148,7 +148,6 @@ STRINGS: dict[str, str] = {
     "preprocess_add_to_queue": "Add to queue",
     "preprocess_queued": "Queued {label} (job {job_id}) — watch it in the Queue tab.",
     "preprocess_masking_sam": "SAM3 masking (text bubbles)",
-    "preprocess_masking_mit": "MIT masking (manga text)",
     "preprocess_sam_prompts": "SAM prompts (one per line):",
     "preprocess_sam_prompts_tip": (
         "Text prompts SAM3 looks for. One per line. Defaults to 'speech bubble' "
@@ -185,33 +184,11 @@ STRINGS: dict[str, str] = {
         "Pixels of dilation applied to the binary mask. Larger values blur "
         "mask edges outward. Default 5. Set to 0 to disable."
     ),
-    "preprocess_mit_threshold": "MIT text threshold (0.0–1.0):",
-    "preprocess_mit_threshold_tip": (
-        "Confidence threshold for the MIT/ComicTextDetector text segmenter. "
-        "Default 0.8."
-    ),
-    "preprocess_mask_path_pattern": "Mask path filter:",
-    "preprocess_mask_path_pattern_tip": (
-        "fnmatch glob restricting which resized images get masked, matched on "
-        "each path relative to post_image_dataset/resized. Scopes BOTH SAM and "
-        "MIT. Same syntax as the training path_pattern: '*' (or blank) masks "
-        "everything; 'char_a/*' one subfolder; 'char_a/*|char_b/*' to OR-combine."
-    ),
     "preprocess_run_mask": "Run masking",
     "preprocess_run_sam_mask": "Run SAM masking",
-    "preprocess_run_sam_mask_tip": (
-        "Run SAM3 bubble segmentation as part of mask generation. "
-        "Uncheck to skip SAM and use only MIT (or whichever other "
-        "backends are enabled)."
-    ),
-    "preprocess_run_mit_mask": "Run MIT masking",
-    "preprocess_run_mit_mask_tip": (
-        "Run MIT/ComicTextDetector text segmentation as part of mask "
-        "generation. Uncheck to skip MIT and use only SAM."
-    ),
-    "preprocess_mask_nothing_enabled": (
-        "At least one of SAM or MIT masking must be enabled."
-    ),
+    "preprocess_run_sam_mask_tip": "Run SAM3 segmentation as part of mask generation. Unchecked, the Run masking button does nothing.",
+    "preprocess_mask_nothing_enabled": "SAM masking must be enabled to run masking.",
+    "preprocess_invalid_stage": "{stage}: {err}",
     "preprocess_status_resized": "Resized images: {n}",
     "preprocess_status_caches": "Caches — latents: {lat}, text: {te}, PE: {pe}",
     "preprocess_status_masks": "Masks: {masks}",
@@ -496,11 +473,17 @@ STRINGS: dict[str, str] = {
     "dataset_image_meta_empty": "No image",
     "dataset_image_meta": "{width}x{height} · {size} · {fmt}",
     "dataset_image_meta_resize": "Resize {width}x{height} @ {edge}",
-    "dataset_delete": "Move (D)",
-    "dataset_delete_tooltip": "Move the images marked with the Delete or D key to post_image_dataset/moved/, along with sidecars.",
-    "dataset_delete_confirm_title": "Move images",
-    "dataset_delete_confirm_body": "Move {n} image(s) and sidecars to post_image_dataset/moved/?",
-    "dataset_delete_failed": "Some images could not be moved:\n{err}",
+    "dataset_delete": "Exclude (D)",
+    "dataset_delete_tooltip": "Exclude the images marked with the Delete or D key: their resized copy, caption sidecars, mask and OCR move to post_image_dataset/_excluded/ and the ledger there keeps them out of resize. The source image stays in image_dataset/. Restore… puts them back.",
+    "dataset_delete_confirm_title": "Exclude images",
+    "dataset_delete_confirm_body": "Exclude {n} image(s)? Their workspace files move to post_image_dataset/_excluded/; the source images stay.",
+    "dataset_delete_failed": "Some images could not be excluded:\n{err}",
+    "dataset_restore": "Restore…",
+    "dataset_restore_tooltip": "Put excluded images back: pick entries from the post_image_dataset/_excluded/ ledger and their files return to the resized, mask and OCR trees.",
+    "dataset_restore_title": "Restore excluded images",
+    "dataset_restore_body": "Select the images to put back into the pipeline.",
+    "dataset_restore_failed": "Could not restore:\n{err}",
+    "dataset_restore_kept": "Some files stayed under _excluded/ because the live path is occupied again:\n{items}",
     "dataset_group_label": "Group {n} — {size} imgs",
     "dataset_group_rebuild": "Group",
     "dataset_group_rebuild_tooltip": "Group images by PE-Spatial visual similarity (per-artist). Runs in the job queue.",
@@ -525,6 +508,17 @@ STRINGS: dict[str, str] = {
     ),
     "caption_autotag_error": "Autotag failed: {err}",
     "caption_autotag_empty": "The tagger returned no tags for this image.",
+    "caption_autotag_model_missing": (
+        "The Anima Tagger model is not downloaded yet. Open Models and fetch the "
+        "Tagger pack (or run `make download-tagger-model` in a terminal), then try "
+        "Autotag again."
+    ),
+    "caption_autotag_model_gated": (
+        "Its caformer_b36 backbone lives in a gated repository — sign in to "
+        "HuggingFace and accept the terms on this page first:\n{url}"
+    ),
+    "caption_autotag_open_models": "Open Models…",
+    "caption_autotag_open_gated": "Open the model page",
     "caption_correct": "Correct order",
     "caption_correct_tooltip": (
         "Use danbooru_tags_classified.csv to reorder this caption into the "
@@ -656,7 +650,7 @@ STRINGS: dict[str, str] = {
     "ec_desc_group_top": "descriptor",
     # Top-bar buttons (models / update / report issue)
     "models_btn": "Models",
-    "models_btn_tooltip": "Download or re-download model checkpoints (Anima base, SAM3, MIT, PE vision encoder)",
+    "models_btn_tooltip": "Download or re-download model checkpoints — the Anima weights (incl. the CJK vocab pack) and the anime_tools curation packs, in one place",
     "update_btn": "Update",
     "update_btn_tooltip": "Pull the latest anima_lora release from GitHub and run uv sync",
     "update_btn_available": "Update ●",
@@ -667,9 +661,8 @@ STRINGS: dict[str, str] = {
     "open_in_system_viewer": "Open in system viewer",
     # Models dialog
     "models_title": "Download Models",
-    "models_intro": "Pick a model group below or use 'Download all' for the standard set "
-    "(Anima + SAM3 + MIT + PE + tag DB). Files are saved under models/.",
-    "models_download_all": "Download all (Anima + SAM3 + MIT + PE + tag DB)",
+    "models_intro": "The weights a training or inference run needs, grouped by pack. 'Download the first-run set' fetches the three Anima weights, PE, the CJK vocab pack (on by default since v2), the tagger checkpoint and the tag DB. SAM3 (masking) and OCR are opt-in packs on the Curation tab. Files are saved under models/.",
+    "models_download_all": "Download the first-run set",
     "models_download": "Download",
     "models_redownload": "Re-download",
     "models_installed": "✓ Installed",
@@ -680,8 +673,36 @@ STRINGS: dict[str, str] = {
     "models_failed_message": "Download exited with code {code}. See the log for details.",
     "model_anima": "Anima — DiT + text encoder + VAE",
     "model_sam3": "SAM3 — text-bubble masking",
-    "model_mit": "MIT — manga text masking",
     "model_pe": "PE-Core-L14-336 — vision encoder (CMMD validation)",
+    "model_anima_dit": "Anima base DiT — the model being trained",
+    "model_anima_te": "Qwen3-0.6B text encoder — prompt embeddings",
+    "model_anima_vae": "Qwen-Image VAE — latent encode / decode",
+    "model_vocab_pack": "CJK vocab pack — JA / KO / ZH caption rows (on by default)",
+    "model_pe_spatial": "PE-Spatial-B16-512 — REPA + near-twin grouping",
+    "models_used_by": "Used by: {what}",
+    "models_tab_anima": "Anima",
+    "models_tab_curation": "Curation (anime_tools)",
+    "curation_models_intro": "Weights for the curation stages, grouped by pack — tagger, tag DB, masking (SAM3, opt-in), OCR (opt-in), grouping. Read straight from the anime_tools catalog. Each stage also fetches what it needs on first use; this only moves the wait.",
+    "models_download_missing": "Download all missing ({n})",
+    "models_all_installed": "✓ Everything installed",
+    "models_download_pack": "Download pack",
+    "models_redownload_pack": "Re-download pack",
+    "models_pack_anima": "Anima base",
+    "models_pack_anima_desc": "The DiT, the Qwen3-0.6B text encoder and the Qwen-Image VAE — every training and inference run needs all three.",
+    "models_pack_pe": "PE-Core",
+    "models_pack_pe_desc": "PE-Core-L14-336: CMMD validation and IP-Adapter conditioning. PE-Spatial, the grouping tower, is the Grouping pack.",
+    "models_pack_cjk": "CJK vocab pack",
+    "models_pack_cjk_desc": "Extra text-encoder rows for Japanese / Korean / Chinese caption and prompt spans. On by default since v2; English text is bit-exact either way.",
+    "models_pack_tagger": "Tagger",
+    "models_pack_tagger_desc": "The Anima Tagger: its checkpoint, the gated dbv4 backbone, and the ONNX graph traced from it.",
+    "models_pack_tags": "Danbooru tag DB",
+    "models_pack_tags_desc": "The ~114k-row tag table caption correction types against, and its English descriptions.",
+    "models_pack_masking": "Masking",
+    "models_pack_masking_desc": "SAM3 subject masks (gated; masking is opt-in since v2), and the subject soft prompt the position stages detect with.",
+    "models_pack_ocr": "OCR",
+    "models_pack_ocr_desc": "The AnimeText text-block detector and the manga VL reader (PaddleOCR-VL-1.6 base + the SFX fine-tune). Opt-in.",
+    "models_pack_grouping": "Grouping",
+    "models_pack_grouping_desc": "PE-Spatial-B16-512, the near-twin grouping tower.",
     "model_danbooru_tags": "Danbooru tag DB — caption order correction",
     "model_tagger": "Anima Tagger — caformer_b36 backbone (gated)",
     # HuggingFace authentication (Models dialog)

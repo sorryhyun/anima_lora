@@ -14,7 +14,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from anime_tools.stages.resize import (  # noqa: F401 — re-exports
-    CAPTION_EXTENSIONS,
     ResizeOptions,
     ResizeStats,
     process_image,
@@ -25,10 +24,7 @@ from anime_tools.stages.resize import (  # noqa: F401 — re-exports
 from library.datasets.buckets import DEFAULT_FREEFIT_MAX_RATIO, DEFAULT_TARGET_RES
 from library.preprocess._dataset import PreprocessStats
 from library.preprocess._progress import ProgressFn
-from library.preprocess.resize_preview import (
-    DEFAULT_FIT_MODE,
-    DEFAULT_RESIZE_CROP_ANCHOR,
-)
+from library.preprocess.resize_preview import DEFAULT_RESIZE_CROP_ANCHOR
 
 
 def curation_skips(decisions: dict[str, dict] | None) -> set[str]:
@@ -48,23 +44,16 @@ def resize_to_buckets(
     src: Path,
     dst: Path,
     *,
-    resolution: int = 1024,
-    min_bucket_reso: int = 512,
-    max_bucket_reso: int = 2048,
-    bucket_reso_steps: int = 64,
     target_res: list[int] | None = None,
     workers: int = 4,
     min_pixels: int = 500_000,
-    copy_captions: bool = True,
     recursive: bool = False,
     path_pattern: str | None = None,
     verbose: bool = True,
     overwrite: bool = False,
     curation_decisions: dict[str, dict] | None = None,
     crop_anchor: str = DEFAULT_RESIZE_CROP_ANCHOR,
-    bucket_resos=None,
     crop_margins=None,
-    fit_mode: str = DEFAULT_FIT_MODE,
     max_ratio: float = DEFAULT_FREEFIT_MAX_RATIO,
     progress: ProgressFn | None = None,
 ) -> tuple[PreprocessStats, dict[tuple[int, int], int]]:
@@ -78,9 +67,9 @@ def resize_to_buckets(
     decided against, or already at its bucket. Pass ``progress`` for a
     per-image bar.
 
-    ``resolution`` / ``min_bucket_reso`` / ``max_bucket_reso`` /
-    ``bucket_reso_steps`` / ``bucket_resos`` / ``fit_mode`` are the snap-era
-    knobs, accepted for signature stability and inert under free-fit.
+    The snap-era knobs (``resolution`` / ``min_bucket_reso`` /
+    ``max_bucket_reso`` / ``bucket_reso_steps`` / ``bucket_resos`` /
+    ``fit_mode``) were dropped in v2 — free-fit is the only resize mode.
     """
     options = ResizeOptions.build(
         target_res=target_res or list(DEFAULT_TARGET_RES),
@@ -119,7 +108,6 @@ def resize_to_buckets(
         path_pattern=path_pattern,
         recursive=recursive,
         min_pixels=min_pixels,
-        copy_captions=copy_captions,
         overwrite=overwrite,
         workers=workers,
         skip=skip,

@@ -292,7 +292,9 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         "partitioner recompute view ops in backward instead of saving them "
         "(views are free to recompute but saving one pins its base tensor "
         "alive). Lowers the saved-for-backward set without engaging the "
-        "activation_memory_budget knapsack. Ignored (with a log line) under "
+        "activation_memory_budget knapsack. Measured **exactly inert** on "
+        "Anima (_archive/bench/freefit_vram) — prefer "
+        "--partitioner_aggressive_recomputation. Ignored (with a log line) under "
         "gradient_checkpointing — same repartitioning hazard as the budget.",
     )
     parser.add_argument(
@@ -301,7 +303,8 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
         help="torch._functorch.config.aggressive_recomputation: drop the "
         "min-cut partitioner's ban-recompute heuristics so more op classes "
         "may be recomputed in backward when the cut is cheap. Can trade "
-        "backward time for VRAM — see bench/freefit_vram before adopting. "
+        "backward time for VRAM: −2.25 GB for +12.6% s/it at budget=0.99 "
+        "(_archive/bench/freefit_vram). "
         "Ignored (with a log line) under gradient_checkpointing.",
     )
     parser.add_argument(
@@ -720,7 +723,10 @@ def add_training_arguments(parser: argparse.ArgumentParser, support_dreambooth: 
 
 def add_masked_loss_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
-        "--masked_loss", action="store_true", help="apply mask for calculating loss."
+        "--masked_loss",
+        action="store_true",
+        help="apply mask for calculating loss. Off by default since v2: a mask "
+        "tree on disk is ignored (one log line) until this is set.",
     )
     parser.add_argument(
         "--mask_dir",
@@ -730,7 +736,7 @@ def add_masked_loss_arguments(parser: argparse.ArgumentParser):
         "mirroring the resized/ subdir layout. Defaults to `mask_dir` in "
         "configs/preprocess.toml; a subset's own `mask_dir` in the dataset "
         "blueprint still wins. Ignored when the directory does not exist, so "
-        "the legacy masks/{merged,sam,mit} auto-resolution still applies to a "
+        "the legacy masks/{merged,sam} auto-resolution still applies to a "
         "checkout that never re-ran masking.",
     )
 

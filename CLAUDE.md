@@ -3,23 +3,34 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in
 this repository.
 
+It carries **orientation** (where things live) and **invariants** (rules you would break
+without knowing you were in that territory). Task-shaped detail lives in skills — `ls
+.claude/skills` — and in the nested `configs/CLAUDE.md`, `networks/CLAUDE.md`,
+`gui/CLAUDE.md`. Each section below names the skill that holds the rest.
+
 ## Project Overview
 
 Anima — LoRA/T-LoRA training and inference pipeline for the Anima diffusion model
 (DiT-based, flow-matching). Supports several adapter families (LoRA / OrthoLoRA / T-LoRA
 / HydraLoRA / FeRA / ChimeraHydra / EasyControl) selectable via method config + hardware
 preset. The LoRA family is routed via a three-axis surface — `use_moe_style` /
-`route_per_layer` / `router_source` — see `configs/methods/lora.toml`.
+`route_per_layer` / `router_source` — see `configs/methods/lora.toml` and the
+`lora-routing` skill.
 
 ## Setup
 
 ```bash
 uv sync                    # Install dependencies (Python 3.13)
 hf auth login              # Authenticate for model downloads
-make download-models       # Download DiT, text encoder, VAE, SAM3, MIT, PE-Core, PE-Spatial
+make download-models       # first-run set: DiT, TE, VAE, PE, CJK vocab pack, tagger, tag DB
 # Training images go in image_dataset/ with .txt caption sidecars
 make preprocess            # Resize → post_image_dataset/resized/, cache → post_image_dataset/lora/
 ```
+
+Weights are catalog rows, not commands (`library/downloads.py`; `make download-list`
+shows every row, `make download-model <pack|alias|row>` fetches one — SAM3 and OCR are
+opt-in). **Load the `model-catalog` skill** before adding or moving a weight or changing
+a loader's default path.
 
 ## Commands
 
@@ -28,7 +39,7 @@ is a thin dispatcher forwarding every target to `python tasks.py <target> $(ARGS
 **`tasks.py` is the source of truth**; command bodies live in
 `scripts/tasks/{training,inference,preprocess,masking,gui,downloads,utilities,tagger}.py`
 and `scripts/experimental_tasks/` (for `exp-*`). Don't grep the Makefile for a recipe —
-look there.
+look there. `make help` lists every target.
 
 All training runs `train.py --method <name> --preset <name>`. By default it's invoked
 **directly** (single-GPU fast path — skips the ~5s accelerate launcher bootstrap;
@@ -39,8 +50,7 @@ launch` for multi-GPU / distributed runs (see `build_launch_cmd` in
 --max_train_epochs 64`) or the preset via `PRESET=low_vram make lora`. `exp-*` targets
 are experimental — may break or be removed.
 
-`make help` lists every target; the canonical bodies are in `tasks.py`. Non-obvious
-knobs and gotchas worth knowing up front:
+Non-obvious knobs and gotchas worth knowing up front:
 
 - **Training**: `make lora PRESET=low_vram|fast_16gb|half` (half → `sample_ratio=0.5`);
   `make lora-gui GUI_PRESETS=tlora` runs the clean per-variant `configs/gui-methods/`
@@ -48,53 +58,52 @@ knobs and gotchas worth knowing up front:
   (promoted from `exp-turbo`); `exp-soft-tokens | exp-chimera` are the experimental
   methods.
 - **`make soup PATH_PATTERN="<glob>"`** (or `TARGET=<dir>` shorthand) — uncond-init soup
-  pipeline (`scripts/soup/`; GUI: Experimental tab → soup): uncond inter-train on a
-  diluted pool → 3 seeded fine-tunes → exact ΔW soup SVD-truncated to `network_dim`.
-  Plain-LoRA only; quality win + seed-lottery insurance, NOT a memorization fix. **Load
-  the `soup` skill before running or modifying it** (selection globs, init reuse/naming,
-  knobs, `--sigma_lowres*` interaction); deep-dive `docs/experimental/soup.md`.
+  pipeline (`scripts/soup/`; GUI: Experimental tab → soup). Plain-LoRA only; quality win
+  + seed-lottery insurance, NOT a memorization fix. **Load the `soup` skill** before
+  running or modifying it; deep-dive `docs/experimental/soup.md`.
 - **Inference compose flags**: `SPECTRUM=1` / `MOD=1` / `NOLORA=1` compose into
   **every** `test-*` target (`make test`, `test-hydra`, `test-merge`, `test-smc-cfg`,
   `test-easycontrol REF_IMAGE=…`, `exp-test-*`).
 - **`make gen`** — daemon-routed batch generation (same argv + env levers as `make
-  test`, submitted as a GPU command job; lands a `gen_manifest.json` in the job record).
-  Eval grids / seed sweeps go here; interactive single images stay on `make test` or the
-  resident inference server. Details in the `daemon` skill.
+  test`, submitted as a GPU command job). Eval grids / seed sweeps go here; interactive
+  single images stay on `make test` or the resident inference server.
 - **Daemon** (local FIFO job queue, auto-starts on first submit): **agent-launched GPU
   work must go through it** — GPU processes started from a Claude Code background Bash
   get killed by the harness sandbox layer after ~1 min (silent SIGKILL, no trace;
-  observed 2026-07-25). Front door `make daemon-run ARGS="<script.py> [flags]"`
-  (attach-by-default; `--queue` detaches, `--inline` bypasses), `make daemon-wait
-  [JOB=<id>]` to block, `make daemon-status` for the JSON health/job view; append
-  `--queue` to any train/distill target to enqueue. Discovery is pidfile-based
-  (`output/daemon/daemon.json` / `~/.anima/daemon.json`) — never hardcode 8765. **Load
-  the `daemon` skill** for the full target list, pause/retention, agent/MCP surface, and
-  `make run-status`; contract in `anima_daemon/README.md`.
+  observed 2026-07-25). Front door `make daemon-run ARGS="<script.py> [flags]"`, `make
+  daemon-wait [JOB=<id>]` to block; append `--queue` to any train/distill target to
+  enqueue. Discovery is pidfile-based — never hardcode 8765. **Load the `daemon` skill**
+  for the full surface; contract in `anima_daemon/README.md`.
 - **σ-demoted training** (`--sigma_lowres`, opt-in): routes each train step's latent
   grid by noise level — high-σ steps train on a lower-res sibling latent, ~−14% wall
   with the shipped **combolate** recipe (what `configs/base.toml` sets). Needs sibling
-  latents precached (`sigma_demote` in `configs/preprocess.toml`); validation stays
-  native; output is an ordinary LoRA. **Load the `sigma-lowres` skill before
-  enabling/tuning it**; full contract in
-  [`docs/optimizations/sigma_lowres.md`](docs/optimizations/sigma_lowres.md).
+  latents precached; output is an ordinary LoRA. **Load the `sigma-lowres` skill before
+  enabling/tuning it**; contract in `docs/optimizations/sigma_lowres.md`.
 - **Gotchas**: `make merge ADAPTER_DIR=… [MULTIPLIER=0.8]` bakes LoRA into the DiT
   (LoRA/Ortho/T-LoRA only) and refuses Hydra-moe / postfix unless `--allow-partial`.
   `turbo` output is a normal LoRA — infer with `--infer_steps` matched to the DP-DMD
   `student_steps` rollout (currently 4) and `--cfg 1.0`. `make print-config METHOD=…
   PRESET=…` dumps the merged chain; `make test-unit` runs pytest; `ruff check . --fix &&
   ruff format .` (touched files only — see [[feedback_ruff_scope_collateral]]).
+- **Run the test suite at most twice per task** (here or in `../anime_tools`): once
+  after the change, once after fixing what it caught. Re-running it as a progress
+  check is noise — read the failure and fix it. Needing a third run means the change
+  wants rethinking, not another loop; if a run is genuinely required beyond that, say
+  why. Scope a re-run to the one affected test file rather than sweeping the whole suite
+  again.
 
 ## Key entry points
 
 | File | Purpose |
 |------|---------|
-| `anima_lora/__init__.py` | **Programmatic front door** — lazy (PEP 562) re-export of the curated embedder entry points, grouped into namespaces `anima_lora.{models, inference, config, training, captioning}` (preferred; pre-namespace flat names like `anima_lora.generate` stay as aliases) + `ROOT` (repo root). `anima_lora.training` loads repo-root `train.py` by path (`AnimaTrainer` etc. work from any CWD). `import anima_lora` instead of reverse-engineering `main()`s. |
-| `examples/` | Runnable API scripts (`01`–`04` high-level flows, `05`–`06` raw primitives). `examples/README.md` is the embedder guide. |
+| `anima_lora/__init__.py` | **Programmatic front door** — lazy re-export of the curated embedder entry points, namespaced `anima_lora.{models, inference, config, training, captioning}`. `import anima_lora` instead of reverse-engineering `main()`s; see the `embedder-api` skill |
+| `examples/` | Runnable API scripts (`01`–`04` high-level flows, `05`–`06` raw primitives). `examples/README.md` is the embedder guide |
 | `train.py` | `AnimaTrainer` — main training loop via HF Accelerate |
 | `inference.py` | Standalone image generation (`--help` for all flags) |
 | `networks/spectrum.py` | Spectrum inference acceleration |
 | `gui/` | PySide6 GUI package |
 | `tasks.py` | Cross-platform task runner — source of truth for every `make` target |
+| `library/downloads.py` | **Model catalog** — one `Asset` per weight, grouped into packs; loaders import their default paths from here. Add a weight by adding a row, not a command (`model-catalog` skill) |
 | `scripts/tasks/` + `scripts/experimental_tasks/` | Where command bodies actually live (`_common.py` = shared helpers) |
 
 Docs: shipped method deep-dives in `docs/methods/`, experimental in
@@ -107,101 +116,34 @@ its scripts directly), while killed/superseded lines go to `_archive/`.
 
 ## Programmatic API (embedders)
 
-`uv sync` installs the repo editable, so `anima_lora` is importable anywhere. It's a
-thin façade — canonical homes are unchanged (`library.inference` / `library.config.io` /
-`library.anima.weights` / `library.models.qwen_vae` / `library.runtime.device`).
-Inference is **request-driven**: build a typed `GenerationRequest`, call `.to_args()`
-(which routes through `inference.parse_args` so every `getattr()`-read knob is
-populated; long-tail method flags ride `extra_argv`). Adapter family lives **in the
-checkpoint metadata**, not the call — the DiT loader merges-or-keeps-live accordingly.
-Prompt encoding installs two process-global strategy singletons lazily
-(`ensure_text_strategies`). Repo-relative model/config paths resolve against the **repo
-home** (`library.env.anima_home()` / `resolve_under_home()`), not the CWD — so `import
-anima_lora` works from any directory; set `ANIMA_HOME` for a relocated checkout, or
-override individual model paths with `ANIMA_DIT` / `ANIMA_VAE` / `ANIMA_TEXT_ENCODER`.
-The anchor is wired at the config-loader chokepoint (`library/config/io.py`) and the
-model-loader leaves (`load_anima_model` / `load_vae` / `load_qwen3_text_encoder`); new
-code opening a repo-relative path should call `resolve_under_home()` rather than
-assuming CWD.
+`uv sync` installs the repo editable, so `anima_lora` is importable anywhere. Two things
+to carry everywhere: inference is **request-driven** (build a typed `GenerationRequest`,
+call `.to_args()`), and repo-relative model/config paths resolve against the **repo
+home**, not the CWD — **new code opening a repo-relative path must call
+`resolve_under_home()`** (`library.env.anima_home()`; `ANIMA_HOME` for a relocated
+checkout). The rest — namespaces, the strategy singletons, per-model path env vars — is
+in the **`embedder-api` skill**.
 
 ## Config flow
 
-Config-driven via a three-layer merge chain: `base.toml → presets.toml[<preset>] →
-methods/<method>.toml → CLI args`. **Method settings win over preset settings on
-overlap**, so a method can force its own hardware requirements (e.g. a frozen-DiT method
-forcing `blocks_to_swap=0`).
+Three-layer merge chain: `base.toml → presets.toml[<preset>] → methods/<method>.toml →
+CLI args`. **Method settings win over preset settings on overlap**, so a method can force
+its own hardware requirements (e.g. a frozen-DiT method forcing `blocks_to_swap=0`).
+`configs/<method>/<method>.toml` (self-contained: method + inline dataset blueprint) is
+**preferred** over the flat `configs/methods/<method>.toml` when present.
 
-- `configs/base.toml` — shared infra (model paths, optimizer, compile) AND the default
-  LoRA dataset blueprint (`[general]` + `[[datasets]]` + `[[datasets.subsets]]`,
-  consumed by `BlueprintGenerator`, skipped by the flat method+preset merge — see
-  `_DATASET_CONFIG_SECTIONS`). Three ways to override the blueprint: `--dataset_config`
-  for a separate file; a scalar-only `[general]`/`[[datasets]]` block in the method TOML
-  to **shallow-override** top-level scalars (`_apply_dataset_overrides`; subset-level
-  overrides not supported this way); or a method TOML carrying a **full** `[[datasets]]`
-  with `subsets` to **fully replace** base's blueprint inline (the self-contained
-  per-method layout, see next bullet). Full-vs-shallow is decided by
-  `load_dataset_config_from_base` on whether the method's `[[datasets]]` has a subset.
-- `configs/preprocess.toml` — preprocess knobs split out of base.toml
-  (`source_image_dir`, `drop_lowres_images`, `min_pixels`, **`target_res`**,
-  **`mask_dir`**). Read by the preprocess pipeline via `load_path_overrides`, layered
-  **`preprocess.toml → base.toml → preset → method`** (preprocess.toml read first, so a
-  legacy copy of any of these keys still in base.toml keeps winning — backward
-  compatible). It lives here (not base.toml) because **base.toml is overwritten on `make
-  update`** — preprocess.toml is user-owned and preserved. `train.py` never reads the
-  filter knobs, **but `target_res` and `mask_dir` are dual-use**: `load_method_preset`
-  seeds both from preprocess.toml (lowest priority, preset/method/CLI still override).
-  `target_res` is inert at train time (seeded for the snapshot only); **`mask_dir` is
-  load-bearing** — it's the single mask-root knob for `make mask` / `mask-clean`,
-  `preprocess-reconcile`, the GUI mask counter/overlay, the turbo loop, and training,
-  where it reaches every subset that doesn't name its own `mask_dir` via the
-  BlueprintGenerator argparse fallback (`--mask_dir` overrides). Training **gates it on
-  the dir existing** (`resolve_configured_mask_dir`) so a maskless checkout still falls
-  back to the legacy `masks/{merged,sam,mit}` auto-resolution instead of enabling masked
-  loss over an empty tree. The rest of the **shared** path contract
-  (`resized_image_dir`, `lora_cache_dir`, model paths) stays in base.toml because the
-  dataset blueprint interpolates `{resized_image_dir}`/`{lora_cache_dir}`.
-- `configs/presets.toml` — hardware profiles as sections: `[default]`, `[fast_16gb]`,
-  `[low_vram]` (also Windows 8GB), `[half]`. Holds `blocks_to_swap`, gradient/offload
-  checkpointing, etc.
-- `configs/methods/` — one flat file per family read by `train.py` (`lora`, `chimera`,
-  `soft_tokens`, `byg`), each holding rank + routing knobs + opinionated
-  LR/epochs/output_name. `turbo.toml` is the **odd one out**: a bespoke sectioned schema
-  read only by `scripts/distill_turbo/` — don't `print-config METHOD=turbo`. Variants
-  inside `lora.toml` are comment-toggle blocks; default stacks LoRA + OrthoLoRA + T-LoRA +
-  shared_A FEI-routed Hydra. **Pre-three-axis checkpoints
-  (`ss_use_hydra`/`ss_use_fei_router` metadata) no longer load** — legacy fallback
-  removed.
-- **Self-contained per-method dir** (`configs/<method>/<method>.toml`) — the
-  consolidated layout: method config **+** full inline dataset blueprint in one file, no
-  `dataset_config` cross-reference. `_resolve_method_path` (`library/config/io.py`)
-  **prefers** `configs/<method>/<method>.toml` over the flat
-  `configs/methods/<method>.toml` when present (default `methods` subdir only —
-  `gui-methods` stays flat), so `--method <m>` auto-discovers it with no new flags.
-  **EasyControl is the pilot**: `configs/easycontrol/easycontrol.toml` (alongside the
-  miner-generated descriptor blueprints `near_twins.toml` / `colorize.toml` in the same
-  dir). NB `configs/gui-methods/easycontrol.toml` still points at the standalone
-  `configs/datasets/easycontrol.toml` — keep the inline subset in sync until gui-methods
-  is migrated.
-- `configs/gui-methods/` — clean per-**variant** parallel tree, no toggle blocks (what
-  you see is what runs). Selected via `--methods_subdir gui-methods` (wrapped by `make
-  lora-gui`). `ls` for the live list. **Hardware composes via preset, not file copies**:
-  the old `-8gb` variant duplicates were removed 2026-07-03 — the GUI's Hardware
-  dropdown picks a presets.toml section tagged `[<name>.gui] group="hardware"` (display
-  metadata, stripped from the merge like `[variant]`), and variant files must NOT pin
-  `gradient_checkpointing`/`unsloth_offload_checkpointing` (method wins over preset, so
-  pinning would silently defeat the picker — pinned by a test in
-  `tests/test_config.py`). Data-scope is plain flat keys (`sample_ratio`,
-  `artists_shard` — defaults in base.toml; `sample_ratio=1.0` is inert so per-subset
-  ratios stay authoritative), surfaced as GUI form fields; the `[half]`/`[quarter]`
-  presets remain CLI shorthand for the same key.
+Two facts that bite from outside `configs/`:
 
-Subsets accept `cache_dir` — redirects all VAE/TE/PE caches to that dir with
-stem-mirrored names (EasyControl uses this to keep source dirs user-facing while caches
-live under `post_image_dataset/`). `library.config.io.load_method_preset(method, preset,
-methods_subdir=...)` is the reusable merge helper (not re-exported via `train_util`).
-All config paths are relative to `anima_lora/`. Outputs split by kind: checkpoints (+
-`.snapshot.toml` + `_moe` siblings) in `output/ckpt/`, inference images in
-`output/tests/`.
+- **`configs/base.toml` is overwritten on `make update`**; `configs/preprocess.toml` is
+  user-owned and preserved — that's why `target_res` / `mask_dir` live there.
+- **`masked_loss` (off by default since v2) is the one masking switch**: when it is off,
+  `train.py` strips `mask_dir` from every subset and logs one line, so a mask tree left
+  on disk never re-enables masking by itself. `mask_dir` is additionally gated on the
+  directory existing (`resolve_configured_mask_dir`).
+
+Everything else — the dataset-blueprint override modes, the preprocess.toml layering,
+the gui-methods hardware-picker rule, per-subset `cache_dir` — is in
+**`configs/CLAUDE.md`**. Key-by-key semantics for users: `docs/guidelines/base-config.md`.
 
 ## Architecture
 
@@ -242,50 +184,24 @@ out padding via `crossattn_seqlens`. Regenerate disk-cached `.npz` after any
 tokenizer/padding change.
 
 ### Free-fit native-shape bucketing — the only resize mode
-Free-fit is the sole resize mode (the discrete **constant-token bucket pool** —
-`CONSTANT_TOKEN_BUCKETS` and the per-tier tables — was **removed 2026-06-19**; the
-migration kept only each tier's numeric token band in `EDGE_TOKEN_BANDS`). Free-fit
-keeps each image's **native aspect ratio** and lands its patch-grid token count
-*anywhere* inside its tier's band (`freefit_bucket` / `freefit_band_for_edge` — **owned
-by `anime_tools.buckets` since 2026-09-03**, re-exported by `library/datasets/buckets.py`
-the way `library/models/pe.py` re-exports the PE tower; the resize pass itself is the
-package's `anime_tools.stages.resize`, which `make preprocess-resize` runs as a
-`ResizeRequest`; design in `_archive/proposals/free_aspect_token_band_resize.md`), driving
-crop loss to ~zero (sub-patch <16px residual). There is no `freefit` flag any more —
-it's implicit. Each forward runs at its real token count; `compile_blocks()` sets
-`_native_flatten` (flattens each patch grid to a fake-5D `(B, 1, seq_len, 1, D)` shape,
-keying the block graph on **token count alone**), bit-exact to the eager 5D path. The
-legacy pad-to-static path was removed 2026-05-24 (`static_token_count`/`static_pad`
-etc.).
+Free-fit is the sole resize mode: each image keeps its **native aspect ratio** and lands
+its patch-grid token count anywhere inside its edge tier's band (`EDGE_TOKEN_BANDS`;
+edges 512 768 896 1024 1280 1536). There is no `freefit` flag — it's implicit, and the
+discrete bucket pool + the pad-to-static path are both gone.
 
-**Compile coupling**: free-fit populates many distinct `(W,H)` inside a tier's band,
-which would explode the static N-graph cascade, so it **requires `compile_dynamic_seq`**
-— auto-enabled by `train.py` whenever `torch_compile` is on (and unconditionally forced
-in the bespoke distill loops via `ensure_dynamic_seq_for_freefit`). `dynamic_seq` marks
-only the seq axis dynamic and bounds it to the tier's `seq_range`, collapsing the whole
-band to **one graph per tier**. `make_buckets()` uses the actual on-disk cached `(W,H)`
-as the bucket set (caches are literally the source of truth), so nothing AR-snaps at
-load. **Snap-era caches still train fine** (a snap pool is just a free-fit pool that
-landed only on the old discrete counts); re-preprocess only to gain the reduced-crop
-benefit.
+Three consequences that reach outside the resize code:
 
-**Multi-scale tiers**: `EDGE_TOKEN_BANDS` defines per-tier bands for edges **512 768 896
-1024 1280 1536** (768→2160 / 1280→6300 / 1536→8640 tok = one family each;
-512→{1008,1024}, 896→{3000,3024}, 1024→{4032,4200} = two families each). Preprocess
-`--target_res <subset>` selects which tiers are active; each image goes to the tier that
-**resizes it the least** (`choose_edge` — now an area-based
-`|log(nominal_tokens/native_tokens)|` minimum, scale-symmetric, so a 0.95MP image stays
-at 1024 rather than downscaling to 768). The 1024 tier's band stays **frozen at (4032,
-4200)** (`FREEFIT_FROZEN_EDGES`) because the frozen top-5 aspect set
-(`DCW_ASPECT_BUCKETS`, consumed by CNS calibration + mod-distill) is drawn from it.
-`--target_res` is a **preprocess-only** knob. **Training is self-describing and does NOT
-need `--target_res`**: every cached latent exact-matches its true `(W,H)`, and the
-`compile_blocks(n_token_families=…)` dynamo budget is derived from the buckets the
-path_pattern-filtered images **actually populate** (`train.py::_derive_token_budget`)
-**plus the sample-prompt resolutions when sampling is enabled** (a prompt outside the
-training range added to the file *mid-run* is skipped with a warning at sample time). So
-the on-disk caches are the source of truth for which tiers are present. All tiers stay
-within the rope cap (≤256 patches/axis).
+- **It requires `compile_dynamic_seq`** — auto-enabled by `train.py` whenever
+  `torch_compile` is on, and forced in the bespoke distill loops. Without it the band
+  explodes into a static N-graph cascade.
+- **The on-disk caches are the source of truth** for which buckets exist —
+  `make_buckets()` uses the cached `(W,H)`, nothing AR-snaps at load, and snap-era caches
+  still train fine.
+- **`--target_res` is preprocess-only; training never needs it.** The dynamo budget is
+  derived from the buckets the filtered images actually populate, plus sample-prompt
+  resolutions when sampling is on.
+
+Bands, tier choice, the frozen 1024 band, `_native_flatten`: **`bucketing` skill**.
 
 ### Lazy model loading
 DiT loads AFTER text-encoder/VAE caching and unloading, to avoid OOM: text encoder →
@@ -294,27 +210,18 @@ cache → free → VAE → cache → free → load DiT → attach adapter → tr
 ### DiT depth is read from the checkpoint, not assumed
 `load_anima_model` calls `probe_dit_arch()` (`library/anima/weights.py`) to count
 `blocks.N.` in the safetensors **header** and read `model_channels` off
-`x_embedder.proj.1.weight`, then builds the matching module list. So a depth-expanded
-derivative loads with no flag: **Anima-2.9B** (`Gazingstars123/Anima-2.9B`, `make
-download-anima-variant ARGS=Anima-2.9B-preview-v1`) is 40 blocks × 2048 vs base's 28 ×
-2048 — LLaMA-Pro-style interleaved insertion with zeroed output projections, same
-Qwen3-0.6B TE and Qwen-Image VAE, so **caches, preprocessing, and the whole training
-stack are unchanged**. The count is anchored to top-level `blocks.N.` so
-`llm_adapter.blocks.0..5` never inflates depth. Consequences: **a LoRA is
-depth-specific** — module names carry the block index, so a 40-block adapter merged onto
-the 28-block base drops its tail blocks behind only a `not all LoRA keys are used`
-warning (and the reverse leaves the extra blocks at zero-init identity). `save_weights`
-now stamps `ss_num_blocks` so the mismatch is machine-detectable; and two of the shipped
-`networks/calibration/` artifacts are depth-baked — `channel_stats.safetensors` keys
-blocks 0–27, so on a 40-block DiT `channel_scaling` covers 0–27 and warns for the rest
-(regenerate via `scripts/calibration/analyze_lora_input_channels.py`), and
-`dave_alpha.npz` is a 28-vector that raises a clear "re-derive the mask" `ValueError`.
-**CNS γ is not depth-baked** — its `(1, 28, 32)` axes are (aspect, *timestep*, radial
-bin), so it composes with any depth. Depth-relative knobs use `num_blocks`, not literals
-— `--mod_end_layer` defaults to `num_blocks-1` (27 on base, 39 on 2.9B). Measured
-VRAM/speed envelope + sample comparison:
-[`docs/methods/anima-2.9b.md`](docs/methods/anima-2.9b.md) (16GB needs `--preset
-low_vram --blocks_to_swap 0`; the two offload levers don't stack).
+`x_embedder.proj.1.weight`, then builds the matching module list — so a depth-expanded
+derivative loads with no flag (**Anima-2.9B** is 40 blocks vs base's 28, same TE/VAE, so
+caches and preprocessing are unchanged). The count is anchored to top-level `blocks.N.`
+so `llm_adapter.blocks.0..5` never inflates depth.
+
+Consequences: **a LoRA is depth-specific** — module names carry the block index, so a
+40-block adapter merged onto the 28-block base silently drops its tail blocks behind a
+`not all LoRA keys are used` warning (`save_weights` stamps `ss_num_blocks` so the
+mismatch is machine-detectable). Two `networks/calibration/` artifacts are depth-baked
+(`channel_stats.safetensors`, `dave_alpha.npz`); **CNS γ is not**. Depth-relative knobs
+use `num_blocks`, not literals. Envelope + regeneration recipes:
+`docs/methods/anima-2.9b.md`.
 
 ### compile-after-apply (`build_anima`)
 `torch.compile` traces the adapter's monkey-patched forward, so `compile_blocks()` MUST
@@ -356,12 +263,12 @@ it's exactly inert on frozen-basis ortho variants.
 
 | Method | What it is | Gotcha / pointer |
 |---|---|---|
-| **DirectEdit + Anima Tagger** | Inversion + edit-conditioning swap; Tagger (`anime_tools.tagger`, the split-out curation package) maps image → Anima-format tags for ψ_src. | Edit leverage collapses if ψ_src is off-manifold — verify with `exp-test-directedit-dry`. `docs/experimental/directedit_editing_v3.md`, `anima_tagger.md` |
+| **DirectEdit + Anima Tagger** | Inversion + edit-conditioning swap; Tagger (`anime_tools.tagger`) maps image → Anima-format tags for ψ_src. | Edit leverage collapses if ψ_src is off-manifold — verify with `exp-test-directedit-dry`. `docs/experimental/directedit_editing_v3.md` |
 | **EasyControl** | Extended self-attn image conditioning; frozen DiT, per-block cond LoRA + scalar `b_cond` gate. Source `easycontrol-dataset/`. | `docs/experimental/easycontrol.md` |
 | **Soft Tokens** | SoftREPA per-layer × per-t soft text tokens (~1M params); frozen DiT, per-block `Block.forward` splice into `crossattn_emb`. | InfoNCE objective intentionally skipped. `configs/methods/soft_tokens.toml` |
-| **ChimeraHydra** | Dual-pool additive MoE: content pool (network ContentRouter on pooled `crossattn_emb`) + freq pool (network FreqRouter on FEI+σ), two A's per Linear off disjoint SVD subspaces. Both pools always centered-gate; the per-Linear `lx_c` content router + non-centered path were removed. | T-LoRA mask hits content branch only. `docs/experimental/chimera-hydra.md`, `networks/lora_modules/chimera.py` |
-| **Turbo** | DP-DMD (diversity-preserved DMD) distillation; output is a normal LoRA. | Bespoke schema read by `scripts/distill_turbo/` — don't `print-config`. Bespoke two-optimizer loop (student + fake/critic) kept out of `train.py`; converges only the leaves — honors `--queue` (daemon command-job) + writes a canonical `output/ckpt/<name>.snapshot.toml`. Shipped (promoted from `exp-turbo` → `make turbo` / `make test-turbo`); a published 4-step student lives at `huggingface.co/sorryhyun/anima-turbo-4step`. `docs/methods/turbo.md` (ops), `docs/structure/turbo.md` (structure); CA-era history in `_archive/proposals/dmd2_decoupled_improvements.md`. |
-| **CJK vocab pack** | Text-encoder asset (not a LoRA): extra T5-side rows for JA / KO / ZH spans. One key — `vocab_pack` in `configs/base.toml` (`""` = off, `make download-vocab-pack`) — drives `train.py`, `make preprocess-te`, `inference.py` (`--vocab_pack` / `--no_vocab_pack`) and `GenerationRequest`; `library/anima/vocab_pack.py` owns the strategy subclass + the `llm_adapter.embed` hook pair (state dict stays 32128 rows). | TE caches skip on existence only — enabling/changing a pack needs `make preprocess-te ARGS=--overwrite` for CJK captions; caches and LoRAs carry the pack digest and warn on mismatch. EN is bit-exact either way. `docs/methods/cjk_vocab_pack.md` |
+| **ChimeraHydra** | Dual-pool additive MoE: content pool (ContentRouter on pooled `crossattn_emb`) + freq pool (FreqRouter on FEI+σ), two A's per Linear off disjoint SVD subspaces. Both pools always centered-gate. | T-LoRA mask hits content branch only. `docs/experimental/chimera-hydra.md`, `networks/lora_modules/chimera.py` |
+| **Turbo** | DP-DMD (diversity-preserved DMD) distillation; output is a normal LoRA. Shipped as `make turbo` / `make test-turbo`; published 4-step student at `huggingface.co/sorryhyun/anima-turbo-4step`. | Bespoke sectioned schema + two-optimizer loop under `scripts/distill_turbo/`, kept out of `train.py` — don't `print-config METHOD=turbo`. Honors `--queue`, writes a canonical `.snapshot.toml`. `docs/methods/turbo.md` (ops), `docs/structure/turbo.md` (structure) |
+| **CJK vocab pack** | Text-encoder asset (not a LoRA): extra T5-side rows for JA / KO / ZH spans. One key — `vocab_pack` in `configs/base.toml` (**on by default since v2**; `""` = off) — drives training, TE caching, `inference.py` and `GenerationRequest`; `library/anima/vocab_pack.py` owns the strategy subclass + `llm_adapter.embed` hooks (state dict stays 32128 rows). | TE caches skip on existence only — enabling/changing a pack needs `make preprocess-te ARGS=--overwrite` for CJK captions; caches and LoRAs carry the pack digest and warn on mismatch. EN is bit-exact either way. `docs/methods/cjk_vocab_pack.md` |
 
 ## Preprocessing & scripts
 
@@ -382,63 +289,39 @@ Caches live under `post_image_dataset/lora/`: `{stem}_{WxH}_anima.npz` (VAE),
 siblings are **keys inside** the native VAE npz (`demoted_{H}x{W}`, one per route,
 outside the latents namespace) — not separate files; `make preprocess-demote` emits
 them. TE caching reads the **revised** caption beside the resized image
-(`post_image_dataset/resized/**/{stem}.txt`, written by every caption stage and mirrored
-from the `image_dataset/` master only while no revised caption exists — anime_tools ≥
-0.4.0 is revised-first, so once an image has a revised caption a hand-edit of its master
-no longer reaches it: edit the revised caption, or delete it to re-mirror); training
-reads only cached embeddings.
+(`post_image_dataset/resized/**/{stem}.txt`) and nothing else — there is no fallback to
+the `image_dataset/` master. Since anime_tools 0.6 resize moves **images only** and the
+caption stages own that file: every stage reads revised-first with the master as a
+fallback and always writes the revised caption (autotag included, even when it adds
+nothing), so a hand-edit of the master reaches training only through a caption stage
+run. A dataset that skips every caption stage caches empty prompts.
 
-### Curation lives in `anime_tools` (split Phases 1–3, 2026-08-30)
+Curation **exclusion** (Image tab **Exclude (D)** / **Restore…**) is `anime_tools.exclude`
+on the trainer's trees (`library/datasets/curation_actions.py`): an image's workspace files
+(resized copy, caption sidecars, mask, OCR) move under `post_image_dataset/_excluded/`,
+the source under `image_dataset/` stays, and the ledger there is what the resize stage
+reads (`excluded_dir`) — plus the package GUI's own `workspace/_excluded` ledger and the
+`skip` / `move` marks in `curation_decisions.json`, all unioned into `ResizeRequest.skip`.
+`post_image_dataset/moved/` is the pre-0.6 Delete mechanism (it moved the *source* and
+left the resized copy trainable) and is inert.
 
-The caption grammar, tag taxonomy/correction, variants sidecars, caption index, the
-**Anima Tagger**, the caption-master stages (autotag / position clauses / multiview
-audit), **masking** (SAM3 / MIT / merge) and **grouping** (PE-Spatial near-twin features
-→ `groups.json`) live in the sibling repo **https://github.com/sorryhyun/anime_tools**
-(package `anime_tools`; contract at `../anime_tools/docs/contract.md`). Dependency
-direction is **trainer → `anime_tools`, never the reverse**
-(`tests/test_curation_boundary.py` guards `scripts/tasks/{tagger,masking,curate}.py`;
-the package guards itself). **The vendored PE vision tower is owned by
-`anime_tools.vision.pe`** (so a standalone `anime_tools` groups with the same
-PE-Spatial-B16-512 the trainer uses); `library/models/pe.py` is a permanent re-export
-for REPA / CMMD / PE caching and the `library/vision/{encoder,encoders,buckets}.py`
-registry stays here. GUI panels stay here too — they reach the package only via the
-`autotag_server` stdio protocol, daemon jobs and the torch-free grammar. It is a **git
-dependency, not PyPI**: `pyproject.toml` pins a rev in `[tool.uv.sources]` via the
-default-on `anime-tools-git` group; for a live dev loop against `../anime_tools` run `uv
-sync --no-group anime-tools-git --group anime-tools-dev` (the two groups conflict by
-design, like `cuda-windows`/`rocm-windows`). Bump the pinned rev (+ `uv lock`) when the
-package changes. **Phase 3 (2026-08-30) deleted the `library._moved` import shims and
-the forwarding shells** — `library.captioning.*`,
-`library.preprocess.{caption_variants,autotag,position_captions,…}`,
-`library.vision.{pe_features,pe_matching,grouping_embedder}`,
-`library.datasets.grouping`, the `scripts.anima_tagger` / `scripts.curate` script dirs
-and the
-`scripts.preprocess.{autotag_captions,position_captions,correct_captions,generate_masks*,merge_masks,probe_*,build_caption_index,audit_*,…}`
-shells no longer exist. Import `anime_tools` directly. **The typed request API is the front door**
-(API-first migration, `docs/proposal/anime_tools_api_first.md`, T0–T6 landed 2026-09-03):
-one frozen request dataclass per stage (`ResizeRequest`, `AutotagRequest`,
-`PositionRequest`, `CorrectRequest`, `GroupRequest`, `SamMaskRequest`, …), registered in
-`anime_tools.stages.registry` with a lazy `Stage.runner()`; `python -m
-anime_tools.<pkg>.cli.<name>` is its shell (`make daemon-run ARGS="-m
-anime_tools.tagger.cli.train_sidecar …"` for the tagger CLIs that have no request yet).
-The `make` targets (`preprocess-resize`, `mask`, `curate-group`, `caption-*`, `tagger*`,
-`autotag`) keep their names and `--queue` routing — the wrappers in `scripts/tasks/`
-**build a request and never spell a flag**, and `_common.execute_stage` runs it
-in-process under a daemon job (one interpreter, one tagger/SAM3 load shared across
-consecutive stages, released before a trainer child via `release_models()`) or as a
-`python -m <stage.module> *req.to_argv()` child from a shell; a user's `ARGS` reach a
-stage through the request's own generated parser (`request_with_args`). `run()` and the
-in-process path both export `ANIMA_HOME` so the package's bare relative defaults anchor
-on this checkout (`ANIME_TOOLS_HOME` → `ANIMA_HOME` → CWD).
-`tests/test_anime_tools_cli_contract.py` re-parses every emitted argv through the
-stage's parser and is the drift alarm; `_common.py` asserts `CONTRACT_VERSION` at import. `configs/clause_vocabulary.yaml` stays here as the user-editable
-override of the package default. Trainer-side deps: `sam3` stays direct
-(`bench/position_captions/`), `segmentation-models-pytorch` now rides only on
-`anime-tools[masking]`. **Phase 3b (2026-08-30)** also moved the tagger-only benches
-(`bench/{tagger_external,sam3_soft_prompt}` → `../anime_tools/bench/`, with its own
-copied `bench/_common.py`), their docs, and the gitignored
-`_archive/{anima_tagger_training,tagger_eval,tagger_factored_head}` history into the
-package; what stays in `bench/` uses the tagger only as a judge of DiT output.
+### Curation lives in `anime_tools`
+
+The caption grammar, tag taxonomy, the **Anima Tagger**, the caption-master stages,
+**masking** (SAM3 / merge) and **grouping** live in the sibling repo
+**https://github.com/sorryhyun/anime_tools** (package `anime_tools`, checkout
+`../anime_tools`; per-feature contracts under `../anime_tools/docs/`). Dependency direction is
+**trainer → `anime_tools`, never the reverse** (`tests/test_curation_boundary.py`). The
+package is a **git dependency pinned by release tag** — an edit in `../anime_tools` is
+invisible to `make` targets and daemon jobs until a tag is cut and the pin moves.
+
+The typed **request API is the front door**: one frozen request dataclass per stage,
+registered in `anime_tools.stages.registry`; the `make` targets keep their names and the
+wrappers in `scripts/tasks/` **build a request and never spell a flag**.
+The Phase-3 import shims are gone — import `anime_tools` directly.
+
+**Load the `anime-tools` skill** before importing the package, editing `scripts/tasks/`,
+adding or changing a stage, or bumping the pin.
 
 ### Captions: grammar, autotag, position clauses
 
@@ -448,39 +331,19 @@ separate tags inside one, so a plain `caption.split(",")` silently corrupts them
 **Never hand-split a caption**: `anime_tools.captions.position_clauses` (torch-free) is
 the single grammar (`parse_caption` / `compose_caption`).
 
-`make caption-autotag` batch-tags the dataset (writes `.txt` sidecars into the caption
-master); `make caption-position` generates position clauses (SAM3 crops → Anima Tagger →
-v2 rewrite of the derived caption). Both are dry-run by default, and an `ARGS="--apply"`
-**must** be followed by `make preprocess-te`; both are also wired as preprocess stages.
-**Load the `captions` skill before parsing/editing captions or running either target** —
-the trainer's copy carries the `make` wiring and points at the full skill + evidence in
-the sibling checkout (`../anime_tools/.claude/skills/captions/SKILL.md`,
-`../anime_tools/docs/position_captions.md`).
+`make caption-autotag` batch-tags the dataset; `make caption-position` generates position
+clauses. Both are dry-run by default, and an `ARGS="--apply"` **must** be followed by
+`make preprocess-te`. **Load the `captions` skill** before parsing/editing captions or
+running either target.
 
 ## Custom nodes
 
-Spectrum KSampler + mod-guidance nodes live in a separate repo
-(https://github.com/sorryhyun/ComfyUI-Spectrum-KSampler; ships DCW scalar default
-`+0.01` + `auto` mode). The PiD decode node ships from its own repo too
-(https://github.com/sorryhyun/ComfyUI-Anima-PiD — full handoff 2026-06-04; symlinked
-into `../comfy/custom_nodes/comfyui-anima-pid`), as does the EasyControl KSampler node
-(`~/ComfyUI-EasyControl-KSamplerCompat`) the Block Compile node
-(https://github.com/sorryhyun/ComfyUI-Anima-BlockCompile — moved out 2026-06-30;
-standalone at `~/ComfyUI-Anima-BlockCompile`, symlinked into
-`../comfy/custom_nodes/comfyui-anima-blockcompile`), the Anima Adapter Loader node
-(https://github.com/sorryhyun/ComfyUI-Anima_lora-Adapter — Adapter / FeRA / Soft Tokens
-loaders, extracted out of tree; standalone at `~/ComfyUI-Anima_lora-Adapter`; see its
-`CLAUDE.md` for the `forward_hook`-not-override invariant), and the Anima Tagger node
-(lives **inside the `anime_tools` repo** at `../anime_tools/comfyui/anima_tagger/` —
-moved there 2026-08-30, the standalone `ComfyUI-Anima-Tagger` repo is retired; symlinked
-into `../comfy/custom_nodes/comfyui-anima-tagger`; it imports `anime_tools.tagger` and
-vendors nothing). In-tree under `custom_nodes/`: `comfyui-anima-directedit/`,
-`comfyui-anima-register/`, `comfyui-anima-trainer/` (daemon-backed one-shot trainer).
-
-Several nodes carry a `_vendor/` subset of the live tree. **Regenerate vendor trees with
-`make vendor-sync` (`scripts/release/sync_vendor.py`), never `cp` by hand** — re-run
-before every node publish. See [[feedback_vendor_sync]]. Note `../comfy/custom_nodes/`
-is symlinked into this repo — edit the source here, not the symlink.
+ComfyUI nodes mostly live in standalone repos, symlinked into `../comfy/custom_nodes/` —
+edit the source repo, not the symlink. In-tree under `custom_nodes/`:
+`comfyui-anima-directedit/`, `comfyui-anima-register/`, `comfyui-anima-trainer/`.
+Several nodes carry a `_vendor/` subset of the live tree: **regenerate with `make
+vendor-sync`, never `cp` by hand** — re-run before every node publish (see
+[[feedback_vendor_sync]]). Full repo map: the **`custom-nodes` skill**.
 
 ## External tools
 

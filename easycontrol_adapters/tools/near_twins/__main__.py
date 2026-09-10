@@ -34,7 +34,7 @@ Pipeline (see ``docs/proposal/near_twins_tag_gap_miner.md`` for the full design)
    near-twin when the inlier fraction ``>= --match-frac-min``. Unmatched cells
    are the **difference region**. Optional ``--geom-check`` RANSAC-rejects pose
    twins and estimates the crop offset.
-5. **Discriminator** (``--tag`` / ``--tag-any`` / ``--region`` / ``--signal``):
+5. **Discriminator** (``--tag`` / ``--tag-any`` / ``--region``):
    keep pairs where the attribute is present in **exactly one** member.
 6. **Rank by edit-cleanliness**: fewest *other* differences first.
 7. **Output**: a materialized ``_tags`` / ``_no_tags`` pair tree (the
@@ -203,9 +203,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="discriminator: Stage-B diff region (tagless)",
     )
-    disc.add_argument(
-        "--signal", choices=["mit_text"], help="discriminator: per-image scalar gap"
-    )
 
     p.add_argument(
         "--image-dirs",
@@ -265,12 +262,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=6,
         help="cap on non-target differing tags (-1=off)",
-    )
-    p.add_argument(
-        "--signal-delta",
-        type=float,
-        default=0.04,
-        help="signal-mode gap / low-side threshold",
     )
     p.add_argument(
         "--region-min-frac",
@@ -362,14 +353,14 @@ def main(argv: list[str] | None = None) -> int:
     if "export_dir" not in _explicit_dests(argv) and args.export_dir:
         name = str(args.name or "near_twins").strip()
         args.export_dir = f"post_image_dataset/easycontrol/{name}/staging"
-    args.mode = "region" if args.region else "signal" if args.signal else "tag"
+    args.mode = "region" if args.region else "tag"
 
     target_tags: set[str] = set()
     if args.mode == "tag":
         raw = args.tag_any or args.tag
         if not raw:
             print(
-                "error: tag mode needs --tag or --tag-any (or use --region / --signal)",
+                "error: tag mode needs --tag or --tag-any (or use --region)",
                 file=sys.stderr,
             )
             return 2
@@ -389,7 +380,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     # Prune to embeddable candidates BEFORE loading the encoder: same-size gate
-    # for region/signal, same-size + tag pivot for tag mode. If nothing survives
+    # for region, same-size + tag pivot for tag mode. If nothing survives
     # (e.g. no size group holds both a tagged and an untagged member), we skip the
     # GPU load entirely.
     gate = (

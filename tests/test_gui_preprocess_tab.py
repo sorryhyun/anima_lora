@@ -59,7 +59,7 @@ def test_preprocess_tab_persists_default_target_res_to_variant():
         assert tab.persist_preprocess_inputs()
 
         meta = _load(path)["variant"]
-        assert meta["target_res"] == [1024]
+        assert meta["stages"]["resize"]["target_res"] == [1024]
 
         if tab is not None:
             tab.deleteLater()
@@ -109,6 +109,9 @@ def test_preprocess_tab_source_dir_editable_and_persists():
 
 
 def test_preprocess_tab_persists_masking_settings_to_variant():
+    """SAM rule cards are ``masks_sam`` stage forms, persisted as
+    ``[[variant.stages.masks_sam]]`` (elided against the package defaults);
+    the run switch stays a flat ``[variant]`` key."""
     from gui import _load
 
     tab = None
@@ -120,34 +123,27 @@ def test_preprocess_tab_persists_masking_settings_to_variant():
         tab.set_variant(variant, method="lora")
 
         assert not tab._dirty
-        tab.mask_path_pattern_edit.setText("character_a/*")
+        tab.run_sam_mask_chk.setChecked(False)
         assert tab._dirty
         assert tab.save_btn.text().endswith(" *")
 
-        tab.run_sam_mask_chk.setChecked(False)
-        tab.run_mit_mask_chk.setChecked(True)
-        tab.mit_threshold_edit.setText("0.7")
-        tab.mit_dilate_spin.setValue(9)
         card = tab._rule_cards[0]
-        card.path_pattern_edit.setText("character_a/*")
-        card.prompts_edit.setPlainText("speech bubble\nartist")
-        card.focus_prompts_edit.setPlainText("girl")
-        card.threshold_edit.setText("0.45")
-        card.dilate_spin.setValue(7)
+        card.widgets["path_pattern"].setText("character_a/*")
+        card.widgets["prompts"].setText("speech bubble, artist")
+        card.widgets["focus_prompts"].setText("girl")
+        card.widgets["threshold"].setValue(0.45)
+        card.widgets["dilate"].setValue(7)
 
         assert tab._save_all()
 
         meta = _load(path)["variant"]
         assert meta["run_sam_mask"] is False
-        assert meta["run_mit_mask"] is True
-        assert meta["mask_path_pattern"] == "character_a/*"
-        assert meta["mit_text_threshold"] == 0.7
-        assert meta["mit_dilate"] == 9
-        assert meta["mask_rules"] == [
+        # `focus_prompts = "girl"` is the package's own default, so it is
+        # elided; a card that clears it keeps an explicit `"none"`.
+        assert meta["stages"]["masks_sam"] == [
             {
                 "path_pattern": "character_a/*",
-                "prompts": ["speech bubble", "artist"],
-                "focus_prompts": ["girl"],
+                "prompts": "speech bubble, artist",
                 "threshold": 0.45,
                 "dilate": 7,
             }
@@ -155,18 +151,53 @@ def test_preprocess_tab_persists_masking_settings_to_variant():
         assert not tab._dirty
         assert not tab.save_btn.text().endswith(" *")
 
+        # The job receives the card as a form the package's build_argv reads.
+        import json
+
+        forms = json.loads(tab.preprocess_env()["PREPROCESS_STAGES_JSON"])
+        assert forms["masks_sam"][0]["prompts"] == "speech bubble, artist"
+        assert forms["masks_sam"][0]["path_pattern"] == "character_a/*"
+
         assert tab.persist_preprocess_inputs()
         meta_after_preprocess_save = _load(path)["variant"]
-        for key in (
-            "run_sam_mask",
-            "run_mit_mask",
-            "mask_path_pattern",
-            "mask_rules",
-            "mit_text_threshold",
-            "mit_dilate",
-        ):
-            assert meta_after_preprocess_save[key] == meta[key]
+        assert meta_after_preprocess_save["run_sam_mask"] is False
+        assert (
+            meta_after_preprocess_save["stages"]["masks_sam"]
+            == meta["stages"]["masks_sam"]
+        )
 
+        # Reload: the card comes back as saved.
+        tab.set_variant(variant, method="lora")
+        assert tab._rule_cards[0].widgets["prompts"].text() == "speech bubble, artist"
+        assert tab._rule_cards[0].widgets["dilate"].value() == 7
+
+        if tab is not None:
+            tab.deleteLater()
+
+
+def test_preprocess_tab_refuses_a_sam_card_with_nothing_to_mask(monkeypatch):
+    """The request's own validation fires in the Save dialog, not after a
+    SAM3 load."""
+    from PySide6.QtWidgets import QMessageBox
+
+    warned = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *a, **k: warned.append(a[2]) or QMessageBox.Ok
+    )
+    tab = None
+    with _temporary_custom_variant("__pytest_preprocess_mask_invalid__") as (
+        variant,
+        _path,
+    ):
+        tab = _make_tab()
+        tab.set_variant(variant, method="lora")
+        card = tab._rule_cards[0]
+        card.widgets["prompts"].setText("none")
+        card.widgets["focus_prompts"].setText("none")
+        assert not tab._save_all()
+        assert warned and "nothing to mask" in warned[-1]
+        # A cache-build save (mask section excluded) is not blocked by it.
+        assert tab.persist_preprocess_inputs()
         if tab is not None:
             tab.deleteLater()
 
@@ -186,9 +217,10 @@ def test_preprocess_tab_freefit_max_ratio_round_trips_to_variant():
 
         assert tab.persist_preprocess_inputs()
         meta = _load(path)["variant"]
-        # The freefit toggle is gone (free-fit is the only mode); only the clamp.
-        assert "freefit" not in meta
-        assert meta["freefit_max_ratio"] == 3.0
+        # The freefit toggle is gone (free-fit is the only mode); only the clamp,
+        # now a resize stage field.
+        assert "freefit" not in meta and "freefit_max_ratio" not in meta
+        assert meta["stages"]["resize"]["freefit_max_ratio"] == 3.0
 
         # Reload into a fresh widget and confirm the value comes back.
         tab.freefit_max_ratio_spin.setValue(4.0)
@@ -199,8 +231,8 @@ def test_preprocess_tab_freefit_max_ratio_round_trips_to_variant():
             tab.deleteLater()
 
 
-def test_preprocess_overrides_carry_freefit_max_ratio():
-    """preprocess_overrides feeds the resize CLI; free-fit is always on."""
+def test_preprocess_stage_values_carry_freefit_max_ratio():
+    """The resize form feeds the resize request; free-fit is always on."""
     tab = None
     with _temporary_custom_variant("__pytest_preprocess_freefit_ovr__") as (
         variant,
@@ -210,15 +242,20 @@ def test_preprocess_overrides_carry_freefit_max_ratio():
         tab.set_variant(variant, method="lora")
         tab.freefit_max_ratio_spin.setValue(3.5)
 
-        overrides = tab.preprocess_overrides()
-        assert "freefit" not in overrides
-        assert overrides["freefit_max_ratio"] == 3.5
+        resize = tab.stage_values()["resize"]
+        assert "freefit" not in resize
+        assert resize["freefit_max_ratio"] == 3.5
+        assert "freefit_max_ratio" not in tab.preprocess_overrides()
 
         if tab is not None:
             tab.deleteLater()
 
 
 def test_preprocess_tab_caption_options_round_trip_to_variant():
+    """The caption-editing box is the ``correct`` stage form: its values
+    persist under ``[variant.stages.correct]`` and reach the job as a form."""
+    import json
+
     from gui import _load
 
     tab = None
@@ -229,39 +266,40 @@ def test_preprocess_tab_caption_options_round_trip_to_variant():
         tab = _make_tab()
         tab.set_variant(variant, method="lora")
 
-        tab.caption_correct_order_chk.setChecked(True)
+        tab.caption_no_correct_chk.setChecked(False)
         tab.caption_insert_no_artist_chk.setChecked(True)
         tab.caption_trigger_word_edit.setText("@dataset-trigger")
         tab.caption_trigger_at_front_chk.setChecked(True)
+        tab.caption_drop_groups_edit.setText("artist")
 
         assert tab._save_all()
         meta = _load(path)["variant"]
-        assert meta["caption_correct_order"] is True
-        assert meta["caption_insert_no_artist"] is True
-        assert meta["caption_trigger_word"] == "@dataset-trigger"
-        assert meta["caption_trigger_at_front"] is True
+        assert meta["stages"]["correct"] == {
+            "caption_insert_no_artist": True,
+            "caption_trigger_word": "@dataset-trigger",
+            "caption_drop_groups": "artist",
+            "no_correct": False,
+            "caption_trigger_at_front": True,
+        }
+        for key in ("caption_correct_order", "caption_trigger_word"):
+            assert key not in meta  # no flat key, no env
 
         env = tab.preprocess_env()
-        assert env["CAPTION_CORRECT_ORDER"] == "1"
-        assert env["CAPTION_INSERT_NO_ARTIST"] == "1"
-        assert env["CAPTION_TRIGGER_WORD"] == "@dataset-trigger"
-        assert env["CAPTION_TRIGGER_AT_FRONT"] == "1"
+        assert "CAPTION_TRIGGER_WORD" not in env
+        form = json.loads(env["PREPROCESS_STAGES_JSON"])["correct"]
+        assert form["caption_trigger_word"] == "@dataset-trigger"
+        assert form["no_correct"] is False and form["caption_drop_groups"] == "artist"
 
-        overrides = tab.preprocess_overrides()
-        assert overrides["caption_correct_order"] is True
-        assert overrides["caption_insert_no_artist"] is True
-        assert overrides["caption_trigger_word"] == "@dataset-trigger"
-        assert overrides["caption_trigger_at_front"] is True
-
-        tab.caption_correct_order_chk.setChecked(False)
+        tab.caption_no_correct_chk.setChecked(True)
         tab.caption_insert_no_artist_chk.setChecked(False)
         tab.caption_trigger_word_edit.clear()
         tab.caption_trigger_at_front_chk.setChecked(False)
         tab.set_variant(variant, method="lora")
-        assert tab.caption_correct_order_chk.isChecked()
+        assert not tab.caption_no_correct_chk.isChecked()
         assert tab.caption_insert_no_artist_chk.isChecked()
         assert tab.caption_trigger_word_edit.text() == "@dataset-trigger"
         assert tab.caption_trigger_at_front_chk.isChecked()
+        assert tab.caption_drop_groups_edit.text() == "artist"
 
         if tab is not None:
             tab.deleteLater()
@@ -306,8 +344,10 @@ def test_caption_master_stages_default_from_preprocess_toml(monkeypatch):
         env = tab.preprocess_env()
         assert env["CAPTION_POSITION_CLAUSES"] == "1"
         assert env["CAPTION_AUTOTAG"] == "1"
-        assert env["CAPTION_AUTOTAG_MODE"] == "merge"
-        assert env["CAPTION_AUTOTAG_MIN_CONFIDENCE"] == "0.35"
+        import json
+
+        autotag = json.loads(env["PREPROCESS_STAGES_JSON"])["autotag"]
+        assert autotag == {"mode": "merge", "min_confidence": 0.35}
 
         # Unchecking must PERSIST as false — popping it (the old rule, which
         # compared against the hardcoded default) would let the config's `true`
@@ -328,19 +368,28 @@ def test_caption_master_stages_default_from_preprocess_toml(monkeypatch):
             tab.deleteLater()
 
 
-def test_masking_task_reads_gui_mask_config_snapshot(monkeypatch):
+def test_masking_task_reads_the_gui_rule_cards(monkeypatch, tmp_path):
+    """What the tab sends is what ``make mask`` builds: one request per card."""
     from scripts.tasks import masking
 
-    monkeypatch.setenv(
-        "MASK_CONFIG_JSON",
-        '{"path_pattern":"character_a/*","rules":[{"prompts":["bubble"]}],'
-        '"run_sam":true,"run_mit":false,"mit":{"text_threshold":0.9,"dilate":2}}',
-    )
+    tab = None
+    with _temporary_custom_variant("__pytest_preprocess_mask_cards__") as (
+        variant,
+        _path,
+    ):
+        tab = _make_tab()
+        tab.set_variant(variant, method="lora")
+        tab._rule_cards[0].widgets["path_pattern"].setText("character_a/*")
+        tab._rule_cards[0].widgets["prompts"].setText("bubble")
+        tab.sam_section.add_rule_card(
+            {"prompts": "none", "focus_prompts": "girl", "threshold": 0.4}
+        )
+        env = tab.preprocess_env()
+        if tab is not None:
+            tab.deleteLater()
 
-    cfg = masking._load_mask_config()
-
-    assert cfg["rules"] == [{"prompts": ["bubble"]}]
-    assert masking._config_path_pattern(cfg) == "character_a/*"
-    assert masking._config_flag(cfg, "run_sam") and not masking._config_flag(
-        cfg, "run_mit"
-    )
+    monkeypatch.setenv("PREPROCESS_STAGES_JSON", env["PREPROCESS_STAGES_JSON"])
+    a, b = masking._sam_requests(tmp_path / "resized", tmp_path)
+    assert a.prompts == ("bubble",) and a.path_pattern == "character_a/*"
+    assert b.focus_prompts == ("girl",) and b.threshold == 0.4 and b.prompts == ()
+    assert a.mask_dir != b.mask_dir

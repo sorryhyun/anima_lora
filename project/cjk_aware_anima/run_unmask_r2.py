@@ -92,6 +92,14 @@ def main() -> None:
         help="cache_te_ext --drop_sfx: the C2–C10 caption (no SFX records, no "
         "SFX sentence) for reproductions.",
     )
+    ap.add_argument(
+        "--sidecars",
+        default=None,
+        help="cache_te_ext --sidecars: build the captions from the shipped "
+        "{stem}.ocr.txt tree (with_ocr_clause) instead of a records jsonl — "
+        "the plain-vs-OCR A/B's arm OCR (2026-09-08). --records/--ocr_format "
+        "are ignored.",
+    )
     ap.add_argument("--skip_cache", action="store_true")
     ap.add_argument("--skip_train", action="store_true")
     ap.add_argument(
@@ -115,8 +123,11 @@ def main() -> None:
                 str(HERE / "datasets" / "cache_te_ext.py"),
                 "--shard",
                 "sincos",
-                "--records",
-                opts.records,
+                *(
+                    ["--sidecars", opts.sidecars]
+                    if opts.sidecars
+                    else ["--records", opts.records]
+                ),
                 "--mirror",
                 opts.mirror,
                 "--ext_prefix",

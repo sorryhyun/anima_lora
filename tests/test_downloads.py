@@ -1,173 +1,333 @@
-from __future__ import annotations
+"""The model catalog and the ``make download-*`` targets that drive it.
 
-import json
-import urllib.error
-from io import BytesIO
+The behaviour worth pinning is the *wiring*: rows land where loaders look, every
+target resolves to real ids, the GUI's buttons run registered tasks, and a
+present file is not re-fetched. Downloading itself is ``anime_tools``' tested
+code — mock at the ``Asset.fetch`` boundary rather than at the hub.
+"""
+
+from __future__ import annotations
 
 import pytest
 
-from scripts.tasks import downloads
+from library import downloads as DL
 
 
-def test_danbooru_tags_download_url_points_to_source_repo():
-    assert downloads.DANBOORU_TAGS_URLS == (
-        "https://raw.githubusercontent.com/Localsmile/danbooru_KR_wiki_tag_search/main/danbooru_tags_classified.csv",
+def test_the_two_catalog_halves_have_disjoint_ids():
+    """``by_id`` merges them; a collision would silently shadow a row."""
+    trainer = {a.id for a in DL.catalog()}
+    curation = {a.id for a in DL.curation_catalog()}
+    assert not (trainer & curation)
+    assert len(DL.by_id()) == len(trainer) + len(curation)
+
+
+def test_every_group_and_the_default_set_name_real_rows():
+    """A typo in ``GROUPS`` is a make target that downloads nothing."""
+    known = set(DL.by_id())
+    for group, ids in DL.GROUPS.items():
+        assert set(ids) <= known, group
+    assert set(DL.DEFAULT_SET) <= known
+    assert "mit" not in DL.GROUPS
+
+
+def test_every_alias_and_pack_resolves():
+    """``resolve`` precedence is alias → pack → row; every token of the first
+    two kinds must land on rows, and the two ``pe`` meanings must differ."""
+    for name in (*DL.GROUP_ALIASES, *DL.by_pack()):
+        assert DL.resolve([name]), name
+    # The make target `pe` is both towers; the pack `pe` is PE-Core alone.
+    assert [a.id for a in DL.resolve(["pe"])] == ["pe_core", "pe_spatial"]
+    assert [a.id for a in DL.by_pack()["pe"]] == ["pe_core"]
+    # `tagger` the alias (checkpoint only) shadows `tagger` the pack.
+    assert [a.id for a in DL.resolve(["tagger"])] == ["tagger"]
+    assert len(DL.by_pack()["tagger"]) > 1
+
+
+def test_every_visible_row_belongs_to_a_listed_pack():
+    """The GUI renders by pack: a row with a pack id that is not in ``PACKS``
+    would silently vanish from both tabs."""
+    pack_ids = {p.id for p in DL.PACKS}
+    for a in DL.full_catalog():
+        assert a.pack in pack_ids, a.id
+    assert DL.PACKS[:3] == DL.TRAINER_PACKS
+    assert [p.id for p in DL.TRAINER_PACKS] == ["anima", "pe", "cjk"]
+    assert not (set(DL.HIDDEN_PACKS) & pack_ids)
+
+
+def test_hidden_pack_rows_are_not_on_the_trainer_side(monkeypatch):
+    """A pack in ``HIDDEN_PACKS`` is neither listed, resolved nor downloadable
+    from here. The set is empty since the package dropped the MIT text
+    segmenter (``text_mask``) itself — pin that the rows are really gone and
+    that the seam still filters when a pack is named."""
+    from anime_tools.downloads import catalog as package_catalog
+
+    assert DL.HIDDEN_PACKS == ()
+    assert not {"mit_text", "ctd_onnx"} & {a.id for a in package_catalog()}
+    with pytest.raises(KeyError):
+        DL.resolve(["mit_text"])
+    with pytest.raises(KeyError):
+        DL.resolve(["text_mask"])
+
+    monkeypatch.setattr(DL, "HIDDEN_PACKS", ("grouping",))
+    hidden = {a.id for a in package_catalog() if a.pack == "grouping"}
+    assert hidden == {"pe_spatial"}
+    assert not (hidden & {a.id for a in DL.curation_catalog()})
+
+
+def test_the_first_run_set_is_the_mandatory_set():
+    """v2 default: masking is opt-in, so SAM3 must not be in a fresh install's
+    path — its gated repo was the first-run failure this removes. The CJK vocab
+    pack is the opposite: base.toml enables it, so the set must install it."""
+    assert "sam3" not in DL.DEFAULT_SET
+    assert "vocab_pack" in DL.DEFAULT_SET
+    assert "mit_text" not in DL.DEFAULT_SET
+    assert "mit_text" not in DL.by_id()
+    # …and the rows a default preprocess actually needs are.
+    assert {"anima_dit", "anima_te", "anima_vae", "tagger"} <= set(DL.DEFAULT_SET)
+
+
+def test_resolve_expands_groups_and_dedupes_in_catalog_order():
+    ids = [a.id for a in DL.resolve(["pe", "pe_core", "anima"])]
+    assert ids == ["anima_dit", "anima_te", "anima_vae", "pe_core", "pe_spatial"]
+
+
+def test_resolve_expands_a_pack_id():
+    """``make download-model ocr`` is the pack, in catalog order."""
+    ids = [a.id for a in DL.resolve(["ocr"])]
+    assert ids == [a.id for a in DL.by_pack()["ocr"]]
+    assert ids and all(DL.by_id()[i].pack == "ocr" for i in ids)
+
+
+def test_by_pack_keeps_pack_order_and_drops_empty_packs():
+    grouped = DL.by_pack()
+    assert list(grouped) == [p.id for p in DL.PACKS if p.id in grouped]
+    assert all(rows for rows in grouped.values())
+    trainer_only = DL.by_pack(DL.catalog())
+    assert list(trainer_only) == ["anima", "pe", "cjk"]
+
+
+def test_resolve_raises_naming_the_unknown_token():
+    with pytest.raises(KeyError) as exc:
+        DL.resolve(["sam3", "nope"])
+    assert "nope" in str(exc.value)
+
+
+def test_rows_land_where_the_loaders_look():
+    """The catalog's one rule: a path a loader owns separately is a Download
+    button that writes where the loader will not look."""
+    from library.anima import vocab_pack
+    from library.vision import encoders
+
+    rows = DL.by_id()
+    assert encoders._default_pe_model_id() == str(DL.default_pe_core_path())
+    assert rows["pe_core"].dest / DL.PE_CORE_FILENAME == DL.default_pe_core_path()
+
+    assert vocab_pack.PACK_REPO == rows["vocab_pack"].repo
+    assert vocab_pack.DEFAULT_PACK_PREFIX.startswith(f"models/{DL.VOCAB_PACK_DIR}/")
+    assert rows["vocab_pack"].dest == DL.default_vocab_pack_dir()
+    from library.env import anima_home, resolve_under_home
+
+    assert (
+        resolve_under_home(vocab_pack.DEFAULT_PACK_PREFIX)
+        == DL.default_vocab_pack_prefix()
+        == anima_home() / "models" / DL.VOCAB_PACK_DIR / DL.VOCAB_PACK_STEM
     )
 
 
-class _FakeResponse:
-    def __init__(self, payload: bytes):
-        self._payload = payload
+def test_anima_rows_land_on_the_base_config_defaults():
+    """``configs/base.toml`` points training at these three exact paths."""
+    import tomllib
+    from library.env import anima_home
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_exc):
-        return False
-
-    def read(self) -> bytes:
-        return self._payload
-
-
-def test_download_danbooru_tags_writes_models_file(tmp_path, monkeypatch):
-    dest = tmp_path / "models" / "danbooru_tags_classified.csv"
-    monkeypatch.setattr(downloads, "DANBOORU_TAGS_PATH", dest)
-    monkeypatch.setattr(
-        downloads, "DANBOORU_TAGS_URLS", ("https://example.test/tags.csv",)
-    )
-    monkeypatch.setattr(
-        downloads.urllib.request,
-        "urlopen",
-        lambda _req, timeout=60: _FakeResponse(
-            b"name,category,post_count,description\n1girl,0,1,test\n"
-        ),
-    )
-
-    downloads.cmd_download_danbooru_tags([])
-
-    assert dest.read_text(encoding="utf-8").startswith("name,category")
-
-
-def test_download_danbooru_tags_skips_existing_without_force(tmp_path, monkeypatch):
-    dest = tmp_path / "models" / "danbooru_tags_classified.csv"
-    dest.parent.mkdir(parents=True)
-    dest.write_text("existing", encoding="utf-8")
-    monkeypatch.setattr(downloads, "DANBOORU_TAGS_PATH", dest)
-    called = False
-
-    def _fail_if_called(*_args, **_kwargs):
-        nonlocal called
-        called = True
-        return _FakeResponse(BytesIO().read())
-
-    monkeypatch.setattr(downloads.urllib.request, "urlopen", _fail_if_called)
-
-    downloads.cmd_download_danbooru_tags([])
-
-    assert not called
-    assert dest.read_text(encoding="utf-8") == "existing"
-
-
-def test_download_danbooru_tags_failure_names_source_repo(tmp_path, monkeypatch):
-    dest = tmp_path / "models" / "danbooru_tags_classified.csv"
-    monkeypatch.setattr(downloads, "DANBOORU_TAGS_PATH", dest)
-    monkeypatch.setattr(
-        downloads, "DANBOORU_TAGS_URLS", ("https://example.test/tags.csv",)
-    )
-    monkeypatch.setattr(
-        downloads.urllib.request,
-        "urlopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(urllib.error.URLError("nope")),
-    )
-
-    with pytest.raises(SystemExit) as exc:
-        downloads.cmd_download_danbooru_tags([])
-
-    assert "Localsmile/danbooru_KR_wiki_tag_search" in str(exc.value)
-
-
-# --------------------------------------------------------------------------- #
-# Anima Tagger: our checkpoint dir + the gated external backbone
-# --------------------------------------------------------------------------- #
-
-
-def _install_tagger_ckpt(tmp_path, monkeypatch, repo: str | None = None) -> None:
-    """Point the tagger target at a tmp checkpoint dir holding every required file."""
-    ckpt = tmp_path / "anima-tagger-dbv4"
-    ckpt.mkdir(parents=True)
-    for name in downloads.TAGGER_CKPT_REQUIRED:
-        (ckpt / name).write_text("{}", encoding="utf-8")
-    if repo is not None:
-        (ckpt / "config.json").write_text(
-            json.dumps({"backend": "dbv4", "dbv4": {"repo": repo}}), encoding="utf-8"
+    cfg = tomllib.loads((anima_home() / "configs" / "base.toml").read_text("utf-8"))
+    rows = DL.by_id()
+    configured = {
+        "anima_dit": cfg["pretrained_model_name_or_path"],
+        "anima_te": cfg["qwen3"],
+        "anima_vae": cfg["vae"],
+    }
+    for row_id, rel in configured.items():
+        row = rows[row_id]
+        landed = row.dest / row.files[0].rsplit("/", 1)[-1]
+        assert landed == anima_home() / rel, row_id
+    # v2: the CJK pack ships enabled, so its default prefix must be exactly
+    # where the ``vocab_pack`` row lands (and where the loader auto-fetches).
+    assert cfg["vocab_pack"] == f"models/{DL.VOCAB_PACK_DIR}/{DL.VOCAB_PACK_STEM}"
+    assert anima_home() / cfg["vocab_pack"] == DL.default_vocab_pack_prefix()
+    for name in rows["vocab_pack"].files:
+        assert (rows["vocab_pack"].dest / name).with_suffix("") == (
+            DL.default_vocab_pack_prefix()
         )
-    monkeypatch.setattr(downloads, "ROOT", tmp_path)
-    monkeypatch.setattr(downloads, "TAGGER_CKPT_REL", "anima-tagger-dbv4")
 
 
-def test_download_tagger_model_skips_both_halves_when_present(tmp_path, monkeypatch):
-    """Idempotency contract (GH #21): a re-run verifies, it doesn't re-fetch 500MB."""
-    _install_tagger_ckpt(tmp_path, monkeypatch)
-    monkeypatch.setattr("anime_tools._hf.hf_file_cached", lambda *_a, **_k: True)
-    calls = []
-    monkeypatch.setattr(downloads, "run", lambda cmd, **kw: calls.append(cmd))
+def test_prune_empty_drops_the_split_files_scaffolding(tmp_path):
+    """``hf`` mirrors the repo layout under ``--local-dir``; after the flatten
+    the empty tree must go, but a real file must not."""
+    (tmp_path / "split_files" / "diffusion_models").mkdir(parents=True)
+    (tmp_path / "keep").mkdir()
+    (tmp_path / "keep" / "f.bin").write_bytes(b"x")
 
-    downloads.cmd_download_tagger_model([])
+    DL._prune_empty(tmp_path)
 
-    assert calls == []
-
-
-def test_download_tagger_model_fetches_backbone_when_uncached(tmp_path, monkeypatch):
-    """Checkpoint on disk but backbone missing from the HF cache -> fetch only it."""
-    _install_tagger_ckpt(tmp_path, monkeypatch)
-    monkeypatch.setattr("anime_tools._hf.hf_file_cached", lambda *_a, **_k: False)
-    calls = []
-    monkeypatch.setattr(downloads, "run", lambda cmd, **kw: calls.append(cmd))
-
-    downloads.cmd_download_tagger_model([])
-
-    assert len(calls) == 1
-    cmd = calls[0]
-    assert cmd[:3] == ["hf", "download", downloads.TAGGER_BACKBONE_REPO]
-    # No --local-dir: the loader reads the backbone straight out of the hub cache.
-    assert "--local-dir" not in cmd
-    assert set(downloads.TAGGER_BACKBONE_FILES) <= set(cmd)
+    assert not (tmp_path / "split_files").exists()
+    assert (tmp_path / "keep" / "f.bin").exists()
 
 
-def test_tagger_backbone_repo_follows_the_installed_checkpoint(tmp_path, monkeypatch):
-    """config.json's dbv4.repo wins — a checkpoint built against another
-    animetimm variant must download *that* backbone, not the default."""
-    _install_tagger_ckpt(tmp_path, monkeypatch, repo="animetimm/caformer_s36.dbv4-full")
-    assert downloads._tagger_backbone_repo() == "animetimm/caformer_s36.dbv4-full"
+def test_fetch_skips_an_installed_row(monkeypatch):
+    """Idempotency contract (GH #21): a re-run verifies, it does not re-fetch.
+
+    Rows that move files out of ``hf``'s ``--local-dir`` layout would otherwise
+    re-pull the whole repo, because the hub no longer sees them where it looks.
+    """
+    asset = DL.by_id()["sam3"]
+    monkeypatch.setattr(type(asset), "installed", property(lambda _self: True))
+    monkeypatch.setattr(
+        type(asset), "fetch", lambda *_a, **_k: pytest.fail("re-fetched")
+    )
+
+    assert DL.fetch(asset, log=lambda _m: None) is False
 
 
-def test_tagger_backbone_repo_falls_back_without_a_checkpoint(tmp_path, monkeypatch):
-    monkeypatch.setattr(downloads, "ROOT", tmp_path)
-    monkeypatch.setattr(downloads, "TAGGER_CKPT_REL", "missing")
-    assert downloads._tagger_backbone_repo() == downloads.TAGGER_BACKBONE_REPO
+def test_fetch_all_continues_past_a_failure_and_reports_it():
+    """One gated repo without granted access must not abort the row beside it."""
+    fetched: list[str] = []
+
+    class _Row:
+        def __init__(self, title, ok):
+            self.title, self._ok, self.installed = title, ok, False
+            self.repo = self.location = "-"
+            self.dest = None
+
+        def fetch(self, _log):
+            if not self._ok:
+                raise FileNotFoundError("gated")
+            fetched.append(self.title)
+
+    failed = DL.fetch_all(
+        [_Row("a", True), _Row("b", False), _Row("c", True)], log=lambda _m: None
+    )
+
+    assert fetched == ["a", "c"]
+    assert failed == ["b"]
 
 
-def test_flatten_subfolder_overwrites_existing(tmp_path):
-    """``--force`` re-download lands the file again; the flatten must overwrite
-    rather than raise (``shutil.move`` onto an existing path fails on Windows)."""
-    dst = tmp_path / "ckpt"
-    (dst / "dbv4").mkdir(parents=True)
-    (dst / "vocab.json").write_text("stale", encoding="utf-8")
-    (dst / "dbv4" / "vocab.json").write_text("fresh", encoding="utf-8")
+def test_every_download_target_resolves(monkeypatch):
+    """Each ``make download-<x>`` must name rows that exist — the failure mode
+    is a target that prints nothing and exits 0."""
+    import tasks
 
-    downloads._flatten_subfolder(dst, "dbv4")
+    picked: list[list[str]] = []
+    monkeypatch.setattr(
+        DL,
+        "fetch_all",
+        lambda assets, **_kw: picked.append([a.id for a in assets]) or [],
+    )
+    targets = [
+        n
+        for n in tasks.COMMANDS
+        if n.startswith("download-")
+        and n not in ("download-anima-variant", "download-list", "download-model")
+    ]
+    assert len(targets) >= 8
+    assert "download-mit" not in tasks.COMMANDS
+    for name in targets:
+        tasks.COMMANDS[name][0]([])
+    assert all(ids for ids in picked)
 
-    assert (dst / "vocab.json").read_text(encoding="utf-8") == "fresh"
-    assert not (dst / "dbv4").exists()
+
+def test_download_model_accepts_pack_ids(monkeypatch):
+    """The GUI's pack buttons and ``make download-model ocr`` go through the
+    same front door; a pack id must expand there, not only in ``resolve``."""
+    import tasks
+
+    picked: list[list[str]] = []
+    monkeypatch.setattr(
+        DL,
+        "fetch_all",
+        lambda assets, **_kw: picked.append([a.id for a in assets]) or [],
+    )
+    tasks.COMMANDS["download-model"][0](["ocr", "anima"])
+    assert picked == [[a.id for a in DL.resolve(["anima", "ocr"])]]
 
 
-def test_models_dialog_rows_map_to_registered_tasks():
-    """The GUI runs ``download-<key>`` for every row — keep the keys in sync with
-    the task registry so a button can't silently point at a missing target."""
+def test_models_dialog_rows_come_from_the_catalog():
+    """Both tabs render Assets and run ``download-model <id>``; the id has to be
+    one the task can resolve, and every labelled row has to be a real one."""
     pytest.importorskip("PySide6")
     import tasks
-    from gui.system_dialog import _MODEL_GROUPS
+    from gui.system_dialog import _TITLE_KEYS
 
-    for key, _label, _paths, _extra in _MODEL_GROUPS:
-        assert f"download-{key}" in tasks.COMMANDS, key
-    assert "tagger-model" in {g[0] for g in _MODEL_GROUPS}
+    assert "download-model" in tasks.COMMANDS
+    assert set(_TITLE_KEYS) <= set(DL.by_id())
+
+
+def test_the_two_tabs_show_the_two_catalog_halves():
+    """One modal, one QProcess, one log — the split is a tab, so neither list
+    grows long enough to push the log pane off the dialog."""
+    import os
+
+    pytest.importorskip("PySide6")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QGroupBox
+
+    from gui.system_dialog import ModelsDialog, _pack_title
+
+    QApplication.instance() or QApplication([])
+    dlg = ModelsDialog()
+    try:
+        assert dlg.tabs.count() == 2
+        anima, curation = dlg._panels
+        assert [a.id for a in anima.assets()] == [a.id for a in DL.catalog()]
+        assert [a.id for a in curation.assets()] == [
+            a.id for a in DL.curation_catalog()
+        ]
+        assert "mit_text" not in {a.id for a in curation.assets()}
+        # Rows are grouped by pack: one QGroupBox per pack the tab's rows
+        # populate, in PACKS order, each with a pack-level button that names
+        # exactly that pack's rows.
+        for panel in dlg._panels:
+            expected = DL.by_pack(panel.assets())
+            assert [pid for pid, _ids, _b in panel._packs] == list(expected)
+            for pid, ids, _btn in panel._packs:
+                assert ids == tuple(a.id for a in expected[pid])
+            boxes = panel.findChildren(QGroupBox)
+            assert [b.title() for b in boxes] == [
+                _pack_title(DL.PACK_BY_ID[pid]) for pid in expected
+            ]
+        assert [pid for pid, _i, _b in anima._packs] == ["anima", "pe", "cjk"]
+        # Busy disables every button on *both* tabs: the dialog runs one job.
+        dlg._set_busy(True)
+        assert not any(b.isEnabled() for p in dlg._panels for _a, _s, b in p._rows)
+        assert not any(b.isEnabled() for p in dlg._panels for _p, _i, b in p._packs)
+        assert not any(p.all_btn.isEnabled() for p in dlg._panels)
+        dlg._set_busy(False)
+        assert all(b.isEnabled() for p in dlg._panels for _p, _i, b in p._packs)
+    finally:
+        dlg.close()
+
+
+def test_every_title_key_exists_in_every_language():
+    """A missing key silently falls back to English — worst for the KR/JA/ZH
+    users who are most of the base."""
+    pytest.importorskip("PySide6")
+    from gui.i18n import TRANSLATIONS
+    from gui.system_dialog import _PACK_KEYS, _TITLE_KEYS
+
+    extra = (
+        "curation_models_intro",
+        "models_tab_anima",
+        "models_tab_curation",
+        "models_download_missing",
+        "models_all_installed",
+        "models_used_by",
+        "models_download_pack",
+        "models_redownload_pack",
+    )
+    pack_keys = [k for key in _PACK_KEYS.values() for k in (key, f"{key}_desc")]
+    for lang, table in TRANSLATIONS.items():
+        for key in (*_TITLE_KEYS.values(), *pack_keys, *extra):
+            assert key in table, f"{lang}: {key}"
+        assert "model_mit" not in table, lang
+    # Every pack the trainer shows has a translated title (the fallback is the
+    # catalog's English title, which the KR/JA/ZH users should not see).
+    assert set(_PACK_KEYS) == {p.id for p in DL.PACKS}

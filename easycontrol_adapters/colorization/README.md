@@ -147,12 +147,12 @@ python -m anime_tools.stages.cli.resize_images --src $KO/src --dst $KO/resized \
 
 # 3. Masks (recommended for a text slice — this is what keeps the glyphs
 #    pixel-exact in the condition instead of screentoned into mush).
-python -m anime_tools.masking.cli.generate_masks_mit --image-dir $KO/resized \
-    --mask-dir /tmp/ko-mit --model-path models/mit/model.pth --recursive
+#    (The MIT text segmenter this once ran alongside SAM3 was removed in v2;
+#    lettering is an ordinary SAM3 ignore prompt now.)
 python -m anime_tools.masking.cli.generate_masks --config configs/sam_mask.yaml \
-    --image-dir $KO/resized --mask-dir /tmp/ko-sam \
+    --image-dir $KO/resized --mask-dir /tmp/ko-sam --prompts "speech bubble,text" \
     --checkpoint models/sam3/sam3.pt --batch-size 4 --recursive
-python -m anime_tools.masking.cli.merge_masks /tmp/ko-sam /tmp/ko-mit --output-dir $KO/masks
+python -m anime_tools.masking.cli.merge_masks /tmp/ko-sam --output-dir $KO/masks
 
 # 4. Stage + preprocess into the slice's own trees. `ARGS` is appended last, so
 #    these path flags override the slug-derived defaults.

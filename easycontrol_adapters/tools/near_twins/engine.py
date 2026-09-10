@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import random
-import sys
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -69,7 +68,7 @@ def prune_for_pairing(
 ) -> list[Member]:
     """Members that could still form an accepted pair → embed only these.
 
-    Region/signal modes: just the same-size gate (``keep_size_cohabiting``).
+    Region mode: just the same-size gate (``keep_size_cohabiting``).
 
     Tag mode adds the **tag pivot**: an accepted pair has the target tag in
     *exactly one* member, so a same-size group is only useful when it holds BOTH
@@ -341,8 +340,8 @@ def run_artist(
                     args.region_max_frac,
                     args.region_scatter_max,
                 )
-            else:  # signal
-                verdict = discriminate_signal(ma, mb, args)
+            else:
+                raise ValueError(f"unknown mode {args.mode!r}")
             if not verdict.accept:
                 continue
             out.append(PairRecord(artist, ma, mb, cos, match, verdict))
@@ -352,44 +351,3 @@ def run_artist(
     if args.per_artist_topk:
         out = out[: args.per_artist_topk]
     return out
-
-
-# ---------------------------------------------------------------------------- signal mode (MIT text)
-
-
-_SIGNAL_STATE: dict = {}
-
-
-def _mit_text_fraction(member: Member, device: str) -> float:
-    """Per-image MIT text-area fraction — the detector behind post_image_dataset/masks/."""
-    if "mit_model" not in _SIGNAL_STATE:
-        sys.path.insert(0, str(REPO_ROOT / "scripts" / "preprocess"))
-        from generate_masks_mit import _detect_mask, _load_model  # type: ignore
-
-        _SIGNAL_STATE["mit_model"] = _load_model(None, device=device)
-        _SIGNAL_STATE["mit_detect"] = _detect_mask
-    cache = CACHE_ROOT / _dir_hash(member.image_path.parent) / f"{member.stem}.mit_text"
-    if cache.is_file():
-        return float(cache.read_text())
-    with Image.open(member.image_path) as im:
-        arr = np.asarray(im.convert("RGB"))
-    mask = _SIGNAL_STATE["mit_detect"](
-        _SIGNAL_STATE["mit_model"], arr, device=device, text_threshold=0.8
-    )
-    frac = float(np.count_nonzero(mask) / mask.size)
-    cache.write_text(f"{frac:.6f}")
-    return frac
-
-
-def discriminate_signal(a: Member, b: Member, args: argparse.Namespace) -> PairVerdict:
-    if args.signal != "mit_text":
-        raise ValueError(f"unknown signal {args.signal!r}")
-    fa = _mit_text_fraction(a, args.device)
-    fb = _mit_text_fraction(b, args.device)
-    hi, lo = (fa, fb) if fa >= fb else (fb, fa)
-    if (
-        hi - lo < args.signal_delta or lo > args.signal_delta
-    ):  # gap present + low side ≈ 0
-        return PairVerdict(False, "?", 0, [], f"signal gap {hi - lo:.3f} insufficient")
-    gap_holder = "a" if fa >= fb else "b"
-    return PairVerdict(True, gap_holder, 0, [])

@@ -193,12 +193,12 @@ def test_aspect_error_is_minimal():
 
 @pytest.mark.parametrize("edge", ALLOWED_TARGET_RES)
 def test_preview_agrees_with_solver(edge):
-    """compute_resize_preview(freefit) == select_resize_bucket == freefit_bucket."""
+    """compute_resize_preview == select_resize_bucket == freefit_bucket."""
     band = freefit_band_for_edge(edge)
     for sw, sh in _NATIVE_SIZES:
         solver = freefit_bucket(sw, sh, band)
-        _, selected = select_resize_bucket(sw, sh, [edge], fit_mode="freefit")
-        preview = compute_resize_preview(sw, sh, [edge], fit_mode="freefit")
+        _, selected = select_resize_bucket(sw, sh, [edge])
+        preview = compute_resize_preview(sw, sh, [edge])
         assert selected == solver, (edge, sw, sh)
         assert preview.bucket_size == solver, (edge, sw, sh)
         assert preview.target_edge == edge
@@ -206,7 +206,7 @@ def test_preview_agrees_with_solver(edge):
 
 def test_single_tier_choose_edge_is_noop():
     # Free-fit operates inside the choose_edge-picked tier; single tier is direct.
-    _, b = select_resize_bucket(1500, 1000, [1024], fit_mode="freefit")
+    _, b = select_resize_bucket(1500, 1000, [1024])
     assert b == freefit_bucket(1500, 1000, freefit_band_for_edge(1024))
 
 

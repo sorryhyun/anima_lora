@@ -4,14 +4,14 @@ Two unrelated probes — a σ-sweep `x0_pred` reconstruction probe (since remove
 `bench/fera_artist/probe_fei_trajectory.py` (low-frequency energy fraction along the
 live CFG=4 sampler) — agree on the same σ structure for `anima-base-v1.0`:
 
-- **σ ≈ 0.75**: `x0_pred` is already a recognizable picture (subject, layout,
+- σ ≈ 0.75: `x0_pred` is already a recognizable picture (subject, layout,
   rough color blocks correct).
 - **σ ≈ 0.45**: `x0_pred` is essentially the final image — the base reconstructs
   with normalized latent-MSE < 0.2 from this σ down.
-- **σ ∈ [0.45, 0]**: every remaining change is refinement (fine details,
+- σ ∈ [0.45, 0]: every remaining change is refinement (fine details,
   high-frequency texture).
 
-Per the FEI trajectory, the *latent itself* — not the model's prediction —
+Per the FEI trajectory, the latent itself — not the model's prediction —
 gains its low-frequency content over the same window: `e_low` rises from
 0.30 at t=0.40 to 0.57 at t=0.10. So the "picture being added" lives almost
 entirely in the σ < 0.45 tail. Above σ ≈ 0.55 the base already knows the
@@ -79,35 +79,35 @@ the left, std across artists on the right](assets/sigma_signal_fei_trajectory.pn
 There's no contradiction between "the base reconstructs by σ=0.55" and
 "low-freq energy keeps growing through σ<0.45." The base's `x0_pred`
 subtracts `σ·v` from a still-noisy `z_σ` — the model knows the answer
-long before the *latent it's looking at* contains the answer. The sampler
+long before the latent it's looking at contains the answer. The sampler
 then spends the σ<0.45 tail copying that answer into the latent itself.
 
 ## Implications
 
-1. **The default sigmoid schedule mis-allocates capacity.**
+1. The default sigmoid schedule mis-allocates capacity.
    `library/runtime/noise.py`'s `sigmoid` puts its bell at σ=0.5 — i.e.
    directly on the boundary where the base is already done. The probe
    reports 57.8% of sigmoid mass falls below σ=0.55 (the "no signal"
    region), versus 38.3% for a `μ=+0.5` logit-normal that biases toward
-   the σ>0.55 region where the base is uncertain. **NB this is a
-   *training-time* capacity-allocation hypothesis and is still unconfirmed**
+   the σ>0.55 region where the base is uncertain. NB this is a
+   *training-time* capacity-allocation hypothesis and is still unconfirmed
    — the related *inference-time* idea (reshaping the sampler's σ schedule
-   to densify one end at fixed NFE) was later **refuted**; see
+   to densify one end at fixed NFE) was later refuted; see
    [[project_sigma_reshape_no_win]]. Different
    axis, but don't read this as an endorsed lever.
 
-2. **Adapter training capacity has two regimes to choose between**:
+2. Adapter training capacity has two regimes to choose between:
    - σ > 0.55, where the base is genuinely uncertain about the answer
      itself (global structure / composition / pose) — this is where a
      LoRA can change what the model predicts.
-   - σ < 0.45, where the answer is locked but the *high-frequency
-     texture* is still being filled in. A LoRA targeting style/detail
+   - σ < 0.45, where the answer is locked but the high-frequency
+     texture is still being filled in. A LoRA targeting style/detail
      (a quality LoRA, a sharpener) needs mass here, not at σ=0.5.
 
    These are different jobs. The shipped default doesn't strongly
    commit to either.
 
-3. **The FEI router's training-vs-inference signal is consistent.**
+3. The FEI router's training-vs-inference signal is consistent.
    `probe_fei_artist.py`'s training-mixture FEI and
    `probe_fei_trajectory.py`'s live-sampler FEI line up at matched t.
    The Hydra-content / freq-routed adapters can trust that the FEI
@@ -117,19 +117,19 @@ then spends the σ<0.45 tail copying that answer into the latent itself.
 
 ## Caveats
 
-- **This is a "where is the base uncertain" diagnostic, not a quality
-  predictor.** Lower FM-MSE has historically not tracked CMMD on Anima
+- This is a "where is the base uncertain" diagnostic, not a quality
+  predictor. Lower FM-MSE has historically not tracked CMMD on Anima
   (`project_fm_val_loss_uninformative`). A real schedule sweep needs
   CMMD-scored training to settle "optimal." This probe exists to inform
   the arms of that sweep.
 
-- **The reconstruction view is content-only.** Style/identity that show
+- The reconstruction view is content-only. Style/identity that show
   up only as fine-grained low-σ texture won't change the normalized
   latent-MSE crossover much — that signal lives in the σ<0.45 tail by
   definition and is exactly what the `x0_pred` already-matches view
-  *can't* see.
+  can't see.
 
-- **The trajectory probe's t-axis runs `1.0 → 0.10`, not `1.0 → 0`.**
+- The trajectory probe's t-axis runs `1.0 → 0.10`, not `1.0 → 0`.
   Anima's 28-step Euler with `flow_shift=3` stops at t≈0.10. The
   σ<0.10 sliver of refinement isn't covered here.
 

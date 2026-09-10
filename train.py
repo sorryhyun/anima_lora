@@ -2032,6 +2032,24 @@ class AnimaTrainer:
                     )
 
             blueprint = blueprint_generator.generate(user_config, args)
+            # v2: `masked_loss` is the one switch. A mask tree left on disk
+            # from an earlier `make mask` (config `mask_dir`, or the legacy
+            # `masks/{merged,sam}` auto-resolution) must not re-enable masking
+            # on its own — and the gate has to sit here, before the datasets
+            # are built, because construction bakes mask paths and preloads
+            # the PNGs (see `disable_masks_in_blueprint`).
+            if not getattr(args, "masked_loss", False):
+                ignored_mask_dirs = config_util.disable_masks_in_blueprint(
+                    blueprint.dataset_group
+                )
+                if ignored_mask_dirs:
+                    logger.info(
+                        "masked_loss = false: masks under %s are ignored "
+                        "(set masked_loss = true to train with them)",
+                        ", ".join(ignored_mask_dirs),
+                    )
+                else:
+                    logger.info("masked_loss = false: training unmasked")
             train_dataset_group, val_dataset_group = (
                 config_util.generate_dataset_group_by_blueprint(
                     blueprint.dataset_group,

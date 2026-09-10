@@ -1,17 +1,17 @@
 # project/finished/ — completed lines
 
-Lines that ran to a **successful conclusion** — the goal was reached or the
+Lines that ran to a successful conclusion — the goal was reached or the
 measured ceiling was hit — land here, one subdir each. This tier is distinct
 from the gitignored `_archive/` tree on both axes:
 
-- **Outcome**: `finished/` lines *worked* (shipped artifacts, ceiling reached);
+- Outcome: `finished/` lines *worked* (shipped artifacts, ceiling reached);
   `_archive/` holds retired/killed/superseded material.
-- **Visibility**: `finished/` is **tracked** — the record of what was achieved
+- Visibility: `finished/` is **tracked** — the record of what was achieved
   and where the ceiling sits stays in the public repo, so nobody re-proposes a
   lever that was already exhausted.
 
 Each subdir is a digest home page (`README.md`): final verdicts with evidence
-pointers, shipped artifacts, and any small open remainder. It does **not**
+pointers, shipped artifacts, and any small open remainder. It does not
 duplicate code or bench tables — canonical sources stay where they live.
 
 A finished line's whole working tree may move here when its top-level surface

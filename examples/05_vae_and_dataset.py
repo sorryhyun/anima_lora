@@ -5,10 +5,10 @@ Two things a scripts/ author repeatedly needs:
 
   A. VAE round-trip — encode an image to a latent and decode it back. The clean
      helpers are encode_pixels_to_latents() / decode_to_pixels(), both expecting
-     pixels in [-1, 1]. The image is first resized to a real constant-token bucket
-     (the same select_resize_bucket + resize_to_bucket preprocess uses) so the
-     round-trip runs on a training-shaped latent — and so the freefit-vs-snap crop
-     tradeoff is visible (freefit keeps native aspect → near-zero crop).
+     pixels in [-1, 1]. The image is first resized to its free-fit bucket (the
+     same select_resize_bucket + resize_to_bucket preprocess uses) so the
+     round-trip runs on a training-shaped latent, and the printout shows how
+     little the native-aspect fit crops.
 
   B. Iterate the preprocessed cache that training actually consumes.
      CachedDataset (library/datasets/cache.py) yields
@@ -17,8 +17,7 @@ Two things a scripts/ author repeatedly needs:
      post_image_dataset/lora/ — no DiT/encoder needed, it's all on disk.
      Samples are bucket-grouped so each batch is one resolution.
 
-    python examples/05_vae_and_dataset.py --image some/photo.png      # part A (freefit)
-    python examples/05_vae_and_dataset.py --image some/photo.png --fit_mode snap
+    python examples/05_vae_and_dataset.py --image some/photo.png      # part A
     python examples/05_vae_and_dataset.py --data_dir post_image_dataset/lora  # part B
 """
 
@@ -50,21 +49,19 @@ def _crop_fraction(w: int, h: int, bucket: tuple[int, int]) -> float:
     return 1.0 - (bw * bh) / (w * scale * h * scale)
 
 
-def vae_roundtrip(
-    image_path: str, out_path: str, device, *, target_res: int, fit_mode: str
-) -> None:
+def vae_roundtrip(image_path: str, out_path: str, device, *, target_res: int) -> None:
     """Part A — pixels → latent → pixels, resized to a real Anima bucket first.
 
     The VAE itself takes any H,W, but training never feeds it raw native pixels:
     a 4000px photo would blow the rope cap and is not a cached shape. Preprocessing
-    resizes every image to a constant-token bucket. We do the same here so the
+    resizes every image to its free-fit bucket. We do the same here so the
     round-trip is on a *training-shaped* latent — reusing the exact chooser
     (`select_resize_bucket`) and pixel geometry (`resize_to_bucket`) preprocess uses,
     not a hand-rolled resize.
 
-    `fit_mode="freefit"` keeps the image's native aspect and lands its token count
-    inside the tier's band → near-zero crop. `"snap"` AR-snaps to a discrete
-    constant-token bucket → larger crop. The printout makes that delta concrete.
+    Free-fit is the only resize mode: it keeps the image's native aspect and
+    lands its token count anywhere inside the tier's band, so the crop the
+    printout reports is sub-patch.
     """
     from PIL import Image, ImageOps
     from torchvision import transforms
@@ -77,20 +74,15 @@ def vae_roundtrip(
     img = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
     w, h = img.size
 
-    # Show what each fit mode would cost on this image, then resize with the chosen one.
-    _, snap_bucket = select_resize_bucket(w, h, target_res, fit_mode="snap")
-    _, free_bucket = select_resize_bucket(w, h, target_res, fit_mode="freefit")
+    edge, bucket = select_resize_bucket(w, h, target_res)
     print(
         f"native {w}x{h} (AR {w / h:.3f}) @ target_res {target_res}:\n"
-        f"  snap    → {snap_bucket[0]}x{snap_bucket[1]} "
-        f"(AR {snap_bucket[0] / snap_bucket[1]:.3f}, crop {_crop_fraction(w, h, snap_bucket):.1%})\n"
-        f"  freefit → {free_bucket[0]}x{free_bucket[1]} "
-        f"(AR {free_bucket[0] / free_bucket[1]:.3f}, crop {_crop_fraction(w, h, free_bucket):.1%})"
+        f"  free-fit → {bucket[0]}x{bucket[1]} (AR {bucket[0] / bucket[1]:.3f}, "
+        f"tier {edge}, crop {_crop_fraction(w, h, bucket):.1%})"
     )
 
-    _, bucket = select_resize_bucket(w, h, target_res, fit_mode=fit_mode)
     img = resize_to_bucket(img, bucket)
-    print(f"using fit_mode={fit_mode} → resized to {img.size[0]}x{img.size[1]}")
+    print(f"resized to {img.size[0]}x{img.size[1]}")
 
     to_tensor = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]  # → [-1, 1]
@@ -152,12 +144,6 @@ def main() -> None:
         default=1024,
         help="part A: tier to resize into (512/768/896/1024/1280/1536)",
     )
-    p.add_argument(
-        "--fit_mode",
-        choices=("freefit", "snap"),
-        default="freefit",
-        help="part A: native-aspect token-band fit vs AR-snap to a discrete bucket",
-    )
     opts = p.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -168,7 +154,6 @@ def main() -> None:
             opts.out,
             device,
             target_res=opts.target_res,
-            fit_mode=opts.fit_mode,
         )
     else:
         iterate_cache(opts.data_dir, device)

@@ -13,9 +13,10 @@ import toml
 from PySide6.QtCore import QObject, QRect, QRunnable, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 
+from anime_tools.masking._masks import mask_path_for
+
 from gui import ROOT, default_mask_dir
 from library.preprocess.resize_preview import (
-    DEFAULT_FIT_MODE,
     DEFAULT_FREEFIT_MAX_RATIO,
     compute_resize_preview,
 )
@@ -65,21 +66,18 @@ def _format_file_size(size: int) -> str:
 def _resolve_mask_path(image_path: Path, current_dir: Path | None) -> Path | None:
     """Locate the merged mask PNG for ``image_path``.
 
-    Mirrors the trainer's mask layout: ``<mask_dir>/<rel>/<stem>_mask.png``
-    where ``mask_dir`` is the configured mask root (configs/preprocess.toml)
-    and ``rel`` is the image's parent relative to ``current_dir``. Falls back
-    to the legacy ``masks/merged/...`` tree before giving up.
+    ``mask_path_for`` is the generators' own write-side rule (mirror the source
+    subdir, ``{stem}_mask.png``), so the viewer looks exactly where the masking
+    stage put it. ``mask_dir`` is the configured mask root
+    (configs/preprocess.toml); the legacy ``masks/merged`` tree is tried after
+    it before giving up.
     """
     if current_dir is None:
         return None
-    try:
-        rel = image_path.relative_to(current_dir)
-    except ValueError:
+    if not image_path.is_relative_to(current_dir):
         return None
-    rel_parent = rel.parent
-    name = f"{image_path.stem}_mask.png"
     for root in (default_mask_dir(), ROOT / "masks" / "merged"):
-        candidate = root / rel_parent / name
+        candidate = mask_path_for(image_path, current_dir, root)
         if candidate.is_file():
             return candidate
     return None
@@ -179,9 +177,7 @@ def _compose_resize_preview_overlay(
     source: QPixmap,
     target_res,
     crop_anchor=None,
-    bucket_resos=None,
     crop_margins=None,
-    fit_mode=DEFAULT_FIT_MODE,
     max_ratio=DEFAULT_FREEFIT_MAX_RATIO,
 ) -> QPixmap:
     try:
@@ -190,9 +186,7 @@ def _compose_resize_preview_overlay(
             source.height(),
             target_res,
             crop_anchor=crop_anchor,
-            bucket_resos=bucket_resos,
             crop_margins=crop_margins,
-            fit_mode=fit_mode,
             max_ratio=max_ratio,
         )
     except (KeyError, TypeError, ValueError):

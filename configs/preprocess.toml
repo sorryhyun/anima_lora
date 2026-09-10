@@ -6,9 +6,10 @@ target_res = [1024, 896]
 # ({stem}_mask.png, mirroring the resized/ subdir layout). Relative to the repo
 # root (absolute paths work too). Consumed by `make mask` / `make mask-clean`,
 # `make preprocess-reconcile`, the GUI mask counter/overlay, and — as the
-# lowest-priority fallback under a subset's own `mask_dir` — training. Training
-# ignores it when the directory doesn't exist, so a maskless checkout is
-# unaffected.
+# lowest-priority fallback under a subset's own `mask_dir` — training. Since v2
+# training only reads masks when `masked_loss = true` (configs/base.toml): with
+# it off, train.py strips `mask_dir` from every subset and logs one line, so a
+# mask tree left on disk never re-enables masked loss by itself.
 mask_dir = "post_image_dataset/masks"
 
 caption_shuffle_variants = 4

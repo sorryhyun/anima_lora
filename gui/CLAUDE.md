@@ -81,31 +81,53 @@ torch must not appear).
   The form is a stack of **`KnobSection`** panels (`_section.py`: a `QGroupBox` whose
   `add_knob(key, widget, label)` registers the editor for a knob-table key and wires
   change→dirty, the `enabled_by` gate and the generic `values()`/`set_values()` —
-  dispatched on *widget type*, so a `float` knob may be a spin or a free-text edit):
-  `image_prep.py` (`ImagePrepSection` + `_ResizeCropAnchorWidget`/`_CropMarginsWidget`),
-  `text_caching.py`, `captions.py` (`AutotagSection`, `CaptionEditingSection`),
-  `masking.py` (`_RuleCard`, `SamMaskSection` with `collect_rules()`, `MitMaskSection`).
-  `tab.values()` merges the sections. Legacy `tab.<widget>` names (`source_dir_edit`,
+  dispatched on *widget type*, so a `float` knob may be a spin or a free-text edit).
+  **Four of the five sections are drawn from `anime_tools` stage schemas**
+  (`docs/proposal/gui_preprocess_from_anime_tools.md`, landed 2026-09-07):
+  `stage_form.py::StageFormSection` renders one schema (`anime_tools.gui.stages.schema`
+  — kind / default / choices / help / advanced / gate / bound roots) as a `KnobSection`
+  keyed by the stage's dests, hides bound + trainer-owned dests (`TRAINER_FIELDS`),
+  keeps trainer-native rows beside them (`add_trainer_knob` → `knob_widgets`, a chain
+  gate via `gate=`), and elides/persists values under `[variant.stages.<stage_id>]`
+  against `preprocess.toml`-seeded defaults (`seeded_defaults` / `persistable_values` /
+  `merge_stages_into_meta`). `image_prep.py` (`ImagePrepSection` over `resize`, with
+  the `_TargetResWidget` / `_ResizeCropAnchorWidget` / `_CropMarginsWidget` domain
+  widgets mapped by dest), `captions.py` (`AutotagSection` over `autotag` behind the
+  `caption_autotag` gate; `CaptionEditingSection` over `correct` + the
+  `caption_position_clauses` gate), `masking.py` (`SamMaskSection`: `run_sam_mask` +
+  one `_RuleCard` = `StageFormSection(masks_sam)` per rule, each with its own
+  `path_pattern`; `[[variant.stages.masks_sam]]`), `text_caching.py` (trainer-native).
+  `tab.values()` = the trainer knobs, `tab.stage_values()` = `{stage_id: form}`; at
+  submit the forms ride as `PREPROCESS_STAGES_JSON` inside `preprocess_env()` and
+  `request_from_form` (`scripts/tasks/_common.py`) builds each request through the package's
+  `build_argv` with the trainer's roots (the tab validates the same way at Save/Run,
+  `_validate_stages`). Field labels/help come from the i18n overlay
+  `explanations/guides/<lang>/_stage_fields.json` keyed `<stage_id>.<dest>` (English
+  from the schema as fallback). Legacy `tab.<widget>` names (`source_dir_edit`,
   `caption_autotag_chk`, …) resolve through `_WIDGET_ALIASES` in `__getattr__` for one
-  release — tests and `image_tab` still use them; new code goes through `values()` or
-  `tab.<section>.widgets[key]`. Tests that monkeypatch `_load_preprocess_toml` /
-  `read_gui_settings` / `_load_sam_yaml` must patch `gui.tabs.preprocess.tab`.
-- **`tabs/preprocess/knobs.py`** — the Preprocessing tab's **knob table** (`KNOBS:
-  tuple[Knob]`, one row per key: kind / default / `default_from` policy (const ·
-  `preprocess.toml` · `gui_settings.json` · `sam_mask.yaml`) / env name / `persist`
-  elision rule / snapshot flag) plus the pure functions the tab calls —
-  `resolved_defaults` → `load_values` (what `set_variant` shows), `to_env`
-  (`preprocess_env`), `to_overrides` (`preprocess_overrides`), `merge_into_meta` (the
-  `[variant]` pop-or-set elision, incl. the caption-master "compare against the
-  TOML-resolved default" rule). `PREPROCESS_ONLY_KEYS` is derived from it and is
-  ConfigTab's training-snapshot strip list. **Adding a preprocess knob = one `Knob` row +
-  one `add_knob(...)` call in its section** (a domain widget needs
-  `value()`/`set_value()`/`changed`) — never re-open a per-knob ladder in the tab.
-  Contract pinned byte-for-byte by `tests/test_gui_preprocess_characterization.py`
-  (fixture `tests/fixtures/gui_preprocess_knobs.json`, regenerate only deliberately via
-  `--write`) and unit-tested Qt-free in `tests/test_gui_preprocess_knobs.py`. Phases 2
-  and 4 (`caption_drop_groups`, collapsible/pipeline-ordered sections) in
-  `docs/proposal/gui_preprocess_tab_refactor.md`.
+  release — tests and `image_tab` still use them; new code goes through `values()` /
+  `stage_values()` or `tab.<section>.widgets[dest]`. Tests that monkeypatch
+  `_load_preprocess_toml` / `read_gui_settings` / `_load_sam_yaml` must patch
+  `gui.tabs.preprocess.tab`.
+- **`tabs/preprocess/knobs.py`** — the Preprocessing tab's **trainer-native knob table**
+  (`KNOBS: tuple[Knob]`, one row per key: kind / default / `default_from` policy (const ·
+  `preprocess.toml` · `gui_settings.json`) / env name / `persist` elision rule / snapshot
+  flag) — only what is *not* a stage-request field: dataset roots + scope, the low-res
+  sugar (`drop_lowres_images` → `min_pixels=0`), the TE-cache variant knobs and the
+  three chain gates (`caption_autotag` / `caption_position_clauses` / `run_sam_mask`) —
+  plus the pure functions the tab calls — `resolved_defaults` → `load_values` (what
+  `set_variant` shows), `to_env` (`preprocess_env`), `to_overrides`
+  (`preprocess_overrides`), `merge_into_meta` (the `[variant]` pop-or-set elision, incl.
+  the caption-master "compare against the TOML-resolved default" rule).
+  `PREPROCESS_ONLY_KEYS` (the rows + `stages`) is derived from it and is ConfigTab's
+  training-snapshot strip list. **A knob a stage already has is not a row** — it comes
+  from the schema for free; adding a trainer-native knob = one `Knob` row + one
+  `add_knob(...)` / `add_trainer_knob(...)` call in its section — never re-open a
+  per-knob ladder in the tab. Contract pinned byte-for-byte by
+  `tests/test_gui_preprocess_characterization.py` (fixture
+  `tests/fixtures/gui_preprocess_knobs.json`, regenerate only deliberately via
+  `--write`) and unit-tested Qt-free in `tests/test_gui_preprocess_knobs.py`; the stage
+  half in `tests/test_gui_stage_form.py`.
 - **`daemon.py`** — GUI-side client wrapper over `anima_daemon.client`.
   `submit_training()` / `submit_command()` POST to the localhost daemon; the GUI only
   **observes** jobs by polling files on disk (job.json / progress.jsonl / stdout.log)
@@ -140,8 +162,11 @@ torch must not appear).
   from `ko.py` silently shows English, not an error. Register new languages in
   `TRANSLATIONS`.
 - **`explanations/`** — lazy-loaded help: `guides/<lang>/_fields.json` (per-field
-  tooltips) + `_preprocess_fields.json` + `<method>.html` (per-method overviews). Same
-  English fallback.
+  tooltips) + `_preprocess_fields.json` (the trainer-native preprocess knobs) +
+  `_stage_fields.json` (the stage-form overlay, keyed `<stage_id>.<dest>` →
+  `{label, help, choices?}`, read by `stage_form.label_for` / `help_for`) +
+  `<method>.html` (per-method overviews). Same English fallback (the stage overlay
+  falls back to the schema's English `help` / flag name).
 - Support modules: `progress.py` (JSONL/tqdm parse), `process.py` (`kill_process_tree`
   via psutil), `tensorboard.py`, `validation.py`, `dialogs.py` (pre-launch confirmation
   dialogs + `GuidebookDialog`), `settings_dialog.py` (`SettingsDialog` + MCP
