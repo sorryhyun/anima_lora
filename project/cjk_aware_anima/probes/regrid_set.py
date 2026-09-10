@@ -30,6 +30,18 @@ METHOD = {a: v[0] for a, v in ARMS.items()} | {
     "C9": "cjk_unmask_c9",
     "P": "cjk_unmask_presence",
     "R": "cjk_unmask_random",
+    # the 2026-09-08 caption arms (trained by run_unmask_r2.py by hand, not in
+    # ARMS — they are render-only here): shipped OCR clauses, the no-clause
+    # control, and the same clauses with the pictographic symbols stripped.
+    "OCR": "cjk_unmask_ocr",
+    "PLAIN": "cjk_unmask_plain",
+    "NOSYM": "cjk_unmask_nosym",
+    # NOSYM's captions through the PUBLISHED pack (r256) instead of the isoq
+    # partition — the pair NOSYM-vs-SHIP is the partition itself.
+    "SHIP": "cjk_unmask_ship",
+    # SHIP's captions through the geometry-matched RANDOM pack (arm R's table,
+    # 2026-09-10) — SHIPRAND-vs-SHIP is row content on corrected-OCR captions.
+    "SHIPRAND": "cjk_unmask_shiprand",
 }
 
 

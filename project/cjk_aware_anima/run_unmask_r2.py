@@ -100,6 +100,12 @@ def main() -> None:
         "the plain-vs-OCR A/B's arm OCR (2026-09-08). --records/--ocr_format "
         "are ignored.",
     )
+    ap.add_argument(
+        "--strip_symbols",
+        action="store_true",
+        help="cache_te_ext --strip_symbols: the OCR clauses carry no hearts / "
+        "stars / notes (arm NOSYM, 2026-09-08).",
+    )
     ap.add_argument("--skip_cache", action="store_true")
     ap.add_argument("--skip_train", action="store_true")
     ap.add_argument(
@@ -137,6 +143,7 @@ def main() -> None:
                 "--ocr_format",
                 opts.ocr_format,
                 *(["--drop_sfx"] if opts.drop_sfx else []),
+                *(["--strip_symbols"] if opts.strip_symbols else []),
             ],
         )
 

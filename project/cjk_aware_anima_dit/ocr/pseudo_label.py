@@ -7,6 +7,17 @@
     …                                                  filter --name pl100k
     …                                                  manifest --name pl100k --rows 20000
 
+**Korean (plan2 § K1–K2, 2026-09-09).** manga-ocr cannot vote on hangul and B′
+collapses on it (``기존에 쓰던 폰이…`` → ``프産の絲の緑の絶滅の…``), so the KO
+route is a **screen** rather than a second full sweep: ``hayai`` reads the draw,
+its hangul-dominant rows are the KO arm, and ``stock`` re-reads **only those**
+(≈ 0.5 % of the pool). Teacher = ``stock``, voter = ``hayai``, label = stock's
+string — including its spacing, which hayai drops and ``exact_key`` ignores.
+
+    … sweep  --reader hayai
+    … sweep  --reader stock --rows_from hayai --rows_script ko
+    … filter --teacher stock --voter hayai --script ko --out_suffix ko
+
 Three subcommands, one per plan step:
 
 * **sweep** — one reader over a seeded draw from ``manifest_all``, batched on
@@ -49,10 +60,64 @@ import manga109 as m109  # noqa: E402
 from animetext_crops import animetext_root  # noqa: E402
 
 OUT = m109.REPO / "output/ocr/pseudo"
-CKPT = {
+CKPT: dict[str, object] = {
     "vl16": m109.REPO / "output/ocr/vl16_tower_lr1e-5/best",
     "manga_ocr": m109.REPO / "output/ocr/mocr_lr5e-5/best",
+    # ``None`` = the base weights (``Vl16Reader`` falls back to
+    # ``models/paddleocr_vl_1.6``); hayai is pinned to the scored revision.
+    "stock": None,
+    "hayai": "JustANormalTinkerer/hayai-ocr-v2@v2.1.5",
 }
+
+# --------------------------------------------------------------------------- script
+
+HANGUL = re.compile(r"[가-힣]")
+KANA = re.compile(r"[぀-ヿ]")
+# Simplified-only component blocks — the 讠/钅/贝/见/页/鸟/马/门/车/鱼/纠/饣
+# series. Bounds stop one codepoint short of the traditional forms that follow
+# each run (長 門 閃 谷 豆 角 骨 辛 鳥); validated at zero overlap against
+# the 1.05M-char JA-only corpus of manga-ocr's ``pl100k`` reads.
+SIMP_BLOCKS = (
+    (0x8BA0, 0x8C36),
+    (0x9485, 0x9576),
+    (0x8D1D, 0x8D2D),
+    (0x89C1, 0x89D1),
+    (0x9875, 0x9891),
+    (0x9E1F, 0x9E4F),
+    (0x9A6C, 0x9AA7),
+    (0x95E8, 0x9601),
+    (0x8F66, 0x8F9A),
+    (0x9C7C, 0x9CE4),
+    (0x7EA0, 0x7F2F),
+    (0x9971, 0x9980),
+)
+# Simplified forms outside those blocks whose Japanese counterpart is a
+# different glyph (这/這, 发/発, 东/東 …). Shared shinjitai (国 来 当 体 数
+# 点) is deliberately absent — it carries no signal. Same zero-overlap check.
+SIMP_CHARS = set(
+    "这么们说过还东长开亲书问题图产头儿务爱运习进无发经济应龙买卖岁离风飞灵丽药"
+    "单边远连种类级时关对给让觉现动样个"
+)
+
+
+def hangul_dominant(s: str) -> bool:
+    """Hangul is >= 60 % of the non-ASCII, non-space characters."""
+    s = str(s)
+    n = len([c for c in s if not c.isspace() and not c.isascii()])
+    return bool(HANGUL.findall(s)) and len(HANGUL.findall(s)) >= 0.6 * n
+
+
+def simplified_zh(s: str) -> bool:
+    """Carries a simplified-only marker and neither kana nor hangul."""
+    s = str(s)
+    if KANA.search(s) or HANGUL.search(s):
+        return False
+    return any(
+        c in SIMP_CHARS or any(a <= ord(c) <= b for a, b in SIMP_BLOCKS) for c in s
+    )
+
+
+SCRIPT = {"ko": hangul_dominant, "zh": simplified_zh}
 # The processor's own bounds — mirrored from ssl_tower_simmim.py's wiring so the
 # token estimate matches what the tower will actually be handed.
 MIN_PX, MAX_PX = 112896, 1280 * 28 * 28
@@ -104,7 +169,7 @@ class Vl16Sweeper:
 
     name = "vl16"
 
-    def __init__(self, ckpt: str, device: str):
+    def __init__(self, ckpt: str | None, device: str):
         self.r = ev.Vl16Reader(ckpt, device)
         self.proc, self.model, self.device = self.r.proc, self.r.model, device
         self.torch = self.r.torch
@@ -160,7 +225,7 @@ class MangaOcrSweeper:
 
     name = "manga_ocr"
 
-    def __init__(self, ckpt: str, device: str):
+    def __init__(self, ckpt: str | None, device: str):
         self.r = ev.MangaOcrReader(ckpt, device)
 
     def read(self, crops: list) -> list[tuple[str, int, float]]:
@@ -168,7 +233,81 @@ class MangaOcrSweeper:
         return [(t, len(t), float(s)) for t, s in pairs]
 
 
-SWEEPERS = {"vl16": Vl16Sweeper, "manga_ocr": MangaOcrSweeper}
+class HayaiSweeper:
+    """hayai v2.1.5 — the KO screen. Its ``generate`` returns strings only, so
+    ``n_tokens`` is reported as 0 and the ``truncated`` guard never fires on a
+    hayai row; hayai is only ever the **voter**, and the label it votes on comes
+    from a reader that does report a decode length."""
+
+    name = "hayai"
+
+    def __init__(self, ckpt: str | None, device: str):
+        self.r = ev.HayaiReader(ckpt, device)
+
+    def read(self, crops: list) -> list[tuple[str, int, float]]:
+        orients = [
+            "vertical" if c.shape[0] > c.shape[1] else "horizontal" for c in crops
+        ]
+        return [(t, 0, float("nan")) for t in self.r.read(crops, orients, len(crops))]
+
+
+SWEEPERS = {
+    "vl16": Vl16Sweeper,
+    "manga_ocr": MangaOcrSweeper,
+    "stock": Vl16Sweeper,
+    "hayai": HayaiSweeper,
+}
+
+
+def _shard_path(out_path: Path, shard: int) -> Path:
+    return out_path.with_suffix(f".shard{shard}.parquet")
+
+
+def _fan_out(a: argparse.Namespace, out_path: Path) -> None:
+    """Run ``--workers N`` copies of this sweep, one shard each, then merge.
+
+    The decode loop is **single-threaded CPU-bound**, not GPU-bound: one worker
+    pegs one core at 100 % while the GPU idles at ~25 % and 11 cores do nothing
+    (measured 2026-09-09, hayai bs 32). Raising the batch makes it worse — the
+    per-step beam bookkeeping is Python work over batch × beams — so the lever
+    is more processes, each with its own interpreter and CUDA context.
+    """
+    import subprocess
+
+    argv, skip = [], False
+    for tok in sys.argv[1:]:  # drop --workers N / --workers=N, keep the rest
+        if skip:
+            skip = False
+            continue
+        if tok == "--workers":
+            skip = True
+            continue
+        if tok.startswith("--workers="):
+            continue
+        argv.append(tok)
+    procs = []
+    for i in range(a.workers):
+        cmd = [sys.executable, str(Path(__file__).resolve()), *argv]
+        cmd += ["--shard", str(i), "--num_shards", str(a.workers)]
+        print(f"[worker {i}] {' '.join(cmd[-4:])}", flush=True)
+        procs.append(subprocess.Popen(cmd))
+    codes = [p.wait() for p in procs]
+    if any(codes):
+        raise SystemExit(f"worker exit codes {codes} — shards left on disk")
+
+    frames = [pd.read_parquet(out_path)] if out_path.is_file() else []
+    shards = [_shard_path(out_path, i) for i in range(a.workers)]
+    frames += [pd.read_parquet(s) for s in shards if s.is_file()]
+    if not frames:
+        print("no shard produced any rows", flush=True)
+        return
+    merged = pd.concat(frames, ignore_index=True).drop_duplicates(
+        subset=["image_id", "k"], keep="last"
+    )
+    merged.to_parquet(out_path, index=False)
+    for sp in shards:
+        sp.unlink(missing_ok=True)
+    print(f"merged {len(merged)} rows → {out_path}", flush=True)
 
 
 def cmd_sweep(a: argparse.Namespace) -> None:
@@ -176,22 +315,62 @@ def cmd_sweep(a: argparse.Namespace) -> None:
     root = animetext_root()
     out_path = OUT / f"{a.name}_{a.reader}.parquet"
 
+    if a.rows_from:
+        # The screen (plan2 § K1): read only the rows a cheaper sweep already
+        # called this script, so the expensive reader costs ~0.5 % of a pass.
+        src = OUT / f"{a.name}_{a.rows_from}.parquet"
+        if not src.is_file():
+            raise SystemExit(
+                f"missing {src} — run `sweep --reader {a.rows_from}` first"
+            )
+        t = pd.read_parquet(src)
+        hit = t[[bool(SCRIPT[a.rows_script](p)) for p in t.pred.fillna("")]]
+        keys = set(zip(hit.image_id, hit.k))
+        draw = draw[[k in keys for k in zip(draw.image_id, draw.k)]].reset_index(
+            drop=True
+        )
+        print(
+            f"screen: {a.rows_from} calls {len(hit)} of {len(t)} rows "
+            f"{a.rows_script} ({100 * len(hit) / max(len(t), 1):.3f}%) "
+            f"→ {len(draw)} in the draw",
+            flush=True,
+        )
+
+    if a.workers > 1 and a.shard is None:
+        _fan_out(a, out_path)
+        return
+
+    # A shard writes its own file and reads the canonical one for `done`, so a
+    # resumed run never re-reads a crop an earlier pass already has.
+    shard_path = out_path if a.shard is None else _shard_path(out_path, a.shard)
     done: set[tuple[int, int]] = set()
     prev: list[dict] = []
-    if out_path.is_file() and not a.overwrite:
-        old = pd.read_parquet(out_path)
-        prev = old.to_dict("records")
-        done = set(zip(old.image_id, old.k))
-        print(f"resuming: {len(done)} rows already read", flush=True)
+    if not a.overwrite:
+        # The canonical file is read-only here — it holds what earlier passes
+        # merged, so a shard skips those crops but must not rewrite them.
+        if out_path.is_file() and out_path != shard_path:
+            done |= set(pd.read_parquet(out_path)[["image_id", "k"]].itertuples(False))
+        if shard_path.is_file():
+            mine = pd.read_parquet(shard_path)
+            done |= set(zip(mine.image_id, mine.k))
+            prev = mine.to_dict("records")
+        if done:
+            print(f"resuming: {len(done)} rows already read", flush=True)
 
     todo = draw[[t not in done for t in zip(draw.image_id, draw.k)]].reset_index(
         drop=True
     )
+    if a.shard is not None:
+        # Interleave, not slice: the draw is shuffled but crop size is not, and
+        # a contiguous slice would hand one worker the large-crop tail.
+        todo = todo.iloc[a.shard :: a.num_shards].reset_index(drop=True)
+        print(f"shard {a.shard}/{a.num_shards}: {len(todo)} crops", flush=True)
     if todo.empty:
         print("nothing to do", flush=True)
         return
+    out_path = shard_path
 
-    if a.reader == "vl16":
+    if a.reader in ("vl16", "stock"):
         tokens = cd.vl_tokens(todo.w.to_numpy(), todo.h.to_numpy(), MIN_PX, MAX_PX)
         batches = cd.token_batches(tokens, a.token_budget, a.bs, random.Random(a.seed))
         print(
@@ -205,7 +384,8 @@ def cmd_sweep(a: argparse.Namespace) -> None:
         batches = [idx[s : s + a.bs] for s in range(0, len(idx), a.bs)]
         print(f"{len(todo)} crops in {len(batches)} batches of {a.bs}", flush=True)
 
-    reader = SWEEPERS[a.reader](str(CKPT[a.reader]), a.device)
+    ckpt = CKPT[a.reader]
+    reader = SWEEPERS[a.reader](str(ckpt) if ckpt is not None else None, a.device)
     rows: list[dict] = list(prev)
     rec = m109.pilot_records()
     t0 = time.perf_counter()
@@ -322,19 +502,32 @@ def coo_train_baseline() -> tuple[list[str], int]:
 def cmd_filter(a: argparse.Namespace) -> None:
     draw = load_draw(a.name, None, a.seed)
     tabs = {}
-    for reader in ("vl16", "manga_ocr"):
+    for reader in (a.teacher, a.voter):
         p = OUT / f"{a.name}_{reader}.parquet"
         if not p.is_file():
             raise SystemExit(f"missing {p} — run `sweep --reader {reader}` first")
         tabs[reader] = pd.read_parquet(p).set_index(["image_id", "k"])
 
     df = draw.set_index(["image_id", "k"])
-    df = df.join(tabs["vl16"].add_prefix("b_"), how="inner").join(
-        tabs["manga_ocr"].add_prefix("m_"), how="inner"
+    # ``b_`` = the teacher (whose string becomes the label), ``m_`` = the voter.
+    df = df.join(tabs[a.teacher].add_prefix("b_"), how="inner").join(
+        tabs[a.voter].add_prefix("m_"), how="inner"
     )
     df = df.reset_index()
+    if a.script:
+        # The teacher only ever saw the screened rows, so the inner join above
+        # has already cut the draw down; this re-asserts the call on the
+        # teacher's own output, which is what K2 routes on.
+        df = df[[bool(SCRIPT[a.script](p)) for p in df.b_pred.fillna("")]]
+        df = df.reset_index(drop=True)
     n = len(df)
-    print(f"\n{n} crops read by both readers", flush=True)
+    print(
+        f"\n{n} crops read by both {a.teacher} (teacher) and {a.voter} (voter)"
+        + (f", {a.script}-called by the teacher" if a.script else ""),
+        flush=True,
+    )
+    if not n:
+        raise SystemExit("no rows survived the join — check the screen")
 
     df["guard"] = [guard(p, t) for p, t in zip(df.b_pred, df.b_n_tokens)]
     ok = df[df.guard == "ok"].copy()
@@ -362,6 +555,38 @@ def cmd_filter(a: argparse.Namespace) -> None:
         print(
             f"    {o:11s} {int(g.agree.sum()):7d} / {len(g):7d} = {100 * g.agree.mean():5.2f}%"
         )
+
+    space_pct = 100 * kept.b_pred.map(lambda t: " " in str(t)).mean()
+    print(
+        f"\n  label spacing: {space_pct:5.2f}% of kept labels carry a space "
+        f"(the voter's spacing is ignored — exact_key is whitespace-blind)"
+    )
+
+    if a.script in ("ko", "zh"):
+        # The ♡ precondition and the COO character profile are Japanese
+        # questions; a KO/ZH arm is gated by K3's held-out set instead.
+        kept_path = OUT / f"{a.name}_kept_{a.out_suffix or a.script}.parquet"
+        kept.to_parquet(kept_path, index=False)
+        (OUT / f"{a.name}_filter_{a.out_suffix or a.script}.json").write_text(
+            json.dumps(
+                {
+                    "draw": n,
+                    "teacher": a.teacher,
+                    "voter": a.voter,
+                    "script": a.script,
+                    "guards": counts,
+                    "kept": len(kept),
+                    "kept_frac": len(kept) / n,
+                    "kept_stats": char_stats(list(kept.b_pred)),
+                    "kept_script": script_mix(list(kept.b_pred)),
+                    "label_space_%": space_pct,
+                },
+                ensure_ascii=False,
+                indent=1,
+            )
+        )
+        print(f"wrote {kept_path}", flush=True)
+        return
 
     coo_text, n_coo = coo_train_baseline()
     print(f"\n=== kept set vs COO train (n={len(kept)} vs {n_coo}) ===")
@@ -410,7 +635,8 @@ def cmd_filter(a: argparse.Namespace) -> None:
 
 
 def cmd_manifest(a: argparse.Namespace) -> None:
-    kept = pd.read_parquet(OUT / f"{a.name}_kept.parquet")
+    suffix = f"_{a.in_suffix}" if a.in_suffix else ""
+    kept = pd.read_parquet(OUT / f"{a.name}_kept{suffix}.parquet")
     if a.rows and a.rows < len(kept):
         kept = kept.sample(a.rows, random_state=a.seed)
     root = animetext_root()
@@ -480,13 +706,39 @@ def main() -> None:
     s.add_argument("--flush", type=int, default=100, help="checkpoint every N batches")
     s.add_argument("--device", default="cuda")
     s.add_argument("--overwrite", action="store_true", help="ignore a partial sweep")
+    s.add_argument(
+        "--rows_from",
+        choices=sorted(SWEEPERS),
+        help="read only the rows this reader's sweep already called --rows_script",
+    )
+    s.add_argument("--rows_script", choices=sorted(SCRIPT), default="ko")
+    s.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="run N sharded copies in parallel and merge (the decode loop is "
+        "single-threaded CPU-bound, so this scales where --bs does not)",
+    )
+    s.add_argument("--shard", type=int, help="internal: this worker's shard index")
+    s.add_argument("--num_shards", type=int, default=1, help="internal")
     s.set_defaults(fn=cmd_sweep)
 
     f = sub.add_parser("filter", help="guards + ♡-blind agreement + kept-set stats")
+    f.add_argument("--teacher", choices=sorted(SWEEPERS), default="vl16")
+    f.add_argument("--voter", choices=sorted(SWEEPERS), default="manga_ocr")
+    f.add_argument(
+        "--script",
+        choices=sorted(SCRIPT),
+        help="keep only rows the teacher calls this script (K2's route)",
+    )
+    f.add_argument("--out_suffix", help="name the kept parquet (default: --script)")
     f.set_defaults(fn=cmd_filter)
 
     m = sub.add_parser("manifest", help="kept rows → COO manifest schema")
     m.add_argument("--rows", type=int, help="subsample the kept set to N rows")
+    m.add_argument(
+        "--in_suffix", help="read <name>_kept_<suffix>.parquet (a script arm)"
+    )
     m.add_argument(
         "--out_name",
         help="name the written manifest_pseudo_<out_name>.parquet (default: --name), "

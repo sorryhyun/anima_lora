@@ -24,6 +24,8 @@ import json
 import os
 import re
 import sys
+import unicodedata
+from dataclasses import replace as dc_replace
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -84,6 +86,27 @@ form, a ``japanese text`` presence tag plus one ``「…」`` flat tag per line;
 address: the text-binding probe's control arm)."""
 
 ORDER_PREFIX = "Japanese text in following order: "
+
+
+SYMBOL_CATS: frozenset[str] = frozenset({"So"})
+"""Unicode categories ``--strip_symbols`` removes from an OCR line before it
+enters a caption: ``So`` — the pictographic symbols a doujin letters its text
+with (``♡ ♥ ☆ ★ ♪ ♩ ♦ ♀``), 569 of them on the sincos corpus and ♡ alone on
+531 of 877 usable lines. Punctuation is NOT in it: ``… ! ? 、 。 「」`` and the
+lengthener ``~`` / ``〜`` are how the line reads, not decoration."""
+
+
+def strip_symbols(text: str) -> str:
+    """``text`` without its :data:`SYMBOL_CATS` glyphs (``ぱん♡`` -> ``ぱん``).
+
+    The speech/SFX split and both dedupe keys read the kana core with
+    punctuation and symbols already stripped (``anime_tools.captions.ocr_sfx``),
+    so removing them here moves no line between clauses and can only merge two
+    dedupe rows that differed by a heart. A line that is symbols alone becomes
+    empty and is dropped downstream (``usable_lines`` / the empty-tag guards)."""
+    return "".join(
+        ch for ch in text if unicodedata.category(ch) not in SYMBOL_CATS
+    ).strip()
 
 
 DROP_KINDS: frozenset[str] = frozenset({"chrome"})
@@ -373,6 +396,15 @@ def main() -> None:
         help="arms C2–C10 (pre-O4): drop kind=sfx records and emit no SFX "
         "clause — the caption default before the C11 gate passed.",
     )
+    ap.add_argument(
+        "--strip_symbols",
+        action="store_true",
+        help="drop the pictographic symbols (Unicode So: hearts, stars, notes) "
+        "from every OCR line before it enters the caption, so the clause reads "
+        "'Japanese SFX reads as \"ぱん\"' where the page letters ぱん♡ "
+        "(2026-09-08, the user's call). Punctuation and the ~ lengthener stay. "
+        "Applies to both --records and --sidecars.",
+    )
     ap.add_argument("--batch_size", type=int, default=8)
     ap.add_argument("--overwrite", action="store_true")
     ap.add_argument(
@@ -414,6 +446,33 @@ def main() -> None:
         tags = ocr_records_by_stem(records, opts.max_lines, DROP_KINDS)
     else:
         tags = ocr_lines_by_stem(records, opts.max_lines, SFX_DROPPED)
+    if opts.strip_symbols:
+        n_hit = 0
+        if sidecar_lines is not None:
+            stripped = {}
+            for stem, lines in sidecar_lines.items():
+                out_lines = []
+                for ln in lines:
+                    text = strip_symbols(ln.text)
+                    n_hit += text != ln.text
+                    out_lines.append(dc_replace(ln, text=text))
+                stripped[stem] = out_lines
+            sidecar_lines = stripped
+        else:
+            stripped_tags = {}
+            for stem, rows in tags.items():
+                out_rows = []
+                for row in rows:
+                    text, kind = row if isinstance(row, tuple) else (row, None)
+                    new = strip_symbols(text)
+                    n_hit += new != text
+                    if not new:
+                        continue  # a line that was symbols alone says nothing
+                    out_rows.append((new, kind) if kind is not None else new)
+                stripped_tags[stem] = out_rows
+            tags = stripped_tags
+        print(f"--strip_symbols: {n_hit} OCR lines lost a symbol")
+
     if stems is not None and sidecar_lines is None:
         missing = stems - set(tags)
         if missing:

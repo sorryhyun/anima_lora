@@ -250,26 +250,56 @@ class HayaiReader:
         self.patches = int(os.environ.get("ANIMA_HAYAI_PATCHES", 256))
         self.device = device
 
-    def read(self, crops, orients, bs):
+    def prepare(self, crops):
+        """CPU half of a batch: BGR crops → SigLIP2 NaFlex tensors (on CPU),
+        so a caller can run it on a thread while the GPU decodes the previous
+        batch (``screen_shards.py``)."""
         from PIL import Image
 
+        images = [Image.fromarray(c[:, :, ::-1]) for c in crops]
+        return self.proc(
+            images=images, max_num_patches=self.patches, return_tensors="pt"
+        )
+
+    def decode(self, inputs) -> list[str]:
+        """GPU half of a batch."""
+        import os
+        from functools import partial
+
+        import hayai_beam
+
+        inputs = inputs.to(self.device)
+        with self.torch.no_grad():
+            # hayai_beam.generate = upstream's beam search with the
+            # per-candidate Python loop vectorised and a per-row early stop
+            # (the upstream path is launch-bound at ~25 % GPU). ``upstream``
+            # keeps the model's own generate for an A/B. ``ANIMA_HAYAI_AMP``
+            # = bf16 (default) | fp16 (upstream's autocast) | 0 (fp32).
+            amp = os.environ.get("ANIMA_HAYAI_AMP", "bf16").lower()
+            gen = (
+                self.model.generate
+                if os.environ.get("ANIMA_HAYAI_BEAM_IMPL") == "upstream"
+                else partial(
+                    hayai_beam.generate,
+                    self.model,
+                    amp=amp not in ("0", "fp32", "") and amp,
+                )
+            )
+            texts = gen(
+                pixel_values=inputs["pixel_values"],
+                pixel_attention_mask=inputs["pixel_attention_mask"],
+                spatial_shapes=inputs["spatial_shapes"],
+                tokenizer=self.tok,
+                max_new_tokens=self.max_tokens,
+                num_beams=4,
+                repetition_penalty=1.0,
+            )
+        return [(t or "").strip() for t in texts]
+
+    def read(self, crops, orients, bs):
         out = []
         for s in range(0, len(crops), bs):
-            images = [Image.fromarray(c[:, :, ::-1]) for c in crops[s : s + bs]]
-            inputs = self.proc(
-                images=images, max_num_patches=self.patches, return_tensors="pt"
-            ).to(self.device)
-            with self.torch.no_grad():
-                texts = self.model.generate(
-                    pixel_values=inputs["pixel_values"],
-                    pixel_attention_mask=inputs["pixel_attention_mask"],
-                    spatial_shapes=inputs["spatial_shapes"],
-                    tokenizer=self.tok,
-                    max_new_tokens=self.max_tokens,
-                    num_beams=4,
-                    repetition_penalty=1.0,
-                )
-            out.extend((t or "").strip() for t in texts)
+            out.extend(self.decode(self.prepare(crops[s : s + bs])))
         return out
 
 

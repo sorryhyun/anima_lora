@@ -4,9 +4,13 @@ torch ``Dataset`` of (BGR crop, target string) with train-time augmentation.
 * **Mix** — decision 2: COO ``sfx`` : Manga109 ``speech`` 1 : 1 *by count* (the
   manifest is already count-matched per book; ``--speech_ratio`` rescales the
   speech draw). Both kinds come from the same book split.
-* **Target rule** (findings § O1) — NFKC-fold + strip all whitespace: Manga109's
+* **Target rule** (findings § O1, corrected 2026-09-09) — NFKC-fold, then
+  **collapse** whitespace runs to one ASCII space, not delete them: Manga109's
   ``<text>`` keeps line breaks and full-width punctuation that manga-ocr's
-  vocab lacks; the scorer's ``exact`` applies the same fold.
+  vocab lacks. Deleting whitespace was harmless while every target was Japanese
+  and is wrong the moment Korean enters — 띄어쓰기 is lexical there. The scorer's
+  ``exact`` is whitespace-blind either way, so no measured number moves; every
+  checkpoint trained before the fix is spacing-dirty (``whitespace_fixed.md``).
 * **Augmentation** — ``augment.Augment`` on the train split only; per-worker
   seeding so DataLoader workers do not replay one RNG stream.
 """
@@ -29,10 +33,20 @@ import manga109 as m109  # noqa: E402
 from augment import Augment  # noqa: E402
 
 MAX_TARGET_CHARS = 96
+TARGET_NORM = 2
+"""Bumped when :func:`normalize_target` changes. 1 = whitespace deleted (every
+run before 2026-09-09); 2 = whitespace collapsed to one ASCII space."""
 
 
 def normalize_target(s: str) -> str:
-    return "".join(unicodedata.normalize("NFKC", s).split())
+    """NFKC, whitespace runs collapsed to one ASCII space, edges stripped.
+
+    v1 joined the split with ``""``. Korean needs the spaces (``알고 있었어``
+    vs ``알고있었어``), and 3.80 % of the COO/Manga109 targets carried U+3000 or
+    a newline, so the two versions differ on the Japanese rows as well —
+    ``TARGET_NORM`` records which one a run trained on.
+    """
+    return " ".join(unicodedata.normalize("NFKC", s).split())
 
 
 def load_split(

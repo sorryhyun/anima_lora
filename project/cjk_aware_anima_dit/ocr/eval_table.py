@@ -65,6 +65,12 @@ RUNS = [
         "vl16_pl_20k",
         "B′ + 20.6 % pseudo-label append (P1, cross-reader agreement)",
     ),
+    (
+        "vl16_pl_kozh",
+        "vl16_pl_kozh",
+        "vl16_pl_kozh",
+        "B′ + 27.5 % pseudo append (P1 JA 20k + K2 KO 5 930 / ZH 3 300)",
+    ),
     ("vl16_tower_ep3", "vl16_tower_ep3", "vl16_tower_ep3", "B′ × 3 epochs"),
     ("vl16_lpft", "vl16_lpft", "vl16_lpft", "LP-FT — arm B then B′"),
     ("vl16_tower_ssl", "vl16_tower_ssl", "vl16_tower_ssl", "B′ from an SSL tower (draw20k, 4.4k steps)"),
