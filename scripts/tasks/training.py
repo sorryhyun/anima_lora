@@ -736,6 +736,58 @@ def _inpaint_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
     )
 
 
+def _render_stage(adapter: str, cfg: dict, base: str, extra) -> None:
+    """plan_render staging: cut the S0b panel samples into the trainer tree
+    (``render/cut.py``: crop → 768-tier free-fit → caption + boxes.jsonl, CPU)
+    and gray-hole the boxes into ``staging/`` (``prep_render.py mask``).
+    ``[staging].edition`` picks the edition; the corpus root comes from
+    ``ANIMA_RENDER_CORPUS`` / ``--corpus`` in ``extra`` (never a default)."""
+    knobs = dict(cfg.get("staging") or {})
+    edition = str(knobs.pop("edition", "en"))
+    extra = list(extra or [])
+    cut_extra = [t for t in extra if t != "--overwrite"]
+    run(
+        [
+            PY,
+            "project/cjk_aware_anima_dit/render/cut.py",
+            "--editions",
+            edition,
+            *_toml_table_to_argv(knobs),
+            *cut_extra,
+        ]
+    )
+    run(
+        [
+            PY,
+            "project/cjk_aware_anima_dit/render/prep_render.py",
+            "mask",
+            "--edition",
+            edition,
+            *(["--overwrite"] if "--overwrite" in extra else []),
+        ]
+    )
+
+
+def _render_preprocess(adapter: str, cfg: dict, base: str, extra) -> None:
+    """plan_render preprocess: target + cond latents and the verbatim-caption
+    TE cache (``prep_render.py encode text``). ``[preprocess].vocab_pack``
+    selects the arm's tokenizer ("" = stock for EN, a pack path for JA)."""
+    knobs = dict(cfg.get("preprocess") or {})
+    edition = str(knobs.pop("edition", "en"))
+    run(
+        [
+            PY,
+            "project/cjk_aware_anima_dit/render/prep_render.py",
+            "encode",
+            "text",
+            "--edition",
+            edition,
+            *_toml_table_to_argv(knobs),
+            *list(extra or []),
+        ]
+    )
+
+
 def _region_stage(adapter: str, cfg: dict, base: str, extra) -> None:
     """Region staging: solo-1girl + 1girl1boy targets → SAM3 masks → paint cond tree.
 
@@ -1281,6 +1333,10 @@ _EASY_ADAPTERS = {
     # over the curated one. Bespoke preprocess: the miner stages a deduplicated
     # pool and the pair views are symlinks, so each image is encoded ONCE.
     "phash_edit": {"stage": _phash_edit_stage, "preprocess": _phash_edit_preprocess},
+    # plan_render bubble-fill probe (project/cjk_aware_anima_dit/plan_render.md):
+    # one descriptor per edition; trees under post_image_dataset/render/<ed>/.
+    "render_en": {"stage": _render_stage, "preprocess": _render_preprocess},
+    "render_ja": {"stage": _render_stage, "preprocess": _render_preprocess},
 }
 
 

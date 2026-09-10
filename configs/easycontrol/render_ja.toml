@@ -1,0 +1,60 @@
+# plan_render bubble-fill probe — JA-SHIP (synthjakozh1sym pack). See
+# project/cjk_aware_anima_dit/plan_render.md. Trees under post_image_dataset/render/ja/
+# are written by render/cut.py (S0c) + render/prep_render.py (S1); the inpaint recipe
+# (configs/easycontrol/inpaint.toml) is the smoke recipe, transcript never dropped.
+name = "render_ja"
+
+[staging]
+edition = "ja"
+
+[preprocess]
+edition = "ja"
+vocab_pack = "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256"
+
+[training]
+network_dim = 32
+network_alpha = 32
+network_args = [
+    "b_cond_init=-6.0",
+    "cond_scale=1.0",
+    "apply_ffn_lora=1",
+]
+output_name = "anima_render_ja"
+sigmoid_bias = 0
+vocab_pack = "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256"
+
+learning_rate = 2e-5
+max_train_epochs = 4
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+
+easycontrol_drop_p = 0.0
+easycontrol_cond_noise_max = 0.0
+
+caption_dropout_rate = 0.1
+
+blocks_to_swap = 0
+
+[general]
+caption_extension = '.txt'
+
+[[datasets]]
+batch_size = 1
+validation_split_num = 0
+validation_seed = 42
+
+  [[datasets.subsets]]
+  image_dir = 'post_image_dataset/render/ja/resized'
+  cache_dir = 'post_image_dataset/render/ja/lora'
+  cond_cache_dir = 'post_image_dataset/render/ja/cond'
+  text_cache_dir = 'post_image_dataset/render/ja/text'
+  recursive = true
+  flip_aug = false
+  num_repeats = 1
+
+[variant]
+family = "easycontrol"
+label = "Render ja (bubble fill probe)"
+description = "Research probe: fill gray-holed speech-bubble text boxes of a manga panel from the caption's text clause. Not a shipped variant."
+order = 90
+hidden = true
