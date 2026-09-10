@@ -229,6 +229,7 @@ def stage_text(
     shuffle_variants: int,
     tag_dropout_rate: float,
     staging: Path | None = None,
+    vocab_pack: str | None = None,
 ):
     """Cache **full-caption** TE embeddings with shuffle + tag-dropout variants.
 
@@ -243,9 +244,16 @@ def stage_text(
     When ``staging`` is given (the masked cond tree), encoding is scoped to the
     stems present there so the TE cache mirrors the cond cache. ``None`` / absent /
     empty staging = encode every caption.
+
+    ``vocab_pack`` follows ``scripts/preprocess/cache_text_embeddings.py``: ``None``
+    = the config default (``configs/base.toml`` ``vocab_pack``), ``""`` = off. With
+    a pack the CJK spans of a caption route onto the pack rows, the rows are hooked
+    onto the LLM adapter for the crossattn cache, and every cache is stamped with
+    the pack id; EN-only captions are bit-exact either way.
     """
     from library.anima import weights as anima_utils
-    from library.anima.strategy import AnimaTextEncodingStrategy, AnimaTokenizeStrategy
+    from library.anima.strategy import AnimaTextEncodingStrategy
+    from library.anima.vocab_pack import load_vocab_pack, make_tokenize_strategy
     from library.preprocess import cache_text_embeddings
 
     text_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -256,13 +264,20 @@ def stage_text(
         qwen3_path, dtype=torch.bfloat16, device=str(device)
     )
     t5_tokenizer = anima_utils.load_t5_tokenizer(t5_tokenizer_path)
+    if vocab_pack is None:
+        from library.anima.vocab_pack import default_vocab_pack
+
+        vocab_pack = default_vocab_pack()
+    pack = load_vocab_pack(vocab_pack)
+    if pack is not None:
+        print(f"Vocab pack {pack.name}: {pack.rows} ext rows")
     print(f"Loading LLM adapter from {dit_path} ...")
     llm_adapter = anima_utils.load_llm_adapter(
-        dit_path, dtype=torch.bfloat16, device=str(device)
+        dit_path, dtype=torch.bfloat16, device=str(device), vocab_pack=pack
     )
 
-    tokenize_strategy = AnimaTokenizeStrategy(
-        qwen3_tokenizer=qwen3_tokenizer, t5_tokenizer=t5_tokenizer
+    tokenize_strategy = make_tokenize_strategy(
+        pack, qwen3_tokenizer=qwen3_tokenizer, t5_tokenizer=t5_tokenizer
     )
     encoding_strategy = AnimaTextEncodingStrategy()
 
@@ -400,6 +415,15 @@ def main() -> None:
     )
     parser.add_argument("--t5_tokenizer_path", default=None)
     parser.add_argument(
+        "--vocab_pack",
+        type=str,
+        default=None,
+        help="CJK vocab pack path prefix (configs/base.toml `vocab_pack`; '' = off). "
+        "Routes CJK caption spans onto the pack rows, hooks the rows onto the "
+        "LLM adapter for crossattn caching, and stamps the pack id into every "
+        "cache written. EN-only captions are bit-exact either way.",
+    )
+    parser.add_argument(
         "--text_batch_size", type=int, default=16, help="text stage encode batch"
     )
     parser.add_argument(
@@ -462,6 +486,7 @@ def main() -> None:
             shuffle_variants=args.text_shuffle_variants,
             tag_dropout_rate=args.text_tag_dropout_rate,
             staging=staging,
+            vocab_pack=args.vocab_pack,
         )
         print(
             f"\nCaption text caching complete: {tstats.written} cached, "
