@@ -21,8 +21,9 @@ def _resolve_default_mask_dir() -> Optional[str]:
     ``make mask``; falls back to the legacy ``masks/{merged,sam}/`` pair so
     users who haven't re-run masking after the consolidation keep training
     without manual intervention (``masks/mit`` went with the v2 MIT removal).
-    Whether the result is *used* is ``--masked_loss``'s call — ``train.py``
-    strips it from every subset when that is off.
+    Whether the result is *used* is ``--masked_loss``'s call — when that is
+    off, ``train.py`` sets every subset's ``mask_dir`` to ``""`` at the
+    blueprint (``loader.disable_masks_in_blueprint``), which skips this.
 
     Returned path is relative, matching how other paths are resolved from the
     training CWD (anima_lora/).

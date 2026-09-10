@@ -420,6 +420,35 @@ def _count_training_image_paths(dataset_blueprint: "DatasetBlueprint") -> int:
     return total
 
 
+def disable_masks_in_blueprint(
+    dataset_group_blueprint: DatasetGroupBlueprint,
+) -> list[str]:
+    """``masked_loss = false``: make every subset maskless *before* the
+    datasets are built, and return the mask dirs that were set aside.
+
+    This has to happen at the blueprint, not on the built subsets: the
+    dataset constructor bakes ``image_info.mask_path`` from ``subset.mask_dir``
+    and ``make_buckets`` preloads every mask PNG into
+    ``image_info.preloaded_alpha_mask``, which ``__getitem__`` then uses
+    whatever the subset flags say — so a post-hoc strip left a checkout with
+    a mask tree on disk training masked. ``mask_dir = ""`` (not ``None``)
+    also switches off the subset constructor's legacy ``masks/{merged,sam}``
+    auto-resolution, and ``alpha_mask = False`` keeps a cache-borne alpha
+    channel out of the batch (``_load_sample``).
+    """
+    ignored: set[str] = set()
+    for dataset_blueprint in dataset_group_blueprint.datasets:
+        for subset_blueprint in dataset_blueprint.subsets:
+            params = subset_blueprint.params
+            if getattr(params, "mask_dir", None):
+                ignored.add(str(params.mask_dir))
+            if hasattr(params, "mask_dir"):
+                params.mask_dir = ""
+            if hasattr(params, "alpha_mask"):
+                params.alpha_mask = False
+    return sorted(ignored)
+
+
 def generate_dataset_group_by_blueprint(
     dataset_group_blueprint: DatasetGroupBlueprint,
     target_res=None,

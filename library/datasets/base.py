@@ -1769,6 +1769,12 @@ class BaseDataset(torch.utils.data.Dataset):
             image = self.image_transforms(img)
             del img
 
+        if alpha_mask is not None and not subset.alpha_mask:
+            # A latent cache written while masking was on still carries its
+            # alpha channel; the subset flag (masked_loss's call — see
+            # ``loader.disable_masks_in_blueprint``) decides whether it rides.
+            alpha_mask = None
+
         if image_info.preloaded_alpha_mask is not None:
             # mask_dir is the source of truth: override any alpha_mask coming
             # from the latent cache (npz / in-memory) or the raw-image branch.
