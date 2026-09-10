@@ -233,30 +233,64 @@ are cosmetic. Slanted-gutter cut-throughs are ~25 % of samples by the AABB
 proxy but only 2–4 of 40 crops per draw were judged flawed by them — the
 proxy over-counts; nothing is built for them.
 
-**S0c — cut (NEXT, pending the S0b gate call)**: panel crops → `post_image_dataset/render/<ed>/resized/` +
-`.txt` captions (`<bag>. <clause>` with the holed boxes' lines in order) +
-`boxes.jsonl`; long edge sized for the 768 tier; drop a sample whose smallest
-holed box is under 20 px tall after resize (the block height over the read's
-line count is the glyph-height proxy — the detector gives blocks, not lines).
+**S0c — cut — RAN 2026-09-10** (`render/cut.py`; decision: cut now, the
+S0b residue is ~11 % of holed boxes with a garbage clause, shared by every
+arm — a G1 miss must be re-run behind the reader-disagreement pass before
+it counts as the clean negative). Panel crop → free-fit onto the 768 band
+(`anime_tools.buckets.freefit_bucket`) → `<ed>/resized/<artist>/<work>/
+<work>_<page>_p<k>.png` + `.txt` + `boxes.jsonl` (holes, intact boxes,
+caption, scale). Caption = bag + text clause; JA through `anime_tools`'
+`text_clause`, EN composed locally with `English text reads as` (the
+`PositionClause` renderer only knows the JA prefixes on v0.6.2, so a custom
+prefix must not go through it). Glyph gate ≥ 20 px (box thickness over the
+raw read's line count, scaled):
 
-**S1 — trainer prep** (`project/cjk_aware_anima_dit/render/prep.py`, a thin
-sibling of the inpaint prep): mask stage takes `--boxes boxes.jsonl` and holes
-the boxes instead of random strokes; encode stage caches target *and* cond
-latents at native size via `library.preprocess.cache_latents`; text stage is
-the inpaint prep's now pack-aware `stage_text` (decision 6). Descriptor
-`configs/easycontrol/render.toml` (`name` reroutes per edition), a `render`
-row in `_EASY_ADAPTERS` and in the inference `_ADAPTERS` table.
+| | EN | JA |
+|---|---|---|
+| train / held-out samples | 1,847 / 425 | 1,760 / 392 |
+| dropped under 20 px | 235 (kept 90.6 %) | 351 (kept 86.0 %) |
+| glyph px p10 / p50 / p90 | 21 / 62 / 168 | 17 / 38 / 102 |
 
-**S2 — EN smoke.** `make easycontrol EASYADAPTER=render … --queue` at the
-inpaint recipe. Judge (S3) at the end of epoch 2 and 4. G0 decides whether S4
-runs at this recipe or a scaled one.
+Held-out = 2 artist dirs shared across editions, seeded from the middle
+third by sample count (844 of 5,010 samples). Adjacent duplicate reads in a
+bubble collapse; JA member boxes join with nothing (S0's `samples` joined
+with a space).
 
-**S3 — judge** (`render/judge.py`): R0–R3 in one script, reader = `stock`
-for JA and EN, PP-OCRv6 Latin as a second EN read if `stock` disagrees with
-itself. Reuses `text_bind_judge.py`'s CER/NFKC/montage code, not its reader.
+**S1 — trainer prep — RAN 2026-09-10** (`render/prep_render.py mask | encode |
+text`; `configs/easycontrol/render_{en,ja}.toml`; `render_en` / `render_ja`
+rows in `_EASY_ADAPTERS` and the inference `_ADAPTERS`). `mask` gray-fills the
+holes (`mask_image.GRAY`) into `staging/` and `heldout_staging/`; `encode`
+caches target and cond latents at native size through the inpaint prep's
+`stage_encode`; `text` is the inpaint prep's pack-aware `stage_text` with
+zero variants (verbatim caption — decision 5), EN on the stock tokenizer
+(`--vocab_pack ""`), JA on `synthjakozh1sym_r256` (NB `models/vocab_packs/
+anima_cjk_vocab_pack` is a *different* safetensors with the same json — the
+descriptor pins the path). Eyeballed target | cond pairs: holes sit on the
+accepted bubbles' text only; moans and hand-lettered SFX stay intact.
 
-**S4 — JA-SHIP + JA-RAND.** Same latents, two text caches, two runs on the
-daemon. G1. KO is the same pipeline afterwards.
+**S2 — EN smoke — RAN 2026-09-10** (`make easycontrol EASYADAPTER=render_en
+--queue`, job `20260910-170900-be1182`): inpaint recipe, caption dropout 0.1,
+save every 2 epochs. **1.67 it/s at 768, 7,388 steps, 74 min wall** (default
+preset, no block swap, no OOM). Loss average 0.048 → 0.011 by epoch 2 → 0.010
+at the end — steep enough that R2 is the number to watch. One-cell judge
+smoke on the epoch-2 weight: R1 0.32 vs floors 0.63 (inpaint) / 0.83 (base),
+R2 1/1; the sheet shows four short bubbles filled near-exactly and one long
+sentence degrading into pseudo-words. Full judges (48 held-out + 24 swap) on
+epochs 2 and 4: jobs `20260910-182517-257aac` / `-e1b3c0`.
+
+**S3 — judge — BUILT** (`render/judge.py fill read report`): one loaded DiT
+stack, the arm's EasyControl network applied once and re-primed per cell
+(`set_cond` + `precompute_cond_kv`), `library.inference.generate` at the
+panel's own size, 30 steps, cfg 3.5; floors = `anima_inpaint_girl_preview_v1`
+(the only inpaint weight on disk) and the bare base; swap cells replace a
+training panel's lines with length-matched donors from the training pool.
+`stock` reads each holed box (12 % pad) off the fill and the target. CER
+whitespace-blind headline, spaced column, clipped at 1. ~10 s per cell.
+
+**S4 — JA-SHIP + JA-RAND.** JA prep queued behind the judges (job
+`20260910-182517-29b3da`, SHIP pack); the RAND arm re-runs only `text` with
+`random_r256` into a second `text/` dir and a `render_ja_rand.toml` pointing
+at it. Two runs on the daemon, ~70 min each. G1.
 
 **S5 — verdict** into [`findings.md`](findings.md) as a new § (render), the
 report under `reports/`, and the closed-lines memory. If G1 passes: the
