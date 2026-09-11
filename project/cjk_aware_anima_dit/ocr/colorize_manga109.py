@@ -108,6 +108,12 @@ def main():
     )
     ap.add_argument("--name", help="output subdir (default <tier>[_half][_<prompt>])")
     ap.add_argument("--overwrite", action="store_true")
+    ap.add_argument(
+        "--compile_blocks",
+        action="store_true",
+        help="block-compile the DiT after the adapter is applied (every half lands "
+        "in one bucket, so one static graph)",
+    )
     a = ap.parse_args()
     halves = not a.no_halves
     name = a.name or (
@@ -208,6 +214,9 @@ def main():
     network.to(device, dtype=torch.bfloat16)
     network.apply_to(text_encoders=None, unet=anima)
     anima._easycontrol_network = network
+    if a.compile_blocks:
+        # after apply_to: compile traces the adapter's patched forward
+        anima.compile_blocks()
     print(
         f"adapter r={network.cond_lora_dim} scale={network.get_effective_scale():.3f}; "
         f"steps {a.steps} cfg {a.cfg} seed {a.seed}",

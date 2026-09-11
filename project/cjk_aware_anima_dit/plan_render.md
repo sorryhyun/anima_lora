@@ -53,6 +53,14 @@ a window around one bubble.
    boxes the guard rejects (Japanese left in an EN page, SFX, credits) are
    **left intact**: they sit in both cond and target and are copied through.
    A *holed* box without its own clause is what must never happen.
+   **2b (clean variant, planned).** Gray is a strong "write here, this
+   size" cue a real cleaned page never has. The clean arm fills the same box
+   with the median of its outside ring (`corpus_boxes.ring_score`'s band —
+   the box sits inside the balloon, so this ≈ the cleaned balloon; tinted
+   balloons keep their tone). Boxes that fill to the outline (S0b's
+   interior-white second chance) lose a little outline; accepted. Wired as
+   `prep_render.py mask --fill ring` + `configs/easycontrol/render_en_clean.toml`
+   (staging/cond dirs suffixed `_clean`); not built yet.
 3. **768 tier, never 512.** § 512-is-not-a-text-resolution
    ([`findings.md`](findings.md)): at 0.5× downscale 18 % of glyph columns
    fall under 16 px. Gate each sample on its **post-resize glyph height ≥
@@ -93,6 +101,10 @@ a window around one bubble.
 | **JA-SHIP** | ja | `synthjakozh1sym_r256` | the question, on the corpus's majority script |
 | **JA-RAND** | ja | `random_r256` | s21's control on a task where content *could* matter: SHIP ≈ RAND means the DiT learns row→glyph from data alone and the pack's training is inert here too; SHIP > RAND is the first content signal this line has ever seen |
 | KO (later) | ko | `synthjakozh1sym_r256` | typeset hangul; after EN/JA read, same pipeline (`--editions ko`, `stock` teacher per plan2 K2) |
+| **JA-BODY** (next, 2026-09-10) | ja | `synthjakozh1sym_r256` | the arm the frozen-DiT probe could not run: same data / cond / judge, but the *target* stream and the `llm_adapter` are trainable (S6). JA-SHIP at floor was measured with zero trainable weights on the text path, so this is the first arm that can actually fail or pass on JA |
+| **EN-BODY** (control) | en | stock tokenizer | the body recipe on EN: must not regress R1 0.254, and shows whether the frozen-target R2 ceiling (0.65) was a capacity cap |
+| JA-BODY-RAND (conditional) | ja | `random_r256` | only if JA-BODY leaves the floor: SHIP vs RAND on a body that can learn decides whether the pack's *training* matters |
+| **EN-CLEAN** (planned, 2026-09-10) | en | stock tokenizer | the *product* condition: the box is erased with the balloon's own colour (ring median), not gray-holed — a cleaned page. Same panels, latents, TE caches; only `staging/` + `cond/` differ. R1(gray) − R1(clean) = how much of the fill rode on the box-size cue; clean is where placement / size / line-wrap are learned. Judge: base floor only (`anima_inpaint` expects gray holes), plus a per-box clause-match column — a clean cond gives the model no k-th-box anchor, so mis-assignment across bubbles is a new failure R2 does not see. Runs after the gray arms read; gray stays the G0/G1 basis. |
 
 JA-SHIP and JA-RAND share latents and cond caches; only `text/` differs
 (re-cache with `--vocab_pack`). One training seed each for v0; a second seed
@@ -276,7 +288,37 @@ at the end — steep enough that R2 is the number to watch. One-cell judge
 smoke on the epoch-2 weight: R1 0.32 vs floors 0.63 (inpaint) / 0.83 (base),
 R2 1/1; the sheet shows four short bubbles filled near-exactly and one long
 sentence degrading into pseudo-words. Full judges (48 held-out + 24 swap) on
-epochs 2 and 4: jobs `20260910-182517-257aac` / `-e1b3c0`.
+epochs 2 and 4: jobs `20260910-182517-257aac` / `-e1b3c0` — **RAN**:
+
+| epoch | R1 CER | exact | R2 follows | to swapped | to original |
+|---|---|---|---|---|---|
+| 2 | 0.372 | 0.37 | 0.67 | 0.513 | 0.902 |
+| 4 | 0.254 | 0.43 | 0.65 | 0.492 | 0.866 |
+
+Floors 0.704 (inpaint) / 0.940 (base) both epochs. Epoch 4 clears the R1
+half of G0 (≤ 0.3); R2 sits at 0.65 against ≥ 0.8 and is flat across
+epochs — the swap fills copy the swapped line only about as often as they
+garble it, but the to-original CER of ~0.9 says it is not memorising the
+page. Short bubbles land near-exact, long sentences decay into
+pseudo-words, and a few cells spill one bubble's text into the next or
+leave it blank. G0 is therefore **not passed on R2**; whether the gate was
+set too tight for a 4-epoch smoke or the fill genuinely half-ignores the
+clause is the open question before JA.
+
+**S2b — activation-memory probe — RAN 2026-09-10.** The EN run trained
+with `activation_memory_budget = 0.3` (inherited from
+`configs/easycontrol/easycontrol.toml`, pinned for 1024-tier two-stream
+forwards; `base.toml` is 0.99). `render/vram_probe.py` runs the exact
+`EASYADAPTER=render_en` argv at a given budget and samples `nvidia-smi` for
+the peak (job `20260910-192507-1788ce`, 0.99 — NB the script's
+`--max_train_steps` cap is overridden by the chain's `max_train_epochs = 6`,
+so it ran as a full run until killed at ~920 steps; the 0.7 probe was
+dropped unrun). **0.99 at 768: peak 15.5 GB of 16.3, no OOM, 1.80 it/s vs
+1.67 at 0.3 (+8 %).** Decision (user): **0.85** in `render_{en,ja}.toml`
+`[training]` — the headroom is real but 0.99 sits 800 MB from the ceiling.
+The killed JA prep was re-queued as `20260910-193543-0602fe` (`encode text`;
+`mask` had already run) with `render_ja` training `20260910-193543-e9eaa0`
+behind it.
 
 **S3 — judge — BUILT** (`render/judge.py fill read report`): one loaded DiT
 stack, the arm's EasyControl network applied once and re-primed per cell
@@ -287,12 +329,100 @@ training panel's lines with length-matched donors from the training pool.
 `stock` reads each holed box (12 % pad) off the fill and the target. CER
 whitespace-blind headline, spaced column, clipped at 1. ~10 s per cell.
 
-**S4 — JA-SHIP + JA-RAND.** JA prep queued behind the judges (job
-`20260910-182517-29b3da`, SHIP pack); the RAND arm re-runs only `text` with
+**S4 — JA-SHIP + JA-RAND.** JA prep (SHIP pack) ran as job
+`20260910-193543-0602fe` (after the S2b kill of `-182517-29b3da`), SHIP training
+`20260910-193543-e9eaa0` queued behind it; the RAND arm re-runs only `text` with
 `random_r256` into a second `text/` dir and a `render_ja_rand.toml` pointing
 at it. Two runs on the daemon, ~70 min each. G1.
 
-**S5 — verdict** into [`findings.md`](findings.md) as a new § (render), the
+**S4 result — JA-SHIP e4 — RAN 2026-09-10** (train job `20260910-200213-9c5a50`,
+4 epochs, 7,040 steps, 2.01 it/s at budget 0.85, loss 0.089 → 0.013; judge
+`20260910-210422-1ddb31`, `output/render/judge/render_ja_e4/`):
+
+| ruler | CER | exact | n |
+|---|---|---|---|
+| R0 reader floor (target) | 0.114 | — | 77 |
+| **R1 held-out fill** | **0.989** | 0.00 | 77 |
+| floor: inpaint | 0.991 | 0.00 | 77 |
+| floor: base | 0.990 | 0.00 | 77 |
+| R2 follows caption | 0.15 | to swapped 0.978 / to original 0.987 | 55 |
+
+**G1 fails at the floor.** The fills are Japanese-looking glyph salad — the
+adapter learned *script* ("put kana/kanji in the hole"), not content. The
+swap rows say it did not even memorise its own training panels (CER ≈ 1.0
+to both original and swapped). Splitting held-out by inventory does not
+rescue it: kana-only lines 0.993 (31), lines with kanji 0.987 (46); the
+16 kana-only lines of ≤ 6 chars are all CER 1.0 (`ひんと` → `～～～`,
+`しますね♡` → 17-char garbage). So it is not "the kanji inventory is too
+large for 4 epochs" — a 5-glyph kana line that EN's equivalent
+(`N-NO...`, `PERK`) lands exactly is not read at all. Pipeline wiring was
+verified before calling it: the pack is hooked in both prep and training
+(69,558 ext rows, no digest mismatch), captions carry the clause, and the
+judge ran with the same pack. JA-RAND (S4b) is now uninformative — SHIP is
+already at floor, so RAND can only tie it; skip unless a JA arm ever rises
+above floor.
+
+**S5 — verdict — DEFERRED 2026-09-10: the probe as built could not answer.**
+Reading the JA floor as "the LoRA + pack cannot supply JA glyphs" was wrong,
+and the reason is structural, not statistical. EasyControl is
+*adapter-only, DiT frozen* (`networks/methods/easycontrol.py` header): the
+target stream's self-attn projections, cross-attn and MLP are the frozen
+baseline modules; the trainables are the cond-stream LoRA (qkv / o / ffn),
+the per-block `b_cond` gate and, opt-in, target-stream AdaLN. On top of
+that the render recipe inherits `cache_llm_adapter_outputs = true`, so
+`crossattn_emb` is precomputed and the `llm_adapter` — where the pack's ext
+rows live (`llm_adapter.embed`) — is not even in the graph. The whole JA
+glyph path, ext row → `llm_adapter` → cross-attn K/V → target tokens →
+pixels, therefore had **zero trainable parameters**. The cond LoRA can only
+tell the target stream *where the hole is and what surrounds it*; the
+target stream reads the clause with the base DiT's weights. EN passes
+because the base DiT already reads Latin (`docs/findings/freetext_text_rendering.md`);
+JA sits at floor because nothing on the reading path could move. The
+floor is a fact about this adapter's shape, not about the pack or the DiT.
+JA-RAND on this recipe stays skipped for the same reason.
+
+**S6 — body LoRA under EasyControl (JA-BODY / EN-BODY).** Keep everything —
+panels, gray holes, captions, caches, judge, gates — and change only which
+weights can learn. Design:
+
+1. **Target-stream LoRA inside `EasyControlNetwork`**, opt-in
+   `train_target=1` in `network_args`, built the way `train_adaln` is:
+   `_LoRAProj` deltas (rank `target_rank`, default 32, alpha = rank) added
+   to the target stream's `cross_attn` q / kv, `self_attn` qkv / out and
+   `mlp` ffn1 / ffn2 in `_two_stream_inner`, on the cond-active path only
+   (the no-cond fallback runs the original forward, so the deltas are
+   cond-gated by construction, like AdaLN). One checkpoint, new metadata
+   stamps (`ss_train_target`, `ss_target_rank`), `create_network_from_weights`
+   rebuilds them — the judge and `_ADAPTERS` need no change. `make merge`
+   stays refused for EasyControl.
+2. **`llm_adapter` trainable**: `cache_llm_adapter_outputs = false` in the
+   body descriptors so the adapter runs live, plus LoRA on its blocks and the
+   ext-row embedding (the LoRA family already has `train_llm_adapter`; the
+   EasyControl network needs the equivalent). This is where a new
+   row → feature map is cheapest to learn. Verify first that the render
+   `text/` caches hold the pre-adapter tensors (`strategy.py` writes both
+   layouts depending on the flag) — else re-run `prep_render.py text` with
+   the flag off; latents and cond caches are untouched.
+3. **One full-body arm first, ablate later.** The question is feasibility:
+   JA-BODY = (1)+(2) together. Only if it clears the floor is it worth
+   asking which of cross-attn / `llm_adapter` / self-attn+MLP carried it.
+4. **Budget.** Gradients already traverse the target stream (the cond LoRA
+   is reached through the extended attention), so target-stream LoRA adds
+   parameter memory only; 0.85 stays. A live `llm_adapter` adds a 6-block
+   forward/backward over 512 text tokens — small; the S2b probe re-runs
+   if the first step OOMs.
+5. **Recipe.** EN-BODY and JA-BODY on the S1 caches, 4 epochs, lr 2e-5 for
+   the cond LoRA; the target-stream / adapter LoRA may want its own lr
+   (1e-4 is the LoRA-family default) — expose `target_lr` or accept 2e-5
+   for the smoke and read the loss curve. Judge = S3 unchanged.
+6. **Gates.** G0′ (EN-BODY): R1 ≤ 0.3 and no regression vs 0.254. G2
+   (JA-BODY): R1 ≤ 0.5, R2 ≥ 0.7 (G1's numbers). G2 pass → JA writing is a
+   *capacity* question the DiT side can meet, and JA-BODY-RAND decides
+   whether the pack's training mattered. G2 fail with G0′ passing → the
+   claim closes for real this time: a trainable body with the clause in
+   front of it still does not read ext rows in 4 epochs.
+
+**S5′ — verdict** (after S6) into [`findings.md`](findings.md) as a new § (render), the
 report under `reports/`, and the closed-lines memory. If G1 passes: the
 follow-up is a tagger pass on the bag and the KO arm; if it fails with G0
 passing: JA glyph rendering needs DiT weights the LoRA + pack cannot supply,
@@ -327,5 +457,10 @@ and that is the end of the DiT-side vocab claim.
   first on OOM, not grad checkpointing.
 - Every GPU step goes through the daemon (`make daemon-run` / `--queue`); a
   bare background process dies at ~1 min.
+- **EasyControl cannot learn to read.** Its target stream is the frozen
+  DiT and `cache_llm_adapter_outputs = true` keeps the `llm_adapter` out of
+  the graph, so an EasyControl-only arm has no trainable weight between an
+  ext row and a pixel. A floor there (JA-SHIP e4, 2026-09-10) is not a pack
+  verdict; S6's body LoRA is the arm that can be.
 - Do not compare a CER here to any `/ 617` or `/ 71` figure in
   [`findings.md`](findings.md); different units, different task.

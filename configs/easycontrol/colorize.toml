@@ -30,14 +30,14 @@ network_args = [
     "repa_target_dog=true"
 ]
 blocks_to_swap = 0
-output_name = "anima_colorize_v3"
+output_name = "anima_colorize_v4"
 sigmoid_bias = 0
 masked_loss=false
 
 learning_rate = 2e-5
-max_train_epochs = 5
-save_every_n_epochs = 5
-checkpointing_epochs = 5
+max_train_epochs = 1
+save_every_n_epochs = 1
+checkpointing_epochs = 1
 
 easycontrol_cond_noise_max = 0.0
 easycontrol_drop_p = 0.0
@@ -76,6 +76,21 @@ validation_seed = 42
   cond_cache_dir = 'post_image_dataset/easycontrol/{name}/korean/cond'
   text_cache_dir = 'post_image_dataset/easycontrol/{name}/korean/text'
   latent_cache_dir = 'post_image_dataset/easycontrol/{name}/korean/target'
+  recursive = true
+  flip_aug = false
+  num_repeats = 1
+
+  # Full-color manga pages: real page targets (panels, balloons, lettering)
+  # instead of single illustrations. Each page appears once per edition —
+  # JA / EN / KO share the art and differ only in lettering, so glyphs of all
+  # three scripts pass through the text masks. Assembled outside the repo into
+  # {name}/manga_color/src/{ja,en,ko}; ~10 artists, top one ~22%.
+  [[datasets.subsets]]
+  image_dir = 'post_image_dataset/easycontrol/{name}/manga_color/resized'
+  cache_dir = 'post_image_dataset/easycontrol/{name}/manga_color/cache'
+  cond_cache_dir = 'post_image_dataset/easycontrol/{name}/manga_color/cond'
+  text_cache_dir = 'post_image_dataset/easycontrol/{name}/manga_color/text'
+  latent_cache_dir = 'post_image_dataset/easycontrol/{name}/manga_color/target'
   recursive = true
   flip_aug = false
   num_repeats = 1

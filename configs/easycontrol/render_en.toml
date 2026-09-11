@@ -34,6 +34,7 @@ easycontrol_cond_noise_max = 0.0
 caption_dropout_rate = 0.1
 
 blocks_to_swap = 0
+activation_memory_budget = 0.85
 
 [general]
 caption_extension = '.txt'
