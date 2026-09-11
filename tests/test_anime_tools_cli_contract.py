@@ -81,6 +81,11 @@ def _mask_forms(monkeypatch, cards: list[dict]) -> None:
     monkeypatch.delenv("ANIMA_DAEMON_JOB_DIR", raising=False)
 
 
+def _specs(req) -> list[str]:
+    """A ``SamMaskRequest``'s regions as their ``ROLE:KIND:VALUE`` spellings."""
+    return [m.spec() for m in req.masks]
+
+
 def test_mask_rules_yaml_builds_sam_and_merge_requests(monkeypatch):
     from scripts.tasks import masking
 
@@ -90,10 +95,10 @@ def test_mask_rules_yaml_builds_sam_and_merge_requests(monkeypatch):
         {
             "path_pattern": "manga/*",
             "rules": [
-                {"prompts": ["bubble"], "threshold": 0.7},
+                {"masks": ["ignore:text:bubble"], "threshold": 0.7},
                 {
                     "path_pattern": "character_a/*",
-                    "focus_prompts": ["girl"],
+                    "masks": ["keep:text:girl"],
                     "threshold": 0.5,
                     "dilate": 8,
                 },
@@ -111,8 +116,7 @@ def test_mask_rules_yaml_builds_sam_and_merge_requests(monkeypatch):
     ]
     sam_a, sam_b, merge = (_build(c) for c in calls)
 
-    assert sam_a.prompts == ("bubble",)
-    assert sam_a.focus_prompts == ()
+    assert _specs(sam_a) == ["ignore:text:bubble"]
     assert sam_a.threshold == 0.7
     assert sam_a.path_pattern == "manga/*"
     assert Path(sam_a.image_dir) == masking.RESIZED_IMAGE_DIR
@@ -123,8 +127,7 @@ def test_mask_rules_yaml_builds_sam_and_merge_requests(monkeypatch):
     assert sam_a.checkpoint == SamMaskRequest.checkpoint
     assert sam_a.batch_size == SamMaskRequest.batch_size
 
-    assert sam_b.focus_prompts == ("girl",)
-    assert sam_b.prompts == ()
+    assert _specs(sam_b) == ["keep:text:girl"]
     assert sam_b.dilate == 8
     assert sam_b.path_pattern == "character_a/*"
 
@@ -142,11 +145,10 @@ def test_mask_gui_cards_build_sam_and_merge_requests(monkeypatch):
     _mask_forms(
         monkeypatch,
         [
-            {"prompts": "bubble", "focus_prompts": "none", "threshold": 0.7},
+            {"masks": ["ignore:text:bubble"], "threshold": 0.7},
             {
                 "path_pattern": "character_a/*",
-                "prompts": "none",
-                "focus_prompts": "girl",
+                "masks": "keep:text:girl",
                 "dilate": 8,
                 "batch_size": 4,
             },
@@ -161,11 +163,11 @@ def test_mask_gui_cards_build_sam_and_merge_requests(monkeypatch):
         "anime_tools.masking.cli.merge_masks",
     ]
     sam_a, sam_b, merge = (_build(c) for c in calls)
-    assert sam_a.prompts == ("bubble",) and sam_a.focus_prompts == ()
+    assert _specs(sam_a) == ["ignore:text:bubble"]
     assert sam_a.threshold == 0.7 and sam_a.path_pattern is None
     assert Path(sam_a.image_dir) == masking.RESIZED_IMAGE_DIR
     assert sam_a.recursive
-    assert sam_b.focus_prompts == ("girl",) and sam_b.prompts == ()
+    assert _specs(sam_b) == ["keep:text:girl"]
     assert sam_b.dilate == 8 and sam_b.batch_size == 4
     assert sam_b.path_pattern == "character_a/*"
     assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir)
@@ -187,8 +189,7 @@ def test_mask_flat_yaml_config_builds_one_sam_request(monkeypatch):
         "anime_tools.masking.cli.merge_masks",
     ]
     sam = _build(calls[0])
-    assert sam.prompts == ("speech bubble", "text bubble")
-    assert sam.focus_prompts == ()
+    assert _specs(sam) == ["ignore:text:speech bubble", "ignore:text:text bubble"]
     assert sam.path_pattern is None
 
 
@@ -203,8 +204,8 @@ def test_mask_under_a_daemon_job_runs_the_stages_in_process(monkeypatch, tmp_pat
     _mask_forms(
         monkeypatch,
         [
-            {"prompts": "a", "focus_prompts": "none"},
-            {"prompts": "b", "focus_prompts": "none"},
+            {"masks": ["ignore:text:a"]},
+            {"masks": ["ignore:text:b"]},
         ],
     )
     monkeypatch.setenv("ANIMA_DAEMON_JOB_DIR", str(tmp_path))
@@ -233,7 +234,7 @@ def test_mask_under_a_daemon_job_runs_the_stages_in_process(monkeypatch, tmp_pat
     from anime_tools.masking.requests import MergeMasksRequest, SamMaskRequest
 
     sam_a, sam_b, merge = (req for _, req in ran)
-    assert isinstance(sam_a, SamMaskRequest) and sam_b.prompts == ("b",)
+    assert isinstance(sam_a, SamMaskRequest) and _specs(sam_b) == ["ignore:text:b"]
     assert isinstance(merge, MergeMasksRequest)
     assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir)
     # The package anchors its bare defaults on ANIMA_HOME, which run() exports

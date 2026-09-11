@@ -73,15 +73,11 @@
   },
   "masks_sam.path_pattern": {
     "label": "路径模式 (此规则):",
-    "help": "决定该规则应用于哪些图像的 fnmatch 通配符（相对于 post_image_dataset/resized 的图像路径进行匹配），因此不同文件夹可以使用不同的蒙版类型。'character_a/*' 只针对一个角色；'char_a/*|char_b/*' 用 OR 组合多个模式；'*portrait*' 匹配任何包含 'portrait' 的路径；留空或 '*' 是匹配所有图像的兜底规则。任何路径匹配到某张图像的规则都会在该图像上叠加合成（忽略区域取并集，聚焦区域也取并集），因此常见的做法是排列若干条窄规则，再加一条兜底规则。每条规则会对其模式选中的图像单独执行一次 SAM 处理。"
+    "help": "决定该规则应用于哪些图像的 fnmatch 通配符（相对于 post_image_dataset/resized 的图像路径进行匹配），因此不同文件夹可以使用不同的蒙版类型。'character_a/*' 只针对一个角色；'char_a/*|char_b/*' 用 OR 组合多个模式；'*portrait*' 匹配任何包含 'portrait' 的路径；留空或 '*' 是匹配所有图像的兜底规则。任何路径匹配到某张图像的规则都会在该图像上叠加合成（keep 区域取并集，ignore 区域也取并集），因此常见的做法是排列若干条窄规则，再加一条兜底规则。每条规则会对其模式选中的图像单独执行一次 SAM 处理。"
   },
-  "masks_sam.prompts": {
-    "label": "要遮罩排除的 SAM 提示词 (逗号分隔):",
-    "help": "以逗号分隔的 SAM3 文本提示词，指定要遮罩排除的内容 —— 检测到的区域会在损失中被忽略，其余部分参与训练。默认规则使用 'speech bubble, text bubble'（漫画风格气泡）。如需排除其他区域，请添加提示词，例如 'sound effect, caption box'。若不需要忽略提示词，输入 `none`（一条规则必须在此字段或聚焦提示词中指定至少一项）。"
-  },
-  "masks_sam.focus_prompts": {
-    "label": "SAM 聚焦提示词 —— 仅保留 (逗号分隔):",
-    "help": "与上方提示词相反。聚焦提示词指定要保留的主体：遮罩仅在此处 SAM3 检测到的内容上进行训练，其余部分全部忽略 —— 因此指定 'girl' 会遮罩整个背景，LoRA 只学习角色本身。它会与同一规则内的忽略提示词合成：最终可训练区域 = (聚焦主体) 减去 (那些忽略区域)。如果 SAM3 在某张图像中未找到任何聚焦主体，则该图像会保持完全可训练，而不是被清空。`none`（训练器的默认规则）表示不设聚焦 —— 即仅忽略行为；注意该软件包自身的裸默认值是主体提示词 'girl'。"
+  "masks_sam.masks": {
+    "label": "蒙版区域 (逗号分隔的 ROLE:KIND:VALUE):",
+    "help": "此规则用 SAM3 查找的区域，以及损失对每个区域的处理方式 —— 每个区域用一个 ROLE:KIND:VALUE 条目表示，用逗号分隔。ROLE 为 keep 或 ignore：keep 区域是参与训练的部分，keep 区域并集之外的一切都会被遮罩排除（例如 'keep:text:girl' 会遮罩整个背景，使 LoRA 只学习角色本身）；ignore 区域会在此基础上再被排除，若没有任何 keep 区域，则在整张图像上排除（'ignore:text:speech bubble, ignore:text:text bubble' 用于去除漫画气泡，是训练器的默认规则）。KIND 为 text（VALUE 是 SAM3 文本提示词）或 soft（VALUE 是训练好的提示词 .safetensors 文件）。如果 SAM3 在某张图像中未找到任何 keep 区域，则该图像会保持完全可训练，而不是被清空。留空则使用软件包自身的默认值 keep:soft:networks/calibration/sam3_girl_prompt.safetensors —— 通过内置的 soft 提示词指定主体，若该文件未下载，则回退为文本提示词 'girl'。"
   },
   "masks_sam.force": {
     "label": "重新生成已有遮罩",

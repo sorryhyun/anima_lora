@@ -313,10 +313,10 @@ gui = [
 
 [package.dev-dependencies]
 anime-tools-dev = [
-    { name = "anime-tools", version = "0.6.3", source = { editable = "../anime_tools" } },
+    { name = "anime-tools", version = "0.6.4", source = { editable = "../anime_tools" } },
 ]
 anime-tools-git = [
-    { name = "anime-tools", version = "0.6.3", source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.6.3#57da4d68409648483cfbc1eba8ee4722328de785" } },
+    { name = "anime-tools", version = "0.6.4", source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.6.4#4875d9ed33b1f861c2ab2b5137ceb814f2239e22" } },
 ]
 cuda-windows = [
     { name = "flash-attn", version = "2.8.3+cu132torch2.12", source = { url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl" }, marker = "sys_platform == 'win32' or (extra == 'group-10-anima-lora-anime-tools-dev' and extra == 'group-10-anima-lora-anime-tools-git')" },
@@ -424,7 +424,7 @@ provides-extras = ["gui", "cuda-windows", "rocm-windows", "dev"]
 
 [package.metadata.requires-dev]
 anime-tools-dev = [{ name = "anime-tools", editable = "../anime_tools" }]
-anime-tools-git = [{ name = "anime-tools", git = "https://github.com/sorryhyun/anime_tools?tag=v0.6.3" }]
+anime-tools-git = [{ name = "anime-tools", git = "https://github.com/sorryhyun/anime_tools?tag=v0.6.4" }]
 cuda-windows = [
     { name = "flash-attn", marker = "sys_platform == 'win32'", url = "https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.25/flash_attn-2.8.3+cu132torch2.12-cp313-cp313-win_amd64.whl" },
     { name = "torch", marker = "sys_platform == 'win32'", specifier = "==2.12.0+cu132", index = "https://download.pytorch.org/whl/cu132", conflict = { package = "anima-lora", group = "cuda-windows" } },
@@ -459,8 +459,8 @@ sr = [
 
 [[package]]
 name = "anime-tools"
-version = "0.6.3"
-source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.6.3#57da4d68409648483cfbc1eba8ee4722328de785" }
+version = "0.6.4"
+source = { git = "https://github.com/sorryhyun/anime_tools?tag=v0.6.4#4875d9ed33b1f861c2ab2b5137ceb814f2239e22" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
     "platform_machine == 'aarch64' and sys_platform == 'linux'",
@@ -501,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "anime-tools"
-version = "0.6.3"
+version = "0.6.4"
 source = { editable = "../anime_tools" }
 resolution-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",

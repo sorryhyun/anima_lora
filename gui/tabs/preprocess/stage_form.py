@@ -74,6 +74,11 @@ _RUN_BAR_FIELDS: frozenset[str] = frozenset({"apply"})
 # ``path`` fields that are globs, not files — no ``…`` chooser.
 _NO_BROWSE: frozenset[str] = frozenset({"path_pattern"})
 
+# Kinds edited as csv text and sent as a list. ``masks`` is the SAM stage's
+# ``ROLE:KIND:VALUE`` region list (anime_tools 0.6.4); the package's web GUI
+# draws a row editor for it, this form keeps the csv line.
+_LIST_KINDS: frozenset[str] = frozenset({"list", "masks"})
+
 TRAINER_FIELDS: dict[str, frozenset[str]] = {
     # stage id → dests the trainer's chain fills itself (hidden from the form,
     # like a bound root). ``scripts/tasks/preprocess.py`` / ``masking.py`` set
@@ -112,7 +117,7 @@ FIELD_ORDER: dict[str, tuple[str, ...]] = {
         "overwrite",
         "workers",
     ),
-    "masks_sam": ("path_pattern", "prompts", "focus_prompts", "threshold", "dilate"),
+    "masks_sam": ("path_pattern", "masks", "threshold", "dilate"),
 }
 
 ALWAYS_PERSIST: dict[str, frozenset[str]] = {
@@ -286,7 +291,7 @@ def knob_for(field: dict, section: str = "") -> Knob:
         knob_kind, knob_default = "bool", bool(default)
     elif kind in ("int", "float") and default is not None:
         knob_kind, knob_default = kind, default
-    elif kind == "list":
+    elif kind in _LIST_KINDS:
         knob_kind, knob_default = "str", ""
     else:
         knob_kind, knob_default = "str", "" if default is None else str(default)
@@ -375,13 +380,20 @@ def load_stage_values(meta: dict, stage_id: str, defaults: dict[str, Any]):
     """The form's values for a variant: its ``[variant.stages.<stage_id>]``
     over the seeded defaults. For ``masks_sam`` a list of card dicts (the
     saved ``[[variant.stages.masks_sam]]`` rows, or ``None`` when the variant
-    has none — the caller seeds the cards then)."""
+    has none — the caller seeds the cards then). A pre-0.6.4 card's
+    ``prompts`` / ``focus_prompts`` come back as its ``masks`` list."""
     stages = meta.get(STAGES_KEY) if isinstance(meta, dict) else None
     saved = stages.get(stage_id) if isinstance(stages, dict) else None
     if stage_id == "masks_sam":
         if not isinstance(saved, list):
             return None
-        return [{**defaults, **card} for card in saved if isinstance(card, dict)]
+        from library.config.sam_masks import migrate_card
+
+        return [
+            {**defaults, **migrate_card(card)}
+            for card in saved
+            if isinstance(card, dict)
+        ]
     out = dict(defaults)
     if isinstance(saved, dict):
         out.update(saved)
@@ -410,7 +422,7 @@ def merge_stages_into_meta(
                 persistable_values(sid, card, defaults.get(sid, {}))
                 for card in (values or [])
             ]
-            # A card at every default is still a card (its prompts are the
+            # A card at every default is still a card (its masks are the
             # default's); keep the list even when each row is empty.
             stages[sid] = cards
             continue
@@ -656,9 +668,10 @@ else:
                 if default is not None:
                     combo.setCurrentIndex(max(combo.findData(str(default)), 0))
                 return no_wheel(combo)
-            if kind == "list":
+            if kind in _LIST_KINDS:
                 text = ", ".join(str(x) for x in default) if default else ""
-                return line(text, placeholder="a, b, c")
+                hint = "a, b, c" if kind == "list" else "keep:text:girl, ignore:text:x"
+                return line(text, placeholder=hint)
             return line("" if default is None else str(default))
 
         def _with_browse(self, edit: QWidget, fd: dict) -> QWidget:
@@ -747,7 +760,7 @@ else:
             for key, widget in self.widgets.items():
                 knob = self._knobs[key]
                 value = read_widget(knob, widget)
-                if self.field_kind(key) == "list" and isinstance(value, str):
+                if self.field_kind(key) in _LIST_KINDS and isinstance(value, str):
                     value = _csv_to_list(value)
                 out[key] = value
             return out

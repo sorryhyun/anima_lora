@@ -396,16 +396,14 @@ class PreprocessingTab(DaemonJobMixin, DirtyTrackingMixin, LazyTabMixin, QWidget
     def _seed_sam_cards(self) -> list[dict]:
         """The SAM cards a variant with no ``[[variant.stages.masks_sam]]``
         opens on: ``configs/sam_mask.yaml``'s rules (the CLI's), spelled as
-        ``masks_sam`` form values (a prompt list is its csv text, an empty
-        one the request's ``none``)."""
+        ``masks_sam`` form values (an empty region list is a blank editor —
+        the request's default)."""
         cards = []
         for rule in load_rules(_load_sam_yaml()):
             cards.append(
                 {
                     "path_pattern": rule.get("path_pattern") or "",
-                    "prompts": ", ".join(rule.get("prompts") or []) or "none",
-                    "focus_prompts": ", ".join(rule.get("focus_prompts") or [])
-                    or "none",
+                    "masks": list(rule.get("masks") or []),
                     "threshold": float(rule["threshold"]),
                     "dilate": int(rule["dilate"]),
                 }

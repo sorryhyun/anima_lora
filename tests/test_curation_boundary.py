@@ -34,6 +34,10 @@ CURATION_PATHS: tuple[str, ...] = (
     "scripts/tasks/tagger.py",
     "scripts/tasks/masking.py",
     "scripts/tasks/curate.py",
+    # The SAM mask stage's legacy-prompts → ``masks`` translation (anime_tools
+    # 0.6.4), shared by ``masking.py`` and the GUI's rule cards; imports only
+    # ``anime_tools``.
+    "library/config/sam_masks.py",
 )
 
 # Anything under ``library.`` that is not itself in the manifest is trainer-only

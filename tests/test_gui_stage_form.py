@@ -10,7 +10,7 @@ parseable argv, and the chain gate disables the stage rows.
 
 Dests asserted here are ones the requests have carried since the API-first
 migration (``min_chars`` / ``det_conf`` / ``skip_en`` on OCR, ``threshold`` /
-``dilate`` / ``prompts`` on SAM) — the OCR detector/reader switches (and
+``dilate`` / ``masks`` on SAM) — the OCR detector/reader switches (and
 ``min_score``, which went with PP-OCR) are in flux and deliberately not named.
 """
 
@@ -58,7 +58,7 @@ def test_schemas_load_for_the_pilot_stages(schemas):
         # The field shape the renderer relies on.
         for f in sc["fields"]:
             assert {"dest", "kind", "default", "help", "advanced", "gate"} <= set(f)
-            assert f["kind"] in {"bool", "int", "float", "str", "enum", "list"}
+            assert f["kind"] in {"bool", "int", "float", "str", "enum", "list", "masks"}
 
 
 def test_visible_fields_hide_bound_and_auto(schemas):
@@ -71,13 +71,12 @@ def test_visible_fields_hide_bound_and_auto(schemas):
     # A SAM rule card shows its own scope (SHOWN_BOUND) even though the
     # package binds it as a setting; ``make mask`` threads it per card.
     assert "path_pattern" in sam
-    assert {"threshold", "dilate", "prompts", "focus_prompts", "force"} <= set(sam)
+    assert {"threshold", "dilate", "masks", "force"} <= set(sam)
     assert all("advanced" in f and "gate" in f for f in sam.values())
     # FIELD_ORDER puts the card's rows first.
-    assert [f["dest"] for f in SF.visible_fields(schemas["masks_sam"])][:5] == [
+    assert [f["dest"] for f in SF.visible_fields(schemas["masks_sam"])][:4] == [
         "path_pattern",
-        "prompts",
-        "focus_prompts",
+        "masks",
         "threshold",
         "dilate",
     ]
@@ -100,7 +99,9 @@ def test_visible_fields_hide_bound_and_auto(schemas):
     )
 
     resize = {f["dest"] for f in SF.visible_fields(schemas["resize"])}
-    assert not {"src", "dst", "path_pattern", "recursive", "skip", "excluded_dir"} & resize
+    assert (
+        not {"src", "dst", "path_pattern", "recursive", "skip", "excluded_dir"} & resize
+    )
     assert {"target_res", "min_pixels", "overwrite", "workers"} <= resize
 
     # --apply is the run bar's, never a form row.
@@ -112,6 +113,11 @@ def test_knob_for_maps_schema_kinds_onto_the_knob_table(schemas):
     assert SF.knob_for(sam["threshold"]).kind == "float"
     assert SF.knob_for(sam["dilate"]).kind == "int"
     assert SF.knob_for(sam["force"]).kind == "bool"
+    # The region list is csv text; blank falls back to the request default.
+    assert (SF.knob_for(sam["masks"]).kind, SF.knob_for(sam["masks"]).default) == (
+        "str",
+        "",
+    )
     mode = next(f for f in schemas["autotag"]["fields"] if f["dest"] == "mode")
     knob = SF.knob_for(mode)
     assert knob.kind == "str" and knob.default == "missing"
@@ -125,7 +131,12 @@ def test_argv_round_trips_masks_sam(schemas):
     sc = schemas["masks_sam"]
     argv = SF.argv_for(
         sc,
-        {"threshold": 0.7, "dilate": 8, "prompts": "speech bubble,text", "force": True},
+        {
+            "threshold": 0.7,
+            "dilate": 8,
+            "masks": ["ignore:text:speech bubble", "ignore:text:text"],
+            "force": True,
+        },
         roots=ROOTS,
         settings={"path_pattern": "artist_a/*"},
         report_root=None,
@@ -137,7 +148,10 @@ def test_argv_round_trips_masks_sam(schemas):
     assert ns.path_pattern == "artist_a/*"
     assert ns.threshold == 0.7 and ns.dilate == 8 and ns.force is True
     req = _stage("masks_sam").request_class().from_namespace(ns)
-    assert req.prompts == ("speech bubble", "text")
+    assert [m.spec() for m in req.masks] == [
+        "ignore:text:speech bubble",
+        "ignore:text:text",
+    ]
     # A value left at the request default is not spelled.
     assert "--batch-size" not in argv and "--batch_size" not in argv
 
@@ -162,11 +176,11 @@ def test_argv_round_trips_ocr(schemas):
 
 
 def test_argv_runs_the_requests_own_validation(schemas):
-    # SamMaskRequest.__post_init__: nothing to mask is refused before any job.
-    with pytest.raises(ValueError):
+    # A malformed region (MaskPrompt.parse) is refused before any job.
+    with pytest.raises(ValueError, match="ROLE:KIND:VALUE"):
         SF.argv_for(
             schemas["masks_sam"],
-            {"prompts": "none", "focus_prompts": "none"},
+            {"masks": ["girl"]},
             roots=ROOTS,
             settings=None,
             report_root=None,
@@ -222,9 +236,7 @@ def test_stage_meta_round_trips(schemas):
         "resize": {**defaults["resize"], "target_res": [768], "overwrite": True},
         "autotag": {**defaults["autotag"], "mode": "merge"},
         "correct": {**defaults["correct"], "caption_drop_groups": "artist"},
-        "masks_sam": [
-            {**defaults["masks_sam"], "prompts": "bubble", "focus_prompts": "none"}
-        ],
+        "masks_sam": [{**defaults["masks_sam"], "masks": ["ignore:text:bubble"]}],
     }
     meta = SF.merge_stages_into_meta(
         {"family": "lora"}, forms, defaults, include_mask=True
@@ -232,13 +244,17 @@ def test_stage_meta_round_trips(schemas):
     assert meta["stages"]["resize"] == {"target_res": [768], "overwrite": True}
     assert meta["stages"]["autotag"] == {"mode": "merge"}
     assert meta["stages"]["correct"] == {"caption_drop_groups": "artist"}
-    assert meta["stages"]["masks_sam"] == [
-        {"prompts": "bubble", "focus_prompts": "none"}
-    ]
+    assert meta["stages"]["masks_sam"] == [{"masks": ["ignore:text:bubble"]}]
     for sid in ("resize", "autotag", "correct"):
         assert SF.load_stage_values(meta, sid, defaults[sid]) == forms[sid]
     cards = SF.load_stage_values(meta, "masks_sam", defaults["masks_sam"])
     assert cards == forms["masks_sam"]
+    # A pre-0.6.4 card loads as its masks list; its elided `focus_prompts` was
+    # the old default `girl`, which is the default soft keep entry now.
+    legacy = {"stages": {"masks_sam": [{"prompts": "bubble", "dilate": 2}]}}
+    (card,) = SF.load_stage_values(legacy, "masks_sam", defaults["masks_sam"])
+    assert card["masks"] == [*defaults["masks_sam"]["masks"], "ignore:text:bubble"]
+    assert card["dilate"] == 2 and "prompts" not in card
     # A variant without cards reports None so the tab seeds from sam_mask.yaml.
     assert SF.load_stage_values({}, "masks_sam", defaults["masks_sam"]) is None
     # Mask cards move only with the mask section; an all-default stage vanishes.
@@ -310,7 +326,7 @@ def test_masks_sam_form_renders_reads_back_and_builds_argv(schemas):
         assert isinstance(sec.widgets["threshold"], QDoubleSpinBox)
         assert isinstance(sec.widgets["dilate"], QSpinBox)
         assert isinstance(sec.widgets["force"], QCheckBox)
-        assert isinstance(sec.widgets["prompts"], QLineEdit)
+        assert isinstance(sec.widgets["masks"], QLineEdit)
         # Advanced fields fold away until the toggle is on.
         assert sec.advanced_box is not None and sec.advanced_box.isHidden()
         assert sec.widgets["batch_size"].parentWidget() is sec.advanced_box
@@ -319,10 +335,16 @@ def test_masks_sam_form_renders_reads_back_and_builds_argv(schemas):
 
         seen = []
         sec.changed.connect(lambda: seen.append(1))
-        sec.set_values({"threshold": 0.7, "dilate": 8, "prompts": "speech bubble,text"})
+        sec.set_values(
+            {
+                "threshold": 0.7,
+                "dilate": 8,
+                "masks": "ignore:text:speech bubble, ignore:text:text",
+            }
+        )
         v = sec.values()
         assert v["threshold"] == 0.7 and v["dilate"] == 8
-        assert v["prompts"] == "speech bubble,text"
+        assert v["masks"] == ["ignore:text:speech bubble", "ignore:text:text"]
         assert seen  # editing marks the section changed (dirty wiring)
         # The card's own scope is a plain glob editor — no file chooser.
         assert (
@@ -335,10 +357,11 @@ def test_masks_sam_form_renders_reads_back_and_builds_argv(schemas):
         ns = _parse("masks_sam", argv)
         assert ns.threshold == 0.7 and ns.dilate == 8
         assert ns.image_dir == ROOTS["dst"]
-        assert _stage("masks_sam").request_class().from_namespace(ns).prompts == (
-            "speech bubble",
-            "text",
-        )
+        req = _stage("masks_sam").request_class().from_namespace(ns)
+        assert [m.spec() for m in req.masks] == [
+            "ignore:text:speech bubble",
+            "ignore:text:text",
+        ]
     finally:
         sec.deleteLater()
 

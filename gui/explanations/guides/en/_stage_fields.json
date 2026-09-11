@@ -73,15 +73,11 @@
   },
   "masks_sam.path_pattern": {
     "label": "Path pattern (this rule):",
-    "help": "Which images THIS rule applies to — an fnmatch glob (matched against each image's path relative to post_image_dataset/resized), so different folders can get different mask types. 'character_a/*' targets one character; 'char_a/*|char_b/*' OR-combines several; '*portrait*' matches any path containing 'portrait'; empty or '*' is a catch-all that matches every image. Every rule whose pattern matches a given image COMPOSES on it (ignore-regions union together, focus-regions union together), so an ordered list of narrow rules plus one catch-all is a common layout. Each rule is its own SAM pass over the images its pattern selects."
+    "help": "Which images THIS rule applies to — an fnmatch glob (matched against each image's path relative to post_image_dataset/resized), so different folders can get different mask types. 'character_a/*' targets one character; 'char_a/*|char_b/*' OR-combines several; '*portrait*' matches any path containing 'portrait'; empty or '*' is a catch-all that matches every image. Every rule whose pattern matches a given image COMPOSES on it (keep-regions union together, ignore-regions union together), so an ordered list of narrow rules plus one catch-all is a common layout. Each rule is its own SAM pass over the images its pattern selects."
   },
-  "masks_sam.prompts": {
-    "label": "SAM prompts to mask OUT (comma-separated):",
-    "help": "Comma-separated SAM3 text prompts naming what to mask OUT — the detected regions are ignored in the loss and you train on everything else. The default rule uses 'speech bubble, text bubble' (manga-style balloons). Add prompts for other regions you want excluded, e.g. 'sound effect, caption box'. Type `none` for no ignore prompts (a rule must name something in this field or in the focus prompts)."
-  },
-  "masks_sam.focus_prompts": {
-    "label": "SAM focus prompts — keep ONLY (comma-separated):",
-    "help": "The REVERSE of the prompts above. Focus prompts name the subject to KEEP: the mask trains ONLY on what SAM3 detects here and ignores everything else — so 'girl' masks the entire background and the LoRA learns only the character. Composes with the ignore prompts in the same rule: the final trainable region is (focus subject) minus (those ignore regions). If SAM3 finds none of the focus subjects in an image, that image is left fully trainable rather than blanked out. `none` (the trainer's default rule) means no focus — ignore-only behaviour; note the package's own bare default is the subject prompt 'girl'."
+  "masks_sam.masks": {
+    "label": "Mask regions (comma-separated ROLE:KIND:VALUE):",
+    "help": "The regions this rule finds with SAM3 and what the loss does with each — one ROLE:KIND:VALUE entry per region, comma-separated. ROLE is keep or ignore: a keep region is what trains, everything outside the union of the keep regions is masked out (so 'keep:text:girl' masks the whole background and the LoRA learns only the character); an ignore region is masked out of that, or out of the whole image when nothing is kept ('ignore:text:speech bubble, ignore:text:text bubble' strips manga balloons — the trainer's default rule). KIND is text (VALUE is a SAM3 text prompt) or soft (VALUE is a learned prompt .safetensors). If SAM3 finds none of the keep regions in an image, that image is left fully trainable rather than blanked out. Leave blank for the package's own default, keep:soft:networks/calibration/sam3_girl_prompt.safetensors — the subject via the shipped soft prompt, which falls back to the text prompt 'girl' when the file is not downloaded."
   },
   "masks_sam.force": {
     "label": "Regenerate existing masks",

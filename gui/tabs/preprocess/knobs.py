@@ -48,7 +48,7 @@ DEFAULT_CAPTION_AUTOTAG = False
 DEFAULT_RUN_SAM_MASK = False  # v2: masking is opt-in
 # The SAM rule the first card seeds from when neither the variant nor
 # ``configs/sam_mask.yaml`` names one (the CLI's historical prompt set).
-DEFAULT_SAM_PROMPTS = ("speech bubble", "text bubble")
+DEFAULT_SAM_MASKS = ("ignore:text:speech bubble", "ignore:text:text bubble")
 DEFAULT_SAM_THRESHOLD = 0.5
 DEFAULT_SAM_DILATE = 5
 
@@ -185,7 +185,11 @@ def load_rules(sam_yaml: dict) -> list[dict]:
     """Normalize either ``sam_mask.yaml`` schema into per-card rule dicts: a
     ``rules:`` array returns card-for-card (missing threshold/dilate fall back
     to top-level); a flat config collapses to one catch-all card. Seeds the
-    first SAM card when the variant has no ``[[variant.stages.masks_sam]]``."""
+    first SAM card when the variant has no ``[[variant.stages.masks_sam]]``.
+    A rule's regions are its ``masks`` list (a pre-0.6.4 ``prompts`` /
+    ``focus_prompts`` pair translated — ``library.config.sam_masks``)."""
+    from library.config.sam_masks import rule_masks
+
     default_threshold = float(sam_yaml.get("threshold", DEFAULT_SAM_THRESHOLD))
     default_dilate = int(sam_yaml.get("dilate", DEFAULT_SAM_DILATE))
     raw = sam_yaml.get("rules")
@@ -193,8 +197,7 @@ def load_rules(sam_yaml: dict) -> list[dict]:
         return [
             {
                 "path_pattern": "",
-                "prompts": sam_yaml.get("prompts") or list(DEFAULT_SAM_PROMPTS),
-                "focus_prompts": sam_yaml.get("focus_prompts") or [],
+                "masks": rule_masks(sam_yaml) or list(DEFAULT_SAM_MASKS),
                 "threshold": default_threshold,
                 "dilate": default_dilate,
             }
@@ -202,8 +205,7 @@ def load_rules(sam_yaml: dict) -> list[dict]:
     return [
         {
             "path_pattern": r.get("path_pattern") or "",
-            "prompts": r.get("prompts") or [],
-            "focus_prompts": r.get("focus_prompts") or [],
+            "masks": rule_masks(r),
             "threshold": float(r.get("threshold", default_threshold)),
             "dilate": int(r.get("dilate", default_dilate)),
         }
