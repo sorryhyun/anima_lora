@@ -6,7 +6,7 @@ from library.anima import ext_vocab
 QW='models/text_encoders/qwen_3_06b_base.safetensors'; DIT='models/diffusion_models/anima-base-v1.0.safetensors'
 t5=load_t5_tokenizer(None); te,qtok=load_qwen3_text_encoder(QW,dtype=torch.float32,device='cpu'); ad=load_llm_adapter(DIT,dtype=torch.float32,device='cpu')
 tk=AnimaTokenizeStrategy(qtok,t5); es=AnimaTextEncodingStrategy(); base=ad.embed.weight.data.clone(); N0=base.shape[0]
-table,mapping=ext_vocab.load_ext_assets(Path('output/ckpt/cjk_vocab_pack_synthja_v5')); enc=ext_vocab.HybridT5Encoder.from_mapping(t5,qtok,mapping)
+table,mapping=ext_vocab.load_ext_assets(Path('output/ckpt/cjk_vocab/cjk_vocab_pack_synthja_v5')); enc=ext_vocab.HybridT5Encoder.from_mapping(t5,qtok,mapping)
 ad.embed=torch.nn.Embedding.from_pretrained(torch.cat([base,table.float()]))
 NQ=len(mapping['qwen']); inv={v:k for k,v in mapping['char'].items()}; invq={v:qtok.decode([int(k)]) for k,v in mapping['qwen'].items()}
 # JA tag surfaces: from the synthetic pairs file (ja side)

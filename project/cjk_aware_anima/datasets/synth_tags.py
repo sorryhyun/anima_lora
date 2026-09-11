@@ -134,7 +134,7 @@ def main() -> None:
     ap.add_argument(
         "--pack",
         type=Path,
-        default=REPO / "output" / "ckpt" / "cjk_vocab_pack_synthja_v2.json",
+        default=REPO / "output" / "ckpt" / "cjk_vocab" / "cjk_vocab_pack_synthja_v2.json",
         help="pack whose row mapping defines the ext encoding (rows, not weights)",
     )
     ap.add_argument("--glossary", type=Path, default=tag_glossary.DEFAULT_OUT)

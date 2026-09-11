@@ -33,7 +33,7 @@ i=toks.index('▁cat'); print("  cross-row baseline (▁cat vs ▁hair):", round
 line="1girl, solo, @sincos, japanese text, 「あーもううっさい早く終わりなさいよ」, 猫耳, 制服"
 res={}
 for name in ('synthjako2','synthja_v5'):
-    table,mapping=ext_vocab.load_ext_assets(Path(f'output/ckpt/cjk_vocab_pack_{name}'))
+    table,mapping=ext_vocab.load_ext_assets(Path(f'output/ckpt/cjk_vocab/cjk_vocab_pack_{name}'))
     enc=ext_vocab.HybridT5Encoder.from_mapping(t5,qtok,mapping)
     ad.embed=torch.nn.Embedding.from_pretrained(torch.cat([base_embed,table.float()]))
     ids,mask=enc.encode(line,512); ti_=torch.tensor([ids]); tm_=torch.tensor([mask])

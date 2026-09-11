@@ -32,43 +32,43 @@ MIRROR = "post_image_dataset/cjk_unmask/mirror_sincos_ppocr"
 ARMS = {
     "C9s2": (
         "cjk_unmask_c9_seed2",
-        "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256",
         "post_image_dataset/cjk_unmask/te/sincos_jakozh1sym_r256",
         True,
     ),
     "HOT": (
         "cjk_unmask_hot",
-        "output/ckpt/cjk_vocab_pack_hot_r256",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_hot_r256",
         "post_image_dataset/cjk_unmask/te/sincos_hot_r256",
         False,
     ),
     "COLLIDE": (
         "cjk_unmask_collide",
-        "output/ckpt/cjk_vocab_pack_collide_r256",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_collide_r256",
         "post_image_dataset/cjk_unmask/te/sincos_collide_r256",
         False,
     ),
     "ROTATE": (
         "cjk_unmask_rotate",
-        "output/ckpt/cjk_vocab_pack_rotate_r256",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_rotate_r256",
         "post_image_dataset/cjk_unmask/te/sincos_rotate_r256",
         False,
     ),
     "COLLAPSE": (
         "cjk_unmask_collapse",
-        "output/ckpt/cjk_vocab_pack_collapse_r256",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_collapse_r256",
         "post_image_dataset/cjk_unmask/te/sincos_collapse_r256",
         False,
     ),
     "ISO1": (
         "cjk_unmask_iso1",
-        "output/ckpt/cjk_vocab_pack_iso1_r256",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_iso1_r256",
         "post_image_dataset/cjk_unmask/te/sincos_iso1_r256",
         False,
     ),
     "COLD": (
         "cjk_unmask_cold",
-        "output/ckpt/cjk_vocab_pack_cold_r256",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_cold_r256",
         "post_image_dataset/cjk_unmask/te/sincos_cold_r256",
         False,
     ),
@@ -82,7 +82,7 @@ ARMS = {
     # for quoted spans (make_random_pack.py --mode iso-partition).
     "C9ISOQ": (
         "cjk_unmask_c9_isoq",
-        "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
         "post_image_dataset/cjk_unmask/te/sincos_jakozh1sym_r256_isoq",
         False,
     ),
@@ -91,7 +91,7 @@ ARMS = {
     # by run_unmask_r2.py (3 seeds: c10 / c10_s7 / c10_s1234); render-only here.
     "C10": (
         "cjk_unmask_c10",
-        "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
         "post_image_dataset/cjk_unmask/te/sincos_hybrid_sentence_isoq",
         True,
     ),
@@ -100,7 +100,7 @@ ARMS = {
     # mirror_sincos_hybrid_sfx_sentence). One training seed (s42); render-only here.
     "C11": (
         "cjk_unmask_c11",
-        "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
         "post_image_dataset/cjk_unmask/te/sincos_hybrid_sfx_sentence_isoq",
         True,
     ),
@@ -109,7 +109,7 @@ ARMS = {
     # One training seed (s42, job 20260906-213229-e7feb8); render-only here.
     "D2": (
         "cjk_unmask_d2",
-        "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
+        "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq",
         "post_image_dataset/cjk_unmask/te/sincos_animetext_sentence_isoq",
         True,
     ),

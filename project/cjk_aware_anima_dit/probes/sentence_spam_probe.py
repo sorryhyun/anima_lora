@@ -32,7 +32,7 @@ REPO = LINE_DIR.parents[1]
 PY = sys.executable
 
 ARMS = {"C10": "cjk_unmask_c10", "C9ISOQ": "cjk_unmask_c9_isoq"}
-EXT_PREFIX = "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq"
+EXT_PREFIX = "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq"
 EVAL_PROMPTS = REPO / "project/cjk_aware_anima/assets/unmask_eval_prompts.txt"
 BASE_ROWS = (0, 3, 5, 6)  # classroom, park bench, maid cafe, portrait
 CONDS = ("plain", "tags", "sentence")
@@ -92,7 +92,7 @@ def render(opts, prompts_path: Path) -> None:
                     "--prompts",
                     str(prompts_path),
                     "--lora",
-                    f"output/ckpt/{method}.safetensors",
+                    f"output/ckpt/cjk/{method}.safetensors",
                     "--seed",
                     str(seed),
                     "--size",

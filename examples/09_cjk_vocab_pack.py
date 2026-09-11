@@ -25,7 +25,7 @@ download-vocab-pack``:
     python examples/09_cjk_vocab_pack.py --prompt "1girl, 고양이귀, 은발, 세일러복, 미소"
     python examples/09_cjk_vocab_pack.py --prompt "1girl, 猫耳, 银发, 水手服, 微笑"
     # a local pack build: path prefix of the .safetensors/.json pair
-    python examples/09_cjk_vocab_pack.py --pack output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256 --prompt …
+    python examples/09_cjk_vocab_pack.py --pack output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256 --prompt …
     # tokenizer-only dry run (no DiT / VAE): prints the routed id stream
     python examples/09_cjk_vocab_pack.py --dry_run --prompt "1girl, 猫耳, 銀髪"
 

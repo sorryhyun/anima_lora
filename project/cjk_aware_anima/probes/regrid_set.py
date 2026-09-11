@@ -67,7 +67,7 @@ def main() -> None:
         method = METHOD[arm]
         if (
             arm not in o.train_arms
-            and not (REPO / f"output/ckpt/{method}.safetensors").exists()
+            and not (REPO / f"output/ckpt/cjk/{method}.safetensors").exists()
         ):
             sys.exit(f"missing LoRA for arm {arm}: {method}")
     for arm in o.train_arms:

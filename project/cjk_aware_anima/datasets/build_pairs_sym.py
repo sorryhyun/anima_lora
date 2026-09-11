@@ -65,7 +65,7 @@ import tag_glossary  # noqa: E402
 REGISTER = "tags_sym"
 DEFAULT_GLOSSARY = ROOT / "assets" / "tag_glossary_sym.json"
 DEFAULT_OUT = REPO / "post_image_dataset" / "cjk_distill" / "pairs_sym.jsonl"
-DEFAULT_PACK = REPO / "output" / "ckpt" / "cjk_vocab_pack_synthjakozh1sym_r256.json"
+DEFAULT_PACK = REPO / "output" / "ckpt" / "cjk_vocab" / "cjk_vocab_pack_synthjakozh1sym_r256.json"
 LANG_GLOSSARY = {
     "ja": tag_glossary.DEFAULT_OUT,
     "ko": tag_glossary.ASSETS / "tag_glossary_ko.json",

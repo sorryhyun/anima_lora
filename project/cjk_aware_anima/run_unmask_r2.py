@@ -43,7 +43,7 @@ def run(stage: str, argv: list[str]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
-        "--ext_prefix", default="output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq"
+        "--ext_prefix", default="output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq"
     )
     ap.add_argument("--method", default="cjk_unmask_c3")
     ap.add_argument(
@@ -159,6 +159,8 @@ def main() -> None:
                 "default",
                 "--methods_subdir",
                 "gui-methods/custom",
+                "--output_dir",
+                "output/ckpt/cjk",
                 # stamps ss_ext_pack_sha (D1): the LoRA is coupled to the pack
                 # its TE caches were encoded through.
                 "--ext_pack",
@@ -166,7 +168,7 @@ def main() -> None:
             ],
         )
 
-    lora = f"output/ckpt/{opts.method}.safetensors"
+    lora = f"output/ckpt/cjk/{opts.method}.safetensors"
     base = [
         PY,
         "inference.py",

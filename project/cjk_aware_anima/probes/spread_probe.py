@@ -8,7 +8,7 @@ QW='models/text_encoders/qwen_3_06b_base.safetensors'; DIT='models/diffusion_mod
 te,qtok=load_qwen3_text_encoder(QW,dtype=torch.float32,device='cpu'); t5=load_t5_tokenizer(None)
 ad=load_llm_adapter(DIT,dtype=torch.float32,device='cpu'); tk=AnimaTokenizeStrategy(qtok,t5); es=AnimaTextEncodingStrategy()
 base=ad.embed.weight.data.clone(); N0=base.shape[0]
-table,mapping=ext_vocab.load_ext_assets(Path('output/ckpt/cjk_vocab_pack_synthja_v5')); enc=ext_vocab.HybridT5Encoder.from_mapping(t5,qtok,mapping)
+table,mapping=ext_vocab.load_ext_assets(Path('output/ckpt/cjk_vocab/cjk_vocab_pack_synthja_v5')); enc=ext_vocab.HybridT5Encoder.from_mapping(t5,qtok,mapping)
 ad.embed=torch.nn.Embedding.from_pretrained(torch.cat([base,table.float()]))
 q,qm,_,_=tk.tokenize([""]); pe0,am0,_,_=es.encode_tokens(tk,[te],[q,qm,torch.zeros(1,512,dtype=torch.long),torch.zeros(1,512,dtype=torch.long)])
 L=64

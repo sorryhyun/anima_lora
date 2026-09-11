@@ -37,8 +37,8 @@ a window around one bubble.
 | pack-aware tokenizer | `library.anima.vocab_pack.make_tokenize_strategy` | production path; **inpaint prep's `stage_text` is pack-aware since 2026-09-10** (`--vocab_pack`, config default when omitted; CPU-verified: KO clause routes to ext ids, EN bit-exact). `colorization/` and `region/` preps still build the stock strategy |
 | panel (frame) detector | `models/manga109_yolo/` = `deepghs/manga109_yolo` v2023.12.07_l_yv11 ONNX (`frame` class, F1 0.92) | fetched ad hoc for the probe, not a catalog row; white-gutter XY-cut was tried and fails on this corpus's full-bleed colour pages |
 | S0 / S0b script | `render/corpus_boxes.py` — `det` / `read` / `bubbles` / `panels` / `sheet` | outputs under `output/render/<name>/`, keyed by corpus-relative path; `bubbles` needs `--corpus` since S0b (balloon probe) |
-| published pack | `output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256` | KO/ZH rows trained, never render-validated |
-| geometry-matched random pack | `output/ckpt/cjk_vocab_pack_random_r256` | the s21 control; same json/rows/geometry, random content |
+| published pack | `output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256` | KO/ZH rows trained, never render-validated |
+| geometry-matched random pack | `output/ckpt/cjk_vocab/cjk_vocab_pack_random_r256` | the s21 control; same json/rows/geometry, random content |
 | CER judge | `../cjk_aware_anima/probes/text_bind_judge.py` | PP-OCRv6, JA only; the CER/NFKC/montage scaffolding is reusable |
 | inference | `make test-easycontrol` `_ADAPTERS` table (`scripts/tasks/inference.py`) | needs a `render` row |
 

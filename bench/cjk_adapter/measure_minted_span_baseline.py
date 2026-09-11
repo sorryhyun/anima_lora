@@ -45,10 +45,10 @@ BASE = REPO / "post_image_dataset" / "cjk_distill"
 SMOKE_ARMS = [
     "pre-mint (spelled-out, joint pack)="
     f"{BASE / 'cache_ko'},{BASE / 'cache_desc_ko'}:"
-    f"{REPO / 'output' / 'ckpt' / 'cjk_vocab_pack_synthjako2'}",
+    f"{REPO / 'output' / 'ckpt' / 'cjk_vocab' / 'cjk_vocab_pack_synthjako2'}",
     f"mint init (pooled)={BASE / 'cache_mint_smoke'}:{HERE / 'assets' / 'ext_embed_mint'}",
     f"mint trained (smoke2)={BASE / 'cache_mint_smoke'}:"
-    f"{REPO / 'output' / 'ckpt' / 'cjk_vocab_pack_mint_smoke2'}",
+    f"{REPO / 'output' / 'ckpt' / 'cjk_vocab' / 'cjk_vocab_pack_mint_smoke2'}",
 ]
 
 

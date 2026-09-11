@@ -1,5 +1,5 @@
 {
- "_comment": "Eyeball verdicts coded from report_0827 §8/§9 and plan3 Phase 1/2 tables + the 2026-08-30 contact sheet. identity: 1 = the character is recognisable (hair colour + signature item), 0.5 = one identity cue, 0 = generic. attributes: EN-tag content (miko outfit / plugsuit / mic) landed. stray: extra figure. Arms are output/ckpt/cjk_vocab_pack_<arm>; ja_ext column only. Used by bench/cjk_adapter/residual_probe.py --labels to score candidate metrics (AUC/Spearman) against what the eyes said.",
+ "_comment": "Eyeball verdicts coded from report_0827 §8/§9 and plan3 Phase 1/2 tables + the 2026-08-30 contact sheet. identity: 1 = the character is recognisable (hair colour + signature item), 0.5 = one identity cue, 0 = generic. attributes: EN-tag content (miko outfit / plugsuit / mic) landed. stray: extra figure. Arms are output/ckpt/cjk_vocab/cjk_vocab_pack_<arm>; ja_ext column only. Used by bench/cjk_adapter/residual_probe.py --labels to score candidate metrics (AUC/Spearman) against what the eyes said.",
  "synth_bal": {
   "n1": {
    "identity": 0,

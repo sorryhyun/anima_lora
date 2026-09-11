@@ -18,7 +18,7 @@ REPO = Path(__file__).resolve().parents[2]
 DEFAULT_PAIRS = REPO / "post_image_dataset" / "cjk_distill" / "pairs.jsonl"
 DEFAULT_CACHE = REPO / "post_image_dataset" / "cjk_distill" / "cache"
 DEFAULT_EXT = REPO / "bench" / "cjk_adapter" / "assets" / "ext_embed"
-DEFAULT_OUT = REPO / "output" / "ckpt" / "cjk_vocab_pack"
+DEFAULT_OUT = REPO / "output" / "ckpt" / "cjk_vocab" / "cjk_vocab_pack"
 
 # Per-`via` trust used by the span loss. The composed caption is the *student's*
 # input, so a mistranslated tag trains that tag's ext rows toward the wrong

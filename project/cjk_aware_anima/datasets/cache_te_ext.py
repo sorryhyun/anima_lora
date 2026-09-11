@@ -359,7 +359,7 @@ def main() -> None:
     ap.add_argument(
         "--ext_prefix",
         type=Path,
-        default=REPO / "output" / "ckpt" / "cjk_vocab_pack_synthjako2",
+        default=REPO / "output" / "ckpt" / "cjk_vocab" / "cjk_vocab_pack_synthjako2",
     )
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument(

@@ -26,8 +26,8 @@ append, so the 58,968-row packs read fine against the restaged caches::
 
     make daemon-run ARGS="project/cjk_aware_anima/probes/map_bands_probe.py \\
         --init bench/cjk_adapter/assets/ext_embed_v2 \\
-        --pack output/ckpt/cjk_vocab_pack_synthjakozh1_r256 \\
-        --pack output/ckpt/cjk_vocab_pack_synthjakozh1_fdiag \\
+        --pack output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1_r256 \\
+        --pack output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1_fdiag \\
         --cache_dir cache_tags,cache_ko,cache_desc_ko,cache_zh \\
         --train_registers tags,tags_alt,names,tags_synth_ja,tags_ko,tags_alt_ko,\\
 names_ko,names_synth_ko,desc_ko,tags_zh,tags_alt_zh,names_zh,tags_zh_hant,tags_synth_zh \\

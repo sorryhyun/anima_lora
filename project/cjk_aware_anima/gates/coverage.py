@@ -15,7 +15,7 @@ Two uses:
 Usage (CPU)::
 
     python project/cjk_aware_anima/gates/coverage.py \
-        --pack output/ckpt/cjk_vocab_pack_global.json
+        --pack output/ckpt/cjk_vocab/cjk_vocab_pack_global.json
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ T5 = ext_vocab.T5_TABLE_SIZE
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--pack", default="output/ckpt/cjk_vocab_pack_global.json")
+    ap.add_argument("--pack", default="output/ckpt/cjk_vocab/cjk_vocab_pack_global.json")
     ap.add_argument("--pairs", default="post_image_dataset/cjk_distill/pairs.jsonl")
     ap.add_argument(
         "--prompts",

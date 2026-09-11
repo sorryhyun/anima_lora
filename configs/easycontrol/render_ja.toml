@@ -9,7 +9,7 @@ edition = "ja"
 
 [preprocess]
 edition = "ja"
-vocab_pack = "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256"
+vocab_pack = "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256"
 
 [training]
 network_dim = 32
@@ -21,7 +21,7 @@ network_args = [
 ]
 output_name = "anima_render_ja"
 sigmoid_bias = 0
-vocab_pack = "output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256"
+vocab_pack = "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256"
 
 learning_rate = 2e-5
 max_train_epochs = 4

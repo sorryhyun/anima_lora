@@ -24,7 +24,7 @@ def stats(name):
     if name=='ridge_init':   # untrained ridge-mapped rows: rebuild from build-time assets if present, else skip
         p=Path('bench/cjk_adapter/assets/ext_embed')
         if not p.with_suffix('.safetensors').exists(): return None
-    else: p=Path(f'output/ckpt/cjk_vocab_pack_{name}')
+    else: p=Path(f'output/ckpt/cjk_vocab/cjk_vocab_pack_{name}')
     table,mapping=ext_vocab.load_ext_assets(p); enc=ext_vocab.HybridT5Encoder.from_mapping(t5,qtok,mapping)
     ad.embed=torch.nn.Embedding.from_pretrained(torch.cat([base,table.float()]))
     disp=[];inspan=[];normr=[];cross=[]
