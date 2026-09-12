@@ -86,7 +86,7 @@ def main() -> None:
         name, _, stem = spec.partition("=")
         if not stem:
             sys.exit(f"--arm wants NAME=ckpt_stem, got {spec!r}")
-        lora = REPO / "output" / "ckpt" / f"{stem}.safetensors"
+        lora = REPO / "output" / "ckpt" / "cjk" / f"{stem}.safetensors"
         if not lora.exists():
             sys.exit(f"missing checkpoint: {lora}")
         arms.append((name, lora))

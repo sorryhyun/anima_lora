@@ -209,7 +209,7 @@ Compatibility matrix (extends the one above):
 | old (≤ 3.9.1 vendor tree) | partitioned with rows | row-count check passes; quoted spans hit *trained* rows (no quote rule) — the digest check does not exist there either |
 | old | seed-only partitioned | refused (row-count mismatch) |
 
-First built pack: `output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq`
+First built pack: `output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq`
 (C9's 69,558 rows + mirror at rows 69,558–139,116, seed 0, norm 212.165 =
 the native T5 mean row norm; mirror PR 1009, pair cos 0.0002; sha256
 `2cf81cbc…`). Tests: `tests/test_ext_vocab_iso.py`.

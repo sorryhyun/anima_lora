@@ -43,7 +43,7 @@ def run(stage: str, argv: list[str]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
-        "--ext_prefix", default="output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq"
+        "--ext_prefix", default="output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq"
     )
     ap.add_argument("--method", default="cjk_unmask_c3")
     ap.add_argument(
@@ -100,6 +100,12 @@ def main() -> None:
         "the plain-vs-OCR A/B's arm OCR (2026-09-08). --records/--ocr_format "
         "are ignored.",
     )
+    ap.add_argument(
+        "--strip_symbols",
+        action="store_true",
+        help="cache_te_ext --strip_symbols: the OCR clauses carry no hearts / "
+        "stars / notes (arm NOSYM, 2026-09-08).",
+    )
     ap.add_argument("--skip_cache", action="store_true")
     ap.add_argument("--skip_train", action="store_true")
     ap.add_argument(
@@ -137,6 +143,7 @@ def main() -> None:
                 "--ocr_format",
                 opts.ocr_format,
                 *(["--drop_sfx"] if opts.drop_sfx else []),
+                *(["--strip_symbols"] if opts.strip_symbols else []),
             ],
         )
 
@@ -152,6 +159,8 @@ def main() -> None:
                 "default",
                 "--methods_subdir",
                 "gui-methods/custom",
+                "--output_dir",
+                "output/ckpt/cjk",
                 # stamps ss_ext_pack_sha (D1): the LoRA is coupled to the pack
                 # its TE caches were encoded through.
                 "--ext_pack",
@@ -159,7 +168,7 @@ def main() -> None:
             ],
         )
 
-    lora = f"output/ckpt/{opts.method}.safetensors"
+    lora = f"output/ckpt/cjk/{opts.method}.safetensors"
     base = [
         PY,
         "inference.py",

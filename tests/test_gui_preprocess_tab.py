@@ -129,8 +129,7 @@ def test_preprocess_tab_persists_masking_settings_to_variant():
 
         card = tab._rule_cards[0]
         card.widgets["path_pattern"].setText("character_a/*")
-        card.widgets["prompts"].setText("speech bubble, artist")
-        card.widgets["focus_prompts"].setText("girl")
+        card.widgets["masks"].setText("keep:text:girl, ignore:text:speech bubble")
         card.widgets["threshold"].setValue(0.45)
         card.widgets["dilate"].setValue(7)
 
@@ -138,12 +137,10 @@ def test_preprocess_tab_persists_masking_settings_to_variant():
 
         meta = _load(path)["variant"]
         assert meta["run_sam_mask"] is False
-        # `focus_prompts = "girl"` is the package's own default, so it is
-        # elided; a card that clears it keeps an explicit `"none"`.
         assert meta["stages"]["masks_sam"] == [
             {
                 "path_pattern": "character_a/*",
-                "prompts": "speech bubble, artist",
+                "masks": ["keep:text:girl", "ignore:text:speech bubble"],
                 "threshold": 0.45,
                 "dilate": 7,
             }
@@ -155,7 +152,10 @@ def test_preprocess_tab_persists_masking_settings_to_variant():
         import json
 
         forms = json.loads(tab.preprocess_env()["PREPROCESS_STAGES_JSON"])
-        assert forms["masks_sam"][0]["prompts"] == "speech bubble, artist"
+        assert forms["masks_sam"][0]["masks"] == [
+            "keep:text:girl",
+            "ignore:text:speech bubble",
+        ]
         assert forms["masks_sam"][0]["path_pattern"] == "character_a/*"
 
         assert tab.persist_preprocess_inputs()
@@ -168,14 +168,17 @@ def test_preprocess_tab_persists_masking_settings_to_variant():
 
         # Reload: the card comes back as saved.
         tab.set_variant(variant, method="lora")
-        assert tab._rule_cards[0].widgets["prompts"].text() == "speech bubble, artist"
+        assert (
+            tab._rule_cards[0].widgets["masks"].text()
+            == "keep:text:girl, ignore:text:speech bubble"
+        )
         assert tab._rule_cards[0].widgets["dilate"].value() == 7
 
         if tab is not None:
             tab.deleteLater()
 
 
-def test_preprocess_tab_refuses_a_sam_card_with_nothing_to_mask(monkeypatch):
+def test_preprocess_tab_refuses_a_sam_card_with_a_malformed_mask(monkeypatch):
     """The request's own validation fires in the Save dialog, not after a
     SAM3 load."""
     from PySide6.QtWidgets import QMessageBox
@@ -192,10 +195,9 @@ def test_preprocess_tab_refuses_a_sam_card_with_nothing_to_mask(monkeypatch):
         tab = _make_tab()
         tab.set_variant(variant, method="lora")
         card = tab._rule_cards[0]
-        card.widgets["prompts"].setText("none")
-        card.widgets["focus_prompts"].setText("none")
+        card.widgets["masks"].setText("girl")
         assert not tab._save_all()
-        assert warned and "nothing to mask" in warned[-1]
+        assert warned and "ROLE:KIND:VALUE" in warned[-1]
         # A cache-build save (mask section excluded) is not blocked by it.
         assert tab.persist_preprocess_inputs()
         if tab is not None:
@@ -380,16 +382,15 @@ def test_masking_task_reads_the_gui_rule_cards(monkeypatch, tmp_path):
         tab = _make_tab()
         tab.set_variant(variant, method="lora")
         tab._rule_cards[0].widgets["path_pattern"].setText("character_a/*")
-        tab._rule_cards[0].widgets["prompts"].setText("bubble")
-        tab.sam_section.add_rule_card(
-            {"prompts": "none", "focus_prompts": "girl", "threshold": 0.4}
-        )
+        tab._rule_cards[0].widgets["masks"].setText("ignore:text:bubble")
+        tab.sam_section.add_rule_card({"masks": "keep:text:girl", "threshold": 0.4})
         env = tab.preprocess_env()
         if tab is not None:
             tab.deleteLater()
 
     monkeypatch.setenv("PREPROCESS_STAGES_JSON", env["PREPROCESS_STAGES_JSON"])
     a, b = masking._sam_requests(tmp_path / "resized", tmp_path)
-    assert a.prompts == ("bubble",) and a.path_pattern == "character_a/*"
-    assert b.focus_prompts == ("girl",) and b.threshold == 0.4 and b.prompts == ()
+    assert [m.spec() for m in a.masks] == ["ignore:text:bubble"]
+    assert a.path_pattern == "character_a/*"
+    assert [m.spec() for m in b.masks] == ["keep:text:girl"] and b.threshold == 0.4
     assert a.mask_dir != b.mask_dir

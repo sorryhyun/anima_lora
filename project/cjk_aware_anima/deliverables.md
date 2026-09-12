@@ -40,7 +40,7 @@ Caches on disk: `post_image_dataset/cjk_distill/cache_synth2` (~155–170 G,
 `cache_synth/` were deleted 2026-08-28 and rebuild from the kept jsonl
 (~15 min / ~1 h on the daemon).
 
-## Trained packs (`output/ckpt/cjk_vocab_pack_*.{safetensors,json}`)
+## Trained packs (`output/ckpt/cjk_vocab/cjk_vocab_pack_*.{safetensors,json}`)
 
 | pack | recipe | role |
 |---|---|---|

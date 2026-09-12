@@ -25,10 +25,12 @@
             {
               "batch_size": 1,
               "dilate": 5,
-              "focus_prompts": "none",
               "force": false,
+              "masks": [
+                "ignore:text:speech bubble",
+                "ignore:text:text bubble"
+              ],
               "path_pattern": "",
-              "prompts": "speech bubble, text bubble",
               "threshold": 0.5,
               "workers": 4
             }
@@ -52,8 +54,10 @@
         "stages": {
           "masks_sam": [
             {
-              "focus_prompts": "none",
-              "prompts": "speech bubble, text bubble"
+              "masks": [
+                "ignore:text:speech bubble",
+                "ignore:text:text bubble"
+              ]
             }
           ],
           "resize": {
@@ -104,10 +108,12 @@
             {
               "batch_size": 1,
               "dilate": 5,
-              "focus_prompts": "none",
               "force": false,
+              "masks": [
+                "ignore:text:speech bubble",
+                "ignore:text:text bubble"
+              ],
               "path_pattern": "",
-              "prompts": "speech bubble, text bubble",
               "threshold": 0.5,
               "workers": 4
             }
@@ -131,8 +137,10 @@
         "stages": {
           "masks_sam": [
             {
-              "focus_prompts": "none",
-              "prompts": "speech bubble, text bubble"
+              "masks": [
+                "ignore:text:speech bubble",
+                "ignore:text:text bubble"
+              ]
             }
           ],
           "resize": {
@@ -148,8 +156,10 @@
         "stages": {
           "masks_sam": [
             {
-              "focus_prompts": "none",
-              "prompts": "speech bubble, text bubble"
+              "masks": [
+                "ignore:text:speech bubble",
+                "ignore:text:text bubble"
+              ]
             }
           ],
           "resize": {
@@ -190,20 +200,24 @@
             {
               "batch_size": 1,
               "dilate": 7,
-              "focus_prompts": "face",
               "force": false,
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35,
               "workers": 4
             },
             {
               "batch_size": 1,
               "dilate": 2,
-              "focus_prompts": "none",
               "force": false,
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "path_pattern": "",
-              "prompts": "watermark",
               "threshold": 0.6,
               "workers": 4
             }
@@ -253,15 +267,19 @@
           "masks_sam": [
             {
               "dilate": 7,
-              "focus_prompts": "face",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35
             },
             {
               "dilate": 2,
-              "focus_prompts": "none",
-              "prompts": "watermark",
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "threshold": 0.6
             }
           ],
@@ -309,8 +327,10 @@
           },
           "masks_sam": [
             {
-              "focus_prompts": "none",
-              "prompts": "speech bubble, text bubble"
+              "masks": [
+                "ignore:text:speech bubble",
+                "ignore:text:text bubble"
+              ]
             }
           ],
           "resize": {
@@ -363,20 +383,24 @@
             {
               "batch_size": 1,
               "dilate": 7,
-              "focus_prompts": "face",
               "force": false,
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35,
               "workers": 4
             },
             {
               "batch_size": 1,
               "dilate": 2,
-              "focus_prompts": "none",
               "force": false,
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "path_pattern": "",
-              "prompts": "watermark",
               "threshold": 0.6,
               "workers": 4
             }
@@ -426,15 +450,19 @@
           "masks_sam": [
             {
               "dilate": 7,
-              "focus_prompts": "face",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35
             },
             {
               "dilate": 2,
-              "focus_prompts": "none",
-              "prompts": "watermark",
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "threshold": 0.6
             }
           ],
@@ -483,15 +511,19 @@
           "masks_sam": [
             {
               "dilate": 7,
-              "focus_prompts": "face",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35
             },
             {
               "dilate": 2,
-              "focus_prompts": "none",
-              "prompts": "watermark",
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "threshold": 0.6
             }
           ],
@@ -547,10 +579,12 @@
             {
               "batch_size": 1,
               "dilate": 3,
-              "focus_prompts": "face",
               "force": false,
+              "masks": [
+                "keep:text:face",
+                "ignore:text:sign"
+              ],
               "path_pattern": "",
-              "prompts": "sign",
               "threshold": 0.4,
               "workers": 4
             }
@@ -584,8 +618,10 @@
           "masks_sam": [
             {
               "dilate": 3,
-              "focus_prompts": "face",
-              "prompts": "sign",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:sign"
+              ],
               "threshold": 0.4
             }
           ],
@@ -642,10 +678,12 @@
             {
               "batch_size": 1,
               "dilate": 3,
-              "focus_prompts": "face",
               "force": false,
+              "masks": [
+                "keep:text:face",
+                "ignore:text:sign"
+              ],
               "path_pattern": "",
-              "prompts": "sign",
               "threshold": 0.4,
               "workers": 4
             }
@@ -679,8 +717,10 @@
           "masks_sam": [
             {
               "dilate": 3,
-              "focus_prompts": "face",
-              "prompts": "sign",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:sign"
+              ],
               "threshold": 0.4
             }
           ],
@@ -702,8 +742,10 @@
           "masks_sam": [
             {
               "dilate": 3,
-              "focus_prompts": "face",
-              "prompts": "sign",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:sign"
+              ],
               "threshold": 0.4
             }
           ],
@@ -746,20 +788,24 @@
             {
               "batch_size": 1,
               "dilate": 7,
-              "focus_prompts": "face",
               "force": false,
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35,
               "workers": 4
             },
             {
               "batch_size": 1,
               "dilate": 2,
-              "focus_prompts": "none",
               "force": false,
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "path_pattern": "",
-              "prompts": "watermark",
               "threshold": 0.6,
               "workers": 4
             }
@@ -808,15 +854,19 @@
           "masks_sam": [
             {
               "dilate": 7,
-              "focus_prompts": "face",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35
             },
             {
               "dilate": 2,
-              "focus_prompts": "none",
-              "prompts": "watermark",
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "threshold": 0.6
             }
           ],
@@ -864,8 +914,10 @@
           "masks_sam": [
             {
               "dilate": 3,
-              "focus_prompts": "face",
-              "prompts": "sign",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:sign"
+              ],
               "threshold": 0.4
             }
           ],
@@ -919,20 +971,24 @@
             {
               "batch_size": 1,
               "dilate": 7,
-              "focus_prompts": "face",
               "force": false,
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35,
               "workers": 4
             },
             {
               "batch_size": 1,
               "dilate": 2,
-              "focus_prompts": "none",
               "force": false,
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "path_pattern": "",
-              "prompts": "watermark",
               "threshold": 0.6,
               "workers": 4
             }
@@ -982,15 +1038,19 @@
           "masks_sam": [
             {
               "dilate": 7,
-              "focus_prompts": "face",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35
             },
             {
               "dilate": 2,
-              "focus_prompts": "none",
-              "prompts": "watermark",
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "threshold": 0.6
             }
           ],
@@ -1039,15 +1099,19 @@
           "masks_sam": [
             {
               "dilate": 7,
-              "focus_prompts": "face",
+              "masks": [
+                "keep:text:face",
+                "ignore:text:bubble",
+                "ignore:text:sfx"
+              ],
               "path_pattern": "artist_b/*",
-              "prompts": "bubble, sfx",
               "threshold": 0.35
             },
             {
               "dilate": 2,
-              "focus_prompts": "none",
-              "prompts": "watermark",
+              "masks": [
+                "ignore:text:watermark"
+              ],
               "threshold": 0.6
             }
           ],

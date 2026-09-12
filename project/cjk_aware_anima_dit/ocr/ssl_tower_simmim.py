@@ -83,6 +83,8 @@ class UnlabelledCrops(Dataset):
     def __init__(self, df: pd.DataFrame, root: Path):
         self.paths = [str(root / p) for p in df.path]
         self.area = (df.w * df.h).to_numpy()
+        self.w, self.h = df.w.to_numpy(), df.h.to_numpy()
+        self.tok = None  # set in main() once the image processor's pixel budget is known
 
     def __len__(self):
         return len(self.paths)
@@ -171,7 +173,9 @@ def main():
     ap.add_argument(
         "--manifest_name",
         help="manifest_test_<name>.parquet under $ANIMA_ANIMETEXT_ROOT/animetext_crops "
-        "(the root may hold spaces the daemon's ARGS cannot carry)",
+        "(the root may hold spaces the daemon's ARGS cannot carry); a value that "
+        "already starts with 'manifest' is used as the stem verbatim, e.g. "
+        "--manifest_name manifest_all",
     )
     ap.add_argument("--epochs", type=int, default=5)
     ap.add_argument("--bs", type=int, default=32)
@@ -188,10 +192,34 @@ def main():
         help="--target feat: weight of the feature loss on the UNmasked tokens",
     )
     ap.add_argument("--val", type=int, default=512, help="held-out crops")
+    ap.add_argument(
+        "--save_every",
+        type=int,
+        default=0,
+        help="also write the tower every N optimizer steps to <run>/last/ "
+        "(0 = only at epoch end; a long single-epoch pass wants this)",
+    )
+    ap.add_argument(
+        "--token_budget",
+        type=int,
+        default=0,
+        help="cap each batch's total packed tokens instead of only its crop count "
+        "(0 = off, the crop-count-only behaviour that OOMs on the large-crop tail). "
+        "--bs stays the upper bound on crops. 24000 is ~1.2x the median batch and "
+        "costs +0.6%% more steps on manifest_all",
+    )
     ap.add_argument("--max_train", type=int)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no_grad_ckpt", action="store_true")
+    ap.add_argument(
+        "--attn",
+        default="sdpa",
+        choices=["sdpa", "flash_attention_2", "eager"],
+        help="tower attention kernel. sdpa (the 2026-09-08 default) attends over the "
+        "whole NaViT-packed sequence as one dense block; flash_attention_2 takes the "
+        "cu_seqlens varlen path, i.e. per-crop attention",
+    )
     ap.add_argument("--smoke", action="store_true")
     a = ap.parse_args()
     if a.smoke:
@@ -210,11 +238,12 @@ def main():
     else:
         root = animetext_root()
         name = a.manifest_name or ("smoke" if a.smoke else "")
-        mpath = (
-            root
-            / "animetext_crops"
-            / f"manifest_test{'_' + name if name else ''}.parquet"
+        stem = (
+            name.removesuffix(".parquet")
+            if name.startswith("manifest")
+            else f"manifest_test{'_' + name if name else ''}"
         )
+        mpath = root / "animetext_crops" / f"{stem}.parquet"
     df = pd.read_parquet(mpath)
     df = df.sample(frac=1.0, random_state=a.seed).reset_index(drop=True)
     va_df, tr_df = df.iloc[: a.val], df.iloc[a.val :]
@@ -233,8 +262,17 @@ def main():
             "longest_edge": 1280 * 28 * 28,
         }
     }
+    if a.token_budget:
+        min_px, max_px = ikw["size"]["shortest_edge"], ikw["size"]["longest_edge"]
+        for ds in (tr, va):
+            ds.tok = cd.vl_tokens(ds.w, ds.h, min_px, max_px)
+        print(
+            f"token budget {a.token_budget}/batch (bs {a.bs} max); per-crop tokens "
+            f"median {int(np.median(tr.tok))} max {int(tr.tok.max())}",
+            flush=True,
+        )
     full = AutoModelForImageTextToText.from_pretrained(
-        str(BASE), dtype=torch.bfloat16, attn_implementation="sdpa"
+        str(BASE), dtype=torch.bfloat16, attn_implementation=a.attn
     )
     if not a.no_grad_ckpt:
         full.gradient_checkpointing_enable(
@@ -296,7 +334,11 @@ def main():
     )
     clip_params = masters + [mask_token] + list(head.parameters())
     rng = random.Random(a.seed)
-    steps_per_epoch = max(1, len(tr) // a.bs // a.grad_accum)
+    if a.token_budget:  # a budget yields ~0.6% more, shorter batches than len//bs
+        n_batches = len(cd.token_batches(tr.tok, a.token_budget, a.bs, random.Random(a.seed)))
+        steps_per_epoch = max(1, n_batches // a.grad_accum)
+    else:
+        steps_per_epoch = max(1, len(tr) // a.bs // a.grad_accum)
     total = steps_per_epoch * a.epochs
     if a.smoke:
         total = min(total, 30)
@@ -369,9 +411,14 @@ def main():
     step, micro, t0, seen = 0, 0, time.time(), 0
     gen = torch.Generator().manual_seed(a.seed)
     for ep in range(1, a.epochs + 1):
+        sampler = (
+            cd.token_batches(tr.tok, a.token_budget, a.bs, rng)
+            if a.token_budget
+            else cd.area_batches(tr.area, a.bs, rng)
+        )
         dl = DataLoader(
             tr,
-            batch_sampler=cd.area_batches(tr.area, a.bs, rng),
+            batch_sampler=sampler,
             num_workers=a.workers,
             collate_fn=cd.collate_raw,
         )
@@ -396,6 +443,22 @@ def main():
                 for (_, p), m in zip(tower_params, masters):
                     p.copy_(m)
             step += 1
+            if a.save_every and step % a.save_every == 0 and step < total:
+                last = out / "last"
+                last.mkdir(exist_ok=True)
+                save_tower(last / "tower.safetensors", visual)
+                torch.save(
+                    {
+                        "mask_token": mask_token.detach().cpu(),
+                        "head": head.state_dict(),
+                    },
+                    last / "ssl_head.pt",
+                )
+                (last / "state.json").write_text(
+                    json.dumps(
+                        {"epoch": ep, "step": step, "total": total, "seen": seen}
+                    )
+                )
             if step % 25 == 0 or step == total or step == 1:
                 el = time.time() - t0
                 print(

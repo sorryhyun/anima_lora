@@ -52,23 +52,25 @@ real metric.
 ## The table
 
 <!-- TABLE -->
-| reader | sincos SFX ♡-blind | strict | COO SFX ♡-blind | COO speech ♡-blind | in-domain val | note |
-|---|---|---|---|---|---|---|
-| `vl16_stock` | **52** / 617 (8.4 %) | 19 | — | — | — | stock VL-1.6, no fine-tune |
-| `manga_ocr_stock` | **15** / 617 (2.4 %) | 6 | — | — | — | stock manga-ocr |
-| `mocr_lr5e-5` | **153** / 617 (24.8 %) | 127 | — | — | 74.9 % | manga-ocr fine-tuned |
-| `vl16_lr1e-4` | **157** / 617 (25.4 %) | 110 | 1704 / 2558 (66.6 %) | 2207 / 2559 (86.2 %) | 66.2 % | arm B — LoRA, tower frozen |
-| `vl16_tower_lr1e-5` | **375** / 617 (60.8 %) | 312 | 2127 / 2558 (83.2 %) | 2259 / 2559 (88.3 %) | 86.2 % | **arm B′** — LoRA + tower unfrozen; the published reader |
-| `vl16_tower_col100` | **377** / 617 (61.1 %) | 323 | 2171 / 2558 (84.9 %) | 2246 / 2559 (87.8 %) | 85.6 % | B′ + 1.6 % colorized append |
-| `vl16_tower_col1500sw` | **341** / 617 (55.3 %) | 281 | 2188 / 2558 (85.5 %) | 2263 / 2559 (88.4 %) | 86.1 % | B′ + 22.3 % colorized swap |
-| `vl16_pl_20k` | **402** / 617 (65.2 %) | 334 | 2189 / 2558 (85.6 %) | 2260 / 2559 (88.3 %) | 86.1 % | B′ + 20.6 % pseudo-label append (P1, cross-reader agreement) |
-| `vl16_tower_ep3` | **360** / 617 (58.3 %) | 306 | 2234 / 2558 (87.3 %) | 2282 / 2559 (89.2 %) | 88.3 % | B′ × 3 epochs |
-| `vl16_lpft` | **345** / 617 (55.9 %) | 264 | 2157 / 2558 (84.3 %) | 2242 / 2559 (87.6 %) | 86.8 % | LP-FT — arm B then B′ |
-| `vl16_tower_ssl` | **380** / 617 (61.6 %) | 307 | 2165 / 2558 (84.6 %) | 2256 / 2559 (88.2 %) | 87.2 % | B′ from an SSL tower (draw20k, 4.4k steps) |
-| `vl16_tower_ssl_all` | **378** / 617 (61.3 %) | 301 | 2194 / 2558 (85.8 %) | 2259 / 2559 (88.3 %) | 87.8 % | B′ from an SSL tower (manifest_all, 12k steps) |
-| `vl16_tower_ssl_all_lr5e5` | **378** / 617 (61.3 %) | 288 | 2188 / 2558 (85.5 %) | 2262 / 2559 (88.4 %) | 87.8 % | same tower, LoRA lr 5e-5 |
-| `hayai_v2_1_5` | **351** / 617 (56.9 %) | 316 | — | — | — | hayai v2.1.5 sidecar (~1/6 the parameters) |
-| `sfx_pkg` | **374** / 617 (60.6 %) | 311 | — | — | — | shipped `anime_tools.ocr.sfx` (B′ + decode guard) |
+| reader | sincos SFX ♡-blind | strict | COO SFX ♡-blind | COO speech ♡-blind | COO spaced | in-domain val | note |
+|---|---|---|---|---|---|---|---|
+| `vl16_stock` | **52** / 617 (8.4 %) | 19 | — | — | — | — | stock VL-1.6, no fine-tune |
+| `manga_ocr_stock` | **15** / 617 (2.4 %) | 6 | — | — | — | — | stock manga-ocr |
+| `mocr_lr5e-5` | **153** / 617 (24.8 %) | 127 | — | — | — | 74.9 % | manga-ocr fine-tuned |
+| `vl16_lr1e-4` | **157** / 617 (25.4 %) | 110 | 1704 / 2558 (66.6 %) | 2207 / 2559 (86.2 %) | 0 / 198 | 66.2 % | arm B — LoRA, tower frozen |
+| `vl16_tower_lr1e-5` | **375** / 617 (60.8 %) | 312 | 2127 / 2558 (83.2 %) | 2259 / 2559 (88.3 %) | 1 / 198 | 86.2 % | **arm B′** — LoRA + tower unfrozen; the published reader |
+| `vl16_tower_col100` | **377** / 617 (61.1 %) | 323 | 2171 / 2558 (84.9 %) | 2246 / 2559 (87.8 %) | 0 / 198 | 85.6 % | B′ + 1.6 % colorized append |
+| `vl16_tower_col1500sw` | **341** / 617 (55.3 %) | 281 | 2188 / 2558 (85.5 %) | 2263 / 2559 (88.4 %) | 1 / 198 | 86.1 % | B′ + 22.3 % colorized swap |
+| `vl16_pl_20k` | **402** / 617 (65.2 %) | 334 | 2189 / 2558 (85.6 %) | 2260 / 2559 (88.3 %) | 0 / 198 | 86.1 % | B′ + 20.6 % pseudo-label append (P1, cross-reader agreement) |
+| `vl16_pl_kozh` | **391** / 617 (63.4 %) | 331 | 2167 / 2558 (84.7 %) | 2273 / 2559 (88.8 %) | 14 / 198 | 86.9 % | B′ + 27.5 % pseudo append (P1 JA 20k + K2 KO 5 930 / ZH 3 300) |
+| `vl16_b2_norm2` | **350** / 617 (56.7 %) | 297 | 2138 / 2558 (83.6 %) | 2255 / 2559 (88.1 %) | 19 / 198 | 87.0 % | B′ recipe verbatim under TARGET_NORM 2 (plan_vl_respace R2) |
+| `vl16_tower_ep3` | **360** / 617 (58.3 %) | 306 | 2234 / 2558 (87.3 %) | 2282 / 2559 (89.2 %) | 1 / 198 | 88.3 % | B′ × 3 epochs |
+| `vl16_lpft` | **345** / 617 (55.9 %) | 264 | 2157 / 2558 (84.3 %) | 2242 / 2559 (87.6 %) | 0 / 198 | 86.8 % | LP-FT — arm B then B′ |
+| `vl16_tower_ssl` | **380** / 617 (61.6 %) | 307 | 2165 / 2558 (84.6 %) | 2256 / 2559 (88.2 %) | 0 / 198 | 87.2 % | B′ from an SSL tower (draw20k, 4.4k steps) |
+| `vl16_tower_ssl_all` | **378** / 617 (61.3 %) | 301 | 2194 / 2558 (85.8 %) | 2259 / 2559 (88.3 %) | 0 / 198 | 87.8 % | B′ from an SSL tower (manifest_all, 12k steps) |
+| `vl16_tower_ssl_all_lr5e5` | **378** / 617 (61.3 %) | 288 | 2188 / 2558 (85.5 %) | 2262 / 2559 (88.4 %) | 1 / 198 | 87.8 % | same tower, LoRA lr 5e-5 |
+| `hayai_v2_1_5` | **351** / 617 (56.9 %) | 316 | — | — | — | — | hayai v2.1.5 sidecar (~1/6 the parameters) |
+| `sfx_pkg` | **374** / 617 (60.6 %) | 311 | — | — | — | — | shipped `anime_tools.ocr.sfx` (B′ + decode guard) |
 <!-- /TABLE -->
 
 ## What it says

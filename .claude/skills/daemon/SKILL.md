@@ -13,7 +13,7 @@ Local FIFO job queue (`anima_daemon/`), auto-starts on first submit. Full HTTP c
 
 ## Targets
 
-`make daemon | daemon-run ARGS="<script.py> …" | daemon-wait [JOB=<id>] | daemon-attach [JOB=<id>] | daemon-pause [JOB=<id>] | daemon-resume [JOB=<id>] | daemon-kill | daemon-terminate | daemon-prune`
+`make daemon | daemon-run ARGS="<script.py> …" | daemon-wait [JOB=<id>] | daemon-attach [JOB=<id>] | daemon-jobs | daemon-log [JOB=<id>] | daemon-pause [JOB=<id>] | daemon-resume [JOB=<id>] | daemon-kill | daemon-terminate | daemon-prune`
 
 - Front door: **`make daemon-run ARGS="<script.py> [flags]"`** — attach-by-default, exits with the job's code; `--queue` detaches, `--inline` bypasses the daemon; `--stall-timeout S` where `0` = off. daemon-run's own `--label`/`--stall-timeout` go **before** the script path — after it every token reaches the child untouched (bench scripts take `--label` themselves), and `-- ` passes everything after it verbatim (run-mode flags included). No Python snippet needed; `python -m anima_daemon submit|wait|status` is the same thing without `tasks.py`.
 - **`make daemon-wait [JOB=<id>]`** blocks to terminal and prints the record + result envelope, exiting with the job's code (`DaemonClient.wait()` programmatically) — don't hand-roll an HTTP poll loop.
@@ -23,17 +23,18 @@ Local FIFO job queue (`anima_daemon/`), auto-starts on first submit. Full HTTP c
 
 ## Retention
 
-Job dirs are retention-bounded: at boot, before `load_all()`, the daemon prunes terminal jobs older than 30d (keeping the newest 200). `make daemon-prune` is the manual sweep — dry-run unless `ARGS="--apply"`. Knobs: `ANIMA_DAEMON_JOB_RETENTION_DAYS` / `ANIMA_DAEMON_JOB_KEEP`.
+Job dirs are retention-bounded: at boot, before `load_all()`, the daemon prunes terminal jobs older than 30d (keeping the newest 200). `make daemon-prune` is the manual sweep — dry-run unless `ARGS="--apply"`. Knobs: `ANIMA_DAEMON_JOB_RETENTION_DAYS` / `ANIMA_DAEMON_JOB_RETENTION_KEEP`.
 
 ## Discovery & agent surface
 
 - Discovery is pidfile-based: `output/daemon/daemon.json` / `~/.anima/daemon.json` → `{port, root}`. **Never hardcode 8765** — the port falls back to ephemeral on collision.
+- **`make daemon-jobs`** is the human view: one line per job, **oldest first**, so `| tail -5` is the five most recent. `daemon-status`'s JSON is newest-first, so tailing *it* shows the oldest rows, cut mid-record. **`make daemon-log [JOB=<id>]`** dumps a job's stdout from disk (`ARGS="-n 200"`; `-n 0` = all) — `daemon-attach` only follows a *live* stream, so it has nothing for a finished job. Both fall back to the on-disk records when the daemon is down.
 - `make daemon-status` prints one JSON object (health + resolved `base_url` + compact job summaries, newest-first and capped, each with a derived `target` + `jobs_total`/`jobs_shown`/`jobs_pinned`; unfinished jobs — `queued`/`running`/`paused` — are pinned in even when they fall below the cap, so a pending queue never reads as empty). Filter via `ARGS="--running|--failed|--done|--state s|--limit N|--all"`; `--full` for raw records; `--job <id>`/`JOB=<id>` for one full record with its bench `result.json` inlined. Passive; exit 1 when down.
 - The daemon self-describes at `GET /` (README) and `GET /tools` (JSON-Schema manifest). `anima_daemon/mcp.py` is a stdio MCP bridge over the same surface — register the script path as the MCP command; it discovers the daemon itself.
 
 ## Batch generation: `make gen`
 
-The daemon-routed batch-generation front door — same argv + env levers as `make test`, but submitted as a GPU command job (attach-by-default; `--queue` detaches, `--inline` bypasses). Lands a `gen_manifest.json` in the job record: `inference.py`'s `write_gen_manifest` drops a `result_path.json` pointer when the daemon exports `ANIMA_DAEMON_JOB_DIR` (the proposal Phase 1a result-lift; a plain `python inference.py` is unaffected). Use it for eval grids / seed sweeps / ad-hoc renders; interactive single images stay on `make test` or the resident inference server.
+The daemon-routed batch-generation front door — same argv + env levers as `make test`, but submitted as a GPU command job (attach-by-default; `--queue` detaches, `--inline` bypasses). Lands a `gen_manifest.json` in the job record: `inference.py`'s `write_gen_manifest` drops a `result_path.json` pointer when the daemon exports `ANIMA_DAEMON_JOB_DIR` (a plain `python inference.py` is unaffected). Use it for eval grids / seed sweeps / ad-hoc renders; interactive single images stay on `make test` or the resident inference server.
 
 ## Run status: `make run-status`
 

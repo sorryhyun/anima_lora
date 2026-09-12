@@ -60,7 +60,7 @@ SCENARIOS: dict[str, dict[str, dict]] = {
             "path_pattern": "artist_x/*",
             "threshold": 0.4,
             "dilate": 3,
-            "rules": [{"prompts": ["sign"], "focus_prompts": ["face"]}],
+            "rules": [{"masks": ["keep:text:face", "ignore:text:sign"]}],
         },
     },
 }
@@ -98,14 +98,12 @@ def _flip_every_knob(tab) -> None:
         [
             {
                 "path_pattern": "artist_b/*",
-                "prompts": "bubble, sfx",
-                "focus_prompts": "face",
+                "masks": "keep:text:face, ignore:text:bubble, ignore:text:sfx",
                 "threshold": 0.35,
                 "dilate": 7,
             },
             {
-                "prompts": "watermark",
-                "focus_prompts": "none",
+                "masks": "ignore:text:watermark",
                 "threshold": 0.6,
                 "dilate": 2,
             },

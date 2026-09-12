@@ -14,7 +14,7 @@ ordinary span loss while every base row stays frozen
 Usage::
 
     python bench/cjk_adapter/mint_words.py \
-        --pack output/ckpt/cjk_vocab_pack_synthjako2 \
+        --pack output/ckpt/cjk_vocab/cjk_vocab_pack_synthjako2 \
         --words 하쿠레이 레이무 쌍둥이 ... \
         --out bench/cjk_adapter/assets/ext_embed_mint
 

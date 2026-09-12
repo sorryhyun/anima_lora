@@ -126,6 +126,21 @@ COMMANDS = {
         "summaries; --full for raw records, --job <id>/JOB=<id> for one record "
         "+ its result envelope). Passive — never starts a daemon; exit 1 when down.",
     ),
+    "daemon-jobs": (
+        daemon.cmd_daemon_jobs,
+        "Job history as lines, OLDEST first — the newest row is last, so "
+        "'| tail -5' means the five most recent (daemon-status's JSON is "
+        "newest-first, which made tail show the oldest). Same filters "
+        "(--limit N/--all/--running/--failed/--done/--state s); reads the "
+        "on-disk records when the daemon is down.",
+    ),
+    "daemon-log": (
+        daemon.cmd_daemon_log,
+        "Dump a job's captured stdout from disk: JOB=<id> (default: the most "
+        'recent job), ARGS="-n 200" to bound the tail (-n 0 = whole file). '
+        "Works on finished jobs and with the daemon down — daemon-attach only "
+        "follows a live stream.",
+    ),
     "daemon-run": (
         daemon.cmd_daemon_run,
         'Run an arbitrary command on the GPU queue: ARGS="<script.py> [flags]". '

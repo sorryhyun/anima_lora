@@ -1,9 +1,9 @@
 # SAM3 masking config. Two schemas are accepted:
 #
-#  1. Flat (this file's default) — one prompt set for every matched image.
+#  1. Flat (this file's default) — one region list for every matched image.
 #  2. Rules array (see the commented `rules:` example below) — several mask
 #     types routed to different images by `path_pattern`. Every rule whose
-#     pattern matches an image COMPOSES (ignore-regions union, focus-regions
+#     pattern matches an image COMPOSES (keep-regions union, ignore-regions
 #     union). A `rules:` key, when present, replaces the flat fields.
 #
 # `make mask` (scripts/tasks/masking.py) translates this file into
@@ -20,16 +20,21 @@
 # `masked_loss = true` (configs/base.toml) — that key is the switch, a
 # mask tree on disk alone never re-enables masked loss.
 #
-# Within either schema:
-#   prompts        subjects to mask OUT (ignored in the loss; train on the rest)
-#   focus_prompts  reversed polarity — keep ONLY these, ignore everything else
-#                  (e.g. `girl` masks all background). Composes with `prompts`:
-#                  trainable = focus subject MINUS the ignore regions.
+# Within either schema, `masks` lists the regions, one ROLE:KIND:VALUE each:
+#   ROLE  keep    train ONLY inside the union of the keep regions
+#                 (e.g. `keep:text:girl` masks the whole background)
+#         ignore  mask this region OUT of the loss — out of the keep region,
+#                 or out of the whole image when nothing is kept
+#   KIND  text    VALUE is a SAM3 text prompt
+#         soft    VALUE is a learned prompt .safetensors
+#                 (networks/calibration/sam3_girl_prompt.safetensors is the
+#                 shipped subject prompt)
+# The pre-0.6.4 keys still read: `prompts` → ignore:text, `focus_prompts` →
+# keep:text (`girl` in either → the shipped soft prompt).
 
-prompts:
-  - speech bubble
-  - text bubble
-focus_prompts: []
+masks:
+  - ignore:text:speech bubble
+  - ignore:text:text bubble
 
 threshold: 0.7
 dilate: 3
@@ -39,9 +44,9 @@ path_pattern: '*'
 # ── Rules form (uncomment to route different mask types per image) ───────────
 # rules:
 #   - path_pattern: 'character_a/*'   # train only the character here
-#     focus_prompts: [girl]
+#     masks: [keep:text:girl]
 #     dilate: 8
 #   - path_pattern: 'manga/*'         # strip speech bubbles here
-#     prompts: [speech bubble, text bubble]
+#     masks: [ignore:text:speech bubble, ignore:text:text bubble]
 #   - path_pattern: '*'               # catch-all default (per-rule threshold/
-#     prompts: [speech bubble]        # dilate fall back to the top-level values)
+#     masks: [ignore:text:speech bubble]  # dilate fall back to the top-level values)

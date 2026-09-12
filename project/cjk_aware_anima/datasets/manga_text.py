@@ -57,7 +57,7 @@ HERE = Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
 sys.path.insert(0, str(HERE))
 
-DEFAULT_ROOT = Path("/media/sorryhyun/새 볼륨/dataset")
+DEFAULT_ROOT = Path("/media/sorryhyun/new/dataset")
 DEFAULT_POLYS = DEFAULT_ROOT / "polys_test.json"
 DEFAULT_PARQUET = DEFAULT_ROOT / "test-00000-of-00001.parquet"
 DEFAULT_OUT = ASSETS / "manga_text_pilot"

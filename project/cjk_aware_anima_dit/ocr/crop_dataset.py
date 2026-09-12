@@ -4,9 +4,16 @@ torch ``Dataset`` of (BGR crop, target string) with train-time augmentation.
 * **Mix** — decision 2: COO ``sfx`` : Manga109 ``speech`` 1 : 1 *by count* (the
   manifest is already count-matched per book; ``--speech_ratio`` rescales the
   speech draw). Both kinds come from the same book split.
-* **Target rule** (findings § O1) — NFKC-fold + strip all whitespace: Manga109's
-  ``<text>`` keeps line breaks and full-width punctuation that manga-ocr's
-  vocab lacks; the scorer's ``exact`` applies the same fold.
+* **Target rule** (findings § O1, corrected 2026-09-09, folded 2026-09-12) —
+  ``textnorm.fold_glyphs`` (dakuten, NFKC, hearts / wave / long dash / dot runs
+  to one spelling each), then **collapse** whitespace runs to one ASCII space,
+  not delete them: Manga109's ``<text>`` keeps line breaks and full-width
+  punctuation that manga-ocr's vocab lacks. Deleting whitespace was harmless
+  while every target was Japanese and is wrong the moment Korean enters —
+  띄어쓰기 is lexical there. The scorer's ``exact`` is whitespace-blind and
+  applies the same folds, so a target change moves no measured number by
+  itself; every checkpoint trained before the whitespace fix is spacing-dirty
+  (``whitespace_fixed.md``).
 * **Augmentation** — ``augment.Augment`` on the train split only; per-worker
   seeding so DataLoader workers do not replay one RNG stream.
 """
@@ -15,7 +22,6 @@ from __future__ import annotations
 
 import random
 import sys
-import unicodedata
 from pathlib import Path
 
 import cv2
@@ -26,13 +32,29 @@ from torch.utils.data import Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import manga109 as m109  # noqa: E402
+import textnorm  # noqa: E402
 from augment import Augment  # noqa: E402
 
 MAX_TARGET_CHARS = 96
+TARGET_NORM = 3
+"""Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
+(every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
+(``vl16_b2_norm2``); 3 = ``textnorm.fold_glyphs`` first — hearts → ``♡``, dot
+runs → ``…``, ``〜`` → ``~``, long dashes → ``―``, spacing dakuten → combining
+(v2 taught ``あ ゙っ`` for ``あ゛っ`` because NFKC splits the spacing mark off
+with a space)."""
 
 
 def normalize_target(s: str) -> str:
-    return "".join(unicodedata.normalize("NFKC", s).split())
+    """:func:`textnorm.normalize_target` — folds, then whitespace runs
+    collapsed to one ASCII space, edges stripped.
+
+    v1 joined the split with ``""``. Korean needs the spaces (``알고 있었어``
+    vs ``알고있었어``), and 3.80 % of the COO/Manga109 targets carried U+3000 or
+    a newline, so the versions differ on the Japanese rows as well —
+    ``TARGET_NORM`` records which one a run trained on.
+    """
+    return textnorm.normalize_target(s)
 
 
 def load_split(

@@ -356,7 +356,7 @@ def test_factory_returns_the_stock_class_when_off(monkeypatch):
 
 _REAL_PACKS = (
     REPO / "models" / "vocab_packs" / "anima_cjk_vocab_pack",
-    REPO / "output" / "ckpt" / "cjk_vocab_pack_synthjakozh1sym_r256",
+    REPO / "output" / "ckpt" / "cjk_vocab" / "cjk_vocab_pack_synthjakozh1sym_r256",
 )
 
 

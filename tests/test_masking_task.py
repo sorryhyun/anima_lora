@@ -6,7 +6,8 @@ itself and builds one request per rule) and the GUI's ``masks_sam`` stage
 forms (``PREPROCESS_STAGES_JSON``, one card per request through the package's
 ``build_argv``). The argv those requests produce is round-tripped through the
 package parser in ``test_anime_tools_cli_contract.py``; this file pins the
-normalization. MIT (the text masker) was removed in v2.
+normalization, including the pre-0.6.4 ``prompts`` / ``focus_prompts`` pair
+(``library.config.sam_masks``). MIT (the text masker) was removed in v2.
 """
 
 from __future__ import annotations
@@ -14,23 +15,24 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from anime_tools.downloads import DEFAULT_SUBJECT_PROMPT_EMBED
 
 from scripts.tasks import masking
+
+SOFT_GIRL = f"keep:soft:{DEFAULT_SUBJECT_PROMPT_EMBED}"
+
+
+def _specs(req) -> list[str]:
+    return [m.spec() for m in req.masks]
 
 
 def test_flat_config_is_one_rule_with_top_level_thresholds():
     rules = masking._sam_rules(
-        {
-            "prompts": ["speech bubble"],
-            "focus_prompts": [],
-            "threshold": 0.7,
-            "dilate": 3,
-        }
+        {"masks": ["ignore:text:speech bubble"], "threshold": 0.7, "dilate": 3}
     )
     assert rules == [
         {
-            "prompts": ("speech bubble",),
-            "focus_prompts": (),
+            "masks": ("ignore:text:speech bubble",),
             "path_pattern": None,
             "threshold": 0.7,
             "dilate": 3,
@@ -43,9 +45,9 @@ def test_rules_fall_back_to_top_level_then_package_defaults():
         {
             "threshold": 0.6,
             "rules": [
-                {"prompts": ["bubble"]},
-                {"path_pattern": "a/*", "focus_prompts": ["girl"], "dilate": 8},
-                {"path_pattern": "*", "prompts": ["text"], "threshold": 0.9},
+                {"masks": ["ignore:text:bubble"]},
+                {"path_pattern": "a/*", "masks": ["keep:text:girl"], "dilate": 8},
+                {"path_pattern": "*", "masks": ["ignore:text:text"], "threshold": 0.9},
             ],
         }
     )
@@ -58,7 +60,12 @@ def test_rules_fall_back_to_top_level_then_package_defaults():
 
 def test_rule_pattern_wins_over_the_global_scope():
     rules = masking._sam_rules(
-        {"rules": [{"path_pattern": "a/*", "prompts": ["x"]}, {"prompts": ["y"]}]}
+        {
+            "rules": [
+                {"path_pattern": "a/*", "masks": ["ignore:text:x"]},
+                {"masks": ["ignore:text:y"]},
+            ]
+        }
     )
     own = masking._sam_request(Path("r"), Path("o"), rules[0], "manga/*")
     scoped = masking._sam_request(Path("r"), Path("o"), rules[1], "manga/*")
@@ -66,13 +73,20 @@ def test_rule_pattern_wins_over_the_global_scope():
     assert scoped.path_pattern == "manga/*"
 
 
-def test_empty_focus_list_is_spelled_explicitly():
-    """The request defaults ``focus_prompts`` to the subject prompt, so a config
-    that clears it must emit ``--focus-prompts none`` or the child would isolate
-    the subject on top of the ignore prompts."""
+def test_a_pre_064_yaml_pair_reads_as_masks():
+    """``prompts`` → ignore:text, ``focus_prompts`` → keep:text, and ``girl`` —
+    which the old stage served through ``--prompt_embed`` — the soft entry. An
+    empty focus list is no keep region (the argv spells the ignore list alone,
+    so the child does not add the default subject on top)."""
     rule = masking._sam_rules({"prompts": ["bubble"], "focus_prompts": []})[0]
-    argv = masking._sam_request(Path("r"), Path("o"), rule, None).to_argv()
-    assert argv[argv.index("--focus-prompts") + 1] == "none"
+    req = masking._sam_request(Path("r"), Path("o"), rule, None)
+    assert _specs(req) == ["ignore:text:bubble"]
+    argv = req.to_argv()
+    assert argv[argv.index("--masks") + 1 :] == ["ignore:text:bubble"]
+    rule = masking._sam_rules(
+        {"rules": [{"prompts": ["text"], "focus_prompts": ["girl", "face"]}]}
+    )[0]
+    assert rule["masks"] == (SOFT_GIRL, "keep:text:face", "ignore:text:text")
 
 
 def test_gui_rule_cards_build_one_request_each(monkeypatch, tmp_path):
@@ -87,16 +101,14 @@ def test_gui_rule_cards_build_one_request_each(monkeypatch, tmp_path):
                 "masks_sam": [
                     {
                         "path_pattern": "",
-                        "prompts": "bubble, sfx",
-                        "focus_prompts": "none",
+                        "masks": ["ignore:text:bubble", "ignore:text:sfx"],
                         "threshold": 0.35,
                         "dilate": 7,
                         "force": True,
                     },
                     {
                         "path_pattern": "character_a/*",
-                        "prompts": "none",
-                        "focus_prompts": "girl",
+                        "masks": ["keep:text:girl"],
                         "threshold": 0.6,
                         "dilate": 2,
                     },
@@ -105,12 +117,12 @@ def test_gui_rule_cards_build_one_request_each(monkeypatch, tmp_path):
         ),
     )
     a, b = masking._sam_requests(Path("resized"), tmp_path)
-    assert a.prompts == ("bubble", "sfx") and a.focus_prompts == ()
+    assert _specs(a) == ["ignore:text:bubble", "ignore:text:sfx"]
     assert a.threshold == 0.35 and a.dilate == 7 and a.force
     assert a.path_pattern is None and a.recursive
     assert a.image_dir == "resized"
     assert Path(a.mask_dir) == tmp_path / "sam0" / "masks_sam"
-    assert b.prompts == () and b.focus_prompts == ("girl",)
+    assert _specs(b) == ["keep:text:girl"]
     assert b.path_pattern == "character_a/*"
     assert Path(b.mask_dir) == tmp_path / "sam1" / "masks_sam"
     # No trainer literals: the checkpoint and batch size are the package's.
@@ -120,16 +132,36 @@ def test_gui_rule_cards_build_one_request_each(monkeypatch, tmp_path):
     assert a.batch_size == SamMaskRequest.batch_size
 
 
-def test_gui_rule_card_with_nothing_to_mask_fails_before_the_sam3_load(
+def test_a_pre_064_gui_card_is_migrated(monkeypatch, tmp_path):
+    """A job queued before the upgrade carries the old card shape; its elided
+    ``focus_prompts`` was the old default ``girl``, now the soft entry."""
+    import json
+
+    monkeypatch.setenv(
+        "PREPROCESS_STAGES_JSON",
+        json.dumps(
+            {
+                "masks_sam": [
+                    {"prompts": "bubble, sfx"},
+                    {"prompts": "watermark", "focus_prompts": "none"},
+                ]
+            }
+        ),
+    )
+    a, b = masking._sam_requests(Path("resized"), tmp_path)
+    assert _specs(a) == [SOFT_GIRL, "ignore:text:bubble", "ignore:text:sfx"]
+    assert _specs(b) == ["ignore:text:watermark"]
+
+
+def test_gui_rule_card_with_a_malformed_mask_fails_before_the_sam3_load(
     monkeypatch, tmp_path
 ):
     import json
 
     monkeypatch.setenv(
-        "PREPROCESS_STAGES_JSON",
-        json.dumps({"masks_sam": [{"prompts": "none", "focus_prompts": "none"}]}),
+        "PREPROCESS_STAGES_JSON", json.dumps({"masks_sam": [{"masks": ["girl"]}]})
     )
-    with pytest.raises(SystemExit, match="nothing to mask"):
+    with pytest.raises(SystemExit, match="ROLE:KIND:VALUE"):
         masking._sam_requests(Path("resized"), tmp_path)
 
 
@@ -152,7 +184,7 @@ def test_make_mask_refuses_stray_args():
         masking.cmd_mask(["--force"])
 
 
-def test_rule_without_prompts_fails_before_the_sam3_load():
+def test_rule_without_masks_fails_before_the_sam3_load():
     rule = masking._sam_rules({"rules": [{"path_pattern": "a/*"}]})[0]
     with pytest.raises(SystemExit, match="nothing to mask"):
         masking._sam_request(Path("r"), Path("o"), rule, None)

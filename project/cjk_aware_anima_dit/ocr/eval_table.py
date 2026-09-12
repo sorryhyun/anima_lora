@@ -27,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import eval_manga109 as ev  # noqa: E402
+import textnorm  # noqa: E402
 from rescore_eval import rescore  # noqa: E402
 
 HERE = Path(__file__).resolve().parent.parent
@@ -37,11 +38,22 @@ def noheart(t: str) -> str:
     return ev.exact_key(t).replace("♡", "").replace("♥", "")
 
 
+def space_key(t) -> str:
+    """``exact_key``'s folds with whitespace *collapsed* rather than deleted, so
+    a reader that cannot emit a space (every ``TARGET_NORM = 1`` run —
+    ``whitespace_fixed.md``) fails the rows whose target has one."""
+    return textnorm.normalize_target(t if isinstance(t, str) else "")
+
+
 def score(path: Path):
     if not path.is_file():
         return None
     df = rescore(path)  # df.exact := strict, on the current key
     df["exact_nh"] = [noheart(p) == noheart(t) for p, t in zip(df.pred_norm, df.text)]
+    df["spaced"] = [" " in space_key(t) for t in df.text]
+    df["exact_sp"] = [
+        space_key(p) == space_key(t) for p, t in zip(df.pred_norm, df.text)
+    ]
     return df
 
 
@@ -57,20 +69,62 @@ RUNS = [
         "vl16_tower_lr1e-5",
         "**arm B′** — LoRA + tower unfrozen; the published reader",
     ),
-    ("vl16_tower_col100", "vl16_tower_col100", "vl16_tower_col100", "B′ + 1.6 % colorized append"),
-    ("vl16_tower_col1500sw", "vl16_tower_col1500sw", "vl16_tower_col1500sw", "B′ + 22.3 % colorized swap"),
+    (
+        "vl16_tower_col100",
+        "vl16_tower_col100",
+        "vl16_tower_col100",
+        "B′ + 1.6 % colorized append",
+    ),
+    (
+        "vl16_tower_col1500sw",
+        "vl16_tower_col1500sw",
+        "vl16_tower_col1500sw",
+        "B′ + 22.3 % colorized swap",
+    ),
     (
         "vl16_pl_20k",
         "vl16_pl_20k",
         "vl16_pl_20k",
         "B′ + 20.6 % pseudo-label append (P1, cross-reader agreement)",
     ),
+    (
+        "vl16_pl_kozh",
+        "vl16_pl_kozh",
+        "vl16_pl_kozh",
+        "B′ + 27.5 % pseudo append (P1 JA 20k + K2 KO 5 930 / ZH 3 300)",
+    ),
+    (
+        "vl16_b2_norm2",
+        "vl16_b2_norm2",
+        "vl16_b2_norm2",
+        "B′ recipe verbatim under TARGET_NORM 2 (plan_vl_respace R2)",
+    ),
     ("vl16_tower_ep3", "vl16_tower_ep3", "vl16_tower_ep3", "B′ × 3 epochs"),
     ("vl16_lpft", "vl16_lpft", "vl16_lpft", "LP-FT — arm B then B′"),
-    ("vl16_tower_ssl", "vl16_tower_ssl", "vl16_tower_ssl", "B′ from an SSL tower (draw20k, 4.4k steps)"),
-    ("vl16_tower_ssl_all", "vl16_tower_ssl_all", "vl16_tower_ssl_all", "B′ from an SSL tower (manifest_all, 12k steps)"),
-    ("vl16_tower_ssl_all_lr5e5", "vl16_tower_ssl_all_lr5e5", "vl16_tower_ssl_all_lr5e5", "same tower, LoRA lr 5e-5"),
-    ("hayai_v2_1_5", "hayai_v2_1_5", None, "hayai v2.1.5 sidecar (~1/6 the parameters)"),
+    (
+        "vl16_tower_ssl",
+        "vl16_tower_ssl",
+        "vl16_tower_ssl",
+        "B′ from an SSL tower (draw20k, 4.4k steps)",
+    ),
+    (
+        "vl16_tower_ssl_all",
+        "vl16_tower_ssl_all",
+        "vl16_tower_ssl_all",
+        "B′ from an SSL tower (manifest_all, 12k steps)",
+    ),
+    (
+        "vl16_tower_ssl_all_lr5e5",
+        "vl16_tower_ssl_all_lr5e5",
+        "vl16_tower_ssl_all_lr5e5",
+        "same tower, LoRA lr 5e-5",
+    ),
+    (
+        "hayai_v2_1_5",
+        "hayai_v2_1_5",
+        None,
+        "hayai v2.1.5 sidecar (~1/6 the parameters)",
+    ),
     ("sfx_pkg", "sfx_pkg", None, "shipped `anime_tools.ocr.sfx` (B′ + decode guard)"),
 ]
 
@@ -86,18 +140,24 @@ def val_sfx(run: str):
 
 def table() -> tuple[str, float, float]:
     head = (
-        "| reader | sincos SFX ♡-blind | strict | COO SFX ♡-blind | COO speech ♡-blind | in-domain val | note |\n"
-        "|---|---|---|---|---|---|---|"
+        "| reader | sincos SFX ♡-blind | strict | COO SFX ♡-blind | COO speech ♡-blind | COO spaced | in-domain val | note |\n"
+        "|---|---|---|---|---|---|---|---|"
     )
     lines = [head]
     for run, gname, cname, note in RUNS:
         g = score(ev.OUT / f"sfx_{gname}.jsonl")
         c = score(ev.OUT / f"{cname}_test.jsonl") if cname else None
-        gcol = scol = cs = cp = "—"
+        gcol = scol = cs = cp = sp = "—"
+        if c is not None and c.spaced.any():
+            cs_ = c[c.spaced]
+            sp = f"{int(cs_.exact_sp.sum())} / {len(cs_)}"
         if g is not None and (g.kind == "sfx").any():
             gs = g[g.kind == "sfx"]
             nh, n = int(gs.exact_nh.sum()), len(gs)
-            gcol, scol = f"**{nh}** / {n} ({100 * nh / n:.1f} %)", str(int(gs.exact.sum()))
+            gcol, scol = (
+                f"**{nh}** / {n} ({100 * nh / n:.1f} %)",
+                str(int(gs.exact.sum())),
+            )
         if c is not None:
             for k in ("sfx", "speech"):
                 if (c.kind == k).any():
@@ -107,7 +167,9 @@ def table() -> tuple[str, float, float]:
                     cs, cp = (v, cp) if k == "sfx" else (cs, v)
         v = val_sfx(run)
         vcol = f"{100 * v:.1f} %" if v is not None else "—"
-        lines.append(f"| `{run}` | {gcol} | {scol} | {cs} | {cp} | {vcol} | {note} |")
+        lines.append(
+            f"| `{run}` | {gcol} | {scol} | {cs} | {cp} | {sp} | {vcol} | {note} |"
+        )
     b = score(ev.OUT / "sfx_vl16_tower_lr1e-5.jsonl")
     cb = score(ev.OUT / "vl16_tower_lr1e-5_test.jsonl")
     hs = 100 * b[b.kind == "sfx"].text.str.contains("♡|♥").mean()

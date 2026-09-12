@@ -1958,3 +1958,81 @@ def test_wait_timeout_reports_where_the_job_stands(tmp_path, capsys):
     assert snap["timed_out"] is True and snap["state"] == "running"
     # the last progress event is the point: healthy-but-slow vs wedged
     assert snap["latest"]["global_step"] == 7
+
+
+# --------------------------------------------------------------------------- CLI views
+
+
+def _write_job(jobs_dir, job_id, *, submitted_at, state="done", stdout=None, **extra):
+    d = jobs_dir / job_id
+    d.mkdir(parents=True, exist_ok=True)
+    rec = {
+        "id": job_id,
+        "kind": "command",
+        "state": state,
+        "submitted_at": submitted_at,
+        "started_at": submitted_at,
+        "ended_at": submitted_at + 60,
+        "returncode": 0,
+        "argv": ["run.py"],
+        **extra,
+    }
+    (d / "job.json").write_text(json.dumps(rec), encoding="utf-8")
+    if stdout is not None:
+        (d / "stdout.log").write_text(stdout, encoding="utf-8")
+    return rec
+
+
+def test_daemon_jobs_is_oldest_first_so_tail_shows_the_newest(
+    tmp_path, monkeypatch, capsys
+):
+    """`daemon-status`'s JSON is newest-first, so `| tail` showed the OLDEST
+    rows of the slice, cut mid-record — "my job isn't there" when it was at the
+    top. `daemon-jobs` is log-ordered instead."""
+    from scripts.tasks import daemon as dcli
+
+    _isolate_state(tmp_path, monkeypatch)
+    for i in range(4):
+        _write_job(config.JOBS_DIR, f"job-{i}", submitted_at=1000 + 100 * i)
+    monkeypatch.setattr(dcli._client.DaemonClient, "health", lambda self: None)
+
+    with pytest.raises(SystemExit) as e:  # exit 1: the daemon is down
+        dcli.cmd_daemon_jobs([])
+    assert e.value.code == 1
+    lines = [ln for ln in capsys.readouterr().out.splitlines() if "job-" in ln]
+    ids = [ln.split()[2] for ln in lines]
+    assert ids == ["job-0", "job-1", "job-2", "job-3"], "newest must print LAST"
+
+
+def test_daemon_jobs_reads_disk_when_the_daemon_is_down(tmp_path, monkeypatch, capsys):
+    """History outlives the daemon — a post-mortem after `daemon-terminate` is
+    exactly when you want to read what ran."""
+    from scripts.tasks import daemon as dcli
+
+    _isolate_state(tmp_path, monkeypatch)
+    _write_job(config.JOBS_DIR, "gone", submitted_at=10, state="error", error="boom")
+    monkeypatch.setattr(dcli._client.DaemonClient, "health", lambda self: None)
+
+    with pytest.raises(SystemExit):
+        dcli.cmd_daemon_jobs(["--failed"])
+    out = capsys.readouterr().out
+    assert "gone" in out and "error" in out and "daemon down" in out
+
+
+def test_daemon_log_dumps_a_finished_job(tmp_path, monkeypatch, capsys):
+    """`daemon-attach` follows a live SSE stream and has nothing to show once a
+    job is terminal; `daemon-log` reads the file."""
+    from scripts.tasks import daemon as dcli
+
+    _isolate_state(tmp_path, monkeypatch)
+    monkeypatch.delenv("JOB", raising=False)
+    _write_job(config.JOBS_DIR, "old", submitted_at=10, stdout="first\n")
+    _write_job(config.JOBS_DIR, "new", submitted_at=20, stdout="a\nb\nc\n")
+    monkeypatch.setattr(dcli._client.DaemonClient, "health", lambda self: None)
+    monkeypatch.setattr(dcli._client.DaemonClient, "list_jobs", lambda self: [])
+
+    dcli.cmd_daemon_log(["-n", "2"])  # no JOB= → the most recent job
+    out = capsys.readouterr().out
+    assert "new" in out and "b" in out and "c" in out
+    assert "first" not in out, "picked the wrong job"
+    assert "\na\n" not in out, "-n 2 must bound the tail"

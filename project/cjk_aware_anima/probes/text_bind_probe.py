@@ -25,7 +25,7 @@ Stages run as direct subprocesses (never nested daemon jobs). Launch::
 
     make daemon-run ARGS="--label textbind-trained-9095721 --stall-timeout 0 \
         project/cjk_aware_anima/probes/text_bind_probe.py --stems 9095721 \
-        --arm trained --ext_prefix output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256 \
+        --arm trained --ext_prefix output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256 \
         --queue"
 
 Arms (``--arm`` is only a name; ``--ext_prefix`` / ``--ocr_format`` decide):
@@ -225,7 +225,7 @@ def main() -> None:
     ap.add_argument("--arm", required=True, help="arm name (trained/init/presence/…)")
     ap.add_argument(
         "--ext_prefix",
-        default="output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256",
+        default="output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256",
         help="pack prefix for BOTH the TE cache and the render",
     )
     ap.add_argument("--ocr_format", default="tags", choices=("tags", "presence"))

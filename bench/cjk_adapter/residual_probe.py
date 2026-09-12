@@ -209,7 +209,7 @@ def main() -> None:
         "--packs",
         nargs="+",
         required=True,
-        help="pack prefixes (output/ckpt/cjk_vocab_pack_<arm>); a pack with an "
+        help="pack prefixes (output/ckpt/cjk_vocab/cjk_vocab_pack_<arm>); a pack with an "
         ".adapter_lora.safetensors sibling is scored WITH the LoRA hooked.",
     )
     p.add_argument(

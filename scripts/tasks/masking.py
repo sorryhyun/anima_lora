@@ -35,11 +35,13 @@ Where the rules come from:
   its own ``path_pattern`` scope); ``_common.request_from_form`` builds each
   ``SamMaskRequest`` through the package's ``build_argv`` with the resized
   tree and a per-card tempdir as the roots.
-- **The CLI** reads ``configs/sam_mask.yaml``: a flat ``prompts`` /
-  ``focus_prompts`` pair or a ``rules:`` list routed by ``path_pattern``,
-  plus the optional ``run_sam`` switch. Every knob absent from the config
-  falls back to the package's request default; the trainer carries no
-  literal of its own.
+- **The CLI** reads ``configs/sam_mask.yaml``: a flat ``masks`` list
+  (``ROLE:KIND:VALUE`` regions) or a ``rules:`` list routed by
+  ``path_pattern``, plus the optional ``run_sam`` switch. A pre-0.6.4
+  ``prompts`` / ``focus_prompts`` pair still reads
+  (``library.config.sam_masks``). Every knob absent from the config falls
+  back to the package's request default; the trainer carries no literal of
+  its own.
 
 Either way a rule becomes one SAM pass into its own temp dir; the merge
 step's pixel-min union then composes them exactly as the old single-pass
@@ -151,27 +153,23 @@ def _sam_rules(cfg: dict) -> list[dict]:
     """Normalize the SAM config into an ordered list of mask rules.
 
     Two schemas, as documented in ``configs/sam_mask.yaml``: a flat
-    ``prompts`` / ``focus_prompts`` set (wrapped as one rule with no pattern
-    of its own) or a ``rules:`` list, each entry routing its own prompt set
-    by ``path_pattern``. Per-rule ``threshold`` / ``dilate`` fall back to the
-    top-level values, and those to the package's request defaults.
+    ``masks`` list (wrapped as one rule with no pattern of its own) or a
+    ``rules:`` list, each entry routing its own regions by ``path_pattern``.
+    Per-rule ``threshold`` / ``dilate`` fall back to the top-level values,
+    and those to the package's request defaults.
     """
+    from library.config.sam_masks import LEGACY_KEYS, rule_masks
+
     default_threshold = cfg.get("threshold")
     default_dilate = cfg.get("dilate")
     raw_rules = cfg.get("rules")
     if raw_rules is None:
-        raw_rules = [
-            {
-                "prompts": cfg.get("prompts") or [],
-                "focus_prompts": cfg.get("focus_prompts") or [],
-            }
-        ]
+        raw_rules = [{k: cfg[k] for k in ("masks", *LEGACY_KEYS) if k in cfg}]
     rules: list[dict] = []
     for raw in raw_rules:
         pattern = raw.get("path_pattern")
         rule = {
-            "prompts": tuple(str(p) for p in (raw.get("prompts") or ())),
-            "focus_prompts": tuple(str(p) for p in (raw.get("focus_prompts") or ())),
+            "masks": tuple(rule_masks(raw)),
             "path_pattern": pattern if pattern and pattern != "*" else None,
         }
         threshold = raw.get("threshold", default_threshold)
@@ -192,18 +190,17 @@ def _sam_request(image_dir: Path, out_dir: Path, rule: dict, path_pattern: str |
     a pattern runs on that pattern alone (the global scope still applies to
     every rule without one). The SAM3 checkpoint and batch size are the
     request defaults — the package's download catalog is where the weights
-    land. Validation fires here: a rule with neither prompt list would
-    otherwise fail minutes in, after the SAM3 load.
+    land. Validation fires here: a rule naming no region (or a malformed one)
+    would otherwise fail minutes in, after the SAM3 load.
     """
-    from anime_tools.masking.requests import SamMaskRequest
+    from anime_tools.masking.requests import MaskPrompt, SamMaskRequest
 
     kwargs = {key: rule[key] for key in ("threshold", "dilate") if key in rule}
     try:
         return SamMaskRequest(
             image_dir=str(image_dir),
             mask_dir=str(out_dir),
-            prompts=rule["prompts"],
-            focus_prompts=rule["focus_prompts"],
+            masks=tuple(MaskPrompt.parse(m) for m in rule["masks"]),
             recursive=True,
             path_pattern=rule["path_pattern"] or path_pattern,
             **kwargs,
@@ -217,11 +214,14 @@ def _sam_request_from_form(image_dir: Path, tmp_root: Path, form: dict):
     through the package's ``build_argv`` (its ``__post_init__`` — "nothing to
     mask" — fires here), the resized tree as the ``dst`` root, this card's
     own tempdir as the mask root (``<tmp>/masks_sam``), the card's
-    ``path_pattern`` as the run's scope (blank / ``*`` = everything)."""
+    ``path_pattern`` as the run's scope (blank / ``*`` = everything). A
+    pre-0.6.4 card (a job queued before the upgrade) is migrated first."""
+    from library.config.sam_masks import migrate_card
+
     pattern = str(form.get("path_pattern") or "").strip()
     return request_from_form(
         "masks_sam",
-        form,
+        migrate_card(form),
         roots={"dst": str(image_dir)},
         settings={"path_pattern": pattern if pattern and pattern != "*" else None},
         mask_root=str(tmp_root),

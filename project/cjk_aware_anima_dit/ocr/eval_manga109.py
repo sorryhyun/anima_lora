@@ -28,8 +28,6 @@ import argparse
 import json
 import sys
 import time
-import re
-import unicodedata
 from pathlib import Path
 
 import cv2
@@ -38,17 +36,20 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import manga109 as m109  # noqa: E402
+import textnorm  # noqa: E402
 
 REPORTS = m109.LINE / "reports"
 OUT = m109.REPO / "output/ocr/eval"
 
 
-HEART_FOLD = str.maketrans({"♥": "♡", "❤": "♡", "〜": "~"})
-ELLIPSIS_RE = re.compile(r"[.．・…‥]{2,}")
+HEART_FOLD = textnorm.HEART_FOLD
+ELLIPSIS_RE = textnorm.ELLIPSIS_RE
 """Every dot run is one ``…`` on both sides of a comparison — the hand labels
 spell a pause three ways (sincos: ``・・・`` 57 rows, ``...`` 23, ``…`` 73) and
 so did the reader until ``anime_tools.ocr.sfx.normalize_read`` folded it
-(8ebaf58, 2026-09-08)."""
+(8ebaf58, 2026-09-08). Since 2026-09-12 the table lives in :mod:`textnorm`,
+shared with the training target, and also folds the long dash (``─`` / ``—`` →
+``―``) and a lone ``‥`` — a third, small re-base (``rescore_eval.py``)."""
 
 # Decode cap, ``--max_new_tokens``. manga-ocr's WordPiece is ~1 token / kana, so
 # the old 48 truncated every speech line past 47 chars — the sincos labels reach
@@ -59,11 +60,10 @@ MAX_NEW_TOKENS = 96
 
 
 def exact_key(s: str) -> str:
-    """NFKC + whitespace-blind; heart / wave variants folded (the hand labels
-    write ``♡`` and ``〜``, readers emit ``♥`` / ``~`` for the same glyph) and
-    every dot run one ``…`` (:data:`ELLIPSIS_RE`)."""
-    key = "".join(unicodedata.normalize("NFKC", s).split()).translate(HEART_FOLD)
-    return ELLIPSIS_RE.sub("…", key)
+    """:func:`textnorm.exact_key` — NFKC + whitespace-blind; heart / wave / dash
+    variants folded (the hand labels write ``♡`` and ``〜``, readers emit ``♥``
+    / ``~`` for the same glyph) and every dot run one ``…``."""
+    return textnorm.exact_key(s)
 
 
 # --------------------------------------------------------------------------- readers
@@ -250,26 +250,56 @@ class HayaiReader:
         self.patches = int(os.environ.get("ANIMA_HAYAI_PATCHES", 256))
         self.device = device
 
-    def read(self, crops, orients, bs):
+    def prepare(self, crops):
+        """CPU half of a batch: BGR crops → SigLIP2 NaFlex tensors (on CPU),
+        so a caller can run it on a thread while the GPU decodes the previous
+        batch (``screen_shards.py``)."""
         from PIL import Image
 
+        images = [Image.fromarray(c[:, :, ::-1]) for c in crops]
+        return self.proc(
+            images=images, max_num_patches=self.patches, return_tensors="pt"
+        )
+
+    def decode(self, inputs) -> list[str]:
+        """GPU half of a batch."""
+        import os
+        from functools import partial
+
+        import hayai_beam
+
+        inputs = inputs.to(self.device)
+        with self.torch.no_grad():
+            # hayai_beam.generate = upstream's beam search with the
+            # per-candidate Python loop vectorised and a per-row early stop
+            # (the upstream path is launch-bound at ~25 % GPU). ``upstream``
+            # keeps the model's own generate for an A/B. ``ANIMA_HAYAI_AMP``
+            # = bf16 (default) | fp16 (upstream's autocast) | 0 (fp32).
+            amp = os.environ.get("ANIMA_HAYAI_AMP", "bf16").lower()
+            gen = (
+                self.model.generate
+                if os.environ.get("ANIMA_HAYAI_BEAM_IMPL") == "upstream"
+                else partial(
+                    hayai_beam.generate,
+                    self.model,
+                    amp=amp not in ("0", "fp32", "") and amp,
+                )
+            )
+            texts = gen(
+                pixel_values=inputs["pixel_values"],
+                pixel_attention_mask=inputs["pixel_attention_mask"],
+                spatial_shapes=inputs["spatial_shapes"],
+                tokenizer=self.tok,
+                max_new_tokens=self.max_tokens,
+                num_beams=4,
+                repetition_penalty=1.0,
+            )
+        return [(t or "").strip() for t in texts]
+
+    def read(self, crops, orients, bs):
         out = []
         for s in range(0, len(crops), bs):
-            images = [Image.fromarray(c[:, :, ::-1]) for c in crops[s : s + bs]]
-            inputs = self.proc(
-                images=images, max_num_patches=self.patches, return_tensors="pt"
-            ).to(self.device)
-            with self.torch.no_grad():
-                texts = self.model.generate(
-                    pixel_values=inputs["pixel_values"],
-                    pixel_attention_mask=inputs["pixel_attention_mask"],
-                    spatial_shapes=inputs["spatial_shapes"],
-                    tokenizer=self.tok,
-                    max_new_tokens=self.max_tokens,
-                    num_beams=4,
-                    repetition_penalty=1.0,
-                )
-            out.extend((t or "").strip() for t in texts)
+            out.extend(self.decode(self.prepare(crops[s : s + bs])))
         return out
 
 

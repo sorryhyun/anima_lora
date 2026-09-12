@@ -935,3 +935,95 @@ O3's synth-SFX bullet describes and which was never built.
 
 Weights local only; the shipped reader stays B′. An AnimeText-derived tower would
 have been research-only (NC) regardless.
+
+## hayai throughput — one process, small batch; parallelism loses (2026-09-09)
+
+Measured while running the K1 screen over the `pl100k` draw (RTX 5070 Ti,
+15.5 GiB, 12 cores). Aggregate crops/s on the real draw:
+
+| config | crops/s | VRAM |
+|---|---|---|
+| 1 × bs 16 | **33.6** | 1.7 GB |
+| 1 × bs 32 | 30.7 | 2.4 GB |
+| 1 × bs 64 | 27.9 | 3.0 GB |
+| 1 × bs 256 | 19.9 | 8.3 GB |
+| 4 × bs 64 | 18.8 | 11.0 GB |
+| 6 × bs 64 | OOM | ~17.8 GB needed |
+
+**Where the wall is.** Stage timing at bs 64: imread 1.6 %, SigLIP2 processor
+2.5 %, `model.generate` **95.9 %**. The main Python thread sits at 99.9 % of one
+core while the GPU idles at 25 % and 11 cores do nothing — a 150 M model doing
+4-beam autoregressive decode issues thousands of tiny kernels and one thread
+cannot dispatch them fast enough. It is launch-bound, not compute- or IO-bound.
+
+Three consequences, all counter-intuitive enough to be worth writing down:
+
+- **Bigger batches are slower.** The per-step beam bookkeeping is Python work
+  over batch × beams, so raising the batch adds work to the *saturated*
+  resource. bs 256 manages 1024 hypotheses per step on that one thread.
+- **More processes are slower too.** Four workers reached 99 % GPU utilization
+  and 18.8 crops/s — worse than one process at 33.6. Without CUDA MPS the
+  contexts time-slice, and for tiny kernels the switching costs more than the
+  parallelism buys. High utilization here means thrash, not work.
+- **A CPU worker pool buys ≤ 4 %** — that is all imread + preprocessing are.
+
+`pseudo_label.py sweep --workers N` exists (sharded processes, interleaved
+`iloc[i::N]`, merged on exit) and is a **loss** on this workload. Keep it for a
+reader whose bottleneck is genuinely per-process. The levers that would actually
+move hayai are CUDA graphs on the decode step or `num_beams` 4 → 1 — the latter
+changes the reads that K0's 60 % stock+hayai agreement was measured on.
+
+## s21 — row content on corrected-OCR captions: flat (2026-09-10)
+
+The question. Every "content-free table ≈ trained pack" result — arm R
+(09-04), s13 ISO1-vs-C9 (09-05) — trained on PP-OCR-era captions whose text
+was substantially wrong, so a row's *content* had nothing correct to bind to.
+The one set on corrected AnimeText + B′ captions (s20, r256 > isoq 14–7,
+p 0.095) leaned trained. The user's reading: the "rows are addresses" verdict
+was an artefact of bad OCR, and trained rows show once the captions are right.
+That is a fair confound and it was never tested directly — s20 changed
+geometry (isotropic vs PR 18) together with content.
+
+The arm. `cjk_unmask_shiprand.toml` = armSHIP's recipe and captions
+(`mirror_sincos_shipped_nosym`, byte-identical) with ONE change: TE caches
+encoded through `cjk_vocab_pack_random_r256` — the 09-04 random table, same
+routing json and 69,558 rows as the published pack, rows drawn to its
+geometry (PR 18.2, norm 203.9 ± 25.8, pair-cos spread), content random.
+Training seed 42 as SHIP; daemon job `20260910-112651-b26535`, 2808 steps,
+epoch loss 0.074 (SHIP's band). Blind `s21_SHIPRAND_vs_SHIP`: 16 v2 rows ×
+fresh seeds 13/29/71 = 48 pairs, SHIP re-rendered at the same seeds
+(`regrid_set.py`, job `20260910-122458-aa5775`).
+
+| | SHIPRAND | SHIP | tie |
+|---|---:|---:|---:|
+| pairs | 17 | 18 | 13 |
+| rows (16) | 7 | 6 | 3 even |
+
+Sides balanced (A 17 / B 18 decisive). 18 of 35 decisive = 51 %, against a
+seed-twin floor of 62.5 %; rows 7–6. Flat by every reading, with more rows
+than any earlier pack set.
+
+What it settles.
+
+- **Row content is inert for LoRA training on corrected captions too.** The
+  confound was real as a hypothesis and is now closed by a single-variable
+  pairing: a random table of the trained pack's geometry trains the same LoRA
+  as the trained pack, whether the caption text is wrong (arm R) or right
+  (s21). s20's lean was geometry or noise, not content.
+- The text-binding verdict stands unconditioned: rows must exist (C9 > P),
+  their content does not reach the DiT. The pack's live job remains JA
+  prompting, not training.
+- **For the SFX word-row idea** (mint rows for the frequent onomatopoeia —
+  corpus tally 2026-09-10: 661 units / 497 singletons over 862 OCR sidecars;
+  the only ≥13-page cross-artist units are ビク ドキ パン ちゅ ぎゅ, while
+  びく/ぱん/ガク are sincos house style): training the rows r256-style or
+  aligning them to descriptions cannot help. If the idea is tested at all it
+  is as *addresses* — random-init rows at native norm, an exact-quoted-span
+  boundary so a JA surface never wakes mid-word, and a reader-CER ruler on
+  prompted units over held-out artists, not a blind set. `word_sub` (stock
+  tokens for the surface) is the one arm that carries pretrained content
+  into the DiT and costs a json edit.
+
+Report `../cjk_aware_anima/reports/blind_s21_SHIPRAND_vs_SHIP.md`; arm files
+`cjk_unmask_shiprand.toml`, cache `te/sincos_shipped_nosym_random`, grids
+`armSHIPRAND_s{13,29,71}` / `armSHIP_s{13,29,71}` (v2 prompts).

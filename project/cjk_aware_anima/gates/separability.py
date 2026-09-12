@@ -24,7 +24,7 @@ Reports, per table (Qwen-init and optionally a trained pack):
 Usage (CPU)::
 
     python project/cjk_aware_anima/gates/separability.py \
-        --pack output/ckpt/cjk_vocab_pack_item2.safetensors \
+        --pack output/ckpt/cjk_vocab/cjk_vocab_pack_item2.safetensors \
         --out project/cjk_aware_anima/assets/separability_phase02.json
 """
 

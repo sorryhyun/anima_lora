@@ -61,6 +61,13 @@ DEFAULT_B_COND_INIT = -10.0
 DEFAULT_COND_RES_SCALE = 1.0  # 1.0 = native cond res (bit-exact to pre-PAI path)
 DEFAULT_ADALN_IN_DIM = 256  # AdaLN-LoRA bottleneck width (adaln_up_* in_features)
 DEFAULT_ADALN_RANK = 8
+DEFAULT_TARGET_RANK = 32
+DEFAULT_CROSSATTN_DIM = 1024  # crossattn_emb width (T5-target space)
+
+# Body LoRA (plan_render S6): target-stream deltas, the llm_adapter block LoRA
+# and the ext-row delta. State-dict prefixes select their lr group (target_lr).
+_TARGET_LORA_KINDS = ("qkv", "o", "xq", "xkv", "ffn1", "ffn2")
+_BODY_PREFIXES = ("target_lora_", "adapter_lora.", "ext_lora_")
 
 
 # Cond-stream channel scaling uses a COND-SPECIFIC calibration — the LoRA-family
@@ -195,6 +202,18 @@ def create_network(
     adaln_rank = int(kwargs.get("adaln_rank", DEFAULT_ADALN_RANK) or DEFAULT_ADALN_RANK)
     adaln_alpha = float(kwargs.get("adaln_alpha", 0.0) or 0.0)  # <=0 → √r law
 
+    # Body LoRA (opt-in, plan_render S6) — the reading path the adapter-only
+    # form leaves frozen. train_llm_adapter needs the adapter live
+    # (cache_llm_adapter_outputs=false + a prompt_embeds TE cache).
+    train_target = _as_bool(kwargs.get("train_target"))
+    target_rank = int(
+        kwargs.get("target_rank", DEFAULT_TARGET_RANK) or DEFAULT_TARGET_RANK
+    )
+    train_llm_adapter = _as_bool(kwargs.get("train_llm_adapter"))
+    train_ext_rows = _as_bool(kwargs.get("train_ext_rows"))
+    target_lr = kwargs.get("target_lr")
+    target_lr = float(target_lr) if target_lr not in (None, "", "None") else None
+
     # Deprecated 2026-06-10, accepted so old snapshot TOMLs replay (fp32-bottleneck
     # autograd removed).
     if str(kwargs.get("use_custom_down_autograd", "false")).strip().lower() in (
@@ -234,6 +253,34 @@ def create_network(
         if up is not None:
             adaln_in_dim = up.in_features
 
+    # Body LoRA shapes come off the live DiT.
+    crossattn_dim = DEFAULT_CROSSATTN_DIM
+    if unet is not None and getattr(unet, "blocks", None):
+        crossattn_dim = int(
+            getattr(unet.blocks[0].cross_attn, "context_dim", crossattn_dim)
+        )
+    adapter_linears: dict[str, tuple[int, int]] = {}
+    ext_rows = ext_dim = 0
+    if train_llm_adapter or train_ext_rows:
+        adapter = getattr(unet, "llm_adapter", None) if unet is not None else None
+        if adapter is None:
+            raise ValueError(
+                "train_llm_adapter / train_ext_rows need the Anima DiT with its "
+                "llm_adapter at network build time."
+            )
+        if train_llm_adapter:
+            adapter_linears = _adapter_linear_shapes(adapter)
+        if train_ext_rows:
+            from library.anima.vocab_pack import attached_pack_rows
+
+            ext_rows = attached_pack_rows(unet) or 0
+            if ext_rows <= 0:
+                raise ValueError(
+                    "train_ext_rows needs a vocab pack attached to the DiT "
+                    "(set vocab_pack in the config)."
+                )
+            ext_dim = int(adapter.embed.embedding_dim)
+
     network = EasyControlNetwork(
         num_blocks=num_blocks,
         hidden_size=hidden_size,
@@ -252,6 +299,13 @@ def create_network(
         adaln_rank=adaln_rank,
         adaln_alpha=adaln_alpha,
         adaln_in_dim=adaln_in_dim,
+        train_target=train_target,
+        target_rank=target_rank,
+        crossattn_dim=crossattn_dim,
+        adapter_linears=adapter_linears,
+        ext_rows=ext_rows,
+        ext_dim=ext_dim,
+        target_lr=target_lr,
     )
 
     # REPA v2 alignment, mirroring networks.lora_anima.factory. DiT is frozen, so
@@ -361,6 +415,22 @@ def create_network_from_weights(
     adaln_in_dim = int(adaln_w.shape[1]) if train_adaln else DEFAULT_ADALN_IN_DIM
     adaln_alpha = float(metadata.get("ss_adaln_alpha", 0.0))
 
+    # Body LoRA presence/sizing from the weights too (one rank for all three).
+    sd = weights_sd or {}
+    tgt_w = sd.get("target_lora_qkv.0.lora_down.weight")
+    xkv_w = sd.get("target_lora_xkv.0.lora_down.weight")
+    body_rank = int(tgt_w.shape[0]) if tgt_w is not None else None
+    adapter_linears = {}
+    for k, w in sd.items():
+        if k.startswith("adapter_lora.") and k.endswith(".lora_down.weight"):
+            name = k[len("adapter_lora.") : -len(".lora_down.weight")]
+            up = sd[f"adapter_lora.{name}.lora_up.weight"]
+            adapter_linears[name] = (int(w.shape[1]), int(up.shape[0]))
+            body_rank = body_rank or int(w.shape[0])
+    ext_b = sd.get("ext_lora_b")
+    if ext_b is not None:
+        body_rank = body_rank or int(ext_b.shape[0])
+
     network = EasyControlNetwork(
         num_blocks=num_blocks,
         hidden_size=hidden_size,
@@ -379,8 +449,30 @@ def create_network_from_weights(
         adaln_rank=adaln_rank,
         adaln_alpha=adaln_alpha,
         adaln_in_dim=adaln_in_dim,
+        train_target=tgt_w is not None,
+        target_rank=body_rank or DEFAULT_TARGET_RANK,
+        crossattn_dim=(
+            int(xkv_w.shape[1]) if xkv_w is not None else DEFAULT_CROSSATTN_DIM
+        ),
+        adapter_linears=adapter_linears,
+        ext_rows=int(sd["ext_lora_a"].shape[0]) if ext_b is not None else 0,
+        ext_dim=int(ext_b.shape[1]) if ext_b is not None else 0,
     )
     return network, weights_sd
+
+
+def _adapter_lora_key(name: str) -> str:
+    """ModuleDict key (dot-free) for an ``llm_adapter.blocks`` Linear."""
+    return "blocks_" + name.replace(".", "_")
+
+
+def _adapter_linear_shapes(adapter: nn.Module) -> dict[str, tuple[int, int]]:
+    """``{key: (in, out)}`` for every Linear inside ``llm_adapter.blocks``."""
+    return {
+        _adapter_lora_key(name): (m.in_features, m.out_features)
+        for name, m in adapter.blocks.named_modules()
+        if isinstance(m, nn.Linear)
+    }
 
 
 class EasyControlNetwork(AdapterNetworkBase):
@@ -407,6 +499,13 @@ class EasyControlNetwork(AdapterNetworkBase):
         adaln_rank: int = DEFAULT_ADALN_RANK,
         adaln_alpha: float = 0.0,
         adaln_in_dim: int = DEFAULT_ADALN_IN_DIM,
+        train_target: bool = False,
+        target_rank: int = DEFAULT_TARGET_RANK,
+        crossattn_dim: int = DEFAULT_CROSSATTN_DIM,
+        adapter_linears: Optional[dict] = None,
+        ext_rows: int = 0,
+        ext_dim: int = 0,
+        target_lr: Optional[float] = None,
     ):
         super().__init__()
         if hidden_size % num_heads != 0:
@@ -528,6 +627,72 @@ class EasyControlNetwork(AdapterNetworkBase):
             self.adaln_lora_cross_attn = None
             self.adaln_lora_mlp = None
 
+        # Body LoRA (opt-in, plan_render S6): the ext row → pixel path that
+        # the adapter-only form leaves with zero trainable weights.
+        # (1) target-stream deltas on self-attn qkv/out, cross-attn q/kv and
+        #     mlp ffn1/ffn2 — applied only on the cond-active paths (the
+        #     no-cond fallback runs the original Block.forward), so they are
+        #     cond-gated by construction like the adaln deltas;
+        # (2) LoRA on every Linear of the llm_adapter blocks (only fires when
+        #     the adapter runs live: cache_llm_adapter_outputs=false);
+        # (3) a low-rank delta on the vocab pack's ext rows (LoRA-embedding
+        #     layout: A gathered per ext id, B zero-init).
+        # Zero-init up/B sides keep step-0 equivalence; all three ride their
+        # own lr group when target_lr is set. alpha = rank (scale 1).
+        self.train_target = bool(train_target)
+        self.target_rank = int(target_rank)
+        self.target_alpha = float(self.target_rank)
+        self.crossattn_dim = int(crossattn_dim)
+        self.target_lr = None if target_lr is None else float(target_lr)
+        tr, ta = self.target_rank, self.target_alpha
+        target_dims = {
+            "qkv": (D, 3 * D),
+            "o": (D, D),
+            "xq": (D, D),
+            "xkv": (self.crossattn_dim, 2 * D),
+            "ffn1": (D, self.ffn_dim),
+            "ffn2": (self.ffn_dim, D),
+        }
+        for kind in _TARGET_LORA_KINDS:
+            i_dim, o_dim = target_dims[kind]
+            setattr(
+                self,
+                f"target_lora_{kind}",
+                nn.ModuleList(
+                    [_LoRAProj(i_dim, o_dim, tr, ta) for _ in range(num_blocks)]
+                )
+                if self.train_target
+                else None,
+            )
+
+        adapter_linears = dict(adapter_linears or {})
+        self.train_llm_adapter = bool(adapter_linears)
+        self.adapter_lora = (
+            nn.ModuleDict(
+                {
+                    k: _LoRAProj(i_dim, o_dim, tr, ta)
+                    for k, (i_dim, o_dim) in sorted(adapter_linears.items())
+                }
+            )
+            if adapter_linears
+            else None
+        )
+
+        self.ext_rows = int(ext_rows)
+        if self.ext_rows > 0:
+            self.ext_lora_a = nn.Parameter(torch.randn(self.ext_rows, tr))
+            self.ext_lora_b = nn.Parameter(torch.zeros(tr, int(ext_dim)))
+        else:
+            self.ext_lora_a = None
+            self.ext_lora_b = None
+
+        # apply_to state for (2)/(3), plus the "adapter LoRA never ran" guard
+        # EasyControlMethodAdapter checks (a cached crossattn_emb bypasses it).
+        self._adapter_patches: list = []
+        self._ext_hook_handles: list = []
+        self._adapter_lora_calls = 0
+        self._train_primes = 0
+
         # Per-block scalar additive logit bias on cond keys. Init -10 → cond
         # softmax mass ≈ 4.5e-5 at step 0 → target_out ≈ baseline DiT.
         # GOTCHA: 0-d Parameters (not one [num_blocks] Parameter) so each block's
@@ -585,6 +750,9 @@ class EasyControlNetwork(AdapterNetworkBase):
             f"EasyControlNetwork: blocks={num_blocks}, hidden={hidden_size}/{num_heads}h, "
             f"r={cond_lora_dim} alpha={cond_lora_alpha}, ffn_lora={apply_ffn_lora}, "
             f"adaln_lora={adaln_desc}, "
+            f"body[target={'r%d' % tr if self.train_target else 'off'}, "
+            f"llm_adapter={len(adapter_linears) or 'off'}, "
+            f"ext_rows={self.ext_rows or 'off'}, target_lr={self.target_lr}], "
             f"b_cond_init={b_cond_init}, cond_scale={cond_scale}, "
             f"cond_res_scale={self.cond_res_scale}, "
             f"channel_scaling_alpha={self.channel_scaling_alpha} "
@@ -618,6 +786,13 @@ class EasyControlNetwork(AdapterNetworkBase):
                     f"adaln in-dim mismatch: network built for {self.adaln_in_dim}, "
                     f"DiT has {b0.adaln_up_self_attn.in_features}."
                 )
+        if self.train_target:
+            ctx_dim = getattr(unet.blocks[0].cross_attn, "context_dim", None)
+            if ctx_dim is not None and ctx_dim != self.crossattn_dim:
+                raise ValueError(
+                    f"cross-attn context dim mismatch: network built for "
+                    f"{self.crossattn_dim}, DiT has {ctx_dim}."
+                )
 
         # Bypass nn.Module.__setattr__ — a plain assignment would register the
         # frozen DiT as a submodule, inflating parameters().
@@ -638,10 +813,84 @@ class EasyControlNetwork(AdapterNetworkBase):
             block._easycontrol_cond_x_in = None
             block.forward = _make_patched_block_forward(block, idx, self)
 
+        if self.adapter_lora is not None:
+            self._patch_llm_adapter(unet)
+        if self.ext_rows > 0:
+            self._hook_ext_rows(unet)
+
         self._patched = True
         logger.info(
             f"EasyControl: patched Block.forward on {len(self._block_modules)} blocks"
         )
+
+    def _patch_llm_adapter(self, unet) -> None:
+        """Wrap each ``llm_adapter.blocks`` Linear's forward with its LoRA delta."""
+        adapter = getattr(unet, "llm_adapter", None)
+        if adapter is None:
+            raise ValueError("train_llm_adapter needs a DiT with an llm_adapter")
+        found = {
+            _adapter_lora_key(name): m
+            for name, m in adapter.blocks.named_modules()
+            if isinstance(m, nn.Linear)
+        }
+        missing = sorted(set(self.adapter_lora.keys()) - set(found))
+        if missing:
+            raise ValueError(
+                f"llm_adapter has no Linear for {len(missing)} adapter LoRA "
+                f"keys (first: {missing[:3]})"
+            )
+        for key, lora in self.adapter_lora.items():
+            lin = found[key]
+            self._adapter_patches.append((lin, lin.forward))
+            lin.forward = _make_adapter_lora_forward(lin.forward, lora, self)
+        logger.info(
+            f"EasyControl: LoRA on {len(self._adapter_patches)} llm_adapter Linears"
+        )
+
+    def _hook_ext_rows(self, unet) -> None:
+        """Add ``A[ext] @ B`` at the ext-id positions of ``llm_adapter.embed``.
+
+        The pack's own pre-hook clamps ext ids to ``<unk>``, so ours is
+        prepended to see the raw ids; our forward hook runs after the pack's
+        (which wrote the pack rows), so the delta lands on top of them.
+        GOTCHA: re-attaching a pack after apply_to re-registers its forward
+        hook after ours and silently overwrites the delta.
+        """
+        from library.anima.ext_vocab import T5_TABLE_SIZE
+        from library.anima.vocab_pack import attached_pack_rows
+
+        rows = attached_pack_rows(unet)
+        if rows != self.ext_rows:
+            raise ValueError(
+                f"train_ext_rows: network built for {self.ext_rows} ext rows, "
+                f"the DiT has {rows or 'no'} pack rows attached."
+            )
+        embed = unet.llm_adapter.embed
+        state: dict = {}
+
+        def _ids_pre_hook(module, args):
+            state.pop("mask", None)
+            if args and torch.is_tensor(args[0]):
+                mask = args[0] >= T5_TABLE_SIZE
+                if bool(mask.any()):
+                    state["mask"] = mask
+                    state["ext"] = args[0][mask] - T5_TABLE_SIZE
+            return None
+
+        def _delta_hook(module, args, output):
+            mask = state.pop("mask", None)
+            if mask is None:
+                return None
+            ext = state.pop("ext").to(self.ext_lora_a.device)
+            delta = (self.ext_lora_a[ext] @ self.ext_lora_b) * self.multiplier
+            out = output.clone()
+            out[mask] = out[mask] + delta.to(out.dtype)
+            return out
+
+        self._ext_hook_handles = [
+            embed.register_forward_pre_hook(_ids_pre_hook, prepend=True),
+            embed.register_forward_hook(_delta_hook),
+        ]
 
     def compile_cond_stream(
         self,
@@ -778,6 +1027,12 @@ class EasyControlNetwork(AdapterNetworkBase):
                 del block._easycontrol_two_stream_inner
         self._block_modules.clear()
         self._original_block_forwards.clear()
+        for lin, orig in self._adapter_patches:
+            lin.forward = orig
+        self._adapter_patches.clear()
+        for h in self._ext_hook_handles:
+            h.remove()
+        self._ext_hook_handles.clear()
         object.__setattr__(self, "_dit", None)
         self._patched = False
         self._cond_kv_cache = None
@@ -1037,6 +1292,28 @@ class EasyControlNetwork(AdapterNetworkBase):
     def get_trainable_params(self):
         return list(self.parameters())
 
+    def prepare_optimizer_params_with_multiple_te_lrs(
+        self, text_encoder_lr, unet_lr, default_lr
+    ):
+        """One group, or two when body LoRA is on and ``target_lr`` is set:
+        the cond adapter at the run lr, the body params at ``target_lr``."""
+        body = [
+            p
+            for n, p in self.named_parameters()
+            if p.requires_grad and n.startswith(_BODY_PREFIXES)
+        ]
+        if not body or self.target_lr is None:
+            return super().prepare_optimizer_params_with_multiple_te_lrs(
+                text_encoder_lr, unet_lr, default_lr
+            )
+        body_ids = {id(p) for p in body}
+        rest = [p for p in self.get_trainable_params() if id(p) not in body_ids]
+        params = [
+            {"params": rest, "lr": unet_lr or default_lr},
+            {"params": body, "lr": self.target_lr},
+        ]
+        return params, [self.network_spec, f"{self.network_spec}_body"]
+
     def metadata_fields(self) -> dict[str, str]:
         return {
             "ss_num_blocks": str(self.num_blocks),
@@ -1053,6 +1330,10 @@ class EasyControlNetwork(AdapterNetworkBase):
             "ss_train_adaln": str(int(self.train_adaln)),
             "ss_adaln_rank": str(self.adaln_rank),
             "ss_adaln_alpha": str(self.adaln_alpha),
+            "ss_train_target": str(int(self.train_target)),
+            "ss_target_rank": str(self.target_rank),
+            "ss_train_llm_adapter": str(int(self.train_llm_adapter)),
+            "ss_ext_rows": str(self.ext_rows),
         }
 
     def state_dict_for_save(self, dtype: torch.dtype) -> dict[str, torch.Tensor]:
@@ -1119,6 +1400,84 @@ def _adaln_self_mlp(block: nn.Module, emb, adaln_lora):
     return self_p, mlp_p
 
 
+def _lora_add(base: torch.Tensor, lora, x: torch.Tensor, s: float) -> torch.Tensor:
+    """``base + s·lora(x)`` cast to the base dtype (target dtypes stay baseline)."""
+    return base + (s * lora(x)).to(base.dtype)
+
+
+def _make_adapter_lora_forward(orig_forward, lora, ec_net):
+    """Linear.forward replacement on an llm_adapter block: base + LoRA delta."""
+
+    def forward(x):
+        ec_net._adapter_lora_calls += 1
+        out = orig_forward(x)
+        return _lora_add(out, lora, x, ec_net.multiplier)
+
+    return forward
+
+
+# Target-stream sublayers with the body LoRA spliced in. ``loras`` is the
+# per-block ``(qkv, o, xq, xkv, ffn1, ffn2)`` tuple or None — None runs the
+# frozen module exactly as Block._forward does (bit-exact baseline).
+
+
+def _target_self_qkv(attn, x_flat, rope_cos_sin, loras, s: float):
+    if loras is None:
+        return attn.compute_qkv(x_flat, x_flat, rope_cos_sin=rope_cos_sin)
+    from library.anima.models import apply_rotary_pos_emb_qk
+
+    qkv = _lora_add(attn.qkv_proj(x_flat), loras[0], x_flat, s)
+    q, k, v = qkv.unflatten(-1, (3, attn.n_heads, attn.head_dim)).unbind(dim=-3)
+    q = attn.q_norm(q)
+    k = attn.k_norm(k)
+    v = attn.v_norm(v)
+    if rope_cos_sin is not None:
+        q, k = apply_rotary_pos_emb_qk(
+            q, k, rope_cos_sin, tensor_format=attn.qkv_format
+        )
+    return q, k, v
+
+
+def _target_out_proj(attn, attn_out, loras, s: float):
+    out = attn.output_proj(attn_out)
+    if loras is not None:
+        out = _lora_add(out, loras[1], attn_out, s)
+    return attn.output_dropout(out)
+
+
+def _target_cross_attn(attn, x_flat, attn_params, context, rope_cos_sin, loras, s):
+    """``Attention.forward`` (cross) with q / kv deltas."""
+    if loras is None:
+        return attn(x_flat, attn_params, context, rope_cos_sin=rope_cos_sin)
+    if getattr(attn, "_ctx_k_bias", None) is not None:
+        raise NotImplementedError(
+            "cross-attn key bias is not wired into the EasyControl body LoRA path"
+        )
+    from networks import attention_dispatch as anima_attention
+
+    q = _lora_add(attn.q_proj(x_flat), loras[2], x_flat, s)
+    q = q.unflatten(-1, (attn.n_heads, attn.head_dim))
+    kv = _lora_add(attn.kv_proj(context), loras[3], context, s)
+    k, v = kv.unflatten(-1, (2, attn.n_heads, attn.head_dim)).unbind(dim=-3)
+    q = attn.q_norm(q)
+    k = attn.k_norm(k)
+    v = attn.v_norm(v)
+    if q.dtype != v.dtype:
+        if not attn_params.supports_fp32 and torch.is_autocast_enabled():
+            q = q.to(v.dtype)
+            k = k.to(v.dtype)
+    out = anima_attention.dispatch_attention([q, k, v], attn_params=attn_params)
+    return attn.output_dropout(attn.output_proj(out))
+
+
+def _target_mlp(mlp, x, loras, s: float):
+    if loras is None:
+        return mlp(x)
+    h = _lora_add(mlp.layer1(x), loras[4], x, s)
+    h = mlp.activation(h)
+    return _lora_add(mlp.layer2(h), loras[5], h, s)
+
+
 def _target_only_with_cached_cond_kv(
     block: nn.Module,
     x_B_T_H_W_D: torch.Tensor,
@@ -1132,6 +1491,7 @@ def _target_only_with_cached_cond_kv(
     b_param: torch.Tensor,
     adaln_deltas=None,
     adaln_delta_scale: float = 1.0,
+    target_loras=None,
 ) -> torch.Tensor:
     """Block.forward equivalent for inference when cond KV is cached.
 
@@ -1171,8 +1531,8 @@ def _target_only_with_cached_cond_kv(
         block.layer_norm_self_attn(x_B_T_H_W_D) * (1 + sc_self_5) + sh_self_5
     )
     target_flat = target_normed.flatten(1, 3)
-    target_q, target_k, target_v = attn.compute_qkv(
-        target_flat, target_flat, rope_cos_sin=rope_cos_sin
+    target_q, target_k, target_v = _target_self_qkv(
+        attn, target_flat, rope_cos_sin, target_loras, adaln_delta_scale
     )
     # Broadcast a B=1-primed cache onto a larger (CFG-batched) target batch
     B_t = target_q.shape[0]
@@ -1195,8 +1555,9 @@ def _target_only_with_cached_cond_kv(
         scale=scale_attn,
         attn_params=attn_params,
     )
-    target_attn_proj = attn.output_proj(target_attn_out)
-    target_attn_proj = attn.output_dropout(target_attn_proj)
+    target_attn_proj = _target_out_proj(
+        attn, target_attn_out, target_loras, adaln_delta_scale
+    )
     target_attn_5d = target_attn_proj.unflatten(1, (T_dim, H_dim, W_dim))
     x_B_T_H_W_D = x_B_T_H_W_D + ga_self_5 * target_attn_5d
 
@@ -1204,17 +1565,22 @@ def _target_only_with_cached_cond_kv(
     target_cross_normed = (
         block.layer_norm_cross_attn(x_B_T_H_W_D) * (1 + sc_cross_5) + sh_cross_5
     )
-    target_cross_out = block.cross_attn(
+    target_cross_out = _target_cross_attn(
+        block.cross_attn,
         target_cross_normed.flatten(1, 3),
         attn_params,
         crossattn_emb,
-        rope_cos_sin=rope_cos_sin,
+        rope_cos_sin,
+        target_loras,
+        adaln_delta_scale,
     ).unflatten(1, (T_dim, H_dim, W_dim))
     x_B_T_H_W_D = x_B_T_H_W_D + ga_cross_5 * target_cross_out
 
     # MLP (baseline)
     target_mlp_normed = block.layer_norm_mlp(x_B_T_H_W_D) * (1 + sc_mlp_5) + sh_mlp_5
-    target_mlp_out = block.mlp(target_mlp_normed)
+    target_mlp_out = _target_mlp(
+        block.mlp, target_mlp_normed, target_loras, adaln_delta_scale
+    )
     x_B_T_H_W_D = x_B_T_H_W_D + ga_mlp_5 * target_mlp_out
 
     return x_B_T_H_W_D
@@ -1251,6 +1617,15 @@ def _make_patched_block_forward(
             ec_net.adaln_lora_mlp[block_idx],
         )
         if ec_net.train_adaln
+        else None
+    )
+    # Target-stream body LoRA — same cond-gating as the adaln deltas.
+    target_loras = (
+        tuple(
+            getattr(ec_net, f"target_lora_{kind}")[block_idx]
+            for kind in _TARGET_LORA_KINDS
+        )
+        if ec_net.train_target
         else None
     )
 
@@ -1313,8 +1688,8 @@ def _make_patched_block_forward(
             block.layer_norm_self_attn(x_B_T_H_W_D) * (1 + sc_self_5) + sh_self_5
         )
         target_flat = target_normed.flatten(1, 3)
-        target_q, target_k, target_v = attn.compute_qkv(
-            target_flat, target_flat, rope_cos_sin=rope_cos_sin
+        target_q, target_k, target_v = _target_self_qkv(
+            attn, target_flat, rope_cos_sin, target_loras, ec_net.multiplier
         )
 
         cond_normed = (
@@ -1351,7 +1726,9 @@ def _make_patched_block_forward(
             attn_params=attn_params,
         )
 
-        target_attn_proj = attn.output_dropout(attn.output_proj(target_attn_out))
+        target_attn_proj = _target_out_proj(
+            attn, target_attn_out, target_loras, ec_net.multiplier
+        )
         target_attn_5d = target_attn_proj.unflatten(1, (T_dim, H_dim, W_dim))
         x_B_T_H_W_D = x_B_T_H_W_D + ga_self_5 * target_attn_5d
 
@@ -1375,11 +1752,14 @@ def _make_patched_block_forward(
         target_cross_normed = (
             block.layer_norm_cross_attn(x_B_T_H_W_D) * (1 + sc_cross_5) + sh_cross_5
         )
-        target_cross_out = block.cross_attn(
+        target_cross_out = _target_cross_attn(
+            block.cross_attn,
             target_cross_normed.flatten(1, 3),
             attn_params,
             crossattn_emb,
-            rope_cos_sin=rope_cos_sin,
+            rope_cos_sin,
+            target_loras,
+            ec_net.multiplier,
         ).unflatten(1, (T_dim, H_dim, W_dim))
         x_B_T_H_W_D = x_B_T_H_W_D + ga_cross_5 * target_cross_out
 
@@ -1387,7 +1767,9 @@ def _make_patched_block_forward(
         target_mlp_normed = (
             block.layer_norm_mlp(x_B_T_H_W_D) * (1 + sc_mlp_5) + sh_mlp_5
         )
-        target_mlp_out = block.mlp(target_mlp_normed)
+        target_mlp_out = _target_mlp(
+            block.mlp, target_mlp_normed, target_loras, ec_net.multiplier
+        )
         x_B_T_H_W_D = x_B_T_H_W_D + ga_mlp_5 * target_mlp_out
 
         # Cond MLP — re-implement layer1/act/layer2 inline to splice FFN LoRA at
@@ -1439,6 +1821,7 @@ def _make_patched_block_forward(
                 b_param,
                 adaln_deltas=adaln_deltas,
                 adaln_delta_scale=ec_net.multiplier,
+                target_loras=target_loras,
             )
 
         cond_state = ec_net._cond_state
@@ -1606,6 +1989,20 @@ class EasyControlMethodAdapter(MethodAdapter):
         network = ctx.network
         if not hasattr(network, "set_cond"):
             return
+
+        # train_llm_adapter guard: two train forwards in, the adapter LoRA must
+        # have fired — a cached crossattn_emb skips the llm_adapter entirely
+        # and would train the rest while the adapter LoRA sits at zero.
+        if is_train and getattr(network, "adapter_lora", None) is not None:
+            network._train_primes += 1
+            if network._train_primes == 3 and network._adapter_lora_calls == 0:
+                raise RuntimeError(
+                    "EasyControl train_llm_adapter: the llm_adapter LoRA never "
+                    "ran in two train steps — crossattn_emb is arriving "
+                    "precomputed. Train with cache_llm_adapter_outputs=false on "
+                    "a prompt_embeds TE cache (prep_render.py text "
+                    "--text_layout prompt)."
+                )
 
         drop_p = float(getattr(args, "easycontrol_drop_p", 0.1) or 0.0)
         if is_train and drop_p > 0.0 and random.random() < drop_p:

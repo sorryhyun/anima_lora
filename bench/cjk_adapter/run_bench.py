@@ -267,7 +267,7 @@ def main() -> None:
         default=Path(__file__).resolve().parent / "assets" / "ext_embed",
         help="Path prefix of the {.safetensors,.json} vocab pack the ext arms "
         "read. Defaults to the Phase-1 zero-shot build; point it at a distilled "
-        "pack (output/ckpt/cjk_vocab_pack*) to score Phase 2c.",
+        "pack (output/ckpt/cjk_vocab/cjk_vocab_pack*) to score Phase 2c.",
     )
     parser.add_argument(
         "--adapter_lora",

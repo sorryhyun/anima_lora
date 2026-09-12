@@ -12,8 +12,8 @@ is copied verbatim (same ids, same rows, same symbol block), so the
 HybridT5Encoder tokenizes identically and only the table differs.
 
     .venv/bin/python project/cjk_aware_anima/probes/make_random_pack.py \
-        --src output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256 \
-        --out output/ckpt/cjk_vocab_pack_random_r256 --seed 0
+        --src output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256 \
+        --out output/ckpt/cjk_vocab/cjk_vocab_pack_random_r256 --seed 0
 
 ``--mode iso`` / ``--mode iso-partition`` (DiT line D1, 2026-09-05) are the
 *deterministic* recipes — ``library.anima.ext_vocab.iso_block``: i.i.d.
@@ -27,8 +27,8 @@ verbatim and appends the isotropic block as a row-for-row mirror, adding
 ``--no-iso-rows`` ships the partition seed-only (the loader regenerates).
 
     .venv/bin/python project/cjk_aware_anima/probes/make_random_pack.py \
-        --mode iso-partition --src output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256 \
-        --out output/ckpt/cjk_vocab_pack_synthjakozh1sym_r256_isoq --seed 0
+        --mode iso-partition --src output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256 \
+        --out output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256_isoq --seed 0
 """
 
 from __future__ import annotations
