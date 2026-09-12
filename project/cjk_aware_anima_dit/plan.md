@@ -88,10 +88,12 @@ first:
    speech. Drop a space whose two neighbours are both CJK, keep it next to
    Latin / Hangul / digits, in `anime_tools.ocr.sfx.normalize_read` (which
    today only collapses runs) — not in training.
-4. **R4.2 — the catalog will not re-fetch v2.** `Asset.missing()` checks only
-   that the files exist and the row pins no revision, so every existing
-   install still has v1 weights under a v2 name. Move the row's `dest` or pin
-   a revision behind a stamp file.
+4. ~~**R4.2 — the catalog will not re-fetch v2.**~~ **Fixed upstream
+   2026-09-13** (anime_tools `54cdbc5`): `Asset.revision` passes through to
+   the Hub fetch and a `dest` row stamps `<dest>/REVISION`; `missing()` reports
+   every file until the stamp names the pin, so a pre-pin install re-fetches
+   instead of reading v1/v2 under a v3 name. `sfx_reader` pins `26292839`
+   (v3). Reaches this checkout when v0.7.1 is tagged and the pin moves.
 5. **R4.4 — the tree re-run.** OCR stage over the 3 008 pages on v2 + R3,
    `probes/ocr_merge_sheet.py --baseline_dir` against the v0.6.2 sidecars;
    `kukiyuusha/13573906` is the smoke.
