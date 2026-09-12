@@ -19,6 +19,36 @@ JOBS_DIR = STATE_DIR / "jobs"
 PIDFILE = STATE_DIR / "daemon.json"
 DAEMON_LOG = STATE_DIR / "daemon.log"
 
+# Shortcuts to the job the daemon is currently driving (the last one launched
+# when idle): ``output/daemon/current`` -> ``jobs/<id>/`` and
+# ``output/daemon/current.log`` -> that job's ``stdout.log``. Relative symlinks,
+# retargeted atomically by the manager at launch/adopt; best-effort on hosts
+# without symlink privileges (Windows outside developer mode).
+CURRENT_LINK_NAME = "current"
+CURRENT_LOG_NAME = "current.log"
+
+
+def point_current_job(job_id: str) -> None:
+    """Retarget the ``current`` / ``current.log`` shortcuts at ``job_id``."""
+    state_dir = Path(STATE_DIR)
+    targets = {
+        CURRENT_LINK_NAME: Path("jobs") / job_id,
+        CURRENT_LOG_NAME: Path("jobs") / job_id / "stdout.log",
+    }
+    for name, target in targets.items():
+        link = state_dir / name
+        tmp = state_dir / f".{name}.tmp"
+        try:
+            tmp.unlink(missing_ok=True)
+            os.symlink(target, tmp, target_is_directory=name == CURRENT_LINK_NAME)
+            os.replace(tmp, link)
+        except OSError:
+            # No symlink privilege / exotic FS: the shortcut is a convenience,
+            # never a contract — job.json + stdout.log stay the source of truth.
+            tmp.unlink(missing_ok=True)
+            return
+
+
 # localhost-only by design (no remote, no auth). Port is not guaranteed to be
 # 8765 — see discover_pidfile/serve_with_fallback; never hardcode it elsewhere.
 DEFAULT_PORT = int(os.environ.get("ANIMA_DAEMON_PORT", "8765"))

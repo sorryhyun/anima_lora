@@ -328,6 +328,11 @@ The compact list carries `result_path` but **not** `result_summary`: a bench
 output/daemon/
   daemon.json            pidfile: {pid, create_time, port, root, fingerprint}
   daemon.log             the detached daemon's own stdout/stderr
+  current -> jobs/<id>/  the running job (last launched when idle); relative
+  current.log -> jobs/<id>/stdout.log    symlinks, retargeted at launch/adopt,
+                         so `tail -f output/daemon/current.log` follows whatever
+                         the queue is driving. Best-effort (skipped where the
+                         host refuses symlinks) — never a contract.
   jobs/<id>/
     job.json             the full Job record (atomic-replaced on each change;
                          carries `returncode` once the job process exits)

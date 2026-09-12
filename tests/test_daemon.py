@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import threading
@@ -825,6 +826,23 @@ def test_returncode_zero_on_clean_command(real_cmd_daemon):
     assert _wait_until(lambda: cl.get(jid)["state"] == "done", timeout=15)
     assert cl.get(jid)["returncode"] == 0
     assert _common._exit_code_for(cl, jid) == 0
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="symlink shortcut is best-effort on Windows"
+)
+def test_current_shortcuts_follow_the_running_job(real_cmd_daemon):
+    cl, _ = real_cmd_daemon
+    j1 = cl.submit_command(label="one", argv=["-c", "print('one')"])["job_id"]
+    assert _wait_until(lambda: cl.get(j1)["state"] == "done", timeout=15)
+    cur, log = config.STATE_DIR / "current", config.STATE_DIR / "current.log"
+    assert cur.is_symlink() and os.readlink(cur) == str(Path("jobs") / j1)
+    assert log.read_text().strip() == "one"
+    j2 = cl.submit_command(label="two", argv=["-c", "print('two')"])["job_id"]
+    assert _wait_until(lambda: cl.get(j2)["state"] == "done", timeout=15)
+    assert os.readlink(cur) == str(Path("jobs") / j2)
+    assert os.readlink(log) == str(Path("jobs") / j2 / "stdout.log")
+    assert log.read_text().strip() == "two"
 
 
 def test_attach_streams_and_returns_exit_code(real_cmd_daemon, capsys):

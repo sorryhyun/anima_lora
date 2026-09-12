@@ -494,6 +494,7 @@ class JobManager:
         """Block until the job process exits, then finalize. Works for both a
         process we spawned (``popen`` reaps the child) and an adopted orphan
         (``popen is None`` → psutil liveness)."""
+        config.point_current_job(job.id)
         while self._proc_running(job, popen):
             self._worker_heartbeat = time.time()
             if self._kill_on_shutdown:
