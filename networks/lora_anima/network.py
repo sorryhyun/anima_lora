@@ -86,6 +86,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         self.loraplus_text_encoder_lr_ratio = None
         self._channel_scale_misses: List[str] = []
         self._channel_scale_hits: int = 0
+        self._grad_basis_misses: List[str] = []
+        self._grad_basis_hits: int = 0
         self._sigma_router_hits: int = 0
         self._hydra_router_hits: int = 0
         self._hydra_router_misses: int = 0
@@ -506,6 +508,19 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                 # kwarg; gate so it never reaches them.
                 if cfg.down_init != "kaiming" and effective_module_class is LoRAModule:
                     extra_kwargs["down_init"] = cfg.down_init
+                    # Gradient-SVD modes carry a per-layer basis; DiT-only (the
+                    # sketch never ran on the TE) and a missing key means that
+                    # module keeps Kaiming, counted for the summary below.
+                    if cfg.grad_basis_dict is not None:
+                        if is_unet:
+                            _gb = cfg.grad_basis_dict.get(lora_name)
+                            extra_kwargs["grad_basis"] = _gb
+                            if _gb is None:
+                                self._grad_basis_misses.append(lora_name)
+                            else:
+                                self._grad_basis_hits += 1
+                        else:
+                            extra_kwargs["grad_basis"] = None
 
                 # Per-channel scaling is DiT-only — TE activations are never calibrated.
                 if cfg.channel_scales_dict is not None and is_unet:
@@ -591,6 +606,20 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                     f"calibration with `python scripts/calibration/analyze_lora_input_channels.py "
                     f"--per_artist --dump_channel_stats networks/calibration/channel_stats.safetensors` "
                     f"if this is unexpected."
+                )
+
+        if cfg.grad_basis_dict is not None:
+            logger.info(
+                f"down_init={cfg.down_init}: {self._grad_basis_hits} DiT modules "
+                f"seeded from the gradient basis"
+            )
+            if self._grad_basis_misses:
+                logger.warning(
+                    f"down_init={cfg.down_init}: {len(self._grad_basis_misses)} DiT "
+                    f"modules have no basis entry (first: {self._grad_basis_misses[:3]}) "
+                    f"and keep Kaiming. A basis is depth-baked and built from the same "
+                    f"target enumeration — a large count means the artifact does not "
+                    f"match this checkpoint."
                 )
 
         names = set()

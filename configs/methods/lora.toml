@@ -11,6 +11,13 @@ cache_llm_adapter_outputs = true
 caption_dropout_rate = 0.1
 
 output_name = "anima_lora"
+# lora_down init: "kaiming" | "weight_svd" (W0's top-r right singular vectors,
+# the default) | "grad_svd" (sketch THIS run's task gradient before the adapter
+# exists — costs one frozen-DiT backward pass per image, blocks_to_swap must be
+# 0) | "basis_file" (read a precomputed gradient basis; needs
+# network_args grad_basis_file=<path>). The gradient modes are seeded from where
+# the task pushes rather than where W is big; output is an ordinary LoRA either
+# way. docs/proposal/grad_basis_init.md, networks/grad_basis.py.
 down_init = "weight_svd"
 path_pattern = "*"
 

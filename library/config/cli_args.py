@@ -766,11 +766,16 @@ def add_dit_training_arguments(parser: argparse.ArgumentParser):
             "logit_normal",
             "mode",
             "cosmap",
+            "min_snr",
             "none",
             "uniform",
         ],
-        help="weighting scheme for timestep distribution. Default is uniform",
+        help="weighting scheme for timestep distribution. Default is uniform. "
+        "min_snr = v-pred Min-SNR-gamma, mean-1 normalized over the run's sigma "
+        "density (down-weights the high-sigma steps the gradient noise-scale "
+        "probe found 4-10x noisier for equal signal; see --min_snr_gamma)",
     )
+
     parser.add_argument(
         "--logit_mean",
         type=float,

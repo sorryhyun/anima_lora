@@ -40,7 +40,7 @@ trainable, so the adapter can rotate away from the SVD basis immediately.
 ## Scope
 
 - **Plain LoRA only**, Linear layers only (v0). Conv2d keeps Kaiming. The
-  config resolver rejects `down_init="weight_svd"` combined with ortho / Hydra /
+  config resolver rejects a non-Kaiming `down_init` combined with ortho / Hydra /
   Chimera / MoE paths — those carry their own basis parameterization.
 - Composes with T-LoRA (the `_timestep_mask` acts on the bottleneck after
   `lora_down`) and with channel-scaling (absorption runs after init, as for
@@ -50,7 +50,8 @@ trainable, so the adapter can rotate away from the SVD basis immediately.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `down_init` | `"kaiming"` | `"kaiming"` (default `kaiming_uniform_(a=√5)`) or `"weight_svd"` (SVD-Down) |
+| `down_init` | `"kaiming"` | `"kaiming"` (default `kaiming_uniform_(a=√5)`), `"weight_svd"` (SVD-Down, this doc), or the gradient-seeded `"grad_svd"` / `"basis_file"` (see below) |
+| `grad_basis_file` | — | Network arg: path to a gradient-basis artifact. Required by `down_init="basis_file"`; written automatically by `"grad_svd"`. |
 
 ## Implementation
 
@@ -58,6 +59,7 @@ trainable, so the adapter can rotate away from the SVD basis immediately.
 |------|------|
 | `networks/lora_modules/lora.py` | `_init_down_weight_svd()` — randomized SVD of `W₀`, copies `V_rᵀ/√3` into `lora_down` |
 | `networks/lora_anima/config.py` | `down_init` cfg field + validation (Linear/plain-LoRA-only guard) |
+| `networks/grad_basis.py` | The gradient-seeded siblings: sketch, basis artifact I/O, and the shared `V_rᵀ/√3` copy |
 
 The randomized SVD (`torch.svd_lowrank`, `q = min(rank+6, …)`, `niter=2`) is the
 same construction already used in `networks/lora_modules/ortho.py` — no new
@@ -73,6 +75,27 @@ gradient in `lora_up` only on step 1, step-1 `‖ΔW‖_F` within 0.5×–2× pl
 (`cos_ideal` 0.42 vs plain LoRA 0.14) with no harm in the isotropic regime.
 
 Original proposal & full theory: `_archive/proposals/svd_down_lora_init.md`.
+
+## Gradient-seeded siblings (`grad_svd` / `basis_file`)
+
+Same seed shape, different basis: instead of `W₀`'s top-r right singular
+vectors, take the top-r row space of the **task gradient** (LoRA-GA / LoRA-One
+lineage — with `B = 0` the first optimizer step is the rank-r truncated full-FT
+step). Everything else is identical, `V_rᵀ/√3` included, so the modes differ
+only in which directions `A` starts in.
+
+- `"grad_svd"` — `train.py` sketches the run's own cached dataset against the
+  frozen DiT before the network is built (~1.3 s/image), writes
+  `<output_name>.grad_basis.safetensors` beside the checkpoint, and loads it
+  back through the `basis_file` path. Refused with `blocks_to_swap > 0`.
+- `"basis_file"` — read a basis built once over many artists
+  (`bench/grad_init/build_universal_basis.py`). No per-run backward.
+
+Measured on this DiT (`bench/grad_init/README.md`): `weight_svd` passes **0.21**
+of an artist's first-step gradient energy, the artist's own gradient basis
+**0.74**, a 20-artist universal basis **0.633** on held-out artists. A basis is
+**depth-baked** (module names carry the block index) and `load_basis` refuses a
+depth mismatch. Whether any of this survives training is `docs/proposal/grad_basis_init.md` §E1.
 
 ## Where this came from
 

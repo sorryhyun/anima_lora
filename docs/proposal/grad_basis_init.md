@@ -1,7 +1,10 @@
 # grad_basis init — seed `lora_down` from the task gradient, and ship a universal basis
 
 Status: PROPOSAL. Motivating measurement done (no training): `bench/grad_init/`
-(2026-09-12, two artist triples). Nothing trained yet.
+(2026-09-12, two artist triples). **E0 passed** (2026-09-12,
+`results/20260912-1314-e0_univ20/`) — a universal basis reaches 0.633 capture on
+held-out artists, 89 % of the reliability ceiling and 3.1× `weight_svd`. E1 is
+next; nothing trained yet.
 
 ## TL;DR
 
@@ -99,21 +102,51 @@ is a file read.
 
 ## Experiments (each has a kill; stop at the first)
 
-**E0 — universal basis generalizes (no training, ~30 GPU-min).** Build the
-basis from N≈16 artists × 2 passes; measure capture on 4 held-out artists with
-`probe_subspace.py`. **Kill:** held-out capture < 0.45 or < 2× weight_svd →
-ship only the per-run mode.
+**E0 — universal basis generalizes (no training). DONE 2026-09-12 — PASS.**
+`bench/grad_init/build_universal_basis.py`, pool = 20 artists × 32 images × 2
+passes, held out aak / channel_(caststation) / sweetonedollar / ootomo_takuji.
+Held-out capture **0.633** vs ceiling 0.709 and `weight_svd` 0.206 — 3.1×, gate
+was ≥ 0.45 and ≥ 2×. Three results that change the plan below:
 
-**E1 — does the seed move the render? (4 paired runs, ~1.5 GPU-h).** One
-artist, `--deterministic`, same seed/data order: `kaiming` / `weight_svd` /
-`grad_svd` (per-run) / `basis_file`. Read: (a) train loss over the first 200
-steps, descriptive only; (b) paired PE-cos render grid vs the artist's
-reference set + full-res eyeball. **Kill:** no render-level separation between
+- **Breadth saturates at N≈1** (0.603 at one pool artist → 0.633 at twenty; the
+  2nd σ-pass is worth +0.004). The open question "83 at 1 pass or 16 at 2" is
+  moot — 8–16 artists at 1 pass is past the knee, and per-artist equal
+  weighting beats raw summing by +0.002. Build the shipped artifact small.
+- **Blocks 18–27 are done**: universal 0.804 vs ceiling 0.823 (98 %). Where ~90 %
+  of the consistent gradient energy lives, a shipped basis is as good as a
+  per-run sketch, so `grad_svd`'s per-run backward buys ~nothing there.
+- **Blocks 12–17 are the only gap**: universal 0.408 vs ceiling 0.602 — the same
+  artist-specific depth the pairwise probes found, and now the sole remaining
+  argument for the per-run mode (and the region E2 already targets).
+
+**E1 — does the seed move the render? (4 paired runs, ~1.5 GPU-h). CODE LANDED
+2026-09-12; runs queued.** One artist (`aak`, held out of E0's pool),
+`--deterministic --paired_step_rng --seed 42`, `--path_pattern "aak/*"`, the
+shipped lora.toml recipe (r=32, α=128, 8 epochs → 256 steps): `kaiming` /
+`weight_svd` / `grad_svd` (per-run) / `basis_file` (E0's `grad_basis_universal_r32`).
+Read: (a) train loss over the first 200 steps, descriptive only; (b) paired
+PE-cos render grid vs the artist's reference set + full-res eyeball
+(`bench/grad_init/e1_read.py`). **Kill:** no render-level separation between
 `weight_svd` and either gradient seed → keep `weight_svd`, close the line with
 the probe numbers as the record (the first-step advantage did not survive
 training). **Pass:** ship `basis_file` as the new default `down_init` with the
 catalog artifact, keep `grad_svd` as the opt-in when the run's own data is
 worth a sketch pass.
+
+What landed (all four arms are runnable from a config today):
+
+- `networks/grad_basis.py` — the sketch extracted from the probe, the basis
+  artifact (fp16, `in × r`, `ss_num_blocks`-stamped, depth-mismatch refused),
+  and the shared `V_rᵀ/√3` copy so a gradient seed is never also a step-size
+  change. `down_init="grad_svd"` / `"basis_file"` in `lora.py` +
+  `lora_anima/{config,factory,network}.py`; `grad_basis_file` is a network arg.
+- The per-run mode sketches inside `train.py` (before `_create_and_apply_network`,
+  where the DiT is loaded but no adapter exists yet), writes
+  `<output_name>.grad_basis.safetensors`, and hands that path to the factory —
+  so both modes share one load path. Measured 1.3 s/image on the 16 GB box.
+  **Refused under `blocks_to_swap > 0`**: the swapper desyncs on forwards
+  outside the training loop's cadence.
+- Invariant test `tests/test_grad_basis_init.py` (19 cases).
 
 **E1 side-arms — the same "early noise picks the mode" hypothesis, cheaper
 levers (fold into E1's paired grid, no new line).** Each is a zero- or
@@ -125,12 +158,29 @@ gradient), so they belong in one ranking:
 |---|---|---|
 | `lr_warmup_steps=0.15` (from 0.05) | shrinks early step magnitude until momentum has averaged | 0 |
 | staged accumulation 4 → 2 → 1 over the first 5 % / 10 % / rest | shrinks early direction variance (SNR 0.12 → 0.24; still B≈70-dominated, ~15 % extra compute) | ~30 lines in `loop.py` (runtime `gradient_accumulation_steps` + scheduler step count) |
-| `weighting_scheme` Min-SNR-style | down-weights σ>0.5 samples that carry 4–10× the noise for equal signal | 0 (existing knob) |
+| `weighting_scheme = "min_snr"` | down-weights σ>0.5 samples that carry 4–10× the noise for equal signal | ~40 lines (**not** a free knob — see below) |
 | `layer_start=12` | drops the blocks whose gradient is pure noise at this data scale | 0 (existing knob) |
 
 Read as E1 (paired `--deterministic`, render-level). Kill for the group: no
 arm separates from baseline at render level → the early-noise hypothesis is
 closed and only the init question remains.
+
+**Correction (2026-09-12): the `weighting_scheme` arm was not a 0-cost knob.**
+The shipped choices are `uniform`/`none` (all-ones), `sigma_sqrt` (σ⁻², a ~400×
+swing that *up*weights low σ rather than down-weighting high σ — it would raise
+gradient variance, testing the opposite of the hypothesis) and `cosmap` (peaks
+at σ=0.5). None is Min-SNR-shaped, so `min_snr` was added:
+`min(SNR, γ)/(SNR + 1)` with `SNR = ((1-σ)/σ)²` — the v-prediction form, since
+rectified flow regresses a velocity — **mean-1 normalized over the run's own σ
+density** (Monte-Carlo, fixed seed) so the arm is a reshape and not a learning-rate
+change. γ is the pre-existing, previously unconsumed `--min_snr_gamma`
+(None → 5.0), which puts the peak at σ≈0.31; at γ=5 the normalized weight runs
+2.14 at σ=0.31 → 1.29 at σ=0.5 → 0.54 at σ=0.66 → 0.03 at σ=0.9.
+`library/anima/training.py`; tests in `tests/test_grad_basis_init.py`.
+
+**Arm selection (2026-09-12, user):** run the `weighting_scheme` arm only, as an
+A/B against the `weight_svd` init arm (same seed, so it is CRN-paired with it).
+`lr_warmup_steps`, staged accumulation and `layer_start=12` are not being run.
 
 **E2 (only if E1 passes) — the one separation angle left.** O-LoRA-style
 projection of artist-2's basis off artist-1's, restricted to blocks 12–16
@@ -140,16 +190,19 @@ the probe says the payoff is bounded by ~18 points of gradient energy.
 
 ## Cost / placement
 
-E0 + E1 ≈ 2 GPU-h. Code: one `down_init` mode in `networks/lora_modules/lora.py`
-(+ the `config.py` validator and `configs/methods/lora.toml` comment), the
-sketch extracted from `bench/grad_init/probe_subspace.py` into a small
-`networks/grad_basis.py`, a catalog row, a `make grad-basis` builder. Tier 1.5:
-the probe is the bench, E1 the invariant test's basis.
+E0 + E1 ≈ 2 GPU-h. Code landed 2026-09-12 (see §E1): the two `down_init` modes,
+`networks/grad_basis.py`, the `train.py` sketch pass, the `min_snr` weighting
+scheme, `tests/test_grad_basis_init.py`, and `bench/grad_init/e1_read.py` for the
+render read. **Still owed if E1 passes**: a catalog row for the shipped basis
+(it currently lives in `bench/grad_init/results/20260912-1314-e0_univ20/`, 40 MB,
+untracked) and a `make grad-basis` builder target. Tier 1.5: the probe is the
+bench, `tests/test_grad_basis_init.py` the invariant test.
 
 ## Open questions
 
-- Pool for the universal basis: all 83 artists at 1 pass, or 16 at 2? The
-  probe says images beat σ-redraws, so breadth wins — but confirm on E0.
+- ~~Pool for the universal basis: all 83 artists at 1 pass, or 16 at 2?~~
+  **Answered by E0: neither — the curve is flat past N≈8.** Ship 8–16 artists
+  at 1 pass with per-artist equal weighting.
 - Whether `r_store = 64` leaves the leading directions stable enough to be
   worth truncating to 16 for `low_vram` runs, or whether small dims should
   re-sketch.

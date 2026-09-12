@@ -633,18 +633,83 @@ def add_anima_training_arguments(parser: argparse.ArgumentParser):
     )
 
 
+# E[w] = 1 normalizers for the min_snr scheme, keyed by (gamma, density). Mean-1
+# normalization is what keeps a reweighting arm from doubling as an LR change —
+# the same confound weight_svd's 1/sqrt(3) row-norm match avoids on the init side.
+_MIN_SNR_NORM_CACHE: dict[tuple, float] = {}
+
+
+def min_snr_weighting(sigmas: torch.Tensor, gamma: float) -> torch.Tensor:
+    """Min-SNR-γ in its v-prediction form, ``min(SNR, γ) / (SNR + 1)``.
+
+    Rectified flow regresses ``ε - x`` (a velocity), so the v-pred form is the
+    right analog: with ``SNR(σ) = ((1-σ)/σ)²`` the weight peaks where ``SNR = γ``
+    (σ ≈ 0.31 at γ=5) and rolls off toward both ends. The high-σ roll-off is the
+    point — ``bench/grad_init/README.md`` §gradient noise scale measured σ>0.5
+    samples carrying 4–10× the noise energy of low-σ ones for comparable signal
+    (``B_simple`` 111/81 vs 8/15 per band), so they buy less per step than a
+    uniform weighting spends on them.
+    """
+    snr = ((1.0 - sigmas) / sigmas.clamp_min(1e-4)) ** 2
+    return snr.clamp_max(gamma) / (snr + 1.0)
+
+
+def min_snr_normalizer(
+    gamma: float,
+    *,
+    timestep_sampling: str = "sigmoid",
+    sigmoid_scale: float = 1.0,
+    sigmoid_bias: float = 0.0,
+    n: int = 1 << 20,
+) -> float:
+    """``E[w]`` of :func:`min_snr_weighting` under the configured σ density.
+
+    Monte-Carlo with a fixed seed (so paired ``--deterministic`` arms get the
+    identical constant) over the trainer's own draw: logit-normal for
+    ``timestep_sampling="sigmoid"``, uniform otherwise — the modes that need the
+    scheduler grid fall back to uniform, which is within a few percent.
+    """
+    key = (round(float(gamma), 6), timestep_sampling, sigmoid_scale, sigmoid_bias, n)
+    hit = _MIN_SNR_NORM_CACHE.get(key)
+    if hit is not None:
+        return hit
+    gen = torch.Generator(device="cpu").manual_seed(0x5EED)
+    if timestep_sampling == "sigmoid":
+        sig = torch.sigmoid(
+            sigmoid_scale * torch.randn((n,), generator=gen) + sigmoid_bias
+        )
+    else:
+        sig = torch.rand((n,), generator=gen)
+    mean = float(min_snr_weighting(sig, float(gamma)).mean())
+    _MIN_SNR_NORM_CACHE[key] = mean
+    return mean
+
+
 def compute_loss_weighting_for_anima(
-    weighting_scheme: str, sigmas: torch.Tensor
+    weighting_scheme: str, sigmas: torch.Tensor, args=None
 ) -> torch.Tensor:
     """Compute loss weighting for Anima training.
 
-    Same schemes as SD3 but can add Anima-specific ones if needed in future.
+    Same schemes as SD3 plus ``min_snr`` (Anima-specific: the v-pred Min-SNR-γ
+    form, mean-1 normalized over the run's σ density). ``args`` supplies
+    ``min_snr_gamma`` and the density knobs; it is optional so callers that only
+    use the σ-only schemes keep the two-argument form.
     """
     if weighting_scheme == "sigma_sqrt":
         weighting = (sigmas**-2.0).float()
     elif weighting_scheme == "cosmap":
         bot = 1 - 2 * sigmas + 2 * sigmas**2
         weighting = 2 / (math.pi * bot)
+    elif weighting_scheme == "min_snr":
+        gamma = float(getattr(args, "min_snr_gamma", 5.0) or 5.0)
+        weighting = min_snr_weighting(sigmas.float(), gamma)
+        norm = min_snr_normalizer(
+            gamma,
+            timestep_sampling=str(getattr(args, "timestep_sampling", "sigmoid")),
+            sigmoid_scale=float(getattr(args, "sigmoid_scale", 1.0) or 1.0),
+            sigmoid_bias=float(getattr(args, "sigmoid_bias", 0.0) or 0.0),
+        )
+        weighting = weighting / max(norm, 1e-8)
     elif weighting_scheme == "none" or weighting_scheme is None:
         weighting = torch.ones_like(sigmas)
     else:

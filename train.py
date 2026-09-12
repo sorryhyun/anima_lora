@@ -1427,7 +1427,7 @@ class AnimaTrainer:
 
         # Loss weighting
         weighting = anima_train_utils.compute_loss_weighting_for_anima(
-            weighting_scheme=ctx.args.weighting_scheme, sigmas=sigmas
+            weighting_scheme=ctx.args.weighting_scheme, sigmas=sigmas, args=ctx.args
         )
 
         return model_pred, target, timesteps, weighting
@@ -1774,6 +1774,8 @@ class AnimaTrainer:
 
     def update_metadata(self, metadata, args):
         metadata["ss_weighting_scheme"] = args.weighting_scheme
+        if args.weighting_scheme == "min_snr":
+            metadata["ss_min_snr_gamma"] = getattr(args, "min_snr_gamma", 5.0)
         metadata["ss_logit_mean"] = args.logit_mean
         metadata["ss_logit_std"] = args.logit_std
         metadata["ss_mode_scale"] = args.mode_scale
@@ -2215,6 +2217,136 @@ class AnimaTrainer:
             )
             return set()
         return token_counts_for_sample_prompts(prompts)
+
+    def _maybe_sketch_grad_basis(
+        self, args, accelerator, unet, train_dataset_group, weight_dtype
+    ) -> None:
+        """``down_init="grad_svd"``: sketch this run's own gradient row space.
+
+        A LoRA-GA / LoRA-One style seed needs the task gradient *before* the
+        adapter exists, so this runs one frozen-DiT forward/backward per
+        (image, σ) over the run's cached latents+TE, takes the top-r right
+        singular vectors per target Linear, writes them beside the checkpoint,
+        and hands the path to the factory as ``grad_basis_file`` — the same
+        artifact ``down_init="basis_file"`` reads, so the two modes share one
+        load path. Output is an ordinary LoRA either way (B=0, ΔW=0 at step 0).
+
+        Refused under block swap: the swapper's residency plan assumes the
+        training loop's forward cadence and desyncs on extra forwards
+        (docs/optimizations/block_swap.md). Build the basis with
+        ``bench/grad_init/build_universal_basis.py`` and pass ``basis_file``
+        instead on a swap preset.
+        """
+        net_kwargs = resolve_network_kwargs(args)
+        if net_kwargs.get("down_init") != "grad_svd":
+            return
+        if net_kwargs.get("grad_basis_file"):
+            logger.info(
+                "down_init=grad_svd: grad_basis_file already set "
+                f"({net_kwargs['grad_basis_file']}); skipping the sketch pass."
+            )
+            return
+        if self.is_swapping_blocks:
+            raise ValueError(
+                "down_init='grad_svd' needs a resident DiT for its sketch pass, "
+                "but blocks_to_swap>0. Use down_init='basis_file' with a basis "
+                "built by bench/grad_init/build_universal_basis.py, or set "
+                "blocks_to_swap=0."
+            )
+
+        from library.env import resolve_under_home
+        from networks.grad_basis import (
+            BASIS_SUFFIX,
+            basis_from_sketches,
+            dit_num_blocks,
+            save_basis,
+            sketch_dataset,
+        )
+
+        pairs: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for info in train_dataset_group.image_data.values():
+            if info.is_reg:
+                continue
+            npz, te = info.latents_npz, info.text_encoder_outputs_npz
+            if not npz or not te or npz in seen:
+                continue
+            seen.add(npz)
+            pairs.append((npz, te))
+        pairs.sort()  # dict order follows the glob; keep the sketch reproducible
+        if not pairs:
+            raise RuntimeError(
+                "down_init='grad_svd' needs cached latents + text-encoder "
+                "outputs; none of the training images have both. Run "
+                "`make preprocess` first."
+            )
+
+        rank = int(args.network_dim or 4)
+        samples = int(net_kwargs.get("grad_basis_samples", 64) or 0)
+        passes = int(net_kwargs.get("grad_basis_passes", 1) or 1)
+        oversample = int(net_kwargs.get("grad_basis_oversample", 32) or 32)
+        seed = int(net_kwargs.get("grad_basis_seed", args.seed or 42) or 42)
+
+        out_path = resolve_under_home(
+            os.path.join(args.output_dir, f"{args.output_name}{BASIS_SUFFIX}")
+        )
+        logger.info(
+            f"down_init=grad_svd: sketching r={rank} (q={rank + oversample}) over "
+            f"{min(samples, len(pairs)) if samples else len(pairs)} of "
+            f"{len(pairs)} cached images x {passes} pass(es)"
+        )
+
+        was_training = unet.training
+        unet.requires_grad_(False)
+        unet.to(accelerator.device, dtype=weight_dtype)
+        # Gradient checkpointing is gated on module.training (models.py), and a
+        # 4k-token backward without it does not fit the 16 GB envelope — turn it
+        # on for the sketch regardless of args.gradient_checkpointing, then put
+        # the model back exactly as the trainer expects it.
+        had_ckpt = bool(getattr(unet, "gradient_checkpointing", False))
+        unet.train()
+        if not had_ckpt:
+            unet.enable_gradient_checkpointing()
+        try:
+            sketches, meta = sketch_dataset(
+                unet,
+                pairs,
+                rank=rank,
+                device=accelerator.device,
+                oversample=oversample,
+                passes=passes,
+                seed=seed,
+                max_samples=samples,
+            )
+        finally:
+            if not had_ckpt:
+                unet.disable_gradient_checkpointing()
+            if not was_training:
+                unet.eval()
+            unet.to("cpu")
+            unet.zero_grad(set_to_none=True)
+            clean_memory_on_device(accelerator.device)
+
+        basis = basis_from_sketches(sketches, rank)
+        save_basis(
+            out_path,
+            basis,
+            num_blocks=dit_num_blocks(unet),
+            extra_metadata={
+                "source": "grad_svd (per-run sketch)",
+                "n_used": meta["n_used"],
+                "passes": meta["passes"],
+                "seed": meta["seed"],
+                "mean_loss": round(meta["mean_loss"], 6),
+            },
+        )
+        logger.info(
+            f"down_init=grad_svd: basis written to {out_path} "
+            f"({len(basis)} layers, {meta['n_used']} samples, {meta['seconds']}s)"
+        )
+        # Mutating the cached dict is how the factory sees it — net_kwargs IS
+        # args._network_kwargs, which _create_and_apply_network re-reads.
+        net_kwargs["grad_basis_file"] = str(out_path)
 
     def _create_and_apply_network(
         self,
@@ -2859,6 +2991,12 @@ class AnimaTrainer:
                 dtype=weight_dtype,
                 existing=self._state.uncond_crossattn_1,
             )
+
+        # Before the network exists: a grad_svd seed needs the task gradient of
+        # the *base* DiT (see _maybe_sketch_grad_basis). No-op otherwise.
+        self._maybe_sketch_grad_basis(
+            args, accelerator, unet, train_dataset_group, weight_dtype
+        )
 
         net = self._create_and_apply_network(
             args, accelerator, vae, text_encoder, unet, text_encoders, weight_dtype

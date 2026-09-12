@@ -98,3 +98,72 @@ energy too. Where B is huge (early blocks) the "gradient basis" is really the
 input-activation covariance basis — which is why block 0 looked 0.91 "shared"
 across artists. The capture ranking (gradient basis ≫ weight_svd) stands, but
 the subspace is task-informed only where B is small (blocks ≥ 16).
+
+## 2026-09-12 — E0: does a universal basis generalize? (`build_universal_basis.py`, `results/20260912-1314-e0_univ20/`)
+
+Pool = 20 artists × 32 images × 2 passes (`--max_samples 32` so `sincos`'s 351
+images don't own the basis); held out = aak / channel_(caststation) /
+sweetonedollar / ootomo_takuji, never in the pool. Ω is seed-fixed across
+artists, so per-artist sketches are additive and the pooled basis is the top-r
+right singular vectors of `Σ_a S_a`. r=32, q=64, block token layers.
+
+| held-out artist's gradient energy captured by | value |
+|---|---|
+| its own held-out image half (ceiling) | 0.709 |
+| **the universal basis (N=20)** | **0.633** |
+| `weight_svd` top-32 | 0.206 |
+| random rank-32 | 0.016 |
+
+**E0 gate: PASS** — 0.633 ≥ 0.45 and 3.1× weight_svd. The universal basis
+reaches **89 % of the reliability ceiling** on artists it has never seen; per
+artist 0.602–0.661 against ceilings 0.671–0.733, i.e. no held-out artist is an
+outlier.
+
+**Breadth saturates at N≈1** — the open question ("all 83 at 1 pass, or 16 at
+2?") is answered, and it is neither:
+
+| pool | capture |
+|---|---|
+| N=1 | 0.603 |
+| N=2 | 0.614 |
+| N=4 | 0.624 |
+| N=8 | 0.628 |
+| N=16 | 0.631 |
+| N=20 | 0.633 |
+| N=20, 1 pass only | 0.629 |
+| N=20, per-artist equal weight | 0.635 |
+
+One artist already buys 95 % of what 20 buy; doubling the pool adds ~0.4 points
+and the second σ-pass adds 0.4. So the shipped artifact does **not** need a
+large corpus — 8–16 artists at 1 pass is past the knee, and per-artist
+normalization (equal weight, not "whoever has the biggest gradient") is a free
++0.2. The corollary is the honest one: what the basis captures is an
+artist-agnostic property of the model + anime-illustration data, not a curated
+average of many styles.
+
+**Depth is the whole story** (bands from §gradient noise scale):
+
+| blocks | universal | own-half ceiling | weight_svd |
+|---|---|---|---|
+| 0–11 | 0.603 | 0.667 | 0.186 |
+| 12–17 | 0.408 | 0.602 | 0.099 |
+| 18–27 | **0.804** | 0.823 | 0.293 |
+
+In blocks 18–27 — where ~90 % of the *consistent* gradient energy lives — the
+universal basis is at **98 % of the ceiling**: there is essentially nothing
+per-artist left to seed, and a shipped basis is as good as a per-run sketch.
+Blocks 12–17 are where it gives up 19 points to the ceiling, matching the
+artist-specific depth the pairwise probes found (0.76→0.36). Blocks 0–11 sit
+between, and per the noise-scale caveat their "capture" is activation-covariance
+alignment rather than task direction.
+
+By kind, `cross_attn.kv_proj` / `output_proj` keep the widest gap to the
+ceiling (0.59/0.63 vs 0.79/0.79); self-attn and MLP are within 0.04–0.05. adaln
+rows read 1.000 for every basis (their input is one vector per image, so any
+basis spans it) and stay out of the headline aggregate.
+
+**Read.** Ship the universal basis: E0's condition for `basis_file` is met, and
+the depth split says the per-run `grad_svd` mode's only real advantage over it
+is blocks 12–17. E1 now decides whether *any* gradient seed moves the render;
+the E0 numbers argue its `grad_svd` vs `basis_file` arms should separate little
+if at all, so a `basis_file`-vs-`weight_svd` separation is the load-bearing read.

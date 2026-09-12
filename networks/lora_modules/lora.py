@@ -28,15 +28,19 @@ class LoRAModule(BaseLoRAModule):
         module_dropout=None,
         channel_scale=None,
         down_init="kaiming",
+        grad_basis=None,
     ):
         """if alpha == 0 or None, alpha is rank (no scaling).
 
         ``down_init`` selects the ``lora_down`` initialization (Linear only):
-        ``"kaiming"`` (default ``kaiming_uniform_(a=sqrt(5))``) or ``"weight_svd"``
+        ``"kaiming"`` (default ``kaiming_uniform_(a=sqrt(5))``), ``"weight_svd"``
         (SVD-Down — seed the input basis from W0's top-r right singular vectors,
-        scale-matched to Kaiming's expected row-norm so it is NOT a larger step).
-        Still ordinary LoRA after init: ΔW=0 (up=0), full B trainable on step 1.
-        See docs/methods/svd-down-lora.md.
+        scale-matched to Kaiming's expected row-norm so it is NOT a larger step),
+        or the two gradient-seeded modes ``"grad_svd"`` / ``"basis_file"``, which
+        take the same scale-matched seed from a precomputed ``grad_basis``
+        (``in × r_store``; see networks/grad_basis.py). Still ordinary LoRA after
+        init in every mode: ΔW=0 (up=0), full B trainable on step 1.
+        See docs/methods/svd-down-lora.md, docs/proposal/grad_basis_init.md.
         """
         super().__init__(
             lora_name,
@@ -72,9 +76,12 @@ class LoRAModule(BaseLoRAModule):
 
         if down_init == "weight_svd":
             self._init_down_weight_svd(org_module)
+        elif down_init in ("grad_svd", "basis_file"):
+            self._init_down_grad_basis(grad_basis, down_init)
         elif down_init != "kaiming":
             raise ValueError(
-                f"down_init={down_init!r}: expected 'kaiming' or 'weight_svd'."
+                f"down_init={down_init!r}: expected 'kaiming', 'weight_svd', "
+                f"'grad_svd' or 'basis_file'."
             )
 
         self._register_channel_scale(self.lora_down.weight.data, channel_scale)
@@ -109,6 +116,30 @@ class LoRAModule(BaseLoRAModule):
         with torch.no_grad():
             v_r = (V[:, :rank].T / math.sqrt(3)).to(self.lora_down.weight.dtype)
             self.lora_down.weight.copy_(v_r)
+
+    def _init_down_grad_basis(self, grad_basis, mode: str) -> None:
+        """Gradient-SVD: seed ``lora_down`` from a precomputed gradient row space.
+
+        ``grad_basis`` is the ``(in, r_store)`` slice for THIS module, resolved by
+        the network from the per-run sketch (``grad_svd``) or the shipped
+        artifact (``basis_file``); ``None`` means the basis carries no entry for
+        this module (a TE module, or a layer whose sketch was empty) and Kaiming
+        stands. Scale matching and the ``r_store < r`` tail are owned by
+        ``grad_basis.init_down_from_basis`` so both modes are identical.
+        """
+        if not isinstance(self.lora_down, torch.nn.Linear):
+            logger.warning(
+                "down_init=%r is Linear-only; %s keeps Kaiming.", mode, self.lora_name
+            )
+            return
+        if grad_basis is None:
+            self._grad_basis_seeded = 0
+            return
+        from networks.grad_basis import init_down_from_basis
+
+        self._grad_basis_seeded = init_down_from_basis(
+            self.lora_down.weight.data, grad_basis, lora_name=self.lora_name
+        )
 
     # Forward is the shared BaseLoRAModule scaffold; this class supplies the
     # down / up GEMMs (Linear-or-Conv2d dispatch) and the eval delta. The

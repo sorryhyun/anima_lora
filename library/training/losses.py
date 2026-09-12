@@ -39,7 +39,11 @@ def add_custom_train_arguments(
         "--min_snr_gamma",
         type=float,
         default=None,
-        help="gamma for reducing the weight of high loss timesteps. Lower numbers have stronger effect. 5 is recommended by paper.",
+        help="gamma for weighting_scheme=min_snr (None = 5.0). The loss weight "
+        "peaks where SNR((1-sigma)/sigma)^2 = gamma (sigma ~0.31 at 5.0) and "
+        "rolls off above it; smaller gamma flattens the low-sigma half, which "
+        "after mean-1 normalization shifts weight toward higher sigma. Inert "
+        "for every other weighting_scheme.",
     )
     parser.add_argument(
         "--debiased_estimation_loss",

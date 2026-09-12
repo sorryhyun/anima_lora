@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 
 import torch
 
+from library.env import resolve_under_home
 from library.log import setup_logging
 from networks import NETWORK_REGISTRY, resolve_network_spec
 from networks.lora_anima.config import LoRANetworkCfg
@@ -71,6 +72,41 @@ def _load_channel_scales(
     return out
 
 
+def _load_grad_basis(
+    kwargs: Dict[str, object],
+    unet,
+) -> Optional[Dict[str, torch.Tensor]]:
+    """Load the gradient-SVD ``lora_down`` basis, gated on ``down_init``.
+
+    Both gradient modes read the same artifact: ``basis_file`` points at a
+    shipped/universal basis, and ``grad_svd`` points at the per-run sketch
+    ``train.py`` wrote just before the network was built. Depth is validated in
+    ``grad_basis.load_basis`` — a basis is per checkpoint arch.
+    """
+    down_init = str(kwargs.get("down_init", "kaiming") or "kaiming")
+    if down_init not in ("grad_svd", "basis_file"):
+        return None
+
+    basis_file = kwargs.get("grad_basis_file")
+    if not basis_file:
+        raise ValueError(
+            f"down_init={down_init!r} needs network_args grad_basis_file=<path>. "
+            "For 'grad_svd' that path is written by train.py's own sketch pass — "
+            "seeing this means the network was built outside train.py."
+        )
+    from networks.grad_basis import dit_num_blocks, load_basis
+
+    basis, meta = load_basis(
+        resolve_under_home(str(basis_file)),
+        num_blocks=dit_num_blocks(unet) if unet is not None else None,
+    )
+    logger.info(
+        f"down_init={down_init}: gradient basis {Path(str(basis_file)).name} "
+        f"({len(basis)} layers, rank={meta.get('rank', '?')})"
+    )
+    return basis
+
+
 def create_network(
     multiplier: float,
     network_dim: Optional[int],
@@ -97,6 +133,7 @@ def create_network(
         )
 
     channel_scales_dict = _load_channel_scales(kwargs)
+    grad_basis_dict = _load_grad_basis(kwargs, unet)
 
     cfg = LoRANetworkCfg.from_kwargs(
         kwargs,
@@ -105,6 +142,7 @@ def create_network(
         neuron_dropout=neuron_dropout,
         module_class=spec.module_class,
         channel_scales_dict=channel_scales_dict,
+        grad_basis_dict=grad_basis_dict,
     )
 
     if cfg.router_lr_scale != 1.0:
