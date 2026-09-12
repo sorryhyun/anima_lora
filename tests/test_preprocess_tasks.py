@@ -799,3 +799,128 @@ def test_preprocess_task_wiring_forwards_drop_groups(monkeypatch):
     monkeypatch.setenv("CAPTION_DROP_GROUPS", "pose")
     config, _ = _caption_correction_config([])
     assert config["drop_groups"] == "pose"
+
+
+def test_caption_full_chains_position_ocr_then_combine(monkeypatch):
+    """`make caption-full` runs the three stages in the one order that composes.
+
+    Position first (the combine parses the caption it lands on and keeps its
+    position clauses), OCR before the combine (the combine reads the sidecars
+    the OCR pass writes).
+    """
+    from scripts.tasks import preprocess
+
+    calls: list[list[str]] = []
+    _patch_run(monkeypatch, lambda cmd: calls.append(cmd))
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+    monkeypatch.delenv("PREPROCESS_PATH_PATTERN", raising=False)
+
+    preprocess.cmd_caption_full(["--inline"])
+
+    assert [_entry(c) for c in calls] == [
+        "anime_tools.stages.cli.position_captions",
+        "anime_tools.stages.cli.ocr_captions",
+        "anime_tools.stages.cli.export_workspace",
+    ]
+    # Writes by default — nothing here can reach the image_dataset/ master, so
+    # a plan nobody reads would just be a second GPU pass.
+    assert all("--apply" in c for c in calls)
+
+
+def test_caption_full_dry_run_reaches_every_stage(monkeypatch):
+    from scripts.tasks import preprocess
+
+    calls: list[list[str]] = []
+    _patch_run(monkeypatch, lambda cmd: calls.append(cmd))
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+    monkeypatch.delenv("PREPROCESS_PATH_PATTERN", raising=False)
+
+    preprocess.cmd_caption_full(["--inline", "--dry_run"])
+
+    assert len(calls) == 3
+    assert not any("--apply" in c for c in calls)
+
+
+def test_caption_full_accepts_a_redundant_apply(monkeypatch):
+    """`--apply` is muscle memory from the other caption targets; typing it
+    must not be an error."""
+    from scripts.tasks import preprocess
+
+    calls: list[list[str]] = []
+    _patch_run(monkeypatch, lambda cmd: calls.append(cmd))
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+
+    preprocess.cmd_caption_full(
+        ["--inline", "--skip_position", "--skip_ocr", "--apply"]
+    )
+    assert "--apply" in calls[0]
+
+
+def test_caption_full_skips_the_gpu_passes_on_request(monkeypatch):
+    """Retuning the det/glyph floors must not pay for SAM3 or the VL reader."""
+    from scripts.tasks import preprocess
+
+    calls: list[list[str]] = []
+    _patch_run(monkeypatch, lambda cmd: calls.append(cmd))
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+
+    preprocess.cmd_caption_full(
+        [
+            "--inline",
+            "--skip_position",
+            "--skip_ocr",
+            "--dry_run",
+            "--ocr_min_det",
+            "0.7",
+        ]
+    )
+
+    assert [_entry(c) for c in calls] == ["anime_tools.stages.cli.export_workspace"]
+    argv = calls[0]
+    assert argv[argv.index("--ocr_min_det") + 1] == "0.7"
+
+
+def test_caption_full_combine_publishes_in_place(monkeypatch):
+    """The combine is an export of the trainer tree onto itself.
+
+    `out` must be the resized tree's PARENT — an export writes a caption to
+    `out/resized/<rel>.txt`, so anything else would publish the combined
+    captions into a tree TE never reads. The master root stays off the
+    trainer's trees so no row can write back over `image_dataset/`.
+    """
+    from pathlib import Path
+
+    from scripts.tasks import preprocess
+
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+    req = preprocess._caption_combine_request(apply=True)
+
+    assert req.combine_ocr
+    assert Path(req.dst) == Path("post_image_dataset/resized")
+    assert Path(req.out) == Path("post_image_dataset/resized").parent
+    assert Path(req.ocr_dir) == Path(preprocess.DEFAULT_OCR_DIR)
+    assert Path(preprocess.ROOT, req.master) not in (
+        Path(preprocess.ROOT, req.src),
+        Path(preprocess.ROOT, req.dst),
+    )
+
+
+def test_caption_full_warns_when_te_would_encode_the_masters(monkeypatch, capsys):
+    """`caption-full` writes only the derived tree; `preprocess-te` reads it only
+    when correction, variants or `caption_position_clauses` force the caption
+    step. With all three off the run would be silently discarded — say so."""
+    from scripts.tasks import preprocess
+
+    _patch_run(monkeypatch, lambda cmd: None)
+    monkeypatch.setattr(preprocess, "_path", lambda key, default: default)
+    monkeypatch.setattr(preprocess, "_variant_settings", lambda: ("0", "0.0", "0.0"))
+    monkeypatch.delenv("CAPTION_POSITION_CLAUSES", raising=False)
+    monkeypatch.delenv("CAPTION_AUTOTAG", raising=False)
+    monkeypatch.setattr(preprocess, "_path_overrides", lambda: {}, raising=False)
+
+    preprocess.cmd_caption_full(["--inline", "--skip_position", "--skip_ocr"])
+    assert "encodes the image_dataset/ MASTERS" in capsys.readouterr().out
+
+    monkeypatch.setattr(preprocess, "_variant_settings", lambda: ("4", "0.1", "0.0"))
+    preprocess.cmd_caption_full(["--inline", "--skip_position", "--skip_ocr"])
+    assert "MASTERS" not in capsys.readouterr().out

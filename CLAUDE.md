@@ -331,10 +331,19 @@ separate tags inside one, so a plain `caption.split(",")` silently corrupts them
 **Never hand-split a caption**: `anime_tools.captions.position_clauses` (torch-free) is
 the single grammar (`parse_caption` / `compose_caption`).
 
+A caption may also carry the text that is *in the picture*, as trailing text clauses
+(`… Japanese text reads as "…". Japanese SFX reads as "…"`) — read by the OCR stage into
+`post_image_dataset/ocr/{stem}.ocr.txt` and attached to the caption by the export stage's
+`--combine_ocr`, which is the **only** place a sidecar meets a caption.
+
 `make caption-autotag` batch-tags the dataset; `make caption-position` generates position
-clauses. Both are dry-run by default, and an `ARGS="--apply"` **must** be followed by
-`make preprocess-te`. **Load the `captions` skill** before parsing/editing captions or
-running either target.
+clauses; **`make caption-full`** runs the whole derived-caption chain in the one order
+that composes — position → OCR read → OCR clause (that last step an export of the trainer
+tree **onto itself**, since the trainer is its own workspace). The first two are dry-run
+by default — their dry run guards the hand-written master; `caption-full` touches only
+the derived tree and so **writes by default** (`ARGS="--dry_run"` to plan). All three
+**must** be followed by `make preprocess-te`. **Load the `captions` skill** before
+parsing/editing captions or running any of them.
 
 ## Custom nodes
 

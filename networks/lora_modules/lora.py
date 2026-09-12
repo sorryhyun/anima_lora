@@ -29,6 +29,7 @@ class LoRAModule(BaseLoRAModule):
         channel_scale=None,
         down_init="kaiming",
         grad_basis=None,
+        svd_slice=0,
     ):
         """if alpha == 0 or None, alpha is rank (no scaling).
 
@@ -40,6 +41,10 @@ class LoRAModule(BaseLoRAModule):
         take the same scale-matched seed from a precomputed ``grad_basis``
         (``in × r_store``; see networks/grad_basis.py). Still ordinary LoRA after
         init in every mode: ΔW=0 (up=0), full B trainable on step 1.
+        ``svd_slice=k`` (weight_svd only) takes right singular vectors
+        ``[k·r, (k+1)·r)`` instead of the top-r, so adapters trained with
+        different slices own mutually orthogonal input subspaces (slices of one
+        orthonormal basis) — a per-artist address for merging. 0 = top-r.
         See docs/methods/svd-down-lora.md, docs/proposal/grad_basis_init.md.
         """
         super().__init__(
@@ -75,7 +80,7 @@ class LoRAModule(BaseLoRAModule):
         torch.nn.init.zeros_(self.lora_up.weight)
 
         if down_init == "weight_svd":
-            self._init_down_weight_svd(org_module)
+            self._init_down_weight_svd(org_module, svd_slice)
         elif down_init in ("grad_svd", "basis_file"):
             self._init_down_grad_basis(grad_basis, down_init)
         elif down_init != "kaiming":
@@ -93,8 +98,14 @@ class LoRAModule(BaseLoRAModule):
         self.org_module_ref = [org_module]
         self._fused = False
 
-    def _init_down_weight_svd(self, org_module: torch.nn.Module) -> None:
+    def _init_down_weight_svd(
+        self, org_module: torch.nn.Module, svd_slice: int = 0
+    ) -> None:
         """SVD-Down: seed ``lora_down`` with W0's top-r right singular vectors.
+
+        ``svd_slice=k`` shifts the window to singular vectors ``[k·r, (k+1)·r)``;
+        the window must fit inside ``min(W.shape)`` or the init refuses — on the
+        base DiT the 256-row adaln ``.1`` Linears cap r=32 at slices 0–7.
 
         ``A_0 = V_r^T / sqrt(3)`` where ``W0 = U Σ V^T`` and the ``1/sqrt(3)``
         matches the expected row-norm of the Kaiming default (a row of V_r^T has
@@ -111,11 +122,24 @@ class LoRAModule(BaseLoRAModule):
             return
         W = org_module.weight.data.float()
         rank = self.lora_dim
-        q = min(rank + 6, min(W.shape))
-        _, _, V = torch.svd_lowrank(W, q=q, niter=2)  # V: (in_features, q)
+        offset = int(svd_slice) * rank
+        if offset + rank > min(W.shape):
+            raise ValueError(
+                f"svd_slice={svd_slice}: window [{offset}, {offset + rank}) exceeds "
+                f"the {min(W.shape)}-vector spectrum of {self.lora_name} "
+                f"({tuple(W.shape)}); lower the slice or the rank."
+            )
+        # Exact thin SVD (2026-09-12; was a q=r+6, niter=2 randomized sketch).
+        # The sketch captured only 0.80–0.93 of the true top-r subspace on
+        # real DiT layers and re-drew its basis per call, so two slices from
+        # two sketches were not orthogonal. One exact basis makes slice 0 the
+        # actual top-r and every slice pair exactly orthogonal.
+        # Cost: 0.2–0.3 s per (8192, 2048) layer on GPU, ~1 min per run.
+        _, _, Vh = torch.linalg.svd(W, full_matrices=False)
+        V = Vh.T
         with torch.no_grad():
-            v_r = (V[:, :rank].T / math.sqrt(3)).to(self.lora_down.weight.dtype)
-            self.lora_down.weight.copy_(v_r)
+            v_r = V[:, offset : offset + rank].T / math.sqrt(3)
+            self.lora_down.weight.copy_(v_r.to(self.lora_down.weight.dtype))
 
     def _init_down_grad_basis(self, grad_basis, mode: str) -> None:
         """Gradient-SVD: seed ``lora_down`` from a precomputed gradient row space.

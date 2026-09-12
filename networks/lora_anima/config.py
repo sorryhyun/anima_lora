@@ -243,6 +243,12 @@ class LoRANetworkCfg:
     # See docs/methods/svd-down-lora.md, docs/proposal/grad_basis_init.md.
     down_init: str = "kaiming"
 
+    # weight_svd window: slice k seeds ``lora_down`` from W0's right singular
+    # vectors [k·r, (k+1)·r) instead of the top-r. Slices of one orthonormal
+    # basis are mutually orthogonal, so adapters trained with different slices
+    # never share an input subspace at merge (a per-artist address). 0 = top-r.
+    svd_slice: int = 0
+
     # Gradient-SVD basis, {lora_name: V (in, r_store)} — required by
     # down_init="grad_svd"/"basis_file", built by networks/grad_basis.py.
     grad_basis_dict: Optional[Dict[str, torch.Tensor]] = None
@@ -430,6 +436,14 @@ class LoRANetworkCfg:
                 "with bench/grad_init/build_universal_basis.py). grad_svd: run "
                 "through train.py, which sketches the run's own cached dataset "
                 "before the network is built."
+            )
+        svd_slice = int(kwargs.get("svd_slice", 0) or 0)
+        if svd_slice < 0:
+            raise ValueError(f"svd_slice={svd_slice}: must be a non-negative integer.")
+        if svd_slice and down_init != "weight_svd":
+            raise ValueError(
+                f"svd_slice={svd_slice} only applies to down_init='weight_svd' "
+                f"(got {down_init!r})."
             )
 
         _legacy_router_keys = [
@@ -744,6 +758,7 @@ class LoRANetworkCfg:
             ortho_init_std=ortho_init_std,
             use_ortho_init=use_ortho_init,
             down_init=down_init,
+            svd_slice=svd_slice,
             fera_fecl_weight=fera_fecl_weight,
             fera_num_bands=fera_num_bands,
             use_chimera_hydra=use_chimera_hydra,

@@ -508,6 +508,8 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
                 # kwarg; gate so it never reaches them.
                 if cfg.down_init != "kaiming" and effective_module_class is LoRAModule:
                     extra_kwargs["down_init"] = cfg.down_init
+                    if cfg.down_init == "weight_svd" and cfg.svd_slice:
+                        extra_kwargs["svd_slice"] = int(cfg.svd_slice)
                     # Gradient-SVD modes carry a per-layer basis; DiT-only (the
                     # sketch never ran on the TE) and a missing key means that
                     # module keeps Kaiming, counted for the summary below.
@@ -1869,6 +1871,14 @@ class LoRANetwork(_NetworkMetricsMixin, torch.nn.Module):
         # Informational only — distills to standard LoRA, no special loader path.
         if getattr(self.cfg, "use_ortho_init", False):
             metadata["ss_use_ortho_init"] = "true"
+
+        # Informational — which lora_down seed this plain LoRA got. The slice is
+        # what a merge tool would compare: two adapters on the same weight_svd
+        # slice share an input subspace, different slices are orthogonal.
+        if getattr(self.cfg, "down_init", "kaiming") != "kaiming":
+            metadata["ss_down_init"] = str(self.cfg.down_init)
+            if self.cfg.down_init == "weight_svd":
+                metadata["ss_svd_slice"] = str(int(getattr(self.cfg, "svd_slice", 0)))
 
         # Insert block leaves no tensor footprint, so stamp it (K is
         # recoverable from register_tokens' shape).

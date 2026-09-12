@@ -52,6 +52,7 @@ trainable, so the adapter can rotate away from the SVD basis immediately.
 |-----------|---------|-------------|
 | `down_init` | `"kaiming"` | `"kaiming"` (default `kaiming_uniform_(a=√5)`), `"weight_svd"` (SVD-Down, this doc), or the gradient-seeded `"grad_svd"` / `"basis_file"` (see below) |
 | `grad_basis_file` | — | Network arg: path to a gradient-basis artifact. Required by `down_init="basis_file"`; written automatically by `"grad_svd"`. |
+| `svd_slice` | `0` | `weight_svd` only: seed from right singular vectors `[k·r, (k+1)·r)` instead of the top-r. Slices of one orthonormal basis are mutually orthogonal, so adapters trained with different `k` never share an input subspace at merge — a per-artist address. The window must fit every targeted layer (`(k+1)·r ≤ min(W.shape)`; the base DiT's 256-row adaln `.1` Linears cap r=32 at `k ≤ 7`) or the init refuses. Stamped as `ss_svd_slice`. Since 2026-09-12 the basis is an exact thin SVD (the earlier `q=r+6` randomized sketch captured only 0.80–0.93 of the true top-r on real DiT layers and re-drew per call, so slices from it were not orthogonal); slice 0 therefore now is the actual top-r. Motivation and the (so far flat) merge reads: `bench/merge_basis/README.md`. |
 
 ## Implementation
 

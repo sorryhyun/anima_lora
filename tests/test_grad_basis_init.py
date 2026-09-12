@@ -153,6 +153,59 @@ def test_load_missing_file_points_at_the_builders(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# weight_svd slices
+# --------------------------------------------------------------------------- #
+def _right_basis(module: LoRAModule) -> torch.Tensor:
+    return module.lora_down.weight.data.T * (3**0.5)  # (in, r), orthonormal cols
+
+
+def _overlap(qa: torch.Tensor, qb: torch.Tensor) -> float:
+    return (torch.linalg.matrix_norm(qa.T @ qb) ** 2 / qa.shape[1]).item()
+
+
+def test_svd_slice_zero_is_the_top_r_window():
+    torch.manual_seed(0)
+    org = torch.nn.Linear(IN, OUT, bias=False)
+    a = LoRAModule("lora_unet_blocks_0_x", org, 1.0, RANK, 1, down_init="weight_svd")
+    b = LoRAModule(
+        "lora_unet_blocks_0_x", org, 1.0, RANK, 1, down_init="weight_svd", svd_slice=0
+    )
+    # randomized SVD has per-vector sign freedom, so compare subspaces, not rows
+    assert _overlap(_right_basis(a), _right_basis(b)) == pytest.approx(1.0, abs=1e-3)
+    _, _, vh = torch.linalg.svd(org.weight.data.float(), full_matrices=False)
+    assert _overlap(_right_basis(a), vh[:RANK].T) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_svd_slices_are_mutually_orthogonal_and_next_in_spectrum():
+    torch.manual_seed(0)
+    org = torch.nn.Linear(IN, OUT, bias=False)  # spectrum has OUT = 8 = 2·r vectors
+    a = LoRAModule("m", org, 1.0, RANK, 1, down_init="weight_svd", svd_slice=0)
+    b = LoRAModule("m", org, 1.0, RANK, 1, down_init="weight_svd", svd_slice=1)
+    qa, qb = _right_basis(a), _right_basis(b)
+    assert _overlap(qa, qb) == pytest.approx(0.0, abs=1e-3)
+    _, _, vh = torch.linalg.svd(org.weight.data.float(), full_matrices=False)
+    assert _overlap(qb, vh[RANK : 2 * RANK].T) == pytest.approx(1.0, abs=1e-3)
+    c = LoRAModule("m", org, 1.0, RANK, 1, down_init="weight_svd", svd_slice=1)
+    assert torch.equal(b.lora_down.weight, c.lora_down.weight)  # exact ⇒ identical
+    assert torch.allclose(
+        qb.norm(dim=0), torch.ones(RANK), atol=1e-4
+    )  # same 1/sqrt(3) row-norm match as slice 0
+
+
+def test_svd_slice_beyond_spectrum_refuses():
+    org = torch.nn.Linear(IN, OUT, bias=False)
+    with pytest.raises(ValueError, match="exceeds"):
+        LoRAModule("m", org, 1.0, RANK, 1, down_init="weight_svd", svd_slice=2)
+
+
+def test_cfg_svd_slice_needs_weight_svd():
+    with pytest.raises(ValueError, match="only applies to down_init='weight_svd'"):
+        _cfg(down_init="kaiming", svd_slice="1")
+    assert _cfg(down_init="weight_svd", svd_slice="3").svd_slice == 3
+    assert _cfg(down_init="kaiming").svd_slice == 0
+
+
+# --------------------------------------------------------------------------- #
 # cfg validation
 # --------------------------------------------------------------------------- #
 def _cfg(**kwargs):

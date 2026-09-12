@@ -268,6 +268,9 @@ def _pop_explicit_demote_routes(extra) -> tuple[list[str], list[str]]:
 
 
 CAPTION_INDEX_PATH = "post_image_dataset/captions/caption_index.json"
+DEFAULT_OCR_DIR = "post_image_dataset/ocr"
+"""The OCR sidecar tree (``{stem}.ocr.txt``), mirroring the resized layout.
+Overridable as ``ocr_dir`` in the config chain."""
 
 
 def _caption_correction_config(extra) -> tuple[dict[str, object], list[str]]:
@@ -1269,7 +1272,7 @@ def _execute(stage_id: str, req) -> None:
         _MODELS_RESIDENT.add(stage_id)
 
 
-_GPU_STAGES = {"autotag", "position"}
+_GPU_STAGES = {"autotag", "position", "ocr"}
 _MODELS_RESIDENT: set[str] = set()
 
 
@@ -1310,6 +1313,72 @@ def _caption_position_request(extra):
     from anime_tools.stages.requests import PositionRequest
 
     return _caption_request(PositionRequest, extra, prog="make caption-position ARGS=")
+
+
+def _ocr_dir() -> str:
+    """The OCR sidecar tree — ``ocr_dir`` from the merged config chain."""
+    return _path("ocr_dir", DEFAULT_OCR_DIR)
+
+
+def _caption_ocr_request(*, path_pattern: str, apply: bool, device: str | None):
+    """The ``OcrRequest`` the ``caption-full`` chain reads text with.
+
+    Reads the resized tree and writes ``{stem}.ocr.txt`` under ``ocr_dir``;
+    no caption is read or written, so this step alone invalidates no TE cache.
+    Every detector/reader knob stays at the package default — the two floors
+    that decide what reaches a caption live on the combine step, not here, so
+    the sidecar keeps every line for a person to look at.
+    """
+    from anime_tools.stages.requests import OcrRequest
+
+    return OcrRequest(
+        dst=_path("resized_image_dir", "post_image_dataset/resized"),
+        ocr_dir=_ocr_dir(),
+        path_pattern=path_pattern,
+        apply=apply,
+        device=device,
+    )
+
+
+def _caption_combine_request(
+    *, apply: bool, min_det: float | None = None, min_glyph: float | None = None
+):
+    """The ``ExportRequest`` that attaches the OCR clause to the trainer's captions.
+
+    ``with_ocr_clause`` — the one place an OCR sidecar meets a caption — is
+    reachable only through the export stage's ``--combine_ocr``, which is
+    written as a workspace→trainer publish. The trainer *is* its own workspace
+    here (the caption stages write ``post_image_dataset/resized`` directly), so
+    the export runs **in place**: ``out`` is the resized tree's parent, and
+    every row but ``caption``/``variants`` compares identical and is skipped
+    (verified on the live tree: 3,008 image + 873 mask + 1 index rows
+    identical, 700 captions and 700 variant sidecars combined).
+
+    ``master`` and ``excluded_dir`` keep the package's workspace defaults —
+    absent trees contribute no rows, so nothing is ever written back over the
+    hand-written masters under ``image_dataset/``.
+
+    The combine is idempotent: a text clause the caption already carries is
+    replaced, and a re-run whose sidecar lost its lines *removes* the clause.
+    """
+    from anime_tools.captions.ocr_sidecar import DEFAULT_MIN_DET, DEFAULT_MIN_GLYPH
+    from anime_tools.stages.requests import ExportRequest
+
+    resized = Path(_path("resized_image_dir", "post_image_dataset/resized"))
+    return ExportRequest(
+        src=_path("source_image_dir", "image_dataset"),
+        dst=str(resized),
+        masks=_path("mask_dir", "post_image_dataset/masks"),
+        index=CAPTION_INDEX_PATH,
+        # `out/resized/<rel>` is where a caption row lands — the tree it was
+        # read from, which is what makes this an in-place combine.
+        out=str(resized.parent),
+        combine_ocr=True,
+        ocr_dir=_ocr_dir(),
+        ocr_min_det=DEFAULT_MIN_DET if min_det is None else min_det,
+        ocr_min_glyph=DEFAULT_MIN_GLYPH if min_glyph is None else min_glyph,
+        apply=apply,
+    )
 
 
 # Caption-rewrite stages (autotag -> image_dataset/*.txt, position clauses ->
@@ -1402,6 +1471,150 @@ def cmd_caption_position(extra):
         ["-m", _stage("position").module, *req.to_argv()],
         mode=mode,
     )
+
+
+def _warn_if_te_would_read_the_master() -> None:
+    """Shout when ``make preprocess-te`` would encode ``image_dataset/`` instead.
+
+    Everything ``caption-full`` writes lives in the **derived** tree, and
+    ``cmd_preprocess_te`` only reads that tree when something forces the caption
+    step — correction, shuffle variants, or the ``caption_position_clauses``
+    config flag. With all three off it encodes the masters directly and
+    ``--match_images_from`` hides the difference: the run is silently discarded,
+    clauses and all. The flag (not the clauses on disk) is what the chain keys
+    on, so a hand-run ``caption-full`` on an otherwise-bare config is the one
+    way to land here.
+    """
+    config, _ = _caption_correction_config([])
+    n_variants = int(_float_or_zero(_variant_settings()[0]))
+    if _caption_correction_enabled(config) or n_variants or config["position_clauses"]:
+        return
+    print(
+        "  [caption-full] WARNING: with caption correction off, "
+        "caption_shuffle_variants = 0 and caption_position_clauses unset, "
+        "`make preprocess-te` encodes the image_dataset/ MASTERS — not the "
+        "captions just written. Set `caption_position_clauses = true` in the "
+        "config chain (or CAPTION_POSITION_CLAUSES=1) so TE reads "
+        "post_image_dataset/resized/."
+    )
+
+
+def _caption_full_args(extra):
+    """``make caption-full ARGS=…`` — the chain's own small flag set.
+
+    Deliberately not ``request_with_args``: three stages run here, so an
+    unqualified package flag would be ambiguous. Only the knobs that mean
+    something for the *chain* are exposed; per-stage tuning still goes through
+    ``make caption-position`` / the OCR stage's own ``-m`` invocation.
+    """
+    import argparse
+
+    ap = argparse.ArgumentParser(prog="make caption-full ARGS=", add_help=False)
+    ap.add_argument("--dry_run", action="store_true", help="plan only (default: write)")
+    # Accepted and ignored: the other caption targets need it, and typing it
+    # here should not be an error.
+    ap.add_argument("--apply", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--path_pattern", default=_preprocess_path_pattern())
+    ap.add_argument("--skip_position", action="store_true")
+    ap.add_argument("--skip_ocr", action="store_true")
+    ap.add_argument("--ocr_min_det", type=float, default=None)
+    ap.add_argument("--ocr_min_glyph", type=float, default=None)
+    ap.add_argument("--device", default=None)
+    ap.add_argument("-h", "--help", action="help")
+    return ap.parse_args(extra)
+
+
+def cmd_caption_full(extra):
+    """Position clauses -> OCR read -> OCR clause, over the resized captions.
+
+    The whole caption chain that runs on the **derived** tree, in the one order
+    that composes (GPU, daemon-routed as a single job):
+
+    1. **position** — SAM3 + Anima Tagger write ``On the left, <tags>.`` into
+       ``post_image_dataset/resized/<rel>.txt`` and drop stale variant sidecars.
+    2. **ocr** — AnimeText + the manga VL reader write ``{stem}.ocr.txt`` under
+       ``post_image_dataset/ocr/``. Touches no caption.
+    3. **combine** — the OCR'd lines are attached to the caption and to every
+       variant line as trailing text clauses (``Japanese text reads as "…"``,
+       ``Japanese SFX reads as "…"``), held to the det/glyph floors.
+
+    Position first because the combine parses the caption it lands on and keeps
+    its position clauses; OCR before the combine because the combine reads the
+    sidecars the OCR pass writes.
+
+    **Writes by default** — unlike ``caption-autotag`` / ``caption-position``,
+    whose dry run guards the hand-written master under ``image_dataset/``.
+    Nothing here can reach that tree: every step writes the derived,
+    regenerable one (``post_image_dataset/resized`` and ``ocr/``), so a plan
+    nobody reads is just a second GPU pass. ``ARGS="--dry_run"`` plans instead.
+
+    Follow it with ``make preprocess-te``, which needs no ``--overwrite``: TE
+    caches are mtime-aware, so only the stems whose caption changed re-encode.
+
+    A **dry run of the whole chain reports the combine against the sidecars
+    already on disk**, not against the ones step 2 would have written — the
+    first ever dry run over a tree with no OCR tree shows no combined rows.
+
+    ``ARGS="--skip_position --skip_ocr --ocr_min_det 0.6"`` re-combines from the
+    sidecars already read, which is how the two floors get retuned without
+    paying for either GPU pass again.
+    """
+    from ._common import _resolve_run_mode, run_command
+
+    mode, extra = _resolve_run_mode(extra)
+    if mode != "inline":
+        # One daemon job for the whole chain: re-enter this target inside it
+        # (`in_daemon_job()` then routes every stage in-process, so the tagger
+        # SAM3 load is paid once) instead of submitting three jobs to a serial
+        # queue. The stall watchdog is off — the VL reader's first-use fetch
+        # (~2.8 GB) and a quiet model load both print nothing for minutes.
+        run_command(
+            "caption-full",
+            ["tasks.py", "caption-full", "--inline", *extra],
+            mode=mode,
+            stall_timeout=0,
+        )
+        return
+
+    args = _caption_full_args(extra)
+    args.apply = not args.dry_run
+    if not args.skip_position:
+        print("  [caption-full] position clauses: SAM3 + tagger → resized captions")
+        req = _caption_position_request(
+            ["--path_pattern", args.path_pattern, *(["--apply"] if args.apply else [])]
+            + (["--device", args.device] if args.device else [])
+        )
+        _execute("position", req)
+    if not args.skip_ocr:
+        print("  [caption-full] ocr: AnimeText + VL reader → post_image_dataset/ocr")
+        # SAM3 + the tagger are done with; the VL reader wants the VRAM.
+        _release_stage_models()
+        _execute(
+            "ocr",
+            _caption_ocr_request(
+                path_pattern=args.path_pattern,
+                apply=args.apply,
+                device=args.device,
+            ),
+        )
+    print("  [caption-full] combine: OCR lines → text clauses on the resized captions")
+    _release_stage_models()
+    _execute(
+        "export",
+        _caption_combine_request(
+            apply=args.apply,
+            min_det=args.ocr_min_det,
+            min_glyph=args.ocr_min_glyph,
+        ),
+    )
+    if args.apply:
+        print(
+            "  [caption-full] captions rewritten — run `make preprocess-te` to "
+            "re-encode them (TE is mtime-aware; no --overwrite needed)."
+        )
+        _warn_if_te_would_read_the_master()
+    else:
+        print("  [caption-full] dry run — nothing written (--dry_run).")
 
 
 # `cmd_preprocess` auto-fetches this (~0.7 MB) vocab on demand: the caption index

@@ -651,6 +651,8 @@ def test_stage_ids_the_trainer_names_are_registered():
         "autotag",
         "position",
         "correct",
+        "ocr",
+        "export",
         "groups",
         "masks_sam",
         "masks_merge",

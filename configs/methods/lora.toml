@@ -19,6 +19,14 @@ output_name = "anima_lora"
 # the task pushes rather than where W is big; output is an ordinary LoRA either
 # way. docs/proposal/grad_basis_init.md, networks/grad_basis.py.
 down_init = "weight_svd"
+# weight_svd window: slice k seeds lora_down from W0's right singular vectors
+# [k*r, (k+1)*r) instead of the top-r. Slices are mutually orthogonal, so
+# adapters trained with different slices own disjoint input subspaces — give
+# each artist its own k (0, 1, 2, …) when the LoRAs are meant to be merged.
+# 0 = top-r (the shipped default). Cap: (k+1)*r must fit every targeted
+# layer — the 256-row adaln .1 Linears allow k <= 7 at r=32 (8 artists).
+# Stamped as ss_svd_slice in the adapter.
+svd_slice = 0
 path_pattern = "*"
 
 use_timestep_mask = true

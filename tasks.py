@@ -282,6 +282,16 @@ COMMANDS = {
         'Dry-run by default; ARGS="--apply" writes, then `make preprocess-te` '
         "is REQUIRED.",
     ),
+    "caption-full": (
+        preprocess.cmd_caption_full,
+        "The whole derived-caption chain in the one order that composes: "
+        "position clauses -> OCR read -> OCR lines attached to the caption as "
+        "text clauses ('Japanese text reads as \"…\"'). Writes the resized "
+        "captions (post_image_dataset/), never the image_dataset/ master — so "
+        'it WRITES by default (ARGS="--dry_run" to plan instead), and `make '
+        'preprocess-te` after it is REQUIRED. ARGS="--skip_position --skip_ocr '
+        '--ocr_min_det 0.6" re-combines from the sidecars already read.',
+    ),
     # ── Curation ──────────────────────────────────────────────────────
     "curate-group": (
         curate.cmd_curate_group,
