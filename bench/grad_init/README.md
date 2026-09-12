@@ -167,3 +167,41 @@ the depth split says the per-run `grad_svd` mode's only real advantage over it
 is blocks 12–17. E1 now decides whether *any* gradient seed moves the render;
 the E0 numbers argue its `grad_svd` vs `basis_file` arms should separate little
 if at all, so a `basis_file`-vs-`weight_svd` separation is the load-bearing read.
+
+## 2026-09-12 — E1: does the seed move the render? KILL (`results/20260912-1410-e1/`, blind sets s22–s25)
+
+Five paired arms on `aak` (r=32, α=128, 8 ep = 256 steps, `--deterministic
+--paired_step_rng --seed 42`): `kaiming` / `weight_svd` / `grad_svd` (per-run,
+2 passes) / `basis_file` (E0's `grad_basis_universal_r32`) / `min_snr` (γ=5,
+weight_svd init). Two reads:
+
+**Member-caption read (`e1_read.py`, 12 member prompts, 20 steps, cfg 1).**
+Every arm lands a *different* image — arm-vs-arm PE cos 0.89–0.95 on a 0.73
+unrelated floor, i.e. the seed does pick a mode — but CMMD is below the
+real-vs-real floor (0.61) for all six columns, so it cannot rank them. Only
+descriptive fact: `min_snr` stays closest to base (cos 0.941, CMMD 0.33 vs
+0.53–0.56 for the four init arms).
+
+**Blind A/B on general prompts (`e1_blind.py`, 12 `@aak` rows, 28 steps, cfg 4,
+2 seeds per set, fresh seeds per set so the shared control never recurs).**
+Direct pairings against the shipped `weight_svd` control, graded blind:
+
+| set | pair | pairs W–X (tie) | rows W>X / X>W / tie |
+|---|---|---|---|
+| s22 | weight_svd vs basis_file | 10–10 (4) | 4 / 3 / 5 |
+| s23 | weight_svd vs grad_svd | 11–9 (4) | 3 / 2 / 7 |
+| s24 | weight_svd vs kaiming | 12–9 (3) | 3 / 2 / 7 |
+| s25 | weight_svd vs min_snr | 13–8 (3) | 5 / 3 / 4 |
+
+All four sit inside the 15–9 seed-twin noise floor with no row-level lean
+(pooled side bias A 34 / B 46, mild). **Verdict: the init does not reach the
+render.** A 3× first-step gradient capture (0.63 vs 0.21) is fully absorbed by
+256 steps of training; even `kaiming` vs `weight_svd` is flat, so the whole
+`down_init` axis is render-neutral at this recipe. `min_snr` is flat too — the
+"moved least from base" signature of the member read did not translate into a
+preference either way.
+
+Both kill conditions in `docs/proposal/grad_basis_init.md` §E1 fire: keep
+`weight_svd` as the default, keep `grad_svd` / `basis_file` as documented opt-in
+modes with the probe numbers as their record, do not ship a catalog basis.
+Reports: `project/cjk_aware_anima/reports/blind_s2{2,3,4,5}_E1_*.md`.

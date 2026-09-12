@@ -1,10 +1,13 @@
 # grad_basis init — seed `lora_down` from the task gradient, and ship a universal basis
 
-Status: PROPOSAL. Motivating measurement done (no training): `bench/grad_init/`
-(2026-09-12, two artist triples). **E0 passed** (2026-09-12,
-`results/20260912-1314-e0_univ20/`) — a universal basis reaches 0.633 capture on
-held-out artists, 89 % of the reliability ceiling and 3.1× `weight_svd`. E1 is
-next; nothing trained yet.
+Status: **CLOSED — E1 KILLED 2026-09-12.** E0 passed (a universal basis reaches
+0.633 held-out capture, 3.1× `weight_svd`) but E1's paired runs + blind A/B on
+general prompts found **no render-level separation** for any arm against
+`weight_svd` — not `basis_file`, not `grad_svd`, not even `kaiming`, and not the
+`min_snr` side-arm (all four sets inside the 15–9 seed-twin floor; record in
+`bench/grad_init/README.md` §E1). `weight_svd` stays the default; `grad_svd` /
+`basis_file` remain as opt-in modes; no catalog artifact is shipped. The rest of
+this document is the pre-registration as written.
 
 ## TL;DR
 
@@ -132,6 +135,13 @@ the probe numbers as the record (the first-step advantage did not survive
 training). **Pass:** ship `basis_file` as the new default `down_init` with the
 catalog artifact, keep `grad_svd` as the opt-in when the run's own data is
 worth a sketch pass.
+
+**Result (2026-09-12): KILL.** Blind A/B on 12 general `@aak` rows, direct
+pairings vs `weight_svd`: basis_file 10–10, grad_svd 9–11, kaiming 9–12,
+min_snr 8–13 (pairs; rows split 3–4 / 2–3 / 2–3 / 3–5), every set inside the
+seed-twin floor. The member-caption PE-cos read showed the arms landing
+different images (cos 0.89–0.95), so the seed selects a mode, but no mode is
+preferred. Full table: `bench/grad_init/README.md` §E1.
 
 What landed (all four arms are runnable from a config today):
 
