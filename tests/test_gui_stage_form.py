@@ -328,7 +328,7 @@ def test_masks_sam_form_renders_reads_back_and_builds_argv(schemas):
         assert isinstance(sec.widgets["masks"], QLineEdit)
         # Advanced fields fold away until the toggle is on.
         assert sec.advanced_box is not None and sec.advanced_box.isHidden()
-        assert sec.widgets["batch_size"].parentWidget() is sec.advanced_box
+        assert sec.widgets["workers"].parentWidget() is sec.advanced_box
         sec.advanced_toggle.setChecked(True)
         assert not sec.advanced_box.isHidden()
 

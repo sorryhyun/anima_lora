@@ -99,7 +99,7 @@ def test_caption_step_writes_sidecar_v0_is_corrected(tmp_path):
         recursive=False,
         num_variants=4,
         tag_dropout_rate=0.3,
-    )
+    ).stats
     assert stats.variants_written == 1
     corrected = (dst / "a.txt").read_text(encoding="utf-8")
     rows = read_variants_sidecar(variants_sidecar_path(dst / "a.png"))
@@ -152,7 +152,7 @@ def test_caption_step_idempotent_rerun_keeps_sidecar_stable(tmp_path):
     random.seed(99)  # different seed must NOT cause a rewrite
     stats = write_corrected_preprocess_captions(
         src, dst, _kb(tmp_path), options=opts, recursive=False, num_variants=4
-    )
+    ).stats
     after = variants_sidecar_path(dst / "a.png").read_text(encoding="utf-8")
     assert stats.variants_written == 0
     assert before == after
@@ -173,7 +173,7 @@ def test_caption_step_off_removes_stale_sidecar(tmp_path):
     assert sidecar.exists()
     stats = write_corrected_preprocess_captions(
         src, dst, _kb(tmp_path), options=opts, recursive=False, num_variants=0
-    )
+    ).stats
     assert not sidecar.exists()
     assert stats.variants_removed == 1
 
@@ -195,7 +195,7 @@ def test_caption_step_revised_caption_without_master_keeps_sidecar(tmp_path):
         options=CaptionCorrectionOptions(),
         recursive=False,
         num_variants=2,
-    )
+    ).stats
     assert stats.no_caption == 0
     sidecar = variants_sidecar_path(dst / "a.png")
     assert sidecar.exists()
@@ -217,7 +217,7 @@ def test_caption_step_no_caption_at_all_removes_orphan_sidecar(tmp_path):
         options=CaptionCorrectionOptions(),
         recursive=False,
         num_variants=2,
-    )
+    ).stats
     assert stats.no_caption == 1
     assert not variants_sidecar_path(dst / "a.png").exists()
 
@@ -386,7 +386,7 @@ def test_mirror_keeps_clauses_the_master_does_not_have(tmp_path):
         _kb(tmp_path),
         options=CaptionCorrectionOptions(),
         recursive=False,
-    )
+    ).stats
 
     assert stats.clauses_preserved == 1
     out = (dst / "a.txt").read_text(encoding="utf-8")
@@ -411,7 +411,7 @@ def test_mirror_reruns_are_stable_on_a_clause_caption(tmp_path):
 
     stats = write_corrected_preprocess_captions(
         src, dst, _kb(tmp_path), options=opts, recursive=False
-    )
+    ).stats
 
     assert (dst / "a.txt").read_text(encoding="utf-8") == first
     assert stats.unchanged == 1
@@ -428,7 +428,7 @@ def test_a_master_edit_does_not_reach_a_revised_caption(tmp_path):
 
     stats = write_corrected_preprocess_captions(
         src, dst, _kb(tmp_path), options=CaptionCorrectionOptions(), recursive=False
-    )
+    ).stats
     out = (dst / "a.txt").read_text(encoding="utf-8")
     assert stats.from_master == 0
     assert "solo" not in out
@@ -437,7 +437,7 @@ def test_a_master_edit_does_not_reach_a_revised_caption(tmp_path):
     (dst / "a.txt").unlink()
     stats = write_corrected_preprocess_captions(
         src, dst, _kb(tmp_path), options=CaptionCorrectionOptions(), recursive=False
-    )
+    ).stats
     out = (dst / "a.txt").read_text(encoding="utf-8")
     assert stats.from_master == 1
     assert "solo" in out and "blue hair" in out
@@ -479,7 +479,7 @@ def test_the_revised_caption_wins_over_a_master_edit(tmp_path):
 
     stats = write_corrected_preprocess_captions(
         src, dst, _kb(tmp_path), options=CaptionCorrectionOptions(), recursive=False
-    )
+    ).stats
 
     assert stats.clauses_preserved == 1
     assert stats.from_master == 0

@@ -246,7 +246,7 @@ def test_write_corrected_preprocess_captions_preserves_source(tmp_path: Path) ->
             trigger_word="@dataset-trigger",
         ),
         recursive=True,
-    )
+    ).stats
 
     assert stats.written == 1
     assert (source / "charA" / "cover.txt").read_text(encoding="utf-8") == original
@@ -277,7 +277,7 @@ def test_write_corrected_preprocess_captions_keeps_a_revised_caption_without_mas
         load_tag_knowledge_base(_tag_csv(tmp_path / "tags.csv")),
         options=CaptionCorrectionOptions(),
         recursive=True,
-    )
+    ).stats
 
     assert stats.no_caption == 0
     assert stats.from_master == 0

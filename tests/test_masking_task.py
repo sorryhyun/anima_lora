@@ -125,11 +125,10 @@ def test_gui_rule_cards_build_one_request_each(monkeypatch, tmp_path):
     assert _specs(b) == ["keep:text:girl"]
     assert b.path_pattern == "character_a/*"
     assert Path(b.mask_dir) == tmp_path / "sam1" / "masks_sam"
-    # No trainer literals: the checkpoint and batch size are the package's.
+    # No trainer literals: the checkpoint is the package's.
     from anime_tools.masking.requests import SamMaskRequest
 
     assert a.checkpoint == SamMaskRequest.checkpoint
-    assert a.batch_size == SamMaskRequest.batch_size
 
 
 def test_a_pre_064_gui_card_is_migrated(monkeypatch, tmp_path):

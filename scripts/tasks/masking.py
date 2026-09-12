@@ -188,9 +188,8 @@ def _sam_request(image_dir: Path, out_dir: Path, rule: dict, path_pattern: str |
     A rule's own ``path_pattern`` routes *within* the global scope in the old
     single-pass CLI; the package takes one glob per run, so a rule that names
     a pattern runs on that pattern alone (the global scope still applies to
-    every rule without one). The SAM3 checkpoint and batch size are the
-    request defaults — the package's download catalog is where the weights
-    land. Validation fires here: a rule naming no region (or a malformed one)
+    every rule without one). The SAM3 checkpoint is the request default — the
+    package's download catalog is where the weights land. Validation fires here: a rule naming no region (or a malformed one)
     would otherwise fail minutes in, after the SAM3 load.
     """
     from anime_tools.masking.requests import MaskPrompt, SamMaskRequest

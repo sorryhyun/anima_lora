@@ -60,9 +60,16 @@ def test_preprocess_te_uses_corrected_resized_captions(monkeypatch):
         "-m",
         "anime_tools.stages.cli.correct_captions",
     ]
-    assert caption_cmd[caption_cmd.index("--src") + 1] == "image_dataset"
+    # ``to_argv`` spells only what differs from the request default, and the
+    # trainer's master tree *is* the package's own default, so ``--src`` is
+    # elided rather than repeated. ``--dst`` differs and stays.
+    from anime_tools import workspace as WS
+
+    assert "--src" not in caption_cmd and WS.SOURCE_ROOT == "image_dataset"
     assert caption_cmd[caption_cmd.index("--dst") + 1] == "post_image_dataset/resized"
     assert caption_cmd[caption_cmd.index("--path_pattern") + 1] == "group/*"
+    # The correction is what TE is about to encode, so it always applies.
+    assert "--apply" in caption_cmd
     assert "--caption_insert_no_artist" in caption_cmd
     assert caption_cmd[caption_cmd.index("--caption_trigger_word") + 1] == (
         "@dataset-trigger"

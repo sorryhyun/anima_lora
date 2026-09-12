@@ -1074,6 +1074,10 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
             form,
             roots=_stage_roots(),
             settings={"path_pattern": path_pattern},
+            # Always ``apply``, for the same reason autotag is: the correction
+            # is the caption TE is about to encode, so a dry run would leave a
+            # report nobody reads and cache the un-corrected text.
+            apply=True,
             no_correct=not correct,
             caption_insert_no_artist=bool(caption_config.get("insert_no_artist")),
             caption_trigger_word=str(caption_config.get("trigger_word") or ""),
@@ -1085,6 +1089,7 @@ def cmd_preprocess_captions(extra, caption_config: dict[str, object] | None = No
         fields: dict[str, object] = {
             **_stage_roots(),
             "path_pattern": path_pattern,
+            "apply": True,
             **trainer_fields,
         }
         if correct:

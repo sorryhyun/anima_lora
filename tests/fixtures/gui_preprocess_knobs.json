@@ -23,7 +23,6 @@
           },
           "masks_sam": [
             {
-              "batch_size": 1,
               "dilate": 5,
               "force": false,
               "masks": [
@@ -106,7 +105,6 @@
           },
           "masks_sam": [
             {
-              "batch_size": 1,
               "dilate": 5,
               "force": false,
               "masks": [
@@ -198,7 +196,6 @@
           },
           "masks_sam": [
             {
-              "batch_size": 1,
               "dilate": 7,
               "force": false,
               "masks": [
@@ -211,7 +208,6 @@
               "workers": 4
             },
             {
-              "batch_size": 1,
               "dilate": 2,
               "force": false,
               "masks": [
@@ -381,7 +377,6 @@
           },
           "masks_sam": [
             {
-              "batch_size": 1,
               "dilate": 7,
               "force": false,
               "masks": [
@@ -394,7 +389,6 @@
               "workers": 4
             },
             {
-              "batch_size": 1,
               "dilate": 2,
               "force": false,
               "masks": [
@@ -577,7 +571,6 @@
           },
           "masks_sam": [
             {
-              "batch_size": 1,
               "dilate": 3,
               "force": false,
               "masks": [
@@ -676,7 +669,6 @@
           },
           "masks_sam": [
             {
-              "batch_size": 1,
               "dilate": 3,
               "force": false,
               "masks": [
@@ -786,7 +778,6 @@
           },
           "masks_sam": [
             {
-              "batch_size": 1,
               "dilate": 7,
               "force": false,
               "masks": [
@@ -799,7 +790,6 @@
               "workers": 4
             },
             {
-              "batch_size": 1,
               "dilate": 2,
               "force": false,
               "masks": [
@@ -969,7 +959,6 @@
           },
           "masks_sam": [
             {
-              "batch_size": 1,
               "dilate": 7,
               "force": false,
               "masks": [
@@ -982,7 +971,6 @@
               "workers": 4
             },
             {
-              "batch_size": 1,
               "dilate": 2,
               "force": false,
               "masks": [

@@ -121,11 +121,10 @@ def test_mask_rules_yaml_builds_sam_and_merge_requests(monkeypatch):
     assert sam_a.path_pattern == "manga/*"
     assert Path(sam_a.image_dir) == masking.RESIZED_IMAGE_DIR
     assert sam_a.recursive
-    # No trainer literals: the checkpoint and batch size are the package's.
+    # No trainer literals: the checkpoint is the package's.
     from anime_tools.masking.requests import SamMaskRequest
 
     assert sam_a.checkpoint == SamMaskRequest.checkpoint
-    assert sam_a.batch_size == SamMaskRequest.batch_size
 
     assert _specs(sam_b) == ["keep:text:girl"]
     assert sam_b.dilate == 8
@@ -150,6 +149,10 @@ def test_mask_gui_cards_build_sam_and_merge_requests(monkeypatch):
                 "path_pattern": "character_a/*",
                 "masks": "keep:text:girl",
                 "dilate": 8,
+                # Retired in anime_tools 0.7.0 (it batched nothing and held
+                # every inference state resident). A card saved before that
+                # still carries it, so the form path must drop it silently
+                # rather than fail the run.
                 "batch_size": 4,
             },
         ],
@@ -168,7 +171,7 @@ def test_mask_gui_cards_build_sam_and_merge_requests(monkeypatch):
     assert Path(sam_a.image_dir) == masking.RESIZED_IMAGE_DIR
     assert sam_a.recursive
     assert _specs(sam_b) == ["keep:text:girl"]
-    assert sam_b.dilate == 8 and sam_b.batch_size == 4
+    assert sam_b.dilate == 8 and not hasattr(sam_b, "batch_size")
     assert sam_b.path_pattern == "character_a/*"
     assert merge.mask_dirs == (sam_a.mask_dir, sam_b.mask_dir)
     assert sam_a.mask_dir != sam_b.mask_dir
@@ -413,7 +416,7 @@ def test_caption_chain_under_a_daemon_job_runs_in_process_and_releases(
     """With ``ANIMA_DAEMON_JOB_DIR`` set the caption stages go through
     ``Stage.runner()`` in this interpreter (autotag → position share one
     tagger), and the resident models are released before the TE child."""
-    from anime_tools.stages import run as pkg_run
+    import anime_tools.stages as pkg_stages
 
     from scripts.tasks import _common, preprocess
 
@@ -422,7 +425,9 @@ def test_caption_chain_under_a_daemon_job_runs_in_process_and_releases(
     monkeypatch.setattr(preprocess, "_ensure_danbooru_tags", lambda: None)
     monkeypatch.setattr(preprocess, "_variant_settings", lambda: ("0", "0.0", "0.0"))
     monkeypatch.setattr(preprocess, "_stage", lambda sid: _StubStage(sid, events))
-    monkeypatch.setattr(pkg_run, "release_models", lambda: events.append("release"))
+    monkeypatch.setattr(
+        pkg_stages, "release_models", lambda: events.append("release"), raising=False
+    )
     monkeypatch.setattr(
         preprocess, "run", lambda cmd, **kw: events.append(("child", cmd))
     )
