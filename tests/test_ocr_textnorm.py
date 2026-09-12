@@ -59,6 +59,16 @@ def test_exact_key_is_the_target_without_whitespace():
     assert m.exact_key("あ゛っ") == m.exact_key("あ゙っ")
 
 
+def test_training_target_spells_the_single_token_heart():
+    # R5b: only the training target flips to ♥; key and record stay ♡
+    m = _mod()
+    for raw in ("ムフッ♥!", "えらいぞ❤\ufe0fアイー", "びく♡", "あ♡♥❤っ"):
+        assert "♡" not in m.training_target(raw)
+        assert m.training_target(raw) == m.normalize_target(raw).replace("♡", "♥")
+        assert "♥" not in m.exact_key(raw)
+    assert m.training_target("あ゛っ　……\n──") == m.normalize_target("あ゛っ　……\n──")
+
+
 def test_dash_glyphs_are_the_ones_the_corpus_uses():
     # ― U+2015 (kept), ─ U+2500, — U+2014 (folded)
     m = _mod()

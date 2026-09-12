@@ -99,6 +99,19 @@ RUNS = [
         "vl16_b2_norm2",
         "B′ recipe verbatim under TARGET_NORM 2 (plan_vl_respace R2)",
     ),
+    (
+        "vl16_b2_norm3",
+        "vl16_b2_norm3",
+        "vl16_b2_norm3",
+        "norm2 + glyph fold, heart → `♡` (TARGET_NORM 3, R5) — lost every raw `♥`",
+    ),
+    (
+        "vl16_b2_norm4",
+        "vl16_b2_norm4",
+        "vl16_b2_norm4",
+        "norm2 + glyph fold, heart → `♥` (TARGET_NORM 4, R5b) — **Hub v3**; "
+        "sincos on the 2026-09-12 corrected labels (rows above: pre-fix)",
+    ),
     ("vl16_tower_ep3", "vl16_tower_ep3", "vl16_tower_ep3", "B′ × 3 epochs"),
     ("vl16_lpft", "vl16_lpft", "vl16_lpft", "LP-FT — arm B then B′"),
     (

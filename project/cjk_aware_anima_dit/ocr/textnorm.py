@@ -24,6 +24,14 @@ Folds, in order:
    ``―`` (U+2015, the JIS dash; 616 vs 412 vs 1 train rows). Dash *runs* keep
    their length — ``だから――――`` is a prolongation, like ``ーー``.
 4. **Dot runs** — ``[.・…‥]{2,}`` and a lone ``‥`` → one ``…``.
+
+The **training target** (:func:`training_target`, ``TARGET_NORM = 4``) is the
+same fold with the heart written as ``♥``: in the VL-1.6 tokenizer ``♥`` is
+one token and ``♡`` is three bytes, and ``TARGET_NORM = 3`` (``♡`` in the
+target) deleted the decoder's only cheap heart — raw ``♥`` in sincos
+predictions went 144 → 0 and the gate 350 → 319 (plan_vl_respace R5). The
+scoring key and the record form keep ``♡``, so the direction is free
+downstream.
 """
 
 from __future__ import annotations
@@ -58,9 +66,21 @@ def fold_glyphs(s: str) -> str:
     return ELLIPSIS_RE.sub(ELLIPSIS, s.translate(HEART_FOLD))
 
 
+TRAIN_HEART = "♥"
+"""The heart the training target spells — the single-token one (R5b)."""
+
+_TRAIN_HEART_FOLD = str.maketrans({"♡": TRAIN_HEART})
+
+
 def normalize_target(s: str) -> str:
-    """Training target / spaced key: folds + whitespace runs → one ASCII space."""
+    """Spaced key / record form: folds + whitespace runs → one ASCII space."""
     return " ".join(fold_glyphs(s).split())
+
+
+def training_target(s: str) -> str:
+    """:func:`normalize_target` with the heart as :data:`TRAIN_HEART` — the
+    training target only; ``exact_key`` / ``space_key`` stay ``♡``-spelled."""
+    return normalize_target(s).translate(_TRAIN_HEART_FOLD)
 
 
 def exact_key(s: str) -> str:

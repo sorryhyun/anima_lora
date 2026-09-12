@@ -62,19 +62,20 @@ follows is only what they did not answer, ordered by cost.
 
 ### The VL reader (`plan_vl_respace.md`)
 
-The shipped v2 reader spaces; the glyph fold that was meant to follow it does
-not ship. Open, cheapest first:
+The shipped v3 reader spaces and folds (R5b closed below). Open, cheapest
+first:
 
-1. **R5b — flip the heart fold.** `TARGET_NORM = 4`: `textnorm.fold_glyphs`
-   with the heart table inverted (`♡ ❤ → ♥`, the single token), everything
-   else unchanged, **training target only** — `exact_key` and
-   `anime_tools.ocr.sfx.normalize_read` keep folding to `♡`. One 1.5 h daemon
-   run (`--run vl16_b2_norm4`, B′'s argv otherwise) plus two evals. Gate:
-   sincos ≥ 350 (norm2's number — this is a norm2 delta, not a B′ one), COO
-   and val no worse than norm2, and `♥` back in the raw predictions. Near 350
-   ships the fold with the flip; near 319 means the heart token is not the
-   whole story and the next move is the repeat seed this line has still never
-   measured.
+1. ~~**R5b — flip the heart fold.**~~ **Done 2026-09-13 — shipped as Hub v3.**
+   `vl16_b2_norm4` (`TARGET_NORM = 4`: `textnorm.training_target`, heart as
+   the single-token `♥` in the training target only; `exact_key` and
+   `normalize_read` keep `♡`), B′'s argv, seed 0, a pure A/B on the fold
+   against norm3. On the corrected sincos labels: ♡-blind **354** / 617 (norm2
+   346, norm3 323, B′ 365), strict 305 (norm2 294), raw `♥` back in 322
+   predictions (norm3 0); COO SFX 2147 / speech 2254 (norm2 2138 / 2255), val
+   86.8 % (jitter), and the dot fold keeps COO runaways at 31 (norm2 191).
+   Every gate cleared, so the heart token *was* the whole R5 story. Hub
+   `26292839`; `eval.md` carries norm3 + norm4 rows. The seed repeat stays
+   unbought.
 2. **The label pass.** 12 sincos SFX rows were corrected 2026-09-12, all 12
    drawn from the arm's *lost* sheet, so the pass is one-directional by
    construction (B′ 375 → 365, norm3 319 → 323). Owed: the same check on the

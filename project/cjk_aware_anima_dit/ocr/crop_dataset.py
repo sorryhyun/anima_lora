@@ -36,25 +36,27 @@ import textnorm  # noqa: E402
 from augment import Augment  # noqa: E402
 
 MAX_TARGET_CHARS = 96
-TARGET_NORM = 3
+TARGET_NORM = 4
 """Bumped when :func:`normalize_target` changes. 1 = NFKC, whitespace deleted
 (every run before 2026-09-09); 2 = whitespace collapsed to one ASCII space
 (``vl16_b2_norm2``); 3 = ``textnorm.fold_glyphs`` first — hearts → ``♡``, dot
 runs → ``…``, ``〜`` → ``~``, long dashes → ``―``, spacing dakuten → combining
 (v2 taught ``あ ゙っ`` for ``あ゛っ`` because NFKC splits the spacing mark off
-with a space)."""
+with a space) — ``vl16_b2_norm3``; 4 = the same folds with the heart flipped
+to ``♥``, the single token (``♡`` is three bytes; norm3 lost every raw ``♥``
+and 31 sincos rows — plan_vl_respace R5b)."""
 
 
 def normalize_target(s: str) -> str:
-    """:func:`textnorm.normalize_target` — folds, then whitespace runs
-    collapsed to one ASCII space, edges stripped.
+    """:func:`textnorm.training_target` — folds, then whitespace runs
+    collapsed to one ASCII space, edges stripped, heart spelled ``♥``.
 
     v1 joined the split with ``""``. Korean needs the spaces (``알고 있었어``
     vs ``알고있었어``), and 3.80 % of the COO/Manga109 targets carried U+3000 or
     a newline, so the versions differ on the Japanese rows as well —
     ``TARGET_NORM`` records which one a run trained on.
     """
-    return textnorm.normalize_target(s)
+    return textnorm.training_target(s)
 
 
 def load_split(
