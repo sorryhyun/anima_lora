@@ -2,7 +2,7 @@
 
 The DiT-side line is frozen. Every plan file this directory carried —
 `plan.md`, `plan_base1.md`, `plan_ocr.md`, `plan_det.md`, `plan_ssl_tower.md`,
-and the two that reopened after the freeze (`plan_vl_respace.md`,
+and the three that outlived the freeze (`plan2.md`, `plan_vl_respace.md`,
 `plan_render.md`, archived 2026-09-12) — moved verbatim to
 `_archive/cjk_aware_anima_dit/plans/` (gitignored tree,
 preserved in the private mirror; the pre-move versions are in git history).
@@ -56,10 +56,9 @@ converts to a `/ 617` one.**
 
 ## Still open (2026-09-12)
 
-Two lines reopened after the freeze and are now archived with the rest. What
-they *settled* is in their closing banners and in
-[`findings.md`](findings.md); what follows is only what they did not answer,
-ordered by cost.
+Three lines outlived the freeze and are now archived with the rest. What they
+*settled* is in their closing banners and in [`findings.md`](findings.md); what
+follows is only what they did not answer, ordered by cost.
 
 ### The VL reader (`plan_vl_respace.md`)
 
@@ -133,6 +132,63 @@ built to remove exactly that objection, sits at the floor too.
    reads disagree past a CER threshold. A short daemon job, never built. **A
    G1/G2 miss must be re-run behind this pass before it counts as the clean
    negative.**
+
+### KO/ZH pseudo-labels (`plan2.md`)
+
+The mining works and the arm ran; the gate that would score it does not exist.
+
+1. **K3 — a KO/ZH gate set.** Hand-label KO/ZH crops from K1's `kscreen` hits
+   into the sincos schema (`text_rec` = stock's read, `status = draft`), split
+   gate / calibration. The calibration half also buys the first precision
+   number for the kept pseudo rows per voter, which no run on this line has
+   measured. Until it exists, `vl16_pl_kozh` has only a Japanese-side cost
+   (−11 sincos, −22 COO SFX against `vl16_pl_20k`) and no measured benefit, and
+   **no KO/ZH claim can be made either way**.
+2. **Then re-read K4 run 1 against it** — the arm is already trained and its
+   eval rows are on disk; K3 turns an unanswerable run into a verdict without
+   buying another 1.5 h.
+3. **The ceiling is licensing, not accuracy.** The AnimeText pool is
+   CC-BY-NC-SA, so anything K3 certifies stays research-only. A shippable KO
+   reader needs a licence-clean source — the same gap `synth_sfx.py` fills for
+   hearts.
+
+## Do not re-propose
+
+Carried out of the archived plans so the list survives the gitignored tree.
+Each has its evidence in the plan named beside it.
+
+- **Do not size or screen a KO/ZH pool with B′** — it misreads both as
+  Japanese, and a B′-selected arm cannot then score B′ (plan2 K0's `zh` row is
+  exactly that confound). Do not re-run K0's `zh` arm off a B′ screen.
+- **Do not label KO/ZH from `JustANormalTinkerer/animetext-ocr`** — its reads
+  *are* hayai's, so it is the voter, not a teacher, and its Korean carries no
+  띄어쓰기 (plan2 K1).
+- **Do not judge a KO/ZH arm on the Japanese gates alone**, and do not re-run
+  K4 run 1 expecting a different Japanese number. Build K3 first (plan2).
+- **Do not ship `vl16_pl_kozh` or `vl16_pl_20k`** — NC pseudo rows
+  (plan_vl_respace, plan2 § Constraints).
+- **Do not patch spacing at inference** (a word segmenter, a stock re-read of
+  Latin lines) — the user chose the retrain 2026-09-10 (plan_vl_respace).
+- **Do not judge a spacing arm on `exact_key` alone**; it is whitespace-blind
+  by design and cannot see the regression (plan_vl_respace R1).
+- **Do not reintroduce a whitespace strip in training targets** for any VL arm
+  (plan_vl_respace, `whitespace_fixed.md`).
+- **Do not pick a target spelling without checking the tokenizer first** — R5
+  lost 49 heart reads by folding the single-token `♥` into byte-fallback `♡`
+  (plan_vl_respace R5).
+- **Do not judge a heart-slot change on the COO columns** — at 0.31 % heart
+  rows they cannot see the axis; only the sincos gate can (plan_vl_respace R5).
+- **Do not read an EasyControl-only floor as a pack verdict.** Its target
+  stream is the frozen DiT and `cache_llm_adapter_outputs = true` keeps the
+  `llm_adapter` out of the graph, so such an arm has **no trainable weight
+  between an ext row and a pixel** (plan_render S5).
+- **Do not compare a render CER to any `/ 617` or `/ 71` figure** in
+  `findings.md` — different units, different task (plan_render).
+- No prompt hints or language tags for the reader; no SSL-tower arms; no
+  page-context margin sweep — all closed (`findings.md`, `eval.md`).
+- Block-compile first on OOM for EasyControl at 768, not grad checkpointing
+  (closed line `dynamo_limit_contextvar`); and every GPU step goes through the
+  daemon — a bare background process dies at ~1 min.
 
 ## The encoder-side predecessor
 
