@@ -221,7 +221,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 219	12048743	[924, 93, 987, 505]	0.9478	animetext+sfx_reader	speech	ほほう、サークルの取材撮影ですかしょうがないですね。	speech	ほほうサークルの取材撮影ですか しょうがないですね。	checked	95	
 220	12048743	[383, 96, 445, 336]	0.9513	animetext+sfx_reader	speech	エナドリ1か月分で手を打ちましょう。	speech	エナドリ１か月分で 手を打ちましょう。	checked	96	
 221	12048743	[314, 351, 393, 453]	0.8907	animetext+sfx_reader	sfx	じゅぽ	sfx	じゅぽ じゅぽ	drafted		opus: two blocks inside one burst circle
-222	12048743	[847, 553, 976, 703]	0.8535	animetext+sfx_reader	speech	おっっ・・・おおおお	sfx	おっっ・・・おおおお	draft		opus: kind changed: halo blob, no bubble; glyph count of the second column uncertain
+222	12048743	[847, 553, 976, 703]	0.8535	animetext+sfx_reader	speech	おっっ・・・おおおお	sfx	おっ?おおおお	draft		opus: kind changed: halo blob, no bubble; glyph count of the second column uncertain
 223	12048743	[671, 603, 727, 699]	0.9056	animetext+sfx_reader	speech	おおお♡	sfx	おお♡	draft		opus: kind changed: burst circle; only 2 お visible (draft said 3); marks at upper-right may be dakuten
 224	12048743	[95, 694, 134, 837]	0.8424	animetext+sfx_reader	sfx	ガクガク・・・	sfx	ガクガク・・・	draft	97	box moved iou=0.46 from old #97; opus: dot count uncertain (2 or 3)
 225	12048743	[912, 748, 946, 838]	0.7818	animetext+sfx_reader	sfx	びくッ	sfx	びく♡	drafted		opus: final mark is a heart, not ッ
@@ -516,7 +516,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 514	14233561	[163, 557, 190, 621]	0.673	animetext+sfx_reader	speech	くに♥	sfx	くに♡	drafted		opus: kind changed: onomatopoeia on artwork
 515	14233561	[453, 582, 478, 639]	0.6954	animetext+sfx_reader	speech	くに♡	sfx	くに♡	drafted		opus: kind changed: onomatopoeia on artwork
 516	14256298	[43, 190, 113, 355]	0.8364	animetext+sfx_reader	speech	おおお~	sfx	お゙お゙お゙~	drafted		opus: kind changed: burst bubble; dakuten hatch; ~5 hearts decorate the bubble
-517	14256298	[1078, 334, 1240, 413]	0.4901	animetext+sfx_reader	sfx	ぐつンッ♡	sfx	ぐつンッ♡	draft		opus: black lettering on orange; glyphs 3-4 uncertain
+517	14256298	[1078, 334, 1240, 413]	0.4901	animetext+sfx_reader	sfx	ぐつンッ♡	sfx	ビクンッ♡	draft		opus: black lettering on orange; glyphs 3-4 uncertain
 518	14256298	[529, 346, 650, 596]	0.7058	animetext+sfx_reader	sfx	ビュ~	sfx	ビュー♡ ビュー♡	drafted		opus: two columns, each with its own ♡
 519	14256298	[757, 368, 884, 586]	0.7274	animetext+sfx_reader	sfx	ドプッ♥	sfx	ドプッ♡	drafted		
 520	14256298	[40, 459, 77, 529]	0.878	animetext+sfx_reader	sfx	びく	sfx	びく♡	drafted		D1 hand pass #27 real_text=y
@@ -802,9 +802,9 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 800	8362202	[567, 430, 854, 582]	0.4014	animetext+sfx_reader	sfx	ビュルルルル・・・・ル	sfx	ビュルルル…♡	checked	279	
 801	8570601	[628, 20, 722, 229]	0.9589	animetext+sfx_reader	speech	あっ♥もう射精ちゃったかわいい♥	speech	あっ もう射精ちゃった かわいい♡	checked	281	
 802	8570601	[1168, 34, 1277, 306]	0.8742	animetext+sfx_reader	sfx	ビクン♥	sfx	ビクン♡	drafted		
-803	8570601	[83, 243, 152, 413]	0.5561	animetext+sfx_reader	sfx	フリフリ♡	sfx	フリフリ	checked	282	uncertain
+803	8570601	[83, 243, 152, 413]	0.5561	animetext+sfx_reader	sfx	フリフリ♡	sfx	フリフリ♡	checked	282	uncertain
 804	8570601	[955, 402, 1108, 459]	0.7991	animetext+sfx_reader	sfx	ひゅるっ	sfx	びゅるっ♡	checked	280	burst bubble
-805	8570601	[1147, 499, 1205, 627]	0.8646	animetext+sfx_reader	speech	あっレ	sfx	あっレ	draft		opus: kind changed: spiky burst, not a bubble; 3rd glyph clearly reads レ
+805	8570601	[1147, 499, 1205, 627]	0.8646	animetext+sfx_reader	speech	あっレ	sfx	あっ♡	draft		opus: kind changed: spiky burst, not a bubble; 3rd glyph clearly reads レ
 806	8570605	[991, 6, 1105, 249]		hand_only	speech	…やばいっ… お姉さんに触られる だけでイきそう… これがサキュバスの…	speech	…やばいっ… お姉さんに触られる だけでイきそう… これがサキュバスの…	unchecked	283	no AnimeText record covers this old box
 807	8570605	[269, 27, 334, 285]	0.9486	animetext+sfx_reader	speech	お姉さんのお口で気持ちよくなってね♡	speech	お姉さんのお口で 気持ちよくなってね	checked	286	
 808	8570605	[420, 27, 516, 273]	0.9558	animetext+sfx_reader	speech	ふふっおちんちん、すごくびくびくしてる・・・♡	speech	おちんちんすごく びくびくしてる…	checked	285	
@@ -831,9 +831,9 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 829	8918764	[810, 904, 828, 971]	0.3417	animetext+sfx_reader	sfx	ドキドキ♡	sfx	ドキドキ♡	drafted		
 830	9053496	[473, 60, 510, 123]	0.6433	animetext+sfx_reader	speech	んっ	sfx	んっ	drafted		opus: kind changed: burst, no bubble
 831	9053496	[264, 61, 320, 115]	0.4086	animetext+sfx_reader	speech	イワゥゥ~♡	sfx	イワゥ~♡	draft		opus: kind changed: no bubble; rough sketch lettering, イワ vs イク uncertain
-832	9053496	[78, 83, 129, 150]	0.318	animetext+sfx_reader	sfx	バタン	sfx	バタン	draft		opus: rough sketch lettering, low confidence
-833	9053496	[176, 85, 224, 156]	0.5305	animetext+sfx_reader	sfx	バチャッ	sfx	バチャッ♡	draft		opus: rough sketch lettering; heart at the bottom of the burst
-834	9053496	[430, 274, 458, 402]	0.833	animetext+sfx_reader	sfx	ぐふー~	sfx	ぐふー~♡	draft		opus: rough sketch lettering, low confidence
+832	9053496	[78, 83, 129, 150]	0.318	animetext+sfx_reader	sfx	バタン	sfx	バチュ♡	draft		opus: rough sketch lettering, low confidence
+833	9053496	[176, 85, 224, 156]	0.5305	animetext+sfx_reader	sfx	バチャッ	sfx	バチュ♡	draft		opus: rough sketch lettering; heart at the bottom of the burst
+834	9053496	[430, 274, 458, 402]	0.833	animetext+sfx_reader	sfx	ぐふー~	sfx	んふー~	draft		opus: rough sketch lettering, low confidence
 835	9053496	[753, 330, 800, 451]	0.8345	animetext+sfx_reader	sfx	パン	sfx	パン♡	drafted		opus: machine read dropped the heart
 836	9053496	[482, 334, 511, 426]	0.893	animetext+sfx_reader	sfx	びくん♥	sfx	びくん♡	checked	296	
 837	9053496	[436, 443, 477, 570]	0.8783	animetext+sfx_reader	sfx	パン	sfx	パン♡	drafted		opus: machine read dropped the heart
@@ -860,12 +860,12 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 858	9155714	[597, 159, 643, 250]	0.8568	animetext+sfx_reader	sfx	びく♡	sfx	びく♡	drafted	307	box moved iou=0.49 from old #307
 859	9155714	[59, 336, 105, 475]	0.8991	animetext+sfx_reader	speech	おっしお	sfx	おっぱ	draft		opus: kind changed: burst, no bubble; 3rd glyph is は-family with a diacritic and the word looks unfinished
 860	9155714	[820, 406, 889, 530]	0.7184	animetext+sfx_reader	sfx	ぱん♥	sfx	ぱん♡	drafted		
-861	9155714	[408, 494, 441, 568]	0.8238	animetext+sfx_reader	speech	あへへ	sfx	あへへ	drafted		opus: kind changed: burst, no bubble
+861	9155714	[408, 494, 441, 568]	0.8238	animetext+sfx_reader	speech	あへへ	sfx	あへ♡	checked		opus: kind changed: burst, no bubble | 2026-09-12 text fix: 3rd glyph is ♡ (baseline heart), not へ — b2_norm2/norm3 both read あへ♡
 862	9155714	[187, 760, 259, 1042]	0.909	animetext+sfx_reader	speech	おおおおお?あ~	sfx	おおおおお？	draft		opus: kind changed: no bubble; dense burst lettering, お count and trailing marks uncertain
 863	9155714	[804, 768, 853, 901]	0.88	animetext+sfx_reader	sfx	ぱく	sfx	ぱん♡	drafted		opus: machine read ぱく
 864	9155714	[336, 819, 372, 915]	0.9039	animetext+sfx_reader	sfx	ガク♥	sfx	ガク♡	drafted		
 865	9155714	[494, 830, 533, 918]	0.859	animetext+sfx_reader	sfx	ボフッ♥	sfx	ボフッ♡	drafted		
-866	9155714	[28, 858, 124, 1162]	0.8756	animetext+sfx_reader	speech	あっおおおおお	sfx	あっおおおおお	draft		opus: kind changed: no bubble; お count approximate
+866	9155714	[28, 858, 124, 1162]	0.8756	animetext+sfx_reader	speech	あっおおおおお	sfx	あっおおおっ♡おおおお	draft		opus: kind changed: no bubble; お count approximate
 867	9155714	[839, 920, 889, 1056]	0.9042	animetext+sfx_reader	sfx	ぱんV	sfx	ぱん♡	drafted		
 868	9179826	[329, 0, 413, 39]	0.7497	animetext+sfx_reader	sfx	びくん	sfx	びく♡	drafted		opus: last glyph is a heart, not ん
 869	9179826	[747, 78, 856, 346]	0.9606	animetext+sfx_reader	speech	コノハちゃん、いつもありがとねー働考になるよー	speech	コーいちゃん、いつもありがとねー今考ったなるよー	checked	308	
@@ -944,8 +944,8 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 942	9830919	[1053, 214, 1092, 349]	0.8984	animetext+sfx_reader	speech	綾能・・・	sfx	變態・・・	drafted		D1 hand pass #52 real_text=y; read off (kanji column, 變態…); lettering real; opus: kind changed: no bubble; traditional 變 as printed
 943	9830919	[551, 500, 640, 616]	0.2712	animetext+sfx_reader	sfx	びく~ミ	sfx	びく♡	drafted		opus: the left zigzag is a motion line, not text
 944	9830919	[84, 502, 119, 575]	0.8771	animetext+sfx_reader	sfx	ぴく♡	sfx	ぴく♡	drafted		
-945	9830919	[431, 647, 477, 810]	0.736	animetext+sfx_reader	sfx	ドッチュ♥♥	sfx	ドッチュ♡♡	drafted		
-946	9830919	[227, 657, 273, 837]	0.886	animetext+sfx_reader	sfx	ドッチュ♥♥	sfx	ドッチュ♡♡	drafted		
+945	9830919	[431, 647, 477, 810]	0.736	animetext+sfx_reader	sfx	ドッチュ♥♥	sfx	ズッチュ♡♡	drafted		
+946	9830919	[227, 657, 273, 837]	0.886	animetext+sfx_reader	sfx	ドッチュ♥♥	sfx	ズッチュ♡♡	drafted		
 947	9830919	[397, 698, 427, 849]	0.6379	animetext+sfx_reader	sfx	プシー♡	sfx	プシー♡	drafted		
 948	9885272	[1126, 0, 1241, 265]	0.6214	animetext+sfx_reader	sfx	パン♥	sfx	パン♡	drafted		
 949	9885272	[1036, 15, 1100, 169]	0.6334	animetext+sfx_reader	sfx	パン♥	sfx	パン♡	drafted		
@@ -953,7 +953,7 @@ row	stem	box	det_score	engine	kind_rec	text_rec	kind_hand	text_hand	status	src_r
 951	9885272	[1016, 197, 1120, 377]	0.4766	animetext+sfx_reader	sfx	パン♥	sfx	パン♡	drafted		
 952	9885272	[56, 322, 107, 417]	0.782	animetext+sfx_reader	sfx	びく	sfx	びく♡	drafted		opus: machine read dropped the heart
 953	9885272	[158, 463, 195, 534]	0.793	animetext+sfx_reader	sfx	ずっ	sfx	おっ	drafted		opus: machine read ずっ; the first glyph is お
-954	9885272	[180, 561, 220, 639]	0.8283	animetext+sfx_reader	speech	おっ	sfx	おっ	drafted		opus: kind changed: burst, no bubble; the V marks are burst spikes
+954	9885272	[180, 561, 220, 639]	0.8283	animetext+sfx_reader	speech	おっ	sfx	おっ♡	drafted		opus: kind changed: burst, no bubble; the V marks are burst spikes
 955	9885272	[638, 655, 688, 738]	0.7429	animetext+sfx_reader	sfx	びく♥	sfx	びく♡	drafted		D1 hand pass #53 real_text=y
 956	9947598	[18, 41, 125, 814]	0.9378	animetext+sfx_reader	speech	おじさんの家でのとわちゃんは性欲処理のオナホとして毎日ご奉仕してもらうからね~♡これも運命の出会いってやつだね~♡	speech	おじさんの家でのとわちゃんは 性欲処理のオナホとして毎日ご奉仕してもらうからね～♡ これも運命の出会いってやつだね～♡	checked	332	
 957	9947598	[860, 43, 931, 606]	0.9426	animetext+sfx_reader	speech	いいよ~とわちゃん♡奥までしっかりおちんぽ舐めるんだよ~♡	speech	いいよ～とわちゃん♡ 奥までしっかりおちんぽ舐めるんだよ～♡	checked	331	

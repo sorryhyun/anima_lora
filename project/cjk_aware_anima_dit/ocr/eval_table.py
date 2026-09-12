@@ -23,11 +23,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import eval_manga109 as ev  # noqa: E402
+import textnorm  # noqa: E402
 from rescore_eval import rescore  # noqa: E402
 
 HERE = Path(__file__).resolve().parent.parent
@@ -42,9 +42,7 @@ def space_key(t) -> str:
     """``exact_key``'s folds with whitespace *collapsed* rather than deleted, so
     a reader that cannot emit a space (every ``TARGET_NORM = 1`` run —
     ``whitespace_fixed.md``) fails the rows whose target has one."""
-    t = t if isinstance(t, str) else ""
-    key = " ".join(unicodedata.normalize("NFKC", t).split()).translate(ev.HEART_FOLD)
-    return ev.ELLIPSIS_RE.sub("…", key)
+    return textnorm.normalize_target(t if isinstance(t, str) else "")
 
 
 def score(path: Path):

@@ -180,6 +180,172 @@ Scope note: with `skip_en` on (the stage default), ASCII-only English lines are
 dropped anyway; the fix matters for mixed lines, `--keep_en` runs, Korean, and
 the Japanese line-break spaces R3 handles.
 
+## R5 — the glyph fold (`TARGET_NORM = 3`)
+
+R2's post-mortem named hearts-read-as-kana and dropped dakuten as the sincos
+loss, and the trainer taught the annotators' spelling verbatim while
+`exact_key` folded every variant away — four targets for one pause (`・・・` /
+`...` / `…` / `……`), `♥` competing with `♡` 41 : 296, `あ゛っ` carrying a
+spurious space because NFKC splits the spacing mark off with one. `textnorm.py`
+(2026-09-12) makes one rule for all three surfaces — training target, scoring
+key, record form — and `crop_dataset.TARGET_NORM` goes to 3.
+
+### R5 run 1 — `vl16_b2_norm3` (2026-09-12): in-domain up, sincos fails harder
+
+Jobs `20260912-014858-b7bbc4` (train, 1.47 h) → `…-e7d8a5` (COO) / `…-cdc7a7`
+(sincos). `args.json` differs from `vl16_b2_norm2` in `run` alone — same seed 0,
+same 77 164 rows, **a pure A/B on the fold**.
+
+| | B′ | `b2_norm2` | `b2_norm3` | gate |
+|---|---|---|---|---|
+| sincos SFX ♡-blind | 375 | 350 | **319** / 617 | ≥ 372 — **fail (−56)** |
+| sincos strict | 312 | 297 | 274 | — |
+| COO SFX ♡-blind | 2127 | 2138 | **2157** / 2558 | ≥ 2124 — pass |
+| COO speech ♡-blind | 2260 | 2255 | 2255 / 2559 | ≥ 2256 — −1, jitter |
+| COO spaced (of 192) | 1 | 19 | 17 | — |
+| in-domain val SFX / speech | 86.2 / 88.2 % | 87.0 / 91.2 % | **87.3** / 91.1 % | — |
+| val speech runaways | — | 168 | **9** | — |
+| val preds with a space (of 4 790) | 0 | 77 | 71 | — |
+
+Every COO/val column is flat-to-better and the 617-row doujin gate drops again.
+Read down the *rescored* table only — `eval_table.py` re-derives all three rows
+on the current key; the numbers printed in each run's own report are not
+comparable (`eval.md` § Comparability).
+
+### Where the 56 rows went — contact sheets
+
+`output/tests/ocr_norm3_diff/{lost,won}_*.png` (scratch `sheet_norm3.py`): every
+sincos SFX row the two runs disagree on, crop + GT / B′ / norm3.
+
+- **B′ right → norm3 wrong 87, the other way 31.** 59 of the 87 are one shape:
+  the trailing **♡ is read as a kana** — `びく♡` → `びくん`, `ぱん♡` → `ぱんん` /
+  `ぱんッ`, `ガク♡` → `ガクル`, `パン♡パン♡パン♡` → `パンレパンレ`. The filler is
+  almost always one of ん ッ ト ル し ィ ☆ ♪.
+- Heart emission, on the 497 GT-heart rows: B′ 313 → norm2 312 → **norm3 271**,
+  and ♡-blind exact on those rows 61.4 → 58.8 → **52.1 %**. The two earlier runs
+  agree to one row on this axis; only norm3 moves it.
+- The 31 wins are voicing, not symbols — `ひく` → `びく`, `ガャボ` → `ぢゃぼ`,
+  `ペシー` → `プシー`. That is fold 1 (dakuten) doing its job.
+
+### The cause is the tokenizer: `♥` is one token, `♡` is three bytes
+
+`PaddleOCR-VL-1.6`'s tokenizer has **`♥` (U+2665) as a single id (99252)** and
+**no `♡` (U+2661) at all** — it falls back to three raw UTF-8 byte pieces.
+`fold_glyphs` maps `♥ → ♡`, so `TARGET_NORM = 3` deleted the only cheap heart
+the decoder had and asked for a 3-token byte sequence in its place.
+
+Raw sincos SFX predictions, hearts emitted:
+
+| | `♥` | `♡` | total |
+|---|---|---|---|
+| B′ | 143 | 205 | 348 |
+| `b2_norm2` | 144 | 204 | 348 |
+| `b2_norm3` | **0** | 299 | **299** |
+
+norm3 does exactly what it was taught — it never writes `♥` again — and the
+49 hearts it stops writing are not replaced by `♡`. **73 of the 87 lost rows
+carry a heart in the label**; B′ read a heart on 49 of them (21 of those with
+the single-token `♥`), norm3 on 11. The single `♥` id was acting as the sink
+for the drawn heart; remove it and the probability mass goes to whatever is
+still one token in that slot — ん ッ ト ル し, exactly what the sheet shows.
+
+The byte-fallback set is wider than the heart and it is SFX-shaped:
+`ぁぃぅづ ぱぴぷぺぽ ぶぼ ぎぐ ざぜぞぢ ゾヂヅ ♡ ♬`. **Every handakuten hiragana
+is byte-fallback** — `ぱん`, `ぴく`, `ぷしゅ` each cost 3 tokens for their first
+glyph. Any future target rule should be read against this list first.
+
+### The dot fold is not the cause, and is worth keeping
+
+`・・・` is 3 tokens, `…` is 1, so the dot fold made 12 877 targets *cheaper*,
+and its one visible effect is good: **val speech runaways 168 → 9** (repeating
+`・・・` was the runaway's favourite loop). What it did not do is score: the key
+already folds dots, so B′ collects 16 rescued rows for free (`ウズ・・・・` reads
+as `ウズ…`) where norm3 needs only 7 — training the fold in bought **9 rows the
+key was already giving away**. *A fold the scoring key already applies has no
+headroom by construction.* Neutral-to-good, not the regression.
+
+### R5b — flip the heart fold, keep the rest
+
+`TARGET_NORM = 4`: `fold_glyphs` with the heart table inverted — **`♡ ❤ → ♥`**,
+the single token, instead of the reverse. Dot, dash, wave and dakuten folds
+unchanged.
+
+```
+make daemon-run ARGS="--queue --stall-timeout 0 \
+  project/cjk_aware_anima_dit/ocr/finetune_vl16_lora.py --skip_stock_val \
+  --train_tower --tower_lr 1e-5 --lr 1e-4 --epochs 1 --bs 8 --grad_accum 2 \
+  --seed 0 --run vl16_b2_norm4"
+```
+
+Only the **training target** flips. `exact_key` and
+`anime_tools.ocr.sfx.normalize_read` keep folding to `♡` — the scorer is
+♡-blind and the record wants one spelling, so the direction is free downstream
+and the two surfaces stay consistent with each other.
+
+Gate: sincos ≥ 350 (norm2's number — R5b is a norm2 delta, not a B′ one), COO
+and val no worse than norm2, and `♥` back in the raw predictions. If it lands
+near 350 the fold ships with the flip; if it lands near 319 the heart token is
+not the whole story and the next move is a repeat seed, which this line still
+has never measured (`R2 run 1` § Open).
+
+### Why the heart was never learnable in the first place
+
+Heart share, SFX rows:
+
+| set | rows | with a heart |
+|---|---|---|
+| train | 38 582 | 85 (**0.22 %**) |
+| COO test | 2 558 | 8 (0.31 %) |
+| sincos gate | 617 | 497 (**80.55 %**) |
+
+The `びく` family alone: 299 train rows, tails `ッ` 90 / `っ` 86 / none 69 —
+**zero with a heart**; 152 sincos rows, `♡` 129 / `っ♡` 8 — **~92 % with one**.
+The model has never once been shown `びく♡`, so its heart behaviour is leaked
+from the base model, not trained, which is why a target-rule change can swing
+it by 42 rows at all. It also means **COO cannot see this axis** (0.31 %): the
+COO columns rising while sincos falls is not a contradiction, the two gates
+measure disjoint things.
+
+R5b treats the symptom. The cure is heart-bearing *positives*, and the only
+licence-clean source is synthetic — `ocr/synth_sfx.py`, still the parked lever
+from R2b, now with a second reason to exist. Append small, never swap
+(col100's lesson).
+
+### Hard negatives — free to insert, wrong tool for this
+
+The train set has **0 empty targets**; every crop is a box that holds text, so
+the reader has never been taught "there is nothing here". Adding them costs no
+code: `Collate` builds `prompt + "" + eos` and labels the single EOS, and
+`load_split(extra=[…])` already appends a sibling manifest. A decoration
+negative set (burst spikes, free-floating hearts, screen-tone) would target the
+one mode the sheet shows beside the heart — a mark read as a glyph — at the
+price of teaching the reader to drop real trailing glyphs.
+
+But the 87 lost rows are not hallucinations over empty space: 73 of them have a
+real heart drawn in the crop. That is a **missing positive and a missing token**,
+not a missing negative. Negatives stay parked behind R5b and the synthetic set.
+
+### Label fix — 12 rows (2026-09-12)
+
+The user hand-corrected 12 sincos SFX labels off the lost sheet: 222 517 803
+805 832 833 834 861 866 945 946 954. Rescored on the new labels, **B′ 375 →
+365, norm2 350 → 346, norm3 319 → 323** — the gap narrows from −56 to −42.
+
+**The pass is not an unbiased sample.** All 12 rows came from the *lost* sheet
+(B′ right, norm3 wrong) and none from the *won* sheet, so every correction there
+can only cost B′ or pay norm3. That B′ drops 10 rows on 12 edits is a hint the
+617-row basis leans its way — several labels were drafted off an older reader's
+output — but it is not measured until the `won` 31 are checked at the same
+strength and a random sample of the untouched 499 gives a label-noise rate.
+
+Two of the 12 are contested: 805 and 866 both replace a trailing `レ` with `♡`.
+At matched magnification 861 and 954 show a top notch and two lobes (a heart);
+805 and 866 show no notch and a rightward hook at the foot (a `レ`), and this
+artist writes both in the same page. Left as the user set them.
+
+The stored `sfx_*.jsonl` carry `text`, so `eval_table` cannot see any of this —
+`eval.md` stays on the old basis until `eval_sfx.py` re-runs for all three arms.
+
 ## Anti-re-proposal
 
 - Do not ship `vl16_pl_kozh` or `vl16_pl_20k` — NC pseudo rows.
@@ -187,3 +353,7 @@ the Japanese line-break spaces R3 handles.
   Latin lines) — the user chose the retrain (2026-09-10).
 - Do not judge a spacing arm on `exact_key` alone; it cannot see the regression.
 - Do not reintroduce a whitespace strip in training targets for any VL arm.
+- Do not pick a target spelling without checking the tokenizer first — R5 lost
+  49 heart reads by folding the single-token `♥` into byte-fallback `♡`.
+- Do not judge a heart-slot change on the COO columns; at 0.31 % heart rows they
+  cannot see the axis. Only the sincos gate can.
