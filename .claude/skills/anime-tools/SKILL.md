@@ -43,7 +43,8 @@ shells no longer exist. Import `anime_tools` directly.
 
 ## The typed request API is the front door
 
-API-first migration (`docs/proposal/anime_tools_api_first.md`, T0–T6 landed 2026-09-03):
+API-first migration (T0–T6, landed 2026-09-03; the proposal was retired once
+complete):
 one **frozen request dataclass per stage** (`ResizeRequest`, `AutotagRequest`,
 `PositionRequest`, `CorrectRequest`, `GroupRequest`, `SamMaskRequest`, …), registered in
 `anime_tools.stages.registry` with a lazy `Stage.runner()`. `python -m

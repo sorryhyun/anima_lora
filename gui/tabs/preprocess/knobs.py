@@ -1,8 +1,7 @@
 """The Preprocessing tab's trainer-native knob table — single source of truth,
 Qt-free.
 
-Since the stage-schema migration (``docs/proposal/gui_preprocess_from_anime_tools.md``,
-P1–P3 landed 2026-09-07) this table holds only what is **not** a field of an
+Since the stage-schema migration (P1–P3, landed 2026-09-07) this table holds only what is **not** a field of an
 ``anime_tools`` stage request: the dataset roots and scope (``source_image_dir``
 / ``path_scope`` / ``preprocess_path_pattern``), the trainer-side TE-cache
 knobs (``caption_shuffle_variants`` / ``caption_tag_dropout_rate``), the

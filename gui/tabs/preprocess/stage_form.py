@@ -4,8 +4,7 @@ The package already turns each stage's request dataclass into a JSON form
 schema (``anime_tools.gui.stages.schema`` — kind / default / choices / help /
 group / advanced / gate / bound roots) and a form payload back into the
 request's argv with the request's own validation (``build_argv``). This
-module is the trainer-side half of that seam
-(``docs/proposal/gui_preprocess_from_anime_tools.md``):
+module is the trainer-side half of that seam:
 
 - **Qt-free** (top of the file): :func:`load_stage_schemas`,
   :func:`visible_fields`, :func:`argv_for`, the field → :class:`Knob` adapter

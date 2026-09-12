@@ -105,4 +105,4 @@ without the captions reproduces the text spam, so it is a bundle, not a
 toggle. The recipe and its evidence live in
 `_archive/cjk_aware_anima/reports/0901_unmask_ab.md` (archived with the frozen line) and the `cjk_unmask_*`
 configs under `configs/gui-methods/custom/`; the OCR caption stage is still
-research-side (`docs/v2_release_plan.md` B5/B6).
+research-side (v2 release plan items B5/B6).

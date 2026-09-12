@@ -83,7 +83,7 @@ torch must not appear).
   change→dirty, the `enabled_by` gate and the generic `values()`/`set_values()` —
   dispatched on *widget type*, so a `float` knob may be a spin or a free-text edit).
   **Four of the five sections are drawn from `anime_tools` stage schemas**
-  (`docs/proposal/gui_preprocess_from_anime_tools.md`, landed 2026-09-07):
+  (the stage-schema migration, landed 2026-09-07 — proposal retired once complete):
   `stage_form.py::StageFormSection` renders one schema (`anime_tools.gui.stages.schema`
   — kind / default / choices / help / advanced / gate / bound roots) as a `KnobSection`
   keyed by the stage's dests, hides bound + trainer-owned dests (`TRAINER_FIELDS`),

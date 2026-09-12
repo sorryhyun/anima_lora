@@ -6,9 +6,8 @@ knobs + ``[variant.stages.*]``) look like at (a) all-defaults and (b) every
 knob flipped — under two deterministic default sources (a bare checkout and a
 populated ``preprocess.toml`` / ``gui_settings.json`` / ``sam_mask.yaml``).
 
-This is the byte-for-byte contract the ``knobs.py`` extraction
-(``docs/proposal/gui_preprocess_tab_refactor.md`` Phase 1) and the stage-form
-migration (``gui_preprocess_from_anime_tools.md`` P1–P3, regenerated
+This is the byte-for-byte contract the ``knobs.py`` extraction (Phase 1) and
+the stage-form migration (P1–P3, regenerated
 2026-09-07 with the migrated keys — resize geometry, caption rewriting,
 autotag mode, SAM rules — moved out of the flat keys / env) must
 reproduce. Regenerate deliberately, never to make a red run green::

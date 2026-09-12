@@ -1,5 +1,4 @@
-"""The Preprocess panel drawn off ``anime_tools`` stage schemas
-(``docs/proposal/gui_preprocess_from_anime_tools.md``, P0–P3).
+"""The Preprocess panel drawn off ``anime_tools`` stage schemas (P0–P3).
 
 Qt-free half: the schemas load in the trainer venv, bound / trainer-owned
 dests are hidden, ``argv_for`` round-trips through each stage's own generated

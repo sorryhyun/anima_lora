@@ -1,4 +1,4 @@
-"""Preprocessing-tab package (``docs/proposal/gui_preprocess_tab_refactor.md``).
+"""Preprocessing-tab package.
 
 Layout:
 

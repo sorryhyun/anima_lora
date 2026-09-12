@@ -1,9 +1,10 @@
 # torch 2.14 buys nothing on sm_120: NVGEMM has no kernel image, the rest is ±1 % drift
 
-Kill-gate bench for the torch 2.12 → 2.14 bump proposal
-(`docs/proposal/torch214.md`), run 2026-09-09 on the training box (RTX 5070 Ti,
+Kill-gate bench for the torch 2.12 → 2.14 bump proposal (shelved on this
+result), run 2026-09-09 on the training box (RTX 5070 Ti,
 consumer Blackwell `sm_120`, driver 610, cu132). Bench + driver:
-`bench/torch_bump/`; results `bench/torch_bump/results/20260909-1331-t214/` and
+`_archive/bench/torch_bump/`; results
+`_archive/bench/torch_bump/results/20260909-1331-t214/` and
 `…-1357-t214-combo/`.
 
 Every arm is a real `train.py --method lora --preset default` run — `path_pattern
@@ -34,7 +35,7 @@ note makes it sound like for this box:
   `TORCHINDUCTOR_MAX_AUTOTUNE_GEMM_BACKENDS=ATEN,TRITON,NVGEMM` **and** two extra
   packages (`nvidia-cutlass-operators`, `nvidia-matmul-heuristics`) **and**
   `mode="max-autotune"`.
-- With all of that in place (`bench/torch_bump/nvgemm_smoke.py`,
+- With all of that in place (`_archive/bench/torch_bump/nvgemm_smoke.py`,
   `TORCH_LOGS=autotuning`), the heuristics return 10 configs for a
   4096×1024×3072 bf16 GEMM and **every kernel fails at launch with
   `cudaErrorNoKernelImageForDevice`**; Inductor logs "Ignoring this choice" and

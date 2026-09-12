@@ -1,7 +1,6 @@
 """Unit tests for the Qt-free knob table (``gui/tabs/preprocess/knobs.py``).
 
-Since the stage-schema migration (``gui_preprocess_from_anime_tools.md``
-P1–P3) the table holds only the trainer-native rows — dataset roots / scope,
+Since the stage-schema migration (P1–P3) the table holds only the trainer-native rows — dataset roots / scope,
 the low-res sugar, the TE-cache variant knobs and the three chain gates; the
 stage forms are ``stage_form``'s and tested in ``test_gui_stage_form.py``.
 Feeds the pure functions hand-built value dicts and checks them against the
