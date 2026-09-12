@@ -296,6 +296,7 @@ def strategy_pack(strategy) -> Optional[VocabPack]:
 
 _HOOK_ATTR = "_vocab_pack_hooks"
 _DIGEST_ATTR = "_vocab_pack_digest"
+_ROWS_ATTR = "_vocab_pack_rows"
 
 
 def _embed_module(model_or_adapter) -> torch.nn.Embedding:
@@ -313,6 +314,14 @@ def attached_pack_digest(model_or_adapter) -> Optional[str]:
     """Digest of the pack hooked onto this model / adapter, ``None`` if none."""
     try:
         return getattr(_embed_module(model_or_adapter), _DIGEST_ATTR, None)
+    except RuntimeError:
+        return None
+
+
+def attached_pack_rows(model_or_adapter) -> Optional[int]:
+    """Ext-row count of the pack hooked onto this model / adapter, ``None`` if none."""
+    try:
+        return getattr(_embed_module(model_or_adapter), _ROWS_ATTR, None)
     except RuntimeError:
         return None
 
@@ -373,6 +382,7 @@ def attach_vocab_pack(model_or_adapter, pack: VocabPack) -> None:
     )
     setattr(embed, _HOOK_ATTR, handles)
     setattr(embed, _DIGEST_ATTR, pack.digest)
+    setattr(embed, _ROWS_ATTR, int(table.shape[0]))
     logger.info(
         "vocab pack %s: %d ext rows hooked onto llm_adapter.embed", pack.name, pack.rows
     )
@@ -387,6 +397,8 @@ def detach_vocab_pack(model_or_adapter) -> None:
         delattr(embed, _HOOK_ATTR)
     if hasattr(embed, _DIGEST_ATTR):
         delattr(embed, _DIGEST_ATTR)
+    if hasattr(embed, _ROWS_ATTR):
+        delattr(embed, _ROWS_ATTR)
 
 
 # --- Identity checks ---------------------------------------------------------

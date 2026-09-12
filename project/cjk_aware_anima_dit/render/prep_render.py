@@ -129,7 +129,7 @@ def stage_text(base: Path, a) -> None:
     inpaint = _load_inpaint_prep()
     stats = inpaint.stage_text(
         base / "resized",
-        base / "text",
+        base / a.text_dir,
         qwen3_path=a.qwen3,
         dit_path=a.dit,
         t5_tokenizer_path=None,
@@ -139,6 +139,7 @@ def stage_text(base: Path, a) -> None:
         tag_dropout_rate=0.0,
         staging=base / "staging",
         vocab_pack=a.vocab_pack,
+        adapter_outputs=(a.text_layout == "adapter"),
     )
     print(f"[text] {stats.written} cached, {stats.skipped} skipped", flush=True)
 
@@ -167,6 +168,16 @@ def main() -> None:
         default=None,
         help="'' = stock tokenizer (the EN arm), a pack path prefix (JA-SHIP / JA-RAND), "
         "omitted = configs/base.toml default",
+    )
+    ap.add_argument(
+        "--text_dir", default="text", help="text: cache dir under <root>/<edition>/"
+    )
+    ap.add_argument(
+        "--text_layout",
+        default="adapter",
+        choices=("adapter", "prompt"),
+        help="text: 'adapter' = crossattn_emb (llm_adapter frozen, cached); "
+        "'prompt' = Qwen prompt_embeds + T5 ids (llm_adapter runs live — S6 body arms)",
     )
     a = ap.parse_args()
     base = REPO / a.root / a.edition

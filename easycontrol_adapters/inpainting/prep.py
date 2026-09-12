@@ -230,6 +230,7 @@ def stage_text(
     tag_dropout_rate: float,
     staging: Path | None = None,
     vocab_pack: str | None = None,
+    adapter_outputs: bool = True,
 ):
     """Cache **full-caption** TE embeddings with shuffle + tag-dropout variants.
 
@@ -250,6 +251,10 @@ def stage_text(
     a pack the CJK spans of a caption route onto the pack rows, the rows are hooked
     onto the LLM adapter for the crossattn cache, and every cache is stamped with
     the pack id; EN-only captions are bit-exact either way.
+
+    ``adapter_outputs=False`` writes the pre-adapter layout (Qwen
+    ``prompt_embeds`` + T5 ids) instead of ``crossattn_emb`` — for runs that
+    train the llm_adapter and so need it live (``cache_llm_adapter_outputs=false``).
     """
     from library.anima import weights as anima_utils
     from library.anima.strategy import AnimaTextEncodingStrategy
@@ -314,7 +319,7 @@ def stage_text(
         tokenize_strategy,
         encoding_strategy,
         text_encoder,
-        llm_adapter=llm_adapter,
+        llm_adapter=llm_adapter if adapter_outputs else None,
         device=device,
         cache_dir=text_cache_dir,
         recursive=recursive,

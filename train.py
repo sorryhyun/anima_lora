@@ -254,14 +254,20 @@ class AnimaTrainer:
                 "when caching Text Encoder output, token_warmup_step or caption_tag_dropout_rate cannot be used"
             )
             if getattr(args, "cache_llm_adapter_outputs", False):
-                # Adapter output caching is only valid when the adapter is frozen (no LoRA on adapter).
+                # Adapter output caching is only valid when the adapter is frozen
+                # (no LoRA on adapter). The flag is store_true, so a method TOML
+                # that sets it (easycontrol.toml) can't be switched off from a
+                # descriptor — auto-disable instead; the TE cache-completeness
+                # probe then requires the prompt_embeds layout.
                 if args.network_args is not None and any(
                     "train_llm_adapter" in a and "true" in a.lower()
                     for a in args.network_args
                 ):
-                    raise ValueError(
-                        "--cache_llm_adapter_outputs is incompatible with --network_args train_llm_adapter=True"
+                    logger.warning(
+                        "network_args train_llm_adapter=true needs the llm_adapter "
+                        "live; disabling cache_llm_adapter_outputs."
                     )
+                    args.cache_llm_adapter_outputs = False
         elif getattr(args, "cache_llm_adapter_outputs", False):
             # Adapter-output caching writes into the TE cache; with text
             # caching off there's nothing to write into, so it's a harmless

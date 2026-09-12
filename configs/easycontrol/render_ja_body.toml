@@ -1,0 +1,77 @@
+# plan_render S6 — JA-BODY: the JA-SHIP arm with a trainable reading path. Same
+# panels, holes, latents and cond caches as render_ja; the body LoRA (target-stream
+# deltas + llm_adapter LoRA + ext-row delta, networks/methods/easycontrol.py) is what
+# changes. The llm_adapter now runs live, so the TE cache is the pre-adapter
+# prompt_embeds layout in its own dir (text_body/) — render_ja's text/ stays for the
+# e4 judge. See project/cjk_aware_anima_dit/plan_render.md §S6.
+#
+# cache_llm_adapter_outputs (true in easycontrol.toml) cannot be switched off from a
+# [training] table (false bools are omitted from argv); train.py auto-disables it
+# when network_args carries train_llm_adapter=true.
+name = "render_ja_body"
+
+[staging]
+edition = "ja"
+
+[preprocess]
+edition = "ja"
+vocab_pack = "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256"
+text_dir = "text_body"
+text_layout = "prompt"
+
+[training]
+network_dim = 32
+network_alpha = 32
+network_args = [
+    "b_cond_init=-6.0",
+    "cond_scale=1.0",
+    "apply_ffn_lora=1",
+    "train_target=true",
+    "target_rank=32",
+    "train_llm_adapter=true",
+    "train_ext_rows=true",
+    "target_lr=1e-4",
+]
+output_name = "anima_render_ja_body"
+sigmoid_bias = 0
+vocab_pack = "output/ckpt/cjk_vocab/cjk_vocab_pack_synthjakozh1sym_r256"
+
+learning_rate = 2e-5
+max_train_epochs = 4
+save_every_n_epochs = 2
+checkpointing_epochs = 2
+
+easycontrol_drop_p = 0.0
+easycontrol_cond_noise_max = 0.0
+
+caption_dropout_rate = 0.1
+
+blocks_to_swap = 0
+# 0.85 (render_ja's) OOMed on step 2 with the body LoRA: 14.05 GiB allocated of
+# 15.5, in the compiled two-stream forward (job 20260911-233326-614256). 0.3 is
+# easycontrol.toml's value — EN ran on it at 1.67 it/s.
+activation_memory_budget = 0.3
+
+[general]
+caption_extension = '.txt'
+
+[[datasets]]
+batch_size = 1
+validation_split_num = 0
+validation_seed = 42
+
+  [[datasets.subsets]]
+  image_dir = 'post_image_dataset/render/ja/resized'
+  cache_dir = 'post_image_dataset/render/ja/lora'
+  cond_cache_dir = 'post_image_dataset/render/ja/cond'
+  text_cache_dir = 'post_image_dataset/render/ja/text_body'
+  recursive = true
+  flip_aug = false
+  num_repeats = 1
+
+[variant]
+family = "easycontrol"
+label = "Render ja body (bubble fill probe, S6)"
+description = "Research probe: render_ja with target-stream + llm_adapter + ext-row LoRA. Not a shipped variant."
+order = 91
+hidden = true

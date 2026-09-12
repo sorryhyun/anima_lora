@@ -244,6 +244,11 @@ def stage_fill(a, out: Path, cells: list[dict]) -> None:
                 continue
             w = weights[kind]
             if w != current:
+                # conds_cache holds post-llm_adapter crossattn_emb keyed by
+                # prompt: a body-LoRA arm (adapter LoRA / ext rows) encodes
+                # through its own network, so a floor cell sharing the caption
+                # must not reuse it.
+                shared["conds_cache"].clear()
                 if network is not None:
                     network.remove_from()
                     anima._easycontrol_network = None
