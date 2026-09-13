@@ -850,18 +850,25 @@ def _glyph_bank(texts, fonts, size: int):
     return torch.from_numpy(bank)
 
 
-def _glyph_batch(bank, device, rng: random.Random, shift: int = 6, fonts=None):
-    """One render per row: a random font (or ``fonts`` per row) and one random
-    shift for the batch, as ink in [0, 1]."""
+def _glyph_batch(
+    bank, device, rng: random.Random, shift: int = 6, fonts=None, font_mean=False
+):
+    """One render per row: a random font (or ``fonts`` per row), or with
+    ``font_mean`` the mean render over every font (a font-free glyph
+    descriptor — attempt 7 showed the output tracking font 8× more than
+    glyph), plus one random shift for the batch, as ink in [0, 1]."""
     import torch
 
     R, F = bank.shape[:2]
-    f = (
-        torch.tensor(fonts)
-        if fonts is not None
-        else torch.tensor([rng.randrange(F) for _ in range(R)])
-    )
-    x = bank[torch.arange(R), f].to(device).float().div_(255.0)
+    if font_mean:
+        x = bank.to(device).float().mean(dim=1).div_(255.0)
+    else:
+        f = (
+            torch.tensor(fonts)
+            if fonts is not None
+            else torch.tensor([rng.randrange(F) for _ in range(R)])
+        )
+        x = bank[torch.arange(R), f].to(device).float().div_(255.0)
     x = 1.0 - x  # ink 1, paper 0
     if shift:
         dx, dy = rng.randint(-shift, shift), rng.randint(-shift, shift)
@@ -871,22 +878,39 @@ def _glyph_batch(bank, device, rng: random.Random, shift: int = 6, fonts=None):
 
 class GlyphEncoder:
     """``g(glyph render) → Δ_row`` in row-norm units. Small CNN + MLP, last
-    layer zero-init (step 0 = pack rows).
+    layer zero-init (step 0 = pack rows), output split into an identity part
+    and one layout vector:
 
-    Two guards, both learned the hard way. ``out_scale``: with a zero-init
-    last layer every one of the ``hidden`` weights feeding an output
-    coordinate steps by ``lr`` in the same direction, so the output moves
-    ``hidden × lr`` per step (run 1 hit 18× the row norm by step 450).
-    ``cap``: any component every row shares gets the *summed* gradient of
-    every ext token in the batch — a direction consistent enough that Adam
-    marches at full lr forever (run 2's shared bias reached 36× row norm,
-    every row identical, the per-glyph part drowned before the adapter's
-    LayerNorm). So there is no shared bias, and each row's delta is capped at
-    ``cap`` row norms (the free-rows arms lived at 1.0–1.4×); the gradient
-    still turns the direction."""
+        Δ_r = (d_r − mean_rows d) + c
+
+    Three attempts taught the shape. (1) With a zero-init last layer every
+    one of the ``hidden`` weights feeding an output coordinate steps by
+    ``lr`` in the same direction, so the output moves ``hidden × lr`` per
+    step → ``out_scale`` 1/64. (2) Any component every row shares gets the
+    *summed* gradient of every ext token in the batch — a direction
+    consistent enough that Adam marches at full lr forever (a shared bias
+    reached 36× row norm, every row identical). (3) A per-row output-norm
+    cap does not help: at the cap the output is ``d / ‖d‖``, the internal
+    ``d`` keeps growing along the common direction and the per-glyph part is
+    divided by it (spread 0.000 for 750 steps).
+
+    So the common mode is *projected out* of the CNN's output — centring
+    across the full row table every step removes the common-mode gradient
+    from the shared weights, leaving the per-glyph part with the same
+    inconsistent gradients free rows had (they saturated at ~1× on every
+    rows arm) — and the layout mode ("big glyph on a blank canvas", the
+    direction every rows arm converged to) lives in one free vector ``c`` at
+    the rows lr, bounded on the **parameter** after each optimizer step
+    (``clamp_common``), never on the output."""
 
     def __new__(
-        cls, dim: int, width: int = 32, out_scale: float = 1.0 / 64, cap: float = 1.5
+        cls,
+        dim: int,
+        width: int = 32,
+        out_scale: float = 1.0 / 64,
+        common_cap: float = 0.75,
+        pool: str = "spatial",
+        glyph_size: int = 96,
     ):
         import torch
         from torch import nn
@@ -895,25 +919,57 @@ class GlyphEncoder:
         layers = []
         for i in range(4):
             layers += [nn.Conv2d(ch[i], ch[i + 1], 3, stride=2, padding=1), nn.GELU()]
+        grid = (glyph_size + 15) // 16
+        feat = ch[-1]
 
         class _Enc(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.conv = nn.Sequential(*layers)
-                self.norm = nn.LayerNorm(ch[-1])
+                self.pool = pool
+                # ``mean``: global mean pool — channel statistics only, which
+                # carry ink mass / stroke weight (font) and not arrangement
+                # (glyph); ``spatial``: flatten the final grid and project,
+                # so the arrangement survives
+                self.proj = (
+                    nn.Linear(feat * grid * grid, feat) if pool == "spatial" else None
+                )
+                self.norm = nn.LayerNorm(feat)
                 self.head = nn.Sequential(
-                    nn.Linear(ch[-1], 512), nn.GELU(), nn.Linear(512, dim)
+                    nn.Linear(feat, 512), nn.GELU(), nn.Linear(512, dim)
                 )
                 nn.init.zeros_(self.head[-1].weight)
                 nn.init.zeros_(self.head[-1].bias)
+                self.common = nn.Parameter(torch.zeros(dim))
                 self.out_scale = out_scale
-                self.cap = cap
+                self.common_cap = common_cap
+
+            def features(self, x):
+                """pooled conv features, pre-LayerNorm (the collapse diagnostic
+                reads their spread across rows)"""
+                h = self.conv(x)
+                if self.pool == "spatial":
+                    return self.proj(h.flatten(1))
+                return h.mean(dim=(2, 3))
+
+            def identity(self, x):
+                """centred per-glyph part only (mean over the rows passed in —
+                call with the full table)"""
+                h = self.norm(self.features(x))
+                d = self.head(h) * self.out_scale
+                return d - d.mean(dim=0, keepdim=True)
 
             def forward(self, x):
-                h = self.norm(self.conv(x).mean(dim=(2, 3)))
-                d = self.head(h) * self.out_scale
-                n = d.norm(dim=1, keepdim=True)
-                return d * (self.cap / torch.clamp(n, min=self.cap))
+                return self.identity(x) + self.common
+
+            @torch.no_grad()
+            def clamp_common(self):
+                n = self.common.norm()
+                if n > self.common_cap:
+                    self.common.mul_(self.common_cap / n)
+
+            def enc_params(self):
+                return [p for n, p in self.named_parameters() if n != "common"]
 
         return _Enc()
 
@@ -1097,13 +1153,25 @@ def stage_train(a):
         rows_all = [r for r in rows_all if r in row_text]
         bank = _glyph_bank([row_text[r] for r in rows_all], _fonts(), a.glyph_size)
         delta = ExtDelta(anima, rows_all, rows.shape[1], device, row_scale)
-        enc = GlyphEncoder(rows.shape[1]).to(device)
-        params = [{"params": list(enc.parameters()), "lr": a.lr_enc}]
+        enc = GlyphEncoder(
+            rows.shape[1],
+            out_scale=a.out_scale,
+            common_cap=a.common_cap,
+            pool=a.enc_pool,
+            glyph_size=a.glyph_size,
+        ).to(device)
+        font_mean = a.font_mode == "mean"
+        params = [
+            {"params": enc.enc_params(), "lr": a.lr_enc},
+            {"params": [enc.common], "lr": a.lr_common},
+        ]
         is_train_row = torch.tensor([r in train_ext for r in delta.ext_ids])
         print(
             f"encoder: {sum(p.numel() for p in enc.parameters()) / 1e6:.2f}M params, "
             f"{len(rows_all)} rows ({int(is_train_row.sum())} in training captions), "
-            f"glyph bank {tuple(bank.shape)}",
+            f"glyph bank {tuple(bank.shape)}, out_scale {a.out_scale:.4g}, "
+            f"common lr {a.lr_common:g} cap {a.common_cap:g}, pool {a.enc_pool}, "
+            f"font {a.font_mode}",
             flush=True,
         )
     else:
@@ -1117,6 +1185,15 @@ def stage_train(a):
             f"adapter LoRA r{a.adapter_rank} on {len(lora.patched)} Linears", flush=True
         )
     opt = torch.optim.AdamW(params, weight_decay=0.0, betas=(0.9, 0.99))
+    sched = None
+    if a.lr_decay == "cosine":
+        # the identity has no parameter-side bound (attempt 8/9: linear norm
+        # growth, 1.6× at 2000 steps); cosine to 0 stops it late
+        import math
+
+        sched = torch.optim.lr_scheduler.LambdaLR(
+            opt, lambda st: 0.5 * (1 + math.cos(math.pi * min(st / a.train_steps, 1.0)))
+        )
     anima.train()
     if a.grad_ckpt:
         anima.enable_gradient_checkpointing(unsloth_offload=False)
@@ -1156,6 +1233,7 @@ def stage_train(a):
     ptr = 0
     log = []
     aug_rng = random.Random(a.seed + 11)
+    killed = ""
     t0 = time.time()
     for step in range(1, a.train_steps + 1):
         if ptr + unit > n:
@@ -1187,7 +1265,7 @@ def stage_train(a):
             device=device,
         )
         if enc is not None:
-            delta.raw = enc(_glyph_batch(bank, device, aug_rng))
+            delta.raw = enc(_glyph_batch(bank, device, aug_rng, font_mean=font_mean))
         with torch.autocast("cuda", dtype=torch.bfloat16):
             pred = anima(
                 noisy.unsqueeze(2),
@@ -1203,6 +1281,10 @@ def stage_train(a):
         opt.zero_grad(set_to_none=True)
         loss.backward()
         opt.step()
+        if sched is not None:
+            sched.step()
+        if enc is not None:
+            enc.clamp_common()  # projected descent on c: no creep
         if step % 25 == 0 or step == 1:
             dn = (delta.raw.detach() * row_scale).norm(dim=1)
             if enc is not None:
@@ -1210,22 +1292,41 @@ def stage_train(a):
                 dn = dn[is_train_row.to(dn.device)]
             rec = {
                 "step": step,
-                "loss": float(loss),
+                "loss": loss.item(),
                 "delta_norm_mean": float(dn.mean()),
                 "delta_norm_max": float(dn.max()),
                 "rel": float(dn.mean() / row_scale),
                 "it_s": step / (time.time() - t0),
             }
             if enc is not None:
-                # identity lives in the spread between rows, not the common mode
+                # identity lives in the spread between rows, not the common
+                # mode. The training draw's spread swings 0.03–0.26 between
+                # logs with the font/shift drawn (attempt 4), so the kill rule
+                # reads a fixed reference render: font 0, no shift.
                 raw = delta.raw.detach()
                 rec["rel_spread"] = float(
                     (raw - raw.mean(0, keepdim=True)).norm(dim=1).mean()
                 )
-                rec["rel_common"] = float(raw.mean(0).norm())
-                rec["at_cap"] = float(
-                    (raw.norm(dim=1) >= enc.cap - 1e-3).float().mean()
+                with torch.no_grad():
+                    xref = _glyph_batch(
+                        bank,
+                        device,
+                        aug_rng,
+                        shift=0,
+                        fonts=[0] * bank.shape[0],
+                        font_mean=font_mean,
+                    )
+                    ref = enc.identity(xref)
+                    feat = enc.features(xref)
+                rec["rel_spread_ref"] = float(ref.norm(dim=1).mean())
+                # feature spread across rows relative to the common feature:
+                # ~0 here with ~0 spread = dead features, not a weight kick
+                rec["feat_spread"] = float(
+                    (feat - feat.mean(0, keepdim=True)).norm(dim=1).mean()
+                    / feat.mean(0).norm().clamp_min(1e-6)
                 )
+                rec["rel_common"] = float(enc.common.detach().norm())
+                rec["rel_max"] = float(raw.norm(dim=1).max())
                 if dn_held.numel():
                     rec["rel_held"] = float(dn_held.mean() / row_scale)
             if lora is not None:
@@ -1234,21 +1335,49 @@ def stage_train(a):
                 )
             log.append(rec)
             print(json.dumps(rec), flush=True)
+            if enc is not None:
+                # plan_wake W2d kill rules: identity not moving, or a row
+                # walking off-manifold — stop before spending the eval
+                if (
+                    a.kill_spread_step
+                    and step >= a.kill_spread_step
+                    and rec["rel_spread_ref"] < a.kill_spread
+                ):
+                    killed = (
+                        f"KILL: rel_spread_ref {rec['rel_spread_ref']:.4f} < {a.kill_spread} "
+                        f"at step {step} (>= {a.kill_spread_step})"
+                    )
+                if a.kill_max_row and rec["rel_max"] > a.kill_max_row:
+                    killed = f"KILL: max row norm {rec['rel_max']:.3f} > {a.kill_max_row}× at step {step}"
+                if killed:
+                    # save the table anyway — a killed run is still renderable
+                    # (attempt 8 was killed at 2.5× with nothing to eval)
+                    print(killed, flush=True)
+                    break
     if enc is not None:
         # the shipped table: the encoder's mean over fonts, no shift — the
         # ExtDelta format so eval / native / classify run unchanged
         with torch.no_grad():
             enc.eval()
-            delta.raw = torch.stack(
-                [
-                    enc(
-                        _glyph_batch(
-                            bank, device, aug_rng, shift=0, fonts=[f] * bank.shape[0]
+            if font_mean:
+                delta.raw = enc(
+                    _glyph_batch(bank, device, aug_rng, shift=0, font_mean=True)
+                )
+            else:
+                delta.raw = torch.stack(
+                    [
+                        enc(
+                            _glyph_batch(
+                                bank,
+                                device,
+                                aug_rng,
+                                shift=0,
+                                fonts=[f] * bank.shape[0],
+                            )
                         )
-                    )
-                    for f in range(bank.shape[1])
-                ]
-            ).mean(0)
+                        for f in range(bank.shape[1])
+                    ]
+                ).mean(0)
     sd = {"delta": delta.state_dict(), "arm": a.arm, "args": vars(a)}
     if enc is not None:
         sd["encoder"] = {k: v.cpu() for k, v in enc.state_dict().items()}
@@ -1257,8 +1386,11 @@ def stage_train(a):
     if lora is not None:
         sd["lora"] = lora.state_dict()
         sd["adapter_rank"] = a.adapter_rank
+    sd["killed"] = killed
     torch.save(sd, arm_dir / "trained.pt")
     (arm_dir / "train_log.json").write_text(json.dumps(log, indent=1))
+    if killed:
+        raise SystemExit(killed)
     print(
         f"train: {a.train_steps} steps in {(time.time() - t0) / 60:.1f} min → {arm_dir / 'trained.pt'}",
         flush=True,
@@ -1884,7 +2016,62 @@ def main():
         "--lr_enc", type=float, default=3e-4, help="encoder arm: AdamW lr on the CNN"
     )
     p.add_argument(
+        "--lr_common",
+        type=float,
+        default=1e-3,
+        help="encoder arm: lr on the shared layout vector c (row-norm units; the rows lr)",
+    )
+    p.add_argument(
+        "--common_cap",
+        type=float,
+        default=0.75,
+        help="encoder arm: ‖c‖ bound in row norms, applied to the parameter after each step",
+    )
+    p.add_argument(
+        "--out_scale",
+        type=float,
+        default=1.0 / 64,
+        help="encoder arm: scale on the zero-init head (raise one notch to 1/16 if spread stays flat)",
+    )
+    p.add_argument(
+        "--kill_spread",
+        type=float,
+        default=0.05,
+        help="encoder arm: abort if rel_spread_ref (fixed font, no shift) is below this once --kill_spread_step is reached",
+    )
+    p.add_argument(
+        "--kill_spread_step",
+        type=int,
+        default=600,
+        help="encoder arm: 0 disables the spread rule (--kill_max_row 0 disables the max-row rule)",
+    )
+    p.add_argument(
+        "--kill_max_row",
+        type=float,
+        default=2.0,
+        help="encoder arm: abort if any row's delta passes this many row norms",
+    )
+    p.add_argument(
         "--glyph_size", type=int, default=96, help="encoder arm: glyph render side"
+    )
+    p.add_argument(
+        "--lr_decay",
+        default="none",
+        choices=["none", "cosine"],
+        help="train: lr schedule over --train_steps (cosine to 0; all param groups)",
+    )
+    p.add_argument(
+        "--enc_pool",
+        default="spatial",
+        choices=["spatial", "mean"],
+        help="encoder arm: feature pooling — spatial keeps the arrangement (glyph), "
+        "mean keeps channel statistics only (attempts 4–7 tracked font, not glyph)",
+    )
+    p.add_argument(
+        "--font_mode",
+        default="mean",
+        choices=["mean", "random"],
+        help="encoder arm: input render — mean over every font (font-free) or one random font per row per step",
     )
     p.add_argument(
         "--held_out",

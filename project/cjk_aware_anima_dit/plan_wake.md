@@ -72,6 +72,169 @@ parametrisation, not the idea, is what failed each time:
 | `-e28bba` | head × 1/64, shared bias at lr 1e-3 | rel grows linearly (36× at step 4300), max/mean 1.00, held == train: the shared bias gets the *summed* gradient of every ext token in the batch, a direction consistent enough that Adam marches at full lr with no restoring force (free rows never had this — each row only saw its own few items) |
 | `-02254c` | no bias, per-row norm cap 1.5 by output normalisation | `rel_spread` 0.000 through step 600: at the cap the output is `d / ‖d‖`, the internal `d` keeps growing along the common direction, and the per-glyph part is divided by it |
 
+Attempt 4 (`-137e19`, 2026-09-13 21:36) implements the action below in
+`wake_probe.py` (`GlyphEncoder.identity` + `common`, `--lr_common
+--common_cap --out_scale`, kill rules `--kill_spread{,_step} --kill_max_row`
+enforced in the train loop). **The parametrisation held**: `c` pinned at
+the 0.75 cap from step 275 and stayed there, max row ≤ 1.4×, spread 0 →
+0.25 by step 650–700 (log kept as `train_log_attempt4_137e19.json`). The
+kill fired at step 725 on a bad draw — the training-draw spread swings
+0.03–0.26 between logs with the font/shift, so the rule now reads
+`rel_spread_ref` (font 0, no shift). Attempt 5 (`-f3fab1`, 21:43), same
+launch with that instrument, killed at step 625 too: the reference spread
+itself swings 0.01–0.14 between logs and never leaves 0.04–0.12 (log
+`train_log_attempt5_f3fab1.json`) — the identity is a per-step Adam kick,
+not an accumulating signal, at ~1/10 of the per-row identity the free-rows
+arms carried. That is the pre-registered branch below: attempt 6
+(`-11ebce`, 21:49), same launch with `--out_scale 0.0625` (1/16), killed
+at step 725 by the max-row rule (2.24×): the swing scaled ×4 with the head
+(spread 0.005 ↔ 0.39, collapsing to ~0 every ~100 steps at 125 / 225 / 325),
+so it is the per-step Adam kick, not the head's reach — the identity never
+accumulates (log `train_log_attempt6_11ebce.json`). Attempt 7 (`-507c18`,
+21:58) keeps 1/16 and takes the plan's one lr retune: `--lr_enc 3e-5`
+(10× down), spread rule off for this run (`--kill_spread_step 0`, growth is
+slower by design), max-row rule kept; the log gains `feat_spread` (pooled
+conv-feature spread across rows, pre-LayerNorm) to tell a dead-feature
+collapse from a weight kick. A mis-launch on the unpatched probe
+(`-fc2dc5`) was killed before its first log.
+
+Attempt 7 reached step 2125 (max-row rule, 2.006×) and is the informative
+one (log `train_log_attempt7_507c18.json`): the lr fix holds — spread on the
+training draw climbs monotonically 0.006 → 1.05, `feat_spread` ≈ 0.45 (no
+feature collapse), held rows move with the trained ones (1.2–1.4×) — but
+`rel_spread_ref` (every row in font 0) is flat at ≈ 0.1 from step 400 on.
+The output tracks **font** ~8× more than glyph: a global mean pool keeps
+channel statistics (ink mass, stroke weight — font properties) and drops
+the arrangement (glyph identity). Attempt 8 (`-83e576`, 22:16) takes the
+input lever, both halves flagged: `--enc_pool spatial` (flatten the 6×6×256
+grid → 256, LayerNorm, head as before; 3.4M params) and `--font_mode mean`
+(the input is the mean render over all 15 fonts — a font-free descriptor,
+so there is no font axis to latch onto and `rel_spread_ref` measures the
+same thing as the training draw). lr 3e-5, head 1/16, `c` cap 0.75, spread
+rule off, max-row rule 2.5×.
+
+Attempt 8 (log `train_log_attempt8_83e576.json`) — the input lever moved
+the right quantity: `rel_spread_ref` == training spread (font-free input)
+and climbs **linearly** 0.20 (250) → 0.74 (1000) → 1.76 (2125) with no
+deceleration, held rows alongside (2.03×), `feat_spread` ≈ 2 (spatial
+features separate the glyphs). Killed by the max-row rule at 2.55× with
+nothing saved, so whether that growth is glyph signal or Adam drift (the
+free rows saturated at ~1×; a linear climb is what a consistent per-row
+direction under Adam looks like) is undecided on the norms alone. The
+probe now saves `trained.pt` on a kill. Attempt 9 (`-2c3960`, 22:34,
+arm dir `encoder_w2_held32_s2k`) is the same recipe for **2000 steps
+straight into eval**, kill rules off — a render at ~1.7× identity decides
+signal vs drift and gives the first held-out number. If singles render, the
+6000-step run gets a cosine lr decay (the parameter-side bound the identity
+lacks); if they do not, the growth was drift and the next lever is the
+loss side.
+
+**Attempt 9 rendered (`encoder_w2_held32_s2k/`, 2000 steps, identity
+1.6× mean / 2.2× max at the end).** Singles 4/24 trained, **1/64
+held-out**, combo 0/36, corpus 0/20, EN 24/24 bit-exact. The sheets decide
+signal vs drift: every render, trained or held-out, is a crisp single kana
+on a blank canvas — the identity is signal. What is missing is
+*resolution*: the map at 2000 steps lands on a handful of attractor kana
+(た, ヒ/七, ん, サ, む, え, シ, あ) and the misses are shape-neighbours —
+ち→た, み→あ, ノ→人, ヤ→チ, レ→シ, ヨ→も, ネ→え, ニ→ん — i.e. the encoder
+already generalises *by shape* to held-out glyphs; it cannot yet tell
+neighbours apart. Exposure was 1/3 of the rows arms', so the trained gate
+is not judged here. Attempt 10 (`-5535f6`, 23:02, arm dir
+`encoder_w2_held32_s6k_cos`) is the full 6000 steps with `--lr_decay
+cosine` (all groups, to 0 — the late-growth bound), everything else as
+attempt 9. Gates apply to this one.
+
+**Attempt 10 verdict (`encoder_w2_held32_s6k_cos/`, 6000 steps, 44 min +
+10 min eval).** Identity plateaus at 2.32× (step ~5000, under the decay),
+max row 3.0×, held rows 2.35×. Singles **6/24 trained** (の ひ ち む リ チ,
+each on one seed; the other seed lands on a neighbour — い, る, あ, ソ,
+テ), **3/64 held-out** (テ once, く both seeds), combo 0/36, corpus 0/20,
+EN 24/24 bit-exact. The attractor collapse of attempt 9 is mostly gone
+(ヲ ヌ Z フ ね を ス now appear) and the held-out misses are the same
+shape-neighbour map at finer grain: ま→も, れ→わ, ケ→チ, ア→テ, ネ→テ,
+コ→フ, ク→ン, け→ね, ふ→ん, し→ん, ワ/レ→シ.
+
+- **Trained gate: fail** (25 % vs the 67 % band rate at equal exposure).
+  The pre-registered kill rule ("< 50 % after one retune") fires on its
+  letter. Its premise does not hold, though: the encoder is not failing to
+  *memorise* — every trained row renders a crisp kana at the right
+  granularity — it is failing to *separate neighbours*, and the seed
+  decides which neighbour. The map is real and low-resolution.
+- **Held-out gate: pass, weakly** (> 0, far from the 25 % "strong" mark).
+  The generalisation is by shape: a held-out glyph gets its nearest
+  trained shape, which is exactly what an amortised map should do at low
+  resolution and what free rows can never do.
+
+What was learned about the parametrisation (attempts 4–10, one lever
+each): centre the identity and own the layout mode as one capped vector
+(4); lr 3e-5 not 3e-4 — Adam's per-step kick on shared weights never
+accumulates at 3e-4 (5–7); a global mean pool encodes *font*, a spatial
+flatten on a font-free mean render encodes *glyph* (8); the identity is
+signal, not drift (9); cosine decay bounds it (10). The remaining lever
+is neighbour separation — the loss side, not the optimizer or the input.
+
+**Decision owed (not taken here).** Two roads:
+
+1. *Continue W2d on the loss side.* The shelved same-noise classifier CE /
+   swap hinge (W2c) was shelved for free rows because it cannot fix
+   combos; the encoder's failure is precisely singles-neighbour
+   separation and combos are W3's job, so the reason it was shelved does
+   not apply. One run: encoder as attempt 10 + a contrastive term over
+   the same-noise batch (the row must lower the FM loss on *its* render
+   more than on its neighbours'). Cost ≈ 1.5× a train step.
+2. *Take the fallback* the kill rule names: glyph-image conditioning
+   (AnyText / GlyphControl shape), gated on a glyph image so ext-free
+   prompts stay untouched. Leaves the row space; the vocab-pack artefact
+   goes away.
+
+**Decision (2026-09-14): road 1.** The result is a low-resolution map, not
+a missing one, and one lever aimed at exactly that remains.
+
+#### Run 1b — neighbour separation (`--arm encoder --contrast hinge`)
+
+Step 0, before any training — **baseline the instrument** (≈ 10 min GPU):
+`--stage classify` on `encoder_w2_held32_s6k_cos`. The same-noise N-way
+diffusion classifier over the single kana says, in loss space, whether the
+attempt-10 rows already prefer their own render (and the reader is the
+bottleneck) or confuse the same neighbours the reader shows. If the
+classifier is already ≥ 90 % on trained singles, the contrastive term has
+nothing to add and the lever moves to the eval side (σ / cfg / steps).
+
+The run, one lever (warm start is not a lever — it is attempt 10's table):
+
+- **Warm start** from `encoder_w2_held32_s6k_cos/trained.pt` (`encoder`
+  state + `c`), `--init_encoder`; 3000 steps, lr 3e-5 cosine restart,
+  everything else as attempt 10. Same held-out 32 (seed-drawn, unchanged).
+- **Swap hinge on the same noise.** For every training item (latent `x`,
+  noise `ε`, σ) a second forward with the caption's ext row swapped to a
+  *negative* row `n`: `L = L_FM(r) + λ · max(0, m + L_FM(r) − L_FM(n))`,
+  per-item mean MSE, λ = 1, m = 0 to start (the FM loss is ≈ 0.04 and a
+  rendered glyph moves it by ≈ 0.005; a margin is the second run's knob,
+  not the first's). Gradient flows into the encoder through both rows: the
+  right row explains its render better than its neighbour's row does.
+- **Hard negatives from the encoder's own table**: `n` = the trained row
+  with the highest cosine to `r` in the current `delta.raw` (189×189, free
+  per step), with probability 0.5; otherwise a uniform trained row. **Never
+  a held-out row** — a negative gets a direct gradient and would break the
+  held-out test.
+- **Cost**: two DiT forwards per step, batch 4 each (batch 8 OOMs at 512²
+  without ckpt) → ≈ 2× attempt 10's step, ≈ 45 min for 3000 + 10 min eval.
+- **Instruments**: `swap_acc` (fraction of items with `L_FM(r) < L_FM(n)`,
+  logged every 25 steps — the direct measure of neighbour separation;
+  attempt 10's table gives its step-0 value), `rel_spread_ref`, `rel_max`,
+  `c`. Kill if `rel_max` > 4× (the hinge can push rows apart without bound)
+  or `swap_acc` has not moved by step 1000.
+
+Gates, in order: (1) `swap_acc` ≥ 0.9 on trained items by the end —
+otherwise the term is not doing its job and no render verdict is read;
+(2) trained singles ≥ 12/24 (double attempt 10; the 67 % band rate is the
+run-2 gate now that exposure is not the variable); (3) held-out singles
+> 3/64 with the shape-neighbour structure intact. A pass on (1) with a miss
+on (2) says the loss-space separation does not reach the pixels at σ
+0.7–0.9 — then widen the band to 0.5–0.9 (identity at σ ≈ 0.8, detail
+below it) as the one follow-up before the fallback. A miss on (1) is the
+kill: the frozen-DiT loss cannot rank neighbours, and road 2 follows.
+
 **Next action — mean-centre the identity, own the layout mode separately.**
 
 - `Δ_r = (d_r − mean_rows d) + c`. Centring across the full row table each
