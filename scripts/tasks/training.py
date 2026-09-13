@@ -1333,8 +1333,8 @@ _EASY_ADAPTERS = {
     # over the curated one. Bespoke preprocess: the miner stages a deduplicated
     # pool and the pair views are symlinks, so each image is encoded ONCE.
     "phash_edit": {"stage": _phash_edit_stage, "preprocess": _phash_edit_preprocess},
-    # plan_render bubble-fill probe (archived; open items in
-    # project/cjk_aware_anima_dit/plan.md § Still open):
+    # plan_render bubble-fill probe (archived; superseded by
+    # project/cjk_aware_anima_dit/plan_wake.md, W3):
     # one descriptor per edition; trees under post_image_dataset/render/<ed>/.
     "render_en": {"stage": _render_stage, "preprocess": _render_preprocess},
     "render_ja": {"stage": _render_stage, "preprocess": _render_preprocess},

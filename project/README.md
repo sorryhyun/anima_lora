@@ -60,8 +60,10 @@ reached its own top-line goal, so neither is a "finished" line):
   LoRA learning CJK tag meaning) was never run. Ceiling found on the reader:
   five arms decoupled in-domain COO from the doujin gate, so the headroom is
   ♡ / small-kana labels, not representation.
-  Home: [`findings.md`](cjk_aware_anima_dit/findings.md),
-  [`plan.md`](cjk_aware_anima_dit/plan.md) (freeze note); plans and dated
+  Home: [`findings.md`](cjk_aware_anima_dit/findings.md) (verdicts),
+  [`plan_wake.md`](cjk_aware_anima_dit/plan_wake.md) (the live plan — the
+  DiT side reopened 2026-09-13 as the wake line), [`history.md`](cjk_aware_anima_dit/history.md)
+  (the dated record incl. the freeze note); pre-freeze plans and dated
   reports archived to `_archive/cjk_aware_anima_dit/{plans,reports}/`.
 - [`cjk_aware_anima/`](cjk_aware_anima/) — the encoder-side line, frozen
   2026-09-05: native JA prompt conditioning via an extended T5-side vocab

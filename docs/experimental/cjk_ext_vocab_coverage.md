@@ -164,7 +164,7 @@ teacher; re-stage the caches).
 
 ## Quote partition: an isotropic mirror for quoted spans (2026-09-05, DiT line D1)
 
-The DiT-side line (`project/cjk_aware_anima_dit/plan.md`, principle 1–2, 8)
+The DiT-side line (`project/cjk_aware_anima_dit/findings.md` § Settled — ext rows)
 treats ext rows as content-free addresses. A pack may now carry a second
 block that is exactly that:
 

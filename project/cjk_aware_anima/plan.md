@@ -27,7 +27,7 @@ property that beats the trained pack, and content-free tables (HOT / ISO1 /
 COLLAPSE) tie or beat it for the unmask goal. The only confirmed result is
 that rows must exist (C9 > P).
 
-**The line continues at [`../cjk_aware_anima_dit/`](../cjk_aware_anima_dit/plan.md)**
+**The line continues at [`../cjk_aware_anima_dit/`](../cjk_aware_anima_dit/README.md)**
 — ext rows as content-free addresses, CJK semantics learned on the DiT side.
 The first item there (s13, ISO1 vs C9 direct blind set) was queued from this
 directory's `probes/regrid_set.py` on 2026-09-05.

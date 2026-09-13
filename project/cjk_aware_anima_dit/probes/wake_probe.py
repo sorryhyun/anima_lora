@@ -18,11 +18,15 @@ Stages (each one daemon job; ``--stage all`` chains them):
           kana strings + kana-only corpus bubble crops; eval prompt sets.
           ``--balanced N`` renders N distinct strings per shared layout (W2a).
   train   frozen DiT, frozen Qwen; trainable = a delta on the ext rows the
-          training captions touch (arm ``rows``) or that + a LoRA on every
-          Linear of ``llm_adapter.blocks`` (arm ``rows_adapter``). Plain
-          rectified-flow loss on the glyph crops.
+          training captions touch (arm ``rows``), that + a LoRA on every
+          Linear of ``llm_adapter.blocks`` (arm ``rows_adapter``), or a glyph
+          encoder g(render of the piece) → row delta shared across every row
+          (arm ``encoder``, W2d; ``--held_out N`` for the generalisation
+          test). Plain rectified-flow loss on the glyph crops.
   classify  same-noise N-way diffusion classifier over the trained single kana
           (delta on vs off): which σ carries identity, do the rows discriminate.
+  native  scene prompts (the blind-pairs set) + a kana clause, delta 0/1, read:
+          does the address survive an ordinary prompt outside the template?
   eval    T2I the eval set with the delta scaled 0 (floor) and 1 (trained),
           same seeds; read; CER vs the floor. An EN string set is the pipeline
           control (no training needed; the base reads Latin).
@@ -791,6 +795,122 @@ def stage_data(a):
 
 
 # ----------------------------------------------------------------------------
+# W2d: amortized glyph encoder (arm ``encoder``)
+
+
+def _row_texts(tok, pack, rows):
+    """ext row → the piece text it stands for (Qwen piece, char row or symbol
+    row); rows the pack cannot name are left out (zero delta)."""
+    inv_q = {int(v): int(k) for k, v in pack.mapping["qwen"].items()}
+    inv_c = {int(v): k for k, v in pack.mapping.get("char", {}).items()}
+    inv_s = {int(v): k for k, v in pack.mapping.get("sym_char", {}).items()}
+    qtok = tok.qwen3_tokenizer
+    out = {}
+    for r in rows:
+        r = int(r)
+        if r in inv_q:
+            t = qtok.decode([inv_q[r]]).strip()
+        elif r in inv_c:
+            t = inv_c[r]
+        elif r in inv_s:
+            t = inv_s[r]
+        else:
+            continue
+        if t:
+            out[r] = t
+    return out
+
+
+def _glyph_bank(texts, fonts, size: int):
+    """uint8 (rows, fonts, size, size) grayscale renders, ink 0 on 255: the
+    encoder's input, one render per font so the font is drawn per step."""
+    import numpy as np
+    import torch
+    from PIL import Image, ImageDraw, ImageFont
+
+    bank = np.full((len(texts), len(fonts), size, size), 255, dtype=np.uint8)
+    for fi, fp in enumerate(fonts):
+        cache: dict = {}
+        for ri, t in enumerate(texts):
+            n = max(1, len(t))
+            fs = int(size * 0.78 / n) if n > 1 else int(size * 0.78)
+            font = cache.get(fs)
+            if font is None:
+                font = cache[fs] = ImageFont.truetype(fp, fs, index=0)
+            im = Image.new("L", (size, size), 255)
+            d = ImageDraw.Draw(im)
+            left, top, right, bottom = d.textbbox((0, 0), t, font=font)
+            d.text(
+                ((size - (right - left)) / 2 - left, (size - (bottom - top)) / 2 - top),
+                t,
+                fill=0,
+                font=font,
+            )
+            bank[ri, fi] = np.array(im)
+    return torch.from_numpy(bank)
+
+
+def _glyph_batch(bank, device, rng: random.Random, shift: int = 6, fonts=None):
+    """One render per row: a random font (or ``fonts`` per row) and one random
+    shift for the batch, as ink in [0, 1]."""
+    import torch
+
+    R, F = bank.shape[:2]
+    f = (
+        torch.tensor(fonts)
+        if fonts is not None
+        else torch.tensor([rng.randrange(F) for _ in range(R)])
+    )
+    x = bank[torch.arange(R), f].to(device).float().div_(255.0)
+    x = 1.0 - x  # ink 1, paper 0
+    if shift:
+        dx, dy = rng.randint(-shift, shift), rng.randint(-shift, shift)
+        x = torch.roll(x, shifts=(dy, dx), dims=(1, 2))
+    return x.unsqueeze(1)
+
+
+class GlyphEncoder:
+    """``g(glyph render) → Δ_row`` in row-norm units. Small CNN + MLP, last
+    layer zero-init (step 0 = pack rows) plus a learned shared bias for the
+    layout mode every free-rows arm converged to.
+
+    ``out_scale`` keeps Adam honest: with a zero-init last layer every one of
+    the ``hidden`` weights feeding an output coordinate steps by ``lr`` in the
+    same direction, so the output moves ``hidden × lr`` per step — the first
+    run hit 18× the row norm by step 450. Scaling the head's output by
+    1/64 puts a coordinate's per-step move back near the free-rows lr; the
+    shared bias sits outside the scale and trains at the rows lr."""
+
+    def __new__(cls, dim: int, width: int = 32, out_scale: float = 1.0 / 64):
+        import torch
+        from torch import nn
+
+        ch = [1, width, width * 2, width * 4, width * 8]
+        layers = []
+        for i in range(4):
+            layers += [nn.Conv2d(ch[i], ch[i + 1], 3, stride=2, padding=1), nn.GELU()]
+
+        class _Enc(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv = nn.Sequential(*layers)
+                self.norm = nn.LayerNorm(ch[-1])
+                self.head = nn.Sequential(
+                    nn.Linear(ch[-1], 512), nn.GELU(), nn.Linear(512, dim)
+                )
+                nn.init.zeros_(self.head[-1].weight)
+                nn.init.zeros_(self.head[-1].bias)
+                self.shared = nn.Parameter(torch.zeros(dim))
+                self.out_scale = out_scale
+
+            def forward(self, x):
+                h = self.norm(self.conv(x).mean(dim=(2, 3)))
+                return self.head(h) * self.out_scale + self.shared
+
+        return _Enc()
+
+
+# ----------------------------------------------------------------------------
 # stage: train
 
 
@@ -848,10 +968,42 @@ def stage_train(a):
     data = _data_dir(a)
     arm_dir = _arm_dir(a)
     arm_dir.mkdir(parents=True, exist_ok=True)
-    recs = [json.loads(ln) for ln in (data / "train.jsonl").read_text().splitlines()]
+    recs_all = [
+        json.loads(ln) for ln in (data / "train.jsonl").read_text().splitlines()
+    ]
     ev = json.loads((data / "eval.json").read_text())
     args = _gen_args(a.train_size, a.steps, a.cfg, arm_dir)
     device = get_generation_settings(args).device
+
+    # W2d held-out split: N single chars never appear in a training item (a
+    # single, a combo or a corpus line containing them); the eval set gains
+    # every held-out char as group ``single_held``.
+    held: list = []
+    keep = list(range(len(recs_all)))
+    if a.held_out:
+        assert a.arm == "encoder", "--held_out is the encoder arm's generalisation test"
+        inv = sorted(
+            {r["text"] for r in recs_all if r["src"] == "font" and len(r["text"]) == 1}
+        )
+        held = random.Random(a.seed + 7).sample(inv, a.held_out)
+        hs = set(held)
+        keep = [i for i, r in enumerate(recs_all) if not (hs & set(r["text"]))]
+        for e in ev:
+            if e["group"] == "single" and e["text"] in hs:
+                e["group"] = "single_held"
+        present = {e["text"] for e in ev if e["group"] == "single_held"}
+        ev += [
+            {"group": "single_held", "text": c, "caption": TPL_BUBBLE.format(c)}
+            for c in held
+            if c not in present
+        ]
+        (arm_dir / "eval.json").write_text(json.dumps(ev, ensure_ascii=False, indent=1))
+        (arm_dir / "held_out.json").write_text(json.dumps(held, ensure_ascii=False))
+        print(
+            f"held-out {len(held)} chars {''.join(held)}; train items {len(keep)}/{len(recs_all)}",
+            flush=True,
+        )
+    recs = [recs_all[i] for i in keep]
 
     # 1. text (Qwen side + pack-routed T5 ids), pre-adapter
     t0 = time.time()
@@ -883,7 +1035,7 @@ def stage_train(a):
         vae = _load_vae(device)
         lat = []
         with torch.no_grad():
-            for i in range(0, len(recs), 8):
+            for i in range(0, len(recs_all), 8):
                 px = np.stack(
                     [
                         np.array(
@@ -891,7 +1043,7 @@ def stage_train(a):
                             .convert("RGB")
                             .resize((a.train_size, a.train_size))
                         )
-                        for r in recs[i : i + 8]
+                        for r in recs_all[i : i + 8]
                     ]
                 )
                 px = (
@@ -907,6 +1059,8 @@ def stage_train(a):
         torch.save(lat, lat_file)
         del vae
         torch.cuda.empty_cache()
+    if len(keep) != len(recs_all):
+        lat = lat[keep]
     print(f"latents: {tuple(lat.shape)} in {time.time() - t0:.0f}s", flush=True)
 
     # 3. frozen DiT + trainables
@@ -927,8 +1081,32 @@ def stage_train(a):
         f"pack rows: mean norm {row_scale:.3f} (std {rows.norm(dim=1).std():.3f}), dim {rows.shape[1]}",
         flush=True,
     )
-    delta = ExtDelta(anima, train_ext, rows.shape[1], device, row_scale)
-    params = [{"params": [delta.raw], "lr": a.lr_rows}]
+    enc = None
+    bank = None
+    if a.arm == "encoder":
+        rows_all = sorted(set(train_ext) | {i for ids in ev_ext.values() for i in ids})
+        row_text = _row_texts(tok, pack, rows_all)
+        rows_all = [r for r in rows_all if r in row_text]
+        bank = _glyph_bank([row_text[r] for r in rows_all], _fonts(), a.glyph_size)
+        delta = ExtDelta(anima, rows_all, rows.shape[1], device, row_scale)
+        enc = GlyphEncoder(rows.shape[1]).to(device)
+        params = [
+            {"params": [enc.shared], "lr": a.lr_rows},
+            {
+                "params": [p for n, p in enc.named_parameters() if n != "shared"],
+                "lr": a.lr_enc,
+            },
+        ]
+        is_train_row = torch.tensor([r in train_ext for r in delta.ext_ids])
+        print(
+            f"encoder: {sum(p.numel() for p in enc.parameters()) / 1e6:.2f}M params, "
+            f"{len(rows_all)} rows ({int(is_train_row.sum())} in training captions), "
+            f"glyph bank {tuple(bank.shape)}",
+            flush=True,
+        )
+    else:
+        delta = ExtDelta(anima, train_ext, rows.shape[1], device, row_scale)
+        params = [{"params": [delta.raw], "lr": a.lr_rows}]
     lora = None
     if a.arm == "rows_adapter":
         lora = AdapterLoRA(anima, a.adapter_rank, device)
@@ -975,6 +1153,7 @@ def stage_train(a):
     random.Random(a.seed).shuffle(order)
     ptr = 0
     log = []
+    aug_rng = random.Random(a.seed + 11)
     t0 = time.time()
     for step in range(1, a.train_steps + 1):
         if ptr + unit > n:
@@ -1005,6 +1184,8 @@ def stage_train(a):
             dtype=torch.bfloat16,
             device=device,
         )
+        if enc is not None:
+            delta.raw = enc(_glyph_batch(bank, device, aug_rng))
         with torch.autocast("cuda", dtype=torch.bfloat16):
             pred = anima(
                 noisy.unsqueeze(2),
@@ -1022,6 +1203,9 @@ def stage_train(a):
         opt.step()
         if step % 25 == 0 or step == 1:
             dn = (delta.raw.detach() * row_scale).norm(dim=1)
+            if enc is not None:
+                dn_held = dn[~is_train_row.to(dn.device)]
+                dn = dn[is_train_row.to(dn.device)]
             rec = {
                 "step": step,
                 "loss": float(loss),
@@ -1030,13 +1214,34 @@ def stage_train(a):
                 "rel": float(dn.mean() / row_scale),
                 "it_s": step / (time.time() - t0),
             }
+            if enc is not None and dn_held.numel():
+                rec["rel_held"] = float(dn_held.mean() / row_scale)
             if lora is not None:
                 rec["lora_b_norm"] = float(
                     sum(p.norm() ** 2 for p in list(lora.params)[1::2]) ** 0.5
                 )
             log.append(rec)
             print(json.dumps(rec), flush=True)
+    if enc is not None:
+        # the shipped table: the encoder's mean over fonts, no shift — the
+        # ExtDelta format so eval / native / classify run unchanged
+        with torch.no_grad():
+            enc.eval()
+            delta.raw = torch.stack(
+                [
+                    enc(
+                        _glyph_batch(
+                            bank, device, aug_rng, shift=0, fonts=[f] * bank.shape[0]
+                        )
+                    )
+                    for f in range(bank.shape[1])
+                ]
+            ).mean(0)
     sd = {"delta": delta.state_dict(), "arm": a.arm, "args": vars(a)}
+    if enc is not None:
+        sd["encoder"] = {k: v.cpu() for k, v in enc.state_dict().items()}
+        sd["held_out"] = held
+        sd["row_text"] = {int(r): row_text[r] for r in delta.ext_ids}
     if lora is not None:
         sd["lora"] = lora.state_dict()
         sd["adapter_rank"] = a.adapter_rank
@@ -1260,7 +1465,10 @@ def stage_eval(a):
 
     data = _data_dir(a)
     arm_dir = _arm_dir(a)
-    ev = json.loads((data / "eval.json").read_text())
+    ev_file = arm_dir / "eval.json"  # encoder arms: held-out singles added
+    if not ev_file.exists():
+        ev_file = data / "eval.json"
+    ev = json.loads(ev_file.read_text())
     if a.eval_groups:
         keep = set(a.eval_groups.split(","))
         ev = [e for e in ev if e["group"] in keep]
@@ -1354,7 +1562,7 @@ def _read_eval(a, arm_dir: Path, manifest, train_dir: Path | None = None):
         "| group | cond | n | CER sfx | CER vl16 | exact (sfx) |",
         "|---|---|---|---|---|---|",
     ]
-    for g in ("single", "combo", "corpus", "en"):
+    for g in ("single", "single_held", "combo", "corpus", "en"):
         for c in ("floor", "trained"):
             ms = agg.get((g, c), [])
             if not ms:
@@ -1373,7 +1581,7 @@ def _read_eval(a, arm_dir: Path, manifest, train_dir: Path | None = None):
             "",
             "eval ext-row coverage (rows seen in training / rows in the string):",
         ]
-        for g in ("single", "combo", "corpus"):
+        for g in ("single", "single_held", "combo", "corpus"):
             xs = [
                 cov[m["text"]]
                 for m in manifest
@@ -1390,7 +1598,7 @@ def _read_eval(a, arm_dir: Path, manifest, train_dir: Path | None = None):
     ]
     (arm_dir / "report.md").write_text("\n".join(lines))
     print("\n".join(lines), flush=True)
-    for g in ("single", "combo", "corpus", "en"):
+    for g in ("single", "single_held", "combo", "corpus", "en"):
         rows = []
         for m in [m for m in manifest if m["group"] == g and m["seed"] == 0]:
             r0 = m["reads"][-1] if m["reads"] else {"sfx": "", "vl": ""}
@@ -1409,6 +1617,226 @@ def _read_eval(a, arm_dir: Path, manifest, train_dir: Path | None = None):
 
 
 # ----------------------------------------------------------------------------
+# stage: native (does the address survive a scene prompt?)
+
+NATIVE_PROMPTS = (
+    REPO / "project" / "cjk_aware_anima" / "assets" / "unmask_eval_prompts.txt"
+)
+NATIVE_CLAUSES = {
+    # the trained clause shape, hung off a scene prompt instead of the template
+    "en": '{p}, japanese text. Japanese text reads as "{k}".',
+    # the user's phrasing: a Japanese-language clause (its own words route to
+    # untrained pack rows; only the kana row carries the delta)
+    "ja": "{p}. ひらがなの「{k}」という文字がある。",
+}
+
+
+def stage_native(a):
+    """Render the blind-pairs scene prompts with a kana clause appended, delta
+    off (floor) and on (trained), same seeds; read; sheet per (prompt, kana).
+    The eval set asks for the glyph on a bare canvas; this asks for it inside
+    an ordinary scene — the product condition W3 needs."""
+    import torch
+
+    from library.inference.generation import generate, get_generation_settings
+    from library.inference.models import load_dit_model, load_shared_models
+
+    arm_dir = _arm_dir(a)
+    sd = torch.load(arm_dir / "trained.pt")
+    assert "lora" not in sd, "native covers rows-only arms"
+    out = arm_dir / (f"native_{a.eval_tag}" if a.eval_tag else "native")
+    (out / "img").mkdir(parents=True, exist_ok=True)
+    prompts = [
+        ln.strip()
+        for ln in Path(a.native_prompts).read_text(encoding="utf-8").splitlines()
+        if ln.strip() and not ln.startswith("#")
+    ]
+    if a.native_limit:
+        prompts = prompts[: a.native_limit]
+    chars = [c for c in a.native_chars.split(",") if c]
+    clauses = [c for c in a.native_clauses.split(",") if c]
+    items = [
+        {
+            "pi": pi,
+            "prompt": p,
+            "text": k,
+            "clause": cl,
+            "caption": NATIVE_CLAUSES[cl].format(p=p, k=k),
+        }
+        for pi, p in enumerate(prompts)
+        for k in chars
+        for cl in clauses
+    ]
+    args = _gen_args(a.eval_size, a.steps, a.cfg, out / "img")
+    gen = get_generation_settings(args)
+    device = gen.device
+    shared = load_shared_models(args)
+    shared["conds_cache"] = {}
+    anima = load_dit_model(args, device, torch.bfloat16)
+    anima.eval()
+    shared["model"] = anima
+    delta = ExtDelta(
+        anima,
+        sd["delta"]["ext_ids"],
+        sd["delta"]["raw"].shape[1],
+        device,
+        sd["delta"]["row_scale"],
+    )
+    delta.load(sd["delta"])
+    trained = set(delta.ext_ids)
+    # which ext rows each caption touches, and how many of them carry a delta:
+    # a JA clause whose tokenizer merges 「あ」 into one piece misses the row
+    cache = _encode_captions([it["caption"] for it in items], device)
+    for it in items:
+        ids = sorted(_ext_ids_of({it["caption"]: cache[it["caption"]]}))
+        it["ext_rows"] = len(ids)
+        it["trained_rows"] = len([x for x in ids if x in trained])
+    for cl in clauses:
+        xs = [it for it in items if it["clause"] == cl]
+        print(
+            f"clause {cl}: ext rows/caption {sum(x['ext_rows'] for x in xs) / len(xs):.1f}, "
+            f"trained rows/caption {sum(x['trained_rows'] for x in xs) / len(xs):.2f}",
+            flush=True,
+        )
+    del cache
+    vae = _load_vae(device)
+    manifest = []
+    t0 = time.time()
+    conds = ("trained",) if a.no_floor else ("floor", "trained")
+    for cond in conds:
+        delta.scale = 0.0 if cond == "floor" else 1.0
+        shared["conds_cache"].clear()
+        for it in items:
+            for seed in range(a.seeds):
+                fn = (
+                    out
+                    / "img"
+                    / f"{cond}_p{it['pi']:02d}_{it['text']}_{it['clause']}_s{seed}.png"
+                )
+                if not fn.exists():
+                    a2 = copy.deepcopy(args)
+                    a2.prompt = it["caption"]
+                    a2.seed = seed
+                    with torch.no_grad():
+                        lat = generate(a2, gen, shared)
+                    _decode(vae, lat, device).save(fn)
+                manifest.append({"file": str(fn), "cond": cond, "seed": seed, **it})
+    print(
+        f"native gen: {len(manifest)} images in {(time.time() - t0) / 60:.1f} min",
+        flush=True,
+    )
+    del anima, vae, shared
+    torch.cuda.empty_cache()
+    _read_native(a, out, manifest, chars, clauses, conds)
+
+
+def _read_native(a, out: Path, manifest, chars, clauses, conds):
+    from collections import defaultdict
+
+    from PIL import Image
+
+    rd = Readers(a.device)
+    for m in manifest:
+        reads = rd.read_image(_bgr(Path(m["file"])), whole=True)
+        m["reads"] = reads
+        m["cer_sfx"] = min([cer(r["sfx"] or "", m["text"]) for r in reads] or [1.0])
+        m["cer_vl"] = min([cer(r["vl"] or "", m["text"]) for r in reads] or [1.0])
+        m["hit_sfx"] = any(norm(r["sfx"] or "") == norm(m["text"]) for r in reads)
+        m["hit_vl"] = any(norm(r["vl"] or "") == norm(m["text"]) for r in reads)
+        m["exact"] = m["hit_sfx"] and m["hit_vl"]
+        m["any_cjk"] = any(CJK_RE.search(r["sfx"] or "") for r in reads)
+    (out / "native_reads.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=1)
+    )
+    agg = defaultdict(list)
+    for m in manifest:
+        agg[(m["clause"], m["cond"])].append(m)
+    lines = [
+        f"# wake_probe — arm `{a.arm}` native (scene prompts + kana clause)",
+        "",
+        f"prompts: `{a.native_prompts}`; chars {' '.join(chars)}; {a.seeds} seed(s); {a.eval_size}²",
+        "",
+        "| clause | cond | n | CER sfx | CER vl16 | hit sfx | hit vl | both | any CJK read |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for cl in clauses:
+        for c in conds:
+            ms = agg.get((cl, c), [])
+            if not ms:
+                continue
+            lines.append(
+                f"| {cl} | {c} | {len(ms)} | {sum(m['cer_sfx'] for m in ms) / len(ms):.3f} | "
+                f"{sum(m['cer_vl'] for m in ms) / len(ms):.3f} | {sum(m['hit_sfx'] for m in ms)} | "
+                f"{sum(m['hit_vl'] for m in ms)} | {sum(m['exact'] for m in ms)} | "
+                f"{sum(m['any_cjk'] for m in ms)} |"
+            )
+    lines += ["", "per kana (trained, both readers):", ""]
+    for k in chars:
+        for cl in clauses:
+            ms = [
+                m
+                for m in manifest
+                if m["text"] == k and m["clause"] == cl and m["cond"] == "trained"
+            ]
+            if ms:
+                lines.append(f"- {k} / {cl}: {sum(m['exact'] for m in ms)}/{len(ms)}")
+    lines += ["", "per prompt (trained, both readers, all kana/clauses):", ""]
+    by_p = defaultdict(list)
+    for m in manifest:
+        if m["cond"] == "trained":
+            by_p[m["pi"]].append(m)
+    for pi in sorted(by_p):
+        ms = by_p[pi]
+        lines.append(
+            f"- p{pi:02d} `{ms[0]['prompt']}`: {sum(m['exact'] for m in ms)}/{len(ms)}"
+        )
+    lines += [
+        "",
+        "Sheets: sheet_<kana>_<clause>.png — one row per prompt: "
+        + ", ".join(f"{c} s{s}" for s in range(a.seeds) for c in conds)
+        + "; label = prompt idx / sfx read / vl16 read.",
+    ]
+    (out / "report.md").write_text("\n".join(lines))
+    print("\n".join(lines), flush=True)
+    for k in chars:
+        for cl in clauses:
+            rows = []
+            for pi in sorted(by_p):
+                for seed in range(a.seeds):
+                    for c in conds:
+                        ms = [
+                            m
+                            for m in manifest
+                            if m["pi"] == pi
+                            and m["text"] == k
+                            and m["clause"] == cl
+                            and m["seed"] == seed
+                            and m["cond"] == c
+                        ]
+                        if not ms:
+                            continue
+                        m = ms[0]
+                        r0 = m["reads"][-1] if m["reads"] else {"sfx": "", "vl": ""}
+                        rows.append(
+                            (
+                                Image.open(m["file"]).convert("RGB"),
+                                [
+                                    f"p{pi:02d} {c} s{seed}: {k}",
+                                    f"sfx {r0['sfx'] or ''}",
+                                    f"vl {r0['vl'] or ''}",
+                                ],
+                            )
+                        )
+            if rows:
+                _sheet(
+                    rows,
+                    out / f"sheet_{k}_{cl}.png",
+                    thumb=192,
+                    cols=len(conds) * a.seeds,
+                )
+
+
+# ----------------------------------------------------------------------------
 
 
 def main():
@@ -1419,9 +1847,9 @@ def main():
         "--stage",
         nargs="+",
         default=["all"],
-        choices=["all", "salad", "data", "train", "eval", "classify"],
+        choices=["all", "salad", "data", "train", "eval", "classify", "native"],
     )
-    p.add_argument("--arm", default="rows", choices=["rows", "rows_adapter"])
+    p.add_argument("--arm", default="rows", choices=["rows", "rows_adapter", "encoder"])
     p.add_argument("--device", default="cuda")
     p.add_argument("--steps", type=int, default=28, help="inference steps")
     p.add_argument("--cfg", type=float, default=4.0)
@@ -1440,6 +1868,19 @@ def main():
         "--lr_rows", type=float, default=3e-3, help="in units of the mean pack-row norm"
     )
     p.add_argument("--lr_adapter", type=float, default=1e-4)
+    p.add_argument(
+        "--lr_enc", type=float, default=3e-4, help="encoder arm: AdamW lr on the CNN"
+    )
+    p.add_argument(
+        "--glyph_size", type=int, default=96, help="encoder arm: glyph render side"
+    )
+    p.add_argument(
+        "--held_out",
+        type=int,
+        default=0,
+        help="encoder arm: N single chars removed from every training item and "
+        "evaluated as group single_held (the generalisation test)",
+    )
     p.add_argument("--adapter_rank", type=int, default=16)
     p.add_argument("--grad_ckpt", type=int, default=1)
     p.add_argument(
@@ -1502,6 +1943,24 @@ def main():
     )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
+        "--native_prompts",
+        default=str(NATIVE_PROMPTS),
+        help="native: scene prompt file (one per line; default the blind-pairs set)",
+    )
+    p.add_argument(
+        "--native_chars",
+        default="あ,か,す",
+        help="native: comma list of kana to hang off every scene prompt",
+    )
+    p.add_argument(
+        "--native_clauses",
+        default=",".join(NATIVE_CLAUSES),
+        help="native: clause shapes to append (" + ", ".join(NATIVE_CLAUSES) + ")",
+    )
+    p.add_argument(
+        "--native_limit", type=int, default=0, help="native: first N prompts (0 = all)"
+    )
+    p.add_argument(
         "--data_tag",
         default="",
         help="suffix for output/wake_probe/data_<tag> and <arm>_<tag>",
@@ -1536,6 +1995,7 @@ def main():
             "train": stage_train,
             "eval": stage_eval,
             "classify": stage_classify,
+            "native": stage_native,
         }[s](a)
 
 
