@@ -107,11 +107,22 @@ Not open: R2b (the synthetic English set — R2 passed its English half), and a
 seed-1 repeat of `vl16_b2_norm2` (superseded; if a repeat seed is bought, buy
 it for R5b).
 
-### Render — can the DiT write JA from ext rows (`plan_render.md`)
+### Render — can the DiT write JA from ext rows (`plan_render.md` → [`plan_wake.md`](plan_wake.md))
 
 Three arms ran. EN clears R1 and not R2; JA-SHIP sits at the floor for a
 structural reason (nothing trainable on the ext-row → pixel path); JA-BODY,
 built to remove exactly that objection, sits at the floor too.
+
+**Reframed 2026-09-13 — [`plan_wake.md`](plan_wake.md) is the live plan.**
+The user's reading: the DiT learned to *garble* because the T5 side never
+gave it a CJK address, so the aim is to wake weights, not train a script.
+W0 confirmed both halves that matter: half of the base model's bubble salad
+survives two independent readers (real units), and a **frozen DiT** draws
+font-clean kana from a rows delta + `llm_adapter` LoRA alone. What is open
+is row discrimination (the 92-row arms mode-collapse). Consequences for the
+items below: EN-BODY no longer gates the interesting question (it still
+settles whether the *body recipe* breaks rendering, nothing more), and no
+future arm spends a target-stream LoRA on glyph shape.
 
 1. **EN-BODY — the one run that closes the line.** A `render_en_body`
    descriptor (stock pack, so no `train_ext_rows`; same target-stream and

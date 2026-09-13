@@ -1027,3 +1027,60 @@ What it settles.
 Report `../cjk_aware_anima/reports/blind_s21_SHIPRAND_vs_SHIP.md`; arm files
 `cjk_unmask_shiprand.toml`, cache `te/sincos_shipped_nosym_random`, grids
 `armSHIPRAND_s{13,29,71}` / `armSHIP_s{13,29,71}` (v2 prompts).
+
+## Wake probe — the DiT already holds JA glyph units; an ext row alone wakes one (2026-09-13)
+
+The question. `plan_render` read JA-SHIP / JA-BODY's floor as "the DiT cannot
+write JA from ext rows". The user's reframing: the DiT saw the glyphs in
+pretraining and learned to *garble* only because the T5 side never carried a
+CJK address (`<unk>`); so wake weights, do not train a script. No arm in the
+line had put a pixel loss on the rows with the DiT frozen — JA-BODY carried a
+target-stream LoRA and a whole-crop inpaint loss, JA-SHIP no trainable weight
+on the row → pixel path. Plan: [`plan_wake.md`](plan_wake.md); instrument
+`probes/wake_probe.py`; outputs `output/wake_probe/`.
+
+Probe 0 (base model, 12 EN prompts × 3 seeds, 768², job `-d72433`). 369
+detector boxes read by the manga-tuned SFX reader *and* stock PaddleOCR-VL-1.6
+on the same crop. Both readers agree (CER ≤ 0.5) on 19 % overall and on about
+half of the boxes in manga-panel prompts (4koma 30/62, two-person 14/19);
+signs / neon 2/168; KO / ZH prompts 0/47. Agreed strings 「いい!」「おだきるっ!」
+「だはいい」「う…」 and long nonsense with real particles. **Bubble text is real
+characters in random order; sign text is texture; KO/ZH have no agreed unit.**
+
+Probe 1 (frozen DiT, frozen Qwen; 512², batch 4, plain rectified-flow loss on
+font renders + kana-only corpus crops; clause caption; eval = T2I singles /
+held-out combos / held-out-artist corpus lines / EN words, 2 seeds, delta
+scaled 0 vs 1, largest-detector-box CER, both readers):
+
+| arm | trainable | single exact (floor → trained) | note |
+|---|---|---|---|
+| `rows`, 92 kana, 2000 st, 3e-3 (job `-bb860f`) | 307 ext rows | 0/36 → 0/36 | layout moves at seed 0, no identity; delta 2.4× row norm, loss flat |
+| `rows_adapter`, 92 kana, 2000 st (job `-462c9e`) | rows + r16 LoRA on all 60 `llm_adapter.blocks` Linears | 0/36 → 3/36 | **font-clean single kana every time**, but every row → ら/ん/ち (mode collapse); EN control 24 → 21/24 |
+| **`rows`, 8 kana, 2500 st, 1e-3 (job `-2f62a2`)** | 37 ext rows, adapter frozen | **0/16 → 9/16, identical on both readers** | あ い う え か き く at seed 0 (7/8), あ か at seed 1; combos 0/36 exact, CER 1.0 → 0.70; EN 24/24 |
+
+What it settles.
+
+- **The units exist and the DiT draws them with nothing of its own trained.**
+  A 37-row embedding delta (≈ 150 KB, norm ≈ 1.1× the pack row) is enough to
+  turn the clause into the right hiragana on a frozen 2B DiT with a frozen
+  adapter. `plan_render` S6's "DiT 본체 LoRA" was aimed at a capacity that was
+  never missing. Never spend a body LoRA on glyph shape.
+- **s21 / arm R / s13 ("rows are addresses, content inert") were measured on
+  a DiT that could not read the rows.** Those verdicts stand for the recipes
+  they measured (whole-page LoRA, text a few % of pixels, ~60 exposures per
+  row); they are not verdicts about what a row *can* carry.
+- **Exposure is the lever, not capacity.** 92-kana arms at ~60 samples/row
+  mode-collapse (the shared adapter LoRA learns the marginal "one big kana in a
+  circle"); 8 kana at ~270 samples/row discriminate with rows alone. Rows-only
+  at 3e-3 (row-norm units) walks off the manifold; 1e-3 stays at ~1.1×.
+- **Composition is open.** 200 training combos did not teach order; 2–3-char
+  prompts render one glyph, usually the first. W2.
+- **EN safety**: the rows delta is bit-exact on ext-free prompts (hook touches
+  ext positions only); an adapter LoRA is not (24 → 21/24) and must carry an
+  ext gate if it is ever kept.
+
+Gotchas that cost time: read the largest detector box, not the whole 512² image
+(the manga prompt also spawns tiny salad bubbles); ext rows are Qwen-piece
+keyed (「いい」 is one row); the VAE takes `IMAGE_TRANSFORMS` range, not the
+[0, 1] its docstring says; clear `shared["conds_cache"]` on every delta-scale
+switch.
